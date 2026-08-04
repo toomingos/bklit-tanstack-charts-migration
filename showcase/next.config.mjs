@@ -14,9 +14,15 @@ const nextConfig = {
       ),
       "@showcase/migrated-charts": path.resolve(
         import.meta.dirname,
-        "../migrated/charts/index.ts"
+        "../packages/migrated-charts/index.ts"
       ),
     };
+    config.resolve.modules = [
+      ...config.resolve.modules,
+      path.resolve(import.meta.dirname, "../repos/bklit-ui/node_modules"),
+      path.resolve(import.meta.dirname, "../repos/bklit-ui/packages/ui/node_modules"),
+      path.resolve(import.meta.dirname, "../repos/tanstack-charts/node_modules"),
+    ];
     return config;
   },
 };
