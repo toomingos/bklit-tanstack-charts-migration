@@ -4,6 +4,7 @@ bench/app/dist/
 showcase/node_modules/
 showcase/.next/
 repos/
+showcase/repos/
 local_cache/
 qa/results/
 .opencode/

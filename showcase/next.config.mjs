@@ -10,11 +10,11 @@ const nextConfig = {
       ...config.resolve.alias,
       "@showcase/bklit-charts": path.resolve(
         import.meta.dirname,
-        "../packages/bklit-charts/index.ts"
+        "./packages/bklit-charts/index.ts"
       ),
       "@showcase/migrated-charts": path.resolve(
         import.meta.dirname,
-        "../packages/migrated-charts/index.ts"
+        "./packages/migrated-charts/index.ts"
       ),
     };
     // When webpack resolves imports from within repos/bklit-ui/ or repos/tanstack-charts/,

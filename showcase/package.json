@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 5200",
+    "prebuild": "bash scripts/clone-repos.sh && pnpm install --no-frozen-lockfile",
     "build": "next build",
     "start": "next start -p 5200",
     "lint": "eslint . --max-warnings 0",
@@ -12,8 +13,8 @@
   "dependencies": {
     "@base-ui/react": "^1.0.0-alpha.8",
     "@number-flow/react": "^0.5.4",
-    "@showcase/bklit-charts": "file:../packages/bklit-charts",
-    "@showcase/migrated-charts": "file:../packages/migrated-charts",
+    "@showcase/bklit-charts": "file:./packages/bklit-charts",
+    "@showcase/migrated-charts": "file:./packages/migrated-charts",
     "@visx/brush": "3.12.0",
     "@visx/curve": "4.0.1-alpha.0",
     "@visx/event": "4.0.1-alpha.0",

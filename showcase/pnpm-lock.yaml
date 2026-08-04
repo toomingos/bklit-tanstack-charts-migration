@@ -14,6 +14,12 @@ importers:
       '@number-flow/react':
         specifier: ^0.5.4
         version: 0.5.14(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@showcase/bklit-charts':
+        specifier: file:./packages/bklit-charts
+        version: file:packages/bklit-charts(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@showcase/migrated-charts':
+        specifier: file:./packages/migrated-charts
+        version: file:packages/migrated-charts(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@visx/brush':
         specifier: 3.12.0
         version: 3.12.0(react@19.2.8)
@@ -467,6 +473,18 @@ packages:
     peerDependencies:
       react: ^18 || ^19
       react-dom: ^18 || ^19
+
+  '@showcase/bklit-charts@file:packages/bklit-charts':
+    resolution: {directory: packages/bklit-charts, type: directory}
+    peerDependencies:
+      react: ^19.0.0
+      react-dom: ^19.0.0
+
+  '@showcase/migrated-charts@file:packages/migrated-charts':
+    resolution: {directory: packages/migrated-charts, type: directory}
+    peerDependencies:
+      react: ^19.0.0
+      react-dom: ^19.0.0
 
   '@swc/helpers@0.5.15':
     resolution: {integrity: sha512-JQ5TuMi45Owi4/BIMAJBoSQoOJu12oOk/gADqlcUL9JEdHB8vyjUSsxqeNXnmXHjYKMi2WcYtezGEEhqUI/E2g==}
@@ -1657,6 +1675,16 @@ snapshots:
     dependencies:
       esm-env: 1.2.2
       number-flow: 0.5.12
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
+
+  '@showcase/bklit-charts@file:packages/bklit-charts(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
+
+  '@showcase/migrated-charts@file:packages/migrated-charts(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+    dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
