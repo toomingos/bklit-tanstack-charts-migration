@@ -11,3 +11,5 @@ PLAN.md
 AGENTS.md
 .DS_Store
 *.log
+.vercel
+.env*
