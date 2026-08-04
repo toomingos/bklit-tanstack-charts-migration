@@ -1,0 +1,13 @@
+node_modules/
+bench/app/node_modules/
+bench/app/dist/
+showcase/node_modules/
+showcase/.next/
+repos/
+local_cache/
+qa/results/
+.opencode/
+PLAN.md
+AGENTS.md
+.DS_Store
+*.log

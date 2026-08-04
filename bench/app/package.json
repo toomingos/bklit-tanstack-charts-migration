@@ -1,0 +1,51 @@
+{
+  "name": "bench-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5199",
+    "build": "vite build",
+    "preview": "vite preview --port 5199"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.0.0-alpha.8",
+    "@number-flow/react": "^0.5.4",
+    "@visx/brush": "3.12.0",
+    "@visx/curve": "4.0.1-alpha.0",
+    "@visx/event": "4.0.1-alpha.0",
+    "@visx/geo": "4.0.1-alpha.0",
+    "@visx/gradient": "4.0.1-alpha.0",
+    "@visx/grid": "4.0.1-alpha.0",
+    "@visx/group": "4.0.1-alpha.0",
+    "@visx/heatmap": "4.0.1-alpha.0",
+    "@visx/pattern": "4.0.1-alpha.0",
+    "@visx/responsive": "4.0.1-alpha.0",
+    "@visx/sankey": "4.0.1-alpha.0",
+    "@visx/scale": "4.0.1-alpha.0",
+    "@visx/shape": "4.0.1-alpha.0",
+    "@visx/zoom": "4.0.1-alpha.0",
+    "clsx": "^2.1.1",
+    "d3-array": "3.2.4",
+    "d3-geo": "3.1.0",
+    "d3-sankey": "0.12.3",
+    "d3-scale": "4.0.2",
+    "d3-shape": "^3.2.0",
+    "geist": "^1.4.2",
+    "motion": "^12.27.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-use-measure": "^2.1.7",
+    "tailwind-merge": "^2.6.0",
+    "topojson-client": "3.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.8",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@vitejs/plugin-react": "^4.3.0",
+    "tailwindcss": "^4.1.8",
+    "typescript": "5.9.2",
+    "vite": "^6.3.0"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-07-31T11:58:58.789Z",
+  "chromium": "151.0.7922.34",
+  "config": {
+    "warmupRuns": 1,
+    "measuredRuns": 7,
+    "idleMs": 5000,
+    "updateTicks": 30,
+    "hoverSteps": 60
+  },
+  "results": [],
+  "skipped": [
+    {
+      "impl": "bklit",
+      "chart": "funnel",
+      "n": 5,
+      "reason": "render check failed for bklit/funnel n=5: svg has no drawable shapes"
+    }
+  ]
+}

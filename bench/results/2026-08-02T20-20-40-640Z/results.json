@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-08-02T20:20:40.641Z",
+  "chromium": "151.0.7922.34",
+  "config": {
+    "warmupRuns": 1,
+    "measuredRuns": 7,
+    "idleMs": 5000,
+    "updateTicks": 30,
+    "hoverSteps": 60
+  },
+  "results": [],
+  "skipped": [
+    {
+      "impl": "migrated",
+      "chart": "pie",
+      "n": 1,
+      "reason": "mouse.move: Target page, context or browser has been closed"
+    }
+  ]
+}

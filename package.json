@@ -1,0 +1,45 @@
+{
+  "name": "bklit-tanstack-charts-migration",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Benchmark + QA harness for the bklit-ui -> TanStack Charts migration (root tooling only; bench/app has its own deps).",
+  "type": "module",
+  "scripts": {
+    "bench": "node bench/run.mjs",
+    "bench:bundles": "node bench/measure-bundle.mjs",
+    "bench:report": "node bench/report.mjs",
+    "qa": "node qa/screenshot.mjs",
+    "dev:app": "pnpm --dir bench/app dev",
+    "build:app": "pnpm --dir bench/app build"
+  },
+  "devDependencies": {
+    "@types/d3-sankey": "^0.12.5",
+    "esbuild": "^0.28.1",
+    "pixelmatch": "^7.2.0",
+    "playwright": "^1.62.1",
+    "pngjs": "^7.0.0"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.6.0",
+    "@number-flow/react": "^0.6.2",
+    "@visx/curve": "^4.0.1-alpha.0",
+    "@visx/event": "^4.0.1-alpha.0",
+    "@visx/grid": "^4.0.1-alpha.0",
+    "@visx/group": "^4.0.1-alpha.0",
+    "@visx/responsive": "^4.0.1-alpha.0",
+    "@visx/scale": "^4.0.1-alpha.0",
+    "@visx/shape": "^4.0.1-alpha.0",
+    "@visx/zoom": "^4.0.1-alpha.0",
+    "d3-array": "^3.2.4",
+    "d3-geo": "^3.1.0",
+    "d3-sankey": "^0.12.3",
+    "d3-scale": "^4.0.2",
+    "d3-shape": "^3.2.0",
+    "playwright-core": "^1.62.1",
+    "react-use-measure": "^2.1.7",
+    "topojson-client": "^3.1.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

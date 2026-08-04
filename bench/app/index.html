@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>bench</title>
+  </head>
+  <body>
+    <!--
+      #chart-root is the fixed-width host the benchmark driver measures
+      against (see styles.css). #root is React's actual mount point, nested
+      inside so the scenario component fully controls its own layout.
+    -->
+    <div id="chart-root"><div id="root"></div></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

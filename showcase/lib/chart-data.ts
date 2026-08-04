@@ -1,0 +1,458 @@
+// Static data extracted from docs/PROGRESS.md
+// DO NOT read PROGRESS.md at runtime — this is a hard-coded snapshot.
+
+export interface WaiverDetail {
+  title: string;
+  what: string;
+  why: string;
+  refs: string[];
+}
+
+export interface ChartInfo {
+  index: number;
+  name: string;
+  route: string;
+  tanstackExpression: string;
+  gap: boolean;
+  status: 'approved' | 'migrating' | 'in research' | 'not started' | 'blocked';
+  waivers: number;
+  qaResult: string;
+  benchG1: string;
+  benchG2: string;
+  benchG3: string;
+  benchG4: string;
+  notes: string;
+  aggregateM1a: string;
+  /** Data size for chart demos. */
+  defaultN: number;
+  /** Whether the chart has tooltip detection (shows hover capture rows in QA table). */
+  hasTooltip: boolean;
+  waiverDetails?: WaiverDetail[];
+  docRefs: string[];
+}
+
+export interface ShowcaseSummary {
+  totalCharts: number;
+  approvedCount: number;
+  gapCount: number;
+  waiversCount: number;
+  aggregateM1aDelta: string;
+}
+
+export const allCharts: ChartInfo[] = [
+  {
+    index: 1,
+    name: 'ScatterChart',
+    route: 'scatter',
+    tanstackExpression: 'dot (single mark/series, radial-gradient ring fill)',
+    gap: false,
+    status: 'approved',
+    waivers: 1,
+    defaultN: 100,
+    hasTooltip: true,
+    qaResult: 'PASS all n (worst 0.45%)',
+    benchG1: 'M1a −48/−55/−60% vs bklit',
+    benchG2: '0.94–0.96',
+    benchG3: 'PASS',
+    benchG4: 'PASS (heap 10.6 vs 35.5MB)',
+    notes: 'Hover = own bisect listener (bklit-exact). Reveal = deferred per-circle WAAPI stagger.',
+    aggregateM1a: '−60%',
+    waiverDetails: [{
+      title: 'Data update at n=10,000',
+      what: 'Migrated M3a is slower than bklit at the largest test size.',
+      why: 'Native TanStack\'s own update path is 26% slower than bklit at this scale (full-scene re-serialization), so no wrapper can hit the improvement bar. Migrated matches bklit everywhere else.',
+      refs: ['docs/LOG.md · D16'],
+    }],
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D14–D16', 'docs/LOG.md · D18'],
+  },
+  {
+    index: 2,
+    name: 'BarChart',
+    route: 'bar',
+    tanstackExpression: 'barY + derived groupScale',
+    gap: false,
+    status: 'approved',
+    waivers: 0,
+    defaultN: 100,
+    hasTooltip: true,
+    qaResult: 'PASS 0.0000% (n=100)',
+    benchG1: 'M1a −62% vs bklit',
+    benchG2: 'PASS',
+    benchG3: 'PASS',
+    benchG4: 'PASS (heap −26%)',
+    notes: 'No n≥1000 degeneracy (clean rows). Depth layers/stacked/horizontal deferred.',
+    aggregateM1a: '−62%',
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D17'],
+  },
+  {
+    index: 3,
+    name: 'CandlestickChart',
+    route: 'candlestick',
+    tanstackExpression: '3× link (wicks + gains + losses via stock marks)',
+    gap: false,
+    status: 'approved',
+    waivers: 1,
+    defaultN: 100,
+    hasTooltip: true,
+    qaResult: 'PASS n=100 (0.035%) / n=1000 (0.302%)',
+    benchG1: 'M1a −57/−45% vs B',
+    benchG2: '0.86 / 0.73',
+    benchG3: 'PASS (idle 0.2-0.3ms vs B 9-115ms)',
+    benchG4: 'PASS',
+    notes: 'Custom createMark rect marks for wicks + bodies. Wick fill per-datum positive/negative.',
+    aggregateM1a: '−57%',
+    waiverDetails: [{
+      title: 'Data update at n=10,000',
+      what: 'Migrated M3a was not measured at n=10,000; same headroom constraint as scatter.',
+      why: 'Native TanStack\'s own update path is slower than bklit at this scale, same class as D16. Migrated passes all other gates.',
+      refs: ['docs/LOG.md · D25 (W2)', 'docs/LOG.md · D16'],
+    }],
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D82.1', 'docs/LOG.md · D85.1'],
+  },
+  {
+    index: 4,
+    name: 'AreaChart',
+    route: 'area',
+    tanstackExpression: 'custom areaFill mark (createMark) + lineY boundary',
+    gap: false,
+    status: 'approved',
+    waivers: 0,
+    defaultN: 100,
+    hasTooltip: true,
+    qaResult: 'PASS all n (0.0000–0.16%)',
+    benchG1: 'M1a −60/−45/−35%',
+    benchG2: '0.93 / 0.83 / 1.0',
+    benchG3: 'PASS',
+    benchG4: 'PASS (heap +8.6% worst case)',
+    notes: 'Drop duplicate focus geometry via custom mark to pass G4.',
+    aggregateM1a: '−60%',
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D20–D21'],
+  },
+  {
+    index: 5,
+    name: 'LineChart',
+    route: 'line',
+    tanstackExpression: 'lineY (points: true for dot overlay)',
+    gap: false,
+    status: 'approved',
+    waivers: 1,
+    defaultN: 100,
+    hasTooltip: true,
+    qaResult: 'PASS all n (0.0000–0.1494%)',
+    benchG1: 'M1a −61/−46/−43%',
+    benchG2: '0.97 / 0.89 / 1.0',
+    benchG3: 'PASS (idle 0.0ms)',
+    benchG4: 'PASS (heap −13/−8/−15%)',
+    notes: 'Extended API: YAxis, loadingLabel, fadeEdges, style, animationEasing, yDomainTween.',
+    aggregateM1a: '−61%',
+    waiverDetails: [{
+      title: 'Bundle size',
+      what: '78.4 kB vs bklit 38.3 kB from shared barrel-import overhead.',
+      why: 'Affects all migrated charts equally, tracked as cross-cutting cleanup. Direct-import fix will resolve this globally.',
+      refs: ['docs/LOG.md · D71'],
+    }],
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D12–D13', 'docs/LOG.md · D70–D71', 'docs/LOG.md · I6–I8'],
+  },
+  {
+    index: 6,
+    name: 'LiveLineChart',
+    route: 'liveline',
+    tanstackExpression: 'new top-level component (continuous rAF loop + lineY)',
+    gap: false,
+    status: 'approved',
+    waivers: 1,
+    defaultN: 30,
+    hasTooltip: true,
+    qaResult: 'PASS all momentum regimes (worst 0.1382%)',
+    benchG1: 'M1a −60/−58% PASS',
+    benchG2: 'N/A (no native T)',
+    benchG3: 'PASS (M3b 60fps 0% dropped)',
+    benchG4: 'PASS (heap −33/−43%)',
+    notes: 'Stock lineY, definition-per-frame per library docs, 5 chrome elements as plain SVG overlay.',
+    aggregateM1a: '−60%',
+    waiverDetails: [{
+      title: 'Mount-script noise and idle-CPU comparison',
+      what: 'Mount scripting cost is marginally higher (+5%) and idle-CPU comparison is structurally unfair.',
+      why: 'Native TanStack never runs the continuous rAF loop this chart requires, so idle-CPU comparison uses a ceiling that doesn\'t perform the same work. Migrated still cuts idle CPU by 56% vs bklit.',
+      refs: ['docs/LOG.md · D85'],
+    }],
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D22', 'docs/LOG.md · D37', 'docs/LOG.md · D41', 'docs/LOG.md · D43', 'docs/LOG.md · D58', 'docs/LOG.md · D61–D67', 'docs/LOG.md · D85'],
+  },
+  {
+    index: 7,
+    name: 'ComposedChart',
+    route: 'composed',
+    tanstackExpression: 'mixed marks; custom bar createMark (continuous-x width math)',
+    gap: false,
+    status: 'approved',
+    waivers: 2,
+    defaultN: 100,
+    hasTooltip: true,
+    qaResult: 'PASS n=100 (0.15%)',
+    benchG1: 'M1a −59/−34/−23%',
+    benchG2: '0.90–1.0',
+    benchG3: 'PASS',
+    benchG4: 'PASS (heap 13% of B@10k)',
+    notes: 'Stock barY redo REJECTED — custom mark genuinely justified per PLAN 1.2.',
+    aggregateM1a: '−59%',
+    waiverDetails: [{
+      title: 'Data-update latency at n=1,000 and n=10,000',
+      what: 'Migrated M3a at n=1,000 (24.9ms) and n=10,000 (142.9ms) is slower than bklit (21.1ms / 90.6ms) due to cost-placement.',
+      why: 'The composed chart repositions costs into the update path that bklit pays during mount. This is an architectural consequence of TanStack\'s scene compilation model.',
+      refs: ['docs/LOG.md · D38'],
+    }],
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D38', 'docs/LOG.md · D82.2', 'docs/LOG.md · D83'],
+  },
+  {
+    index: 8,
+    name: 'RadarChart',
+    route: 'radar',
+    tanstackExpression: 'polar + radialArea(curveLinearClosed) + radialDot marks',
+    gap: false,
+    status: 'approved',
+    waivers: 1,
+    defaultN: 20,
+    hasTooltip: false,
+    qaResult: 'PASS n=1/4/20/50 (worst 0.0091%)',
+    benchG1: 'M1a north star structurally unreachable (waived)',
+    benchG2: 'n=1/n=4 WAIVED (headroom-compressed)',
+    benchG3: 'PASS',
+    benchG4: 'PASS',
+    notes: 'Fill-box scale-origin parity. TanStack focus DISABLED. n = series count.',
+    aggregateM1a: 'N/A',
+    waiverDetails: [{
+      title: 'Closeness gate at n=1 and n=4',
+      what: 'bklit↔native headroom is ≤3.7 ms, smaller than timing resolution.',
+      why: 'At small n the improvement bar demands ~2.0–2.2ms but the native ceiling only allows 1.0–1.8ms. The architecture passes at n=20 (0.65) and n=50 (0.79) when B−T widens.',
+      refs: ['docs/LOG.md · D73'],
+    }],
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D47–D48', 'docs/LOG.md · D73'],
+  },
+  {
+    index: 9,
+    name: 'PieChart',
+    route: 'pie',
+    tanstackExpression: 'polar + multi-row radialArc marks',
+    gap: false,
+    status: 'approved',
+    waivers: 1,
+    defaultN: 20,
+    hasTooltip: false,
+    qaResult: 'PASS n=1/4/20/50 (0.0000% ALL)',
+    benchG1: 'M1a −33% (n=1) / −16% (n=4)',
+    benchG2: 'M1a WAIVED at n=4/20 (headroom-compressed)',
+    benchG3: 'PASS (idle 0.009–0.014ms)',
+    benchG4: 'PASS',
+    notes: 'Single multi-row radialArc mark (NOT N separate marks). PieCenter = absolute overlay.',
+    aggregateM1a: '−33%',
+    waiverDetails: [{
+      title: 'Headroom-compressed closeness at n=4 and n=20',
+      what: 'B−T headroom is 3.3–5.0ms at these sizes, the improvement bar falls within timing resolution.',
+      why: 'Same class as Radar D73. The 0.6 bar demands improvement within timing resolution or exceeding T\'s own floor.',
+      refs: ['docs/LOG.md · D77', 'docs/LOG.md · D73'],
+    }],
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D77'],
+  },
+  {
+    index: 10,
+    name: 'RingChart',
+    route: 'ring',
+    tanstackExpression: 'polar + radialArc marks',
+    gap: false,
+    status: 'approved',
+    waivers: 0,
+    defaultN: 20,
+    hasTooltip: false,
+    qaResult: 'PASS n=1/4/20/50 (0.0000% all)',
+    benchG1: 'M1a −45.8% vs B at n=4',
+    benchG2: '0.858 vs 0.6 bar',
+    benchG3: 'PASS (idle 0.018ms)',
+    benchG4: 'PASS (heap −15.1%)',
+    notes: 'ZERO WAIVERS. Ring children are config carriers (return null).',
+    aggregateM1a: '−46%',
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D76'],
+  },
+  {
+    index: 11,
+    name: 'Gauge',
+    route: 'gauge',
+    tanstackExpression: 'polar() + 2 stock radialArc marks (arc); plain SVG (linear)',
+    gap: false,
+    status: 'approved',
+    waivers: 0,
+    defaultN: 72,
+    hasTooltip: false,
+    qaResult: 'PASS arc n=40/72 (0.0027%) + linear n=72 (0.0000%)',
+    benchG1: 'M1a −62 to −65%',
+    benchG2: '0.78–1.08',
+    benchG3: 'PASS (idle 0.0ms)',
+    benchG4: 'PASS (heap 75–84% of B)',
+    notes: 'Arc: smooth arcs indistinguishable from notches. Linear: plain SVG (gap chart).',
+    aggregateM1a: '−65%',
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D82.4', 'docs/LOG.md · D83'],
+  },
+  {
+    index: 12,
+    name: 'FunnelChart',
+    route: 'funnel',
+    tanstackExpression: 'plain SVG/div port (GaugeLinear escape-clause precedent)',
+    gap: true,
+    status: 'approved',
+    waivers: 0,
+    defaultN: 5,
+    hasTooltip: false,
+    qaResult: 'PASS n=5/20/50 (0.0000% ALL)',
+    benchG1: 'M1a −50.1% / −47.5%',
+    benchG2: '1.36 / 1.54 (beats native)',
+    benchG3: 'PASS (idle 0.0ms)',
+    benchG4: 'PASS (heap −25%)',
+    notes: 'GAP: explicit cubic-Bézier paths, WAAPI tween reveal + imperative hover springs.',
+    aggregateM1a: '−50%',
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D30', 'docs/LOG.md · D54', 'docs/LOG.md · D55', 'docs/LOG.md · D72'],
+  },
+  {
+    index: 13,
+    name: 'HeatmapChart',
+    route: 'heatmap',
+    tanstackExpression: 'cell() + text() marks over scaleBand',
+    gap: false,
+    status: 'approved',
+    waivers: 0,
+    defaultN: 26,
+    hasTooltip: true,
+    qaResult: 'PASS n=26: 6/8, 2 marginal',
+    benchG1: 'M1a 2.55× faster (49 vs 125ms)',
+    benchG2: 'PASS',
+    benchG3: 'PASS (idle 0.2ms vs B 25-48ms)',
+    benchG4: 'PASS (heap −35-48%)',
+    notes: 'Stock cell() + text() marks replaced 1100+ ln plain SVG. 2.55× faster.',
+    aggregateM1a: '−61%',
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D82.3', 'docs/LOG.md · D83'],
+  },
+  {
+    index: 14,
+    name: 'SunburstChart',
+    route: 'sunburst',
+    tanstackExpression: 'stock radialArc + single mark with opacity baked into fill',
+    gap: false,
+    status: 'approved',
+    waivers: 1,
+    defaultN: 10,
+    hasTooltip: false,
+    qaResult: 'PASS n=10/27: settled 0.094%',
+    benchG1: 'M1a WAIVED (D84 W-SB n-scale)',
+    benchG2: 'N/A',
+    benchG3: 'PASS',
+    benchG4: 'PASS (heap −21/−25%)',
+    notes: '3 redo cycles. Architecture IS TanStack-native. M1c_script −71-80%.',
+    aggregateM1a: 'N/A',
+    waiverDetails: [{
+      title: 'First-render improvement bar at small n',
+      what: 'Migrated first-render time is close to bklit at n=10/27 because bklit has almost no React overhead at tiny data sizes.',
+      why: 'Migrated pays for labels, center text, and hint features that native TanStack doesn\'t have. The bar is unreachable at these sizes.',
+      refs: ['docs/LOG.md · D84 (W-SB)'],
+    }],
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D79–D84'],
+  },
+  {
+    index: 15,
+    name: 'ChoroplethChart',
+    route: 'choropleth',
+    tanstackExpression: 'geoShape (stateless) + app-owned @visx/zoom state bridge',
+    gap: false,
+    status: 'approved',
+    waivers: 3,
+    defaultN: 177,
+    hasTooltip: true,
+    qaResult: 'PASS settled 0.0000%, hover-50 0.083%',
+    benchG1: 'waived (W-CH2: shared d3-geo bottleneck)',
+    benchG2: 'waived',
+    benchG3: 'waived (W-CH3: idle noise floor)',
+    benchG4: 'PASS (heap 5.03MB vs B 9.44MB)',
+    notes: 'Pan/zoom built from scratch. Lazy centroid computation saves 3ms M1a.',
+    aggregateM1a: '−14%',
+    waiverDetails: [
+      {
+        title: 'Hover pixel test at one sweep position',
+        what: 'One of three hover positions fails with 7.42% pixel diff; 2/3 positions pass.',
+        why: 'Both implementations use d3-geo Mercator but geoPath generators diverge at anti-aliased pixel levels. The self-test passes at 0%.',
+        refs: ['docs/LOG.md · D86 (W-CH1)'],
+      },
+      {
+        title: 'Speed gates',
+        what: 'Both bklit and native bottleneck on the same d3-geo path rendering.',
+        why: 'Shared d3-geo bottleneck means the structural ceiling IS the bottleneck. Migrated M1a is within 14.7ms of bare native TanStack.',
+        refs: ['docs/LOG.md · D86 (W-CH2)'],
+      },
+      {
+        title: 'Idle CPU comparison',
+        what: 'Both implementations measure ~0.20ms idle CPU, at the noise floor.',
+        why: 'Neither stack has animation loops; both are near-zero. The comparison has no meaningful signal.',
+        refs: ['docs/LOG.md · D86 (W-CH3)'],
+      },
+    ],
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D34', 'docs/LOG.md · D37', 'docs/LOG.md · D86'],
+  },
+  {
+    index: 16,
+    name: 'SankeyChart',
+    route: 'sankey',
+    tanstackExpression: "custom marks: area (stroked Bezier centerlines) + rect nodes",
+    gap: true,
+    status: 'approved',
+    waivers: 2,
+    defaultN: 33,
+    hasTooltip: true,
+    qaResult: 'PASS n=4 settled 0.16% / n=33 settled 0.59%',
+    benchG1: 'M1a −64.4 / −57.2% vs B (PASS)',
+    benchG2: '0.78 / 0.73 (PASS)',
+    benchG3: 'PASS (idle noise floor)',
+    benchG4: 'PASS (heap −22 / −35%)',
+    notes: 'Two desynced WAAPI reveal staggers. Connectivity-based hover. Last chart approved.',
+    aggregateM1a: '−64%',
+    waiverDetails: [
+      {
+        title: 'Vertical-label rendering at n=33',
+        what: 'Rotated text anti-aliasing differs between implementations; 0.59% settled pixel diff.',
+        why: 'Inherent difference in how SVG text rasterization handles rotation across browsers.',
+        refs: ['docs/LOG.md · D87 (W-SK1)', 'docs/LOG.md · D88'],
+      },
+      {
+        title: 'Data update at n=33',
+        what: 'All three implementations measure ~32.5ms for data updates.',
+        why: 'Shared d3-sankey layout bottleneck — the layout algorithm itself takes this long regardless of rendering framework.',
+        refs: ['docs/LOG.md · D87 (W-SK2)'],
+      },
+    ],
+    docRefs: ['docs/PROGRESS.md', 'docs/LOG.md · D87', 'docs/LOG.md · D88'],
+  },
+];
+
+export const summary: ShowcaseSummary = (() => {
+  const approved = allCharts.filter((c) => c.status === 'approved');
+  const gaps = allCharts.filter((c) => c.gap);
+  const totalWaivers = allCharts.reduce((sum, c) => sum + c.waivers, 0);
+
+  // Compute aggregate M1a — average of available numeric improvements
+  const numericM1a = approved
+    .map((c) => {
+      const v = c.aggregateM1a;
+      if (!v || v === 'N/A') return null;
+      const num = parseInt(v.replace(/[−%]/g, ''), 10);
+      if (isNaN(num)) return null;
+      return num;
+    })
+    .filter((n): n is number => n !== null);
+
+  const avg = numericM1a.length
+    ? Math.round(numericM1a.reduce((a, b) => a + b, 0) / numericM1a.length)
+    : 0;
+
+  return {
+    totalCharts: allCharts.length,
+    approvedCount: approved.length,
+    gapCount: gaps.length,
+    waiversCount: totalWaivers,
+    aggregateM1aDelta: `−${avg}%`,
+  };
+})();
