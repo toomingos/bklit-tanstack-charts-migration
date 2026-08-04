@@ -2,6 +2,8 @@
 
 Proof-of-concept: all 17 bklit-ui chart components reimplemented using [TanStack Charts](https://github.com/TanStack/charts) as the rendering backend, with 1:1 API compatibility, visual parity (≤0.5% pixel diff), and substantial performance gains.
 
+**Live Showcase: https://bklit-tanstack-charts-migration.vercel.app**
+
 ## Quick Results
 
 | Metric | Result |
