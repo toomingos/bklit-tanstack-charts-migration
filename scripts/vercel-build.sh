@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$DIR/.."
+# Find the repo root (where clone-repos.sh lives)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-bash "$DIR/clone-repos.sh"
+bash "$SCRIPT_DIR/clone-repos.sh"
 
 cd "$ROOT/showcase"
 pnpm install --no-frozen-lockfile
