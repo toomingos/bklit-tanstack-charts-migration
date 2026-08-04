@@ -4,10 +4,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOS_DIR="$SCRIPT_DIR/../repos"
 
-echo "==> Cloning bklit-ui (read-only reference)..."
-git clone https://github.com/bklit/bklit-ui.git "$REPOS_DIR/bklit-ui"
+if [ -d "$REPOS_DIR/bklit-ui" ]; then
+  echo "==> repos/bklit-ui already exists, skipping clone"
+else
+  echo "==> Cloning bklit-ui (read-only reference, shallow)..."
+  git clone --depth 1 https://github.com/bklit/bklit-ui.git "$REPOS_DIR/bklit-ui"
+fi
 
-echo "==> Cloning TanStack Charts (read-only reference)..."
-git clone https://github.com/TanStack/charts.git "$REPOS_DIR/tanstack-charts"
+if [ -d "$REPOS_DIR/tanstack-charts" ]; then
+  echo "==> repos/tanstack-charts already exists, skipping clone"
+else
+  echo "==> Cloning TanStack Charts (read-only reference, shallow)..."
+  git clone --depth 1 https://github.com/TanStack/charts.git "$REPOS_DIR/tanstack-charts"
+fi
 
-echo "==> Done. Repos cloned to $REPOS_DIR/"
+echo "==> Repos ready at $REPOS_DIR/"

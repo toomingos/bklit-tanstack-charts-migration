@@ -1,0 +1,5 @@
+{
+  "buildCommand": "bash scripts/clone-repos.sh && cd showcase && pnpm install --no-frozen-lockfile && pnpm build",
+  "outputDirectory": "showcase/.next",
+  "installCommand": "pnpm install --no-frozen-lockfile"
+}
