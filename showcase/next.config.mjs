@@ -17,11 +17,11 @@ const nextConfig = {
         "../packages/migrated-charts/index.ts"
       ),
     };
+    // When webpack resolves imports from within repos/bklit-ui/ or repos/tanstack-charts/,
+    // we need it to also check showcase/node_modules for deps like motion, @visx/*, etc.
     config.resolve.modules = [
+      path.resolve(import.meta.dirname, "node_modules"),
       ...config.resolve.modules,
-      path.resolve(import.meta.dirname, "../repos/bklit-ui/node_modules"),
-      path.resolve(import.meta.dirname, "../repos/bklit-ui/packages/ui/node_modules"),
-      path.resolve(import.meta.dirname, "../repos/tanstack-charts/node_modules"),
     ];
     return config;
   },
