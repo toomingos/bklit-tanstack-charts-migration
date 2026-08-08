@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-08-08T12:39:30.966Z",
+  "chromium": "151.0.7922.34",
+  "config": {
+    "warmupRuns": 1,
+    "measuredRuns": 7,
+    "idleMs": 5000,
+    "updateTicks": 30,
+    "hoverSteps": 60
+  },
+  "results": [],
+  "skipped": [
+    {
+      "impl": "bklit,migrated,tanstack",
+      "chart": "scatter",
+      "n": 100,
+      "reason": "page.waitForFunction: Target page, context or browser has been closed"
+    }
+  ]
+}

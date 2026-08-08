@@ -1,0 +1,817 @@
+/* Migrated chart presentation — makes TanStack's SVG output visually match
+   bklit-ui. Scoped under [data-bkm-chart] so nothing leaks. */
+
+/* --- Grid: bklit Grid uses stroke var(--chart-grid), width 1, opacity 1,
+       strokeDasharray "4,4" by default (grid.tsx) --- */
+[data-bkm-chart] .ts-chart__grid line {
+  stroke: var(--chart-grid);
+  stroke-opacity: 1;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+/* --- Line edge fade (line.tsx fadeEdges default true): bklit strokes with a
+       horizontal gradient (fade-edges.ts stops 0%:0 / 15%:1 / 85%:1 / 100%:0,
+       userSpaceOnUse over 0..innerWidth). Equivalent here: mask the marks
+       group — its fill-box spans the same inner width. --- */
+[data-bkm-fade-edges] .ts-chart__marks {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    #000 15%,
+    #000 85%,
+    transparent 100%
+  );
+}
+
+/* Directional edge fade: left only */
+[data-bkm-fade-edges-left]:not([data-bkm-fade-edges-right]) .ts-chart__marks {
+  mask-image: linear-gradient(to right, transparent 0%, #000 15%, #000 100%);
+}
+
+/* Directional edge fade: right only */
+[data-bkm-fade-edges-right]:not([data-bkm-fade-edges-left]) .ts-chart__marks {
+  mask-image: linear-gradient(to right, #000 0%, #000 85%, transparent 100%);
+}
+
+/* --- Scatter mount reveal: the whole marks GROUP starts hidden the instant
+       it's committed (one cheap opacity toggle on a single element) so the
+       "real paint" the browser shows before the per-circle WAAPI tweens are
+       instantiated already matches their pre-animation (invisible) state —
+       see scatter-chart.tsx handleRender for why the tween setup itself is
+       deferred a couple frames past commit. This is intentionally
+       group-level `opacity` only (no per-circle rule, no `filter`): applying
+       a `filter` to tens of thousands of individual circles forces the
+       browser to rasterize each one into its own layer on first paint
+       (a "rasterization bomb" that was blocking that very paint) — the
+       per-circle `blur(2px)→blur(0px)` entrance motion is still produced by
+       each circle's own `.animate()` keyframes in handleRender, this rule
+       only needs to hide the group before that tween takes over. --- */
+[data-bkm-chart] .ts-chart__marks--revealing {
+  opacity: 0;
+}
+
+/* --- Candlestick reveal opacity: bklit's per-candle opacity fade is
+       IDENTICAL and undelayed (fixed 150ms ease-in-out) across every single
+       candle regardless of its own scaleY stagger delay (docs/LOG.md;
+       candlestick.tsx `transition={{...t, opacity:{duration:0.15}}}`
+       replaces, not extends, the spread spring transition for that one
+       value) — so it's driven by ONE shared CSS transition rule plus a
+       plain two-phase opacity toggle (0 then 1 next frame) instead of a
+       per-element `.animate()` call. At n=10000 that removes 20,000 WAAPI
+       Animation object instantiations (one per wick line + one per body
+       line across all three link marks) that were otherwise enough
+       concurrent animation-timeline overhead to blow QA screenshot.mjs's
+       30s capture timeout when the bklit and migrated scenarios render
+       side by side in the same browser process.
+
+       D85.1 (D82.1 revert): targets `.ts-chart__candle rect` (custom
+       `createMark` marks with `kind:'rect'` nodes) instead of the reverted
+       `.ts-chart__link line` (stock `link()` marks). --- */
+[data-bkm-chart="candlestick"] .ts-chart__candle rect {
+  transition: opacity 150ms ease-in-out;
+}
+
+/* --- Candlestick reveal scaleY: the framer duration/bounce -> spring
+       physics conversion (candle-spring.ts) produces a curve that is
+       *duration-invariant as a fraction of total time* for a fixed bounce
+       (verified numerically: sampling at 400ms/800ms/1600ms with
+       bounce=0.15 yields bit-identical fractional values) — bklit's own
+       default `enterTransition` (duration 0.8s, bounce 0.15) never varies
+       across any real bench/QA/registry usage. That means the 60-sample
+       curve can be baked once as a static `@keyframes` rule (percentages,
+       not milliseconds) and driven per-rect with only `animation-duration`
+       / `animation-delay` varying via inline style, instead of a
+       `element.animate()` JS call per rect. At n=10000 candlesticks that
+       replaces 20,000 individually-constructed WAAPI Animation objects
+       with 20,000 plain CSS property writes referencing one shared,
+       browser-parsed keyframe rule — enough of a main-thread/GC reduction
+       to keep QA screenshot.mjs's 30s capture budget from being blown when
+       bklit and migrated n=10000 candlestick scenes render concurrently
+       (Promise.all in qa/screenshot.mjs). candlestick-chart.tsx falls back
+       to the exact per-call `sampleSpringKeyframes` + `element.animate()`
+       path whenever `enterTransition.bounce` is overridden away from the
+       0.15 default, since the invariance only holds for a fixed bounce. --- */
+@keyframes ts-candle-reveal {
+  0% { transform: scaleY(0); }
+  1.695% { transform: scaleY(0.009977); }
+  3.39% { transform: scaleY(0.036708); }
+  5.085% { transform: scaleY(0.07597); }
+  6.78% { transform: scaleY(0.124235); }
+  8.475% { transform: scaleY(0.178586); }
+  10.169% { transform: scaleY(0.236631); }
+  11.864% { transform: scaleY(0.296443); }
+  13.559% { transform: scaleY(0.356483); }
+  15.254% { transform: scaleY(0.415551); }
+  16.949% { transform: scaleY(0.472731); }
+  18.644% { transform: scaleY(0.527345); }
+  20.339% { transform: scaleY(0.578917); }
+  22.034% { transform: scaleY(0.627131); }
+  23.729% { transform: scaleY(0.671809); }
+  25.424% { transform: scaleY(0.712877); }
+  27.119% { transform: scaleY(0.750348); }
+  28.814% { transform: scaleY(0.784302); }
+  30.508% { transform: scaleY(0.814867); }
+  32.203% { transform: scaleY(0.842208); }
+  33.898% { transform: scaleY(0.866516); }
+  35.593% { transform: scaleY(0.887997); }
+  37.288% { transform: scaleY(0.906865); }
+  38.983% { transform: scaleY(0.923338); }
+  40.678% { transform: scaleY(0.93763); }
+  42.373% { transform: scaleY(0.949952); }
+  44.068% { transform: scaleY(0.960503); }
+  45.763% { transform: scaleY(0.969474); }
+  47.458% { transform: scaleY(0.977042); }
+  49.153% { transform: scaleY(0.983374); }
+  50.847% { transform: scaleY(0.988622); }
+  52.542% { transform: scaleY(0.992925); }
+  54.237% { transform: scaleY(0.996411); }
+  55.932% { transform: scaleY(0.999194); }
+  57.627% { transform: scaleY(1.001375); }
+  59.322% { transform: scaleY(1.003047); }
+  61.017% { transform: scaleY(1.00429); }
+  62.712% { transform: scaleY(1.005176); }
+  64.407% { transform: scaleY(1.005767); }
+  66.102% { transform: scaleY(1.006116); }
+  67.797% { transform: scaleY(1.00627); }
+  69.492% { transform: scaleY(1.006271); }
+  71.186% { transform: scaleY(1.006151); }
+  72.881% { transform: scaleY(1.00594); }
+  74.576% { transform: scaleY(1.005662); }
+  76.271% { transform: scaleY(1.005337); }
+  77.966% { transform: scaleY(1.004981); }
+  79.661% { transform: scaleY(1.004609); }
+  81.356% { transform: scaleY(1.004232); }
+  83.051% { transform: scaleY(1.003856); }
+  84.746% { transform: scaleY(1.00349); }
+  86.441% { transform: scaleY(1.003139); }
+  88.136% { transform: scaleY(1.002805); }
+  89.831% { transform: scaleY(1.002491); }
+  91.525% { transform: scaleY(1.002199); }
+  93.22% { transform: scaleY(1.001929); }
+  94.915% { transform: scaleY(1.001683); }
+  96.61% { transform: scaleY(1.001459); }
+  98.305% { transform: scaleY(1.001256); }
+  100% { transform: scaleY(1); }
+}
+
+/* --- Axes: bklit renders x labels as an HTML overlay (XAxisOverlay) and no
+       y labels in the demo path — suppress TanStack's SVG axes entirely. --- */
+[data-bkm-chart] .ts-chart__axes {
+  display: none;
+}
+
+/* --- Focus: TanStack paints its own focus ring circle; bklit's hover chrome
+       (hover-chrome.ts) draws the dot instead. --- */
+[data-bkm-chart] [data-ts-chart-focus] {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Hover chrome (hover-chrome.ts) — exact port of bklit tooltip styling.  */
+/* Utility values are Tailwind v4 defaults resolved to plain CSS.         */
+/* ---------------------------------------------------------------------- */
+
+/* Crosshair / dot SVG overlays */
+[data-bkm-chart] .bkm-hover-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* TooltipBox outer (positioned) + panel */
+[data-bkm-chart] .bkm-tooltip-layer {
+  position: absolute;
+  z-index: 50;
+  pointer-events: none;
+}
+
+[data-bkm-chart] .bkm-tooltip-panel {
+  /* min-w-[140px] overflow-hidden rounded-lg shadow-lg backdrop-blur-md */
+  min-width: 140px;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  color: var(--chart-tooltip-foreground);
+  background-color: var(--chart-tooltip-background);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+/* TooltipContent */
+[data-bkm-chart] .bkm-tooltip-content {
+  padding: 0.625rem 0.75rem; /* py-2.5 px-3 */
+}
+
+[data-bkm-chart] .bkm-tooltip-title {
+  /* mb-2 text-left font-medium text-xs */
+  margin-bottom: 0.5rem;
+  text-align: left;
+  font-weight: 500;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--chart-tooltip-foreground);
+}
+
+[data-bkm-chart] .bkm-tooltip-rows {
+  /* space-y-1.5 */
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+[data-bkm-chart] .bkm-tooltip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+[data-bkm-chart] .bkm-tooltip-row-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+[data-bkm-chart] .bkm-tooltip-swatch {
+  /* h-2.5 w-2.5 shrink-0 rounded-full */
+  width: 0.625rem;
+  height: 0.625rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+}
+
+[data-bkm-chart] .bkm-tooltip-series {
+  /* text-sm text-chart-tooltip-muted */
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--chart-tooltip-muted);
+}
+
+[data-bkm-chart] .bkm-tooltip-value {
+  /* font-medium text-sm tabular-nums */
+  font-weight: 500;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--chart-tooltip-foreground);
+}
+
+/* DateTicker compact pill (DatePillTracker: bottom-4px, centered on x) */
+[data-bkm-chart] .bkm-date-pill-layer {
+  position: absolute;
+  z-index: 50;
+  bottom: 4px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+[data-bkm-chart] .bkm-date-pill {
+  /* overflow-hidden rounded-full bg-zinc-900 px-4 py-1 text-white shadow-lg */
+  overflow: hidden;
+  border-radius: 9999px;
+  background-color: oklch(0.21 0.006 285.885); /* zinc-900 */
+  padding: 0.25rem 1rem;
+  color: #fff;
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.dark [data-bkm-chart] .bkm-date-pill {
+  /* dark:bg-zinc-100 dark:text-zinc-900 */
+  background-color: oklch(0.967 0.001 286.375); /* zinc-100 */
+  color: oklch(0.21 0.006 285.885);
+}
+
+[data-bkm-chart] .bkm-date-pill-inner {
+  /* flex h-6 items-center justify-center */
+  display: flex;
+  height: 1.5rem;
+  align-items: center;
+  justify-content: center;
+}
+
+[data-bkm-chart] .bkm-date-pill-inner span {
+  /* whitespace-nowrap font-medium text-sm */
+  white-space: nowrap;
+  font-weight: 500;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+/* --- Sunburst: dimming transition (160ms ease-out, matches bklit) --- */
+[data-bkm-chart="sunburst"] .ts-chart__marks path {
+  transition: fill 160ms ease-out;
+}
+
+/* ---------------------------------------------------------------------- */
+/* RadarChart metric labels (radar-labels.tsx). bklit sets fontWeight 500  */
+/* on every metric label; interactive labels rest at opacity .8 and        */
+/* brighten to 1 on hover via `opacity={interactive ? 0.8 : 1}` +          */
+/* `hover:opacity-100 transition-opacity duration-150` — CSS :hover keeps  */
+/* the hovered state across re-renders exactly like Tailwind's does, so no */
+/* JS pointer handlers are needed on the labels at all.                    */
+/* ---------------------------------------------------------------------- */
+
+[data-bkm-chart="radar"] .ts-bkm-radar-axis-labels text {
+  font-weight: 500;
+}
+
+[data-bkm-chart="radar"] .ts-bkm-radar-axis-labels--interactive text {
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 150ms ease-in-out;
+}
+
+[data-bkm-chart="radar"] .ts-bkm-radar-axis-labels--interactive text:hover {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------------- */
+/* RadarChart area path + dot transitions for hover effects.              */
+/* Inline styles are applied by a useLayoutEffect on hover change, but    */
+/* CSS transitions give smooth animation between states.                  */
+/* Matching bklit's own tween specs (radar-area.tsx):                     */
+/*   - opacity 0.15s ease-in-out, fillOpacity/strokeWidth 0.2s            */
+/*   - transform 0.35s cubic-bezier (scale spring→ease-out surrogate)     */
+/*   - filter instant (drop-shadow doesn't transition cleanly)            */
+/* ---------------------------------------------------------------------- */
+
+[data-bkm-chart="radar"] .ts-chart__radial-area path {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 0.15s ease-in-out, transform 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+[data-bkm-chart="radar"] .ts-chart__radial-dot circle {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 0.15s ease-in-out;
+}
+
+/* ---------------------------------------------------------------------- */
+/* LiveXAxis time labels + LiveYAxis ticks (live-hover-chrome.ts) — exact  */
+/* port of live-x-axis.tsx / live-y-axis.tsx's plain-div overlay recipe.  */
+/* ---------------------------------------------------------------------- */
+
+[data-bkm-chart] .bkm-live-xlabel-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Each label is a single absolutely-positioned span at its own tick x — the
+   bklit source centers it via a zero-width flex wrapper
+   (`width:0, display:flex, justifyContent:center`); here that's collapsed
+   into one element via `translateX(-50%)`, same visual result. Opacity is
+   written per-frame by updateHover's label-fade loop; the transition here
+   reproduces live-x-axis.tsx's `labelFadeOpacity` tween (0.15s ease-out —
+   NOT the static XAxisLabel's 0.4s, see this file's header). */
+[data-bkm-chart] .bkm-live-xlabel {
+  position: absolute;
+  bottom: var(--bkm-live-x-bottom, 12px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--color-chart-label, var(--chart-label));
+  transition: opacity 150ms ease-out;
+}
+
+[data-bkm-chart] .bkm-live-ytick-layer {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Position (top/left/width/height of the panel) is written per-frame by
+   updateFrame; each tick div only ever receives a `translateY` (also
+   per-frame) — no static left/top here, matching live-y-axis.tsx's
+   `position="left"` branch (`right:0, paddingRight:8, textAlign:right`,
+   no vertical centering on the tick itself, tick.y already accounts for
+   that). */
+[data-bkm-chart] .bkm-live-ytick {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  right: 0;
+  padding-right: 8px;
+  text-align: right;
+}
+
+[data-bkm-chart] .bkm-live-ytick span {
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--color-chart-label, var(--chart-label));
+}
+
+/* --- PieCenter typography (pie-center.tsx + chart-center-typography.ts):
+       fluid, container-query-scaled value/label text inside the donut
+       hole -- bklit's own values use Tailwind arbitrary-value classes
+       (`text-[clamp(...)]`, `@container/chart-center`). migrated/charts
+       lives outside bench/app's Tailwind `@source` scan
+       (bench/app/src/styles.css only scans repos/bklit-ui's real sources),
+       so those utility classes would never get generated CSS here -- ported
+       as plain hand-authored rules instead, byte-identical values. --- */
+[data-bkm-chart="pie"] .ts-bkm-pie-center {
+  container-type: inline-size;
+  container-name: bkm-pie-center;
+  min-width: 0;
+}
+
+[data-bkm-chart="pie"] .ts-bkm-pie-center-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  font-size: clamp(0.75rem, 22cqw, 1.875rem);
+  color: var(--color-foreground, var(--foreground));
+}
+
+[data-bkm-chart="pie"] .ts-bkm-pie-center-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
+  font-size: clamp(0.625rem, 9cqw, 0.75rem);
+  color: var(--color-chart-label, var(--chart-label));
+}
+
+/* --- CenterStat typography (internal/center-stat.tsx + RingChart's
+       RingCenter, migrated/charts/ring-chart.tsx) — chart-agnostic (scoped
+       under the generic `[data-bkm-chart]` attribute selector, not a
+       specific chart kind, since internal/center-stat.tsx is designed for
+       reuse by a future GaugeChart center too, per the lead's own ruling
+       for this deliverable).
+
+       Ports repos/bklit-ui/packages/ui/src/charts/chart-center-typography.ts
+       COMBINED with chart-stat-flow.tsx's own `ChartStatFlow` wrapper-span
+       classes, traced precisely through RingCenter's actual JSX (RingCenter
+       always supplies `chartCenterValueClassName`/`chartCenterLabelClassName`
+       as ChartStatFlow's `valueClassName`/`labelClassName` props — its OWN
+       internal defaults, "text-2xl font-bold"/"text-xs", never actually
+       apply through RingCenter; only ChartStatFlow's unconditional wrapper
+       classes do):
+         value span:  cn("text-foreground tabular-nums", chartCenterValueClassName)
+                      = font-bold tabular-nums leading-none
+                        text-[clamp(0.75rem,22cqw,1.875rem)] text-foreground
+         label span:  cn("mt-0.5 text-chart-label", chartCenterLabelClassName)
+                      = max-w-full truncate leading-tight
+                        text-[clamp(0.625rem,9cqw,0.75rem)] mt-0.5 text-chart-label
+       Same "hand-authored port" rationale as `.ts-bkm-pie-center*` above
+       (migrated/charts lives outside bench/app's Tailwind `@source` scan) —
+       byte-identical clamp()/weight/line-height/margin values, independently
+       written here since pie's own center predates this shared module and
+       doesn't use ChartStatFlow (no NumberFlow — disclosed deviation,
+       pie-chart.tsx's own header) so its block has no margin-top rule;
+       RingCenter's real, ChartStatFlow-routed output does. --- */
+[data-bkm-chart] .ts-bkm-center-stat {
+  container-type: inline-size;
+  container-name: bkm-center-stat;
+  min-width: 0;
+}
+
+[data-bkm-chart] .ts-bkm-center-stat-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  font-size: clamp(0.75rem, 22cqw, 1.875rem);
+  color: var(--color-foreground, var(--foreground));
+}
+
+[data-bkm-chart] .ts-bkm-center-stat-label {
+  margin-top: 0.125rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* NOT 1.25: chart-center-typography.ts's `leading-tight` is DEAD at
+     runtime — `chartCenterLabelClassName` lists it BEFORE its
+     `text-[clamp(...)]` font-size utility, and ChartStatFlow merges the
+     label classes through `cn()` (tailwind-merge), whose font-size/leading
+     conflict rule DELETES the earlier `leading-*` class. Live-DOM proof
+     (2026-08-01, Fable review of gauge — docs/LOG.md D52): bklit's rendered
+     label class list is `mt-0.5 text-chart-label max-w-full truncate
+     text-[clamp(0.625rem,9cqw,0.75rem)]` — no leading-tight — computing
+     line-height 1.5 (inherited) on gauge (12px/18px) AND ring (10px/15px)
+     alike. Port the OBSERVED behavior (D19/D49/D51 dead-feature precedent;
+     this one is a tailwind-merge kill, not a framer one). Restoration
+     recipe if bklit ever reorders the class string: `line-height: 1.25;` */
+  line-height: 1.5;
+  font-size: clamp(0.625rem, 9cqw, 0.75rem);
+  color: var(--color-chart-label, var(--chart-label));
+}
+
+[data-bkm-chart] .ts-bkm-center-stat-icon {
+  /* bklit chart-stat-flow.tsx icon wrapper: "mb-2 flex h-12 w-12
+     items-center justify-center rounded-full bg-muted/50" — Tailwind v4's
+     `/50` opacity modifier resolves to `color-mix()`, not element `opacity`
+     (which would also fade the icon content, not just the background). */
+  margin-bottom: 0.5rem;
+  display: flex;
+  height: 3rem;
+  width: 3rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background-color: color-mix(in oklab, var(--color-muted, var(--muted)) 50%, transparent);
+}
+
+/* --- Gauge (arc) notch WAAPI pop-in transform-origin ---------------------
+   gauge.tsx's `gaugeArcNotchesMark` pre-shifts every notch's path
+   coordinates so the arc's own center (`centerX`,`centerY`) maps to this
+   group's local `(0,0)` (the polar container's own outer `<g>` is already
+   translated there — see internal/gauge-arc-mark.ts's header) — every arc
+   notch's real bklit `transformOrigin` IS that shared center point
+   (repos/bklit-ui/packages/ui/src/charts/gauge.tsx's `GaugeNotchSvg`:
+   `style={{transformOrigin: `${notch.xCenter}px ${notch.yCenter}px`}}`,
+   and `computeArcNotches` sets `xCenter:centerX, yCenter:centerY` for
+   EVERY notch), so one uniform CSS rule reproduces it exactly with no
+   per-element JS needed (unlike linear, whose notches each have a
+   DIFFERENT center and set `el.style.transformOrigin` per element in
+   gauge.tsx's reveal effect instead). */
+[data-bkm-chart="gauge"] .ts-bkm-gauge-notches [data-ts-key] {
+  transform-origin: 0px 0px;
+}
+
+/* --- Linear gauge label stat (GaugeLabelShell's OBSERVED typography) ------
+   bklit's GaugeLabelShell (gauge-label-layout.tsx lines 53-67) does NOT
+   render the chart-center clamp() typography: it appends
+   `text-[length:var(--chart-foreground)]` (value) /
+   `text-[length:var(--chart-foreground-muted)]` (label) AFTER the
+   chartCenter classes, and `cn()`'s tailwind-merge font-size conflict rule
+   deletes the earlier `text-[clamp(...)]` AND `leading-*` utilities. The
+   surviving font-size is itself INVALID CSS — those two vars are oklch()
+   COLORS (bench styles.css lines 109-110, mirroring bklit's globals), so
+   `font-size: <color>` is invalid-at-computed-value-time and font-size/
+   line-height fall back to INHERITED (16px / 1.5 -> 24px). Live-DOM proof
+   2026-08-01 (Fable gauge review, docs/LOG.md D52): bklit linear value
+   computes 16px/24px w700 tabular-nums, label 16px/24px w400 — NOT the
+   12px/10px clamp() sizes the center-stat classes would give. Port the
+   OBSERVED pixels (D19/D49/D51/D52 dead-feature precedent — this one a
+   bklit `text-[length:<color-var>]` bug): inherit font-size/line-height,
+   keep only the surviving declarations. */
+[data-bkm-chart] .ts-bkm-gauge-linear-stat-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-foreground, var(--foreground));
+}
+
+[data-bkm-chart] .ts-bkm-gauge-linear-stat-label {
+  margin-top: 0.125rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-chart-label, var(--chart-label));
+}
+
+/* --- FunnelChart SegmentLabel typography (disclosed adaptation) ----------
+   bklit's `SegmentLabel` (funnel-chart.tsx) uses PLAIN LITERAL Tailwind
+   classNames (not `cn()`/tailwind-merge -- confirmed via source, D52's
+   dead-class-kill mechanism does not apply here). bench/app's Tailwind
+   `@source` only globs repos/bklit-ui's own sources (bench/app/src/
+   styles.css), so migrated/charts's JSX classNames would generate no CSS
+   regardless -- hand-authored here with byte-identical computed values to
+   the Tailwind utilities bklit applies:
+     valueEl: "whitespace-nowrap font-semibold text-foreground text-sm"
+     pctEl:   "rounded-full bg-foreground px-3 py-1 font-bold
+                text-background text-xs shadow-sm"
+     labelEl: "whitespace-nowrap font-medium text-muted-foreground text-xs" */
+[data-bkm-chart="funnel"] .ts-bkm-funnel-value {
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--color-foreground, var(--foreground));
+}
+
+[data-bkm-chart="funnel"] .ts-bkm-funnel-pct {
+  border-radius: 9999px;
+  background-color: var(--color-foreground, var(--foreground));
+  padding: 0.25rem 0.75rem;
+  font-weight: 700;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--color-background, var(--background));
+  /* Tailwind v4 `shadow-sm` (the renamed v3 `shadow`): verified against the
+     bench build's compiled `.shadow-sm` rule — NOT the v3 `shadow-sm`
+     single-layer 0 1px 2px 0 rgb(0 0 0 / 0.05). */
+  box-shadow:
+    0 1px 3px 0 rgb(0 0 0 / 0.1),
+    0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+
+[data-bkm-chart="funnel"] .ts-bkm-funnel-label {
+  white-space: nowrap;
+  font-weight: 500;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--color-muted-foreground, var(--muted-foreground));
+}
+
+/* --- Heatmap ---------------------------------------------------------- */
+/* Default resting opacity for cell rects lives HERE (a stylesheet rule),
+/* --- Heatmap: D82 replaced per-cell .ts-bkm-heatmap-rect with TanStack cell()
+   marks. The old `opacity: 0` default (lifecycle-driven via imperative DOM
+   writes) is no longer needed — cells render at full opacity via the chart,
+   and ghost bins resolve to `transparent` fill via the color scale. The
+   .ts-bkm-heatmap-rect selector is retired. --- */
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-rect {
+  cursor: default;
+}
+
+/* TanStack Chart surface inside the heatmap — match the old .ts-bkm-heatmap-svg
+   sizing and ensure it doesn't overflow. */
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-svg {
+  display: block;
+  width: 100%;
+}
+
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-separator-svg {
+  z-index: 2;
+}
+
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-hover-svg {
+  z-index: 10;
+}
+
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-html-layer {
+  z-index: 5;
+}
+
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-axis-layer {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  color: var(--color-chart-label, var(--chart-label));
+}
+
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-axis-label {
+  position: absolute;
+  white-space: nowrap;
+}
+
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-axis-label--y {
+  transform: translateY(-50%);
+}
+
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-separator-label {
+  position: absolute;
+  white-space: nowrap;
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  color: var(--color-chart-label, var(--chart-label));
+}
+
+/* Tooltip body text -- the panel/layer/content wrapper classes
+   (.bkm-tooltip-layer/.bkm-tooltip-panel/.bkm-tooltip-content) are the
+   generic, already-styled classes shared with line/area/bar/candlestick's
+   own imperative hover chrome (internal/hover-chrome.ts); only these
+   Heatmap-specific inner text rows are new. */
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-tooltip-date {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+  color: var(--chart-tooltip-foreground);
+}
+
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-tooltip-weekday {
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--chart-tooltip-muted);
+}
+
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-tooltip-divider {
+  margin: 0.5rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--chart-tooltip-muted) 30%, transparent);
+}
+
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-tooltip-value {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--chart-tooltip-foreground);
+}
+
+/* NOTE: HeatmapLegend/HeatmapLegendSwatch/HeatmapLegendGradient are rendered
+   as plain SIBLINGS of <HeatmapChart> (see the family header comment in
+   heatmap-chart.tsx), not as descendants of the chart's own
+   [data-bkm-chart="heatmap"] root div -- so, unlike every other Heatmap
+   class above, these three are NOT scoped under that attribute selector.
+   The `ts-bkm-heatmap-legend*` prefix already gives them enough
+   specificity/namespacing on its own.
+
+   `justify-content` (align), swatch `width`/`height`/`border-radius`
+   (cellSize/cornerRadius), and the gradient bar's `width`/`height`
+   (gradientSpan/cellSize) are all now driven by `HeatmapLegend`'s own props
+   via inline `style`, which always wins over these class rules -- the
+   `flex-end`/10px/2px values below are just a layout-only fallback for the
+   (rare) case this stylesheet is used without the component's inline
+   styles. */
+.ts-bkm-heatmap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.ts-bkm-heatmap-legend-label {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  color: var(--color-chart-label, var(--chart-label));
+}
+
+.ts-bkm-heatmap-legend-swatches {
+  display: flex;
+  align-items: center;
+}
+
+/* Hover-target wrapper (bklit's `<motion.span>`) -- owns the opacity/scale
+   transition set imperatively via inline `style` on hover-state change; this
+   class only sets layout, never a transform/opacity default (those are
+   always present in the element's own inline `style`, so there's no flash
+   to guard against here, unlike `.ts-bkm-heatmap-rect` above). */
+.ts-bkm-heatmap-legend-swatch-wrap {
+  display: inline-block;
+  line-height: 0;
+}
+
+.ts-bkm-heatmap-legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.ts-bkm-heatmap-legend-gradient {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  border-radius: 2px;
+}
+
+.ts-bkm-heatmap-legend-gradient-bar {
+  position: absolute;
+  inset: 0;
+}
+
+.ts-bkm-heatmap-legend-gradient-segment {
+  position: absolute;
+  top: 0;
+  transform-origin: center center;
+}
+
+/* Heatmap loading label shimmer — reuses the shared `@keyframes ts-bkm-shimmer`
+   defined below (identical animation; scoped under [data-bkm-chart="heatmap"]. */
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-loading-label {
+  position: absolute;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  background: linear-gradient(
+    90deg,
+    var(--color-muted-foreground, var(--muted-foreground)) 40%,
+    var(--color-foreground, var(--foreground)) 50%,
+    var(--color-muted-foreground, var(--muted-foreground)) 60%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ts-bkm-shimmer 1.6s linear infinite;
+  transition: opacity 0.3s ease-in-out;
+  pointer-events: none;
+}
+
+[data-bkm-chart="heatmap"] .ts-bkm-heatmap-loading-label--exiting {
+  opacity: 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Generic loading-label shimmer (shared by LineChart, Heatmap).          */
+/* ---------------------------------------------------------------------- */
+
+@keyframes ts-bkm-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+[data-bkm-chart] .ts-bkm-loading-label {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  background: linear-gradient(90deg,
+    var(--color-muted-foreground, var(--muted-foreground)) 40%,
+    var(--color-foreground, var(--foreground)) 50%,
+    var(--color-muted-foreground, var(--muted-foreground)) 60%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ts-bkm-shimmer 1.6s linear infinite;
+}

@@ -26,7 +26,7 @@ export const benchmarkData: Record<string, ChartBench> = {
   "area": {
     sizes: [100,1000,10000],
     bySize: {
-      100: {bklit:{m1a:62.4,m1c:51.7,m2a:0.4,m2b:3.39,m3a:31.7,m3c:16.7},tanstack:{m1a:22,m1c:36.4,m2a:0.1,m2b:2.71,m3a:32,m3c:16.7},migrated:{m1a:24.7,m1c:39,m2a:0,m2b:2.89,m3a:32.3,m3c:16.7}},
+      100: {bklit:{m1a:62.4,m1c:51.7,m2a:0.4,m2b:3.39,m3a:31.7,m3c:16.7},tanstack:{m1a:22,m1c:36.4,m2a:0.1,m2b:2.71,m3a:32,m3c:16.7},migrated:{m1a:24.1,m1c:48.7,m2a:0,m2b:3.88,m3a:31.9,m3c:16.7}},
       1000: {bklit:{m1a:65.1,m1c:63.6,m2a:0.2,m2b:3.74,m3a:30.5,m3c:16.7},tanstack:{m1a:29.3,m1c:47.3,m2a:0,m2b:3.7,m3a:32.4,m3c:16.7},migrated:{m1a:34.9,m1c:53.4,m2a:0,m2b:4.16,m3a:30.9,m3c:16.7}},
       10000: {bklit:{m1a:68.1,m1c:79.4,m2a:0.1,m2b:5.44,m3a:29.6,m3c:16.7},tanstack:{m1a:89,m1c:126.1,m2a:0.2,m2b:13.16,m3a:32.6,m3c:16.7},migrated:{m1a:44.2,m1c:60.8,m2a:0,m2b:5.41,m3a:30.3,m3c:16.7}},
     },
@@ -34,7 +34,7 @@ export const benchmarkData: Record<string, ChartBench> = {
   "bar": {
     sizes: [100,1000,10000],
     bySize: {
-      100: {bklit:{m1a:67.2,m1c:177.4,m2a:0,m2b:3.85,m3a:32.5,m3c:16.7},tanstack:{m1a:28,m1c:43.5,m2a:0,m2b:2.82,m3a:32.6,m3c:16.7},migrated:{m1a:27.7,m1c:47,m2a:0,m2b:2.93,m3a:32.6,m3c:16.7}},
+      100: {bklit:{m1a:67.2,m1c:177.4,m2a:0,m2b:3.85,m3a:32.5,m3c:16.7},tanstack:{m1a:28,m1c:43.5,m2a:0,m2b:2.82,m3a:32.6,m3c:16.7},migrated:{m1a:27.1,m1c:58.7,m2a:0,m2b:3.86,m3a:27.4,m3c:16.7}},
       1000: {bklit:{m1a:304.3,m1c:1740.7,m2a:0,m2b:5.6,m3a:32.5,m3c:16.7},tanstack:{m1a:107.3,m1c:129.2,m2a:0,m2b:4.8,m3a:35.1,m3c:16.7},migrated:{m1a:67.2,m1c:115.2,m2a:0,m2b:3.86,m3a:32.6,m3c:16.7}},
       10000: {bklit:{m1a:2539.6,m1c:8465.9,m2a:0,m2b:20.04,m3a:163.8,m3c:33.3},tanstack:{m1a:847.8,m1c:567.2,m2a:0,m2b:24.18,m3a:312.9,m3c:16.7},migrated:{m1a:444.4,m1c:757.1,m2a:0,m2b:12.83,m3a:218.4,m3c:16.7}},
     },
@@ -42,15 +42,15 @@ export const benchmarkData: Record<string, ChartBench> = {
   "candlestick": {
     sizes: [100,1000,10000],
     bySize: {
-      100: {bklit:{m1a:87.4,m1c:194.3,m2a:17.2,m2b:14.52,m3a:32.3,m3c:16.7},tanstack:{m1a:36.6,m1c:74.9,m2a:0,m2b:12.39,m3a:32.3,m3c:16.7},migrated:{m1a:41,m1c:77.5,m2a:0,m2b:12.69,m3a:32.1,m3c:16.7}},
-      1000: {bklit:{m1a:308.5,m1c:667.5,m2a:176.7,m2b:19.76,m3a:44.2,m3c:16.7},tanstack:{m1a:65.9,m1c:115.4,m2a:0,m2b:13.61,m3a:32.3,m3c:16.7},migrated:{m1a:69.7,m1c:130.3,m2a:0,m2b:13.98,m3a:32.4,m3c:16.7}},
+      100: {bklit:{m1a:68.1,m1c:120.5,m2a:4.8,m2b:4.78,m3a:32.1,m3c:16.7},tanstack:{m1a:36.6,m1c:74.9,m2a:0,m2b:12.39,m3a:32.3,m3c:16.7},migrated:{m1a:25.3,m1c:53,m2a:0,m2b:3.83,m3a:32.3,m3c:16.7}},
+      1000: {bklit:{m1a:136.4,m1c:498.4,m2a:48.2,m2b:6.3,m3a:31.7,m3c:16.7},tanstack:{m1a:65.9,m1c:115.4,m2a:0,m2b:13.61,m3a:32.3,m3c:16.7},migrated:{m1a:75,m1c:102.4,m2a:0,m2b:4.78,m3a:32.3,m3c:16.7}},
       10000: {bklit:{m1a:2701.8,m1c:8643.4,m2a:0,m2b:58,m3a:286.4,m3c:116.7},tanstack:{m1a:347.1,m1c:500.6,m2a:0,m2b:25.31,m3a:178.3,m3c:16.7}},
     },
   },
   "choropleth": {
     sizes: [177],
     bySize: {
-      177: {bklit:{m1a:68.9,m1c:136.7,m2a:0,m2b:9.38,m3a:32.4,m3c:16.7},tanstack:{m1a:47.5,m1c:76.2,m2a:0,m2b:4.69,m3a:32.6,m3c:16.7}},
+      177: {bklit:{m1a:72,m1c:131.3,m2a:0,m2b:9.44,m3a:32.3,m3c:16.7},tanstack:{m1a:47.5,m1c:76.2,m2a:0,m2b:4.69,m3a:32.6,m3c:16.7},migrated:{m1a:62.2,m1c:121.8,m2a:0,m2b:5.03,m3a:32.5,m3c:16.7}},
     },
   },
   "composed": {
@@ -58,7 +58,7 @@ export const benchmarkData: Record<string, ChartBench> = {
     bySize: {
       4: {bklit:{m1a:68.8,m1c:106,m2a:0.5,m2b:14.13,m3a:30.3,m3c:16.7},tanstack:{m1a:33,m1c:69.3,m2a:0,m2b:12.2,m3a:32.1,m3c:16.7},migrated:{m1a:37.6,m1c:74,m2a:0.1,m2b:12.56,m3a:31.4,m3c:16.7}},
       100: {bklit:{m1a:67.8,m1c:191.3,m2a:0.8,m2b:15.26,m3a:29.3,m3c:16.7},tanstack:{m1a:39.7,m1c:76.9,m2a:0,m2b:12.54,m3a:32.1,m3c:16.7},migrated:{m1a:43.8,m1c:82,m2a:0.2,m2b:12.86,m3a:31.5,m3c:16.7}},
-      1000: {bklit:{m1a:88.6,m1c:504,m2a:0,m2b:11.84,m3a:21.1,m3c:16.7},tanstack:{m1a:55.3,m1c:83.6,m2a:0,m2b:5.66,m3a:32.6,m3c:16.7},migrated:{m1a:58.7,m1c:99,m2a:0.4,m2b:5.72,m3a:24.9,m3c:16.7}},
+      1000: {bklit:{m1a:71.8,m1c:476.9,m2a:0,m2b:11.94,m3a:20.7,m3c:16.7},tanstack:{m1a:53.9,m1c:82.3,m2a:0,m2b:5.77,m3a:32.6,m3c:16.7},migrated:{m1a:70.4,m1c:121.2,m2a:0.8,m2b:5.94,m3a:74.3,m3c:16.7}},
       10000: {bklit:{m1a:303,m1c:2346,m2a:0.1,m2b:71.44,m3a:90.6,m3c:33.9},tanstack:{m1a:319.7,m1c:367.9,m2a:0,m2b:24.78,m3a:107.6,m3c:16.7},migrated:{m1a:233.7,m1c:405.9,m2a:3.2,m2b:9.44,m3a:142.9,m3c:16.7}},
     },
   },
@@ -85,7 +85,7 @@ export const benchmarkData: Record<string, ChartBench> = {
   "line": {
     sizes: [100,1000,10000],
     bySize: {
-      100: {bklit:{m1a:60.5,m1c:63.6,m2a:0.3,m2b:4.37,m3a:31.4,m3c:16.7},tanstack:{m1a:22.4,m1c:49.4,m2a:0,m2b:3.63,m3a:32.1,m3c:16.7},migrated:{m1a:23.7,m1c:47.7,m2a:0,m2b:3.8,m3a:31.2,m3c:16.7}},
+      100: {bklit:{m1a:60.5,m1c:63.6,m2a:0.3,m2b:4.37,m3a:31.4,m3c:16.7},tanstack:{m1a:22.4,m1c:49.4,m2a:0,m2b:3.63,m3a:32.1,m3c:16.7},migrated:{m1a:42.9,m1c:49.6,m2a:0,m2b:3.74,m3a:31.8,m3c:16.7}},
       1000: {bklit:{m1a:58.2,m1c:76.5,m2a:0.3,m2b:4.85,m3a:32.1,m3c:16.7},tanstack:{m1a:28.3,m1c:56.6,m2a:0,m2b:4.32,m3a:32.5,m3c:16.7},migrated:{m1a:31.6,m1c:56.9,m2a:0,m2b:4.47,m3a:31.1,m3c:16.7}},
       10000: {bklit:{m1a:70.9,m1c:90.1,m2a:0.1,m2b:6.57,m3a:29.9,m3c:16.7},tanstack:{m1a:69.7,m1c:110.7,m2a:0,m2b:10.63,m3a:30.1,m3c:16.7},migrated:{m1a:40.1,m1c:61.7,m2a:0,m2b:5.56,m3a:29.7,m3c:16.7}},
     },
@@ -93,8 +93,8 @@ export const benchmarkData: Record<string, ChartBench> = {
   "liveline": {
     sizes: [30,100,200],
     bySize: {
-      30: {bklit:{m1a:65.1,m1c:297.3,m2a:111.4,m2b:5.5,m3a:32.1,m3c:16.7},tanstack:{m1a:19.4,m1c:45.1,m2a:0,m2b:3.69,m3a:32.4,m3c:16.7}},
-      100: {bklit:{m1a:65.5,m1c:319.1,m2a:115.8,m2b:5.49,m3a:32,m3c:16.7},tanstack:{m1a:20.2,m1c:46.5,m2a:0,m2b:3.68,m3a:32.4,m3c:16.7},migrated:{m1a:26.2,m1c:311.7,m2a:0,m2b:4.79,m3a:32.3,m3c:16.7}},
+      30: {bklit:{m1a:65.1,m1c:297.3,m2a:111.4,m2b:5.5,m3a:32.1,m3c:16.7},tanstack:{m1a:19.4,m1c:45.1,m2a:0,m2b:3.69,m3a:32.4,m3c:16.7},migrated:{m1a:27.7,m1c:226.3,m2a:0,m2b:4.73,m3a:32.4,m3c:16.7}},
+      100: {bklit:{m1a:65.5,m1c:319.1,m2a:115.8,m2b:5.49,m3a:32,m3c:16.7},tanstack:{m1a:20.2,m1c:46.5,m2a:0,m2b:3.68,m3a:32.4,m3c:16.7}},
       200: {bklit:{m1a:64.4,m1c:425.6,m2a:183.8,m2b:5.66,m3a:32,m3c:16.7},tanstack:{m1a:21.7,m1c:49,m2a:0,m2b:3.74,m3a:32.4,m3c:16.7},migrated:{m1a:26.6,m1c:420.9,m2a:0,m2b:4.91,m3a:32.3,m3c:16.7}},
     },
   },
@@ -108,33 +108,36 @@ export const benchmarkData: Record<string, ChartBench> = {
     },
   },
   "radar": {
-    sizes: [1,4,20,50],
+    sizes: [1,4,5,6,20,50],
     bySize: {
       1: {bklit:{m1a:21.5,m1c:83.9,m2a:0,m2b:4.33,m3a:32.1,m3c:16.7},tanstack:{m1a:17.8,m1c:40.9,m2a:0.1,m2b:3.47,m3a:32,m3c:16.7},migrated:{m1a:20.5,m1c:47.2,m2a:0,m2b:3.6,m3a:32.2,m3c:16.7}},
-      4: {tanstack:{m1a:19.9,m1c:43.8,m2a:0.1,m2b:3.52,m3a:32.1,m3c:16.7},migrated:{m1a:21.4,m1c:47.9,m2a:0,m2b:3.66,m3a:32.1,m3c:16.7}},
+      4: {bklit:{m1a:21.6,m1c:123.6,m2a:0,m2b:4.55,m3a:31.9,m3c:16.7},tanstack:{m1a:19.9,m1c:43.8,m2a:0.1,m2b:3.52,m3a:32.1,m3c:16.7},migrated:{m1a:21.4,m1c:47.9,m2a:0,m2b:3.66,m3a:32.1,m3c:16.7}},
+      5: {bklit:{m1a:24.7,m1c:92.5,m2a:0,m2b:4.6,m3a:32.5,m3c:16.7},tanstack:{m1a:20.5,m1c:45.5,m2a:0,m2b:3.52,m3a:32.4,m3c:16.7},migrated:{m1a:23,m1c:47.7,m2a:0,m2b:3.62,m3a:32.4,m3c:16.7}},
+      6: {bklit:{m1a:22.3,m1c:124.8,m2a:0,m2b:4.68,m3a:32.1,m3c:16.7}},
       20: {bklit:{m1a:29.1,m1c:181.7,m2a:0,m2b:5.27,m3a:32.4,m3c:16.7},tanstack:{m1a:21.4,m1c:45,m2a:0,m2b:3.59,m3a:32.3,m3c:16.7},migrated:{m1a:24.1,m1c:51.7,m2a:0,m2b:3.76,m3a:32.4,m3c:16.7}},
-      50: {bklit:{m1a:38.1,m1c:289.8,m2a:0,m2b:6.41,m3a:32.5,m3c:16.7},tanstack:{m1a:25.9,m1c:49.6,m2a:0,m2b:3.74,m3a:32.5,m3c:16.7},migrated:{m1a:28.5,m1c:60.2,m2a:0,m2b:3.99,m3a:32.6,m3c:16.7}},
+      50: {bklit:{m1a:35.7,m1c:250.5,m2a:0,m2b:6.44,m3a:32.5,m3c:16.7},tanstack:{m1a:26.5,m1c:52.1,m2a:0,m2b:3.77,m3a:32.5,m3c:16.7},migrated:{m1a:30.9,m1c:54.5,m2a:0,m2b:3.89,m3a:30.1,m3c:16.7}},
     },
   },
   "ring": {
     sizes: [1,4,20,50],
     bySize: {
       1: {bklit:{m1a:23.4,m1c:65.2,m2a:0,m2b:4.04,m3a:31.9,m3c:16.7},tanstack:{m1a:11.3,m1c:39.3,m2a:0,m2b:3.26,m3a:32.5,m3c:16.7},migrated:{m1a:22.3,m1c:46.5,m2a:0,m2b:3.58,m3a:31.9,m3c:16.7}},
-      4: {bklit:{m1a:25.1,m1c:75,m2a:0,m2b:4.37,m3a:31.8,m3c:16.7},tanstack:{m1a:11.7,m1c:40.1,m2a:0,m2b:3.33,m3a:32.4,m3c:16.7},migrated:{m1a:13.6,m1c:50.2,m2a:0,m2b:3.71,m3a:31.7,m3c:16.7}},
+      4: {bklit:{m1a:25.1,m1c:75,m2a:0,m2b:4.37,m3a:31.8,m3c:16.7},tanstack:{m1a:11.7,m1c:40.1,m2a:0,m2b:3.33,m3a:32.4,m3c:16.7},migrated:{m1a:22.2,m1c:49.7,m2a:0,m2b:3.63,m3a:31.7,m3c:16.7}},
       20: {migrated:{m1a:23.2,m1c:60.2,m2a:0,m2b:3.87,m3a:31.9,m3c:16.7}},
       50: {migrated:{m1a:39.8,m1c:78.1,m2a:0,m2b:4.05,m3a:32,m3c:16.7}},
     },
   },
   "sankey": {
-    sizes: [33],
+    sizes: [4,33],
     bySize: {
-      33: {bklit:{m1a:59.3,m1c:114,m2a:0,m2b:5.61,m3a:32.4,m3c:16.7},tanstack:{m1a:11.7,m1c:40,m2a:0,m2b:3.31,m3a:32.1,m3c:16.7}},
+      4: {bklit:{m1a:60.4,m1c:74.2,m2a:0,m2b:4.61,m3a:32.5,m3c:16.7},tanstack:{m1a:10.7,m1c:40,m2a:0,m2b:3.36,m3a:32.5,m3c:16.7},migrated:{m1a:21.5,m1c:44.9,m2a:0,m2b:3.59,m3a:32.3,m3c:16.7}},
+      33: {bklit:{m1a:65,m1c:108.8,m2a:0,m2b:5.64,m3a:32.5,m3c:16.7},tanstack:{m1a:13.7,m1c:41.5,m2a:0,m2b:3.34,m3a:32.5,m3c:16.7},migrated:{m1a:26.4,m1c:52.9,m2a:0,m2b:3.65,m3a:32.2,m3c:16.7}},
     },
   },
   "scatter": {
     sizes: [100,1000,10000],
     bySize: {
-      100: {bklit:{m1a:48.8,m1c:131.1,m2a:0.2,m2b:3.96,m3a:32.5,m3c:16.7},tanstack:{m1a:23.7,m1c:37.4,m2a:0,m2b:2.6,m3a:32.3,m3c:16.7},migrated:{m1a:25.2,m1c:40.1,m2a:0,m2b:2.77,m3a:32.3,m3c:16.7}},
+      100: {bklit:{m1a:53.3,m1c:136.7,m2a:0.2,m2b:4.95,m3a:32.5,m3c:16.7},tanstack:{m1a:23.7,m1c:37.4,m2a:0,m2b:2.6,m3a:32.3,m3c:16.7},migrated:{m1a:24.3,m1c:50.9,m2a:0,m2b:3.76,m3a:30.7,m3c:16.7}},
       1000: {bklit:{m1a:129.5,m1c:554.2,m2a:0,m2b:6.91,m3a:32.6,m3c:16.7},tanstack:{m1a:53.7,m1c:63,m2a:0,m2b:3.39,m3a:32.6,m3c:16.7},migrated:{m1a:57.9,m1c:80,m2a:0,m2b:3.61,m3a:32.6,m3c:16.7}},
       10000: {bklit:{m1a:958.8,m1c:2454.4,m2a:0,m2b:35.49,m3a:69.9,m3c:33.3},tanstack:{m1a:354.8,m1c:282.4,m2a:0,m2b:10.77,m3a:86.2,m3c:16.7},migrated:{m1a:383.3,m1c:446,m2a:0,m2b:10.63,m3a:104.8,m3c:16.7}},
     },

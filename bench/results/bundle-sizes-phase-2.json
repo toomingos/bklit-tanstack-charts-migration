@@ -1,0 +1,218 @@
+{
+  "bklit/area": {
+    "raw": 106276,
+    "gzip": 39171
+  },
+  "bklit/bar": {
+    "raw": 106276,
+    "gzip": 39171
+  },
+  "bklit/candlestick": {
+    "raw": 106276,
+    "gzip": 39172
+  },
+  "bklit/choropleth": {
+    "raw": 107843,
+    "gzip": 40016
+  },
+  "bklit/composed": {
+    "raw": 106276,
+    "gzip": 39169
+  },
+  "bklit/funnel": {
+    "raw": 106248,
+    "gzip": 39153
+  },
+  "bklit/funnelvertical": {
+    "raw": 106248,
+    "gzip": 39153
+  },
+  "bklit/gauge": {
+    "raw": 106248,
+    "gzip": 39153
+  },
+  "bklit/gaugelinear": {
+    "raw": 106248,
+    "gzip": 39153
+  },
+  "bklit/heatmap": {
+    "raw": 106258,
+    "gzip": 39166
+  },
+  "bklit/line": {
+    "raw": 106276,
+    "gzip": 39171
+  },
+  "bklit/liveline": {
+    "raw": 106275,
+    "gzip": 39180
+  },
+  "bklit/pie": {
+    "raw": 106248,
+    "gzip": 39153
+  },
+  "bklit/radar": {
+    "raw": 106258,
+    "gzip": 39164
+  },
+  "bklit/ring": {
+    "raw": 106258,
+    "gzip": 39165
+  },
+  "bklit/sankey": {
+    "raw": 106258,
+    "gzip": 39165
+  },
+  "bklit/scatter": {
+    "raw": 106276,
+    "gzip": 39170
+  },
+  "bklit/sunburst": {
+    "raw": 106258,
+    "gzip": 39166
+  },
+  "migrated/area": {
+    "raw": 321318,
+    "gzip": 110926
+  },
+  "migrated/bar": {
+    "raw": 321318,
+    "gzip": 110946
+  },
+  "migrated/candlestick": {
+    "raw": 321318,
+    "gzip": 110942
+  },
+  "migrated/choropleth": {
+    "raw": 322896,
+    "gzip": 111792
+  },
+  "migrated/composed": {
+    "raw": 321318,
+    "gzip": 110929
+  },
+  "migrated/funnel": {
+    "raw": 321288,
+    "gzip": 110934
+  },
+  "migrated/funnelvertical": {
+    "raw": 321288,
+    "gzip": 110934
+  },
+  "migrated/gauge": {
+    "raw": 321288,
+    "gzip": 110924
+  },
+  "migrated/gaugelinear": {
+    "raw": 321288,
+    "gzip": 110936
+  },
+  "migrated/heatmap": {
+    "raw": 321299,
+    "gzip": 110953
+  },
+  "migrated/line": {
+    "raw": 321318,
+    "gzip": 110930
+  },
+  "migrated/liveline": {
+    "raw": 321317,
+    "gzip": 110951
+  },
+  "migrated/pie": {
+    "raw": 321288,
+    "gzip": 110932
+  },
+  "migrated/radar": {
+    "raw": 321299,
+    "gzip": 110935
+  },
+  "migrated/ring": {
+    "raw": 321299,
+    "gzip": 110951
+  },
+  "migrated/sankey": {
+    "raw": 321299,
+    "gzip": 110936
+  },
+  "migrated/scatter": {
+    "raw": 321318,
+    "gzip": 110946
+  },
+  "migrated/sunburst": {
+    "raw": 178211,
+    "gzip": 65595
+  },
+  "tanstack/area": {
+    "raw": 106266,
+    "gzip": 39161
+  },
+  "tanstack/bar": {
+    "raw": 106266,
+    "gzip": 39162
+  },
+  "tanstack/candlestick": {
+    "raw": 106297,
+    "gzip": 39188
+  },
+  "tanstack/choropleth": {
+    "raw": 109378,
+    "gzip": 40840
+  },
+  "tanstack/composed": {
+    "raw": 112764,
+    "gzip": 41870
+  },
+  "tanstack/funnel": {
+    "raw": 106248,
+    "gzip": 39157
+  },
+  "tanstack/funnelvertical": {
+    "raw": 106248,
+    "gzip": 39157
+  },
+  "tanstack/gauge": {
+    "raw": 106297,
+    "gzip": 39208
+  },
+  "tanstack/gaugelinear": {
+    "raw": 106248,
+    "gzip": 39158
+  },
+  "tanstack/heatmap": {
+    "raw": 106248,
+    "gzip": 39159
+  },
+  "tanstack/line": {
+    "raw": 106266,
+    "gzip": 39161
+  },
+  "tanstack/liveline": {
+    "raw": 106248,
+    "gzip": 39160
+  },
+  "tanstack/pie": {
+    "raw": 106264,
+    "gzip": 39178
+  },
+  "tanstack/radar": {
+    "raw": 106264,
+    "gzip": 39176
+  },
+  "tanstack/ring": {
+    "raw": 106295,
+    "gzip": 39207
+  },
+  "tanstack/sankey": {
+    "raw": 106249,
+    "gzip": 39163
+  },
+  "tanstack/scatter": {
+    "raw": 106266,
+    "gzip": 39162
+  },
+  "tanstack/sunburst": {
+    "raw": 106264,
+    "gzip": 39178
+  }
+}
