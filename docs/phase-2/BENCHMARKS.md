@@ -36,7 +36,7 @@ _No Phase 2 runs recorded yet. Populate via `pnpm bench` / `pnpm gate` — resul
 
 <!-- BEGIN GENERATED BENCHMARK TABLES -->
 
-_Report generated 2026-08-08T15:53:15.805Z from **459 run file(s)** under `bench/results/` (oldest: 2026-07-30T20:11:42.261Z, newest: 2026-08-08T15:25:46.325Z). Per (impl, chart, n) combo, the value from the newest run that measured it wins._
+_Report generated 2026-08-09T19:03:49.694Z from **470 run file(s)** under `bench/results/` (oldest: 2026-07-30T20:11:42.261Z, newest: 2026-08-09T19:03:07.646Z). Per (impl, chart, n) combo, the value from the newest run that measured it wins._
 
 _Chromium: 151.0.7922.34._
 _Run config (all runs): 1 warmup + 7 measured runs per combo, 5000ms idle window (M2a), 30 update ticks (M3a), 60 hover sweep steps (M3c)._
@@ -159,7 +159,7 @@ _n=5 delta (tanstack / bklit): M1a 0.69x · M3a 1.00x · M3c median 1.00x_
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 40 | bklit | 68.0 | 1319.4 | 111.5 | 0.0 | 13.62 | 25.4 / 28.8 | 16.7 / 33.7 | NO | 38.2 | 0 | 2026-08-02T23-26-11-909Z |
 | 40 | tanstack | 24.0 | 44.1 | 69.0 | 0.0 | 12.10 | 31.9 / 32.7 | 16.7 / 34.1 | NO | 38.3 | 0 | 2026-08-02T23-27-24-526Z |
-| 40 | migrated | 40.5 | 1567.5 | 82.3 | 0.0 | 12.59 | 24.8 / 28.5 | 16.7 / 33.4 | NO | 78.4 | 0 | 2026-08-02T23-28-49-653Z |
+| 40 | migrated | (not run) | | | | | | | | | | | |
 _n=40 delta (tanstack / bklit): M1a 0.35x · M3a 1.26x · M3c median 1.00x_
 
 | 72 | bklit | 71.7 | 1804.0 | 135.2 | 0.0 | 14.22 | 26.1 / 29.8 | 16.7 / 33.3 | NO | 38.2 | 0 | 2026-08-02T23-30-15-719Z |
@@ -261,19 +261,19 @@ _n=50 delta (tanstack / bklit): M1a 0.64x · M3a 1.00x · M3c median 1.00x_
 
 | n | impl | M1a mount→paint (ms) | M1b settle (ms) | M1c mount script (ms) | M2a idle script/5s (ms) | M2b heap (MB) | M3a update median/p95 (ms) | M3c hover median/worst frame (ms) | tooltip | M2c gzip (kB) | console errors | source run |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | bklit | 21.5 | 1965.0 | 83.9 | 0.0 | 4.33 | 32.1 / 33.1 | 16.7 / 50.1 | NO | — | 0 | 2026-08-01T11-49-20-568Z |
+| 1 | bklit | 20.8 | 1965.7 | 90.1 | 0.0 | 4.33 | 31.8 / 32.5 | 16.7 / 50.1 | NO | 38.2 | 0 | 2026-08-08T17-25-53-498Z |
 | 1 | tanstack | 17.8 | 26.6 | 40.9 | 0.1 | 3.47 | 32.0 / 32.7 | 16.7 / 33.4 | NO | — | 0 | 2026-08-01T11-50-31-557Z |
-| 1 | migrated | 20.5 | 1967.3 | 47.2 | 0.0 | 3.60 | 32.2 / 33.3 | 16.7 / 51.0 | NO | — | 0 | 2026-08-01T11-47-53-998Z |
-_n=1 delta (tanstack / bklit): M1a 0.83x · M3a 1.00x · M3c median 1.00x_
+| 1 | migrated | 20.9 | 1976.2 | 46.9 | 0.0 | 3.61 | 31.9 / 33.0 | 16.7 / 50.9 | NO | 108.3 | 0 | 2026-08-08T17-53-59-639Z |
+_n=1 delta (tanstack / bklit): M1a 0.86x · M3a 1.01x · M3c median 1.00x_
 
-| 4 | bklit | 21.6 | 2410.3 | 123.6 | 0.0 | 4.55 | 31.9 / 32.5 | 16.7 / 50.0 | NO | 38.2 | 0 | 2026-08-08T00-30-19-164Z |
+| 4 | bklit | 22.1 | 2410.7 | 119.8 | 0.0 | 4.55 | 32.0 / 32.7 | 16.7 / 50.9 | NO | 38.2 | 0 | 2026-08-08T17-31-34-259Z |
 | 4 | tanstack | 19.9 | 32.4 | 43.8 | 0.1 | 3.52 | 32.1 / 32.6 | 16.7 / 33.4 | NO | — | 0 | 2026-08-01T11-13-35-816Z |
-| 4 | migrated | 21.4 | 2408.1 | 47.9 | 0.0 | 3.66 | 32.1 / 32.7 | 16.7 / 66.6 | NO | — | 0 | 2026-08-01T11-15-06-972Z |
-_n=4 delta (tanstack / bklit): M1a 0.92x · M3a 1.01x · M3c median 1.00x_
+| 4 | migrated | (not run) | | | | | | | | | | | |
+_n=4 delta (tanstack / bklit): M1a 0.90x · M3a 1.00x · M3c median 1.00x_
 
 | 5 | bklit | 24.7 | 2557.7 | 92.5 | 0.0 | 4.60 | 32.5 / 33.1 | 16.7 / 33.3 | NO | 38.2 | 0 | 2026-08-04T14-18-24-333Z |
 | 5 | tanstack | 20.5 | 31.4 | 45.5 | 0.0 | 3.52 | 32.4 / 32.8 | 16.7 / 33.4 | NO | 38.3 | 0 | 2026-08-04T14-18-04-399Z |
-| 5 | migrated | 23.0 | 2578.4 | 47.7 | 0.0 | 3.62 | 32.4 / 33.0 | 16.7 / 33.4 | NO | 84.8 | 0 | 2026-08-04T14-16-19-252Z |
+| 5 | migrated | 23.4 | 2577.9 | 50.2 | 0.0 | 3.70 | 32.1 / 32.7 | 16.7 / 50.1 | NO | 108.3 | 0 | 2026-08-09T18-00-02-006Z |
 _n=5 delta (tanstack / bklit): M1a 0.83x · M3a 1.00x · M3c median 1.00x_
 
 | 6 | bklit | 22.3 | 2714.4 | 124.8 | 0.0 | 4.68 | 32.1 / 32.6 | 16.7 / 50.0 | NO | 38.2 | 0 | 2026-08-07T21-54-11-950Z |
@@ -297,12 +297,12 @@ _n=50 delta (tanstack / bklit): M1a 0.74x · M3a 1.00x · M3c median 1.00x_
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 1 | bklit | 23.4 | 1961.9 | 65.2 | 0.0 | 4.04 | 31.9 / 32.7 | 16.7 / 34.3 | NO | — | 0 | 2026-08-02T15-01-16-353Z |
 | 1 | tanstack | 11.3 | 30.7 | 39.3 | 0.0 | 3.26 | 32.5 / 33.3 | 16.7 / 33.4 | NO | — | 0 | 2026-08-02T15-02-23-732Z |
-| 1 | migrated | 22.3 | 1963.3 | 46.5 | 0.0 | 3.58 | 31.9 / 33.1 | 16.7 / 33.4 | NO | 78.4 | 0 | 2026-08-02T19-13-45-397Z |
+| 1 | migrated | 9.2 | 1959.0 | 47.6 | 0.0 | 3.58 | 31.5 / 32.1 | 16.7 / 33.6 | NO | 108.3 | 0 | 2026-08-09T18-10-48-360Z |
 _n=1 delta (tanstack / bklit): M1a 0.48x · M3a 1.02x · M3c median 1.00x_
 
 | 4 | bklit | 25.1 | 2261.9 | 75.0 | 0.0 | 4.37 | 31.8 / 32.4 | 16.7 / 33.4 | NO | 38.2 | 0 | 2026-08-02T18-46-29-225Z |
 | 4 | tanstack | 11.7 | 30.0 | 40.1 | 0.0 | 3.33 | 32.4 / 33.7 | 16.7 / 49.1 | NO | 38.3 | 0 | 2026-08-02T18-50-13-572Z |
-| 4 | migrated | 22.2 | 2263.1 | 49.7 | 0.0 | 3.63 | 31.7 / 32.4 | 16.7 / 50.0 | NO | 84.8 | 0 | 2026-08-03T23-09-39-037Z |
+| 4 | migrated | 21.5 | 2261.7 | 49.4 | 0.0 | 3.64 | 31.4 / 32.1 | 16.7 / 33.4 | NO | 108.3 | 0 | 2026-08-09T18-13-06-478Z |
 _n=4 delta (tanstack / bklit): M1a 0.47x · M3a 1.02x · M3c median 1.00x_
 
 | 20 | bklit | (not run) | | | | | | | | | | | |
@@ -367,6 +367,8 @@ _n=27 delta (tanstack / bklit): M1a 0.42x · M3a 0.99x · M3c median 1.00x_
 | impl | chart | n | reason | source run |
 |---|---|---|---|---|
 | migrated | candlestick | 10000 | mouse.move: Target page, context or browser has been closed | 2026-08-02T23-16-17-905Z |
+| migrated | radar | 4 | mouse.move: Target page, context or browser has been closed | 2026-08-08T17-32-32-109Z |
+| migrated | gauge | 40 | mouse.move: Target page, context or browser has been closed | 2026-08-09T19-03-07-645Z |
 | migrated | liveline | 100 | mouse.move: Target page, context or browser has been closed | 2026-08-08T15-25-46-322Z |
 | migrated | radar | 1000 | page.waitForTimeout: Target page, context or browser has been closed | 2026-08-04T14-24-05-501Z |
 | bklit,migrated,tanstack | scatter | 100 | page.waitForFunction: Target page, context or browser has been closed | 2026-08-08T12-39-30-966Z |

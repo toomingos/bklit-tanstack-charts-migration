@@ -57,9 +57,12 @@ const OPACITY_TRANSITION = "opacity 0.15s ease-in-out";
 
 export interface RingHoverConfig {
   index: number;
-  groupEl: SVGGElement;
+  trackGroupEl?: SVGGElement | null;
+  progressGroupEl?: SVGGElement | null;
   showGlow: boolean;
   color: string;
+  /** @deprecated legacy single-group caller — kept for backwards compat with HEAD. */
+  groupEl?: SVGGElement;
 }
 
 export interface RingHoverRuntime {
@@ -85,6 +88,15 @@ function ringHoverScale(isHovered: boolean, isPushedOut: boolean): number {
   return 1;
 }
 
+function resolveEls(config: RingHoverConfig): SVGGElement[] {
+  const els: SVGGElement[] = [];
+  const anyCfg = config as unknown as Record<string, unknown>;
+  if (config.trackGroupEl) els.push(config.trackGroupEl);
+  else if (anyCfg["groupEl"]) els.push(anyCfg["groupEl"] as SVGGElement);
+  if (config.progressGroupEl) els.push(config.progressGroupEl);
+  return els.filter(Boolean) as SVGGElement[];
+}
+
 export function createRingHoverRuntime(): RingHoverRuntime {
   let config: RingHoverConfig | null = null;
   let started = false;
@@ -92,7 +104,11 @@ export function createRingHoverRuntime(): RingHoverRuntime {
 
   const applyTransform = () => {
     if (!config || !started) return;
-    config.groupEl.style.transform = `scale(${currentScale})`;
+    const value = `scale(${currentScale})`;
+    const anyCfg = config as unknown as Record<string, unknown>;
+    if (config.trackGroupEl) config.trackGroupEl.style.transform = value;
+    else if (anyCfg["groupEl"]) (anyCfg["groupEl"] as SVGGElement).style.transform = value;
+    if (config.progressGroupEl) config.progressGroupEl.style.transform = value;
   };
 
   const scaleSpring: Spring = createSpring(1, HOVER_SPRING.stiffness, HOVER_SPRING.damping, (v) => {
@@ -109,7 +125,7 @@ export function createRingHoverRuntime(): RingHoverRuntime {
       const isHovered = hoveredIndex === config.index;
       const isFaded = hoveredIndex !== null && !isHovered;
       const isPushedOut = hoveredIndex !== null && hoveredIndex < config.index;
-      const el = config.groupEl;
+      const els = resolveEls(config);
 
       // bklit's fade is ALSO dead code at runtime: ring.tsx animates
       // `opacity: isFaded ? 0.35 : 1`, and framer DOES write it — but as the
@@ -124,8 +140,10 @@ export function createRingHoverRuntime(): RingHoverRuntime {
       // stay so the fade can be restored verbatim if bklit ever fixes it:
       //   `el.style.opacity = isFaded ? String(FADE_OPACITY) : FULL_OPACITY;`
       void isFaded;
-      el.style.transition = OPACITY_TRANSITION;
-      el.style.opacity = FULL_OPACITY;
+      for (const el of els) {
+        el.style.transition = OPACITY_TRANSITION;
+        el.style.opacity = FULL_OPACITY;
+      }
       // bklit's glow is DEAD CODE at runtime: ring.tsx computes `showGlow &&
       // isHovered ? drop-shadow(0 0 12px ${color}) : "none"` into the framer
       // `style` prop, but framer-motion snapshots animatable style keys
@@ -141,7 +159,9 @@ export function createRingHoverRuntime(): RingHoverRuntime {
       // `showGlow`/`color` stay in the config so the drop-shadow can be
       // restored verbatim if bklit ever fixes it:
       //   `config.showGlow && isHovered ? drop-shadow(0 0 12px ${config.color}) : "none"`
-      el.style.filter = "none";
+      for (const el of els) {
+        el.style.filter = "none";
+      }
 
       // Always retarget the spring, even before `started` — its `onUpdate`
       // (`applyTransform`) is a no-op DOM write until `settleAtRest()` has

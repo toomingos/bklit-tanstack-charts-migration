@@ -342,14 +342,10 @@
 /* ---------------------------------------------------------------------- */
 
 [data-bkm-chart="radar"] .ts-chart__radial-area path {
-  transform-box: fill-box;
-  transform-origin: center;
   transition: opacity 0.15s ease-in-out, transform 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 [data-bkm-chart="radar"] .ts-chart__radial-dot circle {
-  transform-box: fill-box;
-  transform-origin: center;
   transition: opacity 0.15s ease-in-out;
 }
 
@@ -536,7 +532,45 @@
    per-element JS needed (unlike linear, whose notches each have a
    DIFFERENT center and set `el.style.transformOrigin` per element in
    gauge.tsx's reveal effect instead). */
-[data-bkm-chart="gauge"] .ts-bkm-gauge-notches [data-ts-key] {
+[data-bkm-chart="gauge"] [data-ts-key^="gauge-"] {
+  transform-origin: 0px 0px;
+}
+
+/* --- Radar: NO pre-hide. Bklit dots sit visibly at the grid center at t=0
+   (cx/cy * t with t=0 → 0,0, then they ride out). If we force .ts-chart__marks
+   to opacity:0 pre-paint, nothing is centered-visible to draw the eye. Instead,
+   WAAPI fill:backwards does the work: each path/circle/ring/spoke has its
+   scale/opacity keyframes with fill backwards, so between handleRender (adds the
+   Animation) and the actual start delay, the element computes at scale(0)/opacity 0.
+   The only gap is the 1-frame window between TanStack's SVG commit and our JS
+   handleRender (2 rAF + setTimeout 0). That window is <16ms and is masked by
+   immediately clearing stale inline transforms in handleRender before onPostPaint. */
+
+/* --- Radar: transform-origin for scale reveal + hover scale.
+   Polar group is at translate(200 200) (viewBox 400x400 / translate(center)).
+   TanStack polar renders via <g transform="translate(cx,cy)">; child paths
+   use local coordinates with center at (0,0) — scale must pivot there.
+   Matches bklit radar-area's `style={{transformOrigin:"0px 0px"}}`. */
+[data-bkm-chart="radar"] [data-ts-key^="polar-"] {
+  transform-origin: 0px 0px;
+}
+[data-bkm-chart="radar"] .ts-chart__radial-area path,
+[data-bkm-chart="radar"] [data-ts-key^="radar-ring:"],
+[data-bkm-chart="radar"] [data-ts-key^="spoke:"] {
+  transform-box: view-box;
+}
+[data-bkm-chart="radar"] .ts-chart__radial-dot circle {
+  transform-box: view-box;
+}
+/* view-box (not fill-box) keeps area scale about the polar center (0,0) — same
+   as bklit targetPositions * t. Circles with view-box cluster at center at
+   scale 0, matching bklit's t=0 visible center dots. */
+
+/* --- Ring: unified transform-origin for both track+progress sibling marks ---
+   The hover spring writes `scale()` to both groups' `style.transform`; the
+   WAAPI expand reveal also animates `transform` on the track group. A CSS
+   rule guarantees the origin is correct before JS runs / on first paint. */
+[data-bkm-chart="ring"] [data-ts-key^="ring-"] {
   transform-origin: 0px 0px;
 }
 
@@ -618,15 +652,6 @@
 
 /* --- Heatmap ---------------------------------------------------------- */
 /* Default resting opacity for cell rects lives HERE (a stylesheet rule),
-/* --- Heatmap: D82 replaced per-cell .ts-bkm-heatmap-rect with TanStack cell()
-   marks. The old `opacity: 0` default (lifecycle-driven via imperative DOM
-   writes) is no longer needed — cells render at full opacity via the chart,
-   and ghost bins resolve to `transparent` fill via the color scale. The
-   .ts-bkm-heatmap-rect selector is retired. --- */
-[data-bkm-chart="heatmap"] .ts-bkm-heatmap-rect {
-  cursor: default;
-}
-
 /* TanStack Chart surface inside the heatmap — match the old .ts-bkm-heatmap-svg
    sizing and ensure it doesn't overflow. */
 [data-bkm-chart="heatmap"] .ts-bkm-heatmap-svg {

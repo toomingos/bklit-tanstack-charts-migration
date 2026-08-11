@@ -9,7 +9,7 @@ export function estimateSpringSettleMs(
   damping: number,
   mass: number,
 ): number {
-  const resolver = createSpringResolver(stiffness, damping, mass, 0, 0);
+  const resolver = createSpringResolver(stiffness, damping, mass, 0, 1);
   let tMs = 0;
   let prev = 0;
   let settledFrames = 0;
@@ -39,7 +39,7 @@ export function sampleSpringProgress(
 ): number[] {
   const out: number[] = [];
   const dt = durationMs / (samples - 1);
-  const resolver = createSpringResolver(stiffness, damping, mass, 0, 0);
+  const resolver = createSpringResolver(stiffness, damping, mass, 0, 1);
   for (let i = 0; i < samples; i++) {
     const pos = resolver(i * dt);
     out.push(Math.max(0, Math.min(1, pos)));

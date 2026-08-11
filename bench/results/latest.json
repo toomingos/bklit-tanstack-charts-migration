@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-08T15:25:46.325Z",
+  "timestamp": "2026-08-10T21:15:11.059Z",
   "chromium": "151.0.7922.34",
   "config": {
     "warmupRuns": 1,
@@ -12,9 +12,9 @@
   "skipped": [
     {
       "impl": "migrated",
-      "chart": "liveline",
-      "n": 100,
-      "reason": "mouse.move: Target page, context or browser has been closed"
+      "chart": "radar",
+      "n": 20,
+      "reason": "page.evaluate: Target page, context or browser has been closed"
     }
   ]
 }

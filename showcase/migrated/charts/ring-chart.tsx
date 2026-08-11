@@ -56,6 +56,7 @@ import {
   revealTiming,
   type RingEnterTransition,
 } from "./internal/ring-reveal";
+import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
 import "./styles.css";
 
 export type { RingEnterTransition } from "./internal/ring-reveal";
@@ -256,9 +257,12 @@ type AnyRadialArcMark = ReturnType<typeof radialArc<RingArcDatum>>;
 
 // Per-ring state the imperative layer reads at mount time for WAAPI reveal.
 // Tracked by ring index so the hover runtime is looked up by the same key.
+// Holds both track+progress group els so the hover runtime can write the
+// unified scale transform to the whole band (two sibling marks form one ring).
 interface RingImperativeState {
   runtime: RingHoverRuntime;
-  groupEl: SVGGElement | null;
+  trackGroupEl: SVGGElement | null;
+  progressGroupEl: SVGGElement | null;
   progressPathEl: SVGPathElement | null;
 }
 
@@ -333,10 +337,19 @@ export function RingChart({
   const arcRange = endAngle - startAngle;
 
   // --- Children classification (Ring props → configs, RingCenter → overlay). ---
-  const { centerChildren, ringConfigs } = useMemo(
+  const rawClassified = useMemo(
     () => classifyChildren(children, geometryScrubbing),
     [children, geometryScrubbing],
   );
+  const centerChildren = rawClassified.centerChildren;
+  const ringConfigsKey = useMemo(
+    () =>
+      rawClassified.ringConfigs
+        .map((c) => `${c.index}:${c.animate ? 1 : 0}:${c.showGlow ? 1 : 0}:${c.lineCap}:${c.color ?? ""}`)
+        .join("|"),
+    [rawClassified.ringConfigs],
+  );
+  const ringConfigs = useMemo(() => rawClassified.ringConfigs, [ringConfigsKey]);
 
   const ringConfigMap = useMemo(
     () => new Map(ringConfigs.map((c) => [c.index, c])),
@@ -468,6 +481,8 @@ export function RingChart({
   // --- Imperative ring state: one runtime per ring, DOM refs populated
   // after TanStack renders. ---
   const ringStateRef = useRef<Map<number, RingImperativeState>>(new Map());
+  const pendingExpandAnimsRef = useRef<Map<number, Animation>>(new Map());
+  const revealAnimsRef = useRef<Animation[]>([]);
 
   // --- WAAPI reveal (handleRender) + hover chrome (useLayoutEffect below).
   // Reveal runs once guarded by the SVG's bkmRevealed DOM attribute; hover
@@ -475,11 +490,12 @@ export function RingChart({
   // data-ts-key attributes on the rendered SVG groups. ---
   const enterTransitionRef = useRef(enterTransition);
   enterTransitionRef.current = enterTransition;
+  const enterStaggerScaleRef = useRef(enterStaggerScale);
+  enterStaggerScaleRef.current = enterStaggerScale;
 
   const hoverInputsRef = useRef({
     data: [] as RingData[],
     ringConfigMap: new Map<number, RingChildConfig>(),
-    ringConfigs: [] as RingChildConfig[],
     getRingRadii: (() => ({ innerRadius: 0, outerRadius: 0 })) as (index: number) => { innerRadius: number; outerRadius: number },
     getColor: (() => "") as (index: number) => string,
     startAngle: -Math.PI / 2,
@@ -487,7 +503,7 @@ export function RingChart({
     arcRange: 2 * Math.PI,
     geometryScrubbing: false,
   });
-  hoverInputsRef.current = { data, ringConfigMap, ringConfigs, getRingRadii, getColor, startAngle, endAngle, arcRange, geometryScrubbing };
+  hoverInputsRef.current = { data, ringConfigMap, getRingRadii, getColor, startAngle, endAngle, arcRange, geometryScrubbing };
 
   // -----------------------------------------------------------------------
   // handleRender — WAAPI reveal. Animates only rings whose index has NOT yet
@@ -498,98 +514,150 @@ export function RingChart({
   // -----------------------------------------------------------------------
   const seenRingRevealedRef = useRef<Set<number>>(new Set());
 
-  const handleRender = useCallback(({ container }: { container: HTMLElement }) => {
+   const handleRender = useCallback(({ container }: { container: HTMLElement }) => {
     const { geometryScrubbing: scrubbing } = hoverInputsRef.current;
     if (scrubbing) return;
-    const svg = container.querySelector<SVGSVGElement>("svg");
-    if (!svg) return;
+    const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks") as SVGGElement | null;
+    if (!marksGroup) return;
 
     const { data: currData, ringConfigMap: currMap, getRingRadii: currGetRadii, startAngle: currStartAngle, arcRange: currArcRange } = hoverInputsRef.current;
-
     const seen = seenRingRevealedRef.current;
 
+    // Growth: if n shrinks then grows, allow re-reveal of new indices
+    // but keep the per-index guard so 2→4 only animates 2,3.
+    const toReveal: number[] = [];
     for (let i = 0; i < currData.length; i++) {
       if (seen.has(i)) continue;
-
       const ringData = currData[i];
       if (!ringData) continue;
-
-      const trackGroup = svg.querySelector(`[data-ts-key="ring-${i}-track"]`) as SVGGElement | null;
-      const progressGroup = svg.querySelector(`[data-ts-key="ring-${i}-progress"]`) as SVGGElement | null;
-      const progressPathEl = (progressGroup?.querySelector("path") as SVGPathElement | null) ?? null;
-
-      const config = currMap.get(i);
-      const { innerRadius, outerRadius } = currGetRadii(i);
-      const cornerRadius = config?.lineCap === "round" ? (outerRadius - innerRadius) / 2 : 0;
-      const progress = ringData.value / ringData.maxValue;
-
-      if (!config?.animate) {
-        if (trackGroup) trackGroup.style.visibility = "visible";
-        if (progressGroup) progressGroup.style.visibility = "visible";
+      const cfg = currMap.get(i);
+      if (!cfg?.animate) {
         seen.add(i);
-        // Even without WAAPI, settle the hover runtime if it already exists.
         ringStateRef.current.get(i)?.runtime.settleAtRest();
         continue;
       }
-
-      if (!trackGroup) continue;
-
+      const tg =
+        (marksGroup.querySelector(`[data-ts-key="ring-${i}-track"]`) as SVGGElement | null) ??
+        (container.querySelector(`[data-ts-key="ring-${i}-track"]`) as SVGGElement | null);
+      if (!tg) continue;
       seen.add(i);
+      toReveal.push(i);
+    }
+    if (toReveal.length === 0) return;
 
-      const resolved = resolveEnterTransition(enterTransitionRef.current, RING_TWEEN_FALLBACK);
-      const timing = revealTiming(resolved);
-      const expandDelayMs = i * 0.08 * enterStaggerScale * 1000;
-      const progressDelayMs = (0.6 + i * 0.1) * enterStaggerScale * 1000;
+    const svgForBkm = container.querySelector<SVGElement>("svg.ts-chart") as SVGElement | null;
+    if (svgForBkm && !svgForBkm.getAttribute("data-bkm-revealed")) {
+      svgForBkm.setAttribute("data-bkm-revealed", "1");
+    }
+    marksGroup.classList.add("ts-chart__marks--revealing");
 
-      const expandKeyframes = buildProgressKeyframes(timing, (p) => ({ transform: `scale(${p})` }));
-      const expandAnim = trackGroup.animate(expandKeyframes, {
-        duration: timing.durationMs,
-        delay: expandDelayMs,
-        easing: timing.easing,
-        fill: "backwards",
-      });
-      expandAnim.onfinish = () => {
-        expandAnim.cancel();
-        trackGroup.style.visibility = "visible";
-        if (progressGroup) progressGroup.style.visibility = "visible";
-        ringStateRef.current.get(i)?.runtime.settleAtRest();
-      };
+    const resolved = resolveEnterTransition(enterTransitionRef.current, RING_TWEEN_FALLBACK);
+    const timing = revealTiming(resolved);
+    const maxDelayMs = Math.max(...toReveal.map((i) => (0.6 + i * 0.1) * enterStaggerScaleRef.current * 1000));
+    setRevealDeadline(timing.durationMs + maxDelayMs, {
+      animationsRef: revealAnimsRef,
+      onDeadline: () => {},
+    });
 
-      if (progressGroup && progressPathEl && progress > 0.001) {
-        const progressKeyframes = buildProgressKeyframes(timing, (p) => {
-          const currentEnd = currStartAngle + currArcRange * progress * p;
-          if (currentEnd <= currStartAngle + 0.01) return { d: "none" };
-          const d = pieArcPath(innerRadius, outerRadius, currStartAngle, currentEnd, cornerRadius, 0);
-          return { d: `path('${d.replace(/'/g, "\\'")}')` };
-        });
-        const progressAnim = progressPathEl.animate(progressKeyframes, {
+    for (const i of toReveal) {
+      const trackGroup =
+        (marksGroup.querySelector(`[data-ts-key="ring-${i}-track"]`) as SVGGElement | null) ??
+        (container.querySelector(`[data-ts-key="ring-${i}-track"]`) as SVGGElement | null);
+      if (trackGroup) trackGroup.style.transform = "";
+      const progressGroup =
+        (marksGroup.querySelector(`[data-ts-key="ring-${i}-progress"]`) as SVGGElement | null) ??
+        (container.querySelector(`[data-ts-key="ring-${i}-progress"]`) as SVGGElement | null);
+      if (progressGroup) progressGroup.style.transform = "";
+      pendingExpandAnimsRef.current.set(i, { cancel() {} } as unknown as Animation);
+    }
+
+    onPostPaint(() => {
+      for (const i of toReveal) {
+        const ringData = currData[i];
+        if (!ringData) continue;
+        // Re-query marksGroup live — TanStack's reconcile may have replaced it
+        const liveMarksGroup = container.querySelector<SVGGElement>(".ts-chart__marks") as SVGGElement | null;
+        const liveContainer = container;
+        const trackGroup =
+          (liveMarksGroup?.querySelector(`[data-ts-key="ring-${i}-track"]`) as SVGGElement | null) ??
+          (liveContainer.querySelector(`[data-ts-key="ring-${i}-track"]`) as SVGGElement | null);
+        const progressGroup =
+          (liveMarksGroup?.querySelector(`[data-ts-key="ring-${i}-progress"]`) as SVGGElement | null) ??
+          (liveContainer.querySelector(`[data-ts-key="ring-${i}-progress"]`) as SVGGElement | null);
+        const progressPathEl = (progressGroup?.querySelector("path") as SVGPathElement | null) ?? null;
+        const config = currMap.get(i);
+        if (!config || !trackGroup) continue;
+        const { innerRadius, outerRadius } = currGetRadii(i);
+        const cornerRadius = config.lineCap === "round" ? (outerRadius - innerRadius) / 2 : 0;
+        const progress = ringData.value / ringData.maxValue;
+        const expandDelayMs = i * 0.08 * enterStaggerScaleRef.current * 1000;
+        const progressDelayMs = (0.6 + i * 0.1) * enterStaggerScaleRef.current * 1000;
+
+        const expandKeyframes = buildProgressKeyframes(timing, (p) => ({ transform: `scale(${p})` }));
+        const expandAnim = trackGroup.animate(expandKeyframes, {
           duration: timing.durationMs,
-          delay: progressDelayMs,
+          delay: expandDelayMs,
           easing: timing.easing,
           fill: "backwards",
         });
-        progressAnim.onfinish = () => {
-          progressAnim.cancel();
-          progressPathEl.style.visibility = "visible";
-          if (progressGroup) progressGroup.style.visibility = "visible";
+        pendingExpandAnimsRef.current.set(i, expandAnim);
+        revealAnimsRef.current.push(expandAnim);
+        const settleForI = () => {
+          pendingExpandAnimsRef.current.delete(i);
+          ringStateRef.current.get(i)?.runtime.settleAtRest();
         };
+        expandAnim.onfinish = () => {
+          expandAnim.cancel();
+          settleForI();
+        };
+        expandAnim.oncancel = () => {
+          pendingExpandAnimsRef.current.delete(i);
+        };
+
+        if (progressGroup && progressPathEl && progress > 0.001) {
+          const progressKeyframes = buildProgressKeyframes(timing, (p) => {
+            const currentEnd = currStartAngle + currArcRange * progress * p;
+            if (currentEnd <= currStartAngle + 0.01) return { d: "none" };
+            const d = pieArcPath(innerRadius, outerRadius, currStartAngle, currentEnd, cornerRadius, 0);
+            return { d: `path('${d.replace(/'/g, "\\'")}')` };
+          });
+          const progressAnim = progressPathEl.animate(progressKeyframes, {
+            duration: timing.durationMs,
+            delay: progressDelayMs,
+            easing: timing.easing,
+            fill: "backwards",
+          });
+          revealAnimsRef.current.push(progressAnim);
+          progressAnim.onfinish = () => progressAnim.cancel();
+          progressAnim.oncancel = () => progressAnim.cancel();
+        }
       }
-    }
-  }, [enterStaggerScale]);
+      const liveMarksGroup2 = container.querySelector<SVGGElement>(".ts-chart__marks") as SVGGElement | null;
+      liveMarksGroup2?.classList.remove("ts-chart__marks--revealing");
+    });
+  }, []);
 
   // -----------------------------------------------------------------------
   // Hover chrome — imperative spring runtimes + pointer listeners attached
   // directly to TanStack-rendered SVG groups. Stable deps so it only re-runs
   // on structural changes, not on every prop identity change. Cleaned up on
   // unmount or when deps change.
+  //
+  // Two-writer handoff (C1): WAAPI expand owns `transform` until its
+  // Animation.finished settles the hover runtime. This effect MUST NOT
+  // eagerly settle animated rings that are still mid-reveal — doing so
+  // writes inline `scale(1)` and clobbers the running WAAPI animation.
+  // Only `animate=false` settles immediately; animated rings settle
+  // exclusively via handleRender's expandAnim.onfinish.
   // -----------------------------------------------------------------------
   useLayoutEffect(() => {
     const { geometryScrubbing: scrubbing } = hoverInputsRef.current;
     if (scrubbing) return;
     const container = containerRef.current;
     if (!container) return;
-    const svg = container.querySelector("svg");
-    if (!svg) return;
+    const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
+    const svgFallback = container.querySelector("svg");
+    if (!marksGroup && !svgFallback) return;
 
     const stateMap = ringStateRef.current;
     const cleanupMap = new Map<Element, () => void>();
@@ -599,11 +667,17 @@ export function RingChart({
     }
     stateMap.clear();
 
-    const { data: currData, ringConfigMap: currMap, getColor: currGetColor } = hoverInputsRef.current;
+    const { data: currData, ringConfigMap: currMap, getColor: currGetColor, geometryScrubbing: liveScrubbing } = hoverInputsRef.current;
+    // Re-check after clearing — outer closure captured stale scrubbing, live ref is current.
+    if (liveScrubbing) return;
 
     for (let i = 0; i < currData.length; i++) {
-      const trackGroup = svg.querySelector(`[data-ts-key="ring-${i}-track"]`) as SVGGElement | null;
-      const progressGroup = svg.querySelector(`[data-ts-key="ring-${i}-progress"]`) as SVGGElement | null;
+      const trackGroup =
+        (marksGroup?.querySelector(`[data-ts-key="ring-${i}-track"]`) as SVGGElement | null) ??
+        (container.querySelector(`[data-ts-key="ring-${i}-track"]`) as SVGGElement | null);
+      const progressGroup =
+        (marksGroup?.querySelector(`[data-ts-key="ring-${i}-progress"]`) as SVGGElement | null) ??
+        (container.querySelector(`[data-ts-key="ring-${i}-progress"]`) as SVGGElement | null);
       const progressPathEl = (progressGroup?.querySelector("path") as SVGPathElement | null) ?? null;
 
       if (!trackGroup) continue;
@@ -614,33 +688,76 @@ export function RingChart({
 
       runtime.update({
         index: i,
-        groupEl: trackGroup,
+        trackGroupEl: trackGroup,
+        progressGroupEl: progressGroup,
         showGlow: config?.showGlow ?? true,
         color,
       });
 
-      if (!config?.animate) {
-        runtime.settleAtRest();
-      }
-
       stateMap.set(i, {
         runtime,
-        groupEl: trackGroup,
+        trackGroupEl: trackGroup,
+        progressGroupEl: progressGroup,
         progressPathEl,
       });
 
-      trackGroup.style.cursor = "pointer";
-      trackGroup.style.transformOrigin = "0px 0px";
+      // Defer settleAtRest until WAAPI expand finishes — otherwise hover's inline scale(1) clobbers the running animation.
+      // With deferred onPostPaint, pending is empty until that tick, so also guard on !seen (first mount not yet deferred).
+      if (!config?.animate) {
+        runtime.settleAtRest();
+      } else if (pendingExpandAnimsRef.current.has(i)) {
+        // WAAPI owns transform; onfinish will settle.
+      } else {
+        const alreadySeen = seenRingRevealedRef.current.has(i);
+        if (alreadySeen) runtime.settleAtRest();
+      }
+
+      // Unified hit area: two sibling marks per ring — the colored progress arc
+      // sits on top and would otherwise intercept pointer events, so only the
+      // grey crescent behind would be hittable. Make the whole band hittable
+      // by (a) letting pointer events pass through the progress mark's group
+      // + path, so the track remains the hit target everywhere, AND (b)
+      // attaching the same hover listeners to both groups so either path works
+      // even if pointer-events semantics change. Single spring still owns both
+      // groups' transform (see ring-hover-chrome.ts applyTransform).
+      for (const el of [trackGroup, progressGroup] as const) {
+        if (!el) continue;
+        el.style.cursor = "pointer";
+      }
+      if (progressGroup) {
+        progressGroup.style.pointerEvents = "none";
+      }
+      if (progressPathEl) {
+        (progressPathEl as SVGPathElement).style.pointerEvents = "none";
+      }
 
       const enter = () => coordinator.requestHover(i);
       const leave = () => coordinator.requestUnhover();
+      // Primary listener on track (always hittable). Secondary on progress
+      // group for resilience — harmless if pointerEvents:none makes it never
+      // fire, essential if that style is ever removed.
       trackGroup.addEventListener("pointerenter", enter);
       trackGroup.addEventListener("pointerleave", leave);
-
       cleanupMap.set(trackGroup, () => {
         trackGroup.removeEventListener("pointerenter", enter);
         trackGroup.removeEventListener("pointerleave", leave);
       });
+      if (progressGroup) {
+        progressGroup.addEventListener("pointerenter", enter);
+        progressGroup.addEventListener("pointerleave", leave);
+        // Chain with track cleanup under a single key to keep teardown simple.
+        const prevCleanup = cleanupMap.get(trackGroup)!;
+        cleanupMap.set(trackGroup, () => {
+          prevCleanup();
+          progressGroup.removeEventListener("pointerenter", enter);
+          progressGroup.removeEventListener("pointerleave", leave);
+        });
+        // Also register directly so the return cleanup can find either key.
+        cleanupMap.set(progressGroup, () => {
+          progressGroup.removeEventListener("pointerenter", enter);
+          progressGroup.removeEventListener("pointerleave", leave);
+        });
+      }
     }
 
     const unsub = coordinator.subscribe(() => {
@@ -653,7 +770,8 @@ export function RingChart({
         const color = config?.color || liveGetColor(i);
         state.runtime.update({
           index: i,
-          groupEl: state.groupEl!,
+          trackGroupEl: state.trackGroupEl!,
+          progressGroupEl: state.progressGroupEl ?? null,
           showGlow: config?.showGlow ?? true,
           color,
         });
@@ -669,7 +787,8 @@ export function RingChart({
       const color = config?.color || currGetColor(i);
       state.runtime.update({
         index: i,
-        groupEl: state.groupEl!,
+        trackGroupEl: state.trackGroupEl!,
+        progressGroupEl: state.progressGroupEl ?? null,
         showGlow: config?.showGlow ?? true,
         color,
       });
@@ -680,27 +799,63 @@ export function RingChart({
       unsub();
       for (const state of stateMap.values()) {
         state.runtime.stop();
-        const cleanup = state.groupEl ? cleanupMap.get(state.groupEl) : undefined;
-        if (cleanup) {
-          cleanup();
-          cleanupMap.delete(state.groupEl!);
+        const trackCleanup = state.trackGroupEl ? cleanupMap.get(state.trackGroupEl) : undefined;
+        if (trackCleanup) {
+          trackCleanup();
+          if (state.trackGroupEl) cleanupMap.delete(state.trackGroupEl);
+        }
+        const progCleanup = state.progressGroupEl ? cleanupMap.get(state.progressGroupEl) : undefined;
+        if (progCleanup) {
+          progCleanup();
+          if (state.progressGroupEl) cleanupMap.delete(state.progressGroupEl);
         }
       }
     };
   }, [data.length, geometryScrubbing]);
 
-  // Unmount safety net — stop runtimes if hover effect never ran
-  // (e.g., geometryScrubbing true or SVG not yet in DOM). The hover
-  // useLayoutEffect return is the primary cleanup; this is the secondary
-  // net that no longer needs a global map.
+  // Cleanup only on actual unmount — NOT on StrictMode double-invoke.
+  const isMountedRef = useRef(true);
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      const stateMap = ringStateRef.current;
-      for (const state of stateMap.values()) {
-        state.runtime.stop();
-      }
+      isMountedRef.current = false;
+      setTimeout(() => {
+        if (isMountedRef.current) return;
+        for (const anim of pendingExpandAnimsRef.current.values()) {
+          try { anim.cancel(); } catch {}
+        }
+        pendingExpandAnimsRef.current.clear();
+        for (const anim of revealAnimsRef.current) {
+          try { anim.cancel(); } catch {}
+        }
+        revealAnimsRef.current = [];
+        for (const state of ringStateRef.current.values()) state.runtime.stop();
+      }, 0);
     };
   }, []);
+
+  // size <10 → >=10 fallback: retry handleRender once past first paint if onRender hasn't fired.
+  useLayoutEffect(() => {
+    if (geometryScrubbing) return;
+    if (seenRingRevealedRef.current.size > 0) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const hasAnims = () => {
+      for (let i = 0; i < data.length; i++) {
+        const el = (container.querySelector(`[data-ts-key="ring-${i}-track"]`) as Element | null);
+        if (el && (el as unknown as { getAnimations?: () => Animation[] }).getAnimations?.().length) return true;
+      }
+      return false;
+    };
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (hasAnims()) return;
+        if (!container.querySelector(".ts-chart__marks")) return;
+        handleRender({ container });
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [data.length, geometryScrubbing, handleRender]);
 
   const renderContent = size >= 10;
 

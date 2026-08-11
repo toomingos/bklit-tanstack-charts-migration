@@ -289,7 +289,7 @@ if (results.length === 0) {
 
 const generated = out.join("\n").trimEnd() + "\n";
 
-const docPath = path.join(ROOT, "docs", "BENCHMARKS.md");
+const docPath = path.join(ROOT, "docs", "phase-2", "BENCHMARKS.md");
 const doc = readFileSync(docPath, "utf-8");
 const beginIdx = doc.indexOf(BEGIN);
 const endIdx = doc.indexOf(END);

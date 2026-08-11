@@ -14,6 +14,7 @@
 import { curveLinearClosed, lineRadial } from "d3-shape";
 import type { SceneNode } from "@tanstack/charts";
 import type { PolarGuide, PolarGuideScene } from "@tanstack/charts/polar";
+import { estimateSpringSettleMs, sampleSpringProgress } from "./radar-spring";
 
 export interface BklitRadarGridOptions {
   levels: number;
@@ -106,4 +107,119 @@ export function bklitRadarGrid(options: BklitRadarGridOptions): PolarGuide {
       };
     },
   };
+}
+
+// --- Reveal timing (per-family duplicate of ring-reveal.ts, D43 precedent) ---
+
+export const RADAR_TWEEN_DURATION_MS = 1100;
+export const RADAR_TWEEN_EASE_CSS = "cubic-bezier(0.85, 0, 0.15, 1)";
+
+export interface RadarEnterTransition {
+  type?: "spring" | "tween";
+  duration?: number;
+  ease?: readonly [number, number, number, number];
+  bounce?: number;
+  stiffness?: number;
+  damping?: number;
+  mass?: number;
+}
+
+export type RadarResolvedTiming =
+  | { kind: "tween"; durationMs: number; easingCss: string }
+  | { kind: "spring"; stiffness: number; damping: number; mass: number };
+
+export const RADAR_TWEEN_FALLBACK: RadarResolvedTiming = {
+  kind: "tween",
+  durationMs: RADAR_TWEEN_DURATION_MS,
+  easingCss: RADAR_TWEEN_EASE_CSS,
+};
+
+function springFromBounce(
+  bounce: number,
+  base: { stiffness: number; damping: number },
+): { stiffness: number; damping: number } {
+  return {
+    stiffness: Math.min(400, Math.max(80, base.stiffness * (1 + bounce * 0.35))),
+    damping: Math.max(8, base.damping * (1 - bounce * 0.25)),
+  };
+}
+
+export function resolveRadarEnterTransition(
+  transition: RadarEnterTransition | undefined,
+  fallback: RadarResolvedTiming = RADAR_TWEEN_FALLBACK,
+): RadarResolvedTiming {
+  if (!transition) return fallback;
+  const type = transition.type ?? fallback.kind;
+  if (type === "spring") {
+    if (
+      typeof transition.stiffness === "number" &&
+      typeof transition.damping === "number"
+    ) {
+      return {
+        kind: "spring",
+        stiffness: transition.stiffness,
+        damping: transition.damping,
+        mass: transition.mass ?? (fallback.kind === "spring" ? fallback.mass : 1),
+      };
+    }
+    const base =
+      fallback.kind === "spring"
+        ? { stiffness: fallback.stiffness, damping: fallback.damping }
+        : { stiffness: 100, damping: 15 };
+    const bounce = transition.bounce ?? 0;
+    const { stiffness, damping } = springFromBounce(bounce, base);
+    return {
+      kind: "spring",
+      stiffness,
+      damping,
+      mass: transition.mass ?? (fallback.kind === "spring" ? fallback.mass : 1),
+    };
+  }
+  const durationMs =
+    (transition.duration ??
+      (fallback.kind === "tween" ? fallback.durationMs / 1000 : 1.1)) * 1000;
+  const easingCss = transition.ease
+    ? `cubic-bezier(${transition.ease.join(",")})`
+    : fallback.kind === "tween"
+      ? fallback.easingCss
+      : RADAR_TWEEN_EASE_CSS;
+  return { kind: "tween", durationMs, easingCss };
+}
+
+export interface RadarRevealTiming {
+  durationMs: number;
+  easing: string;
+  sampledProgress: number[];
+}
+
+const TWEEN_SAMPLES = 64;
+const UNIFORM_PROGRESS = Array.from(
+  { length: TWEEN_SAMPLES },
+  (_, i) => i / (TWEEN_SAMPLES - 1),
+);
+
+export function radarRevealTiming(resolved: RadarResolvedTiming): RadarRevealTiming {
+  if (resolved.kind === "tween") {
+    return {
+      durationMs: resolved.durationMs,
+      easing: resolved.easingCss,
+      sampledProgress: UNIFORM_PROGRESS,
+    };
+  }
+  const durationMs = estimateSpringSettleMs(resolved.stiffness, resolved.damping, resolved.mass);
+  const sampledProgress = sampleSpringProgress(
+    resolved.stiffness,
+    resolved.damping,
+    resolved.mass,
+    durationMs,
+    40,
+  );
+  return { durationMs, easing: "linear", sampledProgress };
+}
+
+export function buildRadarProgressKeyframes(
+  timing: RadarRevealTiming,
+  toKeyframe: (progress: number) => Keyframe,
+): Keyframe[] {
+  return timing.sampledProgress.map(toKeyframe);
 }

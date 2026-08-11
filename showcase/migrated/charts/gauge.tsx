@@ -556,11 +556,21 @@ function GaugeArc(props: GaugeArcProps) {
   const seenActiveRef = React.useRef<Set<string>>(new Set());
   const revealAnimationsRef = React.useRef<Animation[]>([]);
   const renderGenRef = React.useRef(0);
+  const isMountedRef = React.useRef(true);
 
   React.useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      for (const anim of revealAnimationsRef.current) anim.cancel();
-      revealAnimationsRef.current = [];
+      isMountedRef.current = false;
+      setTimeout(() => {
+        if (isMountedRef.current) return;
+        for (const anim of revealAnimationsRef.current) {
+          try {
+            anim.cancel();
+          } catch {}
+        }
+        revealAnimationsRef.current = [];
+      }, 0);
     };
   }, []);
 
@@ -576,9 +586,13 @@ function GaugeArc(props: GaugeArcProps) {
       : revealTiming(resolveEnterTransition(enterTransition, GAUGE_SPRING_FALLBACK));
 
     const collectTargets = (): [GaugeRevealTarget[], GaugeRevealTarget[]] => {
-      const radialArcGroups = marksGroup.querySelectorAll<SVGGElement>(".ts-chart__radial-arc");
-      const bgGroup = radialArcGroups[0];
-      const activeGroup = radialArcGroups[1];
+      const container = containerRef.current;
+      const bgGroup =
+        (marksGroup.querySelector<SVGGElement>('[data-ts-key="gauge-bg"]') as SVGGElement | null) ??
+        (container?.querySelector<SVGGElement>('[data-ts-key="gauge-bg"]') as SVGGElement | null);
+      const activeGroup =
+        (marksGroup.querySelector<SVGGElement>('[data-ts-key="gauge-active"]') as SVGGElement | null) ??
+        (container?.querySelector<SVGGElement>('[data-ts-key="gauge-active"]') as SVGGElement | null);
 
       const bgTargets: GaugeRevealTarget[] = bgGroup
         ? Array.from(bgGroup.querySelectorAll<SVGPathElement>("path")).map((el, idx) => ({
@@ -599,7 +613,7 @@ function GaugeArc(props: GaugeArcProps) {
       return [bgTargets, activeTargets];
     };
 
-      const firstReveal = seenBgRef.current.size === 0 && seenActiveRef.current.size === 0;
+    const firstReveal = seenBgRef.current.size === 0 && seenActiveRef.current.size === 0;
     if (!firstReveal) {
       const trackReveal = trackRevealFactory(revealAnimationsRef);
       const [bgTargets, activeTargets] = collectTargets();
