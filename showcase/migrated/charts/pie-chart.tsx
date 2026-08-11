@@ -72,6 +72,7 @@ import {
   revealTiming,
   type PieEnterTransition,
 } from "./internal/pie-reveal";
+import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
 import {
   PieStableContext,
   PieHoverCoordinatorContext,
@@ -432,6 +433,9 @@ export function PieChart({
 
   const sliceElementMapRef = useRef<Map<number, SVGPathElement>>(new Map());
   const seenPieRevealedRef = useRef<Set<number>>(new Set());
+  const pendingRevealRef = useRef<Map<number, Animation>>(new Map());
+  const revealAnimsRef = useRef<Animation[]>([]);
+  const isMountedRef = useRef(true);
 
   const handleRender = useCallback(({ container }: { container: HTMLElement }) => {
     if (geometryScrubbing) return;
@@ -441,61 +445,108 @@ export function PieChart({
 
     const { arcs, sliceConfigMap, innerRadius, availableRadius, cornerRadius, enterStaggerScale } = hoverInputsRef.current;
 
-    const elementMap = sliceElementMapRef.current;
     const seen = seenPieRevealedRef.current;
-    // Prune indices for slices that no longer exist so a later re-add replays (gauge-reveal.ts pattern).
     const liveIndices = new Set(arcs.map((a) => a.index));
     for (const key of seen) {
       if (!liveIndices.has(key)) seen.delete(key);
     }
-    // Per-slice data-ts-key lookup removes the fragile pathEls[i] <-> arcs[i] order assumption.
-    elementMap.clear();
-    for (const arc of arcs) {
-      const el =
-        (marksGroup.querySelector(`[data-ts-key="pie-slices:${arc.index}"]`) as SVGPathElement | null) ??
-        (container.querySelector(`[data-ts-key="pie-slices:${arc.index}"]`) as SVGPathElement | null);
-      if (el) elementMap.set(arc.index, el);
+
+    const allPaths =
+      marksGroup.querySelectorAll<SVGPathElement>('path[data-ts-key^="pie-slices:"]');
+    const searchPaths: SVGPathElement[] =
+      allPaths.length > 0
+        ? Array.from(allPaths)
+        : Array.from(container.querySelectorAll<SVGPathElement>('path[data-ts-key^="pie-slices:"]'));
+    const elementMap = new Map<number, SVGPathElement>();
+    for (const el of searchPaths) {
+      const k = el.getAttribute("data-ts-key") ?? "";
+      const idx = Number(k.slice(k.lastIndexOf(":") + 1));
+      if (!Number.isNaN(idx) && !elementMap.has(idx)) elementMap.set(idx, el);
     }
+    sliceElementMapRef.current = elementMap;
 
-    const resolved = resolveEnterTransition(enterTransitionRef.current, PIE_TWEEN_FALLBACK);
-    const timing = revealTiming(resolved);
-
+    const toReveal: { arc: PieArcData; dataIndex: number }[] = [];
     for (let i = 0; i < arcs.length; i++) {
       const arc = arcs[i] as PieArcData | undefined;
       if (!arc) continue;
       const sliceIndex = arc.index;
       if (seen.has(sliceIndex)) continue;
-
       const config = sliceConfigMap.get(sliceIndex);
-      if (!config || !config.animate) continue;
-
+      if (!config || !config.animate) {
+        seen.add(sliceIndex);
+        continue;
+      }
       const pathEl = elementMap.get(sliceIndex);
       if (!pathEl) continue;
-
-      const delayMs = (0.1 + i * 0.08) * enterStaggerScale * 1000;
       seen.add(sliceIndex);
-
-      const keyframes = buildProgressKeyframes(timing, (p) => {
-        const currentEnd = arc.startAngle + (arc.endAngle - arc.startAngle) * p;
-        if (currentEnd <= arc.startAngle + 0.01) {
-          return { d: "none" };
-        }
-        const d = pieArcPath(innerRadius, availableRadius, arc.startAngle, currentEnd, cornerRadius, arc.padAngle);
-        return { d: `path('${d.replace(/'/g, "\\'")}')` };
-      });
-
-      const anim = pathEl.animate(keyframes, {
-        duration: timing.durationMs,
-        delay: delayMs,
-        easing: timing.easing,
-        fill: "backwards",
-      });
-
-      anim.onfinish = () => {
-        anim.cancel();
-        pathEl.style.visibility = "visible";
-      };
+      toReveal.push({ arc, dataIndex: i });
     }
+    if (toReveal.length === 0) return;
+
+    const resolved = resolveEnterTransition(enterTransitionRef.current, PIE_TWEEN_FALLBACK);
+    const timing = revealTiming(resolved);
+    const maxDelayMs = Math.max(
+      ...toReveal.map(({ dataIndex }) => (0.1 + dataIndex * 0.08) * enterStaggerScale * 1000),
+      0,
+    );
+    setRevealDeadline(timing.durationMs + maxDelayMs, {
+      animationsRef: revealAnimsRef,
+      onDeadline: () => {},
+    });
+
+    for (const { arc } of toReveal) {
+      pendingRevealRef.current.set(arc.index, {} as unknown as Animation);
+    }
+
+    onPostPaint(() => {
+      const liveMarksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
+      const liveAll =
+        liveMarksGroup?.querySelectorAll<SVGPathElement>('path[data-ts-key^="pie-slices:"]') ??
+        ([] as unknown as NodeListOf<SVGPathElement>);
+      const liveSearch: SVGPathElement[] =
+        liveAll.length > 0
+          ? Array.from(liveAll as NodeListOf<SVGPathElement>)
+          : Array.from(container.querySelectorAll<SVGPathElement>('path[data-ts-key^="pie-slices:"]'));
+      const liveMap = new Map<number, SVGPathElement>();
+      for (const el of liveSearch) {
+        const k = el.getAttribute("data-ts-key") ?? "";
+        const idx = Number(k.slice(k.lastIndexOf(":") + 1));
+        if (!Number.isNaN(idx) && !liveMap.has(idx)) liveMap.set(idx, el);
+      }
+
+      for (const { arc, dataIndex } of toReveal) {
+        const liveEl = liveMap.get(arc.index);
+        if (!liveEl) {
+          pendingRevealRef.current.delete(arc.index);
+          continue;
+        }
+        const delayMs = (0.1 + dataIndex * 0.08) * enterStaggerScale * 1000;
+        const keyframes = buildProgressKeyframes(timing, (p) => {
+          const currentEnd = arc.startAngle + (arc.endAngle - arc.startAngle) * p;
+          if (currentEnd <= arc.startAngle + 0.01) {
+            return { d: "none" };
+          }
+          const d = pieArcPath(innerRadius, availableRadius, arc.startAngle, currentEnd, cornerRadius, arc.padAngle);
+          return { d: `path('${d.replace(/'/g, "\\'")}')` };
+        });
+
+        const anim = liveEl.animate(keyframes, {
+          duration: timing.durationMs,
+          delay: delayMs,
+          easing: timing.easing,
+          fill: "backwards",
+        });
+        pendingRevealRef.current.set(arc.index, anim);
+        revealAnimsRef.current.push(anim);
+        anim.onfinish = () => {
+          anim.cancel();
+          pendingRevealRef.current.delete(arc.index);
+        };
+        anim.oncancel = () => {
+          pendingRevealRef.current.delete(arc.index);
+        };
+      }
+    });
   }, [geometryScrubbing]);
 
   useLayoutEffect(() => {
@@ -503,7 +554,8 @@ export function PieChart({
     const container = containerRef.current;
     if (!container) return;
     const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marksGroup) return;
+    const svgFallback = container.querySelector("svg");
+    if (!marksGroup && !svgFallback) return;
 
     const { arcs, sliceConfigMap, innerRadius, availableRadius, cornerRadius, hoverOffset, getColor, getFill } = hoverInputsRef.current;
 
@@ -515,27 +567,42 @@ export function PieChart({
     }
     stateMap.clear();
 
-    const elementMap = sliceElementMapRef.current;
+    const liveAll =
+      marksGroup?.querySelectorAll<SVGPathElement>('path[data-ts-key^="pie-slices:"]') ??
+      ([] as unknown as NodeListOf<SVGPathElement>);
+    const liveSearch: SVGPathElement[] =
+      liveAll.length > 0
+        ? Array.from(liveAll as NodeListOf<SVGPathElement>)
+        : Array.from(container.querySelectorAll<SVGPathElement>('path[data-ts-key^="pie-slices:"]'));
+    const elementMap = new Map<number, SVGPathElement>();
+    for (const el of liveSearch) {
+      const k = el.getAttribute("data-ts-key") ?? "";
+      const idx = Number(k.slice(k.lastIndexOf(":") + 1));
+      if (!Number.isNaN(idx) && !elementMap.has(idx)) elementMap.set(idx, el);
+    }
+    sliceElementMapRef.current = elementMap;
 
     for (let i = 0; i < arcs.length; i++) {
-      const pathEl = elementMap.get(i) ?? null;
-      const groupEl = pathEl;
+      const arc = arcs[i] as PieArcData | undefined;
+      if (!arc) continue;
+      const pathEl = elementMap.get(arc.index) ?? null;
+      if (!pathEl) continue;
       const runtime = createPieSliceHoverRuntime();
-      stateMap.set(i, { runtime, groupEl, pathEl });
+      stateMap.set(arc.index, { runtime, groupEl: pathEl, pathEl });
     }
 
     for (let i = 0; i < arcs.length; i++) {
       const arc = arcs[i] as PieArcData | undefined;
       if (!arc) continue;
-      const state = stateMap.get(i);
-      const config = sliceConfigMap.get(i);
+      const state = stateMap.get(arc.index);
+      const config = sliceConfigMap.get(arc.index);
       if (!state || !state.pathEl || !config) continue;
 
       const sliceHoverOffset = config.hoverOffset ?? hoverOffset;
-      const sliceFill = config.fill || getFill(i);
+      const sliceFill = config.fill || getFill(arc.index);
 
       state.runtime.update({
-        index: i,
+        index: arc.index,
         visibleEl: state.pathEl,
         innerRadius,
         outerRadius: availableRadius,
@@ -546,20 +613,26 @@ export function PieChart({
         hoverOffset: sliceHoverOffset,
         hoverEffect: config.hoverEffect,
         showGlow: config.showGlow,
-        color: getColor(i),
+        color: getColor(arc.index),
         fill: sliceFill,
       });
       state.runtime.paint(coordinator.getHovered());
     }
 
     for (let i = 0; i < arcs.length; i++) {
-      const state = stateMap.get(i);
+      const arc = arcs[i] as PieArcData | undefined;
+      if (!arc) continue;
+      const state = stateMap.get(arc.index);
       const groupEl = state?.groupEl;
       if (!groupEl) continue;
 
       groupEl.style.cursor = "pointer";
 
-      const enter = () => coordinator.requestHover(i);
+      const sliceIndex = arc.index;
+      const enter = () => {
+        if (pendingRevealRef.current.has(sliceIndex)) return;
+        coordinator.requestHover(sliceIndex);
+      };
       const leave = () => coordinator.requestUnhover();
 
       groupEl.addEventListener("pointerenter", enter);
@@ -574,7 +647,9 @@ export function PieChart({
     const unsub = coordinator.subscribe(() => {
       const hov = coordinator.getHovered();
       for (let i = 0; i < arcs.length; i++) {
-        const state = stateMap.get(i);
+        const arc = arcs[i] as PieArcData | undefined;
+        if (!arc) continue;
+        const state = stateMap.get(arc.index);
         if (!state) continue;
         state.runtime.paint(hov);
       }
@@ -588,14 +663,47 @@ export function PieChart({
     };
   }, [data.length, geometryScrubbing]);
 
-  // Unmount safety net — stop runtimes.
-  // The hover useLayoutEffect's local Map + return handles listener removal;
-  // this catches the rare case where that effect hasn't run (e.g., size < 10 early return).
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      for (const state of sliceStateRef.current.values()) state.runtime.stop();
+      isMountedRef.current = false;
+      setTimeout(() => {
+        if (isMountedRef.current) return;
+        for (const anim of pendingRevealRef.current.values()) {
+          try { anim.cancel(); } catch {}
+        }
+        pendingRevealRef.current.clear();
+        for (const anim of revealAnimsRef.current) {
+          try { anim.cancel(); } catch {}
+        }
+        revealAnimsRef.current = [];
+        for (const state of sliceStateRef.current.values()) state.runtime.stop();
+      }, 0);
     };
   }, []);
+
+  useLayoutEffect(() => {
+    if (geometryScrubbing) return;
+    if (seenPieRevealedRef.current.size > 0) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const hasAnims = () => {
+      const paths = container.querySelectorAll('path[data-ts-key^="pie-slices:"]');
+      for (const el of paths) {
+        const anyEl = el as unknown as { getAnimations?: () => Animation[] };
+        if (anyEl.getAnimations?.().length) return true;
+      }
+      return false;
+    };
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (hasAnims()) return;
+        if (!container.querySelector(".ts-chart__marks")) return;
+        handleRender({ container });
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [data.length, geometryScrubbing, handleRender]);
 
   if (size < 10) {
     return (
