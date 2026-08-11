@@ -19,6 +19,12 @@ import { scaleBand, scaleOrdinal } from "d3-scale";
 import type { ScaleBand, ScaleOrdinal } from "d3-scale";
 import { createSpring } from "./spring";
 import { useHeatmap, type HeatmapMargin } from "./heatmap-context";
+import {
+  computeHeatmapEnterFadeDelayMs,
+  HEATMAP_DEFAULT_ENTER_EASE,
+  resolveHeatmapEnterFadeDurationSec,
+} from "./heatmap-animation";
+import { onPostPaint, setRevealDeadline } from "./deferred-reveal";
 import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
 import {
   HEATMAP_INACTIVE_OPACITY,
@@ -250,6 +256,9 @@ export function HeatmapCells({
   );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const chartHostRef = useRef<HTMLDivElement | null>(null);
+  const revealAnimsRef = useRef<Animation[]>([]);
+  const seenRevealEpochRef = useRef<number | null>(null);
   const inputsRef = useRef({ ctx, coordinator, cellsInteractive, cellData });
   inputsRef.current = { ctx, coordinator, cellsInteractive, cellData };
 
@@ -355,16 +364,153 @@ export function HeatmapCells({
     [inactiveOpacity],
   );
 
+  const revealInputsRef = useRef({
+    animateCells: ctx.animateCells,
+    revealEpoch: ctx.revealEpoch,
+    enterTransition: ctx.enterTransition,
+    animationDuration: ctx.animationDuration,
+    enterStaggerScale: ctx.enterStaggerScale,
+    cellData,
+  });
+  revealInputsRef.current = {
+    animateCells: ctx.animateCells,
+    revealEpoch: ctx.revealEpoch,
+    enterTransition: ctx.enterTransition,
+    animationDuration: ctx.animationDuration,
+    enterStaggerScale: ctx.enterStaggerScale,
+    cellData,
+  };
+
+  const handleRender = useCallback(
+    ({ container }: { container: HTMLElement }) => {
+      const { animateCells, revealEpoch, enterTransition, animationDuration, enterStaggerScale, cellData: cd } =
+        revealInputsRef.current;
+      const epochAtCall = revealEpoch;
+      if (!animateCells) return;
+      if (animationDuration <= 0) return;
+      if (seenRevealEpochRef.current === epochAtCall) return;
+      if (container.querySelector<HTMLElement>(".ts-chart__marks")?.dataset.bkmRevealed === "1") return;
+      seenRevealEpochRef.current = epochAtCall;
+      for (const a of revealAnimsRef.current) {
+        try {
+          a.cancel();
+        } catch {}
+      }
+      revealAnimsRef.current = [];
+      const marksGroup = container.querySelector<HTMLElement>(".ts-chart__marks");
+      if (!marksGroup) return;
+      marksGroup.dataset.bkmRevealed = "1";
+      marksGroup.classList.add("ts-chart__marks--revealing");
+      const fadeDurationSec = resolveHeatmapEnterFadeDurationSec(enterTransition, animationDuration);
+      const delayByKey = new Map<string, number>();
+      let maxDelayMs = 0;
+      for (const d of cd) {
+        const delayMs = computeHeatmapEnterFadeDelayMs({
+          column: d.column,
+          row: d.row,
+          revealEpoch: epochAtCall,
+          animationDurationMs: animationDuration,
+          enterStaggerScale,
+          fadeDurationSec,
+        });
+        const key = `${d.column}-${d.row}`;
+        delayByKey.set(key, delayMs);
+        if (delayMs > maxDelayMs) maxDelayMs = delayMs;
+      }
+      const animatedKeys = new Set<string>();
+      setRevealDeadline(fadeDurationSec * 1000 + maxDelayMs, {
+        animationsRef: revealAnimsRef,
+        onDeadline: () => {},
+      });
+      onPostPaint(() => {
+        const liveGroup = container.querySelector<HTMLElement>(".ts-chart__marks");
+        const liveRects =
+          liveGroup?.querySelectorAll<SVGRectElement>("rect[data-ts-key]") ??
+          container.querySelectorAll<SVGRectElement>("rect[data-ts-key]");
+        const liveByKey = new Map<string, SVGRectElement>();
+        for (const r of liveRects) {
+          const k = r.getAttribute("data-ts-key") ?? "";
+          const key = k.slice(k.lastIndexOf(":") + 1);
+          if (key && !liveByKey.has(key)) liveByKey.set(key, r);
+        }
+        const easing =
+          enterTransition?.ease
+            ? `cubic-bezier(${enterTransition.ease.join(",")})`
+            : `cubic-bezier(${HEATMAP_DEFAULT_ENTER_EASE.join(",")})`;
+        const durMs = fadeDurationSec * 1000;
+        for (const d of cd) {
+          const key = `${d.column}-${d.row}`;
+          if (animatedKeys.has(key)) continue;
+          const rect = liveByKey.get(key);
+          if (!rect) continue;
+          if (rect.getAnimations().length > 0) continue;
+          const delayMs = delayByKey.get(key) ?? 0;
+          animatedKeys.add(key);
+          const anim = rect.animate([{ opacity: "0" }, { opacity: "1" }], {
+            duration: durMs,
+            delay: delayMs,
+            easing,
+            fill: "backwards",
+          });
+          revealAnimsRef.current.push(anim);
+          anim.onfinish = () => {
+            try {
+              anim.cancel();
+            } catch {}
+          };
+        }
+        if (liveGroup) liveGroup.classList.remove("ts-chart__marks--revealing");
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      for (const a of revealAnimsRef.current) {
+        try {
+          a.cancel();
+        } catch {}
+      }
+      revealAnimsRef.current = [];
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    const { animateCells: ac, revealEpoch: re } = revealInputsRef.current;
+    if (!ac) return;
+    if (seenRevealEpochRef.current === re) return;
+    const host = chartHostRef.current;
+    if (!host) return;
+    const marks = host.querySelector<HTMLElement>(".ts-chart__marks");
+    if (!marks || marks.dataset.bkmRevealed === "1") return;
+    if (host.querySelectorAll("rect[data-ts-key]").length === 0) return;
+    if (host.getAnimations().length > 0) return;
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const liveMarks = host.querySelector<HTMLElement>(".ts-chart__marks");
+        if (seenRevealEpochRef.current === revealInputsRef.current.revealEpoch) return;
+        if (!liveMarks || liveMarks.dataset.bkmRevealed === "1") return;
+        if (host.getAnimations().length > 0) return;
+        handleRender({ container: host });
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [ctx.animateCells, ctx.revealEpoch, handleRender]);
+
   return (
     <div ref={containerRef} style={{ position: "relative", zIndex: 1 }}>
-      <Chart
-        className="ts-bkm-heatmap-svg"
-        ariaLabel="Heatmap chart"
-        definition={definition}
-        width={ctx.width}
-        height={ctx.height}
-        style={{ overflow: "visible" }}
-      />
+      <div ref={chartHostRef} style={{ position: "relative" }}>
+        <Chart
+          className="ts-bkm-heatmap-svg"
+          ariaLabel="Heatmap chart"
+          definition={definition}
+          width={ctx.width}
+          height={ctx.height}
+          style={{ overflow: "visible" }}
+          onRender={handleRender}
+        />
+      </div>
       <svg
         width={ctx.width}
         height={ctx.height}
