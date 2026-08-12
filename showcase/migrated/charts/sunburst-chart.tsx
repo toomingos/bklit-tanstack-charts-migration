@@ -42,7 +42,6 @@ import { Chart } from "@tanstack/react-charts";
 import { defineChart } from "@tanstack/charts";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { polar, radialArc } from "@tanstack/charts/polar";
-import { arc } from "d3-shape";
 import {
   arcPath,
   buildArcs,
@@ -54,6 +53,7 @@ import {
   applyHoverGrow,
   maxHoverSegmentThickness,
   defaultSunburstGrowPadding,
+  transitionGeometry,
   type ArcDatum,
   type Focus,
 } from "./internal/sunburst-geometry";
@@ -67,7 +67,8 @@ import {
   buildRevealKeyframes,
   buildRevealTiming,
 } from "./internal/sunburst-reveal";
-import { onPostPaint } from "./internal/deferred-reveal";
+import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { displayNameOf } from "./children";
 import { SunburstCenterOverlay } from "./internal/sunburst-center";
 import { SunburstLabelsOverlay } from "./internal/sunburst-labels";
@@ -75,24 +76,30 @@ import { SunburstHintDisplay } from "./internal/sunburst-hint";
 import "./styles.css";
 
 // ---------------------------------------------------------------------------
-// Color helper — bakes alpha into fill color string.
-// radialArc's fillOpacity is `number` (static), not VisualChannel.
+// Helpers (shared — were duplicated across 4 call sites)
 // ---------------------------------------------------------------------------
 
 function applyAlphaToColor(color: string, alpha: number): string {
   if (alpha >= 1) return color;
-  if (color.startsWith("#")) {
-    const hex = color.replace("#", "");
-    const r = parseInt(hex.slice(0, 2), 16);
-    const g = parseInt(hex.slice(2, 4), 16);
-    const b = parseInt(hex.slice(4, 6), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
+  return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
+}
+
+function isRelatedArc(a: ArcDatum, hovered: ArcDatum): boolean {
+  return a.id === hovered.id || a.id.startsWith(`${hovered.id} / `) || hovered.id.startsWith(`${a.id} / `);
+}
+
+function getSunburstPathMap(container: HTMLElement): Map<number, SVGPathElement> {
+  const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
+  const allPaths = marksGroup
+    ? marksGroup.querySelectorAll<SVGPathElement>('path[data-ts-key^="sunburst-arcs:"]')
+    : (container.querySelectorAll<SVGPathElement>('path[data-ts-key^="sunburst-arcs:"]') as NodeListOf<SVGPathElement>);
+  const map = new Map<number, SVGPathElement>();
+  for (const el of allPaths) {
+    const k = el.getAttribute("data-ts-key") ?? "";
+    const idx = Number(k.slice(k.lastIndexOf("-") + 1));
+    if (!Number.isNaN(idx) && !map.has(idx)) map.set(idx, el as SVGPathElement);
   }
-  if (color.startsWith("rgb(")) {
-    return color.replace("rgb(", "rgba(").replace(")", `,${alpha})`);
-  }
-  const pct = Math.round(alpha * 100);
-  return `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+  return map;
 }
 
 // ---------------------------------------------------------------------------
@@ -213,15 +220,15 @@ export function SunburstChart({
 }: SunburstChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // --- Phase tracking ---
+  const prefersReducedMotion = usePrefersReducedMotion();
+
+  // --- Phase tracking (deduped — just gate on last emitted value) ---
   const phaseRef = useRef<"loading" | "revealing" | "ready">("revealing");
-  const onPhaseChangeRef = useRef(onPhaseChange);
-  onPhaseChangeRef.current = onPhaseChange;
   const setPhase = useCallback((p: "loading" | "revealing" | "ready") => {
     if (phaseRef.current === p) return;
     phaseRef.current = p;
-    onPhaseChangeRef.current?.(p);
-  }, []);
+    onPhaseChange?.(p);
+  }, [onPhaseChange]);
 
   // --- Layout (verbatim bklit math) ---
   const { arcs, maxDepth, focusById, rootId } = useMemo(
@@ -306,6 +313,9 @@ export function SunburstChart({
   const zoomGen = useRef(0);
   const zoomTargetRef = useRef<Focus>(focus);
   const zoomAnimationsRef = useRef<Set<Animation>>(new Set());
+  const seenRevealedRef = useRef<Set<number>>(new Set());
+  const pendingRevealIds = useRef<Set<number>>(new Set());
+  const revealAnimsRef = useRef<Animation[]>([]);
 
   useEffect(() => {
     setPrevFocusId(rootId);
@@ -333,8 +343,6 @@ export function SunburstChart({
       setHoveredArcIndex(null);
 
       const gen = ++zoomGen.current;
-      const prefersReducedMotion =
-        typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
       if (prefersReducedMotion) {
         setZoomT(1);
@@ -383,8 +391,7 @@ export function SunburstChart({
     if (hoveredArc && focus) {
       const targets = buildHoverGrowTargets(
         arcs, hoveredArc, focus, maxDepth, radius, hoverPop,
-        (d: ArcDatum, hoveredId: string) =>
-          d.id === hoveredId || hoveredId.startsWith(`${d.id} / `),
+        (d: ArcDatum, hoveredId: string) => d.id === hoveredId || hoveredId.startsWith(`${d.id} / `),
       );
       expandedThickness = maxHoverSegmentThickness(maxDepth, radius, hoverPop);
       growAmountForArc = (id: string) => targets.get(id) ?? 0;
@@ -433,30 +440,19 @@ export function SunburstChart({
               id: "sunburst-arcs",
               key: (d) => `sunburst-arc-${d.arcIndex}`,
               generator: () => {
-                const base = arc<unknown, SunburstArcRow>()
-                  .startAngle((d) => d.startAngle)
-                  .endAngle((d) => d.endAngle)
-                  .innerRadius((d) => d.innerRadius)
-                  .outerRadius((d) => d.outerRadius)
-                  .padAngle(0.01);
-                // Wrap so path strings use bklit's arcPath (byte-identical to bklit SVG)
-                const wrapped = function (this: any, d: SunburstArcRow, ...args: any[]) {
-                  return arcPath(
-                    { a0: d.startAngle, a1: d.endAngle, innerR: d.innerRadius, outerR: d.outerRadius },
-                    1,
-                    1,
-                  ) ?? (base as any)(d, ...args);
-                } as any;
-                wrapped.startAngle = base.startAngle;
-                wrapped.endAngle = base.endAngle;
-                wrapped.innerRadius = base.innerRadius;
-                wrapped.outerRadius = base.outerRadius;
-                wrapped.centroid = base.centroid;
-                wrapped.padAngle = base.padAngle;
-                wrapped.cornerRadius = base.cornerRadius;
-                wrapped.padRadius = base.padRadius;
-                wrapped.context = base.context;
-                return wrapped;
+                const gen = (d: SunburstArcRow) =>
+                  arcPath({ a0: d.startAngle, a1: d.endAngle, innerR: d.innerRadius, outerR: d.outerRadius }, 1, 1) ?? "";
+                // TanStack's WrappedArc type expects these accessors — stub them for type compat
+                (gen as any).startAngle = () => gen;
+                (gen as any).endAngle = () => gen;
+                (gen as any).innerRadius = () => gen;
+                (gen as any).outerRadius = () => gen;
+                (gen as any).centroid = () => [0, 0];
+                (gen as any).padAngle = () => gen;
+                (gen as any).cornerRadius = () => gen;
+                (gen as any).padRadius = () => gen;
+                (gen as any).context = () => gen;
+                return gen as any;
               },
               fill: (d) => d.fill,
               stroke: "var(--chart-background)",
@@ -473,118 +469,130 @@ export function SunburstChart({
     });
   }, [arcRows]);
 
-  // --- handleRender: WAAPI reveal + hover dim re-apply ---
-  const handleRender = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
+  // --- handleRender: WAAPI reveal + hover dim re-apply (pie/radar pattern) ---
+  const handleRender = useCallback(({ container }: { container: HTMLElement }) => {
+    const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
+    if (!marksGroup) return;
+    const svgForBkm = container.querySelector<SVGElement>("svg.ts-chart");
+    if (!svgForBkm) return;
 
-    const markGroup = container.querySelector<SVGGElement>('[data-ts-key="sunburst-arcs"]');
-    if (!markGroup) return;
-
-    const byKey = new Map<string, SVGPathElement>();
-    markGroup.querySelectorAll<SVGPathElement>("[data-ts-key] path").forEach((p) => {
-      const key = p.closest("[data-ts-key]")?.getAttribute("data-ts-key") ?? p.getAttribute("data-ts-key") ?? "";
-      if (key) byKey.set(key, p);
-      else {
-        // Fallback: path itself may carry the key.
-        const alt = p.getAttribute("data-ts-key") ?? "";
-        if (alt) byKey.set(alt, p);
-      }
-    });
-    // Also index leaf keys: TanStack emits per-arc keys like sunburst-arc-N under the mark group.
-    // Use a fallback order map only if key lookup misses (preserves visual even if key encoding drifts).
-    const elsByOrder: SVGPathElement[] = [];
-    if (byKey.size === 0) {
-      markGroup.querySelectorAll<SVGPathElement>("[data-ts-key] path").forEach((p) => elsByOrder.push(p));
+    const seen = seenRevealedRef.current;
+    const liveIndices = new Set(arcs.map((a) => a.arcIndex));
+    for (const key of seen) {
+      if (!liveIndices.has(key)) seen.delete(key);
     }
 
-    // Re-apply hover dimming after TanStack reconcile (keyed, not positional)
+    const elementMap = getSunburstPathMap(container);
+
+    // Re-apply hover dimming after TanStack reconcile (keyed)
     if (hoveredArc) {
-      for (let i = 0; i < sortedArcs.length; i++) {
-        const a = sortedArcs[i] as ArcDatum;
-        const key = `sunburst-arc-${a.arcIndex}`;
-        const pathEl = byKey.get(key) ?? (byKey.size === 0 ? elsByOrder[i] : undefined);
-        if (!pathEl || !a) continue;
-        const isRelated =
-          a.id === hoveredArc.id ||
-          a.id.startsWith(hoveredArc.id + " / ") ||
-          hoveredArc.id.startsWith(a.id + " / ");
-        pathEl.style.opacity = isRelated ? "1" : "0.25";
+      for (const a of sortedArcs) {
+        const pathEl = elementMap.get(a.arcIndex);
+        if (!pathEl) continue;
+        pathEl.style.opacity = isRelatedArc(a, hoveredArc) ? "1" : "0.25";
       }
     }
 
-    // WAAPI reveal (first render only — DOM guard prevents re-animation)
-    if (markGroup.getAttribute("data-bkm-revealed") === "1") return;
-    markGroup.setAttribute("data-bkm-revealed", "1");
-
-    setPhase("revealing");
+    if (svgForBkm.dataset.bkmRevealed === "1") return;
 
     const timingList = buildRevealTiming(arcs);
     const delayByArcId = new Map(timingList.map((t) => [t.arcId, t.delayMs]));
 
-    markGroup.classList.add("ts-chart__marks--revealing");
+    const toReveal: { arc: ArcDatum }[] = [];
+    for (const arc of sortedArcs) {
+      if (seen.has(arc.arcIndex)) continue;
+      const pathEl = elementMap.get(arc.arcIndex);
+      if (!pathEl) continue;
+      seen.add(arc.arcIndex);
+      toReveal.push({ arc });
+    }
+    if (toReveal.length === 0) {
+      svgForBkm.dataset.bkmRevealed = "1";
+      return;
+    }
+
+    if (prefersReducedMotion) {
+      svgForBkm.dataset.bkmRevealed = "1";
+      setPhase("ready");
+      return;
+    }
+
+    svgForBkm.dataset.bkmRevealed = "1";
+    marksGroup.classList.add("ts-chart__marks--revealing");
+    setPhase("revealing");
+
+    const maxDelay = timingList.length > 0 ? timingList[timingList.length - 1]!.delayMs : 0;
+    for (const { arc } of toReveal) {
+      pendingRevealIds.current.add(arc.arcIndex);
+    }
+    setRevealDeadline(1100 + maxDelay + 935, {
+      animationsRef: revealAnimsRef,
+      onDeadline: () => setPhase("ready"),
+    });
 
     onPostPaint(() => {
-      for (let i = 0; i < sortedArcs.length; i++) {
-        const arc = sortedArcs[i] as ArcDatum;
-        const key = `sunburst-arc-${arc.arcIndex}`;
-        const pathEl = byKey.get(key) ?? (byKey.size === 0 ? elsByOrder[i] : undefined);
-        if (!pathEl || !arc) continue;
+      const liveMap = getSunburstPathMap(container);
+      const liveMarksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
+      liveMarksGroup?.classList.remove("ts-chart__marks--revealing");
 
+      for (const { arc } of toReveal) {
+        const liveEl = liveMap.get(arc.arcIndex);
+        if (!liveEl) {
+          pendingRevealIds.current.delete(arc.arcIndex);
+          continue;
+        }
         const geom = geometryFor(arc, focus, maxDepth, radius);
-        if (!geom) continue;
-
+        if (!geom) {
+          pendingRevealIds.current.delete(arc.arcIndex);
+          continue;
+        }
         const keyframes = buildRevealKeyframes(geom);
-        if (!keyframes || keyframes.length < 2) continue;
-
+        if (!keyframes || keyframes.length < 2) {
+          pendingRevealIds.current.delete(arc.arcIndex);
+          continue;
+        }
         const delayMs = delayByArcId.get(arc.id) ?? 0;
-        pathEl.style.visibility = "hidden";
-        const anim = pathEl.animate(keyframes, {
+        const anim = liveEl.animate(keyframes, {
           duration: 1100,
           delay: delayMs,
           easing: "cubic-bezier(0.85,0,0.15,1)",
           fill: "backwards",
         });
+        revealAnimsRef.current.push(anim);
         anim.onfinish = () => {
-          pathEl.style.visibility = "visible";
+          anim.cancel();
+          pendingRevealIds.current.delete(arc.arcIndex);
+        };
+        anim.oncancel = () => {
+          pendingRevealIds.current.delete(arc.arcIndex);
         };
       }
-
-      markGroup.classList.remove("ts-chart__marks--revealing");
-
-      const maxDelay = timingList.length > 0 ? timingList[timingList.length - 1]!.delayMs : 0;
-      const deadlineMs = maxDelay + 1100 + 935;
-      setTimeout(() => setPhase("ready"), deadlineMs);
     });
-  }, [arcs, sortedArcs, focus, maxDepth, radius, setPhase, hoveredArc]);
+  }, [arcs, sortedArcs, focus, maxDepth, radius, setPhase, hoveredArc, prefersReducedMotion]);
 
-  // --- Hover chrome: CSS opacity dimming + pointer listeners ---
-  // Grow geometry is baked into arcRows → TanStack renders it.
-  // CSS opacity dimming is imperative on cached path refs.
+  // --- Hover chrome: CSS opacity dimming + pointer listeners (keyed, pending-gated) ---
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const byKeyHover = new Map<string, SVGPathElement>();
-    container.querySelectorAll<SVGPathElement>('[data-ts-key="sunburst-arcs"] path').forEach((p) => {
-      const k = p.closest("[data-ts-key]")?.getAttribute("data-ts-key") ?? p.getAttribute("data-ts-key") ?? "";
-      if (k) byKeyHover.set(k, p);
-    });
-    const pathElsOrder: SVGPathElement[] = byKeyHover.size === 0
-      ? Array.from(container.querySelectorAll<SVGPathElement>('[data-ts-key="sunburst-arcs"] path'))
-      : [];
-    if (byKeyHover.size === 0 && pathElsOrder.length === 0) return;
+    const elementMap = getSunburstPathMap(container);
+    if (elementMap.size === 0) return;
 
     const cleanups: Array<() => void> = [];
-    for (let i = 0; i < sortedArcs.length; i++) {
-      const a = sortedArcs[i] as ArcDatum;
-      const key = `sunburst-arc-${a.arcIndex}`;
-      const pathEl = byKeyHover.get(key) ?? (byKeyHover.size === 0 ? pathElsOrder[i] : undefined);
-      if (!pathEl || !a) continue;
+    for (const a of sortedArcs) {
+      const pathEl = elementMap.get(a.arcIndex);
+      if (!pathEl) continue;
 
       pathEl.style.cursor = a.hasChildren ? "pointer" : "default";
 
-      const onEnter = () => setHoveredArcIndex(a.arcIndex);
-      const onLeave = () => setHoveredArcIndex(null);
+      const arcIndex = a.arcIndex;
+      const onEnter = () => {
+        if (pendingRevealIds.current.has(arcIndex)) return;
+        setHoveredArcIndex(arcIndex);
+      };
+      const onLeave = () => {
+        if (pendingRevealIds.current.has(arcIndex)) return;
+        if (hoveredArcIndex === arcIndex) setHoveredArcIndex(null);
+      };
       const onClick = () => { if (a.hasChildren) zoomTo(a.id); };
 
       pathEl.addEventListener("pointerenter", onEnter);
@@ -601,10 +609,9 @@ export function SunburstChart({
     return () => {
       for (const c of cleanups) c();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortedArcs.length, focus, maxDepth, radius, hoverPop, zoomTo]);
+  }, [sortedArcs, zoomTo, setHoveredArcIndex, hoveredArcIndex]);
 
-  // --- Zoom WAAPI tweens ---
+  // --- Zoom WAAPI tweens (keyed) ---
   const prevZoomTRef = useRef(zoomT);
 
   useEffect(() => {
@@ -615,24 +622,17 @@ export function SunburstChart({
     const toF = zoomTargetRef.current;
     if (prevFocus.id === toF.id) return;
 
-    const byKeyZoom = new Map<string, SVGPathElement>();
-    containerRef.current?.querySelectorAll<SVGPathElement>('[data-ts-key="sunburst-arcs"] path').forEach((p) => {
-      const k = p.closest("[data-ts-key]")?.getAttribute("data-ts-key") ?? p.getAttribute("data-ts-key") ?? "";
-      if (k) byKeyZoom.set(k, p);
-    });
-    const orderZoom: SVGPathElement[] = byKeyZoom.size === 0
-      ? Array.from(containerRef.current?.querySelectorAll<SVGPathElement>('[data-ts-key="sunburst-arcs"] path') ?? [])
-      : [];
-    if (byKeyZoom.size === 0 && orderZoom.length === 0) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const elementMap = getSunburstPathMap(container);
+    if (elementMap.size === 0) return;
 
     for (const anim of zoomAnimationsRef.current) anim.cancel();
     zoomAnimationsRef.current.clear();
 
-    for (let i = 0; i < sortedArcs.length; i++) {
-      const a = sortedArcs[i] as ArcDatum;
-      const key = `sunburst-arc-${a.arcIndex}`;
-      const pathEl = byKeyZoom.get(key) ?? (byKeyZoom.size === 0 ? orderZoom[i] : undefined);
-      if (!pathEl || !a) continue;
+    for (const a of sortedArcs) {
+      const pathEl = elementMap.get(a.arcIndex);
+      if (!pathEl) continue;
 
       const keyframes = buildZoomKeyframes(a, prevFocus, toF, maxDepth, radius);
       if (!keyframes || keyframes.length < 2) continue;
@@ -646,6 +646,44 @@ export function SunburstChart({
     }
   }, [zoomT, sortedArcs, maxDepth, radius, prevFocus]);
 
+  useEffect(() => {
+    return () => {
+      pendingRevealIds.current.clear();
+      for (const anim of revealAnimsRef.current) {
+        try { anim.cancel(); } catch {}
+      }
+      revealAnimsRef.current = [];
+      for (const anim of zoomAnimationsRef.current) {
+        try { anim.cancel(); } catch {}
+      }
+      zoomAnimationsRef.current.clear();
+    };
+  }, []);
+
+  // Fallback: if onRender never fired yet (race), retry once past paint (pie/radar pattern)
+  useLayoutEffect(() => {
+    if (seenRevealedRef.current.size > 0) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (seenRevealedRef.current.size > 0) return;
+        if (!container.querySelector(".ts-chart__marks")) return;
+        const hasAnims = () => {
+          const paths = container.querySelectorAll('path[data-ts-key^="sunburst-arcs:"]');
+          for (const el of paths) {
+            const anyEl = el as unknown as { getAnimations?: () => Animation[] };
+            if (anyEl.getAnimations?.().length) return true;
+          }
+          return false;
+        };
+        if (hasAnims()) return;
+        handleRender({ container });
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [handleRender]);
+
   // --- Center circle geometry ---
   const { centerR: liveCenterR } = useMemo(
     () => ringOptions(focus.depth, maxDepth, radius),
@@ -656,29 +694,107 @@ export function SunburstChart({
     ? "var(--chart-background)"
     : getColor(focus.categoryIndex);
 
-  // --- Labels ---
+  // --- Labels: zoom-morphed via transitionGeometry(prevFocus→target, zoomT), hover dimmed not culled.
+  const enterDurationMs = 1100;
+
   const labelItems = useMemo(() => {
     if (labelsCount === 0) return [];
+    const inZoom = zoomT < 1;
+    const toF = inZoom ? zoomTargetRef.current : focus;
+    const fromF = inZoom ? prevFocus : focus;
     return arcs
       .map((a) => {
-        const base = geometryFor(a, focus, maxDepth, radius);
+        const base = inZoom
+          ? transitionGeometry(a, fromF, toF, maxDepth, radius, zoomT)
+          : geometryFor(a, focus, maxDepth, radius);
         if (!base) return null;
         const r = geomCentroidRadius(base);
         const angleSpan = base.a1 - base.a0;
         if (angleSpan * r < 26 || base.outerR - base.innerR < 16) return null;
-
         const mid = geomCentroidAngle(base);
         const x = Math.sin(mid) * r;
         const y = -Math.cos(mid) * r;
         let deg = (mid * 180) / Math.PI - 90;
         if (deg > 90) deg -= 180;
         if (deg < -90) deg += 180;
-        return { x, y, deg, label: a.name, id: a.id };
+        const dimmed = !!(hoveredArc && !isRelatedArc(a, hoveredArc));
+        return { x, y, deg, label: a.name, id: a.id, dimmed };
       })
       .filter(Boolean) as Array<{
-        x: number; y: number; deg: number; label: string; id: string;
+        x: number; y: number; deg: number; label: string; id: string; dimmed: boolean;
       }>;
-  }, [labelsCount, arcs, focus, maxDepth, radius]);
+  }, [labelsCount, arcs, focus, prevFocus, maxDepth, radius, hoveredArc, zoomT]);
+
+  const maxRevealDelayMs = useMemo(() => {
+    const timing = buildRevealTiming(arcs);
+    return timing.length > 0 ? Math.max(...timing.map((t) => t.delayMs)) : 0;
+  }, [arcs]);
+
+  const labelsRevealDelayMs = maxRevealDelayMs + enterDurationMs * 0.85;
+
+  const labelRevealAnimsRef = useRef<Animation[]>([]);
+  const labelsContainerRef = useRef<SVGSVGElement | null>(null);
+
+  // Deferred label reveal: once per mount, hover/zoom must not restart it.
+  useLayoutEffect(() => {
+    if (labelsCount === 0) return;
+    if (prefersReducedMotion) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const svg = container.querySelector<SVGSVGElement>("svg.ts-bkm-sunburst-labels");
+    labelsContainerRef.current = svg;
+    if (!svg) return;
+    const already = (svg as unknown as HTMLElement & { dataset: DOMStringMap }).dataset.bkmLabelsRevealed === "1";
+    if (already) return;
+    for (const anim of labelRevealAnimsRef.current) {
+      try { anim.cancel(); } catch {}
+    }
+    labelRevealAnimsRef.current = [];
+    const liveSvg = svg;
+    onPostPaint(() => {
+      // Re-query inside postPaint so we animate the live nodes, dim via CSS after.
+      const liveTexts = Array.from(liveSvg.querySelectorAll<SVGTextElement>("text.ts-bkm-sunburst-label"));
+      for (const t of liveTexts) {
+        if (!t.isConnected) continue;
+        t.style.opacity = "0";
+        const anim = t.animate(
+          [{ opacity: "0" }, { opacity: "1" }],
+          {
+            duration: enterDurationMs,
+            delay: labelsRevealDelayMs,
+            easing: "cubic-bezier(0.85,0,0.15,1)",
+            fill: "backwards",
+          },
+        );
+        labelRevealAnimsRef.current.push(anim);
+        anim.onfinish = () => {
+          anim.cancel();
+          if (t.isConnected) t.style.opacity = "1";
+        };
+      }
+    });
+    const timer = window.setTimeout(() => {
+      (liveSvg as unknown as HTMLElement & { dataset: DOMStringMap }).dataset.bkmLabelsRevealed = "1";
+      for (const t of liveSvg.querySelectorAll<SVGTextElement>("text.ts-bkm-sunburst-label")) {
+        if (t.isConnected) t.style.opacity = "";
+      }
+    }, labelsRevealDelayMs + enterDurationMs + 30);
+    return () => {
+      window.clearTimeout(timer);
+      for (const anim of labelRevealAnimsRef.current) {
+        try { anim.cancel(); } catch {}
+      }
+    };
+  }, [labelsCount, labelsRevealDelayMs, prefersReducedMotion]);
+
+  useEffect(() => {
+    return () => {
+      for (const anim of labelRevealAnimsRef.current) {
+        try { anim.cancel(); } catch {}
+      }
+      labelRevealAnimsRef.current = [];
+    };
+  }, []);
 
   // --- Hint text ---
   const hintText = hoveredArc

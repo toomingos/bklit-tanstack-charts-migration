@@ -31,10 +31,14 @@ export interface LabelItem {
   deg: number;
   label: string;
   id: string;
+  dimmed?: boolean;
 }
 
 // ---------------------------------------------------------------------------
 // Labels overlay — SVG layer with rotated <text> elements
+// Matches bklit: labels reveal with opacity 0→1 at delay = maxDelay + duration*0.85
+// (duration=1.1s, maxDelay from ring-staggered segment delays). Labels also
+// cull when !isRelated (unrelated arc) exactly like bklit's !isRelated guard.
 // ---------------------------------------------------------------------------
 
 export interface SunburstLabelsOverlayProps {
@@ -45,13 +49,14 @@ export interface SunburstLabelsOverlayProps {
 
 export function SunburstLabelsOverlay({
   items,
-  fullRadius,
-  size,
+  fullRadius: _fullRadius,
+  size: _size,
 }: SunburstLabelsOverlayProps) {
   if (items.length === 0) return null;
 
   return (
     <svg
+      className="ts-bkm-sunburst-labels"
       style={{
         position: "absolute",
         top: 0,
@@ -61,11 +66,13 @@ export function SunburstLabelsOverlay({
         pointerEvents: "none",
         overflow: "visible",
       }}
-      viewBox={`${-fullRadius} ${-fullRadius} ${size} ${size}`}
+      viewBox={`${-_fullRadius} ${-_fullRadius} ${_size} ${_size}`}
     >
       {items.map((item) => (
         <text
           key={item.id}
+          className="ts-bkm-sunburst-label"
+          data-label-id={item.id}
           dominantBaseline="middle"
           pointerEvents="none"
           textAnchor="middle"
@@ -77,7 +84,8 @@ export function SunburstLabelsOverlay({
             fontFamily: "inherit",
             fontSize: 11,
             fontWeight: 600,
-            opacity: 1,
+            opacity: item.dimmed ? 0.25 : 1,
+            transition: "opacity 160ms ease-out",
             paintOrder: "stroke",
             stroke: "var(--chart-background)",
             strokeLinejoin: "round",

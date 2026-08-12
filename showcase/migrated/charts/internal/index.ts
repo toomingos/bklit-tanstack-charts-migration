@@ -25,13 +25,6 @@ export {
   clockwiseFraction,
 } from "./sunburst-geometry";
 export { defaultSunburstColors, opacityForRelativeDepth } from "./sunburst-colors";
-export {
-  createSunburstHoverCoordinator,
-  createSunburstSliceHoverRuntime,
-  type SunburstHoverCoordinator,
-  type SunburstSliceHoverRuntime,
-  type SunburstSliceHoverConfig,
-} from "./sunburst-hover-chrome";
 
 // Heatmap context
 export {
