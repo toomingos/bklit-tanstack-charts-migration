@@ -6,6 +6,7 @@
 // deduped by formatted label — not interpolated domain timestamps.
 import * as React from "react";
 import { shortDateFmt } from "./formatters";
+import { toDate } from "./coerce-date";
 import type { ChartDatum } from "./types";
 import { selectEvenlySpacedIndices } from "./x-ticks";
 
@@ -29,32 +30,29 @@ export function XAxisOverlay({
 }: XAxisOverlayProps) {
   const ticks = React.useMemo(() => {
     if (data.length === 0 || rangeEnd <= rangeStart) return [];
-    const first = data[0]?.[xDataKey];
-    const last = data[data.length - 1]?.[xDataKey];
-    if (!(first instanceof Date && last instanceof Date)) return [];
+    const first = toDate(data[0]?.[xDataKey]);
+    const last = toDate(data[data.length - 1]?.[xDataKey]);
+    if (!first || !last) return [];
     const startTime = first.getTime();
     const timeRange = last.getTime() - startTime;
     const fmt = formatValue ?? ((d: Date) => shortDateFmt.format(d));
 
-    const dateAt = (index: number) => {
-      const value = data[index]?.[xDataKey];
-      return value instanceof Date ? value : null;
+    const dateCache = new Map<number, Date | null>();
+    const dateAtCached = (index: number) => {
+      if (!dateCache.has(index)) dateCache.set(index, toDate(data[index]?.[xDataKey]));
+      return dateCache.get(index)!;
     };
     const xAt = (index: number) => {
-      const date = dateAt(index);
+      const date = dateAtCached(index);
       if (!date || timeRange <= 0) return rangeStart;
       return (
         rangeStart +
         ((date.getTime() - startTime) / timeRange) * (rangeEnd - rangeStart)
       );
     };
-    const labelCache = new Map<number, string | undefined>();
     const labelAt = (index: number) => {
-      if (!labelCache.has(index)) {
-        const date = dateAt(index);
-        labelCache.set(index, date ? fmt(date) : undefined);
-      }
-      return labelCache.get(index);
+      const date = dateAtCached(index);
+      return date ? fmt(date) : undefined;
     };
 
     const indices = selectEvenlySpacedIndices(data.length, numTicks, {

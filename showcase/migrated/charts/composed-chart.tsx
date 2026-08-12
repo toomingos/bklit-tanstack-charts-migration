@@ -99,6 +99,7 @@ import type {
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { bezierEasing } from "./internal/bezier-easing";
 import { bisectDateLeft, resolveNearestIndex } from "./internal/bisect";
+import { toDate } from "./internal/coerce-date";
 import "./styles.css";
 
 // bklit animation constants (animation.ts): reveal 1100ms cubic-bezier(.85,0,.15,1)
@@ -495,7 +496,7 @@ export function ComposedChart({
       marks.push(
         seriesBarMark(data, {
           id: bar.dataKey,
-          xAccessor: (d: ChartDatum) => d[xDataKey] as Date,
+          xAccessor: (d: ChartDatum) => toDate(d[xDataKey]) as Date,
           yAccessor: (d: ChartDatum) => d[bar.dataKey] as number,
           fill: bar.fill,
           radius: bar.radius || undefined,
@@ -516,7 +517,7 @@ export function ComposedChart({
       marks.push(
         areaFill(renderData, {
           id: `${area.dataKey}__fill`,
-          x: (d: ChartDatum) => d[xDataKey] as Date,
+          x: (d: ChartDatum) => toDate(d[xDataKey]) as Date,
           y: (d: ChartDatum) => d[area.dataKey] as number,
           curve,
           fill: gradientId ? `url(#${gradientId})` : area.fill,
@@ -527,7 +528,7 @@ export function ComposedChart({
       marks.push(
         lineY(renderData, {
           id: area.dataKey,
-          x: (d: ChartDatum) => d[xDataKey] as Date,
+          x: (d: ChartDatum) => toDate(d[xDataKey]) as Date,
           y: (d: ChartDatum) => d[area.dataKey] as number,
           curve,
           stroke: area.stroke,
@@ -539,7 +540,7 @@ export function ComposedChart({
       marks.push(
         lineY(renderData, {
           id: line.dataKey,
-          x: (d: ChartDatum) => d[xDataKey] as Date,
+          x: (d: ChartDatum) => toDate(d[xDataKey]) as Date,
           y: (d: ChartDatum) => d[line.dataKey] as number,
           curve: d3Curve(line.curve),
           stroke: line.stroke,
@@ -569,12 +570,11 @@ export function ComposedChart({
         let minTime = Infinity;
         let maxTime = -Infinity;
         for (const d of data) {
-          const v = d[xDataKey];
-          if (v instanceof Date) {
-            const t = v.getTime();
-            if (t < minTime) minTime = t;
-            if (t > maxTime) maxTime = t;
-          }
+          const parsed = toDate(d[xDataKey]);
+          if (!parsed) continue;
+          const t = parsed.getTime();
+          if (t < minTime) minTime = t;
+          if (t > maxTime) maxTime = t;
         }
         if (!Number.isFinite(minTime)) {
           minTime = 0;
@@ -588,7 +588,9 @@ export function ComposedChart({
           type: "time",
           domain: scale.domain(),
           map: (value: unknown) => {
-            const mapped = scale(value as Date);
+            const parsed = toDate(value);
+            if (!parsed) return Number.NaN;
+            const mapped = scale(parsed);
             return mapped === undefined ? Number.NaN : mapped;
           },
           ticks: ticks.map((value) => ({
@@ -673,9 +675,9 @@ export function ComposedChart({
   const xForIndex = (index: number) => {
     const xScaleInstance = xScaleD3Ref.current;
     const row = renderData[index];
-    const xValue = row?.[xDataKey];
-    if (!xScaleInstance || !(xValue instanceof Date)) return margin.left;
-    return xScaleInstance(xValue) ?? margin.left;
+    const parsed = toDate(row?.[xDataKey]);
+    if (!xScaleInstance || !parsed) return margin.left;
+    return xScaleInstance(parsed) ?? margin.left;
   };
   chromeStateRef.current = {
     margin,
@@ -757,8 +759,8 @@ export function ComposedChart({
       const x0 = xScaleInstance.invert(pixelX);
       const x0Ms = x0.getTime();
       const dateAccessor = (d: ChartDatum) => {
-        const v = d[key];
-        return (v instanceof Date ? v : new Date(v as string | number)).getTime();
+        const parsed = toDate(d[key]);
+        return parsed ? parsed.getTime() : Number.NaN;
       };
       const rawIndex = resolveNearestIndex(rawRows, dateAccessor, x0Ms);
       if (rawIndex < 0) {
@@ -768,8 +770,17 @@ export function ComposedChart({
       const decimatedIndex =
         decimatedRows.length > 0 ? resolveNearestIndex(decimatedRows, dateAccessor, x0Ms) : -1;
       const datum = rawRows[rawIndex]!;
-      const datumX = datum[key] as string | Date;
-      const resolvedX = xScaleInstance(datumX) ?? 0;
+      const parsedDatumX = toDate(datum[key]);
+      if (!parsedDatumX) {
+        chromeRef.current?.onFocusGroupChange([]);
+        return;
+      }
+      const resolvedXRaw = xScaleInstance(parsedDatumX);
+      if (!Number.isFinite(resolvedXRaw)) {
+        chromeRef.current?.onFocusGroupChange([]);
+        return;
+      }
+      const resolvedX = resolvedXRaw as number;
       const points: FocusPoint[] = series.map((s) => {
         const value = datum[s.dataKey];
         return {
