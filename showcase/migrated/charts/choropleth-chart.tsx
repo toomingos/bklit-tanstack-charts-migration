@@ -1,25 +1,14 @@
 // Migrated bklit-ui ChoroplethChart — same public API, rendered by TanStack
-// Charts geoShape mark + @visx/zoom matrix utilities for zoom/pan.
+// Charts geoShape mark + @visx/zoom for zoom/pan.
 //
-// Architecture (D34/D37):
-//   1. Mark: TanStack `geoShape(features, { projection: geoMercator, ... })`
-//      with x: null, y: null, guides: false (positionless — geo owns coords).
-//      bklit uses Mercator (NOT Equal Earth!) with explicit center=[0,20],
-//      scale=(innerWidth/630)*100, translate=[innerWidth/2, innerHeight/2+50].
-//   2. Zoom/pan: uses @visx/zoom's matrix utilities. Zoom state managed in
-//      React state as a TransformMatrix. Applied as CSS transform on the
-//      Chart's outer wrapper (since TanStack owns its SVG, we transform the
-//      wrapper instead of injecting into the SVG). ±5% wheel delta, hard
-//      clamp-by-rejection. 180ms CSS ease on non-drag transform changes.
-//      No dbl-click zoom, no inertia — matches bklit verbatim.
-//   3. Reveal: TWO unsynchronized timers:
-//      (a) 800ms setTimeout → isLoaded flag (internal state)
-//      (b) 1100ms WAAPI feature enter fade on `.ts-chart__geo` group
-//   4. Hover: dim non-hovered features to 0.4 opacity, 180ms CSS ease.
-//      Tooltip positioned at projected centroid of hovered feature.
-//   5. Tooltip: light-DOM tooltip, zoom-transform-aware via applyMatrixToPoint.
-//   6. Color: 100% consumer-owned via `getFeatureColor` callback — pass-through.
-//   7. Context: React context for zoom state + choropleth data.
+// Principles (bklit native, tanstack gap):
+//   - bklit uses @visx/zoom <Zoom> with svg ref=zoom.containerRef as gesture
+//     target and single <g transform={zoom.toString()}> for content.
+//   - TanStack has no geo zoom primitive (interaction-zoom is 1D zoomX for
+//     time series only). Gap stays consumer-owned, ported verbatim from bklit.
+//   - No wrapper CSS transform, no viewBox fight. Host width/viewBox stable,
+//     <g> scales content. Graticule shares same <g> via graticuleGRef.
+//     Tooltip via zoom.applyToPoint.
 
 import React, {
   Children,
@@ -36,21 +25,9 @@ import React, {
 } from "react";
 import { FeatureCollection, type Feature, type Geometry } from "geojson";
 import { geoCentroid, geoMercator, type GeoProjection } from "d3-geo";
-import type {
-  TransformMatrix,
-  ProvidedZoom,
-  Point,
-  Translate,
-  ScaleSignature,
-  InteractionEvent,
-} from "@visx/zoom";
-import {
-  identityMatrix,
-  applyMatrixToPoint,
-  scaleMatrix,
-  translateMatrix,
-  composeMatrices,
-} from "@visx/zoom";
+import type { TransformMatrix, ProvidedZoom } from "@visx/zoom";
+import { identityMatrix } from "@visx/zoom";
+import { Zoom } from "@visx/zoom";
 import { Chart } from "@tanstack/react-charts";
 import { defineChart } from "@tanstack/charts";
 import { geoShape } from "@tanstack/charts/geo";
@@ -60,6 +37,7 @@ import {
   type ChoroplethHoverChrome,
 } from "./internal/choropleth-hover-chrome";
 import { ChoroplethGraticuleOverlay } from "./internal/choropleth-graticule";
+import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import "./styles.css";
 
@@ -238,294 +216,14 @@ function extractChoroplethChildren(children: ReactNode): ExtractedConfig {
   return { featureConfig, tooltipConfig, graticuleConfig, overlayChildren };
 }
 
-// ---------------------------------------------------------------------------
-// Manual zoom state manager — mirrors @visx/zoom's ProvidedZoom API
-// ---------------------------------------------------------------------------
-
-function createProvidedZoom(
-  getMatrix: () => TransformMatrix,
-  setMatrix: (m: TransformMatrix) => void,
-  getIsDragging: () => boolean,
-  setIsDragging: (v: boolean) => void,
-  initialZoom: TransformMatrix,
-  zoomMin: number,
-  zoomMax: number,
-): ProvidedZoom<SVGSVGElement> & { isDragging: boolean; transformMatrix: TransformMatrix } {
-  const containerRef: React.RefObject<SVGSVGElement | null> = { current: null };
-
-  const clamp = (m: TransformMatrix): TransformMatrix => ({
-    ...m,
-    scaleX: Math.min(zoomMax, Math.max(zoomMin, m.scaleX)),
-    scaleY: Math.min(zoomMax, Math.max(zoomMin, m.scaleY)),
-  });
-
-  // Mutable drag/pinch state — mirrors @visx/zoom's internal state machine.
-  let dragStartPoint: Point | null = null;
-  let dragStartTranslate: Translate | null = null;
-  let pinchStart: { distance: number; scale: number; midpoint: Point } | null = null;
-
-  /** Compute Euclidean distance between two touch points. */
-  function touchDistance(e: React.TouchEvent | TouchEvent): number {
-    if (e.touches.length < 2) return 0;
-    const t0 = e.touches[0]!;
-    const t1 = e.touches[1]!;
-    return Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
-  }
-
-  /** Compute touch midpoint (center of the two-finger pinch). */
-  function touchMidpoint(e: React.TouchEvent | TouchEvent): Point {
-    if (e.touches.length < 2) return { x: 0, y: 0 };
-    const t0 = e.touches[0]!;
-    const t1 = e.touches[1]!;
-    return { x: (t0.clientX + t1.clientX) / 2, y: (t0.clientY + t1.clientY) / 2 };
-  }
-
-  return {
-    containerRef,
-    get isDragging() { return getIsDragging(); },
-    get transformMatrix() { return getMatrix(); },
-
-    center() {},
-    clear() { setMatrix(identityMatrix()); },
-    scale({ scaleX, scaleY, point }: ScaleSignature) {
-      const prev = getMatrix();
-      const sx = scaleX;
-      const sy = scaleY ?? sx;
-      let m: TransformMatrix;
-      if (point) {
-        m = composeMatrices(
-          translateMatrix(-point.x, -point.y),
-          scaleMatrix(sx, sy),
-          translateMatrix(point.x, point.y),
-          prev,
-        );
-      } else {
-        m = composeMatrices(prev, scaleMatrix(sx, sy));
-      }
-      setMatrix(clamp(m));
-    },
-    translate(tr: Translate) {
-      setMatrix(clamp(composeMatrices(getMatrix(), translateMatrix(tr.translateX, tr.translateY))));
-    },
-    translateTo(point: Point) {
-      setMatrix(clamp({ ...getMatrix(), translateX: point.x, translateY: point.y }));
-    },
-    setTranslate(tr: Translate) {
-      setMatrix(clamp({ ...getMatrix(), translateX: tr.translateX, translateY: tr.translateY }));
-    },
-    setTransformMatrix(m: TransformMatrix) { setMatrix(clamp(m)); },
-    reset() { setMatrix(initialZoom); },
-    handleWheel(event: React.WheelEvent | WheelEvent) {
-      event.preventDefault();
-      const zoomScale = event.deltaY > 0 ? 0.95 : 1.05;
-      let point = { x: 0, y: 0 };
-      const el = containerRef.current;
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-      }
-      const prev = getMatrix();
-      setMatrix(clamp(composeMatrices(
-        translateMatrix(-point.x, -point.y),
-        scaleMatrix(zoomScale, zoomScale),
-        translateMatrix(point.x, point.y),
-        prev,
-      )));
-    },
-    handlePinch(event: React.TouchEvent | TouchEvent) {
-      if (!("touches" in event) || event.touches.length < 2) {
-        pinchStart = null;
-        return;
-      }
-      const currentDistance = touchDistance(event as React.TouchEvent | TouchEvent);
-      if (currentDistance === 0) return;
-
-      if (!pinchStart) {
-        const m = getMatrix();
-        pinchStart = {
-          distance: currentDistance,
-          scale: (m.scaleX + m.scaleY) / 2,
-          midpoint: touchMidpoint(event as React.TouchEvent | TouchEvent),
-        };
-        return;
-      }
-
-      // Compute new scale factor: distance ratio × initial scale,
-      // then relative to current scale.
-      const newScale = (currentDistance / pinchStart.distance) * pinchStart.scale;
-      const currentMatrix = getMatrix();
-      const currentScale = (currentMatrix.scaleX + currentMatrix.scaleY) / 2;
-      const scaleFactor = newScale / currentScale;
-
-      // Scale around the initial pinch midpoint, mapped to container coords.
-      let point = { ...pinchStart.midpoint };
-      const el = containerRef.current;
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        point = { x: pinchStart.midpoint.x - rect.left, y: pinchStart.midpoint.y - rect.top };
-      }
-
-      setMatrix(clamp(composeMatrices(
-        translateMatrix(-point.x, -point.y),
-        scaleMatrix(scaleFactor, scaleFactor),
-        translateMatrix(point.x, point.y),
-        currentMatrix,
-      )));
-    },
-    dragStart(event: InteractionEvent) {
-      setIsDragging(true);
-      dragStartPoint = { x: event.clientX, y: event.clientY };
-      const m = getMatrix();
-      dragStartTranslate = { translateX: m.translateX, translateY: m.translateY };
-      // Initialize pinch state if this is a touch event with 2+ touches.
-      if ("touches" in event && event.touches.length >= 2) {
-        const dist = touchDistance(event as unknown as React.TouchEvent | TouchEvent);
-        if (dist > 0) {
-          pinchStart = {
-            distance: dist,
-            scale: (m.scaleX + m.scaleY) / 2,
-            midpoint: touchMidpoint(event as unknown as React.TouchEvent | TouchEvent),
-          };
-        }
-      }
-    },
-    dragMove(event: InteractionEvent, options?: { offsetX?: number; offsetY?: number }) {
-      if (!getIsDragging() || !dragStartPoint || !dragStartTranslate) return;
-      let deltaX = event.clientX - dragStartPoint.x;
-      let deltaY = event.clientY - dragStartPoint.y;
-      if (options?.offsetX) deltaX += options.offsetX;
-      if (options?.offsetY) deltaY += options.offsetY;
-      setMatrix(clamp({
-        ...getMatrix(),
-        translateX: dragStartTranslate.translateX + deltaX,
-        translateY: dragStartTranslate.translateY + deltaY,
-      }));
-    },
-    dragEnd() {
-      setIsDragging(false);
-      dragStartPoint = null;
-      dragStartTranslate = null;
-      pinchStart = null;
-    },
-    toString() {
-      const m = getMatrix();
-      return `matrix(${m.scaleX}, ${m.skewY}, ${m.skewX}, ${m.scaleY}, ${m.translateX}, ${m.translateY})`;
-    },
-    invert() {
-      const m = getMatrix();
-      const det = m.scaleX * m.scaleY - m.skewX * m.skewY;
-      if (det === 0) return identityMatrix();
-      return {
-        scaleX: m.scaleY / det,
-        scaleY: m.scaleX / det,
-        translateX: (m.skewY * m.translateY - m.scaleY * m.translateX) / det,
-        translateY: (m.skewX * m.translateX - m.scaleX * m.translateY) / det,
-        skewX: -m.skewX / det,
-        skewY: -m.skewY / det,
-      };
-    },
-    toStringInvert() {
-      const inv = this.invert();
-      return `matrix(${inv.scaleX}, ${inv.skewY}, ${inv.skewX}, ${inv.scaleY}, ${inv.translateX}, ${inv.translateY})`;
-    },
-    applyToPoint({ x, y }: Point) {
-      return applyMatrixToPoint(getMatrix(), { x, y });
-    },
-    applyInverseToPoint({ x, y }: Point) {
-      return applyMatrixToPoint(this.invert(), { x, y });
-    },
-  };
-}
-
-function useZoomState(
-  width: number,
-  height: number,
-  initialZoom: TransformMatrix,
-  zoomMin: number,
-  zoomMax: number,
-  enabled: boolean,
-) {
-  const [matrix, setMatrix] = useState<TransformMatrix>(initialZoom);
-  const [isDragging, setIsDragging] = useState(false);
-  const matrixRef = useRef(matrix);
-  matrixRef.current = matrix;
-  const isDraggingRef = useRef(isDragging);
-  isDraggingRef.current = isDragging;
-
-  const getMatrix = useCallback(() => matrixRef.current, []);
-  const getIsDragging = useCallback(() => isDraggingRef.current, []);
-
-  const zoomObjRef = useRef<ProvidedZoom<SVGSVGElement> & { isDragging: boolean; transformMatrix: TransformMatrix } | null>(null);
-  if (!zoomObjRef.current) {
-    zoomObjRef.current = createProvidedZoom(
-      getMatrix, setMatrix, getIsDragging, setIsDragging,
-      initialZoom, zoomMin, zoomMax,
-    );
-  }
-
-  // Wheel event on the chart's SVG
-  const zoomContainerRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!enabled) return;
-    const container = zoomContainerRef.current;
-    if (!container) return;
-
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      zoomObjRef.current!.handleWheel(e);
-    };
-
-    container.addEventListener("wheel", onWheel, { passive: false });
-
-    // Touch pinch + drag
-    const onTouchStart = (e: TouchEvent) => { zoomObjRef.current!.dragStart(e); };
-    const onTouchMove = (e: TouchEvent) => {
-      e.preventDefault();
-      if (e.touches.length >= 2) zoomObjRef.current!.handlePinch(e);
-      zoomObjRef.current!.dragMove(e);
-    };
-    const onTouchEnd = () => { zoomObjRef.current!.dragEnd(); };
-
-    // Mouse drag (mousemove/mouseup on window for capture)
-    const onMouseDown = (e: MouseEvent) => { zoomObjRef.current!.dragStart(e); };
-    const onMouseMove = (e: MouseEvent) => { zoomObjRef.current!.dragMove(e); };
-    const onMouseUp = () => { zoomObjRef.current!.dragEnd(); };
-
-    container.addEventListener("touchstart", onTouchStart, { passive: false });
-    container.addEventListener("touchmove", onTouchMove, { passive: false });
-    container.addEventListener("touchend", onTouchEnd);
-    container.addEventListener("mousedown", onMouseDown);
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-
-    return () => {
-      container.removeEventListener("wheel", onWheel);
-      container.removeEventListener("touchstart", onTouchStart);
-      container.removeEventListener("touchmove", onTouchMove);
-      container.removeEventListener("touchend", onTouchEnd);
-      container.removeEventListener("mousedown", onMouseDown);
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
-  }, [enabled]);
-
-  return {
-    zoom: zoomObjRef.current!,
-    zoomContainerRef,
-    matrix,
-    isDragging,
-  };
-}
-
 // ===========================================================================
-// Main component
+// Inner body — owns projection, definition, hover, tooltip, zoom wiring
 // ===========================================================================
 
-export function ChoroplethChart({
+function ChoroplethChartBody({
   data,
   margin: marginProp,
   animationDuration = ANIMATION_DURATION_MS,
-  revealSignature = "",
   aspectRatio = "16 / 9",
   scale: scaleProp,
   center = [0, 20],
@@ -534,81 +232,31 @@ export function ChoroplethChart({
   zoomMin = 0.5,
   zoomMax = 4,
   initialZoom = DEFAULT_INITIAL_ZOOM,
-  className = "",
   children,
-}: ChoroplethChartProps) {
+  width,
+  height,
+}: ChoroplethChartProps & { width: number; height: number }) {
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
   const ratio = useMemo(() => parseAspectRatio(aspectRatio), [aspectRatio]);
-  const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // --- Container dimensions ---
-  const [width, setWidth] = useState(0);
-  useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width ?? 0;
-      setWidth((prev) => (Math.abs(prev - w) > 0.5 ? w : prev));
-    });
-    ro.observe(el);
-    setWidth(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, []);
-
-  const height = Math.max(0, width / ratio);
-
-  // --- Zoom ---
-  const { zoom, zoomContainerRef, matrix, isDragging } = useZoomState(
-    width, height, initialZoom, zoomMin, zoomMax, zoomEnabled,
-  );
-
-  // --- Extract children ---
   const { featureConfig, tooltipConfig, graticuleConfig, overlayChildren } =
     useMemo(() => extractChoroplethChildren(children), [children]);
 
   const dimOpacity = featureConfig?.fadedOpacity ?? 0.4;
-  // bklit's StaticFeatureLayer wraps all paths in <g opacity={0.85}> as
-  // the resting/base state. The hover chrome uses this to restore features
-  // after pointer leave.
   const baseOpacity = 0.85;
 
-  // --- Reveal (timer a: 800ms isLoaded) ---
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [revealEpoch, setRevealEpoch] = useState(0);
-  useEffect(() => {
-    setRevealEpoch((n) => n + 1);
-    setIsLoaded(false);
-    const t = setTimeout(() => setIsLoaded(true), animationDuration);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [animationDuration, revealSignature]);
-
-  // --- Projection (Mercator — matches bklit's @visx/geo Mercator) ---
-  // bklit: Mercator center={center} scale={scale??(innerWidth/630)*100}
-  //        translate={translate??[innerWidth/2+margin.left, innerHeight/2+margin.top+50]}
-  const projectionFactory = useCallback(
-    (): GeoProjection => {
-      const innerW = width - margin.left - margin.right;
-      const innerH = height - margin.top - margin.bottom;
-      const computedScale = scaleProp ?? (innerW > 0 ? (innerW / 630) * 100 : 100);
-      const computedTranslate: [number, number] = translateProp ?? [
-        innerW / 2 + margin.left,
-        innerH / 2 + margin.top + 50,
-      ];
-      return geoMercator()
-        .center(center)
-        .translate(computedTranslate)
-        .scale(computedScale);
-    },
-    [width, height, margin, scaleProp, center, translateProp],
-  );
-
-  const projection = useMemo(() => {
+  const projection = useMemo<GeoProjection | null>(() => {
     if (width <= 0 || height <= 0) return null;
-    return projectionFactory();
-  }, [projectionFactory, width, height]);
+    const innerW = width - margin.left - margin.right;
+    const innerH = height - margin.top - margin.bottom;
+    const computedScale = scaleProp ?? (innerW > 0 ? (innerW / 630) * 100 : 100);
+    const computedTranslate: [number, number] = translateProp ?? [
+      innerW / 2 + margin.left,
+      innerH / 2 + margin.top + 50,
+    ];
+    return geoMercator().center(center).translate(computedTranslate).scale(computedScale);
+  }, [width, height, margin, scaleProp, center, translateProp]);
 
-  // --- Centroids (computed lazily on hover — saves 3ms from M1a) ---
   const getCentroidForFeature = useCallback(
     (feature: ChoroplethFeature) => {
       if (!projection) return null;
@@ -629,14 +277,14 @@ export function ChoroplethChart({
     [projection, width, height],
   );
 
-  // --- Definition ---
   const definition = useMemo(() => {
-    if (width <= 0 || height <= 0) return null;
+    if (width <= 0 || height <= 0 || !projection) return null as unknown as ReturnType<typeof defineChart>;
+    const projForMark = projection;
     const d = defineChart({
       marks: [
         geoShape(data.features, {
           key: (f: ChoroplethFeature) => f.properties?.name ?? String(f.id ?? ""),
-          projection: () => projectionFactory(),
+          projection: () => projForMark,
           fill: (f: ChoroplethFeature, i: number) =>
             resolveFeatureFill(
               f, i,
@@ -656,10 +304,9 @@ export function ChoroplethChart({
     });
     return d;
   }, [
-    width, height, data.features,
+    width, height, projection, data.features,
     featureConfig?.getFeatureColor, featureConfig?.getFeaturePattern,
     featureConfig?.fill, featureConfig?.stroke, featureConfig?.strokeWidth,
-    projectionFactory,
   ]);
 
   // --- Tooltip state ---
@@ -670,12 +317,8 @@ export function ChoroplethChart({
     key: string;
   } | null>(null);
 
-  // bklit's TooltipBox uses Framer Motion exit animation — the tooltip DOM
-  // remains in the tree during the exit fade (≈180ms), so textContent-based
-  // detection still finds it. We replicate this: when tooltipData becomes
-  // null, we keep rendering the last tooltip for 200ms (exit phase), then clear.
   const exitTooltipDataRef = useRef<typeof tooltipData>(null);
-  const [tooltipExitTick, setTooltipExitTick] = useState(false);
+  const [, setTooltipExitTick] = useState(false);
   useEffect(() => {
     if (tooltipData) {
       exitTooltipDataRef.current = tooltipData;
@@ -688,31 +331,14 @@ export function ChoroplethChart({
     }
   }, [tooltipData]);
 
-  // Derived: show tooltip if currently hovered OR still in exit phase
   const displayTooltipData = tooltipData ?? exitTooltipDataRef.current;
 
-  // --- Precompute TanStack key → feature lookup ---
-  // Derive feature-by-ts-key from the live DOM keys that geoShape actually emits,
-  // rather than hard-coding the valueKey encoding `geo-shape-0:object:null:string:${name}`.
-  // The definitive key text is read from each path's `data-ts-key` attribute in handleRender.
-  // Until the first handleRender, fall back to an index-keyed map for pre-hover callers.
-  const featureByTsKeyFallback = useMemo(() => {
-    const map = new Map<string, ChoroplethFeature>();
-    for (let i = 0; i < data.features.length; i++) {
-      const feature = data.features[i]!;
-      // Fallback key is stable without encoding assumption: index-based.
-      map.set(`choropleth:index:${i}`, feature);
-    }
-    return map;
-  }, [data.features]);
   const domFeatureByTsKeyRef = useRef<Map<string, ChoroplethFeature> | null>(null);
 
-  // --- Hover chrome ---
   const hoverChromeRef = useRef<ChoroplethHoverChrome | null>(null);
   const getFeatureByKey = useCallback(
-    (key: string): ChoroplethFeature | undefined =>
-      domFeatureByTsKeyRef.current?.get(key) ?? featureByTsKeyFallback.get(key),
-    [featureByTsKeyFallback],
+    (key: string): ChoroplethFeature | undefined => domFeatureByTsKeyRef.current?.get(key),
+    [],
   );
   const getCentroidForHover = useCallback(
     (key: string) => {
@@ -733,9 +359,9 @@ export function ChoroplethChart({
     [getFeatureByKey],
   );
 
-  // --- Post-render: SVG ref for zoom, path element tracking, reveal ---
   const pathElementsRef = useRef<Map<string, SVGPathElement>>(new Map());
-  const revealAnimRef = useRef<Animation | null>(null);
+  const revealAnimsRef = useRef<Animation[]>([]);
+  const seenRevealedRef = useRef(false);
 
   const ensureHoverChrome = useCallback(() => {
     if (hoverChromeRef.current) return hoverChromeRef.current;
@@ -746,13 +372,60 @@ export function ChoroplethChart({
     return hoverChromeRef.current;
   }, [getDimOpacity, getBaseOpacity, getCentroidForHover, handleHoverChange]);
 
-  const handleRender = useCallback(() => {
-    const c = containerRef.current;
-    if (!c) return;
+  const marksGRef = useRef<SVGGElement | null>(null);
+  const graticuleGRef = useRef<SVGGElement | null>(null);
+  const zoomRefForChrome = useRef<ProvidedZoom<SVGSVGElement> | null>(null);
 
-    const svg = c.querySelector("svg");
+  type ZoomWithDrag = ProvidedZoom<SVGSVGElement> & { isDragging: boolean };
+  const syncZoomTransform = useCallback((zoom: ProvidedZoom<SVGSVGElement> | null) => {
+    const z = zoom as ZoomWithDrag | null;
+    const t = z ? z.toString() : "matrix(1, 0, 0, 1, 0, 0)";
+    const tr = z?.isDragging ? "none" : "transform 0.18s ease-out";
+    const mg = marksGRef.current;
+    if (mg) {
+      mg.setAttribute("transform", t);
+      (mg.style as unknown as { transition: string }).transition = tr;
+    }
+    const gg = graticuleGRef.current;
+    if (gg) {
+      gg.setAttribute("transform", t);
+      (gg.style as unknown as { transition: string }).transition = tr;
+    }
+    const svg = z?.containerRef.current ?? null;
     if (svg) {
-      (zoom.containerRef as { current: SVGSVGElement | null }).current = svg as unknown as SVGSVGElement;
+      svg.style.touchAction = "none";
+      svg.style.cursor = z.isDragging ? "grabbing" : "grab";
+      (svg.style as unknown as { contain: string }).contain = "layout style paint";
+    }
+  }, []);
+
+  function applyZoomToGroups(zoom: ProvidedZoom<SVGSVGElement> | null, svg: SVGSVGElement, marksG: SVGGElement | null) {
+    const z = zoom as ZoomWithDrag | null;
+    const t = z ? z.toString() : "matrix(1, 0, 0, 1, 0, 0)";
+    const tr = z?.isDragging ? "none" : "transform 0.18s ease-out";
+    if (marksG) {
+      marksGRef.current = marksG;
+      marksG.setAttribute("transform", t);
+      (marksG.style as unknown as { transition: string }).transition = tr;
+    }
+    const gg = graticuleGRef.current;
+    if (gg) {
+      gg.setAttribute("transform", t);
+      (gg.style as unknown as { transition: string }).transition = tr;
+    }
+    svg.style.touchAction = "none";
+    svg.style.cursor = z?.isDragging ? "grabbing" : "grab";
+    (svg.style as unknown as { contain: string }).contain = "layout style paint";
+  }
+
+  const handleRender = useCallback(({ container }: { container: HTMLElement }) => {
+    const c = container as HTMLElement;
+    const svg = c.querySelector("svg.ts-chart") as unknown as SVGSVGElement | null;
+    const zoom = zoomRefForChrome.current;
+    if (svg && zoom) {
+      (zoom.containerRef as { current: SVGSVGElement | null }).current = svg;
+      const mg = c.querySelector<SVGGElement>("g.ts-chart__marks");
+      applyZoomToGroups(zoom, svg, mg);
     }
 
     const elements = new Map<string, SVGPathElement>();
@@ -776,29 +449,69 @@ export function ChoroplethChart({
     ensureHoverChrome().reconnect(c, elements);
 
     if (animationDuration <= 0) return;
+    if (seenRevealedRef.current) return;
+    const svgForBkm = c.querySelector<SVGElement>("svg.ts-chart") as SVGElement | null;
+    if (!svgForBkm) return;
+    if (svgForBkm.dataset.bkmRevealed === "1") return;
+    seenRevealedRef.current = true;
+    svgForBkm.dataset.bkmRevealed = "1";
 
     const geoGroup = c.querySelector<SVGGElement>(".ts-chart__geo");
-    if (!geoGroup || geoGroup.dataset.bkmRevealed === "1") return;
-    geoGroup.dataset.bkmRevealed = "1";
+    if (!geoGroup) return;
+    geoGroup.classList.add("ts-chart__marks--revealing");
 
-    revealAnimRef.current?.cancel();
-    revealAnimRef.current = geoGroup.animate(
-      [{ opacity: 0 }, { opacity: 1 }],
-      { duration: FEATURE_ENTER_MS, easing: REVEAL_EASING, fill: "backwards" },
-    );
-  }, [animationDuration, ensureHoverChrome, zoom]);
+    setRevealDeadline(FEATURE_ENTER_MS, {
+      animationsRef: revealAnimsRef,
+      onDeadline: () => {},
+    });
+
+    onPostPaint(() => {
+      const liveSvg = c.querySelector<SVGElement>("svg.ts-chart") as SVGElement | null;
+      const liveGeo = c.querySelector<SVGGElement>(".ts-chart__geo");
+      if (!liveSvg || !liveGeo) return;
+      liveGeo.classList.remove("ts-chart__marks--revealing");
+      if ((liveGeo as unknown as HTMLElement).style) (liveGeo as unknown as HTMLElement).style.opacity = "";
+      const anim = liveGeo.animate(
+        [{ opacity: 0 }, { opacity: 1 }],
+        { duration: FEATURE_ENTER_MS, easing: REVEAL_EASING, fill: "backwards" },
+      );
+      revealAnimsRef.current.push(anim);
+      anim.onfinish = () => { try { anim.cancel(); } catch {} };
+      anim.oncancel = () => { try { anim.cancel(); } catch {} };
+    });
+  }, [animationDuration, ensureHoverChrome, data.features]);
 
   useEffect(() => {
     return () => {
+      for (const a of revealAnimsRef.current) try { a.cancel(); } catch {}
+      revealAnimsRef.current = [];
       hoverChromeRef.current?.detach();
       hoverChromeRef.current = null;
-      revealAnimRef.current?.cancel();
     };
   }, []);
 
+  const containerRefForFallback = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (seenRevealedRef.current) return;
+    if (animationDuration <= 0) return;
+    const c = containerRefForFallback.current;
+    if (!c) return;
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (seenRevealedRef.current) return;
+        if (!c.querySelector(".ts-chart__marks")) return;
+        if (c.querySelector<HTMLElement>("svg.ts-chart")?.dataset.bkmRevealed === "1") return;
+        if (c.getAnimations().length > 0) return;
+        handleRender({ container: c });
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [animationDuration, handleRender]);
+
   // --- Tooltip ---
-  const tooltipEnabled = tooltipConfig?.getFeatureValue !== undefined;
+  const hasTooltipChild = tooltipConfig !== null;
   const getFeatureValue = tooltipConfig?.getFeatureValue;
+  const getFeatureName = tooltipConfig?.getFeatureName;
   const valueLabel = tooltipConfig?.valueLabel ?? "Value";
   const formatValue = tooltipConfig?.formatValue ??
     ((v: number) => {
@@ -807,21 +520,19 @@ export function ChoroplethChart({
       return String(Math.round(v));
     });
 
-  const renderTooltip = () => {
-    if (!displayTooltipData || !tooltipEnabled) return null;
-    // Exit phase: tooltipData is null but displayTooltipData still has stale
-    // content — fade out with CSS transition matching bklit's exit animation.
+  const renderTooltip = (zoom: ProvidedZoom<SVGSVGElement> | null) => {
+    if (!displayTooltipData || !hasTooltipChild) return null;
     const exiting = !tooltipData;
     let x = displayTooltipData.x;
     let y = displayTooltipData.y;
-    if (zoomEnabled) {
+    if (zoom) {
       const t = zoom.applyToPoint({ x, y });
       x = t.x; y = t.y;
     }
-    const name = displayTooltipData.feature.properties?.name ?? "Feature";
+    const name = getFeatureName
+      ? getFeatureName(displayTooltipData.feature, -1)
+      : (displayTooltipData.feature.properties?.name ?? "Feature");
     const value = getFeatureValue?.(displayTooltipData.feature, -1);
-    // Tooltip styling matches bklit's TooltipBox + TooltipContent:
-    // glassmorphism panel, color-indicator row, tabular-nums value.
     return (
       <div
         style={{
@@ -893,64 +604,155 @@ export function ChoroplethChart({
     );
   };
 
-  // --- Render ---
-  const zoomTransform = zoomEnabled ? zoom.toString() : undefined;
-  const zoomTransition = isDragging ? "none" : "transform 0.18s ease-out";
+  const chartNode = (
+    <>
+      <Chart
+        ariaLabel="Choropleth chart"
+        aspectRatio={ratio}
+        definition={definition}
+        onRender={handleRender}
+      />
+      {graticuleConfig && projection ? (
+        <svg
+          width={width}
+          height={height}
+          style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
+          aria-hidden="true"
+        >
+          <g ref={graticuleGRef as unknown as React.RefObject<SVGGElement>}>
+            <ChoroplethGraticuleOverlay
+              projection={projection}
+              stroke={graticuleConfig.stroke}
+              strokeWidth={graticuleConfig.strokeWidth}
+              step={graticuleConfig.step}
+            />
+          </g>
+        </svg>
+      ) : null}
+    </>
+  );
+
+  const inner = (
+    <div
+      ref={(el) => { (containerRefForFallback as unknown as { current: HTMLDivElement | null }).current = el; }}
+      style={{ position: "absolute", inset: 0 }}
+    >
+      {chartNode}
+      {overlayChildren}
+    </div>
+  );
+
+  const tooltipFor = (z: ProvidedZoom<SVGSVGElement> | null) => renderTooltip(z);
+
+  if (!zoomEnabled) {
+    return (
+      <ChoroplethContext.Provider value={{ width, height }}>
+        {inner}
+        {tooltipFor(null)}
+      </ChoroplethContext.Provider>
+    );
+  }
 
   return (
-    <ChoroplethZoomContext.Provider value={{ zoom: zoomEnabled ? zoom : null }}>
-      <ChoroplethContext.Provider value={{ width, height }}>
-        <div
-          ref={containerRef}
+    <Zoom<SVGSVGElement>
+      height={height}
+      width={width}
+      initialTransformMatrix={initialZoom}
+      scaleXMin={zoomMin}
+      scaleXMax={zoomMax}
+      scaleYMin={zoomMin}
+      scaleYMax={zoomMax}
+      wheelDelta={(event) => {
+        const s = event.deltaY > 0 ? 0.95 : 1.05;
+        return { scaleX: s, scaleY: s };
+      }}
+    >
+      {(zoom) => {
+        zoomRefForChrome.current = zoom as unknown as ProvidedZoom<SVGSVGElement>;
+        if (typeof window !== "undefined") requestAnimationFrame(() => syncZoomTransform(zoom as unknown as ProvidedZoom<SVGSVGElement>));
+        else syncZoomTransform(zoom as unknown as ProvidedZoom<SVGSVGElement>);
+        const z = zoom as unknown as ProvidedZoom<SVGSVGElement>;
+        return (
+          <ChoroplethZoomContext.Provider value={{ zoom: z }}>
+            <ChoroplethContext.Provider value={{ width, height }}>
+              {inner}
+              {renderTooltip(z)}
+            </ChoroplethContext.Provider>
+          </ChoroplethZoomContext.Provider>
+        );
+      }}
+    </Zoom>
+  );
+}
+
+// ===========================================================================
+// Public wrapper — sizing (mirrors bklit ParentSize) + body
+// ===========================================================================
+
+export function ChoroplethChart({
+  data,
+  margin: marginProp,
+  animationDuration = ANIMATION_DURATION_MS,
+  revealSignature = "",
+  aspectRatio = "16 / 9",
+  scale: scaleProp,
+  center = [0, 20],
+  translate: translateProp,
+  zoomEnabled = false,
+  zoomMin = 0.5,
+  zoomMax = 4,
+  initialZoom = DEFAULT_INITIAL_ZOOM,
+  className = "",
+  children,
+}: ChoroplethChartProps) {
+  const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
+  const ratio = useMemo(() => parseAspectRatio(aspectRatio), [aspectRatio]);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      setWidth((prev) => (Math.abs(prev - w) > 0.5 ? w : prev));
+    });
+    ro.observe(el);
+    setWidth(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, []);
+
+  const height = Math.max(0, width / ratio);
+
+  return (
+    <div
+      ref={containerRef}
+      className={className}
+      style={{ position: "relative", width: "100%", aspectRatio: String(ratio), overflow: "hidden" }}
+      data-bkm-chart="choropleth"
+    >
+      {width > 0 && height > 0 ? (
+        <ChoroplethChartBody
+          data={data}
+          margin={margin}
+          animationDuration={animationDuration}
+          revealSignature={revealSignature}
+          aspectRatio={aspectRatio}
+          scale={scaleProp}
+          center={center}
+          translate={translateProp}
+          zoomEnabled={zoomEnabled}
+          zoomMin={zoomMin}
+          zoomMax={zoomMax}
+          initialZoom={initialZoom}
           className={className}
-          style={{ position: "relative", width: "100%", aspectRatio: String(ratio), overflow: "hidden" }}
-          data-bkm-chart="choropleth"
+          width={width}
+          height={height}
         >
-          {definition ? (
-            <>
-              <div
-                ref={zoomContainerRef}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  transform: zoomTransform,
-                  transition: zoomTransition,
-                  transformOrigin: "0 0",
-                  touchAction: "none",
-                  cursor: isDragging ? "grabbing" : "grab",
-                }}
-              >
-                <Chart
-                  ariaLabel="Choropleth chart"
-                  aspectRatio={ratio}
-                  definition={definition}
-                  onRender={handleRender}
-                />
-                {graticuleConfig && projection ? (
-                  <svg
-                    width={width}
-                    height={height}
-                    style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
-                    aria-hidden="true"
-                  >
-                    <ChoroplethGraticuleOverlay
-                      projection={projection}
-                      width={width}
-                      height={height}
-                      stroke={graticuleConfig.stroke}
-                      strokeWidth={graticuleConfig.strokeWidth}
-                      step={graticuleConfig.step}
-                    />
-                  </svg>
-                ) : null}
-              </div>
-              {renderTooltip()}
-              {overlayChildren}
-            </>
-          ) : null}
-        </div>
-      </ChoroplethContext.Provider>
-    </ChoroplethZoomContext.Provider>
+          {children}
+        </ChoroplethChartBody>
+      ) : null}
+    </div>
   );
 }
 
