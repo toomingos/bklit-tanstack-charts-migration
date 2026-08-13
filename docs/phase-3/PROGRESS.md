@@ -4,19 +4,28 @@
 
 Source of truth for status: this table. Update status/QA/benchmark columns as work proceeds; log decisions and rationale in `docs/phase-3/LOG.md`, not here.
 
-## Phase 3 — (define scope in PLAN-phase-3.md)
+## Phase 3 — Harden + Consolidate (PLAN-phase-3.md)
 
-_Work not yet scoped. Fill this section when Phase 3 planning begins — link the PLAN doc and list charts or initiatives._
+Goal: harden migrated charts + deferred utilities to TanStack-native backend — remove remaining wrappers/unnecessary complexity/duplicated internals while preserving bklit design, animation, and API parity. Gains measured on M1/M2/M3 vs bklit and closeness to TanStack native (research/phase-1/05-qa-and-benchmark-gates.md — frozen gates).
 
-| # | Chart / Initiative | Audit | Plan | Refactor | QA (Q1/Q2) | Benchmarks (G1–G4) | Notes |
+| # | Initiative | Audit | Plan | Refactor | QA (Q1/Q2) | Benchmarks (G1–G4) | Notes |
 |---|---|---|---|---|---|---|---|
-| — | _TBD_ | — | — | — | — | — | — |
+| 1 | Internals consolidation — spring / reveal / hover-chrome | not started | — | — | — | — | dedup `springFromBounce`/`resolveEnterTransition`/`sampleSpringProgress`, `onPostPaint`/`setRevealDeadline`/`deferred-reveal.ts`, `TOOLTIP_SPRING`/`BOX_OFFSET` hover constants; no behavior change (D139) |
+| 2 | Sizing host — ResizeObserver / ParentSize → TanStack host | not started | — | — | — | — | manual `ResizeObserver` duplication (audit #4), `ParentSize debounceTime 10ms` → host `ResizeObserver` single owner, `measureText` auto-margin, `xRangePadding` ChartScale hatch |
+| 3 | Deferred chrome — Legend (U2) + Markers (U1) + Background (U4) + ChartRevealClip (U13) | not started | — | — | — | — | Legend system, ChartMarkers/MarkerGroup, Background, reveal clip — TanStack `colorLegend()`/`gradients`/`clip` resources vs custom wrappers |
+| 4 | Deferred chrome — ChartTooltip (U3) + ChartStatFlow (U12) + useChart hooks (U14) | not started | — | — | — | — | tooltip render-props, stat flow ticker, `useChart`/`useChartStable`/`useChartHover` → `renderTooltipBody` portal + `focus` strategy |
+| 5 | Deferred chrome — ChartBrush (U5) + ReferenceArea (U7) + SegmentBackground (U8) + ProjectionLine (U6) | not started | — | — | — | — | brush/zoom selection → filtered data + definition swap, ReferenceArea bands, projection `buildProjectionPath` → `ruleY`/`link` marks |
+| 6 | Deferred chrome — PatternArea (U11) + BarSquares/BarDepth (U10) + ProfitLossLine (U9) | not started | — | — | — | — | `PatternArea` presets, `BarSquares` waffle/`BarDepth` 3D perspective, profit-loss — custom `createMark` families |
+| 7 | Showcase type-debt + build polish | not started | — | — | — | — | ~20 pre-existing `migrated/charts` type errors under showcase `ignoreBuildErrors`, `bench/app`/`showcase` build gates |
 
-## Research tracker
+## Research tracker (Phase 0)
 
 | Step | Description | Status | Output |
 |---|---|---|---|
-| — | _TBD_ | — | — |
+| 0.0 | Phase 3 docs (PROGRESS / BENCHMARKS / LOG D200+) | not started | this file + BENCHMARKS.md + LOG.md |
+| 0.1 | Deferred + duplicated inventory (reuse phase-2) | not started | research/phase-3/inventory/01-04 (verbatim copies of phase-2 inventory) |
+| 0.2 | Consolidated internals catalog (spring/reveal/hover/ChartScale) | not started | research/phase-3/inventory/05-consolidated-internals.md |
+| 0.3 | Per-initiative audits (native vs custom vs broken vs design) | not started | research/phase-3/audits/ (per-initiative audits) |
 
 ## Legend
 
@@ -32,4 +41,4 @@ _Work not yet scoped. Fill this section when Phase 3 planning begins — link th
 - **G3 — Steady state**: M2a ≤50% of `B`, within 2× of `T`.
 - **G4 — Memory/bundle**: M2b/M2c ≤110% of `B`.
 
-Phase 3 gates are identical to Phase 2 (research/phase-1/05 is frozen ground truth). Waivers require lead ruling in `docs/phase-3/LOG.md`.
+Phase 3 gates are identical to Phase 2 (research/phase-1/05 is frozen ground truth). Waivers require lead ruling in `docs/phase-3/LOG.md` (Phase 3: D200+).
