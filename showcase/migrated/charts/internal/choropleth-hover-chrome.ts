@@ -16,8 +16,10 @@ export function createChoroplethHoverChrome(
   pathElementsRef: { current: Map<string, SVGPathElement> },
 ): ChoroplethHoverChrome {
   const MARKER = "data-bkm-cp";
+  const ROOT_MARKER = "data-bkm-cp-root";
   let hoveredKey: string | null = null;
   let currentRoot: HTMLElement | null = null;
+  let svgEl: SVGSVGElement | null = null;
 
   function getDimWrapper(geoGroup: Element): SVGGElement | null {
     return geoGroup.querySelector<SVGGElement>(`[${DIM_WRAPPER_ATTR}="${MARKER_VAL}"]`);
@@ -112,16 +114,25 @@ export function createChoroplethHoverChrome(
     if (centroid) onHoverChange({ key, x: centroid.x, y: centroid.y });
   }
 
-  function handleLeave() {
+  function clearHover() {
+    if (hoveredKey === null) return;
     applyDim(null);
     hoveredKey = null;
+    onHoverChange(null);
   }
 
-  function handleRootLeave() {
-    const prev = hoveredKey;
-    applyDim(null);
-    hoveredKey = null;
-    if (prev !== null) onHoverChange(null);
+  function handleSvgMove(e: MouseEvent) {
+    if (hoveredKey === null) return;
+    const target = e.target as Element | null;
+    if (target?.closest?.("[data-ts-key]")) return;
+    clearHover();
+  }
+
+  function wireSvg(svg: SVGSVGElement | null) {
+    if (!svg) return;
+    svg.addEventListener("mousemove", handleSvgMove);
+    svg.addEventListener("mouseleave", clearHover);
+    svg.addEventListener("pointerleave", clearHover);
   }
 
   function install(root: HTMLElement, pathElements: Map<string, SVGPathElement>) {
@@ -129,12 +140,17 @@ export function createChoroplethHoverChrome(
       if (!path.isConnected) continue;
       if (path.hasAttribute(MARKER)) continue;
       path.addEventListener("mouseenter", handleEnter);
-      path.addEventListener("mouseleave", handleLeave);
+      path.addEventListener("mouseleave", clearHover);
       path.setAttribute(MARKER, MARKER_VAL);
     }
-    if (!root.hasAttribute(`${MARKER}-root`)) {
-      root.addEventListener("mouseleave", handleRootLeave);
-      root.setAttribute(`${MARKER}-root`, MARKER_VAL);
+    if (!root.hasAttribute(ROOT_MARKER)) {
+      root.addEventListener("mouseleave", clearHover);
+      svgEl = root.querySelector<SVGSVGElement>("svg.ts-chart");
+      wireSvg(svgEl);
+      root.setAttribute(ROOT_MARKER, MARKER_VAL);
+    } else if (!svgEl || !svgEl.isConnected) {
+      svgEl = root.querySelector<SVGSVGElement>("svg.ts-chart");
+      wireSvg(svgEl);
     }
   }
 
@@ -160,6 +176,7 @@ export function createChoroplethHoverChrome(
     detach() {
       hoveredKey = null;
       currentRoot = null;
+      svgEl = null;
       applyDim(null);
       onHoverChange(null);
     },
