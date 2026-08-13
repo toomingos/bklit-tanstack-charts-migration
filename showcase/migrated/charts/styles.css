@@ -551,7 +551,8 @@
    TanStack polar renders via <g transform="translate(cx,cy)">; child paths
    use local coordinates with center at (0,0) — scale must pivot there.
    Matches bklit radar-area's `style={{transformOrigin:"0px 0px"}}`. */
-[data-bkm-chart="radar"] [data-ts-key^="polar-"] {
+[data-bkm-chart="radar"] [data-ts-key^="polar-"],
+[data-bkm-chart="radar"] [data-ts-key^="radar:"] {
   transform-origin: 0px 0px;
 }
 [data-bkm-chart="radar"] .ts-chart__radial-area path,

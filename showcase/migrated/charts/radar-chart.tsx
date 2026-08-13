@@ -241,10 +241,10 @@ export function RadarChart({
     [isControlled, onHoverChange, controlledHoveredIndex, internalHoveredIndex],
   );
 
-  const areaPathByKeyRef = React.useRef<Map<string, SVGPathElement>>(new Map());
-  const dotCircleByKeyRef = React.useRef<Map<string, SVGCircleElement>>(new Map());
-  const pendingRevealRef = React.useRef<Map<string, Animation>>(new Map());
-  const seenRevealedRef = React.useRef<Set<string>>(new Set());
+  const areaPathsRef = React.useRef<SVGPathElement[]>([]);
+  const dotCirclesRef = React.useRef<SVGCircleElement[]>([]);
+  const pendingRevealRef = React.useRef<Map<number, Animation>>(new Map());
+  const seenRevealedRef = React.useRef<Set<number>>(new Set());
   const revealAnimsRef = React.useRef<Animation[]>([]);
   const isMountedRef = React.useRef(true);
 
@@ -362,11 +362,13 @@ export function RadarChart({
     return defineChart({
       marks: [
         polar({
+          id: "radar",
           angle: { scale: scalePoint<string>().domain(metricKeys) },
           radius: { scale: scaleLinear().domain([0, 100]) },
           guides,
           marks: [
             radialArea(allRows, {
+              id: "radar-area",
               angle: "metric",
               radius: "value",
               z: "series",
@@ -387,6 +389,7 @@ export function RadarChart({
               strokeWidth: 2,
             }),
             radialDot(allRows, {
+              id: "radar-dot",
               angle: "metric",
               radius: "value",
               z: "series",
@@ -433,47 +436,39 @@ export function RadarChart({
 
   const handleRender = React.useCallback(
     ({ container }: { container: HTMLElement }) => {
-      const areaPaths = container.querySelectorAll<SVGPathElement>(".ts-chart__radial-area path");
-      const nextAreaMap = new Map<string, SVGPathElement>();
-      for (const p of areaPaths) {
-        const k = p.getAttribute("data-ts-key");
-        if (k) nextAreaMap.set(k, p);
-      }
-      areaPathByKeyRef.current = nextAreaMap;
-
-      const dotCircles = container.querySelectorAll<SVGCircleElement>(".ts-chart__radial-dot circle");
-      const nextDotMap = new Map<string, SVGCircleElement>();
-      for (const c of dotCircles) {
-        const k = c.getAttribute("data-ts-key");
-        if (k) nextDotMap.set(k, c);
-      }
-      dotCircleByKeyRef.current = nextDotMap;
-
       if (!animateRef.current) return;
-      const svgForBkm = container.querySelector<SVGElement>("svg.ts-chart");
-      if (!svgForBkm) return;
-      if (svgForBkm.dataset.bkmRevealed === "1") return;
+      const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks") as SVGGElement | null;
+      if (!marksGroup) return;
 
-      const { resolvedAreas: currAreas } = hoverInputsRef.current;
+      const { resolvedAreas: currAreas, metricKeysLength: metricsLen } = hoverInputsRef.current;
       if (currAreas.length === 0) return;
 
-      const toReveal: { key: string; pathEl: SVGPathElement; areaIndex: number }[] = [];
-      for (let i = 0; i < currAreas.length; i++) {
-        const key = `polar-0:radial-area-0:string:${String(i).padStart(Z_PAD, "0")}`;
-        if (seenRevealedRef.current.has(key)) continue;
-        const el = nextAreaMap.get(key);
-        if (!el) continue;
-        seenRevealedRef.current.add(key);
-        toReveal.push({ key, pathEl: el, areaIndex: i });
-      }
-      if (toReveal.length === 0) {
-        svgForBkm.dataset.bkmRevealed = "1";
-        return;
+      for (const v of seenRevealedRef.current) {
+        if (v >= currAreas.length) seenRevealedRef.current.delete(v);
       }
 
-      svgForBkm.dataset.bkmRevealed = "1";
-      const marksGroup = container.querySelector<HTMLElement>(".ts-chart__marks");
-      marksGroup?.classList.add("ts-chart__marks--revealing");
+      let areaEls = marksGroup.querySelectorAll<SVGPathElement>('path[data-ts-key^="radar-area:"]');
+      if (areaEls.length === 0) areaEls = container.querySelectorAll<SVGPathElement>(".ts-chart__radial-area path");
+      areaPathsRef.current = Array.from(areaEls);
+
+      let dotEls = marksGroup.querySelectorAll<SVGCircleElement>('circle[data-ts-key^="radar-dot:"]');
+      if (dotEls.length === 0) dotEls = container.querySelectorAll<SVGCircleElement>(".ts-chart__radial-dot circle");
+      dotCirclesRef.current = Array.from(dotEls);
+
+      const toReveal: number[] = [];
+      for (let i = 0; i < currAreas.length; i++) {
+        if (seenRevealedRef.current.has(i)) continue;
+        if (!areaPathsRef.current[i]) continue;
+        seenRevealedRef.current.add(i);
+        toReveal.push(i);
+      }
+      if (toReveal.length === 0) return;
+
+      const svgForBkm = container.querySelector<SVGElement>("svg.ts-chart") as SVGElement | null;
+      if (svgForBkm && !svgForBkm.getAttribute("data-bkm-revealed")) {
+        svgForBkm.setAttribute("data-bkm-revealed", "1");
+      }
+      marksGroup.classList.add("ts-chart__marks--revealing");
 
       const resolved = resolveRadarEnterTransition(enterTransitionRef.current);
       const timing = radarRevealTiming(resolved);
@@ -483,7 +478,7 @@ export function RadarChart({
       const campaignBaseDelayMs = (5 * gridStaggerMs * 0.5 + 200) * durationFactor;
 
       const maxStagger = Math.max(
-        ...toReveal.map((r) => campaignBaseDelayMs + r.areaIndex * 150 * staggerScale * durationFactor),
+        ...toReveal.map((idx) => campaignBaseDelayMs + idx * 150 * staggerScale * durationFactor),
         0,
       );
       setRevealDeadline(timing.durationMs + maxStagger, {
@@ -491,20 +486,28 @@ export function RadarChart({
         onDeadline: () => {},
       });
 
-      // No-op: pre-hide now in useLayoutEffect before paint. Keep handleRender sync-free so WAAPI fill:backwards owns t=0.
-      void nextDotMap;
+      for (const idx of toReveal) {
+        pendingRevealRef.current.set(idx, {} as unknown as Animation);
+      }
 
       onPostPaint(() => {
-        const liveContainer = container;
-        const liveSvg = liveContainer.querySelector<SVGElement>("svg.ts-chart");
-        if (!liveSvg) return;
-        const liveMarksGroup = liveContainer.querySelector<HTMLElement>(".ts-chart__marks");
+        const liveMarksGroup = container.querySelector<SVGGElement>(".ts-chart__marks") as SVGGElement | null;
+        if (!liveMarksGroup) return;
 
-        for (const { key: revealKey, areaIndex } of toReveal) {
-          const liveEl = liveContainer.querySelector(`[data-ts-key="${revealKey}"]`) as SVGPathElement | null;
-          if (!liveEl) continue;
-          const delayMs = campaignBaseDelayMs + areaIndex * 150 * staggerScale * durationFactor;
-          // Scale 0->1 about polar center (translate 200,200). bklit: animatedPositions = target * t => uniform scale.
+        let liveAreaEls = liveMarksGroup.querySelectorAll<SVGPathElement>('path[data-ts-key^="radar-area:"]');
+        if (liveAreaEls.length === 0) liveAreaEls = container.querySelectorAll<SVGPathElement>(".ts-chart__radial-area path");
+        let liveDotEls = liveMarksGroup.querySelectorAll<SVGCircleElement>('circle[data-ts-key^="radar-dot:"]');
+        if (liveDotEls.length === 0) liveDotEls = container.querySelectorAll<SVGCircleElement>(".ts-chart__radial-dot circle");
+        const liveAreaArr = Array.from(liveAreaEls);
+        const liveDotArr = Array.from(liveDotEls);
+
+        for (const areaIdx of toReveal) {
+          const liveEl = liveAreaArr[areaIdx] ?? null;
+          if (!liveEl) {
+            pendingRevealRef.current.delete(areaIdx);
+            continue;
+          }
+          const delayMs = campaignBaseDelayMs + areaIdx * 150 * staggerScale * durationFactor;
           const kfs = buildRadarProgressKeyframes(timing, (p) => ({ transform: `scale(${p})` } as unknown as Keyframe));
           const anim = liveEl.animate(kfs, {
             duration: timing.durationMs,
@@ -512,28 +515,22 @@ export function RadarChart({
             easing: timing.easing,
             fill: "backwards",
           });
-          pendingRevealRef.current.set(revealKey, anim);
+          pendingRevealRef.current.set(areaIdx, anim);
           revealAnimsRef.current.push(anim);
           anim.onfinish = () => {
             anim.cancel();
-            pendingRevealRef.current.delete(revealKey);
+            pendingRevealRef.current.delete(areaIdx);
           };
-          anim.oncancel = () => pendingRevealRef.current.delete(revealKey);
+          anim.oncancel = () => pendingRevealRef.current.delete(areaIdx);
         }
 
-        // Reveal dots — circles use r/cx/cy animation (scale doesn't affect cx/cy). Animate cx/cy from 0 and r from 0.
-        // TanStack radialDot renders cx/cy already at target; scale about 0,0 does move them (cx/cy are attributes, not transform-origin dependent)
-        // but circle transform-origin 0,0 via CSS makes scale work. Keep same scale path on circles via their parent <g> is at translate(200,200).
-        // Animate each circle's transform scale 0->1.
-        for (const { key: revealKey, areaIndex } of toReveal) {
-          const idx = parseInt(revealKey.split(":string:")[1] ?? "-1", 10);
-          if (isNaN(idx)) continue;
-          const delayMs = campaignBaseDelayMs + areaIndex * 150 * staggerScale * durationFactor;
+        for (const areaIdx of toReveal) {
+          const delayMs = campaignBaseDelayMs + areaIdx * 150 * staggerScale * durationFactor;
           const kfs = buildRadarProgressKeyframes(timing, (p) => ({ transform: `scale(${p})` } as unknown as Keyframe));
-          const liveDots = liveContainer.querySelectorAll<SVGCircleElement>(".ts-chart__radial-dot circle");
-          for (const circle of liveDots) {
-            const ck = circle.getAttribute("data-ts-key") ?? "";
-            if (!ck.startsWith(`polar-0:radial-dot-1:string:${String(idx).padStart(Z_PAD, "0")}:`)) continue;
+          const start = areaIdx * metricsLen;
+          for (let j = 0; j < metricsLen; j++) {
+            const circle = liveDotArr[start + j] ?? null;
+            if (!circle) continue;
             const anim = circle.animate(kfs, {
               duration: timing.durationMs,
               delay: delayMs,
@@ -546,24 +543,20 @@ export function RadarChart({
           }
         }
 
-          // Grid + spokes + labels reveal (bklit parity: grid 0.08s stagger, spokes 0.05s, labels 0.08s)
-          // Clear the sync pre-hide transforms so WAAPI fill:backwards takes over (otherwise inline scale(0) wins)
-          {
-            const gridStaggerMs = 80 * staggerScale * durationFactor;
-            const _spokeGrid = liveContainer.querySelector<HTMLElement>('[data-ts-key="polar-0:bklit-radar-grid-0"]');
-            const _angleGridEl = liveContainer.querySelector<HTMLElement>('[data-ts-key="polar-0:angle-grid-1"]');
-            void _spokeGrid; void _angleGridEl;
-            const gridRings = liveContainer.querySelectorAll<SVGPathElement>('[data-ts-key^="radar-ring:"]');
-            const spokes = liveContainer.querySelectorAll<SVGLineElement>('[data-ts-key^="spoke:"]');
-            for (const el of gridRings) { (el as SVGElement).style.transform = ""; (el as SVGElement).style.opacity = ""; }
-            for (const el of spokes) { (el as SVGElement).style.transform = ""; (el as SVGElement).style.opacity = ""; }
-            const clearLabels = liveContainer.querySelectorAll<HTMLElement>('[data-ts-key$=":labels"]');
-            for (const g of clearLabels) for (const t of g.querySelectorAll<SVGTextElement>("text")) t.style.opacity = "";
-          // Apply revealing class ensures pre-paint hidden; now WAAPI drives it
-          const gridLabelsGroup = liveContainer.querySelector<HTMLElement>('[data-ts-key="polar-0:bklit-radar-grid-0:labels"]');
-          const angleLabelsGroup = liveContainer.querySelector<HTMLElement>('[data-ts-key="polar-0:angle-grid-1:labels"]');
+        {
+          const gridRings = liveMarksGroup.querySelectorAll<SVGPathElement>('[data-ts-key^="radar-ring:"]');
+          const spokes = liveMarksGroup.querySelectorAll<SVGLineElement>('[data-ts-key^="spoke:"]');
+          for (const el of gridRings) { (el as SVGElement).style.transform = ""; (el as SVGElement).style.opacity = ""; }
+          for (const el of spokes) { (el as SVGElement).style.transform = ""; (el as SVGElement).style.opacity = ""; }
+          const clearLabels = liveMarksGroup.querySelectorAll<HTMLElement>('[data-ts-key$=":labels"]');
+          for (const g of clearLabels) for (const t of g.querySelectorAll<SVGTextElement>("text")) t.style.opacity = "";
+          const gridLabelsGroup = (liveMarksGroup.querySelector('[data-ts-key="radar:bklit-radar-grid-0:labels"]') ??
+            liveMarksGroup.querySelector('[data-ts-key="polar-0:bklit-radar-grid-0:labels"]') ??
+            container.querySelector('[data-ts-key="radar:bklit-radar-grid-0:labels"]')) as HTMLElement | null;
+          const angleLabelsGroup = (liveMarksGroup.querySelector('[data-ts-key="radar:angle-grid-1:labels"]') ??
+            liveMarksGroup.querySelector('[data-ts-key="polar-0:angle-grid-1:labels"]') ??
+            container.querySelector('[data-ts-key="radar:angle-grid-1:labels"]')) as HTMLElement | null;
 
-          // Grid rings: scale 0->1 + opacity 0->1 stagger per ring (bklit spring 100/15 → ease-out surrogate)
           gridRings.forEach((path, i) => {
             const delay = i * gridStaggerMs;
             const kfScale = buildRadarProgressKeyframes(timing, (p) => ({ transform: `scale(${p})` } as unknown as Keyframe));
@@ -575,7 +568,6 @@ export function RadarChart({
             a2.onfinish = () => a2.cancel();
           });
 
-          // Spokes: scale 0->1 from center (line x2/y2 already full length; scale on line element with origin 0,0 works because line at 0,0->target)
           spokes.forEach((line, i) => {
             const delay = i * 50 * staggerScale * durationFactor;
             const kfScale = buildRadarProgressKeyframes(timing, (p) => ({ transform: `scale(${p})` } as unknown as Keyframe));
@@ -587,10 +579,9 @@ export function RadarChart({
             a2.onfinish = () => a2.cancel();
           });
 
-          // Labels: fade in (group-level opacity); individual text positions already correct via TanStack layout
           const labelGroups = [gridLabelsGroup, angleLabelsGroup].filter(Boolean) as HTMLElement[];
           labelGroups.forEach((g, gi) => {
-            const baseDelay = gi === 0 ? 5 * gridStaggerMs * 0.5 : 5 * gridStaggerMs * 0.5;
+            const baseDelay = 5 * gridStaggerMs * 0.5;
             const texts = g.querySelectorAll<SVGTextElement>("text");
             texts.forEach((t, i) => {
               const delay = baseDelay + i * (gi === 0 ? 60 : 80) * staggerScale * durationFactor;
@@ -600,108 +591,82 @@ export function RadarChart({
               anim.onfinish = () => anim.cancel();
             });
           });
-
         }
 
-        liveMarksGroup?.classList.remove("ts-chart__marks--revealing");
+        liveMarksGroup.classList.remove("ts-chart__marks--revealing");
       });
     },
     [],
   );
 
-  // Hover chrome — imperative, key-based, pointer-driven (ring pattern).
-  // TanStack focus:"nearest" does not hit polar radialArea centroids, so we
-  // attach pointer listeners directly to each area path (like bklit motion.g
-  // onMouseEnter and ring's trackGroup listeners). useLayoutEffect paints
-  // fillOpacity/strokeWidth/filter/opacity; transform is gated on
-  // pendingRevealRef (WAAPI owns it until finish).
   React.useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    const areaEls = container.querySelectorAll<SVGPathElement>(".ts-chart__radial-area path");
+    const dotEls = container.querySelectorAll<SVGCircleElement>(".ts-chart__radial-dot circle");
+    const areaArr = Array.from(areaEls);
+    const dotArr = Array.from(dotEls);
+
     const applyHover = () => {
       const { resolvedAreas } = hoverInputsRef.current;
-      const areaMap = areaPathByKeyRef.current;
-      const dotMap = dotCircleByKeyRef.current;
       const metricsLen = hoverInputsRef.current.metricKeysLength;
 
       for (let i = 0; i < resolvedAreas.length; i++) {
-        const key = `polar-0:radial-area-0:string:${String(i).padStart(Z_PAD, "0")}`;
-        const path = areaMap.get(key) ?? null;
+        const path = areaArr[i] ?? null;
         if (!path) continue;
         const isHovered = i === hoveredIndex;
         const isDimmed = hoveredIndex !== null && !isHovered;
         const area = resolvedAreas[i];
 
         path.style.opacity = isDimmed ? "0.3" : "1";
-        path.style.fillOpacity = isHovered
-          ? String(FILL_OPACITY_HOVER)
-          : String(FILL_OPACITY_REST);
-        path.style.strokeWidth = area?.showStroke
-          ? String(isHovered ? STROKE_WIDTH_HOVER : STROKE_WIDTH_REST)
-          : "0";
-        path.style.filter =
-          area?.showGlow && isHovered
-            ? `drop-shadow(0 0 12px ${area.color})`
-            : "none";
+        path.style.fillOpacity = isHovered ? String(FILL_OPACITY_HOVER) : String(FILL_OPACITY_REST);
+        path.style.strokeWidth = area?.showStroke ? String(isHovered ? STROKE_WIDTH_HOVER : STROKE_WIDTH_REST) : "0";
+        path.style.filter = area?.showGlow && isHovered ? `drop-shadow(0 0 12px ${area.color})` : "none";
 
-        if (!pendingRevealRef.current.has(key)) {
+        if (!pendingRevealRef.current.has(i)) {
           path.style.transform = isHovered ? `scale(${HOVER_SCALE})` : "";
         }
 
         for (let j = 0; j < metricsLen; j++) {
-          const metricKey = metricKeys[j];
-          if (!metricKey) continue;
-          const dotKey = `polar-0:radial-dot-1:string:${String(i).padStart(Z_PAD, "0")}:string:${metricKey}`;
-          const circle = dotMap.get(dotKey) ?? null;
+          const circle = dotArr[i * metricsLen + j] ?? null;
           if (!circle) continue;
           circle.style.opacity = isDimmed ? "0.3" : "1";
           circle.setAttribute("r", String(isHovered ? DOT_R_HOVER : DOT_R_REST));
-          if (!pendingRevealRef.current.has(key)) {
+          if (!pendingRevealRef.current.has(i)) {
             circle.style.transform = isHovered ? `scale(${HOVER_SCALE})` : "";
           }
           circle.style.transformOrigin = "";
-          if (area?.showGlow && isHovered) {
-            circle.style.filter = `drop-shadow(0 0 8px ${area.color})`;
-          } else {
-            circle.style.filter = "";
-          }
+          circle.style.filter = area?.showGlow && isHovered ? `drop-shadow(0 0 8px ${area.color})` : "";
         }
       }
 
-      if (dotCircleByKeyRef.current.size > hoverInputsRef.current.metricKeysLength * hoverInputsRef.current.resolvedAreas.length) {
-        for (const [k, circle] of dotCircleByKeyRef.current) {
-          const prefix = k.split(":string:")[1];
-          if (prefix == null) continue;
-          const idx = parseInt(prefix, 10);
-          if (isNaN(idx) || idx >= hoverInputsRef.current.resolvedAreas.length) {
-            circle.style.opacity = "1";
-            circle.setAttribute("r", String(DOT_R_REST));
-            circle.style.filter = "";
-          }
+      if (dotArr.length > metricsLen * resolvedAreas.length) {
+        for (let k = metricsLen * resolvedAreas.length; k < dotArr.length; k++) {
+          const circle = dotArr[k];
+          if (!circle) continue;
+          circle.style.opacity = "1";
+          circle.setAttribute("r", String(DOT_R_REST));
+          circle.style.filter = "";
         }
       }
     };
 
     applyHover();
 
-    const areaPaths = Array.from(container.querySelectorAll<SVGPathElement>(".ts-chart__radial-area path"));
-    const dotCircles = Array.from(container.querySelectorAll<SVGCircleElement>(".ts-chart__radial-dot circle"));
     const cleanups: (() => void)[] = [];
 
-    for (const path of areaPaths) {
-      const key = path.getAttribute("data-ts-key") ?? "";
-      const m = key.match(/:string:(\d+)$/);
-      const idx = m ? parseInt(m[1]!, 10) : NaN;
-      if (isNaN(idx)) continue;
+    for (let i = 0; i < areaArr.length; i++) {
+      const path = areaArr[i];
+      if (!path) continue;
+      const idx = i;
       path.style.cursor = "pointer";
-      // Defer hover until WAAPI reveal finished for this key (ring settleAtRest gate)
       const enter = () => {
-        if (pendingRevealRef.current.has(key)) return;
+        if (pendingRevealRef.current.has(idx)) return;
         setHoveredIndex(idx);
       };
       const leave = () => {
-        if (pendingRevealRef.current.has(key)) return;
+        if (pendingRevealRef.current.has(idx)) return;
         setHoveredIndex((prev: number | null) => (prev === idx ? null : prev));
       };
       path.addEventListener("pointerenter", enter);
@@ -712,23 +677,19 @@ export function RadarChart({
       });
     }
 
-    // Dots also trigger hover (larger hit area near vertices)
-    for (const circle of dotCircles) {
-      const key = circle.getAttribute("data-ts-key") ?? "";
-      const m = key.match(/:string:(\d+):string:/);
-      const idx = m ? parseInt(m[1]!, 10) : NaN;
-      if (isNaN(idx)) continue;
+    for (let i = 0; i < dotArr.length; i++) {
+      const circle = dotArr[i];
+      if (!circle) continue;
+      const seriesIdx = Math.floor(i / Math.max(1, hoverInputsRef.current.metricKeysLength));
+      circle.style.cursor = "pointer";
       const enter = () => {
-        const areaKey = `polar-0:radial-area-0:string:${String(idx).padStart(Z_PAD, "0")}`;
-        if (pendingRevealRef.current.has(areaKey)) return;
-        setHoveredIndex(idx);
+        if (pendingRevealRef.current.has(seriesIdx)) return;
+        setHoveredIndex(seriesIdx);
       };
       const leave = () => {
-        const areaKey = `polar-0:radial-area-0:string:${String(idx).padStart(Z_PAD, "0")}`;
-        if (pendingRevealRef.current.has(areaKey)) return;
-        setHoveredIndex((prev: number | null) => (prev === idx ? null : prev));
+        if (pendingRevealRef.current.has(seriesIdx)) return;
+        setHoveredIndex((prev: number | null) => (prev === seriesIdx ? null : prev));
       };
-      circle.style.cursor = "pointer";
       circle.addEventListener("pointerenter", enter);
       circle.addEventListener("pointerleave", leave);
       cleanups.push(() => {
@@ -764,7 +725,6 @@ export function RadarChart({
   // Flicker is handled inside handleRender → onPostPaint with fill:backwards WAAPI (zero wrappers).
   // Left intentionally minimal.
 
-  // Stable fallback: if onRender never fired (size<10->>=10), retry once past paint (ring pattern)
   React.useLayoutEffect(() => {
     if (seenRevealedRef.current.size > 0) return;
     if (!animateRef.current) return;
@@ -775,10 +735,13 @@ export function RadarChart({
         if (seenRevealedRef.current.size > 0) return;
         if (!container.querySelector(".ts-chart__marks")) return;
         const hasAnims = () => {
-          for (let i = 0; i < hoverInputsRef.current.resolvedAreas.length; i++) {
-            const key = `polar-0:radial-area-0:string:${String(i).padStart(Z_PAD, "0")}`;
-            const el = container.querySelector(`[data-ts-key="${key}"]`) as unknown as { getAnimations?: () => Animation[] } | null;
-            if (el?.getAnimations?.().length) return true;
+          const els = container.querySelectorAll('[data-ts-key^="radar-area:"]');
+          for (const el of els) {
+            if ((el as unknown as { getAnimations?: () => Animation[] }).getAnimations?.().length) return true;
+          }
+          const fallback = container.querySelectorAll(".ts-chart__radial-area path");
+          for (const el of fallback) {
+            if ((el as unknown as { getAnimations?: () => Animation[] }).getAnimations?.().length) return true;
           }
           return false;
         };
