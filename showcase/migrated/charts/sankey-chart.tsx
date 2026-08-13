@@ -31,6 +31,7 @@ import { Chart } from "@tanstack/react-charts";
 import { defineChart } from "@tanstack/charts";
 import {
   computeSankeyLayout,
+  getSankeyDisplayValue,
   type LaidOutNode,
   type LaidOutLink,
   type SankeyLayoutOutput,
@@ -40,7 +41,6 @@ import { createSankeyMark, type SankeyGradientDatum } from "./internal/sankey-ma
 import {
   injectGradientDefs,
   injectLabelCssTransitions,
-  injectSankeyLabels,
   runSankeyReveal,
 } from "./internal/sankey-animation";
 import {
@@ -50,6 +50,7 @@ import {
   attachSankeyHoverListeners,
 } from "./internal/sankey-hover-chrome";
 import { intFmt } from "./internal/formatters";
+import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 
 // ─── Public types (match bklit's API exactly) ──────────────────────────────
 
@@ -252,17 +253,7 @@ function createHoverHandlers(
       hoveredNodeIndexRef.current = i;
       hoveredLinkIndexRef.current = null;
       const node = layout.nodes[i];
-      const displayVal = (() => {
-        const category = (node as { category?: string }).category;
-        let val = 0;
-        for (const l of layout.links) {
-          const sIdx = (l as { source: LaidOutNode }).source?.index;
-          const tIdx = (l as { target: LaidOutNode }).target?.index;
-          if (category === "source" && sIdx === i) val += (l as { value: number }).value ?? 0;
-          else if (category !== "source" && tIdx === i) val += (l as { value: number }).value ?? 0;
-        }
-        return val;
-      })();
+      const displayVal = getSankeyDisplayValue(node, i, layout.links);
       setTooltipData({
         type: "node",
         nodeIndex: i,
@@ -327,9 +318,25 @@ export function SankeyChart({
   const gradientDataRef = useRef<SankeyGradientDatum[] | null>(null);
   const animationRanForRef = useRef(false);
   const prevDataForAnimationRef = useRef<SankeyData | null>(null);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const revealAnimationsRef = useRef<Animation[]>([]);
+  const revealDeadlineRef = useRef<number | null>(null);
 
   const nodeElementsRef = useRef<(SVGGElement | null)[]>([]);
   const linkElementsRef = useRef<(SVGPathElement | null)[]>([]);
+
+  useEffect(() => {
+    return () => {
+      if (revealDeadlineRef.current !== null) {
+        clearTimeout(revealDeadlineRef.current);
+        revealDeadlineRef.current = null;
+      }
+      for (const anim of revealAnimationsRef.current) {
+        try { anim.cancel(); } catch {}
+      }
+      revealAnimationsRef.current = [];
+    };
+  }, []);
 
   const linkConfig = useMemo(() => ({ useGradient: true, ...extractSankeyLinkConfig(children) }), [children]);
   const nodeConfig = useMemo(() => extractSankeyNodeConfig(children), [children]);
@@ -360,7 +367,10 @@ export function SankeyChart({
     lineCap: nodeConfig.lineCap ?? 4,
     nodeWidth,
     nodePadding,
-  }), [linkConfig, getNodeColorFn, nodeConfig.lineCap, nodeWidth, nodePadding]);
+    showLabels: nodeConfig.showLabels ?? true,
+    showValueLabels: nodeConfig.showValueLabels ?? true,
+    labelOrientation: nodeConfig.labelOrientation ?? "vertical",
+  }), [linkConfig, getNodeColorFn, nodeConfig.lineCap, nodeWidth, nodePadding, nodeConfig.showLabels, nodeConfig.showValueLabels, nodeConfig.labelOrientation]);
 
   // ── Layout: computed explicitly in the component (no layoutRef side-channel) ──
   const [chartBounds, setChartBounds] = useState<SankeyLayoutBounds | null>(null);
@@ -428,7 +438,7 @@ export function SankeyChart({
     [data, markConfig, margin, layout],
   );
 
-  // ── onRender: gradients, labels, CSS, WAAPI reveal ──
+  // ── onRender: gradients, CSS, WAAPI reveal (labels now live as SceneLabel in the mark) ──
   // Hover listener attachment is NOT here — it's in a separate useEffect below.
   const handleRender = useCallback((ctx?: { svg?: SVGSVGElement; container?: HTMLElement }) => {
     const svg = ctx?.svg ?? (containerRef.current?.querySelector("svg") as SVGSVGElement | null);
@@ -437,26 +447,40 @@ export function SankeyChart({
     const resolvedLayout = layout;
     if (!resolvedLayout) return;
 
-    if (svg.dataset.bkmRevealed === "1") return;
-    svg.dataset.bkmRevealed = "1";
-
-    // Phase 1: populate element refs
+    // Phase 1: populate element refs (always, so hover refs stay fresh on resize)
     populateNodeElements(svg, nodeElementsRef);
     populateLinkElements(svg, linkElementsRef);
 
-    // Phase 2: inject gradients, CSS, labels
+    // Phase 2: inject gradients + CSS (labels are now SceneLabel nodes in the mark itself)
     const gradients = gradientDataRef.current;
     if (gradients && gradients.length > 0) {
       injectGradientDefs(svg, gradients);
     }
     injectLabelCssTransitions(svg);
 
-    const showLabels = nodeConfig.showLabels !== false;
-    const showValueLabels = nodeConfig.showValueLabels !== false;
-    const orientation = nodeConfig.labelOrientation ?? "horizontal";
-    injectSankeyLabels(svg, resolvedLayout, showLabels, showValueLabels, orientation);
+    // Reduced motion: make everything visible instantly, no WAAPI
+    if (prefersReducedMotion || animationDuration <= 0) {
+      for (const g of nodeElementsRef.current) {
+        const rect = g?.querySelector("rect") as SVGElement | null;
+        if (rect) {
+          rect.style.opacity = "1";
+          (rect as unknown as HTMLElement).style.transform = "none";
+        }
+      }
+      for (const el of svg.querySelectorAll<SVGElement>(`[data-ts-key^="sankey:nlabel:"]`)) el.style.opacity = "1";
+      for (const el of svg.querySelectorAll<SVGElement>(`[data-ts-key^="sankey:vlabel:"]`)) el.style.opacity = "0.6";
+      for (const p of linkElementsRef.current) {
+        if (!p) continue;
+        p.style.strokeDasharray = "none";
+        p.style.strokeDashoffset = "0";
+      }
+      svg.dataset.bkmRevealed = "1";
+      return;
+    }
 
-    // Phase 3: WAAPI stagger reveal
+    // One-shot reveal gate — only the WAAPI stagger is gated, not the injections above
+    if (svg.dataset.bkmRevealed === "1") return;
+
     if (data !== prevDataForAnimationRef.current) {
       prevDataForAnimationRef.current = data;
       animationRanForRef.current = false;
@@ -471,17 +495,41 @@ export function SankeyChart({
 
       if (layoutValid) {
         animationRanForRef.current = true;
+        svg.dataset.bkmRevealed = "1";
         const nodeEls = nodeElementsRef.current;
         const linkEls = linkElementsRef.current;
         const animations = runSankeyReveal(svg, resolvedLayout, animationDuration, nodeEls, linkEls);
+        revealAnimationsRef.current = animations;
 
-        const deadlineMs = animationDuration + 600;
-        setTimeout(() => {
-          for (const anim of animations) anim.cancel();
+        const totalNodes = resolvedLayout.nodes.length;
+        const totalLinks = resolvedLayout.links.length;
+        const nodeAnimDuration = animationDuration * 0.6;
+        let maxStagger = 0;
+        if (totalNodes > 0) {
+          const lastStag = ((totalNodes - 1) / totalNodes) * nodeAnimDuration * 0.4;
+          const lastValue = lastStag + nodeAnimDuration * 0.6 * 0.3 + 60;
+          if (lastValue > maxStagger) maxStagger = lastValue;
+        }
+        if (totalLinks > 0) {
+          const linkStart = animationDuration * 0.2;
+          const linkWin = animationDuration * 0.8;
+          const lastLink = linkStart + ((totalLinks - 1) / totalLinks) * linkWin * 0.4;
+          if (lastLink > maxStagger) maxStagger = lastLink;
+        }
+        const revealDuration = 1100;
+        const deadlineMs = revealDuration + maxStagger + 150;
+        if (revealDeadlineRef.current !== null) clearTimeout(revealDeadlineRef.current);
+        revealDeadlineRef.current = window.setTimeout(() => {
+          for (const anim of revealAnimationsRef.current) {
+            try { (anim as unknown as { commitStyles?: () => void }).commitStyles?.(); } catch {}
+            try { anim.cancel(); } catch {}
+          }
+          revealAnimationsRef.current = [];
+          revealDeadlineRef.current = null;
         }, deadlineMs);
       }
     }
-  }, [animationDuration, nodeConfig.showLabels, nodeConfig.showValueLabels, nodeConfig.labelOrientation, data, layout]);
+  }, [animationDuration, nodeConfig.showLabels, nodeConfig.showValueLabels, nodeConfig.labelOrientation, data, layout, chartBounds, prefersReducedMotion]);
 
   // ── Hover listener attachment (bar-chart pattern: separate effect) ──
   useEffect(() => {

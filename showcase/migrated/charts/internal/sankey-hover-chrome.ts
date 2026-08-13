@@ -79,6 +79,16 @@ export function applySankeyHoverStyle(
   baseStrokeOpacity: number,
 ): void {
   const { nodeConnected, linkConnected, anyHovered } = hoverResult;
+  const nameLabelMap = new Map<number, SVGElement>();
+  const valueLabelMap = new Map<number, SVGElement>();
+  for (const el of svg.querySelectorAll<SVGElement>(`[data-ts-key^="sankey:nlabel:"]`)) {
+    const idx = Number(el.getAttribute("data-ts-key")?.split(":").pop());
+    if (!Number.isNaN(idx)) nameLabelMap.set(idx, el);
+  }
+  for (const el of svg.querySelectorAll<SVGElement>(`[data-ts-key^="sankey:vlabel:"]`)) {
+    const idx = Number(el.getAttribute("data-ts-key")?.split(":").pop());
+    if (!Number.isNaN(idx)) valueLabelMap.set(idx, el);
+  }
 
   for (let i = 0; i < nodeCount; i++) {
     const group = nodeElements[i];
@@ -86,8 +96,8 @@ export function applySankeyHoverStyle(
     const rect = group.querySelector("rect") as SVGElement | null;
     if (!rect) continue;
 
-    const nameLabel = svg.querySelector(`[data-bkm-sankey-label][data-node-index="${i}"]`) as SVGElement | null;
-    const valueLabel = svg.querySelector(`[data-bkm-sankey-valuelabel][data-node-index="${i}"]`) as SVGElement | null;
+    const nameLabel = nameLabelMap.get(i) ?? null;
+    const valueLabel = valueLabelMap.get(i) ?? null;
 
     if (anyHovered && !nodeConnected[i]) {
       rect.style.opacity = String(fadedNodeOpacity);
@@ -95,8 +105,8 @@ export function applySankeyHoverStyle(
       if (valueLabel) valueLabel.style.opacity = String(fadedNodeOpacity * 0.8);
     } else {
       rect.style.opacity = "1";
-      if (nameLabel) nameLabel.style.opacity = "";
-      if (valueLabel) valueLabel.style.opacity = "";
+      if (nameLabel) nameLabel.style.opacity = "1";
+      if (valueLabel) valueLabel.style.opacity = "0.6";
     }
   }
 

@@ -113,5 +113,26 @@ export const SANKEY_LINK_PATH = sankeyLinkHorizontal<
   SankeyLinkExtra
 >();
 
+export const SANKEY_LABEL_OFFSET = 12;
+export const SANKEY_VALUE_LABEL_GAP = 16;
+
+export function getSankeyNodeIndex(value: LaidOutNode | number | undefined): number {
+  if (typeof value === "number") return value;
+  if (value && typeof value === "object" && "index" in value) return (value as { index?: number }).index ?? 0;
+  return 0;
+}
+
+export function getSankeyDisplayValue(node: LaidOutNode, nodeIndex: number, links: LaidOutLink[]): number {
+  const category = (node as { category?: string }).category;
+  let v = 0;
+  for (const l of links) {
+    const sIdx = getSankeyNodeIndex((l as { source: LaidOutNode }).source);
+    const tIdx = getSankeyNodeIndex((l as { target: LaidOutNode }).target);
+    if (category === "source" && sIdx === nodeIndex) v += (l as { value: number }).value ?? 0;
+    else if (category !== "source" && tIdx === nodeIndex) v += (l as { value: number }).value ?? 0;
+  }
+  return v;
+}
+
 // Note: d3-sankey's @types export SankeyNode and SankeyLink (not prefixed with D3).
 // The aliases D3SankeyNode/D3SankeyLink are re-exported via the import at the top of this file.
