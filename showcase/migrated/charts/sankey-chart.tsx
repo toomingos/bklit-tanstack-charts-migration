@@ -42,6 +42,8 @@ import {
   injectGradientDefs,
   injectLabelCssTransitions,
   runSankeyReveal,
+  resolveSankeyRevealDurationMs,
+  type SankeyEnterTransition,
 } from "./internal/sankey-animation";
 import {
   computeNodeHoverConnected,
@@ -83,6 +85,8 @@ export interface SankeyChartProps {
   data: SankeyData;
   margin?: Partial<Margin>;
   animationDuration?: number;
+  enterTransition?: SankeyEnterTransition;
+  revealSignature?: string;
   aspectRatio?: string;
   nodeWidth?: number;
   nodePadding?: number;
@@ -308,6 +312,8 @@ export function SankeyChart({
   data,
   margin: marginProp,
   animationDuration = DEFAULT_ANIMATION_DURATION,
+  enterTransition,
+  revealSignature = "",
   aspectRatio = "2 / 1",
   nodeWidth = DEFAULT_NODE_WIDTH,
   nodePadding = DEFAULT_NODE_PADDING,
@@ -318,6 +324,8 @@ export function SankeyChart({
   const gradientDataRef = useRef<SankeyGradientDatum[] | null>(null);
   const animationRanForRef = useRef(false);
   const prevDataForAnimationRef = useRef<SankeyData | null>(null);
+  const prevRevealSignatureRef = useRef(revealSignature);
+  const prevAnimationDurationRef = useRef(animationDuration);
   const prefersReducedMotion = usePrefersReducedMotion();
   const revealAnimationsRef = useRef<Animation[]>([]);
   const revealDeadlineRef = useRef<number | null>(null);
@@ -458,8 +466,11 @@ export function SankeyChart({
     }
     injectLabelCssTransitions(svg);
 
-    // Reduced motion: make everything visible instantly, no WAAPI
+    // Reduced motion: cancel any running reveal, make everything visible instantly, no WAAPI
     if (prefersReducedMotion || animationDuration <= 0) {
+      if (revealDeadlineRef.current !== null) { clearTimeout(revealDeadlineRef.current); revealDeadlineRef.current = null; }
+      for (const anim of revealAnimationsRef.current) { try { anim.cancel(); } catch {} }
+      revealAnimationsRef.current = [];
       for (const g of nodeElementsRef.current) {
         const rect = g?.querySelector("rect") as SVGElement | null;
         if (rect) {
@@ -475,16 +486,31 @@ export function SankeyChart({
         p.style.strokeDashoffset = "0";
       }
       svg.dataset.bkmRevealed = "1";
+      animationRanForRef.current = true;
       return;
+    }
+
+    // Replay gate fix (must run BEFORE bkmRevealed early-exit): if the caller changed
+    // data identity, animationDuration, or revealSignature, clear the one-shot gate so
+    // the SPA navigation case (TanStack adapter reuses the SVG) can replay.
+    const signatureChanged = revealSignature !== prevRevealSignatureRef.current;
+    const durationChanged = animationDuration !== prevAnimationDurationRef.current;
+    const dataChanged = data !== prevDataForAnimationRef.current;
+    if (signatureChanged || durationChanged || dataChanged) {
+      prevRevealSignatureRef.current = revealSignature;
+      prevAnimationDurationRef.current = animationDuration;
+      prevDataForAnimationRef.current = data;
+      animationRanForRef.current = false;
+      if (svg.dataset.bkmRevealed === "1") {
+        if (revealDeadlineRef.current !== null) { clearTimeout(revealDeadlineRef.current); revealDeadlineRef.current = null; }
+        for (const anim of revealAnimationsRef.current) { try { anim.cancel(); } catch {} }
+        revealAnimationsRef.current = [];
+        delete svg.dataset.bkmRevealed;
+      }
     }
 
     // One-shot reveal gate — only the WAAPI stagger is gated, not the injections above
     if (svg.dataset.bkmRevealed === "1") return;
-
-    if (data !== prevDataForAnimationRef.current) {
-      prevDataForAnimationRef.current = data;
-      animationRanForRef.current = false;
-    }
 
     if (!animationRanForRef.current) {
       const layoutValid = resolvedLayout.nodes.length > 0 && resolvedLayout.nodes.every((n) => {
@@ -498,7 +524,7 @@ export function SankeyChart({
         svg.dataset.bkmRevealed = "1";
         const nodeEls = nodeElementsRef.current;
         const linkEls = linkElementsRef.current;
-        const animations = runSankeyReveal(svg, resolvedLayout, animationDuration, nodeEls, linkEls);
+        const animations = runSankeyReveal(svg, resolvedLayout, animationDuration, nodeEls, linkEls, enterTransition);
         revealAnimationsRef.current = animations;
 
         const totalNodes = resolvedLayout.nodes.length;
@@ -516,7 +542,7 @@ export function SankeyChart({
           const lastLink = linkStart + ((totalLinks - 1) / totalLinks) * linkWin * 0.4;
           if (lastLink > maxStagger) maxStagger = lastLink;
         }
-        const revealDuration = 1100;
+        const revealDuration = resolveSankeyRevealDurationMs(animationDuration, enterTransition);
         const deadlineMs = revealDuration + maxStagger + 150;
         if (revealDeadlineRef.current !== null) clearTimeout(revealDeadlineRef.current);
         revealDeadlineRef.current = window.setTimeout(() => {
@@ -529,7 +555,7 @@ export function SankeyChart({
         }, deadlineMs);
       }
     }
-  }, [animationDuration, nodeConfig.showLabels, nodeConfig.showValueLabels, nodeConfig.labelOrientation, data, layout, chartBounds, prefersReducedMotion]);
+  }, [animationDuration, enterTransition, revealSignature, nodeConfig.showLabels, nodeConfig.showValueLabels, nodeConfig.labelOrientation, data, layout, chartBounds, prefersReducedMotion]);
 
   // ── Hover listener attachment (bar-chart pattern: separate effect) ──
   useEffect(() => {

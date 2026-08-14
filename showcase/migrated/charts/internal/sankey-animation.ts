@@ -5,6 +5,32 @@
 import type { SankeyGradientDatum } from "./sankey-mark";
 import type { LaidOutLink } from "./sankey-layout";
 
+export interface SankeyEnterTransition {
+  type?: "spring" | "tween";
+  duration?: number;
+  ease?: readonly [number, number, number, number];
+  bounce?: number;
+  stiffness?: number;
+  damping?: number;
+  mass?: number;
+}
+
+const DEFAULT_EASING_CSS = "cubic-bezier(0.85, 0, 0.15, 1)";
+
+function resolveTiming(
+  transition: SankeyEnterTransition | undefined,
+  animationDuration: number,
+): { durationMs: number; easingCss: string } {
+  if (!transition) return { durationMs: animationDuration, easingCss: DEFAULT_EASING_CSS };
+  if (transition.type === "spring") {
+    const durationMs = transition.duration != null ? transition.duration * 1000 : animationDuration;
+    return { durationMs, easingCss: DEFAULT_EASING_CSS };
+  }
+  const durationMs = transition.duration != null ? transition.duration * 1000 : animationDuration;
+  const easingCss = transition.ease ? `cubic-bezier(${transition.ease.join(",")})` : DEFAULT_EASING_CSS;
+  return { durationMs, easingCss };
+}
+
 export function injectGradientDefs(svg: SVGSVGElement, gradients: SankeyGradientDatum[]): void {
   if (gradients.length === 0) return;
 
@@ -41,9 +67,6 @@ export function injectLabelCssTransitions(svg: SVGSVGElement): void {
   svg.insertBefore(style, svg.firstChild);
 }
 
-const REVEAL_DURATION = 1100;
-const REVEAL_EASING = "cubic-bezier(0.85, 0, 0.15, 1)";
-
 function commitAndCancel(anim: Animation): void {
   try {
     (anim as unknown as { commitStyles?: () => void }).commitStyles?.();
@@ -59,11 +82,13 @@ export function runSankeyReveal(
   animationDuration: number,
   nodeGroups: (SVGGElement | null)[],
   linkPaths: (SVGPathElement | null)[],
+  enterTransition?: SankeyEnterTransition,
 ): Animation[] {
   const animations: Animation[] = [];
   const totalNodes = layout.nodes.length;
   const totalLinks = layout.links.length;
   const nodeAnimDuration = animationDuration * 0.6;
+  const { durationMs, easingCss } = resolveTiming(enterTransition, animationDuration);
   const nameLabels = new Map<number, SVGElement>();
   const valueLabels = new Map<number, SVGElement>();
   for (const el of svg.querySelectorAll<SVGElement>(`[data-ts-key^="sankey:nlabel:"]`)) {
@@ -89,9 +114,9 @@ export function runSankeyReveal(
           { transform: "scaleY(1)", opacity: "1" },
         ],
         {
-          duration: REVEAL_DURATION,
+          duration: durationMs,
           delay: stagDelayMs,
-          easing: REVEAL_EASING,
+          easing: easingCss,
           fill: "both",
         },
       );
@@ -107,9 +132,9 @@ export function runSankeyReveal(
       const anim = (nameLabel as SVGElement).animate(
         [{ opacity: "0" }, { opacity: "1" }],
         {
-          duration: REVEAL_DURATION,
+          duration: durationMs,
           delay: nameLabelDelayMs,
-          easing: REVEAL_EASING,
+          easing: easingCss,
           fill: "both",
         },
       );
@@ -122,9 +147,9 @@ export function runSankeyReveal(
       const anim = (valueLabel as SVGElement).animate(
         [{ opacity: "0" }, { opacity: "0.6" }],
         {
-          duration: REVEAL_DURATION,
+          duration: durationMs,
           delay: valueLabelDelayMs,
-          easing: REVEAL_EASING,
+          easing: easingCss,
           fill: "both",
         },
       );
@@ -141,16 +166,29 @@ export function runSankeyReveal(
     if (!el) continue;
     const stagDelayMs = totalLinks > 0 ? linkStartDelay + (i / totalLinks) * linkAnimWindow * 0.4 : linkStartDelay;
 
-    const pathLen = el.getTotalLength();
-    el.style.strokeDasharray = String(pathLen);
+    let pathLen = 0;
+    try {
+      pathLen = el.getTotalLength();
+    } catch {
+      el.style.strokeDasharray = "none";
+      el.style.strokeDashoffset = "0";
+      continue;
+    }
+    if (!Number.isFinite(pathLen) || pathLen < 1) {
+      el.style.strokeDasharray = "none";
+      el.style.strokeDashoffset = "0";
+      continue;
+    }
+    const dash = `${pathLen} ${pathLen}`;
+    el.style.strokeDasharray = dash;
     el.style.strokeDashoffset = String(pathLen);
 
     const anim = el.animate(
       [{ strokeDashoffset: String(pathLen) }, { strokeDashoffset: "0" }],
       {
-        duration: REVEAL_DURATION,
+        duration: durationMs,
         delay: stagDelayMs,
-        easing: REVEAL_EASING,
+        easing: easingCss,
         fill: "both",
       },
     );
@@ -163,4 +201,11 @@ export function runSankeyReveal(
   }
 
   return animations;
+}
+
+export function resolveSankeyRevealDurationMs(
+  animationDuration: number,
+  enterTransition?: SankeyEnterTransition,
+): number {
+  return resolveTiming(enterTransition, animationDuration).durationMs;
 }
