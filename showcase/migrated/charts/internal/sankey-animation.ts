@@ -3,7 +3,6 @@
 // via TanStack scene) — no injected DOM labels. This file only handles the stagger reveal.
 
 import type { SankeyGradientDatum } from "./sankey-mark";
-import type { LaidOutLink } from "./sankey-layout";
 
 export interface SankeyEnterTransition {
   type?: "spring" | "tween";
@@ -78,15 +77,15 @@ function commitAndCancel(anim: Animation): void {
 
 export function runSankeyReveal(
   svg: SVGSVGElement,
-  layout: { nodes: { x0?: number; y0?: number; x1?: number; y1?: number }[]; links: LaidOutLink[] },
+  counts: { nodes: number; links: number },
   animationDuration: number,
   nodeGroups: (SVGGElement | null)[],
   linkPaths: (SVGPathElement | null)[],
   enterTransition?: SankeyEnterTransition,
 ): Animation[] {
   const animations: Animation[] = [];
-  const totalNodes = layout.nodes.length;
-  const totalLinks = layout.links.length;
+  const totalNodes = counts.nodes;
+  const totalLinks = counts.links;
   const nodeAnimDuration = animationDuration * 0.6;
   const { durationMs, easingCss } = resolveTiming(enterTransition, animationDuration);
   const nameLabels = new Map<number, SVGElement>();
@@ -166,37 +165,17 @@ export function runSankeyReveal(
     if (!el) continue;
     const stagDelayMs = totalLinks > 0 ? linkStartDelay + (i / totalLinks) * linkAnimWindow * 0.4 : linkStartDelay;
 
-    let pathLen = 0;
-    try {
-      pathLen = el.getTotalLength();
-    } catch {
-      el.style.strokeDasharray = "none";
-      el.style.strokeDashoffset = "0";
-      continue;
-    }
-    if (!Number.isFinite(pathLen) || pathLen < 1) {
-      el.style.strokeDasharray = "none";
-      el.style.strokeDashoffset = "0";
-      continue;
-    }
-    const dash = `${pathLen} ${pathLen}`;
-    el.style.strokeDasharray = dash;
-    el.style.strokeDashoffset = String(pathLen);
+    const dashAttr = el.getAttribute("stroke-dasharray");
+    const dashLen = dashAttr ? Number.parseFloat(dashAttr) : Number.NaN;
+    if (!Number.isFinite(dashLen) || dashLen < 1) continue;
+    // Hide before first paint; WAAPI (fill:"both") owns the property from here.
+    el.style.strokeDashoffset = String(dashLen);
 
     const anim = el.animate(
-      [{ strokeDashoffset: String(pathLen) }, { strokeDashoffset: "0" }],
-      {
-        duration: durationMs,
-        delay: stagDelayMs,
-        easing: easingCss,
-        fill: "both",
-      },
+      [{ strokeDashoffset: String(dashLen) }, { strokeDashoffset: "0" }],
+      { duration: durationMs, delay: stagDelayMs, easing: easingCss, fill: "both" },
     );
-    anim.onfinish = () => {
-      el.style.strokeDashoffset = "0";
-      el.style.strokeDasharray = "none";
-      commitAndCancel(anim);
-    };
+    anim.onfinish = () => commitAndCancel(anim);
     animations.push(anim);
   }
 

@@ -11,9 +11,9 @@ import {
   getSankeyDisplayValue,
   getSankeyNodeIndex,
   SANKEY_LINK_PATH,
+  sankeyLinkPathLength,
   type LaidOutNode,
   type LaidOutLink,
-  type SankeyLayoutOutput,
 } from "./sankey-layout";
 import { intFmt } from "./formatters";
 import type { SankeyLabelOrientation } from "../sankey-chart";
@@ -46,7 +46,6 @@ export function createSankeyMark(
   data: { nodes: { name: string; category?: string; [key: string]: unknown }[]; links: { source: number; target: number; value: number; [key: string]: unknown }[] },
   config: SankeyMarkConfig,
   gradientDataRef: { current: SankeyGradientDatum[] | null },
-  layout: SankeyLayoutOutput | null,
 ): ChartMark {
   const { strokeOpacity, strokeOverride, useGradient, nodeColorFn, lineCap, nodeWidth, nodePadding, showLabels, showValueLabels, labelOrientation } = config;
 
@@ -54,7 +53,7 @@ export function createSankeyMark(
     id: SANKEY_MARK_ID,
     channels: {},
     render: ({ chart }) => {
-      const resolvedLayout = layout ?? computeSankeyLayout(data, chart, nodeWidth, nodePadding);
+      const resolvedLayout = computeSankeyLayout(data, chart, nodeWidth, nodePadding);
 
       const shouldUseGradient = useGradient && !strokeOverride;
 
@@ -89,6 +88,12 @@ export function createSankeyMark(
           ? `url(#sankey-grad-${index})`
           : (strokeOverride ?? nodeColorFn(srcNode, srcIdx));
 
+        // Round UP: chord sampling always under-estimates arc length, and a dash
+        // shorter than the path would leave a sub-pixel tail permanently ungrown.
+        // A permanent "L L" dasharray at offset 0 is visually identical to no dash,
+        // so this needs no cleanup after the reveal.
+        const dashLen = Math.ceil(sankeyLinkPathLength(link as LaidOutLink)) + 1;
+
         return {
           kind: "area" as const,
           key: `${SANKEY_MARK_ID}:link:${index}`,
@@ -100,6 +105,7 @@ export function createSankeyMark(
             stroke: linkStroke,
             opacity: strokeOpacity,
             strokeWidth: Math.max(1, (link as { width?: number }).width ?? 1),
+            strokeDasharray: `${dashLen} ${dashLen}`,
           },
         };
       });

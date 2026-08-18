@@ -3,8 +3,9 @@
 // Architecture:
 //   - Single createMark (sankey-mark.ts) for links + nodes, matching
 //     tanstack-sankey.tsx ceiling scenario architecture
-//   - Layout computed explicitly in the component (eliminates layoutRef
-//     side-channel from the mark) and passed to createSankeyMark
+//   - Layout computed inside the mark from TanStack's live `chart` bounds
+//     (render({ chart })) — no component-side measurement or layoutRef
+//     side-channel
 //   - Gradient, label, and CSS injection → dedicated injection functions
 //     called from onRender, each handling exactly one concern
 //   - WAAPI reveal animation → returned as Animation[] for explicit cleanup
@@ -20,7 +21,6 @@ import {
   isValidElement,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -30,12 +30,9 @@ import {
 import { Chart } from "@tanstack/react-charts";
 import { defineChart } from "@tanstack/charts";
 import {
-  computeSankeyLayout,
   getSankeyDisplayValue,
   type LaidOutNode,
   type LaidOutLink,
-  type SankeyLayoutOutput,
-  type SankeyLayoutBounds,
 } from "./internal/sankey-layout";
 import { createSankeyMark, type SankeyGradientDatum } from "./internal/sankey-mark";
 import {
@@ -246,7 +243,7 @@ function SankeyChartTooltip({
 // ─── Hover event handlers factory ──────────────────────────────────────────
 
 function createHoverHandlers(
-  layout: SankeyLayoutOutput,
+  data: SankeyData,
   hoveredNodeIndexRef: { current: number | null },
   hoveredLinkIndexRef: { current: number | null },
   setTooltipData: (v: TooltipContentProps["tooltipData"]) => void,
@@ -256,12 +253,12 @@ function createHoverHandlers(
     onNodeEnter: (i: number) => {
       hoveredNodeIndexRef.current = i;
       hoveredLinkIndexRef.current = null;
-      const node = layout.nodes[i];
-      const displayVal = getSankeyDisplayValue(node, i, layout.links);
+      const node = data.nodes[i];
+      const displayVal = getSankeyDisplayValue(node as unknown as LaidOutNode, i, data.links as unknown as LaidOutLink[]);
       setTooltipData({
         type: "node",
         nodeIndex: i,
-        nodeName: (node as { name: string }).name,
+        nodeName: node?.name,
         value: displayVal,
       });
       applyHoverStyles();
@@ -274,15 +271,15 @@ function createHoverHandlers(
     onLinkEnter: (i: number) => {
       hoveredLinkIndexRef.current = i;
       hoveredNodeIndexRef.current = null;
-      const link = layout.links[i];
-      const src = (link as { source: LaidOutNode }).source;
-      const tgt = (link as { target: LaidOutNode }).target;
+      const link = data.links[i];
+      const sourceName = data.nodes[link?.source ?? -1]?.name ?? `Node ${link?.source ?? 0}`;
+      const targetName = data.nodes[link?.target ?? -1]?.name ?? `Node ${link?.target ?? 0}`;
       setTooltipData({
         type: "link",
         linkIndex: i,
-        sourceName: (src as { name?: string }).name ?? `Node ${src?.index ?? 0}`,
-        targetName: (tgt as { name?: string }).name ?? `Node ${tgt?.index ?? 0}`,
-        value: (link as { value: number }).value ?? 0,
+        sourceName,
+        targetName,
+        value: link?.value ?? 0,
       });
       applyHoverStyles();
     },
@@ -343,6 +340,14 @@ export function SankeyChart({
         try { anim.cancel(); } catch {}
       }
       revealAnimationsRef.current = [];
+      // This cleanup destroys the reveal, so it must also release the one-shot
+      // gate — otherwise a re-mount that keeps this component instance alive
+      // (React StrictMode's dev double-invoke, or a TanStack adapter
+      // destroy/mount cycle) leaves the chart permanently un-revealed: the
+      // animations are cancelled but `animationRanForRef` still reads true.
+      animationRanForRef.current = false;
+      const svg = containerRef.current?.querySelector("svg") as SVGSVGElement | null;
+      if (svg) delete svg.dataset.bkmRevealed;
     };
   }, []);
 
@@ -380,41 +385,17 @@ export function SankeyChart({
     labelOrientation: nodeConfig.labelOrientation ?? "vertical",
   }), [linkConfig, getNodeColorFn, nodeConfig.lineCap, nodeWidth, nodePadding, nodeConfig.showLabels, nodeConfig.showValueLabels, nodeConfig.labelOrientation]);
 
-  // ── Layout: computed explicitly in the component (no layoutRef side-channel) ──
-  const [chartBounds, setChartBounds] = useState<SankeyLayoutBounds | null>(null);
-
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    setChartBounds({
-      x: margin.left,
-      y: margin.top,
-      width: rect.width - margin.left - margin.right,
-      height: rect.height - margin.top - margin.bottom,
-    });
-  }, [margin]);
-
-  const layout = useMemo(() => {
-    if (!chartBounds) return null;
-    return computeSankeyLayout(data, chartBounds, nodeWidth, nodePadding);
-  }, [data, chartBounds, nodeWidth, nodePadding]);
-
   // ── Hover style applicator (reads from refs, writes DOM directly) ──
   const applyHoverStyles = useCallback(() => {
     const svg = containerRef.current?.querySelector("svg") as SVGSVGElement | null;
-    if (!svg || !layout) return;
+    if (!svg) return;
 
     const nodeEls = nodeElementsRef.current;
     const linkEls = linkElementsRef.current;
-    const nodeCount = layout.nodes.length;
-    const linkCount = layout.links.length;
+    const nodeCount = data.nodes.length;
+    const linkCount = data.links.length;
 
-    const linkIndices = layout.links.map((l) => ({
-      source: typeof l.source === "object" ? l.source.index ?? 0 : 0,
-      target: typeof l.target === "object" ? l.target.index ?? 0 : 0,
-    }));
+    const linkIndices = data.links.map((l) => ({ source: l.source, target: l.target }));
 
     const { nodeConnected, linkConnected, anyHovered } =
       hoveredNodeIndexRef.current !== null
@@ -432,18 +413,18 @@ export function SankeyChart({
       linkConfig.fadedOpacity ?? 0.1,
       linkConfig.strokeOpacity ?? 0.5,
     );
-  }, [layout, nodeConfig.fadedOpacity, linkConfig.fadedOpacity, linkConfig.strokeOpacity]);
+  }, [data, nodeConfig.fadedOpacity, linkConfig.fadedOpacity, linkConfig.strokeOpacity]);
 
   const definition = useMemo(
     () =>
       defineChart({
-        marks: [createSankeyMark(data, markConfig, gradientDataRef, layout)],
+        marks: [createSankeyMark(data, markConfig, gradientDataRef)],
         guides: false,
         x: null,
         y: null,
         margin,
       }),
-    [data, markConfig, margin, layout],
+    [data, markConfig, margin],
   );
 
   // ── onRender: gradients, CSS, WAAPI reveal (labels now live as SceneLabel in the mark) ──
@@ -451,9 +432,6 @@ export function SankeyChart({
   const handleRender = useCallback((ctx?: { svg?: SVGSVGElement; container?: HTMLElement }) => {
     const svg = ctx?.svg ?? (containerRef.current?.querySelector("svg") as SVGSVGElement | null);
     if (!svg) return;
-
-    const resolvedLayout = layout;
-    if (!resolvedLayout) return;
 
     // Phase 1: populate element refs (always, so hover refs stay fresh on resize)
     populateNodeElements(svg, nodeElementsRef);
@@ -482,7 +460,6 @@ export function SankeyChart({
       for (const el of svg.querySelectorAll<SVGElement>(`[data-ts-key^="sankey:vlabel:"]`)) el.style.opacity = "0.6";
       for (const p of linkElementsRef.current) {
         if (!p) continue;
-        p.style.strokeDasharray = "none";
         p.style.strokeDashoffset = "0";
       }
       svg.dataset.bkmRevealed = "1";
@@ -513,22 +490,21 @@ export function SankeyChart({
     if (svg.dataset.bkmRevealed === "1") return;
 
     if (!animationRanForRef.current) {
-      const layoutValid = resolvedLayout.nodes.length > 0 && resolvedLayout.nodes.every((n) => {
-        const h = Math.max(0, (n.y1 ?? 0) - (n.y0 ?? 0));
-        const w = Math.max(0, (n.x1 ?? 0) - (n.x0 ?? 0));
-        return h > 1 && w > 0;
-      });
+      const linkEls = linkElementsRef.current;
+      const firstLinkDash = linkEls[0]?.getAttribute("stroke-dasharray");
+      const firstLinkDashLen = firstLinkDash ? Number.parseFloat(firstLinkDash) : Number.NaN;
+      const layoutValid = linkEls.length > 0 && Number.isFinite(firstLinkDashLen) && firstLinkDashLen >= 1;
 
       if (layoutValid) {
         animationRanForRef.current = true;
         svg.dataset.bkmRevealed = "1";
         const nodeEls = nodeElementsRef.current;
-        const linkEls = linkElementsRef.current;
-        const animations = runSankeyReveal(svg, resolvedLayout, animationDuration, nodeEls, linkEls, enterTransition);
+        const counts = { nodes: data.nodes.length, links: data.links.length };
+        const animations = runSankeyReveal(svg, counts, animationDuration, nodeEls, linkEls, enterTransition);
         revealAnimationsRef.current = animations;
 
-        const totalNodes = resolvedLayout.nodes.length;
-        const totalLinks = resolvedLayout.links.length;
+        const totalNodes = data.nodes.length;
+        const totalLinks = data.links.length;
         const nodeAnimDuration = animationDuration * 0.6;
         let maxStagger = 0;
         if (totalNodes > 0) {
@@ -555,18 +531,15 @@ export function SankeyChart({
         }, deadlineMs);
       }
     }
-  }, [animationDuration, enterTransition, revealSignature, nodeConfig.showLabels, nodeConfig.showValueLabels, nodeConfig.labelOrientation, data, layout, chartBounds, prefersReducedMotion]);
+  }, [animationDuration, enterTransition, revealSignature, nodeConfig.showLabels, nodeConfig.showValueLabels, nodeConfig.labelOrientation, data, prefersReducedMotion]);
 
   // ── Hover listener attachment (bar-chart pattern: separate effect) ──
   useEffect(() => {
     const svg = containerRef.current?.querySelector("svg") as SVGSVGElement | null;
     if (!svg) return;
 
-    const resolvedLayout = layout;
-    if (!resolvedLayout) return;
-
     const handlers = createHoverHandlers(
-      resolvedLayout,
+      data,
       hoveredNodeIndexRef,
       hoveredLinkIndexRef,
       setTooltipData,
