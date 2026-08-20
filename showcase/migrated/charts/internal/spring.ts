@@ -25,7 +25,14 @@ const REST_DELTA_GRANULAR = 0.005;
 const REST_SPEED_GRANULAR = 0.01;
 const REST_DELTA_DEFAULT = 0.5;
 const REST_SPEED_DEFAULT = 2;
-const MAX_FRAME_MS = 64;
+// Springs must advance by true clock time, not per-frame quota: framer's
+// JSAnimation samples its generator at `timestamp - startTime`, so dropped
+// frames never slow the animation down. A dt cap (previously 64ms/frame)
+// put every spring into slow motion whenever the page dipped below ~15fps,
+// desyncing the migrated hover chrome from bklit's under load. MAX_STALL_MS
+// only bounds integration work after e.g. a background-tab return — a
+// spring integrated over 10s of elapsed time is at rest regardless.
+const MAX_STALL_MS = 10_000;
 const SUBSTEP_S = 1 / 120;
 
 export function createSpring(
@@ -43,7 +50,7 @@ export function createSpring(
   let restSpeed = REST_SPEED_GRANULAR;
 
   const step = (now: number) => {
-    const dt = Math.min(MAX_FRAME_MS, now - last) / 1000;
+    const dt = Math.max(0, Math.min(MAX_STALL_MS, now - last)) / 1000;
     last = now;
     const substeps = Math.max(1, Math.ceil(dt / SUBSTEP_S));
     const h = dt / substeps;

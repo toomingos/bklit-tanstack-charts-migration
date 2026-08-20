@@ -36,17 +36,29 @@ import type { ChartMark, ChartPoint, ChartScale, SceneNode } from "@tanstack/cha
 import { extractChildren } from "./children";
 import { sampleSpringKeyframes } from "./internal/candle-spring";
 import { onPostPaint } from "./internal/deferred-reveal";
+import { ReferenceAreaLayers } from "./internal/reference-area-layer";
+import { extractReferenceAreaProps } from "./internal/reference-area-config";
+import {
+  ChartSelectionContext,
+  extractSegmentComponents,
+  useChartSelection,
+} from "./internal/chart-selection";
+import { SegmentOverlay } from "./internal/segment-visuals";
 import {
   attachCandlestickHoverChrome,
   type CandlestickFocusPoint,
   type CandlestickHoverChrome,
   type CandlestickHoverChromeState,
 } from "./internal/candlestick-hover-chrome";
+import { useChartConfig } from "./internal/chart-config-context";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
 import { YAxisOverlay } from "./internal/y-axis-overlay";
+import { resolveYAxisTickCount } from "./internal/y-axis-ticks";
 import type { ChartDatum } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { createCandlestickFocusStrategy } from "./internal/candlestick-focus-strategy";
+import { useChartMargin, useContainerWidth } from "./internal";
+import { useChartLegendHover } from "./internal/chart-legend-hover";
 import "./styles.css";
 
 const DEFAULT_ANIMATION_DURATION_MS = 1100;
@@ -62,11 +74,6 @@ const DEFAULT_ENTER_BOUNCE = 0.15;
 // bklit candlestick.tsx AnimatedCandle: opacity always tweens over a fixed,
 // undelayed 150ms regardless of the (staggered) scaleY spring.
 const OPACITY_TWEEN_MS = 150;
-// bklit y-axis-ticks.ts Y_AXIS_DEFAULT_TICK_COUNT / resolveYAxisTickCount
-// clamp range.
-const Y_AXIS_DEFAULT_TICK_COUNT = 5;
-const Y_AXIS_MIN_TICK_COUNT = 1;
-const Y_AXIS_MAX_TICK_COUNT = 10;
 
 interface Margin {
   top: number;
@@ -124,9 +131,9 @@ export function CandlestickChart({
   candleWidth: candleWidthProp,
   children,
 }: CandlestickChartProps) {
-  const margin = { ...DEFAULT_MARGIN, ...marginProp };
+  const margin = useChartMargin(marginProp, DEFAULT_MARGIN);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const [width, setWidth] = React.useState(0);
+  const width = useContainerWidth(containerRef);
 
   // No `onPhaseChange`/`status` (bklit parity, verified — see header). Hover
   // is gated by a plain boolean ref instead of the full ChartPhase union.
@@ -134,6 +141,7 @@ export function CandlestickChart({
   const revealEpochRef = React.useRef(0);
   const revealDeadlineTimerRef = React.useRef<number | null>(null);
   const revealAnimationsRef = React.useRef<Animation[]>([]);
+  const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
   // Tracks `<rect>` elements driven by the static `ts-candle-reveal`
   // CSS-animation fast path. Cleared inline at the deadline epoch by
   // removing `animation-name` on each element — avoids the D25
@@ -142,18 +150,6 @@ export function CandlestickChart({
 
   // canInteract gate for the TanStack focus strategy (mirrors bklit
   // ChartProvider ready check — plain boolean, not ChartPhase).
-
-  React.useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width ?? 0;
-      setWidth((prev) => (Math.abs(prev - w) > 0.5 ? w : prev));
-    });
-    ro.observe(el);
-    setWidth(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, []);
 
   const { candlestick, grid, xAxis, yAxis, tooltip } = React.useMemo(
     () => extractChildren(children),
@@ -164,6 +160,16 @@ export function CandlestickChart({
   // dead code) — every raw candle is rendered, same as the benchmark
   // comparison must.
   const renderData = data;
+  // Reveal replay guard by DATA identity: the `bkmRevealed` DOM stamp dies
+  // whenever TanStack recreates the marks group, which also happens on
+  // re-renders that change no data (legend hover — the marks memo depends on
+  // legendHoveredIndex by design; bklit's reveal is state-keyed and never
+  // replays there). Data-change recreation keeps replaying as frozen (D218).
+  const latestRenderDataRef = React.useRef(renderData);
+  latestRenderDataRef.current = renderData;
+  const revealedForDataRef = React.useRef<unknown>(null);
+
+  const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
 
   const resolvedCandlestick = React.useMemo(
     () => ({
@@ -222,9 +228,9 @@ export function CandlestickChart({
     return [minVal - pad, maxVal + pad];
   }, [renderData]);
 
-  // Custom x scale: scaleUtc, range inset by slotWidth/2 per side via the
-  // object-with-`resolve` escape hatch (TanStack's `resolveConfiguredScale`
-  // unconditionally overwrites a plain scale instance's `.range()`).
+  // D110 escape hatch: custom ChartScale.resolve owns the scaleUtc range
+  // inset by slotWidth/2; a plain scale instance would be re-ranged by
+  // TanStack and lose the candlestick slot geometry.
   const xScale = React.useMemo<ChartScale>(() => {
     const { minTime, maxTime } = timeExtent;
     const count = Math.max(renderData.length, 1);
@@ -301,9 +307,9 @@ export function CandlestickChart({
     // fill=positiveFill/negativeFill, rx=1, stroke=fill, strokeWidth=1).
     // Hover dim: dim both marks as wholes; highlight via separate overlay.
     const wicksMark = createMark(() => {
-      const xValues = renderData.map((d: any) => d[xDataKey] as Date);
-      const lowValues = renderData.map((d: any) => d.low as number | undefined);
-      const highValues = renderData.map((d: any) => d.high as number | undefined);
+      const xValues = renderData.map((d) => d[xDataKey] as Date);
+      const lowValues = renderData.map((d) => d.low as number | undefined);
+      const highValues = renderData.map((d) => d.high as number | undefined);
       return {
         id: "wicks",
         channels: {
@@ -332,15 +338,18 @@ export function CandlestickChart({
             const close = d.close as number | undefined;
             const isPositive = typeof close === "number" && typeof d.open === "number" && close >= (d.open as number);
             const wickFill = isPositive ? resolvedCandlestick.positiveFill : resolvedCandlestick.negativeFill;
+            const isWickDimmed = legendHoveredIndex !== null && ((legendHoveredIndex === 0 && !isPositive) || (legendHoveredIndex === 1 && isPositive));
+            const wickOpacity = isWickDimmed ? resolvedCandlestick.fadedOpacity : 1;
             const key = `wicks:${i}`;
             nodes.push({
               kind: "rect",
               key,
+              className: "chart-candle-cell",
               x: cx - WICK_WIDTH_PX / 2,
               y: Math.min(yLow, yHigh),
               width: WICK_WIDTH_PX,
               height: Math.abs(yHigh - yLow) || 1,
-              style: { fill: wickFill },
+              style: { fill: wickFill, opacity: wickOpacity },
             });
             points.push({
               key, markId: "wicks", group: "wicks", groupLabel: "wicks",
@@ -357,9 +366,9 @@ export function CandlestickChart({
     });
 
     const bodiesMark = createMark(() => {
-      const xValues = renderData.map((d: any) => d[xDataKey] as Date);
-      const openValues = renderData.map((d: any) => d.open as number | undefined);
-      const closeValues = renderData.map((d: any) => d.close as number | undefined);
+      const xValues = renderData.map((d) => d[xDataKey] as Date);
+      const openValues = renderData.map((d) => d.open as number | undefined);
+      const closeValues = renderData.map((d) => d.close as number | undefined);
       return {
         id: "bodies",
         channels: {
@@ -387,16 +396,19 @@ export function CandlestickChart({
             if (!Number.isFinite(cx) || !Number.isFinite(yOpen) || !Number.isFinite(yClose)) continue;
             const isPositive = close >= open;
             const fill = isPositive ? resolvedCandlestick.positiveFill : resolvedCandlestick.negativeFill;
+            const isBodyDimmed = legendHoveredIndex !== null && ((legendHoveredIndex === 0 && !isPositive) || (legendHoveredIndex === 1 && isPositive));
+            const bodyOpacity = isBodyDimmed ? resolvedCandlestick.fadedOpacity : 1;
             const key = `bodies:${i}`;
             nodes.push({
               kind: "rect",
               key,
+              className: "chart-candle-cell",
               x: cx - bodyWidthPx / 2,
               y: Math.min(yOpen, yClose),
               width: bodyWidthPx,
               height: Math.abs(yClose - yOpen) || 1,
               radius: 1,
-              style: { fill, stroke: fill, strokeWidth: 1 },
+              style: { fill, stroke: fill, strokeWidth: 1, opacity: bodyOpacity },
             });
             points.push({
               key, markId: "bodies", group: "bodies", groupLabel: "bodies",
@@ -431,12 +443,12 @@ export function CandlestickChart({
       },
       margin,
       focus: candlestickFocusStrategy,
+      focusRing: false,
       maxFocusDistance: Number.POSITIVE_INFINITY,
       // bklit candlestick: data updates SNAP, never tween (I8 is a Line-only
       // concept) — matches every other migrated chart's non-Line behavior.
       animate: false,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     renderData,
     xDataKey,
@@ -445,12 +457,11 @@ export function CandlestickChart({
     bodyWidthPx,
     resolvedCandlestick.positiveFill,
     resolvedCandlestick.negativeFill,
+    resolvedCandlestick.fadedOpacity,
+    legendHoveredIndex,
     grid,
     width,
-    margin.top,
-    margin.right,
-    margin.bottom,
-    margin.left,
+    margin,
     candlestickFocusStrategy,
   ]);
 
@@ -472,11 +483,9 @@ export function CandlestickChart({
       .domain(yDomain)
       .nice()
       .range([heightPx - margin.bottom, margin.top]);
-    const rawCount = yAxis.numTicks ?? Y_AXIS_DEFAULT_TICK_COUNT;
-    const clamped = Math.min(
-      Y_AXIS_MAX_TICK_COUNT,
-      Math.max(Y_AXIS_MIN_TICK_COUNT, Math.round(rawCount)),
-    );
+    // bklit y-axis-ticks.ts resolveYAxisTickCount clamp — single source in
+    // internal/y-axis-ticks.ts (was an inline copy here).
+    const clamped = resolveYAxisTickCount(yAxis.numTicks);
     return scale.ticks(clamped).map((value) => ({ value, y: scale(value) ?? 0 }));
   }, [heightPx, margin.top, margin.bottom, yDomain, yAxis]);
 
@@ -526,10 +535,38 @@ export function CandlestickChart({
     };
   }, [animationDuration, revealSignature]);
 
+  // Teardown: cancel the pending post-paint chain + any in-flight WAAPI /
+  // CSS-fast-path reveal animations on unmount (D205 canonical wording).
+  React.useEffect(() => {
+    return () => {
+      revealPostPaintCancelRef.current?.();
+      revealPostPaintCancelRef.current = null;
+      for (const anim of revealAnimationsRef.current) {
+        try {
+          anim.cancel();
+        } catch { /* teardown race — already cancelled */ }
+      }
+      revealAnimationsRef.current = [];
+      for (const rect of revealCssElementsRef.current) {
+        rect.style.animationName = "none";
+      }
+      revealCssElementsRef.current = [];
+    };
+  }, []);
+
   // Hover chrome (bklit ChartTooltip + candlestick's own dim/highlight idiom).
   const tooltipEnabled = tooltip?.enabled ?? false;
+  const chartConfig = useChartConfig();
   const chromeRef = React.useRef<CandlestickHoverChrome | null>(null);
+  // bklit parity (use-chart-interaction.ts): drag selection suppresses the
+  // hover chrome — cleared on mousedown, never rescheduled while dragging.
+  const dragSelectionActiveRef = React.useRef(false);
   const chromeStateRef = React.useRef<CandlestickHoverChromeState | null>(null);
+  const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
+    const v = d[xDataKey];
+    if (v instanceof Date) return v.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return String(v ?? "");
+  }), [renderData, xDataKey]);
   chromeStateRef.current = {
     margin,
     pointCount: renderData.length,
@@ -538,6 +575,9 @@ export function CandlestickChart({
     showCrosshair: tooltip?.showCrosshair ?? true,
     showDots: tooltip?.showDots ?? true,
     showDatePill: tooltip?.showDatePill ?? true,
+    tooltip: tooltip ?? null,
+    dateLabels: dateLabelsForPill,
+    legendHoveredIndex,
   };
 
   const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
@@ -546,13 +586,20 @@ export function CandlestickChart({
   React.useLayoutEffect(() => {
     const el = overlayHostRef.current;
     if (!el || !tooltipEnabled) return;
-    const chrome = attachCandlestickHoverChrome(el, () => chromeStateRef.current!);
+    const chrome = attachCandlestickHoverChrome(el, () => chromeStateRef.current!, {
+      tooltipSpring: chartConfig.tooltipSpring,
+      tooltipBoxSpring: chartConfig.tooltipBoxSpring,
+    });
     chromeRef.current = chrome;
     return () => {
       chromeRef.current = null;
       chrome.detach();
     };
-  }, [tooltipEnabled, hasDefinition]);
+  }, [tooltipEnabled, hasDefinition, chartConfig]);
+
+  React.useEffect(() => {
+    chromeRef.current?.syncLegendDim();
+  }, [legendHoveredIndex]);
 
   // TanStack-native hover — ChartFocusStrategy resolves nearest xValue
   // (bisect-epoch semantics with strict `>` tie-break) and groups wick+body
@@ -570,6 +617,10 @@ export function CandlestickChart({
 
   const handleFocusGroupChange = React.useCallback(
     (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
+      if (dragSelectionActiveRef.current) {
+        chromeRef.current?.onFocusChange(null);
+        return;
+      }
       if (points.length === 0) {
         chromeRef.current?.onFocusChange(null);
         return;
@@ -623,6 +674,7 @@ export function CandlestickChart({
         close,
         centerX: centerXpx,
         closeY: yClose,
+        index: primary.datumIndex,
         body: {
           x: centerXpx - bodyWidthPx / 2,
           y: bodyTop,
@@ -659,6 +711,11 @@ export function CandlestickChart({
 
     const marksGroup = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marksGroup || marksGroup.dataset.bkmRevealed === "1") return;
+    if (revealedForDataRef.current === latestRenderDataRef.current) {
+      marksGroup.dataset.bkmRevealed = "1";
+      return;
+    }
+    revealedForDataRef.current = latestRenderDataRef.current;
     marksGroup.dataset.bkmRevealed = "1";
     const mySetupEpoch = revealEpochRef.current;
     marksGroup.classList.add("ts-chart__marks--revealing");
@@ -670,7 +727,7 @@ export function CandlestickChart({
     const enterBounce = enterTransition?.bounce ?? DEFAULT_ENTER_BOUNCE;
     const n = renderData.length;
 
-    onPostPaint(() => {
+    revealPostPaintCancelRef.current = onPostPaint(() => {
           if (revealEpochRef.current !== mySetupEpoch) {
             marksGroup.classList.remove("ts-chart__marks--revealing");
             return;
@@ -751,11 +808,55 @@ export function CandlestickChart({
     });
   }, [animationDuration, enterTransition?.duration, enterTransition?.bounce, renderData.length]);
 
+  const refAreaChildrenCandle = React.useMemo(() => extractReferenceAreaProps(children), [children]);
+  const segChildrenCandle = React.useMemo(() => extractSegmentComponents(children), [children]);
+  const innerWidthCandle = Math.max(0, width - margin.left - margin.right);
+  const heightPxCandle = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
+  const timeExtentCandle = React.useMemo(() => {
+    let minTime = Infinity;
+    let maxTime = -Infinity;
+    for (const d of renderData) {
+      const v = d[xDataKey];
+      if (v instanceof Date) { const t = v.getTime(); if (t < minTime) minTime = t; if (t > maxTime) maxTime = t; }
+    }
+    if (!Number.isFinite(minTime)) return null;
+    return { minTime, maxTime } as const;
+  }, [renderData, xDataKey]);
+  const xScaleCandleSel = React.useMemo(() => {
+    if (!timeExtentCandle || innerWidthCandle <= 0) return null;
+    const { minTime, maxTime } = timeExtentCandle;
+    const count = Math.max(renderData.length, 1);
+    const lo = 0;
+    const hi = innerWidthCandle;
+    const localSlotWidth = Math.max(0, hi - lo) / count;
+    const padding = localSlotWidth / 2;
+    const insetLo = lo + padding;
+    const insetHi = Math.max(insetLo, hi - padding);
+    return scaleUtc().domain([minTime, maxTime]).range([insetLo, insetHi]);
+  }, [timeExtentCandle, innerWidthCandle, renderData.length]);
+  const { selection: candleSelection } = useChartSelection({
+    enabled: true,
+    innerWidth: innerWidthCandle,
+    marginLeft: margin.left,
+    data: renderData as unknown as Array<Record<string, unknown>>,
+    xDataKey,
+    xScale: xScaleCandleSel as unknown as { invert: (px: number) => Date } | null,
+    containerRef,
+    onDragStart: () => {
+      dragSelectionActiveRef.current = true;
+      chromeRef.current?.onFocusChange(null);
+    },
+    onDragEnd: () => {
+      dragSelectionActiveRef.current = false;
+    },
+  });
+
   return (
+    <ChartSelectionContext.Provider value={candleSelection}>
     <div
       ref={containerRef}
       className={className}
-      style={{ position: "relative", width: "100%", aspectRatio, ...style }}
+      style={{ position: "relative", width: "100%", aspectRatio, isolation: "isolate", ...style } as React.CSSProperties}
       data-bkm-chart="candlestick"
     >
       {definition ? (
@@ -785,6 +886,28 @@ export function CandlestickChart({
               formatValue={yAxis.formatValue}
             />
           ) : null}
+          {heightPxCandle > 0 && (
+            <ReferenceAreaLayers
+              configs={refAreaChildrenCandle}
+              geom={{
+                width,
+                height: heightPxCandle,
+                margin,
+                yDomain,
+                xDomain: timeExtentCandle ? ([new Date(timeExtentCandle.minTime), new Date(timeExtentCandle.maxTime)] as unknown as [Date, Date]) : undefined,
+                isTimeScale: true,
+                isCandlestickXScale: true,
+              }}
+            />
+          )}
+          <SegmentOverlay
+            selection={candleSelection}
+            innerWidth={innerWidthCandle}
+            innerHeight={heightPxCandle - margin.top - margin.bottom}
+            marginLeft={margin.left}
+            marginTop={margin.top}
+            components={segChildrenCandle}
+          />
           {tooltipEnabled ? (
             <div
               ref={overlayHostRef}
@@ -794,5 +917,6 @@ export function CandlestickChart({
         </>
       ) : null}
     </div>
+    </ChartSelectionContext.Provider>
   );
 }

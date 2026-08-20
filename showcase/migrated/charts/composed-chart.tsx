@@ -85,21 +85,49 @@ import {
   type HoverChrome,
   type HoverChromeState,
 } from "./internal/hover-chrome";
+import { ReferenceAreaLayers } from "./internal/reference-area-layer";
+import {
+  extractReferenceAreaConfigs,
+  extractReferenceAreaProps,
+} from "./internal/reference-area-config";
+import {
+  ChartSelectionContext,
+  extractSegmentComponents,
+  useChartSelection,
+} from "./internal/chart-selection";
+import { SegmentOverlay } from "./internal/segment-visuals";
+import { useChartConfig } from "./internal/chart-config-context";
+import { useChartLegendHover } from "./internal/chart-legend-hover";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
+import {
+  extractProjectionLineConfigs,
+  mergeProjectionXDomainMax,
+  mergeProjectionYDomain,
+} from "./internal/projection-config";
+import { projectionLineMark, resolveProjectionGradientDef } from "./internal/projection-line-mark";
+import { ProjectionMarkerOverlay, type ProjectionPhaseHandle } from "./internal/terminal-marker";
 import type {
   AreaConfig,
   ChartDatum,
-  ChartPhase,
   ChartTooltipConfig,
   GridConfig,
   LineConfig,
   SeriesBarConfig,
   XAxisConfig,
 } from "./internal/types";
+import { type ChartPhase, isChartInteractionPhase } from "./internal/chart-phase";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { bezierEasing } from "./internal/bezier-easing";
-import { bisectDateLeft, resolveNearestIndex } from "./internal/bisect";
+import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { useChartMargin, useDebouncedContainerWidth } from "./internal";
+import {
+  resolveTimeSeriesYDomain,
+  useNicedYDomainChanged,
+} from "./internal/y-domain";
+import { resolveNearestIndex } from "./internal/bisect";
 import { toDate } from "./internal/coerce-date";
+import { resolveGridGuide } from "./internal/grid";
+import { useChartPhaseOrchestrator } from "./internal/use-chart-phase-orchestrator";
 import "./styles.css";
 
 // bklit animation constants (animation.ts): reveal 1100ms cubic-bezier(.85,0,.15,1)
@@ -236,6 +264,8 @@ function extractComposed(children: React.ReactNode): ExtractedComposed {
         xAxis = props as XAxisConfig;
       } else if (role === "tooltip") {
         tooltip = { enabled: true, ...(props as ChartTooltipConfig) };
+      } else if (role === "projectionLine" || role === "projectionEndMarker" || role === "terminalMarker") {
+        // Distinct roles — terminal marker's dataKey never registers as a series (bklit LINE_DOMAIN_EXCLUDED_NAMES parity-for-free).
       }
     }
   };
@@ -277,58 +307,86 @@ export function ComposedChart({
   barGap = DEFAULT_BAR_GAP,
   children,
 }: ComposedChartProps) {
-  const margin = { ...DEFAULT_MARGIN, ...marginProp };
+  const margin = useChartMargin(marginProp, DEFAULT_MARGIN);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const [width, setWidth] = React.useState(0);
-  // bklit ComposedChartProps has no `status` prop — the initial phase is
-  // always "loading" unconditionally (unlike Line/Area, which default to
-  // "ready"; matching bklit's own ChartInner, which never reads a status
-  // prop). Since this differs from the first real transition ("revealing",
-  // set by handleRender), no ref-guard-bypass effect is needed — same as
-  // Line/Area's simpler convention, unlike Scatter/Bar.
-  const phaseRef = React.useRef<ChartPhase>("loading");
-  const revealAnimationsRef = React.useRef<Animation[]>([]);
-  const revealDeadlineRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const revealSetupRafRef = React.useRef<number | null>(null);
-  const revealSetupTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const widthTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingWidthRef = React.useRef<number | null>(null);
-  const mountedRef = React.useRef(true);
+  const width = useDebouncedContainerWidth(containerRef);
   const onPhaseChangeRef = React.useRef(onPhaseChange);
   onPhaseChangeRef.current = onPhaseChange;
-  // Raw d3 scale instances backing our own hover bisector (see scatter-
-  // chart.tsx for the identical stash-via-ChartScale-resolve-closure
-  // rationale) — kept in exact agreement with whatever TanStack is actually
-  // rendering, no parallel scale construction.
+
+  const {
+    chartPhase,
+    isLoaded,
+    revealEpoch,
+    notifyYDomainTweenComplete,
+  } = useChartPhaseOrchestrator({
+    chartStatus: "ready",
+    targetData: data as unknown as Record<string, unknown>[],
+    skeletonData: [],
+    animationDuration,
+    yDomainTweenDuration: DATA_TWEEN_MS,
+    revealSignature: "",
+  });
+
+  const phaseRef = React.useRef<ChartPhase>(chartPhase);
+  phaseRef.current = chartPhase;
+  // Pixel mandate (D-composed-settle-regression follow-up): the `definition`
+  // useMemo below reads chartPhase/isLoaded through THESE refs, not as memo
+  // deps. Pre-init-5 this was a plain `phaseRef.current === "ready"` ref read
+  // (never a dep), so the memo never recomputed on phase transitions alone.
+  // Adding `chartPhase`/`isLoaded` to that memo's dep array made TanStack
+  // rebuild `marks`'s definition (and re-render) the moment the orchestrator
+  // flips revealing -> ready, producing a subtly different resting raster
+  // than the post-reveal DOM state bklit's screenshot compares against
+  // (composed settled 0.30% vs frozen 0.199-0.261% band). Keep the
+  // isChartInteractionPhase() semantics (Q3 forbids raw "ready" comparisons)
+  // but go back to ref reads so the memo has no phase/isLoaded deps.
+  const isLoadedRef = React.useRef<boolean>(isLoaded);
+  isLoadedRef.current = isLoaded;
+
+  // Externally-reported "ready" must wait for the per-bar reveal stagger
+  // (barsDeadlineMs = animationDuration * 1.4), not just the orchestrator's
+  // flat animationDuration timer — otherwise the QA harness's armBklitSettle
+  // resolves ~440ms before the bar rects finish growing and screenshots the
+  // chart mid-stagger (settled 1.2-1.8% vs frozen 0.27-0.42 band). Same
+  // contract bar-chart.tsx enforces via setRevealDeadline -> setPhase("ready");
+  // here the orchestrator owns chartPhase, so only the onPhaseChange output is
+  // held back — internal phase-driven machinery is untouched.
+  const pendingBarsRevealRef = React.useRef(false);
+  React.useEffect(() => {
+    if (chartPhase === "ready" && pendingBarsRevealRef.current) return;
+    onPhaseChangeRef.current?.(chartPhase);
+  }, [chartPhase]);
+
+  React.useEffect(() => {
+    if (chartPhase === "gridTweenReady" || chartPhase === "gridTweenLoading") {
+      notifyYDomainTweenComplete();
+    }
+  }, [chartPhase, notifyYDomainTweenComplete]);
+
+  const revealAnimationsRef = React.useRef<Animation[]>([]);
+  const revealDeadlineRef = React.useRef<number | null>(null);
+  const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
+  const mountedRef = React.useRef(true);
   const xScaleD3Ref = React.useRef<ScaleTime<number, number> | null>(null);
   const yScaleD3Ref = React.useRef<ScaleLinear<number, number> | null>(null);
 
-  const setPhase = React.useCallback((phase: ChartPhase) => {
-    if (phaseRef.current === phase) return;
-    phaseRef.current = phase;
-    onPhaseChangeRef.current?.(phase);
-  }, []);
+  // Projection marker overlay phase port — the orchestrator owns the phase;
+  // the overlay mirrors it through this handle (same wiring as Line/Area).
+  const projectionPhasePortRef = React.useRef<ProjectionPhaseHandle | null>(null);
+  React.useEffect(() => {
+    projectionPhasePortRef.current?.setPhase(chartPhase);
+  }, [chartPhase]);
 
   React.useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (revealSetupRafRef.current !== null) {
-        cancelAnimationFrame(revealSetupRafRef.current);
-        revealSetupRafRef.current = null;
-      }
-      if (revealSetupTimerRef.current !== null) {
-        clearTimeout(revealSetupTimerRef.current);
-        revealSetupTimerRef.current = null;
-      }
       if (revealDeadlineRef.current !== null) {
         clearTimeout(revealDeadlineRef.current);
         revealDeadlineRef.current = null;
       }
-      if (widthTimerRef.current !== null) {
-        clearTimeout(widthTimerRef.current);
-        widthTimerRef.current = null;
-      }
+      revealPostPaintCancelRef.current?.();
+      revealPostPaintCancelRef.current = null;
       for (const anim of revealAnimationsRef.current) {
         try {
           anim.cancel();
@@ -340,39 +398,43 @@ export function ComposedChart({
     };
   }, []);
 
-  React.useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const commitWidth = (w: number) => {
-      if (widthTimerRef.current !== null) {
-        clearTimeout(widthTimerRef.current);
-        widthTimerRef.current = null;
-      }
-      pendingWidthRef.current = w;
-      widthTimerRef.current = setTimeout(() => {
-        const pending = pendingWidthRef.current;
-        widthTimerRef.current = null;
-        if (pending === null) return;
-        setWidth((prev) => (Math.abs(prev - pending!) > 0.5 ? pending! : prev));
-      }, 10);
-    };
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width ?? 0;
-      commitWidth(w);
-    });
-    ro.observe(el);
-    commitWidth(el.getBoundingClientRect().width);
-    return () => {
-      ro.disconnect();
-      if (widthTimerRef.current !== null) {
-        clearTimeout(widthTimerRef.current);
-        widthTimerRef.current = null;
-      }
-    };
-  }, []);
-
   const { barConfigs, areaConfigs, lineConfigs, composedSeries, grid, xAxis, tooltip } =
     React.useMemo(() => extractComposed(children), [children]);
+  const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
+  void extractReferenceAreaConfigs;
+
+  const projectionConfigs = React.useMemo(() => extractProjectionLineConfigs(children), [children]);
+  const composedProjectionLines = React.useMemo((): Array<Record<string, unknown>> => {
+    const out: Array<Record<string, unknown>> = [];
+    for (const child of React.Children.toArray(children)) {
+      if (!React.isValidElement(child)) continue;
+      if (child.type === React.Fragment) continue;
+      const role = roleOf(child.type);
+      if (role === "projectionLine") out.push(child.props as Record<string, unknown>);
+    }
+    return out;
+  }, [children]);
+  const composedProjectionEndMarkers = React.useMemo((): Array<Record<string, unknown>> => {
+    const out: Array<Record<string, unknown>> = [];
+    for (const child of React.Children.toArray(children)) {
+      if (!React.isValidElement(child)) continue;
+      if (child.type === React.Fragment) continue;
+      const role = roleOf(child.type);
+      if (role === "projectionEndMarker") out.push(child.props as Record<string, unknown>);
+    }
+    return out;
+  }, [children]);
+  const composedTerminalMarkers = React.useMemo((): Array<Record<string, unknown>> => {
+    const out: Array<Record<string, unknown>> = [];
+    for (const child of React.Children.toArray(children)) {
+      if (!React.isValidElement(child)) continue;
+      if (child.type === React.Fragment) continue;
+      const role = roleOf(child.type);
+      if (role === "terminalMarker") out.push(child.props as Record<string, unknown>);
+    }
+    return out;
+  }, [children]);
+  const projectionGradientBaseIdComposed = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
 
   const resolvedBars = React.useMemo<ResolvedBar[]>(
     () =>
@@ -426,37 +488,48 @@ export function ComposedChart({
   }, [data, innerWidth, composedSeries]);
 
   // bklit y-domain parity (resolveTimeSeriesYDomain), scanning ALL merged
-  // series (bar shim included) over RAW `data` — same algorithm as Line/Area,
-  // scoped to `composedSeries` instead of a single-role list.
-  const yDomain = React.useMemo<[number, number]>(() => {
-    let min = Infinity;
-    let max = -Infinity;
-    for (const row of data) {
-      for (const series of composedSeries) {
-        const v = row[series.dataKey];
-        if (typeof v === "number" && Number.isFinite(v)) {
-          if (v < min) min = v;
-          if (v > max) max = v;
-        }
-      }
-    }
-    if (!Number.isFinite(min)) return [0, 100];
-    if (min >= 0) return [0, max <= 0 ? 100 : max * 1.1];
-    const padding = (max - min) * 0.05 || 1;
-    return [min - padding, max + padding];
-  }, [data, composedSeries]);
-
-  // bklit data-update behavior (I8): animate the scene only when the nice
-  // y-domain actually moved, otherwise snap — identical to Line/Area.
-  const nicedYDomain = React.useMemo<[number, number]>(
-    () => scaleLinear().domain(yDomain).nice().domain() as [number, number],
-    [yDomain],
+  // series (bar shim included) over RAW `data` — shared via
+  // internal/y-domain.ts with Line/Area, scoped to `composedSeries` instead
+  // of a single-role list.
+  const yDomain = React.useMemo(
+    () => resolveTimeSeriesYDomain(data, composedSeries),
+    [data, composedSeries],
   );
-  const prevNicedYDomainRef = React.useRef(nicedYDomain);
+  const { niced: nicedYDomainBase, changed: nicedYDomainChanged } =
+    useNicedYDomainChanged(yDomain);
+  // Projection y-domain merge seeds from the NICED base and is NOT re-nice'd
+  // (bklit x-axis.tsx projection parity — same rule as Line/Area). The exact
+  // two-step structure (left-merge, then fabricated [0,100] union for
+  // non-left axes) is preserved. Non-projection path returns the niced base
+  // unchanged — value-identical to the frozen D220 behavior.
+  const yDomainFinal = React.useMemo<[number, number]>(() => {
+    if (projectionConfigs.length === 0) return nicedYDomainBase;
+    let next = nicedYDomainBase;
+    const leftConfigs = projectionConfigs.filter((c) => c.yAxisId === "left");
+    const otherConfigs = projectionConfigs.filter((c) => c.yAxisId !== "left");
+    if (leftConfigs.length > 0) {
+      next = mergeProjectionYDomain(next, projectionConfigs, "left");
+    }
+    if (otherConfigs.length > 0) {
+      const fabricated = mergeProjectionYDomain([0, 100], projectionConfigs, otherConfigs[0]!.yAxisId);
+      const min = Math.min(next[0], fabricated[0]);
+      const max = Math.max(next[1], fabricated[1]);
+      next = [min, max];
+    }
+    return next;
+  }, [nicedYDomainBase, projectionConfigs]);
+
+  // bklit data-update behavior (I8): animate the scene only when the FINAL
+  // y-domain actually moved, otherwise snap — identical to Line/Area. With
+  // no projections the shared hook's change flag is used verbatim (frozen
+  // D220 semantics); with projections the merged final domain is compared.
+  const prevYDomainFinalRef = React.useRef(yDomainFinal);
+  const yDomainFinalMoved =
+    prevYDomainFinalRef.current[0] !== yDomainFinal[0] ||
+    prevYDomainFinalRef.current[1] !== yDomainFinal[1];
+  prevYDomainFinalRef.current = yDomainFinal;
   const yDomainChanged =
-    prevNicedYDomainRef.current[0] !== nicedYDomain[0] ||
-    prevNicedYDomainRef.current[1] !== nicedYDomain[1];
-  prevNicedYDomainRef.current = nicedYDomain;
+    projectionConfigs.length === 0 ? nicedYDomainChanged : yDomainFinalMoved;
 
   // Bar geometry is handled inside the custom seriesBarMark — uses bklit's
   // exact `computeSeriesBarWidth` (`slot × 0.88`) and `computeSeriesBarLayout`
@@ -481,6 +554,152 @@ export function ComposedChart({
     for (const g of gradientDefs) map.set(g.dataKey, g.id);
     return map;
   }, [gradientDefs]);
+
+  const heightPxComp = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
+  // Raw data extent (LTTB preserves first/last points, so renderData's
+  // extent === raw data's extent) and the projection-extended extent. ALL
+  // downstream x-domain consumers (selection scale, ReferenceAreaLayers,
+  // XAxisOverlay) read the EXTENDED extent; anchor/gradient mapping needs
+  // both (pixel x = (t - rawMin) / (extendedMax - rawMin) * innerW).
+  const timeExtentCompRaw = React.useMemo(() => {
+    let minTime = Infinity;
+    let maxTime = -Infinity;
+    for (const d of renderData) {
+      const parsed = toDate(d[xDataKey]);
+      if (!parsed) continue;
+      const t = parsed.getTime();
+      if (t < minTime) minTime = t;
+      if (t > maxTime) maxTime = t;
+    }
+    if (!Number.isFinite(minTime)) return null;
+    return { minTime, maxTime } as const;
+  }, [renderData, xDataKey]);
+  const timeExtentComp = React.useMemo(() => {
+    if (!timeExtentCompRaw) return null;
+    if (projectionConfigs.length === 0) return timeExtentCompRaw;
+    return {
+      minTime: timeExtentCompRaw.minTime,
+      maxTime: mergeProjectionXDomainMax(timeExtentCompRaw.maxTime, projectionConfigs),
+    } as const;
+  }, [timeExtentCompRaw, projectionConfigs]);
+
+  const composedTerminalAnchors = React.useMemo(() => {
+    if (composedTerminalMarkers.length === 0 || data.length === 0 || width <= 0 || heightPxComp <= 0) return [];
+    const lastRow = data[data.length - 1] as Record<string, unknown> | undefined;
+    if (!lastRow) return [];
+    const innerW = Math.max(0, width - margin.left - margin.right);
+    const innerH = Math.max(0, heightPxComp - margin.top - margin.bottom);
+    if (innerW <= 0 || innerH <= 0) return [];
+    const te = timeExtentComp;
+    const teRaw = timeExtentCompRaw;
+    if (!te || !teRaw) return [];
+    const xForDate = (d: Date) => {
+      const r = te.maxTime - teRaw.minTime;
+      if (r <= 0) return 0;
+      return ((d.getTime() - teRaw.minTime) / r) * innerW;
+    };
+    const yScale2 = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
+    const out: Array<{ dataKey: string; cx: number; cy: number; fill: string; stroke: string; radius: number; ringGap: number; strokeWidth: number; outlineWidth: number; outlineColor?: string }> = [];
+    for (const tm of composedTerminalMarkers as unknown as Array<Record<string, unknown>>) {
+      const dataKey = tm["dataKey"] as string;
+      const v = lastRow[dataKey];
+      if (typeof v !== "number" || !Number.isFinite(v)) continue;
+      const dateVal = toDate(lastRow[xDataKey]);
+      if (!dateVal) continue;
+      const cx = xForDate(dateVal);
+      const cy = (yScale2(v) ?? 0) as number;
+      if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue;
+      out.push({ dataKey, cx, cy, fill: (tm["fill"] as string | undefined) ?? "transparent", stroke: (tm["stroke"] as string | undefined) ?? "var(--chart-1)", radius: (tm["radius"] as number | undefined) ?? 5, ringGap: (tm["ringGap"] as number | undefined) ?? 0, strokeWidth: (tm["strokeWidth"] as number | undefined) ?? 1.5, outlineWidth: (tm["outlineWidth"] as number | undefined) ?? 0, outlineColor: tm["outlineColor"] as string | undefined });
+    }
+    return out;
+  }, [composedTerminalMarkers, data, width, heightPxComp, margin, yDomainFinal, timeExtentComp, timeExtentCompRaw, xDataKey]);
+  const composedEndAnchors = React.useMemo(() => {
+    if (composedProjectionEndMarkers.length === 0 || width <= 0 || heightPxComp <= 0) return [];
+    const innerW = Math.max(0, width - margin.left - margin.right);
+    const innerH = Math.max(0, heightPxComp - margin.top - margin.bottom);
+    if (innerW <= 0 || innerH <= 0) return [];
+    const te = timeExtentComp;
+    const teRaw = timeExtentCompRaw;
+    if (!te || !teRaw) return [];
+    const xForDate = (d: Date) => {
+      const r = te.maxTime - teRaw.minTime;
+      if (r <= 0) return 0;
+      return ((d.getTime() - teRaw.minTime) / r) * innerW;
+    };
+    const yScale2 = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
+    const out: Array<{ cx: number; cy: number; stroke: string; strokeOpacity: number; radius: number }> = [];
+    for (const em of composedProjectionEndMarkers as unknown as Array<Record<string, unknown>>) {
+      const pts = em["data"] as Array<{ date: Date; value: number }> | undefined;
+      if (!pts || pts.length < 2) continue;
+      const last = pts[pts.length - 1]!;
+      const dateVal = last.date instanceof Date ? last.date : new Date(last.date as unknown as string);
+      if (Number.isNaN(dateVal.getTime())) continue;
+      const rawX = xForDate(dateVal);
+      const radius = (em["radius"] as number | undefined) ?? 5;
+      const edgePadding = radius + 1;
+      const cx = Math.min(rawX, Math.max(0, innerW - edgePadding));
+      const cy = (yScale2(last.value) ?? 0) as number;
+      if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue;
+      out.push({ cx, cy, stroke: (em["stroke"] as string | undefined) ?? "var(--chart-3)", strokeOpacity: (em["strokeOpacity"] as number | undefined) ?? 1, radius });
+    }
+    return out;
+  }, [composedProjectionEndMarkers, width, heightPxComp, margin, yDomainFinal, timeExtentComp, timeExtentCompRaw]);
+  const projectionGradientDefsComposed = React.useMemo(() => {
+    if (projectionConfigs.length === 0 || width <= 0 || heightPxComp <= 0) return [];
+    const innerW = Math.max(0, width - margin.left - margin.right);
+    const innerH = Math.max(0, heightPxComp - margin.top - margin.bottom);
+    if (innerW <= 0 || innerH <= 0) return [];
+    const yScale = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
+    const te = timeExtentComp;
+    const teRaw = timeExtentCompRaw;
+    if (!te || !teRaw) return [];
+    const xScaleWithProjection = (value: Date) => {
+      const t = value.getTime();
+      const r = te.maxTime - teRaw.minTime;
+      if (r <= 0) return 0;
+      return ((t - teRaw.minTime) / r) * innerW;
+    };
+    const defs: Array<{ id: string; startX: number; startY: number; endX: number; endY: number; gradientStart: string; gradientEnd: string }> = [];
+    for (let i = 0; i < composedProjectionLines.length; i++) {
+      const p = composedProjectionLines[i] as Record<string, unknown> | undefined;
+      if (!p || ((p["strokeStyle"] as string | undefined) ?? "solid") !== "gradient") continue;
+      const cfg = projectionConfigs[i];
+      if (!cfg || cfg.data.length < 2) continue;
+      const stroke = (p["stroke"] as string | undefined) ?? "var(--chart-3)";
+      const gradientStart = (p["gradientStart"] as string | undefined) ?? stroke;
+      const gradientEnd = (p["gradientEnd"] as string | undefined) ?? "var(--chart-5)";
+      const strokeWidth = (p["strokeWidth"] as number | undefined) ?? 2;
+      const curveKind = (p["curveKind"] as string | undefined) ?? "linear";
+      const endpointRadius = (p["endpointRadius"] as number | undefined) ?? 5;
+      const showEndMarker = ((p["showEndMarker"] as boolean | undefined) ?? (p["showEndpoints"] as boolean | undefined) ?? true) as boolean;
+      const gid = `${projectionGradientBaseIdComposed}-proj-${i}`;
+      const gd = resolveProjectionGradientDef({
+        id: `projection-line-${i}`,
+        data: cfg.data,
+        yAxisId: cfg.yAxisId,
+        stroke,
+        strokeStyle: "gradient",
+        gradientStart,
+        gradientEnd,
+        gradientId: gid,
+        strokeWidth,
+        curveKind: curveKind as "linear" | "bezier",
+        strokeDasharray: (p["strokeDasharray"] as string | undefined) ?? "6,4",
+        strokeOpacity: (p["strokeOpacity"] as number | undefined) ?? 1,
+        showEndMarker,
+        endpointRadius,
+        className: (p["className"] as string | undefined) ?? "chart-projection-line",
+        xScale: xScaleWithProjection,
+        yScale: (v: number) => yScale(v) ?? 0,
+        innerWidth: innerW,
+        strokeVisible: true,
+        translateX: margin.left,
+        translateY: margin.top,
+      });
+      if (gd) defs.push(gd);
+    }
+    return defs;
+  }, [projectionConfigs, composedProjectionLines, width, heightPxComp, margin, yDomainFinal, timeExtentComp, timeExtentCompRaw, projectionGradientBaseIdComposed]);
 
   const definition = React.useMemo(() => {
     if (width <= 0) return null;
@@ -548,13 +767,58 @@ export function ComposedChart({
         }),
       );
     }
+    if (projectionConfigs.length > 0) {
+      const innerW = Math.max(0, width - margin.left - margin.right);
+      const innerH = Math.max(0, heightPxComp - margin.top - margin.bottom);
+      const te = timeExtentComp;
+      const teRaw = timeExtentCompRaw;
+      if (innerW > 0 && innerH > 0 && te && teRaw) {
+        const yScale = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
+        const xScaleWithProjection = (value: Date) => {
+          const t = value.getTime();
+          const r = te.maxTime - teRaw.minTime;
+          if (r <= 0) return 0;
+          return ((t - teRaw.minTime) / r) * innerW;
+        };
+        for (let i = 0; i < projectionConfigs.length; i++) {
+          const cfg = projectionConfigs[i]!;
+          const p = composedProjectionLines[i] as Record<string, unknown> | undefined;
+          if (!p || !cfg || cfg.data.length < 2) continue;
+          const stroke = (p["stroke"] as string | undefined) ?? "var(--chart-3)";
+          const gid = `${projectionGradientBaseIdComposed}-proj-${i}`;
+          const mark = projectionLineMark({
+            id: `projection-line-${i}`,
+            data: cfg.data,
+            yAxisId: cfg.yAxisId,
+            stroke,
+            strokeStyle: ((p["strokeStyle"] as string | undefined) ?? "solid") as "solid" | "gradient",
+            gradientStart: (p["gradientStart"] as string | undefined) ?? stroke,
+            gradientEnd: (p["gradientEnd"] as string | undefined) ?? "var(--chart-5)",
+            gradientId: gid,
+            strokeWidth: (p["strokeWidth"] as number | undefined) ?? 2,
+            curveKind: ((p["curveKind"] as string | undefined) ?? "linear") as "linear" | "bezier",
+            strokeDasharray: (p["strokeDasharray"] as string | undefined) ?? "6,4",
+            strokeOpacity: (p["strokeOpacity"] as number | undefined) ?? 1,
+            showEndMarker: ((p["showEndMarker"] as boolean | undefined) ?? (p["showEndpoints"] as boolean | undefined) ?? true) as boolean,
+            endpointRadius: (p["endpointRadius"] as number | undefined) ?? 5,
+            className: (p["className"] as string | undefined) ?? "chart-projection-line",
+            xScale: xScaleWithProjection,
+            yScale: (v: number) => yScale(v) ?? 0,
+            innerWidth: innerW,
+            strokeVisible: true,
+            translateX: margin.left,
+            translateY: margin.top,
+          });
+          if (mark) marks.push(mark);
+        }
+      }
+    }
 
     // Custom x scale: full RAW-data range, no inset (unlike Scatter's
     // xRangePadding — Composed has no marker-radius concept to pad for).
-    // The object-with-`resolve` escape hatch stashes the real d3 scale
-    // instance for our own pointermove bisector (resolveConfiguredScale
-    // always `.copy()`s a plain scale instance before ranging it, so a
-    // pre-stashed plain instance would never pick up the real range).
+    // D110 escape hatch: stash the ranged d3 scale in ChartScale.resolve for
+    // the pointermove bisector; a pre-stashed plain instance would not pick
+    // up TanStack's resolved range.
     const xScale: ChartScale = {
       id: "x",
       resolve(context) {
@@ -579,6 +843,9 @@ export function ComposedChart({
         if (!Number.isFinite(minTime)) {
           minTime = 0;
           maxTime = 0;
+        }
+        if (projectionConfigs.length > 0 && Number.isFinite(maxTime)) {
+          maxTime = mergeProjectionXDomainMax(maxTime, projectionConfigs);
         }
         const scale = scaleUtc().domain([minTime, maxTime]).range([r0, r1]);
         xScaleD3Ref.current = scale;
@@ -606,9 +873,12 @@ export function ComposedChart({
     const yScale: ChartScale = {
       id: "y",
       resolve(context) {
-        const scale = scaleLinear().domain(yDomain).nice().range(context.range as [number, number]);
+        // yDomainFinal is the niced base with the projection merge already
+        // applied (no re-nice); with no projections it IS the niced domain,
+        // so this is value-identical to the former createNicedYScale path.
+        const scale = scaleLinear().domain(yDomainFinal).range(context.range as [number, number]);
         yScaleD3Ref.current = scale;
-        const tickValues = scale.ticks(context.tickCount ?? grid?.numTicks ?? 5);
+        const tickValues = scale.ticks(context.tickCount ?? resolveGridGuide(grid).ticks);
         return {
           id: context.id,
           type: "linear",
@@ -632,18 +902,23 @@ export function ComposedChart({
       x: { scale: xScale, guide: false },
       y: {
         scale: yScale,
-        grid: grid?.horizontal ?? false,
-        ticks: grid?.numTicks ?? 5,
+        grid: resolveGridGuide(grid).horizontal,
+        ticks: resolveGridGuide(grid).ticks,
       },
       margin,
       focus: "group-x",
+      focusRing: false,
       maxFocusDistance: Number.POSITIVE_INFINITY,
+      // Ref reads, not deps — see the comment on phaseRef/isLoadedRef above.
       animate:
-        phaseRef.current === "ready" && yDomainChanged
+        isChartInteractionPhase(phaseRef.current) && isLoadedRef.current && yDomainChanged
           ? { duration: DATA_TWEEN_MS, easing: bezierEasing }
           : false,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // chartPhase/isLoaded intentionally excluded (pixel mandate, see comment
+    // on phaseRef/isLoadedRef above) — read via refs instead so this
+    // definition doesn't recompute on phase transitions alone. (eslint's
+    // exhaustive-deps rule does not flag this — no disable comment needed.)
   }, [
     data,
     renderData,
@@ -657,17 +932,25 @@ export function ComposedChart({
     gradientIdBySeries,
     grid,
     width,
-    yDomain,
-    margin.top,
-    margin.right,
-    margin.bottom,
-    margin.left,
+    heightPxComp,
+    yDomainFinal,
+    yDomainChanged,
+    margin,
+    projectionConfigs,
+    composedProjectionLines,
+    projectionGradientBaseIdComposed,
+    timeExtentComp,
+    timeExtentCompRaw,
   ]);
 
   // Hover chrome (shared with Line/Area) — imperative overlays driven by OUR
   // OWN native pointermove bisector (below), not TanStack's focus system.
   const tooltipEnabled = tooltip?.enabled ?? false;
+  const chartConfig = useChartConfig();
   const chromeRef = React.useRef<HoverChrome | null>(null);
+  // bklit parity (use-chart-interaction.ts): drag selection suppresses the
+  // hover chrome — cleared on mousedown, never rescheduled while dragging.
+  const dragSelectionActiveRef = React.useRef(false);
   const chromeStateRef = React.useRef<HoverChromeState | null>(null);
   // Scene x of RENDERED (decimated) point `index` — feeds the highlight
   // band's bandStart/bandEnd, which must reference actually-rendered
@@ -679,6 +962,11 @@ export function ComposedChart({
     if (!xScaleInstance || !parsed) return margin.left;
     return xScaleInstance(parsed) ?? margin.left;
   };
+  const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
+    const v = d[xDataKey];
+    if (v instanceof Date) return v.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return String(v ?? "");
+  }), [renderData, xDataKey]);
   chromeStateRef.current = {
     margin,
     series: composedSeries.map((s) => ({
@@ -693,22 +981,33 @@ export function ComposedChart({
     showCrosshair: tooltip?.showCrosshair ?? true,
     showDots: tooltip?.showDots ?? true,
     showDatePill: tooltip?.showDatePill ?? true,
+    tooltip: tooltip ?? null,
+    dateLabels: dateLabelsForPill,
+    legendHoveredIndex,
     bars: resolvedBars.map((b) => ({ dataKey: b.dataKey, fadedOpacity: b.fadedOpacity })),
   };
 
   const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
   const hasDefinition = width > 0;
 
+  React.useEffect(() => {
+    chromeRef.current?.syncDim();
+  }, [legendHoveredIndex]);
+
   React.useLayoutEffect(() => {
     const el = overlayHostRef.current;
     if (!el || !tooltipEnabled) return;
-    const chrome = attachHoverChrome(el, () => chromeStateRef.current!);
+    const chrome = attachHoverChrome(el, () => chromeStateRef.current!, {
+      tooltipSpring: chartConfig.tooltipSpring,
+      tooltipBoxSpring: chartConfig.tooltipBoxSpring,
+      highlightSpring: chartConfig.highlightSpring,
+    });
     chromeRef.current = chrome;
     return () => {
       chromeRef.current = null;
       chrome.detach();
     };
-  }, [tooltipEnabled, hasDefinition]);
+  }, [tooltipEnabled, hasDefinition, chartConfig]);
 
   // `focus:"group-x"` stays configured above for internal consistency with
   // every other migrated chart, but the callback is inert — real hover is
@@ -735,14 +1034,17 @@ export function ComposedChart({
     if (!container || !tooltipEnabled) return;
 
     const handlePointerMove = (event: PointerEvent) => {
+      if (dragSelectionActiveRef.current) {
+        chromeRef.current?.onFocusGroupChange([]);
+        return;
+      }
       const {
         data: rawRows,
         renderData: decimatedRows,
         xDataKey: key,
         composedSeries: series,
       } = hoverInputsRef.current;
-      // bklit gates interaction on the ready phase (canInteract).
-      if (phaseRef.current !== "ready") {
+      if (!isChartInteractionPhase(chartPhase) || !isLoaded) {
         chromeRef.current?.onFocusGroupChange([]);
         return;
       }
@@ -805,100 +1107,149 @@ export function ComposedChart({
       container.removeEventListener("pointermove", handlePointerMove);
       container.removeEventListener("pointerleave", handlePointerLeave);
     };
-  }, [tooltipEnabled]);
+  }, [tooltipEnabled, chartPhase, isLoaded]);
 
-  // Mount reveal — DOUBLE: the shared clip-path wipe (phase state machine,
-  // and bar-overhang padding for free — see file header) PLUS an independent
-  // per-bar WAAPI stagger (bar-chart.tsx's exact mechanic, decoupled from the
-  // state machine, own `.cancel()` cleanup deadline).
   const handleRender = React.useCallback(() => {
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marks || marks.dataset.bkmRevealed === "1" || animationDuration <= 0) {
-      setPhase("ready");
+    if (!marks) return;
+    const prefersReduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Gate on chartPhase === "revealing" (same contract as line-chart.tsx /
+    // area-chart.tsx): onRender fires on EVERY <Chart> re-render (TanStack's
+    // RendererChartImplementation calls adapter.update() off an unmemoized
+    // hostOptions object every commit, react-charts/src/RendererChart.tsx),
+    // not just when the marks group's content actually changes. Without this
+    // gate, the FIRST onRender call to see an un-revealed marks group wins —
+    // which is not reliably the call that lands while the orchestrator's
+    // phase is genuinely "revealing", and a later onRender call (e.g. once
+    // the phase flips back to "ready" and `definition` recomputes) can find
+    // the marks group's `bkmRevealed` flag unset again (TanStack rebuilding
+    // that node) and RESTART the clip-path wipe from scratch right as the
+    // orchestrator's own settle timer (`useChartPhaseOrchestrator`'s
+    // "revealing" timeout, wired to `armBklitSettle` via `onPhaseChange` in
+    // the bench/QA harness) reports "ready" — the harness then screenshots
+    // the "settled" state mid-restart, catching the chart frozen at the very
+    // start of the reveal (D-composed-settle-regression). Matching line/
+    // area's explicit phase gate makes the WAAPI clip animation start
+    // exactly once, exactly when the phase state machine says "revealing",
+    // so both finish together.
+    const shouldAnimate = chartPhase === "revealing" && animationDuration > 0 && !prefersReduced && marks.dataset.bkmRevealed !== "1";
+    if (!shouldAnimate) {
+      if (marks.dataset.bkmRevealed !== "1") marks.dataset.bkmRevealed = "1";
+      marks.style.clipPath = "";
       return;
     }
     marks.dataset.bkmRevealed = "1";
-    setPhase("revealing");
-    const clipAnim = marks.animate(
+    marks.animate(
       [{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }],
       { duration: animationDuration, easing: REVEAL_EASING },
     );
-    clipAnim.onfinish = () => setPhase("ready");
 
     if (resolvedBars.length === 0) return;
 
-    // bklit ChartCore: staggerSpread = data.length>1 ? animationDuration*0.4
-    // : 0; per-bar delay = staggerSpread/1000/data.length seconds; cleanup
-    // deadline = animationDuration + staggerSpread. The clip-path above
-    // already conceals every mark (bars included) from the very first commit
-    // frame, so — unlike bar-chart.tsx/scatter-chart.tsx, which have no other
-    // hiding mechanism — no separate `.ts-chart__marks--revealing` CSS class
-    // is needed here; the deferred setup loop below can safely run behind
-    // the clip veil.
     const staggerSpreadMs = data.length > 1 ? animationDuration * 0.4 : 0;
     const staggerDelaySec = data.length > 1 ? staggerSpreadMs / 1000 / data.length : 0;
     const barsDeadlineMs = animationDuration + staggerSpreadMs;
 
-    const outerRaf = requestAnimationFrame(() => {
-      revealSetupRafRef.current = requestAnimationFrame(() => {
-        revealSetupRafRef.current = null;
-        revealSetupTimerRef.current = window.setTimeout(() => {
-          revealSetupTimerRef.current = null;
-          if (!mountedRef.current || !marks.isConnected) return;
-          for (const bar of resolvedBars) {
-            const escaped = bar.dataKey.replace(/"/g, '\\"');
-            const group = marks.querySelector<SVGGElement>(
-              `.ts-chart__bar-y[data-ts-key="${escaped}"]`,
-            );
-            if (!group || !group.isConnected) continue;
-            const rects = group.querySelectorAll<SVGRectElement>("rect");
-            rects.forEach((rectEl, i) => {
-              if (!rectEl.isConnected) return;
-              const targetY = Number.parseFloat(rectEl.getAttribute("y") ?? "0");
-              const targetHeight = Number.parseFloat(rectEl.getAttribute("height") ?? "0");
-              const baselineY = targetY + targetHeight;
-              const delaySec = i * staggerDelaySec;
-              const anim = rectEl.animate(
-                [
-                  { height: "0", y: String(baselineY) },
-                  { height: String(targetHeight), y: String(targetY) },
-                ],
-                {
-                  duration: animationDuration,
-                  delay: delaySec * 1000,
-                  easing: REVEAL_EASING,
-                  fill: "backwards",
-                },
-              );
-              revealAnimationsRef.current.push(anim);
-            });
-          }
-        }, 0);
-      });
-    });
-    revealSetupRafRef.current = outerRaf;
+    pendingBarsRevealRef.current = true;
 
-    // `.cancel()`, not `.finish()` — avoids the D16 lingering-Animations
-    // trap (see scatter-chart.tsx/bar-chart.tsx for the full rationale).
-    if (revealDeadlineRef.current !== null) clearTimeout(revealDeadlineRef.current);
-    revealDeadlineRef.current = window.setTimeout(() => {
-      revealDeadlineRef.current = null;
-      for (const anim of revealAnimationsRef.current) {
-        try {
-          anim.cancel();
-        } catch {
-          // detached DOM
-        }
+    revealPostPaintCancelRef.current = onPostPaint(() => {
+      if (!mountedRef.current || !marks.isConnected) return;
+      for (const bar of resolvedBars) {
+        const escaped = bar.dataKey.replace(/"/g, '\\"');
+        const group = marks.querySelector<SVGGElement>(
+          `.ts-chart__bar-y[data-ts-key="${escaped}"]`,
+        );
+        if (!group || !group.isConnected) continue;
+        const rects = group.querySelectorAll<SVGRectElement>("rect");
+        rects.forEach((rectEl, i) => {
+          if (!rectEl.isConnected) return;
+          const targetY = Number.parseFloat(rectEl.getAttribute("y") ?? "0");
+          const targetHeight = Number.parseFloat(rectEl.getAttribute("height") ?? "0");
+          const baselineY = targetY + targetHeight;
+          const delaySec = i * staggerDelaySec;
+          const anim = rectEl.animate(
+            [
+              { height: "0", y: String(baselineY) },
+              { height: String(targetHeight), y: String(targetY) },
+            ],
+            {
+              duration: animationDuration,
+              delay: delaySec * 1000,
+              easing: REVEAL_EASING,
+              fill: "backwards",
+            },
+          );
+          revealAnimationsRef.current.push(anim);
+        });
       }
-      revealAnimationsRef.current = [];
-    }, barsDeadlineMs);
-  }, [animationDuration, resolvedBars, setPhase, data.length]);
+    });
+
+    if (revealDeadlineRef.current !== null) clearTimeout(revealDeadlineRef.current);
+    revealDeadlineRef.current = setRevealDeadline(barsDeadlineMs, {
+      animationsRef: revealAnimationsRef,
+      onDeadline: () => {
+        revealDeadlineRef.current = null;
+        if (pendingBarsRevealRef.current) {
+          pendingBarsRevealRef.current = false;
+          if (mountedRef.current && phaseRef.current === "ready") {
+            onPhaseChangeRef.current?.("ready");
+          }
+        }
+      },
+    });
+  }, [animationDuration, chartPhase, resolvedBars, data.length]);
+
+  React.useEffect(() => {
+    if (chartPhase !== "revealing") return;
+    const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
+    if (!marks) return;
+    const prefersReduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReduced || animationDuration <= 0) {
+      marks.style.clipPath = "";
+      marks.dataset.bkmRevealed = "1";
+    }
+  }, [chartPhase, revealEpoch, animationDuration]);
+
+  // ReferenceAreaLayers keeps the frozen D220 raw-domain contract when no
+  // projections are present; with projections it must track the merged
+  // final domain the plotted y scale actually uses.
+  const yDomainComp = (projectionConfigs.length === 0 ? yDomain : yDomainFinal) as [number, number];
+  const innerWidthComp = Math.max(0, width - margin.left - margin.right);
+  const xScaleCompSel = React.useMemo(() => {
+    if (!timeExtentComp) return null;
+    return scaleUtc().domain([timeExtentComp.minTime, timeExtentComp.maxTime]).range([0, innerWidthComp]);
+  }, [timeExtentComp, innerWidthComp]);
+  const { selection: compSelection } = useChartSelection({
+    enabled: true,
+    innerWidth: innerWidthComp,
+    marginLeft: margin.left,
+    data: data as unknown as Array<Record<string, unknown>>,
+    xDataKey,
+    xScale: xScaleCompSel as unknown as { invert: (px: number) => Date } | null,
+    containerRef,
+    onDragStart: () => {
+      dragSelectionActiveRef.current = true;
+      chromeRef.current?.onFocusGroupChange([]);
+    },
+    onDragEnd: () => {
+      dragSelectionActiveRef.current = false;
+    },
+  });
+  const refAreaChildrenComp = React.useMemo(() => extractReferenceAreaProps(children), [children]);
+  const segChildrenComp = React.useMemo(() => extractSegmentComponents(children), [children]);
+
+  const overlayRenderedComposed = (composedTerminalAnchors.length > 0 || composedEndAnchors.length > 0) && width > 0 && heightPxComp > 0;
+  React.useLayoutEffect(() => {
+    if (!overlayRenderedComposed) return;
+    projectionPhasePortRef.current?.setPhase(phaseRef.current);
+  }, [overlayRenderedComposed]);
 
   return (
+    <ChartSelectionContext.Provider value={compSelection}>
     <div
       ref={containerRef}
       className={className}
-      style={{ position: "relative", width: "100%", aspectRatio }}
+      style={{ position: "relative", width: "100%", aspectRatio, isolation: "isolate" } as React.CSSProperties}
       data-bkm-chart="composed"
     >
       {definition ? (
@@ -910,7 +1261,7 @@ export function ComposedChart({
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
           />
-          {gradientDefs.length > 0 ? (
+          {(gradientDefs.length > 0 || projectionGradientDefsComposed.length > 0) ? (
             // Rendered AFTER <Chart> deliberately — the QA/bench harness
             // locates the chart via the first <svg> in the container (same
             // reasoning as scatter-chart.tsx/area-chart.tsx).
@@ -928,6 +1279,12 @@ export function ComposedChart({
                     <stop offset="100%" stopColor={g.fill} stopOpacity={0} />
                   </linearGradient>
                 ))}
+                {projectionGradientDefsComposed.map((g) => (
+                  <linearGradient key={g.id} id={g.id} gradientUnits="userSpaceOnUse" x1={g.startX} y1={g.startY} x2={g.endX} y2={g.endY}>
+                    <stop offset="0%" stopColor={g.gradientStart} />
+                    <stop offset="100%" stopColor={g.gradientEnd} />
+                  </linearGradient>
+                ))}
               </defs>
             </svg>
           ) : null}
@@ -939,6 +1296,40 @@ export function ComposedChart({
               rangeEnd={width - margin.right}
               numTicks={xAxis.numTicks ?? 5}
               formatValue={xAxis.formatValue}
+              domainMaxTime={timeExtentComp?.maxTime}
+            />
+          ) : null}
+          {heightPxComp > 0 && (
+            <ReferenceAreaLayers
+              configs={refAreaChildrenComp}
+              geom={{
+                width,
+                height: heightPxComp,
+                margin,
+                yDomain: yDomainComp,
+                xDomain: timeExtentComp ? ([new Date(timeExtentComp.minTime), new Date(timeExtentComp.maxTime)] as unknown as [Date, Date]) : undefined,
+                isTimeScale: true,
+                phase: chartPhase,
+                isLoaded,
+              }}
+            />
+          )}
+          <SegmentOverlay
+            selection={compSelection}
+            innerWidth={innerWidthComp}
+            innerHeight={heightPxComp - margin.top - margin.bottom}
+            marginLeft={margin.left}
+            marginTop={margin.top}
+            components={segChildrenComp}
+          />
+          {overlayRenderedComposed ? (
+            <ProjectionMarkerOverlay
+              width={width}
+              height={heightPxComp}
+              margin={margin}
+              terminalMarkers={composedTerminalAnchors}
+              projectionEndMarkers={composedEndAnchors}
+              phasePort={projectionPhasePortRef}
             />
           ) : null}
           {tooltipEnabled ? (
@@ -950,6 +1341,6 @@ export function ComposedChart({
         </>
       ) : null}
     </div>
+    </ChartSelectionContext.Provider>
   );
 }
-

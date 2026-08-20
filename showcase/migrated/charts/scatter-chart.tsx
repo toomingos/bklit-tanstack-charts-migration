@@ -16,7 +16,6 @@
 // path re-stroke band.
 import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
-import type { ScaleLinear, ScaleTime } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";
 import { defineChart, dot } from "@tanstack/charts";
 import type {
@@ -32,12 +31,16 @@ import {
   type ScatterHoverChrome,
   type ScatterHoverChromeState,
 } from "./internal/scatter-hover-chrome";
+import { ReferenceAreaLayers } from "./internal/reference-area-layer";
+import { extractReferenceAreaProps } from "./internal/reference-area-config";
+import { useChartConfig } from "./internal/chart-config-context";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
 import type { ChartDatum, ChartPhase } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { createScatterFocusStrategy } from "./internal/scatter-focus-strategy";
 import "./styles.css";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { useChartMargin, useContainerWidth } from "./internal";
 
 // bklit animation.ts: reveal 1100ms cubic-bezier(.85,0,.15,1)
 const DEFAULT_ANIMATION_DURATION_MS = 1100;
@@ -91,22 +94,17 @@ export function ScatterChart({
   onPhaseChange,
   children,
 }: ScatterChartProps) {
-  const margin = { ...DEFAULT_MARGIN, ...marginProp };
+  const margin = useChartMargin(marginProp, DEFAULT_MARGIN);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const [width, setWidth] = React.useState(0);
+  const width = useContainerWidth(containerRef);
   // bklit ScatterChartInner starts `isLoaded=false` unconditionally (no
   // `status` prop — D14) — the initial phase is always "revealing".
   const phaseRef = React.useRef<ChartPhase>("revealing");
   const revealAnimationsRef = React.useRef<Animation[]>([]);
+  const revealDeadlineTimerRef = React.useRef<number | null>(null);
+  const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
   const onPhaseChangeRef = React.useRef(onPhaseChange);
   onPhaseChangeRef.current = onPhaseChange;
-  // Stashed d3 scale instances — xScaleD3Ref via Charter via xScale's
-  // resolve() closure, yScaleD3Ref via yScale's resolve() hatch.
-  // Typed explicitly (not ReturnType): overloaded scale factories collapse
-  // ReturnType to `{}`.
-  const xScaleD3Ref = React.useRef<ScaleTime<number, number> | null>(null);
-  const yScaleD3Ref = React.useRef<ScaleLinear<number, number> | null>(null);
-
   const setPhase = React.useCallback((phase: ChartPhase) => {
     if (phaseRef.current === phase) return;
     phaseRef.current = phase;
@@ -128,16 +126,23 @@ export function ScatterChart({
     onPhaseChangeRef.current?.("revealing");
   }, []);
 
-  React.useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width ?? 0;
-      setWidth((prev) => (Math.abs(prev - w) > 0.5 ? w : prev));
-    });
-    ro.observe(el);
-    setWidth(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
+  // Teardown: cancel the pending reveal deadline + post-paint chain + any
+  // in-flight per-circle WAAPI animations on unmount (D205 canonical wording).
+  React.useEffect(() => {
+    return () => {
+      if (revealDeadlineTimerRef.current !== null) {
+        window.clearTimeout(revealDeadlineTimerRef.current);
+        revealDeadlineTimerRef.current = null;
+      }
+      revealPostPaintCancelRef.current?.();
+      revealPostPaintCancelRef.current = null;
+      for (const anim of revealAnimationsRef.current) {
+        try {
+          anim.cancel();
+        } catch { /* teardown race — already cancelled */ }
+      }
+      revealAnimationsRef.current = [];
+    };
   }, []);
 
   const { scatters, grid, xAxis, tooltip } = React.useMemo(
@@ -178,8 +183,6 @@ export function ScatterChart({
     return Math.max(...resolvedSeries.map((s) => s.radius)) + 10;
   }, [resolvedSeries]);
 
-  const innerWidth = Math.max(0, width - margin.left - margin.right);
-
   // bklit y-domain (scatter-specific, D14): max floored at 0 across all
   // series' raw values (negatives silently ignored, ported verbatim), then
   // *1.1, falling back to 100 when nothing is positive; `.nice()` applied by
@@ -219,7 +222,6 @@ export function ScatterChart({
         const insetLo = lo + xRangePadding;
         const insetHi = Math.max(insetLo, hi - xRangePadding);
         const scale = scaleUtc().domain([minTime, maxTime]).range([insetLo, insetHi]);
-        xScaleD3Ref.current = scale;
         const ticks = scale.ticks(context.tickCount ?? 5);
         return {
           id: context.id,
@@ -304,8 +306,10 @@ export function ScatterChart({
     return map;
   }, [gradientDefs]);
 
-  // C2: single y ChartScale hatch that stashes the ranged instance.
-  // Same D18 rationale as x: plain scale would be .copy()-ranged.
+  // D110 escape hatch: retain the custom ChartScale resolver because the
+  // plain scale input would be copied and ranged by TanStack, losing the
+  // chart's explicit domain/nice behavior. No local scale stash is needed;
+  // hover chrome consumes TanStack's resolved ChartPoints directly.
   const yScale = React.useMemo<ChartScale>(
     () => ({
       id: "y",
@@ -314,7 +318,6 @@ export function ScatterChart({
           .domain(yDomain)
           .nice()
           .range(context.range as [number, number]);
-        yScaleD3Ref.current = scale;
         const tickValues = scale.ticks(context.tickCount ?? grid?.numTicks ?? 5);
         return {
           id: context.id,
@@ -384,15 +387,21 @@ export function ScatterChart({
     const base = defineChart(spec);
     return defineChart<ChartDatum, Date, number>(base, {
       focus: scatterFocusStrategy,
+      focusRing: false,
       maxFocusDistance: Number.POSITIVE_INFINITY,
     }) as StaticChartDefinition<ChartDatum, Date, number>;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin.top, margin.right, margin.bottom, margin.left, gradientIdBySeries, scatterFocusStrategy]);
+  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy]);
 
   // Hover chrome (bklit ChartTooltip, scatter dim/highlight variant).
   const tooltipEnabled = tooltip?.enabled ?? false;
+  const chartConfig = useChartConfig();
   const chromeRef = React.useRef<ScatterHoverChrome | null>(null);
   const chromeStateRef = React.useRef<ScatterHoverChromeState | null>(null);
+  const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
+    const v = d[xDataKey];
+    if (v instanceof Date) return v.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return String(v ?? "");
+  }), [renderData, xDataKey]);
   chromeStateRef.current = {
     margin,
     series: resolvedSeries,
@@ -401,6 +410,8 @@ export function ScatterChart({
     showCrosshair: tooltip?.showCrosshair ?? true,
     showDots: tooltip?.showDots ?? true,
     showDatePill: tooltip?.showDatePill ?? true,
+    tooltip: tooltip ?? null,
+    dateLabels: dateLabelsForPill,
   };
 
   const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
@@ -409,13 +420,16 @@ export function ScatterChart({
   React.useLayoutEffect(() => {
     const el = overlayHostRef.current;
     if (!el || !tooltipEnabled) return;
-    const chrome = attachScatterHoverChrome(el, () => chromeStateRef.current!);
+    const chrome = attachScatterHoverChrome(el, () => chromeStateRef.current!, {
+      tooltipSpring: chartConfig.tooltipSpring,
+      tooltipBoxSpring: chartConfig.tooltipBoxSpring,
+    });
     chromeRef.current = chrome;
     return () => {
       chromeRef.current = null;
       chrome.detach();
     };
-  }, [tooltipEnabled, hasDefinition]);
+  }, [tooltipEnabled, hasDefinition, chartConfig]);
 
   // C1: TanStack-native hover via ChartFocusStrategy — adapter from
   // TanStack ChartPoint -> ScatterFocusPoint for the chrome.
@@ -491,7 +505,7 @@ export function ScatterChart({
     // Force-snap at deadline: `.cancel()` drops Animations from the active
     // list entirely — see `setRevealDeadline` in deferred-reveal.ts for the
     // rationale (avoiding M3a regression from lingering finished Animations).
-    setRevealDeadline(animationDuration, {
+    revealDeadlineTimerRef.current = setRevealDeadline(animationDuration, {
       animationsRef: revealAnimationsRef,
       onDeadline: () => { setPhase("ready"); },
     });
@@ -500,7 +514,7 @@ export function ScatterChart({
     const innerW = Math.max(0, width - margin.left - margin.right);
     const durationSec = animationDuration / 1000;
 
-    onPostPaint(() => {
+    revealPostPaintCancelRef.current = onPostPaint(() => {
       for (const series of resolvedSeries) {
         // bklit series-point-marker.tsx getSeriesMarkerVisualExtent
         // (pilot: outlineWidth always 0, showActiveHighlight always
@@ -560,11 +574,29 @@ export function ScatterChart({
     });
   }, [animationDuration, margin.left, margin.right, resolvedSeries, setPhase, width]);
 
+  const refAreaChildrenScatter = React.useMemo(() => extractReferenceAreaProps(children), [children]);
+  const heightPxScatter = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
+  const timeExtentScatter = React.useMemo(() => {
+    let minTime = Infinity;
+    let maxTime = -Infinity;
+    for (const d of renderData) {
+      const v = d[xDataKey];
+      if (v instanceof Date) { const t = v.getTime(); if (t < minTime) minTime = t; if (t > maxTime) maxTime = t; }
+    }
+    if (!Number.isFinite(minTime)) return null;
+    return { minTime, maxTime } as const;
+  }, [renderData, xDataKey]);
+  const yDomainScatter = React.useMemo<[number, number]>(() => {
+    let max = 0;
+    for (const row of data) for (const s of resolvedSeries) { const v = row[s.dataKey]; if (typeof v === "number" && Number.isFinite(v) && v > max) max = v; }
+    return [0, max <= 0 ? 100 : max * 1.1];
+  }, [data, resolvedSeries]);
+
   return (
     <div
       ref={containerRef}
       className={className}
-      style={{ position: "relative", width: "100%", aspectRatio }}
+      style={{ position: "relative", width: "100%", aspectRatio, isolation: "isolate" } as React.CSSProperties}
       data-bkm-chart="scatter"
     >
       {definition ? (
@@ -636,6 +668,20 @@ export function ScatterChart({
               formatValue={xAxis.formatValue}
             />
           ) : null}
+          {heightPxScatter > 0 && (
+            <ReferenceAreaLayers
+              configs={refAreaChildrenScatter}
+              geom={{
+                width,
+                height: heightPxScatter,
+                margin,
+                yDomain: yDomainScatter,
+                xDomain: timeExtentScatter ? ([new Date(timeExtentScatter.minTime), new Date(timeExtentScatter.maxTime)] as unknown as [Date, Date]) : undefined,
+                isTimeScale: true,
+                xRangePadding,
+              }}
+            />
+          )}
           {tooltipEnabled ? (
             <div
               ref={overlayHostRef}
@@ -647,4 +693,3 @@ export function ScatterChart({
     </div>
   );
 }
-
