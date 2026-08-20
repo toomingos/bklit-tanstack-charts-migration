@@ -2,8 +2,8 @@
 // Matches tanstack-sankey.tsx ceiling scenario architecture.
 // Eliminates dual-layout computation and layoutRef sharing hacks.
 
-import { createMark } from "@tanstack/charts";
-import type { ChartMark, SceneNode } from "@tanstack/charts";
+import { createMarkWithScaleValues } from "@tanstack/charts/mark/scale-values";
+import type { ChartMark, ChartValue, SceneNode } from "@tanstack/charts";
 import {
   computeSankeyLayout,
   SANKEY_LABEL_OFFSET,
@@ -11,9 +11,7 @@ import {
   getSankeyDisplayValue,
   getSankeyNodeIndex,
   SANKEY_LINK_PATH,
-  sankeyLinkPathLength,
   type LaidOutNode,
-  type LaidOutLink,
 } from "./sankey-layout";
 import { intFmt } from "./formatters";
 import type { SankeyLabelOrientation } from "../sankey-chart";
@@ -46,10 +44,14 @@ export function createSankeyMark(
   data: { nodes: { name: string; category?: string; [key: string]: unknown }[]; links: { source: number; target: number; value: number; [key: string]: unknown }[] },
   config: SankeyMarkConfig,
   gradientDataRef: { current: SankeyGradientDatum[] | null },
-): ChartMark {
+): ChartMark<unknown, ChartValue, ChartValue, never, never> {
   const { strokeOpacity, strokeOverride, useGradient, nodeColorFn, lineCap, nodeWidth, nodePadding, showLabels, showValueLabels, labelOrientation } = config;
 
-  return createMark(() => ({
+  // Positionless mark (no Cartesian x/y scales — placement comes from
+  // d3-sankey's layout against chart pixel bounds). Pin scale values to
+  // `never` so the chart spec can declare `x: null, y: null`, matching the
+  // library's own positionless-mark idiom (`polar()`, `geoShape()`).
+  return createMarkWithScaleValues<unknown, ChartValue, ChartValue, never, never>(() => ({
     id: SANKEY_MARK_ID,
     channels: {},
     render: ({ chart }) => {
@@ -88,12 +90,6 @@ export function createSankeyMark(
           ? `url(#sankey-grad-${index})`
           : (strokeOverride ?? nodeColorFn(srcNode, srcIdx));
 
-        // Round UP: chord sampling always under-estimates arc length, and a dash
-        // shorter than the path would leave a sub-pixel tail permanently ungrown.
-        // A permanent "L L" dasharray at offset 0 is visually identical to no dash,
-        // so this needs no cleanup after the reveal.
-        const dashLen = Math.ceil(sankeyLinkPathLength(link as LaidOutLink)) + 1;
-
         return {
           kind: "area" as const,
           key: `${SANKEY_MARK_ID}:link:${index}`,
@@ -104,8 +100,11 @@ export function createSankeyMark(
             fill: "none",
             stroke: linkStroke,
             opacity: strokeOpacity,
+            // Stroke width IS the data (flow value) — it must scale with the
+            // chart, but the renderer hardcodes vector-effect="non-scaling-stroke"
+            // on area paths. styles.css overrides it (.ts-sankey__link
+            // { vector-effect: none }) — CSS beats presentation attributes.
             strokeWidth: Math.max(1, (link as { width?: number }).width ?? 1),
-            strokeDasharray: `${dashLen} ${dashLen}`,
           },
         };
       });

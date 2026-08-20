@@ -841,3 +841,24 @@
   color: transparent;
   animation: ts-bkm-shimmer 1.6s linear infinite;
 }
+
+/* Sankey links: the core renderer hardcodes vector-effect="non-scaling-stroke"
+   on area paths. With pathLength-normalized dash reveals on hiDPI, Chromium
+   then computes dash + stroke width in device px — the reveal dash covers
+   only 1/dPR of the path (black-rectangle tail) and links paint thin.
+   Stroke width here IS the data (flow value); it must scale with the chart.
+   CSS overrides presentation attributes, so this single rule fixes both. */
+.ts-sankey__link {
+  vector-effect: none;
+}
+
+/* Projection line: same renderer hazard as sankey above, on the dashed
+   projection polyline (internal/projection-line-mark.ts) instead of an area
+   path. On hiDPI Chromium the hardcoded vector-effect="non-scaling-stroke"
+   computes stroke-dasharray AND stroke-width in device px, halving the dash
+   pattern and stroke of the projection line. vector-effect is not inherited,
+   so this targets the polyline's <path> (the mark's className lands on its
+   parent <g>, not the path itself) via the default className shared by all
+   6 call sites (line/area/composed-chart.tsx). */
+.chart-projection-line path {
+  vector-effect: none;
