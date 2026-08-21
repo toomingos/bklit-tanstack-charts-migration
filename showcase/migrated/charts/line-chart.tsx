@@ -481,7 +481,7 @@ export function LineChart({
     const yScale = scaleLinear().domain(niced);
     const gridGuide = resolveGridGuide(grid);
     // bklit shell:373-395 — effective tween enable = yDomainTween || (tweenYDomainOnXDomainChange && xDomain != null) already folded into effectiveYDomainTweenDuration; gate uses yDomainChangedForTween which tracks the visibleData-derived domain.
-    const animate =
+    const svgAnimation =
       isChartInteractionPhase(chartPhase) && isLoaded && yDomainChangedForTween
         ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
         : false;
@@ -494,7 +494,7 @@ export function LineChart({
       // bklit has no native focus ring — its hover dot is the springed TooltipDot.
       focusRing: false,
       maxFocusDistance: Number.POSITIVE_INFINITY,
-      animate,
+      svgAnimation,
     };
   }, [marks, renderData, xDataKey, grid, width, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, projectionConfigs, xDomain]);
 

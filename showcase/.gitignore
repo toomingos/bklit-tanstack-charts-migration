@@ -3,3 +3,6 @@
 
 # next.js
 .next/
+
+# TypeScript incremental build state
+*.tsbuildinfo

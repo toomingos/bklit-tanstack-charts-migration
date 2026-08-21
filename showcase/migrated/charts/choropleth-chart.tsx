@@ -29,7 +29,7 @@ import type { TransformMatrix, ProvidedZoom } from "@visx/zoom";
 import { identityMatrix } from "@visx/zoom";
 import { Zoom } from "@visx/zoom";
 import { Chart } from "@tanstack/react-charts";
-import { defineChart } from "@tanstack/charts";
+import { defineChart, type ChartValue, type StaticChartDefinition } from "@tanstack/charts";
 import { geoShape } from "@tanstack/charts/geo";
 import { CHART_ROLE } from "./children";
 import {
@@ -279,7 +279,8 @@ function ChoroplethChartBody({
   );
 
   const definition = useMemo(() => {
-    if (width <= 0 || height <= 0 || !projection) return null as unknown as ReturnType<typeof defineChart>;
+    if (width <= 0 || height <= 0 || !projection)
+      return null as unknown as StaticChartDefinition<ChoroplethFeature, ChartValue, ChartValue, "dom">;
     const projForMark = projection;
     const d = defineChart({
       marks: [
@@ -303,7 +304,7 @@ function ChoroplethChartBody({
       guides: false,
       margin: 0,
     });
-    return d;
+    return d as StaticChartDefinition<ChoroplethFeature, ChartValue, ChartValue, "dom">;
   }, [
     width, height, projection, data.features,
     featureConfig?.getFeatureColor, featureConfig?.getFeaturePattern,

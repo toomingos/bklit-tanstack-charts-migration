@@ -177,8 +177,8 @@ function useHeatmapChartDefinition(
         y: { scale: yScale, guide: false },
         color: { scale: colorScale },
         margin,
-        animate: false,
-      } as never);
+        svgAnimation: false,
+      });
     }
     return defineChart({
       marks: [
@@ -195,7 +195,7 @@ function useHeatmapChartDefinition(
       y: { scale: yScale, guide: false },
       color: { scale: colorScale },
       margin,
-      animate: false,
+      svgAnimation: false,
     });
   }, [cellData, xScale, yScale, colorScale, margin, cornerRadius, ctxForDef.chartStatus]);
 

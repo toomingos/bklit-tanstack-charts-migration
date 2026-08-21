@@ -438,10 +438,10 @@ export function BarChart({
         x: { scale: xScaleFactory, guide: false },
         y: { scale: yScale, grid: grid?.horizontal ?? false, ticks: grid?.numTicks ?? 5 },
         margin,
-        animate: false as const,
+        svgAnimation: false as const,
       } as const;
       const base = defineChart(spec);
-      return defineChart<ChartDatum, string, number>(base, { focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY });
+      return defineChart(base, { focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY });
     }
     const marks: ChartMark<ChartDatum, string, number>[] = [];
     const bandPosFn = (label: string) => categoryScaleForOverlay(label) ?? 0;
@@ -604,10 +604,10 @@ export function BarChart({
       x: { scale: xScaleFactory, guide: false },
       y: { scale: yScale, grid: grid?.horizontal ?? false, ticks: grid?.numTicks ?? 5 },
       margin,
-      animate: false as const,
+      svgAnimation: false as const,
     } as const;
     const base = defineChart(spec);
-    return defineChart<ChartDatum, string, number>(base, { focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY });
+    return defineChart(base, { focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY });
   }, [
     renderData,
     categoryAccessor,

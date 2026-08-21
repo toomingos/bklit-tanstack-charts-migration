@@ -27,7 +27,7 @@ import { curveMonotoneX } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
 import { Chart } from "@tanstack/react-charts";
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
-import type { ChartMark } from "@tanstack/charts";
+import type { ChartMark, StaticChartDefinition } from "@tanstack/charts";
 import { areaFill } from "./internal/area-fill-mark";
 import { patternAreaMark } from "./internal/pattern-area-mark";
 import { renderPatternPreset } from "./internal/pattern-preset";
@@ -535,10 +535,10 @@ export function AreaChart({
         // bklit has no native focus ring — its hover dot is the springed TooltipDot.
         focusRing: false,
         maxFocusDistance: Number.POSITIVE_INFINITY,
-        animate: false as const,
+        svgAnimation: false as const,
       } as const;
       const base = defineChart(emptySpec as never);
-      return base as unknown as ReturnType<typeof defineChart<ChartDatum, Date, number>>;
+      return base as unknown as StaticChartDefinition<ChartDatum, Date, number, "dom">;
     }
     // Typed accessors (ChartDatum values are `unknown`, so bare key strings
     // don't satisfy TanStack's ChannelAccessor value types); the explicit
@@ -689,7 +689,7 @@ export function AreaChart({
       focusRing: false,
       // bklit's hover works anywhere over the plot; TanStack defaults to 48px.
       maxFocusDistance: Number.POSITIVE_INFINITY,
-      animate:
+      svgAnimation:
         isChartInteractionPhase(chartPhase) && isLoaded && yDomainChanged
           ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
           : false,

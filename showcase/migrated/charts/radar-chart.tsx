@@ -408,7 +408,7 @@ export function RadarChart({
       guides: false,
       x: null,
       y: null,
-      animate: false,
+      svgAnimation: false,
       focus: focusDisabled,
       tooltip: false,
     });

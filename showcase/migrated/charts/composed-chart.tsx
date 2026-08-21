@@ -910,7 +910,7 @@ export function ComposedChart({
       focusRing: false,
       maxFocusDistance: Number.POSITIVE_INFINITY,
       // Ref reads, not deps — see the comment on phaseRef/isLoadedRef above.
-      animate:
+      svgAnimation:
         isChartInteractionPhase(phaseRef.current) && isLoadedRef.current && yDomainChanged
           ? { duration: DATA_TWEEN_MS, easing: bezierEasing }
           : false,

@@ -786,7 +786,7 @@ export function LiveLineChart({
       // bklit's own reconcile is un-tweened at the TanStack/D3 level — all
       // motion comes from the outer lerp loop already; a scene-level tween
       // here would double-animate.
-      animate: false,
+      svgAnimation: false,
       // Native pointer tracking replaces TanStack's focus system entirely
       // (D16/D22) — no `focus`/`maxFocusDistance` configured.
     });

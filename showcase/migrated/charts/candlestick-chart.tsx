@@ -447,7 +447,7 @@ export function CandlestickChart({
       maxFocusDistance: Number.POSITIVE_INFINITY,
       // bklit candlestick: data updates SNAP, never tween (I8 is a Line-only
       // concept) — matches every other migrated chart's non-Line behavior.
-      animate: false,
+      svgAnimation: false,
     });
   }, [
     renderData,

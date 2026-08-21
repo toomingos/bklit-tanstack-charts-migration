@@ -382,14 +382,14 @@ export function ScatterChart({
       // bklit scatter has no data-update tween (Line-only concept, I8) — new
       // data always snaps, once loaded, exactly like bklit's
       // StaticSeriesPointMarker (D14).
-      animate: false as const,
+      svgAnimation: false as const,
     } as const;
     const base = defineChart(spec);
-    return defineChart<ChartDatum, Date, number>(base, {
+    return defineChart(base, {
       focus: scatterFocusStrategy,
       focusRing: false,
       maxFocusDistance: Number.POSITIVE_INFINITY,
-    }) as StaticChartDefinition<ChartDatum, Date, number>;
+    }) as StaticChartDefinition<ChartDatum, Date, number, "dom">;
   }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy]);
 
   // Hover chrome (bklit ChartTooltip, scatter dim/highlight variant).

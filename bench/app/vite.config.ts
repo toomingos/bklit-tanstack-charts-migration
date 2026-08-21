@@ -35,10 +35,10 @@ function aliasesFromExports(
   return aliases;
 }
 
-// Vendored TanStack v0.7.2 fixture under showcase/ (same source the showcase
-// builds against, see docs/LOG.md D146). The top-level repos/ clone is an
-// older pre-v0.7.2 snapshot and must NOT be used here — bench/QA gates and
-// showcase must resolve the same TanStack source.
+// Vendored TanStack fixture under showcase/ (same source the showcase
+// builds against; pinned at v0.14.0, commit a285ce7 — see docs/phase-3/LOG.md
+// D146/D238). The top-level repos/ clone is an older snapshot and must NOT be
+// used here — bench/QA gates and showcase must resolve the same TanStack source.
 const chartsCoreDir = "../../showcase/repos/tanstack-charts/packages/charts-core";
 const reactChartsDir = "../../showcase/repos/tanstack-charts/packages/react-charts";
 
