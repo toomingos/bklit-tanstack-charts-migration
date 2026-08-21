@@ -23,7 +23,7 @@ import {
   SunburstCenter,
   SunburstLabels,
   SunburstHint,
-} from "../../../../migrated/charts/sunburst-chart";
+} from "../../../../showcase/migrated/charts/sunburst-chart";
 import {
   buildArcs,
   buildSunburstEnterTiming,

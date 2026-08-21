@@ -41,13 +41,17 @@ import { Chart } from "@tanstack/react-charts";
 import { d3Curve, defineChart } from "@tanstack/charts";
 import type { ChartMark } from "@tanstack/charts";
 import { roleOf } from "./children";
+import { ReferenceAreaLayers } from "./internal/reference-area-layer";
+import { createTickColorResolver } from "./internal/reference-area-geometry";
 import { hmsTimeFmt } from "./internal/formatters";
 import { liveLineMark } from "./internal/live-line-mark";
+import { useChartMargin, useMeasuredRect } from "./internal";
 import {
   attachLiveHoverChrome,
   type LiveHoverChrome,
   type LiveHoverConfig,
 } from "./internal/live-hover-chrome";
+import { useChartConfig } from "./internal/chart-config-context";
 import type {
   ChartDatum,
   ChartTooltipConfig,
@@ -285,6 +289,7 @@ interface ExtractedLiveLineChildren {
   liveXAxis: LiveXAxisConfig | null;
   liveYAxis: LiveYAxisConfig | null;
   tooltip: ChartTooltipConfig | null;
+  referenceAreas: Array<Record<string, unknown>>;
 }
 
 function extractLiveLineChildren(children: React.ReactNode): ExtractedLiveLineChildren {
@@ -293,6 +298,7 @@ function extractLiveLineChildren(children: React.ReactNode): ExtractedLiveLineCh
     liveXAxis: null,
     liveYAxis: null,
     tooltip: null,
+    referenceAreas: [],
   };
   const visit = (node: React.ReactNode): void => {
     for (const child of React.Children.toArray(node)) {
@@ -305,6 +311,7 @@ function extractLiveLineChildren(children: React.ReactNode): ExtractedLiveLineCh
       if (role === "liveLine") out.liveLines.push(child.props as LiveLineConfig);
       else if (role === "liveXAxis") out.liveXAxis = child.props as LiveXAxisConfig;
       else if (role === "liveYAxis") out.liveYAxis = child.props as LiveYAxisConfig;
+      else if (role === "referenceArea") out.referenceAreas.push(child.props as Record<string, unknown>);
       else if (role === "tooltip")
         out.tooltip = { enabled: true, ...(child.props as ChartTooltipConfig) };
     }
@@ -340,33 +347,13 @@ export function LiveLineChart({
   // margin object would otherwise invalidate the definition even on renders
   // caused by unrelated parent work.  Individual fields are dependencies so
   // this does not hide a public margin change behind a mutable object.
-  const margin = React.useMemo<Margin>(
-    () => ({ ...DEFAULT_MARGIN, ...marginProp }),
-    [marginProp?.top, marginProp?.right, marginProp?.bottom, marginProp?.left],
-  );
+  const margin = useChartMargin(marginProp, DEFAULT_MARGIN);
   const uid = React.useId();
   const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const { width, height } = useMeasuredRect(containerRef);
   const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
-  const [width, setWidth] = React.useState(0);
-  const [height, setHeight] = React.useState(0);
 
-  React.useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      setWidth((prev) => (Math.abs(prev - rect.width) > 0.5 ? rect.width : prev));
-      setHeight((prev) => (Math.abs(prev - rect.height) > 0.5 ? rect.height : prev));
-    });
-    ro.observe(el);
-    const rect = el.getBoundingClientRect();
-    setWidth(rect.width);
-    setHeight(rect.height);
-    return () => ro.disconnect();
-  }, []);
-
-  const { liveLines, liveXAxis, liveYAxis, tooltip } = React.useMemo(
+  const { liveLines, liveXAxis, liveYAxis, tooltip, referenceAreas: liveRefAreas } = React.useMemo(
     () => extractLiveLineChildren(children),
     [children],
   );
@@ -410,6 +397,7 @@ export function LiveLineChart({
 
   // ---- Hover chrome (internal/live-hover-chrome.ts) ----
   const chromeRef = React.useRef<LiveHoverChrome | null>(null);
+  const chartConfig = useChartConfig();
   // Per-series "live tip" group elements, keyed by dataKey — registered with
   // the chrome as one combined list so multiple <LiveLine> series all dim
   // together while scrubbing (a single flat `registerLiveGroups([el])` call
@@ -444,23 +432,48 @@ export function LiveLineChart({
     showDots: tooltipOn && (tooltip?.showDots ?? true),
     showBox: tooltipOn,
     showDatePill: liveXAxis !== null,
+    dotVariant: tooltip?.dotVariant,
+    dotSize: tooltip?.dotSize,
+    dotRadiusFraction: tooltip?.dotRadiusFraction,
+    dotScale: tooltip?.dotScale,
+    dotStrokeWidth: tooltip?.dotStrokeWidth,
+    dotColor: tooltip?.dotColor as string | ((point: Record<string, unknown>, line: { dataKey: string; stroke?: string }) => string) | undefined,
+    indicatorColor: tooltip?.indicatorColor as string | ((point: Record<string, unknown>) => string) | undefined,
+    indicatorWidth: tooltip?.indicatorWidth,
+    indicatorSpan: tooltip?.indicatorSpan,
+    columnWidth: tooltip?.columnWidth,
+    indicatorDasharray: tooltip?.indicatorDasharray,
+    indicatorFadeEdges: tooltip?.indicatorFadeEdges as import("./internal/tooltip-chrome").IndicatorConfig["fadeEdges"],
+    indicatorFadeLength: tooltip?.indicatorFadeLength,
+    springConfig: tooltip?.springConfig,
+    matchCrosshair: tooltip?.matchCrosshair,
+    damping: tooltip?.damping,
+    boxSpringConfig: tooltip?.boxSpringConfig,
+    className: tooltip?.className,
+    panelStyle: tooltip?.panelStyle,
+    backgroundColor: tooltip?.backgroundColor,
+    rows: tooltip?.rows as LiveHoverConfig["rows"],
+    children: tooltip?.children as LiveHoverConfig["children"],
     content: tooltip?.content,
   };
 
   React.useLayoutEffect(() => {
     const el = overlayHostRef.current;
     if (!el) return;
-    const chrome = attachLiveHoverChrome(el, () => chromeConfigRef.current);
+    const chrome = attachLiveHoverChrome(el, () => chromeConfigRef.current, {
+      tooltipSpring: chartConfig.tooltipSpring,
+      tooltipBoxSpring: chartConfig.tooltipBoxSpring,
+    });
     chromeRef.current = chrome;
     return () => {
       chromeRef.current = null;
       chrome.detach();
     };
-    // Attaches once per mount — the module reads current config via
-    // `chromeConfigRef` on every call, matching hover-chrome.ts's own
+    // Attaches once per mount (chartConfig is the stable DEFAULT_CHART_CONFIG
+    // unless a ChartConfigProvider supplies a value) — the module reads current
+    // config via `chromeConfigRef` on every call, matching hover-chrome.ts's own
     // getState-callback convention.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [chartConfig]);
 
   // ---- Native pointer tracking (D16/D22: ref only, no React state) ----
   // Canvas-space margin-coord snapshot — closing the rAF tick over this
@@ -689,6 +702,9 @@ export function LiveLineChart({
       if (!Number.isInteger(rounded) && !allowDecimals) continue;
       values.push(rounded);
     }
+    const yDomainLive = yScale.domain() as [number, number];
+    const refConfigsLive = liveRefAreas.map((p) => ({ y1: p.y1 as number | undefined, y2: p.y2 as number | undefined, axisLabelColor: p.axisLabelColor as string | undefined }));
+    const resolveRefColor = createTickColorResolver(refConfigsLive, yDomainLive);
     return values
       .map((val) => {
         const y = yScale(val) ?? 0;
@@ -697,10 +713,11 @@ export function LiveLineChart({
           y,
           label: formatValue(val),
           edgeAlpha: edgeOpacity(y, innerHeight),
+          labelColor: resolveRefColor(val),
         };
       })
       .filter((t) => t.y >= -10 && t.y <= innerHeight + 10);
-  }, [liveYAxis, yScale, innerHeight]);
+  }, [liveYAxis, yScale, innerHeight, liveRefAreas]);
 
   React.useLayoutEffect(() => {
     chromeRef.current?.updateFrame({ width, height, margin, xLabels, yTicks });
@@ -782,8 +799,21 @@ export function LiveLineChart({
       ref={containerRef}
       className={className}
       data-bkm-chart="liveline"
-      style={{ position: "relative", width: "100%", height: 300, touchAction: "none", ...style }}
+      style={{ position: "relative", width: "100%", height: 300, touchAction: "none", isolation: "isolate", ...style } as React.CSSProperties}
     >
+      {liveRefAreas.length > 0 && width > 0 && height > 0 && (
+        <ReferenceAreaLayers
+          configs={liveRefAreas}
+          geom={{
+            width,
+            height,
+            margin,
+            yDomain: yScale.domain() as [number, number],
+            xDomain: xScale.domain() as [Date, Date],
+            isTimeScale: true,
+          }}
+        />
+      )}
       {definition ? (
         <>
           <div

@@ -1,4 +1,5 @@
 import type { ChartFocusStrategy, ChartPoint } from "@tanstack/charts";
+import { isChartInteractionPhase } from "./chart-phase";
 import type { ChartDatum, ChartPhase } from "./types";
 
 function valueKey(value: unknown): string {
@@ -53,11 +54,9 @@ export function createBarFocusStrategy(
   return {
     resolve(
       points: readonly ChartPoint<ChartDatum, string, number>[],
-      x: number,
-      y: number,
-      maxDistance: number,
+      { x, y, maxDistance },
     ): readonly ChartPoint<ChartDatum, string, number>[] {
-      if ((phaseRef as { current: ChartPhase }).current !== "ready") return [];
+      if (!isChartInteractionPhase((phaseRef as { current: ChartPhase }).current)) return [];
       if (points.length === 0) return [];
 
       // When wired with bklit-parity getters, replicate bklit's exact
@@ -146,7 +145,7 @@ export function createBarFocusStrategy(
 
     group(
       points: readonly ChartPoint<ChartDatum, string, number>[],
-      point: ChartPoint<ChartDatum, string, number>,
+      { point },
     ): readonly ChartPoint<ChartDatum, string, number>[] {
       if (points.length === 0) return [point];
       return collectPerGroup(points, point);

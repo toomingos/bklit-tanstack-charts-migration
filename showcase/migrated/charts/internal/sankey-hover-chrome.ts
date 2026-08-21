@@ -99,14 +99,17 @@ export function applySankeyHoverStyle(
     const nameLabel = nameLabelMap.get(i) ?? null;
     const valueLabel = valueLabelMap.get(i) ?? null;
 
+    // Value-label dimming writes fill-opacity (the same property carrying its
+    // resting 0.6 scene style) so it never multiplies with the reveal's
+    // opacity track — `opacity` stays neutral (1) on value labels.
     if (anyHovered && !nodeConnected[i]) {
       rect.style.opacity = String(fadedNodeOpacity);
       if (nameLabel) nameLabel.style.opacity = String(fadedNodeOpacity);
-      if (valueLabel) valueLabel.style.opacity = String(fadedNodeOpacity * 0.8);
+      if (valueLabel) valueLabel.style.fillOpacity = String(fadedNodeOpacity * 0.8);
     } else {
       rect.style.opacity = "1";
       if (nameLabel) nameLabel.style.opacity = "1";
-      if (valueLabel) valueLabel.style.opacity = "0.6";
+      if (valueLabel) valueLabel.style.fillOpacity = "0.6";
     }
   }
 

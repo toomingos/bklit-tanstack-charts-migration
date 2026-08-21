@@ -40,7 +40,7 @@ import { Children, isValidElement, useCallback, useEffect, useLayoutEffect, useM
 import { Chart } from "@tanstack/react-charts";
 import { defineChart } from "@tanstack/charts";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
-import { polar, radialArc, type PolarMark } from "@tanstack/charts/polar";
+import { polar, radialArc } from "@tanstack/charts/polar";
 import { pieArcPath } from "./internal/pie-geometry";
 import { displayNameOf } from "./children";
 import {
@@ -57,6 +57,7 @@ import {
   type RingEnterTransition,
 } from "./internal/ring-reveal";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { useMeasuredRect } from "./internal";
 import "./styles.css";
 
 export type { RingEnterTransition } from "./internal/ring-reveal";
@@ -215,35 +216,6 @@ export interface RingChartProps {
   children: ReactNode;
 }
 
-function useMeasuredSize(fixedSize: number | undefined): {
-  containerRef: React.RefObject<HTMLDivElement | null>;
-  size: number;
-} {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [measured, setMeasured] = useState({ width: 0, height: 0 });
-
-  useLayoutEffect(() => {
-    if (fixedSize) return;
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      setMeasured((prev) =>
-        Math.abs(prev.width - rect.width) > 0.5 || Math.abs(prev.height - rect.height) > 0.5
-          ? { width: rect.width, height: rect.height }
-          : prev,
-      );
-    });
-    ro.observe(el);
-    const rect = el.getBoundingClientRect();
-    setMeasured({ width: rect.width, height: rect.height });
-    return () => ro.disconnect();
-  }, [fixedSize]);
-
-  return { containerRef, size: fixedSize ?? Math.min(measured.width, measured.height) };
-}
-
 // TanStack `radialArc` expects `startAngle`/`endAngle` channels on the datum
 // by default — exactly these field names match the mark's default channel
 // resolvers (polar.ts `radialArc` options: `startAngle`/`endAngle` resolve
@@ -283,7 +255,9 @@ export function RingChart({
   geometryScrubbing = false,
   children,
 }: RingChartProps) {
-  const { containerRef, size } = useMeasuredSize(fixedSize);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const { width, height } = useMeasuredRect(containerRef, !fixedSize);
+  const size = fixedSize ?? Math.min(width, height);
 
   // --- Hover coordinator (unchanged from D51). ---
   const isControlledRef = useRef(hoveredIndex !== undefined);
@@ -342,18 +316,10 @@ export function RingChart({
     [children, geometryScrubbing],
   );
   const centerChildren = rawClassified.centerChildren;
-  const ringConfigsKey = useMemo(
-    () =>
-      rawClassified.ringConfigs
-        .map((c) => `${c.index}:${c.animate ? 1 : 0}:${c.showGlow ? 1 : 0}:${c.lineCap}:${c.color ?? ""}`)
-        .join("|"),
-    [rawClassified.ringConfigs],
-  );
-  const ringConfigs = useMemo(() => rawClassified.ringConfigs, [ringConfigsKey]);
 
   const ringConfigMap = useMemo(
-    () => new Map(ringConfigs.map((c) => [c.index, c])),
-    [ringConfigs],
+    () => new Map(rawClassified.ringConfigs.map((c) => [c.index, c])),
+    [rawClassified.ringConfigs],
   );
 
   // --- Scrub layers (static paths, bypass TanStack marks entirely). ---
@@ -483,6 +449,8 @@ export function RingChart({
   const ringStateRef = useRef<Map<number, RingImperativeState>>(new Map());
   const pendingExpandAnimsRef = useRef<Map<number, Animation>>(new Map());
   const revealAnimsRef = useRef<Animation[]>([]);
+  const revealDeadlineTimerRef = useRef<number | null>(null);
+  const revealPostPaintCancelRef = useRef<(() => void) | null>(null);
 
   // --- WAAPI reveal (handleRender) + hover chrome (useLayoutEffect below).
   // Reveal runs once guarded by the SVG's bkmRevealed DOM attribute; hover
@@ -554,7 +522,7 @@ export function RingChart({
     const resolved = resolveEnterTransition(enterTransitionRef.current, RING_TWEEN_FALLBACK);
     const timing = revealTiming(resolved);
     const maxDelayMs = Math.max(...toReveal.map((i) => (0.6 + i * 0.1) * enterStaggerScaleRef.current * 1000));
-    setRevealDeadline(timing.durationMs + maxDelayMs, {
+    revealDeadlineTimerRef.current = setRevealDeadline(timing.durationMs + maxDelayMs, {
       animationsRef: revealAnimsRef,
       onDeadline: () => {},
     });
@@ -571,7 +539,7 @@ export function RingChart({
       pendingExpandAnimsRef.current.set(i, { cancel() {} } as unknown as Animation);
     }
 
-    onPostPaint(() => {
+    revealPostPaintCancelRef.current = onPostPaint(() => {
       for (const i of toReveal) {
         const ringData = currData[i];
         if (!ringData) continue;
@@ -723,6 +691,21 @@ export function RingChart({
       for (const el of [trackGroup, progressGroup] as const) {
         if (!el) continue;
         el.style.cursor = "pointer";
+        // bklit's ring.tsx pins its hover-scale `<motion.g>` to
+        // `transformOrigin: "0px 0px"` (the ring's true center, in the
+        // group's own local coordinate space post-`translate(center,center)`)
+        // so `scale()` always pivots around the ring's actual center
+        // regardless of which arc segment is drawn. Without this, the CSS
+        // default (`transform-origin: 50% 50%`, i.e. the element's OWN
+        // bounding-box center) is used instead — a no-op for `trackGroupEl`
+        // (always a full, symmetric 360deg band whose bbox center already
+        // coincides with the true center) but WRONG for `progressGroupEl`
+        // (a partial arc sweep whose bbox center drifts away from the true
+        // center for any progress != 100%), causing the hover push-out
+        // scale (1.02/1.03) to pivot around the wrong point — root cause of
+        // D208-3's density-proportional hover diff (every partially-swept
+        // ring scaling off-center once pushed-out/hovered).
+        el.style.transformOrigin = "0px 0px";
       }
       if (progressGroup) {
         progressGroup.style.pointerEvents = "none";
@@ -811,25 +794,34 @@ export function RingChart({
         }
       }
     };
-  }, [data.length, geometryScrubbing]);
+  }, [data.length, geometryScrubbing, containerRef, coordinator]);
 
   // Cleanup only on actual unmount — NOT on StrictMode double-invoke.
   const isMountedRef = useRef(true);
   useEffect(() => {
+    const pendingExpandAnims = pendingExpandAnimsRef.current;
+    const revealAnims = revealAnimsRef.current;
+    const ringStates = ringStateRef.current;
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
       setTimeout(() => {
         if (isMountedRef.current) return;
-        for (const anim of pendingExpandAnimsRef.current.values()) {
-          try { anim.cancel(); } catch {}
+        if (revealDeadlineTimerRef.current !== null) {
+          window.clearTimeout(revealDeadlineTimerRef.current);
+          revealDeadlineTimerRef.current = null;
         }
-        pendingExpandAnimsRef.current.clear();
-        for (const anim of revealAnimsRef.current) {
-          try { anim.cancel(); } catch {}
+        revealPostPaintCancelRef.current?.();
+        revealPostPaintCancelRef.current = null;
+        for (const anim of pendingExpandAnims.values()) {
+          try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
+        }
+        pendingExpandAnims.clear();
+        for (const anim of revealAnims) {
+          try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
         }
         revealAnimsRef.current = [];
-        for (const state of ringStateRef.current.values()) state.runtime.stop();
+        for (const state of ringStates.values()) state.runtime.stop();
       }, 0);
     };
   }, []);
@@ -855,7 +847,7 @@ export function RingChart({
       });
     });
     return () => cancelAnimationFrame(raf);
-  }, [data.length, geometryScrubbing, handleRender]);
+  }, [data.length, geometryScrubbing, handleRender, containerRef]);
 
   const renderContent = size >= 10;
 

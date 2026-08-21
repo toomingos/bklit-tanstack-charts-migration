@@ -76,26 +76,26 @@ export function createChoroplethHoverChrome(
       for (const [dk, path] of elements) {
         if (!path.isConnected) continue;
         if (dk === key) continue;
-        if (path.parentElement === dimWrapper) continue;
+        if ((path.parentElement as Element | null) === dimWrapper) continue;
         path.style.transition = "";
         path.style.opacity = "1";
         dimWrapper.appendChild(path);
       }
     } else if (prevKey !== key) {
       const prevPath = elements.get(prevKey!);
-      if (prevPath && prevPath.isConnected && prevPath.parentElement === geoGroup) {
+      if (prevPath && prevPath.isConnected && (prevPath.parentElement as Element | null) === geoGroup) {
         prevPath.style.opacity = "1";
         prevPath.style.transition = "";
         dimWrapper.appendChild(prevPath);
       }
       const nextPath = elements.get(key);
-      if (nextPath && nextPath.isConnected && nextPath.parentElement === dimWrapper) {
+      if (nextPath && nextPath.isConnected && (nextPath.parentElement as Element | null) === dimWrapper) {
         geoGroup.appendChild(nextPath);
       }
     }
     const hoveredPath = elements.get(key);
-    if (hoveredPath && hoveredPath.isConnected && hoveredPath.parentElement !== geoGroup) {
-      if (hoveredPath.parentElement === dimWrapper) geoGroup.appendChild(hoveredPath);
+    if (hoveredPath && hoveredPath.isConnected && (hoveredPath.parentElement as Element | null) !== geoGroup) {
+      if ((hoveredPath.parentElement as Element | null) === dimWrapper) geoGroup.appendChild(hoveredPath);
       hoveredPath.style.transition = DIM_TRANSITION;
       hoveredPath.style.opacity = "1";
     } else if (hoveredPath && hoveredPath.isConnected) {

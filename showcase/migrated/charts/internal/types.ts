@@ -1,20 +1,19 @@
 import type { ReactNode } from "react";
 import type { CurveFactory } from "d3-shape";
+import type { IndicatorFadeEdges } from "./fade-mask";
 
 /** Row shape accepted by the cartesian charts (bklit contract). */
 export type ChartDatum = Record<string, unknown>;
 
-/** bklit-compatible chart status / phase (subset used by the pilot). */
-export type ChartStatus = "loading" | "ready";
-export type ChartPhase =
-  | "loading"
-  | "exiting"
-  | "gridTweenReady"
-  | "revealing"
-  | "ready"
-  | "exitingReady"
-  | "gridTweenLoading"
-  | "revealingLoading";
+export type { ChartStatus, ChartPhase } from "./chart-phase";
+export {
+  DEFAULT_CHART_STATUS,
+  DEFAULT_Y_DOMAIN_TWEEN_MS,
+  Y_DOMAIN_TWEEN_SKIP_THRESHOLD,
+  resolveRestingChartPhase,
+  isChartInteractionPhase,
+  DEFAULT_CHART_LIFECYCLE,
+} from "./chart-phase";
 
 /** bklit SeriesPointMarkerStyle (series-point-marker.tsx) — marker
     appearance contract. */
@@ -61,9 +60,9 @@ export interface LineConfig {
 }
 
 /** Config carried by an <Area> child (bklit area.tsx AreaProps, pilot
-    subset). Rendered as an areaY fill mark (id `${dataKey}__fill`) plus a
-    lineY boundary mark (id `dataKey`, same id convention as <Line> so the
-    hover chrome's series-by-markId lookups work unchanged). */
+     subset). Rendered as an areaY fill mark (id `${dataKey}__fill`) plus a
+     lineY boundary mark (id `dataKey`, same id convention as <Line> so the
+     hover chrome's series-by-markId lookups work unchanged). */
 export interface AreaConfig {
   dataKey: string;
   /** Stroke color for the boundary line. Default: `fill ?? "var(--chart-line-primary)"`
@@ -92,6 +91,22 @@ export interface AreaConfig {
   /** bklit area.tsx: hover dim (to 0.6, not Line's 0.3) + highlight band on
       the boundary line. Default: true. */
   showHighlight?: boolean;
+  /** Data index from which the boundary line stroke becomes dashed. */
+  dashFromIndex?: number;
+  /** Dash pattern for the tail segment. Default: "6,4". */
+  dashArray?: string;
+}
+
+/** Config carried by a <PatternArea> child (bklit pattern-area.tsx, migrated
+     convenience shape per plan §10 ruling 1: patternPreset + patternColor
+     forwarded to internal/pattern-preset.tsx's renderPatternPreset, with a
+     raw fill escape hatch). */
+export interface PatternAreaConfig {
+  dataKey: string;
+  patternPreset?: import("./pattern-preset").PatternPresetId;
+  patternColor?: string;
+  fill?: string;
+  curve?: CurveFactory;
 }
 
 /** Config carried by a <Scatter> child (bklit Scatter prop contract, pilot
@@ -108,20 +123,66 @@ export interface ScatterConfig {
   radius?: number;
 }
 
-/** Config carried by a <Grid> child (pilot subset of bklit GridProps). */
+/** Config carried by a <Grid> child (bklit grid.tsx GridProps surface).
+    Pilot fields `horizontal`/`vertical`/`stroke`/`strokeOpacity`/`strokeWidth`/
+    `numTicks` are consumed by the single guides path (internal/grid.ts);
+    the remaining bklit fields are carried for API parity and consumed by the
+    same module as initiative-3 features land (highlight rows + shimmer). */
 export interface GridConfig {
   horizontal?: boolean;
   vertical?: boolean;
   stroke?: string;
   strokeOpacity?: number;
   strokeWidth?: number;
+  /** Horizontal grid-line tick count (bklit `numTicksRows`). Default: 5. */
   numTicks?: number;
+  /** Explicit tick values for horizontal grid lines. Overrides numTicks. */
+  rowTickValues?: number[];
+  /** Grid line stroke while loading chrome is active. Falls back to `stroke`. */
+  loadingStroke?: string;
+  /** Grid line dash array. Default: "4,4". */
+  strokeDasharray?: string;
+  /** Horizontal row values rendered with alternate styling (e.g. zero baseline). */
+  highlightRowValues?: number[];
+  /** Stroke for highlighted rows. Default: var(--chart-foreground-muted). */
+  highlightRowStroke?: string;
+  /** Stroke opacity for highlighted rows. Default: 1. */
+  highlightRowStrokeOpacity?: number;
+  /** Stroke width for highlighted rows. Default: 1. */
+  highlightRowStrokeWidth?: number;
+  /** Dash array for highlighted rows. Default: solid line. */
+  highlightRowStrokeDasharray?: string;
+  /** Enable horizontal fade effect on grid rows (fades at left/right). Default: true. */
+  fadeHorizontal?: boolean;
+  /** Enable vertical fade effect on grid columns (fades at top/bottom). Default: false. */
+  fadeVertical?: boolean;
+  /** Omit the first and last horizontal grid lines. Default: false. */
+  hideHorizontalEdgeLines?: boolean;
+  /** Omit the first and last vertical grid lines. Default: false. */
+  hideVerticalEdgeLines?: boolean;
+  /** Y-scale for horizontal grid lines. Default: primary ("left") axis. */
+  yAxisId?: string | number;
+  /** Animate a shimmer band across horizontal grid lines. Default: false. */
+  shimmer?: boolean;
+  /** Shimmer band stroke (color and opacity via color-mix or oklch alpha). */
+  shimmerStroke?: string;
+  /** Shimmer band width in pixels. Default: 140. */
+  shimmerLength?: number;
+  /** Shimmer speed multiplier (higher = faster). Default: 1. */
+  shimmerSpeed?: number;
+  /** Match loop timing to the loading line pulse (cycle + inter-loop pause). */
+  shimmerSync?: boolean;
 }
 
 /** Config carried by an <XAxis> child (pilot subset). */
 export interface XAxisConfig {
   numTicks?: number;
   formatValue?: (value: Date) => string;
+}
+
+export interface GradientStop {
+  offset: number;
+  color: string;
 }
 
 /** Config carried by a <Bar> child (bklit bar.tsx BarProps, pilot subset —
@@ -135,6 +196,54 @@ export interface BarConfig {
   lineCap?: "round" | "butt" | number;
   /** Opacity when a different category is hovered. Default: 0.3. */
   fadedOpacity?: number;
+}
+
+export interface BarSquaresConfig {
+  dataKey: string;
+  fill?: string;
+  stroke?: string;
+  squareGap?: number;
+  squareRadius?: number;
+  squareFit?: boolean;
+  useGradient?: boolean;
+  gradientStops?: GradientStop[];
+  patternPreset?: import("./pattern-preset").PatternPresetId;
+  animate?: boolean;
+  fadedOpacity?: number;
+  staggerDelay?: number;
+  groupGap?: number;
+}
+
+export interface BarColumnTrackConfig {
+  fill?: string;
+  opacity?: number;
+  squareGap?: number;
+  squareRadius?: number;
+  groupGap?: number;
+  squareFit?: boolean;
+  staggerDelay?: number;
+}
+
+export interface BarDepthBackConfig {
+  dataKey: string;
+  color?: string;
+  colorAccessor?: (datum: Record<string, unknown>, index: number) => string;
+}
+
+export interface BarDepthFrontConfig {
+  dataKey: string;
+}
+
+export interface BarPulseConfig {
+  dataKey: string;
+  activeIndex?: number;
+  pulsePaused?: boolean;
+}
+
+export interface BarDepthProviderConfig {
+  segmentsAccessor?: (datum: Record<string, unknown>) => { value: number; color: string }[] | null | undefined;
+  groundShadow?: number;
+  minBarHeight?: number;
 }
 
 /** Config carried by a <SeriesBar> child (bklit series-bar.tsx SeriesBarProps,
@@ -172,18 +281,44 @@ export interface ChartTooltipPoint {
   [key: string]: unknown;
 }
 
-/** Config carried by a <ChartTooltip> child (pilot subset of bklit
-    ChartTooltipProps — defaults all true, matching chart-tooltip.tsx).
-    `content` is LiveLineChart-only (docs/LOG.md D22): a custom render prop
-    that REPLACES the default title+rows body entirely, matching bklit's own
-    chart-tooltip.tsx branch (`content ? content({point,index}) : <default>`).
-    Other migrated charts' extraction ignores this field. */
+export type DotVariant = "dot" | "ring";
+export type IndicatorWidth = number | "line" | "thin" | "medium" | "thick";
+
+export interface TooltipRow {
+  color: string;
+  label: string;
+  value: string | number;
+}
+
+/** Config carried by a <ChartTooltip> child — full bklit ChartTooltipProps parity (21 props). */
 export interface ChartTooltipConfig {
   enabled?: boolean;
   showDatePill?: boolean;
   showCrosshair?: boolean;
   showDots?: boolean;
+  dotVariant?: DotVariant;
+  dotSize?: number;
+  dotRadiusFraction?: number;
+  dotScale?: number;
+  dotStrokeWidth?: number;
+  dotColor?: string | ((point: Record<string, unknown>, line: { dataKey: string; stroke?: string }) => string);
+  indicatorColor?: string | ((point: Record<string, unknown>) => string);
+  rows?: (point: Record<string, unknown>) => TooltipRow[];
   content?: (props: { point: ChartTooltipPoint; index: number }) => ReactNode;
+  children?: ReactNode;
+  className?: string;
+  springConfig?: { stiffness: number; damping: number };
+  matchCrosshair?: boolean;
+  damping?: number;
+  boxSpringConfig?: { stiffness: number; damping: number };
+  indicatorDasharray?: string;
+  indicatorFadeEdges?: IndicatorFadeEdges;
+  indicatorFadeLength?: number;
+  panelStyle?: React.CSSProperties;
+  backgroundColor?: string;
+  indicatorWidth?: IndicatorWidth;
+  indicatorSpan?: number;
+  columnWidth?: number;
 }
 
 /** Config carried by a <Candlestick> child (bklit candlestick.tsx
@@ -279,26 +414,108 @@ export interface LiveYAxisConfig {
   allowDecimals?: boolean;
 }
 
+export type ProjectionLineChildConfig = {
+  data: import("./projection-utils").ProjectionPoint[];
+  yAxisId?: string | number;
+  stroke?: string;
+  strokeStyle?: "solid" | "gradient";
+  gradientStart?: string;
+  gradientEnd?: string;
+  strokeWidth?: number;
+  curveKind?: "linear" | "bezier";
+  curve?: CurveFactory;
+  strokeDasharray?: string;
+  strokeOpacity?: number;
+  showEndMarker?: boolean;
+  showEndpoints?: boolean;
+  endpointRadius?: number;
+  className?: string;
+};
+
+export type ProjectionLineEndMarkerChildConfig = {
+  data: import("./projection-utils").ProjectionPoint[];
+  yAxisId?: string | number;
+  stroke?: string;
+  strokeOpacity?: number;
+  radius?: number;
+};
+
+export type TerminalMarkerChildConfig = {
+  dataKey: string;
+  yAxisId?: string | number;
+} & SeriesPointMarkerStyle;
+
+export type ProfitLossLineChildConfig = {
+  dataKey: string;
+  xDataKey?: string;
+  strokeWidth?: number;
+  positiveColor?: string;
+  negativeColor?: string;
+  curve?: CurveFactory;
+  fadeEdges?: boolean | "left" | "right";
+};
+
+export interface ChartMarker {
+  date: Date;
+  icon: React.ReactNode;
+  title: string;
+  description?: string;
+  content?: React.ReactNode;
+  color?: string;
+  onClick?: () => void;
+  href?: string;
+  target?: "_blank" | "_self";
+}
+
+export interface ChartMarkersConfig {
+  items: ChartMarker[];
+  size?: number;
+  showLines?: boolean;
+  animate?: boolean;
+  maxFanned?: number;
+}
+
+/** Brush children are kept as ELEMENTS, not extracted props: the host
+     re-renders them inside its BrushHostContext provider (ChartBrush is a
+     real rendering component — portal chrome — unlike the null-render
+     config shims above). */
+export type BrushChildConfig = ReactNode;
+
 export interface ExtractedChildren {
   lines: LineConfig[];
   /** <Area> children (area-chart.tsx pilot). */
   areas: AreaConfig[];
+  /** <PatternArea> children — pattern-filled closed areas (do not count as
+       extra legend/tooltip series, share x/y scales with normal areas). */
+  patternAreas: PatternAreaConfig[];
   /** <Scatter> children (scatter-chart.tsx pilot). */
   scatters: ScatterConfig[];
   /** <Bar> children (bar-chart.tsx pilot). */
   bars: BarConfig[];
+  barSquares: BarSquaresConfig[];
+  barColumnTracks: BarColumnTrackConfig[];
+  barDepthBacks: BarDepthBackConfig[];
+  barDepthFronts: BarDepthFrontConfig[];
+  barPulses: BarPulseConfig[];
+  barDepthProvider: BarDepthProviderConfig | null;
   /** <SeriesBar> children (composed-chart.tsx pilot). Order-independent
-      collection only — ComposedChart does its own dedicated ordered
-      extraction and never reads this field. */
+       collection only — ComposedChart does its own dedicated ordered
+       extraction and never reads this field. */
   seriesBars: SeriesBarConfig[];
   grid: GridConfig | null;
   xAxis: XAxisConfig | null;
   /** <BarXAxis> child (bar-chart.tsx pilot — distinct from <XAxis>, which
-      Line/Scatter use). */
+       Line/Scatter use). */
   barXAxis: BarXAxisConfig | null;
   tooltip: ChartTooltipConfig | null;
   /** <Candlestick> child (candlestick-chart.tsx pilot). */
   candlestick: CandlestickConfig | null;
   /** <YAxis> child (candlestick-chart.tsx pilot). */
   yAxis: YAxisConfig | null;
+  projectionLines: ProjectionLineChildConfig[];
+  projectionEndMarkers: ProjectionLineEndMarkerChildConfig[];
+  terminalMarkers: TerminalMarkerChildConfig[];
+  profitLossLines: ProfitLossLineChildConfig[];
+  chartMarkers: ChartMarkersConfig | null;
+  brushes: BrushChildConfig[];
 }

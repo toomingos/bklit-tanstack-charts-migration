@@ -12,7 +12,7 @@ interface ComposedDemoProps {
   n: number;
 }
 
-export default function ComposedDemo({ impl, n }: ComposedDemoProps) {
+export default function ComposedDemo({ impl, n: _n }: ComposedDemoProps) {
   const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
 
   return (

@@ -36,8 +36,8 @@ export function useHeatmapChartLifecycle(
   const prevStatusRef = useRef(status);
   const phaseRef = useRef(chartPhase);
   phaseRef.current = chartPhase;
-  const concealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const finishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const concealTimerRef = useRef<number | null>(null);
+  const finishTimerRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     const prevStatus = prevStatusRef.current;
@@ -60,7 +60,7 @@ export function useHeatmapChartLifecycle(
       setRevealMode(null);
       setIsLoaded(false);
       setChartPhase("exitingReady");
-      concealTimerRef.current = setTimeout(() => {
+      concealTimerRef.current = window.setTimeout(() => {
         setChartPhase("loading");
         concealTimerRef.current = null;
       }, HEATMAP_LOADING_CONCEAL_MS);
@@ -84,7 +84,7 @@ export function useHeatmapChartLifecycle(
 
   useEffect(() => {
     if (!animateEnter || chartPhase !== "revealing") return;
-    finishTimerRef.current = setTimeout(() => {
+    finishTimerRef.current = window.setTimeout(() => {
       setIsLoaded(true);
       setChartPhase("ready");
       setRevealMode(null);

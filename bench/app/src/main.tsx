@@ -33,7 +33,7 @@ const root = ReactDOM.createRoot(rootEl);
 // No React.StrictMode: this is a measurement harness, not app dev code --
 // StrictMode's dev-only double-effect-invocation would double-fire
 // onPhaseChange and skew the M1b settle-detection logic below.
-root.render(<Scenario n={params.n} scenario={params.scenario} />);
+root.render(<Scenario n={params.n} scenario={params.scenario} state={params.state} />);
 
 // M1a continued: resolves once the chart's real SVG has committed and two
 // animation frames have elapsed. Not awaited here on purpose -- it just

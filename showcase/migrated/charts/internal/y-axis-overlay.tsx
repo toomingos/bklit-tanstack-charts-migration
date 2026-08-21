@@ -3,6 +3,7 @@
 // `x-axis-overlay.tsx`), positioned at each tick's own y pixel.
 import * as React from "react";
 import { scaleLinear } from "d3-scale";
+import { resolveYAxisTickCount } from "./y-axis-ticks";
 
 export interface YAxisOverlayProps {
   // --- Pre-computed ticks (candlestick-chart.tsx backward compat) ---
@@ -21,6 +22,7 @@ export interface YAxisOverlayProps {
   numTicks?: number;
   formatLargeNumbers?: boolean;
   formatValue?: (value: number) => string;
+  tickColorForValue?: (value: number) => string | undefined;
 }
 
 function formatTick(
@@ -28,23 +30,20 @@ function formatTick(
   formatValue: ((value: number) => string) | undefined,
   formatLargeNumbers: boolean,
 ): string {
+  // bklit y-axis.tsx `formatLabel` verbatim: formatValue overrides, else
+  // large numbers compact to `${(v/1000).toFixed(0)}k`. (The previous
+  // migrated `formatTick` added an "M" branch and `toFixed(1)` decimals that
+  // bklit does not have — removed for parity.)
   if (formatValue) return formatValue(value);
-  if (formatLargeNumbers) {
-    if (value >= 1_000_000) {
-      const scaled = value / 1_000_000;
-      return scaled % 1 === 0 ? `${scaled}M` : `${scaled.toFixed(1)}M`;
-    }
-    if (value >= 1000) {
-      const scaled = value / 1000;
-      return scaled % 1 === 0 ? `${scaled}k` : `${scaled.toFixed(1)}k`;
-    }
+  if (formatLargeNumbers && value >= 1000) {
+    return `${(value / 1000).toFixed(0)}k`;
   }
   return String(value);
 }
 
 export function YAxisOverlay({
   ticks: precomputedTicks,
-  marginLeft,
+  marginLeft: _marginLeft,
   yDomain,
   chartTop = 0,
   chartBottom = 0,
@@ -54,6 +53,7 @@ export function YAxisOverlay({
   numTicks = 5,
   formatLargeNumbers = true,
   formatValue,
+  tickColorForValue,
 }: YAxisOverlayProps) {
   // If pre-computed ticks are provided, use those (candlestick backward compat).
   // Otherwise compute them from yDomain and chart dimensions (line-chart path).
@@ -64,7 +64,9 @@ export function YAxisOverlay({
       .domain(yDomain)
       .range([chartBottom, chartTop])
       .nice();
-    return scale.ticks(numTicks).map((value) => ({
+    // bklit y-axis.tsx: `yScale.ticks(resolveYAxisTickCount(numTicks))` — the
+    // tick-count hint is clamped to 1–10 before d3's own nicening.
+    return scale.ticks(resolveYAxisTickCount(numTicks)).map((value) => ({
       value,
       y: scale(value) ?? 0,
     }));
@@ -114,7 +116,7 @@ export function YAxisOverlay({
             style={{
               fontSize: 12,
               lineHeight: "1rem",
-              color: "var(--color-chart-label, var(--chart-label))",
+              color: tickColorForValue?.(tick.value) ?? "var(--color-chart-label, var(--chart-label))",
               whiteSpace: "nowrap",
             }}
           >

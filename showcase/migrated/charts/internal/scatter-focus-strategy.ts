@@ -1,4 +1,5 @@
 import type { ChartFocusStrategy, ChartPoint } from "@tanstack/charts";
+import { isChartInteractionPhase } from "./chart-phase";
 import type { ChartDatum, ChartPhase } from "./types";
 
 function valueKey(value: unknown): string {
@@ -46,11 +47,9 @@ export function createScatterFocusStrategy(
   return {
     resolve(
       points: readonly ChartPoint<ChartDatum, Date, number>[],
-      x: number,
-      _y: number,
-      maxDistance: number,
+      { x, maxDistance },
     ): readonly ChartPoint<ChartDatum, Date, number>[] {
-      if (phaseRef.current !== "ready") return [];
+      if (!isChartInteractionPhase(phaseRef.current)) return [];
       if (points.length === 0) return [];
       let nearest: ChartPoint<ChartDatum, Date, number> | undefined;
       let distance = maxDistance;
@@ -66,7 +65,7 @@ export function createScatterFocusStrategy(
 
     group(
       points: readonly ChartPoint<ChartDatum, Date, number>[],
-      point: ChartPoint<ChartDatum, Date, number>,
+      { point },
     ): readonly ChartPoint<ChartDatum, Date, number>[] {
       if (points.length === 0) return [point];
       return collectPerMark(points, point);

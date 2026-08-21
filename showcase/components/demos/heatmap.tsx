@@ -24,7 +24,7 @@ export default function HeatmapDemo({ impl, n }: HeatmapDemoProps) {
             <Charts.HeatmapYAxis />
             <Charts.HeatmapTooltip instant />
           </Charts.HeatmapChart>
-          <Charts.HeatmapLegend inactiveOpacity={1} inactiveScale={1} levelStyles={Charts.HEATMAP_DEFAULT_LEVEL_STYLES} />
+          <Charts.HeatmapLegend inactiveOpacity={1} inactiveScale={1} />
         </div>
       </Charts.HeatmapInteractionBoundary>
     </Charts.HeatmapInteractionProvider>

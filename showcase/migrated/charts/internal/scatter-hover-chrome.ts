@@ -1,52 +1,35 @@
-// bklit-ui hover chrome (ChartTooltip) for ScatterChart, ported onto
-// TanStack's focus system. Shares the crosshair/dot/box/date-pill/label-fade
-// port from `hover-chrome.ts` (bklit's ChartTooltip is genuinely shared
-// between Line and Scatter — repos/bklit-ui/.../tooltip/chart-tooltip.tsx
-// reads only `lines`/`tooltipData` from context, chart-agnostic) — copied
-// rather than imported so LineChart's proven, gate-passing behavior can never
-// regress from scatter work (docs/LOG.md D10 zero-React-state rule; D14).
-//
-// Only the series dim/highlight differs from Line (D14), because it is owned
-// by the *series* components (SeriesMarkersDimWrapper / ActiveHighlight in
-// repos/bklit-ui/.../series-markers.tsx), not by ChartTooltip itself:
-//   dim        — ALL marker circles (fill + ring, every series) to
-//                opacity 0.5 + blur(2px), 0.15s ease-in-out, while any point
-//                is hovered (inactiveOpacity/inactiveBlur/fadeOnHover
-//                defaults; not per-series in the pilot API).
-//   highlight  — the hovered point of each series gets an enlarged (x1.35),
-//                undimmed marker copy drawn on top, shown/hidden with no
-//                transition (StaticSeriesPointMarker conditional render is
-//                instant — no spring, no CSS transition in bklit's source).
-import { intFmt, shortDateFmt, weekdayDateFmt } from "./formatters";
-import { createSpring, type Spring } from "./spring";
+import { shortDateFmt, weekdayDateFmt } from "./formatters";
+import { DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH } from "./design-tokens";
+import {
+  applyBoxContent,
+  applyLabelFade,
+  buildBox,
+  buildDotLayer,
+  buildIndicator,
+  buildPill,
+  ensureDot,
+  hideBoxContent,
+  hideDot,
+  positionBox,
+  resetLabelFade,
+  updateDotPosition,
+  type BoxConfig,
+  type DotConfig,
+  type IndicatorConfig,
+} from "./tooltip-chrome";
+import type { ChartTooltipConfig } from "./types";
+import { BOX_OFFSET, TOOLTIP_BOX_SPRING, TOOLTIP_SPRING } from "./design-tokens";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-// bklit chart-config-context.tsx DEFAULT_CHART_CONFIG
-const TOOLTIP_SPRING = { stiffness: 300, damping: 30 }; // crosshair/dot/pill
-const TOOLTIP_BOX_SPRING = { stiffness: 100, damping: 20 }; // panel follow
-const ENTRANCE_SPRING = { stiffness: 300, damping: 25 }; // panel entrance
-// bklit series-markers.tsx SeriesMarkersDimWrapper defaults (inactiveOpacity
-// 0.5, inactiveBlur 2, 0.15s ease-in-out on both opacity and filter).
 const DIM_OPACITY = "0.5";
 const DIM_BLUR_PX = 2;
 const DIM_TRANSITION = "opacity 0.15s ease-in-out, filter 0.15s ease-in-out";
-// bklit series-markers.tsx SeriesMarkersActiveHighlight: activeScale 1.35.
 const ACTIVE_SCALE = 1.35;
-// bklit chart-tooltip.tsx: dateLabels.length > 60 → instant crosshair/dot/pill
-export const DISCRETE_INTERACTION_THRESHOLD = 60;
-// bklit tooltip-box.tsx / chart-tooltip.tsx defaults
-const BOX_OFFSET = 16;
-const BOX_FALLBACK_WIDTH = 180;
-// bklit x-axis.tsx XAxisLabel defaults
-const TICKER_HALF_WIDTH = 50;
-const FADE_BUFFER = 20;
 
 export interface ScatterHoverChromeSeries {
   dataKey: string;
-  /** Resolved fill (bklit: fill ?? stroke ?? defaultScatterColors[i]). */
   fill: string;
-  /** Resolved ring stroke (bklit: stroke ?? resolvedFill). */
   stroke: string;
   strokeWidth: number;
   ringGap: number;
@@ -57,14 +40,15 @@ export interface ScatterHoverChromeState {
   margin: { top: number; right: number; bottom: number; left: number };
   series: ScatterHoverChromeSeries[];
   xDataKey: string;
-  /** Rendered point count — >60 disables position springs. */
   pointCount: number;
   showCrosshair: boolean;
   showDots: boolean;
   showDatePill: boolean;
+  tooltip?: ChartTooltipConfig | null;
+  dateLabels?: string[];
+  hoveredIndex?: number;
 }
 
-/** Subset of TanStack's ChartPoint the chrome reads (scene px coords). */
 export interface ScatterFocusPoint {
   markId: string;
   datum: unknown;
@@ -79,171 +63,98 @@ export interface ScatterHoverChrome {
   detach(): void;
 }
 
+export interface ScatterHoverChromeOptions {
+  tooltipSpring?: typeof TOOLTIP_SPRING;
+  tooltipBoxSpring?: typeof TOOLTIP_BOX_SPRING;
+}
+
 let gradientCounter = 0;
+
+function toDotConfig(cfg?: ChartTooltipConfig | null): DotConfig {
+  if (!cfg) return {};
+  return {
+    variant: cfg.dotVariant,
+    size: cfg.dotSize,
+    radiusFraction: cfg.dotRadiusFraction,
+    scale: cfg.dotScale,
+    strokeWidth: cfg.dotStrokeWidth,
+    color: cfg.dotColor as DotConfig["color"],
+  };
+}
+function toIndicatorConfig(cfg?: ChartTooltipConfig | null): IndicatorConfig {
+  if (!cfg) return {};
+  return {
+    width: cfg.indicatorWidth,
+    span: cfg.indicatorSpan,
+    columnWidth: cfg.columnWidth,
+    color: cfg.indicatorColor as IndicatorConfig["color"],
+    dasharray: cfg.indicatorDasharray,
+    fadeEdges: cfg.indicatorFadeEdges as IndicatorConfig["fadeEdges"],
+    fadeLength: cfg.indicatorFadeLength,
+    springConfig: cfg.springConfig,
+  };
+}
+function toBoxConfig(cfg?: ChartTooltipConfig | null): BoxConfig {
+  if (!cfg) return {};
+  return {
+    springConfig: cfg.springConfig,
+    matchCrosshair: cfg.matchCrosshair,
+    damping: cfg.damping,
+    boxSpringConfig: cfg.boxSpringConfig,
+    className: cfg.className,
+    panelStyle: cfg.panelStyle,
+    backgroundColor: cfg.backgroundColor,
+    content: cfg.content,
+    children: cfg.children,
+    rows: cfg.rows,
+  };
+}
+
+function resolveDotColor(
+  tooltip: ChartTooltipConfig | null | undefined,
+  seriesFill: string,
+  pointColor: string,
+  point: Record<string, unknown>,
+  line: { dataKey: string; stroke?: string },
+  tooltipRows: { color: string }[] | null,
+  index: number,
+): string {
+  if (tooltip?.rows && tooltipRows?.[index]?.color) return tooltipRows[index]!.color;
+  if (tooltip?.dotColor != null) {
+    if (typeof tooltip.dotColor === "function") return tooltip.dotColor(point, line);
+    return tooltip.dotColor;
+  }
+  return seriesFill || pointColor;
+}
 
 export function attachScatterHoverChrome(
   host: HTMLElement,
   getState: () => ScatterHoverChromeState,
+  options: ScatterHoverChromeOptions = {},
 ): ScatterHoverChrome {
+  const tooltipSpring = options.tooltipSpring ?? TOOLTIP_SPRING;
+  const _tooltipBoxSpring = options.tooltipBoxSpring ?? TOOLTIP_SPRING;
+  void _tooltipBoxSpring;
   const container = (host.closest("[data-bkm-chart]") as HTMLElement) ?? host;
   const doc = host.ownerDocument;
   const chromeId = ++gradientCounter;
-  const gradientId = `bkm-scatter-crosshair-gradient-${chromeId}`;
 
-  // --- Active highlight (SeriesMarkersActiveHighlight): enlarged undimmed
-  //     marker copy of the hovered point per series, drawn under the
-  //     crosshair/dots chrome (same z-order slot Line's highlight band used).
   const activeHighlightSvg = doc.createElementNS(SVG_NS, "svg");
   activeHighlightSvg.setAttribute("class", "bkm-hover-layer");
   activeHighlightSvg.setAttribute("aria-hidden", "true");
   activeHighlightSvg.style.display = "none";
   const activeGroupBySeries = new Map<string, SVGGElement>();
 
-  // --- Crosshair (TooltipIndicator: gradient-faded 1px rect) --------------
-  const crosshairSvg = doc.createElementNS(SVG_NS, "svg");
-  crosshairSvg.setAttribute("class", "bkm-hover-layer");
-  crosshairSvg.setAttribute("aria-hidden", "true");
-  const defs = doc.createElementNS(SVG_NS, "defs");
-  const gradient = doc.createElementNS(SVG_NS, "linearGradient");
-  gradient.setAttribute("id", gradientId);
-  gradient.setAttribute("x1", "0%");
-  gradient.setAttribute("x2", "0%");
-  gradient.setAttribute("y1", "0%");
-  gradient.setAttribute("y2", "100%");
-  for (const [offset, opacity] of [
-    ["0%", 0],
-    ["10%", 1],
-    ["50%", 1],
-    ["90%", 1],
-    ["100%", 0],
-  ] as const) {
-    const stop = doc.createElementNS(SVG_NS, "stop");
-    stop.setAttribute("offset", offset);
-    stop.setAttribute(
-      "style",
-      `stop-color: var(--chart-crosshair); stop-opacity: ${opacity}`,
-    );
-    gradient.appendChild(stop);
-  }
-  defs.appendChild(gradient);
-  crosshairSvg.appendChild(defs);
-  const crosshairRect = doc.createElementNS(SVG_NS, "rect");
-  crosshairRect.setAttribute("width", "1");
-  crosshairRect.setAttribute("fill", `url(#${gradientId})`);
-  crosshairSvg.appendChild(crosshairRect);
-  crosshairSvg.style.display = "none";
-
-  // --- Dots (TooltipDot per series) ---------------------------------------
-  const dotsSvg = doc.createElementNS(SVG_NS, "svg");
-  dotsSvg.setAttribute("class", "bkm-hover-layer");
-  dotsSvg.setAttribute("aria-hidden", "true");
-  dotsSvg.style.display = "none";
-  const dotBySeries = new Map<string, SVGCircleElement>();
-
-  // --- Tooltip box (TooltipBox + TooltipContent) --------------------------
-  const boxLayer = doc.createElement("div");
-  boxLayer.className = "bkm-tooltip-layer";
-  const boxPanel = doc.createElement("div");
-  boxPanel.className = "bkm-tooltip-panel";
-  const boxContent = doc.createElement("div");
-  boxContent.className = "bkm-tooltip-content";
-  const boxTitle = doc.createElement("div");
-  boxTitle.className = "bkm-tooltip-title";
-  const boxRows = doc.createElement("div");
-  boxRows.className = "bkm-tooltip-rows";
-  boxContent.append(boxTitle, boxRows);
-  boxPanel.appendChild(boxContent);
-  boxLayer.appendChild(boxPanel);
-  boxLayer.style.display = "none";
-  interface RowElements {
-    root: HTMLDivElement;
-    swatch: HTMLSpanElement;
-    label: HTMLSpanElement;
-    value: HTMLSpanElement;
-  }
-  const rowBySeries = new Map<string, RowElements>();
-
-  // --- Date pill (DateTicker compact) -------------------------------------
-  const pillLayer = doc.createElement("div");
-  pillLayer.className = "bkm-date-pill-layer";
-  const pill = doc.createElement("div");
-  pill.className = "bkm-date-pill";
-  const pillInner = doc.createElement("div");
-  pillInner.className = "bkm-date-pill-inner";
-  const pillLabel = doc.createElement("span");
-  pillInner.appendChild(pillLabel);
-  pill.appendChild(pillInner);
-  pillLayer.appendChild(pill);
-  pillLayer.style.display = "none";
-
-  // bklit z-order: active highlight sits under the crosshair/dots chrome.
-  host.append(activeHighlightSvg, crosshairSvg, dotsSvg, boxLayer, pillLayer);
-
-  // --- Springs ------------------------------------------------------------
-  const crosshairSpring = createSpring(
-    0,
-    TOOLTIP_SPRING.stiffness,
-    TOOLTIP_SPRING.damping,
-    (x) => crosshairRect.setAttribute("x", String(x)),
-  );
-  const dotSprings = new Map<string, { x: Spring; y: Spring }>();
-  const boxLeftSpring = createSpring(
-    0,
-    TOOLTIP_BOX_SPRING.stiffness,
-    TOOLTIP_BOX_SPRING.damping,
-    (left) => {
-      boxLayer.style.left = `${left}px`;
-    },
-  );
-  const pillSpring = createSpring(
-    0,
-    TOOLTIP_SPRING.stiffness,
-    TOOLTIP_SPRING.damping,
-    (x) => {
-      pillLayer.style.left = `${x}px`;
-    },
-  );
-  let entranceFrom = 0;
-  const entranceSpring = createSpring(
-    1,
-    ENTRANCE_SPRING.stiffness,
-    ENTRANCE_SPRING.damping,
-    (p) => {
-      boxPanel.style.transform = `translateX(${entranceFrom * (1 - p)}px) scale(${0.85 + 0.15 * p})`;
-      boxPanel.style.opacity = String(p);
-    },
-  );
+  const indicator = buildIndicator(doc, chromeId, toIndicatorConfig(getState().tooltip), tooltipSpring);
+  const dotLayer = buildDotLayer(doc);
+  const boxBuild = buildBox(doc, toBoxConfig(getState().tooltip), tooltipSpring, false);
+  const pillBuild = buildPill(doc, tooltipSpring, () => getState().dateLabels ?? []);
+  host.append(activeHighlightSvg, indicator.svg, dotLayer.svg, boxBuild.layer, pillBuild.layer);
 
   let visible = false;
   let prevFlip: boolean | null = null;
   let boxFadeAnimation: Animation | null = null;
 
-  const runEntrance = (flipped: boolean) => {
-    boxPanel.style.transformOrigin = flipped ? "right top" : "left top";
-    entranceFrom = flipped ? 20 : -20;
-    entranceSpring.jump(0);
-    entranceSpring.set(1);
-  };
-
-  const getLabelSpans = () =>
-    container.querySelectorAll<HTMLSpanElement>("[data-bkm-xlabel]");
-
-  const resetLabelOpacities = () => {
-    for (const span of getLabelSpans()) span.style.opacity = "1";
-  };
-
-  // ALL marker circles (both fill + ring marks, every series) — bklit
-  // SeriesMarkersDimWrapper wraps one <g style="filter:blur(...)"> around a
-  // series' fill+ring circles *together* so they blur as one flattened
-  // shape. Blurring the fill-mark group and ring-mark group as two
-  // *separate* filtered elements (composited afterwards) is visually
-  // different at high point density (verified via QA diff at n=1000: >2%
-  // vs the 0.5% gate) — blur is not linear over independently-rasterized
-  // layers. `.ts-chart__marks` is the one stable ancestor already common to
-  // every mark (scene.ts), so dimming it as a single group reproduces
-  // bklit's "blur the composited shape" semantics without reparenting
-  // TanStack's own DOM nodes (which risks breaking its keyed reconciliation
-  // on a later data update).
   const setMarkersDimmed = (dimmed: boolean) => {
     const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marksGroup) return;
@@ -257,21 +168,14 @@ export function attachScatterHoverChrome(
     if (group) return group;
     group = doc.createElementNS(SVG_NS, "g") as SVGGElement;
     const fillCircle = doc.createElementNS(SVG_NS, "circle");
-    fillCircle.setAttribute("cx", "0");
-    fillCircle.setAttribute("cy", "0");
-    fillCircle.setAttribute("r", String(series.radius));
-    fillCircle.setAttribute("fill", series.fill);
+    fillCircle.setAttribute("cx", "0"); fillCircle.setAttribute("cy", "0");
+    fillCircle.setAttribute("r", String(series.radius)); fillCircle.setAttribute("fill", series.fill);
     group.appendChild(fillCircle);
     if (series.strokeWidth > 0) {
       const ringCircle = doc.createElementNS(SVG_NS, "circle");
-      ringCircle.setAttribute("cx", "0");
-      ringCircle.setAttribute("cy", "0");
-      ringCircle.setAttribute(
-        "r",
-        String(series.radius + series.ringGap + series.strokeWidth / 2),
-      );
-      ringCircle.setAttribute("fill", "none");
-      ringCircle.setAttribute("stroke", series.stroke);
+      ringCircle.setAttribute("cx", "0"); ringCircle.setAttribute("cy", "0");
+      ringCircle.setAttribute("r", String(series.radius + series.ringGap + series.strokeWidth / 2));
+      ringCircle.setAttribute("fill", "none"); ringCircle.setAttribute("stroke", series.stroke);
       ringCircle.setAttribute("stroke-width", String(series.strokeWidth));
       group.appendChild(ringCircle);
     }
@@ -284,39 +188,27 @@ export function attachScatterHoverChrome(
     if (!visible) return;
     visible = false;
     prevFlip = null;
-    crosshairSvg.style.display = "none";
-    dotsSvg.style.display = "none";
-    boxLayer.style.display = "none";
-    pillLayer.style.display = "none";
+    indicator.svg.style.display = "none";
+    dotLayer.svg.style.display = "none";
+    boxBuild.layer.style.display = "none";
+    pillBuild.layer.style.display = "none";
     activeHighlightSvg.style.display = "none";
-    crosshairSpring.stop();
-    boxLeftSpring.stop();
-    pillSpring.stop();
-    entranceSpring.stop();
-    boxFadeAnimation?.cancel();
-    boxFadeAnimation = null;
-    for (const { x, y } of dotSprings.values()) {
-      x.stop();
-      y.stop();
-    }
+    indicator.xSpring.stop();
+    indicator.lineXSpring?.stop();
+    boxBuild.leftSpring?.stop(); boxBuild.topSpring?.stop();
+    pillBuild.spring.stop();
+    boxBuild.entranceSpring.stop();
+    boxFadeAnimation?.cancel(); boxFadeAnimation = null;
+    for (const { x, y } of dotLayer.springs.values()) { x.stop(); y.stop(); }
     setMarkersDimmed(false);
     for (const group of activeGroupBySeries.values()) group.style.display = "none";
-    // Clear text so the DOM carries no tooltip content while hidden (bklit
-    // unmounts its tooltip; the QA harness detects tooltips by text length).
-    boxTitle.textContent = "";
-    for (const row of rowBySeries.values()) {
-      row.label.textContent = "";
-      row.value.textContent = "";
-    }
-    pillLabel.textContent = "";
-    resetLabelOpacities();
+    hideBoxContent(boxBuild);
+    pillBuild.label.textContent = "";
+    resetLabelFade(container);
   };
 
   const update = (points: readonly ScatterFocusPoint[]) => {
-    if (points.length === 0) {
-      hide();
-      return;
-    }
+    if (points.length === 0) { hide(); return; }
     const state = getState();
     const { margin } = state;
     const width = container.clientWidth;
@@ -330,160 +222,81 @@ export function attachScatterHoverChrome(
     const showing = !visible;
     visible = true;
 
-    // Crosshair — rect x is center - width/2 (TooltipIndicator).
     if (state.showCrosshair) {
-      crosshairRect.setAttribute("y", String(margin.top));
-      crosshairRect.setAttribute("height", String(innerHeight));
-      crosshairSvg.style.display = "";
-      const rectX = primary.x - 0.5;
-      if (showing || discrete) crosshairSpring.jump(rectX);
-      else crosshairSpring.set(rectX);
-    }
-
-    // Dots — one per configured series (TooltipDot, fixed r=5 regardless of
-    // the series' own marker radius — same as the shared Line chrome).
-    if (state.showDots) {
-      dotsSvg.style.display = "";
-      for (const series of state.series) {
-        const point = pointByMark.get(series.dataKey);
-        let dot = dotBySeries.get(series.dataKey);
-        if (!point) {
-          if (dot) dot.style.display = "none";
-          continue;
-        }
-        if (!dot) {
-          dot = doc.createElementNS(SVG_NS, "circle");
-          dot.setAttribute("r", "5");
-          dot.setAttribute("stroke", "var(--chart-background)");
-          dot.setAttribute("stroke-width", "2");
-          dotsSvg.appendChild(dot);
-          dotBySeries.set(series.dataKey, dot);
-          dotSprings.set(series.dataKey, {
-            x: createSpring(
-              point.x,
-              TOOLTIP_SPRING.stiffness,
-              TOOLTIP_SPRING.damping,
-              (x) => dot!.setAttribute("cx", String(x)),
-            ),
-            y: createSpring(
-              point.y,
-              TOOLTIP_SPRING.stiffness,
-              TOOLTIP_SPRING.damping,
-              (y) => dot!.setAttribute("cy", String(y)),
-            ),
-          });
-        }
-        dot.style.display = "";
-        dot.setAttribute("fill", series.fill || point.color);
-        const springs = dotSprings.get(series.dataKey)!;
-        if (showing || discrete) {
-          springs.x.jump(point.x);
-          springs.y.jump(point.y);
-        } else {
-          springs.x.set(point.x);
-          springs.y.set(point.y);
-        }
+      indicator.svg.style.display = "";
+      if (indicator.rect && !indicator.isDashed) {
+        indicator.rect.setAttribute("y", String(margin.top));
+        indicator.rect.setAttribute("height", String(innerHeight));
+      }
+      if (indicator.line) {
+        indicator.line.setAttribute("y1", String(margin.top));
+        indicator.line.setAttribute("y2", String(margin.top + innerHeight));
+      }
+      const target = primary.x;
+      if (showing || discrete) indicator.xSpring.jump(target);
+      else indicator.xSpring.set(target);
+      if (indicator.lineXSpring) {
+        if (showing || discrete) indicator.lineXSpring.jump(target);
+        else indicator.lineXSpring.set(target);
       }
     }
 
-    // Dim all markers + draw the enlarged active-highlight copy per series
-    // (SeriesMarkersDimWrapper + SeriesMarkersActiveHighlight). Both are
-    // instant (no spring) — bklit's active marker is a plain conditional
-    // render with no motion/transition.
+    if (state.showDots) {
+      dotLayer.svg.style.display = "";
+      const pointForDotColor = primary.datum as Record<string, unknown>;
+      let tooltipRows: { color: string }[] | null = null;
+      if (state.tooltip?.rows) tooltipRows = state.tooltip.rows(pointForDotColor) as { color: string }[];
+      for (let i = 0; i < state.series.length; i++) {
+        const series = state.series[i]!;
+        const point = pointByMark.get(series.dataKey);
+        if (!point) { hideDot(dotLayer, series.dataKey); continue; }
+        const color = resolveDotColor(state.tooltip ?? null, series.fill, point.color, pointForDotColor, { dataKey: series.dataKey, stroke: series.fill }, tooltipRows, i);
+        ensureDot(doc, dotLayer, series.dataKey, color, point.x, point.y, toDotConfig(state.tooltip), tooltipSpring);
+        updateDotPosition(dotLayer, series.dataKey, point.x, point.y, showing);
+      }
+    }
+
     setMarkersDimmed(true);
     activeHighlightSvg.style.display = "";
     for (const series of state.series) {
       const point = pointByMark.get(series.dataKey);
       const group = ensureActiveGroup(series);
-      if (!point) {
-        group.style.display = "none";
-        continue;
-      }
+      if (!point) { group.style.display = "none"; continue; }
       group.style.display = "";
-      group.setAttribute(
-        "transform",
-        `translate(${point.x}, ${point.y}) scale(${ACTIVE_SCALE})`,
-      );
+      group.setAttribute("transform", `translate(${point.x}, ${point.y}) scale(${ACTIVE_SCALE})`);
     }
 
-    // Tooltip box — title + one row per series (TooltipContent), panel
-    // pinned to top=margin.top with x-flip at offset 16.
-    boxTitle.textContent = isDate ? weekdayDateFmt.format(date) : "";
-    boxTitle.style.display = isDate ? "" : "none";
-    for (const series of state.series) {
-      const point = pointByMark.get(series.dataKey);
-      let row = rowBySeries.get(series.dataKey);
-      if (!row) {
-        const root = doc.createElement("div");
-        root.className = "bkm-tooltip-row";
-        const left = doc.createElement("div");
-        left.className = "bkm-tooltip-row-label";
-        const swatch = doc.createElement("span");
-        swatch.className = "bkm-tooltip-swatch";
-        const label = doc.createElement("span");
-        label.className = "bkm-tooltip-series";
-        left.append(swatch, label);
-        const value = doc.createElement("span");
-        value.className = "bkm-tooltip-value";
-        root.append(left, value);
-        boxRows.appendChild(root);
-        row = { root, swatch, label, value };
-        rowBySeries.set(series.dataKey, row);
-      }
-      row.swatch.style.backgroundColor =
-        series.fill || point?.color || "transparent";
-      row.label.textContent = series.dataKey;
-      const value = (primary.datum as Record<string, unknown>)[series.dataKey];
-      row.value.textContent =
-        typeof value === "number" ? intFmt(value) : String(value ?? 0);
-    }
-    boxLayer.style.top = `${margin.top}px`;
-    boxLayer.style.display = "";
-    const boxWidth = boxPanel.offsetWidth || BOX_FALLBACK_WIDTH;
-    const flip = primary.x + boxWidth + BOX_OFFSET > width;
-    const targetLeft = flip
-      ? primary.x - BOX_OFFSET - boxWidth
-      : primary.x + BOX_OFFSET;
-    if (showing) {
-      boxLeftSpring.jump(targetLeft);
-      boxFadeAnimation?.cancel();
-      boxFadeAnimation = boxLayer.animate([{ opacity: 0 }, { opacity: 1 }], {
-        duration: 100,
-        fill: "both",
+    {
+      const tooltip = state.tooltip ?? null;
+      const title: string | undefined = isDate ? weekdayDateFmt.format(date as Date) : undefined;
+      let rows: { color: string; label: string; value: string | number }[];
+      if (tooltip?.rows) rows = tooltip.rows(primary.datum as Record<string, unknown>);
+      else rows = state.series.map((series) => {
+        const v = (primary.datum as Record<string, unknown>)[series.dataKey];
+        return { color: series.fill || pointByMark.get(series.dataKey)?.color || "transparent", label: series.dataKey, value: typeof v === "number" ? v : String(v ?? 0) };
       });
-      runEntrance(flip);
-    } else {
-      boxLeftSpring.set(targetLeft);
-      if (prevFlip !== null && flip !== prevFlip) runEntrance(flip);
+      boxBuild.layer.style.top = `${margin.top}px`;
+      boxBuild.layer.style.display = "";
+      applyBoxContent(boxBuild, doc, title, rows, primary.datum as Record<string, unknown>, primary.datumIndex, toBoxConfig(tooltip));
+      const flip = positionBox(boxBuild, primary.x, margin.top, width, height, BOX_OFFSET, showing, prevFlip, { current: boxFadeAnimation } as { current: Animation | null });
+      prevFlip = flip;
     }
-    prevFlip = flip;
 
-    // Date pill — compact DateTicker (bench path always has >60 labels).
     if (state.showDatePill && isDate) {
-      pillLabel.textContent = shortDateFmt.format(date);
-      pillLayer.style.display = "";
-      if (showing || discrete) pillSpring.jump(primary.x);
-      else pillSpring.set(primary.x);
+      pillBuild.layer.style.display = "";
+      if (pillBuild.ticker && state.dateLabels && state.dateLabels.length > 0) {
+        pillBuild.ticker.update(state.hoveredIndex ?? primary.datumIndex, discrete);
+      } else {
+        pillBuild.label.textContent = shortDateFmt.format(date as Date);
+      }
+      if (showing || discrete) pillBuild.spring.jump(primary.x);
+      else pillBuild.spring.set(primary.x);
     } else {
-      pillLayer.style.display = "none";
+      pillBuild.layer.style.display = "none";
     }
 
-    // X-axis label fade (XAxisLabel): opacity 0 inside the ticker footprint
-    // or when the label text equals the hovered label; 20px linear ramp.
-    const hoveredLabel = isDate ? shortDateFmt.format(date) : null;
-    for (const span of getLabelSpans()) {
-      const labelX = Number(span.dataset.bkmX);
-      const distance = Math.abs(labelX - primary.x);
-      let opacity = 1;
-      if (distance < TICKER_HALF_WIDTH) {
-        opacity = 0;
-      } else if (hoveredLabel && span.textContent === hoveredLabel) {
-        opacity = 0;
-      } else if (distance < TICKER_HALF_WIDTH + FADE_BUFFER) {
-        opacity = (distance - TICKER_HALF_WIDTH) / FADE_BUFFER;
-      }
-      span.style.opacity = String(opacity);
-    }
+    const hoveredLabel = isDate ? shortDateFmt.format(date as Date) : null;
+    applyLabelFade(container, primary.x, hoveredLabel, TICKER_HALF_WIDTH, FADE_BUFFER);
   };
 
   return {
@@ -491,14 +304,16 @@ export function attachScatterHoverChrome(
     detach() {
       hide();
       activeHighlightSvg.remove();
-      crosshairSvg.remove();
-      dotsSvg.remove();
-      boxLayer.remove();
-      pillLayer.remove();
-      dotBySeries.clear();
-      dotSprings.clear();
-      rowBySeries.clear();
+      indicator.svg.remove();
+      dotLayer.svg.remove();
+      boxBuild.layer.remove();
+      pillBuild.layer.remove();
+      dotLayer.byKey.clear(); dotLayer.springs.clear();
+      boxBuild.rowByKey.clear();
       activeGroupBySeries.clear();
+      pillBuild.ticker?.detach();
+      boxBuild.customRoot.current?.unmount();
+      boxBuild.childrenRoot.current?.unmount();
     },
   };
 }

@@ -9,7 +9,7 @@ interface SankeyDemoProps {
   n: number;
 }
 
-export default function SankeyDemo({ impl, n }: SankeyDemoProps) {
+export default function SankeyDemo({ impl, n: _n }: SankeyDemoProps) {
   const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
 
   return (

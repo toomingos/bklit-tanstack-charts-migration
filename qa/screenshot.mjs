@@ -37,7 +37,7 @@ import { chromium } from "playwright";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -67,6 +67,10 @@ const TOOLTIPLESS_CHARTS = new Set([
   "sunburst",
   "funnel",
   "funnelvertical",
+  // legend is a chart-less HTML scenario (initiative 8, D223 ruling 4):
+  // no tooltip contract at all — hover state is a CSS dim driven via
+  // window.__qaSetLegendHover, asserted by the pixel diffs alone.
+  "legend",
 ]);
 // Funnel family: hover zones are DISCRETE equal-sized cells with dead gaps
 // between them (bklit funnel-chart.tsx: per-stage `cursor-pointer` divs at
@@ -90,9 +94,24 @@ const SELF_TEST_GATE = 0.001; // 0.1%, determinism floor (research/04)
 const DEFAULT_N = 1000;
 const DEFAULT_IMPL_A = "bklit";
 const DEFAULT_IMPL_B = "migrated";
+// Loading-state capture (D211/D212 gate): the two impls animate loading
+// chrome with DIFFERENT engines (bklit: motion/react rAF springs; migrated:
+// CSS keyframes per the Phase 3 stack contract), so no single mechanism can
+// phase-pin both to the same animation instant. The gate therefore captures
+// the STATIC loading frame both impls render under `prefers-reduced-motion:
+// reduce` (bklit's loading chrome branches on `useReducedMotion`; migrated
+// modules must honor the same media query for parity). Animation DYNAMICS
+// are out of pixel-gate scope — covered by manual Chrome verification with
+// a lead ruling in docs/phase-3/LOG.md (D211 fallback clause).
+// `__benchSettled` never resolves in the loading phase (the chart never
+// reaches "ready"), so the loading path waits a fixed post-paint delay
+// instead — long enough for enter fades (BACKGROUND_ENTER_FADE_MS 420,
+// label fade) to complete even if an impl runs them despite reduced motion.
+const LOADING_SETTLE_MS = 1500;
 
-function sceneUrl(baseUrl, { impl, chart, n }) {
-  return `${baseUrl}/?impl=${impl}&chart=${chart}&n=${n}`;
+function sceneUrl(baseUrl, { impl, chart, n, state }) {
+  const base = `${baseUrl}/?impl=${impl}&chart=${chart}&n=${n}`;
+  return state === "loading" ? `${base}&state=loading` : base;
 }
 
 // ---------------------------------------------------------------------- //
@@ -190,14 +209,36 @@ async function textLen(page) {
 // Capture: settled screenshot + 3 fixed-coordinate hover screenshots
 // ---------------------------------------------------------------------- //
 
-async function captureLoad(browser, baseUrl, { impl, chart, n }) {
+async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
+  const loading = state === "loading";
   const context = await browser.newContext({
     viewport: VIEWPORT,
     deviceScaleFactor: DEVICE_SCALE_FACTOR,
+    // Loading captures pin both impls' animated loading chrome to its
+    // static reduced-motion frame (see LOADING_SETTLE_MS comment).
+    ...(loading ? { reducedMotion: "reduce" } : {}),
   });
   const page = await context.newPage();
-  await page.goto(sceneUrl(baseUrl, { impl, chart, n }), { waitUntil: "commit" });
-  await page.waitForFunction(() => window.__benchPaintDone === true, { timeout: 30000 });
+  await page.goto(sceneUrl(baseUrl, { impl, chart, n, state }), { waitUntil: "commit" });
+  if (chart === "legend") {
+    // __benchPaintDone is set by markMountPaint AFTER an <svg> commits
+    // (bench/app/src/bench/paint.ts) — the chart-less legend scenario never
+    // renders one, so wait on the scenario's own __benchSettled (a promise
+    // resolved on double-rAF after mount) instead.
+    await page.waitForFunction(() => !!window.__benchSettled, { timeout: 30000 });
+  } else {
+    await page.waitForFunction(() => window.__benchPaintDone === true, { timeout: 30000 });
+  }
+  if (loading) {
+    // The loading phase never resolves __benchSettled (the chart never
+    // reaches "ready"); use a fixed post-paint delay, then capture the one
+    // loading frame. No hover captures: loading chrome has no tooltip
+    // contract, and the pixel gate on this frame IS the loading gate.
+    await page.waitForTimeout(LOADING_SETTLE_MS);
+    const settled = await page.screenshot({ fullPage: false });
+    await context.close();
+    return { settled, hovers: [] };
+  }
   await page.evaluate(() => window.__benchSettled);
   // Small extra settle margin beyond promise resolution for any final
   // paint/compositing (fonts, subpixel AA) to land, mirroring the original
@@ -205,6 +246,190 @@ async function captureLoad(browser, baseUrl, { impl, chart, n }) {
   await page.waitForTimeout(200);
 
   const settled = await page.screenshot({ fullPage: false });
+
+  // Initiative-10 (D229 ruling 9) evidence probe: the migrated dash-tail
+  // overlay renders the BASE line stroke transparent (line-chart.tsx:273,
+  // `stroke: hasDashTail ? "transparent" : line.stroke`) and draws the
+  // VISIBLE dash-tail as a separate overlay path (internal/dash-tail.ts)
+  // kept in sync with the base path's geometry -- this only works if the
+  // (invisible) base path still carries real path data. One-off DOM probe
+  // for the "markers" scenario's dash-tail series (seriesA), logged (not
+  // gated -- this is evidence for the lead, not a pixel comparison) as a
+  // JSON line per impl.
+  if (chart === "markers") {
+    const probe = await page.evaluate(() => {
+      const group = document.querySelector('.ts-chart__line[data-ts-key^="seriesA:"]');
+      const path = group ? group.querySelector("path") : null;
+      if (!path) return { found: false, totalLength: null, hasD: false };
+      let totalLength = null;
+      try {
+        totalLength = path.getTotalLength();
+      } catch {
+        totalLength = null;
+      }
+      const d = path.getAttribute("d");
+      return { found: true, totalLength, hasD: Boolean(d && d.length > 0) };
+    });
+    console.log(
+      JSON.stringify({
+        probe: "dash-tail-transparent-stroke",
+        impl,
+        found: probe.found,
+        totalLength: probe.totalLength,
+        hasD: probe.hasD,
+      }),
+    );
+  }
+
+  // Legend scenario (initiative 8, D223 ruling 4): a chart-less HTML page —
+  // no <svg>, no tooltip, no pointer-coordinate probes. Hover states are set
+  // deterministically through window.__qaSetLegendHover(i) (both scenario
+  // impls expose it), one capture per hovered item index; the wait covers
+  // the 150ms .legend-container opacity transition with margin. The pixel
+  // diffs of these captures ARE the hover gate (legend is in
+  // TOOLTIPLESS_CHARTS, so no tooltip assertion applies).
+  if (chart === "legend") {
+    const hovers = [];
+    for (const idx of [0, 1, 2]) {
+      await page.evaluate((i) => window.__qaSetLegendHover(i), idx);
+      await page.waitForTimeout(300);
+      const buffer = await page.screenshot({ fullPage: false });
+      hovers.push({
+        fraction: idx,
+        x: 0,
+        y: 0,
+        tooltipVisible: true,
+        tooltipCheckMethod: "legend-hover-skip",
+        buffer,
+        label: `hover-item-${idx}`,
+      });
+    }
+    await context.close();
+    return { settled, hovers };
+  }
+
+  // Legend→chart dim pairs (initiative 8 loop-2, D225): candlelegend +
+  // legendhover render real charts (svg present, __benchPaintDone works)
+  // but the NEW surface under test is the legend-driven series/sign dim,
+  // not pointer hover (pointer parity for candle/composed/bar is already
+  // gated by their own base pairs). Hover states are therefore set
+  // deterministically via window.__qaSetLegendHover — index 0, index 1,
+  // then null (the restore path: dim must clear) — and the pixel diffs of
+  // these captures ARE the gate; pointer probes + the tooltip assertion
+  // are skipped identically for both impls. The 700ms wait covers the
+  // slowest dim transition in play (hover-chrome DIM_TRANSITION 0.4s;
+  // candle .chart-candle-cell 0.15s) with margin. Gate-author (Fable)
+  // edit per D225.
+  if (chart === "candlelegend" || chart === "legendhover") {
+    const hovers = [];
+    for (const idx of [0, 1, null]) {
+      await page.evaluate((i) => window.__qaSetLegendHover(i), idx);
+      await page.waitForTimeout(700);
+      const buffer = await page.screenshot({ fullPage: false });
+      hovers.push({
+        fraction: idx === null ? "clear" : idx,
+        x: 0,
+        y: 0,
+        tooltipVisible: true,
+        tooltipCheckMethod: "legend-hover-skip",
+        buffer,
+        label: idx === null ? "hover-clear" : `hover-item-${idx}`,
+      });
+    }
+    await context.close();
+    return { settled, hovers };
+  }
+
+  // Brush pair (initiative 9, D227 ruling 6): the settled capture above IS
+  // the full-extent state (useBrushSelection initializes to the full track
+  // extent). Domain states are then committed deterministically via
+  // window.__qaSetBrush(startFrac, endFrac) — both scenarios route it
+  // through the layout's own onBrushSelectionChange, the same handler a
+  // pointer drag commits through — capturing left-half, right-half, one
+  // pointer-hover over the zoomed main chart (real tooltip assertion), and
+  // the null clear (must restore the full extent, chart-brush-layout.tsx
+  // clear-resets-to-full behavior). The 900ms waits cover the 500ms
+  // y-domain tween (tweenYDomainOnXDomainChange, both demos/scenarios pass
+  // it) plus label fades with margin. Pixel diffs of these captures ARE the
+  // brush gate. Gate-author (lead) edit per D213/D227.
+  if (chart === "brush") {
+    const hovers = [];
+    const brushStates = [
+      { label: "brush-left-half", args: [0, 0.5] },
+      { label: "brush-right-half", args: [0.5, 1] },
+    ];
+    for (const st of brushStates) {
+      await page.evaluate(
+        ([a, b]) => window.__qaSetBrush(a, b),
+        st.args,
+      );
+      await page.waitForTimeout(900);
+      const buffer = await page.screenshot({ fullPage: false });
+      hovers.push({
+        fraction: st.label,
+        x: 0,
+        y: 0,
+        tooltipVisible: true,
+        tooltipCheckMethod: "brush-domain-skip",
+        buffer,
+        label: st.label,
+      });
+    }
+    // Composed brush+hover capture: with the right-half domain still
+    // committed, hover the MAIN chart's center — the LARGEST-area svg
+    // (BrushLayout renders main before strip in both impls, but "first
+    // svg" is impl-fragile: migrated hosts a 0x0 clipPath-defs svg before
+    // the chart svg) — and assert the tooltip via the text-length
+    // heuristic against a baseline sampled AFTER the domain change.
+    const mainBox = await page.evaluate(() => {
+      let best = null;
+      for (const s of document.querySelectorAll("#chart-root svg")) {
+        const r = s.getBoundingClientRect();
+        if (!best || r.width * r.height > best.width * best.height) {
+          best = { x: r.x, y: r.y, width: r.width, height: r.height };
+        }
+      }
+      return best && best.width > 0 && best.height > 0 ? best : null;
+    });
+    if (!mainBox) {
+      await context.close();
+      throw new Error(`no main-chart <svg> found for ${impl}/${chart} n=${n} (brush hover capture)`);
+    }
+    const preHoverLen = await textLen(page);
+    const hx = mainBox.x + mainBox.width * 0.5;
+    const hy = mainBox.y + mainBox.height * 0.5;
+    await page.mouse.move(hx - 20, hy);
+    await page.mouse.move(hx, hy);
+    await page.waitForTimeout(HOVER_WAIT_MS);
+    const hoverBuffer = await page.screenshot({ fullPage: false });
+    const postHoverLen = await textLen(page);
+    hovers.push({
+      fraction: "brush-hover-50",
+      x: hx,
+      y: hy,
+      tooltipVisible: postHoverLen - preHoverLen >= 3,
+      tooltipCheckMethod: "text-length-heuristic",
+      buffer: hoverBuffer,
+      label: "brush-hover-50",
+    });
+    // Park the pointer off-plot, then clear: null must reset to the full
+    // extent (visually identical to the settled capture up to the tween).
+    await page.mouse.move(2, 2);
+    await page.evaluate(() => window.__qaSetBrush(null));
+    await page.waitForTimeout(900);
+    const clearBuffer = await page.screenshot({ fullPage: false });
+    hovers.push({
+      fraction: "brush-clear",
+      x: 0,
+      y: 0,
+      tooltipVisible: true,
+      tooltipCheckMethod: "brush-domain-skip",
+      buffer: clearBuffer,
+      label: "brush-clear",
+    });
+    await context.close();
+    return { settled, hovers };
+  }
 
   // Tooltip-heuristic baseline: sampled ONCE here, before ANY pointer
   // movement, and reused for every hover point. The previous per-fraction
@@ -383,6 +608,235 @@ async function captureLoad(browser, baseUrl, { impl, chart, n }) {
     });
   }
 
+  // Markers-specific probes (initiative 10, D229 ruling 10), appended AFTER
+  // the standard settled + 3-fraction hover sweep above -- the "markers"
+  // scenario is a plain Line host (a ChartMarkers overlay sits on top), so
+  // that generic path-based sweep already covers dim + active-point-
+  // highlight the same way "line"/"area" do; nothing chart-specific was
+  // needed for captures (1)/(2).
+  if (chart === "markers") {
+    // (3) Legend-hover probe: dims the OTHER series' line + THIS series'
+    // marker grid + dash-tail together in one shot (internal/hover-chrome.ts
+    // ORs legendHoveredIndex into all three dim terms -- single-writer
+    // D225/D226 doctrine). Mirrors the candlelegend/legendhover branch
+    // above: index 0, index 1, then null (the restore path must clear).
+    for (const idx of [0, 1, null]) {
+      await page.evaluate((i) => window.__qaSetLegendHover(i), idx);
+      await page.waitForTimeout(700);
+      const buffer = await page.screenshot({ fullPage: false });
+      hovers.push({
+        fraction: idx === null ? "legend-clear" : `legend-${idx}`,
+        x: 0,
+        y: 0,
+        tooltipVisible: true,
+        tooltipCheckMethod: "legend-hover-skip",
+        buffer,
+        label: idx === null ? "legend-hover-clear" : `legend-hover-${idx}`,
+      });
+    }
+    await page.evaluate(() => window.__qaSetLegendHover(null));
+
+    // (4) Fan-open probe: forces the ChartMarkers same-date cluster fanned
+    // open WITHOUT a real pointer hover (plan research/phase-3/plans/
+    // 10-markers-chrome/plan-loop-1.md §7: "real pointer-hover fan-out is
+    // not reliably capturable via a settled-state screenshot"). Migrated
+    // exposes window.__qaSetMarkerFan (internal/chart-markers.tsx,
+    // MarkerGroupView) checked at EVERY render; to guarantee it's already
+    // `true` on React's very first render we use Playwright's
+    // addInitScript on a FRESH context/page -- this harness had no earlier
+    // pre-mount flag-injection precedent (checked: no addInitScript /
+    // evaluateOnNewDocument usage anywhere in qa/ or bench/ before this),
+    // so this is a new, deliberately narrow mechanism introduced only here.
+    //
+    // KNOWN, DISCLOSED ASYMMETRY (see final report): bklit's frozen
+    // MarkerGroup (repos/bklit-ui, off-limits) has NO equivalent hook --
+    // Task 2 scoped __qaSetMarkerFan to showcase/migrated ONLY, by design,
+    // and bklit-ui's public ChartMarkers/MarkerGroup wrapper doesn't expose
+    // a forceOpen pass-through despite the underlying component supporting
+    // it. bklit's load therefore ignores this flag and stays collapsed,
+    // identical to its own settled capture. A REAL bklit-vs-migrated
+    // compare on this ONE state is therefore EXPECTED to diff -- that is
+    // not a defect in either impl, it documents a real capability gap in
+    // the QA harness, not the charts. Only a migrated-vs-migrated
+    // --self-test run validates this capture's determinism (SELF_TEST_GATE
+    // applies to it exactly like every other comparison -- no special-case
+    // code needed, `runComparison` already applies gate uniformly).
+    const fanContext = await browser.newContext({
+      viewport: VIEWPORT,
+      deviceScaleFactor: DEVICE_SCALE_FACTOR,
+    });
+    const fanPage = await fanContext.newPage();
+    await fanPage.addInitScript(() => {
+      window.__qaSetMarkerFan = true;
+    });
+    await fanPage.goto(sceneUrl(baseUrl, { impl, chart, n, state }), { waitUntil: "commit" });
+    await fanPage.waitForFunction(() => window.__benchPaintDone === true, { timeout: 30000 });
+    await fanPage.evaluate(() => window.__benchSettled);
+    // Fan open/close transition is 220ms (chart-markers.tsx
+    // MarkerGroupView); extra margin covers the per-marker fan-entrance
+    // stagger (i*40ms) and the bucket entrance-reveal stagger (idx*100ms)
+    // plus general settle-timing jitter, mirroring the brush branch's
+    // 900ms domain-tween margin above.
+    await fanPage.waitForTimeout(900);
+    const fanBuffer = await fanPage.screenshot({ fullPage: false });
+    await fanContext.close();
+    hovers.push({
+      fraction: "marker-fan-open",
+      x: 0,
+      y: 0,
+      tooltipVisible: true,
+      tooltipCheckMethod: "marker-fan-skip",
+      buffer: fanBuffer,
+      label: "marker-fan-open",
+    });
+  }
+
+  // PatternArea (initiative 11, plan-loop-1 ruling 7): appended AFTER the
+  // standard settled + 3-fraction hover sweep above -- "patternarea" is a
+  // plain Area host (PatternArea's own fill mark + a zero-opacity <Area>
+  // stroke sibling, see the scenario files), so that generic path-based
+  // sweep already covers the base dim/hover/tooltip parity the same way
+  // "line"/"area" do. The NEW surface under test here is the 8-preset
+  // cycling: window.__qaSetPatternPreset(id) (both bklit-patternarea.tsx
+  // and migrated-patternarea.tsx expose it) swaps which pattern's <defs>
+  // the fill references -- one capture per PATTERN_PRESET_IDS entry
+  // (pattern-preset.tsx / repos/bklit-ui's own copy, order verbatim). No
+  // CSS transition to wait out (the fill's url(#id) changes immediately),
+  // so a short margin suffices. Pixel diffs of these 8 captures ARE the
+  // cycling gate.
+  if (chart === "patternarea") {
+    const PATTERN_PRESET_IDS = [
+      "none",
+      "diagonal",
+      "horizontal",
+      "vertical",
+      "cross",
+      "dots",
+      "circles",
+      "accent",
+    ];
+    for (const id of PATTERN_PRESET_IDS) {
+      await page.evaluate((p) => window.__qaSetPatternPreset(p), id);
+      await page.waitForTimeout(300);
+      const buffer = await page.screenshot({ fullPage: false });
+      hovers.push({
+        fraction: `pattern-${id}`,
+        x: 0,
+        y: 0,
+        tooltipVisible: true,
+        tooltipCheckMethod: "pattern-preset-skip",
+        buffer,
+        label: `pattern-${id}`,
+      });
+    }
+  }
+
+  // BarSquares + BarColumnTrack (initiative 11): appended AFTER the
+  // standard settled + 3-fraction hover sweep above -- that generic sweep
+  // already covers the "bar-hover probe" (per-bar dim visible, both
+  // BarSquares' per-index dim and BarColumnTrack's binary all-or-nothing
+  // fade react to the same real pointer hover, §3.5). The NEW surface is
+  // the legend-hover probe (BarSquares/BarColumnTrack both read
+  // useChartLegendHover): index 0, index 1, then null (the restore path
+  // must clear) -- mirrors the candlelegend/legendhover/markers
+  // legend-hover sub-branches exactly.
+  if (chart === "barsquares") {
+    for (const idx of [0, 1, null]) {
+      await page.evaluate((i) => window.__qaSetLegendHover(i), idx);
+      await page.waitForTimeout(700);
+      const buffer = await page.screenshot({ fullPage: false });
+      hovers.push({
+        fraction: idx === null ? "legend-clear" : `legend-${idx}`,
+        x: 0,
+        y: 0,
+        tooltipVisible: true,
+        tooltipCheckMethod: "legend-hover-skip",
+        buffer,
+        label: idx === null ? "legend-hover-clear" : `legend-hover-${idx}`,
+      });
+    }
+    await page.evaluate(() => window.__qaSetLegendHover(null));
+  }
+
+  // BarDepth + BarPulse (initiative 11): appended AFTER the standard
+  // settled + 3-fraction hover sweep above. BOTH scenario files
+  // (bklit-bardepth.tsx, migrated-bardepth.tsx) mount with BarPulse
+  // PAUSED by default specifically so the settled/hover-sweep captures
+  // above stay deterministic (an unpaused continuous WAAPI/spring loop
+  // would make them flake self-test) -- the settled capture already IS
+  // the "pulse frozen at rest" state, no extra work needed for that half
+  // of task deliverable 2c.
+  if (chart === "bardepth") {
+    // Explicit + defensive: keep the pulse paused for the deterministic
+    // depth-toggle captures below regardless of scenario default.
+    await page.evaluate(() => window.__qaSetBarPulsePaused(true));
+
+    // (d) Depth on/off capture: window.__qaSetBarDepthEnabled conditionally
+    // renders BarDepthBack/BarDepthFront/BarPulse (+ the base <Bar>'s
+    // perspective/trim opt-in) together. On migrated-bardepth.tsx this is
+    // currently a no-op against its TODO(reconcile-dispatch-C) fallback
+    // tree (plain <Bar>, unaffected either way) until dispatch C lands.
+    await page.evaluate(() => window.__qaSetBarDepthEnabled(false));
+    await page.waitForTimeout(300);
+    const depthOffBuffer = await page.screenshot({ fullPage: false });
+    hovers.push({
+      fraction: "depth-off",
+      x: 0,
+      y: 0,
+      tooltipVisible: true,
+      tooltipCheckMethod: "bar-depth-toggle-skip",
+      buffer: depthOffBuffer,
+      label: "depth-off",
+    });
+    await page.evaluate(() => window.__qaSetBarDepthEnabled(true));
+    await page.waitForTimeout(300);
+    const depthOnBuffer = await page.screenshot({ fullPage: false });
+    hovers.push({
+      fraction: "depth-on",
+      x: 0,
+      y: 0,
+      tooltipVisible: true,
+      tooltipCheckMethod: "bar-depth-toggle-skip",
+      buffer: depthOnBuffer,
+      label: "depth-on",
+    });
+
+    // (c) BarPulse phase-freeze: the requested contract
+    // (window.__qaSetBarPulsePhase(t), t a fraction through the 2.4s
+    // sweep) is NOT implemented on EITHER scenario side as of this
+    // dispatch -- bklit's real BarPulse animates via a motion.rect
+    // spring/WAAPI loop with no phase-seek entry point in its public
+    // props (BarPulseProps only has dataKey/activeIndex/pulsePaused), and
+    // dispatch C's internal/bar-pulse-mark.ts currently builds one static
+    // silhouette frame with no time/phase parameter at all (no animation
+    // loop yet). Called defensively -- if/when either side adds the hook,
+    // this capture activates automatically with no qa/ edit required. See
+    // final report: REQUIRED HOOK, not yet wired on either side.
+    const hasPulsePhaseHook = await page.evaluate(
+      () => typeof window.__qaSetBarPulsePhase === "function",
+    );
+    if (hasPulsePhaseHook) {
+      for (const t of [0, 0.25, 0.5, 0.75]) {
+        await page.evaluate((p) => window.__qaSetBarPulsePhase(p), t);
+        await page.waitForTimeout(300);
+        const buffer = await page.screenshot({ fullPage: false });
+        hovers.push({
+          fraction: `pulse-phase-${t}`,
+          x: 0,
+          y: 0,
+          tooltipVisible: true,
+          tooltipCheckMethod: "bar-pulse-phase-skip",
+          buffer,
+          label: `pulse-phase-${t}`,
+        });
+      }
+    } else {
+      console.log(
+        `[qa] ${impl}/bardepth n=${n}: window.__qaSetBarPulsePhase not present -- skipping phase-freeze capture (required hook not yet wired, see final report)`,
+      );
+    }
+  }
+
   await context.close();
   return { settled, hovers };
 }
@@ -391,13 +845,14 @@ async function captureLoad(browser, baseUrl, { impl, chart, n }) {
 // Run one comparison (real Q1 compare, or --self-test)
 // ---------------------------------------------------------------------- //
 
-async function runComparison(browser, baseUrl, { chart, n, implA, implB, selfTest }) {
+async function runComparison(browser, baseUrl, { chart, n, implA, implB, selfTest, state }) {
   const gate = selfTest ? SELF_TEST_GATE : COMPARE_GATE;
-  const mode = selfTest ? "self-test" : "compare";
+  const loading = state === "loading";
+  const mode = (selfTest ? "self-test" : "compare") + (loading ? "-loading" : "");
 
   const [capA, capB] = await Promise.all([
-    captureLoad(browser, baseUrl, { impl: implA, chart, n }),
-    captureLoad(browser, baseUrl, { impl: implB, chart, n }),
+    captureLoad(browser, baseUrl, { impl: implA, chart, n, state }),
+    captureLoad(browser, baseUrl, { impl: implB, chart, n, state }),
   ]);
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -415,11 +870,11 @@ async function runComparison(browser, baseUrl, { chart, n, implA, implB, selfTes
     return stats;
   }
 
-  // Settled state
+  // Settled state (or the single static loading frame in --state loading)
   {
-    const stats = writeComparison("settled", capA.settled, capB.settled);
+    const stats = writeComparison(loading ? "loading" : "settled", capA.settled, capB.settled);
     comparisons.push({
-      name: "settled",
+      name: loading ? "loading" : "settled",
       diffPixels: stats.diffPixels,
       totalPixels: stats.totalPixels,
       diffRatio: stats.diffRatio,
@@ -428,13 +883,21 @@ async function runComparison(browser, baseUrl, { chart, n, implA, implB, selfTes
     });
   }
 
-  // Hover states
-  for (let i = 0; i < HOVER_FRACTIONS.length; i++) {
-    const fraction = HOVER_FRACTIONS[i];
-    const label = `hover-${Math.round(fraction * 100)}`;
+  // Hover states (none in loading mode: capA/capB.hovers are empty —
+  // loading chrome has no tooltip contract)
+  for (let i = 0; i < capA.hovers.length; i++) {
     const hA = capA.hovers[i];
     const hB = capB.hovers[i];
+    const fraction = hA.fraction ?? HOVER_FRACTIONS[i];
+    // Legend hovers carry their own label (hover-item-<idx>, an item index
+    // set via __qaSetLegendHover rather than a width fraction).
+    const label = hA.label ?? `hover-${Math.round(fraction * 100)}`;
     const stats = writeComparison(label, hA.buffer, hB.buffer);
+    // marker-fan-open is self-test-gated only: bklit's frozen MarkerGroup has
+    // no fan-forcing hook (see the disclosed asymmetry at the capture site),
+    // so a cross-impl diff on this state measures a harness capability gap,
+    // not chart fidelity. Record stats informationally, don't gate on them.
+    const informational = !selfTest && label === "marker-fan-open";
 
     if (!TOOLTIPLESS_CHARTS.has(chart)) {
       if (!hA.tooltipVisible) {
@@ -467,7 +930,10 @@ async function runComparison(browser, baseUrl, { chart, n, implA, implB, selfTes
       totalPixels: stats.totalPixels,
       diffRatio: stats.diffRatio,
       diffPercent: Number(stats.diffPercent.toFixed(4)),
-      pass: stats.pass,
+      pass: informational ? true : stats.pass,
+      ...(informational
+        ? { informational: true, informationalReason: "cross-impl fan-open compare exempted (bklit lacks __qaSetMarkerFan; self-test gates this capture)" }
+        : {}),
     });
   }
 
@@ -483,6 +949,7 @@ async function runComparison(browser, baseUrl, { chart, n, implA, implB, selfTes
     chart,
     n,
     mode,
+    state: loading ? "loading" : "ready",
     implA,
     implB,
     timestamp,
@@ -522,7 +989,62 @@ async function waitForServer(url, timeoutMs = 20000) {
   throw new Error(`Server at ${url} did not become ready within ${timeoutMs}ms`);
 }
 
+// Stale-build guard (D214): the D5 gate run captured screenshots of a dist
+// built BEFORE the source edits under test — a silently vacuous gate. Any
+// source newer than dist/index.html forces a rebuild; runs before the
+// already-running-server check because vite preview serves dist from disk,
+// so a rebuild propagates to a reused server too.
+function newestSourceMtimeMs(dir) {
+  let newest = 0;
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const e of entries) {
+    if (e.name === "node_modules" || e.name === "dist" || e.name.startsWith(".")) continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) newest = Math.max(newest, newestSourceMtimeMs(p));
+    else {
+      try {
+        newest = Math.max(newest, statSync(p).mtimeMs);
+      } catch {
+        // deleted mid-scan; ignore
+      }
+    }
+  }
+  return newest;
+}
+
+async function rebuildIfStale(tag) {
+  const distIndex = path.join(APP_DIR, "dist", "index.html");
+  const distMtime = existsSync(distIndex) ? statSync(distIndex).mtimeMs : 0;
+  const sourceRoots = [
+    path.join(APP_DIR, "src"),
+    path.join(APP_DIR, "index.html"),
+    path.join(ROOT, "showcase", "migrated"),
+    path.join(ROOT, "repos", "bklit-ui", "packages", "ui", "src"),
+  ];
+  const srcMtime = Math.max(
+    ...sourceRoots.map((p) => {
+      try {
+        return statSync(p).isDirectory() ? newestSourceMtimeMs(p) : statSync(p).mtimeMs;
+      } catch {
+        return 0;
+      }
+    }),
+  );
+  if (distMtime === 0 || srcMtime > distMtime) {
+    console.log(
+      `${tag} bench/app dist ${distMtime === 0 ? "missing" : "STALE (sources newer than build)"} — rebuilding...`,
+    );
+    await run("npm", ["run", "build"], { cwd: APP_DIR });
+  }
+}
+
 async function ensureServer(baseUrl) {
+  await rebuildIfStale("[qa]");
   try {
     const res = await fetch(baseUrl);
     if (res.ok) {
@@ -531,11 +1053,6 @@ async function ensureServer(baseUrl) {
     }
   } catch {
     // fall through and boot it
-  }
-  const distDir = path.join(APP_DIR, "dist");
-  if (!existsSync(distDir) || readdirSync(distDir).length === 0) {
-    console.log("[qa] building bench/app (vite build)...");
-    await run("npm", ["run", "build"], { cwd: APP_DIR });
   }
   console.log(`[qa] starting vite preview on port ${PORT}...`);
   const child = spawn("npm", ["run", "preview", "--", "--port", String(PORT), "--strictPort"], {
@@ -560,6 +1077,7 @@ function parseArgs(argv) {
     else if (a === "--impl-a") args.implA = argv[++i];
     else if (a === "--impl-b") args.implB = argv[++i];
     else if (a === "--n") args.n = Number(argv[++i]);
+    else if (a === "--state") args.state = argv[++i];
     else {
       console.error(`[qa] unrecognized argument: ${a}`);
       process.exit(1);
@@ -570,8 +1088,8 @@ function parseArgs(argv) {
 
 function usage() {
   console.error(
-    "Usage: node qa/screenshot.mjs --chart <line|area|bar|scatter> --impl-a <bklit|tanstack|migrated> --impl-b <bklit|tanstack|migrated> [--n 1000]\n" +
-      "   or: node qa/screenshot.mjs --chart <name> --self-test [--impl-a <bklit|tanstack|migrated>] [--n 1000]",
+    "Usage: node qa/screenshot.mjs --chart <line|area|bar|scatter> --impl-a <bklit|tanstack|migrated> --impl-b <bklit|tanstack|migrated> [--n 1000] [--state loading]\n" +
+      "   or: node qa/screenshot.mjs --chart <name> --self-test [--impl-a <bklit|tanstack|migrated>] [--n 1000] [--state loading]",
   );
 }
 
@@ -585,6 +1103,10 @@ async function main() {
   const n = Number.isFinite(args.n) ? args.n : DEFAULT_N;
   let implA = args.implA ?? DEFAULT_IMPL_A;
   let implB = args.implB ?? DEFAULT_IMPL_B;
+  if (args.state !== undefined && args.state !== "loading") {
+    console.error(`[qa] --state only accepts "loading" (got ${JSON.stringify(args.state)}); omit it for the default ready-state compare`);
+    process.exit(1);
+  }
 
   if (args.selfTest) {
     if (args.implB && args.implA && args.implB !== args.implA) {
@@ -600,7 +1122,7 @@ async function main() {
 
   let outcome;
   try {
-    outcome = await runComparison(browser, BASE_URL, { chart: args.chart, n, implA, implB, selfTest: args.selfTest });
+    outcome = await runComparison(browser, BASE_URL, { chart: args.chart, n, implA, implB, selfTest: args.selfTest, state: args.state });
   } finally {
     await browser.close();
     await server.stop();

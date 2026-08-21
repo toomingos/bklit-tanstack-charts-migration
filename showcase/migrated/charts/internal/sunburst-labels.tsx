@@ -1,8 +1,6 @@
 // SunburstLabels — config carrier + SVG label overlay for sunburst segments.
 // Extracted from sunburst-chart.tsx (R6 module split).
 
-import { type ReactNode } from "react";
-
 // ---------------------------------------------------------------------------
 // Config carrier — returns null, classified by displayName in sunburst-chart
 // ---------------------------------------------------------------------------

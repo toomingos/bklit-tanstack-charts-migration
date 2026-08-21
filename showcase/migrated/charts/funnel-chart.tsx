@@ -127,11 +127,10 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useRef,
-  useState,
 } from "react";
 import { intFmt } from "./internal/formatters";
+import { usePositiveChartSize } from "./internal";
 import {
   computeFunnelRings,
   funnelSegBox,
@@ -471,7 +470,6 @@ function FunnelSegment(props: FunnelSegmentProps) {
     return () => anim.cancel();
     // enterTransition read via enterTransitionRef, matching bklit's own
     // transitionRef pattern (use-mount-progress.ts) — deliberately not a dep.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, staggerDelay, isHorizontal]);
 
   // --- Label fade-in reveal: bklit `SegmentLabel`'s own FIXED tween (NOT
@@ -643,26 +641,7 @@ export function FunnelChart({
   grid: gridProp = false,
 }: FunnelChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [sz, setSz] = useState({ w: 0, h: 0 });
-
-  useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const measure = () => {
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        setSz((prev) =>
-          Math.abs(prev.w - rect.width) > 0.5 || Math.abs(prev.h - rect.height) > 0.5
-            ? { w: rect.width, h: rect.height }
-            : prev,
-        );
-      }
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const sz = usePositiveChartSize(containerRef);
 
   // --- Hover coordinator (imperative, D10 — no React state/framer-motion in
   // the pointer path). Controlled/uncontrolled split ported exactly from

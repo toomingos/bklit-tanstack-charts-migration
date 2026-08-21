@@ -8,7 +8,10 @@
 //     side-channel
 //   - Gradient, label, and CSS injection → dedicated injection functions
 //     called from onRender, each handling exactly one concern
-//   - WAAPI reveal animation → returned as Animation[] for explicit cleanup
+//   - WAAPI reveal → runSankeyReveal owns the whole lifecycle (pre-paint
+//     hide via the shared --revealing class, post-paint WAAPI, deadline,
+//     teardown) behind a single RevealHandle; the component holds one
+//     seen-key gate (data/signature/duration) and nothing else
 //   - Hover listener attachment → separate useEffect (element-level
 //     mouseenter/mouseleave, uses element ref arrays — no data-ts-key queries)
 //   - CSS transitions (0.18s ease-out) for smooth hover dimming
@@ -39,9 +42,11 @@ import {
   injectGradientDefs,
   injectLabelCssTransitions,
   runSankeyReveal,
-  resolveSankeyRevealDurationMs,
+  stampSankeyLinkPathLength,
   type SankeyEnterTransition,
+  type SankeyRevealHandle,
 } from "./internal/sankey-animation";
+import "./styles.css";
 import {
   computeNodeHoverConnected,
   computeLinkHoverConnected,
@@ -305,6 +310,13 @@ function populateLinkElements(svg: SVGSVGElement, ref: { current: (SVGPathElemen
 
 // ─── Main component ────────────────────────────────────────────────────────
 
+// The reveal's replay key: a new reveal runs when any of these change.
+interface RevealKey {
+  data: SankeyData;
+  signature: string;
+  duration: number;
+}
+
 export function SankeyChart({
   data,
   margin: marginProp,
@@ -319,35 +331,24 @@ export function SankeyChart({
 }: SankeyChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gradientDataRef = useRef<SankeyGradientDatum[] | null>(null);
-  const animationRanForRef = useRef(false);
-  const prevDataForAnimationRef = useRef<SankeyData | null>(null);
-  const prevRevealSignatureRef = useRef(revealSignature);
-  const prevAnimationDurationRef = useRef(animationDuration);
   const prefersReducedMotion = usePrefersReducedMotion();
-  const revealAnimationsRef = useRef<Animation[]>([]);
-  const revealDeadlineRef = useRef<number | null>(null);
+
+  // ── Reveal state: one seen-key gate + one handle ──
+  // handleRender runs the reveal once per replay key (data identity,
+  // revealSignature, animationDuration — same triggers as before, matching
+  // bklit's revealEpoch semantics). Unmount cleanup resets the key so a
+  // StrictMode/adapter re-mount replays instead of staying un-revealed.
+  const seenRevealKeyRef = useRef<RevealKey | null>(null);
+  const revealHandleRef = useRef<SankeyRevealHandle | null>(null);
 
   const nodeElementsRef = useRef<(SVGGElement | null)[]>([]);
   const linkElementsRef = useRef<(SVGPathElement | null)[]>([]);
 
   useEffect(() => {
     return () => {
-      if (revealDeadlineRef.current !== null) {
-        clearTimeout(revealDeadlineRef.current);
-        revealDeadlineRef.current = null;
-      }
-      for (const anim of revealAnimationsRef.current) {
-        try { anim.cancel(); } catch {}
-      }
-      revealAnimationsRef.current = [];
-      // This cleanup destroys the reveal, so it must also release the one-shot
-      // gate — otherwise a re-mount that keeps this component instance alive
-      // (React StrictMode's dev double-invoke, or a TanStack adapter
-      // destroy/mount cycle) leaves the chart permanently un-revealed: the
-      // animations are cancelled but `animationRanForRef` still reads true.
-      animationRanForRef.current = false;
-      const svg = containerRef.current?.querySelector("svg") as SVGSVGElement | null;
-      if (svg) delete svg.dataset.bkmRevealed;
+      revealHandleRef.current?.cancel();
+      revealHandleRef.current = null;
+      seenRevealKeyRef.current = null;
     };
   }, []);
 
@@ -361,7 +362,7 @@ export function SankeyChart({
       if (nodeConfig.getNodeColor) return nodeConfig.getNodeColor(node, index);
       return defaultNodeColor(index);
     },
-    [nodeConfig.fill, nodeConfig.getNodeColor],
+    [nodeConfig],
   );
 
   // ── Hover state (refs for zero-React-pointer-path; DOM writes on hover) ──
@@ -443,95 +444,43 @@ export function SankeyChart({
       injectGradientDefs(svg, gradients);
     }
     injectLabelCssTransitions(svg);
+    stampSankeyLinkPathLength(linkElementsRef.current);
 
-    // Reduced motion: cancel any running reveal, make everything visible instantly, no WAAPI
-    if (prefersReducedMotion || animationDuration <= 0) {
-      if (revealDeadlineRef.current !== null) { clearTimeout(revealDeadlineRef.current); revealDeadlineRef.current = null; }
-      for (const anim of revealAnimationsRef.current) { try { anim.cancel(); } catch {} }
-      revealAnimationsRef.current = [];
-      for (const g of nodeElementsRef.current) {
-        const rect = g?.querySelector("rect") as SVGElement | null;
-        if (rect) {
-          rect.style.opacity = "1";
-          (rect as unknown as HTMLElement).style.transform = "none";
-        }
-      }
-      for (const el of svg.querySelectorAll<SVGElement>(`[data-ts-key^="sankey:nlabel:"]`)) el.style.opacity = "1";
-      for (const el of svg.querySelectorAll<SVGElement>(`[data-ts-key^="sankey:vlabel:"]`)) el.style.opacity = "0.6";
-      for (const p of linkElementsRef.current) {
-        if (!p) continue;
-        p.style.strokeDashoffset = "0";
-      }
-      svg.dataset.bkmRevealed = "1";
-      animationRanForRef.current = true;
+    // Phase 3: reveal — once per replay key (data/signature/duration change).
+    const seen = seenRevealKeyRef.current;
+    if (
+      seen !== null &&
+      seen.data === data &&
+      seen.signature === revealSignature &&
+      seen.duration === animationDuration
+    ) {
       return;
     }
 
-    // Replay gate fix (must run BEFORE bkmRevealed early-exit): if the caller changed
-    // data identity, animationDuration, or revealSignature, clear the one-shot gate so
-    // the SPA navigation case (TanStack adapter reuses the SVG) can replay.
-    const signatureChanged = revealSignature !== prevRevealSignatureRef.current;
-    const durationChanged = animationDuration !== prevAnimationDurationRef.current;
-    const dataChanged = data !== prevDataForAnimationRef.current;
-    if (signatureChanged || durationChanged || dataChanged) {
-      prevRevealSignatureRef.current = revealSignature;
-      prevAnimationDurationRef.current = animationDuration;
-      prevDataForAnimationRef.current = data;
-      animationRanForRef.current = false;
-      if (svg.dataset.bkmRevealed === "1") {
-        if (revealDeadlineRef.current !== null) { clearTimeout(revealDeadlineRef.current); revealDeadlineRef.current = null; }
-        for (const anim of revealAnimationsRef.current) { try { anim.cancel(); } catch {} }
-        revealAnimationsRef.current = [];
-        delete svg.dataset.bkmRevealed;
-      }
+    // Reduced motion / zero duration: the scene's resting state is already
+    // fully visible (reveal keyframes all end at resting values), so just
+    // make sure no reveal is running and consume the key.
+    if (prefersReducedMotion || animationDuration <= 0) {
+      revealHandleRef.current?.cancel();
+      revealHandleRef.current = null;
+      seenRevealKeyRef.current = { data, signature: revealSignature, duration: animationDuration };
+      return;
     }
 
-    // One-shot reveal gate — only the WAAPI stagger is gated, not the injections above
-    if (svg.dataset.bkmRevealed === "1") return;
+    // Not laid out yet (bklit renders null under width 10): leave the key
+    // unconsumed so the resize-triggered onRender retries.
+    if (svg.getBoundingClientRect().width < 10) return;
 
-    if (!animationRanForRef.current) {
-      const linkEls = linkElementsRef.current;
-      const firstLinkDash = linkEls[0]?.getAttribute("stroke-dasharray");
-      const firstLinkDashLen = firstLinkDash ? Number.parseFloat(firstLinkDash) : Number.NaN;
-      const layoutValid = linkEls.length > 0 && Number.isFinite(firstLinkDashLen) && firstLinkDashLen >= 1;
-
-      if (layoutValid) {
-        animationRanForRef.current = true;
-        svg.dataset.bkmRevealed = "1";
-        const nodeEls = nodeElementsRef.current;
-        const counts = { nodes: data.nodes.length, links: data.links.length };
-        const animations = runSankeyReveal(svg, counts, animationDuration, nodeEls, linkEls, enterTransition);
-        revealAnimationsRef.current = animations;
-
-        const totalNodes = data.nodes.length;
-        const totalLinks = data.links.length;
-        const nodeAnimDuration = animationDuration * 0.6;
-        let maxStagger = 0;
-        if (totalNodes > 0) {
-          const lastStag = ((totalNodes - 1) / totalNodes) * nodeAnimDuration * 0.4;
-          const lastValue = lastStag + nodeAnimDuration * 0.6 * 0.3 + 60;
-          if (lastValue > maxStagger) maxStagger = lastValue;
-        }
-        if (totalLinks > 0) {
-          const linkStart = animationDuration * 0.2;
-          const linkWin = animationDuration * 0.8;
-          const lastLink = linkStart + ((totalLinks - 1) / totalLinks) * linkWin * 0.4;
-          if (lastLink > maxStagger) maxStagger = lastLink;
-        }
-        const revealDuration = resolveSankeyRevealDurationMs(animationDuration, enterTransition);
-        const deadlineMs = revealDuration + maxStagger + 150;
-        if (revealDeadlineRef.current !== null) clearTimeout(revealDeadlineRef.current);
-        revealDeadlineRef.current = window.setTimeout(() => {
-          for (const anim of revealAnimationsRef.current) {
-            try { (anim as unknown as { commitStyles?: () => void }).commitStyles?.(); } catch {}
-            try { anim.cancel(); } catch {}
-          }
-          revealAnimationsRef.current = [];
-          revealDeadlineRef.current = null;
-        }, deadlineMs);
-      }
-    }
-  }, [animationDuration, enterTransition, revealSignature, nodeConfig.showLabels, nodeConfig.showValueLabels, nodeConfig.labelOrientation, data, prefersReducedMotion]);
+    seenRevealKeyRef.current = { data, signature: revealSignature, duration: animationDuration };
+    revealHandleRef.current?.cancel();
+    revealHandleRef.current = runSankeyReveal({
+      svg,
+      nodeGroups: nodeElementsRef.current,
+      linkPaths: linkElementsRef.current,
+      animationDuration,
+      enterTransition,
+    });
+  }, [data, revealSignature, animationDuration, enterTransition, prefersReducedMotion]);
 
   // ── Hover listener attachment (bar-chart pattern: separate effect) ──
   useEffect(() => {

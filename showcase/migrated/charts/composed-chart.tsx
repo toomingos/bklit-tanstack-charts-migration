@@ -1169,8 +1169,8 @@ export function ComposedChart({
           const delaySec = i * staggerDelaySec;
           const anim = rectEl.animate(
             [
-              { height: "0", y: String(baselineY) },
-              { height: String(targetHeight), y: String(targetY) },
+              { height: "0px", y: String(baselineY) },
+              { height: `${targetHeight}px`, y: String(targetY) },
             ],
             {
               duration: animationDuration,

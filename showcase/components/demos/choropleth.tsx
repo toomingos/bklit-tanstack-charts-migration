@@ -9,7 +9,7 @@ interface ChoroplethDemoProps {
   n: number;
 }
 
-export default function ChoroplethDemo({ impl, n }: ChoroplethDemoProps) {
+export default function ChoroplethDemo({ impl, n: _n }: ChoroplethDemoProps) {
   const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
 
   return (

@@ -25,7 +25,7 @@
 
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -47,6 +47,7 @@ const MEASURED_RUNS = 7;
 const IDLE_MS = 5000; // M2a: 5s post-settle, no input
 const UPDATE_TICKS = 30; // M3a
 const HOVER_STEPS = 60; // M3c
+const BRUSH_DRAG_STEPS = 60; // M3d (chart === "brush" only)
 const M3B_WINDOW_MS = 5000; // M3b: sustained live-update window
 const M3B_MEASURED_PASSES = 3; // M3b passes per combo (plus 1 warmup)
 // Charts with a live-data mode; M3b only makes sense (and only runs) for
@@ -121,7 +122,62 @@ async function waitForServer(url, timeoutMs = 20000) {
   throw new Error(`Server at ${url} did not become ready within ${timeoutMs}ms`);
 }
 
+// Stale-build guard (D214, mirrors qa/screenshot.mjs): any source newer than
+// dist/index.html forces a rebuild, BEFORE the already-running-server check —
+// vite preview serves dist from disk, so a rebuild propagates to a reused
+// server too. Prevents silently benchmarking a build older than the edits
+// under test.
+function newestSourceMtimeMs(dir) {
+  let newest = 0;
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const e of entries) {
+    if (e.name === "node_modules" || e.name === "dist" || e.name.startsWith(".")) continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) newest = Math.max(newest, newestSourceMtimeMs(p));
+    else {
+      try {
+        newest = Math.max(newest, statSync(p).mtimeMs);
+      } catch {
+        // deleted mid-scan; ignore
+      }
+    }
+  }
+  return newest;
+}
+
+async function rebuildIfStale() {
+  const distIndex = path.join(APP_DIR, "dist", "index.html");
+  const distMtime = existsSync(distIndex) ? statSync(distIndex).mtimeMs : 0;
+  const sourceRoots = [
+    path.join(APP_DIR, "src"),
+    path.join(APP_DIR, "index.html"),
+    path.join(ROOT, "showcase", "migrated"),
+    path.join(ROOT, "repos", "bklit-ui", "packages", "ui", "src"),
+  ];
+  const srcMtime = Math.max(
+    ...sourceRoots.map((p) => {
+      try {
+        return statSync(p).isDirectory() ? newestSourceMtimeMs(p) : statSync(p).mtimeMs;
+      } catch {
+        return 0;
+      }
+    }),
+  );
+  if (distMtime === 0 || srcMtime > distMtime) {
+    console.log(
+      `[bench] bench/app dist ${distMtime === 0 ? "missing" : "STALE (sources newer than build)"} — rebuilding...`,
+    );
+    await run("npm", ["run", "build"], { cwd: APP_DIR });
+  }
+}
+
 async function ensureServer(baseUrl) {
+  await rebuildIfStale();
   try {
     const res = await fetch(baseUrl);
     if (res.ok) {
@@ -130,12 +186,6 @@ async function ensureServer(baseUrl) {
     }
   } catch {
     // not running, fall through to boot it
-  }
-
-  const distDir = path.join(APP_DIR, "dist");
-  if (!existsSync(distDir) || readdirSync(distDir).length === 0) {
-    console.log("[bench] building bench/app (vite build)...");
-    await run("npm", ["run", "build"], { cwd: APP_DIR });
   }
 
   console.log(`[bench] starting vite preview on port ${PORT}...`);
@@ -169,7 +219,19 @@ function sceneUrl(baseUrl, { impl, chart, n, scenario }) {
 async function getSweepPoints(page, chart, steps) {
   return page.evaluate(
     ({ chart, steps }) => {
-      const svg = document.querySelector("#chart-root svg");
+      // Pick the LARGEST-area svg, not the first: the migrated hosts render a
+      // 0x0 gradient-defs svg before the chart svg, and the brush scenario
+      // composes a main chart + a 72px strip chart.
+      const svgs = Array.from(document.querySelectorAll("#chart-root svg"));
+      let svg = null;
+      let bestArea = 0;
+      for (const s of svgs) {
+        const b = s.getBoundingClientRect();
+        if (b.width * b.height > bestArea) {
+          bestArea = b.width * b.height;
+          svg = s;
+        }
+      }
       if (!svg) return [];
 
       const toClientFromSvgPoint = (svgPoint, el) => {
@@ -206,7 +268,21 @@ async function getSweepPoints(page, chart, steps) {
         return pts;
       };
 
-      if (chart === "line" || chart === "area") {
+      // "brush" composes a main line chart (the largest svg picked above) +
+      // a strip chart; hover the main chart's line like the plain line chart.
+      // "markers" (initiative 10, D229 ruling 10) is a plain Line host too
+      // (showMarkers/dashFromIndex + a ChartMarkers overlay) -- same
+      // path-sampling sweep applies. "patternarea" (initiative 11) is a
+      // plain Area host (PatternArea's own fill mark + a zero-opacity
+      // <Area> stroke sibling for the doc idiom) -- same area-family
+      // path-sampling sweep applies.
+      if (
+        chart === "line" ||
+        chart === "area" ||
+        chart === "brush" ||
+        chart === "markers" ||
+        chart === "patternarea"
+      ) {
         const path = svg.querySelector("path");
         return sampleAlongPath(path);
       }
@@ -222,7 +298,15 @@ async function getSweepPoints(page, chart, steps) {
         return resampleCentered(centers);
       }
 
-      if (chart === "bar") {
+      // "barsquares" (BarSquares/BarColumnTrack) and "bardepth" (BarDepth/
+      // BarPulse) are both bar-family hosts (initiative 11) -- reuse the
+      // same rect-top sampling. Note this is an approximation for
+      // "barsquares": each bar is rendered as a STACK of small quantized
+      // square rects (not one tall rect), so the `width < svgWidth*0.5`
+      // filter picks up every square cell, not one point per bar/group --
+      // still a representative hover sweep across the plot, just denser
+      // than the plain "bar" case.
+      if (chart === "bar" || chart === "barsquares" || chart === "bardepth") {
         // Hover near the TOP edge of each bar (the actual data-value anchor
         // TanStack's proximity hit-test uses), not the rect's vertical
         // center -- for a short bar sitting near the baseline, the center
@@ -359,7 +443,20 @@ async function runOnce(browser, params) {
   // the sweep path, not a real difference in either impl's hover behavior.
   // Sweeping along the real geometry is the fairer, more realistic test for
   // both, and is what a real user's cursor would actually be near.
-  const svgBox = await page.locator("#chart-root svg").first().boundingBox();
+  // Largest-area svg (matches getSweepPoints): the migrated hosts render a
+  // 0x0 gradient-defs svg first, and the brush scenario has a strip chart.
+  const svgBox = await page.evaluate(() => {
+    let best = null;
+    let bestArea = 0;
+    for (const s of document.querySelectorAll("#chart-root svg")) {
+      const b = s.getBoundingClientRect();
+      if (b.width * b.height > bestArea) {
+        bestArea = b.width * b.height;
+        best = { x: b.x, y: b.y, width: b.width, height: b.height };
+      }
+    }
+    return best;
+  });
   await page.evaluate(() => {
     window.__benchFrames = [];
     window.__benchFrameRaf = true;
@@ -427,6 +524,84 @@ async function runOnce(browser, params) {
   const m3cScriptMs = (metricsAfterHover.ScriptDuration - metricsBeforeHover.ScriptDuration) * 1000;
   const m3cPerMoveScriptMs = m3cScriptMs / HOVER_STEPS;
 
+  // M3d (chart === "brush" only): a REAL pointer drag of the right brush
+  // handle from the full-extent edge to 45% of the track, mouse.down ->
+  // BRUSH_DRAG_STEPS moves at ~60Hz -> mouse.up. Both impls live-commit the
+  // xDomain on every drag move (bklit onChange + D227 ruling 4 for the
+  // migrated port), so ScriptDuration-delta / steps is the honest per-move
+  // drag cost for both, same collection model as M3c. The strip container
+  // is the BrushLayout/ChartBrushLayout fixed-height div (72px inline style
+  // in both scenarios); its plot margins are the scenarios' shared
+  // brushStripMargin {left:40, right:40}.
+  let m3dPerMoveScriptMs = null;
+  let m3dFrameTimes = null;
+  let m3dDomainChanged = null;
+  if (params.chart === "brush") {
+    const strip = await page.evaluate(() => {
+      const root = document.getElementById("chart-root");
+      const divs = root ? root.querySelectorAll("div") : [];
+      for (const el of divs) {
+        if (el.style && el.style.height === "72px") {
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width, height: r.height };
+        }
+      }
+      return null;
+    });
+    if (strip && strip.width > 120) {
+      // Main-chart x-axis labels change when the committed domain narrows;
+      // compare the full root text before/after as the functional signal
+      // (tooltipAppeared's impl-agnostic-text-signal precedent above).
+      const rootTextBefore = await page.evaluate(() => {
+        const root = document.getElementById("chart-root");
+        return root.textContent || "";
+      });
+      const STRIP_MARGIN_X = 40;
+      const innerW = strip.width - STRIP_MARGIN_X * 2;
+      const yMid = strip.y + strip.height / 2;
+      const startX = strip.x + STRIP_MARGIN_X + innerW;
+      const endX = strip.x + STRIP_MARGIN_X + innerW * 0.45;
+      await page.evaluate(() => {
+        window.__benchFrames = [];
+        window.__benchFrameRaf = true;
+        const tick = (t) => {
+          window.__benchFrames.push(t);
+          if (window.__benchFrameRaf) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+      const metricsBeforeDrag = await getMetrics(cdp);
+      await page.mouse.move(startX, yMid);
+      await page.mouse.down();
+      for (let i = 1; i <= BRUSH_DRAG_STEPS; i++) {
+        const x = startX + ((endX - startX) * i) / BRUSH_DRAG_STEPS;
+        await page.mouse.move(x, yMid);
+        await new Promise((r) => setTimeout(r, 16));
+      }
+      await page.mouse.up();
+      const metricsAfterDrag = await getMetrics(cdp);
+      // Let the final commit's render/tween land before the text check,
+      // outside the metrics window (same decoupling as the tooltip check).
+      await page.waitForTimeout(150);
+      const dragFrameTs = await page.evaluate(() => {
+        window.__benchFrameRaf = false;
+        return window.__benchFrames;
+      });
+      m3dFrameTimes = [];
+      for (let i = 1; i < dragFrameTs.length; i++) {
+        m3dFrameTimes.push(dragFrameTs[i] - dragFrameTs[i - 1]);
+      }
+      m3dPerMoveScriptMs =
+        ((metricsAfterDrag.ScriptDuration - metricsBeforeDrag.ScriptDuration) * 1000) /
+        BRUSH_DRAG_STEPS;
+      const rootTextAfter = await page.evaluate(() => {
+        const root = document.getElementById("chart-root");
+        return root.textContent || "";
+      });
+      m3dDomainChanged = rootTextAfter !== rootTextBefore;
+    }
+  }
+
   await context.close();
 
   return {
@@ -442,6 +617,9 @@ async function runOnce(browser, params) {
     m3c_frameTimesMs: frameTimes,
     m3c_perMoveScriptMs: m3cPerMoveScriptMs,
     m3c_tooltipAppeared: tooltipAppeared,
+    m3d_perMoveScriptMs: m3dPerMoveScriptMs,
+    m3d_frameTimesMs: m3dFrameTimes,
+    m3d_domainChanged: m3dDomainChanged,
     renderCheck,
     consoleErrors,
     navToNowMs: Date.now() - navStart,
@@ -549,6 +727,19 @@ async function benchOne(browser, baseUrl, { impl, chart, n }) {
   const m3cWorst = allFrameTimes.length ? Math.max(...allFrameTimes) : null;
   const m3cPerMove = summarize(runs.map((r) => r.m3c_perMoveScriptMs));
   const tooltipAppearedEveryRun = runs.every((r) => r.m3c_tooltipAppeared);
+  const m3dRuns = runs.filter((r) => r.m3d_perMoveScriptMs != null);
+  let m3d = null;
+  if (m3dRuns.length) {
+    const allDragFrames = m3dRuns.flatMap((r) => r.m3d_frameTimesMs);
+    m3d = {
+      dragSteps: BRUSH_DRAG_STEPS,
+      perMoveScriptMs: summarize(m3dRuns.map((r) => r.m3d_perMoveScriptMs)),
+      frameTimeMs: summarize(allDragFrames),
+      worstFrameMs: allDragFrames.length ? Math.max(...allDragFrames) : null,
+      domainChangedEveryRun: m3dRuns.every((r) => r.m3d_domainChanged),
+      runsMeasured: m3dRuns.length,
+    };
+  }
   const consoleErrors = runs.flatMap((r) => r.consoleErrors);
 
   // M3b, live charts only (separate ?scenario=live page loads).
@@ -596,7 +787,7 @@ async function benchOne(browser, baseUrl, { impl, chart, n }) {
       m3c_frameTimeMs: { median: m3cFrame.median, worst: m3cWorst, p95: m3cFrame.p95 },
       m3c_perMoveScriptMs: m3cPerMove,
       m3c_tooltipAppeared: tooltipAppearedEveryRun,
-      m3d_brushDrag: null, // TODO: stubbed, not applicable to line/area/bar/scatter pilot set anyway
+      m3d_brushDrag: m3d, // non-null only for chart === "brush" (real handle-drag, see runOnce)
     },
     consoleErrorCount: consoleErrors.length,
     consoleErrorsSample: consoleErrors.slice(0, 5),

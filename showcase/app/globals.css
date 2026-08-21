@@ -2,7 +2,6 @@
 
 @source "../../repos/bklit-ui/packages/ui/src/**/*.tsx";
 @source "../repos/bklit-ui/packages/ui/src/**/*.tsx";
-@source "../../migrated/charts/**/*.{ts,tsx}";
 @source "../migrated/charts/**/*.{ts,tsx}";
 
 @custom-variant dark (&:is(.dark *));

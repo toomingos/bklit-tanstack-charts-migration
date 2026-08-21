@@ -1,5 +1,8 @@
 import type { ComponentType } from "react";
 import BklitLine from "./bklit-line";
+import BklitRefArea from "./bklit-refarea";
+import BklitSegment from "./bklit-segment";
+import BklitProjection from "./bklit-projection";
 import BklitArea from "./bklit-area";
 import BklitBar from "./bklit-bar";
 import BklitScatter from "./bklit-scatter";
@@ -36,6 +39,9 @@ import TanstackChoropleth from "./tanstack-choropleth";
 import TanstackSankey from "./tanstack-sankey";
 import TanstackLiveLine from "./tanstack-liveline";
 import MigratedLine from "./migrated-line";
+import MigratedRefArea from "./migrated-refarea";
+import MigratedSegment from "./migrated-segment";
+import MigratedProjection from "./migrated-projection";
 import MigratedArea from "./migrated-area";
 import MigratedScatter from "./migrated-scatter";
 import MigratedBar from "./migrated-bar";
@@ -53,6 +59,24 @@ import MigratedSunburst from "./migrated-sunburst";
 import MigratedChoropleth from "./migrated-choropleth";
 import MigratedLiveLine from "./migrated-liveline";
 import MigratedSankey from "./migrated-sankey";
+import BklitProfitLoss from "./bklit-profitloss";
+import MigratedProfitLoss from "./migrated-profitloss";
+import BklitLegend from "./bklit-legend";
+import MigratedLegend from "./migrated-legend";
+import BklitCandlestickLegend from "./bklit-candlestick-legend";
+import MigratedCandlestickLegend from "./migrated-candlestick-legend";
+import BklitLegendHover from "./bklit-legendhover";
+import MigratedLegendHover from "./migrated-legendhover";
+import BklitBrush from "./bklit-brush";
+import MigratedBrush from "./migrated-brush";
+import BklitMarkers from "./bklit-markers";
+import MigratedMarkers from "./migrated-markers";
+import BklitPatternArea from "./bklit-patternarea";
+import MigratedPatternArea from "./migrated-patternarea";
+import BklitBarSquares from "./bklit-barsquares";
+import MigratedBarSquares from "./migrated-barsquares";
+import BklitBarDepth from "./bklit-bardepth";
+import MigratedBarDepth from "./migrated-bardepth";
 
 export interface ScenarioProps {
   n: number;
@@ -65,10 +89,21 @@ export interface ScenarioProps {
    * drive `window.__benchLiveTick()` continuously.
    */
   scenario?: import("../bench/query").Scenario;
+  /**
+   * Chart data state (parsed from `?state=`, default "ready"). "loading"
+   * mounts the chart in its loading phase — scenarios whose chart supports
+   * `status="loading"` pass it through so qa/screenshot.mjs `--state loading`
+   * can pixel-compare loading chrome (D211/D212 loading gate). Scenarios
+   * without loading support ignore it.
+   */
+  state?: import("../bench/query").ChartState;
 }
 
 export const scenarios: Record<string, ComponentType<ScenarioProps>> = {
   "bklit-line": BklitLine,
+  "bklit-refarea": BklitRefArea,
+  "bklit-segment": BklitSegment,
+  "bklit-projection": BklitProjection,
   "bklit-area": BklitArea,
   "bklit-bar": BklitBar,
   "bklit-scatter": BklitScatter,
@@ -86,6 +121,15 @@ export const scenarios: Record<string, ComponentType<ScenarioProps>> = {
   "bklit-choropleth": BklitChoropleth,
   "bklit-sankey": BklitSankey,
   "bklit-liveline": BklitLiveLine,
+  "bklit-profitloss": BklitProfitLoss,
+  "bklit-legend": BklitLegend,
+  "bklit-candlelegend": BklitCandlestickLegend,
+  "bklit-legendhover": BklitLegendHover,
+  "bklit-brush": BklitBrush,
+  "bklit-markers": BklitMarkers,
+  "bklit-patternarea": BklitPatternArea,
+  "bklit-barsquares": BklitBarSquares,
+  "bklit-bardepth": BklitBarDepth,
   "tanstack-line": TanstackLine,
   "tanstack-area": TanstackArea,
   "tanstack-bar": TanstackBar,
@@ -105,6 +149,9 @@ export const scenarios: Record<string, ComponentType<ScenarioProps>> = {
   "tanstack-sankey": TanstackSankey,
   "tanstack-liveline": TanstackLiveLine,
   "migrated-line": MigratedLine,
+  "migrated-refarea": MigratedRefArea,
+  "migrated-segment": MigratedSegment,
+  "migrated-projection": MigratedProjection,
   "migrated-area": MigratedArea,
   "migrated-scatter": MigratedScatter,
   "migrated-bar": MigratedBar,
@@ -122,4 +169,13 @@ export const scenarios: Record<string, ComponentType<ScenarioProps>> = {
   "migrated-choropleth": MigratedChoropleth,
   "migrated-liveline": MigratedLiveLine,
   "migrated-sankey": MigratedSankey,
+  "migrated-profitloss": MigratedProfitLoss,
+  "migrated-legend": MigratedLegend,
+  "migrated-candlelegend": MigratedCandlestickLegend,
+  "migrated-legendhover": MigratedLegendHover,
+  "migrated-brush": MigratedBrush,
+  "migrated-markers": MigratedMarkers,
+  "migrated-patternarea": MigratedPatternArea,
+  "migrated-barsquares": MigratedBarSquares,
+  "migrated-bardepth": MigratedBarDepth,
 };

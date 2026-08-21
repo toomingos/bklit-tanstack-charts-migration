@@ -8,20 +8,27 @@
 // structurally disjoint render paths dispatch on `orientation`:
 //
 //  - Arc: stock `@tanstack/charts/polar` `radialArc` (D82 REDO —
-//    replaces the custom PolarMark from D28/D79). Two `radialArc` marks:
-//    one for the background/track (ALL notches at inactive fill opacity)
-//    and one for the active overlay (ONLY active notches at active fill
-//    opacity). Notch angles are pre-computed from bklit's own
-//    notchAngle/gapAngle math, converted to radians, and passed as
-//    per-datum `startAngle`/`endAngle` channels. `polar()` uses
-//    `radiusRatio: 1`; inner/outer radii are functions of the layout
-//    radius matching bklit's 0.28/0.42 × size ratios. The focus engine
-//    is disabled (`FOCUS_DISABLED`, radar-chart.tsx precedent — Gauge
-//    has zero hover/tooltip). Smooth pie-slice arcs replace bklit's
-//    bespoke trapezoid geometry (notch corner fillets are approximated
-//    via `radialArc`'s `cornerRadius`; at normal viewing distances
-//    the notch shape is not distinguishable from bklit's quadrilateral
-//    paths — see QA gates for pixel-diff verification).
+//    replaces the custom PolarMark from D28/D79) for the DEFAULT tapered
+//    notches (`uniformWidth=false`): TWO `radialArc` marks, one for the
+//    background/track (ALL notches at inactive fill opacity) and one for the
+//    active overlay (ONLY active notches at active fill opacity). Notch
+//    angles are pre-computed from bklit's own notchAngle/gapAngle math,
+//    converted to radians (`(degrees+90)*PI/180` — bit-identical at the
+//    135/405 defaults, node-verified), and passed as per-datum
+//    `startAngle`/`endAngle` channels. `polar()` uses `radiusRatio: 1`;
+//    inner/outer radii are functions of the layout radius matching bklit's
+//    0.28/0.42 × size ratios. The focus engine is disabled
+//    (`FOCUS_DISABLED`, radar-chart.tsx precedent — Gauge has zero
+//    hover/tooltip). Smooth pie-slice arcs replace bklit's bespoke
+//    trapezoid geometry (notch corner fillets are approximated via
+//    `radialArc`'s `cornerRadius`; at normal viewing distances the notch
+//    shape is not distinguishable from bklit's quadrilateral paths — see
+//    QA gates for pixel-diff verification). `uniformWidth=true` instead
+//    uses ONE custom `PolarMark<unknown>` emitting bklit's own
+//    `createNotchPath` rectangular quads (inner edge perpendicular to the
+//    radial centerline — pie slices cannot express it), computed by the
+//    verbatim `computeArcNotches` port, in the SAME `gauge-bg`/
+//    `gauge-active` group keys so the reveal reconciler is shared.
 //  - Linear: plain hand-rolled `<svg>` (NO `@tanstack/charts` container at
 //    all) — same fallback precedent already established by
 //    ring-chart.tsx/pie-chart.tsx (grep-verified: ring-chart.tsx uses zero
@@ -104,11 +111,12 @@
 // exhibits this, since a column stack never competes for width.
 import * as React from "react";
 import { Chart } from "@tanstack/react-charts";
-import { defineChart } from "@tanstack/charts";
-import { polar, radialArc } from "@tanstack/charts/polar";
+import { defineChart, type SceneNode } from "@tanstack/charts";
+import { polar, radialArc, type PolarMark } from "@tanstack/charts/polar";
 import { renderChartSvgWithResources } from "@tanstack/charts/svg/resources";
 import {
   collectGaugeDefsElements,
+  computeArcNotches,
   computeLinearNotches,
   createNotchPath,
   DEFAULT_ACTIVE_FILL_OPACITY,
@@ -119,6 +127,7 @@ import {
   resolveGaugeActiveFill,
   resolveGaugeBgFill,
   type ComputedNotch,
+  type NotchPoint,
 } from "./internal/gauge-notch";
 import {
   GAUGE_SPRING_FALLBACK,
@@ -140,6 +149,7 @@ import { onPostPaint } from "./internal/deferred-reveal";
 import { FOCUS_DISABLED } from "./internal/focus-disabled";
 import { defaultCenterStatFormat, type CenterStatFormat } from "./internal/center-stat";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
+import { useContainerWidth, useMeasuredRect } from "./internal";
 import "./styles.css";
 
 export type { GaugeEnterTransition } from "./internal/gauge-reveal";
@@ -156,9 +166,9 @@ function deferredGaugeMountReveal(
   revealAnimationsRef: React.MutableRefObject<Animation[]>,
   renderGenRef: React.MutableRefObject<number>,
   myGen: number,
-) {
+): () => void {
   groupEl.classList.add("ts-chart__marks--revealing");
-  onPostPaint(() => {
+  return onPostPaint(() => {
     if (renderGenRef.current !== myGen) {
       groupEl.classList.remove("ts-chart__marks--revealing");
       return;
@@ -361,35 +371,15 @@ function GaugeArc(props: GaugeArcProps) {
 
   const fixedSize = widthProp != null && heightProp != null;
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const [measured, setMeasured] = React.useState({ width: 0, height: 0 });
+  const { width: measuredW, height: measuredH } = useMeasuredRect(containerRef, !fixedSize);
 
-  React.useLayoutEffect(() => {
-    if (fixedSize) return;
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      setMeasured((prev) =>
-        Math.abs(prev.width - rect.width) > 0.5 || Math.abs(prev.height - rect.height) > 0.5
-          ? { width: rect.width, height: rect.height }
-          : prev,
-      );
-    });
-    ro.observe(el);
-    const rect = el.getBoundingClientRect();
-    setMeasured({ width: rect.width, height: rect.height });
-    return () => ro.disconnect();
-  }, [fixedSize]);
-
-  const width = widthProp ?? measured.width;
-  const height = heightProp ?? measured.height;
+  const width = widthProp ?? measuredW;
+  const height = heightProp ?? measuredH;
   const size = Math.min(width, height);
 
   // --- Compute arc rows (flat datums for radialArc, one per notch) ---
   const arcRows = React.useMemo((): { bgRows: GaugeArcRow[]; activeRows: GaugeArcRow[]; innerRadiusRatio: number; outerRadiusRatio: number } | null => {
     if (width <= 0 || height <= 0) return null;
-    const size = Math.min(width, height);
 
     // Radius ratios: bklit outerRadius = size * 0.42 → polarRadius = size/2 → ratio = 0.84
     const outerRadiusRatio = 0.84;
@@ -399,9 +389,13 @@ function GaugeArc(props: GaugeArcProps) {
     // innerRadiusRatio = (size*0.42 - size*0.14*depthFactor) / (size/2) = 0.84 - 0.28*depthFactor
     const innerRadiusRatio = 0.84 - 0.28 * depthFactor;
 
-    // Convert degrees → radians: bklit 135→405 ≡ TanStack −3π/4→3π/4
-    const startAngleRad = -Math.PI * 3 / 4;
-    const endAngleRad = Math.PI * 3 / 4;
+    // Degrees → TanStack/d3 arc radians: bklit's 135/405 angle convention (0°
+    // = 3 o'clock, CCW positive, from notch-gauge-shared's `cos/sin` math)
+    // maps onto d3's arc convention (0 = 12 o'clock, CW positive) via
+    // `radians = (degrees + 90) * PI/180` — verified bit-identical at the
+    // defaults: 135 → −3π/4, 405 → 3π/4.
+    const startAngleRad = ((startAngle + 90) * Math.PI) / 180;
+    const endAngleRad = ((endAngle + 90) * Math.PI) / 180;
     const totalAngleRad = endAngleRad - startAngleRad;
     const spacingPct = Math.min(100, Math.max(0, spacing)) / 100;
     const availableAngleRad = totalAngleRad * (1 - spacingPct);
@@ -469,6 +463,94 @@ function GaugeArc(props: GaugeArcProps) {
     height,
     totalNotches,
     spacing,
+    startAngle,
+    endAngle,
+    notchLengthPercent,
+    value,
+    useGradient,
+    fillState,
+    inactiveFill,
+    activeFill,
+  ]);
+
+  // `uniformWidth` — bklit's rectangular quads (gauge.tsx `GaugeNotchSvg`,
+  // `createNotchPath` with `cornerDepth = notchLength`): the notch's inner
+  // edge is PERPENDICULAR to its radial centerline instead of sitting on the
+  // inner-radius circle, so `radialArc` pie slices cannot express it. All
+  // geometry comes from `computeArcNotches` (the verbatim port of bklit's
+  // own arc notch math, absolute pixel space) + bklit's own fill resolvers;
+  // fills are precomputed here so the custom PolarMark's render closure only
+  // re-emits paths when this memo's inputs change.
+  interface UniformArcRow {
+    notchIndex: number;
+    points: NotchPoint;
+    fill: string;
+  }
+  const uniformRows = React.useMemo<{
+    bg: UniformArcRow[];
+    active: UniformArcRow[];
+    notchLength: number;
+  } | null>(() => {
+    if (width <= 0 || height <= 0) return null;
+    const geometry = computeArcNotches({
+      width,
+      height,
+      totalNotches,
+      spacing,
+      uniformWidth: true,
+      startAngle,
+      endAngle,
+      notchLengthPercent,
+      value,
+      useGradient,
+      useThemePaletteGradient: fillState.useThemePaletteGradient,
+      activeGrad0: fillState.activeGrad0,
+      activeGrad1: fillState.activeGrad1,
+    });
+    const bg: UniformArcRow[] = [];
+    const active: UniformArcRow[] = [];
+    for (const notch of geometry.notches) {
+      bg.push({
+        notchIndex: notch.index,
+        points: notch.points,
+        fill: resolveGaugeBgFill({
+          notchIndex: notch.index,
+          totalNotches,
+          hasCustomInactive: fillState.hasCustomInactive,
+          inactiveFill,
+          useThemePaletteGradient: fillState.useThemePaletteGradient,
+          useGradient,
+          inactiveGrad0: fillState.inactiveGrad0,
+          inactiveGrad1: fillState.inactiveGrad1,
+          arcTrackFill: "var(--border)",
+          linearTrackFill: "var(--chart-background)",
+          linearMode: false,
+        }),
+      });
+      if (notch.isActive) {
+        active.push({
+          notchIndex: notch.index,
+          points: notch.points,
+          fill: resolveGaugeActiveFill({
+            notch,
+            hasCustomActive: fillState.hasCustomActive,
+            activeFill,
+            useThemePaletteGradient: fillState.useThemePaletteGradient,
+            themeActiveGradientId: fillState.themeActiveGradientId,
+            useGradient,
+            activeFillSolid: "var(--chart-1)",
+          }),
+        });
+      }
+    }
+    return { bg, active, notchLength: geometry.notchLength };
+  }, [
+    width,
+    height,
+    totalNotches,
+    spacing,
+    startAngle,
+    endAngle,
     notchLengthPercent,
     value,
     useGradient,
@@ -485,8 +567,124 @@ function GaugeArc(props: GaugeArcProps) {
   ]);
 
   // --- TanStack definition: TWO radialArc marks (bg track + active overlay) ---
+  // `uniformWidth` switch: false → stock `radialArc` pie slices (banked
+  // approximation of bklit's tapered quads, D82); true → ONE custom
+  // PolarMark that emits bklit's own `createNotchPath` rectangular quads in
+  // two scene groups keyed exactly "gauge-bg"/"gauge-active" so the shared
+  // reveal machinery (`collectTargets` → `[data-ts-key=...]` groups → path
+  // children) keeps working unchanged. Node coordinates are polar-relative
+  // (TanStack translates the polar container by layout.centerX/Y), so the
+  // absolute-pixel points from `computeArcNotches` are shifted by
+  // `-(layout.centerX, layout.centerY)` at render time.
   const definition = React.useMemo(() => {
-    if (!arcRows) return null;
+    if (!arcRows || (uniformWidth && !uniformRows)) return null;
+
+    if (uniformWidth && uniformRows) {
+      const { bg, active, notchLength } = uniformRows;
+      const quadMark: PolarMark<unknown> = {
+        initialize: () => ({
+          id: "gauge-bg",
+          colorValues: [],
+          angleValues: [],
+          radiusValues: [],
+          includeZeroRadius: false,
+          requiresAngleScale: false,
+          requiresRadiusScale: false,
+          render: ({ layout }) => {
+            const tx = layout.centerX;
+            const ty = layout.centerY;
+            const pathFor = (row: UniformArcRow): string =>
+              createNotchPath(
+                {
+                  x1: row.points.x1 - tx,
+                  y1: row.points.y1 - ty,
+                  x2: row.points.x2 - tx,
+                  y2: row.points.y2 - ty,
+                  x3: row.points.x3 - tx,
+                  y3: row.points.y3 - ty,
+                  x4: row.points.x4 - tx,
+                  y4: row.points.y4 - ty,
+                },
+                notchCornerRadius,
+                notchLength,
+              );
+            const nodes: SceneNode[] = [];
+            if (bg.length > 0) {
+              nodes.push({
+                kind: "group",
+                key: "gauge-bg",
+                className: "ts-chart__arc",
+                ariaHidden: true,
+                children: bg.map(
+                  (row): SceneNode => ({
+                    kind: "polyline",
+                    key: `gauge-bg:${row.notchIndex}`,
+                    points: [],
+                    path: pathFor(row),
+                    style: {
+                      fill: row.fill,
+                      fillOpacity: fillState.resolvedInactiveFillOpacity,
+                      stroke: "none",
+                    },
+                  }),
+                ),
+              });
+            }
+            if (active.length > 0) {
+              nodes.push({
+                kind: "group",
+                key: "gauge-active",
+                className: "ts-chart__arc",
+                ariaHidden: true,
+                children: active.map(
+                  (row): SceneNode => ({
+                    kind: "polyline",
+                    key: `gauge-active:${row.notchIndex}`,
+                    points: [],
+                    path: pathFor(row),
+                    style: {
+                      fill: row.fill,
+                      fillOpacity: fillState.resolvedActiveFillOpacity,
+                      stroke: "none",
+                    },
+                  }),
+                ),
+              });
+            }
+            return { nodes };
+          },
+        }),
+      };
+
+      return defineChart({
+        marks: [
+          polar({
+            radiusRatio: 1,
+            marks: [quadMark],
+          }),
+        ],
+        x: null,
+        y: null,
+        guides: false,
+        focus: FOCUS_DISABLED,
+        gradients: fillState.useThemePaletteGradient
+          ? [
+              {
+                id: fillState.themeActiveGradientId,
+                x1: 0,
+                y1: 0,
+                x2: 1,
+                y2: 0,
+                stops: [
+                  { offset: 0, color: "var(--chart-1)" },
+                  { offset: 1, color: "var(--chart-5)" },
+                ],
+              },
+            ]
+          : [],
+      });
+    }
+
     const { bgRows, activeRows, innerRadiusRatio, outerRadiusRatio } = arcRows;
 
     return defineChart({
@@ -545,6 +743,8 @@ function GaugeArc(props: GaugeArcProps) {
     });
   }, [
     arcRows,
+    uniformWidth,
+    uniformRows,
     notchCornerRadius,
     fillState.resolvedInactiveFillOpacity,
     fillState.resolvedActiveFillOpacity,
@@ -555,6 +755,7 @@ function GaugeArc(props: GaugeArcProps) {
   const seenBgRef = React.useRef<Set<string>>(new Set());
   const seenActiveRef = React.useRef<Set<string>>(new Set());
   const revealAnimationsRef = React.useRef<Animation[]>([]);
+  const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
   const renderGenRef = React.useRef(0);
   const isMountedRef = React.useRef(true);
 
@@ -564,10 +765,12 @@ function GaugeArc(props: GaugeArcProps) {
       isMountedRef.current = false;
       setTimeout(() => {
         if (isMountedRef.current) return;
+        revealPostPaintCancelRef.current?.();
+        revealPostPaintCancelRef.current = null;
         for (const anim of revealAnimationsRef.current) {
           try {
             anim.cancel();
-          } catch {}
+          } catch { /* teardown race — already cancelled */ }
         }
         revealAnimationsRef.current = [];
       }, 0);
@@ -622,7 +825,7 @@ function GaugeArc(props: GaugeArcProps) {
       return;
     }
 
-    deferredGaugeMountReveal(marksGroup, collectTargets, timing, seenBgRef, seenActiveRef, revealAnimationsRef, renderGenRef, myGen);
+    revealPostPaintCancelRef.current = deferredGaugeMountReveal(marksGroup, collectTargets, timing, seenBgRef, seenActiveRef, revealAnimationsRef, renderGenRef, myGen);
   }, [enterTransition, enterStaggerScale, prefersReducedMotion]);
 
   const resolvedMinWidth = minWidth ?? 300;
@@ -749,23 +952,8 @@ function GaugeLinear(props: GaugeLinearProps) {
   const resolvedLinearHeight = linearHeight ?? DEFAULT_LINEAR_GAUGE_HEIGHT;
   const resolvedMinWidth = minWidth ?? 200;
   const fixedWidth = widthProp != null;
-
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const [measuredWidth, setMeasuredWidth] = React.useState(0);
-
-  React.useLayoutEffect(() => {
-    if (fixedWidth) return;
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      setMeasuredWidth((prev) => (Math.abs(prev - rect.width) > 0.5 ? rect.width : prev));
-    });
-    ro.observe(el);
-    setMeasuredWidth(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, [fixedWidth]);
+  const measuredWidth = useContainerWidth(containerRef, !fixedWidth);
 
   const width = widthProp ?? measuredWidth;
   const height = heightProp ?? resolvedLinearHeight;
@@ -850,6 +1038,7 @@ function GaugeLinear(props: GaugeLinearProps) {
   const seenBgRef = React.useRef<Set<string>>(new Set());
   const seenActiveRef = React.useRef<Set<string>>(new Set());
   const revealAnimationsRef = React.useRef<Animation[]>([]);
+  const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
   const renderGenRef = React.useRef(0);
   const groupRef = React.useRef<SVGGElement | null>(null);
 
@@ -903,11 +1092,13 @@ function GaugeLinear(props: GaugeLinearProps) {
       return;
     }
 
-    deferredGaugeMountReveal(groupEl, collectTargets, timing, seenBgRef, seenActiveRef, revealAnimationsRef, renderGenRef, myGen);
+    revealPostPaintCancelRef.current = deferredGaugeMountReveal(groupEl, collectTargets, timing, seenBgRef, seenActiveRef, revealAnimationsRef, renderGenRef, myGen);
   }, [geometry, geometryScrubbing, prefersReducedMotion, enterTransition, enterStaggerScale]);
 
   React.useEffect(() => {
     return () => {
+      revealPostPaintCancelRef.current?.();
+      revealPostPaintCancelRef.current = null;
       for (const anim of revealAnimationsRef.current) anim.cancel();
       revealAnimationsRef.current = [];
     };

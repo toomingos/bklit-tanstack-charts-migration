@@ -22,6 +22,7 @@ import {
   resolveRadarEnterTransition,
 } from "./internal/radar-reveal";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { useMeasuredRect } from "./internal";
 import "./styles.css";
 
 const DEFAULT_LEVELS = 5;
@@ -43,6 +44,21 @@ const LABEL_DEFAULT_OFFSET = 24;
 const LABEL_DEFAULT_FONT_SIZE = 11;
 
 const Z_PAD = 5;
+
+// Shared reveal-flight guard used by both the mount and motionReplayKey
+// replay layout effects: bails when TanStack's own motions are still live
+// (e.g. mid data-update reconcile) so WAAPI reveal anims never stomp them.
+function hasLiveRevealAnims(container: HTMLElement): boolean {
+  const els = container.querySelectorAll('[data-ts-key^="radar-area:"]');
+  for (const el of els) {
+    if ((el as unknown as { getAnimations?: () => Animation[] }).getAnimations?.().length) return true;
+  }
+  const fallback = container.querySelectorAll(".ts-chart__radial-area path");
+  for (const el of fallback) {
+    if ((el as unknown as { getAnimations?: () => Animation[] }).getAnimations?.().length) return true;
+  }
+  return false;
+}
 
 const HOVER_SCALE = 1.05;
 const FILL_OPACITY_HOVER = 0.35;
@@ -189,7 +205,7 @@ export function RadarChart({
   enterDurationMs = 1100,
   staggerScale = 1,
   enterTransition,
-  motionReplayKey: _motionReplayKey,
+  motionReplayKey = "",
   hoveredIndex: controlledHoveredIndex,
   onHoverChange,
   className,
@@ -197,28 +213,8 @@ export function RadarChart({
   children,
 }: RadarChartProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const [measured, setMeasured] = React.useState({ width: 0, height: 0 });
-
-  React.useLayoutEffect(() => {
-    if (fixedSize) return;
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      setMeasured((prev) =>
-        Math.abs(prev.width - rect.width) > 0.5 || Math.abs(prev.height - rect.height) > 0.5
-          ? { width: rect.width, height: rect.height }
-          : prev,
-      );
-    });
-    ro.observe(el);
-    const rect = el.getBoundingClientRect();
-    setMeasured({ width: rect.width, height: rect.height });
-    return () => ro.disconnect();
-  }, [fixedSize]);
-
-  const chartSize = fixedSize ?? Math.min(measured.width, measured.height);
+  const { width, height } = useMeasuredRect(containerRef, !fixedSize);
+  const chartSize = fixedSize ?? Math.min(width, height);
 
   const { grid, axis, labels, areas } = React.useMemo(
     () => extractRadarChildren(children),
@@ -246,6 +242,8 @@ export function RadarChart({
   const pendingRevealRef = React.useRef<Map<number, Animation>>(new Map());
   const seenRevealedRef = React.useRef<Set<number>>(new Set());
   const revealAnimsRef = React.useRef<Animation[]>([]);
+  const revealDeadlineTimerRef = React.useRef<number | null>(null);
+  const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
   const isMountedRef = React.useRef(true);
 
   const colorForIndex = React.useCallback(
@@ -431,8 +429,13 @@ export function RadarChart({
   enterTransitionRef.current = enterTransition;
   const enterStaggerScaleRef = React.useRef(staggerScale);
   enterStaggerScaleRef.current = staggerScale;
+  const enterDurationMsRef = React.useRef(enterDurationMs);
+  enterDurationMsRef.current = enterDurationMs;
   const animateRef = React.useRef(animate);
   animateRef.current = animate;
+  // First-commit value; the replay layout effect below only fires on an
+  // actual key CHANGE (bklit's `key={`...-${motionReplayKey}`}` remounts).
+  const prevMotionReplayKeyRef = React.useRef(motionReplayKey);
 
   const handleRender = React.useCallback(
     ({ container }: { container: HTMLElement }) => {
@@ -473,7 +476,10 @@ export function RadarChart({
       const resolved = resolveRadarEnterTransition(enterTransitionRef.current);
       const timing = radarRevealTiming(resolved);
       const staggerScale = enterStaggerScaleRef.current;
-      const durationFactor = timing.durationMs / 1100;
+      // bklit `durationFactor = enterDurationMs / 1100` (radar-grid.tsx /
+      // radar-area.tsx): a pure delay scaler for grid/area/label stagger,
+      // INDEPENDENT of the transition's own tween/spring timing.
+      const durationFactor = enterDurationMsRef.current / 1100;
       const gridStaggerMs = 80 * staggerScale * durationFactor;
       const campaignBaseDelayMs = (5 * gridStaggerMs * 0.5 + 200) * durationFactor;
 
@@ -481,7 +487,7 @@ export function RadarChart({
         ...toReveal.map((idx) => campaignBaseDelayMs + idx * 150 * staggerScale * durationFactor),
         0,
       );
-      setRevealDeadline(timing.durationMs + maxStagger, {
+      revealDeadlineTimerRef.current = setRevealDeadline(timing.durationMs + maxStagger, {
         animationsRef: revealAnimsRef,
         onDeadline: () => {},
       });
@@ -490,7 +496,7 @@ export function RadarChart({
         pendingRevealRef.current.set(idx, {} as unknown as Animation);
       }
 
-      onPostPaint(() => {
+      revealPostPaintCancelRef.current = onPostPaint(() => {
         const liveMarksGroup = container.querySelector<SVGGElement>(".ts-chart__marks") as SVGGElement | null;
         if (!liveMarksGroup) return;
 
@@ -704,17 +710,25 @@ export function RadarChart({
   }, [hoveredIndex, resolvedAreas.length, metricKeys, setHoveredIndex]);
 
   React.useEffect(() => {
+    const pendingReveal = pendingRevealRef.current;
+    const revealAnims = revealAnimsRef.current;
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
       setTimeout(() => {
         if (isMountedRef.current) return;
-        for (const anim of pendingRevealRef.current.values()) {
-          try { anim.cancel(); } catch {}
+        if (revealDeadlineTimerRef.current !== null) {
+          window.clearTimeout(revealDeadlineTimerRef.current);
+          revealDeadlineTimerRef.current = null;
         }
-        pendingRevealRef.current.clear();
-        for (const anim of revealAnimsRef.current) {
-          try { anim.cancel(); } catch {}
+        revealPostPaintCancelRef.current?.();
+        revealPostPaintCancelRef.current = null;
+        for (const anim of pendingReveal.values()) {
+          try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
+        }
+        pendingReveal.clear();
+        for (const anim of revealAnims) {
+          try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
         }
         revealAnimsRef.current = [];
       }, 0);
@@ -734,23 +748,48 @@ export function RadarChart({
       requestAnimationFrame(() => {
         if (seenRevealedRef.current.size > 0) return;
         if (!container.querySelector(".ts-chart__marks")) return;
-        const hasAnims = () => {
-          const els = container.querySelectorAll('[data-ts-key^="radar-area:"]');
-          for (const el of els) {
-            if ((el as unknown as { getAnimations?: () => Animation[] }).getAnimations?.().length) return true;
-          }
-          const fallback = container.querySelectorAll(".ts-chart__radial-area path");
-          for (const el of fallback) {
-            if ((el as unknown as { getAnimations?: () => Animation[] }).getAnimations?.().length) return true;
-          }
-          return false;
-        };
-        if (hasAnims()) return;
+        if (hasLiveRevealAnims(container)) return;
         handleRender({ container });
       });
     });
     return () => cancelAnimationFrame(raf);
   }, [handleRender]);
+
+  // bklit `motionReplayKey` parity: in bklit it is spliced into the grid /
+  // level-label / area `key`s and `useMountProgress(...)`'s replay token, so
+  // changing it REMOUNTS those elements and re-runs the whole enter reveal.
+  // There is no per-element key to remount in the TanStack scene (the DOM is
+  // keyed by data, not by replay token), so the replay is expressed as a
+  // full reveal-episode reset: cancel every live WAAPI reveal animation,
+  // clear the seen/pending bookkeeping, then re-run handleRender through the
+  // same double-rAF handoff the mount path uses (so the new fill:"backwards"
+  // anims are created against the same freshly-painted frame the mount path
+  // gets). Skipped entirely while `animate={false}` (bklit renders static).
+  React.useLayoutEffect(() => {
+    if (!animateRef.current) return;
+    if (prevMotionReplayKeyRef.current === motionReplayKey) return;
+    prevMotionReplayKeyRef.current = motionReplayKey;
+    for (const anim of revealAnimsRef.current) {
+      try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
+    }
+    revealAnimsRef.current = [];
+    for (const anim of pendingRevealRef.current.values()) {
+      try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
+    }
+    pendingRevealRef.current.clear();
+    seenRevealedRef.current.clear();
+    const container = containerRef.current;
+    if (!container) return;
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!animateRef.current) return;
+        if (!container.querySelector(".ts-chart__marks")) return;
+        if (hasLiveRevealAnims(container)) return;
+        handleRender({ container });
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [motionReplayKey, handleRender]);
 
   return (
     <div

@@ -13,7 +13,7 @@ import { armBklitSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveRow } from "../bench/live";
 
-export default function BklitLine({ n }: { n: number }) {
+export default function BklitLine({ n, state }: { n: number; state?: "ready" | "loading" }) {
   const [data, setData] = useState<SeededRow[]>(() =>
     generateTimeSeries("line", n),
   );
@@ -34,7 +34,12 @@ export default function BklitLine({ n }: { n: number }) {
   }, [n]);
 
   return (
-    <LineChart data={data} onPhaseChange={onPhaseChange}>
+    <LineChart
+      data={data}
+      onPhaseChange={onPhaseChange}
+      status={state === "loading" ? "loading" : "ready"}
+      loadingLabel={state === "loading" ? "Loading data" : undefined}
+    >
       <Grid horizontal />
       <Line dataKey="seriesA" curve={curveNatural} stroke="var(--chart-line-primary)" />
       <XAxis />

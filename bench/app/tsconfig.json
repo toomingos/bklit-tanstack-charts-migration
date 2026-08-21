@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -13,32 +17,356 @@
     "allowJs": false,
     "baseUrl": ".",
     "paths": {
-      "@": ["../../repos/bklit-ui/packages/ui/src"],
-      "@/*": ["../../repos/bklit-ui/packages/ui/src/*"],
-      "@bklitui/ui/charts": ["../../repos/bklit-ui/packages/ui/src/charts/index.ts"],
-      "@bklitui/ui/charts/decimate-time-series": ["../../repos/bklit-ui/packages/ui/src/charts/decimate-time-series.ts"],
-      "@migrated/charts": ["../../migrated/charts/index.ts"],
-      "react": ["./node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
-      "@number-flow/react": ["./node_modules/@number-flow/react/dist/index.d.ts"],
-      "@tanstack/charts/svg/resources": ["../../repos/tanstack-charts/packages/charts-core/src/svg-resources.ts"],
-      "d3-scale": ["./node_modules/@types/d3-scale/index.d.ts"],
-      "d3-shape": ["./node_modules/@types/d3-shape/index.d.ts"],
-      "d3-array": ["./node_modules/@types/d3-array/index.d.ts"],
-      "d3-geo": ["./node_modules/@types/d3-geo/index.d.ts"],
-      "geojson": ["./node_modules/@types/geojson/index.d.ts"],
-      "@visx/zoom": ["./node_modules/@visx/zoom/lib/index.d.ts"],
-      "@visx/zoom/lib/types": ["./node_modules/@visx/zoom/lib/types.d.ts"],
-      "@visx/zoom/lib/util/matrix": ["./node_modules/@visx/zoom/lib/util/matrix.d.ts"],
-      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"],
-      "react-dom/client": ["./node_modules/@types/react-dom/client.d.ts"],
-      "@bklitui/icons": ["../../repos/bklit-ui/packages/icons/src/index.ts"],
-      "@tanstack/charts": ["../../repos/tanstack-charts/packages/charts-core/src/index.ts"],
-      "@tanstack/charts/*": ["../../repos/tanstack-charts/packages/charts-core/src/*.ts"],
-      "@tanstack/react-charts": ["../../repos/tanstack-charts/packages/react-charts/src/index.ts"],
-      "@tanstack/react-charts/*": ["../../repos/tanstack-charts/packages/react-charts/src/*.ts"],
-      "d3-sankey": ["./node_modules/@types/d3-sankey/index.d.ts"]
+      "@": [
+        "../../repos/bklit-ui/packages/ui/src"
+      ],
+      "@/*": [
+        "../../repos/bklit-ui/packages/ui/src/*"
+      ],
+      "@bklitui/ui/charts": [
+        "../../repos/bklit-ui/packages/ui/src/charts/index.ts"
+      ],
+      "@bklitui/ui/charts/decimate-time-series": [
+        "../../repos/bklit-ui/packages/ui/src/charts/decimate-time-series.ts"
+      ],
+      "@migrated/charts": [
+        "../../showcase/migrated/charts/index.ts"
+      ],
+      "react": [
+        "./node_modules/@types/react/index.d.ts"
+      ],
+      "react/jsx-runtime": [
+        "./node_modules/@types/react/jsx-runtime.d.ts"
+      ],
+      "@number-flow/react": [
+        "./node_modules/@number-flow/react/dist/index.d.ts"
+      ],
+      "@tanstack/charts": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/index.ts"
+      ],
+      "@tanstack/charts/adapter": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/adapter.ts"
+      ],
+      "@tanstack/charts/adapter/renderer": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/adapter-renderer.ts"
+      ],
+      "@tanstack/charts/area": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/area.ts"
+      ],
+      "@tanstack/charts/area-x": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/area-x.ts"
+      ],
+      "@tanstack/charts/arrow": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/arrow.ts"
+      ],
+      "@tanstack/charts/bar": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/bar.ts"
+      ],
+      "@tanstack/charts/band": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/band.ts"
+      ],
+      "@tanstack/charts/box": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/box.ts"
+      ],
+      "@tanstack/charts/canvas": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/canvas.ts"
+      ],
+      "@tanstack/charts/crosshair": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/crosshair.ts"
+      ],
+      "@tanstack/charts/cursor": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/cursor-public.ts"
+      ],
+      "@tanstack/charts/cursor/host": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/cursor-host.ts"
+      ],
+      "@tanstack/charts/d3/area-x": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/d3-area-x.ts"
+      ],
+      "@tanstack/charts/d3/shape": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/d3-shape.ts"
+      ],
+      "@tanstack/charts/difference": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/difference.ts"
+      ],
+      "@tanstack/charts/dom": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/dom.ts"
+      ],
+      "@tanstack/charts/dodge": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/dodge.ts"
+      ],
+      "@tanstack/charts/dot": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/dot.ts"
+      ],
+      "@tanstack/charts/export": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/export.ts"
+      ],
+      "@tanstack/charts/facet": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/facet.ts"
+      ],
+      "@tanstack/charts/focus": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/focus.ts"
+      ],
+      "@tanstack/charts/focus/guide": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/focus-guide.ts"
+      ],
+      "@tanstack/charts/focus/mark": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/focus-mark.ts"
+      ],
+      "@tanstack/charts/focus/disabled": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/focus-disabled.ts"
+      ],
+      "@tanstack/charts/frame": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/frame.ts"
+      ],
+      "@tanstack/charts/group": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/group.ts"
+      ],
+      "@tanstack/charts/geo": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/geo.ts"
+      ],
+      "@tanstack/charts/hexagon": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/hexagon.ts"
+      ],
+      "@tanstack/charts/hierarchy/tree": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/hierarchy-tree.ts"
+      ],
+      "@tanstack/charts/hierarchy/treemap": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/hierarchy-treemap.ts"
+      ],
+      "@tanstack/charts/hierarchy/sunburst": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/hierarchy-sunburst.ts"
+      ],
+      "@tanstack/charts/interaction/signal": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/interaction-signal.ts"
+      ],
+      "@tanstack/charts/interaction/brush": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/interaction-brush.ts"
+      ],
+      "@tanstack/charts/interaction/cursor": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/interaction-cursor.ts"
+      ],
+      "@tanstack/charts/interaction/handle": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/interaction-handle.ts"
+      ],
+      "@tanstack/charts/interaction/zoom": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/interaction-zoom.ts"
+      ],
+      "@tanstack/charts/legend": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/legend.ts"
+      ],
+      "@tanstack/charts/line": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/line.ts"
+      ],
+      "@tanstack/charts/link": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/link.ts"
+      ],
+      "@tanstack/charts/motion": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/motion.ts"
+      ],
+      "@tanstack/charts/network/force": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/network-force.ts"
+      ],
+      "@tanstack/charts/network/sankey": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/network-sankey.ts"
+      ],
+      "@tanstack/charts/mark/composite": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/mark-composite.ts"
+      ],
+      "@tanstack/charts/mark/decorative": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/mark-decorative.ts"
+      ],
+      "@tanstack/charts/mark/scale-values": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/mark-with-scale-values.ts"
+      ],
+      "@tanstack/charts/polar": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/polar.ts"
+      ],
+      "@tanstack/charts/universal": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/universal.ts"
+      ],
+      "@tanstack/charts/reconcile": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/reconcile.ts"
+      ],
+      "@tanstack/charts/rect": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/rect.ts"
+      ],
+      "@tanstack/charts/regression": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/regression.ts"
+      ],
+      "@tanstack/charts/selection": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/selection.ts"
+      ],
+      "@tanstack/charts/renderer": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/renderer.ts"
+      ],
+      "@tanstack/charts/ridgeline": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/ridgeline.ts"
+      ],
+      "@tanstack/charts/rule": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/rule.ts"
+      ],
+      "@tanstack/charts/runtime": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/runtime.ts"
+      ],
+      "@tanstack/charts/scene": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/scene.ts"
+      ],
+      "@tanstack/charts/svg": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/svg.ts"
+      ],
+      "@tanstack/charts/svg/renderer": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/svg-surface.ts"
+      ],
+      "@tanstack/charts/svg/resources": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/svg-resources.ts"
+      ],
+      "@tanstack/charts/stack": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/stack.ts"
+      ],
+      "@tanstack/charts/spring": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/spring.ts"
+      ],
+      "@tanstack/charts/spatial/contour": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/spatial-contour.ts"
+      ],
+      "@tanstack/charts/spatial/delaunay": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/spatial-delaunay.ts"
+      ],
+      "@tanstack/charts/spatial/density": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/spatial-density.ts"
+      ],
+      "@tanstack/charts/spatial/hexbin": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/spatial-hexbin.ts"
+      ],
+      "@tanstack/charts/spatial/voronoi": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/spatial-voronoi.ts"
+      ],
+      "@tanstack/charts/transform": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform.ts"
+      ],
+      "@tanstack/charts/transform/bin": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-bin.ts"
+      ],
+      "@tanstack/charts/transform/bin-time": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-bin-time.ts"
+      ],
+      "@tanstack/charts/transform/bin-xy": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-bin-xy.ts"
+      ],
+      "@tanstack/charts/transform/cumulative": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-cumulative.ts"
+      ],
+      "@tanstack/charts/transform/fold": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-fold.ts"
+      ],
+      "@tanstack/charts/transform/group": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-group.ts"
+      ],
+      "@tanstack/charts/transform/mosaic": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-mosaic.ts"
+      ],
+      "@tanstack/charts/transform/normalize": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-normalize.ts"
+      ],
+      "@tanstack/charts/transform/rank": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-rank.ts"
+      ],
+      "@tanstack/charts/transform/reduce": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-reduce.ts"
+      ],
+      "@tanstack/charts/transform/select": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-select.ts"
+      ],
+      "@tanstack/charts/transform/stack": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-stack.ts"
+      ],
+      "@tanstack/charts/transform/waterfall": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-waterfall.ts"
+      ],
+      "@tanstack/charts/transform/window": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/transform-window.ts"
+      ],
+      "@tanstack/charts/text": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/text.ts"
+      ],
+      "@tanstack/charts/tick": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/tick.ts"
+      ],
+      "@tanstack/charts/tooltip": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/tooltip.ts"
+      ],
+      "@tanstack/charts/tooltip/portal": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/tooltip-portal.ts"
+      ],
+      "@tanstack/charts/types": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/universal-types.ts"
+      ],
+      "@tanstack/charts/vector": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/vector.ts"
+      ],
+      "@tanstack/charts/violin": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/violin.ts"
+      ],
+      "@tanstack/charts/view": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/view.ts"
+      ],
+      "@tanstack/charts/waffle": [
+        "../../showcase/repos/tanstack-charts/packages/charts-core/src/waffle.ts"
+      ],
+      "@tanstack/react-charts": [
+        "../../showcase/repos/tanstack-charts/packages/react-charts/src/index.ts"
+      ],
+      "@tanstack/react-charts/canvas": [
+        "../../showcase/repos/tanstack-charts/packages/react-charts/src/canvas.ts"
+      ],
+      "@tanstack/react-charts/core": [
+        "../../showcase/repos/tanstack-charts/packages/react-charts/src/core.ts"
+      ],
+      "@tanstack/react-charts/tooltip": [
+        "../../showcase/repos/tanstack-charts/packages/react-charts/src/tooltip.tsx"
+      ],
+      "d3-scale": [
+        "./node_modules/@types/d3-scale/index.d.ts"
+      ],
+      "d3-shape": [
+        "./node_modules/@types/d3-shape/index.d.ts"
+      ],
+      "d3-array": [
+        "./node_modules/@types/d3-array/index.d.ts"
+      ],
+      "d3-geo": [
+        "./node_modules/@types/d3-geo/index.d.ts"
+      ],
+      "geojson": [
+        "./node_modules/@types/geojson/index.d.ts"
+      ],
+      "@visx/zoom": [
+        "./node_modules/@visx/zoom/lib/index.d.ts"
+      ],
+      "@visx/zoom/lib/types": [
+        "./node_modules/@visx/zoom/lib/types.d.ts"
+      ],
+      "@visx/zoom/lib/util/matrix": [
+        "./node_modules/@visx/zoom/lib/util/matrix.d.ts"
+      ],
+      "react-dom": [
+        "./node_modules/@types/react-dom/index.d.ts"
+      ],
+      "react-dom/client": [
+        "./node_modules/@types/react-dom/client.d.ts"
+      ],
+      "@bklitui/icons": [
+        "../../repos/bklit-ui/packages/icons/src/index.ts"
+      ],
+      "d3-sankey": [
+        "./node_modules/@types/d3-sankey/index.d.ts"
+      ]
     }
   },
-  "include": ["src", "../data.ts", "../../qa/api-compat"]
+  "include": [
+    "src",
+    "../data.ts",
+    "../../qa/api-compat"
+  ]
 }

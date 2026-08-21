@@ -9,7 +9,7 @@ interface LineDemoProps {
   n: number;
 }
 
-export default function LineDemo({ impl, n }: LineDemoProps) {
+export default function LineDemo({ impl, n: _n }: LineDemoProps) {
   const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
 
   return (
@@ -19,7 +19,14 @@ export default function LineDemo({ impl, n }: LineDemoProps) {
       <Charts.Line dataKey="pageviews" stroke="var(--chart-line-secondary)" />
       <Charts.XAxis />
       <Charts.ChartTooltip />
-      {impl === "bklit" && <Charts.ChartMarkers items={lineChartDocsMarkers} />}
+      {impl === "bklit" && (
+        <BklitCharts.ChartMarkers
+          items={lineChartDocsMarkers.map((marker) => ({
+            ...marker,
+            target: marker.target as "_blank" | "_self",
+          }))}
+        />
+      )}
     </Charts.LineChart>
   );
 }

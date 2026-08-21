@@ -145,9 +145,8 @@ export function AreaChart({
   loadingLabel,
   children,
   style,
-  animationEasing = REVEAL_EASING,
   yDomainTween = true,
-  yDomainTweenDuration = DATA_TWEEN_MS,
+  yDomainTweenDuration: _yDomainTweenDuration = DATA_TWEEN_MS,
   xDomain,
   xDomainSlotCount: _xDomainSlotCount,
   tweenYDomainOnXDomainChange = false,
@@ -695,7 +694,7 @@ export function AreaChart({
           ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
           : false,
     });
-  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, xDomain, areaMarkerConfigs, areaMarkerGradientIdByKey]);
+  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey]);
 
   // Hover chrome (bklit ChartTooltip): imperative overlays driven by
   // TanStack's focus callbacks — no React work per pointer move. Reuses

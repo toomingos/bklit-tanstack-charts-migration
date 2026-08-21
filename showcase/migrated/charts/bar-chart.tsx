@@ -55,11 +55,12 @@ import { BarXAxisOverlay, barCategoryAccessor } from "./internal/bar-x-axis-over
 import { createBarFocusStrategy } from "./internal/bar-focus-strategy";
 import { barSquaresMark } from "./internal/bar-squares-mark";
 import { barColumnTrackMark } from "./internal/bar-column-track-mark";
-import { barDepthBackMark, barDepthFrontMark } from "./internal/bar-depth-marks";
+import { barDepthBackMark, barDepthFrontMark, buildNegBarStops, buildPosBarStops, DEFAULT_GROUND_SHADOW as DEFAULT_BAR_DEPTH_GROUND_SHADOW } from "./internal/bar-depth-marks";
+import type { BarDepthGradientIds } from "./internal/bar-depth-marks";
 import { barPulseMark } from "./internal/bar-pulse-mark";
 import { barTrimmedMark } from "./internal/bar-trimmed-mark";
 import { renderPatternPreset } from "./internal/pattern-preset";
-import type { BarConfig, BarSquaresConfig, BarColumnTrackConfig, BarDepthBackConfig, BarDepthFrontConfig, BarPulseConfig, ChartDatum, ChartPhase } from "./internal/types";
+import type { BarConfig, BarSquaresConfig, BarColumnTrackConfig, ChartDatum, ChartPhase } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
 import { useChartMargin, useContainerWidth } from "./internal";
@@ -177,7 +178,7 @@ export function BarChart({
     };
   }, []);
 
-  const { bars, barSquares: barSquaresRaw, barColumnTracks: barColumnTracksRaw, barDepthBacks: barDepthBacksRaw, barDepthFronts: barDepthFrontsRaw, barPulses: barPulsesRaw, grid, barXAxis, tooltip } = React.useMemo(
+  const { bars, barSquares: barSquaresRaw, barColumnTracks: barColumnTracksRaw, barDepthBacks: barDepthBacksRaw, barDepthFronts: barDepthFrontsRaw, barPulses: barPulsesRaw, barDepthProvider, grid, barXAxis, tooltip } = React.useMemo(
     () => extractChildren(children),
     [children],
   );
@@ -392,6 +393,26 @@ export function BarChart({
     return m;
   }, [squaresDefs]);
 
+  // Depth: bklit bar-depth.tsx's per-bar (objectBoundingBox) glass gradients
+  // + directional side/lid shade gradients — built ONCE per chart (not per
+  // bar, unlike squaresDefs) since objectBoundingBox makes a single gradient
+  // def correct for every bar regardless of its height (bklit's own
+  // rationale, bar-depth.tsx:301-306).
+  const depthBaseId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const depthGroundShadow = barDepthProvider?.groundShadow ?? DEFAULT_BAR_DEPTH_GROUND_SHADOW;
+  const depthGradientIds = React.useMemo<BarDepthGradientIds>(
+    () => ({
+      glassPosId: `${depthBaseId}-bar-depth-glass-pos`,
+      glassNegId: `${depthBaseId}-bar-depth-glass-neg`,
+      sideShadeRtlId: `${depthBaseId}-bar-depth-side-rtl`,
+      sideShadeLtrId: `${depthBaseId}-bar-depth-side-ltr`,
+      topShadeId: `${depthBaseId}-bar-depth-top-shade`,
+    }),
+    [depthBaseId],
+  );
+  const depthGlassPosStops = React.useMemo(() => buildPosBarStops(depthGroundShadow), [depthGroundShadow]);
+  const depthGlassNegStops = React.useMemo(() => buildNegBarStops(depthGroundShadow), [depthGroundShadow]);
+
   const definition = React.useMemo(() => {
     if (width <= 0 || (resolvedSeries.length === 0 && resolvedBarSquares.length === 0)) return null;
     const hasSquares = barSquaresEnabled;
@@ -425,8 +446,6 @@ export function BarChart({
     const marks: ChartMark<ChartDatum, string, number>[] = [];
     const bandPosFn = (label: string) => categoryScaleForOverlay(label) ?? 0;
     const totalN = totalSeriesCount;
-    const squareSizeForMarks = totalN > 0 ? (bandWidth - (totalN > 1 ? GROUP_GAP : 0) * (totalN - 1)) / totalN : 0;
-    void squareSizeForMarks;
     // Underlay ordering: BarColumnTrack BEFORE bars/squares (mirror ReferenceArea underlay).
     if (hasTrack) {
       for (let t = 0; t < resolvedBarColumnTracks.length; t++) {
@@ -501,6 +520,7 @@ export function BarChart({
             categoryAccessor,
             yAccessor: (d: ChartDatum) => d[b.dataKey] as number,
             fill: b.color ?? series.fill,
+            gradientIds: depthGradientIds,
           }),
         );
       }
@@ -520,7 +540,10 @@ export function BarChart({
             groupBandwidth,
             groupScale,
             fill: series.fill,
-            radius: resolveCornerRadius(series.lineCap, groupBandwidth),
+            // bklit bar.tsx:256-259 — perspective bars force cornerRadius to
+            // 0 regardless of `lineCap` so the flat-top 3D lid meets the
+            // front face with no gap/wedge (rounded corners would leave one).
+            radius: 0,
             bandWidth,
             bandScale: categoryScaleForOverlay as unknown as { step?: () => number },
             categoryAccessor,
@@ -557,6 +580,7 @@ export function BarChart({
             bandPos: bandPosFn,
             categoryAccessor,
             yAccessor: (d: ChartDatum) => d[f.dataKey] as number,
+            gradientIds: depthGradientIds,
           }),
         );
       }
@@ -610,6 +634,7 @@ export function BarChart({
     categoryScaleForOverlay,
     squaresDefsByKey,
     squaresBaseId,
+    depthGradientIds,
   ]);
 
   // Hover chrome (bklit ChartTooltip, bar per-category-index dim variant).
@@ -794,7 +819,7 @@ export function BarChart({
         // So just apply cascade per rect using its dataIndex ordering.
         const perColumnDelayMs = staggerDelaySec * 1000;
         const xs = [...byX.keys()].sort((a, b) => a - b);
-        rects.forEach((rectEl, rectIdx) => {
+          rects.forEach((rectEl) => {
           const targetY = Number.parseFloat(rectEl.getAttribute("y") ?? "0");
           const targetHeight = Number.parseFloat(rectEl.getAttribute("height") ?? "0");
           const baselineY = targetY + targetHeight;
@@ -979,6 +1004,39 @@ export function BarChart({
                 {d.patternId && d.patternPreset ? renderPatternPreset(d.patternPreset, d.patternId, { color: `url(#${d.gradientId})` }) : null}
               </React.Fragment>
             ))}
+          </defs>
+        </svg>
+      )}
+      {barDepthEnabled && (
+        // bklit bar-depth.tsx BarDepthBack/BarDepthFront <defs> — per-bar
+        // (objectBoundingBox, default gradientUnits) glass + directional
+        // side/lid shade gradients. Deliberately NOT gradientUnits=
+        // "userSpaceOnUse" (unlike squaresDefs above): objectBoundingBox
+        // makes ONE gradient def correct for every bar's own height/bbox.
+        <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id={depthGradientIds.glassPosId} x1="0" x2="0" y1="0" y2="1">
+              {depthGlassPosStops.map((s) => (
+                <stop key={s.offset} offset={s.offset} stopColor={s.color} stopOpacity={s.opacity} />
+              ))}
+            </linearGradient>
+            <linearGradient id={depthGradientIds.glassNegId} x1="0" x2="0" y1="0" y2="1">
+              {depthGlassNegStops.map((s) => (
+                <stop key={s.offset} offset={s.offset} stopColor={s.color} stopOpacity={s.opacity} />
+              ))}
+            </linearGradient>
+            <linearGradient id={depthGradientIds.sideShadeRtlId} x1="1" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="black" stopOpacity="0.05" />
+              <stop offset="100%" stopColor="black" stopOpacity="0.55" />
+            </linearGradient>
+            <linearGradient id={depthGradientIds.sideShadeLtrId} x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stopColor="black" stopOpacity="0.05" />
+              <stop offset="100%" stopColor="black" stopOpacity="0.55" />
+            </linearGradient>
+            <linearGradient id={depthGradientIds.topShadeId} x1="0" x2="0" y1="1" y2="0">
+              <stop offset="0%" stopColor="black" stopOpacity="0" />
+              <stop offset="100%" stopColor="black" stopOpacity="0.18" />
+            </linearGradient>
           </defs>
         </svg>
       )}

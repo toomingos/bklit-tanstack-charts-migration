@@ -122,7 +122,7 @@ export function LineChart({
   style,
   animationEasing = REVEAL_EASING,
   yDomainTween = true,
-  yDomainTweenDuration = DATA_TWEEN_MS,
+  yDomainTweenDuration: _yDomainTweenDuration = DATA_TWEEN_MS,
   xDomain,
   xDomainSlotCount: _xDomainSlotCount,
   tweenYDomainOnXDomainChange = false,

@@ -9,7 +9,7 @@ interface FunnelDemoProps {
   n: number;
 }
 
-export default function FunnelDemo({ impl, n }: FunnelDemoProps) {
+export default function FunnelDemo({ impl, n: _n }: FunnelDemoProps) {
   const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
 
   return (

@@ -9,7 +9,7 @@ interface BarDemoProps {
   n: number;
 }
 
-export default function BarDemo({ impl, n }: BarDemoProps) {
+export default function BarDemo({ impl, n: _n }: BarDemoProps) {
   const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
 
   return (

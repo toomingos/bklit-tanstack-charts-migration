@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { allCharts, type ChartInfo } from "@/lib/chart-data";
 import { benchmarkData, type ImplMetrics } from "@/lib/benchmark-data";
 import { ChartPreview } from "@/components/chart-preview";
@@ -87,20 +87,6 @@ function valOrNull(m: ImplMetrics | undefined, key: MetricKey): number | null {
   return v;
 }
 
-function speedChip(bklitVal: number | null, migVal: number | null): { text: string; color: "emerald" | "muted" | "amber" } | null {
-  if (bklitVal === null || migVal === null) return null;
-  if (bklitVal === 0) return null;
-  const ratio = bklitVal / migVal;
-  const pctDiff = (bklitVal - migVal) / bklitVal;
-  if (pctDiff > 0.05) {
-    return { text: `${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(1)}× faster`, color: "emerald" };
-  }
-  if (pctDiff < -0.05) {
-    return { text: `${(1 / ratio) >= 10 ? Math.round(1 / ratio) : (1 / ratio).toFixed(1)}× slower`, color: "amber" };
-  }
-  return { text: "on par", color: "muted" };
-}
-
 /* ------------------------------------------------------------------ */
 /*  Sub-components                                                     */
 /* ------------------------------------------------------------------ */
@@ -159,7 +145,7 @@ function chipFor(impl: string, val: number | null, bklitVal: number | null) {
 function StackedLines({
   values,
   maxVal,
-  hasAnyMigrated,
+  hasAnyMigrated: _hasAnyMigrated,
 }: {
   values: { impl: string; value: number | null }[];
   maxVal: number;
@@ -406,6 +392,7 @@ function Tabs({
 /* ------------------------------------------------------------------ */
 
 export function ChartDetailPage({ route }: { route: string }) {
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
   const info = allCharts.find((c) => c.route === route);
 
   if (!info) {
@@ -425,7 +412,6 @@ export function ChartDetailPage({ route }: { route: string }) {
   const tabLabels = bench
     ? ["Average", ...bench.sizes.map((n) => `n=${n}`)]
     : ["Average"];
-  const [activeTabIndex, setActiveTabIndex] = useState(0);
   const activeTab = activeTabIndex === 0
     ? "average"
     : (bench?.sizes[activeTabIndex - 1] ?? "average");

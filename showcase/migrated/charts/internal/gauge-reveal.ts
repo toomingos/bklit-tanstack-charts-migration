@@ -1,11 +1,8 @@
-// Reveal/update WAAPI engine for GaugeChart's notch pop-in — self-contained
-// duplicate of internal/ring-reveal.ts's generic `resolveEnterTransition`/
-// `revealTiming`/`buildProgressKeyframes` machinery (per-family internal
-// modules, docs/LOG.md D43 precedent — NOT imported from ring-reveal.ts, per
-// this deliverable's own instruction), REUSING (importing, not duplicating)
-// `estimateSpringSettleMs`/`sampleSpringProgress` from `./radar-spring`, the
-// confirmed generic closed-form spring utilities every other chart family's
-// reveal module already shares this way.
+// Reveal/update WAAPI engine for GaugeChart's notch pop-in. The generic
+// `resolveEnterTransition`/`revealTiming`/`buildProgressKeyframes` machinery
+// now lives in `./enter-transition` (one implementation, one import path —
+// initiative 1 consolidation); this module re-exports it under gauge's family
+// names and keeps ONLY the gauge-specific key-diffing reconciler below.
 //
 // --- Why there is no separate "mount reveal" vs. "update idiom" here ------
 // Every other migrated chart family (radar/candlestick) needs an explicit
@@ -40,26 +37,18 @@
 // plain-SVG effect) invoke it once per render with the full current set of
 // `{key, element, delayMs}` targets for the bg wave and, separately, the
 // active wave (delay formulas differ, see each call site).
-import { estimateSpringSettleMs, sampleSpringProgress } from "./radar-spring";
+import {
+  buildProgressKeyframes,
+  type EnterTransition,
+  type ResolvedTiming,
+  type RevealTiming,
+} from "./enter-transition";
 
-export interface GaugeEnterTransition {
-  type?: "spring" | "tween";
-  /** Tween duration, seconds. */
-  duration?: number;
-  /** Tween cubic-bezier control points (framer's `ease` array form). */
-  ease?: readonly [number, number, number, number];
-  /** Spring bounce shorthand — converted via the same
-      `springOptionsFromTransition`-derived formula every other family's
-      reveal module uses when `stiffness`/`damping` aren't both given. */
-  bounce?: number;
-  stiffness?: number;
-  damping?: number;
-  mass?: number;
-}
+export { resolveEnterTransition, revealTiming } from "./enter-transition";
 
-export type GaugeResolvedTiming =
-  | { kind: "tween"; durationMs: number; easingCss: string }
-  | { kind: "spring"; stiffness: number; damping: number; mass: number };
+export type GaugeEnterTransition = EnterTransition;
+export type GaugeResolvedTiming = ResolvedTiming;
+export type GaugeRevealTiming = RevealTiming;
 
 // gauge.tsx `DEFAULT_NOTCH_ENTER_TRANSITION` (lines 31-35): unlike every
 // other migrated family (whose default enter transition is a TWEEN), Gauge's
@@ -71,118 +60,6 @@ export const GAUGE_SPRING_FALLBACK: GaugeResolvedTiming = {
   damping: 20,
   mass: 1,
 };
-
-/**
- * bklit motion-utils.ts `springOptionsFromTransition`, verbatim formula —
- * duplicated here (also duplicated in ring-reveal.ts/pie-reveal.ts/
- * radar-reveal.ts) per the per-family self-contained-module precedent.
- */
-function springFromBounce(
-  bounce: number,
-  base: { stiffness: number; damping: number },
-): { stiffness: number; damping: number } {
-  return {
-    stiffness: Math.min(400, Math.max(80, base.stiffness * (1 + bounce * 0.35))),
-    damping: Math.max(8, base.damping * (1 - bounce * 0.25)),
-  };
-}
-
-/**
- * Resolves a caller-supplied `enterTransition` against the spring fallback —
- * mirrors bklit's own dispatch: `notchTransition = enterTransition ??
- * DEFAULT_NOTCH_ENTER_TRANSITION` (gauge.tsx lines 296-298/482-484), an
- * explicit caller transition always wins outright, reduced-motion is
- * handled by the caller BEFORE reaching here (bklit swaps in
- * `{duration:0}` for `prefersReducedMotion`, reproduced by the caller
- * skipping `reconcileGaugeReveal` entirely — see gauge.tsx).
- */
-export function resolveEnterTransition(
-  transition: GaugeEnterTransition | undefined,
-  fallback: GaugeResolvedTiming = GAUGE_SPRING_FALLBACK,
-): GaugeResolvedTiming {
-  if (!transition) return fallback;
-  const type = transition.type ?? fallback.kind;
-  if (type === "spring") {
-    if (
-      typeof transition.stiffness === "number" &&
-      typeof transition.damping === "number"
-    ) {
-      return {
-        kind: "spring",
-        stiffness: transition.stiffness,
-        damping: transition.damping,
-        mass: transition.mass ?? (fallback.kind === "spring" ? fallback.mass : 1),
-      };
-    }
-    const base =
-      fallback.kind === "spring"
-        ? { stiffness: fallback.stiffness, damping: fallback.damping }
-        : { stiffness: 300, damping: 20 };
-    const bounce = transition.bounce ?? 0;
-    const { stiffness, damping } = springFromBounce(bounce, base);
-    return {
-      kind: "spring",
-      stiffness,
-      damping,
-      mass: transition.mass ?? (fallback.kind === "spring" ? fallback.mass : 1),
-    };
-  }
-  const durationMs =
-    (transition.duration ??
-      (fallback.kind === "tween" ? fallback.durationMs / 1000 : 1.1)) * 1000;
-  const easingCss = transition.ease
-    ? `cubic-bezier(${transition.ease.join(",")})`
-    : fallback.kind === "tween"
-      ? fallback.easingCss
-      : "cubic-bezier(0.85, 0, 0.15, 1)";
-  return { kind: "tween", durationMs, easingCss };
-}
-
-export interface GaugeRevealTiming {
-  durationMs: number;
-  easing: string;
-  /** ALWAYS non-null pre-sampled 0->1 progress values — same "why uniform/
-      sampled progress instead of a 2-keyframe tween" rationale as
-      ring-reveal.ts (CSS `d`/transform interpolation pitfalls, docs/LOG.md
-      D51); Gauge's own keyframes are opacity+scale only (never `d`), so the
-      risk that motivated ring's fix doesn't strictly apply here, but reusing
-      the identical sampled-spring representation keeps this module
-      structurally consistent with every other family's reveal engine. */
-  sampledProgress: number[];
-}
-
-const TWEEN_SAMPLES = 64;
-const UNIFORM_PROGRESS = Array.from(
-  { length: TWEEN_SAMPLES },
-  (_, i) => i / (TWEEN_SAMPLES - 1),
-);
-
-export function revealTiming(resolved: GaugeResolvedTiming): GaugeRevealTiming {
-  if (resolved.kind === "tween") {
-    return {
-      durationMs: resolved.durationMs,
-      easing: resolved.easingCss,
-      sampledProgress: UNIFORM_PROGRESS,
-    };
-  }
-  const durationMs = estimateSpringSettleMs(resolved.stiffness, resolved.damping, resolved.mass);
-  const sampledProgress = sampleSpringProgress(
-    resolved.stiffness,
-    resolved.damping,
-    resolved.mass,
-    durationMs,
-    40,
-  );
-  return { durationMs, easing: "linear", sampledProgress };
-}
-
-/** Builds the `progress -> Keyframe` array for one `.animate()` call. */
-export function buildProgressKeyframes(
-  timing: GaugeRevealTiming,
-  toKeyframe: (progress: number) => Keyframe,
-): Keyframe[] {
-  return timing.sampledProgress.map(toKeyframe);
-}
 
 export interface GaugeRevealTarget {
   key: string;

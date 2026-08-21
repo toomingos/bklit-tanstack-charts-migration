@@ -21,14 +21,31 @@ export type ChartKind =
   | "sunburst"
   | "choropleth"
   | "sankey"
-  | "liveline";
+  | "liveline"
+  | "refarea"
+  | "segment"
+  | "projection"
+  | "profitloss"
+  | "legend"
+  | "candlelegend"
+  | "legendhover"
+  | "brush"
+  | "markers"
+  | "patternarea"
+  | "barsquares"
+  | "bardepth";
 export type Scenario = "mount" | "update" | "live" | "hover";
+/** Chart data state: "ready" (default) renders with data; "loading" mounts
+ * the chart in its loading phase (`status="loading"` on charts that support
+ * it) so qa/screenshot.mjs can capture loading chrome (D211 loading gate). */
+export type ChartState = "ready" | "loading";
 
 export interface BenchParams {
   impl: Impl;
   chart: ChartKind;
   n: number;
   scenario: Scenario;
+  state: ChartState;
 }
 
 export function parseBenchParams(): BenchParams {
@@ -61,7 +78,19 @@ export function parseBenchParams(): BenchParams {
     chart !== "sunburst" &&
     chart !== "choropleth" &&
     chart !== "sankey" &&
-    chart !== "liveline"
+    chart !== "liveline" &&
+    chart !== "refarea" &&
+    chart !== "segment" &&
+    chart !== "projection" &&
+    chart !== "profitloss" &&
+    chart !== "legend" &&
+    chart !== "candlelegend" &&
+    chart !== "legendhover" &&
+    chart !== "brush" &&
+    chart !== "markers" &&
+    chart !== "patternarea" &&
+    chart !== "barsquares" &&
+    chart !== "bardepth"
   ) {
     throw new Error(`Missing/invalid ?chart= (got ${JSON.stringify(chart)})`);
   }
@@ -73,6 +102,7 @@ export function parseBenchParams(): BenchParams {
     scenario === "update" || scenario === "live" || scenario === "hover"
       ? scenario
       : "mount";
+  const state: ChartState = sp.get("state") === "loading" ? "loading" : "ready";
 
-  return { impl, chart, n, scenario: resolvedScenario };
+  return { impl, chart, n, scenario: resolvedScenario, state };
 }

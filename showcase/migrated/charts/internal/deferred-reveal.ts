@@ -1,17 +1,34 @@
-const DEFAULT_EASING = "cubic-bezier(0.85, 0, 0.15, 1)";
 const REVEALING_CLASS = "ts-chart__marks--revealing";
 
 /**
  * Schedules `callback` after two rAFs + one macrotask tick — past the
  * current frame's paint, matching bklit's pre-commit framer `initial` timing.
  * Shared by every chart family's deferred WAAPI reveal setup.
+ *
+ * Returns a cancel function that cancels the pending rAF/timeout chain (a
+ * no-op once the callback has already run), so callers can tear the chain
+ * down on unmount/re-render instead of letting it fire against detached DOM.
  */
-export function onPostPaint(callback: () => void): void {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      window.setTimeout(callback, 0);
+export function onPostPaint(callback: () => void): () => void {
+  let raf1 = 0;
+  let raf2 = 0;
+  let timeoutId: number | null = null;
+  let cancelled = false;
+
+  raf1 = requestAnimationFrame(() => {
+    raf2 = requestAnimationFrame(() => {
+      timeoutId = window.setTimeout(() => {
+        if (!cancelled) callback();
+      }, 0);
     });
   });
+
+  return () => {
+    cancelled = true;
+    if (raf1) cancelAnimationFrame(raf1);
+    if (raf2) cancelAnimationFrame(raf2);
+    if (timeoutId !== null) window.clearTimeout(timeoutId);
+  };
 }
 
 /**
@@ -55,6 +72,11 @@ export function setRevealDeadline(
 
 // ---- Higher-level helper (static element list, simple per-element animation) ----
 
+/** Handle returned by `runDeferredReveal` — cancel() tears down the reveal. */
+export interface RevealHandle {
+  cancel(): void;
+}
+
 export interface DeferredRevealConfig {
   container: HTMLElement;
   marksGroupSelector?: string;
@@ -66,9 +88,18 @@ export interface DeferredRevealConfig {
   cleanupAnimation?: (animation: Animation) => void;
   deadlineCallback?: () => void;
   elements: Element[];
+  /**
+   * Heatmap epoch guard (see heatmap-components.tsx): when `seenEpochRef` is
+   * provided, the reveal is skipped if `seenEpochRef.current === revealEpoch`
+   * (already revealed for this epoch), otherwise the epoch is stamped and the
+   * reveal proceeds. Keeps the `bkmRevealed` dataset stamping + epoch
+   * bookkeeping in this single module.
+   */
+  revealEpoch?: number;
+  seenEpochRef?: { current: number | null };
 }
 
-export function runDeferredReveal(config: DeferredRevealConfig): void {
+export function runDeferredReveal(config: DeferredRevealConfig): RevealHandle {
   const {
     container,
     marksGroupSelector = ".ts-chart__marks",
@@ -79,17 +110,62 @@ export function runDeferredReveal(config: DeferredRevealConfig): void {
     cleanupAnimation,
     deadlineCallback,
     elements,
+    revealEpoch,
+    seenEpochRef,
   } = config;
 
-  if (animationDuration <= 0 || elements.length === 0) {
-    onPhaseChange?.("ready");
-    return;
+  const animations: Animation[] = [];
+  let deadlineTimer: number | null = null;
+  let cancelPostPaint: (() => void) | null = null;
+  let marksGroup: Element | null = null;
+  let revealing = false;
+
+  const cancel = () => {
+    if (deadlineTimer !== null) {
+      window.clearTimeout(deadlineTimer);
+      deadlineTimer = null;
+    }
+    if (cancelPostPaint) {
+      cancelPostPaint();
+      cancelPostPaint = null;
+    }
+    for (const anim of animations) {
+      try {
+        anim.cancel();
+      } catch {
+        // teardown race — already cancelled / detached DOM
+      }
+    }
+    animations.length = 0;
+    if (revealing && marksGroup instanceof HTMLElement) {
+      marksGroup.classList.remove(REVEALING_CLASS);
+      revealing = false;
+    }
+  };
+
+  if (seenEpochRef && revealEpoch !== undefined && seenEpochRef.current === revealEpoch) {
+    return { cancel };
   }
 
-  const { pass, marksGroup } = checkRevealGuard(container, marksGroupSelector);
-  if (!pass || !marksGroup) {
+  if (animationDuration <= 0) {
     onPhaseChange?.("ready");
-    return;
+    return { cancel };
+  }
+
+  if (elements.length === 0) {
+    onPhaseChange?.("ready");
+    return { cancel };
+  }
+
+  const { pass, marksGroup: guardGroup } = checkRevealGuard(container, marksGroupSelector);
+  if (!pass || !guardGroup) {
+    onPhaseChange?.("ready");
+    return { cancel };
+  }
+  marksGroup = guardGroup;
+
+  if (seenEpochRef && revealEpoch !== undefined) {
+    seenEpochRef.current = revealEpoch;
   }
 
   onPhaseChange?.("revealing");
@@ -106,13 +182,12 @@ export function runDeferredReveal(config: DeferredRevealConfig): void {
 
   if (marksGroup instanceof HTMLElement) {
     marksGroup.classList.add(REVEALING_CLASS);
+    revealing = true;
   }
 
-  const animations: Animation[] = [];
-
-  onPostPaint(() => {
+  cancelPostPaint = onPostPaint(() => {
     for (let i = 0; i < elements.length; i++) {
-      const result = animateElement(elements[i], i);
+      const result = animateElement(elements[i]!, i);
       if (!result) continue;
       if (Array.isArray(result)) {
         for (const anim of result) {
@@ -124,10 +199,11 @@ export function runDeferredReveal(config: DeferredRevealConfig): void {
     }
     if (marksGroup instanceof HTMLElement) {
       marksGroup.classList.remove(REVEALING_CLASS);
+      revealing = false;
     }
   });
 
-  setRevealDeadline(deadlineMs, {
+  deadlineTimer = setRevealDeadline(deadlineMs, {
     animationsRef: { current: animations },
     onDeadline: () => {
       if (cleanupAnimation) {
@@ -140,6 +216,8 @@ export function runDeferredReveal(config: DeferredRevealConfig): void {
       onPhaseChange?.("ready");
     },
   });
+
+  return { cancel };
 }
 
 export function createDeferredRevealGuard(

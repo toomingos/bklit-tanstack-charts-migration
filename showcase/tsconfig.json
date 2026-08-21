@@ -15,6 +15,12 @@
     "incremental": true,
     "baseUrl": ".",
     "paths": {
+      "@showcase/migrated-charts": [
+        "./migrated/charts/index.ts"
+      ],
+      "@showcase/bklit-charts": [
+        "./repos/bklit-ui/packages/ui/src/charts/index.ts"
+      ],
       "@/lib/utils": [
         "./lib/utils.ts",
         "./repos/bklit-ui/packages/ui/src/lib/utils.ts"
@@ -157,6 +163,7 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "repos"
   ]
 }

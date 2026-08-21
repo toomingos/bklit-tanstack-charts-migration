@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-08-18T15:06:27.183Z",
+  "chromium": "151.0.7922.34",
+  "config": {
+    "warmupRuns": 1,
+    "measuredRuns": 7,
+    "idleMs": 5000,
+    "updateTicks": 30,
+    "hoverSteps": 60
+  },
+  "results": [],
+  "skipped": [
+    {
+      "impl": "migrated",
+      "chart": "sankey",
+      "n": 33,
+      "reason": "page.waitForTimeout: Target page, context or browser has been closed"
+    }
+  ]
+}

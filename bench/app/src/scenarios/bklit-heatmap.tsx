@@ -79,7 +79,7 @@ import { measureUpdatePaint } from "../bench/paint";
 const HEATMAP_ANIMATION_DURATION_MS = 1600;
 const HEATMAP_SETTLE_MARGIN_MS = 100;
 
-export default function BklitHeatmap({ n }: { n: number }) {
+export default function BklitHeatmap({ n, state }: { n: number; state?: "ready" | "loading" }) {
   const [columns, setColumns] = useState<SeededHeatmapColumn[]>(() =>
     generateHeatmap("heatmap", n),
   );
@@ -109,7 +109,13 @@ export default function BklitHeatmap({ n }: { n: number }) {
     <HeatmapInteractionProvider>
       <HeatmapInteractionBoundary>
         <div className="flex w-full flex-col items-stretch gap-3">
-          <HeatmapChart className="w-full" data={columns} layout="fluid">
+          <HeatmapChart
+            className="w-full"
+            data={columns}
+            layout="fluid"
+            status={state === "loading" ? "loading" : "ready"}
+            loadingLabel={state === "loading" ? "Loading data" : undefined}
+          >
             <HeatmapCells />
             <HeatmapXAxis />
             <HeatmapYAxis />

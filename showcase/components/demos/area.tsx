@@ -9,7 +9,7 @@ interface AreaDemoProps {
   n: number;
 }
 
-export default function AreaDemo({ impl, n }: AreaDemoProps) {
+export default function AreaDemo({ impl, n: _n }: AreaDemoProps) {
   const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
 
   return (

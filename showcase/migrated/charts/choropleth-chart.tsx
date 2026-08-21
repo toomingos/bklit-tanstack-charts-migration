@@ -39,6 +39,7 @@ import {
 import { ChoroplethGraticuleOverlay } from "./internal/choropleth-graticule";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
+import { useContainerWidth } from "./internal";
 import "./styles.css";
 
 // ---------------------------------------------------------------------------
@@ -285,9 +286,9 @@ function ChoroplethChartBody({
         geoShape(data.features, {
           key: (f: ChoroplethFeature) => f.properties?.name ?? String(f.id ?? ""),
           projection: () => projForMark,
-          fill: (f: ChoroplethFeature, i: number) =>
+          fill: (f: ChoroplethFeature, { index }) =>
             resolveFeatureFill(
-              f, i,
+              f, index,
               featureConfig?.fill,
               featureConfig?.getFeatureColor,
               featureConfig?.getFeaturePattern,
@@ -361,6 +362,8 @@ function ChoroplethChartBody({
 
   const pathElementsRef = useRef<Map<string, SVGPathElement>>(new Map());
   const revealAnimsRef = useRef<Animation[]>([]);
+  const revealDeadlineTimerRef = useRef<number | null>(null);
+  const revealPostPaintCancelRef = useRef<(() => void) | null>(null);
   const seenRevealedRef = useRef(false);
 
   const ensureHoverChrome = useCallback(() => {
@@ -394,12 +397,12 @@ function ChoroplethChartBody({
     const svg = z?.containerRef.current ?? null;
     if (svg) {
       svg.style.touchAction = "none";
-      svg.style.cursor = z.isDragging ? "grabbing" : "grab";
+      svg.style.cursor = z?.isDragging ? "grabbing" : "grab";
       (svg.style as unknown as { contain: string }).contain = "layout style paint";
     }
   }, []);
 
-  function applyZoomToGroups(zoom: ProvidedZoom<SVGSVGElement> | null, svg: SVGSVGElement, marksG: SVGGElement | null) {
+  const applyZoomToGroups = useCallback((zoom: ProvidedZoom<SVGSVGElement> | null, svg: SVGSVGElement, marksG: SVGGElement | null) => {
     const z = zoom as ZoomWithDrag | null;
     const t = z ? z.toString() : "matrix(1, 0, 0, 1, 0, 0)";
     const tr = z?.isDragging ? "none" : "transform 0.18s ease-out";
@@ -416,7 +419,7 @@ function ChoroplethChartBody({
     svg.style.touchAction = "none";
     svg.style.cursor = z?.isDragging ? "grabbing" : "grab";
     (svg.style as unknown as { contain: string }).contain = "layout style paint";
-  }
+  }, []);
 
   const handleRender = useCallback(({ container }: { container: HTMLElement }) => {
     const c = container as HTMLElement;
@@ -460,12 +463,12 @@ function ChoroplethChartBody({
     if (!geoGroup) return;
     geoGroup.classList.add("ts-chart__marks--revealing");
 
-    setRevealDeadline(FEATURE_ENTER_MS, {
+    revealDeadlineTimerRef.current = setRevealDeadline(FEATURE_ENTER_MS, {
       animationsRef: revealAnimsRef,
       onDeadline: () => {},
     });
 
-    onPostPaint(() => {
+    revealPostPaintCancelRef.current = onPostPaint(() => {
       const liveSvg = c.querySelector<SVGElement>("svg.ts-chart") as SVGElement | null;
       const liveGeo = c.querySelector<SVGGElement>(".ts-chart__geo");
       if (!liveSvg || !liveGeo) return;
@@ -476,14 +479,20 @@ function ChoroplethChartBody({
         { duration: FEATURE_ENTER_MS, easing: REVEAL_EASING, fill: "backwards" },
       );
       revealAnimsRef.current.push(anim);
-      anim.onfinish = () => { try { anim.cancel(); } catch {} };
-      anim.oncancel = () => { try { anim.cancel(); } catch {} };
+      anim.onfinish = () => { try { anim.cancel(); } catch { /* teardown race — already cancelled */ } };
+      anim.oncancel = () => { try { anim.cancel(); } catch { /* teardown race — already cancelled */ } };
     });
-  }, [animationDuration, ensureHoverChrome, data.features]);
+  }, [animationDuration, ensureHoverChrome, data.features, applyZoomToGroups]);
 
   useEffect(() => {
     return () => {
-      for (const a of revealAnimsRef.current) try { a.cancel(); } catch {}
+      if (revealDeadlineTimerRef.current !== null) {
+        window.clearTimeout(revealDeadlineTimerRef.current);
+        revealDeadlineTimerRef.current = null;
+      }
+      revealPostPaintCancelRef.current?.();
+      revealPostPaintCancelRef.current = null;
+      for (const a of revealAnimsRef.current) try { a.cancel(); } catch { /* teardown race — already cancelled */ }
       revealAnimsRef.current = [];
       hoverChromeRef.current?.detach();
       hoverChromeRef.current = null;
@@ -708,19 +717,7 @@ export function ChoroplethChart({
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
   const ratio = useMemo(() => parseAspectRatio(aspectRatio), [aspectRatio]);
   const containerRef = useRef<HTMLDivElement | null>(null);
-
-  const [width, setWidth] = useState(0);
-  useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width ?? 0;
-      setWidth((prev) => (Math.abs(prev - w) > 0.5 ? w : prev));
-    });
-    ro.observe(el);
-    setWidth(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, []);
+  const width = useContainerWidth(containerRef);
 
   const height = Math.max(0, width / ratio);
 

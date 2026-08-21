@@ -1,14 +1,11 @@
 import { createContext, useContext, type RefObject } from "react";
 import type { HeatmapChartPhase, HeatmapRevealMode } from "./heatmap-lifecycle";
-import type { HeatmapHoverCoordinator } from "./heatmap-hover-chrome";
 import type {
   HeatmapColumn,
-  HeatmapColumnSeparatorsConfig,
   HeatmapWeekStartDay,
   HeatmapSeparatorLayout,
 } from "./heatmap-utils";
 import type {
-  HeatmapLevelStyle,
   HeatmapLevelStyles,
 } from "./heatmap-colors";
 import type { HeatmapEnterTransition } from "./heatmap-animation";

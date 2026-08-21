@@ -24,16 +24,14 @@ import {
   HEATMAP_DEFAULT_ENTER_EASE,
   resolveHeatmapEnterFadeDurationSec,
 } from "./heatmap-animation";
-import { onPostPaint, setRevealDeadline } from "./deferred-reveal";
+import { runDeferredReveal, type RevealHandle } from "./deferred-reveal";
 import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
 import {
   HEATMAP_INACTIVE_OPACITY,
   HEATMAP_INACTIVE_TRANSITION_CSS,
-  type HeatmapHoverCoordinator,
   type HeatmapTooltipData,
 } from "./heatmap-hover-chrome";
 import {
-  buildHeatmapLegendGradient,
   buildHeatmapSeparatorGradientStops,
   formatHeatmapContributionLabel,
   formatHeatmapMonthShort,
@@ -43,11 +41,8 @@ import {
   getHeatmapColumnMonthAnchor,
   getHeatmapContributionLevel,
   getHeatmapDayLabels,
-  getHeatmapPlotInnerWidth,
-  getHeatmapSeparatorCount,
   getHeatmapSeparatorLineY,
   getHeatmapSeparatorX,
-  getHeatmapTimeExtent,
   isHeatmapGhostBin,
   isHeatmapHoverEffectEnabled,
   resolveHeatmapDisplayRange,
@@ -56,18 +51,14 @@ import {
   resolveHeatmapSeparatorStrokeDasharray,
   shouldShowHeatmapYAxisTick,
   type HeatmapBin,
-  type HeatmapColumnSeparatorsConfig,
   type HeatmapDisplayRange,
   type HeatmapSeparatorGradient,
   type HeatmapSeparatorGroupBy,
-  type HeatmapSeparatorLayout,
   type HeatmapSeparatorStrokeStyle,
-  type HeatmapWeekStartDay,
   type HeatmapYAxisLabelFormat,
   type HeatmapYAxisTickFilter,
 } from "./heatmap-utils";
 import type {
-  HeatmapLevelStyle,
   HeatmapLevelStyles,
 } from "./heatmap-colors";
 
@@ -177,27 +168,36 @@ function useHeatmapChartDefinition(
     [rowKeys, margin.top, innerHeight],
   );
 
-  const definition = useMemo(
-    () =>
-      defineChart({
-        marks: [
-          cell(cellData, {
-            x: (d: CellDatum) => d.colKey,
-            y: (d: CellDatum) => d.rowKey,
-            z: (d: CellDatum) => d.level,
-            key: (d: CellDatum) => `${d.column}-${d.row}`,
-            inset: 1,
-            radius: cornerRadius,
-          }),
-        ],
+  const ctxForDef = useHeatmap();
+  const definition = useMemo(() => {
+    if (ctxForDef.chartStatus === "loading") {
+      return defineChart({
+        marks: [] as unknown as ReturnType<typeof cell>[],
         x: { scale: xScale, guide: false },
         y: { scale: yScale, guide: false },
         color: { scale: colorScale },
         margin,
         animate: false,
-      }),
-    [cellData, xScale, yScale, colorScale, margin, cornerRadius],
-  );
+      } as never);
+    }
+    return defineChart({
+      marks: [
+        cell(cellData, {
+          x: (d: CellDatum) => d.colKey,
+          y: (d: CellDatum) => d.rowKey,
+          z: (d: CellDatum) => d.level,
+          key: (d: CellDatum) => `${d.column}-${d.row}`,
+          inset: 1,
+          radius: cornerRadius,
+        }),
+      ],
+      x: { scale: xScale, guide: false },
+      y: { scale: yScale, guide: false },
+      color: { scale: colorScale },
+      margin,
+      animate: false,
+    });
+  }, [cellData, xScale, yScale, colorScale, margin, cornerRadius, ctxForDef.chartStatus]);
 
   return definition;
 }
@@ -250,37 +250,18 @@ export function HeatmapCells({
     ctx.levelStyles,
   );
 
+  const isLoading = ctx.chartStatus === "loading";
   const cellsInteractive = useMemo(
-    () => interactive && ctx.chartStatus !== "loading",
-    [interactive, ctx.chartStatus],
+    () => interactive && !isLoading,
+    [interactive, isLoading],
   );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartHostRef = useRef<HTMLDivElement | null>(null);
-  const revealAnimsRef = useRef<Animation[]>([]);
+  const revealHandleRef = useRef<RevealHandle | null>(null);
   const seenRevealEpochRef = useRef<number | null>(null);
   const inputsRef = useRef({ ctx, coordinator, cellsInteractive, cellData });
   inputsRef.current = { ctx, coordinator, cellsInteractive, cellData };
-
-  const handleCellEnter = useCallback(
-    (column: number, row: number) => {
-      const { ctx: c } = inputsRef.current;
-      const bin = c.data[column]?.bins[row];
-      if (!bin) return;
-      coordinator?.setHoveredLegendLevel(null);
-      coordinator?.setHoveredCell({ column, row });
-      const geo = buildHoverCellGeometry(column, row, c);
-      coordinator?.setTooltipData({
-        column,
-        row,
-        count: bin.count,
-        date: bin.date,
-        x: c.margin.left + geo.x + geo.width / 2,
-        y: c.margin.top + geo.y + geo.height / 2,
-      });
-    },
-    [coordinator],
-  );
 
   const handleCellLeave = useCallback(() => {
     coordinator?.setHoveredCell(null);
@@ -351,18 +332,110 @@ export function HeatmapCells({
       el.removeEventListener("pointermove", handlePointerMove);
       el.removeEventListener("pointerleave", handlePointerLeave);
     };
-  }, [cellsInteractive, coordinator, handleCellEnter, handleCellLeave]);
+  }, [cellsInteractive, coordinator, handleCellLeave]);
 
   const hoveredCell = useSyncExternalStore(
     coordinator ? coordinator.subscribe : () => () => {},
     () => coordinator?.getHoveredCell() ?? null,
     () => null,
   );
-  const hasHover = hoveredCell !== null && ctx.chartPhase === "ready";
+  // bklit parity: `isHeatmapHoverEffectEnabled` gates ALL hover styling —
+  // when every prop is 1 there is nothing to dim/highlight, so cells stay
+  // visually untouched (tooltip tracking still runs via the coordinator).
+  const hoverEffectEnabled = useMemo(
+    () => isHeatmapHoverEffectEnabled({ inactiveOpacity, inactiveScale, activeScale }),
+    [inactiveOpacity, inactiveScale, activeScale],
+  );
+  const hasHover = hoveredCell !== null && ctx.chartPhase === "ready" && hoverEffectEnabled;
   const hoverDimOpacity = useMemo(
     () => (inactiveOpacity < 1 ? 1 - inactiveOpacity : 0),
     [inactiveOpacity],
   );
+
+  // bklit `inactiveScale`/`activeScale`/`rowOpacity` parity: bklit applies
+  // `readyHoverStyle`'s scale on each cell's wrapper `motion.g` (origin =
+  // cell center, `HEATMAP_INACTIVE_TRANSITION`) and multiplies the base cell
+  // fillOpacity by `resolveHeatmapRowOpacity`. The migrated cell rects are
+  // TanStack-rendered (data-ts-key ends in `${column}-${row}`), so both are
+  // applied straight onto those rects: per-cell scale with
+  // `transform-box: fill-box` (element-local origin ≡ bklit's px origin) and
+  // per-row fill-opacity. The overlay dim rects keep carrying the opacity
+  // fade (existing migrated mechanism); only the scale + row-opacity layers
+  // are added here, and ghost cells (transparent fill) are skipped.
+  const cellStyleRef = useRef({
+    hoverEffectEnabled,
+    hasHover,
+    hoveredCell,
+    inactiveOpacity,
+    inactiveScale,
+    activeScale,
+    rowOpacity,
+    cellData,
+  });
+  cellStyleRef.current = {
+    hoverEffectEnabled,
+    hasHover,
+    hoveredCell,
+    inactiveOpacity,
+    inactiveScale,
+    activeScale,
+    rowOpacity,
+    cellData,
+  };
+
+  const paintCellStyles = useCallback((host: HTMLElement) => {
+    const {
+      hasHover: hovering,
+      hoveredCell: hovered,
+      inactiveOpacity: iOpacity,
+      inactiveScale: iScale,
+      activeScale: aScale,
+      rowOpacity: rOpacity,
+      cellData: cd,
+    } = cellStyleRef.current;
+    const cellByKey = new Map<string, CellDatum>();
+    for (const d of cd) cellByKey.set(`${d.column}-${d.row}`, d);
+    const rects = host.querySelectorAll<SVGRectElement>("rect[data-ts-key]");
+    for (const rect of rects) {
+      const k = rect.getAttribute("data-ts-key") ?? "";
+      const key = k.slice(k.lastIndexOf(":") + 1);
+      const d = cellByKey.get(key);
+      if (!d) continue;
+      const isHighlighted =
+        hovering &&
+        hovered !== null &&
+        hovered.column === d.column &&
+        hovered.row === d.row &&
+        !d.isGhost;
+      const isDimmed = hovering && !isHighlighted && !d.isGhost;
+      const style = resolveHeatmapHoverStyle(isHighlighted, isDimmed, {
+        inactiveOpacity: iOpacity,
+        inactiveScale: iScale,
+        activeScale: aScale,
+      });
+      rect.style.transformOrigin = "center";
+      rect.style.transformBox = "fill-box";
+      rect.style.transition = `transform ${HEATMAP_INACTIVE_TRANSITION_CSS}`;
+      rect.style.transform = style.scale !== 1 ? `scale(${style.scale})` : "";
+      rect.style.fillOpacity = String(resolveHeatmapRowOpacity(d.row, rOpacity));
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    const host = chartHostRef.current;
+    if (host) paintCellStyles(host);
+  }, [
+    hoveredCell,
+    hasHover,
+    hoverEffectEnabled,
+    inactiveOpacity,
+    inactiveScale,
+    activeScale,
+    rowOpacity,
+    cellData,
+    ctx.chartPhase,
+    paintCellStyles,
+  ]);
 
   const revealInputsRef = useRef({
     animateCells: ctx.animateCells,
@@ -385,94 +458,84 @@ export function HeatmapCells({
     ({ container }: { container: HTMLElement }) => {
       const { animateCells, revealEpoch, enterTransition, animationDuration, enterStaggerScale, cellData: cd } =
         revealInputsRef.current;
-      const epochAtCall = revealEpoch;
-      if (!animateCells) return;
-      if (animationDuration <= 0) return;
-      if (seenRevealEpochRef.current === epochAtCall) return;
-      if (container.querySelector<HTMLElement>(".ts-chart__marks")?.dataset.bkmRevealed === "1") return;
-      seenRevealEpochRef.current = epochAtCall;
-      for (const a of revealAnimsRef.current) {
-        try {
-          a.cancel();
-        } catch {}
-      }
-      revealAnimsRef.current = [];
-      const marksGroup = container.querySelector<HTMLElement>(".ts-chart__marks");
-      if (!marksGroup) return;
-      marksGroup.dataset.bkmRevealed = "1";
-      marksGroup.classList.add("ts-chart__marks--revealing");
+      if (!animateCells || animationDuration <= 0) return;
+
+      // TanStack mounts/reconciles the mark DOM after React's layout effects;
+      // paint prop-driven cell styles again at the public onRender boundary.
+      paintCellStyles(container);
+
       const fadeDurationSec = resolveHeatmapEnterFadeDurationSec(enterTransition, animationDuration);
-      const delayByKey = new Map<string, number>();
-      let maxDelayMs = 0;
-      for (const d of cd) {
-        const delayMs = computeHeatmapEnterFadeDelayMs({
-          column: d.column,
-          row: d.row,
-          revealEpoch: epochAtCall,
-          animationDurationMs: animationDuration,
-          enterStaggerScale,
-          fadeDurationSec,
-        });
-        const key = `${d.column}-${d.row}`;
-        delayByKey.set(key, delayMs);
-        if (delayMs > maxDelayMs) maxDelayMs = delayMs;
+      const durMs = fadeDurationSec * 1000;
+      const easing =
+        enterTransition?.ease
+          ? `cubic-bezier(${enterTransition.ease.join(",")})`
+          : `cubic-bezier(${HEATMAP_DEFAULT_ENTER_EASE.join(",")})`;
+
+      // Build the static element list + per-cell fade delay up front so the
+      // reveal controller owns the guard/epoch/deadline/post-paint mechanics
+      // (deferred-reveal.ts) — no duplicated `bkmRevealed` stamping here.
+      // Cells whose rect hasn't landed yet are skipped; the double-rAF
+      // fallback below re-invokes handleRender once the marks are present.
+      const rectByKey = new Map<string, SVGRectElement>();
+      for (const r of container.querySelectorAll<SVGRectElement>("rect[data-ts-key]")) {
+        const k = r.getAttribute("data-ts-key") ?? "";
+        const key = k.slice(k.lastIndexOf(":") + 1);
+        if (key && !rectByKey.has(key)) rectByKey.set(key, r);
       }
-      const animatedKeys = new Set<string>();
-      setRevealDeadline(fadeDurationSec * 1000 + maxDelayMs, {
-        animationsRef: revealAnimsRef,
-        onDeadline: () => {},
-      });
-      onPostPaint(() => {
-        const liveGroup = container.querySelector<HTMLElement>(".ts-chart__marks");
-        const liveRects =
-          liveGroup?.querySelectorAll<SVGRectElement>("rect[data-ts-key]") ??
-          container.querySelectorAll<SVGRectElement>("rect[data-ts-key]");
-        const liveByKey = new Map<string, SVGRectElement>();
-        for (const r of liveRects) {
-          const k = r.getAttribute("data-ts-key") ?? "";
-          const key = k.slice(k.lastIndexOf(":") + 1);
-          if (key && !liveByKey.has(key)) liveByKey.set(key, r);
-        }
-        const easing =
-          enterTransition?.ease
-            ? `cubic-bezier(${enterTransition.ease.join(",")})`
-            : `cubic-bezier(${HEATMAP_DEFAULT_ENTER_EASE.join(",")})`;
-        const durMs = fadeDurationSec * 1000;
-        for (const d of cd) {
-          const key = `${d.column}-${d.row}`;
-          if (animatedKeys.has(key)) continue;
-          const rect = liveByKey.get(key);
-          if (!rect) continue;
-          if (rect.getAnimations().length > 0) continue;
-          const delayMs = delayByKey.get(key) ?? 0;
-          animatedKeys.add(key);
+      const entries: { element: SVGRectElement; delayMs: number }[] = [];
+      for (const d of cd) {
+        const key = `${d.column}-${d.row}`;
+        const rect = rectByKey.get(key);
+        if (!rect) continue;
+        entries.push({
+          element: rect,
+          delayMs: computeHeatmapEnterFadeDelayMs({
+            column: d.column,
+            row: d.row,
+            revealEpoch,
+            animationDurationMs: animationDuration,
+            enterStaggerScale,
+            fadeDurationSec,
+          }),
+        });
+      }
+      if (entries.length === 0) return;
+
+      revealHandleRef.current?.cancel();
+      revealHandleRef.current = runDeferredReveal({
+        container,
+        animationDuration: durMs,
+        revealEpoch,
+        seenEpochRef: seenRevealEpochRef,
+        staggerDelayMs: (index) => entries[index]?.delayMs ?? 0,
+        animateElement: (element, index) => {
+          const entry = entries[index];
+          if (!entry) return null;
+          const rect = element as SVGRectElement;
+          if (rect.getAnimations().length > 0) return null;
           const anim = rect.animate([{ opacity: "0" }, { opacity: "1" }], {
             duration: durMs,
-            delay: delayMs,
+            delay: entry.delayMs,
             easing,
             fill: "backwards",
           });
-          revealAnimsRef.current.push(anim);
           anim.onfinish = () => {
             try {
               anim.cancel();
-            } catch {}
+            } catch { /* teardown race — already cancelled */ }
           };
-        }
-        if (liveGroup) liveGroup.classList.remove("ts-chart__marks--revealing");
+          return anim;
+        },
+        elements: entries.map((e) => e.element),
       });
     },
-    [],
+    [paintCellStyles],
   );
 
   useEffect(() => {
     return () => {
-      for (const a of revealAnimsRef.current) {
-        try {
-          a.cancel();
-        } catch {}
-      }
-      revealAnimsRef.current = [];
+      revealHandleRef.current?.cancel();
+      revealHandleRef.current = null;
     };
   }, []);
 
@@ -659,8 +722,8 @@ function useDelayedHeatmapTooltipData(
 ): HeatmapTooltipData | null {
   const [delayed, setDelayed] = useState<HeatmapTooltipData | null>(null);
   const isShowingRef = useRef(false);
-  const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showTimerRef = useRef<number | null>(null);
+  const hideTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const clearTimers = () => {
@@ -684,7 +747,7 @@ function useDelayedHeatmapTooltipData(
         isShowingRef.current = true;
         setDelayed(data);
       } else {
-        showTimerRef.current = setTimeout(() => {
+        showTimerRef.current = window.setTimeout(() => {
           isShowingRef.current = true;
           setDelayed(data);
         }, showDelayMs);
@@ -697,7 +760,7 @@ function useDelayedHeatmapTooltipData(
       isShowingRef.current = false;
       setDelayed(null);
     } else {
-      hideTimerRef.current = setTimeout(() => {
+      hideTimerRef.current = window.setTimeout(() => {
         isShowingRef.current = false;
         setDelayed(null);
       }, hideDelayMs);

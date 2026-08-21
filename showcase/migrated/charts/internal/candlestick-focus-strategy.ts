@@ -26,9 +26,7 @@ export function createCandlestickFocusStrategy(
   return {
     resolve(
       points: readonly ChartPoint<ChartDatum, Date, number>[],
-      x: number,
-      _y: number,
-      maxDistance: number,
+      { x, maxDistance },
     ): readonly ChartPoint<ChartDatum, Date, number>[] {
       if (canInteractRef.current !== true) return [];
       if (points.length === 0) return [];
@@ -55,7 +53,7 @@ export function createCandlestickFocusStrategy(
 
     group(
       points: readonly ChartPoint<ChartDatum, Date, number>[],
-      point: ChartPoint<ChartDatum, Date, number>,
+      { point },
     ): readonly ChartPoint<ChartDatum, Date, number>[] {
       if (points.length === 0) return [point];
       const key = epochMs(point.xValue);

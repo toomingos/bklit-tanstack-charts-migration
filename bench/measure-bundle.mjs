@@ -61,8 +61,12 @@ function loadExports(pkgJsonPath, packageName, pkgDir) {
   return entries;
 }
 
-const chartsCoreDir = resolve(REPOS_DIR, "tanstack-charts/packages/charts-core");
-const reactChartsDir = resolve(REPOS_DIR, "tanstack-charts/packages/react-charts");
+// Vendored TanStack v0.7.2 fixture under showcase/ (same source the showcase
+// + bench/app/vite.config.ts resolve, see docs/LOG.md D146). M2c must measure
+// the same TanStack source the gates + QA run against — the top-level repos/
+// clone is an older pre-v0.7.2 snapshot and must NOT be used here.
+const chartsCoreDir = resolve(ROOT, "showcase/repos/tanstack-charts/packages/charts-core");
+const reactChartsDir = resolve(ROOT, "showcase/repos/tanstack-charts/packages/react-charts");
 
 const tanstackAliasEntries = [
   ...loadExports(
@@ -180,13 +184,13 @@ const aliasPlugin = {
 
     // Migrated charts barrel (exact match -> index.ts)
     build.onResolve({ filter: /^@migrated\/charts$/ }, () => ({
-      path: resolve(ROOT, "migrated/charts/index.ts"),
+      path: resolve(ROOT, "showcase/migrated/charts/index.ts"),
     }));
     // Migrated charts subpath (e.g. @migrated/charts/line-chart)
     build.onResolve({ filter: /^@migrated\/charts\// }, (args) => {
       const basePath = args.path.replace(
         "@migrated/charts/",
-        resolve(ROOT, "migrated/charts/") + "/",
+        resolve(ROOT, "showcase/migrated/charts/") + "/",
       );
       const resolved = resolveExt(basePath);
       return resolved ? { path: resolved } : undefined;

@@ -23,7 +23,7 @@ export function ShowcaseLayout({ children }: { children: ReactNode }) {
       <SiteHeader />
       <div className="flex flex-1 pt-14">
         {/* Left sidebar */}
-        <aside className="fixed top-14 bottom-0 w-64 border-r border-border bg-background overflow-y-auto">
+        <aside className="fixed top-14 bottom-0 w-64 border-r border-border bg-background overflow-y-auto hidden md:block">
           <nav className="flex flex-col gap-1 p-4">
             {navigation.map((item) => {
               const isActive =
@@ -49,7 +49,7 @@ export function ShowcaseLayout({ children }: { children: ReactNode }) {
         </aside>
 
         {/* Main content */}
-        <main className="ml-64 flex-1">
+        <main className="md:ml-64 flex-1">
           <div className="mx-auto max-w-6xl p-8">{children}</div>
         </main>
       </div>

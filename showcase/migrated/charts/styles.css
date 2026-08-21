@@ -1,6 +1,23 @@
 /* Migrated chart presentation — makes TanStack's SVG output visually match
    bklit-ui. Scoped under [data-bkm-chart] so nothing leaks. */
 
+:root {
+  --chart-brush-border: var(--chart-grid);
+  --chart-marker-background: oklch(0.97 0.005 260);
+  --chart-marker-border: oklch(0.85 0.01 260);
+  --chart-marker-foreground: oklch(0.3 0.01 260);
+  --chart-marker-badge-background: oklch(0 0 0);
+  --chart-marker-badge-foreground: oklch(1 0 0);
+}
+.dark {
+  --chart-brush-border: var(--chart-grid);
+  --chart-marker-background: oklch(0.25 0.01 260);
+  --chart-marker-border: oklch(0.4 0.01 260);
+  --chart-marker-foreground: oklch(0.9 0 0);
+  --chart-marker-badge-background: oklch(1 0 0);
+  --chart-marker-badge-foreground: oklch(0.15 0 0);
+}
+
 /* --- Grid: bklit Grid uses stroke var(--chart-grid), width 1, opacity 1,
        strokeDasharray "4,4" by default (grid.tsx) --- */
 [data-bkm-chart] .ts-chart__grid line {
@@ -165,6 +182,14 @@
        (hover-chrome.ts) draws the dot instead. --- */
 [data-bkm-chart] [data-ts-chart-focus] {
   display: none;
+}
+
+/* --- Pointer focus: TanStack's chart svg is keyboard-focusable (tabIndex=0)
+       and receives focus on pointerdown, painting the UA outline; bklit
+       charts are never focused by click. Keyboard focus (:focus-visible)
+       keeps the ring for a11y. --- */
+[data-bkm-chart] svg:focus:not(:focus-visible) {
+  outline: none;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -842,6 +867,148 @@
   animation: ts-bkm-shimmer 1.6s linear infinite;
 }
 
+.ts-bkm-loading-label-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ts-bkm-loading-label-text {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.025em;
+  background: linear-gradient(90deg,
+    var(--color-muted-foreground, var(--muted-foreground)) 40%,
+    var(--color-foreground, var(--foreground)) 50%,
+    var(--color-muted-foreground, var(--muted-foreground)) 60%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ts-bkm-shimmer 1.6s linear infinite;
+}
+
+.ts-bkm-loading-label-wrap[data-bkm-loading-exiting] .ts-bkm-loading-label-text {
+  animation: ts-bkm-loading-exit 0.45s cubic-bezier(0.85, 0, 0.15, 1) forwards;
+}
+
+@keyframes ts-bkm-loading-exit {
+  to { opacity: 0; transform: translateY(30px); filter: blur(2px); }
+}
+
+@keyframes ts-bkm-sweep {
+  from { transform: translateX(0); }
+  to { transform: translateX(3); }
+}
+
+.ts-bkm-sweep-band {
+  animation: ts-bkm-sweep 2s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-bkm-chart] .ts-bkm-loading-label,
+  [data-bkm-chart="heatmap"] .ts-bkm-heatmap-loading-label,
+  .ts-bkm-loading-label-text,
+  .ts-bkm-sweep-band {
+    animation: none !important;
+  }
+  .ts-bkm-loading-label-wrap[data-bkm-loading-exiting] .ts-bkm-loading-label-text {
+    opacity: 0;
+    transform: none;
+    filter: none;
+  }
+}
+
+.ts-bkm-loading-label-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ts-bkm-loading-label-text {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.025em;
+  background: linear-gradient(90deg,
+    var(--color-muted-foreground, var(--muted-foreground)) 40%,
+    var(--color-foreground, var(--foreground)) 50%,
+    var(--color-muted-foreground, var(--muted-foreground)) 60%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ts-bkm-shimmer 1.6s linear infinite;
+}
+
+.ts-bkm-loading-label-wrap[data-bkm-loading-exiting] .ts-bkm-loading-label-text {
+  animation: ts-bkm-loading-exit 0.45s cubic-bezier(0.85, 0, 0.15, 1) forwards;
+}
+
+@keyframes ts-bkm-loading-exit {
+  to { opacity: 0; transform: translateY(30px); filter: blur(2px); }
+}
+
+@keyframes ts-bkm-sweep {
+  from { transform: translateX(0); }
+  to { transform: translateX(3); }
+}
+
+.ts-bkm-sweep-band {
+  animation: ts-bkm-sweep 2s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-bkm-chart] .ts-bkm-loading-label,
+  [data-bkm-chart="heatmap"] .ts-bkm-heatmap-loading-label,
+  .ts-bkm-loading-label-text,
+  .ts-bkm-sweep-band {
+    animation: none !important;
+  }
+  .ts-bkm-loading-label-wrap[data-bkm-loading-exiting] .ts-bkm-loading-label-text {
+    opacity: 0;
+    transform: none;
+    filter: none;
+  }
+}
+
+/* --- Legend hover dim (bklit globals.css:126-132) — UNSCOPED, must match
+      exactly; Legend/ChartLegend/ProfitLossLegend render outside [data-bkm-chart] --- */
+.legend-container:has([data-hovered]) > *:not([data-hovered]) {
+  opacity: 0.5;
+}
+.legend-container > * {
+  transition: opacity 150ms ease-out;
+}
+
+/* ProfitLossLine segment dim transition (bklit profit-loss-line.tsx:171
+   inline style) — the TanStack svg renderer emits no `transition`
+   attribute, so the class carries it; the dim value itself is the
+   style.opacity the mark sets. */
+.chart-profit-loss-segment {
+  transition: opacity 0.2s ease-in-out;
+}
+
+/* Candlestick per-candle legend dim (bklit candlestick.tsx:217
+   `style={{ transition: "opacity 0.15s ease-in-out" }}` on each
+   CandlestickBodies <g>) — TanStack svg renderer drops top-level opacity
+   and has no `transition` attribute (D224), so the transition rides this
+   className rule while the value rides `style: { opacity }` on each rect. */
+.chart-candle-cell {
+  transition: opacity 0.15s ease-in-out;
+}
+
 /* Sankey links: the core renderer hardcodes vector-effect="non-scaling-stroke"
    on area paths. With pathLength-normalized dash reveals on hiDPI, Chromium
    then computes dash + stroke width in device px — the reveal dash covers
@@ -862,3 +1029,4 @@
    6 call sites (line/area/composed-chart.tsx). */
 .chart-projection-line path {
   vector-effect: none;
+}

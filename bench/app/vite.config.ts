@@ -35,8 +35,12 @@ function aliasesFromExports(
   return aliases;
 }
 
-const chartsCoreDir = "../../repos/tanstack-charts/packages/charts-core";
-const reactChartsDir = "../../repos/tanstack-charts/packages/react-charts";
+// Vendored TanStack v0.7.2 fixture under showcase/ (same source the showcase
+// builds against, see docs/LOG.md D146). The top-level repos/ clone is an
+// older pre-v0.7.2 snapshot and must NOT be used here — bench/QA gates and
+// showcase must resolve the same TanStack source.
+const chartsCoreDir = "../../showcase/repos/tanstack-charts/packages/charts-core";
+const reactChartsDir = "../../showcase/repos/tanstack-charts/packages/react-charts";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -58,9 +62,11 @@ export default defineConfig({
         replacement: r("../../repos/bklit-ui/packages/ui/src/charts/index.ts"),
       },
       // Migrated components under test (Phase 1+).
+      // Canonical source lives in showcase/migrated (moved there for Vercel
+      // Root Directory compat); the root-level `migrated/` mirror was removed.
       {
         find: "@migrated/charts",
-        replacement: r("../../migrated/charts/index.ts"),
+        replacement: r("../../showcase/migrated/charts/index.ts"),
       },
       // migrated/ lives outside this app root, so its bare imports don't
       // walk up into our node_modules — pin them explicitly.
@@ -91,7 +97,8 @@ export default defineConfig({
         find: "@",
         replacement: r("../../repos/bklit-ui/packages/ui/src"),
       },
-      // TanStack Charts — local workspace sources (see docs/LOG.md D2).
+      // TanStack Charts — vendored v0.7.2 fixture (showcase/repos, D146);
+      // same source showcase renders, aligned with its next.config aliases.
       // Every subpath export (svg/renderer, polar, geo, etc.) is generated
       // straight from each package's own `exports` map (see
       // `aliasesFromExports` above) so it resolves exactly like the real

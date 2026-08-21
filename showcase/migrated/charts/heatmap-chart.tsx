@@ -1,7 +1,6 @@
 import {
   Children,
   isValidElement,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -25,7 +24,6 @@ import {
   rotateHeatmapColumnBins,
   type HeatmapColumn,
   type HeatmapColumnSeparatorsConfig,
-  type HeatmapSeparatorLayout,
   type HeatmapWeekStartDay,
 } from "./internal/heatmap-utils";
 import {
@@ -45,6 +43,7 @@ import {
 } from "./internal/heatmap-animation";
 import { HeatmapCells, HeatmapXAxis, HeatmapYAxis, HeatmapSeparator, type HeatmapSeparatorProps } from "./internal/heatmap-components";
 import type { ChartStatus } from "./internal/types";
+import { usePositiveChartSize } from "./internal";
 import "./styles.css";
 
 const DEFAULT_CHART_STATUS: ChartStatus = "ready";
@@ -107,26 +106,7 @@ export function HeatmapChart({
   showLoadingCells = true,
 }: HeatmapChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [sz, setSz] = useState({ w: 0, h: 0 });
-
-  useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const measure = () => {
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        setSz((prev) =>
-          Math.abs(prev.w - rect.width) > 0.5 || Math.abs(prev.h - rect.height) > 0.5
-            ? { w: rect.width, h: rect.height }
-            : prev,
-        );
-      }
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const sz = usePositiveChartSize(containerRef);
 
   const coordinatorRef = useRef<HeatmapHoverCoordinator | null>(null);
   if (coordinatorRef.current === null) coordinatorRef.current = createHeatmapHoverCoordinator();
@@ -464,7 +444,15 @@ function HeatmapChartSurface({
       {ctx.showLoadingLabel ? (
         <div
           className={`ts-bkm-heatmap-loading-label${ctx.chartPhase === "exitingReady" ? " ts-bkm-heatmap-loading-label--exiting" : ""}`}
-          style={{ left: ctx.margin.left, top: 0 }}
+          style={{
+            left: 0,
+            top: 0,
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
         >
           {ctx.loadingLabel}
         </div>

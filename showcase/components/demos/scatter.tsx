@@ -9,7 +9,7 @@ interface ScatterDemoProps {
   n: number;
 }
 
-export default function ScatterDemo({ impl, n }: ScatterDemoProps) {
+export default function ScatterDemo({ impl, n: _n }: ScatterDemoProps) {
   const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
 
   return (

@@ -11,7 +11,7 @@ import { armBklitSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveRow } from "../bench/live";
 
-export default function BklitArea({ n }: { n: number }) {
+export default function BklitArea({ n, state }: { n: number; state?: "ready" | "loading" }) {
   const [data, setData] = useState<SeededRow[]>(() =>
     generateTimeSeries("area", n),
   );
@@ -32,7 +32,13 @@ export default function BklitArea({ n }: { n: number }) {
   }, [n]);
 
   return (
-    <AreaChart data={data} animationDuration={1100} onPhaseChange={onPhaseChange}>
+    <AreaChart
+      data={data}
+      animationDuration={1100}
+      onPhaseChange={onPhaseChange}
+      status={state === "loading" ? "loading" : "ready"}
+      loadingLabel={state === "loading" ? "Loading data" : undefined}
+    >
       <Grid horizontal />
       <Area
         dataKey="seriesA"

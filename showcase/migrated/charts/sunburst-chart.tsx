@@ -68,6 +68,7 @@ import {
   buildRevealTiming,
 } from "./internal/sunburst-reveal";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import type { Arc } from "d3-shape";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { displayNameOf } from "./children";
 import { SunburstCenterOverlay } from "./internal/sunburst-center";
@@ -218,10 +219,6 @@ export function SunburstChart({
   onPhaseChange,
   children,
 }: SunburstChartProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const prefersReducedMotion = usePrefersReducedMotion();
-
   // --- Phase tracking (deduped — just gate on last emitted value) ---
   const phaseRef = useRef<"loading" | "revealing" | "ready">("revealing");
   const setPhase = useCallback((p: "loading" | "revealing" | "ready") => {
@@ -235,10 +232,6 @@ export function SunburstChart({
     () => buildArcs(data),
     [data],
   );
-
-  const fullRadius = size / 2;
-  const growPadding = paddingProp ?? defaultSunburstGrowPadding(maxDepth, size, hoverPop);
-  const radius = Math.max(8, fullRadius - growPadding);
 
   // Depth-descending sort for DOM order (outer rings first = hit-test priority)
   const sortedArcs = useMemo(
@@ -255,9 +248,90 @@ export function SunburstChart({
     if (!isFocusControlled) setInternalFocusId(rootId);
   }, [rootId, isFocusControlled]);
 
+  const prefersReducedMotion = usePrefersReducedMotion();
+
   const rootFocus = focusById.get(rootId);
   const focus = focusById.get(focusId) ?? rootFocus;
   if (!(focus && rootFocus)) return null;
+
+  // The subtree below needs non-null focus/rootFocus; render it through an inner
+  // component so every hook stays unconditional (react-hooks/rules-of-hooks).
+  return (
+    <SunburstChartInner
+      data={data}
+      size={size}
+      className={className}
+      focus={focus}
+      rootFocus={rootFocus}
+      layout={{ arcs, maxDepth, focusById, rootId, sortedArcs }}
+      focusId={focusId}
+      isFocusControlled={isFocusControlled}
+      setInternalFocusId={setInternalFocusId}
+      setPhase={setPhase}
+      onFocusChange={onFocusChange}
+      hoveredIndexProp={hoveredIndexProp}
+      onHoverChange={onHoverChange}
+      hoverPop={hoverPop}
+      paddingProp={paddingProp}
+      prefersReducedMotion={prefersReducedMotion}
+      children={children}
+    />
+  );
+}
+
+interface SunburstChartInnerProps {
+  data: SunburstNode;
+  size: number;
+  className?: string;
+  focus: Focus;
+  rootFocus: Focus;
+  layout: {
+    arcs: ArcDatum[];
+    maxDepth: number;
+    focusById: Map<string, Focus>;
+    rootId: string;
+    sortedArcs: ArcDatum[];
+  };
+  focusId: string;
+  isFocusControlled: boolean;
+  setInternalFocusId: (id: string) => void;
+  setPhase: (p: "loading" | "revealing" | "ready") => void;
+  onFocusChange?: (focusId: string) => void;
+  hoveredIndexProp?: number | null;
+  onHoverChange?: (index: number | null) => void;
+  hoverPop: number;
+  paddingProp?: number;
+  prefersReducedMotion: boolean;
+  children: ReactNode;
+}
+
+function SunburstChartInner({
+  data,
+  size,
+  className,
+  focus,
+  rootFocus,
+  layout,
+  focusId,
+  isFocusControlled,
+  setInternalFocusId,
+  setPhase,
+  onFocusChange,
+  hoveredIndexProp,
+  onHoverChange,
+  hoverPop,
+  paddingProp,
+  prefersReducedMotion,
+  children,
+}: SunburstChartInnerProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // --- Layout (verbatim bklit math) ---
+  const { arcs, maxDepth, focusById, rootId, sortedArcs } = layout;
+
+  const fullRadius = size / 2;
+  const growPadding = paddingProp ?? defaultSunburstGrowPadding(maxDepth, size, hoverPop);
+  const radius = Math.max(8, fullRadius - growPadding);
 
   // --- Hover state (direct React state, no coordinator mediator) ---
   const isHoverControlled = hoveredIndexProp !== undefined;
@@ -316,12 +390,14 @@ export function SunburstChart({
   const seenRevealedRef = useRef<Set<number>>(new Set());
   const pendingRevealIds = useRef<Set<number>>(new Set());
   const revealAnimsRef = useRef<Animation[]>([]);
+  const revealDeadlineTimerRef = useRef<number | null>(null);
+  const revealPostPaintCancelRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     setPrevFocusId(rootId);
     setZoomT(1);
-    zoomTargetRef.current = focusById.get(rootId) ?? rootFocus!;
-  }, [rootId]);
+    zoomTargetRef.current = focusById.get(rootId) ?? rootFocus;
+  }, [rootId, focusById, rootFocus]);
 
   const zoomTo = useCallback(
     (nextId: string) => {
@@ -376,7 +452,7 @@ export function SunburstChart({
         requestAnimationFrame(tick);
       });
     },
-    [focusId, focus, focusById, isFocusControlled, onFocusChange, setHoveredArcIndex],
+    [focusId, focus, focusById, isFocusControlled, onFocusChange, setHoveredArcIndex, setInternalFocusId, prefersReducedMotion, zoomT],
   );
 
   // --- Arc rows (static-layout + hover grow baked in) ---
@@ -440,19 +516,23 @@ export function SunburstChart({
               id: "sunburst-arcs",
               key: (d) => `sunburst-arc-${d.arcIndex}`,
               generator: () => {
-                const gen = (d: SunburstArcRow) =>
-                  arcPath({ a0: d.startAngle, a1: d.endAngle, innerR: d.innerRadius, outerR: d.outerRadius }, 1, 1) ?? "";
-                // TanStack's WrappedArc type expects these accessors — stub them for type compat
-                (gen as any).startAngle = () => gen;
-                (gen as any).endAngle = () => gen;
-                (gen as any).innerRadius = () => gen;
-                (gen as any).outerRadius = () => gen;
-                (gen as any).centroid = () => [0, 0];
-                (gen as any).padAngle = () => gen;
-                (gen as any).cornerRadius = () => gen;
-                (gen as any).padRadius = () => gen;
-                (gen as any).context = () => gen;
-                return gen as any;
+                type SunburstArcFactory = Arc<unknown, SunburstArcRow>;
+                const gen = ((d: SunburstArcRow) =>
+                  arcPath({ a0: d.startAngle, a1: d.endAngle, innerR: d.innerRadius, outerR: d.outerRadius }, 1, 1) ?? "") as unknown as SunburstArcFactory;
+                // TanStack's polar mark calls WrappedArc accessors — stub them for type compat
+                const stub = () => gen;
+                Object.assign(gen, {
+                  startAngle: stub,
+                  endAngle: stub,
+                  innerRadius: stub,
+                  outerRadius: stub,
+                  padAngle: stub,
+                  cornerRadius: stub,
+                  padRadius: stub,
+                  context: stub,
+                  centroid: () => [0, 0] as [number, number],
+                });
+                return gen;
               },
               fill: (d) => d.fill,
               stroke: "var(--chart-background)",
@@ -525,12 +605,12 @@ export function SunburstChart({
     for (const { arc } of toReveal) {
       pendingRevealIds.current.add(arc.arcIndex);
     }
-    setRevealDeadline(1100 + maxDelay + 935, {
+    revealDeadlineTimerRef.current = setRevealDeadline(1100 + maxDelay + 935, {
       animationsRef: revealAnimsRef,
       onDeadline: () => setPhase("ready"),
     });
 
-    onPostPaint(() => {
+    revealPostPaintCancelRef.current = onPostPaint(() => {
       const liveMap = getSunburstPathMap(container);
       const liveMarksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
       liveMarksGroup?.classList.remove("ts-chart__marks--revealing");
@@ -647,16 +727,25 @@ export function SunburstChart({
   }, [zoomT, sortedArcs, maxDepth, radius, prevFocus]);
 
   useEffect(() => {
+    const pendingReveal = pendingRevealIds.current;
+    const revealAnims = revealAnimsRef.current;
+    const zoomAnims = zoomAnimationsRef.current;
     return () => {
-      pendingRevealIds.current.clear();
-      for (const anim of revealAnimsRef.current) {
-        try { anim.cancel(); } catch {}
+      if (revealDeadlineTimerRef.current !== null) {
+        window.clearTimeout(revealDeadlineTimerRef.current);
+        revealDeadlineTimerRef.current = null;
+      }
+      revealPostPaintCancelRef.current?.();
+      revealPostPaintCancelRef.current = null;
+      pendingReveal.clear();
+      for (const anim of revealAnims) {
+        try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
       }
       revealAnimsRef.current = [];
-      for (const anim of zoomAnimationsRef.current) {
-        try { anim.cancel(); } catch {}
+      for (const anim of zoomAnims) {
+        try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
       }
-      zoomAnimationsRef.current.clear();
+      zoomAnims.clear();
     };
   }, []);
 
@@ -747,11 +836,11 @@ export function SunburstChart({
     const already = (svg as unknown as HTMLElement & { dataset: DOMStringMap }).dataset.bkmLabelsRevealed === "1";
     if (already) return;
     for (const anim of labelRevealAnimsRef.current) {
-      try { anim.cancel(); } catch {}
+      try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
     }
     labelRevealAnimsRef.current = [];
     const liveSvg = svg;
-    onPostPaint(() => {
+    const cancelLabelPostPaint = onPostPaint(() => {
       // Re-query inside postPaint so we animate the live nodes, dim via CSS after.
       const liveTexts = Array.from(liveSvg.querySelectorAll<SVGTextElement>("text.ts-bkm-sunburst-label"));
       for (const t of liveTexts) {
@@ -780,9 +869,10 @@ export function SunburstChart({
       }
     }, labelsRevealDelayMs + enterDurationMs + 30);
     return () => {
+      cancelLabelPostPaint();
       window.clearTimeout(timer);
       for (const anim of labelRevealAnimsRef.current) {
-        try { anim.cancel(); } catch {}
+        try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
       }
     };
   }, [labelsCount, labelsRevealDelayMs, prefersReducedMotion]);
@@ -790,7 +880,7 @@ export function SunburstChart({
   useEffect(() => {
     return () => {
       for (const anim of labelRevealAnimsRef.current) {
-        try { anim.cancel(); } catch {}
+        try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
       }
       labelRevealAnimsRef.current = [];
     };

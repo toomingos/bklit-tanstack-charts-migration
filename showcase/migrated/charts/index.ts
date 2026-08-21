@@ -191,10 +191,24 @@ export {
 } from "./choropleth-chart";
 export type { TransformMatrix } from "@visx/zoom";
 export {
+  ChartConfigProvider,
+  useChartConfig,
+  type ChartConfigProviderProps,
+  type ChartConfigValue,
+  type SpringConfig,
+} from "./internal/chart-config-context";
+export {
   Line,
   Area,
+  PatternArea,
   Scatter,
   Bar,
+  BarSquares,
+  BarColumnTrack,
+  BarDepthProvider,
+  BarDepthBack,
+  BarDepthFront,
+  BarPulse,
   SeriesBar,
   BarXAxis,
   Grid,
@@ -205,12 +219,101 @@ export {
   LiveLine,
   LiveXAxis,
   LiveYAxis,
+  ProjectionLine,
+  ProjectionLineEndMarker,
+  LineSeriesTerminalMarker,
+  ChartMarkers,
+  type ProjectionLineProps,
+  type ProjectionLineEndMarkerProps,
+  type LineSeriesTerminalMarkerProps,
+  type ChartMarkersChildProps,
 } from "./children";
+export type { ChartMarker, ChartMarkersConfig } from "./internal/types";
+export { ChartMarkersOverlay } from "./internal/chart-markers";
+export {
+  buildProjectionPath,
+  computeProjectionAnchorTangentSlope,
+  buildHorizontalTangentBezierPath,
+  projectionValueExtents,
+  projectionDateExtents,
+  type ProjectionMode,
+  type ProjectionAutoMethod,
+  type ProjectionCurveKind,
+  type ProjectionPathDensity,
+  type ProjectionPoint,
+  type BuildProjectionPathOptions,
+} from "./internal/projection-utils";
+export type { ProjectionLineConfig } from "./internal/projection-config";
+export {
+  legendCssVars,
+  type LegendItemData,
+  type LegendContextValue,
+  type LegendItemContextValue,
+  LegendProvider,
+  LegendItemProvider,
+  useLegend,
+  useLegendItem,
+} from "./internal/legend-context";
+export {
+  Legend,
+  LegendItem as LegendItemComponent,
+  LegendMarker,
+  LegendLabel,
+  LegendValue,
+  LegendProgress,
+  type LegendProps,
+  type LegendItemProps,
+  type LegendMarkerProps,
+  type LegendLabelProps,
+  type LegendValueProps,
+  type LegendProgressProps,
+} from "./internal/legend";
+export { LegendItem } from "./internal/legend";
+export {
+  ChartLegend,
+  type ChartLegendProps,
+  type LegendItem as ChartLegendLegendItem,
+} from "./internal/chart-legend";
+export {
+  ChartLegendHoverProvider,
+  useChartLegendHover,
+} from "./internal/chart-legend-hover";
+export {
+  splitProfitLossSegments,
+  type ProfitLossSegment,
+} from "./internal/profit-loss-segments";
+export {
+  PROFIT_LOSS_POSITIVE_COLOR,
+  PROFIT_LOSS_NEGATIVE_COLOR,
+  profitLossColor,
+  PROFIT_LOSS_TOOLTIP_LABEL_FALLBACK,
+  resolveProfitLossTooltipLabel,
+  type ProfitLossLineConfig,
+} from "./internal/profit-loss-config";
+export {
+  ProfitLossLegend,
+  PROFIT_LOSS_LEGEND_ITEMS,
+  type ProfitLossLegendProps,
+} from "./internal/profit-loss-legend";
+export {
+  ProfitLossLegendHoverProvider,
+  useProfitLossLegendHover,
+} from "./internal/profit-loss-legend-hover";
+export { CHART_CHILD_PASSTHROUGH } from "./children";
+export {
+  ProfitLossLine,
+  type ProfitLossLineProps,
+} from "./children";
+export { extractProjectionLineConfigs, mergeProjectionYDomain, mergeProjectionXDomainMax, resolveVisibleEndX } from "./internal/projection-config";
+export { ReferenceArea, type ReferenceAreaProps, type ReferenceAreaStrokeStyle, type ReferenceAreaIfOverflow } from "./reference-area";
+export { SegmentBackground, SegmentLineFrom, SegmentLineTo, type SegmentBackgroundProps, type SegmentLineProps, type SegmentLineVariant } from "./segment";
+export { ChartSelectionContext, type ChartSelection } from "./internal/chart-selection";
 export type {
   ChartPhase,
   ChartStatus,
   LineConfig,
   AreaConfig,
+  PatternAreaConfig,
   ScatterConfig,
   BarConfig,
   SeriesBarConfig,
@@ -224,3 +327,23 @@ export type {
   LiveYAxisConfig,
   MomentumColors,
 } from "./internal/types";
+
+// Initiative 9 (D227): chart brush — layout/state owner + strip brush child.
+export {
+  BrushLayout,
+  type BrushLayoutProps,
+  type BrushLayoutState,
+} from "./internal/brush-layout";
+export {
+  ChartBrush,
+  type ChartBrushProps,
+  type BrushSelectionPattern,
+  type ChartBrushSelectedBoxStyle,
+  type BrushHost,
+} from "./internal/chart-brush";
+export {
+  useBrushSelection,
+  filterDataByXDomain,
+  resolveBrushTrackXExtent,
+  type BrushSelection,
+} from "./internal/brush-selection";

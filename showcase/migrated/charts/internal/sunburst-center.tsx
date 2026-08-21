@@ -1,8 +1,6 @@
 // SunburstCenter — config carrier + clickable center overlay for zoom-out.
 // Extracted from sunburst-chart.tsx (R6 module split).
 
-import { type ReactNode } from "react";
-
 // ---------------------------------------------------------------------------
 // Config carrier — returns null, classified by displayName in sunburst-chart
 // ---------------------------------------------------------------------------

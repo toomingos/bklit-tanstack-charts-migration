@@ -39,15 +39,12 @@
 import { pie as d3Pie } from "d3-shape";
 import {
   Children,
-  createContext,
   isValidElement,
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
-  useState,
   type CSSProperties,
   type ReactElement,
   type ReactNode,
@@ -73,6 +70,7 @@ import {
   type PieEnterTransition,
 } from "./internal/pie-reveal";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { useMeasuredRect } from "./internal";
 import {
   PieStableContext,
   PieHoverCoordinatorContext,
@@ -209,35 +207,6 @@ export interface PieChartProps {
   geometryScrubbing?: boolean;
 }
 
-function useMeasuredSize(fixedSize: number | undefined): {
-  containerRef: React.RefObject<HTMLDivElement | null>;
-  size: number;
-} {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [measured, setMeasured] = useState({ width: 0, height: 0 });
-
-  useLayoutEffect(() => {
-    if (fixedSize) return;
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      setMeasured((prev) =>
-        Math.abs(prev.width - rect.width) > 0.5 || Math.abs(prev.height - rect.height) > 0.5
-          ? { width: rect.width, height: rect.height }
-          : prev,
-      );
-    });
-    ro.observe(el);
-    const rect = el.getBoundingClientRect();
-    setMeasured({ width: rect.width, height: rect.height });
-    return () => ro.disconnect();
-  }, [fixedSize]);
-
-  return { containerRef, size: fixedSize ?? Math.min(measured.width, measured.height) };
-}
-
 interface PieRowDatum {
   startAngle: number;
   endAngle: number;
@@ -269,7 +238,9 @@ export function PieChart({
   geometryScrubbing = false,
   children,
 }: PieChartProps) {
-  const { containerRef, size } = useMeasuredSize(fixedSize);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const { width, height } = useMeasuredRect(containerRef, !fixedSize);
+  const size = fixedSize ?? Math.min(width, height);
 
   // --- Hover coordinator (unchanged from D49) ---
   const isControlledRef = useRef(hoveredIndex !== undefined);
@@ -435,6 +406,8 @@ export function PieChart({
   const seenPieRevealedRef = useRef<Set<number>>(new Set());
   const pendingRevealRef = useRef<Map<number, Animation>>(new Map());
   const revealAnimsRef = useRef<Animation[]>([]);
+  const revealDeadlineTimerRef = useRef<number | null>(null);
+  const revealPostPaintCancelRef = useRef<(() => void) | null>(null);
   const isMountedRef = useRef(true);
 
   const handleRender = useCallback(({ container }: { container: HTMLElement }) => {
@@ -489,7 +462,10 @@ export function PieChart({
       ...toReveal.map(({ dataIndex }) => (0.1 + dataIndex * 0.08) * enterStaggerScale * 1000),
       0,
     );
-    setRevealDeadline(timing.durationMs + maxDelayMs, {
+    if (revealDeadlineTimerRef.current !== null) {
+      window.clearTimeout(revealDeadlineTimerRef.current);
+    }
+    revealDeadlineTimerRef.current = setRevealDeadline(timing.durationMs + maxDelayMs, {
       animationsRef: revealAnimsRef,
       onDeadline: () => {},
     });
@@ -498,7 +474,7 @@ export function PieChart({
       pendingRevealRef.current.set(arc.index, {} as unknown as Animation);
     }
 
-    onPostPaint(() => {
+    revealPostPaintCancelRef.current = onPostPaint(() => {
       const liveMarksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
       const liveAll =
         liveMarksGroup?.querySelectorAll<SVGPathElement>('path[data-ts-key^="pie-slices:"]') ??
@@ -661,23 +637,32 @@ export function PieChart({
       for (const cleanup of localCleanupMap.values()) cleanup();
       localCleanupMap.clear();
     };
-  }, [data.length, geometryScrubbing]);
+  }, [data.length, geometryScrubbing, containerRef, coordinator]);
 
   useEffect(() => {
+    const pendingReveal = pendingRevealRef.current;
+    const revealAnims = revealAnimsRef.current;
+    const sliceStates = sliceStateRef.current;
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      if (revealDeadlineTimerRef.current !== null) {
+        window.clearTimeout(revealDeadlineTimerRef.current);
+        revealDeadlineTimerRef.current = null;
+      }
+      revealPostPaintCancelRef.current?.();
+      revealPostPaintCancelRef.current = null;
       setTimeout(() => {
         if (isMountedRef.current) return;
-        for (const anim of pendingRevealRef.current.values()) {
-          try { anim.cancel(); } catch {}
+        for (const anim of pendingReveal.values()) {
+          try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
         }
-        pendingRevealRef.current.clear();
-        for (const anim of revealAnimsRef.current) {
-          try { anim.cancel(); } catch {}
+        pendingReveal.clear();
+        for (const anim of revealAnims) {
+          try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
         }
         revealAnimsRef.current = [];
-        for (const state of sliceStateRef.current.values()) state.runtime.stop();
+        for (const state of sliceStates.values()) state.runtime.stop();
       }, 0);
     };
   }, []);
@@ -703,7 +688,7 @@ export function PieChart({
       });
     });
     return () => cancelAnimationFrame(raf);
-  }, [data.length, geometryScrubbing, handleRender]);
+  }, [data.length, geometryScrubbing, handleRender, containerRef]);
 
   if (size < 10) {
     return (

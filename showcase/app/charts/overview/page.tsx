@@ -7,15 +7,6 @@ import { allCharts, summary, type ChartInfo } from "@/lib/chart-data";
 type SortKey = keyof Pick<ChartInfo, "index" | "name" | "status" | "waivers">;
 type SortDir = "asc" | "desc";
 
-function fmtSpeed(v: string): string {
-  if (!v || v === "N/A") return "—";
-  const pct = parseInt(v.replace(/[−%]/g, ""), 10);
-  if (isNaN(pct)) return v;
-  if (pct <= 0) return "on par";
-  const x = 100 / (100 - pct);
-  return `${x >= 10 ? Math.round(x) : x.toFixed(1)}× faster`;
-}
-
 function fmtSpeedShort(v: string): string {
   if (!v || v === "N/A") return "—";
   const pct = parseInt(v.replace(/[−%]/g, ""), 10);

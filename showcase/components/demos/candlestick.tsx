@@ -9,7 +9,7 @@ interface CandlestickDemoProps {
   n: number;
 }
 
-export default function CandlestickDemo({ impl, n }: CandlestickDemoProps) {
+export default function CandlestickDemo({ impl, n: _n }: CandlestickDemoProps) {
   const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
 
   return (
