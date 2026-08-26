@@ -1,3 +1,5 @@
+import { linearRegressionRowsY } from "@tanstack/charts/regression";
+
 export type ProjectionMode = "auto" | "target" | "manual";
 export type ProjectionAutoMethod = "linearRegression" | "lastSegment";
 export type ProjectionCurveKind = "linear" | "bezier";
@@ -84,26 +86,29 @@ function resolveIntervalMs(sourceData: Record<string, unknown>[], xDataKey: stri
   return intervalFromAdjacentRows(sourceData, xDataKey, startIndex) ?? intervalFromSeriesSpan(sourceData, xDataKey) ?? 86_400_000;
 }
 
+// Row 26 (T-D14): least-squares fitting delegated to TanStack-native
+// `linearRegressionRowsY` (@tanstack/charts/regression). The native call
+// returns sampled {x, y} fit points across the data domain (or [] when a fit
+// is impossible — <2 finite observations or zero variance), so the slope is
+// recovered from the two extreme samples as Δy/Δx. `ci: 0` skips the
+// confidence-band t-critical computation; `samples: 2` yields exactly the
+// first/last domain samples. The extrapolation-past-extremes horizon walk in
+// buildAutoFutureValues below has no native equivalent and stays custom.
 function linearRegressionSlope(points: { t: number; y: number }[]): number {
   if (points.length < 2) {
     return 0;
   }
-  const n = points.length;
-  let sumT = 0;
-  let sumY = 0;
-  let sumTY = 0;
-  let sumTT = 0;
-  for (const { t, y } of points) {
-    sumT += t;
-    sumY += y;
-    sumTY += t * y;
-    sumTT += t * t;
-  }
-  const denom = n * sumTT - sumT * sumT;
-  if (Math.abs(denom) < 1e-12) {
+  const samples = linearRegressionRowsY(
+    points.map(({ t, y }) => ({ t, y })),
+    { x: "t", y: "y", samples: 2, ci: 0 },
+  );
+  if (samples.length < 2) {
     return 0;
   }
-  return (n * sumTY - sumT * sumY) / denom;
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+  const dt = Number(last.x) - Number(first.x);
+  return dt === 0 ? 0 : (last.y - first.y) / dt;
 }
 
 function buildAutoFutureValues(options: {

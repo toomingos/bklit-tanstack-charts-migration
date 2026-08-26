@@ -98,7 +98,7 @@
 // — verified via source NOT to read the caller's `enterTransition` prop at
 // all (that prop only reaches `HSegment`/`VSegment`'s `useMountProgress`
 // call) — ported as its own independent, always-tween WAAPI animation, never
-// resolved through `internal/funnel-reveal.ts`'s spring/tween dispatch.
+// resolved through `internal/enter-transition.ts`'s spring/tween dispatch.
 //
 // --- Typography (disclosed adaptation, established precedent) -------------
 // bklit's `SegmentLabel` uses plain LITERAL Tailwind classNames (not
@@ -117,7 +117,7 @@
 // --- `enterTransition` typing (disclosed deviation, established precedent) -
 // bklit types this prop as framer's own `Transition` union. This port
 // re-declares a narrower structural `FunnelEnterTransition` (spring | tween
-// shape only, internal/funnel-reveal.ts) — identical disclosed narrowing to
+// shape only, internal/enter-transition.ts) — identical disclosed narrowing to
 // `PieEnterTransition`/`RingEnterTransition`, since framer-motion is not a
 // runtime dependency of migrated/charts at all.
 import {
@@ -131,6 +131,7 @@ import {
 } from "react";
 import { intFmt } from "./internal/formatters";
 import { usePositiveChartSize } from "./internal";
+import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import {
   computeFunnelRings,
   funnelSegBox,
@@ -150,10 +151,10 @@ import {
   resolveEnterTransition,
   revealTiming,
   type FunnelEnterTransition,
-} from "./internal/funnel-reveal";
+} from "./internal/enter-transition";
 import "./styles.css";
 
-export type { FunnelEnterTransition } from "./internal/funnel-reveal";
+export type { FunnelEnterTransition } from "./internal/enter-transition";
 
 // ─── Orientation context ────────────────────────────────────────────
 
@@ -400,6 +401,8 @@ function FunnelSegment(props: FunnelSegmentProps) {
   const patternId = `funnel-${isHorizontal ? "h" : "v"}-pattern-${index}`;
   const gradientId = `funnel-${isHorizontal ? "h" : "v"}-grad-${index}`;
 
+  const prefersReducedMotion = usePrefersReducedMotion();
+
   const graphicRef = useRef<HTMLDivElement | null>(null);
   const labelRef = useRef<HTMLDivElement | null>(null);
   const labelInnerRef = useRef<HTMLDivElement | null>(null);
@@ -448,7 +451,7 @@ function FunnelSegment(props: FunnelSegmentProps) {
   useEffect(() => {
     const el = graphicRef.current;
     if (!el) return;
-    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    if (prefersReducedMotion) {
       el.style.transform = "scale(1)";
       return;
     }
@@ -470,7 +473,7 @@ function FunnelSegment(props: FunnelSegmentProps) {
     return () => anim.cancel();
     // enterTransition read via enterTransitionRef, matching bklit's own
     // transitionRef pattern (use-mount-progress.ts) — deliberately not a dep.
-  }, [index, staggerDelay, isHorizontal]);
+  }, [index, staggerDelay, isHorizontal, prefersReducedMotion]);
 
   // --- Label fade-in reveal: bklit `SegmentLabel`'s own FIXED tween (NOT
   // driven by `enterTransition` — verified against source: its `motion.div`
@@ -480,7 +483,7 @@ function FunnelSegment(props: FunnelSegmentProps) {
   useEffect(() => {
     const el = labelInnerRef.current;
     if (!el) return;
-    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    if (prefersReducedMotion) {
       el.style.opacity = "1";
       return;
     }
@@ -496,7 +499,7 @@ function FunnelSegment(props: FunnelSegmentProps) {
       el.style.opacity = "1";
     };
     return () => anim.cancel();
-  }, [index, staggerDelay]);
+  }, [index, staggerDelay, prefersReducedMotion]);
 
   const handlePointerEnter = useCallback(() => coordinator.requestHover(index), [coordinator, index]);
   const handlePointerLeave = useCallback(() => coordinator.requestUnhover(), [coordinator]);
@@ -667,35 +670,6 @@ export function FunnelChart({
       coordinator.setHovered(hoveredIndexProp);
     }
   }, [hoveredIndexProp, coordinator]);
-
-  const hoverInputsRef = useRef<{
-    data: typeof data;
-    horiz: boolean;
-    n: number;
-    norms: number[];
-    max: number;
-    segW: number;
-    segH: number;
-    gap: number;
-    W: number;
-    H: number;
-    formatValue: typeof formatValue;
-    formatPercentage: typeof formatPercentage;
-  }>(null!);
-  hoverInputsRef.current = {
-    data,
-    horiz: orientation === "horizontal",
-    n: data.length,
-    norms: data.map((d) => d.value / (data[0]?.value ?? 1)),
-    max: data[0]?.value ?? 0,
-    segW: 0,
-    segH: 0,
-    gap,
-    W: sz.w,
-    H: sz.h,
-    formatValue,
-    formatPercentage,
-  };
 
   if (!data.length) {
     return null;

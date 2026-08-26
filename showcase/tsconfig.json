@@ -101,6 +101,12 @@
       "@tanstack/charts/mark/scale-values": [
         "./repos/tanstack-charts/packages/charts-core/src/mark-with-scale-values.ts"
       ],
+      "@tanstack/charts/motion/definition": [
+        "./repos/tanstack-charts/packages/charts-core/src/motion-definition.ts"
+      ],
+      "@tanstack/charts/network/sankey": [
+        "./repos/tanstack-charts/packages/charts-core/src/network-sankey.ts"
+      ],
       "@tanstack/charts/polar": [
         "./repos/tanstack-charts/packages/charts-core/src/polar.ts"
       ],
@@ -110,11 +116,17 @@
       "@tanstack/charts/rect": [
         "./repos/tanstack-charts/packages/charts-core/src/rect.ts"
       ],
+      "@tanstack/charts/regression": [
+        "./repos/tanstack-charts/packages/charts-core/src/regression.ts"
+      ],
       "@tanstack/charts/renderer": [
         "./repos/tanstack-charts/packages/charts-core/src/renderer.ts"
       ],
       "@tanstack/charts/rule": [
         "./repos/tanstack-charts/packages/charts-core/src/rule.ts"
+      ],
+      "@tanstack/charts/spring": [
+        "./repos/tanstack-charts/packages/charts-core/src/spring.ts"
       ],
       "@tanstack/charts/runtime": [
         "./repos/tanstack-charts/packages/charts-core/src/runtime.ts"
@@ -133,6 +145,9 @@
       ],
       "@tanstack/charts/text": [
         "./repos/tanstack-charts/packages/charts-core/src/text.ts"
+      ],
+      "@tanstack/charts/transform/fold": [
+        "./repos/tanstack-charts/packages/charts-core/src/transform-fold.ts"
       ],
       "@tanstack/charts/tick": [
         "./repos/tanstack-charts/packages/charts-core/src/tick.ts"

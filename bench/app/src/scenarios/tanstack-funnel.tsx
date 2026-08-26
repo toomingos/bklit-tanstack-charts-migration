@@ -30,6 +30,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { scaleBand, scaleLinear } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";
 import { barY, defineChart } from "@tanstack/charts";
+import { tooltip } from "@tanstack/charts/tooltip";
 import {
   generateFunnel,
   generateFunnelUpdate,
@@ -96,7 +97,7 @@ export default function TanstackFunnel({ n }: { n: number }) {
       ),
       x: { scale: () => scaleBand<string>().paddingInner(0.15), grid: false },
       y: { scale: scaleLinear, nice: true, grid: true },
-      tooltip: true,
+      tooltip,
     });
   }, [data]);
 

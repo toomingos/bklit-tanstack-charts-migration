@@ -216,7 +216,10 @@ export function ChoroplethChartApiFixture() {
         data: SAMPLE_DATA,
         margin: { top: 0, right: 0, bottom: 0, left: 0 },
         animationDuration: 800,
-        enterTransition: { type: "tween", duration: 1.1, ease: [0.85, 0, 0.15, 1] } as unknown,
+        // P5.5 CP1 gave this prop a real type (`EnterTransition`) instead of
+        // `unknown`; the literal was always correctly shaped, so only the
+        // now-wrong `as unknown` cast had to go.
+        enterTransition: { type: "tween", duration: 1.1, ease: [0.85, 0, 0.15, 1] },
         revealSignature: "v1",
         aspectRatio: "16 / 9",
         scale: 150,

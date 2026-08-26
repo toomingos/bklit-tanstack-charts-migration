@@ -1,6 +1,7 @@
 node_modules/
 bench/app/node_modules/
 bench/app/dist/
+bench/app/.build-lock/
 showcase/node_modules/
 showcase/.next/
 repos/

@@ -42,6 +42,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { scaleBand, scaleThreshold } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";
 import { cell, defineChart } from "@tanstack/charts";
+import { tooltip } from "@tanstack/charts/tooltip";
 import {
   generateHeatmap,
   generateHeatmapUpdate,
@@ -140,7 +141,7 @@ export default function TanstackHeatmap({ n }: { n: number }) {
             .domain([1, 2, 3, 4])
             .range(THRESHOLD_COLORS),
         },
-        tooltip: true,
+        tooltip,
       }),
     [rows, weeks],
   );

@@ -311,7 +311,7 @@ function lerpAngle(from: number, to: number, progress: number): number {
   return from + delta * progress;
 }
 
-function lerpGeometry(
+export function lerpGeometry(
   from: ArcGeometry,
   to: ArcGeometry,
   progress: number,

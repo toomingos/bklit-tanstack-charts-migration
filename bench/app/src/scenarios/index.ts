@@ -1,12 +1,20 @@
 import type { ComponentType } from "react";
 import BklitLine from "./bklit-line";
+import BklitLineMultiAxis from "./bklit-linemultiaxis";
 import BklitRefArea from "./bklit-refarea";
 import BklitSegment from "./bklit-segment";
 import BklitProjection from "./bklit-projection";
+import BklitProjectionXDomain from "./bklit-projectionxdomain";
 import BklitArea from "./bklit-area";
+import BklitAreaMultiAxis from "./bklit-areamultiaxis";
 import BklitBar from "./bklit-bar";
+import BklitBarMultiAxis from "./bklit-barmultiaxis";
 import BklitScatter from "./bklit-scatter";
+import BklitScatterMultiAxis from "./bklit-scattermultiaxis";
+import BklitComposedMultiAxis from "./bklit-composedmultiaxis";
+import BklitRefAreaMultiAxis from "./bklit-refareamultiaxis";
 import BklitCandlestick from "./bklit-candlestick";
+import BklitCandleTween from "./bklit-candletween";
 import BklitComposed from "./bklit-composed";
 import BklitRadar from "./bklit-radar";
 import BklitPie from "./bklit-pie";
@@ -17,6 +25,7 @@ import BklitFunnel from "./bklit-funnel";
 import BklitFunnelVertical from "./bklit-funnelvertical";
 import BklitHeatmap from "./bklit-heatmap";
 import BklitSunburst from "./bklit-sunburst";
+import BklitSunChrome from "./bklit-sunchrome";
 import BklitChoropleth from "./bklit-choropleth";
 import BklitSankey from "./bklit-sankey";
 import BklitLiveLine from "./bklit-liveline";
@@ -39,13 +48,21 @@ import TanstackChoropleth from "./tanstack-choropleth";
 import TanstackSankey from "./tanstack-sankey";
 import TanstackLiveLine from "./tanstack-liveline";
 import MigratedLine from "./migrated-line";
+import MigratedLineMultiAxis from "./migrated-linemultiaxis";
 import MigratedRefArea from "./migrated-refarea";
 import MigratedSegment from "./migrated-segment";
 import MigratedProjection from "./migrated-projection";
+import MigratedProjectionXDomain from "./migrated-projectionxdomain";
 import MigratedArea from "./migrated-area";
+import MigratedAreaMultiAxis from "./migrated-areamultiaxis";
 import MigratedScatter from "./migrated-scatter";
+import MigratedScatterMultiAxis from "./migrated-scattermultiaxis";
+import MigratedComposedMultiAxis from "./migrated-composedmultiaxis";
+import MigratedRefAreaMultiAxis from "./migrated-refareamultiaxis";
 import MigratedBar from "./migrated-bar";
+import MigratedBarMultiAxis from "./migrated-barmultiaxis";
 import MigratedCandlestick from "./migrated-candlestick";
+import MigratedCandleTween from "./migrated-candletween";
 import MigratedComposed from "./migrated-composed";
 import MigratedRadar from "./migrated-radar";
 import MigratedPie from "./migrated-pie";
@@ -56,6 +73,7 @@ import MigratedFunnel from "./migrated-funnel";
 import MigratedFunnelVertical from "./migrated-funnelvertical";
 import MigratedHeatmap from "./migrated-heatmap";
 import MigratedSunburst from "./migrated-sunburst";
+import MigratedSunChrome from "./migrated-sunchrome";
 import MigratedChoropleth from "./migrated-choropleth";
 import MigratedLiveLine from "./migrated-liveline";
 import MigratedSankey from "./migrated-sankey";
@@ -77,6 +95,14 @@ import BklitBarSquares from "./bklit-barsquares";
 import MigratedBarSquares from "./migrated-barsquares";
 import BklitBarDepth from "./bklit-bardepth";
 import MigratedBarDepth from "./migrated-bardepth";
+import BklitGridDefault from "./bklit-griddefault";
+import MigratedGridDefault from "./migrated-griddefault";
+import BklitAreaLoading from "./bklit-arealoading";
+import MigratedAreaLoading from "./migrated-arealoading";
+import BklitBarLoading from "./bklit-barloading";
+import MigratedBarLoading from "./migrated-barloading";
+import BklitComposedStacked from "./bklit-composedstacked";
+import MigratedComposedStacked from "./migrated-composedstacked";
 
 export interface ScenarioProps {
   n: number;
@@ -101,13 +127,22 @@ export interface ScenarioProps {
 
 export const scenarios: Record<string, ComponentType<ScenarioProps>> = {
   "bklit-line": BklitLine,
+  "bklit-linemultiaxis": BklitLineMultiAxis,
   "bklit-refarea": BklitRefArea,
   "bklit-segment": BklitSegment,
   "bklit-projection": BklitProjection,
+  "bklit-projectionxdomain": BklitProjectionXDomain,
   "bklit-area": BklitArea,
+  "bklit-areamultiaxis": BklitAreaMultiAxis,
   "bklit-bar": BklitBar,
+  "bklit-barmultiaxis": BklitBarMultiAxis,
   "bklit-scatter": BklitScatter,
+  "bklit-scattermultiaxis": BklitScatterMultiAxis,
+  "bklit-composedmultiaxis": BklitComposedMultiAxis,
+  "bklit-refareamultiaxis": BklitRefAreaMultiAxis,
   "bklit-candlestick": BklitCandlestick,
+  // P5.5 K4 gate: candlestick with a tween `enterTransition`, captured mid-reveal.
+  "bklit-candletween": BklitCandleTween,
   "bklit-composed": BklitComposed,
   "bklit-radar": BklitRadar,
   "bklit-pie": BklitPie,
@@ -118,6 +153,8 @@ export const scenarios: Record<string, ComponentType<ScenarioProps>> = {
   "bklit-funnelvertical": BklitFunnelVertical,
   "bklit-heatmap": BklitHeatmap,
   "bklit-sunburst": BklitSunburst,
+  // P5.5 Strand 3 gate: sunburst with a breadcrumb and a render-prop hint.
+  "bklit-sunchrome": BklitSunChrome,
   "bklit-choropleth": BklitChoropleth,
   "bklit-sankey": BklitSankey,
   "bklit-liveline": BklitLiveLine,
@@ -130,6 +167,10 @@ export const scenarios: Record<string, ComponentType<ScenarioProps>> = {
   "bklit-patternarea": BklitPatternArea,
   "bklit-barsquares": BklitBarSquares,
   "bklit-bardepth": BklitBarDepth,
+  "bklit-griddefault": BklitGridDefault,
+  "bklit-arealoading": BklitAreaLoading,
+  "bklit-barloading": BklitBarLoading,
+  "bklit-composedstacked": BklitComposedStacked,
   "tanstack-line": TanstackLine,
   "tanstack-area": TanstackArea,
   "tanstack-bar": TanstackBar,
@@ -149,13 +190,21 @@ export const scenarios: Record<string, ComponentType<ScenarioProps>> = {
   "tanstack-sankey": TanstackSankey,
   "tanstack-liveline": TanstackLiveLine,
   "migrated-line": MigratedLine,
+  "migrated-linemultiaxis": MigratedLineMultiAxis,
   "migrated-refarea": MigratedRefArea,
   "migrated-segment": MigratedSegment,
   "migrated-projection": MigratedProjection,
+  "migrated-projectionxdomain": MigratedProjectionXDomain,
   "migrated-area": MigratedArea,
+  "migrated-areamultiaxis": MigratedAreaMultiAxis,
   "migrated-scatter": MigratedScatter,
+  "migrated-scattermultiaxis": MigratedScatterMultiAxis,
+  "migrated-composedmultiaxis": MigratedComposedMultiAxis,
+  "migrated-refareamultiaxis": MigratedRefAreaMultiAxis,
   "migrated-bar": MigratedBar,
+  "migrated-barmultiaxis": MigratedBarMultiAxis,
   "migrated-candlestick": MigratedCandlestick,
+  "migrated-candletween": MigratedCandleTween,
   "migrated-composed": MigratedComposed,
   "migrated-radar": MigratedRadar,
   "migrated-pie": MigratedPie,
@@ -166,6 +215,7 @@ export const scenarios: Record<string, ComponentType<ScenarioProps>> = {
   "migrated-funnelvertical": MigratedFunnelVertical,
   "migrated-heatmap": MigratedHeatmap,
   "migrated-sunburst": MigratedSunburst,
+  "migrated-sunchrome": MigratedSunChrome,
   "migrated-choropleth": MigratedChoropleth,
   "migrated-liveline": MigratedLiveLine,
   "migrated-sankey": MigratedSankey,
@@ -178,4 +228,8 @@ export const scenarios: Record<string, ComponentType<ScenarioProps>> = {
   "migrated-patternarea": MigratedPatternArea,
   "migrated-barsquares": MigratedBarSquares,
   "migrated-bardepth": MigratedBarDepth,
+  "migrated-griddefault": MigratedGridDefault,
+  "migrated-arealoading": MigratedAreaLoading,
+  "migrated-barloading": MigratedBarLoading,
+  "migrated-composedstacked": MigratedComposedStacked,
 };

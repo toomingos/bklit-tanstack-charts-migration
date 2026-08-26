@@ -6,7 +6,8 @@
 // update boundary, and a per-render margin object would otherwise
 // invalidate the definition even on renders caused by unrelated parent
 // work (see live-line-chart.tsx). Each chart passes its own bklit-parity
-// `DEFAULT_MARGIN` (values differ per chart family).
+// default (values differ per chart family); the time-series family
+// (line/area/bar/scatter/candlestick/composed) shares DEFAULT_CHART_MARGIN.
 import * as React from "react";
 
 export interface ChartMargin {
@@ -15,6 +16,11 @@ export interface ChartMargin {
   bottom: number;
   left: number;
 }
+
+// bklit parity default shared by the six time-series charts (40px on all
+// sides). Named DEFAULT_CHART_MARGIN because internal/index.ts already
+// re-exports heatmap-context's per-family DEFAULT_MARGIN ({28,16,0,40}).
+export const DEFAULT_CHART_MARGIN: ChartMargin = { top: 40, right: 40, bottom: 40, left: 40 };
 
 export function useChartMargin(
   marginProp: Partial<ChartMargin> | undefined,

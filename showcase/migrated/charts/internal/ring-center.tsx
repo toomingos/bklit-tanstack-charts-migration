@@ -9,7 +9,7 @@ import {
   useRingHoverCoordinator,
 } from "../ring-chart";
 import {
-  CenterStat,
+  CenterShell,
   centerStatContainerClassName,
   centerStatLabelClassName,
   centerStatValueClassName,
@@ -54,49 +54,30 @@ export function RingCenter({
   const displayValue = hoveredData ? hoveredData.value : stable.totalValue;
   const displayLabel = hoveredData ? hoveredData.label : defaultLabel;
 
+  // Ring's own formula + no innerRadius<=0 guard (centralize row 7 "stays
+  // per-part" — RingCenter has never had one; do not "fix").
   const centerSize = stable.baseInnerRadius * 2 - 16;
   const containerClassName = className ? `${centerStatContainerClassName} ${className}` : centerStatContainerClassName;
 
-  if (children && hoveredData) {
-    return (
-      <div
-        className={containerClassName}
-        style={{ width: centerSize, height: centerSize, display: "flex", alignItems: "center", justifyContent: "center" }}
-      >
-        {children({
-          value: displayValue,
-          label: displayLabel,
-          isHovered: hoveredIndex !== null,
-          data: hoveredData,
-        })}
-      </div>
-    );
-  }
-
   return (
-    <div
+    <CenterShell<RingData>
+      centerSize={centerSize}
       className={containerClassName}
-      style={{
-        width: centerSize,
-        height: centerSize,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        textAlign: "center",
-      }}
+      formatOptions={formatOptions}
+      hoveredData={hoveredData}
+      label={displayLabel}
+      labelClassName={labelClassName}
+      prefix={prefix}
+      suffix={suffix}
+      value={displayValue}
+      valueClassName={valueClassName}
     >
-      <CenterStat
-        formatOptions={formatOptions}
-        label={displayLabel}
-        labelClassName={labelClassName}
-        prefix={prefix}
-        suffix={suffix}
-        value={displayValue}
-        valueClassName={valueClassName}
-      />
-    </div>
+      {children}
+    </CenterShell>
   );
 }
 
 RingCenter.displayName = "RingCenter";
+
+// Legacy parity: bklit `ring-center.tsx` ships `export default RingCenter;` (T-E2).
+export default RingCenter;

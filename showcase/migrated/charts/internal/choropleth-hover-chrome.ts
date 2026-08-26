@@ -1,26 +1,172 @@
+import { createElement, Fragment, type CSSProperties, type ReactNode } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  applyBoxContent,
+  buildBox,
+  hideBoxContent,
+  positionBox,
+  type BoxConfig,
+} from "./tooltip-chrome";
+import { BOX_OFFSET, TOOLTIP_BOX_SPRING } from "./design-tokens";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DIM_TRANSITION = "opacity 0.18s ease-out";
 const DIM_WRAPPER_ATTR = "data-bkm-dim-wrapper";
 const MARKER_VAL = "1";
 
+// bklit choropleth-tooltip.tsx defaults: formatValue = intFmt, valueLabel =
+// "Value", name fallback `Feature ${index}` — resolved by the chart before it
+// hands us this config (OQ parity 8 / CP4–CP6).
+export interface ChoroplethTooltipChromeConfig<F> {
+  className?: string;
+  panelStyle?: CSSProperties;
+  backgroundColor?: string;
+  content?: (props: { feature: F; index: number }) => ReactNode;
+  formatValue: (value: number) => string;
+  getFeatureName?: (feature: F, index: number) => string;
+  getFeatureValue?: (feature: F, index: number) => number | undefined;
+  valueLabel: string;
+}
+
+export interface ChoroplethHoverChromeOptions<F> {
+  getDimOpacity: () => number;
+  getBaseOpacity: () => number;
+  getCentroid: (key: string) => { x: number; y: number } | null;
+  getFeatureAt: (key: string) => { feature: F; index: number } | null;
+  getTooltip: () => ChoroplethTooltipChromeConfig<F> | null;
+  getSize: () => { width: number; height: number };
+  applyZoom: (point: { x: number; y: number }) => { x: number; y: number };
+}
+
 export interface ChoroplethHoverChrome {
   reconnect(root: HTMLElement, pathElements: Map<string, SVGPathElement>): void;
+  refreshTooltipPosition(): void;
   detach(): void;
 }
 
-export function createChoroplethHoverChrome(
-  getDimOpacity: () => number,
-  getBaseOpacity: () => number,
-  getCentroid: (key: string) => { x: number; y: number } | null,
-  onHoverChange: (data: { key: string; x: number; y: number } | null) => void,
+export function createChoroplethHoverChrome<F extends { properties?: { name?: string } }>(
+  opts: ChoroplethHoverChromeOptions<F>,
   pathElementsRef: { current: Map<string, SVGPathElement> },
 ): ChoroplethHoverChrome {
   const MARKER = "data-bkm-cp";
   const ROOT_MARKER = "data-bkm-cp-root";
   let hoveredKey: string | null = null;
+  // bklit hover-persistence parity (T-W1-9 CP7 follow-up): bklit's React
+  // layer UNMOUNTS the hovered base path on hover (base- → highlight- remount,
+  // choropleth-feature.tsx StaticFeatureLayer), so when the pointer then
+  // leaves the feature for empty svg space (ocean) no mouseleave is ever
+  // delivered — the hover + tooltip STICK until another feature is entered or
+  // the pointer exits the svg. Our paths stay connected, so their mouseleave
+  // would fire and wrongly clear the hover. We therefore ignore path
+  // mouseleave by default; bklit DOES clear when the pointer re-enters the
+  // hovered feature (the highlight path is live and its mouseleave fires) and
+  // then leaves it — replicated via this armed flag set on re-entry.
+  let pathLeaveArmed = false;
   let currentRoot: HTMLElement | null = null;
   let svgEl: SVGSVGElement | null = null;
 
+  // ── Shared TooltipBox (CP7 restore: legacy flip + clamp + entrance +
+  //    INSTANT unmount — bklit ChoroplethTooltip returns null the moment
+  //    tooltipData clears; no exit fade) ─────────────────────────────────
+  const doc = typeof document !== "undefined" ? document : null;
+  const boxBuild = doc
+    ? buildBox(doc, {} as BoxConfig, TOOLTIP_BOX_SPRING, false)
+    : null;
+  const boxFadeRef: { current: Animation | null } = { current: null };
+  let boxVisible = false;
+  let prevFlip: boolean | null = null;
+  let lastHoverKey: string | null = null;
+
+  function hideTooltip() {
+    if (!boxVisible || !boxBuild) return;
+    boxVisible = false;
+    lastHoverKey = null;
+    prevFlip = null;
+    boxBuild.layer.style.display = "none";
+    boxBuild.leftSpring?.stop();
+    boxBuild.topSpring?.stop();
+    boxBuild.entranceSpring.stop();
+    boxFadeRef.current?.cancel();
+    boxFadeRef.current = null;
+    hideBoxContent(boxBuild);
+  }
+
+  function showTooltip(key: string) {
+    if (!boxBuild || !doc) return;
+    const cfg = opts.getTooltip();
+    if (!cfg) return;
+    const found = opts.getFeatureAt(key);
+    if (!found) return;
+    const raw = opts.getCentroid(key);
+    const p = opts.applyZoom(raw ?? { x: 0, y: 0 });
+    const { width, height } = opts.getSize();
+    const showing = !boxVisible;
+    boxVisible = true;
+    lastHoverKey = key;
+    const { feature, index } = found;
+
+    const name = cfg.getFeatureName
+      ? cfg.getFeatureName(feature, index)
+      : (feature.properties?.name ?? `Feature ${index}`);
+    const value = cfg.getFeatureValue?.(feature, index);
+
+    // Per-show styling (mirrors buildBox's build-time application; config is
+    // read live so prop changes take effect without a chrome rebuild).
+    boxBuild.layer.className = cfg.className
+      ? `bkm-tooltip-layer ${cfg.className}`
+      : "bkm-tooltip-layer";
+    if (cfg.backgroundColor) boxBuild.panel.style.backgroundColor = cfg.backgroundColor;
+    if (cfg.panelStyle) Object.assign(boxBuild.panel.style, cfg.panelStyle);
+
+    if (cfg.content) {
+      boxBuild.content.style.display = "none";
+      boxBuild.custom.style.display = "";
+      if (boxBuild.childrenWrap) boxBuild.childrenWrap.style.display = "none";
+      const doRender = () => {
+        if (!boxBuild!.customRoot.current) {
+          boxBuild!.customRoot.current = createRoot(boxBuild!.custom);
+        }
+        boxBuild!.customRoot.current.render(
+          createElement(Fragment, null, cfg.content!({ feature, index })),
+        );
+      };
+      boxBuild.contentScheduler?.schedule(doRender, `cp:${key}:${index}`);
+    } else {
+      boxBuild.lastContentKey.current = null;
+      boxBuild.custom.style.display = "none";
+      const rows =
+        value === undefined
+          ? []
+          : [
+              {
+                color: "var(--chart-1)",
+                label: cfg.valueLabel,
+                value: cfg.formatValue(value),
+              },
+            ];
+      applyBoxContent(boxBuild, doc, name, rows, null, index, {});
+    }
+
+    boxBuild.layer.style.display = "";
+    const flip = positionBox(
+      boxBuild, p.x, p.y, width, height, BOX_OFFSET, showing, prevFlip, boxFadeRef,
+    );
+    prevFlip = flip;
+  }
+
+  function refreshTooltipPosition() {
+    if (!boxBuild || !boxVisible || !lastHoverKey) return;
+    const raw = opts.getCentroid(lastHoverKey);
+    if (!raw) return;
+    const p = opts.applyZoom(raw);
+    const { width, height } = opts.getSize();
+    const flip = positionBox(
+      boxBuild, p.x, p.y, width, height, BOX_OFFSET, false, prevFlip, boxFadeRef,
+    );
+    prevFlip = flip;
+  }
+
+  // ── Dim wrapper (unchanged from approved migration) ────────────────────
   function getDimWrapper(geoGroup: Element): SVGGElement | null {
     return geoGroup.querySelector<SVGGElement>(`[${DIM_WRAPPER_ATTR}="${MARKER_VAL}"]`);
   }
@@ -39,8 +185,8 @@ export function createChoroplethHoverChrome(
     const elements = pathElementsRef.current;
     if (elements.size === 0) return;
     if (key !== null && !elements.has(key)) return;
-    const dimOpacity = getDimOpacity();
-    const baseOpacity = getBaseOpacity();
+    const dimOpacity = opts.getDimOpacity();
+    const baseOpacity = opts.getBaseOpacity();
     const root = currentRoot ?? document.body;
     const geoGroup = root.querySelector<SVGGElement>(".ts-chart__geo");
     if (!geoGroup) return;
@@ -107,30 +253,35 @@ export function createChoroplethHoverChrome(
 
   function handleEnter(this: SVGPathElement) {
     const key = this.getAttribute("data-ts-key") ?? "";
+    // Re-entering the hovered feature arms its leave: bklit's highlight path
+    // is live, so its mouseleave clears the hover (see pathLeaveArmed above).
+    pathLeaveArmed = hoveredKey === key;
     if (hoveredKey === key) return;
     hoveredKey = key;
     applyDim(key);
-    const centroid = getCentroid(key);
-    if (centroid) onHoverChange({ key, x: centroid.x, y: centroid.y });
+    showTooltip(key);
   }
 
   function clearHover() {
     if (hoveredKey === null) return;
     applyDim(null);
     hoveredKey = null;
-    onHoverChange(null);
+    pathLeaveArmed = false;
+    hideTooltip();
   }
 
-  function handleSvgMove(e: MouseEvent) {
-    if (hoveredKey === null) return;
-    const target = e.target as Element | null;
-    if (target?.closest?.("[data-ts-key]")) return;
+  function handlePathLeave() {
+    // Empty svg space (ocean) does NOT clear: bklit's hovered base path is
+    // unmounted on hover, so its mouseleave never fires there and the hover
+    // sticks. Clearing happens on svg exit, a different feature, or the
+    // armed re-entry leave below.
+    if (!pathLeaveArmed) return;
+    pathLeaveArmed = false;
     clearHover();
   }
 
   function wireSvg(svg: SVGSVGElement | null) {
     if (!svg) return;
-    svg.addEventListener("mousemove", handleSvgMove);
     svg.addEventListener("mouseleave", clearHover);
     svg.addEventListener("pointerleave", clearHover);
   }
@@ -140,7 +291,7 @@ export function createChoroplethHoverChrome(
       if (!path.isConnected) continue;
       if (path.hasAttribute(MARKER)) continue;
       path.addEventListener("mouseenter", handleEnter);
-      path.addEventListener("mouseleave", clearHover);
+      path.addEventListener("mouseleave", handlePathLeave);
       path.setAttribute(MARKER, MARKER_VAL);
     }
     if (!root.hasAttribute(ROOT_MARKER)) {
@@ -151,6 +302,9 @@ export function createChoroplethHoverChrome(
     } else if (!svgEl || !svgEl.isConnected) {
       svgEl = root.querySelector<SVGSVGElement>("svg.ts-chart");
       wireSvg(svgEl);
+    }
+    if (boxBuild && boxBuild.layer.parentElement !== root) {
+      root.appendChild(boxBuild.layer);
     }
   }
 
@@ -163,7 +317,7 @@ export function createChoroplethHoverChrome(
         const geoGroup = root.querySelector<SVGGElement>(".ts-chart__geo");
         if (!geoGroup || geoGroup.getAnimations().length > 0) return;
         destroyDimWrapper(geoGroup);
-        const baseOpacity = getBaseOpacity();
+        const baseOpacity = opts.getBaseOpacity();
         for (const path of pathElementsRef.current.values()) {
           if (!path.isConnected) continue;
           path.style.opacity = String(baseOpacity);
@@ -171,14 +325,24 @@ export function createChoroplethHoverChrome(
         }
       } else {
         applyDim(hoveredKey);
+        if (boxVisible) refreshTooltipPosition();
       }
     },
+    refreshTooltipPosition,
     detach() {
+      hideTooltip();
       hoveredKey = null;
+      pathLeaveArmed = false;
       currentRoot = null;
       svgEl = null;
       applyDim(null);
-      onHoverChange(null);
+      if (boxBuild) {
+        boxBuild.layer.remove();
+        boxBuild.rowByKey.clear();
+        boxBuild.customRoot.current?.unmount();
+        boxBuild.childrenRoot.current?.unmount();
+        boxBuild.contentScheduler?.dispose();
+      }
     },
   };
 }

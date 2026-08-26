@@ -16,10 +16,13 @@ import {
   hideDot,
   positionBox,
   updateDotPosition,
-  type BoxConfig,
-  type DotConfig,
-  type IndicatorConfig,
 } from "./tooltip-chrome";
+import {
+  toBoxConfig,
+  toDotConfig,
+  toIndicatorConfig,
+} from "./tooltip-mappers";
+import type { DotConfig, IndicatorConfig } from "./tooltip-chrome";
 import type { ChartTooltipPoint } from "./types";
 import { TOOLTIP_BOX_SPRING, TOOLTIP_SPRING } from "./design-tokens";
 const TICK_SPRING = { stiffness: 180, damping: 24 };
@@ -70,10 +73,15 @@ export interface LiveHoverConfig {
 }
 
 export interface LiveHoverFrameInput {
-  width: number; height: number;
+  height: number;
   margin: { top: number; right: number; bottom: number; left: number };
   xLabels: Array<{ x: number; label: string; key: number }>;
   yTicks: Array<{ key: string; y: number; label: string; edgeAlpha: number }>;
+  /** <LiveYAxis position> parity (bklit live-y-axis.tsx): "left" puts the
+      tick layer in the left margin gutter (labels right-aligned), "right"
+      mirrors it into the right gutter (width margin.right, labels
+      left-aligned). Default: "left". */
+  yAxisPosition?: "left" | "right";
 }
 
 export interface LiveHoverInput {
@@ -91,47 +99,9 @@ export interface LiveHoverChrome {
 
 export interface LiveHoverChromeOptions {
   tooltipSpring?: typeof TOOLTIP_SPRING;
-  tooltipBoxSpring?: typeof TOOLTIP_BOX_SPRING;
 }
 
 let gradientCounter = 0;
-
-function toIndicatorConfig(cfg: LiveHoverConfig): IndicatorConfig {
-  return {
-    width: cfg.indicatorWidth,
-    span: cfg.indicatorSpan,
-    columnWidth: cfg.columnWidth,
-    color: cfg.indicatorColor as IndicatorConfig["color"],
-    dasharray: cfg.indicatorDasharray,
-    fadeEdges: cfg.indicatorFadeEdges,
-    fadeLength: cfg.indicatorFadeLength,
-    springConfig: cfg.springConfig,
-  };
-}
-function toDotConfig(cfg: LiveHoverConfig): DotConfig {
-  return {
-    variant: cfg.dotVariant,
-    size: cfg.dotSize,
-    radiusFraction: cfg.dotRadiusFraction,
-    scale: cfg.dotScale,
-    strokeWidth: cfg.dotStrokeWidth,
-    color: cfg.dotColor as DotConfig["color"],
-  };
-}
-function toBoxConfig(cfg: LiveHoverConfig): BoxConfig {
-  return {
-    springConfig: cfg.springConfig,
-    matchCrosshair: cfg.matchCrosshair,
-    damping: cfg.damping,
-    boxSpringConfig: cfg.boxSpringConfig,
-    className: cfg.className,
-    panelStyle: cfg.panelStyle,
-    backgroundColor: cfg.backgroundColor,
-    content: cfg.content,
-    children: cfg.children,
-    rows: cfg.rows,
-  };
-}
 
 export function attachLiveHoverChrome(
   host: HTMLElement,
@@ -287,6 +257,11 @@ export function attachLiveHoverChrome(
   }
 
   function updateFrame(input: LiveHoverFrameInput): void {
+    // bklit live-y-axis.tsx 186/209-211: per-tick alignment follows
+    // <LiveYAxis position> — left branch is right-aligned with paddingRight,
+    // right branch left-aligned with paddingLeft (class toggled per tick
+    // below; the gutter panel itself further down).
+    const yAxisIsLeft = (input.yAxisPosition ?? "left") !== "right";
     const seen = new Set<number>();
     for (const l of input.xLabels) {
       seen.add(l.key);
@@ -325,6 +300,9 @@ export function attachLiveHoverChrome(
         tick.ySpring.set(t.y);
       }
       tick.span.textContent = t.label;
+      // bklit live-y-axis.tsx 209-211: alignment flips with position —
+      // right branch is `{left:0, paddingLeft:8, textAlign:left}`.
+      tick.el.classList.toggle("bkm-live-ytick--right", !yAxisIsLeft);
       if ((t as { labelColor?: string }).labelColor) tick.span.style.color = (t as { labelColor?: string }).labelColor!;
       else tick.span.style.color = "";
     }
@@ -341,11 +319,20 @@ export function attachLiveHoverChrome(
 
     xLabelLayer.style.setProperty("--bkm-live-x-bottom", "12px");
     const innerHeightPx = Math.max(0, input.height - input.margin.top - input.margin.bottom);
+    // bklit live-y-axis.tsx 190-198: the gutter panel is `top: margin.top,
+    // height: innerHeight` with `left:0, width: margin.left` for position
+    // "left" and `right:0, width: margin.right` for "right".
     yTickLayer.style.top = `${input.margin.top}px`;
-    yTickLayer.style.left = "0px";
-    yTickLayer.style.width = `${input.margin.left}px`;
     yTickLayer.style.height = `${innerHeightPx}px`;
-    void input.width;
+    if (yAxisIsLeft) {
+      yTickLayer.style.left = "0px";
+      yTickLayer.style.right = "";
+      yTickLayer.style.width = `${input.margin.left}px`;
+    } else {
+      yTickLayer.style.left = "";
+      yTickLayer.style.right = "0px";
+      yTickLayer.style.width = `${input.margin.right}px`;
+    }
   }
 
   return {

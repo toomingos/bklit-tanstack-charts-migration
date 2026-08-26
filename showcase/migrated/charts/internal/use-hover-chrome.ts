@@ -13,6 +13,7 @@ import {
   type HoverChromeState,
 } from "./hover-chrome";
 import { useChartConfig } from "./chart-config-context";
+import { shortDateFmt } from "./formatters";
 import { isChartInteractionPhase, type ChartPhase } from "./chart-phase";
 import type { ChartDatum } from "./types";
 
@@ -67,7 +68,7 @@ export function useHoverChrome(options: UseHoverChromeOptions): UseHoverChromeRe
 
   const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
     const v = d[xDataKey];
-    if (v instanceof Date) return (v as Date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (v instanceof Date) return shortDateFmt.format(v as Date);
     return String(v ?? "");
   }), [renderData, xDataKey]);
 
@@ -87,7 +88,6 @@ export function useHoverChrome(options: UseHoverChromeOptions): UseHoverChromeRe
     const chrome = attachHoverChrome(el, () => chromeStateRef.current!, {
       dimOpacity,
       tooltipSpring: chartConfig.tooltipSpring,
-      tooltipBoxSpring: chartConfig.tooltipBoxSpring,
       highlightSpring: chartConfig.highlightSpring,
     });
     chromeRef.current = chrome;

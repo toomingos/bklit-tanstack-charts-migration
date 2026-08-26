@@ -25,7 +25,7 @@
 
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdirSync, rmdirSync, writeFileSync, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,7 +33,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const APP_DIR = path.join(ROOT, "bench", "app");
 const RESULTS_DIR = path.join(ROOT, "bench", "results");
-const PORT = 5199;
+const PORT = Number(process.env.BENCH_PORT ?? 5199);
 const BASE_URL = `http://localhost:${PORT}`;
 
 // Load M2c bundle-size data (pre-computed by bench/measure-bundle.mjs)
@@ -151,28 +151,67 @@ function newestSourceMtimeMs(dir) {
 }
 
 async function rebuildIfStale() {
-  const distIndex = path.join(APP_DIR, "dist", "index.html");
-  const distMtime = existsSync(distIndex) ? statSync(distIndex).mtimeMs : 0;
-  const sourceRoots = [
-    path.join(APP_DIR, "src"),
-    path.join(APP_DIR, "index.html"),
-    path.join(ROOT, "showcase", "migrated"),
-    path.join(ROOT, "repos", "bklit-ui", "packages", "ui", "src"),
-  ];
-  const srcMtime = Math.max(
-    ...sourceRoots.map((p) => {
+  // QA_SKIP_REBUILD=1 (shared with qa/screenshot.mjs so one pre-build serves
+  // a whole wave): the caller guarantees dist is fresh — skip scan and lock.
+  if (process.env.QA_SKIP_REBUILD === "1") {
+    console.log(`[bench] QA_SKIP_REBUILD=1 — skipping stale-build check`);
+    return;
+  }
+  // Build lock, mirrored from qa/screenshot.mjs: two concurrent stale-seeing
+  // processes would race `npm run build` into the same dist/ (vite empties
+  // outDir at build start). mkdir is atomic: the winner builds while others
+  // wait; a crashed builder's lock is taken over after 120s.
+  const lockDir = path.join(APP_DIR, ".build-lock");
+  let announcedWait = false;
+  for (;;) {
+    try {
+      mkdirSync(lockDir);
+      break;
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+      let age = 0;
       try {
-        return statSync(p).isDirectory() ? newestSourceMtimeMs(p) : statSync(p).mtimeMs;
+        age = Date.now() - statSync(lockDir).mtimeMs;
       } catch {
-        return 0;
+        continue; // lock released between mkdir and stat: retry immediately
       }
-    }),
-  );
-  if (distMtime === 0 || srcMtime > distMtime) {
-    console.log(
-      `[bench] bench/app dist ${distMtime === 0 ? "missing" : "STALE (sources newer than build)"} — rebuilding...`,
+      if (age > 120_000) {
+        try { rmdirSync(lockDir); } catch {}
+        continue;
+      }
+      if (!announcedWait) {
+        announcedWait = true;
+        console.log(`[bench] waiting for concurrent bench/app build...`);
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+  try {
+    const distIndex = path.join(APP_DIR, "dist", "index.html");
+    const distMtime = existsSync(distIndex) ? statSync(distIndex).mtimeMs : 0;
+    const sourceRoots = [
+      path.join(APP_DIR, "src"),
+      path.join(APP_DIR, "index.html"),
+      path.join(ROOT, "showcase", "migrated"),
+      path.join(ROOT, "repos", "bklit-ui", "packages", "ui", "src"),
+    ];
+    const srcMtime = Math.max(
+      ...sourceRoots.map((p) => {
+        try {
+          return statSync(p).isDirectory() ? newestSourceMtimeMs(p) : statSync(p).mtimeMs;
+        } catch {
+          return 0;
+        }
+      }),
     );
-    await run("npm", ["run", "build"], { cwd: APP_DIR });
+    if (distMtime === 0 || srcMtime > distMtime) {
+      console.log(
+        `[bench] bench/app dist ${distMtime === 0 ? "missing" : "STALE (sources newer than build)"} — rebuilding...`,
+      );
+      await run("npm", ["run", "build"], { cwd: APP_DIR });
+    }
+  } finally {
+    try { rmdirSync(lockDir); } catch {}
   }
 }
 

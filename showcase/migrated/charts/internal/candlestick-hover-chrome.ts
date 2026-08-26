@@ -10,11 +10,10 @@ import {
   hideBoxContent,
   positionBox,
   resetLabelFade,
-  type BoxConfig,
-  type IndicatorConfig,
 } from "./tooltip-chrome";
+import { toBoxConfig, toIndicatorConfig } from "./tooltip-mappers";
 import type { ChartTooltipConfig } from "./types";
-import { TOOLTIP_BOX_SPRING, TOOLTIP_SPRING } from "./design-tokens";
+import { TOOLTIP_SPRING } from "./design-tokens";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DIM_TRANSITION = "opacity 0.15s ease-in-out";
@@ -27,6 +26,9 @@ export interface CandlestickHoverChromeState {
   showCrosshair: boolean;
   showDots: boolean;
   showDatePill: boolean;
+  /** B12 (bklit BarXAxis/XAxis tickerHalfWidth): date-pill fade radius;
+      defaults to the TICKER_HALF_WIDTH token when unset. */
+  tickerHalfWidth?: number;
   tooltip?: ChartTooltipConfig | null;
   dateLabels?: string[];
   legendHoveredIndex?: number | null;
@@ -34,6 +36,12 @@ export interface CandlestickHoverChromeState {
 
 export interface CandleRectGeometry {
   x: number; y: number; width: number; height: number; fill: string; radius?: number; strokeWidth?: number;
+  /** K9: pattern paint server href overlaid on this rect (body highlight
+      only) — drawn as a sibling rect mirroring bklit CandlestickBody. */
+  patternHref?: string;
+  /** K10: inset stroke width drawn INSIDE this rect (body highlight only),
+      mirroring bklit CandlestickBody's inner border rect. */
+  insideStrokeWidth?: number;
 }
 
 export interface CandlestickFocusPoint {
@@ -54,39 +62,9 @@ export interface CandlestickHoverChrome {
 
 export interface CandlestickHoverChromeOptions {
   tooltipSpring?: typeof TOOLTIP_SPRING;
-  tooltipBoxSpring?: typeof TOOLTIP_BOX_SPRING;
 }
 
 let chromeCounter = 0;
-
-function toIndicatorConfig(cfg?: ChartTooltipConfig | null): IndicatorConfig {
-  if (!cfg) return {};
-  return {
-    width: cfg.indicatorWidth,
-    span: cfg.indicatorSpan,
-    columnWidth: cfg.columnWidth,
-    color: cfg.indicatorColor as IndicatorConfig["color"],
-    dasharray: cfg.indicatorDasharray,
-    fadeEdges: cfg.indicatorFadeEdges as IndicatorConfig["fadeEdges"],
-    fadeLength: cfg.indicatorFadeLength,
-    springConfig: cfg.springConfig,
-  };
-}
-function toBoxConfig(cfg?: ChartTooltipConfig | null): BoxConfig {
-  if (!cfg) return {};
-  return {
-    springConfig: cfg.springConfig,
-    matchCrosshair: cfg.matchCrosshair,
-    damping: cfg.damping,
-    boxSpringConfig: cfg.boxSpringConfig,
-    className: cfg.className,
-    panelStyle: cfg.panelStyle,
-    backgroundColor: cfg.backgroundColor,
-    content: cfg.content,
-    children: cfg.children,
-    rows: cfg.rows,
-  };
-}
 
 export function attachCandlestickHoverChrome(
   host: HTMLElement,
@@ -94,8 +72,6 @@ export function attachCandlestickHoverChrome(
   options: CandlestickHoverChromeOptions = {},
 ): CandlestickHoverChrome {
   const tooltipSpring = options.tooltipSpring ?? TOOLTIP_SPRING;
-  const _tooltipBoxSpring = options.tooltipBoxSpring ?? TOOLTIP_BOX_SPRING;
-  void _tooltipBoxSpring;
   const container = (host.closest("[data-bkm-chart]") as HTMLElement) ?? host;
   const doc = host.ownerDocument;
   const chromeId = ++chromeCounter;
@@ -106,6 +82,12 @@ export function attachCandlestickHoverChrome(
   activeHighlightSvg.style.display = "none";
   const highlightWick = doc.createElementNS(SVG_NS, "rect");
   const highlightBody = doc.createElementNS(SVG_NS, "rect");
+  // K9/K10: the body highlight mirrors bklit's CandlestickBody — optional
+  // pattern overlay rect + optional inset stroke rect on top of the solid
+  // body rect. Both stay empty (never appended) unless the point carries
+  // the corresponding geometry.
+  const highlightBodyPattern = doc.createElementNS(SVG_NS, "rect");
+  const highlightBodyStroke = doc.createElementNS(SVG_NS, "rect");
   activeHighlightSvg.append(highlightWick, highlightBody);
 
   const indicator = buildIndicator(doc, chromeId, toIndicatorConfig(getState().tooltip), tooltipSpring);
@@ -150,6 +132,44 @@ export function attachCandlestickHoverChrome(
     if (geometry.radius !== undefined) el.setAttribute("rx", String(geometry.radius));
     if (geometry.strokeWidth) { el.setAttribute("stroke", geometry.fill); el.setAttribute("stroke-width", String(geometry.strokeWidth)); }
     else el.removeAttribute("stroke");
+  };
+
+  // K9/K10: sync the optional pattern-overlay and inset-stroke highlight
+  // rects for the hovered body. Mirrors bklit's highlight CandlestickBody:
+  // pattern rect = same geometry/rx, no stroke; inset stroke rect =
+  // fill:none, stroke=solid body fill, geometry shrunk by insideStrokeWidth.
+  const syncHighlightExtras = (body: CandleRectGeometry) => {
+    const hasPattern = Boolean(body.patternHref);
+    const insideW = body.insideStrokeWidth ?? 0;
+    if (!hasPattern) {
+      highlightBodyPattern.remove();
+    } else {
+      // Pattern overlay mirrors bklit's pattern rect: same geometry/rx,
+      // explicitly NO self-stroke (the body geometry carries one).
+      applyRectGeometry(highlightBodyPattern, { ...body, fill: body.patternHref! });
+      highlightBodyPattern.removeAttribute("stroke");
+      highlightBodyPattern.removeAttribute("stroke-width");
+      if (highlightBodyPattern.parentNode !== activeHighlightSvg) {
+        activeHighlightSvg.append(highlightBodyPattern);
+      }
+    }
+    if (!(insideW > 0)) {
+      highlightBodyStroke.remove();
+    } else {
+      applyRectGeometry(highlightBodyStroke, {
+        x: body.x + insideW / 2,
+        y: body.y + insideW / 2,
+        width: body.width - insideW,
+        height: body.height - insideW,
+        fill: "none",
+        radius: body.radius,
+      });
+      highlightBodyStroke.setAttribute("stroke", body.fill);
+      highlightBodyStroke.setAttribute("stroke-width", String(insideW));
+      if (highlightBodyStroke.parentNode !== activeHighlightSvg) {
+        activeHighlightSvg.append(highlightBodyStroke);
+      }
+    }
   };
 
   let lastPoint: CandlestickFocusPoint | null = null;
@@ -264,6 +284,7 @@ export function attachCandlestickHoverChrome(
       activeHighlightSvg.style.display = "";
       applyRectGeometry(highlightWick, point.wick);
       applyRectGeometry(highlightBody, point.body);
+      syncHighlightExtras(point.body);
     }
 
     // Tooltip box — if custom rows/content provided, delegate to shared helper; else single "close" row
@@ -305,7 +326,7 @@ export function attachCandlestickHoverChrome(
     }
 
     const hoveredLabel = shortDateFmt.format(point.date);
-    applyLabelFade(container, point.centerX, hoveredLabel, TICKER_HALF_WIDTH, FADE_BUFFER);
+    applyLabelFade(container, point.centerX, hoveredLabel, state.tickerHalfWidth ?? TICKER_HALF_WIDTH, FADE_BUFFER);
   };
 
   return {

@@ -80,7 +80,6 @@ export function buildMarkerMarks(
     const hasRing = strokeWidth > 0;
     const outerRadius = hasRing ? radius + ringGap + strokeWidth : radius;
     const fill = s.markers?.fill ?? s.stroke;
-    const stroke = s.markers?.stroke ?? s.markers?.fill ?? s.stroke;
     const gradientId = hasRing ? gradientIdByKey.get(s.dataKey) : undefined;
     marks.push(
       dot(renderData, {
@@ -92,7 +91,6 @@ export function buildMarkerMarks(
         stroke: "none",
       }) as unknown as ChartMark<ChartDatum, Date, number>,
     );
-    void stroke;
   }
   return marks;
 }
@@ -102,10 +100,3 @@ export function shouldShowMarkers(showMarkers: boolean | undefined, showSeriesCo
   if (showSeriesContent === undefined) return true;
   return showSeriesContent;
 }
-
-export const MARKER_DIM_OPACITY = "0.5";
-export const MARKER_DIM_BLUR_PX = 2;
-export const MARKER_DIM_TRANSITION = "opacity 0.15s ease-in-out, filter 0.15s ease-in-out";
-export const MARKER_ACTIVE_SCALE = 1.35;
-export const MARKER_ENTER_BLUR_PX = 2;
-export const MARKER_ENTER_DURATION_MS = 500;

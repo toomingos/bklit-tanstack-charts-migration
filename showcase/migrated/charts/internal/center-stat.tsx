@@ -6,24 +6,24 @@
 // any Ring-specific (or Pie-specific) types/behavior so that reuse is a
 // straight import, not a copy-paste-and-rename.
 //
-// --- Why this is a SANCTIONED React island (differs from PieCenter) -------
+// --- Why this is a SANCTIONED React island ---------------------------------
 // Every other hover/reveal path in migrated/charts is imperative-only —
 // zero React state, zero framer-motion, in the pointer/hover paint path
 // (docs/LOG.md D10; see internal/pie-hover-chrome.ts, internal/spring.ts).
-// `PieCenter` (migrated/charts/pie-chart.tsx) follows that rule by pre-
-// rendering every hover variant as a CSS-grid-stacked sibling and toggling
-// `display` imperatively — but that trick only works because pie's center
-// text is plain formatted strings. This module's whole purpose is
-// `@number-flow/react`'s digit-ROLL animation, whose public API is a React
-// `value` PROP (`<NumberFlow value={n} />`) — there is no imperative
-// "retarget this number and animate the roll" escape hatch to call instead
-// (unlike a spring's `.set()`). Matching bklit's own hover-driven digit
-// roll pixel-for-pixel (QA's screenshot gate can catch a capture mid-roll,
-// so the roll's start time / easing must match, not just its settled end
-// value) genuinely requires an actual React re-render on hover change —
-// the lead's ruling for this deliverable is to accept that one exception
-// rather than drop NumberFlow the way the pie pilot did (a real behavioral
-// difference from pie, disclosed here and in ring-chart.tsx's own header).
+// This module's whole purpose is `@number-flow/react`'s digit-ROLL
+// animation, whose public API is a React `value` PROP (`<NumberFlow
+// value={n} />`) — there is no imperative "retarget this number and
+// animate the roll" escape hatch to call instead (unlike a spring's
+// `.set()`). Matching bklit's own hover-driven digit roll pixel-for-pixel
+// (QA's screenshot gate can catch a capture mid-roll, so the roll's start
+// time / easing must match, not just its settled end value) genuinely
+// requires an actual React re-render on hover change — the lead's ruling
+// for this deliverable was to accept that one exception rather than drop
+// NumberFlow. (Pie's PieCenter originally dodged the island with an
+// imperative display-toggle over pre-rendered hover variants; its
+// subsequent consolidation onto shared CenterStat [internal/pie-center.tsx]
+// routes it through this same island via `useCenterStatHover`, so ring,
+// pie, and gauge centers now all share it.)
 //
 // --- Keeping the concession small: `useCenterStatHook` ---------------------
 // bklit itself re-renders its WHOLE chart subtree on every hover change —
@@ -54,14 +54,15 @@
 // repos/bklit-ui's real sources, not migrated/charts, so those utility
 // classes would never generate CSS from this file's location — ported as
 // plain hand-authored CSS instead (styles.css's `.ts-bkm-center-stat*`
-// rules), byte-identical clamp()/weight/line-height/margin values, same
-// precedent as pie-chart.tsx's `.ts-bkm-pie-center*` rules (written
-// independently here since pie's block predates this shared module and
-// this deliverable doesn't touch pie-chart.tsx — see ring-chart.tsx header).
+// rules), byte-identical clamp()/weight/line-height/margin values — one
+// shared block serving every consumer of this module (ring, pie, gauge
+// centers alike; pie's former dedicated `.ts-bkm-pie-center*` rules were
+// deleted as orphaned when PieCenter consolidated onto CenterStat).
 import NumberFlow from "@number-flow/react";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -116,9 +117,7 @@ function formatStatValue(
  * `customElements.whenDefined("number-flow-react")`, falling back to a
  * plain `Intl.NumberFormat` string pre-hydration/pre-definition. This is
  * ChartStatFlow's own sanctioned static-fallback path (not this module's
- * invention) — it's what makes SSR/pre-hydration renders correct, distinct
- * from the "no NumberFlow at all" deviation pie's PieCenter took for a
- * different reason (see file header).
+ * invention) — it's what makes SSR/pre-hydration renders correct.
  */
 function useNumberFlowElementReady(): boolean {
   const [ready, setReady] = useState(
@@ -223,3 +222,147 @@ export function useCenterStatHover(
     source.getHovered,
   );
 }
+
+// --- CenterShell (T-C4 centralization; research/phase-4/synthesis/centralize.md row 7) ---
+// One chart-agnostic center-readout SHELL over CenterStat: the container box
+// (centerSize square, `.ts-bkm-center-stat`) + the value/label stack, plus the
+// opt-in `intro` prop — legacy PieCenterShell's 0→value double-rAF mount
+// entrance (repos/bklit-ui/packages/ui/src/charts/pie-center-shell.tsx:49-70),
+// of which internal/gauge-center.tsx held the sole ported copy until now (OQ
+// 7 ruling: promote here as opt-in so the P6 `PieCenterShell` compat wrapper
+// can reuse it rather than spawn a third copy).
+//
+// Chart adapters stay thin and keep everything context-specific: they resolve
+// their own stable/hover contexts, sizing formulas and per-part guards (pie's
+// geometryScrubbing null-hover + innerRadius<=0 return; ring's
+// baseInnerRadius sizing with deliberately NO zero-guard; gauge's
+// max(size*0.2, 52) formula), then hand the resolved numbers here.
+// `hoveredData` non-null + children ⇒ the render-prop branch — exactly
+// PieCenter/RingCenter's existing `if (children && hoveredData)` semantics,
+// generic over the datum type.
+
+export interface CenterShellRenderProps<T> {
+  value: number;
+  label: string;
+  isHovered: boolean;
+  data: T;
+}
+
+export interface CenterShellProps<T> {
+  /** Displayed value (already resolved by the adapter: hovered datum's value
+      vs the chart total). */
+  value: number;
+  /** Displayed label (hovered datum's label vs the adapter default). */
+  label: string;
+  /** Square side of the center stat box — each adapter's own formula. */
+  centerSize: number;
+  /** Non-null while the chart's hover coordinator holds an index; selects
+      the children render-prop branch when `children` is supplied. */
+  hoveredData?: T | null;
+  /** Opt-in PieCenterShell-style mount entrance: first paint shows 0, a
+      double-rAF then commits `value` so NumberFlow rolls in from zero.
+      Subsequent `value` updates pass straight through. Legacy
+      `animateEntrance={false}` semantics: value flows through untouched. */
+  intro?: boolean;
+  formatOptions?: CenterStatFormat;
+  prefix?: string;
+  suffix?: string;
+  className?: string;
+  valueClassName?: string;
+  labelClassName?: string;
+  children?: (props: CenterShellRenderProps<T>) => ReactNode;
+}
+
+/**
+ * The PieCenterShell/GaugeCenterOverlay mount-entrance state machine,
+ * verbatim including the cleanup re-arm (`introStartedRef` reset so a
+ * remount replays the intro): 0 → double-rAF → value. `intro=false` is the
+ * plain pass-through (legacy `animateEntrance={false}` branch).
+ */
+export function useIntroFlowValue(value: number, intro: boolean): number {
+  const introStartedRef = useRef(false);
+  const [flowValue, setFlowValue] = useState(() => (intro ? 0 : value));
+
+  useEffect(() => {
+    if (!intro) {
+      setFlowValue(value);
+      return;
+    }
+    if (!introStartedRef.current) {
+      introStartedRef.current = true;
+      setFlowValue(0);
+      let innerRaf = 0;
+      const outerRaf = requestAnimationFrame(() => {
+        innerRaf = requestAnimationFrame(() => setFlowValue(value));
+      });
+      return () => {
+        cancelAnimationFrame(outerRaf);
+        cancelAnimationFrame(innerRaf);
+        introStartedRef.current = false;
+      };
+    }
+    setFlowValue(value);
+  }, [intro, value]);
+
+  return flowValue;
+}
+
+export function CenterShell<T>({
+  value,
+  label,
+  centerSize,
+  hoveredData = null,
+  intro = false,
+  formatOptions = defaultCenterStatFormat,
+  prefix,
+  suffix,
+  className = centerStatContainerClassName,
+  valueClassName = centerStatValueClassName,
+  labelClassName = centerStatLabelClassName,
+  children,
+}: CenterShellProps<T>) {
+  const flowValue = useIntroFlowValue(value, intro);
+
+  if (children && hoveredData !== null && hoveredData !== undefined) {
+    return (
+      <div
+        className={className}
+        style={{
+          width: centerSize,
+          height: centerSize,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {children({ value, label, isHovered: true, data: hoveredData })}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={className}
+      style={{
+        width: centerSize,
+        height: centerSize,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+      }}
+    >
+      <CenterStat
+        formatOptions={formatOptions}
+        label={label}
+        labelClassName={labelClassName}
+        prefix={prefix}
+        suffix={suffix}
+        value={flowValue}
+      />
+    </div>
+  );
+}
+
+CenterShell.displayName = "CenterShell";

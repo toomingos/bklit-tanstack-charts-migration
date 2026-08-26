@@ -22,9 +22,12 @@ import type {
   ChartMark,
   ChartPoint,
   ChartScale,
+  ChartValue,
+  SceneNode,
   StaticChartDefinition,
 } from "@tanstack/charts";
 import { extractChildren } from "./children";
+import { ChartSelectionContext, useChartSelection } from "./internal/chart-selection";
 import {
   attachScatterHoverChrome,
   type ScatterFocusPoint,
@@ -32,77 +35,262 @@ import {
   type ScatterHoverChromeState,
 } from "./internal/scatter-hover-chrome";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
+import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import { useChartConfig } from "./internal/chart-config-context";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
 import type { ChartDatum, ChartPhase } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
+import { resolveGridGuide } from "./internal/grid";
 import { createScatterFocusStrategy } from "./internal/scatter-focus-strategy";
 import "./styles.css";
-import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
-import { useChartMargin, useContainerWidth } from "./internal";
+import { isRevealed, markRevealed, onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
+import { CHART_CATEGORY_PALETTE } from "./internal/design-tokens";
+import { shortDateFmt } from "./internal/formatters";
+import { useSanitizedId } from "./internal/use-sanitized-id";
+import {
+  DEFAULT_ANIMATION_DURATION_MS,
+  DEFAULT_ANIMATION_EASING,
+} from "./internal/animation-defaults";
+import { clipRevealTiming, type EnterTransition } from "./internal/enter-transition";
+import {
+  createAxisValueProjector,
+  createNicedYScale,
+  resolveYDomainsByAxis,
+} from "./internal/y-domain";
+import { DEFAULT_Y_AXIS_ID } from "./internal/y-axis-id";
 
-// bklit animation.ts: reveal 1100ms cubic-bezier(.85,0,.15,1)
-const DEFAULT_ANIMATION_DURATION_MS = 1100;
-const REVEAL_EASING = "cubic-bezier(0.85, 0, 0.15, 1)";
+// P5.5 S1 RETIRES this file's local `REVEAL_EASING`. D327's ground for keeping
+// it was verbatim "ScatterChart has no `animationEasing` prop, so this is the
+// INTERNAL reveal ease, not the prop default" — S1 adds that prop, inverting
+// the ground, so the value now comes from `./internal/animation-defaults`
+// (legacy `animation.ts:4` provenance). Still NOT `design-tokens.ts`'s
+// `REVEAL_EASE_CSS` (upstream `motion.ts:209` mirror) — see
+// animation-defaults.ts's header. (Closes the last third of P6.2's scope.)
 // bklit series-point-marker.tsx SeriesPointMarker: fixed 0.5s enter tween.
 const ENTER_TWEEN_MS = 500;
 // bklit chart-context.tsx defaultScatterColors (--chart-1 .. --chart-5).
-const DEFAULT_SCATTER_COLORS = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-];
+// T-D15 (P3.1): sourced from the shared 5-entry categorical palette rather
+// than a local literal set — see internal/design-tokens.ts.
+// Exported as `defaultScatterColors` from the barrel (bklit chart-context.tsx:55).
+export const DEFAULT_SCATTER_COLORS: readonly string[] = CHART_CATEGORY_PALETTE;
 
-interface Margin {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
+// bklit scatter.tsx DEFAULT_Y_GRADIENT_FROM/TO (S8).
+const DEFAULT_Y_GRADIENT_FROM = "var(--color-red-500)";
+const DEFAULT_Y_GRADIENT_TO = "var(--color-emerald-500)";
+
+// S8 (bklit scatter.tsx yGradient): custom ChartMark emitting the EXACT DOM
+// shape stock `dot()` produces — one `.ts-chart__dot[data-ts-key]` group per
+// series, one `<circle>` per datum — so scatter's reveal (`querySelectorAll
+// ("circle")`), focus strategy, and hover chrome all work unchanged. The disc
+// AND ring circles paint a per-series userSpaceOnUse linear gradient spanning
+// the plot height (from at y=innerHeight, to at y=0), which is how bklit gets
+// per-point vertical coloring with ordinary fills. One ChartPoint per datum
+// (markId = dataKey) keeps TanStack's focus grouping identical to stock dot().
+function createYGradientScatterMark(
+  source: readonly ChartDatum[],
+  series: ResolvedSeries,
+  xDataKey: string,
+  /** P6.1 (S6): identity for the primary axis; see `createAxisValueProjector`. */
+  projectY: (value: number) => number,
+): ChartMark<ChartDatum, Date, number> {
+  const hasRing = series.strokeWidth > 0;
+  const discRadius = series.radius;
+  const ringRadius = hasRing
+    ? series.radius + series.ringGap + series.strokeWidth / 2
+    : 0;
+  const fillUrl = `url(#${series.yGradId})`;
+  return {
+    initialize: () => {
+      const xValues: (ChartValue | undefined)[] = [];
+      const yValues: (ChartValue | undefined)[] = [];
+      for (const d of source) {
+        const xv = d[xDataKey];
+        xValues.push(xv instanceof Date && Number.isFinite(xv.getTime()) ? xv : undefined);
+        const yv = d[series.dataKey];
+        yValues.push(typeof yv === "number" && Number.isFinite(yv) ? projectY(yv) : undefined);
+      }
+      return {
+        id: series.dataKey,
+        channels: {
+          x: { scale: "x", values: xValues },
+          y: { scale: "y", values: yValues },
+        },
+        render: ({ scales }) => {
+          const nodes: SceneNode[] = [];
+          const points: ChartPoint<ChartDatum, Date, number>[] = [];
+          source.forEach((datum, datumIndex) => {
+            const xv = xValues[datumIndex];
+            const yv = yValues[datumIndex];
+            if (xv === undefined || yv === undefined) return;
+            const x = scales.x.map(xv);
+            const y = scales.y.map(yv);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+            // bklit MarkerCircles draw order: fill disc → ring (stroked
+            // circle). Both paint the same gradient url.
+            nodes.push({
+              kind: "dot",
+              key: `${series.dataKey}:null:${datumIndex}`,
+              x,
+              y,
+              radius: discRadius,
+              style: { fill: fillUrl, stroke: "none" },
+            });
+            if (hasRing) {
+              nodes.push({
+                kind: "dot",
+                key: `${series.dataKey}:ring:${datumIndex}`,
+                x,
+                y,
+                radius: ringRadius,
+                style: {
+                  fill: "none",
+                  stroke: fillUrl,
+                  strokeWidth: series.strokeWidth,
+                },
+              });
+            }
+            points.push({
+              key: `${series.dataKey}:${datumIndex}`,
+              markId: series.dataKey,
+              group: null,
+              groupLabel: series.dataKey,
+              datum,
+              datumIndex,
+              xValue: xv as Date,
+              yValue: yv as number,
+              x,
+              y,
+              color: fillUrl,
+            });
+          });
+          return {
+            nodes: [
+              {
+                kind: "group",
+                key: series.dataKey,
+                className: "ts-chart__dot",
+                ariaHidden: true,
+                children: nodes,
+              },
+            ],
+            points,
+          };
+        },
+      };
+    },
+  };
 }
-const DEFAULT_MARGIN: Margin = { top: 40, right: 40, bottom: 40, left: 40 };
 
 export interface ScatterChartProps {
   data: ChartDatum[];
   xDataKey?: string;
   animationDuration?: number;
-  margin?: Partial<Margin>;
+  margin?: Partial<ChartMargin>;
   aspectRatio?: string;
   className?: string;
   onPhaseChange?: (phase: ChartPhase) => void;
+  /** P5.5 S1 — bklit `scatter-chart-shell.tsx:58`. Easing for the per-point
+      enter fade. Default: legacy's `cubic-bezier(0.85, 0, 0.15, 1)`. */
+  animationEasing?: string;
+  /** P5.5 S2 — bklit `scatter-chart.tsx:34` (defaulted to
+      `DEFAULT_CHART_ENTER_TRANSITION` at `:145`). Overrides the reveal SPAN
+      the per-point stagger is spread across — bklit `series-markers.tsx:102`:
+      `clipRevealTransition(enterTransition).duration ?? animationDuration/1000`.
+      It deliberately does NOT change each point's own fade, which bklit pins
+      at a fixed `enterDuration = 0.5` (`series-markers.tsx:103`). */
+  enterTransition?: EnterTransition;
+  /** P5.5 S3 — bklit `scatter-chart.tsx:35`. Replay epoch input; bklit bumps
+      its epoch from `[animationDuration, revealSignature]`
+      (`scatter-chart-shell.tsx:146-154`). */
+  revealSignature?: string;
   children?: React.ReactNode;
 }
 
 interface ResolvedSeries {
   dataKey: string;
+  /** P6.1 / S6. Undefined means the default ("left") axis. */
+  yAxisId?: string | number;
+  /** S7 — bklit series-markers.tsx:104 `animate && !isLoaded`. */
+  animate: boolean;
+  /** RAW series fill (tooltip dot-color path) — never a gradient url. */
   fill: string;
+  /** RAW ring stroke (chrome fallbacks). */
   stroke: string;
   strokeWidth: number;
   ringGap: number;
   radius: number;
+  fadeOnHover: boolean;
+  inactiveOpacity: number;
+  inactiveBlur: number;
+  enterBlur: number;
+  showActiveHighlight: boolean;
+  outlineWidth: number;
+  outlineColor?: string;
+  useYGradient: boolean;
+  yGradFrom: string;
+  yGradTo: string;
+  /** S8 gradient id when yGradient is active, else null. */
+  yGradId: string | null;
 }
 
 export function ScatterChart({
   data,
   xDataKey = "date",
   animationDuration = DEFAULT_ANIMATION_DURATION_MS,
+  animationEasing = DEFAULT_ANIMATION_EASING,
+  enterTransition,
+  revealSignature = "",
   margin: marginProp,
   aspectRatio = "2 / 1",
   className,
   onPhaseChange,
   children,
 }: ScatterChartProps) {
-  const margin = useChartMargin(marginProp, DEFAULT_MARGIN);
+  const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const width = useContainerWidth(containerRef);
   // bklit ScatterChartInner starts `isLoaded=false` unconditionally (no
   // `status` prop — D14) — the initial phase is always "revealing".
   const phaseRef = React.useRef<ChartPhase>("revealing");
+  const dragSelectionActiveRef = React.useRef(false);
   const revealAnimationsRef = React.useRef<Animation[]>([]);
   const revealDeadlineTimerRef = React.useRef<number | null>(null);
   const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
+  // P4.6 (M3a): the reveal runs once per component lifetime. The scene (and
+  // with it the .ts-chart__marks group) is rebuilt on every data swap, so the
+  // DOM-side `dataset.bkmRevealed` guard dies with the old node and the mount
+  // reveal used to replay on every update (~n·series animate()
+  // instantiations + blur rasterization inside the update->paint window).
+  // Three states in handleRender, keyed on seenRevealKeyRef + the pending
+  // deadline: first call -> reveal + arm deadline; revealed while the
+  // deadline is still pending -> the group was replaced mid-window, restart
+  // the reveal (the pre-P4.6 self-heal, now bounded to the mount window);
+  // revealed after the deadline fired (timer ref nulled) -> snap, because
+  // bklit snaps on data updates (StaticSeriesPointMarker, D14).
+  //
+  // S3 (D311): P4.6's guard was a plain BOOLEAN, which was correct only while
+  // migrated scatter had no `revealSignature` prop — after the deadline fires
+  // a boolean snaps FOREVER, so a caller bumping the signature would get
+  // nothing and S3 would land inert while typechecking clean. It now carries
+  // sankey's replay-KEY shape (`sankey-chart.tsx:515-534`): the key decides
+  // whether a NEW reveal window opens; the deadline still bounds the current
+  // one. `null` = never revealed.
+  const seenRevealKeyRef = React.useRef<{ signature: string; duration: number } | null>(null);
+  // S2 — reveal SPAN + easing (bklit `animation.ts:18` coercion; a spring is
+  // flattened to a tween of the same nominal duration). Primitive deps:
+  // callers pass `enterTransition` as an inline object literal.
+  const enterType = enterTransition?.type;
+  const enterDuration = enterTransition?.duration;
+  const enterEaseKey = enterTransition?.ease?.join(",");
+  const { durationMs: revealDurationMs, easingCss: revealEasingCss } = React.useMemo(
+    () => clipRevealTiming(enterTransition, animationDuration, animationEasing),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [enterType, enterDuration, enterEaseKey, animationDuration, animationEasing],
+  );
+  const revealKeyRef = React.useRef({ signature: revealSignature, duration: animationDuration });
+  revealKeyRef.current = { signature: revealSignature, duration: animationDuration };
   const onPhaseChangeRef = React.useRef(onPhaseChange);
   onPhaseChangeRef.current = onPhaseChange;
   const setPhase = React.useCallback((phase: ChartPhase) => {
@@ -145,7 +333,7 @@ export function ScatterChart({
     };
   }, []);
 
-  const { scatters, grid, xAxis, tooltip } = React.useMemo(
+  const { scatters, grid, xAxis, background, tooltip } = React.useMemo(
     () => extractChildren(children),
     [children],
   );
@@ -153,6 +341,11 @@ export function ScatterChart({
   // bklit scatter-chart-shell.tsx: no decimation (D14) — the benchmark
   // comparison must render every raw point, same as bklit.
   const renderData = data;
+
+  // useId-derived base for ALL per-series gradient defs (radial disc+gap+ring
+  // AND the S8 yGradient vertical fills) — declared before resolvedSeries so
+  // the yGradient url can be baked into the resolved rows.
+  const gradientBaseId = useSanitizedId();
 
   const resolvedSeries = React.useMemo<ResolvedSeries[]>(
     () =>
@@ -162,18 +355,37 @@ export function ScatterChart({
         // bklit series-markers.tsx: resolvedFill = fill ?? seriesConfig.stroke
         // ?? seriesColor, where seriesConfig.stroke = fill || stroke || color
         // (extractScatterConfigs) — net effect: fill ?? stroke ?? color.
-        const fill = s.fill ?? s.stroke ?? seriesColor;
-        const stroke = s.stroke ?? fill;
+        const rawFill = s.fill ?? s.stroke ?? seriesColor;
+        // S8 (bklit scatter.tsx): yGradient replaces the marker fill AND the
+        // ring stroke (unless an explicit `stroke` prop was set). `fill`/
+        // `stroke` below stay RAW — they feed the tooltip dot-color path —
+        // while `highlight*` carry the gradient url the MARK and the enlarged
+        // hover copy actually paint (bklit's resolvedFill/resolvedStroke).
+        const useYGradient = s.yGradient !== undefined && s.yGradient !== false;
+        const yGradId = useYGradient ? `${gradientBaseId}-ygrad-${index}` : null;
         return {
           dataKey: s.dataKey,
-          fill,
-          stroke,
+          yAxisId: s.yAxisId,
+          animate: s.animate ?? true,
+          fill: rawFill,
+          stroke: s.stroke ?? rawFill,
           strokeWidth: s.strokeWidth ?? 2,
           ringGap: s.ringGap ?? 2,
           radius: s.radius ?? 5,
+          fadeOnHover: s.fadeOnHover ?? true,
+          inactiveOpacity: s.inactiveOpacity ?? 0.5,
+          inactiveBlur: s.inactiveBlur ?? 2,
+          enterBlur: s.enterBlur ?? 2,
+          showActiveHighlight: s.showActiveHighlight ?? true,
+          outlineWidth: s.outlineWidth ?? 0,
+          outlineColor: s.outlineColor,
+          useYGradient,
+          yGradFrom: typeof s.yGradient === "object" ? s.yGradient.from ?? DEFAULT_Y_GRADIENT_FROM : DEFAULT_Y_GRADIENT_FROM,
+          yGradTo: typeof s.yGradient === "object" ? s.yGradient.to ?? DEFAULT_Y_GRADIENT_TO : DEFAULT_Y_GRADIENT_TO,
+          yGradId,
         };
       }),
-    [scatters],
+    [scatters, gradientBaseId],
   );
 
   // bklit scatter-chart-shell.tsx xRangePadding: max(radius) + 10, or a flat
@@ -188,31 +400,84 @@ export function ScatterChart({
   // *1.1, falling back to 100 when nothing is positive; `.nice()` applied by
   // the plain scaleLinear passed to `defineChart` below (y-axis-scales.ts
   // buildYScalesForLines always nices).
-  const yDomain = React.useMemo<[number, number]>(() => {
-    let max = 0;
-    for (const row of data) {
-      for (const series of resolvedSeries) {
-        const v = row[series.dataKey];
-        if (typeof v === "number" && Number.isFinite(v) && v > max) max = v;
+  //
+  // P6.1 / T-F1 (S6) — this closure is now called once per `yAxisId` group
+  // instead of once for the chart. It is deliberately still SCATTER'S OWN rule,
+  // passed in as `resolveDomain`, not replaced by the time-series one: D14's
+  // floor-at-0 / ignore-negatives / no-padding behaviour is exactly what
+  // `resolveYDomainsByAxis` was given a callback seam for.
+  const resolveScatterAxisDomain = React.useCallback(
+    (axisSeries: { dataKey: string }[]): [number, number] => {
+      let max = 0;
+      for (const row of data) {
+        for (const series of axisSeries) {
+          const v = row[series.dataKey];
+          if (typeof v === "number" && Number.isFinite(v) && v > max) max = v;
+        }
       }
+      return [0, max <= 0 ? 100 : max * 1.1];
+    },
+    [data],
+  );
+
+  const yDomainsByAxis = React.useMemo(
+    () =>
+      resolveYDomainsByAxis({
+        series: resolvedSeries,
+        resolveDomain: resolveScatterAxisDomain,
+      }),
+    [resolvedSeries, resolveScatterAxisDomain],
+  );
+
+  // Not `domainForAxis`: its last-resort `[0, 100]` happens to match scatter's
+  // own empty-input answer, but only by coincidence — running the same closure
+  // keeps the two tied together if either ever changes.
+  const yDomain = React.useMemo<[number, number]>(
+    () => yDomainsByAxis[DEFAULT_Y_AXIS_ID] ?? resolveScatterAxisDomain([]),
+    [yDomainsByAxis, resolveScatterAxisDomain],
+  );
+
+  // A secondary axis is a value reprojection into the primary (niced) domain —
+  // TanStack's spec carries one `y` scale. `yScale` below nices `yDomain`, so
+  // the projector's target must be the NICED tuple, not `yDomain` itself.
+  // Hoisted because the reference-area layer needs the same NICED per-axis
+  // domains the marks are projected into (RA2).
+  const nicedDomainsByAxis = React.useMemo(() => {
+    const out: Record<string, [number, number]> = {};
+    for (const [axisId, domain] of Object.entries(yDomainsByAxis)) {
+      out[axisId] = createNicedYScale(domain).domain() as [number, number];
     }
-    return [0, max <= 0 ? 100 : max * 1.1];
-  }, [data, resolvedSeries]);
+    return out;
+  }, [yDomainsByAxis]);
+  const nicedYDomainScatter = React.useMemo(
+    () => createNicedYScale(yDomain).domain() as [number, number],
+    [yDomain],
+  );
+  const projectorFor = React.useMemo(
+    () => createAxisValueProjector(nicedDomainsByAxis, nicedYDomainScatter),
+    [nicedDomainsByAxis, nicedYDomainScatter],
+  );
+
+  // Shared x-extent over the rendered data (single source for BOTH the chart
+  // x-scale and the selection scale / reference-area domain — scatter.md
+  // deviation: was computed twice per render).
+  const timeExtentScatter = React.useMemo(() => {
+    let minTime = Infinity;
+    let maxTime = -Infinity;
+    for (const d of renderData) {
+      const v = d[xDataKey];
+      if (v instanceof Date) { const t = v.getTime(); if (t < minTime) minTime = t; if (t > maxTime) maxTime = t; }
+    }
+    if (!Number.isFinite(minTime)) return null;
+    return { minTime, maxTime } as const;
+  }, [renderData, xDataKey]);
 
   // Custom x scale: TanStack's `resolveConfiguredScale` unconditionally
   // overwrites a plain scale instance's `.range()`, so the only way to get
   // an inset range (bklit's `xRangePadding`) is the object-with-`resolve`
   // escape hatch (`ChartScale`).
   const xScale = React.useMemo<ChartScale>(() => {
-    const dates = renderData
-      .map((d) => d[xDataKey])
-      .filter((v): v is Date => v instanceof Date);
-    const minTime = dates.length
-      ? Math.min(...dates.map((d) => d.getTime()))
-      : 0;
-    const maxTime = dates.length
-      ? Math.max(...dates.map((d) => d.getTime()))
-      : 0;
+    const { minTime, maxTime } = timeExtentScatter ?? { minTime: 0, maxTime: 0 };
     return {
       id: "x",
       resolve(context) {
@@ -240,7 +505,7 @@ export function ScatterChart({
         };
       },
     };
-  }, [renderData, xDataKey, xRangePadding]);
+  }, [timeExtentScatter, xRangePadding]);
 
   // Single-mark-per-series redesign (docs/LOG.md D14 revision): bklit's
   // fill-disc + gap + ring marker is reproduced as ONE `dot()` mark per
@@ -273,11 +538,10 @@ export function ScatterChart({
   // QA pixel-diff gap. Series with `strokeWidth <= 0` (no ring, matching
   // bklit's MarkerCircles which skips the ring entirely) use a plain solid
   // fill and skip the gradient — no gap/ring to reproduce.
-  const gradientBaseId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const gradientDefs = React.useMemo(
     () =>
       resolvedSeries
-        .filter((s) => s.strokeWidth > 0)
+        .filter((s) => s.strokeWidth > 0 && !s.useYGradient)
         .map((series, i) => {
           const outerRadius = series.radius + series.ringGap + series.strokeWidth;
           const fillEnd = (series.radius / outerRadius) * 100;
@@ -350,6 +614,16 @@ export function ScatterChart({
     if (width <= 0) return null;
     const marks: ChartMark<ChartDatum, Date, number>[] = [];
     for (const series of resolvedSeries) {
+      const projectY = projectorFor(series.yAxisId);
+      if (series.useYGradient) {
+        // S8: per-point vertical coloring via a userSpaceOnUse linearGradient
+        // (bklit scatter.tsx) — disc AND ring paint the same url(). Emitted as
+        // ONE custom mark producing the exact `ts-chart__dot` group + circle
+        // DOM shape stock dot() produces, so reveal/focus/chrome machinery is
+        // untouched. One ChartPoint per datum, markId = dataKey.
+        marks.push(createYGradientScatterMark(renderData, series, xDataKey, projectY));
+        continue;
+      }
       const hasRing = series.strokeWidth > 0;
       const gradientId = hasRing
         ? gradientIdBySeries.get(series.dataKey)
@@ -358,7 +632,8 @@ export function ScatterChart({
         dot(renderData, {
           id: series.dataKey,
           x: (d: ChartDatum) => d[xDataKey] as Date,
-          y: (d: ChartDatum) => d[series.dataKey] as number,
+          // P6.1 (S6): identity unless this series names a non-primary axis.
+          y: (d: ChartDatum) => projectY(d[series.dataKey] as number),
           r: hasRing
             ? series.radius + series.ringGap + series.strokeWidth
             : series.radius,
@@ -367,22 +642,32 @@ export function ScatterChart({
         }),
       );
     }
+    const gridGuide = resolveGridGuide(grid);
     const spec = {
       marks,
+      // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
+      // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
+      // key on the spec is never read.
       x: {
         scale: xScale,
-        guide: false,
+        grid: gridGuide.vertical,
+        axis: { ticks: { count: gridGuide.columnTicks } },
       },
       y: {
         scale: yScale,
-        grid: grid?.horizontal ?? false,
-        ticks: grid?.numTicks ?? 5,
+        grid: gridGuide.horizontal,
+        axis: { ticks: { count: gridGuide.ticks } },
       },
       margin,
       // bklit scatter has no data-update tween (Line-only concept, I8) — new
       // data always snaps, once loaded, exactly like bklit's
       // StaticSeriesPointMarker (D14).
       svgAnimation: false as const,
+      // T-D15 (P3.1): explicit 5-entry palette override, NOT the native
+      // 6-entry defaultChartTheme.palette — see internal/design-tokens.ts.
+      // Every series already carries an explicit `fill` (resolved from
+      // DEFAULT_SCATTER_COLORS above), so this has no pixel effect today.
+      theme: { palette: CHART_CATEGORY_PALETTE },
     } as const;
     const base = defineChart(spec);
     return defineChart(base, {
@@ -390,7 +675,7 @@ export function ScatterChart({
       focusRing: false,
       maxFocusDistance: Number.POSITIVE_INFINITY,
     }) as StaticChartDefinition<ChartDatum, Date, number, "dom">;
-  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy]);
+  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy, projectorFor]);
 
   // Hover chrome (bklit ChartTooltip, scatter dim/highlight variant).
   const tooltipEnabled = tooltip?.enabled ?? false;
@@ -399,18 +684,46 @@ export function ScatterChart({
   const chromeStateRef = React.useRef<ScatterHoverChromeState | null>(null);
   const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
     const v = d[xDataKey];
-    if (v instanceof Date) return v.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (v instanceof Date) return shortDateFmt.format(v);
     return String(v ?? "");
   }), [renderData, xDataKey]);
+  // S12/K-1 (go-to-plan.md): the provider's box spring is the live default at
+  // the part→config boundary; a per-<ChartTooltip> boxSpringConfig /
+  // matchCrosshair / damping still overrides it inside resolveBoxSpring —
+  // same precedence the deleted per-chrome option applied.
+  const tooltipWithBoxSpring = React.useMemo(() => {
+    if (!tooltip) return null;
+    if (tooltip.boxSpringConfig || tooltip.matchCrosshair || tooltip.damping !== undefined) return tooltip;
+    return { ...tooltip, boxSpringConfig: chartConfig.tooltipBoxSpring };
+  }, [tooltip, chartConfig.tooltipBoxSpring]);
   chromeStateRef.current = {
     margin,
-    series: resolvedSeries,
+    series: resolvedSeries.map((s) => ({
+      dataKey: s.dataKey,
+      fill: s.fill,
+      stroke: s.stroke,
+      strokeWidth: s.strokeWidth,
+      ringGap: s.ringGap,
+      radius: s.radius,
+      highlightFill: s.useYGradient ? `url(#${s.yGradId})` : undefined,
+      // bklit scatter.tsx resolvedStroke = stroke ?? (gradientFill when
+      // yGradient owns the marker); explicit `stroke` prop wins.
+      highlightStroke: s.useYGradient ? `url(#${s.yGradId})` : undefined,
+      fadeOnHover: s.fadeOnHover,
+      inactiveOpacity: s.inactiveOpacity,
+      inactiveBlur: s.inactiveBlur,
+      outlineWidth: s.outlineWidth,
+      outlineColor: s.outlineColor,
+      showActiveHighlight: s.showActiveHighlight,
+    })),
     xDataKey,
     pointCount: renderData.length,
     showCrosshair: tooltip?.showCrosshair ?? true,
     showDots: tooltip?.showDots ?? true,
     showDatePill: tooltip?.showDatePill ?? true,
-    tooltip: tooltip ?? null,
+    // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade radius.
+    tickerHalfWidth: xAxis?.tickerHalfWidth,
+    tooltip: tooltipWithBoxSpring,
     dateLabels: dateLabelsForPill,
   };
 
@@ -422,7 +735,6 @@ export function ScatterChart({
     if (!el || !tooltipEnabled) return;
     const chrome = attachScatterHoverChrome(el, () => chromeStateRef.current!, {
       tooltipSpring: chartConfig.tooltipSpring,
-      tooltipBoxSpring: chartConfig.tooltipBoxSpring,
     });
     chromeRef.current = chrome;
     return () => {
@@ -442,6 +754,13 @@ export function ScatterChart({
 
   const handleFocusGroupChange = React.useCallback(
     (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
+      // S11 (bklit use-scatter-chart-interaction.ts): a drag arms on
+      // pointerdown and clears the tooltip; hover updates are suppressed for
+      // the whole drag (same gate as line/candlestick's dragSelectionActiveRef).
+      if (dragSelectionActiveRef.current) {
+        chromeRef.current?.onFocusGroupChange([]);
+        return;
+      }
       if (points.length === 0) {
         chromeRef.current?.onFocusGroupChange([]);
         return;
@@ -458,6 +777,14 @@ export function ScatterChart({
     },
     [fillBySeries],
   );
+
+  // S11 (bklit useScatterChartInteraction): drag-select + two-finger range
+  // selection. Selection lives only while the gesture is active (cleared on
+  // pointerup/leave/touchend) and is exposed via ChartSelectionContext for
+  // Segment children, exactly like line/area/composed. The selection x-scale
+  // mirrors bklit's own: scaleUtc over the time extent with the same inset
+  // range as the rendered chart scale.
+  const innerWidthSelection = Math.max(0, width - margin.left - margin.right);
 
   // Mount reveal: bklit's per-marker framer entrance equivalent — one WAAPI
   // tween per rendered circle (fill + ring), delayed by on-screen x position,
@@ -496,26 +823,79 @@ export function ScatterChart({
     const marksGroup = containerRef.current?.querySelector<SVGGElement>(
       ".ts-chart__marks",
     );
-    if (!marksGroup || marksGroup.dataset.bkmRevealed === "1" || animationDuration <= 0) {
+    // S3: the replay KEY is tested BEFORE the DOM stamp. The stamp latches for
+    // the life of the marks node, so a caller bumping `revealSignature` on a
+    // surviving node would be swallowed here and S3 would land inert.
+    const seen = seenRevealKeyRef.current;
+    const revealKey = revealKeyRef.current;
+    const revealKeyChanged =
+      seen === null ||
+      seen.signature !== revealKey.signature ||
+      seen.duration !== revealKey.duration;
+    if (
+      !marksGroup ||
+      animationDuration <= 0 ||
+      (isRevealed(marksGroup) && !revealKeyChanged)
+    ) {
       setPhase("ready");
       return;
     }
-    marksGroup.dataset.bkmRevealed = "1";
+    // P4.6 (M3a): the reveal runs once per component lifetime. The scene (and
+    // with it the .ts-chart__marks group) is rebuilt on every data swap, so
+    // the DOM-side `dataset.bkmRevealed` guard dies with the old node and the
+    // mount reveal used to replay on EVERY update (~n·series animate()
+    // instantiations + blur rasterization inside the update->paint window).
+    // Three states, keyed on seenRevealKeyRef + the pending deadline:
+    //   first call            -> run the reveal, arm the deadline
+    //   revealed, deadline up -> the group was replaced mid-window; restart
+    //                            the reveal (the pre-P4.6 self-heal, now
+    //                            bounded to the mount window)
+    //   revealed, deadline
+    //   fired (ref nulled)    -> snap: bklit snaps on data updates
+    //                            (StaticSeriesPointMarker, D14)
+    if (seen !== null) {
+      if (revealDeadlineTimerRef.current === null) {
+        // Mount window closed. Snap — UNLESS the caller opened a new one.
+        if (!revealKeyChanged) {
+          setPhase("ready");
+          return;
+        }
+        revealPostPaintCancelRef.current?.();
+        revealPostPaintCancelRef.current = null;
+      } else {
+        window.clearTimeout(revealDeadlineTimerRef.current);
+        revealDeadlineTimerRef.current = null;
+        revealPostPaintCancelRef.current?.();
+        revealPostPaintCancelRef.current = null;
+      }
+    }
+    seenRevealKeyRef.current = { ...revealKey };
+    markRevealed(marksGroup);
     setPhase("revealing");
     // Force-snap at deadline: `.cancel()` drops Animations from the active
     // list entirely — see `setRevealDeadline` in deferred-reveal.ts for the
     // rationale (avoiding M3a regression from lingering finished Animations).
-    revealDeadlineTimerRef.current = setRevealDeadline(animationDuration, {
+    revealDeadlineTimerRef.current = setRevealDeadline(revealDurationMs, {
       animationsRef: revealAnimationsRef,
-      onDeadline: () => { setPhase("ready"); },
+      onDeadline: () => {
+        // P4.6 (M3a): close the mount reveal window — later onRender calls
+        // (every data swap) must take the snap path, never re-reveal.
+        revealDeadlineTimerRef.current = null;
+        setPhase("ready");
+      },
     });
 
     marksGroup.classList.add("ts-chart__marks--revealing");
     const innerW = Math.max(0, width - margin.left - margin.right);
-    const durationSec = animationDuration / 1000;
+    // bklit series-markers.tsx:102 — the per-point stagger spans the CLIP
+    // reveal's duration, which `enterTransition` may override.
+    const durationSec = revealDurationMs / 1000;
 
     revealPostPaintCancelRef.current = onPostPaint(() => {
       for (const series of resolvedSeries) {
+        // S7 — bklit series-markers.tsx:104 gates the whole enter branch on
+        // `animate && !isLoaded`; a non-animating series paints at final state.
+        if (!series.animate) continue;
         // bklit series-point-marker.tsx getSeriesMarkerVisualExtent
         // (pilot: outlineWidth always 0, showActiveHighlight always
         // true).
@@ -545,13 +925,15 @@ export function ScatterChart({
               innerW > 0 ? (leadingEdge / innerW) * durationSec : 0;
             const anim = circle.animate(
               [
-                { opacity: 0, filter: "blur(2px)" },
+                { opacity: 0, filter: `blur(${series.enterBlur}px)` },
                 { opacity: 1, filter: "blur(0px)" },
               ],
               {
+                // bklit series-markers.tsx:103 pins this at 0.5s: the FADE is
+                // fixed, only the stagger SPAN follows `enterTransition`.
                 duration: ENTER_TWEEN_MS,
                 delay: delaySec * 1000,
-                easing: REVEAL_EASING,
+                easing: revealEasingCss,
                 // "backwards" only: hides the circle (first keyframe)
                 // during its pre-start delay. We deliberately do NOT use
                 // "both"/"forwards" here — a persisting end-state would
@@ -572,33 +954,66 @@ export function ScatterChart({
       }
       marksGroup.classList.remove("ts-chart__marks--revealing");
     });
-  }, [animationDuration, margin.left, margin.right, resolvedSeries, setPhase, width]);
+  }, [animationDuration, revealDurationMs, revealEasingCss, margin.left, margin.right, resolvedSeries, setPhase, width]);
 
   const refAreaChildrenScatter = React.useMemo(() => extractReferenceAreaProps(children), [children]);
   const heightPxScatter = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
-  const timeExtentScatter = React.useMemo(() => {
-    let minTime = Infinity;
-    let maxTime = -Infinity;
-    for (const d of renderData) {
-      const v = d[xDataKey];
-      if (v instanceof Date) { const t = v.getTime(); if (t < minTime) minTime = t; if (t > maxTime) maxTime = t; }
-    }
-    if (!Number.isFinite(minTime)) return null;
-    return { minTime, maxTime } as const;
-  }, [renderData, xDataKey]);
-  const yDomainScatter = React.useMemo<[number, number]>(() => {
-    let max = 0;
-    for (const row of data) for (const s of resolvedSeries) { const v = row[s.dataKey]; if (typeof v === "number" && Number.isFinite(v) && v > max) max = v; }
-    return [0, max <= 0 ? 100 : max * 1.1];
-  }, [data, resolvedSeries]);
+
+  // S8 defs: one userSpaceOnUse vertical linearGradient per yGradient series,
+  // spanning the plot area exactly like bklit's `<Scatter>`-rendered
+  // `<defs><linearGradient y1={innerHeight} y2={0}>`. Lives in the same 0×0
+  // sibling svg as the radial marker gradients (document-wide url() refs).
+  const yGradientDefs = React.useMemo(
+    () =>
+      resolvedSeries
+        .filter((s) => s.useYGradient && s.yGradId)
+        .map((s) => ({ id: s.yGradId as string, from: s.yGradFrom, to: s.yGradTo })),
+    [resolvedSeries],
+  );
+
+  // S11: the drag-select hook (after timeExtentScatter — its x-scale memo
+  // consumes that extent). See the comment block at innerWidthSelection.
+  const xScaleForSelection = React.useMemo(() => {
+    if (!timeExtentScatter) return null;
+    return scaleUtc()
+      .domain([new Date(timeExtentScatter.minTime), new Date(timeExtentScatter.maxTime)])
+      .range([xRangePadding, Math.max(xRangePadding, innerWidthSelection - xRangePadding)]);
+  }, [timeExtentScatter, innerWidthSelection, xRangePadding]);
+
+  const { selection: scatterSelection } = useChartSelection({
+    enabled: true,
+    innerWidth: innerWidthSelection,
+    marginLeft: margin.left,
+    data: renderData as unknown as Array<Record<string, unknown>>,
+    xDataKey,
+    xScale: xScaleForSelection as unknown as { invert: (px: number) => Date } | null,
+    containerRef,
+    onDragStart: () => {
+      dragSelectionActiveRef.current = true;
+      chromeRef.current?.onFocusGroupChange([]);
+    },
+    onDragEnd: () => {
+      dragSelectionActiveRef.current = false;
+    },
+  });
 
   return (
+    <ChartSelectionContext.Provider value={scatterSelection}>
     <div
       ref={containerRef}
       className={className}
-      style={{ position: "relative", width: "100%", aspectRatio, isolation: "isolate" } as React.CSSProperties}
+      style={{ position: "relative", width: "100%", aspectRatio, touchAction: "none", isolation: "isolate" } as React.CSSProperties}
       data-bkm-chart="scatter"
     >
+      {background ? (
+        <BackgroundLayer
+          config={background}
+          innerWidth={Math.max(0, width - margin.left - margin.right)}
+          innerHeight={Math.max(0, heightPxScatter - margin.top - margin.bottom)}
+          marginLeft={margin.left}
+          marginTop={margin.top}
+        />
+      ) : null}
       {definition ? (
         <>
           <Chart
@@ -608,7 +1023,7 @@ export function ScatterChart({
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
           />
-          {gradientDefs.length > 0 ? (
+          {gradientDefs.length > 0 || yGradientDefs.length > 0 ? (
             // Rendered AFTER <Chart> deliberately: QA's screenshot harness
             // locates the chart via `page.locator("#chart-root svg").first()`
             // to compute hover coordinates (qa/screenshot.mjs, not ours to
@@ -655,6 +1070,20 @@ export function ScatterChart({
                     <stop offset="100%" stopColor={g.stroke} stopOpacity={1} />
                   </radialGradient>
                 ))}
+                {yGradientDefs.map((g) => (
+                  <linearGradient
+                    key={g.id}
+                    id={g.id}
+                    gradientUnits="userSpaceOnUse"
+                    x1={0}
+                    x2={0}
+                    y1={heightPxScatter}
+                    y2={0}
+                  >
+                    <stop offset="0%" stopColor={g.from} />
+                    <stop offset="100%" stopColor={g.to} />
+                  </linearGradient>
+                ))}
               </defs>
             </svg>
           ) : null}
@@ -666,6 +1095,7 @@ export function ScatterChart({
               rangeEnd={width - margin.right - xRangePadding}
               numTicks={xAxis.numTicks ?? 5}
               formatValue={xAxis.formatValue}
+              tickMode={xAxis.tickMode}
             />
           ) : null}
           {heightPxScatter > 0 && (
@@ -675,7 +1105,10 @@ export function ScatterChart({
                 width,
                 height: heightPxScatter,
                 margin,
-                yDomain: yDomainScatter,
+                // RA2 — NICED, matching the scale the dots paint in (the raw
+                // `yDomain` was off by the nicing delta).
+                yDomain: nicedYDomainScatter,
+                yDomainsByAxis: nicedDomainsByAxis,
                 xDomain: timeExtentScatter ? ([new Date(timeExtentScatter.minTime), new Date(timeExtentScatter.maxTime)] as unknown as [Date, Date]) : undefined,
                 isTimeScale: true,
                 xRangePadding,
@@ -691,5 +1124,9 @@ export function ScatterChart({
         </>
       ) : null}
     </div>
+    </ChartSelectionContext.Provider>
   );
 }
+
+// Legacy parity: bklit `scatter-chart.tsx` ships `export default ScatterChart;` (T-E2).
+export default ScatterChart;

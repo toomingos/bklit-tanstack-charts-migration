@@ -70,7 +70,13 @@ export function bklitRadarGrid(options: BklitRadarGridOptions): PolarGuide {
             key: `radar-ring:${i}`,
             points: [],
             path,
-            style: { fill: "none", stroke, strokeOpacity, strokeWidth: 1 },
+            style: {
+              fill: "none",
+              stroke,
+              strokeOpacity,
+              strokeWidth: 1,
+              lineCap: "round",
+            },
           });
         }
         if (showLabels) {

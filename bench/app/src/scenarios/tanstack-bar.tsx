@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { scaleBand, scaleLinear } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";
 import { barY, defineChart } from "@tanstack/charts";
+import { tooltip } from "@tanstack/charts/tooltip";
 import {
   generateTimeSeries,
   generateTimeSeriesUpdate,
@@ -72,7 +73,7 @@ export default function TanstackBar({ n }: { n: number }) {
       ],
       x: { scale: () => scaleBand<string>().paddingInner(0.2), grid: false },
       y: { scale: scaleLinear, nice: true, grid: true },
-      tooltip: true,
+      tooltip,
     });
   }, [data]);
 

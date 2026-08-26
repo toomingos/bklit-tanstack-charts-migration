@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSanitizedId } from "./use-sanitized-id";
 
 export function resolveDashTailBounds(
   dashFromIndex: number | undefined,
@@ -67,7 +68,7 @@ function findSeriesPath(container: HTMLElement | null, dataKey: string): SVGPath
 
 export function DashTailOverlay(props: DashTailOverlayProps): React.ReactNode {
   const { containerRef, width, height, margin, renderData, xDataKey, series, innerWidth, innerHeight } = props;
-  const baseId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const baseId = useSanitizedId();
   const [measured, setMeasured] = React.useState<Map<string, Measured>>(new Map());
 
   const activeSeries = React.useMemo(

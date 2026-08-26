@@ -53,6 +53,39 @@ function resolveTiming(
   return { durationMs, easingCss };
 }
 
+// Per-node stagger payload for the hover dim/undim paint. Legacy's dim runs
+// through the SAME staggered enter transitions as the reveal (AnimatedNode's
+// motion.rect/labels animate opacity with nodeEnter/nameEnter/valueEnter),
+// so a hover-in dims nodes as a stagger wave (delay up to ~0.24·D) instead
+// of uniformly. The QA hover captures sample 700ms into that wave — parity
+// requires the migrated CSS-transition paint to carry the same delays,
+// duration, and easing.
+export interface SankeyNodeStagger {
+  count: number;
+  durationMs: number;
+  easingCss: string;
+}
+
+export function buildSankeyNodeStagger(
+  nodeCount: number,
+  enterTransition: SankeyEnterTransition | undefined,
+  animationDuration: number,
+): SankeyNodeStagger {
+  const { durationMs, easingCss } = resolveTiming(enterTransition, animationDuration);
+  return { count: nodeCount, durationMs, easingCss };
+}
+
+export function sankeyNodeStaggerDelays(
+  stagger: SankeyNodeStagger,
+  index: number,
+): { rectMs: number; nameMs: number; valueMs: number } {
+  const nodeAnimDuration = stagger.durationMs * 0.6;
+  const rectMs = stagger.count > 0 ? (index / stagger.count) * nodeAnimDuration * 0.4 : 0;
+  const nameMs = rectMs + nodeAnimDuration * 0.6 * 0.3;
+  const valueMs = nameMs + 60;
+  return { rectMs, nameMs, valueMs };
+}
+
 export function injectGradientDefs(svg: SVGSVGElement, gradients: SankeyGradientDatum[]): void {
   if (gradients.length === 0) return;
 
@@ -83,7 +116,7 @@ export function injectLabelCssTransitions(svg: SVGSVGElement): void {
   style.classList.add("ts-sankey__transitions");
   style.textContent = `
     .ts-sankey__node rect { transition: opacity 0.18s ease-out; }
-    .ts-sankey__links > path { transition: opacity 0.18s ease-out; }
+    [data-ts-key="sankey:flow"] > path { transition: stroke-opacity 0.18s ease-out; }
     [data-ts-key^="sankey:nlabel:"] { transition: opacity 0.18s ease-out; }
     [data-ts-key^="sankey:vlabel:"] { transition: opacity 0.18s ease-out, fill-opacity 0.18s ease-out; }
   `;
@@ -204,16 +237,49 @@ export function runSankeyReveal(config: SankeyRevealConfig): SankeyRevealHandle 
       const nameLabelDelayMs = stagDelayMs + nodeAnimDuration * 0.6 * 0.3;
       const valueLabelDelayMs = nameLabelDelayMs + 60;
 
+      // bklit's NodeLabel enters sliding toward its final spot while fading:
+      // motion.g x animates initialX (node-edge inset x±8) → labelX (x∓12),
+      // a 20px outward slide. Screen-space via the individual `translate`
+      // property composes OVER the renderer's rotate() attribute (a transform
+      // presentation attribute), reproducing the unrotated-g offset. Final
+      // keyframe is the resting state (no translate residue).
+      const resolveSlidePx = (el: SVGElement): number => {
+        const anchor = el.getAttribute("text-anchor");
+        if (anchor === "end") return 20; // left-side: starts toward node, slides out left
+        if (anchor === "start") return -20; // right-side: starts toward node, slides out right
+        // Rotated labels are middle-anchored; legacy slides them by the same
+        // ±20px horizontal delta (initialX vs labelX by node side).
+        const halfWidth = (svg.viewBox.baseVal.width || svg.clientWidth) / 2;
+        const x = parseFloat(el.getAttribute("x") ?? "0");
+        return x >= halfWidth ? -20 : 20;
+      };
+
       const nameLabel = nameLabels.get(i);
       if (nameLabel) {
-        animate(nameLabel, [{ opacity: "0" }, { opacity: "1" }], nameLabelDelayMs);
+        const dx = resolveSlidePx(nameLabel);
+        animate(
+          nameLabel,
+          [
+            { opacity: "0", translate: `${dx}px 0px` },
+            { opacity: "1", translate: "0px 0px" },
+          ],
+          nameLabelDelayMs,
+        );
       }
 
       // The value label's resting 0.6 dim is its scene fillOpacity — the
       // reveal only fades opacity 0→1 (visually 0→0.6, bklit-identical).
       const valueLabel = valueLabels.get(i);
       if (valueLabel) {
-        animate(valueLabel, [{ opacity: "0" }, { opacity: "1" }], valueLabelDelayMs);
+        const dx = resolveSlidePx(valueLabel);
+        animate(
+          valueLabel,
+          [
+            { opacity: "0", translate: `${dx}px 0px` },
+            { opacity: "1", translate: "0px 0px" },
+          ],
+          valueLabelDelayMs,
+        );
       }
     }
 

@@ -1,22 +1,16 @@
 // Port of repos/bklit-ui/packages/ui/src/charts/heatmap/heatmap-colors.ts's
-// level-style / color-scale / fill-scale system.
-//
-// DISCLOSED SCOPE CUT: bklit's `HeatmapLevelStyle.fillMode==="pattern"` branch
-// renders an SVG pattern via a 187-line generator (`pattern-preset.tsx`,
-// diagonal/cross/dots presets with configurable scale/stroke/radius/fill).
-// That generator is NOT ported — `buildHeatmapFillScale`/`HeatmapLegendSwatch`
-// below always resolve to the level's solid `color`, regardless of
-// `fillMode`/`pattern`. The full `HeatmapLevelStyle` prop surface (including
-// all pattern-only fields) IS kept for API-compat/typecheck purposes, so a
-// caller migrating from bklit compiles unchanged; only the visual pattern
-// rendering itself is cut. See migration report for rationale (bench never
-// exercises pattern fills; no scenario sets fillMode:"pattern").
+// level-style / color-scale / fill-scale system, including the
+// `fillMode==="pattern"` branch: pattern-mode levels resolve to
+// `url(#heatmap-level-N)` fills backed by the shared `pattern-preset.tsx`
+// renderer (wired into cell fills + legend swatches by heatmap-components.tsx,
+// mirroring bklit's heatmap-pattern-defs.tsx + heatmap-legend-swatch.tsx).
 //
 // bklit's own source uses `levelStyles as unknown as HeatmapLevelStyles` in
 // heatmap-legend.tsx to build a levelStyles tuple from a colorScale — this
 // port avoids `as unknown` entirely (banned pattern) by constructing the
 // 5-tuple directly with a typed literal instead of casting through unknown.
 import { getHeatmapContributionLevel } from "./heatmap-utils";
+import type { PatternPresetId } from "./pattern-preset";
 
 const HEATMAP_LEVEL_CSS_VARS = [
   "var(--chart-scale-01)",
@@ -35,7 +29,7 @@ export type HeatmapLevelFillMode = "solid" | "pattern";
 export interface HeatmapLevelStyle {
   color: string;
   fillMode?: HeatmapLevelFillMode;
-  pattern?: string;
+  pattern?: PatternPresetId;
   patternColor?: string;
   patternScale?: number;
   patternStrokeWidth?: number;
@@ -71,22 +65,41 @@ export function isHeatmapLevelPattern(style: HeatmapLevelStyle): boolean {
   return style.fillMode === "pattern" && style.pattern != null && style.pattern !== "none";
 }
 
-export function heatmapLevelCellFillOpacity(_style: HeatmapLevelStyle): number {
-  // Real bklit blends `patternOpacity` in here only because a pattern-mode
-  // cell's *fill* is `url(#pattern-id)` (an actual rendered SVG pattern) and
-  // this opacity is layered on top of it. Since this port's `fillScale` (see
-  // below) never emits a pattern url -- it always resolves to the level's
-  // solid `color`, per the pattern-fill scope cut documented at the top of
-  // this file -- there is no pattern layer for `patternOpacity` to modulate,
-  // so this always returns 1 (previously it read `style.patternOpacity` even
-  // though the fill it would have modulated was never rendered, which was a
-  // latent bug: a pattern-mode `levelStyle` with e.g. `patternOpacity: 0.4`
-  // would have rendered an almost-invisible solid-color cell instead of the
-  // intended full-opacity solid fallback).
-  return 1;
+export function heatmapPatternStrokeFallback(color: string): string {
+  return `color-mix(in oklch, ${color} 45%, white)`;
 }
 
-function levelStylesFromColors(levelColors: HeatmapLevelColors): HeatmapLevelStyles {
+export function heatmapLevelPatternRenderOptions(style: HeatmapLevelStyle) {
+  const preset = style.pattern ?? "diagonal";
+  let defaultScale = 1;
+  if (preset === "cross") {
+    defaultScale = 1.33;
+  }
+
+  return {
+    color:
+      style.patternColor?.trim() ||
+      (preset === "accent"
+        ? "#e879f9"
+        : heatmapPatternStrokeFallback(style.color)),
+    tileBackground: style.patternTileBackground?.trim() || style.color,
+    scale: style.patternScale ?? defaultScale,
+    strokeWidth: style.patternStrokeWidth,
+    radius: style.patternRadius,
+    complement: style.patternComplement,
+    fill: style.patternFill?.trim() || undefined,
+    dotFill: style.patternDotsFill,
+  };
+}
+
+export function heatmapLevelCellFillOpacity(style: HeatmapLevelStyle): number {
+  if (!isHeatmapLevelPattern(style)) {
+    return 1;
+  }
+  return style.patternOpacity ?? 1;
+}
+
+export function levelStylesFromColors(levelColors: HeatmapLevelColors): HeatmapLevelStyles {
   return [
     { color: levelColors[0], fillMode: "solid", pattern: "none" },
     { color: levelColors[1], fillMode: "solid", pattern: "none" },
@@ -123,16 +136,15 @@ export function buildHeatmapColorScaleFromStyles(
 export function buildHeatmapFillScale(
   levelStyles: HeatmapLevelStyles,
 ): (count: number | null | undefined) => string {
-  // DISCLOSED SCOPE CUT (see header): always resolves to the level's solid
-  // `color`, even when `fillMode==="pattern"` -- this port renders no
-  // `<pattern>` defs (`HeatmapPatternDefs` is not ported), so returning
-  // `url(#heatmap-level-N)` here (as real bklit does for pattern-mode
-  // levels) would reference a nonexistent pattern and paint the cell fully
-  // transparent. `heatmapLevelPatternId` is still exported/used by
-  // `isHeatmapLevelPattern` callers that only need the boolean check.
+  // bklit parity: pattern-mode levels resolve to `url(#heatmap-level-N)` —
+  // the matching `<pattern>` defs are rendered by HeatmapPatternDefs
+  // (heatmap-components.tsx), so the reference is always backed.
   return (count: number | null | undefined) => {
     const level = getHeatmapContributionLevel(count ?? 0);
     const style = levelStyles[level] ?? levelStyles[0];
+    if (isHeatmapLevelPattern(style)) {
+      return `url(#${heatmapLevelPatternId(level)})`;
+    }
     return style.color;
   };
 }

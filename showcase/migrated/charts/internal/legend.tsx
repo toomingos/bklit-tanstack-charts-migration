@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { cn } from "@/lib/utils";
+import { intFmt } from "./formatters";
 import {
   type LegendItemData,
   LegendItemProvider,
@@ -159,8 +160,6 @@ export function LegendLabel({
 }
 
 LegendLabel.displayName = "LegendLabel";
-
-const intFmt = new Intl.NumberFormat("en-US").format;
 
 export interface LegendValueProps {
   className?: string;

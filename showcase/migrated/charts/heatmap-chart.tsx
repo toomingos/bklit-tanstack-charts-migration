@@ -592,3 +592,6 @@ export {
 export {
   computeHeatmapLevelRange,
 } from "./internal/heatmap-animation";
+
+// Legacy parity: bklit `heatmap-chart.tsx` ships `export default HeatmapChart;` (T-E2).
+export default HeatmapChart;

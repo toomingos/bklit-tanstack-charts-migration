@@ -5,10 +5,17 @@
 export type Impl = "bklit" | "tanstack" | "migrated";
 export type ChartKind =
   | "line"
+  | "linemultiaxis"
   | "area"
+  | "areamultiaxis"
   | "bar"
+  | "barmultiaxis"
   | "scatter"
+  | "scattermultiaxis"
+  | "composedmultiaxis"
+  | "refareamultiaxis"
   | "candlestick"
+  | "candletween"
   | "composed"
   | "radar"
   | "pie"
@@ -19,12 +26,14 @@ export type ChartKind =
   | "funnelvertical"
   | "heatmap"
   | "sunburst"
+  | "sunchrome"
   | "choropleth"
   | "sankey"
   | "liveline"
   | "refarea"
   | "segment"
   | "projection"
+  | "projectionxdomain"
   | "profitloss"
   | "legend"
   | "candlelegend"
@@ -33,7 +42,13 @@ export type ChartKind =
   | "markers"
   | "patternarea"
   | "barsquares"
-  | "bardepth";
+  | "bardepth"
+  | "griddefault"
+  | "composedstacked"
+  /** P5.7 A10/B14: the `*ChartLoading` PRESET components, which are a separate
+      code path from the `state=loading` prop the `area`/`line` scenarios use. */
+  | "arealoading"
+  | "barloading";
 export type Scenario = "mount" | "update" | "live" | "hover";
 /** Chart data state: "ready" (default) renders with data; "loading" mounts
  * the chart in its loading phase (`status="loading"` on charts that support
@@ -62,10 +77,17 @@ export function parseBenchParams(): BenchParams {
   }
   if (
     chart !== "line" &&
+    chart !== "linemultiaxis" &&
     chart !== "area" &&
+    chart !== "areamultiaxis" &&
     chart !== "bar" &&
+    chart !== "barmultiaxis" &&
     chart !== "scatter" &&
+    chart !== "scattermultiaxis" &&
+    chart !== "composedmultiaxis" &&
+    chart !== "refareamultiaxis" &&
     chart !== "candlestick" &&
+    chart !== "candletween" &&
     chart !== "composed" &&
     chart !== "radar" &&
     chart !== "pie" &&
@@ -76,12 +98,14 @@ export function parseBenchParams(): BenchParams {
     chart !== "funnelvertical" &&
     chart !== "heatmap" &&
     chart !== "sunburst" &&
+    chart !== "sunchrome" &&
     chart !== "choropleth" &&
     chart !== "sankey" &&
     chart !== "liveline" &&
     chart !== "refarea" &&
     chart !== "segment" &&
     chart !== "projection" &&
+    chart !== "projectionxdomain" &&
     chart !== "profitloss" &&
     chart !== "legend" &&
     chart !== "candlelegend" &&
@@ -90,7 +114,11 @@ export function parseBenchParams(): BenchParams {
     chart !== "markers" &&
     chart !== "patternarea" &&
     chart !== "barsquares" &&
-    chart !== "bardepth"
+    chart !== "bardepth" &&
+    chart !== "griddefault" &&
+    chart !== "composedstacked" &&
+    chart !== "arealoading" &&
+    chart !== "barloading"
   ) {
     throw new Error(`Missing/invalid ?chart= (got ${JSON.stringify(chart)})`);
   }

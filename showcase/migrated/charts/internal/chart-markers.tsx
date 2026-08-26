@@ -1,21 +1,25 @@
 "use client";
 
 import * as React from "react";
+import { useActiveMarkerDate } from "./marker-tooltip";
+import { nativeStaggerDelayMs } from "./native-stagger";
+import type { ChartMarker } from "./types";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+
+export type { ChartMarker };
 
 const FAN_RADIUS = 50;
 const FAN_ANGLE = 160;
 
-export interface ChartMarker {
-  date: Date;
-  icon: React.ReactNode;
-  title: string;
-  description?: string;
-  content?: React.ReactNode;
-  color?: string;
-  onClick?: () => void;
-  href?: string;
-  target?: "_blank" | "_self";
-}
+// P1.12 (LM1+LM13 FIX): the __qaSetMarkerFan harness hook is dev/QA-gated —
+// inert unless the flag was ALREADY true when this module first evaluated
+// (QA protocol: Playwright addInitScript sets it before app boot, see
+// qa/screenshot.mjs's marker-fan-open capture). A production page never
+// sets it pre-boot, so the forcing surface cannot activate there; app code
+// setting the flag after boot is ignored.
+const QA_MARKER_FAN_ARMED =
+  typeof window !== "undefined" &&
+  (window as unknown as Record<string, unknown>).__qaSetMarkerFan === true;
 
 export interface ChartMarkersProps {
   items: ChartMarker[];
@@ -29,7 +33,10 @@ export interface ChartMarkersProps {
   innerHeight: number;
   containerRef: React.RefObject<HTMLElement | null>;
   animationDuration: number;
-  onMarkerHoverChange?: (entered: boolean) => void;
+  /** Legacy parity (LM6): carries the hovered bucket's markers on enter,
+      null on leave — callers use the payload to suppress the crosshair
+      chrome (see line-chart.tsx / area-chart.tsx call sites). */
+  onMarkerHoverChange?: (markers: ChartMarker[] | null) => void;
 }
 
 function getCirclePosition(index: number, total: number) {
@@ -88,7 +95,7 @@ function MarkerCircleHtml({
         transition: "transform 150ms ease-out",
       }}
       onMouseEnter={(e) => {
-        if (hasAction) (e.currentTarget as HTMLDivElement).style.transform = "scale(1.12)";
+        if (hasAction) (e.currentTarget as HTMLDivElement).style.transform = "scale(1.15)";
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLDivElement).style.transform = "scale(1)";
@@ -141,6 +148,7 @@ function MarkerGroupView({
   animate,
   delayMs,
   maxFanned,
+  isActive,
   onMarkerHoverChange,
 }: {
   bucket: Bucket;
@@ -152,20 +160,20 @@ function MarkerGroupView({
   animate: boolean;
   delayMs: number;
   maxFanned?: number;
-  onMarkerHoverChange?: (entered: boolean) => void;
+  /** Legacy parity (LM8): true while the chart crosshair/tooltip sits on
+      this bucket's date — hides the guide line so it doesn't fight the
+      crosshair indicator (legacy MarkerGroup.strokeOpacity ruling). */
+  isActive?: boolean;
+  onMarkerHoverChange?: (markers: ChartMarker[] | null) => void;
 }) {
   const [hovered, setHovered] = React.useState(false);
   const markers = bucket.markers;
   const hasMultiple = markers.length > 1;
   const fanned = maxFanned === undefined ? markers : markers.slice(0, maxFanned);
-  // D229 initiative-10 QA hook: window.__qaSetMarkerFan forces every
-  // multi-marker group open without a real pointer hover, so screenshot.mjs
-  // can capture the fan geometry deterministically. Checked at every render
-  // (not just mount) so it also takes effect if set after initial mount;
-  // single boolean-typeof + property read, so it's zero-cost when unset.
-  const forcedFan = typeof window !== "undefined" && (window as unknown as Record<string, unknown>).__qaSetMarkerFan === true;
+  // D229 QA hook — dev/QA-gated (P1.12): see QA_MARKER_FAN_ARMED above.
+  const forcedFan = QA_MARKER_FAN_ARMED && hasMultiple;
   const shouldFan = (hovered || forcedFan) && hasMultiple;
-  const reduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reduced = usePrefersReducedMotion();
   const [revealed, setRevealed] = React.useState(!animate || reduced);
   const enterRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -177,11 +185,11 @@ function MarkerGroupView({
 
   const onEnter = React.useCallback(() => {
     setHovered(true);
-    onMarkerHoverChange?.(true);
-  }, [onMarkerHoverChange]);
+    onMarkerHoverChange?.(markers);
+  }, [onMarkerHoverChange, markers]);
   const onLeave = React.useCallback(() => {
     setHovered(false);
-    onMarkerHoverChange?.(false);
+    onMarkerHoverChange?.(null);
   }, [onMarkerHoverChange]);
 
   const collapsedOpacity = shouldFan ? 0 : 1;
@@ -210,8 +218,10 @@ function MarkerGroupView({
             width: 1,
             height: lineHeight + Math.abs(y),
             borderLeft: "1px dashed var(--chart-marker-border)",
-            opacity: hovered ? 1 : 0.6,
-            transition: "opacity 150ms ease-out",
+            // LM8 legacy parity: isHovered -> 1, isActive -> 0, else 0.6
+            // (marker-group.tsx strokeOpacity ruling; 200ms ease-out).
+            opacity: hovered ? 1 : isActive ? 0 : 0.6,
+            transition: "opacity 200ms ease-out",
             pointerEvents: "none",
           }}
         />
@@ -296,6 +306,12 @@ function MarkerGroupView({
 
 export function ChartMarkersOverlay(props: ChartMarkersProps) {
   const { items, size = 28, showLines = true, animate = true, maxFanned, xScale, marginLeft, marginTop, innerHeight, animationDuration } = props;
+  // LM8 isActive wiring (P1.12): the overlay reads the chart's live tooltip
+  // date from the shared marker-tooltip store (fed by the host's focus
+  // handler); each bucket compares its own date against it. Outside a
+  // provider the store read is a noop -> null -> never "active", matching
+  // legacy's `isActive === undefined` no-op.
+  const activeDate = useActiveMarkerDate();
   const buckets = React.useMemo<Bucket[]>(() => {
     const map = new Map<string, Bucket>();
     for (const m of items ?? []) {
@@ -311,8 +327,8 @@ export function ChartMarkersOverlay(props: ChartMarkersProps) {
   const baseDelaySec = animationDuration / 1000;
 
   const { onMarkerHoverChange } = props;
-  const handleHoverChange = React.useCallback((entered: boolean) => {
-    onMarkerHoverChange?.(entered);
+  const handleHoverChange = React.useCallback((markers: ChartMarker[] | null) => {
+    onMarkerHoverChange?.(markers);
   }, [onMarkerHoverChange]);
 
   if (!items || items.length === 0 || !xScale) return null;
@@ -333,8 +349,15 @@ export function ChartMarkersOverlay(props: ChartMarkersProps) {
       <div style={{ position: "absolute", left: marginLeft, top: marginTop, width: 0, height: 0, overflow: "visible" }}>
         {buckets.map((bucket, idx) => {
           const x = xScale(bucket.date);
-          if (x == null || !Number.isFinite(x)) return null;
-          const delayMs = animate ? (baseDelaySec + idx * 0.1) * 1000 : 0;
+          if (x == null || !Number.isFinite(x) || !bucket.date) return null;
+          const isActive = bucket.date && activeDate
+            ? bucket.date.toDateString() === activeDate.toDateString()
+            : false;
+          // T-D3: native stagger({each, offset}) — offset=baseDelaySec*1000,
+          // each=100 (0.1*1000).
+          const delayMs = animate
+            ? nativeStaggerDelayMs(100, baseDelaySec * 1000, idx, "dot")
+            : 0;
           return (
             <MarkerGroupView
               key={bucket.key}
@@ -347,6 +370,7 @@ export function ChartMarkersOverlay(props: ChartMarkersProps) {
               animate={animate}
               delayMs={delayMs}
               maxFanned={maxFanned}
+              isActive={isActive}
               onMarkerHoverChange={handleHoverChange}
             />
           );

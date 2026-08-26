@@ -22,20 +22,26 @@ export interface BrushChromePattern {
   dotFill?: boolean;
 }
 
-export interface BrushSelectedBoxStyle {
-  fill?: string;
-  fillOpacity?: number;
-  stroke?: string;
-  strokeWidth?: number;
-}
+// P5.6 BR3 — the full SVG rect prop surface, as legacy types it
+// (`repos/bklit-ui/.../chart-brush.tsx:30,61`: `React.SVGProps<SVGRectElement>`).
+// This was a 4-field subset (`fill`/`fillOpacity`/`stroke`/`strokeWidth`), which
+// silently rejected every other rect prop a legacy caller could set —
+// `strokeDasharray` for a dashed selection, `rx` for rounded corners, `mask`,
+// `filter`, a `style` object, `className`.
+//
+// Legacy's chain ends at visx `BrushSelection.js:128-155`, which spreads
+// `selectedBoxStyle` LAST over the rect it has already given `x`/`y`/`width`/
+// `height`/`className`/handlers — so in legacy the caller can override the
+// geometry too. The spread order below is the same, for the same reason.
+export type BrushSelectedBoxStyle = React.SVGProps<SVGRectElement>;
 
-const DEFAULT_SELECTED_BOX_STYLE: Required<BrushSelectedBoxStyle> = {
+const DEFAULT_SELECTED_BOX_STYLE = {
   // repos/bklit-ui/packages/ui/src/charts/chart-brush.tsx:203-208
   fill: "transparent",
   fillOpacity: 0,
   stroke: "var(--chart-brush-border)",
   strokeWidth: 1,
-};
+} satisfies BrushSelectedBoxStyle;
 
 function BrushTrackChrome({
   host,
@@ -232,18 +238,23 @@ function BrushBorderChrome({
   if (w <= 0) return null;
   const plotLeft = host.margin.left;
   const plotTop = host.margin.top;
-  const style = { ...DEFAULT_SELECTED_BOX_STYLE, ...selectedBoxStyle };
+  // BR3: legacy REPLACES the default style rather than merging into it —
+  // `selectedBoxStyle ?? defaultStyle` (`chart-brush.tsx:247`). The merge this
+  // used to do was friendlier and wrong: a caller passing only `{ stroke }` got
+  // migrated's `fill: "transparent"` for free, where legacy hands visx a style
+  // object with no fill at all and the rect paints SVG's default opaque black.
+  // Same prop, opposite picture — so the `??` is deliberate, not a slip.
+  const style: BrushSelectedBoxStyle = selectedBoxStyle ?? DEFAULT_SELECTED_BOX_STYLE;
   return createPortal(
     <svg aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1]" width="100%" height="100%">
+      {/* Spread LAST, matching visx `BrushSelection.js:128-155`: the caller can
+          override the computed geometry, exactly as in legacy. */}
       <rect
         x={plotLeft + left}
         y={plotTop}
         width={w}
         height={innerHeight}
-        fill={style.fill}
-        fillOpacity={style.fillOpacity}
-        stroke={style.stroke}
-        strokeWidth={style.strokeWidth}
+        {...style}
       />
     </svg>,
     container,

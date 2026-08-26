@@ -4,68 +4,45 @@
 // group (no horizontal fade), gated on `horizontal`; defaults per bklit
 // GridProps: stroke var(--chart-foreground-muted), opacity 1, width 1,
 // dasharray "0" (solid). Config resolution lives in internal/grid.ts
-// (`resolveGridHighlightRows`); this module builds the ChartMark.
-import { createMark } from "@tanstack/charts";
-import type { ChartMark, SceneNode } from "@tanstack/charts";
+// (`resolveGridHighlightRows`); rendering is TanStack's native `ruleY`
+// mark (P3.5/T-D4), which maps each row value through the chart's own
+// `scales.y` and spans the full plot width via the chart bounds — the
+// same absolute geometry the previous hand-built translated polylines
+// produced. The `yScale` callback stays purely as the non-finite-y guard
+// oracle so row filtering is byte-identical to bklit's.
+import { ruleY } from "@tanstack/charts";
+import type { ChartMark } from "@tanstack/charts";
 import type { ChartDatum, GridConfig } from "./types";
-import { resolveGridHighlightRows } from "./grid";
+import { resolveGridGuide, resolveGridHighlightRows } from "./grid";
 
 export const DEFAULT_HIGHLIGHT_ROW_STROKE = "var(--chart-foreground-muted)";
 
 export interface GridHighlightRowMarkOptions {
   grid: GridConfig | null;
+  /** Non-finite-y guard oracle (bklit grid.tsx highlightRowValues guard).
+      Row VALUES feed native `ruleY`; geometry comes from the chart's own
+      y scale, this callback only decides which rows survive. */
   yScale: (value: number) => number | undefined;
-  innerWidth: number;
-  translateX: number;
-  translateY: number;
 }
 
 export function gridHighlightRowMarks(
   options: GridHighlightRowMarkOptions
 ): ChartMark<ChartDatum, Date, number>[] {
-  const { grid, yScale, innerWidth, translateX, translateY } = options;
-  if (!grid?.horizontal) return [];
+  const { grid, yScale } = options;
+  if (!grid || !resolveGridGuide(grid).horizontal) return [];
   const rows = resolveGridHighlightRows(grid, yScale);
   if (rows.length === 0) return [];
 
-  const stroke = grid.highlightRowStroke ?? DEFAULT_HIGHLIGHT_ROW_STROKE;
-  const strokeOpacity = grid.highlightRowStrokeOpacity ?? 1;
-  const strokeWidth = grid.highlightRowStrokeWidth ?? 1;
-  const strokeDasharray = grid.highlightRowStrokeDasharray ?? "0";
-
   return [
-    createMark(() => ({
-      id: "grid-highlight-rows",
-      channels: {
-        x: { scale: "x", values: [] },
-        y: { scale: "y", values: [] },
+    ruleY(
+      rows.map((row) => row.value),
+      {
+        id: "grid-highlight-rows",
+        stroke: grid.highlightRowStroke ?? DEFAULT_HIGHLIGHT_ROW_STROKE,
+        strokeOpacity: grid.highlightRowStrokeOpacity ?? 1,
+        strokeWidth: grid.highlightRowStrokeWidth ?? 1,
+        strokeDasharray: grid.highlightRowStrokeDasharray ?? "0",
       },
-      render: () => ({
-        nodes: [
-          {
-            kind: "group",
-            key: "grid-highlight-rows",
-            translateX,
-            translateY,
-            children: rows.map(
-              (row) =>
-                ({
-                  kind: "polyline",
-                  key: `grid-highlight-row-${row.value}`,
-                  points: [],
-                  path: `M0,${row.y}L${innerWidth},${row.y}`,
-                  style: {
-                    fill: "none",
-                    stroke,
-                    strokeOpacity,
-                    strokeWidth,
-                    strokeDasharray,
-                  },
-                }) as SceneNode
-            ),
-          },
-        ],
-      }),
-    })),
+    ) as unknown as ChartMark<ChartDatum, Date, number>,
   ];
 }

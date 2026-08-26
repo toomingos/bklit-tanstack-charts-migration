@@ -17,9 +17,10 @@
 //    135/405 defaults, node-verified), and passed as per-datum
 //    `startAngle`/`endAngle` channels. `polar()` uses `radiusRatio: 1`;
 //    inner/outer radii are functions of the layout radius matching bklit's
-//    0.28/0.42 × size ratios. The focus engine is disabled
-//    (`FOCUS_DISABLED`, radar-chart.tsx precedent — Gauge has zero
-//    hover/tooltip). Smooth pie-slice arcs replace bklit's bespoke
+//    0.28/0.42 × size ratios. The focus engine is disabled via the
+//    native `focusDisabled` (`@tanstack/charts/focus/disabled`), the
+//    same strategy pie/ring/sunburst/radar import directly; Gauge has
+//    zero hover/tooltip. Smooth pie-slice arcs replace bklit's bespoke
 //    trapezoid geometry (notch corner fillets are approximated via
 //    `radialArc`'s `cornerRadius`; at normal viewing distances the notch
 //    shape is not distinguishable from bklit's quadrilateral paths — see
@@ -62,17 +63,14 @@
 // resources`, confirmed by reading `Chart.tsx`: `renderSvg` defaults to
 // the plain `renderChartSvg`, which does NOT know about `scene.gradients`
 // at all) — a sanctioned, first-party mechanism for exactly this need, not
-// a sibling-`<svg>` hack. DISCLOSED LIMITATION: bklit's `children`-as-defs
-// escape hatch (`collectGaugeDefsElements` — arbitrary caller-supplied
-// `<linearGradient>`/`<pattern>` JSX passed as `<Gauge>` children) is only
-// honored on the LINEAR path (plain SVG we render ourselves, so those
-// elements drop straight into a real `<defs>`); the ARC path has no
-// extension point for arbitrary caller-authored SVG markup inside
-// TanStack's own generated `<defs>` (`defineChart`'s `gradients` option
-// only accepts a structured linear-gradient stop list, not arbitrary
-// JSX/pattern elements) — `children` remains a type-compatible prop on
-// arc, it is simply a no-op there. This is a real, narrow prop-compat gap
-// on a rarely-used power-user escape hatch, flagged here for Fable.
+// a sibling-`<svg>` hack. bklit's `children`-as-defs escape hatch
+// (`collectGaugeDefsElements` — arbitrary caller-supplied
+// `<linearGradient>`/`<pattern>` JSX passed as `<Gauge>` children) works on
+// BOTH orientations: linear drops the elements into its own real `<defs>`;
+// arc mounts them on a 0×0 sibling overlay svg after `<Chart>` — SVG
+// paint-server `url(#id)` references resolve document-wide, not just within
+// the same `<svg>` subtree (same verified mechanism scatter uses for its
+// radial marker gradients).
 //
 // Center readout reuses internal/center-stat.tsx's `CenterStat` UNMODIFIED
 // (per this deliverable's own instruction) via internal/gauge-center.tsx's
@@ -112,6 +110,7 @@
 import * as React from "react";
 import { Chart } from "@tanstack/react-charts";
 import { defineChart, type SceneNode } from "@tanstack/charts";
+import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { polar, radialArc, type PolarMark } from "@tanstack/charts/polar";
 import { renderChartSvgWithResources } from "@tanstack/charts/svg/resources";
 import {
@@ -132,12 +131,17 @@ import {
 import {
   GAUGE_SPRING_FALLBACK,
   reconcileGaugeReveal,
+  type GaugeRevealTarget,
+} from "./internal/gauge-reveal";
+// T-C3 collapse: gauge's TIMING names resolve from enter-transition directly;
+// gauge-reveal keeps only its unique key-diffing reconciler (GAUGE_SPRING_
+// FALLBACK stays there — it is the reconciler's own default timing).
+import {
   resolveEnterTransition,
   revealTiming,
   type GaugeEnterTransition,
-  type GaugeRevealTarget,
   type GaugeRevealTiming,
-} from "./internal/gauge-reveal";
+} from "./internal/enter-transition";
 import {
   GaugeCenterOverlay,
   GaugeLabelLayout,
@@ -146,16 +150,20 @@ import {
   type GaugeLabelPlacement,
 } from "./internal/gauge-center";
 import { onPostPaint } from "./internal/deferred-reveal";
-import { FOCUS_DISABLED } from "./internal/focus-disabled";
+import { nativeStaggerDelayMs } from "./internal/native-stagger";
 import { defaultCenterStatFormat, type CenterStatFormat } from "./internal/center-stat";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
-import { useContainerWidth, useMeasuredRect } from "./internal";
+import {
+  useDebouncedContainerSize,
+  useDebouncedContainerWidth,
+} from "./internal";
 import "./styles.css";
 
-export type { GaugeEnterTransition } from "./internal/gauge-reveal";
+export type { GaugeEnterTransition } from "./internal/enter-transition";
 export type { GaugeLabelAlign, GaugeLabelPlacement } from "./internal/gauge-center";
 
-// Gauge has zero pointer/tooltip interaction — see internal/focus-disabled.ts.
+// Gauge has zero pointer/tooltip interaction — see the native `focusDisabled`
+// import above (`@tanstack/charts/focus/disabled`).
 
 function deferredGaugeMountReveal(
   groupEl: HTMLElement | SVGGElement,
@@ -226,7 +234,8 @@ export interface GaugeProps {
   activeFill?: string;
   inactiveFillOpacity?: number;
   activeFillOpacity?: number;
-  /** Custom `<linearGradient>`/`<pattern>` defs — LINEAR orientation only, see file header. */
+  /** Custom `<linearGradient>`/`<pattern>` defs (children-as-defs escape
+      hatch, honored on both orientations). */
   children?: React.ReactNode;
   className?: string;
   width?: number;
@@ -371,7 +380,12 @@ function GaugeArc(props: GaugeArcProps) {
 
   const fixedSize = widthProp != null && heightProp != null;
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const { width: measuredW, height: measuredH } = useMeasuredRect(containerRef, !fixedSize);
+  // G5 (bklit ParentSize debounceTime={10}): responsive arc measurement goes
+  // through the debounced width+height hook. The ref is only ever attached on
+  // the responsive render path (the fixed-size wrapper never mounts it), so
+  // the hook observes nothing in fixed mode — same net effect as legacy not
+  // rendering ParentSize in that branch.
+  const { width: measuredW, height: measuredH } = useDebouncedContainerSize(containerRef);
 
   const width = widthProp ?? measuredW;
   const height = heightProp ?? measuredH;
@@ -666,7 +680,7 @@ function GaugeArc(props: GaugeArcProps) {
         x: null,
         y: null,
         guides: false,
-        focus: FOCUS_DISABLED,
+        focus: focusDisabled,
         gradients: fillState.useThemePaletteGradient
           ? [
               {
@@ -724,7 +738,7 @@ function GaugeArc(props: GaugeArcProps) {
       x: null,
       y: null,
       guides: false,
-      focus: FOCUS_DISABLED,
+      focus: focusDisabled,
       gradients: fillState.useThemePaletteGradient
         ? [
             {
@@ -797,11 +811,16 @@ function GaugeArc(props: GaugeArcProps) {
         (marksGroup.querySelector<SVGGElement>('[data-ts-key="gauge-active"]') as SVGGElement | null) ??
         (container?.querySelector<SVGGElement>('[data-ts-key="gauge-active"]') as SVGGElement | null);
 
+      // T-D3: native stagger({each, offset}) — the `stagger` scalar (the
+      // `[0.25,2.5]`-clamped `enterStaggerScale`) is app-level config that
+      // stays as-is; only the per-index formula becomes a native call.
+      // bg: offset=0, each=0.015*stagger*1000.
+      // active: offset=0.3*stagger*1000, each=0.02*stagger*1000.
       const bgTargets: GaugeRevealTarget[] = bgGroup
         ? Array.from(bgGroup.querySelectorAll<SVGPathElement>("path")).map((el, idx) => ({
             key: `bg-${idx}`,
             el,
-            delayMs: idx * 0.015 * stagger * 1000,
+            delayMs: nativeStaggerDelayMs(0.015 * stagger * 1000, 0, idx, "arc"),
           }))
         : [];
 
@@ -809,7 +828,7 @@ function GaugeArc(props: GaugeArcProps) {
         ? Array.from(activeGroup.querySelectorAll<SVGPathElement>("path")).map((el, idx) => ({
             key: `active-${idx}`,
             el,
-            delayMs: (0.3 + idx * 0.02) * stagger * 1000,
+            delayMs: nativeStaggerDelayMs(0.02 * stagger * 1000, 0.3 * stagger * 1000, idx, "arc"),
           }))
         : [];
 
@@ -841,6 +860,24 @@ function GaugeArc(props: GaugeArcProps) {
           renderSvg={renderChartSvgWithResources}
           width={width}
         />
+        {fillState.defsChildren.length > 0 ? (
+          // G2 (parity fix): bklit's children-as-defs escape hatch
+          // (collectGaugeDefsElements — arbitrary caller `<linearGradient>`/
+          // `<pattern>` JSX) previously dropped on the arc path. Mounted on a
+          // 0×0 overlay svg AFTER <Chart>: SVG paint-server url(#id) refs
+          // resolve document-wide (same verified mechanism as scatter's
+          // sibling defs svg), and the after-<Chart> position keeps the real
+          // chart SVG as the first svg in the QA harness's DOM-order lookup.
+          <svg
+            width={0}
+            height={0}
+            style={{ position: "absolute" }}
+            aria-hidden="true"
+            focusable="false"
+          >
+            <defs>{fillState.defsChildren}</defs>
+          </svg>
+        ) : null}
         {centerValue != null ? (
           <div
             style={{
@@ -953,7 +990,9 @@ function GaugeLinear(props: GaugeLinearProps) {
   const resolvedMinWidth = minWidth ?? 200;
   const fixedWidth = widthProp != null;
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const measuredWidth = useContainerWidth(containerRef, !fixedWidth);
+  // G5 (bklit ParentSize debounceTime={10}): same debounce as the arc path —
+  // the ref is only attached on the responsive render path.
+  const measuredWidth = useDebouncedContainerWidth(containerRef);
 
   const width = widthProp ?? measuredWidth;
   const height = heightProp ?? resolvedLinearHeight;
@@ -1062,6 +1101,8 @@ function GaugeLinear(props: GaugeLinearProps) {
     const notches = geometry.notches;
 
     const collectTargets = (): [GaugeRevealTarget[], GaugeRevealTarget[]] => {
+      // T-D3: same native stagger({each, offset}) pair as the arc
+      // orientation's collectTargets above.
       const bgTargets: GaugeRevealTarget[] = Array.from(
         groupEl.querySelectorAll<SVGPathElement>('[data-bkm-key^="bg-"]'),
       ).map((el) => {
@@ -1069,7 +1110,7 @@ function GaugeLinear(props: GaugeLinearProps) {
         const idx = Number(key.slice(3));
         const notch = notches[idx];
         if (notch) el.style.transformOrigin = `${notch.xCenter}px ${notch.yCenter}px`;
-        return { key, el, delayMs: idx * 0.015 * stagger * 1000 };
+        return { key, el, delayMs: nativeStaggerDelayMs(0.015 * stagger * 1000, 0, idx, "rect") };
       });
       const activeTargets: GaugeRevealTarget[] = Array.from(
         groupEl.querySelectorAll<SVGPathElement>('[data-bkm-key^="active-"]'),
@@ -1078,7 +1119,7 @@ function GaugeLinear(props: GaugeLinearProps) {
         const idx = Number(key.slice(7));
         const notch = notches[idx];
         if (notch) el.style.transformOrigin = `${notch.xCenter}px ${notch.yCenter}px`;
-        return { key, el, delayMs: (0.3 + idx * 0.02) * stagger * 1000 };
+        return { key, el, delayMs: nativeStaggerDelayMs(0.02 * stagger * 1000, 0.3 * stagger * 1000, idx, "rect") };
       });
       return [bgTargets, activeTargets];
     };

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { BACKGROUND_ENTER_FADE_MS } from "./design-tokens";
 import { edgeFadeMaskStops } from "./fade-mask";
+import { useSanitizedId } from "./use-sanitized-id";
 import {
   type PatternPresetId,
   type PatternPresetOptions,
@@ -44,7 +45,7 @@ export function Background({
   height,
   isLoaded = true,
 }: BackgroundProps) {
-  const uniqueId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const uniqueId = useSanitizedId();
   const patternId = `chart-background-${uniqueId}`;
   const hStops = React.useMemo(() => edgeFadeMaskStops(fadeHorizontalLength), [fadeHorizontalLength]);
   const vStops = React.useMemo(() => edgeFadeMaskStops(fadeVerticalLength), [fadeVerticalLength]);
@@ -134,3 +135,8 @@ export function Background({
 }
 
 export default Background;
+
+// P5.2: public alias for the real painter under the legacy-default-export
+// contract. The null role-carrier keeps the name `Background` (children.tsx);
+// P5.4 binds the legacy default-export slot to this component.
+export { Background as ChartBackground };

@@ -35,8 +35,18 @@ import { defineChart, createMark } from "@tanstack/charts";
 import type { ChartMark, ChartPoint, ChartScale, SceneNode } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import { sampleSpringKeyframes } from "./internal/candle-spring";
-import { onPostPaint } from "./internal/deferred-reveal";
+import {
+  buildProgressKeyframes,
+  resolveEnterTransition,
+  revealTiming,
+  TWEEN_FALLBACK,
+  type CandlestickEnterTransition,
+} from "./internal/enter-transition";
+import { isRevealed, markRevealed, onPostPaint } from "./internal/deferred-reveal";
+import { nativeStaggerDelayMs } from "./internal/native-stagger";
+import { resolveGridGuide } from "./internal/grid";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
+import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import {
   ChartSelectionContext,
@@ -51,17 +61,20 @@ import {
   type CandlestickHoverChromeState,
 } from "./internal/candlestick-hover-chrome";
 import { useChartConfig } from "./internal/chart-config-context";
+import { renderPatternPreset } from "./internal/pattern-preset";
+import type { PatternPresetId } from "./internal/pattern-preset";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
 import { YAxisOverlay } from "./internal/y-axis-overlay";
 import { resolveYAxisTickCount } from "./internal/y-axis-ticks";
 import type { ChartDatum } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { createCandlestickFocusStrategy } from "./internal/candlestick-focus-strategy";
-import { useChartMargin, useContainerWidth } from "./internal";
+import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
+import { shortDateFmt } from "./internal/formatters";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
+import { useSanitizedId } from "./internal/use-sanitized-id";
+import { DEFAULT_ANIMATION_DURATION_MS } from "./internal/animation-defaults";
 import "./styles.css";
-
-const DEFAULT_ANIMATION_DURATION_MS = 1100;
 // bklit candlestick.tsx SOLID_POSITIVE/SOLID_NEGATIVE.
 const SOLID_POSITIVE = "var(--color-emerald-500)";
 const SOLID_NEGATIVE = "var(--color-red-500)";
@@ -74,31 +87,27 @@ const DEFAULT_ENTER_BOUNCE = 0.15;
 // bklit candlestick.tsx AnimatedCandle: opacity always tweens over a fixed,
 // undelayed 150ms regardless of the (staggered) scaleY spring.
 const OPACITY_TWEEN_MS = 150;
+// bklit candlestick.tsx getSolidColor: when a body pattern overlay is set,
+// the body+wick fall back to these solid tokens (not the caller's fills).
+const PATTERN_FALLBACK_POSITIVE = SOLID_POSITIVE;
+const PATTERN_FALLBACK_NEGATIVE = SOLID_NEGATIVE;
 
-interface Margin {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-}
-const DEFAULT_MARGIN: Margin = { top: 40, right: 40, bottom: 40, left: 40 };
-
-// Pilot subset of framer's public spring Transition surface (bklit
-// CandlestickProps has no `enterTransition` prop at all — the reveal is
-// hardcoded to `defaultEnter` — but the task's architecture calls for one;
-// only the spring-relevant fields are exposed since no framer-motion runs in
-// this pilot, D19/D10).
-export interface CandlestickEnterTransition {
-  /** Seconds (framer's own Transition.duration unit for a spring). Default 0.8. */
-  duration?: number;
-  /** Default 0.15. */
-  bounce?: number;
-}
+// P5.5 K4 — this file used to declare its own spring-only
+// `{ duration?, bounce? }` type behind a comment claiming "bklit
+// CandlestickProps has no `enterTransition` prop at all". That claim is
+// FALSE: bklit types `enterTransition?: Transition` at
+// `candlestick-chart.tsx:54,84` and hands it straight to framer
+// (`candlestick.tsx:239,400`), so a caller could always configure a TWEEN
+// there — migrated's narrow type silently coerced every such caller into a
+// spring. That is DOC-7's one named exception (a real regression, not an
+// accepted simplification), so the type is now the shared `EnterTransition`,
+// re-exported under its old name to keep the public API identical.
+export type { CandlestickEnterTransition };
 
 export interface CandlestickChartProps {
   data: ChartDatum[];
   xDataKey?: string;
-  margin?: Partial<Margin>;
+  margin?: Partial<ChartMargin>;
   animationDuration?: number;
   enterTransition?: CandlestickEnterTransition;
   /** Changing this value re-arms the reveal (same deps as bklit's own
@@ -131,7 +140,7 @@ export function CandlestickChart({
   candleWidth: candleWidthProp,
   children,
 }: CandlestickChartProps) {
-  const margin = useChartMargin(marginProp, DEFAULT_MARGIN);
+  const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const width = useContainerWidth(containerRef);
 
@@ -147,11 +156,14 @@ export function CandlestickChart({
   // removing `animation-name` on each element — avoids the D25
   // `getAnimations()` quadratic trap (see original comment, still applies).
   const revealCssElementsRef = React.useRef<SVGRectElement[]>([]);
+  // K10: inset-stroke rects held hidden through the reveal; flipped in at
+  // the flat animationDuration deadline (legacy pops them in with isLoaded).
+  const revealStrokeRectsRef = React.useRef<SVGRectElement[]>([]);
 
   // canInteract gate for the TanStack focus strategy (mirrors bklit
   // ChartProvider ready check — plain boolean, not ChartPhase).
 
-  const { candlestick, grid, xAxis, yAxis, tooltip } = React.useMemo(
+  const { candlestick, grid, xAxis, yAxis, background, tooltip } = React.useMemo(
     () => extractChildren(children),
     [children],
   );
@@ -171,16 +183,52 @@ export function CandlestickChart({
 
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
 
-  const resolvedCandlestick = React.useMemo(
-    () => ({
-      positiveFill: candlestick?.positiveFill ?? SOLID_POSITIVE,
-      negativeFill: candlestick?.negativeFill ?? SOLID_NEGATIVE,
-      insideStrokeWidth: candlestick?.insideStrokeWidth ?? 0,
-      fadedOpacity: candlestick?.fadedOpacity ?? 0.3,
-      showHoverFade: candlestick?.showHoverFade ?? true,
-    }),
-    [candlestick],
+  const resolvedPositiveFill = candlestick?.positiveFill ?? SOLID_POSITIVE;
+  const resolvedNegativeFill = candlestick?.negativeFill ?? SOLID_NEGATIVE;
+
+  const resolvedCandlestick = React.useMemo(() => ({
+    bodyPatternPositive: candlestick?.bodyPatternPositive,
+    bodyPatternNegative: candlestick?.bodyPatternNegative,
+    insideStrokeWidth: candlestick?.insideStrokeWidth ?? 0,
+    fadedOpacity: candlestick?.fadedOpacity ?? 0.3,
+    showHoverFade: candlestick?.showHoverFade ?? true,
+    animate: candlestick?.animate ?? true,
+  }), [candlestick]);
+
+  // K9: body patterns resolve two ways — a legacy-style `url(#id)` string is
+  // passed through verbatim (caller-authored defs), anything else is treated
+  // as a pattern-preset name rendered into this chart's own <defs>.
+  const candlePatternDefsId = useSanitizedId();
+  const resolveCandlePattern = React.useCallback(
+    (value: string | undefined, defsId: string): { href: string; preset: PatternPresetId | null } => {
+      if (!value || value === "none") return { href: "", preset: null };
+      const urlMatch = /^url\(#([^)]+)\)$/.exec(value.trim());
+      if (urlMatch) return { href: value.trim(), preset: null };
+      return { href: `url(#${defsId})`, preset: value as PatternPresetId };
+    },
+    [],
   );
+  const positivePattern = React.useMemo(
+    () => resolveCandlePattern(
+      resolvedCandlestick.bodyPatternPositive,
+      `${candlePatternDefsId}-candle-pattern-pos`,
+    ),
+    [resolvedCandlestick.bodyPatternPositive, candlePatternDefsId, resolveCandlePattern],
+  );
+  const negativePattern = React.useMemo(
+    () => resolveCandlePattern(
+      resolvedCandlestick.bodyPatternNegative,
+      `${candlePatternDefsId}-candle-pattern-neg`,
+    ),
+    [resolvedCandlestick.bodyPatternNegative, candlePatternDefsId, resolveCandlePattern],
+  );
+  // Per-candle solid fill (bklit computeGeometries): a candle carrying a
+  // pattern overlay renders body+wick in the SOLID token colors
+  // (getSolidColor), ignoring the caller fill for that side.
+  const solidFillFor = React.useCallback((isPositive: boolean, hasOwnPattern: boolean) => {
+    if (hasOwnPattern) return isPositive ? PATTERN_FALLBACK_POSITIVE : PATTERN_FALLBACK_NEGATIVE;
+    return isPositive ? resolvedPositiveFill : resolvedNegativeFill;
+  }, [resolvedPositiveFill, resolvedNegativeFill]);
 
   const timeExtent = React.useMemo(() => {
     const dates = renderData
@@ -273,6 +321,9 @@ export function CandlestickChart({
   const definition = React.useMemo(() => {
     if (width <= 0) return null;
 
+    // K10: legacy insideStrokeWidth — inner inset stroke on the body.
+    const insideStrokeW = resolvedCandlestick.insideStrokeWidth;
+
     const yScale: ChartScale = {
       id: "y",
       resolve(context) {
@@ -337,7 +388,10 @@ export function CandlestickChart({
             if (!Number.isFinite(cx) || !Number.isFinite(yLow) || !Number.isFinite(yHigh)) continue;
             const close = d.close as number | undefined;
             const isPositive = typeof close === "number" && typeof d.open === "number" && close >= (d.open as number);
-            const wickFill = isPositive ? resolvedCandlestick.positiveFill : resolvedCandlestick.negativeFill;
+            const candlePattern = isPositive ? positivePattern : negativePattern;
+            // bklit computeGeometries: wickFill = bodySolidFill when a
+            // pattern overlay is set for this candle, else the caller fill.
+            const wickFill = solidFillFor(isPositive, Boolean(candlePattern.href));
             const isWickDimmed = legendHoveredIndex !== null && ((legendHoveredIndex === 0 && !isPositive) || (legendHoveredIndex === 1 && isPositive));
             const wickOpacity = isWickDimmed ? resolvedCandlestick.fadedOpacity : 1;
             const key = `wicks:${i}`;
@@ -395,10 +449,15 @@ export function CandlestickChart({
             const yClose = scales.y.map(close);
             if (!Number.isFinite(cx) || !Number.isFinite(yOpen) || !Number.isFinite(yClose)) continue;
             const isPositive = close >= open;
-            const fill = isPositive ? resolvedCandlestick.positiveFill : resolvedCandlestick.negativeFill;
+            const candlePattern = isPositive ? positivePattern : negativePattern;
+            const hasOwnPattern = Boolean(candlePattern.href);
+            const fill = solidFillFor(isPositive, hasOwnPattern);
             const isBodyDimmed = legendHoveredIndex !== null && ((legendHoveredIndex === 0 && !isPositive) || (legendHoveredIndex === 1 && isPositive));
             const bodyOpacity = isBodyDimmed ? resolvedCandlestick.fadedOpacity : 1;
             const key = `bodies:${i}`;
+            // bklit CandlestickBody: solid body rect (self-stroke), then the
+            // pattern overlay rect (same geometry/rx, NO self-stroke), then
+            // the K10 inset stroke rect when insideStrokeWidth > 0.
             nodes.push({
               kind: "rect",
               key,
@@ -410,6 +469,32 @@ export function CandlestickChart({
               radius: 1,
               style: { fill, stroke: fill, strokeWidth: 1, opacity: bodyOpacity },
             });
+            if (hasOwnPattern) {
+              nodes.push({
+                kind: "rect",
+                key: `${key}:pattern`,
+                className: "chart-candle-cell",
+                x: cx - bodyWidthPx / 2,
+                y: Math.min(yOpen, yClose),
+                width: bodyWidthPx,
+                height: Math.abs(yClose - yOpen) || 1,
+                radius: 1,
+                style: { fill: candlePattern.href, opacity: bodyOpacity },
+              });
+            }
+            if (insideStrokeW > 0) {
+              nodes.push({
+                kind: "rect",
+                key: `${key}:stroke`,
+                className: "chart-candle-cell",
+                x: cx - bodyWidthPx / 2 + insideStrokeW / 2,
+                y: Math.min(yOpen, yClose) + insideStrokeW / 2,
+                width: bodyWidthPx - insideStrokeW,
+                height: (Math.abs(yClose - yOpen) || 1) - insideStrokeW,
+                radius: 1,
+                style: { fill: "none", stroke: fill, strokeWidth: insideStrokeW, opacity: bodyOpacity },
+              });
+            }
             points.push({
               key, markId: "bodies", group: "bodies", groupLabel: "bodies",
               datum: d, datumIndex: i, xValue: date, yValue: close,
@@ -428,18 +513,22 @@ export function CandlestickChart({
       wicksMark,
       bodiesMark,
     ];
+    const gridGuide = resolveGridGuide(grid);
 
     return defineChart({
       marks,
+      // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
+      // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
+      // key on the spec is never read.
       x: {
         scale: xScale,
-        guide: false,
-        grid: grid?.vertical ?? false,
+        grid: gridGuide.vertical,
+        axis: { ticks: { count: gridGuide.columnTicks } },
       },
       y: {
         scale: yScale,
-        grid: grid?.horizontal ?? false,
-        ticks: grid?.numTicks ?? 5,
+        grid: gridGuide.horizontal,
+        axis: { ticks: { count: gridGuide.ticks } },
       },
       margin,
       focus: candlestickFocusStrategy,
@@ -455,8 +544,10 @@ export function CandlestickChart({
     xScale,
     yDomain,
     bodyWidthPx,
-    resolvedCandlestick.positiveFill,
-    resolvedCandlestick.negativeFill,
+    positivePattern,
+    negativePattern,
+    solidFillFor,
+    resolvedCandlestick.insideStrokeWidth,
     resolvedCandlestick.fadedOpacity,
     legendHoveredIndex,
     grid,
@@ -524,6 +615,13 @@ export function CandlestickChart({
           rect.style.animationName = "none";
         }
         revealCssElementsRef.current = [];
+        // K10: pop the inset-stroke rects in at the deadline (no transition
+        // — legacy renders them only in the static isLoaded pass).
+        for (const rect of revealStrokeRectsRef.current) {
+          rect.style.transitionDuration = "0ms";
+          rect.style.opacity = "1";
+        }
+        revealStrokeRectsRef.current = [];
         canInteractRef.current = true;
       }
     }, animationDuration);
@@ -551,6 +649,7 @@ export function CandlestickChart({
         rect.style.animationName = "none";
       }
       revealCssElementsRef.current = [];
+      revealStrokeRectsRef.current = [];
     };
   }, []);
 
@@ -564,7 +663,7 @@ export function CandlestickChart({
   const chromeStateRef = React.useRef<CandlestickHoverChromeState | null>(null);
   const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
     const v = d[xDataKey];
-    if (v instanceof Date) return v.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (v instanceof Date) return shortDateFmt.format(v);
     return String(v ?? "");
   }), [renderData, xDataKey]);
   chromeStateRef.current = {
@@ -575,6 +674,8 @@ export function CandlestickChart({
     showCrosshair: tooltip?.showCrosshair ?? true,
     showDots: tooltip?.showDots ?? true,
     showDatePill: tooltip?.showDatePill ?? true,
+    // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade radius.
+    tickerHalfWidth: xAxis?.tickerHalfWidth,
     tooltip: tooltip ?? null,
     dateLabels: dateLabelsForPill,
     legendHoveredIndex,
@@ -588,7 +689,6 @@ export function CandlestickChart({
     if (!el || !tooltipEnabled) return;
     const chrome = attachCandlestickHoverChrome(el, () => chromeStateRef.current!, {
       tooltipSpring: chartConfig.tooltipSpring,
-      tooltipBoxSpring: chartConfig.tooltipBoxSpring,
     });
     chromeRef.current = chrome;
     return () => {
@@ -662,9 +762,11 @@ export function CandlestickChart({
       const yHigh = highY ?? (yScale ? (yScale(high) ?? 0) : 0);
       const centerXpx = primary.x;
       const isPositive = close >= open;
-      const fill = isPositive
-        ? resolvedCandlestick.positiveFill
-        : resolvedCandlestick.negativeFill;
+      // Highlight geometry mirrors the marks: solid token fallback when this
+      // candle carries a pattern overlay (bklit recomputes full geometries
+      // for the highlight, including the pattern-solid substitution).
+      const focusPattern = isPositive ? positivePattern : negativePattern;
+      const fill = solidFillFor(isPositive, Boolean(focusPattern.href));
       const bodyTop = Math.min(yOpen, yClose);
       const bodyHeight = Math.abs(yClose - yOpen) || 1;
       const wickTop = Math.min(yHigh, yLow);
@@ -683,6 +785,10 @@ export function CandlestickChart({
           fill,
           radius: 1,
           strokeWidth: WICK_WIDTH_PX,
+          // K9/K10 highlight parity: hovered candle re-renders its pattern
+          // overlay + inset stroke on top (bklit highlight CandlestickBody).
+          patternHref: focusPattern.href || undefined,
+          insideStrokeWidth: resolvedCandlestick.insideStrokeWidth,
         },
         wick: {
           x: centerXpx - WICK_WIDTH_PX / 2,
@@ -694,7 +800,7 @@ export function CandlestickChart({
       };
       chromeRef.current?.onFocusChange(point);
     },
-    [yScaleForChrome, bodyWidthPx, resolvedCandlestick.positiveFill, resolvedCandlestick.negativeFill],
+    [yScaleForChrome, bodyWidthPx, positivePattern, negativePattern, solidFillFor],
   );
 
   // Mount/reveal WAAPI setup (bklit candlestick.tsx AnimatedCandle, framer
@@ -706,24 +812,60 @@ export function CandlestickChart({
   // state). Guarded by a DOM dataset attribute on `.ts-chart__marks` so
   // this only runs once per mount (the element is destroyed/recreated on
   // strict-mode remount, so it naturally resets for the permanent mount).
+  //
+  // K7: `<Candlestick animate={false}>` skips the whole reveal — candles
+  // render statically exactly as bklit (which renders CandlestickBodies
+  // immediately when animate=false), while interaction still unlocks at the
+  // flat `animationDuration` deadline (bklit's isLoaded timer runs
+  // regardless of animate). The gate lives here, at the single reveal
+  // entrypoint, so the K4 sampled-keyframe tween (P5.5) can plug into the
+  // same gate later without re-touching this path.
   const handleRender = React.useCallback(() => {
     if (animationDuration <= 0) return;
 
+    // K7: animate=false renders candles statically — bklit renders
+    // CandlestickBodies immediately when animate is false (no AnimatedCandle
+    // pass at all). Interaction still unlocks at the flat animationDuration
+    // deadline: the reveal-arming effect runs unconditionally, matching
+    // bklit's isLoaded timer which also ignores animate.
+    if (!resolvedCandlestick.animate) {
+      const staticMarksGroup = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
+      if (staticMarksGroup) {
+        markRevealed(staticMarksGroup);
+        staticMarksGroup.classList.remove("ts-chart__marks--revealing");
+      }
+      return;
+    }
+
     const marksGroup = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marksGroup || marksGroup.dataset.bkmRevealed === "1") return;
+    if (!marksGroup || isRevealed(marksGroup)) return;
     if (revealedForDataRef.current === latestRenderDataRef.current) {
-      marksGroup.dataset.bkmRevealed = "1";
+      markRevealed(marksGroup);
       return;
     }
     revealedForDataRef.current = latestRenderDataRef.current;
-    marksGroup.dataset.bkmRevealed = "1";
+    markRevealed(marksGroup);
     const mySetupEpoch = revealEpochRef.current;
     marksGroup.classList.add("ts-chart__marks--revealing");
 
-    const enterDurationMs = Math.max(
-      1,
-      (enterTransition?.duration ?? DEFAULT_ENTER_DURATION_SEC) * 1000,
-    );
+    // K4 — the tween branch. `type: "tween"` routes through the SHARED engine
+    // (`resolveEnterTransition` -> `revealTiming` -> `buildProgressKeyframes`),
+    // which samples a tween as 64 uniform progress steps with the caller's
+    // cubic-bezier as the WAAPI timing-level easing. Its own header proves
+    // that shape is exact for a transform: "scale is linear in progress, so
+    // piecewise-linear sampling introduces zero error".
+    //
+    // The SPRING branch below is deliberately left byte-identical — it keeps
+    // its own duration+bounce sampler (`internal/candle-spring`) rather than
+    // the engine's stiffness/damping one, because K4 adds a capability that
+    // was missing; it does not restyle the default reveal.
+    const enterTweenTiming =
+      enterTransition?.type === "tween"
+        ? revealTiming(resolveEnterTransition(enterTransition, TWEEN_FALLBACK))
+        : null;
+    const enterDurationMs =
+      enterTweenTiming?.durationMs ??
+      Math.max(1, (enterTransition?.duration ?? DEFAULT_ENTER_DURATION_SEC) * 1000);
     const enterBounce = enterTransition?.bounce ?? DEFAULT_ENTER_BOUNCE;
     const n = renderData.length;
 
@@ -750,18 +892,40 @@ export function CandlestickChart({
 
           const staggerBaseMs = n > 0 ? (animationDuration * 0.6) / n : 0;
 
-          const useCssRevealFastPath = Math.abs(enterBounce - DEFAULT_ENTER_BOUNCE) < 1e-6;
-          const keyframeValues = useCssRevealFastPath
-            ? null
-            : sampleSpringKeyframes(enterDurationMs, enterBounce, 60);
-          const transformKeyframes = keyframeValues?.map((v) => ({
-            transform: `scaleY(${v})`,
-          }));
+          // A tween never takes the CSS fast path: that path hardcodes the
+          // baked default-spring `ts-candle-reveal` curve.
+          const useCssRevealFastPath =
+            enterTweenTiming === null &&
+            Math.abs(enterBounce - DEFAULT_ENTER_BOUNCE) < 1e-6;
+          const transformKeyframes: Keyframe[] | undefined = enterTweenTiming
+            ? buildProgressKeyframes(enterTweenTiming, (p) => ({
+                transform: `scaleY(${p})`,
+              }))
+            : useCssRevealFastPath
+              ? undefined
+              : sampleSpringKeyframes(enterDurationMs, enterBounce, 60).map((v) => ({
+                  transform: `scaleY(${v})`,
+                }));
 
           const allRects: SVGRectElement[] = [
             ...wickRects,
             ...bodyRects,
           ];
+
+          // K9/K10: a bodies group now holds up to three rects per candle
+          // (body, optional pattern overlay, optional inset stroke), so the
+          // stagger delay comes from each rect's own candle index in its
+          // `data-ts-key` ("wicks:<i>" / "bodies:<i>") — never DOM position.
+          // bklit gives wick+body+pattern the same per-candle delay.
+          const candleIndexFor = (rect: SVGRectElement): number => {
+            const raw = rect.getAttribute("data-ts-key") ?? "";
+            const sep = raw.indexOf(":");
+            const idx = sep >= 0 ? Number.parseInt(raw.slice(sep + 1), 10) : Number.NaN;
+            return Number.isFinite(idx) && idx >= 0 ? idx : 0;
+          };
+
+          const revealRects: SVGRectElement[] = [];
+          const pendingStrokeRects: SVGRectElement[] = [];
 
           const applyReveal = (rect: SVGRectElement, index: number) => {
             // Rect origin is already at the node's x,y (top-left in SVG),
@@ -771,7 +935,10 @@ export function CandlestickChart({
             const rw = Number.parseFloat(rect.getAttribute("width") ?? "0");
             const rh = Number.parseFloat(rect.getAttribute("height") ?? "0");
             rect.style.transformOrigin = `${rx + rw / 2}px ${ry + rh / 2}px`;
-            const delayMs = index * staggerBaseMs;
+            // T-D3: native stagger({each, offset}) — offset=0,
+            // each=staggerBaseMs (recomputed per render from `n`, still
+            // linear in `index`).
+            const delayMs = nativeStaggerDelayMs(staggerBaseMs, 0, index, "rect");
             if (useCssRevealFastPath) {
               rect.style.animationName = "ts-candle-reveal";
               rect.style.animationDuration = `${enterDurationMs}ms`;
@@ -783,30 +950,56 @@ export function CandlestickChart({
               const scaleAnim = rect.animate(transformKeyframes as Keyframe[], {
                 duration: enterDurationMs,
                 delay: delayMs,
-                easing: "linear",
+                // Spring samples carry their own curve, so "linear"; a tween's
+                // uniform samples get the caller's bezier here instead.
+                easing: enterTweenTiming?.easing ?? "linear",
                 fill: "backwards",
               });
               revealAnimationsRef.current.push(scaleAnim);
             }
             rect.style.transitionDuration = `${OPACITY_TWEEN_MS}ms`;
             rect.style.opacity = "0";
+            revealRects.push(rect);
           };
 
-          wickRects.forEach((rect, i) => applyReveal(rect, i));
-          bodyRects.forEach((rect, i) => applyReveal(rect, i));
+          for (const rect of allRects) {
+            // K10: the inset stroke rect never joins the reveal — legacy
+            // omits it from AnimatedCandle entirely, so it pops in (no fade)
+            // exactly when isLoaded flips at the flat animationDuration
+            // deadline.
+            if ((rect.getAttribute("data-ts-key") ?? "").endsWith(":stroke")) {
+              rect.style.opacity = "0";
+              pendingStrokeRects.push(rect);
+              continue;
+            }
+            applyReveal(rect, candleIndexFor(rect));
+          }
+          revealStrokeRectsRef.current = pendingStrokeRects;
           marksGroup.classList.remove("ts-chart__marks--revealing");
 
-          // Phase 2, one frame later: flip every rect to opacity 1 in one
-          // pass so the shared CSS transition animates them all uniformly,
-          // undelayed, over the fixed 150ms window.
+          // Phase 2, one frame later: flip every revealing rect to opacity 1
+          // in one pass so the shared CSS transition animates them all
+          // uniformly, undelayed, over the fixed 150ms window.
           requestAnimationFrame(() => {
             if (revealEpochRef.current !== mySetupEpoch) return;
-            for (const rect of allRects) {
+            for (const rect of revealRects) {
               rect.style.opacity = "1";
             }
           });
     });
-  }, [animationDuration, enterTransition?.duration, enterTransition?.bounce, renderData.length]);
+  }, [
+    animationDuration,
+    enterTransition?.type,
+    enterTransition?.duration,
+    enterTransition?.bounce,
+    // K4: a tween's ease changes the sampled curve, so it must re-arm — but
+    // as a PRIMITIVE key. Callers pass `enterTransition` inline, so the `ease`
+    // tuple is a fresh array identity every render; using it raw would re-arm
+    // the reveal on every render instead of only when the curve changes.
+    enterTransition?.ease?.join(","),
+    renderData.length,
+    resolvedCandlestick.animate,
+  ]);
 
   const refAreaChildrenCandle = React.useMemo(() => extractReferenceAreaProps(children), [children]);
   const segChildrenCandle = React.useMemo(() => extractSegmentComponents(children), [children]);
@@ -859,8 +1052,27 @@ export function CandlestickChart({
       style={{ position: "relative", width: "100%", aspectRatio, isolation: "isolate", ...style } as React.CSSProperties}
       data-bkm-chart="candlestick"
     >
+      {background ? (
+        <BackgroundLayer
+          config={background}
+          innerWidth={innerWidth}
+          innerHeight={Math.max(0, heightPxCandle - margin.top - margin.bottom)}
+          marginLeft={margin.left}
+          marginTop={margin.top}
+        />
+      ) : null}
       {definition ? (
         <>
+          {positivePattern.preset ? (
+            <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+              <defs>{renderPatternPreset(positivePattern.preset, `${candlePatternDefsId}-candle-pattern-pos`, {})}</defs>
+            </svg>
+          ) : null}
+          {negativePattern.preset ? (
+            <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+              <defs>{renderPatternPreset(negativePattern.preset, `${candlePatternDefsId}-candle-pattern-neg`, {})}</defs>
+            </svg>
+          ) : null}
           <Chart
             ariaLabel="Candlestick chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
@@ -876,6 +1088,7 @@ export function CandlestickChart({
               rangeEnd={width - margin.right - slotWidth / 2}
               numTicks={xAxis.numTicks ?? 5}
               formatValue={xAxis.formatValue}
+              tickMode={xAxis.tickMode}
             />
           ) : null}
           {yAxis ? (
@@ -920,3 +1133,6 @@ export function CandlestickChart({
     </ChartSelectionContext.Provider>
   );
 }
+
+// Legacy parity: bklit `candlestick-chart.tsx` ships `export default CandlestickChart;` (T-E2).
+export default CandlestickChart;

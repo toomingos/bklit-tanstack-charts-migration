@@ -4,7 +4,9 @@
 // a ~4.5% pixel diff at n=4.
 //
 // This mark uses bklit's exact bar-width math (computeSeriesBarWidth) and
-// unstacked-group layout (computeSeriesBarLayout), emits `kind:'rect'` nodes
+// per-x layout — unstacked-group positioning AND the stacked branch
+// (`stacked` + `stackOffsets` + `stackGap`, verbatim from bklit
+// series-bar.tsx `computeSeriesBarLayout`) — emits `kind:'rect'` nodes
 // with explicit x/y/width/height/fill, and emits ChartPoints for hover/focus
 // plumbing. The `.ts-chart__bar-y` className contract is preserved so the
 // existing WAAPI stagger reveal in composed-chart.tsx's `handleRender` finds
@@ -36,6 +38,15 @@ export interface SeriesBarMarkOptions {
   barSize?: number;
   /** bklit `maxBarSize` — clamp on bar width. */
   maxBarSize?: number;
+  /** bklit `stacked` — stack bar series at each x instead of grouping them. */
+  stacked?: boolean;
+  /** bklit `stackGap` — px gap between stacked segments. Default: 0. */
+  stackGap?: number;
+  /** Per-row cumulative offsets (bklit `composedStackOffsets`), keyed
+      rowIndex -> dataKey -> offset value in DATA units. Required when
+      `stacked` is set; stacking is skipped without it (same contract as the
+      legacy SeriesBar's `stacked` gate). */
+  stackOffsets?: Map<number, Map<string, number>>;
 }
 
 function isFiniteNumber(v: unknown): v is number {
@@ -57,6 +68,9 @@ export function seriesBarMark(
     barGap = 4,
     barSize,
     maxBarSize,
+    stacked = false,
+    stackGap = 0,
+    stackOffsets,
   } = options;
   const seriesCount = groupDataKeys.length;
   const gap = barGap;
@@ -92,17 +106,21 @@ export function seriesBarMark(
           composedBarSize: barSize,
           composedMaxBarSize: maxBarSize,
           composedBarGap: gap,
+          stacked,
         });
 
         // bklit `computeSeriesBarLayout` for unstacked groups:
         // groupWidth = n × barWidth + (n−1) × gap
-        // barLeft = xCenter − groupWidth/2 + seriesIndex × (barWidth + gap)
+        // barLeft = xCenter − groupWidth/2 + seriesIndex × (barWidth + gap).
+        // (Unused by the stacked branch below — stacked bars ignore group
+        // layout entirely.)
         const groupWidth =
           seriesCount > 1
             ? seriesCount * barWidth + (seriesCount - 1) * gap
             : barWidth;
 
         const baseline = scales.y.map(0);
+        const isLastSeries = seriesIndex === seriesCount - 1;
 
         for (let i = 0; i < data.length; i++) {
           const datum = data[i]!;
@@ -113,6 +131,56 @@ export function seriesBarMark(
 
           const xCenter = scales.x.map(xValue);
           if (!Number.isFinite(xCenter)) continue;
+
+          // Stacked layout (bklit computeSeriesBarLayout's `stacked &&
+          // composedStackOffsets` branch): gate is `stacked && offsets !=
+          // null` — grouped fallback without offsets, same as legacy. The
+          // stacked-sum domain override keeps 0 as the domain floor through
+          // .nice(), so y(0) IS the plot floor and `baseline - valuePos`
+          // equals legacy's `innerHeight - valuePos` in every reachable
+          // stacked state.
+          if (stacked && stackOffsets != null) {
+            const offset = stackOffsets!.get(i)?.get(id) ?? 0;
+            const valuePos = scales.y.map(yValue);
+            if (!Number.isFinite(valuePos)) continue;
+            let segHeight = baseline - valuePos;
+            const mappedOffset = scales.y.map(offset);
+            const offsetY = Number.isFinite(mappedOffset) ? mappedOffset : baseline;
+            const gapOffset = seriesIndex * stackGap;
+            const segY = offsetY - segHeight - gapOffset;
+            if (!isLastSeries && stackGap > 0) {
+              segHeight = Math.max(0, segHeight - stackGap);
+            }
+            const segLeft = xCenter - barWidth / 2;
+            const applyRounding = stackGap > 0 || isLastSeries;
+
+            const key = `${id}:rect:${i}`;
+            nodes.push({
+              kind: "rect",
+              key,
+              x: segLeft,
+              y: segY,
+              width: barWidth,
+              height: segHeight,
+              radius: applyRounding ? radius || undefined : undefined,
+              style: { fill },
+            });
+
+            points.push({
+              key,
+              markId: id,
+              group: id,
+              groupLabel: id,
+              datum,
+              datumIndex: i,
+              xValue,
+              yValue: yValue,
+              x: xCenter,
+              y: segY,
+              color: fill,
+            });
+            continue;
+          }
 
           const yTop = scales.y.map(yValue);
           if (!Number.isFinite(yTop)) continue;

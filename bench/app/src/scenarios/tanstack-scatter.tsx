@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";
 import { defineChart, dot } from "@tanstack/charts";
+import { tooltip } from "@tanstack/charts/tooltip";
 import {
   generateScatter,
   generateScatterUpdate,
@@ -55,7 +56,7 @@ export default function TanstackScatter({ n }: { n: number }) {
         ],
         x: { scale: scaleUtc, nice: true },
         y: { scale: scaleLinear, nice: true, grid: true },
-        tooltip: true,
+        tooltip,
       }),
     [data],
   );

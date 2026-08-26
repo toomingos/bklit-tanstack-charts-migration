@@ -12,12 +12,14 @@ import {
   positionBox,
   resetLabelFade,
   updateDotPosition,
-  type BoxConfig,
-  type DotConfig,
-  type IndicatorConfig,
 } from "./tooltip-chrome";
+import {
+  toBoxConfig,
+  toDotConfig,
+  toIndicatorConfig,
+} from "./tooltip-mappers";
 import type { ChartTooltipConfig } from "./types";
-import { TOOLTIP_BOX_SPRING, TOOLTIP_SPRING } from "./design-tokens";
+import { TOOLTIP_SPRING } from "./design-tokens";
 
 const DIM_TRANSITION = "opacity 0.15s ease-in-out";
 const BAR_SQUARES_DIM_TRANSITION = "opacity 0.15s ease-out";
@@ -44,6 +46,9 @@ export interface BarHoverChromeState {
   showCrosshair: boolean;
   showDots: boolean;
   showDatePill: boolean;
+  /** B12 (bklit BarXAxis.tickerHalfWidth): date-pill fade radius for axis
+      labels; defaults to the TICKER_HALF_WIDTH token when unset. */
+  tickerHalfWidth?: number;
   tooltip?: ChartTooltipConfig | null;
   dateLabels?: string[];
   hoveredIndex?: number;
@@ -73,59 +78,9 @@ export interface BarHoverChrome {
 
 export interface BarHoverChromeOptions {
   tooltipSpring?: typeof TOOLTIP_SPRING;
-  tooltipBoxSpring?: typeof TOOLTIP_BOX_SPRING;
 }
 
 let gradientCounter = 0;
-
-function toDotConfig(cfg?: ChartTooltipConfig | null, bandWidth?: number, seriesCount?: number, groupGap?: number): DotConfig {
-  if (!cfg) return {};
-  const out: DotConfig = {
-    variant: cfg.dotVariant,
-    size: cfg.dotSize,
-    radiusFraction: cfg.dotRadiusFraction,
-    scale: cfg.dotScale,
-    strokeWidth: cfg.dotStrokeWidth,
-    color: cfg.dotColor as DotConfig["color"],
-  };
-  if (cfg.dotVariant === "ring" && bandWidth != null && seriesCount != null) {
-    const gap = groupGap ?? (seriesCount > 1 ? 4 : 0);
-    const squareSize = (bandWidth - gap * (seriesCount - 1)) / seriesCount;
-    if (squareSize > 0) out.size = (squareSize / 2) * (cfg.dotScale ?? 1);
-    out.scale = 1;
-  }
-  return out;
-}
-
-function toIndicatorConfig(cfg?: ChartTooltipConfig | null): IndicatorConfig {
-  if (!cfg) return {};
-  return {
-    width: cfg.indicatorWidth,
-    span: cfg.indicatorSpan,
-    columnWidth: cfg.columnWidth,
-    color: cfg.indicatorColor as IndicatorConfig["color"],
-    dasharray: cfg.indicatorDasharray,
-    fadeEdges: cfg.indicatorFadeEdges as IndicatorConfig["fadeEdges"],
-    fadeLength: cfg.indicatorFadeLength,
-    springConfig: cfg.springConfig,
-  };
-}
-
-function toBoxConfig(cfg?: ChartTooltipConfig | null): BoxConfig {
-  if (!cfg) return {};
-  return {
-    springConfig: cfg.springConfig,
-    matchCrosshair: cfg.matchCrosshair,
-    damping: cfg.damping,
-    boxSpringConfig: cfg.boxSpringConfig,
-    className: cfg.className,
-    panelStyle: cfg.panelStyle,
-    backgroundColor: cfg.backgroundColor,
-    content: cfg.content,
-    children: cfg.children,
-    rows: cfg.rows,
-  };
-}
 
 function resolveDotColor(
   tooltip: ChartTooltipConfig | null | undefined,
@@ -150,8 +105,6 @@ export function attachBarHoverChrome(
   options: BarHoverChromeOptions = {},
 ): BarHoverChrome {
   const tooltipSpring = options.tooltipSpring ?? TOOLTIP_SPRING;
-  const _tooltipBoxSpring = options.tooltipBoxSpring ?? TOOLTIP_BOX_SPRING;
-  void _tooltipBoxSpring;
   const container = (host.closest("[data-bkm-chart]") as HTMLElement) ?? host;
   const doc = host.ownerDocument;
   const chromeId = ++gradientCounter;
@@ -379,8 +332,9 @@ export function attachBarHoverChrome(
 
     if (state.showDots) {
       dotLayer.svg.style.display = "";
-      const bandWidth = (state as unknown as { bandWidth?: number }).bandWidth;
-      const dotCfg = toDotConfig(state.tooltip, bandWidth, state.series.length, 4);
+      // Ring-dot sizing is inert (bar.md deviation): bandWidth was never
+      // populated by any caller, so dots always used the plain dot config.
+      const dotCfg = toDotConfig(state.tooltip);
       let tooltipRows: { color: string }[] | null = null;
       if (state.tooltip?.rows) tooltipRows = state.tooltip.rows({} as Record<string, unknown>) as { color: string }[];
       const pointForDotColor: Record<string, unknown> = {};
@@ -434,7 +388,7 @@ export function attachBarHoverChrome(
       pillBuild.layer.style.display = "none";
     }
 
-    applyLabelFade(container, group.anchorX, group.categoryLabel, TICKER_HALF_WIDTH, FADE_BUFFER);
+    applyLabelFade(container, group.anchorX, group.categoryLabel, state.tickerHalfWidth ?? TICKER_HALF_WIDTH, FADE_BUFFER);
   };
 
   return {

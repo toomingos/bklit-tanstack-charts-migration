@@ -60,3 +60,6 @@ function ChartBrushWithHost(props: ChartBrushProps & { host: BrushHost }) {
     />
   );
 }
+
+// Legacy parity: bklit `chart-brush.tsx` ships `export default ChartBrush;` (T-E2).
+export default ChartBrush;

@@ -26,7 +26,8 @@
 // established for Pie/Ring/Funnel (D10) extended here to a second broadcast
 // axis (legend level) and a third payload (tooltip data) not present in
 // those simpler single-hovered-index charts.
-import { getHeatmapContributionLevel, isHeatmapHoverEffectEnabled, resolveHeatmapHoverStyle } from "./heatmap-utils";
+import { getHeatmapContributionLevel, isHeatmapHoverEffectEnabled } from "./heatmap-utils";
+import { createBroadcastStore } from "./broadcast-store";
 
 export const HEATMAP_INACTIVE_OPACITY = 0.3;
 export const HEATMAP_INACTIVE_TRANSITION_CSS = "0.22s cubic-bezier(0.4, 0, 0.2, 1)";
@@ -61,46 +62,51 @@ export interface HeatmapHoverCoordinator {
 }
 
 export function createHeatmapHoverCoordinator(): HeatmapHoverCoordinator {
-  let hoveredCell: HeatmapHoveredCell | null = null;
-  let hoveredLegendLevel: number | null = null;
-  let tooltipData: HeatmapTooltipData | null = null;
-  const listeners = new Set<() => void>();
-  const notify = () => {
-    for (const listener of listeners) listener();
-  };
+  // Per-field stores with comparators replicating the exact pre-existing
+  // dedup guards (identity OR field-equality). clearInteraction writes all
+  // three silently then notifies ONCE, as before.
+  const cells = createBroadcastStore<HeatmapHoveredCell | null>({
+    initial: null,
+    equals: (a, b) =>
+      a === b ||
+      (a !== null && b !== null && a.column === b.column && a.row === b.row),
+  });
+  const legend = createBroadcastStore<number | null>({ initial: null, equals: (a, b) => a === b });
+  const tooltip = createBroadcastStore<HeatmapTooltipData | null>({
+    initial: null,
+    equals: (a, b) =>
+      a === b ||
+      (a !== null &&
+        b !== null &&
+        a.column === b.column &&
+        a.row === b.row &&
+        a.count === b.count),
+  });
   return {
-    getHoveredCell: () => hoveredCell,
-    getHoveredLegendLevel: () => hoveredLegendLevel,
-    getTooltipData: () => tooltipData,
+    getHoveredCell: () => cells.get(),
+    getHoveredLegendLevel: () => legend.get(),
+    getTooltipData: () => tooltip.get(),
     setHoveredCell(cell) {
-      if (hoveredCell === cell) return;
-      if (hoveredCell && cell && hoveredCell.column === cell.column && hoveredCell.row === cell.row) return;
-      if (hoveredCell === null && cell === null) return;
-      hoveredCell = cell;
-      notify();
+      cells.set(cell);
     },
     setHoveredLegendLevel(level) {
-      if (hoveredLegendLevel === level) return;
-      hoveredLegendLevel = level;
-      notify();
+      legend.set(level);
     },
     setTooltipData(data) {
-      if (tooltipData === data) return;
-      if (tooltipData && data && tooltipData.column === data.column && tooltipData.row === data.row && tooltipData.count === data.count) return;
-      if (tooltipData === null && data === null) return;
-      tooltipData = data;
-      notify();
+      tooltip.set(data);
     },
     clearInteraction() {
-      if (hoveredCell === null && hoveredLegendLevel === null && tooltipData === null) return;
-      hoveredCell = null;
-      hoveredLegendLevel = null;
-      tooltipData = null;
-      notify();
+      if (cells.get() === null && legend.get() === null && tooltip.get() === null) return;
+      cells.setSilent(null);
+      legend.setSilent(null);
+      tooltip.setSilent(null);
+      cells.notify();
     },
     subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
+      const unsubs = [cells.subscribe(listener), legend.subscribe(listener), tooltip.subscribe(listener)];
+      return () => {
+        for (const unsub of unsubs) unsub();
+      };
     },
   };
 }
@@ -134,38 +140,6 @@ export interface HeatmapHoverStyleParams {
   inactiveOpacity: number;
   inactiveScale: number;
   activeScale: number;
-}
-
-/** Imperatively paints a cell's `<g>` wrapper (scale transform) + data rect
-    (opacity, composed with the resting reveal opacity already written by the
-    reveal/lifecycle sync) for the given highlight/dim state. `restOpacity` is
-    the cell's own resting (non-hover) data opacity (from the reveal
-    lifecycle), matching bklit's `readyDataOpacity` composition. */
-export function paintHeatmapCellHover(
-  groupEl: SVGGElement,
-  dataRectEl: SVGRectElement,
-  isHighlighted: boolean,
-  isDimmed: boolean,
-  params: HeatmapHoverStyleParams,
-  restOpacity: number,
-): void {
-  const style = resolveHeatmapHoverStyle(isHighlighted, isDimmed, params);
-  groupEl.style.transition = `transform ${HEATMAP_INACTIVE_TRANSITION_CSS}`;
-  groupEl.style.transform = `scale(${style.scale})`;
-  dataRectEl.style.transition = `opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}`;
-  dataRectEl.style.opacity = String(restOpacity * style.opacity);
-}
-
-export function paintHeatmapLegendSwatchHover(
-  el: HTMLElement | SVGElement,
-  isHighlighted: boolean,
-  isDimmed: boolean,
-  params: HeatmapHoverStyleParams,
-): void {
-  const style = resolveHeatmapHoverStyle(isHighlighted, isDimmed, params);
-  el.style.transition = `opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}, transform ${HEATMAP_INACTIVE_TRANSITION_CSS}`;
-  el.style.opacity = String(style.opacity);
-  el.style.transform = `scale(${style.scale})`;
 }
 
 export { isHeatmapHoverEffectEnabled };

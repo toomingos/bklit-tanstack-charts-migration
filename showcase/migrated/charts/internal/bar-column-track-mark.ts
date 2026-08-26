@@ -1,6 +1,6 @@
 import { createMark } from "@tanstack/charts";
 import type { ChartMark, SceneNode } from "@tanstack/charts";
-import { computeSquareColumn } from "./bar-squares-layout";
+import { bandWidthForSquares, computeSquareColumn } from "./bar-squares-layout";
 import type { ChartDatum } from "./types";
 
 export interface BarColumnTrackMarkOptions {
@@ -18,12 +18,6 @@ export interface BarColumnTrackMarkOptions {
   squareGap: number;
   squareRadius: number;
   squareFit: boolean;
-}
-
-function bandWidthForSquares(bandWidth: number, seriesCount: number, groupGap: number): number {
-  if (!bandWidth || seriesCount === 0) return 0;
-  const effectiveGroupGap = seriesCount > 1 ? groupGap : 0;
-  return (bandWidth - effectiveGroupGap * (seriesCount - 1)) / seriesCount;
 }
 
 export function barColumnTrackMark(

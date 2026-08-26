@@ -1,7 +1,7 @@
 import { curveLinear } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
 import * as React from "react";
-import { CHART_CHILD_PASSTHROUGH } from "../children";
+import { isChartClipPassthrough } from "../children";
 
 export const PROFIT_LOSS_POSITIVE_COLOR = "var(--color-emerald-500)";
 export const PROFIT_LOSS_NEGATIVE_COLOR = "var(--color-red-500)";
@@ -47,8 +47,9 @@ export function extractProfitLossHoveredIndex(children: React.ReactNode): number
   const visit = (node: React.ReactNode): void => {
     for (const child of React.Children.toArray(node)) {
       if (!React.isValidElement(child)) continue;
-      const ct = child.type as unknown as Record<symbol, unknown>;
-      if (ct[CHART_CHILD_PASSTHROUGH]) {
+      // P5.6 CH2: goes through the shared predicate so bklit's legacy string
+      // key is honoured here too, not just in `children.tsx`.
+      if (isChartClipPassthrough(child.type)) {
         const pp = child.props as { hoveredIndex?: number | null; children?: React.ReactNode };
         hoveredIndex = pp.hoveredIndex ?? null;
         if (pp.children) visit(pp.children);

@@ -12,17 +12,24 @@ import { curveLinearClosed } from "d3-shape";
 import { Chart } from "@tanstack/react-charts";
 import { defineChart } from "@tanstack/charts";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
+import { fold } from "@tanstack/charts/transform/fold";
 import { angleGrid, polar, radialArea, radialDot } from "@tanstack/charts/polar";
 import type { PolarGuide } from "@tanstack/charts/polar";
 import { CHART_ROLE, roleOf } from "./children";
 import {
-  bklitRadarGrid,
-  buildRadarProgressKeyframes,
-  radarRevealTiming,
-  resolveRadarEnterTransition,
-} from "./internal/radar-reveal";
+  buildProgressKeyframes as buildRadarProgressKeyframes,
+  revealTiming as radarRevealTiming,
+  resolveEnterTransition as resolveRadarEnterTransition,
+} from "./internal/enter-transition";
+// bklitRadarGrid stays in radar-reveal (custom PolarGuide, not timing
+// machinery) — T-C3 moves only the three timing aliases.
+import { bklitRadarGrid } from "./internal/radar-reveal";
+import {
+  estimateSpringSettleMs,
+  sampleSpringProgress,
+} from "./internal/radar-spring";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
-import { useMeasuredRect } from "./internal";
+import { useDebouncedContainerSize } from "./internal";
 import "./styles.css";
 
 const DEFAULT_LEVELS = 5;
@@ -32,7 +39,10 @@ const RADAR_BORDER_VAR = "var(--border)";
 const RADAR_LABEL_VAR = "var(--chart-label, oklch(0.65 0.01 260))";
 const RADAR_FOREGROUND_MUTED_VAR = "var(--chart-foreground-muted)";
 const RADAR_BACKGROUND_VAR = "var(--chart-background)";
-const DEFAULT_RADAR_COLORS = [
+// Exported as `defaultRadarColors` from the barrel (bklit radar-context.tsx:23,
+// where it is built from `radarCssVars.area1..5` — value-identical). P6.3/D355:
+// legacy exports all four `default*Colors`; migrated exported only pie and ring.
+export const DEFAULT_RADAR_COLORS = [
   "var(--chart-1)",
   "var(--chart-2)",
   "var(--chart-3)",
@@ -213,7 +223,15 @@ export function RadarChart({
   children,
 }: RadarChartProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const { width, height } = useMeasuredRect(containerRef, !fixedSize);
+  // P9 (bklit ParentSize debounceTime={10}, radar-chart.tsx:237): measurement
+  // goes through the debounced width+height hook, same as pie (:243-251),
+  // ring (:267-276) and gauge's G5 call sites. The retired
+  // `useMeasuredRect(containerRef, !fixedSize)` passed `enabled` purely to
+  // skip mounting a ResizeObserver in fixed mode — an optimization, not
+  // behavior: containerRef is attached on the single root div on every render
+  // branch (:885) and `chartSize` falls back to `fixedSize` below, so a
+  // measured value in fixed mode is never read.
+  const { width, height } = useDebouncedContainerSize(containerRef);
   const chartSize = fixedSize ?? Math.min(width, height);
 
   const { grid, axis, labels, areas } = React.useMemo(
@@ -290,18 +308,46 @@ export function RadarChart({
   }, [metrics]);
 
   const allRows = React.useMemo<RadarRow[]>(() => {
-    const out: RadarRow[] = [];
-    for (let i = 0; i < resolvedAreas.length; i++) {
-      const area = resolvedAreas[i]!;
+    // Row 27 (T-D14): wide→long reshape delegated to TanStack-native `fold`
+    // (@tanstack/charts/transform/fold), which iterates data-outer /
+    // fields-inner — the same row order the hand loops produced. The
+    // zero-padded series id (Z_PAD) is applied to each wide datum BEFORE the
+    // fold, so every long row spreads it through; Z_PAD stays because fold's
+    // gap note explicitly keeps "series-id Z-pad custom". The `?? 0` default
+    // for missing metric values is preserved when staging the wide datum.
+    // Note: unlike the hand loops, fold rejects duplicate metric keys
+    // (assertFoldOptions) — a degenerate config that previously produced
+    // duplicated spokes.
+    const padded = resolvedAreas.map((area, i) => {
+      const datum: Record<string, number | string> = {
+        series: String(i).padStart(Z_PAD, "0"),
+      };
       for (const metric of metrics) {
-        out.push({
-          metric: metric.key,
-          value: area.datum.values[metric.key] ?? 0,
-          series: String(i).padStart(Z_PAD, "0"),
-        });
+        datum[metric.key] = area.datum.values[metric.key] ?? 0;
       }
-    }
-    return out;
+      return datum;
+    });
+    // Both PUBLIC fold overloads (transform-fold.ts:55,66) gate `fields`
+    // through `LiteralFoldFields`, which resolves to `never` unless the tuple
+    // length is a literal. Our field list is dynamic (metrics are runtime
+    // config), so neither overload can match. The third signature (:78) is the
+    // implementation signature and is NOT callable from outside the module, so
+    // there is no loose overload to route through — a double cast is the only
+    // route. Runtime validation (assertFoldOptions) still applies.
+    const folded = (
+      fold as unknown as (
+        source: Iterable<Record<string, number | string>>,
+        options: { readonly fields: readonly string[]; readonly as?: { readonly key: string; readonly value: string } },
+      ) => Record<string, unknown>[]
+    )(padded, {
+      fields: metrics.map((m) => m.key),
+      as: { key: "metric", value: "value" },
+    });
+    return folded.map((row) => ({
+      metric: String((row as Record<string, unknown>).metric),
+      value: Number((row as Record<string, unknown>).value),
+      series: String((row as Record<string, unknown>).series),
+    }));
   }, [resolvedAreas, metrics]);
 
   // TanStack definition: animate disabled — reveal is WAAPI deferred (bklit parity).
@@ -431,6 +477,8 @@ export function RadarChart({
   enterStaggerScaleRef.current = staggerScale;
   const enterDurationMsRef = React.useRef(enterDurationMs);
   enterDurationMsRef.current = enterDurationMs;
+  const levelsRef = React.useRef(levels);
+  levelsRef.current = levels;
   const animateRef = React.useRef(animate);
   animateRef.current = animate;
   // First-commit value; the replay layout effect below only fires on an
@@ -481,16 +529,33 @@ export function RadarChart({
       // INDEPENDENT of the transition's own tween/spring timing.
       const durationFactor = enterDurationMsRef.current / 1100;
       const gridStaggerMs = 80 * staggerScale * durationFactor;
-      const campaignBaseDelayMs = (5 * gridStaggerMs * 0.5 + 200) * durationFactor;
+      // bklit radar-area.tsx, verbatim: campaignBaseDelay =
+      // `(levels * gridStagger + 0.2) * durationFactor` (gridStagger =
+      // `0.08 * staggerScale * durationFactor`; the WHOLE sum — the 0.2s
+      // constant included — is scaled by durationFactor). RD5: the previous
+      // `(5 * gridStagger * 0.5 + 200) * durationFactor` folded radar-grid's
+      // label-delay ×0.5 term into the area campaign base and hardcoded
+      // levels=5, starting areas 200ms early at defaults.
+      const campaignBaseDelayMs = (levelsRef.current * gridStaggerMs + 200) * durationFactor;
+
+      // RD6 label spring (stiffness 80 / damping 15 / mass 1, bklit
+      // radar-labels.tsx) is NOT scaled by durationFactor in legacy, so its
+      // settle time can exceed `timing.durationMs + maxStagger` when
+      // enterDurationMs is small — the deadline must cover the longest live
+      // reveal animation or it snaps labels mid-spring.
+      const labelSpringSettleMs = estimateSpringSettleMs(80, 15, 1);
 
       const maxStagger = Math.max(
         ...toReveal.map((idx) => campaignBaseDelayMs + idx * 150 * staggerScale * durationFactor),
         0,
       );
-      revealDeadlineTimerRef.current = setRevealDeadline(timing.durationMs + maxStagger, {
-        animationsRef: revealAnimsRef,
-        onDeadline: () => {},
-      });
+      revealDeadlineTimerRef.current = setRevealDeadline(
+        Math.max(timing.durationMs + maxStagger, labelSpringSettleMs),
+        {
+          animationsRef: revealAnimsRef,
+          onDeadline: () => {},
+        },
+      );
 
       for (const idx of toReveal) {
         pendingRevealRef.current.set(idx, {} as unknown as Animation);
@@ -597,6 +662,41 @@ export function RadarChart({
               anim.onfinish = () => anim.cancel();
             });
           });
+
+          // RD6 — bklit radar-labels.tsx springs each metric label outward
+          // from the chart center: motion x/y from 0 → target with spring
+          // stiffness 80 / damping 15 / mass 1 and NO delay (the 0.5s fade
+          // is delayed; the spring is not), while angleGrid places labels
+          // statically at x/y attributes. The group is translated to the
+          // polar center, so `translate(-(1-p)*x, -(1-p)*y)` reproduces the
+          // legacy arc exactly. Sampled via the shared closed-form spring
+          // sampler (WAAPI can't integrate spring physics natively).
+          if (angleLabelsGroup) {
+            const springProgress = sampleSpringProgress(80, 15, 1, labelSpringSettleMs, 40);
+            const labelEls = Array.from(angleLabelsGroup.querySelectorAll<SVGTextElement>("text"));
+            const targets = labelEls.map((t) => ({
+              x: parseFloat(t.getAttribute("x") ?? "NaN"),
+              y: parseFloat(t.getAttribute("y") ?? "NaN"),
+            }));
+            labelEls.forEach((t, i) => {
+              const { x, y } = targets[i]!;
+              if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+              const kfs = springProgress.map((p) =>
+                ({ transform: `translate(${-(1 - p) * x}px, ${-(1 - p) * y}px)` } as unknown as Keyframe),
+              );
+              const anim = t.animate(kfs, {
+                duration: labelSpringSettleMs,
+                delay: 0,
+                easing: "linear",
+                fill: "backwards",
+              });
+              revealAnimsRef.current.push(anim);
+              anim.onfinish = () => {
+                anim.cancel();
+                t.style.transform = "";
+              };
+            });
+          }
         }
 
         liveMarksGroup.classList.remove("ts-chart__marks--revealing");
@@ -819,3 +919,6 @@ export function RadarChart({
     </div>
   );
 }
+
+// Legacy parity: bklit `radar-chart.tsx` ships `export default RadarChart;` (T-E2).
+export default RadarChart;

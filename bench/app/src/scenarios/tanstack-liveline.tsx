@@ -74,6 +74,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";
 import { defineChart, lineY } from "@tanstack/charts";
+import { tooltip } from "@tanstack/charts/tooltip";
 import {
   getLiveLineSeed,
   liveLineCutoffSecs,
@@ -169,7 +170,7 @@ export default function TanstackLiveLine({
         ],
         x: { scale: scaleUtc },
         y: { scale: scaleLinear, nice: true, grid: true },
-        tooltip: true,
+        tooltip,
       }),
     [visibleData],
   );

@@ -29,14 +29,14 @@ export interface LabelItem {
   deg: number;
   label: string;
   id: string;
-  dimmed?: boolean;
 }
 
 // ---------------------------------------------------------------------------
 // Labels overlay — SVG layer with rotated <text> elements
 // Matches bklit: labels reveal with opacity 0→1 at delay = maxDelay + duration*0.85
-// (duration=1.1s, maxDelay from ring-staggered segment delays). Labels also
-// cull when !isRelated (unrelated arc) exactly like bklit's !isRelated guard.
+// (duration=1.1s, maxDelay from ring-staggered segment delays). Unrelated arcs'
+// labels are culled on hover exactly like bklit's !isRelated guard (the cull
+// happens in sunburst-chart's labelItems builder, before items reach here).
 // ---------------------------------------------------------------------------
 
 export interface SunburstLabelsOverlayProps {
@@ -82,8 +82,7 @@ export function SunburstLabelsOverlay({
             fontFamily: "inherit",
             fontSize: 11,
             fontWeight: 600,
-            opacity: item.dimmed ? 0.25 : 1,
-            transition: "opacity 160ms ease-out",
+            opacity: 1,
             paintOrder: "stroke",
             stroke: "var(--chart-background)",
             strokeLinejoin: "round",

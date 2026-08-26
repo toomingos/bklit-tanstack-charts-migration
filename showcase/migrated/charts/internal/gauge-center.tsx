@@ -26,10 +26,10 @@
 // logic, expressed as inline flexbox styles instead of the Tailwind utility
 // classes bklit's version uses, since migrated/charts lives outside
 // bench/app's Tailwind `@source` scan (same "hand-authored port" rationale
-// as styles.css's `.ts-bkm-center-stat*`/`.ts-bkm-pie-center*` rules —
-// see that file's header).
+// as styles.css's `.ts-bkm-center-stat*` rules — see that file's header).
 import * as React from "react";
 import {
+  CenterShell,
   CenterStat,
   centerStatContainerClassName,
   type CenterStatFormat,
@@ -57,6 +57,10 @@ export interface GaugeCenterOverlayProps {
   formatOptions?: CenterStatFormat;
 }
 
+// T-C4 (OQ 7): the double-rAF 0→value intro state machine now lives in
+// CenterShell as the opt-in `intro` prop (this module held the sole ported
+// copy of legacy PieCenterShell logic until the promotion). Sizing stays
+// per-part.
 export function GaugeCenterOverlay({
   centerValue,
   contextSize,
@@ -65,53 +69,21 @@ export function GaugeCenterOverlay({
   suffix,
   formatOptions,
 }: GaugeCenterOverlayProps) {
-  const introStartedRef = React.useRef(false);
-  const [flowValue, setFlowValue] = React.useState(0);
-
-  React.useEffect(() => {
-    if (!introStartedRef.current) {
-      introStartedRef.current = true;
-      setFlowValue(0);
-      let innerRaf = 0;
-      const outerRaf = requestAnimationFrame(() => {
-        innerRaf = requestAnimationFrame(() => setFlowValue(centerValue));
-      });
-      return () => {
-        cancelAnimationFrame(outerRaf);
-        cancelAnimationFrame(innerRaf);
-        introStartedRef.current = false;
-      };
-    }
-    setFlowValue(centerValue);
-  }, [centerValue]);
-
   // bklit: innerRadiusPx = max(size*0.2, 52) (gauge.tsx line 443), then
-  // PieCenter's centerSize = innerRadius*2 - 16 (pie-center.tsx line 72;
-  // the migrated pie-chart.tsx PieCenter uses the identical formula).
+  // PieCenter's centerSize = innerRadius*2 - 16 (pie-center.tsx line 72).
   const innerRadiusPx = Math.max(contextSize * 0.2, 52);
   const centerSize = innerRadiusPx * 2 - 16;
 
   return (
-    <div
-      className={centerStatContainerClassName}
-      style={{
-        display: "flex",
-        width: centerSize,
-        height: centerSize,
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        textAlign: "center",
-      }}
-    >
-      <CenterStat
-        formatOptions={formatOptions}
-        label={defaultLabel}
-        prefix={prefix}
-        suffix={suffix}
-        value={flowValue}
-      />
-    </div>
+    <CenterShell
+      centerSize={centerSize}
+      formatOptions={formatOptions}
+      intro
+      label={defaultLabel}
+      prefix={prefix}
+      suffix={suffix}
+      value={centerValue}
+    />
   );
 }
 

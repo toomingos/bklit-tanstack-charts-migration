@@ -1,6 +1,8 @@
 // Spring physics sampling for WAAPI-based spring reveal animations.
 // Port of framer-motion's `duration`/`bounce` → spring-physics conversion.
-// Used by pie-reveal.ts, ring-reveal.ts, gauge-reveal.ts, and funnel-reveal.ts.
+// Used by internal/enter-transition.ts (the shared reveal-timing engine; the
+// former per-family shims pie/ring/funnel-reveal.ts were T-C3-collapsed and
+// deleted, gauge-reveal.ts re-exports its timing from enter-transition).
 
 import { createSpringResolver } from "./candle-spring";
 

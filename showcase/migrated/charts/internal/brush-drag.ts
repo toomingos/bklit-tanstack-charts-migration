@@ -1,5 +1,40 @@
 "use client";
 
+// P3.11 / T-D9 (tanstack.md row 10) — brushX NON-VIABLE here; this module stays
+// the brush mechanics owner. Ruled 2026-08-24, verified at clone source:
+//
+//  - Native target `brushX` (@tanstack/charts/interaction/brush,
+//    charts-core/src/interaction-brush.ts:101-112) returns a ChartControl whose
+//    resolve(context) (:120-178) reads a ChartControlContext — chart bounds,
+//    scales.x, colors, theme (types.ts:493-500) — that ONLY the scene pipeline
+//    synthesizes. Its resolved control materializes DOM solely through
+//    extension.create({container, surface}), consumed exclusively by the
+//    renderer's controls loop (renderer.ts:889-902). There is no exported
+//    standalone resolver/headless context factory (ChartControlContext is a
+//    type-only export, charts-core/src/index.ts:298), and mountChart
+//    (dom.ts:12) requires a full chart definition — i.e. relocation of the
+//    brush inside a second <Chart> host, ruled out of scope for this swap.
+//  - Placement: the migrated brush renders OUTSIDE any <Chart> element, as DOM
+//    siblings driven by containerRef+margin+trackExtent via BrushHostContext
+//    (line-chart.tsx:998-1002, area-chart.tsx:1022-1024). No Chart host exists
+//    in its ancestry, so resolve() has nothing to consume.
+//  - Semantics: brushX binds to the host chart's FINAL x scale
+//    (createInteractionAxis on context.scales.x, interaction-brush.ts:124-132),
+//    while this brush needs an independent full-extent track scale
+//    (trackExtent) that must stay stable while the chart's own xDomain narrows
+//    during brushing. Even inside a host, the native binding rescales under the
+//    cursor mid-drag. The library's own pattern for this UX (overview+detail)
+//    is two chart hosts — conformance case 83 (DEFINITION-COVERAGE-AUDIT.md:230).
+//  - Falsifiers checked and negative: no Chart host in the brush ancestry;
+//    no exported resolve harness/context factory; no adapter synthesizing
+//    ChartControlContext anywhere in charts-core/src or showcase/migrated.
+//  - Stays custom per T-D9's own carve-outs regardless: pill-knob portal
+//    chrome (brush-chrome.tsx) and the 2-finger touch gesture (which lives in
+//    chart-selection.ts:120-163, NOT here — earlier briefs mislocated it).
+//    Row 13's filterDataByXDomain/createXAccessor (brush-selection.ts) belong
+//    to P3.13 (axis.viewport) and are untouched by this ruling.
+//  - Full citations: P3.11 executor report (docs/phase-4/LOG.md, pending).
+
 import * as React from "react";
 import type { BrushSelection } from "./brush-selection";
 

@@ -9,7 +9,6 @@ export type { ChartStatus, ChartPhase } from "./chart-phase";
 export {
   DEFAULT_CHART_STATUS,
   DEFAULT_Y_DOMAIN_TWEEN_MS,
-  Y_DOMAIN_TWEEN_SKIP_THRESHOLD,
   resolveRestingChartPhase,
   isChartInteractionPhase,
   DEFAULT_CHART_LIFECYCLE,
@@ -83,11 +82,25 @@ export interface AreaConfig {
       with curveNatural, same as Line). */
   curve?: CurveFactory;
   yAxisId?: string | number;
+  /** bklit area.tsx: render the boundary stroke above the fill. Default:
+      true. `false` hides the stroke (and its dash tail + hover highlight
+      band) while keeping the fill, hover dim, and markers. */
+  showLine?: boolean;
+  /** bklit area.tsx: gradient opacity at the bottom stop (0 = fully
+      transparent). Default: 0. */
+  gradientToOpacity?: number;
+  /** bklit area.tsx: vertical extent of the fill gradient, 0–1. 1 fades
+      across the full height; lower values compress the gradient toward the
+      top. Clamped to [0.01, 1]. Default: 1. */
+  gradientSpan?: number;
   /** bklit area.tsx: fade the fill+stroke out at the plot edges. Default:
-      false (differs from Line's default true). Only boolean `true` is
-      implemented (both-side mask), matching the accepted Line precedent
-      (docs/LOG.md D13c) for "left"/"right". */
+      false (differs from Line's default true). `true` fades both edges;
+      `"left"` / `"right"` fade only that side. */
   fadeEdges?: boolean | "left" | "right";
+  /** Render scatter-style circle markers at each data point. Default: false. */
+  showMarkers?: boolean;
+  /** Marker styling (same options as Scatter). */
+  markers?: SeriesPointMarkerStyle;
   /** bklit area.tsx: hover dim (to 0.6, not Line's 0.3) + highlight band on
       the boundary line. Default: true. */
   showHighlight?: boolean;
@@ -113,6 +126,12 @@ export interface PatternAreaConfig {
     subset — series-markers.tsx / scatter.tsx defaults). */
 export interface ScatterConfig {
   dataKey: string;
+  /** P6.1 / S6 — bklit `scatter.tsx`. Y-scale group id. Default: `"left"`. */
+  yAxisId?: string | number;
+  /** P5.5 S7 — bklit `scatter.tsx:11` / `series-markers.tsx:104`
+      (`isRevealing = animate && !isLoaded`). When false the series skips the
+      staggered enter fade and paints straight at full opacity. Default: true. */
+  animate?: boolean;
   fill?: string;
   stroke?: string;
   /** Ring stroke width. Default: 2. */
@@ -121,6 +140,26 @@ export interface ScatterConfig {
   ringGap?: number;
   /** Fill circle radius. Default: 5. */
   radius?: number;
+  /** bklit scatter.tsx yGradient: color each dot by its vertical position
+      using a chart-space linear gradient (lower values `from`, higher `to`).
+      Takes precedence over `fill`; the ring follows too unless `stroke` is
+      set. Default stops: red (bottom) → green (top). */
+  yGradient?: boolean | { from?: string; to?: string };
+  /** Dim non-active points while hovering. Default: true. */
+  fadeOnHover?: boolean;
+  /** Opacity for dimmed points while hovering. Default: 0.5. */
+  inactiveOpacity?: number;
+  /** Blur in px for dimmed points while hovering. Default: 2. */
+  inactiveBlur?: number;
+  /** Initial blur in px during the enter reveal. Default: 2. */
+  enterBlur?: number;
+  /** Enlarge the hovered point. Default: true. */
+  showActiveHighlight?: boolean;
+  /** Optional outline circle beyond the ring (hover-highlight copy).
+      Default: 0 (off). */
+  outlineWidth?: number;
+  /** Outline color. Default: same as `stroke`. */
+  outlineColor?: string;
 }
 
 /** Config carried by a <Grid> child (bklit grid.tsx GridProps surface).
@@ -129,13 +168,18 @@ export interface ScatterConfig {
     the remaining bklit fields are carried for API parity and consumed by the
     same module as initiative-3 features land (highlight rows + shimmer). */
 export interface GridConfig {
+  /** Show horizontal grid lines. Default: true. */
   horizontal?: boolean;
   vertical?: boolean;
   stroke?: string;
   strokeOpacity?: number;
   strokeWidth?: number;
-  /** Horizontal grid-line tick count (bklit `numTicksRows`). Default: 5. */
+  /** Horizontal grid-line tick count. Accepts both bklit's name
+      (`numTicksRows`) and the pilot rename (`numTicks`). Default: 5. */
   numTicks?: number;
+  numTicksRows?: number;
+  /** Vertical grid-line tick count (bklit `numTicksColumns`). Default: 10. */
+  numTicksColumns?: number;
   /** Explicit tick values for horizontal grid lines. Overrides numTicks. */
   rowTickValues?: number[];
   /** Grid line stroke while loading chrome is active. Falls back to `stroke`. */
@@ -174,9 +218,15 @@ export interface GridConfig {
   shimmerSync?: boolean;
 }
 
-/** Config carried by an <XAxis> child (pilot subset). */
+/** Config carried by an <XAxis> child (bklit x-axis.tsx surface). */
 export interface XAxisConfig {
   numTicks?: number;
+  /** Width of the date ticker box for the hover label-fade calculation
+      (bklit `tickerHalfWidth`). Default: 50. */
+  tickerHalfWidth?: number;
+  /** `"data"` (default) — ticks snap to data rows so crosshair/tooltip stay
+      aligned; `"domain"` — evenly spaced ticks across the time domain. */
+  tickMode?: "domain" | "data";
   formatValue?: (value: Date) => string;
 }
 
@@ -189,6 +239,8 @@ export interface GradientStop {
     vertical grouped demo path only: no stacked/horizontal/perspective). */
 export interface BarConfig {
   dataKey: string;
+  /** P6.1 / B7 — bklit `bar.tsx:58`. Y-scale group id. Default: `"left"`. */
+  yAxisId?: string | number;
   fill?: string;
   stroke?: string;
   /** "round" (default, bandwidth-derived radius capped at 8), "butt" (0), or
@@ -200,6 +252,8 @@ export interface BarConfig {
 
 export interface BarSquaresConfig {
   dataKey: string;
+  /** P6.1 / B10 — bklit `bar-squares.tsx:29`. Y-scale group id. Default: `"left"`. */
+  yAxisId?: string | number;
   fill?: string;
   stroke?: string;
   squareGap?: number;
@@ -246,10 +300,18 @@ export interface BarDepthProviderConfig {
   minBarHeight?: number;
 }
 
+/** Legacy `BarDepthProviderProps` (bar-depth.tsx:264) — `BarDepthContextValue`
+    plus a REQUIRED `children`. Not an alias of `BarDepthProviderConfig`: that
+    one has no `children` at all, so aliasing it would ship a structurally
+    different type under a parity name (D326 §6). */
+export interface BarDepthProviderProps extends BarDepthProviderConfig {
+  children: ReactNode;
+}
+
 /** Config carried by a <SeriesBar> child (bklit series-bar.tsx SeriesBarProps,
-    pilot subset — ComposedChart's bar series, unstacked-grouped layout only:
-    `stacked`/`stackGap` are ComposedChart-level props, out of pilot scope,
-    see composed-chart.tsx). */
+    pilot subset — ComposedChart's bar series; grouping AND stacking
+    (`stacked`/`stackGap` are ComposedChart-level props) are handled by
+    composed-chart.tsx + internal/series-bar-mark.ts). */
 export interface SeriesBarConfig {
   dataKey: string;
   /** Default: "var(--chart-line-primary)" (series-bar.tsx `fill` default). */
@@ -264,6 +326,13 @@ export interface SeriesBarConfig {
   /** Opacity for non-hovered rows while a different row is hovered.
       Default: 0.3 (series-bar.tsx `fadedOpacity` default). */
   fadedOpacity?: number;
+  /** P5.5 C8 — bklit `series-bar.tsx:92,101`. When false the series skips the
+      grow-from-baseline entrance and renders straight at final geometry
+      (bklit gates its whole enter branch on `animate && !isLoaded`, :224).
+      Default: true. */
+  animate?: boolean;
+  /** P6.1 C14 — deliberately NO `yAxisId` here: bklit's <SeriesBar> has no such
+      prop, and its composed extractor omits it while Line/Area pass it. */
 }
 
 /** Config carried by a <BarXAxis> child (bklit bar-x-axis.tsx, pilot subset). */
@@ -271,6 +340,41 @@ export interface BarXAxisConfig {
   tickerHalfWidth?: number;
   showAllLabels?: boolean;
   maxLabels?: number;
+}
+
+/** DOC-9 (B13): bklit BarYAxisProps (bar-y-axis.tsx) — type surface only.
+    Behavior ports together with bar orientation support (post-pilot); no
+    role-carrier or host rendering exists yet. */
+export interface BarYAxisProps {
+  /** Whether to show all labels or skip some for dense data. Default: true */
+  showAllLabels?: boolean;
+  /** Maximum number of labels to show. Default: 20 */
+  maxLabels?: number;
+}
+
+/** Config carried by a <Background> child (bklit background.tsx surface,
+    minus the host-supplied geometry width/height/isLoaded). Plot-area
+    pattern fill rendered behind grid/series (CH13).
+    (Alias needed: TS2499 forbids `interface X extends import("…").Y`.) */
+type BackgroundPatternOptions = import("./pattern-preset").PatternPresetOptions;
+
+export interface BackgroundConfig extends BackgroundPatternOptions {
+  /** Pattern preset. `"none"` renders nothing. Default: "diagonal". */
+  pattern?: import("./pattern-preset").PatternPresetId;
+  /** Pattern stroke color. Default: var(--chart-grid). */
+  color?: string;
+  /** Apply the pattern texture to the plot area. Default: true. */
+  showFill?: boolean;
+  /** Pattern fill opacity. Default: 1. */
+  opacity?: number;
+  /** Fade pattern at the left/right chart edges. Default: true. */
+  fadeHorizontal?: boolean;
+  /** Fade pattern at the top/bottom chart edges. Default: true. */
+  fadeVertical?: boolean;
+  /** Horizontal fade zone as % of plot width per edge. Default: 10. */
+  fadeHorizontalLength?: number;
+  /** Vertical fade zone as % of plot height per edge. Default: 10. */
+  fadeVerticalLength?: number;
 }
 
 /** Point payload passed to a <ChartTooltip content> render prop (bklit
@@ -322,17 +426,24 @@ export interface ChartTooltipConfig {
 }
 
 /** Config carried by a <Candlestick> child (bklit candlestick.tsx
-    CandlestickProps, pilot subset — solid-fill-only, no gradient/legend
-    branches). */
+    CandlestickProps — gradient-default fills collapse to solid tokens per the
+    pilot's Q1-gated K5-cluster ruling; legend pairing closed D223–D226). */
 export interface CandlestickConfig {
-  /** Reserved for parity with bklit's prop surface — the pilot's reveal
-      is always driven by CandlestickChart's own `animationDuration`/
-      `revealSignature`, so this has no independent effect yet. */
+  /** Gates the reveal: false renders candles statically (no scaleY/opacity
+      reveal) while interaction still unlocks at the flat `animationDuration`
+      deadline — bklit candlestick.tsx `animate && !isLoaded` parity. */
   animate?: boolean;
   /** bklit candlestick.tsx SOLID_POSITIVE default: var(--color-emerald-500). */
   positiveFill?: string;
   /** bklit candlestick.tsx SOLID_NEGATIVE default: var(--color-red-500). */
   negativeFill?: string;
+  /** Pattern overlay on positive-candle bodies (K9): either a pattern-preset
+      name (resolved to defs internally via internal/pattern-preset) or a raw
+      legacy `url(#id)` passthrough. When set, body+wick fall back to the
+      solid token colors and the pattern is overlaid on the body rect. */
+  bodyPatternPositive?: string;
+  /** Pattern overlay for negative-candle bodies (same resolution rules). */
+  bodyPatternNegative?: string;
   /** Extra INNER border drawn inset inside the body (in addition to the
       body's own always-on 1px self-stroke). Default: 0 (off) — matches
       candlestick.tsx CandlestickProps.insideStrokeWidth default. */
@@ -406,8 +517,9 @@ export interface LiveXAxisConfig {
 export interface LiveYAxisConfig {
   /** Minimum pixel gap between labels. Default: 36. */
   minGap?: number;
-  /** Position. Default: "left" (only "left" implemented, matching the
-      registry demo/bench scenario — same pilot-scope carve-out as <YAxis>). */
+  /** Position. Default: "left" ("right" mirrors the tick layer into the
+      right margin gutter with left-aligned labels, matching bklit
+      live-y-axis.tsx). */
   position?: "left" | "right";
   formatValue?: (v: number) => string;
   /** Allow decimal tick values. Default: true. */
@@ -507,6 +619,8 @@ export interface ExtractedChildren {
   /** <BarXAxis> child (bar-chart.tsx pilot — distinct from <XAxis>, which
        Line/Scatter use). */
   barXAxis: BarXAxisConfig | null;
+  /** <Background> child (CH13 — bklit background.tsx plot-area pattern). */
+  background: BackgroundConfig | null;
   tooltip: ChartTooltipConfig | null;
   /** <Candlestick> child (candlestick-chart.tsx pilot). */
   candlestick: CandlestickConfig | null;

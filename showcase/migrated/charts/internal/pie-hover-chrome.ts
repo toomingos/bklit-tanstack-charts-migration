@@ -31,6 +31,7 @@
 // triggers no re-renders).
 import { createSpring, type Spring } from "./spring";
 import { pieArcPath, sliceMidOffset } from "./pie-geometry";
+import { createBroadcastStore } from "./broadcast-store";
 
 export type PieSliceHoverEffect = "translate" | "grow" | "none";
 
@@ -66,36 +67,30 @@ export function createPieHoverCoordinator(
   onHoverChange: (index: number | null) => void,
   isControlled: () => boolean,
 ): PieHoverCoordinator {
-  let hovered: number | null = null;
-  const listeners = new Set<() => void>();
-  const notify = () => {
-    for (const listener of listeners) listener();
-  };
+  // No comparator: every set notifies — pie has NO dedup guard, and that
+  // absence is load-bearing for controlled-mode re-dispatch semantics.
+  const store = createBroadcastStore<number | null>({ initial: null });
   return {
-    getHovered: () => hovered,
+    getHovered: () => store.get(),
     requestHover(index) {
       if (isControlled()) {
         onHoverChange(index);
         return;
       }
-      hovered = index;
-      notify();
+      store.set(index);
     },
     requestUnhover() {
       if (isControlled()) {
         onHoverChange(null);
         return;
       }
-      hovered = null;
-      notify();
+      store.set(null);
     },
     setHovered(index) {
-      hovered = index;
-      notify();
+      store.set(index);
     },
     subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
+      return store.subscribe(listener);
     },
   };
 }

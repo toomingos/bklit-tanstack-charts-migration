@@ -2,14 +2,14 @@
 // Charts can import any of these via `./internal` (barrel re-export).
 
 export { parseAspectRatio } from "./parse-aspect-ratio";
+export { nativeStaggerDelayMs } from "./native-stagger";
 export { bezierEasing } from "./bezier-easing";
 export { bisectDateLeft, resolveNearestIndex } from "./bisect";
 export { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 export { decimateTimeSeries, maxRenderPointsForWidth } from "./decimate";
-export { FOCUS_DISABLED } from "./focus-disabled";
 
 // Container measurement + margin normalization (shared lifecycle setup)
-export { useChartMargin, type ChartMargin } from "./use-chart-margin";
+export { useChartMargin, DEFAULT_CHART_MARGIN, type ChartMargin } from "./use-chart-margin";
 export {
   useContainerWidth,
   useDebouncedContainerWidth,
@@ -137,6 +137,8 @@ export {
   PROFIT_LOSS_LEGEND_ITEMS,
   type ProfitLossLegendProps,
 } from "./profit-loss-legend";
+// Restored by lead (D296) — see the note in ../index.ts. Real consumer lives
+// outside showcase/: bench/app/src/scenarios/migrated-profitloss.tsx.
 export {
   ProfitLossLegendHoverProvider,
   useProfitLossLegendHover,
@@ -169,7 +171,7 @@ export { barSquaresMark, type BarSquaresMarkOptions } from "./bar-squares-mark";
 export { barColumnTrackMark, type BarColumnTrackMarkOptions } from "./bar-column-track-mark";
 export { BAR_DEPTH_MAX_PX, BAR_DEPTH_PERSPECTIVE_RATIO, BAR_DEPTH_MIN_PX, barDepthMaxDepth, barDepthAndRise } from "./bar-depth-geometry";
 export { barDepthBackMark, barDepthFrontMark, DEFAULT_GROUND_SHADOW, GLASS_TIP_OPACITY, BAR_FADED_OPACITY, type BarDepthBackMarkOptions, type BarDepthFrontMarkOptions } from "./bar-depth-marks";
-export { barPulseMark, buildBarSilhouettePath, PULSE_WAVE_HEIGHT_RATIO, PULSE_WAVE_HEIGHT_MIN_PX, PULSE_WAVE_DURATION_S, PULSE_WAVE_PEAK_OPACITY, type BarPulseMarkOptions } from "./bar-pulse-mark";
+export { barPulseMark, buildBarSilhouettePath, buildPulseWaveStops, syncBarPulseGroups, PULSE_WAVE_HEIGHT_RATIO, PULSE_WAVE_HEIGHT_MIN_PX, PULSE_WAVE_DURATION_S, PULSE_WAVE_PEAK_OPACITY, type BarPulseMarkOptions, type PulseWaveGradientStop } from "./bar-pulse-mark";
 export { barTrimmedMark, type BarTrimmedMarkOptions } from "./bar-trimmed-mark";
 export { BrushLayout, type BrushLayoutProps } from "./brush-layout";
 export { useBrushSelection, type BrushSelection, type BrushLayoutState } from "./brush-selection";

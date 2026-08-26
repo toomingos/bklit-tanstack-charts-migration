@@ -11,12 +11,29 @@
 // bklit's own `useMountProgress` (use-mount-progress.ts) falls back to the
 // single shared `DEFAULT_CHART_ENTER_TRANSITION` (animation.ts) whenever a
 // chart's `enterTransition` prop isn't supplied — a plain tween, 1100ms,
-// cubic-bezier(0.85,0,0.15,1). A caller MAY still pass an explicit
+// cubic-bezier(0.85,0,.15,1). A caller MAY still pass an explicit
 // `{type:"spring",...}` `enterTransition`, so `resolveEnterTransition` keeps
 // the same spring/tween generality the per-family versions had. Families
 // whose default fallback differs (e.g. Gauge's spring fallback) express that
 // through the `fallback` argument — there is no per-family fork of these
 // functions.
+//
+// Easing-mapping map (OQ parity 10 — one place): every easing value in the
+// migrated charts ultimately reaches the renderer as a WAAPI
+// `AnimationEffectTiming.easing` string via ONE of two channels:
+//   1. Public bklit prop `animationEasing?: string` (LineChart/AreaChart) —
+//      already a CSS easing string, passed verbatim into the reveal
+//      `marks.animate(..., { easing })` calls (line-chart.tsx /
+//      area-chart.tsx handleRender). No conversion.
+//   2. This module's internal `EnterTransition` object (framer-style
+//      `{ease:[..]} | {bounce|stiffness,damping}`) — resolved by
+//      `resolveEnterTransition` into `ResolvedTiming.easingCss`
+//      (`cubic-bezier(...)` for tweens, `"linear"` + pre-sampled progress
+//      keyframes for springs), which callers feed straight to `.animate()`.
+// Parts that currently accept-and-ignore easing stubs (bar/composed/
+// scatter/…, P5.5 T-E3) forward their prop into channel 1's call sites once
+// wired; P3.2's motion() default replacement must keep producing
+// `ResolvedTiming.easingCss` strings so both channels stay WAAPI-native.
 import { estimateSpringSettleMs, sampleSpringProgress } from "./radar-spring";
 import { REVEAL_DURATION_MS, REVEAL_EASE_CSS } from "./design-tokens";
 
@@ -59,6 +76,40 @@ export function springFromBounce(
     stiffness: Math.min(400, Math.max(80, base.stiffness * (1 + bounce * 0.35))),
     damping: Math.max(8, base.damping * (1 - bounce * 0.25)),
   };
+}
+
+/**
+ * bklit `animation.ts:18` `clipRevealTransition`, ported.
+ *
+ * The cartesian clip-path width reveal must be a TWEEN — bklit's own comment:
+ * "spring does not reliably animate SVG width" — so a caller-supplied SPRING is
+ * COERCED to a tween of the same nominal duration here rather than sampled
+ * through `revealTiming()`. That is why this is not just
+ * `resolveEnterTransition()` with a different fallback.
+ *
+ * `fallback*` mirror the shell's substitution (`time-series-chart-shell.tsx:607-612`):
+ * with no `enterTransition` at all the clip runs for the host's
+ * `animationDuration` at its `animationEasing`. (bklit hardcodes the default
+ * bezier there instead of forwarding `animationEasing`, but `animationEasing`
+ * is read by nothing in bklit — it only ever lands in the stable context — so
+ * routing it here is a strict superset that is byte-identical at the default.)
+ */
+export function clipRevealTiming(
+  transition: EnterTransition | undefined,
+  fallbackDurationMs: number,
+  fallbackEasingCss: string,
+): { durationMs: number; easingCss: string } {
+  if (!transition) {
+    return { durationMs: fallbackDurationMs, easingCss: fallbackEasingCss };
+  }
+  const durationMs =
+    typeof transition.duration === "number" ? transition.duration * 1000 : fallbackDurationMs;
+  // bklit's spring branch discards `ease` outright; only the tween branch honours it.
+  const easingCss =
+    transition.type !== "spring" && transition.ease
+      ? `cubic-bezier(${transition.ease.join(",")})`
+      : fallbackEasingCss;
+  return { durationMs, easingCss };
 }
 
 /**
@@ -173,3 +224,29 @@ export function buildProgressKeyframes(
 ): Keyframe[] {
   return timing.sampledProgress.map(toKeyframe);
 }
+
+// --- Family aliases (T-C3 reveal-shim collapse) -----------------------------
+// The former {pie,ring,funnel,radar,gauge}-reveal.ts shim modules were pure
+// re-export aliases of this engine (initiative-1 consolidation already moved
+// every implementation here in Phase 3); hosts now import these names
+// directly. Public barrel names are unchanged (centralize.md OQ 4).
+// radar keeps aliased import NAMES (buildRadarProgressKeyframes etc.) at its
+// call sites; gauge-reveal remains as the module holding gauge's unique
+// key-diffing reconciler (reconcileGaugeReveal) + GAUGE_SPRING_FALLBACK.
+export type PieEnterTransition = EnterTransition;
+export type RingEnterTransition = EnterTransition;
+export type FunnelEnterTransition = EnterTransition;
+export type RadarEnterTransition = EnterTransition;
+export type GaugeEnterTransition = EnterTransition;
+/** P5.5 K4 — candlestick was the last part still declaring its OWN
+    enter-transition type (a spring-only `{ duration?, bounce? }`), which
+    structurally could not express the tween bklit's `Transition` always
+    allowed there (`repos/bklit-ui/.../candlestick-chart.tsx:54,84`). Aliased
+    here like the other five so the tween branch is reachable. */
+export type CandlestickEnterTransition = EnterTransition;
+export type GaugeRevealTiming = RevealTiming;
+
+export const PIE_TWEEN_FALLBACK: ResolvedTiming = TWEEN_FALLBACK;
+export const RING_TWEEN_FALLBACK: ResolvedTiming = TWEEN_FALLBACK;
+export const FUNNEL_TWEEN_FALLBACK: ResolvedTiming = TWEEN_FALLBACK;
+export const RADAR_TWEEN_FALLBACK: ResolvedTiming = TWEEN_FALLBACK;

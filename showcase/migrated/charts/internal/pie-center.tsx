@@ -3,11 +3,11 @@ import {
   useContext,
   type ReactNode,
 } from "react";
-import type { PieEnterTransition } from "./pie-reveal";
+import type { PieEnterTransition } from "./enter-transition";
 import type { PieHoverCoordinator } from "./pie-hover-chrome";
 import type { PieData, PieArcData } from "../pie-chart";
 import {
-  CenterStat,
+  CenterShell,
   centerStatContainerClassName,
   centerStatLabelClassName,
   centerStatValueClassName,
@@ -86,6 +86,8 @@ export function PieCenter({
   const coordinator = usePieHoverCoordinator();
   const hoveredIndex = useCenterStatHover(coordinator as unknown as import("./center-stat").CenterStatHoverSource);
 
+  // Per-part guard kept local (centralize row 7 "stays per-part"): scrub mode
+  // never shows hover state in the center.
   const effectiveHoveredIndex = stable.geometryScrubbing ? null : hoveredIndex;
   const hoveredData = effectiveHoveredIndex === null ? null : (stable.data[effectiveHoveredIndex] ?? null);
   const displayValue = hoveredData ? hoveredData.value : stable.totalValue;
@@ -93,35 +95,28 @@ export function PieCenter({
   const centerSize = stable.innerRadius * 2 - 16;
   const containerClassName = className ? `${centerStatContainerClassName} ${className}` : centerStatContainerClassName;
 
+  // Per-part guard kept local: no inner radius ⇒ nothing to size the box to.
   if (stable.innerRadius <= 0) return null;
 
-  if (children && hoveredData) {
-    return (
-      <div className={containerClassName} style={{ width: centerSize, height: centerSize, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        {children({ value: displayValue, label: displayLabel, isHovered: effectiveHoveredIndex !== null, data: hoveredData })}
-      </div>
-    );
-  }
-
   return (
-    <div
+    <CenterShell<PieData>
+      centerSize={centerSize}
       className={containerClassName}
-      style={{
-        width: centerSize, height: centerSize,
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center",
-      }}
+      formatOptions={formatOptions}
+      hoveredData={hoveredData}
+      label={displayLabel}
+      labelClassName={labelClassName}
+      prefix={prefix}
+      suffix={suffix}
+      value={displayValue}
+      valueClassName={valueClassName}
     >
-      <CenterStat
-        formatOptions={formatOptions}
-        label={displayLabel}
-        labelClassName={labelClassName}
-        prefix={prefix}
-        suffix={suffix}
-        value={displayValue}
-        valueClassName={valueClassName}
-      />
-    </div>
+      {children}
+    </CenterShell>
   );
 }
 
 PieCenter.displayName = "PieCenter";
+
+// Legacy parity: bklit `pie-center.tsx` ships `export default PieCenter;` (T-E2).
+export default PieCenter;

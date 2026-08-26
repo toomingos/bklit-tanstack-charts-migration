@@ -1,3 +1,9 @@
+export function bandWidthForSquares(bandWidth: number, seriesCount: number, groupGap: number): number {
+  if (!bandWidth || seriesCount === 0) return 0;
+  const effectiveGroupGap = seriesCount > 1 ? groupGap : 0;
+  return (bandWidth - effectiveGroupGap * (seriesCount - 1)) / seriesCount;
+}
+
 export interface SquareColumnLayout {
   count: number;
   positions: number[];

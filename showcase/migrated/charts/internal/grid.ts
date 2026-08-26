@@ -4,12 +4,12 @@
 // config resolution that was previously duplicated across the six cartesian
 // chart files (`grid?.horizontal ?? false`, `grid?.numTicks ?? 5`,
 // `grid?.vertical ?? false`) plus the bklit grid.tsx parity surface
-// (highlight rows, shimmer tokens). Highlight-row RENDERING lives in
-// `internal/grid-chrome.tsx` (the `GridHighlightRows` component); this module
-// stays pure TS so it can be consumed by the plain `defineChart` spec paths.
+// (highlight rows, shimmer tokens). Highlight-row RENDERING is built by
+// `internal/grid-highlight-mark.ts` (`gridHighlightRowMarks()`, a ChartMark
+// builder); this module stays pure TS so it can be consumed by the plain
+// `defineChart` spec paths.
 
 import type { GridConfig } from "./types";
-import { DEFAULT_SHIMMER_LENGTH_PX, DEFAULT_SHIMMER_SPEED, DEFAULT_SHIMMER_STROKE } from "./design-tokens";
 
 /** bklit grid.tsx default stroke dash array (dashed grid lines). */
 export const DEFAULT_GRID_STROKE_DASHARRAY = "4,4";
@@ -19,20 +19,27 @@ export interface ResolvedGridGuide {
   horizontal: boolean;
   /** TanStack x-axis `grid` option (bklit `vertical`). */
   vertical: boolean;
-  /** TanStack y-axis `ticks` count (bklit `numTicksRows`). */
+  /** Horizontal tick count (bklit `numTicksRows`). */
   ticks: number;
+  /** Vertical tick count (bklit `numTicksColumns`). */
+  columnTicks: number;
 }
 
 /**
  * Resolves the shared axis-guide options for a `<Grid>` child. Replaces the
- * per-chart `grid?.horizontal ?? false` / `grid?.numTicks ?? 5` /
+ * per-chart `grid?.horizontal ?? …` / `grid?.numTicks ?? 5` /
  * `grid?.vertical ?? false` triples (single source, one impl, no forks).
+ * Defaults match bklit grid.tsx GridProps: `horizontal` true, `vertical`
+ * false, `numTicksRows` 5, `numTicksColumns` 10. CH3: both the legacy
+ * `numTicksRows` and the pilot-rename `numTicks` are accepted for the
+ * horizontal density.
  */
 export function resolveGridGuide(grid: GridConfig | null): ResolvedGridGuide {
   return {
-    horizontal: grid?.horizontal ?? false,
+    horizontal: grid?.horizontal ?? true,
     vertical: grid?.vertical ?? false,
-    ticks: grid?.numTicks ?? 5,
+    ticks: grid?.numTicksRows ?? grid?.numTicks ?? 5,
+    columnTicks: grid?.numTicksColumns ?? 10,
   };
 }
 
@@ -59,20 +66,4 @@ export function resolveGridHighlightRows(
     out.push({ value, y });
   }
   return out;
-}
-
-/** Resolved shimmer options (bklit grid.tsx `useGridShimmer` inputs) with the
- *  design-token defaults applied. */
-export function resolveGridShimmer(grid: GridConfig | null): {
-  enabled: boolean;
-  length: number;
-  speed: number;
-  stroke: string;
-} {
-  return {
-    enabled: grid?.shimmer ?? false,
-    length: grid?.shimmerLength ?? DEFAULT_SHIMMER_LENGTH_PX,
-    speed: grid?.shimmerSpeed ?? DEFAULT_SHIMMER_SPEED,
-    stroke: grid?.shimmerStroke ?? DEFAULT_SHIMMER_STROKE,
-  };
 }

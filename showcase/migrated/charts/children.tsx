@@ -6,6 +6,7 @@ import * as React from "react";
 import type { CurveFactory } from "d3-shape";
 import type {
   AreaConfig,
+  BackgroundConfig,
   BarConfig,
   BarColumnTrackConfig,
   BarDepthBackConfig,
@@ -34,8 +35,46 @@ import type { SeriesPointMarkerStyle } from "./internal/types";
 export const CHART_ROLE = Symbol.for("migrated.chartRole");
 export const CHART_CHILD_PASSTHROUGH = Symbol.for("migrated.chartChildPassthrough");
 
+// P5.6 CH2 — legacy's name for this marker, and legacy's VALUE for it.
+//
+// The charter frames CH2 as a pure rename ("add an alias so legacy-named
+// consumers resolve"), but the two symbols are not the same kind of thing:
+// bklit's is a plain string key, `CHART_CLIP_PASSTHROUGH =
+// "__chartClipPassthrough"` (`repos/bklit-ui/.../chart-child-passthrough.ts:11`),
+// while migrated's is a `Symbol.for(...)`. A name-only alias
+// (`= CHART_CHILD_PASSTHROUGH`) would resolve the import but silently fail the
+// half of the contract that matters: this marker is PUBLIC, meant for wrapper
+// components outside the library, and a wrapper written against bklit is just
+// as likely to stamp the literal key — `MyWrapper.__chartClipPassthrough =
+// true` — as to import the constant. Under a name-only alias that wrapper
+// compiles, renders, and is silently never unwrapped.
+//
+// So the alias carries legacy's own value, and the detector below accepts
+// BOTH keys. Migrated's Symbol stays the canonical internal marker.
+export const CHART_CLIP_PASSTHROUGH = "__chartClipPassthrough" as const;
+
 type RoleCarrier = { [CHART_ROLE]?: string };
-type PassthroughCarrier = { [CHART_CHILD_PASSTHROUGH]?: boolean };
+type PassthroughCarrier = {
+  [CHART_CHILD_PASSTHROUGH]?: boolean;
+  [CHART_CLIP_PASSTHROUGH]?: boolean;
+};
+
+/** True when `type` is marked as a clip/child passthrough wrapper under either
+    the migrated symbol or bklit's legacy string key. Mirrors bklit's
+    `isChartClipPassthrough` (`chart-child-passthrough.ts:13-19`), minus its
+    `typeof type === "function"` pre-check — that guard predates `memo()`
+    wrappers, whose `type` is an object (same defect P5.5 SB8 found in
+    `sunburst-chart.tsx`'s classifier, D332 §3). */
+export function isChartClipPassthrough(type: unknown): boolean {
+  if (type == null || (typeof type !== "function" && typeof type !== "object")) {
+    return false;
+  }
+  const carrier = type as PassthroughCarrier;
+  return (
+    carrier[CHART_CHILD_PASSTHROUGH] === true ||
+    carrier[CHART_CLIP_PASSTHROUGH] === true
+  );
+}
 
 // Exported for composed-chart.tsx's own dedicated single-pass extraction
 // (it needs cross-role encounter order for bklit's upsert semantics — see
@@ -125,6 +164,15 @@ export function BarXAxis(_props: BarXAxisConfig): null {
   return null;
 }
 (BarXAxis as RoleCarrier)[CHART_ROLE] = "barXAxis";
+
+// CH13: bklit Background (background.tsx) — plot-area pattern fill rendered
+// behind grid/series. Carrier only; the host renders internal/background's
+// layer component in its clip-excluded underlay slot.
+export function Background(_props: BackgroundConfig): null {
+  return null;
+}
+(Background as RoleCarrier)[CHART_ROLE] = "background";
+Background.displayName = "Background";
 
 export function Grid(_props: GridConfig): null {
   return null;
@@ -276,6 +324,7 @@ export function extractChildren(children: React.ReactNode): ExtractedChildren {
     grid: null,
     xAxis: null,
     barXAxis: null,
+    background: null,
     tooltip: null,
     candlestick: null,
     yAxis: null,
@@ -289,7 +338,7 @@ export function extractChildren(children: React.ReactNode): ExtractedChildren {
   const visit = (node: React.ReactNode): void => {
     for (const child of React.Children.toArray(node)) {
       if (!React.isValidElement(child)) continue;
-      if ((child.type as PassthroughCarrier)?.[CHART_CHILD_PASSTHROUGH]) {
+      if (isChartClipPassthrough(child.type)) {
         visit((child.props as { children?: React.ReactNode }).children);
         continue;
       }
@@ -314,6 +363,7 @@ export function extractChildren(children: React.ReactNode): ExtractedChildren {
       else if (role === "grid") out.grid = props;
       else if (role === "xAxis") out.xAxis = props;
       else if (role === "barXAxis") out.barXAxis = props;
+      else if (role === "background") out.background = props as BackgroundConfig;
       else if (role === "tooltip") out.tooltip = { enabled: true, ...(props as ChartTooltipConfig) };
       else if (role === "candlestick") out.candlestick = { ...(props as CandlestickConfig) };
       else if (role === "yAxis") out.yAxis = { ...(props as YAxisConfig) };

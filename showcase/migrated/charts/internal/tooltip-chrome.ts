@@ -15,12 +15,82 @@ import {
 } from "./fade-mask";
 import { resolveTooltipBoxMotion } from "./chart-config-context";
 import type { SpringConfig } from "./chart-config-context";
-import type { ChartTooltipPoint } from "./types";
-import { createTooltipScheduler, type TooltipScheduler } from "./tooltip-scheduler";
+import type { ChartTooltipPoint, IndicatorWidth, TooltipRow } from "./types";
+
+// ── rAF-coalesced commit scheduler (folded from ./tooltip-scheduler) ─────
+
+function defaultDedupeKey<T>(tooltip: T): string {
+  if (typeof tooltip === "object" && tooltip !== null && "index" in tooltip && typeof (tooltip as { index: unknown }).index === "number") {
+    const { index, x } = tooltip as { index: number; x?: number };
+    if (typeof x === "number") return `${index}:${Math.round(x)}`;
+    return String(index);
+  }
+  return JSON.stringify(tooltip);
+}
+
+export interface TooltipSchedulerOptions<T> {
+  commit(t: T | null): void;
+}
+
+export interface TooltipScheduler<T> {
+  schedule(tooltip: T, dedupeKey?: string): void;
+  clear(): void;
+  resetDedupe(): void;
+  dispose(): void;
+}
+
+export function createTooltipScheduler<T>(options: TooltipSchedulerOptions<T>): TooltipScheduler<T> {
+  let lastKey: string | null = null;
+  let pending: T | null = null;
+  let pendingKey: string | null = null;
+  let rafId: number | null = null;
+
+  const commitTooltip = (tooltip: T, key: string) => {
+    if (key === lastKey) return;
+    lastKey = key;
+    options.commit(tooltip);
+  };
+
+  return {
+    schedule(tooltip: T, dedupeKey?: string) {
+      const key = dedupeKey ?? defaultDedupeKey(tooltip);
+      pending = tooltip;
+      pendingKey = key;
+      if (key === lastKey) return;
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const next = pending;
+        const nextKey = pendingKey;
+        if (next !== null && nextKey !== null) commitTooltip(next, nextKey);
+      });
+    },
+    clear() {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      pending = null;
+      pendingKey = null;
+      lastKey = null;
+      options.commit(null);
+    },
+    resetDedupe() {
+      lastKey = null;
+    },
+    dispose() {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    },
+  };
+}
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-export type IndicatorWidth = number | "line" | "thin" | "medium" | "thick";
+// `IndicatorWidth` / `TooltipRow` are owned by `./types` (P4 dedup) and imported
+// above; they used to be declared here as byte-identical second copies.
 export type DotVariant = "dot" | "ring";
 
 export function resolveIndicatorWidth(width: IndicatorWidth): number {
@@ -37,12 +107,6 @@ export function resolveIndicatorWidth(width: IndicatorWidth): number {
 export function resolveIndicatorPixelWidth(cfg: { width?: IndicatorWidth; span?: number; columnWidth?: number }): number {
   if (cfg.span !== undefined && cfg.columnWidth !== undefined) return cfg.span * cfg.columnWidth;
   return resolveIndicatorWidth(cfg.width ?? "line");
-}
-
-export interface TooltipRow {
-  color: string;
-  label: string;
-  value: string | number;
 }
 
 export interface IndicatorConfig {
@@ -91,14 +155,6 @@ export function resolveBoxSpring(
 function ringCornerRadius(halfExtent: number, cornerRadiusFraction: number): number {
   const side = halfExtent * 2;
   return side * Math.max(0, Math.min(0.5, cornerRadiusFraction));
-}
-
-export interface SharedTooltipChromeOptions {
-  tooltipSpring?: SpringConfig;
-  tooltipBoxSpring?: SpringConfig;
-  indicator?: IndicatorConfig;
-  dot?: DotConfig;
-  box?: BoxConfig;
 }
 
 // ── Indicator (crosshair) ────────────────────────────────────────────────
@@ -315,7 +371,8 @@ export interface BoxBuild {
   lastContentKey: { current: string | null };
   childrenRoot: { current: Root | null };
   // Single source (D2): the rAF-coalesced last-write-wins scheduler is
-  // `./tooltip-scheduler`'s `createTooltipScheduler` — no inline fork here.
+  // `createTooltipScheduler` in this file (folded from
+  // `./tooltip-scheduler`) — no inline fork here.
   // Payload type is the render thunk itself (`doRender`/`doChildrenRender`
   // from `applyBoxContent` below); `commit` just invokes it, so the existing
   // call sites' `schedule(doRender, key)` shape is unchanged.

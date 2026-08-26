@@ -25,19 +25,27 @@
 //     determinism floor that must hold for the 0.5% real gate to mean
 //     anything (see the self-test comment further down).
 //
-// NOTE (risk, see final report to the lead): as of this writing the bench
-// app's query parser (`bench/app/src/bench/query.ts`) only accepts
-// `impl=bklit|tanstack` -- there is no `migrated` scenario registered yet
-// (`bench/app/src/scenarios/index.ts`). Running this script with
-// `--impl-a`/`--impl-b migrated` before that lands will fail at
-// `page.goto()` time with "Missing/invalid ?impl=". `--self-test` and any
-// bklit/tanstack combination work today.
+// WHICH IMPLS THIS COMPARES -- read this before writing any ad-hoc probe.
+// The gate's default pair is `bklit` vs `migrated` (DEFAULT_IMPL_A /
+// DEFAULT_IMPL_B below). All three impls are registered in
+// `bench/app/src/scenarios/index.ts`:
+//   bklit    -- the legacy component; the parity target.
+//   migrated -- the ported component; what the gate actually measures.
+//   tanstack -- the PERFORMANCE-CEILING reference (native/idiomatic TanStack
+//               styling). It deliberately ports NONE of bklit's chrome, so
+//               diffing it against bklit measures nothing meaningful about
+//               the migration.
+// An earlier version of this note claimed no `migrated` scenario existed and
+// that only `bklit|tanstack` were accepted. That was already stale and it
+// caused a full ad-hoc hover investigation to be run against the wrong impl
+// (D258). Probe `migrated`, not `tanstack`, unless you specifically want the
+// performance ceiling.
 
 import { chromium } from "playwright";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { mkdirSync, rmdirSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,7 +53,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const APP_DIR = path.join(ROOT, "bench", "app");
 const RESULTS_DIR = path.join(ROOT, "qa", "results");
-const PORT = 5198;
+const PORT = Number(process.env.QA_PORT ?? 5198);
 const BASE_URL = `http://localhost:${PORT}`;
 
 const VIEWPORT = { width: 1200, height: 800 };
@@ -65,12 +73,24 @@ const TOOLTIPLESS_CHARTS = new Set([
   "gauge",
   "gaugelinear",
   "sunburst",
+  // P5.5 Strand 3: same chart as `sunburst`, plus a breadcrumb and a
+  // render-prop hint. Still tooltipless for the same D24 reason.
+  "sunchrome",
   "funnel",
   "funnelvertical",
   // legend is a chart-less HTML scenario (initiative 8, D223 ruling 4):
   // no tooltip contract at all — hover state is a CSS dim driven via
   // window.__qaSetLegendHover, asserted by the pixel diffs alone.
   "legend",
+  // P6.4: the two loading-PRESET fixtures (D341). A skeleton has no data
+  // behind it, so neither impl renders a tooltip — the assertion failed
+  // SYMMETRICALLY on A and B in every run, which is the signature of a
+  // harness gap rather than a chart defect. Confirmed by --self-test:
+  // bklit-vs-bklit scores 0.0000% on all four captures and still reports
+  // `overall: FAIL` purely on this assertion. The pixel gate is unchanged
+  // and remains the real check for both.
+  "arealoading",
+  "barloading",
 ]);
 // Funnel family: hover zones are DISCRETE equal-sized cells with dead gaps
 // between them (bklit funnel-chart.tsx: per-stage `cursor-pointer` divs at
@@ -444,7 +464,25 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
   // impls.
   const pristineTextLen = await textLen(page);
 
-  const svgBox = await page.locator("#chart-root svg").first().boundingBox();
+  // LARGEST svg, not `.first()` — the brush capture path below already does
+  // this and its comment names the hazard: migrated hosts a 0x0 clipPath-defs
+  // <svg> BEFORE the chart <svg> whenever `xDomain` is set
+  // (line-chart.tsx:1045, `needsBrushClip`). `.first()` therefore returned a
+  // 0x0 box for migrated-with-xDomain and every hover landed at the container
+  // origin, off the plot — reported as "tooltip not visible" for B only, on a
+  // chart that hovers correctly (D348). bklit puts its real svg first, so the
+  // A side hovered normally and the pixel gates still passed; only the
+  // tooltip assertion caught it, and it blamed the chart. Impl-agnostic.
+  const svgBox = await page.evaluate(() => {
+    let best = null;
+    for (const s of document.querySelectorAll("#chart-root svg")) {
+      const r = s.getBoundingClientRect();
+      if (!best || r.width * r.height > best.width * best.height) {
+        best = { x: r.x, y: r.y, width: r.width, height: r.height };
+      }
+    }
+    return best && best.width > 0 && best.height > 0 ? best : null;
+  });
   if (!svgBox) {
     await context.close();
     throw new Error(`no <svg> found for ${impl}/${chart} n=${n} -- cannot compute hover points`);
@@ -1018,28 +1056,68 @@ function newestSourceMtimeMs(dir) {
 }
 
 async function rebuildIfStale(tag) {
-  const distIndex = path.join(APP_DIR, "dist", "index.html");
-  const distMtime = existsSync(distIndex) ? statSync(distIndex).mtimeMs : 0;
-  const sourceRoots = [
-    path.join(APP_DIR, "src"),
-    path.join(APP_DIR, "index.html"),
-    path.join(ROOT, "showcase", "migrated"),
-    path.join(ROOT, "repos", "bklit-ui", "packages", "ui", "src"),
-  ];
-  const srcMtime = Math.max(
-    ...sourceRoots.map((p) => {
+  // QA_SKIP_REBUILD=1: the caller guarantees dist is fresh (e.g. one explicit
+  // pre-build before launching a parallel wave) — skip the scan and the lock.
+  if (process.env.QA_SKIP_REBUILD === "1") {
+    console.log(`${tag} QA_SKIP_REBUILD=1 — skipping stale-build check`);
+    return;
+  }
+  // Build lock: two concurrent stale-seeing processes would race `npm run
+  // build` into the same dist/ (vite empties outDir at build start — silent
+  // corruption of the other process's captures). mkdir is atomic: the winner
+  // builds while others wait; a crashed builder's lock is taken over after
+  // 120s. Mirrored in bench/run.mjs.
+  const lockDir = path.join(APP_DIR, ".build-lock");
+  let announcedWait = false;
+  for (;;) {
+    try {
+      mkdirSync(lockDir);
+      break;
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+      let age = 0;
       try {
-        return statSync(p).isDirectory() ? newestSourceMtimeMs(p) : statSync(p).mtimeMs;
+        age = Date.now() - statSync(lockDir).mtimeMs;
       } catch {
-        return 0;
+        continue; // lock released between mkdir and stat: retry immediately
       }
-    }),
-  );
-  if (distMtime === 0 || srcMtime > distMtime) {
-    console.log(
-      `${tag} bench/app dist ${distMtime === 0 ? "missing" : "STALE (sources newer than build)"} — rebuilding...`,
+      if (age > 120_000) {
+        try { rmdirSync(lockDir); } catch {}
+        continue;
+      }
+      if (!announcedWait) {
+        announcedWait = true;
+        console.log(`${tag} waiting for concurrent bench/app build...`);
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+  try {
+    const distIndex = path.join(APP_DIR, "dist", "index.html");
+    const distMtime = existsSync(distIndex) ? statSync(distIndex).mtimeMs : 0;
+    const sourceRoots = [
+      path.join(APP_DIR, "src"),
+      path.join(APP_DIR, "index.html"),
+      path.join(ROOT, "showcase", "migrated"),
+      path.join(ROOT, "repos", "bklit-ui", "packages", "ui", "src"),
+    ];
+    const srcMtime = Math.max(
+      ...sourceRoots.map((p) => {
+        try {
+          return statSync(p).isDirectory() ? newestSourceMtimeMs(p) : statSync(p).mtimeMs;
+        } catch {
+          return 0;
+        }
+      }),
     );
-    await run("npm", ["run", "build"], { cwd: APP_DIR });
+    if (distMtime === 0 || srcMtime > distMtime) {
+      console.log(
+        `${tag} bench/app dist ${distMtime === 0 ? "missing" : "STALE (sources newer than build)"} — rebuilding...`,
+      );
+      await run("npm", ["run", "build"], { cwd: APP_DIR });
+    }
+  } finally {
+    try { rmdirSync(lockDir); } catch {}
   }
 }
 
@@ -1074,6 +1152,9 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === "--self-test") args.selfTest = true;
     else if (a === "--chart") args.chart = argv[++i];
+    else if (a === "--charts") args.charts = argv[++i].split(",").map((s) => s.trim()).filter(Boolean);
+    else if (a === "--concurrency") args.concurrency = Number(argv[++i]);
+    else if (a === "--base-url") args.baseUrl = argv[++i];
     else if (a === "--impl-a") args.implA = argv[++i];
     else if (a === "--impl-b") args.implB = argv[++i];
     else if (a === "--n") args.n = Number(argv[++i]);
@@ -1089,14 +1170,20 @@ function parseArgs(argv) {
 function usage() {
   console.error(
     "Usage: node qa/screenshot.mjs --chart <line|area|bar|scatter> --impl-a <bklit|tanstack|migrated> --impl-b <bklit|tanstack|migrated> [--n 1000] [--state loading]\n" +
-      "   or: node qa/screenshot.mjs --chart <name> --self-test [--impl-a <bklit|tanstack|migrated>] [--n 1000] [--state loading]",
+      "   or: node qa/screenshot.mjs --chart <name> --self-test [--impl-a <bklit|tanstack|migrated>] [--n 1000] [--state loading]\n" +
+      "   or: node qa/screenshot.mjs --charts <a,b,c> [--concurrency 3] ...   (batch mode: shared n/impls, aggregate exit code)\n" +
+      "Env/flags: QA_PORT=<port> overrides :5198; QA_SKIP_REBUILD=1 skips the stale-build check; --base-url <url> uses an external server",
   );
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  if (!args.chart) {
+  if (!args.chart && !args.charts) {
     usage();
+    process.exit(1);
+  }
+  if (args.chart && args.charts) {
+    console.error("[qa] pass either --chart or --charts, not both");
     process.exit(1);
   }
 
@@ -1117,38 +1204,70 @@ async function main() {
     implB = implA;
   }
 
-  const server = await ensureServer(BASE_URL);
+  // --base-url mirrors bench/run.mjs: an explicit external server, still
+  // subject to the stale-build guard inside ensureServer (vite preview
+  // serves dist from disk, so a rebuild propagates to the reused server).
+  const baseUrl = args.baseUrl || BASE_URL;
+  const charts = args.charts ?? [args.chart];
+  const limit = Math.max(1, Math.min(Number.isFinite(args.concurrency) ? args.concurrency : 1, charts.length));
+
+  const server = await ensureServer(baseUrl);
   const browser = await chromium.launch({ headless: true });
 
-  let outcome;
+  // Batch mode: each chart is an independent A/B pair with its own contexts;
+  // failures are isolated per chart and aggregated into one exit code.
+  const outcomes = [];
   try {
-    outcome = await runComparison(browser, BASE_URL, { chart: args.chart, n, implA, implB, selfTest: args.selfTest, state: args.state });
+    for (let i = 0; i < charts.length; i += limit) {
+      const batch = charts.slice(i, i + limit);
+      const settled = await Promise.all(
+        batch.map((chart) =>
+          runComparison(browser, baseUrl, { chart, n, implA, implB, selfTest: args.selfTest, state: args.state })
+            .then((outcome) => ({ chart, outcome }))
+            .catch((error) => ({ chart, error })),
+        ),
+      );
+      outcomes.push(...settled);
+    }
   } finally {
     await browser.close();
     await server.stop();
   }
 
-  const { report, outDir } = outcome;
-  const gatePct = (report.gate * 100).toFixed(1);
-  console.log(`\n[qa] ${report.mode}: ${implA} vs ${implB} — ${args.chart} n=${n} (gate ${gatePct}%)`);
-  for (const c of report.comparisons) {
-    const line = `  ${c.name.padEnd(10)} ${c.pass ? "PASS" : "FAIL"}  ${c.diffPercent.toFixed(4)}% differing pixels`;
-    console.log(
-      c.tooltipVisibleA === undefined
-        ? line
-        : `${line}  tooltipA=${c.tooltipVisibleA} tooltipB=${c.tooltipVisibleB}`,
-    );
-  }
-  if (report.tooltipFailures.length > 0) {
-    console.log(`[qa] tooltip failures:`);
-    for (const f of report.tooltipFailures) {
-      console.log(`  - ${f.name} (${f.side}=${f.impl}): ${f.reason}`);
+  let anyFail = false;
+  for (const { chart, outcome, error } of outcomes) {
+    if (error) {
+      anyFail = true;
+      console.error(`\n[qa] ${chart}: ERROR`, error);
+      continue;
     }
+    const { report, outDir } = outcome;
+    const gatePct = (report.gate * 100).toFixed(1);
+    console.log(`\n[qa] ${report.mode}: ${implA} vs ${implB} — ${chart} n=${n} (gate ${gatePct}%)`);
+    for (const c of report.comparisons) {
+      const line = `  ${c.name.padEnd(10)} ${c.pass ? "PASS" : "FAIL"}  ${c.diffPercent.toFixed(4)}% differing pixels`;
+      console.log(
+        c.tooltipVisibleA === undefined
+          ? line
+          : `${line}  tooltipA=${c.tooltipVisibleA} tooltipB=${c.tooltipVisibleB}`,
+      );
+    }
+    if (report.tooltipFailures.length > 0) {
+      console.log(`[qa] tooltip failures:`);
+      for (const f of report.tooltipFailures) {
+        console.log(`  - ${f.name} (${f.side}=${f.impl}): ${f.reason}`);
+      }
+    }
+    console.log(`[qa] overall: ${report.overallPass ? "PASS" : "FAIL"}`);
+    console.log(`[qa] wrote report + PNGs -> ${outDir}`);
+    if (!report.overallPass) anyFail = true;
   }
-  console.log(`[qa] overall: ${report.overallPass ? "PASS" : "FAIL"}`);
-  console.log(`[qa] wrote report + PNGs -> ${outDir}`);
 
-  process.exit(report.overallPass ? 0 : 1);
+  if (charts.length > 1) {
+    const passCount = outcomes.filter((o) => o.outcome?.report.overallPass).length;
+    console.log(`\n[qa] batch: ${passCount}/${charts.length} charts PASS`);
+  }
+  process.exit(anyFail ? 1 : 0);
 }
 
 main().catch((err) => {

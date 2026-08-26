@@ -33,16 +33,15 @@ import {
 import { Chart } from "@tanstack/react-charts";
 import { defineChart } from "@tanstack/charts";
 import {
-  getSankeyDisplayValue,
   type LaidOutNode,
-  type LaidOutLink,
 } from "./internal/sankey-layout";
-import { createSankeyMark, type SankeyGradientDatum } from "./internal/sankey-mark";
+import { createSankeyMark, SANKEY_MARK_ID, type SankeyGradientDatum } from "./internal/sankey-mark";
 import {
   injectGradientDefs,
   injectLabelCssTransitions,
   runSankeyReveal,
   stampSankeyLinkPathLength,
+  buildSankeyNodeStagger,
   type SankeyEnterTransition,
   type SankeyRevealHandle,
 } from "./internal/sankey-animation";
@@ -54,6 +53,7 @@ import {
   attachSankeyHoverListeners,
 } from "./internal/sankey-hover-chrome";
 import { intFmt } from "./internal/formatters";
+import { CHART_CATEGORY_PALETTE_WITH_FALLBACK } from "./internal/design-tokens";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 
 // ─── Public types (match bklit's API exactly) ──────────────────────────────
@@ -94,6 +94,10 @@ export interface SankeyChartProps {
   nodePadding?: number;
   className?: string;
   children: ReactNode;
+  /** Controlled hovered node index (e.g. from ChartLegend). */
+  hoveredNodeIndex?: number | null;
+  /** Called when node hover changes from the chart surface. */
+  onNodeHoverChange?: (index: number | null) => void;
 }
 
 export interface SankeyLinkProps {
@@ -127,13 +131,10 @@ const DEFAULT_ANIMATION_DURATION = 1100;
 const DEFAULT_NODE_WIDTH = 16;
 const DEFAULT_NODE_PADDING = 24;
 
-const DEFAULT_COLORS = [
-  "var(--chart-1, #7c3aed)",
-  "var(--chart-2, #0ea5e9)",
-  "var(--chart-3, #f59e0b)",
-  "var(--chart-4, #10b981)",
-  "var(--chart-5, #ec4899)",
-];
+// T-D15 (P3.1): sourced from the shared 5-entry categorical palette (with
+// its literal hex fallbacks preserved exactly) rather than a local literal
+// set — see internal/design-tokens.ts.
+const DEFAULT_COLORS: readonly string[] = CHART_CATEGORY_PALETTE_WITH_FALLBACK;
 
 function defaultNodeColor(index: number): string {
   return DEFAULT_COLORS[index % DEFAULT_COLORS.length] ?? DEFAULT_COLORS[0]!;
@@ -168,7 +169,7 @@ function extractSankeyTooltipConfig(children: ReactNode): SankeyTooltipProps {
 
 // ─── Tooltip (light DOM, cursor-following) ─────────────────────────────────
 
-interface TooltipContentProps {
+export interface TooltipContentProps {
   mousePos: { x: number; y: number } | null;
   tooltipData: {
     type: "node" | "link";
@@ -205,7 +206,9 @@ function SankeyChartTooltip({
     ? (tooltipData.nodeName ?? `Node ${tooltipData.nodeIndex}`)
     : `${tooltipData.sourceName ?? "Source"} → ${tooltipData.targetName ?? "Target"}`;
   const label = isNode ? "Sessions" : "Flow";
-  const dotColor = "var(--chart-1, #7c3aed)";
+  // bklit's SankeyTooltip rows: node dots use --chart-line-primary,
+  // link dots use --chart-foreground-muted (tooltip-content.tsx colors).
+  const dotColor = isNode ? "var(--chart-line-primary)" : "var(--chart-foreground-muted)";
 
   return (
     <div
@@ -249,6 +252,7 @@ function SankeyChartTooltip({
 
 function createHoverHandlers(
   data: SankeyData,
+  laidOutNodesRef: { current: LaidOutNode[] | null },
   hoveredNodeIndexRef: { current: number | null },
   hoveredLinkIndexRef: { current: number | null },
   setTooltipData: (v: TooltipContentProps["tooltipData"]) => void,
@@ -258,8 +262,11 @@ function createHoverHandlers(
     onNodeEnter: (i: number) => {
       hoveredNodeIndexRef.current = i;
       hoveredLinkIndexRef.current = null;
+      // bklit's SankeyTooltip reads d3-sankey's computed `node.value` off the
+      // laid-out graph (`totalValue = node.value ?? 0`) — not a recomputed
+      // category sum.
+      const displayVal = laidOutNodesRef.current?.[i]?.value ?? 0;
       const node = data.nodes[i];
-      const displayVal = getSankeyDisplayValue(node as unknown as LaidOutNode, i, data.links as unknown as LaidOutLink[]);
       setTooltipData({
         type: "node",
         nodeIndex: i,
@@ -303,16 +310,20 @@ function populateNodeElements(svg: SVGSVGElement, ref: { current: (SVGGElement |
   ref.current = Array.from(svg.querySelectorAll<SVGGElement>(nodeSelector));
 }
 
+// T-D13: links render through the native link() child mark (id "flow"), whose
+// composited layer group has the stable key "sankey:flow". Paths follow in
+// data order inside that group.
 function populateLinkElements(svg: SVGSVGElement, ref: { current: (SVGPathElement | null)[] }): void {
-  const linkSelector = `[data-ts-key^="sankey:link:"]`;
-  ref.current = Array.from(svg.querySelectorAll<SVGPathElement>(linkSelector));
+  const flowGroup = svg.querySelector<SVGGElement>(`[data-ts-key="${SANKEY_MARK_ID}:flow"]`);
+  ref.current = flowGroup
+    ? Array.from(flowGroup.querySelectorAll<SVGPathElement>("path"))
+    : [];
 }
 
 // ─── Main component ────────────────────────────────────────────────────────
 
 // The reveal's replay key: a new reveal runs when any of these change.
 interface RevealKey {
-  data: SankeyData;
   signature: string;
   duration: number;
 }
@@ -328,21 +339,25 @@ export function SankeyChart({
   nodePadding = DEFAULT_NODE_PADDING,
   className = "",
   children,
+  hoveredNodeIndex: hoveredNodeIndexProp,
+  onNodeHoverChange,
 }: SankeyChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gradientDataRef = useRef<SankeyGradientDatum[] | null>(null);
   const prefersReducedMotion = usePrefersReducedMotion();
 
   // ── Reveal state: one seen-key gate + one handle ──
-  // handleRender runs the reveal once per replay key (data identity,
-  // revealSignature, animationDuration — same triggers as before, matching
-  // bklit's revealEpoch semantics). Unmount cleanup resets the key so a
-  // StrictMode/adapter re-mount replays instead of staying un-revealed.
+  // handleRender runs the reveal once per replay key (revealSignature,
+  // animationDuration — same triggers as bklit's revealEpoch, which does NOT
+  // include data identity: a new-array data prop with the same signature
+  // must not replay the enter animation). Unmount cleanup resets the key so
+  // a StrictMode/adapter re-mount replays instead of staying un-revealed.
   const seenRevealKeyRef = useRef<RevealKey | null>(null);
   const revealHandleRef = useRef<SankeyRevealHandle | null>(null);
 
   const nodeElementsRef = useRef<(SVGGElement | null)[]>([]);
   const linkElementsRef = useRef<(SVGPathElement | null)[]>([]);
+  const laidOutNodesRef = useRef<LaidOutNode[] | null>(null);
 
   useEffect(() => {
     return () => {
@@ -366,10 +381,39 @@ export function SankeyChart({
   );
 
   // ── Hover state (refs for zero-React-pointer-path; DOM writes on hover) ──
-  const hoveredNodeIndexRef = useRef<number | null>(null);
   const hoveredLinkIndexRef = useRef<number | null>(null);
   const [tooltipData, setTooltipData] = useState<TooltipContentProps["tooltipData"]>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+
+  // Controlled/uncontrolled node hover, ported from bklit's SankeyChartCore
+  // (`isNodeHoverControlled ? hoveredNodeIndexProp : internalHoveredNodeIndex`).
+  // In controlled mode the surface never stores the index itself — a write
+  // reports via onNodeHoverChange and the caller re-renders with a new
+  // hoveredNodeIndex prop, whose sync effect below drives the dim paint.
+  // Link hover stays uncontrolled (legacy keeps it in component state).
+  // All four inputs flow through render-refreshed refs so the ref adapter
+  // stays correct even when captured by long-lived listener closures.
+  const isNodeHoverControlledRef = useRef(hoveredNodeIndexProp !== undefined);
+  isNodeHoverControlledRef.current = hoveredNodeIndexProp !== undefined;
+  const controlledNodeIndexRef = useRef<number | null>(hoveredNodeIndexProp ?? null);
+  controlledNodeIndexRef.current = hoveredNodeIndexProp ?? null;
+  const internalHoveredNodeIndexRef = useRef<number | null>(null);
+  const onNodeHoverChangeRef = useRef(onNodeHoverChange);
+  onNodeHoverChangeRef.current = onNodeHoverChange;
+  const hoveredNodeIndexRef = {
+    get current(): number | null {
+      return isNodeHoverControlledRef.current
+        ? controlledNodeIndexRef.current
+        : internalHoveredNodeIndexRef.current;
+    },
+    set current(v: number | null) {
+      if (isNodeHoverControlledRef.current) {
+        onNodeHoverChangeRef.current?.(v);
+      } else {
+        internalHoveredNodeIndexRef.current = v;
+      }
+    },
+  };
 
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
 
@@ -383,10 +427,18 @@ export function SankeyChart({
     nodePadding,
     showLabels: nodeConfig.showLabels ?? true,
     showValueLabels: nodeConfig.showValueLabels ?? true,
-    labelOrientation: nodeConfig.labelOrientation ?? "vertical",
+    // bklit's SankeyNode defaults labelOrientation="horizontal" — keep parity.
+    labelOrientation: nodeConfig.labelOrientation ?? "horizontal",
   }), [linkConfig, getNodeColorFn, nodeConfig.lineCap, nodeWidth, nodePadding, nodeConfig.showLabels, nodeConfig.showValueLabels, nodeConfig.labelOrientation]);
 
   // ── Hover style applicator (reads from refs, writes DOM directly) ──
+  // Node dim/undim carries legacy's staggered enter-transition timing (see
+  // buildSankeyNodeStagger); links dim uniformly on both sides.
+  const nodeStagger = useMemo(
+    () => buildSankeyNodeStagger(data.nodes.length, enterTransition, animationDuration),
+    [data.nodes.length, enterTransition, animationDuration],
+  );
+
   const applyHoverStyles = useCallback(() => {
     const svg = containerRef.current?.querySelector("svg") as SVGSVGElement | null;
     if (!svg) return;
@@ -413,17 +465,30 @@ export function SankeyChart({
       nodeConfig.fadedOpacity ?? 0.4,
       linkConfig.fadedOpacity ?? 0.1,
       linkConfig.strokeOpacity ?? 0.5,
+      nodeStagger,
     );
-  }, [data, nodeConfig.fadedOpacity, linkConfig.fadedOpacity, linkConfig.strokeOpacity]);
+  }, [data, nodeConfig.fadedOpacity, linkConfig.fadedOpacity, linkConfig.strokeOpacity, nodeStagger]);
 
   const definition = useMemo(
     () =>
       defineChart({
-        marks: [createSankeyMark(data, markConfig, gradientDataRef)],
+        marks: [createSankeyMark(data, markConfig, gradientDataRef, laidOutNodesRef)],
         guides: false,
         x: null,
         y: null,
         margin,
+        // T-D15 (P3.1): explicit 5-entry palette override (with literal hex
+        // fallbacks), NOT the native 6-entry defaultChartTheme.palette — see
+        // internal/design-tokens.ts. Node/link colors are already resolved
+        // JS-side via defaultNodeColor/DEFAULT_COLORS, so this has no pixel
+        // effect today.
+        theme: { palette: CHART_CATEGORY_PALETTE_WITH_FALLBACK },
+        // P3.3/T-D2 CSS-suppression-cleanup: sankey owns its own hover
+        // feedback (internal/sankey-hover-chrome.ts), same as every other
+        // custom-mark chart in this migration — suppress TanStack's native
+        // focus ring natively instead of relying solely on the
+        // `[data-ts-chart-focus] {display:none}` CSS rule.
+        focusRing: false,
       }),
     [data, markConfig, margin],
   );
@@ -446,14 +511,9 @@ export function SankeyChart({
     injectLabelCssTransitions(svg);
     stampSankeyLinkPathLength(linkElementsRef.current);
 
-    // Phase 3: reveal — once per replay key (data/signature/duration change).
+    // Phase 3: reveal — once per replay key (signature/duration change).
     const seen = seenRevealKeyRef.current;
-    if (
-      seen !== null &&
-      seen.data === data &&
-      seen.signature === revealSignature &&
-      seen.duration === animationDuration
-    ) {
+    if (seen !== null && seen.signature === revealSignature && seen.duration === animationDuration) {
       return;
     }
 
@@ -463,7 +523,7 @@ export function SankeyChart({
     if (prefersReducedMotion || animationDuration <= 0) {
       revealHandleRef.current?.cancel();
       revealHandleRef.current = null;
-      seenRevealKeyRef.current = { data, signature: revealSignature, duration: animationDuration };
+      seenRevealKeyRef.current = { signature: revealSignature, duration: animationDuration };
       return;
     }
 
@@ -471,7 +531,7 @@ export function SankeyChart({
     // unconsumed so the resize-triggered onRender retries.
     if (svg.getBoundingClientRect().width < 10) return;
 
-    seenRevealKeyRef.current = { data, signature: revealSignature, duration: animationDuration };
+    seenRevealKeyRef.current = { signature: revealSignature, duration: animationDuration };
     revealHandleRef.current?.cancel();
     revealHandleRef.current = runSankeyReveal({
       svg,
@@ -480,7 +540,7 @@ export function SankeyChart({
       animationDuration,
       enterTransition,
     });
-  }, [data, revealSignature, animationDuration, enterTransition, prefersReducedMotion]);
+  }, [revealSignature, animationDuration, enterTransition, prefersReducedMotion]);
 
   // ── Hover listener attachment (bar-chart pattern: separate effect) ──
   useEffect(() => {
@@ -489,6 +549,7 @@ export function SankeyChart({
 
     const handlers = createHoverHandlers(
       data,
+      laidOutNodesRef,
       hoveredNodeIndexRef,
       hoveredLinkIndexRef,
       setTooltipData,
@@ -498,6 +559,16 @@ export function SankeyChart({
     const cleanup = attachSankeyHoverListeners(nodeElementsRef.current, linkElementsRef.current, handlers);
     return cleanup;
   }, [data, applyHoverStyles]);
+
+  // Controlled-mode sync: a hoveredNodeIndex prop change (e.g. ChartLegend
+  // hover) drives the same dim paint the surface handlers produce — legacy
+  // gets this via context re-render; here it's an explicit effect.
+  useEffect(() => {
+    if (!isNodeHoverControlledRef.current) return;
+    hoveredLinkIndexRef.current = null;
+    setTooltipData(null);
+    applyHoverStyles();
+  }, [hoveredNodeIndexProp, applyHoverStyles]);
 
   // ── Mouse move / leave ── (scoped to container + gated on active hover)
   useEffect(() => {

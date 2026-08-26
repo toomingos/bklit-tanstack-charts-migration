@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { resolveNearestIndex } from "./bisect";
+import { CHART_ROLE } from "../children";
 
 export interface ChartSelection {
   startX: number;
@@ -190,7 +191,7 @@ export function extractSegmentComponents(children: React.ReactNode): SegmentComp
         visit((child.props as { children?: React.ReactNode }).children);
         continue;
       }
-      const role = (child.type as unknown as Record<symbol, string | undefined>)[Symbol.for("migrated.chartRole")];
+      const role = (child.type as unknown as Record<symbol, string | undefined>)[CHART_ROLE];
       if (role === "segmentBackground" || role === "segmentLineFrom" || role === "segmentLineTo") {
         out.push({ key: String(out.length), type: role as SegmentComponent["type"], props: child.props as Record<string, unknown> });
       } else {

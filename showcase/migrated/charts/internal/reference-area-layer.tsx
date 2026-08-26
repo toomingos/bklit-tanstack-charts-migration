@@ -10,6 +10,10 @@ import {
   type ReferenceAreaRect,
 } from "./reference-area-geometry";
 import type { ChartMargin } from "./use-chart-margin";
+import { domainForAxis } from "./y-domain";
+import { normalizeYAxisId } from "./y-axis-id";
+import { useSanitizedId } from "./use-sanitized-id";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 
 const DEFAULT_FILL = "color-mix(in oklch, var(--chart-foreground-muted) 12%, transparent)";
 const DEFAULT_FG_MUTED = "var(--chart-foreground-muted)";
@@ -21,6 +25,9 @@ export interface ReferenceAreaLayerProps {
   x1?: Date | number;
   x2?: Date | number;
   yAxisId?: string | number;
+  /** RA2 — the chart's NICED per-axis y-domains. Optional: charts that are
+      single-axis by construction pass only `yDomain`. */
+  yDomainsByAxis?: Record<string, [number, number]>;
   fill?: string;
   fillOpacity?: number;
   pattern?: PatternPresetId;
@@ -42,6 +49,7 @@ export interface ReferenceAreaLayerProps {
   markerColor?: string;
   markerSize?: number;
   ifOverflow?: ReferenceAreaIfOverflow;
+  className?: string;
   width: number;
   height: number;
   margin: ChartMargin;
@@ -93,20 +101,32 @@ export function ReferenceAreaLayer(props: ReferenceAreaLayerProps) {
     markerColor = "var(--chart-1)",
     markerSize = 6,
     ifOverflow = "hidden",
-    width, height, margin, yDomain, xDomain, xDataKey: _xDataKey, isTimeScale, barScale, isBarChart, xRangePadding, isCandlestickXScale,
+    className,
+    width, height, margin, yDomain, yDomainsByAxis, yAxisId, xDomain, xDataKey: _xDataKey, isTimeScale, barScale, isBarChart, xRangePadding, isCandlestickXScale,
     phase, isLoaded,
   } = props;
 
   const innerWidth = Math.max(0, width - margin.left - margin.right);
   const innerHeight = Math.max(0, height - margin.top - margin.bottom);
-  const uid = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const uid = useSanitizedId();
   const patternId = `bkm-ref-pattern-${uid}`;
   const hMaskId = `bkm-ref-fade-${uid}`;
   const hGradientId = `${hMaskId}-grad`;
 
+  // P6.1 / RA2 — a reference area is placed in the scale its OWN `yAxisId`
+  // names (bklit reference-area.tsx: `useYScale(yAxisId)`), not in the chart's
+  // primary scale. `yDomainsByAxis` carries the chart's NICED per-axis domains;
+  // `domainForAxis` applies legacy's fallback chain (requested axis, else the
+  // default axis, else `[0, 100]`). Charts that pass no map keep the single
+  // `yDomain` they always passed, so single-axis output is unchanged.
+  const effectiveYDomain = React.useMemo<[number, number]>(
+    () => (yDomainsByAxis ? domainForAxis(yDomainsByAxis, normalizeYAxisId(yAxisId)) : yDomain),
+    [yDomainsByAxis, yAxisId, yDomain],
+  );
+
   const yScale = React.useMemo(
-    () => scaleLinear().domain(yDomain).range([innerHeight, 0]),
-    [yDomain, innerHeight],
+    () => scaleLinear().domain(effectiveYDomain).range([innerHeight, 0]),
+    [effectiveYDomain, innerHeight],
   );
 
   const xScale: (v: Date) => number = React.useMemo(() => {
@@ -212,15 +232,12 @@ export function ReferenceAreaLayer(props: ReferenceAreaLayerProps) {
   const lineDash = strokeStyle === "dashed" ? strokeDasharray : undefined;
 
   const visible = isReferenceAreaVisiblePhase(phase);
-  const prefersReducedRef = React.useRef(false);
-  React.useEffect(() => {
-    prefersReducedRef.current = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  }, []);
+  const prefersReducedMotion = usePrefersReducedMotion();
   const gRef = React.useRef<SVGGElement | null>(null);
   React.useLayoutEffect(() => {
     const g = gRef.current;
     if (!g) return;
-    if (prefersReducedRef.current) {
+    if (prefersReducedMotion) {
       g.style.opacity = visible ? "1" : "0";
       return;
     }
@@ -234,7 +251,7 @@ export function ReferenceAreaLayer(props: ReferenceAreaLayerProps) {
     } else {
       g.style.opacity = "0";
     }
-  }, [visible, isLoaded]);
+  }, [visible, isLoaded, prefersReducedMotion]);
 
   if (!rect) return null;
   const { x, y, width: rw, height: rh } = rect;
@@ -251,7 +268,7 @@ export function ReferenceAreaLayer(props: ReferenceAreaLayerProps) {
       height={innerHeight}
       style={{ position: "absolute", left: margin.left, top: margin.top, overflow: "visible", pointerEvents: "none", zIndex: -1 }}
     >
-      <g ref={gRef} style={{ opacity: 0 }}>
+      <g ref={gRef} className={className ?? "chart-reference-area"} style={{ opacity: 0 }}>
         {edgeMask ? (
           <defs>
             <linearGradient id={hGradientId} x1="0%" x2="100%" y1="0%" y2="0%">
@@ -285,7 +302,11 @@ export interface ReferenceAreaLayersGeom {
   width: number;
   height: number;
   margin: ChartMargin;
+  /** The chart's PRIMARY niced y-domain — the one its marks actually paint in. */
   yDomain: [number, number];
+  /** RA2 — niced domains keyed by axis id, when the chart has more than the
+      primary axis. Omit for single-axis charts. */
+  yDomainsByAxis?: Record<string, [number, number]>;
   xDomain?: [number, number] | [Date, Date];
   xDataKey?: string;
   isTimeScale?: boolean;
@@ -336,10 +357,12 @@ export function ReferenceAreaLayers({
           markerColor={p.markerColor as string | undefined}
           markerSize={p.markerSize as number | undefined}
           ifOverflow={p.ifOverflow as ReferenceAreaIfOverflow | undefined}
+          className={p.className as string | undefined}
           width={geom.width}
           height={geom.height}
           margin={geom.margin}
           yDomain={geom.yDomain}
+          yDomainsByAxis={geom.yDomainsByAxis}
           xDomain={geom.xDomain}
           xDataKey={geom.xDataKey}
           isTimeScale={geom.isTimeScale}

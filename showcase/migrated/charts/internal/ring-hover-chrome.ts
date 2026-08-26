@@ -61,8 +61,6 @@ export interface RingHoverConfig {
   progressGroupEl?: SVGGElement | null;
   showGlow: boolean;
   color: string;
-  /** @deprecated legacy single-group caller — kept for backwards compat with HEAD. */
-  groupEl?: SVGGElement;
 }
 
 export interface RingHoverRuntime {
@@ -90,9 +88,7 @@ function ringHoverScale(isHovered: boolean, isPushedOut: boolean): number {
 
 function resolveEls(config: RingHoverConfig): SVGGElement[] {
   const els: SVGGElement[] = [];
-  const anyCfg = config as unknown as Record<string, unknown>;
   if (config.trackGroupEl) els.push(config.trackGroupEl);
-  else if (anyCfg["groupEl"]) els.push(anyCfg["groupEl"] as SVGGElement);
   if (config.progressGroupEl) els.push(config.progressGroupEl);
   return els.filter(Boolean) as SVGGElement[];
 }
@@ -105,9 +101,7 @@ export function createRingHoverRuntime(): RingHoverRuntime {
   const applyTransform = () => {
     if (!config || !started) return;
     const value = `scale(${currentScale})`;
-    const anyCfg = config as unknown as Record<string, unknown>;
     if (config.trackGroupEl) config.trackGroupEl.style.transform = value;
-    else if (anyCfg["groupEl"]) (anyCfg["groupEl"] as SVGGElement).style.transform = value;
     if (config.progressGroupEl) config.progressGroupEl.style.transform = value;
   };
 

@@ -1,26 +1,155 @@
 import * as React from "react";
-import { scaleLinear } from "d3-scale";
-import { curveNatural } from "d3-shape";
-import { area, line } from "d3-shape";
+import type { ChartPhase } from "./chart-phase";
 import {
   LINE_LOADING_PULSE_CYCLE_S,
   LINE_LOADING_LOOP_PAUSE_MS,
-  LOADING_LABEL_EXIT_S,
-  REVEAL_EASE_CSS,
 } from "./design-tokens";
 import { fadeGradientStops, resolveFadeSides, viewportFadeGradientAttrs } from "./fade-mask";
+import { useSanitizedId } from "./use-sanitized-id";
 
 const CLIP_PADDING = 10;
-const DEFAULT_SWEEP_DURATION_S = 2;
-const SWEEP_ANGLE_DEG = 25;
 
+/** P5.7 FD6 — bklit `line-loading-pulse.tsx:19`. The pulse's three animation
+    shapes: a full grow→shrink `loop` while loading, a `exit` that finishes
+    whatever half-cycle is in flight, and a grow-only `enter`. Was previously
+    an inline union on the component's own `mode` prop, which meant callers had
+    no name to import and `resolveLineLoadingPulseMode` had no return type. */
+export type LineLoadingPulseMode = "loop" | "exit" | "enter";
+
+/**
+ * P5.7 FD6 — bklit `line-loading-pulse.tsx:21-34`, ported verbatim including
+ * the `default: null` branch. Maps a chart lifecycle phase onto the pulse mode
+ * it should run, or `null` for the phases that draw no pulse at all
+ * (`ready`, `revealing`, `exitingReady`, and the two grid-tween phases).
+ *
+ * Legacy's own unit test (`__tests__/line-loading-pulse.test.ts`) pins exactly
+ * these six cases; migrated's `ChartPhase` union (`chart-phase.ts:3-11`) is
+ * member-for-member identical to legacy's, so the mapping ports 1:1 with no
+ * phase left unaccounted.
+ */
+export function resolveLineLoadingPulseMode(
+  phase: ChartPhase,
+): LineLoadingPulseMode | null {
+  switch (phase) {
+    case "loading":
+      return "loop";
+    case "exiting":
+      return "exit";
+    case "revealingLoading":
+      return "enter";
+    default:
+      return null;
+  }
+}
+
+/** P5.7 — the placeholder series bklit draws while `status="loading"`, ported
+    from `generate-chart-skeleton-data.ts:26`. This is the SHAPE only, kept
+    internal on purpose: DOC-10/FD7 accepts the public `generateChartSkeletonData`
+    surface as deleted, but the values themselves are load-bearing geometry —
+    they set the loading y-domain, and therefore the y-gridline positions
+    (P5.7 Strand 5 / D257 §4 difference #3). `line-chart.tsx` already inlined
+    this exact expression for the pulse path; both callers now share it. */
+export const LOADING_SKELETON_POINT_COUNT = 7;
+
+/** bklit `generate-chart-skeleton-data.ts:26` — used when the caller supplies
+    no data at all. */
+export function loadingSkeletonValue(index: number): number {
+  return Math.round(110 + Math.sin(index * 1.15) * 36 + index * 9);
+}
+
+/** bklit `generate-chart-skeleton-data.ts:38` (`generateChartSkeletonFromTarget`)
+    — lower-magnitude mirror used when real data exists, so the y-domain has
+    somewhere to tween FROM. */
+export function loadingSkeletonValueFromTarget(index: number): number {
+  return Math.round(95 + Math.sin(index * 1.05) * 28 + index * 7);
+}
+
+/**
+ * The placeholder rows bklit lays out while loading
+ * (`time-series-chart-shell.tsx:228-234`): the standalone 7-point series when
+ * the caller passed no data, otherwise a lower-magnitude mirror of the real
+ * rows so the y-domain has somewhere to tween FROM.
+ *
+ * Only `dataKey` is populated — callers feed this to `resolveTimeSeriesYDomain`,
+ * which reads nothing else. Deliberately NOT the public
+ * `generateChartSkeletonData`: DOC-10/FD7 keeps that surface deleted, and
+ * these values are needed here as geometry, not as an export.
+ */
+export function buildLoadingSkeletonRows(
+  rowCount: number,
+  dataKey: string,
+): Record<string, number>[] {
+  const fromTarget = rowCount > 0;
+  const count = fromTarget ? rowCount : LOADING_SKELETON_POINT_COUNT;
+  const value = fromTarget ? loadingSkeletonValueFromTarget : loadingSkeletonValue;
+  return Array.from({ length: count }, (_, index) => ({ [dataKey]: value(index) }));
+}
+
+/** P5.7 B14 — bklit `loading-sweep.tsx:56` (`hashFract`). A deterministic
+    0..1 hash so the placeholder silhouette is stable across renders and across
+    QA captures; there is no RNG anywhere in the loading chrome. */
 function hashFract(n: number): number {
-  const x = Math.sin(n) * 43758.5453;
+  const x = Math.sin(n) * 43_758.5453;
   return x - Math.floor(x);
 }
 
-export function getSkeletonHeights(count: number, seed = 0): number[] {
-  return Array.from({ length: count }, (_, i) => 20 + Math.floor(hashFract((i + 1) * 12.9898 + seed) * 60));
+/** bklit `loading-sweep.tsx:40-45`. */
+const SKELETON_HEIGHT_MIN_PCT = 20;
+const SKELETON_HEIGHT_MAX_PCT = 80;
+
+/**
+ * P5.7 B14 — bklit `loading-sweep.tsx:62-72` (`getSkeletonHeights`), the bar
+ * heights the legacy `BarLoadingSkeleton` draws, as percentages of the plot
+ * height. Ported as GEOMETRY and kept internal, on exactly the doctrine
+ * `buildLoadingSkeletonRows` above records: DOC-10/FD7 accepts the public
+ * `getSkeletonHeights` surface as deleted, but the numbers themselves are what
+ * the placeholder looks like, and re-deriving a different silhouette would be
+ * a visible divergence rather than a deleted export.
+ *
+ * The one thing that does NOT carry over is the absolute scale. bklit paints
+ * `barH = innerHeight * value/100` with no axis in the way; migrated composes a
+ * real `<BarChart>`, whose y-domain is `[0, max*1.1]` put through d3 `.nice()`
+ * (`y-domain.ts`) — for this 12-bar set that lands on `[0, 90]`, so every bar
+ * renders 100/90 taller than legacy's. There is no fixed point that removes it
+ * (`nice()` always overshoots to a step multiple, so no input scaling makes the
+ * niced max equal 100×scale), and `BarChart` exposes no y-domain seam in either
+ * codebase. The RELATIVE silhouette is exact; the uniform vertical stretch is
+ * the measured cost of composing the real chart instead of resurrecting the
+ * deleted skeleton — see D341.
+ */
+export function loadingSkeletonBarHeights(
+  count: number,
+  seed = 0,
+): number[] {
+  const range = SKELETON_HEIGHT_MAX_PCT - SKELETON_HEIGHT_MIN_PCT;
+  return Array.from(
+    { length: count },
+    (_, index) =>
+      SKELETON_HEIGHT_MIN_PCT +
+      Math.floor(hashFract((index + 1) * 12.9898 + seed) * range),
+  );
+}
+
+/** bklit `generate-chart-skeleton-data.ts:19` — the standalone skeleton's
+    x-axis starts here, so the loading state's tick labels are stable and do
+    not leak "today". */
+const LOADING_SKELETON_BASE_DATE = "2025-01-01";
+
+/**
+ * The full standalone skeleton series — dated rows, not just values — for the
+ * `*ChartLoading` presets, which have no caller data to mirror.
+ * `generateChartSkeletonData({ dataKey })` in bklit terms.
+ */
+export function buildLoadingSkeletonSeries(
+  dataKey: string,
+  pointCount: number = LOADING_SKELETON_POINT_COUNT,
+): Record<string, unknown>[] {
+  const baseDate = new Date(LOADING_SKELETON_BASE_DATE);
+  return Array.from({ length: pointCount }, (_, index) => {
+    const date = new Date(baseDate);
+    date.setDate(baseDate.getDate() + index);
+    return { date, [dataKey]: loadingSkeletonValue(index) };
+  });
 }
 
 export function LoadingLabel({ text, exiting }: { text: string; exiting?: boolean }) {
@@ -54,11 +183,11 @@ export function LineLoadingPulse({
   stroke?: string;
   strokeOpacity?: number;
   strokeWidth?: number;
-  mode?: "loop" | "exit" | "enter";
+  mode?: LineLoadingPulseMode;
   loopEpoch?: number;
   onCycleComplete?: () => void;
 }) {
-  const id = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const id = useSanitizedId();
   const clipId = `bkm-pulse-clip-${id}`;
   const gradId = `bkm-pulse-grad-${id}`;
   const clipHeight = height + CLIP_PADDING * 2;
@@ -139,182 +268,4 @@ export function LineLoadingPulse({
       />
     </>
   );
-}
-
-export function LineLoadingSweep({
-  width,
-  height,
-  stroke = "var(--foreground)",
-  strokeOpacity = 0.55,
-  strokeWidth = 2,
-  withArea = false,
-  curve = curveNatural,
-  pointCount = 14,
-  durationSeconds = DEFAULT_SWEEP_DURATION_S,
-  mode = "loop",
-  onTransitionComplete,
-  seed = 0,
-}: {
-  width: number;
-  height: number;
-  stroke?: string;
-  strokeOpacity?: number;
-  strokeWidth?: number;
-  withArea?: boolean;
-  curve?: unknown;
-  pointCount?: number;
-  durationSeconds?: number;
-  mode?: "loop" | "exit" | "enter";
-  onTransitionComplete?: () => void;
-  seed?: number;
-}) {
-  const id = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const chartId = `bkm-sweep-${id}`;
-  const heights = React.useMemo(() => getSkeletonHeights(pointCount, seed), [pointCount, seed]);
-  if (width <= 0 || height <= 0 || heights.length < 2) return null;
-
-  const xScale = scaleLinear().domain([0, heights.length - 1]).range([0, width]);
-  const yScale = scaleLinear().domain([0, 100]).range([height, 0]);
-  const points = heights.map((value, index) => ({ index, value }));
-  const lineGen = line<{ index: number; value: number }>()
-    .x((d) => xScale(d.index) ?? 0)
-    .y((d) => yScale(d.value) ?? 0)
-    .curve(curve as never);
-  const areaGen = area<{ index: number; value: number }>()
-    .x((d) => xScale(d.index) ?? 0)
-    .y1((d) => yScale(d.value) ?? 0)
-    .y0(yScale(0) ?? height)
-    .curve(curve as never);
-  const lineD = lineGen(points) ?? "";
-  const areaD = withArea ? (areaGen(points) ?? "") : "";
-
-  const exiting = mode === "exit";
-  const entering = mode === "enter";
-  const maskId = `${chartId}-mask`;
-  const gradId = `${chartId}-grad`;
-  const patId = `${chartId}-pat`;
-
-  return (
-    <>
-      <defs>
-        {withArea ? (
-          <linearGradient id={`${chartId}-area`} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={stroke} stopOpacity={0.18} />
-            <stop offset="100%" stopColor={stroke} stopOpacity={0.02} />
-          </linearGradient>
-        ) : null}
-        <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
-          {Array.from({ length: 17 }, (_, i) => {
-            const t = i / 16;
-            const eased = Math.sin(t * Math.PI) ** 2;
-            const opacity = 0.05 + eased * 0.85;
-            return <stop key={i} offset={`${(t * 100).toFixed(0)}%`} stopColor="white" stopOpacity={Number(opacity.toFixed(3))} />;
-          })}
-        </linearGradient>
-        <pattern id={patId} width={3} height="1" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" patternTransform={`rotate(${SWEEP_ANGLE_DEG})`}>
-          <rect
-            className="ts-bkm-sweep-band"
-            style={{ animationDuration: `${durationSeconds}s` } as React.CSSProperties}
-            x={-1}
-            y={0}
-            width={1}
-            height={1}
-            fill={`url(#${gradId})`}
-          />
-        </pattern>
-        <mask id={maskId} maskUnits="userSpaceOnUse">
-          <rect width={width} height={height} fill={`url(#${patId})`} />
-        </mask>
-      </defs>
-      <g
-        mask={`url(#${maskId})`}
-        opacity={exiting ? 0 : 1}
-        style={
-          exiting || entering
-            ? { transition: `opacity ${LOADING_LABEL_EXIT_S}s ${REVEAL_EASE_CSS}`, opacity: exiting ? 0 : 1 }
-            : undefined
-        }
-        onTransitionEnd={exiting || entering ? onTransitionComplete : undefined}
-      >
-        {withArea && areaD ? <path d={areaD} fill={`url(#${chartId}-area)`} /> : null}
-        <path d={lineD} fill="none" stroke={stroke} strokeOpacity={strokeOpacity} strokeWidth={strokeWidth} strokeLinecap="round" />
-      </g>
-    </>
-  );
-}
-
-export function BarLoadingSkeleton({
-  innerWidth,
-  innerHeight,
-  barCount = 12,
-  fill = "var(--foreground)",
-  fillOpacity = 0.45,
-  baseline = "bottom",
-  barFraction = 0.7,
-  durationSeconds = DEFAULT_SWEEP_DURATION_S,
-  seed = 0,
-}: {
-  innerWidth: number;
-  innerHeight: number;
-  barCount?: number;
-  fill?: string;
-  fillOpacity?: number;
-  baseline?: "bottom" | "center";
-  barFraction?: number;
-  durationSeconds?: number;
-  seed?: number;
-}) {
-  const id = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const chartId = `bkm-bar-sweep-${id}`;
-  const heights = React.useMemo(() => getSkeletonHeights(barCount, seed), [barCount, seed]);
-  if (innerWidth <= 0 || innerHeight <= 0) return null;
-  const bandW = innerWidth / heights.length;
-  const barW = bandW * barFraction;
-  const xOff = (bandW * (1 - barFraction)) / 2;
-  const isCenter = baseline === "center";
-  const baselineY = isCenter ? innerHeight / 2 : innerHeight;
-  const halfH = isCenter ? innerHeight / 2 : innerHeight;
-  const maskId = `${chartId}-mask`;
-  const gradId = `${chartId}-grad`;
-  const patId = `${chartId}-pat`;
-
-  return (
-    <>
-      <defs>
-        <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
-          {Array.from({ length: 17 }, (_, i) => {
-            const t = i / 16;
-            const eased = Math.sin(t * Math.PI) ** 2;
-            const opacity = 0.05 + eased * 0.85;
-            return <stop key={i} offset={`${(t * 100).toFixed(0)}%`} stopColor="white" stopOpacity={Number(opacity.toFixed(3))} />;
-          })}
-        </linearGradient>
-        <pattern id={patId} width={3} height="1" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" patternTransform={`rotate(${SWEEP_ANGLE_DEG})`}>
-          <rect className="ts-bkm-sweep-band" style={{ animationDuration: `${durationSeconds}s` } as React.CSSProperties} x={-1} y={0} width={1} height={1} fill={`url(#${gradId})`} />
-        </pattern>
-        <mask id={maskId} maskUnits="userSpaceOnUse">
-          <rect width={innerWidth} height={innerHeight} fill={`url(#${patId})`} />
-        </mask>
-      </defs>
-      <g mask={`url(#${maskId})`}>
-        {heights.map((value, i) => {
-          const barH = Math.max(1, halfH * (value / 100));
-          const x = i * bandW + xOff;
-          const y = baselineY - barH;
-          return <rect key={`${x.toFixed(2)}-${value}`} x={x} y={y} width={barW} height={barH} rx={2} fill={fill} fillOpacity={fillOpacity} />;
-        })}
-      </g>
-    </>
-  );
-}
-
-export function generateChartSkeletonData(opts: { dataKey?: string; pointCount?: number; baseDate?: Date } = {}): Record<string, unknown>[] {
-  const dataKey = opts.dataKey ?? "value";
-  const pointCount = opts.pointCount ?? 7;
-  const baseDate = opts.baseDate ?? new Date("2025-01-01");
-  return Array.from({ length: pointCount }, (_, index) => {
-    const date = new Date(baseDate);
-    date.setDate(baseDate.getDate() + index);
-    return { date, [dataKey]: Math.round(110 + Math.sin(index * 1.15) * 36 + index * 9) as unknown as number };
-  });
 }

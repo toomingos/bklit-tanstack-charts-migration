@@ -38,6 +38,7 @@ import {
 import { extractChildren } from "./children";
 import { useHoverChrome } from "./internal/use-hover-chrome";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
+import { BackgroundLayer } from "./internal/background-layer";
 import {
   extractReferenceAreaConfigs,
   extractReferenceAreaProps,
@@ -57,19 +58,29 @@ import {
 import { projectionLineMark, resolveProjectionGradientDef } from "./internal/projection-line-mark";
 import { ProjectionMarkerOverlay, type ProjectionPhaseHandle } from "./internal/terminal-marker";
 import { toDate } from "./internal/coerce-date";
+import { timeToPixelX } from "./internal/x-time-scale";
+import { SERIES_MARKER_ENTER_MS } from "./internal/design-tokens";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
 import { YAxisOverlay } from "./internal/y-axis-overlay";
 import type { ChartDatum, ChartStatus } from "./internal/types";
-import { type ChartPhase, isChartInteractionPhase } from "./internal/chart-phase";
+import { type ChartPhase, DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./internal/chart-phase";
 import type { ChartScale } from "@tanstack/charts";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { bezierEasing } from "./internal/bezier-easing";
 import { resolveGridGuide } from "./internal/grid";
-import { LoadingLabel } from "./internal/loading-chrome";
+import { resolveFadeEdgesMask } from "./internal/fade-mask";
+import { LoadingLabel, buildLoadingSkeletonRows } from "./internal/loading-chrome";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
-import { useChartMargin, useMeasuredRect } from "./internal";
+import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
+import { useChartMargin, DEFAULT_CHART_MARGIN, useMeasuredRect, type ChartMargin } from "./internal";
+import { useSanitizedId } from "./internal/use-sanitized-id";
+import { DEFAULT_Y_AXIS_ID } from "./internal/y-axis-id";
 import {
+  createAxisValueProjector,
+  createNicedYScale,
+  domainForAxis,
   resolveTimeSeriesYDomain,
+  resolveYDomainsByAxis,
   useNicedYDomainChanged,
 } from "./internal/y-domain";
 import { useChartPhaseOrchestrator } from "./internal/use-chart-phase-orchestrator";
@@ -78,30 +89,23 @@ import { BrushHostContext } from "./internal/brush-drag";
 import { DashTailOverlay, resolveDashTailBounds } from "./internal/dash-tail";
 import { buildMarkerGradientDefs, buildMarkerMarks } from "./internal/series-marker-mark";
 import { ChartMarkersOverlay } from "./internal/chart-markers";
+import { createActiveMarkersStore, MarkerActiveTooltipProvider } from "./internal/marker-tooltip";
+import {
+  DEFAULT_ANIMATION_DURATION_MS,
+  DEFAULT_ANIMATION_EASING,
+} from "./internal/animation-defaults";
+import { isRevealed, markRevealed } from "./internal/deferred-reveal";
+import { clipRevealTiming, type EnterTransition } from "./internal/enter-transition";
 import "./styles.css";
-
-// bklit animation constants (animation.ts): reveal 1100ms cubic-bezier(.85,0,.15,1)
-const DEFAULT_ANIMATION_DURATION_MS = 1100;
-const REVEAL_EASING = "cubic-bezier(0.85, 0, 0.15, 1)";
-// bklit chart-phase.ts DEFAULT_Y_DOMAIN_TWEEN_MS
-const DATA_TWEEN_MS = 500;
 // Area's own hover dim (area.tsx hardcodes dimOpacity={0.6}; Line uses 0.3).
 const AREA_DIM_OPACITY = "0.6";
-
-interface Margin {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-}
-const DEFAULT_MARGIN: Margin = { top: 40, right: 40, bottom: 40, left: 40 };
 
 export interface AreaChartProps {
   data: ChartDatum[];
   xDataKey?: string;
   status?: ChartStatus;
   animationDuration?: number;
-  margin?: Partial<Margin>;
+  margin?: Partial<ChartMargin>;
   aspectRatio?: string;
   className?: string;
   onPhaseChange?: (phase: ChartPhase) => void;
@@ -113,18 +117,51 @@ export interface AreaChartProps {
   yDomainTweenDuration?: number;
   // bklit time-series-chart-shell.tsx:162-167 — brush-driven viewport
   xDomain?: [Date, Date];
-  // accepted for bklit API parity (shell:317-326 columnWidth); no line/area consumer
+  /**
+   * P5.7 L11 — ACCEPTED as inert, with the mechanism corrected. The ruling was
+   * "FIX-trivial (pass to brush layout) or ACCEPT" on the premise that
+   * `internal/brush-layout.tsx:52` has an `xDomainSlotCount` waiting to be fed.
+   * It does not: that line is the PRODUCER. `useBrushSelection` computes
+   * `xDomainSlotCount: enabled ? data.length : undefined`
+   * (`internal/brush-selection.ts:158`), `BrushLayout` forwards it DOWN through
+   * `children(layoutState)` — so the value flows brush -> chart, and there is no
+   * parameter here to thread it into. Threading it "in" would have reversed the
+   * data flow.
+   *
+   * Its one real consumer in bklit is `columnWidth`
+   * (`time-series-chart-shell.tsx:317-326`: `innerWidth / (slotCount - 1)`,
+   * where `slotCount` prefers this prop over `visiblePlotData.length` while
+   * brushing), which the shell publishes on chart context for the tooltip
+   * indicator's `span * columnWidth` sizing and for composed's bar widths.
+   * Migrated's line/area path computes NO `columnWidth` anywhere — the whole
+   * symbol is absent from both files and from the hover-chrome module — because
+   * the tooltip indicator is TanStack-driven here. So wiring this prop would
+   * mean inventing a `columnWidth` that nothing reads: dead code, not parity.
+   * Kept in the type so the public API still accepts what bklit accepts.
+   */
   xDomainSlotCount?: number;
   tweenYDomainOnXDomainChange?: boolean;
+  /** P5.5 (charter gap, D329) — bklit `area-chart.tsx:41`. Same contract as
+      LineChart's: overrides the clip-reveal timing, spring coerced to tween. */
+  enterTransition?: EnterTransition;
+  /** P5.5 (charter gap, D329) — bklit `area-chart.tsx:43`. Replay epoch input;
+      forwarded to the orchestrator, which already keys its reveal on it. */
+  revealSignature?: string;
 }
 
 interface ResolvedArea {
   dataKey: string;
+  /** P6.1 (L10): carried through so `resolvedAreas` can be the series list the
+      per-axis domain resolver groups on — undefined means the default axis. */
+  yAxisId?: string | number;
   fill: string;
   stroke: string;
   strokeWidth: number;
   fillOpacity: number;
   curve: CurveFactory;
+  showLine: boolean;
+  gradientToOpacity: number;
+  gradientSpan: number;
   fadeEdges: boolean | "left" | "right";
   showHighlight: boolean;
   dashFromIndex?: number;
@@ -145,13 +182,16 @@ export function AreaChart({
   loadingLabel,
   children,
   style,
+  animationEasing = DEFAULT_ANIMATION_EASING,
   yDomainTween = true,
-  yDomainTweenDuration: _yDomainTweenDuration = DATA_TWEEN_MS,
+  yDomainTweenDuration: _yDomainTweenDuration = DEFAULT_Y_DOMAIN_TWEEN_MS,
   xDomain,
   xDomainSlotCount: _xDomainSlotCount,
   tweenYDomainOnXDomainChange = false,
+  enterTransition,
+  revealSignature = "",
 }: AreaChartProps) {
-  const margin = useChartMargin(marginProp, DEFAULT_MARGIN);
+  const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const { width, height: measuredHeight } = useMeasuredRect(containerRef);
   const onPhaseChangeRef = React.useRef(onPhaseChange);
@@ -175,8 +215,19 @@ export function AreaChart({
     skeletonData: [],
     animationDuration,
     yDomainTweenDuration: effectiveYDomainTweenDuration,
-    revealSignature: "",
+    revealSignature,
   });
+
+  // Clip-reveal timing, bklit `animation.ts:18` semantics. Primitive deps:
+  // callers pass `enterTransition` as an inline object literal.
+  const enterType = enterTransition?.type;
+  const enterDuration = enterTransition?.duration;
+  const enterEaseKey = enterTransition?.ease?.join(",");
+  const { durationMs: revealDurationMs, easingCss: revealEasingCss } = React.useMemo(
+    () => clipRevealTiming(enterTransition, animationDuration, animationEasing),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [enterType, enterDuration, enterEaseKey, animationDuration, animationEasing],
+  );
 
   const phaseRef = React.useRef<ChartPhase>(chartPhase);
   phaseRef.current = chartPhase;
@@ -196,14 +247,15 @@ export function AreaChart({
     }
   }, [chartPhase, notifyYDomainTweenComplete]);
 
-  const { areas, patternAreas, grid, xAxis, yAxis, tooltip, projectionLines, projectionEndMarkers, terminalMarkers, chartMarkers, brushes } = React.useMemo(
+  const { areas, patternAreas, grid, xAxis, yAxis, background, tooltip, projectionLines, projectionEndMarkers, terminalMarkers, chartMarkers, brushes } = React.useMemo(
     () => extractChildren(children),
     [children],
   );
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
+  const prefersReducedMotion = usePrefersReducedMotion();
   const staticRefConfigs = React.useMemo(() => extractReferenceAreaConfigs(children), [children]);
   const projectionConfigs = React.useMemo(() => extractProjectionLineConfigs(children), [children]);
-  const projectionGradientBaseId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const projectionGradientBaseId = useSanitizedId();
 
   // bklit area.tsx / extractAreaConfigs resolved defaults:
   //  - fill default "var(--chart-line-primary)"
@@ -226,17 +278,21 @@ export function AreaChart({
         const fill = a.fill ?? "var(--chart-line-primary)";
         return {
           dataKey: a.dataKey,
+          yAxisId: a.yAxisId,
           fill,
           stroke: a.stroke ?? fill,
           strokeWidth: a.strokeWidth ?? 2,
           fillOpacity: a.fillOpacity ?? 0.4,
           curve: a.curve ?? curveMonotoneX,
+          showLine: a.showLine ?? true,
+          gradientToOpacity: a.gradientToOpacity ?? 0,
+          gradientSpan: a.gradientSpan ?? 1,
           fadeEdges: a.fadeEdges ?? false,
           showHighlight: a.showHighlight ?? true,
           dashFromIndex: (a as { dashFromIndex?: number }).dashFromIndex,
           dashArray: (a as { dashArray?: string }).dashArray,
-          showMarkers: (a as { showMarkers?: boolean }).showMarkers,
-          markers: (a as { markers?: import("./internal/types").SeriesPointMarkerStyle }).markers,
+          showMarkers: a.showMarkers,
+          markers: a.markers,
         };
       }),
     [areas],
@@ -260,7 +316,7 @@ export function AreaChart({
       })),
     [patternAreas],
   );
-  const patternBaseId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const patternBaseId = useSanitizedId();
   const patternDefs = React.useMemo(() => {
     const out: Array<{
       dataKey: string;
@@ -297,7 +353,7 @@ export function AreaChart({
     );
   }, [data, innerWidth, resolvedAreas, resolvedPatternAreas]);
 
-  const areaMarkerBaseId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const areaMarkerBaseId = useSanitizedId();
   const areaMarkerConfigs = React.useMemo(() => resolvedAreas.map((a) => ({ dataKey: a.dataKey, stroke: a.stroke, showMarkers: a.showMarkers, markers: a.markers })), [resolvedAreas]);
   const areaMarkerGradientDefs = React.useMemo(() => buildMarkerGradientDefs(areaMarkerConfigs, areaMarkerBaseId), [areaMarkerConfigs, areaMarkerBaseId]);
   const areaMarkerGradientIdByKey = React.useMemo(() => {
@@ -320,9 +376,34 @@ export function AreaChart({
   // internal/y-domain.ts with line-chart.tsx and composed-chart.tsx (same
   // shell), scoped to `resolvedAreas` dataKeys.
   // shell:341 — yDomainTarget uses visibleData when brushing (marks stay on full data).
+  // P5.7 Strand 5 — same loading-state y-domain divergence fixed in
+  // `line-chart.tsx` (see the long note there): bklit derives the loading
+  // gridlines from a skeleton series, migrated derived them from the caller's
+  // real rows in every phase. Area shares the shell, so it shares the defect.
+  const skeletonRows = React.useMemo(
+    () => buildLoadingSkeletonRows(data.length, resolvedAreas[0]?.dataKey ?? "value"),
+    [data.length, resolvedAreas],
+  );
+  // P6.1 / T-F1 (L10) — one domain per `yAxisId` group instead of one for the
+  // whole chart. `resolvedAreas` is the series list either way, and for a chart
+  // where every area sits on the default axis (every area chart in the codebase
+  // today) this returns `{ left: <exactly the old tuple> }`, so `yDomain` below
+  // is byte-identical and nothing downstream moves.
+  const yDomainSource = React.useMemo(
+    () => (status === "loading" ? skeletonRows : visibleData) as unknown as ChartDatum[],
+    [status, skeletonRows, visibleData],
+  );
+  const yDomainsByAxis = React.useMemo(
+    () =>
+      resolveYDomainsByAxis({
+        series: resolvedAreas,
+        resolveDomain: (axisAreas) => resolveTimeSeriesYDomain(yDomainSource, axisAreas),
+      }),
+    [yDomainSource, resolvedAreas],
+  );
   const yDomain = React.useMemo(
-    () => resolveTimeSeriesYDomain(visibleData as unknown as ChartDatum[], resolvedAreas),
-    [visibleData, resolvedAreas],
+    () => domainForAxis(yDomainsByAxis, DEFAULT_Y_AXIS_ID),
+    [yDomainsByAxis],
   );
 
   // bklit data-update behavior (chart-phase.ts): new data paints IMMEDIATELY;
@@ -340,8 +421,25 @@ export function AreaChart({
   // projection is present.
   const yDomainFinal = React.useMemo<[number, number]>(() => {
     if (projectionConfigs.length === 0) return nicedYDomain;
-    return mergeProjectionYDomain(nicedYDomain, projectionConfigs, "left");
+    return mergeProjectionYDomain(nicedYDomain, projectionConfigs, DEFAULT_Y_AXIS_ID);
   }, [nicedYDomain, projectionConfigs]);
+
+  // Secondary axes are expressed by reprojecting values into the primary
+  // domain — TanStack's spec carries exactly one `y` scale (see
+  // `createAxisValueProjector`). Each per-axis domain is niced the same way the
+  // primary one is, so a series on `"right"` gets the same tick-friendly extent
+  // it would have had as the only series on the chart.
+  const nicedDomainsByAxis = React.useMemo(() => {
+    const out: Record<string, [number, number]> = {};
+    for (const [axisId, domain] of Object.entries(yDomainsByAxis)) {
+      out[axisId] = createNicedYScale(domain).domain() as [number, number];
+    }
+    return out;
+  }, [yDomainsByAxis]);
+  const projectorFor = React.useMemo(
+    () => createAxisValueProjector(nicedDomainsByAxis, yDomainFinal),
+    [nicedDomainsByAxis, yDomainFinal],
+  );
 
   // The y-domain tween triggers on the FINAL (projection-merged) domain;
   // identical to the shared niced-domain signal when no projection exists.
@@ -353,14 +451,16 @@ export function AreaChart({
         prevYDomainFinalRef.current[1] !== yDomainFinal[1];
   prevYDomainFinalRef.current = yDomainFinal;
 
-  // Per-series vertical gradient defs (bklit area-gradient-defs.tsx default
-  // stops: 0% at `fillOpacity`, 100% at 0 — `gradientToOpacity` default 0
-  // and `gradientSpan` default 1 collapse the 2-or-3-stop gradient down to
-  // exactly these two stops; those two knobs aren't part of the pilot's
-  // <Area> prop surface, so this is the only shape ever produced here).
-  // Rendered in a 0x0 sibling <svg> AFTER <Chart> — same
-  // url()-resolves-document-wide technique as scatter-chart.tsx.
-  const gradientBaseId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  // Per-series vertical gradient defs — verbatim port of bklit
+  // area-gradient-defs.tsx's stop-list math: top stop at `fillOpacity`, mid
+  // stop at offset `gradientSpan*100%` fading to `gradientToOpacity`, plus a
+  // trailing 100%-stop at `gradientToOpacity` ONLY when span < 1 (span=1
+  // collapses to exactly the historic two stops). span clamps to
+  // [0.01, 1] (AreaGradientDefs' `Math.min(1, Math.max(0.01, ...))`).
+  // Emitted natively via `spec.gradients` (T-D5): TanStack's SVG renderer
+  // writes these into `<defs data-ts-key="gradients">` inside the chart svg
+  // and rewrites matching `fill="url(#id)"` mark refs itself.
+  const gradientBaseId = useSanitizedId();
   const gradientDefs = React.useMemo(
     () =>
       resolvedAreas.map((area, i) => ({
@@ -368,8 +468,30 @@ export function AreaChart({
         id: `${gradientBaseId}-area-grad-${i}`,
         fill: area.fill,
         fillOpacity: area.fillOpacity,
+        gradientToOpacity: area.gradientToOpacity ?? 0,
+        spanPct: Math.min(1, Math.max(0.01, area.gradientSpan ?? 1)) * 100,
       })),
     [gradientBaseId, resolvedAreas],
+  );
+  const nativeAreaGradients = React.useMemo(
+    () =>
+      gradientDefs.map((g) => ({
+        id: g.id,
+        // objectBoundingBox fractions — serialized as x1="0%" y1="0%"
+        // x2="0%" y2="100%", byte-identical to the retired JSX attrs.
+        x1: 0,
+        y1: 0,
+        x2: 0,
+        y2: 1,
+        stops: [
+          { offset: 0, color: g.fill, opacity: g.fillOpacity },
+          { offset: g.spanPct / 100, color: g.fill, opacity: g.gradientToOpacity },
+          ...(g.spanPct < 100
+            ? [{ offset: 1, color: g.fill, opacity: g.gradientToOpacity }]
+            : []),
+        ],
+      })),
+    [gradientDefs],
   );
   const gradientIdBySeries = React.useMemo(() => {
     const map = new Map<string, string>();
@@ -404,9 +526,24 @@ export function AreaChart({
 
   const isLoading = status === "loading";
 
+  // bklit area.tsx fadeEdges → edge-fade mask (styles.css), resolved via the
+  // shared fade-mask module (single source, same as line-chart.tsx). Defaults
+  // are applied per-series first (`?? false` — Area's own default), then the
+  // helper computes the aggregate + directional attributes: both-edge mask
+  // when ANY series is non-false, left/right attributes when any series
+  // requests that side (the CSS :not() rules pick left-only/right-only/both).
+  const fadeEdgesMask = resolveFadeEdgesMask(resolvedAreas.map((a) => a.fadeEdges));
+
   const areaTerminalAnchors = React.useMemo(() => {
-    if (terminalMarkers.length === 0 || data.length === 0 || width <= 0 || heightPx <= 0) return [];
-    const lastRow = data[data.length - 1] as Record<string, unknown> | undefined;
+    if (terminalMarkers.length === 0 || renderData.length === 0 || width <= 0 || heightPx <= 0) return [];
+    // P6.2 — the last VISIBLE row, not the last row of the raw `data` prop.
+    // bklit publishes `visiblePlotData` as the provider's `data`
+    // (time-series-chart-shell.tsx:418), and <LineSeriesTerminalMarker> anchors
+    // to `data.at(-1)` off that (line-series-terminal-marker.tsx:37), so under a
+    // narrowed `xDomain` the marker sits on the last point INSIDE the viewport.
+    // Reading the unfiltered prop mapped a date past `xDomain[1]` and pushed the
+    // marker off the right edge of the plot (D347).
+    const lastRow = renderData[renderData.length - 1] as Record<string, unknown> | undefined;
     if (!lastRow) return [];
     const innerW = Math.max(0, width - margin.left - margin.right);
     const innerH = Math.max(0, heightPx - margin.top - margin.bottom);
@@ -414,11 +551,7 @@ export function AreaChart({
     const te = timeExtent;
     const teRaw = timeExtentRaw;
     if (!te || !teRaw) return [];
-    const xForDate = (d: Date) => {
-      const r = te.maxTime - teRaw.minTime;
-      if (r <= 0) return 0;
-      return ((d.getTime() - teRaw.minTime) / r) * innerW;
-    };
+    const xForDate = (d: Date) => timeToPixelX(d, teRaw.minTime, te.maxTime, innerW);
     const yScale2 = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
     const out: Array<{ dataKey: string; cx: number; cy: number; fill: string; stroke: string; radius: number; ringGap: number; strokeWidth: number; outlineWidth: number; outlineColor?: string }> = [];
     for (const tm of terminalMarkers as unknown as Array<Record<string, unknown>>) {
@@ -433,7 +566,7 @@ export function AreaChart({
       out.push({ dataKey, cx, cy, fill: (tm["fill"] as string | undefined) ?? "transparent", stroke: (tm["stroke"] as string | undefined) ?? "var(--chart-1)", radius: (tm["radius"] as number | undefined) ?? 5, ringGap: (tm["ringGap"] as number | undefined) ?? 0, strokeWidth: (tm["strokeWidth"] as number | undefined) ?? 1.5, outlineWidth: (tm["outlineWidth"] as number | undefined) ?? 0, outlineColor: tm["outlineColor"] as string | undefined });
     }
     return out;
-  }, [terminalMarkers, data, width, heightPx, margin, yDomainFinal, timeExtent, timeExtentRaw, xDataKey]);
+  }, [terminalMarkers, renderData, width, heightPx, margin, yDomainFinal, timeExtent, timeExtentRaw, xDataKey]);
   const areaEndAnchors = React.useMemo(() => {
     if (projectionEndMarkers.length === 0 || width <= 0 || heightPx <= 0) return [];
     const innerW = Math.max(0, width - margin.left - margin.right);
@@ -442,11 +575,7 @@ export function AreaChart({
     const te = timeExtent;
     const teRaw = timeExtentRaw;
     if (!te || !teRaw) return [];
-    const xForDate = (d: Date) => {
-      const r = te.maxTime - teRaw.minTime;
-      if (r <= 0) return 0;
-      return ((d.getTime() - teRaw.minTime) / r) * innerW;
-    };
+    const xForDate = (d: Date) => timeToPixelX(d, teRaw.minTime, te.maxTime, innerW);
     const yScale2 = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
     const out: Array<{ cx: number; cy: number; stroke: string; strokeOpacity: number; radius: number }> = [];
     for (const em of projectionEndMarkers as unknown as Array<Record<string, unknown>>) {
@@ -474,12 +603,7 @@ export function AreaChart({
     const te = timeExtent;
     const teRaw = timeExtentRaw;
     if (!te || !teRaw) return [];
-    const xScaleWithProjection = (value: Date) => {
-      const t = value.getTime();
-      const r = te.maxTime - teRaw.minTime;
-      if (r <= 0) return 0;
-      return ((t - teRaw.minTime) / r) * innerW;
-    };
+    const xScaleWithProjection = (value: Date) => timeToPixelX(value, teRaw.minTime, te.maxTime, innerW);
     const defs: Array<{ id: string; startX: number; startY: number; endX: number; endY: number; gradientStart: string; gradientEnd: string }> = [];
     for (let i = 0; i < projectionLines.length; i++) {
       const p = projectionLines[i] as unknown as Record<string, unknown> | undefined;
@@ -528,8 +652,12 @@ export function AreaChart({
       const gridGuide = resolveGridGuide(grid);
       const emptySpec = {
         marks: [] as unknown as ChartMark<ChartDatum, Date, number>[],
-        x: { scale: scaleUtc as unknown as ChartScale, guide: false },
-        y: { scale: scaleLinear().domain(yDomainFinal) as unknown as ChartScale, grid: gridGuide.horizontal, ticks: gridGuide.ticks },
+        x: { scale: scaleUtc as unknown as ChartScale, grid: gridGuide.vertical, axis: { ticks: { count: gridGuide.columnTicks } } },
+        y: {
+          scale: scaleLinear().domain(yDomainFinal) as unknown as ChartScale,
+          grid: gridGuide.horizontal,
+          axis: { ticks: { count: gridGuide.ticks } },
+        },
         margin,
         focus: "group-x" as const,
         // bklit has no native focus ring — its hover dot is the springed TooltipDot.
@@ -560,6 +688,9 @@ export function AreaChart({
     for (const area of resolvedAreas) {
       const gradientId = gradientIdBySeries.get(area.dataKey);
       const curve = d3Curve(area.curve);
+      // P6.1 (L10): identity unless this series names a non-primary axis. Both
+      // the fill and the boundary line take it, or the two would disagree.
+      const projectY = projectorFor(area.yAxisId);
       // Fill FIRST, lineY SECOND ("Layering area and line" — TanStack docs:
       // area marks never draw their own boundary stroke; composing a lineY
       // on top is the documented pattern). `areaFill` is a minimal custom
@@ -573,7 +704,7 @@ export function AreaChart({
         areaFill(renderData, {
           id: `${area.dataKey}__fill`,
           x: (d: ChartDatum) => d[xDataKey] as Date,
-          y: (d: ChartDatum) => d[area.dataKey] as number,
+          y: (d: ChartDatum) => projectY(d[area.dataKey] as number),
           curve,
           fill: gradientId ? `url(#${gradientId})` : area.fill,
         }),
@@ -584,18 +715,22 @@ export function AreaChart({
       // branching in hover-chrome.ts.
       {
         const hasDashTail = resolveDashTailBounds(area.dashFromIndex, renderData.length);
+        // A4: bklit keeps its measuring LinePath mounted when showLine=false
+        // (only its stroke goes transparent), so this mark stays too — it
+        // also carries the series' focus geometry for group-x hover.
+        const boundaryVisible = area.showLine && !hasDashTail;
         marks.push(
           lineY(renderData, {
             id: area.dataKey,
             x: (d: ChartDatum) => d[xDataKey] as Date,
-            y: (d: ChartDatum) => d[area.dataKey] as number,
+            y: (d: ChartDatum) => projectY(d[area.dataKey] as number),
             // Series identity for group-x focus: without z, every series' points
             // carry group=null and focusX dedupes the group down to one point,
             // so multi-series hover would only ever surface a single series.
             z: () => area.dataKey,
             curve,
-            stroke: hasDashTail ? "transparent" : area.stroke,
-            strokeOpacity: hasDashTail ? 0 : undefined,
+            stroke: boundaryVisible ? area.stroke : "transparent",
+            strokeOpacity: boundaryVisible ? undefined : 0,
             strokeWidth: area.strokeWidth,
           }),
         );
@@ -615,12 +750,7 @@ export function AreaChart({
       const teRaw = timeExtentRaw;
       if (innerW > 0 && innerH > 0 && te && teRaw) {
         const yScale = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
-        const xScaleWithProjection = (value: Date) => {
-          const t = value.getTime();
-          const r = te.maxTime - teRaw.minTime;
-          if (r <= 0) return 0;
-          return ((t - teRaw.minTime) / r) * innerW;
-        };
+        const xScaleWithProjection = (value: Date) => timeToPixelX(value, teRaw.minTime, te.maxTime, innerW);
         for (let i = 0; i < projectionConfigs.length; i++) {
           const cfg = projectionConfigs[i];
           const p = projectionLines[i] as unknown as Record<string, unknown> | undefined;
@@ -678,23 +808,31 @@ export function AreaChart({
     const gridGuide = resolveGridGuide(grid);
     return defineChart({
       marks,
-      x: xScaleDef,
+      // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
+      // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
+      // key on the spec is never read.
+      x: {
+        ...xScaleDef,
+        grid: gridGuide.vertical,
+        axis: { ticks: { count: gridGuide.columnTicks } },
+      },
       y: {
         scale: scaleLinear().domain(yDomainFinal),
         grid: gridGuide.horizontal,
-        ticks: gridGuide.ticks,
+        axis: { ticks: { count: gridGuide.ticks } },
       },
       margin,
       focus: "group-x",
       focusRing: false,
       // bklit's hover works anywhere over the plot; TanStack defaults to 48px.
       maxFocusDistance: Number.POSITIVE_INFINITY,
+      gradients: nativeAreaGradients,
       svgAnimation:
         isChartInteractionPhase(chartPhase) && isLoaded && yDomainChanged
           ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
           : false,
     });
-  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey]);
+  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients]);
 
   // Hover chrome (bklit ChartTooltip): imperative overlays driven by
   // TanStack's focus callbacks — no React work per pointer move. Reuses
@@ -755,6 +893,19 @@ export function AreaChart({
     width,
     dimOpacity: AREA_DIM_OPACITY,
   });
+  // LM7/LM8 (P1.12): shared store carrying the live tooltip date for
+  // ChartMarkersOverlay's isActive + useActiveMarkers consumers.
+  const markerActiveStore = React.useMemo(() => createActiveMarkersStore(), []);
+  const handleFocusGroupChangeWithMarkerDate = React.useCallback(
+    (points: Parameters<typeof handleFocusGroupChange>[0]) => {
+      handleFocusGroupChange(points);
+      const datum = points[0]?.datum as Record<string, unknown> | undefined;
+      const v = datum?.[xDataKey];
+      const d = v instanceof Date ? v : v != null ? new Date(v as string | number) : null;
+      markerActiveStore.setActiveDate(d && !Number.isNaN(d.getTime()) ? d : null);
+    },
+    [handleFocusGroupChange, xDataKey, markerActiveStore],
+  );
   chromeStateRef.current = {
     margin,
     series: resolvedAreas.map((area) => ({
@@ -762,6 +913,10 @@ export function AreaChart({
       color: area.stroke,
       strokeWidth: area.strokeWidth,
       showHighlight: area.showHighlight,
+      // A4: showLine=false suppresses only the highlight BAND — bklit gates
+      // SeriesHighlightLayer on `showHighlight && showLine` while its
+      // SeriesHoverDim keys off showHighlight alone, so the dim stays.
+      showLine: area.showLine,
       marker: area.showMarkers ? { fill: area.markers?.fill ?? area.stroke, stroke: area.markers?.stroke ?? area.markers?.fill ?? area.stroke, strokeWidth: area.markers?.strokeWidth ?? 2, ringGap: area.markers?.ringGap ?? 2, radius: area.markers?.radius ?? 5, outlineWidth: area.markers?.outlineWidth ?? 0, outlineColor: area.markers?.outlineColor, showActiveHighlight: area.markers?.showActiveHighlight ?? true } : null,
     })),
     xDataKey,
@@ -770,6 +925,8 @@ export function AreaChart({
     showCrosshair: tooltip?.showCrosshair ?? true,
     showDots: tooltip?.showDots ?? true,
     showDatePill: tooltip?.showDatePill ?? true,
+    // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade radius.
+    tickerHalfWidth: xAxis?.tickerHalfWidth,
     tooltip: tooltip ?? null,
     dateLabels: dateLabelsForPill,
     legendHoveredIndex,
@@ -805,24 +962,30 @@ export function AreaChart({
 
   const areaMarkerRevealAnimsRef = React.useRef<Animation[]>([]);
   const areaMarkerRevealCancelRef = React.useRef<(() => void) | null>(null);
+  // Replay key (D311 shape). `marks.dataset.bkmRevealed` latches for the life of
+  // the marks node; the epoch re-opens a window the flag has closed. See
+  // line-chart.tsx for the full note.
+  const revealedEpochRef = React.useRef<number | null>(null);
   const handleRender = React.useCallback(() => {
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marks) return;
-    const prefersReduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const shouldAnimate = chartPhase === "revealing" && animationDuration > 0 && !prefersReduced && marks.dataset.bkmRevealed !== "1";
+    const epochUnseen = revealedEpochRef.current !== revealEpoch;
+    const shouldAnimate = chartPhase === "revealing" && animationDuration > 0 && !prefersReducedMotion && (epochUnseen || !isRevealed(marks));
     if (!shouldAnimate) {
-      if (marks.dataset.bkmRevealed !== "1") marks.dataset.bkmRevealed = "1";
+      markRevealed(marks);
       marks.style.clipPath = "";
       return;
     }
-    marks.dataset.bkmRevealed = "1";
+    markRevealed(marks);
+    revealedEpochRef.current = revealEpoch;
     marks.animate(
       [{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }],
-      { duration: animationDuration, easing: REVEAL_EASING },
+      { duration: revealDurationMs, easing: revealEasingCss },
     );
     if (!areaMarkerConfigs.some((s) => s.showMarkers)) return;
     const innerW = Math.max(0, width - margin.left - margin.right);
-    const durationSec = animationDuration / 1000;
+    // bklit series-markers.tsx:102 — the marker stagger spans the CLIP reveal.
+    const durationSec = revealDurationMs / 1000;
     for (const anim of areaMarkerRevealAnimsRef.current) { try { anim.cancel(); } catch { /* already canceled */ } }
     areaMarkerRevealAnimsRef.current = [];
     areaMarkerRevealCancelRef.current?.();
@@ -848,7 +1011,7 @@ export function AreaChart({
           const delaySec = innerW > 0 ? (leadingEdge / innerW) * durationSec : 0;
           const anim = circle.animate(
             [{ opacity: 0, filter: "blur(2px)" }, { opacity: 1, filter: "blur(0px)" }],
-            { duration: 500, delay: delaySec * 1000, easing: REVEAL_EASING, fill: "backwards" },
+            { duration: SERIES_MARKER_ENTER_MS, delay: delaySec * 1000, easing: animationEasing, fill: "backwards" },
           );
           areaMarkerRevealAnimsRef.current.push(anim);
         }
@@ -869,18 +1032,17 @@ export function AreaChart({
         if (tId !== null) window.clearTimeout(tId);
       };
     } else { doReveal(); }
-  }, [animationDuration, chartPhase, areaMarkerConfigs, width, margin.left, margin.right]);
+  }, [animationDuration, animationEasing, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, areaMarkerConfigs, width, margin.left, margin.right, prefersReducedMotion]);
 
   React.useEffect(() => {
     if (chartPhase !== "revealing") return;
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marks) return;
-    const prefersReduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (prefersReduced || animationDuration <= 0) {
+    if (prefersReducedMotion || animationDuration <= 0) {
       marks.style.clipPath = "";
-      marks.dataset.bkmRevealed = "1";
+      markRevealed(marks);
     }
-  }, [chartPhase, revealEpoch, animationDuration]);
+  }, [chartPhase, revealEpoch, animationDuration, prefersReducedMotion]);
   React.useEffect(() => () => {
     for (const a of areaMarkerRevealAnimsRef.current) { try { a.cancel(); } catch { /* already canceled */ } }
     areaMarkerRevealCancelRef.current?.();
@@ -920,12 +1082,12 @@ export function AreaChart({
   });
   const segmentComponents = React.useMemo(() => extractSegmentComponents(children), [children]);
   const refAreaChildren = React.useMemo(() => extractReferenceAreaProps(children), [children]);
-  const yTickColorForValue = React.useMemo(() => createTickColorResolver(staticRefConfigs, yDomainFinal), [staticRefConfigs, yDomainFinal]);
+  const yTickColorForValue = React.useMemo(() => createTickColorResolver(staticRefConfigs, yDomainFinal, DEFAULT_Y_AXIS_ID), [staticRefConfigs, yDomainFinal]);
 
   // BrushHost + clipping — same shape as line-chart.tsx (strip = un-brushed => trackExtent = final xScale domain)
   const innerWidthForBrush = Math.max(0, width - margin.left - margin.right);
   const innerHeightForBrush = Math.max(0, heightPx - margin.top - margin.bottom);
-  const areaBrushClipId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const areaBrushClipId = useSanitizedId();
   const needsAreaBrushClip = !!xDomain && innerWidthForBrush > 0 && innerHeightForBrush > 0;
   const trackExtentForBrush = React.useMemo<[Date, Date] | null>(() => {
     if (!timeExtent) return null;
@@ -942,14 +1104,11 @@ export function AreaChart({
     <div
       ref={containerRef}
       className={className}
-      style={{ position: "relative", width: "100%", aspectRatio, isolation: "isolate", ...style } as React.CSSProperties}
+      // bklit area-chart.tsx:232 — touchAction "none" keeps vertical page
+      // scroll from hijacking drag-selection strokes on touch devices.
+      style={{ position: "relative", width: "100%", aspectRatio, touchAction: "none", isolation: "isolate", ...style } as React.CSSProperties}
       data-bkm-chart="area"
-      data-bkm-fade-edges={
-        resolvedAreas.length > 0 &&
-        resolvedAreas.every((a) => a.fadeEdges === true)
-          ? ""
-          : undefined
-      }
+      {...fadeEdgesMask}
     >
       {needsAreaBrushClip ? (
         <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
@@ -966,6 +1125,16 @@ export function AreaChart({
         </BrushHostContext.Provider>
       ) : null}
       {isLoading && loadingLabel ? <LoadingLabel text={loadingLabel} /> : null}
+      {background ? (
+        <BackgroundLayer
+          config={background}
+          innerWidth={innerWidth}
+          innerHeight={Math.max(0, heightPx - margin.top - margin.bottom)}
+          marginLeft={margin.left}
+          marginTop={margin.top}
+          isLoaded={isLoaded}
+        />
+      ) : null}
       {definition ? (
         <div style={needsAreaBrushClip ? { clipPath: `url(#${areaBrushClipId})` } : undefined}>
           <Chart
@@ -973,7 +1142,7 @@ export function AreaChart({
             aspectRatio={parseAspectRatio(aspectRatio)}
             height={heightPx > 0 ? heightPx : undefined}
             definition={definition}
-            onFocusGroupChange={handleFocusGroupChange}
+            onFocusGroupChange={handleFocusGroupChangeWithMarkerDate}
             onRender={handleRender}
           />
         </div>
@@ -990,6 +1159,7 @@ export function AreaChart({
               formatValue={xAxis.formatValue}
               domainMaxTime={timeExtent?.maxTime}
               xDomain={xDomain ?? null}
+              tickMode={xAxis.tickMode}
             />
           ) : null}
           {yAxis ? (
@@ -1014,6 +1184,7 @@ export function AreaChart({
                 height: heightPx,
                 margin,
                 yDomain: yDomainFinal,
+                yDomainsByAxis: nicedDomainsByAxis,
                 xDomain: timeExtent ? ([new Date(timeExtent.minTime), new Date(timeExtent.maxTime)] as unknown as [Date, Date]) : undefined,
                 isTimeScale: true,
                 phase: chartPhase,
@@ -1052,17 +1223,24 @@ export function AreaChart({
             margin={margin}
             renderData={renderData as unknown as Record<string, unknown>[]}
             xDataKey={xDataKey}
-            series={resolvedAreas.map((a) => ({
-              dataKey: a.dataKey,
-              stroke: a.stroke,
-              strokeWidth: a.strokeWidth,
-              dashFromIndex: a.dashFromIndex,
-              dashArray: a.dashArray,
-            }))}
+            // A4: series with showLine=false get no dash tail (bklit gates
+            // SeriesDashTailOverlay on `showSeriesStroke = ... && showLine`).
+            series={resolvedAreas.flatMap((a) =>
+              a.showLine
+                ? [{
+                    dataKey: a.dataKey,
+                    stroke: a.stroke,
+                    strokeWidth: a.strokeWidth,
+                    dashFromIndex: a.dashFromIndex,
+                    dashArray: a.dashArray,
+                  }]
+                : [],
+            )}
             innerWidth={innerWidth}
             innerHeight={Math.max(0, heightPx - margin.top - margin.bottom)}
           />
           {chartMarkers ? (
+            <MarkerActiveTooltipProvider store={markerActiveStore}>
             <ChartMarkersOverlay
               items={chartMarkers.items}
               size={chartMarkers.size}
@@ -1080,14 +1258,23 @@ export function AreaChart({
               innerHeight={Math.max(0, heightPx - margin.top - margin.bottom)}
               containerRef={containerRef as unknown as React.RefObject<HTMLElement | null>}
               animationDuration={animationDuration}
-              onMarkerHoverChange={(entered) => {
-                if (entered) chromeRef.current?.onFocusGroupChange([]);
+              onMarkerHoverChange={(markers) => {
+                // LM6 legacy interplay: hovering a marker group hides the
+                // crosshair/tooltip chrome (legacy setTooltipData(null)) AND
+                // drops isActive (guide lines return to rest opacity);
+                // leaving leaves both cleared until the next chart hover,
+                // like legacy.
+                if (markers) {
+                  chromeRef.current?.onFocusGroupChange([]);
+                  markerActiveStore.setActiveDate(null);
+                }
               }}
             />
+            </MarkerActiveTooltipProvider>
           ) : null}
         </>
       )}
-      {((!isLoading && gradientDefs.length > 0) || projectionGradientDefsArea.length > 0 || areaMarkerGradientDefs.length > 0) && (
+      {(projectionGradientDefsArea.length > 0 || areaMarkerGradientDefs.length > 0) && (
             <svg
               width={0}
               height={0}
@@ -1096,25 +1283,6 @@ export function AreaChart({
               focusable="false"
             >
               <defs>
-                {!isLoading
-                  ? gradientDefs.map((g) => (
-                      <linearGradient
-                        key={g.id}
-                        id={g.id}
-                        x1="0%"
-                        x2="0%"
-                        y1="0%"
-                        y2="100%"
-                      >
-                        <stop
-                          offset="0%"
-                          stopColor={g.fill}
-                          stopOpacity={g.fillOpacity}
-                        />
-                        <stop offset="100%" stopColor={g.fill} stopOpacity={0} />
-                      </linearGradient>
-                    ))
-                  : null}
                 {projectionGradientDefsArea.map((g) => (
                   <linearGradient key={g.id} id={g.id} gradientUnits="userSpaceOnUse" x1={g.startX} y1={g.startY} x2={g.endX} y2={g.endY}>
                     <stop offset="0%" stopColor={g.gradientStart} />
@@ -1163,3 +1331,6 @@ export function AreaChart({
     </ChartSelectionContext.Provider>
   );
 }
+
+// Legacy parity: bklit `area-chart.tsx` ships `export default AreaChart;` (T-E2).
+export default AreaChart;

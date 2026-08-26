@@ -1,3 +1,5 @@
+import { normalizeYAxisId } from "./y-axis-id";
+
 export type ReferenceAreaIfOverflow = "hidden" | "visible" | "discard";
 
 export interface ReferenceAreaRect {
@@ -119,13 +121,33 @@ export function resolveReferenceDataRange(
   return [Math.min(low, high), Math.max(low, high)];
 }
 
+/**
+ * P6.1 / AX7 — the tick-label color for a y-axis tick, from whichever
+ * `<ReferenceArea axisLabelColor>` band contains it.
+ *
+ * The `axisId` param is the fix. bklit filters the candidate bands by
+ * `normalizeYAxisId(area.yAxisId) !== axisId` before testing containment
+ * (`y-axis.tsx:48-74`); migrated returned the first matching band on ANY axis,
+ * which parity row AX7 recorded as "ACCEPT single-axis reality (revisit with
+ * L10 ruling)". This task is that revisit, so the filter is restored rather
+ * than the acceptance renewed. It is deliberately a REQUIRED param, not one
+ * defaulting to the primary axis: a silent default is how a resolver ends up
+ * being called for a right-hand axis and answering for the left one, which is
+ * the exact defect being fixed.
+ *
+ * Legacy compares in PIXEL space (`yScale(high)`..`yScale(low)`) and migrated
+ * in VALUE space; for a monotonic linear scale those select the same ticks, and
+ * value space is what migrated's callers already hold.
+ */
 export function createTickColorResolver(
-  configs: Array<{ y1?: number; y2?: number; axisLabelColor?: string }>,
+  configs: Array<{ y1?: number; y2?: number; axisLabelColor?: string; yAxisId?: string }>,
   domain: [number, number],
+  axisId: string,
 ): (value: number) => string | undefined {
   return (value: number): string | undefined => {
     for (const area of configs) {
       if (!area.axisLabelColor) continue;
+      if (normalizeYAxisId(area.yAxisId) !== axisId) continue;
       const [low, high] = resolveReferenceDataRange(area.y1, area.y2, domain);
       if (value >= low && value <= high) return area.axisLabelColor;
     }

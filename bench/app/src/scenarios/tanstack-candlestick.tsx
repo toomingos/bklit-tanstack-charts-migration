@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";
 import { defineChart, link } from "@tanstack/charts";
+import { tooltip } from "@tanstack/charts/tooltip";
 import {
   generateCandles,
   generateCandlesUpdate,
@@ -117,7 +118,7 @@ export default function TanstackCandlestick({ n }: { n: number }) {
       ],
       x: { scale: scaleUtc, nice: true },
       y: { scale: scaleLinear, nice: true, grid: true },
-      tooltip: true,
+      tooltip,
     });
   }, [data, n]);
 

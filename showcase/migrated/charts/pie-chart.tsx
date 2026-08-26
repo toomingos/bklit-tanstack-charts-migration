@@ -30,9 +30,10 @@
 // * PieHoverCoordinator + PieSliceHoverRuntime — imperative hover springs
 //   (translate/grow/none effects, fade opacity, no-glow dead code)
 // * WAAPI angular sweep reveal (startAngle → endAngle per slice)
-// * PieCenter: N+1 variant grid with imperative display toggling
+// * PieCenter overlay (internal/pie-center.tsx) rendering shared CenterStat
+//   (real @number-flow/react digit roll; the D49-era "NumberFlow omission"
+//   deviation is resolved — see center-stat.tsx's header)
 // * bklit glow DEAD at runtime (D49) — ported as observed pixels
-// * NumberFlow omission (disclosed D49 deviation — uses Intl.NumberFormat)
 // * `className` dead prop on PieSlice (D49 finding)
 // * Scrub layers bypass TanStack marks entirely (plain React SVG paths)
 // * `<defs>` children (gradients/patterns) rendered in a dedicated hidden SVG
@@ -68,28 +69,28 @@ import {
   resolveEnterTransition,
   revealTiming,
   type PieEnterTransition,
-} from "./internal/pie-reveal";
+} from "./internal/enter-transition";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
-import { useMeasuredRect } from "./internal";
+import { nativeStaggerDelayMs } from "./internal/native-stagger";
+import { useDebouncedContainerSize } from "./internal";
 import {
   PieStableContext,
   PieHoverCoordinatorContext,
   type PieStableValue,
 } from "./internal/pie-center";
+import { CHART_CATEGORY_PALETTE } from "./internal/design-tokens";
 import "./styles.css";
 
 export type { PieSliceHoverEffect } from "./internal/pie-hover-chrome";
-export type { PieEnterTransition } from "./internal/pie-reveal";
+export type { PieEnterTransition } from "./internal/enter-transition";
 
 export const DEFAULT_HOVER_OFFSET = 10;
 
-const defaultPieColors = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-];
+// T-D15 (P3.1): sourced from the shared 5-entry categorical palette rather
+// than a local literal set — see internal/design-tokens.ts. Deliberately NOT
+// TanStack's native `defaultChartTheme.palette` (6 entries) — see that
+// module's comment for why a 6-long cycle would desync from index 5 on.
+export const defaultPieColors: readonly string[] = CHART_CATEGORY_PALETTE;
 
 export interface PieData {
   label: string;
@@ -239,7 +240,14 @@ export function PieChart({
   children,
 }: PieChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { width, height } = useMeasuredRect(containerRef, !fixedSize);
+  // P9 (bklit ParentSize debounceTime={10}): measurement goes through the
+  // debounced width+height hook, same as gauge's G5 call sites. The retired
+  // `useMeasuredRect(containerRef, !fixedSize)` passed `enabled` purely to
+  // skip mounting a ResizeObserver in fixed mode — an optimization, not
+  // behavior: containerRef is attached on BOTH render branches (:757, :774)
+  // and `size` falls back to `fixedSize` below, so a measured value in fixed
+  // mode is never read.
+  const { width, height } = useDebouncedContainerSize(containerRef);
   const size = fixedSize ?? Math.min(width, height);
 
   // --- Hover coordinator (unchanged from D49) ---
@@ -351,6 +359,10 @@ export function PieChart({
         marks: [polar({ inset: hoverOffset, radiusRatio: 1, marks: [] })],
         guides: false, x: null, y: null,
         focus: focusDisabled, tooltip: false,
+        // T-D15 (P3.1): explicit 5-entry palette override — see
+        // internal/design-tokens.ts. No visible marks in this branch, wired
+        // for consistency with the populated branch below.
+        theme: { palette: CHART_CATEGORY_PALETTE },
       });
     }
 
@@ -374,10 +386,37 @@ export function PieChart({
       opacity: 1,
     });
 
+    // bklit pie-slice.tsx renders each slice as a PAIR: an invisible
+    // `fill="transparent"` hitbox path carrying mouseenter/leave + the
+    // animated visible path with pointerEvents="none". The previous revision
+    // collapsed the pair into the visible mark, so the 10px hover pop moved
+    // the hit area off the stationary cursor: pointerleave -> unhover ->
+    // spring back -> re-enter. At n=1000 the pop always ejects and the QA
+    // capture caught the unhovered phase (no 999-slice fade) — the fixed
+    // ~3.18% hover-gate failure in qa/results/pie 2026-08-19→08-22. This
+    // static twin restores the separation; rendered AFTER the visible mark
+    // so it stacks on top and wins the hit test.
+    const hitboxMark = radialArc<PieRowDatum>(pieRows, {
+      id: "pie-hitbox",
+      key: (d) => String(d.sliceIndex),
+      innerRadius,
+      outerRadius: availableRadius,
+      cornerRadius: availableRadius > 0 ? cornerRadius : 0,
+      fill: "transparent",
+    });
+
     return defineChart({
-      marks: [polar({ inset: hoverOffset, radiusRatio: 1, marks: [sliceMark] })],
+      marks: [polar({ inset: hoverOffset, radiusRatio: 1, marks: [sliceMark, hitboxMark] })],
       guides: false, x: null, y: null,
       focus: focusDisabled, tooltip: false,
+      // T-D15 (P3.1): explicit 5-entry palette override, NOT the native
+      // 6-entry defaultChartTheme.palette (see internal/design-tokens.ts).
+      // Every row already carries an explicit per-datum `fill` (getFill
+      // above), so this has no pixel effect today — it exists so any native
+      // surface that reads the resolved theme's palette (rather than a
+      // per-datum channel) agrees with the JS-side color, and to route this
+      // part through the theme system per T-D15's contract.
+      theme: { palette: CHART_CATEGORY_PALETTE },
     });
   }, [arcs, sliceConfigMap, getFill, availableRadius, innerRadius, cornerRadius, hoverOffset, geometryScrubbing]);
 
@@ -458,8 +497,15 @@ export function PieChart({
 
     const resolved = resolveEnterTransition(enterTransitionRef.current, PIE_TWEEN_FALLBACK);
     const timing = revealTiming(resolved);
+    // T-D3: native stagger({each, offset}) — offset=0.1*scale*1000,
+    // each=0.08*scale*1000, replacing the hand-rolled
+    // `(0.1 + dataIndex * 0.08) * enterStaggerScale * 1000` formula below.
+    const pieStaggerEachMs = 0.08 * enterStaggerScale * 1000;
+    const pieStaggerOffsetMs = 0.1 * enterStaggerScale * 1000;
     const maxDelayMs = Math.max(
-      ...toReveal.map(({ dataIndex }) => (0.1 + dataIndex * 0.08) * enterStaggerScale * 1000),
+      ...toReveal.map(({ dataIndex }) =>
+        nativeStaggerDelayMs(pieStaggerEachMs, pieStaggerOffsetMs, dataIndex, "arc"),
+      ),
       0,
     );
     if (revealDeadlineTimerRef.current !== null) {
@@ -496,7 +542,7 @@ export function PieChart({
           pendingRevealRef.current.delete(arc.index);
           continue;
         }
-        const delayMs = (0.1 + dataIndex * 0.08) * enterStaggerScale * 1000;
+        const delayMs = nativeStaggerDelayMs(pieStaggerEachMs, pieStaggerOffsetMs, dataIndex, "arc");
         const keyframes = buildProgressKeyframes(timing, (p) => {
           const currentEnd = arc.startAngle + (arc.endAngle - arc.startAngle) * p;
           if (currentEnd <= arc.startAngle + 0.01) {
@@ -558,13 +604,30 @@ export function PieChart({
     }
     sliceElementMapRef.current = elementMap;
 
+    // Hitbox twins (static, never animated) carry the pointer listeners —
+    // bklit's invisible-hitbox/visible-slice separation (see the mark
+    // definition comment). Fall back to the visible path if absent.
+    const hitboxAll =
+      marksGroup?.querySelectorAll<SVGPathElement>('path[data-ts-key^="pie-hitbox:"]') ??
+      ([] as unknown as NodeListOf<SVGPathElement>);
+    const hitboxSearch: SVGPathElement[] =
+      hitboxAll.length > 0
+        ? Array.from(hitboxAll as NodeListOf<SVGPathElement>)
+        : Array.from(container.querySelectorAll<SVGPathElement>('path[data-ts-key^="pie-hitbox:"]'));
+    const hitboxMap = new Map<number, SVGPathElement>();
+    for (const el of hitboxSearch) {
+      const k = el.getAttribute("data-ts-key") ?? "";
+      const idx = Number(k.slice(k.lastIndexOf(":") + 1));
+      if (!Number.isNaN(idx) && !hitboxMap.has(idx)) hitboxMap.set(idx, el);
+    }
+
     for (let i = 0; i < arcs.length; i++) {
       const arc = arcs[i] as PieArcData | undefined;
       if (!arc) continue;
       const pathEl = elementMap.get(arc.index) ?? null;
       if (!pathEl) continue;
       const runtime = createPieSliceHoverRuntime();
-      stateMap.set(arc.index, { runtime, groupEl: pathEl, pathEl });
+      stateMap.set(arc.index, { runtime, groupEl: hitboxMap.get(arc.index) ?? pathEl, pathEl });
     }
 
     for (let i = 0; i < arcs.length; i++) {
@@ -611,6 +674,8 @@ export function PieChart({
       };
       const leave = () => coordinator.requestUnhover();
 
+      // groupEl is the STATIC hitbox twin (never translated/grown), so the
+      // pop cannot eject a stationary cursor — bklit's own structure.
       groupEl.addEventListener("pointerenter", enter);
       groupEl.addEventListener("pointerleave", leave);
 
@@ -806,3 +871,6 @@ export function PieSlice(_props: PieSliceProps): null {
 }
 
 PieSlice.displayName = "PieSlice";
+
+// Legacy parity: bklit `pie-chart.tsx` ships `export default PieChart;` (T-E2).
+export default PieChart;

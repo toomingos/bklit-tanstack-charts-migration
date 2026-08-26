@@ -1,9 +1,8 @@
 import * as React from "react";
-
-function normalizeYAxisId(id?: string | number): string {
-  if (id == null || id === "") return "left";
-  return String(id);
-}
+import { CHART_ROLE } from "../children";
+// P6.1: was a private byte-identical copy; collapsed onto the one normalizer
+// (`internal/y-axis-id.ts`) now that the scale layer reads axis ids too.
+import { normalizeYAxisId } from "./y-axis-id";
 
 export interface ReferenceAreaConfig {
   yAxisId: string;
@@ -20,7 +19,7 @@ interface ReferenceAreaConfigProps {
 }
 
 function isReferenceAreaElement(child: React.ReactElement): boolean {
-  const role = (child.type as unknown as Record<symbol, string | undefined>)[Symbol.for("migrated.chartRole")];
+  const role = (child.type as unknown as Record<symbol, string | undefined>)[CHART_ROLE];
   if (role === "referenceArea") return true;
   const t = child.type as unknown as { displayName?: string; name?: string };
   const n = typeof child.type === "function" ? (t.displayName || t.name || "") : "";
@@ -65,7 +64,7 @@ export function extractReferenceAreaProps(children: React.ReactNode): Array<Reco
         visit((child.props as { children?: React.ReactNode }).children);
         continue;
       }
-      const role = (child.type as unknown as Record<symbol, string | undefined>)[Symbol.for("migrated.chartRole")];
+      const role = (child.type as unknown as Record<symbol, string | undefined>)[CHART_ROLE];
       if (role === "referenceArea") {
         out.push(child.props as Record<string, unknown>);
         continue;

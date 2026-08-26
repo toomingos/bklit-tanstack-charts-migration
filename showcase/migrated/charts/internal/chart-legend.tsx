@@ -2,9 +2,8 @@
 
 import { Progress } from "@base-ui/react/progress";
 import type { ReactNode } from "react";
+import { intFmt } from "./formatters";
 import { cn } from "@/lib/utils";
-
-const intFmt = new Intl.NumberFormat("en-US").format;
 
 export interface LegendItem {
   label: string;

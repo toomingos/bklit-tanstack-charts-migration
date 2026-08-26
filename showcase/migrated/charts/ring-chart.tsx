@@ -36,13 +36,18 @@
 // * Scrub layers bypass marks entirely (TanStack `animate: false`)
 // * `spring.ts` REST_DELTA fix (D51)
 // * Deferred center mount (D75, setTimeout past M1a doubleRaf clock)
-import { Children, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, createContext, useContext, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { Children, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, createContext, useContext, type CSSProperties, type ReactElement, type ReactNode, type RefObject } from "react";
 import { Chart } from "@tanstack/react-charts";
 import { defineChart } from "@tanstack/charts";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { polar, radialArc } from "@tanstack/charts/polar";
 import { pieArcPath } from "./internal/pie-geometry";
 import { displayNameOf } from "./children";
+// R7 (centralize.md OQ 2): REAL import edge to RingCenter — classification
+// below gets an identity fast-path off it instead of relying solely on
+// displayName-string matching. The displayName fallback stays so a
+// user-supplied center component with matching displayName still classifies.
+import { RingCenter } from "./internal/ring-center";
 import {
   createRingHoverCoordinator,
   createRingHoverRuntime,
@@ -55,16 +60,17 @@ import {
   resolveEnterTransition,
   revealTiming,
   type RingEnterTransition,
-} from "./internal/ring-reveal";
+} from "./internal/enter-transition";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
-import { useMeasuredRect } from "./internal";
+import { nativeStaggerDelayMs } from "./internal/native-stagger";
+import { useDebouncedContainerSize } from "./internal";
 import "./styles.css";
 
-export type { RingEnterTransition } from "./internal/ring-reveal";
+export type { RingEnterTransition } from "./internal/enter-transition";
 
 const RING_BACKGROUND = "var(--border)";
 
-const defaultRingColors = [
+export const defaultRingColors = [
   "var(--chart-1)",
   "var(--chart-2)",
   "var(--chart-3)",
@@ -95,13 +101,27 @@ interface ScrubRingLayer {
   color: string;
 }
 
-interface RingStableValue {
+export interface RingStableValue {
   data: RingData[];
   size: number;
   center: number;
   strokeWidth: number;
   ringGap: number;
   baseInnerRadius: number;
+  // P5.6 R2 — legacy's `RingStableContextValue` (`ring-context.tsx:63-70`)
+  // carries these three; migrated had dropped them because nothing INSIDE the
+  // chart reads them any more (the reveal is WAAPI, not `isLoaded`-gated —
+  // see the file header). They are restored, not versioned, because they are
+  // part of the hook's published payload: a bklit consumer calling
+  // `useRingStable()` for `containerRef` (to portal into the chart box) or for
+  // `isLoaded` (to gate its own entrance off the chart's) got them in legacy
+  // and would get `undefined` here. Values are legacy's own, verbatim:
+  // `animationKey` is `useState(0)` never incremented (`ring-chart.tsx:151`),
+  // `isLoaded` is the 100ms post-mount flip OR'd with `geometryScrubbing`
+  // (`:261,264-273`).
+  animationKey: number;
+  isLoaded: boolean;
+  containerRef: RefObject<HTMLDivElement | null>;
   enterTransition?: RingEnterTransition;
   enterStaggerScale: number;
   totalValue: number;
@@ -112,6 +132,16 @@ interface RingStableValue {
   geometryScrubbing: boolean;
   scrubRingLayers: readonly ScrubRingLayer[] | null;
 }
+
+/** P5.6 R3 — legacy's `RingHoverContextValue` (`ring-context.tsx:47-50`),
+    the shape `useRingHover()` returns. */
+export interface RingHoverValue {
+  hoveredIndex: number | null;
+  setHoveredIndex: (index: number | null) => void;
+}
+
+/** P5.6 R4 — legacy's `RingContextValue` (`ring-context.tsx:92`). */
+export type RingContextValue = RingStableValue & RingHoverValue;
 
 const RingStableContext = createContext<RingStableValue | null>(null);
 const RingHoverCoordinatorContext = createContext<RingHoverCoordinator | null>(null);
@@ -136,6 +166,50 @@ export function useRingHoverCoordinator(): RingHoverCoordinator {
   return ctx;
 }
 
+/**
+ * P5.6 R3 — legacy-named compat hook over the imperative coordinator.
+ *
+ * Legacy `useRingHover()` (`ring-context.tsx:173`) returns React state:
+ * `{ hoveredIndex, setHoveredIndex }`, and a consumer that reads
+ * `hoveredIndex` re-renders when hover moves. Migrated's coordinator is an
+ * imperative store precisely so that hover DOESN'T re-render the chart — but
+ * an external consumer asking for `hoveredIndex` is asking to re-render, so
+ * this binds the store with `useSyncExternalStore` (the same sanctioned
+ * exception `useCenterStatHover` already makes for the center readout) and
+ * subscribes only the caller.
+ *
+ * `setHoveredIndex` maps onto `requestHover`/`requestUnhover`, which carry
+ * legacy's own controlled-vs-uncontrolled split (`ring-chart.tsx:157-...`:
+ * controlled ⇒ call `onHoverChange`, uncontrolled ⇒ set internal state).
+ * `setHovered` is deliberately NOT used here — that one skips
+ * `onHoverChange`, which is the controlled-prop push path, not this one.
+ */
+export function useRingHover(): RingHoverValue {
+  const coordinator = useRingHoverCoordinator();
+  const hoveredIndex = useSyncExternalStore(
+    coordinator.subscribe,
+    coordinator.getHovered,
+    coordinator.getHovered,
+  );
+  const setHoveredIndex = useCallback(
+    (index: number | null) => {
+      if (index === null) coordinator.requestUnhover();
+      else coordinator.requestHover(index);
+    },
+    [coordinator],
+  );
+  return { hoveredIndex, setHoveredIndex };
+}
+
+/** P5.6 R4 — legacy's combiner, verbatim in shape
+    (`ring-context.tsx:184-185`: `{ ...useRingStable(), ...useRingHover() }`).
+    Reads the RESTORED payload, so `animationKey`/`isLoaded`/`containerRef`
+    come through here too. Note it inherits `useRingHover`'s subscription:
+    calling `useRing()` re-renders the caller on every hover change. */
+export function useRing(): RingContextValue {
+  return { ...useRingStable(), ...useRingHover() };
+}
+
 // ---------------------------------------------------------------------------
 // Children classification — Ring elements are NOT rendered as React
 // components in this revision. Their props are extracted and baked into
@@ -147,6 +221,7 @@ function isRingElement(child: ReactNode): boolean {
 }
 
 function isRingCenterElement(child: ReactNode): boolean {
+  if (isValidElement(child) && child.type === RingCenter) return true;
   return isValidElement(child) && typeof child.type === "function" && displayNameOf(child.type as { displayName?: string }) === "RingCenter";
 }
 
@@ -236,6 +311,8 @@ interface RingImperativeState {
   trackGroupEl: SVGGElement | null;
   progressGroupEl: SVGGElement | null;
   progressPathEl: SVGPathElement | null;
+  /** Static hitbox twin carrying the pointer listeners (D258 fix). */
+  hitboxEl: SVGGElement | null;
 }
 
 export function RingChart({
@@ -256,7 +333,14 @@ export function RingChart({
   children,
 }: RingChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { width, height } = useMeasuredRect(containerRef, !fixedSize);
+  // P9 (bklit ParentSize debounceTime={10}): measurement goes through the
+  // debounced width+height hook, same as pie (:243-251) and gauge's G5 call
+  // sites. The retired `useMeasuredRect(containerRef, !fixedSize)` passed
+  // `enabled` purely to skip mounting a ResizeObserver in fixed mode — an
+  // optimization, not behavior: containerRef is attached on the single root
+  // div on every render branch and `size` falls back to `fixedSize` below,
+  // so a measured value in fixed mode is never read.
+  const { width, height } = useDebouncedContainerSize(containerRef);
   const size = fixedSize ?? Math.min(width, height);
 
   // --- Hover coordinator (unchanged from D51). ---
@@ -341,6 +425,20 @@ export function RingChart({
     });
   }, [geometryScrubbing, data, getRingRadii, getColor, startAngle, endAngle, arcRange]);
 
+  // P5.6 R2 — legacy's dead-at-runtime animation state, restored onto the
+  // published payload. Nothing in migrated READS these (the reveal is WAAPI);
+  // they exist so `useRingStable()`/`useRing()` hand a bklit consumer the same
+  // fields legacy did. `ring-chart.tsx:151,152,261,264-273`.
+  const ANIMATION_KEY = 0;
+  const [isLoaded, setIsLoaded] = useState(false);
+  useEffect(() => {
+    if (geometryScrubbing) return;
+    setIsLoaded(false);
+    const timer = setTimeout(() => setIsLoaded(true), 100);
+    return () => clearTimeout(timer);
+  }, [enterTransition, enterStaggerScale, geometryScrubbing]);
+  const effectiveIsLoaded = geometryScrubbing || isLoaded;
+
   const stable: RingStableValue = useMemo(
     () => ({
       data,
@@ -349,6 +447,9 @@ export function RingChart({
       strokeWidth,
       ringGap,
       baseInnerRadius,
+      animationKey: ANIMATION_KEY,
+      isLoaded: effectiveIsLoaded,
+      containerRef,
       enterTransition,
       enterStaggerScale,
       totalValue,
@@ -361,6 +462,7 @@ export function RingChart({
     }),
     [
       data, size, center, strokeWidth, ringGap, baseInnerRadius,
+      effectiveIsLoaded, containerRef,
       enterTransition, enterStaggerScale, totalValue,
       getColor, getRingRadii, startAngle, endAngle,
       geometryScrubbing, scrubRingLayers,
@@ -387,6 +489,16 @@ export function RingChart({
     }
 
     const arcMarks: AnyRadialArcMark[] = [];
+    // D258 fix: per-ring STATIC hitbox twins (rest radii, transparent fill),
+    // collected in this first pass and appended in a SECOND pass below.
+    // Z-order note (pie's D254 precedent renders its twin after the whole
+    // visible mark): ring bands overlap their neighbours, so per-ring
+    // interleaving would put ring j's hitbox UNDER ring j+1's later-painted
+    // visual marks and break the hit test at overlaps. Emitting every twin
+    // after every visual mark stacks the entire hitbox layer above the
+    // entire visual layer — the only arrangement where each point of the
+    // chart hit-tests to the topmost twin covering it.
+    const hitboxMarks: AnyRadialArcMark[] = [];
 
     for (let i = 0; i < data.length; i++) {
       const ringData = data[i] as RingData;
@@ -435,10 +547,25 @@ export function RingChart({
           }),
         );
       }
+
+      // The static twin: full annulus at REST radii, transparent fill, never
+      // animated by reveal or hover. Transparent still paints for hit-testing
+      // (SVG visiblePainted). Zero pixel delta; listeners bind HERE so band
+      // growth can never eject a stationary cursor (D258's mechanism).
+      hitboxMarks.push(
+        radialArc<RingArcDatum>([{ startAngle, endAngle }], {
+          id: `ring-${i}-hitbox`,
+          key: () => "hitbox",
+          innerRadius: ({ radius }) => radius * innerRatio,
+          outerRadius: ({ radius }) => radius * outerRatio,
+          cornerRadius: ({ radius }) => radius * cornerRatio,
+          fill: "transparent",
+        }),
+      );
     }
 
     return defineChart({
-      marks: [polar({ inset: padding, radiusRatio: 1, marks: arcMarks })],
+      marks: [polar({ inset: padding, radiusRatio: 1, marks: [...arcMarks, ...hitboxMarks] })],
       guides: false, x: null, y: null,
       focus: focusDisabled, tooltip: false,
     });
@@ -447,7 +574,10 @@ export function RingChart({
   // --- Imperative ring state: one runtime per ring, DOM refs populated
   // after TanStack renders. ---
   const ringStateRef = useRef<Map<number, RingImperativeState>>(new Map());
-  const pendingExpandAnimsRef = useRef<Map<number, Animation>>(new Map());
+  // Minimal shape the expand handoff actually needs — a real WAAPI Animation
+  // satisfies it structurally; the pre-post-paint seed is now a plain member
+  // of this type rather than a type-laundered fake Animation.
+  const pendingExpandAnimsRef = useRef<Map<number, { cancel(): void }>>(new Map());
   const revealAnimsRef = useRef<Animation[]>([]);
   const revealDeadlineTimerRef = useRef<number | null>(null);
   const revealPostPaintCancelRef = useRef<(() => void) | null>(null);
@@ -521,7 +651,17 @@ export function RingChart({
 
     const resolved = resolveEnterTransition(enterTransitionRef.current, RING_TWEEN_FALLBACK);
     const timing = revealTiming(resolved);
-    const maxDelayMs = Math.max(...toReveal.map((i) => (0.6 + i * 0.1) * enterStaggerScaleRef.current * 1000));
+    // T-D3: native stagger({each, offset}) for the progress pass (the pass
+    // that dominates maxDelayMs, matching pre-swap behavior which only
+    // accounted for the progress formula here) — offset=0.6*scale*1000,
+    // each=0.1*scale*1000.
+    const ringProgressStaggerEachMs = 0.1 * enterStaggerScaleRef.current * 1000;
+    const ringProgressStaggerOffsetMs = 0.6 * enterStaggerScaleRef.current * 1000;
+    const maxDelayMs = Math.max(
+      ...toReveal.map((i) =>
+        nativeStaggerDelayMs(ringProgressStaggerEachMs, ringProgressStaggerOffsetMs, i, "arc"),
+      ),
+    );
     revealDeadlineTimerRef.current = setRevealDeadline(timing.durationMs + maxDelayMs, {
       animationsRef: revealAnimsRef,
       onDeadline: () => {},
@@ -536,7 +676,7 @@ export function RingChart({
         (marksGroup.querySelector(`[data-ts-key="ring-${i}-progress"]`) as SVGGElement | null) ??
         (container.querySelector(`[data-ts-key="ring-${i}-progress"]`) as SVGGElement | null);
       if (progressGroup) progressGroup.style.transform = "";
-      pendingExpandAnimsRef.current.set(i, { cancel() {} } as unknown as Animation);
+      pendingExpandAnimsRef.current.set(i, { cancel() {} });
     }
 
     revealPostPaintCancelRef.current = onPostPaint(() => {
@@ -558,8 +698,17 @@ export function RingChart({
         const { innerRadius, outerRadius } = currGetRadii(i);
         const cornerRadius = config.lineCap === "round" ? (outerRadius - innerRadius) / 2 : 0;
         const progress = ringData.value / ringData.maxValue;
-        const expandDelayMs = i * 0.08 * enterStaggerScaleRef.current * 1000;
-        const progressDelayMs = (0.6 + i * 0.1) * enterStaggerScaleRef.current * 1000;
+        // T-D3: two independent native stagger() passes — expand
+        // (offset=0, each=0.08*scale*1000) and progress
+        // (offset=0.6*scale*1000, each=0.1*scale*1000, same values as
+        // ringProgressStaggerEachMs/OffsetMs above).
+        const expandDelayMs = nativeStaggerDelayMs(0.08 * enterStaggerScaleRef.current * 1000, 0, i, "arc");
+        const progressDelayMs = nativeStaggerDelayMs(
+          ringProgressStaggerEachMs,
+          ringProgressStaggerOffsetMs,
+          i,
+          "arc",
+        );
 
         const expandKeyframes = buildProgressKeyframes(timing, (p) => ({ transform: `scale(${p})` }));
         const expandAnim = trackGroup.animate(expandKeyframes, {
@@ -647,6 +796,10 @@ export function RingChart({
         (marksGroup?.querySelector(`[data-ts-key="ring-${i}-progress"]`) as SVGGElement | null) ??
         (container.querySelector(`[data-ts-key="ring-${i}-progress"]`) as SVGGElement | null);
       const progressPathEl = (progressGroup?.querySelector("path") as SVGPathElement | null) ?? null;
+      // D258 fix: the static hitbox twin carries the pointer listeners.
+      const hitboxGroup =
+        (marksGroup?.querySelector(`[data-ts-key="ring-${i}-hitbox"]`) as SVGGElement | null) ??
+        (container.querySelector(`[data-ts-key="ring-${i}-hitbox"]`) as SVGGElement | null);
 
       if (!trackGroup) continue;
 
@@ -667,6 +820,7 @@ export function RingChart({
         trackGroupEl: trackGroup,
         progressGroupEl: progressGroup,
         progressPathEl,
+        hitboxEl: hitboxGroup,
       });
 
       // Defer settleAtRest until WAAPI expand finishes — otherwise hover's inline scale(1) clobbers the running animation.
@@ -680,65 +834,26 @@ export function RingChart({
         if (alreadySeen) runtime.settleAtRest();
       }
 
-      // Unified hit area: two sibling marks per ring — the colored progress arc
-      // sits on top and would otherwise intercept pointer events, so only the
-      // grey crescent behind would be hittable. Make the whole band hittable
-      // by (a) letting pointer events pass through the progress mark's group
-      // + path, so the track remains the hit target everywhere, AND (b)
-      // attaching the same hover listeners to both groups so either path works
-      // even if pointer-events semantics change. Single spring still owns both
-      // groups' transform (see ring-hover-chrome.ts applyTransform).
-      for (const el of [trackGroup, progressGroup] as const) {
-        if (!el) continue;
-        el.style.cursor = "pointer";
-        // bklit's ring.tsx pins its hover-scale `<motion.g>` to
-        // `transformOrigin: "0px 0px"` (the ring's true center, in the
-        // group's own local coordinate space post-`translate(center,center)`)
-        // so `scale()` always pivots around the ring's actual center
-        // regardless of which arc segment is drawn. Without this, the CSS
-        // default (`transform-origin: 50% 50%`, i.e. the element's OWN
-        // bounding-box center) is used instead — a no-op for `trackGroupEl`
-        // (always a full, symmetric 360deg band whose bbox center already
-        // coincides with the true center) but WRONG for `progressGroupEl`
-        // (a partial arc sweep whose bbox center drifts away from the true
-        // center for any progress != 100%), causing the hover push-out
-        // scale (1.02/1.03) to pivot around the wrong point — root cause of
-        // D208-3's density-proportional hover diff (every partially-swept
-        // ring scaling off-center once pushed-out/hovered).
-        el.style.transformOrigin = "0px 0px";
-      }
-      if (progressGroup) {
-        progressGroup.style.pointerEvents = "none";
-      }
-      if (progressPathEl) {
-        (progressPathEl as SVGPathElement).style.pointerEvents = "none";
-      }
+      // bklit parity note: legacy ring.tsx binds enter/leave to the same
+      // `motion.g` it springs, but its hover latches rings far from the
+      // cursor (D258), so nothing it grows can eject the pointer. Migrated
+      // hit-tested the SCALED band itself — once a band is thinner than the
+      // ~1.7px growth displacement the hovered band grows out from under a
+      // stationary cursor → leave → reverse → re-enter, an endless loop with
+      // no steady state (D258's measured mechanism). Listeners now bind to
+      // the STATIC hitbox twin instead (pie's D254 precedent): rest radii,
+      // transparent fill, never animated by reveal or hover, so growth can
+      // never dislodge the hit test. Track/progress groups are purely visual.
 
-      const enter = () => coordinator.requestHover(i);
-      const leave = () => coordinator.requestUnhover();
-      // Primary listener on track (always hittable). Secondary on progress
-      // group for resilience — harmless if pointerEvents:none makes it never
-      // fire, essential if that style is ever removed.
-      trackGroup.addEventListener("pointerenter", enter);
-      trackGroup.addEventListener("pointerleave", leave);
-      cleanupMap.set(trackGroup, () => {
-        trackGroup.removeEventListener("pointerenter", enter);
-        trackGroup.removeEventListener("pointerleave", leave);
-      });
-      if (progressGroup) {
-        progressGroup.addEventListener("pointerenter", enter);
-        progressGroup.addEventListener("pointerleave", leave);
-        // Chain with track cleanup under a single key to keep teardown simple.
-        const prevCleanup = cleanupMap.get(trackGroup)!;
-        cleanupMap.set(trackGroup, () => {
-          prevCleanup();
-          progressGroup.removeEventListener("pointerenter", enter);
-          progressGroup.removeEventListener("pointerleave", leave);
-        });
-        // Also register directly so the return cleanup can find either key.
-        cleanupMap.set(progressGroup, () => {
-          progressGroup.removeEventListener("pointerenter", enter);
-          progressGroup.removeEventListener("pointerleave", leave);
+      if (hitboxGroup) {
+        hitboxGroup.style.cursor = "pointer";
+        const enter = () => coordinator.requestHover(i);
+        const leave = () => coordinator.requestUnhover();
+        hitboxGroup.addEventListener("pointerenter", enter);
+        hitboxGroup.addEventListener("pointerleave", leave);
+        cleanupMap.set(hitboxGroup, () => {
+          hitboxGroup.removeEventListener("pointerenter", enter);
+          hitboxGroup.removeEventListener("pointerleave", leave);
         });
       }
     }
@@ -782,15 +897,10 @@ export function RingChart({
       unsub();
       for (const state of stateMap.values()) {
         state.runtime.stop();
-        const trackCleanup = state.trackGroupEl ? cleanupMap.get(state.trackGroupEl) : undefined;
-        if (trackCleanup) {
-          trackCleanup();
-          if (state.trackGroupEl) cleanupMap.delete(state.trackGroupEl);
-        }
-        const progCleanup = state.progressGroupEl ? cleanupMap.get(state.progressGroupEl) : undefined;
-        if (progCleanup) {
-          progCleanup();
-          if (state.progressGroupEl) cleanupMap.delete(state.progressGroupEl);
+        const hitboxCleanup = state.hitboxEl ? cleanupMap.get(state.hitboxEl) : undefined;
+        if (hitboxCleanup) {
+          hitboxCleanup();
+          if (state.hitboxEl) cleanupMap.delete(state.hitboxEl);
         }
       }
     };
@@ -939,3 +1049,6 @@ export function Ring(_props: RingProps): null {
 }
 
 Ring.displayName = "Ring";
+
+// Legacy parity: bklit `ring-chart.tsx` ships `export default RingChart;` (T-E2).
+export default RingChart;

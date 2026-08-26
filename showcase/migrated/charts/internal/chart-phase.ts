@@ -14,6 +14,11 @@ export const DEFAULT_CHART_STATUS: ChartStatus = "ready";
 
 export const DEFAULT_Y_DOMAIN_TWEEN_MS = 500;
 
+/**
+ * bklit `chart-phase.ts:28`. A y-domain move smaller than 2% of the larger of
+ * the two spans is snapped rather than tweened — below that the animation is
+ * invisible but still costs a 500ms window in which the grid is mid-flight.
+ */
 export const Y_DOMAIN_TWEEN_SKIP_THRESHOLD = 0.02;
 
 export function resolveRestingChartPhase(status: ChartStatus): ChartPhase {

@@ -1,34 +1,21 @@
 import type { ChartFocusStrategy, ChartPoint } from "@tanstack/charts";
 import { isChartInteractionPhase } from "./chart-phase";
+import { collectFocusGroup, focusValueKey, navigationOrder } from "./chart-focus-kit";
 import type { ChartDatum, ChartPhase } from "./types";
 
-function valueKey(value: unknown): string {
-  if (value instanceof Date) return `date:${value.getTime()}`;
-  return `${typeof value}:${String(value)}`;
+// Module-level keyers: hoisted once, so hover events allocate no closures.
+function byXKey(xValue: unknown): string {
+  return focusValueKey(xValue);
 }
-
-function collectPerGroup(
-  points: readonly ChartPoint<ChartDatum, string, number>[],
-  primary: ChartPoint<ChartDatum, string, number>,
-): readonly ChartPoint<ChartDatum, string, number>[] {
-  const key = valueKey(primary.xValue);
-  const unique = new Map<string, ChartPoint<ChartDatum, string, number>>();
-  unique.set(valueKey((primary.group ?? primary.markId) as unknown), primary);
-  for (const cand of points) {
-    if (valueKey((cand as ChartPoint<ChartDatum, string, number>).xValue) !== key) continue;
-    const g = valueKey((cand.group ?? cand.markId) as unknown);
-    if (!unique.has(g)) unique.set(g, cand as ChartPoint<ChartDatum, string, number>);
-  }
-  const others = [...unique.values()]
-    .filter((p) => p !== primary)
-    .sort((a, b) => a.y - b.y);
-  return [primary, ...others];
+function byMemberKey(p: ChartPoint<ChartDatum, string, number>): string {
+  return focusValueKey((p.group ?? p.markId) as unknown);
 }
 
 /**
  * Band-category focus strategy for vertical grouped BarChart.
  * - resolve: nearest category by scene-x (band center = mean of points' x per xValue), stable tie-break via `>=`.
- * - group: one point per `group` (z) sharing same xValue, sorted by y (mirrors TanStack `focusX` grouped).
+ * - group: one point per `group` (z) sharing same xValue, in series-declaration
+ *   order (bklit tooltip parity — bklit emits rows by iterating `lines`, no y-sort).
  * - navigation: unique xValues sorted by x→y, one representative per xValue.
  * Gated by `phaseRef.current !== "ready"` (canInteract) → [].
  */
@@ -75,9 +62,11 @@ export function createBarFocusStrategy(
         let idx = Math.floor(pos / colWidth);
         idx = Math.max(0, Math.min(n - 1, idx));
         const targetLabel = categoryOrder[idx]!;
-        const targetKey = valueKey(targetLabel);
-        const matching = points.filter((p) => valueKey(p.xValue) === targetKey);
+        const targetKey = focusValueKey(targetLabel);
+        const matching = points.filter((p) => focusValueKey(p.xValue) === targetKey);
         if (matching.length === 0) return [];
+        // Primary = closest in y to pointer among the category's points
+        // (mirrors focusX secondary).
         let primary = matching[0]!;
         let bestY = Math.abs(primary.y - y);
         for (let i = 1; i < matching.length; i++) {
@@ -88,48 +77,51 @@ export function createBarFocusStrategy(
             primary = c;
           }
         }
-        return collectPerGroup(points, primary);
+        return collectFocusGroup(points, primary, byXKey, byMemberKey, false);
       }
 
       // Fallback: nearest band-center (used only if call-site omits getters).
       const byCategory = new Map<
         string,
-        { anchorX: number; sum: number; count: number; representative: ChartPoint<ChartDatum, string, number> }
+        { sum: number; count: number; representative: ChartPoint<ChartDatum, string, number> }
       >();
       for (const p of points) {
-        const k = valueKey(p.xValue);
+        const k = byXKey(p.xValue);
         let entry = byCategory.get(k);
         if (!entry) {
-          entry = { anchorX: 0, sum: p.x, count: 1, representative: p };
+          entry = { sum: p.x, count: 1, representative: p };
           byCategory.set(k, entry);
         } else {
           entry.sum += p.x;
           entry.count += 1;
         }
       }
-      for (const entry of byCategory.values()) entry.anchorX = entry.sum / entry.count;
 
+      // Nearest band center, strict `<`: ties keep the earlier-scanned
+      // category, mirroring bklit's bisect tie-break toward earlier points.
       let nearest: ChartPoint<ChartDatum, string, number> | undefined;
       let distance = maxDistance;
       for (const entry of byCategory.values()) {
-        const d = Math.abs(entry.anchorX - x);
+        const d = Math.abs(entry.sum / entry.count - x);
         if (d >= distance) continue;
         nearest = entry.representative;
         distance = d;
       }
       if (!nearest) return [];
 
-      // Collect one per group sharing same xValue.
-      const key = valueKey(nearest.xValue);
-      const unique = new Map<string, ChartPoint<ChartDatum, string, number>>();
+      // Collect one per group sharing same xValue, then take the point
+      // closest in y to the pointer as primary (mirrors focusX secondary).
+      const key = focusValueKey(nearest.xValue);
+      const seen = new Set<string>();
+      const candidates: ChartPoint<ChartDatum, string, number>[] = [];
       for (const cand of points) {
-        if (valueKey(cand.xValue) !== key) continue;
-        const g = valueKey((cand.group ?? cand.markId) as unknown);
-        if (!unique.has(g)) unique.set(g, cand);
+        if (focusValueKey(cand.xValue) !== key) continue;
+        const g = focusValueKey((cand.group ?? cand.markId) as unknown);
+        if (seen.has(g)) continue;
+        seen.add(g);
+        candidates.push(cand);
       }
-      if (unique.size === 0) return [];
-      const candidates = [...unique.values()];
-      // Primary = closest in y to pointer among the category's points (mirrors focusX secondary).
+      if (candidates.length === 0) return [];
       let primary = candidates[0]!;
       let bestY = Math.abs(primary.y - y);
       for (let i = 1; i < candidates.length; i++) {
@@ -140,7 +132,7 @@ export function createBarFocusStrategy(
           primary = c;
         }
       }
-      return collectPerGroup(points, primary);
+      return collectFocusGroup(points, primary, byXKey, byMemberKey, false);
     },
 
     group(
@@ -148,19 +140,13 @@ export function createBarFocusStrategy(
       { point },
     ): readonly ChartPoint<ChartDatum, string, number>[] {
       if (points.length === 0) return [point];
-      return collectPerGroup(points, point);
+      return collectFocusGroup(points, point, byXKey, byMemberKey, false);
     },
 
     navigation(
       points: readonly ChartPoint<ChartDatum, string, number>[],
     ): readonly ChartPoint<ChartDatum, string, number>[] {
-      const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-      const unique = new Map<string, ChartPoint<ChartDatum, string, number>>();
-      for (const p of sorted) {
-        const k = valueKey(p.xValue);
-        if (!unique.has(k)) unique.set(k, p);
-      }
-      return [...unique.values()];
+      return navigationOrder(points, byXKey);
     },
   };
 }

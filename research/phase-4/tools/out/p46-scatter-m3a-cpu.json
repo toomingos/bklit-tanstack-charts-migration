@@ -1,0 +1,244 @@
+{
+  "ticks": [
+    33.900000005960464,
+    29.69999998807907,
+    28.900000005960464,
+    29.400000005960464,
+    26.700000017881393,
+    25.599999994039536,
+    28,
+    28.5,
+    29.19999998807907,
+    30.900000005960464,
+    32.19999998807907,
+    33.099999994039536,
+    31.30000001192093,
+    32.89999997615814,
+    32.5,
+    31.900000005960464,
+    32.5,
+    32.5,
+    32.400000005960464,
+    33.099999994039536,
+    31.69999998807907,
+    33.400000005960464,
+    31.399999976158142,
+    32.099999994039536,
+    32.400000005960464,
+    33.19999998807907,
+    31.599999994039536,
+    32.599999994039536,
+    33,
+    32.099999994039536
+  ],
+  "median": 32.099999994039536,
+  "loaf": [],
+  "agg": {
+    "totalMs": 1023.5,
+    "bucketsObj": {
+      "other(bundled)": 1023.48
+    },
+    "top": [
+      {
+        "ms": 408.19,
+        "fn": "(program)",
+        "file": "(native)"
+      },
+      {
+        "ms": 147.78,
+        "fn": "(idle)",
+        "file": "(native)"
+      },
+      {
+        "ms": 75.35,
+        "fn": "JC",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 41.92,
+        "fn": "(garbage collector)",
+        "file": "(native)"
+      },
+      {
+        "ms": 30.28,
+        "fn": "m1e",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 25.33,
+        "fn": "getAttribute",
+        "file": "(native)"
+      },
+      {
+        "ms": 20.51,
+        "fn": "setAttribute",
+        "file": "(native)"
+      },
+      {
+        "ms": 17.14,
+        "fn": "w6",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 16.16,
+        "fn": "(anonymous)",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 16.13,
+        "fn": "(anonymous)",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 16.06,
+        "fn": "(anonymous)",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 14.2,
+        "fn": "S1e",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 10.36,
+        "fn": "l1e",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 10.02,
+        "fn": "(anonymous)",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 9.23,
+        "fn": "(anonymous)",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 8.86,
+        "fn": "(anonymous)",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 7.51,
+        "fn": "w6",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 7.34,
+        "fn": "S6",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 5.73,
+        "fn": "getAttributeNames",
+        "file": "(native)"
+      },
+      {
+        "ms": 5.56,
+        "fn": "b",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 5.27,
+        "fn": "JS",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 5.07,
+        "fn": "S6",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 4.42,
+        "fn": "hi",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 4.31,
+        "fn": "resolvePaint",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 4.19,
+        "fn": "b6",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 4.16,
+        "fn": "(anonymous)",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 3.59,
+        "fn": "a1e",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 3.44,
+        "fn": "(anonymous)",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 3.3,
+        "fn": "b6",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 3.25,
+        "fn": "getAttribute",
+        "file": "(native)"
+      },
+      {
+        "ms": 3.15,
+        "fn": "s",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 3.13,
+        "fn": "(anonymous)",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 3.12,
+        "fn": "wu",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 3.1,
+        "fn": "yF",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 2.62,
+        "fn": "(anonymous)",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 2.43,
+        "fn": "JF",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 2.31,
+        "fn": "(anonymous)",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 2.24,
+        "fn": "JF",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 2.24,
+        "fn": "yn",
+        "file": "index-Co35gZ5u.js"
+      },
+      {
+        "ms": 2.18,
+        "fn": "(anonymous)",
+        "file": "index-Co35gZ5u.js"
+      }
+    ]
+  }
+}

@@ -25,13 +25,89 @@
   stroke-opacity: 1;
   stroke-width: 1;
   stroke-dasharray: 4 4;
+  /* P5.7 Strand 5 follow-up. bklit's GridRows carry `shapeRendering="crispEdges"`
+     (visx GridRows default); TanStack's native grid lines do not, so every
+     migrated gridline was antialiased across TWO device rows at half intensity
+     where bklit paints ONE crisp row. Measured live (line n=1000, y=417.08):
+     bklit row 417 = #E3E3E3 and rows 416/418 untouched; migrated rows 416/417 =
+     #EDEDED/#EBEBEB. Invisible to the QA gate — pixelmatch runs `includeAA:
+     false`, and a 1px-shifted hairline is exactly what its antialias detector
+     discards, which is why every cartesian chart reported 0.0000% on grids that
+     never matched. */
+  shape-rendering: crispEdges;
 }
+
+/* --- Grid row edge fade: bklit `grid.tsx:180-201` wraps the horizontal
+       GridRows in `mask=url(#grid-rows-fade-*)`, whose rect is `x=0 y=0
+       width=innerWidth height=innerHeight` filled with a left→right gradient
+       (0%:0, 10%:1, 90%:1, 100%:0). Migrated had NO grid mask at all, so its
+       gridlines ran full-bleed to both plot edges. Measured live (line n=1000):
+       bklit 457 px above the background threshold per row, migrated 468.
+
+       Expressed as a CSS `mask-image` on the grid GROUP for the same reason the
+       line/area edge fade above is: the group's fill-box is the union of its
+       children, and for a y-grid that union is exactly `x=40 w=972` — the plot
+       inner width, pinning every percentage stop where bklit's userSpace rect
+       puts it. (Unlike `.ts-chart__marks`, this group has no r=9 dots to bulge
+       the box.)
+
+       The `:has()` guard is a deliberate scope limit, not decoration. bklit
+       masks the horizontal and vertical grids SEPARATELY — two `<g>`s, and
+       `fadeVertical` defaults to FALSE, so vertical lines never fade. TanStack
+       emits both into one `<g data-ts-key="grid">`, so an unguarded mask here
+       would fade the leftmost/rightmost VERTICAL lines out of existence, which
+       bklit does not do. Charts that turn on `vertical` therefore keep the
+       unfaded grid they already had rather than gaining a wrong fade. --- */
+[data-bkm-chart]
+  .ts-chart__grid:not(:has(line[data-ts-key^="x-grid"])) {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    #000 10%,
+    #000 90%,
+    transparent 100%
+  );
+}
+/* Known residual, measured not assumed: a CSS mask composites the group in its
+   own raster pass, and a gridline whose y lands mid-pixel loses a little alpha
+   there that bklit's in-SVG `<mask>` does not. area n=1000, top row 111 (y =
+   111.79): bklit #E3E3E3, migrated #E8E8E8 — 5/255 on one row, 416 px. Proven
+   to be the mask and not `crispEdges` by re-reading the same row with
+   `mask-image: none` injected, which returns #E3E3E3 exactly. Tried and
+   REJECTED as a fix: `mask-clip: no-clip` (hypothesis was that the box edge
+   was clipping the hairline's outer half) — it moved the row by 0 and was
+   removed rather than left in as a no-op. The trade is lopsided and the mask
+   stays: without it those same rows run at FULL strength all the way to both
+   plot edges where bklit ramps 0→16, which is ~10x the pixels. */
 
 /* --- Line edge fade (line.tsx fadeEdges default true): bklit strokes with a
        horizontal gradient (fade-edges.ts stops 0%:0 / 15%:1 / 85%:1 / 100%:0,
-       userSpaceOnUse over 0..innerWidth). Equivalent here: mask the marks
-       group — its fill-box spans the same inner width. --- */
-[data-bkm-fade-edges] .ts-chart__marks {
+       userSpaceOnUse over 0..innerWidth).
+
+       These rules used to target `.ts-chart__marks` on the reasoning that "its
+       fill-box spans the same inner width". That was wrong twice over, and the
+       two errors are why every `markers` phase sat at 0.35-0.55% against a 0.5%
+       gate for the whole port (hover-30 0.5570% was the chronic FAIL):
+
+       1. bklit applies the gradient as the STROKE OF THE SERIES PATH — see
+          line.tsx:294 `line-gradient-${dataKey}` and area-gradient-defs.tsx.
+          Marker dots are never faded; they carry a flat fill. Masking the whole
+          marks group also swallowed `.ts-chart__dot`, so the dot band faded out
+          at both ends. Live proof (2026-08-25, markers n=100): bklit's dot band
+          is opaque edge to edge, migrated's was near-invisible at both extremes.
+       2. A mask on the group resolves its percentage stops against the GROUP's
+          fill-box, which is the union of every child — and r=9 dots bulge that
+          box 9px past the line at each end. Measured: `.ts-chart__marks` =
+          x31 w738, `.ts-chart__line` = x40 w720. innerWidth is 720, so the group
+          box mis-pinned every stop by ~6px, while the series box matches
+          bklit's `viewportFadeGradientAttrs(innerWidth)` exactly.
+
+       Targeting the series groups therefore fixes both at once, and is a no-op
+       for charts whose marks group holds nothing but lines (a plain line chart
+       measures marks == line == x40 w972). Do not "simplify" this back up to
+       `.ts-chart__marks`. --- */
+[data-bkm-fade-edges] .ts-chart__line,
+[data-bkm-fade-edges] .ts-chart__area {
   mask-image: linear-gradient(
     to right,
     transparent 0%,
@@ -42,12 +118,14 @@
 }
 
 /* Directional edge fade: left only */
-[data-bkm-fade-edges-left]:not([data-bkm-fade-edges-right]) .ts-chart__marks {
+[data-bkm-fade-edges-left]:not([data-bkm-fade-edges-right]) .ts-chart__line,
+[data-bkm-fade-edges-left]:not([data-bkm-fade-edges-right]) .ts-chart__area {
   mask-image: linear-gradient(to right, transparent 0%, #000 15%, #000 100%);
 }
 
 /* Directional edge fade: right only */
-[data-bkm-fade-edges-right]:not([data-bkm-fade-edges-left]) .ts-chart__marks {
+[data-bkm-fade-edges-right]:not([data-bkm-fade-edges-left]) .ts-chart__line,
+[data-bkm-fade-edges-right]:not([data-bkm-fade-edges-left]) .ts-chart__area {
   mask-image: linear-gradient(to right, #000 0%, #000 85%, transparent 100%);
 }
 
@@ -173,16 +251,31 @@
 }
 
 /* --- Axes: bklit renders x labels as an HTML overlay (XAxisOverlay) and no
-       y labels in the demo path — suppress TanStack's SVG axes entirely. --- */
+       y labels in the demo path — suppress TanStack's SVG axes entirely.
+       P3.3/T-D2: this rule is NOT fully redundant like the focus-ring one
+       above. The native replacement (`axis: false` per scale) only applies
+       cleanly to live-line-chart.tsx (swapped — it configures no `grid`).
+       The six cartesian charts (area/bar/candlestick/composed/line/scatter)
+       configure `axis: { ticks: { count: gridGuide.* } }` specifically to
+       drive `internal/grid.ts`'s grid-line tick count (P3-05); charts-core's
+       `configured-scale.ts:44` resolves the SAME scale.ticks() the grid
+       marks consume from `options.axis.ticks`, so `axis: false` there would
+       fall back to the scale's own default tick count and silently diverge
+       from the already-fixed grid-guide tick alignment — verified via
+       source read, not applied. This rule stays for those six. --- */
 [data-bkm-chart] .ts-chart__axes {
   display: none;
 }
 
-/* --- Focus: TanStack paints its own focus ring circle; bklit's hover chrome
-       (hover-chrome.ts) draws the dot instead. --- */
-[data-bkm-chart] [data-ts-chart-focus] {
-  display: none;
-}
+/* P3.3/T-D2: the CSS focus-ring suppression rule that lived here
+   ([data-bkm-chart] [data-ts-chart-focus] { display: none }) is now
+   redundant and has been removed — every migrated chart that mounts
+   `<Chart>` suppresses TanStack's native focus ring natively instead:
+   `focus: focusDisabled` (gauge/pie/ring/sunburst/radar, whose custom
+   marks never register a focusable point at all) or `focusRing: false`
+   (area/bar/candlestick/composed/line/scatter/live-line/sankey/choropleth,
+   whose native pointer/focus engine stays active for hover-chrome but
+   whose focus-ring MARK is never added to the scene — scene.ts:518). */
 
 /* --- Pointer focus: TanStack's chart svg is keyboard-focusable (tabIndex=0)
        and receives focus on pointerdown, painting the UA outline; bklit
@@ -409,12 +502,14 @@
   pointer-events: none;
 }
 
-/* Position (top/left/width/height of the panel) is written per-frame by
-   updateFrame; each tick div only ever receives a `translateY` (also
-   per-frame) — no static left/top here, matching live-y-axis.tsx's
-   `position="left"` branch (`right:0, paddingRight:8, textAlign:right`,
+/* Position (top/left-or-right/width/height of the panel) is written per-frame
+   by updateFrame; each tick div only ever receives a `translateY` (also
+   per-frame) — no static left/top here. Alignment follows <LiveYAxis
+   position>: base class is the `position="left"` branch (`right:0,
+   paddingRight:8, textAlign:right`), the `--right` modifier below is the
+   `position="right"` branch (`left:0, paddingLeft:8, textAlign:left`),
    no vertical centering on the tick itself, tick.y already accounts for
-   that). */
+   that. */
 [data-bkm-chart] .bkm-live-ytick {
   position: absolute;
   top: 0;
@@ -422,6 +517,14 @@
   right: 0;
   padding-right: 8px;
   text-align: right;
+}
+
+[data-bkm-chart] .bkm-live-ytick--right {
+  right: auto;
+  left: 0;
+  padding-right: 0;
+  padding-left: 8px;
+  text-align: left;
 }
 
 [data-bkm-chart] .bkm-live-ytick span {
@@ -432,44 +535,12 @@
   color: var(--color-chart-label, var(--chart-label));
 }
 
-/* --- PieCenter typography (pie-center.tsx + chart-center-typography.ts):
-       fluid, container-query-scaled value/label text inside the donut
-       hole -- bklit's own values use Tailwind arbitrary-value classes
-       (`text-[clamp(...)]`, `@container/chart-center`). migrated/charts
-       lives outside bench/app's Tailwind `@source` scan
-       (bench/app/src/styles.css only scans repos/bklit-ui's real sources),
-       so those utility classes would never get generated CSS here -- ported
-       as plain hand-authored rules instead, byte-identical values. --- */
-[data-bkm-chart="pie"] .ts-bkm-pie-center {
-  container-type: inline-size;
-  container-name: bkm-pie-center;
-  min-width: 0;
-}
-
-[data-bkm-chart="pie"] .ts-bkm-pie-center-value {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-  font-size: clamp(0.75rem, 22cqw, 1.875rem);
-  color: var(--color-foreground, var(--foreground));
-}
-
-[data-bkm-chart="pie"] .ts-bkm-pie-center-label {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.25;
-  font-size: clamp(0.625rem, 9cqw, 0.75rem);
-  color: var(--color-chart-label, var(--chart-label));
-}
-
-/* --- CenterStat typography (internal/center-stat.tsx + RingChart's
-       RingCenter, migrated/charts/ring-chart.tsx) — chart-agnostic (scoped
-       under the generic `[data-bkm-chart]` attribute selector, not a
-       specific chart kind, since internal/center-stat.tsx is designed for
-       reuse by a future GaugeChart center too, per the lead's own ruling
-       for this deliverable).
+/* --- CenterStat typography (internal/center-stat.tsx — consumed by
+       RingChart's RingCenter [ring-chart.tsx], PieCenter
+       [internal/pie-center.tsx], and the Gauge centers
+       [internal/gauge-center.tsx]) — chart-agnostic (scoped under the
+       generic `[data-bkm-chart]` attribute selector, not a specific chart
+       kind, per the lead's own ruling for this deliverable).
 
        Ports repos/bklit-ui/packages/ui/src/charts/chart-center-typography.ts
        COMBINED with chart-stat-flow.tsx's own `ChartStatFlow` wrapper-span
@@ -485,16 +556,40 @@
          label span:  cn("mt-0.5 text-chart-label", chartCenterLabelClassName)
                       = max-w-full truncate leading-tight
                         text-[clamp(0.625rem,9cqw,0.75rem)] mt-0.5 text-chart-label
-       Same "hand-authored port" rationale as `.ts-bkm-pie-center*` above
        (migrated/charts lives outside bench/app's Tailwind `@source` scan) —
-       byte-identical clamp()/weight/line-height/margin values, independently
-       written here since pie's own center predates this shared module and
-       doesn't use ChartStatFlow (no NumberFlow — disclosed deviation,
-       pie-chart.tsx's own header) so its block has no margin-top rule;
-       RingCenter's real, ChartStatFlow-routed output does. --- */
+       byte-identical clamp()/weight/line-height/margin values; RingCenter's
+       ChartStatFlow-routed output is what gives this block its margin-top
+       rule. (Pie's former dedicated `.ts-bkm-pie-center*` rules were deleted
+       in P2.3/T-W2-3 as orphaned — internal/pie-center.tsx now renders its
+       center through shared CenterStat, so no separate pie block remains.) --- */
 [data-bkm-chart] .ts-bkm-center-stat {
   container-type: inline-size;
   container-name: bkm-center-stat;
+  /* `size-full` from bklit's `chartCenterContainerClassName`
+     ("@container/chart-center size-full min-w-0") — was MISSING here, and it
+     is load-bearing, not decorative. All three centers set an inline
+     `style={{ width: centerSize, height: centerSize }}`, and every one of
+     them computes `centerSize = baseInnerRadius * 2 - 16` with no
+     `<= 0` guard (centralize row 7: "stays per-part"). At high ring/slice
+     counts the inner radius shrinks until centerSize goes NEGATIVE; React
+     then emits `width: -Npx`, the CSS parser rejects the declaration, and
+     the element falls back to its class-level width. In bklit that fallback
+     is `size-full` (100% of the 280px stack cell); here it was `auto`, which
+     collapsed the container to 0px wide. Two visible parity breaks followed,
+     both invisible to the 0.5% pixel gate at rest:
+       1. `.ts-bkm-center-stat-label` carries `max-width:100%` +
+          `overflow:hidden`, so at width 0 the label ("Total", or the hovered
+          ring's name) clipped to nothing — bklit shows it.
+       2. The `cqw` container queries resolved against a 0px container, so
+          the value clamped to its 0.75rem floor instead of bklit's 1.875rem
+          ceiling (12px vs 30px at ring n=1000).
+     Live-DOM proof (2026-08-25, ring n=1000): bklit center root
+     24,24 280x280 / label 146,165 35x24; migrated 164,146 0x37 / label
+     164,168 0x15. Do not drop this to "simplify" — the inline style still
+     wins whenever centerSize is positive, so this only ever applies on the
+     degenerate branch bklit already handled. */
+  width: 100%;
+  height: 100%;
   min-width: 0;
 }
 
@@ -545,18 +640,20 @@
 }
 
 /* --- Gauge (arc) notch WAAPI pop-in transform-origin ---------------------
-   gauge.tsx's `gaugeArcNotchesMark` pre-shifts every notch's path
-   coordinates so the arc's own center (`centerX`,`centerY`) maps to this
-   group's local `(0,0)` (the polar container's own outer `<g>` is already
-   translated there — see internal/gauge-arc-mark.ts's header) — every arc
-   notch's real bklit `transformOrigin` IS that shared center point
+   gauge.tsx renders every arc notch's path coordinates relative to the
+   arc's own center (`computeArcNotches`'s absolute-pixel points are
+   shifted by -(layout.centerX, layout.centerY) at mark-render time, since
+   TanStack translates the polar container there — see gauge.tsx's
+   definition useMemo) — every arc notch's real bklit `transformOrigin` IS
+   that shared center point
    (repos/bklit-ui/packages/ui/src/charts/gauge.tsx's `GaugeNotchSvg`:
    `style={{transformOrigin: `${notch.xCenter}px ${notch.yCenter}px`}}`,
    and `computeArcNotches` sets `xCenter:centerX, yCenter:centerY` for
-   EVERY notch), so one uniform CSS rule reproduces it exactly with no
-   per-element JS needed (unlike linear, whose notches each have a
-   DIFFERENT center and set `el.style.transformOrigin` per element in
-   gauge.tsx's reveal effect instead). */
+   EVERY notch — internal/gauge-notch.ts), so one uniform CSS rule
+   reproduces it exactly with no per-element JS needed (unlike linear,
+   whose notches each have a DIFFERENT center and set
+   `el.style.transformOrigin` per element in gauge.tsx's reveal effect
+   instead). */
 [data-bkm-chart="gauge"] [data-ts-key^="gauge-"] {
   transform-origin: 0px 0px;
 }
@@ -902,78 +999,10 @@
   to { opacity: 0; transform: translateY(30px); filter: blur(2px); }
 }
 
-@keyframes ts-bkm-sweep {
-  from { transform: translateX(0); }
-  to { transform: translateX(3); }
-}
-
-.ts-bkm-sweep-band {
-  animation: ts-bkm-sweep 2s linear infinite;
-}
-
 @media (prefers-reduced-motion: reduce) {
   [data-bkm-chart] .ts-bkm-loading-label,
   [data-bkm-chart="heatmap"] .ts-bkm-heatmap-loading-label,
-  .ts-bkm-loading-label-text,
-  .ts-bkm-sweep-band {
-    animation: none !important;
-  }
-  .ts-bkm-loading-label-wrap[data-bkm-loading-exiting] .ts-bkm-loading-label-text {
-    opacity: 0;
-    transform: none;
-    filter: none;
-  }
-}
-
-.ts-bkm-loading-label-wrap {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.ts-bkm-loading-label-text {
-  font-size: 0.75rem;
-  line-height: 1rem;
-  font-weight: 500;
-  letter-spacing: 0.025em;
-  background: linear-gradient(90deg,
-    var(--color-muted-foreground, var(--muted-foreground)) 40%,
-    var(--color-foreground, var(--foreground)) 50%,
-    var(--color-muted-foreground, var(--muted-foreground)) 60%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: ts-bkm-shimmer 1.6s linear infinite;
-}
-
-.ts-bkm-loading-label-wrap[data-bkm-loading-exiting] .ts-bkm-loading-label-text {
-  animation: ts-bkm-loading-exit 0.45s cubic-bezier(0.85, 0, 0.15, 1) forwards;
-}
-
-@keyframes ts-bkm-loading-exit {
-  to { opacity: 0; transform: translateY(30px); filter: blur(2px); }
-}
-
-@keyframes ts-bkm-sweep {
-  from { transform: translateX(0); }
-  to { transform: translateX(3); }
-}
-
-.ts-bkm-sweep-band {
-  animation: ts-bkm-sweep 2s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  [data-bkm-chart] .ts-bkm-loading-label,
-  [data-bkm-chart="heatmap"] .ts-bkm-heatmap-loading-label,
-  .ts-bkm-loading-label-text,
-  .ts-bkm-sweep-band {
+  .ts-bkm-loading-label-text {
     animation: none !important;
   }
   .ts-bkm-loading-label-wrap[data-bkm-loading-exiting] .ts-bkm-loading-label-text {
@@ -1009,13 +1038,17 @@
   transition: opacity 0.15s ease-in-out;
 }
 
-/* Sankey links: the core renderer hardcodes vector-effect="non-scaling-stroke"
-   on area paths. With pathLength-normalized dash reveals on hiDPI, Chromium
-   then computes dash + stroke width in device px — the reveal dash covers
-   only 1/dPR of the path (black-rectangle tail) and links paint thin.
+/* Sankey links: the renderer hardcodes vector-effect="non-scaling-stroke"
+   on area/polyline paths. With pathLength-normalized dash reveals on hiDPI,
+   Chromium then computes dash + stroke width in device px — the reveal dash
+   covers only 1/dPR of the path (black-rectangle tail) and links paint thin.
    Stroke width here IS the data (flow value); it must scale with the chart.
-   CSS overrides presentation attributes, so this single rule fixes both. */
-.ts-sankey__link {
+   CSS overrides presentation attributes, so this single rule fixes both.
+   T-D13: links now render through TanStack's native link() mark, whose
+   layer group carries the stable key sankey:flow (class ts-chart__link) —
+   key off that group instead of the old .ts-sankey__link class. */
+.ts-sankey__link,
+[data-ts-key="sankey:flow"] > path {
   vector-effect: none;
 }
 

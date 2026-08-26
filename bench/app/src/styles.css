@@ -4,6 +4,17 @@
    so Tailwind's v4 on-demand engine generates every utility class the chart
    components actually use. Mirrors docs/LOG.md I2 / apps/web/app/globals.css. */
 @source "../../../repos/bklit-ui/packages/ui/src/**/*.tsx";
+/* ...and the `.ts` siblings. bklit keeps some class strings in plain `.ts`
+   modules rather than components — chart-center-typography.ts holds the
+   pie/ring/gauge center's whole fluid-type system
+   (`text-[clamp(0.75rem,22cqw,1.875rem)]` etc.). The `.tsx`-only glob above
+   never scanned it, so Tailwind emitted none of those utilities and the
+   bklit REFERENCE rendered its center value/label at the inherited 16px
+   instead of the product's container-query clamp. A degraded reference is
+   worse than no reference: it silently redefines "parity" as matching a
+   render bklit never ships (2026-08-25 ring n=1000 — bklit center value
+   computed font-size 16px, product value 30px). */
+@source "../../../repos/bklit-ui/packages/ui/src/**/*.ts";
 
 /* ---------------------------------------------------------------------- */
 /* Geist fonts — local npm package, no network fetch at runtime.          */

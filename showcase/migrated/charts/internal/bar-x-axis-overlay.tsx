@@ -10,6 +10,7 @@
 // data can produce repeated formatted dates.
 import * as React from "react";
 import { shortDateFmt } from "./formatters";
+import { XAxisLabel } from "./x-axis-overlay";
 import type { ChartDatum } from "./types";
 
 export interface BarXAxisOverlayProps {
@@ -48,33 +49,9 @@ export function BarXAxisOverlay({
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
       {labels.map((item, i) => (
-        <div
-          key={`${item.label}-${i}`}
-          style={{
-            position: "absolute",
-            left: item.x,
-            bottom: 12,
-            width: 0,
-            display: "flex",
-            justifyContent: "center",
-          }}
-        >
-          <span
-            // Read by bar-hover-chrome.ts to fade labels near the date pill
-            // (bklit BarXAxisLabel: opacity transition 0.4s ease-in-out).
-            data-bkm-xlabel=""
-            data-bkm-x={item.x}
-            style={{
-              whiteSpace: "nowrap",
-              fontSize: 12,
-              lineHeight: "1rem",
-              color: "var(--color-chart-label, var(--chart-label))",
-              transition: "opacity 0.4s ease-in-out",
-            }}
-          >
-            {item.label}
-          </span>
-        </div>
+        <XAxisLabel key={`${item.label}-${i}`} x={item.x}>
+          {item.label}
+        </XAxisLabel>
       ))}
     </div>
   );

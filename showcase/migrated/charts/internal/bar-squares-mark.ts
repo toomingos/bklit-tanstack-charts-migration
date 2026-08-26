@@ -1,6 +1,6 @@
 import { createMark } from "@tanstack/charts";
 import type { ChartMark, ChartPoint, SceneNode } from "@tanstack/charts";
-import { computeSquareColumn } from "./bar-squares-layout";
+import { bandWidthForSquares, computeSquareColumn } from "./bar-squares-layout";
 import type { ChartDatum, GradientStop } from "./types";
 import type { PatternPresetId } from "./pattern-preset";
 
@@ -23,12 +23,6 @@ export interface BarSquaresMarkOptions {
   patternPreset?: PatternPresetId;
   gradientId: string;
   patternId: string;
-}
-
-function bandWidthForSquares(bandWidth: number, seriesCount: number, groupGap: number): number {
-  if (!bandWidth || seriesCount === 0) return 0;
-  const effectiveGroupGap = seriesCount > 1 ? groupGap : 0;
-  return (bandWidth - effectiveGroupGap * (seriesCount - 1)) / seriesCount;
 }
 
 export function barSquaresMark(

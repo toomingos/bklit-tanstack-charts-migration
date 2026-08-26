@@ -56,6 +56,18 @@ preserves the prior layout verbatim where applicable.
 
 New Phase 2 topics append under `research/phase-2/<topic>.md` — do not edit `research/phase-1/`.
 
+Phase 5 (PRELIMINARY — nativeness audit + native-migration research, one file per category):
+
+```
+└── phase-5/
+    ├── 00-nativeness-audit.md            # audit verdict: aligned signals + deviations
+    ├── 01-deviation-native-paths.md      # per-deviation solutions + upstream gap verdicts + corrections log
+    ├── 02-visx-removal.md                # pattern/zoom removal specs, guards, gates, stability ruling
+    ├── 03-dependencies-and-packaging.md  # library census, staged uninstall plan, risk register
+    ├── 04-independent-audit.md           # unbiased re-audit: 11 new deviations + reassessment
+    └── 05-native-paths-ii.md             # solutions for audit-found deviations D7-D17 (interaction, resources, coupling, sizing, legends)
+```
+
 Sibling folders:
 
 - `../docs/PROGRESS.md` — per-component migration status (live).

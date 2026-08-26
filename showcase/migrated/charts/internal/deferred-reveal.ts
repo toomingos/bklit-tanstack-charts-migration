@@ -31,22 +31,83 @@ export function onPostPaint(callback: () => void): () => void {
   };
 }
 
+// ---- The `bkmRevealed` flag, centralized (P6 `centralize 5` / D315) ----
+//
+// This flag used to be written as a raw `element.dataset.bkmRevealed` string
+// at ~33 sites across 10 files. `checkRevealGuard` below already existed but
+// almost nothing used it, and the reason is visible in the call sites: it
+// READS AND STAMPS IN ONE STEP, while nearly every chart needs to read first
+// and stamp only on a specific branch (`if (revealed && !revealKeyChanged)
+// return;` … stamp later). Stamping on the read would mark charts as revealed
+// that then decided not to animate — a behaviour change, not a refactor.
+//
+// So the centralization is a set of PRIMITIVES over the flag rather than one
+// combined function, and `checkRevealGuard` is rebuilt on top of them as the
+// convenience `runDeferredReveal` uses. `clearRevealed` is the un-stamping
+// affordance D315 called for (`sunburst-chart.tsx:1093` did `delete
+// svg.dataset.bkmRevealed` by hand), and `findRevealRoot` is the svg-root
+// variant for the charts that guard on the `<svg>` rather than the marks group
+// (sunburst, choropleth, ring).
+
+/**
+ * The element the reveal stamp lives on. **`SVGElement`, not just
+ * `HTMLElement`** — `.ts-chart__marks` is an `SVGGElement` and the svg-root
+ * variants are `SVGSVGElement`. Both carry `dataset` and `classList` via the
+ * `HTMLOrSVGElement` mixin, but neither passes `instanceof HTMLElement`, which
+ * is how this module's guards came to be silently dead (see D356).
+ */
+export type RevealRoot = HTMLElement | SVGElement;
+
+/** True if `element` already carries the reveal stamp. */
+export function isRevealed(element: RevealRoot | null | undefined): boolean {
+  return element?.dataset.bkmRevealed === "1";
+}
+
+/** Stamps `element` as revealed. Idempotent. */
+export function markRevealed(element: RevealRoot | null | undefined): void {
+  if (element) element.dataset.bkmRevealed = "1";
+}
+
+/**
+ * Removes the reveal stamp so the next pass can animate again. Used when the
+ * reveal contract is deliberately re-armed (sunburst re-reveals on a data
+ * identity change rather than latching for the life of the node).
+ */
+export function clearRevealed(element: RevealRoot | null | undefined): void {
+  if (element) delete element.dataset.bkmRevealed;
+}
+
+/**
+ * Resolves the element the reveal guard is stamped on. Defaults to the marks
+ * group; pass `"svg.ts-chart"` (or another selector) for the charts that guard
+ * on the svg root. Returns `null` when absent, which every caller treats as
+ * "nothing to reveal".
+ */
+export function findRevealRoot(
+  container: HTMLElement,
+  selector = ".ts-chart__marks",
+): RevealRoot | null {
+  return container.querySelector(selector) as RevealRoot | null;
+}
+
 /**
  * Checks the reveal guard on `.ts-chart__marks`: if already revealed (or
  * absent), returns `{ pass: false }`. Otherwise sets the `bkmRevealed` flag
  * and returns `{ pass: true }` with the marks group element.
+ *
+ * Read-and-stamp in one step — correct only where the caller commits to
+ * revealing as soon as the guard passes. Where the decision is conditional,
+ * use `isRevealed` / `markRevealed` separately.
  */
 export function checkRevealGuard(
   container: HTMLElement,
   selector?: string,
-): { pass: boolean; marksGroup: Element | null } {
-  const marksGroup = container.querySelector(selector ?? ".ts-chart__marks");
-  if (!marksGroup || (marksGroup instanceof HTMLElement && marksGroup.dataset.bkmRevealed === "1")) {
+): { pass: boolean; marksGroup: RevealRoot | null } {
+  const marksGroup = findRevealRoot(container, selector);
+  if (!marksGroup || isRevealed(marksGroup)) {
     return { pass: false, marksGroup };
   }
-  if (marksGroup instanceof HTMLElement) {
-    marksGroup.dataset.bkmRevealed = "1";
-  }
+  markRevealed(marksGroup);
   return { pass: true, marksGroup };
 }
 
@@ -117,7 +178,7 @@ export function runDeferredReveal(config: DeferredRevealConfig): RevealHandle {
   const animations: Animation[] = [];
   let deadlineTimer: number | null = null;
   let cancelPostPaint: (() => void) | null = null;
-  let marksGroup: Element | null = null;
+  let marksGroup: RevealRoot | null = null;
   let revealing = false;
 
   const cancel = () => {
@@ -137,7 +198,7 @@ export function runDeferredReveal(config: DeferredRevealConfig): RevealHandle {
       }
     }
     animations.length = 0;
-    if (revealing && marksGroup instanceof HTMLElement) {
+    if (revealing && marksGroup) {
       marksGroup.classList.remove(REVEALING_CLASS);
       revealing = false;
     }
@@ -155,6 +216,13 @@ export function runDeferredReveal(config: DeferredRevealConfig): RevealHandle {
   if (elements.length === 0) {
     onPhaseChange?.("ready");
     return { cancel };
+  }
+
+  // An epoch-guarded caller that reaches here has a NEW epoch, i.e. it intends
+  // to re-reveal — so the latch left by the previous epoch must not veto it.
+  // Before D356 this could not arise, because the stamp was never written.
+  if (seenEpochRef && revealEpoch !== undefined) {
+    clearRevealed(findRevealRoot(container, marksGroupSelector));
   }
 
   const { pass, marksGroup: guardGroup } = checkRevealGuard(container, marksGroupSelector);
@@ -180,10 +248,8 @@ export function runDeferredReveal(config: DeferredRevealConfig): RevealHandle {
 
   const deadlineMs = animationDuration + maxStagger;
 
-  if (marksGroup instanceof HTMLElement) {
-    marksGroup.classList.add(REVEALING_CLASS);
-    revealing = true;
-  }
+  marksGroup.classList.add(REVEALING_CLASS);
+  revealing = true;
 
   cancelPostPaint = onPostPaint(() => {
     for (let i = 0; i < elements.length; i++) {
@@ -197,7 +263,7 @@ export function runDeferredReveal(config: DeferredRevealConfig): RevealHandle {
         animations.push(result);
       }
     }
-    if (marksGroup instanceof HTMLElement) {
+    if (marksGroup) {
       marksGroup.classList.remove(REVEALING_CLASS);
       revealing = false;
     }
@@ -223,7 +289,7 @@ export function runDeferredReveal(config: DeferredRevealConfig): RevealHandle {
 export function createDeferredRevealGuard(
   container: HTMLElement,
   selector?: string,
-): { guarded: boolean; marksGroup: Element | null } {
+): { guarded: boolean; marksGroup: RevealRoot | null } {
   const { pass, marksGroup } = checkRevealGuard(container, selector);
   return { guarded: !pass, marksGroup };
 }

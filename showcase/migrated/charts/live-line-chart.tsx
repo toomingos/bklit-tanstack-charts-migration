@@ -61,6 +61,7 @@ import type {
   MomentumColors,
 } from "./internal/types";
 import "./styles.css";
+import { DEFAULT_Y_AXIS_ID } from "./internal/y-axis-id";
 
 // ---------------------------------------------------------------------------
 // Constants (bklit live-line-chart.tsx 77-80)
@@ -205,12 +206,12 @@ function interpolateAtTime(points: LiveLinePoint[], timeSec: number): number | n
 
 const bisectTime = bisector<LiveLinePoint, number>((d) => d.time).left;
 
-type Momentum = "up" | "down" | "flat";
+export type Momentum = "up" | "down" | "flat";
 
 /** bklit live-line.tsx `detectMomentum` (21-59), re-targeted at the
     committed `contextData` rows this port builds (same shape:
     `Record<string, unknown>[]` keyed by `dataKey`). */
-function detectMomentum(data: ChartDatum[], dataKey: string, lookback = 20): Momentum {
+export function detectMomentum(data: ChartDatum[], dataKey: string, lookback = 20): Momentum {
   if (data.length < 5) return "flat";
   const start = Math.max(0, data.length - lookback);
   let min = Number.POSITIVE_INFINITY;
@@ -462,7 +463,6 @@ export function LiveLineChart({
     if (!el) return;
     const chrome = attachLiveHoverChrome(el, () => chromeConfigRef.current, {
       tooltipSpring: chartConfig.tooltipSpring,
-      tooltipBoxSpring: chartConfig.tooltipBoxSpring,
     });
     chromeRef.current = chrome;
     return () => {
@@ -610,8 +610,9 @@ export function LiveLineChart({
       // Fix: paused+below-threshold previously exited without re-arming,
       // dead-ending the loop when targetRange unchanged but new `data`
       // arrived; re-arm via wakeLoopRef instead (audit §4 C2 stall).
+      // Both branches called wakeLoopRef identically — collapsed to one
+      // unconditional re-arm.
       if (!shouldWake) {
-        wakeLoopRef.current?.();
         return;
       }
       wakeLoopRef.current?.();
@@ -704,7 +705,7 @@ export function LiveLineChart({
     }
     const yDomainLive = yScale.domain() as [number, number];
     const refConfigsLive = liveRefAreas.map((p) => ({ y1: p.y1 as number | undefined, y2: p.y2 as number | undefined, axisLabelColor: p.axisLabelColor as string | undefined }));
-    const resolveRefColor = createTickColorResolver(refConfigsLive, yDomainLive);
+    const resolveRefColor = createTickColorResolver(refConfigsLive, yDomainLive, DEFAULT_Y_AXIS_ID);
     return values
       .map((val) => {
         const y = yScale(val) ?? 0;
@@ -720,8 +721,14 @@ export function LiveLineChart({
   }, [liveYAxis, yScale, innerHeight, liveRefAreas]);
 
   React.useLayoutEffect(() => {
-    chromeRef.current?.updateFrame({ width, height, margin, xLabels, yTicks });
-  }, [width, height, margin, xLabels, yTicks]);
+    chromeRef.current?.updateFrame({
+      height,
+      margin,
+      xLabels,
+      yTicks,
+      yAxisPosition: liveYAxis?.position ?? "left",
+    });
+  }, [width, height, margin, xLabels, yTicks, liveYAxis]);
 
   // ---- Momentum + resolved colors, per <LiveLine> (bklit live-line.tsx) ----
   const lineVisuals = React.useMemo(() => {
@@ -780,15 +787,26 @@ export function LiveLineChart({
     }
     return defineChart({
       marks,
-      x: { scale: xScale, guide: false },
-      y: { scale: yScale, guide: false },
+      // `guide` is not a recognized `ChartAxisOptions` field (verified
+      // against charts-core's types.ts and runtime — it silently no-ops);
+      // `axis: false` is the real native suppression ("keeps the scale but
+      // omits the visible axis", types.ts:402) — this chart configures no
+      // `grid`, so unlike the six cartesian charts under `internal/grid.ts`
+      // there is no gridGuide tick-count coupling `axis:false` could
+      // disturb (P3.3/T-D2 CSS-suppression-cleanup half).
+      x: { scale: xScale, axis: false },
+      y: { scale: yScale, axis: false },
       margin,
       // bklit's own reconcile is un-tweened at the TanStack/D3 level — all
       // motion comes from the outer lerp loop already; a scene-level tween
       // here would double-animate.
       svgAnimation: false,
       // Native pointer tracking replaces TanStack's focus system entirely
-      // (D16/D22) — no `focus`/`maxFocusDistance` configured.
+      // (D16/D22) — no `focus`/`maxFocusDistance` configured. The native
+      // focus RING is still suppressed explicitly (P3.3/T-D2): without an
+      // explicit `focus` strategy this chart gets TanStack's default focus
+      // engine, which would otherwise paint its own ring on hover.
+      focusRing: false,
     });
   }, [width, innerWidth, innerHeight, contextData, lineVisuals, xScale, yScale, margin, height, uid, xAccessor]);
 

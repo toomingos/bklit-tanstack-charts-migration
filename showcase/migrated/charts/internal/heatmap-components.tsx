@@ -2,9 +2,11 @@ import {
   createPortal,
 } from "react-dom";
 import {
+  Fragment,
   memo,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -24,7 +26,7 @@ import {
   HEATMAP_DEFAULT_ENTER_EASE,
   resolveHeatmapEnterFadeDurationSec,
 } from "./heatmap-animation";
-import { runDeferredReveal, type RevealHandle } from "./deferred-reveal";
+import { isRevealed, runDeferredReveal, type RevealHandle } from "./deferred-reveal";
 import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
 import {
   HEATMAP_INACTIVE_OPACITY,
@@ -58,9 +60,14 @@ import {
   type HeatmapYAxisLabelFormat,
   type HeatmapYAxisTickFilter,
 } from "./heatmap-utils";
-import type {
-  HeatmapLevelStyles,
+import {
+  heatmapLevelPatternId,
+  heatmapLevelPatternRenderOptions,
+  heatmapLevelCellFillOpacity,
+  isHeatmapLevelPattern,
+  type HeatmapLevelStyles,
 } from "./heatmap-colors";
+import { renderPatternPreset } from "./pattern-preset";
 
 interface CellDatum {
   colKey: string;
@@ -126,6 +133,7 @@ function useHeatmapChartDefinition(
   margin: HeatmapMargin,
   cornerRadius: number,
   resolvedLevelStyles: HeatmapLevelStyles,
+  patternIdPrefix: string | null,
 ) {
   const columnKeys = useMemo(
     () => Array.from({ length: Math.max(columnCount, 1) }, (_, i) => String(i)),
@@ -133,20 +141,30 @@ function useHeatmapChartDefinition(
   );
   const rowKeys = useMemo(() => [...dayLabels], [dayLabels]);
 
-  const colorScale = useMemo<ScaleOrdinal<number, string>>(
-    () =>
+  const colorScale = useMemo<ScaleOrdinal<number, string>>(() => {
+    // bklit parity (buildHeatmapFillScale): pattern-mode levels fill with
+    // `url(#<prefix>heatmap-level-N)`; the matching <pattern> defs are
+    // mounted in HeatmapCells' overlay svg under the same prefix (useId-
+    // scoped, so two chart instances don't collide — HM14/HM7 lesson).
+    const rangeEntry = (level: number) => {
+      const style = resolvedLevelStyles[level];
+      if (!style || !isHeatmapLevelPattern(style)) return style?.color ?? "currentColor";
+      const id = heatmapLevelPatternId(level);
+      return `url(#${patternIdPrefix ? `${patternIdPrefix}-${id}` : id})`;
+    };
+    return (
       scaleOrdinal<number, string>()
         .domain([-1, 0, 1, 2, 3, 4])
         .range([
           "transparent",
-          resolvedLevelStyles[0]?.color ?? "currentColor",
-          resolvedLevelStyles[1]?.color ?? "currentColor",
-          resolvedLevelStyles[2]?.color ?? "currentColor",
-          resolvedLevelStyles[3]?.color ?? "currentColor",
-          resolvedLevelStyles[4]?.color ?? "currentColor",
-        ]),
-    [resolvedLevelStyles],
-  );
+          rangeEntry(0),
+          rangeEntry(1),
+          rangeEntry(2),
+          rangeEntry(3),
+          rangeEntry(4),
+        ])
+    );
+  }, [resolvedLevelStyles, patternIdPrefix]);
 
   const xScale = useMemo<ScaleBand<string>>(
     () =>
@@ -202,6 +220,60 @@ function useHeatmapChartDefinition(
   return definition;
 }
 
+function hasPatternLevelStyles(levelStyles: HeatmapLevelStyles): boolean {
+  return levelStyles.some((style) => isHeatmapLevelPattern(style));
+}
+
+// Port of repos/bklit-ui/packages/ui/src/charts/heatmap/
+// heatmap-pattern-defs.tsx: renders the <pattern> defs backing pattern-mode
+// levelStyles (HM14). One deviation forced by the TanStack backend: bklit
+// paints cells inside `<g transform=translate(margin)>`, so its
+// userSpaceOnUse tiles anchor at the plot origin; TanStack bakes margins into
+// rect coordinates, so each base pattern is wrapped in a phase-shifting
+// pattern (same trick as area-chart.tsx) to land the tile grid on the same
+// phase. Ids derive from bklit's `heatmap-level-N` names under a useId-
+// scoped prefix so multiple instances/legends on one page never collide.
+const HeatmapPatternDefs = memo(function HeatmapPatternDefs({
+  levelStyles,
+  patternIdPrefix,
+  phaseX,
+  phaseY,
+}: {
+  levelStyles: HeatmapLevelStyles;
+  patternIdPrefix: string | null;
+  phaseX: number;
+  phaseY: number;
+}) {
+  const nodes = levelStyles.flatMap((style, level) => {
+    if (!isHeatmapLevelPattern(style) || !style.pattern) {
+      return [];
+    }
+    const id = heatmapLevelPatternId(level);
+    const scopedId = patternIdPrefix ? `${patternIdPrefix}-${id}` : id;
+    const node = renderPatternPreset(
+      style.pattern,
+      `${scopedId}-base`,
+      heatmapLevelPatternRenderOptions(style),
+    );
+    if (!node) return [];
+    return [
+      <Fragment key={scopedId}>
+        {node}
+        <pattern
+          id={scopedId}
+          href={`#${scopedId}-base`}
+          xlinkHref={`#${scopedId}-base`}
+          patternTransform={`translate(${phaseX} ${phaseY})`}
+        />
+      </Fragment>,
+    ];
+  });
+  if (nodes.length === 0) return null;
+  return <defs>{nodes}</defs>;
+});
+
+HeatmapPatternDefs.displayName = "HeatmapPatternDefs";
+
 export interface HeatmapCellsProps {
   cornerRadius?: number;
   colorScale?: (count: number) => string;
@@ -239,6 +311,14 @@ export function HeatmapCells({
     [ctx.data, dayLabels, displayRange, hideGhostCells],
   );
 
+  // Pattern defs live in the overlay svg; ids are useId-scoped so two chart
+  // instances (or a legend swatch) on one page never collide (HM14/HM7).
+  const patternIdRaw = useId().replace(/:/g, "");
+  const patternIdPrefix = useMemo(
+    () => (hasPatternLevelStyles(ctx.levelStyles) ? `hm-${patternIdRaw}` : null),
+    [patternIdRaw, ctx.levelStyles],
+  );
+
   const definition = useHeatmapChartDefinition(
     cellData,
     ctx.data.length,
@@ -248,6 +328,7 @@ export function HeatmapCells({
     { top: ctx.margin.top, right: ctx.margin.right, bottom: ctx.margin.bottom, left: ctx.margin.left },
     cornerRadius,
     ctx.levelStyles,
+    patternIdPrefix,
   );
 
   const isLoading = ctx.chartStatus === "loading";
@@ -347,21 +428,17 @@ export function HeatmapCells({
     [inactiveOpacity, inactiveScale, activeScale],
   );
   const hasHover = hoveredCell !== null && ctx.chartPhase === "ready" && hoverEffectEnabled;
-  const hoverDimOpacity = useMemo(
-    () => (inactiveOpacity < 1 ? 1 - inactiveOpacity : 0),
-    [inactiveOpacity],
-  );
 
   // bklit `inactiveScale`/`activeScale`/`rowOpacity` parity: bklit applies
   // `readyHoverStyle`'s scale on each cell's wrapper `motion.g` (origin =
-  // cell center, `HEATMAP_INACTIVE_TRANSITION`) and multiplies the base cell
-  // fillOpacity by `resolveHeatmapRowOpacity`. The migrated cell rects are
-  // TanStack-rendered (data-ts-key ends in `${column}-${row}`), so both are
-  // applied straight onto those rects: per-cell scale with
-  // `transform-box: fill-box` (element-local origin ≡ bklit's px origin) and
-  // per-row fill-opacity. The overlay dim rects keep carrying the opacity
-  // fade (existing migrated mechanism); only the scale + row-opacity layers
-  // are added here, and ghost cells (transparent fill) are skipped.
+  // cell center, `HEATMAP_INACTIVE_TRANSITION`), tweens the data rect's OWN
+  // `opacity` for the hover dim (`style={{ opacity: dataOpacity }}`), and
+  // multiplies the base cell fillOpacity by `resolveHeatmapRowOpacity`. The
+  // migrated cell rects are TanStack-rendered (data-ts-key ends in
+  // `${column}-${row}`), so all three are applied straight onto those rects:
+  // per-cell scale with `transform-box: fill-box` (element-local origin ≡
+  // bklit's px origin), own-opacity dim, and per-row fill-opacity. Ghost
+  // cells (transparent fill) are skipped.
   const cellStyleRef = useRef({
     hoverEffectEnabled,
     hasHover,
@@ -371,6 +448,7 @@ export function HeatmapCells({
     activeScale,
     rowOpacity,
     cellData,
+    levelStyles: ctx.levelStyles,
   });
   cellStyleRef.current = {
     hoverEffectEnabled,
@@ -381,6 +459,7 @@ export function HeatmapCells({
     activeScale,
     rowOpacity,
     cellData,
+    levelStyles: ctx.levelStyles,
   };
 
   const paintCellStyles = useCallback((host: HTMLElement) => {
@@ -392,6 +471,7 @@ export function HeatmapCells({
       activeScale: aScale,
       rowOpacity: rOpacity,
       cellData: cd,
+      levelStyles: ls,
     } = cellStyleRef.current;
     const cellByKey = new Map<string, CellDatum>();
     for (const d of cd) cellByKey.set(`${d.column}-${d.row}`, d);
@@ -415,9 +495,17 @@ export function HeatmapCells({
       });
       rect.style.transformOrigin = "center";
       rect.style.transformBox = "fill-box";
-      rect.style.transition = `transform ${HEATMAP_INACTIVE_TRANSITION_CSS}`;
+      rect.style.transition = `transform ${HEATMAP_INACTIVE_TRANSITION_CSS}, opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}`;
       rect.style.transform = style.scale !== 1 ? `scale(${style.scale})` : "";
-      rect.style.fillOpacity = String(resolveHeatmapRowOpacity(d.row, rOpacity));
+      // bklit parity: the hover dim tweens the cell rect's OWN opacity
+      // (legacy `style={{ opacity: dataOpacity }}` on the data motion.rect),
+      // NOT a background overlay composited on top — the two are equivalent
+      // over white except at antialiased cell edges, where an overlay paints
+      // hollow-square halos (T-W1-9 HM16 residual).
+      rect.style.opacity = String(style.opacity);
+      rect.style.fillOpacity = String(
+        resolveHeatmapRowOpacity(d.row, rOpacity) * heatmapLevelCellFillOpacity(ls[d.level] ?? ls[0]),
+      );
     }
   }, []);
 
@@ -433,6 +521,7 @@ export function HeatmapCells({
     activeScale,
     rowOpacity,
     cellData,
+    ctx.levelStyles,
     ctx.chartPhase,
     paintCellStyles,
   ]);
@@ -546,14 +635,14 @@ export function HeatmapCells({
     const host = chartHostRef.current;
     if (!host) return;
     const marks = host.querySelector<HTMLElement>(".ts-chart__marks");
-    if (!marks || marks.dataset.bkmRevealed === "1") return;
+    if (!marks || isRevealed(marks)) return;
     if (host.querySelectorAll("rect[data-ts-key]").length === 0) return;
     if (host.getAnimations().length > 0) return;
     const raf = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const liveMarks = host.querySelector<HTMLElement>(".ts-chart__marks");
         if (seenRevealEpochRef.current === revealInputsRef.current.revealEpoch) return;
-        if (!liveMarks || liveMarks.dataset.bkmRevealed === "1") return;
+        if (!liveMarks || isRevealed(liveMarks)) return;
         if (host.getAnimations().length > 0) return;
         handleRender({ container: host });
       });
@@ -580,53 +669,12 @@ export function HeatmapCells({
         className="ts-bkm-heatmap-hover-svg"
         style={{ position: "absolute", inset: 0 }}
       >
-        <g transform={`translate(${ctx.margin.left}, ${ctx.margin.top})`}>
-          {cellData.map((d) => {
-            const isDimmed = hasHover && hoveredCell.column === d.column && hoveredCell.row === d.row ? false : !d.isGhost;
-            const geo = buildHoverCellGeometry(d.column, d.row, ctx);
-            return (
-              <rect
-                key={`dim-${d.column}-${d.row}`}
-                x={geo.x}
-                y={geo.y}
-                width={geo.width}
-                height={geo.height}
-                rx={cornerRadius}
-                fill="var(--color-background, white)"
-                fillOpacity={hasHover && isDimmed ? hoverDimOpacity : 0}
-                style={{ transition: `opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}` }}
-                pointerEvents="none"
-              />
-            );
-          })}
-          {(() => {
-            const d = hasHover
-              ? cellData.find(
-                  (c) => c.column === hoveredCell.column && c.row === hoveredCell.row,
-                )
-              : undefined;
-            const isHighlighted = hasHover && d != null && !d.isGhost;
-            const geo = d
-              ? buildHoverCellGeometry(d.column, d.row, ctx)
-              : { x: 0, y: 0, width: 0, height: 0 };
-            return (
-              <rect
-                key="highlight"
-                x={geo.x - 1}
-                y={geo.y - 1}
-                width={geo.width + 2}
-                height={geo.height + 2}
-                rx={cornerRadius + 1}
-                fill="none"
-                stroke="var(--color-foreground, currentColor)"
-                strokeWidth={1.5}
-                strokeOpacity={isHighlighted ? 0.5 : 0}
-                style={{ transition: `stroke-opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}` }}
-                pointerEvents="none"
-              />
-            );
-          })()}
-        </g>
+        <HeatmapPatternDefs
+          levelStyles={ctx.levelStyles}
+          patternIdPrefix={patternIdPrefix}
+          phaseX={ctx.margin.left}
+          phaseY={ctx.margin.top}
+        />
       </svg>
     </div>
   );
@@ -999,7 +1047,7 @@ export function HeatmapSeparator({
   labelClassName,
   strokeStyle = "solid",
   strokeDasharray,
-  stroke = "var(--chart-grid-line, currentColor)",
+  stroke = "var(--border)",
   gradient,
   strokeWidth = 1,
   strokeOpacity = 1,
@@ -1007,7 +1055,10 @@ export function HeatmapSeparator({
   const ctx = useHeatmap();
   const layout = ctx.separatorLayout;
 
-  const gradientId = "heatmap-separator-gradient";
+  // useId-scoped so two heatmap instances on one page don't share one
+  // gradient def (HM7; bklit does the same via useId).
+  const reactId = useId().replace(/:/g, "");
+  const gradientId = `heatmap-separator-gradient-${reactId}`;
   const separatorTop = startOffset ?? ctx.margin.top;
   const labelTop = separatorTop + labelOffset;
   const labelPortal =

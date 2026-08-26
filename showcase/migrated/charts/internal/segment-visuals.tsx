@@ -1,15 +1,12 @@
 "use client";
 
 import * as React from "react";
-import type { ChartSelection } from "./chart-selection";
+import type { ChartSelection, SegmentComponent } from "./chart-selection";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 
 export type SegmentLineVariant = "dashed" | "solid" | "gradient";
 
-export interface SegmentComponent {
-  key: string;
-  type: "segmentBackground" | "segmentLineFrom" | "segmentLineTo";
-  props: Record<string, unknown>;
-}
+export type { SegmentComponent };
 
 export function SegmentOverlay({
   selection,
@@ -26,9 +23,9 @@ export function SegmentOverlay({
   marginTop: number;
   components: SegmentComponent[];
 }) {
+  const prefersReducedMotion = usePrefersReducedMotion();
   if (!selection || components.length === 0) return null;
   const vis = selection.active && Math.abs(selection.endX - selection.startX) > 5;
-  const prefersReduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   return (
     <svg
       width={innerWidth}
@@ -49,7 +46,7 @@ export function SegmentOverlay({
               y={0}
               width={w}
               height={innerHeight}
-              style={prefersReduced ? { opacity: vis ? 1 : 0 } : { opacity: vis ? 1 : 0, transition: "opacity 150ms ease-out" }}
+              style={prefersReducedMotion ? { opacity: vis ? 1 : 0 } : { opacity: vis ? 1 : 0, transition: "opacity 150ms ease-out" }}
             />
           );
         }

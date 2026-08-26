@@ -39,7 +39,8 @@ export interface ArcRevealTiming {
 
 /**
  * Builds ring-staggered reveal delays matching bklit's
- * `buildSunburstEnterTiming` (sunburst.ts).
+ * `buildSunburstEnterTiming` (sunburst.ts) — retired in P3.6's split outcome
+ * (LOG.md D276); the migrated equivalent is this module's `buildRevealTiming`.
  */
 export function buildRevealTiming(
   arcs: ArcDatum[],

@@ -19,16 +19,66 @@ import {
   positionBox,
   resetLabelFade,
   updateDotPosition,
-  type BoxConfig,
-  type DotConfig,
-  type IndicatorConfig,
 } from "./tooltip-chrome";
+import {
+  toBoxConfig,
+  toDotConfig,
+  toIndicatorConfig,
+} from "./tooltip-mappers";
 import type { ChartTooltipConfig } from "./types";
 import { HIGHLIGHT_SPRING, TOOLTIP_SPRING } from "./design-tokens";
-import { reanchorHoverChrome } from "./hover-reanchor";
-import type { ChartPhase } from "./chart-phase";
+import { isChartInteractionPhase, type ChartPhase } from "./chart-phase";
 
 export type HoverReanchor = () => void;
+
+// ── Re-anchor (folded from ./hover-reanchor) ─────────────────────────────
+
+interface ReanchorOptions {
+  chartPhase: ChartPhase;
+  isLoaded: boolean;
+  lastX: number | null;
+  renderData: unknown[];
+  xScale: { invert(x: number): Date; (v: Date): number | undefined | null } | null;
+  xDataKey: string;
+  resolvePoints: (x: number, index: number, datum: unknown) => unknown[] | null;
+  onReanchor: (points: unknown[]) => void;
+  onClear: () => void;
+}
+
+function bisectDateLeft(data: unknown[], xDataKey: string, targetMs: number): number {
+  let lo = 0, hi = data.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const v = (data[mid] as Record<string, unknown>)[xDataKey];
+    const ms = v instanceof Date ? v.getTime() : NaN;
+    if (ms < targetMs) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function reanchorHoverChrome(opts: ReanchorOptions): void {
+  if (!isChartInteractionPhase(opts.chartPhase) || !opts.isLoaded) return;
+  if (opts.lastX === null || !opts.xScale || opts.renderData.length === 0) return;
+  const x0 = opts.xScale.invert(opts.lastX);
+  const ms = x0.getTime();
+  const idx = bisectDateLeft(opts.renderData, opts.xDataKey, ms);
+  const d0 = opts.renderData[idx - 1] as Record<string, unknown> | undefined;
+  const d1 = opts.renderData[idx] as Record<string, unknown> | undefined;
+  if (!d0) { opts.onClear(); return; }
+  let d: Record<string, unknown> = d0;
+  let fi = idx - 1;
+  if (d1) {
+    const t0 = (d0[opts.xDataKey] as Date).getTime();
+    const t1 = (d1[opts.xDataKey] as Date).getTime();
+    if (ms - t0 > t1 - ms) { d = d1; fi = idx; }
+  }
+  const pxRaw = opts.xScale(d[opts.xDataKey] as Date);
+  if (pxRaw == null || !Number.isFinite(pxRaw)) { opts.onClear(); return; }
+  const points = opts.resolvePoints(pxRaw as number, fi, d);
+  if (points && points.length > 0) opts.onReanchor(points);
+  else opts.onClear();
+}
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -45,7 +95,21 @@ export interface HoverChromeSeries {
   color: string;
   strokeWidth: number;
   showHighlight: boolean;
+  /** Area-only (A4): when false the series' boundary path is invisible
+      (`showLine={false}`) — the highlight band is suppressed while the dim
+      still applies, matching bklit's split gating (`highlightEnabled =
+      showHighlight && showLine` vs SeriesHoverDim keyed on showHighlight). */
+  showLine?: boolean;
   marker?: { fill: string; stroke: string; strokeWidth: number; ringGap: number; radius: number; outlineWidth?: number; outlineColor?: string; showActiveHighlight?: boolean } | null;
+  /** C11 (P3-03): per-series dim opacity override. bklit dims Area series
+      to 0.6 and Line series to 0.3 — mark types that carry genuinely
+      different "how visible should the faded trace stay" defaults — while
+      every prior migrated chart only ever had ONE mark type per chart and
+      so never needed more than `HoverChromeOptions.dimOpacity` (chart-wide).
+      Falls back to that chart-wide value when unset, so every existing
+      call site (line/area/bar/candlestick/scatter, all single-mark-type)
+      is byte-identical. Composed is the one chart that sets this today. */
+  dimOpacity?: string;
 }
 
 export interface HoverChromeState {
@@ -57,6 +121,9 @@ export interface HoverChromeState {
   showCrosshair: boolean;
   showDots: boolean;
   showDatePill: boolean;
+  /** CH5/B12 (bklit XAxis.tickerHalfWidth): date-pill fade radius for axis
+      labels; defaults to the TICKER_HALF_WIDTH token when unset. */
+  tickerHalfWidth?: number;
   bars?: readonly { dataKey: string; fadedOpacity: number }[];
   tooltip?: ChartTooltipConfig | null;
   dateLabels?: string[];
@@ -95,53 +162,10 @@ export interface HoverChrome {
 export interface HoverChromeOptions {
   dimOpacity?: string;
   tooltipSpring?: typeof TOOLTIP_SPRING;
-  tooltipBoxSpring?: typeof TOOLTIP_SPRING;
   highlightSpring?: typeof HIGHLIGHT_SPRING;
 }
 
 let gradientCounter = 0;
-
-function toDotConfig(cfg?: ChartTooltipConfig | null): DotConfig {
-  if (!cfg) return {};
-  return {
-    variant: cfg.dotVariant,
-    size: cfg.dotSize,
-    radiusFraction: cfg.dotRadiusFraction,
-    scale: cfg.dotScale,
-    strokeWidth: cfg.dotStrokeWidth,
-    color: cfg.dotColor as DotConfig["color"],
-  };
-}
-
-function toIndicatorConfig(cfg?: ChartTooltipConfig | null): IndicatorConfig {
-  if (!cfg) return {};
-  return {
-    width: cfg.indicatorWidth,
-    span: cfg.indicatorSpan,
-    columnWidth: cfg.columnWidth,
-    color: cfg.indicatorColor as IndicatorConfig["color"],
-    dasharray: cfg.indicatorDasharray,
-    fadeEdges: cfg.indicatorFadeEdges as IndicatorConfig["fadeEdges"],
-    fadeLength: cfg.indicatorFadeLength,
-    springConfig: cfg.springConfig,
-  };
-}
-
-function toBoxConfig(cfg?: ChartTooltipConfig | null): BoxConfig {
-  if (!cfg) return {};
-  return {
-    springConfig: cfg.springConfig,
-    matchCrosshair: cfg.matchCrosshair,
-    damping: cfg.damping,
-    boxSpringConfig: cfg.boxSpringConfig,
-    className: cfg.className,
-    panelStyle: cfg.panelStyle,
-    backgroundColor: cfg.backgroundColor,
-    content: cfg.content,
-    children: cfg.children,
-    rows: cfg.rows,
-  };
-}
 
 function resolveDotColor(
   tooltip: ChartTooltipConfig | null | undefined,
@@ -167,7 +191,6 @@ export function attachHoverChrome(
 ): HoverChrome {
   const dimOpacity = options.dimOpacity ?? DIM_OPACITY;
   const tooltipSpring = options.tooltipSpring ?? TOOLTIP_SPRING;
-  void options.tooltipBoxSpring;
   const highlightSpring = options.highlightSpring ?? HIGHLIGHT_SPRING;
   const container = (host.closest("[data-bkm-chart]") as HTMLElement) ?? host;
   const doc = host.ownerDocument;
@@ -355,6 +378,7 @@ export function attachHoverChrome(
         let highlightPath = highlightPathBySeries.get(series.dataKey);
         const isLegendDimmed = legendHoveredIndex !== null && legendHoveredIndex !== seriesIdx;
         const shouldDimForLegend = series.showHighlight && isLegendDimmed;
+        const seriesDimOpacity = series.dimOpacity ?? dimOpacity;
         if (!base || (!series.showHighlight && !shouldDimForLegend)) {
           if (highlightPath) highlightPath.style.display = "none";
           for (const path of [base, fill]) {
@@ -365,21 +389,29 @@ export function attachHoverChrome(
           }
           if (shouldDimForLegend && base) {
             base.style.transition = DIM_TRANSITION;
-            base.style.opacity = dimOpacity;
+            base.style.opacity = seriesDimOpacity;
             dimmedPaths.add(base);
-            if (fill) { fill.style.transition = DIM_TRANSITION; fill.style.opacity = dimOpacity; dimmedPaths.add(fill); }
+            if (fill) { fill.style.transition = DIM_TRANSITION; fill.style.opacity = seriesDimOpacity; dimmedPaths.add(fill); }
           }
           return;
         }
         base.style.transition = DIM_TRANSITION;
-        base.style.opacity = dimOpacity;
+        base.style.opacity = seriesDimOpacity;
         dimmedPaths.add(base);
-        if (fill) { fill.style.transition = DIM_TRANSITION; fill.style.opacity = dimOpacity; dimmedPaths.add(fill); }
+        if (fill) { fill.style.transition = DIM_TRANSITION; fill.style.opacity = seriesDimOpacity; dimmedPaths.add(fill); }
         const dashTail = findDashTailGroup(series.dataKey);
         if (dashTail instanceof SVGElement) {
           dashTail.style.transition = DIM_TRANSITION;
-          dashTail.style.opacity = dimOpacity;
+          dashTail.style.opacity = seriesDimOpacity;
           dimmedPaths.add(dashTail as unknown as SVGPathElement);
+        }
+        // A4 (showLine=false): bklit gates the highlight band on
+        // `showHighlight && showLine` (area.tsx highlightEnabled) while the
+        // SeriesHoverDim keys off showHighlight alone — keep the dim above,
+        // drop the band re-stroke.
+        if (series.showLine === false) {
+          if (highlightPath) highlightPath.style.display = "none";
+          return;
         }
         if (!highlightPath) {
           highlightPath = doc.createElementNS(SVG_NS, "path");
@@ -401,12 +433,13 @@ export function attachHoverChrome(
         const fill = findSeriesFillPath(series.dataKey);
         const isLegendDimmed = legendHoveredIndex !== seriesIdx;
         const shouldDim = series.showHighlight && isLegendDimmed;
+        const seriesDimOpacity2 = series.dimOpacity ?? dimOpacity;
         for (const path of [base, fill]) {
           if (!path) continue;
           const el = path as SVGPathElement;
           if (shouldDim) {
             el.style.transition = DIM_TRANSITION;
-            el.style.opacity = dimOpacity;
+            el.style.opacity = seriesDimOpacity2;
             dimmedPaths.add(el);
           } else if (dimmedPaths.has(el)) {
             el.style.opacity = "1";
@@ -417,7 +450,7 @@ export function attachHoverChrome(
         if (dashTail2 instanceof SVGElement) {
           if (shouldDim) {
             dashTail2.style.transition = DIM_TRANSITION;
-            dashTail2.style.opacity = dimOpacity;
+            dashTail2.style.opacity = seriesDimOpacity2;
             dimmedPaths.add(dashTail2 as unknown as SVGPathElement);
           } else if (dimmedPaths.has(dashTail2 as unknown as SVGPathElement)) {
             dashTail2.style.opacity = "1";
@@ -599,7 +632,7 @@ export function attachHoverChrome(
     }
 
     const hoveredLabel = isDate ? shortDateFmt.format(date as Date) : null;
-    applyLabelFade(container, primary.x, hoveredLabel, TICKER_HALF_WIDTH, FADE_BUFFER);
+    applyLabelFade(container, primary.x, hoveredLabel, state.tickerHalfWidth ?? TICKER_HALF_WIDTH, FADE_BUFFER);
   };
 
   const syncDim = () => {
@@ -617,12 +650,13 @@ export function attachHoverChrome(
       const shouldDimDueToLegend = series.showHighlight && isLegendDimmed;
       const shouldDimDueToTooltip = visible && series.showHighlight;
       const shouldDim = shouldDimDueToTooltip || shouldDimDueToLegend;
+      const seriesDimOpacitySync = series.dimOpacity ?? dimOpacity;
       for (const path of [base, fill]) {
         if (!path) continue;
         const el = path as SVGPathElement;
         if (shouldDim) {
           el.style.transition = DIM_TRANSITION;
-          el.style.opacity = dimOpacity;
+          el.style.opacity = seriesDimOpacitySync;
           dimmedPaths.add(el);
         } else if (dimmedPaths.has(el)) {
           el.style.opacity = "1";
@@ -633,7 +667,7 @@ export function attachHoverChrome(
       if (dashTailSync instanceof SVGElement) {
         if (shouldDim) {
           dashTailSync.style.transition = DIM_TRANSITION;
-          dashTailSync.style.opacity = dimOpacity;
+          dashTailSync.style.opacity = seriesDimOpacitySync;
           dimmedPaths.add(dashTailSync as unknown as SVGPathElement);
         } else if (dimmedPaths.has(dashTailSync as unknown as SVGPathElement)) {
           dashTailSync.style.opacity = "1";

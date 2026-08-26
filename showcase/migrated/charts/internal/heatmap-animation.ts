@@ -79,14 +79,6 @@ export function computeHeatmapEnterFadeDelayMs(params: ComputeHeatmapEnterFadeDe
   return random() * spreadMs;
 }
 
-export function heatmapLoadingCellParticipates(column: number, row: number, randomness: number): boolean {
-  if (randomness >= 1) return true;
-  if (randomness <= 0) return false;
-  const seed = heatmapCellSeed(column, row) + 73_133;
-  const random = seededRandom(seed);
-  return random() < randomness;
-}
-
 export function resolveHeatmapEnterFadeDurationSec(
   enterTransition: HeatmapEnterTransition | undefined,
   animationDurationMs: number,

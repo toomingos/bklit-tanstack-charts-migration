@@ -13,12 +13,14 @@ import {
   positionBox,
   resetLabelFade,
   updateDotPosition,
-  type BoxConfig,
-  type DotConfig,
-  type IndicatorConfig,
 } from "./tooltip-chrome";
+import {
+  toBoxConfig,
+  toDotConfig,
+  toIndicatorConfig,
+} from "./tooltip-mappers";
 import type { ChartTooltipConfig } from "./types";
-import { BOX_OFFSET, TOOLTIP_BOX_SPRING, TOOLTIP_SPRING } from "./design-tokens";
+import { BOX_OFFSET, TOOLTIP_SPRING } from "./design-tokens";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -34,6 +36,24 @@ export interface ScatterHoverChromeSeries {
   strokeWidth: number;
   ringGap: number;
   radius: number;
+  /** Fill for the enlarged hover-highlight copy — bklit's markerStyle.fill
+      (the yGradient url when yGradient owns the marker, else `fill`). */
+  highlightFill?: string;
+  /** Stroke for the highlight copy ring — bklit's markerStyle.stroke
+      (`stroke` prop, else `highlightFill`). */
+  highlightStroke?: string;
+  /** bklit SeriesMarkers fadeOnHover (default true). */
+  fadeOnHover?: boolean;
+  /** bklit SeriesMarkers inactiveOpacity (default 0.5). */
+  inactiveOpacity?: number;
+  /** bklit SeriesMarkers inactiveBlur px (default 2). */
+  inactiveBlur?: number;
+  /** bklit series-point-marker outline circle beyond the ring (default 0). */
+  outlineWidth?: number;
+  /** Outline color; falls back to `highlightStroke ?? stroke`. */
+  outlineColor?: string;
+  /** bklit SeriesMarkers showActiveHighlight (default true). */
+  showActiveHighlight?: boolean;
 }
 
 export interface ScatterHoverChromeState {
@@ -44,9 +64,11 @@ export interface ScatterHoverChromeState {
   showCrosshair: boolean;
   showDots: boolean;
   showDatePill: boolean;
+  /** CH5/B12 (bklit XAxis.tickerHalfWidth): date-pill fade radius; defaults
+      to the TICKER_HALF_WIDTH token when unset. */
+  tickerHalfWidth?: number;
   tooltip?: ChartTooltipConfig | null;
   dateLabels?: string[];
-  hoveredIndex?: number;
 }
 
 export interface ScatterFocusPoint {
@@ -65,50 +87,9 @@ export interface ScatterHoverChrome {
 
 export interface ScatterHoverChromeOptions {
   tooltipSpring?: typeof TOOLTIP_SPRING;
-  tooltipBoxSpring?: typeof TOOLTIP_BOX_SPRING;
 }
 
 let gradientCounter = 0;
-
-function toDotConfig(cfg?: ChartTooltipConfig | null): DotConfig {
-  if (!cfg) return {};
-  return {
-    variant: cfg.dotVariant,
-    size: cfg.dotSize,
-    radiusFraction: cfg.dotRadiusFraction,
-    scale: cfg.dotScale,
-    strokeWidth: cfg.dotStrokeWidth,
-    color: cfg.dotColor as DotConfig["color"],
-  };
-}
-function toIndicatorConfig(cfg?: ChartTooltipConfig | null): IndicatorConfig {
-  if (!cfg) return {};
-  return {
-    width: cfg.indicatorWidth,
-    span: cfg.indicatorSpan,
-    columnWidth: cfg.columnWidth,
-    color: cfg.indicatorColor as IndicatorConfig["color"],
-    dasharray: cfg.indicatorDasharray,
-    fadeEdges: cfg.indicatorFadeEdges as IndicatorConfig["fadeEdges"],
-    fadeLength: cfg.indicatorFadeLength,
-    springConfig: cfg.springConfig,
-  };
-}
-function toBoxConfig(cfg?: ChartTooltipConfig | null): BoxConfig {
-  if (!cfg) return {};
-  return {
-    springConfig: cfg.springConfig,
-    matchCrosshair: cfg.matchCrosshair,
-    damping: cfg.damping,
-    boxSpringConfig: cfg.boxSpringConfig,
-    className: cfg.className,
-    panelStyle: cfg.panelStyle,
-    backgroundColor: cfg.backgroundColor,
-    content: cfg.content,
-    children: cfg.children,
-    rows: cfg.rows,
-  };
-}
 
 function resolveDotColor(
   tooltip: ChartTooltipConfig | null | undefined,
@@ -133,8 +114,6 @@ export function attachScatterHoverChrome(
   options: ScatterHoverChromeOptions = {},
 ): ScatterHoverChrome {
   const tooltipSpring = options.tooltipSpring ?? TOOLTIP_SPRING;
-  const _tooltipBoxSpring = options.tooltipBoxSpring ?? TOOLTIP_SPRING;
-  void _tooltipBoxSpring;
   const container = (host.closest("[data-bkm-chart]") as HTMLElement) ?? host;
   const doc = host.ownerDocument;
   const chromeId = ++gradientCounter;
@@ -158,27 +137,60 @@ export function attachScatterHoverChrome(
   const setMarkersDimmed = (dimmed: boolean) => {
     const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marksGroup) return;
-    marksGroup.style.transition = DIM_TRANSITION;
-    marksGroup.style.opacity = dimmed ? DIM_OPACITY : "1";
-    marksGroup.style.filter = dimmed ? `blur(${DIM_BLUR_PX}px)` : "none";
+    const state = getState();
+    // bklit wraps EACH series' markers in its own SeriesMarkersDimWrapper
+    // (dimBase = fadeOnHover && tooltipData != null), so every series dims to
+    // its OWN opacity/blur while any hover is active. TanStack emits one
+    // `.ts-chart__dot[data-ts-key]` group per series — style those directly.
+    for (const series of state.series) {
+      const escaped = series.dataKey.replace(/"/g, '\\"');
+      const group = marksGroup.querySelector<SVGGElement>(
+        `.ts-chart__dot[data-ts-key="${escaped}"]`,
+      );
+      if (!group) continue;
+      if (!(series.fadeOnHover ?? true)) continue;
+      group.style.transition = DIM_TRANSITION;
+      group.style.opacity = dimmed ? String(series.inactiveOpacity ?? Number(DIM_OPACITY)) : "1";
+      group.style.filter = dimmed ? `blur(${series.inactiveBlur ?? DIM_BLUR_PX}px)` : "none";
+    }
   };
 
   const ensureActiveGroup = (series: ScatterHoverChromeSeries): SVGGElement => {
     let group = activeGroupBySeries.get(series.dataKey);
     if (group) return group;
+    // bklit SeriesMarkersActiveHighlight: showActiveHighlight=false keeps the
+    // group at scale 1 — still rendered so hover-dim + dots keep working.
+    const activeScale = (series.showActiveHighlight ?? true) ? ACTIVE_SCALE : 1;
     group = doc.createElementNS(SVG_NS, "g") as SVGGElement;
+    // bklit MarkerCircles draw order: outline → fill disc → ring.
+    if ((series.outlineWidth ?? 0) > 0) {
+      const outlineCircle = doc.createElementNS(SVG_NS, "circle");
+      outlineCircle.setAttribute("cx", "0"); outlineCircle.setAttribute("cy", "0");
+      const ringOuter =
+        series.strokeWidth > 0
+          ? series.radius + series.ringGap + series.strokeWidth
+          : series.radius;
+      outlineCircle.setAttribute("r", String(ringOuter + (series.outlineWidth ?? 0) / 2));
+      outlineCircle.setAttribute("fill", "none");
+      outlineCircle.setAttribute("stroke", series.outlineColor ?? series.stroke);
+      outlineCircle.setAttribute("stroke-width", String(series.outlineWidth));
+      group.appendChild(outlineCircle);
+    }
     const fillCircle = doc.createElementNS(SVG_NS, "circle");
     fillCircle.setAttribute("cx", "0"); fillCircle.setAttribute("cy", "0");
-    fillCircle.setAttribute("r", String(series.radius)); fillCircle.setAttribute("fill", series.fill);
+    fillCircle.setAttribute("r", String(series.radius));
+    fillCircle.setAttribute("fill", series.highlightFill ?? series.fill);
     group.appendChild(fillCircle);
     if (series.strokeWidth > 0) {
       const ringCircle = doc.createElementNS(SVG_NS, "circle");
       ringCircle.setAttribute("cx", "0"); ringCircle.setAttribute("cy", "0");
       ringCircle.setAttribute("r", String(series.radius + series.ringGap + series.strokeWidth / 2));
-      ringCircle.setAttribute("fill", "none"); ringCircle.setAttribute("stroke", series.stroke);
+      ringCircle.setAttribute("fill", "none");
+      ringCircle.setAttribute("stroke", series.highlightStroke ?? series.stroke);
       ringCircle.setAttribute("stroke-width", String(series.strokeWidth));
       group.appendChild(ringCircle);
     }
+    group.dataset.bkmActiveScale = String(activeScale);
     activeHighlightSvg.appendChild(group);
     activeGroupBySeries.set(series.dataKey, group);
     return group;
@@ -263,7 +275,7 @@ export function attachScatterHoverChrome(
       const group = ensureActiveGroup(series);
       if (!point) { group.style.display = "none"; continue; }
       group.style.display = "";
-      group.setAttribute("transform", `translate(${point.x}, ${point.y}) scale(${ACTIVE_SCALE})`);
+      group.setAttribute("transform", `translate(${point.x}, ${point.y}) scale(${group.dataset.bkmActiveScale ?? "1.35"})`);
     }
 
     {
@@ -285,7 +297,7 @@ export function attachScatterHoverChrome(
     if (state.showDatePill && isDate) {
       pillBuild.layer.style.display = "";
       if (pillBuild.ticker && state.dateLabels && state.dateLabels.length > 0) {
-        pillBuild.ticker.update(state.hoveredIndex ?? primary.datumIndex, discrete);
+        pillBuild.ticker.update(primary.datumIndex, discrete);
       } else {
         pillBuild.label.textContent = shortDateFmt.format(date as Date);
       }
@@ -296,7 +308,7 @@ export function attachScatterHoverChrome(
     }
 
     const hoveredLabel = isDate ? shortDateFmt.format(date as Date) : null;
-    applyLabelFade(container, primary.x, hoveredLabel, TICKER_HALF_WIDTH, FADE_BUFFER);
+    applyLabelFade(container, primary.x, hoveredLabel, state.tickerHalfWidth ?? TICKER_HALF_WIDTH, FADE_BUFFER);
   };
 
   return {

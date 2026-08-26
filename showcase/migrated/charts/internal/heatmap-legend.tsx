@@ -1,4 +1,4 @@
-import { useSyncExternalStore, type CSSProperties } from "react";
+import { useId, useSyncExternalStore, type CSSProperties } from "react";
 import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
 import {
   HEATMAP_INACTIVE_OPACITY,
@@ -13,9 +13,13 @@ import {
 } from "./heatmap-utils";
 import {
   defaultHeatmapColorScale,
+  heatmapLevelPatternId,
+  heatmapLevelPatternRenderOptions,
+  isHeatmapLevelPattern,
   type HeatmapLevelStyle,
   type HeatmapLevelStyles,
 } from "./heatmap-colors";
+import { renderPatternPreset } from "./pattern-preset";
 
 export const HEATMAP_LEGEND_LEVELS = [0, 1, 2, 3, 4] as const;
 
@@ -29,6 +33,47 @@ export interface HeatmapLegendSwatchProps {
 }
 
 export function HeatmapLegendSwatch({ level, style, cellSize, cornerRadius }: HeatmapLegendSwatchProps) {
+  // Unconditional (rules of hooks); consumed only by the pattern branch.
+  const reactId = useId().replace(/:/g, "");
+  const shellStyle = {
+    width: cellSize,
+    height: cellSize,
+    borderRadius: cornerRadius,
+  };
+
+  // Port of bklit's heatmap-legend-swatch.tsx pattern branch: pattern-mode
+  // levels draw the actual <pattern> tile in an inline svg (opacity =
+  // patternOpacity). Ids are useId-scoped so multiple charts/legends on one
+  // page don't collide (HM14/HM7).
+  if (isHeatmapLevelPattern(style) && style.pattern) {
+    const patternId = `${reactId}-${heatmapLevelPatternId(level)}`;
+    const patternNode = renderPatternPreset(
+      style.pattern,
+      `${patternId}-base`,
+      heatmapLevelPatternRenderOptions(style),
+    );
+    const opacity = style.patternOpacity ?? 1;
+
+    return (
+      <span
+        aria-hidden="true"
+        className="ts-bkm-heatmap-legend-swatch ts-bkm-heatmap-legend-swatch--pattern"
+        style={{ ...shellStyle, overflow: "hidden", opacity }}
+      >
+        <svg aria-hidden="true" viewBox={`0 0 ${cellSize} ${cellSize}`} style={{ display: "block", width: "100%", height: "100%" }}>
+          {patternNode ? <defs>{patternNode}</defs> : null}
+          <rect
+            fill={patternNode ? `url(#${patternId})` : style.color}
+            height={cellSize}
+            rx={cornerRadius}
+            ry={cornerRadius}
+            width={cellSize}
+          />
+        </svg>
+      </span>
+    );
+  }
+
   return (
     <span
       aria-hidden="true"
@@ -255,3 +300,6 @@ export function HeatmapLegendGradient({
     </div>
   );
 }
+
+// Legacy parity: bklit `heatmap-legend.tsx` ships `export default HeatmapLegend;` (T-E2).
+export default HeatmapLegend;

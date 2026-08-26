@@ -10,7 +10,15 @@
 // `patternPreset`, exercising the real prop path.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
-import { AreaChart, Area, PatternArea, Grid, XAxis, ChartTooltip } from "@migrated/charts";
+import {
+  AreaChart,
+  Area,
+  PatternArea,
+  Grid,
+  XAxis,
+  ChartTooltip,
+  type PatternPresetId,
+} from "@migrated/charts";
 import {
   generateTimeSeries,
   generateTimeSeriesUpdate,
@@ -20,18 +28,10 @@ import { armBklitSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveRow } from "../bench/live";
 
-// Local literal-union mirror of internal/pattern-preset.tsx's PatternPresetId
-// (not re-exported from the top-level @migrated/charts barrel -- see final
-// report's disclosed barrel-export gap). Order matches PATTERN_PRESET_IDS.
-type PatternPresetId =
-  | "none"
-  | "diagonal"
-  | "horizontal"
-  | "vertical"
-  | "cross"
-  | "dots"
-  | "circles"
-  | "accent";
+// The barrel-export gap this mirror was written around is CLOSED (P5.1/D312):
+// `PatternPresetId` is now re-exported from `@migrated/charts`
+// (index.ts:375-378, alongside `PatternPresetOptions`), so the scenario tracks
+// the real union instead of a hand-copy that could silently drift from it.
 const DEFAULT_PATTERN: PatternPresetId = "diagonal";
 
 export default function MigratedPatternArea({ n }: { n: number }) {

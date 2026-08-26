@@ -48,6 +48,7 @@ import {
   type BarHoverChromeState,
 } from "./internal/bar-hover-chrome";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
+import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import { useChartConfig } from "./internal/chart-config-context";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
@@ -57,21 +58,40 @@ import { barSquaresMark } from "./internal/bar-squares-mark";
 import { barColumnTrackMark } from "./internal/bar-column-track-mark";
 import { barDepthBackMark, barDepthFrontMark, buildNegBarStops, buildPosBarStops, DEFAULT_GROUND_SHADOW as DEFAULT_BAR_DEPTH_GROUND_SHADOW } from "./internal/bar-depth-marks";
 import type { BarDepthGradientIds } from "./internal/bar-depth-marks";
-import { barPulseMark } from "./internal/bar-pulse-mark";
+import { barPulseMark, buildPulseWaveStops, syncBarPulseGroups } from "./internal/bar-pulse-mark";
 import { barTrimmedMark } from "./internal/bar-trimmed-mark";
 import { renderPatternPreset } from "./internal/pattern-preset";
 import type { BarConfig, BarSquaresConfig, BarColumnTrackConfig, ChartDatum, ChartPhase } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
-import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
-import { useChartMargin, useContainerWidth } from "./internal";
-import { createNicedYScale } from "./internal/y-domain";
+import { resolveGridGuide } from "./internal/grid";
+import { isRevealed, markRevealed, onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
+import { shortDateFmt } from "./internal/formatters";
+import { useSanitizedId } from "./internal/use-sanitized-id";
+import {
+  createAxisValueProjector,
+  createNicedYScale,
+  resolveYDomainsByAxis,
+} from "./internal/y-domain";
+import { DEFAULT_Y_AXIS_ID } from "./internal/y-axis-id";
+import {
+  DEFAULT_ANIMATION_DURATION_MS,
+  DEFAULT_ANIMATION_EASING,
+} from "./internal/animation-defaults";
+import { clipRevealTiming, type EnterTransition } from "./internal/enter-transition";
 import "./styles.css";
 
 // bklit animation.ts / bar-chart.tsx: reveal 1100ms, cubic-bezier(.85,0,.15,1)
 // tween (DEFAULT_CHART_ENTER_TRANSITION) — same duration as the per-bar
 // stagger spread, unlike scatter's separate fixed-500ms enter tween.
-const DEFAULT_ANIMATION_DURATION_MS = 1100;
-const REVEAL_EASING = "cubic-bezier(0.85, 0, 0.15, 1)";
+// P5.5 B1 RETIRES this file's local `REVEAL_EASING`. D327's ground for keeping
+// it was verbatim "BarChart has no `animationEasing` prop, so this is the
+// INTERNAL reveal ease, not the prop default" — B1 adds that prop, inverting
+// the ground, so the value now comes from `./internal/animation-defaults`
+// (legacy `animation.ts:4` provenance). It is still NOT `design-tokens.ts`'s
+// `REVEAL_EASE_CSS`, which mirrors upstream `motion.ts:209`; see
+// animation-defaults.ts's header for why those two must never alias.
+// (Closes the bar third of P6.2's narrowed scope.)
 // bklit bar.tsx BarInner default `groupGap` (grouped, non-stacked bars only —
 // the pilot's only supported layout).
 const GROUP_GAP = 4;
@@ -79,30 +99,53 @@ const GROUP_GAP = 4;
 // rotating per-series palette (unlike scatter's chart-1..5 rotation).
 const DEFAULT_BAR_FILL = "var(--chart-line-primary)";
 
-interface Margin {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-}
-const DEFAULT_MARGIN: Margin = { top: 40, right: 40, bottom: 40, left: 40 };
+/** bklit bar-chart.tsx:57 — named union, exported so `import type { BarOrientation }` matches legacy. */
+export type BarOrientation = "vertical" | "horizontal";
 
 export interface BarChartProps {
   data: ChartDatum[];
   /** Key in data for the categorical axis. Default: "name" (bklit default). */
   xDataKey?: string;
   animationDuration?: number;
-  margin?: Partial<Margin>;
+  /** P5.5 B1 — bklit `time-series-chart-shell.tsx:136` / `bar-chart.tsx:677`.
+      Easing for the per-bar grow reveal. Default: legacy's
+      `cubic-bezier(0.85, 0, 0.15, 1)`. */
+  animationEasing?: string;
+  /** P5.5 B2 — bklit `bar-chart.tsx:71`. Overrides the reveal timing; a spring
+      is coerced to a tween (bklit `animation.ts:18`). */
+  enterTransition?: EnterTransition;
+  /** P5.5 B3 — bklit `bar-chart.tsx:73`. Replay epoch input: bumping it
+      replays the grow reveal with no data change (bklit `bar-chart.tsx:386`
+      keys its epoch effect on `[animationDuration, revealSignature]`). */
+  revealSignature?: string;
+  margin?: Partial<ChartMargin>;
   aspectRatio?: string;
   className?: string;
   /** Gap between bar groups as a fraction of band width (0-1). Default: 0.2. */
   barGap?: number;
+  /** DOC-9 (B13): bklit `barWidth` (bar-chart.tsx:81) — type surface only, no behavior. */
+  barWidth?: number;
+  /** DOC-9 (B13): bklit `orientation` (bar-chart.tsx:83) — type surface only; pilot renders vertical. */
+  orientation?: BarOrientation;
+  /** DOC-9 (B13): bklit `stacked` (bar-chart.tsx:85) — type surface only; pilot renders grouped. */
+  stacked?: boolean;
+  /** DOC-9 (B13): bklit `stackGap` (bar-chart.tsx:87) — type surface only, no behavior. */
+  stackGap?: number;
+  /** DOC-9 (B13): bklit `squareSnap` (bar-chart.tsx:89) — type surface only, no behavior. */
+  squareSnap?: { squareGap: number; groupGap?: number; fit?: boolean };
   onPhaseChange?: (phase: ChartPhase) => void;
   children?: React.ReactNode;
 }
 
+// T-E7: DOC-9's bar pilot accepts the five props above so callers typecheck
+// identically against legacy and migrated, but renders none of them. Warn once
+// per process, in dev only, naming exactly which ones the caller passed.
+let didWarnInertBarProps = false;
+
 interface ResolvedSeries {
   dataKey: string;
+  /** P6.1 / B7 — bklit `bar.tsx:58`. Undefined means the default ("left") axis. */
+  yAxisId?: string | number;
   fill: string;
   /** Tooltip dot / swatch color (bklit extractBarConfigs: stroke ?? fill). */
   dotColor: string;
@@ -124,14 +167,37 @@ export function BarChart({
   data,
   xDataKey = "name",
   animationDuration = DEFAULT_ANIMATION_DURATION_MS,
+  animationEasing = DEFAULT_ANIMATION_EASING,
+  enterTransition,
+  revealSignature = "",
   margin: marginProp,
   aspectRatio = "2 / 1",
   className,
   barGap = 0.2,
+  barWidth,
+  orientation,
+  stacked,
+  stackGap,
+  squareSnap,
   onPhaseChange,
   children,
 }: BarChartProps) {
-  const margin = useChartMargin(marginProp, DEFAULT_MARGIN);
+  if (process.env.NODE_ENV !== "production" && !didWarnInertBarProps) {
+    const inert: string[] = [];
+    if (barWidth !== undefined) inert.push("barWidth");
+    if (orientation !== undefined) inert.push("orientation");
+    if (stacked !== undefined) inert.push("stacked");
+    if (stackGap !== undefined) inert.push("stackGap");
+    if (squareSnap !== undefined) inert.push("squareSnap");
+    if (inert.length > 0) {
+      didWarnInertBarProps = true;
+      console.warn(
+        `[BarChart] accepted-but-inert prop${inert.length > 1 ? "s" : ""}: ${inert.join(", ")}. ` +
+          "The migrated bar pilot renders vertical, grouped bars only (DOC-9); these are accepted for API parity but have no effect.",
+      );
+    }
+  }
+  const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const width = useContainerWidth(containerRef);
   // bklit ChartCore: `isLoaded` starts false unconditionally — the initial
@@ -178,7 +244,7 @@ export function BarChart({
     };
   }, []);
 
-  const { bars, barSquares: barSquaresRaw, barColumnTracks: barColumnTracksRaw, barDepthBacks: barDepthBacksRaw, barDepthFronts: barDepthFrontsRaw, barPulses: barPulsesRaw, barDepthProvider, grid, barXAxis, tooltip } = React.useMemo(
+  const { bars, barSquares: barSquaresRaw, barColumnTracks: barColumnTracksRaw, barDepthBacks: barDepthBacksRaw, barDepthFronts: barDepthFrontsRaw, barPulses: barPulsesRaw, barDepthProvider, grid, barXAxis, background, tooltip } = React.useMemo(
     () => extractChildren(children),
     [children],
   );
@@ -194,6 +260,23 @@ export function BarChart({
   const latestRenderDataRef = React.useRef(renderData);
   latestRenderDataRef.current = renderData;
   const revealedForDataRef = React.useRef<unknown>(null);
+  // B2/B3 — reveal timing + replay key. BarChart runs no phase orchestrator, so
+  // it carries sankey's `seenRevealKeyRef` shape directly (D311): the reveal
+  // replays when the DATA changes (D214 baseline, unchanged) OR when this key
+  // changes, mirroring bklit's `[animationDuration, revealSignature]` epoch
+  // effect (`bar-chart.tsx:386`). A boolean/DOM flag cannot express that.
+  const enterType = enterTransition?.type;
+  const enterDuration = enterTransition?.duration;
+  const enterEaseKey = enterTransition?.ease?.join(",");
+  const { durationMs: revealDurationMs, easingCss: revealEasingCss } = React.useMemo(
+    () => clipRevealTiming(enterTransition, animationDuration, animationEasing),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [enterType, enterDuration, enterEaseKey, animationDuration, animationEasing],
+  );
+  const revealKey = `${revealSignature}|${animationDuration}`;
+  const revealedKeyRef = React.useRef<string | null>(null);
+  const revealKeyRef = React.useRef(revealKey);
+  revealKeyRef.current = revealKey;
 
   const categoryAccessor = React.useMemo(() => barCategoryAccessor(xDataKey), [xDataKey]);
 
@@ -203,6 +286,7 @@ export function BarChart({
         const fill = s.fill ?? DEFAULT_BAR_FILL;
         return {
           dataKey: s.dataKey,
+          yAxisId: s.yAxisId,
           fill,
           dotColor: s.stroke ?? fill,
           lineCap: s.lineCap ?? "round",
@@ -219,6 +303,8 @@ export function BarChart({
     if (!hasBarSquares) return [] as Array<Required<Pick<BarSquaresConfig, "dataKey">> & Omit<BarSquaresConfig, "dataKey"> & { fill: string; squareGap: number; squareRadius: number; squareFit: boolean; useGradient: boolean; gradientStops: { offset: number; color: string }[]; fadedOpacity: number; groupGap: number; animate: boolean }>;
     return barSquaresRaw.map((s) => ({
       dataKey: s.dataKey,
+      // P6.1 / B10 — bklit `bar-squares.tsx:29`.
+      yAxisId: s.yAxisId,
       fill: s.fill ?? DEFAULT_BAR_FILL,
       stroke: s.stroke,
       squareGap: s.squareGap ?? 3,
@@ -248,7 +334,10 @@ export function BarChart({
   }, [barColumnTracksRaw, hasBarColumnTrack]);
 
   const allSeriesForDomain = React.useMemo(
-    () => [...resolvedSeries.map((s) => ({ dataKey: s.dataKey })), ...resolvedBarSquares.map((s) => ({ dataKey: s.dataKey }))],
+    () => [
+      ...resolvedSeries.map((s) => ({ dataKey: s.dataKey, yAxisId: s.yAxisId })),
+      ...resolvedBarSquares.map((s) => ({ dataKey: s.dataKey, yAxisId: s.yAxisId })),
+    ],
     [resolvedSeries, resolvedBarSquares],
   );
 
@@ -269,27 +358,87 @@ export function BarChart({
     [categoryOrder, barGap],
   );
 
-  // bklit grouped-bar maxValue: max single value across all series/rows.
-  const maxValue = React.useMemo(() => {
-    let max = 0;
-    for (const series of allSeriesForDomain) {
-      for (const d of renderData) {
-        const v = d[series.dataKey];
-        if (typeof v === "number" && Number.isFinite(v) && v > max) max = v;
+  // bklit grouped-bar maxValue: max single value across all series/rows —
+  // `[0, (max || 100) * 1.1]`, which is bklit's own `resolveDomain` closure
+  // (`bar-chart.tsx:299-309`) verbatim, including the `|| 100` empty fallback.
+  //
+  // P6.1 / T-F1 (B7 + B10) — that closure is now called once per `yAxisId`
+  // group rather than once for the chart, which is exactly how bklit calls it
+  // (it hands this same closure to `buildYScalesForLines`). `<Bar>` and
+  // `<BarSquares>` both carry the id, so both are in `allSeriesForDomain` and
+  // both are grouped. Every bar chart in the codebase today leaves `yAxisId`
+  // unset, so this returns `{ left: <the old tuple> }` and nothing moves.
+  const resolveBarAxisDomain = React.useCallback(
+    (axisSeries: { dataKey: string }[]): [number, number] => {
+      let max = 0;
+      for (const series of axisSeries) {
+        for (const d of renderData) {
+          const v = d[series.dataKey];
+          if (typeof v === "number" && Number.isFinite(v) && v > max) max = v;
+        }
       }
-    }
-    return max || 100;
-  }, [renderData, allSeriesForDomain]);
+      return [0, (max || 100) * 1.1];
+    },
+    [renderData],
+  );
 
+  const yDomainsByAxis = React.useMemo(
+    () =>
+      resolveYDomainsByAxis({
+        series: allSeriesForDomain,
+        resolveDomain: resolveBarAxisDomain,
+      }),
+    [allSeriesForDomain, resolveBarAxisDomain],
+  );
+
+  // NOT `domainForAxis`, deliberately: its final fallback is `[0, 100]`, but a
+  // bar chart with no series at all resolved to `[0, 110]` before this task
+  // (empty scan -> `max || 100` -> `* 1.1`). Falling back through the same
+  // closure keeps that exact tuple instead of quietly dropping the headroom.
   const yDomain = React.useMemo<[number, number]>(
-    () => [0, maxValue * 1.1] as [number, number],
-    [maxValue],
+    () => yDomainsByAxis[DEFAULT_Y_AXIS_ID] ?? resolveBarAxisDomain([]),
+    [yDomainsByAxis, resolveBarAxisDomain],
   );
   // y as a pre-domained instance (not a factory) so its domain/nice is
   // preserved (factory would be re-inferred from channel values, losing the
   // explicit *1.1 headroom). No `.range()` set — TanStack applies the
   // margin-inclusive range itself (C2).
   const yScale = React.useMemo(() => createNicedYScale(yDomain), [yDomain]);
+
+  // P6.1 (B7/B10) — a secondary axis is a value reprojection into the primary
+  // (niced) domain, since TanStack's spec carries one `y` scale. Bar resolves
+  // it per DATAKEY rather than per mark call, because the same series' value is
+  // read by four different mark families here (bars, squares, column tracks,
+  // depth faces) and they must not disagree about which axis it is on.
+  // Hoisted because the reference-area layer needs the same NICED per-axis
+  // domains the marks are projected into (RA2).
+  const nicedDomainsByAxis = React.useMemo(() => {
+    const out: Record<string, [number, number]> = {};
+    for (const [axisId, domain] of Object.entries(yDomainsByAxis)) {
+      out[axisId] = createNicedYScale(domain).domain() as [number, number];
+    }
+    return out;
+  }, [yDomainsByAxis]);
+
+  const projectYByKey = React.useMemo(() => {
+    const projectorFor = createAxisValueProjector(
+      nicedDomainsByAxis,
+      yScale.domain() as [number, number],
+    );
+    const byKey = new Map<string, (value: number) => number>();
+    for (const series of allSeriesForDomain) {
+      byKey.set(series.dataKey, projectorFor(series.yAxisId));
+    }
+    return byKey;
+  }, [nicedDomainsByAxis, yScale, allSeriesForDomain]);
+
+  const projectValue = React.useCallback(
+    (dataKey: string, value: number) => {
+      const project = projectYByKey.get(dataKey);
+      return project ? project(value) : value;
+    },
+    [projectYByKey],
+  );
 
   // Local band geometry still needed for: groupScale paddingInner proof,
   // per-bar `radius`, and BarXAxisOverlay placement (K3 — overlay stays HTML).
@@ -371,7 +520,7 @@ export function BarChart({
   const hasBarDepth = barDepthBacksRaw.length > 0 || barDepthFrontsRaw.length > 0 || barPulsesRaw.length > 0;
   const barDepthEnabled = hasBarDepth && !isHorizontalOrStacked;
 
-  const squaresBaseId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const squaresBaseId = useSanitizedId();
   const squaresDefs = React.useMemo(() => {
     if (!barSquaresEnabled) return [] as Array<{ dataKey: string; gradientId: string; patternId: string | null; fill: string; gradientStops: { offset: number; color: string }[]; patternPreset?: import("./internal/pattern-preset").PatternPresetId }>;
     const out: Array<{ dataKey: string; gradientId: string; patternId: string | null; fill: string; gradientStops: { offset: number; color: string }[]; patternPreset?: import("./internal/pattern-preset").PatternPresetId }> = [];
@@ -398,7 +547,7 @@ export function BarChart({
   // bar, unlike squaresDefs) since objectBoundingBox makes a single gradient
   // def correct for every bar regardless of its height (bklit's own
   // rationale, bar-depth.tsx:301-306).
-  const depthBaseId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const depthBaseId = useSanitizedId();
   const depthGroundShadow = barDepthProvider?.groundShadow ?? DEFAULT_BAR_DEPTH_GROUND_SHADOW;
   const depthGradientIds = React.useMemo<BarDepthGradientIds>(
     () => ({
@@ -412,9 +561,94 @@ export function BarChart({
   );
   const depthGlassPosStops = React.useMemo(() => buildPosBarStops(depthGroundShadow), [depthGroundShadow]);
   const depthGlassNegStops = React.useMemo(() => buildNegBarStops(depthGroundShadow), [depthGroundShadow]);
+  // BarPulse wave gradient (bklit bar-depth.tsx BarPulse defs) — one shared
+  // def; the wave rect's fill references it by id from inside the marks svg.
+  const pulseWaveGradientId = `${depthBaseId}-bar-pulse-wave-grad`;
+  const pulseWaveStops = React.useMemo(() => buildPulseWaveStops(), []);
+
+  // T-D5: the six objectBoundingBox depth/pulse gradients emit natively via
+  // `spec.gradients` — TanStack's renderer writes them into the chart svg's
+  // `<defs data-ts-key="gradients">` and rewrites matching url(#id) mark
+  // fills. Fractions (0-1) serialize as percentages; stop opacities pass
+  // through the serializer's 2dp rounding (all painted values are exact).
+  const nativeDepthGradients = React.useMemo(
+    () => [
+      {
+        id: depthGradientIds.glassPosId,
+        x1: 0,
+        y1: 0,
+        x2: 0,
+        y2: 1,
+        stops: depthGlassPosStops.map((s) => ({
+          offset: Number.parseFloat(s.offset) / 100,
+          color: s.color,
+          opacity: Number(s.opacity),
+        })),
+      },
+      {
+        id: depthGradientIds.glassNegId,
+        x1: 0,
+        y1: 0,
+        x2: 0,
+        y2: 1,
+        stops: depthGlassNegStops.map((s) => ({
+          offset: Number.parseFloat(s.offset) / 100,
+          color: s.color,
+          opacity: Number(s.opacity),
+        })),
+      },
+      {
+        id: depthGradientIds.sideShadeRtlId,
+        x1: 1,
+        y1: 0,
+        x2: 0,
+        y2: 1,
+        stops: [
+          { offset: 0, color: "black", opacity: 0.05 },
+          { offset: 1, color: "black", opacity: 0.55 },
+        ],
+      },
+      {
+        id: depthGradientIds.sideShadeLtrId,
+        x1: 0,
+        y1: 0,
+        x2: 1,
+        y2: 1,
+        stops: [
+          { offset: 0, color: "black", opacity: 0.05 },
+          { offset: 1, color: "black", opacity: 0.55 },
+        ],
+      },
+      {
+        id: depthGradientIds.topShadeId,
+        x1: 0,
+        y1: 1,
+        x2: 0,
+        y2: 0,
+        stops: [
+          { offset: 0, color: "black", opacity: 0 },
+          { offset: 1, color: "black", opacity: 0.18 },
+        ],
+      },
+      {
+        id: pulseWaveGradientId,
+        x1: 0,
+        y1: 1,
+        x2: 0,
+        y2: 0,
+        stops: pulseWaveStops.map((s) => ({
+          offset: Number.parseFloat(s.offset) / 100,
+          color: s.color,
+          opacity: Number(s.opacity),
+        })),
+      },
+    ],
+    [depthGradientIds, depthGlassPosStops, depthGlassNegStops, pulseWaveStops, pulseWaveGradientId],
+  );
 
   const definition = React.useMemo(() => {
     if (width <= 0 || (resolvedSeries.length === 0 && resolvedBarSquares.length === 0)) return null;
+    const gridGuide = resolveGridGuide(grid);
     const hasSquares = barSquaresEnabled;
     const hasTrack = barColumnTrackEnabled;
     const hasDepth = barDepthEnabled;
@@ -425,7 +659,7 @@ export function BarChart({
           barY(renderData, {
             id: series.dataKey,
             x: (d: ChartDatum) => categoryAccessor(d),
-            y: (d: ChartDatum) => d[series.dataKey] as number,
+            y: (d: ChartDatum) => projectValue(series.dataKey, d[series.dataKey] as number),
             z: () => series.dataKey,
              layout: group({ scale: groupScale }),
             fill: series.fill,
@@ -435,8 +669,15 @@ export function BarChart({
       }
       const spec = {
         marks,
-        x: { scale: xScaleFactory, guide: false },
-        y: { scale: yScale, grid: grid?.horizontal ?? false, ticks: grid?.numTicks ?? 5 },
+        // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
+        // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
+        // key on the spec is never read.
+        x: { scale: xScaleFactory, grid: gridGuide.vertical, axis: { ticks: { count: gridGuide.columnTicks } } },
+        y: {
+          scale: yScale,
+          grid: gridGuide.horizontal,
+          axis: { ticks: { count: gridGuide.ticks } },
+        },
         margin,
         svgAnimation: false as const,
       } as const;
@@ -463,7 +704,7 @@ export function BarChart({
               bandWidth,
               bandPos: bandPosFn,
               categoryAccessor,
-              yAccessor: (d: ChartDatum) => d[dataKey] as number,
+              yAccessor: (d: ChartDatum) => projectValue(dataKey, d[dataKey] as number),
               fill: track.fill,
               opacity: track.opacity,
               squareGap: track.squareGap,
@@ -491,7 +732,7 @@ export function BarChart({
             bandWidth,
             bandPos: bandPosFn,
             categoryAccessor,
-            yAccessor: (d: ChartDatum) => d[s.dataKey] as number,
+            yAccessor: (d: ChartDatum) => projectValue(s.dataKey, d[s.dataKey] as number),
             fill: def ? def.fill : s.fill,
             squareGap: s.squareGap,
             squareRadius: s.squareRadius,
@@ -518,7 +759,7 @@ export function BarChart({
             bandScale: categoryScaleForOverlay as unknown as { step?: () => number },
             bandPos: bandPosFn,
             categoryAccessor,
-            yAccessor: (d: ChartDatum) => d[b.dataKey] as number,
+            yAccessor: (d: ChartDatum) => projectValue(b.dataKey, d[b.dataKey] as number),
             fill: b.color ?? series.fill,
             gradientIds: depthGradientIds,
           }),
@@ -547,7 +788,7 @@ export function BarChart({
             bandWidth,
             bandScale: categoryScaleForOverlay as unknown as { step?: () => number },
             categoryAccessor,
-            yAccessor: (d: ChartDatum) => d[series.dataKey] as number,
+            yAccessor: (d: ChartDatum) => projectValue(series.dataKey, d[series.dataKey] as number),
             innerWidth: innerW,
             chartX: margin.left,
             centerX: margin.left + innerW / 2,
@@ -560,7 +801,7 @@ export function BarChart({
         barY(renderData, {
           id: series.dataKey,
           x: (d: ChartDatum) => categoryAccessor(d),
-          y: (d: ChartDatum) => d[series.dataKey] as number,
+          y: (d: ChartDatum) => projectValue(series.dataKey, d[series.dataKey] as number),
           z: () => series.dataKey,
            layout: group({ scale: groupScale }),
           fill: series.fill,
@@ -579,7 +820,7 @@ export function BarChart({
             bandScale: categoryScaleForOverlay as unknown as { step?: () => number },
             bandPos: bandPosFn,
             categoryAccessor,
-            yAccessor: (d: ChartDatum) => d[f.dataKey] as number,
+            yAccessor: (d: ChartDatum) => projectValue(f.dataKey, d[f.dataKey] as number),
             gradientIds: depthGradientIds,
           }),
         );
@@ -592,18 +833,27 @@ export function BarChart({
           bandScale: categoryScaleForOverlay as unknown as { step?: () => number },
           bandPos: bandPosFn,
           categoryAccessor,
-          yAccessor: (d: ChartDatum) => d[p.dataKey] as number,
+          yAccessor: (d: ChartDatum) => projectValue(p.dataKey, d[p.dataKey] as number),
           activeIndex: p.activeIndex,
           pulsePaused: p.pulsePaused,
+          gradientId: pulseWaveGradientId,
         });
         if (m) marks.push(m);
       }
     }
     const spec = {
       marks,
-      x: { scale: xScaleFactory, guide: false },
-      y: { scale: yScale, grid: grid?.horizontal ?? false, ticks: grid?.numTicks ?? 5 },
+      // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
+      // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
+      // key on the spec is never read.
+      x: { scale: xScaleFactory, grid: gridGuide.vertical, axis: { ticks: { count: gridGuide.columnTicks } } },
+      y: {
+        scale: yScale,
+        grid: gridGuide.horizontal,
+        axis: { ticks: { count: gridGuide.ticks } },
+      },
       margin,
+      gradients: nativeDepthGradients,
       svgAnimation: false as const,
     } as const;
     const base = defineChart(spec);
@@ -635,6 +885,7 @@ export function BarChart({
     squaresDefsByKey,
     squaresBaseId,
     depthGradientIds,
+    nativeDepthGradients,
   ]);
 
   // Hover chrome (bklit ChartTooltip, bar per-category-index dim variant).
@@ -644,7 +895,7 @@ export function BarChart({
   const chromeStateRef = React.useRef<BarHoverChromeState | null>(null);
   const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
     const v = d[xDataKey];
-    if (v instanceof Date) return v.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (v instanceof Date) return shortDateFmt.format(v);
     return String(v ?? "");
   }), [renderData, xDataKey]);
   const squaresDotColor = (fill: string, stroke: string | undefined) => stroke ?? fill;
@@ -665,6 +916,8 @@ export function BarChart({
     showCrosshair: tooltip?.showCrosshair ?? true,
     showDots: tooltip?.showDots ?? true,
     showDatePill: tooltip?.showDatePill ?? true,
+    // B12: bklit BarXAxis.tickerHalfWidth drives the date-pill label-fade radius.
+    tickerHalfWidth: barXAxis?.tickerHalfWidth,
     tooltip: tooltip ?? null,
     dateLabels: dateLabelsForPill,
     legendHoveredIndex,
@@ -682,7 +935,6 @@ export function BarChart({
     if (!el || !tooltipEnabled) return;
     const chrome = attachBarHoverChrome(el, () => chromeStateRef.current!, {
       tooltipSpring: chartConfig.tooltipSpring,
-      tooltipBoxSpring: chartConfig.tooltipBoxSpring,
     });
     chromeRef.current = chrome;
     return () => {
@@ -724,9 +976,21 @@ export function BarChart({
       // per-series midpoint (barY sets point.x = bandCenter-bandW/2 +
       // groupOffset+groupW/2), so we keep point.x as-is for dot x.
       // Dot y already comes from TanStack's scene-resolved y (no local scale).
+      // P6.1 — `value` is the RAW datum value, deliberately NOT `p.yValue`.
+      // Once a series can sit on a secondary axis, `p.yValue` is the value
+      // REPROJECTED into the primary domain (see `projectYByKey`), which is a
+      // rendering-space number: correct for placing the dot, wrong for the
+      // tooltip row and for the object handed to a caller's `tooltip.rows()`.
+      // Line, area and scatter all already read the raw datum here; bar was
+      // the only chart reading the scale-space value, and the QA gate does NOT
+      // catch this — a few wrong digits of tooltip text is ~0.05% of the
+      // viewport, well under the 0.5% gate (D337 again).
       const barPoints: BarFocusPoint[] = points.map((p) => ({
         markId: p.markId,
-        value: p.yValue as number,
+        value: (() => {
+          const raw = (p.datum as ChartDatum | undefined)?.[p.markId];
+          return typeof raw === "number" ? raw : (p.yValue as number);
+        })(),
         x: p.x as number,
         y: p.y as number,
         color: p.color,
@@ -756,35 +1020,65 @@ export function BarChart({
   // rAFs + one macrotask later, after the browser has already painted the
   // (still-hidden) bars).
   const handleRender = React.useCallback(() => {
+    // BarPulse loop upkeep (syncBarPulseGroups) runs at every exit path
+    // below, AFTER this render's phase decision: TanStack's reconciler wipes
+    // injected nodes/attributes (the pulse's <clipPath> def, the group's
+    // clip-path/display styles) on every render, so they must be re-applied
+    // here — hidden while a reveal is (re)playing (legacy holds the wave
+    // until bars finish growing), live again once the deadline fires.
     const marksGroup = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marksGroup || animationDuration <= 0) {
       setPhase("ready");
+      if (containerRef.current) syncBarPulseGroups(containerRef.current, true);
       return;
     }
     // TanStack double-fires onRender in the same mount commit; once a reveal
     // is scheduled, "ready" is owned solely by the reveal deadline below —
     // these guards must not short-circuit the phase to ready mid-reveal.
-    if (marksGroup.dataset.bkmRevealed === "1") {
+    // B3: the replay KEY must be tested BEFORE the DOM stamp, not after. The
+    // stamp latches for the life of the marks node, so a caller bumping
+    // `revealSignature` on a surviving node would be swallowed here and B3
+    // would land inert while typechecking clean (the exact D311 failure).
+    const revealKeyChanged = revealedKeyRef.current !== revealKeyRef.current;
+    if (isRevealed(marksGroup) && !revealKeyChanged) {
+      // Any re-render here (hover/focus) still went through the reconciler,
+      // which wiped the pulse group's injected clip + styles — restore them,
+      // staying hidden while a reveal is in flight.
+      if (containerRef.current) syncBarPulseGroups(containerRef.current, phaseRef.current === "ready");
       return;
     }
-    if (revealedForDataRef.current === latestRenderDataRef.current) {
-      marksGroup.dataset.bkmRevealed = "1";
+    // Reveal replay (data change) or fresh mount: hide the pulse groups for
+    // the reveal's duration — legacy holds BarPulse until bars finish growing.
+    if (containerRef.current) syncBarPulseGroups(containerRef.current, false);
+    if (revealedForDataRef.current === latestRenderDataRef.current && !revealKeyChanged) {
+      // Same-data recreation: no reveal replay (D214) — bars are already
+      // grown unless a reveal for THIS data is still in flight, so decide
+      // by live phase (also restores the injected clip/loop the reconciler
+      // just wiped when ready).
+      markRevealed(marksGroup);
+      if (containerRef.current) syncBarPulseGroups(containerRef.current, phaseRef.current === "ready");
       return;
     }
     revealedForDataRef.current = latestRenderDataRef.current;
-    marksGroup.dataset.bkmRevealed = "1";
+    revealedKeyRef.current = revealKeyRef.current;
+    markRevealed(marksGroup);
     setPhase("revealing");
 
-    const staggerSpreadMs = animationDuration * 0.4;
+    const staggerSpreadMs = revealDurationMs * 0.4;
     const staggerMs = renderData.length > 1 ? staggerSpreadMs : 0;
-    const deadlineMs = animationDuration + staggerMs;
+    const deadlineMs = revealDurationMs + staggerMs;
 
     if (animationDuration <= 0) {
       setPhase("ready");
     } else {
       revealDeadlineTimerRef.current = setRevealDeadline(deadlineMs, {
         animationsRef: revealAnimationsRef,
-        onDeadline: () => { setPhase("ready"); },
+        onDeadline: () => {
+          setPhase("ready");
+          // Reveal finished → un-hide the pulse groups + start their sweep
+          // loops (legacy holds BarPulse until bars finish growing).
+          if (containerRef.current) syncBarPulseGroups(containerRef.current, true);
+        },
       });
     }
 
@@ -810,39 +1104,33 @@ export function BarChart({
           arr.push(r);
           byX.set(key, arr);
         });
-        const columns = [...byX.values()].sort((a, b) => {
-          const ay = Number.parseFloat(a[0]?.getAttribute("y") ?? "0");
-          const by = Number.parseFloat(b[0]?.getAttribute("y") ?? "0");
-          return ay - by;
-        });
         // Simpler: use DOM order grouped by data index (already column-major).
         // So just apply cascade per rect using its dataIndex ordering.
         const perColumnDelayMs = staggerDelaySec * 1000;
         const xs = [...byX.keys()].sort((a, b) => a - b);
-          rects.forEach((rectEl) => {
-          const targetY = Number.parseFloat(rectEl.getAttribute("y") ?? "0");
-          const targetHeight = Number.parseFloat(rectEl.getAttribute("height") ?? "0");
-          const baselineY = targetY + targetHeight;
-          // Determine column index + square index within column by x grouping
-          const x = Number.parseFloat(rectEl.getAttribute("x") ?? "0");
-          const bucket = Math.round(x * 100);
+        for (const [bucket, colRects] of byX) {
+          // Column index + square index within column come straight from the
+          // x-bucket grouping above.
           const colIdx = Math.max(0, xs.indexOf(bucket));
-          const colRects = byX.get(bucket) ?? [rectEl];
-          const sqIdx = colRects.indexOf(rectEl);
           const sqCount = colRects.length;
-          const cascadeSpreadMs = animationDuration * 0.4;
+          const cascadeSpreadMs = revealDurationMs * 0.4;
           const cascadeStepMs = sqCount > 1 ? cascadeSpreadMs / (sqCount - 1) : 0;
-          const delayMs = colIdx * perColumnDelayMs + sqIdx * cascadeStepMs;
-          const anim = rectEl.animate(
-            [
-              { height: "0px", y: String(baselineY) },
-              { height: `${targetHeight}px`, y: String(targetY) },
-            ],
-            { duration: animationDuration, delay: delayMs, easing: REVEAL_EASING, fill: "backwards" },
-          );
-          revealAnimationsRef.current.push(anim);
-        });
-        void columns;
+          for (let sqIdx = 0; sqIdx < colRects.length; sqIdx++) {
+            const rectEl = colRects[sqIdx]!;
+            const targetY = Number.parseFloat(rectEl.getAttribute("y") ?? "0");
+            const targetHeight = Number.parseFloat(rectEl.getAttribute("height") ?? "0");
+            const baselineY = targetY + targetHeight;
+            const delayMs = colIdx * perColumnDelayMs + sqIdx * cascadeStepMs;
+            const anim = rectEl.animate(
+              [
+                { height: "0px", y: String(baselineY) },
+                { height: `${targetHeight}px`, y: String(targetY) },
+              ],
+              { duration: revealDurationMs, delay: delayMs, easing: revealEasingCss, fill: "backwards" },
+            );
+            revealAnimationsRef.current.push(anim);
+          }
+        }
       }
     };
 
@@ -863,7 +1151,7 @@ export function BarChart({
               { height: `${baselineH + targetHeight}px`, y: "0" },
               { height: `${targetHeight}px`, y: "0" },
             ],
-            { duration: animationDuration, delay: delaySec * 1000, easing: REVEAL_EASING, fill: "backwards" },
+            { duration: revealDurationMs, delay: delaySec * 1000, easing: revealEasingCss, fill: "backwards" },
           );
           revealAnimationsRef.current.push(anim);
         });
@@ -896,7 +1184,7 @@ export function BarChart({
                 { height: "0px", y: String(baselineY) },
                 { height: `${targetHeight}px`, y: String(targetY) },
               ],
-              { duration: animationDuration, delay: delaySec * 1000, easing: REVEAL_EASING, fill: "backwards" },
+              { duration: revealDurationMs, delay: delaySec * 1000, easing: revealEasingCss, fill: "backwards" },
             );
             revealAnimationsRef.current.push(anim);
           });
@@ -920,9 +1208,9 @@ export function BarChart({
                 { height: `${targetHeight}px`, y: String(targetY) },
               ],
               {
-                duration: animationDuration,
+                duration: revealDurationMs,
                 delay: delaySec * 1000,
-                easing: REVEAL_EASING,
+                easing: revealEasingCss,
                 fill: "backwards",
               },
             );
@@ -932,11 +1220,16 @@ export function BarChart({
       }
       marksGroup.classList.remove("ts-chart__marks--revealing");
     });
-  }, [animationDuration, resolvedSeries, resolvedBarSquares, barSquaresEnabled, barColumnTrackEnabled, setPhase, renderData.length]);
+  }, [animationDuration, revealDurationMs, revealEasingCss, resolvedSeries, resolvedBarSquares, barSquaresEnabled, barColumnTrackEnabled, setPhase, renderData.length]);
 
+  // P6.1 — the reference-area layer used to read a SECOND `[0, maxValue * 1.1]`
+  // memo of its own, byte-identical to `yDomain` and recomputed on the same
+  // dependency. Collapsed onto `yDomain`. (Note for RA2: both were, and this
+  // still is, the UN-niced domain, while the scale the bars are painted with is
+  // `createNicedYScale(yDomain)` — a latent misplacement that predates this
+  // task and belongs to the reference-area cluster, not here.)
   const refAreaChildrenBar = React.useMemo(() => extractReferenceAreaProps(children), [children]);
   const heightPxBar = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
-  const yDomainBar = React.useMemo(() => [0, (maxValue * 1.1)] as [number, number], [maxValue]);
   const barScaleForRef = React.useMemo(() => {
     if (categoryOrder.length === 0) return null;
     return scaleBand<string>().domain(categoryOrder).range([0, Math.max(0, width - margin.left - margin.right)]).padding(barGap);
@@ -949,6 +1242,15 @@ export function BarChart({
       style={{ position: "relative", width: "100%", aspectRatio, isolation: "isolate" } as React.CSSProperties}
       data-bkm-chart="bar"
     >
+      {background ? (
+        <BackgroundLayer
+          config={background}
+          innerWidth={innerWidth}
+          innerHeight={Math.max(0, heightPxBar - margin.top - margin.bottom)}
+          marginLeft={margin.left}
+          marginTop={margin.top}
+        />
+      ) : null}
       {definition ? (
         <>
           <Chart
@@ -977,7 +1279,11 @@ export function BarChart({
                 width,
                 height: heightPxBar,
                 margin,
-                yDomain: yDomainBar,
+                // RA2 — the NICED domain the bars actually paint in. Passing the
+                // raw `yDomain` here misplaced every bar reference area by the
+                // nicing delta (recorded in D343, fixed here).
+                yDomain: yScale.domain() as [number, number],
+                yDomainsByAxis: nicedDomainsByAxis,
                 isBarChart: true,
                 barScale: barScaleForRef as unknown as { (v: string): number | undefined; bandwidth: () => number; domain: () => string[] },
               }}
@@ -1007,39 +1313,9 @@ export function BarChart({
           </defs>
         </svg>
       )}
-      {barDepthEnabled && (
-        // bklit bar-depth.tsx BarDepthBack/BarDepthFront <defs> — per-bar
-        // (objectBoundingBox, default gradientUnits) glass + directional
-        // side/lid shade gradients. Deliberately NOT gradientUnits=
-        // "userSpaceOnUse" (unlike squaresDefs above): objectBoundingBox
-        // makes ONE gradient def correct for every bar's own height/bbox.
-        <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
-          <defs>
-            <linearGradient id={depthGradientIds.glassPosId} x1="0" x2="0" y1="0" y2="1">
-              {depthGlassPosStops.map((s) => (
-                <stop key={s.offset} offset={s.offset} stopColor={s.color} stopOpacity={s.opacity} />
-              ))}
-            </linearGradient>
-            <linearGradient id={depthGradientIds.glassNegId} x1="0" x2="0" y1="0" y2="1">
-              {depthGlassNegStops.map((s) => (
-                <stop key={s.offset} offset={s.offset} stopColor={s.color} stopOpacity={s.opacity} />
-              ))}
-            </linearGradient>
-            <linearGradient id={depthGradientIds.sideShadeRtlId} x1="1" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="black" stopOpacity="0.05" />
-              <stop offset="100%" stopColor="black" stopOpacity="0.55" />
-            </linearGradient>
-            <linearGradient id={depthGradientIds.sideShadeLtrId} x1="0" x2="1" y1="0" y2="1">
-              <stop offset="0%" stopColor="black" stopOpacity="0.05" />
-              <stop offset="100%" stopColor="black" stopOpacity="0.55" />
-            </linearGradient>
-            <linearGradient id={depthGradientIds.topShadeId} x1="0" x2="0" y1="1" y2="0">
-              <stop offset="0%" stopColor="black" stopOpacity="0" />
-              <stop offset="100%" stopColor="black" stopOpacity="0.18" />
-            </linearGradient>
-          </defs>
-        </svg>
-      )}
     </div>
   );
 }
+
+// Legacy parity: bklit `bar-chart.tsx` ships `export default BarChart;` (T-E2).
+export default BarChart;

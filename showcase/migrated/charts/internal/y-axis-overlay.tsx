@@ -3,6 +3,7 @@
 // `x-axis-overlay.tsx`), positioned at each tick's own y pixel.
 import * as React from "react";
 import { scaleLinear } from "d3-scale";
+import { AXIS_POSITION_TWEEN_MS } from "./design-tokens";
 import { resolveYAxisTickCount } from "./y-axis-ticks";
 
 export interface YAxisOverlayProps {
@@ -102,6 +103,9 @@ export function YAxisOverlay({
     left: 0,
     right: 0,
     transform: "translateY(-50%)",
+    // AX5 (bklit YAxisInner, y-axis.tsx:149): `top` tweens on domain changes
+    // (DEFAULT_Y_DOMAIN_TWEEN_MS + LINE_LOADING_PULSE_EASE).
+    transition: `top ${AXIS_POSITION_TWEEN_MS}ms cubic-bezier(0.85, 0, 0.15, 1)`,
     display: "flex",
     justifyContent: isLeft ? "flex-end" : "flex-start",
     paddingRight: isLeft ? 8 : 0,

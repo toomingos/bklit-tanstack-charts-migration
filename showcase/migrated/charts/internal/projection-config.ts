@@ -2,15 +2,12 @@ import * as React from "react";
 import { roleOf } from "../children";
 import type { ProjectionPoint } from "./projection-utils";
 import { projectionDateExtents, projectionValueExtents } from "./projection-utils";
+// P6.1: was a private byte-identical copy of the same normalizer.
+import { normalizeYAxisId } from "./y-axis-id";
 
 export interface ProjectionLineConfig {
   yAxisId: string;
   data: ProjectionPoint[];
-}
-
-function normalizeYAxisId(id?: string | number): string {
-  if (id == null || id === "") return "left";
-  return String(id);
 }
 
 interface ProjectionLineConfigProps {

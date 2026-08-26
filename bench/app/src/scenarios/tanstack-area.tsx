@@ -4,6 +4,7 @@ import { scaleLinear, scaleUtc } from "d3-scale";
 import { curveNatural } from "d3-shape";
 import { Chart } from "@tanstack/react-charts";
 import { areaY, d3Curve, defineChart } from "@tanstack/charts";
+import { tooltip } from "@tanstack/charts/tooltip";
 import {
   generateTimeSeries,
   generateTimeSeriesUpdate,
@@ -48,7 +49,7 @@ export default function TanstackArea({ n }: { n: number }) {
         ],
         x: { scale: scaleUtc, nice: true },
         y: { scale: scaleLinear, nice: true, grid: true },
-        tooltip: true,
+        tooltip,
       }),
     [data],
   );
