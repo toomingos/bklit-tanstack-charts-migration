@@ -1,0 +1,16 @@
+# Phase 6 — Progress
+
+- [ ] 6.1 Research (orchestrator-led)
+  - [x] 01 focus styling / hover-dim
+  - [x] 02 tooltip
+  - [x] 03 hover geometry
+  - [x] 04 axes
+  - [x] 05 motion / reveals
+  - [x] 06 brush + zoom
+  - [x] 07 legend coupling
+  - [x] 08 reach-in census — 259 sites baseline
+  - [x] 00 seed map corrected (polar-states caveat, wipe-not-dash gap, blur channel, per-tick color)
+- [x] 6.2 Map (`research/phase-6/go-to-plan.md`; D417-D419 logged; 6-commit ladder)
+- [ ] 6.3 Implement (one commit per subsystem)
+- [ ] 6.4 Refactor (explore -> triage -> one refactor commit)
+- [ ] 6.5 Gate (QA + bench + bundle M2c + census=0 + CI guard)
