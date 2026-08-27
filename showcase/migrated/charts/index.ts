@@ -220,7 +220,7 @@ export {
   type ChoroplethFeature,
   type ChoroplethFeatureProperties,
 } from "./choropleth-chart";
-export type { TransformMatrix } from "@visx/zoom";
+export type { TransformMatrix } from "./internal/zoom-engine";
 export {
   ChartConfigProvider,
   useChartConfig,
@@ -668,3 +668,31 @@ export {
   useAnimatedYDomains,
   type UseAnimatedYDomainsOptions,
 } from "./internal/use-animated-y-domains";
+
+// P5.3.5 / D410 — the last seven legacy PUBLIC barrel names that migrated
+// implemented but never re-exported. Each was verified against its legacy
+// counterpart at source before being added here; none is a new implementation.
+//
+//   DEFAULT_Y_AXIS_ID    legacy y-axis-scales.ts:5   — byte-identical ("left")
+//   YAxisOrientation     legacy y-axis-scales.ts:7   — identical union
+//   YDomain              legacy y-domain-utils.ts:6  — identical tuple
+//   shouldTweenYDomain   legacy y-domain-utils.ts:19 — identical signature
+//   isYDomainTweenPhase  legacy y-domain-utils.ts:46 — identical signature
+//   getPrimaryYScale     legacy y-axis-scales.ts:31  — identical body; the
+//     scale type is migrated's `NicedYScale` where legacy names it `YScale`,
+//     which is the same rename already applied across this barrel.
+//   useActiveMarkers     legacy chart-markers.tsx:192 — same public contract
+//     (`ChartMarker[]` in, `ChartMarker[]` out) over a different source of
+//     truth: legacy reads `useChartHover()`, migrated subscribes to
+//     `MarkerActiveContext` via `useSyncExternalStore`. Deferred at `:415`
+//     above as "P5.2's to export"; closed here.
+//
+// Re-exports only — no runtime behaviour is added, and no chart module changed.
+export { DEFAULT_Y_AXIS_ID, type YAxisOrientation } from "./internal/y-axis-id";
+export {
+  getPrimaryYScale,
+  isYDomainTweenPhase,
+  shouldTweenYDomain,
+  type YDomain,
+} from "./internal/y-domain";
+export { useActiveMarkers } from "./internal/marker-tooltip";

@@ -140,6 +140,8 @@ export interface LineChartProps {
       replays the mount reveal without a data change. Forwarded straight to the
       orchestrator, which already keys its reveal effect on this field. */
   revealSignature?: string;
+  ariaLabel?: string;
+  ariaDescription?: string;
 }
 
 export function LineChart({
@@ -162,6 +164,8 @@ export function LineChart({
   tweenYDomainOnXDomainChange = false,
   enterTransition,
   revealSignature = "",
+  ariaLabel = "Line chart",
+  ariaDescription,
 }: LineChartProps) {
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
@@ -582,15 +586,17 @@ export function LineChart({
       // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
       // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
       // key on the spec is never read.
-      x: {
-        scale: xScale,
-        grid: gridGuide.vertical,
-        axis: { ticks: { count: gridGuide.columnTicks } },
-      },
-      y: {
-        scale: yScale,
-        grid: gridGuide.horizontal,
-        axis: { ticks: { count: gridGuide.ticks } },
+      scales: {
+        x: {
+          scale: xScale,
+          grid: gridGuide.vertical,
+          axis: { ticks: { count: gridGuide.columnTicks } },
+        },
+        y: {
+          scale: yScale,
+          grid: gridGuide.horizontal,
+          axis: { ticks: { count: gridGuide.ticks } },
+        },
       },
       margin,
       focus: "group-x" as const,
@@ -1056,7 +1062,8 @@ export function LineChart({
       {definition ? (
         <div style={needsBrushClip ? { clipPath: `url(#${brushClipId})` } : undefined}>
           <Chart
-            ariaLabel="Line chart"
+            ariaLabel={ariaLabel}
+            ariaDescription={ariaDescription}
             aspectRatio={parseAspectRatio(aspectRatio)}
             height={heightPx > 0 ? heightPx : undefined}
             definition={definition}

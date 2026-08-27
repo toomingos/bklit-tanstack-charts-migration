@@ -1,34 +1,357 @@
-import type { ReactNode, ComponentProps } from "react";
-import {
-  PatternCircles as VisxPatternCircles,
-  PatternHexagons as VisxPatternHexagons,
-  PatternLines as VisxPatternLines,
-  PatternWaves as VisxPatternWaves,
-} from "@visx/pattern";
+import type { ReactNode } from "react";
+
+// ── visx pattern reimplementations (dependency-free) ──────────────────────
+// visx pattern (v4.0.1-alpha.0) Pattern/Lines/Circles/Hexagons/Waves/Path
+// components ported verbatim (esm/patterns/*.js), including their quirks:
+// the base Pattern wraps in its own <defs>, so every call site's own
+// `<defs>` wrapper nests as `<defs><defs><pattern>…` — do not flatten it.
+// Hexagons ignores its `width` prop and overrides the tile to
+// `width={size}`/`height={sqrt(size)}` while computing the hex path from
+// the passed-in `height` — reproduced deliberately, it is public API.
+
+function cx(
+  ...classes: Array<string | false | null | undefined>
+): string {
+  return classes.filter(Boolean).join(" ");
+}
+
+interface PatternProps {
+  id: string;
+  width: number;
+  height: number;
+  children: ReactNode;
+}
+
+function Pattern({ id, width, height, children }: PatternProps) {
+  return (
+    <defs>
+      <pattern
+        id={id}
+        width={width}
+        height={height}
+        patternUnits="userSpaceOnUse"
+      >
+        {children}
+      </pattern>
+    </defs>
+  );
+}
+
+const PatternOrientation = {
+  horizontal: "horizontal",
+  vertical: "vertical",
+  diagonal: "diagonal",
+  diagonalRightToLeft: "diagonalRightToLeft",
+} as const;
+
+type PatternOrientationType =
+  (typeof PatternOrientation)[keyof typeof PatternOrientation];
+
+function pathForOrientation({
+  height,
+  orientation,
+}: {
+  height: number;
+  orientation: PatternOrientationType;
+}): string {
+  switch (orientation) {
+    case PatternOrientation.horizontal:
+      return `M 0,${height / 2} l ${height},0`;
+    case PatternOrientation.diagonal:
+      return `M 0,${height} l ${height},${-height} M ${-height / 4},${height / 4} l ${height / 2},${-height / 2}
+             M ${(3 / 4) * height},${(5 / 4) * height} l ${height / 2},${-height / 2}`;
+    case PatternOrientation.diagonalRightToLeft:
+      return `M 0,0 l ${height},${height}
+        M ${-height / 4},${(3 / 4) * height} l ${height / 2},${height / 2}
+        M ${(3 / 4) * height},${-height / 4} l ${height / 2},${height / 2}`;
+    case PatternOrientation.vertical:
+    default:
+      return `M ${height / 2}, 0 l 0, ${height}`;
+  }
+}
+
+interface PatternLinesProps {
+  id: string;
+  width: number;
+  height: number;
+  className?: string;
+  background?: string;
+  stroke?: string;
+  strokeWidth?: number | string;
+  strokeDasharray?: string | number;
+  strokeLinecap?: "square" | "butt" | "round" | "inherit";
+  shapeRendering?: string | number;
+  orientation?: PatternOrientationType[];
+}
+
+function LinesImpl({
+  id,
+  width,
+  height,
+  stroke,
+  strokeWidth,
+  strokeDasharray,
+  strokeLinecap = "square",
+  shapeRendering = "auto",
+  orientation = ["vertical"],
+  background,
+  className,
+}: PatternLinesProps) {
+  const orientations = Array.isArray(orientation) ? orientation : [orientation];
+  return (
+    <Pattern id={id} width={width} height={height}>
+      {!!background && (
+        <rect
+          className={cx("visx-pattern-line-background")}
+          width={width}
+          height={height}
+          fill={background}
+        />
+      )}
+      {orientations.map((o, i) => (
+        <path
+          key={`visx-${id}-line-${o}-${i}`}
+          className={cx("visx-pattern-line", className)}
+          d={pathForOrientation({ orientation: o, height })}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+          strokeDasharray={strokeDasharray}
+          strokeLinecap={strokeLinecap}
+          shapeRendering={shapeRendering}
+        />
+      ))}
+    </Pattern>
+  );
+}
+
+interface PatternCirclesProps {
+  id: string;
+  width: number;
+  height: number;
+  radius?: number;
+  fill?: string;
+  className?: string;
+  stroke?: string;
+  strokeWidth?: number | string;
+  strokeDasharray?: number | string;
+  complement?: boolean;
+  background?: string;
+}
+
+function CirclesImpl({
+  id,
+  width,
+  height,
+  radius = 2,
+  fill,
+  stroke,
+  strokeWidth,
+  strokeDasharray,
+  background,
+  complement = false,
+  className,
+}: PatternCirclesProps) {
+  let corners: Array<[number, number]> | undefined;
+  if (complement) {
+    corners = [
+      [0, 0],
+      [0, height],
+      [width, 0],
+      [width, height],
+    ];
+  }
+  return (
+    <Pattern id={id} width={width} height={height}>
+      {!!background && <rect width={width} height={height} fill={background} />}
+      <circle
+        className={cx("visx-pattern-circle", className)}
+        cx={width / 2}
+        cy={height / 2}
+        r={radius}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        strokeDasharray={strokeDasharray}
+      />
+      {corners?.map(([cornerX, cornerY]) => (
+        <circle
+          key={`${id}-complement-${cornerX}-${cornerY}`}
+          className={cx(
+            "visx-pattern-circle visx-pattern-circle-complement",
+            className,
+          )}
+          cx={cornerX}
+          cy={cornerY}
+          r={radius}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+          strokeDasharray={strokeDasharray}
+        />
+      ))}
+    </Pattern>
+  );
+}
+
+interface PatternPathProps {
+  id: string;
+  width: number;
+  height: number;
+  path?: string;
+  fill?: string;
+  className?: string;
+  background?: string;
+  stroke?: string;
+  strokeWidth?: number | string;
+  strokeDasharray?: string | number;
+  strokeLinecap?: "square" | "butt" | "round" | "inherit";
+  shapeRendering?: string | number;
+}
+
+function PathImpl({
+  id,
+  width,
+  height,
+  path,
+  fill = "transparent",
+  stroke,
+  strokeWidth,
+  strokeDasharray,
+  strokeLinecap = "square",
+  shapeRendering = "auto",
+  background,
+  className,
+}: PatternPathProps) {
+  return (
+    <Pattern id={id} width={width} height={height}>
+      {!!background && <rect width={width} height={height} fill={background} />}
+      <path
+        className={cx("visx-pattern-path", className)}
+        d={path}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        strokeDasharray={strokeDasharray}
+        strokeLinecap={strokeLinecap}
+        shapeRendering={shapeRendering}
+      />
+    </Pattern>
+  );
+}
+
+interface PatternHexagonsProps {
+  id: string;
+  height: number;
+  size?: number;
+  fill?: string;
+  className?: string;
+  background?: string;
+  stroke?: string;
+  strokeWidth?: number | string;
+  strokeDasharray?: string | number;
+  strokeLinecap?: "square" | "butt" | "round" | "inherit";
+  shapeRendering?: string | number;
+}
+
+function HexagonsImpl({
+  id,
+  height,
+  fill,
+  stroke,
+  strokeWidth,
+  strokeDasharray,
+  strokeLinecap,
+  shapeRendering,
+  background,
+  className,
+  size = 3,
+}: PatternHexagonsProps) {
+  const sqrtSize = Math.sqrt(size);
+  return (
+    <PathImpl
+      className={cx("visx-pattern-hexagon", className)}
+      path={`M ${height},0 l ${height},0 l ${height / 2},${(height * sqrtSize) / 2} l ${-height / 2},${(height * sqrtSize) / 2} l ${-height},0 l ${-height / 2},${(-height * sqrtSize) / 2} Z M 0,${(height * sqrtSize) / 2} l ${height / 2},0 M ${3 * height},${(height * sqrtSize) / 2} l ${-height / 2},0`}
+      id={id}
+      width={size}
+      height={sqrtSize}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      strokeDasharray={strokeDasharray}
+      strokeLinecap={strokeLinecap}
+      shapeRendering={shapeRendering}
+      background={background}
+    />
+  );
+}
+
+interface PatternWavesProps {
+  id: string;
+  width: number;
+  height: number;
+  fill?: string;
+  className?: string;
+  background?: string;
+  stroke?: string;
+  strokeWidth?: number | string;
+  strokeDasharray?: string | number;
+  strokeLinecap?: "square" | "butt" | "round" | "inherit";
+  shapeRendering?: string | number;
+}
+
+function WavesImpl({
+  id,
+  width,
+  height,
+  fill,
+  stroke,
+  strokeWidth,
+  strokeDasharray,
+  strokeLinecap,
+  shapeRendering,
+  background,
+  className,
+}: PatternWavesProps) {
+  return (
+    <PathImpl
+      className={cx("visx-pattern-wave", className)}
+      path={`M 0 ${height / 2} c ${height / 8} ${-height / 4} , ${(height * 3) / 8} ${-height / 4} , ${height / 2} 0
+             c ${height / 8} ${height / 4} , ${(height * 3) / 8} ${height / 4} , ${height / 2} 0 M ${-height / 2} ${height / 2}
+             c ${height / 8} ${height / 4} , ${(height * 3) / 8} ${height / 4} , ${height / 2} 0 M ${height} ${height / 2}
+             c ${height / 8} ${-height / 4} , ${(height * 3) / 8} ${-height / 4} , ${height / 2} 0`}
+      id={id}
+      width={width}
+      height={height}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      strokeDasharray={strokeDasharray}
+      strokeLinecap={strokeLinecap}
+      shapeRendering={shapeRendering}
+      background={background}
+    />
+  );
+}
 
 // ── visx pattern passthroughs (folded from ./visx-pattern-bridge) ────────
 
-export function PatternLines(props: ComponentProps<typeof VisxPatternLines>) {
-  return <VisxPatternLines {...props} />;
+export function PatternLines(props: PatternLinesProps) {
+  return <LinesImpl {...props} />;
 }
 PatternLines.displayName = "PatternLines";
 
-export function PatternCircles(
-  props: ComponentProps<typeof VisxPatternCircles>,
-) {
-  return <VisxPatternCircles {...props} />;
+export function PatternCircles(props: PatternCirclesProps) {
+  return <CirclesImpl {...props} />;
 }
 PatternCircles.displayName = "PatternCircles";
 
-export function PatternHexagons(
-  props: ComponentProps<typeof VisxPatternHexagons>,
-) {
-  return <VisxPatternHexagons {...props} />;
+export function PatternHexagons(props: PatternHexagonsProps) {
+  return <HexagonsImpl {...props} />;
 }
 PatternHexagons.displayName = "PatternHexagons";
 
-export function PatternWaves(props: ComponentProps<typeof VisxPatternWaves>) {
-  return <VisxPatternWaves {...props} />;
+export function PatternWaves(props: PatternWavesProps) {
+  return <WavesImpl {...props} />;
 }
 PatternWaves.displayName = "PatternWaves";
 

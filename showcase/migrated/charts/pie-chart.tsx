@@ -357,7 +357,7 @@ export function PieChart({
     if (geometryScrubbing) {
       return defineChart({
         marks: [polar({ inset: hoverOffset, radiusRatio: 1, marks: [] })],
-        guides: false, x: null, y: null,
+        guides: false, scales: { x: null, y: null },
         focus: focusDisabled, tooltip: false,
         // T-D15 (P3.1): explicit 5-entry palette override — see
         // internal/design-tokens.ts. No visible marks in this branch, wired
@@ -407,7 +407,7 @@ export function PieChart({
 
     return defineChart({
       marks: [polar({ inset: hoverOffset, radiusRatio: 1, marks: [sliceMark, hitboxMark] })],
-      guides: false, x: null, y: null,
+      guides: false, scales: { x: null, y: null },
       focus: focusDisabled, tooltip: false,
       // T-D15 (P3.1): explicit 5-entry palette override, NOT the native
       // 6-entry defaultChartTheme.palette (see internal/design-tokens.ts).

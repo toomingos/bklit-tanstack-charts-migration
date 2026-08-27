@@ -11,26 +11,12 @@ else
   git clone --depth 1 https://github.com/bklit/bklit-ui.git "$REPOS_DIR/bklit-ui"
 fi
 
-# Pinned TanStack commit: every gate run (Q1/Q2/Q3, G1-G4) is valid only against
-# this exact source. Upgrades = bump this SHA + full gate run (PLAN-phase-3.md
-# architecture contract; docs/phase-3/LOG.md D238). An unpinned tip-of-main clone
-# here is what broke Vercel production builds when upstream shipped the 0.8.0
-# API harmonization.
-TANSTACK_CHARTS_PIN="a285ce731f50920d77dd34f2ffd5cad7c9573321"
-
-if [ -d "$REPOS_DIR/tanstack-charts" ]; then
-  echo "==> repos/tanstack-charts already exists, skipping clone"
-  HAVE="$(git -C "$REPOS_DIR/tanstack-charts" rev-parse HEAD 2>/dev/null || echo unknown)"
-  if [ "$HAVE" != "$TANSTACK_CHARTS_PIN" ]; then
-    echo "==> WARNING: repos/tanstack-charts is at $HAVE, expected pin $TANSTACK_CHARTS_PIN" >&2
-    echo "==> Delete the directory and re-run to fetch the pinned commit." >&2
-  fi
-else
-  echo "==> Fetching TanStack Charts (read-only reference, pinned $TANSTACK_CHARTS_PIN)..."
-  git init -q "$REPOS_DIR/tanstack-charts"
-  git -C "$REPOS_DIR/tanstack-charts" remote add origin https://github.com/TanStack/charts.git
-  git -C "$REPOS_DIR/tanstack-charts" fetch -q --depth 1 origin "$TANSTACK_CHARTS_PIN"
-  git -C "$REPOS_DIR/tanstack-charts" checkout -q FETCH_HEAD
-fi
+# TanStack Charts is NO LONGER vendored as a source clone. Phase 5.0.1 moved
+# both the showcase and the bench app onto the published runtime, pinned exact in
+# package.json (@tanstack/charts@0.15.0 + @tanstack/react-charts@0.15.0), so it
+# installs like any other dependency. Upgrades = bump those pins + full gate run
+# (PLAN-phase-3.md architecture contract). The old a285ce7/v0.14.0 clone is
+# archived at local_cache/tanstack-charts-a285ce7-v0.14.0 for diffing.
+# See docs/phase-5/LOG.md (supersedes D146/D238).
 
 echo "==> Repos ready at $REPOS_DIR/"

@@ -42,7 +42,7 @@ import type {
 } from "d3-sankey";
 import { Chart } from "@tanstack/react-charts";
 import { createMark, defineChart } from "@tanstack/charts";
-import type { ChartMark, SceneNode } from "@tanstack/charts";
+import type { ChartMark, ChartValue, SceneNode } from "@tanstack/charts";
 import {
   generateSankey,
   generateSankeyUpdate,
@@ -110,7 +110,15 @@ function layoutSankey(
   return layout(graph);
 }
 
-function sankeyCeilingMark(data: SeededSankeyData, id: string): ChartMark {
+// Positionless custom mark: `never` scale ids tell the grammar this mark binds
+// no cartesian scale, which is what lets the spec below pass `x: null`/`y: null`
+// (`ChartXSpec` narrows to `{ x?: null }` only when `ChartMarkScaleX` is `never`).
+// A bare `ChartMark` defaults its scale ids to 'x'/'y' and would demand real
+// scale options — see docs/phase-5/LOG.md.
+function sankeyCeilingMark(
+  data: SeededSankeyData,
+  id: string,
+): ChartMark<unknown, ChartValue, ChartValue, ChartValue, ChartValue, never, never> {
   return createMark(() => ({
     id,
     // No cartesian channels: this mark positions everything itself from

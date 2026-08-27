@@ -672,11 +672,13 @@ export function BarChart({
         // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
         // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
         // key on the spec is never read.
-        x: { scale: xScaleFactory, grid: gridGuide.vertical, axis: { ticks: { count: gridGuide.columnTicks } } },
-        y: {
-          scale: yScale,
-          grid: gridGuide.horizontal,
-          axis: { ticks: { count: gridGuide.ticks } },
+        scales: {
+          x: { scale: xScaleFactory, grid: gridGuide.vertical, axis: { ticks: { count: gridGuide.columnTicks } } },
+          y: {
+            scale: yScale,
+            grid: gridGuide.horizontal,
+            axis: { ticks: { count: gridGuide.ticks } },
+          },
         },
         margin,
         svgAnimation: false as const,
@@ -846,11 +848,13 @@ export function BarChart({
       // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
       // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
       // key on the spec is never read.
-      x: { scale: xScaleFactory, grid: gridGuide.vertical, axis: { ticks: { count: gridGuide.columnTicks } } },
-      y: {
-        scale: yScale,
-        grid: gridGuide.horizontal,
-        axis: { ticks: { count: gridGuide.ticks } },
+      scales: {
+        x: { scale: xScaleFactory, grid: gridGuide.vertical, axis: { ticks: { count: gridGuide.columnTicks } } },
+        y: {
+          scale: yScale,
+          grid: gridGuide.horizontal,
+          axis: { ticks: { count: gridGuide.ticks } },
+        },
       },
       margin,
       gradients: nativeDepthGradients,

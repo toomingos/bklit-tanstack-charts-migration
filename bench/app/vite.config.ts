@@ -1,5 +1,4 @@
 import { fileURLToPath, URL } from "node:url";
-import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -7,40 +6,13 @@ import tailwindcss from "@tailwindcss/vite";
 // Resolve repo-relative paths without touching anything under repos/.
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
-// Build exact subpath aliases (e.g. `@tanstack/charts/svg/renderer` ->
-// `.../src/svg-surface.ts`) straight from each workspace package's own
-// (dev, source-pointing) `exports` map, rather than guessing a naive
-// `subpath -> subpath.ts` regex rewrite -- several of these packages' real
-// export keys don't literally match their source file names (e.g.
-// `./svg/renderer` -> `./src/svg-surface.ts`, not `./src/svg/renderer.ts`).
-function aliasesFromExports(
-  pkgJsonPath: string,
-  packageName: string,
-  pkgDir: string,
-): Array<{ find: string; replacement: string }> {
-  const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-  const exportsMap = pkg.exports as Record<string, string>;
-  const aliases = Object.entries(exportsMap).map(([subpath, target]) => {
-    const find = subpath === "." ? packageName : `${packageName}/${subpath.slice(2)}`;
-    const cleanTarget = target.replace(/^\.\//, "");
-    return { find, replacement: r(`${pkgDir}/${cleanTarget}`) };
-  });
-  // Vite/rollup-plugin-alias matches a string `find` on exact equality OR on
-  // a `find + "/"` prefix -- so the bare package-root alias (from the "."
-  // export, listed first in most exports maps) would otherwise greedily
-  // match every subpath import before its own, more specific, alias entry
-  // is even considered. Sorting longest-`find`-first guarantees the most
-  // specific alias always wins.
-  aliases.sort((a, b) => b.find.length - a.find.length);
-  return aliases;
-}
-
-// Vendored TanStack fixture under showcase/ (same source the showcase
-// builds against; pinned at v0.14.0, commit a285ce7 — see docs/phase-3/LOG.md
-// D146/D238). The top-level repos/ clone is an older snapshot and must NOT be
-// used here — bench/QA gates and showcase must resolve the same TanStack source.
-const chartsCoreDir = "../../showcase/repos/tanstack-charts/packages/charts-core";
-const reactChartsDir = "../../showcase/repos/tanstack-charts/packages/react-charts";
+// TanStack Charts resolves from bench/app/node_modules via the published
+// package's own `exports` map (pinned exact: @tanstack/charts@0.15.0 +
+// @tanstack/react-charts@0.15.0). Phase 5.0.1 replaced the vendored source
+// clone + hand-built subpath aliases; the old clone is archived at
+// local_cache/tanstack-charts-a285ce7-v0.14.0 for diffing. Bench/QA gates and
+// the showcase now resolve the same published runtime.
+// See docs/phase-5/LOG.md (supersedes D146/D238).
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -97,23 +69,6 @@ export default defineConfig({
         find: "@",
         replacement: r("../../repos/bklit-ui/packages/ui/src"),
       },
-      // TanStack Charts — vendored v0.7.2 fixture (showcase/repos, D146);
-      // same source showcase renders, aligned with its next.config aliases.
-      // Every subpath export (svg/renderer, polar, geo, etc.) is generated
-      // straight from each package's own `exports` map (see
-      // `aliasesFromExports` above) so it resolves exactly like the real
-      // published package would, including subpaths whose export key
-      // doesn't literally match its source filename.
-      ...aliasesFromExports(
-        r(`${chartsCoreDir}/package.json`),
-        "@tanstack/charts",
-        chartsCoreDir,
-      ),
-      ...aliasesFromExports(
-        r(`${reactChartsDir}/package.json`),
-        "@tanstack/react-charts",
-        reactChartsDir,
-      ),
     ],
   },
   server: {

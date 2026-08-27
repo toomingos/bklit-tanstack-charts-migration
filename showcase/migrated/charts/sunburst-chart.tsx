@@ -635,8 +635,7 @@ function SunburstChartInner({
         }),
       ],
       guides: false,
-      x: null,
-      y: null,
+      scales: { x: null, y: null },
       focus: focusDisabled,
       tooltip: false,
       // T-D15 (P3.1): explicit 5-entry palette override, NOT the native

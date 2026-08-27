@@ -150,10 +150,8 @@ export function useBrushDrag(
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    window.addEventListener("resize", update);
     return () => {
       ro.disconnect();
-      window.removeEventListener("resize", update);
     };
   }, [host.containerRef, host.margin.left, host.margin.right, host.margin.top, host.margin.bottom]);
 

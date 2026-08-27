@@ -483,7 +483,7 @@ export function RingChart({
       // drawn as plain React SVG paths outside the Chart (see JSX below).
       return defineChart({
         marks: [polar({ inset: padding, radiusRatio: 1, marks: [] })],
-        guides: false, x: null, y: null,
+        guides: false, scales: { x: null, y: null },
         focus: focusDisabled, tooltip: false,
       });
     }
@@ -566,7 +566,7 @@ export function RingChart({
 
     return defineChart({
       marks: [polar({ inset: padding, radiusRatio: 1, marks: [...arcMarks, ...hitboxMarks] })],
-      guides: false, x: null, y: null,
+      guides: false, scales: { x: null, y: null },
       focus: focusDisabled, tooltip: false,
     });
   }, [data, ringConfigMap, getRingRadii, getColor, availableRadius, padding, startAngle, endAngle, arcRange, geometryScrubbing]);

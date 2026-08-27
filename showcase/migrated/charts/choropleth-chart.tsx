@@ -1,9 +1,12 @@
 // Migrated bklit-ui ChoroplethChart — same public API, rendered by TanStack
-// Charts geoShape mark + @visx/zoom for zoom/pan.
+// Charts geoShape mark + a local port of @visx/zoom for zoom/pan (T19 —
+// `internal/zoom-engine.tsx`; see that file's header for why this can't stay
+// a `@visx/zoom` import).
 //
 // Principles (bklit native, tanstack gap):
 //   - bklit uses @visx/zoom <Zoom> with svg ref=zoom.containerRef as gesture
-//     target and single <g transform={zoom.toString()}> for content.
+//     target and single <g transform={zoom.toString()}> for content. This
+//     port keeps the identical shape via internal/zoom-engine's <Zoom>.
 //   - TanStack has no geo zoom primitive (interaction-zoom is 1D zoomX for
 //     time series only). Gap stays consumer-owned, ported verbatim from bklit.
 //   - No wrapper CSS transform, no viewBox fight. Host width/viewBox stable,
@@ -26,9 +29,9 @@ import React, {
 } from "react";
 import { FeatureCollection, type Feature, type Geometry } from "geojson";
 import { geoCentroid, geoMercator, geoPath, type GeoProjection } from "d3-geo";
-import type { TransformMatrix, ProvidedZoom, ZoomState } from "@visx/zoom";
-import { identityMatrix } from "@visx/zoom";
-import { Zoom } from "@visx/zoom";
+import type { TransformMatrix, ProvidedZoom, ZoomState } from "./internal/zoom-engine";
+import { identityMatrix } from "./internal/zoom-engine";
+import { Zoom } from "./internal/zoom-engine";
 import { Chart } from "@tanstack/react-charts";
 import { defineChart, type ChartValue, type StaticChartDefinition } from "@tanstack/charts";
 import { geoShape } from "@tanstack/charts/geo";
@@ -221,7 +224,7 @@ const DEFAULT_CHOROPLETH_COLORS = [
 // Constants
 // ---------------------------------------------------------------------------
 
-export { type TransformMatrix } from "@visx/zoom";
+export { type TransformMatrix } from "./internal/zoom-engine";
 
 const DEFAULT_MARGIN: Margin = { top: 0, right: 0, bottom: 0, left: 0 };
 
@@ -417,8 +420,7 @@ function ChoroplethChartBody({
           strokeWidth: featureConfig?.strokeWidth ?? 0.5,
         }),
       ],
-      x: null,
-      y: null,
+      scales: { x: null, y: null },
       guides: false,
       margin: 0,
       // P3.3/T-D2 CSS-suppression-cleanup: choropleth owns its own hover

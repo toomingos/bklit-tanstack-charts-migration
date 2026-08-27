@@ -174,9 +174,12 @@ export function barPulseMark(
 
 // ─── Pulse loop wiring ────────────────────────────────────────────────
 //
-// The wave's clip + infinite WAAPI sweep cannot live in the scene: TanStack's
-// SVG layer has no clipPath scene node, and its identity-based reconciler
-// wipes injected nodes/attributes on every render. So — like the per-bar
+// The wave's clip + infinite WAAPI sweep cannot live in the scene. `SceneGroup`
+// DOES carry a `clip?: ChartBounds` (types.d.ts:853) and the SVG renderer emits
+// a real `<defs><clipPath><rect>` for it (svg-renderer.js:81) — but that clip is
+// rectangular only, and the wave needs the bar silhouette's polygon (D381). On
+// top of that the identity-based reconciler wipes injected nodes/attributes on
+// every render. So — like the per-bar
 // reveal tweens — the loop is owned imperatively: syncBarPulseGroups is
 // re-invoked after every chart render (bar-chart.tsx handleRender) and on
 // every phase flip, reads the geometry back off the scene-emitted nodes, and

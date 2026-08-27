@@ -1121,15 +1121,17 @@ export function ComposedChart({
       // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
       // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
       // key on the spec is never read.
-      x: {
-        scale: xScale,
-        grid: gridGuide.vertical,
-        axis: { ticks: { count: gridGuide.columnTicks } },
-      },
-      y: {
-        scale: yScale,
-        grid: gridGuide.horizontal,
-        axis: { ticks: { count: gridGuide.ticks } },
+      scales: {
+        x: {
+          scale: xScale,
+          grid: gridGuide.vertical,
+          axis: { ticks: { count: gridGuide.columnTicks } },
+        },
+        y: {
+          scale: yScale,
+          grid: gridGuide.horizontal,
+          axis: { ticks: { count: gridGuide.ticks } },
+        },
       },
       margin,
       focus: "group-x",

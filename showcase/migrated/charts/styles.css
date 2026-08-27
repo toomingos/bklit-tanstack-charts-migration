@@ -774,7 +774,6 @@
 }
 
 /* --- Heatmap ---------------------------------------------------------- */
-/* Default resting opacity for cell rects lives HERE (a stylesheet rule),
 /* TanStack Chart surface inside the heatmap — match the old .ts-bkm-heatmap-svg
    sizing and ensure it doesn't overflow. */
 [data-bkm-chart="heatmap"] .ts-bkm-heatmap-svg {
@@ -884,7 +883,7 @@
    transition set imperatively via inline `style` on hover-state change; this
    class only sets layout, never a transform/opacity default (those are
    always present in the element's own inline `style`, so there's no flash
-   to guard against here, unlike `.ts-bkm-heatmap-rect` above). */
+   to guard against here). */
 .ts-bkm-heatmap-legend-swatch-wrap {
   display: inline-block;
   line-height: 0;

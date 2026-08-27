@@ -474,8 +474,7 @@ export function SankeyChart({
       defineChart({
         marks: [createSankeyMark(data, markConfig, gradientDataRef, laidOutNodesRef)],
         guides: false,
-        x: null,
-        y: null,
+        scales: { x: null, y: null },
         margin,
         // T-D15 (P3.1): explicit 5-entry palette override (with literal hex
         // fallbacks), NOT the native 6-entry defaultChartTheme.palette — see

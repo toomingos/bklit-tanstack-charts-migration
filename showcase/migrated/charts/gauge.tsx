@@ -109,7 +109,7 @@
 // exhibits this, since a column stack never competes for width.
 import * as React from "react";
 import { Chart } from "@tanstack/react-charts";
-import { defineChart, type SceneNode } from "@tanstack/charts";
+import { createMark, defineChart, type SceneNode } from "@tanstack/charts";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { polar, radialArc, type PolarMark } from "@tanstack/charts/polar";
 import { renderChartSvgWithResources } from "@tanstack/charts/svg/resources";
@@ -677,8 +677,7 @@ function GaugeArc(props: GaugeArcProps) {
             marks: [quadMark],
           }),
         ],
-        x: null,
-        y: null,
+        scales: { x: null, y: null },
         guides: false,
         focus: focusDisabled,
         gradients: fillState.useThemePaletteGradient
@@ -735,8 +734,7 @@ function GaugeArc(props: GaugeArcProps) {
           ],
         }),
       ],
-      x: null,
-      y: null,
+      scales: { x: null, y: null },
       guides: false,
       focus: focusDisabled,
       gradients: fillState.useThemePaletteGradient
@@ -1074,23 +1072,130 @@ function GaugeLinear(props: GaugeLinearProps) {
     ],
   );
 
+  // --- TanStack definition (T17): ONE custom mark (`createMark`, placed
+  // directly in `defineChart`'s flat `marks` array — no cartesian() exists,
+  // same D30 justification funnel-chart.tsx's header cites) emitting bklit's
+  // own `createNotchPath` rectangular quads into the SAME "gauge-bg"/
+  // "gauge-active" scene-group keys the arc `uniformWidth` custom PolarMark
+  // uses above, so `handleRender` below can reuse that mark's exact
+  // `data-ts-key` query pattern. UNLIKE the arc mark, this mark's nodes need
+  // ZERO translation: `computeLinearNotches`' `.points` are already absolute
+  // pixel coordinates in the svg's own 0..width/0..height space (arc's
+  // points are polar-relative, hence its `-(centerX, centerY)` shift) —
+  // `margin: {top:0,right:0,bottom:0,left:0}` pins `chart.x/y` at 0 so
+  // nothing WOULD offset them even if this mark's `render` consulted
+  // `chart`/`layout` (it doesn't), and `notch.points` is passed into
+  // `createNotchPath` completely unchanged, byte-identical to the pre-port
+  // `<path d={createNotchPath(notch.points, ...)}>` calls this replaces.
+  const definition = React.useMemo(() => {
+    if (!geometry) return null;
+    const notches = geometry.notches;
+    const cornerVerticalDepth = geometry.cornerVerticalDepth;
+    const activeNotches = notches.filter((notch) => notch.isActive);
+
+    const quadMark = createMark(() => ({
+      id: "gauge-linear",
+      channels: {},
+      render: () => {
+        const nodes: SceneNode[] = [];
+        if (notches.length > 0) {
+          nodes.push({
+            kind: "group",
+            key: "gauge-bg",
+            className: "ts-chart__arc",
+            ariaHidden: true,
+            children: notches.map(
+              (notch): SceneNode => ({
+                kind: "polyline",
+                key: `gauge-bg:${notch.index}`,
+                points: [],
+                path: createNotchPath(notch.points, notchCornerRadius, cornerVerticalDepth),
+                style: {
+                  fill: resolveBgFill(notch.index),
+                  fillOpacity: fillState.resolvedInactiveFillOpacity,
+                  stroke: "none",
+                },
+              }),
+            ),
+          });
+        }
+        if (activeNotches.length > 0) {
+          nodes.push({
+            kind: "group",
+            key: "gauge-active",
+            className: "ts-chart__arc",
+            ariaHidden: true,
+            children: activeNotches.map(
+              (notch): SceneNode => ({
+                kind: "polyline",
+                key: `gauge-active:${notch.index}`,
+                points: [],
+                path: createNotchPath(notch.points, notchCornerRadius, cornerVerticalDepth),
+                style: {
+                  fill: resolveActiveFill(notch),
+                  fillOpacity: fillState.resolvedActiveFillOpacity,
+                  stroke: "none",
+                },
+              }),
+            ),
+          });
+        }
+        return { nodes };
+      },
+    }));
+
+    return defineChart({
+      marks: [quadMark],
+      scales: { x: null, y: null },
+      guides: false,
+      focus: focusDisabled,
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      gradients: fillState.useThemePaletteGradient
+        ? [
+            {
+              id: fillState.themeActiveGradientId,
+              x1: 0,
+              y1: 0,
+              x2: 1,
+              y2: 0,
+              stops: [
+                { offset: 0, color: "var(--chart-1)" },
+                { offset: 1, color: "var(--chart-5)" },
+              ],
+            },
+          ]
+        : [],
+    });
+  }, [
+    geometry,
+    notchCornerRadius,
+    resolveBgFill,
+    resolveActiveFill,
+    fillState.resolvedInactiveFillOpacity,
+    fillState.resolvedActiveFillOpacity,
+    fillState.useThemePaletteGradient,
+    fillState.themeActiveGradientId,
+  ]);
+
   const seenBgRef = React.useRef<Set<string>>(new Set());
   const seenActiveRef = React.useRef<Set<string>>(new Set());
   const revealAnimationsRef = React.useRef<Animation[]>([]);
   const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
   const renderGenRef = React.useRef(0);
-  const groupRef = React.useRef<SVGGElement | null>(null);
+  // T17: dedicated host ref, distinct from the width-measurement
+  // `containerRef` below (that one is only attached on the responsive
+  // branch — see the G5 comment). `handleRender` needs a ref that's mounted
+  // on BOTH the fixed- and responsive-width paths, matching the pre-port
+  // `groupRef`'s coverage (arc's own `handleRender` reuses its
+  // measurement `containerRef`, which — unlike this one — is genuinely
+  // unattached on arc's `fixedSize` branch; not reproduced here since it
+  // would regress linear's existing fixed-width reveal coverage).
+  const chartHostRef = React.useRef<HTMLDivElement | null>(null);
 
-  // useLayoutEffect, not useEffect: this must run PRE-PAINT so (a) the mount
-  // path's group-hide is in place before the browser ever paints the fully-
-  // revealed rest state (the first draft's plain useEffect ran post-paint —
-  // a one-frame flash of the final gauge before the reveal started, which
-  // bklit's pre-commit framer `initial` can never show), and (b) update-path
-  // pop-ins are armed before the new notches' first paint (Fable review
-  // fix, docs/LOG.md D52 — same fix as the arc path's handleRender).
-  React.useLayoutEffect(() => {
-    const groupEl = groupRef.current;
-    if (!groupEl || !geometry || geometryScrubbing) return;
+  const handleRender = React.useCallback(() => {
+    if (geometryScrubbing || !geometry) return;
+    const marksGroup = chartHostRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
+    if (!marksGroup) return;
 
     renderGenRef.current += 1;
     const myGen = renderGenRef.current;
@@ -1099,28 +1204,40 @@ function GaugeLinear(props: GaugeLinearProps) {
       ? reducedMotionTiming()
       : revealTiming(resolveEnterTransition(enterTransition, GAUGE_SPRING_FALLBACK));
     const notches = geometry.notches;
+    const activeNotches = notches.filter((notch) => notch.isActive);
 
     const collectTargets = (): [GaugeRevealTarget[], GaugeRevealTarget[]] => {
-      // T-D3: same native stagger({each, offset}) pair as the arc
-      // orientation's collectTargets above.
-      const bgTargets: GaugeRevealTarget[] = Array.from(
-        groupEl.querySelectorAll<SVGPathElement>('[data-bkm-key^="bg-"]'),
-      ).map((el) => {
-        const key = el.getAttribute("data-bkm-key") ?? "";
-        const idx = Number(key.slice(3));
-        const notch = notches[idx];
-        if (notch) el.style.transformOrigin = `${notch.xCenter}px ${notch.yCenter}px`;
-        return { key, el, delayMs: nativeStaggerDelayMs(0.015 * stagger * 1000, 0, idx, "rect") };
-      });
-      const activeTargets: GaugeRevealTarget[] = Array.from(
-        groupEl.querySelectorAll<SVGPathElement>('[data-bkm-key^="active-"]'),
-      ).map((el) => {
-        const key = el.getAttribute("data-bkm-key") ?? "";
-        const idx = Number(key.slice(7));
-        const notch = notches[idx];
-        if (notch) el.style.transformOrigin = `${notch.xCenter}px ${notch.yCenter}px`;
-        return { key, el, delayMs: nativeStaggerDelayMs(0.02 * stagger * 1000, 0.3 * stagger * 1000, idx, "rect") };
-      });
+      const container = chartHostRef.current;
+      const bgGroup =
+        (marksGroup.querySelector<SVGGElement>('[data-ts-key="gauge-bg"]') as SVGGElement | null) ??
+        (container?.querySelector<SVGGElement>('[data-ts-key="gauge-bg"]') as SVGGElement | null);
+      const activeGroup =
+        (marksGroup.querySelector<SVGGElement>('[data-ts-key="gauge-active"]') as SVGGElement | null) ??
+        (container?.querySelector<SVGGElement>('[data-ts-key="gauge-active"]') as SVGGElement | null);
+
+      // T-D3: same native stagger({each, offset}) pair as before, and the
+      // arc orientation's own collectTargets above. Positional DOM index
+      // (not a parsed `data-bkm-key` attribute) is safe here for the SAME
+      // reason it is for arc: gauge notches only ever activate as an
+      // ascending PREFIX (`i < activeNotches`), so the active group's Nth
+      // path is always notch index N, identical to parsing `notch.index`
+      // out of a key.
+      const bgTargets: GaugeRevealTarget[] = bgGroup
+        ? Array.from(bgGroup.querySelectorAll<SVGPathElement>("path")).map((el, idx) => {
+            const notch = notches[idx];
+            if (notch) el.style.transformOrigin = `${notch.xCenter}px ${notch.yCenter}px`;
+            return { key: `bg-${idx}`, el, delayMs: nativeStaggerDelayMs(0.015 * stagger * 1000, 0, idx, "rect") };
+          })
+        : [];
+
+      const activeTargets: GaugeRevealTarget[] = activeGroup
+        ? Array.from(activeGroup.querySelectorAll<SVGPathElement>("path")).map((el, idx) => {
+            const notch = activeNotches[idx];
+            if (notch) el.style.transformOrigin = `${notch.xCenter}px ${notch.yCenter}px`;
+            return { key: `active-${idx}`, el, delayMs: nativeStaggerDelayMs(0.02 * stagger * 1000, 0.3 * stagger * 1000, idx, "rect") };
+          })
+        : [];
+
       return [bgTargets, activeTargets];
     };
 
@@ -1133,7 +1250,7 @@ function GaugeLinear(props: GaugeLinearProps) {
       return;
     }
 
-    revealPostPaintCancelRef.current = deferredGaugeMountReveal(groupEl, collectTargets, timing, seenBgRef, seenActiveRef, revealAnimationsRef, renderGenRef, myGen);
+    revealPostPaintCancelRef.current = deferredGaugeMountReveal(marksGroup, collectTargets, timing, seenBgRef, seenActiveRef, revealAnimationsRef, renderGenRef, myGen);
   }, [geometry, geometryScrubbing, prefersReducedMotion, enterTransition, enterStaggerScale]);
 
   React.useEffect(() => {
@@ -1157,49 +1274,45 @@ function GaugeLinear(props: GaugeLinearProps) {
       />
     );
 
+  // T17: raw `<svg>` → TanStack `<Chart>` (mirrors GaugeArc's G2 pattern
+  // exactly). Literal-px `width`/`height` (not `width:"100%"`) on this host
+  // div, matching arc's own `{position:"relative", width, height}` — `width`
+  // here is already the exact measured container pixel width fed into
+  // `computeLinearNotches`/the viewBox math, so this is deterministic rather
+  // than relying on a second, independent `%`-based resolution to coincide
+  // with it. See the T17 report for the one place this literal-px choice
+  // changes behavior versus the pre-port `width:"100%"` svg: the disclosed,
+  // pre-existing `labelPlacement="left"|"right"` overflow quirk (this file's
+  // header) now overflows its flex sibling instead of visually squishing —
+  // neither the frozen bench scenario nor docs-mdx pattern hits that branch.
   const svg =
-    geometry && width > 0 ? (
-      <svg
-        aria-hidden="true"
-        height={height}
-        style={{ display: "block", width: "100%", overflow: "visible" }}
-        viewBox={`0 0 ${width} ${height}`}
-        width={width}
-      >
-        {fillState.defsChildren.length > 0 || fillState.useThemePaletteGradient ? (
-          <defs>
-            {fillState.useThemePaletteGradient ? (
-              <linearGradient id={fillState.themeActiveGradientId} x1="0%" x2="100%" y1="0%" y2="0%">
-                <stop offset="0%" stopColor="var(--chart-1)" />
-                <stop offset="100%" stopColor="var(--chart-5)" />
-              </linearGradient>
-            ) : null}
-            {fillState.defsChildren}
-          </defs>
+    definition && width > 0 ? (
+      <div ref={chartHostRef} style={{ position: "relative", width, height }}>
+        <Chart
+          ariaLabel="Gauge chart"
+          definition={definition}
+          height={height}
+          onRender={handleRender}
+          renderSvg={renderChartSvgWithResources}
+          width={width}
+        />
+        {fillState.defsChildren.length > 0 ? (
+          // G2 (parity fix, mirrored verbatim from GaugeArc): bklit's
+          // children-as-defs escape hatch can no longer drop into this
+          // component's own <defs> since it no longer owns a hand-rolled
+          // <svg>. Mounted on a 0×0 overlay svg AFTER <Chart>: SVG
+          // paint-server url(#id) refs resolve document-wide (same verified
+          // mechanism as arc's/scatter's sibling defs svg), and the
+          // after-<Chart> position keeps the real chart svg first in DOM
+          // order for the QA harness's svg lookup. (The theme palette
+          // gradient itself does NOT need this treatment — it's declared via
+          // `defineChart`'s own `gradients` option above and rendered
+          // in-document by `renderChartSvgWithResources`, same as arc.)
+          <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+            <defs>{fillState.defsChildren}</defs>
+          </svg>
         ) : null}
-        <g ref={groupRef}>
-          {geometry.notches.map((notch) => (
-            <path
-              d={createNotchPath(notch.points, notchCornerRadius, geometry.cornerVerticalDepth)}
-              data-bkm-key={`bg-${notch.index}`}
-              fill={resolveBgFill(notch.index)}
-              fillOpacity={fillState.resolvedInactiveFillOpacity}
-              key={`bg-${notch.index}`}
-            />
-          ))}
-          {geometry.notches
-            .filter((notch) => notch.isActive)
-            .map((notch) => (
-              <path
-                d={createNotchPath(notch.points, notchCornerRadius, geometry.cornerVerticalDepth)}
-                data-bkm-key={`active-${notch.index}`}
-                fill={resolveActiveFill(notch)}
-                fillOpacity={fillState.resolvedActiveFillOpacity}
-                key={`active-${notch.index}`}
-              />
-            ))}
-        </g>
-      </svg>
+      </div>
     ) : null;
 
   const track = (

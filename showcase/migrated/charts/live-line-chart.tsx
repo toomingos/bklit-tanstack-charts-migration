@@ -794,8 +794,10 @@ export function LiveLineChart({
       // `grid`, so unlike the six cartesian charts under `internal/grid.ts`
       // there is no gridGuide tick-count coupling `axis:false` could
       // disturb (P3.3/T-D2 CSS-suppression-cleanup half).
-      x: { scale: xScale, axis: false },
-      y: { scale: yScale, axis: false },
+      scales: {
+        x: { scale: xScale, axis: false },
+        y: { scale: yScale, axis: false },
+      },
       margin,
       // bklit's own reconcile is un-tweened at the TanStack/D3 level — all
       // motion comes from the outer lerp loop already; a scene-level tween

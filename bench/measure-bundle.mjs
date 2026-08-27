@@ -53,7 +53,11 @@ function loadExports(pkgJsonPath, packageName, pkgDir) {
     if (typeof target !== "string") continue;
     const importPath =
       subpath === "." ? packageName : `${packageName}/${subpath.slice(2)}`;
-    const cleanTarget = target.replace(/^\.\//, "");
+    // Published packages use conditional exports objects
+    // ({ types, import }); the vendored source clone used plain strings.
+    const resolvedTarget =
+      typeof target === "string" ? target : (target.import ?? target.default);
+    const cleanTarget = resolvedTarget.replace(/^\.\//, "");
     entries.push([importPath, resolve(pkgDir, cleanTarget)]);
   }
   // Longest key first so specific subpaths take precedence
@@ -61,12 +65,14 @@ function loadExports(pkgJsonPath, packageName, pkgDir) {
   return entries;
 }
 
-// Vendored TanStack v0.7.2 fixture under showcase/ (same source the showcase
-// + bench/app/vite.config.ts resolve, see docs/LOG.md D146). M2c must measure
-// the same TanStack source the gates + QA run against — the top-level repos/
-// clone is an older pre-v0.7.2 snapshot and must NOT be used here.
-const chartsCoreDir = resolve(ROOT, "showcase/repos/tanstack-charts/packages/charts-core");
-const reactChartsDir = resolve(ROOT, "showcase/repos/tanstack-charts/packages/react-charts");
+// TanStack Charts, resolved from the published package installed in
+// bench/app/node_modules (pinned exact: 0.15.0) — the same runtime
+// bench/app/vite.config.ts and the showcase now resolve. Phase 5.0.1 replaced
+// the vendored source clone; M2c therefore measures pre-built dist JS rather
+// than TS source, so bundle numbers are NOT comparable across the 5.0 boundary
+// (see docs/phase-5/LOG.md, supersedes D146/D238).
+const chartsCoreDir = resolve(APP_DIR, "node_modules/@tanstack/charts");
+const reactChartsDir = resolve(APP_DIR, "node_modules/@tanstack/react-charts");
 
 const tanstackAliasEntries = [
   ...loadExports(

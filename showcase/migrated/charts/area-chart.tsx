@@ -652,11 +652,13 @@ export function AreaChart({
       const gridGuide = resolveGridGuide(grid);
       const emptySpec = {
         marks: [] as unknown as ChartMark<ChartDatum, Date, number>[],
-        x: { scale: scaleUtc as unknown as ChartScale, grid: gridGuide.vertical, axis: { ticks: { count: gridGuide.columnTicks } } },
-        y: {
-          scale: scaleLinear().domain(yDomainFinal) as unknown as ChartScale,
-          grid: gridGuide.horizontal,
-          axis: { ticks: { count: gridGuide.ticks } },
+        scales: {
+          x: { scale: scaleUtc as unknown as ChartScale, grid: gridGuide.vertical, axis: { ticks: { count: gridGuide.columnTicks } } },
+          y: {
+            scale: scaleLinear().domain(yDomainFinal) as unknown as ChartScale,
+            grid: gridGuide.horizontal,
+            axis: { ticks: { count: gridGuide.ticks } },
+          },
         },
         margin,
         focus: "group-x" as const,
@@ -811,15 +813,17 @@ export function AreaChart({
       // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
       // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
       // key on the spec is never read.
-      x: {
-        ...xScaleDef,
-        grid: gridGuide.vertical,
-        axis: { ticks: { count: gridGuide.columnTicks } },
-      },
-      y: {
-        scale: scaleLinear().domain(yDomainFinal),
-        grid: gridGuide.horizontal,
-        axis: { ticks: { count: gridGuide.ticks } },
+      scales: {
+        x: {
+          ...xScaleDef,
+          grid: gridGuide.vertical,
+          axis: { ticks: { count: gridGuide.columnTicks } },
+        },
+        y: {
+          scale: scaleLinear().domain(yDomainFinal),
+          grid: gridGuide.horizontal,
+          axis: { ticks: { count: gridGuide.ticks } },
+        },
       },
       margin,
       focus: "group-x",

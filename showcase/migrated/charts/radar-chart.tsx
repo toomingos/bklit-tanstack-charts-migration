@@ -3,8 +3,11 @@
 //
 // Architecture: TanStack-native polar marks + WAAPI deferred reveal
 // (matching bklit's useMountProgress flow: grid 0.08s stagger → axis
-// spokes 0.05s → area 0.6s+0.15s*i with 1100ms cubic-bezier). Hover uses
-// focus:"nearest" + useLayoutEffect DOM walk (area dim/glow/scale/dot r).
+// spokes 0.05s → area 0.6s+0.15s*i with 1100ms cubic-bezier). Hover does NOT
+// use the focus subsystem — `:459` sets `focus: focusDisabled`; it is
+// element-level `pointerenter`/`pointerleave` bound directly to the area
+// `path`s (`:779`) and dot `circle`s (`:800`), gated on `pendingRevealRef`,
+// driving area dim/glow/scale and dot r (D384).
 
 import * as React from "react";
 import { scaleLinear, scalePoint } from "d3-scale";
@@ -407,8 +410,10 @@ export function RadarChart({
       marks: [
         polar({
           id: "radar",
-          angle: { scale: scalePoint<string>().domain(metricKeys) },
-          radius: { scale: scaleLinear().domain([0, 100]) },
+          scales: {
+            angle: { scale: scalePoint<string>().domain(metricKeys) },
+            radius: { scale: scaleLinear().domain([0, 100]) },
+          },
           guides,
           marks: [
             radialArea(allRows, {
@@ -452,8 +457,7 @@ export function RadarChart({
       ],
       margin,
       guides: false,
-      x: null,
-      y: null,
+      scales: { x: null, y: null },
       svgAnimation: false,
       focus: focusDisabled,
       tooltip: false,

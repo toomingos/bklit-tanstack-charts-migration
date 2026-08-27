@@ -191,8 +191,10 @@ function useHeatmapChartDefinition(
     if (ctxForDef.chartStatus === "loading") {
       return defineChart({
         marks: [] as unknown as ReturnType<typeof cell>[],
-        x: { scale: xScale, guide: false },
-        y: { scale: yScale, guide: false },
+        scales: {
+          x: { scale: xScale, guide: false },
+          y: { scale: yScale, guide: false },
+        },
         color: { scale: colorScale },
         margin,
         svgAnimation: false,
@@ -209,8 +211,10 @@ function useHeatmapChartDefinition(
           radius: cornerRadius,
         }),
       ],
-      x: { scale: xScale, guide: false },
-      y: { scale: yScale, guide: false },
+      scales: {
+        x: { scale: xScale, guide: false },
+        y: { scale: yScale, guide: false },
+      },
       color: { scale: colorScale },
       margin,
       svgAnimation: false,
