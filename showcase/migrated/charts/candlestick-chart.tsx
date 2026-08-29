@@ -26,18 +26,23 @@
 //
 // Hover chrome: TanStack-native ChartFocusStrategy (`internal/candlestick-focus-strategy.ts`
 // `bisectDateLeft`/`resolveNearestIndex` strict `>` tie-break over ChartPoint.xValue epoch ms)
-// driving `candlestick-hover-chrome.ts` via `<Chart onFocusGroupChange>` adapter
-// ChartPoint[] → CandlestickFocusPoint (no native pointermove/bisect listener).
+// drives native crosshair/hover-dot/highlight marks (built inside
+// `definition`, C3) directly — plus a thin `<Chart onFocusGroupChange>`
+// adapter that only drives the app-owned date-pill + axis-label fade
+// (`internal/date-pill.ts`, C3), no native pointermove/bisect listener.
 import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { Chart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { defineChart, createMark } from "@tanstack/charts";
+import { crosshair, defineChart, createMark, whenFocused } from "@tanstack/charts";
 import { tooltip as tooltipExtension } from "@tanstack/charts/tooltip";
-import type { ChartMark, ChartMarkState, ChartPoint, ChartRenderContext, ChartScale, SceneNode } from "@tanstack/charts";
+import type { ChartMark, ChartMarkState, ChartMotionDefinition, ChartPoint, ChartRenderContext, ChartScale, SceneNode } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import { TooltipContent } from "./internal/tooltip-components";
-import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, TOOLTIP_BOX_SPRING } from "./internal/design-tokens";
+import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH, TOOLTIP_BOX_SPRING } from "./internal/design-tokens";
+import { applyLabelFade, buildPill, resetLabelFade, type PillBuild } from "./internal/date-pill";
+import { resolveVerticalFadeSides, indicatorFadeGradientStops } from "./internal/fade-mask";
+import { resolveIndicatorPixelWidth, toDotConfig, toIndicatorConfig, type DotConfig } from "./internal/tooltip-mappers";
 import { sampleSpringKeyframes } from "./internal/candle-spring";
 import {
   buildProgressKeyframes,
@@ -58,19 +63,14 @@ import {
   useChartSelection,
 } from "./internal/chart-selection";
 import { SegmentOverlay } from "./internal/segment-visuals";
-import {
-  attachCandlestickHoverChrome,
-  type CandlestickFocusPoint,
-  type CandlestickHoverChrome,
-  type CandlestickHoverChromeState,
-} from "./internal/candlestick-hover-chrome";
 import { useChartConfig } from "./internal/chart-config-context";
+import type { SpringConfig } from "./internal/chart-config-context";
 import { renderPatternPreset } from "./internal/pattern-preset";
 import type { PatternPresetId } from "./internal/pattern-preset";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
 import { YAxisOverlay } from "./internal/y-axis-overlay";
 import { resolveYAxisTickCount } from "./internal/y-axis-ticks";
-import type { ChartDatum, ChartTooltipPoint, TooltipRow } from "./internal/types";
+import type { ChartDatum, ChartTooltipConfig, ChartTooltipPoint, TooltipRow } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { createCandlestickFocusStrategy } from "./internal/candlestick-focus-strategy";
 import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
@@ -115,8 +115,9 @@ const CANDLE_DIM_TRANSITION: NonNullable<ChartMarkState["transition"]> = {
  * candlestick.tsx:122-124) is a BLANKET dim across every candle whenever any
  * point has pointer focus — not row-selective — because the actual
  * per-candle "which one is hovered" distinction is drawn on top via the
- * separate highlight overlay (`candlestick-hover-chrome.ts`'s
- * `activeHighlightSvg`, C3's territory, left untouched here). */
+ * separate highlight mark (C3: `createCandlestickHighlightMark` below —
+ * formerly the deleted `candlestick-hover-chrome.ts`'s imperative
+ * `activeHighlightSvg`). */
 function candlestickDimStates(fadedOpacity: number, showHoverFade: boolean): ChartMarkState<ChartDatum>[] {
   const states: ChartMarkState<ChartDatum>[] = [
     { when: whenSeriesDimmed(), style: { opacity: fadedOpacity }, transition: CANDLE_DIM_TRANSITION },
@@ -129,6 +130,286 @@ function candlestickDimStates(fadedOpacity: number, showHoverFade: boolean): Cha
     });
   }
   return states;
+}
+
+// C3: what's left of the deleted candlestick-hover-chrome.ts's
+// `CandlestickHoverChromeState` after crosshair/dots/highlight moved to
+// native marks — just what the date-pill mount effect and
+// `renderTooltipBody` still need at call time.
+interface CandlestickChromeState {
+  tooltip: ChartTooltipConfig | null;
+  dateLabels: string[];
+}
+
+// C3: static color resolution for the native per-candle hover-dot mark —
+// preserves the deleted candlestick-hover-chrome.ts's `dotColor` precedence
+// verbatim, INCLUDING its function branch. Unlike bar-hover-chrome.ts's own
+// `dotColor` (dead code — bar's chrome never actually called it as a
+// function with real per-point data), candlestick-hover-chrome.ts:207-214
+// GENUINELY invoked `tooltip.dotColor(point, line)` with the real
+// `{date, close}` on every hover-move. Reproduced here as a per-candle
+// PRECOMPUTE (invoked once per candle at mark-build time, not once per
+// hover-frame — the function is pure over its point/line args, so this is
+// observationally identical): a hand-rolled `ChartMark` (unlike native
+// `dot()`, whose `fill` is one static string per mark, dist/dot.d.ts) can
+// carry a distinct `style.fill` per emitted SceneNode, exactly like
+// scatter-chart.tsx's own `resolveDotColor`/`createHoverDotMark` precedent.
+function resolveCandleDotColor(
+  color: DotConfig["color"],
+  date: Date,
+  close: number,
+): string {
+  if (color) {
+    if (typeof color === "function") {
+      return color({ date, close } as Record<string, unknown>, { dataKey: "close" });
+    }
+    return color;
+  }
+  return "var(--chart-line-primary)";
+}
+
+/**
+ * C3: replaces candlestick-hover-chrome.ts's DOM `dot` circle (ensureDot-
+ * style single-element update) with a hand-built ChartMark emitting one
+ * `dot`-kind SceneNode per candle, wrapped by the caller in
+ * `whenFocused(mark, {match:'group', retarget:true})` so exactly the
+ * currently-focused candle's dot renders.
+ *
+ * Two chart-specific quirks preserved verbatim from candlestick-hover-
+ * chrome.ts's `update()` (lines 207-224):
+ *  - The PLAIN (non-ring) dot's radius/stroke-width stay HARDCODED at their
+ *    initial `<circle r="5" stroke-width="2">` creation values and are
+ *    NEVER re-read from `dotSize`/`dotScale`/`dotStrokeWidth` — only the
+ *    RING branch reads those config fields.
+ *  - The ring variant stays a hollow CIRCLE (fill:transparent,
+ *    stroke:color), not a rounded rect like bar/scatter's own ring dots —
+ *    legacy's ring conversion only flipped the SAME `<circle>` element's
+ *    fill/stroke, it never swapped to a `<rect>`.
+ */
+function createCandlestickHoverDotMark(
+  source: readonly ChartDatum[],
+  xDataKey: string,
+  dotCfg: DotConfig,
+  tooltipSpring: SpringConfig,
+): ChartMark<ChartDatum, Date, number> {
+  const isRing = (dotCfg.variant ?? "dot") === "ring";
+  const size = isRing ? (dotCfg.size ?? 5) * (dotCfg.scale ?? 1) : 5;
+  const strokeWidth = isRing ? (dotCfg.strokeWidth ?? 1.5) : 2;
+  // Legacy's dot spring is NEVER gated on `discrete` (candlestick-hover-
+  // chrome.ts comment: "Dot always springs (bklit ChartTooltip never passes
+  // discrete to TooltipDot)"), same unconditional-motion precedent as bar's
+  // own `createBarHoverDotMark`.
+  const motion: ChartMotionDefinition<ChartDatum> = {
+    transition: { type: "spring", stiffness: tooltipSpring.stiffness, damping: tooltipSpring.damping },
+  };
+  return {
+    initialize: () => {
+      const xValues: (Date | undefined)[] = [];
+      const closeValues: (number | undefined)[] = [];
+      for (const d of source) {
+        xValues.push(d[xDataKey] as Date);
+        const close = d.close as number | undefined;
+        closeValues.push(typeof close === "number" && Number.isFinite(close) ? close : undefined);
+      }
+      return {
+        id: "hover-dot",
+        motion,
+        channels: {
+          x: { scale: "x", values: xValues },
+          y: { scale: "y", values: closeValues },
+        },
+        render: ({ scales }) => {
+          const nodes: SceneNode[] = [];
+          const points: ChartPoint<ChartDatum, Date, number>[] = [];
+          source.forEach((datum, datumIndex) => {
+            const date = xValues[datumIndex];
+            const close = closeValues[datumIndex];
+            if (date === undefined || close === undefined) return;
+            const x = scales.x.map(date);
+            const y = scales.y.map(close);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+            const fill = resolveCandleDotColor(dotCfg.color, date, close);
+            const point: ChartPoint<ChartDatum, Date, number> = {
+              key: `hover-dot:${datumIndex}`,
+              markId: "hover-dot",
+              group: null,
+              groupLabel: "hover-dot",
+              datum,
+              datumIndex,
+              xValue: date,
+              yValue: close,
+              x,
+              y,
+              color: fill,
+            };
+            nodes.push({
+              kind: "dot",
+              key: `hover-dot:${datumIndex}`,
+              x,
+              y,
+              radius: size,
+              style: isRing
+                ? { fill: "transparent", stroke: fill, strokeWidth }
+                : { fill, stroke: "var(--chart-background)", strokeWidth },
+              pointOwner: point,
+            });
+            points.push(point);
+          });
+          return {
+            nodes: [
+              { kind: "group", key: "hover-dot", className: "ts-chart__hover-dot", ariaHidden: true, children: nodes },
+            ],
+            points,
+          };
+        },
+      };
+    },
+  };
+}
+
+/**
+ * C3: replaces candlestick-hover-chrome.ts's `activeHighlightSvg` (unconditional
+ * undimmed redraw of the hovered candle's wick+body, painted ON TOP of the
+ * blanket pointer-dim from `candlestickDimStates` above) with a hand-built
+ * ChartMark that mirrors `wicksMark`/`bodiesMark`'s own geometry exactly —
+ * same wick rect, same body rect (+ optional K9 pattern overlay / K10 inset
+ * stroke), just with no dim `states` of its own. All SceneNodes for one
+ * candle share a single `pointOwner` so `whenFocused(..., {match:'group'})`
+ * reveals/hides them together. No `motion`: legacy's `applyRectGeometry`
+ * never sprang the highlight rects (only the crosshair/dot/pill did) — this
+ * mark snaps to the newly-focused candle exactly like legacy did.
+ */
+function createCandlestickHighlightMark(
+  source: readonly ChartDatum[],
+  xDataKey: string,
+  bodyWidthPx: number,
+  insideStrokeW: number,
+  positivePattern: { href: string; preset: PatternPresetId | null },
+  negativePattern: { href: string; preset: PatternPresetId | null },
+  solidFillFor: (isPositive: boolean, hasOwnPattern: boolean) => string,
+): ChartMark<ChartDatum, Date, number> {
+  return {
+    initialize: () => {
+      const xValues = source.map((d) => d[xDataKey] as Date);
+      const lowValues = source.map((d) => d.low as number | undefined);
+      const highValues = source.map((d) => d.high as number | undefined);
+      const openValues = source.map((d) => d.open as number | undefined);
+      const closeValues = source.map((d) => d.close as number | undefined);
+      return {
+        id: "hover-highlight",
+        channels: {
+          x: { scale: "x", values: xValues },
+          y: {
+            scale: "y",
+            values: ([] as number[]).concat(
+              lowValues.filter((v): v is number => typeof v === "number" && Number.isFinite(v)),
+              highValues.filter((v): v is number => typeof v === "number" && Number.isFinite(v)),
+              openValues.filter((v): v is number => typeof v === "number" && Number.isFinite(v)),
+              closeValues.filter((v): v is number => typeof v === "number" && Number.isFinite(v)),
+            ),
+          },
+        },
+        render: ({ scales }) => {
+          const nodes: SceneNode[] = [];
+          const points: ChartPoint<ChartDatum, Date, number>[] = [];
+          for (let i = 0; i < source.length; i++) {
+            const d = source[i]!;
+            const date = xValues[i]!;
+            const low = lowValues[i];
+            const high = highValues[i];
+            const open = openValues[i];
+            const close = closeValues[i];
+            if (
+              typeof low !== "number" || typeof high !== "number" ||
+              typeof open !== "number" || typeof close !== "number" ||
+              !Number.isFinite(low) || !Number.isFinite(high) ||
+              !Number.isFinite(open) || !Number.isFinite(close)
+            ) continue;
+            const cx = scales.x.map(date);
+            const yLow = scales.y.map(low);
+            const yHigh = scales.y.map(high);
+            const yOpen = scales.y.map(open);
+            const yClose = scales.y.map(close);
+            if (
+              !Number.isFinite(cx) || !Number.isFinite(yLow) || !Number.isFinite(yHigh) ||
+              !Number.isFinite(yOpen) || !Number.isFinite(yClose)
+            ) continue;
+            const isPositive = close >= open;
+            const candlePattern = isPositive ? positivePattern : negativePattern;
+            const hasOwnPattern = Boolean(candlePattern.href);
+            const fill = solidFillFor(isPositive, hasOwnPattern);
+            const key = `hover-highlight:${i}`;
+            const point: ChartPoint<ChartDatum, Date, number> = {
+              key, markId: "hover-highlight", group: null, groupLabel: "hover-highlight",
+              datum: d, datumIndex: i, xValue: date, yValue: close,
+              x: cx, y: yClose, color: fill,
+            };
+            // Wick — mirrors wicksMark geometry exactly.
+            nodes.push({
+              kind: "rect",
+              key: `${key}:wick`,
+              x: cx - WICK_WIDTH_PX / 2,
+              y: Math.min(yLow, yHigh),
+              width: WICK_WIDTH_PX,
+              height: Math.abs(yHigh - yLow) || 1,
+              style: { fill },
+              pointOwner: point,
+            });
+            const bodyX = cx - bodyWidthPx / 2;
+            const bodyY = Math.min(yOpen, yClose);
+            const bodyHeight = Math.abs(yClose - yOpen) || 1;
+            // Body — mirrors bodiesMark's solid rect (self-stroke).
+            nodes.push({
+              kind: "rect",
+              key: `${key}:body`,
+              x: bodyX,
+              y: bodyY,
+              width: bodyWidthPx,
+              height: bodyHeight,
+              radius: 1,
+              style: { fill, stroke: fill, strokeWidth: 1 },
+              pointOwner: point,
+            });
+            // K9: pattern overlay, same geometry/rx, no self-stroke.
+            if (hasOwnPattern) {
+              nodes.push({
+                kind: "rect",
+                key: `${key}:body-pattern`,
+                x: bodyX,
+                y: bodyY,
+                width: bodyWidthPx,
+                height: bodyHeight,
+                radius: 1,
+                style: { fill: candlePattern.href },
+                pointOwner: point,
+              });
+            }
+            // K10: inset stroke rect.
+            if (insideStrokeW > 0) {
+              nodes.push({
+                kind: "rect",
+                key: `${key}:body-stroke`,
+                x: bodyX + insideStrokeW / 2,
+                y: bodyY + insideStrokeW / 2,
+                width: bodyWidthPx - insideStrokeW,
+                height: bodyHeight - insideStrokeW,
+                radius: 1,
+                style: { fill: "none", stroke: fill, strokeWidth: insideStrokeW },
+                pointOwner: point,
+              });
+            }
+            points.push(point);
+          }
+          return {
+            nodes: [
+              { kind: "group", key: "hover-highlight", className: "ts-chart__candle-highlight", ariaHidden: true, children: nodes },
+            ],
+            points,
+          };
+        },
+      };
+    },
+  };
 }
 
 // P5.5 K4 — this file used to declare its own spring-only
@@ -362,11 +643,25 @@ export function CandlestickChart({
     [],
   );
 
+  // C3: hoisted above `definition` — the crosshair/hover-dot/highlight marks
+  // built inside it need `chartConfig.tooltipSpring` for their `motion`
+  // springs (context-driven override, matching the deleted
+  // candlestick-hover-chrome.ts's own `attachCandlestickHoverChrome(el, ...,
+  // {tooltipSpring: chartConfig.tooltipSpring})`), and `indicatorGradientId`
+  // for the crosshair's optional fade gradient (`crosshairFadeGradient`
+  // below reuses the same id).
+  const chartConfig = useChartConfig();
+  const indicatorGradientId = useSanitizedId();
+
   const definition = React.useMemo(() => {
     if (width <= 0) return null;
 
     // K10: legacy insideStrokeWidth — inner inset stroke on the body.
     const insideStrokeW = resolvedCandlestick.insideStrokeWidth;
+    // C3: large-dataset motion cutoff, shared by the crosshair/hover-dot
+    // marks below (same DISCRETE_INTERACTION_THRESHOLD as every other
+    // migrated chart's own hover chrome, verified strict `>`).
+    const discrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
 
     const yScale: ChartScale = {
       id: "y",
@@ -403,7 +698,7 @@ export function CandlestickChart({
     // C1: hover/legend dim is native `states` (declared below, keyed off
     // each candle's positive/negative `group` identity) — no more inline
     // per-point opacity math. Highlight of the hovered candle stays a
-    // separate overlay (candlestick-hover-chrome.ts, C3's territory).
+    // separate native mark (C3: `createCandlestickHighlightMark`, below).
     const wicksDimStates = candlestickDimStates(resolvedCandlestick.fadedOpacity, resolvedCandlestick.showHoverFade);
     const wicksMark = createMark(() => {
       const xValues = renderData.map((d) => d[xDataKey] as Date);
@@ -564,9 +859,90 @@ export function CandlestickChart({
       };
     });
 
+    // C3: crosshair + per-candle hover-dot + highlight marks — native
+    // replacement for the deleted candlestick-hover-chrome.ts's imperative
+    // indicator/dot/highlight SVG layers. All three gated on `tooltipEnabled`
+    // (candlestick-hover-chrome.ts was only ever mounted when tooltipEnabled,
+    // matching every other migrated chart's own C3 gate). The highlight
+    // itself is further UNGATED by showCrosshair/showDots/showDatePill below
+    // — legacy's own `update()` painted `activeHighlightSvg` unconditionally
+    // whenever a point was focused (candlestick-hover-chrome.ts:230-233, no
+    // surrounding `if (state.showXxx)` guard, unlike the crosshair/dot
+    // blocks there).
+    const hoverMarks: ChartMark<ChartDatum, Date, number>[] = [];
+    if (tooltipEnabled) {
+      // Highlight FIRST (bottom of paint order) — mirrors legacy's own DOM
+      // append order `host.append(activeHighlightSvg, indicator.svg,
+      // dotsSvg, pillBuild.layer)`.
+      hoverMarks.push(
+        whenFocused(
+          createCandlestickHighlightMark(
+            renderData,
+            xDataKey,
+            bodyWidthPx,
+            insideStrokeW,
+            positivePattern,
+            negativePattern,
+            solidFillFor,
+          ),
+          { match: "group" },
+        ),
+      );
+      if (tooltip?.showCrosshair ?? true) {
+        // Config resolution mirrors legacy's `buildIndicator` exactly
+        // (tooltip-mappers.ts's `toIndicatorConfig`, the same mapping
+        // candlestick-hover-chrome.ts used inline via
+        // `toIndicatorConfig(getState().tooltip)`). DROPPED BEHAVIOR:
+        // `indicatorColor` as a function WAS genuinely invoked per hover-move
+        // by legacy (candlestick-hover-chrome.ts:182-186 — unlike bar's own
+        // dead-code branch of the same name) — native `crosshair()`'s
+        // `x.stroke` is one static string for the whole mark
+        // (dist/crosshair.d.ts's rule-options `stroke?: string`), not a
+        // per-hover-frame channel, so a color that depends on which candle
+        // is hovered has no native route without a renderer reach-in.
+        // Dropped here; only the STRING form of `indicatorColor` is honored
+        // (falls through to the CSS var otherwise, same as every other
+        // migrated chart's crosshair).
+        const indicatorCfg = toIndicatorConfig(tooltip);
+        const isDashed = Boolean(indicatorCfg.dasharray);
+        const fadeSides = resolveVerticalFadeSides(isDashed ? "none" : (indicatorCfg.fadeEdges ?? "both"));
+        const indicatorColorValue = typeof indicatorCfg.color === "string" ? indicatorCfg.color : "var(--chart-crosshair)";
+        const indicatorSpringCfg = indicatorCfg.springConfig ?? chartConfig.tooltipSpring;
+        hoverMarks.push(
+          crosshair({
+            y: false,
+            x: {
+              stroke: !isDashed && fadeSides.any ? `url(#${indicatorGradientId})` : indicatorColorValue,
+              strokeOpacity: 1,
+              strokeWidth: resolveIndicatorPixelWidth(indicatorCfg),
+              strokeDasharray: indicatorCfg.dasharray,
+            },
+            motion: discrete
+              ? false
+              : {
+                  transition: {
+                    type: "spring",
+                    stiffness: indicatorSpringCfg.stiffness,
+                    damping: indicatorSpringCfg.damping,
+                  },
+                },
+          }) as ChartMark<ChartDatum, Date, number>,
+        );
+      }
+      if (tooltip?.showDots ?? true) {
+        hoverMarks.push(
+          whenFocused(
+            createCandlestickHoverDotMark(renderData, xDataKey, toDotConfig(tooltip), chartConfig.tooltipSpring),
+            { match: "group", retarget: true },
+          ),
+        );
+      }
+    }
+
     const marks: ChartMark<ChartDatum, Date, number>[] = [
       wicksMark,
       bodiesMark,
+      ...hoverMarks,
     ];
     const gridGuide = resolveGridGuide(grid);
 
@@ -633,6 +1009,9 @@ export function CandlestickChart({
     width,
     margin,
     candlestickFocusStrategy,
+    tooltip,
+    chartConfig,
+    indicatorGradientId,
   ]);
 
   // Y-axis ticks — recomputed LOCALLY (not read from `yScaleD3Ref` post-hoc,
@@ -732,26 +1111,25 @@ export function CandlestickChart({
     };
   }, []);
 
-  // Hover chrome (bklit ChartTooltip + candlestick's own dim/highlight idiom).
-  const chartConfig = useChartConfig();
-  const chromeRef = React.useRef<CandlestickHoverChrome | null>(null);
+  // C3: date-pill + label-fade chrome only — crosshair/dots/highlight are
+  // now native marks built inside `definition` above. `chromeStateRef`
+  // shrinks to just what `renderTooltipBody` (tooltip) and the pill mount
+  // effect (dateLabels) still need at call time.
+  const chromeStateRef = React.useRef<CandlestickChromeState | null>(null);
   // bklit parity (use-chart-interaction.ts): drag selection suppresses the
-  // hover chrome — cleared on mousedown, never rescheduled while dragging.
+  // date-pill/label-fade chrome — cleared on mousedown, never rescheduled
+  // while dragging. The native crosshair/dot/highlight marks are NOT gated
+  // by this ref — they keep reacting directly to whatever
+  // ChartFocusStrategy resolves during a drag, same as scatter-chart.tsx's
+  // own C3 rewrite (its `handleFocusGroupChange` comment: "same gate as
+  // line/candlestick's dragSelectionActiveRef" — this IS that gate).
   const dragSelectionActiveRef = React.useRef(false);
-  const chromeStateRef = React.useRef<CandlestickHoverChromeState | null>(null);
   const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
     const v = d[xDataKey];
     if (v instanceof Date) return shortDateFmt.format(v);
     return String(v ?? "");
   }), [renderData, xDataKey]);
   chromeStateRef.current = {
-    margin,
-    pointCount: renderData.length,
-    showCrosshair: tooltip?.showCrosshair ?? true,
-    showDots: tooltip?.showDots ?? true,
-    showDatePill: tooltip?.showDatePill ?? true,
-    // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade radius.
-    tickerHalfWidth: xAxis?.tickerHalfWidth,
     tooltip: tooltip ?? null,
     dateLabels: dateLabelsForPill,
   };
@@ -759,21 +1137,36 @@ export function CandlestickChart({
   const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
   const hasDefinition = width > 0;
 
+  // C3: date-pill-only mount — crosshair/dots/highlight are native marks now
+  // (built inside `definition`), so this effect no longer attaches
+  // `attachCandlestickHoverChrome`'s full indicator/dot/highlight/pill
+  // quartet, just the sanctioned-extension pill DOM (`internal/date-pill.ts`
+  // `buildPill`, byte-identical twin of the deleted candlestick-hover-
+  // chrome.ts version's own `buildPill` call).
+  const pillRef = React.useRef<PillBuild | null>(null);
+  // Tracks whether the pill was already visible on the PREVIOUS focus-change
+  // call, mirroring legacy's `showing = !visible` — first appearance jumps
+  // the spring in place, subsequent moves while already visible spring.
+  const pillVisibleRef = React.useRef(false);
+
   React.useLayoutEffect(() => {
     const el = overlayHostRef.current;
     if (!el || !tooltipEnabled) return;
-    const chrome = attachCandlestickHoverChrome(el, () => chromeStateRef.current!, {
-      tooltipSpring: chartConfig.tooltipSpring,
-    });
-    chromeRef.current = chrome;
+    const doc = el.ownerDocument;
+    const pillBuild = buildPill(doc, chartConfig.tooltipSpring, () => chromeStateRef.current?.dateLabels ?? []);
+    el.appendChild(pillBuild.layer);
+    pillRef.current = pillBuild;
     return () => {
-      chromeRef.current = null;
-      chrome.detach();
+      pillRef.current = null;
+      pillVisibleRef.current = false;
+      pillBuild.spring.stop();
+      pillBuild.ticker?.detach();
+      pillBuild.layer.remove();
     };
   }, [tooltipEnabled, hasDefinition, chartConfig]);
 
   // C1: legend hover drives native mark `states` dim via programmatic focus
-  // (replaces the old chromeRef.current?.syncLegendDim() DOM-mutation sync).
+  // (replaces the old imperative chrome's syncLegendDim() DOM-mutation sync).
   React.useEffect(() => {
     if (legendHoveredIndex == null) {
       clearFocus();
@@ -787,106 +1180,60 @@ export function CandlestickChart({
     }
   }, [legendHoveredIndex, focusSeries, clearFocus]);
 
-  // TanStack-native hover — ChartFocusStrategy resolves nearest xValue
-  // (bisect-epoch semantics with strict `>` tie-break) and groups wick+body
-  // points for that date; this adapter maps ChartPoint[] → CandlestickFocusPoint
-  // for the chrome. Pixel y for open/low/high/close via a locally-recreated
-  // y scale (same domain/nice/range as the mark's yScale) so no d3 ref is
-  // stashed.
-  const yScaleForChrome = React.useMemo(() => {
-    if (heightPx <= 0) return null;
-    return scaleLinear()
-      .domain(yDomain)
-      .nice()
-      .range([heightPx - margin.bottom, margin.top]);
-  }, [yDomain, heightPx, margin.top, margin.bottom]);
+  // Hides the pill + resets axis-label fade — shared by the drag-suppression
+  // branch below and `onDragStart` (useChartSelection, further down).
+  const hidePill = React.useCallback(() => {
+    pillVisibleRef.current = false;
+    const pillBuild = pillRef.current;
+    if (pillBuild) {
+      pillBuild.layer.style.display = "none";
+      pillBuild.spring.stop();
+      pillBuild.label.textContent = "";
+    }
+    if (containerRef.current) resetLabelFade(containerRef.current);
+  }, []);
 
+  // C3: shrunk to date-pill + axis-label-fade only (crosshair/dot/highlight
+  // positioning is now entirely inside the native marks above — this
+  // handler no longer builds a `CandlestickFocusPoint` for a chrome object
+  // to consume).
   const handleFocusGroupChange = React.useCallback(
     (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
-      if (dragSelectionActiveRef.current) {
-        chromeRef.current?.onFocusChange(null);
+      if (dragSelectionActiveRef.current || points.length === 0) {
+        hidePill();
         return;
       }
-      if (points.length === 0) {
-        chromeRef.current?.onFocusChange(null);
-        return;
-      }
+      const pillBuild = pillRef.current;
       const primary = points[0]!;
-      const datum = primary.datum;
       const date = primary.xValue;
-      const open = datum.open as number | undefined;
-      const close = datum.close as number | undefined;
-      const low = datum.low as number | undefined;
-      const high = datum.high as number | undefined;
-      if (
-        typeof open !== "number" ||
-        typeof close !== "number" ||
-        typeof low !== "number" ||
-        typeof high !== "number" ||
-        !Number.isFinite(open) ||
-        !Number.isFinite(close) ||
-        !Number.isFinite(low) ||
-        !Number.isFinite(high)
-      ) {
-        chromeRef.current?.onFocusChange(null);
-        return;
+      const centerX = primary.x;
+      const discrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
+      const showDatePill = tooltipEnabled && (tooltip?.showDatePill ?? true);
+      const showing = !pillVisibleRef.current;
+      pillVisibleRef.current = true;
+
+      if (pillBuild) {
+        if (showDatePill) {
+          pillBuild.layer.style.display = "";
+          if (pillBuild.ticker && chromeStateRef.current?.dateLabels && chromeStateRef.current.dateLabels.length > 0) {
+            pillBuild.ticker.update(primary.datumIndex, discrete);
+          } else {
+            pillBuild.label.textContent = shortDateFmt.format(date);
+          }
+          if (showing || discrete) pillBuild.spring.jump(centerX);
+          else pillBuild.spring.set(centerX);
+        } else {
+          pillBuild.layer.style.display = "none";
+        }
       }
-      // Center x from TanStack point (both wick+body share same x). y values
-      // via reconstructed scale (or directly from points when available) to
-      // match the mark's own mapping.
-      const yScale = yScaleForChrome;
-      // Prefer point y when markId matches, else fall back to scale.
-      let closeY: number | null = null;
-      let highY: number | null = null;
-      for (const p of points) {
-        if (p.markId === "bodies") closeY = p.y;
-        if (p.markId === "wicks") highY = p.y;
+
+      const container = containerRef.current;
+      if (container) {
+        const hoveredLabel = shortDateFmt.format(date);
+        applyLabelFade(container, centerX, hoveredLabel, xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH, FADE_BUFFER);
       }
-      const yOpen = yScale ? (yScale(open) ?? 0) : 0;
-      const yClose = closeY ?? (yScale ? (yScale(close) ?? 0) : 0);
-      const yLow = yScale ? (yScale(low) ?? 0) : 0;
-      const yHigh = highY ?? (yScale ? (yScale(high) ?? 0) : 0);
-      const centerXpx = primary.x;
-      const isPositive = close >= open;
-      // Highlight geometry mirrors the marks: solid token fallback when this
-      // candle carries a pattern overlay (bklit recomputes full geometries
-      // for the highlight, including the pattern-solid substitution).
-      const focusPattern = isPositive ? positivePattern : negativePattern;
-      const fill = solidFillFor(isPositive, Boolean(focusPattern.href));
-      const bodyTop = Math.min(yOpen, yClose);
-      const bodyHeight = Math.abs(yClose - yOpen) || 1;
-      const wickTop = Math.min(yHigh, yLow);
-      const wickHeight = Math.abs(yLow - yHigh) || 1;
-      const point: CandlestickFocusPoint = {
-        date,
-        close,
-        centerX: centerXpx,
-        closeY: yClose,
-        index: primary.datumIndex,
-        body: {
-          x: centerXpx - bodyWidthPx / 2,
-          y: bodyTop,
-          width: bodyWidthPx,
-          height: bodyHeight,
-          fill,
-          radius: 1,
-          strokeWidth: WICK_WIDTH_PX,
-          // K9/K10 highlight parity: hovered candle re-renders its pattern
-          // overlay + inset stroke on top (bklit highlight CandlestickBody).
-          patternHref: focusPattern.href || undefined,
-          insideStrokeWidth: resolvedCandlestick.insideStrokeWidth,
-        },
-        wick: {
-          x: centerXpx - WICK_WIDTH_PX / 2,
-          y: wickTop,
-          width: WICK_WIDTH_PX,
-          height: wickHeight,
-          fill,
-        },
-      };
-      chromeRef.current?.onFocusChange(point);
     },
-    [yScaleForChrome, bodyWidthPx, positivePattern, negativePattern, solidFillFor],
+    [hidePill, renderData.length, tooltipEnabled, tooltip, xAxis],
   );
 
   // C2: native tooltip body — reuses `TooltipContent` verbatim. Legacy box
@@ -1161,12 +1508,35 @@ export function CandlestickChart({
     containerRef,
     onDragStart: () => {
       dragSelectionActiveRef.current = true;
-      chromeRef.current?.onFocusChange(null);
+      hidePill();
     },
     onDragEnd: () => {
       dragSelectionActiveRef.current = false;
     },
   });
+
+  // C3: sanctioned SVG-gradient escape hatch for the native crosshair()'s
+  // vertical fade — mirrors bar-chart.tsx's own crosshairFadeGradient
+  // exactly (same fade-mask/indicatorFadeGradientStops utilities, same gate
+  // conditions: dashed indicators never fade, no-fade configs need no
+  // gradient at all). `gradientUnits="userSpaceOnUse"` with explicit pixel
+  // `y1`/`y2` is required because the native crosshair renders as a
+  // zero-bbox `<line>` — an `objectBoundingBox` gradient (what legacy's
+  // `<rect fill="url(#id)">` trick relied on implicitly) has no bounding box
+  // to map onto for a line.
+  const crosshairFadeGradient = React.useMemo(() => {
+    if (!tooltipEnabled || !(tooltip?.showCrosshair ?? true)) return null;
+    const indicatorCfg = toIndicatorConfig(tooltip);
+    if (indicatorCfg.dasharray) return null;
+    const fadeSides = resolveVerticalFadeSides(indicatorCfg.fadeEdges ?? "both");
+    if (!fadeSides.any) return null;
+    const colorValue = typeof indicatorCfg.color === "string" ? indicatorCfg.color : "var(--chart-crosshair)";
+    return {
+      id: indicatorGradientId,
+      color: colorValue,
+      stops: indicatorFadeGradientStops(fadeSides, indicatorCfg.fadeLength ?? 10),
+    };
+  }, [tooltipEnabled, tooltip, indicatorGradientId]);
 
   return (
     <ChartSelectionContext.Provider value={candleSelection}>
@@ -1253,6 +1623,24 @@ export function CandlestickChart({
             />
           ) : null}
         </>
+      ) : null}
+      {crosshairFadeGradient ? (
+        <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient
+              id={crosshairFadeGradient.id}
+              gradientUnits="userSpaceOnUse"
+              x1={0}
+              x2={0}
+              y1={margin.top}
+              y2={margin.top + Math.max(0, heightPxCandle - margin.top - margin.bottom)}
+            >
+              {crosshairFadeGradient.stops.map((s, i) => (
+                <stop key={i} offset={s.offset} stopColor={crosshairFadeGradient.color} stopOpacity={s.opacity} />
+              ))}
+            </linearGradient>
+          </defs>
+        </svg>
       ) : null}
     </div>
     </ChartSelectionContext.Provider>

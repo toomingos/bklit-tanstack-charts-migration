@@ -1,9 +1,10 @@
 // Migrated bklit-ui AreaChart — same public API, rendered by TanStack
 // Charts. Minimal diff on line-chart.tsx (docs/LOG.md D10/area task):
-//   - Two TanStack marks per series: `areaY` (fill, id `${dataKey}__fill`)
-//     under a `lineY` (boundary stroke, id `dataKey` — SAME id convention
-//     as <Line>, so the shared hover-chrome's series-by-markId lookups
-//     work unchanged) on top, per "Layering area and line" (TanStack docs).
+//   - Two marks per series: `areaFill` (custom fill mark, id `${dataKey}__fill`)
+//     under a `lineY` (boundary stroke, id `dataKey` — SAME id convention as
+//     <Line>, so the native crosshair/hover-dot/highlight-band marks in
+//     internal/hover-geometry.ts work unchanged) on top, per "Layering area
+//     and line" (TanStack docs).
 //   - Per-series vertical gradient (fill fading to transparent, bklit's
 //     area-gradient-defs.tsx defaults) rendered in a 0x0 sibling <svg>
 //     AFTER <Chart> — same url()-resolves-document-wide technique as
@@ -15,9 +16,11 @@
 //   - Area's own bklit defaults differ from Line's: curveMonotoneX (not
 //     curveNatural), fadeEdges default false (not true), strokeWidth
 //     default 2 (not 2.5).
-//   - Hover chrome dims to 0.6 (not Line's 0.3) — area.tsx hardcodes
-//     `<SeriesHoverDim dimOpacity={0.6} .../>`; parameterized in
-//     internal/hover-chrome.ts (see attachHoverChrome's `dimOpacity` option).
+//   - Hover dim is 0.6 (not Line's 0.3) — area.tsx hardcodes
+//     `<SeriesHoverDim dimOpacity={0.6} .../>`; ported to `AREA_DIM_OPACITY`
+//     below, applied via both native mark `states` (lineY) and a reactive
+//     `fillOpacity` term (areaFill — see its header for why it can't use
+//     `states`).
 //   - No path-morph on data update (bklit Area has no useAnimatedSeriesPath
 //     equivalent) — same as migrated Line, the shared shell's y-domain
 //     tween is the only data-update animation either chart has (I8).
@@ -29,7 +32,13 @@ import { Chart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
 import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
-import type { ChartMark, ChartRenderContext, StaticChartDefinition } from "@tanstack/charts";
+import type {
+  ChartInteractionController,
+  ChartMark,
+  ChartPoint,
+  ChartRenderContext,
+  StaticChartDefinition,
+} from "@tanstack/charts";
 import { areaFill } from "./internal/area-fill-mark";
 import { patternAreaMark } from "./internal/pattern-area-mark";
 import { renderPatternPreset } from "./internal/pattern-preset";
@@ -38,7 +47,16 @@ import {
   maxRenderPointsForWidth,
 } from "./internal/decimate";
 import { extractChildren } from "./children";
-import { useHoverChrome } from "./internal/use-hover-chrome";
+import {
+  buildCrosshairGradientDef,
+  buildHighlightBandMarks,
+  buildHoverDotMark,
+  buildIndicatorMark,
+  isFocusOutsideXDomain,
+  pointerHoverDimState,
+  resolveHoverDotFill,
+  useDatePillOverlay,
+} from "./internal/hover-geometry";
 import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
@@ -68,13 +86,14 @@ import {
   SERIES_MARKER_ENTER_MS,
   TOOLTIP_BOX_SPRING,
 } from "./internal/design-tokens";
-import { weekdayDateFmt } from "./internal/formatters";
+import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { TooltipContent } from "./internal/tooltip-components";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
 import { YAxisOverlay } from "./internal/y-axis-overlay";
 import type { ChartDatum, ChartStatus, TooltipRow } from "./internal/types";
 import { type ChartPhase, DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./internal/chart-phase";
 import type { ChartScale } from "@tanstack/charts";
+import { useChartConfig } from "./internal/chart-config-context";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { bezierEasing } from "./internal/bezier-easing";
 import { resolveGridGuide } from "./internal/grid";
@@ -108,7 +127,7 @@ import { isRevealed, markRevealed } from "./internal/deferred-reveal";
 import { clipRevealTiming, type EnterTransition } from "./internal/enter-transition";
 import "./styles.css";
 // Area's own hover dim (area.tsx hardcodes dimOpacity={0.6}; Line uses 0.3).
-const AREA_DIM_OPACITY = "0.6";
+const AREA_DIM_OPACITY = 0.6;
 
 export interface AreaChartProps {
   data: ChartDatum[];
@@ -261,6 +280,9 @@ export function AreaChart({
     () => extractChildren(children),
     [children],
   );
+  // C3: moved up from below the `definition` memo — the native crosshair/
+  // hover-dot/highlight-band marks built inside that memo need this flag.
+  const tooltipEnabled = tooltip?.enabled ?? false;
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const prefersReducedMotion = usePrefersReducedMotion();
   // C1 (P6): legend hover -> native mark states via programmatic focus
@@ -370,6 +392,18 @@ export function AreaChart({
       [...resolvedAreas.map((a) => a.dataKey), ...resolvedPatternAreas.map((p) => p.dataKey)],
     );
   }, [data, innerWidth, resolvedAreas, resolvedPatternAreas]);
+  // C3: bklit's `pointCount > DISCRETE_INTERACTION_THRESHOLD` gate, reused by
+  // the native crosshair/hover-dot/highlight-band marks below (snap instead
+  // of spring on dense data).
+  const isDiscrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
+  // C3: replaces hover-chrome's imperative `highlightXSpring`/
+  // `highlightWidthSpring` clip-rect sweep — the reactive index driving the
+  // native highlight-band marks below.
+  const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
+  // C3: app-owned <linearGradient> def id for the native crosshair mark's
+  // vertical fade — same useSanitizedId()/rendered-<defs> mechanism as the
+  // projection/marker gradient defs.
+  const crosshairGradientId = useSanitizedId();
 
   const areaMarkerBaseId = useSanitizedId();
   const areaMarkerConfigs = React.useMemo(() => resolvedAreas.map((a) => ({ dataKey: a.dataKey, stroke: a.stroke, showMarkers: a.showMarkers, markers: a.markers })), [resolvedAreas]);
@@ -533,8 +567,8 @@ export function AreaChart({
     return { minTime, maxTime } as const;
   }, [renderData, xDataKey, xDomain]);
   // Rendered x-domain: data extent extended by the projection tail so every
-  // consumer (spec scale, selection scale, reference areas, x-axis overlay,
-  // hover xForIndex) matches the rendered mapping. When xDomain is set, no projection merge.
+  // consumer (spec scale, selection scale, reference areas, x-axis overlay)
+  // matches the rendered mapping. When xDomain is set, no projection merge.
   const timeExtent = React.useMemo(() => {
     if (!timeExtentRaw) return null;
     if (xDomain) return timeExtentRaw;
@@ -664,6 +698,16 @@ export function AreaChart({
     return defs;
   }, [projectionConfigs, projectionLines, width, margin, heightPx, yDomainFinal, timeExtent, timeExtentRaw, projectionGradientBaseId, isLoading]);
 
+  // C3: app-owned <linearGradient> def feeding the native crosshair mark's
+  // `stroke: url(#id)` vertical fade — see line-chart.tsx for the full
+  // color-fallback rationale (ported verbatim from
+  // internal/tooltip-chrome.ts's `buildIndicator`).
+  const crosshairGradientDef = React.useMemo(() => {
+    if (!(tooltipEnabled && (tooltip?.showCrosshair ?? true))) return null;
+    const color = typeof tooltip?.indicatorColor === "string" ? tooltip.indicatorColor : "var(--chart-crosshair)";
+    return buildCrosshairGradientDef(crosshairGradientId, color);
+  }, [tooltipEnabled, tooltip, crosshairGradientId]);
+
   const definition = React.useMemo(() => {
     if (width <= 0) return null;
     if (isLoading) {
@@ -707,8 +751,18 @@ export function AreaChart({
     }
     // C1 (P6): legend-hover fill dim — areaFill emits no ChartPoints, so mark
     // states can't reach it; the dim arrives reactively via fillOpacity here.
+    // C3: pointer-hover dim (hover-chrome.ts DIM_OPACITY, parameterized to
+    // Area's 0.6) rides the SAME reactive fillOpacity term for the same
+    // reason — areaFill has no ChartPoints for native `states` to match
+    // either. Unlike the legend term (which dims every OTHER series and
+    // spares the highlighted one), pointer-hover dims EVERY series
+    // uniformly the instant any point is focused (matching the boundary
+    // lineY's own `pointerHoverDimState` below and bklit's SeriesHoverDim,
+    // which dims all series alike and relies on the highlight band to
+    // restore the near slice) — so it does not gate on `area.dataKey`.
     const legendHoveredKey =
       legendHoveredIndex != null ? (areas[legendHoveredIndex]?.dataKey ?? null) : null;
+    const pointerHoverDimmed = tooltipEnabled && hoveredIndex != null;
     for (const area of resolvedAreas) {
       const gradientId = gradientIdBySeries.get(area.dataKey);
       const curve = d3Curve(area.curve);
@@ -733,13 +787,15 @@ export function AreaChart({
           curve,
           fill: gradientId ? `url(#${gradientId})` : area.fill,
           fillOpacity:
-            legendHoveredKey == null || legendHoveredKey === area.dataKey ? 1 : 0.6,
+            pointerHoverDimmed || !(legendHoveredKey == null || legendHoveredKey === area.dataKey)
+              ? AREA_DIM_OPACITY
+              : 1,
         }),
       );
-      // Same id as <Line> would use for this dataKey — the shared
-      // hover-chrome's series-by-markId lookups (dots, tooltip rows,
-      // highlight-band re-stroke) find this mark without any Area-specific
-      // branching in hover-chrome.ts.
+      // Same id as a migrated Line's boundary mark would use for this
+      // dataKey — the native crosshair/hover-dot/highlight-band marks below
+      // (and the tooltip's own point lookup) find this mark by `dataKey`
+      // with no Area-specific branching.
       {
         const hasDashTail = resolveDashTailBounds(area.dashFromIndex, renderData.length);
         // A4: bklit keeps its measuring LinePath mounted when showLine=false
@@ -762,12 +818,16 @@ export function AreaChart({
             // C1 (P6): legend-hover series dim — bklit SeriesHoverDim's
             // legend term (area.tsx dims to 0.6, 400ms ease-in-out).
             // Programmatic-source-only so pointer hover never triggers this.
+            // C3: pointer-hover dim (same 0.6, D425 — timing rides
+            // `.ts-chart__line path` in styles.css, no `transition` field
+            // here) sits alongside it as a second state entry.
             states: [
               {
                 when: whenSeriesDimmed(),
-                style: { opacity: 0.6 },
+                style: { opacity: AREA_DIM_OPACITY },
                 transition: { type: "tween", duration: 400, easing: "ease-in-out" },
               },
+              pointerHoverDimState<ChartDatum>(AREA_DIM_OPACITY),
             ],
           }),
         );
@@ -777,6 +837,57 @@ export function AreaChart({
       if (showAreaSeriesContent && areaMarkerConfigs.some((s) => s.showMarkers)) {
         marks.push(...buildMarkerMarks(renderData, xDataKey, areaMarkerConfigs, areaMarkerGradientIdByKey));
       }
+    }
+    // C3: native crosshair/hover-dot/highlight-band marks (replace
+    // hover-chrome.ts's imperative indicator/dot/highlight-sweep overlays).
+    // Same construction as line-chart.tsx; see internal/hover-geometry.ts
+    // for the shared implementation and its `retarget`/`motion` reasoning.
+    if (tooltipEnabled && (tooltip?.showCrosshair ?? true)) {
+      marks.push(
+        buildIndicatorMark({
+          gradientId: crosshairGradientId,
+          width: tooltip?.indicatorWidth,
+          span: tooltip?.indicatorSpan,
+          columnWidth: tooltip?.columnWidth,
+          dasharray: tooltip?.indicatorDasharray,
+          color: typeof tooltip?.indicatorColor === "string" ? tooltip.indicatorColor : undefined,
+          discrete: isDiscrete,
+        }) as unknown as ChartMark<ChartDatum, Date, number>,
+      );
+    }
+    if (tooltipEnabled && (tooltip?.showDots ?? true)) {
+      for (const area of resolvedAreas) {
+        marks.push(
+          buildHoverDotMark(
+            renderData,
+            xDataKey,
+            { dataKey: area.dataKey, color: area.stroke },
+            resolveHoverDotFill(area.stroke, tooltip?.dotColor),
+            { size: tooltip?.dotSize, strokeWidth: tooltip?.dotStrokeWidth, discrete: isDiscrete },
+          ),
+        );
+      }
+    }
+    if (tooltipEnabled) {
+      marks.push(
+        ...buildHighlightBandMarks(
+          renderData,
+          xDataKey,
+          hoveredIndex,
+          resolvedAreas.map((area) => ({
+            dataKey: area.dataKey,
+            color: area.stroke,
+            strokeWidth: area.strokeWidth,
+            showHighlight: area.showHighlight,
+            // A4: bklit gates SeriesHighlightLayer on `showHighlight &&
+            // showLine` — the dim state above stays on regardless; only the
+            // band itself is suppressed when showLine is false.
+            showLine: area.showLine,
+            curve: d3Curve(area.curve),
+          })),
+          { discrete: isDiscrete },
+        ),
+      );
     }
     // Projection marks render inside the same marks group as the series
     // (clip-path reveal covers them; strokeVisible handles loading).
@@ -892,26 +1003,21 @@ export function AreaChart({
           ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
           : false,
     });
-  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients, legendHoveredIndex, areas, tooltip]);
+  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients, legendHoveredIndex, areas, tooltip, tooltipEnabled, crosshairGradientId, isDiscrete, hoveredIndex]);
 
-  // Hover chrome (bklit ChartTooltip): imperative overlays driven by
-  // TanStack's focus callbacks — no React work per pointer move. Reuses
-  // Line's exact chrome (wiring shared via ./internal/use-hover-chrome), dim
-  // opacity parameterized to Area's 0.6 (Line keeps its own 0.3 default —
-  // see internal/hover-chrome.ts). Focus-point dedup: `onFocusGroupChange`
-  // receives one ChartPoint per MARK at the focused x (both the areaY fill
-  // mark AND the lineY boundary mark emit a point for the same
-  // datum/coordinate), but `chromeStateRef.series` below lists each series
-  // by its LINE id (`area.dataKey`, not `${area.dataKey}__fill`) — the
-  // chrome's `pointByMark` Map is keyed by markId, so
-  // `pointByMark.get(series.dataKey)` only ever resolves the lineY point;
-  // the areaY point (stored under the sibling `__fill` key) is simply never
-  // looked up. No explicit filtering needed.
-  const tooltipEnabled = tooltip?.enabled ?? false;
+  // C3: hover-chrome.ts's imperative overlays are gone — native crosshair/
+  // hover-dot/highlight-band marks (built inside the `definition` memo
+  // above) and the app-owned date-pill overlay (below) replace them.
+  // `tooltipEnabled` was moved up above the `definition` memo (it gates
+  // those marks too). Focus-point dedup: both the areaFill mark (no
+  // ChartPoints — see internal/area-fill-mark.ts's header) and the lineY
+  // boundary mark participate in focus, but only the boundary mark emits a
+  // ChartPoint per datum, so `onFocusGroupChange` never sees a duplicate per
+  // series — no explicit filtering needed.
   // C2 (P6): renders inside the native tooltip extension's unstyled
   // `.ts-chart-tooltip__body` portal target — see line-chart.tsx for the
-  // full contract note. Rows default from `resolvedAreas` (same series list
-  // chromeStateRef below builds), honoring `tooltip.rows`/`tooltip.content`.
+  // full contract note. Rows default from `resolvedAreas`, honoring
+  // `tooltip.rows`/`tooltip.content`.
   const renderTooltipBody = React.useCallback(
     (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode => {
       const primary = ctx.points[0];
@@ -952,115 +1058,72 @@ export function AreaChart({
     },
     [tooltip, xDataKey, resolvedAreas],
   );
-  // Scene x of rendered point `index` — same linear time→px mapping the
-  // rendered x scale applies, extended by the projection tail when present.
-  const xForIndex = (index: number) => {
-    const te = timeExtent;
-    const teRaw = timeExtentRaw;
-    const value = renderData[index]?.[xDataKey];
-    if (!(value instanceof Date) || !te || !teRaw) return margin.left;
-    const r = te.maxTime - teRaw.minTime;
-    if (r <= 0) return margin.left;
-    return margin.left + ((value.getTime() - teRaw.minTime) / r) * innerWidth;
-  };
-  // D4 parity fix: this used to be missing, silently no-op'ing
-  // HoverChrome.reanchor() for Area (a data change mid-hover never
-  // re-anchored the dot/crosshair). Same px mapping as xForIndex above —
-  // teRaw.minTime === te.minTime always (only maxTime moves, when a
-  // projection extends the domain), so a reanchored point lands exactly
-  // where xForIndex would place it.
-  const xScaleForReanchor = React.useMemo(() => {
-    const te = timeExtent;
-    const teRaw = timeExtentRaw;
-    if (!te || !teRaw) return null;
-    const r = te.maxTime - teRaw.minTime;
-    if (r <= 0) return null;
-    const map = (v: Date) => margin.left + ((v.getTime() - teRaw.minTime) / r) * innerWidth;
-    const invert = (x: number) => new Date(teRaw.minTime + ((x - margin.left) / innerWidth) * r);
-    return Object.assign(map, { invert });
-  }, [timeExtent, timeExtentRaw, margin.left, innerWidth]);
-  const {
-    chromeRef,
-    dragSelectionActiveRef,
-    chromeStateRef,
-    overlayHostRef,
-    dateLabelsForPill,
-    handleFocusGroupChange,
-  } = useHoverChrome({
-    renderData,
-    xDataKey,
-    chartPhase,
-    isLoaded,
-    xDomain,
-    tooltipEnabled,
-    width,
-    dimOpacity: AREA_DIM_OPACITY,
+  // C3: replaces hover-chrome.ts + use-hover-chrome.ts entirely. Mirrors
+  // line-chart.tsx's own wiring (no profit/loss term — Area has none).
+  const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
+  const dragSelectionActiveRef = React.useRef(false);
+  const wasVisibleRef = React.useRef(false);
+  const chartConfig = useChartConfig();
+  const dateLabelsForPill = React.useMemo(
+    () =>
+      renderData.map((d) => {
+        const v = d[xDataKey];
+        if (v instanceof Date) return shortDateFmt.format(v as Date);
+        return String(v ?? "");
+      }),
+    [renderData, xDataKey],
+  );
+  const datePill = useDatePillOverlay({
+    enabled: tooltipEnabled && (tooltip?.showDatePill ?? true),
+    dateLabels: dateLabelsForPill,
+    tooltipSpring: chartConfig.tooltipSpring,
   });
   // LM7/LM8 (P1.12): shared store carrying the live tooltip date for
   // ChartMarkersOverlay's isActive + useActiveMarkers consumers.
   const markerActiveStore = React.useMemo(() => createActiveMarkersStore(), []);
-  const handleFocusGroupChangeWithMarkerDate = React.useCallback(
-    (points: Parameters<typeof handleFocusGroupChange>[0]) => {
-      handleFocusGroupChange(points);
-      const datum = points[0]?.datum as Record<string, unknown> | undefined;
-      const v = datum?.[xDataKey];
-      const d = v instanceof Date ? v : v != null ? new Date(v as string | number) : null;
+
+  const clearFocusChrome = React.useCallback(() => {
+    interactionRef.current?.setControlledFocus(null, { source: "pointer" });
+    setHoveredIndex(null);
+    markerActiveStore.setActiveDate(null);
+    wasVisibleRef.current = false;
+    datePill.hide();
+    datePill.resetFade();
+  }, [markerActiveStore, datePill]);
+
+  const handleFocusChange = React.useCallback(
+    (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
+      const rawPrimary = points[0];
+      const outsideXDomain =
+        xDomain != null && rawPrimary != null && isFocusOutsideXDomain(rawPrimary.datum, xDataKey, xDomain);
+      const phaseGated = !(isChartInteractionPhase(chartPhase) && isLoaded);
+      const suppressed = outsideXDomain || dragSelectionActiveRef.current || phaseGated;
+      if (suppressed && points.length > 0) {
+        interactionRef.current?.setControlledFocus(null, { source: "pointer" });
+      }
+      const primary = suppressed ? undefined : rawPrimary;
+
+      setHoveredIndex(primary ? primary.datumIndex : null);
+
+      const datum = primary?.datum as Record<string, unknown> | undefined;
+      const rawDate = datum?.[xDataKey];
+      const d = rawDate instanceof Date ? rawDate : rawDate != null ? new Date(rawDate as string | number) : null;
       markerActiveStore.setActiveDate(d && !Number.isNaN(d.getTime()) ? d : null);
+
+      if (primary && (tooltip?.showDatePill ?? true)) {
+        const label = d ? shortDateFmt.format(d) : null;
+        const jump = !wasVisibleRef.current;
+        wasVisibleRef.current = true;
+        datePill.show(primary.x, { index: primary.datumIndex, label, discrete: isDiscrete, jump });
+        datePill.applyFade(primary.x, label, xAxis?.tickerHalfWidth);
+      } else {
+        wasVisibleRef.current = false;
+        datePill.hide();
+        datePill.resetFade();
+      }
     },
-    [handleFocusGroupChange, xDataKey, markerActiveStore],
+    [xDomain, xDataKey, chartPhase, isLoaded, markerActiveStore, tooltip, isDiscrete, datePill, xAxis],
   );
-  chromeStateRef.current = {
-    margin,
-    series: resolvedAreas.map((area) => ({
-      dataKey: area.dataKey,
-      color: area.stroke,
-      strokeWidth: area.strokeWidth,
-      showHighlight: area.showHighlight,
-      // A4: showLine=false suppresses only the highlight BAND — bklit gates
-      // SeriesHighlightLayer on `showHighlight && showLine` while its
-      // SeriesHoverDim keys off showHighlight alone, so the dim stays.
-      showLine: area.showLine,
-      marker: area.showMarkers ? { fill: area.markers?.fill ?? area.stroke, stroke: area.markers?.stroke ?? area.markers?.fill ?? area.stroke, strokeWidth: area.markers?.strokeWidth ?? 2, ringGap: area.markers?.ringGap ?? 2, radius: area.markers?.radius ?? 5, outlineWidth: area.markers?.outlineWidth ?? 0, outlineColor: area.markers?.outlineColor, showActiveHighlight: area.markers?.showActiveHighlight ?? true } : null,
-    })),
-    xDataKey,
-    pointCount: renderData.length,
-    xForIndex,
-    showCrosshair: tooltip?.showCrosshair ?? true,
-    showDots: tooltip?.showDots ?? true,
-    showDatePill: tooltip?.showDatePill ?? true,
-    // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade radius.
-    tickerHalfWidth: xAxis?.tickerHalfWidth,
-    tooltip: tooltip ?? null,
-    dateLabels: dateLabelsForPill,
-    chartPhase,
-    isLoaded,
-    renderData,
-    xScale: xScaleForReanchor,
-    resolvePoints: (x, index, datum) => {
-      const state = chromeStateRef.current;
-      if (!state) return null;
-      // Same scene mapping as the rendered lineY boundary marks (and the
-      // terminal markers above): margin.top + scaleLinear(yDomainFinal)
-      // .range([innerH, 0]). Areas don't stack — each series plots its raw value.
-      const innerH = Math.max(0, heightPx - margin.top - margin.bottom);
-      const span = yDomainFinal[1] - yDomainFinal[0];
-      const row = datum as Record<string, unknown>;
-      return state.series.map((s) => {
-        const v = row?.[s.dataKey];
-        const y = typeof v === "number" && Number.isFinite(v) && span !== 0 && innerH > 0
-          ? margin.top + innerH - ((v - yDomainFinal[0]) / span) * innerH
-          : margin.top + innerH;
-        return {
-          markId: s.dataKey,
-          datum,
-          datumIndex: index,
-          x,
-          y,
-          color: s.color,
-        };
-      });
-    },
-  };
 
   const areaMarkerRevealAnimsRef = React.useRef<Animation[]>([]);
   const areaMarkerRevealCancelRef = React.useRef<(() => void) | null>(null);
@@ -1075,6 +1138,9 @@ export function AreaChart({
     // strictFunctionTypes — is not structurally assignable from our
     // concretely-typed context. Both denote the same live object at runtime.
     captureRenderContext(context as unknown as Pick<ChartRenderContext, "scene" | "interaction">);
+    // C3: own capture, separate from useFocusInjection's private ref — feeds
+    // clearFocusChrome's `setControlledFocus(null, ...)` pointer-source clear.
+    interactionRef.current = context.interaction;
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marks) return;
     const epochUnseen = revealedEpochRef.current !== revealEpoch;
@@ -1182,7 +1248,7 @@ export function AreaChart({
     containerRef,
     onDragStart: () => {
       dragSelectionActiveRef.current = true;
-      chromeRef.current?.onFocusGroupChange([]);
+      clearFocusChrome();
     },
     onDragEnd: () => {
       dragSelectionActiveRef.current = false;
@@ -1250,7 +1316,7 @@ export function AreaChart({
             aspectRatio={parseAspectRatio(aspectRatio)}
             height={heightPx > 0 ? heightPx : undefined}
             definition={definition}
-            onFocusGroupChange={handleFocusGroupChangeWithMarkerDate}
+            onFocusGroupChange={handleFocusChange}
             onRender={handleRender}
             renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
           />
@@ -1321,7 +1387,7 @@ export function AreaChart({
           ) : null}
           {tooltipEnabled ? (
             <div
-              ref={overlayHostRef}
+              ref={datePill.overlayHostRef}
               style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
             />
           ) : null}
@@ -1374,8 +1440,7 @@ export function AreaChart({
                 // leaving leaves both cleared until the next chart hover,
                 // like legacy.
                 if (markers) {
-                  chromeRef.current?.onFocusGroupChange([]);
-                  markerActiveStore.setActiveDate(null);
+                  clearFocusChrome();
                 }
               }}
             />
@@ -1383,6 +1448,17 @@ export function AreaChart({
           ) : null}
         </>
       )}
+      {crosshairGradientDef ? (
+        <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id={crosshairGradientDef.id} gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="0%" y2="100%">
+              {crosshairGradientDef.stops.map((s) => (
+                <stop key={s.offset} offset={s.offset} stopColor={crosshairGradientDef.color} stopOpacity={s.opacity} />
+              ))}
+            </linearGradient>
+          </defs>
+        </svg>
+      ) : null}
       {(projectionGradientDefsArea.length > 0 || areaMarkerGradientDefs.length > 0) && (
             <svg
               width={0}

@@ -43,13 +43,22 @@
 //  - Hover: bklit's `resolveTooltipFromX` bisector algorithm (use-chart-
 //    interaction.ts), replicated via our own native pointermove listener
 //    (same technique as scatter-chart.tsx) rather than TanStack's focus
-//    system, driving the SHARED `hover-chrome.ts` used by Line/Area. Two
-//    independent bisects run per move: one over RAW `data` (tooltip row
-//    values, bar per-row fade via `barRowIndex`) and one over `renderData`
-//    (`datumIndex`, feeding the highlight-band geometry that reads pixel
-//    positions of the actually-rendered/decimated line/area points via
-//    `xForIndex`) — these indices diverge once decimation reduces point
-//    count, and mixing them would misalign the highlight band.
+//    system for INDEX RESOLUTION. C3 retires `internal/hover-chrome.ts` +
+//    `internal/use-hover-chrome.ts` (both deleted): the crosshair, hover
+//    dots, and per-series/per-bar-row pointer dim are now native
+//    marks/`states` driven off the chart's OWN focus state — which this
+//    file already feeds every move via
+//    `interaction.setControlledFocus(resolution, {source:"pointer"})` (the
+//    C2 tooltip bridge, unchanged) — so no separate imperative plumbing is
+//    needed for them. The highlight band stays reactive (React `hoveredIndex`
+//    state, not DOM), matching Line/Area's own `internal/hover-geometry.ts`
+//    usage. Two independent bisects still run per move: one over RAW `data`
+//    (tooltip row values, bar per-row fade keys off the SAME native focus
+//    the bars' own `pointerRowDimState` reads) and one over `renderData`
+//    (`hoveredIndex`, feeding the highlight-band's slice of the
+//    actually-rendered/decimated line/area points) — these indices diverge
+//    once decimation reduces point count, and mixing them would misalign
+//    the highlight band.
 //  - `focus:"group-x"`/`maxFocusDistance:Infinity` are configured in
 //    `defineChart` for internal consistency (matching every other migrated
 //    chart) but `onFocusGroupChange` is deliberately left inert — same
@@ -90,11 +99,15 @@ import {
 } from "./internal/decimate";
 import { roleOf } from "./children";
 import {
-  attachHoverChrome,
-  type FocusPoint,
-  type HoverChrome,
-  type HoverChromeState,
-} from "./internal/hover-chrome";
+  buildCrosshairGradientDef,
+  buildHighlightBandMarks,
+  buildHoverDotMark,
+  buildIndicatorMark,
+  pointerHoverDimState,
+  pointerRowDimState,
+  resolveHoverDotFill,
+  useDatePillOverlay,
+} from "./internal/hover-geometry";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import {
   extractReferenceAreaProps,
@@ -224,8 +237,11 @@ interface ComposedSeriesEntry {
       because `attachHoverChrome`'s `dimOpacity` option was chart-wide (see
       header comment above, now stale/fixed). Bar entries never dim via this
       path (`showHighlight` is always false for bars), so this is left
-      `undefined` for the bar role — it's simply never read. */
-  dimOpacity?: string;
+      `undefined` for the bar role — it's simply never read. C3: numeric
+      (was `string` under the old imperative `attachHoverChrome`, which
+      consumed it as a DOM `style.opacity` string; now it feeds native
+      `fillOpacity`/`pointerHoverDimState` numeric APIs directly). */
+  dimOpacity?: number;
   /** C14 fix (P6.1) — bklit's composed extractor carries each child's
       `yAxisId` onto the merged entry so the per-axis domain scan can group by
       it; migrated dropped it. Undefined (= "left") for every existing
@@ -312,7 +328,7 @@ function extractComposed(children: React.ReactNode): ExtractedComposed {
           strokeWidth: area.strokeWidth ?? 2,
           showHighlight: area.showHighlight ?? true,
           // C11: bklit composed-chart.tsx hardcodes Area's SeriesHoverDim to 0.6.
-          dimOpacity: "0.6",
+          dimOpacity: 0.6,
           yAxisId: area.yAxisId,
         });
       } else if (role === "line") {
@@ -329,7 +345,7 @@ function extractComposed(children: React.ReactNode): ExtractedComposed {
           // (also `attachHoverChrome`'s chart-wide DIM_OPACITY default, so this
           // is only load-bearing when a dataKey is shared with an Area — see
           // `upsertComposedSeries` merge above).
-          dimOpacity: "0.3",
+          dimOpacity: 0.3,
           yAxisId: line.yAxisId,
         });
       } else if (role === "grid") {
@@ -976,6 +992,44 @@ export function ComposedChart({
     return defs;
   }, [projectionConfigs, composedProjectionLines, width, heightPxComp, margin, yDomainFinal, timeExtentComp, timeExtentCompRaw, projectionGradientBaseIdComposed]);
 
+  // C3: `tooltipEnabled` moved here (previously declared after `definition`)
+  // — the native crosshair/hover-dot/highlight-band marks pushed inside
+  // `definition` below need it before that memo runs.
+  const tooltipEnabled = tooltip?.enabled ?? false;
+  // Discrete/dense-data gate — same threshold + snap-instead-of-spring
+  // treatment as every other migrated chart's native-mark motion.
+  const isDiscrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
+  // Reactive highlight-band index (React state, not DOM) — set from the
+  // DECIMATED bisector in the pointermove handler below.
+  const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
+  const crosshairGradientId = useSanitizedId();
+  // bklit TooltipIndicator default vertical fade, rendered as an app-owned
+  // <linearGradient> def near the chart's other gradient defs (JSX below) —
+  // same mechanism as line-chart.tsx/area-chart.tsx.
+  const crosshairGradientDef = React.useMemo(() => {
+    if (!(tooltipEnabled && (tooltip?.showCrosshair ?? true))) return null;
+    const color = typeof tooltip?.indicatorColor === "string" ? tooltip.indicatorColor : "var(--chart-crosshair)";
+    return buildCrosshairGradientDef(crosshairGradientId, color);
+  }, [tooltipEnabled, tooltip, crosshairGradientId]);
+  // Highlight-band series list: sourced from the single DEDUPED
+  // `composedSeries` (not `resolvedAreas`+`resolvedLines` separately, which
+  // would double-push a highlight mark under the SAME id when an Area and a
+  // Line share a dataKey — the pilot fixture's <Area dataKey="line"> +
+  // <Line dataKey="line"> pairing, exactly the case hover-chrome.ts's own
+  // areas-loop/lines-loop split independently painted twice at identical
+  // geometry). `showHighlight` lives on `ComposedSeriesEntry` (not on
+  // `ResolvedArea`/`ResolvedLine`), so this is the correct source regardless.
+  // `curve` isn't carried on `ComposedSeriesEntry` at all — resolved here via
+  // a small lookup (Area's curve first, Line's overrides for a shared key,
+  // last-write-wins), a documented minor approximation for that rare
+  // shared-dataKey edge case.
+  const highlightCurveByKey = React.useMemo(() => {
+    const byKey = new Map<string, CurveFactory>();
+    for (const a of resolvedAreas) byKey.set(a.dataKey, a.curve);
+    for (const l of resolvedLines) byKey.set(l.dataKey, l.curve);
+    return byKey;
+  }, [resolvedAreas, resolvedLines]);
+
   const definition = React.useMemo(() => {
     if (width <= 0) return null;
     const marks: ChartMark<ChartDatum, Date, number>[] = [];
@@ -1012,6 +1066,15 @@ export function ComposedChart({
               style: { opacity: bar.fadedOpacity },
               transition: { type: "tween", duration: 120, easing: "ease-in-out" },
             },
+            // C3: per-bar-row pointer-hover dim (hover-chrome.ts's
+            // BAR_DIM_TRANSITION="opacity 0.12s ease-in-out" + `state.bars`
+            // dim-every-row-except-the-focused-one behavior). `seriesBarMark`
+            // emits real `ChartPoint`s per row (unlike `areaFill`), so this
+            // native `states[]` selector reaches it directly — no DOM
+            // reach-in. D425: no `transition` field here; the 0.12s term
+            // rides `.ts-chart__bar-y rect` in styles.css instead (see the
+            // C3 report for the exact rule).
+            pointerRowDimState<ChartDatum>(bar.fadedOpacity),
           ],
         ),
       );
@@ -1019,11 +1082,26 @@ export function ComposedChart({
     // C1 (P6): legend-hover fill dim — areaFill emits no ChartPoints, so mark
     // states can't reach it; the dim arrives reactively via fillOpacity
     // (400ms fill-opacity transition lives in styles.css).
+    // C3: pointer-hover dim (hover-chrome.ts DIM_OPACITY, per-series via
+    // `ComposedSeriesEntry.dimOpacity` — C11's Area=0.6/Line=0.3 split) rides
+    // the SAME reactive fillOpacity term for the same reason — areaFill has
+    // no ChartPoints for native `states` to match either. Unlike the legend
+    // term (which dims every OTHER series and spares the highlighted one),
+    // pointer-hover dims EVERY series uniformly the instant any point is
+    // focused (matching the boundary lineY's own `pointerHoverDimState`
+    // below and bklit's SeriesHoverDim) — so it does not gate on
+    // `area.dataKey`. `hoveredIndex` is set from the pointermove bisector
+    // below, so this is driven by the SAME native focus the C2 tooltip
+    // bridge already maintains, just read through React state rather than a
+    // `states[]` selector.
     const legendHoveredKey =
       legendHoveredIndex != null ? (composedSeries[legendHoveredIndex]?.dataKey ?? null) : null;
+    const pointerHoverDimmed = tooltipEnabled && hoveredIndex != null;
+    const composedDimOpacityByKey = new Map(composedSeries.map((s) => [s.dataKey, s.dimOpacity] as const));
     for (const area of resolvedAreas) {
       const gradientId = gradientIdBySeries.get(area.dataKey);
       const curve = d3Curve(area.curve);
+      const areaDimOpacity = composedDimOpacityByKey.get(area.dataKey) ?? 0.6;
       // Fill FIRST, lineY SECOND ("Layering area and line" — same pattern as
       // area-chart.tsx). fillOpacity 1 at rest — opacity lives in the
       // gradient stops; 0.6 is the legend-dim term.
@@ -1035,11 +1113,13 @@ export function ComposedChart({
           curve,
           fill: gradientId ? `url(#${gradientId})` : area.fill,
           fillOpacity:
-            legendHoveredKey == null || legendHoveredKey === area.dataKey ? 1 : 0.6,
+            pointerHoverDimmed || !(legendHoveredKey == null || legendHoveredKey === area.dataKey)
+              ? areaDimOpacity
+              : 1,
         }),
       );
-      // Same id as <Line> would use for this dataKey — shared hover-chrome
-      // series-by-markId lookups work unchanged.
+      // Same id as <Line> would use for this dataKey — shared markId-based
+      // lookups (native tooltip rows, hover-dot ids) work unchanged.
       marks.push(
         lineY(renderData, {
           id: area.dataKey,
@@ -1052,14 +1132,18 @@ export function ComposedChart({
           states: [
             {
               when: whenSeriesDimmed(),
-              style: { opacity: 0.6 },
+              style: { opacity: areaDimOpacity },
               transition: { type: "tween", duration: 400, easing: "ease-in-out" },
             },
+            // C3: pointer-hover dim, no `transition` field (D425 — the 0.4s
+            // term rides `.ts-chart__line path` in styles.css instead).
+            pointerHoverDimState<ChartDatum>(areaDimOpacity),
           ],
         }),
       );
     }
     for (const line of resolvedLines) {
+      const lineDimOpacity = composedDimOpacityByKey.get(line.dataKey) ?? 0.3;
       marks.push(
         lineY(renderData, {
           id: line.dataKey,
@@ -1072,11 +1156,80 @@ export function ComposedChart({
           states: [
             {
               when: whenSeriesDimmed(),
-              style: { opacity: 0.3 },
+              style: { opacity: lineDimOpacity },
               transition: { type: "tween", duration: 400, easing: "ease-in-out" },
             },
+            // C3: pointer-hover dim, no `transition` field (D425 — the 0.4s
+            // term rides `.ts-chart__line path` in styles.css instead).
+            pointerHoverDimState<ChartDatum>(lineDimOpacity),
           ],
         }),
+      );
+    }
+    // C3: native crosshair/hover-dot/highlight-band marks (replace
+    // hover-chrome.ts's imperative indicator/dot/highlight-sweep overlays).
+    // Same construction as line-chart.tsx/area-chart.tsx — see
+    // internal/hover-geometry.ts for the shared implementation and its
+    // `retarget`/`motion` reasoning — with two composed-specific sourcing
+    // choices:
+    //  - Hover dots iterate the single DEDUPED `composedSeries` list (bar
+    //    entries included) sourced over RAW `data`, exactly matching
+    //    hover-chrome.ts's old behavior: it drew a dot for every composed
+    //    series (bars included) at `yScaleInstance(rawDatum[dataKey])` — one
+    //    shared, unprojected y-scale, no per-axis projection. That is a
+    //    PRE-EXISTING limitation of both the old code and this shared helper
+    //    (`buildHoverDotMark`'s y-accessor is `d[dataKey]` raw, no
+    //    `projectValue`/`yAxisId` term — hover-geometry.ts's own header
+    //    documents this as "known, consistent" across every migrated chart
+    //    that uses it), not a regression introduced here.
+    //  - The highlight band's y-accessor has the same non-projected
+    //    limitation (`buildHighlightBandMarks`'s `d[dataKey]`, no
+    //    `projectValue`) — already true for line-chart.tsx's own usage of
+    //    this same shared function today, so composed's exposure to it
+    //    (via `yAxisId`) is consistent with the existing precedent, not new.
+    if (tooltipEnabled && (tooltip?.showCrosshair ?? true)) {
+      marks.push(
+        buildIndicatorMark({
+          gradientId: crosshairGradientId,
+          width: tooltip?.indicatorWidth,
+          span: tooltip?.indicatorSpan,
+          columnWidth: tooltip?.columnWidth,
+          dasharray: tooltip?.indicatorDasharray,
+          color: typeof tooltip?.indicatorColor === "string" ? tooltip.indicatorColor : undefined,
+          discrete: isDiscrete,
+        }) as unknown as ChartMark<ChartDatum, Date, number>,
+      );
+    }
+    if (tooltipEnabled && (tooltip?.showDots ?? true)) {
+      for (const s of composedSeries) {
+        marks.push(
+          buildHoverDotMark(
+            data,
+            xDataKey,
+            { dataKey: s.dataKey, color: s.stroke },
+            resolveHoverDotFill(s.stroke, tooltip?.dotColor),
+            { size: tooltip?.dotSize, strokeWidth: tooltip?.dotStrokeWidth, discrete: isDiscrete },
+          ),
+        );
+      }
+    }
+    if (tooltipEnabled) {
+      marks.push(
+        ...buildHighlightBandMarks(
+          renderData,
+          xDataKey,
+          hoveredIndex,
+          composedSeries
+            .filter((s) => s.showHighlight)
+            .map((s) => ({
+              dataKey: s.dataKey,
+              color: s.stroke,
+              strokeWidth: s.strokeWidth,
+              showHighlight: s.showHighlight,
+              curve: d3Curve(highlightCurveByKey.get(s.dataKey) ?? curveNatural),
+            })),
+          { discrete: isDiscrete },
+        ),
       );
     }
     if (projectionConfigs.length > 0) {
@@ -1233,9 +1386,11 @@ export function ComposedChart({
       // (that callback stays inert here, see header comment) — instead the
       // pointermove bisector below also resolves the native focus group via
       // `interaction.resolvePointer` and injects it with
-      // `setControlledFocus(..., {source:"pointer"})`, in parallel with (not
-      // replacing) `chromeRef.current.onFocusGroupChange` which continues to
-      // drive the box-free imperative crosshair/dot/pill chrome.
+      // `setControlledFocus(..., {source:"pointer"})`. C3: this SAME
+      // injected native focus state now also drives the crosshair/hover-dot/
+      // pointer-dim marks pushed above, and the pointermove handler below
+      // additionally sets the reactive `hoveredIndex` (highlight band) and
+      // drives the app-owned date-pill overlay.
       tooltip: (tooltip?.enabled ?? false)
         ? {
             use: nativeTooltip,
@@ -1293,11 +1448,19 @@ export function ComposedChart({
     legendHoveredIndex,
     composedSeries,
     tooltip,
+    tooltipEnabled,
+    isDiscrete,
+    crosshairGradientId,
+    hoveredIndex,
+    highlightCurveByKey,
   ]);
 
-  // Hover chrome (shared with Line/Area) — imperative overlays driven by OUR
-  // OWN native pointermove bisector (below), not TanStack's focus system.
-  const tooltipEnabled = tooltip?.enabled ?? false;
+  // C3: hover-chrome.ts's deletion means the remaining imperative surface
+  // here is just the app-owned date-pill overlay + the reactive
+  // `hoveredIndex`/`clearFocusChrome` state above — the crosshair/hover-dot/
+  // pointer-dim marks are wired natively into `definition` above, driven off
+  // the SAME `interaction.setControlledFocus` call the pointermove handler
+  // below already makes for the C2 tooltip bridge.
   const chartConfig = useChartConfig();
   // C2 (P6): local capture of the native interaction controller, separate
   // from `useFocusInjection`'s own private ref (that hook's `interactionRef`
@@ -1355,66 +1518,35 @@ export function ComposedChart({
     },
     [tooltip, xDataKey, composedSeries],
   );
-  const chromeRef = React.useRef<HoverChrome | null>(null);
   // bklit parity (use-chart-interaction.ts): drag selection suppresses the
   // hover chrome — cleared on mousedown, never rescheduled while dragging.
   const dragSelectionActiveRef = React.useRef(false);
-  const chromeStateRef = React.useRef<HoverChromeState | null>(null);
-  // Scene x of RENDERED (decimated) point `index` — feeds the highlight
-  // band's bandStart/bandEnd, which must reference actually-rendered
-  // line/area point positions (same contract as Line/Area's xForIndex).
-  const xForIndex = (index: number) => {
-    const xScaleInstance = xScaleD3Ref.current;
-    const row = renderData[index];
-    const parsed = toDate(row?.[xDataKey]);
-    if (!xScaleInstance || !parsed) return margin.left;
-    return xScaleInstance(parsed) ?? margin.left;
-  };
+  // Jump-vs-spring for the pill on first show — mirrors hover-chrome.ts's
+  // local `showing = !visible` flag (same pattern as line/area).
+  const wasVisibleRef = React.useRef(false);
   const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
     const v = d[xDataKey];
     if (v instanceof Date) return shortDateFmt.format(v);
     return String(v ?? "");
   }), [renderData, xDataKey]);
-  chromeStateRef.current = {
-    margin,
-    series: composedSeries.map((s) => ({
-      dataKey: s.dataKey,
-      color: s.stroke,
-      strokeWidth: s.strokeWidth,
-      showHighlight: s.showHighlight,
-      // C11 fix: per-series dim opacity (Area 0.6 / Line 0.3), see
-      // `ComposedSeriesEntry.dimOpacity` above.
-      dimOpacity: s.dimOpacity,
-    })),
-    xDataKey,
-    pointCount: renderData.length,
-    xForIndex,
-    showCrosshair: tooltip?.showCrosshair ?? true,
-    showDots: tooltip?.showDots ?? true,
-    showDatePill: tooltip?.showDatePill ?? true,
-    // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade radius.
-    tickerHalfWidth: xAxis?.tickerHalfWidth,
-    tooltip: tooltip ?? null,
+  const datePill = useDatePillOverlay({
+    enabled: tooltipEnabled && (tooltip?.showDatePill ?? true),
     dateLabels: dateLabelsForPill,
-    bars: resolvedBars.map((b) => ({ dataKey: b.dataKey, fadedOpacity: b.fadedOpacity })),
-  };
+    tooltipSpring: chartConfig.tooltipSpring,
+  });
 
-  const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
-  const hasDefinition = width > 0;
-
-  React.useLayoutEffect(() => {
-    const el = overlayHostRef.current;
-    if (!el || !tooltipEnabled) return;
-    const chrome = attachHoverChrome(el, () => chromeStateRef.current!, {
-      tooltipSpring: chartConfig.tooltipSpring,
-      highlightSpring: chartConfig.highlightSpring,
-    });
-    chromeRef.current = chrome;
-    return () => {
-      chromeRef.current = null;
-      chrome.detach();
-    };
-  }, [tooltipEnabled, hasDefinition, chartConfig]);
+  // Shared by drag-start suppression and pointer-leave — force-clears native
+  // focus (which the crosshair/hover-dot/pointer-dim marks above all read)
+  // AND the reactive `hoveredIndex`/date-pill state this file still owns,
+  // mirroring hover-chrome.ts's `hide()` (same pattern as line/area's own
+  // `clearFocusChrome`).
+  const clearFocusChrome = React.useCallback(() => {
+    interactionRef.current?.setControlledFocus(null, { source: "pointer" });
+    setHoveredIndex(null);
+    wasVisibleRef.current = false;
+    datePill.hide();
+    datePill.resetFade();
+  }, [datePill]);
 
   // `focus:"group-x"` stays configured above for internal consistency with
   // every other migrated chart, but the callback is inert — real hover is
@@ -1426,55 +1558,90 @@ export function ComposedChart({
   );
 
   // Native hover targeting: bklit's exact `resolveTooltipFromX` bisector,
-  // run TWICE per move — once over RAW `data` (tooltip values, bar per-row
-  // fade) and once over DECIMATED `renderData` (the highlight band's
-  // `datumIndex`, since that must reference actually-rendered line/area
-  // points, not raw rows that may have been dropped by LTTB). Listener-attach
-  // effect intentionally does not depend on data/renderData/composedSeries —
-  // read through a ref, same reasoning as scatter-chart.tsx (avoids
-  // re-attaching on every data-update tick).
-  const hoverInputsRef = React.useRef({ data, renderData, xDataKey, composedSeries });
-  hoverInputsRef.current = { data, renderData, xDataKey, composedSeries };
+  // run TWICE per move — once over RAW `data` (date-pill label/index, and
+  // the x used to resolve `rawIndex`) and once over DECIMATED `renderData`
+  // (`hoveredIndex`, the highlight band's reactive slice index, since that
+  // must reference actually-rendered line/area points, not raw rows that may
+  // have been dropped by LTTB). Listener-attach effect intentionally does
+  // not depend on data/renderData/tooltip/isDiscrete/xAxis/datePill/
+  // clearFocusChrome — all read through a ref, same reasoning as
+  // scatter-chart.tsx (avoids re-attaching on every data-update or
+  // date-pill-identity tick; `datePill`'s own `show`/`hide`/`applyFade`/
+  // `resetFade` are individually useCallback-stable regardless of the
+  // wrapping object's identity, per internal/hover-geometry.ts).
+  const hoverInputsRef = React.useRef({
+    data,
+    renderData,
+    xDataKey,
+    tooltip,
+    isDiscrete,
+    xAxis,
+    datePill,
+    clearFocusChrome,
+  });
+  hoverInputsRef.current = {
+    data,
+    renderData,
+    xDataKey,
+    tooltip,
+    isDiscrete,
+    xAxis,
+    datePill,
+    clearFocusChrome,
+  };
 
   React.useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container || !tooltipEnabled) return;
 
-    // C2 (P6): drives the native tooltip in parallel with the imperative
-    // crosshair/dot/pill chrome below — never with `source:"programmatic"`
-    // (reserved for C1 legend-dim injection), always `"pointer"`.
-    const clearNativeFocus = () => {
-      interactionRef.current?.setControlledFocus(null, { source: "pointer" });
-    };
-
     const handlePointerMove = (event: PointerEvent) => {
-      if (dragSelectionActiveRef.current) {
-        chromeRef.current?.onFocusGroupChange([]);
-        clearNativeFocus();
-        return;
-      }
       const {
         data: rawRows,
         renderData: decimatedRows,
         xDataKey: key,
-        composedSeries: series,
+        tooltip: tooltipCfg,
+        isDiscrete: discreteFlag,
+        xAxis: xAxisCfg,
+        datePill: datePillCtl,
+        clearFocusChrome: clearChrome,
       } = hoverInputsRef.current;
+      if (dragSelectionActiveRef.current) {
+        clearChrome();
+        return;
+      }
       if (!isChartInteractionPhase(chartPhase) || !isLoaded) {
-        chromeRef.current?.onFocusGroupChange([]);
-        clearNativeFocus();
+        clearChrome();
         return;
       }
       const xScaleInstance = xScaleD3Ref.current;
-      const yScaleInstance = yScaleD3Ref.current;
-      if (!xScaleInstance || !yScaleInstance || rawRows.length === 0) {
-        chromeRef.current?.onFocusGroupChange([]);
-        clearNativeFocus();
+      if (!xScaleInstance || rawRows.length === 0) {
+        clearChrome();
         return;
       }
-      const svg = container.querySelector("svg");
-      if (!svg) return;
-      const rect = svg.getBoundingClientRect();
-      const pixelX = event.clientX - rect.left;
+      const interaction = interactionRef.current;
+      if (!interaction) return;
+      // C3: `interaction.clientToScene` (dist/dom-types.d.ts:33) replaces the
+      // old `container.querySelector("svg")` + `getBoundingClientRect()` DOM
+      // reach-in. It returns MARGIN-INCLUSIVE "scene" coordinates — the SAME
+      // space `xScaleD3Ref`'s range already lives in: this file's custom
+      // `xScale.resolve()` above sets its d3 scale's `.range()` straight from
+      // `context.range`, which charts-core's scene builder computes as
+      // `[margin.left, width - margin.right]` (dist/scene.js's
+      // `compileSceneLayout`/`arrangeViewportMarkNodes`, x-channel range
+      // `[chart.x, chart.x + chart.width]`, `chart.x === margin.left`). So —
+      // unlike heatmap-components.tsx's plot-LOCAL column math, which
+      // additionally subtracts `margin.left`/`margin.top` off
+      // `clientToScene`'s result — this scene x is used AS-IS below, with no
+      // further margin adjustment (verified against the prior
+      // `event.clientX - svg.getBoundingClientRect().left` computation,
+      // which was already relative to the SVG's own top-left corner, i.e.
+      // the same scene origin).
+      const scenePos = interaction.clientToScene(event.clientX, event.clientY);
+      if (!scenePos) {
+        clearChrome();
+        return;
+      }
+      const pixelX = scenePos.x;
       const x0 = xScaleInstance.invert(pixelX);
       const x0Ms = x0.getTime();
       const dateAccessor = (d: ChartDatum) => {
@@ -1483,8 +1650,7 @@ export function ComposedChart({
       };
       const rawIndex = resolveNearestIndex(rawRows, dateAccessor, x0Ms);
       if (rawIndex < 0) {
-        chromeRef.current?.onFocusGroupChange([]);
-        clearNativeFocus();
+        clearChrome();
         return;
       }
       const decimatedIndex =
@@ -1492,42 +1658,50 @@ export function ComposedChart({
       const datum = rawRows[rawIndex]!;
       const parsedDatumX = toDate(datum[key]);
       if (!parsedDatumX) {
-        chromeRef.current?.onFocusGroupChange([]);
-        clearNativeFocus();
+        clearChrome();
         return;
       }
       const resolvedXRaw = xScaleInstance(parsedDatumX);
       if (!Number.isFinite(resolvedXRaw)) {
-        chromeRef.current?.onFocusGroupChange([]);
-        clearNativeFocus();
+        clearChrome();
         return;
       }
       const resolvedX = resolvedXRaw as number;
-      const points: FocusPoint[] = series.map((s) => {
-        const value = datum[s.dataKey];
-        return {
-          markId: s.dataKey,
-          datum,
-          datumIndex: decimatedIndex >= 0 ? decimatedIndex : rawIndex,
-          x: resolvedX,
-          y: typeof value === "number" ? (yScaleInstance(value) ?? 0) : 0,
-          color: s.stroke,
-        };
-      });
-      chromeRef.current?.onFocusGroupChange(points, rawIndex);
-      // Native tooltip: resolved independently through the interaction
-      // controller's own pointer-to-scene-point mapping (the chart's
-      // `focus:"group-x"` strategy), rather than reconstructing a
-      // hand-rolled `ChartPoint[]` from the bisector above — `resolvePointer`
-      // returns a `ChartPointerResolution` shaped exactly for
-      // `setControlledFocus`.
-      const resolution = interactionRef.current?.resolvePointer(event.clientX, event.clientY) ?? null;
-      interactionRef.current?.setControlledFocus(resolution, { source: "pointer" });
+
+      // Reactive surfaces: `hoveredIndex` (highlight band — keyed to the
+      // DECIMATED index, see header comment on the dual bisector) and the
+      // app-owned date pill (keyed to the RAW index/label, matching
+      // hover-chrome.ts's own raw-data-based pill wiring for every chart).
+      setHoveredIndex(decimatedIndex >= 0 ? decimatedIndex : null);
+      if (tooltipCfg?.showDatePill ?? true) {
+        const label = shortDateFmt.format(parsedDatumX);
+        const jump = !wasVisibleRef.current;
+        wasVisibleRef.current = true;
+        datePillCtl.show(resolvedX, { index: rawIndex, label, discrete: discreteFlag, jump });
+        // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade radius.
+        datePillCtl.applyFade(resolvedX, label, xAxisCfg?.tickerHalfWidth);
+      } else {
+        wasVisibleRef.current = false;
+        datePillCtl.hide();
+        datePillCtl.resetFade();
+      }
+
+      // Native tooltip (C2, unchanged): resolved independently through the
+      // interaction controller's own pointer-to-scene-point mapping (the
+      // chart's `focus:"group-x"` strategy), rather than reconstructing a
+      // hand-rolled `ChartPoint[]` from the bisector above —
+      // `resolvePointer` returns a `ChartPointerResolution` shaped exactly
+      // for `setControlledFocus`. C3: this SAME injected focus state also
+      // now drives the native crosshair/hover-dot/pointer-dim marks pushed
+      // into `definition` above — never `source:"programmatic"` from this
+      // pointer path (that source is reserved for C1's legend-dim focus
+      // injection).
+      const resolution = interaction.resolvePointer(event.clientX, event.clientY) ?? null;
+      interaction.setControlledFocus(resolution, { source: "pointer" });
     };
 
     const handlePointerLeave = () => {
-      chromeRef.current?.onFocusGroupChange([]);
-      clearNativeFocus();
+      hoverInputsRef.current.clearFocusChrome();
     };
 
     container.addEventListener("pointermove", handlePointerMove);
@@ -1705,7 +1879,7 @@ export function ComposedChart({
     containerRef,
     onDragStart: () => {
       dragSelectionActiveRef.current = true;
-      chromeRef.current?.onFocusGroupChange([]);
+      clearFocusChrome();
     },
     onDragEnd: () => {
       dragSelectionActiveRef.current = false;
@@ -1814,9 +1988,20 @@ export function ComposedChart({
               phasePort={projectionPhasePortRef}
             />
           ) : null}
+          {crosshairGradientDef ? (
+            <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+              <defs>
+                <linearGradient id={crosshairGradientDef.id} gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="0%" y2="100%">
+                  {crosshairGradientDef.stops.map((s) => (
+                    <stop key={s.offset} offset={s.offset} stopColor={crosshairGradientDef.color} stopOpacity={s.opacity} />
+                  ))}
+                </linearGradient>
+              </defs>
+            </svg>
+          ) : null}
           {tooltipEnabled ? (
             <div
-              ref={overlayHostRef}
+              ref={datePill.overlayHostRef}
               style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
             />
           ) : null}

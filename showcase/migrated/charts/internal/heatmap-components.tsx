@@ -17,7 +17,9 @@ import { Chart } from "@tanstack/react-charts/tooltip";
 import { defineChart, cell } from "@tanstack/charts";
 import { tooltip } from "@tanstack/charts/tooltip";
 import type {
+  ChartMarkState,
   ChartPoint,
+  ChartRectStateStyle,
   ChartRenderContext,
 } from "@tanstack/charts";
 import { scaleBand, scaleOrdinal } from "d3-scale";
@@ -32,7 +34,6 @@ import { isRevealed, runDeferredReveal, type RevealHandle } from "./deferred-rev
 import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
 import {
   HEATMAP_INACTIVE_OPACITY,
-  HEATMAP_INACTIVE_TRANSITION_CSS,
   type HeatmapHoverCoordinator,
 } from "./heatmap-hover-chrome";
 import {
@@ -48,9 +49,7 @@ import {
   getHeatmapSeparatorLineY,
   getHeatmapSeparatorX,
   isHeatmapGhostBin,
-  isHeatmapHoverEffectEnabled,
   resolveHeatmapDisplayRange,
-  resolveHeatmapHoverStyle,
   resolveHeatmapRowOpacity,
   resolveHeatmapSeparatorStrokeDasharray,
   shouldShowHeatmapYAxisTick,
@@ -179,6 +178,89 @@ function buildHoverCellGeometry(
   };
 }
 
+// C3: base cell inset (bklit's hover pop scales the cell's wrapper `motion.g`
+// from a `transform-box: fill-box` / center origin — see `heatmapHoverInset`
+// below for the native-`inset` equivalent of that CSS `transform: scale()`).
+const HEATMAP_CELL_INSET = 1;
+
+// C3: native mark-state transition for the hover highlight/dim. Duration
+// matches `HEATMAP_INACTIVE_TRANSITION_CSS`'s 220ms exactly; `easing` is an
+// APPROXIMATION — `ChartMotionTweenTransition.easing` only accepts the named
+// keywords `'linear'|'ease'|'ease-in'|'ease-out'|'ease-in-out'` or a custom
+// `(progress:number)=>number` function (dist/types.d.ts `ChartAnimationOptions`),
+// never a raw `cubic-bezier()` string — so the legacy
+// `cubic-bezier(0.4, 0, 0.2, 1)` (Material "standard" ease) cannot be
+// reproduced byte-for-byte. `"ease-in-out"` is used for consistency with
+// every other migrated chart's `ChartMarkState` transitions (e.g.
+// bar-chart.tsx's `BAR_DIM_TRANSITION`/`BAR_TRACK_DIM_TRANSITION`), which all
+// use named keywords rather than a custom bezier evaluator.
+const HEATMAP_HOVER_TRANSITION: NonNullable<ChartMarkState["transition"]> = {
+  type: "tween",
+  duration: 220,
+  easing: "ease-in-out",
+};
+
+// Native-`inset` emulation of bklit's `transform: scale(scale)` (center-
+// origin, `fill-box`) hover pop/dim. `dist/mark-state.js`'s rect branch
+// treats a state's `inset` as an ABSOLUTE target (not a delta): it shrinks/
+// grows the rect symmetrically about its existing center by
+// `amount = nextInset - currentInset` on both x and y (no `insetAxis` is set
+// for a plain `cell()`/`rect()` mark, so both axes move equally) — exactly
+// reproducing a centered CSS scale for the base inset's content box.
+function heatmapHoverInset(bandwidth: number, scale: number, baseInset: number): number {
+  if (scale === 1) return baseInset;
+  const contentSize = Math.max(0, bandwidth - baseInset * 2);
+  return Math.max(0, (bandwidth - contentSize * scale) / 2);
+}
+
+// bklit `resolveHeatmapHoverStyle` parity, reimplemented as native mark
+// `states` (dist/rect.d.ts: `states?: readonly ChartMarkState<TDatum,
+// ChartRectStateStyle<TDatum>>[]`) instead of imperative DOM writes.
+// `states` are entirely skipped by the engine when there is no active focus
+// (dist/mark-state.js: `resolveMarkStateScene` -> `if (!focus ...) return
+// {scene}`), so this needs no separate "is anything hovered" gate — it's a
+// no-op exactly when nothing is focused, matching legacy's "no highlight
+// without a hovered cell" behavior for free. Each predicate also requires
+// `focus.source === "pointer"` so this only reacts to the app's own
+// `scheduleFocus` bridge (never keyboard/programmatic focus — legacy cell
+// styling was ONLY ever driven by pointer hover, never keyboard nav), and
+// `!datum.isGhost` so ghost cells are never highlighted OR dimmed (bklit
+// parity — legacy `paintCellStyles` applied the same `!d.isGhost` guard to
+// both branches).
+function heatmapHoverStates(
+  bandwidth: number,
+  baseInset: number,
+  inactiveOpacity: number,
+  inactiveScale: number,
+  activeScale: number,
+): ChartMarkState<CellDatum, ChartRectStateStyle<CellDatum>>[] | undefined {
+  const states: ChartMarkState<CellDatum, ChartRectStateStyle<CellDatum>>[] = [];
+  if (activeScale !== 1) {
+    states.push({
+      when: (context) =>
+        context.focus.source === "pointer" && !context.datum.isGhost && context.matches("primary"),
+      style: { inset: heatmapHoverInset(bandwidth, activeScale, baseInset) },
+      transition: HEATMAP_HOVER_TRANSITION,
+    });
+  }
+  if (inactiveOpacity !== 1 || inactiveScale !== 1) {
+    states.push({
+      when: (context) =>
+        context.focus.source === "pointer" && !context.datum.isGhost && !context.matches("primary"),
+      style: {
+        opacity: inactiveOpacity,
+        ...(inactiveScale !== 1 ? { inset: heatmapHoverInset(bandwidth, inactiveScale, baseInset) } : {}),
+      },
+      transition: HEATMAP_HOVER_TRANSITION,
+    });
+  }
+  // Empty array -> `undefined` so the mark carries no `states` at all when
+  // hover styling is fully disabled (every prop === 1), matching legacy's
+  // "nothing to dim/highlight, cells stay visually untouched" exactly and
+  // letting `sceneHasMarkStates` skip the mark entirely (dist/mark-state.js).
+  return states.length > 0 ? states : undefined;
+}
+
 function useHeatmapChartDefinition(
   cellData: CellDatum[],
   columnCount: number,
@@ -190,6 +272,10 @@ function useHeatmapChartDefinition(
   resolvedLevelStyles: HeatmapLevelStyles,
   patternIdPrefix: string | null,
   tooltipEnabled: boolean,
+  inactiveOpacity: number,
+  inactiveScale: number,
+  activeScale: number,
+  rowOpacity: number | readonly number[] | undefined,
 ) {
   const columnKeys = useMemo(
     () => Array.from({ length: Math.max(columnCount, 1) }, (_, i) => String(i)),
@@ -242,6 +328,57 @@ function useHeatmapChartDefinition(
     [rowKeys, margin.top, innerHeight],
   );
 
+  // C3: hover highlight/dim as native mark `states`, keyed on the engine's
+  // OWN focus resolution (driven by `scheduleFocus` -> `setControlledFocus`
+  // below) rather than React state — the chart definition never needs to
+  // rebuild when the hovered cell changes, only when these style PROPS
+  // change (bandwidth/inactiveOpacity/inactiveScale/activeScale), which is
+  // the "cheaper channel-level route" flagged in the mission's performance
+  // note: zero definition rebuilds per hovered cell.
+  const hoverStates = useMemo(
+    () => heatmapHoverStates(xScale.bandwidth(), HEATMAP_CELL_INSET, inactiveOpacity, inactiveScale, activeScale),
+    [xScale, inactiveOpacity, inactiveScale, activeScale],
+  );
+
+  // bklit `resolveHeatmapRowOpacity` x `heatmapLevelCellFillOpacity` parity:
+  // legacy applied this product as each cell rect's OWN (non-hover-driven)
+  // `fillOpacity`, independent of and layered under the hover dim. Rect/cell
+  // marks only take a single SCALAR `fillOpacity` per mark instance (not a
+  // per-datum channel — dist/rect.d.ts), so cells are bucketed into one
+  // `cell()` mark per distinct resolved value. Buckets are keyed by data
+  // (row/level), never by hover, so membership — and therefore each cell's
+  // owning mark/DOM element identity — never changes on hover, preserving
+  // smooth `states` transitions (no remount/snap). In the common case
+  // (uniform rowOpacity, solid levelStyles) this collapses to exactly one
+  // bucket, i.e. one mark, matching the pre-C3 shape.
+  const cellMarks = useMemo(() => {
+    const buckets = new Map<number, CellDatum[]>();
+    for (const d of cellData) {
+      const fillOpacity =
+        resolveHeatmapRowOpacity(d.row, rowOpacity) *
+        heatmapLevelCellFillOpacity(resolvedLevelStyles[d.level] ?? resolvedLevelStyles[0]);
+      let bucket = buckets.get(fillOpacity);
+      if (!bucket) {
+        bucket = [];
+        buckets.set(fillOpacity, bucket);
+      }
+      bucket.push(d);
+    }
+    return Array.from(buckets.entries()).map(([fillOpacity, data]) =>
+      cell(data, {
+        id: `heatmap-cell-fo-${fillOpacity}`,
+        x: (d: CellDatum) => d.colKey,
+        y: (d: CellDatum) => d.rowKey,
+        z: (d: CellDatum) => d.level,
+        key: (d: CellDatum) => `${d.column}-${d.row}`,
+        inset: HEATMAP_CELL_INSET,
+        radius: cornerRadius,
+        fillOpacity,
+        states: hoverStates,
+      }),
+    );
+  }, [cellData, resolvedLevelStyles, rowOpacity, cornerRadius, hoverStates]);
+
   const ctxForDef = useHeatmap();
   const definition = useMemo(() => {
     if (ctxForDef.chartStatus === "loading") {
@@ -260,16 +397,7 @@ function useHeatmapChartDefinition(
       });
     }
     return defineChart({
-      marks: [
-        cell(cellData, {
-          x: (d: CellDatum) => d.colKey,
-          y: (d: CellDatum) => d.rowKey,
-          z: (d: CellDatum) => d.level,
-          key: (d: CellDatum) => `${d.column}-${d.row}`,
-          inset: 1,
-          radius: cornerRadius,
-        }),
-      ],
+      marks: cellMarks,
       scales: {
         x: { scale: xScale, guide: false },
         y: { scale: yScale, guide: false },
@@ -280,9 +408,9 @@ function useHeatmapChartDefinition(
       // C2: hover is driven by app-owned pointermove -> setControlledFocus
       // (below), which now actually engages the native focus/tooltip
       // engine. Suppress the default focus-ring mark — bklit's cell hover
-      // affordance is the scale/opacity/fillOpacity styling in
-      // `paintCellStyles`, not a ring — matching every other migrated
-      // chart's `focusRing: false` convention (styles.css:271-280).
+      // affordance is the scale/opacity/fillOpacity `states` styling above,
+      // not a ring — matching every other migrated chart's
+      // `focusRing: false` convention (styles.css:271-280).
       focusRing: false,
       tooltip: tooltipEnabled
         ? {
@@ -304,7 +432,7 @@ function useHeatmapChartDefinition(
           }
         : false,
     });
-  }, [cellData, xScale, yScale, colorScale, margin, cornerRadius, ctxForDef.chartStatus, tooltipEnabled]);
+  }, [cellMarks, xScale, yScale, colorScale, margin, ctxForDef.chartStatus, tooltipEnabled]);
 
   return definition;
 }
@@ -432,6 +560,10 @@ export function HeatmapCells({
     ctx.levelStyles,
     patternIdPrefix,
     tooltipConfig !== null,
+    inactiveOpacity,
+    inactiveScale,
+    activeScale,
+    rowOpacity,
   );
 
   const isLoading = ctx.chartStatus === "loading";
@@ -520,11 +652,25 @@ export function HeatmapCells({
       const { ctx: c, cellData: cd, cellsInteractive: ci } = inputsRef.current;
       if (!ci) return;
 
-      const svg = el.querySelector<SVGSVGElement>(".ts-bkm-heatmap-svg svg, svg.ts-bkm-heatmap-svg");
-      if (!svg) return;
-      const rect = svg.getBoundingClientRect();
-      const posX = event.clientX - rect.left - c.margin.left;
-      const posY = event.clientY - rect.top - c.margin.top;
+      // C3: `clientToScene` (dist/dom-types.d.ts:33) is the documented
+      // controller API for client->chart coordinate conversion, replacing a
+      // DOM `querySelector` + `getBoundingClientRect` reach-in into the
+      // renderer's own SVG. It returns MARGIN-INCLUSIVE "scene" coordinates —
+      // the same space `xScale`/`yScale` operate in inside `defineChart`
+      // (dist/svg-coordinates.js's `svgClientToScene`, verified against
+      // `heatmap-context.ts`/`heatmap-chart.tsx`'s plot-local `xScale`/
+      // `yScale`, which are `column*binWidth + offset` from 0) — so the
+      // existing plot-local column/row math below still needs the same
+      // `- c.margin.left` / `- c.margin.top` subtraction as before.
+      const interaction = renderContextRef.current?.interaction;
+      if (!interaction) return;
+      const scenePos = interaction.clientToScene(event.clientX, event.clientY);
+      if (!scenePos) {
+        handleCellLeave();
+        return;
+      }
+      const posX = scenePos.x - c.margin.left;
+      const posY = scenePos.y - c.margin.top;
 
       let foundCol = -1;
       for (let i = 0; i < c.data.length; i++) {
@@ -585,117 +731,6 @@ export function HeatmapCells({
     };
   }, [cellsInteractive, coordinator, handleCellLeave, scheduleFocus]);
 
-  const hoveredCell = useSyncExternalStore(
-    coordinator ? coordinator.subscribe : () => () => {},
-    () => coordinator?.getHoveredCell() ?? null,
-    () => null,
-  );
-  // bklit parity: `isHeatmapHoverEffectEnabled` gates ALL hover styling —
-  // when every prop is 1 there is nothing to dim/highlight, so cells stay
-  // visually untouched (tooltip tracking still runs via the coordinator).
-  const hoverEffectEnabled = useMemo(
-    () => isHeatmapHoverEffectEnabled({ inactiveOpacity, inactiveScale, activeScale }),
-    [inactiveOpacity, inactiveScale, activeScale],
-  );
-  const hasHover = hoveredCell !== null && ctx.chartPhase === "ready" && hoverEffectEnabled;
-
-  // bklit `inactiveScale`/`activeScale`/`rowOpacity` parity: bklit applies
-  // `readyHoverStyle`'s scale on each cell's wrapper `motion.g` (origin =
-  // cell center, `HEATMAP_INACTIVE_TRANSITION`), tweens the data rect's OWN
-  // `opacity` for the hover dim (`style={{ opacity: dataOpacity }}`), and
-  // multiplies the base cell fillOpacity by `resolveHeatmapRowOpacity`. The
-  // migrated cell rects are TanStack-rendered (data-ts-key ends in
-  // `${column}-${row}`), so all three are applied straight onto those rects:
-  // per-cell scale with `transform-box: fill-box` (element-local origin ≡
-  // bklit's px origin), own-opacity dim, and per-row fill-opacity. Ghost
-  // cells (transparent fill) are skipped.
-  const cellStyleRef = useRef({
-    hoverEffectEnabled,
-    hasHover,
-    hoveredCell,
-    inactiveOpacity,
-    inactiveScale,
-    activeScale,
-    rowOpacity,
-    cellData,
-    levelStyles: ctx.levelStyles,
-  });
-  cellStyleRef.current = {
-    hoverEffectEnabled,
-    hasHover,
-    hoveredCell,
-    inactiveOpacity,
-    inactiveScale,
-    activeScale,
-    rowOpacity,
-    cellData,
-    levelStyles: ctx.levelStyles,
-  };
-
-  const paintCellStyles = useCallback((host: HTMLElement) => {
-    const {
-      hasHover: hovering,
-      hoveredCell: hovered,
-      inactiveOpacity: iOpacity,
-      inactiveScale: iScale,
-      activeScale: aScale,
-      rowOpacity: rOpacity,
-      cellData: cd,
-      levelStyles: ls,
-    } = cellStyleRef.current;
-    const cellByKey = new Map<string, CellDatum>();
-    for (const d of cd) cellByKey.set(`${d.column}-${d.row}`, d);
-    const rects = host.querySelectorAll<SVGRectElement>("rect[data-ts-key]");
-    for (const rect of rects) {
-      const k = rect.getAttribute("data-ts-key") ?? "";
-      const key = k.slice(k.lastIndexOf(":") + 1);
-      const d = cellByKey.get(key);
-      if (!d) continue;
-      const isHighlighted =
-        hovering &&
-        hovered !== null &&
-        hovered.column === d.column &&
-        hovered.row === d.row &&
-        !d.isGhost;
-      const isDimmed = hovering && !isHighlighted && !d.isGhost;
-      const style = resolveHeatmapHoverStyle(isHighlighted, isDimmed, {
-        inactiveOpacity: iOpacity,
-        inactiveScale: iScale,
-        activeScale: aScale,
-      });
-      rect.style.transformOrigin = "center";
-      rect.style.transformBox = "fill-box";
-      rect.style.transition = `transform ${HEATMAP_INACTIVE_TRANSITION_CSS}, opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}`;
-      rect.style.transform = style.scale !== 1 ? `scale(${style.scale})` : "";
-      // bklit parity: the hover dim tweens the cell rect's OWN opacity
-      // (legacy `style={{ opacity: dataOpacity }}` on the data motion.rect),
-      // NOT a background overlay composited on top — the two are equivalent
-      // over white except at antialiased cell edges, where an overlay paints
-      // hollow-square halos (T-W1-9 HM16 residual).
-      rect.style.opacity = String(style.opacity);
-      rect.style.fillOpacity = String(
-        resolveHeatmapRowOpacity(d.row, rOpacity) * heatmapLevelCellFillOpacity(ls[d.level] ?? ls[0]),
-      );
-    }
-  }, []);
-
-  useLayoutEffect(() => {
-    const host = chartHostRef.current;
-    if (host) paintCellStyles(host);
-  }, [
-    hoveredCell,
-    hasHover,
-    hoverEffectEnabled,
-    inactiveOpacity,
-    inactiveScale,
-    activeScale,
-    rowOpacity,
-    cellData,
-    ctx.levelStyles,
-    ctx.chartPhase,
-    paintCellStyles,
-  ]);
-
   const revealInputsRef = useRef({
     animateCells: ctx.animateCells,
     revealEpoch: ctx.revealEpoch,
@@ -727,10 +762,6 @@ export function HeatmapCells({
       const { animateCells, revealEpoch, enterTransition, animationDuration, enterStaggerScale, cellData: cd } =
         revealInputsRef.current;
       if (!animateCells || animationDuration <= 0) return;
-
-      // TanStack mounts/reconciles the mark DOM after React's layout effects;
-      // paint prop-driven cell styles again at the public onRender boundary.
-      paintCellStyles(container);
 
       const fadeDurationSec = resolveHeatmapEnterFadeDurationSec(enterTransition, animationDuration);
       const durMs = fadeDurationSec * 1000;
@@ -797,7 +828,7 @@ export function HeatmapCells({
         elements: entries.map((e) => e.element),
       });
     },
-    [paintCellStyles],
+    [],
   );
 
   useEffect(() => {

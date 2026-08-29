@@ -1110,3 +1110,46 @@
 .chart-projection-line path {
   vector-effect: none;
 }
+
+/* --- C3: hover-chrome.ts deletion — pointer-hover-dim + marker active/dim
+       transitions. Native mark `states` (internal/hover-geometry.ts's
+       `pointerHoverDimState`/`pointerRowDimState`, and the marker `states`
+       inlined in internal/series-marker-mark.ts) set the opacity/r VALUE
+       reactively with no `transition` field on the state itself — per D425,
+       explicitly directed for pointer-hover-dim: the TIME term rides a CSS
+       class here instead, exactly like the pre-existing legend/pie/choropleth
+       dim rules above. TanStack's svg renderer drops any top-level
+       `transition` attribute (D224), so this is the only place the timing
+       can live. */
+
+/* Line/area series-stroke pointer-hover dim (hover-chrome.ts DIM_TRANSITION,
+   0.4s ease-in-out) — the `lineY` mark renders each series as one or more
+   <path> segments inside a `.ts-chart__line` group (confirmed via
+   dist/line.js); `states[].style.opacity` lands on the segment <path>
+   itself, matching hover-chrome.ts's own `findSeriesPath` query
+   (`.ts-chart__line[...] path`). Also covers composed-chart.tsx's own line
+   series (bklit's imperative writer used this same constant for every lineY
+   path regardless of chart type — only bar RECTS got the faster timing
+   below). */
+.ts-chart__line path {
+  transition: opacity 0.4s ease-in-out;
+}
+
+/* Composed-chart bar-row pointer-hover dim (hover-chrome.ts
+   BAR_DIM_TRANSITION, 0.12s ease-in-out) — scoped to composed only so it
+   never collides with bar-chart.tsx's own [data-bkm-chart="bar"] hover-dim
+   rule (owned by a parallel C3 task on that file). */
+[data-bkm-chart="composed"] .ts-chart__bar-y rect {
+  transition: opacity 0.12s ease-in-out;
+}
+
+/* SeriesMarker active-scale (r) / inactive-dim (opacity) pointer transition
+   (hover-chrome.ts MARKER_DIM_TRANSITION, 0.15s ease-in-out) — minus its
+   `filter` term: the 2px dim blur is dropped (D421 scatter-blur precedent;
+   see internal/series-marker-mark.ts header comment). `.ts-chart__dot`
+   wraps each marker mark's per-point <circle> children (dist/dot.js); only
+   line-chart.tsx/area-chart.tsx build `${dataKey}__marker`-suffixed marker
+   marks, so this selector cannot collide with any other chart's dot marks. */
+.ts-chart__dot[data-ts-key$="__marker"] circle {
+  transition: opacity 0.15s ease-in-out, r 0.15s ease-in-out;
+}

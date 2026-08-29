@@ -11,18 +11,22 @@
 // instance's `.range()` — verified via repos/tanstack-charts/.../
 // configured-scale.ts); the mount reveal is a per-circle imperative WAAPI
 // tween fed by `onRender` (bklit's per-marker framer entrance, zero React);
-// hover chrome dims every marker + draws an enlarged undimmed copy of the
-// hovered point per series (scatter-hover-chrome.ts) instead of Line's
-// path re-stroke band.
+// hover-dim (opacity 0.5 inactive / r×1.35 active) is native `dot()` mark
+// `states` (C1). C3: the indicator/crosshair and per-series tooltip-dot
+// geometry (formerly scatter-hover-chrome.ts's imperative DOM chrome, now
+// deleted) are a native `crosshair()` mark + a `whenFocused`-wrapped custom
+// hover-dot mark (see `createHoverDotMark` below); only the date-pill + axis
+// -label fade remain app-owned HTML (`attachScatterPillChrome`).
 import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { Chart, type ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { defineChart, dot } from "@tanstack/charts";
+import { crosshair, defineChart, dot, whenFocused } from "@tanstack/charts";
 import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
 import type {
   ChartDotStateStyle,
   ChartMark,
   ChartMarkState,
+  ChartMotionDefinition,
   ChartPoint,
   ChartScale,
   ChartValue,
@@ -31,26 +35,34 @@ import type {
 } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import { ChartSelectionContext, useChartSelection } from "./internal/chart-selection";
+import { buildPill, applyLabelFade, resetLabelFade } from "./internal/date-pill";
+import { resolveVerticalFadeSides, indicatorFadeGradientStops } from "./internal/fade-mask";
 import {
-  attachScatterHoverChrome,
-  type ScatterFocusPoint,
-  type ScatterHoverChrome,
-  type ScatterHoverChromeState,
-} from "./internal/scatter-hover-chrome";
+  toDotConfig,
+  toIndicatorConfig,
+  resolveIndicatorPixelWidth,
+  type DotVariant,
+} from "./internal/tooltip-mappers";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
-import { useChartConfig } from "./internal/chart-config-context";
+import { useChartConfig, type SpringConfig } from "./internal/chart-config-context";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
 import { TooltipContent } from "./internal/tooltip-components";
-import type { ChartDatum, ChartPhase, ChartTooltipPoint, TooltipRow } from "./internal/types";
+import type { ChartDatum, ChartPhase, ChartTooltipConfig, ChartTooltipPoint, TooltipRow } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { resolveGridGuide } from "./internal/grid";
 import { createScatterFocusStrategy } from "./internal/scatter-focus-strategy";
 import "./styles.css";
 import { isRevealed, markRevealed, onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
 import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
-import { BOX_OFFSET, CHART_CATEGORY_PALETTE, DISCRETE_INTERACTION_THRESHOLD } from "./internal/design-tokens";
+import {
+  BOX_OFFSET,
+  CHART_CATEGORY_PALETTE,
+  DISCRETE_INTERACTION_THRESHOLD,
+  FADE_BUFFER,
+  TICKER_HALF_WIDTH,
+} from "./internal/design-tokens";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import {
@@ -99,6 +111,166 @@ const HOVER_STATE_TRANSITION = {
   duration: 150,
   easing: "ease-in-out",
 } as const;
+
+// C3 (exact port of the deleted scatter-hover-chrome.ts's module-scope
+// helper of the same name — tooltip.rows color override > tooltip.dotColor
+// (string or per-point function) > series fill > the focused point's own
+// color). NOTE the quirk this preserves byte-for-byte: `tooltip.dotColor`'s
+// function form is genuinely invoked here (unlike `indicatorColor`, see
+// below) — legacy never had the "function branch never evaluated" bug for
+// dots, only for the indicator.
+function resolveDotColor(
+  tooltip: ChartTooltipConfig | null | undefined,
+  seriesFill: string,
+  pointColor: string,
+  point: Record<string, unknown>,
+  line: { dataKey: string; stroke?: string },
+  tooltipRows: { color: string }[] | null,
+  index: number,
+): string {
+  if (tooltip?.rows && tooltipRows?.[index]?.color) return tooltipRows[index]!.color;
+  if (tooltip?.dotColor != null) {
+    if (typeof tooltip.dotColor === "function") return tooltip.dotColor(point, line);
+    return tooltip.dotColor;
+  }
+  return seriesFill || pointColor;
+}
+
+// C3 (exact port from scatter-hover-chrome.ts).
+function ringCornerRadius(halfExtent: number, cornerRadiusFraction: number): number {
+  const side = halfExtent * 2;
+  return side * Math.max(0, Math.min(0.5, cornerRadiusFraction));
+}
+
+// C3: replaces scatter-hover-chrome.ts's DOM `ensureDot`/`updateDotPosition`
+// per-series tooltip-dot layer with a hand-built ChartMark, wrapped by the
+// caller in `whenFocused(mark, {match:'group', retarget:true})` so exactly
+// the currently-focused group's points render (see the `definition` useMemo
+// below for the match/retarget rationale). One SceneDot ("dot" variant) or
+// SceneRect with rounded corners ("ring" variant, `radius` = the exact
+// `ringCornerRadius` legacy used for its `rx`/`ry`) per datum, each carrying
+// a `pointOwner` built from the SAME `source[datumIndex]` object reference
+// the base marks use, so `sameFocusedPoint`'s `Object.is(datum)` check
+// (dist/focus-layer.js) matches this mark's points to the focused group.
+// `tooltip.rows`-based per-point color override is evaluated eagerly here,
+// once per data/series/tooltip-config change (render time) rather than
+// legacy's once-per-hover-frame cost — a deliberate, zero-cost-by-default
+// tradeoff (documented in the C3 report).
+function createHoverDotMark(
+  source: readonly ChartDatum[],
+  series: ResolvedSeries,
+  xDataKey: string,
+  projectY: (value: number) => number,
+  seriesIndex: number,
+  tooltipCfg: ChartTooltipConfig | null,
+  tooltipSpring: SpringConfig,
+): ChartMark<ChartDatum, Date, number> {
+  const dotCfg = toDotConfig(tooltipCfg);
+  const variant: DotVariant = dotCfg.variant ?? "dot";
+  const isRing = variant === "ring";
+  const rawSize = dotCfg.size ?? 5;
+  const size = rawSize * (dotCfg.scale ?? 1);
+  const strokeWidth = dotCfg.strokeWidth ?? (isRing ? 1.5 : 2);
+  const radiusFraction = dotCfg.radiusFraction ?? 0.25;
+  const cornerRadius = ringCornerRadius(size, radiusFraction);
+  const side = size * 2;
+  // Legacy's dot spring is NEVER gated on `discrete` (only the crosshair and
+  // date pill are — `updateDotPosition`'s comment: "Dot always springs...
+  // only a fresh mount snaps in place"). `retarget:true` on the caller's
+  // `whenFocused` supplies that "fresh mount snaps" behavior for free (no
+  // prior DOM node to interpolate from), so this motion is unconditional.
+  const motion: ChartMotionDefinition<ChartDatum> = {
+    transition: { type: "spring", stiffness: tooltipSpring.stiffness, damping: tooltipSpring.damping },
+  };
+  const lineRef = { dataKey: series.dataKey, stroke: series.fill };
+
+  return {
+    initialize: () => {
+      const xValues: (ChartValue | undefined)[] = [];
+      const yValues: (ChartValue | undefined)[] = [];
+      const colors: string[] = [];
+      for (const d of source) {
+        const xv = d[xDataKey];
+        xValues.push(xv instanceof Date && Number.isFinite(xv.getTime()) ? xv : undefined);
+        const yv = d[series.dataKey];
+        yValues.push(typeof yv === "number" && Number.isFinite(yv) ? projectY(yv) : undefined);
+        const row = d as Record<string, unknown>;
+        const tooltipRows = tooltipCfg?.rows ? (tooltipCfg.rows(row) as { color: string }[]) : null;
+        colors.push(resolveDotColor(tooltipCfg, series.fill, series.fill, row, lineRef, tooltipRows, seriesIndex));
+      }
+      return {
+        id: `${series.dataKey}--hover-dot`,
+        motion,
+        channels: {
+          x: { scale: "x", values: xValues },
+          y: { scale: "y", values: yValues },
+        },
+        render: ({ scales }) => {
+          const nodes: SceneNode[] = [];
+          const points: ChartPoint<ChartDatum, Date, number>[] = [];
+          source.forEach((datum, datumIndex) => {
+            const xv = xValues[datumIndex];
+            const yv = yValues[datumIndex];
+            if (xv === undefined || yv === undefined) return;
+            const x = scales.x.map(xv);
+            const y = scales.y.map(yv);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+            const color = colors[datumIndex]!;
+            const point: ChartPoint<ChartDatum, Date, number> = {
+              key: `${series.dataKey}:${datumIndex}`,
+              markId: series.dataKey,
+              group: null,
+              groupLabel: series.dataKey,
+              datum,
+              datumIndex,
+              xValue: xv as Date,
+              yValue: yv as number,
+              x,
+              y,
+              color,
+            };
+            if (isRing) {
+              nodes.push({
+                kind: "rect",
+                key: `${series.dataKey}:hover-dot:${datumIndex}`,
+                x: x - size,
+                y: y - size,
+                width: side,
+                height: side,
+                radius: cornerRadius,
+                style: { fill: "transparent", stroke: color, strokeWidth },
+                pointOwner: point,
+              });
+            } else {
+              nodes.push({
+                kind: "dot",
+                key: `${series.dataKey}:hover-dot:${datumIndex}`,
+                x,
+                y,
+                radius: size,
+                style: { fill: color, stroke: "var(--chart-background)", strokeWidth },
+                pointOwner: point,
+              });
+            }
+            points.push(point);
+          });
+          return {
+            nodes: [
+              {
+                kind: "group",
+                key: `${series.dataKey}--hover-dot`,
+                className: "ts-chart__hover-dot",
+                ariaHidden: true,
+                children: nodes,
+              },
+            ],
+            points,
+          };
+        },
+      };
+    },
+  };
+}
 
 // S8 (bklit scatter.tsx yGradient): custom ChartMark emitting the EXACT DOM
 // shape stock `dot()` produces — one `.ts-chart__dot[data-ts-key]` group per
@@ -230,6 +402,94 @@ function createYGradientScatterMark(
           };
         },
       };
+    },
+  };
+}
+
+// C3: what's left of scatter-hover-chrome.ts's `ScatterHoverChromeState`
+// after the crosshair/dot geometry moved to native marks — only the fields
+// the date-pill + axis-label fade actually read.
+interface ScatterPillChromeState {
+  xDataKey: string;
+  pointCount: number;
+  showDatePill: boolean;
+  /** CH5/B12 (bklit XAxis.tickerHalfWidth): date-pill fade radius; defaults
+      to the TICKER_HALF_WIDTH token when unset. */
+  tickerHalfWidth?: number;
+  dateLabels: string[];
+}
+
+interface ScatterPillChrome {
+  update(points: readonly ChartPoint<ChartDatum, Date, number>[]): void;
+  detach(): void;
+}
+
+// C3: the date-pill + axis-label-fade half of the deleted
+// `attachScatterHoverChrome` (scatter-hover-chrome.ts), ported verbatim —
+// same `visible`/`showing` jump-vs-set gating, same `discrete` threshold
+// read, same `container = host.closest('[data-bkm-chart]') ?? host` lookup
+// for the label-fade DOM query. Only the indicator/dot branches are gone
+// (now native marks); the pill/label-fade primitives themselves come from
+// the read-only, already-extracted `./internal/date-pill` module (its own
+// header notes it holds the byte-identical twins of what used to live in the
+// now-deleted tooltip-chrome.ts).
+function attachScatterPillChrome(
+  host: HTMLElement,
+  getState: () => ScatterPillChromeState,
+  tooltipSpring: SpringConfig,
+): ScatterPillChrome {
+  const container = (host.closest("[data-bkm-chart]") as HTMLElement) ?? host;
+  const doc = host.ownerDocument;
+  const pillBuild = buildPill(doc, tooltipSpring, () => getState().dateLabels ?? []);
+  host.append(pillBuild.layer);
+
+  let visible = false;
+
+  const hide = () => {
+    if (!visible) return;
+    visible = false;
+    pillBuild.layer.style.display = "none";
+    pillBuild.spring.stop();
+    pillBuild.label.textContent = "";
+    resetLabelFade(container);
+  };
+
+  const update = (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
+    if (points.length === 0) {
+      hide();
+      return;
+    }
+    const state = getState();
+    const primary = points[0]!;
+    const date = (primary.datum as Record<string, unknown>)[state.xDataKey];
+    const isDate = date instanceof Date;
+    const discrete = state.pointCount > DISCRETE_INTERACTION_THRESHOLD;
+    const showing = !visible;
+    visible = true;
+
+    if (state.showDatePill && isDate) {
+      pillBuild.layer.style.display = "";
+      if (pillBuild.ticker && state.dateLabels && state.dateLabels.length > 0) {
+        pillBuild.ticker.update(primary.datumIndex, discrete);
+      } else {
+        pillBuild.label.textContent = shortDateFmt.format(date as Date);
+      }
+      if (showing || discrete) pillBuild.spring.jump(primary.x);
+      else pillBuild.spring.set(primary.x);
+    } else {
+      pillBuild.layer.style.display = "none";
+    }
+
+    const hoveredLabel = isDate ? shortDateFmt.format(date as Date) : null;
+    applyLabelFade(container, primary.x, hoveredLabel, state.tickerHalfWidth ?? TICKER_HALF_WIDTH, FADE_BUFFER);
+  };
+
+  return {
+    update,
+    detach() {
+      hide();
+      pillBuild.layer.remove();
+      pillBuild.ticker?.detach();
     },
   };
 }
@@ -402,6 +662,11 @@ export function ScatterChart({
   // AND the S8 yGradient vertical fills) — declared before resolvedSeries so
   // the yGradient url can be baked into the resolved rows.
   const gradientBaseId = useSanitizedId();
+  // C3: id for the crosshair's optional vertical fade-mask gradient (ported
+  // from the deleted scatter-hover-chrome.ts's per-instance
+  // `bkm-crosshair-gradient-${chromeId}`, now a stable per-mount id sharing
+  // the same base as the marker gradients above).
+  const crosshairGradientId = `${gradientBaseId}-crosshair-fade`;
 
   const resolvedSeries = React.useMemo<ResolvedSeries[]>(
     () =>
@@ -728,6 +993,85 @@ export function ScatterChart({
         }),
       );
     }
+
+    // S11/C3: large datasets snap crosshair/dot/tooltip motion instead of
+    // springing (bklit DISCRETE_INTERACTION_THRESHOLD) — hoisted above the
+    // tooltip-enabled gate below since the crosshair mark's own motion also
+    // needs it, not just the native tooltip extension's.
+    const discrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
+
+    // C3: crosshair + per-series hover-dot marks — native replacement for
+    // the deleted scatter-hover-chrome.ts's imperative indicator/dot SVG
+    // layers. Both are gated on `tooltip?.enabled` exactly like the native
+    // tooltip extension below (no tooltip config -> no hover chrome at all,
+    // matching legacy's `attachScatterHoverChrome` only being mounted when
+    // `tooltipEnabled`).
+    if (tooltip?.enabled ?? false) {
+      if (tooltip?.showCrosshair ?? true) {
+        // Config resolution mirrors legacy's `buildIndicator` exactly
+        // (tooltip-mappers.ts's `toIndicatorConfig` is the byte-identical
+        // extraction of the same mapping scatter-hover-chrome.ts used to do
+        // inline). PRESERVED QUIRK: `indicatorColor` as a function is never
+        // actually invoked — legacy's ternary only special-cased the STRING
+        // form, falling through to the CSS var for anything else (including
+        // functions); reproduced here verbatim, not "fixed".
+        const indicatorCfg = toIndicatorConfig(tooltip);
+        const isDashed = Boolean(indicatorCfg.dasharray);
+        const fadeSides = resolveVerticalFadeSides(isDashed ? "none" : (indicatorCfg.fadeEdges ?? "both"));
+        const indicatorColorValue = typeof indicatorCfg.color === "string" ? indicatorCfg.color : "var(--chart-crosshair)";
+        const indicatorSpringCfg = indicatorCfg.springConfig ?? chartConfig.tooltipSpring;
+        // Choice (see C3 report): native `crosshair()`'s vertical rule
+        // reproduces legacy's indicator geometry directly — width/color/
+        // dasharray/fade-gradient all map onto its `x` rule options one for
+        // one, and its `strokeOpacity` default of 0.35 (dist/crosshair.js
+        // `resolveRuleStyle`) is explicitly overridden to 1 to avoid a
+        // silent visual regression. `y` stays off (legacy never drew a
+        // horizontal guide).
+        marks.push(
+          crosshair({
+            y: false,
+            x: {
+              stroke: !isDashed && fadeSides.any ? `url(#${crosshairGradientId})` : indicatorColorValue,
+              strokeOpacity: 1,
+              strokeWidth: resolveIndicatorPixelWidth(indicatorCfg),
+              strokeDasharray: indicatorCfg.dasharray,
+            },
+            motion: discrete
+              ? false
+              : {
+                  transition: {
+                    type: "spring",
+                    stiffness: indicatorSpringCfg.stiffness,
+                    damping: indicatorSpringCfg.damping,
+                  },
+                },
+          }) as ChartMark<ChartDatum, Date, number>,
+        );
+      }
+      if (tooltip?.showDots ?? true) {
+        // Choice (see C3 report): a custom `whenFocused(mark, {match:'group',
+        // retarget:true})` hover-dot mark, NOT `crosshair()`'s own `marker`
+        // option — that option draws exactly one marker at the primary
+        // focused point, but legacy draws one enlarged dot PER SERIES
+        // sharing the hovered x (bklit's per-series tooltip-dot layer).
+        // `match:'group'` selects every point TanStack's own focus grouping
+        // already gathered (scatter-focus-strategy.ts); `retarget:true` gets
+        // legacy's "jump on first show, spring while already visible" dot
+        // motion for free (a freshly-appearing retargeted node has no prior
+        // DOM element to interpolate from, so it jumps) — see
+        // `createHoverDotMark` above for why its motion is unconditional.
+        resolvedSeries.forEach((series, seriesIndex) => {
+          const projectY = projectorFor(series.yAxisId);
+          marks.push(
+            whenFocused(
+              createHoverDotMark(renderData, series, xDataKey, projectY, seriesIndex, tooltip ?? null, chartConfig.tooltipSpring),
+              { match: "group", retarget: true },
+            ),
+          );
+        });
+      }
+    }
+
     const gridGuide = resolveGridGuide(grid);
     const spec = {
       marks,
@@ -778,7 +1122,6 @@ export function ScatterChart({
     if (!(tooltip?.enabled ?? false)) {
       return withFocus as StaticChartDefinition<ChartDatum, Date, number, "dom">;
     }
-    const discrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
     return defineChart(withFocus, {
       tooltip: {
         use: nativeTooltip,
@@ -796,41 +1139,26 @@ export function ScatterChart({
         className: tooltip?.className,
       },
     }) as StaticChartDefinition<ChartDatum, Date, number, "dom">;
-  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy, projectorFor, tooltip?.enabled, tooltip?.className, chartConfig.tooltipBoxSpring]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy, projectorFor, tooltip, chartConfig.tooltipBoxSpring, chartConfig.tooltipSpring, crosshairGradientId]);
 
-  // Hover chrome (bklit ChartTooltip, scatter dim/highlight variant) — still
-  // owns the crosshair/tooltip-dot/date-pill geometry (C3's future native
-  // replacement target); only the box/panel moved to the native tooltip
-  // extension above.
+  // C3: what remains app-owned after the crosshair/tooltip-dot geometry
+  // moved to native marks (in the `definition` useMemo above) — just the
+  // date pill + axis-label proximity fade, wired via `attachScatterPillChrome`.
   const tooltipEnabled = tooltip?.enabled ?? false;
-  const chromeRef = React.useRef<ScatterHoverChrome | null>(null);
-  const chromeStateRef = React.useRef<ScatterHoverChromeState | null>(null);
+  const pillChromeRef = React.useRef<ScatterPillChrome | null>(null);
+  const pillChromeStateRef = React.useRef<ScatterPillChromeState | null>(null);
   const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
     const v = d[xDataKey];
     if (v instanceof Date) return shortDateFmt.format(v);
     return String(v ?? "");
   }), [renderData, xDataKey]);
-  chromeStateRef.current = {
-    margin,
-    // P6/C1: the dim/pop fields (fadeOnHover, inactiveOpacity, inactiveBlur,
-    // outlineWidth/Color, showActiveHighlight, stroke, strokeWidth, ringGap,
-    // radius, highlightFill/Stroke) all drove the now-deleted DOM dim/clone
-    // machinery in scatter-hover-chrome.ts — that behavior is native `dot()`
-    // mark `states` now (see the `definition` useMemo above). The chrome only
-    // needs `fill` left, for tooltip-dot color resolution
-    // (`ScatterHoverChromeSeries`, scatter-hover-chrome.ts).
-    series: resolvedSeries.map((s) => ({
-      dataKey: s.dataKey,
-      fill: s.fill,
-    })),
+  pillChromeStateRef.current = {
     xDataKey,
     pointCount: renderData.length,
-    showCrosshair: tooltip?.showCrosshair ?? true,
-    showDots: tooltip?.showDots ?? true,
     showDatePill: tooltip?.showDatePill ?? true,
     // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade radius.
     tickerHalfWidth: xAxis?.tickerHalfWidth,
-    tooltip: tooltip ?? null,
     dateLabels: dateLabelsForPill,
   };
 
@@ -840,49 +1168,32 @@ export function ScatterChart({
   React.useLayoutEffect(() => {
     const el = overlayHostRef.current;
     if (!el || !tooltipEnabled) return;
-    const chrome = attachScatterHoverChrome(el, () => chromeStateRef.current!, {
-      tooltipSpring: chartConfig.tooltipSpring,
-    });
-    chromeRef.current = chrome;
+    const chrome = attachScatterPillChrome(el, () => pillChromeStateRef.current!, chartConfig.tooltipSpring);
+    pillChromeRef.current = chrome;
     return () => {
-      chromeRef.current = null;
+      pillChromeRef.current = null;
       chrome.detach();
     };
   }, [tooltipEnabled, hasDefinition, chartConfig]);
 
-  // C1: TanStack-native hover via ChartFocusStrategy — adapter from
-  // TanStack ChartPoint -> ScatterFocusPoint for the chrome.
-  // Color resolved via series fill (matches prior per-series mapping).
-  const fillBySeries = React.useMemo(() => {
-    const m = new Map<string, string>();
-    for (const s of resolvedSeries) m.set(s.dataKey, s.fill);
-    return m;
-  }, [resolvedSeries]);
-
+  // C1/C3: TanStack-native hover via ChartFocusStrategy drives the pill
+  // chrome directly with raw ChartPoints — the crosshair/tooltip-dot chrome
+  // used to need a mapped ScatterFocusPoint[] (per-series fill resolution
+  // for the DOM dot layer); that layer is gone, so the pill only needs
+  // `datum`/`datumIndex`/`x` off the primary (first) point, both already on
+  // ChartPoint.
   const handleFocusGroupChange = React.useCallback(
     (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
       // S11 (bklit use-scatter-chart-interaction.ts): a drag arms on
       // pointerdown and clears the tooltip; hover updates are suppressed for
       // the whole drag (same gate as line/candlestick's dragSelectionActiveRef).
       if (dragSelectionActiveRef.current) {
-        chromeRef.current?.onFocusGroupChange([]);
+        pillChromeRef.current?.update([]);
         return;
       }
-      if (points.length === 0) {
-        chromeRef.current?.onFocusGroupChange([]);
-        return;
-      }
-      const mapped: ScatterFocusPoint[] = points.map((p) => ({
-        markId: p.markId,
-        datum: p.datum,
-        datumIndex: p.datumIndex,
-        x: p.x,
-        y: p.y,
-        color: fillBySeries.get(p.markId) ?? p.color,
-      }));
-      chromeRef.current?.onFocusGroupChange(mapped);
+      pillChromeRef.current?.update(points);
     },
-    [fillBySeries],
+    [],
   );
 
   // C2: native tooltip body — reuses bklit's existing `TooltipContent`
@@ -1140,6 +1451,28 @@ export function ScatterChart({
     [resolvedSeries],
   );
 
+  // C3: the crosshair's vertical fade-mask gradient, an app-owned
+  // `linearGradient` def referenced by the native `crosshair()` mark's
+  // `stroke: url(#id)` (the mark protocol has no built-in fade-mask concept —
+  // this is the sanctioned escape hatch the task's mission item 1 calls out).
+  // Stops come from the same `indicatorFadeGradientStops` legacy's
+  // `buildIndicator` used; gate conditions mirror the `definition` useMemo's
+  // crosshair-mark branch exactly (dashed indicators never fade; no-fade
+  // configs need no gradient at all).
+  const crosshairFadeGradient = React.useMemo(() => {
+    if (!(tooltip?.enabled ?? false) || !(tooltip?.showCrosshair ?? true)) return null;
+    const indicatorCfg = toIndicatorConfig(tooltip);
+    if (indicatorCfg.dasharray) return null;
+    const fadeSides = resolveVerticalFadeSides(indicatorCfg.fadeEdges ?? "both");
+    if (!fadeSides.any) return null;
+    const colorValue = typeof indicatorCfg.color === "string" ? indicatorCfg.color : "var(--chart-crosshair)";
+    return {
+      id: crosshairGradientId,
+      color: colorValue,
+      stops: indicatorFadeGradientStops(fadeSides, indicatorCfg.fadeLength ?? 10),
+    };
+  }, [tooltip, crosshairGradientId]);
+
   // S11: the drag-select hook (after timeExtentScatter — its x-scale memo
   // consumes that extent). See the comment block at innerWidthSelection.
   const xScaleForSelection = React.useMemo(() => {
@@ -1159,7 +1492,7 @@ export function ScatterChart({
     containerRef,
     onDragStart: () => {
       dragSelectionActiveRef.current = true;
-      chromeRef.current?.onFocusGroupChange([]);
+      pillChromeRef.current?.update([]);
     },
     onDragEnd: () => {
       dragSelectionActiveRef.current = false;
@@ -1193,7 +1526,7 @@ export function ScatterChart({
             onRender={handleRender}
             renderTooltipBody={renderTooltipBody}
           />
-          {gradientDefs.length > 0 || yGradientDefs.length > 0 ? (
+          {gradientDefs.length > 0 || yGradientDefs.length > 0 || crosshairFadeGradient ? (
             // Rendered AFTER <Chart> deliberately: QA's screenshot harness
             // locates the chart via `page.locator("#chart-root svg").first()`
             // to compute hover coordinates (qa/screenshot.mjs, not ours to
@@ -1254,6 +1587,21 @@ export function ScatterChart({
                     <stop offset="100%" stopColor={g.to} />
                   </linearGradient>
                 ))}
+                {crosshairFadeGradient ? (
+                  <linearGradient
+                    key={crosshairFadeGradient.id}
+                    id={crosshairFadeGradient.id}
+                    gradientUnits="userSpaceOnUse"
+                    x1={0}
+                    x2={0}
+                    y1={margin.top}
+                    y2={margin.top + Math.max(0, heightPxScatter - margin.top - margin.bottom)}
+                  >
+                    {crosshairFadeGradient.stops.map((s, i) => (
+                      <stop key={i} offset={s.offset} stopColor={crosshairFadeGradient.color} stopOpacity={s.opacity} />
+                    ))}
+                  </linearGradient>
+                ) : null}
               </defs>
             </svg>
           ) : null}

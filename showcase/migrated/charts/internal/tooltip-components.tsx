@@ -26,7 +26,7 @@ import {
   resolveVerticalFadeSides,
   type IndicatorFadeEdges,
 } from "./fade-mask";
-import { resolveIndicatorPixelWidth } from "./tooltip-chrome";
+import { resolveIndicatorPixelWidth } from "./tooltip-mappers";
 import type { IndicatorWidth, TooltipRow } from "./types";
 
 // ── TooltipDot ───────────────────────────────────────────────────────────

@@ -38,19 +38,16 @@ import { scaleBand } from "d3-scale";
 import type { ScaleBand } from "d3-scale";
 import { Chart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { barY, defineChart, group } from "@tanstack/charts";
+import { barY, crosshair, defineChart, group, whenFocused } from "@tanstack/charts";
 import { tooltip as tooltipExtension } from "@tanstack/charts/tooltip";
-import type { ChartMark, ChartMarkState, ChartPoint, ChartRenderContext } from "@tanstack/charts";
+import type { ChartMark, ChartMarkState, ChartMotionDefinition, ChartPoint, ChartRenderContext, SceneNode } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import { TooltipContent } from "./internal/tooltip-components";
-import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, TOOLTIP_BOX_SPRING } from "./internal/design-tokens";
-import {
-  attachBarHoverChrome,
-  type BarFocusGroup,
-  type BarFocusPoint,
-  type BarHoverChrome,
-  type BarHoverChromeState,
-} from "./internal/bar-hover-chrome";
+import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH, TOOLTIP_BOX_SPRING, TOOLTIP_SPRING } from "./internal/design-tokens";
+import { applyLabelFade, buildPill, resetLabelFade, type PillBuild } from "./internal/date-pill";
+import { resolveVerticalFadeSides, indicatorFadeGradientStops } from "./internal/fade-mask";
+import { resolveIndicatorPixelWidth, toDotConfig, toIndicatorConfig } from "./internal/tooltip-mappers";
+import type { SpringConfig } from "./internal/chart-config-context";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
@@ -66,7 +63,7 @@ import type { BarDepthGradientIds } from "./internal/bar-depth-marks";
 import { barPulseMark, buildPulseWaveStops, syncBarPulseGroups } from "./internal/bar-pulse-mark";
 import { barTrimmedMark } from "./internal/bar-trimmed-mark";
 import { renderPatternPreset } from "./internal/pattern-preset";
-import type { BarConfig, BarSquaresConfig, BarColumnTrackConfig, ChartDatum, ChartPhase, ChartTooltipPoint, TooltipRow } from "./internal/types";
+import type { BarConfig, BarSquaresConfig, BarColumnTrackConfig, ChartDatum, ChartPhase, ChartTooltipConfig, ChartTooltipPoint, TooltipRow } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { resolveGridGuide } from "./internal/grid";
 import { isRevealed, markRevealed, onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
@@ -200,6 +197,15 @@ interface ResolvedSeries {
   fadedOpacity: number;
 }
 
+// C3: what's left of the deleted bar-hover-chrome.ts's `BarHoverChromeState`
+// after crosshair/dots moved to native marks — just what the date-pill mount
+// effect and `renderTooltipBody`'s rows-fallback still need at call time.
+interface BarChromeState {
+  series: { dataKey: string; color: string }[];
+  tooltip: ChartTooltipConfig | null;
+  dateLabels: string[];
+}
+
 function resolveCornerRadius(
   lineCap: BarConfig["lineCap"] | undefined,
   groupBandwidth: number,
@@ -208,6 +214,165 @@ function resolveCornerRadius(
   if (lineCap === "butt") return 0;
   // "round" (default): bklit bar.tsx cornerRadius = min(barWidth/2, 8).
   return groupBandwidth > 0 ? Math.min(groupBandwidth / 2, 8) : 0;
+}
+
+// C3: static color resolution for the native per-series hover-dot mark —
+// preserves the deleted bar-hover-chrome.ts's `resolveDotColor` precedence
+// for its two STATIC branches (`tooltip.rows[i].color`, string-typed
+// `tooltip.dotColor`) verbatim. The FUNCTION-typed `tooltip.dotColor(point,
+// line)` branch is dropped: a native mark's `fill` is one static string per
+// mark (DotOptions.fill?: string, dist/dot.d.ts), not a per-hover-frame
+// channel, so a color that depends on which point is currently hovered has
+// no native route without a renderer reach-in — reported in the C3 summary.
+// Legacy's own `tooltip.rows({})` call (bar-hover-chrome.ts) was ALREADY
+// point-independent — invoked every hover-move with a bogus empty object,
+// only its per-series `.color` fields were ever read — so that branch
+// reproduces exactly, evaluated once here instead of once per pointer-move.
+function resolveBarDotColor(
+  tooltip: ChartTooltipConfig | null | undefined,
+  seriesColor: string,
+  seriesIndex: number,
+  tooltipRowColors: (string | undefined)[] | null,
+): string {
+  if (tooltip?.rows && tooltipRowColors?.[seriesIndex]) return tooltipRowColors[seriesIndex]!;
+  if (typeof tooltip?.dotColor === "string") return tooltip.dotColor;
+  return seriesColor;
+}
+
+// C3 (byte-identical port of the deleted bar-hover-chrome.ts's ring-dot
+// corner-radius formula, itself shared verbatim by every hover-chrome fork).
+function barRingCornerRadius(halfExtent: number, cornerRadiusFraction: number): number {
+  const side = halfExtent * 2;
+  return side * Math.max(0, Math.min(0.5, cornerRadiusFraction));
+}
+
+/**
+ * C3: replaces bar-hover-chrome.ts's DOM `ensureDot`/`updateDotPosition`
+ * per-series tooltip-dot layer with a hand-built ChartMark, wrapped by the
+ * caller in `whenFocused(mark, {match:'group', retarget:true})` so exactly
+ * the currently-focused category's dots render.
+ *
+ * X position is computed DIRECTLY (bandStart + groupOffset + groupHalf),
+ * NOT routed through `scales.x.map()`: a native `dot()` mark's own x channel
+ * would resolve to the categorical band scale's OWN position (band center),
+ * because per-series group-offsetting within a band is a `barY`-only
+ * mark-layout feature (`layout: group({scale})`, dist/group.d.ts's
+ * `GroupLayout`) — unrelated to and not interchangeable with `dot()`'s own
+ * `layout?: DotLayout` option (dist/dot-layout.d.ts, a same-axis
+ * band-anchor concept, confirmed by reading both `.d.ts` files). Reproducing
+ * bar's per-series offset therefore requires bypassing the scale-mapped x
+ * channel and emitting the already-resolved pixel directly — exactly what
+ * `point.x` already carried in the legacy TanStack scene (barY's own
+ * `layout: group({scale: groupScale})` did this same math at scene-build
+ * time; this mark repeats it for its own dot geometry, via the file's
+ * `groupScaleForOverlay`/`categoryScaleForOverlay` ranged clones). Y still
+ * routes through the real `y` scale channel, same as every other native
+ * mark in this file.
+ */
+function createBarHoverDotMark(
+  source: readonly ChartDatum[],
+  series: { dataKey: string },
+  categoryAccessor: (d: ChartDatum) => string,
+  projectValueForKey: (raw: number) => number,
+  bandStartForCategory: (category: string) => number,
+  groupOffsetX: number,
+  groupHalfWidth: number,
+  fill: string,
+  dotShape: { size: number; strokeWidth: number; isRing: boolean; radiusFraction: number },
+  tooltipSpring: SpringConfig,
+): ChartMark<ChartDatum, string, number> {
+  const { size, strokeWidth, isRing, radiusFraction } = dotShape;
+  const cornerRadius = barRingCornerRadius(size, radiusFraction);
+  const side = size * 2;
+  // Legacy's dot spring is NEVER gated on `discrete` — only the crosshair
+  // and pill are (tooltip-chrome.ts `updateDotPosition`'s own comment:
+  // "Dot always springs... only a fresh mount snaps in place"). The
+  // caller's `whenFocused(..., {retarget:true})` supplies the "fresh mount
+  // snaps" behavior for free (no prior DOM node to interpolate from), so
+  // this motion is unconditional.
+  const motion: ChartMotionDefinition<ChartDatum> = {
+    transition: { type: "spring", stiffness: tooltipSpring.stiffness, damping: tooltipSpring.damping },
+  };
+  return {
+    initialize: () => {
+      const xValues: (string | undefined)[] = [];
+      const yValues: (number | undefined)[] = [];
+      for (const d of source) {
+        xValues.push(categoryAccessor(d));
+        const raw = d[series.dataKey];
+        yValues.push(typeof raw === "number" && Number.isFinite(raw) ? projectValueForKey(raw) : undefined);
+      }
+      return {
+        id: `${series.dataKey}--hover-dot`,
+        motion,
+        channels: {
+          x: { scale: "x", values: xValues },
+          y: { scale: "y", values: yValues },
+        },
+        render: ({ scales }) => {
+          const nodes: SceneNode[] = [];
+          const points: ChartPoint<ChartDatum, string, number>[] = [];
+          source.forEach((datum, datumIndex) => {
+            const category = xValues[datumIndex];
+            const yv = yValues[datumIndex];
+            if (category === undefined || yv === undefined) return;
+            const y = scales.y.map(yv);
+            const x = bandStartForCategory(category) + groupOffsetX + groupHalfWidth;
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+            const point: ChartPoint<ChartDatum, string, number> = {
+              key: `${series.dataKey}:${datumIndex}`,
+              markId: series.dataKey,
+              group: null,
+              groupLabel: series.dataKey,
+              datum,
+              datumIndex,
+              xValue: category,
+              yValue: yv,
+              x,
+              y,
+              color: fill,
+            };
+            if (isRing) {
+              nodes.push({
+                kind: "rect",
+                key: `${series.dataKey}:hover-dot:${datumIndex}`,
+                x: x - size,
+                y: y - size,
+                width: side,
+                height: side,
+                radius: cornerRadius,
+                style: { fill: "transparent", stroke: fill, strokeWidth },
+                pointOwner: point,
+              });
+            } else {
+              nodes.push({
+                kind: "dot",
+                key: `${series.dataKey}:hover-dot:${datumIndex}`,
+                x,
+                y,
+                radius: size,
+                style: { fill, stroke: "var(--chart-background)", strokeWidth },
+                pointOwner: point,
+              });
+            }
+            points.push(point);
+          });
+          return {
+            nodes: [
+              {
+                kind: "group",
+                key: `${series.dataKey}--hover-dot`,
+                className: "ts-chart__hover-dot",
+                ariaHidden: true,
+                children: nodes,
+              },
+            ],
+            points,
+          };
+        },
+      };
+    },
+  };
 }
 
 export function BarChart({
@@ -392,6 +557,20 @@ export function BarChart({
     [resolvedSeries, resolvedBarSquares],
   );
 
+  // C3: combined series list feeding BOTH the native per-series hover-dot
+  // marks AND renderTooltipBody's rows-fallback — replaces the deleted
+  // bar-hover-chrome.ts's own `chromeStateRef.current.series` construction
+  // (`[...resolvedSeries.map(...), ...resolvedBarSquares.map(...)]`) verbatim,
+  // including bar-squares' `stroke ?? fill` dot-color fallback (previously
+  // the inline `squaresDotColor` helper).
+  const dotSeriesList = React.useMemo(
+    () => [
+      ...resolvedSeries.map((s) => ({ dataKey: s.dataKey, color: s.dotColor })),
+      ...resolvedBarSquares.map((s) => ({ dataKey: s.dataKey, color: s.stroke ?? s.fill })),
+    ],
+    [resolvedSeries, resolvedBarSquares],
+  );
+
   const innerWidth = Math.max(0, width - margin.left - margin.right);
 
   const categoryOrder = React.useMemo(
@@ -548,6 +727,22 @@ export function BarChart({
       .padding(barGap);
   }, [categoryOrder, margin.left, innerWidth, barGap]);
 
+  // C3: RANGED clone of `groupScale` (same domain/paddingInner, but ranged
+  // over `[0, bandWidth]`) so `createBarHoverDotMark` can resolve a real
+  // pixel group-offset for its series (`groupScaleForOverlay(dataKey)`) —
+  // `groupScale` itself is deliberately left unranged (see its own comment)
+  // because barY's `layout: group({scale: groupScale})` ranges its own
+  // internal copy; this is a second, ranged copy for app-layer use only,
+  // mirroring how `categoryScaleForOverlay` already shadows the unranged
+  // band domain for the same reason.
+  const groupScaleForOverlay = React.useMemo<ScaleBand<string>>(() => {
+    return scaleBand<string>()
+      .domain(groupScale.domain())
+      .paddingInner(groupScale.paddingInner())
+      .paddingOuter(groupScale.paddingOuter())
+      .range([0, bandWidth]);
+  }, [groupScale, bandWidth]);
+
   // C1: custom band-category focus strategy — bklit-parity band-index
   // division (Math.floor((x-margin.left)/innerWidth*n)) rather than nearest
   // band-center. Getters keep resolve reading current layout without re-
@@ -571,6 +766,11 @@ export function BarChart({
   const hasBarDepth = barDepthBacksRaw.length > 0 || barDepthFrontsRaw.length > 0 || barPulsesRaw.length > 0;
   const barDepthEnabled = hasBarDepth && !isHorizontalOrStacked;
 
+  // C3: gradient id for the crosshair rule's fade-edges stroke (`stroke:
+  // url(#id)` on a `<line>`, replacing the deleted indicator's `<rect
+  // fill="url(#id)">` gradient trick — see the linearGradient JSX below for
+  // why `gradientUnits="userSpaceOnUse"` is required for a zero-bbox line).
+  const indicatorGradientId = useSanitizedId();
   const squaresBaseId = useSanitizedId();
   const squaresDefs = React.useMemo(() => {
     if (!barSquaresEnabled) return [] as Array<{ dataKey: string; gradientId: string; patternId: string | null; fill: string; gradientStops: { offset: number; color: string }[]; patternPreset?: import("./internal/pattern-preset").PatternPresetId }>;
@@ -697,6 +897,12 @@ export function BarChart({
     [depthGradientIds, depthGlassPosStops, depthGlassNegStops, pulseWaveStops, pulseWaveGradientId],
   );
 
+  // C3: hoisted above `definition` — the crosshair/hover-dot marks built
+  // inside it need `chartConfig.tooltipSpring` for their `motion` springs
+  // (context-driven override, matching the deleted bar-hover-chrome.ts's own
+  // `attachBarHoverChrome(el, ..., {tooltipSpring: chartConfig.tooltipSpring})`).
+  const chartConfig = useChartConfig();
+
   const definition = React.useMemo(() => {
     if (width <= 0 || (resolvedSeries.length === 0 && resolvedBarSquares.length === 0)) return null;
     const gridGuide = resolveGridGuide(grid);
@@ -722,6 +928,106 @@ export function BarChart({
             : { type: "spring", stiffness: TOOLTIP_BOX_SPRING.stiffness, damping: TOOLTIP_BOX_SPRING.damping }) as false | { type: "spring"; stiffness: number; damping: number },
         }
       : (false as const);
+
+    // C3: large-dataset motion cutoff, shared by the crosshair/hover-dot
+    // marks below AND the native tooltip extension's own `motion` above
+    // (same DISCRETE_INTERACTION_THRESHOLD, verified strict `>`).
+    const discrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
+
+    // C3: crosshair + per-series hover-dot marks — native replacement for
+    // the deleted bar-hover-chrome.ts's imperative indicator/dot SVG layers.
+    // Both gated on `tooltip?.enabled` exactly like `tooltipOption` above (no
+    // tooltip config -> no hover chrome at all, matching legacy's
+    // `attachBarHoverChrome` only being mounted when `tooltipEnabled`).
+    const hoverMarks: ChartMark<ChartDatum, string, number>[] = [];
+    if (tooltipEnabled) {
+      if (tooltip?.showCrosshair ?? true) {
+        // Config resolution mirrors legacy's `buildIndicator` exactly
+        // (tooltip-mappers.ts's `toIndicatorConfig` is the byte-identical
+        // extraction of the same mapping bar-hover-chrome.ts used inline via
+        // `toIndicatorConfig(getState().tooltip)`). PRESERVED QUIRK:
+        // `indicatorColor` as a function is never actually invoked — legacy's
+        // ternary only special-cased the STRING form, falling through to the
+        // CSS var for anything else (including functions); reproduced here
+        // verbatim, not "fixed" (matches scatter-chart.tsx's own C3 note).
+        const indicatorCfg = toIndicatorConfig(tooltip);
+        const isDashed = Boolean(indicatorCfg.dasharray);
+        const fadeSides = resolveVerticalFadeSides(isDashed ? "none" : (indicatorCfg.fadeEdges ?? "both"));
+        const indicatorColorValue = typeof indicatorCfg.color === "string" ? indicatorCfg.color : "var(--chart-crosshair)";
+        const indicatorSpringCfg = indicatorCfg.springConfig ?? chartConfig.tooltipSpring;
+        // Native `crosshair()`'s vertical rule reproduces legacy's indicator
+        // geometry directly — width/color/dasharray/fade-gradient all map
+        // onto its `x` rule options one for one, and its `strokeOpacity`
+        // default of 0.35 (dist/crosshair.js `resolveRuleStyle`) is
+        // explicitly overridden to 1 to avoid a silent visual regression.
+        // `y` stays off (legacy never drew a horizontal guide — bar's
+        // indicator was always vertical-only, one per hovered category).
+        hoverMarks.push(
+          crosshair({
+            y: false,
+            x: {
+              stroke: !isDashed && fadeSides.any ? `url(#${indicatorGradientId})` : indicatorColorValue,
+              strokeOpacity: 1,
+              strokeWidth: resolveIndicatorPixelWidth(indicatorCfg),
+              strokeDasharray: indicatorCfg.dasharray,
+            },
+            motion: discrete
+              ? false
+              : {
+                  transition: {
+                    type: "spring",
+                    stiffness: indicatorSpringCfg.stiffness,
+                    damping: indicatorSpringCfg.damping,
+                  },
+                },
+          }) as ChartMark<ChartDatum, string, number>,
+        );
+      }
+      if (tooltip?.showDots ?? true) {
+        // Ring-dot sizing is inert (bar.md deviation, preserved verbatim from
+        // bar-hover-chrome.ts's own comment): bandWidth was never populated
+        // by any caller, so dots always used the plain dot config.
+        const dotCfg = toDotConfig(tooltip);
+        const variant = dotCfg.variant ?? "dot";
+        const isRing = variant === "ring";
+        const rawSize = dotCfg.size ?? 5;
+        const size = rawSize * (dotCfg.scale ?? 1);
+        const strokeWidth = dotCfg.strokeWidth ?? (isRing ? 1.5 : 2);
+        const radiusFraction = dotCfg.radiusFraction ?? 0.25;
+        // Legacy's `resolveDotColor` `tooltip.rows[i].color` branch is
+        // point-independent in practice: bar-hover-chrome.ts's own `update()`
+        // called `tooltip.rows({})` with a bogus empty object on every
+        // hover-move, so only the per-series `.color` fields were ever read.
+        // Reproduced faithfully as a ONE-TIME computation here instead of a
+        // per-hover-frame one (a native `dot`-style mark's `fill` is a static
+        // string per mark, dist/dot.d.ts — it could not be recomputed per
+        // frame even if we wanted to).
+        const tooltipRowColors = tooltip?.rows ? tooltip.rows({} as Record<string, unknown>).map((r) => r.color) : null;
+        const groupHalfWidth = groupScaleForOverlay.bandwidth() / 2;
+        dotSeriesList.forEach((series, seriesIndex) => {
+          const groupOffsetX = groupScaleForOverlay(series.dataKey) ?? 0;
+          const fill = resolveBarDotColor(tooltip, series.color, seriesIndex, tooltipRowColors);
+          hoverMarks.push(
+            whenFocused(
+              createBarHoverDotMark(
+                renderData,
+                series,
+                categoryAccessor,
+                (raw) => projectValue(series.dataKey, raw),
+                (category) => categoryScaleForOverlay(category) ?? 0,
+                groupOffsetX,
+                groupHalfWidth,
+                fill,
+                { size, strokeWidth, isRing, radiusFraction },
+                chartConfig.tooltipSpring,
+              ),
+              { match: "group", retarget: true },
+            ),
+          );
+        });
+      }
+    }
+
     if (!hasSquares && !hasTrack && !hasDepth) {
       const marks: ChartMark<ChartDatum, string, number>[] = [];
       for (const series of resolvedSeries) {
@@ -738,6 +1044,7 @@ export function BarChart({
           }),
         );
       }
+      marks.push(...hoverMarks);
       const spec = {
         marks,
         // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
@@ -920,6 +1227,7 @@ export function BarChart({
         if (m) marks.push(m);
       }
     }
+    marks.push(...hoverMarks);
     const spec = {
       marks,
       // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
@@ -968,33 +1276,26 @@ export function BarChart({
     depthGradientIds,
     nativeDepthGradients,
     tooltipEnabled,
+    tooltip,
+    chartConfig,
+    groupScaleForOverlay,
+    dotSeriesList,
+    indicatorGradientId,
   ]);
 
-  // Hover chrome (bklit ChartTooltip, bar per-category-index dim variant).
-  const chartConfig = useChartConfig();
-  const chromeRef = React.useRef<BarHoverChrome | null>(null);
-  const chromeStateRef = React.useRef<BarHoverChromeState | null>(null);
+  // C3: date-pill + label-fade chrome only — crosshair/dots are now native
+  // marks built inside `definition` above. `chromeStateRef` shrinks to just
+  // what `renderTooltipBody` (series/tooltip) and the pill mount effect
+  // (dateLabels) still need at call time; `margin`/`showCrosshair`/`showDots`
+  // are gone since neither consumer left reads them.
+  const chromeStateRef = React.useRef<BarChromeState | null>(null);
   const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
     const v = d[xDataKey];
     if (v instanceof Date) return shortDateFmt.format(v);
     return String(v ?? "");
   }), [renderData, xDataKey]);
-  const squaresDotColor = (fill: string, stroke: string | undefined) => stroke ?? fill;
   chromeStateRef.current = {
-    margin,
-    series: [...resolvedSeries.map((s) => ({
-      dataKey: s.dataKey,
-      color: s.dotColor,
-    })), ...resolvedBarSquares.map((s) => ({
-      dataKey: s.dataKey,
-      color: squaresDotColor(s.fill, s.stroke),
-    }))],
-    pointCount: renderData.length,
-    showCrosshair: tooltip?.showCrosshair ?? true,
-    showDots: tooltip?.showDots ?? true,
-    showDatePill: tooltip?.showDatePill ?? true,
-    // B12: bklit BarXAxis.tickerHalfWidth drives the date-pill label-fade radius.
-    tickerHalfWidth: barXAxis?.tickerHalfWidth,
+    series: dotSeriesList,
     tooltip: tooltip ?? null,
     dateLabels: dateLabelsForPill,
   };
@@ -1017,16 +1318,30 @@ export function BarChart({
     }
   }, [legendHoveredIndex, allSeriesKeys, focusSeries, clearFocus]);
 
+  // C3: date-pill-only mount — crosshair/dots are native marks now, so this
+  // effect no longer attaches `attachBarHoverChrome`'s full indicator/dot/
+  // pill trio, just the sanctioned-extension pill DOM (`internal/date-pill.ts`
+  // `buildPill`, byte-identical twin of the deleted tooltip-chrome.ts
+  // version).
+  const pillRef = React.useRef<PillBuild | null>(null);
+  // Tracks whether the pill was already visible on the PREVIOUS focus-change
+  // call, mirroring legacy's `showing = !visible` — first appearance jumps
+  // the spring in place, subsequent moves while already visible spring.
+  const pillVisibleRef = React.useRef(false);
+
   React.useLayoutEffect(() => {
     const el = overlayHostRef.current;
     if (!el || !tooltipEnabled) return;
-    const chrome = attachBarHoverChrome(el, () => chromeStateRef.current!, {
-      tooltipSpring: chartConfig.tooltipSpring,
-    });
-    chromeRef.current = chrome;
+    const doc = el.ownerDocument;
+    const pillBuild = buildPill(doc, chartConfig.tooltipSpring, () => chromeStateRef.current?.dateLabels ?? []);
+    el.appendChild(pillBuild.layer);
+    pillRef.current = pillBuild;
     return () => {
-      chromeRef.current = null;
-      chrome.detach();
+      pillRef.current = null;
+      pillVisibleRef.current = false;
+      pillBuild.spring.stop();
+      pillBuild.ticker?.detach();
+      pillBuild.layer.remove();
     };
   }, [tooltipEnabled, hasDefinition, chartConfig]);
 
@@ -1038,10 +1353,21 @@ export function BarChart({
     return m;
   }, [categoryOrder]);
 
+  // C3: shrunk to date-pill + axis-label-fade only (crosshair/dot positioning
+  // is now entirely inside the native marks above — this handler no longer
+  // builds a `BarFocusGroup`/`BarFocusPoint[]` for a chrome object to consume).
   const handleFocusGroupChange = React.useCallback(
     (points: readonly ChartPoint<ChartDatum, string, number>[]) => {
+      const pillBuild = pillRef.current;
+      const container = containerRef.current;
       if (points.length === 0) {
-        chromeRef.current?.onFocusChange(null);
+        pillVisibleRef.current = false;
+        if (pillBuild) {
+          pillBuild.layer.style.display = "none";
+          pillBuild.spring.stop();
+          pillBuild.label.textContent = "";
+        }
+        if (container) resetLabelFade(container);
         return;
       }
       // Category = xValue of any point in the grouped set.
@@ -1056,42 +1382,31 @@ export function BarChart({
       // scale clone BarXAxisOverlay uses (single source of band truth).
       const bandStart = categoryScaleForOverlay(String(categoryLabel)) ?? 0;
       const anchorX = bandStart + bandWidth / 2;
+      const discrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
+      const showDatePill = tooltipEnabled && (tooltip?.showDatePill ?? true);
+      const showing = !pillVisibleRef.current;
+      pillVisibleRef.current = true;
 
-      // Dot per series must be AT THAT SERIES' OWN bar midpoint, not the
-      // shared band center (bar.tsx `xPositions[dataKey] = barPos +
-      // idx*(W_gap)+W/2`). TanStack's ChartPoint.x already is that
-      // per-series midpoint (barY sets point.x = bandCenter-bandW/2 +
-      // groupOffset+groupW/2), so we keep point.x as-is for dot x.
-      // Dot y already comes from TanStack's scene-resolved y (no local scale).
-      // P6.1 — `value` is the RAW datum value, deliberately NOT `p.yValue`.
-      // Once a series can sit on a secondary axis, `p.yValue` is the value
-      // REPROJECTED into the primary domain (see `projectYByKey`), which is a
-      // rendering-space number: correct for placing the dot, wrong for the
-      // tooltip row and for the object handed to a caller's `tooltip.rows()`.
-      // Line, area and scatter all already read the raw datum here; bar was
-      // the only chart reading the scale-space value, and the QA gate does NOT
-      // catch this — a few wrong digits of tooltip text is ~0.05% of the
-      // viewport, well under the 0.5% gate (D337 again).
-      const barPoints: BarFocusPoint[] = points.map((p) => ({
-        markId: p.markId,
-        value: (() => {
-          const raw = (p.datum as ChartDatum | undefined)?.[p.markId];
-          return typeof raw === "number" ? raw : (p.yValue as number);
-        })(),
-        x: p.x as number,
-        y: p.y as number,
-        color: p.color,
-      }));
+      if (pillBuild) {
+        if (showDatePill) {
+          pillBuild.layer.style.display = "";
+          if (pillBuild.ticker && chromeStateRef.current?.dateLabels && chromeStateRef.current.dateLabels.length > 0) {
+            pillBuild.ticker.update(categoryIndex, discrete);
+          } else {
+            pillBuild.label.textContent = categoryLabel;
+          }
+          if (showing || discrete) pillBuild.spring.jump(anchorX);
+          else pillBuild.spring.set(anchorX);
+        } else {
+          pillBuild.layer.style.display = "none";
+        }
+      }
 
-      const group: BarFocusGroup = {
-        categoryIndex,
-        categoryLabel,
-        anchorX,
-        points: barPoints,
-      };
-      chromeRef.current?.onFocusChange(group);
+      if (container) {
+        applyLabelFade(container, anchorX, categoryLabel, barXAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH, FADE_BUFFER);
+      }
     },
-    [categoryIndexByLabel, categoryScaleForOverlay, bandWidth],
+    [categoryIndexByLabel, categoryScaleForOverlay, bandWidth, renderData.length, tooltipEnabled, tooltip, barXAxis],
   );
 
   // C2: native tooltip body — reuses `TooltipContent` verbatim (same row
@@ -1369,6 +1684,33 @@ export function BarChart({
   // task and belongs to the reference-area cluster, not here.)
   const refAreaChildrenBar = React.useMemo(() => extractReferenceAreaProps(children), [children]);
   const heightPxBar = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
+
+  // C3: the crosshair's vertical fade-mask gradient, an app-owned
+  // `linearGradient` def referenced by the native `crosshair()` mark's
+  // `stroke: url(#id)` (the mark protocol has no built-in fade-mask concept —
+  // this is the sanctioned escape hatch for a renderer-visual legacy owned
+  // imperatively). Stops come from the same `indicatorFadeGradientStops`
+  // legacy's `buildIndicator` used; gate conditions mirror the `definition`
+  // useMemo's crosshair-mark branch exactly (dashed indicators never fade;
+  // no-fade configs need no gradient at all). `gradientUnits="userSpaceOnUse"`
+  // with explicit pixel `y1`/`y2` is required because the native crosshair
+  // renders as a zero-bbox `<line>` — an `objectBoundingBox` gradient (what
+  // legacy's `<rect fill="url(#id)">` trick relied on implicitly) has no
+  // bounding box to map onto for a line.
+  const crosshairFadeGradient = React.useMemo(() => {
+    if (!tooltipEnabled || !(tooltip?.showCrosshair ?? true)) return null;
+    const indicatorCfg = toIndicatorConfig(tooltip);
+    if (indicatorCfg.dasharray) return null;
+    const fadeSides = resolveVerticalFadeSides(indicatorCfg.fadeEdges ?? "both");
+    if (!fadeSides.any) return null;
+    const colorValue = typeof indicatorCfg.color === "string" ? indicatorCfg.color : "var(--chart-crosshair)";
+    return {
+      id: indicatorGradientId,
+      color: colorValue,
+      stops: indicatorFadeGradientStops(fadeSides, indicatorCfg.fadeLength ?? 10),
+    };
+  }, [tooltipEnabled, tooltip, indicatorGradientId]);
+
   const barScaleForRef = React.useMemo(() => {
     if (categoryOrder.length === 0) return null;
     return scaleBand<string>().domain(categoryOrder).range([0, Math.max(0, width - margin.left - margin.right)]).padding(barGap);
@@ -1437,7 +1779,7 @@ export function BarChart({
           ) : null}
         </>
       ) : null}
-      {squaresDefs.length > 0 && (
+      {squaresDefs.length > 0 || crosshairFadeGradient ? (
         <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
           <defs>
             {squaresDefs.map((d) => (
@@ -1450,9 +1792,24 @@ export function BarChart({
                 {d.patternId && d.patternPreset ? renderPatternPreset(d.patternPreset, d.patternId, { color: `url(#${d.gradientId})` }) : null}
               </React.Fragment>
             ))}
+            {crosshairFadeGradient ? (
+              <linearGradient
+                key={crosshairFadeGradient.id}
+                id={crosshairFadeGradient.id}
+                gradientUnits="userSpaceOnUse"
+                x1={0}
+                x2={0}
+                y1={margin.top}
+                y2={margin.top + Math.max(0, heightPxBar - margin.top - margin.bottom)}
+              >
+                {crosshairFadeGradient.stops.map((s, i) => (
+                  <stop key={i} offset={s.offset} stopColor={crosshairFadeGradient.color} stopOpacity={s.opacity} />
+                ))}
+              </linearGradient>
+            ) : null}
           </defs>
         </svg>
-      )}
+      ) : null}
     </div>
   );
 }

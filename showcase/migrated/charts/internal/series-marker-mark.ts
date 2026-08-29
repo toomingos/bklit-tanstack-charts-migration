@@ -4,6 +4,24 @@ import { dot } from "@tanstack/charts";
 import type { ChartMark } from "@tanstack/charts";
 import type { ChartDatum, SeriesPointMarkerStyle } from "./types";
 
+// C3: bklit's marker active-scale (×1.35 at the hovered x) + inactive-dim
+// (opacity 0.5 elsewhere, on ANY pointer hover) ported from hover-chrome.ts's
+// imperative `ensureMarkerActiveGroup` / `dimmedMarkerGroups` writers into
+// this mark's own `states`, per data/props (no DOM reach-in). The old
+// mechanism used TWO overlapping layers (dim the base marker + draw a
+// separate bigger/brighter duplicate on top); this collapses that into ONE
+// reactive marker whose own circle scales up and stays full-opacity when
+// matched, and dims (no scale change) otherwise — same net visual result
+// (bigger+bright at the hovered index, dim elsewhere) with no duplicate DOM.
+//
+// Dropped: the 2px blur hover-chrome applied to dimmed markers
+// (MARKER_DIM_BLUR_PX). `ChartDotStateStyle` (dist/types.d.ts) is a Pick of
+// `fill|fillOpacity|stroke|strokeOpacity|strokeWidth|opacity|r` — there is no
+// blur/filter field, so a dot mark's `states` cannot express it without a
+// renderer-DOM reach-in. Dropped citing the D421 scatter-blur precedent.
+const MARKER_ACTIVE_SCALE = 1.35;
+const MARKER_DIM_OPACITY = 0.5;
+
 export interface MarkerSeriesConfig {
   dataKey: string;
   stroke: string;
@@ -81,6 +99,7 @@ export function buildMarkerMarks(
     const outerRadius = hasRing ? radius + ringGap + strokeWidth : radius;
     const fill = s.markers?.fill ?? s.stroke;
     const gradientId = hasRing ? gradientIdByKey.get(s.dataKey) : undefined;
+    const showActiveHighlight = s.markers?.showActiveHighlight ?? true;
     marks.push(
       dot(renderData, {
         id: `${s.dataKey}__marker`,
@@ -89,6 +108,19 @@ export function buildMarkerMarks(
         r: outerRadius,
         fill: gradientId ? `url(#${gradientId})` : fill,
         stroke: "none",
+        states: [
+          // Active (hovered x): scale up, stay full-opacity — CSS-driven
+          // 0.15s transition (styles.css), D425 pattern (no transition here).
+          {
+            when: { focus: "x", source: "pointer" },
+            style: { r: showActiveHighlight ? outerRadius * MARKER_ACTIVE_SCALE : outerRadius },
+          },
+          // Inactive (some OTHER x pointer-focused): dim.
+          {
+            when: (ctx) => ctx.focus.source === "pointer" && !ctx.matches("x"),
+            style: { opacity: MARKER_DIM_OPACITY },
+          },
+        ],
       }) as unknown as ChartMark<ChartDatum, Date, number>,
     );
   }

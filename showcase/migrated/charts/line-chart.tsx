@@ -11,16 +11,28 @@ import { Chart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
 import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
-import type { ChartMark, ChartRenderContext, ChartScale } from "@tanstack/charts";
+import type {
+  ChartInteractionController,
+  ChartMark,
+  ChartPoint,
+  ChartRenderContext,
+  ChartScale,
+} from "@tanstack/charts";
 import {
   decimateTimeSeries,
   maxRenderPointsForWidth,
 } from "./internal/decimate";
 import { extractChildren } from "./children";
 import {
-  useHoverChrome,
-  type HoverChromeFocusPoint,
-} from "./internal/use-hover-chrome";
+  buildCrosshairGradientDef,
+  buildHighlightBandMarks,
+  buildHoverDotMark,
+  buildIndicatorMark,
+  isFocusOutsideXDomain,
+  pointerHoverDimState,
+  resolveHoverDotFill,
+  useDatePillOverlay,
+} from "./internal/hover-geometry";
 import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
@@ -58,7 +70,7 @@ import {
   SERIES_MARKER_ENTER_MS,
   TOOLTIP_BOX_SPRING,
 } from "./internal/design-tokens";
-import { weekdayDateFmt } from "./internal/formatters";
+import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { TooltipContent } from "./internal/tooltip-components";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
 import { YAxisOverlay } from "./internal/y-axis-overlay";
@@ -81,6 +93,7 @@ import {
 } from "./internal/y-domain";
 import { DEFAULT_Y_AXIS_ID } from "./internal/y-axis-id";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
+import { useChartConfig } from "./internal/chart-config-context";
 import { useChartMargin, DEFAULT_CHART_MARGIN, useDebouncedContainerSize, type ChartMargin } from "./internal";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
@@ -244,12 +257,21 @@ export function LineChart({
     [children],
   );
 
+  // Moved up from its old post-marks-memo location (bklit ChartTooltip):
+  // C3's native crosshair/hover-dot marks (built inside the `marks` memo
+  // below) are gated on this same flag hover-chrome.ts used to decide
+  // whether to attach at all.
+  const tooltipEnabled = tooltip?.enabled ?? false;
   const staticRefConfigs = React.useMemo(() => extractReferenceAreaConfigs(children), [children]);
   const projectionConfigs = React.useMemo(() => extractProjectionLineConfigs(children), [children]);
   const projectionGradientBaseId = useSanitizedId();
   const profitLossHoveredIndex = extractProfitLossHoveredIndex(children);
   const hoveredIndexForPL = profitLossHoveredIndex;
   const [plTooltipSignIndex, setPlTooltipSignIndex] = React.useState<number | null>(null);
+  // C3: replaces hover-chrome's imperative `highlightXSpring`/`highlightWidthSpring`
+  // clip-rect sweep — the reactive index driving the native highlight-band
+  // marks below (internal/hover-geometry.ts's buildHighlightBandMarks).
+  const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const prefersReducedMotion = usePrefersReducedMotion();
   // C1 (P6): legend hover -> native mark states via programmatic focus
@@ -270,8 +292,17 @@ export function LineChart({
       lines.map((l) => l.dataKey),
     );
   }, [data, innerWidth, lines]);
+  // bklit `pointCount > DISCRETE_INTERACTION_THRESHOLD` — dense data snaps
+  // (jump) instead of springing for the crosshair/hover-dot/highlight-band/
+  // pill motion, matching the existing native-tooltip motion gate above.
+  const isDiscrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
 
   const markerGradientBaseId = useSanitizedId();
+  // C3: app-owned <linearGradient> def id for the native crosshair mark's
+  // vertical fade (bklit TooltipIndicator default fade) — same
+  // useSanitizedId()/rendered-<defs> mechanism as the projection/marker
+  // gradient defs above.
+  const crosshairGradientId = useSanitizedId();
   const markerSeriesConfigs = React.useMemo(() => lines.map((l) => ({ dataKey: l.dataKey, stroke: l.stroke ?? "var(--chart-line-primary)", showMarkers: l.showMarkers, markers: l.markers })), [lines]);
   const markerGradientDefs = React.useMemo(() => buildMarkerGradientDefs(markerSeriesConfigs, markerGradientBaseId), [markerSeriesConfigs, markerGradientBaseId]);
   const markerGradientIdByKey = React.useMemo(() => {
@@ -437,18 +468,80 @@ export function LineChart({
           // C1 (P6): legend-hover series dim — bklit SeriesHoverDim's
           // legend term (line.tsx dims to 0.3, 400ms ease-in-out). Programmatic-
           // source-only so pointer hover never triggers this (legend-driven).
+          // C3: second entry — pointer-hover series dim (bklit SeriesHoverDim's
+          // pointer term, hover-chrome.ts DIM_OPACITY="0.3"). No `transition`
+          // field (D425 — the 0.4s term rides `.ts-chart__line path` in
+          // styles.css instead, per the explicit pointer-hover-dim directive).
           states: [
             {
               when: whenSeriesDimmed(),
               style: { opacity: 0.3 },
               transition: { type: "tween", duration: 400, easing: "ease-in-out" },
             },
+            pointerHoverDimState<ChartDatum>(0.3),
           ],
         });
       });
       // SeriesMarkers grid — dot marks ABOVE the line stroke (bklit line.tsx:317-401 z-order: hover-dim stroke -> markers -> highlight band). Null y values produce no dot (bklit series-markers.tsx:107-120).
       if (!isLoading && markerSeriesConfigs.some((s) => s.showMarkers)) {
         base.push(...buildMarkerMarks(renderData, xDataKey, markerSeriesConfigs, markerGradientIdByKey));
+      }
+      // C3: native crosshair (replaces hover-chrome's imperative
+      // buildIndicator/positionIndicator) — x-only rule, gated on
+      // tooltip.showCrosshair (bklit default true). References the app-owned
+      // gradient def rendered in the JSX <defs> block below.
+      if (tooltipEnabled && (tooltip?.showCrosshair ?? true)) {
+        base.push(
+          buildIndicatorMark({
+            gradientId: crosshairGradientId,
+            width: tooltip?.indicatorWidth,
+            span: tooltip?.indicatorSpan,
+            columnWidth: tooltip?.columnWidth,
+            dasharray: tooltip?.indicatorDasharray,
+            color: typeof tooltip?.indicatorColor === "string" ? tooltip.indicatorColor : undefined,
+            discrete: isDiscrete,
+          }) as unknown as ChartMark<ChartDatum, Date, number>,
+        );
+      }
+      // C3: native hover dots (replaces ensureDot/updateDotPosition) — one
+      // whenFocused(dot(...), {match:"x", retarget:true}) per series, gated
+      // on tooltip.showDots (bklit default true).
+      if (tooltipEnabled && (tooltip?.showDots ?? true)) {
+        for (const line of lines) {
+          base.push(
+            buildHoverDotMark(
+              renderData,
+              xDataKey,
+              { dataKey: line.dataKey, color: line.stroke ?? "var(--chart-line-primary)" },
+              resolveHoverDotFill(line.stroke ?? "var(--chart-line-primary)", tooltip?.dotColor),
+              {
+                size: tooltip?.dotSize,
+                strokeWidth: tooltip?.dotStrokeWidth,
+                discrete: isDiscrete,
+              },
+            ),
+          );
+        }
+      }
+      // C3: native highlight band (replaces hover-chrome's imperative
+      // clip-rect sweep) — reactive slice around `hoveredIndex`, driven by
+      // React state set in handleFocusChange below, not DOM.
+      if (tooltipEnabled) {
+        base.push(
+          ...buildHighlightBandMarks(
+            renderData,
+            xDataKey,
+            hoveredIndex,
+            lines.map((line) => ({
+              dataKey: line.dataKey,
+              color: line.stroke ?? "var(--chart-line-primary)",
+              strokeWidth: line.strokeWidth ?? 2.5,
+              showHighlight: line.showHighlight ?? true,
+              curve: d3Curve(line.curve ?? curveNatural),
+            })),
+            { discrete: isDiscrete },
+          ),
+        );
       }
       // Grid highlight rows (bklit highlightRowValues) — solid lines under
       // the series marks; gated on the resolved grid horizontal default.
@@ -542,7 +635,7 @@ export function LineChart({
       }
       return base;
     },
-    [renderData, xDataKey, lines, isLoading, width, heightPx, yDomainFinal, projectorFor, projectionConfigs, projectionLines, projectionGradientBaseId, margin, profitLossLines, hoveredIndexForPL, plTooltipSignIndex, grid, markerSeriesConfigs, markerGradientIdByKey, timeExtent, timeExtentRaw],
+    [renderData, xDataKey, lines, isLoading, width, heightPx, yDomainFinal, projectorFor, projectionConfigs, projectionLines, projectionGradientBaseId, margin, profitLossLines, hoveredIndexForPL, plTooltipSignIndex, grid, markerSeriesConfigs, markerGradientIdByKey, timeExtent, timeExtentRaw, tooltipEnabled, tooltip, crosshairGradientId, isDiscrete, hoveredIndex],
   );
 
   const spec = React.useMemo(() => {
@@ -662,15 +755,6 @@ export function LineChart({
     return defineChart(spec);
   }, [spec]);
 
-  // Hover chrome (bklit ChartTooltip): imperative overlays driven by
-  // TanStack's focus callbacks — no React work per pointer move. The state
-  // ref keeps the chrome reading current geometry without re-attaching.
-  // Wiring (refs, pill labels, attach/reanchor effects, xDomain focus-clamp)
-  // is shared with area-chart.tsx via ./internal/use-hover-chrome — only
-  // chromeStateRef.current's series shape and this profit/loss sign flip are
-  // Line-specific. Legend-hover series dim is native mark `states` +
-  // `useFocusInjection` (phase 6, C1), wired directly below.
-  const tooltipEnabled = tooltip?.enabled ?? false;
   // C2 (P6): renders inside the native tooltip extension's unstyled
   // `.ts-chart-tooltip__body` portal target — wraps the reused
   // `TooltipContent` in `.bkm-tooltip-panel` (styles.css) to reproduce the
@@ -719,115 +803,112 @@ export function LineChart({
     },
     [tooltip, xDataKey, lines],
   );
-  const xForIndex = React.useCallback(
-    (index: number) => {
-      const xScaleInstance = xScaleD3Ref.current;
-      const row = renderData[index];
-      const value = row?.[xDataKey];
-      if (!xScaleInstance || !(value instanceof Date)) return margin.left;
-      const mapped = xScaleInstance(value);
-      return mapped ?? margin.left;
-    },
-    [renderData, xDataKey, margin.left],
+  // C3: internal/hover-chrome.ts + internal/use-hover-chrome.ts (both
+  // deleted in this commit) are replaced by: native crosshair/hover-dot/
+  // highlight-band marks (wired into `marks` above — native focus:"group-x"
+  // drives them directly off the pointer, no React work per move), plus this
+  // one unified focus handler for the remaining REACTIVE surfaces (profit/
+  // loss sign flip, `hoveredIndex` for the highlight band, the marker-active-
+  // date store, and the app-owned date-pill overlay).
+  //
+  // Suppression (drag-selection / xDomain-clamp / non-interactive phase): the
+  // old imperative chrome only had to withhold data from its OWN writer, but
+  // native marks read TanStack's own internal focus state straight off the
+  // pointer — so suppressing them now additionally requires overriding that
+  // state via `interaction.setControlledFocus(null, {source:"pointer"})`,
+  // captured below from `onRender`'s context (D110-style escape hatch, same
+  // shape as `useFocusInjection`'s own private capture).
+  const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
+  // bklit parity (use-chart-interaction.ts): drag selection suppresses the
+  // hover chrome — cleared on mousedown, never rescheduled while dragging.
+  const dragSelectionActiveRef = React.useRef(false);
+  // Jump-vs-spring for the pill/crosshair/highlight motion on first show —
+  // mirrors hover-chrome.ts's local `showing = !visible` flag.
+  const wasVisibleRef = React.useRef(false);
+  const chartConfig = useChartConfig();
+  const dateLabelsForPill = React.useMemo(
+    () =>
+      renderData.map((d) => {
+        const v = d[xDataKey];
+        if (v instanceof Date) return shortDateFmt.format(v as Date);
+        return String(v ?? "");
+      }),
+    [renderData, xDataKey],
   );
-  const handleProfitLossFocus = React.useCallback(
-    (points: readonly HoverChromeFocusPoint[]) => {
+  const datePill = useDatePillOverlay({
+    enabled: tooltipEnabled && (tooltip?.showDatePill ?? true),
+    dateLabels: dateLabelsForPill,
+    tooltipSpring: chartConfig.tooltipSpring,
+  });
+  // LM7/LM8 (P1.12): shared store carrying the live tooltip date for
+  // ChartMarkersOverlay's isActive + useActiveMarkers consumers.
+  const markerActiveStore = React.useMemo(() => createActiveMarkersStore(), []);
+
+  // Shared by drag-start suppression and marker-hover-clear (LM6 legacy
+  // interplay) — force-clears native focus AND every reactive surface this
+  // file still owns, mirroring hover-chrome.ts's `hide()`.
+  const clearFocusChrome = React.useCallback(() => {
+    interactionRef.current?.setControlledFocus(null, { source: "pointer" });
+    setHoveredIndex(null);
+    if (profitLossLines.length > 0) setPlTooltipSignIndex(null);
+    markerActiveStore.setActiveDate(null);
+    wasVisibleRef.current = false;
+    datePill.hide();
+    datePill.resetFade();
+  }, [profitLossLines, markerActiveStore, datePill]);
+
+  const handleFocusChange = React.useCallback(
+    (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
+      const rawPrimary = points[0];
+      // bklit shell comment — interaction bisects only visiblePlotData; with
+      // domain-clamp the focus stack is over full data, so an edge pointer
+      // can resolve an off-viewport point.
+      const outsideXDomain =
+        xDomain != null && rawPrimary != null && isFocusOutsideXDomain(rawPrimary.datum, xDataKey, xDomain);
+      const phaseGated = !(isChartInteractionPhase(chartPhase) && isLoaded);
+      const suppressed = outsideXDomain || dragSelectionActiveRef.current || phaseGated;
+      if (suppressed && points.length > 0) {
+        interactionRef.current?.setControlledFocus(null, { source: "pointer" });
+      }
+      const primary = suppressed ? undefined : rawPrimary;
+
+      // Line-only profit/loss sign flip (bklit use-hover-chrome.ts's
+      // onFocusPoints, inlined here — Line is the only chart that needs it).
       if (profitLossLines.length > 0) {
         let next: number | null = null;
-        if (points.length > 0) {
+        if (primary) {
           const firstCfg = profitLossLines[0] as unknown as Record<string, unknown> | undefined;
           const dk = firstCfg?.["dataKey"] as string | undefined;
           if (dk) {
-            const v = (points[0]!.datum as unknown as Record<string, unknown>)?.[dk];
+            const v = (primary.datum as unknown as Record<string, unknown>)?.[dk];
             if (typeof v === "number") next = v >= 0 ? 0 : 1;
           }
         }
         setPlTooltipSignIndex((prev) => (prev !== next ? next : prev));
       }
-    },
-    [profitLossLines],
-  );
-  const {
-    chromeRef,
-    dragSelectionActiveRef,
-    chromeStateRef,
-    overlayHostRef,
-    dateLabelsForPill,
-    handleFocusGroupChange,
-  } = useHoverChrome({
-    renderData,
-    xDataKey,
-    chartPhase,
-    isLoaded,
-    xDomain,
-    tooltipEnabled,
-    width,
-    onFocusPoints: handleProfitLossFocus,
-  });
-  // LM7/LM8 (P1.12): shared store carrying the live tooltip date for
-  // ChartMarkersOverlay's isActive + useActiveMarkers consumers.
-  const markerActiveStore = React.useMemo(() => createActiveMarkersStore(), []);
-  const handleFocusGroupChangeWithMarkerDate = React.useCallback(
-    (points: Parameters<typeof handleFocusGroupChange>[0]) => {
-      handleFocusGroupChange(points);
-      const datum = points[0]?.datum as Record<string, unknown> | undefined;
-      const v = datum?.[xDataKey];
-      const d = v instanceof Date ? v : v != null ? new Date(v as string | number) : null;
+
+      setHoveredIndex(primary ? primary.datumIndex : null);
+
+      const datum = primary?.datum as Record<string, unknown> | undefined;
+      const rawDate = datum?.[xDataKey];
+      const d = rawDate instanceof Date ? rawDate : rawDate != null ? new Date(rawDate as string | number) : null;
       markerActiveStore.setActiveDate(d && !Number.isNaN(d.getTime()) ? d : null);
+
+      if (primary && (tooltip?.showDatePill ?? true)) {
+        const label = d ? shortDateFmt.format(d) : null;
+        const jump = !wasVisibleRef.current;
+        wasVisibleRef.current = true;
+        datePill.show(primary.x, { index: primary.datumIndex, label, discrete: isDiscrete, jump });
+        // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade radius.
+        datePill.applyFade(primary.x, label, xAxis?.tickerHalfWidth);
+      } else {
+        wasVisibleRef.current = false;
+        datePill.hide();
+        datePill.resetFade();
+      }
     },
-    [handleFocusGroupChange, xDataKey, markerActiveStore],
+    [xDomain, xDataKey, chartPhase, isLoaded, profitLossLines, markerActiveStore, tooltip, isDiscrete, datePill, xAxis],
   );
-  chromeStateRef.current = {
-    margin,
-    series: lines.map((line) => ({
-      dataKey: line.dataKey,
-      color: line.stroke ?? "",
-      strokeWidth: line.strokeWidth ?? 2.5,
-      showHighlight: line.showHighlight ?? true,
-      marker: line.showMarkers ? { fill: line.markers?.fill ?? line.stroke ?? "", stroke: line.markers?.stroke ?? line.markers?.fill ?? line.stroke ?? "", strokeWidth: line.markers?.strokeWidth ?? 2, ringGap: line.markers?.ringGap ?? 2, radius: line.markers?.radius ?? 5, outlineWidth: line.markers?.outlineWidth ?? 0, outlineColor: line.markers?.outlineColor, showActiveHighlight: line.markers?.showActiveHighlight ?? true } : null,
-    })),
-    xDataKey,
-    pointCount: renderData.length,
-    xForIndex,
-    showCrosshair: tooltip?.showCrosshair ?? true,
-    showDots: tooltip?.showDots ?? true,
-    showDatePill: tooltip?.showDatePill ?? true,
-    // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade radius.
-    tickerHalfWidth: xAxis?.tickerHalfWidth,
-    tooltip: tooltip ?? null,
-    dateLabels: dateLabelsForPill,
-    // D4: shared re-anchor support (./internal/hover-reanchor via
-    // hover-chrome.ts's `reanchor()`) — replaces this file's former bespoke
-    // bisect-and-rebuild-points effect below with the one shared
-    // implementation, wired once in hover-chrome.ts.
-    chartPhase,
-    isLoaded,
-    renderData,
-    xScale: xScaleD3Ref.current,
-    resolvePoints: (x, index, datum) => {
-      const state = chromeStateRef.current;
-      if (!state) return null;
-      // Same scene mapping as the rendered lineY marks (and the terminal
-      // markers above): margin.top + scaleLinear(yDomainFinal).range([innerH, 0]).
-      const innerH = Math.max(0, heightPx - margin.top - margin.bottom);
-      const span = yDomainFinal[1] - yDomainFinal[0];
-      const row = datum as Record<string, unknown>;
-      return state.series.map((s) => {
-        const v = row?.[s.dataKey];
-        const y = typeof v === "number" && Number.isFinite(v) && span !== 0 && innerH > 0
-          ? margin.top + innerH - ((v - yDomainFinal[0]) / span) * innerH
-          : margin.top + innerH;
-        return {
-          markId: s.dataKey,
-          datum,
-          datumIndex: index,
-          x,
-          y,
-          color: s.color,
-        };
-      });
-    },
-  };
 
   const markerRevealAnimsRef = React.useRef<Animation[]>([]);
   const markerRevealCancelRef = React.useRef<(() => void) | null>(null);
@@ -845,6 +926,12 @@ export function LineChart({
     // strictFunctionTypes — is not structurally assignable from our
     // concretely-typed context. Both denote the same live object at runtime.
     captureRenderContext(context as unknown as Pick<ChartRenderContext, "scene" | "interaction">);
+    // C3: own capture, separate from useFocusInjection's private ref — that
+    // hook's semantics are legend-hover programmatic focus injection, while
+    // this one drives pointer-hover suppression (drag/xDomain/phase) inside
+    // handleFocusChange above; conflating them would blur two different
+    // sources of `focus`.
+    interactionRef.current = context.interaction;
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marks) return;
     const epochUnseen = revealedEpochRef.current !== revealEpoch;
@@ -1078,6 +1165,20 @@ export function LineChart({
     return resolveProfitLossGradientDefs(valid, innerW, projectionGradientBaseId);
   }, [profitLossLines, width, margin, projectionGradientBaseId]);
 
+  // C3: app-owned <linearGradient> def feeding the native crosshair mark's
+  // `stroke: url(#id)` vertical fade. Color-fallback expression ported
+  // verbatim from internal/tooltip-chrome.ts's `buildIndicator` — a function
+  // form of `tooltip.indicatorColor` falls back to the CSS var exactly like
+  // the old imperative code (only a string form is honored inline). Rendered
+  // unconditionally whenever the crosshair mark itself is enabled, even in
+  // the dashed-stroke branch where the mark doesn't reference the gradient —
+  // matching hover-chrome.ts's own always-build behavior for this def.
+  const crosshairGradientDef = React.useMemo(() => {
+    if (!(tooltipEnabled && (tooltip?.showCrosshair ?? true))) return null;
+    const color = typeof tooltip?.indicatorColor === "string" ? tooltip.indicatorColor : "var(--chart-crosshair)";
+    return buildCrosshairGradientDef(crosshairGradientId, color);
+  }, [tooltipEnabled, tooltip, crosshairGradientId]);
+
   const overlayRendered = (lineTerminalAnchors.length > 0 || lineEndAnchors.length > 0) && width > 0 && heightPx > 0;
   React.useLayoutEffect(() => {
     if (!overlayRendered) return;
@@ -1099,7 +1200,7 @@ export function LineChart({
     containerRef,
     onDragStart: () => {
       dragSelectionActiveRef.current = true;
-      chromeRef.current?.onFocusGroupChange([]);
+      clearFocusChrome();
     },
     onDragEnd: () => {
       dragSelectionActiveRef.current = false;
@@ -1170,7 +1271,7 @@ export function LineChart({
             aspectRatio={parseAspectRatio(aspectRatio)}
             height={heightPx > 0 ? heightPx : undefined}
             definition={definition}
-            onFocusGroupChange={handleFocusGroupChangeWithMarkerDate}
+            onFocusGroupChange={handleFocusChange}
             onRender={handleRender}
             renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
           />
@@ -1254,6 +1355,17 @@ export function LineChart({
               </defs>
             </svg>
           ) : null}
+          {crosshairGradientDef ? (
+            <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+              <defs>
+                <linearGradient id={crosshairGradientDef.id} gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="0%" y2="100%">
+                  {crosshairGradientDef.stops.map((s) => (
+                    <stop key={s.offset} offset={s.offset} stopColor={crosshairGradientDef.color} stopOpacity={s.opacity} />
+                  ))}
+                </linearGradient>
+              </defs>
+            </svg>
+          ) : null}
           {overlayRendered ? (
             <ProjectionMarkerOverlay
               width={width}
@@ -1266,7 +1378,7 @@ export function LineChart({
           ) : null}
           {tooltipEnabled ? (
             <div
-              ref={overlayHostRef}
+              ref={datePill.overlayHostRef}
               style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
             />
           ) : null}
@@ -1340,8 +1452,7 @@ export function LineChart({
                 // (guide lines return to rest opacity); leaving leaves both
                 // cleared until the next chart hover, like legacy.
                 if (markers) {
-                  chromeRef.current?.onFocusGroupChange([]);
-                  markerActiveStore.setActiveDate(null);
+                  clearFocusChrome();
                 }
               }}
             />

@@ -14,7 +14,7 @@
 - [ ] 6.3 Implement (one commit per subsystem)
   - [x] C1 states+legend (D421, D424, D425)
   - [x] C2 tooltip (D426, D427)
-  - [ ] C3 hover-geometry
+  - [x] C3 hover-geometry (D428, D429)
   - [ ] C4 axes
   - [ ] C5 motion+reveals (renderer switch, class rename)
   - [ ] C6 brush+zoom+selection
