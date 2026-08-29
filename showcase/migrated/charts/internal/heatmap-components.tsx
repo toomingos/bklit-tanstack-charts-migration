@@ -10,16 +10,18 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useState,
   useSyncExternalStore,
   type CSSProperties,
-  type ReactNode,
 } from "react";
-import { Chart } from "@tanstack/react-charts";
+import { Chart } from "@tanstack/react-charts/tooltip";
 import { defineChart, cell } from "@tanstack/charts";
+import { tooltip } from "@tanstack/charts/tooltip";
+import type {
+  ChartPoint,
+  ChartRenderContext,
+} from "@tanstack/charts";
 import { scaleBand, scaleOrdinal } from "d3-scale";
 import type { ScaleBand, ScaleOrdinal } from "d3-scale";
-import { createSpring } from "./spring";
 import { useHeatmap, type HeatmapMargin } from "./heatmap-context";
 import {
   computeHeatmapEnterFadeDelayMs,
@@ -31,7 +33,7 @@ import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
 import {
   HEATMAP_INACTIVE_OPACITY,
   HEATMAP_INACTIVE_TRANSITION_CSS,
-  type HeatmapTooltipData,
+  type HeatmapHoverCoordinator,
 } from "./heatmap-hover-chrome";
 import {
   buildHeatmapSeparatorGradientStops,
@@ -79,6 +81,59 @@ interface CellDatum {
   date: Date;
   bin: number;
   isGhost: boolean;
+}
+
+// bklit `positionBox`/`HeatmapTooltipPanel` parity: 16px stand-off between
+// the hovered cell and the tooltip edge, shared by the native tooltip's
+// `offset` option (below) and by legacy-offset call sites elsewhere.
+const HEATMAP_TOOLTIP_DEFAULT_OFFSET = 16;
+
+// Module-scoped pub/sub bridging `HeatmapTooltip` (config-carrier sibling,
+// renders null) to `HeatmapCells` (owns the `<Chart>` definition). The two
+// are React siblings under an ancestor (`HeatmapInteractionProvider`) that
+// is out of scope to edit, so they can't share config via props/context —
+// instead both already receive the same stable `HeatmapHoverCoordinator`
+// object from that ancestor, and this WeakMap keyed on that identity
+// carries the tooltip config across without touching the provider.
+interface HeatmapTooltipConfig {
+  formatLabel: (count: number, date: Date) => string;
+  className: string;
+  panelStyle?: CSSProperties;
+  backgroundColor?: string;
+  showDelayMs: number;
+  hideDelayMs: number;
+}
+
+const heatmapTooltipConfigs = new WeakMap<HeatmapHoverCoordinator, HeatmapTooltipConfig>();
+const heatmapTooltipListeners = new WeakMap<HeatmapHoverCoordinator, Set<() => void>>();
+
+function getHeatmapTooltipListenerSet(coordinator: HeatmapHoverCoordinator): Set<() => void> {
+  let listeners = heatmapTooltipListeners.get(coordinator);
+  if (!listeners) {
+    listeners = new Set();
+    heatmapTooltipListeners.set(coordinator, listeners);
+  }
+  return listeners;
+}
+
+function setHeatmapTooltipConfig(coordinator: HeatmapHoverCoordinator, config: HeatmapTooltipConfig | null) {
+  if (config) heatmapTooltipConfigs.set(coordinator, config);
+  else heatmapTooltipConfigs.delete(coordinator);
+  for (const listener of getHeatmapTooltipListenerSet(coordinator)) listener();
+}
+
+function subscribeHeatmapTooltipConfig(coordinator: HeatmapHoverCoordinator | null, listener: () => void): () => void {
+  if (!coordinator) return () => {};
+  const listeners = getHeatmapTooltipListenerSet(coordinator);
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function getHeatmapTooltipConfig(coordinator: HeatmapHoverCoordinator | null): HeatmapTooltipConfig | null {
+  if (!coordinator) return null;
+  return heatmapTooltipConfigs.get(coordinator) ?? null;
 }
 
 function buildCellData(
@@ -134,6 +189,7 @@ function useHeatmapChartDefinition(
   cornerRadius: number,
   resolvedLevelStyles: HeatmapLevelStyles,
   patternIdPrefix: string | null,
+  tooltipEnabled: boolean,
 ) {
   const columnKeys = useMemo(
     () => Array.from({ length: Math.max(columnCount, 1) }, (_, i) => String(i)),
@@ -198,6 +254,9 @@ function useHeatmapChartDefinition(
         color: { scale: colorScale },
         margin,
         svgAnimation: false,
+        // C2: no marks to focus while loading; suppress the native focus
+        // ring for symmetry with the loaded branch below.
+        focusRing: false,
       });
     }
     return defineChart({
@@ -218,8 +277,34 @@ function useHeatmapChartDefinition(
       color: { scale: colorScale },
       margin,
       svgAnimation: false,
+      // C2: hover is driven by app-owned pointermove -> setControlledFocus
+      // (below), which now actually engages the native focus/tooltip
+      // engine. Suppress the default focus-ring mark — bklit's cell hover
+      // affordance is the scale/opacity/fillOpacity styling in
+      // `paintCellStyles`, not a ring — matching every other migrated
+      // chart's `focusRing: false` convention (styles.css:271-280).
+      focusRing: false,
+      tooltip: tooltipEnabled
+        ? {
+            use: tooltip,
+            // Native tooltip's own default chrome is reset to nothing for
+            // this class (styles.css, added alongside this change); the
+            // actual panel chrome is the nested `.bkm-tooltip-panel` div
+            // rendered by `renderTooltipBody` below (bklit parity).
+            className: "bkm-native-tooltip",
+            sticky: false,
+            // bklit tooltip has no spring/entrance in the legacy panel's
+            // "instant" mode and C5 owns real motion wiring — snap for now.
+            motion: false,
+            // Reproduces `HeatmapTooltipPanel`'s flip-when-clipped +
+            // vertical-center placement (right of the cell, flipping left
+            // near the right edge) at the same 16px stand-off.
+            placement: ["right", "left"],
+            offset: HEATMAP_TOOLTIP_DEFAULT_OFFSET,
+          }
+        : false,
     });
-  }, [cellData, xScale, yScale, colorScale, margin, cornerRadius, ctxForDef.chartStatus]);
+  }, [cellData, xScale, yScale, colorScale, margin, cornerRadius, ctxForDef.chartStatus, tooltipEnabled]);
 
   return definition;
 }
@@ -304,6 +389,19 @@ export function HeatmapCells({
   const ctx = useHeatmap();
   const coordinator = useHeatmapCoordinatorOptional();
 
+  // C2: config published by a sibling <HeatmapTooltip/> (if any) via the
+  // module-scoped registry above — drives both the native tooltip's
+  // enablement and the debounced focus-injection delays below.
+  const subscribeTooltipConfig = useCallback(
+    (listener: () => void) => subscribeHeatmapTooltipConfig(coordinator, listener),
+    [coordinator],
+  );
+  const tooltipConfig = useSyncExternalStore(
+    subscribeTooltipConfig,
+    () => getHeatmapTooltipConfig(coordinator),
+    () => null,
+  );
+
   const dayLabels = useMemo(() => getHeatmapDayLabels(ctx.weekStartDay), [ctx.weekStartDay]);
   const displayRange = useMemo(
     () => (hideGhostCells ? resolveHeatmapDisplayRange(ctx.data) : null),
@@ -333,6 +431,7 @@ export function HeatmapCells({
     cornerRadius,
     ctx.levelStyles,
     patternIdPrefix,
+    tooltipConfig !== null,
   );
 
   const isLoading = ctx.chartStatus === "loading";
@@ -345,13 +444,73 @@ export function HeatmapCells({
   const chartHostRef = useRef<HTMLDivElement | null>(null);
   const revealHandleRef = useRef<RevealHandle | null>(null);
   const seenRevealEpochRef = useRef<number | null>(null);
-  const inputsRef = useRef({ ctx, coordinator, cellsInteractive, cellData });
-  inputsRef.current = { ctx, coordinator, cellsInteractive, cellData };
+  // C2: captured from the public `onRender` boundary (composed below into
+  // `handleRender`) — the app-owned pointer-hover detection below uses this
+  // to drive the native tooltip via `setControlledFocus`, mirroring the
+  // sanctioned capture pattern in `./focus-injection.ts` but with
+  // `source: 'pointer'` (never 'programmatic', which would trigger C1's
+  // legend-dim mark states).
+  const renderContextRef = useRef<Pick<ChartRenderContext, "scene" | "interaction"> | null>(null);
+  const focusTimerRef = useRef<number | null>(null);
+  const focusedKeyRef = useRef<string | null>(null);
+  const inputsRef = useRef({ ctx, coordinator, cellsInteractive, cellData, tooltipConfig });
+  inputsRef.current = { ctx, coordinator, cellsInteractive, cellData, tooltipConfig };
+
+  // Debounced app -> chart focus bridge. `key` is `${column}-${row}` for a
+  // hovered cell or null for "no cell hovered"; repeated calls with the same
+  // key (e.g. every pointermove within one cell) are no-ops so the timers
+  // below are only (re)armed on an actual enter/leave transition.
+  const scheduleFocus = useCallback((point: ChartPoint | null, key: string | null) => {
+    if (focusedKeyRef.current === key) return;
+    focusedKeyRef.current = key;
+    if (focusTimerRef.current !== null) {
+      window.clearTimeout(focusTimerRef.current);
+      focusTimerRef.current = null;
+    }
+    const interaction = renderContextRef.current?.interaction;
+    if (!interaction) return;
+    const { tooltipConfig: cfg } = inputsRef.current;
+    if (point) {
+      const delayMs = cfg?.showDelayMs ?? 0;
+      const apply = () => interaction.setControlledFocus(point, { source: "pointer" });
+      if (delayMs > 0) {
+        focusTimerRef.current = window.setTimeout(() => {
+          focusTimerRef.current = null;
+          apply();
+        }, delayMs);
+      } else {
+        apply();
+      }
+    } else {
+      // bklit spec: 120ms hide delay, debouncing the FOCUS clear (not the
+      // tooltip) — cancelled above if the pointer re-enters a cell first.
+      const delayMs = cfg?.hideDelayMs ?? 0;
+      const apply = () => interaction.setControlledFocus(null, { source: "pointer" });
+      if (delayMs > 0) {
+        focusTimerRef.current = window.setTimeout(() => {
+          focusTimerRef.current = null;
+          apply();
+        }, delayMs);
+      } else {
+        apply();
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (focusTimerRef.current !== null) {
+        window.clearTimeout(focusTimerRef.current);
+        focusTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleCellLeave = useCallback(() => {
     coordinator?.setHoveredCell(null);
     coordinator?.setTooltipData(null);
-  }, [coordinator]);
+    scheduleFocus(null, null);
+  }, [coordinator, scheduleFocus]);
 
   useLayoutEffect(() => {
     const el = containerRef.current;
@@ -405,6 +564,13 @@ export function HeatmapCells({
         x: c.margin.left + geo.x + geo.width / 2,
         y: c.margin.top + geo.y + geo.height / 2,
       });
+
+      // C2: bridge the app-detected hover to the native tooltip/focus
+      // engine. `cell()`/`rect()` builds each ChartPoint's `datum` as the
+      // exact input array element (dist/rect.js), so reference equality
+      // against `d` reliably locates the matching scene point.
+      const scenePoint = renderContextRef.current?.scene.points.find((p) => p.datum === d) ?? null;
+      scheduleFocus(scenePoint, `${d.column}-${d.row}`);
     };
 
     const handlePointerLeave = () => {
@@ -417,7 +583,7 @@ export function HeatmapCells({
       el.removeEventListener("pointermove", handlePointerMove);
       el.removeEventListener("pointerleave", handlePointerLeave);
     };
-  }, [cellsInteractive, coordinator, handleCellLeave]);
+  }, [cellsInteractive, coordinator, handleCellLeave, scheduleFocus]);
 
   const hoveredCell = useSyncExternalStore(
     coordinator ? coordinator.subscribe : () => () => {},
@@ -548,7 +714,16 @@ export function HeatmapCells({
   };
 
   const handleRender = useCallback(
-    ({ container }: { container: HTMLElement }) => {
+    (renderCtx: { container: HTMLElement } & Partial<Pick<ChartRenderContext, "scene" | "interaction">>) => {
+      // C2: capture the interaction controller + scene for the pointer-hover
+      // -> native-tooltip bridge above. The reveal-animation re-invoke below
+      // (deferred-reveal double-rAF fallback) only ever passes `container`,
+      // so `scene`/`interaction` are optional here and only overwrite the
+      // ref when the real onRender boundary supplies them.
+      if (renderCtx.scene && renderCtx.interaction) {
+        renderContextRef.current = { scene: renderCtx.scene, interaction: renderCtx.interaction };
+      }
+      const { container } = renderCtx;
       const { animateCells, revealEpoch, enterTransition, animationDuration, enterStaggerScale, cellData: cd } =
         revealInputsRef.current;
       if (!animateCells || animationDuration <= 0) return;
@@ -665,6 +840,25 @@ export function HeatmapCells({
           height={ctx.height}
           style={{ overflow: "visible" }}
           onRender={handleRender}
+          renderTooltipBody={(bodyCtx) => {
+            const point = bodyCtx.points[0];
+            const cfg = tooltipConfig;
+            if (!point || !cfg) return null;
+            const d = point.datum as CellDatum;
+            return (
+              <div
+                className={cfg.className ? `bkm-tooltip-panel ${cfg.className}` : "bkm-tooltip-panel"}
+                style={{ backgroundColor: cfg.backgroundColor, ...cfg.panelStyle }}
+              >
+                <div className="bkm-tooltip-content">
+                  <div className="ts-bkm-heatmap-tooltip-date">{formatHeatmapTooltipDate(d.date)}</div>
+                  <div className="ts-bkm-heatmap-tooltip-weekday">{formatHeatmapTooltipWeekday(d.date)}</div>
+                  <div className="ts-bkm-heatmap-tooltip-divider" />
+                  <div className="ts-bkm-heatmap-tooltip-value">{cfg.formatLabel(d.count, d.date)}</div>
+                </div>
+              </div>
+            );
+          }}
         />
       </div>
       <svg
@@ -765,259 +959,61 @@ export const HeatmapYAxis = memo(function HeatmapYAxis({
   );
 });
 
-const HEATMAP_TOOLTIP_DEFAULT_OFFSET = 16;
-
-function useDelayedHeatmapTooltipData(
-  data: HeatmapTooltipData | null,
-  showDelayMs: number,
-  hideDelayMs: number,
-): HeatmapTooltipData | null {
-  const [delayed, setDelayed] = useState<HeatmapTooltipData | null>(null);
-  const isShowingRef = useRef(false);
-  const showTimerRef = useRef<number | null>(null);
-  const hideTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const clearTimers = () => {
-      if (showTimerRef.current) {
-        clearTimeout(showTimerRef.current);
-        showTimerRef.current = null;
-      }
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-        hideTimerRef.current = null;
-      }
-    };
-
-    if (data) {
-      clearTimers();
-      if (isShowingRef.current) {
-        setDelayed(data);
-        return;
-      }
-      if (showDelayMs <= 0) {
-        isShowingRef.current = true;
-        setDelayed(data);
-      } else {
-        showTimerRef.current = window.setTimeout(() => {
-          isShowingRef.current = true;
-          setDelayed(data);
-        }, showDelayMs);
-      }
-      return;
-    }
-
-    clearTimers();
-    if (hideDelayMs <= 0) {
-      isShowingRef.current = false;
-      setDelayed(null);
-    } else {
-      hideTimerRef.current = window.setTimeout(() => {
-        isShowingRef.current = false;
-        setDelayed(null);
-      }, hideDelayMs);
-    }
-  }, [data, showDelayMs, hideDelayMs]);
-
-  useEffect(() => {
-    return () => {
-      if (showTimerRef.current) clearTimeout(showTimerRef.current);
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    };
-  }, []);
-
-  return delayed;
-}
-
-function HeatmapTooltipSpringPanel({
-  children,
-  isFlipped,
-  className,
-  panelStyle,
-  backgroundColor,
-}: {
-  children: ReactNode;
-  isFlipped: boolean;
-  className?: string;
-  panelStyle?: CSSProperties;
-  backgroundColor?: string;
-}) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  useLayoutEffect(() => {
-    const el = panelRef.current;
-    if (!el) return;
-    const startX = isFlipped ? 20 : -20;
-    el.style.opacity = "0";
-    el.style.transform = `scale(0.85) translateX(${startX}px)`;
-    const spring = createSpring(0, 300, 25, (value) => {
-      const opacity = value;
-      const scale = 0.85 + 0.15 * value;
-      const translateX = startX * (1 - value);
-      el.style.opacity = String(opacity);
-      el.style.transform = `scale(${scale}) translateX(${translateX}px)`;
-    });
-    spring.set(1);
-    return () => spring.stop();
-  }, [isFlipped]);
-
-  return (
-    <div
-      ref={panelRef}
-      className={className ? `bkm-tooltip-panel ${className}` : "bkm-tooltip-panel"}
-      style={{
-        transformOrigin: isFlipped ? "right top" : "left top",
-        backgroundColor,
-        ...panelStyle,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-interface HeatmapTooltipPanelProps {
-  data: HeatmapTooltipData;
-  containerWidth: number;
-  containerHeight: number;
-  offset?: number;
-  formatLabel: (count: number, date: Date) => string;
-  className?: string;
-  panelStyle?: CSSProperties;
-  backgroundColor?: string;
-}
-
-function HeatmapTooltipPanel({
-  data,
-  containerWidth,
-  containerHeight,
-  offset = HEATMAP_TOOLTIP_DEFAULT_OFFSET,
-  formatLabel,
-  className,
-  panelStyle,
-  backgroundColor,
-}: HeatmapTooltipPanelProps) {
-  const layerRef = useRef<HTMLDivElement | null>(null);
-  const widthRef = useRef(180);
-  const heightRef = useRef(80);
-  const [position, setPosition] = useState(() => {
-    const shouldFlipX = data.x + widthRef.current + offset > containerWidth;
-    const left = shouldFlipX ? data.x - offset - widthRef.current : data.x + offset;
-    const top = Math.max(offset, Math.min(data.y - heightRef.current / 2, containerHeight - heightRef.current - offset));
-    return { left, top, isFlipped: shouldFlipX };
-  });
-  const [flipKey, setFlipKey] = useState(0);
-  const prevFlipRef = useRef(position.isFlipped);
-
-  useLayoutEffect(() => {
-    const el = layerRef.current;
-    if (el) {
-      widthRef.current = el.offsetWidth || widthRef.current;
-      heightRef.current = el.offsetHeight || heightRef.current;
-    }
-    const tw = widthRef.current;
-    const th = heightRef.current;
-    const shouldFlipX = data.x + tw + offset > containerWidth;
-    const left = shouldFlipX ? data.x - offset - tw : data.x + offset;
-    const top = Math.max(offset, Math.min(data.y - th / 2, containerHeight - th - offset));
-    setPosition({ left, top, isFlipped: shouldFlipX });
-    if (prevFlipRef.current !== shouldFlipX) {
-      prevFlipRef.current = shouldFlipX;
-      setFlipKey((k) => k + 1);
-    }
-  }, [data.x, data.y, containerWidth, containerHeight, offset]);
-
-  return (
-    <div
-      ref={layerRef}
-      className="bkm-tooltip-layer"
-      style={{ left: position.left, top: position.top, pointerEvents: "none" }}
-    >
-      <HeatmapTooltipSpringPanel
-        key={flipKey}
-        isFlipped={position.isFlipped}
-        className={className}
-        panelStyle={panelStyle}
-        backgroundColor={backgroundColor}
-      >
-        <div className="bkm-tooltip-content">
-          <div className="ts-bkm-heatmap-tooltip-date">{formatHeatmapTooltipDate(data.date)}</div>
-          <div className="ts-bkm-heatmap-tooltip-weekday">{formatHeatmapTooltipWeekday(data.date)}</div>
-          <div className="ts-bkm-heatmap-tooltip-divider" />
-          <div className="ts-bkm-heatmap-tooltip-value">{formatLabel(data.count, data.date)}</div>
-        </div>
-      </HeatmapTooltipSpringPanel>
-    </div>
-  );
-}
-
 export interface HeatmapTooltipProps {
   formatLabel?: (count: number, date: Date) => string;
   className?: string;
   panelStyle?: CSSProperties;
   backgroundColor?: string;
+  /**
+   * @deprecated No-op since the C2 (phase 6) native-tooltip migration: the
+   * native tooltip extension always renders with `motion: false` (matching
+   * bklit's former `instant` fast path), so there is no longer a distinct
+   * spring-entrance mode to opt out of. Kept only so existing call sites
+   * keep compiling; passing it has no effect.
+   */
   instant?: boolean;
   showDelay?: number;
   hideDelay?: number;
 }
 
+// C2 (phase 6): `HeatmapTooltip` no longer renders a bespoke portal panel —
+// it publishes its config into the module-scoped registry above so the
+// sibling `<HeatmapCells>` can enable TanStack's native `tooltip` extension
+// and build the panel markup itself via `renderTooltipBody` (same content
+// as the legacy `HeatmapTooltipPanel`, just positioned by the native
+// placement engine instead of bespoke flip/clamp math). Rendering an
+// `<HeatmapTooltip/>` remains opt-in: no sibling means no registered
+// config, which keeps the native tooltip disabled (`tooltip: false`) on
+// `<HeatmapCells>`'s definition, preserving prior "no tooltip unless
+// explicitly requested" behavior.
 export function HeatmapTooltip({
   formatLabel = formatHeatmapContributionLabel,
   className = "",
   panelStyle,
   backgroundColor,
-  instant = false,
+  instant: _instant = false,
   showDelay = 0,
   hideDelay = 120,
 }: HeatmapTooltipProps) {
-  const ctx = useHeatmap();
+  void _instant;
   const coordinator = useHeatmapCoordinatorOptional();
-  const tooltipData = useSyncExternalStore(
-    coordinator ? coordinator.subscribe : () => () => {},
-    () => coordinator?.getTooltipData() ?? null,
-    () => null,
-  );
-  const delayed = useDelayedHeatmapTooltipData(tooltipData, showDelay, hideDelay);
 
-  if (!ctx.htmlLayerEl || !delayed) return null;
+  useLayoutEffect(() => {
+    if (!coordinator) return;
+    setHeatmapTooltipConfig(coordinator, {
+      formatLabel,
+      className,
+      panelStyle,
+      backgroundColor,
+      showDelayMs: Math.max(0, showDelay),
+      hideDelayMs: Math.max(0, hideDelay),
+    });
+    return () => {
+      setHeatmapTooltipConfig(coordinator, null);
+    };
+  }, [coordinator, formatLabel, className, panelStyle, backgroundColor, showDelay, hideDelay]);
 
-  if (instant) {
-    return createPortal(
-      <div
-        className="bkm-tooltip-layer"
-        style={{
-          left: Math.max(HEATMAP_TOOLTIP_DEFAULT_OFFSET, Math.min(delayed.x, ctx.width - 180)),
-          top: Math.max(HEATMAP_TOOLTIP_DEFAULT_OFFSET, Math.min(delayed.y, ctx.height - 80)),
-          pointerEvents: "none",
-        }}
-      >
-        <div
-          className={className ? `bkm-tooltip-panel ${className}` : "bkm-tooltip-panel"}
-          style={{ backgroundColor, ...panelStyle }}
-        >
-          <div className="bkm-tooltip-content">
-            <div className="ts-bkm-heatmap-tooltip-date">{formatHeatmapTooltipDate(delayed.date)}</div>
-            <div className="ts-bkm-heatmap-tooltip-weekday">{formatHeatmapTooltipWeekday(delayed.date)}</div>
-            <div className="ts-bkm-heatmap-tooltip-divider" />
-            <div className="ts-bkm-heatmap-tooltip-value">{formatLabel(delayed.count, delayed.date)}</div>
-          </div>
-        </div>
-      </div>,
-      ctx.htmlLayerEl,
-    );
-  }
-
-  return createPortal(
-    <HeatmapTooltipPanel
-      data={delayed}
-      containerWidth={ctx.width}
-      containerHeight={ctx.height}
-      formatLabel={formatLabel}
-      className={className}
-      panelStyle={panelStyle}
-      backgroundColor={backgroundColor}
-    />,
-    ctx.htmlLayerEl,
-  );
+  return null;
 }
 
 export interface HeatmapSeparatorProps {

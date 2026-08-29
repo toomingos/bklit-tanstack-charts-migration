@@ -25,8 +25,10 @@ import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { curveMonotoneX } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
-import { Chart } from "@tanstack/react-charts";
+import { Chart } from "@tanstack/react-charts/tooltip";
+import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
+import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
 import type { ChartMark, ChartRenderContext, StaticChartDefinition } from "@tanstack/charts";
 import { areaFill } from "./internal/area-fill-mark";
 import { patternAreaMark } from "./internal/pattern-area-mark";
@@ -60,10 +62,17 @@ import { projectionLineMark, resolveProjectionGradientDef } from "./internal/pro
 import { ProjectionMarkerOverlay, type ProjectionPhaseHandle } from "./internal/terminal-marker";
 import { toDate } from "./internal/coerce-date";
 import { timeToPixelX } from "./internal/x-time-scale";
-import { SERIES_MARKER_ENTER_MS } from "./internal/design-tokens";
+import {
+  BOX_OFFSET,
+  DISCRETE_INTERACTION_THRESHOLD,
+  SERIES_MARKER_ENTER_MS,
+  TOOLTIP_BOX_SPRING,
+} from "./internal/design-tokens";
+import { weekdayDateFmt } from "./internal/formatters";
+import { TooltipContent } from "./internal/tooltip-components";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
 import { YAxisOverlay } from "./internal/y-axis-overlay";
-import type { ChartDatum, ChartStatus } from "./internal/types";
+import type { ChartDatum, ChartStatus, TooltipRow } from "./internal/types";
 import { type ChartPhase, DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./internal/chart-phase";
 import type { ChartScale } from "@tanstack/charts";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
@@ -857,12 +866,33 @@ export function AreaChart({
       // bklit's hover works anywhere over the plot; TanStack defaults to 48px.
       maxFocusDistance: Number.POSITIVE_INFINITY,
       gradients: nativeAreaGradients,
+      // C2 (P6): native tooltip extension replaces the imperative box panel
+      // (tooltip-chrome.ts's buildBox/applyBoxContent/positionBox). Area
+      // drives it off the SAME native focus:"group-x" mechanism the
+      // crosshair chrome already uses (line-chart.tsx parity).
+      tooltip: (tooltip?.enabled ?? false)
+        ? {
+            use: nativeTooltip,
+            className: "bkm-native-tooltip",
+            sticky: false,
+            offset: BOX_OFFSET,
+            placement: ["right", "left"] as const,
+            motion:
+              renderData.length > DISCRETE_INTERACTION_THRESHOLD
+                ? (false as const)
+                : ({
+                    type: "spring" as const,
+                    stiffness: TOOLTIP_BOX_SPRING.stiffness,
+                    damping: TOOLTIP_BOX_SPRING.damping,
+                  } as const),
+          }
+        : (false as const),
       svgAnimation:
         isChartInteractionPhase(chartPhase) && isLoaded && yDomainChanged
           ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
           : false,
     });
-  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients, legendHoveredIndex, areas]);
+  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients, legendHoveredIndex, areas, tooltip]);
 
   // Hover chrome (bklit ChartTooltip): imperative overlays driven by
   // TanStack's focus callbacks — no React work per pointer move. Reuses
@@ -878,6 +908,50 @@ export function AreaChart({
   // the areaY point (stored under the sibling `__fill` key) is simply never
   // looked up. No explicit filtering needed.
   const tooltipEnabled = tooltip?.enabled ?? false;
+  // C2 (P6): renders inside the native tooltip extension's unstyled
+  // `.ts-chart-tooltip__body` portal target — see line-chart.tsx for the
+  // full contract note. Rows default from `resolvedAreas` (same series list
+  // chromeStateRef below builds), honoring `tooltip.rows`/`tooltip.content`.
+  const renderTooltipBody = React.useCallback(
+    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode => {
+      const primary = ctx.points[0];
+      if (!primary) return null;
+      const datum = primary.datum as Record<string, unknown>;
+      const cfg = tooltip ?? null;
+      const panelClassName = cfg?.className ? `bkm-tooltip-panel ${cfg.className}` : "bkm-tooltip-panel";
+      const panelStyle: React.CSSProperties | undefined =
+        cfg?.panelStyle || cfg?.backgroundColor
+          ? { ...cfg?.panelStyle, ...(cfg?.backgroundColor ? { backgroundColor: cfg.backgroundColor } : null) }
+          : undefined;
+      if (cfg?.content) {
+        return (
+          <div className={panelClassName} style={panelStyle}>
+            {cfg.content({ point: datum, index: primary.datumIndex })}
+          </div>
+        );
+      }
+      const date = datum[xDataKey];
+      const title = date instanceof Date ? weekdayDateFmt.format(date) : undefined;
+      const rows: TooltipRow[] = cfg?.rows
+        ? cfg.rows(datum)
+        : resolvedAreas.map((area) => {
+            const v = datum[area.dataKey];
+            return {
+              color: area.stroke || ctx.points.find((p) => p.markId === area.dataKey)?.color || "transparent",
+              label: area.dataKey,
+              value: typeof v === "number" ? v : String(v ?? 0),
+            };
+          });
+      return (
+        <div className={panelClassName} style={panelStyle}>
+          <TooltipContent title={title} rows={rows}>
+            {cfg?.children}
+          </TooltipContent>
+        </div>
+      );
+    },
+    [tooltip, xDataKey, resolvedAreas],
+  );
   // Scene x of rendered point `index` — same linear time→px mapping the
   // rendered x scale applies, extended by the projection tail when present.
   const xForIndex = (index: number) => {
@@ -1178,6 +1252,7 @@ export function AreaChart({
             definition={definition}
             onFocusGroupChange={handleFocusGroupChangeWithMarkerDate}
             onRender={handleRender}
+            renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
           />
         </div>
       ) : null}

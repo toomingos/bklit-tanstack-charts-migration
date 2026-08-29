@@ -28,12 +28,18 @@ import React, {
   type RefObject,
 } from "react";
 import { FeatureCollection, type Feature, type Geometry } from "geojson";
-import { geoCentroid, geoMercator, geoPath, type GeoProjection } from "d3-geo";
+import { geoMercator, geoPath, type GeoProjection } from "d3-geo";
 import type { TransformMatrix, ProvidedZoom, ZoomState } from "./internal/zoom-engine";
 import { identityMatrix } from "./internal/zoom-engine";
 import { Zoom } from "./internal/zoom-engine";
-import { Chart } from "@tanstack/react-charts";
-import { defineChart, type ChartValue, type StaticChartDefinition } from "@tanstack/charts";
+import { Chart } from "@tanstack/react-charts/tooltip";
+import {
+  defineChart,
+  type ChartRenderContext,
+  type ChartValue,
+  type StaticChartDefinition,
+} from "@tanstack/charts";
+import { tooltip } from "@tanstack/charts/tooltip";
 import { geoShape } from "@tanstack/charts/geo";
 import { CHART_ROLE } from "./children";
 import {
@@ -233,6 +239,10 @@ const DEFAULT_INITIAL_ZOOM: TransformMatrix = identityMatrix();
 const ANIMATION_DURATION_MS = 800;
 const FEATURE_ENTER_MS = 1100;
 const REVEAL_EASING = "cubic-bezier(0.85, 0, 0.15, 1)";
+// C2: matches legacy `design-tokens.ts`'s `BOX_OFFSET` (16px) — the retired
+// `positionBox` placed the panel to the right of the anchor by this offset,
+// flipping left only on overflow (`internal/tooltip-chrome.ts:448-449`).
+const CHOROPLETH_TOOLTIP_OFFSET = 16;
 
 // ---------------------------------------------------------------------------
 // Config-carrier children
@@ -362,12 +372,23 @@ function ChoroplethChartBody({
 
   const dimOpacity = featureConfig?.fadedOpacity ?? 0.4;
   const baseOpacity = 0.85;
+  // C2: whether a <ChoroplethTooltip> child is present gates both the native
+  // `tooltip` extension option below and the hover→focus bridge; needs to be
+  // known before `definition`'s useMemo.
+  const hasTooltipChild = tooltipConfig !== null;
 
   // C1 states+legend: replaces the old DOM-reparenting dim-wrapper scheme.
   // `hoveredKey` drives geoShape's per-datum fill/stroke alpha below; the
-  // chrome only reports hover-key changes via `onHoverChange` now (see
-  // internal/choropleth-hover-chrome.ts).
+  // chrome reports hover-key changes via `onHoverChange` (C1 dim) and
+  // `onFocusChange` (C2 native tooltip, see internal/choropleth-hover-chrome.ts).
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+
+  // C2: read-only zoom-transform ref used by the tooltip's `anchor` fn below
+  // (`applyZoomToPoint`) — declared this early so `definition`'s useMemo can
+  // close over `applyZoomToPoint`, which itself closes over this ref. Zoom
+  // mechanics that WRITE to it (`syncZoomTransform`, the <Zoom> render prop)
+  // are unchanged and still live further down (C6-owned).
+  const zoomRefForChrome = useRef<ProvidedZoom<SVGSVGElement> | null>(null);
 
   const projection = useMemo<GeoProjection | null>(() => {
     if (width <= 0 || height <= 0) return null;
@@ -419,24 +440,17 @@ function ChoroplethChartBody({
     [projection],
   );
 
-  const getCentroidForFeature = useCallback(
-    (feature: ChoroplethFeature) => {
-      if (!projection) return null;
-      try {
-        const c = geoCentroid(feature);
-        if (!c || !Number.isFinite(c[0]) || !Number.isFinite(c[1])) return null;
-        const p = projection([c[0], c[1]]);
-        if (!p || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) return null;
-        const pad = 60;
-        return {
-          x: Math.max(pad, Math.min(width - pad, p[0])),
-          y: Math.max(pad, Math.min(height - pad, p[1])),
-        };
-      } catch {
-        return null;
-      }
+  // C2: read-only use of the zoom transform to keep the tooltip glued to a
+  // feature under pan/zoom (legacy `applyZoom`/`choropleth-tooltip.tsx`). The
+  // native tooltip's `anchor` fn (below) calls this on the point's raw
+  // (unzoomed) scene coordinates — same technique the old hover-chrome used.
+  const applyZoomToPoint = useCallback(
+    (point: { x: number; y: number }) => {
+      const z = zoomRefForChrome.current;
+      if (!z) return point;
+      return z.applyToPoint(point);
     },
-    [projection, width, height],
+    [],
   );
 
   const definition = useMemo(() => {
@@ -481,36 +495,51 @@ function ChoroplethChartBody({
       // focus ring natively instead of relying solely on the
       // `[data-ts-chart-focus] {display:none}` CSS rule.
       focusRing: false,
+      // C2: native tooltip extension, only when a <ChoroplethTooltip> child
+      // is present (mirrors legacy's opt-in — no child, no box). `sticky:
+      // false`/`motion: false` match the retired box's INSTANT unmount (CP7:
+      // "bklit ChoroplethTooltip returns null the moment tooltipData clears;
+      // no exit fade"). `anchor` zoom-adjusts the feature's raw scene
+      // centroid the same way the old chrome's `applyZoom` did.
+      tooltip: hasTooltipChild
+        ? {
+            use: tooltip,
+            className: "bkm-native-tooltip",
+            sticky: false,
+            motion: false,
+            placement: ["right", "left"],
+            offset: CHOROPLETH_TOOLTIP_OFFSET,
+            anchor: (points: readonly { x: number; y: number }[]) => {
+              const p = points[0];
+              return p ? applyZoomToPoint({ x: p.x, y: p.y }) : null;
+            },
+          }
+        : false,
     });
     return d as StaticChartDefinition<ChoroplethFeature, ChartValue, ChartValue, "dom">;
   }, [
     width, height, projection, data.features,
     featureConfig?.getFeatureColor, featureConfig?.getFeaturePattern,
     featureConfig?.fill, featureConfig?.stroke, featureConfig?.strokeWidth,
-    hoveredKey, baseOpacity, dimOpacity,
+    hoveredKey, baseOpacity, dimOpacity, hasTooltipChild, applyZoomToPoint,
   ]);
 
-  // --- Hover chrome (owns dim + shared TooltipBox; CP7 flip + instant unmount) ---
-  const domFeatureByTsKeyRef = useRef<Map<string, { feature: ChoroplethFeature; index: number }> | null>(null);
-
+  // --- Hover chrome (owns hover DETECTION only; C2 moved tooltip building +
+  //     positioning to the native `tooltip` extension above) ---
   const hoverChromeRef = useRef<ChoroplethHoverChrome | null>(null);
-  const getFeatureAt = useCallback(
-    (key: string) => domFeatureByTsKeyRef.current?.get(key) ?? null,
-    [],
-  );
-  const getCentroidForHover = useCallback(
-    (key: string) => {
-      const entry = domFeatureByTsKeyRef.current?.get(key);
-      if (!entry) return { x: width / 2, y: height / 2 };
-      return getCentroidForFeature(entry.feature) ?? { x: width / 2, y: height / 2 };
-    },
-    [getCentroidForFeature, width, height],
-  );
+  // C2: render-context bridge (mirrors internal/focus-injection.ts's capture
+  // pattern, source 'pointer' instead of 'programmatic' so C1's legend-dim
+  // mark states never fire from map hover). `hoveredKeyRef` mirrors
+  // `hoveredKey` React state imperatively so `refreshTooltipAnchor` (used by
+  // C6's zoom code below) can read the current focus target without a stale
+  // closure over `[]`-deps callbacks.
+  const renderContextRef = useRef<Pick<ChartRenderContext, "scene" | "interaction"> | null>(null);
+  const hoveredKeyRef = useRef<string | null>(null);
+
   // Tooltip config resolution — bklit defaults (OQ parity 8): formatValue =
   // intFmt (CP4), name fallback `Feature ${index}` + real index arg (CP5/CP6)
-  // are applied inside the chrome against this config.
+  // — applied inside `renderTooltipBody` (JSX below) against this config.
   const formatValue = tooltipConfig?.formatValue ?? intFmt;
-  const hasTooltipChild = tooltipConfig !== null;
   const tooltipContent = tooltipConfig?.content;
   const getFeatureName = tooltipConfig?.getFeatureName;
   const getFeatureValue = tooltipConfig?.getFeatureValue;
@@ -528,15 +557,19 @@ function ChoroplethChartBody({
       backgroundColor: tooltipConfig?.backgroundColor,
     };
   }, [hasTooltipChild, tooltipContent, formatValue, getFeatureName, getFeatureValue, valueLabel, tooltipConfig]);
-  const getChartSize = useCallback(() => ({ width, height }), [width, height]);
-  const applyZoomToPoint = useCallback(
-    (point: { x: number; y: number }) => {
-      const z = zoomRefForChrome.current;
-      if (!z) return point;
-      return z.applyToPoint(point);
-    },
-    [],
-  );
+
+  // C2: pointer-source focus bridge — looks up the scene ChartPoint whose
+  // `key` matches the hover-chrome's `data-ts-key` (same key `geoShape`
+  // stamped the path with, see `choroplethFeatureKey`) and drives the native
+  // tooltip via `setControlledFocus`. CRITICAL: source 'pointer', never
+  // 'programmatic' (that triggers C1's legend-dim mark states).
+  const onFocusChange = useCallback((key: string | null) => {
+    hoveredKeyRef.current = key;
+    const ctx = renderContextRef.current;
+    if (!ctx) return;
+    const point = key === null ? null : (ctx.scene.points.find((p) => p.key === key) ?? null);
+    ctx.interaction.setControlledFocus(point, { source: "pointer" });
+  }, []);
 
   const revealAnimsRef = useRef<Animation[]>([]);
   const revealDeadlineTimerRef = useRef<number | null>(null);
@@ -560,19 +593,35 @@ function ChoroplethChartBody({
   const ensureHoverChrome = useCallback(() => {
     if (hoverChromeRef.current) return hoverChromeRef.current;
     hoverChromeRef.current = createChoroplethHoverChrome({
-      getCentroid: getCentroidForHover,
-      getFeatureAt,
-      getTooltip: getTooltipConfig,
-      getSize: getChartSize,
-      applyZoom: applyZoomToPoint,
       onHoverChange: setHoveredKey,
+      onFocusChange,
     });
     return hoverChromeRef.current;
-  }, [getCentroidForHover, getFeatureAt, getTooltipConfig, getChartSize, applyZoomToPoint]);
+  }, [onFocusChange]);
 
   const marksGRef = useRef<SVGGElement | null>(null);
   const graticuleGRef = useRef<SVGGElement | null>(null);
-  const zoomRefForChrome = useRef<ProvidedZoom<SVGSVGElement> | null>(null);
+
+  // C2: re-invokes `setControlledFocus` with the SAME already-focused point
+  // to force the native tooltip to repaint (renderer.js's `setControlledFocus`
+  // takes the `sameChartPointIdentity` fast path straight to `paintFocus` →
+  // `paintTooltip`, which recomputes the `anchor` fn above against the
+  // latest `zoomRefForChrome` transform). Native tooltip position is frozen
+  // to whatever `anchor` returned at the last paint (dist/tooltip.js
+  // `position()` reuses the cached `anchor` object — it does not re-run the
+  // `anchor` fn on its own), and `<Zoom>`'s pan/drag transform is applied
+  // imperatively outside React's render cycle, so without this call the
+  // tooltip would visually detach from the feature mid-drag. Replaces the
+  // retired box's `refreshTooltipPosition`; called from the same C6 call
+  // site (`syncZoomTransform`, below) on every zoom-transform write.
+  const refreshTooltipAnchor = useCallback(() => {
+    const ctx = renderContextRef.current;
+    const key = hoveredKeyRef.current;
+    if (!ctx || key === null) return;
+    const point = ctx.scene.points.find((p) => p.key === key) ?? null;
+    if (!point) return;
+    ctx.interaction.setControlledFocus(point, { source: "pointer" });
+  }, []);
 
   type ZoomWithDrag = ProvidedZoom<SVGSVGElement> & { isDragging: boolean };
   // Single zoom-DOM writer. `svgOverride`/`marksGOverride` are the
@@ -599,10 +648,14 @@ function ChoroplethChartBody({
       svg.style.cursor = z?.isDragging ? "grabbing" : "grab";
       (svg.style as unknown as { contain: string }).contain = "layout style paint";
     }
-    hoverChromeRef.current?.refreshTooltipPosition();
-  }, []);
+    refreshTooltipAnchor();
+  }, [refreshTooltipAnchor]);
 
-  const handleRender = useCallback(({ container }: { container: HTMLElement }) => {
+  const handleRender = useCallback((
+    context: { container: HTMLElement } & Partial<Pick<ChartRenderContext, "scene" | "interaction">>,
+  ) => {
+    const { container, scene, interaction } = context;
+    if (scene && interaction) renderContextRef.current = { scene, interaction };
     const c = container as HTMLElement;
     const svg = c.querySelector("svg.ts-chart") as unknown as SVGSVGElement | null;
     const zoom = zoomRefForChrome.current;
@@ -620,15 +673,6 @@ function ChoroplethChartBody({
         elements.set(key, path);
       }
     }
-    const domMap = new Map<string, { feature: ChoroplethFeature; index: number }>();
-    let domIdx = 0;
-    for (const [domKey] of elements) {
-      const feature = data.features[domIdx];
-      if (feature) domMap.set(domKey, { feature, index: domIdx });
-      domIdx++;
-    }
-    domFeatureByTsKeyRef.current = domMap;
-
     ensureHoverChrome().reconnect(c, elements);
 
     if (animationDuration <= 0) return;
@@ -669,7 +713,7 @@ function ChoroplethChartBody({
       anim.onfinish = () => { try { anim.cancel(); } catch { /* teardown race — already cancelled */ } };
       anim.oncancel = () => { try { anim.cancel(); } catch { /* teardown race — already cancelled */ } };
     });
-  }, [animationDuration, revealDurationMs, revealEasingCss, ensureHoverChrome, data.features, syncZoomTransform]);
+  }, [animationDuration, revealDurationMs, revealEasingCss, ensureHoverChrome, syncZoomTransform]);
 
   useEffect(() => {
     return () => {
@@ -733,6 +777,63 @@ function ChoroplethChartBody({
         aspectRatio={ratio}
         definition={definition}
         onRender={handleRender}
+        renderTooltipBody={(ctx) => {
+          const cfg = getTooltipConfig();
+          if (!cfg) return ctx.defaultBody;
+          const p = ctx.points[0];
+          if (!p) return null;
+          const feature = p.datum as ChoroplethFeature;
+          const index = p.datumIndex;
+          // bklit choropleth-tooltip.tsx defaults (OQ parity 8): formatValue =
+          // intFmt, valueLabel = "Value", name fallback `Feature ${index}`.
+          // `.bkm-tooltip-panel`/`.bkm-tooltip-content`/`.bkm-tooltip-row*`
+          // reproduce the retired imperative box's exact markup
+          // (internal/tooltip-chrome.ts's `buildBox`/`applyBoxContent`) so
+          // existing panel CSS keeps applying unchanged; the native
+          // tooltip's own element (className "bkm-native-tooltip") now owns
+          // positioning/layering instead of `.bkm-tooltip-layer`.
+          if (cfg.content) {
+            return (
+              <div
+                className="bkm-tooltip-panel"
+                style={{
+                  ...(cfg.backgroundColor ? { backgroundColor: cfg.backgroundColor } : null),
+                  ...cfg.panelStyle,
+                }}
+              >
+                {cfg.content({ feature, index })}
+              </div>
+            );
+          }
+          const name = cfg.getFeatureName
+            ? cfg.getFeatureName(feature, index)
+            : (feature.properties?.name ?? `Feature ${index}`);
+          const value = cfg.getFeatureValue?.(feature, index);
+          return (
+            <div
+              className={cfg.className ? `bkm-tooltip-panel ${cfg.className}` : "bkm-tooltip-panel"}
+              style={{
+                ...(cfg.backgroundColor ? { backgroundColor: cfg.backgroundColor } : null),
+                ...cfg.panelStyle,
+              }}
+            >
+              <div className="bkm-tooltip-content">
+                <div className="bkm-tooltip-title">{name}</div>
+                {value !== undefined ? (
+                  <div className="bkm-tooltip-rows">
+                    <div className="bkm-tooltip-row">
+                      <div className="bkm-tooltip-row-label">
+                        <span className="bkm-tooltip-swatch" style={{ backgroundColor: "var(--chart-1)" }} />
+                        <span className="bkm-tooltip-series">{cfg.valueLabel}</span>
+                      </div>
+                      <span className="bkm-tooltip-value">{cfg.formatValue(value)}</span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          );
+        }}
       />
       {graticuleConfig && projection ? (
         <svg

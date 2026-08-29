@@ -1,17 +1,13 @@
-import { shortDateFmt, weekdayDateFmt } from "./formatters";
+import { shortDateFmt } from "./formatters";
 import { createSpring } from "./spring";
-import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH } from "./design-tokens";
+import { DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH } from "./design-tokens";
 import {
-  applyBoxContent,
   applyLabelFade,
-  buildBox,
   buildIndicator,
   buildPill,
-  hideBoxContent,
-  positionBox,
   resetLabelFade,
 } from "./tooltip-chrome";
-import { toBoxConfig, toIndicatorConfig } from "./tooltip-mappers";
+import { toIndicatorConfig } from "./tooltip-mappers";
 import type { ChartTooltipConfig } from "./types";
 import { TOOLTIP_SPRING } from "./design-tokens";
 
@@ -99,18 +95,14 @@ export function attachCandlestickHoverChrome(
   dot.setAttribute("stroke-width", "2");
   dotsSvg.appendChild(dot);
 
-  const boxBuild = buildBox(doc, toBoxConfig(getState().tooltip), tooltipSpring, false);
-  // Candlestick box is single-row "close" — but if tooltip.rows/content is provided, use shared branching
   const pillBuild = buildPill(doc, tooltipSpring, () => getState().dateLabels ?? []);
 
-  host.append(activeHighlightSvg, indicator.svg, dotsSvg, boxBuild.layer, pillBuild.layer);
+  host.append(activeHighlightSvg, indicator.svg, dotsSvg, pillBuild.layer);
 
   const dotXSpring = createSpring(0, tooltipSpring.stiffness, tooltipSpring.damping, (x) => dot.setAttribute("cx", String(x)));
   const dotYSpring = createSpring(0, tooltipSpring.stiffness, tooltipSpring.damping, (y) => dot.setAttribute("cy", String(y)));
 
   let visible = false;
-  let prevFlip: boolean | null = null;
-  let boxFadeAnimation: Animation | null = null;
 
   const applyRectGeometry = (el: SVGRectElement, geometry: CandleRectGeometry) => {
     el.setAttribute("x", String(geometry.x)); el.setAttribute("y", String(geometry.y));
@@ -165,19 +157,13 @@ export function attachCandlestickHoverChrome(
     if (!visible) return;
     visible = false;
     lastPoint = null;
-    prevFlip = null;
     indicator.svg.style.display = "none";
     dotsSvg.style.display = "none";
-    boxBuild.layer.style.display = "none";
     pillBuild.layer.style.display = "none";
     activeHighlightSvg.style.display = "none";
     indicator.xSpring.stop(); indicator.lineXSpring?.stop();
     dotXSpring.stop(); dotYSpring.stop();
-    boxBuild.leftSpring?.stop(); boxBuild.topSpring?.stop();
     pillBuild.spring.stop();
-    boxBuild.entranceSpring.stop();
-    boxFadeAnimation?.cancel(); boxFadeAnimation = null;
-    hideBoxContent(boxBuild);
     pillBuild.label.textContent = "";
     resetLabelFade(container);
   };
@@ -187,9 +173,7 @@ export function attachCandlestickHoverChrome(
     if (!point) { hide(); return; }
     const state = getState();
     const { margin } = state;
-    const width = container.clientWidth;
-    const height = container.clientHeight;
-    const innerHeight = Math.max(0, height - margin.top - margin.bottom);
+    const innerHeight = Math.max(0, container.clientHeight - margin.top - margin.bottom);
     const discrete = state.pointCount > DISCRETE_INTERACTION_THRESHOLD;
     const showing = !visible;
     visible = true;
@@ -248,31 +232,6 @@ export function attachCandlestickHoverChrome(
     applyRectGeometry(highlightBody, point.body);
     syncHighlightExtras(point.body);
 
-    // Tooltip box — if custom rows/content provided, delegate to shared helper; else single "close" row
-    {
-      const tooltip = state.tooltip ?? null;
-      if (tooltip?.rows || tooltip?.content || tooltip?.children) {
-        const pointRec: Record<string, unknown> = { date: point.date, close: point.close };
-        let rows: { color: string; label: string; value: string | number }[];
-        if (tooltip?.rows) rows = tooltip.rows(pointRec);
-        else rows = [{ color: "var(--chart-line-primary)", label: "close", value: point.close }];
-        const title = weekdayDateFmt.format(point.date);
-        boxBuild.layer.style.top = `${margin.top}px`;
-        boxBuild.layer.style.display = "";
-        applyBoxContent(boxBuild, doc, title, rows, pointRec, 0, toBoxConfig(tooltip));
-        const flip = positionBox(boxBuild, point.centerX, margin.top, width, height, BOX_OFFSET, showing, prevFlip, { current: boxFadeAnimation } as { current: Animation | null });
-        prevFlip = flip;
-      } else {
-        boxBuild.layer.style.top = `${margin.top}px`;
-        boxBuild.layer.style.display = "";
-        // Ensure default single-row content is present
-        // Use shared helper with single row
-        applyBoxContent(boxBuild, doc, weekdayDateFmt.format(point.date), [{ color: "var(--chart-line-primary)", label: "close", value: point.close }], { date: point.date, close: point.close } as Record<string, unknown>, 0, toBoxConfig(tooltip));
-        const flip = positionBox(boxBuild, point.centerX, margin.top, width, height, BOX_OFFSET, showing, prevFlip, { current: boxFadeAnimation } as { current: Animation | null });
-        prevFlip = flip;
-      }
-    }
-
     if (state.showDatePill) {
       pillBuild.layer.style.display = "";
       if (pillBuild.ticker && state.dateLabels && state.dateLabels.length > 0) {
@@ -297,11 +256,8 @@ export function attachCandlestickHoverChrome(
       activeHighlightSvg.remove();
       indicator.svg.remove();
       dotsSvg.remove();
-      boxBuild.layer.remove();
       pillBuild.layer.remove();
       pillBuild.ticker?.detach();
-      boxBuild.customRoot.current?.unmount();
-      boxBuild.childrenRoot.current?.unmount();
     },
   };
 }

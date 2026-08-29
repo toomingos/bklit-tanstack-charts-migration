@@ -1,27 +1,21 @@
-import { shortDateFmt, weekdayDateFmt } from "./formatters";
+import { shortDateFmt } from "./formatters";
 import { createSpring } from "./spring";
 import {
-  BOX_OFFSET,
   DISCRETE_INTERACTION_THRESHOLD,
   FADE_BUFFER,
   TICKER_HALF_WIDTH,
 } from "./design-tokens";
 import {
-  applyBoxContent,
   applyLabelFade,
-  buildBox,
   buildDotLayer,
   buildIndicator,
   buildPill,
   ensureDot,
-  hideBoxContent,
   hideDot,
-  positionBox,
   resetLabelFade,
   updateDotPosition,
 } from "./tooltip-chrome";
 import {
-  toBoxConfig,
   toDotConfig,
   toIndicatorConfig,
 } from "./tooltip-mappers";
@@ -219,17 +213,14 @@ export function attachHoverChrome(
 
   const indicator = buildIndicator(doc, chromeId, toIndicatorConfig(getState().tooltip), tooltipSpring);
   const dotLayer = buildDotLayer(doc);
-  const boxBuild = buildBox(doc, toBoxConfig(getState().tooltip), tooltipSpring, false);
   const pillBuild = buildPill(doc, tooltipSpring, () => getState().dateLabels ?? []);
 
-  host.append(highlightSvg, markerActiveSvg, indicator.svg, dotLayer.svg, boxBuild.layer, pillBuild.layer);
+  host.append(highlightSvg, markerActiveSvg, indicator.svg, dotLayer.svg, pillBuild.layer);
 
   const highlightXSpring = createSpring(0, highlightSpring.stiffness, highlightSpring.damping, (x) => highlightClipRect.setAttribute("x", String(x)));
   const highlightWidthSpring = createSpring(0, highlightSpring.stiffness, highlightSpring.damping, (w) => highlightClipRect.setAttribute("width", String(Math.max(0, w))));
 
   let visible = false;
-  let prevFlip: boolean | null = null;
-  let boxFadeAnimation: Animation | null = null;
   let highlightFadeAnimation: Animation | null = null;
   const dimmedPaths = new Set<SVGPathElement>();
   const dimmedBarRects = new Set<SVGRectElement>();
@@ -242,11 +233,9 @@ export function attachHoverChrome(
   const hide = () => {
     if (!visible) return;
     visible = false;
-    prevFlip = null;
     lastX = null;
     indicator.svg.style.display = "none";
     dotLayer.svg.style.display = "none";
-    boxBuild.layer.style.display = "none";
     pillBuild.layer.style.display = "none";
     highlightSvg.style.display = "none";
     markerActiveSvg.style.display = "none";
@@ -255,13 +244,9 @@ export function attachHoverChrome(
     dimmedMarkerGroups.clear();
     indicator.xSpring.stop();
     indicator.lineXSpring?.stop();
-    boxBuild.leftSpring?.stop();
-    boxBuild.topSpring?.stop();
     pillBuild.spring.stop();
-    boxBuild.entranceSpring.stop();
     highlightXSpring.stop();
     highlightWidthSpring.stop();
-    boxFadeAnimation?.cancel(); boxFadeAnimation = null;
     highlightFadeAnimation?.cancel(); highlightFadeAnimation = null;
     for (const { x, y } of dotLayer.springs.values()) { x.stop(); y.stop(); }
     for (const path of dimmedPaths) path.style.opacity = "1";
@@ -269,7 +254,6 @@ export function attachHoverChrome(
     for (const rect of dimmedBarRects) rect.style.opacity = "1";
     dimmedBarRects.clear();
     lastBarRowIndex = null;
-    hideBoxContent(boxBuild);
     pillBuild.label.textContent = "";
     resetLabelFade(container);
   };
@@ -278,7 +262,6 @@ export function attachHoverChrome(
     if (points.length === 0) { hide(); return; }
     const state = getState();
     const { margin } = state;
-    const width = container.clientWidth;
     const height = container.clientHeight;
     const innerHeight = Math.max(0, height - margin.top - margin.bottom);
     const primary = points[0]!;
@@ -522,22 +505,6 @@ export function attachHoverChrome(
       lastBarRowIndex = resolvedBarRowIndex;
     }
 
-    {
-      const tooltip = state.tooltip ?? null;
-      const title: string | undefined = isDate ? weekdayDateFmt.format(date as Date) : undefined;
-      let rows: { color: string; label: string; value: string | number }[];
-      if (tooltip?.rows) rows = tooltip.rows(primary.datum as Record<string, unknown>);
-      else rows = state.series.map((series) => {
-        const v = (primary.datum as Record<string, unknown>)[series.dataKey];
-        return { color: series.color || pointByMark.get(series.dataKey)?.color || "transparent", label: series.dataKey, value: typeof v === "number" ? v : String(v ?? 0) };
-      });
-      boxBuild.layer.style.top = `${margin.top}px`;
-      boxBuild.layer.style.display = "";
-      applyBoxContent(boxBuild, doc, title, rows, primary.datum as Record<string, unknown>, primary.datumIndex, toBoxConfig(tooltip));
-      const flip = positionBox(boxBuild, primary.x, margin.top, width, height, BOX_OFFSET, showing, prevFlip, { current: boxFadeAnimation } as { current: Animation | null });
-      prevFlip = flip;
-    }
-
     if (state.showDatePill && isDate) {
       pillBuild.layer.style.display = "";
       if (pillBuild.ticker && state.dateLabels && state.dateLabels.length > 0) {
@@ -597,16 +564,11 @@ export function attachHoverChrome(
       dimmedMarkerGroups.clear();
       indicator.svg.remove();
       dotLayer.svg.remove();
-      boxBuild.layer.remove();
       pillBuild.layer.remove();
       dotLayer.byKey.clear();
       dotLayer.springs.clear();
-      boxBuild.rowByKey.clear();
-      boxBuild.contentScheduler?.dispose();
       highlightPathBySeries.clear();
       pillBuild.ticker?.detach();
-      boxBuild.customRoot.current?.unmount();
-      boxBuild.childrenRoot.current?.unmount();
     },
   };
 }

@@ -41,7 +41,7 @@
 //     that turns pointer input into hoveredNodeIndex/hoveredLinkIndex.
 
 import { createMark, link } from "@tanstack/charts";
-import type { ChartValue, MarkRenderContext, SceneLabel, SceneNode } from "@tanstack/charts";
+import type { ChartPoint, ChartValue, MarkRenderContext, SceneLabel, SceneNode } from "@tanstack/charts";
 import {
   sankeyDiagram,
   type SankeyLink as NativeSankeyLink,
@@ -59,6 +59,11 @@ import type { SankeyLabelOrientation } from "../sankey-chart";
 import { computeNodeHoverConnected, computeLinkHoverConnected } from "./sankey-hover-chrome";
 
 export const SANKEY_MARK_ID = "sankey";
+// C2 (tooltip): distinct markId for node ChartPoints (the native "flow"
+// link mark already stamps its own points with markId "flow" — see
+// dist/link.js). Lets the chart component's hover bridge / renderTooltipBody
+// tell a node point from a link point via `point.markId`.
+export const SANKEY_NODE_MARK_ID = "sankey-node";
 
 export interface SankeyMarkConfig {
   strokeOpacity: number;
@@ -300,12 +305,35 @@ export function createSankeyMark(
       channels: {},
       render: ({ chart }: MarkRenderContext) => {
         // ── Nodes (painted after the native flow layer, on top) ──
+        // C2 (tooltip): one ChartPoint per node, anchored to the rect's
+        // center. The custom bodyMark previously emitted no points at all
+        // (unlike the native `link()` flow mark below, which always has),
+        // so node hover had nothing for `interaction.setControlledFocus` /
+        // the native tooltip extension to anchor to — this is what makes
+        // node-hover tooltip adoption possible. `datum` is the same
+        // `LaidOutNode` the getNodeColor callback contract already exposes.
+        const nodePoints: ChartPoint<LaidOutNode>[] = [];
         const nodeScenes: SceneNode[] = laidOutNodes.map((node, index) => {
           const nodeX = node.x0 ?? 0;
           const nodeY = node.y0 ?? 0;
           const nodeW = Math.max(0, (node.x1 ?? 0) - nodeX);
           const nodeH = Math.max(0, (node.y1 ?? 0) - nodeY);
           const nodeOpacity = anyHovered && !nodeConnected[index] ? fadedNodeOpacity : 1;
+          const nodeFill = nodeColorFn(node, index);
+
+          nodePoints.push({
+            key: `${SANKEY_MARK_ID}:node:${index}`,
+            markId: SANKEY_NODE_MARK_ID,
+            group: null,
+            groupLabel: SANKEY_MARK_ID,
+            datum: node,
+            datumIndex: index,
+            xValue: index,
+            yValue: node.value ?? 0,
+            x: nodeX + nodeW / 2,
+            y: nodeY + nodeH / 2,
+            color: nodeFill,
+          });
 
           return {
             kind: "group" as const,
@@ -322,7 +350,7 @@ export function createSankeyMark(
                 height: nodeH,
                 radius: lineCap,
                 style: {
-                  fill: nodeColorFn(node, index),
+                  fill: nodeFill,
                   fillOpacity: 1,
                   opacity: nodeOpacity,
                 },
@@ -366,6 +394,12 @@ export function createSankeyMark(
                 ]
               : []),
           ],
+          // C2 (tooltip): scene.points aggregation (dist/scene.js
+          // collectRenderedPoints) unions this directly-returned array with
+          // whatever the sibling `link()` flow mark emits — node hover can
+          // now resolve a real ChartPoint the same way link hover already
+          // could.
+          points: nodePoints,
         };
       },
     }));

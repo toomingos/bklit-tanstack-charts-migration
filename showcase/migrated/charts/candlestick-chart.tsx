@@ -30,10 +30,14 @@
 // ChartPoint[] → CandlestickFocusPoint (no native pointermove/bisect listener).
 import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
-import { Chart } from "@tanstack/react-charts";
+import { Chart } from "@tanstack/react-charts/tooltip";
+import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { defineChart, createMark } from "@tanstack/charts";
+import { tooltip as tooltipExtension } from "@tanstack/charts/tooltip";
 import type { ChartMark, ChartMarkState, ChartPoint, ChartRenderContext, ChartScale, SceneNode } from "@tanstack/charts";
 import { extractChildren } from "./children";
+import { TooltipContent } from "./internal/tooltip-components";
+import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, TOOLTIP_BOX_SPRING } from "./internal/design-tokens";
 import { sampleSpringKeyframes } from "./internal/candle-spring";
 import {
   buildProgressKeyframes,
@@ -66,11 +70,11 @@ import type { PatternPresetId } from "./internal/pattern-preset";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
 import { YAxisOverlay } from "./internal/y-axis-overlay";
 import { resolveYAxisTickCount } from "./internal/y-axis-ticks";
-import type { ChartDatum } from "./internal/types";
+import type { ChartDatum, ChartTooltipPoint, TooltipRow } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { createCandlestickFocusStrategy } from "./internal/candlestick-focus-strategy";
 import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
-import { shortDateFmt } from "./internal/formatters";
+import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
 import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
 import { useSanitizedId } from "./internal/use-sanitized-id";
@@ -202,6 +206,9 @@ export function CandlestickChart({
     () => extractChildren(children),
     [children],
   );
+  // C2: hoisted above `definition` so native `tooltip` extension wiring can
+  // read it inside the same memo that builds the marks/scales spec.
+  const tooltipEnabled = tooltip?.enabled ?? false;
 
   // bklit candlestick-chart.tsx: no decimation (D19 — `decimateOhlcData` is
   // dead code) — every raw candle is rendered, same as the benchmark
@@ -563,6 +570,26 @@ export function CandlestickChart({
     ];
     const gridGuide = resolveGridGuide(grid);
 
+    // C2: native tooltip extension — box-follow spring mirrors the legacy
+    // TOOLTIP_BOX_SPRING default; springs snap (motion: false) once the
+    // series is past the same DISCRETE_INTERACTION_THRESHOLD the chrome's
+    // own springs use (verified strict `>`, not `>=`).
+    const tooltipOption = tooltipEnabled
+      ? {
+          use: tooltipExtension,
+          // Host chrome reset by the `.bkm-native-tooltip` rule in styles.css;
+          // panel chrome comes from TooltipContent's own `.bkm-tooltip-panel`.
+          className: "bkm-native-tooltip",
+          sticky: false,
+          anchor: { x: "value", y: "plot-top" } as const,
+          placement: ["right", "left"] as const,
+          offset: BOX_OFFSET,
+          motion: (renderData.length > DISCRETE_INTERACTION_THRESHOLD
+            ? false
+            : { type: "spring", stiffness: TOOLTIP_BOX_SPRING.stiffness, damping: TOOLTIP_BOX_SPRING.damping }) as false | { type: "spring"; stiffness: number; damping: number },
+        }
+      : (false as const);
+
     return defineChart({
       marks,
       // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
@@ -587,6 +614,7 @@ export function CandlestickChart({
       // bklit candlestick: data updates SNAP, never tween (I8 is a Line-only
       // concept) — matches every other migrated chart's non-Line behavior.
       svgAnimation: false,
+      tooltip: tooltipOption,
     });
   }, [
     renderData,
@@ -598,6 +626,7 @@ export function CandlestickChart({
     negativePattern,
     solidFillFor,
     resolvedCandlestick.insideStrokeWidth,
+    tooltipEnabled,
     resolvedCandlestick.fadedOpacity,
     resolvedCandlestick.showHoverFade,
     grid,
@@ -704,7 +733,6 @@ export function CandlestickChart({
   }, []);
 
   // Hover chrome (bklit ChartTooltip + candlestick's own dim/highlight idiom).
-  const tooltipEnabled = tooltip?.enabled ?? false;
   const chartConfig = useChartConfig();
   const chromeRef = React.useRef<CandlestickHoverChrome | null>(null);
   // bklit parity (use-chart-interaction.ts): drag selection suppresses the
@@ -859,6 +887,37 @@ export function CandlestickChart({
       chromeRef.current?.onFocusChange(point);
     },
     [yScaleForChrome, bodyWidthPx, positivePattern, negativePattern, solidFillFor],
+  );
+
+  // C2: native tooltip body — reuses `TooltipContent` verbatim. Legacy box
+  // content was single-row "close" (custom `tooltip.rows`/`content`/
+  // `children` honored) keyed off the "bodies" mark's point (carries the
+  // full raw OHLC datum + the focused date as `xValue`). Reads
+  // `chromeStateRef.current` at call time (mirrors the chrome's own
+  // `getState()` pattern).
+  const renderTooltipBody = React.useCallback(
+    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode => {
+      if (ctx.points.length === 0) return null;
+      const tt = chromeStateRef.current?.tooltip ?? null;
+      const bodyPoint = ctx.points.find((p) => p.markId === "bodies") ?? ctx.points[0]!;
+      const datum = bodyPoint.datum as ChartDatum;
+      const date = bodyPoint.xValue as Date;
+      const close = datum.close as number;
+      const pointRec: Record<string, unknown> = { date, close };
+      if (tt?.content) {
+        return tt.content({ point: pointRec as ChartTooltipPoint, index: 0 });
+      }
+      const rows: TooltipRow[] = tt?.rows
+        ? tt.rows(pointRec)
+        : [{ color: "var(--chart-line-primary)", label: "close", value: close }];
+      const title = weekdayDateFmt.format(date);
+      return (
+        <TooltipContent title={title} rows={rows}>
+          {tt?.children}
+        </TooltipContent>
+      );
+    },
+    [],
   );
 
   // Mount/reveal WAAPI setup (bklit candlestick.tsx AnimatedCandle, framer
@@ -1144,6 +1203,7 @@ export function CandlestickChart({
             definition={definition}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
+            renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
           />
           {xAxis ? (
             <XAxisOverlay

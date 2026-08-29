@@ -21,6 +21,19 @@ would leave C1 untypecheckable or force throwaway stubs; merged, C1 is one coher
 
 Typecheck + `next build` after every commit. No QA/bench until 6.5.
 
+**6.3 amendments (orchestrator, pre-C1):**
+- React `<Chart>` mounts the **static SVG renderer** (`dist/react/Chart.js:13-16`); the motion
+  renderer attaches via `RendererChart` + `motion()` (`@tanstack/charts/react`). The renderer
+  switch is C5's first task; C1–C4 state/tick transitions are declared but snap until then —
+  expected inside the big-bang window.
+- `{focus:'unmatched'}` selector is **group-scoped** (`dist/mark-state.js:104`); under group-x
+  focus every series owns a group point. Series dim uses the `whenSeriesDimmed()` predicate
+  (`internal/focus-injection.ts`, orchestrator-authored) — `!matches('series')`, where 'series'
+  compares `point.group` (`dist/focus-layer.js:240-241`).
+- `geo` marks have **no `states`** (`dist/geo.d.ts:17-35`) — choropleth dim is a reactive
+  definition (per-datum `fill` alpha via `onFocusChange` state), not predicate states. Same
+  fallback applies to any library-native polar/hierarchy mark an executor finds stateless.
+
 ## Per-chart × subsystem matrix
 
 R = replace native · SE = sanctioned extension · AWL = accept-with-log · K = keep · — = n/a

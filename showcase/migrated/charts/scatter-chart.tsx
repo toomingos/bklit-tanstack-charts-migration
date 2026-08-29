@@ -16,8 +16,9 @@
 // path re-stroke band.
 import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
-import { Chart } from "@tanstack/react-charts";
+import { Chart, type ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { defineChart, dot } from "@tanstack/charts";
+import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
 import type {
   ChartDotStateStyle,
   ChartMark,
@@ -41,15 +42,16 @@ import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import { useChartConfig } from "./internal/chart-config-context";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
-import type { ChartDatum, ChartPhase } from "./internal/types";
+import { TooltipContent } from "./internal/tooltip-components";
+import type { ChartDatum, ChartPhase, ChartTooltipPoint, TooltipRow } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { resolveGridGuide } from "./internal/grid";
 import { createScatterFocusStrategy } from "./internal/scatter-focus-strategy";
 import "./styles.css";
 import { isRevealed, markRevealed, onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
 import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
-import { CHART_CATEGORY_PALETTE } from "./internal/design-tokens";
-import { shortDateFmt } from "./internal/formatters";
+import { BOX_OFFSET, CHART_CATEGORY_PALETTE, DISCRETE_INTERACTION_THRESHOLD } from "./internal/design-tokens";
+import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import {
   DEFAULT_ANIMATION_DURATION_MS,
@@ -664,6 +666,12 @@ export function ScatterChart({
     [],
   );
 
+  // Hoisted above `definition` (was previously declared just below it) so the
+  // native `tooltip` extension option — which needs both the app-config box
+  // spring and the extracted <ChartTooltip> config — can be assembled inside
+  // the same memo that builds marks/scales/focus.
+  const chartConfig = useChartConfig();
+
   const definition = React.useMemo(() => {
     if (width <= 0) return null;
     const marks: ChartMark<ChartDatum, Date, number>[] = [];
@@ -750,16 +758,51 @@ export function ScatterChart({
       theme: { palette: CHART_CATEGORY_PALETTE },
     } as const;
     const base = defineChart(spec);
-    return defineChart(base, {
+    const withFocus = defineChart(base, {
       focus: scatterFocusStrategy,
       focusRing: false,
       maxFocusDistance: Number.POSITIVE_INFINITY,
+    });
+    // C2: native tooltip extension replaces the deleted DOM box/panel
+    // (tooltip-chrome.ts's buildBox/positionBox/applyBoxContent) — body
+    // content comes from `renderTooltipBody` below, reusing bklit's existing
+    // `TooltipContent` component verbatim. bklit anchors the box at the
+    // hovered point with a left/right flip (positionBox's `flip` calc); the
+    // native equivalent is `anchor:'point'` + `placement:['right','left']`.
+    // `sticky:false` matches the task-wide C2 ruling (no click-to-pin here).
+    // Motion mirrors the legacy TOOLTIP_BOX_SPRING (panel-follow spring, via
+    // ChartConfigProvider's `tooltipBoxSpring`, same override surface the
+    // deleted `resolveBoxSpring` read) — snapped to `false` past the same
+    // DISCRETE_INTERACTION_THRESHOLD the imperative code used to gate
+    // `.jump()` vs `.set()`.
+    if (!(tooltip?.enabled ?? false)) {
+      return withFocus as StaticChartDefinition<ChartDatum, Date, number, "dom">;
+    }
+    const discrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
+    return defineChart(withFocus, {
+      tooltip: {
+        use: nativeTooltip,
+        anchor: "point",
+        placement: ["right", "left"],
+        offset: BOX_OFFSET,
+        sticky: false,
+        motion: discrete
+          ? false
+          : {
+              type: "spring",
+              stiffness: chartConfig.tooltipBoxSpring.stiffness,
+              damping: chartConfig.tooltipBoxSpring.damping,
+            },
+        className: tooltip?.className,
+      },
     }) as StaticChartDefinition<ChartDatum, Date, number, "dom">;
-  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy, projectorFor]);
+  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy, projectorFor, tooltip?.enabled, tooltip?.className, chartConfig.tooltipBoxSpring]);
 
-  // Hover chrome (bklit ChartTooltip, scatter dim/highlight variant).
+  // Hover chrome (bklit ChartTooltip, scatter dim/highlight variant) — still
+  // owns the crosshair/tooltip-dot/date-pill geometry (C3's future native
+  // replacement target); only the box/panel moved to the native tooltip
+  // extension above.
   const tooltipEnabled = tooltip?.enabled ?? false;
-  const chartConfig = useChartConfig();
   const chromeRef = React.useRef<ScatterHoverChrome | null>(null);
   const chromeStateRef = React.useRef<ScatterHoverChromeState | null>(null);
   const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
@@ -767,15 +810,6 @@ export function ScatterChart({
     if (v instanceof Date) return shortDateFmt.format(v);
     return String(v ?? "");
   }), [renderData, xDataKey]);
-  // S12/K-1 (go-to-plan.md): the provider's box spring is the live default at
-  // the part→config boundary; a per-<ChartTooltip> boxSpringConfig /
-  // matchCrosshair / damping still overrides it inside resolveBoxSpring —
-  // same precedence the deleted per-chrome option applied.
-  const tooltipWithBoxSpring = React.useMemo(() => {
-    if (!tooltip) return null;
-    if (tooltip.boxSpringConfig || tooltip.matchCrosshair || tooltip.damping !== undefined) return tooltip;
-    return { ...tooltip, boxSpringConfig: chartConfig.tooltipBoxSpring };
-  }, [tooltip, chartConfig.tooltipBoxSpring]);
   chromeStateRef.current = {
     margin,
     // P6/C1: the dim/pop fields (fadeOnHover, inactiveOpacity, inactiveBlur,
@@ -796,7 +830,7 @@ export function ScatterChart({
     showDatePill: tooltip?.showDatePill ?? true,
     // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade radius.
     tickerHalfWidth: xAxis?.tickerHalfWidth,
-    tooltip: tooltipWithBoxSpring,
+    tooltip: tooltip ?? null,
     dateLabels: dateLabelsForPill,
   };
 
@@ -849,6 +883,68 @@ export function ScatterChart({
       chromeRef.current?.onFocusGroupChange(mapped);
     },
     [fillBySeries],
+  );
+
+  // C2: native tooltip body — reuses bklit's existing `TooltipContent`
+  // (internal/tooltip-components.tsx) and the same title/rows composition
+  // the deleted `applyBoxContent` used (scatter-hover-chrome.ts's former
+  // inline block): `tooltip.rows` overrides row-building entirely; otherwise
+  // one row per series, colored by series fill falling back to the focused
+  // point's own color. `tooltip.content` — when present — REPLACES the
+  // default body entirely (bklit's `applyBoxContent` custom-content branch
+  // never renders rows/children alongside custom content). `panelStyle`/
+  // `backgroundColor` (ChartTooltipConfig fields with no native-option
+  // equivalent) are re-applied as a wrapping style override so existing
+  // per-chart customizations keep working.
+  const renderTooltipBody = React.useCallback(
+    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode => {
+      const { points } = ctx;
+      if (points.length === 0) return null;
+      const primary = points[0]!;
+      const datum = primary.datum as Record<string, unknown>;
+      const dateValue = datum[xDataKey];
+      const isDate = dateValue instanceof Date;
+
+      let body: React.ReactNode;
+      if (tooltip?.content) {
+        body = tooltip.content({
+          point: datum as ChartTooltipPoint,
+          index: primary.datumIndex,
+        });
+      } else {
+        const title: string | undefined = isDate
+          ? weekdayDateFmt.format(dateValue as Date)
+          : undefined;
+        const rows: TooltipRow[] = tooltip?.rows
+          ? tooltip.rows(datum)
+          : resolvedSeries.map((series) => {
+              const point = points.find((p) => p.markId === series.dataKey);
+              const v = datum[series.dataKey];
+              return {
+                color: series.fill || point?.color || "transparent",
+                label: series.dataKey,
+                value: typeof v === "number" ? v : String(v ?? 0),
+              };
+            });
+        body = (
+          <TooltipContent title={title} rows={rows}>
+            {tooltip?.children}
+          </TooltipContent>
+        );
+      }
+      if (!tooltip?.panelStyle && !tooltip?.backgroundColor) return body;
+      return (
+        <div
+          style={{
+            ...(tooltip?.panelStyle ?? {}),
+            ...(tooltip?.backgroundColor ? { backgroundColor: tooltip.backgroundColor } : {}),
+          }}
+        >
+          {body}
+        </div>
+      );
+    },
+    [tooltip, resolvedSeries, xDataKey],
   );
 
   // S11 (bklit useScatterChartInteraction): drag-select + two-finger range
@@ -1095,6 +1191,7 @@ export function ScatterChart({
             definition={definition}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
+            renderTooltipBody={renderTooltipBody}
           />
           {gradientDefs.length > 0 || yGradientDefs.length > 0 ? (
             // Rendered AFTER <Chart> deliberately: QA's screenshot harness

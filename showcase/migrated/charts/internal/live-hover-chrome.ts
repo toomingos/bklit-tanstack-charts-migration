@@ -1,31 +1,47 @@
 import * as React from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { intFmt, shortDateFmt } from "./formatters";
 import { createSpring, type Spring } from "./spring";
 import {
+  BOX_FALLBACK_HEIGHT,
+  BOX_FALLBACK_WIDTH,
   BOX_OFFSET,
+  ENTRANCE_SPRING,
   FADE_BUFFER,
   TICKER_HALF_WIDTH,
+  TOOLTIP_SPRING,
 } from "./design-tokens";
 import {
-  applyBoxContent,
-  buildBox,
-  buildDotLayer,
-  buildIndicator,
-  ensureDot,
-  hideBoxContent,
-  hideDot,
-  positionBox,
-  updateDotPosition,
-} from "./tooltip-chrome";
+  indicatorFadeGradientStops,
+  resolveVerticalFadeSides,
+  type IndicatorFadeEdges,
+} from "./fade-mask";
+import { resolveTooltipBoxMotion, type SpringConfig } from "./chart-config-context";
 import {
   toBoxConfig,
   toDotConfig,
   toIndicatorConfig,
 } from "./tooltip-mappers";
-import type { DotConfig, IndicatorConfig } from "./tooltip-chrome";
-import type { ChartTooltipPoint } from "./types";
-import { TOOLTIP_BOX_SPRING, TOOLTIP_SPRING } from "./design-tokens";
+import type { ChartTooltipPoint, IndicatorWidth, TooltipRow } from "./types";
 const TICK_SPRING = { stiffness: 180, damping: 24 };
+
+// P6/C2: live-line's mark (internal/live-line-mark.ts) emits only
+// `polyline`/`area` scene nodes — no per-datum ChartPoint the native `focus`
+// system can track — and this chart's whole hover/tooltip path is
+// deliberately application-owned (see live-line-chart.tsx's header, D16/D22):
+// a plain-ref pointer listener + one continuous rAF loop drive
+// `updateHover`/`updateFrame` directly every raw tick, bypassing React state
+// and TanStack's focus/tooltip extensions entirely on purpose (perf — the
+// architecture note calls this out as "deliberately NOT optimized away").
+// The native `tooltip` extension + `renderTooltipBody` therefore cannot
+// anchor here (no scene ChartPoints to focus), so this module KEEPS its
+// bespoke DOM box/panel unchanged. `tooltip-chrome.ts`, which used to supply
+// the box/indicator/dot primitives below, is being deleted wholesale in this
+// commit; those primitives are inlined verbatim here as self-owned interim
+// code (unchanged in behavior) instead of importing them. FOLLOW-UP FOR C5:
+// once live-line-mark gains rolling-path/ChartPoints support, re-evaluate
+// whether the native tooltip extension can anchor to those points and this
+// bespoke box can be retired in favor of `renderTooltipBody`.
 
 export interface LiveHoverSeries {
   dataKey: string;
@@ -103,6 +119,524 @@ export interface LiveHoverChromeOptions {
 
 let gradientCounter = 0;
 
+// ─────────────────────────────────────────────────────────────────────────
+// Inlined from tooltip-chrome.ts (dying, deleted wholesale this commit) —
+// crosshair + dot + box/panel primitives, unchanged in behavior. Live keeps
+// its bespoke box (see header comment above for why native tooltip can't
+// anchor here); scatter's copy of this same code (scatter-hover-chrome.ts)
+// dropped the box half since scatter moved to the native extension.
+// ─────────────────────────────────────────────────────────────────────────
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+export type DotVariant = "dot" | "ring";
+
+function resolveIndicatorWidth(width: IndicatorWidth): number {
+  if (typeof width === "number") return width;
+  switch (width) {
+    case "line": return 1;
+    case "thin": return 2;
+    case "medium": return 4;
+    case "thick": return 8;
+    default: return 1;
+  }
+}
+
+function resolveIndicatorPixelWidth(cfg: { width?: IndicatorWidth; span?: number; columnWidth?: number }): number {
+  if (cfg.span !== undefined && cfg.columnWidth !== undefined) return cfg.span * cfg.columnWidth;
+  return resolveIndicatorWidth(cfg.width ?? "line");
+}
+
+interface IndicatorConfig {
+  width?: IndicatorWidth;
+  span?: number;
+  columnWidth?: number;
+  color?: string | ((point: Record<string, unknown>) => string);
+  dasharray?: string;
+  fadeEdges?: IndicatorFadeEdges | boolean;
+  fadeLength?: number;
+  springConfig?: SpringConfig;
+}
+
+interface DotConfig {
+  variant?: DotVariant;
+  size?: number;
+  radiusFraction?: number;
+  scale?: number;
+  strokeWidth?: number;
+  color?: string | ((point: Record<string, unknown>, line: { dataKey: string; stroke?: string }) => string);
+}
+
+interface BoxConfig {
+  springConfig?: SpringConfig;
+  matchCrosshair?: boolean;
+  damping?: number;
+  boxSpringConfig?: SpringConfig;
+  className?: string;
+  panelStyle?: React.CSSProperties;
+  backgroundColor?: string;
+  content?: (props: { point: ChartTooltipPoint; index: number }) => React.ReactNode;
+  children?: React.ReactNode;
+  rows?: (point: Record<string, unknown>) => TooltipRow[];
+}
+
+function resolveBoxSpring(
+  cfg: BoxConfig,
+  tooltipSpring: SpringConfig,
+  discrete: boolean,
+): { animate: boolean; springConfig: SpringConfig } {
+  if (cfg.boxSpringConfig) return { animate: !discrete, springConfig: cfg.boxSpringConfig };
+  if (cfg.matchCrosshair) return { animate: !discrete, springConfig: cfg.springConfig ?? tooltipSpring };
+  return resolveTooltipBoxMotion(cfg.damping);
+}
+
+function ringCornerRadius(halfExtent: number, cornerRadiusFraction: number): number {
+  const side = halfExtent * 2;
+  return side * Math.max(0, Math.min(0.5, cornerRadiusFraction));
+}
+
+interface IndicatorBuild {
+  svg: SVGSVGElement;
+  rect: SVGRectElement | null;
+  line: SVGLineElement | null;
+  gradient: SVGLinearGradientElement;
+  xSpring: Spring;
+  lineXSpring: Spring | null;
+  pixelWidth: number;
+  isDashed: boolean;
+}
+
+function buildIndicator(
+  doc: Document,
+  chromeId: number,
+  cfg: IndicatorConfig,
+  tooltipSpring: SpringConfig,
+): IndicatorBuild {
+  const pixelWidth = resolveIndicatorPixelWidth(cfg);
+  const isDashed = Boolean(cfg.dasharray);
+  const effectiveFadeEdges: IndicatorFadeEdges | boolean = isDashed ? "none" : (cfg.fadeEdges ?? "both");
+  const effectiveFadeLength = cfg.fadeLength ?? 10;
+  const colorValue = typeof cfg.color === "string" ? cfg.color : "var(--chart-crosshair)";
+  const gradientId = `bkm-crosshair-gradient-${chromeId}`;
+  const svg = doc.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "bkm-hover-layer");
+  svg.setAttribute("aria-hidden", "true");
+  const defs = doc.createElementNS(SVG_NS, "defs");
+  const gradient = doc.createElementNS(SVG_NS, "linearGradient") as SVGLinearGradientElement;
+  gradient.setAttribute("id", gradientId);
+  gradient.setAttribute("x1", "0%"); gradient.setAttribute("x2", "0%");
+  gradient.setAttribute("y1", "0%"); gradient.setAttribute("y2", "100%");
+  const fadeSides = resolveVerticalFadeSides(effectiveFadeEdges as IndicatorFadeEdges);
+  for (const { offset, opacity } of indicatorFadeGradientStops(fadeSides, effectiveFadeLength)) {
+    const stop = doc.createElementNS(SVG_NS, "stop");
+    stop.setAttribute("offset", offset);
+    stop.setAttribute("style", `stop-color: ${colorValue}; stop-opacity: ${opacity}`);
+    gradient.appendChild(stop);
+  }
+  defs.appendChild(gradient);
+  svg.appendChild(defs);
+  let rect: SVGRectElement | null = null;
+  let line: SVGLineElement | null = null;
+  if (isDashed) {
+    const l = doc.createElementNS(SVG_NS, "line") as SVGLineElement;
+    l.setAttribute("stroke", colorValue);
+    l.setAttribute("stroke-width", String(Math.max(1, pixelWidth)));
+    if (cfg.dasharray) l.setAttribute("stroke-dasharray", cfg.dasharray);
+    svg.appendChild(l);
+    line = l;
+    const r = doc.createElementNS(SVG_NS, "rect");
+    r.setAttribute("width", String(pixelWidth)); r.setAttribute("fill", "transparent"); r.style.display = "none";
+    svg.appendChild(r); rect = r;
+  } else if (fadeSides.any) {
+    const r = doc.createElementNS(SVG_NS, "rect");
+    r.setAttribute("width", String(pixelWidth)); r.setAttribute("fill", `url(#${gradientId})`);
+    svg.appendChild(r); rect = r;
+  } else {
+    const r = doc.createElementNS(SVG_NS, "rect");
+    r.setAttribute("width", String(pixelWidth)); r.setAttribute("fill", colorValue);
+    svg.appendChild(r); rect = r;
+  }
+  svg.style.display = "none";
+  const springCfg = cfg.springConfig ?? tooltipSpring;
+  const xSpring = createSpring(0, springCfg.stiffness, springCfg.damping, (x) => {
+    if (line) { line.setAttribute("x1", String(x)); line.setAttribute("x2", String(x)); }
+    if (rect && !isDashed) rect.setAttribute("x", String(x - pixelWidth / 2));
+    else if (rect) rect.setAttribute("x", String(x - pixelWidth / 2));
+  });
+  let lineXSpring: Spring | null = null;
+  if (isDashed && line) {
+    lineXSpring = createSpring(0, springCfg.stiffness, springCfg.damping, (x) => {
+      line!.setAttribute("x1", String(x)); line!.setAttribute("x2", String(x));
+    });
+  }
+  return { svg, rect, line, gradient, xSpring, lineXSpring, pixelWidth, isDashed };
+}
+
+interface DotLayer {
+  svg: SVGSVGElement;
+  byKey: Map<string, SVGCircleElement | SVGRectElement>;
+  springs: Map<string, { x: Spring; y: Spring }>;
+}
+
+function buildDotLayer(doc: Document): DotLayer {
+  const svg = doc.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "bkm-hover-layer");
+  svg.setAttribute("aria-hidden", "true");
+  svg.style.display = "none";
+  return { svg, byKey: new Map(), springs: new Map() };
+}
+
+function ensureDot(
+  doc: Document,
+  layer: DotLayer,
+  key: string,
+  color: string,
+  x: number,
+  y: number,
+  cfg: DotConfig,
+  tooltipSpring: SpringConfig,
+): void {
+  const variant = cfg.variant ?? "dot";
+  const rawSize = cfg.size ?? 5;
+  const size = rawSize * (cfg.scale ?? 1);
+  const isRing = variant === "ring";
+  let el = layer.byKey.get(key);
+  const strokeWidth = cfg.strokeWidth ?? (isRing ? 1.5 : 2);
+  const radiusFraction = cfg.radiusFraction ?? 0.25;
+  if (!el) {
+    if (isRing) {
+      const rect = doc.createElementNS(SVG_NS, "rect") as unknown as SVGRectElement;
+      const side = size * 2; const rx = ringCornerRadius(size, radiusFraction);
+      rect.setAttribute("width", String(side)); rect.setAttribute("height", String(side));
+      rect.setAttribute("rx", String(rx)); rect.setAttribute("ry", String(rx));
+      rect.setAttribute("fill", "transparent"); rect.setAttribute("stroke", color);
+      rect.setAttribute("stroke-width", String(strokeWidth));
+      layer.svg.appendChild(rect);
+      layer.byKey.set(key, rect as unknown as SVGRectElement);
+      el = rect as unknown as SVGRectElement;
+      layer.springs.set(key, {
+        x: createSpring(x, tooltipSpring.stiffness, tooltipSpring.damping, (nx) => (el as unknown as SVGRectElement).setAttribute("x", String(nx - size))),
+        y: createSpring(y, tooltipSpring.stiffness, tooltipSpring.damping, (ny) => (el as unknown as SVGRectElement).setAttribute("y", String(ny - size))),
+      });
+    } else {
+      const circle = doc.createElementNS(SVG_NS, "circle") as SVGCircleElement;
+      circle.setAttribute("r", String(size)); circle.setAttribute("fill", color);
+      circle.setAttribute("stroke", "var(--chart-background)"); circle.setAttribute("stroke-width", String(strokeWidth));
+      layer.svg.appendChild(circle);
+      layer.byKey.set(key, circle);
+      el = circle;
+      layer.springs.set(key, {
+        x: createSpring(x, tooltipSpring.stiffness, tooltipSpring.damping, (nx) => (el as unknown as SVGCircleElement).setAttribute("cx", String(nx))),
+        y: createSpring(y, tooltipSpring.stiffness, tooltipSpring.damping, (ny) => (el as unknown as SVGCircleElement).setAttribute("cy", String(ny))),
+      });
+    }
+  }
+  el.style.display = "";
+  if (isRing) {
+    (el as unknown as SVGRectElement).setAttribute("stroke", color);
+    (el as unknown as SVGRectElement).setAttribute("stroke-width", String(strokeWidth));
+    const side = size * 2; const rx = ringCornerRadius(size, radiusFraction);
+    (el as unknown as SVGRectElement).setAttribute("width", String(side));
+    (el as unknown as SVGRectElement).setAttribute("height", String(side));
+    (el as unknown as SVGRectElement).setAttribute("rx", String(rx));
+    (el as unknown as SVGRectElement).setAttribute("ry", String(rx));
+  } else {
+    (el as unknown as SVGCircleElement).setAttribute("fill", color);
+    (el as unknown as SVGCircleElement).setAttribute("r", String(size));
+    (el as unknown as SVGCircleElement).setAttribute("stroke-width", String(strokeWidth));
+  }
+}
+
+function updateDotPosition(
+  layer: DotLayer,
+  key: string,
+  x: number,
+  y: number,
+  showing: boolean,
+): void {
+  const s = layer.springs.get(key);
+  if (!s) return;
+  // Dot always springs (bklit ChartTooltip never passes discrete to TooltipDot) —
+  // only a fresh mount snaps in place.
+  if (showing) { s.x.jump(x); s.y.jump(y); } else { s.x.set(x); s.y.set(y); }
+}
+
+function hideDot(layer: DotLayer, key: string): void {
+  const el = layer.byKey.get(key);
+  if (el) el.style.display = "none";
+}
+
+// ── rAF-coalesced commit scheduler (folded from tooltip-chrome.ts) ────────
+
+function defaultDedupeKey<T>(tooltip: T): string {
+  if (typeof tooltip === "object" && tooltip !== null && "index" in tooltip && typeof (tooltip as { index: unknown }).index === "number") {
+    const { index, x } = tooltip as { index: number; x?: number };
+    if (typeof x === "number") return `${index}:${Math.round(x)}`;
+    return String(index);
+  }
+  return JSON.stringify(tooltip);
+}
+
+interface TooltipScheduler<T> {
+  schedule(tooltip: T, dedupeKey?: string): void;
+  clear(): void;
+  resetDedupe(): void;
+  dispose(): void;
+}
+
+function createTooltipScheduler<T>(options: { commit(t: T | null): void }): TooltipScheduler<T> {
+  let lastKey: string | null = null;
+  let pending: T | null = null;
+  let pendingKey: string | null = null;
+  let rafId: number | null = null;
+
+  const commitTooltip = (tooltip: T, key: string) => {
+    if (key === lastKey) return;
+    lastKey = key;
+    options.commit(tooltip);
+  };
+
+  return {
+    schedule(tooltip: T, dedupeKey?: string) {
+      const key = dedupeKey ?? defaultDedupeKey(tooltip);
+      pending = tooltip;
+      pendingKey = key;
+      if (key === lastKey) return;
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const next = pending;
+        const nextKey = pendingKey;
+        if (next !== null && nextKey !== null) commitTooltip(next, nextKey);
+      });
+    },
+    clear() {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      pending = null;
+      pendingKey = null;
+      lastKey = null;
+      options.commit(null);
+    },
+    resetDedupe() {
+      lastKey = null;
+    },
+    dispose() {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    },
+  };
+}
+
+interface BoxBuild {
+  layer: HTMLDivElement;
+  panel: HTMLDivElement;
+  content: HTMLDivElement;
+  title: HTMLDivElement;
+  rows: HTMLDivElement;
+  custom: HTMLDivElement;
+  childrenWrap: HTMLDivElement | null;
+  rowByKey: Map<string, { root: HTMLDivElement; swatch: HTMLSpanElement; label: HTMLSpanElement; value: HTMLSpanElement }>;
+  customRoot: { current: Root | null };
+  leftSpring: Spring | null;
+  topSpring: Spring | null;
+  entranceSpring: Spring;
+  runEntrance: (flipped: boolean) => void;
+  lastContentKey: { current: string | null };
+  childrenRoot: { current: Root | null };
+  contentScheduler: TooltipScheduler<() => void> | null;
+}
+
+function buildBox(
+  doc: Document,
+  cfg: BoxConfig,
+  tooltipSpring: SpringConfig,
+  discrete: boolean,
+): BoxBuild {
+  const layer = doc.createElement("div");
+  layer.className = cfg.className ? `bkm-tooltip-layer ${cfg.className}` : "bkm-tooltip-layer";
+  const panel = doc.createElement("div");
+  panel.className = "bkm-tooltip-panel";
+  if (cfg.panelStyle) Object.assign(panel.style, cfg.panelStyle);
+  if (cfg.backgroundColor) panel.style.backgroundColor = cfg.backgroundColor;
+  const content = doc.createElement("div"); content.className = "bkm-tooltip-content";
+  const title = doc.createElement("div"); title.className = "bkm-tooltip-title";
+  const rows = doc.createElement("div"); rows.className = "bkm-tooltip-rows";
+  content.append(title, rows);
+  const custom = doc.createElement("div");
+  let childrenWrap: HTMLDivElement | null = null;
+  if (cfg.children) {
+    childrenWrap = doc.createElement("div");
+    childrenWrap.style.marginTop = "0.5rem";
+    childrenWrap.style.transition = "opacity 200ms ease-out";
+  }
+  panel.append(content, custom);
+  if (childrenWrap) panel.appendChild(childrenWrap);
+  layer.appendChild(panel);
+  layer.style.display = "none";
+  const rowByKey = new Map<string, { root: HTMLDivElement; swatch: HTMLSpanElement; label: HTMLSpanElement; value: HTMLSpanElement }>();
+  const resolved = resolveBoxSpring(cfg, tooltipSpring, discrete);
+  const leftSpring = resolved.animate ? createSpring(0, resolved.springConfig.stiffness, resolved.springConfig.damping, (l) => { layer.style.left = `${l}px`; }) : null;
+  const topSpring = resolved.animate ? createSpring(0, resolved.springConfig.stiffness, resolved.springConfig.damping, (t) => { layer.style.top = `${t}px`; }) : null;
+  let entranceFrom = 0;
+  const entranceSpring = createSpring(1, ENTRANCE_SPRING.stiffness, ENTRANCE_SPRING.damping, (p) => {
+    panel.style.transform = `translateX(${entranceFrom * (1 - p)}px) scale(${0.85 + 0.15 * p})`;
+    panel.style.opacity = String(p);
+  });
+  const runEntrance = (flipped: boolean) => {
+    panel.style.transformOrigin = flipped ? "right top" : "left top";
+    entranceFrom = flipped ? 20 : -20;
+    entranceSpring.jump(0); entranceSpring.set(1);
+  };
+  const contentScheduler = createTooltipScheduler<() => void>({
+    commit: (fn) => fn?.(),
+  });
+  return { layer, panel, content, title, rows, custom, childrenWrap, rowByKey, customRoot: { current: null }, leftSpring, topSpring, entranceSpring, runEntrance, lastContentKey: { current: null }, childrenRoot: { current: null }, contentScheduler };
+}
+
+function positionBox(
+  box: BoxBuild,
+  x: number,
+  y: number,
+  containerWidth: number,
+  containerHeight: number,
+  offset: number,
+  showing: boolean,
+  prevFlip: boolean | null,
+  boxFadeRef: { current: Animation | null },
+): boolean {
+  const w = box.panel.offsetWidth || BOX_FALLBACK_WIDTH;
+  const h = box.panel.offsetHeight || BOX_FALLBACK_HEIGHT;
+  const flip = x + w + offset > containerWidth;
+  const targetLeft = flip ? x - offset - w : x + offset;
+  const targetTop = Math.max(offset, Math.min(y - h / 2, containerHeight - h - offset));
+  const animate = box.leftSpring !== null && box.topSpring !== null;
+  if (showing) {
+    if (animate) { box.leftSpring!.jump(targetLeft); box.topSpring!.jump(targetTop); }
+    else { box.layer.style.left = `${targetLeft}px`; box.layer.style.top = `${targetTop}px`; }
+    boxFadeRef.current?.cancel();
+    boxFadeRef.current = box.layer.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 100, fill: "both" });
+    box.runEntrance(flip);
+  } else {
+    if (animate) { box.leftSpring!.set(targetLeft); box.topSpring!.set(targetTop); }
+    else { box.layer.style.left = `${targetLeft}px`; box.layer.style.top = `${targetTop}px`; }
+    if (prevFlip !== null && flip !== prevFlip) box.runEntrance(flip);
+  }
+  return flip;
+}
+
+function applyBoxContent(
+  box: BoxBuild,
+  doc: Document,
+  title: string | undefined,
+  rows: TooltipRow[],
+  point: Record<string, unknown> | null,
+  index: number,
+  cfg: BoxConfig,
+): void {
+  const syncDisplayForContent = () => {
+    if (cfg.content && point) {
+      box.content.style.display = "none";
+      box.custom.style.display = "";
+      if (box.childrenWrap) box.childrenWrap.style.display = "none";
+    } else {
+      box.lastContentKey.current = null;
+      box.custom.style.display = "none";
+      box.content.style.display = "";
+    }
+  };
+
+  if (cfg.content && point) {
+    const key = `${index}:${JSON.stringify(point)}`;
+    syncDisplayForContent();
+    if (title !== undefined) { box.title.textContent = title; box.title.style.display = title ? "" : "none"; }
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const k = `${row.label}-${row.color}`; seen.add(k);
+      let els = box.rowByKey.get(k);
+      if (!els) {
+        const root = doc.createElement("div"); root.className = "bkm-tooltip-row";
+        const left = doc.createElement("div"); left.className = "bkm-tooltip-row-label";
+        const swatch = doc.createElement("span"); swatch.className = "bkm-tooltip-swatch";
+        const label = doc.createElement("span"); label.className = "bkm-tooltip-series";
+        left.append(swatch, label);
+        const value = doc.createElement("span"); value.className = "bkm-tooltip-value";
+        root.append(left, value); box.rows.appendChild(root);
+        els = { root, swatch, label, value }; box.rowByKey.set(k, els);
+      }
+      els.swatch.style.backgroundColor = row.color; els.label.textContent = row.label;
+      els.value.textContent = typeof row.value === "number" ? intFmt(row.value) : String(row.value);
+      els.root.style.display = "";
+    }
+    for (const [k, els] of box.rowByKey) if (!seen.has(k)) els.root.style.display = "none";
+    if (key === box.lastContentKey.current) return;
+    const doRender = () => {
+      if (key !== box.lastContentKey.current) {
+        box.lastContentKey.current = key;
+        if (!box.customRoot.current) box.customRoot.current = createRoot(box.custom);
+        box.customRoot.current.render(React.createElement(React.Fragment, null, cfg.content!({ point: point as ChartTooltipPoint, index })));
+      }
+      if (box.childrenWrap && cfg.children) {
+        if (!box.childrenRoot.current) box.childrenRoot.current = createRoot(box.childrenWrap);
+        box.childrenRoot.current.render(React.createElement(React.Fragment, null, cfg.children));
+      }
+    };
+    if (box.contentScheduler) {
+      box.contentScheduler.schedule(doRender, key);
+    } else {
+      doRender();
+    }
+    return;
+  }
+  syncDisplayForContent();
+  if (title !== undefined) { box.title.textContent = title; box.title.style.display = title ? "" : "none"; }
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const k = `${row.label}-${row.color}`; seen.add(k);
+    let els = box.rowByKey.get(k);
+    if (!els) {
+      const root = doc.createElement("div"); root.className = "bkm-tooltip-row";
+      const left = doc.createElement("div"); left.className = "bkm-tooltip-row-label";
+      const swatch = doc.createElement("span"); swatch.className = "bkm-tooltip-swatch";
+      const label = doc.createElement("span"); label.className = "bkm-tooltip-series";
+      left.append(swatch, label);
+      const value = doc.createElement("span"); value.className = "bkm-tooltip-value";
+      root.append(left, value); box.rows.appendChild(root);
+      els = { root, swatch, label, value }; box.rowByKey.set(k, els);
+    }
+    els.swatch.style.backgroundColor = row.color; els.label.textContent = row.label;
+    els.value.textContent = typeof row.value === "number" ? intFmt(row.value) : String(row.value);
+    els.root.style.display = "";
+  }
+  for (const [k, els] of box.rowByKey) if (!seen.has(k)) els.root.style.display = "none";
+  if (box.childrenWrap && cfg.children) {
+    const doChildrenRender = () => {
+      if (!box.childrenRoot.current) box.childrenRoot.current = createRoot(box.childrenWrap!);
+      box.childrenRoot.current.render(React.createElement(React.Fragment, null, cfg.children));
+    };
+    if (box.contentScheduler) {
+      box.contentScheduler.schedule(doChildrenRender, `children:${index}`);
+    } else {
+      doChildrenRender();
+    }
+    box.childrenWrap.style.display = "";
+  } else if (box.childrenWrap) {
+    box.childrenWrap.style.display = "none";
+  }
+}
+
+function hideBoxContent(box: BoxBuild): void {
+  box.title.textContent = "";
+  for (const els of box.rowByKey.values()) { els.label.textContent = ""; els.value.textContent = ""; }
+  box.lastContentKey.current = null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+
 export function attachLiveHoverChrome(
   host: HTMLElement,
   getConfig: () => LiveHoverConfig,
@@ -115,8 +649,6 @@ export function attachLiveHoverChrome(
   const indicator = buildIndicator(doc, chromeId, toIndicatorConfig(getConfig()), tooltipSpring);
   const dotLayer = buildDotLayer(doc);
   const boxBuild = buildBox(doc, toBoxConfig(getConfig()), tooltipSpring, false);
-  // Rebuild box springs to use tooltipBoxSpring when not overridden
-  // (buildBox uses resolveBoxSpring which reads damping/boxSpringConfig; for live we keep that)
 
   const pillLayer = doc.createElement("div");
   pillLayer.className = "bkm-date-pill-layer";
@@ -136,7 +668,7 @@ export function attachLiveHoverChrome(
 
   host.append(indicator.svg, dotLayer.svg, boxBuild.layer, pillLayer, xLabelLayer, yTickLayer);
 
-  let boxFadeAnimation: Animation | null = null;
+  const boxFadeRef: { current: Animation | null } = { current: null };
   let visible = false;
   let prevFlip: boolean | null = null;
   const liveGroups: Element[] = [];
@@ -154,7 +686,7 @@ export function attachLiveHoverChrome(
     pillSpring.stop();
     boxBuild.entranceSpring.stop();
     for (const { x, y } of dotLayer.springs.values()) { x.stop(); y.stop(); }
-    boxFadeAnimation?.cancel(); boxFadeAnimation = null;
+    boxFadeRef.current?.cancel(); boxFadeRef.current = null;
     hideBoxContent(boxBuild);
     pillLabelEl.textContent = "";
     for (const span of xLabelBySlot.values()) span.style.opacity = "1";
@@ -228,7 +760,7 @@ export function attachLiveHoverChrome(
       boxBuild.layer.style.top = `${config.margin.top}px`;
       boxBuild.layer.style.display = "";
       applyBoxContent(boxBuild, doc, title, rows, pt, input.index, toBoxConfig(config));
-      const flip = positionBox(boxBuild, point.x, config.margin.top, width, host.clientHeight, BOX_OFFSET, showing, prevFlip, { current: boxFadeAnimation } as { current: Animation | null });
+      const flip = positionBox(boxBuild, point.x, config.margin.top, width, host.clientHeight, BOX_OFFSET, showing, prevFlip, boxFadeRef);
       prevFlip = flip;
     } else {
       boxBuild.layer.style.display = "none";

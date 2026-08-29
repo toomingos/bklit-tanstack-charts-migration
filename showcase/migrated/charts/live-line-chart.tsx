@@ -444,7 +444,7 @@ export function LiveLineChart({
     indicatorSpan: tooltip?.indicatorSpan,
     columnWidth: tooltip?.columnWidth,
     indicatorDasharray: tooltip?.indicatorDasharray,
-    indicatorFadeEdges: tooltip?.indicatorFadeEdges as import("./internal/tooltip-chrome").IndicatorConfig["fadeEdges"],
+    indicatorFadeEdges: tooltip?.indicatorFadeEdges as LiveHoverConfig["indicatorFadeEdges"],
     indicatorFadeLength: tooltip?.indicatorFadeLength,
     springConfig: tooltip?.springConfig,
     matchCrosshair: tooltip?.matchCrosshair,

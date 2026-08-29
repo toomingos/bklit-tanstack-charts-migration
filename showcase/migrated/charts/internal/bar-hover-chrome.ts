@@ -1,20 +1,15 @@
-import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH } from "./design-tokens";
+import { DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH } from "./design-tokens";
 import {
-  applyBoxContent,
   applyLabelFade,
-  buildBox,
   buildDotLayer,
   buildIndicator,
   buildPill,
   ensureDot,
-  hideBoxContent,
   hideDot,
-  positionBox,
   resetLabelFade,
   updateDotPosition,
 } from "./tooltip-chrome";
 import {
-  toBoxConfig,
   toDotConfig,
   toIndicatorConfig,
 } from "./tooltip-mappers";
@@ -96,13 +91,10 @@ export function attachBarHoverChrome(
 
   const indicator = buildIndicator(doc, chromeId, toIndicatorConfig(getState().tooltip), tooltipSpring);
   const dotLayer = buildDotLayer(doc);
-  const boxBuild = buildBox(doc, toBoxConfig(getState().tooltip), tooltipSpring, false);
   const pillBuild = buildPill(doc, tooltipSpring, () => getState().dateLabels ?? []);
-  host.append(indicator.svg, dotLayer.svg, boxBuild.layer, pillBuild.layer);
+  host.append(indicator.svg, dotLayer.svg, pillBuild.layer);
 
   let visible = false;
-  let prevFlip: boolean | null = null;
-  let boxFadeAnimation: Animation | null = null;
 
   let lastGroup: BarFocusGroup | null = null;
 
@@ -110,20 +102,13 @@ export function attachBarHoverChrome(
     if (!visible) return;
     visible = false;
     lastGroup = null;
-    prevFlip = null;
     indicator.svg.style.display = "none";
     dotLayer.svg.style.display = "none";
-    boxBuild.layer.style.display = "none";
     pillBuild.layer.style.display = "none";
     indicator.xSpring.stop();
     indicator.lineXSpring?.stop();
-    boxBuild.leftSpring?.stop();
-    boxBuild.topSpring?.stop();
     pillBuild.spring.stop();
-    boxBuild.entranceSpring.stop();
-    boxFadeAnimation?.cancel(); boxFadeAnimation = null;
     for (const { x, y } of dotLayer.springs.values()) { x.stop(); y.stop(); }
-    hideBoxContent(boxBuild);
     pillBuild.label.textContent = "";
     resetLabelFade(container);
   };
@@ -133,9 +118,7 @@ export function attachBarHoverChrome(
     if (!group || group.points.length === 0) { hide(); return; }
     const state = getState();
     const { margin } = state;
-    const width = container.clientWidth;
-    const height = container.clientHeight;
-    const innerHeight = Math.max(0, height - margin.top - margin.bottom);
+    const innerHeight = Math.max(0, container.clientHeight - margin.top - margin.bottom);
     const pointByMark = new Map(group.points.map((p) => [p.markId, p]));
     const discrete = state.pointCount > DISCRETE_INTERACTION_THRESHOLD;
     const showing = !visible;
@@ -179,29 +162,6 @@ export function attachBarHoverChrome(
       }
     }
 
-    {
-      const tooltip = state.tooltip ?? null;
-      const title = group.categoryLabel;
-      let rows: { color: string; label: string; value: string | number }[];
-      if (tooltip?.rows) {
-        const point: Record<string, unknown> = { label: group.categoryLabel };
-        for (const p of group.points) point[p.markId] = p.value;
-        rows = tooltip.rows(point);
-      } else {
-        rows = state.series.map((series) => {
-          const point = pointByMark.get(series.dataKey);
-          return { color: series.color || point?.color || "transparent", label: series.dataKey, value: point && typeof point.value === "number" ? point.value : 0 };
-        });
-      }
-      boxBuild.layer.style.top = `${margin.top}px`;
-      boxBuild.layer.style.display = "";
-      const contentPoint: Record<string, unknown> = { label: group.categoryLabel };
-      for (const p of group.points) contentPoint[p.markId] = p.value;
-      applyBoxContent(boxBuild, doc, title, rows, contentPoint, group.categoryIndex, toBoxConfig(tooltip));
-      const flip = positionBox(boxBuild, group.anchorX, margin.top, width, height, BOX_OFFSET, showing, prevFlip, { current: boxFadeAnimation } as { current: Animation | null });
-      prevFlip = flip;
-    }
-
     if (state.showDatePill) {
       pillBuild.layer.style.display = "";
       if (pillBuild.ticker && state.dateLabels && state.dateLabels.length > 0) {
@@ -225,14 +185,10 @@ export function attachBarHoverChrome(
       hide();
       indicator.svg.remove();
       dotLayer.svg.remove();
-      boxBuild.layer.remove();
       pillBuild.layer.remove();
       dotLayer.byKey.clear();
       dotLayer.springs.clear();
-      boxBuild.rowByKey.clear();
       pillBuild.ticker?.detach();
-      boxBuild.customRoot.current?.unmount();
-      boxBuild.childrenRoot.current?.unmount();
     },
   };
 }

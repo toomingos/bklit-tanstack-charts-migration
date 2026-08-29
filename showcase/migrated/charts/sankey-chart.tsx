@@ -25,8 +25,10 @@
 //     wiring; it no longer writes to the DOM. Smooth dim/restore rides the
 //     flat 0.18s ease-out CSS transition sankey-animation.ts's
 //     injectLabelCssTransitions already installs unconditionally.
-//   - Cursor-following tooltip in real light-DOM (position:fixed div)
+//   - Tooltip → native `tooltip` extension + `renderTooltipBody` (C2), bridged
+//     from app-owned hover detection via `interaction.setControlledFocus`
 //
+
 // Public API matches bklit's SankeyChart exactly.
 
 import {
@@ -40,12 +42,25 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Chart } from "@tanstack/react-charts";
+import { Chart } from "@tanstack/react-charts/tooltip";
 import { defineChart } from "@tanstack/charts";
+import { tooltip } from "@tanstack/charts/tooltip";
+import type {
+  ChartInteractionController,
+  ChartPoint,
+  ChartRenderContext,
+  ChartScene,
+} from "@tanstack/charts";
+import type { SankeyLink as NativeSankeyLink } from "@tanstack/charts/network/sankey";
 import {
   type LaidOutNode,
 } from "./internal/sankey-layout";
-import { createSankeyMark, SANKEY_MARK_ID, type SankeyGradientDatum } from "./internal/sankey-mark";
+import {
+  createSankeyMark,
+  SANKEY_MARK_ID,
+  SANKEY_NODE_MARK_ID,
+  type SankeyGradientDatum,
+} from "./internal/sankey-mark";
 import {
   injectGradientDefs,
   injectLabelCssTransitions,
@@ -171,133 +186,101 @@ function extractSankeyTooltipConfig(children: ReactNode): SankeyTooltipProps {
   return (child?.props as SankeyTooltipProps) ?? {};
 }
 
-// ─── Tooltip (light DOM, cursor-following) ─────────────────────────────────
+// ─── Tooltip (native tooltip extension + renderTooltipBody, C2) ────────────
+//
+// Replaces the old cursor-following `position:fixed` panel (SankeyChartTooltip)
+// with the native DOM tooltip extension (`definition.tooltip`), driven by the
+// app-owned hover detection below via `interaction.setControlledFocus(point,
+// {source:'pointer'})` — see the `focusPointerPoint` bridge in SankeyChart.
+// `renderTooltipBody` reproduces the old panel's exact inner markup (title,
+// colored dot, label, formatted value); the tooltip host itself now owns
+// positioning (`anchor:'point'`, `placement`, `offset` on the tooltip option
+// below approximate the old right-offset, vertically-centered placement).
+function renderSankeyTooltipBody(
+  point: ChartPoint | undefined,
+  formatValue: (v: number) => string,
+  className?: string,
+): ReactNode {
+  if (!point) return null;
 
-export interface TooltipContentProps {
-  mousePos: { x: number; y: number } | null;
-  tooltipData: {
-    type: "node" | "link";
-    nodeIndex?: number;
-    linkIndex?: number;
-    nodeName?: string;
-    sourceName?: string;
-    targetName?: string;
-    value: number;
-  } | null;
-  containerRef: React.RefObject<HTMLDivElement | null>;
-  formatValue: (v: number) => string;
-  className: string;
-}
-
-function SankeyChartTooltip({
-  mousePos,
-  tooltipData,
-  containerRef,
-  formatValue,
-  className,
-}: TooltipContentProps) {
-  if (!tooltipData || !mousePos) return null;
-
-  const EST_TOOLTIP_H = 64;
-  const OFFSET = 16;
-
-  const containerRect = containerRef.current?.getBoundingClientRect();
-  const vpHeight = containerRect ? containerRect.height : window.innerHeight;
-  const clampedTop = Math.max(OFFSET, Math.min(mousePos.y - EST_TOOLTIP_H / 2, vpHeight - EST_TOOLTIP_H - OFFSET));
-
-  const isNode = tooltipData.type === "node";
-  const title = isNode
-    ? (tooltipData.nodeName ?? `Node ${tooltipData.nodeIndex}`)
-    : `${tooltipData.sourceName ?? "Source"} → ${tooltipData.targetName ?? "Target"}`;
+  const isNode = point.markId === SANKEY_NODE_MARK_ID;
+  let title: string;
+  let value: number;
+  if (isNode) {
+    const node = point.datum as LaidOutNode & { name?: string };
+    title = node.name ?? `Node ${point.datumIndex}`;
+    value = node.value ?? 0;
+  } else {
+    const linkRow = point.datum as NativeSankeyLink<SankeyNodeDatum, SankeyLinkDatum>;
+    const sourceName = linkRow.sourceNode?.data?.name ?? `Node ${linkRow.sourceIndex}`;
+    const targetName = linkRow.targetNode?.data?.name ?? `Node ${linkRow.targetIndex}`;
+    title = `${sourceName} → ${targetName}`;
+    value = linkRow.value ?? 0;
+  }
   const label = isNode ? "Sessions" : "Flow";
   // bklit's SankeyTooltip rows: node dots use --chart-line-primary,
   // link dots use --chart-foreground-muted (tooltip-content.tsx colors).
   const dotColor = isNode ? "var(--chart-line-primary)" : "var(--chart-foreground-muted)";
 
+  // Panel chrome: the old fixed-position panel's minWidth/radius/shadow/
+  // background/blur inline styles are byte-equivalent to styles.css's
+  // `.bkm-tooltip-panel` rule — reuse it (consumer className appended here,
+  // same element the old panel applied it to).
   return (
-    <div
-      className={className}
-      style={{
-        position: "fixed",
-        left: mousePos.x + OFFSET,
-        top: clampedTop,
-        zIndex: 50,
-        pointerEvents: "none",
-        minWidth: 140,
-        overflow: "hidden",
-        borderRadius: 8,
-        boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
-        background: "var(--chart-tooltip-background, white)",
-        backdropFilter: "blur(12px)",
-        color: "var(--chart-tooltip-foreground, currentColor)",
-      }}
-    >
-      <div style={{ padding: "10px 12px" }}>
-        <div style={{ marginBottom: 8, textAlign: "left", fontWeight: 500, fontSize: 12, lineHeight: "16px" }}>
-          {title}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", backgroundColor: dotColor, flexShrink: 0 }} />
-            <span style={{ color: "var(--chart-tooltip-muted, var(--muted-foreground))", fontSize: 14, lineHeight: "20px" }}>
-              {label}
-            </span>
-          </div>
-          <span style={{ fontWeight: 500, fontSize: 14, lineHeight: "20px", fontVariantNumeric: "tabular-nums" }}>
-            {formatValue(tooltipData.value)}
+    <div className={className ? `bkm-tooltip-panel ${className}` : "bkm-tooltip-panel"}>
+    <div style={{ padding: "10px 12px" }}>
+      <div style={{ marginBottom: 8, textAlign: "left", fontWeight: 500, fontSize: 12, lineHeight: "16px" }}>
+        {title}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", backgroundColor: dotColor, flexShrink: 0 }} />
+          <span style={{ color: "var(--chart-tooltip-muted, var(--muted-foreground))", fontSize: 14, lineHeight: "20px" }}>
+            {label}
           </span>
         </div>
+        <span style={{ fontWeight: 500, fontSize: 14, lineHeight: "20px", fontVariantNumeric: "tabular-nums" }}>
+          {formatValue(value)}
+        </span>
       </div>
+    </div>
     </div>
   );
 }
 
 // ─── Hover event handlers factory ──────────────────────────────────────────
 
+// C2 (tooltip): tooltip content no longer needs precomputing here (name/value
+// lookups moved into renderSankeyTooltipBody, reading straight off the
+// focused ChartPoint's `datum`) — this factory now only updates the
+// app-owned hover refs (unchanged — still what drives markConfig's
+// connectivity dim) and bridges to the native tooltip via
+// `focusPointerPoint`, matching each hover source's ChartPoint by markId +
+// datumIndex (SANKEY_NODE_MARK_ID for nodes, "flow" — the native link()
+// mark's id — for links).
 function createHoverHandlers(
-  data: SankeyData,
-  laidOutNodesRef: { current: LaidOutNode[] | null },
   hoveredNodeIndexRef: { current: number | null },
   hoveredLinkIndexRef: { current: number | null },
-  setTooltipData: (v: TooltipContentProps["tooltipData"]) => void,
+  focusPointerPoint: (predicate: ((point: ChartPoint) => boolean) | null) => void,
 ) {
   return {
     onNodeEnter: (i: number) => {
       hoveredNodeIndexRef.current = i;
       hoveredLinkIndexRef.current = null;
-      // bklit's SankeyTooltip reads d3-sankey's computed `node.value` off the
-      // laid-out graph (`totalValue = node.value ?? 0`) — not a recomputed
-      // category sum.
-      const displayVal = laidOutNodesRef.current?.[i]?.value ?? 0;
-      const node = data.nodes[i];
-      setTooltipData({
-        type: "node",
-        nodeIndex: i,
-        nodeName: node?.name,
-        value: displayVal,
-      });
+      focusPointerPoint((point) => point.markId === SANKEY_NODE_MARK_ID && point.datumIndex === i);
     },
     onNodeLeave: () => {
       hoveredNodeIndexRef.current = null;
-      setTooltipData(null);
+      focusPointerPoint(null);
     },
     onLinkEnter: (i: number) => {
       hoveredLinkIndexRef.current = i;
       hoveredNodeIndexRef.current = null;
-      const link = data.links[i];
-      const sourceName = data.nodes[link?.source ?? -1]?.name ?? `Node ${link?.source ?? 0}`;
-      const targetName = data.nodes[link?.target ?? -1]?.name ?? `Node ${link?.target ?? 0}`;
-      setTooltipData({
-        type: "link",
-        linkIndex: i,
-        sourceName,
-        targetName,
-        value: link?.value ?? 0,
-      });
+      focusPointerPoint((point) => point.markId === "flow" && point.datumIndex === i);
     },
     onLinkLeave: () => {
       hoveredLinkIndexRef.current = null;
-      setTooltipData(null);
+      focusPointerPoint(null);
     },
   };
 }
@@ -400,8 +383,32 @@ export function SankeyChart({
       setHoveredLinkIndex(v);
     },
   };
-  const [tooltipData, setTooltipData] = useState<TooltipContentProps["tooltipData"]>(null);
-  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  // C2 (tooltip): pointer-driven native tooltip bridge. NOT
+  // useFocusInjection().focusPoint (hardcodes source:'programmatic', which
+  // would incorrectly satisfy C1's whenSeriesDimmed legend-dim predicate) —
+  // a local variant that always injects source:'pointer'. scene/interaction
+  // are captured from the same onRender context as the reveal logic below;
+  // sankey's own SVG hit-testing (createHoverHandlers/
+  // attachSankeyHoverListeners) stays the sole hover-detection source, so the
+  // chart definition also sets `pointer: false` to keep TanStack's native
+  // pointer-driven focus resolution from fighting these calls (its
+  // mousemove handler would otherwise call setControlledFocus-equivalent
+  // updateFocus([]) on every move — dist/renderer.js:451).
+  const sceneRef = useRef<ChartScene | null>(null);
+  const interactionRef = useRef<ChartInteractionController | null>(null);
+  const focusPointerPoint = useCallback(
+    (predicate: ((point: ChartPoint) => boolean) | null) => {
+      const interaction = interactionRef.current;
+      if (!interaction) return;
+      if (!predicate) {
+        interaction.setControlledFocus(null, { source: "pointer" });
+        return;
+      }
+      const point = sceneRef.current?.points.find(predicate) ?? null;
+      interaction.setControlledFocus(point, { source: "pointer" });
+    },
+    [],
+  );
 
   // Controlled/uncontrolled node hover, ported from bklit's SankeyChartCore
   // (`isNodeHoverControlled ? hoveredNodeIndexProp : internalHoveredNodeIndex`).
@@ -497,14 +504,57 @@ export function SankeyChart({
         // focus ring natively instead of relying solely on the
         // `[data-ts-chart-focus] {display:none}` CSS rule.
         focusRing: false,
+        // C2 (tooltip): TanStack's own pointer-driven focus resolution is
+        // off — app-owned SVG hit-testing (sankey-hover-chrome.ts) stays the
+        // sole hover-detection source, bridged to the tooltip's focus state
+        // via `focusPointerPoint`/`setControlledFocus` below. Without this,
+        // every native mousemove would call updateFocus([]) and clear
+        // whatever this bridge just set (dist/renderer.js:451).
+        pointer: false,
+        tooltip: {
+          use: tooltip,
+          // Host chrome reset by the `.bkm-native-tooltip` rule in styles.css
+          // (dist/tooltip.js's createTooltip sets its own position/padding/
+          // border/background/font via inline CSS-var-driven defaults); panel
+          // chrome + the consumer's className land on the `.bkm-tooltip-panel`
+          // wrapper inside `renderSankeyTooltipBody`, matching where the old
+          // fixed-position panel applied them.
+          className: "bkm-native-tooltip",
+          sticky: false,
+          // Old panel: cursor-following, offset 16px to the right, vertically
+          // centered/clamped on the cursor. The native tooltip anchors to
+          // point geometry rather than the raw pointer (app-owned hit-testing
+          // means `interaction`'s own pointer state isn't populated) — anchor
+          // on the focused node/link point, offset to its right (falling
+          // back left near the edge), same 16px offset as the old OFFSET
+          // constant.
+          anchor: "point",
+          placement: ["right", "left"],
+          offset: 16,
+        },
       }),
     [data, markConfig, margin],
   );
 
   // ── onRender: gradients, CSS, WAAPI reveal (labels now live as SceneLabel in the mark) ──
   // Hover listener attachment is NOT here — it's in a separate useEffect below.
-  const handleRender = useCallback((ctx?: { svg?: SVGSVGElement; container?: HTMLElement }) => {
-    const svg = ctx?.svg ?? (containerRef.current?.querySelector("svg") as SVGSVGElement | null);
+  const handleRender = useCallback((context: ChartRenderContext<any, any, any>) => {
+    // C2 (tooltip): capture scene/interaction first (compose with reveal
+    // logic below, same as focus-injection.ts's captureRenderContext) — see
+    // focusPointerPoint above. `any` datum/x/y generics: the composite
+    // sankeyDiagram() mark's node/link union datum type is internal to
+    // sankey-mark.ts (SankeyNodeData/SankeyLinkData aren't exported), and
+    // ChartRenderContext is invariant on TDatum (ChartInteractionController's
+    // setControlledFocus takes ChartPoint<TDatum> as an input, i.e.
+    // contravariant position) — so the bare default-generic annotation
+    // doesn't structurally match what <Chart definition={definition}
+    // onRender={...}> infers. sceneRef/interactionRef below are still
+    // concretely typed (ChartScene/ChartInteractionController), so this
+    // doesn't leak `any` past this one parameter.
+    sceneRef.current = context.scene;
+    interactionRef.current = context.interaction as unknown as ChartInteractionController;
+
+    const svg = context.svg;
     if (!svg) return;
 
     // Phase 1: populate element refs (always, so hover refs stay fresh on resize)
@@ -556,47 +606,39 @@ export function SankeyChart({
     if (!svg) return;
 
     const handlers = createHoverHandlers(
-      data,
-      laidOutNodesRef,
       hoveredNodeIndexRef,
       hoveredLinkIndexRef,
-      setTooltipData,
+      focusPointerPoint,
     );
 
     const cleanup = attachSankeyHoverListeners(nodeElementsRef.current, linkElementsRef.current, handlers);
     return cleanup;
-  }, [data]);
+  }, [data, focusPointerPoint]);
 
   // Controlled-mode sync: a hoveredNodeIndex prop change (e.g. ChartLegend
-  // hover) clears any local link-hover/tooltip state left over from surface
+  // hover) clears any local link-hover state left over from surface
   // interaction. The dim repaint itself no longer needs an explicit trigger
   // here — `effectiveHoveredNodeIndex` (derived straight from
   // `hoveredNodeIndexProp` in controlled mode) already sits in markConfig's
   // dependency array, so the prop change alone reactively rebuilds the mark.
+  // C2: no tooltip-state clear needed here anymore — ChartLegend-driven
+  // (programmatic-source) focus is a separate concern from this pointer
+  // bridge, and this surface's own pointer hover already clears itself via
+  // onNodeLeave/onLinkLeave.
   useEffect(() => {
     if (!isNodeHoverControlledRef.current) return;
     setHoveredLinkIndex(null);
-    setTooltipData(null);
   }, [hoveredNodeIndexProp]);
 
-  // ── Mouse move / leave ── (scoped to container + gated on active hover)
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const handlePointerMove = (e: PointerEvent) => {
-      if (hoveredNodeIndexRef.current === null && hoveredLinkIndexRef.current === null) return;
-      setMousePos({ x: e.clientX, y: e.clientY });
-    };
-    el.addEventListener("pointermove", handlePointerMove);
-    return () => el.removeEventListener("pointermove", handlePointerMove);
-  }, []);
-
+  // C2 (tooltip): mouse-move/position tracking retired along with the old
+  // cursor-following panel — the native tooltip positions itself
+  // (anchor/placement/offset on the definition above). handleMouseLeave
+  // keeps clearing the app-owned hover refs and the bridged focus.
   const handleMouseLeave = useCallback(() => {
     hoveredNodeIndexRef.current = null;
     hoveredLinkIndexRef.current = null;
-    setTooltipData(null);
-    setMousePos(null);
-  }, []);
+    focusPointerPoint(null);
+  }, [focusPointerPoint]);
 
   const formatValue = tooltipConfig.formatValue ?? intFmt;
 
@@ -621,13 +663,7 @@ export function SankeyChart({
         aspectRatio={parsedAspectRatio}
         definition={definition}
         onRender={handleRender}
-      />
-      <SankeyChartTooltip
-        className={tooltipConfig.className ?? ""}
-        containerRef={containerRef}
-        formatValue={formatValue}
-        mousePos={mousePos}
-        tooltipData={tooltipData}
+        renderTooltipBody={(ctx) => renderSankeyTooltipBody(ctx.points[0], formatValue, tooltipConfig.className)}
       />
     </div>
   );

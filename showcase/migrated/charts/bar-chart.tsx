@@ -36,10 +36,14 @@
 import * as React from "react";
 import { scaleBand } from "d3-scale";
 import type { ScaleBand } from "d3-scale";
-import { Chart } from "@tanstack/react-charts";
+import { Chart } from "@tanstack/react-charts/tooltip";
+import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { barY, defineChart, group } from "@tanstack/charts";
+import { tooltip as tooltipExtension } from "@tanstack/charts/tooltip";
 import type { ChartMark, ChartMarkState, ChartPoint, ChartRenderContext } from "@tanstack/charts";
 import { extractChildren } from "./children";
+import { TooltipContent } from "./internal/tooltip-components";
+import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, TOOLTIP_BOX_SPRING } from "./internal/design-tokens";
 import {
   attachBarHoverChrome,
   type BarFocusGroup,
@@ -62,7 +66,7 @@ import type { BarDepthGradientIds } from "./internal/bar-depth-marks";
 import { barPulseMark, buildPulseWaveStops, syncBarPulseGroups } from "./internal/bar-pulse-mark";
 import { barTrimmedMark } from "./internal/bar-trimmed-mark";
 import { renderPatternPreset } from "./internal/pattern-preset";
-import type { BarConfig, BarSquaresConfig, BarColumnTrackConfig, ChartDatum, ChartPhase } from "./internal/types";
+import type { BarConfig, BarSquaresConfig, BarColumnTrackConfig, ChartDatum, ChartPhase, ChartTooltipPoint, TooltipRow } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { resolveGridGuide } from "./internal/grid";
 import { isRevealed, markRevealed, onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
@@ -293,6 +297,9 @@ export function BarChart({
   );
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection();
+  // C2: hoisted above `definition` so native `tooltip` extension wiring can
+  // read it inside the same memo that builds the marks/scales spec.
+  const tooltipEnabled = tooltip?.enabled ?? false;
 
   // bklit bar-chart.tsx: no decimation — every raw row renders as a bar.
   const renderData = data;
@@ -696,6 +703,25 @@ export function BarChart({
     const hasSquares = barSquaresEnabled;
     const hasTrack = barColumnTrackEnabled;
     const hasDepth = barDepthEnabled;
+    // C2: native tooltip extension — box-follow spring mirrors the legacy
+    // TOOLTIP_BOX_SPRING default; springs snap (motion: false) once the
+    // series is past the same DISCRETE_INTERACTION_THRESHOLD the chrome's
+    // own springs use (verified strict `>`, not `>=`).
+    const tooltipOption = tooltipEnabled
+      ? {
+          use: tooltipExtension,
+          // Host chrome reset by the `.bkm-native-tooltip` rule in styles.css;
+          // panel chrome comes from TooltipContent's own `.bkm-tooltip-panel`.
+          className: "bkm-native-tooltip",
+          sticky: false,
+          anchor: { x: "group-center", y: "plot-top" } as const,
+          placement: ["right", "left"] as const,
+          offset: BOX_OFFSET,
+          motion: (renderData.length > DISCRETE_INTERACTION_THRESHOLD
+            ? false
+            : { type: "spring", stiffness: TOOLTIP_BOX_SPRING.stiffness, damping: TOOLTIP_BOX_SPRING.damping }) as false | { type: "spring"; stiffness: number; damping: number },
+        }
+      : (false as const);
     if (!hasSquares && !hasTrack && !hasDepth) {
       const marks: ChartMark<ChartDatum, string, number>[] = [];
       for (const series of resolvedSeries) {
@@ -729,7 +755,7 @@ export function BarChart({
         svgAnimation: false as const,
       } as const;
       const base = defineChart(spec);
-      return defineChart(base, { focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY });
+      return defineChart(base, { focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY, tooltip: tooltipOption });
     }
     const marks: ChartMark<ChartDatum, string, number>[] = [];
     const bandPosFn = (label: string) => categoryScaleForOverlay(label) ?? 0;
@@ -912,7 +938,7 @@ export function BarChart({
       svgAnimation: false as const,
     } as const;
     const base = defineChart(spec);
-    return defineChart(base, { focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY });
+    return defineChart(base, { focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY, tooltip: tooltipOption });
   }, [
     renderData,
     categoryAccessor,
@@ -941,10 +967,10 @@ export function BarChart({
     squaresBaseId,
     depthGradientIds,
     nativeDepthGradients,
+    tooltipEnabled,
   ]);
 
   // Hover chrome (bklit ChartTooltip, bar per-category-index dim variant).
-  const tooltipEnabled = tooltip?.enabled ?? false;
   const chartConfig = useChartConfig();
   const chromeRef = React.useRef<BarHoverChrome | null>(null);
   const chromeStateRef = React.useRef<BarHoverChromeState | null>(null);
@@ -1066,6 +1092,52 @@ export function BarChart({
       chromeRef.current?.onFocusChange(group);
     },
     [categoryIndexByLabel, categoryScaleForOverlay, bandWidth],
+  );
+
+  // C2: native tooltip body — reuses `TooltipContent` verbatim (same row
+  // component/ordering/formatting as the legacy DOM box). Reads
+  // `chromeStateRef.current` at call time (mirrors the chrome's own
+  // `getState()` pattern) so it never needs its own copy of `tooltip`/
+  // `series` in its dependency array. Value derivation mirrors
+  // `handleFocusGroupChange`'s raw-datum-over-`yValue` fallback exactly (see
+  // the comment there — `yValue` is reprojected for secondary-axis series
+  // and wrong for tooltip text).
+  const renderTooltipBody = React.useCallback(
+    (ctx: ChartTooltipBodyRenderContext<ChartDatum, string, number>): React.ReactNode => {
+      if (ctx.points.length === 0) return null;
+      const state = chromeStateRef.current;
+      const tt = state?.tooltip ?? null;
+      const categoryLabel = String(ctx.points[0]!.xValue);
+      const categoryIndex = categoryIndexByLabel.get(categoryLabel) ?? 0;
+      const pointByMark = new Map(ctx.points.map((p) => [p.markId, p]));
+      const valueFor = (p: ChartPoint<ChartDatum, string, number>): number => {
+        const raw = (p.datum as ChartDatum | undefined)?.[p.markId];
+        return typeof raw === "number" ? raw : (p.yValue as number);
+      };
+      if (tt?.content) {
+        const pointRec: ChartTooltipPoint = { label: categoryLabel };
+        for (const p of ctx.points) pointRec[p.markId] = valueFor(p);
+        return tt.content({ point: pointRec, index: categoryIndex });
+      }
+      let rows: TooltipRow[];
+      if (tt?.rows) {
+        const pointRec: Record<string, unknown> = { label: categoryLabel };
+        for (const p of ctx.points) pointRec[p.markId] = valueFor(p);
+        rows = tt.rows(pointRec);
+      } else {
+        const seriesList = state?.series ?? [];
+        rows = seriesList.map((series) => {
+          const p = pointByMark.get(series.dataKey);
+          return { color: series.color || p?.color || "transparent", label: series.dataKey, value: p ? valueFor(p) : 0 };
+        });
+      }
+      return (
+        <TooltipContent title={categoryLabel} rows={rows}>
+          {tt?.children}
+        </TooltipContent>
+      );
+    },
+    [categoryIndexByLabel],
   );
 
   // Mount reveal: bklit AnimatedBar's per-bar framer entrance equivalent —
@@ -1326,6 +1398,7 @@ export function BarChart({
             definition={definition}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
+            renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
           />
           {barXAxis ? (
             <BarXAxisOverlay

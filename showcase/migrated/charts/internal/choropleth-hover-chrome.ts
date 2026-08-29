@@ -1,14 +1,3 @@
-import { createElement, Fragment, type CSSProperties, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
-import {
-  applyBoxContent,
-  buildBox,
-  hideBoxContent,
-  positionBox,
-  type BoxConfig,
-} from "./tooltip-chrome";
-import { BOX_OFFSET, TOOLTIP_BOX_SPRING } from "./design-tokens";
-
 // C1 states+legend: hover dim VALUES (base 0.85 / dim 0.4 / hovered 1) are no
 // longer applied here via DOM reparenting into a wrapper `<g>` — they are
 // baked into `geoShape`'s per-datum `fill`/`stroke` VisualChannel accessors
@@ -18,9 +7,15 @@ import { BOX_OFFSET, TOOLTIP_BOX_SPRING } from "./design-tokens";
 // transition that makes that value change animate smoothly is declared once
 // per path element (choropleth-chart.tsx's handleRender) using this
 // constant, targeting `fill`/`stroke` instead of the old `opacity`. This
-// module now owns only hover-DETECTION (mouseenter/leave wiring, the D423
-// hover-persistence quirk) and the tooltip box; it reports hover changes via
-// `opts.onHoverChange` instead of writing styles/reparenting DOM itself.
+// module now owns ONLY hover-DETECTION (mouseenter/leave wiring, the D423
+// hover-persistence quirk) — it reports hover-key transitions via two
+// separate callbacks instead of writing styles/DOM/tooltip content itself:
+// `onHoverChange` (C1's dim wiring) and `onFocusChange` (C2 — drives the
+// native TanStack tooltip extension via `interaction.setControlledFocus`,
+// wired in choropleth-chart.tsx). The bespoke TooltipBox this module used to
+// own (`showTooltip`/`hideTooltip`/`buildBox`) is gone: panel building and
+// zoom-aware positioning now live entirely in the native `tooltip` extension
+// (`className: "bkm-native-tooltip"`, a custom `anchor` fn, `renderTooltipBody`).
 //
 // Fidelity note: the old wrapper scheme also reparented the hovered path to
 // the END of `.ts-chart__geo` (paint-order-last, i.e. on top), so its border
@@ -36,40 +31,26 @@ import { BOX_OFFSET, TOOLTIP_BOX_SPRING } from "./design-tokens";
 // (`[data-bkm-chart="choropleth"]` rule), not as an inline style write.
 const MARKER_VAL = "1";
 
-// bklit choropleth-tooltip.tsx defaults: formatValue = intFmt, valueLabel =
-// "Value", name fallback `Feature ${index}` — resolved by the chart before it
-// hands us this config (OQ parity 8 / CP4–CP6).
-export interface ChoroplethTooltipChromeConfig<F> {
-  className?: string;
-  panelStyle?: CSSProperties;
-  backgroundColor?: string;
-  content?: (props: { feature: F; index: number }) => ReactNode;
-  formatValue: (value: number) => string;
-  getFeatureName?: (feature: F, index: number) => string;
-  getFeatureValue?: (feature: F, index: number) => number | undefined;
-  valueLabel: string;
-}
-
-export interface ChoroplethHoverChromeOptions<F> {
-  getCentroid: (key: string) => { x: number; y: number } | null;
-  getFeatureAt: (key: string) => { feature: F; index: number } | null;
-  getTooltip: () => ChoroplethTooltipChromeConfig<F> | null;
-  getSize: () => { width: number; height: number };
-  applyZoom: (point: { x: number; y: number }) => { x: number; y: number };
+export interface ChoroplethHoverChromeOptions {
   /** Reports hover-key changes so the chart can rebuild its `geoShape`
       definition with new per-datum fill/stroke alpha. Replaces the old
       DOM-mutation `applyDim`. */
   onHoverChange: (key: string | null) => void;
+  /** C2: reports the same hover-key transitions so the chart can drive the
+      native tooltip's focus via `interaction.setControlledFocus(point,
+      {source: 'pointer'})` — kept as a separate callback from
+      `onHoverChange` so C1's dim wiring and C2's focus/tooltip wiring stay
+      independent call sites (neither owns the other). */
+  onFocusChange: (key: string | null) => void;
 }
 
 export interface ChoroplethHoverChrome {
   reconnect(root: HTMLElement, pathElements: Map<string, SVGPathElement>): void;
-  refreshTooltipPosition(): void;
   detach(): void;
 }
 
-export function createChoroplethHoverChrome<F extends { properties?: { name?: string } }>(
-  opts: ChoroplethHoverChromeOptions<F>,
+export function createChoroplethHoverChrome(
+  opts: ChoroplethHoverChromeOptions,
 ): ChoroplethHoverChrome {
   const MARKER = "data-bkm-cp";
   const ROOT_MARKER = "data-bkm-cp-root";
@@ -85,109 +66,7 @@ export function createChoroplethHoverChrome<F extends { properties?: { name?: st
   // hovered feature (the highlight path is live and its mouseleave fires) and
   // then leaves it — replicated via this armed flag set on re-entry.
   let pathLeaveArmed = false;
-  let currentRoot: HTMLElement | null = null;
   let svgEl: SVGSVGElement | null = null;
-
-  // ── Shared TooltipBox (CP7 restore: legacy flip + clamp + entrance +
-  //    INSTANT unmount — bklit ChoroplethTooltip returns null the moment
-  //    tooltipData clears; no exit fade) ─────────────────────────────────
-  const doc = typeof document !== "undefined" ? document : null;
-  const boxBuild = doc
-    ? buildBox(doc, {} as BoxConfig, TOOLTIP_BOX_SPRING, false)
-    : null;
-  const boxFadeRef: { current: Animation | null } = { current: null };
-  let boxVisible = false;
-  let prevFlip: boolean | null = null;
-  let lastHoverKey: string | null = null;
-
-  function hideTooltip() {
-    if (!boxVisible || !boxBuild) return;
-    boxVisible = false;
-    lastHoverKey = null;
-    prevFlip = null;
-    boxBuild.layer.style.display = "none";
-    boxBuild.leftSpring?.stop();
-    boxBuild.topSpring?.stop();
-    boxBuild.entranceSpring.stop();
-    boxFadeRef.current?.cancel();
-    boxFadeRef.current = null;
-    hideBoxContent(boxBuild);
-  }
-
-  function showTooltip(key: string) {
-    if (!boxBuild || !doc) return;
-    const cfg = opts.getTooltip();
-    if (!cfg) return;
-    const found = opts.getFeatureAt(key);
-    if (!found) return;
-    const raw = opts.getCentroid(key);
-    const p = opts.applyZoom(raw ?? { x: 0, y: 0 });
-    const { width, height } = opts.getSize();
-    const showing = !boxVisible;
-    boxVisible = true;
-    lastHoverKey = key;
-    const { feature, index } = found;
-
-    const name = cfg.getFeatureName
-      ? cfg.getFeatureName(feature, index)
-      : (feature.properties?.name ?? `Feature ${index}`);
-    const value = cfg.getFeatureValue?.(feature, index);
-
-    // Per-show styling (mirrors buildBox's build-time application; config is
-    // read live so prop changes take effect without a chrome rebuild).
-    boxBuild.layer.className = cfg.className
-      ? `bkm-tooltip-layer ${cfg.className}`
-      : "bkm-tooltip-layer";
-    if (cfg.backgroundColor) boxBuild.panel.style.backgroundColor = cfg.backgroundColor;
-    if (cfg.panelStyle) Object.assign(boxBuild.panel.style, cfg.panelStyle);
-
-    if (cfg.content) {
-      boxBuild.content.style.display = "none";
-      boxBuild.custom.style.display = "";
-      if (boxBuild.childrenWrap) boxBuild.childrenWrap.style.display = "none";
-      const doRender = () => {
-        if (!boxBuild!.customRoot.current) {
-          boxBuild!.customRoot.current = createRoot(boxBuild!.custom);
-        }
-        boxBuild!.customRoot.current.render(
-          createElement(Fragment, null, cfg.content!({ feature, index })),
-        );
-      };
-      boxBuild.contentScheduler?.schedule(doRender, `cp:${key}:${index}`);
-    } else {
-      boxBuild.lastContentKey.current = null;
-      boxBuild.custom.style.display = "none";
-      const rows =
-        value === undefined
-          ? []
-          : [
-              {
-                color: "var(--chart-1)",
-                label: cfg.valueLabel,
-                value: cfg.formatValue(value),
-              },
-            ];
-      applyBoxContent(boxBuild, doc, name, rows, null, index, {});
-    }
-
-    boxBuild.layer.style.display = "";
-    const flip = positionBox(
-      boxBuild, p.x, p.y, width, height, BOX_OFFSET, showing, prevFlip, boxFadeRef,
-    );
-    prevFlip = flip;
-  }
-
-  function refreshTooltipPosition() {
-    if (!boxBuild || !boxVisible || !lastHoverKey) return;
-    const raw = opts.getCentroid(lastHoverKey);
-    if (!raw) return;
-    const p = opts.applyZoom(raw);
-    const { width, height } = opts.getSize();
-    const flip = positionBox(
-      boxBuild, p.x, p.y, width, height, BOX_OFFSET, false, prevFlip, boxFadeRef,
-    );
-    prevFlip = flip;
-  }
 
   function handleEnter(this: SVGPathElement) {
     const key = this.getAttribute("data-ts-key") ?? "";
@@ -197,15 +76,15 @@ export function createChoroplethHoverChrome<F extends { properties?: { name?: st
     if (hoveredKey === key) return;
     hoveredKey = key;
     opts.onHoverChange(key);
-    showTooltip(key);
+    opts.onFocusChange(key);
   }
 
   function clearHover() {
     if (hoveredKey === null) return;
     opts.onHoverChange(null);
+    opts.onFocusChange(null);
     hoveredKey = null;
     pathLeaveArmed = false;
-    hideTooltip();
   }
 
   function handlePathLeave() {
@@ -241,37 +120,18 @@ export function createChoroplethHoverChrome<F extends { properties?: { name?: st
       svgEl = root.querySelector<SVGSVGElement>("svg.ts-chart");
       wireSvg(svgEl);
     }
-    if (boxBuild && boxBuild.layer.parentElement !== root) {
-      root.appendChild(boxBuild.layer);
-    }
   }
 
   return {
     reconnect(root, pathElements) {
-      currentRoot = root;
       install(root, pathElements);
-      // Dim VALUES no longer need reconciling here — `geoShape`'s fill/stroke
-      // accessors already baked the correct alpha for `hoveredKey` into every
-      // path on this render (React state, read in choropleth-chart.tsx). Only
-      // the tooltip position (screen coords can shift on reconnect/resize)
-      // still needs an imperative nudge.
-      if (hoveredKey !== null && boxVisible) refreshTooltipPosition();
     },
-    refreshTooltipPosition,
     detach() {
-      hideTooltip();
       hoveredKey = null;
       pathLeaveArmed = false;
-      currentRoot = null;
       svgEl = null;
       opts.onHoverChange(null);
-      if (boxBuild) {
-        boxBuild.layer.remove();
-        boxBuild.rowByKey.clear();
-        boxBuild.customRoot.current?.unmount();
-        boxBuild.childrenRoot.current?.unmount();
-        boxBuild.contentScheduler?.dispose();
-      }
+      opts.onFocusChange(null);
     },
   };
 }

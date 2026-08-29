@@ -435,10 +435,6 @@ export type { ArcDatum, ArcGeometry, Focus } from "./internal/sunburst-types";
 // Live-line momentum contract (export keyword added at definition this pass).
 export type { Momentum } from "./live-line-chart";
 
-// Sankey tooltip props (export keyword added at definition this pass; shape is
-// migrated-native and differs from bklit's tooltip-content TooltipContentProps).
-export type { TooltipContentProps as SankeyTooltipContentProps } from "./sankey-chart";
-
 // P5.1 T-E1a — CONST tier. Runtime values, same pixel-inert re-export rules.
 export {
   DEFAULT_CHART_CONFIG,

@@ -306,6 +306,28 @@
   pointer-events: none;
 }
 
+/* C2 (P6): native tooltip extension container reset. The extension
+   (`@tanstack/charts/tooltip`, dist/tooltip.js `createTooltip()`) paints its
+   own chrome via inline styles that read `var(--ts-chart-tooltip-*, fallback)`
+   — its documented customization surface — so this reset overrides those
+   custom properties directly rather than reaching for `!important`.
+   `renderTooltipBody` (line-chart.tsx/area-chart.tsx/composed-chart.tsx)
+   wraps its content in `.bkm-tooltip-panel` (above) to reproduce the old
+   imperative box panel's visuals, so the native `.ts-chart-tooltip` shell
+   itself must be fully transparent/unstyled underneath it. Do not touch
+   `.bkm-tooltip-panel`/`.bkm-tooltip-content`/etc. above — those are shared
+   with other (not-yet-migrated) chart chromes' own tooltip panels. */
+[data-bkm-chart] .ts-chart-tooltip.bkm-native-tooltip {
+  --ts-chart-tooltip-max-width: none;
+  --ts-chart-tooltip-padding: 0;
+  --ts-chart-tooltip-border: none;
+  --ts-chart-tooltip-border-radius: 0;
+  --ts-chart-tooltip-background: transparent;
+  --ts-chart-tooltip-color: inherit;
+  --ts-chart-tooltip-shadow: none;
+  --ts-chart-tooltip-font: inherit;
+}
+
 [data-bkm-chart] .bkm-tooltip-panel {
   /* min-w-[140px] overflow-hidden rounded-lg shadow-lg backdrop-blur-md */
   min-width: 140px;

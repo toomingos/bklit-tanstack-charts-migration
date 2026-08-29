@@ -68,9 +68,12 @@ import { scaleLinear, scaleUtc } from "d3-scale";
 import type { ScaleLinear, ScaleTime } from "d3-scale";
 import { curveMonotoneX, curveNatural } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
-import { Chart } from "@tanstack/react-charts";
+import { Chart } from "@tanstack/react-charts/tooltip";
+import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
+import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
 import type {
+  ChartInteractionController,
   ChartMark,
   ChartMarkState,
   ChartPoint,
@@ -103,6 +106,12 @@ import {
 } from "./internal/chart-selection";
 import { SegmentOverlay } from "./internal/segment-visuals";
 import { useChartConfig } from "./internal/chart-config-context";
+import {
+  BOX_OFFSET,
+  DISCRETE_INTERACTION_THRESHOLD,
+  TOOLTIP_BOX_SPRING,
+} from "./internal/design-tokens";
+import { TooltipContent } from "./internal/tooltip-components";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
 import { BackgroundLayer } from "./internal/background-layer";
@@ -121,6 +130,7 @@ import type {
   GridConfig,
   LineConfig,
   SeriesBarConfig,
+  TooltipRow,
   XAxisConfig,
 } from "./internal/types";
 import { type ChartPhase, DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./internal/chart-phase";
@@ -129,7 +139,7 @@ import { bezierEasing } from "./internal/bezier-easing";
 import { isRevealed, markRevealed, onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
 import { nativeStaggerDelayMs } from "./internal/native-stagger";
 import { useChartMargin, DEFAULT_CHART_MARGIN, useDebouncedContainerWidth, type ChartMargin } from "./internal";
-import { shortDateFmt } from "./internal/formatters";
+import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import {
@@ -1217,6 +1227,32 @@ export function ComposedChart({
       focusRing: false,
       maxFocusDistance: Number.POSITIVE_INFINITY,
       gradients: nativeComposedGradients,
+      // C2 (P6): native tooltip extension replaces the imperative box panel
+      // (tooltip-chrome.ts's buildBox/applyBoxContent/positionBox). Unlike
+      // line/area, composed does NOT drive this off `focus:"group-x"`
+      // (that callback stays inert here, see header comment) — instead the
+      // pointermove bisector below also resolves the native focus group via
+      // `interaction.resolvePointer` and injects it with
+      // `setControlledFocus(..., {source:"pointer"})`, in parallel with (not
+      // replacing) `chromeRef.current.onFocusGroupChange` which continues to
+      // drive the box-free imperative crosshair/dot/pill chrome.
+      tooltip: (tooltip?.enabled ?? false)
+        ? {
+            use: nativeTooltip,
+            className: "bkm-native-tooltip",
+            sticky: false,
+            offset: BOX_OFFSET,
+            placement: ["right", "left"] as const,
+            motion:
+              renderData.length > DISCRETE_INTERACTION_THRESHOLD
+                ? (false as const)
+                : ({
+                    type: "spring" as const,
+                    stiffness: TOOLTIP_BOX_SPRING.stiffness,
+                    damping: TOOLTIP_BOX_SPRING.damping,
+                  } as const),
+          }
+        : (false as const),
       // Ref reads, not deps — see the comment on phaseRef/isLoadedRef above.
       svgAnimation:
         isChartInteractionPhase(phaseRef.current) && isLoadedRef.current && yDomainChanged
@@ -1256,12 +1292,69 @@ export function ComposedChart({
     projectValue,
     legendHoveredIndex,
     composedSeries,
+    tooltip,
   ]);
 
   // Hover chrome (shared with Line/Area) — imperative overlays driven by OUR
   // OWN native pointermove bisector (below), not TanStack's focus system.
   const tooltipEnabled = tooltip?.enabled ?? false;
   const chartConfig = useChartConfig();
+  // C2 (P6): local capture of the native interaction controller, separate
+  // from `useFocusInjection`'s own private ref (that hook's `interactionRef`
+  // is not exposed outside the hook) — used below, in the pointermove
+  // bisector, to drive the native tooltip extension via
+  // `setControlledFocus(..., {source:"pointer"})`. NEVER injected with
+  // `source:"programmatic"` from this pointer path — that source is
+  // reserved for C1's legend-dim focus injection (`whenSeriesDimmed()`).
+  const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
+  // C2 (P6): renders inside the native tooltip extension's unstyled
+  // `.ts-chart-tooltip__body` portal target — wraps the reused
+  // `TooltipContent` in `.bkm-tooltip-panel` (styles.css) to reproduce the
+  // old imperative box's visual chrome, since the native chrome is reset to
+  // transparent by the `.bkm-native-tooltip` rule in styles.css. Custom
+  // `tooltip.content` fully replaces the row list (bklit applyBoxContent
+  // parity); otherwise default rows come from the merged `composedSeries`
+  // list, honoring `tooltip.rows` when the caller supplied it.
+  const renderTooltipBody = React.useCallback(
+    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode => {
+      const primary = ctx.points[0];
+      if (!primary) return null;
+      const datum = primary.datum as Record<string, unknown>;
+      const cfg = tooltip ?? null;
+      const panelClassName = cfg?.className ? `bkm-tooltip-panel ${cfg.className}` : "bkm-tooltip-panel";
+      const panelStyle: React.CSSProperties | undefined =
+        cfg?.panelStyle || cfg?.backgroundColor
+          ? { ...cfg?.panelStyle, ...(cfg?.backgroundColor ? { backgroundColor: cfg.backgroundColor } : null) }
+          : undefined;
+      if (cfg?.content) {
+        return (
+          <div className={panelClassName} style={panelStyle}>
+            {cfg.content({ point: datum, index: primary.datumIndex })}
+          </div>
+        );
+      }
+      const date = datum[xDataKey];
+      const title = date instanceof Date ? weekdayDateFmt.format(date) : undefined;
+      const rows: TooltipRow[] = cfg?.rows
+        ? cfg.rows(datum)
+        : composedSeries.map((s) => {
+            const v = datum[s.dataKey];
+            return {
+              color: s.stroke || ctx.points.find((p) => p.markId === s.dataKey)?.color || "transparent",
+              label: s.dataKey,
+              value: typeof v === "number" ? v : String(v ?? 0),
+            };
+          });
+      return (
+        <div className={panelClassName} style={panelStyle}>
+          <TooltipContent title={title} rows={rows}>
+            {cfg?.children}
+          </TooltipContent>
+        </div>
+      );
+    },
+    [tooltip, xDataKey, composedSeries],
+  );
   const chromeRef = React.useRef<HoverChrome | null>(null);
   // bklit parity (use-chart-interaction.ts): drag selection suppresses the
   // hover chrome — cleared on mousedown, never rescheduled while dragging.
@@ -1347,9 +1440,17 @@ export function ComposedChart({
     const container = containerRef.current;
     if (!container || !tooltipEnabled) return;
 
+    // C2 (P6): drives the native tooltip in parallel with the imperative
+    // crosshair/dot/pill chrome below — never with `source:"programmatic"`
+    // (reserved for C1 legend-dim injection), always `"pointer"`.
+    const clearNativeFocus = () => {
+      interactionRef.current?.setControlledFocus(null, { source: "pointer" });
+    };
+
     const handlePointerMove = (event: PointerEvent) => {
       if (dragSelectionActiveRef.current) {
         chromeRef.current?.onFocusGroupChange([]);
+        clearNativeFocus();
         return;
       }
       const {
@@ -1360,12 +1461,14 @@ export function ComposedChart({
       } = hoverInputsRef.current;
       if (!isChartInteractionPhase(chartPhase) || !isLoaded) {
         chromeRef.current?.onFocusGroupChange([]);
+        clearNativeFocus();
         return;
       }
       const xScaleInstance = xScaleD3Ref.current;
       const yScaleInstance = yScaleD3Ref.current;
       if (!xScaleInstance || !yScaleInstance || rawRows.length === 0) {
         chromeRef.current?.onFocusGroupChange([]);
+        clearNativeFocus();
         return;
       }
       const svg = container.querySelector("svg");
@@ -1381,6 +1484,7 @@ export function ComposedChart({
       const rawIndex = resolveNearestIndex(rawRows, dateAccessor, x0Ms);
       if (rawIndex < 0) {
         chromeRef.current?.onFocusGroupChange([]);
+        clearNativeFocus();
         return;
       }
       const decimatedIndex =
@@ -1389,11 +1493,13 @@ export function ComposedChart({
       const parsedDatumX = toDate(datum[key]);
       if (!parsedDatumX) {
         chromeRef.current?.onFocusGroupChange([]);
+        clearNativeFocus();
         return;
       }
       const resolvedXRaw = xScaleInstance(parsedDatumX);
       if (!Number.isFinite(resolvedXRaw)) {
         chromeRef.current?.onFocusGroupChange([]);
+        clearNativeFocus();
         return;
       }
       const resolvedX = resolvedXRaw as number;
@@ -1409,10 +1515,19 @@ export function ComposedChart({
         };
       });
       chromeRef.current?.onFocusGroupChange(points, rawIndex);
+      // Native tooltip: resolved independently through the interaction
+      // controller's own pointer-to-scene-point mapping (the chart's
+      // `focus:"group-x"` strategy), rather than reconstructing a
+      // hand-rolled `ChartPoint[]` from the bisector above — `resolvePointer`
+      // returns a `ChartPointerResolution` shaped exactly for
+      // `setControlledFocus`.
+      const resolution = interactionRef.current?.resolvePointer(event.clientX, event.clientY) ?? null;
+      interactionRef.current?.setControlledFocus(resolution, { source: "pointer" });
     };
 
     const handlePointerLeave = () => {
       chromeRef.current?.onFocusGroupChange([]);
+      clearNativeFocus();
     };
 
     container.addEventListener("pointermove", handlePointerMove);
@@ -1434,6 +1549,11 @@ export function ComposedChart({
     // strictFunctionTypes — is not structurally assignable from our
     // concretely-typed context. Both denote the same live object at runtime.
     captureRenderContext(context as unknown as Pick<ChartRenderContext, "scene" | "interaction">);
+    // C2 (P6): separate local capture (see interactionRef's own comment
+    // above) — same context object, no cast needed here since we're
+    // assigning into our own concretely-typed ref rather than the
+    // library-generic `Pick<ChartRenderContext, ...>` parameter above.
+    interactionRef.current = context.interaction;
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marks) return;
     // Gate on chartPhase === "revealing" (same contract as line-chart.tsx /
@@ -1625,6 +1745,7 @@ export function ComposedChart({
             definition={definition}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
+            renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
           />
           {projectionGradientDefsComposed.length > 0 ? (
             // Rendered AFTER <Chart> deliberately — the QA/bench harness

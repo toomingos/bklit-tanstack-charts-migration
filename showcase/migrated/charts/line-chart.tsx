@@ -7,8 +7,10 @@ import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import type { ScaleTime } from "d3-scale";
 import { curveNatural } from "d3-shape";
-import { Chart } from "@tanstack/react-charts";
+import { Chart } from "@tanstack/react-charts/tooltip";
+import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
+import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
 import type { ChartMark, ChartRenderContext, ChartScale } from "@tanstack/charts";
 import {
   decimateTimeSeries,
@@ -50,10 +52,17 @@ import {
 } from "./internal/profit-loss-line-mark";
 import { toDate } from "./internal/coerce-date";
 import { timeToPixelX } from "./internal/x-time-scale";
-import { SERIES_MARKER_ENTER_MS } from "./internal/design-tokens";
+import {
+  BOX_OFFSET,
+  DISCRETE_INTERACTION_THRESHOLD,
+  SERIES_MARKER_ENTER_MS,
+  TOOLTIP_BOX_SPRING,
+} from "./internal/design-tokens";
+import { weekdayDateFmt } from "./internal/formatters";
+import { TooltipContent } from "./internal/tooltip-components";
 import { XAxisOverlay } from "./internal/x-axis-overlay";
 import { YAxisOverlay } from "./internal/y-axis-overlay";
-import type { ChartDatum, ChartStatus } from "./internal/types";
+import type { ChartDatum, ChartStatus, TooltipRow } from "./internal/types";
 import { type ChartPhase, DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./internal/chart-phase";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { bezierEasing } from "./internal/bezier-easing";
@@ -622,9 +631,31 @@ export function LineChart({
       // bklit has no native focus ring — its hover dot is the springed TooltipDot.
       focusRing: false,
       maxFocusDistance: Number.POSITIVE_INFINITY,
+      // C2 (P6): native tooltip extension replaces the imperative box panel
+      // (tooltip-chrome.ts's buildBox/applyBoxContent/positionBox). Line/area
+      // drive it off the SAME native focus:"group-x" mechanism the crosshair
+      // chrome already uses — no extra pointer-injection wiring needed here
+      // (contrast composed-chart.tsx, which drives its own bisector).
+      tooltip: (tooltip?.enabled ?? false)
+        ? {
+            use: nativeTooltip,
+            className: "bkm-native-tooltip",
+            sticky: false,
+            offset: BOX_OFFSET,
+            placement: ["right", "left"] as const,
+            motion:
+              renderData.length > DISCRETE_INTERACTION_THRESHOLD
+                ? (false as const)
+                : ({
+                    type: "spring" as const,
+                    stiffness: TOOLTIP_BOX_SPRING.stiffness,
+                    damping: TOOLTIP_BOX_SPRING.damping,
+                  } as const),
+          }
+        : (false as const),
       svgAnimation,
     };
-  }, [marks, renderData, xDataKey, grid, width, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, projectionConfigs, xDomain, timeExtent]);
+  }, [marks, renderData, xDataKey, grid, width, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, projectionConfigs, xDomain, timeExtent, tooltip]);
 
   const definition = React.useMemo(() => {
     if (!spec) return null;
@@ -640,6 +671,54 @@ export function LineChart({
   // Line-specific. Legend-hover series dim is native mark `states` +
   // `useFocusInjection` (phase 6, C1), wired directly below.
   const tooltipEnabled = tooltip?.enabled ?? false;
+  // C2 (P6): renders inside the native tooltip extension's unstyled
+  // `.ts-chart-tooltip__body` portal target — wraps the reused
+  // `TooltipContent` in `.bkm-tooltip-panel` (styles.css) to reproduce the
+  // old imperative box's visual chrome, since the native chrome is reset to
+  // transparent by the `.bkm-native-tooltip` rule in styles.css. Custom
+  // `tooltip.content` fully replaces the row list (bklit applyBoxContent
+  // parity); otherwise default rows come from `lines`, honoring
+  // `tooltip.rows` when the caller supplied it.
+  const renderTooltipBody = React.useCallback(
+    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode => {
+      const primary = ctx.points[0];
+      if (!primary) return null;
+      const datum = primary.datum as Record<string, unknown>;
+      const cfg = tooltip ?? null;
+      const panelClassName = cfg?.className ? `bkm-tooltip-panel ${cfg.className}` : "bkm-tooltip-panel";
+      const panelStyle: React.CSSProperties | undefined =
+        cfg?.panelStyle || cfg?.backgroundColor
+          ? { ...cfg?.panelStyle, ...(cfg?.backgroundColor ? { backgroundColor: cfg.backgroundColor } : null) }
+          : undefined;
+      if (cfg?.content) {
+        return (
+          <div className={panelClassName} style={panelStyle}>
+            {cfg.content({ point: datum, index: primary.datumIndex })}
+          </div>
+        );
+      }
+      const date = datum[xDataKey];
+      const title = date instanceof Date ? weekdayDateFmt.format(date) : undefined;
+      const rows: TooltipRow[] = cfg?.rows
+        ? cfg.rows(datum)
+        : lines.map((line) => {
+            const v = datum[line.dataKey];
+            return {
+              color: line.stroke || ctx.points.find((p) => p.markId === line.dataKey)?.color || "transparent",
+              label: line.dataKey,
+              value: typeof v === "number" ? v : String(v ?? 0),
+            };
+          });
+      return (
+        <div className={panelClassName} style={panelStyle}>
+          <TooltipContent title={title} rows={rows}>
+            {cfg?.children}
+          </TooltipContent>
+        </div>
+      );
+    },
+    [tooltip, xDataKey, lines],
+  );
   const xForIndex = React.useCallback(
     (index: number) => {
       const xScaleInstance = xScaleD3Ref.current;
@@ -1093,6 +1172,7 @@ export function LineChart({
             definition={definition}
             onFocusGroupChange={handleFocusGroupChangeWithMarkerDate}
             onRender={handleRender}
+            renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
           />
         </div>
       ) : null}
