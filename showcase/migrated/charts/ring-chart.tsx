@@ -28,8 +28,10 @@
 //   "pops in mid-sweep" visibility gating and replay semantics
 // * Imperative hover springs (scale 1.03 hovered / 1.02 pushed-out) with
 //   two-writer hazard resolved via `settleAtRest()` gate
-// * bklit fade + glow DEAD at runtime (empirically verified) — ported as
-//   observed pixels, not dead source intent (D19/D49 precedent)
+// * bklit fade + glow DEAD at runtime (empirically verified) — C1
+//   (states+legend) deletes the corresponding dead DOM-mutation code in
+//   internal/ring-hover-chrome.ts outright rather than porting non-rendering
+//   pixels (see that file's header for the empirical evidence)
 // * `animationDuration` dead prop, `isLoaded`/`animationKey` dead state
 // * d3-arc full-circle verification (cornerRadius branch not taken for 2π)
 // * RingCenter with real NumberFlow digit-roll (sanctioned D10 exception)
@@ -229,6 +231,11 @@ interface RingChildConfig {
   index: number;
   color?: string;
   animate: boolean;
+  // Extracted for bklit prop parity (`<Ring showGlow={false}>` still
+  // compiles/classifies), but unread from here on — C1 deleted the dead
+  // glow computation this fed (internal/ring-hover-chrome.ts never rendered
+  // it; see that file's header). Same category as PieSlice's dead
+  // `className` prop (D49).
   showGlow: boolean;
   lineCap: RingLineCap;
 }
@@ -784,7 +791,7 @@ export function RingChart({
     }
     stateMap.clear();
 
-    const { data: currData, ringConfigMap: currMap, getColor: currGetColor, geometryScrubbing: liveScrubbing } = hoverInputsRef.current;
+    const { data: currData, ringConfigMap: currMap, geometryScrubbing: liveScrubbing } = hoverInputsRef.current;
     // Re-check after clearing — outer closure captured stale scrubbing, live ref is current.
     if (liveScrubbing) return;
 
@@ -805,14 +812,11 @@ export function RingChart({
 
       const config = currMap.get(i);
       const runtime = createRingHoverRuntime();
-      const color = config?.color || currGetColor(i);
 
       runtime.update({
         index: i,
         trackGroupEl: trackGroup,
         progressGroupEl: progressGroup,
-        showGlow: config?.showGlow ?? true,
-        color,
       });
 
       stateMap.set(i, {
@@ -860,18 +864,13 @@ export function RingChart({
 
     const unsub = coordinator.subscribe(() => {
       const hov = coordinator.getHovered();
-      const { ringConfigMap: liveMap, getColor: liveGetColor } = hoverInputsRef.current;
       for (let i = 0; i < currData.length; i++) {
         const state = stateMap.get(i);
         if (!state) continue;
-        const config = liveMap.get(i);
-        const color = config?.color || liveGetColor(i);
         state.runtime.update({
           index: i,
           trackGroupEl: state.trackGroupEl!,
           progressGroupEl: state.progressGroupEl ?? null,
-          showGlow: config?.showGlow ?? true,
-          color,
         });
         state.runtime.paint(hov);
       }
@@ -881,14 +880,10 @@ export function RingChart({
     for (let i = 0; i < currData.length; i++) {
       const state = stateMap.get(i);
       if (!state) continue;
-      const config = currMap.get(i);
-      const color = config?.color || currGetColor(i);
       state.runtime.update({
         index: i,
         trackGroupEl: state.trackGroupEl!,
         progressGroupEl: state.progressGroupEl ?? null,
-        showGlow: config?.showGlow ?? true,
-        color,
       });
       state.runtime.paint(hov);
     }

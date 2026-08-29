@@ -38,7 +38,7 @@ import { scaleBand } from "d3-scale";
 import type { ScaleBand } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";
 import { barY, defineChart, group } from "@tanstack/charts";
-import type { ChartMark, ChartPoint } from "@tanstack/charts";
+import type { ChartMark, ChartMarkState, ChartPoint, ChartRenderContext } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import {
   attachBarHoverChrome,
@@ -52,11 +52,12 @@ import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import { useChartConfig } from "./internal/chart-config-context";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
+import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
 import { BarXAxisOverlay, barCategoryAccessor } from "./internal/bar-x-axis-overlay";
 import { createBarFocusStrategy } from "./internal/bar-focus-strategy";
 import { barSquaresMark } from "./internal/bar-squares-mark";
 import { barColumnTrackMark } from "./internal/bar-column-track-mark";
-import { barDepthBackMark, barDepthFrontMark, buildNegBarStops, buildPosBarStops, DEFAULT_GROUND_SHADOW as DEFAULT_BAR_DEPTH_GROUND_SHADOW } from "./internal/bar-depth-marks";
+import { barDepthBackMark, barDepthFrontMark, buildNegBarStops, buildPosBarStops, BAR_FADED_OPACITY, DEFAULT_GROUND_SHADOW as DEFAULT_BAR_DEPTH_GROUND_SHADOW } from "./internal/bar-depth-marks";
 import type { BarDepthGradientIds } from "./internal/bar-depth-marks";
 import { barPulseMark, buildPulseWaveStops, syncBarPulseGroups } from "./internal/bar-pulse-mark";
 import { barTrimmedMark } from "./internal/bar-trimmed-mark";
@@ -98,6 +99,48 @@ const GROUP_GAP = 4;
 // bklit bar.tsx BarInner default `fill` — a single fixed color, NOT a
 // rotating per-series palette (unlike scatter's chart-1..5 rotation).
 const DEFAULT_BAR_FILL = "var(--chart-line-primary)";
+
+// C1: native mark-state transitions — values verified against the legacy
+// bar-hover-chrome.ts DOM-mutation constants (now deleted, replaced by
+// `states` below): bars/trimmed-bars use 150ms ease-in-out (legacy
+// `DIM_TRANSITION`), squares/depth use 150ms ease-out (legacy
+// `BAR_SQUARES_DIM_TRANSITION` / `BAR_DEPTH_DIM_TRANSITION`), and the
+// column track uses 150ms ease-in-out (legacy `BAR_TRACK_DIM_TRANSITION`).
+const BAR_DIM_TRANSITION: NonNullable<ChartMarkState["transition"]> = { type: "tween", duration: 150, easing: "ease-in-out" };
+const BAR_SQUARES_DIM_TRANSITION: NonNullable<ChartMarkState["transition"]> = { type: "tween", duration: 150, easing: "ease-out" };
+const BAR_TRACK_DIM_TRANSITION: NonNullable<ChartMarkState["transition"]> = { type: "tween", duration: 150, easing: "ease-in-out" };
+const BAR_DEPTH_DIM_TRANSITION: NonNullable<ChartMarkState["transition"]> = { type: "tween", duration: 150, easing: "ease-out" };
+
+/** Row (pointer-hover) dim + legend (programmatic focusSeries) dim — the
+ * shared shape used by barY, trimmed bars, and squares. `{focus:'unmatched'}`
+ * is group-scoped (dims a candidate unless one of its points is in the
+ * currently-focused row); `whenSeriesDimmed()` is `'series'`-scoped
+ * (dataKey/group identity), matching legend-driven dim regardless of row. */
+function barRowAndSeriesDimStates(
+  fadedOpacity: number,
+  transition: NonNullable<ChartMarkState["transition"]>,
+): ChartMarkState<ChartDatum>[] {
+  return [
+    { when: { focus: "unmatched" }, style: { opacity: fadedOpacity }, transition },
+    { when: whenSeriesDimmed(), style: { opacity: fadedOpacity }, transition },
+  ];
+}
+
+/** Bar-depth back/front blanket dim: legacy dimmed on `dimByRow (pointer,
+ * this row unmatched) || hasLegend (ANY legend hover, not series-matched)` —
+ * NOT gated by which series is hovered, unlike bars/squares above. */
+function barDepthDimStates(): ChartMarkState<ChartDatum>[] {
+  return [
+    { when: { focus: "unmatched", source: "pointer" }, style: { opacity: BAR_FADED_OPACITY }, transition: BAR_DEPTH_DIM_TRANSITION },
+    { when: (context) => context.focus.source === "programmatic", style: { opacity: BAR_FADED_OPACITY }, transition: BAR_DEPTH_DIM_TRANSITION },
+  ];
+}
+
+/** Bar-column-track dim: legacy set opacity to 0 whenever ANY pointer-row
+ * hover was active, regardless of which row/series — not gated by legend. */
+const BAR_TRACK_DIM_STATES: ChartMarkState<ChartDatum>[] = [
+  { when: (context) => context.focus.source === "pointer", style: { opacity: 0 }, transition: BAR_TRACK_DIM_TRANSITION },
+];
 
 /** bklit bar-chart.tsx:57 — named union, exported so `import type { BarOrientation }` matches legacy. */
 export type BarOrientation = "vertical" | "horizontal";
@@ -249,6 +292,7 @@ export function BarChart({
     [children],
   );
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
+  const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection();
 
   // bklit bar-chart.tsx: no decimation — every raw row renders as a bar.
   const renderData = data;
@@ -664,6 +708,7 @@ export function BarChart({
              layout: group({ scale: groupScale }),
             fill: series.fill,
             radius: resolveCornerRadius(series.lineCap, groupBandwidth),
+            states: barRowAndSeriesDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
           }),
         );
       }
@@ -712,6 +757,7 @@ export function BarChart({
               squareGap: track.squareGap,
               squareRadius: track.squareRadius,
               squareFit: track.squareFit,
+              states: BAR_TRACK_DIM_STATES,
             }),
           );
         }
@@ -744,6 +790,7 @@ export function BarChart({
             patternPreset: s.patternPreset,
             gradientId,
             patternId,
+            states: barRowAndSeriesDimStates(s.fadedOpacity, BAR_SQUARES_DIM_TRANSITION),
           }),
         );
       }
@@ -764,6 +811,7 @@ export function BarChart({
             yAccessor: (d: ChartDatum) => projectValue(b.dataKey, d[b.dataKey] as number),
             fill: b.color ?? series.fill,
             gradientIds: depthGradientIds,
+            states: barDepthDimStates(),
           }),
         );
       }
@@ -795,6 +843,7 @@ export function BarChart({
             chartX: margin.left,
             centerX: margin.left + innerW / 2,
             maxDepth: 0,
+            states: barRowAndSeriesDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
           }),
         );
         continue;
@@ -808,6 +857,7 @@ export function BarChart({
            layout: group({ scale: groupScale }),
           fill: series.fill,
           radius: resolveCornerRadius(series.lineCap, groupBandwidth),
+          states: barRowAndSeriesDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
         }),
       );
     }
@@ -824,6 +874,7 @@ export function BarChart({
             categoryAccessor,
             yAccessor: (d: ChartDatum) => projectValue(f.dataKey, d[f.dataKey] as number),
             gradientIds: depthGradientIds,
+            states: barDepthDimStates(),
           }),
         );
       }
@@ -908,14 +959,10 @@ export function BarChart({
     series: [...resolvedSeries.map((s) => ({
       dataKey: s.dataKey,
       color: s.dotColor,
-      fadedOpacity: s.fadedOpacity,
     })), ...resolvedBarSquares.map((s) => ({
       dataKey: s.dataKey,
       color: squaresDotColor(s.fill, s.stroke),
-      fadedOpacity: s.fadedOpacity,
     }))],
-    barSquaresSeries: resolvedBarSquares.map((s) => ({ dataKey: s.dataKey, fadedOpacity: s.fadedOpacity })),
-    barTrackOpacity: resolvedBarColumnTracks[0]?.opacity ?? 0.3,
     pointCount: renderData.length,
     showCrosshair: tooltip?.showCrosshair ?? true,
     showDots: tooltip?.showDots ?? true,
@@ -924,15 +971,25 @@ export function BarChart({
     tickerHalfWidth: barXAxis?.tickerHalfWidth,
     tooltip: tooltip ?? null,
     dateLabels: dateLabelsForPill,
-    legendHoveredIndex,
   };
 
   const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
   const hasDefinition = width > 0;
 
+  // C1: legend hover drives native mark `states` dim via programmatic focus
+  // (replaces the old chromeRef.current?.syncDim() DOM-mutation sync).
   React.useEffect(() => {
-    chromeRef.current?.syncDim();
-  }, [legendHoveredIndex]);
+    if (legendHoveredIndex == null) {
+      clearFocus();
+      return;
+    }
+    const key = allSeriesKeys[legendHoveredIndex];
+    if (key != null) {
+      focusSeries(key);
+    } else {
+      clearFocus();
+    }
+  }, [legendHoveredIndex, allSeriesKeys, focusSeries, clearFocus]);
 
   React.useLayoutEffect(() => {
     const el = overlayHostRef.current;
@@ -1023,7 +1080,13 @@ export function BarChart({
   // CSS class the instant it commits, and the actual tween setup runs two
   // rAFs + one macrotask later, after the browser has already painted the
   // (still-hidden) bars).
-  const handleRender = React.useCallback(() => {
+  const handleRender = React.useCallback((context: ChartRenderContext<ChartDatum, string, number>) => {
+    // Cast: focus-injection's captureRenderContext takes the library's
+    // default-generic Pick<ChartRenderContext, "scene"|"interaction">, which
+    // (due to contravariance on interaction.setControlledFocus) isn't
+    // structurally assignable from our ChartDatum-specific instantiation —
+    // this is a type-system quirk, not a runtime mismatch.
+    captureRenderContext(context as Pick<ChartRenderContext, "scene" | "interaction">);
     // BarPulse loop upkeep (syncBarPulseGroups) runs at every exit path
     // below, AFTER this render's phase decision: TanStack's reconciler wipes
     // injected nodes/attributes (the pulse's <clipPath> def, the group's
@@ -1224,7 +1287,7 @@ export function BarChart({
       }
       marksGroup.classList.remove("ts-chart__marks--revealing");
     });
-  }, [animationDuration, revealDurationMs, revealEasingCss, resolvedSeries, resolvedBarSquares, barSquaresEnabled, barColumnTrackEnabled, setPhase, renderData.length]);
+  }, [animationDuration, revealDurationMs, revealEasingCss, resolvedSeries, resolvedBarSquares, barSquaresEnabled, barColumnTrackEnabled, setPhase, renderData.length, captureRenderContext]);
 
   // P6.1 — the reference-area layer used to read a SECOND `[0, maxValue * 1.1]`
   // memo of its own, byte-identical to `yDomain` and recomputed on the same

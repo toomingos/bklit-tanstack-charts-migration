@@ -1,5 +1,5 @@
 import { createMark } from "@tanstack/charts";
-import type { ChartMark, ChartPoint, SceneNode } from "@tanstack/charts";
+import type { ChartMark, ChartMarkState, ChartPoint, SceneNode } from "@tanstack/charts";
 import { bandWidthForSquares, computeSquareColumn } from "./bar-squares-layout";
 import type { ChartDatum, GradientStop } from "./types";
 import type { PatternPresetId } from "./pattern-preset";
@@ -7,6 +7,9 @@ import type { PatternPresetId } from "./pattern-preset";
 export interface BarSquaresMarkOptions {
   id: string;
   data: ChartDatum[];
+  /** Native mark-state definitions (hover/legend dim etc.), passed through
+      to the initialized mark unchanged. */
+  states?: readonly ChartMarkState<ChartDatum>[];
   seriesIndex: number;
   seriesCount: number;
   groupGap: number;
@@ -46,6 +49,7 @@ export function barSquaresMark(
     patternPreset,
     gradientId,
     patternId,
+    states,
   } = options;
 
   const isPatternFill = fill.startsWith("url(");
@@ -66,6 +70,7 @@ export function barSquaresMark(
 
     return {
       id,
+      states: states?.length ? { data, definitions: states } : undefined,
       channels: {
         x: { scale: "x", values: xValues },
         y: {
@@ -115,7 +120,12 @@ export function barSquaresMark(
               const xCenter = x + squareSize / 2;
               const yCenter = y + squareSize / 2;
               points.push({
-                key: `${id}:pt:${i}`,
+                // Exact `:`-boundary prefix of `${id}:sq:${i}:${s}` (the
+                // square rect keys) so the library's prefix-based scene
+                // point-ownership matching (dist/scene-point-ownership-
+                // internal.js) attaches this point to every square in the
+                // row for per-row `states` targeting.
+                key: `${id}:sq:${i}`,
                 markId: id,
                 group: id,
                 groupLabel: id,

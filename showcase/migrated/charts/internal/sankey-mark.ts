@@ -21,15 +21,24 @@
 //     ("sankey"), which passes through the compositor's namespace identity
 //     untouched, so every scene key below is byte-identical to the previous
 //     implementation: sankey:node:i, sankey:rect:i, sankey:nlabel:i,
-//     sankey:vlabel:i. The reveal (sankey-animation.ts) and hover chrome
-//     (sankey-hover-chrome.ts) DOM contracts depend on those keys; the D239
-//     baseline-emulation math (d = fontSize*0.35) lives here verbatim.
+//     sankey:vlabel:i. The reveal (sankey-animation.ts) DOM contract depends
+//     on those keys; the D239 baseline-emulation math (d = fontSize*0.35)
+//     lives here verbatim.
 //   - Gradients: per-link userSpaceOnUse gradient DATUMS stay custom
 //     (tanstack.md row 31 — %-coords frozen at definition cannot express
 //     per-link geometry); their source coordinates read off the native rows
 //     (sourceNode.x1 / targetNode.x0). Datum building moved into the marks()
 //     callback (runs per layout pass) so link strokes never depend on
 //     sibling-render order.
+//   - Hover dim (C1 states+legend): connectivity is resolved once per marks()
+//     pass (config.hoveredNodeIndex/hoveredLinkIndex, reactive — the owning
+//     component rebuilds this whole mark via a useMemo keyed on hover state)
+//     using sankey-hover-chrome.ts's pure connectivity helpers, then baked
+//     directly into each node/label's resting style and into the native
+//     link() mark's per-datum `strokeOpacity` channel. No DOM mutation, no
+//     hover-time re-query — sankey-hover-chrome.ts now only supplies that
+//     pure connectivity math plus the mouseenter/mouseleave listener wiring
+//     that turns pointer input into hoveredNodeIndex/hoveredLinkIndex.
 
 import { createMark, link } from "@tanstack/charts";
 import type { ChartValue, MarkRenderContext, SceneLabel, SceneNode } from "@tanstack/charts";
@@ -47,6 +56,7 @@ import {
 } from "./sankey-layout";
 import { intFmt } from "./formatters";
 import type { SankeyLabelOrientation } from "../sankey-chart";
+import { computeNodeHoverConnected, computeLinkHoverConnected } from "./sankey-hover-chrome";
 
 export const SANKEY_MARK_ID = "sankey";
 
@@ -61,6 +71,15 @@ export interface SankeyMarkConfig {
   showLabels?: boolean;
   showValueLabels?: boolean;
   labelOrientation?: SankeyLabelOrientation;
+  // Connectivity-based hover dim (C1 states+legend). Replaces the old
+  // sankey-hover-chrome.ts DOM-mutation pass: the component now re-derives
+  // this mark (via the `definition` useMemo, keyed on hover state) whenever
+  // hover changes, so dim/boost is expressed as per-datum style/channel
+  // values computed here instead of direct element.style writes.
+  hoveredNodeIndex: number | null;
+  hoveredLinkIndex: number | null;
+  fadedNodeOpacity: number;
+  fadedLinkOpacity: number;
 }
 
 export interface SankeyGradientDatum {
@@ -140,6 +159,9 @@ function buildSankeyLabelNodes(
   showLabels: boolean,
   showValueLabels: boolean,
   labelOrientation: SankeyLabelOrientation,
+  nodeConnected: readonly boolean[],
+  anyHovered: boolean,
+  fadedNodeOpacity: number,
 ): SceneNode[] {
   const labelNodes: SceneNode[] = [];
   if (!showLabels) return labelNodes;
@@ -187,6 +209,16 @@ function buildSankeyLabelNodes(
     const labelX = isLeftSide ? nodeX - SANKEY_LABEL_OFFSET : nodeX + nodeW + SANKEY_LABEL_OFFSET;
     const displayVal = sankeyDisplayValue((node as { category?: string }).category, i, links);
 
+    // Connectivity-based hover dim (see createSankeyMark's hover-config
+    // fields). Name labels dim via `opacity` (resting value 1, implicit);
+    // value labels dim via `fillOpacity` — the SAME property that already
+    // carries their resting 0.6 dim — so the dim write REPLACES rather than
+    // multiplies with that resting value, and stays clear of `opacity`,
+    // which the WAAPI reveal (sankey-animation.ts) animates independently.
+    const isDimmed = anyHovered && !nodeConnected[i];
+    const nameOpacity = isDimmed ? fadedNodeOpacity : 1;
+    const valueFillOpacity = isDimmed ? fadedNodeOpacity * 0.8 : 0.6;
+
     if (labelOrientation === "vertical") {
       const rotate = isLeftSide ? -90 : 90;
       const nameLocalX = showValueLabels !== false ? (isLeftSide ? halfGap : -halfGap) : 0;
@@ -196,14 +228,14 @@ function buildSankeyLabelNodes(
         rotate,
         fontWeight: 500,
         className: "ts-sankey__label-name",
-        style: { fill: "var(--foreground)" },
+        style: { fill: "var(--foreground)", opacity: nameOpacity },
       });
       if (showValueLabels !== false) {
         pushLabel(labelX + valueLocalX, centerY, `${intFmt(displayVal)} sessions`, "middle", 11, {
           key: `${SANKEY_MARK_ID}:vlabel:${i}`,
           rotate,
           className: "ts-sankey__label-value",
-          style: { fill: "var(--foreground)", fillOpacity: 0.6 },
+          style: { fill: "var(--foreground)", fillOpacity: valueFillOpacity },
         });
       }
     } else {
@@ -212,13 +244,13 @@ function buildSankeyLabelNodes(
         key: `${SANKEY_MARK_ID}:nlabel:${i}`,
         fontWeight: 500,
         className: "ts-sankey__label-name",
-        style: { fill: "var(--foreground)" },
+        style: { fill: "var(--foreground)", opacity: nameOpacity },
       });
       if (showValueLabels !== false) {
         pushLabel(labelX, centerY + SANKEY_VALUE_LABEL_GAP, `${intFmt(displayVal)} sessions`, anchor, 11, {
           key: `${SANKEY_MARK_ID}:vlabel:${i}`,
           className: "ts-sankey__label-value",
-          style: { fill: "var(--foreground)", fillOpacity: 0.6 },
+          style: { fill: "var(--foreground)", fillOpacity: valueFillOpacity },
         });
       }
     }
@@ -232,13 +264,37 @@ export function createSankeyMark(
   gradientDataRef: { current: SankeyGradientDatum[] | null },
   laidOutNodesRef: { current: LaidOutNode[] | null },
 ) {
-  const { strokeOpacity, strokeOverride, useGradient, nodeColorFn, lineCap, nodeWidth, nodePadding, showLabels, showValueLabels, labelOrientation } = config;
+  const {
+    strokeOpacity,
+    strokeOverride,
+    useGradient,
+    nodeColorFn,
+    lineCap,
+    nodeWidth,
+    nodePadding,
+    showLabels,
+    showValueLabels,
+    labelOrientation,
+    hoveredNodeIndex,
+    hoveredLinkIndex,
+    fadedNodeOpacity,
+    fadedLinkOpacity,
+  } = config;
   const shouldUseGradient = useGradient && !strokeOverride;
 
   // Slim custom mark for nodes + labels (see header). Child id equals the
   // owner id ("sankey"), which passes through the compositor's namespace
   // identity untouched — all scene keys stay byte-identical.
-  const bodyMark = (laidOutNodes: readonly LaidOutNode[], links: readonly LinkRow[]) =>
+  //
+  // `nodeConnected`/`anyHovered` are this pass's resolved connectivity (see
+  // marks() below) — dim is baked straight into each node/label's resting
+  // style, replacing the old applySankeyHoverStyle DOM-mutation pass.
+  const bodyMark = (
+    laidOutNodes: readonly LaidOutNode[],
+    links: readonly LinkRow[],
+    nodeConnected: readonly boolean[],
+    anyHovered: boolean,
+  ) =>
     createMark(() => ({
       id: SANKEY_MARK_ID,
       channels: {},
@@ -249,6 +305,7 @@ export function createSankeyMark(
           const nodeY = node.y0 ?? 0;
           const nodeW = Math.max(0, (node.x1 ?? 0) - nodeX);
           const nodeH = Math.max(0, (node.y1 ?? 0) - nodeY);
+          const nodeOpacity = anyHovered && !nodeConnected[index] ? fadedNodeOpacity : 1;
 
           return {
             kind: "group" as const,
@@ -267,6 +324,7 @@ export function createSankeyMark(
                 style: {
                   fill: nodeColorFn(node, index),
                   fillOpacity: 1,
+                  opacity: nodeOpacity,
                 },
                 className: "ts-sankey__node-rect",
               },
@@ -282,6 +340,9 @@ export function createSankeyMark(
           showLabels !== false,
           showValueLabels !== false,
           labelOrientation ?? "horizontal",
+          nodeConnected,
+          anyHovered,
+          fadedNodeOpacity,
         );
 
         return {
@@ -326,6 +387,18 @@ export function createSankeyMark(
       const laidOutNodes = nodes.map(toLaidOutNode);
       laidOutNodesRef.current = laidOutNodes;
 
+      // ── Hover connectivity (C1 states+legend) ──
+      // Computed against the RESOLVED `links` rows (not the raw input array)
+      // so `linkConnected[index]` always lines up with the `index` the
+      // native link() mark's per-datum accessors receive below — the same
+      // rows, same order, same indexing the existing gradient/stroke
+      // accessors already rely on.
+      const linkPairs = links.map((l) => ({ source: l.sourceIndex, target: l.targetIndex }));
+      const { nodeConnected, linkConnected, anyHovered } =
+        hoveredNodeIndex !== null
+          ? computeNodeHoverConnected(hoveredNodeIndex, laidOutNodes.length, linkPairs)
+          : computeLinkHoverConnected(hoveredLinkIndex, laidOutNodes.length, linkPairs);
+
       // ── Gradients (custom — tanstack.md row 31) ──
       if (shouldUseGradient) {
         const gradients: SankeyGradientDatum[] = links.map((linkRow, index) => {
@@ -356,14 +429,23 @@ export function createSankeyMark(
           // previous area paths (native link defaults to round).
           strokeWidth: (flowRow) => Math.max(1, flowRow.width),
           lineCap: "butt",
-          strokeOpacity,
+          // T-D13: `strokeOpacity` is a per-datum VisualChannel on link()
+          // (unlike the plain-number opacity options on the polar mark
+          // family — see radar-chart.tsx), so connectivity-based hover
+          // dim/boost is expressed here directly, no DOM mutation. Replaces
+          // the old sankey-hover-chrome.ts pass writing `pathEl.style.
+          // strokeOpacity` per element on every hover change.
+          strokeOpacity: (flowRow, { index }) => {
+            if (!anyHovered) return strokeOpacity;
+            return linkConnected[index] ? Math.min(1, strokeOpacity * 1.3) : fadedLinkOpacity;
+          },
           curve: SANKEY_CURVE,
           stroke: (flowRow, { index }) => {
             if (shouldUseGradient) return `url(#sankey-grad-${index})`;
             return strokeOverride ?? nodeColorFn(laidOutNodes[flowRow.sourceIndex], flowRow.sourceIndex);
           },
         }),
-        bodyMark(laidOutNodes, links),
+        bodyMark(laidOutNodes, links, nodeConnected, anyHovered),
       ] as const;
     },
   });

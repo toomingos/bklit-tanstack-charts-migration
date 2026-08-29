@@ -12,7 +12,7 @@
 // existing WAAPI stagger reveal in composed-chart.tsx's `handleRender` finds
 // the same selectors.
 import { createMark } from "@tanstack/charts";
-import type { ChartMark, ChartPoint, SceneNode } from "@tanstack/charts";
+import type { ChartMark, ChartMarkState, ChartPoint, SceneNode } from "@tanstack/charts";
 import { computeSeriesBarWidth } from "./series-bar-layout";
 import type { ChartDatum } from "./types";
 
@@ -47,6 +47,9 @@ export interface SeriesBarMarkOptions {
       `stacked` is set; stacking is skipped without it (same contract as the
       legacy SeriesBar's `stacked` gate). */
   stackOffsets?: Map<number, Map<string, number>>;
+  /** Native mark-state definitions (hover/legend dim etc.), passed through
+      to the initialized mark unchanged. */
+  states?: readonly ChartMarkState<ChartDatum>[];
 }
 
 function isFiniteNumber(v: unknown): v is number {
@@ -71,6 +74,7 @@ export function seriesBarMark(
     stacked = false,
     stackGap = 0,
     stackOffsets,
+    states,
   } = options;
   const seriesCount = groupDataKeys.length;
   const gap = barGap;
@@ -81,6 +85,7 @@ export function seriesBarMark(
 
     return {
       id,
+      states: states?.length ? { data, definitions: states } : undefined,
       channels: {
         x: { scale: "x", values: xValues },
         y: {

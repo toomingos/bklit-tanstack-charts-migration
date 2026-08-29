@@ -8,16 +8,20 @@
 //     spring {400,25} morphing the radius, regenerating the arc `d` on every
 //     frame (bklit's `useSpring(outerRadius,{400,25})` retargeted in a
 //     `useEffect`, feeding `useTransform` -> `generateArcPath`)
-//   - "none": geometric offset forced to 0 (translate distance 0) — but
-//     opacity fade / glow BELOW still apply. Confirmed via precise re-read
-//     of pie-slice.tsx's `renderStaticSlice`: `shouldTranslate = hoverEffect
-//     !== "none" && isHovered` gates ONLY translateX/Y; `isFaded`/`showGlow`
-//     are unconditional. This is bklit's own nuance, not an invention.
+//   - "none": geometric offset forced to 0 (translate distance 0) — the
+//     GROW/translate effect is the only thing this file still owns.
 //   - non-hovered slices (while ANY slice is hovered) fade to opacity 0.4,
-//     tween 0.15s (`transition={{opacity:{duration:0.15}}}`)
-//   - NO glow: bklit's `showGlow` drop-shadow is dead code at runtime (its
-//     framer `style.filter` is frozen at mount — see the comment in
-//     `paint()` below; docs/LOG.md D49)
+//     tween 0.15s (`transition={{opacity:{duration:0.15}}}`) — C1
+//     (states+legend) moved this OFF an imperative `el.style.opacity`
+//     mutation and onto pie-chart.tsx's reactive `definition` (per-datum
+//     `fill` alpha channel, since radialArc's `opacity` mark option is a
+//     single number for the whole mark, not a per-datum VisualChannel —
+//     polar.d.ts). `FADE_OPACITY` stays exported from here as the fade
+//     value's source of truth; the 0.15s fill transition lives in styles.css
+//     (`[data-bkm-chart="pie"]` rule). This file no longer applies either.
+//   - NO glow: bklit's `showGlow` drop-shadow was dead code at runtime (its
+//     framer `style.filter` was frozen at mount — docs/LOG.md D49) and is
+//     deleted outright by C1, not ported as observed (always-"none") pixels.
 //
 // Architecture differs from radar-hover-chrome.ts's centralized
 // "requery-DOM-then-sync(elements[])" model: TanStack's mark reconciliation
@@ -36,9 +40,10 @@ import { createBroadcastStore } from "./broadcast-store";
 export type PieSliceHoverEffect = "translate" | "grow" | "none";
 
 const HOVER_SPRING = { stiffness: 400, damping: 25 } as const;
+// C1 (states+legend): fade value, now consumed by pie-chart.tsx's reactive
+// `definition` (per-datum `fill` alpha) instead of this file's `paint()`.
+// The matching 0.15s fill transition is a styles.css rule.
 export const FADE_OPACITY = 0.4;
-const FULL_OPACITY = "1";
-const OPACITY_TRANSITION = "opacity 0.15s ease-in-out";
 
 // ---------------------------------------------------------------------------
 // Chart-level hover coordinator
@@ -110,8 +115,6 @@ export interface PieSliceHoverConfig {
   padAngle: number;
   hoverOffset: number;
   hoverEffect: PieSliceHoverEffect;
-  showGlow: boolean;
-  color: string;
   fill: string;
 }
 
@@ -121,10 +124,10 @@ export interface PieSliceHoverRuntime {
       frames and by `paint`). Does NOT itself repaint; call `paint()` after
       if a repaint is needed (e.g. geometry changed while at rest). */
   update(config: PieSliceHoverConfig): void;
-  /** Repaint immediately for the given hovered index. Springs animate
-      toward their new targets from wherever they currently are; opacity/
-      filter are set synchronously (they're plain CSS transitions, not
-      rAF-driven). */
+  /** Repaint immediately for the given hovered index. Springs (translate/
+      grow) animate toward their new targets from wherever they currently
+      are. Fade is NOT this runtime's concern any more (C1) — it rides
+      pie-chart.tsx's reactive `definition` fill-alpha channel instead. */
   paint(hoveredIndex: number | null): void;
   stop(): void;
 }
@@ -173,24 +176,6 @@ export function createPieSliceHoverRuntime(): PieSliceHoverRuntime {
     paint(hoveredIndex) {
       if (!config) return;
       const isHovered = hoveredIndex === config.index;
-      const isFaded = hoveredIndex !== null && !isHovered;
-      const el = config.visibleEl;
-
-      el.style.transition = `${OPACITY_TRANSITION}`;
-      el.style.opacity = isFaded ? String(FADE_OPACITY) : FULL_OPACITY;
-      // bklit's glow is DEAD CODE at runtime: pie-slice.tsx computes
-      // `showGlow && isHovered ? drop-shadow(...) : "none"` into the framer
-      // `style` prop, but framer-motion snapshots animatable style keys
-      // (filter) into MotionValues at mount and never re-reads later static
-      // `style` values — verified empirically 2026-07-31 (Playwright: inline
-      // filter stays "none" on the hovered slice across repeated hover
-      // cycles, every effect/branch, n=1 and n=4) — docs/LOG.md D49. Port
-      // the OBSERVED pixels, not the dead source intent (D19 dead-code
-      // precedent: decimation, identical-stop "gradients"). `showGlow` and
-      // `color` stay in the config so the drop-shadow can be restored
-      // verbatim if bklit ever fixes it:
-      //   `config.showGlow && isHovered ? drop-shadow(0 0 12px ${config.color}) : "none"`
-      el.style.filter = "none";
 
       // First paint for this instance — settle the radius spring at the
       // resting outer radius with no motion, WHATEVER the effect kind

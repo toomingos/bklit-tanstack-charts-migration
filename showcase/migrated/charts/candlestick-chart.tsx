@@ -32,7 +32,7 @@ import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";
 import { defineChart, createMark } from "@tanstack/charts";
-import type { ChartMark, ChartPoint, ChartScale, SceneNode } from "@tanstack/charts";
+import type { ChartMark, ChartMarkState, ChartPoint, ChartRenderContext, ChartScale, SceneNode } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import { sampleSpringKeyframes } from "./internal/candle-spring";
 import {
@@ -72,6 +72,7 @@ import { createCandlestickFocusStrategy } from "./internal/candlestick-focus-str
 import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
 import { shortDateFmt } from "./internal/formatters";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
+import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { DEFAULT_ANIMATION_DURATION_MS } from "./internal/animation-defaults";
 import "./styles.css";
@@ -91,6 +92,40 @@ const OPACITY_TWEEN_MS = 150;
 // the body+wick fall back to these solid tokens (not the caller's fills).
 const PATTERN_FALLBACK_POSITIVE = SOLID_POSITIVE;
 const PATTERN_FALLBACK_NEGATIVE = SOLID_NEGATIVE;
+
+// C1: native mark-state dim — value verified against the legacy per-candle
+// `geometryDimOpacity` (bklit candlestick.tsx:110-126) and the migrated
+// `candlestick-hover-chrome.ts` `DIM_TRANSITION` (now deleted): 150ms
+// ease-in-out.
+const CANDLE_DIM_TRANSITION: NonNullable<ChartMarkState["transition"]> = {
+  type: "tween",
+  duration: 150,
+  easing: "ease-in-out",
+};
+
+/** Legend (series) dim + optional pointer-hover blanket dim, applied to both
+ * the wicks and bodies marks. Legend dim is per-candle, keyed off each
+ * candle's `positive`/`negative` group identity (`whenSeriesDimmed()` —
+ * dataKey/group match, bklit candlestick.tsx:116-121's per-candle
+ * `isPositive` branch). Pointer-hover dim (bklit's `showHoverFade` prop,
+ * candlestick.tsx:122-124) is a BLANKET dim across every candle whenever any
+ * point has pointer focus — not row-selective — because the actual
+ * per-candle "which one is hovered" distinction is drawn on top via the
+ * separate highlight overlay (`candlestick-hover-chrome.ts`'s
+ * `activeHighlightSvg`, C3's territory, left untouched here). */
+function candlestickDimStates(fadedOpacity: number, showHoverFade: boolean): ChartMarkState<ChartDatum>[] {
+  const states: ChartMarkState<ChartDatum>[] = [
+    { when: whenSeriesDimmed(), style: { opacity: fadedOpacity }, transition: CANDLE_DIM_TRANSITION },
+  ];
+  if (showHoverFade) {
+    states.push({
+      when: (context) => context.focus.source === "pointer",
+      style: { opacity: fadedOpacity },
+      transition: CANDLE_DIM_TRANSITION,
+    });
+  }
+  return states;
+}
 
 // P5.5 K4 — this file used to declare its own spring-only
 // `{ duration?, bounce? }` type behind a comment claiming "bklit
@@ -173,15 +208,17 @@ export function CandlestickChart({
   // comparison must.
   const renderData = data;
   // Reveal replay guard by DATA identity: the `bkmRevealed` DOM stamp dies
-  // whenever TanStack recreates the marks group, which also happens on
-  // re-renders that change no data (legend hover — the marks memo depends on
-  // legendHoveredIndex by design; bklit's reveal is state-keyed and never
-  // replays there). Data-change recreation keeps replaying as frozen (D218).
+  // whenever TanStack recreates the marks group. C1: legend hover no longer
+  // remounts the marks (dim moved to native `states`, evaluated against
+  // focus state rather than baked into render output), so this guard is
+  // simpler than it once was — data-change recreation is the only replay
+  // trigger left, matching bklit's reveal being state-keyed (D218).
   const latestRenderDataRef = React.useRef(renderData);
   latestRenderDataRef.current = renderData;
   const revealedForDataRef = React.useRef<unknown>(null);
 
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
+  const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection();
 
   const resolvedPositiveFill = candlestick?.positiveFill ?? SOLID_POSITIVE;
   const resolvedNegativeFill = candlestick?.negativeFill ?? SOLID_NEGATIVE;
@@ -356,13 +393,18 @@ export function CandlestickChart({
     // Wicks mark: one thin rect per candle (low→high, width=1.5).
     // Bodies mark: one rect per candle (open→close, width=bodyWidthPx,
     // fill=positiveFill/negativeFill, rx=1, stroke=fill, strokeWidth=1).
-    // Hover dim: dim both marks as wholes; highlight via separate overlay.
+    // C1: hover/legend dim is native `states` (declared below, keyed off
+    // each candle's positive/negative `group` identity) — no more inline
+    // per-point opacity math. Highlight of the hovered candle stays a
+    // separate overlay (candlestick-hover-chrome.ts, C3's territory).
+    const wicksDimStates = candlestickDimStates(resolvedCandlestick.fadedOpacity, resolvedCandlestick.showHoverFade);
     const wicksMark = createMark(() => {
       const xValues = renderData.map((d) => d[xDataKey] as Date);
       const lowValues = renderData.map((d) => d.low as number | undefined);
       const highValues = renderData.map((d) => d.high as number | undefined);
       return {
         id: "wicks",
+        states: wicksDimStates.length ? { data: renderData, definitions: wicksDimStates } : undefined,
         channels: {
           x: { scale: "x", values: xValues },
           y: {
@@ -392,8 +434,6 @@ export function CandlestickChart({
             // bklit computeGeometries: wickFill = bodySolidFill when a
             // pattern overlay is set for this candle, else the caller fill.
             const wickFill = solidFillFor(isPositive, Boolean(candlePattern.href));
-            const isWickDimmed = legendHoveredIndex !== null && ((legendHoveredIndex === 0 && !isPositive) || (legendHoveredIndex === 1 && isPositive));
-            const wickOpacity = isWickDimmed ? resolvedCandlestick.fadedOpacity : 1;
             const key = `wicks:${i}`;
             nodes.push({
               kind: "rect",
@@ -403,10 +443,14 @@ export function CandlestickChart({
               y: Math.min(yLow, yHigh),
               width: WICK_WIDTH_PX,
               height: Math.abs(yHigh - yLow) || 1,
-              style: { fill: wickFill, opacity: wickOpacity },
+              style: { fill: wickFill },
             });
+            // group/groupLabel carry the candle's positive/negative series
+            // identity (not "wicks") so `whenSeriesDimmed()` can match legend
+            // hover; `markId` stays "wicks" for handleFocusGroupChange's
+            // per-mark point lookup.
             points.push({
-              key, markId: "wicks", group: "wicks", groupLabel: "wicks",
+              key, markId: "wicks", group: isPositive ? "positive" : "negative", groupLabel: isPositive ? "positive" : "negative",
               datum: d, datumIndex: i, xValue: date, yValue: high,
               x: cx, y: yHigh, color: wickFill,
             });
@@ -419,12 +463,14 @@ export function CandlestickChart({
       };
     });
 
+    const bodiesDimStates = candlestickDimStates(resolvedCandlestick.fadedOpacity, resolvedCandlestick.showHoverFade);
     const bodiesMark = createMark(() => {
       const xValues = renderData.map((d) => d[xDataKey] as Date);
       const openValues = renderData.map((d) => d.open as number | undefined);
       const closeValues = renderData.map((d) => d.close as number | undefined);
       return {
         id: "bodies",
+        states: bodiesDimStates.length ? { data: renderData, definitions: bodiesDimStates } : undefined,
         channels: {
           x: { scale: "x", values: xValues },
           y: {
@@ -452,8 +498,6 @@ export function CandlestickChart({
             const candlePattern = isPositive ? positivePattern : negativePattern;
             const hasOwnPattern = Boolean(candlePattern.href);
             const fill = solidFillFor(isPositive, hasOwnPattern);
-            const isBodyDimmed = legendHoveredIndex !== null && ((legendHoveredIndex === 0 && !isPositive) || (legendHoveredIndex === 1 && isPositive));
-            const bodyOpacity = isBodyDimmed ? resolvedCandlestick.fadedOpacity : 1;
             const key = `bodies:${i}`;
             // bklit CandlestickBody: solid body rect (self-stroke), then the
             // pattern overlay rect (same geometry/rx, NO self-stroke), then
@@ -467,7 +511,7 @@ export function CandlestickChart({
               width: bodyWidthPx,
               height: Math.abs(yClose - yOpen) || 1,
               radius: 1,
-              style: { fill, stroke: fill, strokeWidth: 1, opacity: bodyOpacity },
+              style: { fill, stroke: fill, strokeWidth: 1 },
             });
             if (hasOwnPattern) {
               nodes.push({
@@ -479,7 +523,7 @@ export function CandlestickChart({
                 width: bodyWidthPx,
                 height: Math.abs(yClose - yOpen) || 1,
                 radius: 1,
-                style: { fill: candlePattern.href, opacity: bodyOpacity },
+                style: { fill: candlePattern.href },
               });
             }
             if (insideStrokeW > 0) {
@@ -492,11 +536,15 @@ export function CandlestickChart({
                 width: bodyWidthPx - insideStrokeW,
                 height: (Math.abs(yClose - yOpen) || 1) - insideStrokeW,
                 radius: 1,
-                style: { fill: "none", stroke: fill, strokeWidth: insideStrokeW, opacity: bodyOpacity },
+                style: { fill: "none", stroke: fill, strokeWidth: insideStrokeW },
               });
             }
+            // group/groupLabel carry the candle's positive/negative series
+            // identity (not "bodies") so `whenSeriesDimmed()` can match
+            // legend hover; `markId` stays "bodies" for
+            // handleFocusGroupChange's per-mark point lookup.
             points.push({
-              key, markId: "bodies", group: "bodies", groupLabel: "bodies",
+              key, markId: "bodies", group: isPositive ? "positive" : "negative", groupLabel: isPositive ? "positive" : "negative",
               datum: d, datumIndex: i, xValue: date, yValue: close,
               x: cx, y: yClose, color: fill,
             });
@@ -551,7 +599,7 @@ export function CandlestickChart({
     solidFillFor,
     resolvedCandlestick.insideStrokeWidth,
     resolvedCandlestick.fadedOpacity,
-    legendHoveredIndex,
+    resolvedCandlestick.showHoverFade,
     grid,
     width,
     margin,
@@ -671,8 +719,6 @@ export function CandlestickChart({
   chromeStateRef.current = {
     margin,
     pointCount: renderData.length,
-    fadedOpacity: resolvedCandlestick.fadedOpacity,
-    showHoverFade: resolvedCandlestick.showHoverFade,
     showCrosshair: tooltip?.showCrosshair ?? true,
     showDots: tooltip?.showDots ?? true,
     showDatePill: tooltip?.showDatePill ?? true,
@@ -680,7 +726,6 @@ export function CandlestickChart({
     tickerHalfWidth: xAxis?.tickerHalfWidth,
     tooltip: tooltip ?? null,
     dateLabels: dateLabelsForPill,
-    legendHoveredIndex,
   };
 
   const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
@@ -699,9 +744,20 @@ export function CandlestickChart({
     };
   }, [tooltipEnabled, hasDefinition, chartConfig]);
 
+  // C1: legend hover drives native mark `states` dim via programmatic focus
+  // (replaces the old chromeRef.current?.syncLegendDim() DOM-mutation sync).
   React.useEffect(() => {
-    chromeRef.current?.syncLegendDim();
-  }, [legendHoveredIndex]);
+    if (legendHoveredIndex == null) {
+      clearFocus();
+      return;
+    }
+    const key = legendHoveredIndex === 0 ? "positive" : legendHoveredIndex === 1 ? "negative" : null;
+    if (key != null) {
+      focusSeries(key);
+    } else {
+      clearFocus();
+    }
+  }, [legendHoveredIndex, focusSeries, clearFocus]);
 
   // TanStack-native hover — ChartFocusStrategy resolves nearest xValue
   // (bisect-epoch semantics with strict `>` tie-break) and groups wick+body
@@ -822,7 +878,13 @@ export function CandlestickChart({
   // regardless of animate). The gate lives here, at the single reveal
   // entrypoint, so the K4 sampled-keyframe tween (P5.5) can plug into the
   // same gate later without re-touching this path.
-  const handleRender = React.useCallback(() => {
+  const handleRender = React.useCallback((context: ChartRenderContext<ChartDatum, Date, number>) => {
+    // Cast: focus-injection's captureRenderContext takes the library's
+    // default-generic Pick<ChartRenderContext, "scene"|"interaction">, which
+    // (due to contravariance on interaction.setControlledFocus) isn't
+    // structurally assignable from our ChartDatum-specific instantiation —
+    // this is a type-system quirk, not a runtime mismatch.
+    captureRenderContext(context as Pick<ChartRenderContext, "scene" | "interaction">);
     if (animationDuration <= 0) return;
 
     // K7: animate=false renders candles statically — bklit renders
@@ -1001,6 +1063,7 @@ export function CandlestickChart({
     enterTransition?.ease?.join(","),
     renderData.length,
     resolvedCandlestick.animate,
+    captureRenderContext,
   ]);
 
   const refAreaChildrenCandle = React.useMemo(() => extractReferenceAreaProps(children), [children]);

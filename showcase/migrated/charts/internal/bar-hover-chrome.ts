@@ -21,27 +21,14 @@ import {
 import type { ChartTooltipConfig } from "./types";
 import { TOOLTIP_SPRING } from "./design-tokens";
 
-const DIM_TRANSITION = "opacity 0.15s ease-in-out";
-const BAR_SQUARES_DIM_TRANSITION = "opacity 0.15s ease-out";
-const BAR_TRACK_DIM_TRANSITION = "opacity 0.15s ease-in-out";
-const BAR_DEPTH_DIM_TRANSITION = "opacity 0.15s ease-out";
-
 export interface BarHoverChromeSeries {
   dataKey: string;
   color: string;
-  fadedOpacity: number;
-}
-
-export interface BarSquaresChromeSeries {
-  dataKey: string;
-  fadedOpacity: number;
 }
 
 export interface BarHoverChromeState {
   margin: { top: number; right: number; bottom: number; left: number };
   series: BarHoverChromeSeries[];
-  barSquaresSeries?: BarSquaresChromeSeries[];
-  barTrackOpacity?: number;
   pointCount: number;
   showCrosshair: boolean;
   showDots: boolean;
@@ -52,7 +39,6 @@ export interface BarHoverChromeState {
   tooltip?: ChartTooltipConfig | null;
   dateLabels?: string[];
   hoveredIndex?: number;
-  legendHoveredIndex?: number | null;
 }
 
 export interface BarFocusPoint {
@@ -72,7 +58,6 @@ export interface BarFocusGroup {
 
 export interface BarHoverChrome {
   onFocusChange(group: BarFocusGroup | null): void;
-  syncDim(): void;
   detach(): void;
 }
 
@@ -119,161 +104,7 @@ export function attachBarHoverChrome(
   let prevFlip: boolean | null = null;
   let boxFadeAnimation: Animation | null = null;
 
-  const setCategoryHover = (hoveredIndex: number | null, series: readonly BarHoverChromeSeries[]) => {
-    const stateLegend = getState().legendHoveredIndex ?? null;
-    for (let idx = 0; idx < series.length; idx++) {
-      const s = series[idx]!;
-      const isLegendDimmed = stateLegend !== null && stateLegend !== idx;
-      const escaped = s.dataKey.replace(/"/g, '\\"');
-      const group = container.querySelector<SVGGElement>(`.ts-chart__bar-y[data-ts-key="${escaped}"]`);
-      if (!group) continue;
-      const rects = group.querySelectorAll<SVGRectElement>("rect");
-      rects.forEach((rect, i) => {
-        rect.style.transition = DIM_TRANSITION;
-        const dimByRow = hoveredIndex !== null && hoveredIndex !== i;
-        rect.style.opacity = dimByRow || isLegendDimmed ? String(s.fadedOpacity) : "1";
-      });
-    }
-    const squaresSeries = getState().barSquaresSeries;
-    if (squaresSeries && squaresSeries.length > 0) {
-      for (let sIdx = 0; sIdx < squaresSeries.length; sIdx++) {
-        const s = squaresSeries[sIdx]!;
-        const isLegendDimmed = stateLegend !== null && stateLegend !== sIdx;
-        const escaped = s.dataKey.replace(/"/g, '\\"');
-        const group = container.querySelector<SVGGElement>(`.ts-chart__bar-squares[data-ts-key="${escaped}"]`);
-        if (!group) continue;
-        const rects = group.querySelectorAll<SVGRectElement>("rect");
-        rects.forEach((rect) => {
-          rect.style.transition = BAR_SQUARES_DIM_TRANSITION;
-          const key = rect.getAttribute("data-ts-key") ?? "";
-          const m = key.match(/:sq:(\d+):/);
-          const colIndex = m ? Number.parseInt(m[1]!, 10) : 0;
-          const dimByRow = hoveredIndex !== null && hoveredIndex !== colIndex;
-          rect.style.opacity = dimByRow || isLegendDimmed ? String(s.fadedOpacity) : "1";
-        });
-      }
-    }
-    const trackGroups = container.querySelectorAll<SVGGElement>(`.ts-chart__bar-column-track`);
-    const trackOpacity = hoveredIndex !== null ? "0" : String(getState().barTrackOpacity ?? 0.3);
-    trackGroups.forEach((g) => {
-      (g as unknown as HTMLElement).style.transition = BAR_TRACK_DIM_TRANSITION as unknown as string;
-      g.style.opacity = trackOpacity;
-      g.querySelectorAll<SVGRectElement>("rect").forEach((r) => {
-        r.style.opacity = "";
-      });
-    });
-    {
-      const hasHover = hoveredIndex !== null;
-      const hasLegend = stateLegend !== null;
-      if (hasHover || hasLegend) {
-        const depthBackGroups = container.querySelectorAll<SVGGElement>(`.ts-chart__bar-depth-back`);
-        depthBackGroups.forEach((g) => {
-          const paths = g.querySelectorAll<SVGElement>("path");
-          paths.forEach((p) => {
-            const k = p.getAttribute("data-ts-key") ?? "";
-            const mm = k.match(/:(side|lid):(\d+)/);
-            const barIdx = mm ? Number.parseInt(mm[2]!, 10) : null;
-            if (barIdx === null) return;
-            const dimByRow = hoveredIndex !== null && hoveredIndex !== barIdx;
-            p.style.transition = BAR_DEPTH_DIM_TRANSITION;
-            p.style.opacity = dimByRow || hasLegend ? "0.3" : "1";
-          });
-        });
-        const depthFrontGroups = container.querySelectorAll<SVGGElement>(`.ts-chart__bar-depth-front`);
-        depthFrontGroups.forEach((g) => {
-          const rects = g.querySelectorAll<SVGRectElement>("rect");
-          rects.forEach((r) => {
-            const k = r.getAttribute("data-ts-key") ?? "";
-            const mm = k.match(/:glass:(\d+)/);
-            const barIdx = mm ? Number.parseInt(mm[1]!, 10) : null;
-            if (barIdx === null) return;
-            const dimByRow = hoveredIndex !== null && hoveredIndex !== barIdx;
-            r.style.transition = BAR_DEPTH_DIM_TRANSITION;
-            r.style.opacity = dimByRow || hasLegend ? "0.3" : "1";
-          });
-        });
-        const pulseGroups = container.querySelectorAll<SVGGElement>(`.ts-chart__bar-pulse`);
-        pulseGroups.forEach((g) => {
-          (g as unknown as HTMLElement).style.transition = BAR_DEPTH_DIM_TRANSITION;
-          g.style.opacity = hasHover || hasLegend ? "0.3" : "1";
-        });
-      } else {
-        container.querySelectorAll<SVGGElement>(`.ts-chart__bar-depth-back path`).forEach((p) => {
-          (p as unknown as HTMLElement).style.opacity = "1";
-        });
-        container.querySelectorAll<SVGGElement>(`.ts-chart__bar-depth-front rect`).forEach((r) => {
-          (r as unknown as HTMLElement).style.opacity = "1";
-        });
-        container.querySelectorAll<SVGGElement>(`.ts-chart__bar-pulse`).forEach((g) => {
-          (g as unknown as HTMLElement).style.opacity = "1";
-        });
-      }
-    }
-  };
-
   let lastGroup: BarFocusGroup | null = null;
-
-  const syncDim = () => {
-    const state = getState();
-    const legendHoveredIndex = state.legendHoveredIndex ?? null;
-    if (!visible || !lastGroup) {
-      if (legendHoveredIndex === null) {
-        for (const s of state.series) {
-          const escaped = s.dataKey.replace(/"/g, '\\"');
-          const group = container.querySelector<SVGGElement>(`.ts-chart__bar-y[data-ts-key="${escaped}"]`);
-          if (!group) continue;
-          const rects = group.querySelectorAll<SVGRectElement>("rect");
-          rects.forEach((rect) => { rect.style.opacity = "1"; });
-        }
-        if (state.barSquaresSeries) {
-          for (const s of state.barSquaresSeries) {
-            const escaped = s.dataKey.replace(/"/g, '\\"');
-            const group = container.querySelector<SVGGElement>(`.ts-chart__bar-squares[data-ts-key="${escaped}"]`);
-            if (!group) continue;
-            const rects = group.querySelectorAll<SVGRectElement>("rect");
-            rects.forEach((rect) => { rect.style.opacity = "1"; });
-          }
-        }
-        const trackGroups2 = container.querySelectorAll<SVGGElement>(`.ts-chart__bar-column-track`);
-        trackGroups2.forEach((g) => { g.style.opacity = String(state.barTrackOpacity ?? 0.3); });
-        container.querySelectorAll<SVGGElement>(`.ts-chart__bar-depth-back path`).forEach((p) => { (p as unknown as HTMLElement).style.opacity = "1"; });
-        container.querySelectorAll<SVGGElement>(`.ts-chart__bar-depth-front rect`).forEach((r) => { (r as unknown as HTMLElement).style.opacity = "1"; });
-        container.querySelectorAll<SVGGElement>(`.ts-chart__bar-pulse`).forEach((g) => { (g as unknown as HTMLElement).style.opacity = "1"; });
-        return;
-      }
-      for (let idx = 0; idx < state.series.length; idx++) {
-        const s = state.series[idx]!;
-        const isLegendDimmed = legendHoveredIndex !== idx;
-        const escaped = s.dataKey.replace(/"/g, '\\"');
-        const group = container.querySelector<SVGGElement>(`.ts-chart__bar-y[data-ts-key="${escaped}"]`);
-        if (!group) continue;
-        const rects = group.querySelectorAll<SVGRectElement>("rect");
-        rects.forEach((rect) => {
-          rect.style.transition = DIM_TRANSITION;
-          rect.style.opacity = isLegendDimmed ? String(s.fadedOpacity) : "1";
-        });
-      }
-      if (state.barSquaresSeries) {
-        for (let sIdx = 0; sIdx < state.barSquaresSeries.length; sIdx++) {
-          const s = state.barSquaresSeries[sIdx]!;
-          const isLegendDimmed = legendHoveredIndex !== sIdx;
-          const escaped = s.dataKey.replace(/"/g, '\\"');
-          const group = container.querySelector<SVGGElement>(`.ts-chart__bar-squares[data-ts-key="${escaped}"]`);
-          if (!group) continue;
-          const rects = group.querySelectorAll<SVGRectElement>("rect");
-          rects.forEach((rect) => {
-            rect.style.transition = BAR_SQUARES_DIM_TRANSITION;
-            rect.style.opacity = isLegendDimmed ? String(s.fadedOpacity) : "1";
-          });
-        }
-      }
-      container.querySelectorAll<SVGGElement>(`.ts-chart__bar-depth-back path`).forEach((p) => { (p as unknown as HTMLElement).style.transition = BAR_DEPTH_DIM_TRANSITION; (p as unknown as HTMLElement).style.opacity = "0.3"; });
-      container.querySelectorAll<SVGGElement>(`.ts-chart__bar-depth-front rect`).forEach((r) => { (r as unknown as HTMLElement).style.transition = BAR_DEPTH_DIM_TRANSITION; (r as unknown as HTMLElement).style.opacity = "0.3"; });
-      container.querySelectorAll<SVGGElement>(`.ts-chart__bar-pulse`).forEach((g) => { (g as unknown as HTMLElement).style.transition = BAR_DEPTH_DIM_TRANSITION; (g as unknown as HTMLElement).style.opacity = "0.3"; });
-      return;
-    }
-    setCategoryHover(lastGroup.categoryIndex, state.series);
-  };
 
   const hide = () => {
     if (!visible) return;
@@ -292,7 +123,6 @@ export function attachBarHoverChrome(
     boxBuild.entranceSpring.stop();
     boxFadeAnimation?.cancel(); boxFadeAnimation = null;
     for (const { x, y } of dotLayer.springs.values()) { x.stop(); y.stop(); }
-    setCategoryHover(null, getState().series);
     hideBoxContent(boxBuild);
     pillBuild.label.textContent = "";
     resetLabelFade(container);
@@ -349,8 +179,6 @@ export function attachBarHoverChrome(
       }
     }
 
-    setCategoryHover(group.categoryIndex, state.series);
-
     {
       const tooltip = state.tooltip ?? null;
       const title = group.categoryLabel;
@@ -393,7 +221,6 @@ export function attachBarHoverChrome(
 
   return {
     onFocusChange: update,
-    syncDim,
     detach() {
       hide();
       indicator.svg.remove();

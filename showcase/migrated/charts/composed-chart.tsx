@@ -70,7 +70,15 @@ import { curveMonotoneX, curveNatural } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
 import { Chart } from "@tanstack/react-charts";
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
-import type { ChartMark, ChartPoint, ChartScale } from "@tanstack/charts";
+import type {
+  ChartMark,
+  ChartMarkState,
+  ChartPoint,
+  ChartRenderContext,
+  ChartScale,
+  ChartValue,
+} from "@tanstack/charts";
+import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
 import { areaFill } from "./internal/area-fill-mark";
 import { seriesBarMark } from "./internal/series-bar-mark";
 import {
@@ -358,6 +366,29 @@ interface ResolvedLine {
 // per-row cumulative offsets per bar dataKey, in child (barDataKeys) order.
 // Only built when stacked with at least one bar series — undefined otherwise,
 // which is the legacy SeriesBar's own gate for using the stacked layout.
+// C1 (P6): `seriesBarMark` (unlike stock `lineY`/`areaY`) has no first-class
+// `states` option, and the library's internal `markStates()` helper isn't
+// publicly exported (`@tanstack/charts`'s package `exports` only surfaces
+// `dist/index.d.ts`). Wrap the mark's own `.initialize()` result instead —
+// `ChartMark.initialize` is just a function property, safely overridable via
+// spread, and the scene builder consumes `.states` off that return value.
+function withMarkStates<
+  TDatum,
+  TXPointValue extends ChartValue,
+  TYPointValue extends ChartValue,
+>(
+  mark: ChartMark<TDatum, TXPointValue, TYPointValue>,
+  states: readonly ChartMarkState<any>[],
+): ChartMark<TDatum, TXPointValue, TYPointValue> {
+  return {
+    ...mark,
+    initialize: (context) => ({
+      ...mark.initialize(context),
+      states: { data: [], definitions: states },
+    }),
+  };
+}
+
 function computeComposedStackOffsets(
   data: ChartDatum[],
   barDataKeys: string[],
@@ -540,6 +571,22 @@ export function ComposedChart({
     React.useMemo(() => extractComposed(children), [children]);
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const prefersReducedMotion = usePrefersReducedMotion();
+
+  // C1 (P6): legend hover -> native mark states via programmatic focus
+  // injection (replaces the old hover-chrome DOM-mutation dim path).
+  // `composedSeries` is the single, uniform, document-order list covering
+  // bars/areas/lines alike (dataKey-keyed) — using it for every mark type
+  // fixes a latent bug in the old syncDim code, which indexed bars against
+  // `resolvedBars` (a bar-only subset/order) while lines/areas used the
+  // full mixed `composedSeries` order, silently drifting whenever bars
+  // weren't declared first in JSX.
+  const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection();
+  React.useEffect(() => {
+    const seriesKey =
+      legendHoveredIndex != null ? (composedSeries[legendHoveredIndex]?.dataKey ?? null) : null;
+    if (seriesKey != null) focusSeries(seriesKey);
+    else clearFocus();
+  }, [legendHoveredIndex, composedSeries, focusSeries, clearFocus]);
 
   const projectionConfigs = React.useMemo(() => extractProjectionLineConfigs(children), [children]);
   const composedProjectionLines = React.useMemo((): Array<Record<string, unknown>> => {
@@ -931,31 +978,45 @@ export function ComposedChart({
     // Bars consume RAW `data` (bklit quirk: not decimated).
     resolvedBars.forEach((bar, barIndex) => {
       marks.push(
-        seriesBarMark(data, {
-          id: bar.dataKey,
-          xAccessor: (d: ChartDatum) => d[xDataKey] as Date,
-          // Unprojected on purpose: bklit series-bar.tsx calls `useYScale()`
-          // with no argument, i.e. always the primary scale.
-          yAccessor: (d: ChartDatum) => d[bar.dataKey] as number,
-          fill: bar.fill,
-          radius: bar.radius || undefined,
-          groupDataKeys: resolvedBars.map((b) => b.dataKey),
-          seriesIndex: barIndex,
-          barGap,
-          barSize,
-          maxBarSize,
-          stacked,
-          stackGap,
-          stackOffsets: composedStackOffsets,
-        }),
+        withMarkStates(
+          seriesBarMark(data, {
+            id: bar.dataKey,
+            xAccessor: (d: ChartDatum) => d[xDataKey] as Date,
+            // Unprojected on purpose: bklit series-bar.tsx calls `useYScale()`
+            // with no argument, i.e. always the primary scale.
+            yAccessor: (d: ChartDatum) => d[bar.dataKey] as number,
+            fill: bar.fill,
+            radius: bar.radius || undefined,
+            groupDataKeys: resolvedBars.map((b) => b.dataKey),
+            seriesIndex: barIndex,
+            barGap,
+            barSize,
+            maxBarSize,
+            stacked,
+            stackGap,
+            stackOffsets: composedStackOffsets,
+          }),
+          [
+            {
+              when: whenSeriesDimmed(),
+              style: { opacity: bar.fadedOpacity },
+              transition: { type: "tween", duration: 120, easing: "ease-in-out" },
+            },
+          ],
+        ),
       );
     });
+    // C1 (P6): legend-hover fill dim — areaFill emits no ChartPoints, so mark
+    // states can't reach it; the dim arrives reactively via fillOpacity
+    // (400ms fill-opacity transition lives in styles.css).
+    const legendHoveredKey =
+      legendHoveredIndex != null ? (composedSeries[legendHoveredIndex]?.dataKey ?? null) : null;
     for (const area of resolvedAreas) {
       const gradientId = gradientIdBySeries.get(area.dataKey);
       const curve = d3Curve(area.curve);
       // Fill FIRST, lineY SECOND ("Layering area and line" — same pattern as
-      // area-chart.tsx). fillOpacity always 1 — opacity lives in the
-      // gradient stops.
+      // area-chart.tsx). fillOpacity 1 at rest — opacity lives in the
+      // gradient stops; 0.6 is the legend-dim term.
       marks.push(
         areaFill(renderData, {
           id: `${area.dataKey}__fill`,
@@ -963,6 +1024,8 @@ export function ComposedChart({
           y: (d: ChartDatum) => projectValue(area.dataKey, d[area.dataKey] as number),
           curve,
           fill: gradientId ? `url(#${gradientId})` : area.fill,
+          fillOpacity:
+            legendHoveredKey == null || legendHoveredKey === area.dataKey ? 1 : 0.6,
         }),
       );
       // Same id as <Line> would use for this dataKey — shared hover-chrome
@@ -972,9 +1035,17 @@ export function ComposedChart({
           id: area.dataKey,
           x: (d: ChartDatum) => d[xDataKey] as Date,
           y: (d: ChartDatum) => projectValue(area.dataKey, d[area.dataKey] as number),
+          z: () => area.dataKey,
           curve,
           stroke: area.stroke,
           strokeWidth: area.strokeWidth,
+          states: [
+            {
+              when: whenSeriesDimmed(),
+              style: { opacity: 0.6 },
+              transition: { type: "tween", duration: 400, easing: "ease-in-out" },
+            },
+          ],
         }),
       );
     }
@@ -984,9 +1055,17 @@ export function ComposedChart({
           id: line.dataKey,
           x: (d: ChartDatum) => d[xDataKey] as Date,
           y: (d: ChartDatum) => projectValue(line.dataKey, d[line.dataKey] as number),
+          z: () => line.dataKey,
           curve: d3Curve(line.curve),
           stroke: line.stroke,
           strokeWidth: line.strokeWidth,
+          states: [
+            {
+              when: whenSeriesDimmed(),
+              style: { opacity: 0.3 },
+              transition: { type: "tween", duration: 400, easing: "ease-in-out" },
+            },
+          ],
         }),
       );
     }
@@ -1175,6 +1254,8 @@ export function ComposedChart({
     timeExtentComp,
     timeExtentCompRaw,
     projectValue,
+    legendHoveredIndex,
+    composedSeries,
   ]);
 
   // Hover chrome (shared with Line/Area) — imperative overlays driven by OUR
@@ -1222,16 +1303,11 @@ export function ComposedChart({
     tickerHalfWidth: xAxis?.tickerHalfWidth,
     tooltip: tooltip ?? null,
     dateLabels: dateLabelsForPill,
-    legendHoveredIndex,
     bars: resolvedBars.map((b) => ({ dataKey: b.dataKey, fadedOpacity: b.fadedOpacity })),
   };
 
   const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
   const hasDefinition = width > 0;
-
-  React.useEffect(() => {
-    chromeRef.current?.syncDim();
-  }, [legendHoveredIndex]);
 
   React.useLayoutEffect(() => {
     const el = overlayHostRef.current;
@@ -1347,7 +1423,17 @@ export function ComposedChart({
     };
   }, [tooltipEnabled, chartPhase, isLoaded]);
 
-  const handleRender = React.useCallback(() => {
+  const handleRender = React.useCallback((context: ChartRenderContext<ChartDatum, Date, number>) => {
+    // C1 (P6): capture the interaction controller + scene for legend-hover
+    // focus injection — composed with (not a replacement for) the WAAPI
+    // bar-reveal stagger-grow animation below, which is unrelated (reveal,
+    // not dim) and untouched.
+    // Cast: `useFocusInjection`'s `captureRenderContext` is typed against the
+    // library's generic (unknown-typed) `ChartRenderContext`, which — because
+    // `interaction.setControlledFocus` is checked contravariantly under
+    // strictFunctionTypes — is not structurally assignable from our
+    // concretely-typed context. Both denote the same live object at runtime.
+    captureRenderContext(context as unknown as Pick<ChartRenderContext, "scene" | "interaction">);
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marks) return;
     // Gate on chartPhase === "revealing" (same contract as line-chart.tsx /
@@ -1463,7 +1549,7 @@ export function ComposedChart({
         }
       },
     });
-  }, [animationDuration, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, resolvedBars, data.length]);
+  }, [animationDuration, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, resolvedBars, data.length, captureRenderContext]);
 
   React.useEffect(() => {
     if (chartPhase !== "revealing") return;

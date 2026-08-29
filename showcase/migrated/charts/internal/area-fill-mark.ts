@@ -22,6 +22,14 @@ export interface AreaFillOptions {
   /** Paint — typically `url(#gradientId)`. */
   fill: string;
   curve: ChartCurve;
+  /**
+   * C1 (P6): legend-hover series dim. This mark emits no ChartPoints (by
+   * design — see header), so mark `states` have no candidates to match;
+   * the dim arrives reactively from the definition instead. The 400ms
+   * ease-in-out lives in styles.css (`fill-opacity` transition on
+   * `.ts-chart__area`), matching the boundary lineY's state transition.
+   */
+  fillOpacity?: number;
 }
 
 export function areaFill(
@@ -63,7 +71,7 @@ export function areaFill(
               key: `${options.id}:segment:${segmentIndex}`,
               points: [],
               path: options.curve.area(top, bottom),
-              style: { fill: options.fill, fillOpacity: 1 },
+              style: { fill: options.fill, fillOpacity: options.fillOpacity ?? 1 },
             });
             top = [];
             segmentIndex += 1;

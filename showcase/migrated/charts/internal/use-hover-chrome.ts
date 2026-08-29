@@ -4,7 +4,9 @@
 // side effect on focus change (`onFocusPoints`). `chromeStateRef.current`
 // itself stays caller-owned — the `series`/`xForIndex`/reanchor fields differ
 // per chart — this hook only owns the refs, the pill-label memo, the
-// attach/reanchor/syncDim effects, and the xDomain-aware focus handler.
+// attach/reanchor effects, and the xDomain-aware focus handler. Legend-hover
+// series dim is native mark `states` + `useFocusInjection` (phase 6, C1),
+// wired by each chart directly — this hook no longer knows about legend hover.
 import * as React from "react";
 import type { ChartPoint } from "@tanstack/charts";
 import {
@@ -25,7 +27,6 @@ export interface UseHoverChromeOptions {
   chartPhase: ChartPhase;
   isLoaded: boolean;
   xDomain: [Date, Date] | undefined;
-  legendHoveredIndex: number | null;
   tooltipEnabled: boolean;
   width: number;
   dimOpacity?: string;
@@ -52,7 +53,6 @@ export function useHoverChrome(options: UseHoverChromeOptions): UseHoverChromeRe
     chartPhase,
     isLoaded,
     xDomain,
-    legendHoveredIndex,
     tooltipEnabled,
     width,
     dimOpacity,
@@ -75,10 +75,6 @@ export function useHoverChrome(options: UseHoverChromeOptions): UseHoverChromeRe
   React.useEffect(() => {
     chromeRef.current?.reanchor();
   }, [renderData, xDataKey, chartPhase, isLoaded, xDomain]);
-
-  React.useEffect(() => {
-    chromeRef.current?.syncDim();
-  }, [legendHoveredIndex]);
 
   const hasDefinition = width > 0;
 

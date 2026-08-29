@@ -73,13 +73,27 @@ function hasLiveRevealAnims(container: HTMLElement): boolean {
   return false;
 }
 
-const HOVER_SCALE = 1.05;
 const FILL_OPACITY_HOVER = 0.35;
 const FILL_OPACITY_REST = 0.15;
-const STROKE_WIDTH_HOVER = 3;
 const STROKE_WIDTH_REST = 2;
 const DOT_R_HOVER = 6;
 const DOT_R_REST = 4;
+// Non-hovered-series dim factor (bklit: `path.style.opacity = "0.3"` when
+// another series is hovered). `radialArea`/`radialDot` have no per-datum
+// `opacity` channel (see the mark-building comment below), so this is
+// multiplied into the per-datum `fill`/`stroke` alpha instead.
+const DIM_OPACITY = 0.3;
+
+// Bakes an alpha percentage into a color string via `color-mix`, since
+// `radialArea`/`radialDot`'s `fillOpacity`/`strokeOpacity`/`opacity` options
+// are plain per-call numbers (not per-datum channels) in @tanstack/charts
+// 0.15.0's polar mark family — only `fill` (and, for area, `stroke`) accept
+// a per-row accessor. This is how per-series hover dim is expressed without
+// direct-DOM style writes.
+function withAlpha(color: string, alphaPercent: number): string {
+  const pct = Math.max(0, Math.min(100, alphaPercent));
+  return `color-mix(in oklab, ${color} ${pct}%, transparent)`;
+}
 
 export interface RadarMetric {
   key: string;
@@ -416,6 +430,20 @@ export function RadarChart({
           },
           guides,
           marks: [
+            // Hover dim/pop is expressed reactively through per-datum `fill`/
+            // `stroke`/`r` channels (native — evaluated per z-group on every
+            // definition rebuild, which React re-runs when `hoveredIndex`
+            // changes) rather than direct-DOM style/attribute mutation. D-follow-up
+            // (see report): `radialArea`/`radialDot` (@tanstack/charts/polar,
+            // v0.15.0) have no `states` option (unlike cartesian `dot`/`area`)
+            // and their `fillOpacity`/`strokeWidth`/`opacity` channels are plain
+            // per-call numbers, not per-datum — only `fill` (both marks) and
+            // `stroke` (area only) accept a per-row accessor. Dim is therefore
+            // baked into fill/stroke alpha via `color-mix` on those two
+            // channels; stroke-width hover-pop, the dot's stroke-ring dim, and
+            // the legacy glow/scale-pop flourish (no filter/transform channel
+            // exists on any mark) are dropped rather than reintroduced via
+            // direct-DOM writes.
             radialArea(allRows, {
               id: "radar-area",
               angle: "metric",
@@ -426,16 +454,23 @@ export function RadarChart({
               fill: (row: RadarRow) => {
                 const idx = parseInt(row.series, 10);
                 const i = Math.min(idx, resolvedAreas.length - 1);
-                return resolvedAreas[i]?.color ?? DEFAULT_RADAR_COLORS[0]!;
+                const color = resolvedAreas[i]?.color ?? DEFAULT_RADAR_COLORS[0]!;
+                const isHovered = hoveredIndex === i;
+                const isDimmed = hoveredIndex !== null && !isHovered;
+                const baseAlpha = isHovered ? FILL_OPACITY_HOVER : FILL_OPACITY_REST;
+                return withAlpha(color, (isDimmed ? baseAlpha * DIM_OPACITY : baseAlpha) * 100);
               },
-              fillOpacity: 0.15,
+              fillOpacity: 1,
               stroke: (row: RadarRow) => {
                 const idx = parseInt(row.series, 10);
                 const i = Math.min(idx, resolvedAreas.length - 1);
                 const area = resolvedAreas[i];
-                return area?.showStroke ? (area.color ?? DEFAULT_RADAR_COLORS[0]!) : "none";
+                if (!area?.showStroke) return "none";
+                const isHovered = hoveredIndex === i;
+                const isDimmed = hoveredIndex !== null && !isHovered;
+                return withAlpha(area.color ?? DEFAULT_RADAR_COLORS[0]!, (isDimmed ? DIM_OPACITY : 1) * 100);
               },
-              strokeWidth: 2,
+              strokeWidth: STROKE_WIDTH_REST,
             }),
             radialDot(allRows, {
               id: "radar-dot",
@@ -443,11 +478,17 @@ export function RadarChart({
               radius: "value",
               z: "series",
               key: "metric",
-              r: 4,
+              r: (row: RadarRow) => {
+                const idx = parseInt(row.series, 10);
+                const i = Math.min(idx, resolvedAreas.length - 1);
+                return hoveredIndex === i ? DOT_R_HOVER : DOT_R_REST;
+              },
               fill: (row: RadarRow) => {
                 const idx = parseInt(row.series, 10);
                 const i = Math.min(idx, resolvedAreas.length - 1);
-                return resolvedAreas[i]?.color ?? DEFAULT_RADAR_COLORS[0]!;
+                const color = resolvedAreas[i]?.color ?? DEFAULT_RADAR_COLORS[0]!;
+                const isDimmed = hoveredIndex !== null && hoveredIndex !== i;
+                return withAlpha(color, (isDimmed ? DIM_OPACITY : 1) * 100);
               },
               stroke: RADAR_BACKGROUND_VAR,
               strokeWidth: 2,
@@ -473,6 +514,7 @@ export function RadarChart({
     resolvedAreas,
     allRows,
     margin,
+    hoveredIndex,
   ]);
 
   const enterTransitionRef = React.useRef(enterTransition);
@@ -709,6 +751,13 @@ export function RadarChart({
     [],
   );
 
+  // Hover-state detection only: sets `hoveredIndex` from element-level
+  // pointer events. Dim/pop styling is no longer applied here — it is
+  // expressed reactively through the `radialArea`/`radialDot` channels in
+  // the `definition` useMemo above, which recomputes when `hoveredIndex`
+  // changes (React re-renders the chart with the new per-datum fill/stroke/r
+  // values). This effect only needs to re-run when the set of elements to
+  // listen on changes (data shape), not on every hover.
   React.useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -717,52 +766,6 @@ export function RadarChart({
     const dotEls = container.querySelectorAll<SVGCircleElement>(".ts-chart__radial-dot circle");
     const areaArr = Array.from(areaEls);
     const dotArr = Array.from(dotEls);
-
-    const applyHover = () => {
-      const { resolvedAreas } = hoverInputsRef.current;
-      const metricsLen = hoverInputsRef.current.metricKeysLength;
-
-      for (let i = 0; i < resolvedAreas.length; i++) {
-        const path = areaArr[i] ?? null;
-        if (!path) continue;
-        const isHovered = i === hoveredIndex;
-        const isDimmed = hoveredIndex !== null && !isHovered;
-        const area = resolvedAreas[i];
-
-        path.style.opacity = isDimmed ? "0.3" : "1";
-        path.style.fillOpacity = isHovered ? String(FILL_OPACITY_HOVER) : String(FILL_OPACITY_REST);
-        path.style.strokeWidth = area?.showStroke ? String(isHovered ? STROKE_WIDTH_HOVER : STROKE_WIDTH_REST) : "0";
-        path.style.filter = area?.showGlow && isHovered ? `drop-shadow(0 0 12px ${area.color})` : "none";
-
-        if (!pendingRevealRef.current.has(i)) {
-          path.style.transform = isHovered ? `scale(${HOVER_SCALE})` : "";
-        }
-
-        for (let j = 0; j < metricsLen; j++) {
-          const circle = dotArr[i * metricsLen + j] ?? null;
-          if (!circle) continue;
-          circle.style.opacity = isDimmed ? "0.3" : "1";
-          circle.setAttribute("r", String(isHovered ? DOT_R_HOVER : DOT_R_REST));
-          if (!pendingRevealRef.current.has(i)) {
-            circle.style.transform = isHovered ? `scale(${HOVER_SCALE})` : "";
-          }
-          circle.style.transformOrigin = "";
-          circle.style.filter = area?.showGlow && isHovered ? `drop-shadow(0 0 8px ${area.color})` : "";
-        }
-      }
-
-      if (dotArr.length > metricsLen * resolvedAreas.length) {
-        for (let k = metricsLen * resolvedAreas.length; k < dotArr.length; k++) {
-          const circle = dotArr[k];
-          if (!circle) continue;
-          circle.style.opacity = "1";
-          circle.setAttribute("r", String(DOT_R_REST));
-          circle.style.filter = "";
-        }
-      }
-    };
-
-    applyHover();
 
     const cleanups: (() => void)[] = [];
 
@@ -811,7 +814,7 @@ export function RadarChart({
     return () => {
       for (const fn of cleanups) fn();
     };
-  }, [hoveredIndex, resolvedAreas.length, metricKeys, setHoveredIndex]);
+  }, [resolvedAreas.length, metricKeys, setHoveredIndex]);
 
   React.useEffect(() => {
     const pendingReveal = pendingRevealRef.current;

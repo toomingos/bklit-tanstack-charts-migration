@@ -12,5 +12,11 @@
   - [x] 00 seed map corrected (polar-states caveat, wipe-not-dash gap, blur channel, per-tick color)
 - [x] 6.2 Map (`research/phase-6/go-to-plan.md`; D417-D419 logged; 6-commit ladder)
 - [ ] 6.3 Implement (one commit per subsystem)
+  - [x] C1 states+legend (D421, D424, D425)
+  - [ ] C2 tooltip
+  - [ ] C3 hover-geometry
+  - [ ] C4 axes
+  - [ ] C5 motion+reveals (renderer switch, class rename)
+  - [ ] C6 brush+zoom+selection
 - [ ] 6.4 Refactor (explore -> triage -> one refactor commit)
 - [ ] 6.5 Gate (QA + bench + bundle M2c + census=0 + CI guard)

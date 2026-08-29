@@ -267,6 +267,40 @@ function resolveFeatureFill(
   return DEFAULT_CHOROPLETH_COLORS[index % DEFAULT_CHOROPLETH_COLORS.length] ?? "var(--chart-1)";
 }
 
+// Same key a rendered path is stamped with (`data-ts-key`, via geoShape's
+// `key` option below) — shared so the hover-dim accessors below can compare
+// against the chart's `hoveredKey` React state without recomputing it
+// differently in two places.
+function choroplethFeatureKey(feature: ChoroplethFeature): string {
+  return feature.properties?.name ?? String(feature.id ?? "");
+}
+
+// C1 states+legend: `geoShape`'s `fillOpacity`/`strokeOpacity`/`opacity`
+// options are plain per-call numbers (see GeoShapeOptions in
+// @tanstack/charts' geo.d.ts), not per-datum channels — only `fill` and
+// `stroke` accept a per-row accessor. Hover dim is therefore baked into
+// those two channels' alpha via `color-mix`, same technique as
+// radar-chart.tsx's `withAlpha`.
+function withAlpha(color: string, alphaPercent: number): string {
+  const pct = Math.max(0, Math.min(100, alphaPercent));
+  return `color-mix(in oklab, ${color} ${pct}%, transparent)`;
+}
+
+// bklit dim values (internal/choropleth-hover-chrome.ts's retired applyDim):
+// nothing hovered → baseOpacity (0.85) for every feature; something hovered
+// → the hovered feature at full opacity (1), everything else at dimOpacity
+// (default 0.4).
+function resolveFeatureAlpha(
+  key: string,
+  hoveredKey: string | null,
+  baseOpacity: number,
+  dimOpacity: number,
+): number {
+  if (hoveredKey === null) return baseOpacity;
+  if (hoveredKey === key) return 1;
+  return dimOpacity;
+}
+
 
 interface ExtractedConfig {
   featureConfig: ChoroplethFeatureProps | null;
@@ -328,6 +362,12 @@ function ChoroplethChartBody({
 
   const dimOpacity = featureConfig?.fadedOpacity ?? 0.4;
   const baseOpacity = 0.85;
+
+  // C1 states+legend: replaces the old DOM-reparenting dim-wrapper scheme.
+  // `hoveredKey` drives geoShape's per-datum fill/stroke alpha below; the
+  // chrome only reports hover-key changes via `onHoverChange` now (see
+  // internal/choropleth-hover-chrome.ts).
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   const projection = useMemo<GeoProjection | null>(() => {
     if (width <= 0 || height <= 0) return null;
@@ -406,16 +446,28 @@ function ChoroplethChartBody({
     const d = defineChart({
       marks: [
         geoShape(data.features, {
-          key: (f: ChoroplethFeature) => f.properties?.name ?? String(f.id ?? ""),
+          key: choroplethFeatureKey,
           projection: () => projForMark,
-          fill: (f: ChoroplethFeature, { index }) =>
-            resolveFeatureFill(
+          // Hover dim (base 0.85 / dimmed 0.4 / hovered 1) is baked into the
+          // fill color's alpha via `color-mix` — see `resolveFeatureAlpha`/
+          // `withAlpha` above. Pattern fills (`url(#id)`) can't be
+          // alpha-blended this way, so they're returned as-is (documented
+          // fidelity gap: pattern-filled features no longer dim on hover).
+          fill: (f: ChoroplethFeature, { index }) => {
+            const resolved = resolveFeatureFill(
               f, index,
               featureConfig?.fill,
               featureConfig?.getFeatureColor,
               featureConfig?.getFeaturePattern,
-            ),
-          stroke: featureConfig?.stroke ?? "var(--background)",
+            );
+            if (featureConfig?.getFeaturePattern?.(f, index)) return resolved;
+            const alpha = resolveFeatureAlpha(choroplethFeatureKey(f), hoveredKey, baseOpacity, dimOpacity);
+            return withAlpha(resolved, alpha * 100);
+          },
+          stroke: (f: ChoroplethFeature) => {
+            const alpha = resolveFeatureAlpha(choroplethFeatureKey(f), hoveredKey, baseOpacity, dimOpacity);
+            return withAlpha(featureConfig?.stroke ?? "var(--background)", alpha * 100);
+          },
           strokeOpacity: 1,
           strokeWidth: featureConfig?.strokeWidth ?? 0.5,
         }),
@@ -435,6 +487,7 @@ function ChoroplethChartBody({
     width, height, projection, data.features,
     featureConfig?.getFeatureColor, featureConfig?.getFeaturePattern,
     featureConfig?.fill, featureConfig?.stroke, featureConfig?.strokeWidth,
+    hoveredKey, baseOpacity, dimOpacity,
   ]);
 
   // --- Hover chrome (owns dim + shared TooltipBox; CP7 flip + instant unmount) ---
@@ -453,9 +506,6 @@ function ChoroplethChartBody({
     },
     [getCentroidForFeature, width, height],
   );
-  const getDimOpacity = useCallback(() => dimOpacity, [dimOpacity]);
-  const getBaseOpacity = useCallback(() => baseOpacity, [baseOpacity]);
-
   // Tooltip config resolution — bklit defaults (OQ parity 8): formatValue =
   // intFmt (CP4), name fallback `Feature ${index}` + real index arg (CP5/CP6)
   // are applied inside the chrome against this config.
@@ -488,7 +538,6 @@ function ChoroplethChartBody({
     [],
   );
 
-  const pathElementsRef = useRef<Map<string, SVGPathElement>>(new Map());
   const revealAnimsRef = useRef<Animation[]>([]);
   const revealDeadlineTimerRef = useRef<number | null>(null);
   const revealPostPaintCancelRef = useRef<(() => void) | null>(null);
@@ -510,20 +559,16 @@ function ChoroplethChartBody({
 
   const ensureHoverChrome = useCallback(() => {
     if (hoverChromeRef.current) return hoverChromeRef.current;
-    hoverChromeRef.current = createChoroplethHoverChrome(
-      {
-        getDimOpacity,
-        getBaseOpacity,
-        getCentroid: getCentroidForHover,
-        getFeatureAt,
-        getTooltip: getTooltipConfig,
-        getSize: getChartSize,
-        applyZoom: applyZoomToPoint,
-      },
-      pathElementsRef,
-    );
+    hoverChromeRef.current = createChoroplethHoverChrome({
+      getCentroid: getCentroidForHover,
+      getFeatureAt,
+      getTooltip: getTooltipConfig,
+      getSize: getChartSize,
+      applyZoom: applyZoomToPoint,
+      onHoverChange: setHoveredKey,
+    });
     return hoverChromeRef.current;
-  }, [getDimOpacity, getBaseOpacity, getCentroidForHover, getFeatureAt, getTooltipConfig, getChartSize, applyZoomToPoint]);
+  }, [getCentroidForHover, getFeatureAt, getTooltipConfig, getChartSize, applyZoomToPoint]);
 
   const marksGRef = useRef<SVGGElement | null>(null);
   const graticuleGRef = useRef<SVGGElement | null>(null);
@@ -575,7 +620,6 @@ function ChoroplethChartBody({
         elements.set(key, path);
       }
     }
-    pathElementsRef.current = elements;
     const domMap = new Map<string, { feature: ChoroplethFeature; index: number }>();
     let domIdx = 0;
     for (const [domKey] of elements) {

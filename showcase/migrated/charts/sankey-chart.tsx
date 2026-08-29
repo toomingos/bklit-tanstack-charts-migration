@@ -14,7 +14,17 @@
 //     seen-key gate (data/signature/duration) and nothing else
 //   - Hover listener attachment → separate useEffect (element-level
 //     mouseenter/mouseleave, uses element ref arrays — no data-ts-key queries)
-//   - CSS transitions (0.18s ease-out) for smooth hover dimming
+//   - Hover dim (C1 states+legend) → reactive, not DOM mutation: hover
+//     indices live in React state (hoveredLinkIndex / internalHoveredNodeIndex
+//     / the controlled hoveredNodeIndex prop), which feed markConfig → the
+//     `definition` useMemo rebuilds createSankeyMark(), whose render pass
+//     bakes connectivity-based dim/boost straight into node/label resting
+//     styles and the native link() mark's per-datum `strokeOpacity` channel
+//     (internal/sankey-mark.ts). internal/sankey-hover-chrome.ts supplies the
+//     pure connectivity math plus the mouseenter/mouseleave → state-setter
+//     wiring; it no longer writes to the DOM. Smooth dim/restore rides the
+//     flat 0.18s ease-out CSS transition sankey-animation.ts's
+//     injectLabelCssTransitions already installs unconditionally.
 //   - Cursor-following tooltip in real light-DOM (position:fixed div)
 //
 // Public API matches bklit's SankeyChart exactly.
@@ -41,17 +51,11 @@ import {
   injectLabelCssTransitions,
   runSankeyReveal,
   stampSankeyLinkPathLength,
-  buildSankeyNodeStagger,
   type SankeyEnterTransition,
   type SankeyRevealHandle,
 } from "./internal/sankey-animation";
 import "./styles.css";
-import {
-  computeNodeHoverConnected,
-  computeLinkHoverConnected,
-  applySankeyHoverStyle,
-  attachSankeyHoverListeners,
-} from "./internal/sankey-hover-chrome";
+import { attachSankeyHoverListeners } from "./internal/sankey-hover-chrome";
 import { intFmt } from "./internal/formatters";
 import { CHART_CATEGORY_PALETTE_WITH_FALLBACK } from "./internal/design-tokens";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
@@ -256,7 +260,6 @@ function createHoverHandlers(
   hoveredNodeIndexRef: { current: number | null },
   hoveredLinkIndexRef: { current: number | null },
   setTooltipData: (v: TooltipContentProps["tooltipData"]) => void,
-  applyHoverStyles: () => void,
 ) {
   return {
     onNodeEnter: (i: number) => {
@@ -273,12 +276,10 @@ function createHoverHandlers(
         nodeName: node?.name,
         value: displayVal,
       });
-      applyHoverStyles();
     },
     onNodeLeave: () => {
       hoveredNodeIndexRef.current = null;
       setTooltipData(null);
-      applyHoverStyles();
     },
     onLinkEnter: (i: number) => {
       hoveredLinkIndexRef.current = i;
@@ -293,12 +294,10 @@ function createHoverHandlers(
         targetName,
         value: link?.value ?? 0,
       });
-      applyHoverStyles();
     },
     onLinkLeave: () => {
       hoveredLinkIndexRef.current = null;
       setTooltipData(null);
-      applyHoverStyles();
     },
   };
 }
@@ -380,8 +379,27 @@ export function SankeyChart({
     [nodeConfig],
   );
 
-  // ── Hover state (refs for zero-React-pointer-path; DOM writes on hover) ──
-  const hoveredLinkIndexRef = useRef<number | null>(null);
+  // ── Hover state (React state — drives the reactive dim mechanism) ──
+  // C1 states+legend: hoveredLinkIndex/internalHoveredNodeIndex used to live
+  // in plain refs, with a separate imperative `applyHoverStyles()` DOM-write
+  // pass invoked on every hover change. Dim is now expressed as per-datum
+  // style/channel values computed inside internal/sankey-mark.ts, rebuilt by
+  // the `definition` useMemo below whenever hover state changes — so hover
+  // must be React state (not a bare ref) to actually trigger that rebuild.
+  // A same-value ref mirror is kept alongside each piece of state purely for
+  // synchronous imperative reads (the pointermove gate, handleMouseLeave)
+  // that don't need to be reactive themselves.
+  const [hoveredLinkIndex, setHoveredLinkIndex] = useState<number | null>(null);
+  const hoveredLinkIndexLiveRef = useRef<number | null>(null);
+  hoveredLinkIndexLiveRef.current = hoveredLinkIndex;
+  const hoveredLinkIndexRef = {
+    get current(): number | null {
+      return hoveredLinkIndexLiveRef.current;
+    },
+    set current(v: number | null) {
+      setHoveredLinkIndex(v);
+    },
+  };
   const [tooltipData, setTooltipData] = useState<TooltipContentProps["tooltipData"]>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
 
@@ -389,15 +407,19 @@ export function SankeyChart({
   // (`isNodeHoverControlled ? hoveredNodeIndexProp : internalHoveredNodeIndex`).
   // In controlled mode the surface never stores the index itself — a write
   // reports via onNodeHoverChange and the caller re-renders with a new
-  // hoveredNodeIndex prop, whose sync effect below drives the dim paint.
-  // Link hover stays uncontrolled (legacy keeps it in component state).
-  // All four inputs flow through render-refreshed refs so the ref adapter
-  // stays correct even when captured by long-lived listener closures.
+  // hoveredNodeIndex prop, which the `definition` useMemo below reacts to
+  // directly. Link hover stays uncontrolled (legacy keeps it in component
+  // state). All four inputs flow through render-refreshed refs so the ref
+  // adapter stays correct even when captured by long-lived listener
+  // closures; the setter now triggers a React state update (via the stable
+  // `setInternalHoveredNodeIndex` identity) instead of a bare ref mutation.
   const isNodeHoverControlledRef = useRef(hoveredNodeIndexProp !== undefined);
   isNodeHoverControlledRef.current = hoveredNodeIndexProp !== undefined;
   const controlledNodeIndexRef = useRef<number | null>(hoveredNodeIndexProp ?? null);
   controlledNodeIndexRef.current = hoveredNodeIndexProp ?? null;
+  const [internalHoveredNodeIndex, setInternalHoveredNodeIndex] = useState<number | null>(null);
   const internalHoveredNodeIndexRef = useRef<number | null>(null);
+  internalHoveredNodeIndexRef.current = internalHoveredNodeIndex;
   const onNodeHoverChangeRef = useRef(onNodeHoverChange);
   onNodeHoverChangeRef.current = onNodeHoverChange;
   const hoveredNodeIndexRef = {
@@ -410,10 +432,16 @@ export function SankeyChart({
       if (isNodeHoverControlledRef.current) {
         onNodeHoverChangeRef.current?.(v);
       } else {
-        internalHoveredNodeIndexRef.current = v;
+        setInternalHoveredNodeIndex(v);
       }
     },
   };
+  // The mark's own hover-index inputs: the SAME effective value the getter
+  // above resolves, read directly (not through the getter/setter shim) so it
+  // can sit in a dependency array.
+  const effectiveHoveredNodeIndex = isNodeHoverControlledRef.current
+    ? (hoveredNodeIndexProp ?? null)
+    : internalHoveredNodeIndex;
 
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
 
@@ -429,45 +457,26 @@ export function SankeyChart({
     showValueLabels: nodeConfig.showValueLabels ?? true,
     // bklit's SankeyNode defaults labelOrientation="horizontal" — keep parity.
     labelOrientation: nodeConfig.labelOrientation ?? "horizontal",
-  }), [linkConfig, getNodeColorFn, nodeConfig.lineCap, nodeWidth, nodePadding, nodeConfig.showLabels, nodeConfig.showValueLabels, nodeConfig.labelOrientation]);
-
-  // ── Hover style applicator (reads from refs, writes DOM directly) ──
-  // Node dim/undim carries legacy's staggered enter-transition timing (see
-  // buildSankeyNodeStagger); links dim uniformly on both sides.
-  const nodeStagger = useMemo(
-    () => buildSankeyNodeStagger(data.nodes.length, enterTransition, animationDuration),
-    [data.nodes.length, enterTransition, animationDuration],
-  );
-
-  const applyHoverStyles = useCallback(() => {
-    const svg = containerRef.current?.querySelector("svg") as SVGSVGElement | null;
-    if (!svg) return;
-
-    const nodeEls = nodeElementsRef.current;
-    const linkEls = linkElementsRef.current;
-    const nodeCount = data.nodes.length;
-    const linkCount = data.links.length;
-
-    const linkIndices = data.links.map((l) => ({ source: l.source, target: l.target }));
-
-    const { nodeConnected, linkConnected, anyHovered } =
-      hoveredNodeIndexRef.current !== null
-        ? computeNodeHoverConnected(hoveredNodeIndexRef.current, nodeCount, linkIndices)
-        : computeLinkHoverConnected(hoveredLinkIndexRef.current, nodeCount, linkIndices);
-
-    applySankeyHoverStyle(
-      svg,
-      nodeEls,
-      linkEls,
-      nodeCount,
-      linkCount,
-      { nodeConnected, linkConnected, anyHovered },
-      nodeConfig.fadedOpacity ?? 0.4,
-      linkConfig.fadedOpacity ?? 0.1,
-      linkConfig.strokeOpacity ?? 0.5,
-      nodeStagger,
-    );
-  }, [data, nodeConfig.fadedOpacity, linkConfig.fadedOpacity, linkConfig.strokeOpacity, nodeStagger]);
+    // Connectivity-based hover dim (C1 states+legend) — see
+    // internal/sankey-mark.ts's marks() callback for where this resolves
+    // into per-datum style/channel values.
+    hoveredNodeIndex: effectiveHoveredNodeIndex,
+    hoveredLinkIndex,
+    fadedNodeOpacity: nodeConfig.fadedOpacity ?? 0.4,
+    fadedLinkOpacity: linkConfig.fadedOpacity ?? 0.1,
+  }), [
+    linkConfig,
+    getNodeColorFn,
+    nodeConfig.lineCap,
+    nodeWidth,
+    nodePadding,
+    nodeConfig.showLabels,
+    nodeConfig.showValueLabels,
+    nodeConfig.labelOrientation,
+    nodeConfig.fadedOpacity,
+    effectiveHoveredNodeIndex,
+    hoveredLinkIndex,
+  ]);
 
   const definition = useMemo(
     () =>
@@ -552,22 +561,23 @@ export function SankeyChart({
       hoveredNodeIndexRef,
       hoveredLinkIndexRef,
       setTooltipData,
-      applyHoverStyles,
     );
 
     const cleanup = attachSankeyHoverListeners(nodeElementsRef.current, linkElementsRef.current, handlers);
     return cleanup;
-  }, [data, applyHoverStyles]);
+  }, [data]);
 
   // Controlled-mode sync: a hoveredNodeIndex prop change (e.g. ChartLegend
-  // hover) drives the same dim paint the surface handlers produce — legacy
-  // gets this via context re-render; here it's an explicit effect.
+  // hover) clears any local link-hover/tooltip state left over from surface
+  // interaction. The dim repaint itself no longer needs an explicit trigger
+  // here — `effectiveHoveredNodeIndex` (derived straight from
+  // `hoveredNodeIndexProp` in controlled mode) already sits in markConfig's
+  // dependency array, so the prop change alone reactively rebuilds the mark.
   useEffect(() => {
     if (!isNodeHoverControlledRef.current) return;
-    hoveredLinkIndexRef.current = null;
+    setHoveredLinkIndex(null);
     setTooltipData(null);
-    applyHoverStyles();
-  }, [hoveredNodeIndexProp, applyHoverStyles]);
+  }, [hoveredNodeIndexProp]);
 
   // ── Mouse move / leave ── (scoped to container + gated on active hover)
   useEffect(() => {
@@ -586,8 +596,7 @@ export function SankeyChart({
     hoveredLinkIndexRef.current = null;
     setTooltipData(null);
     setMousePos(null);
-    applyHoverStyles();
-  }, [applyHoverStyles]);
+  }, []);
 
   const formatValue = tooltipConfig.formatValue ?? intFmt;
 

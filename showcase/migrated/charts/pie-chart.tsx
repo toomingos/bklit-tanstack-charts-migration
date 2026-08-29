@@ -28,13 +28,29 @@
 // * d3 pie() computation — identical config to bklit (`.sort(null)` for QA
 //   determinism)
 // * PieHoverCoordinator + PieSliceHoverRuntime — imperative hover springs
-//   (translate/grow/none effects, fade opacity, no-glow dead code)
+//   (translate/grow/none effects only, as of C1 — see below)
 // * WAAPI angular sweep reveal (startAngle → endAngle per slice)
 // * PieCenter overlay (internal/pie-center.tsx) rendering shared CenterStat
 //   (real @number-flow/react digit roll; the D49-era "NumberFlow omission"
 //   deviation is resolved — see center-stat.tsx's header)
-// * bklit glow DEAD at runtime (D49) — ported as observed pixels
 // * `className` dead prop on PieSlice (D49 finding)
+//
+// --- C1 (states+legend, Phase 6): fade moved off DOM, glow deleted --------
+// Pie uses a native `radialArc` mark (no `states` option — Cartesian-only;
+// see polar.d.ts) so the non-hovered-slice fade (bklit: opacity 0.4, 0.15s
+// ease-in-out — pie-hover-chrome.ts's original `OPACITY_TRANSITION`, NOT the
+// 0.4s figure in some historical docs) can no longer live as an imperative
+// `el.style.opacity` write. It now rides a REACTIVE definition instead: a
+// tiny `fadeHoveredIndex` React-state slice (below), fed by the existing
+// imperative `PieHoverCoordinator` via `subscribe`, drives each row's `fill`
+// through `applyAlphaToColor` in the `definition` useMemo — same
+// `color-mix()` pattern sunburst-chart.tsx already used for depth opacity,
+// necessary because radialArc's `opacity` mark option is a single number for
+// the whole mark, not a per-datum channel. The translate/grow hover springs,
+// pointer-driven hover detection, and cursor handling all stay fully
+// imperative and untouched — this is the ONLY reactive (React-render-driven)
+// consumer of hover state in this file. bklit's glow (`showGlow` drop-shadow)
+// was DEAD at runtime (D49) and is deleted outright by C1, not ported.
 // * Scrub layers bypass TanStack marks entirely (plain React SVG paths)
 // * `<defs>` children (gradients/patterns) rendered in a dedicated hidden SVG
 import { pie as d3Pie } from "d3-shape";
@@ -46,6 +62,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
   type ReactElement,
   type ReactNode,
@@ -60,6 +77,7 @@ import { displayNameOf } from "./children";
 import {
   createPieHoverCoordinator,
   createPieSliceHoverRuntime,
+  FADE_OPACITY,
   type PieHoverCoordinator,
   type PieSliceHoverEffect,
 } from "./internal/pie-hover-chrome";
@@ -115,6 +133,14 @@ export interface PieArcData {
 // Defs children (gradients/patterns) go to a dedicated hidden SVG.
 // ---------------------------------------------------------------------------
 
+// C1 (states+legend): bakes the non-hovered-slice fade into the per-datum
+// `fill` string (radialArc has no per-datum opacity channel — see file
+// header). Same helper/pattern as sunburst-chart.tsx's `applyAlphaToColor`.
+function applyAlphaToColor(color: string, alpha: number): string {
+  if (alpha >= 1) return color;
+  return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
+}
+
 function isPieCenterElement(child: ReactNode): boolean {
   return isValidElement(child) && typeof child.type === "function" && displayNameOf(child.type as { displayName?: string }) === "PieCenter";
 }
@@ -138,6 +164,11 @@ interface PieSliceConfig {
   color?: string;
   fill?: string;
   animate: boolean;
+  // Extracted for bklit prop parity (`<PieSlice showGlow={false}>` still
+  // compiles/classifies), but unread from here on — C1 deleted the dead
+  // glow computation this fed (internal/pie-hover-chrome.ts never rendered
+  // it; see that file's header). Same category as PieSlice's dead
+  // `className` prop (D49).
   showGlow: boolean;
   hoverEffect: PieSliceHoverEffect;
   hoverOffset?: number;
@@ -271,6 +302,19 @@ export function PieChart({
     }
   }, [hoveredIndex, coordinator]);
 
+  // C1 (states+legend): the fade's ONLY reactive (React-state) consumer of
+  // the coordinator — pointer detection, translate/grow springs, and cursor
+  // handling all stay imperative (unchanged, per file header). This drives
+  // the per-datum `fill` alpha in `definition` below; a hover change
+  // recomputes `pieRows` → rebuilds the definition → TanStack reconciles
+  // fresh colors. That rebuild-on-change IS the library's reactive model —
+  // there is no per-datum `opacity` VisualChannel on radialArc to hang a
+  // "states"-style definition off (polar.d.ts: `opacity` is a single number
+  // for the whole mark), so the fade rides `fill` instead, same as
+  // sunburst-chart.tsx's depth/hover opacity.
+  const [fadeHoveredIndex, setFadeHoveredIndex] = useState<number | null>(() => coordinator.getHovered());
+  useEffect(() => coordinator.subscribe(() => setFadeHoveredIndex(coordinator.getHovered())), [coordinator]);
+
   const totalValue = useMemo(() => data.reduce((sum, d) => sum + d.value, 0), [data]);
 
   const getColor = useCallback(
@@ -368,10 +412,17 @@ export function PieChart({
 
     const pieRows: PieRowDatum[] = arcs.map((arc) => {
       const config = sliceConfigMap.get(arc.index);
+      const baseFill = config?.fill || getFill(arc.index);
+      // C1 (states+legend): reactive fade — while ANY slice is hovered, every
+      // OTHER slice's fill alpha-mixes down to FADE_OPACITY (bklit: 0.4,
+      // 0.15s ease-in-out fill transition — see file header). Recomputing
+      // this per hover change is the "reactive definition" standing in for
+      // `states`, which radialArc doesn't have.
+      const isFaded = fadeHoveredIndex !== null && fadeHoveredIndex !== arc.index;
       return {
         startAngle: arc.startAngle,
         endAngle: arc.endAngle,
-        fill: config?.fill || getFill(arc.index),
+        fill: isFaded ? applyAlphaToColor(baseFill, FADE_OPACITY) : baseFill,
         sliceIndex: arc.index,
       };
     });
@@ -418,7 +469,7 @@ export function PieChart({
       // part through the theme system per T-D15's contract.
       theme: { palette: CHART_CATEGORY_PALETTE },
     });
-  }, [arcs, sliceConfigMap, getFill, availableRadius, innerRadius, cornerRadius, hoverOffset, geometryScrubbing]);
+  }, [arcs, sliceConfigMap, getFill, availableRadius, innerRadius, cornerRadius, hoverOffset, geometryScrubbing, fadeHoveredIndex]);
 
   // --- Imperative state: one runtime per slice, DOM refs populated after
   // TanStack renders. ---
@@ -436,10 +487,9 @@ export function PieChart({
     padAngle: 0,
     hoverOffset: 0,
     enterStaggerScale: 1,
-    getColor: (() => "") as (index: number) => string,
     getFill: (() => "") as (index: number) => string,
   });
-  hoverInputsRef.current = { arcs, sliceConfigMap, innerRadius, availableRadius, cornerRadius, padAngle, hoverOffset, enterStaggerScale, getColor, getFill };
+  hoverInputsRef.current = { arcs, sliceConfigMap, innerRadius, availableRadius, cornerRadius, padAngle, hoverOffset, enterStaggerScale, getFill };
 
   const sliceElementMapRef = useRef<Map<number, SVGPathElement>>(new Map());
   const seenPieRevealedRef = useRef<Set<number>>(new Set());
@@ -579,7 +629,7 @@ export function PieChart({
     const svgFallback = container.querySelector("svg");
     if (!marksGroup && !svgFallback) return;
 
-    const { arcs, sliceConfigMap, innerRadius, availableRadius, cornerRadius, hoverOffset, getColor, getFill } = hoverInputsRef.current;
+    const { arcs, sliceConfigMap, innerRadius, availableRadius, cornerRadius, hoverOffset, getFill } = hoverInputsRef.current;
 
     const stateMap = sliceStateRef.current;
     const localCleanupMap = new Map<Element, () => void>();
@@ -651,10 +701,12 @@ export function PieChart({
         padAngle: arc.padAngle,
         hoverOffset: sliceHoverOffset,
         hoverEffect: config.hoverEffect,
-        showGlow: config.showGlow,
-        color: getColor(arc.index),
         fill: sliceFill,
       });
+      // C1 (states+legend): the fade's 0.15s fill transition lives in
+      // styles.css (`[data-bkm-chart="pie"]` rule) — the reactive `fill`
+      // alpha channel is driven by React state, nothing fade-related is
+      // written here anymore.
       state.runtime.paint(coordinator.getHovered());
     }
 

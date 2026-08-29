@@ -8,9 +8,12 @@
 //   Depth-based opacity is baked into fill (radialArc's fillOpacity is `number`,
 //   not VisualChannel — no per-datum opacity channel exists).
 //
-//   The definition includes hover grow — geometry changes go through the
-//   TanStack pipeline (arcRows → definition → render → reconcile). Hover dim
-//   is imperative CSS opacity on cached path refs. Reveal and zoom use WAAPI.
+//   The definition includes hover grow AND hover dim — both go through the
+//   TanStack pipeline (arcRows → definition → render → reconcile). Dim (C1,
+//   states+legend) rides the same per-datum `fill` color-mix alpha as
+//   depth-opacity, since radialArc has no per-datum opacity channel either
+//   (see above) — no imperative DOM opacity mutation. Reveal and zoom use
+//   WAAPI.
 //
 //   WAAPI zoom: computes keyframes from transitionGeometry between prev/next
 //   focus states. Focus commits IMMEDIATELY on click (legacy parity); zoomT
@@ -21,11 +24,12 @@
 //   keyframes), bkmRevealed DOM guard prevents re-animation on focus/data
 //   changes. Deadline timer → setPhase("ready") for bench settle detection.
 //
-//   Hover chrome: one consolidated useLayoutEffect subscribes to the hover
-//   coordinator and applies dim (CSS opacity from styles.css transition rule)
-//   + grow (WAAPI d-keyframe 420ms cubic-bezier) in batch per pointer change.
-//   Cached path element refs are populated in handleRender (called during
-//   Chart's useLayoutEffect, before our own hover useLayoutEffect fires).
+//   Hover chrome: hover index (`hoveredArc`) is React state, read directly by
+//   the `arcRows` definition memo — dim (bklit: non-related arcs to 0.25
+//   alpha, 160ms ease-out, see styles.css:424-427) is computed there as a
+//   `fill` alpha multiplier, reactive by construction. Grow (geometry expand
+//   via `buildHoverGrowTargets`/`applyHoverGrow`, also baked into `arcRows`)
+//   is unchanged — C5's job.
 
 import {
   Children,
@@ -550,9 +554,11 @@ function SunburstChartInner({
     ],
   );
 
-  // --- Arc rows (static-layout + hover grow baked in) ---
-  // Hover grow drives arcRows → definition → TanStack re-render. Geometry changes
-  // go through the TanStack pipeline. Only CSS opacity dimming is imperative.
+  // --- Arc rows (static-layout + hover grow + hover dim baked in) ---
+  // Hover grow AND hover dim both drive arcRows → definition → TanStack
+  // re-render/reconcile — no imperative DOM mutation for either (C1 moved
+  // dim off `pathEl.style.opacity` onto the per-datum `fill` alpha below,
+  // same mechanism depth-opacity already used).
   const arcRows = useMemo((): SunburstArcRow[] => {
     const rows: SunburstArcRow[] = [];
 
@@ -583,7 +589,18 @@ function SunburstChartInner({
       const relativeDepth = a.depth - focus.depth;
       const resolvedFill = getFill(a.arcIndex, config?.fill, config?.color);
       const baseOpacity = config?.fillOpacity ?? opacityForRelativeDepth(relativeDepth);
-      const fill = applyAlphaToColor(resolvedFill, baseOpacity);
+      // C1 (states+legend): non-hovered-arc dimming (bklit: opacity 0.25,
+      // 160ms ease-out — see styles.css:424-427's `[data-bkm-chart="sunburst"]
+      // .ts-chart__marks path` transition rule) folded into the per-datum
+      // `fill` alpha instead of an imperative `pathEl.style.opacity` DOM
+      // mutation. radialArc has no per-datum opacity VisualChannel (`opacity`
+      // is `number` on the whole mark — polar.d.ts) so, same as the
+      // depth-based `baseOpacity` above, the dim multiplier rides the
+      // color-mix alpha. This IS the library's reactive model: `arcRows`
+      // already depends on `hoveredArc`, so a hover change recomputes rows →
+      // rebuilds `definition` → TanStack reconciles fresh `fill` colors.
+      const dimFactor = hoveredArc ? (isRelatedArc(a, hoveredArc) ? 1 : 0.25) : 1;
+      const fill = applyAlphaToColor(resolvedFill, baseOpacity * dimFactor);
 
       rows.push({
         id: a.id,
@@ -646,7 +663,9 @@ function SunburstChartInner({
     });
   }, [arcRows]);
 
-  // --- handleRender: WAAPI reveal + hover dim re-apply (pie/radar pattern) ---
+  // --- handleRender: WAAPI reveal (pie/radar pattern). Hover dim is no
+  // longer applied here — C1 folded it into the reactive `fill` alpha
+  // computed in `arcRows`, so it needs no re-apply on reconcile. ---
   const handleRender = useCallback(({ container }: { container: HTMLElement }) => {
     const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marksGroup) return;
@@ -661,14 +680,12 @@ function SunburstChartInner({
 
     const elementMap = getSunburstPathMap(container);
 
-    // Re-apply hover dimming after TanStack reconcile (keyed)
-    if (hoveredArc) {
-      for (const a of sortedArcs) {
-        const pathEl = elementMap.get(a.arcIndex);
-        if (!pathEl) continue;
-        pathEl.style.opacity = isRelatedArc(a, hoveredArc) ? "1" : "0.25";
-      }
-    }
+    // C1 (states+legend): hover dimming used to be re-applied here via
+    // `pathEl.style.opacity` after every TanStack reconcile (dim is lost on
+    // reconcile because reconcile rewrites the path's attributes from the
+    // fresh markup). It now rides the reactive `fill` alpha computed in
+    // `arcRows` above, so reconcile already paints the dimmed color — no
+    // imperative re-apply needed.
 
     // NOTE: reveal guards live in refs (seenRevealedRef + playCycleRef),
     // NOT in DOM dataset stamps compared here. Any definition change
@@ -754,7 +771,7 @@ function SunburstChartInner({
         };
       }
     });
-  }, [arcs, sortedArcs, focus, maxDepth, radius, setPhase, hoveredArc, prefersReducedMotion, enterStaggerScale, sweepDurationMs, sweepEasingCss]);
+  }, [arcs, sortedArcs, focus, maxDepth, radius, setPhase, prefersReducedMotion, enterStaggerScale, sweepDurationMs, sweepEasingCss]);
 
   // --- TanStack-path click listeners (synthetic-dispatch contract) ---
   // Real pointer interaction is served by the hit layer above the stage svg;

@@ -1,5 +1,5 @@
 import { createMark } from "@tanstack/charts";
-import type { ChartMark, ChartPoint, SceneNode } from "@tanstack/charts";
+import type { ChartMark, ChartMarkState, ChartPoint, SceneNode } from "@tanstack/charts";
 import type { ScaleBand } from "d3-scale";
 import { barDepthAndRise, barDepthMaxDepth } from "./bar-depth-geometry";
 import type { ChartDatum } from "./types";
@@ -7,6 +7,9 @@ import type { ChartDatum } from "./types";
 export interface BarTrimmedMarkOptions {
   id: string;
   data: ChartDatum[];
+  /** Native mark-state definitions (hover/legend dim etc.), passed through
+      to the initialized mark unchanged. */
+  states?: readonly ChartMarkState<ChartDatum>[];
   groupBandwidth: number;
   groupScale: ScaleBand<string>;
   fill: string;
@@ -22,7 +25,7 @@ export interface BarTrimmedMarkOptions {
 }
 
 export function barTrimmedMark(data: ChartDatum[], options: BarTrimmedMarkOptions): ChartMark<ChartDatum, string, number> {
-  const { id, groupScale, fill, radius, bandWidth, bandScale, categoryAccessor, yAccessor, innerWidth, chartX, centerX: _centerX, maxDepth: _maxDepth } = options;
+  const { id, groupScale, fill, radius, bandWidth, bandScale, categoryAccessor, yAccessor, innerWidth, chartX, centerX: _centerX, maxDepth: _maxDepth, states } = options;
   void bandScale;
   void innerWidth;
   void chartX;
@@ -35,6 +38,7 @@ export function barTrimmedMark(data: ChartDatum[], options: BarTrimmedMarkOption
     const rawY = data.map((d) => yAccessor(d));
     return {
       id,
+      states: states?.length ? { data, definitions: states } : undefined,
       channels: {
         x: { scale: "x", values: xValues },
         y: {
@@ -78,9 +82,15 @@ export function barTrimmedMark(data: ChartDatum[], options: BarTrimmedMarkOption
           const y = valuePos + trim;
           const height = naturalHeight - trim;
           if (height <= 0) continue;
+          // Point key must be an exact `:`-boundary prefix of the rect's own
+          // key for the library's prefix-based scene point-ownership
+          // matching to attach this point to the row's rect (dist/scene-
+          // point-ownership-internal.js) — there is exactly one rect per
+          // row here, so using the identical key is simplest and correct.
+          const key = `${id}:${String(xValue)}:${i}`;
           nodes.push({
             kind: "rect",
-            key: `${id}:${String(xValue)}:${i}`,
+            key,
             x,
             y,
             width,
@@ -89,7 +99,7 @@ export function barTrimmedMark(data: ChartDatum[], options: BarTrimmedMarkOption
             style: { fill },
           });
           points.push({
-            key: `${id}:pt:${i}`,
+            key,
             markId: id,
             group: id,
             groupLabel: id,

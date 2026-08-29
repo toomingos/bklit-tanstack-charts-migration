@@ -8,12 +8,21 @@
 //     ONE spring {stiffness:400, damping:25} on the group's `transform`
 //     (bklit's single `scale` motion value, `transition={{scale:{type:
 //     "spring", stiffness:400, damping:25}}}`).
-//   - NO fade: bklit's `isFaded ? 0.35 : 1` opacity is dead at runtime, like
-//     the glow — see `paint()` below for the live-DOM evidence.
-//   - NO glow: bklit's `showGlow && isHovered ? drop-shadow(...) : "none"`
-//     is dead code at runtime — see `paint()` below for fresh empirical
-//     evidence (independently re-verified for Ring; same mechanism as
-//     PieSlice's D49 finding).
+//   - NO fade, NO glow (C1, states+legend): bklit's `isFaded ? 0.35 : 1`
+//     opacity and `showGlow && isHovered ? drop-shadow(...) : "none"` were
+//     BOTH confirmed dead at runtime — verified empirically (Playwright
+//     against bklit-ring at n=4, 2026-07-30/31): every faded group's `<g>`
+//     reads `opacity="0.35"` as an SVG presentation ATTRIBUTE, but framer's
+//     own inline `style="...opacity: 1..."` always wins the cascade, so the
+//     fade never rendered; `filter` likewise stays "none" in inline style at
+//     every sampled hover state (framer snapshots animatable style keys into
+//     MotionValues at mount and never re-reads later static `style` values).
+//     Since neither ever painted a pixel, there is no observed behavior to
+//     port forward (unlike Pie's fade, which DID render and moved to a
+//     reactive `fill`-alpha channel in ring-chart.tsx's sibling, pie-chart.tsx)
+//     — this file previously carried the same DOM-mutation shape as pie's
+//     (unconditional `el.style.opacity`/`el.style.filter` writes in `paint()`
+//     that had no visible effect) and it is deleted outright, not ported.
 //
 // --- Coordinator reuse ------------------------------------------------------
 // `createPieHoverCoordinator`'s contract (getHovered/requestHover/
@@ -34,10 +43,8 @@
 // spring wrote `style.transform` from the very first render, it would race
 // the WAAPI animation for control of the same CSS property for the whole
 // expand-phase duration. Fixed via a `started`/`settleAtRest()` gate: this
-// runtime always writes opacity + filter unconditionally on every `paint()`
-// call (matching bklit's own unconditional `layerOpacity`/`groupStyle.filter`
-// regardless of reveal phase), but withholds writing `transform` until
-// `settleAtRest()` is called — ring-chart.tsx calls it from the expand
+// runtime withholds writing `transform` until `settleAtRest()` is called —
+// ring-chart.tsx calls it from the expand
 // WAAPI animation's `onfinish` (or synchronously, for `animate={false}` /
 // once `expandComplete` is already true at mount). Until then, `transform`
 // is left entirely to the WAAPI animation (which itself ends at `scale(1)`,
@@ -51,27 +58,21 @@ export {
 } from "./pie-hover-chrome";
 
 const HOVER_SPRING = { stiffness: 400, damping: 25 } as const;
-export const FADE_OPACITY = 0.35;
-const FULL_OPACITY = "1";
-const OPACITY_TRANSITION = "opacity 0.15s ease-in-out";
 
 export interface RingHoverConfig {
   index: number;
   trackGroupEl?: SVGGElement | null;
   progressGroupEl?: SVGGElement | null;
-  showGlow: boolean;
-  color: string;
 }
 
 export interface RingHoverRuntime {
   /** Refresh the live config — call on every Ring render. Does not itself
       repaint; call `paint()` after if a repaint is needed. */
   update(config: RingHoverConfig): void;
-  /** Repaint immediately for the given hovered index. Opacity/filter are set
-      synchronously (plain CSS transitions, not rAF-driven); the scale
-      spring animates toward its new target from wherever it currently is,
-      but only actually WRITES `transform` once `settleAtRest()` has been
-      called at least once (see file header). */
+  /** Repaint immediately for the given hovered index. The scale spring
+      animates toward its new target from wherever it currently is, but only
+      actually WRITES `transform` once `settleAtRest()` has been called at
+      least once (see file header). */
   paint(hoveredIndex: number | null): void;
   /** Hands `transform` control to this runtime's spring — call once, from
       the expand reveal's completion (WAAPI `onfinish`, or synchronously
@@ -84,13 +85,6 @@ function ringHoverScale(isHovered: boolean, isPushedOut: boolean): number {
   if (isHovered) return 1.03;
   if (isPushedOut) return 1.02;
   return 1;
-}
-
-function resolveEls(config: RingHoverConfig): SVGGElement[] {
-  const els: SVGGElement[] = [];
-  if (config.trackGroupEl) els.push(config.trackGroupEl);
-  if (config.progressGroupEl) els.push(config.progressGroupEl);
-  return els.filter(Boolean) as SVGGElement[];
 }
 
 export function createRingHoverRuntime(): RingHoverRuntime {
@@ -117,45 +111,7 @@ export function createRingHoverRuntime(): RingHoverRuntime {
     paint(hoveredIndex) {
       if (!config) return;
       const isHovered = hoveredIndex === config.index;
-      const isFaded = hoveredIndex !== null && !isHovered;
       const isPushedOut = hoveredIndex !== null && hoveredIndex < config.index;
-      const els = resolveEls(config);
-
-      // bklit's fade is ALSO dead code at runtime: ring.tsx animates
-      // `opacity: isFaded ? 0.35 : 1`, and framer DOES write it — but as the
-      // SVG presentation ATTRIBUTE `opacity="0.35"`, while the same `<g>`
-      // keeps framer's initial `opacity: 1` in its inline STYLE, which
-      // always wins the cascade. Live-DOM dump of bklit-ring at n=4 with the
-      // pointer resting on ring0's band (2026-08-01): every faded group reads
-      // `opacity="0.35"` (attribute) + `style="...opacity: 1..."`, and NO
-      // element inside the svg computes opacity != 1 — the fade never
-      // renders, in normal hovers or otherwise. Port the OBSERVED pixels
-      // (D19/D49 precedent): hold full opacity; `isFaded`/`FADE_OPACITY`
-      // stay so the fade can be restored verbatim if bklit ever fixes it:
-      //   `el.style.opacity = isFaded ? String(FADE_OPACITY) : FULL_OPACITY;`
-      void isFaded;
-      for (const el of els) {
-        el.style.transition = OPACITY_TRANSITION;
-        el.style.opacity = FULL_OPACITY;
-      }
-      // bklit's glow is DEAD CODE at runtime: ring.tsx computes `showGlow &&
-      // isHovered ? drop-shadow(0 0 12px ${color}) : "none"` into the framer
-      // `style` prop, but framer-motion snapshots animatable style keys
-      // (filter) into MotionValues at mount and never re-reads later static
-      // `style` values — verified empirically 2026-07-30/31 (Playwright
-      // against bklit-ring at n=4: inline `filter` reads "none" on every
-      // ring `<g>`, before hover AND during hover at 7 different pointer
-      // radii and across 3 repeated hover cycles, while `transform` clearly
-      // changes to the 1.03/1.02 hover-scale pop in the same samples — the
-      // spring-driven `scale` motion value IS live, only `filter` is frozen)
-      // — same mechanism as PieSlice's D49 finding. Port the OBSERVED
-      // pixels, not the dead source intent (D19 dead-code precedent).
-      // `showGlow`/`color` stay in the config so the drop-shadow can be
-      // restored verbatim if bklit ever fixes it:
-      //   `config.showGlow && isHovered ? drop-shadow(0 0 12px ${config.color}) : "none"`
-      for (const el of els) {
-        el.style.filter = "none";
-      }
 
       // Always retarget the spring, even before `started` — its `onUpdate`
       // (`applyTransform`) is a no-op DOM write until `settleAtRest()` has

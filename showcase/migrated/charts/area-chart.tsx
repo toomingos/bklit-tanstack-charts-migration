@@ -27,7 +27,7 @@ import { curveMonotoneX } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
 import { Chart } from "@tanstack/react-charts";
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
-import type { ChartMark, StaticChartDefinition } from "@tanstack/charts";
+import type { ChartMark, ChartRenderContext, StaticChartDefinition } from "@tanstack/charts";
 import { areaFill } from "./internal/area-fill-mark";
 import { patternAreaMark } from "./internal/pattern-area-mark";
 import { renderPatternPreset } from "./internal/pattern-preset";
@@ -37,6 +37,7 @@ import {
 } from "./internal/decimate";
 import { extractChildren } from "./children";
 import { useHoverChrome } from "./internal/use-hover-chrome";
+import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import {
@@ -253,6 +254,14 @@ export function AreaChart({
   );
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const prefersReducedMotion = usePrefersReducedMotion();
+  // C1 (P6): legend hover -> native mark states via programmatic focus
+  // injection (replaces the old hover-chrome DOM-mutation dim path).
+  const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection();
+  React.useEffect(() => {
+    const seriesKey = legendHoveredIndex != null ? (areas[legendHoveredIndex]?.dataKey ?? null) : null;
+    if (seriesKey != null) focusSeries(seriesKey);
+    else clearFocus();
+  }, [legendHoveredIndex, areas, focusSeries, clearFocus]);
   const staticRefConfigs = React.useMemo(() => extractReferenceAreaConfigs(children), [children]);
   const projectionConfigs = React.useMemo(() => extractProjectionLineConfigs(children), [children]);
   const projectionGradientBaseId = useSanitizedId();
@@ -687,6 +696,10 @@ export function AreaChart({
         }),
       );
     }
+    // C1 (P6): legend-hover fill dim — areaFill emits no ChartPoints, so mark
+    // states can't reach it; the dim arrives reactively via fillOpacity here.
+    const legendHoveredKey =
+      legendHoveredIndex != null ? (areas[legendHoveredIndex]?.dataKey ?? null) : null;
     for (const area of resolvedAreas) {
       const gradientId = gradientIdBySeries.get(area.dataKey);
       const curve = d3Curve(area.curve);
@@ -700,8 +713,9 @@ export function AreaChart({
       // per-datum ChartPoints / retained polygon arrays — areaY's duplicate
       // focus geometry put heap 19% over bklit at n=1000, failing G4 (the
       // boundary lineY below already supplies this series' focus points).
-      // fillOpacity always 1 — bklit never double-applies it; the opacity
-      // lives entirely in the gradient stops above.
+      // fillOpacity 1 at rest — bklit never double-applies it (the opacity
+      // lives in the gradient stops above); 0.6 is the legend-dim term
+      // (SeriesHoverDim, matching the boundary lineY's state below).
       marks.push(
         areaFill(renderData, {
           id: `${area.dataKey}__fill`,
@@ -709,6 +723,8 @@ export function AreaChart({
           y: (d: ChartDatum) => projectY(d[area.dataKey] as number),
           curve,
           fill: gradientId ? `url(#${gradientId})` : area.fill,
+          fillOpacity:
+            legendHoveredKey == null || legendHoveredKey === area.dataKey ? 1 : 0.6,
         }),
       );
       // Same id as <Line> would use for this dataKey — the shared
@@ -734,6 +750,16 @@ export function AreaChart({
             stroke: boundaryVisible ? area.stroke : "transparent",
             strokeOpacity: boundaryVisible ? undefined : 0,
             strokeWidth: area.strokeWidth,
+            // C1 (P6): legend-hover series dim — bklit SeriesHoverDim's
+            // legend term (area.tsx dims to 0.6, 400ms ease-in-out).
+            // Programmatic-source-only so pointer hover never triggers this.
+            states: [
+              {
+                when: whenSeriesDimmed(),
+                style: { opacity: 0.6 },
+                transition: { type: "tween", duration: 400, easing: "ease-in-out" },
+              },
+            ],
           }),
         );
       }
@@ -836,7 +862,7 @@ export function AreaChart({
           ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
           : false,
     });
-  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients]);
+  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients, legendHoveredIndex, areas]);
 
   // Hover chrome (bklit ChartTooltip): imperative overlays driven by
   // TanStack's focus callbacks — no React work per pointer move. Reuses
@@ -892,7 +918,6 @@ export function AreaChart({
     chartPhase,
     isLoaded,
     xDomain,
-    legendHoveredIndex,
     tooltipEnabled,
     width,
     dimOpacity: AREA_DIM_OPACITY,
@@ -933,7 +958,6 @@ export function AreaChart({
     tickerHalfWidth: xAxis?.tickerHalfWidth,
     tooltip: tooltip ?? null,
     dateLabels: dateLabelsForPill,
-    legendHoveredIndex,
     chartPhase,
     isLoaded,
     renderData,
@@ -970,7 +994,13 @@ export function AreaChart({
   // the marks node; the epoch re-opens a window the flag has closed. See
   // line-chart.tsx for the full note.
   const revealedEpochRef = React.useRef<number | null>(null);
-  const handleRender = React.useCallback(() => {
+  const handleRender = React.useCallback((context: ChartRenderContext<ChartDatum, Date, number>) => {
+    // Cast: `useFocusInjection`'s `captureRenderContext` is typed against the
+    // library's generic (unknown-typed) `ChartRenderContext`, which — because
+    // `interaction.setControlledFocus` is checked contravariantly under
+    // strictFunctionTypes — is not structurally assignable from our
+    // concretely-typed context. Both denote the same live object at runtime.
+    captureRenderContext(context as unknown as Pick<ChartRenderContext, "scene" | "interaction">);
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marks) return;
     const epochUnseen = revealedEpochRef.current !== revealEpoch;
@@ -1036,7 +1066,7 @@ export function AreaChart({
         if (tId !== null) window.clearTimeout(tId);
       };
     } else { doReveal(); }
-  }, [animationDuration, animationEasing, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, areaMarkerConfigs, width, margin.left, margin.right, prefersReducedMotion]);
+  }, [animationDuration, animationEasing, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, areaMarkerConfigs, width, margin.left, margin.right, prefersReducedMotion, captureRenderContext]);
 
   React.useEffect(() => {
     if (chartPhase !== "revealing") return;

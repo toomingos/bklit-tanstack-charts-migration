@@ -16,13 +16,10 @@ import type { ChartTooltipConfig } from "./types";
 import { TOOLTIP_SPRING } from "./design-tokens";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const DIM_TRANSITION = "opacity 0.15s ease-in-out";
 
 export interface CandlestickHoverChromeState {
   margin: { top: number; right: number; bottom: number; left: number };
   pointCount: number;
-  fadedOpacity: number;
-  showHoverFade: boolean;
   showCrosshair: boolean;
   showDots: boolean;
   showDatePill: boolean;
@@ -31,7 +28,6 @@ export interface CandlestickHoverChromeState {
   tickerHalfWidth?: number;
   tooltip?: ChartTooltipConfig | null;
   dateLabels?: string[];
-  legendHoveredIndex?: number | null;
 }
 
 export interface CandleRectGeometry {
@@ -56,7 +52,6 @@ export interface CandlestickFocusPoint {
 
 export interface CandlestickHoverChrome {
   onFocusChange(point: CandlestickFocusPoint | null): void;
-  syncLegendDim(): void;
   detach(): void;
 }
 
@@ -117,14 +112,6 @@ export function attachCandlestickHoverChrome(
   let prevFlip: boolean | null = null;
   let boxFadeAnimation: Animation | null = null;
 
-  const setMarksDimmed = (dimmed: boolean, fadedOpacity: number) => {
-    const wicksGroup = container.querySelector<SVGGElement>('.ts-chart__candle[data-ts-key="wicks"]');
-    const bodiesGroup = container.querySelector<SVGGElement>('.ts-chart__candle[data-ts-key="bodies"]');
-    const value = dimmed ? String(fadedOpacity) : "1";
-    if (wicksGroup) { wicksGroup.style.transition = DIM_TRANSITION; wicksGroup.style.opacity = value; }
-    if (bodiesGroup) { bodiesGroup.style.transition = DIM_TRANSITION; bodiesGroup.style.opacity = value; }
-  };
-
   const applyRectGeometry = (el: SVGRectElement, geometry: CandleRectGeometry) => {
     el.setAttribute("x", String(geometry.x)); el.setAttribute("y", String(geometry.y));
     el.setAttribute("width", String(geometry.width)); el.setAttribute("height", String(geometry.height));
@@ -173,23 +160,6 @@ export function attachCandlestickHoverChrome(
   };
 
   let lastPoint: CandlestickFocusPoint | null = null;
-  let legendActive = false;
-
-  const syncLegendDim = () => {
-    const st = getState();
-    const nowLegendActive = st.legendHoveredIndex != null;
-    if (nowLegendActive === legendActive) return;
-    legendActive = nowLegendActive;
-    if (legendActive) {
-      setMarksDimmed(false, 1);
-      if (visible && lastPoint) {
-        activeHighlightSvg.style.display = "none";
-      }
-    } else if (visible && lastPoint) {
-      if (st.showHoverFade) setMarksDimmed(true, st.fadedOpacity);
-      activeHighlightSvg.style.display = "";
-    }
-  };
 
   const hide = () => {
     if (!visible) return;
@@ -207,7 +177,6 @@ export function attachCandlestickHoverChrome(
     pillBuild.spring.stop();
     boxBuild.entranceSpring.stop();
     boxFadeAnimation?.cancel(); boxFadeAnimation = null;
-    setMarksDimmed(false, 1);
     hideBoxContent(boxBuild);
     pillBuild.label.textContent = "";
     resetLabelFade(container);
@@ -274,18 +243,10 @@ export function attachCandlestickHoverChrome(
       else { dotXSpring.set(point.centerX); dotYSpring.set(point.closeY); }
     }
 
-    const legendDimActive = state.legendHoveredIndex != null;
-    legendActive = legendDimActive;
-    if (!legendDimActive && state.showHoverFade) setMarksDimmed(true, state.fadedOpacity);
-    else if (legendDimActive) setMarksDimmed(false, 1);
-    if (legendDimActive) {
-      activeHighlightSvg.style.display = "none";
-    } else {
-      activeHighlightSvg.style.display = "";
-      applyRectGeometry(highlightWick, point.wick);
-      applyRectGeometry(highlightBody, point.body);
-      syncHighlightExtras(point.body);
-    }
+    activeHighlightSvg.style.display = "";
+    applyRectGeometry(highlightWick, point.wick);
+    applyRectGeometry(highlightBody, point.body);
+    syncHighlightExtras(point.body);
 
     // Tooltip box — if custom rows/content provided, delegate to shared helper; else single "close" row
     {
@@ -331,7 +292,6 @@ export function attachCandlestickHoverChrome(
 
   return {
     onFocusChange: update,
-    syncLegendDim,
     detach() {
       hide();
       activeHighlightSvg.remove();

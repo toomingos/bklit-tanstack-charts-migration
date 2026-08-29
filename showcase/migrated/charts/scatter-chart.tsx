@@ -19,7 +19,9 @@ import { scaleLinear, scaleUtc } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";
 import { defineChart, dot } from "@tanstack/charts";
 import type {
+  ChartDotStateStyle,
   ChartMark,
+  ChartMarkState,
   ChartPoint,
   ChartScale,
   ChartValue,
@@ -80,6 +82,22 @@ export const DEFAULT_SCATTER_COLORS: readonly string[] = CHART_CATEGORY_PALETTE;
 const DEFAULT_Y_GRADIENT_FROM = "var(--color-red-500)";
 const DEFAULT_Y_GRADIENT_TO = "var(--color-emerald-500)";
 
+// P6/C1 (bklit scatter-hover-chrome.ts, deleted DOM version): the hovered
+// group's markers pop to 1.35x radius; everything else dims to
+// `series.inactiveOpacity` (default 0.5). Both now ride native `dot()` mark
+// `states` instead of DOM clone/mutation. `{focus:'group'}` matches bklit's
+// "every point sharing the hovered x-value, one per series" semantics (see
+// scatter-focus-strategy.ts's `group()` / `collectFocusGroup`) —
+// intentionally broader than the single-nearest-point `'primary'` selector.
+// `{focus:'unmatched'}` is group-scoped and resolves to "every point NOT in
+// the focused group," matching bklit's uniform per-row dim.
+const ACTIVE_HIGHLIGHT_SCALE = 1.35;
+const HOVER_STATE_TRANSITION = {
+  type: "tween",
+  duration: 150,
+  easing: "ease-in-out",
+} as const;
+
 // S8 (bklit scatter.tsx yGradient): custom ChartMark emitting the EXACT DOM
 // shape stock `dot()` produces — one `.ts-chart__dot[data-ts-key]` group per
 // series, one `<circle>` per datum — so scatter's reveal (`querySelectorAll
@@ -117,6 +135,31 @@ function createYGradientScatterMark(
           x: { scale: "x", values: xValues },
           y: { scale: "y", values: yValues },
         },
+        // P6/C1: opacity-dim only. A single `states` definition's `r` value
+        // fully REPLACES a dot SceneNode's radius per-node (dist/mark-state.js
+        // `applyStateStyle`, case "dot") — it isn't computed from the node's
+        // own prior value, and the fill-disc/ring-circle siblings below share
+        // one ChartPoint/context with no node-kind discriminator to tell them
+        // apart. There is no way to independently pop discRadius vs
+        // ringRadius from one state definition, so the active r×1.35 highlight
+        // is intentionally NOT reproduced for the yGradient path (only the
+        // plain dot() series below get it). D421: inactiveBlur also has no
+        // native channel and is omitted the same way as the plain path.
+        // `markStates()` (dist/mark.js) isn't publicly exported — this
+        // reproduces its `definitions?.length ? {data, definitions} :
+        // undefined` shape by hand for `InitializedMarkBase.states`.
+        states: series.fadeOnHover ?? true
+          ? {
+              data: source,
+              definitions: [
+                {
+                  when: { focus: "unmatched" },
+                  style: { opacity: series.inactiveOpacity },
+                  transition: HOVER_STATE_TRANSITION,
+                },
+              ],
+            }
+          : undefined,
         render: ({ scales }) => {
           const nodes: SceneNode[] = [];
           const points: ChartPoint<ChartDatum, Date, number>[] = [];
@@ -127,8 +170,24 @@ function createYGradientScatterMark(
             const x = scales.x.map(xv);
             const y = scales.y.map(yv);
             if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+            const point: ChartPoint<ChartDatum, Date, number> = {
+              key: `${series.dataKey}:${datumIndex}`,
+              markId: series.dataKey,
+              group: null,
+              groupLabel: series.dataKey,
+              datum,
+              datumIndex,
+              xValue: xv as Date,
+              yValue: yv as number,
+              x,
+              y,
+              color: fillUrl,
+            };
             // bklit MarkerCircles draw order: fill disc → ring (stroked
-            // circle). Both paint the same gradient url.
+            // circle). Both paint the same gradient url. `pointOwner` is set
+            // explicitly (object identity) so state-resolution's ownership
+            // lookup (dist/scene-point-ownership-internal.js) doesn't fall
+            // through to its "ALL points" fallback for these custom nodes.
             nodes.push({
               kind: "dot",
               key: `${series.dataKey}:null:${datumIndex}`,
@@ -136,6 +195,7 @@ function createYGradientScatterMark(
               y,
               radius: discRadius,
               style: { fill: fillUrl, stroke: "none" },
+              pointOwner: point,
             });
             if (hasRing) {
               nodes.push({
@@ -149,21 +209,10 @@ function createYGradientScatterMark(
                   stroke: fillUrl,
                   strokeWidth: series.strokeWidth,
                 },
+                pointOwner: point,
               });
             }
-            points.push({
-              key: `${series.dataKey}:${datumIndex}`,
-              markId: series.dataKey,
-              group: null,
-              groupLabel: series.dataKey,
-              datum,
-              datumIndex,
-              xValue: xv as Date,
-              yValue: yv as number,
-              x,
-              y,
-              color: fillUrl,
-            });
+            points.push(point);
           });
           return {
             nodes: [
@@ -226,6 +275,11 @@ interface ResolvedSeries {
   inactiveBlur: number;
   enterBlur: number;
   showActiveHighlight: boolean;
+  /** P6/C1: bklit's hovered-marker outline ring has no native mark-`states`
+      equivalent (`ChartDotStateStyle` has no outline/box-shadow channel) and
+      the DOM highlight-clone that used to paint it was deleted along with
+      the rest of scatter-hover-chrome.ts's dim/clone machinery. These fields
+      are kept for prop-resolution compatibility but are now visually inert. */
   outlineWidth: number;
   outlineColor?: string;
   useYGradient: boolean;
@@ -628,17 +682,41 @@ export function ScatterChart({
       const gradientId = hasRing
         ? gradientIdBySeries.get(series.dataKey)
         : undefined;
+      const baseR = hasRing
+        ? series.radius + series.ringGap + series.strokeWidth
+        : series.radius;
+      // P6/C1: `series.outlineWidth`/`outlineColor` (bklit's hovered-marker
+      // outline ring) and `series.inactiveBlur` (2px inactive blur) have no
+      // native mark-state channel to express through — `ChartDotStateStyle`
+      // covers only {fill,fillOpacity,stroke,strokeOpacity,strokeWidth,
+      // opacity,r} (dist/types.d.ts:90), with no filter/blur/outline
+      // property. Left as an honest omission rather than a DOM/CSS
+      // workaround. D421: blur pending upstream filter state channel.
+      const states: ChartMarkState<ChartDatum, ChartDotStateStyle<ChartDatum>>[] = [];
+      if (series.showActiveHighlight ?? true) {
+        states.push({
+          when: { focus: "group" },
+          style: { r: baseR * ACTIVE_HIGHLIGHT_SCALE },
+          transition: HOVER_STATE_TRANSITION,
+        });
+      }
+      if (series.fadeOnHover ?? true) {
+        states.push({
+          when: { focus: "unmatched" },
+          style: { opacity: series.inactiveOpacity },
+          transition: HOVER_STATE_TRANSITION,
+        });
+      }
       marks.push(
         dot(renderData, {
           id: series.dataKey,
           x: (d: ChartDatum) => d[xDataKey] as Date,
           // P6.1 (S6): identity unless this series names a non-primary axis.
           y: (d: ChartDatum) => projectY(d[series.dataKey] as number),
-          r: hasRing
-            ? series.radius + series.ringGap + series.strokeWidth
-            : series.radius,
+          r: baseR,
           fill: gradientId ? `url(#${gradientId})` : series.fill,
           stroke: "none",
+          states,
         }),
       );
     }
@@ -700,23 +778,16 @@ export function ScatterChart({
   }, [tooltip, chartConfig.tooltipBoxSpring]);
   chromeStateRef.current = {
     margin,
+    // P6/C1: the dim/pop fields (fadeOnHover, inactiveOpacity, inactiveBlur,
+    // outlineWidth/Color, showActiveHighlight, stroke, strokeWidth, ringGap,
+    // radius, highlightFill/Stroke) all drove the now-deleted DOM dim/clone
+    // machinery in scatter-hover-chrome.ts — that behavior is native `dot()`
+    // mark `states` now (see the `definition` useMemo above). The chrome only
+    // needs `fill` left, for tooltip-dot color resolution
+    // (`ScatterHoverChromeSeries`, scatter-hover-chrome.ts).
     series: resolvedSeries.map((s) => ({
       dataKey: s.dataKey,
       fill: s.fill,
-      stroke: s.stroke,
-      strokeWidth: s.strokeWidth,
-      ringGap: s.ringGap,
-      radius: s.radius,
-      highlightFill: s.useYGradient ? `url(#${s.yGradId})` : undefined,
-      // bklit scatter.tsx resolvedStroke = stroke ?? (gradientFill when
-      // yGradient owns the marker); explicit `stroke` prop wins.
-      highlightStroke: s.useYGradient ? `url(#${s.yGradId})` : undefined,
-      fadeOnHover: s.fadeOnHover,
-      inactiveOpacity: s.inactiveOpacity,
-      inactiveBlur: s.inactiveBlur,
-      outlineWidth: s.outlineWidth,
-      outlineColor: s.outlineColor,
-      showActiveHighlight: s.showActiveHighlight,
     })),
     xDataKey,
     pointCount: renderData.length,

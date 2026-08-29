@@ -421,9 +421,35 @@
   line-height: 1.25rem;
 }
 
-/* --- Sunburst: dimming transition (160ms ease-out, matches bklit) --- */
+/* --- Sunburst: dimming transition (160ms ease-out, matches bklit).
+       C1 (P6): dim moved into the reactive definition as per-datum FILL
+       alpha (polar marks have no `states`), so the transition rides `fill`
+       now, not `opacity`. --- */
 [data-bkm-chart="sunburst"] .ts-chart__marks path {
-  transition: opacity 160ms ease-out;
+  transition: fill 160ms ease-out;
+}
+
+/* --- Area legend-hover fill dim (C1, P6): the areaFill custom mark emits no
+       ChartPoints, so mark `states` can't style it — the definition sets
+       fill-opacity reactively (1 -> 0.6) and this transition supplies the
+       400ms ease-in-out term, matching the boundary lineY's state
+       transition. Only fires on legend hover (nothing else writes
+       fill-opacity on these paths). --- */
+.ts-chart__area path {
+  transition: fill-opacity 400ms ease-in-out;
+}
+
+/* --- Pie hover fade (C1, P6): non-hovered slices fade to alpha 0.4 via the
+       reactive per-datum `fill` channel (radialArc has no per-datum opacity);
+       this supplies bklit's 0.15s tween term. --- */
+[data-bkm-chart="pie"] .ts-chart__marks path {
+  transition: fill 0.15s ease-in-out;
+}
+
+/* --- Choropleth hover dim (C1, P6): reactive per-datum fill/stroke alpha
+       (geo marks have no `states`); bklit's 0.18s ease-out term. --- */
+[data-bkm-chart="choropleth"] .ts-chart__geo path {
+  transition: fill 0.18s ease-out, stroke 0.18s ease-out;
 }
 
 /* ---------------------------------------------------------------------- */

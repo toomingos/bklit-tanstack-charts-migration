@@ -8,17 +8,25 @@
 // When a link is hovered: same logic but link is the focus (its source/target
 // nodes are connected).
 //
-// Timing: node dim/undim carries legacy's per-index stagger wave
-// (`nodeStagger`, from buildSankeyNodeStagger) because bklit re-uses its
-// staggered enter transitions for hover opacity. Links have no delay in
-// bklit either, so they keep the flat 0.18s ease-out. Base CSS transitions
-// are injected via injectLabelCssTransitions; the inline styles here override
-// per element and are cleared on the no-hover pass.
-
-import { sankeyNodeStaggerDelays, type SankeyNodeStagger } from "./sankey-animation";
-
-const BASE_DIM_TRANSITION = "opacity 0.18s ease-out";
-const BASE_FILL_TRANSITION = "fill-opacity 0.18s ease-out";
+// C1 states+legend: this module now supplies only (a) the pure connectivity
+// math and (b) element-level hover-detection listeners. Dim/boost VALUES are
+// applied reactively as per-datum style/channel values inside
+// internal/sankey-mark.ts's render pass (rebuilt whenever hover state
+// changes) — there is no DOM-mutation "apply" step here anymore. The old
+// applySankeyHoverStyle wrote inline styles straight onto rect/label/path
+// elements (queried via `[data-ts-key^="sankey:nlabel:"]` /
+// `sankey:vlabel:"]`) and additionally carried a per-node staggered
+// transition-timing override (borrowed from the enter reveal's stagger, via
+// sankey-animation.ts's buildSankeyNodeStagger/sankeyNodeStaggerDelays) —
+// SceneStyle has no `transition` field, so that per-node stagger nuance
+// cannot be reproduced through the reactive-channel mechanism and is
+// dropped; dim/restore now animates at the flat 0.18s ease-out CSS transition
+// injectLabelCssTransitions already applies unconditionally to
+// `.ts-sankey__node rect`, `[data-ts-key="sankey:flow"] > path`, and the
+// label selectors (see that function in sankey-animation.ts). Follow-up:
+// buildSankeyNodeStagger/sankeyNodeStaggerDelays/SankeyNodeStagger in
+// sankey-animation.ts (outside this commit's file scope) are now dead
+// exports with no remaining consumer.
 
 export interface SankeyHoverResult {
   nodeConnected: boolean[];
@@ -74,99 +82,6 @@ export function computeLinkHoverConnected(
   }
 
   return { nodeConnected, linkConnected, anyHovered };
-}
-
-export function applySankeyHoverStyle(
-  svg: SVGSVGElement,
-  nodeElements: (SVGGElement | null)[],
-  linkElements: (SVGPathElement | null)[],
-  nodeCount: number,
-  linkCount: number,
-  hoverResult: SankeyHoverResult,
-  fadedNodeOpacity: number,
-  fadedLinkOpacity: number,
-  baseStrokeOpacity: number,
-  nodeStagger?: SankeyNodeStagger,
-): void {
-  const { nodeConnected, linkConnected, anyHovered } = hoverResult;
-  const nameLabelMap = new Map<number, SVGElement>();
-  const valueLabelMap = new Map<number, SVGElement>();
-  for (const el of svg.querySelectorAll<SVGElement>(`[data-ts-key^="sankey:nlabel:"]`)) {
-    const idx = Number(el.getAttribute("data-ts-key")?.split(":").pop());
-    if (!Number.isNaN(idx)) nameLabelMap.set(idx, el);
-  }
-  for (const el of svg.querySelectorAll<SVGElement>(`[data-ts-key^="sankey:vlabel:"]`)) {
-    const idx = Number(el.getAttribute("data-ts-key")?.split(":").pop());
-    if (!Number.isNaN(idx)) valueLabelMap.set(idx, el);
-  }
-
-  for (let i = 0; i < nodeCount; i++) {
-    const group = nodeElements[i];
-    if (!group) continue;
-    const rect = group.querySelector("rect") as SVGElement | null;
-    if (!rect) continue;
-
-    const nameLabel = nameLabelMap.get(i) ?? null;
-    const valueLabel = valueLabelMap.get(i) ?? null;
-
-    // Per-node staggered dim AND restore timing (legacy's motion.animate
-    // carries the staggered enter transition on every opacity retarget,
-    // including hover-out — the QA harness chains captures 30ms apart, so
-    // restore waves are in-flight during the next shot). Written on every
-    // node pass; links keep the flat 0.18s base (no delay in bklit either).
-    let rectTransition: string | null = null;
-    let nameTransition: string | null = null;
-    let valueTransition: string | null = null;
-    if (nodeStagger && nodeStagger.count > 0) {
-      const { rectMs, nameMs, valueMs } = sankeyNodeStaggerDelays(nodeStagger, i);
-      rectTransition = `opacity ${nodeStagger.durationMs}ms ${nodeStagger.easingCss} ${rectMs}ms`;
-      nameTransition = `opacity ${nodeStagger.durationMs}ms ${nodeStagger.easingCss} ${nameMs}ms`;
-      valueTransition = `fill-opacity ${nodeStagger.durationMs}ms ${nodeStagger.easingCss} ${valueMs}ms`;
-    }
-
-    // Value-label dimming writes fill-opacity (the same property carrying its
-    // resting 0.6 scene style) so it never multiplies with the reveal's
-    // opacity track — `opacity` stays neutral (1) on value labels.
-    if (anyHovered && !nodeConnected[i]) {
-      rect.style.opacity = String(fadedNodeOpacity);
-      if (nameLabel) nameLabel.style.opacity = String(fadedNodeOpacity);
-      if (valueLabel) valueLabel.style.fillOpacity = String(fadedNodeOpacity * 0.8);
-    } else {
-      rect.style.opacity = "1";
-      if (nameLabel) nameLabel.style.opacity = "1";
-      if (valueLabel) valueLabel.style.fillOpacity = "0.6";
-    }
-    if (rectTransition !== null) {
-      rect.style.transition = rectTransition;
-      if (nameLabel) nameLabel.style.transition = nameTransition!;
-      if (valueLabel) valueLabel.style.transition = valueTransition!;
-    } else {
-      rect.style.transition = "";
-      if (nameLabel) nameLabel.style.transition = "";
-      if (valueLabel) valueLabel.style.transition = "";
-    }
-  }
-
-  for (let i = 0; i < linkCount; i++) {
-    const pathEl = linkElements[i];
-    if (!pathEl) continue;
-
-    // T-D13: the native link() mark renders its base alpha as `stroke-opacity`
-    // (LinkOptions has no plain `opacity` channel). Writing `style.opacity`
-    // here would MULTIPLY with that baked attribute instead of replacing it —
-    // the emphasized link came out at 0.5*0.65 ≈ 0.33 instead of 0.65. The
-    // pre-swap custom mark set `opacity`, the same property the chrome wrote,
-    // so it replaced. Write stroke-opacity to restore replace-not-multiply.
-    // The 0.18s ease-out transition in sankey-animation.ts is keyed to the
-    // same property for the same reason — change both together or hover snaps.
-    if (anyHovered && !linkConnected[i]) {
-      pathEl.style.strokeOpacity = String(fadedLinkOpacity);
-    } else {
-      pathEl.style.strokeOpacity = anyHovered
-        ? String(Math.min(1, baseStrokeOpacity * 1.3))
-        : String(baseStrokeOpacity);
-    }
-  }
 }
 
 export type HoverEventHandlers = {

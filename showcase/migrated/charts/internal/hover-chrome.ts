@@ -128,7 +128,6 @@ export interface HoverChromeState {
   tooltip?: ChartTooltipConfig | null;
   dateLabels?: string[];
   hoveredIndex?: number;
-  legendHoveredIndex?: number | null;
   // Optional re-anchor support (D4, shared `./hover-reanchor`): when a chart
   // populates these, `HoverChrome.reanchor()` re-resolves the focused
   // point(s) from the chrome's internally tracked last pointer x whenever the
@@ -155,7 +154,6 @@ export interface FocusPoint {
 export interface HoverChrome {
   onFocusGroupChange(points: readonly FocusPoint[], barRowIndex?: number): void;
   reanchor: HoverReanchor;
-  syncDim(): void;
   detach(): void;
 }
 
@@ -274,11 +272,6 @@ export function attachHoverChrome(
     hideBoxContent(boxBuild);
     pillBuild.label.textContent = "";
     resetLabelFade(container);
-    // bklit's SeriesHoverDim is declarative — (isChartHovering || isLegendDimmed)
-    // — so a pointer-clear must not lift an active legend dim. The restore
-    // above is unconditional; re-apply the legend term (visible is false here,
-    // so syncDim writes the legend-only state).
-    if ((getState().legendHoveredIndex ?? null) !== null) syncDim();
   };
 
   const update = (points: readonly FocusPoint[], barRowIndex?: number) => {
@@ -353,7 +346,6 @@ export function attachHoverChrome(
       if (!container) return null;
       return container.querySelector(`[data-bkm-dash-tail="${dataKey}"]`);
     };
-    const legendHoveredIndex = state.legendHoveredIndex ?? null;
     const anyHighlight = !!marksGroup && state.series.some((s) => s.showHighlight);
     if (anyHighlight) {
       highlightClipRect.setAttribute("y", String(margin.top));
@@ -372,26 +364,18 @@ export function attachHoverChrome(
         highlightWidthSpring.set(bandEnd - bandStart);
       }
       highlightSvg.style.display = "";
-      state.series.forEach((series, seriesIdx) => {
+      state.series.forEach((series) => {
         const base = findSeriesPath(series.dataKey);
         const fill = findSeriesFillPath(series.dataKey);
         let highlightPath = highlightPathBySeries.get(series.dataKey);
-        const isLegendDimmed = legendHoveredIndex !== null && legendHoveredIndex !== seriesIdx;
-        const shouldDimForLegend = series.showHighlight && isLegendDimmed;
         const seriesDimOpacity = series.dimOpacity ?? dimOpacity;
-        if (!base || (!series.showHighlight && !shouldDimForLegend)) {
+        if (!base || !series.showHighlight) {
           if (highlightPath) highlightPath.style.display = "none";
           for (const path of [base, fill]) {
             if (path && dimmedPaths.has(path as SVGPathElement)) {
               (path as SVGPathElement).style.opacity = "1";
               dimmedPaths.delete(path as SVGPathElement);
             }
-          }
-          if (shouldDimForLegend && base) {
-            base.style.transition = DIM_TRANSITION;
-            base.style.opacity = seriesDimOpacity;
-            dimmedPaths.add(base);
-            if (fill) { fill.style.transition = DIM_TRANSITION; fill.style.opacity = seriesDimOpacity; dimmedPaths.add(fill); }
           }
           return;
         }
@@ -425,38 +409,6 @@ export function attachHoverChrome(
         highlightPath.setAttribute("d", base.getAttribute("d") ?? "");
         highlightPath.setAttribute("stroke", series.color || pointByMark.get(series.dataKey)?.color || "");
         highlightPath.setAttribute("stroke-width", String(series.strokeWidth));
-      });
-    } else if (legendHoveredIndex !== null) {
-      highlightSvg.style.display = "none";
-      state.series.forEach((series, seriesIdx) => {
-        const base = findSeriesPath(series.dataKey);
-        const fill = findSeriesFillPath(series.dataKey);
-        const isLegendDimmed = legendHoveredIndex !== seriesIdx;
-        const shouldDim = series.showHighlight && isLegendDimmed;
-        const seriesDimOpacity2 = series.dimOpacity ?? dimOpacity;
-        for (const path of [base, fill]) {
-          if (!path) continue;
-          const el = path as SVGPathElement;
-          if (shouldDim) {
-            el.style.transition = DIM_TRANSITION;
-            el.style.opacity = seriesDimOpacity2;
-            dimmedPaths.add(el);
-          } else if (dimmedPaths.has(el)) {
-            el.style.opacity = "1";
-            dimmedPaths.delete(el);
-          }
-        }
-        const dashTail2 = findDashTailGroup(series.dataKey);
-        if (dashTail2 instanceof SVGElement) {
-          if (shouldDim) {
-            dashTail2.style.transition = DIM_TRANSITION;
-            dashTail2.style.opacity = seriesDimOpacity2;
-            dimmedPaths.add(dashTail2 as unknown as SVGPathElement);
-          } else if (dimmedPaths.has(dashTail2 as unknown as SVGPathElement)) {
-            dashTail2.style.opacity = "1";
-            dimmedPaths.delete(dashTail2 as unknown as SVGPathElement);
-          }
-        }
       });
     } else {
       highlightSvg.style.display = "none";
@@ -500,27 +452,16 @@ export function attachHoverChrome(
         markerActiveGroupByKey.set(series.dataKey, g);
         return g;
       };
-      let anyMarkerDim = false;
-      for (let sIdx = 0; sIdx < state.series.length; sIdx++) {
-        const s = state.series[sIdx]!;
-        if (!s.marker) continue;
-        const mg = findMarkerGroup(s.dataKey);
-        if (!mg) continue;
-        const isLegendDimmed = legendHoveredIndex !== null && legendHoveredIndex !== sIdx;
-        const shouldDim = isLegendDimmed || visible;
-        if (shouldDim) {
+      if (visible) {
+        for (const s of state.series) {
+          if (!s.marker) continue;
+          const mg = findMarkerGroup(s.dataKey);
+          if (!mg) continue;
           mg.style.transition = MARKER_DIM_TRANSITION;
           mg.style.opacity = MARKER_DIM_OPACITY;
           mg.style.filter = `blur(${MARKER_DIM_BLUR_PX}px)`;
           dimmedMarkerGroups.add(mg);
-          anyMarkerDim = true;
-        } else if (dimmedMarkerGroups.has(mg)) {
-          mg.style.opacity = "1";
-          mg.style.filter = "none";
-          dimmedMarkerGroups.delete(mg);
         }
-      }
-      if (visible) {
         markerActiveSvg.style.display = "";
         for (const s of state.series) {
           if (!s.marker) continue;
@@ -533,16 +474,6 @@ export function attachHoverChrome(
           g.setAttribute("transform", `translate(${pt.x}, ${pt.y}) scale(${scale})`);
         }
       } else {
-        for (const g of markerActiveGroupByKey.values()) g.style.display = "none";
-        const legendActive = legendHoveredIndex !== null;
-        if (anyMarkerDim || !legendActive) {
-          if (!legendActive) markerActiveSvg.style.display = "none";
-        }
-        if (legendActive && !visible) {
-          for (const g of markerActiveGroupByKey.values()) g.style.display = "none";
-        }
-      }
-      if (!visible && legendHoveredIndex === null) {
         for (const g of dimmedMarkerGroups) { g.style.opacity = "1"; g.style.filter = "none"; }
         dimmedMarkerGroups.clear();
         markerActiveSvg.style.display = "none";
@@ -554,8 +485,6 @@ export function attachHoverChrome(
       const resolvedBarRowIndex = barRowIndex ?? null;
       for (let barIdx = 0; barIdx < state.bars.length; barIdx++) {
         const bar = state.bars[barIdx]!;
-        // bklit series-bar.tsx:127-137 — bar-only index space (see syncDim).
-        const isLegendDimmedForBar = legendHoveredIndex !== null && legendHoveredIndex !== barIdx;
         const escaped = bar.dataKey.replace(/"/g, '\\"');
         const group = marksGroup.querySelector<SVGGElement>(`.ts-chart__bar-y[data-ts-key="${escaped}"]`);
         if (!group) continue;
@@ -577,25 +506,16 @@ export function attachHoverChrome(
         };
         if (showing || rebuilt) {
           rects.forEach((_rect, index) => {
-            const shouldDimRow = resolvedBarRowIndex != null && index !== resolvedBarRowIndex;
-            const shouldDim = shouldDimRow || isLegendDimmedForBar;
+            const shouldDim = resolvedBarRowIndex != null && index !== resolvedBarRowIndex;
             applyOpacity(index, shouldDim ? String(bar.fadedOpacity) : "1", false);
           });
         } else if (resolvedBarRowIndex !== lastBarRowIndex) {
           rects.forEach((_rect, index) => {
-            const shouldDimRow = resolvedBarRowIndex != null && index !== resolvedBarRowIndex;
-            const shouldDim = shouldDimRow || isLegendDimmedForBar;
+            const shouldDim = resolvedBarRowIndex != null && index !== resolvedBarRowIndex;
             const prevShouldDim = lastBarRowIndex != null && index !== lastBarRowIndex;
-            const prevShouldDimWithLegend = prevShouldDim || isLegendDimmedForBar;
-            if (shouldDim !== prevShouldDimWithLegend) {
+            if (shouldDim !== prevShouldDim) {
               applyOpacity(index, shouldDim ? String(bar.fadedOpacity) : "1", true);
             }
-          });
-        } else if (isLegendDimmedForBar) {
-          rects.forEach((_rect, index) => {
-            const shouldDimRow = resolvedBarRowIndex != null && index !== resolvedBarRowIndex;
-            const shouldDim = shouldDimRow || isLegendDimmedForBar;
-            applyOpacity(index, shouldDim ? String(bar.fadedOpacity) : "1", true);
           });
         }
       }
@@ -635,92 +555,6 @@ export function attachHoverChrome(
     applyLabelFade(container, primary.x, hoveredLabel, state.tickerHalfWidth ?? TICKER_HALF_WIDTH, FADE_BUFFER);
   };
 
-  const syncDim = () => {
-    const state = getState();
-    const legendHoveredIndex = state.legendHoveredIndex ?? null;
-    const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marksGroup) return;
-    state.series.forEach((series, seriesIdx) => {
-      const escaped = series.dataKey.replace(/"/g, '\\"');
-      const group = marksGroup.querySelector<SVGGElement>(`.ts-chart__line[data-ts-key^="${escaped}:"]`);
-      const base = group?.querySelector<SVGPathElement>("path");
-      const fillGroup = marksGroup.querySelector<SVGGElement>(`.ts-chart__area[data-ts-key="${escaped}__fill"]`);
-      const fill = fillGroup?.querySelector<SVGPathElement>("path");
-      const isLegendDimmed = legendHoveredIndex !== null && legendHoveredIndex !== seriesIdx;
-      const shouldDimDueToLegend = series.showHighlight && isLegendDimmed;
-      const shouldDimDueToTooltip = visible && series.showHighlight;
-      const shouldDim = shouldDimDueToTooltip || shouldDimDueToLegend;
-      const seriesDimOpacitySync = series.dimOpacity ?? dimOpacity;
-      for (const path of [base, fill]) {
-        if (!path) continue;
-        const el = path as SVGPathElement;
-        if (shouldDim) {
-          el.style.transition = DIM_TRANSITION;
-          el.style.opacity = seriesDimOpacitySync;
-          dimmedPaths.add(el);
-        } else if (dimmedPaths.has(el)) {
-          el.style.opacity = "1";
-          dimmedPaths.delete(el);
-        }
-      }
-      const dashTailSync = container.querySelector(`[data-bkm-dash-tail="${series.dataKey}"]`);
-      if (dashTailSync instanceof SVGElement) {
-        if (shouldDim) {
-          dashTailSync.style.transition = DIM_TRANSITION;
-          dashTailSync.style.opacity = seriesDimOpacitySync;
-          dimmedPaths.add(dashTailSync as unknown as SVGPathElement);
-        } else if (dimmedPaths.has(dashTailSync as unknown as SVGPathElement)) {
-          dashTailSync.style.opacity = "1";
-          dimmedPaths.delete(dashTailSync as unknown as SVGPathElement);
-        }
-      }
-      const mgSync = marksGroup.querySelector<SVGGElement>(`.ts-chart__dot[data-ts-key="${series.dataKey}__marker"]`);
-      if (mgSync) {
-        if (!series.marker) {
-          if (dimmedMarkerGroups.has(mgSync)) { mgSync.style.opacity = "1"; mgSync.style.filter = "none"; dimmedMarkerGroups.delete(mgSync); }
-        } else {
-          const markerShouldDim = isLegendDimmed || visible;
-          if (markerShouldDim) {
-            mgSync.style.transition = MARKER_DIM_TRANSITION;
-            mgSync.style.opacity = MARKER_DIM_OPACITY;
-            mgSync.style.filter = `blur(${MARKER_DIM_BLUR_PX}px)`;
-            dimmedMarkerGroups.add(mgSync);
-          } else if (dimmedMarkerGroups.has(mgSync)) {
-            mgSync.style.opacity = "1";
-            mgSync.style.filter = "none";
-            dimmedMarkerGroups.delete(mgSync);
-          }
-        }
-      }
-    });
-    if (state.bars?.length) {
-      for (let barIdx = 0; barIdx < state.bars.length; barIdx++) {
-        const bar = state.bars[barIdx]!;
-        // bklit series-bar.tsx:127-137 — SeriesBar's seriesIndex is its
-        // index into composedBarDataKeys (BAR-ONLY document order), a
-        // separate index space from the mixed `lines` array that line/area
-        // consult. state.bars preserves that same order.
-        const isLegendDimmedForBar = legendHoveredIndex !== null && legendHoveredIndex !== barIdx;
-        const escaped = bar.dataKey.replace(/"/g, '\\"');
-        const group = marksGroup.querySelector<SVGGElement>(`.ts-chart__bar-y[data-ts-key="${escaped}"]`);
-        if (!group) continue;
-        const rects = group.querySelectorAll<SVGRectElement>("rect");
-        rects.forEach((rect, rectIdx) => {
-          const shouldDimRow = visible && lastBarRowIndex !== null && rectIdx !== lastBarRowIndex;
-          const shouldDim = shouldDimRow || isLegendDimmedForBar;
-          if (shouldDim) {
-            rect.style.transition = BAR_DIM_TRANSITION;
-            rect.style.opacity = String(bar.fadedOpacity);
-            dimmedBarRects.add(rect);
-          } else if (dimmedBarRects.has(rect)) {
-            rect.style.opacity = "1";
-            dimmedBarRects.delete(rect);
-          }
-        });
-      }
-    }
-  };
-
   // D4: re-resolve the focused point(s) from the last known pointer x and
   // re-drive the chrome — called by a chart's own effect when its render
   // data or x-scale identity changes while a hover is active. No-op unless
@@ -754,7 +588,6 @@ export function attachHoverChrome(
   return {
     onFocusGroupChange: update,
     reanchor,
-    syncDim,
     detach() {
       hide();
       highlightSvg.remove();

@@ -22,38 +22,16 @@ import {
 import type { ChartTooltipConfig } from "./types";
 import { BOX_OFFSET, TOOLTIP_SPRING } from "./design-tokens";
 
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-const DIM_OPACITY = "0.5";
-const DIM_BLUR_PX = 2;
-const DIM_TRANSITION = "opacity 0.15s ease-in-out, filter 0.15s ease-in-out";
-const ACTIVE_SCALE = 1.35;
-
+// P6/C1: the hover DIM (opacity 0.5 inactive / r×1.35 active) is now expressed
+// as native `dot()` mark `states` (see scatter-chart.tsx) instead of DOM
+// mutation here — this module keeps only the crosshair/tooltip-dot/box/
+// date-pill chrome, which C3 still owns. The former active-highlight clone
+// (`ensureActiveGroup`) and per-series dim (`setMarkersDimmed`) were deleted
+// in the same pass; `ScatterHoverChromeSeries` now carries only what the
+// remaining chrome (tooltip dot color resolution) needs.
 export interface ScatterHoverChromeSeries {
   dataKey: string;
   fill: string;
-  stroke: string;
-  strokeWidth: number;
-  ringGap: number;
-  radius: number;
-  /** Fill for the enlarged hover-highlight copy — bklit's markerStyle.fill
-      (the yGradient url when yGradient owns the marker, else `fill`). */
-  highlightFill?: string;
-  /** Stroke for the highlight copy ring — bklit's markerStyle.stroke
-      (`stroke` prop, else `highlightFill`). */
-  highlightStroke?: string;
-  /** bklit SeriesMarkers fadeOnHover (default true). */
-  fadeOnHover?: boolean;
-  /** bklit SeriesMarkers inactiveOpacity (default 0.5). */
-  inactiveOpacity?: number;
-  /** bklit SeriesMarkers inactiveBlur px (default 2). */
-  inactiveBlur?: number;
-  /** bklit series-point-marker outline circle beyond the ring (default 0). */
-  outlineWidth?: number;
-  /** Outline color; falls back to `highlightStroke ?? stroke`. */
-  outlineColor?: string;
-  /** bklit SeriesMarkers showActiveHighlight (default true). */
-  showActiveHighlight?: boolean;
 }
 
 export interface ScatterHoverChromeState {
@@ -118,83 +96,15 @@ export function attachScatterHoverChrome(
   const doc = host.ownerDocument;
   const chromeId = ++gradientCounter;
 
-  const activeHighlightSvg = doc.createElementNS(SVG_NS, "svg");
-  activeHighlightSvg.setAttribute("class", "bkm-hover-layer");
-  activeHighlightSvg.setAttribute("aria-hidden", "true");
-  activeHighlightSvg.style.display = "none";
-  const activeGroupBySeries = new Map<string, SVGGElement>();
-
   const indicator = buildIndicator(doc, chromeId, toIndicatorConfig(getState().tooltip), tooltipSpring);
   const dotLayer = buildDotLayer(doc);
   const boxBuild = buildBox(doc, toBoxConfig(getState().tooltip), tooltipSpring, false);
   const pillBuild = buildPill(doc, tooltipSpring, () => getState().dateLabels ?? []);
-  host.append(activeHighlightSvg, indicator.svg, dotLayer.svg, boxBuild.layer, pillBuild.layer);
+  host.append(indicator.svg, dotLayer.svg, boxBuild.layer, pillBuild.layer);
 
   let visible = false;
   let prevFlip: boolean | null = null;
   let boxFadeAnimation: Animation | null = null;
-
-  const setMarkersDimmed = (dimmed: boolean) => {
-    const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marksGroup) return;
-    const state = getState();
-    // bklit wraps EACH series' markers in its own SeriesMarkersDimWrapper
-    // (dimBase = fadeOnHover && tooltipData != null), so every series dims to
-    // its OWN opacity/blur while any hover is active. TanStack emits one
-    // `.ts-chart__dot[data-ts-key]` group per series — style those directly.
-    for (const series of state.series) {
-      const escaped = series.dataKey.replace(/"/g, '\\"');
-      const group = marksGroup.querySelector<SVGGElement>(
-        `.ts-chart__dot[data-ts-key="${escaped}"]`,
-      );
-      if (!group) continue;
-      if (!(series.fadeOnHover ?? true)) continue;
-      group.style.transition = DIM_TRANSITION;
-      group.style.opacity = dimmed ? String(series.inactiveOpacity ?? Number(DIM_OPACITY)) : "1";
-      group.style.filter = dimmed ? `blur(${series.inactiveBlur ?? DIM_BLUR_PX}px)` : "none";
-    }
-  };
-
-  const ensureActiveGroup = (series: ScatterHoverChromeSeries): SVGGElement => {
-    let group = activeGroupBySeries.get(series.dataKey);
-    if (group) return group;
-    // bklit SeriesMarkersActiveHighlight: showActiveHighlight=false keeps the
-    // group at scale 1 — still rendered so hover-dim + dots keep working.
-    const activeScale = (series.showActiveHighlight ?? true) ? ACTIVE_SCALE : 1;
-    group = doc.createElementNS(SVG_NS, "g") as SVGGElement;
-    // bklit MarkerCircles draw order: outline → fill disc → ring.
-    if ((series.outlineWidth ?? 0) > 0) {
-      const outlineCircle = doc.createElementNS(SVG_NS, "circle");
-      outlineCircle.setAttribute("cx", "0"); outlineCircle.setAttribute("cy", "0");
-      const ringOuter =
-        series.strokeWidth > 0
-          ? series.radius + series.ringGap + series.strokeWidth
-          : series.radius;
-      outlineCircle.setAttribute("r", String(ringOuter + (series.outlineWidth ?? 0) / 2));
-      outlineCircle.setAttribute("fill", "none");
-      outlineCircle.setAttribute("stroke", series.outlineColor ?? series.stroke);
-      outlineCircle.setAttribute("stroke-width", String(series.outlineWidth));
-      group.appendChild(outlineCircle);
-    }
-    const fillCircle = doc.createElementNS(SVG_NS, "circle");
-    fillCircle.setAttribute("cx", "0"); fillCircle.setAttribute("cy", "0");
-    fillCircle.setAttribute("r", String(series.radius));
-    fillCircle.setAttribute("fill", series.highlightFill ?? series.fill);
-    group.appendChild(fillCircle);
-    if (series.strokeWidth > 0) {
-      const ringCircle = doc.createElementNS(SVG_NS, "circle");
-      ringCircle.setAttribute("cx", "0"); ringCircle.setAttribute("cy", "0");
-      ringCircle.setAttribute("r", String(series.radius + series.ringGap + series.strokeWidth / 2));
-      ringCircle.setAttribute("fill", "none");
-      ringCircle.setAttribute("stroke", series.highlightStroke ?? series.stroke);
-      ringCircle.setAttribute("stroke-width", String(series.strokeWidth));
-      group.appendChild(ringCircle);
-    }
-    group.dataset.bkmActiveScale = String(activeScale);
-    activeHighlightSvg.appendChild(group);
-    activeGroupBySeries.set(series.dataKey, group);
-    return group;
-  };
 
   const hide = () => {
     if (!visible) return;
@@ -204,7 +114,6 @@ export function attachScatterHoverChrome(
     dotLayer.svg.style.display = "none";
     boxBuild.layer.style.display = "none";
     pillBuild.layer.style.display = "none";
-    activeHighlightSvg.style.display = "none";
     indicator.xSpring.stop();
     indicator.lineXSpring?.stop();
     boxBuild.leftSpring?.stop(); boxBuild.topSpring?.stop();
@@ -212,8 +121,6 @@ export function attachScatterHoverChrome(
     boxBuild.entranceSpring.stop();
     boxFadeAnimation?.cancel(); boxFadeAnimation = null;
     for (const { x, y } of dotLayer.springs.values()) { x.stop(); y.stop(); }
-    setMarkersDimmed(false);
-    for (const group of activeGroupBySeries.values()) group.style.display = "none";
     hideBoxContent(boxBuild);
     pillBuild.label.textContent = "";
     resetLabelFade(container);
@@ -268,15 +175,9 @@ export function attachScatterHoverChrome(
       }
     }
 
-    setMarkersDimmed(true);
-    activeHighlightSvg.style.display = "";
-    for (const series of state.series) {
-      const point = pointByMark.get(series.dataKey);
-      const group = ensureActiveGroup(series);
-      if (!point) { group.style.display = "none"; continue; }
-      group.style.display = "";
-      group.setAttribute("transform", `translate(${point.x}, ${point.y}) scale(${group.dataset.bkmActiveScale ?? "1.35"})`);
-    }
+    // P6/C1: the inactive-dim + active r×1.35 pop are now native `dot()` mark
+    // `states` on the marks layer itself (scatter-chart.tsx) — no DOM
+    // mutation happens here anymore.
 
     {
       const tooltip = state.tooltip ?? null;
@@ -315,14 +216,12 @@ export function attachScatterHoverChrome(
     onFocusGroupChange: update,
     detach() {
       hide();
-      activeHighlightSvg.remove();
       indicator.svg.remove();
       dotLayer.svg.remove();
       boxBuild.layer.remove();
       pillBuild.layer.remove();
       dotLayer.byKey.clear(); dotLayer.springs.clear();
       boxBuild.rowByKey.clear();
-      activeGroupBySeries.clear();
       pillBuild.ticker?.detach();
       boxBuild.customRoot.current?.unmount();
       boxBuild.childrenRoot.current?.unmount();

@@ -9,7 +9,7 @@ import type { ScaleTime } from "d3-scale";
 import { curveNatural } from "d3-shape";
 import { Chart } from "@tanstack/react-charts";
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
-import type { ChartMark, ChartScale } from "@tanstack/charts";
+import type { ChartMark, ChartRenderContext, ChartScale } from "@tanstack/charts";
 import {
   decimateTimeSeries,
   maxRenderPointsForWidth,
@@ -19,6 +19,7 @@ import {
   useHoverChrome,
   type HoverChromeFocusPoint,
 } from "./internal/use-hover-chrome";
+import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import {
@@ -242,6 +243,14 @@ export function LineChart({
   const [plTooltipSignIndex, setPlTooltipSignIndex] = React.useState<number | null>(null);
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const prefersReducedMotion = usePrefersReducedMotion();
+  // C1 (P6): legend hover -> native mark states via programmatic focus
+  // injection (replaces the old hover-chrome DOM-mutation dim path).
+  const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection();
+  React.useEffect(() => {
+    const seriesKey = legendHoveredIndex != null ? (lines[legendHoveredIndex]?.dataKey ?? null) : null;
+    if (seriesKey != null) focusSeries(seriesKey);
+    else clearFocus();
+  }, [legendHoveredIndex, lines, focusSeries, clearFocus]);
 
   const innerWidth = Math.max(0, width - margin.left - margin.right);
   const renderData = React.useMemo(() => {
@@ -416,6 +425,16 @@ export function LineChart({
           stroke: hasDashTail ? "transparent" : line.stroke,
           strokeOpacity: hasDashTail ? 0 : undefined,
           strokeWidth: line.strokeWidth ?? 2.5,
+          // C1 (P6): legend-hover series dim — bklit SeriesHoverDim's
+          // legend term (line.tsx dims to 0.3, 400ms ease-in-out). Programmatic-
+          // source-only so pointer hover never triggers this (legend-driven).
+          states: [
+            {
+              when: whenSeriesDimmed(),
+              style: { opacity: 0.3 },
+              transition: { type: "tween", duration: 400, easing: "ease-in-out" },
+            },
+          ],
         });
       });
       // SeriesMarkers grid — dot marks ABOVE the line stroke (bklit line.tsx:317-401 z-order: hover-dim stroke -> markers -> highlight band). Null y values produce no dot (bklit series-markers.tsx:107-120).
@@ -615,10 +634,11 @@ export function LineChart({
   // Hover chrome (bklit ChartTooltip): imperative overlays driven by
   // TanStack's focus callbacks — no React work per pointer move. The state
   // ref keeps the chrome reading current geometry without re-attaching.
-  // Wiring (refs, pill labels, attach/reanchor/syncDim effects, xDomain
-  // focus-clamp) is shared with area-chart.tsx via ./internal/use-hover-chrome
-  // — only chromeStateRef.current's series shape and this profit/loss sign
-  // flip are Line-specific.
+  // Wiring (refs, pill labels, attach/reanchor effects, xDomain focus-clamp)
+  // is shared with area-chart.tsx via ./internal/use-hover-chrome — only
+  // chromeStateRef.current's series shape and this profit/loss sign flip are
+  // Line-specific. Legend-hover series dim is native mark `states` +
+  // `useFocusInjection` (phase 6, C1), wired directly below.
   const tooltipEnabled = tooltip?.enabled ?? false;
   const xForIndex = React.useCallback(
     (index: number) => {
@@ -661,7 +681,6 @@ export function LineChart({
     chartPhase,
     isLoaded,
     xDomain,
-    legendHoveredIndex,
     tooltipEnabled,
     width,
     onFocusPoints: handleProfitLossFocus,
@@ -698,7 +717,6 @@ export function LineChart({
     tickerHalfWidth: xAxis?.tickerHalfWidth,
     tooltip: tooltip ?? null,
     dateLabels: dateLabelsForPill,
-    legendHoveredIndex,
     // D4: shared re-anchor support (./internal/hover-reanchor via
     // hover-chrome.ts's `reanchor()`) — replaces this file's former bespoke
     // bisect-and-rebuild-points effect below with the one shared
@@ -741,7 +759,13 @@ export function LineChart({
   // signature+animationDuration into `revealEpoch`, so one epoch ref is the
   // whole key — it re-opens a reveal window the DOM flag has closed.
   const revealedEpochRef = React.useRef<number | null>(null);
-  const handleRender = React.useCallback(() => {
+  const handleRender = React.useCallback((context: ChartRenderContext<ChartDatum, Date, number>) => {
+    // Cast: `useFocusInjection`'s `captureRenderContext` is typed against the
+    // library's generic (unknown-typed) `ChartRenderContext`, which — because
+    // `interaction.setControlledFocus` is checked contravariantly under
+    // strictFunctionTypes — is not structurally assignable from our
+    // concretely-typed context. Both denote the same live object at runtime.
+    captureRenderContext(context as unknown as Pick<ChartRenderContext, "scene" | "interaction">);
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marks) return;
     const epochUnseen = revealedEpochRef.current !== revealEpoch;
@@ -816,7 +840,7 @@ export function LineChart({
     } else {
       doMarkerReveal();
     }
-  }, [animationDuration, animationEasing, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, markerSeriesConfigs, width, margin.left, margin.right, prefersReducedMotion]);
+  }, [animationDuration, animationEasing, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, markerSeriesConfigs, width, margin.left, margin.right, prefersReducedMotion, captureRenderContext]);
 
   React.useEffect(() => {
     if (chartPhase !== "revealing") return;

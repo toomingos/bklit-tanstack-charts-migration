@@ -1,11 +1,14 @@
 import { createMark } from "@tanstack/charts";
-import type { ChartMark, SceneNode } from "@tanstack/charts";
+import type { ChartMark, ChartMarkState, ChartPoint, SceneNode } from "@tanstack/charts";
 import { bandWidthForSquares, computeSquareColumn } from "./bar-squares-layout";
 import type { ChartDatum } from "./types";
 
 export interface BarColumnTrackMarkOptions {
   id: string;
   data: ChartDatum[];
+  /** Native mark-state definitions (hover dim etc.), passed through to the
+      initialized mark unchanged. */
+  states?: readonly ChartMarkState<ChartDatum>[];
   seriesIndex: number;
   seriesCount: number;
   groupGap: number;
@@ -38,6 +41,7 @@ export function barColumnTrackMark(
     squareGap,
     squareRadius,
     squareFit,
+    states,
   } = options;
 
   const squareSize = bandWidthForSquares(bandWidth, seriesCount, groupGap);
@@ -50,6 +54,7 @@ export function barColumnTrackMark(
 
     return {
       id,
+      states: states?.length ? { data, definitions: states } : undefined,
       channels: {
         x: { scale: "x", values: xValues },
         y: {
@@ -60,11 +65,13 @@ export function barColumnTrackMark(
       },
       render: ({ scales, chart }) => {
         const nodes: SceneNode[] = [];
+        const points: ChartPoint<ChartDatum, string, number>[] = [];
         const baseline = scales.y.map(0);
         const yScale = scales.y;
         const topY = chart.y;
 
         for (let i = 0; i < data.length; i++) {
+          const datum = data[i]!;
           const xValue = xValues[i]!;
           const yValue = yValues[i];
           if (typeof yValue !== "number" || !Number.isFinite(yValue) || yValue <= 0) continue;
@@ -93,6 +100,19 @@ export function barColumnTrackMark(
             radius: rx || undefined,
             style: { fill, opacity },
           });
+          points.push({
+            key,
+            markId: id,
+            group: id,
+            groupLabel: id,
+            datum,
+            datumIndex: i,
+            xValue,
+            yValue,
+            x: x + squareSize / 2,
+            y: topY,
+            color: fill,
+          });
         }
 
         return {
@@ -105,6 +125,7 @@ export function barColumnTrackMark(
               children: nodes,
             },
           ],
+          points,
         };
       },
     };
