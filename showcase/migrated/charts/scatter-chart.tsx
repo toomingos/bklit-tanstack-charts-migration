@@ -23,6 +23,7 @@ import { Chart, type ChartTooltipBodyRenderContext } from "@tanstack/react-chart
 import { crosshair, defineChart, dot, whenFocused } from "@tanstack/charts";
 import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
 import type {
+  ChartAxisTickLabelContext,
   ChartDotStateStyle,
   ChartMark,
   ChartMarkState,
@@ -35,7 +36,8 @@ import type {
 } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import { ChartSelectionContext, useChartSelection } from "./internal/chart-selection";
-import { buildPill, applyLabelFade, resetLabelFade } from "./internal/date-pill";
+import { buildPill } from "./internal/date-pill";
+import { buildXAxisTickValues, tickLabelFadeOpacity } from "./internal/axis-ticks";
 import { resolveVerticalFadeSides, indicatorFadeGradientStops } from "./internal/fade-mask";
 import {
   toDotConfig,
@@ -47,7 +49,6 @@ import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import { useChartConfig, type SpringConfig } from "./internal/chart-config-context";
-import { XAxisOverlay } from "./internal/x-axis-overlay";
 import { TooltipContent } from "./internal/tooltip-components";
 import type { ChartDatum, ChartPhase, ChartTooltipConfig, ChartTooltipPoint, TooltipRow } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
@@ -427,18 +428,25 @@ interface ScatterPillChrome {
 // C3: the date-pill + axis-label-fade half of the deleted
 // `attachScatterHoverChrome` (scatter-hover-chrome.ts), ported verbatim —
 // same `visible`/`showing` jump-vs-set gating, same `discrete` threshold
-// read, same `container = host.closest('[data-bkm-chart]') ?? host` lookup
-// for the label-fade DOM query. Only the indicator/dot branches are gone
-// (now native marks); the pill/label-fade primitives themselves come from
-// the read-only, already-extracted `./internal/date-pill` module (its own
-// header notes it holds the byte-identical twins of what used to live in the
-// now-deleted tooltip-chrome.ts).
+// read. Only the indicator/dot branches are gone (now native marks); the
+// pill primitive itself comes from the read-only, already-extracted
+// `./internal/date-pill` module (its own header notes it holds the
+// byte-identical twin of what used to live in the now-deleted
+// tooltip-chrome.ts). C4: the label-fade DOM-span query that used to live
+// here (`container.querySelectorAll('[data-bkm-xlabel]')`) is gone — fade
+// state is reported to the caller via `onLabelFadeChange` and consumed by a
+// native `tickLabels.opacity` callback in the `definition` memo instead.
 function attachScatterPillChrome(
   host: HTMLElement,
   getState: () => ScatterPillChromeState,
   tooltipSpring: SpringConfig,
+  // C4: axis-label proximity fade moved from `date-pill.ts`'s imperative
+  // `applyLabelFade`/`resetLabelFade` DOM-span mutators to React state read
+  // by a native `tickLabels.opacity` callback in the `definition` memo — this
+  // imperative attach function has no React state of its own, so it reports
+  // fade changes upward through this callback instead.
+  onLabelFadeChange: (fade: { primaryX: number; hoveredLabel: string | null } | null) => void,
 ): ScatterPillChrome {
-  const container = (host.closest("[data-bkm-chart]") as HTMLElement) ?? host;
   const doc = host.ownerDocument;
   const pillBuild = buildPill(doc, tooltipSpring, () => getState().dateLabels ?? []);
   host.append(pillBuild.layer);
@@ -451,7 +459,7 @@ function attachScatterPillChrome(
     pillBuild.layer.style.display = "none";
     pillBuild.spring.stop();
     pillBuild.label.textContent = "";
-    resetLabelFade(container);
+    onLabelFadeChange(null);
   };
 
   const update = (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
@@ -481,7 +489,7 @@ function attachScatterPillChrome(
     }
 
     const hoveredLabel = isDate ? shortDateFmt.format(date as Date) : null;
-    applyLabelFade(container, primary.x, hoveredLabel, state.tickerHalfWidth ?? TICKER_HALF_WIDTH, FADE_BUFFER);
+    onLabelFadeChange({ primaryX: primary.x, hoveredLabel });
   };
 
   return {
@@ -808,7 +816,34 @@ export function ScatterChart({
         const insetLo = lo + xRangePadding;
         const insetHi = Math.max(insetLo, hi - xRangePadding);
         const scale = scaleUtc().domain([minTime, maxTime]).range([insetLo, insetHi]);
-        const ticks = scale.ticks(context.tickCount ?? 5);
+        // C4: when `xAxis` is configured, tick CHOICE comes from the same
+        // pure algorithm the deleted `XAxisOverlay` used (`buildXAxisTickValues`
+        // — data-aligned selection / domain-interpolated / brushed-tail
+        // modes); positions are mapped through THIS resolver's own inset
+        // scale, which spans the identical range the overlay used to
+        // interpolate over (`insetLo`/`insetHi` above === the overlay's own
+        // `margin.left + xRangePadding` .. `width - margin.right -
+        // xRangePadding`). No `xAxis` (labels off): keep the prior plain
+        // `scale.ticks()` emission verbatim.
+        const ticks = xAxis
+          ? buildXAxisTickValues({
+              data: renderData,
+              xDataKey,
+              rangeStart: insetLo,
+              rangeEnd: insetHi,
+              numTicks: xAxis.numTicks ?? 5,
+              formatValue: xAxis.formatValue,
+              tickMode: xAxis.tickMode,
+            }).map(({ value, label }) => ({
+              value,
+              position: scale(value) ?? Number.NaN,
+              label,
+            }))
+          : scale.ticks(context.tickCount ?? 5).map((value) => ({
+              value,
+              position: scale(value) ?? Number.NaN,
+              label: value.toISOString(),
+            }));
         return {
           id: context.id,
           type: "time",
@@ -817,16 +852,12 @@ export function ScatterChart({
             const mapped = scale(value as Date);
             return mapped === undefined ? Number.NaN : mapped;
           },
-          ticks: ticks.map((value) => ({
-            value,
-            position: scale(value) ?? Number.NaN,
-            label: value.toISOString(),
-          })),
+          ticks,
           bandwidth: 0,
         };
       },
     };
-  }, [timeExtentScatter, xRangePadding]);
+  }, [timeExtentScatter, xRangePadding, renderData, xDataKey, xAxis]);
 
   // Single-mark-per-series redesign (docs/LOG.md D14 revision): bklit's
   // fill-disc + gap + ring marker is reproduced as ONE `dot()` mark per
@@ -936,6 +967,13 @@ export function ScatterChart({
   // spring and the extracted <ChartTooltip> config — can be assembled inside
   // the same memo that builds marks/scales/focus.
   const chartConfig = useChartConfig();
+
+  // C4: replaces `applyLabelFade`/`resetLabelFade` DOM-span mutation — read
+  // inside `definition`'s native `tickLabels.opacity` callback below.
+  const [labelFade, setLabelFade] = React.useState<{
+    primaryX: number;
+    hoveredLabel: string | null;
+  } | null>(null);
 
   const definition = React.useMemo(() => {
     if (width <= 0) return null;
@@ -1082,12 +1120,36 @@ export function ScatterChart({
         x: {
           scale: xScale,
           grid: gridGuide.vertical,
-          axis: { ticks: { count: gridGuide.columnTicks } },
+          axis: {
+            line: false,
+            ticks: { count: gridGuide.columnTicks, size: 0, padding: 0 },
+            tickLabels: xAxis
+              ? {
+                  fontSize: 12,
+                  thin: false,
+                  dy: margin.bottom - 25,
+                  opacity: labelFade
+                    ? (ctx: ChartAxisTickLabelContext) =>
+                        tickLabelFadeOpacity(
+                          ctx.position,
+                          (xAxis.formatValue ?? shortDateFmt.format)(ctx.value as Date),
+                          labelFade.primaryX,
+                          labelFade.hoveredLabel,
+                          xAxis.tickerHalfWidth ?? TICKER_HALF_WIDTH,
+                          FADE_BUFFER,
+                        )
+                    : 1,
+                }
+              : false,
+          },
         },
         y: {
           scale: yScale,
           grid: gridGuide.horizontal,
-          axis: { ticks: { count: gridGuide.ticks } },
+          // Scatter never had y-axis labels (no `YAxisOverlay` counterpart
+          // existed pre-C4) — labels stay off, only the tick-driven grid
+          // line count is native-configured.
+          axis: { line: false, ticks: { count: gridGuide.ticks, size: 0 }, tickLabels: false },
         },
       },
       margin,
@@ -1099,7 +1161,7 @@ export function ScatterChart({
       // 6-entry defaultChartTheme.palette — see internal/design-tokens.ts.
       // Every series already carries an explicit `fill` (resolved from
       // DEFAULT_SCATTER_COLORS above), so this has no pixel effect today.
-      theme: { palette: CHART_CATEGORY_PALETTE },
+      theme: { palette: CHART_CATEGORY_PALETTE, muted: "var(--color-chart-label, var(--chart-label))" },
     } as const;
     const base = defineChart(spec);
     const withFocus = defineChart(base, {
@@ -1140,7 +1202,7 @@ export function ScatterChart({
       },
     }) as StaticChartDefinition<ChartDatum, Date, number, "dom">;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy, projectorFor, tooltip, chartConfig.tooltipBoxSpring, chartConfig.tooltipSpring, crosshairGradientId]);
+  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy, projectorFor, tooltip, chartConfig.tooltipBoxSpring, chartConfig.tooltipSpring, crosshairGradientId, xAxis, labelFade]);
 
   // C3: what remains app-owned after the crosshair/tooltip-dot geometry
   // moved to native marks (in the `definition` useMemo above) — just the
@@ -1165,16 +1227,35 @@ export function ScatterChart({
   const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
   const hasDefinition = width > 0;
 
+  // C4: guarded so `attachScatterPillChrome`'s per-pointer-move `update()`
+  // doesn't force a `labelFade`-consuming `definition` rebuild on every
+  // frame when the fade state hasn't actually changed.
+  const handleLabelFadeChange = React.useCallback(
+    (fade: { primaryX: number; hoveredLabel: string | null } | null) => {
+      setLabelFade((prev) => {
+        if (fade === null) return prev === null ? prev : null;
+        if (prev && prev.primaryX === fade.primaryX && prev.hoveredLabel === fade.hoveredLabel) return prev;
+        return fade;
+      });
+    },
+    [],
+  );
+
   React.useLayoutEffect(() => {
     const el = overlayHostRef.current;
     if (!el || !tooltipEnabled) return;
-    const chrome = attachScatterPillChrome(el, () => pillChromeStateRef.current!, chartConfig.tooltipSpring);
+    const chrome = attachScatterPillChrome(
+      el,
+      () => pillChromeStateRef.current!,
+      chartConfig.tooltipSpring,
+      handleLabelFadeChange,
+    );
     pillChromeRef.current = chrome;
     return () => {
       pillChromeRef.current = null;
       chrome.detach();
     };
-  }, [tooltipEnabled, hasDefinition, chartConfig]);
+  }, [tooltipEnabled, hasDefinition, chartConfig, handleLabelFadeChange]);
 
   // C1/C3: TanStack-native hover via ChartFocusStrategy drives the pill
   // chrome directly with raw ChartPoints — the crosshair/tooltip-dot chrome
@@ -1604,17 +1685,6 @@ export function ScatterChart({
                 ) : null}
               </defs>
             </svg>
-          ) : null}
-          {xAxis ? (
-            <XAxisOverlay
-              data={renderData}
-              xDataKey={xDataKey}
-              rangeStart={margin.left + xRangePadding}
-              rangeEnd={width - margin.right - xRangePadding}
-              numTicks={xAxis.numTicks ?? 5}
-              formatValue={xAxis.formatValue}
-              tickMode={xAxis.tickMode}
-            />
           ) : null}
           {heightPxScatter > 0 && (
             <ReferenceAreaLayers

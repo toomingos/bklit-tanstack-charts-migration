@@ -250,22 +250,13 @@
   100% { transform: scaleY(1); }
 }
 
-/* --- Axes: bklit renders x labels as an HTML overlay (XAxisOverlay) and no
-       y labels in the demo path — suppress TanStack's SVG axes entirely.
-       P3.3/T-D2: this rule is NOT fully redundant like the focus-ring one
-       above. The native replacement (`axis: false` per scale) only applies
-       cleanly to live-line-chart.tsx (swapped — it configures no `grid`).
-       The six cartesian charts (area/bar/candlestick/composed/line/scatter)
-       configure `axis: { ticks: { count: gridGuide.* } }` specifically to
-       drive `internal/grid.ts`'s grid-line tick count (P3-05); charts-core's
-       `configured-scale.ts:44` resolves the SAME scale.ticks() the grid
-       marks consume from `options.axis.ticks`, so `axis: false` there would
-       fall back to the scale's own default tick count and silently diverge
-       from the already-fixed grid-guide tick alignment — verified via
-       source read, not applied. This rule stays for those six. --- */
-[data-bkm-chart] .ts-chart__axes {
-  display: none;
-}
+/* --- Axes (C4): the blanket `[data-bkm-chart] .ts-chart__axes
+       { display: none }` suppression that lived here since P3.3/T-D2 is
+       REMOVED — axis tick labels are native now. The six cartesian charts
+       configure `line: false` + zero-size ticks + explicit `tickLabels`
+       presentation per scale; every other chart suppresses axes
+       structurally (`guides: false` / per-scale `guide: false` /
+       live-line's `axis: false`), audited at C4 consolidation. --- */
 
 /* P3.3/T-D2: the CSS focus-ring suppression rule that lived here
    ([data-bkm-chart] [data-ts-chart-focus] { display: none }) is now
@@ -1152,4 +1143,19 @@
    marks, so this selector cannot collide with any other chart's dot marks. */
 .ts-chart__dot[data-ts-key$="__marker"] circle {
   transition: opacity 0.15s ease-in-out, r 0.15s ease-in-out;
+}
+
+/* ── C4 (phase 6): native axis tick labels ──────────────────────────────
+   The HTML axis overlays are deleted; the six cartesian charts render tick
+   labels through TanStack's `.ts-chart__axes` group with `tickLabels`
+   presentation. Sanctioned `ts-chart__*` surface (D418), same pattern as
+   the hover-dim rules above. */
+
+/* Legacy XAxisLabel/YAxisLabel span carried
+   `transition: opacity 0.4s ease-in-out` — the proximity fade near the date
+   pill and any tick-set opacity change tween through it. Native labels are
+   stable-keyed per tick value (scene.js `-tick-label:` keys), so the SVG
+   nodes persist across definition rebuilds and CSS transitions apply. */
+[data-bkm-chart] .ts-chart__axes text {
+  transition: opacity 0.4s ease-in-out;
 }

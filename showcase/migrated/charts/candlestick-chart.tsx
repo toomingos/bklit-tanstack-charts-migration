@@ -36,11 +36,12 @@ import { Chart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { crosshair, defineChart, createMark, whenFocused } from "@tanstack/charts";
 import { tooltip as tooltipExtension } from "@tanstack/charts/tooltip";
-import type { ChartMark, ChartMarkState, ChartMotionDefinition, ChartPoint, ChartRenderContext, ChartScale, SceneNode } from "@tanstack/charts";
+import type { ChartAxisTickLabelContext, ChartMark, ChartMarkState, ChartMotionDefinition, ChartPoint, ChartRenderContext, ChartScale, SceneNode } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import { TooltipContent } from "./internal/tooltip-components";
 import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH, TOOLTIP_BOX_SPRING } from "./internal/design-tokens";
-import { applyLabelFade, buildPill, resetLabelFade, type PillBuild } from "./internal/date-pill";
+import { buildPill, type PillBuild } from "./internal/date-pill";
+import { buildXAxisTickValues, formatYAxisTick, tickLabelFadeOpacity } from "./internal/axis-ticks";
 import { resolveVerticalFadeSides, indicatorFadeGradientStops } from "./internal/fade-mask";
 import { resolveIndicatorPixelWidth, toDotConfig, toIndicatorConfig, type DotConfig } from "./internal/tooltip-mappers";
 import { sampleSpringKeyframes } from "./internal/candle-spring";
@@ -67,8 +68,6 @@ import { useChartConfig } from "./internal/chart-config-context";
 import type { SpringConfig } from "./internal/chart-config-context";
 import { renderPatternPreset } from "./internal/pattern-preset";
 import type { PatternPresetId } from "./internal/pattern-preset";
-import { XAxisOverlay } from "./internal/x-axis-overlay";
-import { YAxisOverlay } from "./internal/y-axis-overlay";
 import { resolveYAxisTickCount } from "./internal/y-axis-ticks";
 import type { ChartDatum, ChartTooltipConfig, ChartTooltipPoint, TooltipRow } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
@@ -618,7 +617,34 @@ export function CandlestickChart({
         const insetLo = lo + padding;
         const insetHi = Math.max(insetLo, hi - padding);
         const scale = scaleUtc().domain([minTime, maxTime]).range([insetLo, insetHi]);
-        const ticks = scale.ticks(context.tickCount ?? 5);
+        // C4: when `xAxis` is configured, tick CHOICE comes from the same
+        // pure algorithm the deleted `XAxisOverlay` used (`buildXAxisTickValues`
+        // — data-aligned selection / domain-interpolated / brushed-tail
+        // modes); positions are mapped through THIS resolver's own inset
+        // scale, which spans the identical range the overlay used to
+        // interpolate over (`insetLo`/`insetHi` above === the overlay's
+        // `margin.left + slotWidth/2` .. `width - margin.right - slotWidth/2`).
+        // No `xAxis` (labels off): keep the prior plain `scale.ticks()`
+        // emission verbatim.
+        const ticks = xAxis
+          ? buildXAxisTickValues({
+              data: renderData,
+              xDataKey,
+              rangeStart: insetLo,
+              rangeEnd: insetHi,
+              numTicks: xAxis.numTicks ?? 5,
+              formatValue: xAxis.formatValue,
+              tickMode: xAxis.tickMode,
+            }).map(({ value, label }) => ({
+              value,
+              position: scale(value) ?? Number.NaN,
+              label,
+            }))
+          : scale.ticks(context.tickCount ?? 5).map((value) => ({
+              value,
+              position: scale(value) ?? Number.NaN,
+              label: value.toISOString(),
+            }));
         return {
           id: context.id,
           type: "time",
@@ -627,16 +653,12 @@ export function CandlestickChart({
             const mapped = scale(value as Date);
             return mapped === undefined ? Number.NaN : mapped;
           },
-          ticks: ticks.map((value) => ({
-            value,
-            position: scale(value) ?? Number.NaN,
-            label: value.toISOString(),
-          })),
+          ticks,
           bandwidth: 0,
         };
       },
     };
-  }, [renderData.length, timeExtent]);
+  }, [renderData, xDataKey, timeExtent, xAxis]);
 
   const candlestickFocusStrategy = React.useMemo(
     () => createCandlestickFocusStrategy({ canInteractRef }),
@@ -652,6 +674,14 @@ export function CandlestickChart({
   // below reuses the same id).
   const chartConfig = useChartConfig();
   const indicatorGradientId = useSanitizedId();
+
+  // C4: axis-label proximity fade, formerly `date-pill.ts`'s imperative
+  // `applyLabelFade`/`resetLabelFade` DOM-span mutators. `hidePill`/
+  // `handleFocusGroupChange` set/clear this; the `definition` memo below
+  // reads it in a native `tickLabels.opacity` per-tick callback
+  // (`tickLabelFadeOpacity`). A per-focus-step `definition` rebuild is
+  // accepted (research decision, not throttled).
+  const [labelFade, setLabelFade] = React.useState<{ primaryX: number; hoveredLabel: string | null } | null>(null);
 
   const definition = React.useMemo(() => {
     if (width <= 0) return null;
@@ -670,7 +700,14 @@ export function CandlestickChart({
           .domain(yDomain)
           .nice()
           .range(context.range as [number, number]);
-        const tickValues = scale.ticks(context.tickCount ?? grid?.numTicks ?? 5);
+        // C4: when `yAxis` is configured, tick VALUES + labels are the same
+        // single source the deleted `YAxisOverlay` used (`resolveYAxisTickCount`
+        // clamp, `formatYAxisTick` formatting) rather than the plain grid-line
+        // count. DEVIATION: horizontal grid lines now follow the label ticks
+        // in that case (previously always count-driven) — identical output
+        // for default configs since both start from the same niced domain.
+        const tickCount = yAxis ? resolveYAxisTickCount(yAxis.numTicks) : (context.tickCount ?? grid?.numTicks ?? 5);
+        const tickValues = scale.ticks(tickCount);
         return {
           id: context.id,
           type: "linear",
@@ -682,7 +719,7 @@ export function CandlestickChart({
           ticks: tickValues.map((value) => ({
             value,
             position: scale(value) ?? Number.NaN,
-            label: String(value),
+            label: yAxis ? formatYAxisTick(value, yAxis.formatValue, yAxis.formatLargeNumbers ?? true) : String(value),
           })),
           bandwidth: 0,
         };
@@ -975,15 +1012,41 @@ export function CandlestickChart({
         x: {
           scale: xScale,
           grid: gridGuide.vertical,
-          axis: { ticks: { count: gridGuide.columnTicks } },
+          axis: {
+            line: false,
+            ticks: { count: gridGuide.columnTicks, size: 0, padding: 0 },
+            tickLabels: xAxis
+              ? {
+                  fontSize: 12,
+                  thin: false,
+                  dy: margin.bottom - 25,
+                  opacity: labelFade
+                    ? (ctx: ChartAxisTickLabelContext) =>
+                        tickLabelFadeOpacity(
+                          ctx.position,
+                          (xAxis.formatValue ?? shortDateFmt.format)(ctx.value as Date),
+                          labelFade.primaryX,
+                          labelFade.hoveredLabel,
+                          xAxis.tickerHalfWidth ?? TICKER_HALF_WIDTH,
+                          FADE_BUFFER,
+                        )
+                    : 1,
+                }
+              : false,
+          },
         },
         y: {
           scale: yScale,
           grid: gridGuide.horizontal,
-          axis: { ticks: { count: gridGuide.ticks } },
+          axis: {
+            line: false,
+            ticks: { count: gridGuide.ticks, size: 0, padding: 0 },
+            tickLabels: yAxis ? { fontSize: 12, thin: false, opacity: 1, dx: -8 } : false,
+          },
         },
       },
       margin,
+      theme: { muted: "var(--color-chart-label, var(--chart-label))" },
       focus: candlestickFocusStrategy,
       focusRing: false,
       maxFocusDistance: Number.POSITIVE_INFINITY,
@@ -1012,31 +1075,10 @@ export function CandlestickChart({
     tooltip,
     chartConfig,
     indicatorGradientId,
+    xAxis,
+    yAxis,
+    labelFade,
   ]);
-
-  // Y-axis ticks — recomputed LOCALLY (not read from `yScaleD3Ref` post-hoc,
-  // which would only be populated after Chart's own commit/effect phase) via
-  // an "independently exact" duplicate scale (bar-chart.tsx precedent):
-  // reproduces the exact same domain/`.nice()`/range formula the y
-  // `ChartScale.resolve()` above uses, so the two can never disagree, without
-  // needing an extra post-render state update on every render (data ticks
-  // included).
-  const heightPx = React.useMemo(() => {
-    const ratio = parseAspectRatio(aspectRatio);
-    return ratio > 0 ? width / ratio : 0;
-  }, [width, aspectRatio]);
-
-  const yAxisTicks = React.useMemo(() => {
-    if (heightPx <= 0 || !yAxis) return [];
-    const scale = scaleLinear()
-      .domain(yDomain)
-      .nice()
-      .range([heightPx - margin.bottom, margin.top]);
-    // bklit y-axis-ticks.ts resolveYAxisTickCount clamp — single source in
-    // internal/y-axis-ticks.ts (was an inline copy here).
-    const clamped = resolveYAxisTickCount(yAxis.numTicks);
-    return scale.ticks(clamped).map((value) => ({ value, y: scale(value) ?? 0 }));
-  }, [heightPx, margin.top, margin.bottom, yDomain, yAxis]);
 
   // Reveal re-arm: bklit's own reveal effect deps are EXACTLY
   // `[animationDuration, revealSignature]` — NOT `data` — verified directly
@@ -1190,7 +1232,7 @@ export function CandlestickChart({
       pillBuild.spring.stop();
       pillBuild.label.textContent = "";
     }
-    if (containerRef.current) resetLabelFade(containerRef.current);
+    setLabelFade((prev) => (prev === null ? prev : null));
   }, []);
 
   // C3: shrunk to date-pill + axis-label-fade only (crosshair/dot/highlight
@@ -1227,11 +1269,19 @@ export function CandlestickChart({
         }
       }
 
-      const container = containerRef.current;
-      if (container) {
-        const hoveredLabel = shortDateFmt.format(date);
-        applyLabelFade(container, centerX, hoveredLabel, xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH, FADE_BUFFER);
-      }
+      // C4: hoveredLabel must use the SAME formatter the axis ticks render
+      // with — `xAxis.formatValue ?? shortDateFmt.format` — not always
+      // `shortDateFmt`, so the fade's "hide the label under the pointer"
+      // text match actually lands on custom `formatValue` configs (this
+      // mismatch existed in the deleted DOM version too; fixed here since
+      // the native `tickLabels.opacity` callback needs one true label per
+      // tick to compare against).
+      const hoveredLabel = (xAxis?.formatValue ?? shortDateFmt.format)(date);
+      setLabelFade((prev) =>
+        prev && prev.primaryX === centerX && prev.hoveredLabel === hoveredLabel
+          ? prev
+          : { primaryX: centerX, hoveredLabel },
+      );
     },
     [hidePill, renderData.length, tooltipEnabled, tooltip, xAxis],
   );
@@ -1575,25 +1625,6 @@ export function CandlestickChart({
             onRender={handleRender}
             renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
           />
-          {xAxis ? (
-            <XAxisOverlay
-              data={renderData}
-              xDataKey={xDataKey}
-              rangeStart={margin.left + slotWidth / 2}
-              rangeEnd={width - margin.right - slotWidth / 2}
-              numTicks={xAxis.numTicks ?? 5}
-              formatValue={xAxis.formatValue}
-              tickMode={xAxis.tickMode}
-            />
-          ) : null}
-          {yAxis ? (
-            <YAxisOverlay
-              ticks={yAxisTicks}
-              marginLeft={margin.left}
-              formatLargeNumbers={yAxis.formatLargeNumbers}
-              formatValue={yAxis.formatValue}
-            />
-          ) : null}
           {heightPxCandle > 0 && (
             <ReferenceAreaLayers
               configs={refAreaChildrenCandle}

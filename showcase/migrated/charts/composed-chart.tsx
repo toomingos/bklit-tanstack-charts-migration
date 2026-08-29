@@ -86,6 +86,7 @@ import type {
   ChartMark,
   ChartMarkState,
   ChartPoint,
+  ChartPositionScaleOptions,
   ChartRenderContext,
   ChartScale,
   ChartValue,
@@ -122,11 +123,13 @@ import { useChartConfig } from "./internal/chart-config-context";
 import {
   BOX_OFFSET,
   DISCRETE_INTERACTION_THRESHOLD,
+  FADE_BUFFER,
+  TICKER_HALF_WIDTH,
   TOOLTIP_BOX_SPRING,
 } from "./internal/design-tokens";
 import { TooltipContent } from "./internal/tooltip-components";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
-import { XAxisOverlay } from "./internal/x-axis-overlay";
+import { buildXAxisTickValues, tickLabelFadeOpacity } from "./internal/axis-ticks";
 import { BackgroundLayer } from "./internal/background-layer";
 import {
   extractProjectionLineConfigs,
@@ -855,9 +858,9 @@ export function ComposedChart({
   const heightPxComp = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
   // Raw data extent (LTTB preserves first/last points, so renderData's
   // extent === raw data's extent) and the projection-extended extent. ALL
-  // downstream x-domain consumers (selection scale, ReferenceAreaLayers,
-  // XAxisOverlay) read the EXTENDED extent; anchor/gradient mapping needs
-  // both (pixel x = (t - rawMin) / (extendedMax - rawMin) * innerW).
+  // downstream x-domain consumers (selection scale, ReferenceAreaLayers, the
+  // native x-scale's tick building) read the EXTENDED extent; anchor/gradient
+  // mapping needs both (pixel x = (t - rawMin) / (extendedMax - rawMin) * innerW).
   const timeExtentCompRaw = React.useMemo(() => {
     let minTime = Infinity;
     let maxTime = -Infinity;
@@ -1002,6 +1005,9 @@ export function ComposedChart({
   // Reactive highlight-band index (React state, not DOM) — set from the
   // DECIMATED bisector in the pointermove handler below.
   const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
+  // C4: replaces date-pill.ts's imperative `applyFade`/`resetFade` span
+  // styling — drives the native x `tickLabels.opacity` callback below.
+  const [labelFade, setLabelFade] = React.useState<{ primaryX: number; hoveredLabel: string | null } | null>(null);
   const crosshairGradientId = useSanitizedId();
   // bklit TooltipIndicator default vertical fade, rendered as an app-owned
   // <linearGradient> def near the chart's other gradient defs (JSX below) —
@@ -1309,7 +1315,21 @@ export function ComposedChart({
         }
         const scale = scaleUtc().domain([minTime, maxTime]).range([r0, r1]);
         xScaleD3Ref.current = scale;
-        const ticks = scale.ticks(context.tickCount ?? 5);
+        // C4: data-aligned ticks (buildXAxisTickValues) when xAxis is
+        // configured, matching line/area — no xDomain param, composed has
+        // no brush to narrow the visible range.
+        const tickList = xAxis
+          ? buildXAxisTickValues({
+              data: renderData,
+              xDataKey,
+              rangeStart: r0,
+              rangeEnd: r1,
+              numTicks: xAxis.numTicks ?? 5,
+              formatValue: xAxis.formatValue,
+              domainMaxTime: timeExtentComp?.maxTime,
+              tickMode: xAxis.tickMode,
+            })
+          : scale.ticks(context.tickCount ?? 5).map((value) => ({ value, label: value.toISOString() }));
         return {
           id: context.id,
           type: "time",
@@ -1320,10 +1340,10 @@ export function ComposedChart({
             const mapped = scale(parsed);
             return mapped === undefined ? Number.NaN : mapped;
           },
-          ticks: ticks.map((value) => ({
-            value,
-            position: scale(value) ?? Number.NaN,
-            label: value.toISOString(),
+          ticks: tickList.map((t) => ({
+            value: t.value,
+            position: scale(t.value) ?? Number.NaN,
+            label: t.label,
           })),
           bandwidth: 0,
         };
@@ -1358,23 +1378,49 @@ export function ComposedChart({
     };
 
     const gridGuide = resolveGridGuide(grid);
+    // C4: same tickLabelFadeOpacity(labelFade) callback as line/area — drives
+    // the date-pill proximity fade natively instead of date-pill.ts's
+    // imperative span styling.
+    const xTickLabelOpacity = labelFade
+      ? (ctx: { value: unknown; position: number }) =>
+          tickLabelFadeOpacity(
+            ctx.position,
+            (xAxis?.formatValue ?? shortDateFmt.format)(ctx.value as Date),
+            labelFade.primaryX,
+            labelFade.hoveredLabel,
+            xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH,
+            FADE_BUFFER,
+          )
+      : 1;
+    const xScaleOptions: ChartPositionScaleOptions<Date> = {
+      scale: xScale,
+      grid: gridGuide.vertical,
+      axis: {
+        ticks: { count: gridGuide.columnTicks, size: 0, padding: 0 },
+        line: false,
+        tickLabels: xAxis
+          ? { fontSize: 12, thin: false, dy: margin.bottom - 25, opacity: xTickLabelOpacity }
+          : false,
+      },
+    };
+    // Composed's "secondary axes" all re-project onto this ONE native y
+    // scale via projectValue (see header comment) — there is no second
+    // native y scale object to touch here. Tick-count policy (gridGuide.ticks)
+    // stays unchanged; only the native label overlay is suppressed, matching
+    // every other migrated chart (composed never had a YAxisOverlay to begin
+    // with, so this is purely additive parity with line/area's y axis).
+    const yScaleOptions: ChartPositionScaleOptions<number> = {
+      scale: yScale,
+      grid: gridGuide.horizontal,
+      axis: { ticks: { count: gridGuide.ticks, size: 0 }, line: false, tickLabels: false },
+    };
     return defineChart({
       marks,
       // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
       // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
       // key on the spec is never read.
-      scales: {
-        x: {
-          scale: xScale,
-          grid: gridGuide.vertical,
-          axis: { ticks: { count: gridGuide.columnTicks } },
-        },
-        y: {
-          scale: yScale,
-          grid: gridGuide.horizontal,
-          axis: { ticks: { count: gridGuide.ticks } },
-        },
-      },
+      scales: { x: xScaleOptions, y: yScaleOptions },
+      theme: { muted: "var(--color-chart-label, var(--chart-label))" },
       margin,
       focus: "group-x",
       focusRing: false,
@@ -1453,6 +1499,8 @@ export function ComposedChart({
     crosshairGradientId,
     hoveredIndex,
     highlightCurveByKey,
+    xAxis,
+    labelFade,
   ]);
 
   // C3: hover-chrome.ts's deletion means the remaining imperative surface
@@ -1545,7 +1593,7 @@ export function ComposedChart({
     setHoveredIndex(null);
     wasVisibleRef.current = false;
     datePill.hide();
-    datePill.resetFade();
+    setLabelFade(null);
   }, [datePill]);
 
   // `focus:"group-x"` stays configured above for internal consistency with
@@ -1563,19 +1611,20 @@ export function ComposedChart({
   // (`hoveredIndex`, the highlight band's reactive slice index, since that
   // must reference actually-rendered line/area points, not raw rows that may
   // have been dropped by LTTB). Listener-attach effect intentionally does
-  // not depend on data/renderData/tooltip/isDiscrete/xAxis/datePill/
+  // not depend on data/renderData/tooltip/isDiscrete/datePill/
   // clearFocusChrome — all read through a ref, same reasoning as
   // scatter-chart.tsx (avoids re-attaching on every data-update or
-  // date-pill-identity tick; `datePill`'s own `show`/`hide`/`applyFade`/
-  // `resetFade` are individually useCallback-stable regardless of the
-  // wrapping object's identity, per internal/hover-geometry.ts).
+  // date-pill-identity tick; `datePill`'s own `show`/`hide` are individually
+  // useCallback-stable regardless of the wrapping object's identity, per
+  // internal/hover-geometry.ts). C4: xAxis dropped from this ref — the
+  // pointermove handler no longer needs it (tickerHalfWidth now flows into
+  // the native tickLabels.opacity callback via the `definition` memo below).
   const hoverInputsRef = React.useRef({
     data,
     renderData,
     xDataKey,
     tooltip,
     isDiscrete,
-    xAxis,
     datePill,
     clearFocusChrome,
   });
@@ -1585,7 +1634,6 @@ export function ComposedChart({
     xDataKey,
     tooltip,
     isDiscrete,
-    xAxis,
     datePill,
     clearFocusChrome,
   };
@@ -1601,7 +1649,6 @@ export function ComposedChart({
         xDataKey: key,
         tooltip: tooltipCfg,
         isDiscrete: discreteFlag,
-        xAxis: xAxisCfg,
         datePill: datePillCtl,
         clearFocusChrome: clearChrome,
       } = hoverInputsRef.current;
@@ -1678,12 +1725,18 @@ export function ComposedChart({
         const jump = !wasVisibleRef.current;
         wasVisibleRef.current = true;
         datePillCtl.show(resolvedX, { index: rawIndex, label, discrete: discreteFlag, jump });
-        // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade radius.
-        datePillCtl.applyFade(resolvedX, label, xAxisCfg?.tickerHalfWidth);
+        // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade
+        // radius — now via the native tickLabels.opacity callback (labelFade
+        // state) instead of date-pill.ts's imperative applyFade.
+        setLabelFade((prev) =>
+          prev && prev.primaryX === resolvedX && prev.hoveredLabel === label
+            ? prev
+            : { primaryX: resolvedX, hoveredLabel: label },
+        );
       } else {
         wasVisibleRef.current = false;
         datePillCtl.hide();
-        datePillCtl.resetFade();
+        setLabelFade(null);
       }
 
       // Native tooltip (C2, unchanged): resolved independently through the
@@ -1941,18 +1994,6 @@ export function ComposedChart({
                 ))}
               </defs>
             </svg>
-          ) : null}
-          {xAxis ? (
-            <XAxisOverlay
-              data={renderData}
-              xDataKey={xDataKey}
-              rangeStart={margin.left}
-              rangeEnd={width - margin.right}
-              numTicks={xAxis.numTicks ?? 5}
-              formatValue={xAxis.formatValue}
-              domainMaxTime={timeExtentComp?.maxTime}
-              tickMode={xAxis.tickMode}
-            />
           ) : null}
           {heightPxComp > 0 && (
             <ReferenceAreaLayers

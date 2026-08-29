@@ -11,10 +11,10 @@
 // renderer DOM) per the sanctioned extension in ./date-pill.
 //
 // ZERO renderer DOM reach-ins: nothing in this file ever queries
-// `.ts-chart__*`. `useDatePillOverlay`'s `applyFade`/`resetFade` only touch
-// `[data-bkm-xlabel]` spans (app-authored axis-label overlay) and the
-// `[data-bkm-chart]` root container used purely as a scoping root for that
-// querySelectorAll — the same pattern hover-chrome.ts used for `container`.
+// `.ts-chart__*`. (C4: the axis-label proximity fade that used to live on
+// `useDatePillOverlay` moved to the charts' native per-tick
+// `tickLabels.opacity` callbacks — see internal/axis-ticks.ts
+// `tickLabelFadeOpacity`; the controller is now show/hide/position only.)
 import * as React from "react";
 import { crosshair, dot, lineY, whenFocused } from "@tanstack/charts";
 import type {
@@ -25,8 +25,8 @@ import type {
 } from "@tanstack/charts";
 import { resolveIndicatorPixelWidth } from "./tooltip-mappers";
 import { crosshairFadeStops } from "./fade-mask";
-import { buildPill, applyLabelFade, resetLabelFade, type PillBuild } from "./date-pill";
-import { FADE_BUFFER, HIGHLIGHT_SPRING, TICKER_HALF_WIDTH, TOOLTIP_SPRING } from "./design-tokens";
+import { buildPill, type PillBuild } from "./date-pill";
+import { HIGHLIGHT_SPRING, TOOLTIP_SPRING } from "./design-tokens";
 import type { SpringConfig } from "./chart-config-context";
 import type { ChartDatum, IndicatorWidth } from "./types";
 
@@ -303,10 +303,6 @@ export interface DatePillController {
    *  branch). */
   show(x: number, opts: { index: number; label: string | null; discrete: boolean; jump: boolean }): void;
   hide(): void;
-  /** Proximity fade on `[data-bkm-xlabel]` axis-label overlay spans —
-   *  app-owned overlay DOM (see ./date-pill header), not renderer DOM. */
-  applyFade(primaryX: number, hoveredLabel: string | null, tickerHalfWidth: number | undefined): void;
-  resetFade(): void;
 }
 
 export function useDatePillOverlay(options: {
@@ -357,26 +353,5 @@ export function useDatePillOverlay(options: {
     pill.layer.style.display = "none";
   }, []);
 
-  const resolveContainer = React.useCallback((): HTMLElement | null => {
-    const host = overlayHostRef.current;
-    if (!host) return null;
-    return (host.closest("[data-bkm-chart]") as HTMLElement) ?? host;
-  }, []);
-
-  const applyFade = React.useCallback(
-    (primaryX: number, hoveredLabel: string | null, tickerHalfWidth: number | undefined) => {
-      const container = resolveContainer();
-      if (!container) return;
-      applyLabelFade(container, primaryX, hoveredLabel, tickerHalfWidth ?? TICKER_HALF_WIDTH, FADE_BUFFER);
-    },
-    [resolveContainer],
-  );
-
-  const resetFade = React.useCallback(() => {
-    const container = resolveContainer();
-    if (!container) return;
-    resetLabelFade(container);
-  }, [resolveContainer]);
-
-  return { overlayHostRef, show, hide, applyFade, resetFade };
+  return { overlayHostRef, show, hide };
 }

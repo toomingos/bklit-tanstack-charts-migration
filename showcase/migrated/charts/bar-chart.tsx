@@ -40,11 +40,12 @@ import { Chart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { barY, crosshair, defineChart, group, whenFocused } from "@tanstack/charts";
 import { tooltip as tooltipExtension } from "@tanstack/charts/tooltip";
-import type { ChartMark, ChartMarkState, ChartMotionDefinition, ChartPoint, ChartRenderContext, SceneNode } from "@tanstack/charts";
+import type { ChartAxisTickLabelContext, ChartMark, ChartMarkState, ChartMotionDefinition, ChartPoint, ChartRenderContext, SceneNode } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import { TooltipContent } from "./internal/tooltip-components";
 import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH, TOOLTIP_BOX_SPRING, TOOLTIP_SPRING } from "./internal/design-tokens";
-import { applyLabelFade, buildPill, resetLabelFade, type PillBuild } from "./internal/date-pill";
+import { buildPill, type PillBuild } from "./internal/date-pill";
+import { selectBarLabelIndices, tickLabelFadeOpacity } from "./internal/axis-ticks";
 import { resolveVerticalFadeSides, indicatorFadeGradientStops } from "./internal/fade-mask";
 import { resolveIndicatorPixelWidth, toDotConfig, toIndicatorConfig } from "./internal/tooltip-mappers";
 import type { SpringConfig } from "./internal/chart-config-context";
@@ -54,7 +55,6 @@ import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import { useChartConfig } from "./internal/chart-config-context";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
 import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
-import { BarXAxisOverlay, barCategoryAccessor } from "./internal/bar-x-axis-overlay";
 import { createBarFocusStrategy } from "./internal/bar-focus-strategy";
 import { barSquaresMark } from "./internal/bar-squares-mark";
 import { barColumnTrackMark } from "./internal/bar-column-track-mark";
@@ -372,6 +372,18 @@ function createBarHoverDotMark(
         },
       };
     },
+  };
+}
+
+/** bklit bar-chart.tsx categoryAccessor: shortDateFmt for Date, else String.
+    C4: moved verbatim from the deleted internal/bar-x-axis-overlay.tsx (the
+    overlay component itself died with the native axis-label migration; this
+    accessor is still needed for the `x` mark channel + tick `values`). */
+function barCategoryAccessor(xDataKey: string) {
+  return (d: ChartDatum): string => {
+    const value = d[xDataKey];
+    if (value instanceof Date) return shortDateFmt.format(value);
+    return String(value ?? "");
   };
 }
 
@@ -903,12 +915,73 @@ export function BarChart({
   // `attachBarHoverChrome(el, ..., {tooltipSpring: chartConfig.tooltipSpring})`).
   const chartConfig = useChartConfig();
 
+  // C4: axis-label proximity fade, formerly `date-pill.ts`'s imperative
+  // `applyLabelFade`/`resetLabelFade` DOM-span mutators. `handleFocusGroupChange`
+  // sets/clears this; the `definition` memo below reads it in a native
+  // `tickLabels.opacity` per-tick callback (`tickLabelFadeOpacity`). A
+  // per-focus-step `definition` rebuild is accepted (research decision, not
+  // throttled).
+  const [labelFade, setLabelFade] = React.useState<{ primaryX: number; hoveredLabel: string | null } | null>(null);
+
   const definition = React.useMemo(() => {
     if (width <= 0 || (resolvedSeries.length === 0 && resolvedBarSquares.length === 0)) return null;
     const gridGuide = resolveGridGuide(grid);
     const hasSquares = barSquaresEnabled;
     const hasTrack = barColumnTrackEnabled;
     const hasDepth = barDepthEnabled;
+
+    // C4: native axis tick labels replace the deleted `BarXAxisOverlay`.
+    // `values`/`count` are mutually exclusive on `ChartAxisTickOptions`
+    // (passing both throws) — configured `barXAxis` switches x ticks from
+    // count-driven to explicit kept categories (bar-x-axis.tsx's own modulo
+    // thinning, `selectBarLabelIndices`, NOT the even-spacing optimizer
+    // line/scatter's overlay used — bar's category axis has no dedupe-by-
+    // label case, every category already has a distinct bar). `dy: margin
+    // .bottom - 25` reproduces the overlay's `bottom: 12` HTML placement in
+    // tick-label offset space.
+    const xAxisOptions = barXAxis
+      ? {
+          ticks: {
+            values: selectBarLabelIndices(
+              categoryOrder.length,
+              barXAxis.showAllLabels ?? false,
+              barXAxis.maxLabels ?? 12,
+            ).map((i) => categoryOrder[i]!),
+            format: (v: unknown) => String(v),
+            size: 0,
+            padding: 0,
+          },
+          line: false as const,
+          tickLabels: {
+            fontSize: 12,
+            thin: false,
+            dy: margin.bottom - 25,
+            opacity: labelFade
+              ? (ctx: ChartAxisTickLabelContext) =>
+                  tickLabelFadeOpacity(
+                    ctx.position,
+                    String(ctx.value),
+                    labelFade.primaryX,
+                    labelFade.hoveredLabel,
+                    barXAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH,
+                    FADE_BUFFER,
+                  )
+              : 1,
+          },
+        }
+      : {
+          ticks: { count: gridGuide.columnTicks, size: 0 },
+          line: false as const,
+          tickLabels: false as const,
+        };
+    // Bar never drew y-axis labels (BarXAxisOverlay only ever covered x) —
+    // nothing may paint once the `.ts-chart__axes { display: none }` CSS
+    // gate lifts.
+    const yAxisOptions = {
+      ticks: { count: gridGuide.ticks, size: 0 },
+      line: false as const,
+      tickLabels: false as const,
+    };
     // C2: native tooltip extension — box-follow spring mirrors the legacy
     // TOOLTIP_BOX_SPRING default; springs snap (motion: false) once the
     // series is past the same DISCRETE_INTERACTION_THRESHOLD the chrome's
@@ -1051,14 +1124,15 @@ export function BarChart({
         // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
         // key on the spec is never read.
         scales: {
-          x: { scale: xScaleFactory, grid: gridGuide.vertical, axis: { ticks: { count: gridGuide.columnTicks } } },
+          x: { scale: xScaleFactory, grid: gridGuide.vertical, axis: xAxisOptions },
           y: {
             scale: yScale,
             grid: gridGuide.horizontal,
-            axis: { ticks: { count: gridGuide.ticks } },
+            axis: yAxisOptions,
           },
         },
         margin,
+        theme: { muted: "var(--color-chart-label, var(--chart-label))" },
         svgAnimation: false as const,
       } as const;
       const base = defineChart(spec);
@@ -1234,15 +1308,16 @@ export function BarChart({
       // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
       // key on the spec is never read.
       scales: {
-        x: { scale: xScaleFactory, grid: gridGuide.vertical, axis: { ticks: { count: gridGuide.columnTicks } } },
+        x: { scale: xScaleFactory, grid: gridGuide.vertical, axis: xAxisOptions },
         y: {
           scale: yScale,
           grid: gridGuide.horizontal,
-          axis: { ticks: { count: gridGuide.ticks } },
+          axis: yAxisOptions,
         },
       },
       margin,
       gradients: nativeDepthGradients,
+      theme: { muted: "var(--color-chart-label, var(--chart-label))" },
       svgAnimation: false as const,
     } as const;
     const base = defineChart(spec);
@@ -1281,6 +1356,9 @@ export function BarChart({
     groupScaleForOverlay,
     dotSeriesList,
     indicatorGradientId,
+    barXAxis,
+    categoryOrder,
+    labelFade,
   ]);
 
   // C3: date-pill + label-fade chrome only — crosshair/dots are now native
@@ -1359,7 +1437,6 @@ export function BarChart({
   const handleFocusGroupChange = React.useCallback(
     (points: readonly ChartPoint<ChartDatum, string, number>[]) => {
       const pillBuild = pillRef.current;
-      const container = containerRef.current;
       if (points.length === 0) {
         pillVisibleRef.current = false;
         if (pillBuild) {
@@ -1367,7 +1444,7 @@ export function BarChart({
           pillBuild.spring.stop();
           pillBuild.label.textContent = "";
         }
-        if (container) resetLabelFade(container);
+        setLabelFade((prev) => (prev === null ? prev : null));
         return;
       }
       // Category = xValue of any point in the grouped set.
@@ -1402,11 +1479,16 @@ export function BarChart({
         }
       }
 
-      if (container) {
-        applyLabelFade(container, anchorX, categoryLabel, barXAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH, FADE_BUFFER);
-      }
+      // C4: axis-label fade — the `definition` memo's native `tickLabels
+      // .opacity` callback reads `barXAxis?.tickerHalfWidth`/`FADE_BUFFER`
+      // itself; this only carries the raw pill anchor + hovered label.
+      setLabelFade((prev) =>
+        prev && prev.primaryX === anchorX && prev.hoveredLabel === categoryLabel
+          ? prev
+          : { primaryX: anchorX, hoveredLabel: categoryLabel },
+      );
     },
-    [categoryIndexByLabel, categoryScaleForOverlay, bandWidth, renderData.length, tooltipEnabled, tooltip, barXAxis],
+    [categoryIndexByLabel, categoryScaleForOverlay, bandWidth, renderData.length, tooltipEnabled, tooltip],
   );
 
   // C2: native tooltip body — reuses `TooltipContent` verbatim (same row
@@ -1742,18 +1824,6 @@ export function BarChart({
             onRender={handleRender}
             renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
           />
-          {barXAxis ? (
-            <BarXAxisOverlay
-              data={renderData}
-              xDataKey={xDataKey}
-              categoryScale={(c) => categoryScaleForOverlay(c)}
-              bandWidth={bandWidth}
-              categoryAccessor={categoryAccessor}
-              marginLeft={0}
-              showAllLabels={barXAxis.showAllLabels}
-              maxLabels={barXAxis.maxLabels}
-            />
-          ) : null}
           {heightPxBar > 0 && barScaleForRef && (
             <ReferenceAreaLayers
               configs={refAreaChildrenBar}

@@ -1,6 +1,7 @@
 // bklit y-axis-ticks.ts verbatim port — single source for the y-axis tick
-// count constants + clamp. Consumed by internal/y-axis-overlay.tsx and
-// candlestick-chart.tsx (which previously inlined its own copy).
+// count constants + clamp. C4: its overlay consumer (y-axis-overlay.tsx) is
+// deleted; now consumed by internal/axis-ticks.ts `buildYAxisTickValues` and
+// publicly re-exported from index.ts (bklit API parity).
 
 /** Default hint passed to `scale.ticks()` (d3 — approximate tick count). */
 export const Y_AXIS_DEFAULT_TICK_COUNT = 5;

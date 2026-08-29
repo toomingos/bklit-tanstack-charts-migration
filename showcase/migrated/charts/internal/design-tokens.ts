@@ -45,9 +45,12 @@ export const TICKER_ITEM_HEIGHT = 24;
 // ── Initiative 3 (grid / background / loading) tokens ────────────────────
 // bklit background.tsx BACKGROUND_ENTER_FADE_MS — pattern enter fade.
 export const BACKGROUND_ENTER_FADE_MS = 420;
-// bklit chart-phase.ts DEFAULT_Y_DOMAIN_TWEEN_MS — x/y-axis HTML-label
-// position tween duration (AX5: `left` on x labels, `top` on y labels).
-export const AXIS_POSITION_TWEEN_MS = 500;
+// bklit chart-phase.ts DEFAULT_Y_DOMAIN_TWEEN_MS — the AX5 axis-label
+// position tween (500ms, cubic-bezier(0.85,0,0.15,1): `left` on x labels
+// when un-brushed, `top` on y labels). Its AXIS_POSITION_TWEEN_MS token died
+// in C4 with the HTML axis overlays: native SVG tick labels can't tween
+// x/y via CSS (not CSS properties on <text>), so the tween returns through
+// `tickLabels.motion` at C5's renderer/motion switch (D431).
 // bklit series-markers.tsx:103 `const enterDuration = 0.5` — the per-point
 // opacity/blur fade of a series marker, staggered across the clip reveal.
 // (P6.2: was an inline `duration: 500` in line-chart.tsx and area-chart.tsx.)

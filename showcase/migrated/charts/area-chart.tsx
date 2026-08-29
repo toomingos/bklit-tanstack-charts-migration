@@ -36,6 +36,7 @@ import type {
   ChartInteractionController,
   ChartMark,
   ChartPoint,
+  ChartPositionScaleOptions,
   ChartRenderContext,
   StaticChartDefinition,
 } from "@tanstack/charts";
@@ -61,10 +62,8 @@ import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection"
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import {
-  extractReferenceAreaConfigs,
   extractReferenceAreaProps,
 } from "./internal/reference-area-config";
-import { createTickColorResolver } from "./internal/reference-area-geometry";
 import {
   ChartSelectionContext,
   extractSegmentComponents,
@@ -83,13 +82,19 @@ import { timeToPixelX } from "./internal/x-time-scale";
 import {
   BOX_OFFSET,
   DISCRETE_INTERACTION_THRESHOLD,
+  FADE_BUFFER,
   SERIES_MARKER_ENTER_MS,
+  TICKER_HALF_WIDTH,
   TOOLTIP_BOX_SPRING,
 } from "./internal/design-tokens";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { TooltipContent } from "./internal/tooltip-components";
-import { XAxisOverlay } from "./internal/x-axis-overlay";
-import { YAxisOverlay } from "./internal/y-axis-overlay";
+import {
+  buildXAxisTickValues,
+  buildYAxisTickValues,
+  formatYAxisTick,
+  tickLabelFadeOpacity,
+} from "./internal/axis-ticks";
 import type { ChartDatum, ChartStatus, TooltipRow } from "./internal/types";
 import { type ChartPhase, DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./internal/chart-phase";
 import type { ChartScale } from "@tanstack/charts";
@@ -293,7 +298,6 @@ export function AreaChart({
     if (seriesKey != null) focusSeries(seriesKey);
     else clearFocus();
   }, [legendHoveredIndex, areas, focusSeries, clearFocus]);
-  const staticRefConfigs = React.useMemo(() => extractReferenceAreaConfigs(children), [children]);
   const projectionConfigs = React.useMemo(() => extractProjectionLineConfigs(children), [children]);
   const projectionGradientBaseId = useSanitizedId();
 
@@ -400,6 +404,9 @@ export function AreaChart({
   // `highlightWidthSpring` clip-rect sweep — the reactive index driving the
   // native highlight-band marks below.
   const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
+  // C4: replaces date-pill.ts's imperative `applyFade`/`resetFade` span
+  // styling — drives the native x `tickLabels.opacity` callback below.
+  const [labelFade, setLabelFade] = React.useState<{ primaryX: number; hoveredLabel: string | null } | null>(null);
   // C3: app-owned <linearGradient> def id for the native crosshair mark's
   // vertical fade — same useSanitizedId()/rendered-<defs> mechanism as the
   // projection/marker gradient defs.
@@ -715,11 +722,15 @@ export function AreaChart({
       const emptySpec = {
         marks: [] as unknown as ChartMark<ChartDatum, Date, number>[],
         scales: {
-          x: { scale: scaleUtc as unknown as ChartScale, grid: gridGuide.vertical, axis: { ticks: { count: gridGuide.columnTicks } } },
+          x: {
+            scale: scaleUtc as unknown as ChartScale,
+            grid: gridGuide.vertical,
+            axis: { ticks: { count: gridGuide.columnTicks, size: 0 }, line: false, tickLabels: false },
+          },
           y: {
             scale: scaleLinear().domain(yDomainFinal) as unknown as ChartScale,
             grid: gridGuide.horizontal,
-            axis: { ticks: { count: gridGuide.ticks } },
+            axis: { ticks: { count: gridGuide.ticks, size: 0 }, line: false, tickLabels: false },
           },
         },
         margin,
@@ -932,45 +943,133 @@ export function AreaChart({
         }
       }
     }
-    // Single-object form: definition options live in the spec (the two-arg
-    // overload only accepts an already-built definition, and infers D/X/Y
-    // from phantom fields a raw spec object doesn't carry).
-    const xScaleDef = (() => {
-      if (projectionConfigs.length === 0) return { scale: scaleUtc, guide: false as const };
-      const xScale: ChartScale = {
-        id: "x",
-        resolve(context) {
-          const [r0, r1] = context.range;
-          const te = timeExtent;
-          if (!te) {
-            const base = scaleUtc().domain([0, 0]).range([r0, r1]);
-            return { id: (context as unknown as { id: string }).id, type: "time" as const, domain: base.domain(), map: (v: unknown) => { const m = (base as unknown as { (x: Date): number | undefined })(v as Date); return m === undefined ? Number.NaN : m; }, ticks: [], bandwidth: 0 };
-          }
-          const base = scaleUtc().domain([te.minTime, te.maxTime]).range([r0, r1]);
-          const ticks = base.ticks(context.tickCount ?? 5);
-          return { id: (context as unknown as { id: string }).id, type: "time" as const, domain: base.domain(), map: (v: unknown) => { const m = (base as unknown as { (x: Date): number | undefined })(v as Date); return m === undefined ? Number.NaN : m; }, ticks: ticks.map((value: Date) => ({ value, position: base(value) ?? Number.NaN, label: value.toISOString() })), bandwidth: 0 };
-        },
-      };
-      return { scale: xScale, guide: false as const };
-    })();
+    // C4: unconditional resolve()-based custom x scale (was previously
+    // conditional on `projectionConfigs.length > 0`, falling back to the
+    // plain `scaleUtc` factory otherwise). `timeExtent === timeExtentRaw`
+    // whenever there are no projections (see the `timeExtent` memo above),
+    // so this is domain-identical on that path — and it gives the native x
+    // axis a resolve() hook to emit bklit's own tick-choice list from, same
+    // as line-chart.tsx.
+    const xScale: ChartScale = {
+      id: "x",
+      resolve(context) {
+        const [r0, r1] = context.range;
+        const te = timeExtent;
+        if (!te) {
+          const base = scaleUtc().domain([0, 0]).range([r0, r1]);
+          return {
+            id: context.id,
+            type: "time" as const,
+            domain: base.domain(),
+            map: (v: unknown) => {
+              const m = base(v as Date);
+              return m === undefined ? Number.NaN : m;
+            },
+            ticks: [],
+            bandwidth: 0,
+          };
+        }
+        const base = scaleUtc().domain([te.minTime, te.maxTime]).range([r0, r1]);
+        const tickList = xAxis
+          ? buildXAxisTickValues({
+              data: xDomain ? visibleData : renderData,
+              xDataKey,
+              rangeStart: r0,
+              rangeEnd: r1,
+              numTicks: xAxis.numTicks ?? 5,
+              formatValue: xAxis.formatValue,
+              domainMaxTime: timeExtent?.maxTime,
+              xDomain: xDomain ?? null,
+              tickMode: xAxis.tickMode,
+            })
+          : base.ticks(context.tickCount ?? 5).map((value: Date) => ({ value, label: value.toISOString() }));
+        return {
+          id: context.id,
+          type: "time" as const,
+          domain: base.domain(),
+          map: (v: unknown) => {
+            const m = base(v as Date);
+            return m === undefined ? Number.NaN : m;
+          },
+          ticks: tickList.map((t) => ({
+            value: t.value,
+            position: base(t.value) ?? Number.NaN,
+            label: t.label,
+          })),
+          bandwidth: 0,
+        };
+      },
+    };
     const gridGuide = resolveGridGuide(grid);
+    // C4: proximity-fade opacity for x tick labels — replaces date-pill.ts's
+    // imperative span opacity styling (see line-chart.tsx's twin comment).
+    const xTickLabelOpacity = labelFade
+      ? (ctx: { value: unknown; position: number }) =>
+          tickLabelFadeOpacity(
+            ctx.position,
+            (xAxis?.formatValue ?? shortDateFmt.format)(ctx.value as Date),
+            labelFade.primaryX,
+            labelFade.hoveredLabel,
+            xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH,
+            FADE_BUFFER,
+          )
+      : 1;
+    const xScaleOptions: ChartPositionScaleOptions<Date> = {
+      scale: xScale,
+      grid: gridGuide.vertical,
+      axis: {
+        ticks: { count: gridGuide.columnTicks, size: 0, padding: 0 },
+        line: false,
+        tickLabels: xAxis
+          ? {
+              fontSize: 12,
+              thin: false,
+              dy: margin.bottom - 25,
+              opacity: xTickLabelOpacity,
+            }
+          : false,
+      },
+    };
+    // C4: with a native y axis configured, tick VALUES come from
+    // buildYAxisTickValues instead of gridGuide.ticks's plain count hint —
+    // same grid-follows-labels deviation note as line-chart.tsx.
+    const yScaleOptions: ChartPositionScaleOptions<number> = yAxis
+      ? {
+          scale: scaleLinear().domain(yDomainFinal),
+          grid: gridGuide.horizontal,
+          axis: {
+            ticks: {
+              values: buildYAxisTickValues(yDomainFinal, yAxis.numTicks),
+              format: (v: number) => formatYAxisTick(v, yAxis.formatValue, yAxis.formatLargeNumbers ?? true),
+              size: 0,
+              padding: 0,
+            },
+            line: false,
+            tickLabels: {
+              fontSize: 12,
+              thin: false,
+              opacity: 1,
+              dx: yAxis.orientation === "right" ? 8 : -8,
+            },
+          },
+          side: yAxis.orientation === "right" ? "right" : "left",
+        }
+      : {
+          scale: scaleLinear().domain(yDomainFinal),
+          grid: gridGuide.horizontal,
+          axis: { ticks: { count: gridGuide.ticks, size: 0 }, line: false, tickLabels: false },
+        };
     return defineChart({
       marks,
       // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
       // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
       // key on the spec is never read.
       scales: {
-        x: {
-          ...xScaleDef,
-          grid: gridGuide.vertical,
-          axis: { ticks: { count: gridGuide.columnTicks } },
-        },
-        y: {
-          scale: scaleLinear().domain(yDomainFinal),
-          grid: gridGuide.horizontal,
-          axis: { ticks: { count: gridGuide.ticks } },
-        },
+        x: xScaleOptions,
+        y: yScaleOptions,
       },
+      // C4: the only styling channel for native tick-label `fill` (v0.15.0).
+      theme: { muted: "var(--color-chart-label, var(--chart-label))" },
       margin,
       focus: "group-x",
       focusRing: false,
@@ -1003,7 +1102,7 @@ export function AreaChart({
           ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
           : false,
     });
-  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients, legendHoveredIndex, areas, tooltip, tooltipEnabled, crosshairGradientId, isDiscrete, hoveredIndex]);
+  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients, legendHoveredIndex, areas, tooltip, tooltipEnabled, crosshairGradientId, isDiscrete, hoveredIndex, xAxis, yAxis, visibleData, xDomain, labelFade]);
 
   // C3: hover-chrome.ts's imperative overlays are gone — native crosshair/
   // hover-dot/highlight-band marks (built inside the `definition` memo
@@ -1088,7 +1187,7 @@ export function AreaChart({
     markerActiveStore.setActiveDate(null);
     wasVisibleRef.current = false;
     datePill.hide();
-    datePill.resetFade();
+    setLabelFade(null);
   }, [markerActiveStore, datePill]);
 
   const handleFocusChange = React.useCallback(
@@ -1115,11 +1214,19 @@ export function AreaChart({
         const jump = !wasVisibleRef.current;
         wasVisibleRef.current = true;
         datePill.show(primary.x, { index: primary.datumIndex, label, discrete: isDiscrete, jump });
-        datePill.applyFade(primary.x, label, xAxis?.tickerHalfWidth);
+        // C4: reactive state instead of date-pill.ts's imperative
+        // span-opacity write — consumed by the x scale's native
+        // `tickLabels.opacity` callback. Guarded so an unchanged focus point
+        // doesn't force a `definition` rebuild every pointer move.
+        setLabelFade((prev) =>
+          prev && prev.primaryX === primary.x && prev.hoveredLabel === label
+            ? prev
+            : { primaryX: primary.x, hoveredLabel: label },
+        );
       } else {
         wasVisibleRef.current = false;
         datePill.hide();
-        datePill.resetFade();
+        setLabelFade(null);
       }
     },
     [xDomain, xDataKey, chartPhase, isLoaded, markerActiveStore, tooltip, isDiscrete, datePill, xAxis],
@@ -1256,7 +1363,8 @@ export function AreaChart({
   });
   const segmentComponents = React.useMemo(() => extractSegmentComponents(children), [children]);
   const refAreaChildren = React.useMemo(() => extractReferenceAreaProps(children), [children]);
-  const yTickColorForValue = React.useMemo(() => createTickColorResolver(staticRefConfigs, yDomainFinal, DEFAULT_Y_AXIS_ID), [staticRefConfigs, yDomainFinal]);
+  // D431: ReferenceArea axisLabelColor per-tick y-label color dropped —
+  // native tickLabels have no per-tick fill channel (v0.15.0).
 
   // BrushHost + clipping — same shape as line-chart.tsx (strip = un-brushed => trackExtent = final xScale domain)
   const innerWidthForBrush = Math.max(0, width - margin.left - margin.right);
@@ -1324,33 +1432,6 @@ export function AreaChart({
       ) : null}
       {definition && (
         <>
-          {xAxis ? (
-            <XAxisOverlay
-              data={xDomain ? visibleData : renderData}
-              xDataKey={xDataKey}
-              rangeStart={margin.left}
-              rangeEnd={width - margin.right}
-              numTicks={xAxis.numTicks ?? 5}
-              formatValue={xAxis.formatValue}
-              domainMaxTime={timeExtent?.maxTime}
-              xDomain={xDomain ?? null}
-              tickMode={xAxis.tickMode}
-            />
-          ) : null}
-          {yAxis ? (
-            <YAxisOverlay
-              yDomain={yDomainFinal}
-              chartTop={margin.top}
-              chartBottom={heightPx - margin.bottom}
-              chartLeft={margin.left}
-              chartRight={margin.right}
-              orientation={yAxis.orientation ?? "left"}
-              numTicks={yAxis.numTicks ?? 5}
-              formatLargeNumbers={yAxis.formatLargeNumbers ?? true}
-              formatValue={yAxis.formatValue}
-              tickColorForValue={yTickColorForValue}
-            />
-          ) : null}
           {heightPx > 0 && (
             <ReferenceAreaLayers
               configs={refAreaChildren}

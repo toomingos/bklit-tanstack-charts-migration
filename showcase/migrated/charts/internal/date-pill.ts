@@ -1,11 +1,13 @@
-// Date pill + odometer ticker + axis-label proximity fade.
+// Date pill + odometer ticker.
 // SANCTIONED-EXTENSION (research/phase-6/03): the pill is app-owned HTML
 // positioned from `onFocusGroupChange` — it never touches renderer DOM.
-// Extraction-only (C3): `createDateTicker`, `buildPill`, `applyLabelFade`,
-// `resetLabelFade` are the byte-identical twins of the versions previously in
-// internal/tooltip-chrome.ts (deleted in C3). The label fade queries
-// `[data-bkm-xlabel]` spans, which are app-authored axis overlay labels —
-// both the fade and those spans go native in C4.
+// Extraction-only (C3): `createDateTicker` and `buildPill` are the
+// byte-identical twins of the versions previously in
+// internal/tooltip-chrome.ts (deleted in C3). C4: the axis-label proximity
+// fade that shipped alongside them (`applyLabelFade`/`resetLabelFade` over
+// app-authored `[data-bkm-xlabel]` spans) is gone — axis labels are native
+// tick labels now, faded via the charts' `tickLabels.opacity` callbacks
+// (internal/axis-ticks.ts `tickLabelFadeOpacity`).
 import { createSpring, type Spring } from "./spring";
 import { TICKER_ITEM_HEIGHT } from "./design-tokens";
 import type { SpringConfig } from "./chart-config-context";
@@ -101,30 +103,4 @@ export function buildPill(
   const ticker = getLabels ? createDateTicker(doc, getLabels) : null;
   if (ticker) { inner.textContent = ""; inner.appendChild(ticker.root); }
   return { layer, pill, inner, label, spring, ticker };
-}
-
-// ── Label fade ───────────────────────────────────────────────────────────
-// Interim home until C4 moves axis labels (and their proximity fade) native.
-// The spans queried here are app-authored overlay labels, not renderer DOM.
-
-export function applyLabelFade(
-  container: HTMLElement,
-  primaryX: number,
-  hoveredLabel: string | null,
-  tickerHalfWidth: number,
-  fadeBuffer: number,
-): void {
-  for (const span of container.querySelectorAll<HTMLSpanElement>("[data-bkm-xlabel]")) {
-    const labelX = Number(span.dataset.bkmX);
-    const distance = Math.abs(labelX - primaryX);
-    let opacity = 1;
-    if (distance < tickerHalfWidth) opacity = 0;
-    else if (hoveredLabel && span.textContent === hoveredLabel) opacity = 0;
-    else if (distance < tickerHalfWidth + fadeBuffer) opacity = (distance - tickerHalfWidth) / fadeBuffer;
-    span.style.opacity = String(opacity);
-  }
-}
-
-export function resetLabelFade(container: HTMLElement): void {
-  for (const span of container.querySelectorAll<HTMLSpanElement>("[data-bkm-xlabel]")) span.style.opacity = "1";
 }

@@ -15,6 +15,7 @@ import type {
   ChartInteractionController,
   ChartMark,
   ChartPoint,
+  ChartPositionScaleOptions,
   ChartRenderContext,
   ChartScale,
 } from "@tanstack/charts";
@@ -37,10 +38,8 @@ import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection"
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import {
-  extractReferenceAreaConfigs,
   extractReferenceAreaProps,
 } from "./internal/reference-area-config";
-import { createTickColorResolver } from "./internal/reference-area-geometry";
 import {
   ChartSelectionContext,
   extractSegmentComponents,
@@ -67,13 +66,19 @@ import { timeToPixelX } from "./internal/x-time-scale";
 import {
   BOX_OFFSET,
   DISCRETE_INTERACTION_THRESHOLD,
+  FADE_BUFFER,
   SERIES_MARKER_ENTER_MS,
+  TICKER_HALF_WIDTH,
   TOOLTIP_BOX_SPRING,
 } from "./internal/design-tokens";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { TooltipContent } from "./internal/tooltip-components";
-import { XAxisOverlay } from "./internal/x-axis-overlay";
-import { YAxisOverlay } from "./internal/y-axis-overlay";
+import {
+  buildXAxisTickValues,
+  buildYAxisTickValues,
+  formatYAxisTick,
+  tickLabelFadeOpacity,
+} from "./internal/axis-ticks";
 import type { ChartDatum, ChartStatus, TooltipRow } from "./internal/types";
 import { type ChartPhase, DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./internal/chart-phase";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
@@ -262,7 +267,6 @@ export function LineChart({
   // below) are gated on this same flag hover-chrome.ts used to decide
   // whether to attach at all.
   const tooltipEnabled = tooltip?.enabled ?? false;
-  const staticRefConfigs = React.useMemo(() => extractReferenceAreaConfigs(children), [children]);
   const projectionConfigs = React.useMemo(() => extractProjectionLineConfigs(children), [children]);
   const projectionGradientBaseId = useSanitizedId();
   const profitLossHoveredIndex = extractProfitLossHoveredIndex(children);
@@ -272,6 +276,9 @@ export function LineChart({
   // clip-rect sweep — the reactive index driving the native highlight-band
   // marks below (internal/hover-geometry.ts's buildHighlightBandMarks).
   const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
+  // C4: replaces date-pill.ts's imperative `applyFade`/`resetFade` span
+  // styling — drives the native x `tickLabels.opacity` callback below.
+  const [labelFade, setLabelFade] = React.useState<{ primaryX: number; hoveredLabel: string | null } | null>(null);
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const prefersReducedMotion = usePrefersReducedMotion();
   // C1 (P6): legend hover -> native mark states via programmatic focus
@@ -641,8 +648,8 @@ export function LineChart({
   const spec = React.useMemo(() => {
     if (width <= 0) return null;
     // C2: single source for the final y-domain — niced base with the
-    // projection merge already applied (no re-nice). Reuse the same tuple
-    // here and pass it through to YAxisOverlay.
+    // projection merge already applied (no re-nice). Reused below for the
+    // native y axis's tick-value list.
     const niced = yDomainFinal;
     // D110 escape hatch: stash the ranged time scale in ChartScale.resolve;
     // xForIndex and the hover highlight consume the exact rendered mapping.
@@ -677,7 +684,25 @@ export function LineChart({
         }
         const base = scaleUtc().domain([minTime, maxTime]).range([r0, r1]);
         xScaleD3Ref.current = base as unknown as ScaleTime<number, number>;
-        const ticks = base.ticks(context.tickCount ?? 5);
+        // C4: when a native x axis is configured, the tick LIST comes from
+        // bklit's own tick-choice algorithm (data-aligned/domain-interpolated
+        // selection, projection-tail append) — verbatim moved to
+        // internal/axis-ticks.ts's buildXAxisTickValues. Positions still come
+        // from THIS resolver's own scale instance, so grid + tick labels stay
+        // pixel-identical to the mark geometry.
+        const tickList = xAxis
+          ? buildXAxisTickValues({
+              data: xDomain ? visibleData : renderData,
+              xDataKey,
+              rangeStart: r0,
+              rangeEnd: r1,
+              numTicks: xAxis.numTicks ?? 5,
+              formatValue: xAxis.formatValue,
+              domainMaxTime: timeExtent?.maxTime,
+              xDomain: xDomain ?? null,
+              tickMode: xAxis.tickMode,
+            })
+          : base.ticks(context.tickCount ?? 5).map((value) => ({ value, label: value.toISOString() }));
         return {
           id: context.id,
           type: "time",
@@ -686,10 +711,10 @@ export function LineChart({
             const m = base(value as Date);
             return m === undefined ? Number.NaN : m;
           },
-          ticks: ticks.map((value) => ({
-            value,
-            position: base(value) ?? Number.NaN,
-            label: value.toISOString(),
+          ticks: tickList.map((t) => ({
+            value: t.value,
+            position: base(t.value) ?? Number.NaN,
+            label: t.label,
           })),
           bandwidth: 0,
         };
@@ -697,28 +722,85 @@ export function LineChart({
     };
     const yScale = scaleLinear().domain(niced);
     const gridGuide = resolveGridGuide(grid);
+    // C4: proximity-fade opacity for x tick labels — replaces date-pill.ts's
+    // imperative span opacity styling. `ctx.position` is the same scene-x
+    // space `labelFade.primaryX` (the focused point's rendered x) lives in.
+    const xTickLabelOpacity = labelFade
+      ? (ctx: { value: unknown; position: number }) =>
+          tickLabelFadeOpacity(
+            ctx.position,
+            (xAxis?.formatValue ?? shortDateFmt.format)(ctx.value as Date),
+            labelFade.primaryX,
+            labelFade.hoveredLabel,
+            xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH,
+            FADE_BUFFER,
+          )
+      : 1;
     // bklit shell:373-395 — effective tween enable = yDomainTween || (tweenYDomainOnXDomainChange && xDomain != null) already folded into effectiveYDomainTweenDuration; gate uses yDomainChangedForTween which tracks the visibleData-derived domain.
     const svgAnimation =
       isChartInteractionPhase(chartPhase) && isLoaded && yDomainChangedForTween
         ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
         : false;
+    const xScaleOptions: ChartPositionScaleOptions<Date> = {
+      scale: xScale,
+      grid: gridGuide.vertical,
+      axis: {
+        ticks: { count: gridGuide.columnTicks, size: 0, padding: 0 },
+        line: false,
+        tickLabels: xAxis
+          ? {
+              fontSize: 12,
+              thin: false,
+              dy: margin.bottom - 25,
+              opacity: xTickLabelOpacity,
+            }
+          : false,
+      },
+    };
+    // C4: with a native y axis configured, tick VALUES come from
+    // buildYAxisTickValues (bklit's niced-domain 1–10 clamp) instead of
+    // gridGuide.ticks's plain count hint — deviation: the horizontal grid
+    // now follows the label ticks (identical output for default configs,
+    // since both derive from the same niced domain, but the count POLICY
+    // is replaced).
+    const yScaleOptions: ChartPositionScaleOptions<number> = yAxis
+      ? {
+          scale: yScale,
+          grid: gridGuide.horizontal,
+          axis: {
+            ticks: {
+              values: buildYAxisTickValues(niced, yAxis.numTicks),
+              format: (v: number) => formatYAxisTick(v, yAxis.formatValue, yAxis.formatLargeNumbers ?? true),
+              size: 0,
+              padding: 0,
+            },
+            line: false,
+            tickLabels: {
+              fontSize: 12,
+              thin: false,
+              opacity: 1,
+              dx: yAxis.orientation === "right" ? 8 : -8,
+            },
+          },
+          side: yAxis.orientation === "right" ? "right" : "left",
+        }
+      : {
+          scale: yScale,
+          grid: gridGuide.horizontal,
+          axis: { ticks: { count: gridGuide.ticks, size: 0 }, line: false, tickLabels: false },
+        };
     return {
       marks,
       // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
       // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
       // key on the spec is never read.
       scales: {
-        x: {
-          scale: xScale,
-          grid: gridGuide.vertical,
-          axis: { ticks: { count: gridGuide.columnTicks } },
-        },
-        y: {
-          scale: yScale,
-          grid: gridGuide.horizontal,
-          axis: { ticks: { count: gridGuide.ticks } },
-        },
+        x: xScaleOptions,
+        y: yScaleOptions,
       },
+      // C4: the only styling channel for native tick-label `fill` (v0.15.0)
+      // — parity with the deleted overlays' `var(--color-chart-label, ...)`.
+      theme: { muted: "var(--color-chart-label, var(--chart-label))" },
       margin,
       focus: "group-x" as const,
       // bklit has no native focus ring — its hover dot is the springed TooltipDot.
@@ -748,7 +830,7 @@ export function LineChart({
         : (false as const),
       svgAnimation,
     };
-  }, [marks, renderData, xDataKey, grid, width, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, projectionConfigs, xDomain, timeExtent, tooltip]);
+  }, [marks, renderData, xDataKey, grid, width, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, projectionConfigs, xDomain, timeExtent, tooltip, xAxis, yAxis, visibleData, labelFade]);
 
   const definition = React.useMemo(() => {
     if (!spec) return null;
@@ -854,7 +936,7 @@ export function LineChart({
     markerActiveStore.setActiveDate(null);
     wasVisibleRef.current = false;
     datePill.hide();
-    datePill.resetFade();
+    setLabelFade(null);
   }, [profitLossLines, markerActiveStore, datePill]);
 
   const handleFocusChange = React.useCallback(
@@ -899,12 +981,20 @@ export function LineChart({
         const jump = !wasVisibleRef.current;
         wasVisibleRef.current = true;
         datePill.show(primary.x, { index: primary.datumIndex, label, discrete: isDiscrete, jump });
-        // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade radius.
-        datePill.applyFade(primary.x, label, xAxis?.tickerHalfWidth);
+        // CH5/B12: bklit XAxis.tickerHalfWidth drives the date-pill label-fade
+        // radius. C4: reactive state instead of date-pill.ts's imperative
+        // span-opacity write — consumed by the x scale's native
+        // `tickLabels.opacity` callback. Guarded so an unchanged focus point
+        // doesn't force a `spec`/`definition` rebuild every pointer move.
+        setLabelFade((prev) =>
+          prev && prev.primaryX === primary.x && prev.hoveredLabel === label
+            ? prev
+            : { primaryX: primary.x, hoveredLabel: label },
+        );
       } else {
         wasVisibleRef.current = false;
         datePill.hide();
-        datePill.resetFade();
+        setLabelFade(null);
       }
     },
     [xDomain, xDataKey, chartPhase, isLoaded, profitLossLines, markerActiveStore, tooltip, isDiscrete, datePill, xAxis],
@@ -1209,7 +1299,8 @@ export function LineChart({
 
   const segmentComponents = React.useMemo(() => extractSegmentComponents(children), [children]);
   const refAreaChildren = React.useMemo(() => extractReferenceAreaProps(children), [children]);
-  const yTickColorForValue = React.useMemo(() => createTickColorResolver(staticRefConfigs, yDomainFinal, DEFAULT_Y_AXIS_ID), [staticRefConfigs, yDomainFinal]);
+  // D431: ReferenceArea axisLabelColor per-tick y-label color dropped —
+  // native tickLabels have no per-tick fill channel (v0.15.0).
 
   // BrushHost + clipping: trackExtent is this host's own final xScale domain
   // (after projection merge when un-brushed; equals bklit's context xScale domain).
@@ -1279,33 +1370,6 @@ export function LineChart({
       ) : null}
       {definition && (
         <>
-          {xAxis ? (
-            <XAxisOverlay
-              data={xDomain ? visibleData : renderData}
-              xDataKey={xDataKey}
-              rangeStart={margin.left}
-              rangeEnd={width - margin.right}
-              numTicks={xAxis.numTicks ?? 5}
-              formatValue={xAxis.formatValue}
-              domainMaxTime={timeExtent?.maxTime}
-              xDomain={xDomain ?? null}
-              tickMode={xAxis.tickMode}
-            />
-          ) : null}
-          {yAxis ? (
-            <YAxisOverlay
-              yDomain={yDomainFinal}
-              chartTop={margin.top}
-              chartBottom={heightPx - margin.bottom}
-              chartLeft={margin.left}
-              chartRight={margin.right}
-              orientation={yAxis.orientation ?? "left"}
-              numTicks={yAxis.numTicks ?? 5}
-              formatLargeNumbers={yAxis.formatLargeNumbers ?? true}
-              formatValue={yAxis.formatValue}
-              tickColorForValue={yTickColorForValue}
-            />
-          ) : null}
           {heightPx > 0 && (
             <ReferenceAreaLayers
               configs={refAreaChildren}
