@@ -28,7 +28,7 @@ const HOVER_GROW_SEGMENT_CAP = 0.1;
 // Layout builders
 // ---------------------------------------------------------------------------
 
-function nodeId(parentId: string | null, name: string): string {
+export function nodeId(parentId: string | null, name: string): string {
   return parentId ? `${parentId}${ID_SEP}${name}` : name;
 }
 
@@ -149,6 +149,46 @@ export function buildArcs(data: SunburstNode) {
     focusById: ctx.focusById,
     rootId,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Flat rows for native `sunburst()` (C5d, D-TBD) — native's hierarchy
+// pipeline (`hierarchy-flat-internal.js`'s `buildFlatHierarchy`) is a
+// `d3-hierarchy` `stratify()` over FLAT rows with `nodeId`/`parentId`
+// accessors, not a nested-tree walk. This flattens the SAME nested
+// `SunburstNode` `data` prop `buildArcs` walks, using the IDENTICAL `nodeId`
+// scheme (so ids match 1:1 with `ArcDatum.id`/`Focus.id` from `buildArcs` —
+// required for `arcsById` cross-referencing in sunburst-chart.tsx) — but
+// carries each node's OWN raw `value` (`rawValue`, undefined for a node with
+// no `value` field), not `sumValues`'s pre-aggregated subtree total. This
+// distinction is required by parity condition 1 (see sunburst-chart.tsx):
+// native's own `hierarchy.root.sum(...)` (`hierarchy-flat-internal.js:97`)
+// ADDS a node's own value on top of its children's, so the `value` accessor
+// passed to `sunburst()` must return 0 for any node with children (letting
+// only the children's sums flow up) — passing our own pre-summed
+// `ArcDatum.value` here would double-count.
+// ---------------------------------------------------------------------------
+
+export interface SunburstFlatRow {
+  id: string;
+  parentId: string | null;
+  hasChildren: boolean;
+  rawValue: number | undefined;
+}
+
+export function buildSunburstFlatRows(data: SunburstNode): SunburstFlatRow[] {
+  const rows: SunburstFlatRow[] = [];
+  function walk(node: SunburstNode, id: string, parentId: string | null) {
+    const hasChildren = Boolean(node.children?.length);
+    rows.push({ id, parentId, hasChildren, rawValue: node.value });
+    if (hasChildren) {
+      for (const child of node.children!) {
+        walk(child, nodeId(id, child.name), id);
+      }
+    }
+  }
+  walk(data, nodeId(null, data.name), null);
+  return rows;
 }
 
 // ---------------------------------------------------------------------------

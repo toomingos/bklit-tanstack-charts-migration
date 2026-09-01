@@ -92,10 +92,28 @@
 // animates the progress sweep's endAngle via the same HOVER_SPRING physics —
 // legacy had no such post-mount smoothing (the WAAPI reveal only ever played
 // once per ring index). Strictly additive, not a regression.
+//
+// --- C5c (native focus, Phase 6, D435): DOM pointer chrome retired --------
+// CONTRARY to this rung's brief, ring already had a per-ring STATIC hitbox
+// twin (`hitboxMarks`, D258 fix, above) — no new hitbox mark was authored
+// here. `focusDisabled` and the `querySelectorAll`-free but still-imperative
+// `[data-ts-key="ring-{i}-hitbox"]` + `pointerenter`/`pointerleave`
+// `useLayoutEffect` are GONE. `focus` is omitted from `defineChart` (library
+// default) and `<RendererChart onFocusChange>` forwards the resolved point
+// to the SAME `RingHoverCoordinator` — unlike pie, `RingArcDatum` carries no
+// index field (ring uses three separately-`id`'d marks per index —
+// `ring-{i}-track/progress/hitbox` — not one multi-row mark), so the ring
+// index is parsed off `ChartPoint.markId` via `/^ring-(\d+)-/`. Cursor style
+// (`hitboxGroup.style.cursor`) moves to a CSS rule (styles.css, reported —
+// shared file, not owned by this rung). Net-new: native keyboard focus now
+// also resolves ring points. Same accepted approximation as pie: no public
+// API excludes track/progress/hitbox marks' points from native
+// keyboard/focus candidacy (dist/polar.d.ts, @tanstack/charts@0.15.0), so
+// keyboard arrow-nav exposes redundant same-position stops; pointer
+// resolution is unaffected (hitbox always painted last, wins containment).
 import { Children, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, createContext, useContext, type CSSProperties, type ReactElement, type ReactNode, type RefObject } from "react";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
 import { defineChart } from "@tanstack/charts";
-import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { polar, radialArc } from "@tanstack/charts/polar";
 import { pieArcPath } from "./internal/pie-geometry";
 import { displayNameOf } from "./children";
@@ -544,7 +562,7 @@ export function RingChart({
       return defineChart({
         marks: [polar({ inset: padding, radiusRatio: 1, marks: [] })],
         guides: false, scales: { x: null, y: null },
-        focus: focusDisabled, tooltip: false,
+        tooltip: false,
       });
     }
 
@@ -673,7 +691,11 @@ export function RingChart({
     return defineChart({
       marks: [polar({ inset: padding, radiusRatio: 1, marks: [...arcMarks, ...hitboxMarks] })],
       guides: false, scales: { x: null, y: null },
-      focus: focusDisabled, tooltip: false,
+      // C5c (D435): native default focus replaces `focusDisabled` — see file
+      // header. `focusRing: false` suppresses the default indicator since
+      // the reactive hover-scale geometry above IS ring's authored focus
+      // treatment.
+      focusRing: false, tooltip: false,
     });
   }, [data, ringConfigMap, getRingRadii, getColor, availableRadius, padding, startAngle, endAngle, arcRange, geometryScrubbing, liveHoveredIndex, enterTransition, enterStaggerScale]);
 
@@ -797,59 +819,27 @@ export function RingChart({
   }, []);
 
   // -----------------------------------------------------------------------
-  // Pointer wiring only (C3, D432): native motion now owns both the
+  // Native focus wiring (C5c, D435): native motion already owns both the
   // progress sweep's entrance and both marks' hover-scale geometry (see
-  // `definition` above), so the only imperative job left is detecting
-  // pointer enter/leave on the static hitbox twins and forwarding it to the
-  // coordinator — no more hover-spring runtimes, no more `settleAtRest()`
-  // two-writer-hazard gate (the track's D420 WAAPI pop and native's
-  // hover-driven radius channel target different attributes and never
-  // race). Stable deps so it only re-runs on structural changes.
-  //
-  // bklit parity note: legacy ring.tsx binds enter/leave to the same
-  // `motion.g` it springs, but its hover latches rings far from the
-  // cursor (D258), so nothing it grows can eject the pointer. Migrated
-  // hit-tested the SCALED band itself — once a band is thinner than the
-  // ~1.7px growth displacement the hovered band grows out from under a
-  // stationary cursor → leave → reverse → re-enter, an endless loop with
-  // no steady state (D258's measured mechanism). Listeners bind to the
-  // STATIC hitbox twin instead (pie's D254 precedent): rest radii,
-  // transparent fill, never animated by reveal or hover, so growth can
-  // never dislodge the hit test. Track/progress groups are purely visual.
+  // `definition` above and file header). Pointer/keyboard DETECTION is now
+  // native too — the static hitbox twin's `ChartPoint` (topmost, wins
+  // containment) forwards through `onFocusChange` to the SAME coordinator.
+  // `RingArcDatum` carries no index field (ring uses per-index `ring-{i}-*`
+  // marks, not one multi-row mark like pie), so the index is parsed off
+  // `ChartPoint.markId` instead of `datum`.
   // -----------------------------------------------------------------------
-  useLayoutEffect(() => {
-    const { geometryScrubbing: scrubbing } = hoverInputsRef.current;
-    if (scrubbing) return;
-    const container = containerRef.current;
-    if (!container) return;
-    const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marksGroup) return;
-
-    const { data: currData } = hoverInputsRef.current;
-    const cleanupMap = new Map<Element, () => void>();
-
-    for (let i = 0; i < currData.length; i++) {
-      const hitboxGroup =
-        (marksGroup.querySelector(`[data-ts-key="ring-${i}-hitbox"]`) as SVGGElement | null) ??
-        (container.querySelector(`[data-ts-key="ring-${i}-hitbox"]`) as SVGGElement | null);
-      if (!hitboxGroup) continue;
-
-      hitboxGroup.style.cursor = "pointer";
-      const enter = () => coordinator.requestHover(i);
-      const leave = () => coordinator.requestUnhover();
-      hitboxGroup.addEventListener("pointerenter", enter);
-      hitboxGroup.addEventListener("pointerleave", leave);
-      cleanupMap.set(hitboxGroup, () => {
-        hitboxGroup.removeEventListener("pointerenter", enter);
-        hitboxGroup.removeEventListener("pointerleave", leave);
-      });
-    }
-
-    return () => {
-      for (const cleanup of cleanupMap.values()) cleanup();
-      cleanupMap.clear();
-    };
-  }, [data.length, geometryScrubbing, containerRef, coordinator]);
+  const handleRingFocusChange = useCallback(
+    (point: { markId: string } | null) => {
+      if (point) {
+        const match = /^ring-(\d+)-/.exec(point.markId);
+        const index = match ? Number(match[1]) : null;
+        if (index !== null && !Number.isNaN(index)) coordinator.requestHover(index);
+      } else {
+        coordinator.requestUnhover();
+      }
+    },
+    [coordinator],
+  );
 
   // Cleanup only on actual unmount — NOT on StrictMode double-invoke.
   const isMountedRef = useRef(true);
@@ -941,6 +931,7 @@ export function RingChart({
                 definition={definition}
                 onRender={handleRender}
                 renderer={chartMotionRenderer<RingArcDatum, number, number>()}
+                onFocusChange={handleRingFocusChange}
               />
             )}
 

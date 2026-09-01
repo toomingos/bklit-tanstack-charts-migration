@@ -24,6 +24,30 @@
 // optimized scene-graph pipeline (same transformation that took Ring from
 // 23.2ms → 13.6ms at n=4, a 41% improvement).
 //
+// --- C5c (native focus, Phase 6, D435): DOM pointer chrome retired --------
+// `focusDisabled` and the `querySelectorAll('path[data-ts-key^="pie-hitbox:"]')`
+// + `pointerenter`/`pointerleave` `useLayoutEffect` (both described below and
+// in C2's note) are GONE. The static hitbox twin (`hitboxMark`, unchanged)
+// now carries native focus instead: `focus` is omitted from `defineChart`
+// (library default — pointer resolves the topmost containing interactive
+// primitive, which is always the hitbox twin since it paints last), and
+// `<RendererChart onFocusChange>` forwards the resolved point's
+// `datum.sliceIndex` straight to the SAME `PieHoverCoordinator` used before
+// (`requestHover`/`requestUnhover`) — the coordinator, broadcast store, fade,
+// and spring geometry are UNCHANGED, only the DOM-query pointer-detection
+// layer is gone. `groupEl.style.cursor` writes are replaced by a CSS rule
+// (styles.css, reported to the C5c orchestrator — this file cannot own that
+// shared stylesheet). Net-new, previously entirely absent: native keyboard
+// focus (Tab into the SVG, arrow keys) now also resolves points and fires
+// `onFocusChange`, so keyboard users get slice hover-preview + fade for the
+// first time. One accepted approximation: `RadialArcOptions` has no API to
+// exclude the visible `sliceMark`'s points from native focus/keyboard
+// candidacy (dist/polar.d.ts, @tanstack/charts@0.15.0), so keyboard
+// arrow-navigation exposes both the visible mark's and the hitbox twin's
+// points as separate stops at the same position — pointer hover is
+// unaffected (paint-order containment always resolves to the hitbox, which
+// is declared last) since it only matters for pointer resolution.
+//
 // --- Preserved from D49 (all previous findings verified and carried forward)
 // * d3 pie() computation — identical config to bklit (`.sort(null)` for QA
 //   determinism)
@@ -74,7 +98,6 @@ import {
   isValidElement,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -84,7 +107,6 @@ import {
 } from "react";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
 import { defineChart } from "@tanstack/charts";
-import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { polar, radialArc } from "@tanstack/charts/polar";
 import { stagger } from "@tanstack/charts/motion/definition";
 import { pieArcPath, sliceMidOffset } from "./internal/pie-geometry";
@@ -431,7 +453,7 @@ export function PieChart({
       return defineChart({
         marks: [polar({ inset: hoverOffset, radiusRatio: 1, marks: [] })],
         guides: false, scales: { x: null, y: null },
-        focus: focusDisabled, tooltip: false,
+        tooltip: false,
         // T-D15 (P3.1): explicit 5-entry palette override — see
         // internal/design-tokens.ts. No visible marks in this branch, wired
         // for consistency with the populated branch below.
@@ -565,7 +587,16 @@ export function PieChart({
     return defineChart({
       marks: [polar({ inset: hoverOffset, radiusRatio: 1, marks: [sliceMark, hitboxMark] })],
       guides: false, scales: { x: null, y: null },
-      focus: focusDisabled, tooltip: false,
+      // C5c (D435): native default focus (no `focus` key) replaces
+      // `focusDisabled` — pointer resolution always lands on `hitboxMark`
+      // (painted last, wins containment) and forwards through
+      // `onFocusChange` below to the unchanged `PieHoverCoordinator`.
+      // `focusRing: false` suppresses the library's default focus-ring
+      // indicator since the reactive grow/translate/fade geometry above IS
+      // pie's authored focus treatment (docs/reference/focus-and-interaction.md:
+      // "Set definition focusRing: false only when authored focus geometry
+      // replaces that indicator").
+      focusRing: false, tooltip: false,
       // T-D15 (P3.1): explicit 5-entry palette override, NOT the native
       // 6-entry defaultChartTheme.palette (see internal/design-tokens.ts).
       // Every row already carries an explicit per-datum `fill` (getFill
@@ -580,71 +611,24 @@ export function PieChart({
     geometryScrubbing, fadeHoveredIndex, enterTransition, enterStaggerScale,
   ]);
 
-  // --- Pointer wiring only: native motion (C2, D432) now owns both entrance
-  // reveal (sliceMark's `motion`, above) and the hover grow/translate/fade
-  // geometry (reactive via `pieRows` -> `fadeHoveredIndex`), so the only
-  // imperative job left is detecting pointer enter/leave on the static
-  // hitbox twins and forwarding it to the coordinator — no more
-  // `PieSliceHoverRuntime` creation/update/paint, no more hand-rolled WAAPI
-  // entrance reveal (the `handleRender` callback below and its post-paint
-  // catch-up effect are DELETED outright: `ts-chart__arc`'s native `motion`
-  // plays entrance itself now, see `sliceMark` above).
-  const hoverInputsRef = useRef({ arcs: [] as PieArcData[] });
-  hoverInputsRef.current = { arcs };
-
-  useLayoutEffect(() => {
-    if (geometryScrubbing) return;
-    const container = containerRef.current;
-    if (!container) return;
-    const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marksGroup) return;
-
-    const { arcs } = hoverInputsRef.current;
-    const localCleanupMap = new Map<Element, () => void>();
-
-    // Hitbox twins (static, never animated) carry the pointer listeners —
-    // bklit's invisible-hitbox/visible-slice separation (see the mark
-    // definition comment above `hitboxMark`).
-    const hitboxAll = marksGroup.querySelectorAll<SVGPathElement>('path[data-ts-key^="pie-hitbox:"]');
-    const hitboxSearch: SVGPathElement[] =
-      hitboxAll.length > 0
-        ? Array.from(hitboxAll)
-        : Array.from(container.querySelectorAll<SVGPathElement>('path[data-ts-key^="pie-hitbox:"]'));
-    const hitboxMap = new Map<number, SVGPathElement>();
-    for (const el of hitboxSearch) {
-      const k = el.getAttribute("data-ts-key") ?? "";
-      const idx = Number(k.slice(k.lastIndexOf(":") + 1));
-      if (!Number.isNaN(idx) && !hitboxMap.has(idx)) hitboxMap.set(idx, el);
-    }
-
-    for (let i = 0; i < arcs.length; i++) {
-      const arc = arcs[i] as PieArcData | undefined;
-      if (!arc) continue;
-      const groupEl = hitboxMap.get(arc.index);
-      if (!groupEl) continue;
-
-      groupEl.style.cursor = "pointer";
-
-      const sliceIndex = arc.index;
-      const enter = () => coordinator.requestHover(sliceIndex);
-      const leave = () => coordinator.requestUnhover();
-
-      // groupEl is the STATIC hitbox twin (never translated/grown), so the
-      // pop cannot eject a stationary cursor — bklit's own structure.
-      groupEl.addEventListener("pointerenter", enter);
-      groupEl.addEventListener("pointerleave", leave);
-
-      localCleanupMap.set(groupEl, () => {
-        groupEl.removeEventListener("pointerenter", enter);
-        groupEl.removeEventListener("pointerleave", leave);
-      });
-    }
-
-    return () => {
-      for (const cleanup of localCleanupMap.values()) cleanup();
-      localCleanupMap.clear();
-    };
-  }, [data.length, geometryScrubbing, containerRef, coordinator]);
+  // --- Native focus wiring (C5c, D435): native motion (C2, D432) already
+  // owns entrance reveal and the hover grow/translate/fade geometry
+  // (reactive via `pieRows` -> `fadeHoveredIndex`). Pointer/keyboard
+  // DETECTION is now native too — the static hitbox twin's `ChartPoint`
+  // (topmost, wins containment) forwards through `onFocusChange` straight to
+  // the SAME coordinator the old DOM-listener block drove. `sliceIndex` is
+  // read off `point.datum` because `PieRowDatum` carries it directly (no
+  // `markId` parsing needed, unlike ring's per-index marks).
+  const handlePieFocusChange = useCallback(
+    (point: { datum: PieRowDatum } | null) => {
+      if (point) {
+        coordinator.requestHover(point.datum.sliceIndex);
+      } else {
+        coordinator.requestUnhover();
+      }
+    },
+    [coordinator],
+  );
 
   if (size < 10) {
     return (
@@ -713,6 +697,7 @@ export function PieChart({
               height={size}
               definition={definition}
               renderer={chartMotionRenderer<PieRowDatum, number, number>()}
+              onFocusChange={handlePieFocusChange}
             />
           )}
 

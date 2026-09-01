@@ -376,6 +376,17 @@
   transition: fill 0.15s ease-in-out;
 }
 
+/* --- Pie/ring hitbox cursor (C5c): replaces the deleted imperative
+       `groupEl.style.cursor` / `hitboxGroup.style.cursor` writes. The hitbox
+       twin is declared last, so it is the topmost-painted target under the
+       pointer and is what the cursor applies to. --- */
+[data-bkm-chart="pie"] path[data-ts-key^="pie-hitbox:"] {
+  cursor: pointer;
+}
+[data-bkm-chart="ring"] path[data-ts-key*="-hitbox:"] {
+  cursor: pointer;
+}
+
 /* --- Choropleth hover dim (C1, P6): reactive per-datum fill/stroke alpha
        (geo marks have no `states`); bklit's 0.18s ease-out term. --- */
 [data-bkm-chart="choropleth"] .ts-chart__geo path {

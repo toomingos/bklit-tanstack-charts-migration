@@ -1,31 +1,34 @@
-// Reveal-delay math for SunburstChart (C5, native motion, Phase 6, D432).
+// Reveal-delay math for SunburstChart (C5d, native semantic motion, D-TBD).
 //
 // This module used to ALSO hold the WAAPI keyframe generators for both the
 // entrance sweep (`buildRevealKeyframes`, 64-sample `d`-string keyframes)
 // and the zoom morph (`buildZoomKeyframes`, 30-sample `d`-string keyframes,
 // bklit's verbatim `transitionGeometry`/`arcPath`) — both DELETED outright
-// by C5, not ported. sunburst-chart.tsx's `radialArc<SunburstArcRow>` mark
-// already declares real d3-arc accessors on its `generator`
-// (`.startAngle`/`.endAngle`/`.innerRadius`/`.outerRadius`, keyed
-// `sunburst-arc-{playKey}-{arcIndex}`), which is the confirmed mechanism
-// (gauge C4 precedent, `dist/motion.js`'s `addSemanticPathUpdateTrack` /
-// `compatiblePathGeometry`) native reads to interpolate a matched keyed
-// path's `d` attribute directly — so both the entrance sweep (native
-// "enter", stagger delay computed below) and the zoom morph (native
-// "update", arcRows recomputing off `focus` on every zoomTo commit) are now
-// the mark's own `motion` callback, zero imperative `.animate()` calls.
-// arcIndex is assigned once from the static tree structure (`buildArcs`,
-// sunburst-geometry.ts) and never depends on `focus` — so the same arc
-// keeps the same key across every zoom/focus rebuild, matching the update
-// track instead of replaying enter/exit (verified by reading `buildArcs`;
-// only genuinely-degenerate arcs crossing the culling threshold exit/enter).
+// by C5, not ported. sunburst-chart.tsx now renders a single native
+// `sunburst()` mark (`@tanstack/charts/hierarchy/sunburst`, C5d) — the sole
+// mark in the whole catalog carrying `[sceneMotionNode]` scene metadata
+// (`dist/motion.js`), i.e. a REAL shape-aware `d`-morph
+// (`compatiblePathGeometry`/`hierarchyRelatedGeometry`), not the generic
+// numeric-token diff a raw-generator `radialArc` mark falls back to. Both
+// the entrance sweep (native "enter", stagger delay computed below) and the
+// zoom morph (native "update", driven by `rootId: focus.id` on every
+// `zoomTo` commit) are the mark's own `motion` callback, zero imperative
+// `.animate()` calls. Native derives each rendered node's scene key from its
+// hierarchy `id` (`${markId}:node:${valueKey(node.id)}`,
+// `hierarchy-sunburst.js`) — an id assigned once from the static tree
+// structure (`buildArcs`, `buildSunburstFlatRows`, sunburst-geometry.ts) and
+// never dependent on `focus` — so the same node keeps the same key across
+// every zoom/focus rebuild, matching the update track instead of replaying
+// enter/exit (only nodes native's own `x1 > x0` filter drops — zero-value
+// branches — ever have no rendered path at all; see sunburst-chart.tsx's
+// file header for why focus/drill logic never reads native mark data).
 //
 // `buildRevealTiming`/`maxRevealDelayMs` below are unchanged — sunburst's
-// entrance delay (native `motion` enter phase) AND the labels overlay's own
-// still-WAAPI reveal (`runLabelsReveal`, sunburst-chart.tsx — labels are a
-// separate DOM overlay outside the TanStack scene graph, no native
-// mark to hang motion off, out of C5 scope) both still need this per-arc
-// ring-staggered delay list.
+// entrance delay (native `motion` enter phase, read off `ctx.datum.id`) AND
+// the labels overlay's own still-WAAPI reveal (`runLabelsReveal`,
+// sunburst-chart.tsx — labels are a separate DOM overlay outside the
+// TanStack scene graph, no native mark to hang motion off, out of C5/C5d
+// scope) both still need this per-arc ring-staggered delay list.
 
 import {
   clockwiseFraction,
