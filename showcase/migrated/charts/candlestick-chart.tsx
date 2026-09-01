@@ -38,16 +38,17 @@ import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { crosshair, defineChart, createMark, whenFocused } from "@tanstack/charts";
-import { tooltip as tooltipExtension } from "@tanstack/charts/tooltip";
-import type { ChartAxisTickLabelContext, ChartInteractionController, ChartMark, ChartMarkState, ChartMotionContext, ChartMotionDefinition, ChartMotionTransition, ChartPoint, ChartRenderContext, ChartRendererRenderContext, ChartScale, ChartScene, SceneNode } from "@tanstack/charts";
+import { createMark } from "@tanstack/charts";
+import { defineChart } from "@tanstack/charts/scene";
+import { whenFocused } from "@tanstack/charts/focus/mark";
+import type { ChartMark, ChartMarkState, ChartMotionContext, ChartMotionDefinition, ChartMotionTransition, ChartPoint, ChartRendererRenderContext, ChartScale, SceneNode } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import { TooltipContent } from "./internal/tooltip-components";
-import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH, TOOLTIP_BOX_SPRING } from "./internal/design-tokens";
+import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, TOOLTIP_BOX_SPRING } from "./internal/design-tokens";
 import { buildPill, type PillBuild } from "./internal/date-pill";
-import { buildXAxisTickValues, formatYAxisTick, tickLabelFadeOpacity } from "./internal/axis-ticks";
+import { buildXAxisTickValues, formatYAxisTick, buildFadeXAxisOptions } from "./internal/axis-ticks";
 import { resolveVerticalFadeSides, indicatorFadeGradientStops } from "./internal/fade-mask";
-import { resolveIndicatorPixelWidth, toDotConfig, toIndicatorConfig, type DotConfig } from "./internal/tooltip-mappers";
+import { toDotConfig, toIndicatorConfig, type DotConfig } from "./internal/tooltip-mappers";
 import { findSpringStiffnessDamping } from "./internal/candle-spring";
 import { resolveMotionEasing } from "./internal/reveal-easing";
 import { chartMotionRenderer } from "./internal/motion-renderer";
@@ -77,7 +78,9 @@ import { createCandlestickFocusStrategy } from "./internal/candlestick-focus-str
 import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
-import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
+import { useFocusInjection, whenSeriesDimmed, useLegendFocusBroadcast } from "./internal/focus-injection";
+import { buildIndicatorMark } from "./internal/hover-geometry";
+import { buildNativeTooltipExtension } from "./internal/native-tooltip";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { DEFAULT_ANIMATION_DURATION_MS } from "./internal/animation-defaults";
 import "./styles.css";
@@ -507,7 +510,7 @@ export function CandlestickChart({
   // React state semantics instead of a manual DOM guard.
 
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
-  const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection();
+  const { captureRenderContext, focusSeries, clearFocus, sceneRef, clientToScene } = useFocusInjection<ChartDatum, Date, number>();
 
   const resolvedPositiveFill = candlestick?.positiveFill ?? SOLID_POSITIVE;
   const resolvedNegativeFill = candlestick?.negativeFill ?? SOLID_NEGATIVE;
@@ -1064,23 +1067,17 @@ export function CandlestickChart({
         const indicatorColorValue = typeof indicatorCfg.color === "string" ? indicatorCfg.color : "var(--chart-crosshair)";
         const indicatorSpringCfg = indicatorCfg.springConfig ?? chartConfig.tooltipSpring;
         hoverMarks.push(
-          crosshair({
-            y: false,
-            x: {
-              stroke: !isDashed && fadeSides.any ? `url(#${indicatorGradientId})` : indicatorColorValue,
-              strokeOpacity: 1,
-              strokeWidth: resolveIndicatorPixelWidth(indicatorCfg),
-              strokeDasharray: indicatorCfg.dasharray,
-            },
-            motion: discrete
-              ? false
-              : {
-                  transition: {
-                    type: "spring",
-                    stiffness: indicatorSpringCfg.stiffness,
-                    damping: indicatorSpringCfg.damping,
-                  },
-                },
+          buildIndicatorMark({
+            gradientId: indicatorGradientId,
+            width: indicatorCfg.width,
+            span: indicatorCfg.span,
+            columnWidth: indicatorCfg.columnWidth,
+            dasharray: indicatorCfg.dasharray,
+            color: indicatorColorValue,
+            useGradient: !isDashed && fadeSides.any,
+            strokeOpacity: 1,
+            spring: indicatorSpringCfg,
+            discrete,
           }) as ChartMark<ChartDatum, Date, number>,
         );
       }
@@ -1105,21 +1102,16 @@ export function CandlestickChart({
     // TOOLTIP_BOX_SPRING default; springs snap (motion: false) once the
     // series is past the same DISCRETE_INTERACTION_THRESHOLD the chrome's
     // own springs use (verified strict `>`, not `>=`).
-    const tooltipOption = tooltipEnabled
-      ? {
-          use: tooltipExtension,
-          // Host chrome reset by the `.bkm-native-tooltip` rule in styles.css;
-          // panel chrome comes from TooltipContent's own `.bkm-tooltip-panel`.
-          className: "bkm-native-tooltip",
-          sticky: false,
-          anchor: { x: "value", y: "plot-top" } as const,
-          placement: ["right", "left"] as const,
-          offset: BOX_OFFSET,
-          motion: (renderData.length > DISCRETE_INTERACTION_THRESHOLD
-            ? false
-            : { type: "spring", stiffness: TOOLTIP_BOX_SPRING.stiffness, damping: TOOLTIP_BOX_SPRING.damping }) as false | { type: "spring"; stiffness: number; damping: number },
-        }
-      : (false as const);
+    const tooltipOption = buildNativeTooltipExtension<ChartDatum, Date, number>({
+      enabled: tooltipEnabled,
+      spring: TOOLTIP_BOX_SPRING,
+      discrete,
+      // Host chrome reset by the `.bkm-native-tooltip` rule in styles.css;
+      // panel chrome comes from TooltipContent's own `.bkm-tooltip-panel`.
+      className: "bkm-native-tooltip",
+      offset: BOX_OFFSET,
+      anchor: { x: "value", y: "plot-top" } as const,
+    });
 
     return defineChart({
       marks,
@@ -1130,28 +1122,7 @@ export function CandlestickChart({
         x: {
           scale: xScale,
           grid: gridGuide.vertical,
-          axis: {
-            line: false,
-            ticks: { count: gridGuide.columnTicks, size: 0, padding: 0 },
-            tickLabels: xAxis
-              ? {
-                  fontSize: 12,
-                  thin: false,
-                  dy: margin.bottom - 25,
-                  opacity: labelFade
-                    ? (ctx: ChartAxisTickLabelContext) =>
-                        tickLabelFadeOpacity(
-                          ctx.position,
-                          (xAxis.formatValue ?? shortDateFmt.format)(ctx.value as Date),
-                          labelFade.primaryX,
-                          labelFade.hoveredLabel,
-                          xAxis.tickerHalfWidth ?? TICKER_HALF_WIDTH,
-                          FADE_BUFFER,
-                        )
-                    : 1,
-                }
-              : false,
-          },
+          axis: buildFadeXAxisOptions(gridGuide.columnTicks, xAxis ?? undefined, margin.bottom, labelFade),
         },
         y: {
           scale: yScale,
@@ -1281,12 +1252,6 @@ export function CandlestickChart({
   // own C3 rewrite (its `handleFocusGroupChange` comment: "same gate as
   // line/candlestick's dragSelectionActiveRef" — this IS that gate).
   const dragSelectionActiveRef = React.useRef(false);
-  // C6: own capture, separate from useFocusInjection's private ref (not
-  // exposed outside that hook) — feeds useChartSelection's clientToScene +
-  // scene.scales.x.invert path (replaces the plot-local xScaleCandleSel
-  // duplicate scale below).
-  const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
-  const sceneRef = React.useRef<ChartScene<ChartDatum, Date, number> | null>(null);
   const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
     const v = d[xDataKey];
     if (v instanceof Date) return shortDateFmt.format(v);
@@ -1330,18 +1295,11 @@ export function CandlestickChart({
 
   // C1: legend hover drives native mark `states` dim via programmatic focus
   // (replaces the old imperative chrome's syncLegendDim() DOM-mutation sync).
-  React.useEffect(() => {
-    if (legendHoveredIndex == null) {
-      clearFocus();
-      return;
-    }
-    const key = legendHoveredIndex === 0 ? "positive" : legendHoveredIndex === 1 ? "negative" : null;
-    if (key != null) {
-      focusSeries(key);
-    } else {
-      clearFocus();
-    }
-  }, [legendHoveredIndex, focusSeries, clearFocus]);
+  const resolveLegendFocusKey = React.useCallback(
+    (index: number) => (index === 0 ? "positive" : index === 1 ? "negative" : null),
+    [],
+  );
+  useLegendFocusBroadcast(legendHoveredIndex, resolveLegendFocusKey, focusSeries, clearFocus);
 
   // Hides the pill + resets axis-label fade — shared by the drag-suppression
   // branch below and `onDragStart` (useChartSelection, further down).
@@ -1445,14 +1403,7 @@ export function CandlestickChart({
   // `ChartRendererRenderContext` under `RendererChart` (no `svg` member;
   // nothing here needed it anyway).
   const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
-    // Cast: focus-injection's captureRenderContext takes the library's
-    // default-generic Pick<ChartRenderContext, "scene"|"interaction">, which
-    // (due to contravariance on interaction.setControlledFocus) isn't
-    // structurally assignable from our ChartDatum-specific instantiation —
-    // this is a type-system quirk, not a runtime mismatch.
-    captureRenderContext(context as Pick<ChartRenderContext, "scene" | "interaction">);
-    interactionRef.current = context.interaction;
-    sceneRef.current = context.scene;
+    captureRenderContext(context);
   }, [captureRenderContext]);
 
   const refAreaChildrenCandle = React.useMemo(() => extractReferenceAreaProps(children), [children]);
@@ -1474,13 +1425,9 @@ export function CandlestickChart({
   // half-slot-width inset) — resolves through the host's own live
   // interaction/scene refs, which already reflect the chart's real
   // candle-slot geometry exactly.
-  const resolveScenePosCandle = React.useCallback(
-    (clientX: number, clientY: number) => interactionRef.current?.clientToScene(clientX, clientY) ?? null,
-    [],
-  );
   const invertSceneXCandle = React.useCallback(
     (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? null,
-    [],
+    [sceneRef],
   );
   const { selection: candleSelection } = useChartSelection({
     enabled: true,
@@ -1488,7 +1435,7 @@ export function CandlestickChart({
     marginLeft: margin.left,
     data: renderData as unknown as Array<Record<string, unknown>>,
     xDataKey,
-    resolveScenePos: resolveScenePosCandle,
+    resolveScenePos: clientToScene,
     invertSceneX: invertSceneXCandle,
     containerRef,
     onDragStart: () => {

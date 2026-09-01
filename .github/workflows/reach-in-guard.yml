@@ -1,0 +1,24 @@
+name: reach-in guard
+# Phase 6 census guard (docs/phase-6/LOG.md D418, 6.5 gate). Fails when any
+# file under showcase/migrated addresses the @tanstack/charts renderer DOM
+# outside the pinned ledger in scripts/reach-in-ledger.json.
+on:
+  push:
+    paths:
+      - "showcase/migrated/**"
+      - "scripts/reach-in-guard.mjs"
+      - "scripts/reach-in-ledger.json"
+  pull_request:
+    paths:
+      - "showcase/migrated/**"
+      - "scripts/reach-in-guard.mjs"
+      - "scripts/reach-in-ledger.json"
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/reach-in-guard.mjs --report

@@ -111,7 +111,8 @@
 // exhibits this, since a column stack never competes for width.
 import * as React from "react";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
-import { createMark, defineChart, type SceneNode } from "@tanstack/charts";
+import { createMark, type SceneNode } from "@tanstack/charts";
+import { defineChart } from "@tanstack/charts/scene";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { polar, radialArc, type PolarMark } from "@tanstack/charts/polar";
 import {
@@ -132,9 +133,9 @@ import {
 import {
   GAUGE_SPRING_FALLBACK,
   gaugeMotionTransition,
-  resolveEnterTransition,
   type GaugeEnterTransition,
 } from "./internal/gauge-reveal";
+import { resolveEnterTransition } from "./internal/enter-transition";
 import {
   GaugeCenterOverlay,
   GaugeLabelLayout,

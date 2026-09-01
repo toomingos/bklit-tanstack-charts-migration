@@ -1,6 +1,6 @@
 "use client";
 
-import { dot } from "@tanstack/charts";
+import { dot } from "@tanstack/charts/dot";
 import type { ChartMark } from "@tanstack/charts";
 import type { ChartDatum, SeriesPointMarkerStyle } from "./types";
 
@@ -125,10 +125,4 @@ export function buildMarkerMarks(
     );
   }
   return marks;
-}
-
-export function shouldShowMarkers(showMarkers: boolean | undefined, showSeriesContent?: boolean): boolean {
-  if (!showMarkers) return false;
-  if (showSeriesContent === undefined) return true;
-  return showSeriesContent;
 }

@@ -42,7 +42,6 @@ export const HEATMAP_DEFAULT_LOADING_CELL_MAX_OPACITY = 0.85;
 /** Default share of cells that participate in loading shimmer, 0-1 (verbatim). */
 export const HEATMAP_DEFAULT_LOADING_CELL_RANDOMNESS = 1;
 
-export const HEATMAP_LOADING_BASE_CELL_OPACITY = 0.2;
 export const HEATMAP_LOADING_CONCEAL_MS = 450;
 export const HEATMAP_ENTER_STAGGER_SPREAD = 0.6;
 

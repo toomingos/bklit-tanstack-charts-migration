@@ -198,15 +198,6 @@
 /* Utility values are Tailwind v4 defaults resolved to plain CSS.         */
 /* ---------------------------------------------------------------------- */
 
-/* Crosshair / dot SVG overlays */
-[data-bkm-chart] .bkm-hover-layer {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
 /* TooltipBox outer (positioned) + panel */
 [data-bkm-chart] .bkm-tooltip-layer {
   position: absolute;

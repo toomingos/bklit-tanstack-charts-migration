@@ -16,7 +16,10 @@
 // `tickLabels.opacity` callbacks — see internal/axis-ticks.ts
 // `tickLabelFadeOpacity`; the controller is now show/hide/position only.)
 import * as React from "react";
-import { crosshair, dot, lineY, whenFocused } from "@tanstack/charts";
+import { crosshair } from "@tanstack/charts/crosshair";
+import { dot } from "@tanstack/charts/dot";
+import { lineY } from "@tanstack/charts/line";
+import { whenFocused } from "@tanstack/charts/focus/mark";
 import type {
   ChartCurve,
   ChartMark,
@@ -27,6 +30,7 @@ import { resolveIndicatorPixelWidth } from "./tooltip-mappers";
 import { crosshairFadeStops } from "./fade-mask";
 import { buildPill, type PillBuild } from "./date-pill";
 import { HIGHLIGHT_SPRING, TOOLTIP_SPRING } from "./design-tokens";
+import { whenSeriesDimmed } from "./focus-injection";
 import type { SpringConfig } from "./chart-config-context";
 import type { ChartDatum, IndicatorWidth } from "./types";
 
@@ -52,14 +56,32 @@ export interface IndicatorMarkOptions {
   span?: number;
   columnWidth?: number;
   dasharray?: string;
-  /** Solid color, used only when `dasharray` is set — bklit disables the
-   *  vertical fade for dashed indicators, so a dashed rule has no reason to
-   *  reference the fade gradient at all. */
+  /** Solid color, used only when the gradient is not (see `useGradient`) —
+   *  bklit disables the vertical fade for dashed indicators, so a dashed
+   *  rule has no reason to reference the fade gradient at all. */
   color?: string;
   /** Discrete/dense data (bklit's `pointCount > DISCRETE_INTERACTION_THRESHOLD`)
    *  snaps instead of springing, matching the existing native-tooltip gate
    *  already used elsewhere in these files. */
   discrete?: boolean;
+  /** Overrides the default gradient-vs-solid gate. Defaults to `!dasharray`
+   *  (line/area/composed/live-line: any non-dashed indicator uses the fade
+   *  gradient). bar/scatter/candlestick additionally gate on `fadeEdges`
+   *  (`!isDashed && resolveVerticalFadeSides(...).any`, since a dashed
+   *  indicator already forces `fadeSides.any` false there too) — pass that
+   *  precomputed boolean here rather than duplicating fade-mask logic in
+   *  this file. */
+  useGradient?: boolean;
+  /** Native `crosshair()` defaults `x.strokeOpacity` to 0.35
+   *  (dist/crosshair.js `resolveRuleStyle`); line/area/composed/live-line
+   *  rely on that default (omit this option). bar/scatter/candlestick
+   *  override to 1 to avoid a silent visual regression from that default. */
+  strokeOpacity?: number;
+  /** Spring config for the indicator's motion transition. Defaults to
+   *  TOOLTIP_SPRING (line/area/composed/live-line's existing behavior).
+   *  bar/scatter/candlestick pass `indicatorCfg.springConfig ??
+   *  chartConfig.tooltipSpring`. */
+  spring?: SpringConfig;
 }
 
 /** Native `crosshair()` x-only rule, replacing hover-chrome's imperative
@@ -72,9 +94,12 @@ export function buildIndicatorMark(options: IndicatorMarkOptions): ChartMark<nev
     span: options.span,
     columnWidth: options.columnWidth,
   });
+  const useGradient = options.useGradient ?? !options.dasharray;
+  const spring = options.spring ?? TOOLTIP_SPRING;
   return crosshair({
     x: {
-      stroke: options.dasharray ? (options.color ?? "var(--chart-crosshair)") : `url(#${options.gradientId})`,
+      stroke: useGradient ? `url(#${options.gradientId})` : (options.color ?? "var(--chart-crosshair)"),
+      strokeOpacity: options.strokeOpacity,
       strokeWidth,
       strokeDasharray: options.dasharray,
       label: false,
@@ -83,7 +108,7 @@ export function buildIndicatorMark(options: IndicatorMarkOptions): ChartMark<nev
     marker: false,
     motion: options.discrete
       ? false
-      : { transition: { type: "spring", stiffness: TOOLTIP_SPRING.stiffness, damping: TOOLTIP_SPRING.damping } },
+      : { transition: { type: "spring", stiffness: spring.stiffness, damping: spring.damping } },
   });
 }
 
@@ -185,6 +210,27 @@ export const POINTER_HOVER_DIM_SELECTOR: ChartMarkStateSelector = {
 
 export function pointerHoverDimState<TDatum = unknown>(opacity: number): ChartMarkState<TDatum, any> {
   return { when: POINTER_HOVER_DIM_SELECTOR, style: { opacity } };
+}
+
+/**
+ * The two-entry `states` array repeated verbatim at line-chart.tsx (line
+ * dim), area-chart.tsx (area-boundary dim), and composed-chart.tsx (area +
+ * line dim, two call sites): a legend-driven (programmatic-source-only)
+ * series dim via `whenSeriesDimmed()` with a 400ms ease-in-out tween (bklit
+ * SeriesHoverDim's legend term), plus the pointer-hover dim term with no
+ * `transition` field (D425 — that 0.4s rides `.ts-chart__line path` in
+ * styles.css instead). All four sites differ only in the `opacity` value
+ * passed to both states.
+ */
+export function seriesAndPointerDimStates<TDatum = unknown>(opacity: number): ChartMarkState<TDatum>[] {
+  return [
+    {
+      when: whenSeriesDimmed(),
+      style: { opacity },
+      transition: { type: "tween", duration: 400, easing: "ease-in-out" },
+    },
+    pointerHoverDimState<TDatum>(opacity),
+  ];
 }
 
 /**

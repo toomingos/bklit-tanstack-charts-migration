@@ -10,7 +10,7 @@
 // same absolute geometry the previous hand-built translated polylines
 // produced. The `yScale` callback stays purely as the non-finite-y guard
 // oracle so row filtering is byte-identical to bklit's.
-import { ruleY } from "@tanstack/charts";
+import { ruleY } from "@tanstack/charts/rule";
 import type { ChartMark } from "@tanstack/charts";
 import type { ChartDatum, GridConfig } from "./types";
 import { resolveGridGuide, resolveGridHighlightRows } from "./grid";

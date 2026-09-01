@@ -41,7 +41,7 @@ export function createScatterFocusStrategy(
       if (points.length === 0) return [];
       const nearest = findNearestPointByX(points, x, maxDistance);
       if (!nearest) return [];
-      return collectFocusGroup(points, nearest, byXKey, byMarkId, false);
+      return collectFocusGroup(points, nearest, byXKey, byMarkId);
     },
 
     group(
@@ -49,7 +49,7 @@ export function createScatterFocusStrategy(
       { point },
     ): readonly ChartPoint<ChartDatum, Date, number>[] {
       if (points.length === 0) return [point];
-      return collectFocusGroup(points, point, byXKey, byMarkId, false);
+      return collectFocusGroup(points, point, byXKey, byMarkId);
     },
 
     navigation(

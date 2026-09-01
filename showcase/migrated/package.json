@@ -1,0 +1,7 @@
+{
+  "name": "@showcase/migrated-src",
+  "private": true,
+  "sideEffects": [
+    "**/*.css"
+  ]
+}

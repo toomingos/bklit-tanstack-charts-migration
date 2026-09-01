@@ -11,7 +11,15 @@ import { scaleLinear } from "d3-scale";
 import { shortDateFmt } from "./formatters";
 import { toDate } from "./coerce-date";
 import { resolveYAxisTickCount } from "./y-axis-ticks";
-import type { ChartDatum } from "./types";
+import { TICKER_HALF_WIDTH, FADE_BUFFER } from "./design-tokens";
+import type {
+  ChartAxisTickLabelContext,
+  ChartMotionDefinition,
+  ChartPositionScaleOptions,
+  ChartScale,
+  ChartScaleInput,
+} from "@tanstack/charts";
+import type { ChartDatum, XAxisConfig, YAxisConfig } from "./types";
 
 // ── Data-aligned x-tick selection ────────────────────────────────────────
 // Verbatim move from x-axis-overlay.tsx (itself a verbatim port of bklit-ui
@@ -517,4 +525,146 @@ export function tickLabelFadeOpacity(
     return (distance - tickerHalfWidth) / fadeBuffer;
   }
   return 1;
+}
+
+// ── H6: repeated `axis:` option literals (verbatim moves, C4/C5 sites) ────
+
+/** Result shape shared by `buildFadeXAxisOptions` / `buildPrecomputedXAxisOptions`
+ *  — a full `axis:` presentation object (line/ticks/tickLabels) for a `Date`
+ *  x scale, assignable directly to `ChartPositionScaleOptions<Date>["axis"]`. */
+export interface XAxisPresentation {
+  line: false;
+  ticks: { count: number; size: number; padding: number };
+  tickLabels:
+    | false
+    | {
+        fontSize: number;
+        thin: boolean;
+        dy: number;
+        opacity: number | ((context: ChartAxisTickLabelContext<Date>) => number | undefined);
+        motion?: ChartMotionDefinition;
+      };
+}
+
+/**
+ * candlestick-chart.tsx:1131-1153 / scatter-chart.tsx:1217-1240 — byte-identical
+ * x-axis `axis:` literal (both charts assign the return of this at
+ * `axis: { line: false, ...buildFadeXAxisOptions(...) }` or spread wholesale;
+ * see call-site note below). The per-tick `opacity` closure is
+ * `tickLabelFadeOpacity` fed by the chart's own `labelFade` hover state —
+ * neither `xTickLabelOpacity` memo nor `tickLabelMotion` (line/area/composed's
+ * H6(b) shape) is involved here, so `tickLabels.motion` is simply absent,
+ * matching both inline blocks exactly (neither sets a `motion` key).
+ */
+export function buildFadeXAxisOptions(
+  columnTicks: number,
+  xAxis: XAxisConfig | undefined,
+  marginBottom: number,
+  labelFade: { primaryX: number; hoveredLabel: string | null } | null,
+): XAxisPresentation {
+  return {
+    line: false,
+    ticks: { count: columnTicks, size: 0, padding: 0 },
+    tickLabels: xAxis
+      ? {
+          fontSize: 12,
+          thin: false,
+          dy: marginBottom - 25,
+          opacity: labelFade
+            ? (context: ChartAxisTickLabelContext<Date>) =>
+                tickLabelFadeOpacity(
+                  context.position,
+                  (xAxis.formatValue ?? shortDateFmt.format)(context.value),
+                  labelFade.primaryX,
+                  labelFade.hoveredLabel,
+                  xAxis.tickerHalfWidth ?? TICKER_HALF_WIDTH,
+                  FADE_BUFFER,
+                )
+            : 1,
+        }
+      : false,
+  };
+}
+
+/**
+ * line-chart.tsx:899-914 / area-chart.tsx:1146-1162 / composed-chart.tsx:1444-1454
+ * — byte-identical x-axis `axis:` literal driven by a chart-local precomputed
+ * `xTickLabelOpacity` memo and shared `tickLabelMotion` closure (AX5 tween-on-
+ * domain-change; deliberately NOT absorbed here per the C4/C5 memo-timing
+ * note — callers keep computing and passing both).
+ */
+export function buildPrecomputedXAxisOptions(
+  columnTicks: number,
+  xAxis: XAxisConfig | undefined,
+  marginBottom: number,
+  xTickLabelOpacity: number | ((context: ChartAxisTickLabelContext<Date>) => number | undefined),
+  tickLabelMotion: ChartMotionDefinition,
+): XAxisPresentation {
+  return {
+    ticks: { count: columnTicks, size: 0, padding: 0 },
+    line: false,
+    tickLabels: xAxis
+      ? {
+          fontSize: 12,
+          thin: false,
+          dy: marginBottom - 25,
+          opacity: xTickLabelOpacity,
+          motion: tickLabelMotion,
+        }
+      : false,
+  };
+}
+
+/**
+ * line-chart.tsx:921-947 / area-chart.tsx:1166-1191 — the `yAxis`-present
+ * branch of the y `ChartPositionScaleOptions<number>`, identical apart from
+ * (1) the `scale` passed in (line: the chart's own rendered `yScale`; area:
+ * a fresh `scaleLinear().domain(yDomainFinal)`) and (2) the first argument to
+ * `buildYAxisTickValues` (line: `niced`; area: `yDomainFinal`) — both differences
+ * are pushed to the caller via `scale` / `yDomainForTicks`.
+ */
+export function buildYAxisOptions(
+  scale: ChartScale | ChartScaleInput<number>,
+  yDomainForTicks: [number, number],
+  gridHorizontal: boolean,
+  yAxis: YAxisConfig,
+  tickLabelMotion: ChartMotionDefinition,
+): ChartPositionScaleOptions<number> {
+  return {
+    scale,
+    grid: gridHorizontal,
+    axis: {
+      ticks: {
+        values: buildYAxisTickValues(yDomainForTicks, yAxis.numTicks),
+        format: (v: number) => formatYAxisTick(v, yAxis.formatValue, yAxis.formatLargeNumbers ?? true),
+        size: 0,
+        padding: 0,
+      },
+      line: false,
+      tickLabels: {
+        fontSize: 12,
+        thin: false,
+        opacity: 1,
+        dx: yAxis.orientation === "right" ? 8 : -8,
+        motion: tickLabelMotion,
+      },
+    },
+    side: yAxis.orientation === "right" ? "right" : "left",
+  };
+}
+
+/**
+ * The axis-off literal repeated at line-chart.tsx:947, area-chart.tsx:1191
+ * and :819, composed-chart.tsx:1464, scatter-chart.tsx:1248, bar-chart.tsx:1043
+ * — `{ ticks: { count: tickCount, size: 0 }, line: false, tickLabels: false }`.
+ * Key ORDER differs harmlessly between sites (scatter puts `line` first);
+ * object identity is otherwise exact. `tickCount` is always `gridGuide.ticks`
+ * at every call site.
+ */
+export function hiddenAxisOptions(tickCount: number): {
+  ticks: { count: number; size: number };
+  line: false;
+  tickLabels: false;
+} {
+  return { ticks: { count: tickCount, size: 0 }, line: false, tickLabels: false };
 }

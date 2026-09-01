@@ -69,3 +69,12 @@ sunburst-reveal.ts, sankey-mark.ts, grid.ts, funnel-chart.tsx.
 - Allowed exceptions, by name, each D-logged: the S5 wipe-reveal single site (shared helper,
   `onRender`-scoped) and — only if the 6.3 spike fails — the choropleth transform write.
 - styles.css excluded (sanctioned CSS surface); comments excluded.
+
+## Amendment 2026-09-01 (6.4/6.5, D467)
+
+Finding 2's rename is **reversed** for the authored marks that still carry `ts-chart__*`: native
+motion's `markMotionRole()` (`dist/motion.js`) resolves choreography by class substring, so the
+class is the library's role-opt-in contract, not DOM aliasing. The guard
+(`scripts/reach-in-guard.mjs`) excludes `className:` literals on authored scene nodes and counts
+only DOM-addressing sites; survivors are pinned per file in `scripts/reach-in-ledger.json`
+(ratchet). Final counts: see D468.

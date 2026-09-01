@@ -12,10 +12,6 @@ export interface ChartSelection {
   active: boolean;
 }
 
-export function useSegmentVisibility(selection: ChartSelection | null): boolean {
-  return selection?.active === true && Math.abs(selection.endX - selection.startX) > 5;
-}
-
 export function useChartSelection(params: {
   enabled: boolean;
   innerWidth: number;
@@ -192,10 +188,6 @@ export function useChartSelection(params: {
 }
 
 export const ChartSelectionContext = React.createContext<ChartSelection | null>(null);
-
-export function useChartSelectionContext(): ChartSelection | null {
-  return React.useContext(ChartSelectionContext);
-}
 
 export interface SegmentComponent {
   key: string;

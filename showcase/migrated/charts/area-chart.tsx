@@ -30,18 +30,16 @@ import { curveMonotoneX } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { d3Curve, defineChart, lineY } from "@tanstack/charts";
-import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
+import { d3Curve } from "@tanstack/charts/d3/shape";
+import { defineChart } from "@tanstack/charts/scene";
+import { lineY } from "@tanstack/charts/line";
 import type {
   ChartControl,
-  ChartInteractionController,
   ChartMark,
   ChartMotionContext,
   ChartPoint,
   ChartPositionScaleOptions,
-  ChartRenderContext,
   ChartRendererRenderContext,
-  ChartScene,
   SceneStyle,
   StaticChartDefinition,
 } from "@tanstack/charts";
@@ -62,11 +60,11 @@ import {
   buildHoverDotMark,
   buildIndicatorMark,
   isFocusOutsideXDomain,
-  pointerHoverDimState,
   resolveHoverDotFill,
+  seriesAndPointerDimStates,
   useDatePillOverlay,
 } from "./internal/hover-geometry";
-import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
+import { useFocusInjection, useLegendFocusBroadcast } from "./internal/focus-injection";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import {
@@ -88,7 +86,6 @@ import { ProjectionMarkerOverlay, type ProjectionPhaseHandle } from "./internal/
 import { toDate } from "./internal/coerce-date";
 import { timeToPixelX } from "./internal/x-time-scale";
 import {
-  BOX_OFFSET,
   DISCRETE_INTERACTION_THRESHOLD,
   FADE_BUFFER,
   SERIES_MARKER_ENTER_MS,
@@ -96,14 +93,15 @@ import {
   TOOLTIP_BOX_SPRING,
 } from "./internal/design-tokens";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
-import { TooltipContent } from "./internal/tooltip-components";
 import {
+  buildPrecomputedXAxisOptions,
   buildXAxisTickValues,
-  buildYAxisTickValues,
-  formatYAxisTick,
+  buildYAxisOptions,
+  hiddenAxisOptions,
   tickLabelFadeOpacity,
 } from "./internal/axis-ticks";
-import type { ChartDatum, ChartStatus, TooltipRow } from "./internal/types";
+import { buildNativeTooltipExtension, renderSeriesTooltipBody } from "./internal/native-tooltip";
+import type { ChartDatum, ChartStatus } from "./internal/types";
 import { type ChartPhase, DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./internal/chart-phase";
 import type { ChartScale } from "@tanstack/charts";
 import { useChartConfig } from "./internal/chart-config-context";
@@ -312,12 +310,13 @@ export function AreaChart({
   const prefersReducedMotion = usePrefersReducedMotion();
   // C1 (P6): legend hover -> native mark states via programmatic focus
   // injection (replaces the old hover-chrome DOM-mutation dim path).
-  const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection();
-  React.useEffect(() => {
-    const seriesKey = legendHoveredIndex != null ? (areas[legendHoveredIndex]?.dataKey ?? null) : null;
-    if (seriesKey != null) focusSeries(seriesKey);
-    else clearFocus();
-  }, [legendHoveredIndex, areas, focusSeries, clearFocus]);
+  const { captureRenderContext, focusSeries, clearFocus, sceneRef, interactionRef, clientToScene } =
+    useFocusInjection<ChartDatum, Date, number>();
+  const resolveLegendSeriesKey = React.useCallback(
+    (index: number) => areas[index]?.dataKey ?? null,
+    [areas],
+  );
+  useLegendFocusBroadcast(legendHoveredIndex, resolveLegendSeriesKey, focusSeries, clearFocus);
   const projectionConfigs = React.useMemo(() => extractProjectionLineConfigs(children), [children]);
   const projectionGradientBaseId = useSanitizedId();
 
@@ -816,7 +815,7 @@ export function AreaChart({
           y: {
             scale: scaleLinear().domain(yDomainFinal) as unknown as ChartScale,
             grid: gridGuide.horizontal,
-            axis: { ticks: { count: gridGuide.ticks, size: 0 }, line: false, tickLabels: false },
+            axis: hiddenAxisOptions(gridGuide.ticks),
           },
         },
         margin,
@@ -918,14 +917,7 @@ export function AreaChart({
             // C3: pointer-hover dim (same 0.6, D425 — timing rides
             // `.ts-chart__line path` in styles.css, no `transition` field
             // here) sits alongside it as a second state entry.
-            states: [
-              {
-                when: whenSeriesDimmed(),
-                style: { opacity: AREA_DIM_OPACITY },
-                transition: { type: "tween", duration: 400, easing: "ease-in-out" },
-              },
-              pointerHoverDimState<ChartDatum>(AREA_DIM_OPACITY),
-            ],
+            states: seriesAndPointerDimStates<ChartDatum>(AREA_DIM_OPACITY),
           }),
         );
       }
@@ -1146,49 +1138,17 @@ export function AreaChart({
     const xScaleOptions: ChartPositionScaleOptions<Date> = {
       scale: xScale,
       grid: gridGuide.vertical,
-      axis: {
-        ticks: { count: gridGuide.columnTicks, size: 0, padding: 0 },
-        line: false,
-        tickLabels: xAxis
-          ? {
-              fontSize: 12,
-              thin: false,
-              dy: margin.bottom - 25,
-              opacity: xTickLabelOpacity,
-              motion: tickLabelMotion,
-            }
-          : false,
-      },
+      axis: buildPrecomputedXAxisOptions(gridGuide.columnTicks, xAxis ?? undefined, margin.bottom, xTickLabelOpacity, tickLabelMotion),
     };
     // C4: with a native y axis configured, tick VALUES come from
     // buildYAxisTickValues instead of gridGuide.ticks's plain count hint —
     // same grid-follows-labels deviation note as line-chart.tsx.
     const yScaleOptions: ChartPositionScaleOptions<number> = yAxis
-      ? {
-          scale: scaleLinear().domain(yDomainFinal),
-          grid: gridGuide.horizontal,
-          axis: {
-            ticks: {
-              values: buildYAxisTickValues(yDomainFinal, yAxis.numTicks),
-              format: (v: number) => formatYAxisTick(v, yAxis.formatValue, yAxis.formatLargeNumbers ?? true),
-              size: 0,
-              padding: 0,
-            },
-            line: false,
-            tickLabels: {
-              fontSize: 12,
-              thin: false,
-              opacity: 1,
-              dx: yAxis.orientation === "right" ? 8 : -8,
-              motion: tickLabelMotion,
-            },
-          },
-          side: yAxis.orientation === "right" ? "right" : "left",
-        }
+      ? buildYAxisOptions(scaleLinear().domain(yDomainFinal), yDomainFinal, gridGuide.horizontal, yAxis, tickLabelMotion)
       : {
           scale: scaleLinear().domain(yDomainFinal),
           grid: gridGuide.horizontal,
-          axis: { ticks: { count: gridGuide.ticks, size: 0 }, line: false, tickLabels: false },
+          axis: hiddenAxisOptions(gridGuide.ticks),
         };
     return defineChart({
       marks,
@@ -1211,23 +1171,12 @@ export function AreaChart({
       // (tooltip-chrome.ts's buildBox/applyBoxContent/positionBox). Area
       // drives it off the SAME native focus:"group-x" mechanism the
       // crosshair chrome already uses (line-chart.tsx parity).
-      tooltip: (tooltip?.enabled ?? false)
-        ? {
-            use: nativeTooltip,
-            className: "bkm-native-tooltip",
-            sticky: false,
-            offset: BOX_OFFSET,
-            placement: ["right", "left"] as const,
-            motion:
-              renderData.length > DISCRETE_INTERACTION_THRESHOLD
-                ? (false as const)
-                : ({
-                    type: "spring" as const,
-                    stiffness: TOOLTIP_BOX_SPRING.stiffness,
-                    damping: TOOLTIP_BOX_SPRING.damping,
-                  } as const),
-          }
-        : (false as const),
+      tooltip: buildNativeTooltipExtension<ChartDatum, Date, number>({
+        enabled: tooltip?.enabled ?? false,
+        spring: TOOLTIP_BOX_SPRING,
+        discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
+        className: "bkm-native-tooltip",
+      }),
       motion,
       // C6: native brushX (strip host only — empty array elsewhere).
       controls: brushControls,
@@ -1248,52 +1197,28 @@ export function AreaChart({
   // full contract note. Rows default from `resolvedAreas`, honoring
   // `tooltip.rows`/`tooltip.content`.
   const renderTooltipBody = React.useCallback(
-    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode => {
-      const primary = ctx.points[0];
-      if (!primary) return null;
-      const datum = primary.datum as Record<string, unknown>;
-      const cfg = tooltip ?? null;
-      const panelClassName = cfg?.className ? `bkm-tooltip-panel ${cfg.className}` : "bkm-tooltip-panel";
-      const panelStyle: React.CSSProperties | undefined =
-        cfg?.panelStyle || cfg?.backgroundColor
-          ? { ...cfg?.panelStyle, ...(cfg?.backgroundColor ? { backgroundColor: cfg.backgroundColor } : null) }
-          : undefined;
-      if (cfg?.content) {
-        return (
-          <div className={panelClassName} style={panelStyle}>
-            {cfg.content({ point: datum, index: primary.datumIndex })}
-          </div>
-        );
-      }
-      const date = datum[xDataKey];
-      const title = date instanceof Date ? weekdayDateFmt.format(date) : undefined;
-      const rows: TooltipRow[] = cfg?.rows
-        ? cfg.rows(datum)
-        : resolvedAreas.map((area) => {
+    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode =>
+      renderSeriesTooltipBody(ctx, {
+        tooltip,
+        resolveTitle: (datum) => {
+          const date = datum[xDataKey];
+          return date instanceof Date ? weekdayDateFmt.format(date) : undefined;
+        },
+        buildRows: (datum, rowsCtx) =>
+          resolvedAreas.map((area) => {
             const v = datum[area.dataKey];
             return {
-              color: area.stroke || ctx.points.find((p) => p.markId === area.dataKey)?.color || "transparent",
+              color: area.stroke || rowsCtx.points.find((p) => p.markId === area.dataKey)?.color || "transparent",
               label: area.dataKey,
               value: typeof v === "number" ? v : String(v ?? 0),
             };
-          });
-      return (
-        <div className={panelClassName} style={panelStyle}>
-          <TooltipContent title={title} rows={rows}>
-            {cfg?.children}
-          </TooltipContent>
-        </div>
-      );
-    },
+          }),
+      }),
     [tooltip, xDataKey, resolvedAreas],
   );
   // C3: replaces hover-chrome.ts + use-hover-chrome.ts entirely. Mirrors
   // line-chart.tsx's own wiring (no profit/loss term — Area has none).
-  const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
-  // C6: scene-space resolved-scale capture — feeds useChartSelection's
-  // clientToScene + scene.scales.x.invert path (replaces the plot-local
-  // xScaleSel duplicate scale below).
-  const sceneRef = React.useRef<ChartScene<ChartDatum, Date, number> | null>(null);
+  // `interactionRef`/`sceneRef` now come straight from `useFocusInjection` above.
   const dragSelectionActiveRef = React.useRef(false);
   const wasVisibleRef = React.useRef(false);
   const chartConfig = useChartConfig();
@@ -1322,7 +1247,7 @@ export function AreaChart({
     wasVisibleRef.current = false;
     datePill.hide();
     setLabelFade(null);
-  }, [markerActiveStore, datePill]);
+  }, [markerActiveStore, datePill, interactionRef]);
 
   const handleFocusChange = React.useCallback(
     (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
@@ -1363,7 +1288,7 @@ export function AreaChart({
         setLabelFade(null);
       }
     },
-    [xDomain, xDataKey, chartPhase, isLoaded, markerActiveStore, tooltip, isDiscrete, datePill, xAxis],
+    [xDomain, xDataKey, chartPhase, isLoaded, markerActiveStore, tooltip, isDiscrete, datePill, xAxis, interactionRef],
   );
 
   const areaMarkerRevealAnimsRef = React.useRef<Animation[]>([]);
@@ -1377,16 +1302,11 @@ export function AreaChart({
   // this file's `handleRender` ever reached into `context.svg`, so only the
   // annotation changes (see line-chart.tsx's twin comment).
   const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
-    // Cast: `useFocusInjection`'s `captureRenderContext` is typed against the
-    // library's generic (unknown-typed) `ChartRenderContext`, which — because
-    // `interaction.setControlledFocus` is checked contravariantly under
-    // strictFunctionTypes — is not structurally assignable from our
-    // concretely-typed context. Both denote the same live object at runtime.
-    captureRenderContext(context as unknown as Pick<ChartRenderContext, "scene" | "interaction">);
-    // C3: own capture, separate from useFocusInjection's private ref — feeds
-    // clearFocusChrome's `setControlledFocus(null, ...)` pointer-source clear.
-    interactionRef.current = context.interaction;
-    sceneRef.current = context.scene;
+    // `useFocusInjection<ChartDatum, Date, number>()`'s `captureRenderContext`
+    // is now typed to match this concretely-typed context exactly, so no cast
+    // is needed; the same call also feeds `interactionRef`/`sceneRef` above
+    // (clearFocusChrome's pointer-source clear + scene-space scale capture).
+    captureRenderContext(context);
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     // A2 (D420/D432): reveal sweep now lives in internal/reveal-wipe.ts,
     // shared byte-for-byte with line-chart.tsx/composed-chart.tsx. Its
@@ -1483,13 +1403,10 @@ export function AreaChart({
   }, [timeExtent, innerWidthArea]);
   // C6: replaces the deleted plot-local `xScaleSel` duplicate d3 scale —
   // resolves through the host's own live interaction/scene refs.
-  const resolveScenePos = React.useCallback(
-    (clientX: number, clientY: number) => interactionRef.current?.clientToScene(clientX, clientY) ?? null,
-    [],
-  );
+  const resolveScenePos = clientToScene;
   const invertSceneX = React.useCallback(
     (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? null,
-    [],
+    [sceneRef],
   );
   const { selection: chartSelection } = useChartSelection({
     enabled: true,

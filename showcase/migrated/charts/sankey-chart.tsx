@@ -55,7 +55,7 @@ import {
   type ReactNode,
 } from "react";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
-import { defineChart } from "@tanstack/charts";
+import { defineChart } from "@tanstack/charts/scene";
 import { tooltip } from "@tanstack/charts/tooltip";
 import type {
   ChartInteractionController,
@@ -69,7 +69,6 @@ import {
 } from "./internal/sankey-layout";
 import {
   createSankeyMark,
-  SANKEY_MARK_ID,
   SANKEY_NODE_MARK_ID,
   type LaidOutLink,
   type SankeyGradientDatum,

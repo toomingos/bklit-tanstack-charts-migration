@@ -36,8 +36,14 @@
         `pointerleave` re-bind inside `handleRender` (`sunburst-chart.tsx:669`, orphaned listener at
         `:828-840`). Per-arc *enter* stagger stays absent (D446).
   - [x] C6 brush+zoom+selection — D452–D458
-- [ ] 6.4 Refactor (explore -> triage -> one refactor commit)
-  - [ ] Riders from the Phase-5 re-audit: T6's expressible gradient set (~11 of ~19 def sites,
+- [x] 6.4 Refactor (explore -> triage -> one refactor commit) — `research/phase-6/10-refactor.md`;
+      D459–D468. Dead code (35 `internal/*` symbols + hover-grow trio + barrel trim, −545 LOC),
+      seven duplication helpers (H1–H7; H4 helper landed, sites left — see §B outcome), T1 observer
+      consolidation (D460), T6 gradient closure (live-line pair → `spec.gradients`, D465; crosshair
+      `userSpaceOnUse` regression fixed ahead in `5c1e2e6`, D464), subpath imports (D-neutral under
+      `sideEffects:false`), bundle measurement corrected (D462/D463), census guard + ledger + CI
+      workflow (D467/D468). `.ts-chart__*` rename reversed (D467).
+  - [x] Riders from the Phase-5 re-audit: T6's expressible gradient set (~11 of ~19 def sites,
         mechanical once the renderer switch lands, D442) · T1's observer consolidation — one
         implementation, five thin wrappers, no second observer in `internal/brush-drag.ts:151`
         (D444) · reclassify `internal/y-axis-ticks.ts` as a **survivor** with three consumers

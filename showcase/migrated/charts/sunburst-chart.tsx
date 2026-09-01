@@ -89,13 +89,10 @@
 //   `fill`/`stroke` are per-node (`hierarchy-sunburst.d.ts`'s
 //   `SunburstSharedOptions`); `innerRadius`/`outerRadius`/`ringPadding` are
 //   whole-mark scalars or responsive `PolarLength` callbacks, never a
-//   per-datum channel. The pre-C5d hover-GROW effect (radial pop-out via
-//   `buildHoverGrowTargets`/`applyHoverGrow`/`maxHoverSegmentThickness`) is
-//   therefore structurally impossible to reproduce through this mark and is
-//   DROPPED outright (those three helpers are now dead code in
-//   sunburst-geometry.ts, left in place only because other, still-DOM-owned
-//   overlays — labels' `transitionGeometry` zoom-morph path — do not touch
-//   grow). Hover-DIM is fully preserved: non-related-arc dimming (bklit:
+//   per-datum channel. The radial hover pop-out is therefore not expressible
+//   on native `sunburst()` at 0.15.0 and is DROPPED outright; `hoverPop` is
+//   kept as a prop for API compatibility but is now inert (D450). Hover-DIM
+//   is fully preserved: non-related-arc dimming (bklit:
 //   0.25 alpha, 160ms ease-out, styles.css:424-427) is still computed as a
 //   `fill` color-mix alpha inside the mark's `fill` callback, reactive by
 //   construction (the callback closes over `hoveredArc`, which is React
@@ -149,7 +146,8 @@ import {
   type ReactNode,
 } from "react";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
-import { defineChart, type ChartMotionContext } from "@tanstack/charts";
+import type { ChartMotionContext } from "@tanstack/charts";
+import { defineChart } from "@tanstack/charts/scene";
 import { polar } from "@tanstack/charts/polar";
 import {
   sunburst,
@@ -851,7 +849,6 @@ function SunburstChartInner({
         revealDeadlineTimerRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arcs, playKey, enterStaggerScale, sweepDurationMs, prefersReducedMotion, setPhase]);
 
   // --- TanStack-path click listeners (synthetic-dispatch contract) ---

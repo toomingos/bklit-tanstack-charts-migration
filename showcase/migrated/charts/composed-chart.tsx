@@ -79,23 +79,21 @@ import { curveMonotoneX, curveNatural } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { d3Curve, defineChart, lineY } from "@tanstack/charts";
-import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
+import { d3Curve } from "@tanstack/charts/d3/shape";
+import { defineChart } from "@tanstack/charts/scene";
+import { lineY } from "@tanstack/charts/line";
 import type {
-  ChartInteractionController,
   ChartMark,
   ChartMarkState,
   ChartMotionContext,
   ChartPoint,
   ChartPositionScaleOptions,
-  ChartRenderContext,
   ChartRendererRenderContext,
   ChartScale,
-  ChartScene,
   ChartValue,
 } from "@tanstack/charts";
 import { chartMotionRenderer } from "./internal/motion-renderer";
-import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
+import { useFocusInjection, useLegendFocusBroadcast, whenSeriesDimmed } from "./internal/focus-injection";
 import { areaFill } from "./internal/area-fill-mark";
 import { seriesBarMark } from "./internal/series-bar-mark";
 import {
@@ -108,9 +106,9 @@ import {
   buildHighlightBandMarks,
   buildHoverDotMark,
   buildIndicatorMark,
-  pointerHoverDimState,
   pointerRowDimState,
   resolveHoverDotFill,
+  seriesAndPointerDimStates,
   useDatePillOverlay,
 } from "./internal/hover-geometry";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
@@ -125,15 +123,19 @@ import {
 import { SegmentOverlay } from "./internal/segment-visuals";
 import { useChartConfig } from "./internal/chart-config-context";
 import {
-  BOX_OFFSET,
   DISCRETE_INTERACTION_THRESHOLD,
   FADE_BUFFER,
   TICKER_HALF_WIDTH,
   TOOLTIP_BOX_SPRING,
 } from "./internal/design-tokens";
-import { TooltipContent } from "./internal/tooltip-components";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
-import { buildXAxisTickValues, tickLabelFadeOpacity } from "./internal/axis-ticks";
+import {
+  buildPrecomputedXAxisOptions,
+  buildXAxisTickValues,
+  hiddenAxisOptions,
+  tickLabelFadeOpacity,
+} from "./internal/axis-ticks";
+import { buildNativeTooltipExtension, renderSeriesTooltipBody } from "./internal/native-tooltip";
 import { BackgroundLayer } from "./internal/background-layer";
 import {
   extractProjectionLineConfigs,
@@ -150,7 +152,6 @@ import type {
   GridConfig,
   LineConfig,
   SeriesBarConfig,
-  TooltipRow,
   XAxisConfig,
 } from "./internal/types";
 import { type ChartPhase, DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./internal/chart-phase";
@@ -614,13 +615,13 @@ export function ComposedChart({
   // `resolvedBars` (a bar-only subset/order) while lines/areas used the
   // full mixed `composedSeries` order, silently drifting whenever bars
   // weren't declared first in JSX.
-  const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection();
-  React.useEffect(() => {
-    const seriesKey =
-      legendHoveredIndex != null ? (composedSeries[legendHoveredIndex]?.dataKey ?? null) : null;
-    if (seriesKey != null) focusSeries(seriesKey);
-    else clearFocus();
-  }, [legendHoveredIndex, composedSeries, focusSeries, clearFocus]);
+  const { captureRenderContext, focusSeries, clearFocus, sceneRef, interactionRef, clientToScene } =
+    useFocusInjection<ChartDatum, Date, number>();
+  const resolveLegendSeriesKey = React.useCallback(
+    (index: number) => composedSeries[index]?.dataKey ?? null,
+    [composedSeries],
+  );
+  useLegendFocusBroadcast(legendHoveredIndex, resolveLegendSeriesKey, focusSeries, clearFocus);
 
   const projectionConfigs = React.useMemo(() => extractProjectionLineConfigs(children), [children]);
   const composedProjectionLines = React.useMemo((): Array<Record<string, unknown>> => {
@@ -1140,16 +1141,7 @@ export function ComposedChart({
           curve,
           stroke: area.stroke,
           strokeWidth: area.strokeWidth,
-          states: [
-            {
-              when: whenSeriesDimmed(),
-              style: { opacity: areaDimOpacity },
-              transition: { type: "tween", duration: 400, easing: "ease-in-out" },
-            },
-            // C3: pointer-hover dim, no `transition` field (D425 — the 0.4s
-            // term rides `.ts-chart__line path` in styles.css instead).
-            pointerHoverDimState<ChartDatum>(areaDimOpacity),
-          ],
+          states: seriesAndPointerDimStates<ChartDatum>(areaDimOpacity),
         }),
       );
     }
@@ -1164,16 +1156,7 @@ export function ComposedChart({
           curve: d3Curve(line.curve),
           stroke: line.stroke,
           strokeWidth: line.strokeWidth,
-          states: [
-            {
-              when: whenSeriesDimmed(),
-              style: { opacity: lineDimOpacity },
-              transition: { type: "tween", duration: 400, easing: "ease-in-out" },
-            },
-            // C3: pointer-hover dim, no `transition` field (D425 — the 0.4s
-            // term rides `.ts-chart__line path` in styles.css instead).
-            pointerHoverDimState<ChartDatum>(lineDimOpacity),
-          ],
+          states: seriesAndPointerDimStates<ChartDatum>(lineDimOpacity),
         }),
       );
     }
@@ -1444,13 +1427,7 @@ export function ComposedChart({
     const xScaleOptions: ChartPositionScaleOptions<Date> = {
       scale: xScale,
       grid: gridGuide.vertical,
-      axis: {
-        ticks: { count: gridGuide.columnTicks, size: 0, padding: 0 },
-        line: false,
-        tickLabels: xAxis
-          ? { fontSize: 12, thin: false, dy: margin.bottom - 25, opacity: xTickLabelOpacity, motion: tickLabelMotion }
-          : false,
-      },
+      axis: buildPrecomputedXAxisOptions(gridGuide.columnTicks, xAxis ?? undefined, margin.bottom, xTickLabelOpacity, tickLabelMotion),
     };
     // Composed's "secondary axes" all re-project onto this ONE native y
     // scale via projectValue (see header comment) — there is no second
@@ -1461,7 +1438,7 @@ export function ComposedChart({
     const yScaleOptions: ChartPositionScaleOptions<number> = {
       scale: yScale,
       grid: gridGuide.horizontal,
-      axis: { ticks: { count: gridGuide.ticks, size: 0 }, line: false, tickLabels: false },
+      axis: hiddenAxisOptions(gridGuide.ticks),
     };
     return defineChart({
       marks,
@@ -1486,23 +1463,12 @@ export function ComposedChart({
       // pointer-dim marks pushed above, and the pointermove handler below
       // additionally sets the reactive `hoveredIndex` (highlight band) and
       // drives the app-owned date-pill overlay.
-      tooltip: (tooltip?.enabled ?? false)
-        ? {
-            use: nativeTooltip,
-            className: "bkm-native-tooltip",
-            sticky: false,
-            offset: BOX_OFFSET,
-            placement: ["right", "left"] as const,
-            motion:
-              renderData.length > DISCRETE_INTERACTION_THRESHOLD
-                ? (false as const)
-                : ({
-                    type: "spring" as const,
-                    stiffness: TOOLTIP_BOX_SPRING.stiffness,
-                    damping: TOOLTIP_BOX_SPRING.damping,
-                  } as const),
-          }
-        : (false as const),
+      tooltip: buildNativeTooltipExtension<ChartDatum, Date, number>({
+        enabled: tooltip?.enabled ?? false,
+        spring: TOOLTIP_BOX_SPRING,
+        discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
+        className: "bkm-native-tooltip",
+      }),
       // Ref reads, not deps — see the comment on phaseRef/isLoadedRef above.
       motion,
     });
@@ -1556,18 +1522,12 @@ export function ComposedChart({
   // the SAME `interaction.setControlledFocus` call the pointermove handler
   // below already makes for the C2 tooltip bridge.
   const chartConfig = useChartConfig();
-  // C2 (P6): local capture of the native interaction controller, separate
-  // from `useFocusInjection`'s own private ref (that hook's `interactionRef`
-  // is not exposed outside the hook) — used below, in the pointermove
-  // bisector, to drive the native tooltip extension via
+  // C2 (P6): `interactionRef`/`sceneRef` now come straight from
+  // `useFocusInjection<ChartDatum, Date, number>()` above — used below, in
+  // the pointermove bisector, to drive the native tooltip extension via
   // `setControlledFocus(..., {source:"pointer"})`. NEVER injected with
   // `source:"programmatic"` from this pointer path — that source is
   // reserved for C1's legend-dim focus injection (`whenSeriesDimmed()`).
-  const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
-  // C6: scene-space resolved-scale capture — feeds useChartSelection's
-  // clientToScene + scene.scales.x.invert path (replaces the plot-local
-  // xScaleCompSel duplicate scale below).
-  const sceneRef = React.useRef<ChartScene<ChartDatum, Date, number> | null>(null);
   // C2 (P6): renders inside the native tooltip extension's unstyled
   // `.ts-chart-tooltip__body` portal target — wraps the reused
   // `TooltipContent` in `.bkm-tooltip-panel` (styles.css) to reproduce the
@@ -1577,43 +1537,23 @@ export function ComposedChart({
   // parity); otherwise default rows come from the merged `composedSeries`
   // list, honoring `tooltip.rows` when the caller supplied it.
   const renderTooltipBody = React.useCallback(
-    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode => {
-      const primary = ctx.points[0];
-      if (!primary) return null;
-      const datum = primary.datum as Record<string, unknown>;
-      const cfg = tooltip ?? null;
-      const panelClassName = cfg?.className ? `bkm-tooltip-panel ${cfg.className}` : "bkm-tooltip-panel";
-      const panelStyle: React.CSSProperties | undefined =
-        cfg?.panelStyle || cfg?.backgroundColor
-          ? { ...cfg?.panelStyle, ...(cfg?.backgroundColor ? { backgroundColor: cfg.backgroundColor } : null) }
-          : undefined;
-      if (cfg?.content) {
-        return (
-          <div className={panelClassName} style={panelStyle}>
-            {cfg.content({ point: datum, index: primary.datumIndex })}
-          </div>
-        );
-      }
-      const date = datum[xDataKey];
-      const title = date instanceof Date ? weekdayDateFmt.format(date) : undefined;
-      const rows: TooltipRow[] = cfg?.rows
-        ? cfg.rows(datum)
-        : composedSeries.map((s) => {
+    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode =>
+      renderSeriesTooltipBody(ctx, {
+        tooltip,
+        resolveTitle: (datum) => {
+          const date = datum[xDataKey];
+          return date instanceof Date ? weekdayDateFmt.format(date) : undefined;
+        },
+        buildRows: (datum, rowsCtx) =>
+          composedSeries.map((s) => {
             const v = datum[s.dataKey];
             return {
-              color: s.stroke || ctx.points.find((p) => p.markId === s.dataKey)?.color || "transparent",
+              color: s.stroke || rowsCtx.points.find((p) => p.markId === s.dataKey)?.color || "transparent",
               label: s.dataKey,
               value: typeof v === "number" ? v : String(v ?? 0),
             };
-          });
-      return (
-        <div className={panelClassName} style={panelStyle}>
-          <TooltipContent title={title} rows={rows}>
-            {cfg?.children}
-          </TooltipContent>
-        </div>
-      );
-    },
+          }),
+      }),
     [tooltip, xDataKey, composedSeries],
   );
   // bklit parity (use-chart-interaction.ts): drag selection suppresses the
@@ -1644,7 +1584,7 @@ export function ComposedChart({
     wasVisibleRef.current = false;
     datePill.hide();
     setLabelFade(null);
-  }, [datePill]);
+  }, [datePill, interactionRef]);
 
   // `focus:"group-x"` stays configured above for internal consistency with
   // every other migrated chart, but the callback is inert — real hover is
@@ -1813,7 +1753,7 @@ export function ComposedChart({
       container.removeEventListener("pointermove", handlePointerMove);
       container.removeEventListener("pointerleave", handlePointerLeave);
     };
-  }, [tooltipEnabled, chartPhase, isLoaded]);
+  }, [tooltipEnabled, chartPhase, isLoaded, interactionRef]);
 
   // A1 (D432): `RendererChart`'s `onRender` passes a `ChartRendererRenderContext`
   // (`{container, scene, surface, interaction}`) — no `svg` field. Nothing in
@@ -1824,18 +1764,11 @@ export function ComposedChart({
     // focus injection — composed with (not a replacement for) the WAAPI
     // bar-reveal stagger-grow animation below, which is unrelated (reveal,
     // not dim) and untouched.
-    // Cast: `useFocusInjection`'s `captureRenderContext` is typed against the
-    // library's generic (unknown-typed) `ChartRenderContext`, which — because
-    // `interaction.setControlledFocus` is checked contravariantly under
-    // strictFunctionTypes — is not structurally assignable from our
-    // concretely-typed context. Both denote the same live object at runtime.
-    captureRenderContext(context as unknown as Pick<ChartRenderContext, "scene" | "interaction">);
-    // C2 (P6): separate local capture (see interactionRef's own comment
-    // above) — same context object, no cast needed here since we're
-    // assigning into our own concretely-typed ref rather than the
-    // library-generic `Pick<ChartRenderContext, ...>` parameter above.
-    interactionRef.current = context.interaction;
-    sceneRef.current = context.scene;
+    // `useFocusInjection<ChartDatum, Date, number>()`'s `captureRenderContext`
+    // is now typed to match this concretely-typed context exactly, so no cast
+    // is needed; the same call also feeds `interactionRef`/`sceneRef` above
+    // (see their own comment) — one capture, shared by both consumers.
+    captureRenderContext(context);
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marks) return;
     // Gate on chartPhase === "revealing" (same contract as line-chart.tsx /
@@ -1978,13 +1911,10 @@ export function ComposedChart({
   const innerWidthComp = Math.max(0, width - margin.left - margin.right);
   // C6: replaces the deleted plot-local `xScaleCompSel` duplicate d3 scale —
   // resolves through the host's own live interaction/scene refs.
-  const resolveScenePosComp = React.useCallback(
-    (clientX: number, clientY: number) => interactionRef.current?.clientToScene(clientX, clientY) ?? null,
-    [],
-  );
+  const resolveScenePosComp = clientToScene;
   const invertSceneXComp = React.useCallback(
     (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? null,
-    [],
+    [sceneRef],
   );
   const { selection: compSelection } = useChartSelection({
     enabled: true,

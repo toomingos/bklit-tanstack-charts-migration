@@ -42,7 +42,8 @@ import { bisector } from "d3-array";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { curveMonotoneX, type CurveFactory } from "d3-shape";
 import { RendererChart, type ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { d3Curve, defineChart } from "@tanstack/charts";
+import { d3Curve } from "@tanstack/charts/d3/shape";
+import { defineChart } from "@tanstack/charts/scene";
 import type {
   ChartInteractionController,
   ChartKey,
@@ -52,7 +53,6 @@ import type {
   ChartPositionScaleOptions,
   ChartRendererRenderContext,
 } from "@tanstack/charts";
-import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
 import { roleOf } from "./children";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { hmsTimeFmt } from "./internal/formatters";
@@ -66,9 +66,9 @@ import {
   resolveHoverDotFill,
   useDatePillOverlay,
 } from "./internal/hover-geometry";
-import { BOX_OFFSET, TOOLTIP_SPRING } from "./internal/design-tokens";
-import { TooltipContent } from "./internal/tooltip-components";
+import { TOOLTIP_SPRING } from "./internal/design-tokens";
 import { useChartConfig } from "./internal/chart-config-context";
+import { buildNativeTooltipExtension, renderSeriesTooltipBody } from "./internal/native-tooltip";
 import type {
   ChartDatum,
   ChartTooltipConfig,
@@ -76,7 +76,6 @@ import type {
   LiveXAxisConfig,
   LiveYAxisConfig,
   MomentumColors,
-  TooltipRow,
 } from "./internal/types";
 import "./styles.css";
 
@@ -513,6 +512,41 @@ export function LiveLineChart({
     });
   }, [liveLines, contextData, xScale, yScale, xAccessor, innerWidth]);
 
+  // D465: per-series stroke/area gradients, previously two JSX <linearGradient>
+  // elements per series (see the removed <defs> entries below) — moved into
+  // the chart definition's `gradients:` array (area-chart.tsx's
+  // nativeAreaGradients is the model). Explicit y1:0/y2:1 required: the
+  // library default is y1:1/y2:0, the opposite of the retired JSX attrs
+  // (x1="0" x2="0" y1="0" y2="1"), which would flip the gradient direction.
+  const nativeLineGradients = React.useMemo(
+    () =>
+      lineVisuals.flatMap((v) => [
+        {
+          id: `bkm-live-stroke-${uid}-${v.cfg.dataKey}`,
+          x1: 0,
+          y1: 0,
+          x2: 0,
+          y2: 1,
+          stops: [
+            { offset: 0, color: v.resolvedStroke, opacity: 1 },
+            { offset: 1, color: v.resolvedStroke, opacity: 0.6 },
+          ],
+        },
+        {
+          id: `bkm-live-area-${uid}-${v.cfg.dataKey}`,
+          x1: 0,
+          y1: 0,
+          x2: 0,
+          y2: 1,
+          stops: [
+            { offset: 0, color: v.resolvedStroke, opacity: 0.1 },
+            { offset: 1, color: v.resolvedStroke, opacity: 0 },
+          ],
+        },
+      ]),
+    [lineVisuals, uid],
+  );
+
   // ---- E3: native hover/tooltip wiring ----
   const tooltipOn = tooltip !== null && tooltip.enabled !== false;
   const chartConfig = useChartConfig();
@@ -572,29 +606,16 @@ export function LiveLineChart({
   }, [tooltipOn, tooltip, crosshairGradientId]);
 
   const renderTooltipBody = React.useCallback(
-    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode => {
-      const primary = ctx.points[0];
-      if (!primary) return null;
-      const datum = primary.datum as ChartDatum;
-      const cfg = tooltip ?? null;
-      const panelClassName = cfg?.className ? `bkm-tooltip-panel ${cfg.className}` : "bkm-tooltip-panel";
-      const panelStyle: React.CSSProperties | undefined =
-        cfg?.panelStyle || cfg?.backgroundColor
-          ? { ...cfg?.panelStyle, ...(cfg?.backgroundColor ? { backgroundColor: cfg.backgroundColor } : null) }
-          : undefined;
-      if (cfg?.content) {
-        return (
-          <div className={panelClassName} style={panelStyle}>
-            {cfg.content({ point: datum, index: primary.datumIndex })}
-          </div>
-        );
-      }
-      const dateVal = datum.date instanceof Date ? datum.date : new Date(datum.date as number);
-      const formatTime = liveXAxisRef.current?.formatTime ?? defaultFormatTime;
-      const title = formatTime(dateVal.getTime());
-      const rows: TooltipRow[] = cfg?.rows
-        ? cfg.rows(datum)
-        : lineVisuals.map((v) => {
+    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode =>
+      renderSeriesTooltipBody(ctx, {
+        tooltip,
+        resolveTitle: (datum) => {
+          const dateVal = datum.date instanceof Date ? datum.date : new Date(datum.date as number);
+          const formatTime = liveXAxisRef.current?.formatTime ?? defaultFormatTime;
+          return formatTime(dateVal.getTime());
+        },
+        buildRows: (datum) =>
+          lineVisuals.map((v) => {
             const raw = datum[v.cfg.dataKey];
             const formatValue = v.cfg.formatValue ?? defaultFormatValue;
             return {
@@ -602,15 +623,8 @@ export function LiveLineChart({
               label: v.cfg.dataKey,
               value: typeof raw === "number" ? formatValue(raw) : String(raw ?? ""),
             };
-          });
-      return (
-        <div className={panelClassName} style={panelStyle}>
-          <TooltipContent title={title} rows={rows}>
-            {cfg?.children}
-          </TooltipContent>
-        </div>
-      );
-    },
+          }),
+      }),
     [tooltip, lineVisuals],
   );
 
@@ -758,16 +772,13 @@ export function LiveLineChart({
       focus: "group-x" as const,
       focusRing: false,
       maxFocusDistance: Number.POSITIVE_INFINITY,
-      tooltip: tooltipOn
-        ? {
-            use: nativeTooltip,
-            className: "bkm-native-tooltip",
-            sticky: false,
-            offset: BOX_OFFSET,
-            placement: ["right", "left"] as const,
-            motion: { type: "spring" as const, stiffness: TOOLTIP_SPRING.stiffness, damping: TOOLTIP_SPRING.damping },
-          }
-        : (false as const),
+      gradients: nativeLineGradients,
+      tooltip: buildNativeTooltipExtension<ChartDatum, Date, number>({
+        enabled: tooltipOn,
+        spring: TOOLTIP_SPRING,
+        discrete: false,
+        className: "bkm-native-tooltip",
+      }),
     });
   }, [
     width,
@@ -775,6 +786,7 @@ export function LiveLineChart({
     innerHeight,
     contextData,
     lineVisuals,
+    nativeLineGradients,
     xScale,
     yScale,
     margin,
@@ -845,19 +857,9 @@ export function LiveLineChart({
             <g transform={`translate(${margin.left},${margin.top})`}>
               <defs>
                 {lineVisuals.map((v) => {
-                  const strokeGradId = `bkm-live-stroke-${uid}-${v.cfg.dataKey}`;
-                  const areaGradId = `bkm-live-area-${uid}-${v.cfg.dataKey}`;
                   const fadeId = `bkm-live-fade-${uid}-${v.cfg.dataKey}`;
                   return (
                     <React.Fragment key={v.cfg.dataKey}>
-                      <linearGradient id={strokeGradId} x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="0%" stopColor={v.resolvedStroke} stopOpacity={1} />
-                        <stop offset="100%" stopColor={v.resolvedStroke} stopOpacity={0.6} />
-                      </linearGradient>
-                      <linearGradient id={areaGradId} x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="0%" stopColor={v.resolvedStroke} stopOpacity={0.1} />
-                        <stop offset="100%" stopColor={v.resolvedStroke} stopOpacity={0} />
-                      </linearGradient>
                       <linearGradient id={fadeId} x1="0" x2="1" y1="0" y2="0">
                         <stop offset="0%" stopColor="white" stopOpacity={0} />
                         <stop offset="4%" stopColor="white" stopOpacity={1} />

@@ -33,13 +33,11 @@
 //
 // The generic `resolveEnterTransition` timing-resolution machinery still
 // lives in `./enter-transition` (one implementation, one import path);
-// this module re-exports it under gauge's family names and keeps ONLY the
+// gauge.tsx imports it directly from there and this module keeps ONLY the
 // gauge-specific default fallback constant below.
 import type { ChartMotionTransition } from "@tanstack/charts";
 import type { EnterTransition, ResolvedTiming } from "./enter-transition";
 import { motionEasingFromCss } from "./pie-hover-chrome";
-
-export { resolveEnterTransition } from "./enter-transition";
 
 export type GaugeEnterTransition = EnterTransition;
 export type GaugeResolvedTiming = ResolvedTiming;

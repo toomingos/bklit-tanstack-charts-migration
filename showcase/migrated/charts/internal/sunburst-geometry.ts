@@ -410,13 +410,6 @@ export function transitionGeometry(
 // Hover grow
 // ---------------------------------------------------------------------------
 
-function visibleHoverPathLength(
-  hoveredDepth: number,
-  focusDepth: number,
-): number {
-  return Math.max(1, hoveredDepth - focusDepth);
-}
-
 function hoverGrowForPathSegment(
   hoverPop: number,
   ringWidth: number,
@@ -426,54 +419,6 @@ function hoverGrowForPathSegment(
   const budgetPerSegment = maxTotalGrow / pathLength;
   const perSegmentCap = ringWidth * HOVER_GROW_SEGMENT_CAP;
   return Math.min(hoverPop, perSegmentCap, budgetPerSegment);
-}
-
-export function maxHoverSegmentThickness(
-  maxDepth: number,
-  radius: number,
-  hoverPop: number,
-  referenceFocusDepth = 1,
-): number {
-  const { ringWidth } = ringOptions(referenceFocusDepth, maxDepth, radius);
-  const grow = hoverGrowForPathSegment(hoverPop, ringWidth, 1);
-  return ringWidth + grow;
-}
-
-export function buildHoverGrowTargets(
-  arcs: ArcDatum[],
-  hoveredArc: ArcDatum,
-  focus: Focus,
-  maxDepth: number,
-  radius: number,
-  hoverPop: number,
-  isOnHoverPath: (arc: ArcDatum, hoveredId: string) => boolean,
-): Map<string, number> {
-  const targets = new Map<string, number>();
-  const { ringWidth } = ringOptions(focus.depth, maxDepth, radius);
-  const pathLength = visibleHoverPathLength(hoveredArc.depth, focus.depth);
-  const segmentGrow = hoverGrowForPathSegment(hoverPop, ringWidth, pathLength);
-  const maxExpandedThickness = maxHoverSegmentThickness(
-    maxDepth,
-    radius,
-    hoverPop,
-  );
-
-  for (const d of arcs) {
-    if (!isOnHoverPath(d, hoveredArc.id) || d.depth <= focus.depth) {
-      continue;
-    }
-    const base = geometryFor(d, focus, maxDepth, radius);
-    const baseThickness = base
-      ? base.outerR - base.innerR
-      : maxExpandedThickness;
-    const allowedGrow =
-      baseThickness >= maxExpandedThickness
-        ? 0
-        : Math.min(segmentGrow, maxExpandedThickness - baseThickness);
-    targets.set(d.id, allowedGrow);
-  }
-
-  return targets;
 }
 
 export function defaultSunburstGrowPadding(
@@ -492,52 +437,3 @@ export function defaultSunburstGrowPadding(
   return Math.ceil(segmentGrow * pathLength + segmentGrow);
 }
 
-function ancestorGrowOffset(
-  arcId: string,
-  growAmountForArc: (id: string) => number,
-): number {
-  const parts = arcId.split(ID_SEP);
-  let push = 0;
-  for (let i = 1; i < parts.length; i++) {
-    push += growAmountForArc(parts.slice(0, i).join(ID_SEP));
-  }
-  return push;
-}
-
-export function applyHoverGrow(
-  base: ArcGeometry,
-  arcId: string,
-  growAmountForArc: (id: string) => number,
-  maxExpandedThickness: number,
-): ArcGeometry {
-  const push = ancestorGrowOffset(arcId, growAmountForArc);
-  const ownGrow = growAmountForArc(arcId);
-  if (push <= 0 && ownGrow <= 0) {
-    return base;
-  }
-
-  const baseThickness = base.outerR - base.innerR;
-  if (baseThickness >= maxExpandedThickness) {
-    if (push <= 0) {
-      return base;
-    }
-    return {
-      ...base,
-      innerR: base.innerR + push,
-      outerR: base.outerR + push,
-    };
-  }
-
-  const innerR = base.innerR + push;
-  let outerR = base.outerR + push + ownGrow;
-  const thickness = outerR - innerR;
-  if (thickness > maxExpandedThickness) {
-    outerR = innerR + maxExpandedThickness;
-  }
-
-  return {
-    ...base,
-    innerR,
-    outerR,
-  };
-}

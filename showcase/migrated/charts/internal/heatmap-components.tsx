@@ -14,7 +14,8 @@ import {
   type CSSProperties,
 } from "react";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
-import { defineChart, cell } from "@tanstack/charts";
+import { defineChart } from "@tanstack/charts/scene";
+import { cell } from "@tanstack/charts/rect";
 import { tooltip } from "@tanstack/charts/tooltip";
 import type {
   ChartMarkState,

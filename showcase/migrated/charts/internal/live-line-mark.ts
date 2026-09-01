@@ -19,7 +19,8 @@
 // every subsequent phase so the mark falls through to the definition-level
 // rolling transition (motion.md's cascade: renderer default → defineChart
 // `motion` → mark `motion` → ...) instead of overriding it.
-import { areaY, lineY } from "@tanstack/charts";
+import { areaY } from "@tanstack/charts/area";
+import { lineY } from "@tanstack/charts/line";
 import type {
   Channel,
   ChartCurve,

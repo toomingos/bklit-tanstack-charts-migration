@@ -1,17 +1,16 @@
 // Shared internals for the per-chart ChartFocusStrategy implementations
 // (bar / scatter / candlestick). Extraction-only: every helper here is the
 // byte-identical twin of logic previously inlined in
-// internal/{bar,scatter,candlestick}-focus-strategy.ts. Two deliberate,
-// bklit-anchored divergences are preserved as parameters:
+// internal/{bar,scatter,candlestick}-focus-strategy.ts. One deliberate,
+// bklit-anchored divergence is preserved as a parameter:
 //   - member identity: bar keys by `group ?? markId` (one entry per series
-//     group), scatter/candlestick key by `markId`;
-//   - others ordering: NO caller sorts by y (D320/D307: bklit emits tooltip
-//     rows by iterating `lines` in declaration order — resolveTooltipFromX
-//     builds a yPositions record, no grouped array, and zero `a.y - b.y`
-//     sorts exist in legacy charts). TanStack's focusX grouped sorts by y
-//     (charts-core-d3/src/focus.ts:64) but is the ceiling reference, not
-//     parity; `sortOthersByY` remains a parameter for candlestick's
-//     documented opt-out shape and future needs, all callers pass false.
+//     group), scatter/candlestick key by `markId`.
+// Others ordering is NEVER sorted by y (D320/D307: bklit emits tooltip
+// rows by iterating `lines` in declaration order — resolveTooltipFromX
+// builds a yPositions record, no grouped array, and zero `a.y - b.y`
+// sorts exist in legacy charts). TanStack's focusX grouped sorts by y
+// (charts-core-d3/src/focus.ts:64) but is the ceiling reference, not
+// parity; `collectFocusGroup` below always emits others in scan order.
 interface ChartPointLike {
   readonly x: number;
   readonly y: number;
@@ -53,7 +52,6 @@ export function collectFocusGroup<P extends ChartPointLike>(
   primary: P,
   xKeyOf: (xValue: unknown) => string | number,
   memberKeyOf: (p: P) => string | number,
-  sortOthersByY: boolean,
 ): P[] {
   const key = xKeyOf(primary.xValue);
   const unique = new Map<string | number, P>();
@@ -67,7 +65,6 @@ export function collectFocusGroup<P extends ChartPointLike>(
   for (const p of unique.values()) {
     if (p !== primary) others.push(p);
   }
-  if (sortOthersByY) others.sort((a, b) => a.y - b.y);
   return [primary, ...others];
 }
 

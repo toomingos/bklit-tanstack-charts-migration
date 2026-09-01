@@ -244,9 +244,7 @@ export type GaugeEnterTransition = EnterTransition;
     allowed there (`repos/bklit-ui/.../candlestick-chart.tsx:54,84`). Aliased
     here like the other five so the tween branch is reachable. */
 export type CandlestickEnterTransition = EnterTransition;
-export type GaugeRevealTiming = RevealTiming;
 
-export const PIE_TWEEN_FALLBACK: ResolvedTiming = TWEEN_FALLBACK;
 export const RING_TWEEN_FALLBACK: ResolvedTiming = TWEEN_FALLBACK;
 export const FUNNEL_TWEEN_FALLBACK: ResolvedTiming = TWEEN_FALLBACK;
 export const RADAR_TWEEN_FALLBACK: ResolvedTiming = TWEEN_FALLBACK;

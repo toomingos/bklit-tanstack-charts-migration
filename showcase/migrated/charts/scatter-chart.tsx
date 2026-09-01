@@ -25,12 +25,11 @@
 import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { RendererChart, type ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { crosshair, defineChart, dot, whenFocused } from "@tanstack/charts";
-import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
+import { defineChart } from "@tanstack/charts/scene";
+import { dot } from "@tanstack/charts/dot";
+import { whenFocused } from "@tanstack/charts/focus/mark";
 import type {
-  ChartAxisTickLabelContext,
   ChartDotStateStyle,
-  ChartInteractionController,
   ChartMark,
   ChartMarkState,
   ChartMotionContext,
@@ -38,7 +37,6 @@ import type {
   ChartPoint,
   ChartRendererRenderContext,
   ChartScale,
-  ChartScene,
   ChartValue,
   SceneNode,
   StaticChartDefinition,
@@ -46,12 +44,11 @@ import type {
 import { extractChildren } from "./children";
 import { ChartSelectionContext, useChartSelection } from "./internal/chart-selection";
 import { buildPill } from "./internal/date-pill";
-import { buildXAxisTickValues, tickLabelFadeOpacity } from "./internal/axis-ticks";
+import { buildXAxisTickValues, buildFadeXAxisOptions, hiddenAxisOptions } from "./internal/axis-ticks";
 import { resolveVerticalFadeSides, indicatorFadeGradientStops } from "./internal/fade-mask";
 import {
   toDotConfig,
   toIndicatorConfig,
-  resolveIndicatorPixelWidth,
   type DotVariant,
 } from "./internal/tooltip-mappers";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
@@ -70,9 +67,10 @@ import {
   BOX_OFFSET,
   CHART_CATEGORY_PALETTE,
   DISCRETE_INTERACTION_THRESHOLD,
-  FADE_BUFFER,
-  TICKER_HALF_WIDTH,
 } from "./internal/design-tokens";
+import { useFocusInjection } from "./internal/focus-injection";
+import { buildIndicatorMark } from "./internal/hover-geometry";
+import { buildNativeTooltipExtension } from "./internal/native-tooltip";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { chartMotionRenderer } from "./internal/motion-renderer";
@@ -654,8 +652,7 @@ export function ScatterChart({
   // C6: own capture — feeds useChartSelection's clientToScene +
   // scene.scales.x.invert path (replaces the plot-local xScaleForSelection
   // duplicate scale below).
-  const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
-  const sceneRef = React.useRef<ChartScene<ChartDatum, Date, number> | null>(null);
+  const { captureRenderContext, sceneRef, clientToScene } = useFocusInjection<ChartDatum, Date, number>();
   const revealDeadlineTimerRef = React.useRef<number | null>(null);
   // P4.6 (M3a): the reveal runs once per component lifetime. The scene (and
   // with it the .ts-chart__marks group) is rebuilt on every data swap, so the
@@ -1162,23 +1159,17 @@ export function ScatterChart({
         // silent visual regression. `y` stays off (legacy never drew a
         // horizontal guide).
         marks.push(
-          crosshair({
-            y: false,
-            x: {
-              stroke: !isDashed && fadeSides.any ? `url(#${crosshairGradientId})` : indicatorColorValue,
-              strokeOpacity: 1,
-              strokeWidth: resolveIndicatorPixelWidth(indicatorCfg),
-              strokeDasharray: indicatorCfg.dasharray,
-            },
-            motion: discrete
-              ? false
-              : {
-                  transition: {
-                    type: "spring",
-                    stiffness: indicatorSpringCfg.stiffness,
-                    damping: indicatorSpringCfg.damping,
-                  },
-                },
+          buildIndicatorMark({
+            gradientId: crosshairGradientId,
+            width: indicatorCfg.width,
+            span: indicatorCfg.span,
+            columnWidth: indicatorCfg.columnWidth,
+            dasharray: indicatorCfg.dasharray,
+            color: indicatorColorValue,
+            useGradient: !isDashed && fadeSides.any,
+            strokeOpacity: 1,
+            spring: indicatorSpringCfg,
+            discrete,
           }) as ChartMark<ChartDatum, Date, number>,
         );
       }
@@ -1216,28 +1207,7 @@ export function ScatterChart({
         x: {
           scale: xScale,
           grid: gridGuide.vertical,
-          axis: {
-            line: false,
-            ticks: { count: gridGuide.columnTicks, size: 0, padding: 0 },
-            tickLabels: xAxis
-              ? {
-                  fontSize: 12,
-                  thin: false,
-                  dy: margin.bottom - 25,
-                  opacity: labelFade
-                    ? (ctx: ChartAxisTickLabelContext) =>
-                        tickLabelFadeOpacity(
-                          ctx.position,
-                          (xAxis.formatValue ?? shortDateFmt.format)(ctx.value as Date),
-                          labelFade.primaryX,
-                          labelFade.hoveredLabel,
-                          xAxis.tickerHalfWidth ?? TICKER_HALF_WIDTH,
-                          FADE_BUFFER,
-                        )
-                    : 1,
-                }
-              : false,
-          },
+          axis: buildFadeXAxisOptions(gridGuide.columnTicks, xAxis ?? undefined, margin.bottom, labelFade),
         },
         y: {
           scale: yScale,
@@ -1245,7 +1215,7 @@ export function ScatterChart({
           // Scatter never had y-axis labels (no `YAxisOverlay` counterpart
           // existed pre-C4) — labels stay off, only the tick-driven grid
           // line count is native-configured.
-          axis: { line: false, ticks: { count: gridGuide.ticks, size: 0 }, tickLabels: false },
+          axis: hiddenAxisOptions(gridGuide.ticks),
         },
       },
       margin,
@@ -1281,26 +1251,18 @@ export function ScatterChart({
       return withFocus as StaticChartDefinition<ChartDatum, Date, number, "dom">;
     }
     return defineChart(withFocus, {
-      tooltip: {
-        use: nativeTooltip,
-        anchor: "point",
-        placement: ["right", "left"],
-        offset: BOX_OFFSET,
-        sticky: false,
-        motion: discrete
-          ? false
-          : {
-              type: "spring",
-              stiffness: chartConfig.tooltipBoxSpring.stiffness,
-              damping: chartConfig.tooltipBoxSpring.damping,
-            },
+      tooltip: buildNativeTooltipExtension<ChartDatum, Date, number>({
+        enabled: tooltip?.enabled ?? false,
+        spring: chartConfig.tooltipBoxSpring,
+        discrete,
         className: tooltip?.className,
-      },
+        offset: BOX_OFFSET,
+        anchor: "point",
+      }),
     }) as StaticChartDefinition<ChartDatum, Date, number, "dom">;
     // B5: `revealDurationMs`/`revealEasingCss` feed `enterMotion` above (per-
     // series enter delay/transition), so the definition must rebuild when
     // either changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy, projectorFor, tooltip, chartConfig.tooltipBoxSpring, chartConfig.tooltipSpring, crosshairGradientId, xAxis, labelFade, revealDurationMs, revealEasingCss]);
 
   // C3: what remains app-owned after the crosshair/tooltip-dot geometry
@@ -1478,8 +1440,7 @@ export function ScatterChart({
     // B1: the renderer context has no `svg` member under RendererChart —
     // `surface.element` is the mounted `<svg class="ts-chart">` root itself.
     const svgRoot = context.surface.element as SVGSVGElement;
-    interactionRef.current = context.interaction;
-    sceneRef.current = context.scene;
+    captureRenderContext(context);
     const marksGroup = svgRoot.querySelector<SVGGElement>(".ts-chart__marks");
     // S3: the replay KEY is tested BEFORE the DOM stamp. The stamp latches for
     // the life of the marks node, so a caller bumping `revealSignature` on a
@@ -1534,7 +1495,7 @@ export function ScatterChart({
         setPhase("ready");
       },
     });
-  }, [animationDuration, revealDurationMs, setPhase]);
+  }, [animationDuration, revealDurationMs, setPhase, captureRenderContext]);
 
   const refAreaChildrenScatter = React.useMemo(() => extractReferenceAreaProps(children), [children]);
   const heightPxScatter = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
@@ -1578,13 +1539,9 @@ export function ScatterChart({
   // padding via `xRangePadding`) — resolves through the host's own live
   // interaction/scene refs, which already reflect the chart's real marker
   // geometry exactly.
-  const resolveScenePosScatter = React.useCallback(
-    (clientX: number, clientY: number) => interactionRef.current?.clientToScene(clientX, clientY) ?? null,
-    [],
-  );
   const invertSceneXScatter = React.useCallback(
     (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? null,
-    [],
+    [sceneRef],
   );
 
   const { selection: scatterSelection } = useChartSelection({
@@ -1593,7 +1550,7 @@ export function ScatterChart({
     marginLeft: margin.left,
     data: renderData as unknown as Array<Record<string, unknown>>,
     xDataKey,
-    resolveScenePos: resolveScenePosScatter,
+    resolveScenePos: clientToScene,
     invertSceneX: invertSceneXScatter,
     containerRef,
     onDragStart: () => {

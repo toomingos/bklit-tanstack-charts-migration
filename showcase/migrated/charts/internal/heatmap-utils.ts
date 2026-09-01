@@ -466,29 +466,6 @@ export function findHeatmapColumnIndexForDate(columns: HeatmapColumn[], date: Da
   return null;
 }
 
-/** Quarter anchor for a week column — prefers the 1st of a quarter month, else the quarter of the first bin. */
-export function getHeatmapColumnQuarterAnchor(
-  column: HeatmapColumn,
-): { quarter: number; year: number; date: Date } | null {
-  for (const bin of column.bins) {
-    if (!bin.date) continue;
-    const month = bin.date.getMonth();
-    if (bin.date.getDate() === 1 && month % 3 === 0) {
-      return { quarter: month / 3 + 1, year: bin.date.getFullYear(), date: bin.date };
-    }
-  }
-
-  const firstDate = column.bins[0]?.date;
-  if (!firstDate) return null;
-
-  const quarter = getCalendarQuarter(firstDate);
-  return {
-    quarter,
-    year: firstDate.getFullYear(),
-    date: new Date(firstDate.getFullYear(), (quarter - 1) * 3, 1),
-  };
-}
-
 export function buildHeatmapQuarterSeparatorGroups(columns: HeatmapColumn[]): HeatmapSeparatorGroup[] {
   if (columns.length === 0) return [];
 
@@ -554,26 +531,6 @@ export function resolveHeatmapSeparatorLayout(
   const atColumns = getHeatmapSeparatorColumnIndices(columns.length, config.every);
 
   return { spacing: config.spacing, atColumns, groups: [] };
-}
-
-/** Label column snapped to the start of a separator group. */
-export function getHeatmapSeparatorGroupStartColumn(columnIndex: number, atColumns: number[]): number {
-  let groupStart = 0;
-  for (const start of atColumns) {
-    if (start <= columnIndex) groupStart = start;
-    else break;
-  }
-  return groupStart;
-}
-
-/** Snaps a month-label anchor to its separator group's start column when
-    separators are active, so a month label never lands mid-group. */
-export function getHeatmapMonthLabelColumnIndex(
-  columnIndex: number,
-  separatorLayout: Pick<HeatmapSeparatorLayout, "atColumns"> | null,
-): number {
-  if (!separatorLayout?.atColumns.length) return columnIndex;
-  return getHeatmapSeparatorGroupStartColumn(columnIndex, separatorLayout.atColumns);
 }
 
 export function getHeatmapSeparatorCount(separator: Pick<HeatmapSeparatorLayout, "atColumns"> | null): number {
@@ -688,11 +645,6 @@ export function isHeatmapHoverEffectEnabled(params: HeatmapHoverStyleParams): bo
   return params.inactiveOpacity !== 1 || params.inactiveScale !== 1 || params.activeScale !== 1;
 }
 
-/** Whether inactive hover styling runs (disabled when both props are 1). */
-export function isHeatmapInactiveEffectEnabled(inactiveOpacity: number, inactiveScale: number): boolean {
-  return isHeatmapHoverEffectEnabled({ inactiveOpacity, inactiveScale, activeScale: 1 });
-}
-
 /** Opacity and scale for highlighted vs dimmed cells and legend swatches. */
 export function resolveHeatmapHoverStyle(
   isHighlighted: boolean,
@@ -702,15 +654,6 @@ export function resolveHeatmapHoverStyle(
   if (isHighlighted && params.activeScale !== 1) return { opacity: 1, scale: params.activeScale };
   if (isDimmed) return { opacity: params.inactiveOpacity, scale: params.inactiveScale };
   return { opacity: 1, scale: 1 };
-}
-
-/** Opacity and scale for an inactive cell or legend swatch. */
-export function resolveHeatmapInactiveStyle(
-  isInactive: boolean,
-  inactiveOpacity: number,
-  inactiveScale: number,
-): { opacity: number; scale: number } {
-  return resolveHeatmapHoverStyle(false, isInactive, { inactiveOpacity, inactiveScale, activeScale: 1 });
 }
 
 /** Per-row opacity multiplier for display rows (default 1). */

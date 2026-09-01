@@ -5,7 +5,6 @@
 // repos/bklit-ui/packages/ui/src/charts/tooltip/{tooltip-dot,
 // tooltip-indicator,tooltip-box,tooltip-content,date-ticker}.tsx.
 import {
-  createElement,
   useCallback,
   useEffect,
   useLayoutEffect,

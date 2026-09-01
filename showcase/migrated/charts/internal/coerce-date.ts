@@ -22,7 +22,3 @@ export function toDate(value: unknown): Date | null {
   }
   return null;
 }
-
-export function numericValue(value: unknown): number {
-  return isValidDate(value) ? value.getTime() : Number(value);
-}

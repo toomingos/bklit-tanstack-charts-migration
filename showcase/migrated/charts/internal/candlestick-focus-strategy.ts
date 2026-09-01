@@ -47,7 +47,7 @@ export function createCandlestickFocusStrategy(
       // Collect mirrored wick+body points sharing same date (unique dates per
       // plan, so grouping is 1:1 per candle; dedupe by markId). Insertion
       // order preserved (see header divergence note).
-      return collectFocusGroup(points, nearest, epochMs, byMarkId, false);
+      return collectFocusGroup(points, nearest, epochMs, byMarkId);
     },
 
     group(
@@ -55,7 +55,7 @@ export function createCandlestickFocusStrategy(
       { point },
     ): readonly ChartPoint<ChartDatum, Date, number>[] {
       if (points.length === 0) return [point];
-      return collectFocusGroup(points, point, epochMs, byMarkId, false);
+      return collectFocusGroup(points, point, epochMs, byMarkId);
     },
 
     navigation(

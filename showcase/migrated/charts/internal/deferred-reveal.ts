@@ -285,11 +285,3 @@ export function runDeferredReveal(config: DeferredRevealConfig): RevealHandle {
 
   return { cancel };
 }
-
-export function createDeferredRevealGuard(
-  container: HTMLElement,
-  selector?: string,
-): { guarded: boolean; marksGroup: RevealRoot | null } {
-  const { pass, marksGroup } = checkRevealGuard(container, selector);
-  return { guarded: !pass, marksGroup };
-}

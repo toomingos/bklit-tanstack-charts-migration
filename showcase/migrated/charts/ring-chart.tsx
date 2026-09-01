@@ -113,7 +113,7 @@
 // resolution is unaffected (hitbox always painted last, wins containment).
 import { Children, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, createContext, useContext, type CSSProperties, type ReactElement, type ReactNode, type RefObject } from "react";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
-import { defineChart } from "@tanstack/charts";
+import { defineChart } from "@tanstack/charts/scene";
 import { polar, radialArc } from "@tanstack/charts/polar";
 import { pieArcPath } from "./internal/pie-geometry";
 import { displayNameOf } from "./children";

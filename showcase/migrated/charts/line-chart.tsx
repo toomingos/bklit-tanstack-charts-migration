@@ -9,19 +9,17 @@ import type { ScaleTime } from "d3-scale";
 import { curveNatural } from "d3-shape";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { d3Curve, defineChart, lineY } from "@tanstack/charts";
-import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
+import { d3Curve } from "@tanstack/charts/d3/shape";
+import { defineChart } from "@tanstack/charts/scene";
+import { lineY } from "@tanstack/charts/line";
 import type {
   ChartControl,
-  ChartInteractionController,
   ChartMark,
   ChartMotionContext,
   ChartPoint,
   ChartPositionScaleOptions,
-  ChartRenderContext,
   ChartRendererRenderContext,
   ChartScale,
-  ChartScene,
   SceneStyle,
 } from "@tanstack/charts";
 import { chartMotionRenderer } from "./internal/motion-renderer";
@@ -36,11 +34,11 @@ import {
   buildHoverDotMark,
   buildIndicatorMark,
   isFocusOutsideXDomain,
-  pointerHoverDimState,
   resolveHoverDotFill,
+  seriesAndPointerDimStates,
   useDatePillOverlay,
 } from "./internal/hover-geometry";
-import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
+import { useFocusInjection, useLegendFocusBroadcast } from "./internal/focus-injection";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import {
@@ -70,7 +68,6 @@ import {
 import { toDate } from "./internal/coerce-date";
 import { timeToPixelX } from "./internal/x-time-scale";
 import {
-  BOX_OFFSET,
   DISCRETE_INTERACTION_THRESHOLD,
   FADE_BUFFER,
   SERIES_MARKER_ENTER_MS,
@@ -78,14 +75,15 @@ import {
   TOOLTIP_BOX_SPRING,
 } from "./internal/design-tokens";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
-import { TooltipContent } from "./internal/tooltip-components";
 import {
+  buildPrecomputedXAxisOptions,
   buildXAxisTickValues,
-  buildYAxisTickValues,
-  formatYAxisTick,
+  buildYAxisOptions,
+  hiddenAxisOptions,
   tickLabelFadeOpacity,
 } from "./internal/axis-ticks";
-import type { ChartDatum, ChartStatus, TooltipRow } from "./internal/types";
+import { buildNativeTooltipExtension, renderSeriesTooltipBody } from "./internal/native-tooltip";
+import type { ChartDatum, ChartStatus } from "./internal/types";
 import { type ChartPhase, DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./internal/chart-phase";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { bezierEasing } from "./internal/bezier-easing";
@@ -306,12 +304,13 @@ export function LineChart({
   const prefersReducedMotion = usePrefersReducedMotion();
   // C1 (P6): legend hover -> native mark states via programmatic focus
   // injection (replaces the old hover-chrome DOM-mutation dim path).
-  const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection();
-  React.useEffect(() => {
-    const seriesKey = legendHoveredIndex != null ? (lines[legendHoveredIndex]?.dataKey ?? null) : null;
-    if (seriesKey != null) focusSeries(seriesKey);
-    else clearFocus();
-  }, [legendHoveredIndex, lines, focusSeries, clearFocus]);
+  const { captureRenderContext, focusSeries, clearFocus, sceneRef, interactionRef, clientToScene } =
+    useFocusInjection<ChartDatum, Date, number>();
+  const resolveLegendSeriesKey = React.useCallback(
+    (index: number) => lines[index]?.dataKey ?? null,
+    [lines],
+  );
+  useLegendFocusBroadcast(legendHoveredIndex, resolveLegendSeriesKey, focusSeries, clearFocus);
 
   const innerWidth = Math.max(0, width - margin.left - margin.right);
   const renderData = React.useMemo(() => {
@@ -586,14 +585,7 @@ export function LineChart({
           // pointer term, hover-chrome.ts DIM_OPACITY="0.3"). No `transition`
           // field (D425 — the 0.4s term rides `.ts-chart__line path` in
           // styles.css instead, per the explicit pointer-hover-dim directive).
-          states: [
-            {
-              when: whenSeriesDimmed(),
-              style: { opacity: 0.3 },
-              transition: { type: "tween", duration: 400, easing: "ease-in-out" },
-            },
-            pointerHoverDimState<ChartDatum>(0.3),
-          ],
+          states: seriesAndPointerDimStates<ChartDatum>(0.3),
         });
       });
       // SeriesMarkers grid — dot marks ABOVE the line stroke (bklit line.tsx:317-401 z-order: hover-dim stroke -> markers -> highlight band). Null y values produce no dot (bklit series-markers.tsx:107-120).
@@ -899,19 +891,7 @@ export function LineChart({
     const xScaleOptions: ChartPositionScaleOptions<Date> = {
       scale: xScale,
       grid: gridGuide.vertical,
-      axis: {
-        ticks: { count: gridGuide.columnTicks, size: 0, padding: 0 },
-        line: false,
-        tickLabels: xAxis
-          ? {
-              fontSize: 12,
-              thin: false,
-              dy: margin.bottom - 25,
-              opacity: xTickLabelOpacity,
-              motion: tickLabelMotion,
-            }
-          : false,
-      },
+      axis: buildPrecomputedXAxisOptions(gridGuide.columnTicks, xAxis ?? undefined, margin.bottom, xTickLabelOpacity, tickLabelMotion),
     };
     // C4: with a native y axis configured, tick VALUES come from
     // buildYAxisTickValues (bklit's niced-domain 1–10 clamp) instead of
@@ -920,31 +900,11 @@ export function LineChart({
     // since both derive from the same niced domain, but the count POLICY
     // is replaced).
     const yScaleOptions: ChartPositionScaleOptions<number> = yAxis
-      ? {
-          scale: yScale,
-          grid: gridGuide.horizontal,
-          axis: {
-            ticks: {
-              values: buildYAxisTickValues(niced, yAxis.numTicks),
-              format: (v: number) => formatYAxisTick(v, yAxis.formatValue, yAxis.formatLargeNumbers ?? true),
-              size: 0,
-              padding: 0,
-            },
-            line: false,
-            tickLabels: {
-              fontSize: 12,
-              thin: false,
-              opacity: 1,
-              dx: yAxis.orientation === "right" ? 8 : -8,
-              motion: tickLabelMotion,
-            },
-          },
-          side: yAxis.orientation === "right" ? "right" : "left",
-        }
+      ? buildYAxisOptions(yScale, niced, gridGuide.horizontal, yAxis, tickLabelMotion)
       : {
           scale: yScale,
           grid: gridGuide.horizontal,
-          axis: { ticks: { count: gridGuide.ticks, size: 0 }, line: false, tickLabels: false },
+          axis: hiddenAxisOptions(gridGuide.ticks),
         };
     return {
       marks,
@@ -968,23 +928,12 @@ export function LineChart({
       // drive it off the SAME native focus:"group-x" mechanism the crosshair
       // chrome already uses — no extra pointer-injection wiring needed here
       // (contrast composed-chart.tsx, which drives its own bisector).
-      tooltip: (tooltip?.enabled ?? false)
-        ? {
-            use: nativeTooltip,
-            className: "bkm-native-tooltip",
-            sticky: false,
-            offset: BOX_OFFSET,
-            placement: ["right", "left"] as const,
-            motion:
-              renderData.length > DISCRETE_INTERACTION_THRESHOLD
-                ? (false as const)
-                : ({
-                    type: "spring" as const,
-                    stiffness: TOOLTIP_BOX_SPRING.stiffness,
-                    damping: TOOLTIP_BOX_SPRING.damping,
-                  } as const),
-          }
-        : (false as const),
+      tooltip: buildNativeTooltipExtension<ChartDatum, Date, number>({
+        enabled: tooltip?.enabled ?? false,
+        spring: TOOLTIP_BOX_SPRING,
+        discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
+        className: "bkm-native-tooltip",
+      }),
       motion,
       // C6: native brushX (strip host only — empty array elsewhere).
       controls: brushControls,
@@ -1005,43 +954,23 @@ export function LineChart({
   // parity); otherwise default rows come from `lines`, honoring
   // `tooltip.rows` when the caller supplied it.
   const renderTooltipBody = React.useCallback(
-    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode => {
-      const primary = ctx.points[0];
-      if (!primary) return null;
-      const datum = primary.datum as Record<string, unknown>;
-      const cfg = tooltip ?? null;
-      const panelClassName = cfg?.className ? `bkm-tooltip-panel ${cfg.className}` : "bkm-tooltip-panel";
-      const panelStyle: React.CSSProperties | undefined =
-        cfg?.panelStyle || cfg?.backgroundColor
-          ? { ...cfg?.panelStyle, ...(cfg?.backgroundColor ? { backgroundColor: cfg.backgroundColor } : null) }
-          : undefined;
-      if (cfg?.content) {
-        return (
-          <div className={panelClassName} style={panelStyle}>
-            {cfg.content({ point: datum, index: primary.datumIndex })}
-          </div>
-        );
-      }
-      const date = datum[xDataKey];
-      const title = date instanceof Date ? weekdayDateFmt.format(date) : undefined;
-      const rows: TooltipRow[] = cfg?.rows
-        ? cfg.rows(datum)
-        : lines.map((line) => {
+    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode =>
+      renderSeriesTooltipBody(ctx, {
+        tooltip,
+        resolveTitle: (datum) => {
+          const date = datum[xDataKey];
+          return date instanceof Date ? weekdayDateFmt.format(date) : undefined;
+        },
+        buildRows: (datum, rowsCtx) =>
+          lines.map((line) => {
             const v = datum[line.dataKey];
             return {
-              color: line.stroke || ctx.points.find((p) => p.markId === line.dataKey)?.color || "transparent",
+              color: line.stroke || rowsCtx.points.find((p) => p.markId === line.dataKey)?.color || "transparent",
               label: line.dataKey,
               value: typeof v === "number" ? v : String(v ?? 0),
             };
-          });
-      return (
-        <div className={panelClassName} style={panelStyle}>
-          <TooltipContent title={title} rows={rows}>
-            {cfg?.children}
-          </TooltipContent>
-        </div>
-      );
-    },
+          }),
+      }),
     [tooltip, xDataKey, lines],
   );
   // C3: internal/hover-chrome.ts + internal/use-hover-chrome.ts (both
@@ -1058,12 +987,8 @@ export function LineChart({
   // pointer — so suppressing them now additionally requires overriding that
   // state via `interaction.setControlledFocus(null, {source:"pointer"})`,
   // captured below from `onRender`'s context (D110-style escape hatch, same
-  // shape as `useFocusInjection`'s own private capture).
-  const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
-  // C6: scene-space resolved-scale capture — feeds useChartSelection's
-  // clientToScene + scene.scales.x.invert path (replaces the plot-local
-  // xScaleForSelection duplicate scale below).
-  const sceneRef = React.useRef<ChartScene<ChartDatum, Date, number> | null>(null);
+  // shape as `useFocusInjection`'s own private capture) — `interactionRef`/
+  // `sceneRef` now come straight from `useFocusInjection` above.
   // bklit parity (use-chart-interaction.ts): drag selection suppresses the
   // hover chrome — cleared on mousedown, never rescheduled while dragging.
   const dragSelectionActiveRef = React.useRef(false);
@@ -1100,7 +1025,7 @@ export function LineChart({
     wasVisibleRef.current = false;
     datePill.hide();
     setLabelFade(null);
-  }, [profitLossLines, markerActiveStore, datePill]);
+  }, [profitLossLines, markerActiveStore, datePill, interactionRef]);
 
   const handleFocusChange = React.useCallback(
     (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
@@ -1160,7 +1085,7 @@ export function LineChart({
         setLabelFade(null);
       }
     },
-    [xDomain, xDataKey, chartPhase, isLoaded, profitLossLines, markerActiveStore, tooltip, isDiscrete, datePill, xAxis],
+    [xDomain, xDataKey, chartPhase, isLoaded, profitLossLines, markerActiveStore, tooltip, isDiscrete, datePill, xAxis, interactionRef],
   );
 
   const markerRevealAnimsRef = React.useRef<Animation[]>([]);
@@ -1178,19 +1103,12 @@ export function LineChart({
   // Nothing in this file's `handleRender` ever reached into `context.svg`,
   // so only the annotation changes.
   const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
-    // Cast: `useFocusInjection`'s `captureRenderContext` is typed against the
-    // library's generic (unknown-typed) `ChartRenderContext`, which — because
-    // `interaction.setControlledFocus` is checked contravariantly under
-    // strictFunctionTypes — is not structurally assignable from our
-    // concretely-typed context. Both denote the same live object at runtime.
-    captureRenderContext(context as unknown as Pick<ChartRenderContext, "scene" | "interaction">);
-    // C3: own capture, separate from useFocusInjection's private ref — that
-    // hook's semantics are legend-hover programmatic focus injection, while
-    // this one drives pointer-hover suppression (drag/xDomain/phase) inside
-    // handleFocusChange above; conflating them would blur two different
-    // sources of `focus`.
-    interactionRef.current = context.interaction;
-    sceneRef.current = context.scene;
+    // `useFocusInjection<ChartDatum, Date, number>()`'s `captureRenderContext`
+    // is now typed to match this concretely-typed context exactly, so no cast
+    // is needed; the same call also feeds `interactionRef`/`sceneRef` above
+    // (pointer-hover suppression + scene-space scale capture) — one capture,
+    // shared by both consumers.
+    captureRenderContext(context);
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     // A2 (D420/D432): the reveal sweep itself now lives in
     // internal/reveal-wipe.ts, shared byte-for-byte with area-chart.tsx/
@@ -1446,13 +1364,10 @@ export function LineChart({
   // scale — resolves through the host's own live interaction/scene refs
   // (margin-inclusive scene coordinates), so it tracks the resolved chart
   // exactly instead of re-deriving a scale from timeExtent/innerWidth.
-  const resolveScenePos = React.useCallback(
-    (clientX: number, clientY: number) => interactionRef.current?.clientToScene(clientX, clientY) ?? null,
-    [],
-  );
+  const resolveScenePos = clientToScene;
   const invertSceneX = React.useCallback(
     (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? null,
-    [],
+    [sceneRef],
   );
 
   const { selection: chartSelection } = useChartSelection({

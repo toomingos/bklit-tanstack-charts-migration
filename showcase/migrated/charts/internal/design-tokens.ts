@@ -60,27 +60,6 @@ export const LINE_LOADING_PULSE_CYCLE_S = 2.2;
 // bklit line-loading-timing.ts idle gap before the pulse restarts (ms).
 export const LINE_LOADING_LOOP_PAUSE_MS = 280;
 
-// ── Initiative 8 (legend / ChartLegend / ProfitLoss) tokens ──────────────
-// bklit legend-item.tsx:23, chart-legend.tsx:222, globals.css:131
-export const LEGEND_ITEM_HOVER_TRANSITION_MS = 150;
-export const LEGEND_ITEM_HOVER_TRANSITION_EASING = "ease-out";
-// bklit globals.css:127 — .legend-container:has([data-hovered]) > *:not([data-hovered]) { opacity: 0.5 }
-export const LEGEND_HOVER_DIM_OPACITY = 0.5;
-// bklit chart-legend.tsx:224 — isFaded && "opacity-40" (dead code under the CSS rule above; ported byte-for-byte)
-export const CHART_LEGEND_FADED_OPACITY_CLASS = "opacity-40";
-// bklit legend-progress.tsx:39 — Progress.Indicator transition
-export const LEGEND_PROGRESS_TRANSITION_MS = 500;
-// bklit profit-loss-line.tsx:22,170-171 — per-segment sign dim (distinct
-// from the retired SeriesHoverDim wrapper; the whole-series dim lives in
-// hover-chrome.ts/bar-hover-chrome.ts with per-host opacities — D225 ruling 1)
-export const PROFIT_LOSS_LEGEND_DIM_OPACITY = 0.25;
-export const PROFIT_LOSS_LEGEND_DIM_TRANSITION = "opacity 0.2s ease-in-out";
-export const PROFIT_LOSS_LEGEND_DIM_DURATION_MS = 200;
-// bklit line-loading-timing.ts loading label exit duration (seconds).
-export const LOADING_LABEL_EXIT_S = 0.45;
-// bklit line-loading-timing.ts loading label exit drop distance (px).
-export const LOADING_LABEL_EXIT_Y_PX = 30;
-
 // ── T-D15 (P3.1): shared categorical palette ─────────────────────────────
 // Legacy bklit cycles a 5-entry palette (--chart-1..5) by index across pie,
 // sunburst, sankey, and scatter. TanStack's native `defaultChartTheme.palette`

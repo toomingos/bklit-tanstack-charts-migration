@@ -100,13 +100,6 @@ export function computeLinkHoverConnected(
   return { nodeConnected, linkConnected, anyHovered };
 }
 
-export type HoverEventHandlers = {
-  onNodeEnter: (index: number) => void;
-  onNodeLeave: () => void;
-  onLinkEnter: (index: number) => void;
-  onLinkLeave: () => void;
-};
-
 /** Minimal node-geometry view the hit-test needs — matches LaidOutNode's
     x0/x1/y0/y1 fields (sankey-layout.ts), already the SAME absolute/
     margin-inclusive coordinate space `interaction.clientToScene` returns

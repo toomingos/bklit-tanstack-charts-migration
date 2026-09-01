@@ -105,18 +105,3 @@ export function toIndicatorConfig(
   };
 }
 
-export function toBoxConfig(cfg?: TooltipMapperSource | null): BoxConfig {
-  if (!cfg) return {};
-  return {
-    springConfig: cfg.springConfig,
-    matchCrosshair: cfg.matchCrosshair,
-    damping: cfg.damping,
-    boxSpringConfig: cfg.boxSpringConfig,
-    className: cfg.className,
-    panelStyle: cfg.panelStyle,
-    backgroundColor: cfg.backgroundColor,
-    content: cfg.content,
-    children: cfg.children,
-    rows: cfg.rows,
-  };
-}

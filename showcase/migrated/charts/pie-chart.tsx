@@ -106,7 +106,7 @@ import {
   type ReactNode,
 } from "react";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
-import { defineChart } from "@tanstack/charts";
+import { defineChart } from "@tanstack/charts/scene";
 import { polar, radialArc } from "@tanstack/charts/polar";
 import { stagger } from "@tanstack/charts/motion/definition";
 import { pieArcPath, sliceMidOffset } from "./internal/pie-geometry";

@@ -1,0 +1,20 @@
+{
+  "$comment": "Reach-in ledger (Phase 6.5, D468). Every file that still addresses the @tanstack/charts renderer DOM from JS/TS, with its pinned maximum and the D-entry that accepted it. Lower a pin freely; raising one or adding a file needs a new D-entry in docs/phase-6/LOG.md. Enforced by scripts/reach-in-guard.mjs.",
+  "files": {
+    "showcase/migrated/charts/area-chart.tsx": { "max": 3, "ruling": "D420/D433", "note": "marker-reveal WAAPI + wipe clip (reveal family)" },
+    "showcase/migrated/charts/line-chart.tsx": { "max": 3, "ruling": "D420/D433", "note": "marker-reveal WAAPI + wipe clip (reveal family)" },
+    "showcase/migrated/charts/composed-chart.tsx": { "max": 3, "ruling": "D420/D433", "note": "bar/marker reveal WAAPI + wipe clip (reveal family)" },
+    "showcase/migrated/charts/bar-chart.tsx": { "max": 1, "ruling": "D433", "note": "reveal stamp on .ts-chart__marks" },
+    "showcase/migrated/charts/scatter-chart.tsx": { "max": 1, "ruling": "D433", "note": "reveal stamp on .ts-chart__marks" },
+    "showcase/migrated/charts/radar-chart.tsx": { "max": 19, "ruling": "D433/D445", "note": "radar reveal subsystem (grid rings, spokes, labels, area/dot WAAPI)" },
+    "showcase/migrated/charts/ring-chart.tsx": { "max": 13, "ruling": "D433", "note": "ring track reveal (per-track WAAPI, revealing class)" },
+    "showcase/migrated/charts/sunburst-chart.tsx": { "max": 7, "ruling": "D384/D433/D447", "note": "click/drill hit layer (getSunburstPathMap + elementMap) and SB15 mount fade" },
+    "showcase/migrated/charts/choropleth-chart.tsx": { "max": 8, "ruling": "D433/D457", "note": "geo group reveal + structural svg fallback (:868)" },
+    "showcase/migrated/charts/sankey-chart.tsx": { "max": 1, "ruling": "D468", "note": "pointer-host lookup (querySelector('svg')) for clientToScene hit-test handlers" },
+    "showcase/migrated/charts/internal/deferred-reveal.ts": { "max": 4, "ruling": "D420/D433", "note": "shared reveal-guard helper (marks group + revealing class)" },
+    "showcase/migrated/charts/internal/dash-tail.ts": { "max": 3, "ruling": "D433 item 4", "note": "dash-sweep reveal needs the rendered path element" },
+    "showcase/migrated/charts/internal/sankey-animation.ts": { "max": 9, "ruling": "D433/D443", "note": "sankey node/flow/label reveal (WAAPI on rendered elements)" },
+    "showcase/migrated/charts/internal/bar-pulse-mark.ts": { "max": 3, "ruling": "D432/D433", "note": "self-owned authored group: silhouette/wave readback for the clipPath sync" },
+    "showcase/migrated/charts/internal/choropleth-hover-chrome.ts": { "max": 1, "ruling": "D457", "note": "data-ts-key readback inside the choropleth hover handler" }
+  }
+}

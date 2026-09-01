@@ -40,8 +40,9 @@
 //     pure connectivity math plus the mouseenter/mouseleave listener wiring
 //     that turns pointer input into hoveredNodeIndex/hoveredLinkIndex.
 
-import { createMark, link } from "@tanstack/charts";
-import type { ChartPoint, ChartValue, MarkRenderContext, SceneLabel, SceneNode } from "@tanstack/charts";
+import { createMark } from "@tanstack/charts";
+import { link } from "@tanstack/charts/link";
+import type { ChartPoint, MarkRenderContext, SceneLabel, SceneNode } from "@tanstack/charts";
 import {
   sankeyDiagram,
   type SankeyLink as NativeSankeyLink,

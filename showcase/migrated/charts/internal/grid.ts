@@ -11,9 +11,6 @@
 
 import type { GridConfig } from "./types";
 
-/** bklit grid.tsx default stroke dash array (dashed grid lines). */
-export const DEFAULT_GRID_STROKE_DASHARRAY = "4,4";
-
 export interface ResolvedGridGuide {
   /** TanStack y-axis `grid` option (bklit `horizontal`). */
   horizontal: boolean;

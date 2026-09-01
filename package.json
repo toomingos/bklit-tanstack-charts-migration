@@ -10,7 +10,9 @@
     "bench:report": "node bench/report.mjs",
     "qa": "node qa/screenshot.mjs",
     "dev:app": "pnpm --dir bench/app dev",
-    "build:app": "pnpm --dir bench/app build"
+    "build:app": "pnpm --dir bench/app build",
+    "guard:reach-in": "node scripts/reach-in-guard.mjs --report",
+    "guard:bundle": "node scripts/bundle-gate.mjs"
   },
   "devDependencies": {
     "@types/d3-sankey": "^0.12.5",

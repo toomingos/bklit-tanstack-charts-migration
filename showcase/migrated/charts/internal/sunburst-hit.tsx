@@ -14,7 +14,6 @@
 // base), depth-descending DOM order so parent segments win boundary
 // hit-testing (bklit's sortSunburstSegments comment).
 
-import type { PointerEvent as ReactPointerEvent } from "react";
 
 export interface SunburstHitItem {
   arcIndex: number;
@@ -61,9 +60,7 @@ export function SunburstHitLayer({
           d={item.d}
           fill="transparent"
           onClick={() => onHitClick(item.arcIndex)}
-          onPointerEnter={(e: ReactPointerEvent<SVGPathElement>) =>
-            onHitEnter(item.arcIndex)
-          }
+          onPointerEnter={() => onHitEnter(item.arcIndex)}
           style={{
             cursor: item.hasChildren ? "pointer" : "default",
           }}

@@ -155,24 +155,6 @@ export function resolveYDomainsByAxis<T extends YAxisSeries>({
 }
 
 /**
- * P6.1 / T-F1 — bklit `buildYScalesFromDomains` (`y-axis-scales.ts:79-110`),
- * adapted to migrated's architecture: **no `.range()` is set**. TanStack applies
- * the margin-inclusive range itself (C2, and see the `yScale` memo comments in
- * every cartesian chart), so a ranged scale here would be silently overwritten
- * on the single-axis path and silently AUTHORITATIVE on any path that reads a
- * scale directly — two different behaviours from one builder.
- */
-export function createNicedYScalesByAxis(
-  domainsByAxis: Record<string, YDomain>,
-): Record<string, NicedYScale> {
-  const scales: Record<string, NicedYScale> = {};
-  for (const [axisId, domain] of Object.entries(domainsByAxis)) {
-    scales[axisId] = createNicedYScale(domain);
-  }
-  return scales;
-}
-
-/**
  * bklit `getPrimaryYScale` (`y-axis-scales.ts:32-40`): the default axis if it
  * exists, otherwise the first declared one, otherwise the caller's fallback.
  * The middle branch is the one that matters — a chart with a single series on

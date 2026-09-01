@@ -1,10 +1,12 @@
 // Shared container-measurement hooks — one implementation for the
 // ResizeObserver lifecycle patterns repeated across the migrated charts.
-// Each hook reproduces the exact semantics of the per-chart code it
+// Each public hook below is a thin wrapper over `useResizeObservation`,
+// configured to reproduce the exact semantics of the per-chart code it
 // replaces (epsilon-guarded state updates, bklit ParentSize debounce,
 // fixed-size gating, positive-only measurement); none of them "improve" on
 // what the charts were already doing, because these timings/guards are
-// benchmark-gated behavior.
+// benchmark-gated behavior. See each wrapper's doc comment for the specific
+// behavior it preserves.
 //
 // The hooks take the component's own `containerRef` (a direct `useRef`
 // created at the call site) rather than creating one internally — keeps
@@ -16,6 +18,101 @@ import * as React from "react";
 export interface ChartSize {
   width: number;
   height: number;
+}
+
+interface UseResizeObservationOptions {
+  /** Gates whether an observer is mounted at all (default true). When
+   *  false, the effect returns before touching `ResizeObserver` — no
+   *  observer is constructed, not merely one that's ignored. Fixed-size
+   *  charts pass `false` and derive their size from props instead. */
+  enabled?: boolean;
+  /** bklit ParentSize debounceTime parity (audit §4 C4): when > 0, both the
+   *  initial measurement and every observer callback are coalesced through
+   *  a single `setTimeout`, so only the last measurement inside the window
+   *  is committed. 0 (default) commits synchronously. */
+  debounceMs?: number;
+  /** Whether the FIRST measurement (the `getBoundingClientRect` read taken
+   *  before the observer's first callback can fire) is epsilon-guarded like
+   *  every subsequent one, or committed directly. Ignored when `debounceMs`
+   *  is set, since the debounce path always funnels every commit — initial
+   *  included — through the same guarded setter. */
+  guardInitial?: boolean;
+  /** Only commit a measurement when both dimensions are positive — the
+   *  heatmap/funnel pattern, which mounts the chart on the first positive
+   *  measure and otherwise leaves the state untouched. */
+  requirePositive?: boolean;
+}
+
+/**
+ * Single ResizeObserver lifecycle shared by every hook in this file.
+ * Mounts (or doesn't — see `enabled`) one observer on `containerRef`,
+ * commits `{width, height}` from `contentRect`, and tears it down on
+ * unmount. `debounceMs`, `guardInitial`, and `requirePositive` parameterize
+ * the exact per-hook differences below rather than unifying them away —
+ * each public hook fixes these to reproduce its original behavior exactly.
+ */
+function useResizeObservation(
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  { enabled = true, debounceMs = 0, guardInitial = false, requirePositive = false }: UseResizeObservationOptions,
+): ChartSize {
+  const [size, setSize] = React.useState<ChartSize>({ width: 0, height: 0 });
+  const timerRef = React.useRef<number | null>(null);
+  const pendingRef = React.useRef<ChartSize | null>(null);
+
+  React.useLayoutEffect(() => {
+    if (!enabled) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    const applyGuarded = (next: ChartSize) => {
+      setSize((prev) =>
+        Math.abs(prev.width - next.width) > 0.5 || Math.abs(prev.height - next.height) > 0.5
+          ? next
+          : prev,
+      );
+    };
+
+    const commit = (next: ChartSize, guarded: boolean) => {
+      if (requirePositive && !(next.width > 0 && next.height > 0)) return;
+      if (debounceMs > 0) {
+        if (timerRef.current !== null) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
+        pendingRef.current = next;
+        timerRef.current = window.setTimeout(() => {
+          const pending = pendingRef.current;
+          timerRef.current = null;
+          if (pending === null) return;
+          applyGuarded(pending);
+        }, debounceMs);
+        return;
+      }
+      if (guarded) {
+        applyGuarded(next);
+      } else {
+        setSize(next);
+      }
+    };
+
+    const ro = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      commit({ width: rect.width, height: rect.height }, true);
+    });
+    ro.observe(el);
+    const rect = el.getBoundingClientRect();
+    commit({ width: rect.width, height: rect.height }, guardInitial);
+    return () => {
+      ro.disconnect();
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [enabled, debounceMs, guardInitial, requirePositive, containerRef]);
+
+  return size;
 }
 
 // ── Width-only (bklit ParentSize parity) ───────────────────────────────
@@ -32,21 +129,7 @@ export function useContainerWidth(
   containerRef: React.RefObject<HTMLDivElement | null>,
   enabled = true,
 ): number {
-  const [width, setWidth] = React.useState(0);
-
-  React.useLayoutEffect(() => {
-    if (!enabled) return;
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width ?? 0;
-      setWidth((prev) => (Math.abs(prev - w) > 0.5 ? w : prev));
-    });
-    ro.observe(el);
-    setWidth(el.getBoundingClientRect().width);
-    return () => ro.disconnect();
-  }, [enabled, containerRef]);
-
+  const { width } = useResizeObservation(containerRef, { enabled });
   return width;
 }
 
@@ -58,41 +141,7 @@ export function useContainerWidth(
 export function useDebouncedContainerWidth(
   containerRef: React.RefObject<HTMLDivElement | null>,
 ): number {
-  const [width, setWidth] = React.useState(0);
-  const widthTimerRef = React.useRef<number | null>(null);
-  const pendingWidthRef = React.useRef<number | null>(null);
-
-  React.useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const commitWidth = (w: number) => {
-      if (widthTimerRef.current !== null) {
-        clearTimeout(widthTimerRef.current);
-        widthTimerRef.current = null;
-      }
-      pendingWidthRef.current = w;
-      widthTimerRef.current = window.setTimeout(() => {
-        const pending = pendingWidthRef.current;
-        widthTimerRef.current = null;
-        if (pending === null) return;
-        setWidth((prev) => (Math.abs(prev - pending) > 0.5 ? pending : prev));
-      }, 10);
-    };
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width ?? 0;
-      commitWidth(w);
-    });
-    ro.observe(el);
-    commitWidth(el.getBoundingClientRect().width);
-    return () => {
-      ro.disconnect();
-      if (widthTimerRef.current !== null) {
-        clearTimeout(widthTimerRef.current);
-        widthTimerRef.current = null;
-      }
-    };
-  }, [containerRef]);
-
+  const { width } = useResizeObservation(containerRef, { debounceMs: 10 });
   return width;
 }
 
@@ -108,48 +157,7 @@ export function useDebouncedContainerWidth(
 export function useDebouncedContainerSize(
   containerRef: React.RefObject<HTMLDivElement | null>,
 ): ChartSize {
-  const [size, setSize] = React.useState<ChartSize>({ width: 0, height: 0 });
-  const timerRef = React.useRef<number | null>(null);
-  const pendingRef = React.useRef<ChartSize | null>(null);
-
-  React.useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const commit = (next: ChartSize) => {
-      if (timerRef.current !== null) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-      pendingRef.current = next;
-      timerRef.current = window.setTimeout(() => {
-        const pending = pendingRef.current;
-        timerRef.current = null;
-        if (pending === null) return;
-        setSize((prev) =>
-          Math.abs(prev.width - pending.width) > 0.5 || Math.abs(prev.height - pending.height) > 0.5
-            ? pending
-            : prev,
-        );
-      }, 10);
-    };
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      commit({ width: rect.width, height: rect.height });
-    });
-    ro.observe(el);
-    const rect = el.getBoundingClientRect();
-    commit({ width: rect.width, height: rect.height });
-    return () => {
-      ro.disconnect();
-      if (timerRef.current !== null) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [containerRef]);
-
-  return size;
+  return useResizeObservation(containerRef, { debounceMs: 10 });
 }
 
 // ── Width+height (fixed-or-fluid square charts) ────────────────────────
@@ -166,28 +174,7 @@ export function useMeasuredRect(
   containerRef: React.RefObject<HTMLDivElement | null>,
   enabled = true,
 ): ChartSize {
-  const [measured, setMeasured] = React.useState<ChartSize>({ width: 0, height: 0 });
-
-  React.useLayoutEffect(() => {
-    if (!enabled) return;
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      setMeasured((prev) =>
-        Math.abs(prev.width - rect.width) > 0.5 || Math.abs(prev.height - rect.height) > 0.5
-          ? { width: rect.width, height: rect.height }
-          : prev,
-      );
-    });
-    ro.observe(el);
-    const rect = el.getBoundingClientRect();
-    setMeasured({ width: rect.width, height: rect.height });
-    return () => ro.disconnect();
-  }, [enabled, containerRef]);
-
-  return measured;
+  return useResizeObservation(containerRef, { enabled });
 }
 
 // ── Positive-size only (heatmap/funnel) ────────────────────────────────
@@ -201,26 +188,9 @@ export function useMeasuredRect(
 export function usePositiveChartSize(
   containerRef: React.RefObject<HTMLDivElement | null>,
 ): { w: number; h: number } {
-  const [size, setSize] = React.useState({ w: 0, h: 0 });
-
-  React.useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const measure = () => {
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        setSize((prev) =>
-          Math.abs(prev.w - rect.width) > 0.5 || Math.abs(prev.h - rect.height) > 0.5
-            ? { w: rect.width, h: rect.height }
-            : prev,
-        );
-      }
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [containerRef]);
-
-  return size;
+  const { width, height } = useResizeObservation(containerRef, {
+    guardInitial: true,
+    requirePositive: true,
+  });
+  return { w: width, h: height };
 }

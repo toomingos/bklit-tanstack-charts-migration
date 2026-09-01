@@ -18,7 +18,6 @@ import {
   TWEEN_FALLBACK,
   type EnterTransition,
   type ResolvedTiming,
-  type RevealTiming,
 } from "./enter-transition";
 import { motionEasingFromCss } from "./pie-hover-chrome";
 
@@ -140,7 +139,6 @@ export {
 
 export type RadarEnterTransition = EnterTransition;
 export type RadarResolvedTiming = ResolvedTiming;
-export type RadarRevealTiming = RevealTiming;
 
 export const RADAR_TWEEN_FALLBACK: RadarResolvedTiming = TWEEN_FALLBACK;
 

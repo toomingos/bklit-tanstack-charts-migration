@@ -224,10 +224,15 @@ let failures = 0;
 const TMP_DIR = mkdtempSync(resolve(tmpdir(), "bklit-bundle-"));
 
 for (const { impl, chart } of combos) {
-  // Minimal entry: imports the scenario file (tree-shaking ensures only the
-  // component's transitive dependency graph is measured, not the bench
-  // harness plumbing it sits in).
-  const entry = `import "./${impl}-${chart}.tsx";`;
+  // Minimal entry: imports the scenario component and re-exports it, so the
+  // component's transitive dependency graph is what gets measured. (Phase 6,
+  // D462: the previous bare `import "./x.tsx"` used nothing from the module,
+  // so esbuild tree-shook every side-effect-free graph — bklit-ui declares
+  // `sideEffects:false` — down to zero and measured only the shared TopoJSON
+  // fixture from bench/data.ts, while the migrated barrel, which esbuild had
+  // to treat as side-effectful, was kept whole. Numbers before this fix are
+  // not comparable.)
+  const entry = `import Scenario from "./${impl}-${chart}.tsx"; export default Scenario;`;
 
   try {
     const result = await build({

@@ -47,11 +47,11 @@ import { identityMatrix } from "./internal/zoom-engine";
 import { Zoom } from "./internal/zoom-engine";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import {
-  defineChart,
   type ChartRendererRenderContext,
   type ChartValue,
   type StaticChartDefinition,
 } from "@tanstack/charts";
+import { defineChart } from "@tanstack/charts/scene";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { geoShape } from "@tanstack/charts/geo";
 import { chartMotionRenderer } from "./internal/motion-renderer";

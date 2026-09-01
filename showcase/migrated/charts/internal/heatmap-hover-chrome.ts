@@ -26,7 +26,7 @@
 // established for Pie/Ring/Funnel (D10) extended here to a second broadcast
 // axis (legend level) and a third payload (tooltip data) not present in
 // those simpler single-hovered-index charts.
-import { getHeatmapContributionLevel, isHeatmapHoverEffectEnabled } from "./heatmap-utils";
+import { isHeatmapHoverEffectEnabled } from "./heatmap-utils";
 import { createBroadcastStore } from "./broadcast-store";
 
 export const HEATMAP_INACTIVE_OPACITY = 0.3;
@@ -109,31 +109,6 @@ export function createHeatmapHoverCoordinator(): HeatmapHoverCoordinator {
       };
     },
   };
-}
-
-// --- per-cell hover-style resolution (heatmap-cells.tsx `computeHeatmapCellFaded`) --
-
-export interface HeatmapCellHoverInputs {
-  cellsInteractive: boolean;
-  inactiveEnabled: boolean;
-  hoveredCell: HeatmapHoveredCell | null;
-  hoveredLegendLevel: number | null;
-  column: number;
-  row: number;
-  count: number;
-}
-
-export function computeHeatmapCellFaded(inputs: HeatmapCellHoverInputs): { isHighlighted: boolean; isDimmed: boolean } {
-  if (!inputs.cellsInteractive || !inputs.inactiveEnabled) return { isHighlighted: false, isDimmed: false };
-  if (inputs.hoveredCell) {
-    const isHighlighted = inputs.hoveredCell.column === inputs.column && inputs.hoveredCell.row === inputs.row;
-    return { isHighlighted, isDimmed: !isHighlighted };
-  }
-  if (inputs.hoveredLegendLevel !== null) {
-    const isHighlighted = getHeatmapContributionLevel(inputs.count) === inputs.hoveredLegendLevel;
-    return { isHighlighted, isDimmed: !isHighlighted };
-  }
-  return { isHighlighted: false, isDimmed: false };
 }
 
 export interface HeatmapHoverStyleParams {

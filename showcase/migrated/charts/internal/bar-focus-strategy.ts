@@ -77,7 +77,7 @@ export function createBarFocusStrategy(
             primary = c;
           }
         }
-        return collectFocusGroup(points, primary, byXKey, byMemberKey, false);
+        return collectFocusGroup(points, primary, byXKey, byMemberKey);
       }
 
       // Fallback: nearest band-center (used only if call-site omits getters).
@@ -132,7 +132,7 @@ export function createBarFocusStrategy(
           primary = c;
         }
       }
-      return collectFocusGroup(points, primary, byXKey, byMemberKey, false);
+      return collectFocusGroup(points, primary, byXKey, byMemberKey);
     },
 
     group(
@@ -140,7 +140,7 @@ export function createBarFocusStrategy(
       { point },
     ): readonly ChartPoint<ChartDatum, string, number>[] {
       if (points.length === 0) return [point];
-      return collectFocusGroup(points, point, byXKey, byMemberKey, false);
+      return collectFocusGroup(points, point, byXKey, byMemberKey);
     },
 
     navigation(

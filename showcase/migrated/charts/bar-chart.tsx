@@ -49,23 +49,27 @@ import { scaleBand } from "d3-scale";
 import type { ScaleBand } from "d3-scale";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { barY, crosshair, defineChart, group, whenFocused } from "@tanstack/charts";
-import { tooltip as tooltipExtension } from "@tanstack/charts/tooltip";
-import type { ChartAxisTickLabelContext, ChartMark, ChartMarkState, ChartMotionContext, ChartMotionDefinition, ChartPoint, ChartRenderContext, ChartRendererRenderContext, SceneNode } from "@tanstack/charts";
+import { barY } from "@tanstack/charts/bar";
+import { defineChart } from "@tanstack/charts/scene";
+import { group } from "@tanstack/charts/group";
+import { whenFocused } from "@tanstack/charts/focus/mark";
+import type { ChartAxisTickLabelContext, ChartMark, ChartMarkState, ChartMotionContext, ChartMotionDefinition, ChartPoint, ChartRendererRenderContext, SceneNode } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import { TooltipContent } from "./internal/tooltip-components";
-import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH, TOOLTIP_BOX_SPRING, TOOLTIP_SPRING } from "./internal/design-tokens";
+import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH, TOOLTIP_BOX_SPRING } from "./internal/design-tokens";
 import { buildPill, type PillBuild } from "./internal/date-pill";
-import { selectBarLabelIndices, tickLabelFadeOpacity } from "./internal/axis-ticks";
+import { selectBarLabelIndices, tickLabelFadeOpacity, hiddenAxisOptions } from "./internal/axis-ticks";
 import { resolveVerticalFadeSides, indicatorFadeGradientStops } from "./internal/fade-mask";
-import { resolveIndicatorPixelWidth, toDotConfig, toIndicatorConfig } from "./internal/tooltip-mappers";
+import { toDotConfig, toIndicatorConfig } from "./internal/tooltip-mappers";
 import type { SpringConfig } from "./internal/chart-config-context";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import { useChartConfig } from "./internal/chart-config-context";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
-import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
+import { useFocusInjection, whenSeriesDimmed, useLegendFocusBroadcast } from "./internal/focus-injection";
+import { buildIndicatorMark } from "./internal/hover-geometry";
+import { buildNativeTooltipExtension } from "./internal/native-tooltip";
 import { createBarFocusStrategy } from "./internal/bar-focus-strategy";
 import { barSquaresMark } from "./internal/bar-squares-mark";
 import { barColumnTrackMark } from "./internal/bar-column-track-mark";
@@ -484,7 +488,7 @@ export function BarChart({
     [children],
   );
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
-  const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection();
+  const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection<ChartDatum, string, number>();
   // C2: hoisted above `definition` so native `tooltip` extension wiring can
   // read it inside the same memo that builds the marks/scales spec.
   const tooltipEnabled = tooltip?.enabled ?? false;
@@ -1039,30 +1043,21 @@ export function BarChart({
     // Bar never drew y-axis labels (BarXAxisOverlay only ever covered x) —
     // nothing may paint once the `.ts-chart__axes { display: none }` CSS
     // gate lifts.
-    const yAxisOptions = {
-      ticks: { count: gridGuide.ticks, size: 0 },
-      line: false as const,
-      tickLabels: false as const,
-    };
+    const yAxisOptions = hiddenAxisOptions(gridGuide.ticks);
     // C2: native tooltip extension — box-follow spring mirrors the legacy
     // TOOLTIP_BOX_SPRING default; springs snap (motion: false) once the
     // series is past the same DISCRETE_INTERACTION_THRESHOLD the chrome's
     // own springs use (verified strict `>`, not `>=`).
-    const tooltipOption = tooltipEnabled
-      ? {
-          use: tooltipExtension,
-          // Host chrome reset by the `.bkm-native-tooltip` rule in styles.css;
-          // panel chrome comes from TooltipContent's own `.bkm-tooltip-panel`.
-          className: "bkm-native-tooltip",
-          sticky: false,
-          anchor: { x: "group-center", y: "plot-top" } as const,
-          placement: ["right", "left"] as const,
-          offset: BOX_OFFSET,
-          motion: (renderData.length > DISCRETE_INTERACTION_THRESHOLD
-            ? false
-            : { type: "spring", stiffness: TOOLTIP_BOX_SPRING.stiffness, damping: TOOLTIP_BOX_SPRING.damping }) as false | { type: "spring"; stiffness: number; damping: number },
-        }
-      : (false as const);
+    const tooltipOption = buildNativeTooltipExtension<ChartDatum, string, number>({
+      enabled: tooltipEnabled,
+      spring: TOOLTIP_BOX_SPRING,
+      discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
+      // Host chrome reset by the `.bkm-native-tooltip` rule in styles.css;
+      // panel chrome comes from TooltipContent's own `.bkm-tooltip-panel`.
+      className: "bkm-native-tooltip",
+      offset: BOX_OFFSET,
+      anchor: { x: "group-center", y: "plot-top" } as const,
+    });
 
     // C3: large-dataset motion cutoff, shared by the crosshair/hover-dot
     // marks below AND the native tooltip extension's own `motion` above
@@ -1098,23 +1093,17 @@ export function BarChart({
         // `y` stays off (legacy never drew a horizontal guide — bar's
         // indicator was always vertical-only, one per hovered category).
         hoverMarks.push(
-          crosshair({
-            y: false,
-            x: {
-              stroke: !isDashed && fadeSides.any ? `url(#${indicatorGradientId})` : indicatorColorValue,
-              strokeOpacity: 1,
-              strokeWidth: resolveIndicatorPixelWidth(indicatorCfg),
-              strokeDasharray: indicatorCfg.dasharray,
-            },
-            motion: discrete
-              ? false
-              : {
-                  transition: {
-                    type: "spring",
-                    stiffness: indicatorSpringCfg.stiffness,
-                    damping: indicatorSpringCfg.damping,
-                  },
-                },
+          buildIndicatorMark({
+            gradientId: indicatorGradientId,
+            width: indicatorCfg.width,
+            span: indicatorCfg.span,
+            columnWidth: indicatorCfg.columnWidth,
+            dasharray: indicatorCfg.dasharray,
+            color: indicatorColorValue,
+            useGradient: !isDashed && fadeSides.any,
+            strokeOpacity: 1,
+            spring: indicatorSpringCfg,
+            discrete,
           }) as ChartMark<ChartDatum, string, number>,
         );
       }
@@ -1448,18 +1437,11 @@ export function BarChart({
 
   // C1: legend hover drives native mark `states` dim via programmatic focus
   // (replaces the old chromeRef.current?.syncDim() DOM-mutation sync).
-  React.useEffect(() => {
-    if (legendHoveredIndex == null) {
-      clearFocus();
-      return;
-    }
-    const key = allSeriesKeys[legendHoveredIndex];
-    if (key != null) {
-      focusSeries(key);
-    } else {
-      clearFocus();
-    }
-  }, [legendHoveredIndex, allSeriesKeys, focusSeries, clearFocus]);
+  const resolveLegendFocusKey = React.useCallback(
+    (index: number) => allSeriesKeys[index] ?? null,
+    [allSeriesKeys],
+  );
+  useLegendFocusBroadcast(legendHoveredIndex, resolveLegendFocusKey, focusSeries, clearFocus);
 
   // C3: date-pill-only mount — crosshair/dots are native marks now, so this
   // effect no longer attaches `attachBarHoverChrome`'s full indicator/dot/
@@ -1627,12 +1609,7 @@ export function BarChart({
   // every bar's individual finish time, matching the pre-C5 `deadlineMs`
   // formula verbatim).
   const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, string, number>) => {
-    // Cast: focus-injection's captureRenderContext takes the library's
-    // default-generic Pick<ChartRenderContext, "scene"|"interaction">, which
-    // (due to contravariance on interaction.setControlledFocus) isn't
-    // structurally assignable from our ChartDatum-specific instantiation —
-    // this is a type-system quirk, not a runtime mismatch.
-    captureRenderContext(context as Pick<ChartRenderContext, "scene" | "interaction">);
+    captureRenderContext(context);
     // B1: the renderer context has no `svg` member under RendererChart —
     // `surface.element` is the mounted `<svg class="ts-chart">` root itself.
     const svgRoot = context.surface.element as SVGSVGElement;
