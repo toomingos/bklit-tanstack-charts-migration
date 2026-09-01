@@ -8,7 +8,7 @@
 // instances) so `resolveConfiguredScale` applies the margin-inclusive range
 // itself; hover is a custom ChartFocusStrategy (`internal/bar-focus-
 // strategy.ts`) wired via `defineChart(spec, {focus, maxFocusDistance})`
-// and consumed via `<Chart onFocusGroupChange>` → chrome adapter. No manual
+// and consumed via `<RendererChart onFocusGroupChange>` → chrome adapter. No manual
 // `pointermove` listener, no `columnWidth` arithmetic, no per-move
 // `querySelector("svg")`/`getBoundingClientRect`.
 //
@@ -31,16 +31,27 @@
 // Dot Y positions come from scene `ChartPoint.y` (TanStack-resolved
 // y-scale), not a local `valueScale(numValue)` — the only local y range
 // that existed before now is owned by TanStack's ChartScale (C2).
-// The mount reveal remains a per-bar imperative WAAPI grow-from-baseline
-// tween (K2), deferred past first paint (see `handleRender`).
+// C5 (D432): the mount reveal is now the NATIVE motion renderer's own
+// baseline-growth choreography (`internal/motion-renderer.ts`) — bar/
+// squares/track marks all keep (or, for squares/track/depth, are reported
+// to keep — see handleRender) a `ts-chart__bar*` class alias, which native
+// motion's role resolver keys its bar-growth transform off of. This file's
+// own `barY()` calls additionally carry an explicit per-mark `motion`
+// (`barEnterMotion` below) that encodes bklit's stagger/duration/easing
+// exactly, since the renderer-wide automatic stagger's base duration is
+// fixed at 1100ms regardless of this chart's `animationDuration` prop
+// (dist/motion.js — see handleRender comment). `handleRender` no longer
+// drives any WAAPI `.animate()` itself; it only tracks reveal phase and the
+// BarPulse hold-gate (`internal/bar-pulse-mark.ts`), which still can't be
+// expressed as scene geometry (D381).
 import * as React from "react";
 import { scaleBand } from "d3-scale";
 import type { ScaleBand } from "d3-scale";
-import { Chart } from "@tanstack/react-charts/tooltip";
+import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { barY, crosshair, defineChart, group, whenFocused } from "@tanstack/charts";
 import { tooltip as tooltipExtension } from "@tanstack/charts/tooltip";
-import type { ChartAxisTickLabelContext, ChartMark, ChartMarkState, ChartMotionDefinition, ChartPoint, ChartRenderContext, SceneNode } from "@tanstack/charts";
+import type { ChartAxisTickLabelContext, ChartMark, ChartMarkState, ChartMotionContext, ChartMotionDefinition, ChartPoint, ChartRenderContext, ChartRendererRenderContext, SceneNode } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import { TooltipContent } from "./internal/tooltip-components";
 import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH, TOOLTIP_BOX_SPRING, TOOLTIP_SPRING } from "./internal/design-tokens";
@@ -66,7 +77,10 @@ import { renderPatternPreset } from "./internal/pattern-preset";
 import type { BarConfig, BarSquaresConfig, BarColumnTrackConfig, ChartDatum, ChartPhase, ChartTooltipConfig, ChartTooltipPoint, TooltipRow } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { resolveGridGuide } from "./internal/grid";
-import { isRevealed, markRevealed, onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { isRevealed, markRevealed, setRevealDeadline } from "./internal/deferred-reveal";
+import { chartMotionRenderer } from "./internal/motion-renderer";
+import { resolveMotionEasing } from "./internal/reveal-easing";
+import { bezierEasing } from "./internal/bezier-easing";
 import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
 import { shortDateFmt } from "./internal/formatters";
 import { useSanitizedId } from "./internal/use-sanitized-id";
@@ -362,7 +376,11 @@ function createBarHoverDotMark(
               {
                 kind: "group",
                 key: `${series.dataKey}--hover-dot`,
-                className: "ts-chart__hover-dot",
+                // B7: census cleanliness — this is an app-owned mark group,
+                // not a native TanStack-emitted role class, so it takes the
+                // `bkm-chart__` prefix (matches `bkm-chart__bar-pulse`'s B3
+                // rename) rather than `ts-chart__`.
+                className: "bkm-chart__hover-dot",
                 ariaHidden: true,
                 children: nodes,
               },
@@ -427,9 +445,7 @@ export function BarChart({
   // bklit ChartCore: `isLoaded` starts false unconditionally — the initial
   // phase is always "revealing" (mirrors scatter-chart.tsx's phaseRef).
   const phaseRef = React.useRef<ChartPhase>("revealing");
-  const revealAnimationsRef = React.useRef<Animation[]>([]);
   const revealDeadlineTimerRef = React.useRef<number | null>(null);
-  const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
   const onPhaseChangeRef = React.useRef(onPhaseChange);
   onPhaseChangeRef.current = onPhaseChange;
 
@@ -447,24 +463,19 @@ export function BarChart({
     onPhaseChangeRef.current?.("revealing");
   }, []);
 
-  // Teardown: cancel the pending reveal deadline + post-paint chain + any
-  // in-flight per-bar WAAPI animations on unmount (D205 canonical wording —
-  // uncancellable post-paint/deadline races would otherwise fire on detached
-  // DOM after the chart is gone).
+  // Teardown: cancel the pending reveal-deadline hold-gate timer on unmount
+  // (D205 canonical wording — an uncancellable deadline would otherwise fire
+  // on a detached DOM after the chart is gone). C5 (D432): the WAAPI
+  // post-paint chain + in-flight-animation bookkeeping this used to also
+  // tear down is gone — native motion owns its own animation lifecycle, and
+  // `handleRender` no longer creates any `Animation` this component must
+  // track.
   React.useEffect(() => {
     return () => {
       if (revealDeadlineTimerRef.current !== null) {
         window.clearTimeout(revealDeadlineTimerRef.current);
         revealDeadlineTimerRef.current = null;
       }
-      revealPostPaintCancelRef.current?.();
-      revealPostPaintCancelRef.current = null;
-      for (const anim of revealAnimationsRef.current) {
-        try {
-          anim.cancel();
-        } catch { /* teardown race — already cancelled */ }
-      }
-      revealAnimationsRef.current = [];
     };
   }, []);
 
@@ -505,6 +516,42 @@ export function BarChart({
   const revealedKeyRef = React.useRef<string | null>(null);
   const revealKeyRef = React.useRef(revealKey);
   revealKeyRef.current = revealKey;
+
+  // B2 (C5/D432): explicit per-mark motion, NOT a reliance on native
+  // motion's automatic bar stagger. `dist/motion.js`'s automatic delay
+  // (`baseDuration*0.4*datumIndex/max(1,datumCount)`, ~line 2502-2503)
+  // resolves `baseDuration` from the RENDERER-WIDE default transition
+  // (`motion({...})`'s own `transition` option), which `internal/motion-
+  // renderer.ts` never sets — so `baseDuration` is ALWAYS the library's
+  // fixed 1100ms default, regardless of this chart's `animationDuration`/
+  // `enterTransition` props. Legacy's own formula (bar-chart.tsx handleRender,
+  // pre-C5: `staggerSpreadMs = revealDurationMs*0.4`,
+  // `delaySec = i * (staggerSpreadMs/1000/renderData.length)`) uses the
+  // PROP-derived `revealDurationMs`, which only equals 1100 at the library
+  // default. Whenever a caller supplies `animationDuration`/`enterTransition`,
+  // the automatic default silently diverges from legacy — so every `barY()`
+  // mark below is given this explicit callback unconditionally, which is
+  // legacy's exact formula restated per-datum (same 0.4 stagger fraction,
+  // same duration/easing source) and degenerates to the automatic default's
+  // shape only when `revealDurationMs` happens to be 1100.
+  //
+  // Only the 'enter' phase is overridden. Legacy's WAAPI reveal never
+  // animated bar geometry on 'update' (a same-key value/resize change snaps
+  // instantly — bklit has no framer transition for that) or 'exit' (removed
+  // bars vanish instantly, no fade) — `false` on both matches that silence
+  // exactly rather than adopting the native renderer's default transition for
+  // cases legacy never animated.
+  const barEnterMotion = React.useMemo<ChartMotionDefinition<ChartDatum>>(() => {
+    const easing = resolveMotionEasing(revealEasingCss);
+    return (context) => {
+      if (context.phase !== "enter") return false;
+      const count = Math.max(1, context.datumCount);
+      return {
+        delay: (revealDurationMs * 0.4 * context.datumIndex) / count,
+        transition: { type: "tween", duration: revealDurationMs, easing },
+      };
+    };
+  }, [revealDurationMs, revealEasingCss]);
 
   const categoryAccessor = React.useMemo(() => barCategoryAccessor(xDataKey), [xDataKey]);
 
@@ -593,7 +640,7 @@ export function BarChart({
   // C2: x/y as factories — TanStack's resolveConfiguredScale infers domain
   // from the barY channels (x values) / numeric channels (y) and applies
   // margin-inclusive range itself. We do NOT construct a margin-inclusive
-  // range locally; host `<Chart aspectRatio>` owns height (C2), and y domain
+  // range locally; host `<RendererChart aspectRatio>` owns height (C2), and y domain
   // still lives locally via maxValue below.
   const xScaleFactory = React.useMemo(
     () => () => scaleBand<string>().domain(categoryOrder).padding(barGap),
@@ -967,6 +1014,21 @@ export function BarChart({
                     FADE_BUFFER,
                   )
               : 1,
+            // B6/AX5 (D431): bklit chart-phase.ts DEFAULT_Y_DOMAIN_TWEEN_MS —
+            // the axis-label position tween (design-tokens.ts:48-53) — died
+            // in C4 with the HTML axis overlays (native <text> has no CSS
+            // `left`/`top` to transition) and returns here through native
+            // motion's own `tickLabels.motion`, which C4 could not use yet
+            // (no motion renderer existed pre-C5). `false` on enter: legacy
+            // never animated a label's FIRST appearance, only its position
+            // change on data changes (mirrors `barEnterMotion`'s own
+            // enter-only convention above). `ChartMotionContext<unknown>`,
+            // not `<ChartDatum>`: `tickLabels.motion`'s declared type is
+            // `ChartMotionDefinition` (TDatum defaults to `unknown`), and a
+            // narrower parameter type here is contravariantly incompatible
+            // with that declared callback shape.
+            motion: (ctx: ChartMotionContext<unknown>) =>
+              ctx.phase === "enter" ? false : { transition: { type: "tween" as const, duration: 500, easing: bezierEasing } },
           },
         }
       : {
@@ -1114,6 +1176,7 @@ export function BarChart({
             fill: series.fill,
             radius: resolveCornerRadius(series.lineCap, groupBandwidth),
             states: barRowAndSeriesDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
+            motion: barEnterMotion,
           }),
         );
       }
@@ -1265,6 +1328,7 @@ export function BarChart({
           fill: series.fill,
           radius: resolveCornerRadius(series.lineCap, groupBandwidth),
           states: barRowAndSeriesDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
+          motion: barEnterMotion,
         }),
       );
     }
@@ -1359,6 +1423,7 @@ export function BarChart({
     barXAxis,
     categoryOrder,
     labelFade,
+    barEnterMotion,
   ]);
 
   // C3: date-pill + label-fade chrome only — crosshair/dots are now native
@@ -1537,35 +1602,50 @@ export function BarChart({
     [categoryIndexByLabel],
   );
 
-  // Mount reveal: bklit AnimatedBar's per-bar framer entrance equivalent —
-  // one WAAPI tween per rendered <rect>, growing from the baseline (bottom
-  // edge unchanged, height 0 -> target, y bottom -> target — `x`/`width`
-  // never animate, matching bklit's own AnimatedBar initial/target
-  // keyframes exactly). Deferred past first paint for the identical reason
-  // documented in scatter-chart.tsx's handleRender (full rationale ported
-  // verbatim: instantiating one Animation per bar synchronously inside
-  // TanStack's mount `useLayoutEffect` would block that very paint at scale;
-  // the marks group is hidden via the shared `.ts-chart__marks--revealing`
-  // CSS class the instant it commits, and the actual tween setup runs two
-  // rAFs + one macrotask later, after the browser has already painted the
-  // (still-hidden) bars).
-  const handleRender = React.useCallback((context: ChartRenderContext<ChartDatum, string, number>) => {
+  // C5 (D432): mount reveal is now the native motion renderer's own
+  // baseline-growth choreography, driven by `barEnterMotion` (bar rects) and
+  // the class aliases KEPT on squares/track/depth marks (see the definition
+  // memo above / this file's B2 report for the foreign-file citations) —
+  // native motion runs synchronously as part of `mount()`/`adopt()`, so
+  // there is no more "hide behind `.ts-chart__marks--revealing`, defer past
+  // first paint, then imperatively `.animate()` every rect" dance; that
+  // entire WAAPI apparatus (`animateSquaresCascade`/`animateTracks`/the
+  // `onPostPaint` per-bar-rect loops) is deleted.
+  //
+  // `handleRender` now only does two things every render: (1) tracks
+  // `phaseRef` ("revealing" -> "ready") for `onPhaseChange`, and (2) keeps
+  // BarPulse's imperative clip+sweep (`syncBarPulseGroups`, D381 — still not
+  // expressible as scene geometry) in sync, held hidden while a reveal is
+  // (re)playing exactly as legacy did. B3: native motion has no
+  // motion-completion callback (no per-mark "animation finished" hook is
+  // exposed anywhere in the renderer/mark API — confirmed against
+  // dist/motion.js and dist/types.d.ts's `ChartMotionContext`/
+  // `ChartMotionTiming` shapes), so the "reveal is done" moment is
+  // APPROXIMATED by a timer set to the same value the old deadline used:
+  // bar enter duration + the max per-datum stagger (last bar's delay is
+  // `revealDurationMs*0.4*(n-1)/n`, so `duration + spread` safely covers
+  // every bar's individual finish time, matching the pre-C5 `deadlineMs`
+  // formula verbatim).
+  const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, string, number>) => {
     // Cast: focus-injection's captureRenderContext takes the library's
     // default-generic Pick<ChartRenderContext, "scene"|"interaction">, which
     // (due to contravariance on interaction.setControlledFocus) isn't
     // structurally assignable from our ChartDatum-specific instantiation —
     // this is a type-system quirk, not a runtime mismatch.
     captureRenderContext(context as Pick<ChartRenderContext, "scene" | "interaction">);
+    // B1: the renderer context has no `svg` member under RendererChart —
+    // `surface.element` is the mounted `<svg class="ts-chart">` root itself.
+    const svgRoot = context.surface.element as SVGSVGElement;
     // BarPulse loop upkeep (syncBarPulseGroups) runs at every exit path
     // below, AFTER this render's phase decision: TanStack's reconciler wipes
     // injected nodes/attributes (the pulse's <clipPath> def, the group's
     // clip-path/display styles) on every render, so they must be re-applied
     // here — hidden while a reveal is (re)playing (legacy holds the wave
     // until bars finish growing), live again once the deadline fires.
-    const marksGroup = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
+    const marksGroup = svgRoot.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marksGroup || animationDuration <= 0) {
       setPhase("ready");
-      if (containerRef.current) syncBarPulseGroups(containerRef.current, true);
+      syncBarPulseGroups(svgRoot, true);
       return;
     }
     // TanStack double-fires onRender in the same mount commit; once a reveal
@@ -1580,19 +1660,19 @@ export function BarChart({
       // Any re-render here (hover/focus) still went through the reconciler,
       // which wiped the pulse group's injected clip + styles — restore them,
       // staying hidden while a reveal is in flight.
-      if (containerRef.current) syncBarPulseGroups(containerRef.current, phaseRef.current === "ready");
+      syncBarPulseGroups(svgRoot, phaseRef.current === "ready");
       return;
     }
     // Reveal replay (data change) or fresh mount: hide the pulse groups for
     // the reveal's duration — legacy holds BarPulse until bars finish growing.
-    if (containerRef.current) syncBarPulseGroups(containerRef.current, false);
+    syncBarPulseGroups(svgRoot, false);
     if (revealedForDataRef.current === latestRenderDataRef.current && !revealKeyChanged) {
       // Same-data recreation: no reveal replay (D214) — bars are already
       // grown unless a reveal for THIS data is still in flight, so decide
       // by live phase (also restores the injected clip/loop the reconciler
       // just wiped when ready).
       markRevealed(marksGroup);
-      if (containerRef.current) syncBarPulseGroups(containerRef.current, phaseRef.current === "ready");
+      syncBarPulseGroups(svgRoot, phaseRef.current === "ready");
       return;
     }
     revealedForDataRef.current = latestRenderDataRef.current;
@@ -1604,159 +1684,15 @@ export function BarChart({
     const staggerMs = renderData.length > 1 ? staggerSpreadMs : 0;
     const deadlineMs = revealDurationMs + staggerMs;
 
-    if (animationDuration <= 0) {
-      setPhase("ready");
-    } else {
-      revealDeadlineTimerRef.current = setRevealDeadline(deadlineMs, {
-        animationsRef: revealAnimationsRef,
-        onDeadline: () => {
-          setPhase("ready");
-          // Reveal finished → un-hide the pulse groups + start their sweep
-          // loops (legacy holds BarPulse until bars finish growing).
-          if (containerRef.current) syncBarPulseGroups(containerRef.current, true);
-        },
-      });
-    }
-
-    if (animationDuration <= 0) return;
-
-    marksGroup.classList.add("ts-chart__marks--revealing");
-    const staggerDelaySec =
-      renderData.length > 1 ? staggerSpreadMs / 1000 / renderData.length : 0;
-
-    const animateSquaresCascade = () => {
-      if (!barSquaresEnabled) return;
-      for (const s of resolvedBarSquares) {
-        const group = marksGroup.querySelector<SVGGElement>(`.ts-chart__bar-squares[data-ts-key="${s.dataKey}"]`);
-        if (!group) continue;
-        const rects = group.querySelectorAll<SVGRectElement>("rect");
-        // Group rects by column (per-bar column). Squares are emitted column-major: data bars * squares.
-        // Reconstruct per-bar square count via DOM order: infer from visual grouping by x.
-        const byX = new Map<number, SVGRectElement[]>();
-        rects.forEach((r) => {
-          const x = Number.parseFloat(r.getAttribute("x") ?? "0");
-          const key = Math.round(x * 100);
-          const arr = byX.get(key) ?? [];
-          arr.push(r);
-          byX.set(key, arr);
-        });
-        // Simpler: use DOM order grouped by data index (already column-major).
-        // So just apply cascade per rect using its dataIndex ordering.
-        const perColumnDelayMs = staggerDelaySec * 1000;
-        const xs = [...byX.keys()].sort((a, b) => a - b);
-        for (const [bucket, colRects] of byX) {
-          // Column index + square index within column come straight from the
-          // x-bucket grouping above.
-          const colIdx = Math.max(0, xs.indexOf(bucket));
-          const sqCount = colRects.length;
-          const cascadeSpreadMs = revealDurationMs * 0.4;
-          const cascadeStepMs = sqCount > 1 ? cascadeSpreadMs / (sqCount - 1) : 0;
-          for (let sqIdx = 0; sqIdx < colRects.length; sqIdx++) {
-            const rectEl = colRects[sqIdx]!;
-            const targetY = Number.parseFloat(rectEl.getAttribute("y") ?? "0");
-            const targetHeight = Number.parseFloat(rectEl.getAttribute("height") ?? "0");
-            const baselineY = targetY + targetHeight;
-            const delayMs = colIdx * perColumnDelayMs + sqIdx * cascadeStepMs;
-            const anim = rectEl.animate(
-              [
-                { height: "0px", y: String(baselineY) },
-                { height: `${targetHeight}px`, y: String(targetY) },
-              ],
-              { duration: revealDurationMs, delay: delayMs, easing: revealEasingCss, fill: "backwards" },
-            );
-            revealAnimationsRef.current.push(anim);
-          }
-        }
-      }
-    };
-
-    const animateTracks = () => {
-      if (!barColumnTrackEnabled) return;
-      const groups = marksGroup.querySelectorAll<SVGGElement>(`.ts-chart__bar-column-track`);
-      groups.forEach((g) => {
-        const rects = g.querySelectorAll<SVGRectElement>("rect");
-        rects.forEach((rectEl, i) => {
-          const targetHeight = Number.parseFloat(rectEl.getAttribute("height") ?? "0");
-          const baselineH = Math.max(targetHeight, 0);
-          // Track animates height baselineY -> trackHeight at y=0 already
-          const delaySec = i * staggerDelaySec;
-          const topY = Number.parseFloat(rectEl.getAttribute("y") ?? "0");
-          void topY;
-          const anim = rectEl.animate(
-            [
-              { height: `${baselineH + targetHeight}px`, y: "0" },
-              { height: `${targetHeight}px`, y: "0" },
-            ],
-            { duration: revealDurationMs, delay: delaySec * 1000, easing: revealEasingCss, fill: "backwards" },
-          );
-          revealAnimationsRef.current.push(anim);
-        });
-      });
-    };
-
-    revealPostPaintCancelRef.current = onPostPaint(() => {
-      const hasSquaresReveal = barSquaresEnabled;
-      const hasTrackReveal = barColumnTrackEnabled;
-      if (hasSquaresReveal || hasTrackReveal) {
-        // When squares/track present, use their cascade reveals; skip plain bar rect tween for squares keys.
-        animateSquaresCascade();
-        animateTracks();
-        // Still animate any remaining plain bar rects (bars not replaced by squares)
-        for (const series of resolvedSeries) {
-          if (resolvedBarSquares.some((s) => s.dataKey === series.dataKey)) continue;
-          const escaped = series.dataKey.replace(/"/g, '\\"');
-          const group = marksGroup.querySelector<SVGGElement>(
-            `.ts-chart__bar-y[data-ts-key="${escaped}"]`,
-          );
-          if (!group) continue;
-          const rects = group.querySelectorAll<SVGRectElement>("rect");
-          rects.forEach((rectEl, i) => {
-            const targetY = Number.parseFloat(rectEl.getAttribute("y") ?? "0");
-            const targetHeight = Number.parseFloat(rectEl.getAttribute("height") ?? "0");
-            const baselineY = targetY + targetHeight;
-            const delaySec = i * staggerDelaySec;
-            const anim = rectEl.animate(
-              [
-                { height: "0px", y: String(baselineY) },
-                { height: `${targetHeight}px`, y: String(targetY) },
-              ],
-              { duration: revealDurationMs, delay: delaySec * 1000, easing: revealEasingCss, fill: "backwards" },
-            );
-            revealAnimationsRef.current.push(anim);
-          });
-        }
-      } else {
-        for (const series of resolvedSeries) {
-          const escaped = series.dataKey.replace(/"/g, '\\"');
-          const group = marksGroup.querySelector<SVGGElement>(
-            `.ts-chart__bar-y[data-ts-key="${escaped}"]`,
-          );
-          if (!group) continue;
-          const rects = group.querySelectorAll<SVGRectElement>("rect");
-          rects.forEach((rectEl, i) => {
-            const targetY = Number.parseFloat(rectEl.getAttribute("y") ?? "0");
-            const targetHeight = Number.parseFloat(rectEl.getAttribute("height") ?? "0");
-            const baselineY = targetY + targetHeight;
-            const delaySec = i * staggerDelaySec;
-            const anim = rectEl.animate(
-              [
-                { height: "0px", y: String(baselineY) },
-                { height: `${targetHeight}px`, y: String(targetY) },
-              ],
-              {
-                duration: revealDurationMs,
-                delay: delaySec * 1000,
-                easing: revealEasingCss,
-                fill: "backwards",
-              },
-            );
-            revealAnimationsRef.current.push(anim);
-          });
-        }
-      }
-      marksGroup.classList.remove("ts-chart__marks--revealing");
+    revealDeadlineTimerRef.current = setRevealDeadline(deadlineMs, {
+      onDeadline: () => {
+        setPhase("ready");
+        // Reveal finished → un-hide the pulse groups + start their sweep
+        // loops (legacy holds BarPulse until bars finish growing).
+        syncBarPulseGroups(svgRoot, true);
+      },
     });
-  }, [animationDuration, revealDurationMs, revealEasingCss, resolvedSeries, resolvedBarSquares, barSquaresEnabled, barColumnTrackEnabled, setPhase, renderData.length, captureRenderContext]);
+  }, [animationDuration, revealDurationMs, setPhase, renderData.length, captureRenderContext]);
 
   // P6.1 — the reference-area layer used to read a SECOND `[0, maxValue * 1.1]`
   // memo of its own, byte-identical to `yDomain` and recomputed on the same
@@ -1816,10 +1752,11 @@ export function BarChart({
       ) : null}
       {definition ? (
         <>
-          <Chart
+          <RendererChart
             ariaLabel="Bar chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             definition={definition}
+            renderer={chartMotionRenderer<ChartDatum, string, number>()}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
             renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}

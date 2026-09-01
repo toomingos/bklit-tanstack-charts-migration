@@ -13,14 +13,16 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from "react";
-import { Chart } from "@tanstack/react-charts/tooltip";
+import { RendererChart } from "@tanstack/react-charts/tooltip";
 import { defineChart, cell } from "@tanstack/charts";
 import { tooltip } from "@tanstack/charts/tooltip";
 import type {
   ChartMarkState,
+  ChartMotionContext,
+  ChartMotionDefinition,
   ChartPoint,
   ChartRectStateStyle,
-  ChartRenderContext,
+  ChartRendererRenderContext,
 } from "@tanstack/charts";
 import { scaleBand, scaleOrdinal } from "d3-scale";
 import type { ScaleBand, ScaleOrdinal } from "d3-scale";
@@ -29,8 +31,9 @@ import {
   computeHeatmapEnterFadeDelayMs,
   HEATMAP_DEFAULT_ENTER_EASE,
   resolveHeatmapEnterFadeDurationSec,
+  type HeatmapEnterTransition,
 } from "./heatmap-animation";
-import { isRevealed, runDeferredReveal, type RevealHandle } from "./deferred-reveal";
+import { chartMotionRenderer } from "./motion-renderer";
 import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
 import {
   HEATMAP_INACTIVE_OPACITY,
@@ -261,6 +264,35 @@ function heatmapHoverStates(
   return states.length > 0 ? states : undefined;
 }
 
+// D5: local cubic-bezier progress-function solver — `ChartAnimationOptions`'s
+// `easing` field (dist/types.d.ts) only accepts the named keywords or a
+// custom `(progress:number)=>number`, never a raw `cubic-bezier()` string
+// (same constraint already documented above HEATMAP_HOVER_TRANSITION), so
+// `HeatmapEnterTransition.ease`'s 4-tuple control points (bklit parity, e.g.
+// HEATMAP_DEFAULT_ENTER_EASE = [0.85, 0, 0.916, 0.282], heatmap-animation.ts:17)
+// need converting to a progress function for the native per-cell `motion`
+// transition below. Newton-Raphson on the bezier's x(t) (5 iterations is
+// more than enough at this curve's slope) to find t for a given x=p, then
+// evaluates y(t).
+function solveCubicBezierEasing(points: readonly [number, number, number, number]): (p: number) => number {
+  const [x1, y1, x2, y2] = points;
+  const bx = (t: number) => 3 * t * (1 - t) * (1 - t) * x1 + 3 * t * t * (1 - t) * x2 + t * t * t;
+  const by = (t: number) => 3 * t * (1 - t) * (1 - t) * y1 + 3 * t * t * (1 - t) * y2 + t * t * t;
+  return (p: number) => {
+    if (p <= 0) return 0;
+    if (p >= 1) return 1;
+    let t = p;
+    for (let i = 0; i < 6; i++) {
+      const err = bx(t) - p;
+      if (Math.abs(err) < 1e-5) break;
+      const dx = 3 * (1 - t) * (1 - t) * x1 + 6 * t * (1 - t) * (x2 - x1) + 3 * t * t * (1 - x2);
+      if (dx === 0) break;
+      t -= err / dx;
+    }
+    return by(t);
+  };
+}
+
 function useHeatmapChartDefinition(
   cellData: CellDatum[],
   columnCount: number,
@@ -276,6 +308,11 @@ function useHeatmapChartDefinition(
   inactiveScale: number,
   activeScale: number,
   rowOpacity: number | readonly number[] | undefined,
+  revealEpoch: number,
+  animationDuration: number,
+  enterTransition: HeatmapEnterTransition | undefined,
+  enterStaggerScale: number,
+  animateCells: boolean,
 ) {
   const columnKeys = useMemo(
     () => Array.from({ length: Math.max(columnCount, 1) }, (_, i) => String(i)),
@@ -351,6 +388,51 @@ function useHeatmapChartDefinition(
   // smooth `states` transitions (no remount/snap). In the common case
   // (uniform rowOpacity, solid levelStyles) this collapses to exactly one
   // bucket, i.e. one mark, matching the pre-C3 shape.
+  // D5: per-cell enter-fade reveal, expressed via `cell()`'s native `motion`
+  // option (dist/types.d.ts:449, `ChartMarkMotionOptions`) instead of the old
+  // imperative WAAPI driver (deferred-reveal.ts, now unused here). The
+  // per-cell delay math is byte-for-byte the seeded-PRNG formula already
+  // ported verbatim in heatmap-animation.ts (`computeHeatmapEnterFadeDelayMs`,
+  // :73-80 — `seed = heatmapCellSeed(column,row) + revealEpoch*524_287`) —
+  // `revealEpoch` is captured by closure below exactly as that formula
+  // requires (coordinator correction 2). Only `opacity` is animated
+  // (`motionAttributes` allowlist confirms opacity is in; legacy's reveal
+  // was itself opacity-only per prior confirmation), so this is a pure
+  // 1:1 native substitution — no reach-in needed for T1-parity-tier heatmap.
+  //
+  // Trade-off (disclosed, no QA possible per rules): folding `revealEpoch`
+  // into `key()` forces every cell's mark identity (and DOM node) to change
+  // on every epoch bump so the native motion engine re-runs the 'enter'
+  // phase — matching legacy's "re-run the whole reveal on data refresh"
+  // behavior. `heatmap-lifecycle.ts`'s `revealEpoch` bumps both on
+  // loading->ready AND on a mount-time effect that fires on initial mount
+  // too, so mount already goes through key `...:0` -> (if the mount effect
+  // also bumps) `...:1`, i.e. an unmount/remount of every cell's mark within
+  // the same paint pass this file cannot single-step through without a
+  // browser (no-QA rule) — flagged here rather than silently assumed benign.
+  const cellMotion = useMemo<ChartMotionDefinition<CellDatum> | false>(() => {
+    if (!animateCells || animationDuration <= 0) return false;
+    const fadeDurationSec = resolveHeatmapEnterFadeDurationSec(enterTransition, animationDuration);
+    const durMs = fadeDurationSec * 1000;
+    const easingFn = solveCubicBezierEasing(enterTransition?.ease ?? HEATMAP_DEFAULT_ENTER_EASE);
+    return (motionCtx: ChartMotionContext<CellDatum>) => {
+      if (motionCtx.phase !== "enter") return false;
+      const d = motionCtx.datum;
+      if (!d) return undefined;
+      return {
+        delay: computeHeatmapEnterFadeDelayMs({
+          column: d.column,
+          row: d.row,
+          revealEpoch,
+          animationDurationMs: animationDuration,
+          enterStaggerScale,
+          fadeDurationSec,
+        }),
+        transition: { type: "tween", duration: durMs, easing: easingFn },
+      };
+    };
+  }, [animateCells, animationDuration, enterTransition, enterStaggerScale, revealEpoch]);
+
   const cellMarks = useMemo(() => {
     const buckets = new Map<number, CellDatum[]>();
     for (const d of cellData) {
@@ -370,26 +452,42 @@ function useHeatmapChartDefinition(
         x: (d: CellDatum) => d.colKey,
         y: (d: CellDatum) => d.rowKey,
         z: (d: CellDatum) => d.level,
-        key: (d: CellDatum) => `${d.column}-${d.row}`,
+        // D5: epoch-suffixed so a revealEpoch bump re-triggers the 'enter'
+        // motion phase (matching legacy's "reveal replays on refresh") — see
+        // the mount-flash trade-off note on `cellMotion` above.
+        key: (d: CellDatum) => `${d.column}-${d.row}:${revealEpoch}`,
         inset: HEATMAP_CELL_INSET,
         radius: cornerRadius,
         fillOpacity,
         states: hoverStates,
+        motion: cellMotion,
       }),
     );
-  }, [cellData, resolvedLevelStyles, rowOpacity, cornerRadius, hoverStates]);
+  }, [cellData, resolvedLevelStyles, rowOpacity, cornerRadius, hoverStates, cellMotion, revealEpoch]);
 
   const ctxForDef = useHeatmap();
   const definition = useMemo(() => {
     if (ctxForDef.chartStatus === "loading") {
       return defineChart({
-        marks: [] as unknown as ReturnType<typeof cell>[],
+        // D1: typed off `cellMarks` (not the generic-erased `ReturnType<typeof
+        // cell>[]` this used pre-C5) so this branch's `TDatum` matches the
+        // loaded branch below exactly — `RendererChart`'s strict generic
+        // inference against `chartMotionRenderer<CellDatum, string,
+        // string>()` (unlike legacy `Chart`) requires both branches' marks
+        // arrays to share the same concrete `CellDatum` element type.
+        marks: [] as unknown as typeof cellMarks,
         scales: {
           x: { scale: xScale, guide: false },
           y: { scale: yScale, guide: false },
         },
         color: { scale: colorScale },
         margin,
+        // D1/D5: `svgAnimation` (dist/types.d.ts `ChartDefinitionOptions`) is
+        // only consumed by the static SVG renderer (dist/renderer.js:125,
+        // `hasRendered ? resolveAnimation(options.definition.svgAnimation,
+        // ...) : void 0`) — dead/inert once this chart is switched to
+        // `chartMotionRenderer()` below. Left as `false` (harmless,
+        // unchanged) rather than removed, since it isn't in D5's edit scope.
         svgAnimation: false,
         // C2: no marks to focus while loading; suppress the native focus
         // ring for symmetry with the loaded branch below.
@@ -564,6 +662,11 @@ export function HeatmapCells({
     inactiveScale,
     activeScale,
     rowOpacity,
+    ctx.revealEpoch,
+    ctx.animationDuration,
+    ctx.enterTransition,
+    ctx.enterStaggerScale,
+    ctx.animateCells,
   );
 
   const isLoading = ctx.chartStatus === "loading";
@@ -573,16 +676,13 @@ export function HeatmapCells({
   );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const chartHostRef = useRef<HTMLDivElement | null>(null);
-  const revealHandleRef = useRef<RevealHandle | null>(null);
-  const seenRevealEpochRef = useRef<number | null>(null);
   // C2: captured from the public `onRender` boundary (composed below into
   // `handleRender`) — the app-owned pointer-hover detection below uses this
   // to drive the native tooltip via `setControlledFocus`, mirroring the
   // sanctioned capture pattern in `./focus-injection.ts` but with
   // `source: 'pointer'` (never 'programmatic', which would trigger C1's
   // legend-dim mark states).
-  const renderContextRef = useRef<Pick<ChartRenderContext, "scene" | "interaction"> | null>(null);
+  const renderContextRef = useRef<Pick<ChartRendererRenderContext<CellDatum, string, string>, "scene" | "interaction"> | null>(null);
   const focusTimerRef = useRef<number | null>(null);
   const focusedKeyRef = useRef<string | null>(null);
   const inputsRef = useRef({ ctx, coordinator, cellsInteractive, cellData, tooltipConfig });
@@ -592,7 +692,7 @@ export function HeatmapCells({
   // hovered cell or null for "no cell hovered"; repeated calls with the same
   // key (e.g. every pointermove within one cell) are no-ops so the timers
   // below are only (re)armed on an actual enter/leave transition.
-  const scheduleFocus = useCallback((point: ChartPoint | null, key: string | null) => {
+  const scheduleFocus = useCallback((point: ChartPoint<CellDatum, string, string> | null, key: string | null) => {
     if (focusedKeyRef.current === key) return;
     focusedKeyRef.current = key;
     if (focusTimerRef.current !== null) {
@@ -731,139 +831,22 @@ export function HeatmapCells({
     };
   }, [cellsInteractive, coordinator, handleCellLeave, scheduleFocus]);
 
-  const revealInputsRef = useRef({
-    animateCells: ctx.animateCells,
-    revealEpoch: ctx.revealEpoch,
-    enterTransition: ctx.enterTransition,
-    animationDuration: ctx.animationDuration,
-    enterStaggerScale: ctx.enterStaggerScale,
-    cellData,
-  });
-  revealInputsRef.current = {
-    animateCells: ctx.animateCells,
-    revealEpoch: ctx.revealEpoch,
-    enterTransition: ctx.enterTransition,
-    animationDuration: ctx.animationDuration,
-    enterStaggerScale: ctx.enterStaggerScale,
-    cellData,
-  };
-
-  const handleRender = useCallback(
-    (renderCtx: { container: HTMLElement } & Partial<Pick<ChartRenderContext, "scene" | "interaction">>) => {
-      // C2: capture the interaction controller + scene for the pointer-hover
-      // -> native-tooltip bridge above. The reveal-animation re-invoke below
-      // (deferred-reveal double-rAF fallback) only ever passes `container`,
-      // so `scene`/`interaction` are optional here and only overwrite the
-      // ref when the real onRender boundary supplies them.
-      if (renderCtx.scene && renderCtx.interaction) {
-        renderContextRef.current = { scene: renderCtx.scene, interaction: renderCtx.interaction };
-      }
-      const { container } = renderCtx;
-      const { animateCells, revealEpoch, enterTransition, animationDuration, enterStaggerScale, cellData: cd } =
-        revealInputsRef.current;
-      if (!animateCells || animationDuration <= 0) return;
-
-      const fadeDurationSec = resolveHeatmapEnterFadeDurationSec(enterTransition, animationDuration);
-      const durMs = fadeDurationSec * 1000;
-      const easing =
-        enterTransition?.ease
-          ? `cubic-bezier(${enterTransition.ease.join(",")})`
-          : `cubic-bezier(${HEATMAP_DEFAULT_ENTER_EASE.join(",")})`;
-
-      // Build the static element list + per-cell fade delay up front so the
-      // reveal controller owns the guard/epoch/deadline/post-paint mechanics
-      // (deferred-reveal.ts) — no duplicated `bkmRevealed` stamping here.
-      // Cells whose rect hasn't landed yet are skipped; the double-rAF
-      // fallback below re-invokes handleRender once the marks are present.
-      const rectByKey = new Map<string, SVGRectElement>();
-      for (const r of container.querySelectorAll<SVGRectElement>("rect[data-ts-key]")) {
-        const k = r.getAttribute("data-ts-key") ?? "";
-        const key = k.slice(k.lastIndexOf(":") + 1);
-        if (key && !rectByKey.has(key)) rectByKey.set(key, r);
-      }
-      const entries: { element: SVGRectElement; delayMs: number }[] = [];
-      for (const d of cd) {
-        const key = `${d.column}-${d.row}`;
-        const rect = rectByKey.get(key);
-        if (!rect) continue;
-        entries.push({
-          element: rect,
-          delayMs: computeHeatmapEnterFadeDelayMs({
-            column: d.column,
-            row: d.row,
-            revealEpoch,
-            animationDurationMs: animationDuration,
-            enterStaggerScale,
-            fadeDurationSec,
-          }),
-        });
-      }
-      if (entries.length === 0) return;
-
-      revealHandleRef.current?.cancel();
-      revealHandleRef.current = runDeferredReveal({
-        container,
-        animationDuration: durMs,
-        revealEpoch,
-        seenEpochRef: seenRevealEpochRef,
-        staggerDelayMs: (index) => entries[index]?.delayMs ?? 0,
-        animateElement: (element, index) => {
-          const entry = entries[index];
-          if (!entry) return null;
-          const rect = element as SVGRectElement;
-          if (rect.getAnimations().length > 0) return null;
-          const anim = rect.animate([{ opacity: "0" }, { opacity: "1" }], {
-            duration: durMs,
-            delay: entry.delayMs,
-            easing,
-            fill: "backwards",
-          });
-          anim.onfinish = () => {
-            try {
-              anim.cancel();
-            } catch { /* teardown race — already cancelled */ }
-          };
-          return anim;
-        },
-        elements: entries.map((e) => e.element),
-      });
-    },
-    [],
-  );
-
-  useEffect(() => {
-    return () => {
-      revealHandleRef.current?.cancel();
-      revealHandleRef.current = null;
-    };
+  // D5: the reveal is now driven entirely by native `motion` on the cell
+  // marks (`cellMotion` above) — `handleRender` only needs to capture the
+  // scene/interaction controller for the pointer-hover -> native-tooltip
+  // bridge (C2). The old imperative WAAPI reveal driver (deferred-reveal.ts's
+  // `runDeferredReveal`, the manual `rect[data-ts-key]` query + `.animate()`
+  // loop, and the double-rAF "wait for rects to land" fallback effect below
+  // it) is deleted — native motion needs no post-paint retry mechanism.
+  const handleRender = useCallback((renderCtx: ChartRendererRenderContext<CellDatum, string, string>) => {
+    renderContextRef.current = { scene: renderCtx.scene, interaction: renderCtx.interaction };
   }, []);
-
-  useLayoutEffect(() => {
-    const { animateCells: ac, revealEpoch: re } = revealInputsRef.current;
-    if (!ac) return;
-    if (seenRevealEpochRef.current === re) return;
-    const host = chartHostRef.current;
-    if (!host) return;
-    const marks = host.querySelector<HTMLElement>(".ts-chart__marks");
-    if (!marks || isRevealed(marks)) return;
-    if (host.querySelectorAll("rect[data-ts-key]").length === 0) return;
-    if (host.getAnimations().length > 0) return;
-    const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const liveMarks = host.querySelector<HTMLElement>(".ts-chart__marks");
-        if (seenRevealEpochRef.current === revealInputsRef.current.revealEpoch) return;
-        if (!liveMarks || isRevealed(liveMarks)) return;
-        if (host.getAnimations().length > 0) return;
-        handleRender({ container: host });
-      });
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [ctx.animateCells, ctx.revealEpoch, handleRender]);
 
   return (
     <div ref={containerRef} style={{ position: "relative", zIndex: 1 }}>
-      <div ref={chartHostRef} style={{ position: "relative" }}>
-        <Chart
+      <div style={{ position: "relative" }}>
+        <RendererChart
+          renderer={chartMotionRenderer<CellDatum, string, string>()}
           className="ts-bkm-heatmap-svg"
           ariaLabel="Heatmap chart"
           definition={definition}

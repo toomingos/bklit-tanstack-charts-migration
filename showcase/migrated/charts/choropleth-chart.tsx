@@ -32,15 +32,16 @@ import { geoMercator, geoPath, type GeoProjection } from "d3-geo";
 import type { TransformMatrix, ProvidedZoom, ZoomState } from "./internal/zoom-engine";
 import { identityMatrix } from "./internal/zoom-engine";
 import { Zoom } from "./internal/zoom-engine";
-import { Chart } from "@tanstack/react-charts/tooltip";
+import { RendererChart } from "@tanstack/react-charts/tooltip";
 import {
   defineChart,
-  type ChartRenderContext,
+  type ChartRendererRenderContext,
   type ChartValue,
   type StaticChartDefinition,
 } from "@tanstack/charts";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { geoShape } from "@tanstack/charts/geo";
+import { chartMotionRenderer } from "./internal/motion-renderer";
 import { CHART_ROLE } from "./children";
 import {
   createChoroplethHoverChrome,
@@ -484,6 +485,15 @@ function ChoroplethChartBody({
           },
           strokeOpacity: 1,
           strokeWidth: featureConfig?.strokeWidth ?? 0.5,
+          // D6: the enter reveal stays the app-owned group-level WAAPI fade
+          // below (`.ts-chart__geo`'s single `.animate()` in `handleRender`,
+          // unchanged from legacy — no per-feature stagger to reproduce, so
+          // no native-motion coordinator correction applies here the way one
+          // did for heatmap's per-cell reveal). Native motion is suppressed
+          // per-mark so the renderer's own default per-path enter-opacity
+          // fade (`motion({initial:"always"})`, internal/motion-renderer.ts)
+          // doesn't race/double-apply against that group fade.
+          motion: false,
         }),
       ],
       scales: { x: null, y: null },
@@ -533,7 +543,10 @@ function ChoroplethChartBody({
   // `hoveredKey` React state imperatively so `refreshTooltipAnchor` (used by
   // C6's zoom code below) can read the current focus target without a stale
   // closure over `[]`-deps callbacks.
-  const renderContextRef = useRef<Pick<ChartRenderContext, "scene" | "interaction"> | null>(null);
+  const renderContextRef = useRef<Pick<
+    ChartRendererRenderContext<ChoroplethFeature, ChartValue, ChartValue>,
+    "scene" | "interaction"
+  > | null>(null);
   const hoveredKeyRef = useRef<string | null>(null);
 
   // Tooltip config resolution — bklit defaults (OQ parity 8): formatValue =
@@ -652,7 +665,9 @@ function ChoroplethChartBody({
   }, [refreshTooltipAnchor]);
 
   const handleRender = useCallback((
-    context: { container: HTMLElement } & Partial<Pick<ChartRenderContext, "scene" | "interaction">>,
+    context: { container: HTMLElement } & Partial<
+      Pick<ChartRendererRenderContext<ChoroplethFeature, ChartValue, ChartValue>, "scene" | "interaction">
+    >,
   ) => {
     const { container, scene, interaction } = context;
     if (scene && interaction) renderContextRef.current = { scene, interaction };
@@ -772,7 +787,8 @@ function ChoroplethChartBody({
           <defs>{featureConfig.patterns}</defs>
         </svg>
       ) : null}
-      <Chart
+      <RendererChart
+        renderer={chartMotionRenderer<ChoroplethFeature, ChartValue, ChartValue>()}
         ariaLabel="Choropleth chart"
         aspectRatio={ratio}
         definition={definition}

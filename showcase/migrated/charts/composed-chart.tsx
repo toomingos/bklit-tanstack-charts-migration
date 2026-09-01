@@ -77,7 +77,7 @@ import { scaleLinear, scaleUtc } from "d3-scale";
 import type { ScaleLinear, ScaleTime } from "d3-scale";
 import { curveMonotoneX, curveNatural } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
-import { Chart } from "@tanstack/react-charts/tooltip";
+import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
 import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
@@ -85,12 +85,15 @@ import type {
   ChartInteractionController,
   ChartMark,
   ChartMarkState,
+  ChartMotionContext,
   ChartPoint,
   ChartPositionScaleOptions,
   ChartRenderContext,
+  ChartRendererRenderContext,
   ChartScale,
   ChartValue,
 } from "@tanstack/charts";
+import { chartMotionRenderer } from "./internal/motion-renderer";
 import { useFocusInjection, whenSeriesDimmed } from "./internal/focus-injection";
 import { areaFill } from "./internal/area-fill-mark";
 import { seriesBarMark } from "./internal/series-bar-mark";
@@ -152,7 +155,8 @@ import type {
 import { type ChartPhase, DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./internal/chart-phase";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { bezierEasing } from "./internal/bezier-easing";
-import { isRevealed, markRevealed, onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { runRevealWipe, snapRevealWipe } from "./internal/reveal-wipe";
 import { nativeStaggerDelayMs } from "./internal/native-stagger";
 import { useChartMargin, DEFAULT_CHART_MARGIN, useDebouncedContainerWidth, type ChartMargin } from "./internal";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
@@ -1392,6 +1396,50 @@ export function ComposedChart({
             FADE_BUFFER,
           )
       : 1;
+    // C5 (D432/A3): `svgAnimation` (renderer.js's blanket per-render-pass
+    // reconcile, read only by the static SVG renderer) is dead once
+    // rendering through `motion()` — replaced by a chart-level `motion`
+    // callback carrying the SAME gate, now scoped per mark role/phase
+    // (see line-chart.tsx's twin comment for the full reasoning):
+    //  - phase "enter" on line/area/dot: `false` — RevealWipe (A2,
+    //    internal/reveal-wipe.ts) owns entrance for these roles.
+    //  - phase "enter" on bar: ALSO `false`, but for a different reason —
+    //    composed's bars grow via their own separate, deadline-gated WAAPI
+    //    loop in `handleRender` (untouched by A2/A3, see that block's own
+    //    comment), not RevealWipe's clip-path sweep. That loop already
+    //    reproduces the legacy per-bar stagger formula and gates the
+    //    "ready" phase transition on its own completion
+    //    (`pendingBarsRevealRef`/`setRevealDeadline` —
+    //    D-composed-settle-regression); handing bar entrance to native
+    //    motion instead would both double-animate against that loop and
+    //    lose the deadline gating, since native motion exposes no
+    //    completion hook this component can feed into `setRevealDeadline`.
+    //  - phase "update" on line/area/dot/bar: I8 (chart-phase.ts) — new
+    //    data paints immediately; only a y-domain change tweens (500ms
+    //    scale tween). Reusing the exact pre-C5 `svgAnimation` gate
+    //    reproduces this; bars are included because the old `svgAnimation`
+    //    was a BLANKET whole-render-pass reconcile that covered every
+    //    element's attribute diff, bars included, not just line/area paths.
+    //  - anything else: `undefined` — falls through to cascade default.
+    const yDomainTweenGateActive = isChartInteractionPhase(phaseRef.current) && isLoadedRef.current && yDomainChanged;
+    const motion = (context: ChartMotionContext<unknown>) => {
+      if (context.role === "line" || context.role === "area" || context.role === "dot" || context.role === "bar") {
+        if (context.phase === "enter") return false as const;
+        if (context.phase === "update") {
+          return yDomainTweenGateActive
+            ? { transition: { type: "tween" as const, duration: DEFAULT_Y_DOMAIN_TWEEN_MS, easing: bezierEasing } }
+            : (false as const);
+        }
+      }
+      return undefined;
+    };
+    // C5 (D432/A5): AX5 — see line-chart.tsx's twin comment. Composed has
+    // no native y-axis label overlay (`yScaleOptions.axis.tickLabels` is
+    // always `false` below), so this only needs to reach the x axis.
+    const tickLabelMotion = (context: ChartMotionContext<unknown>) =>
+      context.phase === "enter"
+        ? (false as const)
+        : { transition: { type: "tween" as const, duration: DEFAULT_Y_DOMAIN_TWEEN_MS, easing: bezierEasing } };
     const xScaleOptions: ChartPositionScaleOptions<Date> = {
       scale: xScale,
       grid: gridGuide.vertical,
@@ -1399,7 +1447,7 @@ export function ComposedChart({
         ticks: { count: gridGuide.columnTicks, size: 0, padding: 0 },
         line: false,
         tickLabels: xAxis
-          ? { fontSize: 12, thin: false, dy: margin.bottom - 25, opacity: xTickLabelOpacity }
+          ? { fontSize: 12, thin: false, dy: margin.bottom - 25, opacity: xTickLabelOpacity, motion: tickLabelMotion }
           : false,
       },
     };
@@ -1455,10 +1503,7 @@ export function ComposedChart({
           }
         : (false as const),
       // Ref reads, not deps — see the comment on phaseRef/isLoadedRef above.
-      svgAnimation:
-        isChartInteractionPhase(phaseRef.current) && isLoadedRef.current && yDomainChanged
-          ? { duration: DEFAULT_Y_DOMAIN_TWEEN_MS, easing: bezierEasing }
-          : false,
+      motion,
     });
     // chartPhase/isLoaded intentionally excluded (pixel mandate, see comment
     // on phaseRef/isLoadedRef above) — read via refs instead so this
@@ -1765,7 +1810,11 @@ export function ComposedChart({
     };
   }, [tooltipEnabled, chartPhase, isLoaded]);
 
-  const handleRender = React.useCallback((context: ChartRenderContext<ChartDatum, Date, number>) => {
+  // A1 (D432): `RendererChart`'s `onRender` passes a `ChartRendererRenderContext`
+  // (`{container, scene, surface, interaction}`) — no `svg` field. Nothing in
+  // this file's `handleRender` ever reached into `context.svg`, so only the
+  // annotation changes (see line-chart.tsx's twin comment).
+  const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     // C1 (P6): capture the interaction controller + scene for legend-hover
     // focus injection — composed with (not a replacement for) the WAAPI
     // bar-reveal stagger-grow animation below, which is unrelated (reveal,
@@ -1805,19 +1854,22 @@ export function ComposedChart({
     // C4 replay key (D311 shape): `bkmRevealed` latches for the life of the
     // marks node, so a caller bumping `revealSignature` would otherwise get
     // nothing. The orchestrator collapses signature+duration into `revealEpoch`.
-    const epochUnseen = revealedEpochRef.current !== revealEpoch;
-    const shouldAnimate = chartPhase === "revealing" && animationDuration > 0 && !prefersReducedMotion && (epochUnseen || !isRevealed(marks));
-    if (!shouldAnimate) {
-      markRevealed(marks);
-      marks.style.clipPath = "";
-      return;
-    }
-    markRevealed(marks);
-    revealedEpochRef.current = revealEpoch;
-    marks.animate(
-      [{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }],
-      { duration: revealDurationMs, easing: revealEasingCss },
-    );
+    // A2 (D420/D432): the reveal sweep itself now lives in
+    // internal/reveal-wipe.ts, shared byte-for-byte with line-chart.tsx/
+    // area-chart.tsx. The separate bar-grow WAAPI loop below is unrelated
+    // (reveal, not dim) and untouched — see the chart-level `motion`
+    // callback's comment above for why bars stay off native motion.
+    const shouldAnimate = runRevealWipe({
+      marks,
+      epoch: revealEpoch,
+      epochRef: revealedEpochRef,
+      active: chartPhase === "revealing",
+      animationDuration,
+      prefersReducedMotion,
+      durationMs: revealDurationMs,
+      easingCss: revealEasingCss,
+    });
+    if (!shouldAnimate) return;
 
     if (resolvedBars.length === 0) return;
 
@@ -1900,12 +1952,12 @@ export function ComposedChart({
 
   React.useEffect(() => {
     if (chartPhase !== "revealing") return;
-    const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marks) return;
-    if (prefersReducedMotion || animationDuration <= 0) {
-      marks.style.clipPath = "";
-      markRevealed(marks);
-    }
+    snapRevealWipe({
+      marks: containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks"),
+      active: true,
+      animationDuration,
+      prefersReducedMotion,
+    });
   }, [chartPhase, revealEpoch, animationDuration, prefersReducedMotion]);
 
   // ReferenceAreaLayers keeps the frozen D220 raw-domain contract when no
@@ -1966,7 +2018,8 @@ export function ComposedChart({
       ) : null}
       {definition ? (
         <>
-          <Chart
+          <RendererChart
+            renderer={chartMotionRenderer<ChartDatum, Date, number>()}
             ariaLabel="Composed chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             definition={definition}

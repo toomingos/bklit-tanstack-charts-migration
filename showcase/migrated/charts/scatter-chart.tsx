@@ -9,8 +9,13 @@
 // custom `ChartScale` object (the only mechanism that survives TanStack's
 // `resolveConfiguredScale`, which unconditionally overwrites a plain scale
 // instance's `.range()` — verified via repos/tanstack-charts/.../
-// configured-scale.ts); the mount reveal is a per-circle imperative WAAPI
-// tween fed by `onRender` (bklit's per-marker framer entrance, zero React);
+// configured-scale.ts); C5/B5 (D432): the mount reveal is now the NATIVE
+// motion renderer's own per-element enter fade (`<RendererChart renderer=
+// {chartMotionRenderer()}>`, `@tanstack/charts/dist/motion.js`'s
+// `addEnterMotionTrack` opacity-0->target fallback) driven by a per-datum
+// `delay` callback reproducing bklit's per-marker framer entrance's stagger
+// formula — see `createScatterEnterMotion` below for what's kept/dropped
+// (opacity only; the legacy blur channel has no native attribute to ride).
 // hover-dim (opacity 0.5 inactive / r×1.35 active) is native `dot()` mark
 // `states` (C1). C3: the indicator/crosshair and per-series tooltip-dot
 // geometry (formerly scatter-hover-chrome.ts's imperative DOM chrome, now
@@ -19,7 +24,7 @@
 // -label fade remain app-owned HTML (`attachScatterPillChrome`).
 import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
-import { Chart, type ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
+import { RendererChart, type ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { crosshair, defineChart, dot, whenFocused } from "@tanstack/charts";
 import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
 import type {
@@ -27,8 +32,10 @@ import type {
   ChartDotStateStyle,
   ChartMark,
   ChartMarkState,
+  ChartMotionContext,
   ChartMotionDefinition,
   ChartPoint,
+  ChartRendererRenderContext,
   ChartScale,
   ChartValue,
   SceneNode,
@@ -55,7 +62,7 @@ import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { resolveGridGuide } from "./internal/grid";
 import { createScatterFocusStrategy } from "./internal/scatter-focus-strategy";
 import "./styles.css";
-import { isRevealed, markRevealed, onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { isRevealed, markRevealed, setRevealDeadline } from "./internal/deferred-reveal";
 import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
 import {
   BOX_OFFSET,
@@ -66,6 +73,8 @@ import {
 } from "./internal/design-tokens";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { useSanitizedId } from "./internal/use-sanitized-id";
+import { chartMotionRenderer } from "./internal/motion-renderer";
+import { resolveMotionEasing, type MotionEasing } from "./internal/reveal-easing";
 import {
   DEFAULT_ANIMATION_DURATION_MS,
   DEFAULT_ANIMATION_EASING,
@@ -141,6 +150,62 @@ function resolveDotColor(
 function ringCornerRadius(halfExtent: number, cornerRadiusFraction: number): number {
   const side = halfExtent * 2;
   return side * Math.max(0, Math.min(0.5, cornerRadiusFraction));
+}
+
+// B5 (D432): per-datum enter delay + opacity-only fade for the base marker
+// marks (native `dot()` series + the S8 yGradient custom mark below) — NOT
+// the C3 hover-dot/crosshair marks above, which have their own unconditional
+// spring motion.
+//
+// The native engine's own enter-track fallback (`dist/motion.js`'s
+// `addEnterMotionTrack`, the branch reached by everything that isn't a bar
+// rect or a rolling line/area point) ALREADY fades every freshly-mounted
+// element's `opacity` 0 -> its resolved target automatically — this factory
+// only needs to supply the per-datum `delay` and the fade's own
+// `transition`; the opacity keyframes themselves are the library's default,
+// not something we author.
+//
+// `delay` reproduces the pre-B5 `handleRender`'s exact formula byte-for-byte
+// (this file's own prior imperative block, now deleted): `leadingEdge =
+// max(0, cx - visualExtent)`, `delaySec = innerWidth>0 ? (leadingEdge/
+// innerWidth)*durationSec : 0` — `cx` here is `ctx.point.x`, the SAME
+// pixel-space x the mark's own `x` channel resolves to (both trace through
+// the identical `scales.x.map(...)` call), so this is numerically identical
+// to reading the rendered `<circle cx>` attribute the old code queried.
+//
+// DROPPED: legacy's OTHER enter channel, `filter: blur(...)` (bklit
+// `series-point-marker.tsx`'s `SeriesPointMarker` — `hidden.filter:
+// blur(${enterBlur}px)` -> `visible.filter: "blur(0px)"`, series-point-
+// marker.tsx:153/158) — "filter" is not in `dist/motion.js`'s
+// `motionAttributes` allowlist (only `cx,cy,d,fill-opacity,font-size,font-
+// weight,height,opacity,r,rx,stroke-opacity,stroke-width,transform,width,x,
+// x1,x2,y,y1,y2` are ever diffed/animated), so it has no native channel to
+// ride — this is the "opacity only" ask. NOTE on the task brief's "scale/r
+// pop": `SeriesPointMarker`'s own `variants.hidden.scale`/`visible.scale`
+// are BOTH pinned to `1` (series-point-marker.tsx:154, 159) — there is no
+// actual scale/r animation in bklit's marker enter to begin with, so nothing
+// was dropped there; the only real "pop" in this codebase is the SEPARATE,
+// enter-independent hover-state `r × 1.35` highlight (ACTIVE_HIGHLIGHT_SCALE
+// above), which was already native before B5 (mark `states`) and is
+// unaffected by this change.
+function createScatterEnterMotion(
+  visualExtent: number,
+  innerWidth: number,
+  staggerDurationSec: number,
+  fadeDurationMs: number,
+  easing: MotionEasing,
+): ChartMotionDefinition<ChartDatum> {
+  return (ctx: ChartMotionContext<ChartDatum>) => {
+    if (ctx.phase !== "enter") return false;
+    const cx = ctx.point?.x ?? 0;
+    const leadingEdge = Math.max(0, cx - visualExtent);
+    const delayMs =
+      innerWidth > 0 ? (leadingEdge / innerWidth) * staggerDurationSec * 1000 : 0;
+    return {
+      delay: delayMs,
+      transition: { type: "tween", duration: fadeDurationMs, easing },
+    };
+  };
 }
 
 // C3: replaces scatter-hover-chrome.ts's DOM `ensureDot`/`updateDotPosition`
@@ -260,7 +325,7 @@ function createHoverDotMark(
               {
                 kind: "group",
                 key: `${series.dataKey}--hover-dot`,
-                className: "ts-chart__hover-dot",
+                className: "bkm-chart__hover-dot",
                 ariaHidden: true,
                 children: nodes,
               },
@@ -275,18 +340,22 @@ function createHoverDotMark(
 
 // S8 (bklit scatter.tsx yGradient): custom ChartMark emitting the EXACT DOM
 // shape stock `dot()` produces — one `.ts-chart__dot[data-ts-key]` group per
-// series, one `<circle>` per datum — so scatter's reveal (`querySelectorAll
-// ("circle")`), focus strategy, and hover chrome all work unchanged. The disc
-// AND ring circles paint a per-series userSpaceOnUse linear gradient spanning
-// the plot height (from at y=innerHeight, to at y=0), which is how bklit gets
-// per-point vertical coloring with ordinary fills. One ChartPoint per datum
-// (markId = dataKey) keeps TanStack's focus grouping identical to stock dot().
+// series, one `<circle>` per datum — so focus strategy and hover chrome work
+// unchanged. The disc AND ring circles paint a per-series userSpaceOnUse
+// linear gradient spanning the plot height (from at y=innerHeight, to at
+// y=0), which is how bklit gets per-point vertical coloring with ordinary
+// fills. One ChartPoint per datum (markId = dataKey) keeps TanStack's focus
+// grouping identical to stock dot(). B5: `motion` (built by
+// `createScatterEnterMotion` at the call site) drives BOTH circles per datum
+// off the one shared `point` they carry as `pointOwner` — same delay, same
+// fade, matching legacy's concentric fill+ring circles animating in lockstep.
 function createYGradientScatterMark(
   source: readonly ChartDatum[],
   series: ResolvedSeries,
   xDataKey: string,
   /** P6.1 (S6): identity for the primary axis; see `createAxisValueProjector`. */
   projectY: (value: number) => number,
+  motion: ChartMotionDefinition<ChartDatum>,
 ): ChartMark<ChartDatum, Date, number> {
   const hasRing = series.strokeWidth > 0;
   const discRadius = series.radius;
@@ -306,6 +375,7 @@ function createYGradientScatterMark(
       }
       return {
         id: series.dataKey,
+        motion,
         channels: {
           x: { scale: "x", values: xValues },
           y: { scale: "y", values: yValues },
@@ -579,9 +649,7 @@ export function ScatterChart({
   // `status` prop — D14) — the initial phase is always "revealing".
   const phaseRef = React.useRef<ChartPhase>("revealing");
   const dragSelectionActiveRef = React.useRef(false);
-  const revealAnimationsRef = React.useRef<Animation[]>([]);
   const revealDeadlineTimerRef = React.useRef<number | null>(null);
-  const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
   // P4.6 (M3a): the reveal runs once per component lifetime. The scene (and
   // with it the .ts-chart__marks group) is rebuilt on every data swap, so the
   // DOM-side `dataset.bkmRevealed` guard dies with the old node and the mount
@@ -638,22 +706,17 @@ export function ScatterChart({
     onPhaseChangeRef.current?.("revealing");
   }, []);
 
-  // Teardown: cancel the pending reveal deadline + post-paint chain + any
-  // in-flight per-circle WAAPI animations on unmount (D205 canonical wording).
+  // Teardown: cancel the pending reveal deadline on unmount (D205 canonical
+  // wording). B5 (C5/D432): the per-circle WAAPI animation list + post-paint
+  // cancel chain this used to also tear down are gone — the native motion
+  // renderer owns its own per-element transition lifecycle; there is nothing
+  // left here to `.cancel()` imperatively.
   React.useEffect(() => {
     return () => {
       if (revealDeadlineTimerRef.current !== null) {
         window.clearTimeout(revealDeadlineTimerRef.current);
         revealDeadlineTimerRef.current = null;
       }
-      revealPostPaintCancelRef.current?.();
-      revealPostPaintCancelRef.current = null;
-      for (const anim of revealAnimationsRef.current) {
-        try {
-          anim.cancel();
-        } catch { /* teardown race — already cancelled */ }
-      }
-      revealAnimationsRef.current = [];
     };
   }, []);
 
@@ -978,15 +1041,40 @@ export function ScatterChart({
   const definition = React.useMemo(() => {
     if (width <= 0) return null;
     const marks: ChartMark<ChartDatum, Date, number>[] = [];
+    // B5: per-datum enter delay inputs, hoisted out of the per-series loop —
+    // `innerW`/`durationSec` reproduce this file's pre-B5 `handleRender`'s
+    // own locals byte-for-byte (`innerW = width - margin.left - margin.right`,
+    // `durationSec = revealDurationMs / 1000`); `easing` is resolved once
+    // (native motion tween easing wants a JS progress function, not the CSS
+    // string `revealEasingCss` legacy's WAAPI `.animate()` took directly).
+    const innerWScatterEnter = Math.max(0, width - margin.left - margin.right);
+    const durationSecScatterEnter = revealDurationMs / 1000;
+    const scatterEnterEasing = resolveMotionEasing(revealEasingCss);
     for (const series of resolvedSeries) {
       const projectY = projectorFor(series.yAxisId);
+      // bklit series-point-marker.tsx `getSeriesMarkerVisualExtent` (pilot
+      // parity note carried over from the pre-B5 `handleRender`:
+      // outlineWidth always 0, showActiveHighlight always true here, so
+      // those two terms are omitted rather than always-zero/always-added).
+      const enterRing = series.strokeWidth > 0 ? series.ringGap + series.strokeWidth : 0;
+      const enterHighlightPad = series.radius * 0.35;
+      const enterVisualExtent = series.radius + enterRing + enterHighlightPad + 2;
+      const enterMotion: ChartMotionDefinition<ChartDatum> = series.animate
+        ? createScatterEnterMotion(
+            enterVisualExtent,
+            innerWScatterEnter,
+            durationSecScatterEnter,
+            ENTER_TWEEN_MS,
+            scatterEnterEasing,
+          )
+        : false;
       if (series.useYGradient) {
         // S8: per-point vertical coloring via a userSpaceOnUse linearGradient
         // (bklit scatter.tsx) — disc AND ring paint the same url(). Emitted as
         // ONE custom mark producing the exact `ts-chart__dot` group + circle
-        // DOM shape stock dot() produces, so reveal/focus/chrome machinery is
-        // untouched. One ChartPoint per datum, markId = dataKey.
-        marks.push(createYGradientScatterMark(renderData, series, xDataKey, projectY));
+        // DOM shape stock dot() produces, so focus strategy and hover chrome
+        // are untouched. One ChartPoint per datum, markId = dataKey.
+        marks.push(createYGradientScatterMark(renderData, series, xDataKey, projectY, enterMotion));
         continue;
       }
       const hasRing = series.strokeWidth > 0;
@@ -1028,6 +1116,7 @@ export function ScatterChart({
           fill: gradientId ? `url(#${gradientId})` : series.fill,
           stroke: "none",
           states,
+          motion: enterMotion,
         }),
       );
     }
@@ -1201,8 +1290,11 @@ export function ScatterChart({
         className: tooltip?.className,
       },
     }) as StaticChartDefinition<ChartDatum, Date, number, "dom">;
+    // B5: `revealDurationMs`/`revealEasingCss` feed `enterMotion` above (per-
+    // series enter delay/transition), so the definition must rebuild when
+    // either changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy, projectorFor, tooltip, chartConfig.tooltipBoxSpring, chartConfig.tooltipSpring, crosshairGradientId, xAxis, labelFade]);
+  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy, projectorFor, tooltip, chartConfig.tooltipBoxSpring, chartConfig.tooltipSpring, crosshairGradientId, xAxis, labelFade, revealDurationMs, revealEasingCss]);
 
   // C3: what remains app-owned after the crosshair/tooltip-dot geometry
   // moved to native marks (in the `definition` useMemo above) — just the
@@ -1347,43 +1439,39 @@ export function ScatterChart({
   // range as the rendered chart scale.
   const innerWidthSelection = Math.max(0, width - margin.left - margin.right);
 
-  // Mount reveal: bklit's per-marker framer entrance equivalent — one WAAPI
-  // tween per rendered circle (fill + ring), delayed by on-screen x position,
-  // fired once from `onRender`. Zero React in the animation path (D10).
-  //
-  // At scale (n=10000, up to 4 marks/series → ~40k circles) instantiating
-  // one WAAPI Animation per circle is real, unavoidable synchronous cost
-  // per the task's explicit "one WAAPI animation per circle" instruction —
-  // but `onRender` fires synchronously inside TanStack's mount
-  // `useLayoutEffect`, i.e. *before* the browser's first paint of this
-  // commit. Running the full ~40k-iteration setup loop there blocks that
-  // paint directly, which was empirically confirmed to double M1a
-  // (mount→paint) versus bklit at n=10000 (2004ms vs bklit's 1064ms) even
-  // though native TanStack with no reveal at all paints in 344ms. bklit's
-  // own framer-motion reveal doesn't pay this tax against its own paint
-  // either (bklit's animated M1a already beats an implementation that
-  // blocks on the setup loop), so parity requires the same: the circles are
-  // hidden the instant they commit via a single cheap CSS class (see
-  // styles.css `.ts-chart__marks--revealing`), and the expensive per-circle
-  // `.animate()` instantiation loop is deferred two real frames plus one
-  // macrotask tick past commit — after the chart has genuinely painted
-  // (hidden circles, matching what `.animate(..., {fill:"backwards"})`
-  // would show anyway) — so it no longer sits on the mount→paint critical
-  // path. The `requestAnimationFrame` pair alone still raced with (and
-  // sometimes lost to) any other rAF-chained "paint settled" observer
-  // registered in the same commit, since ours is scheduled first (`onRender`
-  // fires synchronously, ahead of any post-mutation-observer microtask
-  // continuation) and same-frame rAF callbacks run in registration order —
-  // adding a trailing `setTimeout(…, 0)` macrotask closes that race
-  // unconditionally, since macrotasks always run after the current frame's
-  // rAF callbacks and paint. Total work, every tween, every duration/delay/
-  // easing value is unchanged; only the tick on which *setup* runs moves,
-  // which does not touch any QA-visible frame (settled/hover captures
-  // happen well after the reveal completes).
-  const handleRender = React.useCallback(() => {
-    const marksGroup = containerRef.current?.querySelector<SVGGElement>(
-      ".ts-chart__marks",
-    );
+  // C5/B5 (D432): mount reveal — was bklit's per-marker framer entrance
+  // equivalent (one WAAPI tween per rendered circle, delayed by on-screen x
+  // position, fired imperatively from `onRender`, zero React in the
+  // animation path per D10); now the NATIVE motion renderer's own per-
+  // element enter fade, driven by the `enterMotion` callback built per
+  // series inside the `definition` useMemo above (`createScatterEnterMotion`
+  // — same delay formula, opacity only, see that function's header for what
+  // changed/dropped). `handleRender` no longer instantiates or drives any
+  // animation itself — the entire deferred-setup/backwards-fill/DOM-
+  // querySelector apparatus this used to need to avoid blocking first paint
+  // (see prior revisions of this comment) is gone along with it, since the
+  // native renderer's own commit path already defers its motion setup off
+  // the synchronous mount path. What's left is exactly what bar-chart.tsx's
+  // `handleRender` also reduced to: (1) track `phaseRef` ("revealing" ->
+  // "ready") for `onPhaseChange`, gated by the SAME `seenRevealKeyRef`/
+  // `revealKeyRef` replay-key shape this file already used (S3/D311,
+  // untouched by B5); (2) arm a deadline timer approximating "the reveal
+  // finished," since native motion exposes no per-mark completion callback
+  // (confirmed against dist/motion.js/dist/types.d.ts — same absence bar-
+  // chart's B2 report cites). The deadline is `revealDurationMs +
+  // ENTER_TWEEN_MS` (full stagger span + the fixed fade duration), NOT the
+  // legacy `revealDurationMs` alone — the old deadline doubled as a
+  // force-`.cancel()` cutoff for any circle still mid-fade (WAAPI
+  // `animationsRef` cancellation), truncating its animation early; there is
+  // no equivalent way to reach into and interrupt an individual native
+  // motion track from outside; the deadline is a wait-for-actual-completion
+  // bound instead of a truncation, so "ready" now fires once every point has
+  // genuinely finished rather than approximately when most have.
+  const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
+    // B1: the renderer context has no `svg` member under RendererChart —
+    // `surface.element` is the mounted `<svg class="ts-chart">` root itself.
+    const svgRoot = context.surface.element as SVGSVGElement;
+    const marksGroup = svgRoot.querySelector<SVGGElement>(".ts-chart__marks");
     // S3: the replay KEY is tested BEFORE the DOM stamp. The stamp latches for
     // the life of the marks node, so a caller bumping `revealSignature` on a
     // surviving node would be swallowed here and S3 would land inert.
@@ -1404,9 +1492,8 @@ export function ScatterChart({
     // P4.6 (M3a): the reveal runs once per component lifetime. The scene (and
     // with it the .ts-chart__marks group) is rebuilt on every data swap, so
     // the DOM-side `dataset.bkmRevealed` guard dies with the old node and the
-    // mount reveal used to replay on EVERY update (~n·series animate()
-    // instantiations + blur rasterization inside the update->paint window).
-    // Three states, keyed on seenRevealKeyRef + the pending deadline:
+    // mount reveal used to replay on EVERY update. Three states, keyed on
+    // seenRevealKeyRef + the pending deadline:
     //   first call            -> run the reveal, arm the deadline
     //   revealed, deadline up -> the group was replaced mid-window; restart
     //                            the reveal (the pre-P4.6 self-heal, now
@@ -1421,23 +1508,16 @@ export function ScatterChart({
           setPhase("ready");
           return;
         }
-        revealPostPaintCancelRef.current?.();
-        revealPostPaintCancelRef.current = null;
       } else {
         window.clearTimeout(revealDeadlineTimerRef.current);
         revealDeadlineTimerRef.current = null;
-        revealPostPaintCancelRef.current?.();
-        revealPostPaintCancelRef.current = null;
       }
     }
     seenRevealKeyRef.current = { ...revealKey };
     markRevealed(marksGroup);
     setPhase("revealing");
-    // Force-snap at deadline: `.cancel()` drops Animations from the active
-    // list entirely — see `setRevealDeadline` in deferred-reveal.ts for the
-    // rationale (avoiding M3a regression from lingering finished Animations).
-    revealDeadlineTimerRef.current = setRevealDeadline(revealDurationMs, {
-      animationsRef: revealAnimationsRef,
+    const deadlineMs = revealDurationMs + ENTER_TWEEN_MS;
+    revealDeadlineTimerRef.current = setRevealDeadline(deadlineMs, {
       onDeadline: () => {
         // P4.6 (M3a): close the mount reveal window — later onRender calls
         // (every data swap) must take the snap path, never re-reveal.
@@ -1445,77 +1525,7 @@ export function ScatterChart({
         setPhase("ready");
       },
     });
-
-    marksGroup.classList.add("ts-chart__marks--revealing");
-    const innerW = Math.max(0, width - margin.left - margin.right);
-    // bklit series-markers.tsx:102 — the per-point stagger spans the CLIP
-    // reveal's duration, which `enterTransition` may override.
-    const durationSec = revealDurationMs / 1000;
-
-    revealPostPaintCancelRef.current = onPostPaint(() => {
-      for (const series of resolvedSeries) {
-        // S7 — bklit series-markers.tsx:104 gates the whole enter branch on
-        // `animate && !isLoaded`; a non-animating series paints at final state.
-        if (!series.animate) continue;
-        // bklit series-point-marker.tsx getSeriesMarkerVisualExtent
-        // (pilot: outlineWidth always 0, showActiveHighlight always
-        // true).
-        const ring =
-          series.strokeWidth > 0
-            ? series.ringGap + series.strokeWidth
-            : 0;
-        const highlightPad = series.radius * 0.35;
-        const visualExtent = series.radius + ring + highlightPad + 2;
-        // Single-mark-per-series redesign: one dot() mark (gradient
-        // fill reproduces fill+gap+ring in one circle) → one markId.
-        const markIds = [series.dataKey];
-        for (const markId of markIds) {
-          const escaped = markId.replace(/"/g, '\\"');
-          const group = marksGroup.querySelector<SVGGElement>(
-            `.ts-chart__dot[data-ts-key="${escaped}"]`,
-          );
-          if (!group) continue;
-          const circles =
-            group.querySelectorAll<SVGCircleElement>("circle");
-          for (const circle of circles) {
-            const cx = Number.parseFloat(
-              circle.getAttribute("cx") ?? "0",
-            );
-            const leadingEdge = Math.max(0, cx - visualExtent);
-            const delaySec =
-              innerW > 0 ? (leadingEdge / innerW) * durationSec : 0;
-            const anim = circle.animate(
-              [
-                { opacity: 0, filter: `blur(${series.enterBlur}px)` },
-                { opacity: 1, filter: "blur(0px)" },
-              ],
-              {
-                // bklit series-markers.tsx:103 pins this at 0.5s: the FADE is
-                // fixed, only the stagger SPAN follows `enterTransition`.
-                duration: ENTER_TWEEN_MS,
-                delay: delaySec * 1000,
-                easing: revealEasingCss,
-                // "backwards" only: hides the circle (first keyframe)
-                // during its pre-start delay. We deliberately do NOT use
-                // "both"/"forwards" here — a persisting end-state would
-                // keep this Animation permanently "in effect" even after
-                // it naturally finishes, which is exactly the lingering-
-                // animation cause of the M3a regression documented on
-                // the `.cancel()` call above. A naturally-completed
-                // "backwards" animation stops applying its effect once
-                // finished, which reverts the circle to its default
-                // (unset) opacity:1/filter:none — visually identical to
-                // holding the end keyframe, so nothing is lost.
-                fill: "backwards",
-              },
-            );
-            revealAnimationsRef.current.push(anim);
-          }
-        }
-      }
-      marksGroup.classList.remove("ts-chart__marks--revealing");
-    });
-  }, [animationDuration, revealDurationMs, revealEasingCss, margin.left, margin.right, resolvedSeries, setPhase, width]);
+  }, [animationDuration, revealDurationMs, setPhase]);
 
   const refAreaChildrenScatter = React.useMemo(() => extractReferenceAreaProps(children), [children]);
   const heightPxScatter = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
@@ -1599,16 +1609,17 @@ export function ScatterChart({
       ) : null}
       {definition ? (
         <>
-          <Chart
+          <RendererChart
             ariaLabel="Scatter chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             definition={definition}
+            renderer={chartMotionRenderer<ChartDatum, Date, number>()}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
             renderTooltipBody={renderTooltipBody}
           />
           {gradientDefs.length > 0 || yGradientDefs.length > 0 || crosshairFadeGradient ? (
-            // Rendered AFTER <Chart> deliberately: QA's screenshot harness
+            // Rendered AFTER <RendererChart> deliberately: QA's screenshot harness
             // locates the chart via `page.locator("#chart-root svg").first()`
             // to compute hover coordinates (qa/screenshot.mjs, not ours to
             // modify) — if this 0x0 defs-only <svg> appeared earlier in DOM

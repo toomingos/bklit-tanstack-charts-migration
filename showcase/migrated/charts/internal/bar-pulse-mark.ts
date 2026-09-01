@@ -92,6 +92,15 @@ export function barPulseMark(
   if (pulsePaused) return null;
   if (activeIndex == null || !Number.isFinite(activeIndex)) return null;
   if (activeIndex < 0 || activeIndex >= data.length) return null;
+  // C5/B3 (D432): motion forced off at the mark level. The pulse group's own
+  // growth/opacity choreography is entirely imperative (syncBarPulseGroups'
+  // WAAPI translateY loop below) — native `motion` must never touch this
+  // mark's nodes, and critically the group's className used to accidentally
+  // match native motion's `ts-chart__bar` role substring (see the rename
+  // below), which would otherwise have applied baseline-growth to the wave
+  // rect. `() => false` unconditionally disables enter/update/exit motion
+  // regardless of role resolution, so the rename is belt-and-suspenders with
+  // this, not a replacement for it.
   return createMark(() => {
     const xValues = data.map((d) => categoryAccessor(d));
     const yValues = data.map((d) => yAccessor(d));
@@ -138,7 +147,13 @@ export function barPulseMark(
             {
               kind: "group",
               key: id,
-              className: "ts-chart__bar-pulse",
+              // C5/B3 (D432): renamed off the `ts-chart__bar` substring —
+              // native motion's markMotionRole() (dist/motion.js) resolves
+              // role via `className.includes("ts-chart__bar")`, which the
+              // pre-C5 name accidentally matched, handing the wave rect
+              // incorrect baseline-growth choreography once native motion
+              // landed. `bkm-chart__*` never matches any native role probe.
+              className: "bkm-chart__bar-pulse",
               ariaHidden: true,
               children: [
                 // Invisible silhouette — read back by syncBarPulseGroups as the
@@ -169,7 +184,7 @@ export function barPulseMark(
         };
       },
     };
-  });
+  }, () => false);
 }
 
 // ─── Pulse loop wiring ────────────────────────────────────────────────
@@ -179,8 +194,9 @@ export function barPulseMark(
 // a real `<defs><clipPath><rect>` for it (svg-renderer.js:81) — but that clip is
 // rectangular only, and the wave needs the bar silhouette's polygon (D381). On
 // top of that the identity-based reconciler wipes injected nodes/attributes on
-// every render. So — like the per-bar
-// reveal tweens — the loop is owned imperatively: syncBarPulseGroups is
+// every render. So — unlike bar/squares/track growth, which C5 (D432) moved
+// onto the native motion renderer's own baseline-growth choreography — the
+// pulse loop stays owned imperatively: syncBarPulseGroups is
 // re-invoked after every chart render (bar-chart.tsx handleRender) and on
 // every phase flip, reads the geometry back off the scene-emitted nodes, and
 // (re)applies three things: the injected <clipPath> def, the group's
@@ -250,8 +266,9 @@ function silhouetteMinY(clipD: string): number {
 }
 
 /**
- * Re-apply clip + sweep to every `.ts-chart__bar-pulse` group under `host`.
- * Called from every bar-chart.tsx handleRender exit path and on phase flips.
+ * Re-apply clip + sweep to every `.bkm-chart__bar-pulse` group under the
+ * chart's own `svgRoot`. Called from every bar-chart.tsx handleRender exit
+ * path and on phase flips.
  * `active` is false while a reveal is in flight — groups stay hidden and
  * their loops cancelled (legacy holds the wave until bars finish growing).
  *
@@ -260,75 +277,82 @@ function silhouetteMinY(clipD: string): number {
  * leaves the group safely hidden and schedules a next-frame retry, so an
  * unclipped wave rect can never paint outside the bar.
  */
-const pendingRetries = new WeakMap<ParentNode, { count: number }>();
+const pendingRetries = new WeakMap<SVGSVGElement, { count: number }>();
 
-function schedulePulseRetry(host: ParentNode, active: boolean): void {
-  let box = pendingRetries.get(host);
+function schedulePulseRetry(svgRoot: SVGSVGElement, active: boolean): void {
+  let box = pendingRetries.get(svgRoot);
   if (!box) {
     box = { count: 0 };
-    pendingRetries.set(host, box);
+    pendingRetries.set(svgRoot, box);
   }
   // Bounded: a genuinely-gone chart stops retrying after a few frames.
   if (box.count >= 10) return;
   box.count += 1;
   requestAnimationFrame(() => {
     box!.count = 0;
-    syncBarPulseGroups(host, active);
+    syncBarPulseGroups(svgRoot, active);
   });
 }
 
-export function syncBarPulseGroups(host: ParentNode, active: boolean): void {
-  const svgs = host.querySelectorAll<SVGSVGElement>("svg.ts-chart");
-  svgs.forEach((svg) => {
-    const groups = svg.querySelectorAll<SVGGElement>("g.ts-chart__bar-pulse");
-    groups.forEach((group) => {
-      let state = loopStates.get(group);
-      if (!state) {
-        state = { anim: null, geomKey: null };
-        loopStates.set(group, state);
+/**
+ * C5/B3 (D432): takes the chart's own SVG root directly (`context.surface
+ * .element as SVGSVGElement` from `onRender` under the native motion
+ * renderer) instead of an ancestor container to re-query `svg.ts-chart`
+ * within — the caller already has the exact root via the renderer's own
+ * render context, so the extra descendant query (and its implicit
+ * "possibly more than one `.ts-chart` under this host" handling) is
+ * unnecessary indirection. Only `g.bkm-chart__bar-pulse` groups (the C5
+ * rename above) are matched.
+ */
+export function syncBarPulseGroups(svgRoot: SVGSVGElement, active: boolean): void {
+  const groups = svgRoot.querySelectorAll<SVGGElement>("g.bkm-chart__bar-pulse");
+  groups.forEach((group) => {
+    let state = loopStates.get(group);
+    if (!state) {
+      state = { anim: null, geomKey: null };
+      loopStates.set(group, state);
+    }
+    if (!active) {
+      if (state.anim) {
+        state.anim.cancel();
+        state.anim = null;
+        state.geomKey = null;
       }
-      if (!active) {
-        if (state.anim) {
-          state.anim.cancel();
-          state.anim = null;
-          state.geomKey = null;
-        }
-        group.style.display = "none";
-        return;
-      }
-      const silhouette = group.querySelector<SVGPathElement>(`path[data-ts-key$=":silhouette"]`);
-      const wave = group.querySelector<SVGRectElement>(`rect[data-ts-key$=":wave"]`);
-      if (!silhouette || !wave) {
-        // Scene children not resolvable yet — stay hidden, heal next frame.
-        schedulePulseRetry(host, true);
-        return;
-      }
-      const clipD = silhouette.getAttribute("d") ?? "";
-      const waveX = Number.parseFloat(wave.getAttribute("x") ?? "0");
-      const waveY = Number.parseFloat(wave.getAttribute("y") ?? "0");
-      const waveH = Number.parseFloat(wave.getAttribute("height") ?? "0");
-      if (!clipD || !Number.isFinite(waveY) || !Number.isFinite(waveH) || waveH <= 0) {
-        schedulePulseRetry(host, true);
-        return;
-      }
-      group.style.display = "";
-      const minY = silhouetteMinY(clipD);
-      // Travel flows root → tip: from the parked start (bar bottom edge) up
-      // to just above the lid's back edge (negative delta). ease-in-out +
-      // Infinity mirrors legacy's motion transition exactly.
-      const yEnd = (Number.isFinite(minY) ? minY : waveY) - waveH;
-      const travel = yEnd - waveY;
-      const geomKey = `${clipD}|${waveX}|${waveY}|${waveH}`;
-      const clipId = ensurePulseClipDef(svg, group, clipD);
-      const desiredClip = `url(#${clipId})`;
-      if (group.getAttribute("clip-path") !== desiredClip) group.setAttribute("clip-path", desiredClip);
-      if (state.geomKey === geomKey && state.anim) return;
-      state.anim?.cancel();
-      state.anim = wave.animate(
-        [{ transform: "translateY(0px)" }, { transform: `translateY(${travel}px)` }],
-        { duration: PULSE_WAVE_DURATION_S * 1000, easing: "ease-in-out", iterations: Infinity },
-      );
-      state.geomKey = geomKey;
-    });
+      group.style.display = "none";
+      return;
+    }
+    const silhouette = group.querySelector<SVGPathElement>(`path[data-ts-key$=":silhouette"]`);
+    const wave = group.querySelector<SVGRectElement>(`rect[data-ts-key$=":wave"]`);
+    if (!silhouette || !wave) {
+      // Scene children not resolvable yet — stay hidden, heal next frame.
+      schedulePulseRetry(svgRoot, true);
+      return;
+    }
+    const clipD = silhouette.getAttribute("d") ?? "";
+    const waveX = Number.parseFloat(wave.getAttribute("x") ?? "0");
+    const waveY = Number.parseFloat(wave.getAttribute("y") ?? "0");
+    const waveH = Number.parseFloat(wave.getAttribute("height") ?? "0");
+    if (!clipD || !Number.isFinite(waveY) || !Number.isFinite(waveH) || waveH <= 0) {
+      schedulePulseRetry(svgRoot, true);
+      return;
+    }
+    group.style.display = "";
+    const minY = silhouetteMinY(clipD);
+    // Travel flows root → tip: from the parked start (bar bottom edge) up
+    // to just above the lid's back edge (negative delta). ease-in-out +
+    // Infinity mirrors legacy's motion transition exactly.
+    const yEnd = (Number.isFinite(minY) ? minY : waveY) - waveH;
+    const travel = yEnd - waveY;
+    const geomKey = `${clipD}|${waveX}|${waveY}|${waveH}`;
+    const clipId = ensurePulseClipDef(svgRoot, group, clipD);
+    const desiredClip = `url(#${clipId})`;
+    if (group.getAttribute("clip-path") !== desiredClip) group.setAttribute("clip-path", desiredClip);
+    if (state.geomKey === geomKey && state.anim) return;
+    state.anim?.cancel();
+    state.anim = wave.animate(
+      [{ transform: "translateY(0px)" }, { transform: `translateY(${travel}px)` }],
+      { duration: PULSE_WAVE_DURATION_S * 1000, easing: "ease-in-out", iterations: Infinity },
+    );
+    state.geomKey = geomKey;
   });
 }

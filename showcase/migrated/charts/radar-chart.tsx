@@ -1,19 +1,31 @@
 // Migrated bklit-ui RadarChart — same public API, rendered by TanStack
 // Charts' `polar()` mark family (@tanstack/charts/polar).
 //
-// Architecture: TanStack-native polar marks + WAAPI deferred reveal
-// (matching bklit's useMountProgress flow: grid 0.08s stagger → axis
-// spokes 0.05s → area 0.6s+0.15s*i with 1100ms cubic-bezier). Hover does NOT
-// use the focus subsystem — `:459` sets `focus: focusDisabled`; it is
-// element-level `pointerenter`/`pointerleave` bound directly to the area
-// `path`s (`:779`) and dot `circle`s (`:800`), gated on `pendingRevealRef`,
-// driving area dim/glow/scale and dot r (D384).
+// Architecture (C1+C6, Phase 6, D432): `<RendererChart renderer=
+// {chartMotionRenderer()}>` replaces `<Chart>`. The area/dot entrance (bklit's
+// useMountProgress "campaign": 0.6s+0.15s*i, 1100ms default tween, cubic-
+// bezier(0.85,0,0.15,1), or an explicit spring `enterTransition`) is now the
+// `radialArea`/`radialDot` marks' own native `motion` (radarMarkMotion,
+// below) instead of hand-rolled per-series WAAPI `.animate()` calls — see
+// `radarMotionTransition` (internal/radar-reveal.ts) for the resolved-timing
+// -> native-transition conversion. KEPT AS-IS (D420-style scoped exception):
+// the grid-ring / axis-spoke / metric-label reveal in `handleRender` below
+// stays hand-rolled WAAPI — `bklitRadarGrid`/`angleGrid` are `PolarGuide`
+// scene nodes, not marks, so they have no `motion` field to hang native
+// timing off. Hover does NOT use the focus subsystem — `focus:
+// focusDisabled` below; it is element-level `pointerenter`/`pointerleave`
+// bound directly to the area `path`s and dot `circle`s, driving area
+// dim/glow/scale and dot r reactively through per-datum `fill`/`stroke`/`r`
+// channels (D384). Those channel changes were always instant (no `.animate()`
+// call) in legacy, so the marks' native "update" transition is pinned to
+// duration 0 (see radarMarkMotion) to preserve that exactly — only the
+// "enter" phase gets the authored delay/timing.
 
 import * as React from "react";
 import { scaleLinear, scalePoint } from "d3-scale";
 import { curveLinearClosed } from "d3-shape";
-import { Chart } from "@tanstack/react-charts";
-import { defineChart } from "@tanstack/charts";
+import { Chart as RendererChart } from "@tanstack/react-charts/core";
+import { defineChart, type ChartMotionContext } from "@tanstack/charts";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { fold } from "@tanstack/charts/transform/fold";
 import { angleGrid, polar, radialArea, radialDot } from "@tanstack/charts/polar";
@@ -25,14 +37,18 @@ import {
   resolveEnterTransition as resolveRadarEnterTransition,
 } from "./internal/enter-transition";
 // bklitRadarGrid stays in radar-reveal (custom PolarGuide, not timing
-// machinery) — T-C3 moves only the three timing aliases.
-import { bklitRadarGrid } from "./internal/radar-reveal";
+// machinery); radarMotionTransition is C6's resolved-timing -> native-
+// transition converter (added this pass, sits beside bklitRadarGrid as
+// radar's own per-family motion helper — mirrors gauge-reveal.ts's
+// `gaugeMotionTransition`).
+import { bklitRadarGrid, radarMotionTransition } from "./internal/radar-reveal";
 import {
   estimateSpringSettleMs,
   sampleSpringProgress,
 } from "./internal/radar-spring";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
 import { useDebouncedContainerSize } from "./internal";
+import { chartMotionRenderer } from "./internal/motion-renderer";
 import "./styles.css";
 
 const DEFAULT_LEVELS = 5;
@@ -220,6 +236,11 @@ interface RadarRow {
   metric: string;
   value: number;
   series: string;
+  // C6: z-grouping identity for `radialArea`/`radialDot` — see `allRows`
+  // below. Kept SEPARATE from `series` (still parsed as a plain zero-padded
+  // index for color lookups by several channel accessors below) so bumping
+  // `motionReplayKey` changes group identity without disturbing color math.
+  replayGroup: string;
 }
 
 export function RadarChart({
@@ -272,10 +293,11 @@ export function RadarChart({
     [isControlled, onHoverChange, controlledHoveredIndex, internalHoveredIndex],
   );
 
-  const areaPathsRef = React.useRef<SVGPathElement[]>([]);
-  const dotCirclesRef = React.useRef<SVGCircleElement[]>([]);
-  const pendingRevealRef = React.useRef<Map<number, Animation>>(new Map());
-  const seenRevealedRef = React.useRef<Set<number>>(new Set());
+  // C6: `gridRevealedRef` is the once-per-cycle guard for the KEPT grid/
+  // spoke/label WAAPI reveal below — the area/dot per-index bookkeeping
+  // (`areaPathsRef`/`dotCirclesRef`/`pendingRevealRef`/`seenRevealedRef`)
+  // is gone; that reveal is native now and needs no imperative tracking.
+  const gridRevealedRef = React.useRef(false);
   const revealAnimsRef = React.useRef<Animation[]>([]);
   const revealDeadlineTimerRef = React.useRef<number | null>(null);
   const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
@@ -336,8 +358,18 @@ export function RadarChart({
     // (assertFoldOptions) — a degenerate config that previously produced
     // duplicated spokes.
     const padded = resolvedAreas.map((area, i) => {
+      const paddedIndex = String(i).padStart(Z_PAD, "0");
       const datum: Record<string, number | string> = {
-        series: String(i).padStart(Z_PAD, "0"),
+        series: paddedIndex,
+        // C6: `motionReplayKey`-embedded z-grouping identity (RadarRow
+        // comment above) — a bump makes every group's `z` value "new", so
+        // `radialArea`/`radialDot`'s own keyed diff (polar.js `groupKey`)
+        // treats every area/dot as freshly entering and replays the native
+        // campaign, mirroring sunburst's playKey-embedded-key precedent
+        // (C5). Ordinary re-renders (hover, data updates) leave
+        // `motionReplayKey` untouched, so group identity — and therefore
+        // matched "update" tracks, not replayed "enter" ones — stays stable.
+        replayGroup: `${motionReplayKey}:${paddedIndex}`,
       };
       for (const metric of metrics) {
         datum[metric.key] = area.datum.values[metric.key] ?? 0;
@@ -364,10 +396,44 @@ export function RadarChart({
       metric: String((row as Record<string, unknown>).metric),
       value: Number((row as Record<string, unknown>).value),
       series: String((row as Record<string, unknown>).series),
+      replayGroup: String((row as Record<string, unknown>).replayGroup),
     }));
-  }, [resolvedAreas, metrics]);
+  }, [resolvedAreas, metrics, motionReplayKey]);
 
-  // TanStack definition: animate disabled — reveal is WAAPI deferred (bklit parity).
+  // C6: shared native `motion` for `radialArea`/`radialDot` — legacy delays
+  // BOTH by the same per-series formula (radar-area.tsx's `campaignBaseDelay
+  // + areaIdx*150*staggerScale*durationFactor`; the dot loop below it reuses
+  // the identical `delayMs`, no separate per-dot stagger), so one callback
+  // covers both marks. `ctx.seriesIndex` is the z-group ("series") ordinal —
+  // the same ordering `resolvedAreas`/`allRows` fold rows in (z: "series",
+  // zero-padded so lexicographic === numeric order), so it stands in for the
+  // old `parseInt(row.series, 10)` DOM-order lookup. Refs only (stable
+  // identity across renders) so this needs no dependency-array entry beyond
+  // being referenced by `definition` below.
+  const radarMarkMotion = React.useCallback(
+    (ctx: ChartMotionContext<RadarRow>) => {
+      if (!animateRef.current) return false as const;
+      if (ctx.phase !== "enter") {
+        // Hover-driven fill/stroke/r channel changes (and series removal)
+        // were always instant, no-animation React re-renders in legacy — kept
+        // instant here so native's own "update"/"exit" tracks don't newly
+        // introduce a transition legacy never had.
+        return { transition: { type: "tween" as const, duration: 0 } };
+      }
+      const seriesIndex = ctx.seriesIndex ?? 0;
+      const resolved = resolveRadarEnterTransition(enterTransitionRef.current);
+      const staggerScale = enterStaggerScaleRef.current;
+      const durationFactor = enterDurationMsRef.current / 1100;
+      const gridStaggerMs = 80 * staggerScale * durationFactor;
+      const campaignBaseDelayMs = (levelsRef.current * gridStaggerMs + 200) * durationFactor;
+      const delayMs = campaignBaseDelayMs + seriesIndex * 150 * staggerScale * durationFactor;
+      return { delay: delayMs, transition: radarMotionTransition(resolved) };
+    },
+    [],
+  );
+
+  // TanStack definition: area/dot entrance is native `motion` (C6); grid/
+  // spoke/label reveal is WAAPI deferred (bklit parity, KEPT — see header).
   const definition = React.useMemo(() => {
     if (chartSize < 10 || resolvedAreas.length === 0 || metricKeys.length === 0) return null;
 
@@ -448,7 +514,7 @@ export function RadarChart({
               id: "radar-area",
               angle: "metric",
               radius: "value",
-              z: "series",
+              z: "replayGroup",
               key: "metric",
               curve: curveLinearClosed,
               fill: (row: RadarRow) => {
@@ -471,12 +537,13 @@ export function RadarChart({
                 return withAlpha(area.color ?? DEFAULT_RADAR_COLORS[0]!, (isDimmed ? DIM_OPACITY : 1) * 100);
               },
               strokeWidth: STROKE_WIDTH_REST,
+              motion: radarMarkMotion,
             }),
             radialDot(allRows, {
               id: "radar-dot",
               angle: "metric",
               radius: "value",
-              z: "series",
+              z: "replayGroup",
               key: "metric",
               r: (row: RadarRow) => {
                 const idx = parseInt(row.series, 10);
@@ -492,6 +559,7 @@ export function RadarChart({
               },
               stroke: RADAR_BACKGROUND_VAR,
               strokeWidth: 2,
+              motion: radarMarkMotion,
             }),
           ],
         }),
@@ -515,6 +583,7 @@ export function RadarChart({
     allRows,
     margin,
     hoveredIndex,
+    radarMarkMotion,
   ]);
 
   const enterTransitionRef = React.useRef(enterTransition);
@@ -531,35 +600,22 @@ export function RadarChart({
   // actual key CHANGE (bklit's `key={`...-${motionReplayKey}`}` remounts).
   const prevMotionReplayKeyRef = React.useRef(motionReplayKey);
 
+  // C6: area/dot's own campaign reveal is native now (radarMarkMotion,
+  // above) — this function's only remaining job is the KEPT grid-ring /
+  // axis-spoke / metric-label WAAPI reveal (D420-style scoped exception,
+  // see header). `gridRevealedRef` (a plain boolean, not a per-index Set) is
+  // the once-per-cycle guard: fires once per mount / `motionReplayKey` bump,
+  // never re-fires on a hover-only re-render (hover never remounts this
+  // component's marks group, and `handleRender` itself isn't re-invoked by
+  // TanStack for hover — only React's own re-renders touch the fill/stroke/r
+  // channels, which is exactly why native "onRender" doesn't refire here).
   const handleRender = React.useCallback(
     ({ container }: { container: HTMLElement }) => {
       if (!animateRef.current) return;
+      if (gridRevealedRef.current) return;
       const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks") as SVGGElement | null;
       if (!marksGroup) return;
-
-      const { resolvedAreas: currAreas, metricKeysLength: metricsLen } = hoverInputsRef.current;
-      if (currAreas.length === 0) return;
-
-      for (const v of seenRevealedRef.current) {
-        if (v >= currAreas.length) seenRevealedRef.current.delete(v);
-      }
-
-      let areaEls = marksGroup.querySelectorAll<SVGPathElement>('path[data-ts-key^="radar-area:"]');
-      if (areaEls.length === 0) areaEls = container.querySelectorAll<SVGPathElement>(".ts-chart__radial-area path");
-      areaPathsRef.current = Array.from(areaEls);
-
-      let dotEls = marksGroup.querySelectorAll<SVGCircleElement>('circle[data-ts-key^="radar-dot:"]');
-      if (dotEls.length === 0) dotEls = container.querySelectorAll<SVGCircleElement>(".ts-chart__radial-dot circle");
-      dotCirclesRef.current = Array.from(dotEls);
-
-      const toReveal: number[] = [];
-      for (let i = 0; i < currAreas.length; i++) {
-        if (seenRevealedRef.current.has(i)) continue;
-        if (!areaPathsRef.current[i]) continue;
-        seenRevealedRef.current.add(i);
-        toReveal.push(i);
-      }
-      if (toReveal.length === 0) return;
+      gridRevealedRef.current = true;
 
       const svgForBkm = container.querySelector<SVGElement>("svg.ts-chart") as SVGElement | null;
       if (svgForBkm && !svgForBkm.getAttribute("data-bkm-revealed")) {
@@ -575,90 +631,26 @@ export function RadarChart({
       // INDEPENDENT of the transition's own tween/spring timing.
       const durationFactor = enterDurationMsRef.current / 1100;
       const gridStaggerMs = 80 * staggerScale * durationFactor;
-      // bklit radar-area.tsx, verbatim: campaignBaseDelay =
-      // `(levels * gridStagger + 0.2) * durationFactor` (gridStagger =
-      // `0.08 * staggerScale * durationFactor`; the WHOLE sum — the 0.2s
-      // constant included — is scaled by durationFactor). RD5: the previous
-      // `(5 * gridStagger * 0.5 + 200) * durationFactor` folded radar-grid's
-      // label-delay ×0.5 term into the area campaign base and hardcoded
-      // levels=5, starting areas 200ms early at defaults.
-      const campaignBaseDelayMs = (levelsRef.current * gridStaggerMs + 200) * durationFactor;
 
       // RD6 label spring (stiffness 80 / damping 15 / mass 1, bklit
       // radar-labels.tsx) is NOT scaled by durationFactor in legacy, so its
-      // settle time can exceed `timing.durationMs + maxStagger` when
-      // enterDurationMs is small — the deadline must cover the longest live
-      // reveal animation or it snaps labels mid-spring.
+      // settle time can exceed the grid's own `timing.durationMs +
+      // levels*gridStaggerMs` when enterDurationMs is small — the deadline
+      // must cover the longest live reveal animation or it snaps labels
+      // mid-spring.
       const labelSpringSettleMs = estimateSpringSettleMs(80, 15, 1);
 
-      const maxStagger = Math.max(
-        ...toReveal.map((idx) => campaignBaseDelayMs + idx * 150 * staggerScale * durationFactor),
-        0,
-      );
       revealDeadlineTimerRef.current = setRevealDeadline(
-        Math.max(timing.durationMs + maxStagger, labelSpringSettleMs),
+        Math.max(timing.durationMs + levelsRef.current * gridStaggerMs, labelSpringSettleMs),
         {
           animationsRef: revealAnimsRef,
           onDeadline: () => {},
         },
       );
 
-      for (const idx of toReveal) {
-        pendingRevealRef.current.set(idx, {} as unknown as Animation);
-      }
-
       revealPostPaintCancelRef.current = onPostPaint(() => {
         const liveMarksGroup = container.querySelector<SVGGElement>(".ts-chart__marks") as SVGGElement | null;
         if (!liveMarksGroup) return;
-
-        let liveAreaEls = liveMarksGroup.querySelectorAll<SVGPathElement>('path[data-ts-key^="radar-area:"]');
-        if (liveAreaEls.length === 0) liveAreaEls = container.querySelectorAll<SVGPathElement>(".ts-chart__radial-area path");
-        let liveDotEls = liveMarksGroup.querySelectorAll<SVGCircleElement>('circle[data-ts-key^="radar-dot:"]');
-        if (liveDotEls.length === 0) liveDotEls = container.querySelectorAll<SVGCircleElement>(".ts-chart__radial-dot circle");
-        const liveAreaArr = Array.from(liveAreaEls);
-        const liveDotArr = Array.from(liveDotEls);
-
-        for (const areaIdx of toReveal) {
-          const liveEl = liveAreaArr[areaIdx] ?? null;
-          if (!liveEl) {
-            pendingRevealRef.current.delete(areaIdx);
-            continue;
-          }
-          const delayMs = campaignBaseDelayMs + areaIdx * 150 * staggerScale * durationFactor;
-          const kfs = buildRadarProgressKeyframes(timing, (p) => ({ transform: `scale(${p})` } as unknown as Keyframe));
-          const anim = liveEl.animate(kfs, {
-            duration: timing.durationMs,
-            delay: delayMs,
-            easing: timing.easing,
-            fill: "backwards",
-          });
-          pendingRevealRef.current.set(areaIdx, anim);
-          revealAnimsRef.current.push(anim);
-          anim.onfinish = () => {
-            anim.cancel();
-            pendingRevealRef.current.delete(areaIdx);
-          };
-          anim.oncancel = () => pendingRevealRef.current.delete(areaIdx);
-        }
-
-        for (const areaIdx of toReveal) {
-          const delayMs = campaignBaseDelayMs + areaIdx * 150 * staggerScale * durationFactor;
-          const kfs = buildRadarProgressKeyframes(timing, (p) => ({ transform: `scale(${p})` } as unknown as Keyframe));
-          const start = areaIdx * metricsLen;
-          for (let j = 0; j < metricsLen; j++) {
-            const circle = liveDotArr[start + j] ?? null;
-            if (!circle) continue;
-            const anim = circle.animate(kfs, {
-              duration: timing.durationMs,
-              delay: delayMs,
-              easing: timing.easing,
-              fill: "backwards",
-            });
-            revealAnimsRef.current.push(anim);
-            anim.onfinish = () => anim.cancel();
-            anim.oncancel = () => anim.cancel();
-          }
-        }
 
         {
           const gridRings = liveMarksGroup.querySelectorAll<SVGPathElement>('[data-ts-key^="radar-ring:"]');
@@ -769,17 +761,21 @@ export function RadarChart({
 
     const cleanups: (() => void)[] = [];
 
+    // C6: the pre-native reveal used to suppress hover while an area's `d`
+    // WAS the campaign's own WAAPI-owned attribute (`pendingRevealRef`,
+    // two-writer hazard). Native's enter motion now controls ONLY opacity
+    // (the C1-C5 "enter is opacity-only" precedent, see radar-reveal.ts) —
+    // hover writes fill/stroke/r, a disjoint attribute set, so there is no
+    // second writer left to race. No guard needed.
     for (let i = 0; i < areaArr.length; i++) {
       const path = areaArr[i];
       if (!path) continue;
       const idx = i;
       path.style.cursor = "pointer";
       const enter = () => {
-        if (pendingRevealRef.current.has(idx)) return;
         setHoveredIndex(idx);
       };
       const leave = () => {
-        if (pendingRevealRef.current.has(idx)) return;
         setHoveredIndex((prev: number | null) => (prev === idx ? null : prev));
       };
       path.addEventListener("pointerenter", enter);
@@ -796,11 +792,9 @@ export function RadarChart({
       const seriesIdx = Math.floor(i / Math.max(1, hoverInputsRef.current.metricKeysLength));
       circle.style.cursor = "pointer";
       const enter = () => {
-        if (pendingRevealRef.current.has(seriesIdx)) return;
         setHoveredIndex(seriesIdx);
       };
       const leave = () => {
-        if (pendingRevealRef.current.has(seriesIdx)) return;
         setHoveredIndex((prev: number | null) => (prev === seriesIdx ? null : prev));
       };
       circle.addEventListener("pointerenter", enter);
@@ -817,7 +811,6 @@ export function RadarChart({
   }, [resolvedAreas.length, metricKeys, setHoveredIndex]);
 
   React.useEffect(() => {
-    const pendingReveal = pendingRevealRef.current;
     const revealAnims = revealAnimsRef.current;
     isMountedRef.current = true;
     return () => {
@@ -830,10 +823,6 @@ export function RadarChart({
         }
         revealPostPaintCancelRef.current?.();
         revealPostPaintCancelRef.current = null;
-        for (const anim of pendingReveal.values()) {
-          try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
-        }
-        pendingReveal.clear();
         for (const anim of revealAnims) {
           try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
         }
@@ -847,13 +836,13 @@ export function RadarChart({
   // Left intentionally minimal.
 
   React.useLayoutEffect(() => {
-    if (seenRevealedRef.current.size > 0) return;
+    if (gridRevealedRef.current) return;
     if (!animateRef.current) return;
     const container = containerRef.current;
     if (!container) return;
     const raf = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        if (seenRevealedRef.current.size > 0) return;
+        if (gridRevealedRef.current) return;
         if (!container.querySelector(".ts-chart__marks")) return;
         if (hasLiveRevealAnims(container)) return;
         handleRender({ container });
@@ -865,13 +854,16 @@ export function RadarChart({
   // bklit `motionReplayKey` parity: in bklit it is spliced into the grid /
   // level-label / area `key`s and `useMountProgress(...)`'s replay token, so
   // changing it REMOUNTS those elements and re-runs the whole enter reveal.
-  // There is no per-element key to remount in the TanStack scene (the DOM is
-  // keyed by data, not by replay token), so the replay is expressed as a
-  // full reveal-episode reset: cancel every live WAAPI reveal animation,
-  // clear the seen/pending bookkeeping, then re-run handleRender through the
-  // same double-rAF handoff the mount path uses (so the new fill:"backwards"
-  // anims are created against the same freshly-painted frame the mount path
-  // gets). Skipped entirely while `animate={false}` (bklit renders static).
+  // C6: the AREA/DOT half of that replay is native now — `motionReplayKey` IS
+  // wired into the mark keys (via `allRows`' `replayGroup` field, folded into
+  // `radialArea`/`radialDot`'s own `z` grouping identity, above), mirroring
+  // sunburst's playKey-embedded-key precedent (C5): a bump makes every
+  // area/dot group's key "new", so native's own keyed diff replays the whole
+  // staggered campaign on its own — no imperative re-drive needed for that
+  // half. This effect's remaining job is the KEPT grid/spoke/label WAAPI
+  // reveal below, which has no mark key to hang a replay off (PolarGuide
+  // scene nodes, not marks) and so still needs an explicit reset + re-run.
+  // Skipped entirely while `animate={false}` (bklit renders static).
   React.useLayoutEffect(() => {
     if (!animateRef.current) return;
     if (prevMotionReplayKeyRef.current === motionReplayKey) return;
@@ -880,11 +872,7 @@ export function RadarChart({
       try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
     }
     revealAnimsRef.current = [];
-    for (const anim of pendingRevealRef.current.values()) {
-      try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
-    }
-    pendingRevealRef.current.clear();
-    seenRevealedRef.current.clear();
+    gridRevealedRef.current = false;
     const container = containerRef.current;
     if (!container) return;
     const raf = requestAnimationFrame(() => {
@@ -915,11 +903,12 @@ export function RadarChart({
       data-bkm-chart="radar"
     >
       {definition ? (
-        <Chart
+        <RendererChart
           ariaLabel="Radar chart"
           width={chartSize}
           height={chartSize}
           definition={definition}
+          renderer={chartMotionRenderer<RadarRow, string, number>()}
           onRender={handleRender}
         />
       ) : null}

@@ -2,34 +2,80 @@
 //
 // Architecture:
 //   <SunburstSegment> children are config carriers (return null, classified by
-//   displayName). A single <Chart> renders ONE `polar()` container with ONE
-//   `radialArc()` mark whose custom d3 `arc()` generator computes per-datum
-//   inner/outer radii using bklit's `geometryFor` → `ringOptions` layout.
-//   Depth-based opacity is baked into fill (radialArc's fillOpacity is `number`,
-//   not VisualChannel — no per-datum opacity channel exists).
+//   displayName). A single <RendererChart renderer={chartMotionRenderer()}>
+//   (C1) renders ONE `polar()` container with ONE `radialArc()` mark whose
+//   custom d3 `arc()` generator computes per-datum inner/outer radii using
+//   bklit's `geometryFor` → `ringOptions` layout. Depth-based opacity is
+//   baked into fill (radialArc's fillOpacity is `number`, not VisualChannel
+//   — no per-datum opacity channel exists).
 //
 //   The definition includes hover grow AND hover dim — both go through the
 //   TanStack pipeline (arcRows → definition → render → reconcile). Dim (C1,
 //   states+legend) rides the same per-datum `fill` color-mix alpha as
 //   depth-opacity, since radialArc has no per-datum opacity channel either
-//   (see above) — no imperative DOM opacity mutation. Reveal and zoom use
-//   WAAPI.
+//   (see above) — no imperative DOM opacity mutation.
 //
-//   WAAPI zoom: computes keyframes from transitionGeometry between prev/next
-//   focus states. Focus commits IMMEDIATELY on click (legacy parity); zoomT
-//   tweens 0→1 and the d-morph covers the transition (no visual jump — the
-//   committed target geometry sits under the fill-forwards animation).
-//
-//   WAAPI reveal: ring-staggered angular sweep (onPostPaint → per-arc
-//   keyframes), bkmRevealed DOM guard prevents re-animation on focus/data
-//   changes. Deadline timer → setPhase("ready") for bench settle detection.
+// --- C5 (native motion, Phase 6, D432): reveal sweep + zoom morph both
+// native now; both WAAPI generators deleted outright -----------------------
+//   The arc mark's `generator` already declares real d3-arc accessors
+//   (`.startAngle`/`.endAngle`/`.innerRadius`/`.outerRadius` — unchanged from
+//   pre-C5) — the confirmed mechanism (gauge C4 precedent; `dist/motion.js`'s
+//   `addSemanticPathUpdateTrack`/`compatiblePathGeometry`) native reads to
+//   interpolate a matched keyed path's `d` attribute directly, with zero
+//   imperative `.animate()` calls:
+//     - Reveal (native "enter"): per-arc ring-staggered delay (unchanged
+//       `buildRevealTiming` math, internal/sunburst-reveal.ts) + the
+//       resolved sweep tween (`sweepDurationMs`/`sweepEasingCss`, SB2 below).
+//       Same disclosed deviation as gauge/pie's own custom-generator arc
+//       marks: native's per-datum arc "enter" animates opacity only (no
+//       angular-growth-from-zero primitive for a raw-`d` generator mark) —
+//       the staggered fade-in reproduces the "sweeping in sequentially" look
+//       the same way pie's own native conversion already established
+//       (pie-chart.tsx's `sliceMark.motion` comment cites sunburst's
+//       generator pattern as ITS precedent — this is the mark shape both
+//       families share).
+//     - Zoom (native "update"): `arcRows` recomputes geometry off `focus`
+//       immediately on every `zoomTo` commit (unchanged — focus commits
+//       immediately, legacy parity); the mark's `motion` update-phase
+//       transition (750ms `cubic-bezier(0.22,1,0.36,1)`, legacy verbatim)
+//       is now what plays the `d` morph, native's own keyed diff supplying
+//       the interpolation instead of `buildZoomKeyframes`'s 30-sample
+//       generator (DELETED, internal/sunburst-reveal.ts).
+//   Key stability (verified by reading `buildArcs`, sunburst-geometry.ts):
+//   `arcIndex` is assigned once, by a monotonic counter, during a pre-order
+//   traversal of `data` alone — `buildArcs` never takes `focus` as an input,
+//   so the SAME arc keeps the SAME `arcIndex` (and therefore the same mark
+//   key) across every zoom/focus rebuild. Only genuinely-degenerate arcs
+//   (sub-0.001-rad span or sub-0.5px thickness, the pre-existing culling
+//   rule in `arcRows` below) ever exit/re-enter on a focus change — every
+//   other arc is a native "update" (d-morph), never a replayed "enter".
+//   `playKey` is folded into the mark `key` (`sunburst-arc-{playKey}-
+//   {arcIndex}`) specifically so a playKey bump — and ONLY a playKey bump —
+//   invalidates every key at once, replaying the full staggered reveal
+//   exactly like a fresh mount (native's own enter/exit diff does the
+//   replay; no more imperative `handleRenderRef` re-invocation, see the
+//   playKey effect below).
+//   Reduced motion: the arc mark's own motion (enter/update/exit) needs no
+//   local `prefersReducedMotion` branch — `chartMotionRenderer()`'s policy
+//   defaults `respectReducedMotion: true` (gauge/pie/ring precedent).
+//   `prefersReducedMotion` STILL gates three unrelated, non-native-scene
+//   concerns below: the whole-stage 350ms fade-in (SB15), the zoomT rAF
+//   tween-vs-snap branch (labels/hit-layer/center-circle overlays, none of
+//   which are TanStack scene nodes), and the phase-tracking deadline timer
+//   (skipped straight to "ready" — see the consolidated reveal-phase effect
+//   below) — none of those have a native-motion equivalent to fall back on.
 //
 //   Hover chrome: hover index (`hoveredArc`) is React state, read directly by
 //   the `arcRows` definition memo — dim (bklit: non-related arcs to 0.25
 //   alpha, 160ms ease-out, see styles.css:424-427) is computed there as a
 //   `fill` alpha multiplier, reactive by construction. Grow (geometry expand
 //   via `buildHoverGrowTargets`/`applyHoverGrow`, also baked into `arcRows`)
-//   is unchanged — C5's job.
+//   rides the SAME native "update" transition as zoom above (`ChartMotionContext`
+//   can't distinguish a hover-grow update from a zoom update, so both share
+//   one timing — same "every OTHER phase" deviation pie/gauge already
+//   documented; low-risk since it's strictly smoother than an un-animated
+//   snap, and zoom — the more visually prominent, legacy-timed case — keeps
+//   its exact authored timing).
 
 import {
   Children,
@@ -43,8 +89,8 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Chart } from "@tanstack/react-charts";
-import { defineChart } from "@tanstack/charts";
+import { Chart as RendererChart } from "@tanstack/react-charts/core";
+import { defineChart, type ChartMotionContext } from "@tanstack/charts";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { polar, radialArc } from "@tanstack/charts/polar";
 import {
@@ -67,13 +113,8 @@ import {
   opacityForRelativeDepth,
 } from "./internal/sunburst-colors";
 import type { SunburstNode } from "./internal/sunburst-types";
-import {
-  buildZoomKeyframes,
-  buildRevealKeyframes,
-  buildRevealTiming,
-  maxRevealDelayMs,
-} from "./internal/sunburst-reveal";
-import { clearRevealed, isRevealed, markRevealed, onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { buildRevealTiming, maxRevealDelayMs } from "./internal/sunburst-reveal";
+import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
 import { arc as d3Arc } from "d3-shape";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { displayNameOf } from "./children";
@@ -90,12 +131,19 @@ import {
 } from "./internal/sunburst-hint";
 import { CHART_CATEGORY_PALETTE } from "./internal/design-tokens";
 import { clipRevealTiming, type EnterTransition } from "./internal/enter-transition";
+import { motionEasingFromCss } from "./internal/pie-hover-chrome";
+import { chartMotionRenderer } from "./internal/motion-renderer";
 import "./styles.css";
 
 // bklit sunburst arc sweep: 1100ms cubic-bezier(.85,0,.15,1) (was inlined at
 // the two call sites below before P5.5 SB2 gave `enterTransition` a home).
 const SUNBURST_SWEEP_MS = 1100;
 const SUNBURST_SWEEP_EASE = "cubic-bezier(0.85,0,0.15,1)";
+// bklit sunburst zoom morph: 750ms cubic-bezier(0.22,1,0.36,1) — legacy
+// verbatim, previously the WAAPI zoom effect's `.animate()` options
+// (deleted, C5); now the arc mark's native "update" transition.
+const SUNBURST_ZOOM_MS = 750;
+const SUNBURST_ZOOM_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 
 // ---------------------------------------------------------------------------
 // Helpers (shared — were duplicated across 4 call sites)
@@ -474,20 +522,16 @@ function SunburstChartInner({
   const prevFocus = focusById.get(prevFocusId) ?? focus;
   const zoomGen = useRef(0);
   // SB1: reveal-cycle identity — bumped when playKey changes so the
-  // once-per-mount reveal guard resets (legacy replays via playKey keys).
+  // once-per-mount LABELS-reveal guard resets below (the arc reveal itself
+  // now replays via the mark's own playKey-embedded key, C5 — see file
+  // header — so this ref only guards `runLabelsReveal`'s mount-vs-replay
+  // distinction, not any arc-path animation).
   const playCycleRef = useRef<string>(`${playKey}`);
-  const zoomAnimationsRef = useRef<Set<Animation>>(new Set());
-  const seenRevealedRef = useRef<Set<number>>(new Set());
-  const pendingRevealIds = useRef<Set<number>>(new Set());
-  const revealAnimsRef = useRef<Animation[]>([]);
   const revealDeadlineTimerRef = useRef<number | null>(null);
-  const revealPostPaintCancelRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     setPrevFocusId(rootId);
     setZoomT(1);
-    for (const anim of zoomAnimationsRef.current) anim.cancel();
-    zoomAnimationsRef.current.clear();
   }, [rootId]);
 
   const commitFocus = useCallback(
@@ -504,12 +548,12 @@ function SunburstChartInner({
       if (!focusById.has(nextId)) return;
 
       // Midpoint-snapshot nuance (audit §4 row1): if a zoom is already
-      // in-flight, cancel its animations so the next effect attaches fresh
-      // keyframes from the CURRENT visual state instead of snapping.
+      // in-flight, bump the rAF generation so the old tick loop exits — the
+      // arc path's own d-morph is native now (C5) and needs no separate
+      // cancel; native's own reconcile always interpolates from the path's
+      // CURRENT live `d`, so an interrupted zoom naturally continues from
+      // wherever it visually was, matching the old cancel-and-restart intent.
       if (zoomT < 1) {
-        for (const anim of zoomAnimationsRef.current) anim.cancel();
-        zoomAnimationsRef.current.clear();
-        // Bump generation so the old rAF loop exits.
         zoomGen.current++;
       }
 
@@ -623,6 +667,14 @@ function SunburstChartInner({
     return rows;
   }, [arcs, focus, maxDepth, radius, segmentConfigMap, getFill, hoveredArc, hoverPop]);
 
+  // C5: per-arc ring-staggered entrance delay, keyed by arc `id` (matches
+  // `handleRender`'s pre-C5 `delayByArcId` lookup, now feeding the mark's
+  // own `motion` enter phase instead of a `.animate()` delay option).
+  const revealDelayById = useMemo(() => {
+    const timingList = buildRevealTiming(arcs, enterStaggerScale);
+    return new Map(timingList.map((t) => [t.arcId, t.delayMs]));
+  }, [arcs, enterStaggerScale]);
+
   // --- TanStack definition: single radialArc (opacity baked into fill) ---
   const definition = useMemo(() => {
     return defineChart({
@@ -632,7 +684,12 @@ function SunburstChartInner({
           marks: [
             radialArc<SunburstArcRow>(arcRows, {
               id: "sunburst-arcs",
-              key: (d) => `sunburst-arc-${d.arcIndex}`,
+              // `playKey` folded into the key (C5, see file header): a
+              // playKey bump invalidates every arc's key at once, so native
+              // replays the full staggered reveal exactly like a fresh
+              // mount. `arcIndex` alone (unaffected by focus/zoom, verified
+              // via `buildArcs`) is what keeps a key STABLE across zoom.
+              key: (d) => `sunburst-arc-${playKey}-${d.arcIndex}`,
               generator: () => {
                 const gen = d3Arc<SunburstArcRow>()
                   .startAngle((d) => d.startAngle)
@@ -647,6 +704,36 @@ function SunburstChartInner({
               fill: (d) => d.fill,
               stroke: "var(--chart-background)",
               strokeWidth: 1,
+              // C5 (native motion, D432): reveal sweep (enter) + zoom/hover-
+              // grow morph (update) — see file header for the full design
+              // writeup (semantic `d` morph mechanism, key-stability
+              // verification, the "every OTHER phase" deviation).
+              motion: (ctx: ChartMotionContext<SunburstArcRow>) => {
+                if (ctx.phase === "exit") {
+                  // No legacy exit animation ever existed for an individual
+                  // arc vanishing (only genuinely-degenerate arcs exit, an
+                  // edge case) — instant vanish, same idiom gauge/pie use.
+                  return { transition: { type: "tween", duration: 0 } };
+                }
+                if (ctx.phase === "update") {
+                  return {
+                    transition: {
+                      type: "tween",
+                      duration: SUNBURST_ZOOM_MS,
+                      easing: motionEasingFromCss(SUNBURST_ZOOM_EASE),
+                    },
+                  };
+                }
+                const delayMs = ctx.datum ? (revealDelayById.get(ctx.datum.id) ?? 0) : 0;
+                return {
+                  delay: delayMs,
+                  transition: {
+                    type: "tween",
+                    duration: sweepDurationMs,
+                    easing: motionEasingFromCss(sweepEasingCss),
+                  },
+                };
+              },
             }),
           ],
         }),
@@ -661,117 +748,40 @@ function SunburstChartInner({
       // defaultSunburstColors above), so this has no pixel effect today.
       theme: { palette: CHART_CATEGORY_PALETTE },
     });
-  }, [arcRows]);
+  }, [arcRows, playKey, revealDelayById, sweepDurationMs, sweepEasingCss]);
 
-  // --- handleRender: WAAPI reveal (pie/radar pattern). Hover dim is no
-  // longer applied here — C1 folded it into the reactive `fill` alpha
-  // computed in `arcRows`, so it needs no re-apply on reconcile. ---
-  const handleRender = useCallback(({ container }: { container: HTMLElement }) => {
-    const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marksGroup) return;
-    const svgForBkm = container.querySelector<SVGElement>("svg.ts-chart");
-    if (!svgForBkm) return;
-
-    const seen = seenRevealedRef.current;
-    const liveIndices = new Set(arcs.map((a) => a.arcIndex));
-    for (const key of seen) {
-      if (!liveIndices.has(key)) seen.delete(key);
-    }
-
-    const elementMap = getSunburstPathMap(container);
-
-    // C1 (states+legend): hover dimming used to be re-applied here via
-    // `pathEl.style.opacity` after every TanStack reconcile (dim is lost on
-    // reconcile because reconcile rewrites the path's attributes from the
-    // fresh markup). It now rides the reactive `fill` alpha computed in
-    // `arcRows` above, so reconcile already paints the dimmed color — no
-    // imperative re-apply needed.
-
-    // NOTE: reveal guards live in refs (seenRevealedRef + playCycleRef),
-    // NOT in DOM dataset stamps compared here. Any definition change
-    // (hover grow, zoom) makes TanStack reconcile the stage svg from fresh
-    // markup, and its syncAttributes strips every attribute the markup
-    // doesn't carry — including our data-bkm-* stamps. Comparing a dataset
-    // stamp here fired on every hover and cleared `seen`, replaying the
-    // full 1100ms reveal on each pointer move (Wave-1 regression; cycle
-    // identity is now handled wholly by the SB1 effect below).
-
-    if (isRevealed(svgForBkm)) return;
-
-    const timingList = buildRevealTiming(arcs, enterStaggerScale);
-    const delayByArcId = new Map(timingList.map((t) => [t.arcId, t.delayMs]));
-
-    const toReveal: { arc: ArcDatum }[] = [];
-    for (const arc of sortedArcs) {
-      if (seen.has(arc.arcIndex)) continue;
-      const pathEl = elementMap.get(arc.arcIndex);
-      if (!pathEl) continue;
-      seen.add(arc.arcIndex);
-      toReveal.push({ arc });
-    }
-    if (toReveal.length === 0) {
-      markRevealed(svgForBkm);
-      return;
-    }
-
+  // --- C5: reveal-phase tracking (bench settle detection) ---------------
+  // The arc SWEEP itself is now fully native (the mark's own `motion`
+  // above) — this effect no longer drives any animation, it only tracks
+  // `onPhaseChange` timing so external callers still see "revealing" then
+  // "ready" on the same rough schedule the WAAPI reveal used to produce.
+  // Deliberately keyed on `[arcs, playKey, ...]`, not `arcRows`: `arcs`
+  // (and therefore which keys are "new") only changes on mount or when
+  // `data` changes shape — a hover/zoom-triggered `arcRows` recompute must
+  // NOT restart this timer (matches the pre-C5 `seenRevealedRef` guard's
+  // intent, now for free via the effect's own dependency list). A playKey
+  // bump both restarts this timer AND (via the mark's `key`, above)
+  // independently triggers native's own enter/exit replay — the two are
+  // deliberately decoupled: this effect only ever reports phase, never
+  // animates.
+  useEffect(() => {
     if (prefersReducedMotion) {
-      markRevealed(svgForBkm);
       setPhase("ready");
       return;
     }
-
-    markRevealed(svgForBkm);
-    marksGroup.classList.add("ts-chart__marks--revealing");
     setPhase("revealing");
-
-    const maxDelay = timingList.length > 0 ? timingList[timingList.length - 1]!.delayMs : 0;
-    for (const { arc } of toReveal) {
-      pendingRevealIds.current.add(arc.arcIndex);
-    }
+    const maxDelay = maxRevealDelayMs(arcs, enterStaggerScale);
     revealDeadlineTimerRef.current = setRevealDeadline(sweepDurationMs + maxDelay + 935, {
-      animationsRef: revealAnimsRef,
       onDeadline: () => setPhase("ready"),
     });
-
-    revealPostPaintCancelRef.current = onPostPaint(() => {
-      const liveMap = getSunburstPathMap(container);
-      const liveMarksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
-      liveMarksGroup?.classList.remove("ts-chart__marks--revealing");
-
-      for (const { arc } of toReveal) {
-        const liveEl = liveMap.get(arc.arcIndex);
-        if (!liveEl) {
-          pendingRevealIds.current.delete(arc.arcIndex);
-          continue;
-        }
-        const geom = geometryFor(arc, focus, maxDepth, radius);
-        if (!geom) {
-          pendingRevealIds.current.delete(arc.arcIndex);
-          continue;
-        }
-        const keyframes = buildRevealKeyframes(geom);
-        if (!keyframes || keyframes.length < 2) {
-          pendingRevealIds.current.delete(arc.arcIndex);
-          continue;
-        }
-        const delayMs = delayByArcId.get(arc.id) ?? 0;
-        const anim = liveEl.animate(keyframes, {
-          duration: sweepDurationMs,
-          delay: delayMs,
-          easing: sweepEasingCss,
-          fill: "backwards",
-        });
-        revealAnimsRef.current.push(anim);
-        anim.onfinish = () => {
-          anim.cancel();
-          pendingRevealIds.current.delete(arc.arcIndex);
-        };
-        anim.oncancel = () => {
-          pendingRevealIds.current.delete(arc.arcIndex);
-        };
+    return () => {
+      if (revealDeadlineTimerRef.current !== null) {
+        window.clearTimeout(revealDeadlineTimerRef.current);
+        revealDeadlineTimerRef.current = null;
       }
-    });
-  }, [arcs, sortedArcs, focus, maxDepth, radius, setPhase, prefersReducedMotion, enterStaggerScale, sweepDurationMs, sweepEasingCss]);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arcs, playKey, enterStaggerScale, sweepDurationMs, prefersReducedMotion, setPhase]);
 
   // --- TanStack-path click listeners (synthetic-dispatch contract) ---
   // Real pointer interaction is served by the hit layer above the stage svg;
@@ -804,9 +814,13 @@ function SunburstChartInner({
 
   // --- Hit layer handlers (bklit parity: enter per segment, leave only at ---
   // --- svg level — last-enter-wins; click zooms when segment has children) ---
+  // C5: the pre-native reveal used to suppress hover while a path's `d` was
+  // still owned by an in-flight WAAPI reveal `.animate()` (a two-writer
+  // hazard against the SAME attribute). Native motion owns both the reveal
+  // and hover-grow through the ONE reconcile pipeline now, so there is no
+  // second writer left to race — no guard needed.
   const handleHitEnter = useCallback(
     (arcIndex: number) => {
-      if (pendingRevealIds.current.has(arcIndex)) return;
       setHoveredArcIndex(arcIndex);
     },
     [setHoveredArcIndex],
@@ -859,85 +873,17 @@ function SunburstChartInner({
     };
   }, [prefersReducedMotion]);
 
-  // --- Zoom WAAPI tweens (keyed) ---
-  // Attaches on every 1→0 zoomT transition (each click restarts the tween,
-  // including interrupts — the cancel+gen-bump in zoomTo guarantees fresh
-  // keyframes from the CURRENT visual state: the midpoint-snapshot nuance).
-  useEffect(() => {
-    if (zoomT !== 0) return;
-
-    if (prevFocus.id === focus.id) return;
-
-    const container = containerRef.current;
-    if (!container) return;
-    const elementMap = getSunburstPathMap(container);
-    if (elementMap.size === 0) return;
-
-    for (const anim of zoomAnimationsRef.current) anim.cancel();
-    zoomAnimationsRef.current.clear();
-
-    for (const a of sortedArcs) {
-      const pathEl = elementMap.get(a.arcIndex);
-      if (!pathEl) continue;
-
-      const keyframes = buildZoomKeyframes(a, prevFocus, focus, maxDepth, radius);
-      if (!keyframes || keyframes.length < 2) continue;
-
-      const anim = pathEl.animate(keyframes, {
-        duration: 750,
-        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-        fill: "forwards",
-      });
-      zoomAnimationsRef.current.add(anim);
-    }
-  }, [zoomT, sortedArcs, maxDepth, radius, prevFocus, focus]);
-
-  useEffect(() => {
-    const pendingReveal = pendingRevealIds.current;
-    const revealAnims = revealAnimsRef.current;
-    const zoomAnims = zoomAnimationsRef.current;
-    return () => {
-      if (revealDeadlineTimerRef.current !== null) {
-        window.clearTimeout(revealDeadlineTimerRef.current);
-        revealDeadlineTimerRef.current = null;
-      }
-      revealPostPaintCancelRef.current?.();
-      revealPostPaintCancelRef.current = null;
-      pendingReveal.clear();
-      for (const anim of revealAnims) {
-        try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
-      }
-      revealAnimsRef.current = [];
-      for (const anim of zoomAnims) {
-        try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
-      }
-      zoomAnims.clear();
-    };
-  }, []);
-
-  // Fallback: if onRender never fired yet (race), retry once past paint (pie/radar pattern)
-  useLayoutEffect(() => {
-    if (seenRevealedRef.current.size > 0) return;
-    const container = containerRef.current;
-    if (!container) return;
-    const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (seenRevealedRef.current.size > 0) return;
-        if (!container.querySelector(".ts-chart__marks")) return;
-        const hasAnims = () => {
-          const paths = container.querySelectorAll('path[data-ts-key^="sunburst-arcs:"]');
-          for (const el of paths) {
-            const anyEl = el as unknown as { getAnimations?: () => Animation[] };
-            if (anyEl.getAnimations?.().length) return true;
-          }
-          return false;
-        };
-        if (hasAnims()) return;
-        handleRender({ container });
-      });
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [handleRender]);
+  // C5: the zoom `d`-morph is native now (the arc mark's own "update"
+  // transition, SUNBURST_ZOOM_MS/EASE above) — `arcRows` already recomputes
+  // off `focus` on every `zoomTo` commit, so TanStack's own keyed reconcile
+  // triggers the morph with zero imperative code here. The WAAPI zoom
+  // effect (`buildZoomKeyframes`, queried `elementMap`, per-arc `.animate()`
+  // calls) is deleted outright, not ported — `zoomT`'s rAF tick loop
+  // (`zoomTo`, above) still drives the label/hit-layer/center-circle
+  // overlays below, which are NOT TanStack scene nodes and have no native
+  // motion equivalent to fall back on. (`revealDeadlineTimerRef`'s teardown
+  // is already handled by the reveal-phase effect's own cleanup, above —
+  // no separate unmount effect needed here.)
 
   // --- Center circle geometry ---
   // SB13 (legacy parity): interpolate the hub radius during zoom —
@@ -1070,43 +1016,31 @@ function SunburstChartInner({
     return runLabelsReveal() ?? undefined;
   }, [labelsCount, labelsRevealDelayMs, prefersReducedMotion, runLabelsReveal]);
 
-  // --- Latest-refs so the SB1 replay can re-drive renders without adding ---
-  // --- handleRender/runLabelsReveal as effect deps (which would loop).    ---
-  const handleRenderRef = useRef(handleRender);
+  // --- Latest-ref so the SB1 replay can re-drive labels without adding ---
+  // --- runLabelsReveal as an effect dep (which would loop). ---
   const runLabelsRevealRef = useRef(runLabelsReveal);
   useLayoutEffect(() => {
-    handleRenderRef.current = handleRender;
     runLabelsRevealRef.current = runLabelsReveal;
   });
 
   // --- SB1: playKey replays the initialization animation ---
   // Legacy keys its enter tweens with `${playKey}-enter-${arcId}`, so bumping
-  // playKey restarts the whole reveal. Here: bump the reveal-cycle identity,
-  // cancel in-flight reveal state, clear both once-per-mount guards, and
-  // re-drive the arcs + labels imperatively (onRender won't refire — the
-  // definition is unchanged).
+  // playKey restarts the whole reveal. C5: the ARC reveal replay is now
+  // entirely native — `playKey` is folded into the mark's own `key`
+  // (definition useMemo, above), so a playKey bump makes every arc key
+  // "new" and native replays the full staggered enter on its own; phase
+  // tracking (`setPhase("revealing")` → `"ready"`) is likewise already
+  // covered by the reveal-phase effect above (also keyed on `[..., playKey,
+  // ...]`). This effect's only remaining job is the LABELS overlay, which
+  // stays WAAPI (a separate DOM overlay, no native mark to hang motion off)
+  // and needs its own once-per-cycle dataset-guard reset + replay.
   useEffect(() => {
     const next = `${playKey}`;
     if (next === playCycleRef.current) return;
     playCycleRef.current = next;
 
-    for (const anim of revealAnimsRef.current) {
-      try { anim.cancel(); } catch { /* teardown race */ }
-    }
-    revealAnimsRef.current = [];
-    if (revealDeadlineTimerRef.current !== null) {
-      window.clearTimeout(revealDeadlineTimerRef.current);
-      revealDeadlineTimerRef.current = null;
-    }
-    revealPostPaintCancelRef.current?.();
-    revealPostPaintCancelRef.current = null;
-    pendingRevealIds.current.clear();
-    seenRevealedRef.current.clear();
-
     const container = containerRef.current;
     if (!container) return;
-    const svg = container.querySelector<SVGSVGElement>("svg.ts-chart");
-    clearRevealed(svg);
     const labelsSvg = container.querySelector<SVGSVGElement>("svg.ts-bkm-sunburst-labels");
     if (labelsSvg) {
       delete (labelsSvg as unknown as HTMLElement & { dataset: DOMStringMap }).dataset.bkmLabelsRevealed;
@@ -1115,10 +1049,7 @@ function SunburstChartInner({
       }
       runLabelsRevealRef.current?.();
     }
-
-    setPhase("revealing");
-    handleRenderRef.current?.({ container });
-  }, [playKey, setPhase]);
+  }, [playKey]);
 
 
   useEffect(() => {
@@ -1146,12 +1077,12 @@ function SunburstChartInner({
     >
       {breadcrumbChildren}
       <div style={{ aspectRatio: "1 / 1", maxWidth: size, position: "relative" }}>
-        <Chart
+        <RendererChart
           ariaLabel={`Sunburst chart of ${data.name}`}
           width={size}
           height={size}
           definition={definition}
-          onRender={handleRender}
+          renderer={chartMotionRenderer<SunburstArcRow, number, number>()}
         />
         <SunburstHitLayer
           items={hitItems}

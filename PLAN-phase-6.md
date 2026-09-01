@@ -34,6 +34,16 @@ Log the inheritance as the first D-entry. Nothing is measured again until 6.5.
 
 **Macro structure:** Research (6.1) -> Map (6.2) -> Implement (6.3) -> Refactor (6.4) -> Gate (6.5)
 
+**Scope amendment, 2026-09-01 (appended — the six-commit ladder above is not rewritten).** A
+re-audit of the six Phase-5 task-groups that closed with zero code changed
+(`research/phase-6/09-reopened-phase-5.md`, ledger **D434–D446**) found that six of their tasks were
+**already delivered** by C1–C4 under different names, and that three "not implementable" rulings
+were factually wrong about the library. Consequence for this plan: 6.3's motion rung splits into
+**C5a** (renderer switch, T20) and **C5b** (motion + reveals), and two rungs are added — **C5c**
+polar focus (T11: pie/ring/sunburst-hover; radar excluded as a logged accepted deviation, D445) and
+**C5d** sunburst semantic motion (T15 vectors A+B). Both retire reach-in mass the original ladder
+left in place. Nothing else in scope changes; the DoD and the out-of-scope list below stand.
+
 ## How to Work
 
 **Research and decision-making are done by the orchestrator (you) directly — not delegated.**
@@ -108,6 +118,12 @@ disciplines, both free:
 - **One commit per subsystem**, in map order (expected: states -> tooltip -> hover geometry ->
   axes -> motion -> brush/zoom -> legend). This is the bisect ladder replacing the per-batch gates
   we are skipping.
+  **Amended 2026-09-01 (append, not rewrite):** the motion rung splits and gains two rungs after it
+  — **C5a** renderer switch alone (T20, D434), **C5b** motion + reveals, **C5c** polar focus
+  (T11, D435), **C5d** sunburst semantic motion (T15 A+B, D436/D437) — then brush/zoom. C5c and C5d
+  carry Phase-5 tasks reopened by `research/phase-6/09-reopened-phase-5.md` (ledger D434–D446) under
+  D417's expiry rule; per-rung detail and the "do not stack C5b and C5c on heatmap/ring in one gate
+  window" constraint live in `docs/phase-6/PROGRESS.md`.
 - Typecheck + build continuously (seconds; catches mechanical breakage early — this is not the
   benchmark we are saving).
 

@@ -1,6 +1,5 @@
-// Imperative, zero-React-state, zero-framer-motion hover chrome for
-// RingChart's rings — ports repos/bklit-ui/packages/ui/src/charts/ring.tsx's
-// `motion.g` hover behavior (docs/LOG.md D10):
+// Hover chrome for RingChart's rings — ports repos/bklit-ui/packages/ui/src/
+// charts/ring.tsx's `motion.g` hover behavior (docs/LOG.md D10):
 //   - hovered ring: scale 1.03; rings with index > hoveredIndex ("pushed
 //     out" — bklit's `isPushedOut = hoveredIndex !== null && hoveredIndex <
 //     index`, i.e. rings OUTWARD of the hovered one): scale 1.02; all
@@ -33,103 +32,40 @@
 // ring-chart.tsx `RingChartCore`). Reused verbatim (re-exported under a
 // Ring-specific name for call-site clarity) rather than copy-pasted.
 //
-// --- Two-writer hazard on `transform` (ring-specific — pie has none) -------
-// Pie's slice `d` attribute is single-writer from plain JSX; its hover
-// springs never touch `d` (they write `transform`/regenerate `d` for the
-// "grow" effect only, and pie has no separate reveal writer of `transform`
-// at all). Ring's GROUP `transform` (scale), by contrast, has TWO potential
-// writers: ring-chart.tsx's WAAPI *expand* reveal animation (phase 1, scale
-// 0->1) and this runtime's hover spring (phase 2, scale ~1). If the hover
-// spring wrote `style.transform` from the very first render, it would race
-// the WAAPI animation for control of the same CSS property for the whole
-// expand-phase duration. Fixed via a `started`/`settleAtRest()` gate: this
-// runtime withholds writing `transform` until `settleAtRest()` is called —
-// ring-chart.tsx calls it from the expand
-// WAAPI animation's `onfinish` (or synchronously, for `animate={false}` /
-// once `expandComplete` is already true at mount). Until then, `transform`
-// is left entirely to the WAAPI animation (which itself ends at `scale(1)`,
-// matching this runtime's own resting spring value, so there is no visible
-// seam at the handoff).
-import { createSpring, type Spring } from "./spring";
-
+// --- C3 (native motion, Phase 6, D432): scale spring is now a reactive
+// geometry channel, not an imperative `style.transform` writer ------------
+// A CSS `transform: scale(s)` on an arc GROUP, applied around the polar
+// origin (the group carries no translate of its own — the container's
+// `polar()` wrapper already places the origin at the ring center), is
+// pixel-identical to redrawing the same arc with `innerRadius`/`outerRadius`/
+// `cornerRadius` all multiplied by `s`: an arc's geometry is entirely a
+// function of (radius, angle) about that same origin, so scaling every
+// radius by `s` reproduces exactly what a uniform scale transform would
+// paint, corner caps included. ring-chart.tsx's track/progress marks now
+// multiply their radius channels by `ringHoverScale(...)` (below, unchanged
+// pure logic) and hand the *spring* to the mark's own `motion` update-phase
+// transition (`HOVER_SPRING`, pie-hover-chrome.ts) — the native motion
+// engine interpolates the resulting geometry itself. `createRingHoverRuntime`
+// / `RingHoverRuntime` / `RingHoverConfig` (the old spring-runtime that wrote
+// `style.transform` on both group elements, gated by a `started`/
+// `settleAtRest()` two-writer-hazard flag against ring-chart.tsx's WAAPI
+// track-entrance pop) are DELETED outright: with hover now driving `d`
+// geometry instead of a `transform` on the same group the entrance pop
+// animates, the two writers target different attributes and never race, so
+// the whole hazard-gate machinery has nothing left to guard. `ringHoverScale`
+// survives unchanged — it's the one piece of pure hover-index arithmetic
+// ring-chart.tsx still needs, now called from a `radialArc` radius channel
+// instead of a spring `set()` target.
 export {
   createPieHoverCoordinator as createRingHoverCoordinator,
   type PieHoverCoordinator as RingHoverCoordinator,
 } from "./pie-hover-chrome";
 
-const HOVER_SPRING = { stiffness: 400, damping: 25 } as const;
-
-export interface RingHoverConfig {
-  index: number;
-  trackGroupEl?: SVGGElement | null;
-  progressGroupEl?: SVGGElement | null;
-}
-
-export interface RingHoverRuntime {
-  /** Refresh the live config — call on every Ring render. Does not itself
-      repaint; call `paint()` after if a repaint is needed. */
-  update(config: RingHoverConfig): void;
-  /** Repaint immediately for the given hovered index. The scale spring
-      animates toward its new target from wherever it currently is, but only
-      actually WRITES `transform` once `settleAtRest()` has been called at
-      least once (see file header). */
-  paint(hoveredIndex: number | null): void;
-  /** Hands `transform` control to this runtime's spring — call once, from
-      the expand reveal's completion (WAAPI `onfinish`, or synchronously
-      when `animate` is false / already complete at mount). Idempotent. */
-  settleAtRest(): void;
-  stop(): void;
-}
-
-function ringHoverScale(isHovered: boolean, isPushedOut: boolean): number {
+/** bklit `ring.tsx`'s hover/pushed-out scale factors (docs/LOG.md D10,
+    verbatim: hovered 1.03, pushed-out 1.02, rest 1). Pure — safe to call
+    from a `radialArc` radius channel on every render. */
+export function ringHoverScale(isHovered: boolean, isPushedOut: boolean): number {
   if (isHovered) return 1.03;
   if (isPushedOut) return 1.02;
   return 1;
-}
-
-export function createRingHoverRuntime(): RingHoverRuntime {
-  let config: RingHoverConfig | null = null;
-  let started = false;
-  let currentScale = 1;
-
-  const applyTransform = () => {
-    if (!config || !started) return;
-    const value = `scale(${currentScale})`;
-    if (config.trackGroupEl) config.trackGroupEl.style.transform = value;
-    if (config.progressGroupEl) config.progressGroupEl.style.transform = value;
-  };
-
-  const scaleSpring: Spring = createSpring(1, HOVER_SPRING.stiffness, HOVER_SPRING.damping, (v) => {
-    currentScale = v;
-    applyTransform();
-  });
-
-  return {
-    update(next) {
-      config = next;
-    },
-    paint(hoveredIndex) {
-      if (!config) return;
-      const isHovered = hoveredIndex === config.index;
-      const isPushedOut = hoveredIndex !== null && hoveredIndex < config.index;
-
-      // Always retarget the spring, even before `started` — its `onUpdate`
-      // (`applyTransform`) is a no-op DOM write until `settleAtRest()` has
-      // been called, but the spring's own internal state keeps evolving so
-      // there's no jump once it IS handed off (see file header).
-      scaleSpring.set(ringHoverScale(isHovered, isPushedOut));
-    },
-    settleAtRest() {
-      if (started) return;
-      started = true;
-      // Jump (not animate) to the CURRENT target so the handoff from the
-      // WAAPI reveal (which itself ends at scale(1), the spring's own
-      // initial resting value) is seamless — any hover that occurs strictly
-      // AFTER this point animates normally via `paint()`'s `set()` above.
-      applyTransform();
-    },
-    stop() {
-      scaleSpring.stop();
-    },
-  };
 }

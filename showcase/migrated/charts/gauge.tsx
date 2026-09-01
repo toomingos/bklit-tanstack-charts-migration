@@ -30,47 +30,51 @@
 //    radial centerline — pie slices cannot express it), computed by the
 //    verbatim `computeArcNotches` port, in the SAME `gauge-bg`/
 //    `gauge-active` group keys so the reveal reconciler is shared.
-//  - Linear: plain hand-rolled `<svg>` (NO `@tanstack/charts` container at
-//    all) — same fallback precedent already established by
-//    ring-chart.tsx/pie-chart.tsx (grep-verified: ring-chart.tsx uses zero
-//    TanStack `<Chart>`/mark usage). A horizontal notch strip has no
-//    natural cartesian x/y domain to hand to `defineChart` (each notch's
-//    slot position is `i*(slotWidth+gapWidth)`, not a data-driven x/y
-//    value pair), and unlike arc there is no polar container whose
-//    angle/radius machinery a custom mark can piggyback on and then
-//    bypass — a `cartesian()` custom mark would gain nothing over plain
-//    SVG here (no data-driven scale, no axis, no guide reuse) while adding
-//    an extra abstraction layer for zero benefit. FLAGGED for Fable
-//    review per this deliverable's own instruction, same as the ring/pie
-//    precedent it follows.
+//  - Linear: ONE custom mark (`createMark`, T17) emitting bklit's own
+//    `createNotchPath` rectangular quads directly — no cartesian() exists
+//    (D30 justification funnel-chart.tsx's header cites), and a horizontal
+//    notch strip has no natural cartesian x/y domain to hand to
+//    `defineChart` (each notch's slot position is `i*(slotWidth+gapWidth)`,
+//    not a data-driven x/y value pair) — so the mark bypasses scales
+//    entirely, same as the arc `uniformWidth` custom PolarMark.
 //
-// Reveal/update animation — WAAPI only, mount reveal AND the D28 value-
-// update idiom (increase = spring-pop only NEWLY-active notches; decrease
-// = instant vanish, no exit animation) are both produced by ONE generic
-// key-diffing reconciler (`internal/gauge-reveal.ts`'s
-// `reconcileGaugeReveal`), not radar/candlestick's epoch-replay machinery —
-// see that file's header for the full "why no separate mount-vs-update
-// phase is needed here" derivation (bklit's own notch keys, `bg-i`/
-// `active-i`, are permanent identities, not array-position keys, so
-// framer's `initial` prop only ever fires once per key regardless of what
-// else changes around it). This is a genuine, disclosed simplification
-// versus every other migrated family.
+// --- C4 (native motion, Phase 6, D432) -------------------------------------
+// Reveal/update animation is now fully native: every notch is an
+// individually-keyed scene node (`radialArc`'s own `key`, or this file's
+// explicit `gauge-bg:{i}`/`gauge-active:{i}` keys on the custom marks), so
+// `@tanstack/charts`' own keyed diff drives entrance (new key), exit
+// (removed key) and update (existing key, e.g. a geometry-affecting prop
+// change) — see each mark's `motion` callback below for the authored
+// per-phase delay/transition. This reproduces the exact bklit D28 idiom
+// (value increase = spring-pop only the NEWLY-active notches; value
+// decrease = instant vanish, no exit animation — native `exit` gets a
+// `{type:"tween",duration:0}` transition to match) with NO bookkeeping code
+// in this file: no `seen` sets, no epoch/generation counters, no
+// `onRender`/`handleRender` at all. `internal/gauge-reveal.ts`'s header has
+// the full derivation (including the one disclosed delta: native per-datum
+// arc entrance animates opacity only, not the legacy scale(0)->scale(1)
+// half of the pop — confirmed via direct `dist/motion.js` reading, no
+// native per-datum scale primitive exists for arc-role marks).
 //
 // Gradient `<defs>` for the arc path's theme-palette gradient
 // (`useGradient && activeGradient === undefined`) use `defineChart`'s own
-// `gradients: ChartLinearGradient[]` option, rendered via
-// `renderSvg={renderChartSvgWithResources}` (`@tanstack/charts/svg/
-// resources`, confirmed by reading `Chart.tsx`: `renderSvg` defaults to
-// the plain `renderChartSvg`, which does NOT know about `scene.gradients`
-// at all) — a sanctioned, first-party mechanism for exactly this need, not
-// a sibling-`<svg>` hack. bklit's `children`-as-defs escape hatch
+// `gradients: ChartLinearGradient[]` option. Previously routed through
+// `renderSvg={renderChartSvgWithResources}` on the old `<Chart>` — reading
+// `dist/svg-resources.js` this session shows `renderChartSvgWithResources`
+// is a bare re-export of `renderChartSvg` (`dist/svg.js`), i.e. `<Chart>`'s
+// own DEFAULT renderer, which already renders `scene.gradients` into a
+// `<defs>` block via `renderGradients()` unconditionally — so that prop was
+// always redundant, not a special add-on. `<RendererChart>`'s adapter
+// (`@tanstack/charts/adapter/renderer`) shares the same scene-rendering
+// core, so gradients keep working with no `renderSvg` prop at all — nothing
+// to replace it with. bklit's `children`-as-defs escape hatch
 // (`collectGaugeDefsElements` — arbitrary caller-supplied
-// `<linearGradient>`/`<pattern>` JSX passed as `<Gauge>` children) works on
-// BOTH orientations: linear drops the elements into its own real `<defs>`;
-// arc mounts them on a 0×0 sibling overlay svg after `<Chart>` — SVG
+// `<linearGradient>`/`<pattern>` JSX passed as `<Gauge>` children) is
+// unrelated to this and unaffected: it works on BOTH orientations exactly
+// as before (linear drops the elements into its own real `<defs>`; arc
+// mounts them on a 0×0 sibling overlay svg after the chart — SVG
 // paint-server `url(#id)` references resolve document-wide, not just within
-// the same `<svg>` subtree (same verified mechanism scatter uses for its
-// radial marker gradients).
+// the same `<svg>` subtree).
 //
 // Center readout reuses internal/center-stat.tsx's `CenterStat` UNMODIFIED
 // (per this deliverable's own instruction) via internal/gauge-center.tsx's
@@ -80,14 +84,12 @@
 // real orientation divergence — see gauge-center.tsx's header for the
 // source citations).
 //
-// Reduced motion: framer's `useReducedMotion()` has no direct migrated
-// equivalent yet, so this file adds a small local
-// `usePrefersReducedMotion` (`useSyncExternalStore` over
-// `matchMedia("(prefers-reduced-motion: reduce)")`) reproducing the same
-// contract bklit relies on (`notchTransition = prefersReducedMotion ?
-// {duration:0} : ...`) — reproduced here as `durationMs: 0` timing fed
-// through the SAME reveal path, not a separate "skip animation" branch,
-// so the reveal engine's key-bookkeeping stays identical either way.
+// Reduced motion: no longer a local `usePrefersReducedMotion` branch here —
+// the native motion renderer (`internal/motion-renderer.ts`'s
+// `chartMotionRenderer()`) already respects `prefers-reduced-motion` by
+// default (`respectReducedMotion: true`, confirmed against
+// `dist/motion.js`'s `createSvgMotionRuntime` policy default), the same
+// trust-the-renderer stance pie/ring's C2/C3 native motion paths take.
 //
 // Disclosed addition (pie/ring precedent): a `style?: CSSProperties` prop
 // forwarded onto the outermost wrapper div — not part of bklit's own
@@ -108,11 +110,10 @@
 // frozen bench scenario and docs-mdx pattern actually use) never
 // exhibits this, since a column stack never competes for width.
 import * as React from "react";
-import { Chart } from "@tanstack/react-charts";
+import { Chart as RendererChart } from "@tanstack/react-charts/core";
 import { createMark, defineChart, type SceneNode } from "@tanstack/charts";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { polar, radialArc, type PolarMark } from "@tanstack/charts/polar";
-import { renderChartSvgWithResources } from "@tanstack/charts/svg/resources";
 import {
   collectGaugeDefsElements,
   computeArcNotches,
@@ -130,18 +131,10 @@ import {
 } from "./internal/gauge-notch";
 import {
   GAUGE_SPRING_FALLBACK,
-  reconcileGaugeReveal,
-  type GaugeRevealTarget,
-} from "./internal/gauge-reveal";
-// T-C3 collapse: gauge's TIMING names resolve from enter-transition directly;
-// gauge-reveal keeps only its unique key-diffing reconciler (GAUGE_SPRING_
-// FALLBACK stays there — it is the reconciler's own default timing).
-import {
+  gaugeMotionTransition,
   resolveEnterTransition,
-  revealTiming,
   type GaugeEnterTransition,
-  type GaugeRevealTiming,
-} from "./internal/enter-transition";
+} from "./internal/gauge-reveal";
 import {
   GaugeCenterOverlay,
   GaugeLabelLayout,
@@ -149,10 +142,10 @@ import {
   type GaugeLabelAlign,
   type GaugeLabelPlacement,
 } from "./internal/gauge-center";
-import { onPostPaint } from "./internal/deferred-reveal";
 import { nativeStaggerDelayMs } from "./internal/native-stagger";
 import { defaultCenterStatFormat, type CenterStatFormat } from "./internal/center-stat";
-import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
+import { chartMotionRenderer } from "./internal/motion-renderer";
+import type { ChartMotionContext } from "@tanstack/charts";
 import {
   useDebouncedContainerSize,
   useDebouncedContainerWidth,
@@ -164,30 +157,6 @@ export type { GaugeLabelAlign, GaugeLabelPlacement } from "./internal/gauge-cent
 
 // Gauge has zero pointer/tooltip interaction — see the native `focusDisabled`
 // import above (`@tanstack/charts/focus/disabled`).
-
-function deferredGaugeMountReveal(
-  groupEl: HTMLElement | SVGGElement,
-  collectTargets: () => [GaugeRevealTarget[], GaugeRevealTarget[]],
-  timing: GaugeRevealTiming,
-  seenBgRef: React.MutableRefObject<Set<string>>,
-  seenActiveRef: React.MutableRefObject<Set<string>>,
-  revealAnimationsRef: React.MutableRefObject<Animation[]>,
-  renderGenRef: React.MutableRefObject<number>,
-  myGen: number,
-): () => void {
-  groupEl.classList.add("ts-chart__marks--revealing");
-  return onPostPaint(() => {
-    if (renderGenRef.current !== myGen) {
-      groupEl.classList.remove("ts-chart__marks--revealing");
-      return;
-    }
-    const trackReveal = trackRevealFactory(revealAnimationsRef);
-    const [bgTargets, activeTargets] = collectTargets();
-    reconcileGaugeReveal(bgTargets, seenBgRef.current, timing, trackReveal);
-    reconcileGaugeReveal(activeTargets, seenActiveRef.current, timing, trackReveal);
-    groupEl.classList.remove("ts-chart__marks--revealing");
-  });
-}
 
 /** Flat row fed to `radialArc` — one datum per rendered arc path. */
 interface GaugeArcRow {
@@ -254,10 +223,6 @@ export interface GaugeProps {
   style?: React.CSSProperties;
 }
 
-function reducedMotionTiming(): GaugeRevealTiming {
-  return { durationMs: 0, easing: "linear", sampledProgress: [0, 1] };
-}
-
 // --- Fill state — notch-gauge-shared.ts's `useGaugeFillState`, ported
 // verbatim (gauge.tsx lines 223-267), shared by both orientations. ---
 interface GaugeFillStateInput {
@@ -313,21 +278,6 @@ function useGaugeFillState(props: GaugeFillStateInput) {
   };
 }
 
-// A finished `fill:"backwards"` animation has no further effect — release
-// its tracking ref the moment it finishes (docs/LOG.md D48; radar-chart.tsx/
-// ring-chart.tsx precedent) so a computed backstop only ever cancels
-// genuinely never-finished animations.
-function trackRevealFactory(store: React.RefObject<Animation[]>) {
-  return (anim: Animation) => {
-    store.current.push(anim);
-    anim.onfinish = () => {
-      const arr = store.current;
-      const i = arr.indexOf(anim);
-      if (i !== -1) arr.splice(i, 1);
-    };
-  };
-}
-
 // ============================================================================
 // Arc
 // ============================================================================
@@ -365,7 +315,6 @@ function GaugeArc(props: GaugeArcProps) {
     enterStaggerScale = 1,
   } = props;
 
-  const prefersReducedMotion = usePrefersReducedMotion();
   const fillState = useGaugeFillState({
     useGradient,
     activeGradient,
@@ -593,9 +542,69 @@ function GaugeArc(props: GaugeArcProps) {
   const definition = React.useMemo(() => {
     if (!arcRows || (uniformWidth && !uniformRows)) return null;
 
+    // T-D3: bklit's own stagger scalar, clamped exactly as the pre-C4
+    // `handleRender` clamped it — app-level config, unaffected by the
+    // enter/exit/update mechanism switching to native.
+    const stagger = Math.max(0.25, Math.min(2.5, enterStaggerScale));
+
+    // C4 (native motion, D432): shared per-notch enter/exit/update — new
+    // key (activeNotches grew, or first mount) pops in with the legacy
+    // bg/active stagger delay; removed key (activeNotches shrank) vanishes
+    // instantly (`{type:"tween",duration:0}`, matching bklit's D28 "value
+    // decrease = no exit animation" idiom); an existing, still-present key
+    // whose `d`/fill changed (e.g. a geometry prop change) morphs on the
+    // SAME resolved enterTransition timing — native's own keyed diff
+    // (`reconcileMotionElement`, dist/motion.js) replaces the old
+    // `reconcileGaugeReveal` bookkeeping entirely (gauge-reveal.ts header).
+    const notchMotion = (isActiveGroup: boolean) =>
+      (ctx: ChartMotionContext<GaugeArcRow>) => {
+        if (ctx.phase === "exit") {
+          return { transition: { type: "tween" as const, duration: 0 } };
+        }
+        const resolved = resolveEnterTransition(enterTransition, GAUGE_SPRING_FALLBACK);
+        if (ctx.phase === "update") {
+          return { transition: gaugeMotionTransition(resolved) };
+        }
+        const idx = ctx.datumIndex ?? 0;
+        return {
+          delay: isActiveGroup
+            ? nativeStaggerDelayMs(0.02 * stagger * 1000, 0.3 * stagger * 1000, idx, "arc")
+            : nativeStaggerDelayMs(0.015 * stagger * 1000, 0, idx, "arc"),
+          transition: gaugeMotionTransition(resolved),
+        };
+      };
+
     if (uniformWidth && uniformRows) {
       const { bg, active, notchLength } = uniformRows;
+      // The custom quad mark's own scene tree nests per-notch children
+      // (`gauge-bg:{i}`/`gauge-active:{i}`) inside two GROUP nodes
+      // (`gauge-bg`/`gauge-active`, keyed without a `:`). Only the
+      // per-notch children carry semantic identity — giving the group
+      // its OWN opacity fade on top of each child's fade would compound
+      // multiplicatively (nested SVG group/child opacity stacks), so the
+      // group-level keys opt out (`return false`) and only children
+      // animate, same net contract as the stock `radialArc` marks below
+      // (whose own per-datum keys have no such wrapper ambiguity).
       const quadMark: PolarMark<unknown> = {
+        motion: (ctx) => {
+          const sep = ctx.key.indexOf(":");
+          if (sep === -1) return false;
+          const isActiveGroup = ctx.key.startsWith("gauge-active:");
+          if (ctx.phase === "exit") {
+            return { transition: { type: "tween", duration: 0 } };
+          }
+          const resolved = resolveEnterTransition(enterTransition, GAUGE_SPRING_FALLBACK);
+          if (ctx.phase === "update") {
+            return { transition: gaugeMotionTransition(resolved) };
+          }
+          const idx = Number(ctx.key.slice(sep + 1));
+          return {
+            delay: isActiveGroup
+              ? nativeStaggerDelayMs(0.02 * stagger * 1000, 0.3 * stagger * 1000, idx, "arc")
+              : nativeStaggerDelayMs(0.015 * stagger * 1000, 0, idx, "arc"),
+            transition: gaugeMotionTransition(resolved),
+          };
+        },
         initialize: () => ({
           id: "gauge-bg",
           colorValues: [],
@@ -717,6 +726,7 @@ function GaugeArc(props: GaugeArcProps) {
               fill: (d) => d.fill,
               fillOpacity: fillState.resolvedInactiveFillOpacity,
               cornerRadius: notchCornerRadius,
+              motion: notchMotion(false),
             }),
             // Active overlay — ONLY active notches overlaid with active fill
             radialArc<GaugeArcRow>(activeRows, {
@@ -730,6 +740,7 @@ function GaugeArc(props: GaugeArcProps) {
               fill: (d) => d.fill,
               fillOpacity: fillState.resolvedActiveFillOpacity,
               cornerRadius: notchCornerRadius,
+              motion: notchMotion(true),
             }),
           ],
         }),
@@ -762,100 +773,20 @@ function GaugeArc(props: GaugeArcProps) {
     fillState.resolvedActiveFillOpacity,
     fillState.useThemePaletteGradient,
     fillState.themeActiveGradientId,
+    enterTransition,
+    enterStaggerScale,
   ]);
-
-  const seenBgRef = React.useRef<Set<string>>(new Set());
-  const seenActiveRef = React.useRef<Set<string>>(new Set());
-  const revealAnimationsRef = React.useRef<Animation[]>([]);
-  const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
-  const renderGenRef = React.useRef(0);
-  const isMountedRef = React.useRef(true);
-
-  React.useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-      setTimeout(() => {
-        if (isMountedRef.current) return;
-        revealPostPaintCancelRef.current?.();
-        revealPostPaintCancelRef.current = null;
-        for (const anim of revealAnimationsRef.current) {
-          try {
-            anim.cancel();
-          } catch { /* teardown race — already cancelled */ }
-        }
-        revealAnimationsRef.current = [];
-      }, 0);
-    };
-  }, []);
-
-  const handleRender = React.useCallback(() => {
-    const marksGroup = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marksGroup) return;
-
-    renderGenRef.current += 1;
-    const myGen = renderGenRef.current;
-    const stagger = Math.max(0.25, Math.min(2.5, enterStaggerScale));
-    const timing = prefersReducedMotion
-      ? reducedMotionTiming()
-      : revealTiming(resolveEnterTransition(enterTransition, GAUGE_SPRING_FALLBACK));
-
-    const collectTargets = (): [GaugeRevealTarget[], GaugeRevealTarget[]] => {
-      const container = containerRef.current;
-      const bgGroup =
-        (marksGroup.querySelector<SVGGElement>('[data-ts-key="gauge-bg"]') as SVGGElement | null) ??
-        (container?.querySelector<SVGGElement>('[data-ts-key="gauge-bg"]') as SVGGElement | null);
-      const activeGroup =
-        (marksGroup.querySelector<SVGGElement>('[data-ts-key="gauge-active"]') as SVGGElement | null) ??
-        (container?.querySelector<SVGGElement>('[data-ts-key="gauge-active"]') as SVGGElement | null);
-
-      // T-D3: native stagger({each, offset}) — the `stagger` scalar (the
-      // `[0.25,2.5]`-clamped `enterStaggerScale`) is app-level config that
-      // stays as-is; only the per-index formula becomes a native call.
-      // bg: offset=0, each=0.015*stagger*1000.
-      // active: offset=0.3*stagger*1000, each=0.02*stagger*1000.
-      const bgTargets: GaugeRevealTarget[] = bgGroup
-        ? Array.from(bgGroup.querySelectorAll<SVGPathElement>("path")).map((el, idx) => ({
-            key: `bg-${idx}`,
-            el,
-            delayMs: nativeStaggerDelayMs(0.015 * stagger * 1000, 0, idx, "arc"),
-          }))
-        : [];
-
-      const activeTargets: GaugeRevealTarget[] = activeGroup
-        ? Array.from(activeGroup.querySelectorAll<SVGPathElement>("path")).map((el, idx) => ({
-            key: `active-${idx}`,
-            el,
-            delayMs: nativeStaggerDelayMs(0.02 * stagger * 1000, 0.3 * stagger * 1000, idx, "arc"),
-          }))
-        : [];
-
-      return [bgTargets, activeTargets];
-    };
-
-    const firstReveal = seenBgRef.current.size === 0 && seenActiveRef.current.size === 0;
-    if (!firstReveal) {
-      const trackReveal = trackRevealFactory(revealAnimationsRef);
-      const [bgTargets, activeTargets] = collectTargets();
-      reconcileGaugeReveal(bgTargets, seenBgRef.current, timing, trackReveal);
-      reconcileGaugeReveal(activeTargets, seenActiveRef.current, timing, trackReveal);
-      return;
-    }
-
-    revealPostPaintCancelRef.current = deferredGaugeMountReveal(marksGroup, collectTargets, timing, seenBgRef, seenActiveRef, revealAnimationsRef, renderGenRef, myGen);
-  }, [enterTransition, enterStaggerScale, prefersReducedMotion]);
 
   const resolvedMinWidth = minWidth ?? 300;
 
   const inner =
     definition && size > 0 ? (
       <div style={{ position: "relative", width, height }}>
-        <Chart
+        <RendererChart
           ariaLabel="Gauge chart"
           definition={definition}
           height={height}
-          onRender={handleRender}
-          renderSvg={renderChartSvgWithResources}
+          renderer={chartMotionRenderer()}
           width={width}
         />
         {fillState.defsChildren.length > 0 ? (
@@ -971,7 +902,6 @@ function GaugeLinear(props: GaugeLinearProps) {
     geometryScrubbing = false,
   } = props;
 
-  const prefersReducedMotion = usePrefersReducedMotion();
   const fillState = useGaugeFillState({
     useGradient,
     activeGradient,
@@ -1093,56 +1023,92 @@ function GaugeLinear(props: GaugeLinearProps) {
     const cornerVerticalDepth = geometry.cornerVerticalDepth;
     const activeNotches = notches.filter((notch) => notch.isActive);
 
-    const quadMark = createMark(() => ({
-      id: "gauge-linear",
-      channels: {},
-      render: () => {
-        const nodes: SceneNode[] = [];
-        if (notches.length > 0) {
-          nodes.push({
-            kind: "group",
-            key: "gauge-bg",
-            className: "ts-chart__arc",
-            ariaHidden: true,
-            children: notches.map(
-              (notch): SceneNode => ({
-                kind: "polyline",
-                key: `gauge-bg:${notch.index}`,
-                points: [],
-                path: createNotchPath(notch.points, notchCornerRadius, cornerVerticalDepth),
-                style: {
-                  fill: resolveBgFill(notch.index),
-                  fillOpacity: fillState.resolvedInactiveFillOpacity,
-                  stroke: "none",
-                },
-              }),
-            ),
-          });
+    // T-D3: same clamped stagger scalar as arc's own memo.
+    const stagger = Math.max(0.25, Math.min(2.5, enterStaggerScale));
+
+    // C4 (native motion, D432): same per-notch enter/exit/update contract
+    // as GaugeArc's `notchMotion` (this memo's own sibling helper couldn't
+    // be shared directly — GaugeLinear's mark has no `ChartMotionContext`
+    // datum binding since it bypasses scales entirely, same reason its
+    // `render` reads closured `notches`/`activeNotches` instead of channels
+    // — so notch index comes from parsing `ctx.key`, exactly like arc's
+    // `uniformWidth` custom PolarMark). `geometryScrubbing` additionally
+    // suppresses ALL motion while a caller is actively dragging the value
+    // (only GaugeLinear exposes that prop) — matches the pre-C4
+    // `handleRender`'s own `if (geometryScrubbing || !geometry) return;`
+    // early-out, which skipped scheduling reveal animations outright.
+    const quadMark = createMark(
+      () => ({
+        id: "gauge-linear",
+        channels: {},
+        render: () => {
+          const nodes: SceneNode[] = [];
+          if (notches.length > 0) {
+            nodes.push({
+              kind: "group",
+              key: "gauge-bg",
+              className: "ts-chart__arc",
+              ariaHidden: true,
+              children: notches.map(
+                (notch): SceneNode => ({
+                  kind: "polyline",
+                  key: `gauge-bg:${notch.index}`,
+                  points: [],
+                  path: createNotchPath(notch.points, notchCornerRadius, cornerVerticalDepth),
+                  style: {
+                    fill: resolveBgFill(notch.index),
+                    fillOpacity: fillState.resolvedInactiveFillOpacity,
+                    stroke: "none",
+                  },
+                }),
+              ),
+            });
+          }
+          if (activeNotches.length > 0) {
+            nodes.push({
+              kind: "group",
+              key: "gauge-active",
+              className: "ts-chart__arc",
+              ariaHidden: true,
+              children: activeNotches.map(
+                (notch): SceneNode => ({
+                  kind: "polyline",
+                  key: `gauge-active:${notch.index}`,
+                  points: [],
+                  path: createNotchPath(notch.points, notchCornerRadius, cornerVerticalDepth),
+                  style: {
+                    fill: resolveActiveFill(notch),
+                    fillOpacity: fillState.resolvedActiveFillOpacity,
+                    stroke: "none",
+                  },
+                }),
+              ),
+            });
+          }
+          return { nodes };
+        },
+      }),
+      (ctx) => {
+        if (geometryScrubbing) return false;
+        const sep = ctx.key.indexOf(":");
+        if (sep === -1) return false;
+        const isActiveGroup = ctx.key.startsWith("gauge-active:");
+        if (ctx.phase === "exit") {
+          return { transition: { type: "tween", duration: 0 } };
         }
-        if (activeNotches.length > 0) {
-          nodes.push({
-            kind: "group",
-            key: "gauge-active",
-            className: "ts-chart__arc",
-            ariaHidden: true,
-            children: activeNotches.map(
-              (notch): SceneNode => ({
-                kind: "polyline",
-                key: `gauge-active:${notch.index}`,
-                points: [],
-                path: createNotchPath(notch.points, notchCornerRadius, cornerVerticalDepth),
-                style: {
-                  fill: resolveActiveFill(notch),
-                  fillOpacity: fillState.resolvedActiveFillOpacity,
-                  stroke: "none",
-                },
-              }),
-            ),
-          });
+        const resolved = resolveEnterTransition(enterTransition, GAUGE_SPRING_FALLBACK);
+        if (ctx.phase === "update") {
+          return { transition: gaugeMotionTransition(resolved) };
         }
-        return { nodes };
+        const idx = Number(ctx.key.slice(sep + 1));
+        return {
+          delay: isActiveGroup
+            ? nativeStaggerDelayMs(0.02 * stagger * 1000, 0.3 * stagger * 1000, idx, "arc")
+            : nativeStaggerDelayMs(0.015 * stagger * 1000, 0, idx, "arc"),
+          transition: gaugeMotionTransition(resolved),
+        };
       },
-    }));
+    );
 
     return defineChart({
       marks: [quadMark],
@@ -1175,92 +1141,10 @@ function GaugeLinear(props: GaugeLinearProps) {
     fillState.resolvedActiveFillOpacity,
     fillState.useThemePaletteGradient,
     fillState.themeActiveGradientId,
+    geometryScrubbing,
+    enterTransition,
+    enterStaggerScale,
   ]);
-
-  const seenBgRef = React.useRef<Set<string>>(new Set());
-  const seenActiveRef = React.useRef<Set<string>>(new Set());
-  const revealAnimationsRef = React.useRef<Animation[]>([]);
-  const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
-  const renderGenRef = React.useRef(0);
-  // T17: dedicated host ref, distinct from the width-measurement
-  // `containerRef` below (that one is only attached on the responsive
-  // branch — see the G5 comment). `handleRender` needs a ref that's mounted
-  // on BOTH the fixed- and responsive-width paths, matching the pre-port
-  // `groupRef`'s coverage (arc's own `handleRender` reuses its
-  // measurement `containerRef`, which — unlike this one — is genuinely
-  // unattached on arc's `fixedSize` branch; not reproduced here since it
-  // would regress linear's existing fixed-width reveal coverage).
-  const chartHostRef = React.useRef<HTMLDivElement | null>(null);
-
-  const handleRender = React.useCallback(() => {
-    if (geometryScrubbing || !geometry) return;
-    const marksGroup = chartHostRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marksGroup) return;
-
-    renderGenRef.current += 1;
-    const myGen = renderGenRef.current;
-    const stagger = Math.max(0.25, Math.min(2.5, enterStaggerScale));
-    const timing = prefersReducedMotion
-      ? reducedMotionTiming()
-      : revealTiming(resolveEnterTransition(enterTransition, GAUGE_SPRING_FALLBACK));
-    const notches = geometry.notches;
-    const activeNotches = notches.filter((notch) => notch.isActive);
-
-    const collectTargets = (): [GaugeRevealTarget[], GaugeRevealTarget[]] => {
-      const container = chartHostRef.current;
-      const bgGroup =
-        (marksGroup.querySelector<SVGGElement>('[data-ts-key="gauge-bg"]') as SVGGElement | null) ??
-        (container?.querySelector<SVGGElement>('[data-ts-key="gauge-bg"]') as SVGGElement | null);
-      const activeGroup =
-        (marksGroup.querySelector<SVGGElement>('[data-ts-key="gauge-active"]') as SVGGElement | null) ??
-        (container?.querySelector<SVGGElement>('[data-ts-key="gauge-active"]') as SVGGElement | null);
-
-      // T-D3: same native stagger({each, offset}) pair as before, and the
-      // arc orientation's own collectTargets above. Positional DOM index
-      // (not a parsed `data-bkm-key` attribute) is safe here for the SAME
-      // reason it is for arc: gauge notches only ever activate as an
-      // ascending PREFIX (`i < activeNotches`), so the active group's Nth
-      // path is always notch index N, identical to parsing `notch.index`
-      // out of a key.
-      const bgTargets: GaugeRevealTarget[] = bgGroup
-        ? Array.from(bgGroup.querySelectorAll<SVGPathElement>("path")).map((el, idx) => {
-            const notch = notches[idx];
-            if (notch) el.style.transformOrigin = `${notch.xCenter}px ${notch.yCenter}px`;
-            return { key: `bg-${idx}`, el, delayMs: nativeStaggerDelayMs(0.015 * stagger * 1000, 0, idx, "rect") };
-          })
-        : [];
-
-      const activeTargets: GaugeRevealTarget[] = activeGroup
-        ? Array.from(activeGroup.querySelectorAll<SVGPathElement>("path")).map((el, idx) => {
-            const notch = activeNotches[idx];
-            if (notch) el.style.transformOrigin = `${notch.xCenter}px ${notch.yCenter}px`;
-            return { key: `active-${idx}`, el, delayMs: nativeStaggerDelayMs(0.02 * stagger * 1000, 0.3 * stagger * 1000, idx, "rect") };
-          })
-        : [];
-
-      return [bgTargets, activeTargets];
-    };
-
-    const firstReveal = seenBgRef.current.size === 0 && seenActiveRef.current.size === 0;
-    if (!firstReveal) {
-      const trackReveal = trackRevealFactory(revealAnimationsRef);
-      const [bgTargets, activeTargets] = collectTargets();
-      reconcileGaugeReveal(bgTargets, seenBgRef.current, timing, trackReveal);
-      reconcileGaugeReveal(activeTargets, seenActiveRef.current, timing, trackReveal);
-      return;
-    }
-
-    revealPostPaintCancelRef.current = deferredGaugeMountReveal(marksGroup, collectTargets, timing, seenBgRef, seenActiveRef, revealAnimationsRef, renderGenRef, myGen);
-  }, [geometry, geometryScrubbing, prefersReducedMotion, enterTransition, enterStaggerScale]);
-
-  React.useEffect(() => {
-    return () => {
-      revealPostPaintCancelRef.current?.();
-      revealPostPaintCancelRef.current = null;
-      for (const anim of revealAnimationsRef.current) anim.cancel();
-      revealAnimationsRef.current = [];
-    };
-  }, []);
 
   const label =
     centerValue == null ? null : (
@@ -1274,40 +1158,42 @@ function GaugeLinear(props: GaugeLinearProps) {
       />
     );
 
-  // T17: raw `<svg>` → TanStack `<Chart>` (mirrors GaugeArc's G2 pattern
-  // exactly). Literal-px `width`/`height` (not `width:"100%"`) on this host
-  // div, matching arc's own `{position:"relative", width, height}` — `width`
-  // here is already the exact measured container pixel width fed into
-  // `computeLinearNotches`/the viewBox math, so this is deterministic rather
-  // than relying on a second, independent `%`-based resolution to coincide
-  // with it. See the T17 report for the one place this literal-px choice
-  // changes behavior versus the pre-port `width:"100%"` svg: the disclosed,
-  // pre-existing `labelPlacement="left"|"right"` overflow quirk (this file's
-  // header) now overflows its flex sibling instead of visually squishing —
-  // neither the frozen bench scenario nor docs-mdx pattern hits that branch.
+  // T17/C4: raw `<svg>` → TanStack `<RendererChart>` (mirrors GaugeArc's G2
+  // pattern exactly). Literal-px `width`/`height` (not `width:"100%"`) on
+  // this host div, matching arc's own `{position:"relative", width,
+  // height}` — `width` here is already the exact measured container pixel
+  // width fed into `computeLinearNotches`/the viewBox math, so this is
+  // deterministic rather than relying on a second, independent `%`-based
+  // resolution to coincide with it. See the T17 report for the one place
+  // this literal-px choice changes behavior versus the pre-port
+  // `width:"100%"` svg: the disclosed, pre-existing
+  // `labelPlacement="left"|"right"` overflow quirk (this file's header) now
+  // overflows its flex sibling instead of visually squishing — neither the
+  // frozen bench scenario nor docs-mdx pattern hits that branch.
   const svg =
     definition && width > 0 ? (
-      <div ref={chartHostRef} style={{ position: "relative", width, height }}>
-        <Chart
+      <div style={{ position: "relative", width, height }}>
+        <RendererChart
           ariaLabel="Gauge chart"
           definition={definition}
           height={height}
-          onRender={handleRender}
-          renderSvg={renderChartSvgWithResources}
+          renderer={chartMotionRenderer()}
           width={width}
         />
         {fillState.defsChildren.length > 0 ? (
           // G2 (parity fix, mirrored verbatim from GaugeArc): bklit's
           // children-as-defs escape hatch can no longer drop into this
           // component's own <defs> since it no longer owns a hand-rolled
-          // <svg>. Mounted on a 0×0 overlay svg AFTER <Chart>: SVG
+          // <svg>. Mounted on a 0×0 overlay svg AFTER <RendererChart>: SVG
           // paint-server url(#id) refs resolve document-wide (same verified
           // mechanism as arc's/scatter's sibling defs svg), and the
-          // after-<Chart> position keeps the real chart svg first in DOM
+          // after-chart position keeps the real chart svg first in DOM
           // order for the QA harness's svg lookup. (The theme palette
           // gradient itself does NOT need this treatment — it's declared via
           // `defineChart`'s own `gradients` option above and rendered
-          // in-document by `renderChartSvgWithResources`, same as arc.)
+          // in-document by the renderer's own default scene rendering, same
+          // as arc — see this file's header for the `renderChartSvgWithResources`
+          // redundancy finding.)
           <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
             <defs>{fillState.defsChildren}</defs>
           </svg>

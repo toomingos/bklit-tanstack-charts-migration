@@ -7,18 +7,21 @@ import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import type { ScaleTime } from "d3-scale";
 import { curveNatural } from "d3-shape";
-import { Chart } from "@tanstack/react-charts/tooltip";
+import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
 import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
 import type {
   ChartInteractionController,
   ChartMark,
+  ChartMotionContext,
   ChartPoint,
   ChartPositionScaleOptions,
   ChartRenderContext,
+  ChartRendererRenderContext,
   ChartScale,
 } from "@tanstack/charts";
+import { chartMotionRenderer } from "./internal/motion-renderer";
 import {
   decimateTimeSeries,
   maxRenderPointsForWidth,
@@ -113,7 +116,7 @@ import {
   DEFAULT_ANIMATION_DURATION_MS,
   DEFAULT_ANIMATION_EASING,
 } from "./internal/animation-defaults";
-import { isRevealed, markRevealed } from "./internal/deferred-reveal";
+import { runRevealWipe, snapRevealWipe } from "./internal/reveal-wipe";
 import { clipRevealTiming, type EnterTransition } from "./internal/enter-transition";
 import "./styles.css";
 
@@ -737,10 +740,58 @@ export function LineChart({
           )
       : 1;
     // bklit shell:373-395 — effective tween enable = yDomainTween || (tweenYDomainOnXDomainChange && xDomain != null) already folded into effectiveYDomainTweenDuration; gate uses yDomainChangedForTween which tracks the visibleData-derived domain.
-    const svgAnimation =
-      isChartInteractionPhase(chartPhase) && isLoaded && yDomainChangedForTween
-        ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
-        : false;
+    // C5 (D432/A3): `svgAnimation` (renderer.js's blanket per-render-pass
+    // reconcile, read only by the static SVG renderer) is dead once
+    // rendering through `motion()` — replaced by a chart-level `motion`
+    // callback carrying the SAME gate, now scoped per mark role/phase
+    // instead of blanket:
+    //  - phase "enter" on line/area/dot: `false` — RevealWipe (A2,
+    //    internal/reveal-wipe.ts) owns entrance for these roles via its own
+    //    clip-path sweep on `.ts-chart__marks`; letting native entrance
+    //    choreography also fire would double-animate the same geometry.
+    //  - phase "update" on line/area/dot: bklit's data-update contract
+    //    (chart-phase.ts) — new data paints immediately; only a y-domain
+    //    change tweens (500ms scale tween). Reusing the exact pre-C5
+    //    `svgAnimation` gate reproduces this: tween iff the gate holds,
+    //    else `false` (snap).
+    //  - anything else (exit; any other role): `undefined` — falls through
+    //    to the renderer's own cascade default instead of being silently
+    //    disabled.
+    const yDomainTweenGateActive = isChartInteractionPhase(chartPhase) && isLoaded && yDomainChangedForTween;
+    const motion = (context: ChartMotionContext<unknown>) => {
+      if (context.role === "line" || context.role === "area" || context.role === "dot") {
+        if (context.phase === "enter") return false as const;
+        if (context.phase === "update") {
+          return yDomainTweenGateActive
+            ? {
+                transition: {
+                  type: "tween" as const,
+                  duration: effectiveYDomainTweenDuration as number,
+                  easing: bezierEasing,
+                },
+              }
+            : (false as const);
+        }
+      }
+      return undefined;
+    };
+    // C5 (D432/A5): AX5 — bklit chart-phase.ts DEFAULT_Y_DOMAIN_TWEEN_MS,
+    // the axis-label position tween (design-tokens.ts:48-53: `left`/`top`
+    // CSS on the deleted HTML axis overlays, pre-C4). Native SVG tick
+    // labels can't tween x/y via CSS (not CSS properties on `<text>`), so
+    // the tween returns through `tickLabels.motion` here — scoped to
+    // tick-label position only, never `ticks`/the grid (design-tokens.ts's
+    // AX5 comment never mentions the grid).
+    const tickLabelMotion = (context: ChartMotionContext<unknown>) =>
+      context.phase === "enter"
+        ? (false as const)
+        : {
+            transition: {
+              type: "tween" as const,
+              duration: DEFAULT_Y_DOMAIN_TWEEN_MS,
+              easing: bezierEasing,
+            },
+          };
     const xScaleOptions: ChartPositionScaleOptions<Date> = {
       scale: xScale,
       grid: gridGuide.vertical,
@@ -753,6 +804,7 @@ export function LineChart({
               thin: false,
               dy: margin.bottom - 25,
               opacity: xTickLabelOpacity,
+              motion: tickLabelMotion,
             }
           : false,
       },
@@ -780,6 +832,7 @@ export function LineChart({
               thin: false,
               opacity: 1,
               dx: yAxis.orientation === "right" ? 8 : -8,
+              motion: tickLabelMotion,
             },
           },
           side: yAxis.orientation === "right" ? "right" : "left",
@@ -828,7 +881,7 @@ export function LineChart({
                   } as const),
           }
         : (false as const),
-      svgAnimation,
+      motion,
     };
   }, [marks, renderData, xDataKey, grid, width, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, projectionConfigs, xDomain, timeExtent, tooltip, xAxis, yAxis, visibleData, labelFade]);
 
@@ -1009,7 +1062,12 @@ export function LineChart({
   // signature+animationDuration into `revealEpoch`, so one epoch ref is the
   // whole key — it re-opens a reveal window the DOM flag has closed.
   const revealedEpochRef = React.useRef<number | null>(null);
-  const handleRender = React.useCallback((context: ChartRenderContext<ChartDatum, Date, number>) => {
+  // A1 (D432): `RendererChart`'s `onRender` passes a `ChartRendererRenderContext`
+  // (`{container, scene, surface, interaction}`) — no `svg` field, since the
+  // motion renderer's DOM root is reached via `surface.element` instead.
+  // Nothing in this file's `handleRender` ever reached into `context.svg`,
+  // so only the annotation changes.
+  const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     // Cast: `useFocusInjection`'s `captureRenderContext` is typed against the
     // library's generic (unknown-typed) `ChartRenderContext`, which — because
     // `interaction.setControlledFocus` is checked contravariantly under
@@ -1023,26 +1081,24 @@ export function LineChart({
     // sources of `focus`.
     interactionRef.current = context.interaction;
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marks) return;
-    const epochUnseen = revealedEpochRef.current !== revealEpoch;
-    const shouldAnimate = chartPhase === "revealing" && animationDuration > 0 && !prefersReducedMotion && (epochUnseen || !isRevealed(marks));
-    if (!shouldAnimate) {
-      markRevealed(marks);
-      marks.style.clipPath = "";
-      if (markerSeriesConfigs.some((s) => s.showMarkers) && marks && animationDuration > 0 && !prefersReducedMotion) {
-        const hasMarkers = !!marks.querySelector(".ts-chart__dot[data-ts-key$=\"__marker\"]");
-        if (hasMarkers) {
-          markRevealed(marks);
-        }
-      }
-      return;
-    }
-    markRevealed(marks);
-    revealedEpochRef.current = revealEpoch;
-    marks.animate(
-      [{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }],
-      { duration: revealDurationMs, easing: revealEasingCss },
-    );
+    // A2 (D420/D432): the reveal sweep itself now lives in
+    // internal/reveal-wipe.ts, shared byte-for-byte with area-chart.tsx/
+    // composed-chart.tsx (see that module's header for why this stays a
+    // WAAPI reach-in rather than a native `motion` entrance). Its return
+    // value — did the sweep actually play this call? — gates the
+    // per-marker fade stagger below exactly as the old inline
+    // `shouldAnimate` did.
+    const shouldAnimate = runRevealWipe({
+      marks,
+      epoch: revealEpoch,
+      epochRef: revealedEpochRef,
+      active: chartPhase === "revealing",
+      animationDuration,
+      prefersReducedMotion,
+      durationMs: revealDurationMs,
+      easingCss: revealEasingCss,
+    });
+    if (!marks || !shouldAnimate) return;
     if (!markerSeriesConfigs.some((s) => s.showMarkers)) return;
     const innerW = Math.max(0, width - margin.left - margin.right);
     // bklit series-markers.tsx:102 — the marker stagger spans the CLIP reveal's
@@ -1100,12 +1156,12 @@ export function LineChart({
 
   React.useEffect(() => {
     if (chartPhase !== "revealing") return;
-    const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marks) return;
-    if (prefersReducedMotion || animationDuration <= 0) {
-      marks.style.clipPath = "";
-      markRevealed(marks);
-    }
+    snapRevealWipe({
+      marks: containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks"),
+      active: true,
+      animationDuration,
+      prefersReducedMotion,
+    });
   }, [chartPhase, revealEpoch, animationDuration, prefersReducedMotion]);
   React.useEffect(() => () => {
     for (const a of markerRevealAnimsRef.current) { try { a.cancel(); } catch { /* already canceled */ } }
@@ -1356,7 +1412,8 @@ export function LineChart({
       ) : null}
       {definition ? (
         <div style={needsBrushClip ? { clipPath: `url(#${brushClipId})` } : undefined}>
-          <Chart
+          <RendererChart
+            renderer={chartMotionRenderer<ChartDatum, Date, number>()}
             ariaLabel={ariaLabel}
             ariaDescription={ariaDescription}
             aspectRatio={parseAspectRatio(aspectRatio)}

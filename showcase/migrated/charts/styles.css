@@ -160,94 +160,11 @@
        30s capture timeout when the bklit and migrated scenarios render
        side by side in the same browser process.
 
-       D85.1 (D82.1 revert): targets `.ts-chart__candle rect` (custom
+       D85.1 (D82.1 revert): targets `.bkm-chart__candle rect` (custom
        `createMark` marks with `kind:'rect'` nodes) instead of the reverted
        `.ts-chart__link line` (stock `link()` marks). --- */
-[data-bkm-chart="candlestick"] .ts-chart__candle rect {
+[data-bkm-chart="candlestick"] .bkm-chart__candle rect {
   transition: opacity 150ms ease-in-out;
-}
-
-/* --- Candlestick reveal scaleY: the framer duration/bounce -> spring
-       physics conversion (candle-spring.ts) produces a curve that is
-       *duration-invariant as a fraction of total time* for a fixed bounce
-       (verified numerically: sampling at 400ms/800ms/1600ms with
-       bounce=0.15 yields bit-identical fractional values) — bklit's own
-       default `enterTransition` (duration 0.8s, bounce 0.15) never varies
-       across any real bench/QA/registry usage. That means the 60-sample
-       curve can be baked once as a static `@keyframes` rule (percentages,
-       not milliseconds) and driven per-rect with only `animation-duration`
-       / `animation-delay` varying via inline style, instead of a
-       `element.animate()` JS call per rect. At n=10000 candlesticks that
-       replaces 20,000 individually-constructed WAAPI Animation objects
-       with 20,000 plain CSS property writes referencing one shared,
-       browser-parsed keyframe rule — enough of a main-thread/GC reduction
-       to keep QA screenshot.mjs's 30s capture budget from being blown when
-       bklit and migrated n=10000 candlestick scenes render concurrently
-       (Promise.all in qa/screenshot.mjs). candlestick-chart.tsx falls back
-       to the exact per-call `sampleSpringKeyframes` + `element.animate()`
-       path whenever `enterTransition.bounce` is overridden away from the
-       0.15 default, since the invariance only holds for a fixed bounce. --- */
-@keyframes ts-candle-reveal {
-  0% { transform: scaleY(0); }
-  1.695% { transform: scaleY(0.009977); }
-  3.39% { transform: scaleY(0.036708); }
-  5.085% { transform: scaleY(0.07597); }
-  6.78% { transform: scaleY(0.124235); }
-  8.475% { transform: scaleY(0.178586); }
-  10.169% { transform: scaleY(0.236631); }
-  11.864% { transform: scaleY(0.296443); }
-  13.559% { transform: scaleY(0.356483); }
-  15.254% { transform: scaleY(0.415551); }
-  16.949% { transform: scaleY(0.472731); }
-  18.644% { transform: scaleY(0.527345); }
-  20.339% { transform: scaleY(0.578917); }
-  22.034% { transform: scaleY(0.627131); }
-  23.729% { transform: scaleY(0.671809); }
-  25.424% { transform: scaleY(0.712877); }
-  27.119% { transform: scaleY(0.750348); }
-  28.814% { transform: scaleY(0.784302); }
-  30.508% { transform: scaleY(0.814867); }
-  32.203% { transform: scaleY(0.842208); }
-  33.898% { transform: scaleY(0.866516); }
-  35.593% { transform: scaleY(0.887997); }
-  37.288% { transform: scaleY(0.906865); }
-  38.983% { transform: scaleY(0.923338); }
-  40.678% { transform: scaleY(0.93763); }
-  42.373% { transform: scaleY(0.949952); }
-  44.068% { transform: scaleY(0.960503); }
-  45.763% { transform: scaleY(0.969474); }
-  47.458% { transform: scaleY(0.977042); }
-  49.153% { transform: scaleY(0.983374); }
-  50.847% { transform: scaleY(0.988622); }
-  52.542% { transform: scaleY(0.992925); }
-  54.237% { transform: scaleY(0.996411); }
-  55.932% { transform: scaleY(0.999194); }
-  57.627% { transform: scaleY(1.001375); }
-  59.322% { transform: scaleY(1.003047); }
-  61.017% { transform: scaleY(1.00429); }
-  62.712% { transform: scaleY(1.005176); }
-  64.407% { transform: scaleY(1.005767); }
-  66.102% { transform: scaleY(1.006116); }
-  67.797% { transform: scaleY(1.00627); }
-  69.492% { transform: scaleY(1.006271); }
-  71.186% { transform: scaleY(1.006151); }
-  72.881% { transform: scaleY(1.00594); }
-  74.576% { transform: scaleY(1.005662); }
-  76.271% { transform: scaleY(1.005337); }
-  77.966% { transform: scaleY(1.004981); }
-  79.661% { transform: scaleY(1.004609); }
-  81.356% { transform: scaleY(1.004232); }
-  83.051% { transform: scaleY(1.003856); }
-  84.746% { transform: scaleY(1.00349); }
-  86.441% { transform: scaleY(1.003139); }
-  88.136% { transform: scaleY(1.002805); }
-  89.831% { transform: scaleY(1.002491); }
-  91.525% { transform: scaleY(1.002199); }
-  93.22% { transform: scaleY(1.001929); }
-  94.915% { transform: scaleY(1.001683); }
-  96.61% { transform: scaleY(1.001459); }
-  98.305% { transform: scaleY(1.001256); }
-  100% { transform: scaleY(1); }
 }
 
 /* --- Axes (C4): the blanket `[data-bkm-chart] .ts-chart__axes
@@ -504,74 +421,6 @@
 
 [data-bkm-chart="radar"] .ts-chart__radial-dot circle {
   transition: opacity 0.15s ease-in-out;
-}
-
-/* ---------------------------------------------------------------------- */
-/* LiveXAxis time labels + LiveYAxis ticks (live-hover-chrome.ts) — exact  */
-/* port of live-x-axis.tsx / live-y-axis.tsx's plain-div overlay recipe.  */
-/* ---------------------------------------------------------------------- */
-
-[data-bkm-chart] .bkm-live-xlabel-layer {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-/* Each label is a single absolutely-positioned span at its own tick x — the
-   bklit source centers it via a zero-width flex wrapper
-   (`width:0, display:flex, justifyContent:center`); here that's collapsed
-   into one element via `translateX(-50%)`, same visual result. Opacity is
-   written per-frame by updateHover's label-fade loop; the transition here
-   reproduces live-x-axis.tsx's `labelFadeOpacity` tween (0.15s ease-out —
-   NOT the static XAxisLabel's 0.4s, see this file's header). */
-[data-bkm-chart] .bkm-live-xlabel {
-  position: absolute;
-  bottom: var(--bkm-live-x-bottom, 12px);
-  transform: translateX(-50%);
-  white-space: nowrap;
-  font-size: 0.75rem;
-  line-height: 1rem;
-  color: var(--color-chart-label, var(--chart-label));
-  transition: opacity 150ms ease-out;
-}
-
-[data-bkm-chart] .bkm-live-ytick-layer {
-  position: absolute;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-/* Position (top/left-or-right/width/height of the panel) is written per-frame
-   by updateFrame; each tick div only ever receives a `translateY` (also
-   per-frame) — no static left/top here. Alignment follows <LiveYAxis
-   position>: base class is the `position="left"` branch (`right:0,
-   paddingRight:8, textAlign:right`), the `--right` modifier below is the
-   `position="right"` branch (`left:0, paddingLeft:8, textAlign:left`),
-   no vertical centering on the tick itself, tick.y already accounts for
-   that. */
-[data-bkm-chart] .bkm-live-ytick {
-  position: absolute;
-  top: 0;
-  width: 100%;
-  right: 0;
-  padding-right: 8px;
-  text-align: right;
-}
-
-[data-bkm-chart] .bkm-live-ytick--right {
-  right: auto;
-  left: 0;
-  padding-right: 0;
-  padding-left: 8px;
-  text-align: left;
-}
-
-[data-bkm-chart] .bkm-live-ytick span {
-  white-space: nowrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-  font-size: 0.75rem;
-  line-height: 1rem;
-  color: var(--color-chart-label, var(--chart-label));
 }
 
 /* --- CenterStat typography (internal/center-stat.tsx — consumed by
@@ -1084,10 +933,35 @@
    CSS overrides presentation attributes, so this single rule fixes both.
    T-D13: links now render through TanStack's native link() mark, whose
    layer group carries the stable key sankey:flow (class ts-chart__link) —
-   key off that group instead of the old .ts-sankey__link class. */
-.ts-sankey__link,
+   key off that group instead of the old .bkm-sankey__link class. */
+.bkm-sankey__link,
 [data-ts-key="sankey:flow"] > path {
   vector-effect: none;
+}
+
+/* --- C5/D3: the four rules below were, until C5, injected at runtime by
+       `injectLabelCssTransitions` (internal/sankey-animation.ts) as an
+       unconditional `<style class="ts-sankey__transitions">` element written
+       into the renderer's own SVG — a DOM reach-in with no sanctioned
+       equivalent. They are pure static CSS with no dynamic values, so they
+       move here verbatim. Only the first selector needed the
+       `ts-sankey__` -> `bkm-sankey__` rename; the three `data-ts-key`
+       selectors are native scene-graph keys emitted by the renderer itself
+       (sanctioned per D418), not app classes. --- */
+.bkm-sankey__node rect {
+  transition: opacity 0.18s ease-out;
+}
+
+[data-ts-key="sankey:flow"] > path {
+  transition: stroke-opacity 0.18s ease-out;
+}
+
+[data-ts-key^="sankey:nlabel:"] {
+  transition: opacity 0.18s ease-out;
+}
+
+[data-ts-key^="sankey:vlabel:"] {
+  transition: opacity 0.18s ease-out, fill-opacity 0.18s ease-out;
 }
 
 /* Projection line: same renderer hazard as sankey above, on the dashed

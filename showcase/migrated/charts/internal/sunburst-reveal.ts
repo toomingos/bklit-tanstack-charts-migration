@@ -1,36 +1,40 @@
-// WAAPI reveal and zoom animation helpers for SunburstChart.
+// Reveal-delay math for SunburstChart (C5, native motion, Phase 6, D432).
 //
-// Rewritten for the radialArc architecture (D81): keyframes still use bklit's
-// verbatim `arcPath` for the d-string computation (compatible with d3's arc
-// output format that TanStack's radialArc produces). The caller queries
-// `[data-ts-key="sunburst-arcs"]` and imperatively animates each <path> child.
+// This module used to ALSO hold the WAAPI keyframe generators for both the
+// entrance sweep (`buildRevealKeyframes`, 64-sample `d`-string keyframes)
+// and the zoom morph (`buildZoomKeyframes`, 30-sample `d`-string keyframes,
+// bklit's verbatim `transitionGeometry`/`arcPath`) — both DELETED outright
+// by C5, not ported. sunburst-chart.tsx's `radialArc<SunburstArcRow>` mark
+// already declares real d3-arc accessors on its `generator`
+// (`.startAngle`/`.endAngle`/`.innerRadius`/`.outerRadius`, keyed
+// `sunburst-arc-{playKey}-{arcIndex}`), which is the confirmed mechanism
+// (gauge C4 precedent, `dist/motion.js`'s `addSemanticPathUpdateTrack` /
+// `compatiblePathGeometry`) native reads to interpolate a matched keyed
+// path's `d` attribute directly — so both the entrance sweep (native
+// "enter", stagger delay computed below) and the zoom morph (native
+// "update", arcRows recomputing off `focus` on every zoomTo commit) are now
+// the mark's own `motion` callback, zero imperative `.animate()` calls.
+// arcIndex is assigned once from the static tree structure (`buildArcs`,
+// sunburst-geometry.ts) and never depends on `focus` — so the same arc
+// keeps the same key across every zoom/focus rebuild, matching the update
+// track instead of replaying enter/exit (verified by reading `buildArcs`;
+// only genuinely-degenerate arcs crossing the culling threshold exit/enter).
 //
-// --- Reveal ---
-// Ring-staggered angular-sweep: each arc sweeps from its start angle (zero
-// visual width) to full angle over 1100ms with bezier easing. 64-sample
-// keyframes avoid CSS `d` discrete-interpolation bugs (D51 precedent).
-//
-// --- Zoom ---
-// 750ms d-keyframe tween interpolating between from-geometry and to-geometry
-// for every arc (30 frames, 25ms per frame).
+// `buildRevealTiming`/`maxRevealDelayMs` below are unchanged — sunburst's
+// entrance delay (native `motion` enter phase) AND the labels overlay's own
+// still-WAAPI reveal (`runLabelsReveal`, sunburst-chart.tsx — labels are a
+// separate DOM overlay outside the TanStack scene graph, no native
+// mark to hang motion off, out of C5 scope) both still need this per-arc
+// ring-staggered delay list.
 
 import {
-  transitionGeometry,
-  geometryFor,
-  arcPath,
   clockwiseFraction,
   type ArcDatum,
-  type ArcGeometry,
-  type Focus,
 } from "./sunburst-geometry";
-
-export { transitionGeometry, geometryFor } from "./sunburst-geometry";
 
 // ---------------------------------------------------------------------------
 // Reveal timing
 // ---------------------------------------------------------------------------
-
-const TWEEN_SAMPLES = 64;
 
 export interface ArcRevealTiming {
   arcId: string;
@@ -78,89 +82,4 @@ export function maxRevealDelayMs(arcs: ArcDatum[], staggerScale = 1): number {
   return timing.length > 0
     ? timing[timing.length - 1]!.delayMs
     : 0;
-}
-
-/**
- * Builds 64-sample WAAPI keyframes for a sunburst arc reveal.
- * Progress 0 → 1 sweeps from start angle to full angle, with full radial
- * extent (radialProgress = 1 throughout — arcs start fully thick, only the
- * angular sweep animates).
- *
- * The path format uses bklit's `arcPath` which produces d-strings compatible
- * with d3's `arc()` output (what TanStack's radialArc renders).
- */
-export function buildRevealKeyframes(
-  geometry: ArcGeometry | null,
-  samples: number = TWEEN_SAMPLES,
-): Keyframe[] | null {
-  if (!geometry) return null;
-
-  const span = geometry.a1 - geometry.a0;
-  if (span < 0.001 || geometry.outerR - geometry.innerR < 0.5) return null;
-
-  const keyframes: Keyframe[] = [];
-  for (let i = 0; i < samples; i++) {
-    const p = i / (samples - 1);
-    if (p === 0) {
-      // Zero-angle sliver: degenerate path — use "none" to fully hide
-      keyframes.push({ d: "none" });
-      continue;
-    }
-    const currentA1 = geometry.a0 + span * p;
-    const currentInner = geometry.innerR < 1 ? 0 : geometry.innerR;
-    const d = arcPath({
-      a0: geometry.a0,
-      a1: currentA1,
-      innerR: currentInner,
-      outerR: geometry.outerR,
-    }, 1, 1);
-    if (d) {
-      keyframes.push({ d: `path('${d.replace(/'/g, "\\'")}')` });
-    } else {
-      keyframes.push({ d: "none" });
-    }
-  }
-
-  return keyframes;
-}
-
-// ---------------------------------------------------------------------------
-// Zoom animation
-// ---------------------------------------------------------------------------
-
-const ZOOM_SAMPLES = 30;
-
-/**
- * Builds 30-sample WAAPI keyframes for a zoom morph from `fromFocus` to
- * `toFocus`. Uses bklit's verbatim `transitionGeometry()`.
- */
-export function buildZoomKeyframes(
-  arc: ArcDatum,
-  fromFocus: Focus,
-  toFocus: Focus,
-  maxDepth: number,
-  radius: number,
-  samples: number = ZOOM_SAMPLES,
-): Keyframe[] | null {
-  const from = geometryFor(arc, fromFocus, maxDepth, radius);
-  const to = geometryFor(arc, toFocus, maxDepth, radius);
-
-  // If arc is not visible in either focus, no animation needed for it
-  if (!from && !to) return null;
-
-  const keyframes: Keyframe[] = [];
-  for (let i = 0; i < samples; i++) {
-    const p = i / (samples - 1);
-    const geom = transitionGeometry(arc, fromFocus, toFocus, maxDepth, radius, p);
-    if (geom) {
-      const d = arcPath(geom, 1, 1);
-      if (d) {
-        keyframes.push({ d: `path('${d.replace(/'/g, "\\'")}')` });
-        continue;
-      }
-    }
-    keyframes.push({ d: "none" });
-  }
-
-  return keyframes;
 }

@@ -33,17 +33,166 @@
 // chart-level `PieHoverCoordinator` (created once per `PieChart` via a ref,
 // passed through context so its identity never changes and mounting it
 // triggers no re-renders).
-import { createSpring, type Spring } from "./spring";
-import { pieArcPath, sliceMidOffset } from "./pie-geometry";
+import { arc as d3Arc, type Arc } from "d3-shape";
+import { path as d3Path, type Path } from "d3-path";
 import { createBroadcastStore } from "./broadcast-store";
 
 export type PieSliceHoverEffect = "translate" | "grow" | "none";
 
-const HOVER_SPRING = { stiffness: 400, damping: 25 } as const;
+// C2 (D432, native motion): the hover spring constants below are re-exported
+// (not just kept private) so pie-chart.tsx's `definition` can hand them to a
+// mark-level `motion` transition (`ChartMotionSpringTransition`) instead of
+// this file's own imperative `createSpring` runtime — the same physical
+// spring, just driven by the TanStack motion renderer's keyed-`d`
+// interpolation rather than a per-frame `el.setAttribute('d', …)` write.
+export const HOVER_SPRING = { stiffness: 400, damping: 25 } as const;
 // C1 (states+legend): fade value, now consumed by pie-chart.tsx's reactive
 // `definition` (per-datum `fill` alpha) instead of this file's `paint()`.
 // The matching 0.15s fill transition is a styles.css rule.
 export const FADE_OPACITY = 0.4;
+
+// C2 (D432, native motion): `ChartMotionTweenTransition['easing']` (dist/
+// types.d.ts:427-430) only accepts a named CSS keyword or a JS progress
+// function — never a raw CSS string — but `resolveEnterTransition`
+// (./enter-transition.ts) always produces `ResolvedTiming.easingCss` as a
+// `cubic-bezier(x1,y1,x2,y2)` string (either the design-tokens default or
+// one built from a caller's `enterTransition.ease` 4-tuple — see that
+// module's `resolveEnterTransition`/`clipRevealTiming`, which only ever
+// join 4 numbers into `cubic-bezier(...)`; no other CSS easing syntax is
+// ever produced). This is the same Newton-iteration cubic-bezier solve
+// `./bezier-easing.ts` hardcodes for the one default curve, generalized
+// over arbitrary control points — written locally (not imported from
+// another executor's `./reveal-easing.ts`, which is scoped to
+// bar/candlestick/scatter) since pie/ring are the only C5 charts that need
+// to feed an arbitrary caller-supplied `cubic-bezier(...)` string through
+// a mark's native `motion` transition.
+const CUBIC_BEZIER_RE = /^cubic-bezier\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)$/i;
+
+export function motionEasingFromCss(css: string): (progress: number) => number {
+  const match = CUBIC_BEZIER_RE.exec(css.trim());
+  const [x1, y1, x2, y2] = match
+    ? [Number(match[1]), Number(match[2]), Number(match[3]), Number(match[4])]
+    : [0.85, 0, 0.15, 1]; // REVEAL_EASE_POINTS (design-tokens.ts) fallback
+  return (p: number) => {
+    if (p <= 0) return 0;
+    if (p >= 1) return 1;
+    const bx = (t: number) => 3 * t * (1 - t) * (1 - t) * x1 + 3 * t * t * (1 - t) * x2 + t * t * t;
+    const by = (t: number) => 3 * t * (1 - t) * (1 - t) * y1 + 3 * t * t * (1 - t) * y2 + t * t * t;
+    let t = p;
+    for (let i = 0; i < 6; i++) {
+      const err = bx(t) - p;
+      if (Math.abs(err) < 1e-5) break;
+      const dx = 3 * (1 - t) * (1 - t) * x1 + 6 * t * (1 - t) * (x2 - x1) + 3 * t * t * (1 - x2);
+      if (dx === 0) break;
+      t -= err / dx;
+    }
+    return by(t);
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Offset arc generator — native replacement for the "translate" hover effect
+// ---------------------------------------------------------------------------
+
+/**
+ * C2 (D432, native motion): `RadialArcOptions` (polar.d.ts) has no
+ * transform/translate channel — arc geometry is always centered on the
+ * polar origin (innerRadius/outerRadius/padRadius/cornerRadius only). bklit's
+ * DEFAULT pie hover effect ("translate", see PieChart's `hoverEffect ??
+ * "translate"`) is a rigid XY pop-out along the slice's own mid-angle axis
+ * (`sliceMidOffset`), which a pure radius change can't express (growing the
+ * radius changes the slice's SHAPE, not its position).
+ *
+ * This wraps a real d3-shape `arc()` generator so its output can carry a
+ * per-datum (dx, dy) offset while still producing an ordinary `d` path
+ * string — which is what makes it usable as `RadialArcOptions.generator`
+ * (polar.d.ts: "Keep its context null so it returns SVG path data") AND what
+ * lets the native motion renderer's keyed-`d` diffing interpolate the
+ * translate smoothly under a spring (fact: `d` and `transform` are both
+ * interpolable, but only `d` is reachable from a mark's own generator).
+ *
+ * Mechanism: d3-shape's `arc()` generator, when given a rendering context,
+ * calls ONLY `moveTo`, `lineTo`, `arc`, and `closePath` on it (verified
+ * against the installed d3-shape@3.2.0 source, node_modules/d3-shape/src/
+ * arc.js — no quadraticCurveTo/bezierCurveTo/arcTo/rect for this generator).
+ * A per-call proxy context intercepts exactly those four methods, shifts the
+ * x/y arguments of the three coordinate-bearing ones by the datum's offset,
+ * and delegates to a real `d3-path` `Path` — the same primitive `arc()` uses
+ * internally when given no context — to build the final string. `d3-path` is
+ * not a direct package.json dependency but resolves at both build and
+ * runtime (this project's `node-linker=hoisted`, package.json:36-40 lists
+ * only d3-array/d3-geo/d3-sankey/d3-scale/d3-shape as direct `d3-*` deps;
+ * d3-path is d3-shape's own transitive dependency, hoisted flat).
+ *
+ * A zero-offset fast path skips the context entirely (returns straight from
+ * `base(d)`) so the ~99% of never-hovered slices pay no extra allocation.
+ */
+export function createOffsetArc<TDatum>(
+  getOffset: (d: TDatum, index: number) => { dx: number; dy: number },
+): Arc<unknown, TDatum> {
+  const base = d3Arc<TDatum>();
+  const unexpectedMethod = (name: string) => () => {
+    throw new Error(`createOffsetArc: d3-shape's arc() called unexpected context method '${name}'`);
+  };
+  const wrapped = ((d: TDatum, ...rest: unknown[]) => {
+    const index = typeof rest[0] === "number" ? rest[0] : 0;
+    const { dx, dy } = getOffset(d, index);
+    if (dx === 0 && dy === 0) {
+      base.context(null);
+      return (base as unknown as (d: TDatum, ...rest: unknown[]) => string | null)(d, ...rest);
+    }
+    const real: Path = d3Path();
+    const proxyContext: Path = {
+      moveTo: (x: number, y: number) => real.moveTo(x + dx, y + dy),
+      lineTo: (x: number, y: number) => real.lineTo(x + dx, y + dy),
+      arc: (x: number, y: number, r: number, a0: number, a1: number, ccw?: boolean) =>
+        real.arc(x + dx, y + dy, r, a0, a1, ccw),
+      closePath: () => real.closePath(),
+      quadraticCurveTo: unexpectedMethod("quadraticCurveTo"),
+      bezierCurveTo: unexpectedMethod("bezierCurveTo"),
+      arcTo: unexpectedMethod("arcTo"),
+      rect: unexpectedMethod("rect"),
+    };
+    // @types/d3-shape narrowly types `context()` as `CanvasRenderingContext2D
+    // | null` even though d3-shape's runtime only needs the CanvasPath-like
+    // duck type d3-path's `Path` satisfies (verified above: arc.js calls
+    // only moveTo/lineTo/arc/closePath) — the same cast idiom used wherever
+    // a `d3-path` Path is handed to a d3-shape generator's `.context()`.
+    base.context(proxyContext as unknown as CanvasRenderingContext2D);
+    (base as unknown as (d: TDatum, ...rest: unknown[]) => void)(d, ...rest);
+    base.context(null);
+    return real.toString();
+  }) as unknown as Arc<unknown, TDatum>;
+  // Chainable config (getter/setter) methods TanStack's polar internals read
+  // directly off the generator for point geometry (independent of the `d`
+  // string) — delegated straight through to the real generator, unmodified.
+  const chainableMethods = [
+    "innerRadius",
+    "outerRadius",
+    "cornerRadius",
+    "padRadius",
+    "startAngle",
+    "endAngle",
+    "padAngle",
+    "context",
+    "digits",
+  ] as const;
+  for (const method of chainableMethods) {
+    (wrapped as unknown as Record<string, (...args: unknown[]) => unknown>)[method] = (...args: unknown[]) => {
+      const target = base as unknown as Record<string, (...a: unknown[]) => unknown>;
+      if (args.length === 0) return target[method]!();
+      target[method]!(...args);
+      return wrapped;
+    };
+  }
+  // `centroid` is a compute-and-return method (not chainable) — always
+  // forwarded with its arguments, unmodified (no dx/dy offset: focus/tooltip
+  // are disabled on every chart that uses this helper, so an un-offset
+  // centroid has no observable effect today).
+  (wrapped as unknown as { centroid: (...args: unknown[]) => unknown }).centroid = (...args: unknown[]) =>
+    (base as unknown as { centroid: (...a: unknown[]) => unknown }).centroid(...args);
+  return wrapped;
+}
 
 // ---------------------------------------------------------------------------
 // Chart-level hover coordinator
@@ -101,120 +250,18 @@ export function createPieHoverCoordinator(
 }
 
 // ---------------------------------------------------------------------------
-// Per-slice imperative paint runtime
+// (C2, D432, native motion, cleanup pass) The per-slice imperative paint
+// runtime that used to live here (`createPieSliceHoverRuntime` /
+// `PieSliceHoverRuntime` / `PieSliceHoverConfig` — a per-instance pair of
+// `createSpring` runtimes driving `style.transform` for "translate" and a
+// per-frame `pieArcPath`-regenerated `d` for "grow") was fully superseded by
+// C2's native motion conversion: `createOffsetArc` (above) now expresses
+// BOTH effects as ordinary `d`-string geometry that the native motion
+// renderer interpolates itself under a `ChartMotionSpringTransition`
+// (HOVER_SPRING) — see pie-chart.tsx's `definition` (`gen`/`motion` on its
+// `radialArc` mark). Confirmed zero live importers repo-wide (only this
+// file's own definition and a historical doc-comment in pie-chart.tsx
+// referenced it) before deleting; `createSpring`/`Spring` (./spring) and
+// `pieArcPath`/`sliceMidOffset` (./pie-geometry) were exclusive to this dead
+// runtime and are no longer imported here.
 // ---------------------------------------------------------------------------
-
-export interface PieSliceHoverConfig {
-  index: number;
-  visibleEl: SVGPathElement;
-  innerRadius: number;
-  outerRadius: number;
-  cornerRadius: number;
-  startAngle: number;
-  endAngle: number;
-  padAngle: number;
-  hoverOffset: number;
-  hoverEffect: PieSliceHoverEffect;
-  fill: string;
-}
-
-export interface PieSliceHoverRuntime {
-  /** Refresh the live geometry/effect config — call on every PieSlice
-      render (cheap: just updates closure state read by spring `onUpdate`
-      frames and by `paint`). Does NOT itself repaint; call `paint()` after
-      if a repaint is needed (e.g. geometry changed while at rest). */
-  update(config: PieSliceHoverConfig): void;
-  /** Repaint immediately for the given hovered index. Springs (translate/
-      grow) animate toward their new targets from wherever they currently
-      are. Fade is NOT this runtime's concern any more (C1) — it rides
-      pie-chart.tsx's reactive `definition` fill-alpha channel instead. */
-  paint(hoveredIndex: number | null): void;
-  stop(): void;
-}
-
-export function createPieSliceHoverRuntime(): PieSliceHoverRuntime {
-  let config: PieSliceHoverConfig | null = null;
-  let translateX = 0;
-  let translateY = 0;
-
-  const applyTransform = () => {
-    if (!config) return;
-    config.visibleEl.style.transform = `translate(${translateX}px, ${translateY}px)`;
-  };
-
-  const translateXSpring: Spring = createSpring(0, HOVER_SPRING.stiffness, HOVER_SPRING.damping, (v) => {
-    translateX = v;
-    applyTransform();
-  });
-  const translateYSpring: Spring = createSpring(0, HOVER_SPRING.stiffness, HOVER_SPRING.damping, (v) => {
-    translateY = v;
-    applyTransform();
-  });
-  let currentRadius = 0;
-  const writeGrowD = () => {
-    if (!config) return;
-    const d = pieArcPath(
-      config.innerRadius,
-      currentRadius,
-      config.startAngle,
-      config.endAngle,
-      config.cornerRadius,
-      config.padAngle,
-    );
-    config.visibleEl.setAttribute("d", d);
-  };
-  const growSpring: Spring = createSpring(0, HOVER_SPRING.stiffness, HOVER_SPRING.damping, (radius) => {
-    currentRadius = radius;
-    writeGrowD();
-  });
-  let growInitialized = false;
-
-  return {
-    update(next) {
-      config = next;
-    },
-    paint(hoveredIndex) {
-      if (!config) return;
-      const isHovered = hoveredIndex === config.index;
-
-      // First paint for this instance — settle the radius spring at the
-      // resting outer radius with no motion, WHATEVER the effect kind
-      // (matches bklit's `useSpring(outerRadius, …)` initial value). The
-      // spring is created at 0 only because config isn't known yet; without
-      // this, the first `set(outerRadius)` would visibly animate the slice
-      // growing in from radius 0 — masked by the WAAPI reveal when
-      // `animate` is on, but plainly wrong for `animate={false}`, and
-      // per-frame `d`-regeneration waste for every slice either way.
-      if (!growInitialized) {
-        growInitialized = true;
-        growSpring.jump(config.outerRadius);
-      }
-
-      if (config.hoverEffect === "grow") {
-        // Keep translate at rest so switching effect kinds never leaves a
-        // stale offset applied.
-        translateXSpring.set(0);
-        translateYSpring.set(0);
-        // Refresh `d` from the CURRENT spring radius + freshly-updated
-        // config synchronously: on a data update React just rewrote the
-        // path's `d` with base-radius rest geometry, and if the spring is
-        // already settled at its target (e.g. grown, hovered, data tick
-        // arrives) `set()` below is a no-op (spring.ts) — the regenerated
-        // grown path must not wait a frame or it never gets written at all.
-        writeGrowD();
-        growSpring.set(isHovered ? config.outerRadius + config.hoverOffset : config.outerRadius);
-      } else {
-        growSpring.set(config.outerRadius);
-        const distance = config.hoverEffect === "none" ? 0 : config.hoverOffset;
-        const offset = sliceMidOffset(config.startAngle, config.endAngle, distance);
-        translateXSpring.set(isHovered ? offset.x : 0);
-        translateYSpring.set(isHovered ? offset.y : 0);
-      }
-    },
-    stop() {
-      translateXSpring.stop();
-      translateYSpring.stop();
-      growSpring.stop();
-    },
-  };
-}

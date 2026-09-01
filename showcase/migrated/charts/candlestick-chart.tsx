@@ -14,29 +14,33 @@
 // `setTimeout(animationDuration)`. This component mirrors that: no phase
 // callback exists here either.
 //
-// Reveal (bklit candlestick.tsx AnimatedCandle, framer spring): ported onto
-// WAAPI via `candle-spring.ts` (verbatim duration/bounce -> stiffness/damping
-// conversion, sampled once into a shared keyframe array reused by every
-// candle) — see `handleRender` below. bklit's reveal effect deps are
+// Reveal (bklit candlestick.tsx AnimatedCandle, framer spring): B4 (C5,
+// D432) moved this onto the native motion renderer's own spring/tween
+// integrator — mount collapsed (center-anchored, height 0), then a
+// `revealed` boolean state flips on a later commit, and the KEYED
+// update-phase diff (same `data-ts-key`s) is what native motion actually
+// animates, fed `{ stiffness, damping }` from `candle-spring.ts`'s KEPT
+// `findSpringStiffnessDamping` duration/bounce solver (see `candleMotion`,
+// in `definition`'s useMemo below). bklit's reveal effect deps are
 // `[animationDuration, revealSignature]`, NOT `data` (verified directly) —
-// reproduced here via a DOM dataset guard on `.ts-chart__marks` (the element
-// is destroyed/recreated on strict-mode remount, so it naturally resets).
-// on exactly those two deps, so data-only updates always SNAP and never
-// replay the reveal.
+// reproduced here as the literal deps of the `revealed`-flipping effect;
+// data-only updates never touch that effect, so `revealed` naturally stays
+// `true` and the reveal never replays (ordinary React state persistence,
+// no DOM guard needed — see that effect's comment).
 //
 // Hover chrome: TanStack-native ChartFocusStrategy (`internal/candlestick-focus-strategy.ts`
 // `bisectDateLeft`/`resolveNearestIndex` strict `>` tie-break over ChartPoint.xValue epoch ms)
 // drives native crosshair/hover-dot/highlight marks (built inside
-// `definition`, C3) directly — plus a thin `<Chart onFocusGroupChange>`
+// `definition`, C3) directly — plus a thin `<RendererChart onFocusGroupChange>`
 // adapter that only drives the app-owned date-pill + axis-label fade
 // (`internal/date-pill.ts`, C3), no native pointermove/bisect listener.
 import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
-import { Chart } from "@tanstack/react-charts/tooltip";
+import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { crosshair, defineChart, createMark, whenFocused } from "@tanstack/charts";
 import { tooltip as tooltipExtension } from "@tanstack/charts/tooltip";
-import type { ChartAxisTickLabelContext, ChartMark, ChartMarkState, ChartMotionDefinition, ChartPoint, ChartRenderContext, ChartScale, SceneNode } from "@tanstack/charts";
+import type { ChartAxisTickLabelContext, ChartMark, ChartMarkState, ChartMotionContext, ChartMotionDefinition, ChartMotionTransition, ChartPoint, ChartRenderContext, ChartRendererRenderContext, ChartScale, SceneNode } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import { TooltipContent } from "./internal/tooltip-components";
 import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH, TOOLTIP_BOX_SPRING } from "./internal/design-tokens";
@@ -44,16 +48,14 @@ import { buildPill, type PillBuild } from "./internal/date-pill";
 import { buildXAxisTickValues, formatYAxisTick, tickLabelFadeOpacity } from "./internal/axis-ticks";
 import { resolveVerticalFadeSides, indicatorFadeGradientStops } from "./internal/fade-mask";
 import { resolveIndicatorPixelWidth, toDotConfig, toIndicatorConfig, type DotConfig } from "./internal/tooltip-mappers";
-import { sampleSpringKeyframes } from "./internal/candle-spring";
+import { findSpringStiffnessDamping } from "./internal/candle-spring";
+import { resolveMotionEasing } from "./internal/reveal-easing";
+import { chartMotionRenderer } from "./internal/motion-renderer";
 import {
-  buildProgressKeyframes,
   resolveEnterTransition,
-  revealTiming,
   TWEEN_FALLBACK,
   type CandlestickEnterTransition,
 } from "./internal/enter-transition";
-import { isRevealed, markRevealed, onPostPaint } from "./internal/deferred-reveal";
-import { nativeStaggerDelayMs } from "./internal/native-stagger";
 import { resolveGridGuide } from "./internal/grid";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
@@ -88,9 +90,16 @@ const WICK_WIDTH_PX = 1.5;
 // bounce: 0.15 }.
 const DEFAULT_ENTER_DURATION_SEC = 0.8;
 const DEFAULT_ENTER_BOUNCE = 0.15;
-// bklit candlestick.tsx AnimatedCandle: opacity always tweens over a fixed,
-// undelayed 150ms regardless of the (staggered) scaleY spring.
-const OPACITY_TWEEN_MS = 150;
+// bklit candlestick.tsx AnimatedCandle: opacity always tweened over a fixed,
+// undelayed 150ms, PARALLEL to the (staggered) scaleY spring — B4 (C5,
+// D432) dropped this: native motion batches every changed attribute on one
+// keyed element into ONE track sharing ONE timing (dist/motion.js
+// `addUpdateTrack`), so a SEPARATE undelayed-opacity / staggered-geometry
+// pair on the same rect isn't expressible. Collapsed geometry (height 0)
+// already makes a candle invisible pre-reveal, so opacity was redundant
+// once the fade-in illusion is achieved by growth alone — D-ledger
+// residual (the "150ms opacity mask, unrelated to the scaleY spring's own
+// timing" visual nuance is gone; the reveal's overall shape is unchanged).
 // bklit candlestick.tsx getSolidColor: when a body pattern overlay is set,
 // the body+wick fall back to these solid tokens (not the caller's fills).
 const PATTERN_FALLBACK_POSITIVE = SOLID_POSITIVE;
@@ -256,7 +265,8 @@ function createCandlestickHoverDotMark(
           });
           return {
             nodes: [
-              { kind: "group", key: "hover-dot", className: "ts-chart__hover-dot", ariaHidden: true, children: nodes },
+              // B7: matches bar-chart.tsx's identical hover-dot rename.
+              { kind: "group", key: "hover-dot", className: "bkm-chart__hover-dot", ariaHidden: true, children: nodes },
             ],
             points,
           };
@@ -401,7 +411,10 @@ function createCandlestickHighlightMark(
           }
           return {
             nodes: [
-              { kind: "group", key: "hover-highlight", className: "ts-chart__candle-highlight", ariaHidden: true, children: nodes },
+              // B7: census cleanliness — app-owned mark group, `bkm-chart__`
+              // prefix (matches the wicks/bodies rename above). Requires a
+              // `styles.css` follow-up — see final report.
+              { kind: "group", key: "hover-highlight", className: "bkm-chart__candle-highlight", ariaHidden: true, children: nodes },
             ],
             points,
           };
@@ -468,16 +481,6 @@ export function CandlestickChart({
   const canInteractRef = React.useRef(false);
   const revealEpochRef = React.useRef(0);
   const revealDeadlineTimerRef = React.useRef<number | null>(null);
-  const revealAnimationsRef = React.useRef<Animation[]>([]);
-  const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
-  // Tracks `<rect>` elements driven by the static `ts-candle-reveal`
-  // CSS-animation fast path. Cleared inline at the deadline epoch by
-  // removing `animation-name` on each element — avoids the D25
-  // `getAnimations()` quadratic trap (see original comment, still applies).
-  const revealCssElementsRef = React.useRef<SVGRectElement[]>([]);
-  // K10: inset-stroke rects held hidden through the reveal; flipped in at
-  // the flat animationDuration deadline (legacy pops them in with isLoaded).
-  const revealStrokeRectsRef = React.useRef<SVGRectElement[]>([]);
 
   // canInteract gate for the TanStack focus strategy (mirrors bklit
   // ChartProvider ready check — plain boolean, not ChartPhase).
@@ -494,15 +497,14 @@ export function CandlestickChart({
   // dead code) — every raw candle is rendered, same as the benchmark
   // comparison must.
   const renderData = data;
-  // Reveal replay guard by DATA identity: the `bkmRevealed` DOM stamp dies
-  // whenever TanStack recreates the marks group. C1: legend hover no longer
-  // remounts the marks (dim moved to native `states`, evaluated against
-  // focus state rather than baked into render output), so this guard is
-  // simpler than it once was — data-change recreation is the only replay
-  // trigger left, matching bklit's reveal being state-keyed (D218).
-  const latestRenderDataRef = React.useRef(renderData);
-  latestRenderDataRef.current = renderData;
-  const revealedForDataRef = React.useRef<unknown>(null);
+  // B4 (C5, D432): the old DOM-stamp/data-identity replay guard
+  // (`latestRenderDataRef`/`revealedForDataRef`, `isRevealed`/
+  // `markRevealed`) is gone — React's `revealed` state already persists
+  // across data-only re-renders (it is not a dependency of the reveal-arm
+  // effect, matching bklit's own reveal being state-keyed on
+  // `[animationDuration, revealSignature]`, D218), so "data-only updates
+  // always snap and never replay the reveal" now falls out of ordinary
+  // React state semantics instead of a manual DOM guard.
 
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection();
@@ -518,6 +520,19 @@ export function CandlestickChart({
     showHoverFade: candlestick?.showHoverFade ?? true,
     animate: candlestick?.animate ?? true,
   }), [candlestick]);
+
+  // B4 (C5, D432): native motion's two-phase enter/update growth. Mounts
+  // collapsed (center-anchored, height 0 — see wicksMark/bodiesMark render
+  // below) under `motion:false` on enter; this effect then flips `revealed`
+  // to `true` on a later commit, and the KEYED update-phase diff (same
+  // `data-ts-key`s) is what native motion actually spring/tweens — see the
+  // `[animationDuration, revealSignature]` effect below. K7 (`animate:
+  // false`) and a non-positive `animationDuration` both skip the reveal
+  // entirely by lazy-initializing straight to `true` (matches legacy's
+  // "CandlestickBodies immediately, no AnimatedCandle pass at all").
+  const [revealed, setRevealed] = React.useState(
+    () => animationDuration <= 0 || !resolvedCandlestick.animate,
+  );
 
   // K9: body patterns resolve two ways — a legacy-style `url(#id)` string is
   // passed through verbatim (caller-authored defs), anything else is treated
@@ -683,6 +698,70 @@ export function CandlestickChart({
   // accepted (research decision, not throttled).
   const [labelFade, setLabelFade] = React.useState<{ primaryX: number; hoveredLabel: string | null } | null>(null);
 
+  // B4 (C5, D432): K7 (`candlestick.animate === false`) and a non-positive
+  // `animationDuration` both skip the reveal entirely — rendered here
+  // (render time), not folded into the reveal-arm effect's deps (which stay
+  // EXACTLY `[animationDuration, revealSignature]`, matching bklit's own
+  // reveal-effect deps — see that effect's comment). Every wick/body/
+  // pattern/inset-stroke rect's `render()` branches on this flag between
+  // its collapsed and target geometry.
+  const showTargetGeometry = revealed || animationDuration <= 0 || !resolvedCandlestick.animate;
+
+  // B4 (C5, D432): the native two-phase growth transition. `false` on
+  // enter (mount paints already-collapsed geometry with no animation, so
+  // there's nothing to enter-animate); on update (the `showTargetGeometry`
+  // flip from `false` -> `true`, which changes every rect's keyed x/y/
+  // width/height) a spring or tween per `enterTransition`, exactly
+  // mirroring legacy's own K4 branch (candlestick-chart.tsx handleRender,
+  // pre-B4): `enterTransition?.type === "tween"` routes through the shared
+  // `resolveEnterTransition`/`TWEEN_FALLBACK` engine (native `easing` needs
+  // a JS progress function, not a CSS string, hence `resolveMotionEasing`);
+  // anything else (spring, or no `enterTransition` at all) uses bklit's own
+  // `defaultEnter = { type: "spring", duration: 0.8, bounce: 0.15 }`
+  // (`DEFAULT_ENTER_DURATION_SEC`/`DEFAULT_ENTER_BOUNCE` above) through
+  // `candle-spring.ts`'s KEPT `findSpringStiffnessDamping` duration/bounce
+  // -> stiffness/damping solver — the same solver legacy's WAAPI keyframe
+  // sampler used, now feeding the native spring integrator directly instead
+  // of a 60-sample keyframe bake.
+  //
+  // Per-candle stagger (legacy: `nativeStaggerDelayMs(staggerBaseMs, 0,
+  // index, "rect")`, `staggerBaseMs = (animationDuration*0.6)/n`) is
+  // DROPPED here, not reimplemented via delaying the state flip: confirmed
+  // via `@tanstack/charts/dist/motion.js:2552` —
+  // `if (context.phase === "update" && transition.type === "spring") delay
+  // = 0;` — the engine unconditionally zeroes any authored `delay` on an
+  // update-phase SPRING transition (candlestick's default, and by far its
+  // most common, path), so a per-candle `delay` callback here would be
+  // silently discarded for the spring branch regardless. Staggering the
+  // `revealed` flip itself (one `setState` per candle) would require N
+  // sequential React commits per reveal, which is both a correctness
+  // hazard (mid-sequence remounts/unmounts) and a functional change to the
+  // reveal architecture the brief did not ask for. All candles now animate
+  // in synchronized lockstep — D-ledger residual.
+  const candleMotion = React.useMemo<ChartMotionDefinition<ChartDatum>>(() => {
+    let transition: ChartMotionTransition;
+    if (enterTransition?.type === "tween") {
+      // `resolveEnterTransition` dispatches on `transition.type ?? fallback.kind`
+      // (enter-transition.ts:126) — since `enterTransition.type === "tween"`
+      // here, `resolved.kind` is PROVABLY always `"tween"`; the `TWEEN_FALLBACK`
+      // fallback below is unreachable at runtime and exists only to satisfy
+      // the narrow (TWEEN_FALLBACK's own static type is the full
+      // `ResolvedTiming` union, even though its literal value is always
+      // `kind: "tween"` — enter-transition.ts:60-64).
+      const resolved = resolveEnterTransition(enterTransition, TWEEN_FALLBACK);
+      const tweenFallback = TWEEN_FALLBACK as Extract<typeof TWEEN_FALLBACK, { kind: "tween" }>;
+      const durationMs = resolved.kind === "tween" ? resolved.durationMs : tweenFallback.durationMs;
+      const easingCss = resolved.kind === "tween" ? resolved.easingCss : tweenFallback.easingCss;
+      transition = { type: "tween", duration: durationMs, easing: resolveMotionEasing(easingCss) };
+    } else {
+      const enterDurationMs = Math.max(1, (enterTransition?.duration ?? DEFAULT_ENTER_DURATION_SEC) * 1000);
+      const enterBounce = enterTransition?.bounce ?? DEFAULT_ENTER_BOUNCE;
+      const { stiffness, damping } = findSpringStiffnessDamping(enterDurationMs, enterBounce);
+      transition = { type: "spring", stiffness, damping };
+    }
+    return (ctx: ChartMotionContext<ChartDatum>) => (ctx.phase === "enter" ? false : { transition });
+  }, [enterTransition]);
+
   const definition = React.useMemo(() => {
     if (width <= 0) return null;
 
@@ -774,14 +853,22 @@ export function CandlestickChart({
             // pattern overlay is set for this candle, else the caller fill.
             const wickFill = solidFillFor(isPositive, Boolean(candlePattern.href));
             const key = `wicks:${i}`;
+            // B4 (C5, D432): center-anchored collapse — matches legacy's
+            // own `rect.style.transformOrigin = "${cx}px ${centerY}px"`
+            // (candle-spring.ts-era WAAPI `scaleY` reveal, pre-B4), so the
+            // native update-phase diff on `y`/`height` reproduces the same
+            // grow-from-center appearance the old `scaleY(0)->scaleY(1)`
+            // transform gave, without needing a CSS transform at all.
+            const wickTargetY = Math.min(yLow, yHigh);
+            const wickTargetHeight = Math.abs(yHigh - yLow) || 1;
             nodes.push({
               kind: "rect",
               key,
               className: "chart-candle-cell",
               x: cx - WICK_WIDTH_PX / 2,
-              y: Math.min(yLow, yHigh),
+              y: showTargetGeometry ? wickTargetY : wickTargetY + wickTargetHeight / 2,
               width: WICK_WIDTH_PX,
-              height: Math.abs(yHigh - yLow) || 1,
+              height: showTargetGeometry ? wickTargetHeight : 0,
               style: { fill: wickFill },
             });
             // group/groupLabel carry the candle's positive/negative series
@@ -795,12 +882,22 @@ export function CandlestickChart({
             });
           }
           return {
-            nodes: [{ kind: "group", key: "wicks", className: "ts-chart__candle", ariaHidden: true, children: nodes }],
+            // B7: census cleanliness — `ts-chart__candle` accidentally
+            // matched no native role-resolution branch anyway (custom
+            // `<rect>` marks resolve to role "rect" via `markMotionRole`'s
+            // localName fallback, not "candle"), but the `ts-chart__`
+            // prefix is reserved for native-emitted role classes; this is
+            // an app-owned mark group, so it takes `bkm-chart__` (matches
+            // `bkm-chart__bar-pulse`/`bkm-chart__hover-dot`'s B3/B7
+            // renames). Requires a `styles.css` follow-up — see final
+            // report (not made here: styles.css is outside this executor's
+            // file set).
+            nodes: [{ kind: "group", key: "wicks", className: "bkm-chart__candle", ariaHidden: true, children: nodes }],
             points,
           };
         },
       };
-    });
+    }, candleMotion);
 
     const bodiesDimStates = candlestickDimStates(resolvedCandlestick.fadedOpacity, resolvedCandlestick.showHoverFade);
     const bodiesMark = createMark(() => {
@@ -838,6 +935,24 @@ export function CandlestickChart({
             const hasOwnPattern = Boolean(candlePattern.href);
             const fill = solidFillFor(isPositive, hasOwnPattern);
             const key = `bodies:${i}`;
+            // B4 (C5, D432): center-anchored collapse (see wicksMark's
+            // identical comment) applied uniformly to ALL THREE rects —
+            // including the K10 inset-stroke rect. Legacy deliberately
+            // EXCLUDED the inset-stroke rect from the animated reveal
+            // entirely (held at `opacity:0`, unanimated pop-in at the flat
+            // `animationDuration` deadline) because it was a separate WAAPI
+            // element with no natural place in the per-rect `.animate()`
+            // loop; under native motion, this rect shares the exact same
+            // `data-ts-key` (`bodies:${i}:stroke`) and geometry shape as
+            // the body rect it's nested inside, so animating it identically
+            // is strictly simpler AND visually closer to intent (the inset
+            // stroke now grows in lockstep with its own body, rather than
+            // popping in abruptly after) — recorded as a deliberate
+            // behavior IMPROVEMENT, not a regression, for the D-ledger.
+            const bodyTargetY = Math.min(yOpen, yClose);
+            const bodyTargetHeight = Math.abs(yClose - yOpen) || 1;
+            const bodyY = showTargetGeometry ? bodyTargetY : bodyTargetY + bodyTargetHeight / 2;
+            const bodyHeight = showTargetGeometry ? bodyTargetHeight : 0;
             // bklit CandlestickBody: solid body rect (self-stroke), then the
             // pattern overlay rect (same geometry/rx, NO self-stroke), then
             // the K10 inset stroke rect when insideStrokeWidth > 0.
@@ -846,9 +961,9 @@ export function CandlestickChart({
               key,
               className: "chart-candle-cell",
               x: cx - bodyWidthPx / 2,
-              y: Math.min(yOpen, yClose),
+              y: bodyY,
               width: bodyWidthPx,
-              height: Math.abs(yClose - yOpen) || 1,
+              height: bodyHeight,
               radius: 1,
               style: { fill, stroke: fill, strokeWidth: 1 },
             });
@@ -858,22 +973,24 @@ export function CandlestickChart({
                 key: `${key}:pattern`,
                 className: "chart-candle-cell",
                 x: cx - bodyWidthPx / 2,
-                y: Math.min(yOpen, yClose),
+                y: bodyY,
                 width: bodyWidthPx,
-                height: Math.abs(yClose - yOpen) || 1,
+                height: bodyHeight,
                 radius: 1,
                 style: { fill: candlePattern.href },
               });
             }
             if (insideStrokeW > 0) {
+              const strokeTargetY = bodyTargetY + insideStrokeW / 2;
+              const strokeTargetHeight = bodyTargetHeight - insideStrokeW;
               nodes.push({
                 kind: "rect",
                 key: `${key}:stroke`,
                 className: "chart-candle-cell",
                 x: cx - bodyWidthPx / 2 + insideStrokeW / 2,
-                y: Math.min(yOpen, yClose) + insideStrokeW / 2,
+                y: showTargetGeometry ? strokeTargetY : strokeTargetY + strokeTargetHeight / 2,
                 width: bodyWidthPx - insideStrokeW,
-                height: (Math.abs(yClose - yOpen) || 1) - insideStrokeW,
+                height: showTargetGeometry ? strokeTargetHeight : 0,
                 radius: 1,
                 style: { fill: "none", stroke: fill, strokeWidth: insideStrokeW },
               });
@@ -889,12 +1006,13 @@ export function CandlestickChart({
             });
           }
           return {
-            nodes: [{ kind: "group", key: "bodies", className: "ts-chart__candle", ariaHidden: true, children: nodes }],
+            // B7 — see wicksMark's identical rename comment above.
+            nodes: [{ kind: "group", key: "bodies", className: "bkm-chart__candle", ariaHidden: true, children: nodes }],
             points,
           };
         },
       };
-    });
+    }, candleMotion);
 
     // C3: crosshair + per-candle hover-dot + highlight marks — native
     // replacement for the deleted candlestick-hover-chrome.ts's imperative
@@ -1078,6 +1196,12 @@ export function CandlestickChart({
     xAxis,
     yAxis,
     labelFade,
+    // B4 (C5, D432): `showTargetGeometry` gates every rect's collapsed vs.
+    // target geometry (folds in `revealed`, `animationDuration`, and K7's
+    // `resolvedCandlestick.animate`); `candleMotion` is the mark-level
+    // motion definition passed to both `createMark` calls.
+    showTargetGeometry,
+    candleMotion,
   ]);
 
   // Reveal re-arm: bklit's own reveal effect deps are EXACTLY
@@ -1096,36 +1220,40 @@ export function CandlestickChart({
       canInteractRef.current = true;
       return;
     }
+    // B4 (C5, D432): collapse-then-flip across two SEPARATE commits so
+    // native motion's keyed update-phase diff always has a "before"
+    // (collapsed) and "after" (target) geometry to interpolate between —
+    // including on a REPLAY (a `revealSignature` bump with unchanged data,
+    // where `revealed` may already be `true` from a prior reveal). A
+    // same-tick batched update would collapse both states into a single
+    // commit and there would be nothing for the diff to animate. K7
+    // (`candlestick.animate === false`) is handled separately, at render
+    // time (`showTargetGeometry` below in `definition`) rather than here —
+    // this effect's deps stay EXACTLY `[animationDuration, revealSignature]`
+    // (bklit's own reveal-effect deps, verified directly — see header),
+    // matching legacy's own "the flat animationDuration deadline timer runs
+    // regardless of animate" behavior.
+    setRevealed(false);
+    const flipTimer = window.setTimeout(() => {
+      if (revealEpochRef.current === epoch) setRevealed(true);
+    }, 0);
+    // bklit's own isLoaded timer: interaction unlocks at the flat
+    // `animationDuration` deadline regardless of whether any individual
+    // candle's own (possibly still-settling) spring has actually finished.
+    // Native motion has no completion callback to hook (unlike WAAPI's
+    // `Animation.finished`), so — unlike legacy, which force-`.cancel()`ed
+    // every in-flight WAAPI animation to its end state at this same
+    // deadline — the native springs are simply left to keep settling on
+    // their own past this point; interaction unlocks on the same schedule,
+    // but a very early user interaction could observe a candle still
+    // mid-spring. Visually inconsequential at bklit's own default duration/
+    // bounce (settles well inside `animationDuration`) — recorded as a
+    // D-ledger residual for pathological custom `enterTransition` configs.
     revealDeadlineTimerRef.current = window.setTimeout(() => {
-      // bklit: force every candle (whether or not its own delayed spring had
-      // actually finished) to its resolved end appearance at the flat
-      // `animationDuration` deadline — see scatter-chart.tsx's identical
-      // `.cancel()` precedent/rationale (drops the Animation from
-      // `document.getAnimations()` entirely, unlike `.finish()`).
-      if (revealEpochRef.current === epoch) {
-        for (const anim of revealAnimationsRef.current) {
-          anim.cancel();
-        }
-        revealAnimationsRef.current = [];
-        // CSS-fast-path rects: clear `animation-name` directly (no
-        // `getAnimations()` involved anywhere in this file — see
-        // `revealCssElementsRef` comment above) — same identity-transform
-        // end-state as the WAAPI `.cancel()` above.
-        for (const rect of revealCssElementsRef.current) {
-          rect.style.animationName = "none";
-        }
-        revealCssElementsRef.current = [];
-        // K10: pop the inset-stroke rects in at the deadline (no transition
-        // — legacy renders them only in the static isLoaded pass).
-        for (const rect of revealStrokeRectsRef.current) {
-          rect.style.transitionDuration = "0ms";
-          rect.style.opacity = "1";
-        }
-        revealStrokeRectsRef.current = [];
-        canInteractRef.current = true;
-      }
+      if (revealEpochRef.current === epoch) canInteractRef.current = true;
     }, animationDuration);
     return () => {
+      window.clearTimeout(flipTimer);
       if (revealDeadlineTimerRef.current !== null) {
         window.clearTimeout(revealDeadlineTimerRef.current);
         revealDeadlineTimerRef.current = null;
@@ -1133,25 +1261,12 @@ export function CandlestickChart({
     };
   }, [animationDuration, revealSignature]);
 
-  // Teardown: cancel the pending post-paint chain + any in-flight WAAPI /
-  // CSS-fast-path reveal animations on unmount (D205 canonical wording).
-  React.useEffect(() => {
-    return () => {
-      revealPostPaintCancelRef.current?.();
-      revealPostPaintCancelRef.current = null;
-      for (const anim of revealAnimationsRef.current) {
-        try {
-          anim.cancel();
-        } catch { /* teardown race — already cancelled */ }
-      }
-      revealAnimationsRef.current = [];
-      for (const rect of revealCssElementsRef.current) {
-        rect.style.animationName = "none";
-      }
-      revealCssElementsRef.current = [];
-      revealStrokeRectsRef.current = [];
-    };
-  }, []);
+  // Teardown: B4 (C5, D432) dropped the old dedicated teardown effect
+  // entirely — no more WAAPI Animations / CSS fast-path rects / post-paint
+  // chain to cancel on unmount. The reveal deadline `setTimeout` is already
+  // cleaned up by the reveal-arm effect's own cleanup function above (D205
+  // canonical wording: teardown lives with the effect that owns the
+  // resource).
 
   // C3: date-pill + label-fade chrome only — crosshair/dots/highlight are
   // now native marks built inside `definition` above. `chromeStateRef`
@@ -1317,210 +1432,20 @@ export function CandlestickChart({
     [],
   );
 
-  // Mount/reveal WAAPI setup (bklit candlestick.tsx AnimatedCandle, framer
-  // spring -> WAAPI per candle-spring.ts). Deferred two rAFs + a macrotask
-  // past commit (scatter-chart.tsx precedent/rationale — keeps the expensive
-  // per-rect `.animate()` instantiation loop off the mount->paint critical
-  // path; the marks group is hidden via a single cheap CSS class the instant
-  // it commits so the "real paint" already matches the tweens' pre-start
-  // state). Guarded by a DOM dataset attribute on `.ts-chart__marks` so
-  // this only runs once per mount (the element is destroyed/recreated on
-  // strict-mode remount, so it naturally resets for the permanent mount).
-  //
-  // K7: `<Candlestick animate={false}>` skips the whole reveal — candles
-  // render statically exactly as bklit (which renders CandlestickBodies
-  // immediately when animate=false), while interaction still unlocks at the
-  // flat `animationDuration` deadline (bklit's isLoaded timer runs
-  // regardless of animate). The gate lives here, at the single reveal
-  // entrypoint, so the K4 sampled-keyframe tween (P5.5) can plug into the
-  // same gate later without re-touching this path.
-  const handleRender = React.useCallback((context: ChartRenderContext<ChartDatum, Date, number>) => {
+  // B4 (C5, D432): the reveal itself moved entirely to native motion
+  // (`candleMotion` above) + the `revealed` state/effect — `handleRender`
+  // now does only what every other migrated chart's `onRender` does: hand
+  // the render context to focus-injection. B1: the renderer context type is
+  // `ChartRendererRenderContext` under `RendererChart` (no `svg` member;
+  // nothing here needed it anyway).
+  const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     // Cast: focus-injection's captureRenderContext takes the library's
     // default-generic Pick<ChartRenderContext, "scene"|"interaction">, which
     // (due to contravariance on interaction.setControlledFocus) isn't
     // structurally assignable from our ChartDatum-specific instantiation —
     // this is a type-system quirk, not a runtime mismatch.
     captureRenderContext(context as Pick<ChartRenderContext, "scene" | "interaction">);
-    if (animationDuration <= 0) return;
-
-    // K7: animate=false renders candles statically — bklit renders
-    // CandlestickBodies immediately when animate is false (no AnimatedCandle
-    // pass at all). Interaction still unlocks at the flat animationDuration
-    // deadline: the reveal-arming effect runs unconditionally, matching
-    // bklit's isLoaded timer which also ignores animate.
-    if (!resolvedCandlestick.animate) {
-      const staticMarksGroup = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-      if (staticMarksGroup) {
-        markRevealed(staticMarksGroup);
-        staticMarksGroup.classList.remove("ts-chart__marks--revealing");
-      }
-      return;
-    }
-
-    const marksGroup = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marksGroup || isRevealed(marksGroup)) return;
-    if (revealedForDataRef.current === latestRenderDataRef.current) {
-      markRevealed(marksGroup);
-      return;
-    }
-    revealedForDataRef.current = latestRenderDataRef.current;
-    markRevealed(marksGroup);
-    const mySetupEpoch = revealEpochRef.current;
-    marksGroup.classList.add("ts-chart__marks--revealing");
-
-    // K4 — the tween branch. `type: "tween"` routes through the SHARED engine
-    // (`resolveEnterTransition` -> `revealTiming` -> `buildProgressKeyframes`),
-    // which samples a tween as 64 uniform progress steps with the caller's
-    // cubic-bezier as the WAAPI timing-level easing. Its own header proves
-    // that shape is exact for a transform: "scale is linear in progress, so
-    // piecewise-linear sampling introduces zero error".
-    //
-    // The SPRING branch below is deliberately left byte-identical — it keeps
-    // its own duration+bounce sampler (`internal/candle-spring`) rather than
-    // the engine's stiffness/damping one, because K4 adds a capability that
-    // was missing; it does not restyle the default reveal.
-    const enterTweenTiming =
-      enterTransition?.type === "tween"
-        ? revealTiming(resolveEnterTransition(enterTransition, TWEEN_FALLBACK))
-        : null;
-    const enterDurationMs =
-      enterTweenTiming?.durationMs ??
-      Math.max(1, (enterTransition?.duration ?? DEFAULT_ENTER_DURATION_SEC) * 1000);
-    const enterBounce = enterTransition?.bounce ?? DEFAULT_ENTER_BOUNCE;
-    const n = renderData.length;
-
-    revealPostPaintCancelRef.current = onPostPaint(() => {
-          if (revealEpochRef.current !== mySetupEpoch) {
-            marksGroup.classList.remove("ts-chart__marks--revealing");
-            return;
-          }
-          // D85.1: query TWO custom rect marks — `.ts-chart__candle`
-          // (not `.ts-chart__link`). Each group contains `<rect>` elements.
-          const wicksGroup = marksGroup.querySelector<SVGGElement>(
-            '.ts-chart__candle[data-ts-key="wicks"]',
-          );
-          const bodiesGroup = marksGroup.querySelector<SVGGElement>(
-            '.ts-chart__candle[data-ts-key="bodies"]',
-          );
-
-          const wickRects = wicksGroup
-            ? Array.from(wicksGroup.querySelectorAll<SVGRectElement>("rect"))
-            : [];
-          const bodyRects = bodiesGroup
-            ? Array.from(bodiesGroup.querySelectorAll<SVGRectElement>("rect"))
-            : [];
-
-          const staggerBaseMs = n > 0 ? (animationDuration * 0.6) / n : 0;
-
-          // A tween never takes the CSS fast path: that path hardcodes the
-          // baked default-spring `ts-candle-reveal` curve.
-          const useCssRevealFastPath =
-            enterTweenTiming === null &&
-            Math.abs(enterBounce - DEFAULT_ENTER_BOUNCE) < 1e-6;
-          const transformKeyframes: Keyframe[] | undefined = enterTweenTiming
-            ? buildProgressKeyframes(enterTweenTiming, (p) => ({
-                transform: `scaleY(${p})`,
-              }))
-            : useCssRevealFastPath
-              ? undefined
-              : sampleSpringKeyframes(enterDurationMs, enterBounce, 60).map((v) => ({
-                  transform: `scaleY(${v})`,
-                }));
-
-          const allRects: SVGRectElement[] = [
-            ...wickRects,
-            ...bodyRects,
-          ];
-
-          // K9/K10: a bodies group now holds up to three rects per candle
-          // (body, optional pattern overlay, optional inset stroke), so the
-          // stagger delay comes from each rect's own candle index in its
-          // `data-ts-key` ("wicks:<i>" / "bodies:<i>") — never DOM position.
-          // bklit gives wick+body+pattern the same per-candle delay.
-          const candleIndexFor = (rect: SVGRectElement): number => {
-            const raw = rect.getAttribute("data-ts-key") ?? "";
-            const sep = raw.indexOf(":");
-            const idx = sep >= 0 ? Number.parseInt(raw.slice(sep + 1), 10) : Number.NaN;
-            return Number.isFinite(idx) && idx >= 0 ? idx : 0;
-          };
-
-          const revealRects: SVGRectElement[] = [];
-          const pendingStrokeRects: SVGRectElement[] = [];
-
-          const applyReveal = (rect: SVGRectElement, index: number) => {
-            // Rect origin is already at the node's x,y (top-left in SVG),
-            // so transformOrigin at the center of the rect.
-            const rx = Number.parseFloat(rect.getAttribute("x") ?? "0");
-            const ry = Number.parseFloat(rect.getAttribute("y") ?? "0");
-            const rw = Number.parseFloat(rect.getAttribute("width") ?? "0");
-            const rh = Number.parseFloat(rect.getAttribute("height") ?? "0");
-            rect.style.transformOrigin = `${rx + rw / 2}px ${ry + rh / 2}px`;
-            // T-D3: native stagger({each, offset}) — offset=0,
-            // each=staggerBaseMs (recomputed per render from `n`, still
-            // linear in `index`).
-            const delayMs = nativeStaggerDelayMs(staggerBaseMs, 0, index, "rect");
-            if (useCssRevealFastPath) {
-              rect.style.animationName = "ts-candle-reveal";
-              rect.style.animationDuration = `${enterDurationMs}ms`;
-              rect.style.animationDelay = `${delayMs}ms`;
-              rect.style.animationTimingFunction = "linear";
-              rect.style.animationFillMode = "backwards";
-              revealCssElementsRef.current.push(rect);
-            } else {
-              const scaleAnim = rect.animate(transformKeyframes as Keyframe[], {
-                duration: enterDurationMs,
-                delay: delayMs,
-                // Spring samples carry their own curve, so "linear"; a tween's
-                // uniform samples get the caller's bezier here instead.
-                easing: enterTweenTiming?.easing ?? "linear",
-                fill: "backwards",
-              });
-              revealAnimationsRef.current.push(scaleAnim);
-            }
-            rect.style.transitionDuration = `${OPACITY_TWEEN_MS}ms`;
-            rect.style.opacity = "0";
-            revealRects.push(rect);
-          };
-
-          for (const rect of allRects) {
-            // K10: the inset stroke rect never joins the reveal — legacy
-            // omits it from AnimatedCandle entirely, so it pops in (no fade)
-            // exactly when isLoaded flips at the flat animationDuration
-            // deadline.
-            if ((rect.getAttribute("data-ts-key") ?? "").endsWith(":stroke")) {
-              rect.style.opacity = "0";
-              pendingStrokeRects.push(rect);
-              continue;
-            }
-            applyReveal(rect, candleIndexFor(rect));
-          }
-          revealStrokeRectsRef.current = pendingStrokeRects;
-          marksGroup.classList.remove("ts-chart__marks--revealing");
-
-          // Phase 2, one frame later: flip every revealing rect to opacity 1
-          // in one pass so the shared CSS transition animates them all
-          // uniformly, undelayed, over the fixed 150ms window.
-          requestAnimationFrame(() => {
-            if (revealEpochRef.current !== mySetupEpoch) return;
-            for (const rect of revealRects) {
-              rect.style.opacity = "1";
-            }
-          });
-    });
-  }, [
-    animationDuration,
-    enterTransition?.type,
-    enterTransition?.duration,
-    enterTransition?.bounce,
-    // K4: a tween's ease changes the sampled curve, so it must re-arm — but
-    // as a PRIMITIVE key. Callers pass `enterTransition` inline, so the `ease`
-    // tuple is a fresh array identity every render; using it raw would re-arm
-    // the reveal on every render instead of only when the curve changes.
-    enterTransition?.ease?.join(","),
-    renderData.length,
-    resolvedCandlestick.animate,
-    captureRenderContext,
-  ]);
+  }, [captureRenderContext]);
 
   const refAreaChildrenCandle = React.useMemo(() => extractReferenceAreaProps(children), [children]);
   const segChildrenCandle = React.useMemo(() => extractSegmentComponents(children), [children]);
@@ -1617,10 +1542,11 @@ export function CandlestickChart({
               <defs>{renderPatternPreset(negativePattern.preset, `${candlePatternDefsId}-candle-pattern-neg`, {})}</defs>
             </svg>
           ) : null}
-          <Chart
+          <RendererChart
             ariaLabel="Candlestick chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             definition={definition}
+            renderer={chartMotionRenderer<ChartDatum, Date, number>()}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
             renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}

@@ -232,14 +232,14 @@ function buildSankeyLabelNodes(
         key: `${SANKEY_MARK_ID}:nlabel:${i}`,
         rotate,
         fontWeight: 500,
-        className: "ts-sankey__label-name",
+        className: "bkm-sankey__label-name",
         style: { fill: "var(--foreground)", opacity: nameOpacity },
       });
       if (showValueLabels !== false) {
         pushLabel(labelX + valueLocalX, centerY, `${intFmt(displayVal)} sessions`, "middle", 11, {
           key: `${SANKEY_MARK_ID}:vlabel:${i}`,
           rotate,
-          className: "ts-sankey__label-value",
+          className: "bkm-sankey__label-value",
           style: { fill: "var(--foreground)", fillOpacity: valueFillOpacity },
         });
       }
@@ -248,13 +248,13 @@ function buildSankeyLabelNodes(
       pushLabel(labelX, centerY, nodeName, anchor, 13, {
         key: `${SANKEY_MARK_ID}:nlabel:${i}`,
         fontWeight: 500,
-        className: "ts-sankey__label-name",
+        className: "bkm-sankey__label-name",
         style: { fill: "var(--foreground)", opacity: nameOpacity },
       });
       if (showValueLabels !== false) {
         pushLabel(labelX, centerY + SANKEY_VALUE_LABEL_GAP, `${intFmt(displayVal)} sessions`, anchor, 11, {
           key: `${SANKEY_MARK_ID}:vlabel:${i}`,
-          className: "ts-sankey__label-value",
+          className: "bkm-sankey__label-value",
           style: { fill: "var(--foreground)", fillOpacity: valueFillOpacity },
         });
       }
@@ -263,11 +263,27 @@ function buildSankeyLabelNodes(
   return labelNodes;
 }
 
+// D4: link hit-test geometry, threaded out to sankey-chart.tsx's pointermove
+// handler the same way laidOutNodesRef already is. Populated straight from
+// the resolved `links` rows' own x1/y1/x2/y2/width fields (network-sankey.d.ts
+// — no extra layout computation needed) inside marks() below, once per
+// layout pass, mirroring laidOutNodesRef's population site exactly.
+export interface LaidOutLink {
+  sourceIndex: number;
+  targetIndex: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  width: number;
+}
+
 export function createSankeyMark(
   data: { nodes: SankeyNodeData[]; links: SankeyLinkData[] },
   config: SankeyMarkConfig,
   gradientDataRef: { current: SankeyGradientDatum[] | null },
   laidOutNodesRef: { current: LaidOutNode[] | null },
+  laidOutLinksRef: { current: LaidOutLink[] | null },
 ) {
   const {
     strokeOpacity,
@@ -338,7 +354,7 @@ export function createSankeyMark(
           return {
             kind: "group" as const,
             key: `${SANKEY_MARK_ID}:node:${index}`,
-            className: "ts-sankey__node",
+            className: "bkm-sankey__node",
             ariaHidden: true,
             children: [
               {
@@ -354,7 +370,7 @@ export function createSankeyMark(
                   fillOpacity: 1,
                   opacity: nodeOpacity,
                 },
-                className: "ts-sankey__node-rect",
+                className: "bkm-sankey__node-rect",
               },
             ] as SceneNode[],
           };
@@ -378,7 +394,7 @@ export function createSankeyMark(
             {
               kind: "group" as const,
               key: `${SANKEY_MARK_ID}:nodes`,
-              className: "ts-sankey__nodes",
+              className: "bkm-sankey__nodes",
               ariaHidden: true,
               children: nodeScenes,
             },
@@ -387,7 +403,7 @@ export function createSankeyMark(
                   {
                     kind: "group" as const,
                     key: `${SANKEY_MARK_ID}:labels`,
-                    className: "ts-sankey__labels",
+                    className: "bkm-sankey__labels",
                     ariaHidden: true,
                     children: labelNodes,
                   },
@@ -402,12 +418,27 @@ export function createSankeyMark(
           points: nodePoints,
         };
       },
-    }));
+      // D3 (C5 sankey reveal, sanctioned reach-in — see sankey-animation.ts's
+      // header): node rects/labels stay driven by the WAAPI reveal helper,
+      // NOT native motion. `false` here (createMark's second positional arg
+      // — dist/mark.d.ts's `createMark(initialize, motion?, renderer?)`)
+      // suppresses the automatic generic opacity-fade `enter` native motion
+      // would otherwise apply to this custom mark's rect/label children, so
+      // the two animation systems never race on the same `opacity` style.
+    }), false);
 
   // Native host (T-D13). Numeric node keys — source/target on the raw links
   // ARE node indexes, and ChartKey admits finite numbers.
   return sankeyDiagram({
     id: "sankey",
+    // D3 (C5 sankey reveal, sanctioned reach-in): belt-and-suspenders host-
+    // level suppression alongside the two child-mark-level `motion: false`
+    // settings above/below — `SankeyDiagramOptions extends
+    // ChartMarkMotionOptions` (network-sankey.d.ts:86), so the composite
+    // host itself could also seed a cascade default; explicit `false` here
+    // guarantees no native motion reaches either child regardless of how
+    // the composite-mark motion cascade resolves a host vs. child setting.
+    motion: false,
     nodes: data.nodes,
     links: data.links,
     nodeKey: (node, { index }) => index,
@@ -420,6 +451,18 @@ export function createSankeyMark(
     marks: ({ nodes, links }) => {
       const laidOutNodes = nodes.map(toLaidOutNode);
       laidOutNodesRef.current = laidOutNodes;
+
+      // D4: link hit-test rows — straight off the resolved LinkRow fields,
+      // same order/indexing the strokeOpacity/stroke accessors below use.
+      laidOutLinksRef.current = links.map((l) => ({
+        sourceIndex: l.sourceIndex,
+        targetIndex: l.targetIndex,
+        x1: l.x1,
+        y1: l.y1,
+        x2: l.x2,
+        y2: l.y2,
+        width: l.width,
+      }));
 
       // ── Hover connectivity (C1 states+legend) ──
       // Computed against the RESOLVED `links` rows (not the raw input array)
@@ -459,6 +502,15 @@ export function createSankeyMark(
           y1: "y1",
           x2: "x2",
           y2: "y2",
+          // D3 (C5 sankey reveal, sanctioned reach-in): the draw-on
+          // (stroke-dasharray/dashoffset) that stampSankeyLinkPathLength +
+          // runSankeyReveal drive isn't in the native motionAttributes
+          // allowlist (dist/motion.js:1315-1336 — no stroke-dasharray/
+          // dashoffset entry), so this stays a WAAPI-driven attribute no
+          // native `motion` timing could express anyway; suppressed here so
+          // native motion doesn't ALSO fade this mark's own opacity in
+          // underneath the reach-in's draw-on, which would double-animate.
+          motion: false,
           // Stroke width IS the data (flow value). lineCap "butt" matches the
           // previous area paths (native link defaults to round).
           strokeWidth: (flowRow) => Math.max(1, flowRow.width),

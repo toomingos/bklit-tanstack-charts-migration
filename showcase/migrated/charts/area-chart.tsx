@@ -28,18 +28,21 @@ import * as React from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { curveMonotoneX } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
-import { Chart } from "@tanstack/react-charts/tooltip";
+import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
 import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
 import type {
   ChartInteractionController,
   ChartMark,
+  ChartMotionContext,
   ChartPoint,
   ChartPositionScaleOptions,
   ChartRenderContext,
+  ChartRendererRenderContext,
   StaticChartDefinition,
 } from "@tanstack/charts";
+import { chartMotionRenderer } from "./internal/motion-renderer";
 import { areaFill } from "./internal/area-fill-mark";
 import { patternAreaMark } from "./internal/pattern-area-mark";
 import { renderPatternPreset } from "./internal/pattern-preset";
@@ -128,7 +131,7 @@ import {
   DEFAULT_ANIMATION_DURATION_MS,
   DEFAULT_ANIMATION_EASING,
 } from "./internal/animation-defaults";
-import { isRevealed, markRevealed } from "./internal/deferred-reveal";
+import { runRevealWipe, snapRevealWipe } from "./internal/reveal-wipe";
 import { clipRevealTiming, type EnterTransition } from "./internal/enter-transition";
 import "./styles.css";
 // Area's own hover dim (area.tsx hardcodes dimOpacity={0.6}; Line uses 0.3).
@@ -1014,6 +1017,49 @@ export function AreaChart({
             FADE_BUFFER,
           )
       : 1;
+    // C5 (D432/A3): `svgAnimation` (renderer.js's blanket per-render-pass
+    // reconcile, read only by the static SVG renderer) is dead once
+    // rendering through `motion()` — replaced by a chart-level `motion`
+    // callback carrying the SAME gate, now scoped per mark role/phase
+    // instead of blanket (see line-chart.tsx's twin comment for the full
+    // reasoning):
+    //  - phase "enter" on line/area/dot: `false` — RevealWipe (A2,
+    //    internal/reveal-wipe.ts) owns entrance for these roles.
+    //  - phase "update" on line/area/dot: I8 (chart-phase.ts, this file's
+    //    own header comment above) — new data paints immediately; only a
+    //    y-domain change tweens (500ms scale tween). Reusing the exact
+    //    pre-C5 `svgAnimation` gate reproduces this.
+    //  - anything else: `undefined` — falls through to cascade default.
+    const yDomainTweenGateActive = isChartInteractionPhase(chartPhase) && isLoaded && yDomainChanged;
+    const motion = (context: ChartMotionContext<unknown>) => {
+      if (context.role === "line" || context.role === "area" || context.role === "dot") {
+        if (context.phase === "enter") return false as const;
+        if (context.phase === "update") {
+          return yDomainTweenGateActive
+            ? {
+                transition: {
+                  type: "tween" as const,
+                  duration: effectiveYDomainTweenDuration as number,
+                  easing: bezierEasing,
+                },
+              }
+            : (false as const);
+        }
+      }
+      return undefined;
+    };
+    // C5 (D432/A5): AX5 — see line-chart.tsx's twin comment. Scoped to
+    // tick-label position only, never `ticks`/the grid.
+    const tickLabelMotion = (context: ChartMotionContext<unknown>) =>
+      context.phase === "enter"
+        ? (false as const)
+        : {
+            transition: {
+              type: "tween" as const,
+              duration: DEFAULT_Y_DOMAIN_TWEEN_MS,
+              easing: bezierEasing,
+            },
+          };
     const xScaleOptions: ChartPositionScaleOptions<Date> = {
       scale: xScale,
       grid: gridGuide.vertical,
@@ -1026,6 +1072,7 @@ export function AreaChart({
               thin: false,
               dy: margin.bottom - 25,
               opacity: xTickLabelOpacity,
+              motion: tickLabelMotion,
             }
           : false,
       },
@@ -1050,6 +1097,7 @@ export function AreaChart({
               thin: false,
               opacity: 1,
               dx: yAxis.orientation === "right" ? 8 : -8,
+              motion: tickLabelMotion,
             },
           },
           side: yAxis.orientation === "right" ? "right" : "left",
@@ -1097,10 +1145,7 @@ export function AreaChart({
                   } as const),
           }
         : (false as const),
-      svgAnimation:
-        isChartInteractionPhase(chartPhase) && isLoaded && yDomainChanged
-          ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
-          : false,
+      motion,
     });
   }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients, legendHoveredIndex, areas, tooltip, tooltipEnabled, crosshairGradientId, isDiscrete, hoveredIndex, xAxis, yAxis, visibleData, xDomain, labelFade]);
 
@@ -1238,7 +1283,11 @@ export function AreaChart({
   // the marks node; the epoch re-opens a window the flag has closed. See
   // line-chart.tsx for the full note.
   const revealedEpochRef = React.useRef<number | null>(null);
-  const handleRender = React.useCallback((context: ChartRenderContext<ChartDatum, Date, number>) => {
+  // A1 (D432): `RendererChart`'s `onRender` passes a `ChartRendererRenderContext`
+  // (`{container, scene, surface, interaction}`) — no `svg` field. Nothing in
+  // this file's `handleRender` ever reached into `context.svg`, so only the
+  // annotation changes (see line-chart.tsx's twin comment).
+  const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     // Cast: `useFocusInjection`'s `captureRenderContext` is typed against the
     // library's generic (unknown-typed) `ChartRenderContext`, which — because
     // `interaction.setControlledFocus` is checked contravariantly under
@@ -1249,20 +1298,21 @@ export function AreaChart({
     // clearFocusChrome's `setControlledFocus(null, ...)` pointer-source clear.
     interactionRef.current = context.interaction;
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marks) return;
-    const epochUnseen = revealedEpochRef.current !== revealEpoch;
-    const shouldAnimate = chartPhase === "revealing" && animationDuration > 0 && !prefersReducedMotion && (epochUnseen || !isRevealed(marks));
-    if (!shouldAnimate) {
-      markRevealed(marks);
-      marks.style.clipPath = "";
-      return;
-    }
-    markRevealed(marks);
-    revealedEpochRef.current = revealEpoch;
-    marks.animate(
-      [{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }],
-      { duration: revealDurationMs, easing: revealEasingCss },
-    );
+    // A2 (D420/D432): reveal sweep now lives in internal/reveal-wipe.ts,
+    // shared byte-for-byte with line-chart.tsx/composed-chart.tsx. Its
+    // return value gates the per-marker fade stagger below exactly as the
+    // old inline `shouldAnimate` did.
+    const shouldAnimate = runRevealWipe({
+      marks,
+      epoch: revealEpoch,
+      epochRef: revealedEpochRef,
+      active: chartPhase === "revealing",
+      animationDuration,
+      prefersReducedMotion,
+      durationMs: revealDurationMs,
+      easingCss: revealEasingCss,
+    });
+    if (!marks || !shouldAnimate) return;
     if (!areaMarkerConfigs.some((s) => s.showMarkers)) return;
     const innerW = Math.max(0, width - margin.left - margin.right);
     // bklit series-markers.tsx:102 — the marker stagger spans the CLIP reveal.
@@ -1317,12 +1367,12 @@ export function AreaChart({
 
   React.useEffect(() => {
     if (chartPhase !== "revealing") return;
-    const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marks) return;
-    if (prefersReducedMotion || animationDuration <= 0) {
-      marks.style.clipPath = "";
-      markRevealed(marks);
-    }
+    snapRevealWipe({
+      marks: containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks"),
+      active: true,
+      animationDuration,
+      prefersReducedMotion,
+    });
   }, [chartPhase, revealEpoch, animationDuration, prefersReducedMotion]);
   React.useEffect(() => () => {
     for (const a of areaMarkerRevealAnimsRef.current) { try { a.cancel(); } catch { /* already canceled */ } }
@@ -1419,7 +1469,8 @@ export function AreaChart({
       ) : null}
       {definition ? (
         <div style={needsAreaBrushClip ? { clipPath: `url(#${areaBrushClipId})` } : undefined}>
-          <Chart
+          <RendererChart
+            renderer={chartMotionRenderer<ChartDatum, Date, number>()}
             ariaLabel="Area chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             height={heightPx > 0 ? heightPx : undefined}

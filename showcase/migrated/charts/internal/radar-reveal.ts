@@ -12,7 +12,7 @@
 // Grid VALUE LABELS match `radialGrid`'s defaults, so they're folded in here.
 
 import { curveLinearClosed, lineRadial } from "d3-shape";
-import type { SceneNode } from "@tanstack/charts";
+import type { ChartMotionTransition, SceneNode } from "@tanstack/charts";
 import type { PolarGuide, PolarGuideScene } from "@tanstack/charts/polar";
 import {
   TWEEN_FALLBACK,
@@ -20,6 +20,7 @@ import {
   type ResolvedTiming,
   type RevealTiming,
 } from "./enter-transition";
+import { motionEasingFromCss } from "./pie-hover-chrome";
 
 export interface BklitRadarGridOptions {
   levels: number;
@@ -142,3 +143,27 @@ export type RadarResolvedTiming = ResolvedTiming;
 export type RadarRevealTiming = RevealTiming;
 
 export const RADAR_TWEEN_FALLBACK: RadarResolvedTiming = TWEEN_FALLBACK;
+
+// C6 (native motion, Phase 6, D432): radar's area/dot entrance ("campaign")
+// used to be a hand-rolled WAAPI keyframe `.animate()` per series (uniform-
+// sampled `scale(p)` transform via `buildRadarProgressKeyframes`, or the
+// pre-sampled spring curve for a spring `enterTransition` — both funnelled
+// through `resolveRadarEnterTransition`/`radarRevealTiming`). That per-series
+// campaign is now the `radialArea`/`radialDot` marks' own native `motion`
+// enter phase (radar-chart.tsx) — converts the SAME resolved tween/spring
+// timing into the native `ChartMotionTransition` shape (mirrors gauge's own
+// `gaugeMotionTransition`, gauge-reveal.ts) instead of pre-sampling it into a
+// keyframe array. One disclosed delta (established C1-C5 precedent, gauge/
+// pie/ring/sunburst): native's per-datum "enter" for a newly-added mark
+// animates opacity only — there is no native "scale-from-0" primitive to
+// hang the legacy `transform:scale(p)` radial-growth look on, so entrance
+// reads as a stagger-delayed fade-in rather than a literal scale-up. Grid
+// rings / axis spokes / metric labels are NOT marks (they are `PolarGuide`
+// scene nodes with no `motion` field) and keep their own hand-rolled WAAPI
+// reveal in radar-chart.tsx's `handleRender`, unchanged (D420-style scoped
+// exception).
+export function radarMotionTransition(resolved: RadarResolvedTiming): ChartMotionTransition {
+  return resolved.kind === "spring"
+    ? { type: "spring", stiffness: resolved.stiffness, damping: resolved.damping, mass: resolved.mass }
+    : { type: "tween", duration: resolved.durationMs, easing: motionEasingFromCss(resolved.easingCss) };
+}

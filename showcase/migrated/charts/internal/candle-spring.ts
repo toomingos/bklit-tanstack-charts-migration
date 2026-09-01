@@ -191,27 +191,17 @@ export function createSpringResolver(
   };
 }
 
-/**
- * Samples a `duration`/`bounce` spring (origin 0 -> target 1, matching the
- * per-candle reveal's `scaleY` progress) into `samples` evenly spaced
- * keyframe values across `[0, durationMs]`, forcing the last sample to
- * exactly `target` (see header). Reused verbatim across every rect's
- * `element.animate()` call — sampled ONCE per chart, not per candle.
- */
-export function sampleSpringKeyframes(
-  durationMs: number,
-  bounce: number,
-  samples = 60,
-): number[] {
-  const origin = 0;
-  const target = 1;
-  const { stiffness, damping, mass } = findSpringStiffnessDamping(durationMs, bounce);
-  const resolveSpring = createSpringResolver(stiffness, damping, mass, origin, target, 0);
-  const values: number[] = [];
-  const count = Math.max(2, samples);
-  for (let i = 0; i < count; i++) {
-    const t = (i / (count - 1)) * durationMs;
-    values.push(t >= durationMs ? target : resolveSpring(t));
-  }
-  return values;
-}
+// C5/B4 (D432): `sampleSpringKeyframes` (the WAAPI 60-sample keyframe
+// baker) was deleted here — the native motion renderer's own spring
+// integrator (`@tanstack/charts/motion`) now drives the candle reveal
+// directly from `{ stiffness, damping }`, sampling the closed-form curve
+// itself every frame instead of a chart-time pre-baked keyframe array.
+// `findSpringStiffnessDamping` above is KEPT (still the duration/bounce ->
+// stiffness/damping solver feeding the native `transition: { type:
+// 'spring', stiffness, damping }`). `createSpringResolver` is ALSO KEPT
+// despite losing its only in-file caller: `internal/radar-spring.ts`
+// (foreign, executor C/polar-charts scope) imports it directly
+// (`import { createSpringResolver } from "./candle-spring"`) — confirmed
+// via grep before deleting anything here, so removing it would break that
+// file. Only the keyframe-baking function itself — this module's sole
+// WAAPI-specific piece — is gone.
