@@ -891,11 +891,11 @@ export function LiveLineChart({
                 {crosshairGradientDef ? (
                   <linearGradient
                     id={crosshairGradientDef.id}
-                    gradientUnits="objectBoundingBox"
-                    x1="0%"
-                    y1="0%"
-                    x2="0%"
-                    y2="100%"
+                    gradientUnits="userSpaceOnUse"
+                    x1={0}
+                    x2={0}
+                    y1={margin.top}
+                    y2={margin.top + innerHeight}
                   >
                     {crosshairGradientDef.stops.map((s) => (
                       <stop key={s.offset} offset={s.offset} stopColor={crosshairGradientDef.color} stopOpacity={s.opacity} />

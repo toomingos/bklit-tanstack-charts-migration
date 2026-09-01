@@ -2098,7 +2098,7 @@ export function ComposedChart({
           {crosshairGradientDef ? (
             <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
               <defs>
-                <linearGradient id={crosshairGradientDef.id} gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="0%" y2="100%">
+                <linearGradient id={crosshairGradientDef.id} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={margin.top} y2={margin.top + Math.max(0, heightPxComp - margin.top - margin.bottom)}>
                   {crosshairGradientDef.stops.map((s) => (
                     <stop key={s.offset} offset={s.offset} stopColor={crosshairGradientDef.color} stopOpacity={s.opacity} />
                   ))}
