@@ -132,6 +132,12 @@
 //   `<svg onPointerLeave={onHitLeaveAll}>` (identical footprint, rendered on
 //   top) already reproduces the intended "leave the stage clears hover"
 //   behavior and was doing the actual work all along.
+//   6.5 gate check (D448 → D471): the occlusion argument above covers
+//   pointer RESOLUTION only. The host also re-reports its still-focused
+//   keyboard point on every render and emits `null` on `focusout`, so the
+//   two paths CAN fight over the single hover cell. `pointerInsideStageRef`
+//   (below, at the hit handlers) makes the pointer the owner while it is
+//   inside the stage; keyboard focus drives hover only when it is not.
 
 import {
   Children,
@@ -886,14 +892,25 @@ function SunburstChartInner({
   // hazard against the SAME attribute). Native motion owns both the reveal
   // and hover-grow through the ONE reconcile pipeline now, so there is no
   // second writer left to race — no guard needed.
+  // 6.5 gate (D448 → D471): the pointer overlay and native keyboard focus
+  // share ONE hover cell with no source tag. While the pointer is inside the
+  // overlay it owns that cell — native `onFocusChange` re-reports the still-
+  // focused keyboard point on every host render (dist/renderer.js:165-168)
+  // and fires `null` on `focusout` (renderer.js:615), and without this guard
+  // both would overwrite a live pointer hover. Keyboard focus still drives
+  // hover whenever the pointer is outside the stage.
+  const pointerInsideStageRef = useRef(false);
+
   const handleHitEnter = useCallback(
     (arcIndex: number) => {
+      pointerInsideStageRef.current = true;
       setHoveredArcIndex(arcIndex);
     },
     [setHoveredArcIndex],
   );
 
   const handleHitLeaveAll = useCallback(() => {
+    pointerInsideStageRef.current = false;
     setHoveredArcIndex(null);
   }, [setHoveredArcIndex]);
 
@@ -912,6 +929,7 @@ function SunburstChartInner({
   // capability add: keyboard users get arc dim/grow hover-preview.
   const handleSunburstFocusChange = useCallback(
     (point: { datum: TSSunburstNode<SunburstFlatRow> } | null) => {
+      if (pointerInsideStageRef.current) return; // pointer owns hover (D471)
       const a = point ? arcsById.get(point.datum.id) : undefined;
       setHoveredArcIndex(a ? a.arcIndex : null);
     },

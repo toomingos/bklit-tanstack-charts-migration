@@ -70,7 +70,7 @@ function dispatchClick(el: Element | null | undefined): void {
 
 /**
  * Click a segment by its arcIndex. The TanStack-rendered DOM inside
- * `[data-ts-key="sunburst-arcs"]` has one `<path>` per arc, in
+ * `[data-ts-key^="sunburst-arcs-"]` has one `<path>` per arc, in
  * depth-descending order matching `segmentDomOrder`.
  */
 function clickSegment(
@@ -78,7 +78,9 @@ function clickSegment(
   arcs: ArcDatum[],
   targetArcIndex: number,
 ): boolean {
-  const markGroup = container.querySelector('[data-ts-key="sunburst-arcs"]');
+  // The mark id folds in the chart's playKey (`sunburst-arcs-${playKey}`,
+  // showcase/migrated/charts/sunburst-chart.tsx), so match by prefix (D471).
+  const markGroup = container.querySelector('[data-ts-key^="sunburst-arcs-"]');
   if (!markGroup) return false;
 
   // Get all path children from the single mark group
