@@ -1,17 +1,30 @@
 // Migrated bklit-ui ChoroplethChart — same public API, rendered by TanStack
-// Charts geoShape mark + a local port of @visx/zoom for zoom/pan (T19 —
-// `internal/zoom-engine.tsx`; see that file's header for why this can't stay
-// a `@visx/zoom` import).
+// Charts geoShape mark + a local port of @visx/zoom for zoom GESTURE INPUT
+// (T19 — `internal/zoom-engine.tsx`; see that file's header for why the
+// gesture engine can't stay a `@visx/zoom` import).
+//
+// C6 (06-brush-zoom.md, "Choropleth 2-D zoom" row): the APPLICATION half —
+// how the gesture's transform matrix reaches the screen — no longer writes a
+// raw SVG `transform` attribute onto `g.ts-chart__marks` + the graticule.
+// `geoShape`'s `projection` option takes a FACTORY the mark calls per render
+// (`GeoProjectionInput`, dist/geo.d.ts:16, @tanstack/charts@0.15.0), so
+// zoom scale/translate become projection PARAMETERS, rebuilt each committed
+// animation frame — see `projection`'s useMemo and `stepZoomFrame` below.
+// The gesture INPUT path (internal/zoom-engine.tsx: @use-gesture wiring,
+// matrix math, `transformMatrix`/`isDragging` state) is UNCHANGED — this
+// file only changed what it DOES with that state.
 //
 // Principles (bklit native, tanstack gap):
 //   - bklit uses @visx/zoom <Zoom> with svg ref=zoom.containerRef as gesture
 //     target and single <g transform={zoom.toString()}> for content. This
-//     port keeps the identical shape via internal/zoom-engine's <Zoom>.
+//     port keeps <Zoom> as the gesture source; the <g transform> half is
+//     retired (C6) in favor of per-frame reprojection (see above).
 //   - TanStack has no geo zoom primitive (interaction-zoom is 1D zoomX for
 //     time series only). Gap stays consumer-owned, ported verbatim from bklit.
-//   - No wrapper CSS transform, no viewBox fight. Host width/viewBox stable,
-//     <g> scales content. Graticule shares same <g> via graticuleGRef.
-//     Tooltip via zoom.applyToPoint.
+//   - No wrapper CSS transform, no viewBox fight. Host width/viewBox stable;
+//     the projection itself now carries the zoomed scale/translate, so both
+//     the marks and the graticule (fed the SAME `projection` value) redraw
+//     already-zoomed — no group transform, no second write to keep in sync.
 
 import React, {
   Children,
@@ -178,6 +191,17 @@ export interface ChoroplethContextValue {
   // biome-ignore lint/suspicious/noExplicitAny: GeoJSON types are complex
   rawPathGenerator: (geo: any) => string | null;
   projectPoint: (coords: [number, number]) => [number, number] | null;
+  /** C6 — the sanctioned replacement for matrix-inverting the zoom gesture's
+      transform to hit-test a screen point: this calls the CURRENT (already
+      zoomed, see `projection`'s useMemo) projection's own `.invert()`
+      (standard d3-geo `GeoProjection` API). Pair with a click handler's
+      `host.interaction.clientToScene` (client coords -> scene coords; scene
+      coords ARE plot-local here since choropleth's `margin: 0`) to build a
+      click-to-geo picker without touching `internal/zoom-engine.tsx`'s
+      matrix math. No current consumer needs this (see final report) — added
+      for symmetry with `projectPoint` and because it's what C6 replaces the
+      retired inverse-matrix hit-testing capability WITH. */
+  unprojectPoint: (point: [number, number]) => [number, number] | null;
   width: number;
   height: number;
   innerWidth: number;
@@ -201,6 +225,7 @@ const CHOROPLETH_CONTEXT_DEFAULT: ChoroplethContextValue = {
   pathGenerator: () => undefined,
   rawPathGenerator: () => null,
   projectPoint: () => null,
+  unprojectPoint: () => null,
   width: 0,
   height: 0,
   innerWidth: 0,
@@ -313,6 +338,61 @@ function resolveFeatureAlpha(
 }
 
 
+// C6 — throttle + release-ease for the zoom APPLICATION path (see
+// `stepZoomFrame` inside ChoroplethChartBody). 180ms matches the retired
+// `transition: transform 0.18s ease-out` (the old `syncZoomTransform`,
+// deleted); the easing is now applied to the matrix VALUES each committed
+// rAF frame (feeding a projection rebuild) instead of to a CSS `transform`.
+const ZOOM_EASE_MS = 180;
+
+// Numeric solve of CSS `ease-out` (`cubic-bezier(0, 0, 0.58, 1)`, the timing
+// function the retired transition used) via Newton's method on the bezier's
+// x(u), so `cubicBezierEaseOut(t)` for a given elapsed-time fraction `t`
+// returns the same eased progress CSS would have painted.
+function cubicBezierEaseOut(t: number): number {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  const x1 = 0, y1 = 0, x2 = 0.58, y2 = 1;
+  const cx = 3 * x1;
+  const bx = 3 * (x2 - x1) - cx;
+  const ax = 1 - cx - bx;
+  const cy = 3 * y1;
+  const by = 3 * (y2 - y1) - cy;
+  const ay = 1 - cy - by;
+  const sampleX = (u: number) => ((ax * u + bx) * u + cx) * u;
+  const sampleY = (u: number) => ((ay * u + by) * u + cy) * u;
+  const sampleDX = (u: number) => (3 * ax * u + 2 * bx) * u + cx;
+  let u = t;
+  for (let i = 0; i < 8; i++) {
+    const dx = sampleDX(u);
+    if (Math.abs(dx) < 1e-6) break;
+    u -= (sampleX(u) - t) / dx;
+  }
+  return sampleY(u);
+}
+
+function lerpMatrix(from: TransformMatrix, to: TransformMatrix, p: number): TransformMatrix {
+  return {
+    scaleX: from.scaleX + (to.scaleX - from.scaleX) * p,
+    scaleY: from.scaleY + (to.scaleY - from.scaleY) * p,
+    translateX: from.translateX + (to.translateX - from.translateX) * p,
+    translateY: from.translateY + (to.translateY - from.translateY) * p,
+    skewX: from.skewX + (to.skewX - from.skewX) * p,
+    skewY: from.skewY + (to.skewY - from.skewY) * p,
+  };
+}
+
+function matricesEqual(a: TransformMatrix, b: TransformMatrix): boolean {
+  return (
+    a.scaleX === b.scaleX &&
+    a.scaleY === b.scaleY &&
+    a.translateX === b.translateX &&
+    a.translateY === b.translateY &&
+    a.skewX === b.skewX &&
+    a.skewY === b.skewY
+  );
+}
+
 interface ExtractedConfig {
   featureConfig: ChoroplethFeatureProps | null;
   tooltipConfig: ChoroplethTooltipProps | null;
@@ -384,24 +464,143 @@ function ChoroplethChartBody({
   // `onFocusChange` (C2 native tooltip, see internal/choropleth-hover-chrome.ts).
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
-  // C2: read-only zoom-transform ref used by the tooltip's `anchor` fn below
-  // (`applyZoomToPoint`) — declared this early so `definition`'s useMemo can
-  // close over `applyZoomToPoint`, which itself closes over this ref. Zoom
-  // mechanics that WRITE to it (`syncZoomTransform`, the <Zoom> render prop)
-  // are unchanged and still live further down (C6-owned).
+  // C6: read-only ref the <Zoom> render prop (below, unchanged gesture
+  // machinery) writes to on every gesture tick. Only used for the
+  // `containerRef` binding + `isDragging` cursor state in `handleRender` now
+  // — the tooltip no longer forward-applies this (see the native tooltip's
+  // `anchor` fn below: points arrive already zoomed, since `projection`
+  // itself now carries the zoom).
   const zoomRefForChrome = useRef<ProvidedZoom<SVGSVGElement> | null>(null);
+
+  // C6 — application path. `displayMatrix` is what actually reaches the
+  // projection below; it is throttled to at most one commit per animation
+  // frame and, when not dragging, eased toward the gesture engine's target
+  // matrix over `ZOOM_EASE_MS` — the same 180ms the retired
+  // `transition: transform 0.18s ease-out` used, just computed against the
+  // matrix VALUES each frame instead of applied as a CSS transition on a
+  // `transform` attribute (which doesn't make sense once there's no longer a
+  // <g transform> to transition — an SVG `d` attribute doesn't tween).
+  // `motion: false` on `geoShape` below (unchanged) keeps dist/motion.js's
+  // per-mark animate() from also firing on these redraws (dist/motion.js:612,
+  // @tanstack/charts@0.15.0 — animates on every non-resize reconcile).
+  const [displayMatrix, setDisplayMatrix] = useState<TransformMatrix>(() => initialZoom);
+  const targetMatrixRef = useRef<TransformMatrix>(initialZoom);
+  const isDraggingRef = useRef(false);
+  const committedMatrixRef = useRef<TransformMatrix>(initialZoom);
+  const committedDraggingRef = useRef(false);
+  const easeRef = useRef<{ from: TransformMatrix; start: number } | null>(null);
+  const zoomRafRef = useRef<number | null>(null);
+  // `refreshTooltipAnchor` (declared later, near the hover-chrome wiring —
+  // it closes over `renderContextRef`/`hoveredKeyRef`, both declared after
+  // this point) is mirrored into a ref so `stepZoomFrame` above it can call
+  // the LATEST version without a forward reference in a `useCallback` deps
+  // array (which would be a TDZ error — this file's `const`s all share one
+  // function-body scope). Assigned unconditionally on every render, right
+  // after `refreshTooltipAnchor`'s own declaration, below.
+  const refreshTooltipAnchorRef = useRef<() => void>(() => {});
+
+  const stepZoomFrame = useCallback((now: number) => {
+    zoomRafRef.current = null;
+    const dragging = isDraggingRef.current;
+    const target = targetMatrixRef.current;
+    let next: TransformMatrix;
+    if (dragging) {
+      // "except during drag" (retired CSS rule) — instant 1:1 follow.
+      next = target;
+    } else if (easeRef.current) {
+      const { from, start } = easeRef.current;
+      const t = Math.min((now - start) / ZOOM_EASE_MS, 1);
+      next = t >= 1 ? target : lerpMatrix(from, target, cubicBezierEaseOut(t));
+      if (t >= 1) easeRef.current = null;
+    } else {
+      next = target;
+    }
+    const matrixChanged = !matricesEqual(next, committedMatrixRef.current);
+    const draggingChanged = dragging !== committedDraggingRef.current;
+    if (matrixChanged || draggingChanged) {
+      committedMatrixRef.current = next;
+      committedDraggingRef.current = dragging;
+      setDisplayMatrix(next);
+      // C2 parity: keep the native tooltip glued to its feature through the
+      // gesture (see `refreshTooltipAnchor`'s own doc comment below for why
+      // this repeated call is needed — dist/tooltip.js caches the anchor
+      // point and does not re-run `anchor` on its own).
+      refreshTooltipAnchorRef.current();
+    }
+    // Keep animating while dragging (target moves every frame) or mid-ease;
+    // otherwise stop — no idle per-frame cost once settled.
+    if (dragging || easeRef.current) {
+      zoomRafRef.current = requestAnimationFrame(stepZoomFrame);
+    }
+  }, []);
+
+  const scheduleZoomFrame = useCallback(() => {
+    if (zoomRafRef.current !== null) return;
+    zoomRafRef.current = requestAnimationFrame(stepZoomFrame);
+  }, [stepZoomFrame]);
+
+  // Called from the <Zoom> render prop below on every gesture tick (a new
+  // `transformMatrix`/`isDragging` from zoom-engine.tsx's unchanged gesture
+  // state). This only updates refs + schedules a frame; the actual React
+  // state commit (`setDisplayMatrix`) happens inside `stepZoomFrame`, a rAF
+  // callback — never synchronously here, since this runs during <Zoom>'s own
+  // render pass and calling a state setter owned by THIS component from
+  // inside a child's render is exactly what the old code's SSR/first-paint
+  // `requestAnimationFrame` guard was already dodging.
+  const onZoomTick = useCallback((zoom: ChoroplethZoomInstance<SVGSVGElement>) => {
+    targetMatrixRef.current = zoom.transformMatrix;
+    isDraggingRef.current = zoom.isDragging;
+    if (typeof window === "undefined") return; // SSR: no rAF, nothing to gesture against
+    if (zoom.isDragging) {
+      easeRef.current = null;
+    } else if (!matricesEqual(zoom.transformMatrix, committedMatrixRef.current)) {
+      // Drag just ended, or a discrete wheel/pinch step landed a new target
+      // while idle: (re)ease from whatever is currently on screen toward it
+      // — if an ease was already in flight, this redirects it smoothly
+      // rather than restarting from the old start point.
+      easeRef.current = { from: committedMatrixRef.current, start: performance.now() };
+    }
+    scheduleZoomFrame();
+  }, [scheduleZoomFrame]);
 
   const projection = useMemo<GeoProjection | null>(() => {
     if (width <= 0 || height <= 0) return null;
     const innerW = width - margin.left - margin.right;
     const innerH = height - margin.top - margin.bottom;
-    const computedScale = scaleProp ?? (innerW > 0 ? (innerW / 630) * 100 : 100);
-    const computedTranslate: [number, number] = translateProp ?? [
+    const baseScale = scaleProp ?? (innerW > 0 ? (innerW / 630) * 100 : 100);
+    const baseTranslate: [number, number] = translateProp ?? [
       innerW / 2 + margin.left,
       innerH / 2 + margin.top + 50,
     ];
-    return geoMercator().center(center).translate(computedTranslate).scale(computedScale);
-  }, [width, height, margin, scaleProp, center, translateProp]);
+    // C6: zoom/pan used to be a `<g transform={matrix}>` wrapped around the
+    // rendered marks (the retired `syncZoomTransform`). `geoShape` has no
+    // group node for the app to wrap, so scale/translate become projection
+    // PARAMETERS instead — `displayMatrix` is identity when !zoomEnabled (no
+    // <Zoom> mounted to ever change it), so this reduces exactly to the
+    // pre-C6 formula in that case.
+    //
+    // Composing is exact because d3's own scale/translate composition is
+    // itself affine (`x_screen = k * x_raw + translate[0]`, d3-geo
+    // internals) — the same algebraic shape as the retired SVG `matrix()` —
+    // AS LONG AS the matrix carries no skew and scaleX === scaleY. That is
+    // the only shape internal/zoom-engine.tsx's gesture handlers produce
+    // here (`wheelDelta`/`pinchDelta` below are symmetric; nothing calls
+    // `zoom.scale({scaleX, scaleY})` asymmetrically), so this is not
+    // currently reachable as a fidelity gap, but is a documented
+    // approximation: an anisotropic scaleX !== scaleY matrix would need a
+    // `GeoStreamWrapper` (d3-geo `geoTransform`) instead of `.scale()` (a
+    // `GeoProjection` has one scalar `k`) — not done here because a
+    // `GeoStreamWrapper` has no `.invert()`, which `unprojectPoint` above
+    // and `pathGenerator`/`projectPoint` below need.
+    const m = displayMatrix;
+    return geoMercator()
+      .center(center)
+      .scale(baseScale * m.scaleX)
+      .translate([
+        m.scaleX * baseTranslate[0] + m.translateX,
+        m.scaleY * baseTranslate[1] + m.translateY,
+      ]);
+  }, [width, height, margin, scaleProp, center, translateProp, displayMatrix]);
 
   // P5.6 CP9 — legacy's `isLoaded`/`revealEpoch` state machine, verbatim
   // (`repos/bklit-ui/.../choropleth-chart.tsx:371-397`): epoch bumps and
@@ -441,17 +640,29 @@ function ChoroplethChartBody({
     [projection],
   );
 
-  // C2: read-only use of the zoom transform to keep the tooltip glued to a
-  // feature under pan/zoom (legacy `applyZoom`/`choropleth-tooltip.tsx`). The
-  // native tooltip's `anchor` fn (below) calls this on the point's raw
-  // (unzoomed) scene coordinates — same technique the old hover-chrome used.
-  const applyZoomToPoint = useCallback(
-    (point: { x: number; y: number }) => {
-      const z = zoomRefForChrome.current;
-      if (!z) return point;
-      return z.applyToPoint(point);
+  // C6: replaces the retired forward-application `applyZoomToPoint`
+  // (legacy `applyZoom`/`choropleth-tooltip.tsx`, ported then removed here).
+  // That function existed because the tooltip's anchor points used to come
+  // from the UNZOOMED projection, needing a forward zoom-matrix apply to
+  // land in final screen space. Now `projection` itself already carries the
+  // zoom (see above), so `geoShape`'s reported anchor points are already
+  // final screen coordinates — the native tooltip's `anchor` fn below no
+  // longer needs to transform them at all (double-application otherwise).
+  //
+  // `unprojectPoint` is the sanctioned replacement for what the brief calls
+  // "inverse-matrix hit-testing": the CURRENT (already zoomed) projection's
+  // own `.invert()` (a standard d3-geo `GeoProjection` method — see
+  // `@types/d3-geo@3.1.1`). A caller with a screen point in plot-local
+  // coordinates (e.g. via `host.interaction.clientToScene`, margin-inclusive
+  // scene coords — choropleth's `margin: 0` makes those plot-local here)
+  // gets back `[lon, lat]`. No current consumer needs this (see final
+  // report) — exposed on `useChoropleth()` for symmetry with `projectPoint`.
+  const unprojectPoint = useCallback(
+    (point: [number, number]): [number, number] | null => {
+      const p = projection?.invert?.(point);
+      return p && Number.isFinite(p[0]) && Number.isFinite(p[1]) ? [p[0], p[1]] : null;
     },
-    [],
+    [projection],
   );
 
   const definition = useMemo(() => {
@@ -509,8 +720,11 @@ function ChoroplethChartBody({
       // is present (mirrors legacy's opt-in — no child, no box). `sticky:
       // false`/`motion: false` match the retired box's INSTANT unmount (CP7:
       // "bklit ChoroplethTooltip returns null the moment tooltipData clears;
-      // no exit fade"). `anchor` zoom-adjusts the feature's raw scene
-      // centroid the same way the old chrome's `applyZoom` did.
+      // no exit fade"). C6: `anchor` no longer forward-applies the zoom
+      // matrix (retired `applyZoomToPoint`, née the old chrome's `applyZoom`)
+      // — `points` already arrive in final zoomed screen space, since
+      // `projection` (closed over via `projForMark`, above) now carries the
+      // zoom itself.
       tooltip: hasTooltipChild
         ? {
             use: tooltip,
@@ -519,10 +733,7 @@ function ChoroplethChartBody({
             motion: false,
             placement: ["right", "left"],
             offset: CHOROPLETH_TOOLTIP_OFFSET,
-            anchor: (points: readonly { x: number; y: number }[]) => {
-              const p = points[0];
-              return p ? applyZoomToPoint({ x: p.x, y: p.y }) : null;
-            },
+            anchor: (points: readonly { x: number; y: number }[]) => points[0] ?? null,
           }
         : false,
     });
@@ -531,7 +742,7 @@ function ChoroplethChartBody({
     width, height, projection, data.features,
     featureConfig?.getFeatureColor, featureConfig?.getFeaturePattern,
     featureConfig?.fill, featureConfig?.stroke, featureConfig?.strokeWidth,
-    hoveredKey, baseOpacity, dimOpacity, hasTooltipChild, applyZoomToPoint,
+    hoveredKey, baseOpacity, dimOpacity, hasTooltipChild,
   ]);
 
   // --- Hover chrome (owns hover DETECTION only; C2 moved tooltip building +
@@ -612,21 +823,18 @@ function ChoroplethChartBody({
     return hoverChromeRef.current;
   }, [onFocusChange]);
 
-  const marksGRef = useRef<SVGGElement | null>(null);
-  const graticuleGRef = useRef<SVGGElement | null>(null);
-
   // C2: re-invokes `setControlledFocus` with the SAME already-focused point
   // to force the native tooltip to repaint (renderer.js's `setControlledFocus`
   // takes the `sameChartPointIdentity` fast path straight to `paintFocus` →
   // `paintTooltip`, which recomputes the `anchor` fn above against the
-  // latest `zoomRefForChrome` transform). Native tooltip position is frozen
-  // to whatever `anchor` returned at the last paint (dist/tooltip.js
+  // point's LATEST scene position). Native tooltip position is frozen to
+  // whatever `anchor` returned at the last paint (dist/tooltip.js
   // `position()` reuses the cached `anchor` object — it does not re-run the
-  // `anchor` fn on its own), and `<Zoom>`'s pan/drag transform is applied
-  // imperatively outside React's render cycle, so without this call the
-  // tooltip would visually detach from the feature mid-drag. Replaces the
-  // retired box's `refreshTooltipPosition`; called from the same C6 call
-  // site (`syncZoomTransform`, below) on every zoom-transform write.
+  // `anchor` fn on its own), so without this call the tooltip would
+  // visually detach from the feature mid-gesture. Replaces the retired
+  // box's `refreshTooltipPosition`; C6 moved its call site from the old
+  // `syncZoomTransform` (deleted) to `stepZoomFrame`'s commit branch, above
+  // (via `refreshTooltipAnchorRef`, mirrored right below).
   const refreshTooltipAnchor = useCallback(() => {
     const ctx = renderContextRef.current;
     const key = hoveredKeyRef.current;
@@ -635,49 +843,44 @@ function ChoroplethChartBody({
     if (!point) return;
     ctx.interaction.setControlledFocus(point, { source: "pointer" });
   }, []);
+  refreshTooltipAnchorRef.current = refreshTooltipAnchor;
 
-  type ZoomWithDrag = ProvidedZoom<SVGSVGElement> & { isDragging: boolean };
-  // Single zoom-DOM writer. `svgOverride`/`marksGOverride` are the
-  // first-render wiring path (handleRender): passing them ALSO establishes
-  // `marksGRef.current = marksG`, which later ref-based calls depend on.
-  const syncZoomTransform = useCallback((zoom: ProvidedZoom<SVGSVGElement> | null, svgOverride?: SVGSVGElement, marksGOverride?: SVGGElement | null) => {
-    const z = zoom as ZoomWithDrag | null;
-    const t = z ? z.toString() : "matrix(1, 0, 0, 1, 0, 0)";
-    const tr = z?.isDragging ? "none" : "transform 0.18s ease-out";
-    const mg = marksGOverride !== undefined ? marksGOverride : marksGRef.current;
-    if (mg) {
-      marksGRef.current = mg;
-      mg.setAttribute("transform", t);
-      (mg.style as unknown as { transition: string }).transition = tr;
-    }
-    const gg = graticuleGRef.current;
-    if (gg) {
-      gg.setAttribute("transform", t);
-      (gg.style as unknown as { transition: string }).transition = tr;
-    }
-    const svg = svgOverride ?? (z?.containerRef.current ?? null);
-    if (svg) {
-      svg.style.touchAction = "none";
-      svg.style.cursor = z?.isDragging ? "grabbing" : "grab";
-      (svg.style as unknown as { contain: string }).contain = "layout style paint";
-    }
-    refreshTooltipAnchor();
-  }, [refreshTooltipAnchor]);
-
+  // C6: widened to accept `surface` — `context.surface.element` (below) is
+  // the sanctioned equivalent of the manual `container.querySelector("svg.ts
+  // -chart")` reach-in this callback used to do for EVERY purpose (zoom
+  // binding, hover-chrome path lookup, reveal animation). `dist/svg-
+  // surface.js`'s `ChartSurface.element` getter (@tanstack/charts@0.15.0)
+  // is internally `container.querySelector("svg.ts-chart")` verbatim, so
+  // using it here is not a behavior change — it just goes through the
+  // library's own handle instead of re-deriving it. The raw querySelector
+  // fallback survives ONLY for the synthetic call below (the reveal-recovery
+  // `useLayoutEffect`, which calls `handleRender({container: c})` with no
+  // `surface` — there is no real render pass to hand one).
   const handleRender = useCallback((
     context: { container: HTMLElement } & Partial<
-      Pick<ChartRendererRenderContext<ChoroplethFeature, ChartValue, ChartValue>, "scene" | "interaction">
+      Pick<ChartRendererRenderContext<ChoroplethFeature, ChartValue, ChartValue>, "scene" | "interaction" | "surface">
     >,
   ) => {
-    const { container, scene, interaction } = context;
+    const { container, scene, interaction, surface } = context;
     if (scene && interaction) renderContextRef.current = { scene, interaction };
     const c = container as HTMLElement;
-    const svg = c.querySelector("svg.ts-chart") as unknown as SVGSVGElement | null;
+    const svg = (surface?.element as SVGSVGElement | undefined) ??
+      (c.querySelector("svg.ts-chart") as unknown as SVGSVGElement | null);
+
+    // C6: gesture binding + cursor/touch-action chrome. No more `<g
+    // transform>` writes (`syncZoomTransform`, retired) — zoom now reaches
+    // the screen via `projection` (a real React value, see above), which
+    // repaints through the ordinary render path. `containerRef` binds to
+    // `c` (the outer container `@use-gesture` listens on), not the `<svg>`
+    // specifically: zoom-engine.tsx's `localPoint` resolves coordinates
+    // from `event.target`, not the listener-bound element, so any ancestor
+    // works and this needs no svg lookup at all.
     const zoom = zoomRefForChrome.current;
-    if (svg && zoom) {
-      (zoom.containerRef as { current: SVGSVGElement | null }).current = svg;
-      const mg = c.querySelector<SVGGElement>("g.ts-chart__marks");
-      syncZoomTransform(zoom, svg, mg);
+    if (zoom) {
+      (zoom.containerRef as { current: SVGSVGElement | null }).current = c as unknown as SVGSVGElement;
+      c.style.touchAction = "none";
+      c.style.cursor = isDraggingRef.current ? "grabbing" : "grab";
+      (c.style as unknown as { contain: string }).contain = "layout style paint";
     }
 
     const elements = new Map<string, SVGPathElement>();
@@ -699,7 +902,7 @@ function ChoroplethChartBody({
       seenKey.signature !== revealKey.signature ||
       seenKey.duration !== revealKey.duration;
     if (!revealKeyChanged) return;
-    const svgForBkm = c.querySelector<SVGElement>("svg.ts-chart") as SVGElement | null;
+    const svgForBkm = svg as SVGElement | null;
     if (!svgForBkm) return;
     if (isRevealed(svgForBkm) && !revealKeyChanged) return;
     seenRevealedRef.current = { ...revealKey };
@@ -728,7 +931,7 @@ function ChoroplethChartBody({
       anim.onfinish = () => { try { anim.cancel(); } catch { /* teardown race — already cancelled */ } };
       anim.oncancel = () => { try { anim.cancel(); } catch { /* teardown race — already cancelled */ } };
     });
-  }, [animationDuration, revealDurationMs, revealEasingCss, ensureHoverChrome, syncZoomTransform]);
+  }, [animationDuration, revealDurationMs, revealEasingCss, ensureHoverChrome]);
 
   useEffect(() => {
     return () => {
@@ -858,7 +1061,13 @@ function ChoroplethChartBody({
           style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
           aria-hidden="true"
         >
-          <g ref={graticuleGRef as unknown as React.RefObject<SVGGElement>}>
+          {/* C6: no more ref/group transform write here (retired
+              `graticuleGRef`/`syncZoomTransform`) — `projection` is already
+              zoomed (see the `projection` useMemo above), so this overlay's
+              own internal `useMemo([projection, step])` naturally redraws
+              already-zoomed graticule lines with zero changes to that
+              component. */}
+          <g>
             <ChoroplethGraticuleOverlay
               projection={projection}
               stroke={graticuleConfig.stroke}
@@ -881,6 +1090,7 @@ function ChoroplethChartBody({
       pathGenerator,
       rawPathGenerator,
       projectPoint,
+      unprojectPoint,
       width,
       height,
       innerWidth: Math.max(0, width - margin.left - margin.right),
@@ -893,7 +1103,7 @@ function ChoroplethChartBody({
       revealEpoch,
     }),
     [
-      data, pathGenerator, rawPathGenerator, projectPoint,
+      data, pathGenerator, rawPathGenerator, projectPoint, unprojectPoint,
       width, height, margin, isLoaded, animationDuration,
       enterTransition, revealEpoch,
     ],
@@ -933,10 +1143,16 @@ function ChoroplethChartBody({
     >
       {(zoom) => {
         zoomRefForChrome.current = zoom as unknown as ProvidedZoom<SVGSVGElement>;
-        if (typeof window !== "undefined") requestAnimationFrame(() => syncZoomTransform(zoom as unknown as ProvidedZoom<SVGSVGElement>));
-        else syncZoomTransform(zoom as unknown as ProvidedZoom<SVGSVGElement>);
+        // C6: was `requestAnimationFrame(() => syncZoomTransform(...))` (a
+        // raw DOM `<g transform>` write, deferred one frame purely to dodge
+        // the SSR/first-paint edge — see the old comment this replaced).
+        // `onZoomTick` replaces BOTH the defer trick and the DOM write: it
+        // updates refs synchronously (safe — refs, not state) and schedules
+        // `stepZoomFrame` (rAF-throttled), which is the ONLY place that
+        // calls `setDisplayMatrix`, and always outside this render.
         // CP10: keep the state fields visx already put on this object.
         const z = zoom as unknown as ChoroplethZoomInstance<SVGSVGElement>;
+        onZoomTick(z);
         return (
           <ChoroplethZoomContext.Provider value={{ zoom: z }}>
             <ChoroplethContext.Provider value={choroplethContextValue}>

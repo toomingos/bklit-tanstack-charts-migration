@@ -176,4 +176,6 @@ export { barTrimmedMark, type BarTrimmedMarkOptions } from "./bar-trimmed-mark";
 export { BrushLayout, type BrushLayoutProps } from "./brush-layout";
 export { useBrushSelection, type BrushSelection, type BrushLayoutState } from "./brush-selection";
 export { filterDataByXDomain, resolveBrushTrackXExtent, createXAccessor } from "./brush-selection";
-export { BrushHostContext, type BrushHost } from "./brush-drag";
+// C6: brush-drag.ts (BrushHostContext + useBrushDrag) deleted — host charts
+// now build native brushX directly. BrushHost moved into brush-chrome.ts.
+export { type BrushHost } from "./brush-chrome";

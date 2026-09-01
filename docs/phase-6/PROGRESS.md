@@ -20,7 +20,7 @@
     - [x] C5b riders — T21b timing (`ChartMotionTiming.delay` callback, D438) and the T8
           `<style class="ts-sankey__transitions">` move into `styles.css` (D443); **already
           dispatched to executor D**
-  - [ ] **C5c polar focus (T11, D435)** — pie / ring / sunburst-*hover* drop `focus: focusDisabled`
+  - [x] **C5c polar focus (T11, D435)** — D447, D448 — pie / ring / sunburst-*hover* drop `focus: focusDisabled`
         and consume `onFocusChange` against the existing static hitbox twin
         (`pie-chart.tsx:441-460`); ring needs the twin added. Kills `internal/pie-hover-chrome.ts`
         and `internal/ring-hover-chrome.ts`. Sunburst keeps `internal/sunburst-hit.tsx` for
@@ -28,14 +28,14 @@
         `clientX`/`clientY`). **Radar excluded, logged as an accepted deviation (D445)**, and its 32
         reach-in sites therefore retire under C5b's reveal work, not here. Largest census
         retirement left.
-  - [ ] **C5d sunburst semantic motion (T15 A+B, D436/D437)** — `radialArc` → `sunburst()`
+  - [x] **C5d sunburst semantic motion (T15 A+B, D436/D437)** — D449, D450, D451 — `radialArc` → `sunburst()`
         (`@tanstack/charts/hierarchy/sunburst`, sole carrier of `[sceneMotionNode]`), **angle parity
         vs `internal/sunburst-geometry.ts` verified BEFORE any motion change**; then the keyed zoom
         morph (`addSemanticPathUpdateTrack`) and renderer-identity replay
         (`renderer={useMemo(() => motion({initial:'always'}), [playKey])}`), including the ~10-line
         `pointerleave` re-bind inside `handleRender` (`sunburst-chart.tsx:669`, orphaned listener at
         `:828-840`). Per-arc *enter* stagger stays absent (D446).
-  - [ ] C6 brush+zoom+selection
+  - [x] C6 brush+zoom+selection — D452–D458
 - [ ] 6.4 Refactor (explore -> triage -> one refactor commit)
   - [ ] Riders from the Phase-5 re-audit: T6's expressible gradient set (~11 of ~19 def sites,
         mechanical once the renderer switch lands, D442) · T1's observer consolidation — one
@@ -89,3 +89,32 @@ sweep found `enter-transition.ts` (18 importers), `deferred-reveal.ts` (8), `nat
 (5), `heatmap-animation.ts` (4), `radar-spring.ts` (2) and each `*-reveal.ts` (1 apiece) all
 **live**. Only `internal/live-hover-chrome.ts` was deleted (0 importers). The recorded
 `ChartRevealClip` ↔ `enter-transition.ts` collision therefore **does not exist** — see D433.
+
+**6.3 CLOSED 2026-09-01 (commits `4e5b237` C5c+C5d, C6 following).** All six rungs land; typecheck
+exit 0. Two decisions are deliberately left **open for the user or the 6.5 gate**, not silently
+absorbed:
+
+1. **`hoverPop` is now an inert public prop (D450).** Sunburst's radial hover pop-out was live at
+   HEAD and is not expressible on native `sunburst()` at 0.15.0 (no per-datum radius channel).
+   Hover *dim* is preserved. Either mark the prop deprecated-inert or rebuild the pop-out as a
+   `createMark` overlay. Reverting C5d is one commit.
+2. **Uncontrolled `<ChartBrush>` no longer works (D455).** Native `brushX` needs a fully
+   round-tripped controlled value. Inert today (all usage goes through `useBrushSelection`), but
+   it narrows a public contract.
+
+**Corrections that change 6.5's expectations — do not budget from the research docs alone:**
+- `internal/zoom-engine.tsx` **survives unchanged at 663 LOC** (D457); `research/phase-6/06`'s
+  Deletions line retires nothing for the zoom half. Correction appended to that doc.
+- Choropleth census is **10 → 9**, not a module deletion. Six raw query sites survive there and
+  must be counted, including the structural `:868` fallback.
+- CI grep-guard named exceptions now also include: sunburst's D384 click/drill layer
+  (`querySelectorAll('path[data-ts-key^="sunburst-arcs:"]')` + its `addEventListener("click")`)
+  and sunburst's SB15 whole-stage 350ms mount fade (`container.querySelector("svg.ts-chart")`,
+  same class as the accepted choropleth group fade, D433). Sunburst's
+  `svg.ts-bkm-sunburst-labels` queries are **app-owned markup**, not reach-ins (D418).
+- Dead but still barrel-exported after C5d: `buildHoverGrowTargets` / `applyHoverGrow` /
+  `maxHoverSegmentThickness` (`internal/index.ts:30-32`) — 6.4 cleanup, gated on decision 1.
+- `unprojectPoint` is dead public API kept deliberately (D458) — 6.4 revisit.
+
+**6.5 gate item added by C5c (D448):** confirm sunburst's keyboard focus path and its pointer
+overlay path cannot drive hover into conflicting states.

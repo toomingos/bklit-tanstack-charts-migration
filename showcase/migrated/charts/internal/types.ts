@@ -587,11 +587,13 @@ export interface ChartMarkersConfig {
   maxFanned?: number;
 }
 
-/** Brush children are kept as ELEMENTS, not extracted props: the host
-     re-renders them inside its BrushHostContext provider (ChartBrush is a
-     real rendering component — portal chrome — unlike the null-render
-     config shims above). */
-export type BrushChildConfig = ReactNode;
+/** C6: <ChartBrush> is now a null-render config shim like the others above
+     (brush-drag.ts's BrushHostContext/useBrushDrag were deleted) — its props
+     are extracted directly, same as every other role. `import type` so this
+     stays a type-only edge (erased at compile time) despite the
+     types.ts -> chart-brush.tsx -> children.tsx -> types.ts cycle that a
+     value import would create. */
+export type BrushChildConfig = import("./chart-brush").ChartBrushProps;
 
 export interface ExtractedChildren {
   lines: LineConfig[];

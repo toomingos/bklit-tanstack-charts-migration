@@ -51,3 +51,28 @@ hit-testing (native `clientToScene` + projection invert); scale duplicates in
 - Selection reset on dataset swap: reproduce in the controlled-signal owner (app state).
 - v0.14 ruling's three arguments each answered at 0.15: host-in-ancestry (strip host is a real
   host), headless resolver (`clientToScene`), independent track extent (two-host pattern).
+
+## Correction appended 2026-09-01 at C6 consolidation — supersedes line 15 and the zoom half of "Deletions"
+
+This document mis-attributed the choropleth zoom reach-ins to `internal/zoom-engine.tsx`. Both
+halves of that attribution are wrong, verified against source at C6:
+
+1. **`zoom-engine.tsx` writes no transform.** `grep -c setAttribute internal/zoom-engine.tsx` = 0.
+   The `setAttribute("transform", …)` writes to `g.ts-chart__marks` and the graticule group lived
+   in `choropleth-chart.tsx`'s `syncZoomTransform` (HEAD `:643,650,655`).
+2. **No inverse-matrix hit-testing feature exists.** `applyInverseToPoint` / `toStringInvert` have
+   zero consumers outside `zoom-engine.tsx` itself. Choropleth hover hit-testing is native DOM
+   `mouseenter`/`mouseleave` bound to real `<path>` elements in `choropleth-hover-chrome.ts`, and
+   is untouched by matrix math.
+
+**Consequence:** `zoom-engine.tsx` is a pure matrix/gesture-state module with no DOM surface. It
+survives C6 **entirely unchanged at 663 LOC**, and the "Deletions" line above retires nothing for
+the zoom half. The 6.5 LOC and census expectations must be corrected accordingly: the actual C6
+zoom retirement is the two transform writes inside `choropleth-chart.tsx` (census 10 → 9 for that
+file), not a module deletion.
+
+The replacement is as this document specified in spirit — zoom is now a parameter of the
+projection (`geoShape`'s `projection` factory, `dist/geo.d.ts:16`) rather than a post-hoc
+transform — but it was implemented wholly inside `choropleth-chart.tsx`. See D447+ in
+`docs/phase-6/LOG.md` for the affine-composition assumption and the tooltip forward-application
+removal that follow from it.

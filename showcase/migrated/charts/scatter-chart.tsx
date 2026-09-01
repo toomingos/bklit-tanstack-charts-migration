@@ -30,6 +30,7 @@ import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
 import type {
   ChartAxisTickLabelContext,
   ChartDotStateStyle,
+  ChartInteractionController,
   ChartMark,
   ChartMarkState,
   ChartMotionContext,
@@ -37,6 +38,7 @@ import type {
   ChartPoint,
   ChartRendererRenderContext,
   ChartScale,
+  ChartScene,
   ChartValue,
   SceneNode,
   StaticChartDefinition,
@@ -649,6 +651,11 @@ export function ScatterChart({
   // `status` prop — D14) — the initial phase is always "revealing".
   const phaseRef = React.useRef<ChartPhase>("revealing");
   const dragSelectionActiveRef = React.useRef(false);
+  // C6: own capture — feeds useChartSelection's clientToScene +
+  // scene.scales.x.invert path (replaces the plot-local xScaleForSelection
+  // duplicate scale below).
+  const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
+  const sceneRef = React.useRef<ChartScene<ChartDatum, Date, number> | null>(null);
   const revealDeadlineTimerRef = React.useRef<number | null>(null);
   // P4.6 (M3a): the reveal runs once per component lifetime. The scene (and
   // with it the .ts-chart__marks group) is rebuilt on every data swap, so the
@@ -1471,6 +1478,8 @@ export function ScatterChart({
     // B1: the renderer context has no `svg` member under RendererChart —
     // `surface.element` is the mounted `<svg class="ts-chart">` root itself.
     const svgRoot = context.surface.element as SVGSVGElement;
+    interactionRef.current = context.interaction;
+    sceneRef.current = context.scene;
     const marksGroup = svgRoot.querySelector<SVGGElement>(".ts-chart__marks");
     // S3: the replay KEY is tested BEFORE the DOM stamp. The stamp latches for
     // the life of the marks node, so a caller bumping `revealSignature` on a
@@ -1564,14 +1573,19 @@ export function ScatterChart({
     };
   }, [tooltip, crosshairGradientId]);
 
-  // S11: the drag-select hook (after timeExtentScatter — its x-scale memo
-  // consumes that extent). See the comment block at innerWidthSelection.
-  const xScaleForSelection = React.useMemo(() => {
-    if (!timeExtentScatter) return null;
-    return scaleUtc()
-      .domain([new Date(timeExtentScatter.minTime), new Date(timeExtentScatter.maxTime)])
-      .range([xRangePadding, Math.max(xRangePadding, innerWidthSelection - xRangePadding)]);
-  }, [timeExtentScatter, innerWidthSelection, xRangePadding]);
+  // S11: the drag-select hook. C6: replaces the deleted plot-local
+  // `xScaleForSelection` duplicate d3 scale (which approximated marker-radius
+  // padding via `xRangePadding`) — resolves through the host's own live
+  // interaction/scene refs, which already reflect the chart's real marker
+  // geometry exactly.
+  const resolveScenePosScatter = React.useCallback(
+    (clientX: number, clientY: number) => interactionRef.current?.clientToScene(clientX, clientY) ?? null,
+    [],
+  );
+  const invertSceneXScatter = React.useCallback(
+    (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? null,
+    [],
+  );
 
   const { selection: scatterSelection } = useChartSelection({
     enabled: true,
@@ -1579,7 +1593,8 @@ export function ScatterChart({
     marginLeft: margin.left,
     data: renderData as unknown as Array<Record<string, unknown>>,
     xDataKey,
-    xScale: xScaleForSelection as unknown as { invert: (px: number) => Date } | null,
+    resolveScenePos: resolveScenePosScatter,
+    invertSceneX: invertSceneXScatter,
     containerRef,
     onDragStart: () => {
       dragSelectionActiveRef.current = true;

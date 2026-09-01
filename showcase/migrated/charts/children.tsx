@@ -372,9 +372,9 @@ export function extractChildren(children: React.ReactNode): ExtractedChildren {
       else if (role === "terminalMarker") out.terminalMarkers.push(props);
       else if (role === "profitLossLine") out.profitLossLines.push(props);
       else if (role === "chartMarkers") out.chartMarkers = props as unknown as import("./internal/types").ChartMarkersConfig;
-      // Brush children keep the ELEMENT (ChartBrush renders portal chrome;
-      // the host re-renders it inside its BrushHostContext provider).
-      else if (role === "brush") out.brushes.push(child);
+      // C6: ChartBrush is now a null-render config shim (like ChartMarkers
+      // above) — extract props, same as every other role.
+      else if (role === "brush") out.brushes.push(props as import("./internal/types").BrushChildConfig);
     }
   };
   visit(children);

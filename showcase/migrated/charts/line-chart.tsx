@@ -12,6 +12,7 @@ import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/toolt
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
 import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
 import type {
+  ChartControl,
   ChartInteractionController,
   ChartMark,
   ChartMotionContext,
@@ -20,6 +21,8 @@ import type {
   ChartRenderContext,
   ChartRendererRenderContext,
   ChartScale,
+  ChartScene,
+  SceneStyle,
 } from "@tanstack/charts";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import {
@@ -107,7 +110,9 @@ import { useSanitizedId } from "./internal/use-sanitized-id";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { useChartPhaseOrchestrator } from "./internal/use-chart-phase-orchestrator";
 import { filterDataByXDomain, createXAccessor } from "./internal/brush-selection";
-import { BrushHostContext } from "./internal/brush-drag";
+import { BrushChrome, selectionToPixelExtent, type BrushHost } from "./internal/brush-chrome";
+import { brushX, type BrushRange, type BrushXChange } from "@tanstack/charts/interaction/brush";
+import { controlledSignal } from "@tanstack/charts/interaction/signal";
 import { DashTailOverlay, resolveDashTailBounds } from "./internal/dash-tail";
 import { buildMarkerGradientDefs, buildMarkerMarks } from "./internal/series-marker-mark";
 import { ChartMarkersOverlay } from "./internal/chart-markers";
@@ -119,6 +124,21 @@ import {
 import { runRevealWipe, snapRevealWipe } from "./internal/reveal-wipe";
 import { clipRevealTiming, type EnterTransition } from "./internal/enter-transition";
 import "./styles.css";
+
+// C6: native brushX's own selection/handle painting is hidden — the 4-piece
+// BrushChrome portal (internal/brush-chrome.tsx) reproduces bklit's exact
+// visuals (blur/fade track mask + pattern fill CSS can't reach, plus a
+// border + pill handles for selectedBoxStyle's full SVGProps<SVGRectElement>
+// surface, wider than SceneStyle). Native brushX still owns 100% of the
+// mechanics — drag, keyboard stepping, touch, and focus — underneath these
+// invisible rects/handles.
+const BRUSH_NATIVE_HIDDEN_STYLE: SceneStyle = {
+  fill: "transparent",
+  fillOpacity: 0,
+  stroke: "transparent",
+  strokeOpacity: 0,
+};
+const EMPTY_BRUSH_CONTROLS: readonly ChartControl<Date, number>[] = [];
 
 export interface LineChartProps {
   data: ChartDatum[];
@@ -358,6 +378,90 @@ export function LineChart({
     if (projectionConfigs.length === 0) return timeExtentRaw;
     return { minTime: timeExtentRaw.minTime, maxTime: mergeProjectionXDomainMax(timeExtentRaw.maxTime, projectionConfigs) } as const;
   }, [timeExtentRaw, projectionConfigs, xDomain]);
+
+  // C6: native brushX control (line/area strip host only — instances with no
+  // <ChartBrush> child have brushes.length === 0 and all of this collapses to
+  // EMPTY_BRUSH_CONTROLS/no-ops). Superseded at v0.15 the (now-obsolete)
+  // brush-drag.ts NON-VIABLE ruling: this host chart owns the control
+  // directly via defineChart's `controls:`, instead of needing a second
+  // <Chart> host — see the C6 executor report for the ruling text, preserved
+  // verbatim before brush-drag.ts's deletion.
+  const brushConfig = brushes[0] ?? null;
+  const hasBrush = brushConfig != null;
+  const brushTrackExtent = React.useMemo<[Date, Date] | null>(() => {
+    if (!timeExtent) return null;
+    return [new Date(timeExtent.minTime), new Date(timeExtent.maxTime)];
+  }, [timeExtent]);
+  const brushFallbackRange = React.useMemo<BrushRange<Date> | null>(() => {
+    if (!brushTrackExtent) return null;
+    return { start: brushTrackExtent[0], end: brushTrackExtent[1] };
+  }, [brushTrackExtent]);
+  const brushInitialSelection = brushConfig?.initialSelection ?? null;
+  // Value-stable (not reference-stable-per-render) so the ControlledSignal's
+  // `value` argument only changes when start/end actually change — the docs'
+  // "cancels divergent external updates" behavior compares this against its
+  // own live echo, and a fresh-but-equal object every render would look like
+  // a spurious external commit fighting an in-progress drag.
+  const brushRangeValueRef = React.useRef<BrushRange<Date> | null>(null);
+  const brushRangeValue = React.useMemo<BrushRange<Date> | null>(() => {
+    const next: BrushRange<Date> | null = brushInitialSelection
+      ? { start: brushInitialSelection.start, end: brushInitialSelection.end }
+      : brushFallbackRange;
+    const prev = brushRangeValueRef.current;
+    if (prev && next && prev.start.getTime() === next.start.getTime() && prev.end.getTime() === next.end.getTime()) {
+      return prev;
+    }
+    brushRangeValueRef.current = next;
+    return next;
+  }, [brushInitialSelection, brushFallbackRange]);
+  const brushOnSelectionChangeRef = React.useRef(brushConfig?.onSelectionChange);
+  brushOnSelectionChangeRef.current = brushConfig?.onSelectionChange;
+  // Fires on every preview tick AND commit — NOT commit-only like the docs'
+  // own toy example — for parity with legacy useBrushDrag, which called
+  // onSelectionChange continuously during a drag so the detail chart's
+  // narrowed `xDomain` and this strip's own portal chrome track live.
+  const handleBrushChange = React.useCallback((next: BrushRange<Date>, context: { reason: BrushXChange<Date> }) => {
+    const { reason } = context;
+    if (reason.type === "cancel") return;
+    const startMs = next.start.getTime();
+    const endMs = next.end.getTime();
+    if (startMs === endMs) {
+      // bklit chart-brush.tsx:271-291 boundsToSelection — zero-width clears.
+      // Only clear on a real commit; a transient zero-width mid-"creating"
+      // preview shouldn't null out the detail chart's xDomain.
+      if (reason.type === "commit") brushOnSelectionChangeRef.current?.(null);
+      return;
+    }
+    brushOnSelectionChangeRef.current?.({ start: next.start, end: next.end });
+  }, []);
+  // D422 (intentional improvement, not a parity break) — `values` is the
+  // FULL (non-decimated) x data, giving the native control real snap points
+  // and keyboard stepping. Legacy's pixel-drag math had neither: it always
+  // interpolated an exact Date from raw pixel position.
+  const brushValues = React.useMemo<Date[] | null>(() => {
+    if (!hasBrush) return null;
+    const out: Date[] = [];
+    for (const d of data as unknown as Record<string, unknown>[]) {
+      const v = xAccessorForBrush(d);
+      if (v instanceof Date) out.push(v);
+    }
+    return out;
+  }, [hasBrush, data, xAccessorForBrush]);
+  const brushControls = React.useMemo<readonly ChartControl<Date, number>[]>(() => {
+    if (!hasBrush || !brushRangeValue || !brushValues || brushValues.length === 0) return EMPTY_BRUSH_CONTROLS;
+    return [
+      brushX<Date>({
+        range: controlledSignal<BrushRange<Date>, BrushXChange<Date>>(brushRangeValue, handleBrushChange),
+        values: brushValues,
+        format: (d: Date) => shortDateFmt.format(d),
+        ariaLabel: "Brush selection",
+        startAriaLabel: "Selection start",
+        endAriaLabel: "Selection end",
+        selectionStyle: BRUSH_NATIVE_HIDDEN_STYLE,
+        handleStyle: BRUSH_NATIVE_HIDDEN_STYLE,
+      }),
+    ];
+  }, [hasBrush, brushRangeValue, brushValues, handleBrushChange]);
 
   // bklit y-domain parity — exact port of time-series-chart-shell.tsx
   // `resolveTimeSeriesYDomain` + `niceYDomain` (d3 .nice() applied by the
@@ -882,8 +986,10 @@ export function LineChart({
           }
         : (false as const),
       motion,
+      // C6: native brushX (strip host only — empty array elsewhere).
+      controls: brushControls,
     };
-  }, [marks, renderData, xDataKey, grid, width, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, projectionConfigs, xDomain, timeExtent, tooltip, xAxis, yAxis, visibleData, labelFade]);
+  }, [marks, renderData, xDataKey, grid, width, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, projectionConfigs, xDomain, timeExtent, tooltip, xAxis, yAxis, visibleData, labelFade, brushControls]);
 
   const definition = React.useMemo(() => {
     if (!spec) return null;
@@ -954,6 +1060,10 @@ export function LineChart({
   // captured below from `onRender`'s context (D110-style escape hatch, same
   // shape as `useFocusInjection`'s own private capture).
   const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
+  // C6: scene-space resolved-scale capture — feeds useChartSelection's
+  // clientToScene + scene.scales.x.invert path (replaces the plot-local
+  // xScaleForSelection duplicate scale below).
+  const sceneRef = React.useRef<ChartScene<ChartDatum, Date, number> | null>(null);
   // bklit parity (use-chart-interaction.ts): drag selection suppresses the
   // hover chrome — cleared on mousedown, never rescheduled while dragging.
   const dragSelectionActiveRef = React.useRef(false);
@@ -1080,6 +1190,7 @@ export function LineChart({
     // handleFocusChange above; conflating them would blur two different
     // sources of `focus`.
     interactionRef.current = context.interaction;
+    sceneRef.current = context.scene;
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     // A2 (D420/D432): the reveal sweep itself now lives in
     // internal/reveal-wipe.ts, shared byte-for-byte with area-chart.tsx/
@@ -1331,10 +1442,18 @@ export function LineChart({
     projectionPhasePortRef.current?.setPhase(phaseRef.current);
   }, [overlayRendered]);
 
-  const xScaleForSelection = React.useMemo(() => {
-    if (!timeExtent) return null;
-    return scaleUtc().domain([timeExtent.minTime, timeExtent.maxTime]).range([0, innerWidth]);
-  }, [timeExtent, innerWidth]);
+  // C6: replaces the deleted plot-local `xScaleForSelection` duplicate d3
+  // scale — resolves through the host's own live interaction/scene refs
+  // (margin-inclusive scene coordinates), so it tracks the resolved chart
+  // exactly instead of re-deriving a scale from timeExtent/innerWidth.
+  const resolveScenePos = React.useCallback(
+    (clientX: number, clientY: number) => interactionRef.current?.clientToScene(clientX, clientY) ?? null,
+    [],
+  );
+  const invertSceneX = React.useCallback(
+    (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? null,
+    [],
+  );
 
   const { selection: chartSelection } = useChartSelection({
     enabled: true,
@@ -1342,7 +1461,8 @@ export function LineChart({
     marginLeft: margin.left,
     data: data as unknown as Array<Record<string, unknown>>,
     xDataKey,
-    xScale: xScaleForSelection as unknown as { invert: (px: number) => Date } | null,
+    resolveScenePos,
+    invertSceneX,
     containerRef,
     onDragStart: () => {
       dragSelectionActiveRef.current = true;
@@ -1366,15 +1486,21 @@ export function LineChart({
   const innerHeightForBrush = Math.max(0, heightPx - margin.top - margin.bottom);
   const brushClipId = useSanitizedId();
   const needsBrushClip = !!xDomain && innerWidthForBrush > 0 && innerHeightForBrush > 0;
-  const trackExtentForBrush = React.useMemo<[Date, Date] | null>(() => {
-    if (!timeExtent) return null;
-    return [new Date(timeExtent.minTime), new Date(timeExtent.maxTime)];
-  }, [timeExtent]);
-  const brushHostValue = React.useMemo(() => {
-    if (!trackExtentForBrush || innerWidthForBrush <= 0) return null;
-    return { containerRef: containerRef as unknown as React.RefObject<HTMLElement | null>, margin, trackExtent: trackExtentForBrush } as const;
-  }, [trackExtentForBrush, innerWidthForBrush, margin]);
-  const brushElements = brushes.length > 0 && brushHostValue ? (brushes as unknown as React.ReactNode[]) : null;
+  // C6: BrushHost for the portal chrome only now (mechanics moved into the
+  // spec's `controls:` above) — trackExtent reuses the same brushTrackExtent
+  // the native brushX's fallback range is built from.
+  const brushHost = React.useMemo<BrushHost | null>(() => {
+    if (!brushTrackExtent || innerWidthForBrush <= 0) return null;
+    return { containerRef: containerRef as unknown as React.RefObject<HTMLElement | null>, margin, trackExtent: brushTrackExtent };
+  }, [brushTrackExtent, innerWidthForBrush, margin]);
+  // Pixel extent for the portal chrome, derived from the SAME controlled
+  // BrushRange<Date> fed into the native brushX control — through the host's
+  // independent trackExtent scale (NOT the chart's own rescaling xScale; see
+  // the BrushHost comment in brush-chrome.tsx for why they must stay separate).
+  const brushPixelExtent = React.useMemo(() => {
+    if (!brushHost || !brushRangeValue) return null;
+    return selectionToPixelExtent(brushRangeValue, brushHost.trackExtent, innerWidthForBrush);
+  }, [brushHost, brushRangeValue, innerWidthForBrush]);
 
   return (
     <ChartSelectionContext.Provider value={chartSelection}>
@@ -1394,10 +1520,18 @@ export function LineChart({
           </defs>
         </svg>
       ) : null}
-      {brushHostValue ? (
-        <BrushHostContext.Provider value={brushHostValue as unknown as import("./internal/brush-drag").BrushHost}>
-          <div style={{ display: "contents" }}>{brushElements}</div>
-        </BrushHostContext.Provider>
+      {hasBrush && brushHost && brushPixelExtent ? (
+        <BrushChrome
+          host={brushHost}
+          x0={brushPixelExtent.x0}
+          x1={brushPixelExtent.x1}
+          innerWidth={innerWidthForBrush}
+          innerHeight={innerHeightForBrush}
+          blurPx={brushConfig?.blurPx}
+          fadeOuterEdges={brushConfig?.fadeOuterEdges}
+          selectionPattern={brushConfig?.selectionPattern}
+          selectedBoxStyle={brushConfig?.selectedBoxStyle}
+        />
       ) : null}
       {isLoading && loadingLabel ? <LoadingLabel text={loadingLabel} /> : null}
       {background ? (

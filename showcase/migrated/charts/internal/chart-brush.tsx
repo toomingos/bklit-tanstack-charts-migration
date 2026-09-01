@@ -1,16 +1,22 @@
 "use client";
 
-import * as React from "react";
-import { BrushChrome, type BrushChromePattern, type BrushSelectedBoxStyle } from "./brush-chrome";
-import { BrushHostContext, type BrushHost, useBrushDrag } from "./brush-drag";
+import type { BrushHost, BrushChromePattern, BrushSelectedBoxStyle } from "./brush-chrome";
 import type { BrushSelection } from "./brush-selection";
 import { CHART_ROLE } from "../children";
 
-export type { BrushHost } from "./brush-drag";
+export type { BrushHost } from "./brush-chrome";
 export type BrushSelectionPattern = BrushChromePattern;
 export type ChartBrushSelectedBoxStyle = BrushSelectedBoxStyle;
 
 export interface ChartBrushProps {
+  /**
+   * C6: vestigial. `brush-drag.ts` (BrushHostContext + useBrushDrag) was
+   * deleted — the host chart (line-chart.tsx / area-chart.tsx) now builds
+   * the native `brushX` control and renders `BrushChrome` directly against
+   * its own containerRef/margin/trackExtent, without going through this
+   * component or a discovered "host". Kept only so any existing caller that
+   * passes `host` explicitly still type-checks; the value is now ignored.
+   */
   host?: BrushHost | null;
   onSelectionChange?: (selection: BrushSelection | null) => void;
   initialSelection?: BrushSelection | null;
@@ -20,46 +26,20 @@ export interface ChartBrushProps {
   selectedBoxStyle?: BrushSelectedBoxStyle;
 }
 
-let didWarnMissingHost = false;
-
-export function ChartBrush(props: ChartBrushProps) {
-  const ctxHost = React.useContext(BrushHostContext);
-  const host = props.host ?? ctxHost;
-  if (!host) {
-    if (!didWarnMissingHost && process.env.NODE_ENV !== "production") {
-      didWarnMissingHost = true;
-      console.warn("[ChartBrush] missing BrushHost — render inside a brushed LineChart/AreaChart or pass `host` explicitly.");
-    }
-    return null;
-  }
-  return <ChartBrushWithHost {...props} host={host} />;
+// C6: pure config carrier — same pattern as ChartMarkers (children.tsx):
+// this never renders. Its props are extracted by extractChildren() into
+// ExtractedChildren.brushes and consumed directly by the host chart, which
+// owns both the native brushX control (mechanics) and the BrushChrome
+// portal (track blur/fade mask + pattern fill + border + pill handles —
+// pieces CSS/native SceneStyle can't reach). The old "missing host" dev
+// warning depended on this component actually mounting under
+// BrushHostContext; there is no host discovery left to warn about, so it is
+// dropped (see C6 executor report for the full rationale).
+export function ChartBrush(_props: ChartBrushProps): null {
+  return null;
 }
 (ChartBrush as unknown as Record<symbol, unknown>)[CHART_ROLE] = "brush";
 ChartBrush.displayName = "ChartBrush";
-
-function ChartBrushWithHost(props: ChartBrushProps & { host: BrushHost }) {
-  const { host, onSelectionChange, initialSelection, blurPx = 1.5, fadeOuterEdges = true, selectionPattern, selectedBoxStyle } = props;
-  const { extent, innerWidth, innerHeight } = useBrushDrag(host, {
-    initialSelection,
-    onSelectionChange,
-  });
-
-  if (!extent || innerWidth <= 0 || innerHeight <= 0) return null;
-
-  return (
-    <BrushChrome
-      host={host}
-      x0={extent.x0}
-      x1={extent.x1}
-      innerWidth={innerWidth}
-      innerHeight={innerHeight}
-      blurPx={blurPx}
-      fadeOuterEdges={fadeOuterEdges}
-      selectionPattern={selectionPattern}
-      selectedBoxStyle={selectedBoxStyle}
-    />
-  );
-}
 
 // Legacy parity: bklit `chart-brush.tsx` ships `export default ChartBrush;` (T-E2).
 export default ChartBrush;

@@ -22,7 +22,18 @@ export function useChartSelection(params: {
   marginLeft: number;
   data: Array<Record<string, unknown>>;
   xDataKey: string;
-  xScale: { invert: (px: number) => Date } | null;
+  /**
+   * Margin-inclusive scene-space pointer resolver — wraps
+   * `context.interaction.clientToScene(clientX, clientY)` captured by the
+   * host chart's `handleRender`. Returns null before the host has rendered.
+   */
+  resolveScenePos: (clientX: number, clientY: number) => { x: number; y: number } | null;
+  /**
+   * Inverts a scene-space x position back to a domain value — wraps
+   * `context.scene.scales.x.invert(sceneX)` captured by the host chart's
+   * `handleRender`. Replaces the old duplicated plot-local d3 scale.
+   */
+  invertSceneX: (sceneX: number) => unknown;
   containerRef: React.RefObject<HTMLDivElement | null>;
   /** Called when a pointer drag is armed (pointerdown) — bklit parity:
    * use-chart-interaction.ts clears the tooltip on mousedown. */
@@ -30,20 +41,28 @@ export function useChartSelection(params: {
   /** Called when the drag disarms (pointerup / pointerleave / touchend). */
   onDragEnd?: () => void;
 }): { selection: ChartSelection | null; clearSelection: () => void } {
-  const { enabled, innerWidth, marginLeft, data, xDataKey, xScale, containerRef, onDragStart, onDragEnd } = params;
+  const { enabled, innerWidth, marginLeft, data, xDataKey, resolveScenePos, invertSceneX, containerRef, onDragStart, onDragEnd } = params;
   const [selection, setSelection] = React.useState<ChartSelection | null>(null);
   const draggingRef = React.useRef(false);
-  const dragStartXRef = React.useRef(0);
+  const dragStartSceneXRef = React.useRef(0);
   const onDragStartRef = React.useRef(onDragStart);
   const onDragEndRef = React.useRef(onDragEnd);
   onDragStartRef.current = onDragStart;
   onDragEndRef.current = onDragEnd;
 
-  const resolveIndexFromX = React.useCallback(
-    (pixelX: number): number => {
-      const s = xScale;
-      if (!s || data.length === 0) return 0;
-      const targetMs = s.invert(pixelX).getTime();
+  const resolveIndexFromScene = React.useCallback(
+    (sceneX: number): number => {
+      if (data.length === 0) return 0;
+      const inverted = invertSceneX(sceneX);
+      const targetMs =
+        inverted instanceof Date
+          ? inverted.getTime()
+          : typeof inverted === "number"
+            ? inverted
+            : (() => {
+                const parsed = new Date(String(inverted));
+                return Number.isFinite(parsed.getTime()) ? parsed.getTime() : 0;
+              })();
       const accessor = (d: Record<string, unknown>) => {
         const v = d[xDataKey];
         if (v instanceof Date) return v.getTime();
@@ -58,17 +77,7 @@ export function useChartSelection(params: {
       if (idx < 0) return 0;
       return idx;
     },
-    [xScale, data, xDataKey],
-  );
-
-  const getChartX = React.useCallback(
-    (clientX: number): number | null => {
-      const el = containerRef.current;
-      if (!el) return null;
-      const rect = el.getBoundingClientRect();
-      return clientX - rect.left - marginLeft;
-    },
-    [containerRef, marginLeft],
+    [invertSceneX, data, xDataKey],
   );
 
   React.useEffect(() => {
@@ -78,10 +87,10 @@ export function useChartSelection(params: {
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
-      const chartX = getChartX(e.clientX);
-      if (chartX === null) return;
+      const pos = resolveScenePos(e.clientX, e.clientY);
+      if (!pos) return;
       draggingRef.current = true;
-      dragStartXRef.current = chartX;
+      dragStartSceneXRef.current = pos.x;
       onDragStartRef.current?.();
       setSelection(null);
       (e.target as Element).setPointerCapture?.((e as unknown as { pointerId: number }).pointerId);
@@ -89,15 +98,15 @@ export function useChartSelection(params: {
 
     const onPointerMove = (e: PointerEvent) => {
       if (!draggingRef.current) return;
-      const chartX = getChartX(e.clientX);
-      if (chartX === null) return;
-      const sX = Math.min(dragStartXRef.current, chartX);
-      const eX = Math.max(dragStartXRef.current, chartX);
+      const pos = resolveScenePos(e.clientX, e.clientY);
+      if (!pos) return;
+      const sScene = Math.min(dragStartSceneXRef.current, pos.x);
+      const eScene = Math.max(dragStartSceneXRef.current, pos.x);
       setSelection({
-        startX: sX,
-        endX: eX,
-        startIndex: resolveIndexFromX(sX),
-        endIndex: resolveIndexFromX(eX),
+        startX: sScene - marginLeft,
+        endX: eScene - marginLeft,
+        startIndex: resolveIndexFromScene(sScene),
+        endIndex: resolveIndexFromScene(eScene),
         active: true,
       });
     };
@@ -122,23 +131,35 @@ export function useChartSelection(params: {
       if (e.touches.length === 2) {
         e.preventDefault();
         onDragStartRef.current?.();
-        const x0 = getChartX(e.touches[0]!.clientX);
-        const x1 = getChartX(e.touches[1]!.clientX);
-        if (x0 === null || x1 === null) return;
-        const sX = Math.min(x0, x1);
-        const eX = Math.max(x0, x1);
-        setSelection({ startX: sX, endX: eX, startIndex: resolveIndexFromX(sX), endIndex: resolveIndexFromX(eX), active: true });
+        const p0 = resolveScenePos(e.touches[0]!.clientX, e.touches[0]!.clientY);
+        const p1 = resolveScenePos(e.touches[1]!.clientX, e.touches[1]!.clientY);
+        if (!p0 || !p1) return;
+        const sScene = Math.min(p0.x, p1.x);
+        const eScene = Math.max(p0.x, p1.x);
+        setSelection({
+          startX: sScene - marginLeft,
+          endX: eScene - marginLeft,
+          startIndex: resolveIndexFromScene(sScene),
+          endIndex: resolveIndexFromScene(eScene),
+          active: true,
+        });
       }
     };
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         e.preventDefault();
-        const x0 = getChartX(e.touches[0]!.clientX);
-        const x1 = getChartX(e.touches[1]!.clientX);
-        if (x0 === null || x1 === null) return;
-        const sX = Math.min(x0, x1);
-        const eX = Math.max(x0, x1);
-        setSelection({ startX: sX, endX: eX, startIndex: resolveIndexFromX(sX), endIndex: resolveIndexFromX(eX), active: true });
+        const p0 = resolveScenePos(e.touches[0]!.clientX, e.touches[0]!.clientY);
+        const p1 = resolveScenePos(e.touches[1]!.clientX, e.touches[1]!.clientY);
+        if (!p0 || !p1) return;
+        const sScene = Math.min(p0.x, p1.x);
+        const eScene = Math.max(p0.x, p1.x);
+        setSelection({
+          startX: sScene - marginLeft,
+          endX: eScene - marginLeft,
+          startIndex: resolveIndexFromScene(sScene),
+          endIndex: resolveIndexFromScene(eScene),
+          active: true,
+        });
       }
     };
     const onTouchEnd = () => {
@@ -163,7 +184,7 @@ export function useChartSelection(params: {
       el.removeEventListener("touchmove", onTouchMove as EventListener);
       el.removeEventListener("touchend", onTouchEnd);
     };
-  }, [enabled, innerWidth, getChartX, resolveIndexFromX, containerRef]);
+  }, [enabled, innerWidth, marginLeft, resolveScenePos, resolveIndexFromScene, containerRef]);
 
   const clearSelection = React.useCallback(() => setSelection(null), []);
 

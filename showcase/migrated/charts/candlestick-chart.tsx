@@ -40,7 +40,7 @@ import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { crosshair, defineChart, createMark, whenFocused } from "@tanstack/charts";
 import { tooltip as tooltipExtension } from "@tanstack/charts/tooltip";
-import type { ChartAxisTickLabelContext, ChartMark, ChartMarkState, ChartMotionContext, ChartMotionDefinition, ChartMotionTransition, ChartPoint, ChartRenderContext, ChartRendererRenderContext, ChartScale, SceneNode } from "@tanstack/charts";
+import type { ChartAxisTickLabelContext, ChartInteractionController, ChartMark, ChartMarkState, ChartMotionContext, ChartMotionDefinition, ChartMotionTransition, ChartPoint, ChartRenderContext, ChartRendererRenderContext, ChartScale, ChartScene, SceneNode } from "@tanstack/charts";
 import { extractChildren } from "./children";
 import { TooltipContent } from "./internal/tooltip-components";
 import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH, TOOLTIP_BOX_SPRING } from "./internal/design-tokens";
@@ -1281,6 +1281,12 @@ export function CandlestickChart({
   // own C3 rewrite (its `handleFocusGroupChange` comment: "same gate as
   // line/candlestick's dragSelectionActiveRef" — this IS that gate).
   const dragSelectionActiveRef = React.useRef(false);
+  // C6: own capture, separate from useFocusInjection's private ref (not
+  // exposed outside that hook) — feeds useChartSelection's clientToScene +
+  // scene.scales.x.invert path (replaces the plot-local xScaleCandleSel
+  // duplicate scale below).
+  const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
+  const sceneRef = React.useRef<ChartScene<ChartDatum, Date, number> | null>(null);
   const dateLabelsForPill = React.useMemo(() => renderData.map((d) => {
     const v = d[xDataKey];
     if (v instanceof Date) return shortDateFmt.format(v);
@@ -1445,6 +1451,8 @@ export function CandlestickChart({
     // structurally assignable from our ChartDatum-specific instantiation —
     // this is a type-system quirk, not a runtime mismatch.
     captureRenderContext(context as Pick<ChartRenderContext, "scene" | "interaction">);
+    interactionRef.current = context.interaction;
+    sceneRef.current = context.scene;
   }, [captureRenderContext]);
 
   const refAreaChildrenCandle = React.useMemo(() => extractReferenceAreaProps(children), [children]);
@@ -1461,25 +1469,27 @@ export function CandlestickChart({
     if (!Number.isFinite(minTime)) return null;
     return { minTime, maxTime } as const;
   }, [renderData, xDataKey]);
-  const xScaleCandleSel = React.useMemo(() => {
-    if (!timeExtentCandle || innerWidthCandle <= 0) return null;
-    const { minTime, maxTime } = timeExtentCandle;
-    const count = Math.max(renderData.length, 1);
-    const lo = 0;
-    const hi = innerWidthCandle;
-    const localSlotWidth = Math.max(0, hi - lo) / count;
-    const padding = localSlotWidth / 2;
-    const insetLo = lo + padding;
-    const insetHi = Math.max(insetLo, hi - padding);
-    return scaleUtc().domain([minTime, maxTime]).range([insetLo, insetHi]);
-  }, [timeExtentCandle, innerWidthCandle, renderData.length]);
+  // C6: replaces the deleted plot-local `xScaleCandleSel` duplicate d3
+  // scale (which approximated candle-slot centering via a hand-rolled
+  // half-slot-width inset) — resolves through the host's own live
+  // interaction/scene refs, which already reflect the chart's real
+  // candle-slot geometry exactly.
+  const resolveScenePosCandle = React.useCallback(
+    (clientX: number, clientY: number) => interactionRef.current?.clientToScene(clientX, clientY) ?? null,
+    [],
+  );
+  const invertSceneXCandle = React.useCallback(
+    (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? null,
+    [],
+  );
   const { selection: candleSelection } = useChartSelection({
     enabled: true,
     innerWidth: innerWidthCandle,
     marginLeft: margin.left,
     data: renderData as unknown as Array<Record<string, unknown>>,
     xDataKey,
-    xScale: xScaleCandleSel as unknown as { invert: (px: number) => Date } | null,
+    resolveScenePos: resolveScenePosCandle,
+    invertSceneX: invertSceneXCandle,
     containerRef,
     onDragStart: () => {
       dragSelectionActiveRef.current = true;

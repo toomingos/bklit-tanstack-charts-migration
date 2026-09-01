@@ -33,6 +33,7 @@ import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/toolt
 import { d3Curve, defineChart, lineY } from "@tanstack/charts";
 import { tooltip as nativeTooltip } from "@tanstack/charts/tooltip";
 import type {
+  ChartControl,
   ChartInteractionController,
   ChartMark,
   ChartMotionContext,
@@ -40,8 +41,12 @@ import type {
   ChartPositionScaleOptions,
   ChartRenderContext,
   ChartRendererRenderContext,
+  ChartScene,
+  SceneStyle,
   StaticChartDefinition,
 } from "@tanstack/charts";
+import { brushX, type BrushRange, type BrushXChange } from "@tanstack/charts/interaction/brush";
+import { controlledSignal } from "@tanstack/charts/interaction/signal";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import { areaFill } from "./internal/area-fill-mark";
 import { patternAreaMark } from "./internal/pattern-area-mark";
@@ -122,7 +127,7 @@ import {
 } from "./internal/y-domain";
 import { useChartPhaseOrchestrator } from "./internal/use-chart-phase-orchestrator";
 import { filterDataByXDomain, createXAccessor } from "./internal/brush-selection";
-import { BrushHostContext } from "./internal/brush-drag";
+import { BrushChrome, selectionToPixelExtent, type BrushHost } from "./internal/brush-chrome";
 import { DashTailOverlay, resolveDashTailBounds } from "./internal/dash-tail";
 import { buildMarkerGradientDefs, buildMarkerMarks } from "./internal/series-marker-mark";
 import { ChartMarkersOverlay } from "./internal/chart-markers";
@@ -136,6 +141,18 @@ import { clipRevealTiming, type EnterTransition } from "./internal/enter-transit
 import "./styles.css";
 // Area's own hover dim (area.tsx hardcodes dimOpacity={0.6}; Line uses 0.3).
 const AREA_DIM_OPACITY = 0.6;
+
+// C6: native brushX's own selection/handle painting is hidden — see
+// line-chart.tsx's BRUSH_NATIVE_HIDDEN_STYLE for the full rationale
+// (identical here). The BrushChrome portal reproduces bklit's visuals;
+// native brushX still owns 100% of the mechanics underneath.
+const BRUSH_NATIVE_HIDDEN_STYLE: SceneStyle = {
+  fill: "transparent",
+  fillOpacity: 0,
+  stroke: "transparent",
+  strokeOpacity: 0,
+};
+const EMPTY_BRUSH_CONTROLS: readonly ChartControl<Date, number>[] = [];
 
 export interface AreaChartProps {
   data: ChartDatum[];
@@ -585,6 +602,72 @@ export function AreaChart({
     if (projectionConfigs.length === 0) return timeExtentRaw;
     return { minTime: timeExtentRaw.minTime, maxTime: mergeProjectionXDomainMax(timeExtentRaw.maxTime, projectionConfigs) } as const;
   }, [timeExtentRaw, projectionConfigs, xDomain]);
+
+  // C6: native brushX control (strip host only — instances with no
+  // <ChartBrush> child have brushes.length === 0 and all of this collapses to
+  // EMPTY_BRUSH_CONTROLS/no-ops). See line-chart.tsx for the full design
+  // rationale (identical here); this host owns the control directly via
+  // defineChart's `controls:` instead of needing a second <Chart> host.
+  const brushConfig = brushes[0] ?? null;
+  const hasBrush = brushConfig != null;
+  const brushTrackExtent = React.useMemo<[Date, Date] | null>(() => {
+    if (!timeExtent) return null;
+    return [new Date(timeExtent.minTime), new Date(timeExtent.maxTime)];
+  }, [timeExtent]);
+  const brushFallbackRange = React.useMemo<BrushRange<Date> | null>(() => {
+    if (!brushTrackExtent) return null;
+    return { start: brushTrackExtent[0], end: brushTrackExtent[1] };
+  }, [brushTrackExtent]);
+  const brushInitialSelection = brushConfig?.initialSelection ?? null;
+  const brushRangeValueRef = React.useRef<BrushRange<Date> | null>(null);
+  const brushRangeValue = React.useMemo<BrushRange<Date> | null>(() => {
+    const next: BrushRange<Date> | null = brushInitialSelection
+      ? { start: brushInitialSelection.start, end: brushInitialSelection.end }
+      : brushFallbackRange;
+    const prev = brushRangeValueRef.current;
+    if (prev && next && prev.start.getTime() === next.start.getTime() && prev.end.getTime() === next.end.getTime()) {
+      return prev;
+    }
+    brushRangeValueRef.current = next;
+    return next;
+  }, [brushInitialSelection, brushFallbackRange]);
+  const brushOnSelectionChangeRef = React.useRef(brushConfig?.onSelectionChange);
+  brushOnSelectionChangeRef.current = brushConfig?.onSelectionChange;
+  const handleBrushChange = React.useCallback((next: BrushRange<Date>, context: { reason: BrushXChange<Date> }) => {
+    const { reason } = context;
+    if (reason.type === "cancel") return;
+    const startMs = next.start.getTime();
+    const endMs = next.end.getTime();
+    if (startMs === endMs) {
+      if (reason.type === "commit") brushOnSelectionChangeRef.current?.(null);
+      return;
+    }
+    brushOnSelectionChangeRef.current?.({ start: next.start, end: next.end });
+  }, []);
+  const brushValues = React.useMemo<Date[] | null>(() => {
+    if (!hasBrush) return null;
+    const out: Date[] = [];
+    for (const d of data as unknown as Record<string, unknown>[]) {
+      const v = xAccessorForBrush(d);
+      if (v instanceof Date) out.push(v);
+    }
+    return out;
+  }, [hasBrush, data, xAccessorForBrush]);
+  const brushControls = React.useMemo<readonly ChartControl<Date, number>[]>(() => {
+    if (!hasBrush || !brushRangeValue || !brushValues || brushValues.length === 0) return EMPTY_BRUSH_CONTROLS;
+    return [
+      brushX<Date>({
+        range: controlledSignal<BrushRange<Date>, BrushXChange<Date>>(brushRangeValue, handleBrushChange),
+        values: brushValues,
+        format: (d: Date) => shortDateFmt.format(d),
+        ariaLabel: "Brush selection",
+        startAriaLabel: "Selection start",
+        endAriaLabel: "Selection end",
+        selectionStyle: BRUSH_NATIVE_HIDDEN_STYLE,
+        handleStyle: BRUSH_NATIVE_HIDDEN_STYLE,
+      }),
+    ];
+  }, [hasBrush, brushRangeValue, brushValues, handleBrushChange]);
 
   const isLoading = status === "loading";
 
@@ -1146,8 +1229,10 @@ export function AreaChart({
           }
         : (false as const),
       motion,
+      // C6: native brushX (strip host only — empty array elsewhere).
+      controls: brushControls,
     });
-  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients, legendHoveredIndex, areas, tooltip, tooltipEnabled, crosshairGradientId, isDiscrete, hoveredIndex, xAxis, yAxis, visibleData, xDomain, labelFade]);
+  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients, legendHoveredIndex, areas, tooltip, tooltipEnabled, crosshairGradientId, isDiscrete, hoveredIndex, xAxis, yAxis, visibleData, xDomain, labelFade, brushControls]);
 
   // C3: hover-chrome.ts's imperative overlays are gone — native crosshair/
   // hover-dot/highlight-band marks (built inside the `definition` memo
@@ -1205,6 +1290,10 @@ export function AreaChart({
   // C3: replaces hover-chrome.ts + use-hover-chrome.ts entirely. Mirrors
   // line-chart.tsx's own wiring (no profit/loss term — Area has none).
   const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
+  // C6: scene-space resolved-scale capture — feeds useChartSelection's
+  // clientToScene + scene.scales.x.invert path (replaces the plot-local
+  // xScaleSel duplicate scale below).
+  const sceneRef = React.useRef<ChartScene<ChartDatum, Date, number> | null>(null);
   const dragSelectionActiveRef = React.useRef(false);
   const wasVisibleRef = React.useRef(false);
   const chartConfig = useChartConfig();
@@ -1297,6 +1386,7 @@ export function AreaChart({
     // C3: own capture, separate from useFocusInjection's private ref — feeds
     // clearFocusChrome's `setControlledFocus(null, ...)` pointer-source clear.
     interactionRef.current = context.interaction;
+    sceneRef.current = context.scene;
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     // A2 (D420/D432): reveal sweep now lives in internal/reveal-wipe.ts,
     // shared byte-for-byte with line-chart.tsx/composed-chart.tsx. Its
@@ -1391,17 +1481,24 @@ export function AreaChart({
     if (!timeExtent) { areaXScaleD3Ref.current = null; return; }
     areaXScaleD3Ref.current = scaleUtc().domain([timeExtent.minTime, timeExtent.maxTime]).range([0, innerWidthArea]) as unknown as ReturnType<typeof scaleUtc>;
   }, [timeExtent, innerWidthArea]);
-  const xScaleSel = React.useMemo(() => {
-    if (!timeExtent) return null;
-    return scaleUtc().domain([timeExtent.minTime, timeExtent.maxTime]).range([0, innerWidthArea]);
-  }, [timeExtent, innerWidthArea]);
+  // C6: replaces the deleted plot-local `xScaleSel` duplicate d3 scale —
+  // resolves through the host's own live interaction/scene refs.
+  const resolveScenePos = React.useCallback(
+    (clientX: number, clientY: number) => interactionRef.current?.clientToScene(clientX, clientY) ?? null,
+    [],
+  );
+  const invertSceneX = React.useCallback(
+    (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? null,
+    [],
+  );
   const { selection: chartSelection } = useChartSelection({
     enabled: true,
     innerWidth: innerWidthArea,
     marginLeft: margin.left,
     data: data as unknown as Array<Record<string, unknown>>,
     xDataKey,
-    xScale: xScaleSel as unknown as { invert: (px: number) => Date } | null,
+    resolveScenePos,
+    invertSceneX,
     containerRef,
     onDragStart: () => {
       dragSelectionActiveRef.current = true;
@@ -1416,20 +1513,22 @@ export function AreaChart({
   // D431: ReferenceArea axisLabelColor per-tick y-label color dropped —
   // native tickLabels have no per-tick fill channel (v0.15.0).
 
-  // BrushHost + clipping — same shape as line-chart.tsx (strip = un-brushed => trackExtent = final xScale domain)
+  // BrushHost + clipping — same shape as line-chart.tsx (strip = un-brushed => trackExtent = final xScale domain).
+  // brushTrackExtent/hasBrush/brushRangeValue come from the native brushX
+  // controls block above (mirrors line-chart.tsx); this just derives the
+  // portal-chrome geometry (pixel host + pixel extent) from them.
   const innerWidthForBrush = Math.max(0, width - margin.left - margin.right);
   const innerHeightForBrush = Math.max(0, heightPx - margin.top - margin.bottom);
   const areaBrushClipId = useSanitizedId();
   const needsAreaBrushClip = !!xDomain && innerWidthForBrush > 0 && innerHeightForBrush > 0;
-  const trackExtentForBrush = React.useMemo<[Date, Date] | null>(() => {
-    if (!timeExtent) return null;
-    return [new Date(timeExtent.minTime), new Date(timeExtent.maxTime)];
-  }, [timeExtent]);
-  const brushHostValue = React.useMemo(() => {
-    if (!trackExtentForBrush || innerWidthForBrush <= 0) return null;
-    return { containerRef: containerRef as unknown as React.RefObject<HTMLElement | null>, margin, trackExtent: trackExtentForBrush } as const;
-  }, [trackExtentForBrush, innerWidthForBrush, margin]);
-  const brushElements = brushes.length > 0 && brushHostValue ? (brushes as unknown as React.ReactNode[]) : null;
+  const brushHost = React.useMemo<BrushHost | null>(() => {
+    if (!brushTrackExtent || innerWidthForBrush <= 0) return null;
+    return { containerRef: containerRef as unknown as React.RefObject<HTMLElement | null>, margin, trackExtent: brushTrackExtent };
+  }, [brushTrackExtent, innerWidthForBrush, margin]);
+  const brushPixelExtent = React.useMemo(() => {
+    if (!brushHost || !brushRangeValue) return null;
+    return selectionToPixelExtent(brushRangeValue, brushHost.trackExtent, innerWidthForBrush);
+  }, [brushHost, brushRangeValue, innerWidthForBrush]);
 
   return (
     <ChartSelectionContext.Provider value={chartSelection}>
@@ -1451,10 +1550,18 @@ export function AreaChart({
           </defs>
         </svg>
       ) : null}
-      {brushHostValue ? (
-        <BrushHostContext.Provider value={brushHostValue as unknown as import("./internal/brush-drag").BrushHost}>
-          <div style={{ display: "contents" }}>{brushElements}</div>
-        </BrushHostContext.Provider>
+      {hasBrush && brushHost && brushPixelExtent ? (
+        <BrushChrome
+          host={brushHost}
+          x0={brushPixelExtent.x0}
+          x1={brushPixelExtent.x1}
+          innerWidth={innerWidthForBrush}
+          innerHeight={innerHeightForBrush}
+          blurPx={brushConfig?.blurPx}
+          fadeOuterEdges={brushConfig?.fadeOuterEdges}
+          selectionPattern={brushConfig?.selectionPattern}
+          selectedBoxStyle={brushConfig?.selectedBoxStyle}
+        />
       ) : null}
       {isLoading && loadingLabel ? <LoadingLabel text={loadingLabel} /> : null}
       {background ? (

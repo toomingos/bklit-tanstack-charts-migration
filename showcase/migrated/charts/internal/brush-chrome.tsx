@@ -2,12 +2,50 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import type { BrushHost } from "./brush-drag";
 import { renderPatternPreset } from "./pattern-preset";
+
+// C6: moved in from the deleted brush-drag.ts (its own module comment ruled
+// native brushX non-viable at v0.14 for lack of a second <Chart> host; at
+// v0.15 the host chart itself now owns brushX directly, so this shape is
+// just "where do I portal the chrome" — containerRef/margin/trackExtent —
+// unchanged from before.
+export interface BrushHost {
+  containerRef: React.RefObject<HTMLElement | null>;
+  margin: { top: number; right: number; bottom: number; left: number };
+  trackExtent: [Date, Date];
+}
 
 const BRUSH_TRACK_OUTER_FADE = 0.15;
 const HANDLE_WIDTH_PX = 4;
 const HANDLE_HEIGHT_PX = 24;
+
+// C6: moved in from the deleted brush-drag.ts, unchanged. BrushChrome's x0/x1
+// are plot-local pixels (0..innerWidth, NOT scene-space) over the host's own
+// stable trackExtent — an independent scale from the chart's own (rescaling,
+// while brushing) x scale, same reasoning the old NON-VIABLE ruling gave for
+// why native brushX couldn't bind directly to it. Previously fed by
+// useBrushDrag's live pixel-drag state; now fed by the native controlled
+// BrushRange<Date> (see line-chart.tsx / area-chart.tsx).
+export function selectionToPixelExtent(
+  selection: { start: Date; end: Date },
+  trackExtent: [Date, Date],
+  innerWidth: number,
+): { x0: number; x1: number } | null {
+  if (innerWidth <= 0) return null;
+  const startMs = trackExtent[0].getTime();
+  const endMs = trackExtent[1].getTime();
+  const span = endMs - startMs;
+  if (span === 0) return null;
+  const sMs = selection.start.getTime();
+  const eMs = selection.end.getTime();
+  const x0Raw = ((sMs - startMs) / span) * innerWidth;
+  const x1Raw = ((eMs - startMs) / span) * innerWidth;
+  const x0 = Math.max(0, Math.min(innerWidth, x0Raw));
+  const x1 = Math.max(0, Math.min(innerWidth, x1Raw));
+  const nx0 = Math.min(x0, x1);
+  const nx1 = Math.max(x0, x1);
+  return { x0: nx0, x1: nx1 };
+}
 
 export interface BrushChromePattern {
   preset: "none" | "diagonal" | "horizontal" | "vertical" | "cross" | "dots" | "accent";

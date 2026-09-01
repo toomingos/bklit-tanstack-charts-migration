@@ -91,6 +91,7 @@ import type {
   ChartRenderContext,
   ChartRendererRenderContext,
   ChartScale,
+  ChartScene,
   ChartValue,
 } from "@tanstack/charts";
 import { chartMotionRenderer } from "./internal/motion-renderer";
@@ -1563,6 +1564,10 @@ export function ComposedChart({
   // `source:"programmatic"` from this pointer path — that source is
   // reserved for C1's legend-dim focus injection (`whenSeriesDimmed()`).
   const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
+  // C6: scene-space resolved-scale capture — feeds useChartSelection's
+  // clientToScene + scene.scales.x.invert path (replaces the plot-local
+  // xScaleCompSel duplicate scale below).
+  const sceneRef = React.useRef<ChartScene<ChartDatum, Date, number> | null>(null);
   // C2 (P6): renders inside the native tooltip extension's unstyled
   // `.ts-chart-tooltip__body` portal target — wraps the reused
   // `TooltipContent` in `.bkm-tooltip-panel` (styles.css) to reproduce the
@@ -1830,6 +1835,7 @@ export function ComposedChart({
     // assigning into our own concretely-typed ref rather than the
     // library-generic `Pick<ChartRenderContext, ...>` parameter above.
     interactionRef.current = context.interaction;
+    sceneRef.current = context.scene;
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marks) return;
     // Gate on chartPhase === "revealing" (same contract as line-chart.tsx /
@@ -1970,17 +1976,24 @@ export function ComposedChart({
   // values. Same defect class as bar's (D343).
   const yDomainComp = yDomainFinal as [number, number];
   const innerWidthComp = Math.max(0, width - margin.left - margin.right);
-  const xScaleCompSel = React.useMemo(() => {
-    if (!timeExtentComp) return null;
-    return scaleUtc().domain([timeExtentComp.minTime, timeExtentComp.maxTime]).range([0, innerWidthComp]);
-  }, [timeExtentComp, innerWidthComp]);
+  // C6: replaces the deleted plot-local `xScaleCompSel` duplicate d3 scale —
+  // resolves through the host's own live interaction/scene refs.
+  const resolveScenePosComp = React.useCallback(
+    (clientX: number, clientY: number) => interactionRef.current?.clientToScene(clientX, clientY) ?? null,
+    [],
+  );
+  const invertSceneXComp = React.useCallback(
+    (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? null,
+    [],
+  );
   const { selection: compSelection } = useChartSelection({
     enabled: true,
     innerWidth: innerWidthComp,
     marginLeft: margin.left,
     data: data as unknown as Array<Record<string, unknown>>,
     xDataKey,
-    xScale: xScaleCompSel as unknown as { invert: (px: number) => Date } | null,
+    resolveScenePos: resolveScenePosComp,
+    invertSceneX: invertSceneXComp,
     containerRef,
     onDragStart: () => {
       dragSelectionActiveRef.current = true;
