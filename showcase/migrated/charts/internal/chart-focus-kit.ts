@@ -26,7 +26,11 @@ export function focusValueKey(value: unknown): string {
 
 /** Nearest point to scene-x `x` among `points`, strict `<`: ties keep the
     earlier-scanned point, mirroring bklit's bisectDateLeft +
-    resolveNearestIndex tie-break toward the earlier point. */
+    resolveNearestIndex tie-break toward the earlier point.
+    C2: epsilon-widened reject band (1e-6) so a float-pixel near-tie
+    (two candidates whose true scene-x distance is equal but differ by
+    sub-micro-px float noise) also resolves to the earlier-scanned point,
+    matching legacy's integer-ms strict `>` tie-break at exact midpoints. */
 export function findNearestPointByX<P extends ChartPointLike>(
   points: readonly P[],
   x: number,
@@ -36,7 +40,7 @@ export function findNearestPointByX<P extends ChartPointLike>(
   let distance = maxDistance;
   for (const p of points) {
     const d = Math.abs(p.x - x);
-    if (d >= distance) continue;
+    if (d >= distance - 1e-6) continue;
     nearest = p;
     distance = d;
   }

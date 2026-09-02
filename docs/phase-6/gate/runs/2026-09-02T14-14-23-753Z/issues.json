@@ -1,0 +1,261 @@
+{
+  "generatedAt": "2026-09-02T19:31:08.524Z",
+  "runDir": "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z",
+  "label": "ver1-2026-09-02T14:14Z",
+  "issues": [
+    {
+      "id": "qa:funnel/1000:axis",
+      "category": "axis",
+      "charts": [
+        "funnel/1000"
+      ],
+      "cells": [
+        "settled: 435 px (out-of-range, mode 0, hist [0,230])"
+      ],
+      "evidence": [
+        "qa/results/funnel/2026-09-02T14-16-59-975Z/settled-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/qa/funnel-1000.log"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:composedmultiaxis/1000:renderer-regime",
+      "category": "renderer-regime",
+      "charts": [
+        "composedmultiaxis/1000"
+      ],
+      "cells": [
+        "settled: 853 px (out-of-range, mode 854, hist [854,59696])"
+      ],
+      "evidence": [
+        "qa/results/composedmultiaxis/2026-09-02T14-17-08-807Z/settled-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/qa/composedmultiaxis-1000.log"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:markers/100:hover-dim",
+      "category": "hover-dim",
+      "charts": [
+        "markers/100"
+      ],
+      "cells": [
+        "hover-30: 11387 px (in-range, mode 3717, hist [3574,15483])",
+        "hover-50: 10173 px (in-range, mode 1750, hist [840,15244])",
+        "hover-70: 11655 px (in-range, mode 3633, hist [3328,15251])"
+      ],
+      "evidence": [
+        "qa/results/markers/2026-09-02T14-17-14-038Z/hover-30-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/qa/markers-100.log",
+        "qa/results/markers/2026-09-02T14-17-14-038Z/hover-50-diff.png",
+        "qa/results/markers/2026-09-02T14-17-14-038Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:markers/100:legend",
+      "category": "legend",
+      "charts": [
+        "markers/100"
+      ],
+      "cells": [
+        "legend-hover-0: 11197 px (in-range, mode 3811, hist [3756,18168])",
+        "legend-hover-1: 8136 px (in-range, mode 3757, hist [3729,17740])",
+        "legend-hover-clear: 10591 px (in-range, mode 3755, hist [3731,16612])"
+      ],
+      "evidence": [
+        "qa/results/markers/2026-09-02T14-17-14-038Z/legend-hover-0-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/qa/markers-100.log",
+        "qa/results/markers/2026-09-02T14-17-14-038Z/legend-hover-1-diff.png",
+        "qa/results/markers/2026-09-02T14-17-14-038Z/legend-hover-clear-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:candlestick/1000:renderer-regime",
+      "category": "renderer-regime",
+      "charts": [
+        "candlestick/1000"
+      ],
+      "cells": [
+        "hover-30: 6113 px (in-range, mode 4764, hist [4609,7343])",
+        "hover-50: 5037 px (in-range, mode 3515, hist [3094,6302])",
+        "hover-70: 5027 px (in-range, mode 3482, hist [3113,6172])"
+      ],
+      "evidence": [
+        "qa/results/candlestick/2026-09-02T14-17-19-129Z/hover-30-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/qa/candlestick-1000.log",
+        "qa/results/candlestick/2026-09-02T14-17-19-129Z/hover-50-diff.png",
+        "qa/results/candlestick/2026-09-02T14-17-19-129Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:liveline/100:hover-dim",
+      "category": "hover-dim",
+      "charts": [
+        "liveline/100"
+      ],
+      "cells": [
+        "hover-30: 7615 px (in-range, mode 486, hist [486,7692])",
+        "hover-50: 7496 px (in-range, mode 644, hist [644,7588])",
+        "hover-70: 7504 px (in-range, mode 982, hist [982,7608])"
+      ],
+      "evidence": [
+        "qa/results/liveline/2026-09-02T14-17-27-821Z/hover-30-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/qa/liveline-100.log",
+        "qa/results/liveline/2026-09-02T14-17-27-821Z/hover-50-diff.png",
+        "qa/results/liveline/2026-09-02T14-17-27-821Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:patternarea/1000:axis",
+      "category": "axis",
+      "charts": [
+        "patternarea/1000"
+      ],
+      "cells": [
+        "pattern-none: 1221 px (out-of-range, mode 1225, hist [1225,5543])",
+        "pattern-diagonal: 1097 px (out-of-range, mode 1440, hist [1151,6737])",
+        "pattern-horizontal: 1106 px (out-of-range, mode 1180, hist [1168,6914])",
+        "pattern-vertical: 1399 px (out-of-range, mode 1590, hist [1457,7158])",
+        "pattern-cross: 1086 px (out-of-range, mode 1266, hist [1146,6712])",
+        "pattern-dots: 1171 px (out-of-range, mode 1286, hist [1225,6874])",
+        "pattern-circles: 1406 px (out-of-range, mode 1476, hist [1475,6751])",
+        "pattern-accent: 1095 px (out-of-range, mode 1274, hist [1148,6916])"
+      ],
+      "evidence": [
+        "qa/results/patternarea/2026-09-02T14-17-28-885Z/pattern-none-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/qa/patternarea-1000.log",
+        "qa/results/patternarea/2026-09-02T14-17-28-885Z/pattern-diagonal-diff.png",
+        "qa/results/patternarea/2026-09-02T14-17-28-885Z/pattern-horizontal-diff.png",
+        "qa/results/patternarea/2026-09-02T14-17-28-885Z/pattern-vertical-diff.png",
+        "qa/results/patternarea/2026-09-02T14-17-28-885Z/pattern-cross-diff.png",
+        "qa/results/patternarea/2026-09-02T14-17-28-885Z/pattern-dots-diff.png",
+        "qa/results/patternarea/2026-09-02T14-17-28-885Z/pattern-circles-diff.png",
+        "qa/results/patternarea/2026-09-02T14-17-28-885Z/pattern-accent-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:scatter/1000:renderer-regime",
+      "category": "renderer-regime",
+      "charts": [
+        "scatter/1000"
+      ],
+      "cells": [
+        "hover-30: 137433 px (in-range, mode 0, hist [0,143154])",
+        "hover-50: 138149 px (in-range, mode 748, hist [0,142237])",
+        "hover-70: 139156 px (in-range, mode 2847, hist [2018,143608])"
+      ],
+      "evidence": [
+        "qa/results/scatter/2026-09-02T14-17-28-329Z/hover-30-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/qa/scatter-1000.log",
+        "qa/results/scatter/2026-09-02T14-17-28-329Z/hover-50-diff.png",
+        "qa/results/scatter/2026-09-02T14-17-28-329Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:scattermultiaxis/1000:renderer-regime",
+      "category": "renderer-regime",
+      "charts": [
+        "scattermultiaxis/1000"
+      ],
+      "cells": [
+        "hover-30: 117087 px (in-range, mode 0, hist [0,127866])",
+        "hover-50: 117777 px (in-range, mode 748, hist [0,128172])",
+        "hover-70: 118935 px (in-range, mode 2123, hist [2123,129924])"
+      ],
+      "evidence": [
+        "qa/results/scattermultiaxis/2026-09-02T14-17-38-942Z/hover-30-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/qa/scattermultiaxis-1000.log",
+        "qa/results/scattermultiaxis/2026-09-02T14-17-38-942Z/hover-50-diff.png",
+        "qa/results/scattermultiaxis/2026-09-02T14-17-38-942Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:radar/6:polar",
+      "category": "polar",
+      "charts": [
+        "radar/6"
+      ],
+      "cells": [
+        "hover-50: 6531 px (in-range, mode 852, hist [851,6546])"
+      ],
+      "evidence": [
+        "qa/results/radar/2026-09-02T14-18-03-153Z/hover-50-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/qa/radar-6.log"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:sankey/33:hover-dim",
+      "category": "hover-dim",
+      "charts": [
+        "sankey/33"
+      ],
+      "cells": [
+        "hover-30: 11125 px (in-range, mode 3690, hist [3506,31888])",
+        "hover-70: 7693 px (in-range, mode 1761, hist [1270,11636])"
+      ],
+      "evidence": [
+        "qa/results/sankey/2026-09-02T14-18-09-533Z/hover-30-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/qa/sankey-33.log",
+        "qa/results/sankey/2026-09-02T14-18-09-533Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:arealoading/1000:motion/reveal",
+      "category": "motion/reveal",
+      "charts": [
+        "arealoading/1000"
+      ],
+      "cells": [
+        "hover-70: 612 px (out-of-range, mode 249, hist [249,541])"
+      ],
+      "evidence": [
+        "qa/results/arealoading/2026-09-02T14-18-36-226Z/hover-70-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/qa/arealoading-1000.log"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:barloading/100:motion/reveal",
+      "category": "motion/reveal",
+      "charts": [
+        "barloading/100"
+      ],
+      "cells": [
+        "settled: 22466 px (in-range, mode 18216, hist [18124,51852])",
+        "hover-30: 161123 px (in-range, mode 158874, hist [158874,161541])",
+        "hover-50: 144883 px (in-range, mode 161336, hist [133147,161353])",
+        "hover-70: 161542 px (mode, mode 161542, hist [132903,164456])"
+      ],
+      "evidence": [
+        "qa/results/barloading/2026-09-02T14-18-42-967Z/settled-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/qa/barloading-100.log",
+        "qa/results/barloading/2026-09-02T14-18-42-967Z/hover-30-diff.png",
+        "qa/results/barloading/2026-09-02T14-18-42-967Z/hover-50-diff.png",
+        "qa/results/barloading/2026-09-02T14-18-42-967Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    }
+  ]
+}

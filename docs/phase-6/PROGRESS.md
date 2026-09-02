@@ -49,7 +49,22 @@
         (D444) · reclassify `internal/y-axis-ticks.ts` as a **survivor** with three consumers
         (`candlestick-chart.tsx:71`, `internal/axis-ticks.ts:13`, `index.ts:458,505`), not a missed
         deletion (consistent with D431 item 7)
-- [ ] 6.5 Gate (QA + bench + bundle M2c + census=0 + CI guard)
+- [x] 6.5 Gate (QA + bench + bundle M2c + census=0 + CI guard) — **CLOSED 2026-09-02**, run
+      `docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z` (`docs/phase-6/gate/latest/SUMMARY.md`), ledger D473–D502
+  - [x] First pass FAILED (composed/scatter M3a ×6–7) → bisect → D472 cardinality-gated renderer → re-run passes
+  - [x] Gate tooling: `qa/gate/` driver (parallel QA workers, bench/bundle/checks stages, structured
+        `qa-matrix.json` / `bench.json` / `bundle.json` / `checks.json` / `issues.json`, `pnpm gate:*`) — D473–D482
+  - [x] Fix window on sweep-1 findings, sonnet executors + independent gate math: choropleth key wrap + centroid (D493),
+        line highlight band `withoutInteraction` (D494), candlestick wick split (D495), liveline `.nice()` restore (D496),
+        liveline font/dy (D497)
+  - [x] QA: 43 runs / 190 cells, 0 tooltip failures, 0 console errors; every above-line cell inside inherited history
+        (D402/D403), 5 cells below floor (improvements) — D498
+  - [x] Bench `--all` + 5 migrated: 29/29, no gated regression, 2 speed-up flags; legacy-arm baseline omissions fixed in
+        the driver — D500
+  - [x] Bundle: 43 pins OK, Σ gzip +1.2 % (pins kept at `c1e9ced`) — D499
+  - [x] tsc 0 · build ok · eslint 0 errors / 24 warnings (lint debt D470/D501) · census 79/15/0 · bundle guard OK — D501
+  - [x] D448 gate item closed by D471 (pointer-owner guard). Open **user** decisions carried, not absorbed: `hoverPop`
+        inert (D450), uncontrolled `<ChartBrush>` (D455) — Phase-7 list D502
 
 **Gate-scheduling constraint (from `research/phase-6/09-reopened-phase-5.md` §3).** T0/T1 exposure
 order: candlestick + scatter in C5a, heatmap in C5b, pie + ring in C5c. **Do not stack C5b and C5c

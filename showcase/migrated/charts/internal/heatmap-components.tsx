@@ -478,8 +478,8 @@ function useHeatmapChartDefinition(
         // arrays to share the same concrete `CellDatum` element type.
         marks: [] as unknown as typeof cellMarks,
         scales: {
-          x: { scale: xScale, guide: false },
-          y: { scale: yScale, guide: false },
+          x: { scale: xScale, guide: false, axis: false },
+          y: { scale: yScale, guide: false, axis: false },
         },
         color: { scale: colorScale },
         margin,
@@ -498,8 +498,8 @@ function useHeatmapChartDefinition(
     return defineChart({
       marks: cellMarks,
       scales: {
-        x: { scale: xScale, guide: false },
-        y: { scale: yScale, guide: false },
+        x: { scale: xScale, guide: false, axis: false },
+        y: { scale: yScale, guide: false, axis: false },
       },
       color: { scale: colorScale },
       margin,

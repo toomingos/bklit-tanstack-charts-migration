@@ -1,0 +1,74 @@
+{
+  "generatedAt": "2026-09-02T21:09:14.976Z",
+  "runDir": "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z",
+  "checks": [
+    {
+      "name": "tsc",
+      "cmd": "npx tsc --noEmit",
+      "cwd": "showcase",
+      "exit": 0,
+      "durationMs": 2436,
+      "summary": {
+        "errors": 0
+      },
+      "lastLine": "",
+      "log": "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/checks/tsc.log"
+    },
+    {
+      "name": "build",
+      "cmd": "npm run build",
+      "cwd": "bench/app",
+      "exit": 0,
+      "durationMs": 3380,
+      "summary": {
+        "ok": true
+      },
+      "lastLine": "\u001b[32m✓ built in 3.01s\u001b[39m",
+      "log": "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/checks/build.log"
+    },
+    {
+      "name": "lint",
+      "cmd": "npx eslint migrated",
+      "cwd": "showcase",
+      "exit": 0,
+      "durationMs": 2555,
+      "summary": {
+        "problems": 24,
+        "errors": 0,
+        "warnings": 24
+      },
+      "lastLine": "\u001b[0m\u001b[33m\u001b[1m\u001b[22m\u001b[39m\u001b[0m",
+      "log": "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/checks/lint.log"
+    },
+    {
+      "name": "census",
+      "cmd": "node scripts/reach-in-guard.mjs --json",
+      "cwd": "",
+      "exit": 0,
+      "durationMs": 112,
+      "summary": {
+        "total": 79,
+        "files": 15,
+        "failures": 0
+      },
+      "lastLine": "}",
+      "log": "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/checks/census.log"
+    },
+    {
+      "name": "bundle-gate",
+      "cmd": "node scripts/bundle-gate.mjs",
+      "cwd": "",
+      "exit": 0,
+      "durationMs": 67,
+      "summary": {
+        "ok": 0,
+        "fail": 0
+      },
+      "lastLine": "[bundle-gate] OK",
+      "log": "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/checks/bundle-gate.log"
+    }
+  ],
+  "summary": {
+    "failed": []
+  }
+}

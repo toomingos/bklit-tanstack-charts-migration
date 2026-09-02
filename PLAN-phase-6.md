@@ -170,12 +170,12 @@ research files as end-state records.
 
 ## Definition of Done
 
-- [ ] Reach-in census = 0, CI grep guard in place
-- [ ] No parallel custom system where research proved the native path; every subsystem
+- [x] Reach-in census = 0, CI grep guard in place — `scripts/reach-in-guard.mjs`: 79 pinned sites / 15 files, 0 unpinned (D468, D501)
+- [x] No parallel custom system where research proved the native path; every subsystem
       dispositioned REPLACE / SANCTIONED-EXTENSION / ACCEPT-WITH-LOG in the ledger
-- [ ] Full QA matrix within inherited known baselines; typecheck + build green
-- [ ] `bench --all` no regression vs phase-5 latest
-- [ ] Bundle gzip per scenario recorded, materially down, and gated going forward
-- [ ] 6.4 refactor pass executed: dead-code/duplication findings triaged and applied or D-logged
-- [ ] `docs/phase-6/LOG.md`, `PROGRESS.md`, `BENCHMARKS.md` updated; D-numbering continuous from
-      D416
+- [x] Full QA matrix within inherited known baselines; typecheck + build green — D498, D501 (`docs/phase-6/BENCHMARKS.md` §3, §4)
+- [x] `bench --all` no regression vs phase-5 latest — 29/29 cells, 2 speed-up flags only (D500, §2.3)
+- [x] Bundle gzip per scenario recorded, materially down (qualified, D469), and gated going forward (43 pins, D499, §1)
+- [x] 6.4 refactor pass executed: dead-code/duplication findings triaged and applied or D-logged (D459–D470)
+- [x] `docs/phase-6/LOG.md`, `PROGRESS.md`, `BENCHMARKS.md` updated; D-numbering continuous from
+      D416 — closed at D502

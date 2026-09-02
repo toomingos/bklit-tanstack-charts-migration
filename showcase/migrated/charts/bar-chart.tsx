@@ -67,7 +67,7 @@ import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import { useChartConfig } from "./internal/chart-config-context";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
-import { useFocusInjection, whenSeriesDimmed, useLegendFocusBroadcast } from "./internal/focus-injection";
+import { useFocusInjection } from "./internal/focus-injection";
 import { buildIndicatorMark } from "./internal/hover-geometry";
 import { buildNativeTooltipExtension } from "./internal/native-tooltip";
 import { createBarFocusStrategy } from "./internal/bar-focus-strategy";
@@ -82,7 +82,8 @@ import type { BarConfig, BarSquaresConfig, BarColumnTrackConfig, ChartDatum, Cha
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { resolveGridGuide } from "./internal/grid";
 import { isRevealed, markRevealed, setRevealDeadline } from "./internal/deferred-reveal";
-import { chartRendererFor } from "./internal/motion-renderer";
+import { useChartRenderer } from "./internal/motion-renderer";
+import { bandWidthForSquares, computeSquareColumn } from "./internal/bar-squares-layout";
 import { resolveMotionEasing } from "./internal/reveal-easing";
 import { bezierEasing } from "./internal/bezier-easing";
 import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
@@ -129,29 +130,27 @@ const BAR_DIM_TRANSITION: NonNullable<ChartMarkState["transition"]> = { type: "t
 const BAR_SQUARES_DIM_TRANSITION: NonNullable<ChartMarkState["transition"]> = { type: "tween", duration: 150, easing: "ease-out" };
 const BAR_TRACK_DIM_TRANSITION: NonNullable<ChartMarkState["transition"]> = { type: "tween", duration: 150, easing: "ease-in-out" };
 const BAR_DEPTH_DIM_TRANSITION: NonNullable<ChartMarkState["transition"]> = { type: "tween", duration: 150, easing: "ease-out" };
+/** D481: `barDepthBackMark` nodes per row — side + shade + glass, lid + tip + shade. */
+const BAR_DEPTH_BACK_NODES_PER_ROW = 6;
 
-/** Row (pointer-hover) dim + legend (programmatic focusSeries) dim — the
+/** Row (pointer-hover) dim — the
  * shared shape used by barY, trimmed bars, and squares. `{focus:'unmatched'}`
  * is group-scoped (dims a candidate unless one of its points is in the
  * currently-focused row); `whenSeriesDimmed()` is `'series'`-scoped
  * (dataKey/group identity), matching legend-driven dim regardless of row. */
-function barRowAndSeriesDimStates(
+function barRowDimStates(
   fadedOpacity: number,
   transition: NonNullable<ChartMarkState["transition"]>,
 ): ChartMarkState<ChartDatum>[] {
-  return [
-    { when: { focus: "unmatched" }, style: { opacity: fadedOpacity }, transition },
-    { when: whenSeriesDimmed(), style: { opacity: fadedOpacity }, transition },
-  ];
+  return [{ when: { focus: "unmatched" }, style: { opacity: fadedOpacity }, transition }];
 }
 
-/** Bar-depth back/front blanket dim: legacy dimmed on `dimByRow (pointer,
- * this row unmatched) || hasLegend (ANY legend hover, not series-matched)` —
- * NOT gated by which series is hovered, unlike bars/squares above. */
+/** Bar-depth back/front pointer-row dim: legacy dimmed on `dimByRow (pointer,
+ * this row unmatched)`; its `|| hasLegend` half (ANY legend hover, not
+ * series-matched) is the depth marks' `opacity` option (D480). */
 function barDepthDimStates(): ChartMarkState<ChartDatum>[] {
   return [
     { when: { focus: "unmatched", source: "pointer" }, style: { opacity: BAR_FADED_OPACITY }, transition: BAR_DEPTH_DIM_TRANSITION },
-    { when: (context) => context.focus.source === "programmatic", style: { opacity: BAR_FADED_OPACITY }, transition: BAR_DEPTH_DIM_TRANSITION },
   ];
 }
 
@@ -488,7 +487,7 @@ export function BarChart({
     [children],
   );
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
-  const { captureRenderContext, focusSeries, clearFocus } = useFocusInjection<ChartDatum, string, number>();
+  const { captureRenderContext } = useFocusInjection<ChartDatum, string, number>();
   // C2: hoisted above `definition` so native `tooltip` extension wiring can
   // read it inside the same memo that builds the marks/scales spec.
   const tooltipEnabled = tooltip?.enabled ?? false;
@@ -1006,7 +1005,7 @@ export function BarChart({
           tickLabels: {
             fontSize: 12,
             thin: false,
-            dy: margin.bottom - 25,
+            dy: margin.bottom - 26,
             opacity: labelFade
               ? (ctx: ChartAxisTickLabelContext) =>
                   tickLabelFadeOpacity(
@@ -1056,7 +1055,11 @@ export function BarChart({
       // panel chrome comes from TooltipContent's own `.bkm-tooltip-panel`.
       className: "bkm-native-tooltip",
       offset: BOX_OFFSET,
-      anchor: { x: "group-center", y: "plot-top" } as const,
+      // D-tooltip-geometry fix — see native-tooltip.tsx's plot-top anchor.
+      // BarOrientation is currently inert (pilot only renders vertical —
+      // see the `orientation` prop's DOC-9 comment above), so no
+      // horizontal-layout centring case exists to preserve here.
+      anchorX: "group-center",
     });
 
     // C3: large-dataset motion cutoff, shared by the crosshair/hover-dot
@@ -1152,6 +1155,16 @@ export function BarChart({
       }
     }
 
+    // D480: legend-hover dim is a per-mark `fillOpacity`/`opacity` computed
+    // from `legendHoveredIndex` (bklit bar.tsx:233 `isLegendDimmed`), not a
+    // programmatic-focus state — native focus is a single-owner slot, so the
+    // C1 series-focus injection evicted the pointer focus (tooltip, row dim)
+    // on legend hover; legacy keeps both. Depth chrome dims on ANY legend
+    // hover (bklit `hasLegend`), bars/squares only when another series is.
+    const legendHoveredKey = legendHoveredIndex != null ? (allSeriesKeys[legendHoveredIndex] ?? null) : null;
+    const legendDimOpacity = (dataKey: string, fadedOpacity: number) =>
+      legendHoveredKey != null && legendHoveredKey !== dataKey ? fadedOpacity : undefined;
+    const depthLegendOpacity = legendHoveredIndex != null ? BAR_FADED_OPACITY : undefined;
     if (!hasSquares && !hasTrack && !hasDepth) {
       const marks: ChartMark<ChartDatum, string, number>[] = [];
       for (const series of resolvedSeries) {
@@ -1163,8 +1176,9 @@ export function BarChart({
             z: () => series.dataKey,
              layout: group({ scale: groupScale }),
             fill: series.fill,
+            fillOpacity: legendDimOpacity(series.dataKey, series.fadedOpacity),
             radius: resolveCornerRadius(series.lineCap, groupBandwidth),
-            states: barRowAndSeriesDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
+            states: barRowDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
             motion: barEnterMotion,
           }),
         );
@@ -1249,7 +1263,8 @@ export function BarChart({
             patternPreset: s.patternPreset,
             gradientId,
             patternId,
-            states: barRowAndSeriesDimStates(s.fadedOpacity, BAR_SQUARES_DIM_TRANSITION),
+            states: barRowDimStates(s.fadedOpacity, BAR_SQUARES_DIM_TRANSITION),
+            opacity: legendDimOpacity(s.dataKey, s.fadedOpacity),
           }),
         );
       }
@@ -1271,6 +1286,7 @@ export function BarChart({
             fill: b.color ?? series.fill,
             gradientIds: depthGradientIds,
             states: barDepthDimStates(),
+            opacity: depthLegendOpacity,
           }),
         );
       }
@@ -1302,7 +1318,8 @@ export function BarChart({
             chartX: margin.left,
             centerX: margin.left + innerW / 2,
             maxDepth: 0,
-            states: barRowAndSeriesDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
+            states: barRowDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
+            opacity: legendDimOpacity(series.dataKey, series.fadedOpacity),
           }),
         );
         continue;
@@ -1315,8 +1332,9 @@ export function BarChart({
           z: () => series.dataKey,
            layout: group({ scale: groupScale }),
           fill: series.fill,
+          fillOpacity: legendDimOpacity(series.dataKey, series.fadedOpacity),
           radius: resolveCornerRadius(series.lineCap, groupBandwidth),
-          states: barRowAndSeriesDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
+          states: barRowDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
           motion: barEnterMotion,
         }),
       );
@@ -1335,6 +1353,7 @@ export function BarChart({
             yAccessor: (d: ChartDatum) => projectValue(f.dataKey, d[f.dataKey] as number),
             gradientIds: depthGradientIds,
             states: barDepthDimStates(),
+            opacity: depthLegendOpacity,
           }),
         );
       }
@@ -1397,6 +1416,7 @@ export function BarChart({
     barDepthEnabled,
     totalSeriesCount,
     allSeriesKeys,
+    legendHoveredIndex,
     bandWidth,
     categoryScaleForOverlay,
     squaresDefsByKey,
@@ -1434,14 +1454,6 @@ export function BarChart({
 
   const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
   const hasDefinition = width > 0;
-
-  // C1: legend hover drives native mark `states` dim via programmatic focus
-  // (replaces the old chromeRef.current?.syncDim() DOM-mutation sync).
-  const resolveLegendFocusKey = React.useCallback(
-    (index: number) => allSeriesKeys[index] ?? null,
-    [allSeriesKeys],
-  );
-  useLegendFocusBroadcast(legendHoveredIndex, resolveLegendFocusKey, focusSeries, clearFocus);
 
   // C3: date-pill-only mount — crosshair/dots are native marks now, so this
   // effect no longer attaches `attachBarHoverChrome`'s full indicator/dot/
@@ -1558,10 +1570,21 @@ export function BarChart({
         const raw = (p.datum as ChartDatum | undefined)?.[p.markId];
         return typeof raw === "number" ? raw : (p.yValue as number);
       };
+      // D476: panel chrome wrapper — see candlestick-chart.tsx / the
+      // `renderSeriesTooltipBody` helper; TooltipContent has none of its own.
+      const panelClassName = tt?.className ? `bkm-tooltip-panel ${tt.className}` : "bkm-tooltip-panel";
+      const panelStyle: React.CSSProperties | undefined =
+        tt?.panelStyle || tt?.backgroundColor
+          ? { ...tt?.panelStyle, ...(tt?.backgroundColor ? { backgroundColor: tt.backgroundColor } : null) }
+          : undefined;
       if (tt?.content) {
         const pointRec: ChartTooltipPoint = { label: categoryLabel };
         for (const p of ctx.points) pointRec[p.markId] = valueFor(p);
-        return tt.content({ point: pointRec, index: categoryIndex });
+        return (
+          <div className={panelClassName} style={panelStyle}>
+            {tt.content({ point: pointRec, index: categoryIndex })}
+          </div>
+        );
       }
       let rows: TooltipRow[];
       if (tt?.rows) {
@@ -1576,9 +1599,11 @@ export function BarChart({
         });
       }
       return (
-        <TooltipContent title={categoryLabel} rows={rows}>
-          {tt?.children}
-        </TooltipContent>
+        <div className={panelClassName} style={panelStyle}>
+          <TooltipContent title={categoryLabel} rows={rows}>
+            {tt?.children}
+          </TooltipContent>
+        </div>
       );
     },
     [categoryIndexByLabel],
@@ -1679,6 +1704,48 @@ export function BarChart({
   // task and belongs to the reference-area cluster, not here.)
   const refAreaChildrenBar = React.useMemo(() => extractReferenceAreaProps(children), [children]);
   const heightPxBar = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
+  // D477 (6.5 gate): the D472 renderer gate counts DATA ROWS, but squares
+  // marks emit one primitive per square (rows × squares-series × column
+  // count), so a 100-row squares chart can carry thousands of tweened
+  // rects through the motion surface — the 6.5 barsquares hover captures
+  // fell back to the static renderer only for `renderData.length`. Estimate
+  // the primitive count the way `barSquaresMark` lays its columns out.
+  // D481: depth chrome is the same shape of miscount — every depth series
+  // adds a trimmed front bar plus six back-face paths (side/shade/glass ×
+  // lid/tip/shade) and one front glass rect per row, all `createMark`
+  // nodes that the motion surface tweens through its generic element path
+  // (style snapshot incl. `opacity`). At 100 rows that is ~800 primitives
+  // and, worse, a hover-driven definition rebuild (`labelFade`) restarts a
+  // ~1s opacity tween from the currently-dimmed DOM value while the native
+  // dim state is deferred behind `dataMotionActive` — a dim flash the QA
+  // capture reads as "no dim". Counting them routes depth charts above ~25
+  // rows to the static renderer, where states apply immediately.
+  //
+  // D-pending (D1b): gated on `hasBarDepth` (depth marks DECLARED in
+  // `children`), not `barDepthEnabled` (declared AND currently applicable —
+  // today additionally gated on `!isHorizontalOrStacked`). `useChartRenderer`
+  // below latches whatever regime the first render's estimate lands in for
+  // the mount's whole lifetime, so this estimate must reflect the chart's
+  // full possible primitive load, not a momentary snapshot that a later
+  // layout/orientation change could invalidate.
+  const motionPrimitiveEstimate = React.useMemo(() => {
+    const rows = renderData.length;
+    const squaresN = hasBarSquares ? resolvedBarSquares.length : 0;
+    let total = rows * Math.max(0, totalSeriesCount - squaresN);
+    if (squaresN > 0) {
+      const barLengthPx = Math.max(0, heightPxBar - margin.top - margin.bottom);
+      for (const s of resolvedBarSquares) {
+        const squareSize = bandWidthForSquares(bandWidth, totalSeriesCount, s.groupGap);
+        const { count } = computeSquareColumn({ barLengthPx, squareSize, gap: s.squareGap, fit: s.squareFit });
+        total += rows * count;
+      }
+    }
+    if (hasBarDepth) {
+      total += rows * (barDepthBacksRaw.length * BAR_DEPTH_BACK_NODES_PER_ROW + barDepthFrontsRaw.length);
+    }
+    return total;
+  }, [hasBarSquares, resolvedBarSquares, renderData.length, heightPxBar, margin.top, margin.bottom, totalSeriesCount, bandWidth, hasBarDepth, barDepthBacksRaw, barDepthFrontsRaw]);
+  const barChartRenderer = useChartRenderer<ChartDatum, string, number>(motionPrimitiveEstimate);
 
   // C3: the crosshair's vertical fade-mask gradient, an app-owned
   // `linearGradient` def referenced by the native `crosshair()` mark's
@@ -1733,7 +1800,7 @@ export function BarChart({
             ariaLabel="Bar chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             definition={definition}
-            renderer={chartRendererFor<ChartDatum, string, number>(renderData.length)}
+            renderer={barChartRenderer}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
             renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}

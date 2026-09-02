@@ -1,0 +1,58 @@
+{
+  "label": "smoke (legend,brush; bench subset)",
+  "started": "2026-09-02T19:27:38.915Z",
+  "finished": "2026-09-02T19:27:45.937Z",
+  "workers": 2,
+  "wallClockMs": 6465,
+  "sumRunMs": 9019,
+  "build": {
+    "built": false,
+    "reason": "dist fresh",
+    "code": 0,
+    "durationMs": 0
+  },
+  "dist": {
+    "indexMtime": "2026-09-02T19:27:36.161Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-CuR21cuU.css",
+      "index-DLP5BfbY.js"
+    ]
+  },
+  "distEnd": {
+    "indexMtime": "2026-09-02T19:27:36.161Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-CuR21cuU.css",
+      "index-DLP5BfbY.js"
+    ]
+  },
+  "distChangedDuringPass": false,
+  "previewUrl": "http://localhost:5198",
+  "jobs": [
+    {
+      "chart": "brush",
+      "n": 1000,
+      "state": "ready",
+      "key": "brush/1000",
+      "worker": 0,
+      "exit": 0,
+      "durationMs": 6465,
+      "reportDir": "qa/results/brush/2026-09-02T19-27-45-476Z",
+      "log": "docs/phase-6/gate/runs/2026-09-02T19-27-23-498Z/logs/qa/brush-1000.log"
+    },
+    {
+      "chart": "legend",
+      "n": 1000,
+      "state": "ready",
+      "key": "legend/1000",
+      "worker": 1,
+      "exit": 0,
+      "durationMs": 2554,
+      "reportDir": "qa/results/legend/2026-09-02T19-27-41-658Z",
+      "log": "docs/phase-6/gate/runs/2026-09-02T19-27-23-498Z/logs/qa/legend-1000.log"
+    }
+  ]
+}

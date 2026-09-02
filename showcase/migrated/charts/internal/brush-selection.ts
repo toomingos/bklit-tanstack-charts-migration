@@ -173,3 +173,37 @@ export function useBrushSelection(
     [layoutState, fullExtent, handleBrushSelectionChange],
   );
 }
+
+/**
+ * D474 (6.5 gate): snap a controlled brush range onto members of the native
+ * control's `values` list. `brushX({ values })` requires BOTH range endpoints
+ * to be members of `values` (dist/interaction-axis-internal.js:109-115 throws
+ * "The x-axis interaction range must use an explicit value" otherwise), while
+ * `useBrushSelection` / `onBrushSelectionChange` callers legitimately commit
+ * interpolated Dates (legacy pixel-drag math, the QA `__qaSetBrush` driver).
+ * Nearest member wins; the returned object is the input when nothing moved.
+ */
+export function snapBrushRangeToValues(
+  range: { start: Date; end: Date } | null,
+  values: readonly Date[] | null,
+): { start: Date; end: Date } | null {
+  if (!range || !values || values.length === 0) return range;
+  const nearest = (target: Date): Date => {
+    const t = target.getTime();
+    let best = values[0]!;
+    let bestDist = Math.abs(best.getTime() - t);
+    for (let i = 1; i < values.length; i++) {
+      const v = values[i]!;
+      const d = Math.abs(v.getTime() - t);
+      if (d < bestDist) {
+        best = v;
+        bestDist = d;
+      }
+    }
+    return best;
+  };
+  const start = nearest(range.start);
+  const end = nearest(range.end);
+  if (start === range.start && end === range.end) return range;
+  return { start, end };
+}

@@ -22,7 +22,7 @@ import type {
   ChartScale,
   SceneStyle,
 } from "@tanstack/charts";
-import { chartRendererFor } from "./internal/motion-renderer";
+import { useChartRenderer } from "./internal/motion-renderer";
 import {
   decimateTimeSeries,
   maxRenderPointsForWidth,
@@ -35,10 +35,10 @@ import {
   buildIndicatorMark,
   isFocusOutsideXDomain,
   resolveHoverDotFill,
-  seriesAndPointerDimStates,
+  pointerSeriesDimStates,
   useDatePillOverlay,
 } from "./internal/hover-geometry";
-import { useFocusInjection, useLegendFocusBroadcast } from "./internal/focus-injection";
+import { useFocusInjection } from "./internal/focus-injection";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import {
@@ -107,7 +107,7 @@ import { useChartMargin, DEFAULT_CHART_MARGIN, useDebouncedContainerSize, type C
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { useChartPhaseOrchestrator } from "./internal/use-chart-phase-orchestrator";
-import { filterDataByXDomain, createXAccessor } from "./internal/brush-selection";
+import { filterDataByXDomain, createXAccessor, snapBrushRangeToValues } from "./internal/brush-selection";
 import { BrushChrome, selectionToPixelExtent, type BrushHost } from "./internal/brush-chrome";
 import { brushX, type BrushRange, type BrushXChange } from "@tanstack/charts/interaction/brush";
 import { controlledSignal } from "@tanstack/charts/interaction/signal";
@@ -302,15 +302,8 @@ export function LineChart({
   const [labelFade, setLabelFade] = React.useState<{ primaryX: number; hoveredLabel: string | null } | null>(null);
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const prefersReducedMotion = usePrefersReducedMotion();
-  // C1 (P6): legend hover -> native mark states via programmatic focus
-  // injection (replaces the old hover-chrome DOM-mutation dim path).
-  const { captureRenderContext, focusSeries, clearFocus, sceneRef, interactionRef, clientToScene } =
+  const { captureRenderContext, sceneRef, interactionRef, clientToScene } =
     useFocusInjection<ChartDatum, Date, number>();
-  const resolveLegendSeriesKey = React.useCallback(
-    (index: number) => lines[index]?.dataKey ?? null,
-    [lines],
-  );
-  useLegendFocusBroadcast(legendHoveredIndex, resolveLegendSeriesKey, focusSeries, clearFocus);
 
   const innerWidth = Math.max(0, width - margin.left - margin.right);
   const renderData = React.useMemo(() => {
@@ -448,9 +441,11 @@ export function LineChart({
   }, [hasBrush, data, xAccessorForBrush]);
   const brushControls = React.useMemo<readonly ChartControl<Date, number>[]>(() => {
     if (!hasBrush || !brushRangeValue || !brushValues || brushValues.length === 0) return EMPTY_BRUSH_CONTROLS;
+    // D474: endpoints must be members of `values` (see snapBrushRangeToValues).
+    const snappedRange = snapBrushRangeToValues(brushRangeValue, brushValues) ?? brushRangeValue;
     return [
       brushX<Date>({
-        range: controlledSignal<BrushRange<Date>, BrushXChange<Date>>(brushRangeValue, handleBrushChange),
+        range: controlledSignal<BrushRange<Date>, BrushXChange<Date>>(snappedRange, handleBrushChange),
         values: brushValues,
         format: (d: Date) => shortDateFmt.format(d),
         ariaLabel: "Brush selection",
@@ -562,8 +557,18 @@ export function LineChart({
     () => {
       if (isLoading) return [];
       const gridGuideHL = resolveGridGuide(grid);
+      // D480: legend-hover series dim is a plain per-mark `strokeOpacity`
+      // (bklit line.tsx SeriesHoverDim's legend term, 0.3) computed from
+      // `legendHoveredIndex` here — NOT a programmatic-focus `states` entry:
+      // native focus is a single-owner slot, so injecting a series focus for
+      // the legend evicted the pointer focus (tooltip/crosshair/dots vanished
+      // on legend hover; legacy keeps them). Snaps under this chart's
+      // update-phase `motion:false`; legacy's 400ms ease rides
+      // `.ts-chart__line path` in styles.css.
+      const legendHoveredKey = legendHoveredIndex != null ? (lines[legendHoveredIndex]?.dataKey ?? null) : null;
       const base = lines.map((line) => {
         const hasDashTail = resolveDashTailBounds(line.dashFromIndex, renderData.length);
+        const legendDimmed = legendHoveredKey != null && legendHoveredKey !== line.dataKey;
         // P6.1 (L10): identity unless this series names a non-primary axis.
         const projectY = projectorFor(line.yAxisId);
         return lineY(renderData, {
@@ -576,21 +581,33 @@ export function LineChart({
           z: () => line.dataKey,
           curve: d3Curve(line.curve ?? curveNatural),
           stroke: hasDashTail ? "transparent" : line.stroke,
-          strokeOpacity: hasDashTail ? 0 : undefined,
+          strokeOpacity: hasDashTail ? 0 : legendDimmed ? 0.3 : undefined,
           strokeWidth: line.strokeWidth ?? 2.5,
-          // C1 (P6): legend-hover series dim — bklit SeriesHoverDim's
-          // legend term (line.tsx dims to 0.3, 400ms ease-in-out). Programmatic-
-          // source-only so pointer hover never triggers this (legend-driven).
-          // C3: second entry — pointer-hover series dim (bklit SeriesHoverDim's
-          // pointer term, hover-chrome.ts DIM_OPACITY="0.3"). No `transition`
-          // field (D425 — the 0.4s term rides `.ts-chart__line path` in
-          // styles.css instead, per the explicit pointer-hover-dim directive).
-          states: seriesAndPointerDimStates<ChartDatum>(0.3),
+          // C3: pointer-hover series dim (bklit SeriesHoverDim's pointer
+          // term, hover-chrome.ts DIM_OPACITY="0.3"). No `transition` field
+          // (D425 — the 0.4s term rides `.ts-chart__line path` in styles.css
+          // instead, per the explicit pointer-hover-dim directive).
+          states: pointerSeriesDimStates<ChartDatum>(0.3),
         });
       });
       // SeriesMarkers grid — dot marks ABOVE the line stroke (bklit line.tsx:317-401 z-order: hover-dim stroke -> markers -> highlight band). Null y values produce no dot (bklit series-markers.tsx:107-120).
       if (!isLoading && markerSeriesConfigs.some((s) => s.showMarkers)) {
-        base.push(...buildMarkerMarks(renderData, xDataKey, markerSeriesConfigs, markerGradientIdByKey));
+        // C5/C2: legend-hover dim (series-markers.tsx:240-244) — same
+        // `legendHoveredKey` already computed above for the line strokes.
+        // `hoveredIndex != null` is this chart's own pointer-focus-active
+        // signal (set in `handleFocusChange` below) — passed through so the
+        // WHOLE base marker layer dims/blurs on any pointer hover, per the
+        // D452+ ruling's two-layer marker chrome.
+        base.push(
+          ...buildMarkerMarks(
+            renderData,
+            xDataKey,
+            markerSeriesConfigs,
+            markerGradientIdByKey,
+            legendHoveredKey,
+            hoveredIndex != null,
+          ),
+        );
       }
       // C3: native crosshair (replaces hover-chrome's imperative
       // buildIndicator/positionIndicator) — x-only rule, gated on
@@ -741,7 +758,7 @@ export function LineChart({
       }
       return base;
     },
-    [renderData, xDataKey, lines, isLoading, width, heightPx, yDomainFinal, projectorFor, projectionConfigs, projectionLines, projectionGradientBaseId, margin, profitLossLines, hoveredIndexForPL, plTooltipSignIndex, grid, markerSeriesConfigs, markerGradientIdByKey, timeExtent, timeExtentRaw, tooltipEnabled, tooltip, crosshairGradientId, isDiscrete, hoveredIndex],
+    [renderData, xDataKey, lines, isLoading, width, heightPx, yDomainFinal, projectorFor, projectionConfigs, projectionLines, projectionGradientBaseId, margin, profitLossLines, hoveredIndexForPL, plTooltipSignIndex, grid, markerSeriesConfigs, markerGradientIdByKey, timeExtent, timeExtentRaw, tooltipEnabled, tooltip, crosshairGradientId, isDiscrete, hoveredIndex, legendHoveredIndex],
   );
 
   const spec = React.useMemo(() => {
@@ -939,6 +956,9 @@ export function LineChart({
         spring: TOOLTIP_BOX_SPRING,
         discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
         className: "bkm-native-tooltip",
+        // D475: legacy box sat at the plot top edge, x at the focused point
+        // (tooltip-chrome.ts) — see native-tooltip.tsx's plot-top anchor.
+        anchorX: "point",
       }),
       motion,
       // C6: native brushX (strip host only — empty array elsewhere).
@@ -1422,6 +1442,9 @@ export function LineChart({
     if (!brushHost || !brushRangeValue) return null;
     return selectionToPixelExtent(brushRangeValue, brushHost.trackExtent, innerWidthForBrush);
   }, [brushHost, brushRangeValue, innerWidthForBrush]);
+  // D-pending (D1): mount-stable, prop-independent renderer choice — see
+  // `useChartRenderer` in internal/motion-renderer.ts.
+  const lineChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
   return (
     <ChartSelectionContext.Provider value={chartSelection}>
@@ -1468,7 +1491,7 @@ export function LineChart({
       {definition ? (
         <div style={needsBrushClip ? { clipPath: `url(#${brushClipId})` } : undefined}>
           <RendererChart
-            renderer={chartRendererFor<ChartDatum, Date, number>(renderData.length)}
+            renderer={lineChartRenderer}
             ariaLabel={ariaLabel}
             ariaDescription={ariaDescription}
             aspectRatio={parseAspectRatio(aspectRatio)}

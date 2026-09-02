@@ -432,14 +432,20 @@ export function LiveLineChart({
     };
   }, [innerWidth, innerHeight, paused, targetRange]);
 
-  // ---- Scales from the last COMMITTED frame (bklit 444-464). y is NOT
-  // `.nice()`'d here (unlike the legacy hover-only scale) — motion.md's
-  // `y:'reproject'` requires "one affine y transform maps the new
-  // projection back to the previous frame"; `.nice()` can round `[yMin,
-  // yMax]` to a different multiple between two commits with almost-equal raw
-  // bounds, which is not an affine step. Tick VALUES are still niced for
-  // display via `pickNiceInterval` below — only the mark-facing domain itself
-  // stays the raw lerped range. ----
+  // ---- Scales from the last COMMITTED frame (bklit 444-464). D496: y IS
+  // `.nice()`'d here, for parity with legacy's core scale (bklit
+  // live-line-chart.tsx:249-253, :457-463, both `nice: true`). The earlier
+  // C5 comment here claimed `.nice()` broke motion.md's `y:'reproject'`
+  // requirement ("one affine y transform maps the new projection back to
+  // the previous frame") — that reasoning was wrong: any two linear scales
+  // sharing the same pixel range are related by a single affine map
+  // regardless of how their domains were derived, so a niced domain is
+  // exactly as reprojectable as a raw one. Nicing only makes the domain step
+  // discretely at some commits, which legacy's `nice: true` core scale does
+  // too. Every mark-facing/definition-facing y domain below reads off this
+  // scale's (niced) `.domain()`, never the raw `frame.yMin`/`frame.yMax`
+  // pair, so the whole chart shares one niced extent — see the area-baseline
+  // and `yTickValues` comments below for the two call sites that changed. ----
   const domainEndMs = frame.now + leadingMs;
   const xScale = React.useMemo(
     () =>
@@ -449,7 +455,7 @@ export function LiveLineChart({
     [domainEndMs, windowMs, innerWidth],
   );
   const yScale = React.useMemo(
-    () => scaleLinear().domain([frame.yMin, frame.yMax]).range([innerHeight, 0]),
+    () => scaleLinear().domain([frame.yMin, frame.yMax]).nice().range([innerHeight, 0]),
     [frame.yMin, frame.yMax, innerHeight],
   );
 
@@ -551,9 +557,46 @@ export function LiveLineChart({
   const tooltipOn = tooltip !== null && tooltip.enabled !== false;
   const chartConfig = useChartConfig();
   const liveGroupElsRef = React.useRef<Map<string, SVGGElement>>(new Map());
-  const dateLabelsForPill = React.useMemo(() => [] as string[], []);
+  // F-pill fix: hover-geometry.ts's useDatePillOverlay always constructs a
+  // date "ticker" element inside the pill (buildPill unconditionally passes
+  // a getLabels callback) — but ticker.update() (the only thing that
+  // actually paints text into it) only runs when the `dateLabels` array is
+  // non-empty (`show()`'s `dateLabelsRef.current.length > 0` guard, D479).
+  // This file previously passed a permanently-EMPTY array, so the ticker was
+  // built (replacing the pill's plain <span> in the DOM — buildPill's
+  // `inner.textContent = ""` branch, internal/date-pill.ts:104) but never
+  // populated: the pill box rendered with no content, letting the underlying
+  // axis tick label show through unobscured. Fix (matching line-chart.tsx's
+  // own dateLabelsForPill wiring): supply the REAL, per-datum formatted time
+  // label for every contextData row, indexed exactly like `primary.
+  // datumIndex` below, so ticker.update() has something to paint. Padded to
+  // stay > 60 entries so the ticker's own `compact` heuristic
+  // (date-pill.ts:67, `labels.length > 60`) always selects its plain
+  // single-line span — liveline's HH:MM:SS labels have no "month day"
+  // structure for the ticker's non-compact month/day-stack mode to split on.
+  const dateLabelsForPill = React.useMemo(() => {
+    const formatTime = liveXAxis?.formatTime ?? defaultFormatTime;
+    const labels = contextData.map((d) => {
+      const dateVal = d.date instanceof Date ? d.date : new Date(d.date as number);
+      return formatTime(dateVal.getTime());
+    });
+    while (labels.length > 0 && labels.length <= 60) labels.push(labels[labels.length - 1] as string);
+    return labels;
+  }, [contextData, liveXAxis]);
+  // F-pill fix (part 2): bklit-ui's legacy LiveXAxis (repos/bklit-ui/.../
+  // live-x-axis.tsx) paints its hover pill unconditionally whenever the axis
+  // is present and the pointer is hovering — it has no `showDatePill` concept
+  // at all (grep over repos/bklit-ui/.../charts/*.tsx confirms zero hits);
+  // that flag only exists on migrated/line's/area's `<ChartTooltip>` (an
+  // API surface legacy's line/area DO expose it for). The bench scenario
+  // passes `showDatePill={false}` to `<ChartTooltip>` for THIS chart too
+  // (bench/app/src/scenarios/*-liveline.tsx, identical on both sides), but
+  // for live charts legacy simply ignores it — so gating this file's pill on
+  // that same flag was wrong: it suppressed the pill in migrated while
+  // legacy kept showing it, which is exactly the "hover date pill missing"
+  // diff this fix targets. Gate on liveXAxis presence + tooltipOn only.
   const datePill = useDatePillOverlay({
-    enabled: tooltipOn && (tooltip?.showDatePill ?? true) && liveXAxis !== null,
+    enabled: tooltipOn && liveXAxis !== null,
     dateLabels: dateLabelsForPill,
     tooltipSpring: chartConfig.tooltipSpring,
   });
@@ -644,6 +687,16 @@ export function LiveLineChart({
   const yIntervalRef = React.useRef(0);
   const yTickValues = React.useMemo(() => {
     if (!liveYAxis) return [] as number[];
+    // F2-tick fix / D496: legacy's yScale is built with `nice: true`
+    // (live-y-axis.tsx reads off `useChartStable().yScale`, whose domain is
+    // the bklit-ui core's `scaleLinear({..., nice: true})`, live-line-
+    // chart.tsx ~446-452) — LiveYAxis's `pickNiceInterval`/tick-expansion
+    // both size themselves off that ALREADY-NICED domain. Our `yScale` above
+    // is now niced too (D496), so just read its domain directly — no more
+    // local nice-a-copy needed. Confirmed empirically: replaying the real
+    // seeded n=100 walk, the niced path reproduces legacy's actual picked
+    // interval (50); a raw domain settles on a different (smaller) value,
+    // which is exactly the D-tick bug this fixes.
     const [minVal, maxVal] = yScale.domain() as [number, number];
     const valRange = maxVal - minVal;
     const minGap = liveYAxis.minGap ?? 36;
@@ -682,10 +735,14 @@ export function LiveLineChart({
           stroke: `url(#${strokeGradId})`,
           strokeWidth: cfg.strokeWidth ?? 2,
           curve: d3Curve(curve),
-          // E2: DOMAIN-space baseline (this commit's yMin), not a pixel
-          // constant — keeps the area reproject-compatible (see
-          // internal/live-line-mark.ts).
-          y1: frame.yMin,
+          // E2/D496: DOMAIN-space baseline, not a pixel constant — keeps the
+          // area reproject-compatible (see internal/live-line-mark.ts). Reads
+          // the (niced) `yScale.domain()[0]`, not raw `frame.yMin`: legacy's
+          // visx `AreaClosed` defaults its baseline to `yScale.range()[0]`
+          // (the plot's bottom pixel) whenever no `y0` is given, which for a
+          // niced scale is the niced domain min, not the raw lerped one — so
+          // matching that pixel position here requires the niced value too.
+          y1: yScale.domain()[0] as number,
           withFill: cfg.fill !== false,
         }),
       );
@@ -729,9 +786,15 @@ export function LiveLineChart({
       scale: xScale,
       axis: liveXAxis
         ? {
-            ticks: { values: xTickValues, size: 0, padding: 0 },
+            ticks: {
+              values: xTickValues,
+              size: 0,
+              padding: 0,
+              format: (d: Date) =>
+                (liveXAxis.formatTime ?? defaultFormatTime)(d instanceof Date ? d.getTime() : (d as number)),
+            },
             line: false,
-            tickLabels: { fontSize: 12, thin: false, opacity: 1 },
+            tickLabels: { fontSize: 12, thin: false, opacity: 1, dy: margin.bottom - 26 },
           }
         : false,
     };
@@ -750,10 +813,24 @@ export function LiveLineChart({
             tickLabels: {
               fontSize: 12,
               thin: false,
+              // F1-1e: legacy LiveYAxis's font-mono <span> baseline sits
+              // below native's `dominant-baseline="middle"` centering;
+              // nudge down to match (see styles.css's liveline y-axis mono
+              // rule for the font-family half of this fix — switching that
+              // rule's font stack to `var(--font-mono, "Geist Mono", ...)`
+              // fixed the glyph height/width mismatch but left the same
+              // vertical offset). Measured via settled A/B PNGs across all
+              // three y ticks (label-box centers 67/139/212 legacy vs
+              // 63/136/208 native at dy=10): +4px residual, so dy=14.
+              dy: 14,
               // C4 parity with the deleted `edgeOpacity` HTML fade —
-              // `ctx.position` is the tick's rendered plot-space y (line-
-              // chart.tsx's xTickLabelOpacity uses the same convention for x).
-              opacity: (ctx: { value: unknown; position: number }) => edgeOpacity(ctx.position, innerHeight),
+              // `ctx.position` is the tick's rendered scene-space y (relative
+              // to the SVG origin, not the plot origin), so it must be
+              // shifted by `margin.top` before comparing against the
+              // plot-relative `innerHeight` (unlike line-chart.tsx's
+              // xTickLabelOpacity, which already receives a plot-relative x).
+              opacity: (ctx: { value: unknown; position: number }) =>
+                edgeOpacity(ctx.position - margin.top, innerHeight),
               dx: liveYAxis.position === "right" ? 8 : -8,
             },
           }
@@ -778,6 +855,11 @@ export function LiveLineChart({
         spring: TOOLTIP_SPRING,
         discrete: false,
         className: "bkm-native-tooltip",
+        // D-tooltip-geometry fix: previously passed no `anchor` at all
+        // (bare point-anchor default), which put the panel at the focused
+        // point's y — see native-tooltip.tsx's plot-top anchor for parity
+        // with the other cartesian charts' legacy geometry.
+        anchorX: "point",
       }),
     });
   }, [
@@ -793,7 +875,6 @@ export function LiveLineChart({
     uid,
     xAccessor,
     keyAccessor,
-    frame.yMin,
     tooltipOn,
     tooltip,
     crosshairGradientId,
@@ -877,6 +958,19 @@ export function LiveLineChart({
                         )}
                       </linearGradient>
                       {fadeMaskId && v === lineVisuals[0] ? (
+                        // 1b fix (b): the wrapper's CSS mask (below, applied to
+                        // the whole <RendererChart>) originally only had this
+                        // gradient rect over the plot, which left axis label
+                        // text at alpha 0 outside [margin.left, margin.left +
+                        // innerWidth) — legacy only masked the line/area marks,
+                        // never the axes. 0.15.0 marks have no per-mark
+                        // mask/clipPath style (SceneStyle has no such field —
+                        // see dist/types.d.ts's SceneStyle), so fix (a)
+                        // (mask on the marks only) isn't available; instead we
+                        // extend this mask to cover the whole container: solid
+                        // white over the left margin band (the y-axis label
+                        // column) and over the x-label band beneath the plot,
+                        // so those regions are left fully opaque.
                         <mask id={fadeMaskId} maskUnits="userSpaceOnUse">
                           <rect
                             fill={`url(#${fadeId})`}
@@ -884,6 +978,14 @@ export function LiveLineChart({
                             y={margin.top - 20}
                             width={innerWidth}
                             height={innerHeight + 40}
+                          />
+                          <rect fill="white" x={0} y={0} width={margin.left} height={height} />
+                          <rect
+                            fill="white"
+                            x={0}
+                            y={height - margin.bottom}
+                            width={width}
+                            height={margin.bottom}
                           />
                         </mask>
                       ) : null}

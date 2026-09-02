@@ -25,12 +25,12 @@ import * as React from "react";
 import { scaleLinear, scalePoint } from "d3-scale";
 import { curveLinearClosed } from "d3-shape";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
-import type { ChartMotionContext } from "@tanstack/charts";
+import type { ChartMotionContext, ChartValue, MarkScene, SceneNode } from "@tanstack/charts";
 import { defineChart } from "@tanstack/charts/scene";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { fold } from "@tanstack/charts/transform/fold";
 import { angleGrid, polar, radialArea, radialDot } from "@tanstack/charts/polar";
-import type { PolarGuide } from "@tanstack/charts/polar";
+import type { PolarGuide, PolarMark } from "@tanstack/charts/polar";
 import { CHART_ROLE, roleOf } from "./children";
 import {
   buildProgressKeyframes as buildRadarProgressKeyframes,
@@ -110,6 +110,61 @@ const DIM_OPACITY = 0.3;
 function withAlpha(color: string, alphaPercent: number): string {
   const pct = Math.max(0, Math.min(100, alphaPercent));
   return `color-mix(in oklab, ${color} ${pct}%, transparent)`;
+}
+
+// `radialArea`'s per-group scene key is `${id}:${valueKey(groupKey)}`
+// (dist/polar.js `groupIndices`), not `${id}:${groupKey}` directly —
+// `valueKey` (dist/scales.js) tags every value with its `typeof` for
+// cross-type uniqueness. `valueKey` isn't publicly exported (package.json
+// `exports` has no `./scales` entry, only `./scales/band|linear|ordinal|
+// point`), so this reproduces its string branch (the only branch a
+// `replayGroup` — always a template-literal string — can hit) locally, same
+// pattern as `choroplethSceneKey` (E2) reproducing `geoShape`'s key formula.
+function polarValueKey(value: string): string {
+  return `string:${value.length}:${value}`;
+}
+
+// E3/E4 (coordinator ruling): `SceneNodeBase.className` (dist/types.d.ts) is a
+// public field the SVG renderer and DOM reconciler both emit verbatim as the
+// node's `class` attribute (dist/svg-renderer.js `renderCommon`, dist/
+// reconcile.js's generic attribute sync) — so a `PolarMark` can be wrapped to
+// post-process its own rendered `MarkScene.nodes` and stamp an app-owned CSS
+// class onto the one scene node matching a given key, entirely through the
+// public `PolarMark`/`MarkScene`/`SceneNode` surface (`@tanstack/charts/polar`,
+// `@tanstack/charts`) — no DOM reach-in, no internal `createPolarMark`
+// (dist/polar-mark-internal.js, not exported via package.json `exports`).
+// `radialArea`'s per-series nodes are children of ONE wrapping group (its own
+// `className` option applies uniformly to every series), so per-series
+// targeting requires walking the returned scene tree by node `key` — this is
+// that walk. Also used to fix E3 (stroke-width hover-pop): the mark's own
+// `strokeWidth` option is emitted as a plain SVG presentation attribute
+// (dist/svg-renderer.js `renderStyle`), which has *lower* cascade priority
+// than an author stylesheet class rule, so `.bkm-radar-area--hovered {
+// stroke-width: 3px }` cleanly overrides it for just the matched node.
+function withMarkNodeClassName<TDatum, TAngle extends ChartValue, TRadius extends ChartValue>(
+  mark: PolarMark<TDatum, TAngle, TRadius>,
+  classNameForKey: (key: string) => string | undefined,
+): PolarMark<TDatum, TAngle, TRadius> {
+  function stampNode(node: SceneNode): SceneNode {
+    if (node.kind === "group") {
+      return { ...node, children: node.children.map(stampNode) };
+    }
+    const extra = classNameForKey(node.key);
+    return extra ? { ...node, className: [node.className, extra].filter(Boolean).join(" ") } : node;
+  }
+  return {
+    ...mark,
+    initialize: (context) => {
+      const initialized = mark.initialize(context);
+      return {
+        ...initialized,
+        render: (renderContext): MarkScene<TDatum, TAngle, TRadius> => {
+          const scene = initialized.render(renderContext);
+          return { ...scene, nodes: scene.nodes.map(stampNode) };
+        },
+      };
+    },
+  };
 }
 
 export interface RadarMetric {
@@ -438,6 +493,23 @@ export function RadarChart({
   const definition = React.useMemo(() => {
     if (chartSize < 10 || resolvedAreas.length === 0 || metricKeys.length === 0) return null;
 
+    // Mirrors `radialArea`'s own per-group scene key formula (dist/polar.js
+    // `groupIndices`/`key: \`${id}:${groupKey}\``, `id: "radar-area"`) so
+    // `withMarkNodeClassName` can find the one hovered series' node — see
+    // that helper's comment (E3/E4). `groupKey` there is NOT the raw `z`
+    // value (a row's `replayGroup`) — `groupIndices` runs it through
+    // `valueKey()` (dist/scales.js) first, which for a string tags it with
+    // its length: `string:${value.length}:${value}` (verified empirically —
+    // a rendered node's `data-ts-key` was e.g. `radar-area:string:6::00000`
+    // for the raw group value `":00000"`, length 6). `valueKey` itself isn't
+    // publicly exported (package.json `exports` has no `./scales` entry, only
+    // `./scales/band|linear|ordinal|point`), so `polarValueKey` below
+    // reproduces its (trivial, string-only) branch locally — same pattern as
+    // `choroplethSceneKey` (E2) reproducing `geoShape`'s key formula.
+    const hoveredReplayGroup =
+      hoveredIndex === null ? null : `${motionReplayKey}:${String(hoveredIndex).padStart(Z_PAD, "0")}`;
+    const hoveredAreaNodeKey = hoveredReplayGroup === null ? null : `radar-area:${polarValueKey(hoveredReplayGroup)}`;
+
     const guides: PolarGuide[] = [];
     if (grid) {
       guides.push(
@@ -500,46 +572,54 @@ export function RadarChart({
             // Hover dim/pop is expressed reactively through per-datum `fill`/
             // `stroke`/`r` channels (native — evaluated per z-group on every
             // definition rebuild, which React re-runs when `hoveredIndex`
-            // changes) rather than direct-DOM style/attribute mutation. D-follow-up
-            // (see report): `radialArea`/`radialDot` (@tanstack/charts/polar,
-            // v0.15.0) have no `states` option (unlike cartesian `dot`/`area`)
-            // and their `fillOpacity`/`strokeWidth`/`opacity` channels are plain
+            // changes) rather than direct-DOM style/attribute mutation.
+            // `radialArea`/`radialDot` (@tanstack/charts/polar, v0.15.0) have
+            // no `states` option (unlike cartesian `dot`/`area`) and their
+            // `fillOpacity`/`strokeWidth`/`opacity` channels are plain
             // per-call numbers, not per-datum — only `fill` (both marks) and
-            // `stroke` (area only) accept a per-row accessor. Dim is therefore
-            // baked into fill/stroke alpha via `color-mix` on those two
-            // channels; stroke-width hover-pop, the dot's stroke-ring dim, and
-            // the legacy glow/scale-pop flourish (no filter/transform channel
-            // exists on any mark) are dropped rather than reintroduced via
-            // direct-DOM writes.
-            radialArea(allRows, {
-              id: "radar-area",
-              angle: "metric",
-              radius: "value",
-              z: "replayGroup",
-              key: "metric",
-              curve: curveLinearClosed,
-              fill: (row: RadarRow) => {
-                const idx = parseInt(row.series, 10);
-                const i = Math.min(idx, resolvedAreas.length - 1);
-                const color = resolvedAreas[i]?.color ?? DEFAULT_RADAR_COLORS[0]!;
-                const isHovered = hoveredIndex === i;
-                const isDimmed = hoveredIndex !== null && !isHovered;
-                const baseAlpha = isHovered ? FILL_OPACITY_HOVER : FILL_OPACITY_REST;
-                return withAlpha(color, (isDimmed ? baseAlpha * DIM_OPACITY : baseAlpha) * 100);
-              },
-              fillOpacity: 1,
-              stroke: (row: RadarRow) => {
-                const idx = parseInt(row.series, 10);
-                const i = Math.min(idx, resolvedAreas.length - 1);
-                const area = resolvedAreas[i];
-                if (!area?.showStroke) return "none";
-                const isHovered = hoveredIndex === i;
-                const isDimmed = hoveredIndex !== null && !isHovered;
-                return withAlpha(area.color ?? DEFAULT_RADAR_COLORS[0]!, (isDimmed ? DIM_OPACITY : 1) * 100);
-              },
-              strokeWidth: STROKE_WIDTH_REST,
-              motion: radarMarkMotion,
-            }),
+            // `stroke` (area only) accept a per-row accessor. Dim is
+            // therefore baked into fill/stroke alpha via `color-mix` on those
+            // two channels. E3 (stroke-width hover-pop) and E4 (glow +
+            // scale-pop) are reintroduced via `withMarkNodeClassName` below,
+            // which stamps `bkm-radar-area--hovered` onto just the hovered
+            // series' scene node so a CSS class rule (radar block, styles.css)
+            // can do the rest — see that helper's comment for why this is a
+            // public, DOM-reach-in-free hook.
+            withMarkNodeClassName(
+              radialArea(allRows, {
+                id: "radar-area",
+                angle: "metric",
+                radius: "value",
+                z: "replayGroup",
+                key: "metric",
+                curve: curveLinearClosed,
+                fill: (row: RadarRow) => {
+                  const idx = parseInt(row.series, 10);
+                  const i = Math.min(idx, resolvedAreas.length - 1);
+                  const color = resolvedAreas[i]?.color ?? DEFAULT_RADAR_COLORS[0]!;
+                  const isHovered = hoveredIndex === i;
+                  const isDimmed = hoveredIndex !== null && !isHovered;
+                  const baseAlpha = isHovered ? FILL_OPACITY_HOVER : FILL_OPACITY_REST;
+                  return withAlpha(color, (isDimmed ? baseAlpha * DIM_OPACITY : baseAlpha) * 100);
+                },
+                fillOpacity: 1,
+                stroke: (row: RadarRow) => {
+                  const idx = parseInt(row.series, 10);
+                  const i = Math.min(idx, resolvedAreas.length - 1);
+                  const area = resolvedAreas[i];
+                  if (!area?.showStroke) return "none";
+                  const isHovered = hoveredIndex === i;
+                  const isDimmed = hoveredIndex !== null && !isHovered;
+                  return withAlpha(area.color ?? DEFAULT_RADAR_COLORS[0]!, (isDimmed ? DIM_OPACITY : 1) * 100);
+                },
+                strokeWidth: STROKE_WIDTH_REST,
+                motion: radarMarkMotion,
+              }),
+              (key) =>
+                key === hoveredAreaNodeKey
+                  ? `bkm-radar-area bkm-radar-area--hovered bkm-radar-area--hovered-${hoveredIndex! % DEFAULT_RADAR_COLORS.length}`
+                  : "bkm-radar-area",
+            ),
             radialDot(allRows, {
               id: "radar-dot",
               angle: "metric",
@@ -584,6 +664,7 @@ export function RadarChart({
     allRows,
     margin,
     hoveredIndex,
+    motionReplayKey,
     radarMarkMotion,
   ]);
 

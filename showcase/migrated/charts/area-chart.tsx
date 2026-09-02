@@ -45,7 +45,7 @@ import type {
 } from "@tanstack/charts";
 import { brushX, type BrushRange, type BrushXChange } from "@tanstack/charts/interaction/brush";
 import { controlledSignal } from "@tanstack/charts/interaction/signal";
-import { chartRendererFor } from "./internal/motion-renderer";
+import { useChartRenderer } from "./internal/motion-renderer";
 import { areaFill } from "./internal/area-fill-mark";
 import { patternAreaMark } from "./internal/pattern-area-mark";
 import { renderPatternPreset } from "./internal/pattern-preset";
@@ -61,10 +61,10 @@ import {
   buildIndicatorMark,
   isFocusOutsideXDomain,
   resolveHoverDotFill,
-  seriesAndPointerDimStates,
+  pointerSeriesDimStates,
   useDatePillOverlay,
 } from "./internal/hover-geometry";
-import { useFocusInjection, useLegendFocusBroadcast } from "./internal/focus-injection";
+import { useFocusInjection } from "./internal/focus-injection";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import {
@@ -124,7 +124,7 @@ import {
   useNicedYDomainChanged,
 } from "./internal/y-domain";
 import { useChartPhaseOrchestrator } from "./internal/use-chart-phase-orchestrator";
-import { filterDataByXDomain, createXAccessor } from "./internal/brush-selection";
+import { filterDataByXDomain, createXAccessor, snapBrushRangeToValues } from "./internal/brush-selection";
 import { BrushChrome, selectionToPixelExtent, type BrushHost } from "./internal/brush-chrome";
 import { DashTailOverlay, resolveDashTailBounds } from "./internal/dash-tail";
 import { buildMarkerGradientDefs, buildMarkerMarks } from "./internal/series-marker-mark";
@@ -308,15 +308,8 @@ export function AreaChart({
   const tooltipEnabled = tooltip?.enabled ?? false;
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const prefersReducedMotion = usePrefersReducedMotion();
-  // C1 (P6): legend hover -> native mark states via programmatic focus
-  // injection (replaces the old hover-chrome DOM-mutation dim path).
-  const { captureRenderContext, focusSeries, clearFocus, sceneRef, interactionRef, clientToScene } =
+  const { captureRenderContext, sceneRef, interactionRef, clientToScene } =
     useFocusInjection<ChartDatum, Date, number>();
-  const resolveLegendSeriesKey = React.useCallback(
-    (index: number) => areas[index]?.dataKey ?? null,
-    [areas],
-  );
-  useLegendFocusBroadcast(legendHoveredIndex, resolveLegendSeriesKey, focusSeries, clearFocus);
   const projectionConfigs = React.useMemo(() => extractProjectionLineConfigs(children), [children]);
   const projectionGradientBaseId = useSanitizedId();
 
@@ -654,9 +647,11 @@ export function AreaChart({
   }, [hasBrush, data, xAccessorForBrush]);
   const brushControls = React.useMemo<readonly ChartControl<Date, number>[]>(() => {
     if (!hasBrush || !brushRangeValue || !brushValues || brushValues.length === 0) return EMPTY_BRUSH_CONTROLS;
+    // D474: endpoints must be members of `values` (see snapBrushRangeToValues).
+    const snappedRange = snapBrushRangeToValues(brushRangeValue, brushValues) ?? brushRangeValue;
     return [
       brushX<Date>({
-        range: controlledSignal<BrushRange<Date>, BrushXChange<Date>>(brushRangeValue, handleBrushChange),
+        range: controlledSignal<BrushRange<Date>, BrushXChange<Date>>(snappedRange, handleBrushChange),
         values: brushValues,
         format: (d: Date) => shortDateFmt.format(d),
         ariaLabel: "Brush selection",
@@ -898,6 +893,9 @@ export function AreaChart({
         // (only its stroke goes transparent), so this mark stays too — it
         // also carries the series' focus geometry for group-x hover.
         const boundaryVisible = area.showLine && !hasDashTail;
+        // D480: legend dim as a plain `strokeOpacity` (same legendHoveredKey
+        // term as the fill above) — see line-chart.tsx's twin comment.
+        const legendDimmed = legendHoveredKey != null && legendHoveredKey !== area.dataKey;
         marks.push(
           lineY(renderData, {
             id: area.dataKey,
@@ -909,15 +907,11 @@ export function AreaChart({
             z: () => area.dataKey,
             curve,
             stroke: boundaryVisible ? area.stroke : "transparent",
-            strokeOpacity: boundaryVisible ? undefined : 0,
+            strokeOpacity: !boundaryVisible ? 0 : legendDimmed ? AREA_DIM_OPACITY : undefined,
             strokeWidth: area.strokeWidth,
-            // C1 (P6): legend-hover series dim — bklit SeriesHoverDim's
-            // legend term (area.tsx dims to 0.6, 400ms ease-in-out).
-            // Programmatic-source-only so pointer hover never triggers this.
-            // C3: pointer-hover dim (same 0.6, D425 — timing rides
-            // `.ts-chart__line path` in styles.css, no `transition` field
-            // here) sits alongside it as a second state entry.
-            states: seriesAndPointerDimStates<ChartDatum>(AREA_DIM_OPACITY),
+            // C3: pointer-hover dim (0.6, D425 — timing rides
+            // `.ts-chart__line path` in styles.css, no `transition` field).
+            states: pointerSeriesDimStates<ChartDatum>(AREA_DIM_OPACITY),
           }),
         );
       }
@@ -946,9 +940,23 @@ export function AreaChart({
     }
     if (tooltipEnabled && (tooltip?.showDots ?? true)) {
       for (const area of resolvedAreas) {
+        // D4 (D-pending): `buildHoverDotMark` positions its dot with the
+        // chart's one declared y scale (the primary axis') — same
+        // single-scale constraint `projectY` above works around for the
+        // fill/boundary marks (P6.1/L10 comment above). A series on a
+        // second axis needs its raw value reprojected into primary-domain
+        // space BEFORE it reaches the dot mark, or the primary scale places
+        // it at the wrong pixel. Reproject just this series' `dataKey` into
+        // a per-call copy of `renderData` — `projectY` is identity for the
+        // primary axis, so this is a no-op there.
+        const projectYForDot = projectorFor(area.yAxisId);
+        const hoverDotData = renderData.map((d) => ({
+          ...d,
+          [area.dataKey]: projectYForDot(d[area.dataKey] as number),
+        }));
         marks.push(
           buildHoverDotMark(
-            renderData,
+            hoverDotData,
             xDataKey,
             { dataKey: area.dataKey, color: area.stroke },
             resolveHoverDotFill(area.stroke, tooltip?.dotColor),
@@ -1182,6 +1190,9 @@ export function AreaChart({
         spring: TOOLTIP_BOX_SPRING,
         discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
         className: "bkm-native-tooltip",
+        // D475: legacy box sat at the plot top edge, x at the focused point
+        // (tooltip-chrome.ts) — see native-tooltip.tsx's plot-top anchor.
+        anchorX: "point",
       }),
       motion,
       // C6: native brushX (strip host only — empty array elsewhere).
@@ -1452,6 +1463,9 @@ export function AreaChart({
     if (!brushHost || !brushRangeValue) return null;
     return selectionToPixelExtent(brushRangeValue, brushHost.trackExtent, innerWidthForBrush);
   }, [brushHost, brushRangeValue, innerWidthForBrush]);
+  // D-pending (D1): mount-stable, prop-independent renderer choice — see
+  // `useChartRenderer` in internal/motion-renderer.ts.
+  const areaChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
   return (
     <ChartSelectionContext.Provider value={chartSelection}>
@@ -1500,7 +1514,7 @@ export function AreaChart({
       {definition ? (
         <div style={needsAreaBrushClip ? { clipPath: `url(#${areaBrushClipId})` } : undefined}>
           <RendererChart
-            renderer={chartRendererFor<ChartDatum, Date, number>(renderData.length)}
+            renderer={areaChartRenderer}
             ariaLabel="Area chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             height={heightPx > 0 ? heightPx : undefined}

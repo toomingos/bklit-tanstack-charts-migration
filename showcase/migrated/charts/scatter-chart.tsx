@@ -29,9 +29,7 @@ import { defineChart } from "@tanstack/charts/scene";
 import { dot } from "@tanstack/charts/dot";
 import { whenFocused } from "@tanstack/charts/focus/mark";
 import type {
-  ChartDotStateStyle,
   ChartMark,
-  ChartMarkState,
   ChartMotionContext,
   ChartMotionDefinition,
   ChartPoint,
@@ -70,10 +68,11 @@ import {
 } from "./internal/design-tokens";
 import { useFocusInjection } from "./internal/focus-injection";
 import { buildIndicatorMark } from "./internal/hover-geometry";
+import { withMarkerBaseClassName } from "./internal/series-marker-mark";
 import { buildNativeTooltipExtension } from "./internal/native-tooltip";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { useSanitizedId } from "./internal/use-sanitized-id";
-import { chartRendererFor } from "./internal/motion-renderer";
+import { useChartRenderer } from "./internal/motion-renderer";
 import { resolveMotionEasing, type MotionEasing } from "./internal/reveal-easing";
 import {
   DEFAULT_ANIMATION_DURATION_MS,
@@ -1041,6 +1040,14 @@ export function ScatterChart({
     primaryX: number;
     hoveredLabel: string | null;
   } | null>(null);
+  // C2 (D452+ ruling item 4): whether ANY pointer group-focus is active on
+  // this chart right now — `handleFocusGroupChange` below sets this. Native
+  // `states` cannot express `filter: blur(...)` (no such
+  // `ChartMarkStateStyle` field), so the base marker layer's
+  // dim+blur class is decided at mark-BUILD time from this React state
+  // instead (same pattern as line-chart.tsx's `hoveredIndex`), and the
+  // `definition` useMemo below rebuilds when it flips.
+  const [pointerFocusActive, setPointerFocusActive] = React.useState(false);
 
   const definition = React.useMemo(() => {
     if (width <= 0) return null;
@@ -1088,41 +1095,46 @@ export function ScatterChart({
       const baseR = hasRing
         ? series.radius + series.ringGap + series.strokeWidth
         : series.radius;
-      // P6/C1: `series.outlineWidth`/`outlineColor` (bklit's hovered-marker
-      // outline ring) and `series.inactiveBlur` (2px inactive blur) have no
-      // native mark-state channel to express through — `ChartDotStateStyle`
-      // covers only {fill,fillOpacity,stroke,strokeOpacity,strokeWidth,
-      // opacity,r} (dist/types.d.ts:90), with no filter/blur/outline
-      // property. Left as an honest omission rather than a DOM/CSS
-      // workaround. D421: blur pending upstream filter state channel.
-      const states: ChartMarkState<ChartDatum, ChartDotStateStyle<ChartDatum>>[] = [];
+      // C2 (D452+ ruling item 4): `series.outlineWidth`/`outlineColor`
+      // (bklit's hovered-marker outline ring) still has no native channel to
+      // express through — left as an honest omission. `series.inactiveBlur`
+      // (legacy scatter.tsx:33's 2px dim blur) IS now restored: since
+      // `ChartDotStateStyle` still has no filter/blur field
+      // (dist/types.d.ts:89), it rides the same app-owned `className`
+      // wrapper as the line/area series markers
+      // (`withMarkerBaseClassName`, internal/series-marker-mark.ts) instead
+      // of a native `states` entry — CSS in styles.css drives the
+      // opacity+blur transition. The active-highlight r×1.35 pop is now a
+      // SEPARATE, never-dimmed `dot()` mark filtered to the focused group
+      // via `whenFocused` (same mechanism as `buildHoverDotMark`), rather
+      // than a `states.r` bump on this mark, so it stays crisp while the
+      // base layer blurs.
+      const resolvedFillScatter = gradientId ? `url(#${gradientId})` : series.fill;
+      const scatterDimmed = (series.fadeOnHover ?? true) && pointerFocusActive;
+      const baseScatterMark = dot(renderData, {
+        id: series.dataKey,
+        x: (d: ChartDatum) => d[xDataKey] as Date,
+        // P6.1 (S6): identity unless this series names a non-primary axis.
+        y: (d: ChartDatum) => projectY(d[series.dataKey] as number),
+        r: baseR,
+        fill: resolvedFillScatter,
+        stroke: "none",
+        motion: enterMotion,
+      });
+      marks.push(withMarkerBaseClassName(baseScatterMark, scatterDimmed) as unknown as ChartMark<ChartDatum, Date, number>);
       if (series.showActiveHighlight ?? true) {
-        states.push({
-          when: { focus: "group" },
-          style: { r: baseR * ACTIVE_HIGHLIGHT_SCALE },
-          transition: HOVER_STATE_TRANSITION,
-        });
-      }
-      if (series.fadeOnHover ?? true) {
-        states.push({
-          when: { focus: "unmatched" },
-          style: { opacity: series.inactiveOpacity },
-          transition: HOVER_STATE_TRANSITION,
-        });
-      }
-      marks.push(
-        dot(renderData, {
-          id: series.dataKey,
+        const activeScatterMark = dot(renderData, {
+          id: `${series.dataKey}__active`,
           x: (d: ChartDatum) => d[xDataKey] as Date,
-          // P6.1 (S6): identity unless this series names a non-primary axis.
           y: (d: ChartDatum) => projectY(d[series.dataKey] as number),
-          r: baseR,
-          fill: gradientId ? `url(#${gradientId})` : series.fill,
+          r: baseR * ACTIVE_HIGHLIGHT_SCALE,
+          fill: resolvedFillScatter,
           stroke: "none",
-          states,
-          motion: enterMotion,
-        }),
-      );
+        });
+        marks.push(
+          whenFocused(activeScatterMark, { match: "group", retarget: true }) as unknown as ChartMark<ChartDatum, Date, number>,
+        );
+      }
     }
 
     // S11/C3: large datasets snap crosshair/dot/tooltip motion instead of
@@ -1257,13 +1269,16 @@ export function ScatterChart({
         discrete,
         className: tooltip?.className,
         offset: BOX_OFFSET,
-        anchor: "point",
+        // D-tooltip-geometry fix: previously plain "point" anchor put the
+        // panel at the focused point's y — see native-tooltip.tsx's
+        // plot-top anchor.
+        anchorX: "point",
       }),
     }) as StaticChartDefinition<ChartDatum, Date, number, "dom">;
     // B5: `revealDurationMs`/`revealEasingCss` feed `enterMotion` above (per-
     // series enter delay/transition), so the definition must rebuild when
     // either changes.
-  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy, projectorFor, tooltip, chartConfig.tooltipBoxSpring, chartConfig.tooltipSpring, crosshairGradientId, xAxis, labelFade, revealDurationMs, revealEasingCss]);
+  }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy, projectorFor, tooltip, chartConfig.tooltipBoxSpring, chartConfig.tooltipSpring, crosshairGradientId, xAxis, labelFade, revealDurationMs, revealEasingCss, pointerFocusActive]);
 
   // C3: what remains app-owned after the crosshair/tooltip-dot geometry
   // moved to native marks (in the `definition` useMemo above) — just the
@@ -1331,9 +1346,18 @@ export function ScatterChart({
       // the whole drag (same gate as line/candlestick's dragSelectionActiveRef).
       if (dragSelectionActiveRef.current) {
         pillChromeRef.current?.update([]);
+        setPointerFocusActive((prev) => (prev ? false : prev));
         return;
       }
       pillChromeRef.current?.update(points);
+      // C2 (D452+ ruling item 4): drives the base marker layer's
+      // dim/blur class (see `pointerFocusActive` above) — guarded so an
+      // unchanged active/inactive state doesn't force a `definition`
+      // rebuild on every pointer move within the same hovered group.
+      setPointerFocusActive((prev) => {
+        const next = points.length > 0;
+        return prev === next ? prev : next;
+      });
     },
     [],
   );
@@ -1561,6 +1585,9 @@ export function ScatterChart({
       dragSelectionActiveRef.current = false;
     },
   });
+  // D-pending (D1): mount-stable, prop-independent renderer choice — see
+  // `useChartRenderer` in internal/motion-renderer.ts.
+  const scatterChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
   return (
     <ChartSelectionContext.Provider value={scatterSelection}>
@@ -1585,7 +1612,7 @@ export function ScatterChart({
             ariaLabel="Scatter chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             definition={definition}
-            renderer={chartRendererFor<ChartDatum, Date, number>(renderData.length)}
+            renderer={scatterChartRenderer}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
             renderTooltipBody={renderTooltipBody}

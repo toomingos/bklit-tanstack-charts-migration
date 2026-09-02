@@ -1,0 +1,199 @@
+{
+  "generatedAt": "2026-09-02T21:10:44.934Z",
+  "runDir": "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z",
+  "label": "final-gate",
+  "issues": [
+    {
+      "id": "qa:markers/100:hover-dim",
+      "category": "hover-dim",
+      "charts": [
+        "markers/100"
+      ],
+      "cells": [
+        "hover-30: 6045 px (seen, mode 3717, hist [3574,15483])",
+        "hover-70: 6147 px (in-range, mode 3633, hist [3328,15251])"
+      ],
+      "evidence": [
+        "qa/results/markers/2026-09-02T20-10-03-977Z/hover-30-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/qa/markers-100.log",
+        "qa/results/markers/2026-09-02T20-10-03-977Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:markers/100:legend",
+      "category": "legend",
+      "charts": [
+        "markers/100"
+      ],
+      "cells": [
+        "legend-hover-0: 4969 px (in-range, mode 4967, hist [3756,18168])",
+        "legend-hover-1: 5116 px (seen, mode 3757, hist [3729,17740])",
+        "legend-hover-clear: 5742 px (seen, mode 3755, hist [3731,16612])"
+      ],
+      "evidence": [
+        "qa/results/markers/2026-09-02T20-10-03-977Z/legend-hover-0-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/qa/markers-100.log",
+        "qa/results/markers/2026-09-02T20-10-03-977Z/legend-hover-1-diff.png",
+        "qa/results/markers/2026-09-02T20-10-03-977Z/legend-hover-clear-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:barloading/100:motion/reveal",
+      "category": "motion/reveal",
+      "charts": [
+        "barloading/100"
+      ],
+      "cells": [
+        "settled: 18839 px (in-range, mode 18216, hist [18124,51852])",
+        "hover-30: 161310 px (in-range, mode 158874, hist [158874,161541])",
+        "hover-50: 167154 px (out-of-range, mode 161336, hist [133147,161353])",
+        "hover-70: 143013 px (in-range, mode 161542, hist [132903,164456])"
+      ],
+      "evidence": [
+        "qa/results/barloading/2026-09-02T20-10-24-100Z/settled-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/qa/barloading-100.log",
+        "qa/results/barloading/2026-09-02T20-10-24-100Z/hover-30-diff.png",
+        "qa/results/barloading/2026-09-02T20-10-24-100Z/hover-50-diff.png",
+        "qa/results/barloading/2026-09-02T20-10-24-100Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:candlestick/1000:harness-race",
+      "category": "harness-race",
+      "charts": [
+        "candlestick/1000"
+      ],
+      "cells": [
+        "hover-30: 1848 px (out-of-range, mode 4764, hist [1877,7343])"
+      ],
+      "evidence": [
+        "qa/results/candlestick/2026-09-02T20-10-49-642Z/hover-30-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/qa/candlestick-1000.log"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:candlestick/1000:renderer-regime",
+      "category": "renderer-regime",
+      "charts": [
+        "candlestick/1000"
+      ],
+      "cells": [
+        "hover-50: 689 px (out-of-range, mode 3515, hist [818,6302])",
+        "hover-70: 591 px (out-of-range, mode 3482, hist [729,6172])"
+      ],
+      "evidence": [
+        "qa/results/candlestick/2026-09-02T20-10-49-642Z/hover-50-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/qa/candlestick-1000.log",
+        "qa/results/candlestick/2026-09-02T20-10-49-642Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:radar/6:polar",
+      "category": "polar",
+      "charts": [
+        "radar/6"
+      ],
+      "cells": [
+        "hover-50: 757 px (out-of-range, mode 852, hist [758,6547])"
+      ],
+      "evidence": [
+        "qa/results/radar/2026-09-02T20-12-07-138Z/hover-50-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/qa/radar-6.log"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:sankey/33:hover-dim",
+      "category": "hover-dim",
+      "charts": [
+        "sankey/33"
+      ],
+      "cells": [
+        "hover-30: 11017 px (in-range, mode 3690, hist [3506,31888])",
+        "hover-70: 5021 px (in-range, mode 1761, hist [1270,11636])"
+      ],
+      "evidence": [
+        "qa/results/sankey/2026-09-02T20-12-20-057Z/hover-30-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/qa/sankey-33.log",
+        "qa/results/sankey/2026-09-02T20-12-20-057Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:scatter/1000:renderer-regime",
+      "category": "renderer-regime",
+      "charts": [
+        "scatter/1000"
+      ],
+      "cells": [
+        "hover-70: 6274 px (in-range, mode 2847, hist [2018,143608])"
+      ],
+      "evidence": [
+        "qa/results/scatter/2026-09-02T20-12-23-689Z/hover-70-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/qa/scatter-1000.log"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:scattermultiaxis/1000:renderer-regime",
+      "category": "renderer-regime",
+      "charts": [
+        "scattermultiaxis/1000"
+      ],
+      "cells": [
+        "hover-70: 6349 px (in-range, mode 2123, hist [2123,129924])"
+      ],
+      "evidence": [
+        "qa/results/scattermultiaxis/2026-09-02T20-12-27-852Z/hover-70-diff.png",
+        "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/logs/qa/scattermultiaxis-1000.log"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "bench:bklit/line/10000:m1c_scriptMs",
+      "category": "bench",
+      "charts": [
+        "bklit/line/10000"
+      ],
+      "cells": [
+        "m1c_scriptMs: 94.34 vs baseline 126.71 (-25.5%)"
+      ],
+      "evidence": [
+        "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/bench.json",
+        "bench/results/2026-09-02T20-57-15-846Z",
+        "bench/results/2026-09-02T20-58-34-397Z"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "bench:migrated/scatter/1000:m1c_scriptMs",
+      "category": "bench",
+      "charts": [
+        "migrated/scatter/1000"
+      ],
+      "cells": [
+        "m1c_scriptMs: 111.31 vs baseline 141.1 (-21.1%)"
+      ],
+      "evidence": [
+        "docs/phase-6/gate/runs/2026-09-02T20-09-29-038Z/bench.json",
+        "bench/results/2026-09-02T20-57-15-846Z",
+        "bench/results/2026-09-02T20-58-34-397Z"
+      ],
+      "hypothesis": ""
+    }
+  ]
+}

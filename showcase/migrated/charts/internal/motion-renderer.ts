@@ -18,6 +18,7 @@
 // equals bklit's REVEAL_DURATION_MS / REVEAL_EASE_CSS constants
 // (design-tokens.ts T-D1) — charts only declare definition-local `motion`
 // where legacy timing differs from that default.
+import * as React from "react";
 import { motion } from "@tanstack/charts/motion";
 import { renderChartSvg } from "@tanstack/charts/svg";
 import { createSvgChartRenderer } from "@tanstack/charts/svg/renderer";
@@ -48,6 +49,32 @@ export function chartRendererFor<
     TXValue,
     TYValue
   >;
+}
+
+// D-pending (D1): renderer choice must be mount-stable AND prop-independent.
+// `chartRendererFor` alone re-evaluates `pointCount > NATIVE_MOTION_MAX_POINTS`
+// on every render, so a datum count (or, in bar-chart, a primitive estimate)
+// that crosses the threshold across the chart's lifetime — e.g. a live-data
+// chart growing past 200 rows, or a depth toggle that changes the primitive
+// count — swaps the renderer instance mid-mount. `RendererChart` treats a
+// changed `renderer` identity as a surface remount (dist/renderer.js:103-111)
+// and replays the mount entrance (dist/motion.js:605-612), which reads as a
+// spurious re-reveal to anything watching the DOM (QA capture included).
+// This hook latches the renderer choice to whatever `estimate` the FIRST
+// render passes — a `useRef` seeded once and never reassigned — so the
+// regime a chart mounts into is the regime it keeps for its whole lifetime,
+// regardless of later prop/data changes. `chartRendererFor` stays exported
+// for the rare non-hook (non-component) caller.
+export function useChartRenderer<
+  TDatum,
+  TXValue extends ChartValue = ChartValue,
+  TYValue extends ChartValue = ChartValue,
+>(estimate: number): ChartRenderer<TDatum, TXValue, TYValue> {
+  const rendererRef = React.useRef<ChartRenderer<TDatum, TXValue, TYValue> | null>(null);
+  if (rendererRef.current === null) {
+    rendererRef.current = chartRendererFor<TDatum, TXValue, TYValue>(estimate);
+  }
+  return rendererRef.current;
 }
 
 export function chartMotionRenderer<

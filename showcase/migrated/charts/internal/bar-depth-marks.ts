@@ -58,9 +58,12 @@ export interface BarDepthBackMarkOptions {
   yAccessor: (d: ChartDatum) => number;
   fill: string;
   gradientIds: BarDepthGradientIds;
-  /** Native mark-state definitions (hover/legend dim etc.), passed through
-      to the initialized mark unchanged. */
+  /** Native mark-state definitions (pointer-row dim), passed through to the
+      initialized mark unchanged. */
   states?: readonly ChartMarkState<ChartDatum>[];
+  /** Blanket opacity (legend-hover dim, D480 — legacy dims depth chrome on
+      ANY legend hover). Omitted = no attribute. */
+  opacity?: number;
 }
 
 export interface BarDepthFrontMarkOptions {
@@ -72,9 +75,11 @@ export interface BarDepthFrontMarkOptions {
   categoryAccessor: (d: ChartDatum) => string;
   yAccessor: (d: ChartDatum) => number;
   gradientIds: Pick<BarDepthGradientIds, "glassPosId" | "glassNegId">;
-  /** Native mark-state definitions (hover/legend dim etc.), passed through
-      to the initialized mark unchanged. */
+  /** Native mark-state definitions (pointer-row dim), passed through to the
+      initialized mark unchanged. */
   states?: readonly ChartMarkState<ChartDatum>[];
+  /** Blanket opacity (legend-hover dim, D480). Omitted = no attribute. */
+  opacity?: number;
 }
 
 function sideFacePoints(
@@ -131,7 +136,7 @@ function lidFacePoints(
 }
 
 export function barDepthBackMark(data: ChartDatum[], options: BarDepthBackMarkOptions): ChartMark<ChartDatum, string, number> {
-  const { id, bandWidth, bandScale, bandPos, categoryAccessor, yAccessor, fill, gradientIds, states } = options;
+  const { id, bandWidth, bandScale, bandPos, categoryAccessor, yAccessor, fill, gradientIds, states, opacity } = options;
   const { glassPosId, sideShadeRtlId, sideShadeLtrId, topShadeId } = gradientIds;
   return createMark(() => {
     const xValues = data.map((d) => categoryAccessor(d));
@@ -218,19 +223,19 @@ export function barDepthBackMark(data: ChartDatum[], options: BarDepthBackMarkOp
             kind: "area",
             key: sideKey,
             points: side,
-            style: { fill },
+            style: { fill, opacity },
           });
           nodes.push({
             kind: "area",
             key: `${sideKey}:shade`,
             points: side,
-            style: { fill: `url(#${sideShadeId})` },
+            style: { fill: `url(#${sideShadeId})`, opacity },
           });
           nodes.push({
             kind: "area",
             key: `${sideKey}:glass`,
             points: side,
-            style: { fill: `url(#${glassPosId})` },
+            style: { fill: `url(#${glassPosId})`, opacity },
           });
           // Lid (top face) — solid color, a flat tip-bright highlight, then a
           // directional 3D shade darkening the back edge (bklit BarDepthBack).
@@ -238,19 +243,19 @@ export function barDepthBackMark(data: ChartDatum[], options: BarDepthBackMarkOp
             kind: "area",
             key: lidKey,
             points: lid,
-            style: { fill },
+            style: { fill, opacity },
           });
           nodes.push({
             kind: "area",
             key: `${lidKey}:tip`,
             points: lid,
-            style: { fill: "white", fillOpacity: GLASS_TIP_OPACITY },
+            style: { fill: "white", fillOpacity: GLASS_TIP_OPACITY, opacity },
           });
           nodes.push({
             kind: "area",
             key: `${lidKey}:shade`,
             points: lid,
-            style: { fill: `url(#${topShadeId})` },
+            style: { fill: `url(#${topShadeId})`, opacity },
           });
         }
         return {
@@ -271,7 +276,7 @@ export function barDepthBackMark(data: ChartDatum[], options: BarDepthBackMarkOp
 }
 
 export function barDepthFrontMark(data: ChartDatum[], options: BarDepthFrontMarkOptions): ChartMark<ChartDatum, string, number> {
-  const { id, bandWidth, bandPos, categoryAccessor, yAccessor, gradientIds, states } = options;
+  const { id, bandWidth, bandPos, categoryAccessor, yAccessor, gradientIds, states, opacity } = options;
   const { glassPosId } = gradientIds;
   return createMark(() => {
     const xValues = data.map((d) => categoryAccessor(d));
@@ -318,7 +323,7 @@ export function barDepthFrontMark(data: ChartDatum[], options: BarDepthFrontMark
             y: topY,
             width: bandWidth,
             height: barHeight,
-            style: { fill: `url(#${glassPosId})` },
+            style: { fill: `url(#${glassPosId})`, opacity },
           });
           points.push({
             key: glassKey,

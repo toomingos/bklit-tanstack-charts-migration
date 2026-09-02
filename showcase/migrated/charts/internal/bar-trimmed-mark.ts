@@ -10,6 +10,8 @@ export interface BarTrimmedMarkOptions {
   /** Native mark-state definitions (hover/legend dim etc.), passed through
       to the initialized mark unchanged. */
   states?: readonly ChartMarkState<ChartDatum>[];
+  /** Whole-series opacity (legend-hover dim, D480). Omitted = no attribute. */
+  opacity?: number;
   groupBandwidth: number;
   groupScale: ScaleBand<string>;
   fill: string;
@@ -25,7 +27,7 @@ export interface BarTrimmedMarkOptions {
 }
 
 export function barTrimmedMark(data: ChartDatum[], options: BarTrimmedMarkOptions): ChartMark<ChartDatum, string, number> {
-  const { id, groupScale, fill, radius, bandWidth, bandScale, categoryAccessor, yAccessor, innerWidth, chartX, centerX: _centerX, maxDepth: _maxDepth, states } = options;
+  const { id, groupScale, fill, radius, bandWidth, bandScale, categoryAccessor, yAccessor, innerWidth, chartX, centerX: _centerX, maxDepth: _maxDepth, states, opacity } = options;
   void bandScale;
   void innerWidth;
   void chartX;
@@ -96,7 +98,7 @@ export function barTrimmedMark(data: ChartDatum[], options: BarTrimmedMarkOption
             width,
             height,
             radius: radius || undefined,
-            style: { fill },
+            style: { fill, opacity },
           });
           points.push({
             key,

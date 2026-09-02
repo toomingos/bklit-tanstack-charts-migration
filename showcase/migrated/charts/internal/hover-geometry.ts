@@ -17,6 +17,7 @@
 // `tickLabelFadeOpacity`; the controller is now show/hide/position only.)
 import * as React from "react";
 import { crosshair } from "@tanstack/charts/crosshair";
+import { createMark } from "@tanstack/charts";
 import { dot } from "@tanstack/charts/dot";
 import { lineY } from "@tanstack/charts/line";
 import { whenFocused } from "@tanstack/charts/focus/mark";
@@ -25,12 +26,13 @@ import type {
   ChartMark,
   ChartMarkState,
   ChartMarkStateSelector,
+  ChartValue,
+  SceneNode,
 } from "@tanstack/charts";
 import { resolveIndicatorPixelWidth } from "./tooltip-mappers";
 import { crosshairFadeStops } from "./fade-mask";
 import { buildPill, type PillBuild } from "./date-pill";
 import { HIGHLIGHT_SPRING, TOOLTIP_SPRING } from "./design-tokens";
-import { whenSeriesDimmed } from "./focus-injection";
 import type { SpringConfig } from "./chart-config-context";
 import type { ChartDatum, IndicatorWidth } from "./types";
 
@@ -213,24 +215,19 @@ export function pointerHoverDimState<TDatum = unknown>(opacity: number): ChartMa
 }
 
 /**
- * The two-entry `states` array repeated verbatim at line-chart.tsx (line
+ * The pointer-hover series-dim `states` array shared by line-chart.tsx (line
  * dim), area-chart.tsx (area-boundary dim), and composed-chart.tsx (area +
- * line dim, two call sites): a legend-driven (programmatic-source-only)
- * series dim via `whenSeriesDimmed()` with a 400ms ease-in-out tween (bklit
- * SeriesHoverDim's legend term), plus the pointer-hover dim term with no
- * `transition` field (D425 — that 0.4s rides `.ts-chart__line path` in
- * styles.css instead). All four sites differ only in the `opacity` value
- * passed to both states.
+ * line dim, two call sites). No `transition` field (D425 — the 0.4s rides
+ * `.ts-chart__line path` in styles.css instead). The legend-hover dim term
+ * that used to sit alongside it (a programmatic-focus `whenSeriesDimmed()`
+ * state, C1) is gone — D480: legend dim is now a plain per-mark
+ * `strokeOpacity`/`opacity` computed inside each chart's definition from
+ * `legendHoveredIndex`, because native focus is a single-owner slot and the
+ * programmatic series focus evicted the pointer focus (tooltip, crosshair,
+ * hover dots) whenever the legend was hovered — legacy keeps both.
  */
-export function seriesAndPointerDimStates<TDatum = unknown>(opacity: number): ChartMarkState<TDatum>[] {
-  return [
-    {
-      when: whenSeriesDimmed(),
-      style: { opacity },
-      transition: { type: "tween", duration: 400, easing: "ease-in-out" },
-    },
-    pointerHoverDimState<TDatum>(opacity),
-  ];
+export function pointerSeriesDimStates<TDatum = unknown>(opacity: number): ChartMarkState<TDatum>[] {
+  return [pointerHoverDimState<TDatum>(opacity)];
 }
 
 /**
@@ -261,6 +258,53 @@ export interface HighlightBandSeries {
    *  state above stays on, only the band itself is suppressed here. */
   showLine?: boolean;
   curve?: ChartCurve;
+}
+
+// D-loop-fix: strips `interaction` off every rendered scene node so the
+// wrapped mark contributes NEITHER pointer hit-test targets
+// (`nearest.js` collectTargets requires `node.interaction`) NOR focus
+// candidate points (`scene.js` collectRenderedPoints reads
+// `node.interaction.point(s)`) — while leaving the painted geometry
+// (path/style) completely untouched. Same `createMark`-wrapping shape as
+// `withMarkerBaseClassName` in series-marker-mark.ts.
+//
+// Root cause this exists for: `buildHighlightBandMarks` below re-slices its
+// `lineY` mark's data to `[hoveredIndex-1, hoveredIndex+1]` on every
+// `hoveredIndex` change. A plain `lineY` mark is NOT decorative — its
+// polyline segments always carry `interaction: {points, affinity:"x"}`
+// (dist/line.js), so its (moving) points were feeding straight into the
+// chart's shared `focus:"group-x"` candidate pool AND into
+// `findContainingScenePoint`'s stroke hit-test targets (dist/nearest.js).
+// Because the highlight band's short polyline sits UNDER the pointer at a
+// slightly different stroke geometry than the full line each time it
+// re-slices, native pointer-focus could re-resolve to a different (or no)
+// point purely because THIS chart's own hover-reactive mark moved — which
+// fed back into `setHoveredIndex`, re-sliced the band again, and so on
+// (React's "Maximum update depth exceeded", `#185`). Wrapping the mark here
+// removes it from both pools entirely: it is display-only.
+function withoutInteraction<TDatum, TXValue extends ChartValue, TYValue extends ChartValue>(
+  mark: ChartMark<TDatum, TXValue, TYValue>,
+): ChartMark<TDatum, TXValue, TYValue> {
+  const stripInteraction = (node: SceneNode): SceneNode => {
+    if (node.kind === "group") {
+      return { ...node, children: node.children.map(stripInteraction) };
+    }
+    if ("interaction" in node && node.interaction) {
+      const { interaction: _interaction, ...rest } = node;
+      return rest as SceneNode;
+    }
+    return node;
+  };
+  return createMark((ctx) => {
+    const inner = mark.initialize(ctx);
+    return {
+      ...inner,
+      render: (renderCtx) => {
+        const scene = inner.render(renderCtx);
+        return { ...scene, nodes: scene.nodes.map(stripInteraction) };
+      },
+    };
+  }, mark.motion, mark.renderer) as unknown as ChartMark<TDatum, TXValue, TYValue>;
 }
 
 /**
@@ -300,20 +344,22 @@ export function buildHighlightBandMarks(
   for (const s of series) {
     if (!s.showHighlight || s.showLine === false) continue;
     marks.push(
-      lineY(slice, {
-        id: `${s.dataKey}__highlight`,
-        x: (d: ChartDatum) => d[xDataKey] as Date,
-        y: (d: ChartDatum) => d[s.dataKey] as number,
-        curve: s.curve,
-        stroke: s.color,
-        strokeWidth: s.strokeWidth,
-        motion: options.discrete
-          ? false
-          : {
-              transition: { type: "spring", stiffness: HIGHLIGHT_SPRING.stiffness, damping: HIGHLIGHT_SPRING.damping },
-              path: "morph",
-            },
-      }),
+      withoutInteraction(
+        lineY(slice, {
+          id: `${s.dataKey}__highlight`,
+          x: (d: ChartDatum) => d[xDataKey] as Date,
+          y: (d: ChartDatum) => d[s.dataKey] as number,
+          curve: s.curve,
+          stroke: s.color,
+          strokeWidth: s.strokeWidth,
+          motion: options.discrete
+            ? false
+            : {
+                transition: { type: "spring", stiffness: HIGHLIGHT_SPRING.stiffness, damping: HIGHLIGHT_SPRING.damping },
+                path: "morph",
+              },
+        }),
+      ),
     );
   }
   return marks;
@@ -343,7 +389,8 @@ export function isFocusOutsideXDomain(
 // ── Date pill overlay (app-owned HTML; sanctioned per date-pill.ts) ───────
 
 export interface DatePillController {
-  overlayHostRef: React.RefObject<HTMLDivElement | null>;
+  /** Callback ref for the overlay host `<div>` (D479) — pass as `ref=`. */
+  overlayHostRef: React.RefCallback<HTMLDivElement>;
   /** Shows/positions the pill. `jump` snaps instead of springing (first-show
    *  / discrete data, mirroring hover-chrome's `showing || discrete`
    *  branch). */
@@ -357,25 +404,42 @@ export function useDatePillOverlay(options: {
   tooltipSpring: SpringConfig;
 }): DatePillController {
   const { enabled, tooltipSpring } = options;
-  const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
   const pillRef = React.useRef<PillBuild | null>(null);
+  const hostRef = React.useRef<HTMLDivElement | null>(null);
   const dateLabelsRef = React.useRef(options.dateLabels);
   dateLabelsRef.current = options.dateLabels;
+  const springRef = React.useRef(tooltipSpring);
+  springRef.current = tooltipSpring;
 
-  React.useLayoutEffect(() => {
-    const el = overlayHostRef.current;
-    if (!el || !enabled) return;
-    const pill = buildPill(el.ownerDocument, tooltipSpring, () => dateLabelsRef.current as string[]);
+  // D479 (6.5 gate): the host `<div>` mounts AFTER the first layout effect
+  // in every consumer (it renders only once the chart has a measured width,
+  // i.e. a render later than the hook's first commit), so a plain ref read
+  // inside a `[enabled, spring]` effect never saw it and the pill never
+  // mounted (the phase-6 QA date-pill misses). Mount/unmount now follow the
+  // host element itself via a callback ref; a spring change re-mounts.
+  const mountPill = React.useCallback((el: HTMLDivElement | null) => {
+    const prev = pillRef.current;
+    if (prev) {
+      pillRef.current = null;
+      prev.layer.remove();
+      prev.spring.stop();
+      prev.ticker?.detach();
+    }
+    hostRef.current = el;
+    if (!el) return;
+    const pill = buildPill(el.ownerDocument, springRef.current, () => dateLabelsRef.current as string[]);
     el.appendChild(pill.layer);
     pillRef.current = pill;
-    return () => {
-      pillRef.current = null;
-      pill.layer.remove();
-      pill.spring.stop();
-      pill.ticker?.detach();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, tooltipSpring.stiffness, tooltipSpring.damping]);
+  }, []);
+  const overlayHostRef = React.useCallback(
+    (el: HTMLDivElement | null) => mountPill(enabled ? el : null),
+    [mountPill, enabled],
+  );
+  React.useLayoutEffect(() => {
+    // Spring/enabled changes: re-mount against the current host.
+    mountPill(enabled ? hostRef.current : null);
+  }, [mountPill, enabled, tooltipSpring.stiffness, tooltipSpring.damping]);
+  React.useLayoutEffect(() => () => mountPill(null), [mountPill]);
 
   const show = React.useCallback(
     (x: number, opts: { index: number; label: string | null; discrete: boolean; jump: boolean }) => {

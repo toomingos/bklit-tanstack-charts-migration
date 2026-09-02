@@ -1,0 +1,74 @@
+{
+  "generatedAt": "2026-09-02T14:14:47.234Z",
+  "runDir": "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z",
+  "checks": [
+    {
+      "name": "tsc",
+      "cmd": "npx tsc --noEmit",
+      "cwd": "showcase",
+      "exit": 0,
+      "durationMs": 1647,
+      "summary": {
+        "errors": 0
+      },
+      "lastLine": "npm warn Unknown env config \"node-linker\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
+      "log": "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/checks/tsc.log"
+    },
+    {
+      "name": "build",
+      "cmd": "npm run build",
+      "cwd": "bench/app",
+      "exit": 0,
+      "durationMs": 3782,
+      "summary": {
+        "ok": true
+      },
+      "lastLine": "✓ built in 3.39s",
+      "log": "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/checks/build.log"
+    },
+    {
+      "name": "lint",
+      "cmd": "npx eslint migrated",
+      "cwd": "showcase",
+      "exit": 0,
+      "durationMs": 2851,
+      "summary": {
+        "problems": 18,
+        "errors": 0,
+        "warnings": 18
+      },
+      "lastLine": "✖ 18 problems (0 errors, 18 warnings)",
+      "log": "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/checks/lint.log"
+    },
+    {
+      "name": "census",
+      "cmd": "node scripts/reach-in-guard.mjs --json",
+      "cwd": "",
+      "exit": 0,
+      "durationMs": 118,
+      "summary": {
+        "total": 79,
+        "files": 0,
+        "failures": 0
+      },
+      "lastLine": "}",
+      "log": "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/checks/census.log"
+    },
+    {
+      "name": "bundle-gate",
+      "cmd": "node scripts/bundle-gate.mjs",
+      "cwd": "",
+      "exit": 0,
+      "durationMs": 73,
+      "summary": {
+        "ok": 0,
+        "fail": 0
+      },
+      "lastLine": "[bundle-gate] OK",
+      "log": "docs/phase-6/gate/runs/2026-09-02T14-14-23-753Z/logs/checks/bundle-gate.log"
+    }
+  ],
+  "summary": {
+    "failed": []
+  }
+}

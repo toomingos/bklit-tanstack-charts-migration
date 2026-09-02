@@ -69,7 +69,8 @@ import {
 } from "./internal/sankey-layout";
 import {
   createSankeyMark,
-  SANKEY_NODE_MARK_ID,
+  SANKEY_LINK_MARK_ID,
+  SANKEY_NODE_POINT_MARK_ID,
   type LaidOutLink,
   type SankeyGradientDatum,
 } from "./internal/sankey-mark";
@@ -215,7 +216,7 @@ function renderSankeyTooltipBody(
 ): ReactNode {
   if (!point) return null;
 
-  const isNode = point.markId === SANKEY_NODE_MARK_ID;
+  const isNode = point.markId === SANKEY_NODE_POINT_MARK_ID;
   let title: string;
   let value: number;
   if (isNode) {
@@ -279,7 +280,7 @@ function createHoverHandlers(
     onNodeEnter: (i: number) => {
       hoveredNodeIndexRef.current = i;
       hoveredLinkIndexRef.current = null;
-      focusPointerPoint((point) => point.markId === SANKEY_NODE_MARK_ID && point.datumIndex === i);
+      focusPointerPoint((point) => point.markId === SANKEY_NODE_POINT_MARK_ID && point.datumIndex === i);
     },
     onNodeLeave: () => {
       hoveredNodeIndexRef.current = null;
@@ -288,7 +289,7 @@ function createHoverHandlers(
     onLinkEnter: (i: number) => {
       hoveredLinkIndexRef.current = i;
       hoveredNodeIndexRef.current = null;
-      focusPointerPoint((point) => point.markId === "flow" && point.datumIndex === i);
+      focusPointerPoint((point) => point.markId === SANKEY_LINK_MARK_ID && point.datumIndex === i);
     },
     onLinkLeave: () => {
       hoveredLinkIndexRef.current = null;

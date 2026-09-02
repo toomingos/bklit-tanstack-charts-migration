@@ -1,0 +1,135 @@
+{
+  "pinnedAt": "2026-09-01 HEAD c1e9ced (6.4 refactor)",
+  "tolerancePct": 3,
+  "scenarios": {
+    "migrated/area": {
+      "gzip": 154292
+    },
+    "migrated/arealoading": {
+      "gzip": 114060
+    },
+    "migrated/areamultiaxis": {
+      "gzip": 154393
+    },
+    "migrated/bar": {
+      "gzip": 124693
+    },
+    "migrated/bardepth": {
+      "gzip": 124817
+    },
+    "migrated/barloading": {
+      "gzip": 84398
+    },
+    "migrated/barmultiaxis": {
+      "gzip": 124770
+    },
+    "migrated/barsquares": {
+      "gzip": 134664
+    },
+    "migrated/brush": {
+      "gzip": 163181
+    },
+    "migrated/candlestick": {
+      "gzip": 117955
+    },
+    "migrated/candlestick-legend": {
+      "gzip": 128746
+    },
+    "migrated/candletween": {
+      "gzip": 118022
+    },
+    "migrated/choropleth": {
+      "gzip": 114711
+    },
+    "migrated/composed": {
+      "gzip": 128769
+    },
+    "migrated/composedmultiaxis": {
+      "gzip": 128868
+    },
+    "migrated/composedstacked": {
+      "gzip": 128788
+    },
+    "migrated/funnel": {
+      "gzip": 46572
+    },
+    "migrated/funnelvertical": {
+      "gzip": 46594
+    },
+    "migrated/gauge": {
+      "gzip": 100253
+    },
+    "migrated/gaugelinear": {
+      "gzip": 100358
+    },
+    "migrated/griddefault": {
+      "gzip": 155593
+    },
+    "migrated/heatmap": {
+      "gzip": 100059
+    },
+    "migrated/legend": {
+      "gzip": 11897
+    },
+    "migrated/legendhover": {
+      "gzip": 154639
+    },
+    "migrated/line": {
+      "gzip": 155663
+    },
+    "migrated/linemultiaxis": {
+      "gzip": 155750
+    },
+    "migrated/liveline": {
+      "gzip": 119921
+    },
+    "migrated/markers": {
+      "gzip": 166609
+    },
+    "migrated/patternarea": {
+      "gzip": 154353
+    },
+    "migrated/pie": {
+      "gzip": 99652
+    },
+    "migrated/profitloss": {
+      "gzip": 166597
+    },
+    "migrated/projection": {
+      "gzip": 157940
+    },
+    "migrated/projectionxdomain": {
+      "gzip": 157987
+    },
+    "migrated/radar": {
+      "gzip": 100691
+    },
+    "migrated/refarea": {
+      "gzip": 155742
+    },
+    "migrated/refareamultiaxis": {
+      "gzip": 155890
+    },
+    "migrated/ring": {
+      "gzip": 99622
+    },
+    "migrated/sankey": {
+      "gzip": 100721
+    },
+    "migrated/scatter": {
+      "gzip": 118720
+    },
+    "migrated/scattermultiaxis": {
+      "gzip": 118739
+    },
+    "migrated/segment": {
+      "gzip": 155748
+    },
+    "migrated/sunburst": {
+      "gzip": 97322
+    },
+    "migrated/sunchrome": {
+      "gzip": 98038
+    }
+  }
+}

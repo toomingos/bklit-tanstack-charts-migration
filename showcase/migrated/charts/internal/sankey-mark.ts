@@ -65,6 +65,12 @@ export const SANKEY_MARK_ID = "sankey";
 // dist/link.js). Lets the chart component's hover bridge / renderTooltipBody
 // tell a node point from a link point via `point.markId`.
 export const SANKEY_NODE_MARK_ID = "sankey-node";
+/** markId the composite stamps on the native `link()` child's ChartPoints —
+ * `<composite id>:<child id>` (`sankey:flow`), NOT the bare child id. */
+export const SANKEY_LINK_MARK_ID = "sankey:flow";
+/** Same composite prefix applied to the node createMark's own stamped points:
+ * `point.markId === "sankey:sankey-node"` in `scene.points`. */
+export const SANKEY_NODE_POINT_MARK_ID = `sankey:${SANKEY_NODE_MARK_ID}`;
 
 export interface SankeyMarkConfig {
   strokeOpacity: number;

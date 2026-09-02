@@ -20,12 +20,14 @@
 // transition-timing override (borrowed from the enter reveal's stagger, via
 // sankey-animation.ts's buildSankeyNodeStagger/sankeyNodeStaggerDelays) —
 // SceneStyle has no `transition` field, so that per-node stagger nuance
-// cannot be reproduced through the reactive-channel mechanism and is
-// dropped; dim/restore now animates at the flat 0.18s ease-out CSS transition
-// the moved injectLabelCssTransitions block (now in styles.css directly —
-// see sankey-animation.ts's header) still applies unconditionally to
-// `.bkm-sankey__node rect`, `[data-ts-key="sankey:flow"] > path`, and the
-// label selectors. buildSankeyNodeStagger/sankeyNodeStaggerDelays/
+// cannot be reproduced through the reactive-channel mechanism and stays
+// dropped (ACCEPT-WITH-LOG). D2 (D-pending): the base transition TIMING now
+// matches legacy — node dim/restore and the name/value label selectors
+// animate at the enter tween (1.1s cubic-bezier(0.85,0,0.15,1), styles.css
+// sankey block), same as legacy's REVEAL_DURATION_MS/REVEAL_EASE_CSS; only
+// the link path (`[data-ts-key="sankey:flow"] > path`) stays at the quick
+// 0.18s ease-out. Stagger does not match (see above) — only the flat timing
+// does. buildSankeyNodeStagger/sankeyNodeStaggerDelays/
 // SankeyNodeStagger (formerly in sankey-animation.ts) were confirmed dead
 // (no remaining consumer) and deleted as part of that file's D3 rewrite.
 //
@@ -125,15 +127,52 @@ export interface SankeyLinkHitBox {
 
 export type SankeyHitTarget = { type: "node"; index: number } | { type: "link"; index: number };
 
-const LINK_HIT_SLOP = 4;
+// D3 (D-pending): legacy has a DOM mouseenter listener directly on the
+// stroked path, so there is no slop to reproduce.
+const LINK_HIT_SLOP = 0;
 
-// d3-sankey's sankeyLinkHorizontal uses curveBumpX; a smoothstep
-// (3t^2 - 2t^3) is the standard cubic-bezier-with-horizontal-tangents
-// approximation of that curve's vertical profile, matching D4's summary
-// note and network-sankey.d.ts's x1/y1/x2/y2 link row shape.
-function bumpXY(t: number, y1: number, y2: number): number {
-  const s = 3 * t * t - 2 * t * t * t;
-  return y1 + (y2 - y1) * s;
+// D3 (D-pending): exact d3-sankey `sankeyLinkHorizontal` curve, replacing
+// the earlier smoothstep approximation. d3-shape's `linkHorizontal()` (the
+// generator `sankeyLinkHorizontal` wraps) renders each link as:
+//   context.moveTo(x1, y1);
+//   context.bezierCurveTo(cx, y1, cx, y2, x2, y2);   // cx = (x1 + x2) / 2
+// i.e. a cubic bezier with P0=(x1,y1), P1=(cx,y1), P2=(cx,y2), P3=(x2,y2) —
+// both control points sit on the link's horizontal midline, one at the
+// source y, one at the target y. `bumpXBezier`/`bumpYBezier` evaluate that
+// cubic directly; since x1 !== x2 for any real link, Bx(t) is monotonic in
+// t, so `solveBumpT` bisects it for the pointer's x to recover the exact t,
+// then `bumpXY` evaluates y at that t.
+function bumpXBezier(t: number, x1: number, cx: number, x2: number): number {
+  const mt = 1 - t;
+  return mt * mt * mt * x1 + 3 * mt * mt * t * cx + 3 * mt * t * t * cx + t * t * t * x2;
+}
+
+function bumpYBezier(t: number, y1: number, y2: number): number {
+  const mt = 1 - t;
+  return mt * mt * mt * y1 + 3 * mt * mt * t * y1 + 3 * mt * t * t * y2 + t * t * t * y2;
+}
+
+function solveBumpT(x: number, x1: number, x2: number): number {
+  if (x1 === x2) return 0;
+  const cx = (x1 + x2) / 2;
+  const increasing = x2 > x1;
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    const bx = bumpXBezier(mid, x1, cx, x2);
+    if (increasing ? bx < x : bx > x) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return (lo + hi) / 2;
+}
+
+function bumpXY(x: number, x1: number, y1: number, x2: number, y2: number): number {
+  const t = solveBumpT(x, x1, x2);
+  return bumpYBezier(t, y1, y2);
 }
 
 /**
@@ -160,13 +199,15 @@ export function findHoveredSankeyTarget(
     }
   }
 
-  for (let i = 0; i < links.length; i++) {
+  // Links iterate LAST-drawn first: SVG paints later flows over earlier ones,
+  // so at an overlap the topmost (highest index) flow owned the old
+  // `mouseenter` (D478, 6.5 gate).
+  for (let i = links.length - 1; i >= 0; i--) {
     const l = links[i]!;
     const minX = Math.min(l.x1, l.x2);
     const maxX = Math.max(l.x1, l.x2);
     if (point.x < minX || point.x > maxX) continue;
-    const t = maxX === minX ? 0 : (point.x - l.x1) / (l.x2 - l.x1);
-    const curveY = bumpXY(t, l.y1, l.y2);
+    const curveY = bumpXY(point.x, l.x1, l.y1, l.x2, l.y2);
     const halfWidth = Math.max(1, l.width) / 2;
     if (Math.abs(point.y - curveY) <= halfWidth + LINK_HIT_SLOP) {
       return { type: "link", index: i };

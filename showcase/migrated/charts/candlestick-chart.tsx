@@ -51,7 +51,7 @@ import { resolveVerticalFadeSides, indicatorFadeGradientStops } from "./internal
 import { toDotConfig, toIndicatorConfig, type DotConfig } from "./internal/tooltip-mappers";
 import { findSpringStiffnessDamping } from "./internal/candle-spring";
 import { resolveMotionEasing } from "./internal/reveal-easing";
-import { chartRendererFor } from "./internal/motion-renderer";
+import { useChartRenderer } from "./internal/motion-renderer";
 import {
   resolveEnterTransition,
   TWEEN_FALLBACK,
@@ -78,7 +78,7 @@ import { createCandlestickFocusStrategy } from "./internal/candlestick-focus-str
 import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { useChartLegendHover } from "./internal/chart-legend-hover";
-import { useFocusInjection, whenSeriesDimmed, useLegendFocusBroadcast } from "./internal/focus-injection";
+import { useFocusInjection } from "./internal/focus-injection";
 import { buildIndicatorMark } from "./internal/hover-geometry";
 import { buildNativeTooltipExtension } from "./internal/native-tooltip";
 import { useSanitizedId } from "./internal/use-sanitized-id";
@@ -130,9 +130,10 @@ const CANDLE_DIM_TRANSITION: NonNullable<ChartMarkState["transition"]> = {
  * formerly the deleted `candlestick-hover-chrome.ts`'s imperative
  * `activeHighlightSvg`). */
 function candlestickDimStates(fadedOpacity: number, showHoverFade: boolean): ChartMarkState<ChartDatum>[] {
-  const states: ChartMarkState<ChartDatum>[] = [
-    { when: whenSeriesDimmed(), style: { opacity: fadedOpacity }, transition: CANDLE_DIM_TRANSITION },
-  ];
+  // D480: the legend-hover term (formerly a programmatic-focus
+  // `whenSeriesDimmed()` state) is now a per-node `style.opacity` by
+  // polarity inside the wicks/bodies `createMark` renders below.
+  const states: ChartMarkState<ChartDatum>[] = [];
   if (showHoverFade) {
     states.push({
       when: (context) => context.focus.source === "pointer",
@@ -510,7 +511,7 @@ export function CandlestickChart({
   // React state semantics instead of a manual DOM guard.
 
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
-  const { captureRenderContext, focusSeries, clearFocus, sceneRef, clientToScene } = useFocusInjection<ChartDatum, Date, number>();
+  const { captureRenderContext, sceneRef, clientToScene } = useFocusInjection<ChartDatum, Date, number>();
 
   const resolvedPositiveFill = candlestick?.positiveFill ?? SOLID_POSITIVE;
   const resolvedNegativeFill = candlestick?.negativeFill ?? SOLID_NEGATIVE;
@@ -536,6 +537,30 @@ export function CandlestickChart({
   const [revealed, setRevealed] = React.useState(
     () => animationDuration <= 0 || !resolvedCandlestick.animate,
   );
+  // D482: true once the B4 reveal tween/spring has had time to finish (or
+  // when there is no reveal at all); `candleMotion` below reads it per
+  // reconcile. Reset on every reveal replay (`revealed` -> false -> true).
+  const revealSettledRef = React.useRef(revealed);
+  const revealSpanMs = React.useMemo(() => {
+    const enterMs =
+      enterTransition?.type === "tween"
+        ? (() => {
+            const resolved = resolveEnterTransition(enterTransition, TWEEN_FALLBACK);
+            return resolved.kind === "tween" ? resolved.durationMs : 0;
+          })()
+        : Math.max(1, (enterTransition?.duration ?? DEFAULT_ENTER_DURATION_SEC) * 1000);
+    return Math.max(enterMs, animationDuration) + 300;
+  }, [enterTransition, animationDuration]);
+  React.useEffect(() => {
+    if (!revealed) {
+      revealSettledRef.current = false;
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      revealSettledRef.current = true;
+    }, revealSpanMs);
+    return () => window.clearTimeout(timer);
+  }, [revealed, revealSpanMs]);
 
   // K9: body patterns resolve two ways — a legacy-style `url(#id)` string is
   // passed through verbatim (caller-authored defs), anything else is treated
@@ -762,7 +787,16 @@ export function CandlestickChart({
       const { stiffness, damping } = findSpringStiffnessDamping(enterDurationMs, enterBounce);
       transition = { type: "spring", stiffness, damping };
     }
-    return (ctx: ChartMotionContext<ChartDatum>) => (ctx.phase === "enter" ? false : { transition });
+    // D482: the update-phase transition exists ONLY to carry the B4 reveal
+    // (the `revealed` flip is a keyed update-phase diff). Once that reveal
+    // has settled, every later definition rebuild — legend dim (D480),
+    // `labelFade` on pointer hover, data updates ("candlestick data updates
+    // SNAP, never tween", `svgAnimation:false` below) — must snap too, or
+    // the motion surface re-tweens each node's `opacity` snapshot over the
+    // ~1s reveal spring and the pointer/legend dim visibly lags or flashes.
+    // Read through a ref so no rebuild is needed to flip it.
+    return (ctx: ChartMotionContext<ChartDatum>) =>
+      ctx.phase === "enter" || revealSettledRef.current ? false : { transition };
   }, [enterTransition]);
 
   const definition = React.useMemo(() => {
@@ -818,6 +852,13 @@ export function CandlestickChart({
     // each candle's positive/negative `group` identity) — no more inline
     // per-point opacity math. Highlight of the hovered candle stays a
     // separate native mark (C3: `createCandlestickHighlightMark`, below).
+    // D480: legend hover (index 0 = positive, 1 = negative — the legend's
+    // two entries) dims the OTHER polarity's candles to `fadedOpacity`
+    // (bklit candlestick.tsx legend term) as a plain node opacity.
+    const legendDimOpacity = (isPositive: boolean): number | undefined =>
+      legendHoveredIndex === 0 || legendHoveredIndex === 1
+        ? (legendHoveredIndex === 0) === isPositive ? undefined : resolvedCandlestick.fadedOpacity
+        : undefined;
     const wicksDimStates = candlestickDimStates(resolvedCandlestick.fadedOpacity, resolvedCandlestick.showHoverFade);
     const wicksMark = createMark(() => {
       const xValues = renderData.map((d) => d[xDataKey] as Date);
@@ -849,6 +890,7 @@ export function CandlestickChart({
             const yLow = scales.y.map(low);
             const yHigh = scales.y.map(high);
             if (!Number.isFinite(cx) || !Number.isFinite(yLow) || !Number.isFinite(yHigh)) continue;
+            const open = d.open as number | undefined;
             const close = d.close as number | undefined;
             const isPositive = typeof close === "number" && typeof d.open === "number" && close >= (d.open as number);
             const candlePattern = isPositive ? positivePattern : negativePattern;
@@ -864,16 +906,49 @@ export function CandlestickChart({
             // transform gave, without needing a CSS transform at all.
             const wickTargetY = Math.min(yLow, yHigh);
             const wickTargetHeight = Math.abs(yHigh - yLow) || 1;
-            nodes.push({
-              kind: "rect",
-              key,
-              className: "chart-candle-cell",
-              x: cx - WICK_WIDTH_PX / 2,
-              y: showTargetGeometry ? wickTargetY : wickTargetY + wickTargetHeight / 2,
-              width: WICK_WIDTH_PX,
-              height: showTargetGeometry ? wickTargetHeight : 0,
-              style: { fill: wickFill },
-            });
+            // G (double-alpha-compositing fix, QA candlestick/1000
+            // hover-30/50/70): the body rect (bodiesMark, below) always sits
+            // geometrically inside the wick's y-range (open/close is always
+            // within [low, high]) and is drawn on top of it. At full opacity
+            // that's an invisible overdraw — but wicksMark and bodiesMark
+            // each apply the SAME hover/legend dim opacity independently as
+            // their own `style.opacity` (two separate SVG elements), so
+            // wherever they overlap the browser composites the alpha TWICE,
+            // rendering measurably darker/more saturated than legacy's
+            // single per-candle `<g opacity>` wrapper (which isolates
+            // wick+body into one compositing unit before applying the dim
+            // alpha once). Splitting the wick into upper/lower segments that
+            // stop at the body's top/bottom edge removes the overlap
+            // entirely — with no overlapping pixels, two independently
+            // dimmed elements composite identically to one grouped one, at
+            // every opacity, with no need to touch the mark-state API
+            // (which only lets `states` restyle leaf nodes, not the group).
+            const hasBodyValues = typeof open === "number" && Number.isFinite(open) && typeof close === "number" && Number.isFinite(close);
+            const bodyTargetY = hasBodyValues ? Math.min(scales.y.map(open as number), scales.y.map(close as number)) : undefined;
+            const bodyTargetHeight = hasBodyValues ? Math.abs(scales.y.map(close as number) - scales.y.map(open as number)) || 1 : undefined;
+            const collapseY = wickTargetY + wickTargetHeight / 2;
+            const pushWickSegment = (segKey: string, segTargetY: number, segTargetHeight: number) => {
+              if (segTargetHeight <= 0) return;
+              const collapsedY = Math.min(Math.max(collapseY, segTargetY), segTargetY + segTargetHeight);
+              nodes.push({
+                kind: "rect",
+                key: segKey,
+                className: "chart-candle-cell",
+                x: cx - WICK_WIDTH_PX / 2,
+                y: showTargetGeometry ? segTargetY : collapsedY,
+                width: WICK_WIDTH_PX,
+                height: showTargetGeometry ? segTargetHeight : 0,
+                style: { fill: wickFill, opacity: legendDimOpacity(isPositive) },
+              });
+            };
+            if (bodyTargetY !== undefined && bodyTargetHeight !== undefined) {
+              const bodyBottom = bodyTargetY + bodyTargetHeight;
+              const wickBottom = wickTargetY + wickTargetHeight;
+              pushWickSegment(`${key}:upper`, wickTargetY, bodyTargetY - wickTargetY);
+              pushWickSegment(`${key}:lower`, bodyBottom, wickBottom - bodyBottom);
+            } else {
+              pushWickSegment(key, wickTargetY, wickTargetHeight);
+            }
             // group/groupLabel carry the candle's positive/negative series
             // identity (not "wicks") so `whenSeriesDimmed()` can match legend
             // hover; `markId` stays "wicks" for handleFocusGroupChange's
@@ -968,7 +1043,7 @@ export function CandlestickChart({
               width: bodyWidthPx,
               height: bodyHeight,
               radius: 1,
-              style: { fill, stroke: fill, strokeWidth: 1 },
+              style: { fill, stroke: fill, strokeWidth: 1, opacity: legendDimOpacity(isPositive) },
             });
             if (hasOwnPattern) {
               nodes.push({
@@ -980,7 +1055,7 @@ export function CandlestickChart({
                 width: bodyWidthPx,
                 height: bodyHeight,
                 radius: 1,
-                style: { fill: candlePattern.href },
+                style: { fill: candlePattern.href, opacity: legendDimOpacity(isPositive) },
               });
             }
             if (insideStrokeW > 0) {
@@ -995,7 +1070,7 @@ export function CandlestickChart({
                 width: bodyWidthPx - insideStrokeW,
                 height: showTargetGeometry ? strokeTargetHeight : 0,
                 radius: 1,
-                style: { fill: "none", stroke: fill, strokeWidth: insideStrokeW },
+                style: { fill: "none", stroke: fill, strokeWidth: insideStrokeW, opacity: legendDimOpacity(isPositive) },
               });
             }
             // group/groupLabel carry the candle's positive/negative series
@@ -1110,7 +1185,8 @@ export function CandlestickChart({
       // panel chrome comes from TooltipContent's own `.bkm-tooltip-panel`.
       className: "bkm-native-tooltip",
       offset: BOX_OFFSET,
-      anchor: { x: "value", y: "plot-top" } as const,
+      // D-tooltip-geometry fix — see native-tooltip.tsx's plot-top anchor.
+      anchorX: "value",
     });
 
     return defineChart({
@@ -1157,6 +1233,7 @@ export function CandlestickChart({
     tooltipEnabled,
     resolvedCandlestick.fadedOpacity,
     resolvedCandlestick.showHoverFade,
+    legendHoveredIndex,
     grid,
     width,
     margin,
@@ -1293,13 +1370,6 @@ export function CandlestickChart({
     };
   }, [tooltipEnabled, hasDefinition, chartConfig]);
 
-  // C1: legend hover drives native mark `states` dim via programmatic focus
-  // (replaces the old imperative chrome's syncLegendDim() DOM-mutation sync).
-  const resolveLegendFocusKey = React.useCallback(
-    (index: number) => (index === 0 ? "positive" : index === 1 ? "negative" : null),
-    [],
-  );
-  useLegendFocusBroadcast(legendHoveredIndex, resolveLegendFocusKey, focusSeries, clearFocus);
 
   // Hides the pill + resets axis-label fade — shared by the drag-suppression
   // branch below and `onDragStart` (useChartSelection, further down).
@@ -1380,17 +1450,32 @@ export function CandlestickChart({
       const date = bodyPoint.xValue as Date;
       const close = datum.close as number;
       const pointRec: Record<string, unknown> = { date, close };
+      // D476: the `.bkm-tooltip-panel` chrome (surface, border, radius,
+      // shadow) lives on the panel wrapper, not on TooltipContent — same
+      // wrapper `renderSeriesTooltipBody` (internal/native-tooltip.tsx)
+      // gives line/area/composed.
+      const panelClassName = tt?.className ? `bkm-tooltip-panel ${tt.className}` : "bkm-tooltip-panel";
+      const panelStyle: React.CSSProperties | undefined =
+        tt?.panelStyle || tt?.backgroundColor
+          ? { ...tt?.panelStyle, ...(tt?.backgroundColor ? { backgroundColor: tt.backgroundColor } : null) }
+          : undefined;
       if (tt?.content) {
-        return tt.content({ point: pointRec as ChartTooltipPoint, index: 0 });
+        return (
+          <div className={panelClassName} style={panelStyle}>
+            {tt.content({ point: pointRec as ChartTooltipPoint, index: 0 })}
+          </div>
+        );
       }
       const rows: TooltipRow[] = tt?.rows
         ? tt.rows(pointRec)
         : [{ color: "var(--chart-line-primary)", label: "close", value: close }];
       const title = weekdayDateFmt.format(date);
       return (
-        <TooltipContent title={title} rows={rows}>
-          {tt?.children}
-        </TooltipContent>
+        <div className={panelClassName} style={panelStyle}>
+          <TooltipContent title={title} rows={rows}>
+            {tt?.children}
+          </TooltipContent>
+        </div>
       );
     },
     [],
@@ -1469,6 +1554,9 @@ export function CandlestickChart({
       stops: indicatorFadeGradientStops(fadeSides, indicatorCfg.fadeLength ?? 10),
     };
   }, [tooltipEnabled, tooltip, indicatorGradientId]);
+  // D-pending (D1): mount-stable, prop-independent renderer choice — see
+  // `useChartRenderer` in internal/motion-renderer.ts.
+  const candlestickChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
   return (
     <ChartSelectionContext.Provider value={candleSelection}>
@@ -1503,7 +1591,7 @@ export function CandlestickChart({
             ariaLabel="Candlestick chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             definition={definition}
-            renderer={chartRendererFor<ChartDatum, Date, number>(renderData.length)}
+            renderer={candlestickChartRenderer}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
             renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}

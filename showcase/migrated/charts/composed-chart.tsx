@@ -92,8 +92,8 @@ import type {
   ChartScale,
   ChartValue,
 } from "@tanstack/charts";
-import { chartRendererFor } from "./internal/motion-renderer";
-import { useFocusInjection, useLegendFocusBroadcast, whenSeriesDimmed } from "./internal/focus-injection";
+import { useChartRenderer } from "./internal/motion-renderer";
+import { useFocusInjection } from "./internal/focus-injection";
 import { areaFill } from "./internal/area-fill-mark";
 import { seriesBarMark } from "./internal/series-bar-mark";
 import {
@@ -108,7 +108,7 @@ import {
   buildIndicatorMark,
   pointerRowDimState,
   resolveHoverDotFill,
-  seriesAndPointerDimStates,
+  pointerSeriesDimStates,
   useDatePillOverlay,
 } from "./internal/hover-geometry";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
@@ -607,21 +607,15 @@ export function ComposedChart({
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const prefersReducedMotion = usePrefersReducedMotion();
 
-  // C1 (P6): legend hover -> native mark states via programmatic focus
-  // injection (replaces the old hover-chrome DOM-mutation dim path).
-  // `composedSeries` is the single, uniform, document-order list covering
-  // bars/areas/lines alike (dataKey-keyed) — using it for every mark type
-  // fixes a latent bug in the old syncDim code, which indexed bars against
-  // `resolvedBars` (a bar-only subset/order) while lines/areas used the
-  // full mixed `composedSeries` order, silently drifting whenever bars
-  // weren't declared first in JSX.
-  const { captureRenderContext, focusSeries, clearFocus, sceneRef, interactionRef, clientToScene } =
+  // Legend hover dims through `legendHoveredKey` inside `definition` below
+  // (D480) — indexed against `composedSeries`, the single, uniform,
+  // document-order list covering bars/areas/lines alike (dataKey-keyed).
+  // Using it for every mark type fixes a latent bug in the old syncDim
+  // code, which indexed bars against `resolvedBars` (a bar-only
+  // subset/order) while lines/areas used the full mixed `composedSeries`
+  // order, silently drifting whenever bars weren't declared first in JSX.
+  const { captureRenderContext, sceneRef, interactionRef, clientToScene } =
     useFocusInjection<ChartDatum, Date, number>();
-  const resolveLegendSeriesKey = React.useCallback(
-    (index: number) => composedSeries[index]?.dataKey ?? null,
-    [composedSeries],
-  );
-  useLegendFocusBroadcast(legendHoveredIndex, resolveLegendSeriesKey, focusSeries, clearFocus);
 
   const projectionConfigs = React.useMemo(() => extractProjectionLineConfigs(children), [children]);
   const composedProjectionLines = React.useMemo((): Array<Record<string, unknown>> => {
@@ -1052,6 +1046,12 @@ export function ComposedChart({
     // narrower bars from the stock formula cause a ~4.5% pixel diff on
     // continuous time scales (bar width mismatch at n=4 per Fable ME-16).
     // Bars consume RAW `data` (bklit quirk: not decimated).
+    // D480: legend dim is a per-mark `opacity` computed here (bklit
+    // series-bar.tsx legend term, `bar.fadedOpacity`), not a programmatic-
+    // focus state — see line-chart.tsx's twin comment. Hoisted above the
+    // bar loop; the area/line marks below reuse it.
+    const legendHoveredKey =
+      legendHoveredIndex != null ? (composedSeries[legendHoveredIndex]?.dataKey ?? null) : null;
     resolvedBars.forEach((bar, barIndex) => {
       marks.push(
         withMarkStates(
@@ -1071,13 +1071,9 @@ export function ComposedChart({
             stacked,
             stackGap,
             stackOffsets: composedStackOffsets,
+            opacity: legendHoveredKey != null && legendHoveredKey !== bar.dataKey ? bar.fadedOpacity : undefined,
           }),
           [
-            {
-              when: whenSeriesDimmed(),
-              style: { opacity: bar.fadedOpacity },
-              transition: { type: "tween", duration: 120, easing: "ease-in-out" },
-            },
             // C3: per-bar-row pointer-hover dim (hover-chrome.ts's
             // BAR_DIM_TRANSITION="opacity 0.12s ease-in-out" + `state.bars`
             // dim-every-row-except-the-focused-one behavior). `seriesBarMark`
@@ -1106,8 +1102,6 @@ export function ComposedChart({
     // below, so this is driven by the SAME native focus the C2 tooltip
     // bridge already maintains, just read through React state rather than a
     // `states[]` selector.
-    const legendHoveredKey =
-      legendHoveredIndex != null ? (composedSeries[legendHoveredIndex]?.dataKey ?? null) : null;
     const pointerHoverDimmed = tooltipEnabled && hoveredIndex != null;
     const composedDimOpacityByKey = new Map(composedSeries.map((s) => [s.dataKey, s.dimOpacity] as const));
     for (const area of resolvedAreas) {
@@ -1140,8 +1134,9 @@ export function ComposedChart({
           z: () => area.dataKey,
           curve,
           stroke: area.stroke,
+          strokeOpacity: legendHoveredKey != null && legendHoveredKey !== area.dataKey ? areaDimOpacity : undefined,
           strokeWidth: area.strokeWidth,
-          states: seriesAndPointerDimStates<ChartDatum>(areaDimOpacity),
+          states: pointerSeriesDimStates<ChartDatum>(areaDimOpacity),
         }),
       );
     }
@@ -1155,8 +1150,9 @@ export function ComposedChart({
           z: () => line.dataKey,
           curve: d3Curve(line.curve),
           stroke: line.stroke,
+          strokeOpacity: legendHoveredKey != null && legendHoveredKey !== line.dataKey ? lineDimOpacity : undefined,
           strokeWidth: line.strokeWidth,
-          states: seriesAndPointerDimStates<ChartDatum>(lineDimOpacity),
+          states: pointerSeriesDimStates<ChartDatum>(lineDimOpacity),
         }),
       );
     }
@@ -1474,6 +1470,9 @@ export function ComposedChart({
         spring: TOOLTIP_BOX_SPRING,
         discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
         className: "bkm-native-tooltip",
+        // D475: legacy box sat at the plot top edge, x at the focused point
+        // (tooltip-chrome.ts) — see native-tooltip.tsx's plot-top anchor.
+        anchorX: "point",
       }),
       // Ref reads, not deps — see the comment on phaseRef/isLoadedRef above.
       motion,
@@ -1947,6 +1946,9 @@ export function ComposedChart({
     if (!overlayRenderedComposed) return;
     projectionPhasePortRef.current?.setPhase(phaseRef.current);
   }, [overlayRenderedComposed]);
+  // D-pending (D1): mount-stable, prop-independent renderer choice — see
+  // `useChartRenderer` in internal/motion-renderer.ts.
+  const composedChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
   return (
     <ChartSelectionContext.Provider value={compSelection}>
@@ -1968,7 +1970,7 @@ export function ComposedChart({
       {definition ? (
         <>
           <RendererChart
-            renderer={chartRendererFor<ChartDatum, Date, number>(renderData.length)}
+            renderer={composedChartRenderer}
             ariaLabel="Composed chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             definition={definition}

@@ -1,0 +1,26 @@
+{
+  "generatedAt": "2026-09-02T19:27:38.844Z",
+  "exit": 0,
+  "ledger": "scripts/reach-in-ledger.json",
+  "total": 79,
+  "files": 15,
+  "counts": {
+    "showcase/migrated/charts/area-chart.tsx": 3,
+    "showcase/migrated/charts/bar-chart.tsx": 1,
+    "showcase/migrated/charts/choropleth-chart.tsx": 8,
+    "showcase/migrated/charts/composed-chart.tsx": 3,
+    "showcase/migrated/charts/internal/bar-pulse-mark.ts": 3,
+    "showcase/migrated/charts/internal/choropleth-hover-chrome.ts": 1,
+    "showcase/migrated/charts/internal/dash-tail.ts": 3,
+    "showcase/migrated/charts/internal/deferred-reveal.ts": 4,
+    "showcase/migrated/charts/internal/sankey-animation.ts": 9,
+    "showcase/migrated/charts/line-chart.tsx": 3,
+    "showcase/migrated/charts/radar-chart.tsx": 19,
+    "showcase/migrated/charts/ring-chart.tsx": 13,
+    "showcase/migrated/charts/sankey-chart.tsx": 1,
+    "showcase/migrated/charts/scatter-chart.tsx": 1,
+    "showcase/migrated/charts/sunburst-chart.tsx": 7
+  },
+  "failures": [],
+  "notes": []
+}

@@ -12,7 +12,14 @@
     "dev:app": "pnpm --dir bench/app dev",
     "build:app": "pnpm --dir bench/app build",
     "guard:reach-in": "node scripts/reach-in-guard.mjs --report",
-    "guard:bundle": "node scripts/bundle-gate.mjs"
+    "guard:bundle": "node scripts/bundle-gate.mjs",
+    "gate:qa": "node qa/gate/run-qa.mjs",
+    "gate:bench": "node qa/gate/run-bench.mjs",
+    "gate:bundle": "node qa/gate/run-bundle.mjs",
+    "gate:checks": "node qa/gate/run-checks.mjs",
+    "gate:probes": "node qa/gate/probes/run-probes.mjs",
+    "gate:summary": "node qa/gate/summarize.mjs",
+    "gate:all": "node qa/gate/run-all.mjs"
   },
   "devDependencies": {
     "@types/d3-sankey": "^0.12.5",

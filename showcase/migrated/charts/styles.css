@@ -225,6 +225,23 @@
   --ts-chart-tooltip-color: inherit;
   --ts-chart-tooltip-shadow: none;
   --ts-chart-tooltip-font: inherit;
+  /* (D-tooltip-width fix) `--ts-chart-tooltip-font: inherit` above is a
+     no-op: per the CSS custom-properties spec, `inherit` typed into a
+     custom property is a CSS-wide keyword, not a literal token — it just
+     re-triggers normal inheritance (which already happens), so
+     getComputedStyle(...).getPropertyValue("--ts-chart-tooltip-font")
+     comes back "" (guaranteed-invalid), and dist/tooltip.js's inline
+     `font: var(--ts-chart-tooltip-font, 500 0.75rem/1.3 system-ui, sans-serif)`
+     falls through to that literal fallback instead of inheriting the page
+     font. Nested `.bkm-tooltip-title`/`.bkm-tooltip-rows` (below) only ever
+     override font-size/weight, never font-family, so the host's family
+     leaks through into every rendered tooltip glyph — measured as
+     system-ui vs. the page's Geist stack, ~166 vs. ~161px on an identical
+     "Fri, May 14 / seriesA / 1,592.44" string (area, n=1000, hover-50).
+     Only `!important` on the actual `font-family` longhand can beat that
+     inline shorthand from external CSS (inline non-!important always
+     outranks external non-!important, custom-property trick or not). */
+  font-family: inherit !important;
 }
 
 [data-bkm-chart] .bkm-tooltip-panel {
@@ -950,8 +967,12 @@
        `ts-sankey__` -> `bkm-sankey__` rename; the three `data-ts-key`
        selectors are native scene-graph keys emitted by the renderer itself
        (sanctioned per D418), not app classes. --- */
+/* D2 (D-pending): legacy dims nodes/labels with the enter tween
+   (1.1s cubic-bezier(0.85,0,0.15,1) — bklit REVEAL_DURATION_MS/REVEAL_EASE_CSS),
+   while links dim with a quick 0.18s ease-out. Per-node stagger stays absent
+   (ACCEPT-WITH-LOG). */
 .bkm-sankey__node rect {
-  transition: opacity 0.18s ease-out;
+  transition: opacity 1.1s cubic-bezier(0.85, 0, 0.15, 1);
 }
 
 [data-ts-key="sankey:flow"] > path {
@@ -959,11 +980,11 @@
 }
 
 [data-ts-key^="sankey:nlabel:"] {
-  transition: opacity 0.18s ease-out;
+  transition: opacity 1.1s cubic-bezier(0.85, 0, 0.15, 1);
 }
 
 [data-ts-key^="sankey:vlabel:"] {
-  transition: opacity 0.18s ease-out, fill-opacity 0.18s ease-out;
+  transition: opacity 1.1s cubic-bezier(0.85, 0, 0.15, 1), fill-opacity 1.1s cubic-bezier(0.85, 0, 0.15, 1);
 }
 
 /* Projection line: same renderer hazard as sankey above, on the dashed
@@ -1010,15 +1031,19 @@
   transition: opacity 0.12s ease-in-out;
 }
 
-/* SeriesMarker active-scale (r) / inactive-dim (opacity) pointer transition
-   (hover-chrome.ts MARKER_DIM_TRANSITION, 0.15s ease-in-out) — minus its
-   `filter` term: the 2px dim blur is dropped (D421 scatter-blur precedent;
-   see internal/series-marker-mark.ts header comment). `.ts-chart__dot`
-   wraps each marker mark's per-point <circle> children (dist/dot.js); only
-   line-chart.tsx/area-chart.tsx build `${dataKey}__marker`-suffixed marker
-   marks, so this selector cannot collide with any other chart's dot marks. */
-.ts-chart__dot[data-ts-key$="__marker"] circle {
-  transition: opacity 0.15s ease-in-out, r 0.15s ease-in-out;
+/* SeriesMarker base-layer dim/blur (hover-chrome.ts MARKER_DIM_TRANSITION,
+   0.15s ease-in-out, INCLUDING its `filter: blur(2px)` term — D452+ ruling
+   restores this via app-owned `className` on the marker mark's own scene
+   node (internal/series-marker-mark.ts's `withMarkerBaseClassName`), not a
+   `.ts-chart__*` reach-in. The crisp/bright active point is a separate,
+   never-dimmed `dot()` mark (see that file), so this rule only ever needs
+   to express the base layer's own two states. */
+.bkm-marker-base {
+  transition: opacity 0.15s ease-in-out, filter 0.15s ease-in-out;
+}
+.bkm-marker-base--dim {
+  opacity: 0.5;
+  filter: blur(2px);
 }
 
 /* ── C4 (phase 6): native axis tick labels ──────────────────────────────
@@ -1034,4 +1059,81 @@
    nodes persist across definition rebuilds and CSS transitions apply. */
 [data-bkm-chart] .ts-chart__axes text {
   transition: opacity 0.4s ease-in-out;
+}
+
+/* F1-1e (P6 QA fix): legacy LiveYAxis rendered its tick labels as
+   `<span className="whitespace-nowrap font-mono text-chart-label text-xs">`
+   (repos/bklit-ui/packages/ui/src/charts/live-y-axis.tsx:215) — monospace,
+   unlike every other native axis's inherited sans body font. Native y tick
+   labels get `dominant-baseline="middle"` (scene.js's y-branch label node;
+   x-branch labels get no `baseline` at all), so within the liveline chart's
+   `.ts-chart__axes` group that attribute selector reaches only the y-axis
+   labels, never the x ticks. Font stack matches `--font-mono` (bench/app/src
+   /styles.css:48) — Geist Mono is loaded locally there (:37-41) and is the
+   font legacy's `font-mono` span actually renders in, so it comes first via
+   the CSS var, with the generic mono stack as fallback when the var isn't
+   defined. */
+[data-bkm-chart="liveline"] .ts-chart__axes text[dominant-baseline="middle"] {
+  font-family:
+    var(--font-mono, "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+}
+
+/* ── Radar block (E3+E4, radar-chart.tsx `withMarkNodeClassName`) ───────
+   `radar-chart.tsx`'s `withMarkNodeClassName` wrapper stamps these classes
+   onto the `radialArea` mark's own rendered scene nodes (a public
+   `PolarMark`-wrapping hook — SceneNodeBase.className, dist/types.d.ts — no
+   DOM reach-in). `.bkm-radar-area` lands on every series' area <path>;
+   `.bkm-radar-area--hovered` additionally lands on just the hovered
+   series'.
+
+   E3 (stroke-width hover-pop, legacy 2px rest / 3px hovered): the mark's
+   own `strokeWidth` option is emitted as a plain SVG presentation
+   attribute (dist/svg-renderer.js `renderStyle`), which has lower cascade
+   priority than this stylesheet rule, so `stroke-width` below cleanly
+   overrides it for the hovered node only, without a per-datum channel.
+
+   E4 (glow + 1.05 scale-pop): the area <path>'s own coordinates are
+   already relative to the polar centre — `polar()`'s composite render
+   (dist/polar.js) wraps every child mark in one ancestor group translated
+   by `(layout.centerX, layout.centerY)`, and `radialArea`'s own wrapping
+   group (id "radar-area") applies no further transform — so the path's
+   local SVG user-space origin (0, 0) *is* the polar centre. `transform-
+   origin: 0 0` (a raw length, not a percentage, so `transform-box` doesn't
+   affect it) therefore scales exactly around the chart centre with no
+   per-node pixel computation needed; verified visually (QA) that vertices
+   move outward on hover rather than the shape scaling from its own bbox.
+
+   Glow colour: `SceneStyle` (dist/types.d.ts) has no generic `color`/
+   `filter` field and scene nodes can't carry an inline CSS custom
+   property, so a per-series *exact* runtime colour can't reach this
+   stylesheet without a DOM reach-in. Compromise used (reported): one class
+   per default palette index (`--chart-1`..`--chart-5`, the same
+   `DEFAULT_RADAR_COLORS` the mark itself falls back to per-series index —
+   see `radar-chart.tsx` line ~354) — exact for the default/no-custom-color
+   case (incl. this bench's QA scenarios), an approximation if a consumer
+   supplies fully custom per-area colors. */
+[data-bkm-chart="radar"] .bkm-radar-area {
+  transition: filter 0.2s, transform 0.2s, stroke-width 0.2s;
+  transform-origin: 0 0;
+}
+
+[data-bkm-chart="radar"] .bkm-radar-area--hovered {
+  stroke-width: 3px;
+  transform: scale(1.05);
+}
+
+[data-bkm-chart="radar"] .bkm-radar-area--hovered-0 {
+  filter: drop-shadow(0 0 12px var(--chart-1));
+}
+[data-bkm-chart="radar"] .bkm-radar-area--hovered-1 {
+  filter: drop-shadow(0 0 12px var(--chart-2));
+}
+[data-bkm-chart="radar"] .bkm-radar-area--hovered-2 {
+  filter: drop-shadow(0 0 12px var(--chart-3));
+}
+[data-bkm-chart="radar"] .bkm-radar-area--hovered-3 {
+  filter: drop-shadow(0 0 12px var(--chart-4));
+}
+[data-bkm-chart="radar"] .bkm-radar-area--hovered-4 {
+  filter: drop-shadow(0 0 12px var(--chart-5));
 }

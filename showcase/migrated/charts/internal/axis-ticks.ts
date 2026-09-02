@@ -569,7 +569,7 @@ export function buildFadeXAxisOptions(
       ? {
           fontSize: 12,
           thin: false,
-          dy: marginBottom - 25,
+          dy: marginBottom - 26,
           opacity: labelFade
             ? (context: ChartAxisTickLabelContext<Date>) =>
                 tickLabelFadeOpacity(
@@ -607,7 +607,7 @@ export function buildPrecomputedXAxisOptions(
       ? {
           fontSize: 12,
           thin: false,
-          dy: marginBottom - 25,
+          dy: marginBottom - 26,
           opacity: xTickLabelOpacity,
           motion: tickLabelMotion,
         }

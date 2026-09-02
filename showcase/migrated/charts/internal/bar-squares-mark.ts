@@ -10,6 +10,8 @@ export interface BarSquaresMarkOptions {
   /** Native mark-state definitions (hover/legend dim etc.), passed through
       to the initialized mark unchanged. */
   states?: readonly ChartMarkState<ChartDatum>[];
+  /** Whole-series opacity (legend-hover dim, D480). Omitted = no attribute. */
+  opacity?: number;
   seriesIndex: number;
   seriesCount: number;
   groupGap: number;
@@ -50,6 +52,7 @@ export function barSquaresMark(
     gradientId,
     patternId,
     states,
+    opacity,
   } = options;
 
   const isPatternFill = fill.startsWith("url(");
@@ -114,7 +117,7 @@ export function barSquaresMark(
               width: squareSize,
               height: squareSize,
               radius: rx || undefined,
-              style: { fill: effectiveFill },
+              style: { fill: effectiveFill, opacity },
             });
             if (s === 0) {
               const xCenter = x + squareSize / 2;

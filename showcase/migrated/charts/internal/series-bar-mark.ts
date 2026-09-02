@@ -25,6 +25,8 @@ export interface SeriesBarMarkOptions {
   yAccessor: (d: ChartDatum) => number;
   /** Fill color for the bar rects. */
   fill: string;
+  /** Whole-series opacity (legend-hover dim, D480). Omitted = no attribute. */
+  opacity?: number;
   /** Corner radius for bar top corners. Default: 0. */
   radius?: number;
   /** All bar series dataKeys in the group (for computing group-width layout).
@@ -75,6 +77,7 @@ export function seriesBarMark(
     stackGap = 0,
     stackOffsets,
     states,
+    opacity,
   } = options;
   const seriesCount = groupDataKeys.length;
   const gap = barGap;
@@ -168,7 +171,7 @@ export function seriesBarMark(
               width: barWidth,
               height: segHeight,
               radius: applyRounding ? radius || undefined : undefined,
-              style: { fill },
+              style: { fill, opacity },
             });
 
             points.push({
@@ -203,7 +206,7 @@ export function seriesBarMark(
             width: barWidth,
             height: barHeight,
             radius: radius || undefined,
-            style: { fill },
+            style: { fill, opacity },
           });
 
           points.push({

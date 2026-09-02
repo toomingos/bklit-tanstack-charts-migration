@@ -139,6 +139,7 @@ import {
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
 import { nativeStaggerDelayMs } from "./internal/native-stagger";
 import { chartMotionRenderer } from "./internal/motion-renderer";
+import { hitTestPolarBands, pointerToCenterOffset } from "./internal/polar-hit";
 import { useDebouncedContainerSize } from "./internal";
 import "./styles.css";
 
@@ -567,16 +568,6 @@ export function RingChart({
     }
 
     const arcMarks: AnyRadialArcMark[] = [];
-    // D258 fix: per-ring STATIC hitbox twins (rest radii, transparent fill),
-    // collected in this first pass and appended in a SECOND pass below.
-    // Z-order note (pie's D254 precedent renders its twin after the whole
-    // visible mark): ring bands overlap their neighbours, so per-ring
-    // interleaving would put ring j's hitbox UNDER ring j+1's later-painted
-    // visual marks and break the hit test at overlaps. Emitting every twin
-    // after every visual mark stacks the entire hitbox layer above the
-    // entire visual layer — the only arrangement where each point of the
-    // chart hit-tests to the topmost twin covering it.
-    const hitboxMarks: AnyRadialArcMark[] = [];
 
     // T-D3: progress sweep's native stagger delay — legacy formula
     // (handleRender, pre-C3), computed once per ring index via
@@ -671,31 +662,18 @@ export function RingChart({
         );
       }
 
-      // The static twin: full annulus at REST radii, transparent fill, never
-      // animated by reveal or hover. Transparent still paints for hit-testing
-      // (SVG visiblePainted). Zero pixel delta; listeners bind HERE so band
-      // growth can never eject a stationary cursor (D258's mechanism).
-      hitboxMarks.push(
-        radialArc<RingArcDatum>([{ startAngle, endAngle }], {
-          id: `ring-${i}-hitbox`,
-          key: () => "hitbox",
-          innerRadius: ({ radius }) => radius * innerRatio,
-          outerRadius: ({ radius }) => radius * outerRatio,
-          cornerRadius: ({ radius }) => radius * cornerRatio,
-          fill: "transparent",
-          motion: false,
-        }),
-      );
     }
 
     return defineChart({
-      marks: [polar({ inset: padding, radiusRatio: 1, marks: [...arcMarks, ...hitboxMarks] })],
+      marks: [polar({ inset: padding, radiusRatio: 1, marks: arcMarks })],
       guides: false, scales: { x: null, y: null },
-      // C5c (D435): native default focus replaces `focusDisabled` — see file
-      // header. `focusRing: false` suppresses the default indicator since
-      // the reactive hover-scale geometry above IS ring's authored focus
-      // treatment.
-      focusRing: false, tooltip: false,
+      // D473 (6.5 gate, supersedes C5c/D435/D447): pointer detection is
+      // app-owned again — `pointer: false` + the wrapper's pointer handlers
+      // (see `handlePointerMove` below / internal/polar-hit.ts). Same
+      // hover/unhover loop as pie (React #185) under native focus at
+      // 0.15.0. `focusRing: false` stays: the reactive hover-scale geometry
+      // above IS ring's authored focus treatment.
+      pointer: false, focusRing: false, tooltip: false,
     });
   }, [data, ringConfigMap, getRingRadii, getColor, availableRadius, padding, startAngle, endAngle, arcRange, geometryScrubbing, liveHoveredIndex, enterTransition, enterStaggerScale]);
 
@@ -828,18 +806,32 @@ export function RingChart({
   // marks, not one multi-row mark like pie), so the index is parsed off
   // `ChartPoint.markId` instead of `datum`.
   // -----------------------------------------------------------------------
-  const handleRingFocusChange = useCallback(
-    (point: { markId: string } | null) => {
-      if (point) {
-        const match = /^ring-(\d+)-/.exec(point.markId);
-        const index = match ? Number(match[1]) : null;
-        if (index !== null && !Number.isNaN(index)) coordinator.requestHover(index);
-      } else {
-        coordinator.requestUnhover();
-      }
-    },
-    [coordinator],
+  // D473: app-owned hit test against the rest-radius annuli (the geometry
+  // the deleted static hitbox twins painted). See pie-chart.tsx for the
+  // de-dup rationale (last REQUESTED index, so a same-ring re-entry still
+  // cancels a pending coordinator unhover).
+  const ringHitBands = useMemo(
+    () => data.map((_, i) => ({ ...getRingRadii(i), startAngle, endAngle })),
+    [data, getRingRadii, startAngle, endAngle],
   );
+  const lastHitRequestRef = useRef<number | null>(null);
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (geometryScrubbing) return;
+      const { x, y } = pointerToCenterOffset(event.currentTarget, event.clientX, event.clientY);
+      const hit = hitTestPolarBands(x, y, ringHitBands);
+      if (hit === lastHitRequestRef.current) return;
+      lastHitRequestRef.current = hit;
+      if (hit === null) coordinator.requestUnhover();
+      else coordinator.requestHover(hit);
+    },
+    [coordinator, geometryScrubbing, ringHitBands],
+  );
+  const handlePointerLeave = useCallback(() => {
+    if (lastHitRequestRef.current === null) return;
+    lastHitRequestRef.current = null;
+    coordinator.requestUnhover();
+  }, [coordinator]);
 
   // Cleanup only on actual unmount — NOT on StrictMode double-invoke.
   const isMountedRef = useRef(true);
@@ -894,6 +886,8 @@ export function RingChart({
       className={className}
       data-bkm-chart="ring"
       ref={containerRef}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
       style={{
         position: "relative",
         display: "flex",
@@ -931,7 +925,6 @@ export function RingChart({
                 definition={definition}
                 onRender={handleRender}
                 renderer={chartMotionRenderer<RingArcDatum, number, number>()}
-                onFocusChange={handleRingFocusChange}
               />
             )}
 

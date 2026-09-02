@@ -41,12 +41,13 @@ import React, {
   type RefObject,
 } from "react";
 import { FeatureCollection, type Feature, type Geometry } from "geojson";
-import { geoMercator, geoPath, type GeoProjection } from "d3-geo";
+import { geoCentroid, geoMercator, geoPath, type GeoProjection } from "d3-geo";
 import type { TransformMatrix, ProvidedZoom, ZoomState } from "./internal/zoom-engine";
 import { identityMatrix } from "./internal/zoom-engine";
 import { Zoom } from "./internal/zoom-engine";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import {
+  type ChartPoint,
   type ChartRendererRenderContext,
   type ChartValue,
   type StaticChartDefinition,
@@ -309,6 +310,32 @@ function resolveFeatureFill(
 // differently in two places.
 function choroplethFeatureKey(feature: ChoroplethFeature): string {
   return feature.properties?.name ?? String(feature.id ?? "");
+}
+
+// E2-followup: `geoShape`'s per-node key is NOT `${id}:${key}` verbatim —
+// dist/geo.js's `render()` computes `key = \`${id}:${valueKey(keys[datumIndex])}\``
+// (`keys` = `inferredKeyValues(data, options.key)`, i.e. `choroplethFeatureKey`
+// run per feature), where `valueKey` (dist/scales.js, not publicly exported —
+// package.json `exports` has no `./scales` entry) tags every value with its
+// `typeof` for cross-type uniqueness: a string `s` becomes
+// `string:${s.length}:${s}`. The original E2 fix stamped `choropleth:${name}`
+// here, missing that wrapping — so `resolveFeatureAlpha` below NEVER matched
+// `hoveredKey` (which comes from the real DOM `data-ts-key`, which DOES carry
+// the wrapping) for any feature, silently no-op'ing the highlight (every
+// feature fell through to `dimOpacity`) while hover DETECTION and the native
+// tooltip stayed correct (those compare against `scene.points[].key` / the
+// raw DOM attribute directly, never through this helper). Invisible on most
+// countries (both the wrongly-dimmed "hovered" one and its dimmed neighbors
+// render close to the same alpha), but large enough on the USA's
+// Mercator-inflated Alaska+mainland+islands footprint to fail the QA pixel
+// gate. Same bug shape as radar-chart.tsx's `polarValueKey` fix (`valueKey`
+// wrapping a z-channel group key there instead of a geo feature key here).
+function geoValueKey(value: string): string {
+  return `string:${value.length}:${value}`;
+}
+
+function choroplethSceneKey(feature: ChoroplethFeature): string {
+  return `choropleth:${geoValueKey(choroplethFeatureKey(feature))}`;
 }
 
 // C1 states+legend: `geoShape`'s `fillOpacity`/`strokeOpacity`/`opacity`
@@ -672,6 +699,7 @@ function ChoroplethChartBody({
     const d = defineChart({
       marks: [
         geoShape(data.features, {
+          id: "choropleth",
           key: choroplethFeatureKey,
           projection: () => projForMark,
           // Hover dim (base 0.85 / dimmed 0.4 / hovered 1) is baked into the
@@ -687,11 +715,11 @@ function ChoroplethChartBody({
               featureConfig?.getFeaturePattern,
             );
             if (featureConfig?.getFeaturePattern?.(f, index)) return resolved;
-            const alpha = resolveFeatureAlpha(choroplethFeatureKey(f), hoveredKey, baseOpacity, dimOpacity);
+            const alpha = resolveFeatureAlpha(choroplethSceneKey(f), hoveredKey, baseOpacity, dimOpacity);
             return withAlpha(resolved, alpha * 100);
           },
           stroke: (f: ChoroplethFeature) => {
-            const alpha = resolveFeatureAlpha(choroplethFeatureKey(f), hoveredKey, baseOpacity, dimOpacity);
+            const alpha = resolveFeatureAlpha(choroplethSceneKey(f), hoveredKey, baseOpacity, dimOpacity);
             return withAlpha(featureConfig?.stroke ?? "var(--background)", alpha * 100);
           },
           strokeOpacity: 1,
@@ -716,15 +744,42 @@ function ChoroplethChartBody({
       // focus ring natively instead of relying solely on the
       // `[data-ts-chart-focus] {display:none}` CSS rule.
       focusRing: false,
+      // E1: the library's own pointer handler (dist/renderer.js) resolves
+      // hover to the nearest geoShape centroid (dist/geo.js), which can
+      // disagree with the app-owned hover DETECTION in
+      // internal/choropleth-hover-chrome.ts (path `mouseenter`, driving
+      // `setControlledFocus` via `onFocusChange` below). Disabling the
+      // library's pointer handling here leaves this chart's own controlled
+      // focus as the single source of truth for hover, same rationale as
+      // `focusRing: false` above.
+      pointer: false,
       // C2: native tooltip extension, only when a <ChoroplethTooltip> child
       // is present (mirrors legacy's opt-in — no child, no box). `sticky:
       // false`/`motion: false` match the retired box's INSTANT unmount (CP7:
       // "bklit ChoroplethTooltip returns null the moment tooltipData clears;
       // no exit fade"). C6: `anchor` no longer forward-applies the zoom
       // matrix (retired `applyZoomToPoint`, née the old chrome's `applyZoom`)
-      // — `points` already arrive in final zoomed screen space, since
-      // `projection` (closed over via `projForMark`, above) now carries the
-      // zoom itself.
+      // — reprojecting through `projForMark` (closed over above, already
+      // carries the zoom) below lands directly in final zoomed screen space.
+      //
+      // (coordinator fix, choropleth tooltip-x offset on multi-polygon
+      // features) `points[0].{x,y}` — the library's own per-feature anchor —
+      // is `path.centroid(datum)` (dist/geo.js render(): centroid of the
+      // PROJECTED SVG path, area-weighted in projected/screen space). Legacy
+      // (`choropleth-feature.tsx:236-242`) instead anchors at
+      // `projectPoint(geoCentroid(feature))` — d3-geo's SPHERICAL centroid
+      // (true-surface-area-weighted, computed BEFORE projection) then
+      // projected. For a single-polygon feature the two agree closely enough
+      // to stay under the QA gate. For a MultiPolygon whose parts have
+      // wildly different Mercator-projected areas — the USA, where Alaska's
+      // high-latitude parts balloon far beyond their true geographic size
+      // under Mercator — `path.centroid` skews hard toward the inflated part
+      // (Alaska) while `geoCentroid` stays anchored near the true
+      // (mainland-dominated) centroid, producing a visible x divergence
+      // between the two tooltips. Reproducing legacy's rule here (not
+      // patchable in dist/geo.js, which is read-only) fixes it: fall back to
+      // the library's own point only if `geoCentroid` is
+      // unavailable/non-finite for the feature (e.g. degenerate geometry).
       tooltip: hasTooltipChild
         ? {
             use: tooltip,
@@ -733,7 +788,18 @@ function ChoroplethChartBody({
             motion: false,
             placement: ["right", "left"],
             offset: CHOROPLETH_TOOLTIP_OFFSET,
-            anchor: (points: readonly { x: number; y: number }[]) => points[0] ?? null,
+            anchor: (points: readonly ChartPoint<ChoroplethFeature, ChartValue, ChartValue>[]) => {
+              const p = points[0];
+              if (!p) return null;
+              const centroid = geoCentroid(p.datum);
+              const projected =
+                centroid && Number.isFinite(centroid[0]) && Number.isFinite(centroid[1])
+                  ? projForMark(centroid)
+                  : null;
+              return projected && Number.isFinite(projected[0]) && Number.isFinite(projected[1])
+                ? { x: projected[0], y: projected[1] }
+                : { x: p.x, y: p.y };
+            },
           }
         : false,
     });
