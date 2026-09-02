@@ -10,8 +10,8 @@ local_cache/
 qa/results/
 .opencode/
 PLAN.md
-PLAN-phase-1.md
-PLAN-phase-2.md
+PLAN-phase-*.md
+archive/
 AGENTS.md
 .DS_Store
 *.log
