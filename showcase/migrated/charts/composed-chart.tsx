@@ -92,7 +92,7 @@ import type {
   ChartScale,
   ChartValue,
 } from "@tanstack/charts";
-import { chartMotionRenderer } from "./internal/motion-renderer";
+import { chartRendererFor } from "./internal/motion-renderer";
 import { useFocusInjection, useLegendFocusBroadcast, whenSeriesDimmed } from "./internal/focus-injection";
 import { areaFill } from "./internal/area-fill-mark";
 import { seriesBarMark } from "./internal/series-bar-mark";
@@ -1452,6 +1452,12 @@ export function ComposedChart({
       focusRing: false,
       maxFocusDistance: Number.POSITIVE_INFINITY,
       gradients: nativeComposedGradients,
+      // D472: read only by the static SVG renderer (`chartRendererFor` above
+      // NATIVE_MOTION_MAX_POINTS) — the same y-domain tween gate the `motion`
+      // callback above carries for the native motion renderer (pre-C5 shape).
+      svgAnimation: yDomainTweenGateActive
+        ? { duration: DEFAULT_Y_DOMAIN_TWEEN_MS, easing: bezierEasing }
+        : (false as const),
       // C2 (P6): native tooltip extension replaces the imperative box panel
       // (tooltip-chrome.ts's buildBox/applyBoxContent/positionBox). Unlike
       // line/area, composed does NOT drive this off `focus:"group-x"`
@@ -1962,7 +1968,7 @@ export function ComposedChart({
       {definition ? (
         <>
           <RendererChart
-            renderer={chartMotionRenderer<ChartDatum, Date, number>()}
+            renderer={chartRendererFor<ChartDatum, Date, number>(renderData.length)}
             ariaLabel="Composed chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             definition={definition}

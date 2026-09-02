@@ -51,7 +51,7 @@ import { resolveVerticalFadeSides, indicatorFadeGradientStops } from "./internal
 import { toDotConfig, toIndicatorConfig, type DotConfig } from "./internal/tooltip-mappers";
 import { findSpringStiffnessDamping } from "./internal/candle-spring";
 import { resolveMotionEasing } from "./internal/reveal-easing";
-import { chartMotionRenderer } from "./internal/motion-renderer";
+import { chartRendererFor } from "./internal/motion-renderer";
 import {
   resolveEnterTransition,
   TWEEN_FALLBACK,
@@ -1503,7 +1503,7 @@ export function CandlestickChart({
             ariaLabel="Candlestick chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             definition={definition}
-            renderer={chartMotionRenderer<ChartDatum, Date, number>()}
+            renderer={chartRendererFor<ChartDatum, Date, number>(renderData.length)}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
             renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}

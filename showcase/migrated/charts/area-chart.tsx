@@ -45,7 +45,7 @@ import type {
 } from "@tanstack/charts";
 import { brushX, type BrushRange, type BrushXChange } from "@tanstack/charts/interaction/brush";
 import { controlledSignal } from "@tanstack/charts/interaction/signal";
-import { chartMotionRenderer } from "./internal/motion-renderer";
+import { chartRendererFor } from "./internal/motion-renderer";
 import { areaFill } from "./internal/area-fill-mark";
 import { patternAreaMark } from "./internal/pattern-area-mark";
 import { renderPatternPreset } from "./internal/pattern-preset";
@@ -1164,6 +1164,12 @@ export function AreaChart({
       margin,
       focus: "group-x",
       focusRing: false,
+      // D472: read only by the static SVG renderer (`chartRendererFor` above
+      // NATIVE_MOTION_MAX_POINTS) — the same y-domain tween gate the `motion`
+      // callback above carries for the native motion renderer (pre-C5 shape).
+      svgAnimation: yDomainTweenGateActive
+        ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
+        : (false as const),
       // bklit's hover works anywhere over the plot; TanStack defaults to 48px.
       maxFocusDistance: Number.POSITIVE_INFINITY,
       gradients: nativeAreaGradients,
@@ -1494,7 +1500,7 @@ export function AreaChart({
       {definition ? (
         <div style={needsAreaBrushClip ? { clipPath: `url(#${areaBrushClipId})` } : undefined}>
           <RendererChart
-            renderer={chartMotionRenderer<ChartDatum, Date, number>()}
+            renderer={chartRendererFor<ChartDatum, Date, number>(renderData.length)}
             ariaLabel="Area chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             height={heightPx > 0 ? heightPx : undefined}

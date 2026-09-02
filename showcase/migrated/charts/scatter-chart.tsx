@@ -73,7 +73,7 @@ import { buildIndicatorMark } from "./internal/hover-geometry";
 import { buildNativeTooltipExtension } from "./internal/native-tooltip";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { useSanitizedId } from "./internal/use-sanitized-id";
-import { chartMotionRenderer } from "./internal/motion-renderer";
+import { chartRendererFor } from "./internal/motion-renderer";
 import { resolveMotionEasing, type MotionEasing } from "./internal/reveal-easing";
 import {
   DEFAULT_ANIMATION_DURATION_MS,
@@ -1427,15 +1427,15 @@ export function ScatterChart({
   // untouched by B5); (2) arm a deadline timer approximating "the reveal
   // finished," since native motion exposes no per-mark completion callback
   // (confirmed against dist/motion.js/dist/types.d.ts — same absence bar-
-  // chart's B2 report cites). The deadline is `revealDurationMs +
-  // ENTER_TWEEN_MS` (full stagger span + the fixed fade duration), NOT the
-  // legacy `revealDurationMs` alone — the old deadline doubled as a
-  // force-`.cancel()` cutoff for any circle still mid-fade (WAAPI
-  // `animationsRef` cancellation), truncating its animation early; there is
-  // no equivalent way to reach into and interrupt an individual native
-  // motion track from outside; the deadline is a wait-for-actual-completion
-  // bound instead of a truncation, so "ready" now fires once every point has
-  // genuinely finished rather than approximately when most have.
+  // chart's B2 report cites). The deadline is `revealDurationMs`, legacy's
+  // exact contract: bklit fires "ready" from a `setTimeout(animationDuration)`
+  // (use-chart-phase-orchestrator.ts:166-169) regardless of any marker
+  // still mid-fade. C5 had extended it to `revealDurationMs + ENTER_TWEEN_MS`
+  // ("wait for actual completion"), which moved M1b +45% at n=1000 against
+  // the phase-5 baseline (D472); the native fade tail (<= ENTER_TWEEN_MS) now
+  // keeps playing under phase "ready", as legacy's framer markers do. Above
+  // NATIVE_MOTION_MAX_POINTS the static renderer paints dots without the
+  // entrance fade (D472) and the same deadline still gates "ready".
   const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     // B1: the renderer context has no `svg` member under RendererChart —
     // `surface.element` is the mounted `<svg class="ts-chart">` root itself.
@@ -1486,7 +1486,7 @@ export function ScatterChart({
     seenRevealKeyRef.current = { ...revealKey };
     markRevealed(marksGroup);
     setPhase("revealing");
-    const deadlineMs = revealDurationMs + ENTER_TWEEN_MS;
+    const deadlineMs = revealDurationMs;
     revealDeadlineTimerRef.current = setRevealDeadline(deadlineMs, {
       onDeadline: () => {
         // P4.6 (M3a): close the mount reveal window — later onRender calls
@@ -1585,7 +1585,7 @@ export function ScatterChart({
             ariaLabel="Scatter chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             definition={definition}
-            renderer={chartMotionRenderer<ChartDatum, Date, number>()}
+            renderer={chartRendererFor<ChartDatum, Date, number>(renderData.length)}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
             renderTooltipBody={renderTooltipBody}

@@ -22,7 +22,7 @@ import type {
   ChartScale,
   SceneStyle,
 } from "@tanstack/charts";
-import { chartMotionRenderer } from "./internal/motion-renderer";
+import { chartRendererFor } from "./internal/motion-renderer";
 import {
   decimateTimeSeries,
   maxRenderPointsForWidth,
@@ -922,6 +922,12 @@ export function LineChart({
       focus: "group-x" as const,
       // bklit has no native focus ring — its hover dot is the springed TooltipDot.
       focusRing: false,
+      // D472: read only by the static SVG renderer (`chartRendererFor` above
+      // NATIVE_MOTION_MAX_POINTS) — the same y-domain tween gate the `motion`
+      // callback above carries for the native motion renderer (pre-C5 shape).
+      svgAnimation: yDomainTweenGateActive
+        ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
+        : (false as const),
       maxFocusDistance: Number.POSITIVE_INFINITY,
       // C2 (P6): native tooltip extension replaces the imperative box panel
       // (tooltip-chrome.ts's buildBox/applyBoxContent/positionBox). Line/area
@@ -1462,7 +1468,7 @@ export function LineChart({
       {definition ? (
         <div style={needsBrushClip ? { clipPath: `url(#${brushClipId})` } : undefined}>
           <RendererChart
-            renderer={chartMotionRenderer<ChartDatum, Date, number>()}
+            renderer={chartRendererFor<ChartDatum, Date, number>(renderData.length)}
             ariaLabel={ariaLabel}
             ariaDescription={ariaDescription}
             aspectRatio={parseAspectRatio(aspectRatio)}

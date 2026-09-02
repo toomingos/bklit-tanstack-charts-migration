@@ -82,7 +82,7 @@ import type { BarConfig, BarSquaresConfig, BarColumnTrackConfig, ChartDatum, Cha
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { resolveGridGuide } from "./internal/grid";
 import { isRevealed, markRevealed, setRevealDeadline } from "./internal/deferred-reveal";
-import { chartMotionRenderer } from "./internal/motion-renderer";
+import { chartRendererFor } from "./internal/motion-renderer";
 import { resolveMotionEasing } from "./internal/reveal-easing";
 import { bezierEasing } from "./internal/bezier-easing";
 import { useChartMargin, DEFAULT_CHART_MARGIN, useContainerWidth, type ChartMargin } from "./internal";
@@ -1733,7 +1733,7 @@ export function BarChart({
             ariaLabel="Bar chart"
             aspectRatio={parseAspectRatio(aspectRatio)}
             definition={definition}
-            renderer={chartMotionRenderer<ChartDatum, string, number>()}
+            renderer={chartRendererFor<ChartDatum, string, number>(renderData.length)}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
             renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}

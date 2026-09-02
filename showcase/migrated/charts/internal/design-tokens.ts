@@ -36,6 +36,20 @@ export const BOX_OFFSET = 16;
 
 export const ENTRANCE_SPRING = { stiffness: 300, damping: 25 };
 export const DISCRETE_INTERACTION_THRESHOLD = 60;
+// D472 (6.5 gate, @tanstack/charts@0.15.0): the native motion renderer's
+// update-phase reconcile resolves a timing context for EVERY keyed element
+// by scanning `scene.points` linearly (dist/motion.js `elementTimingContext`
+// -> `motionPointForKey` + `scene.points.filter`, no early exit, even when
+// the mark's `motion` is `false`), so one data swap costs O(elements x
+// points). Measured at n=1000 (docs/phase-6/BENCHMARKS.md section 2.2):
+// scatter M3a 28.8 -> 205ms, composed 32.2 -> 189ms; clean at C4 (static
+// renderer), regressed at C5 (renderer switch). Above this datum count a
+// chart renders through the static SVG renderer (`chartRendererFor`,
+// motion-renderer.ts) and the pre-C5 `svgAnimation` gate carries the
+// y-domain tween instead of the motion cascade; native entrance motion is
+// not played there. Version-stamped ruling (D417): re-verify at the next
+// pin bump.
+export const NATIVE_MOTION_MAX_POINTS = 200;
 export const BOX_FALLBACK_WIDTH = 180;
 export const BOX_FALLBACK_HEIGHT = 80;
 export const TICKER_HALF_WIDTH = 50;
