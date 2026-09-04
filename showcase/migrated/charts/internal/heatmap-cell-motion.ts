@@ -56,9 +56,9 @@ const useHeatmapColorScale = ({
     // Scoped, so two chart instances don't collide — HM14/HM7 lesson).
     const rangeEntry = (level: number): string => {
       const style = resolvedLevelStyles[level];
-      if (!style || !isHeatmapLevelPattern(style)) {return style?.color ?? "currentColor";}
+      if (!isHeatmapLevelPattern(style)) {return style.color;}
       const id = heatmapLevelPatternId(level);
-      const scopedPatternId = patternIdPrefix ? `${patternIdPrefix}-${id}` : id;
+      const scopedPatternId = patternIdPrefix === undefined ? id : `${patternIdPrefix}-${id}`;
       return `url(#${scopedPatternId})`;
     };
     return (

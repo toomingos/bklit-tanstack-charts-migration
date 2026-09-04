@@ -38,20 +38,18 @@ const buildColumnCellData = ({
   const cells: CellDatum[] = [];
   for (let rowIdx = 0; rowIdx < bins.length; rowIdx += 1) {
     const bin = bins[rowIdx];
-    if (bin) {
-      const isGhost = hideGhost && displayRange !== undefined && isHeatmapGhostBin(bin, displayRange);
-      cells.push({
-        bin: bin.bin,
-        colKey: String(columnIndex),
-        column: columnIndex,
-        count: bin.count,
-        date: bin.date,
-        isGhost,
-        level: isGhost ? -1 : getHeatmapContributionLevel(bin.count),
-        row: rowIdx,
-        rowKey: dayLabels[rowIdx] ?? `${rowIdx}`,
-      });
-    }
+    const isGhost = hideGhost && displayRange !== undefined && isHeatmapGhostBin(bin, displayRange);
+    cells.push({
+      bin: bin.bin,
+      colKey: String(columnIndex),
+      column: columnIndex,
+      count: bin.count,
+      date: bin.date,
+      isGhost,
+      level: isGhost ? -1 : getHeatmapContributionLevel(bin.count),
+      row: rowIdx,
+      rowKey: dayLabels[rowIdx] ?? `${rowIdx}`,
+    });
   }
   return cells;
 };
@@ -65,9 +63,7 @@ const buildCellData = ({
   const data: CellDatum[] = [];
   for (let colIdx = 0; colIdx < columns.length; colIdx += 1) {
     const col = columns[colIdx];
-    if (col) {
-      data.push(...buildColumnCellData({ bins: col.bins, columnIndex: colIdx, dayLabels, displayRange, hideGhost }));
-    }
+    data.push(...buildColumnCellData({ bins: col.bins, columnIndex: colIdx, dayLabels, displayRange, hideGhost }));
   }
   return data;
 };

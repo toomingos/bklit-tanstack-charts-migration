@@ -28,13 +28,13 @@ const HeatmapPatternDefs = memo(({
       return [];
     }
     const id = heatmapLevelPatternId(level);
-    const scopedId = patternIdPrefix ? `${patternIdPrefix}-${id}` : id;
+    const scopedId = patternIdPrefix !== undefined && patternIdPrefix !== "" ? `${patternIdPrefix}-${id}` : id;
     const node = renderPatternPreset(
       style.pattern,
       `${scopedId}-base`,
       heatmapLevelPatternRenderOptions(style),
     );
-    if (!node) {return [];}
+    if (node === undefined || node === null) {return [];}
     return [
       <Fragment key={scopedId}>
         {node}

@@ -287,11 +287,11 @@ const choroplethTooltipAnchor = (projForMark: GeoProjection) =>
   (
     points: readonly ChartPoint<ChoroplethFeature>[],
   ): { x: number; y: number } | undefined => {
-    const [firstPoint] = points;
-    if (!firstPoint) {return undefined;}
+    const firstPoint = points.at(0);
+    if (firstPoint === undefined) {return undefined;}
     const centroid = geoCentroid(firstPoint.datum);
     const projected =
-      centroid && Number.isFinite(centroid[0]) && Number.isFinite(centroid[1])
+      Number.isFinite(centroid[0]) && Number.isFinite(centroid[1])
         ? projForMark(centroid)
         : undefined;
     return projected && Number.isFinite(projected[0]) && Number.isFinite(projected[1])
@@ -445,8 +445,8 @@ const renderChoroplethTooltipBody = (
 ): ReactNode => {
   const cfg = getTooltipConfig();
   if (!cfg) {return ctx.defaultBody;}
-  const [firstPoint] = ctx.points;
-  if (!firstPoint) {return undefined;}
+  const firstPoint = ctx.points.at(0);
+  if (firstPoint === undefined) {return undefined;}
   return renderFeatureTooltipCard(cfg, firstPoint.datum, firstPoint.datumIndex);
 };
 
@@ -797,10 +797,12 @@ const ChoroplethChartBody = ({
     return (): void =>{  cancelAnimationFrame(raf); };
   }, [animationDuration, revealHasRevealed]);
 
+  // Patterns arrive as conditional JSX, so false and null mean absent just like undefined.
+  const choroplethPatterns = featureConfig?.patterns;
   const chartNode = (
     <>
       {/* Defs live in a zero-size sibling svg; url(#id) paint servers resolve document-wide. */}
-      {featureConfig?.patterns ? (
+      {choroplethPatterns !== undefined && choroplethPatterns !== null && choroplethPatterns !== false ? (
         <svg
           aria-hidden="true"
           focusable="false"
@@ -808,7 +810,7 @@ const ChoroplethChartBody = ({
           height={0}
           style={PATTERN_DEFS_STYLE}
         >
-          <defs>{featureConfig.patterns}</defs>
+          <defs>{choroplethPatterns}</defs>
         </svg>
       ) : undefined}
       {definition ? (

@@ -191,6 +191,20 @@ const resolveEffectiveYDomainTweenBase = (yDomainTween: boolean | number): numbe
   return yDomainTween;
 };
 
+// JSON.stringify returns undefined for functions, symbols, and undefined at runtime.
+// The lib types it as string, so stringifyJson pins the honest type and fallbacks stay conditional.
+const stringifyJson = (params: Readonly<{ value: unknown }>): string | undefined =>
+  JSON.stringify(params.value);
+
+interface StringifyDatumValueParams {
+  readonly fallback: string;
+  readonly value: unknown;
+}
+
+// Tooltip rows stringify untyped datum fields without Object's default "[object Object]" dump.
+const stringifyDatumValue = (params: Readonly<StringifyDatumValueParams>): string =>
+  stringifyJson({ value: params.value }) ?? params.fallback;
+
 // Explicit form of `first || second || fallback` for nullable strings: undefined and
 // "" both fall through (strict-boolean-expressions forbids truthiness tests on strings).
 const firstNonEmptyString = (first: string | undefined, second: string | undefined): string | undefined => {
@@ -799,7 +813,7 @@ export const LineChart = ({
             return {
               color: firstNonEmptyString(line.stroke, findPointColorForSeries(rowsCtx.points, line.dataKey)) ?? "transparent",
               label: line.dataKey,
-              value: isNumber(rowValue) || isString(rowValue) ? rowValue : (JSON.stringify(rowValue ?? 0) ?? "0"),
+              value: isNumber(rowValue) || isString(rowValue) ? rowValue : stringifyDatumValue({ fallback: "0", value: rowValue ?? 0 }),
             };
           }),
         resolveTitle: (datum) => {
@@ -822,7 +836,7 @@ export const LineChart = ({
         if (rawX instanceof Date) {return shortDateFmt.format(rawX);}
         if (isString(rawX)) {return rawX;}
         if (isNumber(rawX)) {return String(rawX);}
-        return JSON.stringify(rawX) ?? "";
+        return stringifyDatumValue({ fallback: "", value: rawX });
       }),
     [renderData, xDataKey],
   );

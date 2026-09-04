@@ -81,7 +81,7 @@ const computeHeatmapEnterFadeDelayMs = (params: Readonly<ComputeHeatmapEnterFade
 const HEATMAP_MAX_ENTER_FADE_SEC = 0.45;
 const HEATMAP_FADE_DURATION_FRACTION = 0.3;
 const resolveHeatmapEnterFadeDurationSec = (enterTransition: Readonly<HeatmapEnterTransition> | undefined, animationDurationMs: number): number => {
-  if (enterTransition !== undefined && enterTransition.duration !== undefined) {return enterTransition.duration;}
+  if (enterTransition?.duration !== undefined) {return enterTransition.duration;}
   return Math.min(HEATMAP_MAX_ENTER_FADE_SEC, (animationDurationMs / MS_PER_SECOND) * HEATMAP_FADE_DURATION_FRACTION);
 }
 

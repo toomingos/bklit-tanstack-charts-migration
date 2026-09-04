@@ -644,8 +644,8 @@ const LiveLineChart = ({
         contextData.length >= 2 ? contextData.at(NOW_POINT_OFFSET_FROM_END) : contextData.at(-1);
       const liveRaw: unknown = nowPoint?.[cfg.dataKey];
       const liveValue = isNumber(liveRaw) ? liveRaw : 0;
-      const liveDotX = nowPoint ? (xScale(xAccessor(nowPoint)) ?? 0) : innerWidth;
-      const liveDotY = yScale(liveValue) ?? 0;
+      const liveDotX = nowPoint ? xScale(xAccessor(nowPoint)) : innerWidth;
+      const liveDotY = yScale(liveValue);
       return { baseStroke, cfg, dotColor, liveDotX, liveDotY, liveValue, momentum, resolvedStroke };
     })
   , [liveLines, contextData, xScale, yScale, xAccessor, innerWidth]);
@@ -712,7 +712,7 @@ const LiveLineChart = ({
 
   const handleFocusChange = useCallback(
     (points: readonly ReadonlyLivePoint[]) => {
-      const [primary] = points;
+      const primary = points.at(0);
       const dim = primary !== undefined;
       for (const el of liveGroupElsRef.current.values()) {
         el.style.opacity = dim ? "0.25" : "1";
@@ -742,8 +742,8 @@ const LiveLineChart = ({
 
   const crosshairGradientId = `bkm-live-crosshair-${uid}`;
   const crosshairGradientDef = useMemo(() => {
-    if (!(tooltipOn && (tooltip?.showCrosshair ?? true))) {return undefined;}
-    const color = isString(tooltip?.indicatorColor) ? tooltip.indicatorColor : "var(--chart-crosshair)";
+    if (tooltip === undefined || !(tooltipOn && (tooltip.showCrosshair ?? true))) {return undefined;}
+    const color = isString(tooltip.indicatorColor) ? tooltip.indicatorColor : "var(--chart-crosshair)";
     return buildCrosshairGradientDef(crosshairGradientId, color);
   }, [tooltipOn, tooltip, crosshairGradientId]);
 
@@ -839,23 +839,23 @@ const LiveLineChart = ({
         }),
       );
     }
-    if (tooltipOn && (tooltip?.showCrosshair ?? true)) {
+    if (tooltip !== undefined && tooltipOn && (tooltip.showCrosshair ?? true)) {
       marks.push(
         buildIndicatorMark({
-          color: isString(tooltip?.indicatorColor) ? tooltip.indicatorColor : undefined,
-          dasharray: tooltip?.indicatorDasharray,
+          color: isString(tooltip.indicatorColor) ? tooltip.indicatorColor : undefined,
+          dasharray: tooltip.indicatorDasharray,
           gradientId: crosshairGradientId,
-          width: tooltip?.indicatorWidth,
+          width: tooltip.indicatorWidth,
         }),
       );
     }
-    if (tooltipOn && (tooltip?.showDots ?? true)) {
+    if (tooltip !== undefined && tooltipOn && (tooltip.showDots ?? true)) {
       for (const visual of lineVisuals) {
         marks.push(
           buildHoverDotMark(
             {
-              fill: resolveHoverDotFill(visual.dotColor, tooltip?.dotColor),
-              options: { size: tooltip?.dotSize, strokeWidth: tooltip?.dotStrokeWidth },
+              fill: resolveHoverDotFill(visual.dotColor, tooltip.dotColor),
+              options: { size: tooltip.dotSize, strokeWidth: tooltip.dotStrokeWidth },
               renderData: contextData,
               series: { color: visual.resolvedStroke, dataKey: visual.cfg.dataKey },
               xDataKey: "date",

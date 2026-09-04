@@ -212,8 +212,8 @@ const refreshSankeyGradients = (params: Readonly<{ shouldUseGradient: boolean; l
       index,
       sourceColor: params.nodeColorFn(srcNode, linkRow.sourceIndex),
       targetColor: params.nodeColorFn(tgtNode, linkRow.targetIndex),
-      x1: srcNode?.x1 ?? 0,
-      x2: tgtNode?.x0 ?? SANKEY_GRADIENT_FALLBACK_X2,
+      x1: srcNode.x1 ?? 0,
+      x2: tgtNode.x0 ?? SANKEY_GRADIENT_FALLBACK_X2,
     };
   });
 };

@@ -339,7 +339,7 @@ interface RingExpandInput {
 }
 
 const expandRingTrack = (params: Readonly<RingExpandInput>): void => {
-  const ringData = params.currData[params.index];
+  const ringData = params.currData.at(params.index);
   if (!ringData) {return;}
   const liveMarksGroup = params.container.querySelector<SVGGElement>(MARKS_GROUP_SELECTOR);
   const trackGroup = liveMarksGroup ? findRingTrackGroup(params.container, liveMarksGroup, params.index) : queryRingTrackGroup(params.container, params.index);

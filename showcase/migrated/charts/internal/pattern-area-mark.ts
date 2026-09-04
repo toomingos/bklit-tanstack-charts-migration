@@ -1,5 +1,5 @@
 import { createMark } from "@tanstack/charts";
-import type { ChartCurve, ChartMark, SceneNode } from "@tanstack/charts";
+import type { ChartCurve, ChartMark, ResolvedScale, SceneNode } from "@tanstack/charts";
 import type { ChartDatum } from "./types";
 
 export interface PatternAreaMarkOptions {
@@ -20,6 +20,11 @@ interface PatternAreaSegmentsParams {
   readonly fill: string;
   readonly curve: ChartCurve;
 }
+
+// Scales is typed as a total Record, but scale ids resolve at runtime.
+// A misconfigured chart can omit one, so the widened record keeps this check honest.
+const hasScale = (scales: Readonly<Record<string, ResolvedScale | undefined>>, id: string): boolean =>
+  scales[id] !== undefined;
 
 // Contiguous index run of finite points; gaps in the series (non-finite y)
 // Split the area into separately keyed segments.
@@ -84,7 +89,7 @@ export const patternAreaMark = (data: readonly Readonly<ChartDatum>[], options: 
       render: ({ scales }) => {
         const xScale = scales.x;
         const yScale = scales.y;
-        const children = xScale && yScale
+        const children = hasScale(scales, "x") && hasScale(scales, "y")
           ? buildAreaChildren({ curve: options.curve, data, fill: options.fill, id: options.id, xScale, xValues, yScale, yValues })
           : [];
         return {

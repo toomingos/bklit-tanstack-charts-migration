@@ -70,13 +70,13 @@ const buildSeparatorLabelPortal = ({
   if (!showLabels || labelGroups.length === 0 || !htmlLayerEl) {return undefined;}
   return createPortal(
     <div
-      className={className ? `${HEATMAP_AXIS_LAYER_CLASS} ${className}` : HEATMAP_AXIS_LAYER_CLASS}
+      className={className !== undefined && className !== "" ? `${HEATMAP_AXIS_LAYER_CLASS} ${className}` : HEATMAP_AXIS_LAYER_CLASS}
       style={{ height: marginTop, left: marginLeft, pointerEvents: "none", position: "absolute", top: labelTop, width: innerWidth }}
     >
       {labelGroups.map((group) => (
         <span
           key={group.startColumnIndex}
-          className={labelClassName ? `ts-bkm-heatmap-separator-label ${labelClassName}` : "ts-bkm-heatmap-separator-label"}
+          className={labelClassName !== undefined && labelClassName !== "" ? `ts-bkm-heatmap-separator-label ${labelClassName}` : "ts-bkm-heatmap-separator-label"}
           style={{ left: xScale(group.startColumnIndex), position: "absolute" }}
         >
           {labelFormat(group.quarter, group.startDate)}

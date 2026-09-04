@@ -127,8 +127,8 @@ const findHeatmapCellDatum = ({
   if (!datum || datum.isGhost) {
     return undefined;
   }
-  const bin = ctx.data[column]?.bins[row];
-  if (!bin) {
+  const bin = ctx.data.at(column)?.bins.at(row);
+  if (bin === undefined) {
     return undefined;
   }
   return { bin, column, datum, row };

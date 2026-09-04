@@ -1,6 +1,6 @@
 // Skips per-datum ChartPoints (heap +19% at n=1000); keeps the `.ts-chart__area[data-ts-key]` DOM contract.
 import { createMark } from "@tanstack/charts";
-import type { ChartCurve, ChartMark, SceneNode } from "@tanstack/charts";
+import type { ChartCurve, ChartMark, ResolvedScale, SceneNode } from "@tanstack/charts";
 import type { ChartDatum } from "./types";
 
 export interface AreaFillOptions {
@@ -40,6 +40,11 @@ interface AreaRunsParams {
   readonly yScale: AreaNumberScale;
   readonly yValues: readonly number[];
 }
+
+// Scales is typed as a total Record, but scale ids resolve at runtime.
+// A misconfigured chart can omit one, so the widened record keeps this check honest.
+const hasScale = (scales: Readonly<Record<string, ResolvedScale | undefined>>, id: string): boolean =>
+  scales[id] !== undefined;
 
 // Pixel runs of consecutive finite points; non-finite values split runs.
 // The sentinel iteration flushes the trailing run.
@@ -97,7 +102,7 @@ export const areaFill = (data: readonly Readonly<ChartDatum>[], options: Readonl
         const xScale = scales.x;
         const yScale = scales.y;
         const children: SceneNode[] = [];
-        if (xScale && yScale) {
+        if (hasScale(scales, "x") && hasScale(scales, "y")) {
           children.push(...buildAreaChildren({
             baselineY: yScale.map(0),
             curve: options.curve,

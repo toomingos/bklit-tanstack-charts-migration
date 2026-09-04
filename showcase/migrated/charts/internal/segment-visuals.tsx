@@ -143,20 +143,18 @@ const renderSegmentComponent = (params: Readonly<SegmentRenderParams>): ReactEle
   if (component.type === "segmentBackground") {
     return renderSegmentBackground(params);
   }
-  if (component.type === "segmentLineFrom" || component.type === "segmentLineTo") {
-    if (!vis) {
-      return undefined;
-    }
-    const isFrom = component.type === "segmentLineFrom";
-    return renderSegmentEdgeLine({
-      gradientId: `bkm-seg-${isFrom ? "from" : "to"}-${component.key}`,
-      innerHeight: params.innerHeight,
-      lineKey: component.key,
-      style: resolveSegmentLineStyle(component.props),
-      x: isFrom ? selection.startX : selection.endX,
-    });
+  // Only segmentLineFrom/segmentLineTo reach here because extractSegmentComponents pushes no other type.
+  if (!vis) {
+    return undefined;
   }
-  return undefined;
+  const isFrom = component.type === "segmentLineFrom";
+  return renderSegmentEdgeLine({
+    gradientId: `bkm-seg-${isFrom ? "from" : "to"}-${component.key}`,
+    innerHeight: params.innerHeight,
+    lineKey: component.key,
+    style: resolveSegmentLineStyle(component.props),
+    x: isFrom ? selection.startX : selection.endX,
+  });
 };
 
 const SegmentOverlay = ({

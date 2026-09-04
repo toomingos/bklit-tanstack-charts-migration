@@ -28,7 +28,7 @@ const stripInteraction = (node: SceneNode): SceneNode => {
   if (node.kind === "group") {
     return { ...node, children: node.children.map(stripInteraction) };
   }
-  if ("interaction" in node && node.interaction) {
+  if ("interaction" in node) {
     const { interaction: _interaction, ...rest } = node;
     return _interaction ? rest : node;
   }

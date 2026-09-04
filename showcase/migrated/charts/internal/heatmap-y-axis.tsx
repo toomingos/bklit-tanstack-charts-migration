@@ -48,7 +48,7 @@ const HeatmapYAxis = memo(({
 
   return createPortal(
     <div
-      className={className ? `${HEATMAP_AXIS_LAYER_CLASS} ${className}` : HEATMAP_AXIS_LAYER_CLASS}
+      className={className !== undefined && className !== "" ? `${HEATMAP_AXIS_LAYER_CLASS} ${className}` : HEATMAP_AXIS_LAYER_CLASS}
       style={layerStyle}
     >
       {dayLabels.map((label, row) =>

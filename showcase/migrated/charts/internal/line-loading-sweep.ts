@@ -128,10 +128,9 @@ const startPulseMode = ({ half, isCancelled, mode, notifyCycleComplete, readProg
     startLoopPulse({ isCancelled, notifyCycleComplete, run });
   } else if (mode === "enter") {
     startEnterPulse({ half, isCancelled, notifyCycleComplete, run });
-  } else if (mode === "exit") {
-    startExitPulse({ half, isCancelled, notifyCycleComplete, readProgress, run });
   } else {
-    // All pulse modes are handled above — nothing left to run.
+    // Only the exit mode remains — every LineLoadingPulseMode is handled above.
+    startExitPulse({ half, isCancelled, notifyCycleComplete, readProgress, run });
   }
 };
 

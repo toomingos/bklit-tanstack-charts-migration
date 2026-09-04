@@ -50,7 +50,7 @@ const toLaidOutNode = (row: Readonly<NodeRow>): LaidOutNode => (
   }
 );
 
-const sankeyDisplayValue = (category: string | undefined, nodeIndex: number, links: readonly Readonly<LinkRow>[]): number => {
+const sankeyDisplayValue = (category: string | undefined, nodeIndex: number, links: readonly { readonly sourceIndex: number; readonly targetIndex: number; readonly value?: number }[]): number => {
   let total = 0;
   for (const linkRow of links) {
     const isSourceMatch = category === "source" && linkRow.sourceIndex === nodeIndex;
@@ -113,7 +113,7 @@ interface SankeyNodeFrame {
 }
 
 interface SankeyNodeFrameParams {
-  readonly node: Readonly<LaidOutNode>;
+  readonly node: Omit<Readonly<LaidOutNode>, "name"> & { readonly name?: string };
   readonly index: number;
   readonly chartX: number;
   readonly chartWidth: number;
@@ -275,8 +275,8 @@ const buildSankeyLabelNodes = (params: Readonly<SankeyLabelNodesParams>): SceneN
   const labelNodes: SceneNode[] = [];
   if (!params.showLabels) {return labelNodes;}
   for (let i = 0; i < params.laidOutNodes.length; i += 1) {
-    const node = params.laidOutNodes[i];
-    if (node) {
+    const node = params.laidOutNodes.at(i);
+    if (node !== undefined) {
       pushSankeyNodeLabels({
         anyHovered: params.anyHovered,
         chartWidth: params.chartWidth,

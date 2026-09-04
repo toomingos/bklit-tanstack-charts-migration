@@ -600,9 +600,9 @@ const SunburstChartInner = ({
 
   const getFill = useCallback(
     (arcIndex: number, fillOverride?: string, colorOverride?: string) => {
-      if (fillOverride) {return fillOverride;}
+      if (fillOverride !== undefined && fillOverride !== "") {return fillOverride;}
+      if (!Number.isInteger(arcIndex) || arcIndex < 0 || arcIndex >= arcs.length) {return defaultSunburstColors[0];}
       const a = arcs[arcIndex];
-                if (!a) {return defaultSunburstColors[0];}
       return colorOverride ?? a.fill ?? a.color ?? getColor(a.categoryIndex);
     },
     [arcs, getColor],
@@ -949,8 +949,9 @@ const SunburstChartInner = ({
 
   const handleHitClick = useCallback(
     (arcIndex: number) => {
+      if (!Number.isInteger(arcIndex) || arcIndex < 0 || arcIndex >= arcs.length) {return;}
       const a = arcs[arcIndex];
-      if (a?.hasChildren) {zoomTo(a.id);}
+      if (a.hasChildren) {zoomTo(a.id);}
     },
     [arcs, zoomTo],
   );
@@ -1048,7 +1049,7 @@ const SunburstChartInner = ({
         : geometryFor(a, focus, maxDepth, radius);
       if (base) {
         const pathData = arcPath(base, 1, 1);
-        if (pathData) {
+        if (pathData !== null && pathData !== "") {
           items.push({ arcIndex: a.arcIndex, hasChildren: a.hasChildren, pathData });
         }
       }
@@ -1112,7 +1113,7 @@ const SunburstChartInner = ({
     const container = containerRef.current;
     if (!container) {return;}
     const rerunReveal = (): void => {
-      runLabelsRevealRef.current?.();
+      runLabelsRevealRef.current();
     };
     resetLabelsOverlayForReplay(container, rerunReveal);
   }, [playKey]);
@@ -1131,7 +1132,7 @@ const SunburstChartInner = ({
   // Hoisted so the zoom-to-parent closure below captures a narrowed string.
   const zoomParentId = focus.parentId;
   const handleZoomToParent = useCallback(() => {
-    if (zoomParentId !== undefined && zoomParentId !== null) {zoomTo(zoomParentId);}
+    if (zoomParentId !== null && zoomParentId !== "") {zoomTo(zoomParentId);}
   }, [zoomParentId, zoomTo]);
   const { boxStyle, outerStyle } = useMemo(() => ({
     boxStyle: { aspectRatio: "1 / 1", maxWidth: size, position: "relative" } as const,
@@ -1167,7 +1168,7 @@ const SunburstChartInner = ({
           visible={centerCount > 0 && liveCenterR > 1}
           liveCenterR={liveCenterR}
           centerColor={centerColor}
-          onZoomToParent={zoomParentId ? handleZoomToParent : undefined}
+          onZoomToParent={zoomParentId !== null && zoomParentId !== "" ? handleZoomToParent : undefined}
         />
         {labelsCount > 0 && (
           <SunburstLabelsOverlay items={labelItems} fullRadius={fullRadius} size={size} />

@@ -24,7 +24,7 @@ interface RegressionSample {
 }
 
 const slopeFromRegressionSamples = (samples: readonly RegressionSample[]): number => {
-  const [first] = samples;
+  const first = samples.at(0);
   const last = samples.at(-1);
   if (first === undefined || last === undefined) {return 0;}
   const dt = Number(last.x) - Number(first.x);

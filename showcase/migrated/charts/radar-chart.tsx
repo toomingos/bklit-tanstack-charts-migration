@@ -931,7 +931,7 @@ const RadarChart = ({
         // Hover/remove changes stay instant: legacy never transitioned those, so update/exit pin to 0.
         return { transition: { duration: 0, type: "tween" as const } };
       }
-      return resolveRadarSeriesEnter(ctx.seriesIndex ?? 0, { enterDurationMs, enterTransition, levels, staggerScale });
+      return resolveRadarSeriesEnter(ctx.seriesIndex, { enterDurationMs, enterTransition, levels, staggerScale });
     },
     [animate, enterDurationMs, enterTransition, levels, staggerScale],
   );
@@ -1072,7 +1072,7 @@ const RadarChart = ({
     resetRadarReplay(motionReplayKey, { gridRevealedRef, prevMotionReplayKeyRef, revealAnimsRef });
     const container = containerRef.current;
     if (!container) {return undefined;}
-    return scheduleRadarReveal(container, (): boolean => animate && container.querySelector(MARKS_GROUP_SELECTOR) !== null && !hasLiveRevealAnims(container), handleRender);
+    return scheduleRadarReveal(container, (): boolean => container.querySelector(MARKS_GROUP_SELECTOR) !== null && !hasLiveRevealAnims(container), handleRender);
   }, [animate, motionReplayKey, handleRender]);
 
   const containerStyle = useMemo((): CSSProperties => ({

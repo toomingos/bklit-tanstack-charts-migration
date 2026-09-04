@@ -152,12 +152,12 @@ const isSankeyLinkHit = (point: { readonly x: number; readonly y: number }, link
 // Nodes paint atop links, so nodes win the hit test.
 const findHoveredSankeyTarget = (point: { readonly x: number; readonly y: number }, nodes: readonly SankeyNodeHitBox[], links: readonly SankeyLinkHitBox[]): SankeyHitTarget | null => {
   for (let i = 0; i < nodes.length; i += 1) {
-    const nodeBox = nodes[i];
-    if (nodeBox && isSankeyNodeHit(point, nodeBox)) {return { index: i, type: "node" };}
+    const nodeBox = nodes.at(i);
+    if (nodeBox !== undefined && isSankeyNodeHit(point, nodeBox)) {return { index: i, type: "node" };}
   }
   for (let i = links.length - 1; i >= 0; i -= 1) {
-    const linkBox = links[i];
-    if (linkBox && isSankeyLinkHit(point, linkBox)) {return { index: i, type: "link" };}
+    const linkBox = links.at(i);
+    if (linkBox !== undefined && isSankeyLinkHit(point, linkBox)) {return { index: i, type: "link" };}
   }
   return null;
 }

@@ -54,7 +54,7 @@ const HeatmapXAxis = memo(({ className }: Readonly<HeatmapXAxisProps>): ReactEle
 
   return createPortal(
     <div
-      className={className ? `${HEATMAP_AXIS_LAYER_CLASS} ${className}` : HEATMAP_AXIS_LAYER_CLASS}
+      className={className !== undefined && className !== "" ? `${HEATMAP_AXIS_LAYER_CLASS} ${className}` : HEATMAP_AXIS_LAYER_CLASS}
       style={layerStyle}
     >
       {labels.map((label: Readonly<{ columnIndex: number; key: string; text: string }>, index) => (

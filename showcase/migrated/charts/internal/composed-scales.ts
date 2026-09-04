@@ -54,6 +54,11 @@ interface CollectProjectionGradientsParams {
   readonly yScale: (value: number) => number;
 }
 
+// The engine always provides resolve-context tickCount, but the chart-level fallback stays.
+// Nullable params keep the coalescing guard genuinely conditional (candlestick-chart parity).
+const coalesceTickCount = (primary: number | undefined, secondary: number): number =>
+  primary ?? secondary;
+
 const buildComposedXScale = (ctx: Readonly<ComposedScalesContext>): ChartScale => ({
   id: "x",
   resolve(context) {
@@ -72,7 +77,7 @@ const buildComposedXScale = (ctx: Readonly<ComposedScalesContext>): ChartScale =
           tickMode: ctx.xAxis.tickMode,
           xDataKey: ctx.xDataKey,
         })
-      : scale.ticks(context.tickCount ?? ctx.tickCountFallback).map((value: Readonly<Date>) => ({ label: value.toISOString(), value }));
+      : scale.ticks(coalesceTickCount(context.tickCount, ctx.tickCountFallback)).map((value: Readonly<Date>) => ({ label: value.toISOString(), value }));
     return {
       bandwidth: 0,
       domain: scale.domain(),
@@ -105,7 +110,7 @@ const buildComposedYScale = (ctx: Readonly<ComposedScalesContext>): ChartScale =
     const [rangeStart, rangeEnd] = context.range;
     const scale = scaleLinear().domain(ctx.yDomain).range([rangeStart, rangeEnd]);
     ctx.yScaleRef.current = scale;
-    const tickValues = scale.ticks(context.tickCount ?? resolveGridGuide(ctx.grid).ticks);
+    const tickValues = scale.ticks(coalesceTickCount(context.tickCount, resolveGridGuide(ctx.grid).ticks));
     return {
       bandwidth: 0,
       domain: scale.domain(),

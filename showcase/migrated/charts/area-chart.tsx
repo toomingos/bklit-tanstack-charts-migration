@@ -292,13 +292,23 @@ const isAnimationFrameScheduler = <Value,>(value: Value): value is Value & typeo
 const firstNonEmptyString = (values: readonly (string | undefined)[]): string | undefined =>
   values.find((value) => (value?.length ?? 0) > 0);
 
+// D3 continuous scales answer null/NaN input with their unknown value, which stays undefined
+// Because this file never sets .unknown(). The D3 types say number, so this parameter carries
+// The widening and the zero fallback stays load-bearing.
+const withZeroFallback = (mapped: number | undefined): number => mapped ?? 0;
+
+// At runtime JSON.stringify answers functions/symbols with undefined, but the lib types the
+// Result as string. This parameter carries that widening, so the absent fallback below
+// Stays load-bearing.
+const withAbsentFallback = (text: string | undefined, absent: string): string => text ?? absent;
+
 // Stringifies an untyped datum field without Object's default "[object Object]" dump.
 const stringifyDatumField = <Value,>(value: Value, absent: string): string => {
   if (isString(value)) {return value;}
   if (isNumber(value)) {return String(value);}
   if (value instanceof Date) {return String(value);}
   if (value === null || value === undefined) {return absent;}
-  return JSON.stringify(value) ?? absent;
+  return withAbsentFallback(JSON.stringify(value), absent);
 };
 
 // Focus dates arrive as Date instances or raw timestamps; anything else reads as absent.
@@ -1115,7 +1125,7 @@ const AreaChart = ({
       marginLeft: margin.left,
       marginTop: margin.top,
       xScale: (value: Date): number => timeToPixelX(value, timeExtentRaw.minTime, timeExtent.maxTime, innerW),
-      yScale: (value: number): number => yScale(value) ?? 0,
+      yScale: (value: number): number => withZeroFallback(yScale(value)),
     });
   }, [projectionConfigs, projectionLines, width, margin, heightPx, yDomainFinal, timeExtent, timeExtentRaw, projectionGradientBaseId, isLoading]);
 
@@ -1308,7 +1318,7 @@ const AreaChart = ({
             translateY: margin.top,
             xScale: xScaleWithProjection,
             yAxisId: cfg.yAxisId,
-            yScale: (value: number) => yScale(value) ?? 0,
+            yScale: (value: number): number => withZeroFallback(yScale(value)),
           }) : undefined;
           if (mark) {marks.push(mark);}
         }
@@ -1326,7 +1336,7 @@ const AreaChart = ({
             map: (value) => {
               const date = toDate(value);
               if (date === null) {return Number.NaN;}
-              return base(date) ?? Number.NaN;
+              return base(date);
             },
             ticks: [],
             type: "time" as const,
@@ -1336,7 +1346,7 @@ const AreaChart = ({
         const tickList = xAxis
           ? buildXAxisTickValues({
               data: xDomain ? visibleData : renderData,
-              domainMaxTime: timeExtent?.maxTime,
+              domainMaxTime: timeExtent.maxTime,
               formatValue: xAxis.formatValue,
               numTicks: xAxis.numTicks ?? DEFAULT_TICK_COUNT,
               rangeEnd: r1,
@@ -1345,7 +1355,7 @@ const AreaChart = ({
               xDataKey,
               xDomain,
             })
-          : base.ticks(context.tickCount ?? DEFAULT_TICK_COUNT).map((value: Date) => ({ label: value.toISOString(), value }));
+          : base.ticks(context.tickCount).map((value: Date) => ({ label: value.toISOString(), value }));
         return {
           bandwidth: 0,
           domain: base.domain(),
@@ -1353,11 +1363,11 @@ const AreaChart = ({
           map: (value) => {
             const date = toDate(value);
             if (date === null) {return Number.NaN;}
-            return base(date) ?? Number.NaN;
+            return base(date);
           },
           ticks: tickList.map((tick) => ({
             label: tick.label,
-            position: base(tick.value) ?? Number.NaN,
+            position: base(tick.value),
             value: tick.value,
           })),
           type: "time" as const,

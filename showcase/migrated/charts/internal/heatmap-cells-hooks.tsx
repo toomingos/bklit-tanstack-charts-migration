@@ -138,9 +138,9 @@ const useHeatmapCellsTooltipBody = ({
   tooltipPanelStyle,
 }: Readonly<UseHeatmapCellsTooltipBodyParams>): HeatmapTooltipBodyFn => {
   const renderTooltipBody = useCallback((bodyCtx: Readonly<{ points: readonly { readonly datum: Readonly<CellDatum> }[] }>) => {
-    const [point] = bodyCtx.points;
+    const point = bodyCtx.points.at(0);
     const cfg = tooltipConfig;
-    if (!point || !cfg) {return undefined;}
+    if (point === undefined || !cfg) {return undefined;}
     const d = point.datum as CellDatum;
     return (
       <div
