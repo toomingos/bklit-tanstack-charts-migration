@@ -567,7 +567,13 @@ const collectMarkerRevealAnimations = (params: Readonly<SeriesMarkerRevealParams
 };
 
 const cancelPendingMarkerReveal = (animationsRef: { current: Animation[] }, cancelRef: { current: (() => void) | null }): void => {
-  for (const anim of animationsRef.current) { try { anim.cancel(); } catch { /* Animation already settled — nothing to cancel. */ } }
+  for (const anim of animationsRef.current) {
+    try {
+      anim.cancel();
+    } catch {
+      // Animation already settled — nothing to cancel.
+    }
+  }
   animationsRef.current = [];
   cancelRef.current?.();
 };
@@ -1220,7 +1226,13 @@ export const LineChart = ({
     });
   }, [chartPhase, animationDuration, prefersReducedMotion]);
   useEffect((): (() => void) => () => {
-    for (const pendingAnim of markerRevealAnimsRef.current) { try { pendingAnim.cancel(); } catch { /* Animation already settled — nothing to cancel. */ } }
+    for (const pendingAnim of markerRevealAnimsRef.current) {
+      try {
+        pendingAnim.cancel();
+      } catch {
+        // Animation already settled — nothing to cancel.
+      }
+    }
     markerRevealAnimsRef.current = [];
     markerRevealCancelRef.current?.();
   }, []);

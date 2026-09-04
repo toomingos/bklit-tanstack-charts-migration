@@ -62,8 +62,8 @@ const useTerminalMarkerRefs = (): TerminalMarkerRefs => {
 }
 
 // The maps and elements below are deliberately mutated in place: the WAAPI
-// show/hide cycle writes element styles and the animation registry directly,
-// exactly as the pre-split implementation did. Copies would desync the cycle.
+// Cycle writes element styles and the animation registry directly on show/hide,
+// Exactly as the pre-split implementation did. Copies would desync the cycle.
 const cancelRunningMarkerAnim = (runningAnims: Map<string, Animation>, key: string): void => {
   const existing = runningAnims.get(key);
   if (!existing) { return; }

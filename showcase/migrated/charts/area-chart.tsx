@@ -1032,7 +1032,6 @@ const AreaChart = ({
       id: "x",
       resolve(context: Readonly<ChartScaleResolveContext>) {
         const [r0, r1] = context.range;
-        const te = timeExtent;
         if (!te) {
           const base = scaleUtc().domain([0, 0]).range([r0, r1]);
           return {
@@ -1277,7 +1276,14 @@ const AreaChart = ({
     const innerW = Math.max(0, width - margin.left - margin.right);
     // Marker stagger spans the clip reveal's duration (bklit series-markers.tsx:102).
     const durationSec = revealDurationMs / MS_PER_SECOND;
-    for (const anim of areaMarkerRevealAnimsRef.current) { try { anim.cancel(); } catch { /* Settled animations reject on cancel; the list is rebuilt below. */ } }
+    // Settled animations reject on cancel; the list is rebuilt below.
+    for (const anim of areaMarkerRevealAnimsRef.current) {
+      try {
+        anim.cancel();
+      } catch {
+        // Cancel rejects for settled animations; ignoring it is intentional.
+      }
+    }
     areaMarkerRevealAnimsRef.current = [];
     areaMarkerRevealCancelRef.current?.();
     const doReveal = (): void => {
@@ -1336,7 +1342,14 @@ const AreaChart = ({
     });
   }, [chartPhase, animationDuration, prefersReducedMotion]);
   useEffect((): () => void => (): void => {
-    for (const anim of areaMarkerRevealAnimsRef.current) { try { anim.cancel(); } catch { /* Settled animations reject on cancel; unmount discards them. */ } }
+    // Settled animations reject on cancel; unmount discards them.
+    for (const anim of areaMarkerRevealAnimsRef.current) {
+      try {
+        anim.cancel();
+      } catch {
+        // Cancel rejects for settled animations; ignoring it is intentional.
+      }
+    }
     areaMarkerRevealCancelRef.current?.();
   }, []);
 

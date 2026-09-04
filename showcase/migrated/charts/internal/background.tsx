@@ -179,7 +179,7 @@ const Background = ({
   width,
   height,
   isLoaded = true,
-}: Readonly<BackgroundProps>): React.ReactElement | null => {
+}: Readonly<BackgroundProps>): React.ReactElement | undefined => {
   const uniqueId = useSanitizedId();
   const patternId = `chart-background-${uniqueId}`;
   const [hStops, vStops] = useFadeMaskStops(fadeHorizontalLength, fadeVerticalLength);
@@ -189,7 +189,7 @@ const Background = ({
     presetOptions: { color, complement, dotFill, fill, radius, scale, strokeWidth, tileBackground },
     showFill, width,
   });
-  if (patternNode === null || patternNode === undefined) {return null;}
+  if (patternNode === null || patternNode === undefined) {return undefined;}
 
   const mask = resolveBackgroundMask({ fadeHorizontal, fadeVertical, uniqueId });
 

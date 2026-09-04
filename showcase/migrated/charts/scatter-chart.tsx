@@ -1037,7 +1037,7 @@ const ScatterChart = ({
   React.useLayoutEffect((): (() => void) | undefined => {
     const el = overlayHostRef.current;
     // The host only mounts once the chart has a definition (width > 0), so the
-    // width flag doubles as the re-attach trigger when the host appears late.
+    // Width flag doubles as the re-attach trigger when the host appears late.
     if (!el || !tooltipEnabled || !hasDefinition) {return undefined;}
     const chrome = attachScatterPillChrome({
       getState: () => pillChromeStateRef.current,

@@ -30,10 +30,10 @@ interface WickBodyTargets {
 }
 
 const resolveWickBodyTargets = (
-  bodyRow: CandleBodyFields | null,
+  bodyRow: CandleBodyFields | undefined,
   scales: MarkRenderContext["scales"],
 ): WickBodyTargets => {
-  if (bodyRow === null) {return { targetHeight: undefined, targetY: undefined };}
+  if (bodyRow === undefined) {return { targetHeight: undefined, targetY: undefined };}
   const openY = scales.y.map(bodyRow.open);
   const closeY = scales.y.map(bodyRow.close);
   return { targetHeight: Math.abs(closeY - openY) || 1, targetY: Math.min(openY, closeY) };
@@ -51,11 +51,11 @@ interface WickPixels {
 }
 
 const resolveWickPixels = (
-  highRow: CandleWickHighFields | null,
-  bodyRow: CandleBodyFields | null,
+  highRow: CandleWickHighFields | undefined,
+  bodyRow: CandleBodyFields | undefined,
   scales: MarkRenderContext["scales"],
 ): WickPixels | undefined => {
-  if (highRow === null) {return undefined;}
+  if (highRow === undefined) {return undefined;}
   const [cx, yLow, yHigh] = [scales.x.map(highRow.date), scales.y.map(highRow.low), scales.y.map(highRow.high)];
   if (!allFinite([cx, yLow, yHigh])) {return undefined;}
   const bodyTargets = resolveWickBodyTargets(bodyRow, scales);
@@ -126,7 +126,7 @@ const collectWickSegmentNodes = (options: Readonly<WickSegmentsOptions>): SceneN
 };
 
 interface WickDatumOptions {
-  readonly bodyRow: CandleBodyFields | null;
+  readonly bodyRow: CandleBodyFields | undefined;
   readonly datum: Readonly<ChartDatum>;
   readonly index: number;
   readonly legendDimOpacity: (isPositive: boolean) => number | undefined;
@@ -144,7 +144,7 @@ interface WickDatumScene {
 
 const buildWickDatumScene = (options: Readonly<WickDatumOptions>): WickDatumScene => {
   const { bodyRow, datum, index, legendDimOpacity, negativePattern, pixels, positivePattern, showTargetGeometry, solidFillFor } = options;
-  const isPositive = bodyRow !== null && bodyRow.close >= bodyRow.open;
+  const isPositive = bodyRow !== undefined && bodyRow.close >= bodyRow.open;
   const candlePattern = isPositive ? positivePattern : negativePattern;
   const wickFill = solidFillFor(isPositive, Boolean(candlePattern.href));
   const key = `wicks:${index}`;

@@ -43,7 +43,7 @@ const BrushChrome = ({
 }: Readonly<BrushChromeProps>): ReactNode => {
   const [mounted, setMounted] = useState(false);
   useEffect(() =>{  setMounted(true); }, []);
-  if (innerWidth <= 0 || innerHeight <= 0) {return null;}
+  if (innerWidth <= 0 || innerHeight <= 0) {return undefined;}
   const clampedX0 = Math.max(0, Math.min(innerWidth, x0));
   const clampedX1 = Math.max(0, Math.min(innerWidth, x1));
   return (

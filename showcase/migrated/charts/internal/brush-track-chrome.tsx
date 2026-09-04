@@ -32,9 +32,9 @@ const BrushTrackChrome = ({
   const clampedBlur = Math.min(BRUSH_BLUR_MAX_PX, Math.max(0, blurPx));
   const { leftMask, rightMask } = buildTrackEdgeMasks(fadeOuterEdges);
 
-  if (!(mounted && container)) {return null;}
+  if (!(mounted && container)) {return undefined;}
   const { leftWidth, rightWidth } = resolveTrackWidths(x0, x1, innerWidth);
-  if (leftWidth <= 0 && rightWidth <= 0) {return null;}
+  if (leftWidth <= 0 && rightWidth <= 0) {return undefined;}
 
   return createPortal(
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1]">

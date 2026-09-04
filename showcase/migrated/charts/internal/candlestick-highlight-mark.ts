@@ -1,5 +1,5 @@
 // Candlestick hover-highlight mark: wick/body geometry mirrored exactly with no dim
-// states; it snaps, never springs. Keyed by row index.
+// States; it snaps, never springs. Keyed by row index.
 import type {
   ChartMark,
   ChartPoint,
@@ -157,7 +157,7 @@ interface HighlightDatumOptions {
   readonly insideStrokeW: number;
   readonly negativePattern: CandlePattern;
   readonly positivePattern: CandlePattern;
-  readonly row: CandleAllFields | null;
+  readonly row: CandleAllFields | undefined;
   readonly scales: MarkRenderContext["scales"];
   readonly solidFillFor: (isPositive: boolean, hasOwnPattern: boolean) => string;
 }
@@ -169,7 +169,7 @@ interface HighlightEntry {
 
 const buildHighlightEntry = (options: Readonly<HighlightDatumOptions>): HighlightEntry | undefined => {
   const { bodyWidthPx, datum, index, insideStrokeW, negativePattern, positivePattern, row, scales, solidFillFor } = options;
-  if (row === null) {return undefined;}
+  if (row === undefined) {return undefined;}
   const pixels = mapHighlightPixels({ bodyWidthPx, row, scales });
   if (pixels === undefined) {return undefined;}
   const framing = resolveHighlightFraming({ index, negativePattern, positivePattern, row, solidFillFor });

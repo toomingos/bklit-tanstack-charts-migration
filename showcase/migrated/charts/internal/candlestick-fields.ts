@@ -14,7 +14,7 @@ const CANDLE_CELL_CLASS_NAME = "chart-candle-cell";
 const HOVER_HIGHLIGHT_ID = "hover-highlight";
 const HOVER_DOT_ID = "hover-dot";
 
-type CandlePattern = Readonly<{ href: string; preset: PatternPresetId | null }>;
+type CandlePattern = Readonly<{ href: string; preset: PatternPresetId | undefined }>;
 
 const isNumber = <T>(value: T): value is T & number => typeof value === "number";
 
@@ -38,13 +38,13 @@ interface CandleWickHighFields {
   high: number;
 }
 
-const parseWickHighFields = (datum: Readonly<ChartDatum>, xDataKey: string): CandleWickHighFields | null => {
+const parseWickHighFields = (datum: Readonly<ChartDatum>, xDataKey: string): CandleWickHighFields | undefined => {
   const date = readDateField(datum, xDataKey);
-  if (date === undefined) {return null;}
+  if (date === undefined) {return undefined;}
   const low = readFiniteNumberField(datum, "low");
-  if (low === undefined) {return null;}
+  if (low === undefined) {return undefined;}
   const high = readFiniteNumberField(datum, "high");
-  if (high === undefined) {return null;}
+  if (high === undefined) {return undefined;}
   return { date, high, low };
 };
 
@@ -54,13 +54,13 @@ interface CandleBodyFields {
   close: number;
 }
 
-const parseBodyFields = (datum: Readonly<ChartDatum>, xDataKey: string): CandleBodyFields | null => {
+const parseBodyFields = (datum: Readonly<ChartDatum>, xDataKey: string): CandleBodyFields | undefined => {
   const date = readDateField(datum, xDataKey);
-  if (date === undefined) {return null;}
+  if (date === undefined) {return undefined;}
   const open = readFiniteNumberField(datum, "open");
-  if (open === undefined) {return null;}
+  if (open === undefined) {return undefined;}
   const close = readFiniteNumberField(datum, "close");
-  if (close === undefined) {return null;}
+  if (close === undefined) {return undefined;}
   return { close, date, open };
 };
 
@@ -72,11 +72,11 @@ interface CandleAllFields {
   close: number;
 }
 
-const parseAllFields = (datum: Readonly<ChartDatum>, xDataKey: string): CandleAllFields | null => {
+const parseAllFields = (datum: Readonly<ChartDatum>, xDataKey: string): CandleAllFields | undefined => {
   const wick = parseWickHighFields(datum, xDataKey);
-  if (wick === null) {return null;}
+  if (wick === undefined) {return undefined;}
   const body = parseBodyFields(datum, xDataKey);
-  if (body === null) {return null;}
+  if (body === undefined) {return undefined;}
   return { close: body.close, date: wick.date, high: wick.high, low: wick.low, open: body.open };
 };
 

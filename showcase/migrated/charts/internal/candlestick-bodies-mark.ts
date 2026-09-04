@@ -39,10 +39,10 @@ interface ResolvedBodyRow {
 }
 
 const resolveBodyRow = (
-  row: CandleBodyFields | null,
+  row: CandleBodyFields | undefined,
   scales: MarkRenderContext["scales"],
 ): ResolvedBodyRow | undefined => {
-  if (row === null) {return undefined;}
+  if (row === undefined) {return undefined;}
   const [cx, yOpen, yClose] = [scales.x.map(row.date), scales.y.map(row.open), scales.y.map(row.close)];
   if (!allFinite([cx, yOpen, yClose])) {return undefined;}
   return { pixels: { cx, yClose, yOpen }, row };

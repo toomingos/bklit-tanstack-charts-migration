@@ -13,7 +13,7 @@ interface SankeyNodeProps {
   getNodeColor?: (node: LaidOutNode, index: number) => string;
 }
 
-const SankeyNode = (_props: Readonly<SankeyNodeProps>): null => null;
+const SankeyNode = (_props: Readonly<SankeyNodeProps>): undefined => undefined;
 
 SankeyNode.displayName = "SankeyNode";
 

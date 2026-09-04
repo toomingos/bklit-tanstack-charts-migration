@@ -23,8 +23,8 @@ const SunburstHitLayer = ({
   onHitEnter,
   onHitLeaveAll,
   onHitClick,
-}: Readonly<SunburstHitLayerProps>): ReactElement | null => {
-  if (items.length === 0) {return null;}
+}: Readonly<SunburstHitLayerProps>): ReactElement | undefined => {
+  if (items.length === 0) {return undefined;}
   return (
     <svg
       aria-hidden="true"

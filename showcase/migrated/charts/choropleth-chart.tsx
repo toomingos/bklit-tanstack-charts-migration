@@ -174,17 +174,17 @@ const TS_CHART_SVG_SELECTOR = "svg.ts-chart";
 // Config-carrier marker declared on the component type (children.tsx ChartChildComponent
 // Pattern), so attaching the role needs no assertion; the runtime shape is unchanged.
 interface ChoroplethChildComponent<ComponentProps> {
-  (props: ComponentProps): null;
+  (props: ComponentProps): undefined;
   [CHART_ROLE]?: string;
 }
 
-const ChoroplethFeatureComponent: ChoroplethChildComponent<ChoroplethFeatureProps> = (_props: Readonly<ChoroplethFeatureProps>): null => null;
+const ChoroplethFeatureComponent: ChoroplethChildComponent<ChoroplethFeatureProps> = (_props: Readonly<ChoroplethFeatureProps>): undefined => undefined;
 ChoroplethFeatureComponent[CHART_ROLE] = "choroplethFeature";
 
-const ChoroplethTooltip: ChoroplethChildComponent<ChoroplethTooltipProps> = (_props: Readonly<ChoroplethTooltipProps>): null => null;
+const ChoroplethTooltip: ChoroplethChildComponent<ChoroplethTooltipProps> = (_props: Readonly<ChoroplethTooltipProps>): undefined => undefined;
 ChoroplethTooltip[CHART_ROLE] = "choroplethTooltip";
 
-const ChoroplethGraticule: ChoroplethChildComponent<ChoroplethGraticuleProps> = (_props: Readonly<ChoroplethGraticuleProps>): null => null;
+const ChoroplethGraticule: ChoroplethChildComponent<ChoroplethGraticuleProps> = (_props: Readonly<ChoroplethGraticuleProps>): undefined => undefined;
 ChoroplethGraticule[CHART_ROLE] = "choroplethGraticule";
 
 const resolveFeatureFill = (feature: ChoroplethFeature, index: number, baseFill: string | undefined, getFeatureColor: ChoroplethFeatureProps["getFeatureColor"], getFeaturePattern: ChoroplethFeatureProps["getFeaturePattern"]): string => {

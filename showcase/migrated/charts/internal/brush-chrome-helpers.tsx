@@ -58,9 +58,9 @@ const toRawPixelExtent = (extentArgs: Readonly<RawPixelExtentArgs>): RawPixelExt
 };
 
 // X0/x1 are plot-local pixels (0..innerWidth) over the stable trackExtent, independent of the chart's x scale.
-const selectionToPixelExtent = (selection: { readonly start: Readonly<Date>; readonly end: Readonly<Date> }, trackExtent: readonly [Readonly<Date>, Readonly<Date>], innerWidth: number): { x0: number; x1: number } | null => {
+const selectionToPixelExtent = (selection: { readonly start: Readonly<Date>; readonly end: Readonly<Date> }, trackExtent: readonly [Readonly<Date>, Readonly<Date>], innerWidth: number): { x0: number; x1: number } | undefined => {
   const raw = toRawPixelExtent({ innerWidth, selection, trackExtent });
-  if (raw === undefined) {return null;}
+  if (raw === undefined) {return undefined;}
   return normalizePixelExtent(raw.x0Raw, raw.x1Raw, innerWidth);
 };
 

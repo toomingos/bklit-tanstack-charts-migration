@@ -28,9 +28,9 @@ const BrushSelectionPatternChrome = ({
   const container = host.containerRef.current;
   const patternId = useId().replaceAll(':', "");
   const active = resolveActivePatternBounds({ container, mounted, selectionPattern, x0, x1 });
-  if (active === undefined) {return null;}
+  if (active === undefined) {return undefined;}
   const patternNode = renderPatternPreset(active.pattern.preset, patternId, buildSelectionPatternOptions(active.pattern));
-  if (patternNode === null || patternNode === undefined) {return null;}
+  if (patternNode === null || patternNode === undefined) {return undefined;}
   return createPortal(
     <svg aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1]" width="100%" height="100%">
       <defs>{patternNode}</defs>

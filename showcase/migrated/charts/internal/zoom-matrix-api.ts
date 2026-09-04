@@ -31,11 +31,11 @@ interface ZoomTransform<ElementType> {
 const useZoomTransform = <ElementType extends Element>(initialTransformMatrix: TransformMatrix): ZoomTransform<ElementType> => {
   const containerRef = useRef<ElementType | null>(null);
   const matrixStateRef = useRef(initialTransformMatrix);
-  const [transformMatrix, setTransformMatrixState] = useState(initialTransformMatrix);
+  const [transformMatrix, setTransformMatrix] = useState(initialTransformMatrix);
   const [isDragging, setIsDragging] = useState(false);
   const [startTranslate, setStartTranslate] = useState<Translate | undefined>();
   const [startPoint, setStartPoint] = useState<Point | undefined>();
-  return { containerRef, isDragging, matrixStateRef, setIsDragging, setStartPoint, setStartTranslate, setTransformMatrixState, startPoint, startTranslate, transformMatrix };
+  return { containerRef, isDragging, matrixStateRef, setIsDragging, setStartPoint, setStartTranslate, setTransformMatrixState: setTransformMatrix, startPoint, startTranslate, transformMatrix };
 };
 
 interface ZoomConstrainArgs {

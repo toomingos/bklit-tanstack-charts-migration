@@ -2,10 +2,10 @@ import "./styles.css";
 
 // `showcase/migrated/charts/**` is a port of the legacy bklit-ui heatmap onto
 // TanStack Charts; this file is the public entry point. It intentionally
-// declares no components or hooks of its own — every symbol below is
-// implemented under ./internal/ and re-exported here unchanged, so this file
-// declares zero React components (react/no-multi-comp) and only imports
-// module side effects (the stylesheet).
+// Declares no components or hooks of its own — every symbol below is
+// Implemented under ./internal/ and re-exported here unchanged, so this file
+// Declares zero React components (react/no-multi-comp) and only imports
+// Module side effects (the stylesheet).
 
 export { HeatmapChart, type HeatmapChartProps } from "./internal/heatmap-chart-core";
 

@@ -36,7 +36,7 @@ const useBrushLayoutState = (layout: ReturnType<typeof useBrushSelection>): Brus
     ],
   );
 
-const BrushLayout = React.memo(function BrushLayout({
+const BrushLayout = React.memo(({
   data,
   xDataKey = "date",
   xExtentMax,
@@ -46,7 +46,7 @@ const BrushLayout = React.memo(function BrushLayout({
   className,
   children,
   brushStrip,
-}: Readonly<BrushLayoutProps>) {
+}: Readonly<BrushLayoutProps>) => {
   const layout = useBrushSelection({
     data,
     enabled,

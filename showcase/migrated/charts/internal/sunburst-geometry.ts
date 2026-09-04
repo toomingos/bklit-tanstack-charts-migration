@@ -1,8 +1,8 @@
 // Sunburst geometry, focus, hover, and layout functions — verbatim from
-// repos/bklit-ui/packages/ui/src/charts/sunburst.ts.
+// Upstream file repos/bklit-ui/packages/ui/src/charts/sunburst.ts.
 // Copied here so migrated/charts has zero imports from repos/.
 // Only the functions/types actually used by sunburst-chart.tsx and
-// sunburst-reveal.ts are included.
+// By sunburst-reveal.ts are included.
 
 import type { ArcDatum, ArcGeometry, Focus } from "./sunburst-types";
 import { ID_SEP, TOP, TWO_PI } from "./sunburst-layout";

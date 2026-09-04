@@ -1127,7 +1127,7 @@ const HeatmapCells = ({
   // Hovered cell or null for "no cell hovered"; repeated calls with the same
   // Key (e.g. every pointermove within one cell) are no-ops so the timers
   // Below are only (re)armed on an actual enter/leave transition.
-  const scheduleFocus = useCallback((point: ChartPoint<CellDatum, string, string> | null, key: string | undefined) => {
+  const scheduleFocus = useCallback((point: ChartPoint<CellDatum, string, string> | null, key?: string) => {
     if (focusedKeyRef.current === key) {return;}
     focusedKeyRef.current = key;
     clearFocusTimer(focusTimerRef.current);
@@ -1150,7 +1150,7 @@ const HeatmapCells = ({
   const handleCellLeave = useCallback(() => {
     coordinator?.setHoveredCell(null);
     coordinator?.setTooltipData(null);
-    scheduleFocus(null, undefined);
+    scheduleFocus(null);
   }, [coordinator, scheduleFocus]);
 
   // Pointer listeners below only invoke the latest leave — reading it through

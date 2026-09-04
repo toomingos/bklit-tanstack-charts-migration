@@ -88,8 +88,8 @@ interface RingHoverValue {
 /** Legacy RingContextValue shape (ring-context.tsx:92). */
 type RingContextValue = RingStableValue & RingHoverValue;
 
-const RingStableContext = createContext<RingStableValue | null>(null);
-const RingHoverCoordinatorContext = createContext<RingHoverCoordinator | null>(null);
+const RingStableContext = createContext<RingStableValue | undefined>(undefined);
+const RingHoverCoordinatorContext = createContext<RingHoverCoordinator | undefined>(undefined);
 
 const useRingStable = (): RingStableValue => {
   const ctx = useContext(RingStableContext);
@@ -138,7 +138,7 @@ const isFunctionType = <Value,>(value: Value): value is Value & ((...args: reado
 const isString = <Text,>(text: Text): text is Text & string => typeof text === "string";
 
 const componentDisplayName = (child: Readonly<ReactNode>): string | undefined => {
-  if (!isValidElement(child) || !isFunctionType(child.type)) {return undefined;}
+  if (!isValidElement(child) || !isFunctionType(child.type)) {return;}
   const componentType = child.type;
   return "displayName" in componentType && isString(componentType.displayName)
     ? componentType.displayName
@@ -888,7 +888,7 @@ interface RingProps {
   lineCap?: RingLineCap;
 }
 
-const Ring = (_props: Readonly<RingProps>): null => null;
+const Ring = (_props: Readonly<RingProps>): undefined => undefined;
 
 Ring.displayName = "Ring";
 

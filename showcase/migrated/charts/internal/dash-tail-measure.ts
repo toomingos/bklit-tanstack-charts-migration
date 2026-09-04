@@ -154,7 +154,7 @@ const measureDashEntry = (options: Readonly<MeasureDashEntryOptions>): Measured 
   if (!pathEl) {return undefined;}
   const reading = readSeriesPathLength(pathEl);
   if (!reading) {return undefined;}
-  const dashFromIndex = options.entry.dashFromIndex;
+  const { dashFromIndex } = options.entry;
   if (dashFromIndex === undefined) {return undefined;}
   const idx = dashFromIndex;
   const dashStartX = resolveDashStartX({ dashFromIndex: idx, data: options.renderData, xAccessor: options.xAccessor, xScale: options.xScale });

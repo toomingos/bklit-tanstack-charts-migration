@@ -3,7 +3,7 @@
 
 // Public barrel for the line-pattern modules.
 // The .ts extension keeps the component-mixing rule from flagging the shared
-// helper re-exports; each component and helper set lives in its own file.
+// Helper re-exports; each component and helper set lives in its own file.
 export { PatternLines } from "./pattern-lines-view";
 export type { PatternLinecap, PatternLinesProps } from "./pattern-lines-view";
 export { Pattern } from "./pattern";

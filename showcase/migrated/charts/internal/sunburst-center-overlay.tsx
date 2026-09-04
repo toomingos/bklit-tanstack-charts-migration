@@ -1,6 +1,8 @@
 // SunburstCenterOverlay — clickable center overlay for zoom-out.
 // Split from ./sunburst-center (react/no-multi-comp): one component per file.
 
+import type { ReactElement } from "react";
+
 // ---------------------------------------------------------------------------
 // Center overlay — absolute-positioned circle over the chart
 // ---------------------------------------------------------------------------
@@ -21,8 +23,8 @@ export const SunburstCenterOverlay = ({
   liveCenterR,
   centerColor,
   onZoomToParent,
-}: SunburstCenterOverlayProps) => {
-  if (!visible) {return null;}
+}: SunburstCenterOverlayProps): ReactElement | undefined => {
+  if (!visible) {return undefined;}
 
   const diameter = Math.max(liveCenterR - 2, 0) * 2;
   const isClickable = onZoomToParent !== undefined;

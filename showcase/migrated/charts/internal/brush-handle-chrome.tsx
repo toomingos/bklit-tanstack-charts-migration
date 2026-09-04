@@ -22,7 +22,7 @@ const BrushHandleChrome = ({
   mounted: boolean;
 }>): ReactNode => {
   const container = host.containerRef.current;
-  if (!(mounted && container)) {return null;}
+  if (!(mounted && container)) {return undefined;}
   // X0 === x1 renders one handle.
   const edges = x0 === x1 ? [x0] : [Math.min(x0, x1), Math.max(x0, x1)];
   const plotLeft = host.margin.left;

@@ -100,7 +100,7 @@ const LineLoadingPulse = ({
       let start: number | undefined = undefined;
       const step = (now: number): void => {
         if (cancelled) {return;}
-        start ??= now;
+        if (start === undefined) { start = now; }
         const ratio = Math.min(1, (now - start) / (dur * MS_PER_SECOND));
         const cur = from + (to - from) * ratio;
         setProgress(cur);

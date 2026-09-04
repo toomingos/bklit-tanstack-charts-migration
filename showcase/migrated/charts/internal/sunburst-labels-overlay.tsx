@@ -46,8 +46,8 @@ export const SunburstLabelsOverlay = ({
   items,
   fullRadius: _fullRadius,
   size: _size,
-}: SunburstLabelsOverlayProps): ReactElement | null => {
-  if (items.length === 0) {return null;}
+}: SunburstLabelsOverlayProps): ReactElement | undefined => {
+  if (items.length === 0) {return undefined;}
 
   return (
     <svg

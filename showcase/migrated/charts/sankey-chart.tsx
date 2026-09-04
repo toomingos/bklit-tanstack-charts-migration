@@ -254,7 +254,7 @@ const renderSankeyTooltipBody = (point: ChartPoint | undefined, formatValue: (va
   );
 }
 
-const createHoverHandlers = (hoveredNodeIndexRef: { current: number | null }, hoveredLinkIndexRef: { current: number | null }, focusPointerPoint: (predicate: ((point: ChartPoint) => boolean) | null) => void): SankeyHoverHandlers => ({
+const createHoverHandlers = (hoveredNodeIndexRef: { current: number | null }, hoveredLinkIndexRef: { current: number | null }, focusPointerPoint: (predicate?: (point: ChartPoint) => boolean) => void): SankeyHoverHandlers => ({
     onLinkEnter: (i: number): void => {
       hoveredLinkIndexRef.current = i;
       hoveredNodeIndexRef.current = null;
@@ -262,7 +262,7 @@ const createHoverHandlers = (hoveredNodeIndexRef: { current: number | null }, ho
     },
     onLinkLeave: (): void => {
       hoveredLinkIndexRef.current = null;
-      focusPointerPoint(null);
+      focusPointerPoint();
     },
     onNodeEnter: (i: number): void => {
       hoveredNodeIndexRef.current = i;
@@ -271,7 +271,7 @@ const createHoverHandlers = (hoveredNodeIndexRef: { current: number | null }, ho
     },
     onNodeLeave: (): void => {
       hoveredNodeIndexRef.current = null;
-      focusPointerPoint(null);
+      focusPointerPoint();
     },
   })
 
@@ -353,7 +353,7 @@ interface SankeyHoverRefs {
 const buildSankeyClearHover = (
   hoveredNodeIndexRef: SankeyHoverRefs,
   hoveredLinkIndexRef: SankeyHoverRefs,
-  focusPointerPoint: (predicate: ((point: ChartPoint) => boolean) | null) => void,
+  focusPointerPoint: (predicate?: (point: ChartPoint) => boolean) => void,
 ): (() => void) => (): void => {
   let cleared = false;
   if (hoveredNodeIndexRef.current !== null) {
@@ -364,7 +364,7 @@ const buildSankeyClearHover = (
     hoveredLinkIndexRef.current = null;
     cleared = true;
   }
-  if (cleared) {focusPointerPoint(null);}
+  if (cleared) {focusPointerPoint();}
 }
 
 // The reveal's replay key: a new reveal runs when any of these change.
@@ -435,7 +435,7 @@ const SankeyChart = ({
   const sceneRef = useRef<ChartScene<SankeyRenderDatum> | null>(null);
   const interactionRef = useRef<ChartInteractionController<SankeyRenderDatum> | null>(null);
   const focusPointerPoint = useCallback(
-    (predicate: ((point: ChartPoint) => boolean) | null) => {
+    (predicate?: (point: ChartPoint) => boolean) => {
       const interaction = interactionRef.current;
       if (!interaction) {return;}
       if (!predicate) {
@@ -605,7 +605,7 @@ const SankeyChart = ({
   const handleMouseLeave = useCallback(() => {
     hoveredNodeIndexRef.current = null;
     hoveredLinkIndexRef.current = null;
-    focusPointerPoint(null);
+    focusPointerPoint();
   }, [focusPointerPoint]);
 
   const formatValue = tooltipConfig.formatValue ?? intFmt;

@@ -70,8 +70,8 @@ interface EnsureDotSpringsOptions {
   readonly rectRef: RefObject<SVGRectElement | null>;
   readonly size: number;
   readonly spring: Readonly<SpringConfig>;
-  readonly springXRef: RefObject<Spring | null>;
-  readonly springYRef: RefObject<Spring | null>;
+  readonly springXRef: RefObject<Spring | undefined>;
+  readonly springYRef: RefObject<Spring | undefined>;
   readonly x: number;
   readonly y: number;
 }
@@ -90,8 +90,8 @@ const ensureDotSprings = (options: Readonly<EnsureDotSpringsOptions>): void => {
 };
 
 interface DotSpringTargets {
-  readonly springXRef: RefObject<Spring | null>;
-  readonly springYRef: RefObject<Spring | null>;
+  readonly springXRef: RefObject<Spring | undefined>;
+  readonly springYRef: RefObject<Spring | undefined>;
   readonly x: number;
   readonly y: number;
 }
@@ -117,8 +117,8 @@ const useTooltipDotSprings = (options: Readonly<DotSpringsOptions>): DotSpringRe
   const { animate, effectiveSpring, size, visible, x, y } = options;
   const circleRef = useRef<SVGCircleElement | null>(null);
   const rectRef = useRef<SVGRectElement | null>(null);
-  const springXRef = useRef<Spring | null>(null);
-  const springYRef = useRef<Spring | null>(null);
+  const springXRef = useRef<Spring | undefined>(undefined);
+  const springYRef = useRef<Spring | undefined>(undefined);
   const ensureSprings = useCallback(() => {
     ensureDotSprings({ animate, circleRef, rectRef, size, spring: effectiveSpring, springXRef, springYRef, x, y });
   }, [animate, effectiveSpring, size, x, y]);
@@ -134,8 +134,8 @@ const useTooltipDotSprings = (options: Readonly<DotSpringsOptions>): DotSpringRe
     return (): void => {
       springXRef.current?.stop();
       springYRef.current?.stop();
-      springXRef.current = null;
-      springYRef.current = null;
+      springXRef.current = undefined;
+      springYRef.current = undefined;
     };
   }, [visible]);
   return { circleRef, rectRef };
@@ -213,7 +213,7 @@ const TooltipDot = ({
   const { circleRef, rectRef } = useTooltipDotSprings({ animate, effectiveSpring, size, visible, x, y });
 
   if (!visible) {
-    return null;
+    return undefined;
   }
 
   return renderDotBody({
@@ -548,7 +548,7 @@ const TooltipIndicatorInner = ({
 
 const TooltipIndicator = (props: Readonly<TooltipIndicatorProps>): ReactNode => {
   if (!props.visible) {
-    return null;
+    return undefined;
   }
   return (
     <TooltipIndicatorInner
@@ -965,10 +965,10 @@ const TooltipBox = (props: Readonly<TooltipBoxProps>): ReactNode => {
 
   const container = props.containerRef.current;
   if (!(mounted && container)) {
-    return null;
+    return undefined;
   }
   if (!props.visible) {
-    return null;
+    return undefined;
   }
   return (
     <TooltipBoxInner
@@ -1102,9 +1102,9 @@ const resolveCurrentMonthIndex = (
 };
 
 interface DateTickerSprings {
-  readonly daySpringRef: RefObject<Spring | null>;
+  readonly daySpringRef: RefObject<Spring | undefined>;
   readonly dayStackRef: RefObject<HTMLDivElement | null>;
-  readonly monthSpringRef: RefObject<Spring | null>;
+  readonly monthSpringRef: RefObject<Spring | undefined>;
   readonly monthStackRef: RefObject<HTMLDivElement | null>;
   readonly prevMonthRef: RefObject<number>;
 }
@@ -1121,8 +1121,8 @@ const useDateTickerAnimation = (options: Readonly<DateTickerAnimationOptions>): 
   const { compact, currentIndex, currentMonthIndex } = options;
   const dayStackRef = useRef<HTMLDivElement | null>(null);
   const monthStackRef = useRef<HTMLDivElement | null>(null);
-  const daySpringRef = useRef<Spring | null>(null);
-  const monthSpringRef = useRef<Spring | null>(null);
+  const daySpringRef = useRef<Spring | undefined>(undefined);
+  const monthSpringRef = useRef<Spring | undefined>(undefined);
   const prevMonthRef = useRef(-1);
   useEffect((): (() => void) | undefined => {
     if (compact) {return undefined;}
@@ -1135,8 +1135,8 @@ const useDateTickerAnimation = (options: Readonly<DateTickerAnimationOptions>): 
     return (): void => {
       daySpringRef.current?.stop();
       monthSpringRef.current?.stop();
-      daySpringRef.current = null;
-      monthSpringRef.current = null;
+      daySpringRef.current = undefined;
+      monthSpringRef.current = undefined;
     };
   }, [compact]);
   useEffect(() => {

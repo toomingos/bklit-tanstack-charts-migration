@@ -62,7 +62,7 @@ interface HeatmapContextValue {
   htmlLayerEl: HTMLDivElement | null;
 }
 
-const HeatmapContext = createContext<HeatmapContextValue | null>(null);
+const HeatmapContext = createContext<HeatmapContextValue | undefined>(undefined);
 
 const useHeatmap = (): HeatmapContextValue => {
   const ctx = useContext(HeatmapContext);

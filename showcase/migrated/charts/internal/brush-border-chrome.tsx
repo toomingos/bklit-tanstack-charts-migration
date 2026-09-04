@@ -29,9 +29,9 @@ const BrushBorderChrome = ({
   mounted: boolean;
 }>): ReactNode => {
   const container = host.containerRef.current;
-  if (!(mounted && container)) {return null;}
+  if (!(mounted && container)) {return undefined;}
   const bounds = resolveSelectionBounds(x0, x1);
-  if (bounds === undefined) {return null;}
+  if (bounds === undefined) {return undefined;}
   // Replace (??), not merge: legacy hands visx a style with no fill, so the rect paints opaque black.
   const style: BrushSelectedBoxStyle = selectedBoxStyle ?? DEFAULT_SELECTED_BOX_STYLE;
   return createPortal(

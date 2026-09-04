@@ -362,7 +362,7 @@ const classifyChildren = (children: ReactNode): ClassifiedChildren => {
   let centerCount = 0;
   let labelsCount = 0;
   let hintCount = 0;
-  let hintProps: SunburstHintProps | undefined;
+  let hintProps: SunburstHintProps | undefined = undefined;
   const breadcrumbChildren: ReactNode[] = [];
   const segmentConfigs: SunburstSegmentConfig[] = [];
 

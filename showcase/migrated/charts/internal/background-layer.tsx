@@ -19,8 +19,8 @@ export const BackgroundLayer = ({
   marginLeft,
   marginTop,
   isLoaded = true,
-}: Readonly<BackgroundLayerProps>): React.ReactElement | null => {
-  if (!config || innerWidth <= 0 || innerHeight <= 0) {return null;}
+}: Readonly<BackgroundLayerProps>): React.ReactElement | undefined => {
+  if (!config || innerWidth <= 0 || innerHeight <= 0) {return undefined;}
   return (
     <svg
       aria-hidden="true"

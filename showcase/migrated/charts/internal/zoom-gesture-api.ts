@@ -63,8 +63,7 @@ const isPinchOriginMemo = <Value,>(value: Value): value is Value & PinchOriginMe
 
 const isOriginPair = <Value,>(value: Value): value is Value & readonly [number, number] => {
   if (!Array.isArray(value) || value.length !== 2) {return false;}
-  const first: unknown = value[0];
-  const second: unknown = value[1];
+  const [first, second]: readonly unknown[] = value;
   return isNumber(first) && isNumber(second);
 };
 
