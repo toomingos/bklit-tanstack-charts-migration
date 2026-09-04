@@ -50,15 +50,20 @@ const buildYAxisTickValues = (yDomain: readonly [number, number], numTicks?: num
 /**
  * Labels within tickerHalfWidth vanish, then ramp to 1 across fadeBuffer.
  *
- * @param {number} labelX - Label anchor in scene-x pixels.
- * @param {string} labelText - Rendered label text compared against the hovered label.
- * @param {number} primaryX - Hovered ticker position in scene-x pixels that nearby labels fade around.
- * @param {string | null} hoveredLabel - Label text pinned invisible while hovered, or `null` when none is.
- * @param {number} tickerHalfWidth - Full-fade radius in scene-x pixels around the primary position.
- * @param {number} fadeBuffer - Ramp width in scene-x pixels over which opacity recovers from 0 to 1.
+ * @param {Readonly<TickLabelFadeOpacityParams>} params - Label anchor/text, hovered ticker state, and fade radii.
  * @returns {number} Opacity in [0, 1] for the label.
  */
-const tickLabelFadeOpacity = (labelX: number, labelText: string, primaryX: number, hoveredLabel: string | null, tickerHalfWidth: number, fadeBuffer: number): number => {
+interface TickLabelFadeOpacityParams {
+  readonly fadeBuffer: number;
+  readonly hoveredLabel: string | null;
+  readonly labelText: string;
+  readonly labelX: number;
+  readonly primaryX: number;
+  readonly tickerHalfWidth: number;
+}
+
+const tickLabelFadeOpacity = (params: Readonly<TickLabelFadeOpacityParams>): number => {
+  const { fadeBuffer, hoveredLabel, labelText, labelX, primaryX, tickerHalfWidth } = params;
   const distance = Math.abs(labelX - primaryX);
   if (distance < tickerHalfWidth) {return 0;}
   if (hoveredLabel !== null && hoveredLabel.length > 0 && labelText === hoveredLabel) {return 0;}
@@ -98,14 +103,14 @@ const buildFadeXAxisOptions = (params: Readonly<FadeXAxisOptionsParams>): XAxisP
           dy: marginBottom - X_TICK_LABEL_DY_OFFSET,
           fontSize: 12,
           opacity: labelFade
-            ? (context: ChartAxisTickLabelContext<Date>) => tickLabelFadeOpacity(
-                  context.position,
-                  xAxis.formatValue === undefined ? shortDateFmt.format(context.value) : xAxis.formatValue(context.value),
-                  labelFade.primaryX,
-                  labelFade.hoveredLabel,
-                  xAxis.tickerHalfWidth ?? TICKER_HALF_WIDTH,
-                  FADE_BUFFER,
-                )
+            ? (context: ChartAxisTickLabelContext<Date>) => tickLabelFadeOpacity({
+                  fadeBuffer: FADE_BUFFER,
+                  hoveredLabel: labelFade.hoveredLabel,
+                  labelText: xAxis.formatValue === undefined ? shortDateFmt.format(context.value) : xAxis.formatValue(context.value),
+                  labelX: context.position,
+                  primaryX: labelFade.primaryX,
+                  tickerHalfWidth: xAxis.tickerHalfWidth ?? TICKER_HALF_WIDTH,
+                })
             : 1,
           thin: false,
         }

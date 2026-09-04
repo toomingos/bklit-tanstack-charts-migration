@@ -156,14 +156,14 @@ const buildXTickLabelOpacity = (
   if (!labelFade) {return 1;}
   const formatValue = params.xAxis?.formatValue ?? ((date: Date): string => shortDateFmt.format(date));
   return (ctx: Readonly<TickFadeContext>): number =>
-    tickLabelFadeOpacity(
-      ctx.position,
-      formatValue(toDate(ctx.value) ?? new Date(Number.NaN)),
-      labelFade.primaryX,
-      labelFade.hoveredLabel,
-      params.xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH,
-      FADE_BUFFER,
-    );
+    tickLabelFadeOpacity({
+      fadeBuffer: FADE_BUFFER,
+      hoveredLabel: labelFade.hoveredLabel,
+      labelText: formatValue(toDate(ctx.value) ?? new Date(Number.NaN)),
+      labelX: ctx.position,
+      primaryX: labelFade.primaryX,
+      tickerHalfWidth: params.xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH,
+    });
 };
 
 const collectProjectionGradients = (params: Readonly<CollectProjectionGradientsParams>): ProjectionGradientDef[] => {

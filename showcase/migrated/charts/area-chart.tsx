@@ -309,7 +309,7 @@ const withZeroFallback = (mapped: number | undefined): number => mapped ?? 0;
 const withAbsentFallback = (text: string | undefined, absent: string): string => text ?? absent;
 
 // Stringifies an untyped datum field without Object's default "[object Object]" dump.
-const stringifyDatumField = <Value,>(value: Value, absent: string): string => {
+const stringifyDatumField = (value: unknown, absent: string): string => {
   if (isString(value)) {return value;}
   if (isNumber(value)) {return String(value);}
   if (value instanceof Date) {return String(value);}
@@ -1037,7 +1037,7 @@ const AreaChart = ({
   useEffect(() => {
     brushOnSelectionChangeRef.current = brushConfig?.onSelectionChange;
   });
-  const handleBrushChange = useCallback((next: BrushRange<Date>, context: { reason: BrushXChange<Date> }) => {
+  const handleBrushChange = useCallback((next: BrushRange<Date>, context: Readonly<{ reason: BrushXChange<Date> }>) => {
     const { reason } = context;
     if (reason.type === "cancel") {return;}
     const startMs = next.start.getTime();
@@ -1383,14 +1383,14 @@ const AreaChart = ({
     const gridGuide = resolveGridGuide(grid);
     const xTickLabelOpacity = labelFade
       ? (ctx: ChartAxisTickLabelContext<Date>): number =>
-          tickLabelFadeOpacity(
-            ctx.position,
-            xAxis?.formatValue ? xAxis.formatValue(ctx.value) : shortDateFmt.format(ctx.value),
-            labelFade.primaryX,
-            labelFade.hoveredLabel ?? null,
-            xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH,
-            FADE_BUFFER,
-          )
+          tickLabelFadeOpacity({
+            fadeBuffer: FADE_BUFFER,
+            hoveredLabel: labelFade.hoveredLabel ?? null,
+            labelText: xAxis?.formatValue ? xAxis.formatValue(ctx.value) : shortDateFmt.format(ctx.value),
+            labelX: ctx.position,
+            primaryX: labelFade.primaryX,
+            tickerHalfWidth: xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH,
+          })
       : 1;
     // Enter is false (RevealWipe owns it); update tweens only on y-domain change, else snaps.
     const yDomainTweenGateActive = isChartInteractionPhase(chartPhase) && isLoaded && yDomainChanged;
@@ -1479,7 +1479,7 @@ const AreaChart = ({
   const renderTooltipBody = useCallback(
     (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): ReactNode =>
       renderSeriesTooltipBody(ctx, {
-        buildRows: (datum, rowsCtx) =>
+        buildRows: (datum, rowsCtx: Readonly<ChartTooltipBodyRenderContext<ChartDatum, Date, number>>) =>
           resolvedAreas.map((area: ReadonlyResolvedArea) => {
             const value = datum[area.dataKey];
             // First non-empty color wins (bklit || chain); preserves "" falling through to transparent.

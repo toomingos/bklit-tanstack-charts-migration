@@ -124,7 +124,7 @@ const resolveYDomainsByAxis = <Series extends YAxisSeries>({
   return domains;
 }
 
-const getPrimaryYScale = (yScales: Record<string, NicedYScale>, fallback: NicedYScale): NicedYScale => {
+const getPrimaryYScale = (yScales: Readonly<Record<string, NicedYScale>>, fallback: NicedYScale): NicedYScale => {
   const primary = readRecordEntry(yScales, DEFAULT_Y_AXIS_ID);
   if (primary !== undefined) {return primary;}
   const first = Object.values(yScales).at(0);

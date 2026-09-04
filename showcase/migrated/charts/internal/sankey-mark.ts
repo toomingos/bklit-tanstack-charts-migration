@@ -36,12 +36,12 @@ interface SankeyMarkConfig {
 }
 
 interface SankeyGradientDatum {
-  index: number;
-  id: string;
-  x1: number;
-  x2: number;
-  sourceColor: string;
-  targetColor: string;
+  readonly index: number;
+  readonly id: string;
+  readonly x1: number;
+  readonly x2: number;
+  readonly sourceColor: string;
+  readonly targetColor: string;
 }
 
 interface CreateSankeyMarkParams {

@@ -2014,7 +2014,7 @@ const CandlestickChart = ({
       ? resolveTweenCandleTransition(enterTransition)
       : resolveSpringCandleTransition(enterTransition);
     // After the reveal settles, later rebuilds must snap or the motion surface re-tweens dim opacity.
-    return (ctx: ChartMotionContext<ChartDatum>): false | ChartMotionTiming | undefined => ctx.phase === "enter" || revealSettledRef.current ? false : { transition };
+    return (ctx: Readonly<ChartMotionContext<ChartDatum>>): false | ChartMotionTiming | undefined => ctx.phase === "enter" || revealSettledRef.current ? false : { transition };
   }, [enterTransition]);
 
   const definition = useMemo((): DomChartDefinition<ChartDatum, Date, number> | undefined => {

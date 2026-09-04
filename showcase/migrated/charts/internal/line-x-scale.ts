@@ -132,14 +132,14 @@ const resolveXTickLabelOpacity = (
   return (ctx: Readonly<{ value: unknown; position: number }>): number => {
     const formatTickLabel = xAxis?.formatValue ?? ((date: Readonly<Date>): string => shortDateFmt.format(date));
     const tickLabel = ctx.value instanceof Date ? formatTickLabel(ctx.value) : "";
-    return tickLabelFadeOpacity(
-      ctx.position,
-      tickLabel,
-      captured.primaryX,
-      captured.hoveredLabel,
-      xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH,
-      FADE_BUFFER,
-    );
+    return tickLabelFadeOpacity({
+      fadeBuffer: FADE_BUFFER,
+      hoveredLabel: captured.hoveredLabel,
+      labelText: tickLabel,
+      labelX: ctx.position,
+      primaryX: captured.primaryX,
+      tickerHalfWidth: xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH,
+    });
   };
 };
 

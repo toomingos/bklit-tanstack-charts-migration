@@ -942,7 +942,7 @@ const buildDepthGlassGradients = ({
     id: depthGradientIds.glassPosId,
     stops: depthGlassPosStops.map((stop: Readonly<GlassGradientStop>) => ({
       color: stop.color,
-      offset: Number.parseFloat(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
+      offset: Number(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
       opacity: Number(stop.opacity),
     })),
     x1: 0,
@@ -954,7 +954,7 @@ const buildDepthGlassGradients = ({
     id: depthGradientIds.glassNegId,
     stops: depthGlassNegStops.map((stop: Readonly<GlassGradientStop>) => ({
       color: stop.color,
-      offset: Number.parseFloat(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
+      offset: Number(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
       opacity: Number(stop.opacity),
     })),
     x1: 0,
@@ -976,7 +976,7 @@ const buildPulseWaveGradient = ({
   id: pulseWaveGradientId,
   stops: pulseWaveStops.map((stop: Readonly<PulseWaveGradientStop>) => ({
     color: stop.color,
-    offset: Number.parseFloat(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
+    offset: Number(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
     opacity: Number(stop.opacity),
   })),
   x1: 0,
@@ -1150,14 +1150,14 @@ const buildBarAxisSection = ({
             ctx.phase === "enter" ? false : { transition: { duration: 500, easing: bezierEasing, type: "tween" as const } },
           opacity: labelFade
             ? (ctx: { readonly position: number; readonly value: unknown }): number =>
-                tickLabelFadeOpacity(
-                  ctx.position,
-                  String(ctx.value),
-                  labelFade.primaryX,
-                  labelFade.hoveredLabel,
-                  barXAxis.tickerHalfWidth ?? TICKER_HALF_WIDTH,
-                  FADE_BUFFER,
-                )
+                tickLabelFadeOpacity({
+                  fadeBuffer: FADE_BUFFER,
+                  hoveredLabel: labelFade.hoveredLabel,
+                  labelText: String(ctx.value),
+                  labelX: ctx.position,
+                  primaryX: labelFade.primaryX,
+                  tickerHalfWidth: barXAxis.tickerHalfWidth ?? TICKER_HALF_WIDTH,
+                })
             : 1,
           thin: false,
         },

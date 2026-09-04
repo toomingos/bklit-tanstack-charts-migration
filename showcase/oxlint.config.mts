@@ -159,7 +159,10 @@ export default defineConfig({
     // reported no matter how it was written. treatMethodsAsReadonly restores the rule's real
     // intent (don't mutate the caller's data) while letting TanStack's own types satisfy it.
     // `allow` covers handles that are mutable by definition and cannot be made readonly at all:
-    // DOM elements, Animation, React refs, React events, and ReactNode/ReactElement. Verified:
+    // DOM elements, Animation, React refs, React events, and ReactNode/ReactElement. `allow`
+    // matches bare type names with no subtype reach, so the concrete DOM interfaces the chart
+    // code actually receives (HTMLElement, SVGGElement, ...) must be listed individually --
+    // listing `Element` does not cover them. Verified:
     // `Readonly<SVGGElement>` and `Readonly<RefObject<T>>` still fail; only a bespoke
     // DeepReadonly<> passes, and these are objects the chart code legitimately mutates
     // (`ref.current`, element attributes, animation playback).
@@ -172,6 +175,13 @@ export default defineConfig({
           "ReactElement",
           "RefObject",
           "MutableRefObject",
+          "HTMLElement",
+          "HTMLDivElement",
+          "SVGGElement",
+          "SVGSVGElement",
+          "SVGPathElement",
+          "Dispatch",
+          "SetStateAction",
           "Element",
           "Node",
           "Document",

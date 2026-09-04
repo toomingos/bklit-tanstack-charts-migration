@@ -1,5 +1,7 @@
-import { useCallback, useLayoutEffect, useRef, type RefCallback, type RefObject } from "react";
-import { buildPill, type PillBuild } from "./date-pill";
+import { useCallback, useLayoutEffect, useRef } from "react";
+import type { RefCallback, RefObject } from "react";
+import { buildPill } from "./date-pill";
+import type { PillBuild } from "./date-pill";
 import type { SpringConfig } from "./chart-config-context";
 
 // Date-pill overlay split from hover-geometry; behaviour verbatim.

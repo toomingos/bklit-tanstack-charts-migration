@@ -789,31 +789,23 @@ const useTooltipBoxMotion = (options: Readonly<TooltipBoxMotionOptions>): Toolti
 };
 
 interface TooltipPortalOptions {
-  readonly backgroundColor: string;
   readonly children: ReactNode;
   readonly container: HTMLElement;
-  readonly isFlipped: boolean;
   readonly layerClassName: string;
   readonly layerRef: RefObject<HTMLDivElement | null>;
+  readonly layerStyle: Readonly<CSSProperties>;
   readonly panelRef: RefObject<HTMLDivElement | null>;
-  readonly panelStyle?: CSSProperties;
-  readonly staticPosition: Readonly<{ left: number; top: number }>;
+  readonly panelStyleResolved: Readonly<CSSProperties>;
 }
 
 const renderTooltipPortal = (options: Readonly<TooltipPortalOptions>): ReactNode => {
-  const { backgroundColor, children, container, isFlipped, layerClassName, layerRef, panelRef, panelStyle, staticPosition } = options;
-  const backgroundStyle = backgroundColor ? { backgroundColor } : undefined;
-  const panelStyleResolved: CSSProperties = {
-    transformOrigin: isFlipped ? "right top" : "left top",
-    ...backgroundStyle,
-    ...panelStyle,
-  };
+  const { children, container, layerClassName, layerRef, layerStyle, panelRef, panelStyleResolved } = options;
   const extraClassName = layerClassName ? ` ${layerClassName}` : "";
   return createPortal(
     <div
       className={`bkm-tooltip-layer${extraClassName}`}
       ref={layerRef}
-      style={{ left: staticPosition.left, top: staticPosition.top }}
+      style={layerStyle}
     >
       <div className="bkm-tooltip-panel" ref={panelRef} style={panelStyleResolved}>
         {children}
@@ -998,15 +990,17 @@ const TooltipBoxInner = ({
   });
 
   return renderTooltipPortal({
-    backgroundColor,
     children,
     container,
-    isFlipped: placement.isFlipped,
     layerClassName,
     layerRef: motion.layerRef,
+    layerStyle: { left: staticPosition.left, top: staticPosition.top },
     panelRef: motion.panelRef,
-    panelStyle,
-    staticPosition,
+    panelStyleResolved: {
+      transformOrigin: placement.isFlipped ? "right top" : "left top",
+      ...(backgroundColor ? { backgroundColor } : undefined),
+      ...panelStyle,
+    },
   });
 }
 

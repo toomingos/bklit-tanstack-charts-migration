@@ -779,7 +779,7 @@ const ChoroplethChartBody = ({
     containerRefForFallback.current = el;
   }, []);
   const handleTooltipBody = useCallback(
-    (ctx: ChartTooltipBodyRenderContext<ChoroplethFeature, ChartValue, ChartValue>): ReactNode =>
+    (ctx: ChartTooltipBodyRenderContext<ChoroplethFeature, ChartValue>): ReactNode =>
       renderChoroplethTooltipBody(ctx, getTooltipConfig),
     [getTooltipConfig],
   );
