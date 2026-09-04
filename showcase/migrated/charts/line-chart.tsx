@@ -81,7 +81,7 @@ import {
 } from "./internal/y-domain";
 import { DEFAULT_Y_AXIS_ID } from "./internal/y-axis-id";
 import { useChartLegendHover } from "./internal/chart-legend-hover-context";
-import { useChartConfig } from "./internal/chart-config-context";
+import { useChartConfig } from "./internal/use-chart-config";
 import { useChartMargin, DEFAULT_CHART_MARGIN } from "./internal/use-chart-margin";
 import type { ChartMargin } from "./internal/use-chart-margin";
 import { useDebouncedContainerSize } from "./internal/use-container-size";

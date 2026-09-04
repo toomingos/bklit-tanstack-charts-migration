@@ -10,7 +10,7 @@ import { PieHoverCoordinatorContext, PieStableContext } from './pie-center-conte
 import { PieCenter } from './pie-center-view';
 import type { PieCenterProps, PieStableValue } from './pie-center';
 import type { PieHoverCoordinator } from "./pie-hover-chrome";
-import { defaultPieColors } from '../pie-chart';
+import { defaultPieColors } from './pie-default-colors';
 import type { PieArcData, PieData } from '../pie-chart';
 
 const SHELL_HOVER_OFFSET = 10;

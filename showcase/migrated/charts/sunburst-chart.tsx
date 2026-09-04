@@ -1471,14 +1471,16 @@ export type { SunburstLabelsProps } from "./internal/sunburst-labels";
 export { SunburstHint } from "./internal/sunburst-hint";
 export type { SunburstHintContext, SunburstHintProps } from "./internal/sunburst-hint";
 export {
-  buildSunburstBreadcrumbItems,
   SunburstBreadcrumb,
-  useSunburstBreadcrumbItems,
 } from "./internal/sunburst-breadcrumb";
+export {
+  buildSunburstBreadcrumbItems,
+  useSunburstBreadcrumbItems,
+} from "./internal/sunburst-breadcrumb-items";
 export type {
-  SunburstBreadcrumbItem,
   SunburstBreadcrumbProps,
 } from "./internal/sunburst-breadcrumb";
+export type { SunburstBreadcrumbItem } from "./internal/sunburst-breadcrumb-items";
 export type { ArcDatum, Focus } from "./internal/sunburst-geometry";
 export type { SunburstNode } from "./internal/sunburst-types";
 export { SunburstChart, SunburstSegment };

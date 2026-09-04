@@ -3,7 +3,7 @@ import type { ReactElement, RefObject } from 'react';
 import { createSpring } from './spring';
 import type { Spring } from './spring';
 import { TooltipDotMarker } from './tooltip-dot-marker';
-import { useChartConfig } from './chart-config-context';
+import { useChartConfig } from './use-chart-config';
 import type { SpringConfig } from './chart-config-context';
 
 interface TooltipDotProps {

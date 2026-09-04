@@ -16,8 +16,11 @@ export { SankeyChart, SankeyLink, SankeyNode, SankeyTooltip } from "./sankey-cha
 export type { SankeyChartProps, SankeyData, SankeyNodeDatum, SankeyLinkDatum, Margin, SankeyLabelOrientation, SankeyLinkProps, SankeyNodeProps, SankeyTooltipProps } from "./sankey-chart";
 export { RadarChart, RadarGrid, RadarAxis, RadarLabels, RadarArea, DEFAULT_RADAR_COLORS as defaultRadarColors } from "./radar-chart";
 export type { RadarChartProps, RadarGridProps, RadarAxisProps, RadarLabelsProps, RadarAreaProps, RadarData, RadarMetric, RadarEnterTransition } from "./radar-chart";
-export { PieChart, PieSlice, defaultPieColors, DEFAULT_HOVER_OFFSET } from "./pie-chart";
-export type { PieChartProps, PieSliceProps, PieData, PieArcData, PieEnterTransition, PieSliceHoverEffect } from "./pie-chart";
+export { PieChart, DEFAULT_HOVER_OFFSET } from "./pie-chart";
+export { PieSlice } from "./internal/pie-slice";
+export { defaultPieColors } from "./internal/pie-default-colors";
+export type { PieChartProps, PieData, PieArcData, PieEnterTransition, PieSliceHoverEffect } from "./pie-chart";
+export type { PieSliceProps } from "./internal/pie-slice";
 export { PieCenter } from "./internal/pie-center-view";
 export { usePieStable, usePieHoverCoordinator } from "./internal/pie-center-hooks";
 export type { PieCenterProps, PieCenterRenderProps, PieCenterFormat } from "./internal/pie-center";
@@ -47,7 +50,11 @@ export type { SunburstNode, ArcDatum, ArcGeometry, Focus } from "./internal/sunb
 export { ChoroplethChart, ChoroplethFeatureComponent, ChoroplethTooltip, ChoroplethGraticule, ChoroplethZoomContext, useChoroplethZoom, useChoropleth } from "./choropleth-chart";
 export type { ChoroplethChartProps, ChoroplethFeatureProps, ChoroplethTooltipProps, ChoroplethGraticuleProps, ChoroplethContextValue, ChoroplethZoomInstance, ChoroplethZoomContextValue, ChoroplethFeature, ChoroplethFeatureProperties } from "./choropleth-chart";
 export type { TransformMatrix } from "./internal/zoom-engine";
-export { ChartConfigProvider, useChartConfig, DEFAULT_CHART_CONFIG, resolveTooltipBoxMotion } from "./internal/chart-config-context";
+export { ChartConfigProvider } from "./internal/chart-config-provider";
+export { useChartConfig } from "./internal/use-chart-config";
+export { DEFAULT_CHART_CONFIG } from "./internal/chart-config-context";
+export { resolveTooltipBoxMotion } from "./internal/tooltip-box-motion";
+export type { TooltipBoxMotion } from "./internal/tooltip-box-motion";
 export type { ChartConfigProviderProps, ChartConfigValue, SpringConfig } from "./internal/chart-config-context";
 export { Line, Area, PatternArea, Scatter, Bar, BarSquares, BarColumnTrack, BarDepthProvider, BarDepthBack, BarDepthFront, BarPulse, SeriesBar, BarXAxis, Background, Grid, XAxis, ChartTooltip, Candlestick, YAxis, LiveLine, LiveXAxis, LiveYAxis, ProjectionLine, ProjectionLineEndMarker, LineSeriesTerminalMarker, ChartMarkers, ProfitLossLine } from "./children";
 export { CHART_CHILD_PASSTHROUGH, CHART_CLIP_PASSTHROUGH, isChartClipPassthrough } from "./internal/children-extract";

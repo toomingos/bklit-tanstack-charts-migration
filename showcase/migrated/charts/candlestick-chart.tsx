@@ -41,7 +41,7 @@ import {
   useChartSelection,
 } from "./internal/chart-selection";
 import { SegmentOverlay } from "./internal/segment-visuals";
-import { useChartConfig } from "./internal/chart-config-context";
+import { useChartConfig } from "./internal/use-chart-config";
 import type { SpringConfig } from "./internal/chart-config-context";
 import { renderPatternPreset } from "./internal/pattern-preset-render";
 import type { PatternPresetId } from "./internal/pattern-preset";

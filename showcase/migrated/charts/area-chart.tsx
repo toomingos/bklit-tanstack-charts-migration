@@ -100,7 +100,7 @@ import { buildNativeTooltipExtension, renderSeriesTooltipBody } from "./internal
 import type { AreaConfig, BrushChildConfig, ChartDatum, ChartMarker, ChartStatus, PatternAreaConfig, ProjectionLineChildConfig, SeriesPointMarkerStyle } from "./internal/types";
 import { DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from './internal/chart-phase';
 import type { ChartPhase } from './internal/chart-phase';
-import { useChartConfig } from "./internal/chart-config-context";
+import { useChartConfig } from "./internal/use-chart-config";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { bezierEasing } from "./internal/bezier-easing";
 import { resolveGridGuide } from "./internal/grid";

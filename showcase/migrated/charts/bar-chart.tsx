@@ -32,7 +32,7 @@ import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import type { ReferenceAreaLayersGeom } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
-import { useChartConfig } from "./internal/chart-config-context";
+import { useChartConfig } from "./internal/use-chart-config";
 import { useChartLegendHover } from "./internal/chart-legend-hover-context";
 import { useFocusInjection } from "./internal/focus-injection";
 import { buildIndicatorMark } from "./internal/hover-geometry";

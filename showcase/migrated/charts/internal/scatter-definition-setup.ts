@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { ChartMark, ChartScale, DomChartDefinition } from "@tanstack/charts";
-import { useChartConfig } from "./chart-config-context";
+import { useChartConfig } from "./use-chart-config";
 import type { SpringConfig } from "./chart-config-context";
 import type { createScatterFocusStrategy } from "./scatter-focus-strategy";
 import { resolveMotionEasing } from "./reveal-easing";

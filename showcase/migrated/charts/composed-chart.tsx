@@ -46,7 +46,7 @@ import {
   useChartSelection,
 } from "./internal/chart-selection";
 import { SegmentOverlay } from "./internal/segment-visuals";
-import { useChartConfig } from "./internal/chart-config-context";
+import { useChartConfig } from "./internal/use-chart-config";
 import {
   DISCRETE_INTERACTION_THRESHOLD,
   TOOLTIP_BOX_SPRING,

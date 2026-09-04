@@ -1,4 +1,5 @@
 import { Fragment, memo } from "react";
+import type { ReactElement } from "react";
 import { heatmapLevelPatternId, heatmapLevelPatternRenderOptions, isHeatmapLevelPattern } from "./heatmap-colors";
 import type { HeatmapLevelStyle, HeatmapLevelStyles } from "./heatmap-colors";
 import { renderPatternPreset } from "./pattern-preset-render";
@@ -12,7 +13,7 @@ import { renderPatternPreset } from "./pattern-preset-render";
 // Pattern (same trick as area-chart.tsx) to land the tile grid on the same
 // Phase. Ids derive from bklit's `heatmap-level-N` names under a useId-
 // Scoped prefix so multiple instances/legends on one page never collide.
-const HeatmapPatternDefs = memo(({
+const renderHeatmapCellPatternDefs = ({
   levelStyles,
   patternIdPrefix,
   phaseX,
@@ -22,7 +23,7 @@ const HeatmapPatternDefs = memo(({
   patternIdPrefix: string | undefined;
   phaseX: number;
   phaseY: number;
-}>) => {
+}>) : ReactElement | undefined => {
   const nodes = levelStyles.flatMap((style: Readonly<HeatmapLevelStyle>, level) => {
     if (!isHeatmapLevelPattern(style) || !style.pattern) {
       return [];
@@ -49,7 +50,9 @@ const HeatmapPatternDefs = memo(({
   });
   if (nodes.length === 0) {return undefined;}
   return <defs>{nodes}</defs>;
-});
+};
+
+const HeatmapPatternDefs = memo(renderHeatmapCellPatternDefs);
 
 HeatmapPatternDefs.displayName = "HeatmapPatternDefs";
 

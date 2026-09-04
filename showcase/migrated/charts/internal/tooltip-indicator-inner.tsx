@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useRef } from 'react';
 import type { ReactElement, RefObject } from 'react';
 import { createSpring } from './spring';
 import type { Spring } from './spring';
-import { useChartConfig } from './chart-config-context';
+import { useChartConfig } from './use-chart-config';
 import { indicatorFadeGradientStops } from './fade-mask';
 import { computeIndicatorGeometry, computeIndicatorRenderMode } from './tooltip-indicator-geometry';
 import type { IndicatorRenderMode } from './tooltip-indicator-geometry';

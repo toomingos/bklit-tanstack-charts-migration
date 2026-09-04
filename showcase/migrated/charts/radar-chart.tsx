@@ -20,8 +20,11 @@ import { defineChart } from "@tanstack/charts/scene";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { angleGrid, polar, radialArea, radialDot } from "@tanstack/charts/polar";
 import type { PolarGuide, PolarMark } from "@tanstack/charts/polar";
-import { CHART_ROLE } from "./children";
 import { roleOf } from "./internal/children-extract";
+import type { RadarAreaProps } from "./internal/radar-area-child";
+import type { RadarAxisProps } from "./internal/radar-axis-child";
+import type { RadarGridProps } from "./internal/radar-grid-child";
+import type { RadarLabelsProps } from "./internal/radar-labels-child";
 import {
   buildProgressKeyframes as buildRadarProgressKeyframes,
   revealTiming as radarRevealTiming,
@@ -192,50 +195,6 @@ const ROLE_GRID = "radar-grid";
 const ROLE_AXIS = "radar-axis";
 const ROLE_LABELS = "radar-labels";
 const ROLE_AREA = "radar-area";
-
-// Config-carrier components: Null-rendering functions with the chart-role marker
-// Declared on the component type, so every attachment site stays assertion-free.
-interface RadarChildComponent<ComponentProps> {
-  (props: ComponentProps): null;
-  [CHART_ROLE]?: string;
-}
-
-interface RadarGridProps {
-  readonly showLabels?: boolean;
-  readonly stroke?: string;
-  readonly strokeOpacity?: number;
-  readonly className?: string;
-}
-const RadarGrid: RadarChildComponent<RadarGridProps> = (_props: Readonly<RadarGridProps>): null => null;
-RadarGrid[CHART_ROLE] = ROLE_GRID;
-
-interface RadarAxisProps {
-  readonly stroke?: string;
-  readonly strokeOpacity?: number;
-  readonly className?: string;
-}
-const RadarAxis: RadarChildComponent<RadarAxisProps> = (_props: Readonly<RadarAxisProps>): null => null;
-RadarAxis[CHART_ROLE] = ROLE_AXIS;
-
-interface RadarLabelsProps {
-  readonly offset?: number;
-  readonly fontSize?: number;
-  readonly interactive?: boolean;
-  readonly className?: string;
-}
-const RadarLabels: RadarChildComponent<RadarLabelsProps> = (_props: Readonly<RadarLabelsProps>): null => null;
-RadarLabels[CHART_ROLE] = ROLE_LABELS;
-
-interface RadarAreaProps {
-  readonly index: number;
-  readonly color?: string;
-  readonly showPoints?: boolean;
-  readonly showStroke?: boolean;
-  readonly showGlow?: boolean;
-  readonly className?: string;
-}
-const RadarArea: RadarChildComponent<RadarAreaProps> = (_props: Readonly<RadarAreaProps>): null => null;
-RadarArea[CHART_ROLE] = ROLE_AREA;
 
 interface ExtractedRadarChildren {
   grid?: RadarGridProps;
@@ -1107,21 +1066,13 @@ const RadarChart = ({
   );
 }
 
-export {
-  DEFAULT_RADAR_COLORS,
-  RadarArea,
-  RadarAxis,
-  RadarChart,
-  RadarGrid,
-  RadarLabels,
-};
-export type {
-  RadarAreaProps,
-  RadarAxisProps,
-  RadarChartProps,
-  RadarData,
-  RadarEnterTransition,
-  RadarGridProps,
-  RadarLabelsProps,
-  RadarMetric,
-};
+export { RadarArea } from "./internal/radar-area-child";
+export { RadarAxis } from "./internal/radar-axis-child";
+export { RadarGrid } from "./internal/radar-grid-child";
+export { RadarLabels } from "./internal/radar-labels-child";
+export type { RadarAreaProps } from "./internal/radar-area-child";
+export type { RadarAxisProps } from "./internal/radar-axis-child";
+export type { RadarGridProps } from "./internal/radar-grid-child";
+export type { RadarLabelsProps } from "./internal/radar-labels-child";
+export { DEFAULT_RADAR_COLORS, RadarChart };
+export type { RadarChartProps, RadarData, RadarEnterTransition, RadarMetric };

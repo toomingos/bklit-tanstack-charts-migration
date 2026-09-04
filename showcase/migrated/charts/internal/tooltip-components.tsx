@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { createSpring } from './spring';
 import type { Spring } from './spring';
 import { ENTRANCE_SPRING, TICKER_ITEM_HEIGHT } from "./design-tokens";
-import { useChartConfig } from './chart-config-context';
+import { useChartConfig } from './use-chart-config';
 import type { SpringConfig } from './chart-config-context';
 import { indicatorFadeGradientStops, resolveVerticalFadeSides } from './fade-mask';
 import type { IndicatorFadeEdges, IndicatorFadeGradientStop, VerticalFadeSides } from './fade-mask';

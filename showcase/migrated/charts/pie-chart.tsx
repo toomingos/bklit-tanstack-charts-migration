@@ -18,6 +18,8 @@ import type { PieEnterTransition, ResolvedTiming } from './internal/enter-transi
 import { useDebouncedContainerSize } from "./internal/use-container-size";
 import { PieStableContext, PieHoverCoordinatorContext } from './internal/pie-center-context';
 import type { PieStableValue } from './internal/pie-center';
+import { defaultPieColors } from "./internal/pie-default-colors";
+import type { PieSliceProps } from "./internal/pie-slice";
 import { CHART_CATEGORY_PALETTE } from "./internal/design-tokens";
 import "./styles.css";
 
@@ -32,9 +34,6 @@ const PIE_STAGGER_EACH_MS = 80;
 const PIE_STAGGER_OFFSET_MS = 100;
 // Charts smaller than this render the empty placeholder (no room for arcs).
 const MIN_PIE_SIZE_PX = 10;
-
-// 5-entry palette, not TanStack's native 6: a 6-cycle desyncs after index 5.
-const defaultPieColors: readonly string[] = CHART_CATEGORY_PALETTE;
 
 interface PieData {
   readonly label: string;
@@ -628,32 +627,16 @@ const PieChart = ({
 PieChart.displayName = "PieChart";
 
 
-interface PieSliceProps {
-  index: number;
-  color?: string;
-  fill?: string;
-  animate?: boolean;
-  showGlow?: boolean;
-  hoverEffect?: PieSliceHoverEffect;
-  hoverOffset?: number;
-  className?: string;
-}
-
-const PieSlice = (_props: Readonly<PieSliceProps>): null => null;
-
-PieSlice.displayName = "PieSlice";
-
 export type { PieSliceHoverEffect } from './internal/pie-hover-chrome';
 export type { PieEnterTransition } from './internal/enter-transition';
+export { PieSlice } from "./internal/pie-slice";
+export type { PieSliceProps } from "./internal/pie-slice";
 export {
   DEFAULT_HOVER_OFFSET,
-  defaultPieColors,
   PieChart,
-  PieSlice,
 };
 export type {
   PieArcData,
   PieChartProps,
   PieData,
-  PieSliceProps,
 };

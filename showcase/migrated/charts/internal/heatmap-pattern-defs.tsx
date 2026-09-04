@@ -13,7 +13,7 @@ interface HeatmapPatternDefsProps {
 
 // TanStack bakes margins into rect coords, so base patterns wrap in a phase-shifting
 // Pattern matching bklit's plot-origin tile phase; ids are useId-scoped.
-const HeatmapPatternDefs = memo(({
+const renderHeatmapPatternDefs = ({
   levelStyles,
   patternIdPrefix,
   phaseX,
@@ -45,7 +45,9 @@ const HeatmapPatternDefs = memo(({
   });
   if (nodes.length === 0) {return undefined;}
   return <defs>{nodes}</defs>;
-});
+};
+
+const HeatmapPatternDefs = memo(renderHeatmapPatternDefs);
 
 HeatmapPatternDefs.displayName = "HeatmapPatternDefs";
 

@@ -46,7 +46,7 @@ import {
   useDatePillOverlay,
 } from "./internal/hover-geometry";
 import { TOOLTIP_SPRING } from "./internal/design-tokens";
-import { useChartConfig } from "./internal/chart-config-context";
+import { useChartConfig } from "./internal/use-chart-config";
 import { buildNativeTooltipExtension, renderSeriesTooltipBody } from "./internal/native-tooltip";
 import type {
   ChartDatum,

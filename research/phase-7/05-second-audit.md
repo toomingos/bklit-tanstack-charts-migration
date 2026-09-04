@@ -64,6 +64,8 @@ Fixture coverage: 15 fixtures, all typecheck-only, none render. No fixture for `
 
 ## 6. Scores
 
+> Routed in `06-second-routes.md` (sixth pass); see its §0 for three corrections to this file.
+
 | Aspect | `00` | Now | Delta driver |
 |---|---|---|---|
 | Nativeness | 6.5 | **5.5** | parallel scales, heatmap coords/axes, own hit-testing (N-1..N-3) |

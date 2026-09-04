@@ -3,7 +3,7 @@
 // Bklit brush layout half, ported 1:1.
 
 import { memo, useMemo } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { useBrushSelection } from './brush-selection';
 import type { BrushLayoutState } from './brush-selection';
@@ -37,7 +37,7 @@ const useBrushLayoutState = (layout: ReturnType<typeof useBrushSelection>): Brus
     ],
   );
 
-const BrushLayout = memo(({
+const BrushLayoutContent = ({
   data,
   xDataKey = "date",
   xExtentMax,
@@ -47,7 +47,7 @@ const BrushLayout = memo(({
   className,
   children,
   brushStrip,
-}: Readonly<BrushLayoutProps>) => {
+}: Readonly<BrushLayoutProps>): ReactElement => {
   const layout = useBrushSelection({
     data,
     enabled,
@@ -82,7 +82,9 @@ const BrushLayout = memo(({
       )}
     </div>
   );
-});
+};
+
+const BrushLayout = memo(BrushLayoutContent);
 
 BrushLayout.displayName = "BrushLayout";
 
