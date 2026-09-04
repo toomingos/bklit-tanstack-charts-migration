@@ -1,10 +1,11 @@
 // Bklit ChoroplethChart on TanStack geoShape; zoom rides projection params, not group transforms.
-import React, { Children, createContext, isValidElement, useCallback, useContext, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement, ReactNode, RefObject } from 'react';
+import { useEffectEvent } from './internal/use-effect-event';
 import type { FeatureCollection,Feature,Geometry} from "geojson";
-import { geoCentroid, geoMercator, geoPath } from 'd3-geo';
+import { geoCentroid, geoMercator } from 'd3-geo';
 import type { GeoPermissibleObjects, GeoProjection } from 'd3-geo';
-import type { TransformMatrix, ProvidedZoom, ZoomState } from "./internal/zoom-engine";
+import type { TransformMatrix, ProvidedZoom } from "./internal/zoom-engine";
 import { Zoom } from "./internal/zoom-engine";
 import { identityMatrix } from "./internal/zoom-math";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
@@ -23,8 +24,11 @@ import { CHART_ROLE } from "./children";
 import { roleOf } from "./internal/children-extract";
 import { createChoroplethHoverChrome } from './internal/choropleth-hover-chrome';
 import type { ChoroplethHoverChrome } from './internal/choropleth-hover-chrome';
+import { ChoroplethZoomValue } from "./internal/choropleth-zoom-context";
 import { TS_CHART_SVG_SELECTOR, useChoroplethReveal } from "./internal/choropleth-reveal";
-import { matricesEqual, queueZoomFrame, resolveWheelZoomDelta, resolveZoomFrameMatrix, zoomSnapshotChanged } from "./internal/choropleth-zoom-motion";
+import { resolveWheelZoomDelta } from "./internal/choropleth-zoom-motion";
+import { useChoroplethZoomMotion } from "./internal/use-choropleth-zoom-motion";
+import { useChoroplethPaths } from "./internal/use-choropleth-paths";
 import { intFmt } from "./internal/formatters";
 import { ChoroplethGraticuleOverlay } from "./internal/choropleth-graticule";
 import type { ChoroplethGraticuleProps } from "./internal/choropleth-graticule-props";
@@ -90,16 +94,6 @@ interface ChoroplethTooltipProps {
   readonly panelStyle?: React.CSSProperties;
   readonly backgroundColor?: string;
 }
-
-type ChoroplethZoomInstance<TElement extends Element> = ProvidedZoom<TElement> & ZoomState;
-
-interface ChoroplethZoomContextValue {
-  readonly zoom: ChoroplethZoomInstance<HTMLElement> | null;
-}
-
-const ChoroplethZoomContext = createContext<ChoroplethZoomContextValue>({ zoom: null });
-
-const useChoroplethZoom = (): ChoroplethZoomContextValue => useContext(ChoroplethZoomContext)
 
 // No featurePaths array: geoShape marks own the paths; pathGenerator serves callers that want them.
 interface ChoroplethContextValue {
@@ -566,46 +560,9 @@ const ChoroplethChartBody = ({
 
   const zoomRefForChrome = useRef<ProvidedZoom<HTMLElement> | null>(null);
 
-  const [displayMatrix, setDisplayMatrix] = useState<TransformMatrix>(() => initialZoom);
-  const targetMatrixRef = useRef<TransformMatrix>(initialZoom);
-  const isDraggingRef = useRef(false);
-  const committedMatrixRef = useRef<TransformMatrix>(initialZoom);
-  const committedDraggingRef = useRef(false);
-  const easeRef = useRef<{ from: TransformMatrix; start: number } | undefined>(undefined);
-  const zoomRafRef = useRef<number | undefined>(undefined);
-  const refreshTooltipAnchorRef = useRef<() => void>(() => {
-    // No-op until the tooltip anchor registers its refresh.
-  });
-
-  const stepZoomFrame = useCallback(function stepZoomFrame(now: number): void {
-    zoomRafRef.current = undefined;
-    const dragging = isDraggingRef.current;
-    const next = resolveZoomFrameMatrix({ dragging, easeRef, now, target: targetMatrixRef.current });
-    if (zoomSnapshotChanged({ committedDragging: committedDraggingRef.current, committedMatrix: committedMatrixRef.current, dragging, matrix: next })) {
-      committedMatrixRef.current = next;
-      committedDraggingRef.current = dragging;
-      setDisplayMatrix(next);
-      refreshTooltipAnchorRef.current();
-    }
-    zoomRafRef.current = queueZoomFrame(dragging || easeRef.current !== undefined, stepZoomFrame);
-  }, []);
-
-  const scheduleZoomFrame = useCallback(() => {
-    if ((zoomRafRef.current ?? 0) !== 0) {return;}
-    zoomRafRef.current = requestAnimationFrame(stepZoomFrame);
-  }, [stepZoomFrame]);
-
-  const onZoomTick = useCallback((zoom: Readonly<Pick<ChoroplethZoomInstance<HTMLElement>, "transformMatrix" | "isDragging">>) => {
-    targetMatrixRef.current = zoom.transformMatrix;
-    isDraggingRef.current = zoom.isDragging;
-    if (zoom.isDragging) {
-      easeRef.current = undefined;
-    } else if (matricesEqual(zoom.transformMatrix, committedMatrixRef.current)) {
-      // Settled on the committed matrix: the existing ease (if any) already applies.
-    }
-    else {easeRef.current = { from: committedMatrixRef.current, start: performance.now() };}
-    scheduleZoomFrame();
-  }, [scheduleZoomFrame]);
+  // Zoom-motion state plus the per-frame tick; hook owns the contiguous group below.
+  const { displayMatrix, getIsDragging, onZoomTick, setRefreshTooltipAnchor } =
+    useChoroplethZoomMotion({ initialZoom });
 
   const projection = useMemo((): GeoProjection | undefined => {
     if (width <= 0 || height <= 0) {return undefined;}
@@ -643,34 +600,8 @@ const ChoroplethChartBody = ({
     return (): void =>{  clearTimeout(timeout); };
   }, [animationDuration, revealEpoch]);
 
-  const geoPathGenerator = useMemo(
-    () => (projection ? geoPath(projection) : undefined),
-    [projection],
-  );
-  const pathGenerator = useCallback(
-    (feature: ChoroplethFeature) => geoPathGenerator?.(feature) ?? undefined,
-    [geoPathGenerator],
-  );
-  const rawPathGenerator = useCallback(
-    (geo: GeoPermissibleObjects) => geoPathGenerator?.(geo) ?? null,
-    [geoPathGenerator],
-  );
-  const projectPoint = useCallback(
-    (coords: [number, number]): [number, number] | null => {
-      const projected = projection?.(coords);
-      return projected && Number.isFinite(projected[0]) && Number.isFinite(projected[1]) ? [projected[0], projected[1]] : null;
-    },
-    [projection],
-  );
-
-  // Anchors arrive already zoomed (projection carries zoom); no forward matrix apply needed.
-  const unprojectPoint = useCallback(
-    (point: [number, number]): [number, number] | null => {
-      const unprojected = projection?.invert?.(point);
-      return unprojected && Number.isFinite(unprojected[0]) && Number.isFinite(unprojected[1]) ? [unprojected[0], unprojected[1]] : null;
-    },
-    [projection],
-  );
+  // Path generators plus project/unproject; hook owns the contiguous group below.
+  const { pathGenerator, projectPoint, rawPathGenerator, unprojectPoint } = useChoroplethPaths({ projection });
 
   const definition = useMemo<
     StaticChartDefinition<ChoroplethFeature, ChartValue, ChartValue, "dom"> | undefined
@@ -744,8 +675,8 @@ const ChoroplethChartBody = ({
   }, []);
   // Latest-callback sync runs post-commit so the render body stays pure.
   useEffect(() => {
-    refreshTooltipAnchorRef.current = refreshTooltipAnchor;
-  }, [refreshTooltipAnchor]);
+    setRefreshTooltipAnchor(refreshTooltipAnchor);
+  }, [refreshTooltipAnchor, setRefreshTooltipAnchor]);
 
   const { maybeStartReveal: startReveal } = reveal;
   const handleRender = useCallback((
@@ -757,10 +688,10 @@ const ChoroplethChartBody = ({
     if (scene && interaction) {renderContextRef.current = { interaction, scene };}
     const chartContainer = container;
     const svg = resolveSurfaceSvg(chartContainer, surface?.element);
-    syncZoomContainer(chartContainer, zoomRefForChrome.current, isDraggingRef.current);
+    syncZoomContainer(chartContainer, zoomRefForChrome.current, getIsDragging());
     ensureHoverChrome().reconnect(chartContainer, collectGeoElements(svg));
     startReveal(chartContainer, svg);
-  }, [ensureHoverChrome, startReveal]);
+  }, [ensureHoverChrome, startReveal, getIsDragging]);
 
   useEffect(() =>
     (): void => {
@@ -893,11 +824,11 @@ const ChoroplethChartBody = ({
         const activeZoom = zoom;
         onZoomTick(activeZoom);
         return (
-          <ChoroplethZoomContext.Provider value={{ zoom: activeZoom }}>
+          <ChoroplethZoomValue zoom={activeZoom}>
             <ChoroplethContext.Provider value={choroplethContextValue}>
               {inner}
             </ChoroplethContext.Provider>
-          </ChoroplethZoomContext.Provider>
+          </ChoroplethZoomValue>
         );
       }}
     </Zoom>
@@ -1018,14 +949,14 @@ const ChoroplethChart = ({
 ChoroplethChart.displayName = "ChoroplethChart";
 
 export type { TransformMatrix } from "./internal/zoom-engine";
+export { ChoroplethZoomContext, useChoroplethZoom } from "./internal/choropleth-zoom-context";
+export type { ChoroplethZoomContextValue, ChoroplethZoomInstance } from "./internal/choropleth-zoom-context";
 export {
   ChoroplethChart,
   ChoroplethFeatureComponent,
   ChoroplethGraticule,
   ChoroplethTooltip,
-  ChoroplethZoomContext,
   useChoropleth,
-  useChoroplethZoom,
 };
 export type {
   ChoroplethChartProps,
@@ -1034,8 +965,6 @@ export type {
   ChoroplethFeatureProperties,
   ChoroplethFeatureProps,
   ChoroplethTooltipProps,
-  ChoroplethZoomContextValue,
-  ChoroplethZoomInstance,
   Margin,
 };
 export type { ChoroplethGraticuleProps } from "./internal/choropleth-graticule-props";

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { RefObject } from "react";
+import { useEffectEvent } from "./use-effect-event";
 import type { ChartPoint, ChartRendererRenderContext } from "@tanstack/charts";
 import type { useHeatmap } from "./heatmap-context";
 import type { HeatmapHoverCoordinator } from "./heatmap-hover-chrome";

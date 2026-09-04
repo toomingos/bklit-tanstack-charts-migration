@@ -2,7 +2,17 @@
 // D3-shape arc() used directly (byte-identical to the @visx/shape wrapper).
 import { arc as arcGenerator } from "d3-shape";
 
-const pieArcPath = (innerRadius: number, outerRadius: number, startAngle: number, endAngle: number, cornerRadius: number, padAngle: number): string => {
+interface PieArcPathOptions {
+  readonly innerRadius: number;
+  readonly outerRadius: number;
+  readonly startAngle: number;
+  readonly endAngle: number;
+  readonly cornerRadius: number;
+  readonly padAngle: number;
+}
+
+const pieArcPath = (options: Readonly<PieArcPathOptions>): string => {
+  const { cornerRadius, endAngle, innerRadius, outerRadius, padAngle, startAngle } = options;
   const generator = arcGenerator<{ startAngle: number; endAngle: number }>()
     .innerRadius(innerRadius)
     .outerRadius(outerRadius)
@@ -26,4 +36,4 @@ const sliceMidOffset = (startAngle: number, endAngle: number, distance: number):
 }
 
 export { pieArcPath, sliceMidOffset };
-export type { SliceOffset };
+export type { PieArcPathOptions, SliceOffset };

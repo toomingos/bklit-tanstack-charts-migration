@@ -1,5 +1,6 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+import { useEffectEvent } from "./use-effect-event";
 import type { ChartPhase } from "./chart-phase";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { isYDomainTweenPhase, resolveAnimatedYDestinationDomains } from './y-domain';

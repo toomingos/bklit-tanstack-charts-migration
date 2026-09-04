@@ -1,5 +1,6 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Dispatch, ReactElement, RefObject, SetStateAction } from "react";
+import { useEffectEvent } from "./use-effect-event";
 import { LINE_LOADING_PULSE_CYCLE_S } from "./design-tokens";
 import { fadeGradientStops, resolveFadeSides, viewportFadeGradientAttrs } from "./fade-mask";
 import type { FadeGradientStop } from "./fade-mask";

@@ -1,5 +1,6 @@
-import { useCallback, useEffectEvent, useLayoutEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 import type { ReactElement, RefObject } from 'react';
+import { useEffectEvent } from './use-effect-event';
 import { createSpring } from './spring';
 import type { Spring } from './spring';
 import { TooltipDotMarker } from './tooltip-dot-marker';

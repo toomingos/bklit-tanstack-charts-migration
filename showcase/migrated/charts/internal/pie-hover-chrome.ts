@@ -136,6 +136,9 @@ type ArcChainableOutcome<TDatum> =
 
 type ArcChainableSlot<TDatum> = (...args: readonly unknown[]) => ArcChainableOutcome<TDatum>;
 
+// Predicate proves the dynamically read member is callable (anti-slop allows typeof here).
+const isChainableSlot = <TDatum>(candidate: unknown): candidate is ArcChainableSlot<TDatum> => typeof candidate === "function";
+
 const createOffsetArc = <TDatum>(getOffset: (datum: TDatum, index: number) => { dx: number; dy: number }): Arc<unknown, TDatum> => {
   const base = d3Arc<TDatum>();
 /*
@@ -157,10 +160,10 @@ const createOffsetArc = <TDatum>(getOffset: (datum: TDatum, index: number) => { 
        * SAFETY: `method` ranges over the nine chainable Arc names existing at runtime with get/set overloads.
        * Typed indexed access cannot compile (no index signature; `digits` missing from types), so Reflect keeps it dynamic.
        */
-      const fn = Reflect.get(base, method) as ArcChainableSlot<TDatum> | undefined;
-      if (fn === undefined) {throw new Error(`createOffsetArc: missing arc method '${method}'`);}
-      if (args.length === 0) {return fn();}
-      fn(...args);
+      const candidate: unknown = Reflect.get(base, method);
+      if (!isChainableSlot<TDatum>(candidate)) {throw new Error(`createOffsetArc: missing arc method '${method}'`);}
+      if (args.length === 0) {return candidate();}
+      candidate(...args);
       return wrapped;
     };
     Reflect.set(wrapped, method, forwarder);

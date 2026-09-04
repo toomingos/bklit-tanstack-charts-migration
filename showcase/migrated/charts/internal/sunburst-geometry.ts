@@ -100,17 +100,21 @@ const clockwiseFraction = (angle: number): number => {
 };
 
 /*
- * Called with 6 positional args by sunburst-chart.tsx; bundling would break public call signature.
  * Zoom morph lerps matching arcs; entering/exiting arcs collapse to a point.
  */
+interface TransitionGeometryOptions {
+  readonly arc: ReadonlyArcDatum;
+  readonly fromFocus: Readonly<Focus>;
+  readonly toFocus: Readonly<Focus>;
+  readonly maxDepth: number;
+  readonly radius: number;
+  readonly progress: number;
+}
+
 const transitionGeometry = (
-  arc: ReadonlyArcDatum,
-  fromFocus: Readonly<Focus>,
-  toFocus: Readonly<Focus>,
-  maxDepth: number,
-  radius: number,
-  progress: number,
+  options: Readonly<TransitionGeometryOptions>,
 ): ArcGeometry | null => {
+  const { arc, fromFocus, maxDepth, progress, radius, toFocus } = options;
   const from = geometryFor(arc, fromFocus, maxDepth, radius);
   const to = geometryFor(arc, toFocus, maxDepth, radius);
 
@@ -133,3 +137,4 @@ export {
 };
 export type { SunburstFlatRow, SunburstLayout } from "./sunburst-layout";
 export type { ArcDatum, ArcGeometry, Focus, SunburstNode } from "./sunburst-types";
+export type { TransitionGeometryOptions };

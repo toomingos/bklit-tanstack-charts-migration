@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useEffectEvent, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, Ref, RefObject } from 'react';
+import { useEffectEvent } from './use-effect-event';
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { computeFunnelRings, hSegmentPath, vSegmentPath } from './funnel-geometry';
 import type { FunnelRingGeometry, FunnelSegBox } from './funnel-geometry';

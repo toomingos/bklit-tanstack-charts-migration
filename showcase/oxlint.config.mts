@@ -51,6 +51,18 @@ export default defineConfig({
         "sonarjs/no-wildcard-import": "off",
       },
     },
+    {
+      // pie-hover-chrome.ts builds an offset proxy that IMPLEMENTS d3-path's `Path` interface.
+      // `Path.arc(x, y, radius, startAngle, endAngle, anticlockwise?)` is six parameters by
+      // d3's definition, so the arity is fixed by the library, not by us: grouping them into
+      // an options object breaks `Path` assignability (TS2322) and the proxy stops being a
+      // thing d3-shape can draw into. This is the one place where max-params contradicts the
+      // library we are migrating onto, so the rule yields here rather than the code.
+      files: ["migrated/charts/internal/pie-hover-chrome.ts"],
+      rules: {
+        "max-params": "off",
+      },
+    },
   ],
   rules: {
     // ── Rules ultracite turns off that apply to a render-hot chart library ──
@@ -424,27 +436,27 @@ export default defineConfig({
     // disabled the rule's real coverage, so that single hit stays a known residual.)
     "no-underscore-dangle": ["error", { allow: ["__qaSetMarkerFan"] }],
 
-    // ── Known residuals (rules kept ON; these 12 hits are accepted, not hidden) ──
-    // pie-hover-chrome.ts: no-unsafe-type-assertion x3 + no-reflect-get x1 -- d3's Arc.context()
-    //   is typed CanvasRenderingContext2D|null with `...args: any[]` call signatures, so the
-    //   offset-wrapping cannot be spelled assertion-free; dropping them trades for
-    //   no-unknown-returns + no-unsafe-dictionary-type.
-    // css-var-maps.ts:103 + index.ts:120: no-deprecated x2 -- heatmapCssVars is deprecated
-    //   upstream in bklit and still publicly exported there, so parity requires re-exporting it.
-    // choropleth-chart.tsx:896: jsx-no-constructed-context-values + jsx-no-new-object-as-prop --
-    //   a provider value inside a render prop; hoisting it needs a new component, which the
-    //   no-multi-comp calibration above says this file should not grow.
-    // tooltip-components.tsx:787: memo-dependencies -- removing the dead spring deps immediately
-    //   raises react-hooks/exhaustive-deps on the same lines (verified).
-    // marker-group-content.tsx:34: variable-name -- the __qaSetMarkerFan harness contract.
-    // sankey-mark.ts:241: sort-keys -- key order is load-bearing for const-generic inference.
-    // chart-focus-kit.ts:31: no-unnecessary-type-parameters -- the alternatives trip
-    //   no-unknown-type-aliases / redundant-type-aliases.
-    // Separately, 37 findings are size and complexity limits (max-lines, max-statements,
-    // max-lines-per-function, max-dependencies, max-params, complexity, cognitive-complexity)
-    // concentrated in area/line/bar/composed/candlestick/live-line/sunburst/ring/gauge and
-    // tooltip-components. Those are real structure debt and are held as a separate extraction
-    // change; splitting render-hot chart bodies risks the reveal/identity behaviour under test.
+    // ── Known residuals (rules kept ON; these 7 hits are accepted, not hidden) ──
+    // pie-hover-chrome.ts: no-unsafe-type-assertion x2 + no-reflect-get x1 -- all three are the
+    //   gap between @types/d3-shape and d3's actual runtime contract, re-verified against the
+    //   installed typings: (a) `Arc.context()` is typed CanvasRenderingContext2D|null, but
+    //   arc.js only ever calls moveTo/lineTo/arc/closePath and accepts any object, so a Path
+    //   proxy cannot be *proven* to be a full canvas context because it is not one; (b) the
+    //   arc closure mirrors d3's own build-then-attach-methods idiom, which TS cannot verify;
+    //   (c) `digits` exists at runtime via withPath() but is absent from the `Arc` interface,
+    //   which has no index signature, so it cannot be spelled with typed access. The value read
+    //   through Reflect.get is now proven by a type predicate rather than asserted.
+    // css-var-maps.ts + index.ts: no-deprecated x2 -- heatmapCssVars is deprecated upstream in
+    //   bklit and still publicly exported there, so parity requires re-exporting it.
+    // marker-group-content.tsx: variable-name -- the __qaSetMarkerFan harness contract above.
+    // sankey-mark.ts: sort-keys -- key order is load-bearing for const-generic inference.
+    //
+    // Note for future work: `react-hooks/exhaustive-deps` and the compiler memo rules
+    // (preserve-manual-memoization / memo-dependencies) are jointly unsatisfiable for a ref
+    // object returned from a custom hook -- the first demands it in the dep array, the others
+    // reject it. Three separate extractions hit this independently. The convention adopted here
+    // is to keep the ref inside the hook and expose stable accessors (getX() / setX(fn)), which
+    // satisfies all three honestly. Prefer that over adding the ref to deps.
 
     // Deliberately OFF (contradict rules above or redundant with tsc):
     // no-ternary, sort-imports (oxfmt sorts), react/react-in-jsx-scope,

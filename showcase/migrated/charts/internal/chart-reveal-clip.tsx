@@ -1,6 +1,7 @@
 // Left-to-right clip reveal driven by the shared WAAPI reveal engine.
-import { useEffect, useEffectEvent, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { ReactElement } from "react";
+import { useEffectEvent } from "./use-effect-event";
 import { buildProgressKeyframes, resolveEnterTransition, revealTiming } from './enter-transition';
 import type { EnterTransition } from './enter-transition';
 

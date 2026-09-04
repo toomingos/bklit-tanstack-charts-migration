@@ -1,0 +1,435 @@
+// Ring child classification, WAAPI track-reveal helpers, and chart state hooks.
+// The hooks own contiguous state+effect groups; callers keep call order identical.
+import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import { RingCenter } from "./ring-center";
+import type { RingData } from "./ring-context";
+import { createRingHoverCoordinator } from './ring-hover-chrome';
+import type { RingHoverCoordinator } from './ring-hover-chrome';
+import { buildProgressKeyframes, RING_TWEEN_FALLBACK, resolveEnterTransition, revealTiming } from './enter-transition';
+import type { RevealTiming, RingEnterTransition } from './enter-transition';
+import { onPostPaint, setRevealDeadline } from "./deferred-reveal";
+import { nativeStaggerDelayMs } from "./native-stagger";
+import { hitTestPolarBands, pointerToCenterOffset } from "./polar-hit";
+
+const MS_PER_SECOND = 1000;
+const RING_TRACK_STAGGER_EACH_S = 0.08;
+
+// Selector for the TanStack marks group rendered inside the chart container.
+const MARKS_GROUP_SELECTOR = ".ts-chart__marks";
+
+type RingLineCap = "round" | "butt";
+
+interface RingProps {
+  readonly index: number;
+  readonly color?: string;
+  readonly animate?: boolean;
+  readonly showGlow?: boolean;
+  readonly lineCap?: RingLineCap;
+}
+
+// Boundary predicates: React child types arrive as string-or-constructor unions; narrow once here.
+const isFunctionType = <Value,>(value: Value): value is Value & ((...args: readonly never[]) => void) => typeof value === "function";
+const isString = <Text,>(text: Text): text is Text & string => typeof text === "string";
+
+const componentDisplayName = (child: Readonly<ReactNode>): string | undefined => {
+  if (!isValidElement(child) || !isFunctionType(child.type)) {return undefined;}
+  const componentType = child.type;
+  return "displayName" in componentType && isString(componentType.displayName)
+    ? componentType.displayName
+    : undefined;
+};
+
+const isRingElement = (child: Readonly<ReactNode>): boolean => componentDisplayName(child) === "Ring"
+
+const isRingCenterElement = (child: Readonly<ReactNode>): boolean => {
+  if (isValidElement(child) && child.type === RingCenter) {return true;}
+  return componentDisplayName(child) === "RingCenter";
+}
+
+interface RingChildConfig {
+  readonly index: number;
+  readonly color?: string;
+  readonly animate: boolean;
+  // ShowGlow extracted for prop parity only; glow rendering was dead code and is unread.
+  readonly showGlow: boolean;
+  readonly lineCap: RingLineCap;
+}
+
+interface ClassifiedChildren {
+  readonly centerChildren: readonly ReactNode[];
+  readonly ringConfigs: readonly RingChildConfig[];
+}
+
+const classifyChildren = (children: Readonly<ReactNode>, geometryScrubbing: boolean): ClassifiedChildren => {
+  const centerChildren: ReactNode[] = [];
+  const ringConfigs: RingChildConfig[] = [];
+
+  for (const child of Children.toArray(children)) {
+    if (!isValidElement(child)) {
+      // Non-element children carry no ring configuration.
+    } else if (isRingCenterElement(child)) {
+      centerChildren.push(child);
+    } else if (isRingElement(child) && isValidElement<RingProps>(child) && !geometryScrubbing) {
+      const { props } = child;
+      ringConfigs.push({
+        animate: props.animate !== false,
+        color: props.color,
+        index: props.index,
+        lineCap: props.lineCap ?? "round",
+        showGlow: props.showGlow !== false,
+      });
+    } else {
+      // Non-ring children and scrubbed rings carry no reveal geometry: only live rings populate the spec.
+    }
+  }
+
+  return { centerChildren, ringConfigs };
+}
+
+const queryRingTrackGroup = (root: ParentNode, index: number): SVGGElement | null =>
+  root.querySelector<SVGGElement>(`[data-ts-key="ring-${index}-track"]`);
+
+const findRingTrackGroup = (container: HTMLElement, marksGroup: SVGGElement, index: number): SVGGElement | null =>
+  queryRingTrackGroup(marksGroup, index) ?? queryRingTrackGroup(container, index);
+
+const isRingTrackRevealable = (container: HTMLElement, marksGroup: SVGGElement, index: number): boolean =>
+  findRingTrackGroup(container, marksGroup, index) !== null;
+
+interface RingRevealQuery {
+  readonly container: HTMLElement;
+  readonly marksGroup: SVGGElement;
+  readonly currData: readonly Readonly<RingData>[];
+  readonly currMap: ReadonlyMap<number, RingChildConfig>;
+  readonly seen: Set<number>;
+}
+
+const considerRingReveal = (params: Readonly<RingRevealQuery & { readonly index: number; readonly toReveal: number[] }>): void => {
+  const ringData = params.seen.has(params.index) ? undefined : params.currData[params.index];
+  const cfg = ringData ? params.currMap.get(params.index) : undefined;
+  if (!ringData || cfg?.animate !== true) {
+    if (ringData) {params.seen.add(params.index);}
+    return;
+  }
+  if (!isRingTrackRevealable(params.container, params.marksGroup, params.index)) {return;}
+  params.seen.add(params.index);
+  params.toReveal.push(params.index);
+};
+
+const collectRingsToReveal = (params: Readonly<RingRevealQuery>): number[] => {
+  const toReveal: number[] = [];
+  for (let i = 0; i < params.currData.length; i += 1) {
+    considerRingReveal({ ...params, index: i, toReveal });
+  }
+  return toReveal;
+};
+
+const markRevealStarted = (container: HTMLElement, marksGroup: SVGGElement): void => {
+  const svgForBkm = container.querySelector<SVGElement>("svg.ts-chart");
+  if (svgForBkm && (svgForBkm.dataset.bkmRevealed ?? "") === "") {
+    svgForBkm.dataset.bkmRevealed = "1";
+  }
+  marksGroup.classList.add("ts-chart__marks--revealing");
+};
+
+interface RingRevealRefs {
+  readonly revealAnimsRef: RefObject<Animation[]>;
+  readonly revealDeadlineTimerRef: RefObject<number | null>;
+  readonly revealPostPaintCancelRef: RefObject<(() => void) | null>;
+  readonly isMountedRef: RefObject<boolean>;
+}
+
+const armRingRevealDeadline = (params: Readonly<{ enterStaggerScale: number; revealAnimsRef: RefObject<Animation[]>; revealDeadlineTimerRef: RefObject<number | null>; timing: RevealTiming; toReveal: readonly number[] }>): void => {
+  const maxDelayMs = Math.max(
+    ...params.toReveal.map((i) => nativeStaggerDelayMs(RING_TRACK_STAGGER_EACH_S * params.enterStaggerScale * MS_PER_SECOND, 0, i, "arc")),
+  );
+  params.revealDeadlineTimerRef.current = setRevealDeadline(params.timing.durationMs + maxDelayMs, {
+    animationsRef: params.revealAnimsRef,
+    onDeadline: () => {
+      // No deadline fallback: the animation finish handlers settle the reveal.
+    },
+  });
+};
+
+const resetRingTrackTransforms = (params: Readonly<{ container: HTMLElement; marksGroup: SVGGElement; toReveal: readonly number[] }>): void => {
+  for (const i of params.toReveal) {
+    const trackGroup = findRingTrackGroup(params.container, params.marksGroup, i);
+    if (trackGroup) {trackGroup.style.transform = "";}
+  }
+};
+
+const playRingExpandAnimation = (params: Readonly<{ trackGroup: SVGGElement; timing: RevealTiming; expandDelayMs: number; revealAnimsRef: RefObject<Animation[]> }>): void => {
+  const expandKeyframes = buildProgressKeyframes(params.timing, (progress) => ({ transform: `scale(${progress})` }));
+  const expandAnim = params.trackGroup.animate(expandKeyframes, {
+    delay: params.expandDelayMs,
+    duration: params.timing.durationMs,
+    easing: params.timing.easing,
+    fill: "backwards",
+  });
+  params.revealAnimsRef.current.push(expandAnim);
+  expandAnim.onfinish = (): void =>{  expandAnim.cancel(); };
+};
+
+interface RingExpandInput {
+  readonly container: HTMLElement;
+  readonly currData: readonly Readonly<RingData>[];
+  readonly currMap: ReadonlyMap<number, RingChildConfig>;
+  readonly enterStaggerScale: number;
+  readonly revealAnimsRef: RefObject<Animation[]>;
+  readonly timing: RevealTiming;
+  readonly index: number;
+}
+
+const expandRingTrack = (params: Readonly<RingExpandInput>): void => {
+  const ringData = params.currData.at(params.index);
+  if (!ringData) {return;}
+  const liveMarksGroup = params.container.querySelector<SVGGElement>(MARKS_GROUP_SELECTOR);
+  const trackGroup = liveMarksGroup ? findRingTrackGroup(params.container, liveMarksGroup, params.index) : queryRingTrackGroup(params.container, params.index);
+  const config = params.currMap.get(params.index);
+  if (!config || !trackGroup) {return;}
+  const expandDelayMs = nativeStaggerDelayMs(RING_TRACK_STAGGER_EACH_S * params.enterStaggerScale * MS_PER_SECOND, 0, params.index, "arc");
+  playRingExpandAnimation({ expandDelayMs, revealAnimsRef: params.revealAnimsRef, timing: params.timing, trackGroup });
+};
+
+interface RingRevealRunInput {
+  readonly container: HTMLElement;
+  readonly currData: readonly Readonly<RingData>[];
+  readonly currMap: ReadonlyMap<number, RingChildConfig>;
+  readonly enterStaggerScale: number;
+  readonly revealAnimsRef: RefObject<Animation[]>;
+  readonly timing: RevealTiming;
+  readonly toReveal: readonly number[];
+}
+
+const finishRingReveal = (params: Readonly<RingRevealRunInput>): void => {
+  for (const i of params.toReveal) {
+    expandRingTrack({ container: params.container, currData: params.currData, currMap: params.currMap, enterStaggerScale: params.enterStaggerScale, index: i, revealAnimsRef: params.revealAnimsRef, timing: params.timing });
+  }
+  params.container.querySelector<SVGGElement>(MARKS_GROUP_SELECTOR)?.classList.remove("ts-chart__marks--revealing");
+};
+
+interface RingRevealStarterInput {
+  readonly container: HTMLElement;
+  readonly currData: readonly Readonly<RingData>[];
+  readonly currMap: ReadonlyMap<number, RingChildConfig>;
+  readonly enterStaggerScale: number;
+  readonly revealAnimsRef: RefObject<Animation[]>;
+  readonly revealDeadlineTimerRef: RefObject<number | null>;
+  readonly revealPostPaintCancelRef: RefObject<(() => void) | null>;
+  readonly marksGroup: SVGGElement;
+  readonly timing: RevealTiming;
+  readonly toReveal: readonly number[];
+}
+
+const startRingRevealAnimations = (params: Readonly<RingRevealStarterInput>): void => {
+  markRevealStarted(params.container, params.marksGroup);
+  armRingRevealDeadline({ enterStaggerScale: params.enterStaggerScale, revealAnimsRef: params.revealAnimsRef, revealDeadlineTimerRef: params.revealDeadlineTimerRef, timing: params.timing, toReveal: params.toReveal });
+  resetRingTrackTransforms({ container: params.container, marksGroup: params.marksGroup, toReveal: params.toReveal });
+  params.revealPostPaintCancelRef.current = onPostPaint(() => {
+    finishRingReveal(params);
+  });
+};
+
+interface RingRevealBeginInput {
+  readonly container: HTMLElement;
+  readonly currData: readonly Readonly<RingData>[];
+  readonly currMap: ReadonlyMap<number, RingChildConfig>;
+  readonly enterStaggerScale: number;
+  readonly revealAnimsRef: RefObject<Animation[]>;
+  readonly revealDeadlineTimerRef: RefObject<number | null>;
+  readonly revealPostPaintCancelRef: RefObject<(() => void) | null>;
+  readonly marksGroup: SVGGElement;
+  readonly enterTransition: RingEnterTransition | undefined;
+  readonly toReveal: readonly number[];
+}
+
+// Timing resolution plus reveal start, split out so the onRender callback stays small.
+const beginRingReveal = (params: Readonly<RingRevealBeginInput>): void => {
+  const timing = revealTiming(resolveEnterTransition(params.enterTransition, RING_TWEEN_FALLBACK));
+  startRingRevealAnimations({ container: params.container, currData: params.currData, currMap: params.currMap, enterStaggerScale: params.enterStaggerScale, marksGroup: params.marksGroup, revealAnimsRef: params.revealAnimsRef, revealDeadlineTimerRef: params.revealDeadlineTimerRef, revealPostPaintCancelRef: params.revealPostPaintCancelRef, timing, toReveal: params.toReveal });
+};
+
+const cancelRevealAnimations = (revealAnims: readonly Animation[]): void => {
+  for (const anim of revealAnims) {
+    try { anim.cancel(); } catch {
+      // Cancelling a finished animation throws: the teardown already settled it.
+    }
+  }
+};
+
+const flushRingRevealTeardown = (params: Readonly<RingRevealRefs & { readonly revealAnims: Animation[] }>): void => {
+  if (params.isMountedRef.current) {return;}
+  if (params.revealDeadlineTimerRef.current !== null) {
+    globalThis.clearTimeout(params.revealDeadlineTimerRef.current);
+    params.revealDeadlineTimerRef.current = null;
+  }
+  params.revealPostPaintCancelRef.current?.();
+  params.revealPostPaintCancelRef.current = null;
+  cancelRevealAnimations(params.revealAnims);
+  params.revealAnimsRef.current = [];
+};
+
+const cancelPendingRingReveal = (params: Readonly<RingRevealRefs & { readonly revealAnims: Animation[] }>): void => {
+  const { isMountedRef } = params;
+  isMountedRef.current = false;
+  globalThis.setTimeout(() => {
+    flushRingRevealTeardown(params);
+  }, 0);
+};
+
+interface UseRingHoverStateOptions {
+  readonly hoveredIndex?: number | null;
+  readonly onHoverChange?: (index: number | null) => void;
+}
+
+interface RingHoverState {
+  readonly coordinator: RingHoverCoordinator;
+  readonly liveHoveredIndex: number | null;
+}
+
+const useRingHoverState = (options: Readonly<UseRingHoverStateOptions>): RingHoverState => {
+  const { hoveredIndex, onHoverChange } = options;
+  /*
+   * Coordinator reads latest props at pointer time so its identity survives prop churn; an Effect Event cannot be stored in a long-lived coordinator.
+   */
+  const onHoverChangeRef = useRef(onHoverChange);
+  const isControlledRef = useRef(hoveredIndex !== undefined);
+  useEffect(() => {
+    onHoverChangeRef.current = onHoverChange;
+    isControlledRef.current = hoveredIndex !== undefined;
+  });
+
+  // Created once: the callbacks above always read the latest props, so the
+  // Coordinator identity (and its in-flight hover state) survives re-renders.
+  const [coordinator] = useState((): RingHoverCoordinator => createRingHoverCoordinator(
+    (index: number | null): void => { onHoverChangeRef.current?.(index); },
+    (): boolean => isControlledRef.current,
+  ));
+
+  useEffect(() => {
+    if (hoveredIndex !== undefined) {
+      coordinator.setHovered(hoveredIndex);
+    }
+  }, [hoveredIndex, coordinator]);
+
+  const liveHoveredIndex = useSyncExternalStore(
+    coordinator.subscribe,
+    coordinator.getHovered,
+    coordinator.getHovered,
+  );
+  return { coordinator, liveHoveredIndex };
+};
+
+interface UseRingRevealOptions {
+  readonly data: readonly RingData[];
+  readonly enterStaggerScale: number;
+  readonly enterTransition: RingEnterTransition | undefined;
+  readonly geometryScrubbing: boolean;
+  readonly ringConfigMap: ReadonlyMap<number, RingChildConfig>;
+}
+
+interface RingRevealState {
+  readonly handleRender: (args: { container: HTMLElement }) => void;
+  readonly hasRevealedRings: () => boolean;
+}
+
+const useRingReveal = (options: Readonly<UseRingRevealOptions>): RingRevealState => {
+  const { data, enterStaggerScale, enterTransition, geometryScrubbing, ringConfigMap } = options;
+  const revealAnimsRef = useRef<Animation[]>([]);
+  const revealDeadlineTimerRef = useRef<number | null>(null);
+  const revealPostPaintCancelRef = useRef<(() => void) | null>(null);
+  const seenRingRevealedRef = useRef<Set<number>>(new Set());
+  const isMountedRef = useRef(true);
+
+  /*
+   * Stable onRender identity is load-bearing for benchmarked render performance, so inputs arrive via ref read at paint time; an Effect Event cannot be handed to the renderer.
+   */
+  const revealInputsRef = useRef({ data, enterStaggerScale, enterTransition, geometryScrubbing, ringConfigMap });
+  useEffect(() => {
+    revealInputsRef.current = { data, enterStaggerScale, enterTransition, geometryScrubbing, ringConfigMap };
+  });
+
+  const handleRender = useCallback(({ container }: { container: HTMLElement }): void => {
+    const { data: currData, enterStaggerScale: currStagger, enterTransition: currTransition, geometryScrubbing: currScrubbing, ringConfigMap: currMap } = revealInputsRef.current;
+    if (currScrubbing) {return;}
+    const marksGroup = container.querySelector<SVGGElement>(MARKS_GROUP_SELECTOR);
+    if (!marksGroup) {return;}
+
+    const toReveal = collectRingsToReveal({ container, currData, currMap, marksGroup, seen: seenRingRevealedRef.current });
+    if (toReveal.length === 0) {return;}
+
+    beginRingReveal({ container, currData, currMap, enterStaggerScale: currStagger, enterTransition: currTransition, marksGroup, revealAnimsRef, revealDeadlineTimerRef, revealPostPaintCancelRef, toReveal });
+  }, []);
+  const hasRevealedRings = useCallback((): boolean => seenRingRevealedRef.current.size > 0, []);
+
+  useEffect(() => {
+    const revealAnims = revealAnimsRef.current;
+    isMountedRef.current = true;
+    return (): void => {
+      cancelPendingRingReveal({ isMountedRef, revealAnims, revealAnimsRef, revealDeadlineTimerRef, revealPostPaintCancelRef });
+    };
+  }, []);
+  return { handleRender, hasRevealedRings };
+};
+
+interface UseRingPointerOptions {
+  readonly coordinator: RingHoverCoordinator;
+  readonly data: readonly RingData[];
+  readonly endAngle: number;
+  readonly geometryScrubbing: boolean;
+  readonly getRingRadii: (index: number) => { innerRadius: number; outerRadius: number };
+  readonly startAngle: number;
+}
+
+interface RingPointerHandlers {
+  readonly handlePointerLeave: () => void;
+  readonly handlePointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
+}
+
+const useRingPointer = (options: Readonly<UseRingPointerOptions>): RingPointerHandlers => {
+  const { coordinator, data, endAngle, geometryScrubbing, getRingRadii, startAngle } = options;
+  const ringHitBands = useMemo(
+    () => data.map((_ring: Readonly<RingData>, i: number) => ({ ...getRingRadii(i), endAngle, startAngle })),
+    [data, getRingRadii, startAngle, endAngle],
+  );
+  const lastHitRequestRef = useRef<number | null>(null);
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (geometryScrubbing) {return;}
+      const { x, y } = pointerToCenterOffset(event.currentTarget, event.clientX, event.clientY);
+      const hit = hitTestPolarBands(x, y, ringHitBands);
+      if (hit === lastHitRequestRef.current) {return;}
+      lastHitRequestRef.current = hit;
+      if (hit === null) {coordinator.requestUnhover();}
+      else {coordinator.requestHover(hit);}
+    },
+    [coordinator, geometryScrubbing, ringHitBands],
+  );
+  const handlePointerLeave = useCallback(() => {
+    if (lastHitRequestRef.current === null) {return;}
+    lastHitRequestRef.current = null;
+    coordinator.requestUnhover();
+  }, [coordinator]);
+  return { handlePointerLeave, handlePointerMove };
+};
+
+export {
+  MARKS_GROUP_SELECTOR,
+  cancelPendingRingReveal,
+  classifyChildren,
+  useRingHoverState,
+  useRingPointer,
+  useRingReveal,
+};
+export type {
+  ClassifiedChildren,
+  RingChildConfig,
+  RingHoverState,
+  RingLineCap,
+  RingPointerHandlers,
+  RingProps,
+  RingRevealState,
+  UseRingHoverStateOptions,
+  UseRingPointerOptions,
+  UseRingRevealOptions,
+};

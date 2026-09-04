@@ -434,7 +434,14 @@ const PieChart = ({
   const scrubSlicePaths = useMemo((): readonly string[] | null => {
     if (!geometryScrubbing) {return null;}
     return arcs.map((arc: Readonly<PieArcData>) =>
-      pieArcPath(innerRadius, outerRadius, arc.startAngle, arc.endAngle, cornerRadius, arc.padAngle),
+      pieArcPath({
+        cornerRadius,
+        endAngle: arc.endAngle,
+        innerRadius,
+        outerRadius,
+        padAngle: arc.padAngle,
+        startAngle: arc.startAngle,
+      }),
     );
   }, [geometryScrubbing, arcs, innerRadius, outerRadius, cornerRadius]);
 

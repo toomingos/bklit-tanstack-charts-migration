@@ -25,10 +25,10 @@ const isBoolean = <Value>(value: Value): value is Value & boolean => typeof valu
  * Keys are only ever compared for equality, so the fallback tag just needs to stay out of the
  * other kinds' way.
  *
- * @param {Value} value - Domain value to key, read from the point's `xValue` at call sites.
+ * @param {unknown} value - Domain value to key, read from the point's `xValue` at call sites.
  * @returns {string} Key identifying the domain value for focus grouping.
  */
-const focusValueKey = <Value>(value: Value): string => {
+const focusValueKey = (value: unknown): string => {
   if (value instanceof Date) {return `date:${value.getTime()}`;}
   if (isNumber(value)) {return `number:${String(value)}`;}
   if (isString(value)) {return `string:${value}`;}

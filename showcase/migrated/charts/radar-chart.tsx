@@ -5,13 +5,13 @@ import {
   isValidElement,
   useCallback,
   useEffect,
-  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
+import { useEffectEvent } from "./internal/use-effect-event";
 import { scaleLinear, scalePoint } from "d3-scale";
 import { curveLinearClosed } from "d3-shape";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
