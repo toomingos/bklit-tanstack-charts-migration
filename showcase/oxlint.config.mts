@@ -95,6 +95,14 @@ export default defineConfig({
     // unicorn/no-useless-undefined stays ON: it has a satisfiable path (drop the argument,
     // `return;` over `return undefined;`) that needs no null.
     "sonarjs/no-undefined-assignment": "off",
+    // prefer-named-capture-group is OFF: tsconfig targets ES2017 and named groups are ES2018,
+    // so every one of its 8 hits is a TS1503 compile error if "fixed". Re-enable together with a
+    // target bump, not before.
+    "prefer-named-capture-group": "off",
+    // react/todo is OFF: these are React Compiler "not yet implemented" notices about its own
+    // lowering (object getters/setters, `??=`, reorderable binary expressions), not defects in
+    // this code, and the compiler is not enabled here (see react-compiler-no-manual-memoization).
+    "react/todo": "off",
     "react/jsx-max-depth": "error",
     // unicorn/no-null is OFF: it contradicts the library this codebase exists to migrate to.
     // TanStack Charts 0.15.0 prescribes null. Its channel types are
