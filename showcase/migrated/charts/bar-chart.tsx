@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { CSSProperties, Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
+import type { CSSProperties, Dispatch, ReactElement, ReactNode, RefObject, SetStateAction } from "react";
 import { scaleBand } from "d3-scale";
 import type { ScaleBand } from "d3-scale";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
@@ -151,31 +151,31 @@ const BAR_TRACK_DIM_STATES: ChartMarkState<ChartDatum>[] = [
 type BarOrientation = "vertical" | "horizontal";
 
 interface BarChartProps {
-  data: ChartDatum[];
-  xDataKey?: string;
-  animationDuration?: number;
+  readonly data: ChartDatum[];
+  readonly xDataKey?: string;
+  readonly animationDuration?: number;
   /** Easing for the per-bar grow reveal (bklit shell default cubic-bezier). */
-  animationEasing?: string;
+  readonly animationEasing?: string;
   /** Overrides the reveal timing; springs coerce to tweens. */
-  enterTransition?: Readonly<EnterTransition>;
+  readonly enterTransition?: Readonly<EnterTransition>;
   /** Replay epoch input: bumping it replays the grow reveal with no data change. */
-  revealSignature?: string;
-  margin?: Readonly<Partial<ChartMargin>>;
-  aspectRatio?: string;
-  className?: string;
-  barGap?: number;
+  readonly revealSignature?: string;
+  readonly margin?: Readonly<Partial<ChartMargin>>;
+  readonly aspectRatio?: string;
+  readonly className?: string;
+  readonly barGap?: number;
   /** DOC-9 (B13): bklit `barWidth` (bar-chart.tsx:81) — type surface only, no behavior. */
-  barWidth?: number;
+  readonly barWidth?: number;
   /** DOC-9 (B13): bklit `orientation` (bar-chart.tsx:83) — type surface only; pilot renders vertical. */
-  orientation?: BarOrientation;
+  readonly orientation?: BarOrientation;
   /** DOC-9 (B13): bklit `stacked` (bar-chart.tsx:85) — type surface only; pilot renders grouped. */
-  stacked?: boolean;
+  readonly stacked?: boolean;
   /** DOC-9 (B13): bklit `stackGap` (bar-chart.tsx:87) — type surface only, no behavior. */
-  stackGap?: number;
+  readonly stackGap?: number;
   /** DOC-9 (B13): bklit `squareSnap` (bar-chart.tsx:89) — type surface only, no behavior. */
-  squareSnap?: { readonly squareGap: number; readonly groupGap?: number; readonly fit?: boolean };
-  onPhaseChange?: (phase: ChartPhase) => void;
-  children?: ReactNode;
+  readonly squareSnap?: { readonly squareGap: number; readonly groupGap?: number; readonly fit?: boolean };
+  readonly onPhaseChange?: (phase: ChartPhase) => void;
+  readonly children?: ReactNode;
 }
 
 // Inert props accepted for API parity; dev-only warning names the ones passed.
@@ -737,7 +737,7 @@ const countSquarePrimitives = ({
 
 interface ClearDatePillParams {
   readonly pillBuild: PillBuild | null;
-  readonly visibilityRef: { current: boolean };
+  readonly visibilityRef: RefObject<boolean>;
   readonly setLabelFade: Dispatch<SetStateAction<Readonly<{ primaryX: number; hoveredLabel: string | null }> | undefined>>;
 }
 
@@ -830,19 +830,19 @@ interface BeginBarRevealParams {
   readonly marksGroup: SVGGElement;
   readonly renderDataLength: number;
   readonly revealDurationMs: number;
-  readonly revealedForDataRef: { current: unknown };
+  readonly revealedForDataRef: RefObject<unknown>;
   readonly latestRenderData: unknown;
-  readonly revealKeyRef: { current: string | null };
+  readonly revealKeyRef: RefObject<string | null>;
   readonly currentRevealKey: string;
-  readonly revealDeadlineTimerRef: { current: number | null };
+  readonly revealDeadlineTimerRef: RefObject<number | null>;
   readonly setPhase: (phase: ChartPhase) => void;
 }
 
 interface MarkBarRevealedParams {
   readonly marksGroup: SVGGElement;
-  readonly revealedForDataRef: { current: unknown };
+  readonly revealedForDataRef: RefObject<unknown>;
   readonly latestRenderData: unknown;
-  readonly revealKeyRef: { current: string | null };
+  readonly revealKeyRef: RefObject<string | null>;
   readonly currentRevealKey: string;
   readonly setPhase: (phase: ChartPhase) => void;
 }
@@ -865,7 +865,7 @@ interface ArmBarRevealDeadlineParams {
   readonly svgRoot: SVGSVGElement;
   readonly renderDataLength: number;
   readonly revealDurationMs: number;
-  readonly revealDeadlineTimerRef: { current: number | null };
+  readonly revealDeadlineTimerRef: RefObject<number | null>;
   readonly setPhase: (phase: ChartPhase) => void;
 }
 
@@ -912,18 +912,18 @@ interface NativeDepthGradientParams {
 }
 
 interface BuiltDepthGradientStop {
-  color: string;
-  offset: number;
-  opacity: number;
+  readonly color: string;
+  readonly offset: number;
+  readonly opacity: number;
 }
 
 interface BuiltDepthGradient {
-  id: string;
-  stops: BuiltDepthGradientStop[];
-  x1: number;
-  x2: number;
-  y1: number;
-  y2: number;
+  readonly id: string;
+  readonly stops: BuiltDepthGradientStop[];
+  readonly x1: number;
+  readonly x2: number;
+  readonly y1: number;
+  readonly y2: number;
 }
 
 interface DepthGlassGradientParams {
@@ -2062,11 +2062,11 @@ const resolveBarTooltipBody = ({
 interface SettleBarRevealParams {
   readonly svgRoot: SVGSVGElement;
   readonly marksGroup: SVGGElement;
-  readonly phaseRef: { current: ChartPhase };
-  readonly revealedKeyRef: { current: string | null };
-  readonly revealKeyRef: { current: string };
-  readonly revealedForDataRef: { current: unknown };
-  readonly latestRenderDataRef: { current: unknown };
+  readonly phaseRef: RefObject<ChartPhase>;
+  readonly revealedKeyRef: RefObject<string | null>;
+  readonly revealKeyRef: RefObject<string>;
+  readonly revealedForDataRef: RefObject<unknown>;
+  readonly latestRenderDataRef: RefObject<unknown>;
 }
 
 // Settles already-revealed state: replay keys and latched DOM stamps need no new reveal.
@@ -2096,14 +2096,14 @@ const settleBarRevealState = ({
 interface BarSvgRenderParams {
   readonly svgRoot: SVGSVGElement;
   readonly animationDuration: number;
-  readonly phaseRef: { current: ChartPhase };
-  readonly revealedKeyRef: { current: string | null };
-  readonly revealKeyRef: { current: string };
-  readonly revealedForDataRef: { current: unknown };
-  readonly latestRenderDataRef: { current: unknown };
+  readonly phaseRef: RefObject<ChartPhase>;
+  readonly revealedKeyRef: RefObject<string | null>;
+  readonly revealKeyRef: RefObject<string>;
+  readonly revealedForDataRef: RefObject<unknown>;
+  readonly latestRenderDataRef: RefObject<unknown>;
   readonly renderDataLength: number;
   readonly revealDurationMs: number;
-  readonly revealDeadlineTimerRef: { current: number | null };
+  readonly revealDeadlineTimerRef: RefObject<number | null>;
   readonly setPhase: (phase: ChartPhase) => void;
 }
 

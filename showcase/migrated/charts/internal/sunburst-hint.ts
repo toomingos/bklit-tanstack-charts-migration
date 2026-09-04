@@ -9,8 +9,8 @@ interface SunburstHintContext {
 }
 
 interface SunburstHintProps {
-  className?: string;
-  children?: ReactNode | ((context: SunburstHintContext) => ReactNode);
+  readonly className?: string;
+  readonly children?: ReactNode | ((context: SunburstHintContext) => ReactNode);
 }
 
 const SunburstHint = (_props: SunburstHintProps): null => null;

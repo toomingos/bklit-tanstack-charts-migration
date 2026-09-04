@@ -26,10 +26,10 @@ const sumValues = (node: ReadonlySunburstNode): number => {
 };
 
 interface BuildContext {
-  arcs: ArcDatum[];
-  focusById: Map<string, Focus>;
+  readonly arcs: ArcDatum[];
+  readonly focusById: Map<string, Focus>;
   maxDepth: number;
-  rootId: string;
+  readonly rootId: string;
   arcIndex: number;
 }
 
@@ -127,11 +127,11 @@ const layoutNode = (frame: Readonly<LayoutFrame>, ctx: BuildContext): void => {
 };
 
 interface SunburstLayout {
-  arcs: ArcDatum[];
-  focusById: Map<string, Focus>;
+  readonly arcs: ArcDatum[];
+  readonly focusById: Map<string, Focus>;
   maxDepth: number;
-  rootId: string;
-  total: number;
+  readonly rootId: string;
+  readonly total: number;
 }
 
 const buildArcs = (data: ReadonlySunburstNode): SunburstLayout => {
@@ -163,10 +163,10 @@ const buildArcs = (data: ReadonlySunburstNode): SunburstLayout => {
  */
 
 interface SunburstFlatRow {
-  id: string;
-  parentId: string | null;
-  hasChildren: boolean;
-  rawValue: number | undefined;
+  readonly id: string;
+  readonly parentId: string | null;
+  readonly hasChildren: boolean;
+  readonly rawValue: number | undefined;
 }
 
 const buildSunburstFlatRows = (data: ReadonlySunburstNode): SunburstFlatRow[] => {

@@ -3,8 +3,8 @@
 import type { ReactElement, ReactNode } from "react";
 
 interface SunburstHintDisplayProps {
-  children: ReactNode;
-  className?: string;
+  readonly children: ReactNode;
+  readonly className?: string;
 }
 
 const HINT_DISPLAY_EMPTY_STYLE = { minHeight: 20 } as const;

@@ -39,14 +39,14 @@ const applyStillReveal = (marks: RevealWipeMarks): boolean => {
 
 
 interface RunRevealWipeParams {
-  marks: RevealWipeMarks | null | undefined;
-  epoch: number;
-  epochRef: RevealWipeEpochRef;
-  active: boolean;
-  animationDuration: number;
-  prefersReducedMotion: boolean;
-  durationMs: number;
-  easingCss: string;
+  readonly marks: RevealWipeMarks | null | undefined;
+  readonly epoch: number;
+  readonly epochRef: RevealWipeEpochRef;
+  readonly active: boolean;
+  readonly animationDuration: number;
+  readonly prefersReducedMotion: boolean;
+  readonly durationMs: number;
+  readonly easingCss: string;
 }
 
 const runRevealWipe = (params: RunRevealWipeParams): boolean => {
@@ -65,10 +65,10 @@ const runRevealWipe = (params: RunRevealWipeParams): boolean => {
 }
 
 interface SnapRevealWipeParams {
-  marks: RevealWipeMarks | null | undefined;
-  active: boolean;
-  animationDuration: number;
-  prefersReducedMotion: boolean;
+  readonly marks: RevealWipeMarks | null | undefined;
+  readonly active: boolean;
+  readonly animationDuration: number;
+  readonly prefersReducedMotion: boolean;
 }
 
 const snapRevealWipe = (params: SnapRevealWipeParams): void => {

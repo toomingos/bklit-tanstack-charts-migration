@@ -52,21 +52,21 @@ interface Margin {
 }
 
 interface ChoroplethChartProps {
-  data: FeatureCollection<Geometry, ChoroplethFeatureProperties>;
-  margin?: Partial<Margin>;
-  animationDuration?: number;
-  enterTransition?: EnterTransition;
-  revealSignature?: string;
-  aspectRatio?: string;
-  scale?: number;
-  center?: [number, number];
-  translate?: [number, number];
-  zoomEnabled?: boolean;
-  zoomMin?: number;
-  zoomMax?: number;
-  initialZoom?: TransformMatrix;
-  className?: string;
-  children: ReactNode;
+  readonly data: FeatureCollection<Geometry, ChoroplethFeatureProperties>;
+  readonly margin?: Partial<Margin>;
+  readonly animationDuration?: number;
+  readonly enterTransition?: EnterTransition;
+  readonly revealSignature?: string;
+  readonly aspectRatio?: string;
+  readonly scale?: number;
+  readonly center?: [number, number];
+  readonly translate?: [number, number];
+  readonly zoomEnabled?: boolean;
+  readonly zoomMin?: number;
+  readonly zoomMax?: number;
+  readonly initialZoom?: TransformMatrix;
+  readonly className?: string;
+  readonly children: ReactNode;
 }
 
 interface ChoroplethFeatureProps {
@@ -99,7 +99,7 @@ interface ChoroplethGraticuleProps {
 type ChoroplethZoomInstance<TElement extends Element> = ProvidedZoom<TElement> & ZoomState;
 
 interface ChoroplethZoomContextValue {
-  zoom: ChoroplethZoomInstance<HTMLElement> | null;
+  readonly zoom: ChoroplethZoomInstance<HTMLElement> | null;
 }
 
 const ChoroplethZoomContext = createContext<ChoroplethZoomContextValue>({ zoom: null });
@@ -108,22 +108,22 @@ const useChoroplethZoom = (): ChoroplethZoomContextValue => useContext(Choroplet
 
 // No featurePaths array: geoShape marks own the paths; pathGenerator serves callers that want them.
 interface ChoroplethContextValue {
-  features: ChoroplethFeature[];
-  featureCollection: FeatureCollection<Geometry, ChoroplethFeatureProperties>;
-  pathGenerator: (feature: ChoroplethFeature) => string | undefined;
-  rawPathGenerator: (geo: GeoPermissibleObjects) => string | null;
-  projectPoint: (coords: [number, number]) => [number, number] | null;
-  unprojectPoint: (point: [number, number]) => [number, number] | null;
+  readonly features: ChoroplethFeature[];
+  readonly featureCollection: FeatureCollection<Geometry, ChoroplethFeatureProperties>;
+  readonly pathGenerator: (feature: ChoroplethFeature) => string | undefined;
+  readonly rawPathGenerator: (geo: GeoPermissibleObjects) => string | null;
+  readonly projectPoint: (coords: [number, number]) => [number, number] | null;
+  readonly unprojectPoint: (point: [number, number]) => [number, number] | null;
   width: number;
   height: number;
-  innerWidth: number;
-  innerHeight: number;
-  margin: Margin;
-  containerRef: RefObject<HTMLDivElement | null>;
-  isLoaded: boolean;
-  animationDuration: number;
-  enterTransition?: EnterTransition;
-  revealEpoch: number;
+  readonly innerWidth: number;
+  readonly innerHeight: number;
+  readonly margin: Margin;
+  readonly containerRef: RefObject<HTMLDivElement | null>;
+  readonly isLoaded: boolean;
+  readonly animationDuration: number;
+  readonly enterTransition?: EnterTransition;
+  readonly revealEpoch: number;
 }
 
 const EMPTY_FEATURE_COLLECTION: FeatureCollection<Geometry, ChoroplethFeatureProperties> = {
@@ -245,10 +245,10 @@ const PATTERN_DEFS_STYLE = { height: 0, overflow: "hidden", position: "absolute"
 const CHOROPLETH_INNER_STYLE = { inset: 0, position: "absolute" } as const;
 
 interface ExtractedConfig {
-  featureConfig: ChoroplethFeatureProps | undefined;
-  tooltipConfig: ChoroplethTooltipProps | undefined;
-  graticuleConfig: ChoroplethGraticuleProps | undefined;
-  overlayChildren: ReactNode[];
+  readonly featureConfig: ChoroplethFeatureProps | undefined;
+  readonly tooltipConfig: ChoroplethTooltipProps | undefined;
+  readonly graticuleConfig: ChoroplethGraticuleProps | undefined;
+  readonly overlayChildren: ReactNode[];
 }
 
 interface FeaturePaintOptions {

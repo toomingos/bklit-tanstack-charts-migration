@@ -7,8 +7,8 @@ const DEGREES_PER_HALF_TURN = 180;
 const DEG_TO_RAD = Math.PI / DEGREES_PER_HALF_TURN;
 
 interface CirclePosition {
-  x: number;
-  y: number;
+  readonly x: number;
+  readonly y: number;
 }
 
 const getCirclePosition = (index: number, total: number): CirclePosition => {

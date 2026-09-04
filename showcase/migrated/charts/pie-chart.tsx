@@ -102,9 +102,9 @@ interface PieSliceConfig {
 }
 
 interface ClassifiedChildren {
-  centerChildren: ReactNode[];
-  defsChildren: ReactElement[];
-  sliceConfigs: PieSliceConfig[];
+  readonly centerChildren: ReactNode[];
+  readonly defsChildren: ReactElement[];
+  readonly sliceConfigs: PieSliceConfig[];
 }
 
 const classifyChildren = (children: Readonly<ReactNode>, geometryScrubbing: boolean): ClassifiedChildren => {
@@ -139,21 +139,21 @@ const classifyChildren = (children: Readonly<ReactNode>, geometryScrubbing: bool
 
 interface PieChartProps {
   readonly data: PieData[];
-  size?: number;
-  innerRadius?: number;
-  padAngle?: number;
-  cornerRadius?: number;
-  startAngle?: number;
-  endAngle?: number;
-  className?: string;
-  style?: CSSProperties;
+  readonly size?: number;
+  readonly innerRadius?: number;
+  readonly padAngle?: number;
+  readonly cornerRadius?: number;
+  readonly startAngle?: number;
+  readonly endAngle?: number;
+  readonly className?: string;
+  readonly style?: CSSProperties;
   hoveredIndex?: number | null;
-  onHoverChange?: (index: number | null) => void;
-  hoverOffset?: number;
-  children: ReactNode;
-  enterTransition?: PieEnterTransition;
-  enterStaggerScale?: number;
-  geometryScrubbing?: boolean;
+  readonly onHoverChange?: (index: number | null) => void;
+  readonly hoverOffset?: number;
+  readonly children: ReactNode;
+  readonly enterTransition?: PieEnterTransition;
+  readonly enterStaggerScale?: number;
+  readonly geometryScrubbing?: boolean;
 }
 
 interface PieRowDatum {

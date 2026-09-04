@@ -11,7 +11,7 @@ import type { ChartDatum, ChartTooltipConfig, GridConfig, XAxisConfig } from "./
 import type { ChartMargin } from "./use-chart-margin";
 
 interface ComposedSeriesEntry {
-  dataKey: string;
+  readonly dataKey: string;
   stroke: string;
   strokeWidth: number;
   showHighlight: boolean;
@@ -22,27 +22,27 @@ interface ComposedSeriesEntry {
 }
 
 interface ResolvedBar {
-  dataKey: string;
-  fill: string;
-  radius: number;
-  fadedOpacity: number;
-  animate: boolean;
+  readonly dataKey: string;
+  readonly fill: string;
+  readonly radius: number;
+  readonly fadedOpacity: number;
+  readonly animate: boolean;
 }
 
 interface ResolvedArea {
-  dataKey: string;
-  fill: string;
+  readonly dataKey: string;
+  readonly fill: string;
   stroke: string;
   strokeWidth: number;
-  fillOpacity: number;
-  curve: CurveFactory;
+  readonly fillOpacity: number;
+  readonly curve: CurveFactory;
 }
 
 interface ResolvedLine {
-  dataKey: string;
+  readonly dataKey: string;
   stroke: string;
   strokeWidth: number;
-  curve: CurveFactory;
+  readonly curve: CurveFactory;
 }
 
 interface ComposedMarksContext {

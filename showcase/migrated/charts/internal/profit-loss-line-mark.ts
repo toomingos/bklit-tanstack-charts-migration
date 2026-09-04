@@ -211,10 +211,10 @@ const profitLossLineMarks = (options: Readonly<ProfitLossLineMarkOptions>): Char
 }
 
 interface ProfitLossGradientDef {
-  id: string;
-  startX: number;
-  endX: number;
-  stops: { offset: string; opacity: number; color: string }[];
+  readonly id: string;
+  readonly startX: number;
+  readonly endX: number;
+  readonly stops: { offset: string; opacity: number; color: string }[];
 }
 
 interface ProfitLossGradientPairParams {

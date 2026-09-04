@@ -6,9 +6,9 @@ import type { ChartMarker } from "./types";
  */
 
 interface ActiveMarkersStore {
-  subscribe: (listener: () => void) => () => void;
-  getActiveDate: () => Date | null;
-  setActiveDate: (date: Readonly<Date> | null) => void;
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly getActiveDate: () => Date | null;
+  readonly setActiveDate: (date: Readonly<Date> | null) => void;
 }
 
 const createActiveMarkersStore = (): ActiveMarkersStore => {

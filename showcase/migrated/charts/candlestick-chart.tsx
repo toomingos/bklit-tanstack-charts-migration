@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { CSSProperties, Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
+import type { CSSProperties, Dispatch, ReactElement, ReactNode, RefObject, SetStateAction } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
@@ -214,7 +214,7 @@ const candlestickDimStates = (fadedOpacity: number, showHoverFade: boolean): Cha
 
 interface CandlestickChromeState {
   tooltip: ChartTooltipConfig | undefined;
-  dateLabels: string[];
+  readonly dateLabels: string[];
 }
 
 // Legacy pattern names are an open string at the prop boundary; only known presets render.
@@ -1376,9 +1376,9 @@ const buildCandleHoverMarks = (params: Readonly<CandleHoverMarksParams>): ChartM
 
 interface CandleRevealCycleParams {
   readonly animationDuration: number;
-  readonly revealEpochRef: { current: number };
-  readonly canInteractRef: { current: boolean };
-  readonly revealDeadlineTimerRef: { current: ReturnType<typeof globalThis.setTimeout> | undefined };
+  readonly revealEpochRef: RefObject<number>;
+  readonly canInteractRef: RefObject<boolean>;
+  readonly revealDeadlineTimerRef: RefObject<ReturnType<typeof globalThis.setTimeout> | undefined>;
   readonly setRevealed: (revealed: boolean) => void;
   /** Re-arm signal (bklit [animationDuration, revealSignature] deps). Changing it re-runs the reveal effect; the cycle itself needs no value from it, so it stays unread. */
   readonly signature: unknown;
@@ -1390,7 +1390,7 @@ interface CandleRevealCycleParams {
  * @param {{ current: ReturnType<typeof globalThis.setTimeout> | undefined }} timerRef - Mutable ref holding the deadline timer handle.
  * @returns {void} Nothing.
  */
-const clearCandleRevealDeadline = (timerRef: { current: ReturnType<typeof globalThis.setTimeout> | undefined }): void => {
+const clearCandleRevealDeadline = (timerRef: RefObject<ReturnType<typeof globalThis.setTimeout> | undefined>): void => {
   if (timerRef.current !== undefined) {
     globalThis.clearTimeout(timerRef.current);
     timerRef.current = undefined;
@@ -1404,7 +1404,7 @@ const clearCandleRevealDeadline = (timerRef: { current: ReturnType<typeof global
  * @param {{ current: ReturnType<typeof globalThis.setTimeout> | undefined }} revealDeadlineTimerRef - Mutable ref holding the deadline timer handle.
  * @returns {() => void} Cleanup clearing both timers.
  */
-const createCandleRevealCleanup = (flipTimer: Readonly<ReturnType<typeof globalThis.setTimeout>>, revealDeadlineTimerRef: { current: ReturnType<typeof globalThis.setTimeout> | undefined }): (() => void) => (): void => {
+const createCandleRevealCleanup = (flipTimer: Readonly<ReturnType<typeof globalThis.setTimeout>>, revealDeadlineTimerRef: RefObject<ReturnType<typeof globalThis.setTimeout> | undefined>): (() => void) => (): void => {
   globalThis.clearTimeout(flipTimer);
   clearCandleRevealDeadline(revealDeadlineTimerRef);
 };
@@ -1412,9 +1412,9 @@ const createCandleRevealCleanup = (flipTimer: Readonly<ReturnType<typeof globalT
 interface CandleRevealTimersParams {
   readonly epoch: number;
   readonly animationDuration: number;
-  readonly revealEpochRef: { current: number };
-  readonly canInteractRef: { current: boolean };
-  readonly revealDeadlineTimerRef: { current: ReturnType<typeof globalThis.setTimeout> | undefined };
+  readonly revealEpochRef: RefObject<number>;
+  readonly canInteractRef: RefObject<boolean>;
+  readonly revealDeadlineTimerRef: RefObject<ReturnType<typeof globalThis.setTimeout> | undefined>;
   readonly setRevealed: (revealed: boolean) => void;
 }
 
@@ -1489,7 +1489,7 @@ interface CandlePillParams {
   readonly dateLabels: readonly string[] | undefined;
   readonly formattedDate: string;
   readonly pillBuild: PillBuild | null;
-  readonly pillVisibleRef: { current: boolean };
+  readonly pillVisibleRef: RefObject<boolean>;
   readonly rowCount: number;
   readonly showDatePill: boolean;
   readonly tickerIndex: number;
@@ -1516,8 +1516,8 @@ const updateCandlePill = (params: Readonly<CandlePillParams>): void => {
 };
 
 interface CandleLabelFadeState {
-  primaryX: number;
-  hoveredLabel: string | null;
+  readonly primaryX: number;
+  readonly hoveredLabel: string | null;
 }
 
 interface CandleLabelFadeParams {
@@ -1788,20 +1788,20 @@ const resolveCandleTargetGeometry = (revealed: boolean, animationDuration: numbe
   revealed || animationDuration <= NO_ANIMATION_DURATION_MS || !animate;
 
 interface CandlestickChartProps {
-  data: ChartDatum[];
-  xDataKey?: string;
-  margin?: Partial<ChartMargin>;
-  animationDuration?: number;
-  enterTransition?: CandlestickEnterTransition;
+  readonly data: ChartDatum[];
+  readonly xDataKey?: string;
+  readonly margin?: Partial<ChartMargin>;
+  readonly animationDuration?: number;
+  readonly enterTransition?: CandlestickEnterTransition;
   /** Changing it re-arms the reveal (bklit [animationDuration, revealSignature] deps). */
-  revealSignature?: unknown;
-  aspectRatio?: string;
-  className?: string;
-  style?: CSSProperties;
-  candleGap?: number;
+  readonly revealSignature?: unknown;
+  readonly aspectRatio?: string;
+  readonly className?: string;
+  readonly style?: CSSProperties;
+  readonly candleGap?: number;
   /** Explicit constant body width in px (overrides the computed width). */
-  candleWidth?: number;
-  children?: ReactNode;
+  readonly candleWidth?: number;
+  readonly children?: ReactNode;
 }
 
 

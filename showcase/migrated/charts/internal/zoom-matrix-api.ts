@@ -74,9 +74,9 @@ interface ScaleAroundPointArgs {
 }
 
 interface ScaleAroundPointResult {
-  matrix: TransformMatrix;
-  anchor: Point | undefined;
-  translate: Translate;
+  readonly matrix: TransformMatrix;
+  readonly anchor: Point | undefined;
+  readonly translate: Translate;
 }
 
 // Next matrix for scaling around a point; hoisted so the scale callback stays short.

@@ -7,253 +7,253 @@ type ChartDatum = Record<string, unknown>;
 type FadeEdges = boolean | "left" | "right";
 
 interface SeriesPointMarkerStyle {
-  fill?: string;
+  readonly fill?: string;
   stroke?: string;
   strokeWidth?: number;
-  ringGap?: number;
-  outlineWidth?: number;
-  outlineColor?: string;
-  radius?: number;
-  fadeOnHover?: boolean;
-  inactiveOpacity?: number;
-  inactiveBlur?: number;
-  enterBlur?: number;
-  showActiveHighlight?: boolean;
+  readonly ringGap?: number;
+  readonly outlineWidth?: number;
+  readonly outlineColor?: string;
+  readonly radius?: number;
+  readonly fadeOnHover?: boolean;
+  readonly inactiveOpacity?: number;
+  readonly inactiveBlur?: number;
+  readonly enterBlur?: number;
+  readonly showActiveHighlight?: boolean;
 }
 
 interface LineConfig {
-  dataKey: string;
+  readonly dataKey: string;
   stroke?: string;
   strokeWidth?: number;
-  curve?: CurveFactory;
+  readonly curve?: CurveFactory;
   yAxisId?: string | number;
-  fadeEdges?: FadeEdges;
+  readonly fadeEdges?: FadeEdges;
   showHighlight?: boolean;
-  showMarkers?: boolean;
-  markers?: SeriesPointMarkerStyle;
-  dashFromIndex?: number;
-  dashArray?: string;
-  loadingStroke?: string;
-  loadingStrokeOpacity?: number;
-  animate?: boolean;
+  readonly showMarkers?: boolean;
+  readonly markers?: SeriesPointMarkerStyle;
+  readonly dashFromIndex?: number;
+  readonly dashArray?: string;
+  readonly loadingStroke?: string;
+  readonly loadingStrokeOpacity?: number;
+  readonly animate?: boolean;
 }
 
 interface AreaConfig {
-  dataKey: string;
+  readonly dataKey: string;
   stroke?: string;
   strokeWidth?: number;
-  fill?: string;
-  fillOpacity?: number;
-  curve?: CurveFactory;
+  readonly fill?: string;
+  readonly fillOpacity?: number;
+  readonly curve?: CurveFactory;
   yAxisId?: string | number;
-  showLine?: boolean;
-  gradientToOpacity?: number;
-  gradientSpan?: number;
-  fadeEdges?: boolean | "left" | "right";
-  showMarkers?: boolean;
-  markers?: SeriesPointMarkerStyle;
+  readonly showLine?: boolean;
+  readonly gradientToOpacity?: number;
+  readonly gradientSpan?: number;
+  readonly fadeEdges?: boolean | "left" | "right";
+  readonly showMarkers?: boolean;
+  readonly markers?: SeriesPointMarkerStyle;
   showHighlight?: boolean;
-  dashFromIndex?: number;
-  dashArray?: string;
+  readonly dashFromIndex?: number;
+  readonly dashArray?: string;
 }
 
 interface PatternAreaConfig {
-  dataKey: string;
-  patternPreset?: PatternPresetId;
-  patternColor?: string;
-  fill?: string;
-  curve?: CurveFactory;
+  readonly dataKey: string;
+  readonly patternPreset?: PatternPresetId;
+  readonly patternColor?: string;
+  readonly fill?: string;
+  readonly curve?: CurveFactory;
 }
 
 interface ScatterConfig {
-  dataKey: string;
+  readonly dataKey: string;
   yAxisId?: string | number;
-  animate?: boolean;
-  fill?: string;
+  readonly animate?: boolean;
+  readonly fill?: string;
   stroke?: string;
   strokeWidth?: number;
-  ringGap?: number;
-  radius?: number;
+  readonly ringGap?: number;
+  readonly radius?: number;
   // Overrides fill; ring follows unless stroke is set.
-  yGradient?: boolean | { from?: string; to?: string };
-  fadeOnHover?: boolean;
-  inactiveOpacity?: number;
-  inactiveBlur?: number;
-  enterBlur?: number;
-  showActiveHighlight?: boolean;
-  outlineWidth?: number;
-  outlineColor?: string;
+  readonly yGradient?: boolean | { from?: string; to?: string };
+  readonly fadeOnHover?: boolean;
+  readonly inactiveOpacity?: number;
+  readonly inactiveBlur?: number;
+  readonly enterBlur?: number;
+  readonly showActiveHighlight?: boolean;
+  readonly outlineWidth?: number;
+  readonly outlineColor?: string;
 }
 
 interface GridConfig {
-  horizontal?: boolean;
-  vertical?: boolean;
+  readonly horizontal?: boolean;
+  readonly vertical?: boolean;
   stroke?: string;
-  strokeOpacity?: number;
+  readonly strokeOpacity?: number;
   strokeWidth?: number;
-  numTicks?: number;
-  numTicksRows?: number;
-  numTicksColumns?: number;
-  rowTickValues?: number[];
-  loadingStroke?: string;
-  strokeDasharray?: string;
-  highlightRowValues?: number[];
-  highlightRowStroke?: string;
-  highlightRowStrokeOpacity?: number;
-  highlightRowStrokeWidth?: number;
-  highlightRowStrokeDasharray?: string;
-  fadeHorizontal?: boolean;
-  fadeVertical?: boolean;
-  hideHorizontalEdgeLines?: boolean;
-  hideVerticalEdgeLines?: boolean;
+  readonly numTicks?: number;
+  readonly numTicksRows?: number;
+  readonly numTicksColumns?: number;
+  readonly rowTickValues?: number[];
+  readonly loadingStroke?: string;
+  readonly strokeDasharray?: string;
+  readonly highlightRowValues?: number[];
+  readonly highlightRowStroke?: string;
+  readonly highlightRowStrokeOpacity?: number;
+  readonly highlightRowStrokeWidth?: number;
+  readonly highlightRowStrokeDasharray?: string;
+  readonly fadeHorizontal?: boolean;
+  readonly fadeVertical?: boolean;
+  readonly hideHorizontalEdgeLines?: boolean;
+  readonly hideVerticalEdgeLines?: boolean;
   yAxisId?: string | number;
-  shimmer?: boolean;
-  shimmerStroke?: string;
-  shimmerLength?: number;
-  shimmerSpeed?: number;
-  shimmerSync?: boolean;
+  readonly shimmer?: boolean;
+  readonly shimmerStroke?: string;
+  readonly shimmerLength?: number;
+  readonly shimmerSpeed?: number;
+  readonly shimmerSync?: boolean;
 }
 
 interface XAxisConfig {
-  numTicks?: number;
-  tickerHalfWidth?: number;
-  tickMode?: "domain" | "data";
-  formatValue?: (value: Readonly<Date>) => string;
+  readonly numTicks?: number;
+  readonly tickerHalfWidth?: number;
+  readonly tickMode?: "domain" | "data";
+  readonly formatValue?: (value: Readonly<Date>) => string;
 }
 
 interface GradientStop {
-  offset: number;
-  color: string;
+  readonly offset: number;
+  readonly color: string;
 }
 
 interface BarConfig {
-  dataKey: string;
+  readonly dataKey: string;
   yAxisId?: string | number;
-  fill?: string;
+  readonly fill?: string;
   stroke?: string;
   // "round" derives radius from bandwidth (cap 8); "butt" is 0; number is explicit px.
-  lineCap?: "round" | "butt" | number;
-  fadedOpacity?: number;
+  readonly lineCap?: "round" | "butt" | number;
+  readonly fadedOpacity?: number;
 }
 
 interface BarSquaresConfig {
-  dataKey: string;
+  readonly dataKey: string;
   yAxisId?: string | number;
-  fill?: string;
+  readonly fill?: string;
   stroke?: string;
-  squareGap?: number;
-  squareRadius?: number;
-  squareFit?: boolean;
-  useGradient?: boolean;
-  gradientStops?: GradientStop[];
-  patternPreset?: PatternPresetId;
-  animate?: boolean;
-  fadedOpacity?: number;
-  staggerDelay?: number;
-  groupGap?: number;
+  readonly squareGap?: number;
+  readonly squareRadius?: number;
+  readonly squareFit?: boolean;
+  readonly useGradient?: boolean;
+  readonly gradientStops?: GradientStop[];
+  readonly patternPreset?: PatternPresetId;
+  readonly animate?: boolean;
+  readonly fadedOpacity?: number;
+  readonly staggerDelay?: number;
+  readonly groupGap?: number;
 }
 
 interface BarColumnTrackConfig {
-  fill?: string;
-  opacity?: number;
-  squareGap?: number;
-  squareRadius?: number;
-  groupGap?: number;
-  squareFit?: boolean;
-  staggerDelay?: number;
+  readonly fill?: string;
+  readonly opacity?: number;
+  readonly squareGap?: number;
+  readonly squareRadius?: number;
+  readonly groupGap?: number;
+  readonly squareFit?: boolean;
+  readonly staggerDelay?: number;
 }
 
 interface BarDepthBackConfig {
-  dataKey: string;
-  color?: string;
-  colorAccessor?: (datum: Readonly<ChartDatum>, index: number) => string;
+  readonly dataKey: string;
+  readonly color?: string;
+  readonly colorAccessor?: (datum: Readonly<ChartDatum>, index: number) => string;
 }
 
 interface BarDepthFrontConfig {
-  dataKey: string;
+  readonly dataKey: string;
 }
 
 interface BarPulseConfig {
-  dataKey: string;
-  activeIndex?: number;
-  pulsePaused?: boolean;
+  readonly dataKey: string;
+  readonly activeIndex?: number;
+  readonly pulsePaused?: boolean;
 }
 
 interface BarDepthProviderConfig {
-  segmentsAccessor?: (datum: Readonly<ChartDatum>) => { value: number; color: string }[] | null | undefined;
-  groundShadow?: number;
-  minBarHeight?: number;
+  readonly segmentsAccessor?: (datum: Readonly<ChartDatum>) => { value: number; color: string }[] | null | undefined;
+  readonly groundShadow?: number;
+  readonly minBarHeight?: number;
 }
 
 // Not an alias of BarDepthProviderConfig: adds required children.
 interface BarDepthProviderProps extends BarDepthProviderConfig {
-  children: ReactNode;
+  readonly children: ReactNode;
 }
 
 // No yAxisId: bklit SeriesBar has none; radius defaults to 0, unlike standalone Bar.
 interface SeriesBarConfig {
-  dataKey: string;
-  fill?: string;
+  readonly dataKey: string;
+  readonly fill?: string;
   stroke?: string;
-  radius?: number;
-  fadedOpacity?: number;
-  animate?: boolean;
+  readonly radius?: number;
+  readonly fadedOpacity?: number;
+  readonly animate?: boolean;
 }
 
 interface BarXAxisConfig {
-  tickerHalfWidth?: number;
-  showAllLabels?: boolean;
-  maxLabels?: number;
+  readonly tickerHalfWidth?: number;
+  readonly showAllLabels?: boolean;
+  readonly maxLabels?: number;
 }
 
 interface BarYAxisProps {
-  showAllLabels?: boolean;
-  maxLabels?: number;
+  readonly showAllLabels?: boolean;
+  readonly maxLabels?: number;
 }
 
 type BackgroundPatternOptions = PatternPresetOptions;
 
 interface BackgroundConfig extends BackgroundPatternOptions {
-  pattern?: PatternPresetId;
-  color?: string;
-  showFill?: boolean;
-  opacity?: number;
-  fadeHorizontal?: boolean;
-  fadeVertical?: boolean;
-  fadeHorizontalLength?: number;
-  fadeVerticalLength?: number;
+  readonly pattern?: PatternPresetId;
+  readonly color?: string;
+  readonly showFill?: boolean;
+  readonly opacity?: number;
+  readonly fadeHorizontal?: boolean;
+  readonly fadeVertical?: boolean;
+  readonly fadeHorizontalLength?: number;
+  readonly fadeVerticalLength?: number;
 }
 
 interface MomentumColors {
-  up: string;
-  down: string;
-  flat: string;
+  readonly up: string;
+  readonly down: string;
+  readonly flat: string;
 }
 
 interface LiveLineConfig {
-  dataKey: string;
+  readonly dataKey: string;
   stroke?: string;
   strokeWidth?: number;
-  curve?: CurveFactory;
-  fill?: boolean;
-  pulse?: boolean;
-  dotSize?: number;
-  badge?: boolean;
-  formatValue?: (value: number) => string;
+  readonly curve?: CurveFactory;
+  readonly fill?: boolean;
+  readonly pulse?: boolean;
+  readonly dotSize?: number;
+  readonly badge?: boolean;
+  readonly formatValue?: (value: number) => string;
   // Dot always recolors by momentum, even when this is unset.
-  momentumColors?: MomentumColors;
+  readonly momentumColors?: MomentumColors;
 }
 
 interface LiveXAxisConfig {
-  numTicks?: number;
-  formatTime?: (time: number) => string;
+  readonly numTicks?: number;
+  readonly formatTime?: (time: number) => string;
 }
 
 interface LiveYAxisConfig {
-  minGap?: number;
-  position?: "left" | "right";
-  formatValue?: (value: number) => string;
-  allowDecimals?: boolean;
+  readonly minGap?: number;
+  readonly position?: "left" | "right";
+  readonly formatValue?: (value: number) => string;
+  readonly allowDecimals?: boolean;
 }
 
 export type {

@@ -12,22 +12,22 @@ interface BrushSelection {
 }
 
 interface BrushLayoutState {
-  xDomain: [Date, Date] | undefined;
-  xDomainSlotCount: number | undefined;
-  brushSelection: BrushSelection | null;
-  onBrushSelectionChange: (selection: BrushSelection | null) => void;
+  readonly xDomain: [Date, Date] | undefined;
+  readonly xDomainSlotCount: number | undefined;
+  readonly brushSelection: BrushSelection | null;
+  readonly onBrushSelectionChange: (selection: BrushSelection | null) => void;
 }
 
 interface UseBrushSelectionOptions {
-  data: readonly Readonly<ChartDatum>[];
-  xDataKey?: string;
-  xExtentMax?: Date;
-  enabled: boolean;
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly xDataKey?: string;
+  readonly xExtentMax?: Date;
+  readonly enabled: boolean;
 }
 
 interface UseBrushSelectionResult extends BrushLayoutState {
-  fullExtent: [Date, Date] | null;
-  handleBrushSelectionChange: (selection: BrushSelection | null) => void;
+  readonly fullExtent: [Date, Date] | null;
+  readonly handleBrushSelectionChange: (selection: BrushSelection | null) => void;
 }
 
 // Repos/bklit-ui/packages/ui/src/charts/filter-data-by-x-domain.ts:1-15

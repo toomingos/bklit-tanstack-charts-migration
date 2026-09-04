@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { resolveRestingChartPhase } from './chart-phase';
 import type { ChartPhase, ChartStatus } from './chart-phase';
 import type { ChartDatum } from './types';
@@ -13,13 +14,13 @@ const INITIAL_EPOCH = 0;
 const EPOCH_STEP = 1;
 
 interface UseChartPhaseOrchestratorOptions {
-  chartStatus: ChartStatus;
-  targetData: ChartDatum[];
-  skeletonData: ChartDatum[];
-  animationDuration: number;
-  yDomainTweenDuration: number;
-  revealSignature?: string;
-  skipEnterReveal?: boolean;
+  readonly chartStatus: ChartStatus;
+  readonly targetData: ChartDatum[];
+  readonly skeletonData: ChartDatum[];
+  readonly animationDuration: number;
+  readonly yDomainTweenDuration: number;
+  readonly revealSignature?: string;
+  readonly skipEnterReveal?: boolean;
 }
 
 interface StatusTransition {
@@ -79,7 +80,7 @@ interface ApplyStatusTransitionParams {
   readonly chartStatus: ChartStatus;
   readonly animationDuration: number;
   readonly yDomainTweenDuration: number;
-  readonly prevStatusRef: { current: ChartStatus };
+  readonly prevStatusRef: RefObject<ChartStatus>;
   readonly commit: Readonly<TransitionCommit>;
 }
 
@@ -149,8 +150,8 @@ interface ChartPhaseEffectsParams {
   readonly revealSignature: string;
   readonly skipEnterReveal: boolean;
   readonly chartPhase: ChartPhase;
-  readonly prevStatusRef: { current: ChartStatus };
-  readonly phaseRef: { current: ChartPhase };
+  readonly prevStatusRef: RefObject<ChartStatus>;
+  readonly phaseRef: RefObject<ChartPhase>;
   readonly setChartPhase: (phase: ChartPhase) => void;
   readonly setPlotData: (data: ChartDatum[]) => void;
   readonly setIsLoaded: (loaded: boolean) => void;

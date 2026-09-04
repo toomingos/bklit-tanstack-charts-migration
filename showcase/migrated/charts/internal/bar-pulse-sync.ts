@@ -44,8 +44,8 @@ const resolvePulseLoopState = (syncArgs: Readonly<PulseSyncArgs>): BarPulseLoopS
 };
 
 interface PulseWaveNodes {
-  silhouette: SVGPathElement;
-  wave: SVGRectElement;
+  readonly silhouette: SVGPathElement;
+  readonly wave: SVGRectElement;
 }
 
 // Silhouette + wave scene nodes for one group; undefined when either is missing.
@@ -57,11 +57,11 @@ const queryPulseWaveNodes = (group: SVGGElement): PulseWaveNodes | undefined => 
 };
 
 interface PulseWaveAttributes {
-  clipD: string;
-  waveX: number;
-  waveY: number;
-  waveH: number;
-  wave: SVGRectElement;
+  readonly clipD: string;
+  readonly waveX: number;
+  readonly waveY: number;
+  readonly waveH: number;
+  readonly wave: SVGRectElement;
 }
 
 // Numeric wave attributes; hoisted so readPulseSyncState stays short.
@@ -140,8 +140,8 @@ interface PulseTravelArgs {
 
 interface PulseTravel {
   geomKey: string;
-  clipId: string;
-  travel: number;
+  readonly clipId: string;
+  readonly travel: number;
 }
 
 // Clip + travel for one group; unhides the group once geometry validates (an unclipped wave must never paint).

@@ -4,13 +4,13 @@ import { REVEAL_EASE_CSS } from "./design-tokens";
 import { buildSankeyLinkAnimationSpecs, buildSankeyNodeAnimationSpecs, collectSankeyLabels, playSankeyAnimationSpecs, queryLinkPaths, queryNodeGroups } from "./sankey-reveal-specs";
 
 interface SankeyEnterTransition {
-  type?: "spring" | "tween";
-  duration?: number;
-  ease?: readonly [number, number, number, number];
-  bounce?: number;
-  stiffness?: number;
-  damping?: number;
-  mass?: number;
+  readonly type?: "spring" | "tween";
+  readonly duration?: number;
+  readonly ease?: readonly [number, number, number, number];
+  readonly bounce?: number;
+  readonly stiffness?: number;
+  readonly damping?: number;
+  readonly mass?: number;
 }
 
 const REVEALING_CLASS = "ts-chart__marks--revealing";
@@ -34,17 +34,17 @@ const resolveTiming = (transition: Readonly<SankeyEnterTransition> | undefined, 
 }
 
 interface SankeyRevealHandle {
-  cancel: () => void
+  readonly cancel: () => void
 }
 
 interface SankeyRevealConfig {
-  svg: SVGSVGElement;
-  animationDuration: number;
-  enterTransition?: SankeyEnterTransition;
+  readonly svg: SVGSVGElement;
+  readonly animationDuration: number;
+  readonly enterTransition?: SankeyEnterTransition;
 }
 
 interface SankeyRevealRuntime {
-  animations: Animation[];
+  readonly animations: Animation[];
   cancelPostPaint: (() => void) | undefined;
   deadlineTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
 }

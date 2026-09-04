@@ -1,33 +1,33 @@
 interface SunburstNode {
-  name: string;
-  value?: number;
-  color?: string;
-  fill?: string;
-  children?: SunburstNode[];
+  readonly name: string;
+  readonly value?: number;
+  readonly color?: string;
+  readonly fill?: string;
+  readonly children?: SunburstNode[];
 }
 
 interface ArcDatum {
-  id: string;
-  name: string;
-  depth: number;
-  value: number;
-  categoryIndex: number;
-  hasChildren: boolean;
-  trail: string[];
-  parentId: string | null;
+  readonly id: string;
+  readonly name: string;
+  readonly depth: number;
+  readonly value: number;
+  readonly categoryIndex: number;
+  readonly hasChildren: boolean;
+  readonly trail: string[];
+  readonly parentId: string | null;
   a0: number;
   a1: number;
   arcIndex: number;
-  color?: string;
-  fill?: string;
+  readonly color?: string;
+  readonly fill?: string;
 }
 
 interface Focus {
-  id: string;
-  name: string;
-  depth: number;
-  parentId: string | null;
-  categoryIndex: number;
+  readonly id: string;
+  readonly name: string;
+  readonly depth: number;
+  readonly parentId: string | null;
+  readonly categoryIndex: number;
   a0: number;
   a1: number;
 }
@@ -35,8 +35,8 @@ interface Focus {
 interface ArcGeometry {
   a0: number;
   a1: number;
-  innerR: number;
-  outerR: number;
+  readonly innerR: number;
+  readonly outerR: number;
 }
 
 export type { SunburstNode, ArcDatum, Focus, ArcGeometry };

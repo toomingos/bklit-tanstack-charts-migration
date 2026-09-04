@@ -23,13 +23,13 @@ const useHeatmapCoordinator = (): HeatmapHoverCoordinator => {
 }
 
 interface HeatmapInteractionContextValue {
-  hoveredCell: HeatmapHoveredCell | null;
-  hoveredLegendLevel: number | null;
-  tooltipData: HeatmapTooltipData | null;
-  setHoveredCell: (cell: HeatmapHoveredCell | null) => void;
-  setHoveredLegendLevel: (level: number | null) => void;
-  setTooltipData: (data: HeatmapTooltipData | null | ((prev: HeatmapTooltipData | null) => HeatmapTooltipData | null)) => void;
-  clearInteraction: () => void;
+  readonly hoveredCell: HeatmapHoveredCell | null;
+  readonly hoveredLegendLevel: number | null;
+  readonly tooltipData: HeatmapTooltipData | null;
+  readonly setHoveredCell: (cell: HeatmapHoveredCell | null) => void;
+  readonly setHoveredLegendLevel: (level: number | null) => void;
+  readonly setTooltipData: (data: HeatmapTooltipData | null | ((prev: HeatmapTooltipData | null) => HeatmapTooltipData | null)) => void;
+  readonly clearInteraction: () => void;
 }
 
 const useHeatmapInteractionOptional = (): HeatmapInteractionContextValue | null => {
@@ -81,8 +81,8 @@ const useHeatmapInteraction = (): HeatmapInteractionContextValue => {
 }
 
 interface HeatmapInteractionProviderProps {
-  children?: ReactNode;
-  coordinator?: HeatmapHoverCoordinator;
+  readonly children?: ReactNode;
+  readonly coordinator?: HeatmapHoverCoordinator;
 }
 
 const HeatmapInteractionProvider = ({ children, coordinator }: Readonly<HeatmapInteractionProviderProps>): ReactElement => {
@@ -94,9 +94,9 @@ const HeatmapInteractionProvider = ({ children, coordinator }: Readonly<HeatmapI
 };
 
 interface HeatmapInteractionBoundaryProps {
-  children?: ReactNode;
-  className?: string;
-  style?: CSSProperties;
+  readonly children?: ReactNode;
+  readonly className?: string;
+  readonly style?: CSSProperties;
 }
 
 const HeatmapInteractionBoundary = ({ children, className, style }: Readonly<HeatmapInteractionBoundaryProps>): ReactElement => {
@@ -114,10 +114,10 @@ const HeatmapInteractionBoundary = ({ children, className, style }: Readonly<Hea
 };
 
 interface HeatmapInteractionRootProps {
-  children?: ReactNode;
-  className?: string;
-  style?: CSSProperties;
-  coordinator?: HeatmapHoverCoordinator;
+  readonly children?: ReactNode;
+  readonly className?: string;
+  readonly style?: CSSProperties;
+  readonly coordinator?: HeatmapHoverCoordinator;
 }
 
 const HeatmapInteractionRoot = ({ children, className, style, coordinator }: Readonly<HeatmapInteractionRootProps>): ReactElement => (

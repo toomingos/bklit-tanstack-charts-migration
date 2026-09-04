@@ -37,13 +37,13 @@ const TWEEN_FALLBACK: ResolvedTiming = {
 };
 
 interface SpringConstants {
-  stiffness: number;
-  damping: number;
+  readonly stiffness: number;
+  readonly damping: number;
 }
 
 interface ClipReveal {
-  durationMs: number;
-  easingCss: string;
+  readonly durationMs: number;
+  readonly easingCss: string;
 }
 
 // Bklit motion-utils springOptionsFromTransition, verbatim formula.

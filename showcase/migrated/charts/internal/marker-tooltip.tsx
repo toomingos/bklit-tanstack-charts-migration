@@ -12,7 +12,7 @@ const LIST_BORDER_STYLE: CSSProperties = { borderTop: "1px solid var(--chart-too
 const MORE_COUNT_STYLE: CSSProperties = { color: "var(--chart-tooltip-muted)" };
 
 interface MarkerTooltipContentProps {
-  markers: readonly Readonly<ChartMarker>[];
+  readonly markers: readonly Readonly<ChartMarker>[];
 }
 
 const MarkerTooltipContent = ({ markers }: Readonly<MarkerTooltipContentProps>): ReactElement | null => {

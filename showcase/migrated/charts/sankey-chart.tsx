@@ -30,43 +30,43 @@ import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 
 interface SankeyNodeDatum {
-  name: string;
-  category?: "source" | "landing" | "outcome";
-  [key: string]: unknown;
+  readonly name: string;
+  readonly category?: "source" | "landing" | "outcome";
+  readonly [key: string]: unknown;
 }
 
 interface SankeyLinkDatum {
-  source: number;
+  readonly source: number;
   target: number;
-  value: number;
-  [key: string]: unknown;
+  readonly value: number;
+  readonly [key: string]: unknown;
 }
 
 interface SankeyData {
-  nodes: SankeyNodeDatum[];
-  links: SankeyLinkDatum[];
+  readonly nodes: SankeyNodeDatum[];
+  readonly links: SankeyLinkDatum[];
 }
 
 interface Margin {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
 }
 
 interface SankeyChartProps {
-  data: SankeyData;
-  margin?: Partial<Margin>;
-  animationDuration?: number;
-  enterTransition?: SankeyEnterTransition;
-  revealSignature?: string;
-  aspectRatio?: string;
-  nodeWidth?: number;
-  nodePadding?: number;
-  className?: string;
-  children: ReactNode;
-  hoveredNodeIndex?: number | null;
-  onNodeHoverChange?: (index: number | null) => void;
+  readonly data: SankeyData;
+  readonly margin?: Partial<Margin>;
+  readonly animationDuration?: number;
+  readonly enterTransition?: SankeyEnterTransition;
+  readonly revealSignature?: string;
+  readonly aspectRatio?: string;
+  readonly nodeWidth?: number;
+  readonly nodePadding?: number;
+  readonly className?: string;
+  readonly children: ReactNode;
+  readonly hoveredNodeIndex?: number | null;
+  readonly onNodeHoverChange?: (index: number | null) => void;
 }
 
 const DEFAULT_MARGIN: Margin = { bottom: 40, left: 180, right: 180, top: 40 };
@@ -292,7 +292,7 @@ const renderSankeyTooltipBody = (point: ChartPoint | undefined, formatValue: (va
   );
 }
 
-const createHoverHandlers = (hoveredNodeIndexRef: { current: number | null }, hoveredLinkIndexRef: { current: number | null }, focusPointerPoint: (predicate?: (point: ChartPoint) => boolean) => void): SankeyHoverHandlers => ({
+const createHoverHandlers = (hoveredNodeIndexRef: RefObject<number | null>, hoveredLinkIndexRef: RefObject<number | null>, focusPointerPoint: (predicate?: (point: ChartPoint) => boolean) => void): SankeyHoverHandlers => ({
     onLinkEnter: (linkIndex: number): void => {
       hoveredLinkIndexRef.current = linkIndex;
       hoveredNodeIndexRef.current = null;
@@ -407,8 +407,8 @@ const buildSankeyClearHover = (
 
 // The reveal's replay key: a new reveal runs when any of these change.
 interface RevealKey {
-  signature: string;
-  duration: number;
+  readonly signature: string;
+  readonly duration: number;
 }
 
 const SankeyChart = ({

@@ -1,12 +1,12 @@
 // Value + listener Set. No-comparator stores notify on every set (pie controlled re-dispatch); with one, only on change.
 export interface BroadcastStore<Value> {
-  get: () => Value
+  readonly get: () => Value
   // Without a comparator always notifies; with one, only when `equals` is false.
-  set: (next: Value) => void
+  readonly set: (next: Value) => void
   // Writes without notifying; pair with notify() for single-broadcast multi-field writes.
-  setSilent: (next: Value) => void
-  notify: () => void
-  subscribe: (listener: () => void) => () => void
+  readonly setSilent: (next: Value) => void
+  readonly notify: () => void
+  readonly subscribe: (listener: () => void) => () => void
 }
 
 export const createBroadcastStore = <Value>(options: Readonly<{

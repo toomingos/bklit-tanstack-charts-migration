@@ -173,13 +173,13 @@ const createOffsetArc = <TDatum>(getOffset: (datum: TDatum, index: number) => { 
 
 
 interface PieHoverCoordinator {
-  getHovered: () => number | null
+  readonly getHovered: () => number | null
 /** Controlled mode only notifies; uncontrolled updates state. */
-  requestHover: (index: number) => void
-  requestUnhover: () => void
+  readonly requestHover: (index: number) => void
+  readonly requestUnhover: () => void
 /** Controlled-prop push: sets without invoking onHoverChange. */
-  setHovered: (index: number | null) => void
-  subscribe: (listener: () => void) => () => void
+  readonly setHovered: (index: number | null) => void
+  readonly subscribe: (listener: () => void) => () => void
 }
 
 const createPieHoverCoordinator = (onHoverChange: (index: number | null) => void, isControlled: () => boolean): PieHoverCoordinator => {

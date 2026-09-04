@@ -11,7 +11,7 @@ interface ProjectionLineConfig {
 }
 
 interface ProjectionLineConfigProps {
-  data?: readonly Readonly<ProjectionPoint>[];
+  readonly data?: readonly Readonly<ProjectionPoint>[];
   yAxisId?: string | number;
 }
 

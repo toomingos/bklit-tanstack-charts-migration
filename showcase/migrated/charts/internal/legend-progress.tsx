@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 import { useLegendItem } from './legend-context';
 
 interface LegendProgressProps {
-  trackClassName?: string;
-  indicatorClassName?: string;
+  readonly trackClassName?: string;
+  readonly indicatorClassName?: string;
   height?: string;
 }
 

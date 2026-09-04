@@ -33,35 +33,35 @@ const resolveIndicatorPixelWidth = (cfg: Readonly<{ width?: IndicatorWidth; span
 
 interface IndicatorConfig {
   width?: IndicatorWidth;
-  span?: number;
-  columnWidth?: number;
-  color?: string | ((point: Readonly<ChartDatum>) => string);
-  dasharray?: string;
-  fadeEdges?: IndicatorFadeEdges | boolean;
-  fadeLength?: number;
-  springConfig?: SpringConfig;
+  readonly span?: number;
+  readonly columnWidth?: number;
+  readonly color?: string | ((point: Readonly<ChartDatum>) => string);
+  readonly dasharray?: string;
+  readonly fadeEdges?: IndicatorFadeEdges | boolean;
+  readonly fadeLength?: number;
+  readonly springConfig?: SpringConfig;
 }
 
 interface DotConfig {
-  variant?: DotVariant;
-  size?: number;
-  radiusFraction?: number;
-  scale?: number;
+  readonly variant?: DotVariant;
+  readonly size?: number;
+  readonly radiusFraction?: number;
+  readonly scale?: number;
   strokeWidth?: number;
-  color?: string | ((point: Readonly<ChartDatum>, line: Readonly<{ dataKey: string; stroke?: string }>) => string);
+  readonly color?: string | ((point: Readonly<ChartDatum>, line: Readonly<{ dataKey: string; stroke?: string }>) => string);
 }
 
 interface BoxConfig {
-  springConfig?: SpringConfig;
-  matchCrosshair?: boolean;
-  damping?: number;
-  boxSpringConfig?: SpringConfig;
-  className?: string;
-  panelStyle?: CSSProperties;
-  backgroundColor?: string;
-  content?: (props: Readonly<{ point: Readonly<ChartTooltipPoint>; index: number }>) => ReactNode;
-  children?: ReactNode;
-  rows?: (point: Readonly<ChartDatum>) => TooltipRow[];
+  readonly springConfig?: SpringConfig;
+  readonly matchCrosshair?: boolean;
+  readonly damping?: number;
+  readonly boxSpringConfig?: SpringConfig;
+  readonly className?: string;
+  readonly panelStyle?: CSSProperties;
+  readonly backgroundColor?: string;
+  readonly content?: (props: Readonly<{ point: Readonly<ChartTooltipPoint>; index: number }>) => ReactNode;
+  readonly children?: ReactNode;
+  readonly rows?: (point: Readonly<ChartDatum>) => TooltipRow[];
 }
 
 type TooltipMapperSource = Omit<

@@ -19,31 +19,31 @@ interface ScaleSignature {
 }
 
 interface ProvidedZoom<ElementType> {
-  center: () => void;
-  clear: () => void;
-  scale: (scale: ScaleSignature) => void;
-  translate: (translate: Translate) => void;
-  translateTo: (point: Point) => void;
-  setTranslate: (translate: Translate) => void;
-  setTransformMatrix: (matrix: TransformMatrix) => void;
-  reset: () => void;
-  handleWheel: (event: GenericWheelEvent) => void;
-  handlePinch: UserHandlers["onPinch"];
-  dragEnd: () => void;
-  dragMove: (event: InteractionEvent, options?: { readonly offsetX?: number; readonly offsetY?: number }) => void;
-  dragStart: (event: InteractionEvent) => void;
-  toString: () => string;
-  invert: () => TransformMatrix;
-  toStringInvert: () => string;
-  applyToPoint: ({ x, y }: Point) => Point;
-  applyInverseToPoint: ({ x, y }: Point) => Point;
-  containerRef: RefObject<ElementType | null>;
+  readonly center: () => void;
+  readonly clear: () => void;
+  readonly scale: (scale: ScaleSignature) => void;
+  readonly translate: (translate: Translate) => void;
+  readonly translateTo: (point: Point) => void;
+  readonly setTranslate: (translate: Translate) => void;
+  readonly setTransformMatrix: (matrix: TransformMatrix) => void;
+  readonly reset: () => void;
+  readonly handleWheel: (event: GenericWheelEvent) => void;
+  readonly handlePinch: UserHandlers["onPinch"];
+  readonly dragEnd: () => void;
+  readonly dragMove: (event: InteractionEvent, options?: { readonly offsetX?: number; readonly offsetY?: number }) => void;
+  readonly dragStart: (event: InteractionEvent) => void;
+  readonly toString: () => string;
+  readonly invert: () => TransformMatrix;
+  readonly toStringInvert: () => string;
+  readonly applyToPoint: ({ x, y }: Point) => Point;
+  readonly applyInverseToPoint: ({ x, y }: Point) => Point;
+  readonly containerRef: RefObject<ElementType | null>;
 }
 
 interface ZoomState {
-  initialTransformMatrix: TransformMatrix;
-  transformMatrix: TransformMatrix;
-  isDragging: boolean;
+  readonly initialTransformMatrix: TransformMatrix;
+  readonly transformMatrix: TransformMatrix;
+  readonly isDragging: boolean;
 }
 
 type ZoomInstance<ElementType> = ProvidedZoom<ElementType> & ZoomState;

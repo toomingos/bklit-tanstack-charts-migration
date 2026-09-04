@@ -7,7 +7,7 @@ import type { HeatmapColumn } from "./heatmap-utils";
 import { HEATMAP_AXIS_LAYER_CLASS } from "./heatmap-separator";
 
 interface HeatmapXAxisProps {
-  className?: string;
+  readonly className?: string;
 }
 
 // Build the x-axis month labels, one per month transition across columns.

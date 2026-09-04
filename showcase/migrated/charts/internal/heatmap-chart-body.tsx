@@ -13,17 +13,17 @@ type HeatmapChartInnerPassthroughProps = Omit<
 interface HeatmapChartRoot {
   width: number;
   height: number;
-  coordinator: HeatmapHoverCoordinator;
-  containerStyle: CSSProperties;
-  handlePointerLeave: () => void;
-  separatorConfig: HeatmapColumnSeparatorsConfig | undefined;
+  readonly coordinator: HeatmapHoverCoordinator;
+  readonly containerStyle: CSSProperties;
+  readonly handlePointerLeave: () => void;
+  readonly separatorConfig: HeatmapColumnSeparatorsConfig | undefined;
 }
 
 interface HeatmapChartBodyProps {
-  root: Readonly<HeatmapChartRoot>;
-  containerRef: RefObject<HTMLDivElement | null>;
-  innerProps: Readonly<HeatmapChartInnerPassthroughProps>;
-  children: ReactNode;
+  readonly root: Readonly<HeatmapChartRoot>;
+  readonly containerRef: RefObject<HTMLDivElement | null>;
+  readonly innerProps: Readonly<HeatmapChartInnerPassthroughProps>;
+  readonly children: ReactNode;
 }
 
 const HeatmapChartBody = ({ root, containerRef, innerProps, children }: Readonly<HeatmapChartBodyProps>): ReactElement => (

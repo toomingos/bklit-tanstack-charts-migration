@@ -20,32 +20,32 @@ const DEFAULT_CHART_STATUS: HeatmapChartInnerProps["status"] = "ready";
 const DEFAULT_HEATMAP_MIN_HEIGHT_PX = 160;
 
 interface HeatmapChartProps {
-  data: HeatmapColumn[];
-  xDomain?: [Date, Date];
-  sizingColumnCount?: number;
-  layout?: HeatmapLayout;
-  margin?: Readonly<Partial<HeatmapMargin>>;
-  binSize?: number;
-  gap?: number;
-  colorScale?: (count: number) => string;
-  levelColors?: HeatmapLevelColors;
-  levelStyles?: HeatmapLevelStyles;
-  aspectRatio?: string;
-  className?: string;
-  status?: HeatmapChartInnerProps["status"];
-  loadingLabel?: string;
-  animationDuration?: number;
-  enterTransition?: HeatmapEnterTransition;
-  revealSignature?: string;
-  enterStaggerScale?: number;
-  animate?: boolean;
-  loadingOpacity?: number;
-  showLoadingCells?: boolean;
-  loadingCellMaxOpacity?: number;
-  loadingCellRandomness?: number;
-  columnSeparators?: Readonly<HeatmapColumnSeparatorsConfig>;
-  weekStartDay?: HeatmapWeekStartDay;
-  children: ReactNode;
+  readonly data: HeatmapColumn[];
+  readonly xDomain?: [Date, Date];
+  readonly sizingColumnCount?: number;
+  readonly layout?: HeatmapLayout;
+  readonly margin?: Readonly<Partial<HeatmapMargin>>;
+  readonly binSize?: number;
+  readonly gap?: number;
+  readonly colorScale?: (count: number) => string;
+  readonly levelColors?: HeatmapLevelColors;
+  readonly levelStyles?: HeatmapLevelStyles;
+  readonly aspectRatio?: string;
+  readonly className?: string;
+  readonly status?: HeatmapChartInnerProps["status"];
+  readonly loadingLabel?: string;
+  readonly animationDuration?: number;
+  readonly enterTransition?: HeatmapEnterTransition;
+  readonly revealSignature?: string;
+  readonly enterStaggerScale?: number;
+  readonly animate?: boolean;
+  readonly loadingOpacity?: number;
+  readonly showLoadingCells?: boolean;
+  readonly loadingCellMaxOpacity?: number;
+  readonly loadingCellRandomness?: number;
+  readonly columnSeparators?: Readonly<HeatmapColumnSeparatorsConfig>;
+  readonly weekStartDay?: HeatmapWeekStartDay;
+  readonly children: ReactNode;
 }
 
 const elementHasChildrenProp = (child: Readonly<ReactElement>): child is ReactElement<{ children?: ReactNode }> =>
@@ -78,9 +78,9 @@ const useHeatmapContainerStyle = (aspectRatio: string | undefined, hasMeasuredSi
 };
 
 interface HeatmapChartRootInputs {
-  aspectRatio: string | undefined;
-  columnSeparators: Readonly<HeatmapColumnSeparatorsConfig> | undefined;
-  children: ReactNode;
+  readonly aspectRatio: string | undefined;
+  readonly columnSeparators: Readonly<HeatmapColumnSeparatorsConfig> | undefined;
+  readonly children: ReactNode;
 }
 
 /*

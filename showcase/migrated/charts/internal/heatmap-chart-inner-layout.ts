@@ -40,10 +40,10 @@ const useHeatmapMargin = (marginProp: Partial<HeatmapMargin> | undefined): Heatm
 };
 
 interface HeatmapColumnLayout {
-  columns: HeatmapColumn[];
-  rowCount: number;
-  columnCount: number;
-  separatorLayout: HeatmapSeparatorLayout | null;
+  readonly columns: HeatmapColumn[];
+  readonly rowCount: number;
+  readonly columnCount: number;
+  readonly separatorLayout: HeatmapSeparatorLayout | null;
 }
 
 interface HeatmapColumnLayoutInputs {
@@ -73,12 +73,12 @@ const useHeatmapColumnLayout = (inputs: Readonly<HeatmapColumnLayoutInputs>): He
 };
 
 interface HeatmapDimensionsResult {
-  dimensions: HeatmapDimensions;
-  xScale: (columnIndex: number) => number;
-  yScale: (rowIndex: number) => number;
-  timeXScale: (date: Readonly<Date>) => number;
-  brushYScale: (value: number) => number;
-  isReady: boolean;
+  readonly dimensions: HeatmapDimensions;
+  readonly xScale: (columnIndex: number) => number;
+  readonly yScale: (rowIndex: number) => number;
+  readonly timeXScale: (date: Readonly<Date>) => number;
+  readonly brushYScale: (value: number) => number;
+  readonly isReady: boolean;
 }
 
 interface HeatmapDimensionsInputs {
@@ -142,8 +142,8 @@ const useHeatmapDimensions = (params: Readonly<HeatmapDimensionsInputs>): Heatma
 };
 
 interface HeatmapLayoutDimensions {
-  columnLayout: HeatmapColumnLayout;
-  dims: HeatmapDimensionsResult;
+  readonly columnLayout: HeatmapColumnLayout;
+  readonly dims: HeatmapDimensionsResult;
 }
 
 interface HeatmapLayoutDimensionsInputs {
@@ -187,9 +187,9 @@ const useHeatmapLayoutDimensions = (
 };
 
 interface HeatmapColorScalesResult {
-  resolvedLevelStyles: HeatmapLevelStyles;
-  colorScale: (count: number) => string;
-  fillScale: (count: number) => string;
+  readonly resolvedLevelStyles: HeatmapLevelStyles;
+  readonly colorScale: (count: number) => string;
+  readonly fillScale: (count: number) => string;
 }
 
 const useHeatmapColorScales = (

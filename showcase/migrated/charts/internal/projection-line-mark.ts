@@ -6,34 +6,34 @@ import { resolveVisibleEndX } from "./projection-config";
 import type { ProjectionPoint } from "./projection-utils";
 
 interface ProjectionLineMarkOptions {
-  id: string;
-  data: readonly Readonly<ProjectionPoint>[];
+  readonly id: string;
+  readonly data: readonly Readonly<ProjectionPoint>[];
   yAxisId: string;
   stroke: string;
-  strokeStyle: "solid" | "gradient";
-  gradientStart: string;
-  gradientEnd: string;
-  gradientId: string;
+  readonly strokeStyle: "solid" | "gradient";
+  readonly gradientStart: string;
+  readonly gradientEnd: string;
+  readonly gradientId: string;
   strokeWidth: number;
-  curveKind: "linear" | "bezier";
-  strokeDasharray: string;
-  strokeOpacity: number;
-  showEndMarker: boolean;
-  endpointRadius: number;
-  className: string;
-  xScale: (value: Readonly<Date>) => number;
-  yScale: (value: number) => number;
-  innerWidth: number;
-  strokeVisible: boolean;
-  translateX: number;
-  translateY: number;
+  readonly curveKind: "linear" | "bezier";
+  readonly strokeDasharray: string;
+  readonly strokeOpacity: number;
+  readonly showEndMarker: boolean;
+  readonly endpointRadius: number;
+  readonly className: string;
+  readonly xScale: (value: Readonly<Date>) => number;
+  readonly yScale: (value: number) => number;
+  readonly innerWidth: number;
+  readonly strokeVisible: boolean;
+  readonly translateX: number;
+  readonly translateY: number;
 }
 
 interface ProjectionLineEndpoints {
-  endY: number;
-  startX: number;
-  startY: number;
-  visibleEndX: number;
+  readonly endY: number;
+  readonly startX: number;
+  readonly startY: number;
+  readonly visibleEndX: number;
 }
 
 // Shared by both exported helpers below: resolves the on-screen start/end coordinates for a projection line, or reports there is nothing to draw.
@@ -101,13 +101,13 @@ const projectionLineMark = (options: Readonly<ProjectionLineMarkOptions>): Chart
 };
 
 interface ProjectionGradientDef {
-  id: string;
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-  gradientStart: string;
-  gradientEnd: string;
+  readonly id: string;
+  readonly startX: number;
+  readonly startY: number;
+  readonly endX: number;
+  readonly endY: number;
+  readonly gradientStart: string;
+  readonly gradientEnd: string;
 }
 
 const resolveProjectionGradientDef = (options: Readonly<ProjectionLineMarkOptions>): ProjectionGradientDef | undefined => {

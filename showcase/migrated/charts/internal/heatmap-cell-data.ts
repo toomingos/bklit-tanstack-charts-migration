@@ -2,15 +2,15 @@ import { getHeatmapContributionLevel, isHeatmapGhostBin } from "./heatmap-utils"
 import type { HeatmapColumn, HeatmapDisplayRange } from "./heatmap-utils";
 
 interface CellDatum {
-  colKey: string;
-  rowKey: string;
-  column: number;
-  row: number;
+  readonly colKey: string;
+  readonly rowKey: string;
+  readonly column: number;
+  readonly row: number;
   count: number;
-  level: number;
-  date: Readonly<Date>;
-  bin: number;
-  isGhost: boolean;
+  readonly level: number;
+  readonly date: Readonly<Date>;
+  readonly bin: number;
+  readonly isGhost: boolean;
 }
 
 interface BuildCellDataParams {
@@ -71,8 +71,8 @@ const buildCellData = ({
 interface HoverCellGeometry {
   height: number;
   width: number;
-  x: number;
-  y: number;
+  readonly x: number;
+  readonly y: number;
 }
 
 const buildHoverCellGeometry = (

@@ -23,7 +23,7 @@ const lerpDomain = (from: Readonly<YDomain>, to: Readonly<YDomain>, progress: nu
 const lookupYDomain = (byAxis: Readonly<Record<string, YDomain>>, axisId: string): YDomain | undefined => byAxis[axisId];
 
 interface TweenControl {
-  stop: () => void;
+  readonly stop: () => void;
 }
 
 const snapDomains = (domains: Record<string, YDomain>, setAnimatedByAxis: (next: Record<string, YDomain>) => void, animatedRef: RefObject<Record<string, YDomain>>): void => {

@@ -2,9 +2,9 @@ import type { ReactElement } from 'react';
 import type { IndicatorFadeGradientStop } from './fade-mask';
 
 interface IndicatorFadeGradientDefProps {
-  gradientId: string;
-  fadeStops: readonly Readonly<IndicatorFadeGradientStop>[];
-  indicatorFill: string;
+  readonly gradientId: string;
+  readonly fadeStops: readonly Readonly<IndicatorFadeGradientStop>[];
+  readonly indicatorFill: string;
 }
 
 // Extracted so the fade-gradient's <linearGradient>/<stop> tree stays within

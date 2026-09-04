@@ -130,8 +130,8 @@ const buildPanelStyle = (cfg: ChartTooltipConfig | null | undefined): CSSPropert
 // Panel chrome shared by both body-render paths; bundled so neither builder
 // Exceeds max-params.
 interface TooltipPanelParams {
-  panelClassName: string;
-  panelStyle: CSSProperties;
+  readonly panelClassName: string;
+  readonly panelStyle: CSSProperties;
 }
 
 interface CustomTooltipBodyParams<TXValue extends ChartValue = ChartValue, TYValue extends ChartValue = ChartValue> {

@@ -17,13 +17,13 @@ const resolvePrimaryFilter = (revealed: boolean, shouldFan: boolean): string => 
 };
 
 export interface MarkerPrimaryProps {
-  primaryMarker: ChartMarker;
+  readonly primaryMarker: ChartMarker;
   count: number;
-  size: number;
-  revealed: boolean;
-  shouldFan: boolean;
-  onEnter: () => void;
-  onLeave: () => void;
+  readonly size: number;
+  readonly revealed: boolean;
+  readonly shouldFan: boolean;
+  readonly onEnter: () => void;
+  readonly onLeave: () => void;
 }
 
 /*

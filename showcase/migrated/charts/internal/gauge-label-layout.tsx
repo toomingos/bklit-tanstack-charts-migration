@@ -133,11 +133,11 @@ const renderHorizontalLabelLayout = ({ align, className, label, children, labelF
 };
 
 interface GaugeLabelLayoutProps {
-  placement: GaugeLabelPlacement;
-  align: GaugeLabelAlign;
-  label: ReactNode | null;
-  children: ReactNode;
-  className?: string;
+  readonly placement: GaugeLabelPlacement;
+  readonly align: GaugeLabelAlign;
+  readonly label: ReactNode | null;
+  readonly children: ReactNode;
+  readonly className?: string;
 }
 
 const GaugeLabelLayout = ({

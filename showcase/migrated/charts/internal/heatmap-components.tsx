@@ -13,14 +13,14 @@ import { useHeatmapPointerBridge } from "./heatmap-focus-bridge";
 import { buildHeatmapCellsTree } from "./heatmap-cells-view";
 
 interface HeatmapCellsProps {
-  cornerRadius?: number;
-  colorScale?: (count: number) => string;
-  inactiveOpacity?: number;
-  inactiveScale?: number;
-  activeScale?: number;
-  rowOpacity?: number | readonly number[];
-  interactive?: boolean;
-  hideGhostCells?: boolean;
+  readonly cornerRadius?: number;
+  readonly colorScale?: (count: number) => string;
+  readonly inactiveOpacity?: number;
+  readonly inactiveScale?: number;
+  readonly activeScale?: number;
+  readonly rowOpacity?: number | readonly number[];
+  readonly interactive?: boolean;
+  readonly hideGhostCells?: boolean;
 }
 
 const HeatmapCells = ({

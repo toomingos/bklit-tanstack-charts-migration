@@ -20,8 +20,8 @@ const mergeScatterLabelFade = (
 interface MountScatterPillChromeParams {
   readonly handleLabelFadeChange: (fade: ScatterLabelFade | null) => void;
   readonly host: HTMLDivElement;
-  readonly pillChromeRef: { current: ScatterPillChrome | null };
-  readonly pillChromeStateRef: { current: ScatterPillChromeState };
+  readonly pillChromeRef: RefObject<ScatterPillChrome | null>;
+  readonly pillChromeStateRef: RefObject<ScatterPillChromeState>;
   readonly tooltipSpring: Readonly<SpringConfig>;
 }
 
@@ -46,8 +46,8 @@ const mountScatterPillChrome = ({
 };
 
 interface ApplyScatterFocusGroupChangeParams {
-  readonly dragSelectionActiveRef: { current: boolean };
-  readonly pillChromeRef: { current: ScatterPillChrome | null };
+  readonly dragSelectionActiveRef: RefObject<boolean>;
+  readonly pillChromeRef: RefObject<ScatterPillChrome | null>;
   readonly points: readonly ChartPoint<ChartDatum, Date, number>[];
   readonly setPointerFocusActive: Dispatch<SetStateAction<boolean>>;
 }

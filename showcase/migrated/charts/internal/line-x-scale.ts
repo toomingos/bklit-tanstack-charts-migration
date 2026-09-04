@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 // Line x-scale resolution, tick lists, and mark motion gates.
 import { scaleLinear, scaleUtc } from "d3-scale";
 import type { ScaleTime } from "d3-scale";
@@ -32,7 +33,7 @@ interface EmptyTimeScaleParams {
   readonly id: string;
   readonly rangeEnd: number;
   readonly rangeStart: number;
-  readonly scaleRef: { current: ScaleTime<number, number> | null };
+  readonly scaleRef: RefObject<ScaleTime<number, number> | null>;
 }
 
 const resolveEmptyTimeScale = (params: Readonly<EmptyTimeScaleParams>): ReturnType<ChartScale["resolve"]> => {
@@ -85,7 +86,7 @@ const resolveLineXTickList = (
 
 interface LineXScaleParams {
   readonly renderData: readonly ChartDatum[];
-  readonly scaleRef: { current: ScaleTime<number, number> | null };
+  readonly scaleRef: RefObject<ScaleTime<number, number> | null>;
   readonly timeExtent: Readonly<{ maxTime: number; minTime: number }> | undefined;
   readonly visibleData: readonly ChartDatum[];
   readonly xAxis: Readonly<XAxisConfig> | null | undefined;
@@ -224,8 +225,8 @@ const buildLineYScaleOptions = (params: Readonly<LineYScaleOptionsParams>): Char
 
 // X tick-label fade target: the hovered tick's pixel position and rendered label.
 interface LabelFadeState {
-  primaryX: number;
-  hoveredLabel: string | null;
+  readonly primaryX: number;
+  readonly hoveredLabel: string | null;
 }
 
 export {

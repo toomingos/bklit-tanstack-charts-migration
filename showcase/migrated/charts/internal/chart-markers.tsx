@@ -17,18 +17,18 @@ const MARKERS_OVERLAY_STYLE = { inset: 0, overflow: "visible", pointerEvents: "n
 
 interface ChartMarkersProps {
   readonly items: readonly Readonly<ChartMarker>[];
-  size?: number;
-  showLines?: boolean;
-  animate?: boolean;
-  maxFanned?: number;
-  xScale: ((date: Date) => number | null | undefined) | null;
-  marginLeft: number;
-  marginTop: number;
-  innerHeight: number;
-  containerRef: RefObject<HTMLElement | null>;
-  animationDuration: number;
+  readonly size?: number;
+  readonly showLines?: boolean;
+  readonly animate?: boolean;
+  readonly maxFanned?: number;
+  readonly xScale: ((date: Date) => number | null | undefined) | null;
+  readonly marginLeft: number;
+  readonly marginTop: number;
+  readonly innerHeight: number;
+  readonly containerRef: RefObject<HTMLElement | null>;
+  readonly animationDuration: number;
   /** Fires with the hovered bucket's markers on enter, null on leave; callers use this to suppress the crosshair chrome. */
-  onMarkerHoverChange?: (markers: ChartMarker[] | null) => void;
+  readonly onMarkerHoverChange?: (markers: ChartMarker[] | null) => void;
 }
 
 interface RenderMarkerBucketOptions {

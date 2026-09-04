@@ -77,8 +77,8 @@ interface BarPulseChannelsArgs {
 }
 
 interface BarPulseChannels {
-  xValues: string[];
-  yValues: number[];
+  readonly xValues: string[];
+  readonly yValues: number[];
 }
 
 // Channel values for the pulse mark; hoisted so the mark factory stays short.
@@ -96,10 +96,10 @@ interface ActivePulseBarArgs {
 }
 
 interface ActivePulseBar {
-  xValue: string | undefined;
-  yValue: number;
-  baseline: number;
-  valuePos: number;
+  readonly xValue: string | undefined;
+  readonly yValue: number;
+  readonly baseline: number;
+  readonly valuePos: number;
 }
 
 // Finite-number check for pulse channel values; hoisted so readers stay short.
@@ -124,8 +124,8 @@ interface DepthOffsetArgs {
 }
 
 interface DepthOffset {
-  absOffset: number;
-  isRightOfCenter: boolean;
+  readonly absOffset: number;
+  readonly isRightOfCenter: boolean;
 }
 
 // Perspective offset of the bar from the chart center; hoisted so the frame resolver stays short.
@@ -146,13 +146,13 @@ interface PulseBarFrameArgs {
 }
 
 interface PulseBarFrame {
-  bandX: number;
-  depth: number;
-  perspectiveRise: number;
-  isRightOfCenter: boolean;
-  topY: number;
-  bottomY: number;
-  barHeight: number;
+  readonly bandX: number;
+  readonly depth: number;
+  readonly perspectiveRise: number;
+  readonly isRightOfCenter: boolean;
+  readonly topY: number;
+  readonly bottomY: number;
+  readonly barHeight: number;
 }
 
 // Bar frame in pixels; undefined when the bar has no positive length. Hoisted so the scene renderer stays short.

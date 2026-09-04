@@ -16,10 +16,10 @@ const BASE_HEATMAP_LEVEL = 0;
 const FULL_PATTERN_OPACITY = 1;
 
 interface HeatmapLegendSwatchProps {
-  level: number;
-  style: HeatmapLevelStyle;
-  cellSize: number;
-  cornerRadius: number;
+  readonly level: number;
+  readonly style: HeatmapLevelStyle;
+  readonly cellSize: number;
+  readonly cornerRadius: number;
 }
 
 interface PatternSwatchArgs {

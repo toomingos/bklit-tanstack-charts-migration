@@ -3,9 +3,9 @@ import { buildArcs } from "./sunburst-geometry";
 import type { Focus, SunburstNode } from "./sunburst-types";
 
 interface SunburstBreadcrumbItem {
-  id: string;
-  label: string;
-  isCurrent: boolean;
+  readonly id: string;
+  readonly label: string;
+  readonly isCurrent: boolean;
 }
 
 type ReadonlySunburstBreadcrumbNode = Readonly<Omit<SunburstNode, "children">> & {

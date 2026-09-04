@@ -2,11 +2,11 @@
 // Extracted from sunburst-chart.tsx (R6 module split).
 
 interface SunburstLabelsProps {
-  fontSize?: number;
-  fill?: string;
+  readonly fontSize?: number;
+  readonly fill?: string;
   stroke?: string;
   strokeWidth?: number;
-  className?: string;
+  readonly className?: string;
 }
 
 const SunburstLabels = (_props: SunburstLabelsProps): null => null;

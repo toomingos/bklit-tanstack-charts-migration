@@ -198,7 +198,7 @@ interface ExtractedRadarChildren {
   grid?: RadarGridProps;
   axis?: RadarAxisProps;
   labels?: RadarLabelsProps;
-  areas: RadarAreaProps[];
+  readonly areas: RadarAreaProps[];
 }
 
 const collectRadarChild = (child: Readonly<ReactElement>, out: ExtractedRadarChildren): void => {

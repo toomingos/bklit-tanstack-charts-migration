@@ -9,7 +9,7 @@ interface SegmentChildComponent<ComponentProps> {
 }
 
 interface SegmentBackgroundProps {
-  fill?: string;
+  readonly fill?: string;
 }
 
 const SegmentBackground: SegmentChildComponent<SegmentBackgroundProps> = (_props: Readonly<SegmentBackgroundProps>): undefined => undefined;
@@ -22,7 +22,7 @@ type SegmentLineVariant = "dashed" | "solid" | "gradient";
 interface SegmentLineProps {
   stroke?: string;
   strokeWidth?: number;
-  variant?: SegmentLineVariant;
+  readonly variant?: SegmentLineVariant;
 }
 
 const SegmentLineFrom: SegmentChildComponent<SegmentLineProps> = (_props: Readonly<SegmentLineProps>): undefined => undefined;

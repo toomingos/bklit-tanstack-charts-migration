@@ -106,10 +106,10 @@ interface LinearNotchGeometryInput {
 }
 
 interface LinearNotchGeometry {
-  notches: ComputedNotch[];
-  notchDepth: number;
-  cornerVerticalDepth: number;
-  centerY: number;
+  readonly notches: ComputedNotch[];
+  readonly notchDepth: number;
+  readonly cornerVerticalDepth: number;
+  readonly centerY: number;
 }
 
 const computeLinearNotches = (input: LinearNotchGeometryInput): LinearNotchGeometry => {

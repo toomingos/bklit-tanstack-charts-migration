@@ -16,17 +16,17 @@ type GaugeLabelPlacement = "top" | "bottom" | "left" | "right";
 type GaugeLabelAlign = "start" | "center" | "end";
 
 interface GaugeCenterOverlayProps {
-  centerValue: number;
+  readonly centerValue: number;
   /** The arc gauge's square reference size (`min(width, height)`) — sizes the
       stat box to `innerRadius*2 - 16` px square, the container-query basis
       for the clamp() value/label font sizes. Must NOT be the full chart
       overlay size: that coincidentally matches at bench sizes (both hit the
       clamp caps) but diverges for any gauge small enough to fall under the cap. */
-  contextSize: number;
-  defaultLabel: string;
-  prefix?: string;
-  suffix?: string;
-  formatOptions?: CenterStatFormat;
+  readonly contextSize: number;
+  readonly defaultLabel: string;
+  readonly prefix?: string;
+  readonly suffix?: string;
+  readonly formatOptions?: CenterStatFormat;
 }
 
 // The double-rAF 0→value intro state machine lives in CenterShell as the

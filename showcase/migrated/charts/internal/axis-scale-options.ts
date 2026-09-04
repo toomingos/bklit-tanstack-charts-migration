@@ -74,8 +74,8 @@ const tickLabelFadeOpacity = (params: Readonly<TickLabelFadeOpacityParams>): num
 }
 
 interface XAxisPresentation {
-  line: false;
-  ticks: { count: number; size: number; padding: number };
+  readonly line: false;
+  readonly ticks: { count: number; size: number; padding: number };
   tickLabels:
     | false
     | {

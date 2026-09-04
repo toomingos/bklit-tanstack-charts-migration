@@ -10,9 +10,9 @@ const PULSE_WAVE_INNER_FALLOFF_RATIO = 0.85;
 
 // Bklit bar-depth.tsx BarPulse wave gradient (vertical bell curve, brightest at mid-rect during travel).
 interface PulseWaveGradientStop {
-  offset: string;
-  color: string;
-  opacity: string;
+  readonly offset: string;
+  readonly color: string;
+  readonly opacity: string;
 }
 
 const buildPulseWaveStops = (): PulseWaveGradientStop[] => [

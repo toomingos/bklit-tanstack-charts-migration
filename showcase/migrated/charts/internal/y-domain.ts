@@ -70,8 +70,8 @@ const resolveTimeSeriesYDomain = (data: readonly Readonly<ChartDatum>[], series:
 }
 
 interface NicedYDomainState {
-  niced: [number, number];
-  changed: boolean;
+  readonly niced: [number, number];
+  readonly changed: boolean;
 }
 
 const useNicedYDomainChanged = (yDomain: readonly [number, number]): NicedYDomainState => {
@@ -101,7 +101,7 @@ type NicedYScale = ReturnType<typeof createNicedYScale>;
 
 // Axis-keyed y domains, one entry per represented y axis id.
 interface YDomainsByAxis {
-  [axisId: string]: YDomain;
+  readonly [axisId: string]: YDomain;
 }
 
 // No .nice() here (tween detector compares this value); default-axis backfill is opt-in.

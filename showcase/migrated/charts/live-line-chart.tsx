@@ -59,10 +59,10 @@ import type {
 import "./styles.css";
 
 interface Margin {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
 }
 
 const LERP_SPEED = 0.08;
@@ -79,8 +79,8 @@ const EXAGGERATED_FLAT_RANGE_PAD = 0.04;
 const STANDARD_FLAT_RANGE_PAD = 10;
 
 interface LiveLinePoint {
-  time: number;
-  value: number;
+  readonly time: number;
+  readonly value: number;
 }
 
 // `Readonly<LiveLineConfig>` alone leaves the nested `momentumColors` object mutable, which typescript(prefer-readonly-parameter-types) still flags.
@@ -113,30 +113,30 @@ interface LiveTipChromeProps {
 }
 
 interface LiveLineChartProps {
-  data: LiveLinePoint[];
-  value: number;
-  dataKey?: string;
-  window?: number;
-  numXTicks?: number;
-  nowOffsetUnits?: number;
-  exaggerate?: boolean;
-  lerpSpeed?: number;
-  margin?: Partial<Margin>;
-  paused?: boolean;
-  children?: ReactNode;
-  className?: string;
-  style?: CSSProperties;
+  readonly data: LiveLinePoint[];
+  readonly value: number;
+  readonly dataKey?: string;
+  readonly window?: number;
+  readonly numXTicks?: number;
+  readonly nowOffsetUnits?: number;
+  readonly exaggerate?: boolean;
+  readonly lerpSpeed?: number;
+  readonly margin?: Partial<Margin>;
+  readonly paused?: boolean;
+  readonly children?: ReactNode;
+  readonly className?: string;
+  readonly style?: CSSProperties;
 }
 
 interface AnimFrame {
-  now: number;
-  yMin: number;
-  yMax: number;
-  displayValue: number;
+  readonly now: number;
+  readonly yMin: number;
+  readonly yMax: number;
+  readonly displayValue: number;
   /** True current value, never lerped; committed samples read this, not displayValue. */
-  trueValue: number;
+  readonly trueValue: number;
   /** Bumped per commit (not per tick); mints fresh keys for synthetic tip samples. */
-  seq: number;
+  readonly seq: number;
 }
 
 // Primitive `typeof` checks live in these predicates (anti-slop allows `typeof`
@@ -399,11 +399,11 @@ const coerceDatumDate = (rawDate: RawDatumField): Date => {
 };
 
 interface ExtractedLiveLineChildren {
-  liveLines: LiveLineConfig[];
+  readonly liveLines: LiveLineConfig[];
   liveXAxis: LiveXAxisConfig | undefined;
   liveYAxis: LiveYAxisConfig | undefined;
   tooltip: ChartTooltipConfig | undefined;
-  referenceAreas: ChartDatum[];
+  readonly referenceAreas: ChartDatum[];
 }
 
 // Element props are consumed per-role after the roleOf dispatch below, so each branch only reads its own config's fields; pinning the combined shape here keeps every branch well-typed without per-branch assertions (all fields except LiveLineConfig.dataKey are optional, and the tooltip spread only copies fields present at runtime).

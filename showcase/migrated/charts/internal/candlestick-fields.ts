@@ -33,9 +33,9 @@ const readDateField = (datum: Readonly<ChartDatum>, key: string): Date | undefin
 const allFinite = (values: readonly number[]): boolean => values.every((value) => Number.isFinite(value));
 
 interface CandleWickHighFields {
-  date: Date;
-  low: number;
-  high: number;
+  readonly date: Date;
+  readonly low: number;
+  readonly high: number;
 }
 
 const parseWickHighFields = (datum: Readonly<ChartDatum>, xDataKey: string): CandleWickHighFields | undefined => {
@@ -49,9 +49,9 @@ const parseWickHighFields = (datum: Readonly<ChartDatum>, xDataKey: string): Can
 };
 
 interface CandleBodyFields {
-  date: Date;
-  open: number;
-  close: number;
+  readonly date: Date;
+  readonly open: number;
+  readonly close: number;
 }
 
 const parseBodyFields = (datum: Readonly<ChartDatum>, xDataKey: string): CandleBodyFields | undefined => {
@@ -65,11 +65,11 @@ const parseBodyFields = (datum: Readonly<ChartDatum>, xDataKey: string): CandleB
 };
 
 interface CandleAllFields {
-  date: Date;
-  low: number;
-  high: number;
-  open: number;
-  close: number;
+  readonly date: Date;
+  readonly low: number;
+  readonly high: number;
+  readonly open: number;
+  readonly close: number;
 }
 
 const parseAllFields = (datum: Readonly<ChartDatum>, xDataKey: string): CandleAllFields | undefined => {

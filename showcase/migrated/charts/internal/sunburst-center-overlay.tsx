@@ -36,13 +36,13 @@ const buildCenterButtonStyle = (centerColor: string, diameter: number, isClickab
 
 export interface SunburstCenterOverlayProps {
   /** Show the overlay (gated on centerChildren.length > 0 && liveCenterR > 1). */
-  visible: boolean;
+  readonly visible: boolean;
   /** Inner radius of the center hole (pixels). */
-  liveCenterR: number;
+  readonly liveCenterR: number;
   /** Background color of the center circle. */
-  centerColor: string;
+  readonly centerColor: string;
   /** Callback when the center circle is clicked (zoom out to parent). */
-  onZoomToParent?: () => void;
+  readonly onZoomToParent?: () => void;
 }
 
 export const SunburstCenterOverlay = ({

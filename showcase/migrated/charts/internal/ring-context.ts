@@ -19,31 +19,31 @@ interface ScrubRingLayer {
 }
 
 interface RingStableValue {
-  data: RingData[];
-  size: number;
-  center: number;
+  readonly data: RingData[];
+  readonly size: number;
+  readonly center: number;
   strokeWidth: number;
-  ringGap: number;
-  baseInnerRadius: number;
+  readonly ringGap: number;
+  readonly baseInnerRadius: number;
   // Restored legacy payload fields (containerRef/isLoaded/animationKey) for consumer parity; unread inside.
-  animationKey: number;
-  isLoaded: boolean;
-  containerRef: RefObject<HTMLDivElement | null>;
-  enterTransition?: RingEnterTransition;
-  enterStaggerScale: number;
-  totalValue: number;
-  getColor: (index: number) => string;
-  getRingRadii: (index: number) => { innerRadius: number; outerRadius: number };
-  startAngle: number;
-  endAngle: number;
-  geometryScrubbing: boolean;
-  scrubRingLayers: readonly ScrubRingLayer[] | null;
+  readonly animationKey: number;
+  readonly isLoaded: boolean;
+  readonly containerRef: RefObject<HTMLDivElement | null>;
+  readonly enterTransition?: RingEnterTransition;
+  readonly enterStaggerScale: number;
+  readonly totalValue: number;
+  readonly getColor: (index: number) => string;
+  readonly getRingRadii: (index: number) => { innerRadius: number; outerRadius: number };
+  readonly startAngle: number;
+  readonly endAngle: number;
+  readonly geometryScrubbing: boolean;
+  readonly scrubRingLayers: readonly ScrubRingLayer[] | null;
 }
 
 /** Legacy RingHoverContextValue shape (ring-context.tsx:47-50). */
 interface RingHoverValue {
   hoveredIndex: number | null;
-  setHoveredIndex: (index: number | null) => void;
+  readonly setHoveredIndex: (index: number | null) => void;
 }
 
 /** Legacy RingContextValue shape (ring-context.tsx:92). */

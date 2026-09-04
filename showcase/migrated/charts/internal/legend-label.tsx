@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useLegendItem } from './legend-context';
 
 interface LegendLabelProps {
-  className?: string;
+  readonly className?: string;
 }
 
 const LegendLabel = ({

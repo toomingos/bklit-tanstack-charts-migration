@@ -79,8 +79,8 @@ interface RingChildConfig {
 }
 
 interface ClassifiedChildren {
-  centerChildren: ReactNode[];
-  ringConfigs: RingChildConfig[];
+  readonly centerChildren: ReactNode[];
+  readonly ringConfigs: RingChildConfig[];
 }
 
 const classifyChildren = (children: Readonly<ReactNode>, geometryScrubbing: boolean): ClassifiedChildren => {
@@ -436,27 +436,27 @@ const cancelPendingRingReveal = (params: Readonly<RingRevealRefs & { readonly re
 };
 
 interface RingChartProps {
-  data: RingData[];
-  size?: number;
+  readonly data: RingData[];
+  readonly size?: number;
   strokeWidth?: number;
-  ringGap?: number;
-  baseInnerRadius?: number;
-  animationDuration?: number;
-  className?: string;
-  style?: CSSProperties;
+  readonly ringGap?: number;
+  readonly baseInnerRadius?: number;
+  readonly animationDuration?: number;
+  readonly className?: string;
+  readonly style?: CSSProperties;
   hoveredIndex?: number | null;
-  onHoverChange?: (index: number | null) => void;
-  startAngle?: number;
-  endAngle?: number;
-  enterTransition?: RingEnterTransition;
-  enterStaggerScale?: number;
-  geometryScrubbing?: boolean;
-  children: ReactNode;
+  readonly onHoverChange?: (index: number | null) => void;
+  readonly startAngle?: number;
+  readonly endAngle?: number;
+  readonly enterTransition?: RingEnterTransition;
+  readonly enterStaggerScale?: number;
+  readonly geometryScrubbing?: boolean;
+  readonly children: ReactNode;
 }
 
 interface RingArcDatum {
-  startAngle: number;
-  endAngle: number;
+  readonly startAngle: number;
+  readonly endAngle: number;
 }
 
 type AnyRadialArcMark = ReturnType<typeof radialArc<RingArcDatum>>;
@@ -813,11 +813,11 @@ RingChart.displayName = "RingChart";
 
 
 interface RingProps {
-  index: number;
-  color?: string;
-  animate?: boolean;
-  showGlow?: boolean;
-  lineCap?: RingLineCap;
+  readonly index: number;
+  readonly color?: string;
+  readonly animate?: boolean;
+  readonly showGlow?: boolean;
+  readonly lineCap?: RingLineCap;
 }
 
 const Ring = (_props: Readonly<RingProps>): undefined => undefined;

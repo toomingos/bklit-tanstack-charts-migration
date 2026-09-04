@@ -10,9 +10,9 @@ const BAR_FADED_OPACITY = 0.3;
 
 // Per-bar glass gradient stops matching bklit exactly.
 interface GlassGradientStop {
-  offset: string;
-  color: string;
-  opacity: string;
+  readonly offset: string;
+  readonly color: string;
+  readonly opacity: string;
 }
 
 const buildPosBarStops = (groundShadow: number): GlassGradientStop[] => [

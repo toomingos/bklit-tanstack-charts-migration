@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { useLegendItem } from './legend-context';
 
 interface LegendMarkerProps {
-  className?: string;
+  readonly className?: string;
 }
 
 const LegendMarker = ({ className = "h-2.5 w-2.5" }: Readonly<LegendMarkerProps>): ReactElement => {

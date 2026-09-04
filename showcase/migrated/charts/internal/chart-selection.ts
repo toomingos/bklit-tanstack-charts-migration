@@ -9,16 +9,16 @@ import { roleOf } from "./children-extract";
 import type { ChartDatum } from "./types";
 
 interface ChartSelection {
-  startX: number;
-  endX: number;
-  startIndex: number;
-  endIndex: number;
-  active: boolean;
+  readonly startX: number;
+  readonly endX: number;
+  readonly startIndex: number;
+  readonly endIndex: number;
+  readonly active: boolean;
 }
 
 interface ChartSelectionResult {
-  selection: ChartSelection | null;
-  clearSelection: () => void;
+  readonly selection: ChartSelection | null;
+  readonly clearSelection: () => void;
 }
 
 const isNumber = <Subject>(value: Subject): value is Subject & number => typeof value === "number";
@@ -123,9 +123,9 @@ const useChartSelection = (params: Readonly<UseChartSelectionParams>): ChartSele
 const ChartSelectionContext = createContext<ChartSelection | null>(null);
 
 interface SegmentComponent {
-  key: string;
-  type: "segmentBackground" | "segmentLineFrom" | "segmentLineTo";
-  props: ChartDatum;
+  readonly key: string;
+  readonly type: "segmentBackground" | "segmentLineFrom" | "segmentLineTo";
+  readonly props: ChartDatum;
 }
 
 interface SegmentChildVisit {

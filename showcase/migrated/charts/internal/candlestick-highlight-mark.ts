@@ -11,13 +11,13 @@ import type { CandleAllFields, CandlePattern } from "./candlestick-fields";
 import type { ChartDatum } from "./types";
 
 interface CandleHighlightMarkParams {
-  source: readonly Readonly<ChartDatum>[];
-  xDataKey: string;
-  bodyWidthPx: number;
-  insideStrokeW: number;
-  positivePattern: CandlePattern;
-  negativePattern: CandlePattern;
-  solidFillFor: (isPositive: boolean, hasOwnPattern: boolean) => string;
+  readonly source: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+  readonly bodyWidthPx: number;
+  readonly insideStrokeW: number;
+  readonly positivePattern: CandlePattern;
+  readonly negativePattern: CandlePattern;
+  readonly solidFillFor: (isPositive: boolean, hasOwnPattern: boolean) => string;
 }
 
 interface HighlightPixels {

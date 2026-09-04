@@ -31,23 +31,23 @@ const resolveLegendJustifyContent = (align: LegendAlign): string => {
 };
 
 interface HeatmapLegendProps {
-  lessLabel?: string;
-  moreLabel?: string;
-  cellSize?: number;
-  gap?: number;
-  cornerRadius?: number;
-  align?: "start" | "center" | "end";
-  variant?: HeatmapLegendVariant;
-  gradientSpan?: number;
-  fontSize?: number;
-  labelClassName?: string;
-  levelStyles?: HeatmapLevelStyles;
-  colorScale?: (count: number | null | undefined) => string;
-  inactiveOpacity?: number;
-  inactiveScale?: number;
-  activeScale?: number;
-  interactive?: boolean;
-  className?: string;
+  readonly lessLabel?: string;
+  readonly moreLabel?: string;
+  readonly cellSize?: number;
+  readonly gap?: number;
+  readonly cornerRadius?: number;
+  readonly align?: "start" | "center" | "end";
+  readonly variant?: HeatmapLegendVariant;
+  readonly gradientSpan?: number;
+  readonly fontSize?: number;
+  readonly labelClassName?: string;
+  readonly levelStyles?: HeatmapLevelStyles;
+  readonly colorScale?: (count: number | null | undefined) => string;
+  readonly inactiveOpacity?: number;
+  readonly inactiveScale?: number;
+  readonly activeScale?: number;
+  readonly interactive?: boolean;
+  readonly className?: string;
 }
 
 // Default level styles from the color scale; hoisted so HeatmapLegend stays short.
@@ -102,8 +102,8 @@ interface LegendChromeArgs {
 }
 
 interface LegendChrome {
-  rootStyle: CSSProperties;
-  labelClass: string;
+  readonly rootStyle: CSSProperties;
+  readonly labelClass: string;
 }
 
 // Root style + label class; hoisted so HeatmapLegend stays short.
@@ -177,8 +177,8 @@ const renderLegendContent = (content: Readonly<LegendContentArgs>): ReactElement
 };
 
 interface LegendHandlers {
-  onEnter: (level: number) => void;
-  onLeave: () => void;
+  readonly onEnter: (level: number) => void;
+  readonly onLeave: () => void;
 }
 
 interface LegendHandlersArgs {

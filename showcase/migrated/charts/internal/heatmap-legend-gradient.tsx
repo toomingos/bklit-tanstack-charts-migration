@@ -8,20 +8,20 @@ import type { HeatmapLevelStyles } from "./heatmap-colors";
 // Under the size limits.
 
 interface HeatmapLegendGradientProps {
-  levels: readonly number[];
-  levelStyles: HeatmapLevelStyles;
-  cellSize: number;
-  gap: number;
-  cornerRadius: number;
-  gradientSpan: number;
-  highlightedLevel: number | null;
-  isDimming: boolean;
-  inactiveOpacity: number;
-  inactiveScale: number;
-  activeScale: number;
-  isInteractive: boolean;
-  onEnter: (level: number) => void;
-  onLeave: () => void;
+  readonly levels: readonly number[];
+  readonly levelStyles: HeatmapLevelStyles;
+  readonly cellSize: number;
+  readonly gap: number;
+  readonly cornerRadius: number;
+  readonly gradientSpan: number;
+  readonly highlightedLevel: number | null;
+  readonly isDimming: boolean;
+  readonly inactiveOpacity: number;
+  readonly inactiveScale: number;
+  readonly activeScale: number;
+  readonly isInteractive: boolean;
+  readonly onEnter: (level: number) => void;
+  readonly onLeave: () => void;
 }
 
 interface GradientSegmentVisualArgs {

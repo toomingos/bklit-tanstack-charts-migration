@@ -6,11 +6,11 @@ import { intFmt } from "./formatters";
 import { useLegendItem } from './legend-context';
 
 interface LegendValueProps {
-  className?: string;
-  showPercentage?: boolean;
-  percentageClassName?: string;
-  formatValue?: (value: number) => string;
-  formatPercentage?: (percentage: number) => string;
+  readonly className?: string;
+  readonly showPercentage?: boolean;
+  readonly percentageClassName?: string;
+  readonly formatValue?: (value: number) => string;
+  readonly formatPercentage?: (percentage: number) => string;
 }
 
 // Stable default percentage formatter (module scope keeps the default-prop reference stable across renders).

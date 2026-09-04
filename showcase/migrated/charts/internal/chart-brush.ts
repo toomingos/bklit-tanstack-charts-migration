@@ -9,13 +9,13 @@ type ChartBrushSelectedBoxStyle = BrushSelectedBoxStyle;
 
 interface ChartBrushProps {
   /** Vestigial — kept only so callers that still pass `host` type-check; the value is ignored. */
-  host?: BrushHost | null;
-  onSelectionChange?: (selection: { readonly start: Readonly<Date>; readonly end: Readonly<Date> } | null) => void;
-  initialSelection?: BrushSelection | null;
-  blurPx?: number;
-  fadeOuterEdges?: boolean;
-  selectionPattern?: BrushChromePattern;
-  selectedBoxStyle?: BrushSelectedBoxStyle;
+  readonly host?: BrushHost | null;
+  readonly onSelectionChange?: (selection: { readonly start: Readonly<Date>; readonly end: Readonly<Date> } | null) => void;
+  readonly initialSelection?: BrushSelection | null;
+  readonly blurPx?: number;
+  readonly fadeOuterEdges?: boolean;
+  readonly selectionPattern?: BrushChromePattern;
+  readonly selectedBoxStyle?: BrushSelectedBoxStyle;
 }
 
 // Config-carrier marker declared on the component type (children.tsx

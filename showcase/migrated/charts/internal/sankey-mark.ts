@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import { createMark } from "@tanstack/charts";
 import { link } from "@tanstack/charts/link";
 import type { ChartBounds, ChartMark, ChartPoint, MarkInitialization, MarkScene, SceneNode } from "@tanstack/charts";
@@ -47,9 +48,9 @@ interface SankeyGradientDatum {
 interface CreateSankeyMarkParams {
   readonly data: Readonly<{ nodes: readonly SankeyNodeData[]; links: readonly SankeyLinkData[] }>;
   readonly config: SankeyMarkConfig;
-  readonly gradientDataRef: { current: SankeyGradientDatum[] | null };
-  readonly laidOutNodesRef: { current: LaidOutNode[] | null };
-  readonly laidOutLinksRef: { current: LaidOutLink[] | null };
+  readonly gradientDataRef: RefObject<SankeyGradientDatum[] | null>;
+  readonly laidOutNodesRef: RefObject<LaidOutNode[] | null>;
+  readonly laidOutLinksRef: RefObject<LaidOutLink[] | null>;
 }
 
 const SANKEY_CURVE = d3Curve(curveBumpX);
@@ -218,7 +219,7 @@ const refreshSankeyGradients = (params: Readonly<{ shouldUseGradient: boolean; l
   });
 };
 
-const snapshotSankeyLayout = (params: Readonly<{ nodes: readonly Readonly<NodeRow>[]; links: readonly Readonly<LinkRow>[]; laidOutNodesRef: { current: LaidOutNode[] | null }; laidOutLinksRef: { current: LaidOutLink[] | null } }>): LaidOutNode[] => {
+const snapshotSankeyLayout = (params: Readonly<{ nodes: readonly Readonly<NodeRow>[]; links: readonly Readonly<LinkRow>[]; laidOutNodesRef: RefObject<LaidOutNode[] | null>; laidOutLinksRef: { current: LaidOutLink[] | null } }>): LaidOutNode[] => {
   const laidOutNodes = params.nodes.map((node) => toLaidOutNode(node));
   params.laidOutNodesRef.current = laidOutNodes;
   params.laidOutLinksRef.current = params.links.map((linkRow: Readonly<LinkRow>) => ({

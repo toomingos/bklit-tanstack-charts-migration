@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { CSSProperties, Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
+import type { CSSProperties, Dispatch, ReactElement, ReactNode, RefObject, SetStateAction } from "react";
 import { scaleLinear as d3ScaleLinear } from "d3-scale";
 import type { ScaleTime } from "d3-scale";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
@@ -294,7 +294,7 @@ interface DatePillSyncParams {
   readonly discrete: boolean;
   readonly setLabelFade: Dispatch<SetStateAction<LabelFadeState | undefined>>;
   readonly tooltip: Readonly<ChartTooltipConfig> | null | undefined;
-  readonly wasVisibleRef: { current: boolean };
+  readonly wasVisibleRef: RefObject<boolean>;
 }
 
 // First pill/crosshair show jumps; later moves spring (mirrors legacy showing flag).
@@ -472,30 +472,30 @@ const findPointColorForSeries = (
 ): string | undefined => points.find((point) => point.markId === dataKey)?.color;
 
 export interface LineChartProps {
-  data: ChartDatum[];
-  xDataKey?: string;
-  status?: ChartStatus;
-  animationDuration?: number;
-  margin?: Partial<ChartMargin>;
-  aspectRatio?: string;
-  className?: string;
-  onPhaseChange?: (phase: ChartPhase) => void;
-  children?: ReactNode;
-  loadingLabel?: string;
-  style?: CSSProperties;
-  animationEasing?: string;
-  yDomainTween?: boolean;
-  yDomainTweenDuration?: number;
-  xDomain?: [Date, Date];
+  readonly data: ChartDatum[];
+  readonly xDataKey?: string;
+  readonly status?: ChartStatus;
+  readonly animationDuration?: number;
+  readonly margin?: Partial<ChartMargin>;
+  readonly aspectRatio?: string;
+  readonly className?: string;
+  readonly onPhaseChange?: (phase: ChartPhase) => void;
+  readonly children?: ReactNode;
+  readonly loadingLabel?: string;
+  readonly style?: CSSProperties;
+  readonly animationEasing?: string;
+  readonly yDomainTween?: boolean;
+  readonly yDomainTweenDuration?: number;
+  readonly xDomain?: [Date, Date];
   /** Accepted but inert (no columnWidth consumer here); kept for bklit API parity. */
-  xDomainSlotCount?: number;
-  tweenYDomainOnXDomainChange?: boolean;
+  readonly xDomainSlotCount?: number;
+  readonly tweenYDomainOnXDomainChange?: boolean;
   /** Overrides the clip-reveal timing; springs coerce to tweens (bklit animation.ts:18). */
-  enterTransition?: EnterTransition;
+  readonly enterTransition?: EnterTransition;
   /** Replay epoch input: changing it replays the mount reveal without a data change. */
-  revealSignature?: string;
-  ariaLabel?: string;
-  ariaDescription?: string;
+  readonly revealSignature?: string;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 export const LineChart = ({

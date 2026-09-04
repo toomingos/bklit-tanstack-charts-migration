@@ -63,15 +63,15 @@ const getMarkerVisualExtent = (style: Readonly<Pick<SeriesPointMarkerStyle, "rad
 }
 
 interface MarkerGradientDef {
-  dataKey: string;
-  id: string;
-  fill: string;
+  readonly dataKey: string;
+  readonly id: string;
+  readonly fill: string;
   stroke: string;
-  fillFadeStart: number;
-  fillFadeEnd: number;
-  gapFadeStart: number;
-  gapFadeEnd: number;
-  outerRadius: number;
+  readonly fillFadeStart: number;
+  readonly fillFadeEnd: number;
+  readonly gapFadeStart: number;
+  readonly gapFadeEnd: number;
+  readonly outerRadius: number;
 }
 
 interface MarkerRingGeometry {
@@ -139,12 +139,12 @@ const buildMarkerGradientDefs = (series: readonly Readonly<MarkerSeriesConfig>[]
 }
 
 interface MarkerDotArgs {
-  fill: string;
-  id: string;
-  r: number;
+  readonly fill: string;
+  readonly id: string;
+  readonly r: number;
   stroke: string;
-  x: (datum: Readonly<ChartDatum>) => Date | undefined;
-  y: (datum: Readonly<ChartDatum>) => number | undefined;
+  readonly x: (datum: Readonly<ChartDatum>) => Date | undefined;
+  readonly y: (datum: Readonly<ChartDatum>) => number | undefined;
 }
 
 interface MarkerDotArgsParams {

@@ -64,9 +64,9 @@ const vSegmentPath = (params: Readonly<VSegmentPathParams>): string => {
 
 interface FunnelRingGeometry {
   /** Ring layer index, 0 = outermost halo, `layers-1` = innermost. */
-  ringIndex: number;
-  path: string;
-  opacity: number;
+  readonly ringIndex: number;
+  readonly path: string;
+  readonly opacity: number;
 }
 
 const computeFunnelRings = (layers: number, pathFor: (layerScale: number) => string): FunnelRingGeometry[] => Array.from({ length: layers }, (_unused, layer) => {
@@ -89,13 +89,13 @@ const funnelRingSpringParams = (ringIndex: number): FunnelRingSpring => (
 );
 
 interface FunnelGridConfig {
-  enabled: boolean;
-  showBands: boolean;
-  bandColor: string;
-  showGridLines: boolean;
-  gridLineColor: string;
-  gridLineOpacity: number;
-  gridLineWidth: number;
+  readonly enabled: boolean;
+  readonly showBands: boolean;
+  readonly bandColor: string;
+  readonly showGridLines: boolean;
+  readonly gridLineColor: string;
+  readonly gridLineOpacity: number;
+  readonly gridLineWidth: number;
 }
 
 interface FunnelGridOptions {
@@ -129,8 +129,8 @@ const resolveFunnelGrid = (gridProp: FunnelGridProp): FunnelGridConfig => {
 }
 
 interface FunnelSegBox {
-  left: number;
-  top: number;
+  readonly left: number;
+  readonly top: number;
   width: number;
   height: number;
 }

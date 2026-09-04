@@ -94,10 +94,10 @@ const getHeatmapWeekStartAlignedToRange = (rangeStart: Readonly<Date>, minDaysIn
 }
 
 interface HeatmapWeekRange {
-  startDate: Date;
-  weekCount: number;
+  readonly startDate: Date;
+  readonly weekCount: number;
   /** First in-range calendar day; bins before this are empty in default year grids. */
-  rangeStart?: Date;
+  readonly rangeStart?: Date;
 }
 
 /**
@@ -483,9 +483,9 @@ const resolveHeatmapDisplayRange = (columns: readonly HeatmapColumn[]): HeatmapD
 type HeatmapSeparatorGroupBy = "every" | "quarter";
 
 interface HeatmapSeparatorParsedConfig {
-  groupBy: HeatmapSeparatorGroupBy;
-  every?: number;
-  spacing: number;
+  readonly groupBy: HeatmapSeparatorGroupBy;
+  readonly every?: number;
+  readonly spacing: number;
 }
 
 interface HeatmapSeparatorGroup {
@@ -503,9 +503,9 @@ interface HeatmapSeparatorLayout {
 }
 
 interface HeatmapColumnSeparatorsConfig {
-  every?: number;
-  groupBy?: HeatmapSeparatorGroupBy;
-  spacing?: number;
+  readonly every?: number;
+  readonly groupBy?: HeatmapSeparatorGroupBy;
+  readonly spacing?: number;
 }
 
 /**
@@ -758,16 +758,16 @@ const getHeatmapPlotInnerWidth = (columnCount: number, binWidth: number, separat
 }
 
 interface HeatmapSeparatorLineYParams {
-  innerHeight: number;
-  marginTop: number;
+  readonly innerHeight: number;
+  readonly marginTop: number;
   /** Distance from the chart container top to the line start. Default: plot top. */
-  startOffset?: number;
-  paddingY?: number;
+  readonly startOffset?: number;
+  readonly paddingY?: number;
 }
 
 interface HeatmapSeparatorLineYSpan {
-  y1: number;
-  y2: number;
+  readonly y1: number;
+  readonly y2: number;
 }
 
 /**
@@ -813,18 +813,18 @@ const resolveHeatmapSeparatorStrokeDasharray = (strokeStyle: HeatmapSeparatorStr
 
 /** Vertical stroke gradient for separator lines (`from` -> optional `via` -> `to`). */
 interface HeatmapSeparatorGradient {
-  from: string;
-  via?: string;
-  to: string;
-  fromOpacity?: number;
-  viaOpacity?: number;
-  toOpacity?: number;
+  readonly from: string;
+  readonly via?: string;
+  readonly to: string;
+  readonly fromOpacity?: number;
+  readonly viaOpacity?: number;
+  readonly toOpacity?: number;
 }
 
 interface HeatmapSeparatorGradientStop {
-  offset: string;
-  color: string;
-  opacity: number;
+  readonly offset: string;
+  readonly color: string;
+  readonly opacity: number;
 }
 
 const DEFAULT_GRADIENT_STOP_OPACITY = 1;
@@ -853,9 +853,9 @@ const buildHeatmapSeparatorGradientStops = (gradient: Readonly<HeatmapSeparatorG
 }
 
 interface HeatmapHoverStyleParams {
-  inactiveOpacity: number;
-  inactiveScale: number;
-  activeScale: number;
+  readonly inactiveOpacity: number;
+  readonly inactiveScale: number;
+  readonly activeScale: number;
 }
 
 /**
@@ -867,8 +867,8 @@ const isHeatmapHoverEffectEnabled = (params: Readonly<HeatmapHoverStyleParams>):
 
 
 interface HeatmapHoverStyle {
-  opacity: number;
-  scale: number;
+  readonly opacity: number;
+  readonly scale: number;
 }
 
 /**
@@ -950,10 +950,10 @@ const buildHeatmapLegendGradient = (levelStyles: readonly HeatmapLegendGradientL
 }
 
 interface HeatmapDimensions {
-  binWidth: number;
-  binHeight: number;
-  innerWidth: number;
-  innerHeight: number;
+  readonly binWidth: number;
+  readonly binHeight: number;
+  readonly innerWidth: number;
+  readonly innerHeight: number;
   height: number;
   width: number;
 }

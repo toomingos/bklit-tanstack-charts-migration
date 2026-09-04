@@ -1,7 +1,7 @@
 // Config carrier for SankeyChart tooltip formatting; read via displayName, never rendered.
 interface SankeyTooltipProps {
-  formatValue?: (value: number) => string;
-  className?: string;
+  readonly formatValue?: (value: number) => string;
+  readonly className?: string;
 }
 
 const SankeyTooltip = (_props: Readonly<SankeyTooltipProps>): null => null;

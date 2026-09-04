@@ -163,11 +163,11 @@ type ReadonlySunburstArc = Readonly<Omit<ArcDatum, "trail">> & {
 
 // Single label overlay entry, resolved from an arc's zoom-morphed geometry.
 interface SunburstLabelEntry {
-  deg: number;
-  id: string;
-  label: string;
-  x: number;
-  y: number;
+  readonly deg: number;
+  readonly id: string;
+  readonly label: string;
+  readonly x: number;
+  readonly y: number;
 }
 
 // Normalizes a centroid angle into a readable label rotation in degrees.
@@ -245,27 +245,27 @@ const fadeInChartStage = (container: HTMLElement): (() => void) | undefined => {
 type SunburstPhase = "loading" | "revealing" | "ready";
 
 interface SunburstChartProps {
-  data: SunburstNode;
-  size?: number;
-  playKey?: number;
-  className?: string;
-  focusId?: string;
-  onFocusChange?: (focusId: string) => void;
+  readonly data: SunburstNode;
+  readonly size?: number;
+  readonly playKey?: number;
+  readonly className?: string;
+  readonly focusId?: string;
+  readonly onFocusChange?: (focusId: string) => void;
   hoveredIndex?: number | null;
-  onHoverChange?: (index: number | null) => void;
-  hoverPop?: number;
-  padding?: number;
-  onPhaseChange?: (phase: SunburstPhase) => void;
+  readonly onHoverChange?: (index: number | null) => void;
+  readonly hoverPop?: number;
+  readonly padding?: number;
+  readonly onPhaseChange?: (phase: SunburstPhase) => void;
   /** P5.5 SB2 — bklit `sunburst-chart.tsx:101`. Overrides the per-arc angular
       sweep's duration/easing (spring coerced to tween, bklit `animation.ts:18`;
       the sweep animates path `d`, which springs cannot drive natively). */
-  enterTransition?: EnterTransition;
+  readonly enterTransition?: EnterTransition;
   /** P5.5 SB2 — bklit `sunburst-chart.tsx:102`, default 1. Multiplies the
       ring-stagger spread; `internal/sunburst-reveal.ts`'s `buildRevealTiming`
       / `maxRevealDelayMs` already take it (clamped at 0.25) — it was simply
       never plumbed from the prop. */
-  enterStaggerScale?: number;
-  children: ReactNode;
+  readonly enterStaggerScale?: number;
+  readonly children: ReactNode;
 }
 
 /*
@@ -283,24 +283,24 @@ const isChildOfKind = (child: ReactNode, displayName: string): boolean => {
 
 interface SunburstSegmentConfig {
   arcIndex: number;
-  color?: string;
-  fill?: string;
-  fillOpacity?: number;
+  readonly color?: string;
+  readonly fill?: string;
+  readonly fillOpacity?: number;
 }
 
 interface ClassifiedChildren {
-  centerCount: number;
-  labelsCount: number;
-  hintCount: number;
+  readonly centerCount: number;
+  readonly labelsCount: number;
+  readonly hintCount: number;
   /** P5.5 SB4 — the last `<SunburstHint>`'s own props, so the chart can
       resolve its render-prop `children` against live state. */
-  hintProps: SunburstHintProps | undefined;
+  readonly hintProps: SunburstHintProps | undefined;
   /** P5.5 SB8 — bklit's `isOutsideSvgComponent` (`sunburst-chart.tsx:56-58`)
       pulls `SunburstBreadcrumb` out of the SVG and renders it ABOVE the square
       chart box (`:449-454`). Unlike the other carriers this one draws its own
       markup, so the elements are kept as-is and re-emitted in that slot. */
-  breadcrumbChildren: ReactNode[];
-  segmentConfigs: SunburstSegmentConfig[];
+  readonly breadcrumbChildren: ReactNode[];
+  readonly segmentConfigs: SunburstSegmentConfig[];
 }
 
 const classifyChildren = (children: ReactNode): ClassifiedChildren => {
@@ -350,33 +350,33 @@ const classifyChildren = (children: ReactNode): ClassifiedChildren => {
 }
 
 interface SunburstChartInnerProps {
-  data: SunburstNode;
-  size: number;
-  className?: string;
-  focus: Focus;
-  layout: {
+  readonly data: SunburstNode;
+  readonly size: number;
+  readonly className?: string;
+  readonly focus: Focus;
+  readonly layout: {
     arcs: ArcDatum[];
     maxDepth: number;
     focusById: Map<string, Focus>;
     rootId: string;
     sortedArcs: ArcDatum[];
   };
-  focusId: string;
-  isFocusControlled: boolean;
-  setInternalFocusId: (id: string) => void;
-  setPhase: (phase: SunburstPhase) => void;
-  onFocusChange?: (focusId: string) => void;
-  hoveredIndexProp?: number | null;
-  onHoverChange?: (index: number | null) => void;
-  hoverPop: number;
-  paddingProp?: number;
-  prefersReducedMotion: boolean;
-  playKey: number;
+  readonly focusId: string;
+  readonly isFocusControlled: boolean;
+  readonly setInternalFocusId: (id: string) => void;
+  readonly setPhase: (phase: SunburstPhase) => void;
+  readonly onFocusChange?: (focusId: string) => void;
+  readonly hoveredIndexProp?: number | null;
+  readonly onHoverChange?: (index: number | null) => void;
+  readonly hoverPop: number;
+  readonly paddingProp?: number;
+  readonly prefersReducedMotion: boolean;
+  readonly playKey: number;
   /** SB2 — resolved arc-sweep timing, computed once in the outer component. */
-  sweepDurationMs: number;
-  sweepEasingCss: string;
-  enterStaggerScale: number;
-  children: ReactNode;
+  readonly sweepDurationMs: number;
+  readonly sweepEasingCss: string;
+  readonly enterStaggerScale: number;
+  readonly children: ReactNode;
 }
 
 const SunburstChartInner = ({
@@ -947,11 +947,11 @@ const useSunburstPhase = (
 };
 
 interface SunburstLayoutState {
-  arcs: ArcDatum[];
-  focusById: Map<string, Focus>;
+  readonly arcs: ArcDatum[];
+  readonly focusById: Map<string, Focus>;
   maxDepth: number;
-  rootId: string;
-  sortedArcs: ArcDatum[];
+  readonly rootId: string;
+  readonly sortedArcs: ArcDatum[];
 }
 
 // Layout derivation (verbatim bklit math), shared by the outer component.
@@ -975,9 +975,9 @@ const useSunburstLayout = (data: SunburstNode): SunburstLayoutState => {
 };
 
 interface SunburstFocusControl {
-  focusId: string;
-  isFocusControlled: boolean;
-  setInternalFocusId: (id: string) => void;
+  readonly focusId: string;
+  readonly isFocusControlled: boolean;
+  readonly setInternalFocusId: (id: string) => void;
 }
 
 // Uncontrolled-focus state plus the data-shape reset, kept together.
@@ -1000,9 +1000,9 @@ const useSunburstFocusControl = (
 };
 
 interface SunburstResolvedFocus {
-  focus: Focus | undefined;
-  layout: SunburstLayoutState;
-  rootFocus: Focus | undefined;
+  readonly focus: Focus | undefined;
+  readonly layout: SunburstLayoutState;
+  readonly rootFocus: Focus | undefined;
 }
 
 // Resolves the active focus against the layout and memoizes the inner layout.
@@ -1023,26 +1023,26 @@ const useSunburstResolvedFocus = (
 };
 
 interface SunburstInnerRenderProps {
-  children: ReactNode;
-  className?: string;
-  data: SunburstNode;
-  enterStaggerScale: number;
-  focus: Focus;
-  focusId: string;
-  hoverPop: number;
-  hoveredIndexProp?: number | null;
-  isFocusControlled: boolean;
-  layout: SunburstLayoutState;
-  onFocusChange?: (focusId: string) => void;
-  onHoverChange?: (index: number | null) => void;
-  paddingProp?: number;
-  playKey: number;
-  prefersReducedMotion: boolean;
-  setInternalFocusId: (id: string) => void;
-  setPhase: (phase: SunburstPhase) => void;
-  size: number;
-  sweepDurationMs: number;
-  sweepEasingCss: string;
+  readonly children: ReactNode;
+  readonly className?: string;
+  readonly data: SunburstNode;
+  readonly enterStaggerScale: number;
+  readonly focus: Focus;
+  readonly focusId: string;
+  readonly hoverPop: number;
+  readonly hoveredIndexProp?: number | null;
+  readonly isFocusControlled: boolean;
+  readonly layout: SunburstLayoutState;
+  readonly onFocusChange?: (focusId: string) => void;
+  readonly onHoverChange?: (index: number | null) => void;
+  readonly paddingProp?: number;
+  readonly playKey: number;
+  readonly prefersReducedMotion: boolean;
+  readonly setInternalFocusId: (id: string) => void;
+  readonly setPhase: (phase: SunburstPhase) => void;
+  readonly size: number;
+  readonly sweepDurationMs: number;
+  readonly sweepEasingCss: string;
 }
 
 // Renders the inner chart as a plain function call (not a component), so the
@@ -1151,10 +1151,10 @@ const SunburstChart = ({
 SunburstChart.displayName = "SunburstChart";
 
 interface SunburstSegmentProps {
-  index: number;
-  color?: string;
-  fill?: string;
-  fillOpacity?: number;
+  readonly index: number;
+  readonly color?: string;
+  readonly fill?: string;
+  readonly fillOpacity?: number;
 }
 
 const SunburstSegment = (_props: SunburstSegmentProps): null => null;

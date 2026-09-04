@@ -10,23 +10,23 @@ const FULL_OPACITY = "1";
 const GRAPHIC_DIM_TRANSITION = "opacity 0.15s linear";
 
 interface FunnelSegmentHoverConfig {
-  index: number;
+  readonly index: number;
 /** Selects the ring-pop axis (HRing scaleY / VRing scaleX). */
-  isHorizontal: boolean;
+  readonly isHorizontal: boolean;
 /** Ring paths outermost-first, matching computeFunnelRings ringIndex. */
-  ringEls: readonly SVGPathElement[];
+  readonly ringEls: readonly SVGPathElement[];
 /** Wrapping div receiving the 0.15s opacity dim. */
-  graphicEl: HTMLElement | null;
+  readonly graphicEl: HTMLElement | null;
 /** Hitbox div receiving the spring-driven opacity dim. */
-  labelEl: HTMLElement | null;
+  readonly labelEl: HTMLElement | null;
 }
 
 interface FunnelSegmentHoverRuntime {
 /** Refresh config; repaint via paint() if needed. */
-  update: (config: Readonly<FunnelSegmentHoverConfig>) => void
+  readonly update: (config: Readonly<FunnelSegmentHoverConfig>) => void
 /** Springs animate toward new targets; graphic dim is a synchronous write. */
-  paint: (hoveredIndex: number | null) => void
-  stop: () => void
+  readonly paint: (hoveredIndex: number | null) => void
+  readonly stop: () => void
 }
 
 interface PaintFunnelGraphicParams {

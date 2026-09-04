@@ -8,8 +8,8 @@ const DESCRIPTION_STYLE: CSSProperties = { ...CLIP_STYLE, color: MUTED_COLOR };
 const LINK_GLYPH_STYLE: CSSProperties = { color: MUTED_COLOR, paddingLeft: "0.375rem" };
 
 interface MarkerDefaultBodyProps {
-  marker: Readonly<ChartMarker>;
-  isClickable: boolean;
+  readonly marker: Readonly<ChartMarker>;
+  readonly isClickable: boolean;
 }
 
 // Extracted from marker-tooltip.tsx (react(jsx-max-depth)): the default title/description body.

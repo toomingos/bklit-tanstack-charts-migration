@@ -3,8 +3,8 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 /** Pub/sub contract any chart hover coordinator satisfies; keeps this hook chart-agnostic. */
 interface CenterStatHoverSource {
-  getHovered: () => number | null
-  subscribe: (listener: () => void) => () => void
+  readonly getHovered: () => number | null
+  readonly subscribe: (listener: () => void) => () => void
 }
 
 const useCenterStatHover = (source: Readonly<CenterStatHoverSource>): number | null => useSyncExternalStore(

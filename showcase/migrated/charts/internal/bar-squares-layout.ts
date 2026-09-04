@@ -6,10 +6,10 @@ const bandWidthForSquares = (bandWidth: number, seriesCount: number, groupGap: n
 
 interface SquareColumnLayout {
   count: number;
-  positions: number[];
-  columnHeight: number;
-  squareSize: number;
-  gap: number;
+  readonly positions: number[];
+  readonly columnHeight: number;
+  readonly squareSize: number;
+  readonly gap: number;
 }
 
 interface SquareColumnInput {

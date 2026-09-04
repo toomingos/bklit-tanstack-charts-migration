@@ -7,24 +7,24 @@ import type { ChartMarker } from "./types";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 
 interface Bucket {
-  key: string;
-  markers: ChartMarker[];
-  date: Date;
+  readonly key: string;
+  readonly markers: ChartMarker[];
+  readonly date: Date;
 }
 
 interface MarkerGroupViewProps {
-  bucket: Bucket;
-  x: number;
-  y: number;
-  size: number;
-  showLine: boolean;
-  lineHeight: number;
-  animate: boolean;
-  delayMs: number;
-  maxFanned?: number;
+  readonly bucket: Bucket;
+  readonly x: number;
+  readonly y: number;
+  readonly size: number;
+  readonly showLine: boolean;
+  readonly lineHeight: number;
+  readonly animate: boolean;
+  readonly delayMs: number;
+  readonly maxFanned?: number;
   /** True while the chart crosshair/tooltip sits on this bucket's date; hides the guide line so it doesn't fight the crosshair indicator. */
-  isActive?: boolean;
-  onMarkerHoverChange?: (markers: ChartMarker[] | null) => void;
+  readonly isActive?: boolean;
+  readonly onMarkerHoverChange?: (markers: ChartMarker[] | null) => void;
 }
 
 const MarkerGroupView = ({

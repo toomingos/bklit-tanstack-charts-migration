@@ -122,7 +122,7 @@ const resolveBandColumnFocus = <PointT extends ChartPoint<ChartDatum, string, nu
 interface CategoryCentroid<PointT> {
   sum: number;
   count: number;
-  representative: PointT;
+  readonly representative: PointT;
 }
 
 const buildCategoryCentroids = <PointT extends ChartPoint<ChartDatum, string, number>>(points: readonly PointT[]): Map<string, CategoryCentroid<PointT>> => {

@@ -7,7 +7,7 @@ import type { GeoGeometryObjects, GeoProjection } from 'd3-geo';
 import type { ChoroplethGraticuleProps } from "../choropleth-chart";
 
 export interface ChoroplethGraticuleRenderProps extends ChoroplethGraticuleProps {
-  projection: GeoProjection;
+  readonly projection: GeoProjection;
 }
 
 export const ChoroplethGraticuleOverlay = ({

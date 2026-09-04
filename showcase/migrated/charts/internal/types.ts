@@ -33,84 +33,84 @@ type DotVariant = "dot" | "ring";
 type IndicatorWidth = number | "line" | "thin" | "medium" | "thick";
 
 interface TooltipRow {
-  color: string;
-  label: string;
-  value: string | number;
+  readonly color: string;
+  readonly label: string;
+  readonly value: string | number;
 }
 
 interface ChartTooltipConfig {
-  enabled?: boolean;
-  showDatePill?: boolean;
-  showCrosshair?: boolean;
-  showDots?: boolean;
-  dotVariant?: DotVariant;
-  dotSize?: number;
-  dotRadiusFraction?: number;
-  dotScale?: number;
-  dotStrokeWidth?: number;
-  dotColor?: string | ((point: Readonly<ChartDatumType>, line: { readonly dataKey: string; readonly stroke?: string }) => string);
-  indicatorColor?: string | ((point: Readonly<ChartDatumType>) => string);
-  rows?: (point: Readonly<ChartDatumType>) => TooltipRow[];
-  content?: (props: { readonly point: Readonly<ChartTooltipPoint>; readonly index: number }) => ReactNode;
-  children?: ReactNode;
-  className?: string;
-  springConfig?: { stiffness: number; damping: number };
-  matchCrosshair?: boolean;
-  damping?: number;
-  boxSpringConfig?: { stiffness: number; damping: number };
-  indicatorDasharray?: string;
-  indicatorFadeEdges?: IndicatorFadeEdges;
-  indicatorFadeLength?: number;
-  panelStyle?: React.CSSProperties;
-  backgroundColor?: string;
-  indicatorWidth?: IndicatorWidth;
-  indicatorSpan?: number;
-  columnWidth?: number;
+  readonly enabled?: boolean;
+  readonly showDatePill?: boolean;
+  readonly showCrosshair?: boolean;
+  readonly showDots?: boolean;
+  readonly dotVariant?: DotVariant;
+  readonly dotSize?: number;
+  readonly dotRadiusFraction?: number;
+  readonly dotScale?: number;
+  readonly dotStrokeWidth?: number;
+  readonly dotColor?: string | ((point: Readonly<ChartDatumType>, line: { readonly dataKey: string; readonly stroke?: string }) => string);
+  readonly indicatorColor?: string | ((point: Readonly<ChartDatumType>) => string);
+  readonly rows?: (point: Readonly<ChartDatumType>) => TooltipRow[];
+  readonly content?: (props: { readonly point: Readonly<ChartTooltipPoint>; readonly index: number }) => ReactNode;
+  readonly children?: ReactNode;
+  readonly className?: string;
+  readonly springConfig?: { stiffness: number; damping: number };
+  readonly matchCrosshair?: boolean;
+  readonly damping?: number;
+  readonly boxSpringConfig?: { stiffness: number; damping: number };
+  readonly indicatorDasharray?: string;
+  readonly indicatorFadeEdges?: IndicatorFadeEdges;
+  readonly indicatorFadeLength?: number;
+  readonly panelStyle?: React.CSSProperties;
+  readonly backgroundColor?: string;
+  readonly indicatorWidth?: IndicatorWidth;
+  readonly indicatorSpan?: number;
+  readonly columnWidth?: number;
 }
 
 interface CandlestickConfig {
-  animate?: boolean;
-  positiveFill?: string;
-  negativeFill?: string;
-  bodyPatternPositive?: string;
-  bodyPatternNegative?: string;
-  insideStrokeWidth?: number;
-  fadedOpacity?: number;
-  showHoverFade?: boolean;
+  readonly animate?: boolean;
+  readonly positiveFill?: string;
+  readonly negativeFill?: string;
+  readonly bodyPatternPositive?: string;
+  readonly bodyPatternNegative?: string;
+  readonly insideStrokeWidth?: number;
+  readonly fadedOpacity?: number;
+  readonly showHoverFade?: boolean;
 }
 
 interface YAxisConfig {
   yAxisId?: string | number;
-  orientation?: "left" | "right";
-  numTicks?: number;
-  formatLargeNumbers?: boolean;
-  formatValue?: (value: number) => string;
+  readonly orientation?: "left" | "right";
+  readonly numTicks?: number;
+  readonly formatLargeNumbers?: boolean;
+  readonly formatValue?: (value: number) => string;
 }
 
 interface ProjectionLineChildConfig {
-  data: ProjectionPoint[];
+  readonly data: ProjectionPoint[];
   yAxisId?: string | number;
   stroke?: string;
-  strokeStyle?: "solid" | "gradient";
-  gradientStart?: string;
-  gradientEnd?: string;
+  readonly strokeStyle?: "solid" | "gradient";
+  readonly gradientStart?: string;
+  readonly gradientEnd?: string;
   strokeWidth?: number;
-  curveKind?: "linear" | "bezier";
-  curve?: CurveFactory;
-  strokeDasharray?: string;
-  strokeOpacity?: number;
-  showEndMarker?: boolean;
-  showEndpoints?: boolean;
-  endpointRadius?: number;
-  className?: string;
+  readonly curveKind?: "linear" | "bezier";
+  readonly curve?: CurveFactory;
+  readonly strokeDasharray?: string;
+  readonly strokeOpacity?: number;
+  readonly showEndMarker?: boolean;
+  readonly showEndpoints?: boolean;
+  readonly endpointRadius?: number;
+  readonly className?: string;
 }
 
 interface ProjectionLineEndMarkerChildConfig {
-  data: ProjectionPoint[];
+  readonly data: ProjectionPoint[];
   yAxisId?: string | number;
   stroke?: string;
-  strokeOpacity?: number;
-  radius?: number;
+  readonly strokeOpacity?: number;
+  readonly radius?: number;
 }
 
 type TerminalMarkerChildConfig = {
@@ -119,24 +119,24 @@ type TerminalMarkerChildConfig = {
 } & SeriesPointMarkerStyleType;
 
 interface ProfitLossLineChildConfig {
-  dataKey: string;
-  xDataKey?: string;
+  readonly dataKey: string;
+  readonly xDataKey?: string;
   strokeWidth?: number;
-  positiveColor?: string;
-  negativeColor?: string;
-  curve?: CurveFactory;
-  fadeEdges?: FadeEdgesType;
+  readonly positiveColor?: string;
+  readonly negativeColor?: string;
+  readonly curve?: CurveFactory;
+  readonly fadeEdges?: FadeEdgesType;
 }
 
 interface ChartMarker {
-  date: Date;
-  icon: React.ReactNode;
-  title: string;
-  description?: string;
-  content?: React.ReactNode;
-  color?: string;
-  onClick?: () => void;
-  href?: string;
+  readonly date: Date;
+  readonly icon: React.ReactNode;
+  readonly title: string;
+  readonly description?: string;
+  readonly content?: React.ReactNode;
+  readonly color?: string;
+  readonly onClick?: () => void;
+  readonly href?: string;
   target?: "_blank" | "_self";
 }
 
@@ -152,18 +152,18 @@ interface ChartMarkersConfig {
 type BrushChildConfig = ChartBrushProps;
 
 interface ExtractedChildren {
-  lines: LineConfigType[];
-  areas: AreaConfigType[];
-  patternAreas: PatternAreaConfigType[];
-  scatters: ScatterConfigType[];
-  bars: BarConfigType[];
-  barSquares: BarSquaresConfigType[];
-  barColumnTracks: BarColumnTrackConfigType[];
-  barDepthBacks: BarDepthBackConfigType[];
-  barDepthFronts: BarDepthFrontConfigType[];
-  barPulses: BarPulseConfigType[];
+  readonly lines: LineConfigType[];
+  readonly areas: AreaConfigType[];
+  readonly patternAreas: PatternAreaConfigType[];
+  readonly scatters: ScatterConfigType[];
+  readonly bars: BarConfigType[];
+  readonly barSquares: BarSquaresConfigType[];
+  readonly barColumnTracks: BarColumnTrackConfigType[];
+  readonly barDepthBacks: BarDepthBackConfigType[];
+  readonly barDepthFronts: BarDepthFrontConfigType[];
+  readonly barPulses: BarPulseConfigType[];
   barDepthProvider: BarDepthProviderConfigType | null;
-  seriesBars: SeriesBarConfigType[];
+  readonly seriesBars: SeriesBarConfigType[];
   grid: GridConfigType | null;
   xAxis: XAxisConfigType | null;
   barXAxis: BarXAxisConfigType | null;
@@ -171,12 +171,12 @@ interface ExtractedChildren {
   tooltip: ChartTooltipConfig | null;
   candlestick: CandlestickConfig | null;
   yAxis: YAxisConfig | null;
-  projectionLines: ProjectionLineChildConfig[];
-  projectionEndMarkers: ProjectionLineEndMarkerChildConfig[];
-  terminalMarkers: TerminalMarkerChildConfig[];
-  profitLossLines: ProfitLossLineChildConfig[];
+  readonly projectionLines: ProjectionLineChildConfig[];
+  readonly projectionEndMarkers: ProjectionLineEndMarkerChildConfig[];
+  readonly terminalMarkers: TerminalMarkerChildConfig[];
+  readonly profitLossLines: ProfitLossLineChildConfig[];
   chartMarkers: ChartMarkersConfig | null;
-  brushes: BrushChildConfig[];
+  readonly brushes: BrushChildConfig[];
 }
 
 export {

@@ -4,11 +4,11 @@
 import type { CSSProperties, ReactElement } from "react";
 
 interface LabelItem {
-  x: number;
-  y: number;
-  deg: number;
-  label: string;
-  id: string;
+  readonly x: number;
+  readonly y: number;
+  readonly deg: number;
+  readonly label: string;
+  readonly id: string;
 }
 
 /*
@@ -16,9 +16,9 @@ interface LabelItem {
  */
 
 interface SunburstLabelsOverlayProps {
-  items: LabelItem[];
-  fullRadius: number;
-  size: number;
+  readonly items: LabelItem[];
+  readonly fullRadius: number;
+  readonly size: number;
 }
 
 // Overlay positioning — fully static, hoisted so every render shares one identity.

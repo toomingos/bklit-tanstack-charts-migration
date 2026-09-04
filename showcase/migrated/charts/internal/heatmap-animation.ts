@@ -8,14 +8,14 @@ const HEATMAP_ENTER_EASE_Y2 = 0.282;
 const HEATMAP_DEFAULT_ENTER_EASE = [HEATMAP_ENTER_EASE_X1, 0, HEATMAP_ENTER_EASE_X2, HEATMAP_ENTER_EASE_Y2] as const;
 
 interface HeatmapEnterTransition {
-  type?: "tween" | "spring";
-  duration?: number;
-  ease?: readonly [number, number, number, number];
-  bounce?: number;
-  stiffness?: number;
-  damping?: number;
-  mass?: number;
-  delay?: number;
+  readonly type?: "tween" | "spring";
+  readonly duration?: number;
+  readonly ease?: readonly [number, number, number, number];
+  readonly bounce?: number;
+  readonly stiffness?: number;
+  readonly damping?: number;
+  readonly mass?: number;
+  readonly delay?: number;
 }
 
 const HEATMAP_DEFAULT_ENTER_TRANSITION: HeatmapEnterTransition = {
@@ -55,12 +55,12 @@ const heatmapCellSeed = (column: number, row: number): number => column * HEATMA
 
 
 interface ComputeHeatmapEnterFadeDelayParams {
-  column: number;
-  row: number;
-  revealEpoch: number;
-  animationDurationMs: number;
-  enterStaggerScale: number;
-  fadeDurationSec: number;
+  readonly column: number;
+  readonly row: number;
+  readonly revealEpoch: number;
+  readonly animationDurationMs: number;
+  readonly enterStaggerScale: number;
+  readonly fadeDurationSec: number;
 }
 
 const MS_PER_SECOND = 1000;

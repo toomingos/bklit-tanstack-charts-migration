@@ -13,7 +13,7 @@ interface UseHeatmapFocusSchedulerParams {
 }
 
 interface HeatmapFocusScheduler {
-  readonly renderContextRef: { current: HeatmapRenderSnapshot | undefined };
+  readonly renderContextRef: RefObject<HeatmapRenderSnapshot | undefined>;
   readonly scheduleFocus: (point: ChartPoint<CellDatum, string, string> | null, key?: string) => void;
 }
 

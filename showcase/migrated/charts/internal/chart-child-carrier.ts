@@ -72,45 +72,45 @@ type ReadonlyProjectionLineEndMarkerProps = Readonly<Omit<ProjectionLineEndMarke
 };
 
 interface ProjectionLineProps {
-  data: ProjectionPoint[];
+  readonly data: ProjectionPoint[];
   yAxisId?: string | number;
   stroke?: string;
-  strokeStyle?: "solid" | "gradient";
-  gradientStart?: string;
-  gradientEnd?: string;
+  readonly strokeStyle?: "solid" | "gradient";
+  readonly gradientStart?: string;
+  readonly gradientEnd?: string;
   strokeWidth?: number;
-  curveKind?: "linear" | "bezier";
-  curve?: CurveFactory;
-  strokeDasharray?: string;
-  strokeOpacity?: number;
-  showEndMarker?: boolean;
+  readonly curveKind?: "linear" | "bezier";
+  readonly curve?: CurveFactory;
+  readonly strokeDasharray?: string;
+  readonly strokeOpacity?: number;
+  readonly showEndMarker?: boolean;
   /** @deprecated Use showEndMarker. */
-  showEndpoints?: boolean;
-  endpointRadius?: number;
-  className?: string;
+  readonly showEndpoints?: boolean;
+  readonly endpointRadius?: number;
+  readonly className?: string;
 }
 
 interface ProjectionLineEndMarkerProps {
-  data: ProjectionPoint[];
+  readonly data: ProjectionPoint[];
   yAxisId?: string | number;
   stroke?: string;
-  strokeOpacity?: number;
-  radius?: number;
+  readonly strokeOpacity?: number;
+  readonly radius?: number;
 }
 
 interface LineSeriesTerminalMarkerProps extends SeriesPointMarkerStyle {
-  dataKey: string;
+  readonly dataKey: string;
   yAxisId?: string | number;
 }
 
 interface ProfitLossLineProps {
-  dataKey: string;
-  xDataKey?: string;
+  readonly dataKey: string;
+  readonly xDataKey?: string;
   strokeWidth?: number;
-  positiveColor?: string;
-  negativeColor?: string;
-  curve?: CurveFactory;
-  fadeEdges?: boolean | "left" | "right";
+  readonly positiveColor?: string;
+  readonly negativeColor?: string;
+  readonly curve?: CurveFactory;
+  readonly fadeEdges?: boolean | "left" | "right";
 }
 
 interface ChartMarkersChildProps {

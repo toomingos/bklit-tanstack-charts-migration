@@ -17,54 +17,54 @@ import type { ChartStatus } from "./types";
  */
 
 interface HeatmapChartInnerProps {
-  data: HeatmapColumn[];
-  containerRef: RefObject<HTMLDivElement | null>;
-  containerWidth: number;
-  containerHeight: number;
-  layout: "fluid" | "fill";
-  binSize: number;
-  sizingColumnCount: number | undefined;
-  gap: number;
-  colorScale: ((count: number) => string) | undefined;
-  margin: Partial<HeatmapMargin> | undefined;
-  weekStartDay: HeatmapWeekStartDay;
-  xDomain: [Date, Date] | undefined;
-  separatorConfig: HeatmapColumnSeparatorsConfig | undefined;
-  levelColors: HeatmapLevelColors | undefined;
-  levelStyles: HeatmapLevelStyles | undefined;
-  status: ChartStatus;
-  animationDuration: number;
-  enterTransition: HeatmapEnterTransition | undefined;
-  enterStaggerScale: number;
-  revealSignature: string;
-  loadingCellMaxOpacity: number;
-  loadingCellRandomness: number;
-  loadingLabel: string | undefined;
-  animate: boolean;
-  loadingOpacity: number;
-  showLoadingCells: boolean;
-  children?: ReactNode;
+  readonly data: HeatmapColumn[];
+  readonly containerRef: RefObject<HTMLDivElement | null>;
+  readonly containerWidth: number;
+  readonly containerHeight: number;
+  readonly layout: "fluid" | "fill";
+  readonly binSize: number;
+  readonly sizingColumnCount: number | undefined;
+  readonly gap: number;
+  readonly colorScale: ((count: number) => string) | undefined;
+  readonly margin: Partial<HeatmapMargin> | undefined;
+  readonly weekStartDay: HeatmapWeekStartDay;
+  readonly xDomain: [Date, Date] | undefined;
+  readonly separatorConfig: HeatmapColumnSeparatorsConfig | undefined;
+  readonly levelColors: HeatmapLevelColors | undefined;
+  readonly levelStyles: HeatmapLevelStyles | undefined;
+  readonly status: ChartStatus;
+  readonly animationDuration: number;
+  readonly enterTransition: HeatmapEnterTransition | undefined;
+  readonly enterStaggerScale: number;
+  readonly revealSignature: string;
+  readonly loadingCellMaxOpacity: number;
+  readonly loadingCellRandomness: number;
+  readonly loadingLabel: string | undefined;
+  readonly animate: boolean;
+  readonly loadingOpacity: number;
+  readonly showLoadingCells: boolean;
+  readonly children?: ReactNode;
 }
 
 interface HeatmapContextValueInputs {
-  margin: HeatmapMargin;
-  columnLayout: HeatmapColumnLayout;
-  dims: HeatmapDimensionsResult;
-  colorScales: HeatmapColorScalesResult;
-  lifecycle: HeatmapLifecycleState;
-  htmlLayerEl: HTMLDivElement | null;
-  containerRef: RefObject<HTMLDivElement | null>;
-  gap: number;
-  status: ChartStatus;
-  animationDuration: number;
-  enterTransition: HeatmapEnterTransition | undefined;
-  enterStaggerScale: number;
-  loadingOpacity: number;
-  showLoadingCells: boolean;
-  loadingCellMaxOpacity: number;
-  loadingCellRandomness: number;
-  loadingLabel: string | undefined;
-  weekStartDay: HeatmapWeekStartDay;
+  readonly margin: HeatmapMargin;
+  readonly columnLayout: HeatmapColumnLayout;
+  readonly dims: HeatmapDimensionsResult;
+  readonly colorScales: HeatmapColorScalesResult;
+  readonly lifecycle: HeatmapLifecycleState;
+  readonly htmlLayerEl: HTMLDivElement | null;
+  readonly containerRef: RefObject<HTMLDivElement | null>;
+  readonly gap: number;
+  readonly status: ChartStatus;
+  readonly animationDuration: number;
+  readonly enterTransition: HeatmapEnterTransition | undefined;
+  readonly enterStaggerScale: number;
+  readonly loadingOpacity: number;
+  readonly showLoadingCells: boolean;
+  readonly loadingCellMaxOpacity: number;
+  readonly loadingCellRandomness: number;
+  readonly loadingLabel: string | undefined;
+  readonly weekStartDay: HeatmapWeekStartDay;
 }
 
 /*
@@ -116,12 +116,12 @@ const buildHeatmapContextValue = (inputs: Readonly<HeatmapContextValueInputs>): 
 };
 
 interface HeatmapContextValueDerived {
-  margin: HeatmapMargin;
-  columnLayout: HeatmapColumnLayout;
-  dims: HeatmapDimensionsResult;
-  colorScales: HeatmapColorScalesResult;
-  lifecycle: HeatmapLifecycleState;
-  htmlLayerEl: HTMLDivElement | null;
+  readonly margin: HeatmapMargin;
+  readonly columnLayout: HeatmapColumnLayout;
+  readonly dims: HeatmapDimensionsResult;
+  readonly colorScales: HeatmapColorScalesResult;
+  readonly lifecycle: HeatmapLifecycleState;
+  readonly htmlLayerEl: HTMLDivElement | null;
 }
 
 /*

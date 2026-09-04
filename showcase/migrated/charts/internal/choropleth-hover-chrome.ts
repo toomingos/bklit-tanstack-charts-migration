@@ -6,13 +6,13 @@ const PATH_MARKER = "data-bkm-cp";
 const ROOT_MARKER = "data-bkm-cp-root";
 
 interface ChoroplethHoverChromeOptions {
-  onHoverChange: (key: string | null) => void;
-  onFocusChange: (key: string | null) => void;
+  readonly onHoverChange: (key: string | null) => void;
+  readonly onFocusChange: (key: string | null) => void;
 }
 
 interface ChoroplethHoverChrome {
-  reconnect: (root: HTMLElement, pathElements: Map<string, SVGPathElement>) => void
-  detach: () => void
+  readonly reconnect: (root: HTMLElement, pathElements: Map<string, SVGPathElement>) => void
+  readonly detach: () => void
 }
 
 const maybeWireChoroplethPath = (path: SVGPathElement, onEnter: (this: SVGPathElement) => void, onLeave: () => void): void => {

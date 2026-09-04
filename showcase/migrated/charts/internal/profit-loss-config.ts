@@ -19,13 +19,13 @@ const resolveProfitLossTooltipLabel = (label: string): string => {
 }
 
 interface ProfitLossLineConfig {
-  dataKey: string;
-  xDataKey: string;
+  readonly dataKey: string;
+  readonly xDataKey: string;
   strokeWidth: number;
-  positiveColor: string;
-  negativeColor: string;
-  curve: CurveFactory;
-  fadeEdges: boolean | "left" | "right";
+  readonly positiveColor: string;
+  readonly negativeColor: string;
+  readonly curve: CurveFactory;
+  readonly fadeEdges: boolean | "left" | "right";
 }
 
 // Raw profit-loss props as they arrive from extracted children: every field is

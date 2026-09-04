@@ -7,11 +7,11 @@ const isNumber = <Value>(value: Value): value is Value & number => typeof value 
 
 /** IDs of the shared `<linearGradient>` defs bar-chart.tsx builds once per chart. */
 interface BarDepthGradientIds {
-  glassPosId: string;
-  glassNegId: string;
-  sideShadeRtlId: string;
-  sideShadeLtrId: string;
-  topShadeId: string;
+  readonly glassPosId: string;
+  readonly glassNegId: string;
+  readonly sideShadeRtlId: string;
+  readonly sideShadeLtrId: string;
+  readonly topShadeId: string;
 }
 
 interface BarDepthValues {

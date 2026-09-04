@@ -14,17 +14,17 @@ import type { CandleBodyFields, CandlePattern } from "./candlestick-fields";
 import type { ChartDatum } from "./types";
 
 interface CandleBodiesMarkParams {
-  source: readonly Readonly<ChartDatum>[];
-  xDataKey: string;
-  bodyWidthPx: number;
-  insideStrokeW: number;
-  positivePattern: CandlePattern;
-  negativePattern: CandlePattern;
-  solidFillFor: (isPositive: boolean, hasOwnPattern: boolean) => string;
-  legendDimOpacity: (isPositive: boolean) => number | undefined;
-  showTargetGeometry: boolean;
-  dimStates: readonly ChartMarkState<ChartDatum>[];
-  motion: ChartMotionDefinition<ChartDatum>;
+  readonly source: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+  readonly bodyWidthPx: number;
+  readonly insideStrokeW: number;
+  readonly positivePattern: CandlePattern;
+  readonly negativePattern: CandlePattern;
+  readonly solidFillFor: (isPositive: boolean, hasOwnPattern: boolean) => string;
+  readonly legendDimOpacity: (isPositive: boolean) => number | undefined;
+  readonly showTargetGeometry: boolean;
+  readonly dimStates: readonly ChartMarkState<ChartDatum>[];
+  readonly motion: ChartMotionDefinition<ChartDatum>;
 }
 
 interface BodyPixels {

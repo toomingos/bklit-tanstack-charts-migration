@@ -613,23 +613,23 @@ const TooltipIndicator = (props: Readonly<TooltipIndicatorProps>): ReactNode => 
 
 
 interface TooltipBoxProps {
-  x: number;
-  y: number;
-  visible: boolean;
-  containerRef: RefObject<HTMLDivElement | null>;
-  containerWidth: number;
-  containerHeight: number;
-  offset?: number;
-  className?: string;
-  children: ReactNode;
-  left?: number;
-  top?: number;
-  flipped?: boolean;
-  springConfig?: SpringConfig;
-  animate?: boolean;
-  entrance?: boolean;
-  panelStyle?: CSSProperties;
-  backgroundColor?: string;
+  readonly x: number;
+  readonly y: number;
+  readonly visible: boolean;
+  readonly containerRef: RefObject<HTMLDivElement | null>;
+  readonly containerWidth: number;
+  readonly containerHeight: number;
+  readonly offset?: number;
+  readonly className?: string;
+  readonly children: ReactNode;
+  readonly left?: number;
+  readonly top?: number;
+  readonly flipped?: boolean;
+  readonly springConfig?: SpringConfig;
+  readonly animate?: boolean;
+  readonly entrance?: boolean;
+  readonly panelStyle?: CSSProperties;
+  readonly backgroundColor?: string;
 }
 
 const BOX_FALLBACK_WIDTH = 180;

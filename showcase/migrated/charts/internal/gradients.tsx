@@ -6,21 +6,21 @@ import type { ReactElement, ReactNode, SVGProps } from "react";
 const DEFAULT_GRADIENT_STOP_OPACITY = 1;
 
 interface LinearGradientOwnProps {
-  id: string;
-  from?: string;
-  to?: string;
-  x1?: string | number;
-  x2?: string | number;
-  y1?: string | number;
-  y2?: string | number;
-  fromOffset?: string | number;
-  fromOpacity?: string | number;
-  toOffset?: string | number;
-  toOpacity?: string | number;
-  rotate?: string | number;
-  transform?: string;
-  children?: ReactNode;
-  vertical?: boolean;
+  readonly id: string;
+  readonly from?: string;
+  readonly to?: string;
+  readonly x1?: string | number;
+  readonly x2?: string | number;
+  readonly y1?: string | number;
+  readonly y2?: string | number;
+  readonly fromOffset?: string | number;
+  readonly fromOpacity?: string | number;
+  readonly toOffset?: string | number;
+  readonly toOpacity?: string | number;
+  readonly rotate?: string | number;
+  readonly transform?: string;
+  readonly children?: ReactNode;
+  readonly vertical?: boolean;
 }
 
 type LinearGradientProps = LinearGradientOwnProps &

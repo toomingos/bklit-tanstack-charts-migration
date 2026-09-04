@@ -29,7 +29,7 @@ const MARKER_SLICE_START_INDEX = 0;
 // The double-underscore name is the harness contract.
 declare global {
   interface Window {
-    __qaSetMarkerFan?: boolean;
+    readonly __qaSetMarkerFan?: boolean;
   }
   var __qaSetMarkerFan: boolean | undefined;
 }

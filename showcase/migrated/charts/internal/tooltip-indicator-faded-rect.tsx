@@ -3,13 +3,13 @@ import { IndicatorFadeGradientDef } from './tooltip-indicator-gradient';
 import type { IndicatorFadeGradientStop } from './fade-mask';
 
 interface IndicatorFadedRectProps {
-  animate: boolean;
-  rectRef: RefObject<SVGRectElement | null>;
-  gradientId: string;
-  fadeStops: readonly IndicatorFadeGradientStop[];
-  indicatorFill: string;
-  pixelWidth: number;
-  rectX: number;
+  readonly animate: boolean;
+  readonly rectRef: RefObject<SVGRectElement | null>;
+  readonly gradientId: string;
+  readonly fadeStops: readonly IndicatorFadeGradientStop[];
+  readonly indicatorFill: string;
+  readonly pixelWidth: number;
+  readonly rectX: number;
   height: number;
 }
 

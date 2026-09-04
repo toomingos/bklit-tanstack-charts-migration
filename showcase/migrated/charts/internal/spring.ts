@@ -3,9 +3,9 @@ import { createChartSpring } from '@tanstack/charts/spring';
 import type { ChartSpring } from '@tanstack/charts/spring';
 
 interface Spring {
-  set: (target: number) => void
-  jump: (value: number) => void
-  stop: () => void
+  readonly set: (target: number) => void
+  readonly jump: (value: number) => void
+  readonly stop: () => void
 }
 
 // Flat rest thresholds snap tiny hover-scale springs; granular tier covers amplitudes < 5.
@@ -36,8 +36,8 @@ const buildSpringSampler = ({ stiffness, damping, granular }: SpringSamplerParam
       });
 
 interface SpringSampleState {
-  from: number;
-  to: number;
+  readonly from: number;
+  readonly to: number;
   velocity: number;
 }
 
@@ -48,12 +48,12 @@ interface SpringEngineState {
   frame: number | undefined;
   startedAt: number;
   granular: boolean;
-  stiffness: number;
-  damping: number;
+  readonly stiffness: number;
+  readonly damping: number;
   springInstance: ChartSpring;
   springState: SpringSampleState;
-  schedule: (now: number) => void;
-  onUpdate: (value: number) => void;
+  readonly schedule: (now: number) => void;
+  readonly onUpdate: (value: number) => void;
 }
 
 interface SpringEngineParams {

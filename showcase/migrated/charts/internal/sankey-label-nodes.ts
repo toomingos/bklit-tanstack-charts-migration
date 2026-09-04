@@ -29,12 +29,12 @@ type NodeRow = NativeSankeyNode<SankeyNodeData, SankeyLinkData>;
 type LinkRow = NativeSankeyLink<SankeyNodeData, SankeyLinkData>;
 
 interface LaidOutLink {
-  sourceIndex: number;
-  targetIndex: number;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
+  readonly sourceIndex: number;
+  readonly targetIndex: number;
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
   width: number;
 }
 

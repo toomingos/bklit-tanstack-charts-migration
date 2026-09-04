@@ -9,17 +9,17 @@ import type { PatternPresetId, PatternPresetOptions } from './pattern-preset';
 type BackgroundPatternPreset = PatternPresetId;
 
 interface BackgroundProps extends PatternPresetOptions {
-  pattern?: BackgroundPatternPreset;
-  color?: string;
-  showFill?: boolean;
-  opacity?: number;
-  fadeHorizontal?: boolean;
-  fadeVertical?: boolean;
-  fadeHorizontalLength?: number;
-  fadeVerticalLength?: number;
+  readonly pattern?: BackgroundPatternPreset;
+  readonly color?: string;
+  readonly showFill?: boolean;
+  readonly opacity?: number;
+  readonly fadeHorizontal?: boolean;
+  readonly fadeVertical?: boolean;
+  readonly fadeHorizontalLength?: number;
+  readonly fadeVerticalLength?: number;
   width: number;
   height: number;
-  isLoaded?: boolean;
+  readonly isLoaded?: boolean;
 }
 
 

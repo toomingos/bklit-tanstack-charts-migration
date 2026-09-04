@@ -21,9 +21,9 @@ const approximateRoot = (envelope: (x: number) => number, derivative: (x: number
 }
 
 interface SpringPhysics {
-  stiffness: number;
-  damping: number;
-  mass: number;
+  readonly stiffness: number;
+  readonly damping: number;
+  readonly mass: number;
 }
 
 interface FindSpringParams {

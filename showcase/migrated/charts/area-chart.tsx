@@ -190,47 +190,47 @@ const HIDDEN_DEF_SVG_STYLE: CSSProperties = { position: "absolute" };
 const DATE_PILL_HOST_STYLE: CSSProperties = { inset: 0, pointerEvents: "none", position: "absolute" };
 
 interface AreaChartProps {
-  data: ChartDatum[];
-  xDataKey?: string;
-  status?: ChartStatus;
-  animationDuration?: number;
-  margin?: Partial<ChartMargin>;
-  aspectRatio?: string;
-  className?: string;
-  onPhaseChange?: (phase: ChartPhase) => void;
-  loadingLabel?: string;
-  children?: ReactNode;
-  style?: CSSProperties;
-  animationEasing?: string;
-  yDomainTween?: boolean;
-  yDomainTweenDuration?: number;
-  xDomain?: [Date, Date];
+  readonly data: ChartDatum[];
+  readonly xDataKey?: string;
+  readonly status?: ChartStatus;
+  readonly animationDuration?: number;
+  readonly margin?: Partial<ChartMargin>;
+  readonly aspectRatio?: string;
+  readonly className?: string;
+  readonly onPhaseChange?: (phase: ChartPhase) => void;
+  readonly loadingLabel?: string;
+  readonly children?: ReactNode;
+  readonly style?: CSSProperties;
+  readonly animationEasing?: string;
+  readonly yDomainTween?: boolean;
+  readonly yDomainTweenDuration?: number;
+  readonly xDomain?: [Date, Date];
   /** Accepted but inert (no columnWidth consumer here); kept for bklit API parity. */
-  xDomainSlotCount?: number;
-  tweenYDomainOnXDomainChange?: boolean;
+  readonly xDomainSlotCount?: number;
+  readonly tweenYDomainOnXDomainChange?: boolean;
   /** Overrides the clip-reveal timing; springs coerce to tweens. */
-  enterTransition?: EnterTransition;
+  readonly enterTransition?: EnterTransition;
   /** Replay epoch input: changing it replays the mount reveal without a data change. */
-  revealSignature?: string;
+  readonly revealSignature?: string;
 }
 
 interface ResolvedArea {
-  dataKey: string;
+  readonly dataKey: string;
   yAxisId?: string | number;
-  fill: string;
+  readonly fill: string;
   stroke: string;
   strokeWidth: number;
-  fillOpacity: number;
-  curve: CurveFactory;
-  showLine: boolean;
-  gradientToOpacity: number;
-  gradientSpan: number;
-  fadeEdges: boolean | "left" | "right";
+  readonly fillOpacity: number;
+  readonly curve: CurveFactory;
+  readonly showLine: boolean;
+  readonly gradientToOpacity: number;
+  readonly gradientSpan: number;
+  readonly fadeEdges: boolean | "left" | "right";
   showHighlight: boolean;
-  dashFromIndex?: number;
-  dashArray?: string;
-  showMarkers?: boolean;
-  markers?: SeriesPointMarkerStyle;
+  readonly dashFromIndex?: number;
+  readonly dashArray?: string;
+  readonly showMarkers?: boolean;
+  readonly markers?: SeriesPointMarkerStyle;
 }
 
 // Bklit `Readonly<ResolvedArea>` alone leaves the nested `markers` object mutable, which
@@ -246,19 +246,19 @@ type ReadonlyAreaConfig = Readonly<Omit<AreaConfig, "markers">> & {
 };
 
 interface ResolvedPatternArea {
-  dataKey: string;
-  fill?: string;
-  patternPreset?: PatternPresetId;
-  patternColor?: string;
-  curve: CurveFactory;
+  readonly dataKey: string;
+  readonly fill?: string;
+  readonly patternPreset?: PatternPresetId;
+  readonly patternColor?: string;
+  readonly curve: CurveFactory;
 }
 
 interface AreaPatternDef {
-  dataKey: string;
-  id: string;
-  preset: PatternPresetId;
-  color?: string;
-  node: ReactNode;
+  readonly dataKey: string;
+  readonly id: string;
+  readonly preset: PatternPresetId;
+  readonly color?: string;
+  readonly node: ReactNode;
 }
 
 // Bklit parity: height comes from the measured box in both modes, not width/aspectRatio.
@@ -528,8 +528,8 @@ const resolveAreaFocusPrimary = (input: Readonly<AreaFocusPrimaryInput>): AreaFo
 };
 
 interface AreaLabelFade {
-  hoveredLabel: string | undefined;
-  primaryX: number;
+  readonly hoveredLabel: string | undefined;
+  readonly primaryX: number;
 }
 
 interface AreaDatePillRequest {
@@ -707,7 +707,7 @@ const collectAreaMarkerAnims = (input: Readonly<AreaMarkerCollectInput>): void =
 
 interface AreaMarkerRevealState {
   cancelled: boolean;
-  raf1: number;
+  readonly raf1: number;
   raf2: number;
   tId: ReturnType<typeof globalThis.setTimeout> | 0;
 }

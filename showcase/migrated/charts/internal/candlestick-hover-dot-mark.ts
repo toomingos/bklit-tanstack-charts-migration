@@ -43,10 +43,10 @@ const resolveHoverDotGeometry = (dotCfg: Readonly<DotConfig>): HoverDotGeometry 
 };
 
 interface CandleHoverDotMarkParams {
-  source: readonly Readonly<ChartDatum>[];
-  xDataKey: string;
-  dotCfg: Readonly<DotConfig>;
-  tooltipSpring: Readonly<SpringConfig>;
+  readonly source: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+  readonly dotCfg: Readonly<DotConfig>;
+  readonly tooltipSpring: Readonly<SpringConfig>;
 }
 
 interface HoverDotNodeOptions {

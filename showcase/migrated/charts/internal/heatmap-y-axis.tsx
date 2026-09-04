@@ -12,10 +12,10 @@ import type { HeatmapYAxisLabelFormat, HeatmapYAxisTickFilter } from "./heatmap-
 import { HEATMAP_AXIS_LAYER_CLASS } from "./heatmap-separator";
 
 interface HeatmapYAxisProps {
-  className?: string;
-  tickFilter?: HeatmapYAxisTickFilter;
-  labelFormat?: HeatmapYAxisLabelFormat;
-  rowOpacity?: number | readonly number[];
+  readonly className?: string;
+  readonly tickFilter?: HeatmapYAxisTickFilter;
+  readonly labelFormat?: HeatmapYAxisLabelFormat;
+  readonly rowOpacity?: number | readonly number[];
 }
 
 const HeatmapYAxis = memo(({

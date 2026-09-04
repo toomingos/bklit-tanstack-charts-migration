@@ -23,8 +23,8 @@ const resolveFadeSides = (fade: FadeEdges): FadeSides => {
 }
 
 interface FadeGradientStop {
-  offset: string;
-  opacity: number;
+  readonly offset: string;
+  readonly opacity: number;
 }
 
 const fadeGradientStops = (sides: FadeSides): FadeGradientStop[] => [
@@ -76,8 +76,8 @@ const resolveVerticalFadeSides = (fade: IndicatorFadeEdges | boolean): VerticalF
 }
 
 interface IndicatorFadeGradientStop {
-  offset: string;
-  opacity: number;
+  readonly offset: string;
+  readonly opacity: number;
 }
 
 const FULL_PERCENT = 100;

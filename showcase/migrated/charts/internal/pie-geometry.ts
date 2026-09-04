@@ -12,8 +12,8 @@ const pieArcPath = (innerRadius: number, outerRadius: number, startAngle: number
 }
 
 interface SliceOffset {
-  x: number;
-  y: number;
+  readonly x: number;
+  readonly y: number;
 }
 
 // Outward offset along the slice's own mid-angle (d3: 0 at 12 o'clock, CW).

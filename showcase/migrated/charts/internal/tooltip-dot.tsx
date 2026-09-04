@@ -7,17 +7,17 @@ import { useChartConfig } from './use-chart-config';
 import type { SpringConfig } from './chart-config-context';
 
 interface TooltipDotProps {
-  x: number;
-  y: number;
-  visible: boolean;
-  color: string;
-  size?: number;
-  strokeColor?: string;
+  readonly x: number;
+  readonly y: number;
+  readonly visible: boolean;
+  readonly color: string;
+  readonly size?: number;
+  readonly strokeColor?: string;
   strokeWidth?: number;
-  variant?: "dot" | "ring";
-  cornerRadiusFraction?: number;
-  springConfig?: SpringConfig;
-  animate?: boolean;
+  readonly variant?: "dot" | "ring";
+  readonly cornerRadiusFraction?: number;
+  readonly springConfig?: SpringConfig;
+  readonly animate?: boolean;
 }
 
 interface ResolveDotPaintOptions {

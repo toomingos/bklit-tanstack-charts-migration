@@ -23,8 +23,8 @@ const BRUSH_TRACK_OUTER_FADE = 0.15;
 const FRACTION_TO_PERCENT = 100;
 
 interface PixelExtent {
-  x0: number;
-  x1: number;
+  readonly x0: number;
+  readonly x1: number;
 }
 
 // Clamps a raw pixel extent into [0, innerWidth] and orders it; hoisted so selectionToPixelExtent stays short.
@@ -35,8 +35,8 @@ const normalizePixelExtent = (x0Raw: number, x1Raw: number, innerWidth: number):
 };
 
 interface RawPixelExtent {
-  x0Raw: number;
-  x1Raw: number;
+  readonly x0Raw: number;
+  readonly x1Raw: number;
 }
 
 interface RawPixelExtentArgs {
@@ -66,8 +66,8 @@ const selectionToPixelExtent = (selection: { readonly start: Readonly<Date>; rea
 };
 
 interface TrackWidths {
-  leftWidth: number;
-  rightWidth: number;
+  readonly leftWidth: number;
+  readonly rightWidth: number;
 }
 
 // Dimmed widths flanking the selection; hoisted so BrushTrackChrome stays short.
@@ -77,8 +77,8 @@ const resolveTrackWidths = (x0: number, x1: number, innerWidth: number): TrackWi
 });
 
 interface TrackEdgeMasks {
-  leftMask: string | undefined;
-  rightMask: string | undefined;
+  readonly leftMask: string | undefined;
+  readonly rightMask: string | undefined;
 }
 
 // Fade masks at the outer track ends only; hoisted so BrushTrackChrome stays short.
@@ -125,7 +125,7 @@ const renderTrackSide = (side: Readonly<TrackSideStyle>): ReactNode => {
 };
 
 interface SelectionBounds {
-  left: number;
+  readonly left: number;
   width: number;
 }
 
@@ -138,14 +138,14 @@ const resolveSelectionBounds = (x0: number, x1: number): SelectionBounds | undef
 };
 
 interface SelectionPatternOptions {
-  color: string | undefined;
-  complement: boolean | undefined;
-  dotFill: boolean | undefined;
-  fill: string | undefined;
-  radius: number | undefined;
-  scale: number | undefined;
+  readonly color: string | undefined;
+  readonly complement: boolean | undefined;
+  readonly dotFill: boolean | undefined;
+  readonly fill: string | undefined;
+  readonly radius: number | undefined;
+  readonly scale: number | undefined;
   strokeWidth: number | undefined;
-  tileBackground: string | undefined;
+  readonly tileBackground: string | undefined;
 }
 
 // Pattern tile options for the selection overlay; hoisted so the pattern chrome stays short.
@@ -161,9 +161,9 @@ const buildSelectionPatternOptions = (selectionPattern: Readonly<BrushChromePatt
 });
 
 interface ActivePatternBounds {
-  pattern: BrushChromePattern;
-  bounds: SelectionBounds;
-  container: HTMLElement;
+  readonly pattern: BrushChromePattern;
+  readonly bounds: SelectionBounds;
+  readonly container: HTMLElement;
 }
 
 interface ActivePatternBoundsArgs {

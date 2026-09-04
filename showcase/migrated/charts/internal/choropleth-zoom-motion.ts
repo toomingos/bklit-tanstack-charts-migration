@@ -89,8 +89,8 @@ const matricesEqual = (matrixA: Readonly<TransformMatrix>, matrixB: Readonly<Tra
   }
 
 interface ZoomEaseState {
-  from: TransformMatrix;
-  start: number;
+  readonly from: TransformMatrix;
+  readonly start: number;
 }
 
 interface ZoomFrameOptions {

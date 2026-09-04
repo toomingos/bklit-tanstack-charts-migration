@@ -16,9 +16,9 @@ const PROFIT_LOSS_LEGEND_ITEMS = [
 
 interface ProfitLossLegendProps {
   hoveredIndex?: number | null;
-  onHoverChange?: (index: number | null) => void;
-  align?: "start" | "center" | "end";
-  className?: string;
+  readonly onHoverChange?: (index: number | null) => void;
+  readonly align?: "start" | "center" | "end";
+  readonly className?: string;
 }
 
 const LEGEND_ALIGN_CLASSES = {

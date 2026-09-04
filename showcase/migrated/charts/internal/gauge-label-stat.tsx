@@ -5,12 +5,12 @@ import type { CenterStatFormat } from './center-stat';
 import type { GaugeLabelAlign } from './gauge-center';
 
 interface GaugeLabelStatProps {
-  centerValue: number;
-  defaultLabel: string;
-  prefix?: string;
-  suffix?: string;
-  formatOptions?: CenterStatFormat;
-  align?: GaugeLabelAlign;
+  readonly centerValue: number;
+  readonly defaultLabel: string;
+  readonly prefix?: string;
+  readonly suffix?: string;
+  readonly formatOptions?: CenterStatFormat;
+  readonly align?: GaugeLabelAlign;
 }
 
 const LABEL_STAT_STYLE_BY_ALIGN = {

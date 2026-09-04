@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 import { useLegend, useLegendItem } from './legend-context';
 
 interface LegendItemProps {
-  className?: string;
-  children: ReactNode;
+  readonly className?: string;
+  readonly children: ReactNode;
 }
 
 const LegendItem = ({ className = "", children }: Readonly<LegendItemProps>): ReactElement => {

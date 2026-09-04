@@ -43,7 +43,7 @@ interface ScatterDomains {
 
 // Axis-keyed niced domains, one entry per represented y axis id.
 interface NicedDomainsByAxis {
-  [axisId: string]: [number, number];
+  readonly [axisId: string]: [number, number];
 }
 
 const buildNicedDomainsByAxis = (

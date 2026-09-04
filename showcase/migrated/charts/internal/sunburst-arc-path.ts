@@ -13,10 +13,10 @@ const HOVER_GROW_SEGMENT_CAP = 0.1;
 // Arc path construction (d-string)
 
 interface ArcPoints {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
+  readonly x0: number;
+  readonly y0: number;
+  readonly x1: number;
+  readonly y1: number;
 }
 
 const arcOuterPoints = (a0: number, a1: number, outer: number): ArcPoints => ({

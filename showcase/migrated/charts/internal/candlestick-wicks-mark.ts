@@ -13,15 +13,15 @@ import type { CandleBodyFields, CandlePattern, CandleWickHighFields } from "./ca
 import type { ChartDatum } from "./types";
 
 interface CandleWicksMarkParams {
-  source: readonly Readonly<ChartDatum>[];
-  xDataKey: string;
-  positivePattern: CandlePattern;
-  negativePattern: CandlePattern;
-  solidFillFor: (isPositive: boolean, hasOwnPattern: boolean) => string;
-  legendDimOpacity: (isPositive: boolean) => number | undefined;
-  showTargetGeometry: boolean;
-  dimStates: readonly ChartMarkState<ChartDatum>[];
-  motion: ChartMotionDefinition<ChartDatum>;
+  readonly source: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+  readonly positivePattern: CandlePattern;
+  readonly negativePattern: CandlePattern;
+  readonly solidFillFor: (isPositive: boolean, hasOwnPattern: boolean) => string;
+  readonly legendDimOpacity: (isPositive: boolean) => number | undefined;
+  readonly showTargetGeometry: boolean;
+  readonly dimStates: readonly ChartMarkState<ChartDatum>[];
+  readonly motion: ChartMotionDefinition<ChartDatum>;
 }
 
 interface WickBodyTargets {

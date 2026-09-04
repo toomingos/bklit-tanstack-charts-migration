@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 // Series-marker reveal animations and post-paint reveal scheduling.
 import { SERIES_MARKER_ENTER_MS } from "./design-tokens";
 import type { SeriesPointMarkerStyle } from "./types";
@@ -72,7 +73,7 @@ const collectMarkerRevealAnimations = (params: Readonly<SeriesMarkerRevealParams
   return animations;
 };
 
-const cancelPendingMarkerReveal = (animationsRef: { current: Animation[] }, cancelRef: { current: (() => void) | null }): void => {
+const cancelPendingMarkerReveal = (animationsRef: RefObject<Animation[]>, cancelRef: RefObject<(() => void) | null>): void => {
   for (const anim of animationsRef.current) {
     try {
       anim.cancel();
@@ -105,7 +106,7 @@ const scheduleAfterTwoFrames = (callback: () => void): (() => void) => {
   };
 };
 
-const scheduleMarkerReveal = (doReveal: () => void, cancelRef: { current: (() => void) | null }): void => {
+const scheduleMarkerReveal = (doReveal: () => void, cancelRef: RefObject<(() => void) | null>): void => {
   if (isFunction(globalThis.requestAnimationFrame)) {
     cancelRef.current = scheduleAfterTwoFrames(doReveal);
   } else {

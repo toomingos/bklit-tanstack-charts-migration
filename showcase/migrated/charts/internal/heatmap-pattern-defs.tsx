@@ -5,10 +5,10 @@ import type { HeatmapLevelStyle, HeatmapLevelStyles } from './heatmap-colors';
 import { renderPatternPreset } from "./pattern-preset-render";
 
 interface HeatmapPatternDefsProps {
-  levelStyles: HeatmapLevelStyles;
-  patternIdPrefix: string | undefined;
-  phaseX: number;
-  phaseY: number;
+  readonly levelStyles: HeatmapLevelStyles;
+  readonly patternIdPrefix: string | undefined;
+  readonly phaseX: number;
+  readonly phaseY: number;
 }
 
 // TanStack bakes margins into rect coords, so base patterns wrap in a phase-shifting

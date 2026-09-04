@@ -16,7 +16,7 @@ interface UseScatterPhaseModelParams {
 
 interface ScatterPhaseModel {
   readonly phaseRef: RefObject<ChartPhase>;
-  readonly revealDeadlineTimerRef: { current: number | null };
+  readonly revealDeadlineTimerRef: RefObject<number | null>;
   readonly scatterFocusStrategy: ReturnType<typeof createScatterFocusStrategy>;
   readonly seenRevealKeyRef: { current: { signature: string; duration: number } | null };
   readonly setPhase: (phase: ChartPhase) => void;

@@ -220,25 +220,25 @@ const renderCrosshairStops = (def: ReadonlyCrosshairGradientDef): ReactNode => (
 );
 
 interface ComposedChartProps {
-  data: ChartDatum[];
-  xDataKey?: string;
-  animationDuration?: number;
-  margin?: Partial<ChartMargin>;
-  aspectRatio?: string;
-  className?: string;
-  onPhaseChange?: (phase: ChartPhase) => void;
-  barSize?: number;
-  maxBarSize?: number;
-  barGap?: number;
-  stacked?: boolean;
-  stackGap?: number;
+  readonly data: ChartDatum[];
+  readonly xDataKey?: string;
+  readonly animationDuration?: number;
+  readonly margin?: Partial<ChartMargin>;
+  readonly aspectRatio?: string;
+  readonly className?: string;
+  readonly onPhaseChange?: (phase: ChartPhase) => void;
+  readonly barSize?: number;
+  readonly maxBarSize?: number;
+  readonly barGap?: number;
+  readonly stacked?: boolean;
+  readonly stackGap?: number;
   /** Easing for the per-bar grow reveal. */
-  animationEasing?: string;
+  readonly animationEasing?: string;
   /** Overrides the reveal timing; springs coerce to tweens. */
-  enterTransition?: EnterTransition;
+  readonly enterTransition?: EnterTransition;
   /** Replay epoch input: changing it replays the reveal. */
-  revealSignature?: string;
-  children?: ReactNode;
+  readonly revealSignature?: string;
+  readonly children?: ReactNode;
 }
 
 
@@ -253,11 +253,11 @@ type ReadonlyLineConfig = Readonly<Omit<LineConfig, "markers">> & {
 };
 
 interface ExtractedComposed {
-  barConfigs: SeriesBarConfig[];
-  areaConfigs: AreaConfig[];
-  lineConfigs: LineConfig[];
+  readonly barConfigs: SeriesBarConfig[];
+  readonly areaConfigs: AreaConfig[];
+  readonly lineConfigs: LineConfig[];
   /** One upserted entry per dataKey, in first-seen order. */
-  composedSeries: ComposedSeriesEntry[];
+  readonly composedSeries: ComposedSeriesEntry[];
   grid: GridConfig | null;
   xAxis: XAxisConfig | undefined;
   background: BackgroundConfig | null;
@@ -278,12 +278,12 @@ const upsertComposedSeries = (list: ComposedSeriesEntry[], entry: Readonly<Compo
 };
 
 interface ComposedChildSink {
-  areaConfigs: AreaConfig[];
+  readonly areaConfigs: AreaConfig[];
   background: BackgroundConfig | null;
-  barConfigs: SeriesBarConfig[];
-  composedSeries: ComposedSeriesEntry[];
+  readonly barConfigs: SeriesBarConfig[];
+  readonly composedSeries: ComposedSeriesEntry[];
   grid: GridConfig | null;
-  lineConfigs: LineConfig[];
+  readonly lineConfigs: LineConfig[];
   tooltip: ChartTooltipConfig | undefined;
   xAxis: XAxisConfig | undefined;
 }
@@ -431,10 +431,10 @@ const extractComposed = (children: ReactNode): ExtractedComposed => {
 // Implementations live in ./internal/composed-data-math.
 
 interface ComposedGradientDef {
-  dataKey: string;
-  fill: string;
-  fillOpacity: number;
-  id: string;
+  readonly dataKey: string;
+  readonly fill: string;
+  readonly fillOpacity: number;
+  readonly id: string;
 }
 
 const ComposedChart = ({

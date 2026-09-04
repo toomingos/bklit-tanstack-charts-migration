@@ -4,22 +4,22 @@ import type { PieData, PieArcData } from "../pie-chart";
 import type { CenterStatFormat } from './center-stat';
 
 interface PieStableValue {
-  data: PieData[];
-  arcs: PieArcData[];
-  size: number;
-  center: number;
-  outerRadius: number;
-  innerRadius: number;
-  padAngle: number;
-  cornerRadius: number;
-  hoverOffset: number;
-  enterTransition?: PieEnterTransition;
-  enterStaggerScale: number;
-  totalValue: number;
-  getColor: (index: number) => string;
-  getFill: (index: number) => string;
-  geometryScrubbing: boolean;
-  scrubSlicePaths: readonly string[] | null;
+  readonly data: PieData[];
+  readonly arcs: PieArcData[];
+  readonly size: number;
+  readonly center: number;
+  readonly outerRadius: number;
+  readonly innerRadius: number;
+  readonly padAngle: number;
+  readonly cornerRadius: number;
+  readonly hoverOffset: number;
+  readonly enterTransition?: PieEnterTransition;
+  readonly enterStaggerScale: number;
+  readonly totalValue: number;
+  readonly getColor: (index: number) => string;
+  readonly getFill: (index: number) => string;
+  readonly geometryScrubbing: boolean;
+  readonly scrubSlicePaths: readonly string[] | null;
 }
 
 interface PieCenterContent {

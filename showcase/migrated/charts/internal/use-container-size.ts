@@ -26,7 +26,7 @@ const applyGuardedSize = (setSize: ResizeSetter, next: ChartSize): void => {
   );
 }
 
-const clearPendingTimer = (timerRef: { current: ReturnType<typeof globalThis.setTimeout> | undefined }): void => {
+const clearPendingTimer = (timerRef: RefObject<ReturnType<typeof globalThis.setTimeout> | undefined>): void => {
   if (timerRef.current !== undefined) {
     clearTimeout(timerRef.current);
     timerRef.current = undefined;
@@ -37,8 +37,8 @@ interface ScheduleDebouncedCommitParams {
   readonly next: ChartSize;
   readonly debounceMs: number;
   readonly setSize: ResizeSetter;
-  readonly timerRef: { current: ReturnType<typeof globalThis.setTimeout> | undefined };
-  readonly pendingRef: { current: ChartSize | undefined };
+  readonly timerRef: RefObject<ReturnType<typeof globalThis.setTimeout> | undefined>;
+  readonly pendingRef: RefObject<ChartSize | undefined>;
 }
 
 const scheduleDebouncedCommit = ({ next, debounceMs, setSize, timerRef, pendingRef }: ScheduleDebouncedCommitParams): void => {
@@ -58,8 +58,8 @@ interface CommitResizeParams {
   readonly requirePositive: boolean;
   readonly debounceMs: number;
   readonly setSize: ResizeSetter;
-  readonly timerRef: { current: ReturnType<typeof globalThis.setTimeout> | undefined };
-  readonly pendingRef: { current: ChartSize | undefined };
+  readonly timerRef: RefObject<ReturnType<typeof globalThis.setTimeout> | undefined>;
+  readonly pendingRef: RefObject<ChartSize | undefined>;
 }
 
 const commitResizeUpdate = ({ next, guarded, requirePositive, debounceMs, setSize, timerRef, pendingRef }: CommitResizeParams): void => {

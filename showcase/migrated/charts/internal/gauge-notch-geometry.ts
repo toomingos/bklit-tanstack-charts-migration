@@ -204,11 +204,11 @@ interface ArcNotchGeometryInput {
 }
 
 interface ArcNotchGeometry {
-  notches: ComputedNotch[];
-  notchLength: number;
-  size: number;
-  centerX: number;
-  centerY: number;
+  readonly notches: ComputedNotch[];
+  readonly notchLength: number;
+  readonly size: number;
+  readonly centerX: number;
+  readonly centerY: number;
 }
 
 const computeArcNotches = (input: ArcNotchGeometryInput): ArcNotchGeometry => {

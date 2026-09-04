@@ -7,7 +7,7 @@ const BADGE_DEFAULT_BACKGROUND = "var(--chart-marker-background)";
 const ICON_STYLE: CSSProperties = { color: "var(--chart-marker-foreground)" };
 
 interface MarkerIconBadgeProps {
-  marker: Readonly<ChartMarker>;
+  readonly marker: Readonly<ChartMarker>;
 }
 
 // Extracted from marker-tooltip.tsx (react(jsx-max-depth) splits the tooltip row).

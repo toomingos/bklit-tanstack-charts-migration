@@ -15,13 +15,13 @@ interface GridGuideSource {
 
 interface ResolvedGridGuide {
   /** TanStack y-axis `grid` option (bklit `horizontal`). */
-  horizontal: boolean;
+  readonly horizontal: boolean;
   /** TanStack x-axis `grid` option (bklit `vertical`). */
-  vertical: boolean;
+  readonly vertical: boolean;
   /** Horizontal tick count (bklit `numTicksRows`). */
-  ticks: number;
+  readonly ticks: number;
   /** Vertical tick count (bklit `numTicksColumns`). */
-  columnTicks: number;
+  readonly columnTicks: number;
 }
 
 // Bklit grid defaults when the config omits tick counts.
@@ -39,8 +39,8 @@ const resolveGridGuide = (grid: GridGuideSource | null): ResolvedGridGuide => (
 );
 
 interface ResolvedGridHighlightRow {
-  value: number;
-  y: number;
+  readonly value: number;
+  readonly y: number;
 }
 
 // Non-finite-y values dropped (bklit highlightRowValues guard).

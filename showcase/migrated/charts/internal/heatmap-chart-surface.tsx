@@ -6,8 +6,8 @@ import { flattenChartChildren, isHeatmapSeparatorChild } from "./heatmap-childre
 // Split so heatmap-chart.tsx declares a single component (react/no-multi-comp).
 
 interface HeatmapSeparatorChildren {
-  separators: ReactElement[];
-  others: ReactElement[];
+  readonly separators: ReactElement[];
+  readonly others: ReactElement[];
 }
 
 const useSeparatorChildren = (children: Readonly<ReactNode>): HeatmapSeparatorChildren =>
@@ -19,8 +19,8 @@ const useSeparatorChildren = (children: Readonly<ReactNode>): HeatmapSeparatorCh
   }, [children]);
 
 interface HeatmapChartSurfaceProps {
-  children?: ReactNode;
-  onHtmlLayerMount: (el: HTMLDivElement | null) => void;
+  readonly children?: ReactNode;
+  readonly onHtmlLayerMount: (el: HTMLDivElement | null) => void;
 }
 
 const SURFACE_ROOT_STYLE: CSSProperties = { position: "relative" };

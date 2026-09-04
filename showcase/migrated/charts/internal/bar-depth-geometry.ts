@@ -9,8 +9,8 @@ const barDepthMaxDepth = (stepWidth: number, bandWidth: number): number => {
 }
 
 interface BarDepthAndRiseResult {
-  depth: number;
-  perspectiveRise: number;
+  readonly depth: number;
+  readonly perspectiveRise: number;
 }
 
 const barDepthAndRise = (absOffset: number, naturalHeight: number, maxDepth: number): BarDepthAndRiseResult => {

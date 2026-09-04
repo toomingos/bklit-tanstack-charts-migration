@@ -7,15 +7,15 @@ import type { EnterTransition } from './enter-transition';
 type ChartRevealClipMode = "reveal" | "conceal";
 
 interface ChartRevealClipProps {
-  clipPathId: string;
+  readonly clipPathId: string;
   height: number;
-  targetWidth: number;
-  enterTransition?: EnterTransition;
-  revealEpoch: number;
-  padding?: number;
-  animating?: boolean;
-  mode?: ChartRevealClipMode;
-  onComplete?: () => void;
+  readonly targetWidth: number;
+  readonly enterTransition?: EnterTransition;
+  readonly revealEpoch: number;
+  readonly padding?: number;
+  readonly animating?: boolean;
+  readonly mode?: ChartRevealClipMode;
+  readonly onComplete?: () => void;
 }
 
 interface RevealAnimationParams {

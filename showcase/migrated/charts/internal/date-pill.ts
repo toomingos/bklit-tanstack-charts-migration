@@ -6,12 +6,12 @@ import { createDateTicker } from "./date-ticker";
 import type { SpringConfig } from "./chart-config-context";
 
 interface PillBuild {
-  layer: HTMLDivElement;
-  pill: HTMLDivElement;
-  inner: HTMLDivElement;
-  label: HTMLSpanElement;
-  spring: Spring;
-  ticker: ReturnType<typeof createDateTicker> | null;
+  readonly layer: HTMLDivElement;
+  readonly pill: HTMLDivElement;
+  readonly inner: HTMLDivElement;
+  readonly label: HTMLSpanElement;
+  readonly spring: Spring;
+  readonly ticker: ReturnType<typeof createDateTicker> | null;
 }
 
 const createDivWithClass = (doc: Document, className: string): HTMLDivElement => {

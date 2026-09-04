@@ -24,9 +24,9 @@ const isString = <Subject>(value: Subject): value is Subject & string => typeof 
 
 
 interface CrosshairGradientDef {
-  id: string;
-  color: string;
-  stops: { offset: string; opacity: number }[];
+  readonly id: string;
+  readonly color: string;
+  readonly stops: { offset: string; opacity: number }[];
 }
 
 // Bklit TooltipIndicator default vertical fade ("both", fadeLength=10).
@@ -75,15 +75,15 @@ const buildIndicatorMark = (options: Readonly<IndicatorMarkOptions>): ChartMark<
 
 
 interface HoverDotSeries {
-  dataKey: string;
-  color: string;
+  readonly dataKey: string;
+  readonly color: string;
 }
 
 interface HoverDotOptions {
-  size?: number;
+  readonly size?: number;
   strokeWidth?: number;
   stroke?: string;
-  discrete?: boolean;
+  readonly discrete?: boolean;
 }
 
 interface BuildHoverDotMarkParams {

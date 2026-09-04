@@ -1,12 +1,12 @@
 import type { ReactElement, RefObject } from 'react';
 
 interface IndicatorDashedLineProps {
-  animate: boolean;
-  lineRef: RefObject<SVGLineElement | null>;
-  indicatorFill: string;
-  strokeDasharray: string;
-  pixelWidth: number;
-  lineX: number;
+  readonly animate: boolean;
+  readonly lineRef: RefObject<SVGLineElement | null>;
+  readonly indicatorFill: string;
+  readonly strokeDasharray: string;
+  readonly pixelWidth: number;
+  readonly lineX: number;
   height: number;
 }
 

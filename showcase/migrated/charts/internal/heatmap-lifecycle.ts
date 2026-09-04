@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { HEATMAP_LOADING_CONCEAL_MS } from "./heatmap-animation";
 import type { ChartStatus } from "./types";
@@ -11,11 +12,11 @@ const resolveRestingChartPhase = (status: ChartStatus): HeatmapChartPhase => sta
 
 
 interface HeatmapLifecycleState {
-  chartPhase: HeatmapChartPhase;
-  revealEpoch: number;
-  isLoaded: boolean;
-  revealMode: HeatmapRevealMode;
-  animateCells: boolean;
+  readonly chartPhase: HeatmapChartPhase;
+  readonly revealEpoch: number;
+  readonly isLoaded: boolean;
+  readonly revealMode: HeatmapRevealMode;
+  readonly animateCells: boolean;
 }
 
 interface HeatmapLifecycleParams {
@@ -41,18 +42,18 @@ interface HeatmapPhaseStateBag {
   readonly setRevealEpoch: PhaseSetter<number>;
   readonly revealMode: HeatmapRevealMode;
   readonly setRevealMode: PhaseSetter<HeatmapRevealMode>;
-  readonly phaseRef: { current: HeatmapChartPhase };
+  readonly phaseRef: RefObject<HeatmapChartPhase>;
 }
 
 interface HeatmapRevealTimers {
-  readonly concealTimerRef: { current: ReturnType<typeof globalThis.setTimeout> | null };
-  readonly finishTimerRef: { current: ReturnType<typeof globalThis.setTimeout> | null };
+  readonly concealTimerRef: RefObject<ReturnType<typeof globalThis.setTimeout> | null>;
+  readonly finishTimerRef: RefObject<ReturnType<typeof globalThis.setTimeout> | null>;
 }
 
 interface StatusTransitionParams {
   readonly status: ChartStatus;
   readonly prevStatus: ChartStatus;
-  readonly concealTimerRef: { current: ReturnType<typeof globalThis.setTimeout> | null };
+  readonly concealTimerRef: RefObject<ReturnType<typeof globalThis.setTimeout> | null>;
   readonly setRevealMode: PhaseSetter<HeatmapRevealMode>;
   readonly setIsLoaded: PhaseSetter<boolean>;
   readonly setChartPhase: PhaseSetter<HeatmapChartPhase>;
@@ -70,7 +71,7 @@ interface EnterRevealParams {
 }
 
 interface ArmFinishTimerParams {
-  readonly finishTimerRef: { current: ReturnType<typeof globalThis.setTimeout> | null };
+  readonly finishTimerRef: RefObject<ReturnType<typeof globalThis.setTimeout> | null>;
   readonly timeoutMs: number;
   readonly setIsLoaded: PhaseSetter<boolean>;
   readonly setChartPhase: PhaseSetter<HeatmapChartPhase>;
@@ -145,7 +146,7 @@ const settleHeatmapRestingPhase = (status: ChartStatus, setIsLoaded: PhaseSetter
   setChartPhase(resolveRestingChartPhase(status));
 }
 
-const canEnterHeatmapReveal = (status: ChartStatus, phaseRef: Readonly<{ current: HeatmapChartPhase }>): boolean =>
+const canEnterHeatmapReveal = (status: ChartStatus, phaseRef: RefObject<HeatmapChartPhase>): boolean =>
   status === "ready" && phaseRef.current === "ready";
 
 const handleHeatmapEnterReveal = (params: Readonly<EnterRevealParams>): void => {

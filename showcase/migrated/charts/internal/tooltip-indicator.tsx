@@ -5,20 +5,20 @@ import type { IndicatorWidth } from "./types";
 import { TooltipIndicatorInner } from './tooltip-indicator-inner';
 
 interface TooltipIndicatorProps {
-  x: number;
+  readonly x: number;
   height: number;
-  visible: boolean;
+  readonly visible: boolean;
   width?: IndicatorWidth;
-  span?: number;
-  columnWidth?: number;
-  colorEdge?: string;
-  colorMid?: string;
-  fadeEdges?: IndicatorFadeEdges | boolean;
-  fadeLength?: number;
-  animate?: boolean;
-  gradientId?: string;
-  springConfig?: SpringConfig;
-  strokeDasharray?: string;
+  readonly span?: number;
+  readonly columnWidth?: number;
+  readonly colorEdge?: string;
+  readonly colorMid?: string;
+  readonly fadeEdges?: IndicatorFadeEdges | boolean;
+  readonly fadeLength?: number;
+  readonly animate?: boolean;
+  readonly gradientId?: string;
+  readonly springConfig?: SpringConfig;
+  readonly strokeDasharray?: string;
 }
 
 const TooltipIndicator = ({

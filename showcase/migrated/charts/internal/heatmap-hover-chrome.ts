@@ -20,16 +20,16 @@ interface HeatmapTooltipData {
 }
 
 interface HeatmapHoverCoordinator {
-  getHoveredCell: () => HeatmapHoveredCell | null
-  getHoveredLegendLevel: () => number | null
-  getTooltipData: () => HeatmapTooltipData | null
-  setHoveredCell: (cell: HeatmapHoveredCell | null) => void
-  setHoveredLegendLevel: (level: number | null) => void
-  setTooltipData: (data: HeatmapTooltipData | null) => void
+  readonly getHoveredCell: () => HeatmapHoveredCell | null
+  readonly getHoveredLegendLevel: () => number | null
+  readonly getTooltipData: () => HeatmapTooltipData | null
+  readonly setHoveredCell: (cell: HeatmapHoveredCell | null) => void
+  readonly setHoveredLegendLevel: (level: number | null) => void
+  readonly setTooltipData: (data: HeatmapTooltipData | null) => void
   /** Clears all state in a single broadcast, e.g. on pointer-leaving the chart surface. */
-  clearInteraction: () => void
+  readonly clearInteraction: () => void
   /** Subscribes a listener; returns the unsubscribe function. */
-  subscribe: (listener: () => void) => () => void
+  readonly subscribe: (listener: () => void) => () => void
 }
 
 // Cell equality: same reference, or same grid position in a later broadcast.
@@ -87,9 +87,9 @@ const createHeatmapHoverCoordinator = (): HeatmapHoverCoordinator => {
 }
 
 interface HeatmapHoverStyleParams {
-  inactiveOpacity: number;
-  inactiveScale: number;
-  activeScale: number;
+  readonly inactiveOpacity: number;
+  readonly inactiveScale: number;
+  readonly activeScale: number;
 }
 
 export { isHeatmapHoverEffectEnabled } from "./heatmap-utils";

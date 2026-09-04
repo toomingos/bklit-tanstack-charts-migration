@@ -8,13 +8,13 @@ import { snapDomains, tweenDomains } from "./animated-y-tween";
 import type { TweenControl } from "./animated-y-tween";
 
 interface UseAnimatedYDomainsOptions {
-  enabled: boolean;
-  durationMs: number;
-  chartPhase: ChartPhase;
-  skeletonByAxis: Record<string, YDomain>;
-  targetByAxis: Record<string, YDomain>;
-  onSettled?: () => void;
-  tweenOnTargetChange?: boolean;
+  readonly enabled: boolean;
+  readonly durationMs: number;
+  readonly chartPhase: ChartPhase;
+  readonly skeletonByAxis: Record<string, YDomain>;
+  readonly targetByAxis: Record<string, YDomain>;
+  readonly onSettled?: () => void;
+  readonly tweenOnTargetChange?: boolean;
 }
 
 interface TweenInputRefs {

@@ -4,7 +4,7 @@ import { MarkerIconBadge } from "./marker-icon-badge";
 import { MarkerDefaultBody } from "./marker-default-body";
 
 interface MarkerTooltipRowProps {
-  marker: Readonly<ChartMarker>;
+  readonly marker: Readonly<ChartMarker>;
 }
 
 // Extracted from marker-tooltip.tsx (react(jsx-max-depth)): one marker's icon badge plus content.

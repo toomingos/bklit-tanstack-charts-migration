@@ -4,7 +4,7 @@ import { createContext, useContext } from "react";
 
 interface ChartLegendHoverContextValue {
   hoveredIndex: number | null;
-  setHoveredIndex: (index: number | null) => void;
+  readonly setHoveredIndex: (index: number | null) => void;
 }
 
 const ChartLegendHoverContext =

@@ -8,14 +8,14 @@ const MARKER_CIRCLE_DEFAULT_BORDER_WIDTH = 1.5;
 const FOCUSABLE_TAB_INDEX = 0;
 
 interface MarkerCircleHtmlProps {
-  icon: ReactNode;
-  size: number;
-  color?: string;
-  onClick?: () => void;
-  href?: string;
+  readonly icon: ReactNode;
+  readonly size: number;
+  readonly color?: string;
+  readonly onClick?: () => void;
+  readonly href?: string;
   target?: "_blank" | "_self";
-  borderColor?: string;
-  borderWidth?: number;
+  readonly borderColor?: string;
+  readonly borderWidth?: number;
 }
 
 interface MarkerActivation {

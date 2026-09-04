@@ -9,9 +9,9 @@ import type { SpringConfig } from "./chart-config-context";
 
 interface DatePillController {
 // Callback ref: the host mounts after the first layout effect.
-  overlayHostRef: RefCallback<HTMLDivElement>;
-  show: (pixelX: number, opts: { readonly index: number; readonly label: string | null; readonly discrete: boolean; readonly jump: boolean }) => void
-  hide: () => void
+  readonly overlayHostRef: RefCallback<HTMLDivElement>;
+  readonly show: (pixelX: number, opts: { readonly index: number; readonly label: string | null; readonly discrete: boolean; readonly jump: boolean }) => void
+  readonly hide: () => void
 }
 
 interface DatePillRefs {

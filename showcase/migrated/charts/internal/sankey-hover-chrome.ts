@@ -1,7 +1,7 @@
 interface SankeyHoverResult {
-  nodeConnected: boolean[];
-  linkConnected: boolean[];
-  anyHovered: boolean;
+  readonly nodeConnected: boolean[];
+  readonly linkConnected: boolean[];
+  readonly anyHovered: boolean;
 }
 
 interface SankeyHoverLink {

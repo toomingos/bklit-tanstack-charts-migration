@@ -1,11 +1,11 @@
 import type { ReactElement, RefObject } from 'react';
 
 interface IndicatorSolidRectProps {
-  animate: boolean;
-  rectRef: RefObject<SVGRectElement | null>;
-  indicatorFill: string;
-  pixelWidth: number;
-  rectX: number;
+  readonly animate: boolean;
+  readonly rectRef: RefObject<SVGRectElement | null>;
+  readonly indicatorFill: string;
+  readonly pixelWidth: number;
+  readonly rectX: number;
   height: number;
 }
 

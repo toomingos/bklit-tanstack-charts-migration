@@ -226,7 +226,7 @@ interface FunnelChartProps {
   readonly color?: string;
   readonly layers?: number;
   readonly className?: string;
-  style?: CSSProperties;
+  readonly style?: CSSProperties;
   readonly showPercentage?: boolean;
   readonly showValues?: boolean;
   readonly showLabels?: boolean;

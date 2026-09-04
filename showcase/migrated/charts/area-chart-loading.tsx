@@ -14,26 +14,26 @@ const DEFAULT_LOADING_GRID_STROKE =
   "color-mix(in oklch, var(--chart-grid) 50%, transparent)";
 
 interface AreaChartLoadingProps {
-  margin?: Partial<ChartMargin>;
+  readonly margin?: Partial<ChartMargin>;
   stroke?: string;
   /** Accepted-but-inert: applies to bklit's loading pulse stroke, which migrated's area chart doesn't draw (only line does). */
-  strokeOpacity?: number;
-  gridStroke?: string;
+  readonly strokeOpacity?: number;
+  readonly gridStroke?: string;
   /** Accepted-but-inert: the grid shimmer band is part of the deleted sweep/skeleton surface. */
-  gridShimmerStroke?: string;
+  readonly gridShimmerStroke?: string;
   /** Accepted-but-inert — see `gridShimmerStroke`. Default: true */
-  gridShimmer?: boolean;
+  readonly gridShimmer?: boolean;
   /** Accepted-but-inert — see `gridShimmerStroke`. Default: 140 */
-  gridShimmerLength?: number;
+  readonly gridShimmerLength?: number;
   /** Accepted-but-inert — see `gridShimmerStroke`. Default: 1 */
-  gridShimmerSpeed?: number;
+  readonly gridShimmerSpeed?: number;
   /** Accepted-but-inert — see `gridShimmerStroke`. */
-  gridShimmerSync?: boolean;
+  readonly gridShimmerSync?: boolean;
   /** Accepted-but-inert: only the default pulse style exists here, `"sweep"` is not implemented. */
-  loadingStyle?: "pulse" | "sweep";
-  label?: string;
-  aspectRatio?: string;
-  className?: string;
+  readonly loadingStyle?: "pulse" | "sweep";
+  readonly label?: string;
+  readonly aspectRatio?: string;
+  readonly className?: string;
 }
 
 const AreaChartLoading = ({

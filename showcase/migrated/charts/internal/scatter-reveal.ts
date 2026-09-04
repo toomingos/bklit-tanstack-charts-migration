@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import { isRevealed, markRevealed, setRevealDeadline } from "./deferred-reveal";
 import type { ChartPhase, ChartDatum } from "./types";
 import type { ChartRendererRenderContext } from "@tanstack/charts";
@@ -12,7 +13,7 @@ interface ReadScatterRevealKeysParams {
   readonly captureRenderContext: (context: ChartRendererRenderContext<ChartDatum, Date, number>) => void;
   readonly context: ChartRendererRenderContext<ChartDatum, Date, number>;
   readonly revealKey: ScatterRevealKeys["revealKey"];
-  readonly seenRef: { current: ScatterRevealKeys["seen"] };
+  readonly seenRef: RefObject<ScatterRevealKeys["seen"]>;
 }
 
 const readScatterRevealKeys = ({
@@ -34,7 +35,7 @@ const readScatterRevealKeys = ({
 interface SettleStaleRevealTimerParams {
   readonly revealKeyChanged: boolean;
   readonly seen: ScatterRevealKeys["seen"];
-  readonly timerRef: { current: number | null };
+  readonly timerRef: RefObject<number | null>;
 }
 
 const settleStaleRevealTimer = ({
@@ -53,9 +54,9 @@ interface ArmScatterRevealParams {
   readonly deadlineMs: number;
   readonly marksGroup: SVGGElement;
   readonly revealKey: ScatterRevealKeys["revealKey"];
-  readonly seenRef: { current: ScatterRevealKeys["seen"] };
+  readonly seenRef: RefObject<ScatterRevealKeys["seen"]>;
   readonly setPhase: (phase: ChartPhase) => void;
-  readonly timerRef: { current: number | null };
+  readonly timerRef: RefObject<number | null>;
 }
 
 const armScatterReveal = ({
@@ -83,9 +84,9 @@ interface HandleScatterRenderParams {
   readonly context: ChartRendererRenderContext<ChartDatum, Date, number>;
   readonly deadlineMs: number;
   readonly revealKey: ScatterRevealKeys["revealKey"];
-  readonly seenRef: { current: ScatterRevealKeys["seen"] };
+  readonly seenRef: RefObject<ScatterRevealKeys["seen"]>;
   readonly setPhase: (phase: ChartPhase) => void;
-  readonly timerRef: { current: number | null };
+  readonly timerRef: RefObject<number | null>;
 }
 
 const handleScatterRender = ({

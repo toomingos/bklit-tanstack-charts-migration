@@ -29,8 +29,8 @@ const CLOCKWISE_ORIGIN = 0;
 type ReadonlyArcDatum = Readonly<Omit<ArcDatum, "trail">> & { readonly trail: readonly string[] };
 
 interface RingOptions {
-  centerR: number;
-  ringWidth: number;
+  readonly centerR: number;
+  readonly ringWidth: number;
 }
 
 const ringOptions = (focusDepth: number, maxDepth: number, radius: number): RingOptions => {

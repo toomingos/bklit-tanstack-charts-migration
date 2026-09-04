@@ -3,7 +3,7 @@ import type { CSSProperties, ReactElement } from "react";
 
 export interface BadgeProps {
   count: number;
-  size: number;
+  readonly size: number;
 }
 
 export const Badge = ({ count, size }: Readonly<BadgeProps>): ReactElement => {

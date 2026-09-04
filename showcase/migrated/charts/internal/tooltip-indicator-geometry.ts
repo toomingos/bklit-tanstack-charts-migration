@@ -4,9 +4,9 @@ import type { IndicatorFadeEdges, VerticalFadeSides } from './fade-mask';
 import type { IndicatorWidth } from "./types";
 
 interface IndicatorGeometry {
-  pixelWidth: number;
-  rectX: number;
-  lineX: number;
+  readonly pixelWidth: number;
+  readonly rectX: number;
+  readonly lineX: number;
 }
 
 interface ComputeIndicatorGeometryOptions {
@@ -25,12 +25,12 @@ const computeIndicatorGeometry = (
 };
 
 interface IndicatorRenderMode {
-  fadeSides: VerticalFadeSides;
+  readonly fadeSides: VerticalFadeSides;
   /*
    * Mirrors the original `Boolean(strokeDasharray)` gate: "" and undefined fall through.
    * To the solid/faded rect rendering path.
    */
-  resolvedDasharray: string | undefined;
+  readonly resolvedDasharray: string | undefined;
 }
 
 const computeIndicatorRenderMode = (

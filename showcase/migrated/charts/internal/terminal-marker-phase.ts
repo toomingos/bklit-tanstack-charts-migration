@@ -16,7 +16,7 @@ interface TerminalMarkerAnchor {
 }
 
 interface ProjectionPhaseHandle {
-  setPhase: (phase: ChartPhase) => void
+  readonly setPhase: (phase: ChartPhase) => void
 }
 
 // WAAPI/state transforms for the terminal-marker show/hide cycle.

@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 
 import { clearRevealed, findRevealRoot, isRevealed, markRevealed, type RevealRoot } from "./reveal-root";
 
@@ -56,7 +57,7 @@ const checkRevealGuard = (container: HTMLElement, selector?: string): RevealGuar
 
 const setRevealDeadline = (deadlineMs: number, callbacks: {
     onDeadline: () => void;
-    animationsRef?: { current: Animation[] };
+    animationsRef?: RefObject<Animation[]>;
   }): number => window.setTimeout(() => {
     if (callbacks.animationsRef) {
       for (const anim of callbacks.animationsRef.current) {anim.cancel();}
@@ -67,25 +68,25 @@ const setRevealDeadline = (deadlineMs: number, callbacks: {
 
 
 interface RevealHandle {
-  cancel: () => void
+  readonly cancel: () => void
 }
 
 type RevealAnimationResult = Animation | Animation[] | null;
 
 interface DeferredRevealConfig {
-  container: HTMLElement;
-  marksGroupSelector?: string;
-  onPhaseChange?: (phase: "revealing" | "ready") => void;
-  animationDuration: number;
-  easing?: string;
-  staggerDelayMs?: (index: number, total: number) => number;
-  animateElement: (element: Element, index: number) => RevealAnimationResult;
-  cleanupAnimation?: (animation: Animation) => void;
-  deadlineCallback?: () => void;
-  elements: Element[];
+  readonly container: HTMLElement;
+  readonly marksGroupSelector?: string;
+  readonly onPhaseChange?: (phase: "revealing" | "ready") => void;
+  readonly animationDuration: number;
+  readonly easing?: string;
+  readonly staggerDelayMs?: (index: number, total: number) => number;
+  readonly animateElement: (element: Element, index: number) => RevealAnimationResult;
+  readonly cleanupAnimation?: (animation: Animation) => void;
+  readonly deadlineCallback?: () => void;
+  readonly elements: Element[];
   /** Skips when `seenEpochRef` already matches `revealEpoch` (heatmap epoch guard). */
-  revealEpoch?: number;
-  seenEpochRef?: { current: number | null };
+  readonly revealEpoch?: number;
+  readonly seenEpochRef?: RefObject<number | null>;
 }
 
 interface RevealTimerState {

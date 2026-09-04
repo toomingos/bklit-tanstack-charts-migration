@@ -10,11 +10,11 @@ import { LegendRow } from "./legend-row";
 interface LegendProps {
   readonly items: readonly LegendItemData[];
   hoveredIndex?: number | null;
-  onHoverChange?: (index: number | null) => void;
-  title?: string;
-  titleClassName?: string;
-  className?: string;
-  children: ReactElement;
+  readonly onHoverChange?: (index: number | null) => void;
+  readonly title?: string;
+  readonly titleClassName?: string;
+  readonly className?: string;
+  readonly children: ReactElement;
 }
 
 const Legend = ({

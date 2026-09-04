@@ -3,8 +3,8 @@ import { MarkerActiveContext } from "./active-markers-store";
 import type { ActiveMarkersStore } from "./active-markers-store";
 
 interface MarkerActiveTooltipProviderProps {
-  store: ActiveMarkersStore;
-  children: ReactNode;
+  readonly store: ActiveMarkersStore;
+  readonly children: ReactNode;
 }
 
 // Makes the host's live tooltip date available to useActiveMarkers consumers.

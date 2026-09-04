@@ -12,16 +12,16 @@ interface XAxisTickValue {
 }
 
 interface XAxisTickInput {
-  data: readonly Readonly<ChartDatum>[];
-  xDataKey: string;
-  rangeStart: number;
-  rangeEnd: number;
-  numTicks: number;
-  formatValue?: (value: Readonly<Date>) => string;
-  domainMaxTime?: number;
-  xDomain?: readonly [Readonly<Date>, Readonly<Date>] | null;
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+  readonly rangeStart: number;
+  readonly rangeEnd: number;
+  readonly numTicks: number;
+  readonly formatValue?: (value: Readonly<Date>) => string;
+  readonly domainMaxTime?: number;
+  readonly xDomain?: readonly [Readonly<Date>, Readonly<Date>] | null;
   /** `"data"` (default) snaps ticks to rendered rows; `"domain"` uses evenly interpolated timestamps. */
-  tickMode?: "domain" | "data";
+  readonly tickMode?: "domain" | "data";
 }
 
 interface XAxisTimeRange {
