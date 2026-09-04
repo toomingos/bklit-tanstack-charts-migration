@@ -45,7 +45,7 @@ interface UseHeatmapCellsDataParams {
 }
 
 interface HeatmapCellsData {
-  readonly cellData: CellDatum[];
+  readonly cellData: readonly CellDatum[];
   readonly dayLabels: readonly string[];
 }
 

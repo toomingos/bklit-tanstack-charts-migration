@@ -43,7 +43,7 @@ type PieCenterShellProps = Omit<PieCenterProps, "children"> & {
 
 // PieCenter with a minimal pie context, sans slices or full PieChart.
 interface ShellPieModel {
-  readonly arcs: PieArcData[];
+  readonly arcs: readonly PieArcData[];
   readonly data: PieData[];
 }
 

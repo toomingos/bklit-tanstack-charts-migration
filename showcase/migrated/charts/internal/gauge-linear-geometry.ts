@@ -106,7 +106,7 @@ interface LinearNotchGeometryInput {
 }
 
 interface LinearNotchGeometry {
-  readonly notches: ComputedNotch[];
+  readonly notches: readonly ComputedNotch[];
   readonly notchDepth: number;
   readonly cornerVerticalDepth: number;
   readonly centerY: number;

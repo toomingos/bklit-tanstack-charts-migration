@@ -291,8 +291,8 @@ interface HoverDotChannelsParams {
 }
 
 interface HoverDotChannels {
-  readonly xValues: (string | undefined)[];
-  readonly yValues: (number | undefined)[];
+  readonly xValues: readonly (string | undefined)[];
+  readonly yValues: readonly (number | undefined)[];
 }
 
 const buildHoverDotChannels = ({
@@ -688,7 +688,7 @@ interface SquareGradientDef {
   readonly dataKey: string;
   readonly fill: string;
   readonly gradientId: string;
-  readonly gradientStops: { offset: number; color: string }[];
+  readonly gradientStops: readonly { offset: number; color: string }[];
   readonly patternId: string | undefined;
   readonly patternPreset: BarSquaresConfig["patternPreset"];
 }
@@ -919,7 +919,7 @@ interface BuiltDepthGradientStop {
 
 interface BuiltDepthGradient {
   readonly id: string;
-  readonly stops: BuiltDepthGradientStop[];
+  readonly stops: readonly BuiltDepthGradientStop[];
   readonly x1: number;
   readonly x2: number;
   readonly y1: number;
@@ -1053,7 +1053,7 @@ interface ResolvedBarSquare {
   readonly squareRadius: number;
   readonly squareFit: boolean;
   readonly useGradient: boolean;
-  readonly gradientStops: { offset: number; color: string }[];
+  readonly gradientStops: readonly { offset: number; color: string }[];
   readonly patternPreset?: BarSquaresConfig["patternPreset"];
   readonly animate: boolean;
   readonly fadedOpacity: number;
@@ -2454,7 +2454,7 @@ const BarChart = ({
   const squaresBaseId = useSanitizedId();
   const squaresDefs = useMemo<readonly ResolvedSquareDef[]>(() => {
     if (!barSquaresEnabled) {return [];}
-    const out: { dataKey: string; gradientId: string; patternId: string | undefined; fill: string; gradientStops: { offset: number; color: string }[]; patternPreset?: PatternPresetId }[] = [];
+    const out: SquareGradientDef[] = [];
     for (let squareIndex = 0; squareIndex < resolvedBarSquares.length; squareIndex += 1) {
       const def = buildSquareGradientDef({ baseId: squaresBaseId, index: squareIndex, square: resolvedBarSquares[squareIndex] });
       if (def) {

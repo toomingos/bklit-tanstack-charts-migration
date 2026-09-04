@@ -108,7 +108,7 @@ const useChoroplethZoom = (): ChoroplethZoomContextValue => useContext(Choroplet
 
 // No featurePaths array: geoShape marks own the paths; pathGenerator serves callers that want them.
 interface ChoroplethContextValue {
-  readonly features: ChoroplethFeature[];
+  readonly features: readonly ChoroplethFeature[];
   readonly featureCollection: FeatureCollection<Geometry, ChoroplethFeatureProperties>;
   readonly pathGenerator: (feature: ChoroplethFeature) => string | undefined;
   readonly rawPathGenerator: (geo: GeoPermissibleObjects) => string | null;
@@ -248,7 +248,7 @@ interface ExtractedConfig {
   readonly featureConfig: ChoroplethFeatureProps | undefined;
   readonly tooltipConfig: ChoroplethTooltipProps | undefined;
   readonly graticuleConfig: ChoroplethGraticuleProps | undefined;
-  readonly overlayChildren: ReactNode[];
+  readonly overlayChildren: readonly ReactNode[];
 }
 
 interface FeaturePaintOptions {

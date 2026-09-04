@@ -83,7 +83,7 @@ interface DeferredRevealConfig {
   readonly animateElement: (element: Element, index: number) => RevealAnimationResult;
   readonly cleanupAnimation?: (animation: Animation) => void;
   readonly deadlineCallback?: () => void;
-  readonly elements: Element[];
+  readonly elements: readonly Element[];
   /** Skips when `seenEpochRef` already matches `revealEpoch` (heatmap epoch guard). */
   readonly revealEpoch?: number;
   readonly seenEpochRef?: RefObject<number | null>;

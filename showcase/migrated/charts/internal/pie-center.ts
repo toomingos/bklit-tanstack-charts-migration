@@ -5,7 +5,7 @@ import type { CenterStatFormat } from './center-stat';
 
 interface PieStableValue {
   readonly data: PieData[];
-  readonly arcs: PieArcData[];
+  readonly arcs: readonly PieArcData[];
   readonly size: number;
   readonly center: number;
   readonly outerRadius: number;

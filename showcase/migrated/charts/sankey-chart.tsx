@@ -43,8 +43,8 @@ interface SankeyLinkDatum {
 }
 
 interface SankeyData {
-  readonly nodes: SankeyNodeDatum[];
-  readonly links: SankeyLinkDatum[];
+  readonly nodes: readonly SankeyNodeDatum[];
+  readonly links: readonly SankeyLinkDatum[];
 }
 
 interface Margin {
@@ -368,8 +368,8 @@ const updateSankeyReveal = (svg: SVGSVGElement, params: Readonly<SankeyRevealUpd
 interface SankeyHoverHitParams {
   readonly clientX: number;
   readonly clientY: number;
-  readonly laidOutLinks: LaidOutLink[];
-  readonly laidOutNodes: LaidOutNode[];
+  readonly laidOutLinks: readonly LaidOutLink[];
+  readonly laidOutNodes: readonly LaidOutNode[];
 }
 
 const findSankeyHoverHit = (

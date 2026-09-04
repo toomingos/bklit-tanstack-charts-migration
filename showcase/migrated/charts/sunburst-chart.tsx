@@ -299,8 +299,8 @@ interface ClassifiedChildren {
       pulls `SunburstBreadcrumb` out of the SVG and renders it ABOVE the square
       chart box (`:449-454`). Unlike the other carriers this one draws its own
       markup, so the elements are kept as-is and re-emitted in that slot. */
-  readonly breadcrumbChildren: ReactNode[];
-  readonly segmentConfigs: SunburstSegmentConfig[];
+  readonly breadcrumbChildren: readonly ReactNode[];
+  readonly segmentConfigs: readonly SunburstSegmentConfig[];
 }
 
 const classifyChildren = (children: ReactNode): ClassifiedChildren => {

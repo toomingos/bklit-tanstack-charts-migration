@@ -6,8 +6,8 @@ import { flattenChartChildren, isHeatmapSeparatorChild } from "./heatmap-childre
 // Split so heatmap-chart.tsx declares a single component (react/no-multi-comp).
 
 interface HeatmapSeparatorChildren {
-  readonly separators: ReactElement[];
-  readonly others: ReactElement[];
+  readonly separators: readonly ReactElement[];
+  readonly others: readonly ReactElement[];
 }
 
 const useSeparatorChildren = (children: Readonly<ReactNode>): HeatmapSeparatorChildren =>

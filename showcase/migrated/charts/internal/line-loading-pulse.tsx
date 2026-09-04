@@ -49,7 +49,7 @@ interface PulseGradientParams {
 }
 
 interface PulseGradient {
-  readonly fadeStops: FadeGradientStop[];
+  readonly fadeStops: readonly FadeGradientStop[];
   readonly gradientUnits: "userSpaceOnUse";
   readonly x1: number;
   readonly x2: number;

@@ -200,7 +200,7 @@ interface ReferenceAreaGeometryOptions {
   readonly yDomain: [number, number];
   readonly yDomainsByAxis?: Record<string, [number, number]>;
   readonly yAxisId?: string | number;
-  readonly xDomain?: [number, number] | [Date, Date];
+  readonly xDomain?: readonly [number, number] | [Date, Date];
   readonly isTimeScale?: boolean;
   readonly barScale?: BarScale | null;
   readonly isBarChart?: boolean;

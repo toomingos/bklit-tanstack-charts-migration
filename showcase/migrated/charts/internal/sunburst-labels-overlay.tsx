@@ -16,7 +16,7 @@ interface LabelItem {
  */
 
 interface SunburstLabelsOverlayProps {
-  readonly items: LabelItem[];
+  readonly items: readonly LabelItem[];
   readonly fullRadius: number;
   readonly size: number;
 }

@@ -27,7 +27,7 @@ interface BarTrimmedMarkOptions {
 
 interface TrimmedChannelValues {
   readonly xValues: string[];
-  readonly rawY: number[];
+  readonly rawY: readonly number[];
 }
 
 const buildTrimmedChannelValues = (data: readonly Readonly<ChartDatum>[], categoryAccessor: (datum: Readonly<ChartDatum>) => string, yAccessor: (datum: Readonly<ChartDatum>) => number): TrimmedChannelValues => ({
@@ -46,7 +46,7 @@ interface TrimmedMarkXChannel {
 interface TrimmedMarkYChannel {
   readonly includeZero: boolean;
   readonly scale: string;
-  readonly values: number[];
+  readonly values: readonly number[];
 }
 
 interface TrimmedMarkChannels {

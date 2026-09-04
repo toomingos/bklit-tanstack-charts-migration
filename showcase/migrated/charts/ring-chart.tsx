@@ -79,8 +79,8 @@ interface RingChildConfig {
 }
 
 interface ClassifiedChildren {
-  readonly centerChildren: ReactNode[];
-  readonly ringConfigs: RingChildConfig[];
+  readonly centerChildren: readonly ReactNode[];
+  readonly ringConfigs: readonly RingChildConfig[];
 }
 
 const classifyChildren = (children: Readonly<ReactNode>, geometryScrubbing: boolean): ClassifiedChildren => {
@@ -436,7 +436,7 @@ const cancelPendingRingReveal = (params: Readonly<RingRevealRefs & { readonly re
 };
 
 interface RingChartProps {
-  readonly data: RingData[];
+  readonly data: readonly RingData[];
   readonly size?: number;
   strokeWidth?: number;
   readonly ringGap?: number;

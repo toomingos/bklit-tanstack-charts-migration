@@ -102,9 +102,9 @@ interface PieSliceConfig {
 }
 
 interface ClassifiedChildren {
-  readonly centerChildren: ReactNode[];
-  readonly defsChildren: ReactElement[];
-  readonly sliceConfigs: PieSliceConfig[];
+  readonly centerChildren: readonly ReactNode[];
+  readonly defsChildren: readonly ReactElement[];
+  readonly sliceConfigs: readonly PieSliceConfig[];
 }
 
 const classifyChildren = (children: Readonly<ReactNode>, geometryScrubbing: boolean): ClassifiedChildren => {

@@ -204,7 +204,7 @@ interface ArcNotchGeometryInput {
 }
 
 interface ArcNotchGeometry {
-  readonly notches: ComputedNotch[];
+  readonly notches: readonly ComputedNotch[];
   readonly notchLength: number;
   readonly size: number;
   readonly centerX: number;

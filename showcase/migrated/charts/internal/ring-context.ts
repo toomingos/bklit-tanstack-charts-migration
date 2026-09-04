@@ -19,7 +19,7 @@ interface ScrubRingLayer {
 }
 
 interface RingStableValue {
-  readonly data: RingData[];
+  readonly data: readonly RingData[];
   readonly size: number;
   readonly center: number;
   strokeWidth: number;

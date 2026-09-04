@@ -88,7 +88,7 @@ interface YAxisConfig {
 }
 
 interface ProjectionLineChildConfig {
-  readonly data: ProjectionPoint[];
+  readonly data: readonly ProjectionPoint[];
   yAxisId?: string | number;
   stroke?: string;
   readonly strokeStyle?: "solid" | "gradient";
@@ -106,7 +106,7 @@ interface ProjectionLineChildConfig {
 }
 
 interface ProjectionLineEndMarkerChildConfig {
-  readonly data: ProjectionPoint[];
+  readonly data: readonly ProjectionPoint[];
   yAxisId?: string | number;
   stroke?: string;
   readonly strokeOpacity?: number;

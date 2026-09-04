@@ -42,8 +42,8 @@ interface BuildScatterAllMarksParams {
 
 interface ScatterAllMarks {
   readonly discrete: boolean;
-  readonly seriesMarks: ChartMark<ChartDatum, Date, number>[];
-  readonly tooltipMarks: ChartMark<ChartDatum, Date, number>[];
+  readonly seriesMarks: readonly ChartMark<ChartDatum, Date, number>[];
+  readonly tooltipMarks: readonly ChartMark<ChartDatum, Date, number>[];
 }
 
 const buildScatterAllMarks = ({

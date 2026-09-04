@@ -94,10 +94,10 @@ interface GridConfig {
   readonly numTicks?: number;
   readonly numTicksRows?: number;
   readonly numTicksColumns?: number;
-  readonly rowTickValues?: number[];
+  readonly rowTickValues?: readonly number[];
   readonly loadingStroke?: string;
   readonly strokeDasharray?: string;
-  readonly highlightRowValues?: number[];
+  readonly highlightRowValues?: readonly number[];
   readonly highlightRowStroke?: string;
   readonly highlightRowStrokeOpacity?: number;
   readonly highlightRowStrokeWidth?: number;
@@ -145,7 +145,7 @@ interface BarSquaresConfig {
   readonly squareRadius?: number;
   readonly squareFit?: boolean;
   readonly useGradient?: boolean;
-  readonly gradientStops?: GradientStop[];
+  readonly gradientStops?: readonly GradientStop[];
   readonly patternPreset?: PatternPresetId;
   readonly animate?: boolean;
   readonly fadedOpacity?: number;

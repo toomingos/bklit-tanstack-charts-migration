@@ -64,7 +64,7 @@ const resolveSquaresGeometry = (params: Readonly<SquaresGeometryParams>): Square
 
 interface SquareChannelValues {
   readonly xValues: string[];
-  readonly yValues: number[];
+  readonly yValues: readonly number[];
 }
 
 const buildSquareChannelValues = (data: readonly Readonly<ChartDatum>[], categoryAccessor: (datum: Readonly<ChartDatum>) => string, yAccessor: (datum: Readonly<ChartDatum>) => number): SquareChannelValues => ({
@@ -83,7 +83,7 @@ interface SquareMarkXChannel {
 interface SquareMarkYChannel {
   readonly includeZero: boolean;
   readonly scale: string;
-  readonly values: number[];
+  readonly values: readonly number[];
 }
 
 interface SquareMarkChannels {

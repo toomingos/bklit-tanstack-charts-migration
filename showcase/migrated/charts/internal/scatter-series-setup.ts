@@ -100,7 +100,7 @@ interface ScatterSeriesSetup {
   readonly gradientDefs: readonly ScatterGradientDef[];
   readonly gradientIdBySeries: Readonly<Map<string, string>>;
   readonly grid: ExtractedChildren["grid"];
-  readonly resolvedSeries: ResolvedSeries[];
+  readonly resolvedSeries: readonly ResolvedSeries[];
   readonly tooltip: ExtractedChildren["tooltip"];
   readonly width: number;
   readonly xAxis: ExtractedChildren["xAxis"];

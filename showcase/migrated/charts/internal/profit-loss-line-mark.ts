@@ -214,7 +214,7 @@ interface ProfitLossGradientDef {
   readonly id: string;
   readonly startX: number;
   readonly endX: number;
-  readonly stops: { offset: string; opacity: number; color: string }[];
+  readonly stops: readonly { offset: string; opacity: number; color: string }[];
 }
 
 interface ProfitLossGradientPairParams {

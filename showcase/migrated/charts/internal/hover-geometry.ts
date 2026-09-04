@@ -26,7 +26,7 @@ const isString = <Subject>(value: Subject): value is Subject & string => typeof 
 interface CrosshairGradientDef {
   readonly id: string;
   readonly color: string;
-  readonly stops: { offset: string; opacity: number }[];
+  readonly stops: readonly { offset: string; opacity: number }[];
 }
 
 // Bklit TooltipIndicator default vertical fade ("both", fadeLength=10).

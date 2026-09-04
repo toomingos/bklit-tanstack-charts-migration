@@ -113,7 +113,7 @@ interface LiveTipChromeProps {
 }
 
 interface LiveLineChartProps {
-  readonly data: LiveLinePoint[];
+  readonly data: readonly LiveLinePoint[];
   readonly value: number;
   readonly dataKey?: string;
   readonly window?: number;

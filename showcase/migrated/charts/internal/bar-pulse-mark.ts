@@ -78,7 +78,7 @@ interface BarPulseChannelsArgs {
 
 interface BarPulseChannels {
   readonly xValues: string[];
-  readonly yValues: number[];
+  readonly yValues: readonly number[];
 }
 
 // Channel values for the pulse mark; hoisted so the mark factory stays short.

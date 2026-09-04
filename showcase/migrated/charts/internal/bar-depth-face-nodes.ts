@@ -16,7 +16,7 @@ interface BarDepthGradientIds {
 
 interface BarDepthValues {
   readonly xValues: string[];
-  readonly yValues: number[];
+  readonly yValues: readonly number[];
 }
 
 const extractBarDepthValues = (

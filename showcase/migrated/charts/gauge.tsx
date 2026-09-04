@@ -932,8 +932,8 @@ const useArcRows = (
 };
 
 interface UniformArcRowList {
-  readonly active: UniformArcRow[];
-  readonly bg: UniformArcRow[];
+  readonly active: readonly UniformArcRow[];
+  readonly bg: readonly UniformArcRow[];
 }
 
 interface ComputeUniformArcRowsOptions {
@@ -969,8 +969,8 @@ const computeUniformArcRows = (
   fillState: Readonly<GaugeFillState>,
   layout: Readonly<GaugeArcLayout>,
 ): {
-  readonly active: UniformArcRow[];
-  readonly bg: UniformArcRow[];
+  readonly active: readonly UniformArcRow[];
+  readonly bg: readonly UniformArcRow[];
   readonly notchLength: number;
 } | undefined => {
   const geometry = computeUniformArcGeometry({
@@ -1009,8 +1009,8 @@ const useUniformArcRows = (
   fillState: Readonly<GaugeFillState>,
   layout: Readonly<GaugeArcLayout>,
 ): {
-  readonly active: UniformArcRow[];
-  readonly bg: UniformArcRow[];
+  readonly active: readonly UniformArcRow[];
+  readonly bg: readonly UniformArcRow[];
   readonly notchLength: number;
 } | undefined =>
   useMemo(() => computeUniformArcRows(props, fillState, layout), [

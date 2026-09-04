@@ -1,6 +1,6 @@
 interface SankeyHoverResult {
-  readonly nodeConnected: boolean[];
-  readonly linkConnected: boolean[];
+  readonly nodeConnected: readonly boolean[];
+  readonly linkConnected: readonly boolean[];
   readonly anyHovered: boolean;
 }
 
@@ -15,8 +15,8 @@ interface SankeyLinkHit {
 }
 
 interface SankeyNodeHoverConnected {
-  readonly linkConnected: boolean[];
-  readonly nodeConnected: boolean[];
+  readonly linkConnected: readonly boolean[];
+  readonly nodeConnected: readonly boolean[];
 }
 
 const emptyFlags = (length: number): boolean[] => Array.from({ length }, () => false);

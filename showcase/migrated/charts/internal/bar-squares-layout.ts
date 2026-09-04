@@ -6,7 +6,7 @@ const bandWidthForSquares = (bandWidth: number, seriesCount: number, groupGap: n
 
 interface SquareColumnLayout {
   count: number;
-  readonly positions: number[];
+  readonly positions: readonly number[];
   readonly columnHeight: number;
   readonly squareSize: number;
   readonly gap: number;

@@ -57,7 +57,7 @@ interface ReferenceAreaLayerProps {
   height: number;
   readonly margin: ChartMargin;
   readonly yDomain: [number, number];
-  readonly xDomain?: [number, number] | [Date, Date];
+  readonly xDomain?: readonly [number, number] | [Date, Date];
   readonly xDataKey?: string;
   readonly isTimeScale?: boolean;
   readonly barScale?: { (value: string): number | undefined; bandwidth: () => number; domain: () => string[] } | null;
@@ -75,7 +75,7 @@ interface ReferenceAreaLayersGeom {
   readonly margin: ChartMargin;
   readonly yDomain: [number, number];
   readonly yDomainsByAxis?: Record<string, [number, number]>;
-  readonly xDomain?: [number, number] | [Date, Date];
+  readonly xDomain?: readonly [number, number] | [Date, Date];
   readonly xDataKey?: string;
   readonly isTimeScale?: boolean;
   readonly barScale?: { (value: string): number | undefined; bandwidth: () => number; domain: () => string[] } | null;
@@ -253,7 +253,7 @@ const ReferenceAreaLayers = ({
   configs,
   geom,
 }: {
-  readonly configs: ReferenceAreaConfig[];
+  readonly configs: readonly ReferenceAreaConfig[];
   readonly geom: ReferenceAreaLayersGeom;
 }): ReactNode => {
   if (configs.length === EMPTY_REFERENCE_AREA_CONFIG_COUNT) {return undefined;}

@@ -332,8 +332,8 @@ interface CandleHoverDotMarkParams {
 }
 
 interface CandleHoverDotChannels {
-  readonly xValues: (Date | undefined)[];
-  readonly closeValues: (number | undefined)[];
+  readonly xValues: readonly (Date | undefined)[];
+  readonly closeValues: readonly (number | undefined)[];
 }
 
 /**
@@ -408,12 +408,12 @@ interface CandleHighlightMarkParams {
 }
 
 interface CandleHighlightChannels {
-  readonly xValues: (Date | undefined)[];
-  readonly lowValues: (number | undefined)[];
-  readonly highValues: (number | undefined)[];
-  readonly openValues: (number | undefined)[];
-  readonly closeValues: (number | undefined)[];
-  readonly yValues: number[];
+  readonly xValues: readonly (Date | undefined)[];
+  readonly lowValues: readonly (number | undefined)[];
+  readonly highValues: readonly (number | undefined)[];
+  readonly openValues: readonly (number | undefined)[];
+  readonly closeValues: readonly (number | undefined)[];
+  readonly yValues: readonly number[];
 }
 
 /**
