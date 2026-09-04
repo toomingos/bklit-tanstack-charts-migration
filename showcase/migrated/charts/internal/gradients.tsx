@@ -3,6 +3,8 @@ import type { ReactElement, ReactNode, SVGProps } from "react";
 // Visx gradients ported verbatim; displayNames are load-bearing (pie/gauge classify
 // Children by displayName for defs-hoisting — preserve byte-for-byte).
 
+const DEFAULT_GRADIENT_STOP_OPACITY = 1;
+
 interface LinearGradientOwnProps {
   id: string;
   from?: string;
@@ -62,9 +64,9 @@ const LinearGradientImpl = ({
   x2: _x2,
   y2: _y2,
   fromOffset = "0%",
-  fromOpacity = 1,
+  fromOpacity = DEFAULT_GRADIENT_STOP_OPACITY,
   toOffset = "100%",
-  toOpacity = 1,
+  toOpacity = DEFAULT_GRADIENT_STOP_OPACITY,
   rotate,
   transform,
   vertical = true,
@@ -117,9 +119,9 @@ const RadialGradientImpl = ({
   from,
   to,
   fromOffset = "0%",
-  fromOpacity = 1,
+  fromOpacity = DEFAULT_GRADIENT_STOP_OPACITY,
   toOffset = "100%",
-  toOpacity = 1,
+  toOpacity = DEFAULT_GRADIENT_STOP_OPACITY,
   rotate,
   transform,
   ...restProps

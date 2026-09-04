@@ -87,11 +87,35 @@ const HOVER_HIGHLIGHT_MARK_ID = "hover-highlight";
 // Shared class for every candle rect node (wicks and bodies read it for styling hooks).
 const CANDLE_CELL_CLASS_NAME = "chart-candle-cell";
 // Known pattern presets; anything else renders only when it is a legacy url(#id) string.
-const CANDLE_PATTERN_PRESETS: readonly string[] = ["diagonal", "horizontal", "vertical", "cross", "dots", "circles", "accent"];
+const CANDLE_PATTERN_PRESETS: ReadonlySet<string> = new Set(["diagonal", "horizontal", "vertical", "cross", "dots", "circles", "accent"]);
 // Zero-size defs layers sit outside layout; the style never varies.
 const HIDDEN_DEFS_SVG_STYLE = { position: "absolute" } as const;
 // Pill host covers the plot without intercepting pointer events.
 const PILL_OVERLAY_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
+// Shared numeric spellings for the geometry and timing below (no bare literals).
+const GEOMETRY_HALF_DIVISOR = 2;
+const FLAT_EXTENT_FALLBACK_PX = 1;
+const COLLAPSED_GEOMETRY_PX = 0;
+const MIN_GEOMETRY_EXTENT_PX = 0;
+const NO_ANIMATION_DURATION_MS = 0;
+const NO_INSIDE_STROKE_PX = 0;
+const EMPTY_CONTAINER_PX = 0;
+const EMPTY_COUNT = 0;
+const EMPTY_TIME_BOUND_MS = 0;
+const MIN_ROW_COUNT = 1;
+const MIN_ENTER_DURATION_MS = 1;
+const FULL_SLOT_RATIO = 1;
+const LEGEND_POSITIVE_INDEX = 0;
+const LEGEND_NEGATIVE_INDEX = 1;
+const FIRST_POINT_INDEX = 0;
+const ROW_INDEX_STEP = 1;
+const PLAIN_HOVER_DOT_STROKE_WIDTH = 2;
+const DEFAULT_DOT_SCALE = 1;
+const DEFAULT_CANDLE_GAP_RATIO = 0.2;
+const INITIAL_REVEAL_EPOCH = 0;
+const REVEAL_FLIP_DELAY_MS = 0;
+const FALLBACK_Y_DOMAIN_MIN = 0;
+const FALLBACK_Y_DOMAIN_MAX = 1;
 
 // Both segment ends must be finite before they are mapped through the scales.
 const areBothFinite = (first: number, second: number): boolean => Number.isFinite(first) && Number.isFinite(second);
@@ -116,31 +140,43 @@ interface CandlePatternRef {
 const resolveTweenCandleTransition = (enter: Readonly<CandlestickEnterTransition> | undefined): ChartMotionTransition => {
   const resolved = resolveEnterTransition(enter, TWEEN_FALLBACK);
   const tweenFallback = TWEEN_FALLBACK.kind === "tween" ? TWEEN_FALLBACK : undefined;
-  const durationMs = resolved.kind === "tween" ? resolved.durationMs : tweenFallback?.durationMs ?? 0;
+  const durationMs = resolved.kind === "tween" ? resolved.durationMs : tweenFallback?.durationMs ?? NO_ANIMATION_DURATION_MS;
   const easingCss = resolved.kind === "tween" ? resolved.easingCss : tweenFallback?.easingCss ?? "";
   return { duration: durationMs, easing: resolveMotionEasing(easingCss), type: "tween" };
 };
 
 // Spring enter converts duration/bounce into stiffness/damping (bklit motion-utils formula).
 const resolveSpringCandleTransition = (enter: Readonly<CandlestickEnterTransition> | undefined): ChartMotionTransition => {
-  const enterDurationMs = Math.max(1, (enter?.duration ?? DEFAULT_ENTER_DURATION_SEC) * MS_PER_SECOND);
+  const enterDurationMs = Math.max(MIN_ENTER_DURATION_MS, (enter?.duration ?? DEFAULT_ENTER_DURATION_SEC) * MS_PER_SECOND);
   const enterBounce = enter?.bounce ?? DEFAULT_ENTER_BOUNCE;
   const { damping, stiffness } = findSpringStiffnessDamping({ bounce: enterBounce, durationMs: enterDurationMs });
   return { damping, stiffness, type: "spring" };
 };
 
+interface CandleWickSegmentNodesParams {
+  readonly collapseY: number;
+  readonly cx: number;
+  readonly dimOpacity: number | undefined;
+  readonly segKey: string;
+  readonly segTargetHeight: number;
+  readonly segTargetY: number;
+  readonly showTarget: boolean;
+  readonly wickFill: string;
+}
+
 // Wick segments split at the body edge so stacked dim opacities never double-composite on overlap.
-const buildWickSegmentNodes = (cx: number, collapseY: number, wickFill: string, dimOpacity: number | undefined, showTarget: boolean, segKey: string, segTargetY: number, segTargetHeight: number): SceneNode[] => {
-  if (segTargetHeight <= 0) {return [];}
+const buildWickSegmentNodes = (params: Readonly<CandleWickSegmentNodesParams>): SceneNode[] => {
+  const { collapseY, cx, dimOpacity, segKey, segTargetHeight, segTargetY, showTarget, wickFill } = params;
+  if (segTargetHeight <= MIN_GEOMETRY_EXTENT_PX) {return [];}
   const collapsedY = Math.min(Math.max(collapseY, segTargetY), segTargetY + segTargetHeight);
   return [{
     className: CANDLE_CELL_CLASS_NAME,
-    height: showTarget ? segTargetHeight : 0,
+    height: showTarget ? segTargetHeight : COLLAPSED_GEOMETRY_PX,
     key: segKey,
     kind: "rect",
     style: { fill: wickFill, opacity: dimOpacity },
     width: WICK_WIDTH_PX,
-    x: cx - WICK_WIDTH_PX / 2,
+    x: cx - WICK_WIDTH_PX / GEOMETRY_HALF_DIVISOR,
     y: showTarget ? segTargetY : collapsedY,
   }];
 };
@@ -184,7 +220,7 @@ interface CandlestickChromeState {
 
 // Legacy pattern names are an open string at the prop boundary; only known presets render.
 const isCandlePatternPreset = (value: string): value is PatternPresetId =>
-  CANDLE_PATTERN_PRESETS.includes(value);
+  CANDLE_PATTERN_PRESETS.has(value);
 
 // DotColor precedence (incl. function branch) evaluates once at mark-build time, not per hover.
 const resolveCandleDotColor = (color: DotConfig["color"], date: Readonly<Date>, close: number): string => {
@@ -238,9 +274,9 @@ interface CandleHoverDotEntry {
  */
 const buildCandleHoverDotEntry = (params: Readonly<CandleHoverDotEntryParams>): CandleHoverDotEntry | undefined => {
   const { close, date, datum, datumIndex, dotCfg, isRing, scales, size, strokeWidth } = params;
-  const x = date === undefined ? Number.NaN : scales.x.map(date);
-  const y = close === undefined ? Number.NaN : scales.y.map(close);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || date === undefined || close === undefined) {return undefined;}
+  const pixelX = date === undefined ? Number.NaN : scales.x.map(date);
+  const pixelY = close === undefined ? Number.NaN : scales.y.map(close);
+  if (!Number.isFinite(pixelX) || !Number.isFinite(pixelY) || date === undefined || close === undefined) {return undefined;}
   const fill = resolveCandleDotColor(dotCfg.color, date, close);
   const point: ChartPoint<ChartDatum, Date, number> = {
     color: fill,
@@ -250,9 +286,9 @@ const buildCandleHoverDotEntry = (params: Readonly<CandleHoverDotEntryParams>): 
     groupLabel: "hover-dot",
     key: `hover-dot:${datumIndex}`,
     markId: "hover-dot",
-    x,
+    x: pixelX,
     xValue: date,
-    y,
+    y: pixelY,
     yValue: close,
   };
   const node: SceneNode = {
@@ -263,8 +299,8 @@ const buildCandleHoverDotEntry = (params: Readonly<CandleHoverDotEntryParams>): 
     style: isRing
       ? { fill: "transparent", stroke: fill, strokeWidth }
       : { fill, stroke: "var(--chart-background)", strokeWidth },
-    x,
-    y,
+    x: pixelX,
+    y: pixelY,
   };
   return { node, point };
 };
@@ -332,8 +368,8 @@ const collectCandleHoverDotChannels = (
 const createCandlestickHoverDotMark = (params: Readonly<CandleHoverDotMarkParams>): ChartMark<ChartDatum, Date, number> => {
   const { source, xDataKey, dotCfg, tooltipSpring } = params;
   const isRing = (dotCfg.variant ?? "dot") === "ring";
-  const size = isRing ? (dotCfg.size ?? DEFAULT_HOVER_DOT_SIZE) * (dotCfg.scale ?? 1) : DEFAULT_HOVER_DOT_SIZE;
-  const strokeWidth = isRing ? (dotCfg.strokeWidth ?? DEFAULT_HOVER_DOT_STROKE_WIDTH) : 2;
+  const size = isRing ? (dotCfg.size ?? DEFAULT_HOVER_DOT_SIZE) * (dotCfg.scale ?? DEFAULT_DOT_SCALE) : DEFAULT_HOVER_DOT_SIZE;
+  const strokeWidth = isRing ? (dotCfg.strokeWidth ?? DEFAULT_HOVER_DOT_STROKE_WIDTH) : PLAIN_HOVER_DOT_STROKE_WIDTH;
   // Bklit parity: dots always spring; ChartTooltip never gates them on discrete.
   const motion: ChartMotionDefinition<ChartDatum> = {
     transition: { damping: tooltipSpring.damping, stiffness: tooltipSpring.stiffness, type: "spring" },
@@ -611,8 +647,8 @@ const resolveCandleRowFill = (params: Readonly<CandleRowFillParams>): CandleRowF
  */
 const buildCandleHighlightStrokeNode = (params: Readonly<CandleHighlightStrokeParams>): SceneNode | undefined => {
   const { bodyHeight, bodyWidthPx, bodyX, bodyY, fill, insideStrokeW, key, point } = params;
-  if (insideStrokeW <= 0) {return undefined;}
-  const strokeTargetY = bodyY + insideStrokeW / 2;
+  if (insideStrokeW <= MIN_GEOMETRY_EXTENT_PX) {return undefined;}
+  const strokeTargetY = bodyY + insideStrokeW / GEOMETRY_HALF_DIVISOR;
   const strokeTargetHeight = bodyHeight - insideStrokeW;
   return {
     height: strokeTargetHeight,
@@ -622,7 +658,7 @@ const buildCandleHighlightStrokeNode = (params: Readonly<CandleHighlightStrokePa
     radius: 1,
     style: { fill: "none", stroke: fill, strokeWidth: insideStrokeW },
     width: bodyWidthPx - insideStrokeW,
-    x: bodyX + insideStrokeW / 2,
+    x: bodyX + insideStrokeW / GEOMETRY_HALF_DIVISOR,
     y: strokeTargetY,
   };
 };
@@ -636,18 +672,18 @@ const buildCandleHighlightStrokeNode = (params: Readonly<CandleHighlightStrokePa
 const buildCandleHighlightRowNodes = (params: Readonly<CandleHighlightRowNodesParams>): SceneNode[] => {
   const { bodyWidthPx, candlePattern, cx, fill, hasOwnPattern, insideStrokeW, key, point, yClose, yHigh, yLow, yOpen } = params;
   const wickNode: SceneNode = {
-    height: Math.abs(yHigh - yLow) || 1,
+    height: Math.abs(yHigh - yLow) || FLAT_EXTENT_FALLBACK_PX,
     key: `${key}:wick`,
     kind: "rect",
     pointOwner: point,
     style: { fill },
     width: WICK_WIDTH_PX,
-    x: cx - WICK_WIDTH_PX / 2,
+    x: cx - WICK_WIDTH_PX / GEOMETRY_HALF_DIVISOR,
     y: Math.min(yLow, yHigh),
   };
-  const bodyX = cx - bodyWidthPx / 2;
+  const bodyX = cx - bodyWidthPx / GEOMETRY_HALF_DIVISOR;
   const bodyY = Math.min(yOpen, yClose);
-  const bodyHeight = Math.abs(yClose - yOpen) || 1;
+  const bodyHeight = Math.abs(yClose - yOpen) || FLAT_EXTENT_FALLBACK_PX;
   const bodyNode: SceneNode = {
     height: bodyHeight,
     key: `${key}:body`,
@@ -703,8 +739,8 @@ const renderCandleHighlightScene = (params: Readonly<CandleHighlightSceneParams>
   const { scales, source, xDataKey, xValues, lowValues, highValues, openValues, closeValues, positivePattern, negativePattern, solidFillFor, bodyWidthPx, insideStrokeW } = params;
   const nodes: SceneNode[] = [];
   const points: ChartPoint<ChartDatum, Date, number>[] = [];
-  for (let i = 0; i < source.length; i += 1) {
-    appendCandleHighlightRow({ bodyWidthPx, closeValues, highValues, index: i, insideStrokeW, lowValues, negativePattern, nodes, openValues, points, positivePattern, scales, solidFillFor, source, xDataKey, xValues });
+  for (let rowIndex = 0; rowIndex < source.length; rowIndex += ROW_INDEX_STEP) {
+    appendCandleHighlightRow({ bodyWidthPx, closeValues, highValues, index: rowIndex, insideStrokeW, lowValues, negativePattern, nodes, openValues, points, positivePattern, scales, solidFillFor, source, xDataKey, xValues });
   }
   return { nodes, points };
 };
@@ -834,8 +870,8 @@ const mapCandleWickPixels = (params: Readonly<CandleWickPixelParams>): CandleWic
   if (!Number.isFinite(cx) || !Number.isFinite(yLow) || !Number.isFinite(yHigh)) {return undefined;}
   const hasBodyValues = isFiniteNumber(open) && isFiniteNumber(close);
   const bodyTargetY = hasBodyValues ? Math.min(scales.y.map(open), scales.y.map(close)) : undefined;
-  const bodyTargetHeight = hasBodyValues ? Math.abs(scales.y.map(close) - scales.y.map(open)) || 1 : undefined;
-  return { bodyTargetHeight, bodyTargetY, cx, wickTargetHeight: Math.abs(yHigh - yLow) || 1, wickTargetY: Math.min(yLow, yHigh), yHigh };
+  const bodyTargetHeight = hasBodyValues ? Math.abs(scales.y.map(close) - scales.y.map(open)) || FLAT_EXTENT_FALLBACK_PX : undefined;
+  return { bodyTargetHeight, bodyTargetY, cx, wickTargetHeight: Math.abs(yHigh - yLow) || FLAT_EXTENT_FALLBACK_PX, wickTargetY: Math.min(yLow, yHigh), yHigh };
 };
 
 /**
@@ -849,15 +885,15 @@ const buildCandleWickRowNodes = (params: Readonly<CandleWickRowNodesParams>): Sc
   const dimOpacity = legendDimOpacity(isPositive);
   if (bodyTargetY === undefined || bodyTargetHeight === undefined) {
     // Collapsed geometry is center-anchored, matching legacy's scaleY reveal origin.
-    return buildWickSegmentNodes(cx, wickTargetY + wickTargetHeight / 2, wickFill, dimOpacity, showTargetGeometry, key, wickTargetY, wickTargetHeight);
+    return buildWickSegmentNodes({ collapseY: wickTargetY + wickTargetHeight / GEOMETRY_HALF_DIVISOR, cx, dimOpacity, segKey: key, segTargetHeight: wickTargetHeight, segTargetY: wickTargetY, showTarget: showTargetGeometry, wickFill });
   }
   // Wicks split at the body edge: stacked dim opacities must not double-composite on overlap.
-  const collapseY = wickTargetY + wickTargetHeight / 2;
+  const collapseY = wickTargetY + wickTargetHeight / GEOMETRY_HALF_DIVISOR;
   const bodyBottom = bodyTargetY + bodyTargetHeight;
   const wickBottom = wickTargetY + wickTargetHeight;
   return [
-    ...buildWickSegmentNodes(cx, collapseY, wickFill, dimOpacity, showTargetGeometry, `${key}:upper`, wickTargetY, bodyTargetY - wickTargetY),
-    ...buildWickSegmentNodes(cx, collapseY, wickFill, dimOpacity, showTargetGeometry, `${key}:lower`, bodyBottom, wickBottom - bodyBottom),
+    ...buildWickSegmentNodes({ collapseY, cx, dimOpacity, segKey: `${key}:upper`, segTargetHeight: bodyTargetY - wickTargetY, segTargetY: wickTargetY, showTarget: showTargetGeometry, wickFill }),
+    ...buildWickSegmentNodes({ collapseY, cx, dimOpacity, segKey: `${key}:lower`, segTargetHeight: wickBottom - bodyBottom, segTargetY: bodyBottom, showTarget: showTargetGeometry, wickFill }),
   ];
 };
 
@@ -889,8 +925,8 @@ const renderCandleWicksScene = (params: Readonly<CandleWicksSceneParams>): Candl
   const { scales, source, xDataKey, positivePattern, negativePattern, solidFillFor, legendDimOpacity, showTargetGeometry } = params;
   const nodes: SceneNode[] = [];
   const points: ChartPoint<ChartDatum, Date, number>[] = [];
-  for (let i = 0; i < source.length; i += 1) {
-    appendCandleWickRow({ index: i, legendDimOpacity, negativePattern, nodes, points, positivePattern, scales, showTargetGeometry, solidFillFor, source, xDataKey });
+  for (let rowIndex = 0; rowIndex < source.length; rowIndex += ROW_INDEX_STEP) {
+    appendCandleWickRow({ index: rowIndex, legendDimOpacity, negativePattern, nodes, points, positivePattern, scales, showTargetGeometry, solidFillFor, source, xDataKey });
   }
   return { nodes, points };
 };
@@ -992,19 +1028,19 @@ const mapCandleBodyPixels = (params: Readonly<CandleBodyPixelParams>): CandleBod
  */
 const buildCandleBodyStrokeNode = (params: Readonly<CandleBodyStrokeParams>): SceneNode | undefined => {
   const { bodyTargetHeight, bodyTargetY, bodyWidthPx, cx, dimOpacity, fill, insideStrokeW, key, showTargetGeometry } = params;
-  if (insideStrokeW <= 0) {return undefined;}
-  const strokeTargetY = bodyTargetY + insideStrokeW / 2;
+  if (insideStrokeW <= MIN_GEOMETRY_EXTENT_PX) {return undefined;}
+  const strokeTargetY = bodyTargetY + insideStrokeW / GEOMETRY_HALF_DIVISOR;
   const strokeTargetHeight = bodyTargetHeight - insideStrokeW;
   return {
     className: CANDLE_CELL_CLASS_NAME,
-    height: showTargetGeometry ? strokeTargetHeight : 0,
+    height: showTargetGeometry ? strokeTargetHeight : COLLAPSED_GEOMETRY_PX,
     key: `${key}:stroke`,
     kind: "rect",
     radius: 1,
     style: { fill: "none", opacity: dimOpacity, stroke: fill, strokeWidth: insideStrokeW },
     width: bodyWidthPx - insideStrokeW,
-    x: cx - bodyWidthPx / 2 + insideStrokeW / 2,
-    y: showTargetGeometry ? strokeTargetY : strokeTargetY + strokeTargetHeight / 2,
+    x: cx - bodyWidthPx / GEOMETRY_HALF_DIVISOR + insideStrokeW / GEOMETRY_HALF_DIVISOR,
+    y: showTargetGeometry ? strokeTargetY : strokeTargetY + strokeTargetHeight / GEOMETRY_HALF_DIVISOR,
   };
 };
 
@@ -1017,9 +1053,9 @@ const buildCandleBodyStrokeNode = (params: Readonly<CandleBodyStrokeParams>): Sc
 const buildCandleBodyRowNodes = (params: Readonly<CandleBodyRowNodesParams>): SceneNode[] => {
   const { bodyWidthPx, candlePattern, cx, dimOpacity, fill, hasOwnPattern, insideStrokeW, key, showTargetGeometry, yClose, yOpen } = params;
   const bodyTargetY = Math.min(yOpen, yClose);
-  const bodyTargetHeight = Math.abs(yClose - yOpen) || 1;
-  const bodyY = showTargetGeometry ? bodyTargetY : bodyTargetY + bodyTargetHeight / 2;
-  const bodyHeight = showTargetGeometry ? bodyTargetHeight : 0;
+  const bodyTargetHeight = Math.abs(yClose - yOpen) || FLAT_EXTENT_FALLBACK_PX;
+  const bodyY = showTargetGeometry ? bodyTargetY : bodyTargetY + bodyTargetHeight / GEOMETRY_HALF_DIVISOR;
+  const bodyHeight = showTargetGeometry ? bodyTargetHeight : COLLAPSED_GEOMETRY_PX;
   const bodyNode: SceneNode = {
     className: CANDLE_CELL_CLASS_NAME,
     height: bodyHeight,
@@ -1028,7 +1064,7 @@ const buildCandleBodyRowNodes = (params: Readonly<CandleBodyRowNodesParams>): Sc
     radius: 1,
     style: { fill, opacity: dimOpacity, stroke: fill, strokeWidth: 1 },
     width: bodyWidthPx,
-    x: cx - bodyWidthPx / 2,
+    x: cx - bodyWidthPx / GEOMETRY_HALF_DIVISOR,
     y: bodyY,
   };
   const strokeNode = buildCandleBodyStrokeNode({ bodyTargetHeight, bodyTargetY, bodyWidthPx, cx, dimOpacity, fill, insideStrokeW, key, showTargetGeometry });
@@ -1040,7 +1076,7 @@ const buildCandleBodyRowNodes = (params: Readonly<CandleBodyRowNodesParams>): Sc
     radius: 1,
     style: { fill: candlePattern.href, opacity: dimOpacity },
     width: bodyWidthPx,
-    x: cx - bodyWidthPx / 2,
+    x: cx - bodyWidthPx / GEOMETRY_HALF_DIVISOR,
     y: bodyY,
   } : undefined;
   return [
@@ -1079,8 +1115,8 @@ const renderCandleBodiesScene = (params: Readonly<CandleBodiesSceneParams>): Can
   const { scales, source, xDataKey, bodyWidthPx, insideStrokeW, positivePattern, negativePattern, solidFillFor, legendDimOpacity, showTargetGeometry } = params;
   const nodes: SceneNode[] = [];
   const points: ChartPoint<ChartDatum, Date, number>[] = [];
-  for (let i = 0; i < source.length; i += 1) {
-    appendCandleBodyRow({ bodyWidthPx, index: i, insideStrokeW, legendDimOpacity, negativePattern, nodes, points, positivePattern, scales, showTargetGeometry, solidFillFor, source, xDataKey });
+  for (let rowIndex = 0; rowIndex < source.length; rowIndex += ROW_INDEX_STEP) {
+    appendCandleBodyRow({ bodyWidthPx, index: rowIndex, insideStrokeW, legendDimOpacity, negativePattern, nodes, points, positivePattern, scales, showTargetGeometry, solidFillFor, source, xDataKey });
   }
   return { nodes, points };
 };
@@ -1137,7 +1173,7 @@ const buildCandleWicksMark = (params: Readonly<CandleWicksMarkParams>): ChartMar
           points: scene.points,
         };
       },
-      states: dimStates.length > 0 ? { data: source, definitions: dimStates } : undefined,
+      states: dimStates.length > EMPTY_COUNT ? { data: source, definitions: dimStates } : undefined,
     };
   }, candleMotion);
 };
@@ -1196,7 +1232,7 @@ const buildCandleBodiesMark = (params: Readonly<CandleBodiesMarkParams>): ChartM
           points: scene.points,
         };
       },
-      states: dimStates.length > 0 ? { data: source, definitions: dimStates } : undefined,
+      states: dimStates.length > EMPTY_COUNT ? { data: source, definitions: dimStates } : undefined,
     };
   }, candleMotion);
 };
@@ -1231,8 +1267,8 @@ const buildCandleCoreMarks = (params: Readonly<CandleCoreMarksParams>): CandleCo
   const { source, xDataKey, positivePattern, negativePattern, solidFillFor, legendHoveredIndex, fadedOpacity, showHoverFade, showTargetGeometry, bodyWidthPx, insideStrokeW, candleMotion } = params;
   // Legend index 0 = positive, 1 = negative; the other polarity dims to fadedOpacity.
   const legendDimOpacity = (isPositive: boolean): number | undefined => {
-    if (legendHoveredIndex !== 0 && legendHoveredIndex !== 1) {return undefined;}
-    return (legendHoveredIndex === 0) === isPositive ? undefined : fadedOpacity;
+    if (legendHoveredIndex !== LEGEND_POSITIVE_INDEX && legendHoveredIndex !== LEGEND_NEGATIVE_INDEX) {return undefined;}
+    return (legendHoveredIndex === LEGEND_POSITIVE_INDEX) === isPositive ? undefined : fadedOpacity;
   };
   const wicksDimStates = candlestickDimStates(fadedOpacity, showHoverFade);
   const wicksMark = buildCandleWicksMark({ candleMotion, dimStates: wicksDimStates, legendDimOpacity, negativePattern, positivePattern, showTargetGeometry, solidFillFor, source, xDataKey });
@@ -1394,7 +1430,7 @@ const armCandleRevealTimers = (params: Readonly<CandleRevealTimersParams>): (() 
   setRevealed(false);
   const flipTimer = globalThis.setTimeout(() => {
     if (revealEpochRef.current === epoch) {setRevealed(true);}
-  }, 0);
+  }, REVEAL_FLIP_DELAY_MS);
   revealDeadlineTimerRef.current = globalThis.setTimeout(() => {
     if (revealEpochRef.current === epoch) {canInteractRef.current = true;}
   }, animationDuration);
@@ -1413,7 +1449,7 @@ const runCandleRevealCycle = (params: Readonly<CandleRevealCycleParams>): ((() =
   const epoch = revealEpochRef.current;
   canInteractRef.current = false;
   clearCandleRevealDeadline(revealDeadlineTimerRef);
-  if (animationDuration <= 0) {
+  if (animationDuration <= NO_ANIMATION_DURATION_MS) {
     canInteractRef.current = true;
     return undefined;
   }
@@ -1440,7 +1476,7 @@ interface CandlePillContentParams {
 const displayCandlePill = (pillBuild: PillBuild, content: Readonly<CandlePillContentParams>): void => {
   const { centerX, dateLabels, discrete, formattedDate, showing, tickerIndex } = content;
   pillBuild.layer.style.display = "";
-  if (pillBuild.ticker && dateLabels !== undefined && dateLabels.length > 0) {
+  if (pillBuild.ticker && dateLabels !== undefined && dateLabels.length > EMPTY_COUNT) {
     pillBuild.ticker.update(tickerIndex, discrete);
   } else {
     pillBuild.label.textContent = formattedDate;
@@ -1531,9 +1567,9 @@ const resolveCandleTooltipClose = (datum: Readonly<ChartDatum>): string | number
  * @returns {CandleTooltipModel | undefined} Model for panel building, or undefined with no points.
  */
 const resolveCandleTooltipModel = (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>, chromeState: CandlestickChromeState | null): CandleTooltipModel | undefined => {
-  if (ctx.points.length === 0) {return undefined;}
+  if (ctx.points.length === EMPTY_COUNT) {return undefined;}
   const tt = chromeState?.tooltip ?? undefined;
-  const bodyPoint = ctx.points.find((point) => point.markId === "bodies") ?? ctx.points[0];
+  const bodyPoint = ctx.points.find((point) => point.markId === "bodies") ?? ctx.points[FIRST_POINT_INDEX];
   const { datum } = bodyPoint;
   const date = bodyPoint.xValue;
   const close = resolveCandleTooltipClose(datum);
@@ -1545,6 +1581,15 @@ interface CandleTooltipPanel {
   readonly className: string;
   readonly style: CSSProperties | undefined;
 }
+
+/**
+ * Builds the default close row for a hovered candle (no custom rows configured).
+ *
+ * @param {string | number} close - Resolved close value for the default row.
+ * @returns {TooltipRow[]} The single default close row.
+ */
+const buildDefaultCandleCloseRow = (close: string | number): TooltipRow[] =>
+  [{ color: "var(--chart-line-primary)", label: "close", value: close }];
 
 /**
  * Resolves the tooltip panel class and style from the tooltip config (tooltip-render time).
@@ -1732,6 +1777,17 @@ const buildCandleTooltipOption = (params: Readonly<CandleTooltipOptionParams>): 
   });
 };
 
+/**
+ * Resolves whether candle marks render target geometry (shown once revealed or when animation is off).
+ *
+ * @param {boolean} revealed - Whether the reveal flip has run.
+ * @param {number} animationDuration - Enter animation duration in milliseconds.
+ * @param {boolean} animate - Whether candle animation is enabled.
+ * @returns {boolean} True when target geometry should render.
+ */
+const resolveCandleTargetGeometry = (revealed: boolean, animationDuration: number, animate: boolean): boolean =>
+  revealed || animationDuration <= NO_ANIMATION_DURATION_MS || !animate;
+
 interface CandlestickChartProps {
   data: ChartDatum[];
   xDataKey?: string;
@@ -1771,7 +1827,7 @@ const CandlestickChart = ({
   aspectRatio = "2 / 1",
   className,
   style,
-  candleGap = 0.2,
+  candleGap = DEFAULT_CANDLE_GAP_RATIO,
   candleWidth: candleWidthProp,
   children,
 }: CandlestickChartProps): ReactElement => {
@@ -1780,7 +1836,7 @@ const CandlestickChart = ({
   const width = useContainerWidth(containerRef);
 
   const canInteractRef = useRef(false);
-  const revealEpochRef = useRef(0);
+  const revealEpochRef = useRef(INITIAL_REVEAL_EPOCH);
   const revealDeadlineTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | undefined>(undefined);
 
 
@@ -1804,13 +1860,13 @@ const CandlestickChart = ({
     bodyPatternNegative: candlestick?.bodyPatternNegative,
     bodyPatternPositive: candlestick?.bodyPatternPositive,
     fadedOpacity: candlestick?.fadedOpacity ?? DEFAULT_FADED_OPACITY,
-    insideStrokeWidth: candlestick?.insideStrokeWidth ?? 0,
+    insideStrokeWidth: candlestick?.insideStrokeWidth ?? NO_INSIDE_STROKE_PX,
     showHoverFade: candlestick?.showHoverFade ?? true,
   }), [candlestick]);
 
   // Mounts collapsed (center-anchored, height 0); a later revealed flip drives the animated update diff.
   const [revealed, setRevealed] = useState(
-    () => animationDuration <= 0 || !resolvedCandlestick.animate,
+    () => animationDuration <= NO_ANIMATION_DURATION_MS || !resolvedCandlestick.animate,
   );
   const revealSettledRef = useRef(revealed);
   const revealSpanMs = useMemo(() => {
@@ -1818,9 +1874,9 @@ const CandlestickChart = ({
       enterTransition?.type === "tween"
         ? ((): number => {
             const resolved = resolveEnterTransition(enterTransition, TWEEN_FALLBACK);
-            return resolved.kind === "tween" ? resolved.durationMs : 0;
+            return resolved.kind === "tween" ? resolved.durationMs : NO_ANIMATION_DURATION_MS;
           })()
-        : Math.max(1, (enterTransition?.duration ?? DEFAULT_ENTER_DURATION_SEC) * MS_PER_SECOND);
+        : Math.max(MIN_ENTER_DURATION_MS, (enterTransition?.duration ?? DEFAULT_ENTER_DURATION_SEC) * MS_PER_SECOND);
     return Math.max(enterMs, animationDuration) + REVEAL_SETTLE_GRACE_MS;
   }, [enterTransition, animationDuration]);
   useEffect((): (() => void) | undefined => {
@@ -1867,25 +1923,18 @@ const CandlestickChart = ({
     return isPositive ? resolvedPositiveFill : resolvedNegativeFill;
   }, [resolvedPositiveFill, resolvedNegativeFill]);
 
-  const timeExtent = useMemo(() => {
-    const dates = renderData
-      .map((datum: Readonly<ChartDatum>) => datum[xDataKey])
-      .filter((value): value is Date => value instanceof Date);
-    const minTime = dates.length > 0 ? Math.min(...dates.map((datum: Readonly<Date>) => datum.getTime())) : 0;
-    const maxTime = dates.length > 0 ? Math.max(...dates.map((datum: Readonly<Date>) => datum.getTime())) : 0;
-    return { maxTime, minTime };
-  }, [renderData, xDataKey]);
+  const timeExtent = useMemo(() => findCandleTimeExtent(renderData, xDataKey) ?? { maxTime: EMPTY_TIME_BOUND_MS, minTime: EMPTY_TIME_BOUND_MS }, [renderData, xDataKey]);
 
-  const innerWidth = Math.max(0, width - margin.left - margin.right);
+  const innerWidth = Math.max(MIN_GEOMETRY_EXTENT_PX, width - margin.left - margin.right);
 
   const slotWidth = useMemo(
-    () => innerWidth / Math.max(renderData.length, 1),
+    () => innerWidth / Math.max(renderData.length, MIN_ROW_COUNT),
     [innerWidth, renderData.length],
   );
 
   // Bklit parity: candleWidth = min(override ?? slotWidth*(1-candleGap), slotWidth).
   const bodyWidthPx = useMemo(() => {
-    const raw = candleWidthProp ?? slotWidth * (1 - candleGap);
+    const raw = candleWidthProp ?? slotWidth * (FULL_SLOT_RATIO - candleGap);
     return Math.min(raw, slotWidth);
   }, [candleWidthProp, slotWidth, candleGap]);
 
@@ -1894,23 +1943,23 @@ const CandlestickChart = ({
   // Bklit parity: y-domain pads low/high min/max by 5% (or flat 1); nice() comes from the scale.
   const yDomain = useMemo<[number, number]>(() => {
     const extremes = findCandleYExtremes(renderData);
-    if (extremes === undefined) {return [0, 1];}
-    const pad = (extremes.max - extremes.min) * Y_DOMAIN_PAD_FRACTION || 1;
+    if (extremes === undefined) {return [FALLBACK_Y_DOMAIN_MIN, FALLBACK_Y_DOMAIN_MAX];}
+    const pad = (extremes.max - extremes.min) * Y_DOMAIN_PAD_FRACTION || FLAT_EXTENT_FALLBACK_PX;
     return [extremes.min - pad, extremes.max + pad];
   }, [renderData]);
 
   // Custom resolve() owns the slotWidth/2 range inset; a plain instance would lose it to re-ranging.
   const xScale = useMemo<ChartScale>(() => {
     const { minTime, maxTime } = timeExtent;
-    const count = Math.max(renderData.length, 1);
+    const count = Math.max(renderData.length, MIN_ROW_COUNT);
     return {
       id: "x",
       resolve(context): ResolvedScale {
         const [r0, r1] = context.range;
         const lo = Math.min(r0, r1);
         const hi = Math.max(r0, r1);
-        const localSlotWidth = Math.max(0, hi - lo) / count;
-        const padding = localSlotWidth / 2;
+        const localSlotWidth = Math.max(MIN_GEOMETRY_EXTENT_PX, hi - lo) / count;
+        const padding = localSlotWidth / GEOMETRY_HALF_DIVISOR;
         const insetLo = lo + padding;
         const insetHi = Math.max(insetLo, hi - padding);
         const scale = scaleUtc().domain([minTime, maxTime]).range([insetLo, insetHi]);
@@ -1958,7 +2007,7 @@ const CandlestickChart = ({
 
   const [labelFade, setLabelFade] = useState<{ primaryX: number; hoveredLabel: string | null } | null>(null);
 
-  const showTargetGeometry = revealed || animationDuration <= 0 || !resolvedCandlestick.animate;
+  const showTargetGeometry = resolveCandleTargetGeometry(revealed, animationDuration, resolvedCandlestick.animate);
 
   // Update-phase delay is zeroed for springs by the engine, so per-candle stagger is dropped (lockstep).
   const candleMotion = useMemo<ChartMotionDefinition<ChartDatum>>(() => {
@@ -1970,11 +2019,12 @@ const CandlestickChart = ({
   }, [enterTransition]);
 
   const definition = useMemo((): DomChartDefinition<ChartDatum, Date, number> | undefined => {
-    if (width <= 0) {return undefined;}
+    if (width <= EMPTY_CONTAINER_PX) {return undefined;}
 
     const discrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
 
-    const yScale = buildCandleYScale({ formatLargeNumbers: yAxis?.formatLargeNumbers, formatValue: yAxis?.formatValue, gridNumTicks: grid?.numTicks, hasYAxis: yAxis !== null, yMax: yDomain[1], yMin: yDomain[0], yNumTicks: yAxis?.numTicks });
+    const [yDomainMin, yDomainMax] = yDomain;
+    const yScale = buildCandleYScale({ formatLargeNumbers: yAxis?.formatLargeNumbers, formatValue: yAxis?.formatValue, gridNumTicks: grid?.numTicks, hasYAxis: yAxis !== null, yMax: yDomainMax, yMin: yDomainMin, yNumTicks: yAxis?.numTicks });
 
     const marks = buildCandleDefinitionMarks({ bodyWidthPx, candleMotion, discrete, fadedOpacity: resolvedCandlestick.fadedOpacity, indicatorGradientId, insideStrokeW: resolvedCandlestick.insideStrokeWidth, legendHoveredIndex, negativePattern, positivePattern, showHoverFade: resolvedCandlestick.showHoverFade, showTargetGeometry, solidFillFor, source: renderData, tooltip, tooltipSpring: chartConfig.tooltipSpring, xDataKey });
     const gridGuide = resolveGridGuide(grid);
@@ -2065,7 +2115,7 @@ const CandlestickChart = ({
   }, [dateLabelsForPill, tooltip]);
 
   const overlayHostRef = useRef<HTMLDivElement | null>(null);
-  const hasDefinition = width > 0;
+  const hasDefinition = width > EMPTY_CONTAINER_PX;
 
   const pillRef = useRef<PillBuild | null>(null);
   // First pill show jumps; later moves spring (mirrors legacy showing flag).
@@ -2104,7 +2154,7 @@ const CandlestickChart = ({
 
   const handleFocusGroupChange = useCallback(
     (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
-      if (dragSelectionActiveRef.current || points.length === 0) {
+      if (dragSelectionActiveRef.current || points.length === EMPTY_COUNT) {
         hidePill();
         return;
       }
@@ -2123,6 +2173,7 @@ const CandlestickChart = ({
       const model = resolveCandleTooltipModel(ctx, chromeStateRef.current);
       if (model === undefined) {return undefined;}
       const { tt, date, close, pointRec } = model;
+      const rows: TooltipRow[] = tt?.rows ? tt.rows(pointRec) : buildDefaultCandleCloseRow(close);
       const panel = resolveCandleTooltipPanel(tt);
       if (tt?.content) {
         return (
@@ -2131,9 +2182,6 @@ const CandlestickChart = ({
           </div>
         );
       }
-      const rows: TooltipRow[] = tt?.rows
-        ? tt.rows(pointRec)
-        : [{ color: "var(--chart-line-primary)", label: "close", value: close }];
       const title = weekdayDateFmt.format(date);
       return (
         <div className={panel.className} style={panel.style}>
@@ -2152,8 +2200,7 @@ const CandlestickChart = ({
 
   const refAreaChildrenCandle = useMemo(() => extractReferenceAreaProps(children), [children]);
   const segChildrenCandle = useMemo(() => extractSegmentComponents(children), [children]);
-  const innerWidthCandle = Math.max(0, width - margin.left - margin.right);
-  const heightPxCandle = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
+  const heightPxCandle = width > EMPTY_CONTAINER_PX ? width / parseAspectRatio(aspectRatio) : COLLAPSED_GEOMETRY_PX;
   const timeExtentCandle = useMemo(() => findCandleTimeExtent(renderData, xDataKey), [renderData, xDataKey]);
   // Selection resolves through the host's live interaction/scene refs, not a duplicate scale.
   const invertSceneXCandle = useCallback(
@@ -2164,7 +2211,7 @@ const CandlestickChart = ({
     containerRef,
     data: renderData,
     enabled: true,
-    innerWidth: innerWidthCandle,
+    innerWidth,
     invertSceneX: invertSceneXCandle,
     marginLeft: margin.left,
     onDragEnd: () => {
@@ -2222,7 +2269,7 @@ const CandlestickChart = ({
     xDomain: timeExtentCandle ? [new Date(timeExtentCandle.minTime), new Date(timeExtentCandle.maxTime)] : undefined,
     yDomain,
   }), [heightPxCandle, margin, timeExtentCandle, width, yDomain]);
-  const referenceAreaLayer = heightPxCandle > 0 ? (
+  const referenceAreaLayer = heightPxCandle > EMPTY_CONTAINER_PX ? (
     <ReferenceAreaLayers
       configs={refAreaChildrenCandle}
       geom={referenceAreaGeomCandle}
@@ -2252,7 +2299,7 @@ const CandlestickChart = ({
       {referenceAreaLayer}
       <SegmentOverlay
         selection={candleSelection}
-        innerWidth={innerWidthCandle}
+        innerWidth={innerWidth}
         innerHeight={heightPxCandle - margin.top - margin.bottom}
         marginLeft={margin.left}
         marginTop={margin.top}
@@ -2270,7 +2317,7 @@ const CandlestickChart = ({
           x1={0}
           x2={0}
           y1={margin.top}
-          y2={margin.top + Math.max(0, heightPxCandle - margin.top - margin.bottom)}
+          y2={margin.top + Math.max(MIN_GEOMETRY_EXTENT_PX, heightPxCandle - margin.top - margin.bottom)}
         >
           {crosshairFadeGradient.stops.map((stop: { readonly offset: string; readonly opacity: number }) => renderCandleCrosshairStop(stop, crosshairFadeGradient.color))}
         </linearGradient>
@@ -2290,7 +2337,7 @@ const CandlestickChart = ({
         <BackgroundLayer
           config={background}
           innerWidth={innerWidth}
-          innerHeight={Math.max(0, heightPxCandle - margin.top - margin.bottom)}
+          innerHeight={Math.max(MIN_GEOMETRY_EXTENT_PX, heightPxCandle - margin.top - margin.bottom)}
           marginLeft={margin.left}
           marginTop={margin.top}
         />

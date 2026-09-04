@@ -1,5 +1,5 @@
 // All>=0 -> [0,max*1.1]; mixed-sign -> 5% pad; empty -> [0,100]. Scatter has own rules.
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { scaleLinear } from "d3-scale";
 import type { ScaleLinear } from "d3-scale";
 
@@ -84,7 +84,13 @@ const useNicedYDomainChanged = (yDomain: readonly [number, number]): NicedYDomai
   );
   const prevRef = useRef(niced);
   const changed = prevRef.current[0] !== niced[0] || prevRef.current[1] !== niced[1];
-  prevRef.current = niced;
+  /*
+   * The previous-domain write lands in an effect so render stays pure. The comparison
+   * above still reads the last committed domain, so tween detection is unchanged.
+   */
+  useEffect(() => {
+    prevRef.current = niced;
+  }, [niced]);
   return { changed, niced };
 }
 

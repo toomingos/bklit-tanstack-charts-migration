@@ -99,7 +99,11 @@ const HeatmapTooltip = ({
   const coordinator = useHeatmapCoordinatorOptional();
 
   useLayoutEffect(() => {
-    if (!coordinator) {return;}
+    if (!coordinator) {
+      return (): void => {
+        // No coordinator, so there is nothing to clean up.
+      };
+    }
     setHeatmapTooltipConfig(coordinator, {
       backgroundColor,
       className,

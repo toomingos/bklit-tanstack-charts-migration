@@ -41,6 +41,10 @@ interface AreaRunsParams {
   readonly yValues: readonly number[];
 }
 
+const EMPTY_RUN_LENGTH = 0;
+const INDEX_STEP = 1;
+const FULL_OPACITY = 1;
+
 // Scales is typed as a total Record, but scale ids resolve at runtime.
 // A misconfigured chart can omit one, so the widened record keeps this check honest.
 const hasScale = (scales: Readonly<Record<string, ResolvedScale | undefined>>, id: string): boolean =>
@@ -53,11 +57,11 @@ const collectAreaRuns = (params: Readonly<AreaRunsParams>): readonly (readonly (
   const runs: (readonly (readonly [number, number])[])[] = [];
   let top: (readonly [number, number])[] = [];
   const flush = (): void => {
-    if (top.length === 0) {return;}
+    if (top.length === EMPTY_RUN_LENGTH) {return;}
     runs.push(top);
     top = [];
   };
-  for (let datumIndex = 0; datumIndex <= xValues.length; datumIndex += 1) {
+  for (let datumIndex = 0; datumIndex <= xValues.length; datumIndex += INDEX_STEP) {
     const yValue = yValues[datumIndex];
     if (datumIndex === xValues.length || !Number.isFinite(yValue)) {
       flush();
@@ -79,7 +83,7 @@ const buildAreaChildren = (params: Readonly<AreaChildrenParams>): SceneNode[] =>
       kind: "area",
       path: curve.area(top, bottom),
       points: [],
-      style: { fill, fillOpacity: fillOpacity ?? 1 },
+      style: { fill, fillOpacity: fillOpacity ?? FULL_OPACITY },
     };
   });
 }

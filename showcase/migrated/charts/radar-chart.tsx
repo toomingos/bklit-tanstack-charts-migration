@@ -941,7 +941,7 @@ const RadarChart = ({
   ]);
 
   const handleRender = useCallback(
-    ({ container }: { container: HTMLElement }): (() => void) | undefined => {
+    ({ container }: { container: HTMLElement }): void => {
       if (!beginRadarReveal(container, animate, gridRevealedRef)) {return;}
       // DurationFactor scales stagger delays only, not transition timing.
       // Label springs ignore durationFactor: the deadline must cover the longest live animation.

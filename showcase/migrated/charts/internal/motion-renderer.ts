@@ -77,9 +77,7 @@ const useChartRenderer = <
   estimate: number,
 ): ChartRenderer<TDatum, TXValue, TYValue> => {
   const rendererRef = useRef<ChartRenderer<TDatum, TXValue, TYValue> | undefined>(undefined);
-  if (rendererRef.current === undefined) {
-    rendererRef.current = chartRendererFor<TDatum, TXValue, TYValue>(estimate);
-  }
+  rendererRef.current ??= chartRendererFor<TDatum, TXValue, TYValue>(estimate);
   return rendererRef.current;
 };
 

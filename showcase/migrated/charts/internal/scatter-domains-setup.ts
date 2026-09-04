@@ -41,9 +41,14 @@ interface ScatterDomains {
   readonly yDomain: [number, number];
 }
 
+// Axis-keyed niced domains, one entry per represented y axis id.
+interface NicedDomainsByAxis {
+  [axisId: string]: [number, number];
+}
+
 const buildNicedDomainsByAxis = (
   yDomainsByAxis: Record<string, [number, number]>,
-): Record<string, [number, number]> => {
+): NicedDomainsByAxis => {
   const out: Record<string, [number, number]> = {};
   for (const [axisId, domain] of Object.entries(yDomainsByAxis)) {
     const niced = createNicedYScale(domain).domain();

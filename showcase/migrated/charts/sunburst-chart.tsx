@@ -226,6 +226,8 @@ const MIN_SUNBURST_RADIUS_PX = 8;
 // Default chart size and hover pop-out, matching bklit's SunburstChart defaults.
 const DEFAULT_SUNBURST_SIZE = 520;
 const DEFAULT_HOVER_POP = 8;
+// Percentage scale for color-mix alpha weights: unit alpha (0-1) formats as 0-100%.
+const ALPHA_TO_PERCENT = 100;
 // Degree geometry for label rotation: radians-to-degrees half-circle and the flip threshold.
 const DEGREES_PER_HALF_CIRCLE = 180;
 const LABEL_FLIP_THRESHOLD_DEGREES = 90;
@@ -236,7 +238,7 @@ const LABEL_FLIP_THRESHOLD_DEGREES = 90;
 
 const applyAlphaToColor = (color: string, alpha: number): string => {
   if (alpha >= FULL_OPACITY) {return color;}
-  return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
+  return `color-mix(in srgb, ${color} ${Math.round(alpha * ALPHA_TO_PERCENT)}%, transparent)`;
 }
 
 const isRelatedArc = (arc: ReadonlySunburstArc, hovered: ReadonlySunburstArc): boolean =>
@@ -297,7 +299,7 @@ const getSunburstPathMap = (container: HTMLElement, markId: string): Map<string,
     : container.querySelectorAll<SVGPathElement>(`path[data-ts-key^="${prefix}"]`);
   const map = new Map<string, SVGPathElement>();
   for (const el of allPaths) {
-    const id = parseSunburstPathId(el.getAttribute("data-ts-key") ?? "", prefix);
+    const id = parseSunburstPathId(el.dataset.tsKey ?? "", prefix);
     if (id !== undefined && !map.has(id)) {map.set(id, el);}
   }
   return map;
@@ -368,7 +370,7 @@ const attachSunburstPathClicks = (
   onZoomId: (zoomId: string) => void,
 ): (() => void) | undefined => {
   if (elementMap.size === 0) {return undefined;}
-  const cleanups: Array<() => void> = [];
+  const cleanups: (() => void)[] = [];
   for (const arc of sortedArcs) {
     const pathElement = elementMap.get(arc.id);
     if (pathElement) {cleanups.push(bindArcClick(pathElement, arc, onZoomId));}
@@ -1097,7 +1099,7 @@ const SunburstChartInner = ({
     cancelLabelAnimations(labelRevealAnimsRef.current);
     labelRevealAnimsRef.current = [];
     return startLabelReveal(svg, labelsRevealDelayMs, enterDurationMs);
-  }, [labelsRevealDelayMs]);
+  }, [labelsRevealDelayMs, enterDurationMs]);
 
   // Redundant dep omitted: runLabelsReveal already changes identity exactly
   // When labelsRevealDelayMs changes (its useCallback dep, above).

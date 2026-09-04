@@ -1,10 +1,10 @@
 import type { ScaleLinear, ScaleTime } from "d3-scale";
 import type { CurveFactory } from "d3-shape";
 import type { RefObject } from "react";
-import type { TimeBounds } from "./composed-data-math";
 import type {
   ProjectionMarkerFallbacks,
   ProjectionStrokeFallbacks,
+  TimeBounds,
 } from "./composed-data-math";
 import type { ProjectionLineConfig } from "./projection-config";
 import type { ChartDatum, ChartTooltipConfig, GridConfig, XAxisConfig } from "./types";

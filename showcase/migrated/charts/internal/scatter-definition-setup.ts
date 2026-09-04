@@ -22,6 +22,9 @@ import type { ScatterTimingModel } from "./scatter-reveal-setup";
 // Seconds<->milliseconds conversion for enter-motion delay math.
 const MS_PER_SECOND = 1000;
 
+// A chart with no measurable width renders nothing until layout arrives.
+const MIN_RENDERABLE_WIDTH = 0;
+
 interface BuildScatterAllMarksParams {
   readonly crosshairGradientId: string;
   readonly data: readonly ChartDatum[];
@@ -132,7 +135,7 @@ const buildScatterDefinitionState = ({
     crosshairGradientId,
     data,
     gradientIdBySeries,
-    innerWidth: Math.max(0, width - margin.left - margin.right),
+    innerWidth: Math.max(MIN_RENDERABLE_WIDTH, width - margin.left - margin.right),
     pointerFocusActive,
     projectorFor,
     resolvedSeries,
@@ -195,7 +198,7 @@ const useScatterDefinitionModel = ({
   const [pointerFocusActive, setPointerFocusActive] = useState(false);
 
   const definition = useMemo((): DomChartDefinition<ChartDatum, Date, number> | undefined => {
-    if (series.width <= 0) {return undefined;}
+    if (series.width <= MIN_RENDERABLE_WIDTH) {return undefined;}
     return buildScatterDefinitionState({
       config: { tooltipBoxSpring, tooltipSpring },
       crosshairGradientId: series.crosshairGradientId,

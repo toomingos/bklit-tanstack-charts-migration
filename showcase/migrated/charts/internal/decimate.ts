@@ -98,7 +98,8 @@ const sampleLttbBuckets = <Row>(params: Readonly<BucketSampleParams<Row>>): Row[
     sampled.push(params.data[maxIndex]);
     previousIndex = maxIndex;
   }
-  sampled.push(params.data[params.data.length - 1]);
+  // Fallback is unreachable (empty input returns early); it keeps the push total-shaped without a length-relative index.
+  sampled.push(params.data.at(-1) ?? params.data[0]);
   return sampled;
 };
 

@@ -22,7 +22,9 @@ const INITIAL_SCATTER_PILL_CHROME_STATE: ScatterPillChromeState = {
   xDataKey: "",
 };
 
-const stringifyDatumValue = <Value,>(value: Value, fallback: string): string => {
+type ScatterDatumField = ChartDatum[string];
+
+const stringifyDatumValue = (value: ScatterDatumField, fallback: string): string => {
   if (isString(value)) {return value;}
   if (isNumber(value)) {return String(value);}
   if (value instanceof Date) {return String(value);}

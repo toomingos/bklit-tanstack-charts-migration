@@ -83,7 +83,7 @@ const startLoopPulse = ({ isCancelled, notifyCycleComplete, run }: Readonly<Loop
   run({
     done: (): void => {
       if (!isCancelled()) {
-        globalThis.setTimeout(() => notifyCycleComplete(), LINE_LOADING_LOOP_PAUSE_MS);
+        globalThis.setTimeout(() => { notifyCycleComplete(); }, LINE_LOADING_LOOP_PAUSE_MS);
       }
     },
     dur: LINE_LOADING_PULSE_CYCLE_S,
@@ -143,7 +143,7 @@ const createPulseTween = ({ animRef, isCancelled, setProgress }: Readonly<PulseT
     let start: number | undefined = undefined;
     const step = (now: number): void => {
       if (isCancelled()) {return;}
-      if (start === undefined) { start = now; }
+      start ??= now;
       const ratio = Math.min(1, (now - start) / (dur * MS_PER_SECOND));
       const current = from + (to - from) * ratio;
       setProgress(current);

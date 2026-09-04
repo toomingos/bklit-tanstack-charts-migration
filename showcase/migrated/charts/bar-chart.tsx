@@ -2209,13 +2209,9 @@ const BarChart = ({
   latestRenderDataRef.current = renderData;
   const revealedForDataRef = useRef<unknown>(null);
   // Reveal replays on data change or revealSignature/animationDuration change (bklit epoch).
-  const enterType = enterTransition?.type;
-  const enterDuration = enterTransition?.duration;
-  const enterEaseKey = enterTransition?.ease?.join(",");
   const { durationMs: revealDurationMs, easingCss: revealEasingCss } = useMemo(
     () => clipRevealTiming(enterTransition, animationDuration, animationEasing),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [enterType, enterDuration, enterEaseKey, animationDuration, animationEasing],
+    [enterTransition, animationDuration, animationEasing],
   );
   const revealKey = `${revealSignature}|${animationDuration}`;
   const revealedKeyRef = useRef<string | null>(null);
@@ -2619,11 +2615,14 @@ const BarChart = ({
     if (isNumber(rawValue)) {return String(rawValue);}
     return "";
   }), [renderData, xDataKey]);
-  chromeStateRef.current = {
-    dateLabels: dateLabelsForPill,
-    series: dotSeriesList,
-    tooltip: tooltip ?? undefined,
-  };
+  // Chrome snapshot only feeds pointer and focus handlers, so syncing post-commit keeps every read fresh.
+  useLayoutEffect(() => {
+    chromeStateRef.current = {
+      dateLabels: dateLabelsForPill,
+      series: dotSeriesList,
+      tooltip: tooltip ?? undefined,
+    };
+  });
 
   const overlayHostRef = useRef<HTMLDivElement | null>(null);
   const hasDefinition = width > 0;

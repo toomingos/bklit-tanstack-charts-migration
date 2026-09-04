@@ -31,14 +31,17 @@ interface CubicBezierCoefficients {
 }
 
 // Ease-out second control-point x (0, 0, 0.58, 1); the only curve the zoom easing uses.
+const EASE_OUT_CONTROL_X1 = 0;
+const EASE_OUT_CONTROL_Y1 = 0;
 const EASE_OUT_CONTROL_X2 = 0.58;
+const EASE_OUT_CONTROL_Y2 = 1;
 // Ease-out control points (0, 0, 0.58, 1); the only curve the zoom easing uses.
 const easeOutCoefficients = (): CubicBezierCoefficients => {
-  const cx = CUBIC_BEZIER_COEFFICIENT * 0;
-  const bx = CUBIC_BEZIER_COEFFICIENT * (EASE_OUT_CONTROL_X2 - 0) - cx;
+  const cx = EASE_OUT_CONTROL_X1;
+  const bx = CUBIC_BEZIER_COEFFICIENT * (EASE_OUT_CONTROL_X2 - EASE_OUT_CONTROL_X1) - cx;
   const ax = 1 - cx - bx;
-  const cy = CUBIC_BEZIER_COEFFICIENT * 0;
-  const by = CUBIC_BEZIER_COEFFICIENT * (1 - 0) - cy;
+  const cy = EASE_OUT_CONTROL_Y1;
+  const by = CUBIC_BEZIER_COEFFICIENT * (EASE_OUT_CONTROL_Y2 - EASE_OUT_CONTROL_Y1) - cy;
   const ay = 1 - cy - by;
   return { ax, ay, bx, by, cx, cy };
 }
@@ -85,7 +88,10 @@ const matricesEqual = (matrixA: Readonly<TransformMatrix>, matrixB: Readonly<Tra
     return scaleMatches && translateMatches && skewMatches;
   }
 
-type ZoomEaseState = { from: TransformMatrix; start: number };
+interface ZoomEaseState {
+  from: TransformMatrix;
+  start: number;
+}
 
 interface ZoomFrameOptions {
   readonly dragging: boolean;

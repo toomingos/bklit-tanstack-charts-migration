@@ -16,6 +16,18 @@ const DRILL_CENTER_SCALE = 0.65;
 const DRILL_CENTER_DEPTH_SHRINK = 0.08;
 const MIN_DRILL_CENTER_SCALE = 0.45;
 const FOCUS_SPAN_EPSILON = 1e-9;
+// Depth of the root focus; ring layout collapses to a single centered ring here.
+const ROOT_FOCUS_DEPTH = 0;
+// Depth offset past the first drill level; the center stops shrinking after this.
+const FIRST_DRILL_DEPTH_OFFSET = 1;
+// At least one ring stays visible no matter how deep the focus drills.
+const MIN_VISIBLE_RINGS = 1;
+// Zero-based index base converting a 1-based relative depth into a ring offset.
+const RING_INDEX_BASE = 1;
+// Mean of two arc bounds gives the centroid, so the angular/radial sums halve.
+const CENTROID_DIVISOR = 2;
+// Clockwise fractions start at 12 o'clock; negative normalized angles wrap past this.
+const CLOCKWISE_ORIGIN = 0;
 
 // Same reasoning as ReadonlySunburstNode: ArcDatum.trail (sunburst-types.ts) is a mutable
 // Array upstream, and the geometry helpers below never mutate it.
@@ -32,16 +44,16 @@ interface RingOptions {
 
 const ringOptions = (focusDepth: number, maxDepth: number, radius: number): RingOptions => {
   const oneLevelCenterR = radius / maxDepth;
-  if (focusDepth === 0) {
+  if (focusDepth === ROOT_FOCUS_DEPTH) {
     return { centerR: 0, ringWidth: oneLevelCenterR };
   }
-  const depthPastFirstDrill = Math.max(0, focusDepth - 1);
+  const depthPastFirstDrill = Math.max(ROOT_FOCUS_DEPTH, focusDepth - FIRST_DRILL_DEPTH_OFFSET);
   const centerScale = Math.max(
     MIN_DRILL_CENTER_SCALE,
     DRILL_CENTER_SCALE - depthPastFirstDrill * DRILL_CENTER_DEPTH_SHRINK,
   );
   const centerR = oneLevelCenterR * centerScale;
-  const visibleRings = Math.max(1, maxDepth - focusDepth);
+  const visibleRings = Math.max(MIN_VISIBLE_RINGS, maxDepth - focusDepth);
   const ringWidth = (radius - centerR) / visibleRings;
   return { centerR, ringWidth };
 };
@@ -87,7 +99,7 @@ const geometryFor = (
   return {
     a0: mapAngle(arc.a0),
     a1: mapAngle(arc.a1),
-    innerR: centerR + (relativeDepth - 1) * ringWidth,
+    innerR: centerR + (relativeDepth - RING_INDEX_BASE) * ringWidth,
     outerR: centerR + relativeDepth * ringWidth,
   };
 };
@@ -96,14 +108,14 @@ const geometryFor = (
 // Geometry helpers
 // ---------------------------------------------------------------------------
 
-const geomCentroidAngle = (geometry: Readonly<ArcGeometry>): number => (geometry.a0 + geometry.a1) / 2;
+const geomCentroidAngle = (geometry: Readonly<ArcGeometry>): number => (geometry.a0 + geometry.a1) / CENTROID_DIVISOR;
 
-const geomCentroidRadius = (geometry: Readonly<ArcGeometry>): number => (geometry.innerR + geometry.outerR) / 2;
+const geomCentroidRadius = (geometry: Readonly<ArcGeometry>): number => (geometry.innerR + geometry.outerR) / CENTROID_DIVISOR;
 
 // Normalized clockwise angle from 12 o'clock (0 → 1).
 const clockwiseFraction = (angle: number): number => {
   let normalized = angle - TOP;
-  if (normalized < 0) {
+  if (normalized < CLOCKWISE_ORIGIN) {
     normalized += TWO_PI;
   }
   return normalized / TWO_PI;

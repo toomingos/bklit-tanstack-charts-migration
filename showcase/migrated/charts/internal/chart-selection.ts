@@ -1,6 +1,6 @@
 "use client";
 
-import { Children, Fragment, createContext, isValidElement, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, createContext, isValidElement, useCallback, useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
 import type { ChartValue } from "@tanstack/charts";
 import { resolveNearestIndex } from "./bisect";
@@ -166,9 +166,15 @@ const collectSegmentChild = (params: Readonly<SegmentChildVisit>): void => {
 const extractSegmentComponents = (children: ReactNode): SegmentComponent[] => {
   const out: SegmentComponent[] = [];
   const visit = (node: ReactNode): void => {
-    for (const child of Children.toArray(node)) {
-      collectSegmentChild({ child, out, visit });
+    // Children.toArray used to flatten nested arrays here; recurse instead so the walk below sees every child without depending on the React.Children API.
+    if (Array.isArray(node)) {
+      const items: readonly ReactNode[] = node;
+      for (const child of items) {
+        visit(child);
+      }
+      return;
     }
+    collectSegmentChild({ child: node, out, visit });
   };
   visit(children);
   return out;

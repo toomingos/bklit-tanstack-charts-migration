@@ -1,7 +1,8 @@
 import { createPortal } from "react-dom";
 import { useId } from "react";
-import type { ReactElement } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import { useHeatmap } from "./heatmap-context";
+import { useSeparatorLabelPresentation } from "./heatmap-separator-label";
 import {
   buildHeatmapSeparatorGradientStops,
   getHeatmapSeparatorLineY,
@@ -48,13 +49,10 @@ interface SeparatorLabelPortalParams {
   readonly labelClassName: string | undefined;
   readonly labelFormat: (quarter: number, startDate: Readonly<Date>) => string;
   readonly labelGroups: readonly HeatmapSeparatorGroup[];
-  readonly labelTop: number;
-  readonly marginLeft: number;
-  readonly marginTop: number;
-  readonly innerWidth: number;
+  readonly labelStyles: readonly Readonly<CSSProperties>[];
+  readonly layerStyle: Readonly<CSSProperties>;
   readonly htmlLayerEl: HTMLDivElement | null;
   readonly showLabels: boolean;
-  readonly xScale: (columnIndex: number) => number;
 }
 
 const buildSeparatorLabelPortal = ({
@@ -62,25 +60,22 @@ const buildSeparatorLabelPortal = ({
   labelClassName,
   labelFormat,
   labelGroups,
-  labelTop,
-  marginLeft,
-  marginTop,
-  innerWidth,
+  labelStyles,
+  layerStyle,
   htmlLayerEl,
   showLabels,
-  xScale,
 }: Readonly<SeparatorLabelPortalParams>): ReturnType<typeof createPortal> | undefined => {
   if (!showLabels || labelGroups.length === 0 || !htmlLayerEl) {return undefined;}
   return createPortal(
     <div
       className={className !== undefined && className !== "" ? `${HEATMAP_AXIS_LAYER_CLASS} ${className}` : HEATMAP_AXIS_LAYER_CLASS}
-      style={{ height: marginTop, left: marginLeft, pointerEvents: "none", position: "absolute", top: labelTop, width: innerWidth }}
+      style={layerStyle}
     >
-      {labelGroups.map((group) => (
+      {labelGroups.map((group, groupIndex) => (
         <span
           key={group.startColumnIndex}
           className={labelClassName !== undefined && labelClassName !== "" ? `ts-bkm-heatmap-separator-label ${labelClassName}` : "ts-bkm-heatmap-separator-label"}
-          style={{ left: xScale(group.startColumnIndex), position: "absolute" }}
+          style={labelStyles[groupIndex]}
         >
           {labelFormat(group.quarter, group.startDate)}
         </span>
@@ -259,19 +254,16 @@ const HeatmapSeparator = ({
   // Scoped with useId so two heatmap instances on one page don't share one
   // Gradient def (HM7; bklit does the same via useId).
   const gradientId = `heatmap-separator-gradient-${useId().replaceAll(":", "")}`;
-  const labelTop = (startOffset ?? ctx.margin.top) + labelOffset;
+  const presentation = useSeparatorLabelPresentation(labelOffset, startOffset);
   const labelPortal = buildSeparatorLabelPortal({
     className,
     htmlLayerEl: ctx.htmlLayerEl,
-    innerWidth: ctx.innerWidth,
     labelClassName,
     labelFormat,
-    labelGroups: layout?.groups ?? [],
-    labelTop,
-    marginLeft: ctx.margin.left,
-    marginTop: ctx.margin.top,
+    labelGroups: presentation.labelGroups,
+    labelStyles: presentation.labelStyles,
+    layerStyle: presentation.layerStyle,
     showLabels,
-    xScale: ctx.xScale,
   });
   if (!layout || layout.atColumns.length === 0) {return labelPortal;}
   const lineConfig = resolveSeparatorLineConfig({ gradient, innerHeight: ctx.innerHeight, marginTop: ctx.margin.top, paddingY, startOffset, strokeDasharray, strokeOpacity, strokeStyle });

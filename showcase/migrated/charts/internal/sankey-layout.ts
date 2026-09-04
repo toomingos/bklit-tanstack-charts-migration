@@ -3,14 +3,14 @@ import type {
   SankeyNode as D3SankeyNode,
 } from "d3-sankey";
 
-type LaidOutNodeDatum = {
+interface LaidOutNodeDatum {
   readonly name: string;
   readonly category?: string;
-};
+}
 
-type LaidOutLinkDatum = {
+interface LaidOutLinkDatum {
   readonly value: number;
-};
+}
 
 type LaidOutNode = D3SankeyNode<LaidOutNodeDatum, LaidOutLinkDatum>;
 

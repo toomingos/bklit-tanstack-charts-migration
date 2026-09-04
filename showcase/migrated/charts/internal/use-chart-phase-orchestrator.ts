@@ -5,6 +5,13 @@ import { resolveRestingChartPhase } from './chart-phase';
 import type { ChartPhase, ChartStatus } from './chart-phase';
 import type { ChartDatum } from './types';
 
+// A non-positive stage duration means that animation stage is disabled.
+const DISABLED_STAGE_DURATION = 0;
+
+// Epoch counters start at zero and bump by one per transition.
+const INITIAL_EPOCH = 0;
+const EPOCH_STEP = 1;
+
 interface UseChartPhaseOrchestratorOptions {
   chartStatus: ChartStatus;
   targetData: ChartDatum[];
@@ -29,16 +36,16 @@ interface StatusTransitionParams {
 }
 
 const resolveReadyTransition = (params: Readonly<StatusTransitionParams>): StatusTransition => {
-  if (params.animationDuration <= 0) {
-    if (params.yDomainTweenDuration <= 0) {return { bumpConceal: false, phase: "revealing", plotData: "target" };}
+  if (params.animationDuration <= DISABLED_STAGE_DURATION) {
+    if (params.yDomainTweenDuration <= DISABLED_STAGE_DURATION) {return { bumpConceal: false, phase: "revealing", plotData: "target" };}
     return { bumpConceal: false, phase: "gridTweenReady", plotData: undefined };
   }
   return { bumpConceal: false, phase: "exiting", plotData: undefined };
 }
 
 const resolveLoadingTransition = (params: Readonly<StatusTransitionParams>): StatusTransition => {
-  if (params.animationDuration <= 0) {
-    if (params.yDomainTweenDuration <= 0) {return { bumpConceal: false, phase: "loading", plotData: "skeleton" };}
+  if (params.animationDuration <= DISABLED_STAGE_DURATION) {
+    if (params.yDomainTweenDuration <= DISABLED_STAGE_DURATION) {return { bumpConceal: false, phase: "loading", plotData: "skeleton" };}
     return { bumpConceal: false, phase: "gridTweenLoading", plotData: undefined };
   }
   return { bumpConceal: true, phase: "exitingReady", plotData: undefined };
@@ -64,7 +71,7 @@ const commitStatusTransition = (transition: Readonly<StatusTransition>, commit: 
   const plotDataByKind = { skeleton: commit.skeletonData, target: commit.targetData };
   const nextPlotData = transition.plotData === undefined ? undefined : plotDataByKind[transition.plotData];
   if (nextPlotData !== undefined) {commit.setPlotData(nextPlotData);}
-  if (transition.bumpConceal) {commit.setConcealEpoch((epoch) => epoch + 1);}
+  if (transition.bumpConceal) {commit.setConcealEpoch((epoch) => epoch + EPOCH_STEP);}
   commit.setChartPhase(transition.phase);
 }
 
@@ -119,8 +126,8 @@ const useRevealTimerEffect = (params: Readonly<RevealTimerParams>): void => {
   const { animationDuration, chartPhase, setChartPhase, setIsLoaded, setRevealEpoch } = params;
   useEffect(() => {
     if (chartPhase !== "revealing") {return undefined;}
-    setRevealEpoch((epoch) => epoch + 1);
-    if (animationDuration <= 0) {
+    setRevealEpoch((epoch) => epoch + EPOCH_STEP);
+    if (animationDuration <= DISABLED_STAGE_DURATION) {
       setChartPhase("ready");
       setIsLoaded(true);
       return undefined;
@@ -181,7 +188,7 @@ const useChartPhaseEffects = (params: Readonly<ChartPhaseEffectsParams>): void =
     if (phaseRef.current !== "ready") {return;}
     setChartPhase("revealing");
     setIsLoaded(false);
-  }, [animationDuration, chartStatus, phaseRef, revealSignature, setChartPhase, setIsLoaded, skipEnterReveal]);
+  }, [chartStatus, phaseRef, revealSignature, setChartPhase, setIsLoaded, skipEnterReveal]);
 
   useEffect(() => {
     const source = resolvePlotDataSource(chartPhase, chartStatus);
@@ -252,8 +259,8 @@ export const useChartPhaseOrchestrator = ({
   const [chartPhase, setChartPhase] = useState<ChartPhase>(() => resolveRestingChartPhase(chartStatus));
   const [plotData, setPlotData] = useState<ChartDatum[]>(() => chartStatus === "loading" ? skeletonData : targetData
   );
-  const [revealEpoch, setRevealEpoch] = useState(0);
-  const [concealEpoch, setConcealEpoch] = useState(0);
+  const [revealEpoch, setRevealEpoch] = useState(INITIAL_EPOCH);
+  const [concealEpoch, setConcealEpoch] = useState(INITIAL_EPOCH);
   const [isLoaded, setIsLoaded] = useState(() => chartStatus === "ready");
   const prevStatusRef = useRef(chartStatus);
   const phaseRef = useRef(chartPhase);

@@ -83,7 +83,7 @@ const ChartMarkersOverlay = (props: ChartMarkersProps): ReactElement | null => {
   const activeDate = useActiveMarkerDate();
   const buckets = useMemo<Bucket[]>(() => {
     const map = new Map<string, Bucket>();
-    for (const marker of items ?? []) {
+    for (const marker of items) {
       const dateKey = marker.date.toDateString();
       const bucket = map.get(dateKey);
       if (bucket) {bucket.markers.push(marker);}
@@ -101,7 +101,7 @@ const ChartMarkersOverlay = (props: ChartMarkersProps): ReactElement | null => {
     onMarkerHoverChange?.(markers);
   }, [onMarkerHoverChange]);
 
-  if (!items || items.length === 0 || !xScale) {return null;}
+  if (items.length === 0 || !xScale) {return null;}
 
   return (
     <div

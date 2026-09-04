@@ -200,7 +200,7 @@ const useHeatmapChartLifecycle = (params: HeatmapLifecycleParams): HeatmapLifecy
         clearTimeout(armedTimerId);
       }
     };
-  }, [animation.animateEnter, phase.chartPhase, animationDurationMs, phase.revealEpoch, timers.finishTimerRef, phase.setChartPhase, phase.setIsLoaded, phase.setRevealMode]);
+  }, [animation.animateEnter, phase.chartPhase, animationDurationMs, timers.finishTimerRef, phase.setChartPhase, phase.setIsLoaded, phase.setRevealMode]);
 
   return { animateCells: animation.animateCells, chartPhase: phase.chartPhase, isLoaded: phase.isLoaded, revealEpoch: phase.revealEpoch, revealMode: phase.revealMode };
 }

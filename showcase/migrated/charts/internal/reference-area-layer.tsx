@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useMemo, useRef } from "react";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type { PatternPresetId } from './pattern-preset';
 import type { ReferenceAreaIfOverflow } from './reference-area-geometry';
 import type { ChartMargin } from "./use-chart-margin";
@@ -143,66 +143,127 @@ const isStrokeStyleValue = <Value,>(value: Value): value is Value & ("solid" | "
 const isIfOverflowValue = <Value,>(value: Value): value is Value & ReferenceAreaIfOverflow =>
   value === "hidden" || value === "visible" || value === "discard";
 
+// Zero configs means no layers to render.
+const EMPTY_REFERENCE_AREA_CONFIG_COUNT = 0;
+
+// Narrow converters for open-ended child-props values. One converter serves each prop
+// Type so the element factory below holds no branches of its own.
+
+// SAFETY: Each config is the props object of a <ReferenceArea> child element.
+// Only elements whose role is "referenceArea" are collected (see extractReferenceAreaProps).
+// React types those props as ReferenceAreaProps at the JSX creation site.
+// Every field read below is therefore narrowed to its prop type by the guards above.
+
+// Narrows an open-ended config value to the number prop type.
+const narrowNumberProp = <Value,>(value: Value): (Value & number) | undefined => {
+  if (isNumberValue(value)) {return value;}
+  return undefined;
+};
+
+// Narrows an open-ended config value to the string prop type.
+const narrowStringProp = <Value,>(value: Value): (Value & string) | undefined => {
+  if (isStringValue(value)) {return value;}
+  return undefined;
+};
+
+// Narrows an open-ended config value to the boolean prop type.
+const narrowBooleanProp = <Value,>(value: Value): (Value & boolean) | undefined => {
+  if (isBooleanValue(value)) {return value;}
+  return undefined;
+};
+
+// Narrows an open-ended config value to the date-or-number prop type.
+const narrowDateOrNumberProp = <Value,>(value: Value): (Value & (Date | number)) | undefined => {
+  if (isDateOrNumberValue(value)) {return value;}
+  return undefined;
+};
+
+// Narrows an open-ended config value to the string-or-number prop type.
+const narrowStringOrNumberProp = <Value,>(value: Value): (Value & (string | number)) | undefined => {
+  if (isStringOrNumberValue(value)) {return value;}
+  return undefined;
+};
+
+// Narrows an open-ended config value to the pattern-preset prop type.
+const narrowPatternPresetProp = <Value,>(value: Value): (Value & PatternPresetId) | undefined => {
+  if (isPatternPresetValue(value)) {return value;}
+  return undefined;
+};
+
+// Narrows an open-ended config value to the stroke-style prop type.
+const narrowStrokeStyleProp = <Value,>(value: Value): (Value & ("solid" | "dashed")) | undefined => {
+  if (isStrokeStyleValue(value)) {return value;}
+  return undefined;
+};
+
+// Narrows an open-ended config value to the overflow prop type.
+const narrowIfOverflowProp = <Value,>(value: Value): (Value & ReferenceAreaIfOverflow) | undefined => {
+  if (isIfOverflowValue(value)) {return value;}
+  return undefined;
+};
+
+// Readonly view of the geometry passthrough for the element factory below.
+type ReferenceAreaLayersGeomView = Pick<ReferenceAreaLayersGeom, "barScale" | "height" | "isBarChart" | "isCandlestickXScale" | "isLoaded" | "isTimeScale" | "margin" | "phase" | "width" | "xDataKey" | "xDomain" | "xRangePadding" | "yDomain" | "yDomainsByAxis">;
+
+// Builds one reference-area element from an open-ended child-props config.
+const buildReferenceAreaLayerElement = (config: Readonly<ReferenceAreaConfig>, geom: Readonly<ReferenceAreaLayersGeomView>): ReactElement => (
+  <ReferenceAreaLayer
+    key={`ref-${stringifyReferenceAreaKeyPart(config.y1)}-${stringifyReferenceAreaKeyPart(config.y2)}-${stringifyReferenceAreaKeyPart(config.x1)}-${stringifyReferenceAreaKeyPart(config.x2)}-${stringifyReferenceAreaKeyPart(config.yAxisId)}`}
+    width={geom.width}
+    height={geom.height}
+    margin={geom.margin}
+    yDomain={geom.yDomain}
+    yDomainsByAxis={geom.yDomainsByAxis}
+    xDomain={geom.xDomain}
+    xDataKey={geom.xDataKey}
+    isTimeScale={geom.isTimeScale}
+    barScale={geom.barScale}
+    isBarChart={geom.isBarChart}
+    xRangePadding={geom.xRangePadding}
+    isCandlestickXScale={geom.isCandlestickXScale}
+    phase={geom.phase}
+    isLoaded={geom.isLoaded}
+    y1={narrowNumberProp(config.y1)}
+    y2={narrowNumberProp(config.y2)}
+    x1={narrowDateOrNumberProp(config.x1)}
+    x2={narrowDateOrNumberProp(config.x2)}
+    yAxisId={narrowStringOrNumberProp(config.yAxisId)}
+    fill={narrowStringProp(config.fill)}
+    fillOpacity={narrowNumberProp(config.fillOpacity)}
+    pattern={narrowPatternPresetProp(config.pattern)}
+    patternColor={narrowStringProp(config.patternColor)}
+    patternScale={narrowNumberProp(config.patternScale)}
+    patternStrokeWidth={narrowNumberProp(config.patternStrokeWidth)}
+    patternRadius={narrowNumberProp(config.patternRadius)}
+    patternComplement={narrowBooleanProp(config.patternComplement)}
+    patternFill={narrowStringProp(config.patternFill)}
+    patternDotFill={narrowBooleanProp(config.patternDotFill)}
+    patternTileBackground={narrowStringProp(config.patternTileBackground)}
+    stroke={narrowStringProp(config.stroke)}
+    strokeWidth={narrowNumberProp(config.strokeWidth)}
+    strokeStyle={narrowStrokeStyleProp(config.strokeStyle)}
+    strokeDasharray={narrowStringProp(config.strokeDasharray)}
+    fadeEdges={narrowBooleanProp(config.fadeEdges)}
+    fadeEdgesLength={narrowNumberProp(config.fadeEdgesLength)}
+    showMarkers={narrowBooleanProp(config.showMarkers)}
+    markerColor={narrowStringProp(config.markerColor)}
+    markerSize={narrowNumberProp(config.markerSize)}
+    ifOverflow={narrowIfOverflowProp(config.ifOverflow)}
+    className={narrowStringProp(config.className)}
+  />
+);
+
 const ReferenceAreaLayers = ({
   configs,
   geom,
 }: {
-  configs: ReferenceAreaConfig[];
-  geom: ReferenceAreaLayersGeom;
+  readonly configs: ReferenceAreaConfig[];
+  readonly geom: ReferenceAreaLayersGeom;
 }): ReactNode => {
-  if (configs.length === 0) {return undefined;}
+  if (configs.length === EMPTY_REFERENCE_AREA_CONFIG_COUNT) {return undefined;}
   return (
     <>
-      {configs.map((config: Readonly<ReferenceAreaConfig>) => (
-        // SAFETY: Each config is the props object of a <ReferenceArea> child element.
-        // Only elements whose role is "referenceArea" are collected (see extractReferenceAreaProps).
-        // React types those props as ReferenceAreaProps at the JSX creation site.
-        // Every field read below is therefore narrowed to its prop type by the guards above.
-        <ReferenceAreaLayer
-          key={`ref-${stringifyReferenceAreaKeyPart(config.y1)}-${stringifyReferenceAreaKeyPart(config.y2)}-${stringifyReferenceAreaKeyPart(config.x1)}-${stringifyReferenceAreaKeyPart(config.x2)}-${stringifyReferenceAreaKeyPart(config.yAxisId)}`}
-          width={geom.width}
-          height={geom.height}
-          margin={geom.margin}
-          yDomain={geom.yDomain}
-          yDomainsByAxis={geom.yDomainsByAxis}
-          xDomain={geom.xDomain}
-          xDataKey={geom.xDataKey}
-          isTimeScale={geom.isTimeScale}
-          barScale={geom.barScale}
-          isBarChart={geom.isBarChart}
-          xRangePadding={geom.xRangePadding}
-          isCandlestickXScale={geom.isCandlestickXScale}
-          phase={geom.phase}
-          isLoaded={geom.isLoaded}
-          y1={isNumberValue(config.y1) ? config.y1 : undefined}
-          y2={isNumberValue(config.y2) ? config.y2 : undefined}
-          x1={isDateOrNumberValue(config.x1) ? config.x1 : undefined}
-          x2={isDateOrNumberValue(config.x2) ? config.x2 : undefined}
-          yAxisId={isStringOrNumberValue(config.yAxisId) ? config.yAxisId : undefined}
-          fill={isStringValue(config.fill) ? config.fill : undefined}
-          fillOpacity={isNumberValue(config.fillOpacity) ? config.fillOpacity : undefined}
-          pattern={isPatternPresetValue(config.pattern) ? config.pattern : undefined}
-          patternColor={isStringValue(config.patternColor) ? config.patternColor : undefined}
-          patternScale={isNumberValue(config.patternScale) ? config.patternScale : undefined}
-          patternStrokeWidth={isNumberValue(config.patternStrokeWidth) ? config.patternStrokeWidth : undefined}
-          patternRadius={isNumberValue(config.patternRadius) ? config.patternRadius : undefined}
-          patternComplement={isBooleanValue(config.patternComplement) ? config.patternComplement : undefined}
-          patternFill={isStringValue(config.patternFill) ? config.patternFill : undefined}
-          patternDotFill={isBooleanValue(config.patternDotFill) ? config.patternDotFill : undefined}
-          patternTileBackground={isStringValue(config.patternTileBackground) ? config.patternTileBackground : undefined}
-          stroke={isStringValue(config.stroke) ? config.stroke : undefined}
-          strokeWidth={isNumberValue(config.strokeWidth) ? config.strokeWidth : undefined}
-          strokeStyle={isStrokeStyleValue(config.strokeStyle) ? config.strokeStyle : undefined}
-          strokeDasharray={isStringValue(config.strokeDasharray) ? config.strokeDasharray : undefined}
-          fadeEdges={isBooleanValue(config.fadeEdges) ? config.fadeEdges : undefined}
-          fadeEdgesLength={isNumberValue(config.fadeEdgesLength) ? config.fadeEdgesLength : undefined}
-          showMarkers={isBooleanValue(config.showMarkers) ? config.showMarkers : undefined}
-          markerColor={isStringValue(config.markerColor) ? config.markerColor : undefined}
-          markerSize={isNumberValue(config.markerSize) ? config.markerSize : undefined}
-          ifOverflow={isIfOverflowValue(config.ifOverflow) ? config.ifOverflow : undefined}
-          className={isStringValue(config.className) ? config.className : undefined}
-        />
-      ))}
+      {configs.map((config: Readonly<ReferenceAreaConfig>) => buildReferenceAreaLayerElement(config, geom))}
     </>
   );
 };

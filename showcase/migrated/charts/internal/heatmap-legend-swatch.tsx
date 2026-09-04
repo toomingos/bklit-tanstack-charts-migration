@@ -9,6 +9,12 @@ import { renderPatternPreset } from "./pattern-preset-render";
 // Static svg fill style for the pattern branch; hoisted so it keeps identity.
 const SWATCH_SVG_STYLE = { display: "block", height: "100%", width: "100%" } as const;
 
+// The base level has no pattern to draw, so it renders as a hairline swatch.
+const BASE_HEATMAP_LEVEL = 0;
+
+// A pattern without an explicit opacity renders fully opaque.
+const FULL_PATTERN_OPACITY = 1;
+
 interface HeatmapLegendSwatchProps {
   level: number;
   style: HeatmapLevelStyle;
@@ -24,14 +30,18 @@ interface PatternSwatchArgs {
   readonly cornerRadius: number;
 }
 
+// Pattern shell style; hoisted so the swatch passes no fresh object to JSX.
+const buildPatternShellStyle = (swatch: Readonly<PatternSwatchArgs>): CSSProperties => ({
+  borderRadius: swatch.cornerRadius,
+  height: swatch.cellSize,
+  opacity: swatch.style.patternOpacity ?? FULL_PATTERN_OPACITY,
+  overflow: "hidden",
+  width: swatch.cellSize,
+});
+
 // Pattern branch of the legend swatch; undefined when the level is solid. Hoisted so the swatch stays short.
 const renderPatternSwatch = (swatch: Readonly<PatternSwatchArgs>): ReactElement | undefined => {
   if (!isHeatmapLevelPattern(swatch.style) || !swatch.style.pattern) {return undefined;}
-  const shellStyle = {
-    borderRadius: swatch.cornerRadius,
-    height: swatch.cellSize,
-    width: swatch.cellSize,
-  };
   // Ids are useId-scoped so multiple charts/legends on one page don't collide.
   const patternId = `${swatch.reactId}-${heatmapLevelPatternId(swatch.level)}`;
   const patternNode = renderPatternPreset(
@@ -39,13 +49,12 @@ const renderPatternSwatch = (swatch: Readonly<PatternSwatchArgs>): ReactElement 
     `${patternId}-base`,
     heatmapLevelPatternRenderOptions(swatch.style),
   );
-  const opacity = swatch.style.patternOpacity ?? 1;
 
   return (
     <span
       aria-hidden="true"
       className="ts-bkm-heatmap-legend-swatch ts-bkm-heatmap-legend-swatch--pattern"
-      style={{ ...shellStyle, opacity, overflow: "hidden" }}
+      style={buildPatternShellStyle(swatch)}
     >
       <svg aria-hidden="true" viewBox={`0 0 ${swatch.cellSize} ${swatch.cellSize}`} style={SWATCH_SVG_STYLE}>
         {patternNode !== undefined && patternNode !== null ? <defs>{patternNode}</defs> : undefined}
@@ -77,7 +86,7 @@ const buildSolidSwatchStyle = (swatch: Readonly<SolidSwatchArgs>): CSSProperties
     height: swatch.cellSize,
     width: swatch.cellSize,
   };
-  if (swatch.level === 0) {
+  if (swatch.level === BASE_HEATMAP_LEVEL) {
     solidStyle.border = `1px solid ${swatch.style.color}`;
   }
   return solidStyle;

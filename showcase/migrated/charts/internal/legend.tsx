@@ -1,13 +1,11 @@
 "use client";
 
-import { isValidElement, useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import { cn } from "@/lib/utils";
-import { LegendItemProvider, LegendProvider } from './legend-context';
+import { LegendProvider } from './legend-context';
 import type { LegendItemData } from './legend-context';
-
-// Scale factor converting a 0–1 value ratio into a 0–100 percentage.
-const PERCENT_SCALE = 100;
+import { LegendRow } from "./legend-row";
 
 interface LegendProps {
   readonly items: readonly LegendItemData[];
@@ -17,38 +15,6 @@ interface LegendProps {
   titleClassName?: string;
   className?: string;
   children: ReactElement;
-}
-
-const legendItemPercentage = (item: Readonly<LegendItemData>): number => {
-  const maxValue = item.maxValue ?? 0;
-  if (maxValue === 0) {return 0;}
-  return (item.value / maxValue) * PERCENT_SCALE;
-}
-
-interface RenderLegendRowParams {
-  readonly item: Readonly<LegendItemData>;
-  readonly index: number;
-  readonly hoveredIndex: number | null | undefined;
-  readonly children: ReactElement;
-}
-
-const renderLegendRow = (params: Readonly<RenderLegendRowParams>): ReactElement | undefined => {
-  const { item, index, hoveredIndex, children: rowChildren } = params;
-  const isHovered = hoveredIndex === index;
-  const isFaded = hoveredIndex !== null && hoveredIndex !== index;
-  const itemContext = {
-    index,
-    isFaded,
-    isHovered,
-    item,
-    percentage: legendItemPercentage(item),
-  };
-  if (!isValidElement(rowChildren)) {return undefined;}
-  return (
-    <LegendItemProvider key={item.label} value={itemContext}>
-      {rowChildren}
-    </LegendItemProvider>
-  );
 }
 
 const Legend = ({
@@ -90,9 +56,11 @@ const Legend = ({
             {title}
           </h3>
         )}
-        {items.map((item: Readonly<LegendItemData>, index: number) =>
-          renderLegendRow({ children, hoveredIndex, index, item }),
-        )}
+        {items.map((item: Readonly<LegendItemData>, index: number) => (
+          <LegendRow hoveredIndex={hoveredIndex} index={index} item={item} key={item.label}>
+            {children}
+          </LegendRow>
+        ))}
       </div>
     </LegendProvider>
   );

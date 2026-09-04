@@ -13,6 +13,20 @@ import { markerEnterStyle, markerGuideLineStyle } from "./marker-group-styles";
 // Collapsed (unfanned) marker scale while another bucket is fanned.
 const MARKER_COLLAPSED_SCALE = 0.6;
 
+// Fully revealed marker presence, contrasted with the collapsed presence above.
+const COLLAPSED_MARKER_OPACITY = 0;
+const FULL_MARKER_OPACITY = 1;
+const FULL_MARKER_SCALE = 1;
+
+// Guide-line height at or below which there is nothing to draw.
+const MIN_LINE_HEIGHT = 0;
+
+// A bucket holds multiple markers when it holds more than a single one.
+const SINGLE_MARKER_COUNT = 1;
+
+// Fan-out always slices from the start of the marker list.
+const MARKER_SLICE_START_INDEX = 0;
+
 // QA harness flag, set pre-boot by Playwright's addInitScript (see qa/screenshot.mjs).
 // Window-mirrored onto globalThis: identical object in browsers, readable during SSR.
 // The double-underscore name is the harness contract.
@@ -27,7 +41,7 @@ declare global {
 const QA_MARKER_FAN_ARMED = globalThis.__qaSetMarkerFan === true;
 
 const resolveFannedMarkers = (markers: readonly ChartMarker[], maxFanned: number | undefined): readonly ChartMarker[] => (
-  maxFanned === undefined ? markers : markers.slice(0, maxFanned)
+  maxFanned === undefined ? markers : markers.slice(MARKER_SLICE_START_INDEX, maxFanned)
 );
 
 const resolveShouldFanMarkers = (hovered: boolean, hasMultiple: boolean): boolean =>
@@ -39,8 +53,8 @@ interface CollapsedMarkerPresence {
 }
 
 const resolveCollapsedMarkerPresence = (shouldFan: boolean): CollapsedMarkerPresence => ({
-  opacity: shouldFan ? 0 : 1,
-  scale: shouldFan ? MARKER_COLLAPSED_SCALE : 1,
+  opacity: shouldFan ? COLLAPSED_MARKER_OPACITY : FULL_MARKER_OPACITY,
+  scale: shouldFan ? MARKER_COLLAPSED_SCALE : FULL_MARKER_SCALE,
 });
 
 interface MarkerGuideLineOptions {
@@ -54,7 +68,7 @@ interface MarkerGuideLineOptions {
 
 const renderMarkerGuideLine = (options: Readonly<MarkerGuideLineOptions>): ReactNode => {
   const { showLine, lineHeight, y, size, hovered, isActive } = options;
-  if (!showLine || lineHeight <= 0) {return undefined;}
+  if (!showLine || lineHeight <= MIN_LINE_HEIGHT) {return undefined;}
   return (
     <div
       aria-hidden="true"
@@ -119,7 +133,7 @@ interface MarkerGroupContentProps {
 
 const MarkerGroupContent = (props: Readonly<MarkerGroupContentProps>): ReactElement => {
   const { animate, bucketKey, enterElapsed, enterRef, hovered, isActive, lineHeight, markers, maxFanned, onEnter, onLeave, reduced, showLine, size, x, y } = props;
-  const hasMultiple = markers.length > 1;
+  const hasMultiple = markers.length > SINGLE_MARKER_COUNT;
   const fanned = resolveFannedMarkers(markers, maxFanned);
   const shouldFan = resolveShouldFanMarkers(hovered, hasMultiple);
   const collapsed = resolveCollapsedMarkerPresence(shouldFan);

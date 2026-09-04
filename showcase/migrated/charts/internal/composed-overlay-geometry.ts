@@ -1,18 +1,17 @@
 import { scaleLinear } from "d3-scale";
 import { timeToPixelX } from "./x-time-scale";
-import type { TimeBounds } from "./composed-data-math";
+import type {
+  ProjectionMarkerFallbacks,
+  ProjectionStrokeFallbacks,
+  TimeBounds,
+} from "./composed-data-math";
 import {
   resolveProjectionMarkerOptions,
   resolveProjectionStrokeOptions,
   resolveProjectionStrokeStyle,
 } from "./composed-data-math";
-import type {
-  ProjectionMarkerFallbacks,
-  ProjectionStrokeFallbacks,
-} from "./composed-data-math";
 import type { ChartMark } from "@tanstack/charts";
-import { projectionLineMark } from "./projection-line-mark";
-import { resolveProjectionGradientDef } from "./projection-line-mark";
+import { projectionLineMark, resolveProjectionGradientDef } from "./projection-line-mark";
 import type { ProjectionGradientDef } from "./projection-line-mark";
 import type { ProjectionLineConfig } from "./projection-config";
 import type { ChartDatum } from "./types";

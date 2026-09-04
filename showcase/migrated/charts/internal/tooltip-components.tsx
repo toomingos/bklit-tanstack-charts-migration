@@ -24,6 +24,45 @@ const ENTRANCE_START_SCALE = 0.85;
 // Ticker digit-roll spring params (stiffness, damping).
 const TICKER_SPRING_STIFFNESS = 400;
 const TICKER_SPRING_DAMPING = 35;
+// Full extent derived from a half extent (dot diameter and ring side from radius).
+const FULL_EXTENT_FACTOR = 2;
+// Divisor that converts a full width into a half-width centering offset.
+const HALF_DIVISOR = 2;
+// Lower clamp for normalized fractions such as the corner-radius fraction.
+const FRACTION_LOWER_BOUND = 0;
+// Default hover-dot stroke width in px for the solid-dot variant.
+const DEFAULT_DOT_STROKE_WIDTH_PX = 2;
+// Default hover-dot radius in px when the caller omits size.
+const DEFAULT_DOT_SIZE = 5;
+// Default ring corner-radius fraction when the caller omits it.
+const DEFAULT_CORNER_RADIUS_FRACTION = 0.25;
+// Minimum crosshair stroke width in px so a zero-width indicator stays visible.
+const MIN_INDICATOR_STROKE_WIDTH_PX = 1;
+// Default vertical fade length in px for the indicator gradient.
+const DEFAULT_FADE_LENGTH_PX = 10;
+// Default tooltip offset in px from the cursor when the caller omits it.
+const DEFAULT_TOOLTIP_OFFSET_PX = 16;
+// Entrance animation progress runs from empty to full.
+const FULL_PROGRESS = 1;
+// Entrance animation starts from zero progress.
+const ENTRANCE_START_PROGRESS = 0;
+// Non-positive measured sizes are ignored so the cached box never collapses.
+const MIN_MEASURED_PX = 0;
+// Token positions inside a "Month Day" ticker label.
+const MONTH_PART_INDEX = 0;
+const DAY_PART_INDEX = 1;
+// Offset of the last element when indexing from the end.
+const LAST_ELEMENT_OFFSET = -1;
+// Sentinel for "no month selected yet" in the ticker month tracker.
+const UNSET_MONTH_INDEX = -1;
+// Index of the first element in a zero-based list.
+const FIRST_INDEX = 0;
+// Offset from length to the last valid index.
+const LAST_INDEX_OFFSET = 1;
+// Step used when scanning month segments from newest to oldest.
+const INDEX_STEP = 1;
+// Count that represents an empty label list.
+const EMPTY_COUNT = 0;
 
 
 interface TooltipDotProps {
@@ -41,8 +80,8 @@ interface TooltipDotProps {
 }
 
 const ringCornerRadius = (halfExtent: number, cornerRadiusFraction: number): number => {
-  const side = halfExtent * 2;
-  return side * Math.max(0, Math.min(MAX_CORNER_RADIUS_FRACTION, cornerRadiusFraction));
+  const side = halfExtent * FULL_EXTENT_FACTOR;
+  return side * Math.max(FRACTION_LOWER_BOUND, Math.min(MAX_CORNER_RADIUS_FRACTION, cornerRadiusFraction));
 }
 
 interface DotPaint {
@@ -56,7 +95,7 @@ const resolveDotPaint = (variant: "dot" | "ring", color: string, strokeColor: st
 };
 
 const resolveDotStrokeWidth = (strokeWidth: number | undefined, isRing: boolean): number =>
-  strokeWidth ?? (isRing ? RING_STROKE_WIDTH_PX : 2);
+  strokeWidth ?? (isRing ? RING_STROKE_WIDTH_PX : DEFAULT_DOT_STROKE_WIDTH_PX);
 
 interface DotSpringRefs {
   readonly circleRef: RefObject<SVGCircleElement | null>;
@@ -160,7 +199,7 @@ interface DotBodyOptions {
 
 const renderDotBody = (options: Readonly<DotBodyOptions>): ReactNode => {
   const { animate, circleRef, cornerRadiusFraction, fill, isRing, rectRef, size, stroke, strokeWidth, x, y } = options;
-  const side = size * 2;
+  const side = size * FULL_EXTENT_FACTOR;
   const rx = ringCornerRadius(size, cornerRadiusFraction);
   if (isRing) {
     if (animate) {
@@ -199,11 +238,11 @@ const TooltipDot = ({
   y,
   visible,
   color,
-  size = 5,
+  size = DEFAULT_DOT_SIZE,
   strokeColor = "var(--chart-background)",
-  strokeWidth = 2,
+  strokeWidth = DEFAULT_DOT_STROKE_WIDTH_PX,
   variant = "dot",
-  cornerRadiusFraction = 0.25,
+  cornerRadiusFraction = DEFAULT_CORNER_RADIUS_FRACTION,
   springConfig,
   animate = true,
 }: Readonly<TooltipDotProps>): ReactNode => {
@@ -282,8 +321,8 @@ const resolveIndicatorStyle = (options: Readonly<ResolveIndicatorStyleOptions>):
     fill: colorMid || colorEdge,
     lineX: x,
     pixelWidth,
-    rectX: x - pixelWidth / 2,
-    strokeWidth: Math.max(1, pixelWidth),
+    rectX: x - pixelWidth / HALF_DIVISOR,
+    strokeWidth: Math.max(MIN_INDICATOR_STROKE_WIDTH_PX, pixelWidth),
   };
 };
 
@@ -526,7 +565,7 @@ const TooltipIndicatorInner = ({
   colorEdge = "var(--chart-crosshair)",
   colorMid = "var(--chart-crosshair)",
   fadeEdges = "both",
-  fadeLength = 10,
+  fadeLength = DEFAULT_FADE_LENGTH_PX,
   animate = true,
   gradientId = "tooltip-indicator-gradient",
   springConfig,
@@ -618,7 +657,7 @@ interface ResolveTooltipPlacementOptions {
 const resolveTooltipPlacement = (options: Readonly<ResolveTooltipPlacementOptions>): TooltipPlacement => {
   const { containerHeight, flip, leftOverride, offset, tooltipHeight, tooltipWidth, topOverride, x, y } = options;
   const tx = leftOverride ?? (flip ? x - offset - tooltipWidth : x + offset);
-  const ty = topOverride ?? Math.max(offset, Math.min(y - tooltipHeight / 2, containerHeight - tooltipHeight - offset));
+  const ty = topOverride ?? Math.max(offset, Math.min(y - tooltipHeight / HALF_DIVISOR, containerHeight - tooltipHeight - offset));
   return { flip, tx, ty };
 };
 
@@ -673,8 +712,8 @@ const measureTooltipBoxPanel = (
   if (el) {
     const width = el.offsetWidth;
     const height = el.offsetHeight;
-    if (width > 0) {sizeRef.current.width = width;}
-    if (height > 0) {sizeRef.current.height = height;}
+    if (width > MIN_MEASURED_PX) {sizeRef.current.width = width;}
+    if (height > MIN_MEASURED_PX) {sizeRef.current.height = height;}
   }
   return { height: sizeRef.current.height, width: sizeRef.current.width };
 };
@@ -733,13 +772,13 @@ const useTooltipBoxMotion = (options: Readonly<TooltipBoxMotionOptions>): Toolti
         if (!panelRef.current) {return;}
         const from = flipped ? ENTRANCE_SLIDE_OFFSET_PX : -ENTRANCE_SLIDE_OFFSET_PX;
         panelRef.current.style.transformOrigin = flipped ? "right top" : "left top";
-        panelRef.current.style.transform = `translateX(${from * (1 - progress)}px) scale(${ENTRANCE_START_SCALE + (1 - ENTRANCE_START_SCALE) * progress})`;
+        panelRef.current.style.transform = `translateX(${from * (FULL_PROGRESS - progress)}px) scale(${ENTRANCE_START_SCALE + (FULL_PROGRESS - ENTRANCE_START_SCALE) * progress})`;
         panelRef.current.style.opacity = String(progress);
       },
       stiffness: ENTRANCE_SPRING.stiffness,
     });
-    entranceSpringRef.current.jump(0);
-    entranceSpringRef.current.set(1);
+    entranceSpringRef.current.jump(ENTRANCE_START_PROGRESS);
+    entranceSpringRef.current.set(FULL_PROGRESS);
   }, [entrance]);
   const ensurePositionSprings = useCallback(() => {
     if (!animate) {return;}
@@ -860,7 +899,7 @@ const TooltipBoxInner = ({
   y,
   containerWidth,
   containerHeight,
-  offset = 16,
+  offset = DEFAULT_TOOLTIP_OFFSET_PX,
   layerClassName = "",
   children,
   left: leftOverride,
@@ -1073,13 +1112,13 @@ interface MonthSegment {
 
 const toParsedLabel = (label: string, index: number): ParsedLabel => {
   const parts = label.split(" ");
-  return { day: parts[1] || "", full: label, key: `${label}::${index}`, month: parts[0] || "" };
+  return { day: parts[DAY_PART_INDEX] || "", full: label, key: `${label}::${index}`, month: parts[MONTH_PART_INDEX] || "" };
 };
 
 const buildMonthSegments = (parsedLabels: readonly ParsedLabel[]): MonthSegment[] => {
   const segments: MonthSegment[] = [];
   for (const [index, label] of parsedLabels.entries()) {
-    const prev = segments.at(-1);
+    const prev = segments.at(LAST_ELEMENT_OFFSET);
     if (!prev || prev.month !== label.month) {
       segments.push({
         key: `${label.month}-${index}`,
@@ -1096,16 +1135,16 @@ const resolveCurrentMonthIndex = (
   parsedLabels: readonly ParsedLabel[],
   monthSegments: readonly MonthSegment[],
 ): number => {
-  if (currentIndex < 0 || currentIndex >= parsedLabels.length) {
-    return 0;
+  if (currentIndex < FIRST_INDEX || currentIndex >= parsedLabels.length) {
+    return FIRST_INDEX;
   }
-  for (let i = monthSegments.length - 1; i >= 0; i -= 1) {
-    const segment = monthSegments.at(i);
+  for (let segmentIndex = monthSegments.length - LAST_INDEX_OFFSET; segmentIndex >= FIRST_INDEX; segmentIndex -= INDEX_STEP) {
+    const segment = monthSegments.at(segmentIndex);
     if (segment && segment.startIndex <= currentIndex) {
-      return i;
+      return segmentIndex;
     }
   }
-  return 0;
+  return FIRST_INDEX;
 };
 
 interface DateTickerSprings {
@@ -1130,7 +1169,7 @@ const useDateTickerAnimation = (options: Readonly<DateTickerAnimationOptions>): 
   const monthStackRef = useRef<HTMLDivElement | null>(null);
   const daySpringRef = useRef<Spring | undefined>(undefined);
   const monthSpringRef = useRef<Spring | undefined>(undefined);
-  const prevMonthRef = useRef(-1);
+  const prevMonthRef = useRef(UNSET_MONTH_INDEX);
   useEffect((): (() => void) | undefined => {
     if (compact) {return undefined;}
     daySpringRef.current ??= createSpring({ damping: TICKER_SPRING_DAMPING, initial: 0, onUpdate: (offsetY) => { if (dayStackRef.current) {dayStackRef.current.style.transform = `translateY(${offsetY}px)`;} }, stiffness: TICKER_SPRING_STIFFNESS });
@@ -1147,7 +1186,7 @@ const useDateTickerAnimation = (options: Readonly<DateTickerAnimationOptions>): 
     const targetDayY = -currentIndex * TICKER_ITEM_HEIGHT;
     const targetMonthY = -currentMonthIndex * TICKER_ITEM_HEIGHT;
     daySpringRef.current?.set(targetDayY);
-    if (prevMonthRef.current === -1 || prevMonthRef.current !== currentMonthIndex) {
+    if (prevMonthRef.current === UNSET_MONTH_INDEX || prevMonthRef.current !== currentMonthIndex) {
       prevMonthRef.current = currentMonthIndex;
       monthSpringRef.current?.set(targetMonthY);
     }
@@ -1223,7 +1262,7 @@ const renderTickerStacks = (options: Readonly<TickerStacksOptions>): ReactNode =
 
 const renderFullTicker = (options: Readonly<FullTickerOptions>): ReactNode => {
   const { monthSegments, parsedLabels, pillClassName, springs, visible } = options;
-  if (!visible || parsedLabels.length === 0) {return undefined;}
+  if (!visible || parsedLabels.length === EMPTY_COUNT) {return undefined;}
   const stacks = renderTickerStacks({ monthSegments, parsedLabels, springs });
   return (
     <div className={pillClassName}>
@@ -1252,7 +1291,7 @@ const DateTicker = ({ currentIndex, labels, visible }: Readonly<DateTickerProps>
     "overflow-hidden rounded-full bg-zinc-900 px-4 py-1 text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900";
 
   if (compact) {
-    return renderCompactTicker(pillClassName, labels.at(currentIndex) ?? labels.at(0) ?? "");
+    return renderCompactTicker(pillClassName, labels.at(currentIndex) ?? labels.at(FIRST_INDEX) ?? "");
   }
 
   return renderFullTicker({ monthSegments, parsedLabels, pillClassName, springs, visible });

@@ -7,16 +7,13 @@ import { useCallback, useMemo } from "react";
 import type { ReactElement } from "react";
 import { useIntroFlowValue } from "./center-stat";
 import { PieHoverCoordinatorContext, PieStableContext } from './pie-center-context';
-import { PieCenter } from './pie-center-view';
+import { PieCenterShellCenter } from "./pie-center-shell-center";
 import type { PieCenterProps, PieStableValue } from './pie-center';
 import type { PieHoverCoordinator } from "./pie-hover-chrome";
 import { defaultPieColors } from './pie-default-colors';
 import type { PieArcData, PieData } from '../pie-chart';
 
 const SHELL_HOVER_OFFSET = 10;
-
-// Static wrapper style: keeps the data-bkm-chart scoping div out of layout.
-const SHELL_WRAPPER_STYLE = { display: "contents" } as const;
 
 // Full-sweep arc end angle pairing with startAngle -π/2 (ported verbatim from legacy).
 const PIE_SHELL_END_ANGLE_FACTOR = 3;
@@ -152,7 +149,13 @@ const PieCenterShell = ({
   contextSize,
   innerRadiusPx,
   animateEntrance = true,
-  ...pieCenterProps
+  className,
+  defaultLabel,
+  formatOptions,
+  labelClassName,
+  prefix,
+  suffix,
+  valueClassName,
 }: Readonly<PieCenterShellProps>): ReactElement => {
 // Entrance state machine centralized in center-stat's useIntroFlowValue; reused here.
   const flowTotal = useIntroFlowValue(centerValue, animateEntrance);
@@ -160,14 +163,17 @@ const PieCenterShell = ({
 
 // Data-bkm-chart wrapper is load-bearing: center typography is scoped under it;
 // Display:contents keeps it out of layout.
-  const centerNode = (
-    <div data-bkm-chart="pie" style={SHELL_WRAPPER_STYLE}>
-      <PieCenter {...pieCenterProps} />
-    </div>
-  );
   const innerNode = (
     <PieHoverCoordinatorContext.Provider value={INERT_HOVER_COORDINATOR}>
-      {centerNode}
+      <PieCenterShellCenter
+        className={className}
+        defaultLabel={defaultLabel}
+        formatOptions={formatOptions}
+        labelClassName={labelClassName}
+        prefix={prefix}
+        suffix={suffix}
+        valueClassName={valueClassName}
+      />
     </PieHoverCoordinatorContext.Provider>
   );
 

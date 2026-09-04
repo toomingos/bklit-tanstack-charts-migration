@@ -103,12 +103,13 @@ type ReadonlyLivePoint = Readonly<
 interface LiveTipChromeProps {
   readonly cfg: ReadonlyLiveLineConfig;
   readonly dotColor: string;
+  readonly getLiveGroups: () => Map<string, SVGGElement>;
+  readonly groupKey: string;
   readonly liveValue: number;
   readonly liveDotX: number;
   readonly liveDotY: number;
   readonly resolvedStroke: string;
   readonly innerWidth: number;
-  readonly registerLiveGroup: (el: SVGGElement | null) => void;
 }
 
 interface LiveLineChartProps {
@@ -143,12 +144,35 @@ interface AnimFrame {
 const isNumber = <Value,>(value: Value): value is Value & number => typeof value === "number";
 const isString = <Value,>(value: Value): value is Value & string => typeof value === "string";
 
+// Raw ChartDatum record field at the TanStack I/O boundary; call sites narrow
+// It with the isNumber/isString guards instead of asserting a shape.
+type RawDatumField = ChartDatum[string];
+
 // Named owner contract for the live y-domain target (replaces the inline
 // Anonymous return type the widening rule rejects).
 interface TargetRange {
   readonly yMax: number;
   readonly yMin: number;
 }
+
+interface LiveExtremes {
+  readonly max: number;
+  readonly min: number;
+}
+
+const widenExtremes = (extremes: Readonly<LiveExtremes>, value: number): LiveExtremes => {
+  if (value < extremes.min) {return { max: extremes.max, min: value };}
+  if (value > extremes.max) {return { max: value, min: extremes.min };}
+  return extremes;
+};
+
+const measureLiveRange = (data: readonly Readonly<LiveLinePoint>[], value: number): LiveExtremes => {
+  let extremes: LiveExtremes = { max: Number.NEGATIVE_INFINITY, min: Number.POSITIVE_INFINITY };
+  for (const point of data) {
+    extremes = widenExtremes(extremes, point.value);
+  }
+  return widenExtremes(extremes, value);
+};
 
 const computeTargetRange = (
   data: readonly Readonly<LiveLinePoint>[],
@@ -158,27 +182,23 @@ const computeTargetRange = (
   if (data.length === 0) {
     return { yMax: 100, yMin: 0 };
   }
-  let min = Number.POSITIVE_INFINITY;
-  let max = Number.NEGATIVE_INFINITY;
-  for (const point of data) {
-    if (point.value < min) {min = point.value;}
-    if (point.value > max) {max = point.value;}
-  }
-  if (value < min) {min = value;}
-  if (value > max) {max = value;}
-  const rawRange = max - min;
+  const extremes = measureLiveRange(data, value);
+  const rawRange = extremes.max - extremes.min;
   const paddingFactor = exaggerate ? EXAGGERATED_RANGE_PADDING_FACTOR : STANDARD_RANGE_PADDING_FACTOR;
   const rangePad = rawRange * paddingFactor || (exaggerate ? EXAGGERATED_FLAT_RANGE_PAD : STANDARD_FLAT_RANGE_PAD);
-  return { yMax: max + rangePad, yMin: min - rangePad };
+  return { yMax: extremes.max + rangePad, yMin: extremes.min - rangePad };
 };
 
-const nextAnimFrame = (
-  prev: Readonly<AnimFrame>,
-  targetRange: { readonly yMin: number; readonly yMax: number },
-  targetValue: number,
-  speed: number,
-  isPaused: boolean,
-): Omit<AnimFrame, "seq"> => {
+interface NextAnimFrameOptions {
+  readonly isPaused: boolean;
+  readonly prev: Readonly<AnimFrame>;
+  readonly speed: number;
+  readonly targetRange: TargetRange;
+  readonly targetValue: number;
+}
+
+const nextAnimFrame = (options: Readonly<NextAnimFrameOptions>): Omit<AnimFrame, "seq"> => {
+  const { isPaused, prev, speed, targetRange, targetValue } = options;
   const nextNow = isPaused ? prev.now : Date.now();
   const nextYMin =
     targetRange.yMin < prev.yMin
@@ -213,30 +233,58 @@ const MOMENTUM_TAIL_SAMPLES = 5;
 /** Tail delta must exceed this fraction of the lookback range to count as up/down. */
 const MOMENTUM_DELTA_THRESHOLD_FACTOR = 0.12;
 
-const detectMomentum = (data: readonly Readonly<ChartDatum>[], dataKey: string, lookback = 20): Momentum => {
-  if (data.length < MOMENTUM_MIN_SAMPLES) {return "flat";}
-  const start = Math.max(0, data.length - lookback);
+interface DatumRangeScan {
+  readonly dataKey: string;
+  readonly end: number;
+  readonly source: readonly Readonly<ChartDatum>[];
+  readonly start: number;
+}
+
+const scanDatumRange = (scan: Readonly<DatumRangeScan>): number => {
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
-  for (let index = start; index < data.length; index += 1) {
-    const rawValue = data[index]?.[dataKey];
+  for (let index = scan.start; index < scan.end; index += 1) {
+    const rawValue = scan.source[index]?.[scan.dataKey];
     if (isNumber(rawValue)) {
       if (rawValue < min) {min = rawValue;}
       if (rawValue > max) {max = rawValue;}
     }
   }
-  const range = max - min;
-  if (range === 0) {return "flat";}
-  const tailStart = Math.max(start, data.length - MOMENTUM_TAIL_SAMPLES);
-  const firstRaw: unknown = data[tailStart][dataKey];
-  const lastRaw: unknown = data.at(-1)?.[dataKey];
+  return max - min;
+};
+
+interface TailDeltaRead {
+  readonly dataKey: string;
+  readonly from: number;
+  readonly source: readonly Readonly<ChartDatum>[];
+}
+
+const readTailDelta = (read: Readonly<TailDeltaRead>): number => {
+  const firstRaw: unknown = read.source[read.from][read.dataKey];
+  const lastRaw: unknown = read.source.at(-1)?.[read.dataKey];
   const first = isNumber(firstRaw) ? firstRaw : 0;
   const last = isNumber(lastRaw) ? lastRaw : 0;
-  const delta = last - first;
-  const threshold = range * MOMENTUM_DELTA_THRESHOLD_FACTOR;
+  return last - first;
+};
+
+const classifyMomentum = (delta: number, threshold: number): Momentum => {
   if (delta > threshold) {return "up";}
   if (delta < -threshold) {return "down";}
   return "flat";
+};
+
+/** Default lookback window for momentum detection, in samples. */
+const MOMENTUM_DEFAULT_LOOKBACK = 20;
+
+const detectMomentum = (data: readonly Readonly<ChartDatum>[], dataKey: string, lookback = MOMENTUM_DEFAULT_LOOKBACK): Momentum => {
+  if (data.length < MOMENTUM_MIN_SAMPLES) {return "flat";}
+  const start = Math.max(0, data.length - lookback);
+  const range = scanDatumRange({ dataKey, end: data.length, source: data, start });
+  if (range === 0) {return "flat";}
+  const tailStart = Math.max(start, data.length - MOMENTUM_TAIL_SAMPLES);
+  const delta = readTailDelta({ dataKey, from: tailStart, source: data });
+  const threshold = range * MOMENTUM_DELTA_THRESHOLD_FACTOR;
+  return classifyMomentum(delta, threshold);
 };
 
 // Hysteresis keeps prevInterval within [0.5x, 3x] of minGap to avoid tick flicker.
@@ -244,40 +292,77 @@ const TICK_HYSTERESIS_MIN_FACTOR = 0.5;
 const TICK_HYSTERESIS_MAX_FACTOR = 3;
 /** Odd divisor in the nice-tick divisor sets (ported verbatim from the legacy tick search). */
 const NICE_DIVISOR_ODD = 2.5;
+/** Divisor rotation sets for the nice-tick span search. */
+const NICE_DIVISOR_SETS: readonly (readonly number[])[] = [
+  [2, NICE_DIVISOR_ODD, 2],
+  [2, 2, NICE_DIVISOR_ODD],
+  [NICE_DIVISOR_ODD, 2, 2],
+];
 /** Decimal base for the nice-tick span search. */
 const NICE_SPAN_BASE = 10;
 /** Fallback y tick count when no nice span is found. */
 const FALLBACK_Y_TICK_COUNT = 5;
 
-const pickNiceInterval = (
-  valRange: number,
-  chartHeight: number,
-  minGap: number,
-  prevInterval: number,
-): number => {
-  if (valRange <= 0 || chartHeight <= 0) {return 1;}
-  const pxPerUnit = chartHeight / valRange;
-  if (prevInterval > 0) {
-    const px = prevInterval * pxPerUnit;
-    if (px >= minGap * TICK_HYSTERESIS_MIN_FACTOR && px <= minGap * TICK_HYSTERESIS_MAX_FACTOR) {return prevInterval;}
+interface NiceSpanSearch {
+  readonly divisors: readonly number[];
+  readonly minGap: number;
+  readonly pxPerUnit: number;
+  readonly valRange: number;
+}
+
+const searchNiceSpan = (search: Readonly<NiceSpanSearch>): number => {
+  let span = NICE_SPAN_BASE ** Math.ceil(Math.log10(search.valRange));
+  let divIndex = 0;
+  let divisor = search.divisors[divIndex % search.divisors.length] ?? 2;
+  while ((span / divisor) * search.pxPerUnit >= search.minGap) {
+    span /= divisor;
+    divIndex += 1;
+    divisor = search.divisors[divIndex % search.divisors.length] ?? 2;
   }
-  const divisorSets = [
-    [2, NICE_DIVISOR_ODD, 2],
-    [2, 2, NICE_DIVISOR_ODD],
-    [NICE_DIVISOR_ODD, 2, 2],
-  ];
+  return span;
+};
+
+interface TickHysteresisCheck {
+  readonly minGap: number;
+  readonly prevInterval: number;
+  readonly pxPerUnit: number;
+}
+
+const keepPreviousInterval = (check: Readonly<TickHysteresisCheck>): boolean => {
+  if (check.prevInterval <= 0) {return false;}
+  const px = check.prevInterval * check.pxPerUnit;
+  return px >= check.minGap * TICK_HYSTERESIS_MIN_FACTOR && px <= check.minGap * TICK_HYSTERESIS_MAX_FACTOR;
+};
+
+interface NiceSpanField {
+  readonly divisorSets: readonly (readonly number[])[];
+  readonly minGap: number;
+  readonly pxPerUnit: number;
+  readonly valRange: number;
+}
+
+const findBestNiceSpan = (field: Readonly<NiceSpanField>): number => {
   let best = Number.POSITIVE_INFINITY;
-  for (const divs of divisorSets) {
-    let span = NICE_SPAN_BASE ** Math.ceil(Math.log10(valRange));
-    let divIndex = 0;
-    let divisor = divs[divIndex % divs.length] ?? 2;
-    while ((span / divisor) * pxPerUnit >= minGap) {
-      span /= divisor;
-      divIndex += 1;
-      divisor = divs[divIndex % divs.length] ?? 2;
-    }
+  for (const divs of field.divisorSets) {
+    const span = searchNiceSpan({ divisors: divs, minGap: field.minGap, pxPerUnit: field.pxPerUnit, valRange: field.valRange });
     if (span < best) {best = span;}
   }
+  return best;
+};
+
+interface PickNiceIntervalOptions {
+  readonly chartHeight: number;
+  readonly minGap: number;
+  readonly prevInterval: number;
+  readonly valRange: number;
+}
+
+const pickNiceInterval = (options: Readonly<PickNiceIntervalOptions>): number => {
+  const { chartHeight, minGap, prevInterval, valRange } = options;
+  if (valRange <= 0 || chartHeight <= 0) {return 1;}
+  const pxPerUnit = chartHeight / valRange;
+  if (keepPreviousInterval({ minGap, prevInterval, pxPerUnit })) {return prevInterval;}
+  const best = findBestNiceSpan({ divisorSets: NICE_DIVISOR_SETS, minGap, pxPerUnit, valRange });
   return best === Number.POSITIVE_INFINITY ? valRange / FALLBACK_Y_TICK_COUNT : best;
 };
 
@@ -307,7 +392,7 @@ const hasText = (value: string | undefined): boolean => (value ?? "").length > 0
   * @param {unknown} rawDate - Raw datum date value; Date instances pass through, number/string timestamps are converted.
   * @returns {Date} The coerced date, or an invalid Date when the value is neither a Date nor a usable timestamp.
   */
-const coerceDatumDate = (rawDate: unknown): Date => {
+const coerceDatumDate = (rawDate: RawDatumField): Date => {
   if (rawDate instanceof Date) {return rawDate;}
   if (isNumber(rawDate) || isString(rawDate)) {return new Date(rawDate);}
   return new Date(Number.NaN);
@@ -374,7 +459,7 @@ const defaultFormatValue = (value: number): string => value.toFixed(2);
 
 // Tooltip cell text: numbers go through the series formatter, strings pass
 // Through, and anything else renders empty instead of `[object Object]`.
-const formatTooltipCellValue = (raw: unknown, formatValue: (value: number) => string): string => {
+const formatTooltipCellValue = (raw: RawDatumField, formatValue: (value: number) => string): string => {
   if (isNumber(raw)) {return formatValue(raw);}
   if (isString(raw)) {return raw;}
   return "";
@@ -401,6 +486,61 @@ const PERCENT_SCALE = 100;
 const FADE_MASK_TOP_OVERHANG_PX = 20;
 const FADE_MASK_VERTICAL_OVERHANG_PX = 40;
 
+interface LineStrokeResolution {
+  readonly dotColor: string;
+  readonly resolvedStroke: string;
+}
+
+const resolveLineStroke = (cfg: ReadonlyLiveLineConfig, momentum: Momentum): LineStrokeResolution => {
+  const baseStroke = cfg.stroke ?? "var(--chart-line-primary)";
+  const momentumColors = cfg.momentumColors ?? {
+    down: "var(--chart-5)",
+    flat: baseStroke,
+    up: "var(--chart-1)",
+  };
+  const dotColor = momentumColors[momentum];
+  const resolvedStroke = cfg.momentumColors ? cfg.momentumColors[momentum] : baseStroke;
+  return { dotColor, resolvedStroke };
+};
+
+type DatePillController = ReturnType<typeof useDatePillOverlay>;
+
+const applyFocusDim = (groups: Readonly<Map<string, SVGGElement>>, dimmed: boolean): void => {
+  for (const element of groups.values()) {
+    element.style.opacity = dimmed ? "0.25" : "1";
+  }
+};
+
+interface FocusPillRequest {
+  readonly datum: Readonly<ChartDatum>;
+  readonly datumIndex: number;
+  readonly formatTime: (timeMs: number) => string;
+  readonly wasVisible: boolean;
+  readonly x: number;
+}
+
+const showFocusDatePill = (pill: Readonly<DatePillController>, request: Readonly<FocusPillRequest>): void => {
+  const dateVal = coerceDatumDate(request.datum.date);
+  const label = request.formatTime(dateVal.getTime());
+  pill.show(request.x, { discrete: false, index: request.datumIndex, jump: !request.wasVisible, label });
+};
+
+interface NiceTickExpansion {
+  readonly allowDecimals: boolean;
+  readonly expandedMax: number;
+  readonly first: number;
+  readonly interval: number;
+}
+
+const expandNiceTicks = (expansion: Readonly<NiceTickExpansion>): number[] => {
+  const values: number[] = [];
+  for (let tickValue = expansion.first; tickValue <= expansion.expandedMax; tickValue += expansion.interval) {
+    const rounded = Math.round(tickValue * TICK_ROUNDING_FACTOR) / TICK_ROUNDING_FACTOR;
+    if (Number.isInteger(rounded) || expansion.allowDecimals) {values.push(rounded);}
+  }
+  return values;
+};
+
 // Static overlay styles hoisted so host elements reuse stable identities.
 const LIVE_TIP_GROUP_STYLE = { transition: "opacity 300ms ease-in-out" } as const;
 const CHART_OVERLAY_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
@@ -416,88 +556,277 @@ const LIVE_BADGE_OFFSET_X_PX = 12;
 const LIVE_BADGE_CHAR_WIDTH_PX = 7.5;
 const LIVE_BADGE_HORIZONTAL_PADDING_PX = 16;
 
+interface PulseHaloOptions {
+  readonly dotColor: string;
+  readonly dotSize: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+// Expanding halo ring behind the live dot; the SMIL pulses run on the compositor.
+const renderPulseHalo = (options: Readonly<PulseHaloOptions>): ReactElement => (
+  <circle
+    cx={options.x}
+    cy={options.y}
+    fill="none"
+    opacity={0.4}
+    r={options.dotSize * 2}
+    stroke={options.dotColor}
+    strokeWidth={1.5}
+  >
+    <animate
+      attributeName="r"
+      dur="1.5s"
+      from={String(options.dotSize)}
+      repeatCount="indefinite"
+      to={String(options.dotSize * LIVE_DOT_PULSE_RADIUS_FACTOR)}
+    />
+    <animate attributeName="opacity" dur="1.5s" from="0.5" repeatCount="indefinite" to="0" />
+  </circle>
+);
+
+interface LiveBadgeOptions {
+  readonly formatValue: (value: number) => string;
+  readonly liveValue: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+// Value label floating beside the live dot; width tracks the formatted text.
+const renderLiveBadge = (options: Readonly<LiveBadgeOptions>): ReactElement => (
+  <g transform={`translate(${options.x + LIVE_BADGE_OFFSET_X_PX},${options.y})`}>
+    <rect
+      fill="var(--popover)"
+      height={24}
+      opacity={0.95}
+      rx={6}
+      width={options.formatValue(options.liveValue).length * LIVE_BADGE_CHAR_WIDTH_PX + LIVE_BADGE_HORIZONTAL_PADDING_PX}
+      x={0}
+      y={-12}
+    />
+    <text
+      fill="var(--popover-foreground)"
+      fontFamily="SF Mono, Menlo, Monaco, monospace"
+      fontSize={11}
+      fontWeight={500}
+      x={8}
+      y={4}
+    >
+      {options.formatValue(options.liveValue)}
+    </text>
+  </g>
+);
+
+interface CrosshairLineOptions {
+  readonly innerWidth: number;
+  readonly resolvedStroke: string;
+  readonly y: number;
+}
+
+// Horizontal dashed guide at the live value, spanning the plot width.
+const renderCrosshairLine = (options: Readonly<CrosshairLineOptions>): ReactElement => (
+  <line
+    opacity={0.25}
+    stroke={options.resolvedStroke}
+    strokeDasharray="4,4"
+    strokeWidth={1}
+    x1={0}
+    x2={options.innerWidth}
+    y1={options.y}
+    y2={options.y}
+  />
+);
+
+interface LiveDotOptions {
+  readonly dotColor: string;
+  readonly size: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+// Core live dot with its soft halo disc.
+const renderLiveDot = (options: Readonly<LiveDotOptions>): ReactElement => (
+  <>
+    <circle cx={options.x} cy={options.y} fill={options.dotColor} opacity={0.1} r={options.size + 2} />
+    <circle
+      cx={options.x}
+      cy={options.y}
+      fill={options.dotColor}
+      r={options.size}
+      stroke="var(--chart-background)"
+      strokeWidth={2}
+    />
+  </>
+);
+
+interface LineVisualSnapshot {
+  readonly cfg: ReadonlyLiveLineConfig;
+  readonly dotColor: string;
+  readonly liveDotX: number;
+  readonly liveDotY: number;
+  readonly liveValue: number;
+  readonly momentum: Momentum;
+  readonly resolvedStroke: string;
+}
+
+interface FadeGradientOptions {
+  readonly innerWidth: number;
+  readonly uid: string;
+  readonly visual: Readonly<LineVisualSnapshot>;
+}
+
+// Per-series edge-fade gradient tracking the live dot; the trailing stop pins full opacity.
+const renderFadeGradient = (options: Readonly<FadeGradientOptions>): ReactElement => {
+  const { visual } = options;
+  const fadeId = `bkm-live-fade-${options.uid}-${visual.cfg.dataKey}`;
+  const tracksDot = visual.liveDotX < options.innerWidth - 1;
+  return (
+    <linearGradient key={visual.cfg.dataKey} id={fadeId} x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stopColor="white" stopOpacity={0} />
+      <stop offset="4%" stopColor="white" stopOpacity={1} />
+      {tracksDot && (
+        <stop
+          offset={`${(visual.liveDotX / Math.max(1, options.innerWidth)) * PERCENT_SCALE}%`}
+          stopColor="white"
+          stopOpacity={1}
+        />
+      )}
+      {tracksDot ? (
+        <stop offset="100%" stopColor="white" stopOpacity={0} />
+      ) : (
+        <stop offset="100%" stopColor="white" stopOpacity={1} />
+      )}
+    </linearGradient>
+  );
+};
+
+interface FadeMaskOptions {
+  readonly fadeMaskId: string | undefined;
+  readonly height: number;
+  readonly innerHeight: number;
+  readonly innerWidth: number;
+  readonly isFirst: boolean;
+  readonly marginBottom: number;
+  readonly marginLeft: number;
+  readonly marginTop: number;
+  readonly uid: string;
+  readonly visual: Readonly<LineVisualSnapshot>;
+  readonly width: number;
+}
+
+// Mask covers the whole container (not just the plot): per-mark mask/clipPath has no native channel.
+const renderFadeMask = (options: Readonly<FadeMaskOptions>): ReactNode =>
+  hasText(options.fadeMaskId) && options.isFirst && (
+    <mask key={`${options.visual.cfg.dataKey}-mask`} id={options.fadeMaskId} maskUnits="userSpaceOnUse">
+      <rect
+        fill={`url(#bkm-live-fade-${options.uid}-${options.visual.cfg.dataKey})`}
+        x={options.marginLeft}
+        y={options.marginTop - FADE_MASK_TOP_OVERHANG_PX}
+        width={options.innerWidth}
+        height={options.innerHeight + FADE_MASK_VERTICAL_OVERHANG_PX}
+      />
+      <rect fill="white" x={0} y={0} width={options.marginLeft} height={options.height} />
+      <rect
+        fill="white"
+        x={0}
+        y={options.height - options.marginBottom}
+        width={options.width}
+        height={options.marginBottom}
+      />
+    </mask>
+  );
+
+interface CrosshairDefView {
+  readonly color: string;
+  readonly id: string;
+  readonly stops: readonly Readonly<{ offset: string; opacity: number }>[];
+}
+
+interface FadeDefsOptions {
+  readonly crosshair: Readonly<CrosshairDefView> | undefined;
+  readonly fadeMaskId: string | undefined;
+  readonly height: number;
+  readonly innerHeight: number;
+  readonly innerWidth: number;
+  readonly marginBottom: number;
+  readonly marginLeft: number;
+  readonly marginTop: number;
+  readonly uid: string;
+  readonly visuals: readonly LineVisualSnapshot[];
+  readonly width: number;
+}
+
+// Edge-fade gradients plus the plot mask and crosshair gradient for the overlay svg.
+const renderFadeDefs = (options: Readonly<FadeDefsOptions>): ReactNode => (
+  <>
+    {options.visuals.map((visual: Readonly<LineVisualSnapshot>): ReactNode =>
+      renderFadeGradient({ innerWidth: options.innerWidth, uid: options.uid, visual }),
+    )}
+    {options.visuals.map((visual: Readonly<LineVisualSnapshot>): ReactNode =>
+      renderFadeMask({
+        fadeMaskId: options.fadeMaskId,
+        height: options.height,
+        innerHeight: options.innerHeight,
+        innerWidth: options.innerWidth,
+        isFirst: visual === options.visuals[0],
+        marginBottom: options.marginBottom,
+        marginLeft: options.marginLeft,
+        marginTop: options.marginTop,
+        uid: options.uid,
+        visual,
+        width: options.width,
+      }),
+    )}
+    {options.crosshair ? (
+      <linearGradient
+        id={options.crosshair.id}
+        gradientUnits="userSpaceOnUse"
+        x1={0}
+        x2={0}
+        y1={options.marginTop}
+        y2={options.marginTop + options.innerHeight}
+      >
+        {options.crosshair.stops.map((stop: Readonly<{ offset: string; opacity: number }>) => (
+          <stop key={stop.offset} offset={stop.offset} stopColor={options.crosshair?.color} stopOpacity={stop.opacity} />
+        ))}
+      </linearGradient>
+    ) : undefined}
+  </>
+);
+
 const LiveTipChrome = ({
   cfg,
   dotColor,
+  getLiveGroups,
+  groupKey,
   liveValue,
   liveDotX,
   liveDotY,
   resolvedStroke,
   innerWidth,
-  registerLiveGroup,
 }: Readonly<LiveTipChromeProps>): ReactElement => {
   const pulse = cfg.pulse ?? true;
   const dotSize = cfg.dotSize ?? DEFAULT_LIVE_DOT_SIZE_PX;
   const badge = cfg.badge ?? true;
   const formatValue = cfg.formatValue ?? defaultFormatValue;
+  const handleLiveGroupRef = useCallback(
+    (element: SVGGElement | null): void => {
+      const groups = getLiveGroups();
+      if (element) {groups.set(groupKey, element);}
+      else {groups.delete(groupKey);}
+    },
+    [getLiveGroups, groupKey],
+  );
 
   return (
     <>
-      <line
-        opacity={0.25}
-        stroke={resolvedStroke}
-        strokeDasharray="4,4"
-        strokeWidth={1}
-        x1={0}
-        x2={innerWidth}
-        y1={liveDotY}
-        y2={liveDotY}
-      />
-      <g ref={registerLiveGroup} style={LIVE_TIP_GROUP_STYLE}>
+      {renderCrosshairLine({ innerWidth, resolvedStroke, y: liveDotY })}
+      <g ref={handleLiveGroupRef} style={LIVE_TIP_GROUP_STYLE}>
         <g>
-          {pulse && (
-            <circle
-              cx={liveDotX}
-              cy={liveDotY}
-              fill="none"
-              opacity={0.4}
-              r={dotSize * 2}
-              stroke={dotColor}
-              strokeWidth={1.5}
-            >
-              <animate
-                attributeName="r"
-                dur="1.5s"
-                from={String(dotSize)}
-                repeatCount="indefinite"
-                to={String(dotSize * LIVE_DOT_PULSE_RADIUS_FACTOR)}
-              />
-              <animate attributeName="opacity" dur="1.5s" from="0.5" repeatCount="indefinite" to="0" />
-            </circle>
-          )}
-          <circle cx={liveDotX} cy={liveDotY} fill={dotColor} opacity={0.1} r={dotSize + 2} />
-          <circle
-            cx={liveDotX}
-            cy={liveDotY}
-            fill={dotColor}
-            r={dotSize}
-            stroke="var(--chart-background)"
-            strokeWidth={2}
-          />
+          {pulse && renderPulseHalo({ dotColor, dotSize, x: liveDotX, y: liveDotY })}
+          {renderLiveDot({ dotColor, size: dotSize, x: liveDotX, y: liveDotY })}
         </g>
-        {badge && (
-          <g transform={`translate(${liveDotX + LIVE_BADGE_OFFSET_X_PX},${liveDotY})`}>
-            <rect
-              fill="var(--popover)"
-              height={24}
-              opacity={0.95}
-              rx={6}
-              width={formatValue(liveValue).length * LIVE_BADGE_CHAR_WIDTH_PX + LIVE_BADGE_HORIZONTAL_PADDING_PX}
-              x={0}
-              y={-12}
-            />
-            <text
-              fill="var(--popover-foreground)"
-              fontFamily="SF Mono, Menlo, Monaco, monospace"
-              fontSize={11}
-              fontWeight={500}
-              x={8}
-              y={4}
-            >
-              {formatValue(liveValue)}
-            </text>
-          </g>
-        )}
+        {badge && renderLiveBadge({ formatValue, liveValue, x: liveDotX, y: liveDotY })}
       </g>
     </>
   );
@@ -567,13 +896,13 @@ const LiveLineChart = ({
     let lastFrameCommit = 0;
     const tick = (): void => {
       raf = 0;
-      const next = nextAnimFrame(
-        animRef.current,
-        targetRangeRef.current,
-        valueRef.current,
-        lerpSpeedRef.current,
-        pausedRef.current,
-      );
+      const next = nextAnimFrame({
+        isPaused: pausedRef.current,
+        prev: animRef.current,
+        speed: lerpSpeedRef.current,
+        targetRange: targetRangeRef.current,
+        targetValue: valueRef.current,
+      });
       animRef.current = { ...next, seq: animRef.current.seq };
 
       const now = performance.now();
@@ -635,22 +964,14 @@ const LiveLineChart = ({
   const lineVisuals = useMemo(() => 
     liveLines.map((cfg: ReadonlyLiveLineConfig) => {
       const momentum = detectMomentum(contextData, cfg.dataKey);
-      const baseStroke = cfg.stroke ?? "var(--chart-line-primary)";
-      const defaultMomentumColors: MomentumColors = {
-        down: "var(--chart-5)",
-        flat: baseStroke,
-        up: "var(--chart-1)",
-      };
-      const dotMomentumColors = cfg.momentumColors ?? defaultMomentumColors;
-      const dotColor = dotMomentumColors[momentum];
-      const resolvedStroke = cfg.momentumColors ? cfg.momentumColors[momentum] : baseStroke;
+      const { dotColor, resolvedStroke } = resolveLineStroke(cfg, momentum);
       const nowPoint =
         contextData.length >= 2 ? contextData.at(NOW_POINT_OFFSET_FROM_END) : contextData.at(-1);
       const liveRaw: unknown = nowPoint?.[cfg.dataKey];
       const liveValue = isNumber(liveRaw) ? liveRaw : 0;
       const liveDotX = nowPoint ? xScale(xAccessor(nowPoint)) : innerWidth;
       const liveDotY = yScale(liveValue);
-      return { baseStroke, cfg, dotColor, liveDotX, liveDotY, liveValue, momentum, resolvedStroke };
+      return { cfg, dotColor, liveDotX, liveDotY, liveValue, momentum, resolvedStroke };
     })
   , [liveLines, contextData, xScale, yScale, xAccessor, innerWidth]);
 
@@ -718,20 +1039,18 @@ const LiveLineChart = ({
   const handleFocusChange = useCallback(
     (points: readonly ReadonlyLivePoint[]) => {
       const primary = points.at(0);
-      const dim = primary !== undefined;
-      for (const el of liveGroupElsRef.current.values()) {
-        el.style.opacity = dim ? "0.25" : "1";
-      }
+      applyFocusDim(liveGroupElsRef.current, primary !== undefined);
       if (!tooltipOn) {return;}
       const axisCfg = liveXAxisRef.current;
       if (primary && axisCfg) {
-        const { datum } = primary;
-        const dateVal = coerceDatumDate(datum.date);
-        const formatTime = axisCfg.formatTime ?? defaultFormatTime;
-        const label = formatTime(dateVal.getTime());
-        const jump = !wasVisibleRef.current;
+        showFocusDatePill(datePill, {
+          datum: primary.datum,
+          datumIndex: primary.datumIndex,
+          formatTime: axisCfg.formatTime ?? defaultFormatTime,
+          wasVisible: wasVisibleRef.current,
+          x: primary.x,
+        });
         wasVisibleRef.current = true;
-        datePill.show(primary.x, { discrete: false, index: primary.datumIndex, jump, label });
       } else {
         wasVisibleRef.current = false;
         datePill.hide();
@@ -745,12 +1064,22 @@ const LiveLineChart = ({
     interactionRef.current = context.interaction;
   }, []);
 
+  // Stable reader for the focus-dim registry; the tip chrome resolves it at ref time.
+  const getLiveGroups = useCallback((): Map<string, SVGGElement> => liveGroupElsRef.current, []);
+
   const crosshairGradientId = `bkm-live-crosshair-${uid}`;
   const crosshairGradientDef = useMemo(() => {
     if (tooltip === undefined || !(tooltipOn && (tooltip.showCrosshair ?? true))) {return undefined;}
     const color = isString(tooltip.indicatorColor) ? tooltip.indicatorColor : "var(--chart-crosshair)";
     return buildCrosshairGradientDef(crosshairGradientId, color);
   }, [tooltipOn, tooltip, crosshairGradientId]);
+  const crosshairView = useMemo<Readonly<CrosshairDefView> | undefined>(
+    () =>
+      crosshairGradientDef
+        ? { color: crosshairGradientDef.color, id: crosshairGradientDef.id, stops: crosshairGradientDef.stops }
+        : undefined,
+    [crosshairGradientDef],
+  );
 
   const renderTooltipBody = useCallback(
     (ctx: Readonly<ChartTooltipBodyRenderContext<ChartDatum, Date, number>>): ReactNode =>
@@ -793,7 +1122,7 @@ const LiveLineChart = ({
     const [minVal, maxVal] = yScale.domain();
     const valRange = maxVal - minVal;
     const minGap = liveYAxis.minGap ?? DEFAULT_Y_MIN_GAP_PX;
-    return pickNiceInterval(valRange, innerHeight, minGap, cachedYInterval);
+    return pickNiceInterval({ chartHeight: innerHeight, minGap, prevInterval: cachedYInterval, valRange });
   }, [liveYAxis, yScale, innerHeight, cachedYInterval]);
   if (yInterval !== cachedYInterval && yInterval > 0) {
     setCachedYInterval(yInterval);
@@ -802,19 +1131,11 @@ const LiveLineChart = ({
     if (!liveYAxis || yInterval <= 0) {return [];}
     // Read the niced scale domain directly for tick sizing (legacy builds its yScale with nice:true).
     const [minVal, maxVal] = yScale.domain();
-    const valRange = maxVal - minVal;
-    if (valRange <= 0) {return [];}
-    const interval = yInterval;
-    const allowDecimals = liveYAxis.allowDecimals ?? true;
-    const expandedMin = minVal - interval * TICK_RANGE_EXPANSION_FACTOR;
-    const expandedMax = maxVal + interval * TICK_RANGE_EXPANSION_FACTOR;
-    const first = Math.ceil(expandedMin / interval) * interval;
-    const values: number[] = [];
-    for (let tickValue = first; tickValue <= expandedMax; tickValue += interval) {
-      const rounded = Math.round(tickValue * TICK_ROUNDING_FACTOR) / TICK_ROUNDING_FACTOR;
-      if (Number.isInteger(rounded) || allowDecimals) {values.push(rounded);}
-    }
-    return values;
+    if (maxVal - minVal <= 0) {return [];}
+    const expandedMin = minVal - yInterval * TICK_RANGE_EXPANSION_FACTOR;
+    const expandedMax = maxVal + yInterval * TICK_RANGE_EXPANSION_FACTOR;
+    const first = Math.ceil(expandedMin / yInterval) * yInterval;
+    return expandNiceTicks({ allowDecimals: liveYAxis.allowDecimals ?? true, expandedMax, first, interval: yInterval });
   }, [liveYAxis, yScale, yInterval]);
 
   const definition = useMemo(() => {
@@ -1038,63 +1359,19 @@ const LiveLineChart = ({
           >
             <g transform={`translate(${margin.left},${margin.top})`}>
               <defs>
-                {lineVisuals.map((visual: Readonly<(typeof lineVisuals)[number]>) => {
-                  const fadeId = `bkm-live-fade-${uid}-${visual.cfg.dataKey}`;
-                  return (
-                    <Fragment key={visual.cfg.dataKey}>
-                      <linearGradient id={fadeId} x1="0" x2="1" y1="0" y2="0">
-                        <stop offset="0%" stopColor="white" stopOpacity={0} />
-                        <stop offset="4%" stopColor="white" stopOpacity={1} />
-                        {visual.liveDotX < innerWidth - 1 ? (
-                          <>
-                            <stop
-                              offset={`${(visual.liveDotX / Math.max(1, innerWidth)) * PERCENT_SCALE}%`}
-                              stopColor="white"
-                              stopOpacity={1}
-                            />
-                            <stop offset="100%" stopColor="white" stopOpacity={0} />
-                          </>
-                        ) : (
-                          <stop offset="100%" stopColor="white" stopOpacity={1} />
-                        )}
-                      </linearGradient>
-                      {hasText(fadeMaskId) && visual === lineVisuals[0] ? (
-                        // Mask covers the whole container (not just the plot): per-mark mask/clipPath has no native channel.
-                        <mask id={fadeMaskId} maskUnits="userSpaceOnUse">
-                          <rect
-                            fill={`url(#${fadeId})`}
-                            x={margin.left}
-                            y={margin.top - FADE_MASK_TOP_OVERHANG_PX}
-                            width={innerWidth}
-                            height={innerHeight + FADE_MASK_VERTICAL_OVERHANG_PX}
-                          />
-                          <rect fill="white" x={0} y={0} width={margin.left} height={height} />
-                          <rect
-                            fill="white"
-                            x={0}
-                            y={height - margin.bottom}
-                            width={width}
-                            height={margin.bottom}
-                          />
-                        </mask>
-                      ) : undefined}
-                    </Fragment>
-                  );
+                {renderFadeDefs({
+                  crosshair: crosshairView,
+                  fadeMaskId,
+                  height,
+                  innerHeight,
+                  innerWidth,
+                  marginBottom: margin.bottom,
+                  marginLeft: margin.left,
+                  marginTop: margin.top,
+                  uid,
+                  visuals: lineVisuals,
+                  width,
                 })}
-                {crosshairGradientDef ? (
-                  <linearGradient
-                    id={crosshairGradientDef.id}
-                    gradientUnits="userSpaceOnUse"
-                    x1={0}
-                    x2={0}
-                    y1={margin.top}
-                    y2={margin.top + innerHeight}
-                  >
-                    {crosshairGradientDef.stops.map((stop: Readonly<{ offset: string; opacity: number }>) => (
-                      <stop key={stop.offset} offset={stop.offset} stopColor={crosshairGradientDef.color} stopOpacity={stop.opacity} />
-                    ))}
-                  </linearGradient>
-                ) : undefined}
               </defs>
 
               {lineVisuals.map((visual: Readonly<(typeof lineVisuals)[number]>) => (
@@ -1102,16 +1379,13 @@ const LiveLineChart = ({
                   key={visual.cfg.dataKey}
                   cfg={visual.cfg}
                   dotColor={visual.dotColor}
+                  getLiveGroups={getLiveGroups}
+                  groupKey={visual.cfg.dataKey}
                   liveValue={visual.liveValue}
                   liveDotX={visual.liveDotX}
                   liveDotY={visual.liveDotY}
                   resolvedStroke={visual.resolvedStroke}
                   innerWidth={innerWidth}
-                  registerLiveGroup={(el) => {
-                    const groups = liveGroupElsRef.current;
-                    if (el) {groups.set(visual.cfg.dataKey, el);}
-                    else {groups.delete(visual.cfg.dataKey);}
-                  }}
                 />
               ))}
             </g>

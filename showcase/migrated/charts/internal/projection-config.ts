@@ -1,4 +1,4 @@
-import { Children, Fragment, isValidElement } from "react";
+import { Fragment, isValidElement } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { roleOf } from "./children-extract";
 import type { ProjectionPoint } from "./projection-utils";
@@ -71,13 +71,18 @@ const visitProjectionChild = (child: ProjectionChildElement, configs: Projection
 const extractProjectionLineConfigs = (children: ReactNode): ProjectionLineConfig[] => {
   const configs: ProjectionLineConfig[] = [];
   const visit = (node: ReactNode): void => {
-    for (const child of Children.toArray(node)) {
-      // Pin the props generic at the validity check, not via `as`.
-      // Every valid element carries a props object, so reading
-      // `children` needs no assertion.
-      if (isValidElement<{ children?: ReactNode }>(child)) {
-        visitProjectionChild(child, configs, visit);
+    if (Array.isArray(node)) {
+      const entries: readonly ReactNode[] = node;
+      for (const entry of entries) {
+        visit(entry);
       }
+      return;
+    }
+    // Pin the props generic at the validity check, not via `as`.
+    // Every valid element carries a props object, so reading
+    // `children` needs no assertion.
+    if (isValidElement<{ children?: ReactNode }>(node)) {
+      visitProjectionChild(node, configs, visit);
     }
   };
   visit(children);

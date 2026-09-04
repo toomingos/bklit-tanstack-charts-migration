@@ -1,7 +1,7 @@
 // Bespoke notch geometry/fill primitives shared by both Gauge orientations:
 // `createNotchPath` is a straight-chord + quadratic-Bézier-fillet routine,
 // Zero d3-arc involved.
-import { Children, Fragment, isValidElement } from 'react';
+import { Fragment, isValidElement } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { NOTCH_FALLBACK_FILL, interpolateGaugeHex } from "./gauge-notch-geometry";
 
@@ -43,7 +43,7 @@ interface ComputedNotch {
 const isFunctionType = <Value>(value: Value): value is Value & object => typeof value === "function";
 const isStringType = <Value>(value: Value): value is Value & string => typeof value === "string";
 
-const DEFS_EXACT_TYPE_LABELS: readonly string[] = [
+const DEFS_EXACT_TYPE_LABELS: ReadonlySet<string> = new Set([
   "LinearGradient",
   "RadialGradient",
   "Lines",
@@ -51,7 +51,7 @@ const DEFS_EXACT_TYPE_LABELS: readonly string[] = [
   "Circles",
   "Hexagons",
   "Waves",
-];
+]);
 
 const isDefsComponent = (child: Readonly<ReactElement>): boolean => {
   const componentType: unknown = child.type;
@@ -63,8 +63,10 @@ const isDefsComponent = (child: Readonly<ReactElement>): boolean => {
   if (typeLabel.includes("Gradient") || typeLabel.includes("Pattern")) {
     return true;
   }
-  return DEFS_EXACT_TYPE_LABELS.includes(typeLabel);
+  return DEFS_EXACT_TYPE_LABELS.has(typeLabel);
 }
+
+const isNodeArray = (nodes: ReactNode): nodes is readonly ReactNode[] => Array.isArray(nodes);
 
 /** Gauge's only use of `children` — collects caller-supplied defs elements
     (gradients/patterns) out of the children tree.
@@ -73,24 +75,20 @@ const isDefsComponent = (child: Readonly<ReactElement>): boolean => {
  * @returns {ReactElement[]} Collected defs elements in tree order, flattened through fragments.
  */
 const collectGaugeDefsElements = (nodes: ReactNode): ReactElement[] => {
-  const out: ReactElement[] = [];
-  Children.forEach(nodes, (child) => {
-    if (!isValidElement<{ children?: ReactNode }>(child)) {
-      return;
+  if (isNodeArray(nodes)) {
+    const collected: ReactElement[] = [];
+    for (const child of nodes) {
+      collected.push(...collectGaugeDefsElements(child));
     }
-    if (child.type === Fragment) {
-      out.push(
-        ...collectGaugeDefsElements(
-          child.props.children,
-        ),
-      );
-      return;
-    }
-    if (isDefsComponent(child)) {
-      out.push(child);
-    }
-  });
-  return out;
+    return collected;
+  }
+  if (!isValidElement<{ children?: ReactNode }>(nodes)) {
+    return [];
+  }
+  if (nodes.type === Fragment) {
+    return collectGaugeDefsElements(nodes.props.children);
+  }
+  return isDefsComponent(nodes) ? [nodes] : [];
 }
 
 interface NotchDistanceOptions {
@@ -255,14 +253,13 @@ const resolveGaugeActiveFill = (options: {
   return activeFillSolid;
 }
 
-export { computeArcNotches } from "./gauge-notch-geometry";
+export { computeArcNotches, interpolateGaugeHex } from "./gauge-notch-geometry";
 export { computeLinearNotches } from "./gauge-linear-geometry";
 export type { ArcNotchGeometry, ArcNotchGeometryInput } from "./gauge-notch-geometry";
 export type { LinearNotchGeometry, LinearNotchGeometryInput } from "./gauge-linear-geometry";
 export {
   collectGaugeDefsElements,
   createNotchPath,
-  interpolateGaugeHex,
   resolveGaugeActiveFill,
   resolveGaugeBgFill,
   DEFAULT_ACTIVE_FILL_OPACITY,

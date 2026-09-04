@@ -7,6 +7,9 @@ import { ProgressItem } from "./chart-legend-progress-item";
 import { SimpleItem } from "./chart-legend-simple-item";
 import type { ChartLegendProps, LegendItem } from "./chart-legend";
 
+// A missing or zero maximum means the item has no progress scale to draw.
+const EMPTY_PROGRESS_MAXIMUM = 0;
+
 interface DefaultLegendRowProps {
   readonly displayPercentage: boolean;
   readonly formatValue: (value: number) => string;
@@ -36,7 +39,7 @@ interface DefaultLegendBodyOptions {
 
 const renderDefaultLegendBody = (options: Readonly<DefaultLegendBodyOptions>): ReactElement => {
   const { displayPercentage, formatValue, item, labelClassName, showMarker, showProgress, showValue, valueClassName } = options;
-  if (showProgress && (item.maxValue ?? 0) !== 0) {
+  if (showProgress && (item.maxValue ?? EMPTY_PROGRESS_MAXIMUM) !== EMPTY_PROGRESS_MAXIMUM) {
     return (
       <ProgressItem
         formatValue={formatValue}

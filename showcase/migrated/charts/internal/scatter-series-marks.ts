@@ -3,8 +3,7 @@ import { dot } from "@tanstack/charts/dot";
 import { whenFocused } from "@tanstack/charts/focus/mark";
 import { toDate } from "./coerce-date";
 import { isFiniteNumber } from "./scatter-datum-utils";
-import { createScatterEnterMotion, createYGradientScatterMark } from "./scatter-marks";
-import type { ResolvedSeries } from "./scatter-marks";
+import { createScatterEnterMotion, createYGradientScatterMark, type ResolvedSeries } from "./scatter-marks";
 import { withMarkerBaseClassName } from "./series-marker-mark";
 import type { MotionEasing } from "./reveal-easing";
 import type { ChartDatum } from "./types";
@@ -15,6 +14,10 @@ const ENTER_TWEEN_MS = 500;
 const ACTIVE_HIGHLIGHT_SCALE = 1.35;
 // Enter-motion highlight pad as a fraction of the dot radius.
 const SCATTER_ENTER_HIGHLIGHT_PAD_FRACTION = 0.35;
+// Ring extent contributed when the series has no stroke to draw a ring with.
+const NO_RING_EXTENT = 0;
+// Extra pixel pad around the enter-motion visual extent so the tween never clips the dot edge.
+const ENTER_VISUAL_EXTENT_PAD_PX = 2;
 
 interface BuildSeriesEnterMotionParams {
   readonly animate: boolean;
@@ -36,9 +39,9 @@ const buildSeriesEnterMotion = ({
   strokeWidth,
 }: Readonly<BuildSeriesEnterMotionParams>): ChartMotionDefinition<ChartDatum> | false => {
   if (!animate) {return false;}
-  const enterRing = strokeWidth > 0 ? ringGap + strokeWidth : 0;
+  const enterRing = strokeWidth > NO_RING_EXTENT ? ringGap + strokeWidth : NO_RING_EXTENT;
   const enterHighlightPad = radius * SCATTER_ENTER_HIGHLIGHT_PAD_FRACTION;
-  const enterVisualExtent = radius + enterRing + enterHighlightPad + 2;
+  const enterVisualExtent = radius + enterRing + enterHighlightPad + ENTER_VISUAL_EXTENT_PAD_PX;
   return createScatterEnterMotion({ easing, fadeDurationMs: ENTER_TWEEN_MS, innerWidth, staggerDurationSec: durationSec, visualExtent: enterVisualExtent });
 };
 
@@ -156,7 +159,7 @@ const buildAllSeriesMarks = ({
       ringGap: series.ringGap,
       strokeWidth: series.strokeWidth,
     });
-    const hasRing = series.strokeWidth > 0;
+    const hasRing = series.strokeWidth > NO_RING_EXTENT;
     const gradientId = hasRing ? gradientIdBySeries.get(series.dataKey) : undefined;
     marks.push(
       ...buildScatterSeriesMarks({

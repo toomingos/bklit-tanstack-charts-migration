@@ -1,7 +1,5 @@
-import { useCallback, useLayoutEffect, useRef } from "react";
-import type { RefCallback, RefObject } from "react";
-import { buildPill } from "./date-pill";
-import type { PillBuild } from "./date-pill";
+import { useCallback, useLayoutEffect, useRef, type RefCallback, type RefObject } from "react";
+import { buildPill, type PillBuild } from "./date-pill";
 import type { SpringConfig } from "./chart-config-context";
 
 // Date-pill overlay controller split out of hover-geometry.
@@ -44,13 +42,15 @@ const mountDatePill = (refs: Readonly<DatePillRefs>, el: HTMLDivElement | null):
 
 type DatePillShow = DatePillController["show"];
 
+const EMPTY_LABEL_COUNT = 0;
+
 // Builds the show callback; hoisted so the controls hook stays short.
 const buildPillShow = (pillRef: RefObject<PillBuild | null>, dateLabelsRef: Readonly<RefObject<readonly string[]>>): DatePillShow =>
   (pixelX: number, opts: { readonly index: number; readonly label: string | null; readonly discrete: boolean; readonly jump: boolean }): void => {
     const pill = pillRef.current;
     if (!pill) {return;}
     pill.layer.style.display = "";
-    if (pill.ticker && dateLabelsRef.current.length > 0) {
+    if (pill.ticker && dateLabelsRef.current.length > EMPTY_LABEL_COUNT) {
       pill.ticker.update(opts.index, opts.discrete);
     } else if (opts.label === null) {
       // No ticker and no label, so the pill keeps its previous text.
@@ -75,16 +75,12 @@ interface DatePillControls {
   readonly refs: Readonly<DatePillRefs>;
   readonly mountPill: (el: HTMLDivElement | null) => void;
   readonly enabled: boolean;
-  readonly dateLabels: readonly string[];
-  readonly tooltipSpring: Readonly<SpringConfig>;
 }
 
 // Callback side of the controller; separate hook so the mount hook stays short.
 const useDatePillControls = (controls: Readonly<DatePillControls>): DatePillController => {
-  const { dateLabels, enabled, mountPill, refs, tooltipSpring } = controls;
+  const { enabled, mountPill, refs } = controls;
   const { dateLabelsRef, pillRef } = refs;
-  refs.dateLabelsRef.current = dateLabels;
-  refs.springRef.current = tooltipSpring;
   const overlayHostRef = useCallback(
     (el: HTMLDivElement | null) =>{  mountPill(enabled ? el : null); },
     [mountPill, enabled],
@@ -119,8 +115,12 @@ const useDatePillOverlay = (options: Readonly<DatePillOverlayOptions>): DatePill
     mountDatePill({ dateLabelsRef, hostRef, pillRef, springRef }, el);
   }, []);
   useLayoutEffect(() => {
+    dateLabelsRef.current = options.dateLabels;
+    springRef.current = options.tooltipSpring;
+  });
+  useLayoutEffect(() => {
     // Re-mirrors the spring tune this effect subscribes to.
-    // Same values the controls hook mirrors during render.
+    // Same values the mirror effect above writes each commit.
     // Reading them here keeps the stiffness/damping deps honest.
     // `buildPill` copies the tune into its own spring.
     // Fresh object identity is therefore unobservable downstream.
@@ -128,7 +128,7 @@ const useDatePillOverlay = (options: Readonly<DatePillOverlayOptions>): DatePill
     mountDatePill({ dateLabelsRef, hostRef, pillRef, springRef }, options.enabled ? hostRef.current : null);
   }, [options.enabled, options.tooltipSpring.stiffness, options.tooltipSpring.damping]);
   useLayoutEffect(() => (): void =>{  mountDatePill({ dateLabelsRef, hostRef, pillRef, springRef }, null); }, []);
-  return useDatePillControls({ dateLabels: options.dateLabels, enabled: options.enabled, mountPill, refs: { dateLabelsRef, hostRef, pillRef, springRef }, tooltipSpring: options.tooltipSpring });
+  return useDatePillControls({ enabled: options.enabled, mountPill, refs: { dateLabelsRef, hostRef, pillRef, springRef } });
 };
 
 export type { DatePillController };

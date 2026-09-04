@@ -5,6 +5,11 @@ import { ensurePulseClipDef, MS_PER_SECOND, PULSE_WAVE_DURATION_S } from "./bar-
 // Injected nodes. Split out so bar-pulse-mark.ts stays under the size limits.
 // Held until bars finish growing ("ready"); absent under pulsePaused; no reduced-motion branch (legacy parity).
 
+// Shared numeric thresholds; module scope so the helpers stay short and magic-free.
+const MIN_WAVE_HEIGHT = 0;
+const FIRST_Y_TOKEN_INDEX = 1;
+const COORD_PAIR_STRIDE = 2;
+
 interface BarPulseLoopState {
   anim: Animation | undefined;
   geomKey: string | undefined;
@@ -27,7 +32,7 @@ interface PulseSyncArgs {
 }
 
 // Deactivation branch of the group sync; undefined means "handled, skip the group". Hoisted so syncBarPulseGroup stays short.
-const preparePulseSync = (syncArgs: Readonly<PulseSyncArgs>): BarPulseLoopState | undefined => {
+const resolvePulseLoopState = (syncArgs: Readonly<PulseSyncArgs>): BarPulseLoopState | undefined => {
   const state = getPulseLoopState(syncArgs.group);
   if (syncArgs.active) {return state;}
   if (state.anim) {
@@ -66,7 +71,7 @@ const readPulseWaveAttributes = (silhouette: SVGPathElement, wave: SVGRectElemen
   const waveX = Number(wave.getAttribute("x") ?? "0");
   const waveY = Number(wave.getAttribute("y") ?? "0");
   const waveH = Number(wave.getAttribute("height") ?? "0");
-  if (!clipD || !Number.isFinite(waveY) || !Number.isFinite(waveH) || waveH <= 0) {return undefined;}
+  if (!clipD || !Number.isFinite(waveY) || !Number.isFinite(waveH) || waveH <= MIN_WAVE_HEIGHT) {return undefined;}
   return { clipD, wave, waveH, waveX, waveY };
 };
 
@@ -79,7 +84,7 @@ const pendingRetries = new WeakMap<SVGSVGElement, { count: number }>();
 // Bounded: a genuinely-gone chart stops retrying after this many frames.
 const MAX_PULSE_RETRY_FRAMES = 10;
 
-const schedulePulseRetry = (svgRoot: SVGSVGElement, active: boolean): void => {
+const schedulePulseRetry = (svgRoot: SVGSVGElement, resync: () => void): void => {
   let box = pendingRetries.get(svgRoot);
   if (!box) {
     box = { count: 0 };
@@ -90,20 +95,20 @@ const schedulePulseRetry = (svgRoot: SVGSVGElement, active: boolean): void => {
   box.count += 1;
   requestAnimationFrame(() => {
     box.count = 0;
-    syncBarPulseGroups(svgRoot, active);
+    resync();
   });
 };
 
-// Reads + validates one group's wave attributes; undefined schedules a retry and skips the group.
-const readPulseSyncState = (readArgs: Readonly<PulseSyncReadArgs>): PulseWaveAttributes | undefined => {
+// Reads + validates one group's wave attributes; undefined runs onRetry and skips the group.
+const readPulseSyncState = (readArgs: Readonly<PulseSyncReadArgs>, onRetry: () => void): PulseWaveAttributes | undefined => {
   const nodes = queryPulseWaveNodes(readArgs.group);
   if (nodes === undefined) {
-    schedulePulseRetry(readArgs.svgRoot, true);
+    onRetry();
     return undefined;
   }
   const attributes = readPulseWaveAttributes(nodes.silhouette, nodes.wave);
   if (attributes === undefined) {
-    schedulePulseRetry(readArgs.svgRoot, true);
+    onRetry();
     return undefined;
   }
   return attributes;
@@ -118,8 +123,8 @@ const readPulseSyncState = (readArgs: Readonly<PulseSyncReadArgs>): PulseWaveAtt
 const silhouetteMinY = (clipD: string): number => {
   let minY = Number.POSITIVE_INFINITY;
   const nums = clipD.match(/-?\d*\.?\d+/gu) ?? [];
-  for (let i = 1; i < nums.length; i += 2) {
-    const parsedValue = Number(nums[i]);
+  for (let tokenIndex = FIRST_Y_TOKEN_INDEX; tokenIndex < nums.length; tokenIndex += COORD_PAIR_STRIDE) {
+    const parsedValue = Number(nums[tokenIndex]);
     if (Number.isFinite(parsedValue) && parsedValue < minY) {minY = parsedValue;}
   }
   return minY;
@@ -178,11 +183,12 @@ const applyPulseSweep = (sweepArgs: Readonly<PulseSweepArgs>): void => {
  * Per-group step of syncBarPulseGroups; early returns skip one group (forEach-callback semantics).
  *
  * @param {Readonly<{ svgRoot: SVGSVGElement; group: SVGGElement; active: boolean }>} args - Group sync inputs; `svgRoot` owns clip defs and retry scheduling, `group` is the pulse group to sync, and `active` selects the sweep versus the hide branch.
+ * @param {() => void} resync - Re-runs the full group sync; invoked on the next frame when the wave nodes are not yet present.
  */
-const syncBarPulseGroup = (args: Readonly<{ svgRoot: SVGSVGElement; group: SVGGElement; active: boolean }>): void => {
-  const state = preparePulseSync({ active: args.active, group: args.group });
+const syncBarPulseGroup = (args: Readonly<{ svgRoot: SVGSVGElement; group: SVGGElement; active: boolean }>, resync: () => void): void => {
+  const state = resolvePulseLoopState({ active: args.active, group: args.group });
   if (state === undefined) {return;}
-  const syncState = readPulseSyncState({ group: args.group, svgRoot: args.svgRoot });
+  const syncState = readPulseSyncState({ group: args.group, svgRoot: args.svgRoot }, () => { schedulePulseRetry(args.svgRoot, resync); });
   if (syncState === undefined) {return;}
   const travel = syncPulseClipAndTravel({ clipD: syncState.clipD, group: args.group, svgRoot: args.svgRoot, waveH: syncState.waveH, waveX: syncState.waveX, waveY: syncState.waveY });
   applyPulseSweep({ clipId: travel.clipId, geomKey: travel.geomKey, group: args.group, state, travel: travel.travel, wave: syncState.wave });
@@ -197,7 +203,7 @@ const syncBarPulseGroup = (args: Readonly<{ svgRoot: SVGSVGElement; group: SVGGE
 const syncBarPulseGroups = (svgRoot: SVGSVGElement, active: boolean): void => {
   const groups = svgRoot.querySelectorAll<SVGGElement>("g.bkm-chart__bar-pulse");
   for (const group of groups) {
-    syncBarPulseGroup({ active, group, svgRoot });
+    syncBarPulseGroup({ active, group, svgRoot }, () => { syncBarPulseGroups(svgRoot, active); });
   }
 }
 

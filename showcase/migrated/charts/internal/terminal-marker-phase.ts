@@ -192,11 +192,14 @@ interface PhaseApplierParams {
   readonly prefersReducedRef: RefObject<boolean>;
 }
 
+// Records the applied phase so replays and visibility diffs read the latest value.
+const recordTerminalMarkerPhase = (lastPhaseRef: RefObject<ChartPhase | null>, next: ChartPhase): void => { lastPhaseRef.current = next; };
+
 const useTerminalMarkerPhaseApplier = (params: Readonly<PhaseApplierParams>): ((next: ChartPhase) => void) => {
   const { refs, timingRef, prefersReducedRef } = params;
   return useCallback((next: ChartPhase) => {
     const prev = refs.lastPhaseRef.current;
-    refs.lastPhaseRef.current = next;
+    recordTerminalMarkerPhase(refs.lastPhaseRef, next);
     if (!isTerminalVisibilityChanged(prev, next)) { return; }
     syncProjectionEndGroupVisibility(refs.endGroupRef.current, next);
     const { durationMs, easing } = timingRef.current;
@@ -211,6 +214,12 @@ const useTerminalMarkerPhaseApplier = (params: Readonly<PhaseApplierParams>): ((
   }, [refs, timingRef, prefersReducedRef]);
 }
 
+// Port publish/withdraw hoisted so the effect never reads or writes a hook argument's current.
+const publishProjectionPhaseHandle = (phasePort: RefObject<ProjectionPhaseHandle | null>, handle: Readonly<ProjectionPhaseHandle>): void => { phasePort.current = handle; };
+const withdrawProjectionPhaseHandle = (phasePort: RefObject<ProjectionPhaseHandle | null>, handle: Readonly<ProjectionPhaseHandle>): void => {
+  if (phasePort.current === handle) { phasePort.current = null; }
+};
+
 const useProjectionPhasePort = (
   phasePort: RefObject<ProjectionPhaseHandle | null>,
   applyPhase: (phase: ChartPhase) => void,
@@ -218,10 +227,10 @@ const useProjectionPhasePort = (
 ): void => {
   useLayoutEffect(() => {
     const handle: ProjectionPhaseHandle = { setPhase: (phase) =>{  applyPhase(phase); } };
-    phasePort.current = handle;
+    publishProjectionPhaseHandle(phasePort, handle);
     const anims = runningAnimsRef.current;
     return (): void => {
-      if (phasePort.current === handle) {phasePort.current = null;}
+      withdrawProjectionPhaseHandle(phasePort, handle);
       for (const anim of anims.values()) {
         try {
           anim.cancel();

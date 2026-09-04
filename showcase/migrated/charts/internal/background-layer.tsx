@@ -37,7 +37,26 @@ export const BackgroundLayer = ({
       height={innerHeight}
       style={layerStyle}
     >
-      <Background {...config} width={innerWidth} height={innerHeight} isLoaded={isLoaded} />
+      <Background
+        color={config.color}
+        complement={config.complement}
+        dotFill={config.dotFill}
+        fadeHorizontal={config.fadeHorizontal}
+        fadeHorizontalLength={config.fadeHorizontalLength}
+        fadeVertical={config.fadeVertical}
+        fadeVerticalLength={config.fadeVerticalLength}
+        fill={config.fill}
+        height={innerHeight}
+        isLoaded={isLoaded}
+        opacity={config.opacity}
+        pattern={config.pattern}
+        radius={config.radius}
+        scale={config.scale}
+        showFill={config.showFill}
+        strokeWidth={config.strokeWidth}
+        tileBackground={config.tileBackground}
+        width={innerWidth}
+      />
     </svg>
   );
 }

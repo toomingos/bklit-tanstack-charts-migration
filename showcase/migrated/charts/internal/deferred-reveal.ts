@@ -1,8 +1,11 @@
 
-import { clearRevealed, findRevealRoot, isRevealed, markRevealed } from "./reveal-root";
-import type { RevealRoot } from "./reveal-root";
+import { clearRevealed, findRevealRoot, isRevealed, markRevealed, type RevealRoot } from "./reveal-root";
 
 const REVEALING_CLASS = "ts-chart__marks--revealing";
+const IMMEDIATE_TIMEOUT_MS = 0;
+const MIN_ANIMATION_DURATION_MS = 0;
+const NO_ELEMENTS = 0;
+const NO_STAGGER_MS = 0;
 
 /**
  * Runs `finish` after two rAFs + a macrotask (past paint, bklit pre-commit timing). Returns a cancel fn.
@@ -21,7 +24,7 @@ const onPostPaint = (finish: () => void): () => void => {
     raf2 = requestAnimationFrame(() => {
       timeoutId = globalThis.setTimeout(() => {
         if (!cancelled) {finish();}
-      }, 0);
+      }, IMMEDIATE_TIMEOUT_MS);
     });
   });
 
@@ -167,7 +170,7 @@ const cancelRevealSession = (session: RevealSession): void => {
 }
 
 const isStaleRevealEpoch = (seenEpochRef: { readonly current: number | null } | undefined, revealEpoch: number | undefined): boolean =>
-  !!seenEpochRef && revealEpoch !== undefined && seenEpochRef.current === revealEpoch;
+  seenEpochRef !== undefined && revealEpoch !== undefined && seenEpochRef.current === revealEpoch;
 
 const skipRevealAsReady = (config: DeferredRevealConfig): RevealGuard => {
   config.onPhaseChange?.("ready");
@@ -191,10 +194,10 @@ const checkRevealPreconditions = (config: DeferredRevealConfig): RevealGuard => 
   if (isStaleRevealEpoch(config.seenEpochRef, config.revealEpoch)) {
     return { marksGroup: undefined, proceed: false };
   }
-  if (config.animationDuration <= 0) {
+  if (config.animationDuration <= MIN_ANIMATION_DURATION_MS) {
     return skipRevealAsReady(config);
   }
-  if (config.elements.length === 0) {
+  if (config.elements.length === NO_ELEMENTS) {
     return skipRevealAsReady(config);
   }
   const marksGroup = guardRevealRoot({ container: config.container, marksGroupSelector: config.marksGroupSelector ?? ".ts-chart__marks", onPhaseChange: config.onPhaseChange, revealEpoch: config.revealEpoch, seenEpochRef: config.seenEpochRef });
@@ -212,20 +215,17 @@ const commitRevealGuard = ({ session, marksGroup, seenEpochRef, revealEpoch }: C
 }
 
 const computeMaxStagger = (elements: readonly Element[], staggerDelayMs: ((index: number, total: number) => number) | undefined): number => {
-  if (!staggerDelayMs) {return 0;}
-  let maxStagger = 0;
-  for (let i = 0; i < elements.length; i += 1) {
-    const delay = staggerDelayMs(i, elements.length);
+  if (!staggerDelayMs) {return NO_STAGGER_MS;}
+  let maxStagger = NO_STAGGER_MS;
+  for (const index of elements.keys()) {
+    const delay = staggerDelayMs(index, elements.length);
     if (delay > maxStagger) {maxStagger = delay;}
   }
   return maxStagger;
 }
 
 const appendAnimationList = (result: readonly Animation[], animations: Animation[]): void => {
-  for (let animIndex = 0; animIndex < result.length; animIndex += 1) {
-    const anim = result.at(animIndex);
-    if (anim) {animations.push(anim);}
-  }
+  for (const anim of result) {animations.push(anim);}
 }
 
 const appendElementAnimations = (result: RevealAnimationResult, animations: Animation[]): void => {
@@ -238,11 +238,8 @@ const appendElementAnimations = (result: RevealAnimationResult, animations: Anim
 }
 
 const appendRevealAnimations = ({ elements, animateElement, animations }: AppendRevealAnimationsParams): void => {
-  for (let i = 0; i < elements.length; i += 1) {
-    const element = elements.at(i);
-    if (element !== undefined) {
-      appendElementAnimations(animateElement(element, i), animations);
-    }
+  for (const [index, element] of elements.entries()) {
+    appendElementAnimations(animateElement(element, index), animations);
   }
 }
 

@@ -34,17 +34,25 @@ const BEZIER_SOLVE_TOLERANCE = 1e-5;
 const MIN_COLUMN_COUNT = 1;
 // Seconds-to-milliseconds factor for the enter-fade duration.
 const MS_PER_SECOND = 1000;
+// Cubic Bernstein weight of the two inner control points in the bezier solver below.
+const CUBIC_BEZIER_WEIGHT = 3;
+// Derivative weight of the middle control-point span in the Newton-Raphson slope below.
+const CUBIC_BEZIER_SLOPE_MIDDLE_WEIGHT = 6;
+// Highest heatmap intensity level; the ordinal domain spans the empty slot plus levels 0-4.
+const HEATMAP_MAX_LEVEL = 4;
+// Second-highest heatmap intensity level.
+const HEATMAP_HIGH_LEVEL = 3;
 
 const solveCubicBezierEasing = (points: readonly [number, number, number, number]): ((progress: number) => number) => {
   const [x1, y1, x2, y2] = points;
-  const bezierX = (param: number): number => 3 * param * (1 - param) * (1 - param) * x1 + 3 * param * param * (1 - param) * x2 + param * param * param;
-  const bezierY = (param: number): number => 3 * param * (1 - param) * (1 - param) * y1 + 3 * param * param * (1 - param) * y2 + param * param * param;
+  const bezierX = (param: number): number => CUBIC_BEZIER_WEIGHT * param * (1 - param) * (1 - param) * x1 + CUBIC_BEZIER_WEIGHT * param * param * (1 - param) * x2 + param * param * param;
+  const bezierY = (param: number): number => CUBIC_BEZIER_WEIGHT * param * (1 - param) * (1 - param) * y1 + CUBIC_BEZIER_WEIGHT * param * param * (1 - param) * y2 + param * param * param;
   return (progress: number) => {
     if (progress <= 0 || progress >= 1) {return progress <= 0 ? 0 : 1;}
     let param = progress;
     for (let iteration = 0; iteration < NEWTON_RAPHSON_ITERATION_COUNT; iteration += 1) {
       const err = bezierX(param) - progress;
-      const dx = 3 * (1 - param) * (1 - param) * x1 + 6 * param * (1 - param) * (x2 - x1) + 3 * param * param * (1 - x2);
+      const dx = CUBIC_BEZIER_WEIGHT * (1 - param) * (1 - param) * x1 + CUBIC_BEZIER_SLOPE_MIDDLE_WEIGHT * param * (1 - param) * (x2 - x1) + CUBIC_BEZIER_WEIGHT * param * param * (1 - x2);
       if (Math.abs(err) < BEZIER_SOLVE_TOLERANCE || dx === 0) {break;}
       param -= err / dx;
     }
@@ -75,14 +83,14 @@ const useHeatmapColorScale = ({
     };
     return (
       scaleOrdinal<number, string>()
-        .domain([-1, 0, 1, 2, 3, 4])
+        .domain([-1, 0, 1, 2, HEATMAP_HIGH_LEVEL, HEATMAP_MAX_LEVEL])
         .range([
           "transparent",
           rangeEntry(0),
           rangeEntry(1),
           rangeEntry(2),
-          rangeEntry(3),
-          rangeEntry(4),
+          rangeEntry(HEATMAP_HIGH_LEVEL),
+          rangeEntry(HEATMAP_MAX_LEVEL),
         ])
     );
   }, [resolvedLevelStyles, patternIdPrefix]);
@@ -163,7 +171,7 @@ const createHeatmapCellMotionFn = ({
 }: Readonly<HeatmapCellMotionFnParams>): ChartMotionDefinition<CellDatum> =>
   (motionCtx: Readonly<{ phase: string; datum: Readonly<CellDatum> | undefined }>): false | ChartMotionTiming<CellDatum> | undefined => {
     if (motionCtx.phase !== "enter") {return false;}
-    const datum = motionCtx.datum;
+    const { datum } = motionCtx;
     if (!datum) {return undefined;}
     return {
       delay: computeHeatmapEnterFadeDelayMs({

@@ -149,7 +149,22 @@ const getHeatmapContributionLevel = (count: number): number => {
 const HEATMAP_DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 /** First row of the grid — `0` = Sunday (GitHub default). */
-type HeatmapWeekStartDay = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+const WEEKDAY_SUNDAY = 0;
+const WEEKDAY_MONDAY = 1;
+const WEEKDAY_TUESDAY = 2;
+const WEEKDAY_WEDNESDAY = 3;
+const WEEKDAY_THURSDAY = 4;
+const WEEKDAY_FRIDAY = 5;
+const WEEKDAY_SATURDAY = 6;
+
+type HeatmapWeekStartDay =
+  | typeof WEEKDAY_SUNDAY
+  | typeof WEEKDAY_MONDAY
+  | typeof WEEKDAY_TUESDAY
+  | typeof WEEKDAY_WEDNESDAY
+  | typeof WEEKDAY_THURSDAY
+  | typeof WEEKDAY_FRIDAY
+  | typeof WEEKDAY_SATURDAY;
 
 /**
  * Day labels with row 0 aligned to `weekStartDay`.

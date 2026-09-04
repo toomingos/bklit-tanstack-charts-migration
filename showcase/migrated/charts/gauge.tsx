@@ -677,7 +677,7 @@ const createArcNotchMotion = (
   return (ctx) => resolveGaugeNotchTiming({
     enterStaggerScale,
     enterTransition,
-    idx: ctx.datumIndex ?? 0,
+    idx: ctx.datumIndex,
     isActiveGroup,
     phase: ctx.phase,
   });

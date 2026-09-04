@@ -1,11 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import type { HeatmapMargin, HeatmapLayout } from "./heatmap-context";
-import { HeatmapChartInner } from "./heatmap-chart-inner";
+import { HeatmapChartBody } from "./heatmap-chart-body";
+import type { HeatmapChartInnerPassthroughProps, HeatmapChartRoot } from "./heatmap-chart-body";
 import type { HeatmapChartInnerProps } from "./heatmap-chart-inner";
-import { HeatmapInteractionProvider } from "./heatmap-interaction";
 import { createHeatmapHoverCoordinator } from "./heatmap-hover-chrome";
-import type { HeatmapHoverCoordinator } from "./heatmap-hover-chrome";
 import { flattenChartChildren, hasChildrenProp, isHeatmapSeparatorChild } from "./heatmap-children";
 import { HEATMAP_DEFAULT_ENTER_DURATION_MS, HEATMAP_DEFAULT_ENTER_TRANSITION, HEATMAP_LOADING_CHART_OPACITY, HEATMAP_DEFAULT_LOADING_CELL_MAX_OPACITY, HEATMAP_DEFAULT_LOADING_CELL_RANDOMNESS } from "./heatmap-animation";
 import type { HeatmapEnterTransition } from "./heatmap-animation";
@@ -82,15 +81,6 @@ const useHeatmapContainerStyle = (aspectRatio: string | undefined, hasMeasuredSi
   }, [aspectRatio, hasAspectRatio, hasMeasuredSize]);
 };
 
-interface HeatmapChartRoot {
-  width: number;
-  height: number;
-  coordinator: HeatmapHoverCoordinator;
-  containerStyle: CSSProperties;
-  handlePointerLeave: () => void;
-  separatorConfig: HeatmapColumnSeparatorsConfig | undefined;
-}
-
 interface HeatmapChartRootInputs {
   aspectRatio: string | undefined;
   columnSeparators: Readonly<HeatmapColumnSeparatorsConfig> | undefined;
@@ -124,58 +114,6 @@ const useHeatmapChartRoot = (
 
   return { containerStyle, coordinator, handlePointerLeave, height: sz.height, separatorConfig, width: sz.width };
 };
-
-type HeatmapChartInnerPassthroughProps = Omit<
-  HeatmapChartInnerProps,
-  "containerRef" | "containerWidth" | "containerHeight" | "separatorConfig" | "children"
->;
-
-interface HeatmapChartBodyProps {
-  root: Readonly<HeatmapChartRoot>;
-  containerRef: RefObject<HTMLDivElement | null>;
-  innerProps: Readonly<HeatmapChartInnerPassthroughProps>;
-  children: ReactNode;
-}
-
-// This renders the interaction provider and the inner chart once the
-// Container has a measured, non-zero size. It is pulled out of HeatmapChart
-// Purely to keep that component's own function body short.
-const HeatmapChartBody = ({ root, containerRef, innerProps, children }: Readonly<HeatmapChartBodyProps>): ReactElement => (
-  <HeatmapInteractionProvider coordinator={root.coordinator}>
-    {root.width > 0 && root.height > 0 && (
-      <HeatmapChartInner
-        animate={innerProps.animate}
-        animationDuration={innerProps.animationDuration}
-        binSize={innerProps.binSize}
-        colorScale={innerProps.colorScale}
-        containerHeight={root.height}
-        containerRef={containerRef}
-        containerWidth={root.width}
-        data={innerProps.data}
-        enterStaggerScale={innerProps.enterStaggerScale}
-        enterTransition={innerProps.enterTransition}
-        gap={innerProps.gap}
-        layout={innerProps.layout}
-        levelColors={innerProps.levelColors}
-        levelStyles={innerProps.levelStyles}
-        loadingCellMaxOpacity={innerProps.loadingCellMaxOpacity}
-        loadingCellRandomness={innerProps.loadingCellRandomness}
-        loadingLabel={innerProps.loadingLabel}
-        loadingOpacity={innerProps.loadingOpacity}
-        margin={innerProps.margin}
-        revealSignature={innerProps.revealSignature}
-        separatorConfig={root.separatorConfig}
-        showLoadingCells={innerProps.showLoadingCells}
-        sizingColumnCount={innerProps.sizingColumnCount}
-        status={innerProps.status}
-        weekStartDay={innerProps.weekStartDay}
-        xDomain={innerProps.xDomain}
-      >
-        {children}
-      </HeatmapChartInner>
-    )}
-  </HeatmapInteractionProvider>
-);
 
 // Assembles the inner-chart passthrough props from the public props.
 // It applies the same defaults the component signature used to apply via destructuring.

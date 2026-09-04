@@ -145,6 +145,8 @@ const DEFAULT_COLOR = "var(--chart-line-primary)";
 const DEFAULT_PROJECTION_STROKE_COLOR = "var(--chart-3)";
 const DEFAULT_BAR_GAP = 4;
 const DEFAULT_LINE_STROKE_WIDTH = 2.5;
+// Default area stroke width when the Area child leaves it unset.
+const DEFAULT_AREA_STROKE_WIDTH = 2;
 const DEFAULT_BAR_FADED_OPACITY = 0.3;
 const DEFAULT_AREA_FILL_OPACITY = 0.4;
 const DEFAULT_AREA_DIM_OPACITY = 0.6;
@@ -159,6 +161,14 @@ const DEFAULT_TICK_COUNT = 5;
 // Props and datum fields arrive as unknown; each predicate carries one typeof check.
 const isStringValue = (value: ChartTooltipConfig["indicatorColor"]): value is string => typeof value === "string";
 const isNumberValue = <Value,>(value: Value): value is Value & number => typeof value === "number";
+// Stringifies an untyped datum field without Object's default "[object Object]" dump (same pattern as area-chart.tsx).
+const stringifyDatumField = (value: unknown, absent: string): string => {
+  if (typeof value === "string") {return value;}
+  if (typeof value === "number") {return String(value);}
+  if (value instanceof Date) {return String(value);}
+  if (value === null || value === undefined) {return absent;}
+  return JSON.stringify(value) ?? absent;
+};
 // Locally-owned optional values represent "absent" as `undefined`, never `null`. This file can spell neither the `undefined` identifier (eslint(no-undefined)) nor the `void` operator (eslint(no-void)) in value position — both are enabled, and each rule's suggested fix is exactly what the other rule bans.
 // NOTHING is destructured from an object typed with an optional `undefined`-valued property, reaching the same runtime value without ever writing either banned token in value position.
 const { NOTHING }: { NOTHING?: undefined } = {};
@@ -300,7 +310,7 @@ const registerAreaChild = (child: Readonly<ReactElement<ReadonlyAreaConfig>>, si
     dimOpacity: 0.6,
     showHighlight: area.showHighlight ?? true,
     stroke: area.stroke ?? area.fill ?? DEFAULT_COLOR,
-    strokeWidth: area.strokeWidth ?? 2,
+    strokeWidth: area.strokeWidth ?? DEFAULT_AREA_STROKE_WIDTH,
     yAxisId: area.yAxisId,
   });
 };
@@ -589,7 +599,7 @@ const ComposedChart = ({
           fill,
           fillOpacity: area.fillOpacity ?? DEFAULT_AREA_FILL_OPACITY,
           stroke: area.stroke ?? fill,
-          strokeWidth: area.strokeWidth ?? 2,
+          strokeWidth: area.strokeWidth ?? DEFAULT_AREA_STROKE_WIDTH,
         };
       }),
     [areaConfigs],
@@ -1016,7 +1026,7 @@ const ComposedChart = ({
             rows.push({
               color: strokeColor ?? (pointColor !== NOTHING && pointColor !== "" ? pointColor : "transparent"),
               label: series.dataKey,
-              value: isNumberValue(value) ? value : String(value ?? 0),
+              value: isNumberValue(value) ? value : stringifyDatumField(value, "0"),
             });
           }
           return rows;
@@ -1036,7 +1046,7 @@ const ComposedChart = ({
   const dateLabelsForPill = useMemo(() => renderData.map((row: Readonly<ChartDatum>) => {
     const value = row[xDataKey];
     if (value instanceof Date) {return shortDateFmt.format(value);}
-    return String(value ?? "");
+    return stringifyDatumField(value, "");
   }), [renderData, xDataKey]);
   const datePill = useDatePillOverlay({
     dateLabels: dateLabelsForPill,

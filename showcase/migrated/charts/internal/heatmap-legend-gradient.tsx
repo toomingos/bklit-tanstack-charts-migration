@@ -68,10 +68,16 @@ interface GradientSegmentArgs {
   readonly onLeave: () => void;
 }
 
+// Enter-handler factory; module scope so the render path passes no inline closures.
+const createGradientEnterHandler = (segment: Readonly<GradientSegmentArgs>): (() => void) => (): void => {
+  segment.onEnter(segment.level);
+};
+
 // One gradient segment; plain function (not a component) so the element tree is unchanged.
 const renderGradientSegment = (segment: Readonly<GradientSegmentArgs>): ReactElement => {
   const isHighlighted = segment.highlightedLevel === segment.level;
   const { onLeave: handleLeave } = segment;
+  const handleEnter = createGradientEnterHandler(segment);
   const segmentStyle = buildGradientSegmentVisual({
     activeScale: segment.activeScale,
     barHeight: segment.barHeight,
@@ -87,7 +93,7 @@ const renderGradientSegment = (segment: Readonly<GradientSegmentArgs>): ReactEle
     <span
       key={segment.level}
       className="ts-bkm-heatmap-legend-gradient-segment"
-      onPointerEnter={() =>{  segment.onEnter(segment.level); }}
+      onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
       style={segmentStyle}
     />

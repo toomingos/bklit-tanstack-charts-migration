@@ -1,5 +1,5 @@
 // Bklit SankeyChart on TanStack Charts (native sankeyDiagram + WAAPI reveal, reactive hover dim).
-import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import { defineChart } from "@tanstack/charts/scene";
@@ -84,6 +84,24 @@ const DEFAULT_LINK_STROKE_OPACITY = 0.5;
 const MIN_SANKEY_RENDER_WIDTH_PX = 10;
 // Numeric fallback for the "W / H" aspectRatio prop when it fails to parse.
 const DEFAULT_SANKEY_ASPECT_RATIO = 2;
+// Palette index for the node-color fallback when the computed slot is empty.
+const FIRST_PALETTE_INDEX = 0;
+// Last-match wins when several config children share a displayName.
+const LAST_CONFIG_MATCH_INDEX = -1;
+// Link value fallback when the probed datum carries no numeric value.
+const FALLBACK_LINK_VALUE = 0;
+// Endpoint index fallback when the probed datum carries no numeric index.
+const FALLBACK_LINK_ENDPOINT_INDEX = 0;
+// Non-positive durations skip the WAAPI reveal entirely.
+const MIN_ANIMATION_DURATION = 0;
+// Gradient definitions are injected only when the layout emitted at least one.
+const EMPTY_GRADIENT_COUNT = 0;
+// The tooltip renders the first focused point only.
+const FIRST_TOOLTIP_POINT_INDEX = 0;
+// Positions within a "W / H" aspect-ratio pair.
+const ASPECT_NUMERATOR_INDEX = 0;
+const ASPECT_DENOMINATOR_INDEX = 1;
+const ASPECT_PART_COUNT = 2;
 
 const DEFAULT_COLORS: readonly string[] = CHART_CATEGORY_PALETTE_WITH_FALLBACK;
 
@@ -104,7 +122,7 @@ const SANKEY_TOOLTIP_BODY_STYLE = { padding: "10px 12px" } as const;
 // Tooltip title text for the sankey tooltip panel.
 const SANKEY_TOOLTIP_TITLE_STYLE = { fontSize: 12, fontWeight: 500, lineHeight: "16px", marginBottom: 8, textAlign: "left" } as const;
 
-const defaultNodeColor = (index: number): string => DEFAULT_COLORS[index % DEFAULT_COLORS.length] ?? DEFAULT_COLORS[0]
+const defaultNodeColor = (index: number): string => DEFAULT_COLORS[index % DEFAULT_COLORS.length] ?? DEFAULT_COLORS[FIRST_PALETTE_INDEX]
 
 const isString = <Value,>(value: Value): value is Value & string => typeof value === "string";
 
@@ -162,12 +180,13 @@ const hasDisplayName = (type: ReactElement["type"], name: string): boolean => {
   return "displayName" in type && type.displayName === name;
 }
 
-const extractChildByDisplayName = <P,>(children: ReactNode, name: string): ReactElement<P> | undefined => {
-  const matches = Children.toArray(children).filter(
-    (child): child is ReactElement<P> =>
+const extractChildByDisplayName = <Props,>(children: ReactNode, name: string): ReactElement<Props> | undefined => {
+  const childList: readonly ReactNode[] = Array.isArray(children) ? children : [children];
+  const matches = childList.filter(
+    (child): child is ReactElement<Props> =>
       isValidElement(child) && hasDisplayName(child.type, name),
   );
-  return matches.at(-1);
+  return matches.at(LAST_CONFIG_MATCH_INDEX);
 }
 
 const extractSankeyLinkConfig = (children: ReactNode): SankeyLinkProps => {
@@ -191,7 +210,7 @@ const sankeyNodeName = (node: { readonly name?: string }, index: number): string
 const sankeyLinkEndName = (end: { readonly data?: { readonly name?: string } } | undefined, index: number): string =>
   end?.data?.name ?? `Node ${index}`;
 
-const sankeyLinkValue = (value: number | undefined): number => value ?? 0;
+const sankeyLinkValue = (value: number | undefined): number => value ?? FALLBACK_LINK_VALUE;
 
 const datumName = (datum: SankeyTooltipDatum): string | undefined => {
   if (!("name" in datum)) {return undefined;}
@@ -216,7 +235,7 @@ const linkEndOf = (end: SankeyTooltipLinkEndpoint | undefined): SankeyLinkEnd | 
   return { data: linkEndDataOf(end.data) };
 }
 
-const readLinkIndexValue = (datum: object, key: "sourceIndex" | "targetIndex"): number | undefined => {
+const readLinkIndexValue = (datum: SankeyTooltipDatum, key: "sourceIndex" | "targetIndex"): number | undefined => {
   if (key === "sourceIndex") {
     const raw: unknown = "sourceIndex" in datum ? datum.sourceIndex : undefined;
     return isNumber(raw) ? raw : undefined;
@@ -226,7 +245,7 @@ const readLinkIndexValue = (datum: object, key: "sourceIndex" | "targetIndex"): 
 };
 
 const linkIndexOf = (datum: SankeyTooltipDatum, key: "sourceIndex" | "targetIndex"): number =>
-  readLinkIndexValue(datum, key) ?? 0;
+  readLinkIndexValue(datum, key) ?? FALLBACK_LINK_ENDPOINT_INDEX;
 
 const sankeyLinkTitle = (datum: SankeyTooltipDatum): string => {
   const sourceNode = "sourceNode" in datum ? linkEndOf(datum.sourceNode) : undefined;
@@ -338,7 +357,7 @@ const updateSankeyReveal = (svg: SVGSVGElement, params: Readonly<SankeyRevealUpd
   const { revealSignature, animationDuration, enterTransition, prefersReducedMotion, seenRef, revealHandleRef } = params;
   const seen = seenRef.current;
   if (seen?.signature === revealSignature && seen.duration === animationDuration) { return; }
-  if (prefersReducedMotion || animationDuration <= 0) {
+  if (prefersReducedMotion || animationDuration <= MIN_ANIMATION_DURATION) {
     resetSankeyReveal({ duration: animationDuration, revealHandleRef, seenRef, signature: revealSignature });
     return;
   }
@@ -573,7 +592,7 @@ const SankeyChart = ({
     if (!(surfaceEl instanceof SVGSVGElement)) {return;}
 
     const gradients = gradientDataRef.current;
-    if (gradients && gradients.length > 0) {
+    if (gradients && gradients.length > EMPTY_GRADIENT_COUNT) {
       injectGradientDefs(surfaceEl, gradients);
     }
     stampSankeyLinkPathLength(surfaceEl);
@@ -642,10 +661,14 @@ const SankeyChart = ({
   }
 
   const handleMouseLeave = useCallback(() => {
-    hoveredNodeIndexRef.current = null;
-    hoveredLinkIndexRef.current = null;
+    if (isNodeHoverControlledRef.current) {
+      onNodeHoverChangeRef.current?.(null);
+    } else {
+      setInternalHoveredNodeIndex(null);
+    }
+    setHoveredLinkIndex(null);
     focusPointerPoint();
-  }, [focusPointerPoint, hoveredLinkIndexRef, hoveredNodeIndexRef]);
+  }, [focusPointerPoint]);
 
   const formatValue = tooltipConfig.formatValue ?? intFmt;
   const tooltipClassName = tooltipConfig.className;
@@ -658,15 +681,15 @@ const SankeyChart = ({
 
   const renderTooltipBody = useCallback(
     (bodyCtx: Readonly<{ readonly points: readonly ChartPoint[] }>): ReactNode =>
-      renderSankeyTooltipBody(bodyCtx.points[0], formatValue, tooltipClassName),
+      renderSankeyTooltipBody(bodyCtx.points[FIRST_TOOLTIP_POINT_INDEX], formatValue, tooltipClassName),
     [formatValue, tooltipClassName],
   );
 
   const parsedAspectRatio = useMemo(() => {
     const parts = aspectRatio.split("/").map((part) => Number(part.trim()));
-    const numerator = parts.at(0);
-    const denominator = parts.at(1);
-    if (parts.length !== 2 || numerator === undefined || denominator === undefined) {
+    const numerator = parts.at(ASPECT_NUMERATOR_INDEX);
+    const denominator = parts.at(ASPECT_DENOMINATOR_INDEX);
+    if (parts.length !== ASPECT_PART_COUNT || numerator === undefined || denominator === undefined) {
       return DEFAULT_SANKEY_ASPECT_RATIO;
     }
     if (!numerator || !denominator || Number.isNaN(numerator) || Number.isNaN(denominator)) {

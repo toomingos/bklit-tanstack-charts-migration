@@ -55,7 +55,7 @@ const isFunctionType = <Value,>(value: Value): value is Value & ((...args: reado
 const isString = <Text,>(text: Text): text is Text & string => typeof text === "string";
 
 const componentDisplayName = (child: Readonly<ReactNode>): string | undefined => {
-  if (!isValidElement(child) || !isFunctionType(child.type)) {return;}
+  if (!isValidElement(child) || !isFunctionType(child.type)) {return undefined;}
   const componentType = child.type;
   return "displayName" in componentType && isString(componentType.displayName)
     ? componentType.displayName
@@ -87,8 +87,8 @@ const classifyChildren = (children: Readonly<ReactNode>, geometryScrubbing: bool
   const centerChildren: ReactNode[] = [];
   const ringConfigs: RingChildConfig[] = [];
 
-  Children.forEach(children, (child: Readonly<ReactNode>) => {
-    if (!isValidElement(child)) {return;}
+  for (const child of Children.toArray(children)) {
+    if (!isValidElement(child)) {continue;}
     if (isRingCenterElement(child)) {
       centerChildren.push(child);
     } else if (isRingElement(child) && isValidElement<RingProps>(child) && !geometryScrubbing) {
@@ -103,7 +103,7 @@ const classifyChildren = (children: Readonly<ReactNode>, geometryScrubbing: bool
     } else {
       // Non-ring children and scrubbed rings carry no reveal geometry: only live rings populate the spec.
     }
-  });
+  }
 
   return { centerChildren, ringConfigs };
 }

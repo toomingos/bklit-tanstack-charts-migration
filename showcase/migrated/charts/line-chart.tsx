@@ -759,7 +759,7 @@ export const LineChart = ({
   );
 
   const spec = useMemo(() => {
-    if (width <= 0) {return;}
+    if (width <= 0) {return undefined;}
     const xScale = createLineXScale({ renderData, scaleRef: xScaleD3Ref, timeExtent, visibleData, xAxis, xDataKey, xDomain });
     const gridGuide = resolveGridGuide(grid);
     const xTickLabelOpacity = resolveXTickLabelOpacity(labelFade, xAxis);

@@ -313,6 +313,7 @@ interface FunnelSegmentRefs {
   readonly labelRef: RefObject<HTMLDivElement | null>;
   readonly labelInnerRef: RefObject<HTMLDivElement | null>;
   readonly ringRefs: RefObject<(SVGPathElement | null)[]>;
+  readonly setRingRef: (ringIndex: number, el: SVGPathElement | null) => void;
 }
 
 const useFunnelSegmentRefs = (): FunnelSegmentRefs => {
@@ -320,7 +321,11 @@ const useFunnelSegmentRefs = (): FunnelSegmentRefs => {
   const labelRef = useRef<HTMLDivElement | null>(null);
   const labelInnerRef = useRef<HTMLDivElement | null>(null);
   const ringRefs = useRef<(SVGPathElement | null)[]>([]);
-  return { graphicRef, labelInnerRef, labelRef, ringRefs };
+  // Ring-attach writer owned by the hook that constructs ringRefs.
+  const setRingRef = useCallback((ringIndex: number, el: SVGPathElement | null): void => {
+    ringRefs.current[ringIndex] = el;
+  }, [ringRefs]);
+  return { graphicRef, labelInnerRef, labelRef, ringRefs, setRingRef };
 };
 
 interface FunnelSegmentHoverOptions {
@@ -665,14 +670,14 @@ const useFunnelSegmentContent = (props: Readonly<FunnelSegmentProps>, isHorizont
 const FunnelSegment = (props: Readonly<FunnelSegmentProps>): ReactElement => {
   const { box, color, gradientStops, renderPattern } = props;
   const isHorizontal = useContext(FunnelOrientationContext);
-  const { graphicRef, labelRef, labelInnerRef, ringRefs } = useFunnelSegmentRefs();
+  const { graphicRef, labelRef, labelInnerRef, ringRefs, setRingRef } = useFunnelSegmentRefs();
   const frame = resolveSegmentFrame({ crossDim: props.crossDim, index: props.index, isHorizontal, layers: props.layers, normEnd: props.normEnd, normStart: props.normStart, segDim: props.segDim, straight: props.straight });
   useFunnelSegmentHover({ coordinator: props.coordinator, graphicRef, index: props.index, isHorizontal, labelRef, ringCount: frame.rings.length, ringRefs });
   useFunnelSegmentMotion({ enterTransition: props.enterTransition, graphicRef, index: props.index, isHorizontal, labelInnerRef, staggerDelay: props.staggerDelay });
   const content = useFunnelSegmentContent(props, isHorizontal);
   return (
     <>
-      {renderSegmentGraphic({ box, color, frame, gradientStops, graphicRef, isHorizontal, onRingRef: (ringIndex, el) => { ringRefs.current[ringIndex] = el; }, renderPattern })}
+      {renderSegmentGraphic({ box, color, frame, gradientStops, graphicRef, isHorizontal, onRingRef: setRingRef, renderPattern })}
       {renderSegmentOverlay({ box, labelContent: content.segmentLabels.labelContent, labelInnerRef, labelRef, onPointerEnter: content.handlePointerEnter, onPointerLeave: content.handlePointerLeave, outerLabelStyle: content.segmentLabels.outerLabelStyle })}
     </>
   );
