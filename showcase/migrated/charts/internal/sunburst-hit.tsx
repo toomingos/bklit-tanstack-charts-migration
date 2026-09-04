@@ -1,5 +1,6 @@
 // Hit paths use static base geometry so hover-grow never moves geometry under the pointer.
 import type { ReactElement } from "react";
+import { SunburstHitPath } from "./sunburst-hit-path";
 
 interface SunburstHitItem {
   readonly arcIndex: number;
@@ -16,6 +17,15 @@ interface SunburstHitLayerProps {
   readonly onHitClick: (arcIndex: number) => void;
 }
 
+const SUNBURST_HIT_SVG_STYLE = {
+  height: "100%",
+  left: 0,
+  overflow: "visible",
+  position: "absolute",
+  top: 0,
+  width: "100%",
+} as const;
+
 const SunburstHitLayer = ({
   items,
   fullRadius,
@@ -30,27 +40,17 @@ const SunburstHitLayer = ({
       aria-hidden="true"
       className="ts-bkm-sunburst-hit"
       onPointerLeave={onHitLeaveAll}
-      style={{
-        height: "100%",
-        left: 0,
-        overflow: "visible",
-        position: "absolute",
-        top: 0,
-        width: "100%",
-      }}
+      style={SUNBURST_HIT_SVG_STYLE}
       viewBox={`${-fullRadius} ${-fullRadius} ${size} ${size}`}
     >
       {items.map((item) => (
-        <path
+        <SunburstHitPath
+          arcIndex={item.arcIndex}
+          hasChildren={item.hasChildren}
           key={item.arcIndex}
-          data-bkm-sunburst-hit={item.arcIndex}
-          d={item.pathData}
-          fill="transparent"
-          onClick={() =>{  onHitClick(item.arcIndex); }}
-          onPointerEnter={() =>{  onHitEnter(item.arcIndex); }}
-          style={{
-            cursor: item.hasChildren ? "pointer" : "default",
-          }}
+          onHitClick={onHitClick}
+          onHitEnter={onHitEnter}
+          pathData={item.pathData}
         />
       ))}
     </svg>

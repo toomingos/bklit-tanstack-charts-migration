@@ -29,6 +29,17 @@ export interface SunburstLabelsOverlayProps {
   size: number;
 }
 
+// Overlay positioning — fully static, hoisted so every render shares one identity.
+const SUNBURST_LABELS_OVERLAY_STYLE: Readonly<CSSProperties> = {
+  height: "100%",
+  left: 0,
+  overflow: "visible",
+  pointerEvents: "none",
+  position: "absolute",
+  top: 0,
+  width: "100%",
+};
+
 // Shared label text paint — one identity for every <text>, not rebuilt per render.
 const SUNBURST_LABEL_TEXT_STYLE: Readonly<CSSProperties> = {
   fill: "var(--chart-label)",
@@ -53,15 +64,7 @@ export const SunburstLabelsOverlay = ({
     <svg
       aria-label="Sunburst segment labels"
       className="ts-bkm-sunburst-labels"
-      style={{
-        height: "100%",
-        left: 0,
-        overflow: "visible",
-        pointerEvents: "none",
-        position: "absolute",
-        top: 0,
-        width: "100%",
-      }}
+      style={SUNBURST_LABELS_OVERLAY_STYLE}
       viewBox={`${-_fullRadius} ${-_fullRadius} ${_size} ${_size}`}
     >
       {items.map((item) => (

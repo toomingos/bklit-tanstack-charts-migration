@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useRef, useSyncExternalStore } from 'react';
+import { createContext, useCallback, useContext, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { createHeatmapHoverCoordinator } from './heatmap-hover-chrome';
 import type { HeatmapHoverCoordinator, HeatmapHoveredCell, HeatmapTooltipData } from './heatmap-hover-chrome';
@@ -100,11 +100,12 @@ interface HeatmapInteractionBoundaryProps {
 
 const HeatmapInteractionBoundary = ({ children, className, style }: Readonly<HeatmapInteractionBoundaryProps>): ReactElement => {
   const coordinator = useHeatmapCoordinator();
+  const handlePointerLeave = useCallback((): void => { coordinator.clearInteraction(); }, [coordinator]);
   return (
     <div
       className={className}
       style={style}
-      onPointerLeave={() =>{  coordinator.clearInteraction(); }}
+      onPointerLeave={handlePointerLeave}
     >
       {children}
     </div>

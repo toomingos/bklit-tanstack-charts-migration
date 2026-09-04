@@ -28,10 +28,6 @@ const getCirclePosition = (index: number, total: number): CirclePosition => {
   return { x: Math.cos(radians) * FAN_RADIUS, y: Math.sin(radians) * FAN_RADIUS };
 }
 
-const invokeMarkerClick = (marker: ChartMarker): void => {
-  marker.onClick?.();
-};
-
 const renderFanHub = (size: number): React.ReactNode => (
   <div
     style={{
@@ -72,7 +68,7 @@ const renderFannedMarker = (options: Readonly<FannedMarkerOptions>): React.React
         width: size,
       }}
     >
-      <MarkerCircleHtml icon={marker.icon} size={size} color={marker.color} onClick={marker.onClick === undefined ? undefined : () => { invokeMarkerClick(marker); }} href={marker.href} target={marker.target} />
+      <MarkerCircleHtml icon={marker.icon} size={size} color={marker.color} onClick={marker.onClick} href={marker.href} target={marker.target} />
     </div>
   );
 }

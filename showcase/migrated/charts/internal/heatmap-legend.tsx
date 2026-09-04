@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactElement } from 'react';
 import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
 import { HEATMAP_INACTIVE_OPACITY } from './heatmap-hover-chrome';
@@ -132,6 +132,7 @@ interface LegendContentArgs {
   readonly hoverParams: Readonly<HeatmapHoverStyleParams>;
   readonly onEnter: (level: number) => void;
   readonly onLeave: () => void;
+  readonly swatchesStyle: CSSProperties;
 }
 
 // Gradient-vs-swatches branch; plain function (not a component) so the element tree is unchanged.
@@ -158,7 +159,7 @@ const renderLegendContent = (content: Readonly<LegendContentArgs>): ReactElement
     );
   }
   return (
-    <div className="ts-bkm-heatmap-legend-swatches" style={{ gap: content.gap }}>
+    <div className="ts-bkm-heatmap-legend-swatches" style={content.swatchesStyle}>
       {HEATMAP_LEGEND_LEVELS.map((level) => renderLegendSwatch({
         cellSize: content.cellSize,
         cornerRadius: content.cornerRadius,
@@ -251,6 +252,7 @@ const HeatmapLegend = ({
 }: Readonly<HeatmapLegendProps>): ReactElement => {
   const model = useLegendModel({ activeScale, colorScale, inactiveOpacity, inactiveScale, interactive, levelStylesProp });
   const { labelClass, rootStyle } = resolveLegendChrome({ align, fontSize, labelClassName });
+  const swatchesStyle = useMemo((): CSSProperties => ({ gap }), [gap]);
 
   return (
     <div className={className !== undefined && className !== "" ? `ts-bkm-heatmap-legend ${className}` : "ts-bkm-heatmap-legend"} style={rootStyle}>
@@ -270,6 +272,7 @@ const HeatmapLegend = ({
         levelStyles: model.levelStyles,
         onEnter: model.onEnter,
         onLeave: model.onLeave,
+        swatchesStyle,
         variant,
       })}
       <span className={labelClass}>{moreLabel}</span>

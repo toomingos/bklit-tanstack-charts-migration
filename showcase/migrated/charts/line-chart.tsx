@@ -174,6 +174,10 @@ const LOADING_SKELETON_BASE_VALUE = 110;
 const LOADING_SKELETON_WAVE_FREQUENCY = 1.15;
 const LOADING_SKELETON_WAVE_AMPLITUDE = 36;
 const LOADING_SKELETON_TREND_STEP = 9;
+// Zero-size gradient-defs svg: stacked out of layout without display:none (keeps defs resolvable).
+const HIDDEN_DEFS_SVG_STYLE: CSSProperties = { position: "absolute" };
+// Full-cover overlay host: stacked above the chart without intercepting pointer input.
+const OVERLAY_HOST_STYLE: CSSProperties = { inset: 0, pointerEvents: "none", position: "absolute" };
 
 // X tick-label fade target: the hovered tick's pixel position and rendered label.
 interface LabelFadeState {
@@ -706,7 +710,7 @@ const renderLoadingSkeleton = (params: Readonly<LoadingSkeletonParams>): ReactEl
     <svg
       width={params.width}
       height={params.heightPx}
-      style={{ inset: 0, pointerEvents: "none", position: "absolute" }}
+      style={OVERLAY_HOST_STYLE}
       aria-hidden="true"
     >
       <g transform={`translate(${params.marginLeft},${params.marginTop})`}>
@@ -840,17 +844,11 @@ export const LineChart = ({
     yDomainTweenDuration: effectiveYDomainTweenDuration,
   });
 
-  const enterType = enterTransition?.type;
-  const enterDuration = enterTransition?.duration;
-  const enterEaseKey = enterTransition?.ease?.join(",");
-  // Deps use the extracted primitives, not enterTransition itself, so an identity-only
-  // Change to the transition object doesn't retrigger the timing computation; the ref
-  // (Exempt from exhaustive-deps) still hands the memo the latest full object.
   const enterTransitionRef = useRef(enterTransition);
   enterTransitionRef.current = enterTransition;
   const { durationMs: revealDurationMs, easingCss: revealEasingCss } = useMemo(
     () => clipRevealTiming(enterTransitionRef.current, animationDuration, animationEasing),
-    [enterType, enterDuration, enterEaseKey, animationDuration, animationEasing],
+    [animationDuration, animationEasing],
   );
 
   const phaseRef = useRef<ChartPhase>(chartPhase);
@@ -1106,7 +1104,7 @@ export const LineChart = ({
         spring: TOOLTIP_BOX_SPRING,
       }),
     };
-  }, [marks, renderData, xDataKey, grid, width, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, xDomain, timeExtent, tooltip, xAxis, yAxis, visibleData, labelFade, brushControls]);
+  }, [marks, renderData, xDataKey, grid, width, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, xDomain, timeExtent, tooltip, xAxis, yAxis, visibleData, labelFade, brushControls, xScaleD3Ref]);
 
   const definition = useMemo(
     () => (spec === undefined ? undefined : defineChart(spec)),
@@ -1356,38 +1354,39 @@ export const LineChart = ({
 
   // Overlay subtrees live outside the definition fragment so no single
   // Expression stacks more than a few conditional operators.
+  const referenceAreaGeom = useMemo(() => ({
+    height: heightPx,
+    isLoaded,
+    isTimeScale: true,
+    margin,
+    phase: chartPhase,
+    width,
+    xDomain: referenceXDomainForExtent(timeExtent),
+    yDomain: yDomainFinal,
+    yDomainsByAxis: nicedDomainsByAxis,
+  }), [heightPx, isLoaded, margin, chartPhase, width, timeExtent, yDomainFinal, nicedDomainsByAxis]);
   const referenceAreaLayersNode = heightPx > 0 && (
     <ReferenceAreaLayers
       configs={refAreaChildren}
-      geom={{
-        height: heightPx,
-        isLoaded,
-        isTimeScale: true,
-        margin,
-        phase: chartPhase,
-        width,
-        xDomain: referenceXDomainForExtent(timeExtent),
-        yDomain: yDomainFinal,
-        yDomainsByAxis: nicedDomainsByAxis,
-      }}
+      geom={referenceAreaGeom}
     />
   );
   const projectionGradientDefsNode = projectionGradientDefs.length > 0 && (
-    <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
       <defs>
         {projectionGradientDefs.map((def: Parameters<typeof renderProjectionGradientDef>[0]) => renderProjectionGradientDef(def))}
       </defs>
     </svg>
   );
   const profitLossGradientDefsNode = profitLossGradientDefs.length > 0 && (
-    <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
       <defs>
         {profitLossGradientDefs.map((def: Parameters<typeof renderProfitLossGradientDef>[0]) => renderProfitLossGradientDef(def))}
       </defs>
     </svg>
   );
   const crosshairGradientDefNode = crosshairGradientDef && (
-    <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
       <defs>
         {renderCrosshairGradient({
           bottom: margin.top + Math.max(0, heightPx - margin.top - margin.bottom),
@@ -1412,16 +1411,29 @@ export const LineChart = ({
   const datePillHostNode = tooltipEnabled && (
     <div
       ref={datePill.overlayHostRef}
-      style={{ inset: 0, pointerEvents: "none", position: "absolute" }}
+      style={OVERLAY_HOST_STYLE}
     />
   );
   const markerGradientDefsNode = markerGradientDefs.length > 0 && (
-    <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
       <defs>
         {markerGradientDefs.map((def: Parameters<typeof renderMarkerGradientDef>[0]) => renderMarkerGradientDef(def))}
       </defs>
     </svg>
   );
+  const projectMarkerX = useCallback((date: Readonly<Date>): number | undefined => {
+    // Subtract margin.left: the scale is margin-inclusive and the overlay adds margin itself.
+    const timeScale = xScaleD3Ref.current;
+    if (!timeScale) {return undefined;}
+    // Note: s() always returns a finite number for a numeric range (d3-scale ScaleTime.Output = number, never undefined).
+    return timeScale(date) - margin.left;
+  }, [margin.left, xScaleD3Ref]);
+  const handleMarkerHoverChange = useCallback((markers: readonly Readonly<ChartMarker>[] | null): void => {
+    // Hovering markers hides crosshair/tooltip and drops isActive until next chart hover (legacy).
+    if (markers) {
+      clearFocusChrome();
+    }
+  }, [clearFocusChrome]);
   const chartMarkersOverlayNode = chartMarkers && (
     <MarkerActiveTooltipProvider store={markerActiveStore}>
     <ChartMarkersOverlay
@@ -1430,30 +1442,23 @@ export const LineChart = ({
       showLines={chartMarkers.showLines}
       animate={chartMarkers.animate}
       maxFanned={chartMarkers.maxFanned}
-      xScale={(date: Readonly<Date>): number | undefined => {
-        // Subtract margin.left: the scale is margin-inclusive and the overlay adds margin itself.
-        const timeScale = xScaleD3Ref.current;
-        if (!timeScale) {return undefined;}
-        // Note: s() always returns a finite number for a numeric range (d3-scale ScaleTime.Output = number, never undefined).
-        return timeScale(date) - margin.left;
-      }}
+      xScale={projectMarkerX}
       marginLeft={margin.left}
       marginTop={margin.top}
       innerHeight={Math.max(0, heightPx - margin.top - margin.bottom)}
       containerRef={containerRef}
       animationDuration={animationDuration}
-      onMarkerHoverChange={(markers: readonly Readonly<ChartMarker>[] | null) => {
-        // Hovering markers hides crosshair/tooltip and drops isActive until next chart hover (legacy).
-        if (markers) {
-          clearFocusChrome();
-        }
-      }}
+      onMarkerHoverChange={handleMarkerHoverChange}
     />
     </MarkerActiveTooltipProvider>
   );
 
+  const rendererClipStyle = useMemo(
+    () => (needsBrushClip ? { clipPath: `url(#${brushClipId})` } : undefined),
+    [brushClipId, needsBrushClip],
+  );
   const rendererNode = definition && (
-    <div style={needsBrushClip ? { clipPath: `url(#${brushClipId})` } : undefined}>
+    <div style={rendererClipStyle}>
       <RendererChart
         renderer={lineChartRenderer}
         ariaLabel={ariaLabel}
@@ -1467,6 +1472,13 @@ export const LineChart = ({
       />
     </div>
   );
+  const dashTailSeries = useMemo(() => lines.map((line: Readonly<LineConfig>) => ({
+    dashArray: line.dashArray,
+    dashFromIndex: line.dashFromIndex,
+    dataKey: line.dataKey,
+    stroke: line.stroke ?? DEFAULT_LINE_STROKE,
+    strokeWidth: line.strokeWidth ?? DEFAULT_LINE_STROKE_WIDTH,
+  })), [lines]);
   const definitionOverlayNode = definition && (
     <>
       {referenceAreaLayersNode}
@@ -1491,13 +1503,7 @@ export const LineChart = ({
         margin={margin}
         renderData={renderData}
         xDataKey={xDataKey}
-        series={lines.map((line: Readonly<LineConfig>) => ({
-          dashArray: line.dashArray,
-          dashFromIndex: line.dashFromIndex,
-          dataKey: line.dataKey,
-          stroke: line.stroke ?? DEFAULT_LINE_STROKE,
-          strokeWidth: line.strokeWidth ?? DEFAULT_LINE_STROKE_WIDTH,
-        }))}
+        series={dashTailSeries}
         innerWidth={innerWidth}
         innerHeight={Math.max(0, heightPx - margin.top - margin.bottom)}
       />
@@ -1505,19 +1511,20 @@ export const LineChart = ({
     </>
   );
 
+  const containerStyle = useMemo((): CSSProperties => ({ aspectRatio, isolation: "isolate", position: "relative", width: "100%", ...style }), [aspectRatio, style]);
   return (
     <ChartSelectionContext.Provider value={chartSelection}>
     <div
       ref={containerRef}
       className={className}
-      style={{ aspectRatio, isolation: "isolate", position: "relative", width: "100%", ...style }}
+      style={containerStyle}
       data-bkm-chart="line"
       data-bkm-fade-edges={fadeEdgesMask["data-bkm-fade-edges"]}
       data-bkm-fade-edges-left={fadeEdgesMask["data-bkm-fade-edges-left"]}
       data-bkm-fade-edges-right={fadeEdgesMask["data-bkm-fade-edges-right"]}
     >
       {needsBrushClip && (
-        <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+        <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
           {renderBrushClipDefs({ clipId: brushClipId, height: innerHeightForBrush, left: margin.left, top: margin.top, width: innerWidthForBrush })}
         </svg>
       )}

@@ -13,15 +13,28 @@ interface GaugeLabelStatProps {
   align?: GaugeLabelAlign;
 }
 
-const labelAlignItems = {
-  center: "center",
-  end: "flex-end",
-  start: "flex-start",
-} as const;
-const labelTextAlign = {
-  center: "center",
-  end: "right",
-  start: "left",
+const LABEL_STAT_STYLE_BY_ALIGN = {
+  center: {
+    alignItems: "center",
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+    textAlign: "center",
+  },
+  end: {
+    alignItems: "flex-end",
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+    textAlign: "right",
+  },
+  start: {
+    alignItems: "flex-start",
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+    textAlign: "left",
+  },
 } as const;
 
 const GaugeLabelStat = ({
@@ -34,13 +47,7 @@ const GaugeLabelStat = ({
 }: Readonly<GaugeLabelStatProps>): ReactElement => (
     <div
       className={centerStatContainerClassName}
-      style={{
-        alignItems: labelAlignItems[align],
-        display: "flex",
-        flexDirection: "column",
-        minWidth: 0,
-        textAlign: labelTextAlign[align],
-      }}
+      style={LABEL_STAT_STYLE_BY_ALIGN[align]}
     >
       {/* Not the default center-stat clamp() classes — this uses plain
           inherited 16px/1.5 typography instead (see styles.css's

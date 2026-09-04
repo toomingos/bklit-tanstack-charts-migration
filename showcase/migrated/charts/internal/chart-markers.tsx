@@ -11,6 +11,9 @@ const MS_PER_SECOND = 1000;
 // Mirrors native stagger({each}) for the marker enter delay.
 const MARKER_STAGGER_EACH_MS = 100;
 
+// Static overlay styles; hoisted so no object is allocated per render.
+const MARKERS_OVERLAY_STYLE = { inset: 0, overflow: "visible", pointerEvents: "none", position: "absolute" } as const;
+
 interface ChartMarkersProps {
   readonly items: readonly Readonly<ChartMarker>[];
   size?: number;
@@ -91,6 +94,8 @@ const ChartMarkersOverlay = (props: ChartMarkersProps): React.ReactElement | nul
   const markerY = -8;
   const baseDelaySec = animationDuration / MS_PER_SECOND;
 
+  const innerOverlayStyle = React.useMemo((): React.CSSProperties => ({ height: 0, left: marginLeft, overflow: "visible", position: "absolute", top: marginTop, width: 0 }), [marginLeft, marginTop]);
+
   const handleHoverChange = React.useCallback((markers: ChartMarker[] | null) => {
     onMarkerHoverChange?.(markers);
   }, [onMarkerHoverChange]);
@@ -100,10 +105,10 @@ const ChartMarkersOverlay = (props: ChartMarkersProps): React.ReactElement | nul
   return (
     <div
       aria-hidden="true"
-      style={{ inset: 0, overflow: "visible", pointerEvents: "none", position: "absolute" }}
+      style={MARKERS_OVERLAY_STYLE}
     >
       {/* XScale must return inner-relative (0..innerWidth) coords; this overlay adds marginLeft/marginTop itself. */}
-      <div style={{ height: 0, left: marginLeft, overflow: "visible", position: "absolute", top: marginTop, width: 0 }}>
+      <div style={innerOverlayStyle}>
         {buckets.flatMap((bucket, idx) => renderMarkerBucket({ activeDate, animate, baseDelaySec, bucket, index: idx, innerHeight, markerY, maxFanned, onHoverChange: handleHoverChange, showLines, size, xScale }))}
       </div>
     </div>

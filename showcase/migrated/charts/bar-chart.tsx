@@ -20,6 +20,7 @@ import type { IndicatorFadeGradientStop } from "./internal/fade-mask";
 import { toDotConfig, toIndicatorConfig } from "./internal/tooltip-mappers";
 import type { SpringConfig } from "./internal/chart-config-context";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
+import type { ReferenceAreaLayersGeom } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import { useChartConfig } from "./internal/chart-config-context";
@@ -67,6 +68,10 @@ import "./styles.css";
 
 // Reveal is an 1100ms cubic-bezier(.85,0,.15,1) tween (bklit DEFAULT_CHART_ENTER_TRANSITION).
 const GROUP_GAP = 4;
+// Tooltip overlay covers the plot without intercepting pointer events.
+const BAR_TOOLTIP_OVERLAY_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
+// Hidden gradient-defs SVG takes no space in layout.
+const BAR_HIDDEN_DEFS_STYLE = { position: "absolute" } as const;
 // Single fixed fill, not a rotating per-series palette (unlike scatter).
 const DEFAULT_BAR_FILL = "var(--chart-line-primary)";
 
@@ -1805,6 +1810,22 @@ const renderDefaultBarTooltipContent = ({
     return scaleBand().domain(categoryOrder).range([0, Math.max(0, width - margin.left - margin.right)]).padding(barGap);
   }, [categoryOrder, width, margin.left, margin.right, barGap]);
 
+  const barRootStyle = React.useMemo((): React.CSSProperties => ({ aspectRatio, isolation: "isolate", position: "relative", width: "100%" }), [aspectRatio]);
+
+  const referenceAreaGeom = React.useMemo((): ReferenceAreaLayersGeom | undefined => {
+    if (heightPxBar <= 0 || barScaleForRef === undefined) { return undefined; }
+    return {
+      barScale: barScaleForRef,
+      height: heightPxBar,
+      isBarChart: true,
+      margin,
+      width,
+      // Reference areas need the NICED domain the bars paint in, not raw yDomain.
+      yDomain: nicedPrimaryDomain,
+      yDomainsByAxis: nicedDomainsByAxis,
+    };
+  }, [barScaleForRef, heightPxBar, margin, nicedDomainsByAxis, nicedPrimaryDomain, width]);
+
   const tooltipBody = tooltipEnabled ? renderTooltipBody : undefined;
   const squaresGradientDefs = squaresDefs.map((def) => (
     <React.Fragment key={def.gradientId}>
@@ -1831,27 +1852,18 @@ const renderDefaultBarTooltipContent = ({
       ))}
     </linearGradient>
   );
-  const referenceAreaLayer = heightPxBar > 0 && barScaleForRef ? (
+  const referenceAreaLayer = referenceAreaGeom === undefined ? undefined : (
     <ReferenceAreaLayers
       configs={refAreaChildrenBar}
-      geom={{
-        barScale: barScaleForRef,
-        height: heightPxBar,
-        isBarChart: true,
-        margin,
-        width,
-        // Reference areas need the NICED domain the bars paint in, not raw yDomain.
-        yDomain: nicedPrimaryDomain,
-        yDomainsByAxis: nicedDomainsByAxis,
-      }}
+      geom={referenceAreaGeom}
     />
-  ) : undefined;
+  );
 
   return (
     <div
       ref={containerRef}
       className={className}
-      style={{ aspectRatio, isolation: "isolate", position: "relative", width: "100%" }}
+      style={barRootStyle}
       data-bkm-chart="bar"
     >
       {background && (
@@ -1878,13 +1890,13 @@ const renderDefaultBarTooltipContent = ({
           {tooltipEnabled && (
             <div
               ref={overlayHostRef}
-              style={{ inset: 0, pointerEvents: "none", position: "absolute" }}
+              style={BAR_TOOLTIP_OVERLAY_STYLE}
             />
           )}
         </>
       )}
       {(squaresDefs.length > 0 || crosshairFadeGradient) && (
-        <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+        <svg width={0} height={0} style={BAR_HIDDEN_DEFS_STYLE} aria-hidden="true" focusable="false">
           <defs>
             {squaresGradientDefs}
             {crosshairGradientDef}

@@ -91,6 +91,13 @@ interface CellDatum {
 // `offset` option (below) and by legacy-offset call sites elsewhere.
 const HEATMAP_TOOLTIP_DEFAULT_OFFSET = 16;
 
+// Static element styles hoisted so `HeatmapCells` passes stable identities
+// Instead of per-render object literals (react-perf parity).
+const HEATMAP_CELLS_CONTAINER_STYLE = { position: "relative", zIndex: 1 } as const;
+const HEATMAP_CELLS_INNER_STYLE = { position: "relative" } as const;
+const HEATMAP_HOVER_SVG_STYLE = { inset: 0, position: "absolute" } as const;
+const HEATMAP_RENDERER_STYLE = { overflow: "visible" } as const;
+
 interface BuildCellDataParams {
   readonly columns: readonly HeatmapColumn[];
   readonly dayLabels: readonly string[];
@@ -1062,6 +1069,12 @@ const HeatmapCells = ({
     () => getHeatmapTooltipConfig(coordinator),
     () => null,
   );
+  // Panel style memoized per config so the tooltip body passes a stable
+  // Identity instead of rebuilding the object on every tooltip render.
+  const tooltipPanelStyle = useMemo(
+    () => ({ backgroundColor: tooltipConfig?.backgroundColor, ...tooltipConfig?.panelStyle }),
+    [tooltipConfig],
+  );
 
   const dayLabels = useMemo(() => getHeatmapDayLabels(ctx.weekStartDay), [ctx.weekStartDay]);
   const displayRange = useMemo(
@@ -1214,16 +1227,16 @@ const HeatmapCells = ({
     return (
       <div
         className={cfg.className ? `bkm-tooltip-panel ${cfg.className}` : "bkm-tooltip-panel"}
-        style={{ backgroundColor: cfg.backgroundColor, ...cfg.panelStyle }}
+        style={tooltipPanelStyle}
       >
         {renderHeatmapTooltipContent(d, cfg)}
       </div>
     );
-  }, [tooltipConfig]);
+  }, [tooltipConfig, tooltipPanelStyle]);
 
   return (
-    <div ref={containerRef} style={{ position: "relative", zIndex: 1 }}>
-      <div style={{ position: "relative" }}>
+    <div ref={containerRef} style={HEATMAP_CELLS_CONTAINER_STYLE}>
+      <div style={HEATMAP_CELLS_INNER_STYLE}>
         <RendererChart
           renderer={chartMotionRenderer<CellDatum, string, string>()}
           className="ts-bkm-heatmap-svg"
@@ -1231,7 +1244,7 @@ const HeatmapCells = ({
           definition={definition}
           width={ctx.width}
           height={ctx.height}
-          style={{ overflow: "visible" }}
+          style={HEATMAP_RENDERER_STYLE}
           onRender={handleRender}
           renderTooltipBody={renderTooltipBody}
         />
@@ -1241,7 +1254,7 @@ const HeatmapCells = ({
         height={ctx.height}
         aria-hidden="true"
         className="ts-bkm-heatmap-hover-svg"
-        style={{ inset: 0, position: "absolute" }}
+        style={HEATMAP_HOVER_SVG_STYLE}
       >
         <HeatmapPatternDefs
           levelStyles={ctx.levelStyles}
@@ -1279,20 +1292,37 @@ const buildHeatmapXAxisLabels = (
 
 const HeatmapXAxis = memo(({ className }: Readonly<HeatmapXAxisProps>) => {
   const ctx = useHeatmap();
+  const { xScale } = ctx;
+  const layerStyle = useMemo(
+    () => ({
+      height: ctx.margin.top,
+      left: ctx.margin.left,
+      pointerEvents: "none" as const,
+      position: "absolute" as const,
+      top: 0,
+      width: ctx.innerWidth,
+    }),
+    [ctx.innerWidth, ctx.margin.left, ctx.margin.top],
+  );
+  const labels = useMemo(() => buildHeatmapXAxisLabels(ctx.data), [ctx.data]);
+  // Per-tick styles precomputed alongside the labels so the `.map()` below
+  // Passes stable identities instead of rebuilding an object per tick.
+  const tickStyles = useMemo(
+    () => labels.map((label: Readonly<{ columnIndex: number; key: string; text: string }>) => ({ left: xScale(label.columnIndex), position: "absolute" as const, top: 0 })),
+    [labels, xScale],
+  );
   if (!ctx.htmlLayerEl) {return undefined;}
-
-  const labels = buildHeatmapXAxisLabels(ctx.data);
 
   return createPortal(
     <div
       className={className ? `${HEATMAP_AXIS_LAYER_CLASS} ${className}` : HEATMAP_AXIS_LAYER_CLASS}
-      style={{ height: ctx.margin.top, left: ctx.margin.left, pointerEvents: "none", position: "absolute", top: 0, width: ctx.innerWidth }}
+      style={layerStyle}
     >
-      {labels.map((label: Readonly<{ columnIndex: number; key: string; text: string }>) => (
+      {labels.map((label: Readonly<{ columnIndex: number; key: string; text: string }>, index) => (
         <span
           key={label.key}
           className="ts-bkm-heatmap-axis-label"
-          style={{ left: ctx.xScale(label.columnIndex), position: "absolute", top: 0 }}
+          style={tickStyles[index]}
         >
           {label.text}
         </span>
@@ -1318,25 +1348,38 @@ const HeatmapYAxis = memo(({
   rowOpacity,
 }: Readonly<HeatmapYAxisProps>) => {
   const ctx = useHeatmap();
+  const { binHeight, yScale } = ctx;
   const dayLabels = useMemo(() => getHeatmapDayLabels(ctx.weekStartDay), [ctx.weekStartDay]);
+  // Per-row styles precomputed alongside the day labels so the `.map()`
+  // Below passes stable identities instead of rebuilding an object per row.
+  const rowTickStyles = useMemo(
+    () => dayLabels.map((_label, row) => ({ opacity: resolveHeatmapRowOpacity(row, rowOpacity), position: "absolute" as const, right: 4, top: yScale(row) + binHeight / 2 })),
+    [binHeight, dayLabels, rowOpacity, yScale],
+  );
+  const layerStyle = useMemo(
+    () => ({
+      height: ctx.innerHeight,
+      left: 0,
+      pointerEvents: "none" as const,
+      position: "absolute" as const,
+      top: ctx.margin.top,
+      width: ctx.margin.left,
+    }),
+    [ctx.innerHeight, ctx.margin.left, ctx.margin.top],
+  );
   if (!ctx.htmlLayerEl) {return undefined;}
 
   return createPortal(
     <div
       className={className ? `${HEATMAP_AXIS_LAYER_CLASS} ${className}` : HEATMAP_AXIS_LAYER_CLASS}
-      style={{ height: ctx.innerHeight, left: 0, pointerEvents: "none", position: "absolute", top: ctx.margin.top, width: ctx.margin.left }}
+      style={layerStyle}
     >
       {dayLabels.map((label, row) =>
         shouldShowHeatmapYAxisTick(row, tickFilter) ? (
           <span
             key={label}
             className="ts-bkm-heatmap-axis-label ts-bkm-heatmap-axis-label--y"
-            style={{
-              opacity: resolveHeatmapRowOpacity(row, rowOpacity),
-              position: "absolute",
-              right: 4,
-              top: ctx.yScale(row) + ctx.binHeight / 2,
-            }}
+            style={rowTickStyles[row]}
           >
             {formatHeatmapYAxisLabel(label, labelFormat)}
           </span>

@@ -53,6 +53,14 @@ const activateMarkerAction = (options: Readonly<MarkerActionOptions>): void => {
   }
 }
 
+const handleMarkerCircleMouseEnter = (event: React.MouseEvent<HTMLButtonElement>): void => {
+  (event.currentTarget).style.transform = "scale(1.15)";
+};
+
+const handleMarkerCircleMouseLeave = (event: React.MouseEvent<HTMLButtonElement>): void => {
+  (event.currentTarget).style.transform = "scale(1)";
+};
+
 const MarkerCircleHtml = ({
   icon,
   size,
@@ -73,10 +81,10 @@ const MarkerCircleHtml = ({
   borderWidth?: number;
 }>): React.ReactElement => {
   const hasAction = Boolean(onClick ?? href);
-  const handleClick = (event: React.MouseEvent): void => {
+  const handleClick = React.useCallback((event: React.MouseEvent): void => {
     event.stopPropagation();
     activateMarkerAction({ href, onClick, target });
-  };
+  }, [href, onClick, target]);
   const circleStyle = buildMarkerCircleStyle({ borderColor, borderWidth, color, hasAction, size });
   if (!hasAction) {
     return (
@@ -90,12 +98,8 @@ const MarkerCircleHtml = ({
       type="button"
       onClick={handleClick}
       style={circleStyle}
-      onMouseEnter={(event) => {
-        (event.currentTarget).style.transform = "scale(1.15)";
-      }}
-      onMouseLeave={(event) => {
-        (event.currentTarget).style.transform = "scale(1)";
-      }}
+      onMouseEnter={handleMarkerCircleMouseEnter}
+      onMouseLeave={handleMarkerCircleMouseLeave}
     >
       {icon}
     </button>

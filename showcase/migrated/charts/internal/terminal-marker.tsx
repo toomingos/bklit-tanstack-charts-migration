@@ -15,13 +15,14 @@ import {
 } from "./terminal-marker-phase";
 import type { ProjectionPhaseHandle, TerminalMarkerAnchor, TerminalMarkerClock } from "./terminal-marker-phase";
 
-// Marker anchors arrive via props and may be nullish at runtime from untyped consumers;
-// The nullable return keeps the fallback chain a genuine check.
-const optionalText = (value: string): string | undefined => value;
 // Projection end dots render slightly smaller than their anchor radius.
 const PROJECTION_END_MARKER_RADIUS_SCALE = 0.85;
 const TERMINAL_MARKER_FADE_DURATION_MS = 280;
 const TERMINAL_MARKER_FADE_EASING = "cubic-bezier(0.22,1,0.36,1)";
+// Overlay SVG covers the plot without intercepting pointer events.
+const PROJECTION_OVERLAY_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
+// End-marker group starts hidden until the phase applier reveals it.
+const PROJECTION_END_GROUP_STYLE = { opacity: 0 } as const;
 
 const resolveTerminalTiming = (enterTransition: Readonly<EnterTransition> | undefined): TerminalMarkerClock => {
   if (enterTransition !== undefined) {
@@ -75,6 +76,18 @@ const renderTerminalMarkerInner = (params: Readonly<TerminalMarkerInnerParams>):
   );
 }
 
+// Marker anchors arrive via props and may be nullish at runtime from untyped consumers;
+// The nullable return keeps the fallback chain a genuine check.
+const optionalText = (value: string): string | undefined => value;
+
+// Hidden-state style for one terminal marker node, keyed by its anchor.
+const terminalMarkerNodeStyle = (cx: number, cy: number): React.CSSProperties => ({
+  opacity: 0,
+  transform: TERMINAL_MARKER_HIDDEN_TRANSFORM,
+  transformBox: "fill-box",
+  transformOrigin: `${cx}px ${cy}px`,
+});
+
 const renderTerminalMarkerNode = (marker: Readonly<TerminalMarkerAnchor>, markerRefs: RefObject<Map<string, SVGGElement>>): React.JSX.Element => {
   const resolvedStroke = optionalText(marker.stroke) ?? optionalText(marker.fill) ?? "currentColor";
   const ringOuter = marker.strokeWidth > 0 ? marker.radius + marker.ringGap + marker.strokeWidth : marker.radius;
@@ -83,18 +96,11 @@ const renderTerminalMarkerNode = (marker: Readonly<TerminalMarkerAnchor>, marker
   return (
     <g
       key={marker.dataKey}
-      ref={(el): void => {
-        if (el) {markerRefs.current.set(marker.dataKey, el);}
+      ref={(element): void => {
+        if (element) {markerRefs.current.set(marker.dataKey, element);}
         else {markerRefs.current.delete(marker.dataKey);}
       }}
-      style={
-        {
-          opacity: 0,
-          transform: TERMINAL_MARKER_HIDDEN_TRANSFORM,
-          transformBox: "fill-box",
-          transformOrigin: `${marker.cx}px ${marker.cy}px`,
-        } satisfies React.CSSProperties
-      }
+      style={terminalMarkerNodeStyle(marker.cx, marker.cy)}
     >
       {renderTerminalMarkerInner({ marker, outlineRadius, resolvedStroke, ringRadius })}
     </g>
@@ -116,9 +122,9 @@ const ProjectionMarkerOverlay = (props: Readonly<ProjectionMarkerOverlayProps>):
   if (terminalMarkers.length === 0 && projectionEndMarkers.length === 0) {return undefined;}
 
   return (
-    <svg width={width} height={height} style={{ inset: 0, pointerEvents: "none", position: "absolute" }} aria-hidden="true">
+    <svg width={width} height={height} style={PROJECTION_OVERLAY_STYLE} aria-hidden="true">
       <g transform={`translate(${margin.left},${margin.top})`}>
-        <g ref={refs.endGroupRef} style={{ opacity: 0 }}>
+        <g ref={refs.endGroupRef} style={PROJECTION_END_GROUP_STYLE}>
           {renderProjectionEndMarkers(projectionEndMarkers)}
         </g>
         {renderTerminalMarkerNodes(terminalMarkers, refs.markerRefs)}

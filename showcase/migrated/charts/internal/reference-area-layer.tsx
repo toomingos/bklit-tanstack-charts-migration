@@ -11,7 +11,7 @@ import { buildReferenceAreaFigure, resolveReferenceAreaPattern, resolveReference
 const ReferenceAreaLayer = (props: ReferenceAreaLayerProps): React.ReactNode => {
   const style = resolveReferenceAreaStyle(props);
   const spatial = useReferenceAreaGeometry(props);
-  const patternNode = React.useMemo(() => resolveReferenceAreaPattern(style, spatial.patternId), [style.pattern, style.patternColor, style.patternScale, style.patternStrokeWidth, style.patternRadius, style.patternComplement, style.patternFill, style.patternDotFill, style.patternTileBackground, spatial.patternId]);
+  const patternNode = React.useMemo(() => resolveReferenceAreaPattern(style, spatial.patternId), [style, spatial.patternId]);
   const visible = isReferenceAreaVisiblePhase(props.phase);
   const prefersReducedMotion = usePrefersReducedMotion();
   const gRef = React.useRef<SVGGElement | null>(null);

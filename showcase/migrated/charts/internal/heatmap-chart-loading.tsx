@@ -33,7 +33,7 @@ const HeatmapChartLoading = ({
 }: Readonly<HeatmapChartLoadingProps>): ReactElement => {
   const skeletonData = useMemo(() => generateHeatmapSkeletonFromTarget(data), [data]);
   // HeatmapChart takes a mutable [Date, Date]; re-wrap the readonly prop (2 refs, loading path only).
-  const mutableXDomain: [Date, Date] | undefined = xDomain === undefined ? undefined : [xDomain[0], xDomain[1]];
+  const mutableXDomain = useMemo((): [Date, Date] | undefined => (xDomain === undefined ? undefined : [xDomain[0], xDomain[1]]), [xDomain]);
 
   return (
     <HeatmapChart className={className} data={skeletonData} gap={gap} loadingLabel={label} margin={margin} status="loading" xDomain={mutableXDomain}>

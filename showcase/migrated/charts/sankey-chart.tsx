@@ -1,6 +1,6 @@
 // Bklit SankeyChart on TanStack Charts (native sankeyDiagram + WAAPI reveal, reactive hover dim).
 import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactElement, ReactNode, RefObject } from 'react';
+import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import { defineChart } from "@tanstack/charts/scene";
 import { tooltip } from "@tanstack/charts/tooltip";
@@ -84,6 +84,23 @@ const DEFAULT_LINK_STROKE_OPACITY = 0.5;
 const MIN_SANKEY_RENDER_WIDTH_PX = 10;
 
 const DEFAULT_COLORS: readonly string[] = CHART_CATEGORY_PALETTE_WITH_FALLBACK;
+
+// Tooltip panel row layout for sankey tooltips.
+const SANKEY_TOOLTIP_ROW_STYLE = { alignItems: "center", display: "flex", gap: 16, justifyContent: "space-between" } as const;
+// Tooltip row inner layout for the sankey tooltip dot and label.
+const SANKEY_TOOLTIP_ROW_INNER_STYLE = { alignItems: "center", display: "flex", gap: 8 } as const;
+// Tooltip dot for node rows in the sankey tooltip.
+const SANKEY_TOOLTIP_DOT_NODE_STYLE = { backgroundColor: "var(--chart-line-primary)", borderRadius: "50%", display: "inline-block", flexShrink: 0, height: 10, width: 10 } as const;
+// Tooltip dot for flow rows in the sankey tooltip.
+const SANKEY_TOOLTIP_DOT_FLOW_STYLE = { backgroundColor: "var(--chart-foreground-muted)", borderRadius: "50%", display: "inline-block", flexShrink: 0, height: 10, width: 10 } as const;
+// Tooltip label text for sankey tooltip rows.
+const SANKEY_TOOLTIP_LABEL_STYLE = { color: "var(--chart-tooltip-muted, var(--muted-foreground))", fontSize: 14, lineHeight: "20px" } as const;
+// Tooltip value text for sankey tooltip rows.
+const SANKEY_TOOLTIP_VALUE_STYLE = { fontSize: 14, fontVariantNumeric: "tabular-nums", fontWeight: 500, lineHeight: "20px" } as const;
+// Tooltip body padding for the sankey tooltip panel.
+const SANKEY_TOOLTIP_BODY_STYLE = { padding: "10px 12px" } as const;
+// Tooltip title text for the sankey tooltip panel.
+const SANKEY_TOOLTIP_TITLE_STYLE = { fontSize: 12, fontWeight: 500, lineHeight: "16px", marginBottom: 8, textAlign: "left" } as const;
 
 const defaultNodeColor = (index: number): string => DEFAULT_COLORS[index % DEFAULT_COLORS.length] ?? DEFAULT_COLORS[0]
 
@@ -218,14 +235,14 @@ const sankeyLinkTitle = (datum: SankeyTooltipDatum): string => {
 };
 
 const renderSankeyTooltipRow = (isNode: boolean, formatValue: (value: number) => string, datum: SankeyTooltipDatum): ReactElement => (
-  <div style={{ alignItems: "center", display: "flex", gap: 16, justifyContent: "space-between" }}>
-    <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
-      <span style={{ backgroundColor: isNode ? "var(--chart-line-primary)" : "var(--chart-foreground-muted)", borderRadius: "50%", display: "inline-block", flexShrink: 0, height: 10, width: 10 }} />
-      <span style={{ color: "var(--chart-tooltip-muted, var(--muted-foreground))", fontSize: 14, lineHeight: "20px" }}>
+  <div style={SANKEY_TOOLTIP_ROW_STYLE}>
+    <div style={SANKEY_TOOLTIP_ROW_INNER_STYLE}>
+      <span style={isNode ? SANKEY_TOOLTIP_DOT_NODE_STYLE : SANKEY_TOOLTIP_DOT_FLOW_STYLE} />
+      <span style={SANKEY_TOOLTIP_LABEL_STYLE}>
         {isNode ? "Sessions" : "Flow"}
       </span>
     </div>
-    <span style={{ fontSize: 14, fontVariantNumeric: "tabular-nums", fontWeight: 500, lineHeight: "20px" }}>
+    <span style={SANKEY_TOOLTIP_VALUE_STYLE}>
       {formatValue(sankeyLinkValue(datumValue(datum)))}
     </span>
   </div>
@@ -244,8 +261,8 @@ const renderSankeyTooltipBody = (point: ChartPoint | undefined, formatValue: (va
 
   return (
     <div className={className !== undefined && className !== "" ? `bkm-tooltip-panel ${className}` : "bkm-tooltip-panel"}>
-    <div style={{ padding: "10px 12px" }}>
-      <div style={{ fontSize: 12, fontWeight: 500, lineHeight: "16px", marginBottom: 8, textAlign: "left" }}>
+    <div style={SANKEY_TOOLTIP_BODY_STYLE}>
+      <div style={SANKEY_TOOLTIP_TITLE_STYLE}>
         {title}
       </div>
       {renderSankeyTooltipRow(isNode, formatValue, datum)}
@@ -423,14 +440,17 @@ const SankeyChart = ({
   const [hoveredLinkIndex, setHoveredLinkIndex] = useState<number | null>(null);
   const hoveredLinkIndexLiveRef = useRef<number | null>(null);
   hoveredLinkIndexLiveRef.current = hoveredLinkIndex;
-  const hoveredLinkIndexRef = {
-    get current(): number | null {
-      return hoveredLinkIndexLiveRef.current;
-    },
-    set current(next: number | null) {
-      setHoveredLinkIndex(next);
-    },
-  };
+  const hoveredLinkIndexRef = useMemo(
+    (): SankeyHoverRefs => ({
+      get current(): number | null {
+        return hoveredLinkIndexLiveRef.current;
+      },
+      set current(next: number | null) {
+        setHoveredLinkIndex(next);
+      },
+    }),
+    [],
+  );
   // Inject source:'pointer' — programmatic would wrongly satisfy the legend-dim predicate.
   const sceneRef = useRef<ChartScene<SankeyRenderDatum> | null>(null);
   const interactionRef = useRef<ChartInteractionController<SankeyRenderDatum> | null>(null);
@@ -457,20 +477,23 @@ const SankeyChart = ({
   internalHoveredNodeIndexRef.current = internalHoveredNodeIndex;
   const onNodeHoverChangeRef = useRef(onNodeHoverChange);
   onNodeHoverChangeRef.current = onNodeHoverChange;
-  const hoveredNodeIndexRef = {
-    get current(): number | null {
-      return isNodeHoverControlledRef.current
-        ? controlledNodeIndexRef.current
-        : internalHoveredNodeIndexRef.current;
-    },
-    set current(next: number | null) {
-      if (isNodeHoverControlledRef.current) {
-        onNodeHoverChangeRef.current?.(next);
-      } else {
-        setInternalHoveredNodeIndex(next);
-      }
-    },
-  };
+  const hoveredNodeIndexRef = useMemo(
+    (): SankeyHoverRefs => ({
+      get current(): number | null {
+        return isNodeHoverControlledRef.current
+          ? controlledNodeIndexRef.current
+          : internalHoveredNodeIndexRef.current;
+      },
+      set current(next: number | null) {
+        if (isNodeHoverControlledRef.current) {
+          onNodeHoverChangeRef.current?.(next);
+        } else {
+          setInternalHoveredNodeIndex(next);
+        }
+      },
+    }),
+    [],
+  );
   const effectiveHoveredNodeIndex = isNodeHoverControlledRef.current
     ? (hoveredNodeIndexProp ?? null)
     : internalHoveredNodeIndex;
@@ -527,7 +550,7 @@ const SankeyChart = ({
           use: tooltip,
         },
       }),
-    [data, markConfig, margin],
+    [data, gradientDataRef, laidOutLinksRef, laidOutNodesRef, markConfig, margin],
   );
 
   const handleRender = useCallback((context: ChartRendererRenderContext<SankeyRenderDatum>) => {
@@ -552,7 +575,7 @@ const SankeyChart = ({
       revealSignature,
       seenRef: seenRevealKeyRef,
     });
-  }, [revealSignature, animationDuration, enterTransition, prefersReducedMotion]);
+  }, [animationDuration, enterTransition, gradientDataRef, prefersReducedMotion, revealSignature]);
 
   // Layout coords are margin-inclusive already, so no margin subtraction before hit-test.
   useEffect((): (() => void) | undefined => {
@@ -606,9 +629,22 @@ const SankeyChart = ({
     hoveredNodeIndexRef.current = null;
     hoveredLinkIndexRef.current = null;
     focusPointerPoint();
-  }, [focusPointerPoint]);
+  }, [focusPointerPoint, hoveredLinkIndexRef, hoveredNodeIndexRef]);
 
   const formatValue = tooltipConfig.formatValue ?? intFmt;
+  const tooltipClassName = tooltipConfig.className;
+
+  // Container layout for the sankey chart surface.
+  const containerStyle = useMemo<CSSProperties>(
+    () => ({ aspectRatio, position: "relative", userSelect: "none", width: "100%" }),
+    [aspectRatio],
+  );
+
+  const renderTooltipBody = useCallback(
+    (bodyCtx: Readonly<{ readonly points: readonly ChartPoint[] }>): ReactNode =>
+      renderSankeyTooltipBody(bodyCtx.points[0], formatValue, tooltipClassName),
+    [formatValue, tooltipClassName],
+  );
 
   const parsedAspectRatio = useMemo(() => {
     const parts = aspectRatio.split("/").map((part) => Number(part.trim()));
@@ -628,7 +664,7 @@ const SankeyChart = ({
       className={className}
       data-bkm-chart="sankey"
       ref={containerRef}
-      style={{ aspectRatio, position: "relative", userSelect: "none", width: "100%" }}
+      style={containerStyle}
       onMouseLeave={handleMouseLeave}
     >
       <RendererChart
@@ -637,7 +673,7 @@ const SankeyChart = ({
         aspectRatio={parsedAspectRatio}
         definition={definition}
         onRender={handleRender}
-        renderTooltipBody={(ctx) => renderSankeyTooltipBody(ctx.points[0], formatValue, tooltipConfig.className)}
+        renderTooltipBody={renderTooltipBody}
       />
     </div>
   );

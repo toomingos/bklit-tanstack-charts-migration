@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { HEATMAP_INACTIVE_TRANSITION_CSS } from "./heatmap-hover-chrome";
 import { buildHeatmapLegendGradient, resolveHeatmapHoverStyle } from "./heatmap-utils";
@@ -101,19 +102,25 @@ interface GradientBarArgs {
   readonly barOpacity: number;
 }
 
+// Gradient bar style; module-scope factory matching buildGradientSegmentVisual above.
+const buildGradientBarStyle = (bar: Readonly<GradientBarArgs>): CSSProperties => ({
+  background: bar.gradient,
+  borderRadius: bar.pillRadius,
+  opacity: bar.barOpacity,
+  transition: `opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}`,
+});
+
 // Gradient bar panel; plain function (not a component) so the element tree is unchanged.
-const renderGradientBar = (bar: Readonly<GradientBarArgs>): ReactElement => (
-  <div
-    aria-hidden="true"
-    className="ts-bkm-heatmap-legend-gradient-bar"
-    style={{
-      background: bar.gradient,
-      borderRadius: bar.pillRadius,
-      opacity: bar.barOpacity,
-      transition: `opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}`,
-    }}
-  />
-);
+const renderGradientBar = (bar: Readonly<GradientBarArgs>): ReactElement => {
+  const barStyle = buildGradientBarStyle(bar);
+  return (
+    <div
+      aria-hidden="true"
+      className="ts-bkm-heatmap-legend-gradient-bar"
+      style={barStyle}
+    />
+  );
+};
 
 const HeatmapLegendGradient = ({
   levels,
@@ -137,9 +144,10 @@ const HeatmapLegendGradient = ({
   const segmentWidth = barWidth / levels.length;
   const gradient = buildHeatmapLegendGradient(levelStyles);
   const barOpacity = isDimming && highlightedLevel === null ? inactiveOpacity : 1;
+  const containerStyle = useMemo((): CSSProperties => ({ height: barHeight, width: barWidth }), [barHeight, barWidth]);
 
   return (
-    <div className="ts-bkm-heatmap-legend-gradient" style={{ height: barHeight, width: barWidth }}>
+    <div className="ts-bkm-heatmap-legend-gradient" style={containerStyle}>
       {renderGradientBar({ barHeight, barOpacity, barWidth, gradient, pillRadius })}
       {levels.map((level, index) => renderGradientSegment({
         activeScale,

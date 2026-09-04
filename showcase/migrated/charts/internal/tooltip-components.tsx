@@ -6,10 +6,11 @@ import type { Spring } from './spring';
 import { ENTRANCE_SPRING, TICKER_ITEM_HEIGHT } from "./design-tokens";
 import { useChartConfig } from './chart-config-context';
 import type { SpringConfig } from './chart-config-context';
-import { intFmt } from "./formatters";
 import { indicatorFadeGradientStops, resolveVerticalFadeSides } from './fade-mask';
 import type { IndicatorFadeEdges, IndicatorFadeGradientStop, VerticalFadeSides } from './fade-mask';
 import { resolveIndicatorPixelWidth } from "./tooltip-mappers";
+import { TooltipContentRow } from "./tooltip-content-row";
+import { TooltipGradientStop } from "./tooltip-gradient-stop";
 import type { IndicatorWidth, TooltipRow } from "./types";
 
 // Corner radius is clamped to this fraction of the side so a ring never over-rounds past a capsule.
@@ -23,8 +24,6 @@ const ENTRANCE_START_SCALE = 0.85;
 // Ticker digit-roll spring params (stiffness, damping).
 const TICKER_SPRING_STIFFNESS = 400;
 const TICKER_SPRING_DAMPING = 35;
-
-const isNumber = <Value,>(value: Value): value is Value & number => typeof value === "number";
 
 
 interface TooltipDotProps {
@@ -442,10 +441,11 @@ const renderFadedIndicator = (options: Readonly<FadedIndicatorOptions>): ReactEl
   const { animate, fadeLength, fadeSides, gradientId, height, indicatorFill, pixelWidth, rectRef, rectX } = options;
   const fadeStops = indicatorFadeGradientStops(fadeSides, fadeLength);
   const stopNodes = fadeStops.map((stop: Readonly<IndicatorFadeGradientStop>) => (
-    <stop
+    <TooltipGradientStop
+      fill={indicatorFill}
       key={stop.offset}
       offset={stop.offset}
-      style={{ stopColor: indicatorFill, stopOpacity: stop.opacity }}
+      opacity={stop.opacity}
     />
   ));
   return (
@@ -1000,24 +1000,11 @@ interface TooltipContentProps {
   readonly children?: ReactNode;
 }
 
-const renderTooltipRow = (row: Readonly<TooltipRow>): ReactElement => (
-  <div
-    className="flex items-center justify-between gap-4"
+const renderTooltipContentRow = (row: Readonly<TooltipRow>): ReactElement => (
+  <TooltipContentRow
     key={`${row.label}-${row.color}`}
-  >
-    <div className="flex items-center gap-2">
-      <span
-        className="h-2.5 w-2.5 shrink-0 rounded-full"
-        style={{ backgroundColor: row.color }}
-      />
-      <span className="text-chart-tooltip-muted text-sm">
-        {row.label}
-      </span>
-    </div>
-    <span className="font-medium text-chart-tooltip-foreground text-sm tabular-nums">
-      {isNumber(row.value) ? intFmt(row.value) : row.value}
-    </span>
-  </div>
+    row={row}
+  />
 );
 
 const TooltipContent = ({ title, rows, children }: Readonly<TooltipContentProps>): ReactElement => (
@@ -1029,7 +1016,7 @@ const TooltipContent = ({ title, rows, children }: Readonly<TooltipContentProps>
           </div>
         )}
         <div className="space-y-1.5">
-          {rows.map((row) => renderTooltipRow(row))}
+          {rows.map((row) => renderTooltipContentRow(row))}
         </div>
 
         {children !== undefined && children !== null && (

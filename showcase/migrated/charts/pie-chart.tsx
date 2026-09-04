@@ -263,10 +263,24 @@ const createPieSliceMark = (pieRows: readonly PieRowDatum[], params: Readonly<Cr
   });
 }
 
+// Hidden defs svg floats over the chart corner without intercepting pointer input.
+const PIE_DEFS_SVG_STYLE: CSSProperties = { left: 0, pointerEvents: "none", position: "absolute", top: 0 };
+// Scrub svg isolates paint so geometry probing never disturbs the live chart.
+const PIE_SCRUB_SVG_STYLE: CSSProperties = { contain: "layout style paint" };
+// Center overlay stacks PieCenter children while letting pointer input fall through.
+const PIE_CENTER_OVERLAY_STYLE: CSSProperties = {
+  alignItems: "center",
+  display: "flex",
+  inset: 0,
+  justifyContent: "center",
+  pointerEvents: "none",
+  position: "absolute",
+};
+
 const renderPieDefsSvg = (defsChildren: readonly ReactElement[]): ReactElement | undefined => {
   if (defsChildren.length === 0) { return undefined; }
   return (
-    <svg width={0} height={0} aria-hidden="true" style={{ left: 0, pointerEvents: "none", position: "absolute", top: 0 }}>
+    <svg width={0} height={0} aria-hidden="true" style={PIE_DEFS_SVG_STYLE}>
       <defs>{defsChildren}</defs>
     </svg>
   );
@@ -287,7 +301,7 @@ const renderPieScrubSvg = (params: Readonly<PieScrubSvgParams>): ReactElement =>
     <svg
       aria-hidden="true"
       height={size}
-      style={{ contain: "layout style paint" }}
+      style={PIE_SCRUB_SVG_STYLE}
       width={size}
     >
       {defsChildren.length > 0 && <defs>{defsChildren}</defs>}
@@ -311,14 +325,7 @@ const renderPieCenterOverlay = (centerChildren: readonly ReactNode[]): ReactElem
   if (centerChildren.length === 0) { return undefined; }
   return (
     <div
-      style={{
-        alignItems: "center",
-        display: "flex",
-        inset: 0,
-        justifyContent: "center",
-        pointerEvents: "none",
-        position: "absolute",
-      }}
+      style={PIE_CENTER_OVERLAY_STYLE}
     >
       {centerChildren}
     </div>
@@ -552,16 +559,26 @@ const PieChart = ({
     coordinator.requestUnhover();
   }, [coordinator]);
 
+  const placeholderStyle = useMemo((): CSSProperties => ({
+    ...(fixedSize !== undefined && fixedSize !== 0 ? { height: fixedSize, width: fixedSize } : { aspectRatio: "1 / 1", width: "100%" }),
+    ...style,
+  }), [fixedSize, style]);
+  const containerStyle = useMemo((): CSSProperties => ({
+    alignItems: "center",
+    display: "flex",
+    justifyContent: "center",
+    position: "relative",
+    ...(fixedSize !== undefined && fixedSize !== 0 ? { height: fixedSize, width: fixedSize } : { aspectRatio: "1 / 1", width: "100%" }),
+    ...style,
+  }), [fixedSize, style]);
+
   if (size < MIN_PIE_SIZE_PX) {
     return (
       <div
         className={className}
         data-bkm-chart="pie"
         ref={containerRef}
-        style={{
-          ...(fixedSize !== undefined && fixedSize !== 0 ? { height: fixedSize, width: fixedSize } : { aspectRatio: "1 / 1", width: "100%" }),
-          ...style,
-        }}
+        style={placeholderStyle}
       />
     );
   }
@@ -586,14 +603,7 @@ const PieChart = ({
       ref={containerRef}
       onPointerMove={handlePointerMove}
       onPointerLeave={handlePointerLeave}
-      style={{
-        alignItems: "center",
-        display: "flex",
-        justifyContent: "center",
-        position: "relative",
-        ...(fixedSize !== undefined && fixedSize !== 0 ? { height: fixedSize, width: fixedSize } : { aspectRatio: "1 / 1", width: "100%" }),
-        ...style,
-      }}
+      style={containerStyle}
     >
       <PieStableContext.Provider value={stable}>
         <PieHoverCoordinatorContext.Provider value={coordinator}>

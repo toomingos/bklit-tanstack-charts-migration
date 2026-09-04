@@ -20,6 +20,7 @@ import type {
 } from "@tanstack/charts";
 import { roleOf } from "./internal/children-extract";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
+import type { ReferenceAreaLayersGeom } from "./internal/reference-area-layer";
 import { hmsTimeFmt } from "./internal/formatters";
 import { liveLineMark } from "./internal/live-line-mark";
 import { useChartMargin } from "./internal/use-chart-margin";
@@ -385,6 +386,11 @@ const PERCENT_SCALE = 100;
 const FADE_MASK_TOP_OVERHANG_PX = 20;
 const FADE_MASK_VERTICAL_OVERHANG_PX = 40;
 
+// Static overlay styles hoisted so host elements reuse stable identities.
+const LIVE_TIP_GROUP_STYLE = { transition: "opacity 300ms ease-in-out" } as const;
+const CHART_OVERLAY_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
+const LIVE_SVG_OVERLAY_STYLE = { inset: 0, overflow: "visible", pointerEvents: "none", position: "absolute" } as const;
+
 // Five chrome elements render at the throttled frame rate; scrub-dim applies imperatively.
 const DEFAULT_LIVE_DOT_SIZE_PX = 4;
 /** Pulse halo peak radius as a multiple of the live dot size. */
@@ -422,7 +428,7 @@ const LiveTipChrome = ({
         y1={liveDotY}
         y2={liveDotY}
       />
-      <g ref={registerLiveGroup} style={{ transition: "opacity 300ms ease-in-out" }}>
+      <g ref={registerLiveGroup} style={LIVE_TIP_GROUP_STYLE}>
         <g>
           {pulse && (
             <circle
@@ -918,37 +924,57 @@ const LiveLineChart = ({
   const [yDomainStart, yDomainEnd] = yScale.domain();
   const fadeMaskId = lineVisuals.length > 0 ? `bkm-live-fade-mask-${uid}` : undefined;
 
+  // Stable identities for the object props below; each array names every value its body reads.
+  const containerStyle = React.useMemo<React.CSSProperties>(
+    () => ({
+      height: 300,
+      isolation: "isolate",
+      position: "relative",
+      touchAction: "none",
+      width: "100%",
+      ...style,
+    }),
+    [style],
+  );
+  const referenceAreaGeom = React.useMemo<ReferenceAreaLayersGeom>(
+    () => ({
+      height,
+      isTimeScale: true,
+      margin,
+      width,
+      xDomain: [xDomainStart, xDomainEnd],
+      yDomain: [yDomainStart, yDomainEnd],
+    }),
+    [height, margin, width, xDomainStart, xDomainEnd, yDomainStart, yDomainEnd],
+  );
+  const fadeMaskStyle = React.useMemo(
+    () =>
+      hasText(fadeMaskId)
+        ? {
+            WebkitMaskImage: `url(#${fadeMaskId})`,
+            maskImage: `url(#${fadeMaskId})`,
+          }
+        : undefined,
+    [fadeMaskId],
+  );
+
   return (
     <div
       ref={containerRef}
       className={className}
       data-bkm-chart="liveline"
-      style={{ height: 300, isolation: "isolate", position: "relative", touchAction: "none", width: "100%", ...style }}
+      style={containerStyle}
     >
       {liveRefAreas.length > 0 && width > 0 && height > 0 && (
         <ReferenceAreaLayers
           configs={liveRefAreas}
-          geom={{
-            height,
-            isTimeScale: true,
-            margin,
-            width,
-            xDomain: [xDomainStart, xDomainEnd],
-            yDomain: [yDomainStart, yDomainEnd],
-          }}
+          geom={referenceAreaGeom}
         />
       )}
       {definition ? (
         <>
           <div
-            style={
-              hasText(fadeMaskId)
-                ? ({
-                    WebkitMaskImage: `url(#${fadeMaskId})`,
-                    maskImage: `url(#${fadeMaskId})`,
-                  })
-                : undefined
-            }
+            style={fadeMaskStyle}
           >
             <RendererChart
               ariaLabel="Live line chart"
@@ -965,7 +991,7 @@ const LiveLineChart = ({
             aria-hidden="true"
             width={width}
             height={height}
-            style={{ inset: 0, overflow: "visible", pointerEvents: "none", position: "absolute" }}
+            style={LIVE_SVG_OVERLAY_STYLE}
           >
             <g transform={`translate(${margin.left},${margin.top})`}>
               <defs>
@@ -1050,7 +1076,7 @@ const LiveLineChart = ({
         </>
       ) : undefined}
       {tooltipOn && liveXAxis ? (
-        <div ref={datePill.overlayHostRef} style={{ inset: 0, pointerEvents: "none", position: "absolute" }} />
+        <div ref={datePill.overlayHostRef} style={CHART_OVERLAY_STYLE} />
       ) : undefined}
     </div>
   );

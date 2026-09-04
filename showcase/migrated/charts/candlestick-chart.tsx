@@ -32,6 +32,7 @@ import { resolveEnterTransition, TWEEN_FALLBACK } from './internal/enter-transit
 import type { CandlestickEnterTransition } from './internal/enter-transition';
 import { resolveGridGuide } from "./internal/grid";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
+import type { ReferenceAreaLayersGeom } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import {
@@ -86,6 +87,10 @@ const HOVER_HIGHLIGHT_MARK_ID = "hover-highlight";
 const CANDLE_CELL_CLASS_NAME = "chart-candle-cell";
 // Known pattern presets; anything else renders only when it is a legacy url(#id) string.
 const CANDLE_PATTERN_PRESETS: readonly string[] = ["diagonal", "horizontal", "vertical", "cross", "dots", "circles", "accent"];
+// Zero-size defs layers sit outside layout; the style never varies.
+const HIDDEN_DEFS_SVG_STYLE = { position: "absolute" } as const;
+// Pill host covers the plot without intercepting pointer events.
+const PILL_OVERLAY_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
 
 // Both segment ends must be finite before they are mapped through the scales.
 const areBothFinite = (first: number, second: number): boolean => Number.isFinite(first) && Number.isFinite(second);
@@ -1463,7 +1468,7 @@ const CandlestickChart = ({
 
   const candlestickFocusStrategy = useMemo(
     () => createCandlestickFocusStrategy({ canInteractRef }),
-    [],
+    [canInteractRef],
   );
 
   const chartConfig = useChartConfig();
@@ -1740,35 +1745,43 @@ const CandlestickChart = ({
   const candlestickChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
   // Hoisted out of the definition JSX below so no single expression stacks conditionals.
+  const containerStyle = useMemo((): CSSProperties => ({
+    aspectRatio,
+    isolation: "isolate",
+    position: "relative",
+    width: "100%",
+    ...style,
+  }), [aspectRatio, style]);
   const positivePatternLayer = positivePattern.preset ? (
-    <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
       <defs>{renderPatternPreset(positivePattern.preset, `${candlePatternDefsId}-candle-pattern-pos`, {})}</defs>
     </svg>
   ) : undefined;
   const negativePatternLayer = negativePattern.preset ? (
-    <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
       <defs>{renderPatternPreset(negativePattern.preset, `${candlePatternDefsId}-candle-pattern-neg`, {})}</defs>
     </svg>
   ) : undefined;
   const enabledRenderTooltipBody = tooltipEnabled ? renderTooltipBody : undefined;
+  const referenceAreaGeomCandle = useMemo((): ReferenceAreaLayersGeom => ({
+    height: heightPxCandle,
+    isCandlestickXScale: true,
+    isTimeScale: true,
+    margin,
+    width,
+    xDomain: timeExtentCandle ? [new Date(timeExtentCandle.minTime), new Date(timeExtentCandle.maxTime)] : undefined,
+    yDomain,
+  }), [heightPxCandle, margin, timeExtentCandle, width, yDomain]);
   const referenceAreaLayer = heightPxCandle > 0 ? (
     <ReferenceAreaLayers
       configs={refAreaChildrenCandle}
-      geom={{
-        height: heightPxCandle,
-        isCandlestickXScale: true,
-        isTimeScale: true,
-        margin,
-        width,
-        xDomain: timeExtentCandle ? [new Date(timeExtentCandle.minTime), new Date(timeExtentCandle.maxTime)] : undefined,
-        yDomain,
-      }}
+      geom={referenceAreaGeomCandle}
     />
   ) : undefined;
   const pillOverlayLayer = tooltipEnabled ? (
     <div
       ref={overlayHostRef}
-      style={{ inset: 0, pointerEvents: "none", position: "absolute" }}
+      style={PILL_OVERLAY_STYLE}
     />
   ) : undefined;
 
@@ -1799,7 +1812,7 @@ const CandlestickChart = ({
     </>
   ) : undefined;
   const crosshairLayerNode = crosshairFadeGradient ? (
-    <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
       <defs>
         <linearGradient
           id={crosshairFadeGradient.id}
@@ -1820,7 +1833,7 @@ const CandlestickChart = ({
     <div
       ref={containerRef}
       className={className}
-      style={{ aspectRatio, isolation: "isolate", position: "relative", width: "100%", ...style }}
+      style={containerStyle}
       data-bkm-chart="candlestick"
     >
       {background ? (

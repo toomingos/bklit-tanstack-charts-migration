@@ -1,12 +1,17 @@
 "use client";
 
 import { Progress } from "@base-ui/react/progress";
-import type { ReactElement } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import { cn } from "@/lib/utils";
 import type { LegendItem } from "./chart-legend";
 
 // Fraction-to-percentage scale for value/maxValue legend ratios.
 const LEGEND_PERCENT_SCALE = 100;
+
+// Builds the color style for a legend swatch; hoisted so the row stays short.
+const buildItemColorStyle = (color: string): CSSProperties => ({
+  backgroundColor: color,
+});
 
 interface ProgressItemProps {
   readonly item: LegendItem;
@@ -39,7 +44,7 @@ const ProgressItem = ({
       {showMarker && (
         <div
           className="h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{ backgroundColor: item.color }}
+          style={buildItemColorStyle(item.color)}
         />
       )}
 
@@ -56,7 +61,7 @@ const ProgressItem = ({
       <Progress.Track className="col-span-full h-1.5 overflow-hidden rounded-full bg-legend-track">
         <Progress.Indicator
           className="h-full rounded-full transition-all duration-500"
-          style={{ backgroundColor: item.color }}
+          style={buildItemColorStyle(item.color)}
         />
       </Progress.Track>
 

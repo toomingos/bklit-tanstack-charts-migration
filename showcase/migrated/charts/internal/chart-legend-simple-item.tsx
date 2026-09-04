@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReactElement } from "react";
+import type { CSSProperties, ReactElement } from "react";
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import type { LegendItem } from "./chart-legend";
 
@@ -21,12 +22,14 @@ const SimpleItem = ({
   formatValue,
   labelClassName,
   valueClassName,
-}: Readonly<SimpleItemProps>): ReactElement => (
+}: Readonly<SimpleItemProps>): ReactElement => {
+  const markerStyle = useMemo((): CSSProperties => ({ backgroundColor: item.color }), [item.color]);
+  return (
     <div className="flex items-center gap-3">
       {showMarker && (
         <div
           className="h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{ backgroundColor: item.color }}
+          style={markerStyle}
         />
       )}
 
@@ -41,6 +44,7 @@ const SimpleItem = ({
       )}
     </div>
   );
+};
 
 export { SimpleItem };
 export type { SimpleItemProps };

@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ReactElement, ReactNode } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import type { ScaleLinear, ScaleTime } from "d3-scale";
 import { curveMonotoneX, curveNatural } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
@@ -35,6 +35,7 @@ import {
 } from "./internal/hover-geometry";
 import type { CrosshairGradientDef } from "./internal/hover-geometry";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
+import type { ReferenceAreaLayersGeom } from "./internal/reference-area-layer";
 import {
   extractReferenceAreaProps,
 } from "./internal/reference-area-config";
@@ -179,6 +180,9 @@ const PROJECTION_STROKE_FALLBACKS = {
   strokeWidth: 2,
 };
 const PROJECTION_MARKER_FALLBACKS = { endpointRadius: DEFAULT_MARKER_RADIUS };
+// Hidden svg sizing and overlay host positioning: fully static, shared across renders.
+const DATE_PILL_HOST_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
+const HIDDEN_SVG_STYLE = { position: "absolute" } as const;
 
 // Plain element helpers (not components): called during render, so the element tree
 // Keeps the same types/keys and reconciliation is unchanged; they only flatten source nesting.
@@ -460,13 +464,9 @@ const ComposedChart = ({
     yDomainTweenDuration: DEFAULT_Y_DOMAIN_TWEEN_MS,
   });
 
-  // Primitive deps: enterTransition is usually an inline object literal.
-  const enterType = enterTransition?.type;
-  const enterDuration = enterTransition?.duration;
-  const enterEaseKey = enterTransition?.ease?.join(",");
   const { durationMs: revealDurationMs, easingCss: revealEasingCss } = useMemo(
     () => clipRevealTiming(enterTransition, animationDuration, animationEasing),
-    [enterType, enterDuration, enterEaseKey, animationDuration, animationEasing],
+    [enterTransition, animationDuration, animationEasing],
   );
 
   const phaseRef = useRef<ChartPhase>(chartPhase);
@@ -928,6 +928,8 @@ const ComposedChart = ({
     xAxis,
     xDataKey,
     yDomainFinal,
+    xScaleD3Ref,
+    yScaleD3Ref,
   ]);
   const definition = useMemo(() => {
     if (width <= 0 || !marks || !scales) {return NOTHING;}
@@ -1034,7 +1036,7 @@ const ComposedChart = ({
     wasVisibleRef.current = false;
     datePill.hide();
     setLabelFade(NOTHING);
-  }, [datePill, interactionRef]);
+  }, [datePill, interactionRef, setHoveredIndex, setLabelFade]);
 
   const handleFocusGroupChange = useCallback(
     (_points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
@@ -1126,7 +1128,7 @@ const ComposedChart = ({
       resolvedBars,
       revealDurationMs,
     }, marksRoot);
-  }, [animationDuration, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, resolvedBars, data.length, captureRenderContext, prefersReducedMotion]);
+  }, [animationDuration, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, resolvedBars, data.length, captureRenderContext, prefersReducedMotion, yScaleD3Ref]);
 
   useEffect(() => {
     if (chartPhase !== "revealing") {return;}
@@ -1174,6 +1176,18 @@ const ComposedChart = ({
   }, [overlayRenderedComposed]);
   const composedChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
+  const containerStyle = useMemo((): CSSProperties => ({ aspectRatio, isolation: "isolate", position: "relative", width: "100%" }), [aspectRatio]);
+  const refAreaGeom = useMemo((): ReferenceAreaLayersGeom => ({
+    height: heightPxComp,
+    isLoaded,
+    isTimeScale: true,
+    margin,
+    phase: chartPhase,
+    width,
+    xDomain: timeExtentComp ? [new Date(timeExtentComp.minTime), new Date(timeExtentComp.maxTime)] : NOTHING,
+    yDomain: yDomainComp,
+    yDomainsByAxis: nicedDomainsByAxis,
+  }), [heightPxComp, isLoaded, margin, chartPhase, width, timeExtentComp, yDomainComp, nicedDomainsByAxis]);
   const backgroundLayer = background ? (
     <BackgroundLayer
       config={background}
@@ -1187,7 +1201,7 @@ const ComposedChart = ({
     <svg
       width={0}
       height={0}
-      style={{ position: "absolute" }}
+      style={HIDDEN_SVG_STYLE}
       aria-hidden="true"
       focusable="false"
     >
@@ -1211,7 +1225,7 @@ const ComposedChart = ({
     />
   ) : NOTHING;
   const crosshairNode = crosshairGradientDef ? (
-    <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+    <svg width={0} height={0} style={HIDDEN_SVG_STYLE} aria-hidden="true" focusable="false">
       <defs>
         <linearGradient id={crosshairGradientDef.id} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={margin.top} y2={margin.top + Math.max(0, heightPxComp - margin.top - margin.bottom)}>
           {renderCrosshairStops(crosshairGradientDef)}
@@ -1222,7 +1236,7 @@ const ComposedChart = ({
   const datePillNode = tooltipEnabled ? (
     <div
       ref={datePill.overlayHostRef}
-      style={{ inset: 0, pointerEvents: "none", position: "absolute" }}
+      style={DATE_PILL_HOST_STYLE}
     />
   ) : NOTHING;
 
@@ -1243,17 +1257,7 @@ const ComposedChart = ({
       {heightPxComp > 0 && (
       <ReferenceAreaLayers
         configs={refAreaChildrenComp}
-        geom={{
-          height: heightPxComp,
-          isLoaded,
-          isTimeScale: true,
-          margin,
-          phase: chartPhase,
-          width,
-          xDomain: timeExtentComp ? [new Date(timeExtentComp.minTime), new Date(timeExtentComp.maxTime)] : NOTHING,
-          yDomain: yDomainComp,
-          yDomainsByAxis: nicedDomainsByAxis,
-        }}
+        geom={refAreaGeom}
       />
       )}
       <SegmentOverlay
@@ -1275,7 +1279,7 @@ const ComposedChart = ({
     <div
       ref={containerRef}
       className={className}
-      style={{ aspectRatio, isolation: "isolate", position: "relative", width: "100%" }}
+      style={containerStyle}
       data-bkm-chart="composed"
     >
       {backgroundLayer}

@@ -6,6 +6,9 @@ import { renderPatternPreset } from "./pattern-preset-render";
 
 // Legend swatch, split out so heatmap-legend.tsx stays under the size limits.
 
+// Static svg fill style for the pattern branch; hoisted so it keeps identity.
+const SWATCH_SVG_STYLE = { display: "block", height: "100%", width: "100%" } as const;
+
 interface HeatmapLegendSwatchProps {
   level: number;
   style: HeatmapLevelStyle;
@@ -44,7 +47,7 @@ const renderPatternSwatch = (swatch: Readonly<PatternSwatchArgs>): ReactElement 
       className="ts-bkm-heatmap-legend-swatch ts-bkm-heatmap-legend-swatch--pattern"
       style={{ ...shellStyle, opacity, overflow: "hidden" }}
     >
-      <svg aria-hidden="true" viewBox={`0 0 ${swatch.cellSize} ${swatch.cellSize}`} style={{ display: "block", height: "100%", width: "100%" }}>
+      <svg aria-hidden="true" viewBox={`0 0 ${swatch.cellSize} ${swatch.cellSize}`} style={SWATCH_SVG_STYLE}>
         {patternNode !== undefined && patternNode !== null ? <defs>{patternNode}</defs> : undefined}
         <rect
           fill={patternNode !== undefined && patternNode !== null ? `url(#${patternId})` : swatch.style.color}

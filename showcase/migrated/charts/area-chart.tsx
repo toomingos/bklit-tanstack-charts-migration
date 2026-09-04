@@ -58,6 +58,7 @@ import {
 import type { CrosshairGradientDef } from "./internal/hover-geometry";
 import { useFocusInjection } from "./internal/focus-injection";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
+import type { ReferenceAreaLayersGeom } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import {
   extractReferenceAreaProps,
@@ -94,7 +95,7 @@ import {
   tickLabelFadeOpacity,
 } from "./internal/axis-ticks";
 import { buildNativeTooltipExtension, renderSeriesTooltipBody } from "./internal/native-tooltip";
-import type { AreaConfig, BrushChildConfig, ChartDatum, ChartStatus, PatternAreaConfig, SeriesPointMarkerStyle } from "./internal/types";
+import type { AreaConfig, BrushChildConfig, ChartDatum, ChartMarker, ChartStatus, PatternAreaConfig, SeriesPointMarkerStyle } from "./internal/types";
 import { DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from './internal/chart-phase';
 import type { ChartPhase } from './internal/chart-phase';
 import { useChartConfig } from "./internal/chart-config-context";
@@ -172,6 +173,10 @@ const BRUSH_NATIVE_HIDDEN_STYLE: SceneStyle = {
   strokeOpacity: 0,
 };
 const EMPTY_BRUSH_CONTROLS: readonly ChartControl<Date, number>[] = [];
+// Hidden svg hosts for gradient/clip defs; zero-size and removed from layout.
+const HIDDEN_DEF_SVG_STYLE: CSSProperties = { position: "absolute" };
+// Date pill overlay host; fills the plot and ignores pointer events.
+const DATE_PILL_HOST_STYLE: CSSProperties = { inset: 0, pointerEvents: "none", position: "absolute" };
 
 interface AreaChartProps {
   data: ChartDatum[];
@@ -395,7 +400,7 @@ const renderCrosshairNode = (
     <stop key={stop.offset} offset={stop.offset} stopColor={color} stopOpacity={stop.opacity} />
   ));
   return (
-    <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+    <svg width={0} height={0} style={HIDDEN_DEF_SVG_STYLE} aria-hidden="true" focusable="false">
       <defs>
         <linearGradient id={id} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={marginTop} y2={marginTop + plotHeight}>
           {stops}
@@ -1410,20 +1415,48 @@ const AreaChart = ({
   }, [brushHost, brushRangeValue, innerWidthForBrush]);
   const areaChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
+  // Stable identities for layer props that would otherwise allocate per render.
+  const referenceAreaGeom = useMemo(
+    (): ReferenceAreaLayersGeom => ({
+      height: heightPx,
+      isLoaded,
+      isTimeScale: true,
+      margin,
+      phase: chartPhase,
+      width,
+      xDomain: timeExtent ? [new Date(timeExtent.minTime), new Date(timeExtent.maxTime)] : undefined,
+      yDomain: yDomainFinal,
+      yDomainsByAxis: nicedDomainsByAxis,
+    }),
+    [heightPx, isLoaded, margin, chartPhase, width, timeExtent, yDomainFinal, nicedDomainsByAxis],
+  );
+  const resolveAreaX = useCallback((date: Readonly<Date>): number | undefined => {
+    const scale = areaXScaleD3Ref.current;
+    if (!scale) {return undefined;}
+    return scale(date);
+  }, []);
+  const handleMarkerHoverChange = useCallback((markers: readonly Readonly<ChartMarker>[] | null): void => {
+    // Hovering markers hides crosshair/tooltip and drops isActive until next chart hover (legacy).
+    if (markers) {
+      clearFocusChrome();
+    }
+  }, [clearFocusChrome]);
+  const chartBodyClipStyle = useMemo((): CSSProperties | undefined =>
+    (needsAreaBrushClip ? { clipPath: `url(#${areaBrushClipId})` } : undefined),
+  [needsAreaBrushClip, areaBrushClipId]);
+  const containerStyle = useMemo((): CSSProperties => ({
+    aspectRatio,
+    isolation: "isolate",
+    position: "relative",
+    touchAction: "none",
+    width: "100%",
+    ...style,
+  }), [aspectRatio, style]);
+
   const referenceAreaLayer = heightPx > 0 ? (
     <ReferenceAreaLayers
       configs={refAreaChildren}
-      geom={{
-        height: heightPx,
-        isLoaded,
-        isTimeScale: true,
-        margin,
-        phase: chartPhase,
-        width,
-        xDomain: timeExtent ? [new Date(timeExtent.minTime), new Date(timeExtent.maxTime)] : undefined,
-        yDomain: yDomainFinal,
-        yDomainsByAxis: nicedDomainsByAxis,
-      }}
+      geom={referenceAreaGeom}
     />
   ) : undefined;
   const projectionMarkerLayer = overlayRenderedArea ? (
@@ -1439,7 +1472,7 @@ const AreaChart = ({
   const datePillLayer = tooltipEnabled ? (
     <div
       ref={datePill.overlayHostRef}
-      style={{ inset: 0, pointerEvents: "none", position: "absolute" }}
+      style={DATE_PILL_HOST_STYLE}
     />
   ) : undefined;
   const chartMarkerLayer = chartMarkers ? (
@@ -1450,22 +1483,13 @@ const AreaChart = ({
       showLines={chartMarkers.showLines}
       animate={chartMarkers.animate}
       maxFanned={chartMarkers.maxFanned}
-      xScale={(date: Date): number | undefined => {
-        const scale = areaXScaleD3Ref.current;
-        if (!scale) {return undefined;}
-        return scale(date);
-      }}
+      xScale={resolveAreaX}
       marginLeft={margin.left}
       marginTop={margin.top}
       innerHeight={Math.max(0, heightPx - margin.top - margin.bottom)}
       containerRef={containerRef}
       animationDuration={animationDuration}
-      onMarkerHoverChange={(markers) => {
-        // Hovering markers hides crosshair/tooltip and drops isActive until next chart hover (legacy).
-        if (markers) {
-          clearFocusChrome();
-        }
-      }}
+      onMarkerHoverChange={handleMarkerHoverChange}
     />
     </MarkerActiveTooltipProvider>
   ) : undefined;
@@ -1478,7 +1502,7 @@ const AreaChart = ({
     </clipPath>
   ) : undefined;
   const brushClipNode = needsAreaBrushClip ? (
-    <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+    <svg width={0} height={0} style={HIDDEN_DEF_SVG_STYLE} aria-hidden="true" focusable="false">
       <defs>
         {brushClipContent}
       </defs>
@@ -1509,7 +1533,7 @@ const AreaChart = ({
     />
   ) : undefined;
   const chartBodyNode = definition ? (
-    <div style={needsAreaBrushClip ? { clipPath: `url(#${areaBrushClipId})` } : undefined}>
+    <div style={chartBodyClipStyle}>
       <RendererChart
         renderer={areaChartRenderer}
         ariaLabel="Area chart"
@@ -1580,7 +1604,7 @@ const AreaChart = ({
     <svg
       width={0}
       height={0}
-      style={{ position: "absolute" }}
+      style={HIDDEN_DEF_SVG_STYLE}
       aria-hidden="true"
       focusable="false"
     >
@@ -1606,7 +1630,7 @@ const AreaChart = ({
     <svg
       width={0}
       height={0}
-      style={{ position: "absolute" }}
+      style={HIDDEN_DEF_SVG_STYLE}
       aria-hidden="true"
       focusable="false"
     >
@@ -1620,7 +1644,7 @@ const AreaChart = ({
       ref={containerRef}
       className={className}
       // Touch-action none: vertical page scroll must not hijack touch drag-selection.
-      style={{ aspectRatio, isolation: "isolate", position: "relative", touchAction: "none", width: "100%", ...style }}
+      style={containerStyle}
       data-bkm-chart="area"
       data-bkm-fade-edges={fadeEdgesMask["data-bkm-fade-edges"]}
       data-bkm-fade-edges-left={fadeEdgesMask["data-bkm-fade-edges-left"]}

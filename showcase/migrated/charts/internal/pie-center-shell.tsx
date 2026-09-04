@@ -15,6 +15,9 @@ import type { PieArcData, PieData } from '../pie-chart';
 
 const SHELL_HOVER_OFFSET = 10;
 
+// Static wrapper style: keeps the data-bkm-chart scoping div out of layout.
+const SHELL_WRAPPER_STYLE = { display: "contents" } as const;
+
 // Full-sweep arc end angle pairing with startAngle -π/2 (ported verbatim from legacy).
 const PIE_SHELL_END_ANGLE_FACTOR = 3;
 const PIE_SHELL_FULL_SWEEP_END_ANGLE = (PIE_SHELL_END_ANGLE_FACTOR * Math.PI) / 2;
@@ -155,7 +158,7 @@ const PieCenterShell = ({
   return (
     <PieStableContext.Provider value={contextValue}>
       <PieHoverCoordinatorContext.Provider value={INERT_HOVER_COORDINATOR}>
-        <div data-bkm-chart="pie" style={{ display: "contents" }}>
+        <div data-bkm-chart="pie" style={SHELL_WRAPPER_STYLE}>
           <PieCenter {...pieCenterProps} />
         </div>
       </PieHoverCoordinatorContext.Provider>

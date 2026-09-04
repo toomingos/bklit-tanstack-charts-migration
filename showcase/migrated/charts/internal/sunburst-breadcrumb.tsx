@@ -49,11 +49,13 @@ interface SunburstBreadcrumbProps {
   readonly children: ReactNode;
 }
 
+const BREADCRUMB_DEFAULT_STYLE = { marginBottom: 16 } as const;
+
 const renderSunburstBreadcrumb = ({ className, children }: Readonly<SunburstBreadcrumbProps>): ReactElement => (
     <nav
       aria-label="Drill-down path"
       className={className}
-      style={className !== undefined && className !== "" ? undefined : { marginBottom: 16 }}
+      style={className !== undefined && className !== "" ? undefined : BREADCRUMB_DEFAULT_STYLE}
     >
       {children}
     </nav>

@@ -4,10 +4,11 @@ import type { ReactElement, ReactNode, RefObject } from 'react';
 import type { FeatureCollection,Feature,Geometry} from "geojson";
 import { geoCentroid, geoMercator, geoPath } from 'd3-geo';
 import type { GeoPermissibleObjects, GeoProjection } from 'd3-geo';
-import type { TransformMatrix, ProvidedZoom, ZoomState } from "./internal/zoom-engine";
+import type { TransformMatrix, ProvidedZoom, ZoomState, GenericWheelEvent, Scale } from "./internal/zoom-engine";
 import { Zoom } from "./internal/zoom-engine";
 import { identityMatrix } from "./internal/zoom-math";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
+import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import type {
   ChartPoint,
   ChartRendererRenderContext,
@@ -243,6 +244,21 @@ const DEFAULT_STROKE_WIDTH = 0.5;
 // Wheel-zoom step factors per tick, out and in.
 const WHEEL_ZOOM_OUT_FACTOR = 0.95;
 const WHEEL_ZOOM_IN_FACTOR = 1.05;
+
+// Static prop values hoisted so JSX props below keep a stable identity across renders.
+// Wheel step as a scale-delta pair; hoisted so the Zoom prop keeps a stable callback identity.
+const resolveWheelZoomDelta = (event: GenericWheelEvent): Scale => {
+  const zoomScale = event.deltaY > 0 ? WHEEL_ZOOM_OUT_FACTOR : WHEEL_ZOOM_IN_FACTOR;
+  return { scaleX: zoomScale, scaleY: zoomScale };
+};
+// Swatch marker for the tooltip value row.
+const TOOLTIP_SWATCH_STYLE = { backgroundColor: "var(--chart-1)" } as const;
+// Graticule overlay svg floats above the map without intercepting pointer events.
+const GRATICULE_LAYER_STYLE = { left: 0, pointerEvents: "none", position: "absolute", top: 0 } as const;
+// Zero-size svg hosting pattern defs; url(#id) paint servers resolve document-wide.
+const PATTERN_DEFS_STYLE = { height: 0, overflow: "hidden", position: "absolute", width: 0 } as const;
+// Inner overlay container fills the sized body.
+const CHOROPLETH_INNER_STYLE = { inset: 0, position: "absolute" } as const;
 
 interface CubicBezierCoefficients {
   readonly ax: number;
@@ -502,7 +518,7 @@ const renderCustomTooltipCard = (
 const renderTooltipValueRow = (cfg: Readonly<ChoroplethTooltipCardConfig>, value: number): ReactElement => (
   <div className="bkm-tooltip-row">
     <div className="bkm-tooltip-row-label">
-      <span className="bkm-tooltip-swatch" style={{ backgroundColor: "var(--chart-1)" }} />
+      <span className="bkm-tooltip-swatch" style={TOOLTIP_SWATCH_STYLE} />
       <span className="bkm-tooltip-series">{cfg.valueLabel}</span>
     </div>
     <span className="bkm-tooltip-value">{cfg.formatValue(value)}</span>
@@ -752,7 +768,7 @@ const renderGraticuleLayer = (options: Readonly<GraticuleLayerOptions>): ReactEl
     <svg
       width={width}
       height={height}
-      style={{ left: 0, pointerEvents: "none", position: "absolute", top: 0 }}
+      style={GRATICULE_LAYER_STYLE}
       aria-hidden="true"
     >
       <g>
@@ -937,10 +953,7 @@ const ChoroplethChartBody = ({
     projection,
     width,
   }), [
-    width, height, projection, data.features,
-    featureConfig?.getFeatureColor, featureConfig?.getFeaturePattern,
-    featureConfig?.fill, featureConfig?.stroke, featureConfig?.strokeWidth,
-    hoveredKey, baseOpacity, dimOpacity, hasTooltipChild,
+    baseOpacity, data, dimOpacity, featureConfig, hasTooltipChild, height, hoveredKey, projection, width,
   ]);
 
   const hoverChromeRef = useRef<ChoroplethHoverChrome | undefined>(undefined);
@@ -1022,6 +1035,14 @@ const ChoroplethChartBody = ({
   , []);
 
   const containerRefForFallback = useRef<HTMLDivElement | null>(null);
+  const handleFallbackRef = useCallback((el: HTMLDivElement | null): void => {
+    containerRefForFallback.current = el;
+  }, []);
+  const handleTooltipBody = useCallback(
+    (ctx: ChartTooltipBodyRenderContext<ChoroplethFeature, ChartValue, ChartValue>): ReactNode =>
+      renderChoroplethTooltipBody(ctx, getTooltipConfig),
+    [getTooltipConfig],
+  );
   const revealHasRevealed = reveal.hasRevealed;
   useLayoutEffect((): (() => void) | undefined => {
     if (revealHasRevealed()) {return undefined;}
@@ -1049,7 +1070,7 @@ const ChoroplethChartBody = ({
           focusable="false"
           width={0}
           height={0}
-          style={{ height: 0, overflow: "hidden", position: "absolute", width: 0 }}
+          style={PATTERN_DEFS_STYLE}
         >
           <defs>{featureConfig.patterns}</defs>
         </svg>
@@ -1061,7 +1082,7 @@ const ChoroplethChartBody = ({
           aspectRatio={ratio}
           definition={definition}
           onRender={handleRender}
-          renderTooltipBody={(ctx): ReactNode => renderChoroplethTooltipBody(ctx, getTooltipConfig)}
+          renderTooltipBody={handleTooltipBody}
         />
       ) : undefined}
       {graticuleConfig && projection ? renderGraticuleLayer({ graticuleConfig, height, projection, width }) : undefined}
@@ -1096,8 +1117,8 @@ const ChoroplethChartBody = ({
 
   const inner = (
     <div
-      ref={(el) => { containerRefForFallback.current = el; }}
-      style={{ inset: 0, position: "absolute" }}
+      ref={handleFallbackRef}
+      style={CHOROPLETH_INNER_STYLE}
     >
       {chartNode}
       {overlayChildren}
@@ -1121,10 +1142,7 @@ const ChoroplethChartBody = ({
       scaleXMax={zoomMax}
       scaleYMin={zoomMin}
       scaleYMax={zoomMax}
-      wheelDelta={(event: Readonly<{ deltaY: number }>) => {
-        const zoomScale = event.deltaY > 0 ? WHEEL_ZOOM_OUT_FACTOR : WHEEL_ZOOM_IN_FACTOR;
-        return { scaleX: zoomScale, scaleY: zoomScale };
-      }}
+      wheelDelta={resolveWheelZoomDelta}
     >
       {(zoom) => {
         zoomRefForChrome.current = zoom;
@@ -1211,12 +1229,13 @@ const ChoroplethChart = ({
   const ratio = useMemo(() => parseAspectRatio(aspectRatio), [aspectRatio]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const width = useContainerWidth(containerRef);
+  const containerStyle = useMemo(() => ({ aspectRatio: String(ratio), overflow: "hidden", position: "relative", width: "100%" }) as const, [ratio]);
 
   return (
     <div
       ref={containerRef}
       className={className}
-      style={{ aspectRatio: String(ratio), overflow: "hidden", position: "relative", width: "100%" }}
+      style={containerStyle}
       data-bkm-chart="choropleth"
     >
       {renderSizedBody({

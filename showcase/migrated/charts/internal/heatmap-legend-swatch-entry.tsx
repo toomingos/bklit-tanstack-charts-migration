@@ -18,12 +18,11 @@ interface LegendSwatchArgs {
   readonly onLeave: () => void;
 }
 
-// One swatch with its hover wrapper; plain function (not a component) so the element tree is unchanged.
-const renderLegendSwatch = (swatch: Readonly<LegendSwatchArgs>): ReactElement => {
+// Swatch wrapper style; module-scope factory so no object literal lives in the render path.
+const buildSwatchWrapStyle = (swatch: Readonly<LegendSwatchArgs>): CSSProperties => {
   const isHighlighted = swatch.highlightedLevel === swatch.level;
   const isDimmed = swatch.isDimming && !isHighlighted;
   const hoverStyle = resolveHeatmapHoverStyle(isHighlighted, isDimmed, swatch.hoverParams);
-  const style = swatch.levelStyles[swatch.level] ?? swatch.levelStyles[0];
   const swatchWrapStyle: CSSProperties = {
     opacity: hoverStyle.opacity,
     transform: `scale(${hoverStyle.scale})`,
@@ -32,6 +31,13 @@ const renderLegendSwatch = (swatch: Readonly<LegendSwatchArgs>): ReactElement =>
   if (swatch.isInteractive) {
     swatchWrapStyle.cursor = "pointer";
   }
+  return swatchWrapStyle;
+};
+
+// One swatch with its hover wrapper; plain function (not a component) so the element tree is unchanged.
+const renderLegendSwatch = (swatch: Readonly<LegendSwatchArgs>): ReactElement => {
+  const swatchWrapStyle = buildSwatchWrapStyle(swatch);
+  const style = swatch.levelStyles[swatch.level] ?? swatch.levelStyles[0];
   const { onLeave: handleLeave } = swatch;
   const swatchNode = (<HeatmapLegendSwatch level={swatch.level} style={style} cellSize={swatch.cellSize} cornerRadius={swatch.cornerRadius} />);
   return (

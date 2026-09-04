@@ -1,7 +1,8 @@
 "use client";
 
 import { Progress } from "@base-ui/react/progress";
-import type { ReactElement } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
+import { useMemo } from 'react';
 import { cn } from "@/lib/utils";
 import { useLegendItem } from './legend-context';
 
@@ -17,6 +18,8 @@ const LegendProgress = ({
   height = "h-1.5",
 }: Readonly<LegendProgressProps>): ReactElement | undefined => {
   const { item } = useLegendItem();
+
+  const indicatorStyle = useMemo((): CSSProperties => ({ backgroundColor: item.color }), [item.color]);
 
   if ((item.maxValue ?? 0) === 0) {
     return undefined;
@@ -36,7 +39,7 @@ const LegendProgress = ({
             "h-full rounded-full transition-all duration-500",
             indicatorClassName
           )}
-          style={{ backgroundColor: item.color }}
+          style={indicatorStyle}
         />
       </Progress.Track>
     </Progress.Root>

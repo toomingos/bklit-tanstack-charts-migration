@@ -46,7 +46,7 @@ const ProfitLossLegend = ({
       <Legend
         className="flex-row flex-wrap gap-4"
         hoveredIndex={hoveredIndex}
-        items={[...PROFIT_LOSS_LEGEND_ITEMS]}
+        items={PROFIT_LOSS_LEGEND_ITEMS}
         onHoverChange={onHoverChange}
       >
         <ProfitLossLegendTemplate />

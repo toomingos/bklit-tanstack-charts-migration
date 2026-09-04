@@ -56,6 +56,8 @@ const BrushLayout = React.memo(({
 
   const layoutState = useBrushLayoutState(layout);
 
+  const stripStyle = React.useMemo((): React.CSSProperties => ({ height }), [height]);
+
   return (
     <div
       className={cn(
@@ -73,7 +75,7 @@ const BrushLayout = React.memo(({
         {children(layoutState)}
       </div>
       {enabled && brushStrip && (
-        <div className="min-h-0 shrink-0" style={{ height }}>
+        <div className="min-h-0 shrink-0" style={stripStyle}>
           {brushStrip(layoutState)}
         </div>
       )}

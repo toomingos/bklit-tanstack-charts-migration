@@ -1129,16 +1129,23 @@ const SunburstChartInner = ({
   const hintText = resolveSunburstHintText(hoveredArc?.trail, focus.depth);
   // Hoisted so the zoom-to-parent closure below captures a narrowed string.
   const zoomParentId = focus.parentId;
+  const handleZoomToParent = useCallback(() => {
+    if (zoomParentId !== undefined && zoomParentId !== null) {zoomTo(zoomParentId);}
+  }, [zoomParentId, zoomTo]);
+  const { boxStyle, outerStyle } = useMemo(() => ({
+    boxStyle: { aspectRatio: "1 / 1", maxWidth: size, position: "relative" } as const,
+    outerStyle: { maxWidth: "100%", position: "relative", width: size } as const,
+  }), [size]);
 
   return (
     <div
       className={className}
       data-bkm-chart="sunburst"
       ref={containerRef}
-      style={{ maxWidth: "100%", position: "relative", width: size }}
+      style={outerStyle}
     >
       {breadcrumbChildren}
-      <div style={{ aspectRatio: "1 / 1", maxWidth: size, position: "relative" }}>
+      <div style={boxStyle}>
         <RendererChart
           ariaLabel={`Sunburst chart of ${data.name}`}
           width={size}
@@ -1159,7 +1166,7 @@ const SunburstChartInner = ({
           visible={centerCount > 0 && liveCenterR > 1}
           liveCenterR={liveCenterR}
           centerColor={centerColor}
-          onZoomToParent={zoomParentId ? () => { zoomTo(zoomParentId); } : undefined}
+          onZoomToParent={zoomParentId ? handleZoomToParent : undefined}
         />
         {labelsCount > 0 && (
           <SunburstLabelsOverlay items={labelItems} fullRadius={fullRadius} size={size} />
@@ -1199,16 +1206,28 @@ export const SunburstChart = ({
   children,
 }: SunburstChartProps) => {
   // SB2 — sweep timing. Primitive deps: callers pass `enterTransition` inline.
-  // An identity-only change must not retrigger the computation; the ref still
-  // Hands the memo the latest full object (line-chart precedent).
+  // An identity-only change must not retrigger the computation; the snapshot
+  // Below mirrors the dep primitives (line-chart precedent keeps the full ref).
   const enterType = enterTransition?.type;
   const enterDurationSec = enterTransition?.duration;
   const enterEaseKey = enterTransition?.ease?.join(",");
   const enterTransitionRef = useRef(enterTransition);
   enterTransitionRef.current = enterTransition;
   const { durationMs: sweepDurationMs, easingCss: sweepEasingCss } = useMemo(
-    () => clipRevealTiming(enterTransitionRef.current, SUNBURST_SWEEP_MS, SUNBURST_SWEEP_EASE),
-    [enterType, enterDurationSec, enterEaseKey],
+    () => {
+      const liveTransition = enterTransitionRef.current;
+      if (liveTransition === undefined) {return clipRevealTiming(undefined, SUNBURST_SWEEP_MS, SUNBURST_SWEEP_EASE);}
+      return clipRevealTiming(
+        {
+          duration: enterDurationSec,
+          ease: enterEaseKey === undefined ? undefined : liveTransition.ease,
+          type: enterType,
+        },
+        SUNBURST_SWEEP_MS,
+        SUNBURST_SWEEP_EASE,
+      );
+    },
+    [enterTransitionRef, enterType, enterDurationSec, enterEaseKey],
   );
   // --- Phase tracking (deduped — just gate on last emitted value) ---
   const phaseRef = useRef<SunburstPhase>("revealing");
@@ -1243,6 +1262,13 @@ export const SunburstChart = ({
 
   const rootFocus = focusById.get(rootId);
   const focus = focusById.get(focusId) ?? rootFocus;
+  const layout = useMemo(() => ({ arcs, focusById, maxDepth, rootId, sortedArcs }), [
+    arcs,
+    focusById,
+    maxDepth,
+    rootId,
+    sortedArcs,
+  ]);
   if (!(focus && rootFocus)) {return null;}
 
   // The subtree below needs non-null focus/rootFocus; render it through an inner
@@ -1253,7 +1279,7 @@ export const SunburstChart = ({
       size={size}
       className={className}
       focus={focus}
-      layout={{ arcs, focusById, maxDepth, rootId, sortedArcs }}
+      layout={layout}
       focusId={focusId}
       isFocusControlled={isFocusControlled}
       setInternalFocusId={setInternalFocusId}

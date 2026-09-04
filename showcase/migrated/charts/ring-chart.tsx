@@ -33,6 +33,10 @@ const RING_MIN_RENDER_SIZE = 10;
 // Selector for the TanStack marks group rendered inside the chart container.
 const MARKS_GROUP_SELECTOR = ".ts-chart__marks";
 
+// Static subtree styles; hoisted so no object is allocated per render.
+const SCRUB_SVG_STYLE = { contain: "layout style paint" } as const;
+const RING_CENTER_OVERLAY_STYLE = { alignItems: "center", display: "flex", inset: 0, justifyContent: "center", pointerEvents: "none", position: "absolute" } as const;
+
 const defaultRingColors = [
   "var(--chart-1)",
   "var(--chart-2)",
@@ -801,6 +805,15 @@ const RingChart = ({
 
   const renderContent = size >= RING_MIN_RENDER_SIZE;
 
+  const containerStyle = useMemo((): CSSProperties => ({
+    alignItems: "center",
+    display: "flex",
+    justifyContent: "center",
+    position: "relative",
+    ...(fixedSize !== undefined && fixedSize !== 0 ? { height: fixedSize, width: fixedSize } : { aspectRatio: "1 / 1", width: "100%" }),
+    ...style,
+  }), [fixedSize, style]);
+
   // Subtrees as variables (not components): inlined into the same element tree.
   // Reconciliation and enter animations are unchanged as a result.
   const scrubLayersNode = (
@@ -817,7 +830,7 @@ const RingChart = ({
     <svg
       aria-hidden="true"
       height={size}
-      style={{ contain: "layout style paint" }}
+      style={SCRUB_SVG_STYLE}
       width={size}
     >
       {scrubLayersNode}
@@ -835,14 +848,7 @@ const RingChart = ({
   );
   const centerOverlayNode = centerChildren.length > 0 && centerVisible && (
     <div
-      style={{
-        alignItems: "center",
-        display: "flex",
-        inset: 0,
-        justifyContent: "center",
-        pointerEvents: "none",
-        position: "absolute",
-      }}
+      style={RING_CENTER_OVERLAY_STYLE}
     >
       {centerChildren}
     </div>
@@ -855,14 +861,7 @@ const RingChart = ({
       ref={containerRef}
       onPointerMove={handlePointerMove}
       onPointerLeave={handlePointerLeave}
-      style={{
-        alignItems: "center",
-        display: "flex",
-        justifyContent: "center",
-        position: "relative",
-        ...(fixedSize !== undefined && fixedSize !== 0 ? { height: fixedSize, width: fixedSize } : { aspectRatio: "1 / 1", width: "100%" }),
-        ...style,
-      }}
+      style={containerStyle}
     >
       {renderContent && (
         <RingStableContext.Provider value={stable}>

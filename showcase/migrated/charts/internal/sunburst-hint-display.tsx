@@ -7,20 +7,23 @@ interface SunburstHintDisplayProps {
   className?: string;
 }
 
+const HINT_DISPLAY_EMPTY_STYLE = { minHeight: 20 } as const;
+const HINT_DISPLAY_PLACEHOLDER_STYLE = {
+  color: "var(--chart-foreground-muted, #888)",
+  fontSize: "14px",
+  marginTop: 12,
+  minHeight: 20,
+  textAlign: "center",
+} as const;
+
 const SunburstHintDisplay = ({ children, className }: SunburstHintDisplayProps): ReactElement => (
     <div
       aria-live="polite"
       className={className}
       style={
         className !== undefined && className !== ""
-          ? { minHeight: 20 }
-          : {
-              color: "var(--chart-foreground-muted, #888)",
-              fontSize: "14px",
-              marginTop: 12,
-              minHeight: 20,
-              textAlign: "center",
-            }
+          ? HINT_DISPLAY_EMPTY_STYLE
+          : HINT_DISPLAY_PLACEHOLDER_STYLE
       }
     >
       {children}

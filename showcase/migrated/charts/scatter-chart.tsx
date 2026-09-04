@@ -487,6 +487,29 @@ const assembleScatterDefinition = ({
   });
 };
 
+// Hidden defs svg sits off-layout; the host reserves no space for it.
+const SCATTER_DEFS_SVG_STYLE: React.CSSProperties = { position: "absolute" };
+// Selection overlay covers the plot without intercepting pointer input.
+const SCATTER_OVERLAY_HOST_STYLE: React.CSSProperties = { inset: 0, pointerEvents: "none", position: "absolute" };
+
+// Fallback tooltip rows (bklit parity): one row per series, dot color lookup by mark id.
+const buildScatterFallbackTooltipRows = (
+  datum: Readonly<ChartDatum>,
+  resolvedSeries: readonly Readonly<ResolvedSeries>[],
+  colorEntries: readonly (readonly [string, string])[],
+): TooltipRow[] => {
+  const colorByMarkId = new Map<string, string>(colorEntries);
+  return resolvedSeries.map((series) => {
+    const value = datum[series.dataKey];
+    const pointColor = colorByMarkId.get(series.dataKey);
+    return {
+      color: firstNonEmptyString(series.fill, pointColor) ?? "transparent",
+      label: series.dataKey,
+      value: isNumber(value) ? value : stringifyDatumValue(value, "0"),
+    };
+  });
+};
+
 interface BuildDefaultTooltipBodyParams {
   readonly datum: ChartDatum;
   readonly points: readonly Readonly<ChartPoint<ChartDatum, Date, number>>[];
@@ -504,21 +527,13 @@ const buildDefaultTooltipBody = ({
 }: Readonly<BuildDefaultTooltipBodyParams>): React.ReactNode => {
   const dateValue = datum[xDataKey];
   const title: string | undefined = dateValue instanceof Date ? weekdayDateFmt.format(dateValue) : undefined;
-  const rows: TooltipRow[] = [];
-  if (tooltip?.rows) {
-    rows.push(...tooltip.rows(datum));
-  } else {
-    const colorByMarkId = new Map(points.map((candidate) => [candidate.markId, candidate.color] as const));
-    for (const series of resolvedSeries) {
-      const value = datum[series.dataKey];
-      const pointColor = colorByMarkId.get(series.dataKey);
-      rows.push({
-        color: firstNonEmptyString(series.fill, pointColor) ?? "transparent",
-        label: series.dataKey,
-        value: isNumber(value) ? value : stringifyDatumValue(value, "0"),
-      });
-    }
+  const colorEntries: (readonly [string, string])[] = [];
+  for (const point of points) {
+    colorEntries.push([point.markId, point.color]);
   }
+  const rows: TooltipRow[] = tooltip?.rows
+    ? tooltip.rows(datum)
+    : buildScatterFallbackTooltipRows(datum, resolvedSeries, colorEntries);
   return (
     <TooltipContent title={title} rows={rows}>
       {tooltip?.children}
@@ -1069,6 +1084,15 @@ const ScatterChart = ({
     [],
   );
 
+  // Tooltip panel style merge: backgroundColor wins when non-empty.
+  const tooltipPanelStyle = React.useMemo<React.CSSProperties | undefined>(() => {
+    const panelStyle = tooltip?.panelStyle;
+    const backgroundColor = tooltip?.backgroundColor;
+    if (panelStyle === undefined && (backgroundColor === undefined || backgroundColor === "")) {return undefined;}
+    if (backgroundColor === undefined || backgroundColor === "") {return { ...panelStyle };}
+    return { ...panelStyle, backgroundColor };
+  }, [tooltip]);
+
   const renderTooltipBody = React.useCallback(
     (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode => {
       if (ctx.points.length === 0) {return undefined;}
@@ -1080,21 +1104,14 @@ const ScatterChart = ({
             point: datum,
           })
         : buildDefaultTooltipBody({ datum, points: ctx.points, resolvedSeries, tooltip, xDataKey });
-      const panelStyle = tooltip?.panelStyle;
-      const panelBackground = tooltip?.backgroundColor;
-      if (panelStyle === undefined && (panelBackground === undefined || panelBackground === "")) {return body;}
+      if (tooltipPanelStyle === undefined) {return body;}
       return (
-        <div
-          style={{
-            ...panelStyle,
-            ...(panelBackground === "" ? undefined : { backgroundColor: panelBackground }),
-          }}
-        >
+        <div style={tooltipPanelStyle}>
           {body}
         </div>
       );
     },
-    [tooltip, resolvedSeries, xDataKey],
+    [tooltip, resolvedSeries, xDataKey, tooltipPanelStyle],
   );
 
   const innerWidthSelection = Math.max(0, width - margin.left - margin.right);
@@ -1115,9 +1132,10 @@ const ScatterChart = ({
 
   const refAreaChildrenScatter = React.useMemo(() => extractReferenceAreaProps(children), [children]);
   const heightPxScatter = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
-  const xDomainScatter: [Date, Date] | undefined = timeExtentScatter
-    ? [new Date(timeExtentScatter.minTime), new Date(timeExtentScatter.maxTime)]
-    : undefined;
+  const xDomainScatter: [Date, Date] | undefined = React.useMemo(
+    () => timeExtentScatter ? [new Date(timeExtentScatter.minTime), new Date(timeExtentScatter.maxTime)] : undefined,
+    [timeExtentScatter],
+  );
 
   const yGradientDefs = React.useMemo<readonly ScatterYGradientDef[]>(
     () =>
@@ -1164,6 +1182,10 @@ const ScatterChart = ({
     xDataKey,
   });
   const scatterChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
+  const containerStyle = React.useMemo<React.CSSProperties>(
+    () => ({ aspectRatio, isolation: "isolate", position: "relative", touchAction: "none", width: "100%" }),
+    [aspectRatio],
+  );
 
   const showDefsSvg = gradientDefs.length > 0 || yGradientDefs.length > 0 || crosshairFadeGradient !== undefined;
   const crosshairGradientNode: React.ReactNode = crosshairFadeGradient ? (
@@ -1226,7 +1248,7 @@ const ScatterChart = ({
     <svg
       width={0}
       height={0}
-      style={{ position: "absolute" }}
+      style={SCATTER_DEFS_SVG_STYLE}
       aria-hidden="true"
       focusable="false"
     >
@@ -1249,26 +1271,27 @@ const ScatterChart = ({
       renderTooltipBody={renderTooltipBody}
     />
   );
+  const refAreaGeom = React.useMemo(() => ({
+    height: heightPxScatter,
+    isTimeScale: true,
+    margin,
+    width,
+    xDomain: xDomainScatter,
+    xRangePadding,
+    // Reference areas read the NICED domain the dots paint in, not raw yDomain.
+    yDomain: nicedYDomainScatter,
+    yDomainsByAxis: nicedDomainsByAxis,
+  }), [heightPxScatter, margin, nicedDomainsByAxis, nicedYDomainScatter, width, xDomainScatter, xRangePadding]);
   const refAreaNode: React.ReactNode = heightPxScatter > 0 && (
     <ReferenceAreaLayers
       configs={refAreaChildrenScatter}
-      geom={{
-        height: heightPxScatter,
-        isTimeScale: true,
-        margin,
-        width,
-        xDomain: xDomainScatter,
-        xRangePadding,
-        // Reference areas read the NICED domain the dots paint in, not raw yDomain.
-        yDomain: nicedYDomainScatter,
-        yDomainsByAxis: nicedDomainsByAxis,
-      }}
+      geom={refAreaGeom}
     />
   );
   const overlayNode: React.ReactNode = tooltipEnabled && (
     <div
       ref={overlayHostRef}
-      style={{ inset: 0, pointerEvents: "none", position: "absolute" }}
+      style={SCATTER_OVERLAY_HOST_STYLE}
     />
   );
 
@@ -1277,7 +1300,7 @@ const ScatterChart = ({
     <div
       ref={containerRef}
       className={className}
-      style={{ aspectRatio, isolation: "isolate", position: "relative", touchAction: "none", width: "100%" }}
+      style={containerStyle}
       data-bkm-chart="scatter"
     >
       {background && (

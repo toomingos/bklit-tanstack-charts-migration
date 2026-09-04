@@ -3,8 +3,9 @@
 import type { ReactElement, ReactNode } from "react";
 import { intFmt } from "./formatters";
 import { cn } from "@/lib/utils";
-import { ProgressItem, LEGEND_PERCENT_SCALE } from "./chart-legend-progress-item";
-import { SimpleItem } from "./chart-legend-simple-item";
+import { LEGEND_PERCENT_SCALE } from "./chart-legend-progress-item";
+import { CustomLegendRow } from "./chart-legend-custom-row";
+import { DefaultLegendRow } from "./chart-legend-default-row";
 
 interface LegendItem {
   readonly label: string;
@@ -37,93 +38,24 @@ interface ChartLegendProps {
   }>) => ReactNode;
 }
 
-interface CustomLegendRowOptions {
-  readonly item: LegendItem;
-  readonly index: number;
-  readonly isHovered: boolean;
-  readonly isFaded: boolean;
-  readonly percentage: number;
-  readonly onHover: ChartLegendProps["onHover"];
-  readonly renderItem: NonNullable<ChartLegendProps["renderItem"]>;
-}
-
-const renderCustomLegendRow = (options: Readonly<CustomLegendRowOptions>): ReactElement => {
-  const { item, index, isHovered, isFaded, percentage, onHover, renderItem } = options;
-  return (
-    <div
-      data-hovered={isHovered ? "" : undefined}
-      key={`legend-${item.label}-${item.value}`}
-      onMouseEnter={() => onHover?.(index)}
-      onMouseLeave={() => onHover?.(null)}
-    >
-      {renderItem({ index, isFaded, isHovered, item, percentage })}
-    </div>
-  );
-};
-
-interface DefaultLegendRowOptions {
-  readonly item: LegendItem;
-  readonly index: number;
-  readonly isHovered: boolean;
-  readonly isFaded: boolean;
-  readonly onHover: ChartLegendProps["onHover"];
-  readonly showProgress: boolean;
-  readonly showMarker: boolean;
-  readonly showValue: boolean;
+interface LegendRowOptions {
   readonly displayPercentage: boolean;
   readonly formatValue: (value: number) => string;
-  readonly labelClassName: string;
-  readonly valueClassName: string;
+  readonly hoveredIndex: number | null;
+  readonly index: number;
+  readonly item: LegendItem;
   readonly itemClassName: string;
+  readonly labelClassName: string;
+  readonly onHover: ChartLegendProps["onHover"];
+  readonly renderItem: ChartLegendProps["renderItem"];
+  readonly showMarker: boolean;
+  readonly showProgress: boolean;
+  readonly showValue: boolean;
+  readonly valueClassName: string;
 }
 
-const renderDefaultLegendRow = (options: Readonly<DefaultLegendRowOptions>): ReactElement => {
-  const { item, index, isHovered, isFaded, onHover, showProgress, showMarker, showValue } = options;
-  const { displayPercentage, formatValue, labelClassName, valueClassName, itemClassName } = options;
-  return (
-    <div
-      className={cn(
-        "cursor-pointer rounded-lg px-2 py-1.5 transition-all duration-150 ease-out",
-        isHovered && "bg-legend-muted",
-        isFaded && "opacity-40",
-        itemClassName
-      )}
-      data-hovered={isHovered ? "" : undefined}
-      key={`legend-${item.label}-${item.value}`}
-      onMouseEnter={() => onHover?.(index)}
-      onMouseLeave={() => onHover?.(null)}
-    >
-      {showProgress && (item.maxValue ?? 0) !== 0 ? (
-        <ProgressItem
-          formatValue={formatValue}
-          item={item}
-          labelClassName={labelClassName}
-          showMarker={showMarker}
-          showPercentage={displayPercentage}
-          showValue={showValue}
-          valueClassName={valueClassName}
-        />
-      ) : (
-        <SimpleItem
-          formatValue={formatValue}
-          item={item}
-          labelClassName={labelClassName}
-          showMarker={showMarker}
-          showValue={showValue}
-          valueClassName={valueClassName}
-        />
-      )}
-    </div>
-  );
-};
-
-type LegendRowOptions = Omit<DefaultLegendRowOptions, "isHovered" | "isFaded"> & {
-  readonly hoveredIndex: number | null;
-  readonly renderItem: ChartLegendProps["renderItem"];
-};
-
 const renderChartLegendRow = (options: Readonly<LegendRowOptions>): ReactElement => {
-  const { item, index, hoveredIndex, renderItem } = options;
+  const { item, index, hoveredIndex, renderItem, onHover: handleHover } = options;
   const maxValue = item.maxValue ?? 0;
   const percentage = maxValue === 0
     ? 0
@@ -131,9 +63,37 @@ const renderChartLegendRow = (options: Readonly<LegendRowOptions>): ReactElement
   const isHovered = hoveredIndex === index;
   const isFaded = hoveredIndex !== null && hoveredIndex !== index;
   if (renderItem) {
-    return renderCustomLegendRow({ index, isFaded, isHovered, item, onHover: options.onHover, percentage, renderItem });
+    return (
+      <CustomLegendRow
+        index={index}
+        isFaded={isFaded}
+        isHovered={isHovered}
+        item={item}
+        key={`legend-${item.label}-${item.value}`}
+        onHover={handleHover}
+        percentage={percentage}
+        renderItem={renderItem}
+      />
+    );
   }
-  return renderDefaultLegendRow({ ...options, isFaded, isHovered });
+  return (
+    <DefaultLegendRow
+      displayPercentage={options.displayPercentage}
+      formatValue={options.formatValue}
+      index={index}
+      isFaded={isFaded}
+      isHovered={isHovered}
+      item={item}
+      itemClassName={options.itemClassName}
+      key={`legend-${item.label}-${item.value}`}
+      labelClassName={options.labelClassName}
+      onHover={handleHover}
+      showMarker={options.showMarker}
+      showProgress={options.showProgress}
+      showValue={options.showValue}
+      valueClassName={options.valueClassName}
+    />
+  );
 };
 
 const ChartLegend = ({

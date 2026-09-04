@@ -78,7 +78,7 @@ interface FadeStop {
 
 const renderFadeStops = (stops: readonly FadeStop[]): React.ReactNode =>
   stops.map((stop) => (
-    <stop key={stop.offset} offset={stop.offset} style={{ stopColor: "white", stopOpacity: stop.opacity }} />
+    <stop key={stop.offset} offset={stop.offset} stopColor="white" stopOpacity={stop.opacity} />
   ));
 
 const renderHorizontalFade = (options: Readonly<{ hGradientId: string; hMaskId: string; hStops: readonly FadeStop[]; width: number; height: number }>): React.ReactNode => {
@@ -139,6 +139,10 @@ const renderFadeDefs = (options: Readonly<{ fadeHorizontal: boolean; fadeVertica
   );
 }
 
+const BACKGROUND_LOADED_STYLE: Readonly<React.CSSProperties> = {
+  transition: `opacity ${BACKGROUND_ENTER_FADE_MS}ms ease-out`,
+};
+
 const renderBackgroundRect = (options: Readonly<{ patternId: string; width: number; height: number; maskRef: string | undefined; opacity: number; isLoaded: boolean }>): React.ReactNode => {
   const { patternId, width, height, maskRef, opacity, isLoaded } = options;
   return (
@@ -150,11 +154,7 @@ const renderBackgroundRect = (options: Readonly<{ patternId: string; width: numb
       y={0}
       mask={maskRef}
       opacity={isLoaded ? opacity : 0}
-      style={
-        isLoaded
-          ? { transition: `opacity ${BACKGROUND_ENTER_FADE_MS}ms ease-out` }
-          : undefined
-      }
+      style={isLoaded ? BACKGROUND_LOADED_STYLE : undefined}
     />
   );
 }

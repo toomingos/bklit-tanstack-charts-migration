@@ -1024,20 +1024,22 @@ const RadarChart = ({
     return scheduleRadarReveal(container, (): boolean => animate && container.querySelector(MARKS_GROUP_SELECTOR) !== null && !hasLiveRevealAnims(container), handleRender);
   }, [animate, motionReplayKey, handleRender]);
 
+  const containerStyle = React.useMemo((): React.CSSProperties => ({
+    alignItems: "center",
+    display: "flex",
+    justifyContent: "center",
+    position: "relative",
+    ...((fixedSize ?? 0) === 0
+      ? { aspectRatio: "1 / 1", width: "100%" }
+      : { height: fixedSize, width: fixedSize }),
+    ...style,
+  }), [fixedSize, style]);
+
   return (
     <div
       ref={containerRef}
       className={className}
-      style={{
-        alignItems: "center",
-        display: "flex",
-        justifyContent: "center",
-        position: "relative",
-        ...((fixedSize ?? 0) === 0
-          ? { aspectRatio: "1 / 1", width: "100%" }
-          : { height: fixedSize, width: fixedSize }),
-        ...style,
-      }}
+      style={containerStyle}
       data-bkm-chart="radar"
     >
       {definition && (

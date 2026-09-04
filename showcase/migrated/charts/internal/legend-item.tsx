@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { cn } from "@/lib/utils";
 import { useLegend, useLegendItem } from './legend-context';
@@ -13,6 +14,13 @@ const LegendItem = ({ className = "", children }: Readonly<LegendItemProps>): Re
   const { setHoveredIndex } = useLegend();
   const { index, isHovered } = useLegendItem();
 
+  const handleMouseEnter = useCallback((): void => {
+    setHoveredIndex(index);
+  }, [index, setHoveredIndex]);
+  const handleMouseLeave = useCallback((): void => {
+    setHoveredIndex(null);
+  }, [setHoveredIndex]);
+
   return (
     <div
       className={cn(
@@ -21,8 +29,8 @@ const LegendItem = ({ className = "", children }: Readonly<LegendItemProps>): Re
         className
       )}
       data-hovered={isHovered ? "" : undefined}
-      onMouseEnter={() =>{  setHoveredIndex(index); }}
-      onMouseLeave={() =>{  setHoveredIndex(null); }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {children}
     </div>

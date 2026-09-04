@@ -1,6 +1,6 @@
 "use client";
 
-import { isValidElement, useState } from 'react';
+import { isValidElement, useCallback, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import { cn } from "@/lib/utils";
 import { LegendItemProvider, LegendProvider } from './legend-context';
@@ -68,19 +68,19 @@ const Legend = ({
   const hoveredIndex = isControlled
     ? controlledHoveredIndex
     : internalHoveredIndex;
-  const setHoveredIndex = (index: number | null): void => {
+  const setHoveredIndex = useCallback((index: number | null): void => {
     if (isControlled) {
       onHoverChange?.(index);
     } else {
       setInternalHoveredIndex(index);
     }
-  };
+  }, [isControlled, onHoverChange]);
 
-  const contextValue = {
+  const contextValue = useMemo(() => ({
     hoveredIndex,
     items,
     setHoveredIndex,
-  };
+  }), [hoveredIndex, items, setHoveredIndex]);
 
   return (
     <LegendProvider value={contextValue}>

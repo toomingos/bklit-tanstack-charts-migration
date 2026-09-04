@@ -8,6 +8,9 @@ import type { ReferenceAreaSpatial } from "./reference-area-scale";
 const DEFAULT_FILL = "color-mix(in oklch, var(--chart-foreground-muted) 12%, transparent)";
 const DEFAULT_FG_MUTED = "var(--chart-foreground-muted)";
 
+// Static group style for the reference-area figure; hoisted so it keeps identity.
+const REFERENCE_AREA_GROUP_STYLE = { opacity: 0 } as const;
+
 interface BracketMarkerOptions {
   readonly centerX: number;
   readonly edgeY: number;
@@ -186,7 +189,7 @@ const buildReferenceAreaFigure = (options: Readonly<ReferenceAreaFigureOptions>)
       height={spatial.innerHeight}
       style={{ left: spatial.margin.left, overflow: "visible", pointerEvents: "none", position: "absolute", top: spatial.margin.top, zIndex: -1 }}
     >
-      <g ref={figureRef} className={style.className ?? "chart-reference-area"} style={{ opacity: 0 }}>
+      <g ref={figureRef} className={style.className ?? "chart-reference-area"} style={REFERENCE_AREA_GROUP_STYLE}>
         {buildFadeMaskDefs(chrome.edgeMask, style, spatial)}
         {chrome.hasPatternFill && <defs>{patternNode}</defs>}
         <rect fill={chrome.hasPatternFill ? `url(#${spatial.patternId})` : style.fill} fillOpacity={style.fillOpacity} height={rh} mask={chrome.edgeMask} width={rw} x={x} y={y} />

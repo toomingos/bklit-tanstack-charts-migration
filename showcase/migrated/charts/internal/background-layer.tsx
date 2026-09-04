@@ -20,20 +20,21 @@ export const BackgroundLayer = ({
   marginTop,
   isLoaded = true,
 }: Readonly<BackgroundLayerProps>): React.ReactElement | undefined => {
+  const layerStyle = React.useMemo((): React.CSSProperties => ({
+    left: marginLeft,
+    overflow: "visible",
+    pointerEvents: "none",
+    position: "absolute",
+    top: marginTop,
+    zIndex: -2,
+  }), [marginLeft, marginTop]);
   if (!config || innerWidth <= 0 || innerHeight <= 0) {return undefined;}
   return (
     <svg
       aria-hidden="true"
       width={innerWidth}
       height={innerHeight}
-      style={{
-        left: marginLeft,
-        overflow: "visible",
-        pointerEvents: "none",
-        position: "absolute",
-        top: marginTop,
-        zIndex: -2,
-      }}
+      style={layerStyle}
     >
       <Background {...config} width={innerWidth} height={innerHeight} isLoaded={isLoaded} />
     </svg>

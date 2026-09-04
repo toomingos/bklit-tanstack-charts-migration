@@ -90,23 +90,26 @@ interface MarkerGuideLineOptions {
   readonly isActive: boolean;
 }
 
+// Guide-line style is a pure function of its geometry so the render helper stays allocation-free in JSX.
+const markerGuideLineStyle = (lineHeight: number, y: number, hovered: boolean, isActive: boolean, size: number): React.CSSProperties => ({
+  borderLeft: "1px dashed var(--chart-marker-border)",
+  height: lineHeight + Math.abs(y),
+  left: 0,
+  opacity: resolveGuideOpacity(hovered, isActive),
+  pointerEvents: "none",
+  position: "absolute",
+  top: size / 2 + MARKER_GUIDE_TOP_OFFSET_PX,
+  transition: "opacity 200ms ease-out",
+  width: 1,
+});
+
 const renderMarkerGuideLine = (options: Readonly<MarkerGuideLineOptions>): React.ReactNode => {
   const { showLine, lineHeight, y, size, hovered, isActive } = options;
   if (!showLine || lineHeight <= 0) {return undefined;}
   return (
     <div
       aria-hidden="true"
-      style={{
-        borderLeft: "1px dashed var(--chart-marker-border)",
-        height: lineHeight + Math.abs(y),
-        left: 0,
-        opacity: resolveGuideOpacity(hovered, isActive),
-        pointerEvents: "none",
-        position: "absolute",
-        top: size / 2 + MARKER_GUIDE_TOP_OFFSET_PX,
-        transition: "opacity 200ms ease-out",
-        width: 1,
-      }}
+      style={markerGuideLineStyle(lineHeight, y, hovered, isActive, size)}
     />
   );
 }
@@ -140,6 +143,31 @@ interface MarkerEnterOptions {
   readonly attachEnterRef: (element: HTMLDivElement | null) => void;
 }
 
+// Enter-transition style is a pure function of its reveal inputs; see the guide-line factory above.
+const markerEnterStyle = (size: number, revealed: boolean, collapsedOpacity: number, collapsedScale: number, shouldFan: boolean): React.CSSProperties => ({
+  cursor: "pointer",
+  filter: resolveMarkerFilter(revealed, shouldFan),
+  height: size,
+  left: -size / 2,
+  opacity: revealed ? collapsedOpacity : 0,
+  pointerEvents: "auto",
+  position: "absolute",
+  top: -size / 2,
+  transform: `scale(${revealed ? collapsedScale : MARKER_ENTER_INITIAL_SCALE})`,
+  transformOrigin: "center center",
+  transition: revealed
+    ? "opacity 220ms ease-out, transform 220ms ease-out, filter 220ms ease-out"
+    : "none",
+  width: size,
+});
+
+// Inner marker box only tracks its size.
+const markerEnterInnerStyle = (size: number): React.CSSProperties => ({
+  height: size,
+  position: "relative",
+  width: size,
+});
+
 const renderMarkerEnter = (options: Readonly<MarkerEnterOptions>): React.ReactNode => {
   const { markers, size, revealed, collapsedOpacity, collapsedScale, shouldFan, hasMultiple, onEnter, onLeave, attachEnterRef } = options;
   return (
@@ -147,24 +175,9 @@ const renderMarkerEnter = (options: Readonly<MarkerEnterOptions>): React.ReactNo
       ref={attachEnterRef}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
-      style={{
-        cursor: "pointer",
-        filter: resolveMarkerFilter(revealed, shouldFan),
-        height: size,
-        left: -size / 2,
-        opacity: revealed ? collapsedOpacity : 0,
-        pointerEvents: "auto",
-        position: "absolute",
-        top: -size / 2,
-        transform: `scale(${revealed ? collapsedScale : MARKER_ENTER_INITIAL_SCALE})`,
-        transformOrigin: "center center",
-        transition: revealed
-          ? "opacity 220ms ease-out, transform 220ms ease-out, filter 220ms ease-out"
-          : "none",
-        width: size,
-      }}
+      style={markerEnterStyle(size, revealed, collapsedOpacity, collapsedScale, shouldFan)}
     >
-      <div style={{ height: size, position: "relative", width: size }}>
+      <div style={markerEnterInnerStyle(size)}>
         {renderFirstMarkerCircle({ markers, size })}
         {hasMultiple && !shouldFan ? renderMarkerBadge(markers.length, size) : undefined}
       </div>
@@ -190,6 +203,18 @@ interface MarkerGroupContentOptions {
   readonly onLeave: () => void;
 }
 
+// Group anchor box only tracks its position; everything else is static.
+const markerGroupContentStyle = (x: number, y: number): React.CSSProperties => ({
+  height: 0,
+  left: x,
+  overflow: "visible",
+  pointerEvents: "none",
+  position: "absolute",
+  top: y,
+  width: 0,
+  zIndex: 5,
+});
+
 const renderMarkerGroupContent = (options: Readonly<MarkerGroupContentOptions>): React.ReactElement => {
   const { x, y, size, showLine, lineHeight, maxFanned, isActive, markers, bucketKey, hovered, revealed, reduced, attachEnterRef, onEnter, onLeave } = options;
   const hasMultiple = markers.length > 1;
@@ -198,16 +223,7 @@ const renderMarkerGroupContent = (options: Readonly<MarkerGroupContentOptions>):
   const collapsed = resolveCollapsedMarkerPresence(shouldFan);
   return (
     <div
-      style={{
-        height: 0,
-        left: x,
-        overflow: "visible",
-        pointerEvents: "none",
-        position: "absolute",
-        top: y,
-        width: 0,
-        zIndex: 5,
-      }}
+      style={markerGroupContentStyle(x, y)}
     >
       {renderMarkerGuideLine({ hovered, isActive: isActive === true, lineHeight, showLine, size, y })}
       {renderMarkerEnter({ attachEnterRef, collapsedOpacity: collapsed.opacity, collapsedScale: collapsed.scale, hasMultiple, markers, onEnter, onLeave, revealed, shouldFan, size })}

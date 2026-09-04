@@ -16,6 +16,27 @@ const SEGMENT_GRADIENT_FADE_END = "100%";
 const SEGMENT_GRADIENT_SOLID_START = "10%";
 const SEGMENT_GRADIENT_SOLID_END = "90%";
 const SEGMENT_FADE_TRANSITION = "opacity 150ms ease-out";
+const SEGMENT_BACKGROUND_HIDDEN_ANIMATED_STYLE: Readonly<React.CSSProperties> = {
+  opacity: 0,
+  transition: SEGMENT_FADE_TRANSITION,
+};
+const SEGMENT_BACKGROUND_HIDDEN_STYLE: Readonly<React.CSSProperties> = {
+  opacity: 0,
+};
+const SEGMENT_BACKGROUND_VISIBLE_ANIMATED_STYLE: Readonly<React.CSSProperties> = {
+  opacity: 1,
+  transition: SEGMENT_FADE_TRANSITION,
+};
+const SEGMENT_BACKGROUND_VISIBLE_STYLE: Readonly<React.CSSProperties> = {
+  opacity: 1,
+};
+
+const resolveSegmentBackgroundStyle = (vis: boolean, reducedMotion: boolean): Readonly<React.CSSProperties> => {
+  if (reducedMotion) {
+    return vis ? SEGMENT_BACKGROUND_VISIBLE_STYLE : SEGMENT_BACKGROUND_HIDDEN_STYLE;
+  }
+  return vis ? SEGMENT_BACKGROUND_VISIBLE_ANIMATED_STYLE : SEGMENT_BACKGROUND_HIDDEN_ANIMATED_STYLE;
+};
 
 interface SegmentLineStyle {
   readonly stroke: string;
@@ -71,7 +92,6 @@ const renderSegmentGradientDefs = (gid: string, stroke: string): React.ReactElem
 
 const renderSegmentBackground = (params: Readonly<SegmentRenderParams>): React.ReactElement => {
   const { component, selection, innerHeight, vis, reducedMotion } = params;
-  const baseStyle = { opacity: vis ? 1 : 0 };
   return (
     <rect
       key={component.key}
@@ -80,7 +100,7 @@ const renderSegmentBackground = (params: Readonly<SegmentRenderParams>): React.R
       y={0}
       width={Math.abs(selection.endX - selection.startX)}
       height={innerHeight}
-      style={reducedMotion ? baseStyle : { ...baseStyle, transition: SEGMENT_FADE_TRANSITION }}
+      style={resolveSegmentBackgroundStyle(vis, reducedMotion)}
     />
   );
 };
@@ -154,6 +174,13 @@ const SegmentOverlay = ({
   components: readonly Readonly<SegmentComponent>[];
 }>): React.ReactElement | null => {
   const prefersReducedMotion = usePrefersReducedMotion();
+  const overlayStyle = React.useMemo((): React.CSSProperties => ({
+    left: marginLeft,
+    overflow: "visible",
+    pointerEvents: "none",
+    position: "absolute",
+    top: marginTop,
+  }), [marginLeft, marginTop]);
   if (!selection || components.length === 0) {return null;}
   const vis = selection.active && Math.abs(selection.endX - selection.startX) > SEGMENT_SELECTION_MIN_WIDTH_PX;
   const shared: Readonly<Omit<SegmentRenderParams, "component">> = {
@@ -166,7 +193,7 @@ const SegmentOverlay = ({
     <svg
       width={innerWidth}
       height={innerHeight}
-      style={{ left: marginLeft, overflow: "visible", pointerEvents: "none", position: "absolute", top: marginTop }}
+      style={overlayStyle}
       aria-hidden="true"
     >
       {components.map((component) => renderSegmentComponent({ ...shared, component }))}

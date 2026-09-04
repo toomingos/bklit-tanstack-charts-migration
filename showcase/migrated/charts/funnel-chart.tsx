@@ -1,7 +1,7 @@
 // Bklit FunnelChart as plain SVG (no TanStack funnel primitive; geometry is pure pixel arithmetic).
 // One FunnelSegment per stage owns graphic + label overlay; keyed by stage.label (replay-vs-snap free).
 import { createContext, useCallback, useContext, useEffect, useRef } from 'react';
-import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
+import type { CSSProperties, ReactElement, ReactNode, Ref, RefObject } from 'react';
 import { intFmt } from "./internal/formatters";
 import { usePositiveChartSize } from "./internal/use-container-size";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
@@ -34,6 +34,64 @@ type FunnelLabelAlign = "center" | "start" | "end";
 // Grouped-label flex alignment lookup by labelAlign.
 const FUNNEL_GROUPED_ALIGN_MAP = { center: "center", end: FLEX_END, start: FLEX_START } as const;
 
+// Static spread-label cell styles (hoisted so every render reuses one identity).
+const SPREAD_HORIZONTAL_VALUE_STYLE: CSSProperties = { alignItems: FLEX_END, display: "flex", height: FUNNEL_SPREAD_EDGE_SIZE, justifyContent: "center", paddingBottom: 4 };
+const SPREAD_PCT_STYLE: CSSProperties = { alignItems: "center", display: "flex", flex: 1, justifyContent: "center" };
+const SPREAD_HORIZONTAL_LABEL_STYLE: CSSProperties = { alignItems: FLEX_START, display: "flex", height: FUNNEL_SPREAD_EDGE_SIZE, justifyContent: "center", paddingTop: 4 };
+const SPREAD_VERTICAL_VALUE_STYLE: CSSProperties = { alignItems: "center", display: "flex", justifyContent: FLEX_END, paddingRight: 8, width: FUNNEL_SPREAD_EDGE_SIZE };
+const SPREAD_VERTICAL_LABEL_STYLE: CSSProperties = { alignItems: "center", display: "flex", justifyContent: FLEX_START, paddingLeft: 8, width: FUNNEL_SPREAD_EDGE_SIZE };
+// Static svg/ring styles shared by every segment and grid layer.
+const FUNNEL_SEGMENT_SVG_STYLE: CSSProperties = { height: "100%", inset: 0, overflow: "visible", position: "absolute", width: "100%" };
+const FUNNEL_GRID_SVG_STYLE: CSSProperties = { height: "100%", inset: 0, pointerEvents: "none", position: "absolute", width: "100%" };
+const FUNNEL_RING_STYLE: CSSProperties = { transformOrigin: "50% 50%" };
+
+// Grouped-label container style as a function of its two computed inputs.
+const buildGroupedLabelStyle = (groupedVertical: boolean, groupedAlign: FunnelLabelAlign): CSSProperties => ({
+  alignItems: groupedVertical ? FUNNEL_GROUPED_ALIGN_MAP[groupedAlign] : FUNNEL_GROUPED_ALIGN_MAP.center,
+  display: "flex",
+  flexDirection: groupedVertical ? "column" : "row",
+  gap: 6,
+});
+
+// Segment graphic/overlay frame styles as a function of the segment box.
+const buildSegmentGraphicStyle = (box: Readonly<FunnelSegBox>): CSSProperties => ({
+  height: box.height,
+  left: box.left,
+  overflow: "visible",
+  pointerEvents: "none",
+  position: "absolute",
+  top: box.top,
+  width: box.width,
+  zIndex: 1,
+});
+const buildSegmentOverlayStyle = (box: Readonly<FunnelSegBox>): CSSProperties => ({
+  cursor: "pointer",
+  height: box.height,
+  left: box.left,
+  position: "absolute",
+  top: box.top,
+  width: box.width,
+  zIndex: 20,
+});
+
+// Chart container style as a function of the computed aspect ratio plus the style prop.
+const buildFunnelContainerStyle = (aspectRatio: string, style?: Readonly<CSSProperties>): CSSProperties => ({
+  aspectRatio,
+  overflow: "visible",
+  position: "relative",
+  userSelect: "none",
+  width: "100%",
+  ...style,
+});
+
+// Ring ref handler factory so the JSX prop is a call result, not an inline closure.
+const createFunnelRingRefHandler = (
+  onRingRef: (ringIndex: number, el: SVGPathElement | null) => void,
+  ringIndex: number,
+): Ref<SVGPathElement> => (el) => {
+  onRingRef(ringIndex, el);
+};
+
 interface FunnelLabelSlots {
   readonly valueEl: ReactNode;
   readonly pctEl: ReactNode;
@@ -57,11 +115,11 @@ const buildSpreadLabelContent = (isHorizontal: boolean, slots: Readonly<FunnelLa
   if (isHorizontal) {
     return (
       <>
-        <div style={{ alignItems: FLEX_END, display: "flex", height: FUNNEL_SPREAD_EDGE_SIZE, justifyContent: "center", paddingBottom: 4 }}>
+        <div style={SPREAD_HORIZONTAL_VALUE_STYLE}>
           {valueEl}
         </div>
-        <div style={{ alignItems: "center", display: "flex", flex: 1, justifyContent: "center" }}>{pctEl}</div>
-        <div style={{ alignItems: FLEX_START, display: "flex", height: FUNNEL_SPREAD_EDGE_SIZE, justifyContent: "center", paddingTop: 4 }}>
+        <div style={SPREAD_PCT_STYLE}>{pctEl}</div>
+        <div style={SPREAD_HORIZONTAL_LABEL_STYLE}>
           {labelEl}
         </div>
       </>
@@ -69,11 +127,11 @@ const buildSpreadLabelContent = (isHorizontal: boolean, slots: Readonly<FunnelLa
   }
   return (
     <>
-      <div style={{ alignItems: "center", display: "flex", justifyContent: FLEX_END, paddingRight: 8, width: FUNNEL_SPREAD_EDGE_SIZE }}>
+      <div style={SPREAD_VERTICAL_VALUE_STYLE}>
         {valueEl}
       </div>
-      <div style={{ alignItems: "center", display: "flex", flex: 1, justifyContent: "center" }}>{pctEl}</div>
-      <div style={{ alignItems: "center", display: "flex", justifyContent: FLEX_START, paddingLeft: 8, width: FUNNEL_SPREAD_EDGE_SIZE }}>
+      <div style={SPREAD_PCT_STYLE}>{pctEl}</div>
+      <div style={SPREAD_VERTICAL_LABEL_STYLE}>
         {labelEl}
       </div>
     </>
@@ -87,12 +145,7 @@ const buildGroupedLabelContent = (options: Readonly<GroupedLabelOptions>): React
   const groupedAlign = isHorizontal ? "center" : labelAlign;
   return (
     <div
-      style={{
-        alignItems: groupedVertical ? FUNNEL_GROUPED_ALIGN_MAP[groupedAlign] : FUNNEL_GROUPED_ALIGN_MAP.center,
-        display: "flex",
-        flexDirection: groupedVertical ? "column" : "row",
-        gap: 6,
-      }}
+      style={buildGroupedLabelStyle(groupedVertical, groupedAlign)}
     >
       {valueEl}
       {pctEl}
@@ -463,10 +516,8 @@ const renderFunnelRings = (options: Readonly<FunnelRingsOptions>): ReactNode => 
         fill={ringFill}
         key={`ring-${ring.ringIndex}`}
         opacity={ring.opacity}
-        ref={(el) => {
-          onRingRef(ring.ringIndex, el);
-        }}
-        style={{ transformOrigin: "50% 50%" }}
+        ref={createFunnelRingRefHandler(onRingRef, ring.ringIndex)}
+        style={FUNNEL_RING_STYLE}
       />
     );
   });
@@ -511,22 +562,13 @@ const renderSegmentGraphic = (options: Readonly<SegmentGraphicOptions>): ReactEl
   return (
     <div
       ref={graphicRef}
-      style={{
-        height: box.height,
-        left: box.left,
-        overflow: "visible",
-        pointerEvents: "none",
-        position: "absolute",
-        top: box.top,
-        width: box.width,
-        zIndex: 1,
-      }}
+      style={buildSegmentGraphicStyle(box)}
     >
       <svg
         aria-hidden="true"
         preserveAspectRatio="none"
         role="presentation"
-        style={{ height: "100%", inset: 0, overflow: "visible", position: "absolute", width: "100%" }}
+        style={FUNNEL_SEGMENT_SVG_STYLE}
         viewBox={`0 0 ${frame.viewBoxW} ${frame.viewBoxH}`}
       >
         {renderFunnelDefs({ color, gradientId: frame.gradientId, gradientStops, isHorizontal, patternId: frame.patternId, renderPattern })}
@@ -555,15 +597,7 @@ const renderSegmentOverlay = (options: Readonly<SegmentOverlayOptions>): ReactEl
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
       ref={labelRef}
-      style={{
-        cursor: "pointer",
-        height: box.height,
-        left: box.left,
-        position: "absolute",
-        top: box.top,
-        width: box.width,
-        zIndex: 20,
-      }}
+      style={buildSegmentOverlayStyle(box)}
     >
       <div ref={labelInnerRef} style={outerLabelStyle}>
         {labelContent}
@@ -742,7 +776,7 @@ const renderBandGrid = (options: Readonly<BandGridOptions>): ReactElement => {
       aria-hidden="true"
       preserveAspectRatio="none"
       role="presentation"
-      style={{ height: "100%", inset: 0, pointerEvents: "none", position: "absolute", width: "100%" }}
+      style={FUNNEL_GRID_SVG_STYLE}
       viewBox={`0 0 ${chartW} ${chartH}`}
     >
       {grid.showBands &&
@@ -776,7 +810,7 @@ const renderLineGrid = (options: Readonly<LineGridOptions>): ReactElement => {
       aria-hidden="true"
       preserveAspectRatio="none"
       role="presentation"
-      style={{ height: "100%", inset: 0, pointerEvents: "none", position: "absolute", width: "100%" }}
+      style={FUNNEL_GRID_SVG_STYLE}
       viewBox={`0 0 ${chartW} ${chartH}`}
     >
       {Array.from({ length: stageCount - 1 }, (_unused, stageIndex) => {
@@ -935,14 +969,7 @@ const FunnelChart = ({
       className={className}
       data-bkm-chart="funnel"
       ref={containerRef}
-      style={{
-        aspectRatio: frame.aspectRatio,
-        overflow: "visible",
-        position: "relative",
-        userSelect: "none",
-        width: "100%",
-        ...style,
-      }}
+      style={buildFunnelContainerStyle(frame.aspectRatio, style)}
     >
       {frame.hasChartArea && (
         <>
