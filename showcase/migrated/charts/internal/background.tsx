@@ -1,4 +1,5 @@
-import * as React from "react";
+import { useMemo } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { BACKGROUND_ENTER_FADE_MS } from "./design-tokens";
 import { edgeFadeMaskStops } from "./fade-mask";
 import { useSanitizedId } from "./use-sanitized-id";
@@ -60,12 +61,12 @@ const resolveBackgroundMask = (options: Readonly<{ fadeHorizontal: boolean; fade
 }
 
 const useFadeMaskStops = (fadeHorizontalLength: number, fadeVerticalLength: number): readonly [readonly FadeStop[], readonly FadeStop[]] => {
-  const hStops = React.useMemo(() => edgeFadeMaskStops(fadeHorizontalLength), [fadeHorizontalLength]);
-  const vStops = React.useMemo(() => edgeFadeMaskStops(fadeVerticalLength), [fadeVerticalLength]);
+  const hStops = useMemo(() => edgeFadeMaskStops(fadeHorizontalLength), [fadeHorizontalLength]);
+  const vStops = useMemo(() => edgeFadeMaskStops(fadeVerticalLength), [fadeVerticalLength]);
   return [hStops, vStops];
 }
 
-const resolveBackgroundPattern = (options: Readonly<{ preset: BackgroundPatternPreset; patternId: string; presetOptions: Readonly<PatternPresetOptions>; showFill: boolean; width: number; height: number }>): React.ReactNode => {
+const resolveBackgroundPattern = (options: Readonly<{ preset: BackgroundPatternPreset; patternId: string; presetOptions: Readonly<PatternPresetOptions>; showFill: boolean; width: number; height: number }>): ReactNode => {
   const { preset, patternId, presetOptions, showFill, width, height } = options;
   if (preset === "none" || !showFill || width <= 0 || height <= 0) {return undefined;}
   return renderPatternPreset(preset, patternId, presetOptions);
@@ -76,12 +77,12 @@ interface FadeStop {
   readonly opacity: number;
 }
 
-const renderFadeStops = (stops: readonly FadeStop[]): React.ReactNode =>
+const renderFadeStops = (stops: readonly FadeStop[]): ReactNode =>
   stops.map((stop) => (
     <stop key={stop.offset} offset={stop.offset} stopColor="white" stopOpacity={stop.opacity} />
   ));
 
-const renderHorizontalFade = (options: Readonly<{ hGradientId: string; hMaskId: string; hStops: readonly FadeStop[]; width: number; height: number }>): React.ReactNode => {
+const renderHorizontalFade = (options: Readonly<{ hGradientId: string; hMaskId: string; hStops: readonly FadeStop[]; width: number; height: number }>): ReactNode => {
   const { hGradientId, hMaskId, hStops, width, height } = options;
   return (
     <>
@@ -95,7 +96,7 @@ const renderHorizontalFade = (options: Readonly<{ hGradientId: string; hMaskId: 
   );
 }
 
-const renderVerticalFade = (options: Readonly<{ vGradientId: string; vMaskId: string; vStops: readonly FadeStop[]; width: number; height: number }>): React.ReactNode => {
+const renderVerticalFade = (options: Readonly<{ vGradientId: string; vMaskId: string; vStops: readonly FadeStop[]; width: number; height: number }>): ReactNode => {
   const { vGradientId, vMaskId, vStops, width, height } = options;
   return (
     <>
@@ -109,7 +110,7 @@ const renderVerticalFade = (options: Readonly<{ vGradientId: string; vMaskId: st
   );
 }
 
-const renderCombinedFadeInner = (options: Readonly<{ hMaskId: string; vGradientId: string; width: number; height: number }>): React.ReactNode => {
+const renderCombinedFadeInner = (options: Readonly<{ hMaskId: string; vGradientId: string; width: number; height: number }>): ReactNode => {
   const { hMaskId, vGradientId, width, height } = options;
   return (
     <g mask={`url(#${hMaskId})`}>
@@ -118,7 +119,7 @@ const renderCombinedFadeInner = (options: Readonly<{ hMaskId: string; vGradientI
   );
 }
 
-const renderCombinedFadeMask = (options: Readonly<{ combinedMaskId: string; hMaskId: string; vGradientId: string; width: number; height: number }>): React.ReactNode => {
+const renderCombinedFadeMask = (options: Readonly<{ combinedMaskId: string; hMaskId: string; vGradientId: string; width: number; height: number }>): ReactNode => {
   const { combinedMaskId, hMaskId, vGradientId, width, height } = options;
   return (
     <mask id={combinedMaskId}>
@@ -127,7 +128,7 @@ const renderCombinedFadeMask = (options: Readonly<{ combinedMaskId: string; hMas
   );
 }
 
-const renderFadeDefs = (options: Readonly<{ fadeHorizontal: boolean; fadeVertical: boolean; mask: Readonly<BackgroundMask>; hStops: readonly FadeStop[]; vStops: readonly FadeStop[]; width: number; height: number }>): React.ReactNode => {
+const renderFadeDefs = (options: Readonly<{ fadeHorizontal: boolean; fadeVertical: boolean; mask: Readonly<BackgroundMask>; hStops: readonly FadeStop[]; vStops: readonly FadeStop[]; width: number; height: number }>): ReactNode => {
   const { fadeHorizontal, fadeVertical, mask, hStops, vStops, width, height } = options;
   if (!mask.fadeMask) {return undefined;}
   return (
@@ -139,11 +140,11 @@ const renderFadeDefs = (options: Readonly<{ fadeHorizontal: boolean; fadeVertica
   );
 }
 
-const BACKGROUND_LOADED_STYLE: Readonly<React.CSSProperties> = {
+const BACKGROUND_LOADED_STYLE: Readonly<CSSProperties> = {
   transition: `opacity ${BACKGROUND_ENTER_FADE_MS}ms ease-out`,
 };
 
-const renderBackgroundRect = (options: Readonly<{ patternId: string; width: number; height: number; maskRef: string | undefined; opacity: number; isLoaded: boolean }>): React.ReactNode => {
+const renderBackgroundRect = (options: Readonly<{ patternId: string; width: number; height: number; maskRef: string | undefined; opacity: number; isLoaded: boolean }>): ReactNode => {
   const { patternId, width, height, maskRef, opacity, isLoaded } = options;
   return (
     <rect
@@ -179,7 +180,7 @@ const Background = ({
   width,
   height,
   isLoaded = true,
-}: Readonly<BackgroundProps>): React.ReactElement | undefined => {
+}: Readonly<BackgroundProps>): ReactElement | undefined => {
   const uniqueId = useSanitizedId();
   const patternId = `chart-background-${uniqueId}`;
   const [hStops, vStops] = useFadeMaskStops(fadeHorizontalLength, fadeVerticalLength);
@@ -207,4 +208,3 @@ const ChartBackground = Background;
 
 export type { BackgroundPatternPreset, BackgroundProps };
 export { Background, ChartBackground };
-export default Background;

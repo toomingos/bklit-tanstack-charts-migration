@@ -1,5 +1,6 @@
 // Host slot for <Background>: sibling svg pinned to the plot-area origin, behind marks.
-import * as React from "react";
+import { useMemo } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import { Background } from "./background";
 import type { BackgroundConfig } from "./types";
 
@@ -19,8 +20,8 @@ export const BackgroundLayer = ({
   marginLeft,
   marginTop,
   isLoaded = true,
-}: Readonly<BackgroundLayerProps>): React.ReactElement | undefined => {
-  const layerStyle = React.useMemo((): React.CSSProperties => ({
+}: Readonly<BackgroundLayerProps>): ReactElement | undefined => {
+  const layerStyle = useMemo((): CSSProperties => ({
     left: marginLeft,
     overflow: "visible",
     pointerEvents: "none",

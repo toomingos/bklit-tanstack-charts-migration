@@ -12,8 +12,8 @@ import {
   useMemo,
   useRef,
   useSyncExternalStore,
-  type ReactElement,
 } from "react";
+import type { ReactElement } from "react";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import { defineChart } from "@tanstack/charts/scene";
 import { cell } from "@tanstack/charts/rect";
@@ -28,19 +28,20 @@ import type {
 } from "@tanstack/charts";
 import { scaleBand, scaleOrdinal } from "d3-scale";
 import type { ScaleBand, ScaleOrdinal } from "d3-scale";
-import { useHeatmap, type HeatmapMargin } from "./heatmap-context";
+import { useHeatmap } from "./heatmap-context";
+import type { HeatmapMargin } from "./heatmap-context";
 import {
   computeHeatmapEnterFadeDelayMs,
   HEATMAP_DEFAULT_ENTER_EASE,
   resolveHeatmapEnterFadeDurationSec,
-  type HeatmapEnterTransition,
 } from "./heatmap-animation";
+import type { HeatmapEnterTransition } from "./heatmap-animation";
 import { chartMotionRenderer } from "./motion-renderer";
 import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
 import {
   HEATMAP_INACTIVE_OPACITY,
-  type HeatmapHoverCoordinator,
 } from "./heatmap-hover-chrome";
+import type { HeatmapHoverCoordinator } from "./heatmap-hover-chrome";
 import {
   formatHeatmapMonthShort,
   formatHeatmapTooltipDate,
@@ -53,26 +54,30 @@ import {
   resolveHeatmapDisplayRange,
   resolveHeatmapRowOpacity,
   shouldShowHeatmapYAxisTick,
-  type HeatmapColumn,
-  type HeatmapDisplayRange,
-  type HeatmapYAxisLabelFormat,
-  type HeatmapYAxisTickFilter,
+} from "./heatmap-utils";
+import type {
+  HeatmapColumn,
+  HeatmapDisplayRange,
+  HeatmapYAxisLabelFormat,
+  HeatmapYAxisTickFilter,
 } from "./heatmap-utils";
 import {
   heatmapLevelPatternId,
   heatmapLevelPatternRenderOptions,
   heatmapLevelCellFillOpacity,
   isHeatmapLevelPattern,
-  type HeatmapLevelStyle,
-  type HeatmapLevelStyles,
+} from "./heatmap-colors";
+import type {
+  HeatmapLevelStyle,
+  HeatmapLevelStyles,
 } from "./heatmap-colors";
 import { renderPatternPreset } from "./pattern-preset-render";
 import { HEATMAP_AXIS_LAYER_CLASS } from "./heatmap-separator";
 import {
   getHeatmapTooltipConfig,
   subscribeHeatmapTooltipConfig,
-  type HeatmapTooltipConfig,
 } from "./heatmap-tooltip-registry";
+import type { HeatmapTooltipConfig } from "./heatmap-tooltip-registry";
 
 interface CellDatum {
   colKey: string;

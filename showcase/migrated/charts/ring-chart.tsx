@@ -1,12 +1,14 @@
 // Bklit RingChart on TanStack Charts (radialArc track+progress per ring; children are carriers).
 // Track entrance stays a WAAPI scale-pop (no native arc primitive); hover scale is reactive geometry.
-import { Children, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, createContext, useContext } from 'react';
+import { Children, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
 import { defineChart } from "@tanstack/charts/scene";
 import { polar, radialArc } from "@tanstack/charts/polar";
 import { pieArcPath } from "./internal/pie-geometry";
 import { RingCenter } from "./internal/ring-center";
+import { RingHoverCoordinatorContext, RingStableContext } from "./internal/ring-context";
+import type { RingData, RingStableValue, ScrubRingLayer } from "./internal/ring-context";
 import { createRingHoverCoordinator, ringHoverScale } from './internal/ring-hover-chrome';
 import type { RingHoverCoordinator } from './internal/ring-hover-chrome';
 import { HOVER_SPRING, motionEasingFromCss } from "./internal/pie-hover-chrome";
@@ -45,102 +47,7 @@ const defaultRingColors = [
   "var(--chart-5)",
 ];
 
-interface RingData {
-  readonly label: string;
-  readonly value: number;
-  readonly maxValue: number;
-  readonly color?: string;
-}
-
 type RingLineCap = "round" | "butt";
-
-
-interface ScrubRingLayer {
-  readonly bgPath: string;
-  readonly progressPath: string;
-  readonly color: string;
-}
-
-interface RingStableValue {
-  data: RingData[];
-  size: number;
-  center: number;
-  strokeWidth: number;
-  ringGap: number;
-  baseInnerRadius: number;
-  // Restored legacy payload fields (containerRef/isLoaded/animationKey) for consumer parity; unread inside.
-  animationKey: number;
-  isLoaded: boolean;
-  containerRef: RefObject<HTMLDivElement | null>;
-  enterTransition?: RingEnterTransition;
-  enterStaggerScale: number;
-  totalValue: number;
-  getColor: (index: number) => string;
-  getRingRadii: (index: number) => { innerRadius: number; outerRadius: number };
-  startAngle: number;
-  endAngle: number;
-  geometryScrubbing: boolean;
-  scrubRingLayers: readonly ScrubRingLayer[] | null;
-}
-
-/** Legacy RingHoverContextValue shape (ring-context.tsx:47-50). */
-interface RingHoverValue {
-  hoveredIndex: number | null;
-  setHoveredIndex: (index: number | null) => void;
-}
-
-/** Legacy RingContextValue shape (ring-context.tsx:92). */
-type RingContextValue = RingStableValue & RingHoverValue;
-
-const RingStableContext = createContext<RingStableValue | undefined>(undefined);
-const RingHoverCoordinatorContext = createContext<RingHoverCoordinator | undefined>(undefined);
-
-const useRingStable = (): RingStableValue => {
-  const ctx = useContext(RingStableContext);
-  if (!ctx) {
-    throw new Error(
-      "Ring components must be used within <RingChart>. Make sure <Ring>/<RingCenter> are children of a <RingChart>.",
-    );
-  }
-  return ctx;
-}
-
-const useRingHoverCoordinator = (): RingHoverCoordinator => {
-  const ctx = useContext(RingHoverCoordinatorContext);
-  if (!ctx) {
-    throw new Error(
-      "Ring components must be used within <RingChart>. Make sure <Ring>/<RingCenter> are children of a <RingChart>.",
-    );
-  }
-  return ctx;
-}
-
-/** Legacy useRingHover() over the imperative coordinator (useSyncExternalStore; caller-only re-render).
- *
- * @returns {RingHoverValue} Current hovered index plus the setter routing through the coordinator.
- */
-const useRingHover = (): RingHoverValue => {
-  const coordinator = useRingHoverCoordinator();
-  const hoveredIndex = useSyncExternalStore(
-    coordinator.subscribe,
-    coordinator.getHovered,
-    coordinator.getHovered,
-  );
-  const setHoveredIndex = useCallback(
-    (index: number | null) => {
-      if (index === null) {coordinator.requestUnhover();}
-      else {coordinator.requestHover(index);}
-    },
-    [coordinator],
-  );
-  return { hoveredIndex, setHoveredIndex };
-}
-
-/** Legacy useRing() combiner shape.
- *
- * @returns {RingContextValue} Merged stable context and hover values.
- */
-const useRing = (): RingContextValue => ({ ...useRingStable(), ...useRingHover() })
 
 
 // Boundary predicates: React child types arrive as string-or-constructor unions; narrow once here.
@@ -901,19 +808,12 @@ export {
   defaultRingColors,
   Ring,
   RingChart,
-  useRing,
-  useRingHover,
-  useRingHoverCoordinator,
-  useRingStable,
 };
 export type {
   RingChartProps,
-  RingContextValue,
-  RingData,
-  RingHoverValue,
   RingLineCap,
   RingProps,
-  RingStableValue,
 };
+export { useRing, useRingHover, useRingHoverCoordinator, useRingStable } from "./internal/ring-context";
+export type { RingContextValue, RingData, RingHoverValue, RingStableValue, ScrubRingLayer } from "./internal/ring-context";
 export type { RingEnterTransition } from './internal/enter-transition';
-export default RingChart;

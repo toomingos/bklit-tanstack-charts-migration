@@ -145,5 +145,3 @@ ChartLegend.displayName = "ChartLegend";
 
 export { ChartLegend };
 export type { LegendItem, ChartLegendProps };
-
-export default ChartLegend;

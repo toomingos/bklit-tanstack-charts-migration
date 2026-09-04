@@ -1,7 +1,6 @@
 "use client";
 
-import * as React from "react";
-import type { RefObject } from "react";
+import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import { resolveEnterTransition } from './enter-transition';
 import type { EnterTransition } from './enter-transition';
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
@@ -49,11 +48,11 @@ interface ProjectionMarkerOverlayProps {
   readonly margin: { readonly top: number; readonly left: number; readonly right: number; readonly bottom: number };
   readonly terminalMarkers: readonly TerminalMarkerAnchor[];
   readonly projectionEndMarkers: readonly ProjectionEndMarkerAnchor[];
-  readonly phasePort: React.RefObject<ProjectionPhaseHandle | null>;
+  readonly phasePort: RefObject<ProjectionPhaseHandle | null>;
   readonly enterTransition?: EnterTransition;
 }
 
-const renderProjectionEndMarkers = (markers: readonly ProjectionEndMarkerAnchor[]): React.JSX.Element[] =>
+const renderProjectionEndMarkers = (markers: readonly ProjectionEndMarkerAnchor[]): ReactElement[] =>
   markers.map((marker: Readonly<ProjectionEndMarkerAnchor>) => (
     <circle key={`pend-${marker.cx}-${marker.cy}`} cx={marker.cx} cy={marker.cy} r={marker.radius * PROJECTION_END_MARKER_RADIUS_SCALE} fill={marker.stroke} fillOpacity={marker.strokeOpacity} />
   ));
@@ -65,7 +64,7 @@ interface TerminalMarkerInnerParams {
   readonly ringRadius: number;
 }
 
-const renderTerminalMarkerInner = (params: Readonly<TerminalMarkerInnerParams>): React.JSX.Element => {
+const renderTerminalMarkerInner = (params: Readonly<TerminalMarkerInnerParams>): ReactElement => {
   const { marker, outlineRadius, resolvedStroke, ringRadius } = params;
   return (
     <g transform={`translate(${marker.cx},${marker.cy})`}>
@@ -81,14 +80,14 @@ const renderTerminalMarkerInner = (params: Readonly<TerminalMarkerInnerParams>):
 const optionalText = (value: string): string | undefined => value;
 
 // Hidden-state style for one terminal marker node, keyed by its anchor.
-const terminalMarkerNodeStyle = (cx: number, cy: number): React.CSSProperties => ({
+const terminalMarkerNodeStyle = (cx: number, cy: number): CSSProperties => ({
   opacity: 0,
   transform: TERMINAL_MARKER_HIDDEN_TRANSFORM,
   transformBox: "fill-box",
   transformOrigin: `${cx}px ${cy}px`,
 });
 
-const renderTerminalMarkerNode = (marker: Readonly<TerminalMarkerAnchor>, markerRefs: RefObject<Map<string, SVGGElement>>): React.JSX.Element => {
+const renderTerminalMarkerNode = (marker: Readonly<TerminalMarkerAnchor>, markerRefs: RefObject<Map<string, SVGGElement>>): ReactElement => {
   const resolvedStroke = optionalText(marker.stroke) ?? optionalText(marker.fill) ?? "currentColor";
   const ringOuter = marker.strokeWidth > 0 ? marker.radius + marker.ringGap + marker.strokeWidth : marker.radius;
   const outlineRadius = marker.outlineWidth > 0 ? ringOuter + marker.outlineWidth / 2 : 0;
@@ -107,10 +106,10 @@ const renderTerminalMarkerNode = (marker: Readonly<TerminalMarkerAnchor>, marker
   );
 };
 
-const renderTerminalMarkerNodes = (markers: readonly TerminalMarkerAnchor[], markerRefs: RefObject<Map<string, SVGGElement>>): React.JSX.Element[] =>
+const renderTerminalMarkerNodes = (markers: readonly TerminalMarkerAnchor[], markerRefs: RefObject<Map<string, SVGGElement>>): ReactElement[] =>
   markers.map((marker: Readonly<TerminalMarkerAnchor>) => renderTerminalMarkerNode(marker, markerRefs));
 
-const ProjectionMarkerOverlay = (props: Readonly<ProjectionMarkerOverlayProps>): React.ReactNode => {
+const ProjectionMarkerOverlay = (props: Readonly<ProjectionMarkerOverlayProps>): ReactNode => {
   const { width, height, margin, terminalMarkers, projectionEndMarkers, phasePort, enterTransition } = props;
   const timingRef = useFreshRef(resolveTerminalTiming(enterTransition));
   const prefersReducedRef = useFreshRef(usePrefersReducedMotion());

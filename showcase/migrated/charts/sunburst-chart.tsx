@@ -149,17 +149,14 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactElement,
-  type ReactNode,
 } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
 import type { ChartMotionContext } from "@tanstack/charts";
 import { defineChart } from "@tanstack/charts/scene";
 import { polar } from "@tanstack/charts/polar";
-import {
-  sunburst,
-  type SunburstNode as TSSunburstNode,
-} from "@tanstack/charts/hierarchy/sunburst";
+import { sunburst } from "@tanstack/charts/hierarchy/sunburst";
+import type { SunburstNode as TSSunburstNode } from "@tanstack/charts/hierarchy/sunburst";
 import {
   arcPath,
   buildArcs,
@@ -170,10 +167,8 @@ import {
   geomCentroidRadius,
   defaultSunburstGrowPadding,
   transitionGeometry,
-  type ArcDatum,
-  type Focus,
-  type SunburstFlatRow,
 } from "./internal/sunburst-geometry";
+import type { ArcDatum, Focus, SunburstFlatRow } from "./internal/sunburst-geometry";
 import {
   defaultSunburstColors,
   opacityForRelativeDepth,
@@ -185,17 +180,14 @@ import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { displayNameOf } from "./internal/children-extract";
 import { SunburstCenterOverlay } from "./internal/sunburst-center-overlay";
 import { SunburstLabelsOverlay } from "./internal/sunburst-labels-overlay";
-import {
-  SunburstHitLayer,
-  type SunburstHitItem,
-} from "./internal/sunburst-hit";
+import { SunburstHitLayer } from "./internal/sunburst-hit";
+import type { SunburstHitItem } from "./internal/sunburst-hit";
 import { resolveSunburstHintContent } from "./internal/sunburst-hint-content";
-import {
-  SunburstHintDisplay,
-  type SunburstHintProps,
-} from "./internal/sunburst-hint";
+import { SunburstHintDisplay } from "./internal/sunburst-hint";
+import type { SunburstHintProps } from "./internal/sunburst-hint";
 import { CHART_CATEGORY_PALETTE } from "./internal/design-tokens";
-import { clipRevealTiming, type EnterTransition } from "./internal/enter-transition";
+import { clipRevealTiming } from "./internal/enter-transition";
+import type { EnterTransition } from "./internal/enter-transition";
 import { motionEasingFromCss } from "./internal/pie-hover-chrome";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import "./styles.css";

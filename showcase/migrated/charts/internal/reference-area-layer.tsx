@@ -1,6 +1,7 @@
 "use client";
 
-import * as React from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
+import type { ReactNode } from "react";
 import type { PatternPresetId } from './pattern-preset';
 import type { ReferenceAreaIfOverflow } from './reference-area-geometry';
 import type { ChartMargin } from "./use-chart-margin";
@@ -8,14 +9,14 @@ import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { applyReferenceAreaVisibility, isReferenceAreaVisiblePhase, useReferenceAreaGeometry } from "./reference-area-scale";
 import { buildReferenceAreaFigure, resolveReferenceAreaPattern, resolveReferenceAreaStyle } from "./reference-area-figure";
 
-const ReferenceAreaLayer = (props: ReferenceAreaLayerProps): React.ReactNode => {
+const ReferenceAreaLayer = (props: ReferenceAreaLayerProps): ReactNode => {
   const style = resolveReferenceAreaStyle(props);
   const spatial = useReferenceAreaGeometry(props);
-  const patternNode = React.useMemo(() => resolveReferenceAreaPattern(style, spatial.patternId), [style, spatial.patternId]);
+  const patternNode = useMemo(() => resolveReferenceAreaPattern(style, spatial.patternId), [style, spatial.patternId]);
   const visible = isReferenceAreaVisiblePhase(props.phase);
   const prefersReducedMotion = usePrefersReducedMotion();
-  const gRef = React.useRef<SVGGElement | null>(null);
-  React.useLayoutEffect(() => {
+  const gRef = useRef<SVGGElement | null>(null);
+  useLayoutEffect(() => {
     const group = gRef.current;
     if (!group) {return;}
     applyReferenceAreaVisibility(group, { isLoaded: props.isLoaded, prefersReducedMotion, visible });
@@ -111,7 +112,7 @@ const ReferenceAreaLayers = ({
 }: {
   configs: ReferenceAreaConfig[];
   geom: ReferenceAreaLayersGeom;
-}): React.ReactNode => {
+}): ReactNode => {
   if (configs.length === 0) {return undefined;}
   return (
     <>

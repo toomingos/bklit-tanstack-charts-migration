@@ -52,4 +52,3 @@ ReferenceArea.displayName = "ReferenceArea";
 export { ReferenceArea };
 export type { ReferenceAreaStrokeStyle, ReferenceAreaProps };
 export type { ReferenceAreaIfOverflow } from "./internal/reference-area-geometry";
-export default ReferenceArea;

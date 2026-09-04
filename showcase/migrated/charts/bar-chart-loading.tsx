@@ -1,7 +1,8 @@
 "use client";
 
 // Turnkey loading placeholder: <BarPulse> sweeping over skeleton bars (BarChart has no status prop).
-import * as React from "react";
+import { useMemo } from "react";
+import type { ReactElement } from "react";
 import { BarChart } from "./bar-chart";
 import { Bar, BarPulse, Grid } from "./children";
 import {
@@ -37,9 +38,9 @@ const BarChartLoading = ({
   barCount = FALLBACK_LOADING_BARS,
   fill = DEFAULT_LOADING_BAR_FILL,
   pulsePaused = false,
-}: Readonly<BarChartLoadingProps>): React.ReactElement => {
+}: Readonly<BarChartLoadingProps>): ReactElement => {
   // Fixed base date keeps labels off "today"; values become placeholder heights.
-  const data = React.useMemo(() => {
+  const data = useMemo(() => {
     const heights = loadingSkeletonBarHeights(barCount);
     const series = buildLoadingSkeletonSeries(LOADING_DATA_KEY, barCount);
     for (const [index, row] of series.entries()) {
@@ -74,4 +75,3 @@ BarChartLoading.displayName = "BarChartLoading";
 
 export { BarChartLoading };
 export type { BarChartLoadingProps };
-export default BarChartLoading;

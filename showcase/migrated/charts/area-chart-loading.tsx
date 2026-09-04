@@ -1,7 +1,8 @@
 "use client";
 
 // Turnkey <AreaChart status="loading"> placeholder; shimmer props accepted-but-inert for parity.
-import * as React from "react";
+import { useMemo } from "react";
+import type { ReactElement } from "react";
 import { curveNatural } from "d3-shape";
 import { AreaChart } from "./area-chart";
 import { Area, Grid } from "./children";
@@ -42,8 +43,8 @@ const AreaChartLoading = ({
   label = "Loading",
   aspectRatio = "2 / 1",
   className = "",
-}: Readonly<AreaChartLoadingProps>): React.ReactElement => {
-  const data = React.useMemo(
+}: Readonly<AreaChartLoadingProps>): ReactElement => {
+  const data = useMemo(
     () => buildLoadingSkeletonSeries(LOADING_DATA_KEY),
     [],
   );
@@ -79,4 +80,3 @@ AreaChartLoading.displayName = "AreaChartLoading";
 
 export { AreaChartLoading };
 export type { AreaChartLoadingProps };
-export default AreaChartLoading;

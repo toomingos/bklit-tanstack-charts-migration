@@ -1,5 +1,16 @@
 // Bklit RadarChart on TanStack polar marks; area/dot entrance is native motion, grid reveal stays WAAPI.
-import * as React from "react";
+import {
+  Children,
+  Fragment,
+  isValidElement,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import { scaleLinear, scalePoint } from "d3-scale";
 import { curveLinearClosed } from "d3-shape";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
@@ -172,8 +183,8 @@ interface RadarChartProps {
   readonly hoveredIndex?: number | null;
   readonly onHoverChange?: (index: number | null) => void;
   readonly className?: string;
-  readonly style?: React.CSSProperties;
-  readonly children?: React.ReactNode;
+  readonly style?: CSSProperties;
+  readonly children?: ReactNode;
 }
 
 const ROLE_GRID = "radar-grid";
@@ -232,23 +243,23 @@ interface ExtractedRadarChildren {
   areas: RadarAreaProps[];
 }
 
-const collectRadarChild = (child: Readonly<React.ReactElement>, out: ExtractedRadarChildren): void => {
+const collectRadarChild = (child: Readonly<ReactElement>, out: ExtractedRadarChildren): void => {
   const role = roleOf(child.type);
-  if (role === ROLE_GRID && React.isValidElement<RadarGridProps>(child)) {out.grid = child.props;}
-  else if (role === ROLE_AXIS && React.isValidElement<RadarAxisProps>(child)) {out.axis = child.props;}
-  else if (role === ROLE_LABELS && React.isValidElement<RadarLabelsProps>(child)) {out.labels = child.props;}
-  else if (role === ROLE_AREA && React.isValidElement<RadarAreaProps>(child)) {out.areas.push(child.props);}
+  if (role === ROLE_GRID && isValidElement<RadarGridProps>(child)) {out.grid = child.props;}
+  else if (role === ROLE_AXIS && isValidElement<RadarAxisProps>(child)) {out.axis = child.props;}
+  else if (role === ROLE_LABELS && isValidElement<RadarLabelsProps>(child)) {out.labels = child.props;}
+  else if (role === ROLE_AREA && isValidElement<RadarAreaProps>(child)) {out.areas.push(child.props);}
   else {
     // Unknown roles carry no radar geometry: only grid, axis, labels, and areas populate the spec.
   }
 }
 
-const extractRadarChildren = (children: React.ReactNode): ExtractedRadarChildren => {
+const extractRadarChildren = (children: ReactNode): ExtractedRadarChildren => {
   const out: ExtractedRadarChildren = { areas: [] };
-  const visit = (node: React.ReactNode): void => {
-    for (const child of React.Children.toArray(node)) {
-      if (React.isValidElement(child)) {
-        if (child.type === React.Fragment && React.isValidElement<{ children?: React.ReactNode }>(child)) {visit(child.props.children);}
+  const visit = (node: ReactNode): void => {
+    for (const child of Children.toArray(node)) {
+      if (isValidElement(child)) {
+        if (child.type === Fragment && isValidElement<{ children?: ReactNode }>(child)) {visit(child.props.children);}
         else {collectRadarChild(child, out);}
       }
     }
@@ -399,7 +410,7 @@ const flagRadarSvgRevealed = (container: HTMLElement): void => {
   if (svgForBkm && (svgForBkm.dataset.bkmRevealed ?? "") === "") {svgForBkm.dataset.bkmRevealed = "1";}
 }
 
-const beginRadarReveal = (container: HTMLElement, animate: boolean, revealedRef: React.RefObject<boolean>): SVGGElement | undefined => {
+const beginRadarReveal = (container: HTMLElement, animate: boolean, revealedRef: RefObject<boolean>): SVGGElement | undefined => {
   if (!animate || revealedRef.current) {return undefined;}
   const marksGroup = container.querySelector<SVGGElement>(MARKS_GROUP_SELECTOR);
   if (!marksGroup) {return undefined;}
@@ -708,9 +719,9 @@ const cancelRadarAnims = (anims: readonly Animation[]): void => {
 }
 
 interface RadarReplayRefs {
-  readonly prevMotionReplayKeyRef: React.RefObject<string>;
-  readonly revealAnimsRef: React.RefObject<Animation[]>;
-  readonly gridRevealedRef: React.RefObject<boolean>;
+  readonly prevMotionReplayKeyRef: RefObject<string>;
+  readonly revealAnimsRef: RefObject<Animation[]>;
+  readonly gridRevealedRef: RefObject<boolean>;
 }
 
 const resetRadarReplay = (motionReplayKey: string, refs: RadarReplayRefs): void => {
@@ -756,21 +767,21 @@ const RadarChart = ({
   className,
   style,
   children,
-}: Readonly<RadarChartProps>): React.ReactElement => {
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
+}: Readonly<RadarChartProps>): ReactElement => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const { width, height } = useDebouncedContainerSize(containerRef);
   const chartSize = fixedSize ?? Math.min(width, height);
 
-  const { grid, axis, labels, areas } = React.useMemo(
+  const { grid, axis, labels, areas } = useMemo(
     () => extractRadarChildren(children),
     [children],
   );
 
   const isControlled = controlledHoveredIndex !== undefined;
-  const [internalHoveredIndex, setInternalHoveredIndex] = React.useState<number | null>(null);
+  const [internalHoveredIndex, setInternalHoveredIndex] = useState<number | null>(null);
   const hoveredIndex = isControlled ? (controlledHoveredIndex ?? null) : internalHoveredIndex;
 
-  const setHoveredIndex = React.useCallback(
+  const setHoveredIndex = useCallback(
     (index: number | null | HoveredIndexUpdater) => {
       const prevValue = isControlled ? controlledHoveredIndex ?? null : internalHoveredIndex;
       const next = isHoveredIndexUpdater(index) ? index(prevValue) : index;
@@ -783,13 +794,13 @@ const RadarChart = ({
     [isControlled, onHoverChange, controlledHoveredIndex, internalHoveredIndex],
   );
 
-  const gridRevealedRef = React.useRef(false);
-  const revealAnimsRef = React.useRef<Animation[]>([]);
-  const revealDeadlineTimerRef = React.useRef<number | null>(null);
-  const revealPostPaintCancelRef = React.useRef<(() => void) | null>(null);
-  const isMountedRef = React.useRef(true);
+  const gridRevealedRef = useRef(false);
+  const revealAnimsRef = useRef<Animation[]>([]);
+  const revealDeadlineTimerRef = useRef<number | null>(null);
+  const revealPostPaintCancelRef = useRef<(() => void) | null>(null);
+  const isMountedRef = useRef(true);
 
-  const colorForIndex = React.useCallback(
+  const colorForIndex = useCallback(
     (index: number): string => {
       const item = data[index];
       const itemColor: string = item.color ?? "";
@@ -799,22 +810,22 @@ const RadarChart = ({
     [data],
   );
 
-  const resolvedAreas = React.useMemo<ResolvedRadarArea[]>(() => {
+  const resolvedAreas = useMemo<ResolvedRadarArea[]>(() => {
     const out: ResolvedRadarArea[] = [];
     for (const area of areas) {pushResolvedRadarArea({ area, colorForIndex, data, out });}
     return out;
   }, [areas, data, colorForIndex]);
 
-  const metricKeys = React.useMemo(() => metrics.map((metric) => metric.key), [metrics]);
+  const metricKeys = useMemo(() => metrics.map((metric) => metric.key), [metrics]);
   const areaCount = resolvedAreas.length;
 
-  const metricLabelByKey = React.useMemo(() => {
+  const metricLabelByKey = useMemo(() => {
     const map = new Map<string, string>();
     for (const metric of metrics) {map.set(metric.key, metric.label);}
     return map;
   }, [metrics]);
 
-  const allRows = React.useMemo<RadarRow[]>(() => {
+  const allRows = useMemo<RadarRow[]>(() => {
     // Wide->long reshape is a manual fold: Metric keys are dynamic strings, which match
     // No public fold overload (fields requires a literal tuple), so TanStack fold is unusable here.
     const rows: RadarRow[] = [];
@@ -834,9 +845,9 @@ const RadarChart = ({
     return rows;
   }, [resolvedAreas, metrics, motionReplayKey]);
 
-  const prevMotionReplayKeyRef = React.useRef(motionReplayKey);
+  const prevMotionReplayKeyRef = useRef(motionReplayKey);
 
-  const radarMarkMotion = React.useCallback(
+  const radarMarkMotion = useCallback(
     (ctx: Readonly<ChartMotionContext<RadarRow>>) => {
       if (!animate) {return false as const;}
       if (ctx.phase !== "enter") {
@@ -848,7 +859,7 @@ const RadarChart = ({
     [animate, enterDurationMs, enterTransition, levels, staggerScale],
   );
 
-  const radarAreaMark = React.useMemo(() => radialArea(allRows, {
+  const radarAreaMark = useMemo(() => radialArea(allRows, {
     angle: "metric",
     curve: curveLinearClosed,
     fill: makeRadarAreaFill(resolvedAreas, hoveredIndex),
@@ -862,7 +873,7 @@ const RadarChart = ({
     z: "replayGroup",
   }), [allRows, resolvedAreas, hoveredIndex, radarMarkMotion]);
 
-  const radarDotMark = React.useMemo(() => radialDot(allRows, {
+  const radarDotMark = useMemo(() => radialDot(allRows, {
     angle: "metric",
     fill: makeRadarDotFill(resolvedAreas, hoveredIndex),
     id: "radar-dot",
@@ -875,7 +886,7 @@ const RadarChart = ({
     z: "replayGroup",
   }), [allRows, resolvedAreas, hoveredIndex, radarMarkMotion]);
 
-  const definition = React.useMemo((): DomChartDefinition<RadarRow, string, number> | undefined => {
+  const definition = useMemo((): DomChartDefinition<RadarRow, string, number> | undefined => {
     if (chartSize < RADAR_MIN_CHART_SIZE_PX || resolvedAreas.length === 0 || metricKeys.length === 0) {return undefined;}
 
     // Group keys run through valueKey's string:length: wrapper; reproduce it to find the hovered node.
@@ -926,7 +937,7 @@ const RadarChart = ({
     motionReplayKey,
   ]);
 
-  const handleRender = React.useCallback(
+  const handleRender = useCallback(
     ({ container }: { container: HTMLElement }): (() => void) | undefined => {
       if (!beginRadarReveal(container, animate, gridRevealedRef)) {return;}
       // DurationFactor scales stagger delays only, not transition timing.
@@ -959,7 +970,7 @@ const RadarChart = ({
     [animate, enterDurationMs, enterTransition, levels, staggerScale],
   );
 
-  React.useLayoutEffect((): (() => void) | undefined => {
+  useLayoutEffect((): (() => void) | undefined => {
     const container = containerRef.current;
     if (!container) {return undefined;}
     // With no series there are no hover targets, so there is nothing to bind.
@@ -979,7 +990,7 @@ const RadarChart = ({
     };
   }, [areaCount, metricKeys, setHoveredIndex]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const revealAnims = revealAnimsRef.current;
     isMountedRef.current = true;
     return (): void => {
@@ -999,7 +1010,7 @@ const RadarChart = ({
   }, []);
 
 
-  React.useLayoutEffect((): (() => void) | undefined => {
+  useLayoutEffect((): (() => void) | undefined => {
     if (gridRevealedRef.current) {return undefined;}
     if (!animate) {return undefined;}
     const container = containerRef.current;
@@ -1016,7 +1027,7 @@ const RadarChart = ({
   }, [animate, handleRender]);
 
   // MotionReplayKey remounts grid/labels (WAAPI half); the area/dot half replays natively via keys.
-  React.useLayoutEffect((): (() => void) | undefined => {
+  useLayoutEffect((): (() => void) | undefined => {
     if (!animate || prevMotionReplayKeyRef.current === motionReplayKey) {return undefined;}
     resetRadarReplay(motionReplayKey, { gridRevealedRef, prevMotionReplayKeyRef, revealAnimsRef });
     const container = containerRef.current;
@@ -1024,7 +1035,7 @@ const RadarChart = ({
     return scheduleRadarReveal(container, (): boolean => animate && container.querySelector(MARKS_GROUP_SELECTOR) !== null && !hasLiveRevealAnims(container), handleRender);
   }, [animate, motionReplayKey, handleRender]);
 
-  const containerStyle = React.useMemo((): React.CSSProperties => ({
+  const containerStyle = useMemo((): CSSProperties => ({
     alignItems: "center",
     display: "flex",
     justifyContent: "center",
@@ -1074,4 +1085,3 @@ export type {
   RadarLabelsProps,
   RadarMetric,
 };
-export default RadarChart;

@@ -292,6 +292,3 @@ export {
 };
 export { HeatmapLegendGradient } from "./heatmap-legend-gradient";
 export { HeatmapLegendSwatch } from "./heatmap-legend-swatch";
-
-// Default export kept for parity with the legacy chart.
-export default HeatmapLegend;

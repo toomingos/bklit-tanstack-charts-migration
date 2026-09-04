@@ -1,6 +1,18 @@
 "use client";
 // RAF loop lerps y-domain per tick, commits to React at LIVE_FRAME_COMMIT_MS; samples carry true values.
-import * as React from "react";
+import {
+  Children,
+  Fragment,
+  isValidElement,
+  startTransition,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { bisector } from "d3-array";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { curveMonotoneX } from 'd3-shape';
@@ -110,9 +122,9 @@ interface LiveLineChartProps {
   lerpSpeed?: number;
   margin?: Partial<Margin>;
   paused?: boolean;
-  children?: React.ReactNode;
+  children?: ReactNode;
   className?: string;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
 }
 
 interface AnimFrame {
@@ -315,17 +327,17 @@ type LiveLineChildProps = LiveLineConfig &
   LiveXAxisConfig &
   LiveYAxisConfig &
   ChartTooltipConfig & {
-  children?: React.ReactNode;
+  children?: ReactNode;
   };
 
 /**
  * Collects one non-fragment child element into the live-line extraction sink; unknown roles collect nothing.
  *
- * @param {Readonly<React.ReactElement<LiveLineChildProps>>} child - Child element whose role selects the sink slot.
+ * @param {Readonly<ReactElement<LiveLineChildProps>>} child - Child element whose role selects the sink slot.
  * @param {ExtractedLiveLineChildren} out - Sink receiving the extracted configs.
  * @returns {void} Nothing; writes into out.
  */
-const collectLiveLineChild = (child: Readonly<React.ReactElement<LiveLineChildProps>>, out: ExtractedLiveLineChildren): void => {
+const collectLiveLineChild = (child: Readonly<ReactElement<LiveLineChildProps>>, out: ExtractedLiveLineChildren): void => {
   const role = roleOf(child.type);
   if (role === "liveLine") {out.liveLines.push(child.props);}
   else if (role === "liveXAxis") {out.liveXAxis = child.props;}
@@ -337,7 +349,7 @@ const collectLiveLineChild = (child: Readonly<React.ReactElement<LiveLineChildPr
   }
 };
 
-const extractLiveLineChildren = (children: React.ReactNode): ExtractedLiveLineChildren => {
+const extractLiveLineChildren = (children: ReactNode): ExtractedLiveLineChildren => {
   const out: ExtractedLiveLineChildren = {
     liveLines: [],
     liveXAxis: undefined,
@@ -345,10 +357,10 @@ const extractLiveLineChildren = (children: React.ReactNode): ExtractedLiveLineCh
     referenceAreas: [],
     tooltip: undefined,
   };
-  const visit = (node: React.ReactNode): void => {
-    for (const child of React.Children.toArray(node)) {
-      if (React.isValidElement<LiveLineChildProps>(child)) {
-        if (child.type === React.Fragment) {visit(child.props.children);}
+  const visit = (node: ReactNode): void => {
+    for (const child of Children.toArray(node)) {
+      if (isValidElement<LiveLineChildProps>(child)) {
+        if (child.type === Fragment) {visit(child.props.children);}
         else {collectLiveLineChild(child, out);}
       }
     }
@@ -413,7 +425,7 @@ const LiveTipChrome = ({
   resolvedStroke,
   innerWidth,
   registerLiveGroup,
-}: Readonly<LiveTipChromeProps>): React.ReactElement => {
+}: Readonly<LiveTipChromeProps>): ReactElement => {
   const pulse = cfg.pulse ?? true;
   const dotSize = cfg.dotSize ?? DEFAULT_LIVE_DOT_SIZE_PX;
   const badge = cfg.badge ?? true;
@@ -505,14 +517,14 @@ const LiveLineChart = ({
   children,
   className,
   style,
-}: LiveLineChartProps): React.ReactElement => {
+}: LiveLineChartProps): ReactElement => {
   // Fixed plot margins between commits: TanStack treats definition identity as its update boundary.
   const margin = useChartMargin(marginProp, DEFAULT_MARGIN);
-  const uid = React.useId();
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const uid = useId();
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const { width, height } = useMeasuredRect(containerRef);
 
-  const { liveLines, liveXAxis, liveYAxis, tooltip, referenceAreas: liveRefAreas } = React.useMemo(
+  const { liveLines, liveXAxis, liveYAxis, tooltip, referenceAreas: liveRefAreas } = useMemo(
     () => extractLiveLineChildren(children),
     [children],
   );
@@ -524,26 +536,26 @@ const LiveLineChart = ({
   const leadingMs = nowOffsetUnits * xTickUnitMs;
 
   const initialFrame: AnimFrame = { displayValue: value, now: Date.now(), seq: 0, trueValue: value, yMax: 100, yMin: 0 };
-  const animRef = React.useRef<AnimFrame>(initialFrame);
-  const [frame, setFrame] = React.useState<AnimFrame>(initialFrame);
-  const committedFrameRef = React.useRef(initialFrame);
-  const seqRef = React.useRef(0);
+  const animRef = useRef<AnimFrame>(initialFrame);
+  const [frame, setFrame] = useState<AnimFrame>(initialFrame);
+  const committedFrameRef = useRef(initialFrame);
+  const seqRef = useRef(0);
 
-  const pausedRef = React.useRef(paused);
+  const pausedRef = useRef(paused);
   pausedRef.current = paused;
-  const valueRef = React.useRef(value);
+  const valueRef = useRef(value);
   valueRef.current = value;
-  const lerpSpeedRef = React.useRef(lerpSpeed);
+  const lerpSpeedRef = useRef(lerpSpeed);
   lerpSpeedRef.current = lerpSpeed;
 
-  const targetRange = React.useMemo(
+  const targetRange = useMemo(
     () => computeTargetRange(data, value, exaggerate),
     [data, value, exaggerate],
   );
-  const targetRangeRef = React.useRef(targetRange);
+  const targetRangeRef = useRef(targetRange);
   targetRangeRef.current = targetRange;
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (innerWidth <= 0 || innerHeight <= 0) {return undefined;}
     let raf = 0;
     let lastFrameCommit = 0;
@@ -567,7 +579,7 @@ const LiveLineChart = ({
         const committed: AnimFrame = { ...next, seq: seqRef.current };
         committedFrameRef.current = committed;
         animRef.current = committed;
-        React.startTransition(() =>{  setFrame(committed); });
+        startTransition(() =>{  setFrame(committed); });
       }
       if (!shouldWake) {return;}
       raf = requestAnimationFrame(tick);
@@ -580,25 +592,25 @@ const LiveLineChart = ({
 
   // Every y domain reads the niced scale domain, never raw frame values (single shared extent).
   const domainEndMs = frame.now + leadingMs;
-  const xScale = React.useMemo(
+  const xScale = useMemo(
     () =>
       scaleUtc()
         .domain([new Date(domainEndMs - windowMs), new Date(domainEndMs)])
         .range([0, innerWidth]),
     [domainEndMs, windowMs, innerWidth],
   );
-  const yScale = React.useMemo(
+  const yScale = useMemo(
     () => scaleLinear().domain([frame.yMin, frame.yMax]).nice().range([innerHeight, 0]),
     [frame.yMin, frame.yMax, innerHeight],
   );
 
-  const xAccessor = React.useCallback((datum: Readonly<ChartDatum>): Date => coerceDatumDate(datum.date), []);
-  const keyAccessor = React.useCallback((datum: Readonly<ChartDatum>): ChartKey => {
+  const xAccessor = useCallback((datum: Readonly<ChartDatum>): Date => coerceDatumDate(datum.date), []);
+  const keyAccessor = useCallback((datum: Readonly<ChartDatum>): ChartKey => {
     const rawKey: unknown = datum.liveKey;
     return isString(rawKey) || isNumber(rawKey) ? rawKey : "";
   }, []);
 
-  const contextData = React.useMemo<ChartDatum[]>(() => {
+  const contextData = useMemo<ChartDatum[]>(() => {
     const windowStart = domainEndMs - windowMs;
     let startIdx = timeBisector.left(data, windowStart / MS_PER_SECOND, 0);
     if (startIdx > 0) {startIdx -= 1;}
@@ -614,7 +626,7 @@ const LiveLineChart = ({
     return records;
   }, [data, frame.now, frame.trueValue, frame.seq, domainEndMs, windowMs, dataKey, xTickUnitMs]);
 
-  const lineVisuals = React.useMemo(() => 
+  const lineVisuals = useMemo(() => 
     liveLines.map((cfg: ReadonlyLiveLineConfig) => {
       const momentum = detectMomentum(contextData, cfg.dataKey);
       const baseStroke = cfg.stroke ?? "var(--chart-line-primary)";
@@ -637,7 +649,7 @@ const LiveLineChart = ({
   , [liveLines, contextData, xScale, yScale, xAccessor, innerWidth]);
 
   // Explicit y1:0/y2:1 required: the library default gradient direction is the opposite.
-  const nativeLineGradients = React.useMemo(
+  const nativeLineGradients = useMemo(
     () =>
       lineVisuals.flatMap((visual: Readonly<(typeof lineVisuals)[number]>) => [
         {
@@ -668,9 +680,9 @@ const LiveLineChart = ({
 
   const tooltipOn = tooltip !== undefined && tooltip.enabled !== false;
   const chartConfig = useChartConfig();
-  const liveGroupElsRef = React.useRef<Map<string, SVGGElement>>(new Map());
+  const liveGroupElsRef = useRef<Map<string, SVGGElement>>(new Map());
   // Pill labels come from real per-datum formatted times; empty arrays leave the ticker unpainted.
-  const dateLabelsForPill = React.useMemo(() => {
+  const dateLabelsForPill = useMemo(() => {
     const formatTime = liveXAxis?.formatTime ?? defaultFormatTime;
     const labels = contextData.map((datum: Readonly<ChartDatum>) => {
       const dateVal = coerceDatumDate(datum.date);
@@ -689,11 +701,11 @@ const LiveLineChart = ({
     enabled: tooltipOn && liveXAxis !== undefined,
     tooltipSpring: chartConfig.tooltipSpring,
   });
-  const wasVisibleRef = React.useRef(false);
-  const liveXAxisRef = React.useRef(liveXAxis);
+  const wasVisibleRef = useRef(false);
+  const liveXAxisRef = useRef(liveXAxis);
   liveXAxisRef.current = liveXAxis;
 
-  const handleFocusChange = React.useCallback(
+  const handleFocusChange = useCallback(
     (points: readonly ReadonlyLivePoint[]) => {
       const [primary] = points;
       const dim = primary !== undefined;
@@ -718,20 +730,20 @@ const LiveLineChart = ({
     [tooltipOn, datePill],
   );
 
-  const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
-  const handleRender = React.useCallback((context: Readonly<ChartRendererRenderContext<ChartDatum, Date, number>>) => {
+  const interactionRef = useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
+  const handleRender = useCallback((context: Readonly<ChartRendererRenderContext<ChartDatum, Date, number>>) => {
     interactionRef.current = context.interaction;
   }, []);
 
   const crosshairGradientId = `bkm-live-crosshair-${uid}`;
-  const crosshairGradientDef = React.useMemo(() => {
+  const crosshairGradientDef = useMemo(() => {
     if (!(tooltipOn && (tooltip?.showCrosshair ?? true))) {return undefined;}
     const color = isString(tooltip?.indicatorColor) ? tooltip.indicatorColor : "var(--chart-crosshair)";
     return buildCrosshairGradientDef(crosshairGradientId, color);
   }, [tooltipOn, tooltip, crosshairGradientId]);
 
-  const renderTooltipBody = React.useCallback(
-    (ctx: Readonly<ChartTooltipBodyRenderContext<ChartDatum, Date, number>>): React.ReactNode =>
+  const renderTooltipBody = useCallback(
+    (ctx: Readonly<ChartTooltipBodyRenderContext<ChartDatum, Date, number>>): ReactNode =>
       renderSeriesTooltipBody(ctx, {
         buildRows: (datum: Readonly<ChartDatum>) =>
           lineVisuals.map((visual: Readonly<(typeof lineVisuals)[number]>) => {
@@ -753,7 +765,7 @@ const LiveLineChart = ({
     [tooltip, lineVisuals],
   );
 
-  const xTickValues = React.useMemo<Date[]>(() => {
+  const xTickValues = useMemo<Date[]>(() => {
     if (!liveXAxis) {return [];}
     const tickCount = liveXAxis.numTicks ?? numXTicks;
     const [start, end] = xScale.domain();
@@ -763,8 +775,8 @@ const LiveLineChart = ({
     return Array.from({ length: tickCount }, (_slot, index) => new Date(startMs + index * step));
   }, [liveXAxis, xScale, numXTicks]);
 
-  const yIntervalRef = React.useRef(0);
-  const yTickValues = React.useMemo<number[]>(() => {
+  const yIntervalRef = useRef(0);
+  const yTickValues = useMemo<number[]>(() => {
     if (!liveYAxis) {return [];}
     // Read the niced scale domain directly for tick sizing (legacy builds its yScale with nice:true).
     const [minVal, maxVal] = yScale.domain();
@@ -785,7 +797,7 @@ const LiveLineChart = ({
     return values;
   }, [liveYAxis, yScale, innerHeight]);
 
-  const definition = React.useMemo(() => {
+  const definition = useMemo(() => {
     if (width <= 0 || innerWidth <= 0 || innerHeight <= 0 || contextData.length < 2) {return undefined;}
     const marks: ChartMark<ChartDatum, Date, number>[] = [];
     for (const visual of lineVisuals) {
@@ -928,7 +940,7 @@ const LiveLineChart = ({
   const fadeMaskId = lineVisuals.length > 0 ? `bkm-live-fade-mask-${uid}` : undefined;
 
   // Stable identities for the object props below; each array names every value its body reads.
-  const containerStyle = React.useMemo<React.CSSProperties>(
+  const containerStyle = useMemo<CSSProperties>(
     () => ({
       height: 300,
       isolation: "isolate",
@@ -939,7 +951,7 @@ const LiveLineChart = ({
     }),
     [style],
   );
-  const referenceAreaGeom = React.useMemo<ReferenceAreaLayersGeom>(
+  const referenceAreaGeom = useMemo<ReferenceAreaLayersGeom>(
     () => ({
       height,
       isTimeScale: true,
@@ -950,7 +962,7 @@ const LiveLineChart = ({
     }),
     [height, margin, width, xDomainStart, xDomainEnd, yDomainStart, yDomainEnd],
   );
-  const fadeMaskStyle = React.useMemo(
+  const fadeMaskStyle = useMemo(
     () =>
       hasText(fadeMaskId)
         ? {
@@ -1001,7 +1013,7 @@ const LiveLineChart = ({
                 {lineVisuals.map((visual: Readonly<(typeof lineVisuals)[number]>) => {
                   const fadeId = `bkm-live-fade-${uid}-${visual.cfg.dataKey}`;
                   return (
-                    <React.Fragment key={visual.cfg.dataKey}>
+                    <Fragment key={visual.cfg.dataKey}>
                       <linearGradient id={fadeId} x1="0" x2="1" y1="0" y2="0">
                         <stop offset="0%" stopColor="white" stopOpacity={0} />
                         <stop offset="4%" stopColor="white" stopOpacity={1} />
@@ -1038,7 +1050,7 @@ const LiveLineChart = ({
                           />
                         </mask>
                       ) : undefined}
-                    </React.Fragment>
+                    </Fragment>
                   );
                 })}
                 {crosshairGradientDef ? (
@@ -1084,8 +1096,6 @@ const LiveLineChart = ({
     </div>
   );
 };
-
-export default LiveLineChart;
 
 export type { LiveLinePoint, LiveLineChartProps, Momentum };
 export { detectMomentum, LiveLineChart };

@@ -1,8 +1,8 @@
 import type { ReactElement, ReactNode } from "react";
-import { useRingStable, useRingHoverCoordinator } from '../ring-chart';
-import type { RingData } from '../ring-chart';
 import { CenterShell, centerStatContainerClassName, centerStatLabelClassName, centerStatValueClassName, defaultCenterStatFormat, useCenterStatHover } from './center-stat';
 import type { CenterStatFormat } from './center-stat';
+import { useRingStable, useRingHoverCoordinator } from './ring-context';
+import type { RingData } from './ring-context';
 
 // Inset subtracted from the inner diameter so the center stat box clears the ring edge.
 const CENTER_STAT_BOX_INSET_PX = 16;
@@ -69,5 +69,3 @@ RingCenter.displayName = "RingCenter";
 
 export { RingCenter };
 export type { RingCenterRenderProps, RingCenterProps };
-
-export default RingCenter;

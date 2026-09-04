@@ -1,10 +1,11 @@
 "use client";
 
-import * as React from "react";
+import { useMemo } from "react";
+import type { CSSProperties, ReactElement } from "react";
 
-const Badge = ({ count, size }: { readonly count: number; readonly size: number }): React.ReactElement => {
-  const badgeStyle = React.useMemo(
-    (): React.CSSProperties => ({
+const Badge = ({ count, size }: { readonly count: number; readonly size: number }): ReactElement => {
+  const badgeStyle = useMemo(
+    (): CSSProperties => ({
       alignItems: "center",
       backgroundColor: "var(--chart-marker-badge-background)",
       borderRadius: 9999,

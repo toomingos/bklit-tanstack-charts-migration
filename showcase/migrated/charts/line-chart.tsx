@@ -1569,5 +1569,3 @@ export const LineChart = ({
     </ChartSelectionContext.Provider>
   );
 };
-
-export default LineChart;

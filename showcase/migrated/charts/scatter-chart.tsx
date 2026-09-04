@@ -1,5 +1,13 @@
 // Bklit ScatterChart on TanStack Charts. One dot mark per series (gradient fill+ring); no decimation.
-import * as React from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { RendererChart } from '@tanstack/react-charts/tooltip';
 import type { ChartTooltipBodyRenderContext } from '@tanstack/react-charts/tooltip';
@@ -488,9 +496,9 @@ const assembleScatterDefinition = ({
 };
 
 // Hidden defs svg sits off-layout; the host reserves no space for it.
-const SCATTER_DEFS_SVG_STYLE: React.CSSProperties = { position: "absolute" };
+const SCATTER_DEFS_SVG_STYLE: CSSProperties = { position: "absolute" };
 // Selection overlay covers the plot without intercepting pointer input.
-const SCATTER_OVERLAY_HOST_STYLE: React.CSSProperties = { inset: 0, pointerEvents: "none", position: "absolute" };
+const SCATTER_OVERLAY_HOST_STYLE: CSSProperties = { inset: 0, pointerEvents: "none", position: "absolute" };
 
 // Fallback tooltip rows (bklit parity): one row per series, dot color lookup by mark id.
 const buildScatterFallbackTooltipRows = (
@@ -524,7 +532,7 @@ const buildDefaultTooltipBody = ({
   resolvedSeries,
   tooltip,
   xDataKey,
-}: Readonly<BuildDefaultTooltipBodyParams>): React.ReactNode => {
+}: Readonly<BuildDefaultTooltipBodyParams>): ReactNode => {
   const dateValue = datum[xDataKey];
   const title: string | undefined = dateValue instanceof Date ? weekdayDateFmt.format(dateValue) : undefined;
   const colorEntries: (readonly [string, string])[] = [];
@@ -667,7 +675,7 @@ interface ScatterChartProps {
   enterTransition?: EnterTransition;
   /** Replay epoch input: bumping it replays the enter reveal. */
   revealSignature?: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
 }
 
 interface ScatterGradientDef {
@@ -699,45 +707,45 @@ const ScatterChart = ({
   className,
   onPhaseChange,
   children,
-}: Readonly<ScatterChartProps>): React.ReactElement => {
+}: Readonly<ScatterChartProps>): ReactElement => {
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const width = useContainerWidth(containerRef);
   // Bklit ScatterChartInner starts unloaded with no status prop: first phase is always "revealing".
-  const phaseRef = React.useRef<ChartPhase>("revealing");
-  const dragSelectionActiveRef = React.useRef(false);
+  const phaseRef = useRef<ChartPhase>("revealing");
+  const dragSelectionActiveRef = useRef(false);
   const { captureRenderContext, sceneRef, clientToScene } = useFocusInjection<ChartDatum, Date, number>();
-  const revealDeadlineTimerRef = React.useRef<number | null>(null);
+  const revealDeadlineTimerRef = useRef<number | null>(null);
   // Reveal runs once per lifetime; later data swaps snap (bklit StaticSeriesPointMarker).
   // Replay key (sankey shape): a signature bump re-opens a reveal window a boolean would snap shut.
-  const seenRevealKeyRef = React.useRef<{ signature: string; duration: number } | null>(null);
+  const seenRevealKeyRef = useRef<{ signature: string; duration: number } | null>(null);
   // Reveal span coerces springs to tweens (bklit animation.ts:18).
-  const { durationMs: revealDurationMs, easingCss: revealEasingCss } = React.useMemo(
+  const { durationMs: revealDurationMs, easingCss: revealEasingCss } = useMemo(
     () => clipRevealTiming(enterTransition, animationDuration, animationEasing),
     [enterTransition, animationDuration, animationEasing],
   );
   // Derived render value (stable unless its inputs change); the render callback closes over it.
-  const revealKey = React.useMemo(
+  const revealKey = useMemo(
     () => ({ duration: animationDuration, signature: revealSignature }),
     [animationDuration, revealSignature],
   );
-  const onPhaseChangeRef = React.useRef(onPhaseChange);
+  const onPhaseChangeRef = useRef(onPhaseChange);
   // Latest-callback sync runs post-commit so the render body stays pure.
-  React.useEffect(() => {
+  useEffect(() => {
     onPhaseChangeRef.current = onPhaseChange;
   });
-  const setPhase = React.useCallback((phase: ChartPhase) => {
+  const setPhase = useCallback((phase: ChartPhase) => {
     if (phaseRef.current === phase) {return;}
     phaseRef.current = phase;
     onPhaseChangeRef.current?.(phase);
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     onPhaseChangeRef.current?.("revealing");
   }, []);
 
   // Teardown cancels the reveal deadline (native motion needs no imperative cancel).
-  React.useEffect(() =>
+  useEffect(() =>
     (): void => {
       if (revealDeadlineTimerRef.current !== null) {
         globalThis.clearTimeout(revealDeadlineTimerRef.current);
@@ -746,7 +754,7 @@ const ScatterChart = ({
     }
   , []);
 
-  const { scatters, grid, xAxis, background, tooltip } = React.useMemo(
+  const { scatters, grid, xAxis, background, tooltip } = useMemo(
     () => extractChildren(children),
     [children],
   );
@@ -757,7 +765,7 @@ const ScatterChart = ({
   const gradientBaseId = useSanitizedId();
   const crosshairGradientId = `${gradientBaseId}-crosshair-fade`;
 
-  const resolvedSeries = React.useMemo<ResolvedSeries[]>(
+  const resolvedSeries = useMemo<ResolvedSeries[]>(
     () =>
       scatters.map((series, index) => {
         const seriesColor =
@@ -791,14 +799,14 @@ const ScatterChart = ({
   );
 
   // XRangePadding is max(radius) + 10, or flat 12px with no series yet (bklit shell).
-  const xRangePadding = React.useMemo(() => {
+  const xRangePadding = useMemo(() => {
     if (resolvedSeries.length === 0) {return SCATTER_EMPTY_RANGE_PADDING_PX;}
     return Math.max(...resolvedSeries.map((series) => series.radius)) + SCATTER_RANGE_PADDING_EXTRA_PX;
   }, [resolvedSeries]);
 
   // Bklit parity: negatives ignored, max floored at 0, *1.1, fallback 100; nice() from the scale.
   // Per-axis grouping keeps scatter's own rule via the resolveDomain seam (not the time-series one).
-  const resolveScatterAxisDomain = React.useCallback(
+  const resolveScatterAxisDomain = useCallback(
     (axisSeries: readonly { readonly dataKey: string }[]): [number, number] => {
       let max = 0;
       for (const row of data) {
@@ -812,7 +820,7 @@ const ScatterChart = ({
     [data],
   );
 
-  const yDomainsByAxis = React.useMemo(
+  const yDomainsByAxis = useMemo(
     () =>
       resolveYDomainsByAxis({
         resolveDomain: resolveScatterAxisDomain,
@@ -822,13 +830,13 @@ const ScatterChart = ({
   );
 
   // Same closure, not domainForAxis: identical empty answer today, tied together if either changes.
-  const yDomain = React.useMemo<[number, number]>(
+  const yDomain = useMemo<[number, number]>(
     () => yDomainsByAxis[DEFAULT_Y_AXIS_ID] ?? resolveScatterAxisDomain([]),
     [yDomainsByAxis, resolveScatterAxisDomain],
   );
 
   // Secondary axes reproject into the NICED tuple, not yDomain itself (yScale nices yDomain).
-  const nicedDomainsByAxis = React.useMemo(() => {
+  const nicedDomainsByAxis = useMemo(() => {
     const out: Record<string, [number, number]> = {};
     for (const [axisId, domain] of Object.entries(yDomainsByAxis)) {
       const niced = createNicedYScale(domain).domain();
@@ -837,20 +845,20 @@ const ScatterChart = ({
     }
     return out;
   }, [yDomainsByAxis]);
-  const nicedYDomainScatter = React.useMemo<[number, number]>(() => {
+  const nicedYDomainScatter = useMemo<[number, number]>(() => {
     const niced = createNicedYScale(yDomain).domain();
     return [niced[0] ?? yDomain[0], niced[1] ?? yDomain[1]];
   }, [yDomain]);
-  const projectorFor = React.useMemo(
+  const projectorFor = useMemo(
     () => createAxisValueProjector(nicedDomainsByAxis, nicedYDomainScatter),
     [nicedDomainsByAxis, nicedYDomainScatter],
   );
 
   // Single shared x-extent feeds the chart scale, selection scale, and reference-area domain.
-  const timeExtentScatter = React.useMemo(() => computeTimeExtent(renderData, xDataKey), [renderData, xDataKey]);
+  const timeExtentScatter = useMemo(() => computeTimeExtent(renderData, xDataKey), [renderData, xDataKey]);
 
   // Inset ranges need the resolve() escape hatch: plain instances get re-ranged by TanStack.
-  const xScale = React.useMemo<ChartScale>(() => {
+  const xScale = useMemo<ChartScale>(() => {
     const { minTime, maxTime } = timeExtentScatter ?? { maxTime: 0, minTime: 0 };
     return {
       id: "x",
@@ -898,7 +906,7 @@ const ScatterChart = ({
 
   // One dot() mark per series with gradient fill+ring halves per-point DOM nodes (40k to 20k at n=10k).
   // Gradient edges use ~1px bands, not hard stops: hard stops facet into polygons at small radii.
-  const gradientDefs = React.useMemo<readonly ScatterGradientDef[]>(
+  const gradientDefs = useMemo<readonly ScatterGradientDef[]>(
     () => {
       const defs: ScatterGradientDef[] = [];
       for (const series of resolvedSeries) {
@@ -924,13 +932,13 @@ const ScatterChart = ({
     },
     [gradientBaseId, resolvedSeries],
   );
-  const gradientIdBySeries = React.useMemo(() => {
+  const gradientIdBySeries = useMemo(() => {
     const map = new Map<string, string>();
     for (const def of gradientDefs) {map.set(def.dataKey, def.id);}
     return map;
   }, [gradientDefs]);
 
-  const yScale = React.useMemo<ChartScale>(
+  const yScale = useMemo<ChartScale>(
     () => ({
       id: "y",
       resolve(context): ResolvedScale {
@@ -961,18 +969,18 @@ const ScatterChart = ({
   );
 
   // Band-category focus reproduces bklit bisect semantics over ChartPoints (strict > tie-break).
-  const scatterFocusStrategy = React.useMemo(
+  const scatterFocusStrategy = useMemo(
     () => createScatterFocusStrategy(phaseRef),
     [],
   );
 
   const chartConfig = useChartConfig();
 
-  const [labelFade, setLabelFade] = React.useState<ScatterLabelFade | null>(null);
+  const [labelFade, setLabelFade] = useState<ScatterLabelFade | null>(null);
   // PointerFocusActive drives the base layer's dim+blur class at mark-build time (no blur in states).
-  const [pointerFocusActive, setPointerFocusActive] = React.useState(false);
+  const [pointerFocusActive, setPointerFocusActive] = useState(false);
 
-  const definition = React.useMemo((): DomChartDefinition<ChartDatum, Date, number> | undefined => {
+  const definition = useMemo((): DomChartDefinition<ChartDatum, Date, number> | undefined => {
     if (width <= 0) {return undefined;}
     const innerWScatterEnter = Math.max(0, width - margin.left - margin.right);
     const durationSecScatterEnter = revealDurationMs / MS_PER_SECOND;
@@ -1017,15 +1025,15 @@ const ScatterChart = ({
   }, [renderData, xDataKey, resolvedSeries, grid, width, yScale, xScale, margin, gradientIdBySeries, scatterFocusStrategy, projectorFor, tooltip, chartConfig.tooltipBoxSpring, chartConfig.tooltipSpring, crosshairGradientId, xAxis, labelFade, revealDurationMs, revealEasingCss, pointerFocusActive]);
 
   const tooltipEnabled = tooltip?.enabled ?? false;
-  const pillChromeRef = React.useRef<ScatterPillChrome | null>(null);
-  const pillChromeStateRef = React.useRef<ScatterPillChromeState>(INITIAL_SCATTER_PILL_CHROME_STATE);
-  const dateLabelsForPill = React.useMemo(() => renderData.map((datum: Readonly<ChartDatum>) => {
+  const pillChromeRef = useRef<ScatterPillChrome | null>(null);
+  const pillChromeStateRef = useRef<ScatterPillChromeState>(INITIAL_SCATTER_PILL_CHROME_STATE);
+  const dateLabelsForPill = useMemo(() => renderData.map((datum: Readonly<ChartDatum>) => {
     const value = datum[xDataKey];
     if (value instanceof Date) {return shortDateFmt.format(value);}
     return stringifyDatumValue(value, "");
   }), [renderData, xDataKey]);
   // Chrome reads latest committed state lazily via getState; sync runs post-commit, never during render.
-  React.useEffect(() => {
+  useEffect(() => {
     pillChromeStateRef.current = {
       dateLabels: dateLabelsForPill,
       pointCount: renderData.length,
@@ -1035,10 +1043,10 @@ const ScatterChart = ({
     };
   });
 
-  const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
+  const overlayHostRef = useRef<HTMLDivElement | null>(null);
   const hasDefinition = width > 0;
 
-  const handleLabelFadeChange = React.useCallback(
+  const handleLabelFadeChange = useCallback(
     (fade: ScatterLabelFade | null) => {
       setLabelFade((prev) => {
         if (fade === null) {return prev === null ? prev : null;}
@@ -1049,7 +1057,7 @@ const ScatterChart = ({
     [],
   );
 
-  React.useLayoutEffect((): (() => void) | undefined => {
+  useLayoutEffect((): (() => void) | undefined => {
     const el = overlayHostRef.current;
     // The host only mounts once the chart has a definition (width > 0), so the
     // Width flag doubles as the re-attach trigger when the host appears late.
@@ -1067,7 +1075,7 @@ const ScatterChart = ({
     };
   }, [tooltipEnabled, hasDefinition, chartConfig.tooltipSpring, handleLabelFadeChange]);
 
-  const handleFocusGroupChange = React.useCallback(
+  const handleFocusGroupChange = useCallback(
     (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
       // Drag arms on pointerdown and clears the tooltip; hover stays suppressed for the drag.
       if (dragSelectionActiveRef.current) {
@@ -1085,7 +1093,7 @@ const ScatterChart = ({
   );
 
   // Tooltip panel style merge: backgroundColor wins when non-empty.
-  const tooltipPanelStyle = React.useMemo<React.CSSProperties | undefined>(() => {
+  const tooltipPanelStyle = useMemo<CSSProperties | undefined>(() => {
     const panelStyle = tooltip?.panelStyle;
     const backgroundColor = tooltip?.backgroundColor;
     if (panelStyle === undefined && (backgroundColor === undefined || backgroundColor === "")) {return undefined;}
@@ -1093,12 +1101,12 @@ const ScatterChart = ({
     return { ...panelStyle, backgroundColor };
   }, [tooltip]);
 
-  const renderTooltipBody = React.useCallback(
-    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode => {
+  const renderTooltipBody = useCallback(
+    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): ReactNode => {
       if (ctx.points.length === 0) {return undefined;}
       const [primary] = ctx.points;
       const { datum } = primary;
-      const body: React.ReactNode = tooltip?.content
+      const body: ReactNode = tooltip?.content
         ? tooltip.content({
             index: primary.datumIndex,
             point: datum,
@@ -1117,7 +1125,7 @@ const ScatterChart = ({
   const innerWidthSelection = Math.max(0, width - margin.left - margin.right);
 
   // Mount reveal is native per-element enter fade (same delay formula); handleRender tracks phase only.
-  const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
+  const handleRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     handleScatterRender({
       animationDuration,
       captureRenderContext,
@@ -1130,14 +1138,14 @@ const ScatterChart = ({
     });
   }, [animationDuration, revealDurationMs, revealKey, setPhase, captureRenderContext]);
 
-  const refAreaChildrenScatter = React.useMemo(() => extractReferenceAreaProps(children), [children]);
+  const refAreaChildrenScatter = useMemo(() => extractReferenceAreaProps(children), [children]);
   const heightPxScatter = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
-  const xDomainScatter: [Date, Date] | undefined = React.useMemo(
+  const xDomainScatter: [Date, Date] | undefined = useMemo(
     () => timeExtentScatter ? [new Date(timeExtentScatter.minTime), new Date(timeExtentScatter.maxTime)] : undefined,
     [timeExtentScatter],
   );
 
-  const yGradientDefs = React.useMemo<readonly ScatterYGradientDef[]>(
+  const yGradientDefs = useMemo<readonly ScatterYGradientDef[]>(
     () =>
       resolvedSeries
         .filter((series): series is ResolvedSeries & { readonly yGradId: string } => series.useYGradient && series.yGradId !== undefined)
@@ -1145,7 +1153,7 @@ const ScatterChart = ({
     [resolvedSeries],
   );
 
-  const crosshairFadeGradient = React.useMemo((): { color: string; id: string; stops: IndicatorFadeGradientStop[] } | undefined => {
+  const crosshairFadeGradient = useMemo((): { color: string; id: string; stops: IndicatorFadeGradientStop[] } | undefined => {
     if (!(tooltip?.enabled ?? false) || !(tooltip?.showCrosshair ?? true)) {return undefined;}
     const indicatorCfg = toIndicatorConfig(tooltip);
     if (indicatorCfg.dasharray !== undefined && indicatorCfg.dasharray !== "") {return undefined;}
@@ -1159,7 +1167,7 @@ const ScatterChart = ({
     };
   }, [tooltip, crosshairGradientId]);
 
-  const invertSceneXScatter = React.useCallback(
+  const invertSceneXScatter = useCallback(
     (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? undefined,
     [sceneRef],
   );
@@ -1182,13 +1190,13 @@ const ScatterChart = ({
     xDataKey,
   });
   const scatterChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
-  const containerStyle = React.useMemo<React.CSSProperties>(
+  const containerStyle = useMemo<CSSProperties>(
     () => ({ aspectRatio, isolation: "isolate", position: "relative", touchAction: "none", width: "100%" }),
     [aspectRatio],
   );
 
   const showDefsSvg = gradientDefs.length > 0 || yGradientDefs.length > 0 || crosshairFadeGradient !== undefined;
-  const crosshairGradientNode: React.ReactNode = crosshairFadeGradient ? (
+  const crosshairGradientNode: ReactNode = crosshairFadeGradient ? (
     <linearGradient
       key={crosshairFadeGradient.id}
       id={crosshairFadeGradient.id}
@@ -1243,7 +1251,7 @@ const ScatterChart = ({
       <stop offset="100%" stopColor={def.to} />
     </linearGradient>
   ));
-  const defsSvg: React.ReactNode = showDefsSvg ? (
+  const defsSvg: ReactNode = showDefsSvg ? (
     // Defs svg renders AFTER the chart: the harness locates charts via #chart-root svg.first().
     <svg
       width={0}
@@ -1260,7 +1268,7 @@ const ScatterChart = ({
     </svg>
   ) : undefined;
 
-  const rendererNode: React.ReactNode = definition !== undefined && (
+  const rendererNode: ReactNode = definition !== undefined && (
     <RendererChart
       ariaLabel="Scatter chart"
       aspectRatio={parseAspectRatio(aspectRatio)}
@@ -1271,7 +1279,7 @@ const ScatterChart = ({
       renderTooltipBody={renderTooltipBody}
     />
   );
-  const refAreaGeom = React.useMemo(() => ({
+  const refAreaGeom = useMemo(() => ({
     height: heightPxScatter,
     isTimeScale: true,
     margin,
@@ -1282,13 +1290,13 @@ const ScatterChart = ({
     yDomain: nicedYDomainScatter,
     yDomainsByAxis: nicedDomainsByAxis,
   }), [heightPxScatter, margin, nicedDomainsByAxis, nicedYDomainScatter, width, xDomainScatter, xRangePadding]);
-  const refAreaNode: React.ReactNode = heightPxScatter > 0 && (
+  const refAreaNode: ReactNode = heightPxScatter > 0 && (
     <ReferenceAreaLayers
       configs={refAreaChildrenScatter}
       geom={refAreaGeom}
     />
   );
-  const overlayNode: React.ReactNode = tooltipEnabled && (
+  const overlayNode: ReactNode = tooltipEnabled && (
     <div
       ref={overlayHostRef}
       style={SCATTER_OVERLAY_HOST_STYLE}
@@ -1327,4 +1335,3 @@ const ScatterChart = ({
 
 export type { ScatterChartProps };
 export { DEFAULT_SCATTER_COLORS, ScatterChart };
-export default ScatterChart;

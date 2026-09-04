@@ -1,6 +1,7 @@
 "use client";
 
-import * as React from "react";
+import { Children, Fragment, createContext, isValidElement, useCallback, useEffect, useRef, useState } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
 import type { ChartValue } from "@tanstack/charts";
 import { resolveNearestIndex } from "./bisect";
 import { roleOf } from "./children-extract";
@@ -38,22 +39,22 @@ const useChartSelection = (params: {
   xDataKey: string;
   resolveScenePos: (clientX: number, clientY: number) => { x: number; y: number } | null;
   invertSceneX: (sceneX: number) => Readonly<ChartValue> | undefined;
-  containerRef: React.RefObject<HTMLDivElement | null>;
+  containerRef: RefObject<HTMLDivElement | null>;
   onDragStart?: () => void;
   onDragEnd?: () => void;
 }): ChartSelectionResult => {
   const { enabled, innerWidth, marginLeft, data, xDataKey, resolveScenePos, invertSceneX, containerRef, onDragStart, onDragEnd } = params;
-  const [selection, setSelection] = React.useState<ChartSelection | null>(null);
-  const draggingRef = React.useRef(false);
-  const dragStartSceneXRef = React.useRef(0);
-  const [dragCallbacks, setDragCallbacks] = React.useState(() => ({ onDragEnd, onDragStart }));
-  const [prevDragCallbacks, setPrevDragCallbacks] = React.useState({ onDragEnd, onDragStart });
+  const [selection, setSelection] = useState<ChartSelection | null>(null);
+  const draggingRef = useRef(false);
+  const dragStartSceneXRef = useRef(0);
+  const [dragCallbacks, setDragCallbacks] = useState(() => ({ onDragEnd, onDragStart }));
+  const [prevDragCallbacks, setPrevDragCallbacks] = useState({ onDragEnd, onDragStart });
   if (prevDragCallbacks.onDragStart !== onDragStart || prevDragCallbacks.onDragEnd !== onDragEnd) {
     setPrevDragCallbacks({ onDragEnd, onDragStart });
     setDragCallbacks({ onDragEnd, onDragStart });
   }
 
-  const resolveIndexFromScene = React.useCallback(
+  const resolveIndexFromScene = useCallback(
     (sceneX: number): number => {
       if (data.length === 0) {return 0;}
       const inverted = invertSceneX(sceneX);
@@ -75,7 +76,7 @@ const useChartSelection = (params: {
     [invertSceneX, data, xDataKey],
   );
 
-  React.useEffect((): (() => void) | undefined => {
+  useEffect((): (() => void) | undefined => {
     if (!enabled || innerWidth <= 0) {return undefined;}
     const el = containerRef.current;
     if (!el) {return undefined;}
@@ -184,12 +185,12 @@ const useChartSelection = (params: {
     };
   }, [enabled, innerWidth, marginLeft, resolveScenePos, resolveIndexFromScene, containerRef, dragCallbacks]);
 
-  const clearSelection = React.useCallback(() =>{  setSelection(null); }, []);
+  const clearSelection = useCallback(() =>{  setSelection(null); }, []);
 
   return { clearSelection, selection };
 }
 
-const ChartSelectionContext = React.createContext<ChartSelection | null>(null);
+const ChartSelectionContext = createContext<ChartSelection | null>(null);
 
 interface SegmentComponent {
   key: string;
@@ -198,15 +199,15 @@ interface SegmentComponent {
 }
 
 interface SegmentChildVisit {
-  readonly child: React.ReactNode;
+  readonly child: ReactNode;
   readonly out: SegmentComponent[];
-  readonly visit: (node: React.ReactNode) => void;
+  readonly visit: (node: ReactNode) => void;
 }
 
 interface SegmentElementVisit {
-  readonly child: React.ReactElement<{ children?: React.ReactNode } & ChartDatum>;
+  readonly child: ReactElement<{ children?: ReactNode } & ChartDatum>;
   readonly out: SegmentComponent[];
-  readonly visit: (node: React.ReactNode) => void;
+  readonly visit: (node: ReactNode) => void;
 }
 
 // Non-fragment element step: role-bearing children collect, others recurse into their children.
@@ -224,18 +225,18 @@ const collectSegmentElement = (params: Readonly<SegmentElementVisit>): void => {
 // One step of the segment-component walk: fragments recurse, elements collect.
 const collectSegmentChild = (params: Readonly<SegmentChildVisit>): void => {
   const { child, out, visit } = params;
-  if (!React.isValidElement<{ children?: React.ReactNode } & ChartDatum>(child)) {return;}
-  if (child.type === React.Fragment) {
+  if (!isValidElement<{ children?: ReactNode } & ChartDatum>(child)) {return;}
+  if (child.type === Fragment) {
     visit(child.props.children);
   } else {
     collectSegmentElement({ child, out, visit });
   }
 };
 
-const extractSegmentComponents = (children: React.ReactNode): SegmentComponent[] => {
+const extractSegmentComponents = (children: ReactNode): SegmentComponent[] => {
   const out: SegmentComponent[] = [];
-  const visit = (node: React.ReactNode): void => {
-    for (const child of React.Children.toArray(node)) {
+  const visit = (node: ReactNode): void => {
+    for (const child of Children.toArray(node)) {
       collectSegmentChild({ child, out, visit });
     }
   };

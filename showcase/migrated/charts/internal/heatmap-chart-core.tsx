@@ -11,7 +11,6 @@ import { HEATMAP_DEFAULT_ENTER_DURATION_MS, HEATMAP_DEFAULT_ENTER_TRANSITION, HE
 import type { HeatmapEnterTransition } from "./heatmap-animation";
 import type { HeatmapColumn, HeatmapColumnSeparatorsConfig, HeatmapWeekStartDay } from "./heatmap-utils";
 import type { HeatmapLevelColors, HeatmapLevelStyles } from "./heatmap-colors";
-import type { ChartStatus } from "./types";
 import { usePositiveChartSize } from "./use-container-size";
 
 // This file is extracted from heatmap-chart.tsx and holds the actual HeatmapChart implementation.
@@ -19,7 +18,7 @@ import { usePositiveChartSize } from "./use-container-size";
 // This lets heatmap-chart-loading.tsx import it as a sibling instead of reaching back up to the barrel file, which would create an import cycle.
 // The top-level heatmap-chart.tsx re-exports the same names, so the public API (HeatmapChart, HeatmapChartProps) is unchanged.
 
-const DEFAULT_CHART_STATUS: ChartStatus = "ready";
+const DEFAULT_CHART_STATUS: HeatmapChartInnerProps["status"] = "ready";
 const DEFAULT_HEATMAP_MIN_HEIGHT_PX = 160;
 
 interface HeatmapChartProps {
@@ -35,7 +34,7 @@ interface HeatmapChartProps {
   levelStyles?: HeatmapLevelStyles;
   aspectRatio?: string;
   className?: string;
-  status?: ChartStatus;
+  status?: HeatmapChartInnerProps["status"];
   loadingLabel?: string;
   animationDuration?: number;
   enterTransition?: HeatmapEnterTransition;

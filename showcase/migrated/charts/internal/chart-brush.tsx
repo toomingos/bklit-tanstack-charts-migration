@@ -2,7 +2,7 @@
 
 import type { BrushHost, BrushChromePattern, BrushSelectedBoxStyle } from "./brush-chrome";
 import type { BrushSelection } from "./brush-selection";
-import { CHART_ROLE } from "../children";
+import { CHART_ROLE } from "./chart-child-carrier";
 
 type BrushSelectionPattern = BrushChromePattern;
 type ChartBrushSelectedBoxStyle = BrushSelectedBoxStyle;
@@ -35,6 +35,3 @@ ChartBrush.displayName = "ChartBrush";
 export type { BrushHost } from "./brush-chrome";
 export type { BrushSelectionPattern, ChartBrushSelectedBoxStyle, ChartBrushProps };
 export { ChartBrush };
-
-// Legacy parity: bklit ships `export default ChartBrush`.
-export default ChartBrush;

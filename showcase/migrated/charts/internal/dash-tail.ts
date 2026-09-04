@@ -1,6 +1,7 @@
 "use client";
 
-import * as React from "react";
+import { createElement, useMemo, useState } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
 import { useDashTailMeasurement } from "./dash-tail-measure";
 import type { DashTailSeries, Measured } from "./dash-tail-measure";
 import type { ChartDatum } from "./types";
@@ -18,7 +19,7 @@ const resolveDashTailBounds = (dashFromIndex: number | undefined, dataLength: nu
 
 
 interface DashTailOverlayProps {
-  readonly containerRef: React.RefObject<HTMLElement | null>;
+  readonly containerRef: RefObject<HTMLElement | null>;
   readonly width: number;
   readonly height: number;
   readonly margin: { readonly top: number; readonly left: number; readonly right: number; readonly bottom: number };
@@ -39,15 +40,15 @@ interface DashTailEntryOptions {
   readonly innerHeight: number;
 }
 
-const renderDashTailEntry = (options: Readonly<DashTailEntryOptions>): React.ReactElement => {
+const renderDashTailEntry = (options: Readonly<DashTailEntryOptions>): ReactElement => {
   const { baseId, entryKey, innerHeight, innerWidth, marginLeft, marginTop, measuredEntry } = options;
   const clipId = `${baseId}-dash-${entryKey.replaceAll(/[^a-zA-Z0-9_-]/gu, "_")}`;
   const pad = measuredEntry.strokeWidth * 2;
   const tailWidth = Math.max(0, marginLeft + innerWidth - measuredEntry.dashStartX + pad);
-  const defsEl = React.createElement("defs", undefined, React.createElement("clipPath", { id: clipId }, React.createElement("rect", { height: innerHeight + pad, width: tailWidth, x: measuredEntry.dashStartX - measuredEntry.strokeWidth, y: marginTop - measuredEntry.strokeWidth })));
-  const basePathEl = React.createElement("path", { d: measuredEntry.pathD, fill: "none", stroke: measuredEntry.stroke, strokeDasharray: `${measuredEntry.dashStartLength} ${Math.max(1, measuredEntry.pathLength - measuredEntry.dashStartLength)}`, strokeLinecap: "round", strokeWidth: measuredEntry.strokeWidth });
-  const tailPathEl = React.createElement("path", { clipPath: `url(#${clipId})`, d: measuredEntry.pathD, fill: "none", stroke: measuredEntry.stroke, strokeDasharray: measuredEntry.dashArray, strokeLinecap: "round", strokeWidth: measuredEntry.strokeWidth });
-  return React.createElement(
+  const defsEl = createElement("defs", undefined, createElement("clipPath", { id: clipId }, createElement("rect", { height: innerHeight + pad, width: tailWidth, x: measuredEntry.dashStartX - measuredEntry.strokeWidth, y: marginTop - measuredEntry.strokeWidth })));
+  const basePathEl = createElement("path", { d: measuredEntry.pathD, fill: "none", stroke: measuredEntry.stroke, strokeDasharray: `${measuredEntry.dashStartLength} ${Math.max(1, measuredEntry.pathLength - measuredEntry.dashStartLength)}`, strokeLinecap: "round", strokeWidth: measuredEntry.strokeWidth });
+  const tailPathEl = createElement("path", { clipPath: `url(#${clipId})`, d: measuredEntry.pathD, fill: "none", stroke: measuredEntry.stroke, strokeDasharray: measuredEntry.dashArray, strokeLinecap: "round", strokeWidth: measuredEntry.strokeWidth });
+  return createElement(
     "g",
     { "data-bkm-dash-tail": entryKey, key: entryKey },
     defsEl,
@@ -56,12 +57,12 @@ const renderDashTailEntry = (options: Readonly<DashTailEntryOptions>): React.Rea
   );
 }
 
-const DashTailOverlay = (props: Readonly<DashTailOverlayProps>): React.ReactNode => {
+const DashTailOverlay = (props: Readonly<DashTailOverlayProps>): ReactNode => {
   const { containerRef, width, height, margin, renderData, xDataKey, series, innerWidth, innerHeight } = props;
   const baseId = useSanitizedId();
-  const [measured, setMeasured] = React.useState<Map<string, Measured>>(new Map());
+  const [measured, setMeasured] = useState<Map<string, Measured>>(new Map());
 
-  const activeSeries = React.useMemo(
+  const activeSeries = useMemo(
     () => series.filter((seriesEntry) => resolveDashTailBounds(seriesEntry.dashFromIndex, renderData.length)),
     [series, renderData.length]
   );
@@ -71,7 +72,7 @@ const DashTailOverlay = (props: Readonly<DashTailOverlayProps>): React.ReactNode
   if (activeSeries.length === 0 || measured.size === 0) {return undefined;}
 
   // No wrapping translate: pathD already carries host margins; re-adding them double-counts.
-  return React.createElement(
+  return createElement(
     "svg",
     { "aria-hidden": "true", height, style: { inset: 0, pointerEvents: "none", position: "absolute" }, width },
     [...measured.entries()].map(([entryKey, measuredEntry]: readonly [string, Measured]) =>

@@ -1,4 +1,4 @@
-import * as React from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { ChartPhase } from "./chart-phase";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
@@ -33,13 +33,13 @@ interface TweenInputRefsArgs {
 
 // Render-time ref mirror for the tween inputs; one hook so the main hook stays short.
 const useTweenInputRefs = (args: Readonly<TweenInputRefsArgs>): TweenInputRefs => {
-  const destinationRef = React.useRef(args.destinationByAxis);
+  const destinationRef = useRef(args.destinationByAxis);
   destinationRef.current = args.destinationByAxis;
-  const skeletonRef = React.useRef(args.skeletonByAxis);
+  const skeletonRef = useRef(args.skeletonByAxis);
   skeletonRef.current = args.skeletonByAxis;
-  const targetRef = React.useRef(args.targetByAxis);
+  const targetRef = useRef(args.targetByAxis);
   targetRef.current = args.targetByAxis;
-  const onSettledRef = React.useRef(args.onSettled);
+  const onSettledRef = useRef(args.onSettled);
   onSettledRef.current = args.onSettled;
   return { destinationRef, onSettledRef, skeletonRef, targetRef };
 };
@@ -112,8 +112,8 @@ interface PhaseEffectArgs {
 
 // Owns the phase-transition effect (plus its phase ref) so the main hook stays short.
 const usePhaseTweenEffect = (args: Readonly<PhaseEffectArgs>): void => {
-  const prevPhaseRef = React.useRef(args.chartPhase);
-  React.useEffect(() => runPhaseTween(args, prevPhaseRef), [args.chartPhase, args.durationMs, args.enabled, args.reducedMotion]);
+  const prevPhaseRef = useRef(args.chartPhase);
+  useEffect(() => runPhaseTween(args, prevPhaseRef), [args.chartPhase, args.durationMs, args.enabled, args.reducedMotion]);
 };
 
 interface TargetEffectArgs {
@@ -167,8 +167,8 @@ const runTargetTween = (run: Readonly<TargetEffectArgs>, targetSignature: string
 // Owns the target-signature ref and the live-target effect so the main hook stays short.
 const useTargetTweenEffect = (args: Readonly<TargetEffectArgs>): void => {
   const targetSignature = JSON.stringify(args.targetByAxis);
-  const prevTargetSignatureRef = React.useRef(targetSignature);
-  React.useEffect(() => runTargetTween(args, targetSignature, prevTargetSignatureRef), [args.chartPhase, args.durationMs, args.enabled, args.reducedMotion, args.tweenOnTargetChange, args.targetByAxis, targetSignature]);
+  const prevTargetSignatureRef = useRef(targetSignature);
+  useEffect(() => runTargetTween(args, targetSignature, prevTargetSignatureRef), [args.chartPhase, args.durationMs, args.enabled, args.reducedMotion, args.tweenOnTargetChange, args.targetByAxis, targetSignature]);
 };
 
 export const useAnimatedYDomains = (options: UseAnimatedYDomainsOptions): Record<string, YDomain> => {
@@ -179,9 +179,9 @@ export const useAnimatedYDomains = (options: UseAnimatedYDomainsOptions): Record
     options.targetByAxis,
   );
   const refs = useTweenInputRefs({ destinationByAxis, onSettled: options.onSettled, skeletonByAxis: options.skeletonByAxis, targetByAxis: options.targetByAxis });
-  const [animatedByAxis, setAnimatedByAxis] = React.useState(destinationByAxis);
-  const animatedRef = React.useRef(animatedByAxis);
-  React.useEffect(() => {
+  const [animatedByAxis, setAnimatedByAxis] = useState(destinationByAxis);
+  const animatedRef = useRef(animatedByAxis);
+  useEffect(() => {
     animatedRef.current = animatedByAxis;
   }, [animatedByAxis]);
   usePhaseTweenEffect({ animatedRef, chartPhase: options.chartPhase, durationMs: options.durationMs, enabled: options.enabled, reducedMotion, refs, setAnimatedByAxis });

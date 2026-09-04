@@ -1,4 +1,5 @@
-import * as React from "react";
+import { Children, Fragment, isValidElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { roleOf } from "./children-extract";
 import type { ProjectionPoint } from "./projection-utils";
 import { projectionDateExtents, projectionValueExtents } from "./projection-utils";
@@ -41,16 +42,16 @@ const pushProjectionLineConfig = (props: Readonly<ProjectionLineConfigProps>, co
   }
 };
 
-type ProjectionChildElement = React.ReactElement<{ children?: React.ReactNode }>;
+type ProjectionChildElement = ReactElement<{ children?: ReactNode }>;
 
-type ProjectionVisit = (node: React.ReactNode) => void;
+type ProjectionVisit = (node: ReactNode) => void;
 
 const tryPushProjectionLineConfig = (child: ProjectionChildElement, configs: ProjectionLineConfig[]): boolean => {
   const role = roleOf(child.type);
   // The role check establishes the component contract at runtime.
   // A "projectionLine" element always carries ProjectionLineConfigProps,
   // So re-narrowing the valid element pins that shape with no `as`.
-  if (role === "projectionLine" && React.isValidElement<ProjectionLineConfigProps>(child)) {
+  if (role === "projectionLine" && isValidElement<ProjectionLineConfigProps>(child)) {
     pushProjectionLineConfig(child.props, configs);
     return true;
   }
@@ -58,7 +59,7 @@ const tryPushProjectionLineConfig = (child: ProjectionChildElement, configs: Pro
 };
 
 const visitProjectionChild = (child: ProjectionChildElement, configs: ProjectionLineConfig[], visit: ProjectionVisit): void => {
-  if (child.type === React.Fragment) {
+  if (child.type === Fragment) {
     visit(child.props.children);
     return;
   }
@@ -67,14 +68,14 @@ const visitProjectionChild = (child: ProjectionChildElement, configs: Projection
   if (nestedChildren !== undefined && nestedChildren !== null) {visit(nestedChildren);}
 };
 
-const extractProjectionLineConfigs = (children: React.ReactNode): ProjectionLineConfig[] => {
+const extractProjectionLineConfigs = (children: ReactNode): ProjectionLineConfig[] => {
   const configs: ProjectionLineConfig[] = [];
-  const visit = (node: React.ReactNode): void => {
-    for (const child of React.Children.toArray(node)) {
+  const visit = (node: ReactNode): void => {
+    for (const child of Children.toArray(node)) {
       // Pin the props generic at the validity check, not via `as`.
       // Every valid element carries a props object, so reading
       // `children` needs no assertion.
-      if (React.isValidElement<{ children?: React.ReactNode }>(child)) {
+      if (isValidElement<{ children?: ReactNode }>(child)) {
         visitProjectionChild(child, configs, visit);
       }
     }

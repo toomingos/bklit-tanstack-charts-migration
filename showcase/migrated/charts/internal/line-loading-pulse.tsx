@@ -1,4 +1,5 @@
-import * as React from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import type { ReactElement } from "react";
 import {
   LINE_LOADING_PULSE_CYCLE_S,
   LINE_LOADING_LOOP_PAUSE_MS,
@@ -58,7 +59,7 @@ const LineLoadingPulse = ({
   mode?: LineLoadingPulseMode;
   loopEpoch?: number;
   onCycleComplete?: () => void;
-}>): React.ReactElement | undefined => {
+}>): ReactElement | undefined => {
   const id = useSanitizedId();
   const clipId = `bkm-pulse-clip-${id}`;
   const gradId = `bkm-pulse-grad-${id}`;
@@ -66,21 +67,21 @@ const LineLoadingPulse = ({
   const fadeStops = fadeGradientStops(resolveFadeSides(true));
   const { gradientUnits, x1, x2, y1, y2 } = viewportFadeGradientAttrs(width);
 
-  const [progress, setProgress] = React.useState(0);
-  const animRef = React.useRef<Animation | null>(null);
+  const [progress, setProgress] = useState(0);
+  const animRef = useRef<Animation | null>(null);
 
   // Latest callback and progress stay out of the effect dependencies.
   // Restarting the sweep on their identity change would break the loop.
-  const notifyCycleComplete = React.useEffectEvent((): void => {
+  const notifyCycleComplete = useEffectEvent((): void => {
     onCycleComplete?.();
   });
-  const readProgress = React.useEffectEvent((): number => progress);
+  const readProgress = useEffectEvent((): number => progress);
 
   // Render-phase reset per the React docs pattern for previous renders.
   // Loop and enter modes always restart the sweep from zero.
   // Committing zero directly avoids a synchronous setState in the effect.
   // Exit mode preserves the in-flight progress untouched.
-  const [prevPulseInputs, setPrevPulseInputs] = React.useState({ loopEpoch, mode, width });
+  const [prevPulseInputs, setPrevPulseInputs] = useState({ loopEpoch, mode, width });
   if (prevPulseInputs.loopEpoch !== loopEpoch || prevPulseInputs.mode !== mode || prevPulseInputs.width !== width) {
     setPrevPulseInputs({ loopEpoch, mode, width });
     if (mode === "loop" || mode === "enter") {
@@ -88,7 +89,7 @@ const LineLoadingPulse = ({
     }
   }
 
-  React.useEffect(() => {
+  useEffect(() => {
     const el = document.querySelector(`#${clipId}-rect`);
     if (!(el instanceof SVGRectElement) || width <= 0) {return undefined;}
     const half = LINE_LOADING_PULSE_CYCLE_S / 2;

@@ -656,4 +656,3 @@ export type {
   PieData,
   PieSliceProps,
 };
-export default PieChart;

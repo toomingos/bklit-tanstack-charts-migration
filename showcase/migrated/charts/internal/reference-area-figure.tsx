@@ -1,4 +1,4 @@
-import * as React from "react";
+import type { ReactNode, RefObject } from "react";
 import { edgeFadeMaskStops } from "./fade-mask";
 import { renderPatternPreset } from "./pattern-preset-render";
 import type { PatternPresetId } from "./pattern-preset";
@@ -97,7 +97,7 @@ const resolveReferenceAreaStyle = (input: Readonly<ReferenceAreaStyleInput>): Re
   strokeWidth: input.strokeWidth ?? 1,
 });
 
-const resolveReferenceAreaPattern = (style: Readonly<ResolvedReferenceAreaStyle>, patternId: string): React.ReactNode => {
+const resolveReferenceAreaPattern = (style: Readonly<ResolvedReferenceAreaStyle>, patternId: string): ReactNode => {
   if (style.pattern === "none") {return undefined;}
   return renderPatternPreset(style.pattern, patternId, {
     color: style.patternColor,
@@ -117,7 +117,7 @@ interface ReferenceAreaChrome {
   readonly lineDash: string | undefined;
 }
 
-const resolveReferenceAreaChrome = (style: Readonly<ResolvedReferenceAreaStyle>, patternNode: React.ReactNode, hMaskId: string): ReferenceAreaChrome => {
+const resolveReferenceAreaChrome = (style: Readonly<ResolvedReferenceAreaStyle>, patternNode: ReactNode, hMaskId: string): ReferenceAreaChrome => {
   const edgeMask = style.fadeEdges ? `url(#${hMaskId})` : undefined;
   const lineDash = style.strokeStyle === "dashed" ? style.strokeDasharray : undefined;
   const hasPatternFill = style.pattern !== "none" && patternNode !== undefined && patternNode !== null;
@@ -131,7 +131,7 @@ interface FadeMaskGeom {
   readonly innerHeight: number;
 }
 
-const buildFadeMaskDefs = (edgeMask: string | undefined, style: Readonly<ResolvedReferenceAreaStyle>, geom: Readonly<FadeMaskGeom>): React.ReactNode => {
+const buildFadeMaskDefs = (edgeMask: string | undefined, style: Readonly<ResolvedReferenceAreaStyle>, geom: Readonly<FadeMaskGeom>): ReactNode => {
   if (edgeMask === undefined) {return undefined;}
   const stops = style.fadeEdges ? edgeFadeMaskStops(style.fadeEdgesLength) : [];
   const gradientStops = stops.map((stop: Readonly<{ offset: string; opacity: number }>) => (
@@ -152,11 +152,11 @@ const buildFadeMaskDefs = (edgeMask: string | undefined, style: Readonly<Resolve
 interface ReferenceAreaFigureOptions {
   readonly style: Readonly<ResolvedReferenceAreaStyle>;
   readonly spatial: Readonly<ReferenceAreaSpatial>;
-  readonly patternNode: React.ReactNode;
-  readonly figureRef: React.RefObject<SVGGElement | null>;
+  readonly patternNode: ReactNode;
+  readonly figureRef: RefObject<SVGGElement | null>;
 }
 
-const buildReferenceAreaMarkers = (rect: Readonly<ReferenceAreaRect>, style: Readonly<ResolvedReferenceAreaStyle>): React.ReactNode => {
+const buildReferenceAreaMarkers = (rect: Readonly<ReferenceAreaRect>, style: Readonly<ResolvedReferenceAreaStyle>): ReactNode => {
   if (!style.showMarkers) {return undefined;}
   const centerX = rect.x + rect.width / 2;
   const bottomEdgeY = rect.y + rect.height;
@@ -168,7 +168,7 @@ const buildReferenceAreaMarkers = (rect: Readonly<ReferenceAreaRect>, style: Rea
   );
 }
 
-const buildReferenceAreaFigure = (options: Readonly<ReferenceAreaFigureOptions>): React.ReactNode => {
+const buildReferenceAreaFigure = (options: Readonly<ReferenceAreaFigureOptions>): ReactNode => {
   const { style, spatial, patternNode, figureRef } = options;
   const rect: ReferenceAreaRect | undefined = spatial.rect;
   if (rect === undefined) {return undefined;}

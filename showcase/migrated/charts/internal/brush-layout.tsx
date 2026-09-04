@@ -2,7 +2,8 @@
 
 // Bklit brush layout half, ported 1:1.
 
-import * as React from "react";
+import { memo, useMemo } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { useBrushSelection } from './brush-selection';
 import type { BrushLayoutState } from './brush-selection';
@@ -16,12 +17,12 @@ interface BrushLayoutProps {
   readonly height: number;
   readonly fitMainContent?: boolean;
   readonly className?: string;
-  readonly children: (layout: Readonly<BrushLayoutState>) => React.ReactNode;
-  readonly brushStrip?: (layout: Readonly<BrushLayoutState>) => React.ReactNode;
+  readonly children: (layout: Readonly<BrushLayoutState>) => ReactNode;
+  readonly brushStrip?: (layout: Readonly<BrushLayoutState>) => ReactNode;
 }
 
 const useBrushLayoutState = (layout: ReturnType<typeof useBrushSelection>): BrushLayoutState =>
-  React.useMemo(
+  useMemo(
     () => ({
       brushSelection: layout.brushSelection,
       onBrushSelectionChange: layout.onBrushSelectionChange,
@@ -36,7 +37,7 @@ const useBrushLayoutState = (layout: ReturnType<typeof useBrushSelection>): Brus
     ],
   );
 
-const BrushLayout = React.memo(({
+const BrushLayout = memo(({
   data,
   xDataKey = "date",
   xExtentMax,
@@ -56,7 +57,7 @@ const BrushLayout = React.memo(({
 
   const layoutState = useBrushLayoutState(layout);
 
-  const stripStyle = React.useMemo((): React.CSSProperties => ({ height }), [height]);
+  const stripStyle = useMemo((): CSSProperties => ({ height }), [height]);
 
   return (
     <div

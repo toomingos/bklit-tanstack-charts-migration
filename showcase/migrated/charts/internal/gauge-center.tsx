@@ -9,7 +9,7 @@
 // `GaugeLabelLayout` expresses bklit's same four-placement/three-align
 // Composition logic as inline flexbox styles instead of Tailwind utility
 // Classes, since migrated/charts lives outside the app's Tailwind `@source` scan.
-import * as React from "react";
+import type { ReactElement } from "react";
 import { CenterShell } from './center-stat';
 import type { CenterStatFormat } from './center-stat';
 
@@ -45,7 +45,7 @@ const GaugeCenterOverlay = ({
   prefix,
   suffix,
   formatOptions,
-}: Readonly<GaugeCenterOverlayProps>): React.ReactElement => {
+}: Readonly<GaugeCenterOverlayProps>): ReactElement => {
   const innerRadiusPx = Math.max(contextSize * GAUGE_CENTER_RADIUS_FRACTION, GAUGE_CENTER_MIN_RADIUS_PX);
   const centerSize = innerRadiusPx * 2 - GAUGE_CENTER_BOX_INSET_PX;
 

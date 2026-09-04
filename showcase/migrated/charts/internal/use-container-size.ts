@@ -1,4 +1,5 @@
-import * as React from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import type { Dispatch, RefObject, SetStateAction } from "react";
 
 // One shared ResizeObserver lifecycle; per-hook debounce/guard/positivity reproduce legacy timing exactly.
 interface ChartSize {
@@ -16,7 +17,7 @@ interface UseResizeObservationOptions {
 // Sub-pixel resize deltas below this are noise from the observer; keep the last size.
 const RESIZE_GUARD_EPSILON_PX = 0.5;
 
-type ResizeSetter = React.Dispatch<React.SetStateAction<ChartSize>>;
+type ResizeSetter = Dispatch<SetStateAction<ChartSize>>;
 
 const applyGuardedSize = (setSize: ResizeSetter, next: ChartSize): void => {
   setSize((prev) => Math.abs(prev.width - next.width) > RESIZE_GUARD_EPSILON_PX || Math.abs(prev.height - next.height) > RESIZE_GUARD_EPSILON_PX
@@ -85,12 +86,12 @@ const readElementSize = (el: HTMLDivElement): ChartSize => {
   return { height: rect.height, width: rect.width };
 }
 
-const useResizeObservation = (containerRef: React.RefObject<HTMLDivElement | null>, { enabled = true, debounceMs = 0, guardInitial = false, requirePositive = false }: Readonly<UseResizeObservationOptions>): ChartSize => {
-  const [size, setSize] = React.useState<ChartSize>({ height: 0, width: 0 });
-  const timerRef = React.useRef<ReturnType<typeof globalThis.setTimeout> | undefined>(undefined);
-  const pendingRef = React.useRef<ChartSize | undefined>(undefined);
+const useResizeObservation = (containerRef: RefObject<HTMLDivElement | null>, { enabled = true, debounceMs = 0, guardInitial = false, requirePositive = false }: Readonly<UseResizeObservationOptions>): ChartSize => {
+  const [size, setSize] = useState<ChartSize>({ height: 0, width: 0 });
+  const timerRef = useRef<ReturnType<typeof globalThis.setTimeout> | undefined>(undefined);
+  const pendingRef = useRef<ChartSize | undefined>(undefined);
 
-  React.useLayoutEffect(() => {
+  useLayoutEffect(() => {
     if (!enabled) {return undefined;}
     const el = containerRef.current;
     if (!el) {return undefined;}
@@ -111,23 +112,23 @@ const useResizeObservation = (containerRef: React.RefObject<HTMLDivElement | nul
   return size;
 }
 
-const useContainerWidth = (containerRef: React.RefObject<HTMLDivElement | null>, enabled = true): number => {
+const useContainerWidth = (containerRef: RefObject<HTMLDivElement | null>, enabled = true): number => {
   const { width } = useResizeObservation(containerRef, { enabled });
   return width;
 }
 
-const useDebouncedContainerWidth = (containerRef: React.RefObject<HTMLDivElement | null>): number => {
+const useDebouncedContainerWidth = (containerRef: RefObject<HTMLDivElement | null>): number => {
   const { width } = useResizeObservation(containerRef, { debounceMs: 10 });
   return width;
 }
 
-const useDebouncedContainerSize = (containerRef: React.RefObject<HTMLDivElement | null>): ChartSize => useResizeObservation(containerRef, { debounceMs: 10 });
+const useDebouncedContainerSize = (containerRef: RefObject<HTMLDivElement | null>): ChartSize => useResizeObservation(containerRef, { debounceMs: 10 });
 
 
-const useMeasuredRect = (containerRef: React.RefObject<HTMLDivElement | null>, enabled = true): ChartSize => useResizeObservation(containerRef, { enabled });
+const useMeasuredRect = (containerRef: RefObject<HTMLDivElement | null>, enabled = true): ChartSize => useResizeObservation(containerRef, { enabled });
 
 
-const usePositiveChartSize = (containerRef: React.RefObject<HTMLDivElement | null>): ChartSize => {
+const usePositiveChartSize = (containerRef: RefObject<HTMLDivElement | null>): ChartSize => {
   const { width, height } = useResizeObservation(containerRef, {
     guardInitial: true,
     requirePositive: true,

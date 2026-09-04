@@ -1,6 +1,7 @@
 "use client";
 
-import * as React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { Badge } from "./marker-badge";
 import { MarkerCircleHtml } from "./marker-circle";
 import { renderMarkerFan } from "./marker-fan";
@@ -91,7 +92,7 @@ interface MarkerGuideLineOptions {
 }
 
 // Guide-line style is a pure function of its geometry so the render helper stays allocation-free in JSX.
-const markerGuideLineStyle = (lineHeight: number, y: number, hovered: boolean, isActive: boolean, size: number): React.CSSProperties => ({
+const markerGuideLineStyle = (lineHeight: number, y: number, hovered: boolean, isActive: boolean, size: number): CSSProperties => ({
   borderLeft: "1px dashed var(--chart-marker-border)",
   height: lineHeight + Math.abs(y),
   left: 0,
@@ -103,7 +104,7 @@ const markerGuideLineStyle = (lineHeight: number, y: number, hovered: boolean, i
   width: 1,
 });
 
-const renderMarkerGuideLine = (options: Readonly<MarkerGuideLineOptions>): React.ReactNode => {
+const renderMarkerGuideLine = (options: Readonly<MarkerGuideLineOptions>): ReactNode => {
   const { showLine, lineHeight, y, size, hovered, isActive } = options;
   if (!showLine || lineHeight <= 0) {return undefined;}
   return (
@@ -119,7 +120,7 @@ interface FirstMarkerCircleOptions {
   readonly size: number;
 }
 
-const renderFirstMarkerCircle = (options: Readonly<FirstMarkerCircleOptions>): React.ReactNode => {
+const renderFirstMarkerCircle = (options: Readonly<FirstMarkerCircleOptions>): ReactNode => {
   const { markers, size } = options;
   const [firstMarker] = markers;
   const handleFirstMarkerClick = (): void => {
@@ -128,7 +129,7 @@ const renderFirstMarkerCircle = (options: Readonly<FirstMarkerCircleOptions>): R
   return <MarkerCircleHtml icon={firstMarker.icon} size={size} color={firstMarker.color} onClick={firstMarker.onClick === undefined ? undefined : handleFirstMarkerClick} href={firstMarker.href} target={firstMarker.target} />;
 }
 
-const renderMarkerBadge = (count: number, size: number): React.ReactNode => <Badge count={count} size={size} />;
+const renderMarkerBadge = (count: number, size: number): ReactNode => <Badge count={count} size={size} />;
 
 interface MarkerEnterOptions {
   readonly markers: readonly ChartMarker[];
@@ -144,7 +145,7 @@ interface MarkerEnterOptions {
 }
 
 // Enter-transition style is a pure function of its reveal inputs; see the guide-line factory above.
-const markerEnterStyle = (size: number, revealed: boolean, collapsedOpacity: number, collapsedScale: number, shouldFan: boolean): React.CSSProperties => ({
+const markerEnterStyle = (size: number, revealed: boolean, collapsedOpacity: number, collapsedScale: number, shouldFan: boolean): CSSProperties => ({
   cursor: "pointer",
   filter: resolveMarkerFilter(revealed, shouldFan),
   height: size,
@@ -162,13 +163,13 @@ const markerEnterStyle = (size: number, revealed: boolean, collapsedOpacity: num
 });
 
 // Inner marker box only tracks its size.
-const markerEnterInnerStyle = (size: number): React.CSSProperties => ({
+const markerEnterInnerStyle = (size: number): CSSProperties => ({
   height: size,
   position: "relative",
   width: size,
 });
 
-const renderMarkerEnter = (options: Readonly<MarkerEnterOptions>): React.ReactNode => {
+const renderMarkerEnter = (options: Readonly<MarkerEnterOptions>): ReactNode => {
   const { markers, size, revealed, collapsedOpacity, collapsedScale, shouldFan, hasMultiple, onEnter, onLeave, attachEnterRef } = options;
   return (
     <div
@@ -204,7 +205,7 @@ interface MarkerGroupContentOptions {
 }
 
 // Group anchor box only tracks its position; everything else is static.
-const markerGroupContentStyle = (x: number, y: number): React.CSSProperties => ({
+const markerGroupContentStyle = (x: number, y: number): CSSProperties => ({
   height: 0,
   left: x,
   overflow: "visible",
@@ -215,7 +216,7 @@ const markerGroupContentStyle = (x: number, y: number): React.CSSProperties => (
   zIndex: 5,
 });
 
-const renderMarkerGroupContent = (options: Readonly<MarkerGroupContentOptions>): React.ReactElement => {
+const renderMarkerGroupContent = (options: Readonly<MarkerGroupContentOptions>): ReactElement => {
   const { x, y, size, showLine, lineHeight, maxFanned, isActive, markers, bucketKey, hovered, revealed, reduced, attachEnterRef, onEnter, onLeave } = options;
   const hasMultiple = markers.length > 1;
   const fanned = resolveFannedMarkers(markers, maxFanned);
@@ -244,27 +245,27 @@ const MarkerGroupView = ({
   maxFanned,
   isActive,
   onMarkerHoverChange,
-}: MarkerGroupViewProps): React.ReactElement => {
-  const [hovered, setHovered] = React.useState(false);
+}: MarkerGroupViewProps): ReactElement => {
+  const [hovered, setHovered] = useState(false);
   const { markers } = bucket;
   const reduced = usePrefersReducedMotion();
-  const [enterElapsed, setEnterElapsed] = React.useState(false);
-  const enterRef = React.useRef<HTMLDivElement | null>(null);
-  const attachEnterRef = React.useCallback((element: HTMLDivElement | null): void => {
+  const [enterElapsed, setEnterElapsed] = useState(false);
+  const enterRef = useRef<HTMLDivElement | null>(null);
+  const attachEnterRef = useCallback((element: HTMLDivElement | null): void => {
     enterRef.current = element;
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!animate || reduced) { return undefined; }
     const id = globalThis.setTimeout((): void =>{  setEnterElapsed(true); }, delayMs);
     return (): void =>{  globalThis.clearTimeout(id); };
   }, [animate, reduced, delayMs]);
 
-  const onEnter = React.useCallback(() => {
+  const onEnter = useCallback(() => {
     setHovered(true);
     onMarkerHoverChange?.(markers);
   }, [onMarkerHoverChange, markers]);
-  const onLeave = React.useCallback(() => {
+  const onLeave = useCallback(() => {
     setHovered(false);
     onMarkerHoverChange?.(null);
   }, [onMarkerHoverChange]);

@@ -1,6 +1,7 @@
 "use client";
 
-import * as React from "react";
+import { useMemo } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import type { ChartSelection, SegmentComponent } from "./chart-selection";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 
@@ -16,22 +17,22 @@ const SEGMENT_GRADIENT_FADE_END = "100%";
 const SEGMENT_GRADIENT_SOLID_START = "10%";
 const SEGMENT_GRADIENT_SOLID_END = "90%";
 const SEGMENT_FADE_TRANSITION = "opacity 150ms ease-out";
-const SEGMENT_BACKGROUND_HIDDEN_ANIMATED_STYLE: Readonly<React.CSSProperties> = {
+const SEGMENT_BACKGROUND_HIDDEN_ANIMATED_STYLE: Readonly<CSSProperties> = {
   opacity: 0,
   transition: SEGMENT_FADE_TRANSITION,
 };
-const SEGMENT_BACKGROUND_HIDDEN_STYLE: Readonly<React.CSSProperties> = {
+const SEGMENT_BACKGROUND_HIDDEN_STYLE: Readonly<CSSProperties> = {
   opacity: 0,
 };
-const SEGMENT_BACKGROUND_VISIBLE_ANIMATED_STYLE: Readonly<React.CSSProperties> = {
+const SEGMENT_BACKGROUND_VISIBLE_ANIMATED_STYLE: Readonly<CSSProperties> = {
   opacity: 1,
   transition: SEGMENT_FADE_TRANSITION,
 };
-const SEGMENT_BACKGROUND_VISIBLE_STYLE: Readonly<React.CSSProperties> = {
+const SEGMENT_BACKGROUND_VISIBLE_STYLE: Readonly<CSSProperties> = {
   opacity: 1,
 };
 
-const resolveSegmentBackgroundStyle = (vis: boolean, reducedMotion: boolean): Readonly<React.CSSProperties> => {
+const resolveSegmentBackgroundStyle = (vis: boolean, reducedMotion: boolean): Readonly<CSSProperties> => {
   if (reducedMotion) {
     return vis ? SEGMENT_BACKGROUND_VISIBLE_STYLE : SEGMENT_BACKGROUND_HIDDEN_STYLE;
   }
@@ -79,7 +80,7 @@ const resolveSegmentLineStyle = (props: Readonly<SegmentVisualProps>): SegmentLi
   variant: resolveSegmentLineVariant(props),
 });
 
-const renderSegmentGradientDefs = (gid: string, stroke: string): React.ReactElement => (
+const renderSegmentGradientDefs = (gid: string, stroke: string): ReactElement => (
   <defs>
     <linearGradient id={gid} x1="0%" x2="0%" y1="0%" y2="100%">
       <stop offset={SEGMENT_GRADIENT_FADE_START} stopColor={stroke} stopOpacity={0} />
@@ -90,7 +91,7 @@ const renderSegmentGradientDefs = (gid: string, stroke: string): React.ReactElem
   </defs>
 );
 
-const renderSegmentBackground = (params: Readonly<SegmentRenderParams>): React.ReactElement => {
+const renderSegmentBackground = (params: Readonly<SegmentRenderParams>): ReactElement => {
   const { component, selection, innerHeight, vis, reducedMotion } = params;
   return (
     <rect
@@ -113,7 +114,7 @@ interface SegmentEdgeLineParams {
   readonly style: Readonly<SegmentLineStyle>;
 }
 
-const renderSegmentEdgeLine = (params: Readonly<SegmentEdgeLineParams>): React.ReactElement => {
+const renderSegmentEdgeLine = (params: Readonly<SegmentEdgeLineParams>): ReactElement => {
   const { lineKey, gradientId, x, innerHeight, style } = params;
   if (style.variant === "gradient") {
     return (
@@ -137,7 +138,7 @@ const renderSegmentEdgeLine = (params: Readonly<SegmentEdgeLineParams>): React.R
   );
 };
 
-const renderSegmentComponent = (params: Readonly<SegmentRenderParams>): React.ReactElement | undefined => {
+const renderSegmentComponent = (params: Readonly<SegmentRenderParams>): ReactElement | undefined => {
   const { component, selection, vis } = params;
   if (component.type === "segmentBackground") {
     return renderSegmentBackground(params);
@@ -172,9 +173,9 @@ const SegmentOverlay = ({
   marginLeft: number;
   marginTop: number;
   components: readonly Readonly<SegmentComponent>[];
-}>): React.ReactElement | null => {
+}>): ReactElement | null => {
   const prefersReducedMotion = usePrefersReducedMotion();
-  const overlayStyle = React.useMemo((): React.CSSProperties => ({
+  const overlayStyle = useMemo((): CSSProperties => ({
     left: marginLeft,
     overflow: "visible",
     pointerEvents: "none",

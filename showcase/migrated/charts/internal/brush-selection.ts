@@ -2,7 +2,7 @@
 
 // Brush state + layout (bklit filter-data-by-x-domain + brush-layout port).
 
-import * as React from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ChartDatum } from "./types";
 import { toDate } from "./coerce-date";
 
@@ -145,38 +145,38 @@ const buildBrushSelectionResult = ({ layoutState, fullExtent, handleBrushSelecti
 const useBrushSelection = (options: Readonly<UseBrushSelectionOptions>): UseBrushSelectionResult => {
   const { data, xDataKey = "date", xExtentMax, enabled } = options;
 
-  const xAccessor = React.useMemo(
+  const xAccessor = useMemo(
     () => createXAccessor(xDataKey),
     [xDataKey],
   );
-  const fullExtent = React.useMemo(
+  const fullExtent = useMemo(
     () => resolveBrushTrackXExtent(data, xAccessor, xExtentMax),
     [data, xAccessor, xExtentMax],
   );
 
   const [brushSelection, setBrushSelection] =
-    React.useState<BrushSelection | null>(null);
+    useState<BrushSelection | null>(null);
   const [prevFullExtent, setPrevFullExtent] =
-    React.useState<[Date, Date] | null>(null);
+    useState<[Date, Date] | null>(null);
 
   // Dataset swap resets the brush (adjust state during render, not in an effect).
   if (fullExtent !== prevFullExtent) {
     syncBrushToFullExtent(fullExtent, setPrevFullExtent, setBrushSelection);
   }
 
-  const handleBrushSelectionChange = React.useCallback(
+  const handleBrushSelectionChange = useCallback(
     (selection: BrushSelection | null): void => {
       applyBrushSelectionChange(selection, fullExtent, setBrushSelection);
     },
     [fullExtent],
   );
 
-  const layoutState = React.useMemo<BrushLayoutState>(
+  const layoutState = useMemo<BrushLayoutState>(
     () => buildBrushLayoutState({ brushSelection, dataLength: data.length, enabled, handleBrushSelectionChange }),
     [brushSelection, data.length, enabled, handleBrushSelectionChange],
   );
 
-  return React.useMemo<UseBrushSelectionResult>(
+  return useMemo<UseBrushSelectionResult>(
     () => buildBrushSelectionResult({ fullExtent, handleBrushSelectionChange, layoutState }),
     [layoutState, fullExtent, handleBrushSelectionChange],
   );

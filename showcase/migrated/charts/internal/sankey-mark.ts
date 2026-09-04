@@ -8,7 +8,7 @@ import type { LaidOutNode } from './sankey-layout';
 import { buildSankeyLabelNodes, toLaidOutNode } from "./sankey-label-nodes";
 import { resolveSankeyFlowStroke, resolveSankeyFlowOpacity } from "./sankey-flow-style";
 import type { LaidOutLink, LinkRow, NodeRow, SankeyLinkData, SankeyNodeData } from "./sankey-label-nodes";
-import type { SankeyLabelOrientation } from "../sankey-chart";
+import type { SankeyLabelOrientation } from "./sankey-node";
 import { computeNodeHoverConnected, computeLinkHoverConnected } from "./sankey-hover-chrome";
 
 // Scene keys sankey:node/rect/nlabel/vlabel:i are the WAAPI reveal's DOM contract.

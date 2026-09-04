@@ -1,5 +1,5 @@
 // All>=0 -> [0,max*1.1]; mixed-sign -> 5% pad; empty -> [0,100]. Scatter has own rules.
-import * as React from "react";
+import { useMemo, useRef } from "react";
 import { scaleLinear } from "d3-scale";
 import type { ScaleLinear } from "d3-scale";
 
@@ -74,14 +74,14 @@ interface NicedYDomainState {
 }
 
 const useNicedYDomainChanged = (yDomain: readonly [number, number]): NicedYDomainState => {
-  const niced = React.useMemo<[number, number]>(
+  const niced = useMemo<[number, number]>(
     () => {
       const rawDomain = scaleLinear().domain(yDomain).nice().domain();
       return [rawDomain[0] ?? yDomain[0], rawDomain[1] ?? yDomain[1]];
     },
     [yDomain],
   );
-  const prevRef = React.useRef(niced);
+  const prevRef = useRef(niced);
   const changed = prevRef.current[0] !== niced[0] || prevRef.current[1] !== niced[1];
   prevRef.current = niced;
   return { changed, niced };
@@ -161,7 +161,7 @@ const domainForAxis = (domainsByAxis: Record<string, YDomain>, axisId: string): 
 const useYScale = (domainsByAxis: Record<string, YDomain>, innerHeight: number, yAxisId?: string | number): NicedYScale => {
   const domain = domainForAxis(domainsByAxis, normalizeYAxisId(yAxisId));
   const [d0, d1] = domain;
-  return React.useMemo(
+  return useMemo(
     () => createNicedYScale([d0, d1]).range([innerHeight, 0]),
     [d0, d1, innerHeight],
   );

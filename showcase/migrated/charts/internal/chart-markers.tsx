@@ -1,6 +1,7 @@
 "use client";
 
-import * as React from "react";
+import { useCallback, useMemo } from "react";
+import type { CSSProperties, ReactElement, RefObject } from "react";
 import { MarkerGroupView } from "./marker-group-view";
 import type { Bucket } from "./marker-group-view";
 import { useActiveMarkerDate } from "./active-markers-store";
@@ -24,7 +25,7 @@ interface ChartMarkersProps {
   marginLeft: number;
   marginTop: number;
   innerHeight: number;
-  containerRef: React.RefObject<HTMLElement | null>;
+  containerRef: RefObject<HTMLElement | null>;
   animationDuration: number;
   /** Fires with the hovered bucket's markers on enter, null on leave; callers use this to suppress the crosshair chrome. */
   onMarkerHoverChange?: (markers: ChartMarker[] | null) => void;
@@ -45,7 +46,7 @@ interface RenderMarkerBucketOptions {
   readonly onHoverChange: (markers: ChartMarker[] | null) => void;
 }
 
-const renderMarkerBucket = (options: Readonly<RenderMarkerBucketOptions>): React.ReactElement[] => {
+const renderMarkerBucket = (options: Readonly<RenderMarkerBucketOptions>): ReactElement[] => {
   const { bucket, index, xScale, size, showLines, innerHeight, markerY, animate, baseDelaySec, maxFanned, activeDate, onHoverChange } = options;
   const x = xScale(bucket.date);
   // A skipped bucket contributes nothing to the rendered list, so the callback
@@ -76,11 +77,11 @@ const renderMarkerBucket = (options: Readonly<RenderMarkerBucketOptions>): React
   ];
 }
 
-const ChartMarkersOverlay = (props: ChartMarkersProps): React.ReactElement | null => {
+const ChartMarkersOverlay = (props: ChartMarkersProps): ReactElement | null => {
   const { items, size = 28, showLines = true, animate = true, maxFanned, xScale, marginLeft, marginTop, innerHeight, animationDuration, onMarkerHoverChange } = props;
   // Outside a MarkerActiveTooltipProvider this store read is a noop -> null -> bucket never "active".
   const activeDate = useActiveMarkerDate();
-  const buckets = React.useMemo<Bucket[]>(() => {
+  const buckets = useMemo<Bucket[]>(() => {
     const map = new Map<string, Bucket>();
     for (const marker of items ?? []) {
       const dateKey = marker.date.toDateString();
@@ -94,9 +95,9 @@ const ChartMarkersOverlay = (props: ChartMarkersProps): React.ReactElement | nul
   const markerY = -8;
   const baseDelaySec = animationDuration / MS_PER_SECOND;
 
-  const innerOverlayStyle = React.useMemo((): React.CSSProperties => ({ height: 0, left: marginLeft, overflow: "visible", position: "absolute", top: marginTop, width: 0 }), [marginLeft, marginTop]);
+  const innerOverlayStyle = useMemo((): CSSProperties => ({ height: 0, left: marginLeft, overflow: "visible", position: "absolute", top: marginTop, width: 0 }), [marginLeft, marginTop]);
 
-  const handleHoverChange = React.useCallback((markers: ChartMarker[] | null) => {
+  const handleHoverChange = useCallback((markers: ChartMarker[] | null) => {
     onMarkerHoverChange?.(markers);
   }, [onMarkerHoverChange]);
 

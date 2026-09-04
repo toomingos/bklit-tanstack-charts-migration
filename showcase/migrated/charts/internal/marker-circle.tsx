@@ -1,6 +1,7 @@
 "use client";
 
-import * as React from "react";
+import { useCallback } from "react";
+import type { CSSProperties, MouseEvent, ReactElement, ReactNode } from "react";
 
 // Icon glyph scales with the marker circle.
 const MARKER_ICON_FONT_SCALE = 0.5;
@@ -13,7 +14,7 @@ interface MarkerCircleStyleOptions {
   readonly hasAction: boolean;
 }
 
-const buildMarkerCircleStyle = (options: Readonly<MarkerCircleStyleOptions>): React.CSSProperties => {
+const buildMarkerCircleStyle = (options: Readonly<MarkerCircleStyleOptions>): CSSProperties => {
   const { size, color, borderColor, borderWidth, hasAction } = options;
   return {
     alignItems: "center",
@@ -53,11 +54,11 @@ const activateMarkerAction = (options: Readonly<MarkerActionOptions>): void => {
   }
 }
 
-const handleMarkerCircleMouseEnter = (event: React.MouseEvent<HTMLButtonElement>): void => {
+const handleMarkerCircleMouseEnter = (event: MouseEvent<HTMLButtonElement>): void => {
   (event.currentTarget).style.transform = "scale(1.15)";
 };
 
-const handleMarkerCircleMouseLeave = (event: React.MouseEvent<HTMLButtonElement>): void => {
+const handleMarkerCircleMouseLeave = (event: MouseEvent<HTMLButtonElement>): void => {
   (event.currentTarget).style.transform = "scale(1)";
 };
 
@@ -71,7 +72,7 @@ const MarkerCircleHtml = ({
   borderColor,
   borderWidth = 1.5,
 }: Readonly<{
-  icon: React.ReactNode;
+  icon: ReactNode;
   size: number;
   color?: string;
   onClick?: () => void;
@@ -79,9 +80,9 @@ const MarkerCircleHtml = ({
   target?: "_blank" | "_self";
   borderColor?: string;
   borderWidth?: number;
-}>): React.ReactElement => {
+}>): ReactElement => {
   const hasAction = Boolean(onClick ?? href);
-  const handleClick = React.useCallback((event: React.MouseEvent): void => {
+  const handleClick = useCallback((event: MouseEvent): void => {
     event.stopPropagation();
     activateMarkerAction({ href, onClick, target });
   }, [href, onClick, target]);

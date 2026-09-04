@@ -1,6 +1,7 @@
 // Bklit Gauge (arc + linear) on TanStack polar marks; linear notches bypass scales (no data domain).
 // UniformWidth notches use custom quads: pie slices can't express the perpendicular inner edge.
-import * as React from "react";
+import { useCallback, useId, useMemo, useRef } from "react";
+import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
 import { createMark } from '@tanstack/charts';
 import type { SceneNode, ChartMotionContext, ChartMotionTiming, ChartMotionPhase, ChartLinearGradient, DomChartDefinition, MarkScene } from '@tanstack/charts';
@@ -287,7 +288,7 @@ interface GaugeProps {
   readonly inactiveFillOpacity?: number;
   readonly activeFillOpacity?: number;
   /** Custom gradient/pattern defs (children-as-defs escape hatch, both orientations). */
-  readonly children?: React.ReactNode;
+  readonly children?: ReactNode;
   readonly className?: string;
   readonly width?: number;
   readonly height?: number;
@@ -299,7 +300,7 @@ interface GaugeProps {
   readonly enterStaggerScale?: number;
   readonly geometryScrubbing?: boolean;
   /** Extra vs bklit: style, forwarded to the outer wrapper div. */
-  readonly style?: Readonly<React.CSSProperties>;
+  readonly style?: Readonly<CSSProperties>;
 }
 
 interface GaugeFillStateInput {
@@ -310,14 +311,14 @@ interface GaugeFillStateInput {
   readonly activeFill?: string;
   readonly inactiveFillOpacity?: number;
   readonly activeFillOpacity?: number;
-  readonly children?: React.ReactNode;
+  readonly children?: ReactNode;
   readonly totalNotches?: number;
 }
 
 interface GaugeFillState {
   readonly activeGrad0: string;
   readonly activeGrad1: string;
-  readonly defsChildren: readonly Readonly<React.ReactElement>[];
+  readonly defsChildren: readonly Readonly<ReactElement>[];
   readonly hasCustomActive: boolean;
   readonly hasCustomInactive: boolean;
   readonly inactiveGrad0: string;
@@ -369,8 +370,8 @@ const useGaugeFillState = (props: Readonly<GaugeFillStateInput>): GaugeFillState
     totalNotches = 40,
   } = props;
 
-  const themeActiveGradientId = `gauge-theme-active-${React.useId().replaceAll(':', "")}`;
-  const defsChildren = React.useMemo(() => collectGaugeDefsElements(children), [children]);
+  const themeActiveGradientId = `gauge-theme-active-${useId().replaceAll(':', "")}`;
+  const defsChildren = useMemo(() => collectGaugeDefsElements(children), [children]);
 
   const hasCustomInactive = inactiveFill !== undefined && inactiveFill.length > 0;
   const hasCustomActive = activeFill !== undefined && activeFill.length > 0;
@@ -888,7 +889,7 @@ const useArcRows = (
 ): ArcRowsResult | undefined => {
   const { activeFill, endAngle, inactiveFill, notchLengthPercent, spacing, startAngle, totalNotches, useGradient, value } = props;
   const { height, width } = layout;
-  return React.useMemo(() => computeArcRows({
+  return useMemo(() => computeArcRows({
     activeFill,
     endAngle: endAngle ?? 405,
     fillState,
@@ -999,7 +1000,7 @@ const useUniformArcRows = (
   readonly bg: UniformArcRow[];
   readonly notchLength: number;
 } | undefined =>
-  React.useMemo(() => computeUniformArcRows(props, fillState, layout), [
+  useMemo(() => computeUniformArcRows(props, fillState, layout), [
     props,
     fillState,
     layout,
@@ -1088,7 +1089,7 @@ interface UseArcDefinitionOptions {
 
 const useArcDefinition = (options: Readonly<UseArcDefinitionOptions>): DomChartDefinition | undefined => {
   const { arcRows, enterStaggerScale, enterTransition, fillState, notchCornerRadius, uniformRows, uniformWidth } = options;
-  return React.useMemo(() => buildArcDefinition({
+  return useMemo(() => buildArcDefinition({
     activeFillOpacity: fillState.resolvedActiveFillOpacity,
     arcRows,
     enterStaggerScale,
@@ -1114,19 +1115,19 @@ const useArcDefinition = (options: Readonly<UseArcDefinitionOptions>): DomChartD
 };
 
 interface RenderGaugeArcInnerOptions {
-  readonly centerOverlayStyle: React.CSSProperties;
+  readonly centerOverlayStyle: CSSProperties;
   readonly centerValue?: number;
   readonly defaultLabel: string;
   readonly definition: DomChartDefinition | undefined;
   readonly fillState: Readonly<GaugeFillState>;
   readonly formatOptions: CenterStatFormat;
-  readonly innerWrapStyle: React.CSSProperties;
+  readonly innerWrapStyle: CSSProperties;
   readonly layout: Readonly<GaugeArcLayout>;
   readonly prefix?: string;
   readonly suffix?: string;
 }
 
-const renderGaugeArcInner = (options: Readonly<RenderGaugeArcInnerOptions>): React.ReactNode => {
+const renderGaugeArcInner = (options: Readonly<RenderGaugeArcInnerOptions>): ReactNode => {
   const { centerOverlayStyle, centerValue, defaultLabel, definition, fillState, formatOptions, innerWrapStyle, layout, prefix, suffix } = options;
   return definition && layout.size > 0 ? (
     <div style={innerWrapStyle}>
@@ -1168,22 +1169,22 @@ const renderGaugeArcInner = (options: Readonly<RenderGaugeArcInnerOptions>): Rea
 };
 
 interface RenderGaugeArcRootOptions {
-  readonly centerOverlayStyle: React.CSSProperties;
+  readonly centerOverlayStyle: CSSProperties;
   readonly centerValue?: number;
   readonly className?: string;
-  readonly containerRef: React.RefObject<HTMLDivElement | null>;
+  readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly defaultLabel: string;
   readonly definition: DomChartDefinition | undefined;
   readonly fillState: Readonly<GaugeFillState>;
   readonly formatOptions: CenterStatFormat;
-  readonly innerWrapStyle: React.CSSProperties;
+  readonly innerWrapStyle: CSSProperties;
   readonly layout: Readonly<GaugeArcLayout>;
   readonly prefix?: string;
-  readonly rootStyle: React.CSSProperties;
+  readonly rootStyle: CSSProperties;
   readonly suffix?: string;
 }
 
-const renderGaugeArcRoot = (options: Readonly<RenderGaugeArcRootOptions>): React.ReactElement => {
+const renderGaugeArcRoot = (options: Readonly<RenderGaugeArcRootOptions>): ReactElement => {
   const { centerOverlayStyle, centerValue, className, containerRef, defaultLabel, definition, fillState, formatOptions, innerWrapStyle, layout, prefix, rootStyle, suffix } = options;
   const inner = renderGaugeArcInner({
     centerOverlayStyle,
@@ -1221,16 +1222,16 @@ const renderGaugeArcRoot = (options: Readonly<RenderGaugeArcRootOptions>): React
 };
 
 interface GaugeArcStyles {
-  readonly centerOverlayStyle: React.CSSProperties;
-  readonly innerWrapStyle: React.CSSProperties;
-  readonly rootStyle: React.CSSProperties;
+  readonly centerOverlayStyle: CSSProperties;
+  readonly innerWrapStyle: CSSProperties;
+  readonly rootStyle: CSSProperties;
 }
 
 // Wrapper styles for the arc gauge, memoized so the host divs keep a stable style identity.
-const useGaugeArcStyles = (style: Readonly<React.CSSProperties> | undefined, layout: Readonly<GaugeArcLayout>): GaugeArcStyles => {
+const useGaugeArcStyles = (style: Readonly<CSSProperties> | undefined, layout: Readonly<GaugeArcLayout>): GaugeArcStyles => {
   const { fixedSize, height, resolvedMinWidth, size, width } = layout;
-  const innerWrapStyle = React.useMemo<React.CSSProperties>(() => ({ height, position: "relative", width }), [height, width]);
-  const centerOverlayStyle = React.useMemo<React.CSSProperties>(() => ({
+  const innerWrapStyle = useMemo<CSSProperties>(() => ({ height, position: "relative", width }), [height, width]);
+  const centerOverlayStyle = useMemo<CSSProperties>(() => ({
     alignItems: "center",
     display: "flex",
     flexDirection: "column",
@@ -1240,7 +1241,7 @@ const useGaugeArcStyles = (style: Readonly<React.CSSProperties> | undefined, lay
     pointerEvents: "none",
     position: "absolute",
   }), [size]);
-  const rootStyle = React.useMemo<React.CSSProperties>(() => (fixedSize
+  const rootStyle = useMemo<CSSProperties>(() => (fixedSize
     ? { display: "inline-flex", maxWidth: "100%", position: "relative", ...style }
     : { maxWidth: "100%", minWidth: resolvedMinWidth, position: "relative", width: "100%", ...style }), [fixedSize, resolvedMinWidth, style]);
   return { centerOverlayStyle, innerWrapStyle, rootStyle };
@@ -1248,7 +1249,7 @@ const useGaugeArcStyles = (style: Readonly<React.CSSProperties> | undefined, lay
 
 type GaugeArcProps = Omit<GaugeProps, "orientation" | "labelPlacement" | "labelAlign" | "notchWidthPercent" | "linearHeight" | "geometryScrubbing">;
 
-const GaugeArc = (props: Readonly<GaugeArcProps>): React.ReactElement => {
+const GaugeArc = (props: Readonly<GaugeArcProps>): ReactElement => {
   const fillState = useGaugeFillState({
     activeFill: props.activeFill,
     activeFillOpacity: props.activeFillOpacity,
@@ -1261,7 +1262,7 @@ const GaugeArc = (props: Readonly<GaugeArcProps>): React.ReactElement => {
     useGradient: props.useGradient,
   });
 
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const { width: measuredW, height: measuredH } = useDebouncedContainerSize(containerRef);
 
   const layout = resolveGaugeArcLayout({
@@ -1328,7 +1329,7 @@ const useLinearGaugeGeometry = (
   fillState: Readonly<GaugeFillState>,
   layout: Readonly<LinearGaugeLayout>,
 ): ReturnType<typeof computeLinearNotches> | undefined =>
-  React.useMemo(() => {
+  useMemo(() => {
     if (layout.width <= 0 || layout.height <= 0) {return undefined;}
     return computeLinearNotches({
       activeGrad0: fillState.activeGrad0,
@@ -1368,7 +1369,7 @@ const useLinearGaugeFills = (
   props: Readonly<GaugeLinearProps>,
   fillState: Readonly<GaugeFillState>,
 ): LinearGaugeFills => {
-  const resolveBgFill = React.useCallback(
+  const resolveBgFill = useCallback(
     (notchIndex: number) =>
       resolveGaugeBgFill({
         arcTrackFill: GAUGE_ARC_TRACK_FILL,
@@ -1393,7 +1394,7 @@ const useLinearGaugeFills = (
       fillState.inactiveGrad1,
     ],
   );
-  const resolveActiveFill = React.useCallback(
+  const resolveActiveFill = useCallback(
     (notch: ComputedNotch) =>
       resolveGaugeActiveFill({
         activeFill: props.activeFill,
@@ -1531,7 +1532,7 @@ const useLinearGaugeDefinition = (options: Readonly<UseLinearGaugeDefinitionOpti
   const { resolveActiveFill, resolveBgFill } = fills;
   const { resolvedActiveFillOpacity, resolvedInactiveFillOpacity, themeActiveGradientId, useThemePaletteGradient } = fillState;
   const { enterStaggerScale, enterTransition, geometryScrubbing, notchCornerRadius } = props;
-  return React.useMemo(() => {
+  return useMemo(() => {
     if (!geometry) {return undefined;}
     const { cornerVerticalDepth, notches } = geometry;
     const activeNotches = notches.filter((notch) => notch.isActive);
@@ -1566,12 +1567,12 @@ const useLinearGaugeDefinition = (options: Readonly<UseLinearGaugeDefinitionOpti
 };
 
 interface LinearGaugeStyles {
-  readonly chartWrapStyle: React.CSSProperties;
-  readonly containerStyle: React.CSSProperties;
-  readonly innerWidthStyle: React.CSSProperties;
-  readonly label: React.ReactNode;
-  readonly rootStyle: React.CSSProperties;
-  readonly trackStyle: React.CSSProperties;
+  readonly chartWrapStyle: CSSProperties;
+  readonly containerStyle: CSSProperties;
+  readonly innerWidthStyle: CSSProperties;
+  readonly label: ReactNode;
+  readonly rootStyle: CSSProperties;
+  readonly trackStyle: CSSProperties;
 }
 
 // Wrapper styles and label element for the linear gauge.
@@ -1579,9 +1580,9 @@ interface LinearGaugeStyles {
 const useLinearGaugeStyles = (props: Readonly<GaugeLinearProps>, layout: Readonly<LinearGaugeLayout>): LinearGaugeStyles => {
   const { centerValue, defaultLabel, formatOptions, labelAlign, prefix, style, suffix, width: propWidth } = props;
   const { fixedWidth, height, resolvedMinWidth, width } = layout;
-  const chartWrapStyle = React.useMemo<React.CSSProperties>(() => ({ height, position: "relative", width }), [height, width]);
-  const trackStyle = React.useMemo<React.CSSProperties>(() => ({ height, position: "relative", width: "100%" }), [height]);
-  const label = React.useMemo(() => (centerValue === undefined ? undefined : (
+  const chartWrapStyle = useMemo<CSSProperties>(() => ({ height, position: "relative", width }), [height, width]);
+  const trackStyle = useMemo<CSSProperties>(() => ({ height, position: "relative", width: "100%" }), [height]);
+  const label = useMemo(() => (centerValue === undefined ? undefined : (
     <GaugeLabelStat
       align={labelAlign ?? "start"}
       centerValue={centerValue}
@@ -1591,27 +1592,27 @@ const useLinearGaugeStyles = (props: Readonly<GaugeLinearProps>, layout: Readonl
       suffix={suffix}
     />
   )), [centerValue, defaultLabel, formatOptions, labelAlign, prefix, suffix]);
-  const rootStyle = React.useMemo<React.CSSProperties>(() => (fixedWidth
+  const rootStyle = useMemo<CSSProperties>(() => (fixedWidth
     ? { maxWidth: "100%", position: "relative", width: "100%", ...style }
     : { maxWidth: "100%", minWidth: 0, position: "relative", width: "100%", ...style }), [fixedWidth, style]);
-  const innerWidthStyle = React.useMemo<React.CSSProperties>(() => ({ width: propWidth }), [propWidth]);
-  const containerStyle = React.useMemo<React.CSSProperties>(() => ({ minWidth: resolvedMinWidth, width: "100%" }), [resolvedMinWidth]);
+  const innerWidthStyle = useMemo<CSSProperties>(() => ({ width: propWidth }), [propWidth]);
+  const containerStyle = useMemo<CSSProperties>(() => ({ minWidth: resolvedMinWidth, width: "100%" }), [resolvedMinWidth]);
   return { chartWrapStyle, containerStyle, innerWidthStyle, label, rootStyle, trackStyle };
 };
 
 interface RenderLinearGaugeBodyOptions {
-  readonly chartWrapStyle: React.CSSProperties;
+  readonly chartWrapStyle: CSSProperties;
   readonly definition: DomChartDefinition | undefined;
-  readonly defsChildren: readonly Readonly<React.ReactElement>[];
+  readonly defsChildren: readonly Readonly<ReactElement>[];
   readonly height: number;
-  readonly label: React.ReactNode;
+  readonly label: ReactNode;
   readonly labelAlign: GaugeLabelAlign;
   readonly labelPlacement: GaugeLabelPlacement;
-  readonly trackStyle: React.CSSProperties;
+  readonly trackStyle: CSSProperties;
   readonly width: number;
 }
 
-const renderLinearGaugeBody = (options: Readonly<RenderLinearGaugeBodyOptions>): React.ReactElement => {
+const renderLinearGaugeBody = (options: Readonly<RenderLinearGaugeBodyOptions>): ReactElement => {
   const { chartWrapStyle, definition, defsChildren, height, label, labelAlign, labelPlacement, trackStyle, width } = options;
   const svg =
     definition && width > 0 ? (
@@ -1641,17 +1642,17 @@ const renderLinearGaugeBody = (options: Readonly<RenderLinearGaugeBodyOptions>):
 };
 
 interface RenderLinearGaugeRootOptions {
-  readonly body: Readonly<React.ReactElement>;
+  readonly body: Readonly<ReactElement>;
   readonly className?: string;
-  readonly containerRef: React.RefObject<HTMLDivElement | null>;
-  readonly containerStyle: React.CSSProperties;
+  readonly containerRef: RefObject<HTMLDivElement | null>;
+  readonly containerStyle: CSSProperties;
   readonly fixedWidth: boolean;
-  readonly innerWidthStyle: React.CSSProperties;
+  readonly innerWidthStyle: CSSProperties;
   readonly layout: Readonly<LinearGaugeLayout>;
-  readonly rootStyle: React.CSSProperties;
+  readonly rootStyle: CSSProperties;
 }
 
-const renderLinearGaugeRoot = (options: Readonly<RenderLinearGaugeRootOptions>): React.ReactElement => {
+const renderLinearGaugeRoot = (options: Readonly<RenderLinearGaugeRootOptions>): ReactElement => {
   const { body, className, containerRef, containerStyle, fixedWidth, innerWidthStyle, layout, rootStyle } = options;
   if (fixedWidth) {
     return (
@@ -1675,7 +1676,7 @@ const renderLinearGaugeRoot = (options: Readonly<RenderLinearGaugeRootOptions>):
 
 type GaugeLinearProps = Omit<GaugeProps, "orientation" | "startAngle" | "endAngle">;
 
-const GaugeLinear = (props: Readonly<GaugeLinearProps>): React.ReactElement => {
+const GaugeLinear = (props: Readonly<GaugeLinearProps>): ReactElement => {
   const fillState = useGaugeFillState({
     activeFill: props.activeFill,
     activeFillOpacity: props.activeFillOpacity,
@@ -1688,7 +1689,7 @@ const GaugeLinear = (props: Readonly<GaugeLinearProps>): React.ReactElement => {
     useGradient: props.useGradient,
   });
 
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const measuredWidth = useDebouncedContainerWidth(containerRef);
 
   const layout = resolveLinearGaugeLayout({
@@ -1725,7 +1726,7 @@ const GaugeLinear = (props: Readonly<GaugeLinearProps>): React.ReactElement => {
   });
 }
 
-const Gauge = ({ orientation = "arc", ...rest }: Readonly<GaugeProps>): React.ReactElement => {
+const Gauge = ({ orientation = "arc", ...rest }: Readonly<GaugeProps>): ReactElement => {
   if (orientation === "linear") {
     return <GaugeLinear {...rest} />;
   }

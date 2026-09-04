@@ -1,4 +1,4 @@
-import * as React from "react";
+import { useMemo } from "react";
 
 interface ChartMargin {
   readonly top: number;
@@ -15,7 +15,7 @@ const useChartMargin = (marginProp: Partial<ChartMargin> | undefined, defaultMar
   const bottom = marginProp?.bottom ?? defaultMargin.bottom;
   const left = marginProp?.left ?? defaultMargin.left;
   // Memo is keyed on fields, not the prop object: a fresh object would bust the update boundary.
-  return React.useMemo<ChartMargin>(
+  return useMemo<ChartMargin>(
     () => ({ bottom, left, right, top }),
     [top, right, bottom, left],
   );

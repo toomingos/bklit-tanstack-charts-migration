@@ -48,4 +48,3 @@ const PieCenter = ({
 PieCenter.displayName = "PieCenter";
 
 export { PieCenter };
-export default PieCenter;

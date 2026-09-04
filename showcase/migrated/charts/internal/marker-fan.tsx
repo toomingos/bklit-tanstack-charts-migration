@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import type { ReactElement, ReactNode } from "react";
 import { MarkerCircleHtml } from "./marker-circle";
 import type { ChartMarker } from "./types";
 
@@ -28,7 +28,7 @@ const getCirclePosition = (index: number, total: number): CirclePosition => {
   return { x: Math.cos(radians) * FAN_RADIUS, y: Math.sin(radians) * FAN_RADIUS };
 }
 
-const renderFanHub = (size: number): React.ReactNode => (
+const renderFanHub = (size: number): ReactNode => (
   <div
     style={{
       backgroundColor: "var(--chart-marker-border)",
@@ -53,7 +53,7 @@ interface FannedMarkerOptions {
   readonly reduced: boolean;
 }
 
-const renderFannedMarker = (options: Readonly<FannedMarkerOptions>): React.ReactElement => {
+const renderFannedMarker = (options: Readonly<FannedMarkerOptions>): ReactElement => {
   const { bucketKey, marker, fanIndex, fanTotal, size, reduced } = options;
   const pos = getCirclePosition(fanIndex, fanTotal);
   return (
@@ -82,7 +82,7 @@ interface MarkerFanOptions {
   readonly onLeave: () => void;
 }
 
-const renderMarkerFan = (options: Readonly<MarkerFanOptions>): React.ReactNode => {
+const renderMarkerFan = (options: Readonly<MarkerFanOptions>): ReactNode => {
   const { fanned, bucketKey, size, reduced, onEnter, onLeave } = options;
   return (
     <div

@@ -1284,5 +1284,3 @@ export type {
   ChoroplethZoomInstance,
   Margin,
 };
-
-export default ChoroplethChart;

@@ -695,4 +695,3 @@ export type {
   SankeyNodeDatum,
   Margin,
 };
-export default SankeyChart;

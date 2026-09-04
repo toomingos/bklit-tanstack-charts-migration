@@ -1,4 +1,4 @@
-import * as React from "react";
+import { useMemo } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import type { ScaleLinear } from "d3-scale";
 import { applyReferenceAreaOverflow, computeReferenceAreaRect } from "./reference-area-geometry";
@@ -230,20 +230,20 @@ const useReferenceAreaGeometry = (options: Readonly<ReferenceAreaGeometryOptions
   const innerWidth = Math.max(0, width - margin.left - margin.right);
   const innerHeight = Math.max(0, height - margin.top - margin.bottom);
   const ids = useReferenceAreaIds();
-  const effectiveYDomain = React.useMemo<[number, number]>(
+  const effectiveYDomain = useMemo<[number, number]>(
     // Areas place in their own yAxisId's scale, not the chart primary.
     () => (yDomainsByAxis ? domainForAxis(yDomainsByAxis, normalizeYAxisId(yAxisId)) : yDomain),
     [yDomainsByAxis, yAxisId, yDomain],
   );
-  const yScale = React.useMemo(
+  const yScale = useMemo(
     () => scaleLinear().domain(effectiveYDomain).range([innerHeight, 0]),
     [effectiveYDomain, innerHeight],
   );
-  const xScale = React.useMemo<XScaleMapper>(
+  const xScale = useMemo<XScaleMapper>(
     () => buildXScaleMapper({ barScale, innerWidth, isBarChart, isCandlestickXScale, isTimeScale, xDomain, xRangePadding }),
     [xDomain, isTimeScale, isBarChart, barScale, isCandlestickXScale, innerWidth, xRangePadding],
   );
-  const rect = React.useMemo<ReferenceAreaRect | undefined>(() => {
+  const rect = useMemo<ReferenceAreaRect | undefined>(() => {
     if (innerWidth <= 0 || innerHeight <= 0) {return undefined;}
     if (isBarChart === true && barScale !== null && barScale !== undefined) {
       const band = barScale;

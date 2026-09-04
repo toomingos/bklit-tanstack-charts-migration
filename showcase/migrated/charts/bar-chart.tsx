@@ -1,5 +1,14 @@
 // Bklit BarChart on TanStack Charts. Vertical grouped bars only; stacked/orientation out of scope.
-import * as React from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { CSSProperties, Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
 import { scaleBand } from "d3-scale";
 import type { ScaleBand } from "d3-scale";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
@@ -164,7 +173,7 @@ interface BarChartProps {
   /** DOC-9 (B13): bklit `squareSnap` (bar-chart.tsx:89) — type surface only, no behavior. */
   squareSnap?: { readonly squareGap: number; readonly groupGap?: number; readonly fit?: boolean };
   onPhaseChange?: (phase: ChartPhase) => void;
-  children?: React.ReactNode;
+  children?: ReactNode;
 }
 
 // Inert props accepted for API parity; dev-only warning names the ones passed.
@@ -562,7 +571,7 @@ const countSquarePrimitives = ({
 interface ClearDatePillParams {
   readonly pillBuild: PillBuild | null;
   readonly visibilityRef: { current: boolean };
-  readonly setLabelFade: React.Dispatch<React.SetStateAction<Readonly<{ primaryX: number; hoveredLabel: string | null }> | undefined>>;
+  readonly setLabelFade: Dispatch<SetStateAction<Readonly<{ primaryX: number; hoveredLabel: string | null }> | undefined>>;
 }
 
 const clearDatePillForEmptyFocus = ({
@@ -614,7 +623,7 @@ interface BarTooltipPanelParams {
 
 interface BarTooltipPanel {
   readonly panelClassName: string;
-  readonly panelStyle: React.CSSProperties | undefined;
+  readonly panelStyle: CSSProperties | undefined;
 }
 
 const resolveBarTooltipPanel = ({ tooltip: tt }: Readonly<BarTooltipPanelParams>): BarTooltipPanel => {
@@ -622,7 +631,7 @@ const resolveBarTooltipPanel = ({ tooltip: tt }: Readonly<BarTooltipPanelParams>
   const panelClassName = tooltipClassName !== undefined && tooltipClassName !== "" ? `bkm-tooltip-panel ${tooltipClassName}` : "bkm-tooltip-panel";
   const tooltipPanelStyle = tt?.panelStyle;
   const tooltipBackgroundColor = tt?.backgroundColor;
-  const panelStyle: React.CSSProperties | undefined =
+  const panelStyle: CSSProperties | undefined =
     tooltipPanelStyle !== undefined || (tooltipBackgroundColor !== undefined && tooltipBackgroundColor !== "")
       ? { ...tooltipPanelStyle, ...(tooltipBackgroundColor !== undefined && tooltipBackgroundColor !== "" ? { backgroundColor: tooltipBackgroundColor } : undefined) }
       : undefined;
@@ -745,29 +754,29 @@ const BarChart = ({
   squareSnap,
   onPhaseChange,
   children,
-}: Readonly<BarChartProps>): React.ReactElement => {
+}: Readonly<BarChartProps>): ReactElement => {
   warnInertBarProps({ barWidth, orientation, squareSnap, stackGap, stacked });
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const width = useContainerWidth(containerRef);
   // Bklit parity: the first phase is always "revealing"; bypass the ref guard once.
-  const phaseRef = React.useRef<ChartPhase>("revealing");
-  const revealDeadlineTimerRef = React.useRef<number | null>(null);
-  const onPhaseChangeRef = React.useRef(onPhaseChange);
+  const phaseRef = useRef<ChartPhase>("revealing");
+  const revealDeadlineTimerRef = useRef<number | null>(null);
+  const onPhaseChangeRef = useRef(onPhaseChange);
   onPhaseChangeRef.current = onPhaseChange;
 
-  const setPhase = React.useCallback((phase: ChartPhase) => {
+  const setPhase = useCallback((phase: ChartPhase) => {
     if (phaseRef.current === phase) {return;}
     phaseRef.current = phase;
     onPhaseChangeRef.current?.(phase);
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     onPhaseChangeRef.current?.("revealing");
   }, []);
 
   // Cancel the reveal-deadline timer on unmount; an uncancelled one fires on detached DOM.
-  React.useEffect(() =>
+  useEffect(() =>
     (): void => {
       if (revealDeadlineTimerRef.current !== null) {
         globalThis.clearTimeout(revealDeadlineTimerRef.current);
@@ -776,7 +785,7 @@ const BarChart = ({
     }
   , []);
 
-  const { bars, barSquares: barSquaresRaw, barColumnTracks: barColumnTracksRaw, barDepthBacks: barDepthBacksRaw, barDepthFronts: barDepthFrontsRaw, barPulses: barPulsesRaw, barDepthProvider, grid, barXAxis, background, tooltip } = React.useMemo(
+  const { bars, barSquares: barSquaresRaw, barColumnTracks: barColumnTracksRaw, barDepthBacks: barDepthBacksRaw, barDepthFronts: barDepthFrontsRaw, barPulses: barPulsesRaw, barDepthProvider, grid, barXAxis, background, tooltip } = useMemo(
     () => extractChildren(children),
     [children],
   );
@@ -787,26 +796,26 @@ const BarChart = ({
   // Bklit parity: no decimation — every row renders a bar.
   const renderData = data;
   // Reveal replays on data change only; legend-hover recreations must not replay.
-  const latestRenderDataRef = React.useRef(renderData);
+  const latestRenderDataRef = useRef(renderData);
   latestRenderDataRef.current = renderData;
-  const revealedForDataRef = React.useRef<unknown>(null);
+  const revealedForDataRef = useRef<unknown>(null);
   // Reveal replays on data change or revealSignature/animationDuration change (bklit epoch).
   const enterType = enterTransition?.type;
   const enterDuration = enterTransition?.duration;
   const enterEaseKey = enterTransition?.ease?.join(",");
-  const { durationMs: revealDurationMs, easingCss: revealEasingCss } = React.useMemo(
+  const { durationMs: revealDurationMs, easingCss: revealEasingCss } = useMemo(
     () => clipRevealTiming(enterTransition, animationDuration, animationEasing),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [enterType, enterDuration, enterEaseKey, animationDuration, animationEasing],
   );
   const revealKey = `${revealSignature}|${animationDuration}`;
-  const revealedKeyRef = React.useRef<string | null>(null);
-  const revealKeyRef = React.useRef(revealKey);
+  const revealedKeyRef = useRef<string | null>(null);
+  const revealKeyRef = useRef(revealKey);
   revealKeyRef.current = revealKey;
 
   // Explicit per-mark enter motion: native auto-stagger is fixed at 1100ms, not prop-derived.
   // Update/exit stay false — legacy never animated those.
-  const barEnterMotion = React.useMemo<ChartMotionDefinition<ChartDatum>>(() => {
+  const barEnterMotion = useMemo<ChartMotionDefinition<ChartDatum>>(() => {
     const easing = resolveMotionEasing(revealEasingCss);
     return (context: Readonly<{ phase: ChartMotionPhase; datumCount: number; datumIndex: number }>): false | ChartMotionTiming | undefined => {
       if (context.phase !== "enter") {return false;}
@@ -818,9 +827,9 @@ const BarChart = ({
     };
   }, [revealDurationMs, revealEasingCss]);
 
-  const categoryAccessor = React.useMemo(() => barCategoryAccessor(xDataKey), [xDataKey]);
+  const categoryAccessor = useMemo(() => barCategoryAccessor(xDataKey), [xDataKey]);
 
-  const resolvedSeries = React.useMemo<ResolvedSeries[]>(
+  const resolvedSeries = useMemo<ResolvedSeries[]>(
     () =>
       bars.map((bar: Readonly<BarConfig>) => {
         const fill = bar.fill ?? DEFAULT_BAR_FILL;
@@ -839,7 +848,7 @@ const BarChart = ({
   const hasBarSquares = barSquaresRaw.length > 0;
   const hasBarColumnTrack = barColumnTracksRaw.length > 0;
 
-  const resolvedBarSquares = React.useMemo<readonly Readonly<(Required<Pick<BarSquaresConfig, "dataKey">> & Omit<BarSquaresConfig, "dataKey"> & { fill: string; squareGap: number; squareRadius: number; squareFit: boolean; useGradient: boolean; gradientStops: { offset: number; color: string }[]; fadedOpacity: number; groupGap: number; animate: boolean })>[] >(() => {
+  const resolvedBarSquares = useMemo<readonly Readonly<(Required<Pick<BarSquaresConfig, "dataKey">> & Omit<BarSquaresConfig, "dataKey"> & { fill: string; squareGap: number; squareRadius: number; squareFit: boolean; useGradient: boolean; gradientStops: { offset: number; color: string }[]; fadedOpacity: number; groupGap: number; animate: boolean })>[] >(() => {
     if (!hasBarSquares) {return [];}
     return barSquaresRaw.map((square: Readonly<BarSquaresConfig>) => ({
       animate: square.animate ?? true,
@@ -859,7 +868,7 @@ const BarChart = ({
     }));
   }, [barSquaresRaw, hasBarSquares]);
 
-  const resolvedBarColumnTracks = React.useMemo<readonly Readonly<(Required<Pick<BarColumnTrackConfig, "fill">> & BarColumnTrackConfig & { opacity: number; squareGap: number; squareRadius: number; groupGap: number; squareFit: boolean })>[] >(() => {
+  const resolvedBarColumnTracks = useMemo<readonly Readonly<(Required<Pick<BarColumnTrackConfig, "fill">> & BarColumnTrackConfig & { opacity: number; squareGap: number; squareRadius: number; groupGap: number; squareFit: boolean })>[] >(() => {
     if (!hasBarColumnTrack) {return [];}
     return barColumnTracksRaw.map((track: Readonly<BarColumnTrackConfig>) => ({
       fill: track.fill ?? "var(--chart-grid)",
@@ -872,7 +881,7 @@ const BarChart = ({
     }));
   }, [barColumnTracksRaw, hasBarColumnTrack]);
 
-  const allSeriesForDomain = React.useMemo(
+  const allSeriesForDomain = useMemo(
     () => [
       ...resolvedSeries.map((series) => ({ dataKey: series.dataKey, yAxisId: series.yAxisId })),
       ...resolvedBarSquares.map((square) => ({ dataKey: square.dataKey, yAxisId: square.yAxisId })),
@@ -880,7 +889,7 @@ const BarChart = ({
     [resolvedSeries, resolvedBarSquares],
   );
 
-  const dotSeriesList = React.useMemo(
+  const dotSeriesList = useMemo(
     () => [
       ...resolvedSeries.map((series) => ({ color: series.dotColor, dataKey: series.dataKey })),
       ...resolvedBarSquares.map((square) => ({ color: square.stroke ?? square.fill, dataKey: square.dataKey })),
@@ -890,19 +899,19 @@ const BarChart = ({
 
   const innerWidth = Math.max(0, width - margin.left - margin.right);
 
-  const categoryOrder = React.useMemo(
+  const categoryOrder = useMemo(
     () => renderData.map((datum: Readonly<ChartDatum>) => categoryAccessor(datum)),
     [renderData, categoryAccessor],
   );
 
   // X/y are factories: TanStack infers domains and applies the margin-inclusive range itself.
-  const xScaleFactory = React.useMemo(
+  const xScaleFactory = useMemo(
     () => (): ScaleBand<string> => scaleBand().domain(categoryOrder).padding(barGap),
     [categoryOrder, barGap],
   );
 
   // Bklit parity: [0, (max || 100) * 1.1], empty input falls back to 100.
-  const resolveBarAxisDomain = React.useCallback(
+  const resolveBarAxisDomain = useCallback(
     (axisSeries: readonly { readonly dataKey: string }[]): [number, number] => {
       let max = 0;
       for (const series of axisSeries) {
@@ -916,7 +925,7 @@ const BarChart = ({
     [renderData],
   );
 
-  const yDomainsByAxis = React.useMemo(
+  const yDomainsByAxis = useMemo(
     () =>
       resolveYDomainsByAxis({
         resolveDomain: resolveBarAxisDomain,
@@ -926,20 +935,20 @@ const BarChart = ({
   );
 
   // No-series fallback stays [0, 110] via the same closure, not domainForAxis's [0, 100].
-  const yDomain = React.useMemo<[number, number]>(
+  const yDomain = useMemo<[number, number]>(
     () => yDomainsByAxis[DEFAULT_Y_AXIS_ID] ?? resolveBarAxisDomain([]),
     [yDomainsByAxis, resolveBarAxisDomain],
   );
   // Pre-domained y instance preserves the *1.1 headroom; a factory would re-infer it away.
-  const yScale = React.useMemo(() => createNicedYScale(yDomain), [yDomain]);
+  const yScale = useMemo(() => createNicedYScale(yDomain), [yDomain]);
   // D3 domain() returns number[]; destructure with defaults to recover the known pair.
-  const nicedPrimaryDomain = React.useMemo<[number, number]>(() => {
+  const nicedPrimaryDomain = useMemo<[number, number]>(() => {
     const [lo = 0, hi = 0] = yScale.domain();
     return [lo, hi];
   }, [yScale]);
 
   // Secondary axes reproject per dataKey so all four mark families agree on each series.
-  const nicedDomainsByAxis = React.useMemo(() => {
+  const nicedDomainsByAxis = useMemo(() => {
     const out: Record<string, [number, number]> = {};
     for (const [axisId, domain] of Object.entries(yDomainsByAxis)) {
       const [nicedLo = 0, nicedHi = 0] = createNicedYScale(domain).domain();
@@ -949,7 +958,7 @@ const BarChart = ({
     return out;
   }, [yDomainsByAxis]);
 
-  const projectYByKey = React.useMemo(() => {
+  const projectYByKey = useMemo(() => {
     const projectorFor = createAxisValueProjector(
       nicedDomainsByAxis,
       nicedPrimaryDomain,
@@ -961,7 +970,7 @@ const BarChart = ({
     return byKey;
   }, [nicedDomainsByAxis, nicedPrimaryDomain, allSeriesForDomain]);
 
-  const projectValue = React.useCallback(
+  const projectValue = useCallback(
     (dataKey: string, value: number) => {
       const project = projectYByKey.get(dataKey);
       return project ? project(value) : value;
@@ -969,7 +978,7 @@ const BarChart = ({
     [projectYByKey],
   );
 
-  const bandWidth = React.useMemo(() => {
+  const bandWidth = useMemo(() => {
     if (innerWidth <= 0 || categoryOrder.length === 0) {return 0;}
     const ranged = scaleBand()
       .domain(categoryOrder)
@@ -980,9 +989,9 @@ const BarChart = ({
 
   const seriesCount = resolvedSeries.length;
   const totalSeriesCount = resolvedSeries.length + resolvedBarSquares.length;
-  const allSeriesKeys = React.useMemo(() => [...resolvedSeries.map((series) => series.dataKey), ...resolvedBarSquares.map((square) => square.dataKey)], [resolvedSeries, resolvedBarSquares]);
+  const allSeriesKeys = useMemo(() => [...resolvedSeries.map((series) => series.dataKey), ...resolvedBarSquares.map((square) => square.dataKey)], [resolvedSeries, resolvedBarSquares]);
   // Bklit parity: individualBarWidth = (bandWidth - gap*(n-1))/n; squares join the count.
-  const groupBandwidth = React.useMemo(() => {
+  const groupBandwidth = useMemo(() => {
     const groupCount = totalSeriesCount > 0 ? totalSeriesCount : seriesCount;
     if (groupCount === 0) {return bandWidth;}
     const effectiveGroupGap = groupCount > 1 ? GROUP_GAP : 0;
@@ -990,7 +999,7 @@ const BarChart = ({
   }, [bandWidth, seriesCount, totalSeriesCount]);
 
   // PaddingInner is derived so bandwidth() equals bklit's individualBarWidth exactly.
-  const groupScale = React.useMemo<ScaleBand<string>>(() => {
+  const groupScale = useMemo<ScaleBand<string>>(() => {
     const groupCount = totalSeriesCount > 0 ? totalSeriesCount : seriesCount;
     const paddingInner = groupCount > 1 ? (groupCount * GROUP_GAP) / (bandWidth + GROUP_GAP) : 0;
     const domain = groupCount === totalSeriesCount && totalSeriesCount > 0 ? allSeriesKeys : resolvedSeries.map((series) => series.dataKey);
@@ -1000,14 +1009,14 @@ const BarChart = ({
       .paddingOuter(0);
   }, [resolvedSeries, seriesCount, totalSeriesCount, bandWidth, allSeriesKeys]);
 
-  const categoryScaleForOverlay = React.useMemo<ScaleBand<string>>(() => 
+  const categoryScaleForOverlay = useMemo<ScaleBand<string>>(() => 
     scaleBand()
       .domain(categoryOrder)
       .range([margin.left, margin.left + innerWidth])
       .padding(barGap)
   , [categoryOrder, margin.left, innerWidth, barGap]);
 
-  const groupScaleForOverlay = React.useMemo<ScaleBand<string>>(() => 
+  const groupScaleForOverlay = useMemo<ScaleBand<string>>(() => 
     scaleBand()
       .domain(groupScale.domain())
       .paddingInner(groupScale.paddingInner())
@@ -1016,9 +1025,9 @@ const BarChart = ({
   , [groupScale, bandWidth]);
 
   // Bklit-parity band-index focus (floor((x-margin.left)/innerWidth*n)), not nearest-center.
-  const getCategoryOrder = React.useCallback(() => categoryOrder, [categoryOrder]);
-  const getInnerWidth = React.useCallback(() => innerWidth, [innerWidth]);
-  const barFocusStrategy = React.useMemo(
+  const getCategoryOrder = useCallback(() => categoryOrder, [categoryOrder]);
+  const getInnerWidth = useCallback(() => innerWidth, [innerWidth]);
+  const barFocusStrategy = useMemo(
     () =>
       createBarFocusStrategy({
         getCategoryOrder,
@@ -1038,7 +1047,7 @@ const BarChart = ({
   // UserSpaceOnUse required: the crosshair is a zero-bbox line with nothing to map onto.
   const indicatorGradientId = useSanitizedId();
   const squaresBaseId = useSanitizedId();
-  const squaresDefs = React.useMemo<readonly Readonly<{ dataKey: string; gradientId: string; patternId: string | undefined; fill: string; gradientStops: readonly Readonly<{ offset: number; color: string }>[]; patternPreset?: PatternPresetId }>[]>(() => {
+  const squaresDefs = useMemo<readonly Readonly<{ dataKey: string; gradientId: string; patternId: string | undefined; fill: string; gradientStops: readonly Readonly<{ offset: number; color: string }>[]; patternPreset?: PatternPresetId }>[]>(() => {
     if (!barSquaresEnabled) {return [];}
     const out: { dataKey: string; gradientId: string; patternId: string | undefined; fill: string; gradientStops: { offset: number; color: string }[]; patternPreset?: PatternPresetId }[] = [];
     for (let i = 0; i < resolvedBarSquares.length; i += 1) {
@@ -1049,7 +1058,7 @@ const BarChart = ({
     }
     return out;
   }, [barSquaresEnabled, resolvedBarSquares, squaresBaseId]);
-  const squaresDefsByKey = React.useMemo(() => {
+  const squaresDefsByKey = useMemo(() => {
     const defsByKey = new Map<string, typeof squaresDefs[number]>();
     for (const def of squaresDefs) {defsByKey.set(def.dataKey, def);}
     return defsByKey;
@@ -1058,7 +1067,7 @@ const BarChart = ({
   // One shared def: objectBoundingBox makes a single gradient correct for every bar height.
   const depthBaseId = useSanitizedId();
   const depthGroundShadow = barDepthProvider?.groundShadow ?? DEFAULT_BAR_DEPTH_GROUND_SHADOW;
-  const depthGradientIds = React.useMemo<BarDepthGradientIds>(
+  const depthGradientIds = useMemo<BarDepthGradientIds>(
     () => ({
       glassNegId: `${depthBaseId}-bar-depth-glass-neg`,
       glassPosId: `${depthBaseId}-bar-depth-glass-pos`,
@@ -1068,12 +1077,12 @@ const BarChart = ({
     }),
     [depthBaseId],
   );
-  const depthGlassPosStops = React.useMemo(() => buildPosBarStops(depthGroundShadow), [depthGroundShadow]);
-  const depthGlassNegStops = React.useMemo(() => buildNegBarStops(depthGroundShadow), [depthGroundShadow]);
+  const depthGlassPosStops = useMemo(() => buildPosBarStops(depthGroundShadow), [depthGroundShadow]);
+  const depthGlassNegStops = useMemo(() => buildNegBarStops(depthGroundShadow), [depthGroundShadow]);
   const pulseWaveGradientId = `${depthBaseId}-bar-pulse-wave-grad`;
-  const pulseWaveStops = React.useMemo(() => buildPulseWaveStops(), []);
+  const pulseWaveStops = useMemo(() => buildPulseWaveStops(), []);
 
-  const nativeDepthGradients = React.useMemo(
+  const nativeDepthGradients = useMemo(
     () => [
       {
         id: depthGradientIds.glassPosId,
@@ -1150,9 +1159,9 @@ const BarChart = ({
 
   const chartConfig = useChartConfig();
 
-  const [labelFade, setLabelFade] = React.useState<Readonly<{ primaryX: number; hoveredLabel: string | null }> | undefined>();
+  const [labelFade, setLabelFade] = useState<Readonly<{ primaryX: number; hoveredLabel: string | null }> | undefined>();
 
-  const definition = React.useMemo((): DomChartDefinition<ChartDatum, string, number> | undefined => {
+  const definition = useMemo((): DomChartDefinition<ChartDatum, string, number> | undefined => {
     if (width <= 0 || (resolvedSeries.length === 0 && resolvedBarSquares.length === 0)) {return undefined;}
     const gridGuide = resolveGridGuide(grid);
     const hasSquares = barSquaresEnabled;
@@ -1543,8 +1552,8 @@ const BarChart = ({
     barEnterMotion,
   ]);
 
-  const chromeStateRef = React.useRef<BarChromeState | null>(null);
-  const dateLabelsForPill = React.useMemo(() => renderData.map((datum: Readonly<ChartDatum>) => {
+  const chromeStateRef = useRef<BarChromeState | null>(null);
+  const dateLabelsForPill = useMemo(() => renderData.map((datum: Readonly<ChartDatum>) => {
     const rawValue = datum[xDataKey];
     if (rawValue instanceof Date) {return shortDateFmt.format(rawValue);}
     if (isString(rawValue)) {return rawValue;}
@@ -1557,14 +1566,14 @@ const BarChart = ({
     tooltip: tooltip ?? undefined,
   };
 
-  const overlayHostRef = React.useRef<HTMLDivElement | null>(null);
+  const overlayHostRef = useRef<HTMLDivElement | null>(null);
   const hasDefinition = width > 0;
 
-  const pillRef = React.useRef<PillBuild | null>(null);
+  const pillRef = useRef<PillBuild | null>(null);
   // First pill show jumps the spring; later moves spring (mirrors legacy showing flag).
-  const pillVisibleRef = React.useRef(false);
+  const pillVisibleRef = useRef(false);
 
-  React.useLayoutEffect((): (() => void) | undefined => {
+  useLayoutEffect((): (() => void) | undefined => {
     const el = overlayHostRef.current;
     if (!el || !tooltipEnabled) {return undefined;}
     const doc = el.ownerDocument;
@@ -1580,7 +1589,7 @@ const BarChart = ({
     };
   }, [tooltipEnabled, hasDefinition, chartConfig]);
 
-  const categoryIndexByLabel = React.useMemo(() => {
+  const categoryIndexByLabel = useMemo(() => {
     const indexByLabel = new Map<string, number>();
     for (let i = 0; i < categoryOrder.length; i += 1) {indexByLabel.set(categoryOrder[i], i);}
     return indexByLabel;
@@ -1615,7 +1624,7 @@ const syncDatePillForCategory = ({
   updateDatePillContent({ anchorX, categoryIndex, categoryLabel, dateLabels, discrete, pillBuild, showing });
 };
 
-  const handleFocusGroupChange = React.useCallback(
+  const handleFocusGroupChange = useCallback(
     (points: readonly Readonly<ChartPoint<ChartDatum, string, number>>[]) => {
       const pillBuild = pillRef.current;
       if (points.length === 0) {
@@ -1653,12 +1662,12 @@ const getBarTooltipValue = (point: Readonly<ChartPoint<ChartDatum, string, numbe
 };
 
 interface CustomBarTooltipContentParams {
-  readonly content: (props: { readonly point: Readonly<ChartTooltipPoint>; readonly index: number }) => React.ReactNode;
+  readonly content: (props: { readonly point: Readonly<ChartTooltipPoint>; readonly index: number }) => ReactNode;
   readonly categoryIndex: number;
   readonly categoryLabel: string;
   readonly points: readonly Readonly<ChartPoint<ChartDatum, string, number>>[];
   readonly panelClassName: string;
-  readonly panelStyle: React.CSSProperties | undefined;
+  readonly panelStyle: CSSProperties | undefined;
 }
 
 const renderCustomBarTooltipContent = ({
@@ -1668,7 +1677,7 @@ const renderCustomBarTooltipContent = ({
   points,
   panelClassName,
   panelStyle,
-}: Readonly<CustomBarTooltipContentParams>): React.ReactNode => {
+}: Readonly<CustomBarTooltipContentParams>): ReactNode => {
   const pointRec: ChartTooltipPoint = { label: categoryLabel };
   for (const point of points) {pointRec[point.markId] = getBarTooltipValue(point);}
   return (
@@ -1685,7 +1694,7 @@ interface DefaultBarTooltipContentParams {
   readonly seriesList: readonly Readonly<{ dataKey: string; color: string }>[];
   readonly categoryLabel: string;
   readonly panelClassName: string;
-  readonly panelStyle: React.CSSProperties | undefined;
+  readonly panelStyle: CSSProperties | undefined;
 }
 
 interface BarTooltipRowsParams {
@@ -1717,7 +1726,7 @@ const renderDefaultBarTooltipContent = ({
   categoryLabel,
   panelClassName,
   panelStyle,
-}: Readonly<DefaultBarTooltipContentParams>): React.ReactNode => {
+}: Readonly<DefaultBarTooltipContentParams>): ReactNode => {
   const pointRec: ChartTooltipPoint = { label: categoryLabel };
   for (const point of points) {pointRec[point.markId] = getBarTooltipValue(point);}
   const rows = buildBarTooltipRows({ pointByMark, pointRec, seriesList, tooltip: tt });
@@ -1730,8 +1739,8 @@ const renderDefaultBarTooltipContent = ({
   );
 };
 
-  const renderTooltipBody = React.useCallback(
-    (ctx: Readonly<ChartTooltipBodyRenderContext<ChartDatum, string, number>>): React.ReactNode => {
+  const renderTooltipBody = useCallback(
+    (ctx: Readonly<ChartTooltipBodyRenderContext<ChartDatum, string, number>>): ReactNode => {
       if (ctx.points.length === 0) {return undefined;}
       const state = chromeStateRef.current;
       const tt = state?.tooltip ?? undefined;
@@ -1749,7 +1758,7 @@ const renderDefaultBarTooltipContent = ({
 
 // HandleRender only tracks phase and syncs BarPulse; native motion owns the reveal.
 // Reveal end is timer-approximated: native motion exposes no per-mark completion hook.
-  const handleRender = React.useCallback((context: Readonly<ChartRendererRenderContext<ChartDatum, string, number>>) => {
+  const handleRender = useCallback((context: Readonly<ChartRendererRenderContext<ChartDatum, string, number>>) => {
     captureRenderContext(context);
     const surfaceElement = context.surface.element;
     if (!(surfaceElement instanceof SVGSVGElement)) {
@@ -1787,11 +1796,11 @@ const renderDefaultBarTooltipContent = ({
     });
   }, [animationDuration, revealDurationMs, setPhase, renderData.length, captureRenderContext]);
 
-  const refAreaChildrenBar = React.useMemo(() => extractReferenceAreaProps(children), [children]);
+  const refAreaChildrenBar = useMemo(() => extractReferenceAreaProps(children), [children]);
   const heightPxBar = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
   // Count emitted primitives (not data rows) for the motion/static renderer gate.
   // Gate on declared depth marks, not applicable ones: the renderer choice latches at first render.
-  const motionPrimitiveEstimate = React.useMemo(() => {
+  const motionPrimitiveEstimate = useMemo(() => {
     const rows = renderData.length;
     const squaresN = hasBarSquares ? resolvedBarSquares.length : 0;
     let total = rows * Math.max(0, totalSeriesCount - squaresN);
@@ -1806,7 +1815,7 @@ const renderDefaultBarTooltipContent = ({
   }, [hasBarSquares, resolvedBarSquares, renderData.length, heightPxBar, margin.top, margin.bottom, totalSeriesCount, bandWidth, hasBarDepth, barDepthBacksRaw, barDepthFrontsRaw]);
   const barChartRenderer = useChartRenderer<ChartDatum, string, number>(motionPrimitiveEstimate);
 
-  const crosshairFadeGradient = React.useMemo((): { readonly color: string; readonly id: string; readonly stops: IndicatorFadeGradientStop[] } | undefined => {
+  const crosshairFadeGradient = useMemo((): { readonly color: string; readonly id: string; readonly stops: IndicatorFadeGradientStop[] } | undefined => {
     if (!tooltipEnabled || !(tooltip?.showCrosshair ?? true)) {return undefined;}
     const indicatorCfg = toIndicatorConfig(tooltip);
     if (indicatorCfg.dasharray !== undefined && indicatorCfg.dasharray !== "") {return undefined;}
@@ -1820,14 +1829,14 @@ const renderDefaultBarTooltipContent = ({
     };
   }, [tooltipEnabled, tooltip, indicatorGradientId]);
 
-  const barScaleForRef = React.useMemo((): ScaleBand<string> | undefined => {
+  const barScaleForRef = useMemo((): ScaleBand<string> | undefined => {
     if (categoryOrder.length === 0) {return undefined;}
     return scaleBand().domain(categoryOrder).range([0, Math.max(0, width - margin.left - margin.right)]).padding(barGap);
   }, [categoryOrder, width, margin.left, margin.right, barGap]);
 
-  const barRootStyle = React.useMemo((): React.CSSProperties => ({ aspectRatio, isolation: "isolate", position: "relative", width: "100%" }), [aspectRatio]);
+  const barRootStyle = useMemo((): CSSProperties => ({ aspectRatio, isolation: "isolate", position: "relative", width: "100%" }), [aspectRatio]);
 
-  const referenceAreaGeom = React.useMemo((): ReferenceAreaLayersGeom | undefined => {
+  const referenceAreaGeom = useMemo((): ReferenceAreaLayersGeom | undefined => {
     if (heightPxBar <= 0 || barScaleForRef === undefined) { return undefined; }
     return {
       barScale: barScaleForRef,
@@ -1843,14 +1852,14 @@ const renderDefaultBarTooltipContent = ({
 
   const tooltipBody = tooltipEnabled ? renderTooltipBody : undefined;
   const squaresGradientDefs = squaresDefs.map((def) => (
-    <React.Fragment key={def.gradientId}>
+    <Fragment key={def.gradientId}>
       <linearGradient id={def.gradientId} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={0} y2={100}>
         {def.gradientStops.map((stop) => (
           <stop key={`${stop.offset}-${stop.color}`} offset={`${stop.offset}%`} stopColor={stop.color} />
         ))}
       </linearGradient>
       {def.patternId !== undefined && def.patternId !== "" && def.patternPreset !== undefined && renderPatternPreset(def.patternPreset, def.patternId, { color: `url(#${def.gradientId})` })}
-    </React.Fragment>
+    </Fragment>
   ));
   const crosshairGradientDef = crosshairFadeGradient && (
     <linearGradient
@@ -1921,8 +1930,6 @@ const renderDefaultBarTooltipContent = ({
     </div>
   );
 };
-
-export default BarChart;
 
 export type { BarChartProps, BarOrientation };
 export { BarChart };

@@ -1,6 +1,7 @@
 "use client";
 
-import * as React from "react";
+import { useLayoutEffect } from "react";
+import type { RefObject } from "react";
 
 interface DashTailSeries {
   readonly dataKey: string;
@@ -223,7 +224,7 @@ const resolveNextMeasured = (prev: Map<string, Measured>, next: Map<string, Meas
 
 interface DashTailMeasurementOptions {
   readonly activeSeries: readonly DashTailSeries[];
-  readonly containerRef: React.RefObject<HTMLElement | null>;
+  readonly containerRef: RefObject<HTMLElement | null>;
   readonly xDataKey: string;
   readonly innerWidth: number;
   readonly innerHeight: number;
@@ -234,7 +235,7 @@ interface DashTailMeasurementOptions {
 
 const useDashTailMeasurement = (options: Readonly<DashTailMeasurementOptions>): void => {
   const { activeSeries, containerRef, innerHeight, innerWidth, marginLeft, onMeasured, renderData, xDataKey } = options;
-  React.useLayoutEffect(() => {
+  useLayoutEffect(() => {
     // No setState on the empty path: render already returns null, and setState here livelocks under the loading pulse.
     if (activeSeries.length === 0 || innerWidth <= 0 || innerHeight <= 0) {
       return undefined;

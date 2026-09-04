@@ -172,4 +172,3 @@ export type { PinchDelta } from "./zoom-gesture-api";
 export type { GenericWheelEvent, InteractionEvent } from "./zoom-point";
 export type { TransformMatrix, Point, Translate, Scale } from "./zoom-math";
 export { Zoom };
-export default Zoom;
