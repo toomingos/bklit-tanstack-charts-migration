@@ -142,6 +142,7 @@ interface SquareSceneParams {
   readonly squareSize: number;
   readonly effectiveGroupGap: number;
   readonly bandPos: (categoryLabel: string) => number;
+  readonly bandWidth: number;
   readonly squareFit: boolean;
   readonly squareGap: number;
   readonly rx: number;
@@ -155,16 +156,56 @@ interface SquareScene {
   readonly points: ChartPoint<ChartDatum, string, number>[];
 }
 
+interface DegenerateSquarePointParams {
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly xValues: readonly string[];
+  readonly yValues: readonly number[];
+  readonly index: number;
+  readonly id: string;
+  readonly fill: string;
+  readonly bandPos: (categoryLabel: string) => number;
+  readonly bandWidth: number;
+  readonly yScale: SquareYScale;
+}
+
+// Degenerate-column focus proxy: bands narrower than the group gap paint no
+// Squares, so each column emits a focus-only point (no nodes, pixels unchanged).
+const appendDegenerateSquarePoint = (params: Readonly<DegenerateSquarePointParams>, points: ChartPoint<ChartDatum, string, number>[]): void => {
+  const yValue = params.yValues[params.index];
+  if (!Number.isFinite(yValue)) {return;}
+  const mappedY = params.yScale.map(yValue);
+  if (!Number.isFinite(mappedY)) {return;}
+  const xValue = params.xValues[params.index];
+  const centerX = params.bandWidth > 0 ? params.bandPos(xValue) + params.bandWidth / 2 : params.bandPos(xValue);
+  points.push({
+    color: params.fill,
+    datum: params.data[params.index],
+    datumIndex: params.index,
+    group: params.id,
+    groupLabel: params.id,
+    // Same `:`-boundary prefix convention as painted squares for point ownership.
+    key: `${params.id}:sq:${params.index}`,
+    markId: params.id,
+    x: centerX,
+    xValue,
+    y: mappedY,
+    yValue,
+  });
+};
+
 const buildSquareScene = (params: Readonly<SquareSceneParams>): SquareScene => {
   const nodes: SceneNode[] = [];
   const points: ChartPoint<ChartDatum, string, number>[] = [];
+  const degenerate = params.squareSize <= 0;
   for (let i = 0; i < params.data.length; i += 1) {
     const metrics = resolveSquareDatumMetrics({ baseline: params.baseline, data: params.data, index: i, xValues: params.xValues, yScale: params.yScale, yValues: params.yValues });
-    if (metrics !== undefined) {
-      const placement = resolveSquareColumnPlacement({ bandPos: params.bandPos, baseline: params.baseline, effectiveGroupGap: params.effectiveGroupGap, metrics, seriesIndex: params.seriesIndex, squareFit: params.squareFit, squareGap: params.squareGap, squareSize: params.squareSize });
-      if (placement !== undefined) {
-        appendSquaresForDatum({ columnTop: placement.columnTop, datum: metrics.datum, effectiveFill: params.effectiveFill, fill: params.fill, id: params.id, index: i, layout: placement.layout, nodes, opacity: params.opacity, points, rx: params.rx, squareSize: params.squareSize, x: placement.x, xValue: metrics.xValue, yValue: metrics.yValue });
-      }
+    const placement = metrics === undefined ? undefined : resolveSquareColumnPlacement({ bandPos: params.bandPos, baseline: params.baseline, effectiveGroupGap: params.effectiveGroupGap, metrics, seriesIndex: params.seriesIndex, squareFit: params.squareFit, squareGap: params.squareGap, squareSize: params.squareSize });
+    if (placement !== undefined && metrics !== undefined) {
+      appendSquaresForDatum({ columnTop: placement.columnTop, datum: metrics.datum, effectiveFill: params.effectiveFill, fill: params.fill, id: params.id, index: i, layout: placement.layout, nodes, opacity: params.opacity, points, rx: params.rx, squareSize: params.squareSize, x: placement.x, xValue: metrics.xValue, yValue: metrics.yValue });
+    } else if (placement === undefined && degenerate) {
+      appendDegenerateSquarePoint({ bandPos: params.bandPos, bandWidth: params.bandWidth, data: params.data, fill: params.fill, id: params.id, index: i, xValues: params.xValues, yScale: params.yScale, yValues: params.yValues }, points);
+    } else {
+      // Healthy geometry with a non-positive value paints nothing by design.
     }
   }
   return { nodes, points };

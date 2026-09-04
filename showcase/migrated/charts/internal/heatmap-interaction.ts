@@ -1,7 +1,6 @@
-import { createContext, useContext, useMemo, useSyncExternalStore } from 'react';
+import { useContext, useMemo, useSyncExternalStore } from 'react';
 import type { HeatmapHoverCoordinator, HeatmapHoveredCell, HeatmapTooltipData } from './heatmap-hover-chrome';
-
-const HeatmapInteractionContext = createContext<HeatmapHoverCoordinator | null>(null);
+import { HeatmapInteractionContext } from './heatmap-interaction-context';
 
 type HeatmapTooltipDataUpdater = (prev: HeatmapTooltipData | null) => HeatmapTooltipData | null;
 
@@ -78,5 +77,6 @@ const useHeatmapInteraction = (): HeatmapInteractionContextValue => {
   return value;
 }
 
-export { HeatmapInteractionContext, useHeatmapCoordinator, useHeatmapCoordinatorOptional, useHeatmapInteractionOptional, useHeatmapInteraction };
+export { HeatmapInteractionContext } from './heatmap-interaction-context';
+export { useHeatmapCoordinator, useHeatmapCoordinatorOptional, useHeatmapInteractionOptional, useHeatmapInteraction };
 export type { HeatmapInteractionContextValue };

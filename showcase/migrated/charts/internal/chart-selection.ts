@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, createContext, isValidElement, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, createContext, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
 import type { ChartValue } from "@tanstack/charts";
 import { resolveNearestIndex } from "./bisect";
@@ -74,16 +74,16 @@ const useSelectionDragRefs = (): SelectionDragRefs => {
   return { dragStartSceneXRef, draggingRef };
 };
 
-// Mirrors the latest drag callbacks into state during render so handlers read fresh values.
+// Stable drag callbacks that always call through to the latest props.
+// Refreshed in an effect so the returned identity stays stable and never sets state during render.
 const useSyncedDragCallbacks = (params: Readonly<SyncedCallbacksParams>): DragCallbacks => {
-  const { onDragEnd, onDragStart } = params;
-  const [dragCallbacks, setDragCallbacks] = useState(() => ({ onDragEnd, onDragStart }));
-  const [prevDragCallbacks, setPrevDragCallbacks] = useState({ onDragEnd, onDragStart });
-  if (prevDragCallbacks.onDragStart !== onDragStart || prevDragCallbacks.onDragEnd !== onDragEnd) {
-    setPrevDragCallbacks({ onDragEnd, onDragStart });
-    setDragCallbacks({ onDragEnd, onDragStart });
-  }
-  return dragCallbacks;
+  const latestRef = useRef(params);
+  useEffect(() => {
+    latestRef.current = params;
+  });
+  const onDragStart = useCallback(() => { latestRef.current.onDragStart?.(); }, []);
+  const onDragEnd = useCallback(() => { latestRef.current.onDragEnd?.(); }, []);
+  return useMemo(() => ({ onDragEnd, onDragStart }), [onDragEnd, onDragStart]);
 };
 
 interface SelectionDragRefs {

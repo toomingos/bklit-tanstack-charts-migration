@@ -1,10 +1,10 @@
 // Bar axis, hover chrome, tooltip body, date pill, reveal and depth gradients.
 // Split from bar-chart.tsx without behaviour change.
 import type { ScaleBand } from "d3-scale";
-import type { ChartMark, ChartMotionPhase, ChartMotionTiming, ChartPoint } from "@tanstack/charts";
+import type { ChartMark, ChartMotionPhase, ChartMotionTiming } from "@tanstack/charts";
 import { whenFocused } from "@tanstack/charts/focus/mark";
 import { selectBarLabelIndices, tickLabelFadeOpacity, hiddenAxisOptions } from "./axis-ticks";
-import { createBarHoverDotMark, isNumber, isString, resolveBarDotColor } from "./bar-chart-hover-dots";
+import { createBarHoverDotMark, isString, resolveBarDotColor } from "./bar-chart-hover-dots";
 import { bezierEasing } from "./bezier-easing";
 import type { SpringConfig } from "./chart-config-context";
 import type { PillBuild } from "./date-pill";
@@ -16,10 +16,9 @@ import { buildIndicatorMark } from "./hover-geometry";
 import { syncBarPulseGroups } from "./bar-pulse-mark";
 import type { PulseWaveGradientStop } from "./bar-pulse-mark";
 import { toDotConfig, toIndicatorConfig } from "./tooltip-mappers";
-import { TooltipContent } from "./tooltip-components";
 import type { BarDepthGradientIds, GlassGradientStop } from "./bar-depth-marks";
-import type { CSSProperties, Dispatch, ReactNode, RefObject, SetStateAction } from "react";
-import type { BarXAxisConfig, ChartDatum, ChartPhase, ChartTooltipConfig, ChartTooltipPoint, TooltipRow } from "./types";
+import type { Dispatch, RefObject, SetStateAction } from "react";
+import type { BarXAxisConfig, ChartDatum, ChartPhase, ChartTooltipConfig, TooltipRow } from "./types";
 
 // Enter stagger spreads 40% of the reveal duration across bars.
 const BAR_ENTER_STAGGER_SPREAD_FRACTION = 0.4;
@@ -37,7 +36,6 @@ const DEFAULT_HOVER_DOT_RING_STROKE_WIDTH = 1.5;
 const DEFAULT_HOVER_DOT_RADIUS_FRACTION = 0.25;
 
 interface BarChromeState {
-  readonly series: readonly Readonly<{ dataKey: string; color: string }>[];
   readonly tooltip: ChartTooltipConfig | undefined;
   readonly dateLabels: string[];
 }
@@ -91,27 +89,6 @@ const updateDatePillContent = ({
   else {pillBuild.spring.set(anchorX);}
 };
 
-interface BarTooltipPanelParams {
-  readonly tooltip: ChartTooltipConfig | undefined;
-}
-
-interface BarTooltipPanel {
-  readonly panelClassName: string;
-  readonly panelStyle: CSSProperties | undefined;
-}
-
-const resolveBarTooltipPanel = ({ tooltip: tt }: Readonly<BarTooltipPanelParams>): BarTooltipPanel => {
-  const tooltipClassName = tt?.className;
-  const panelClassName = tooltipClassName !== undefined && tooltipClassName !== "" ? `bkm-tooltip-panel ${tooltipClassName}` : "bkm-tooltip-panel";
-  const tooltipPanelStyle = tt?.panelStyle;
-  const tooltipBackgroundColor = tt?.backgroundColor;
-  const panelStyle: CSSProperties | undefined =
-    tooltipPanelStyle !== undefined || (tooltipBackgroundColor !== undefined && tooltipBackgroundColor !== "")
-      ? { ...tooltipPanelStyle, ...(tooltipBackgroundColor !== undefined && tooltipBackgroundColor !== "" ? { backgroundColor: tooltipBackgroundColor } : undefined) }
-      : undefined;
-  return { panelClassName, panelStyle };
-};
-
 interface BarRevealSyncParams {
   readonly svgRoot: SVGSVGElement;
   readonly marksGroup: SVGGElement;
@@ -139,7 +116,7 @@ interface BeginBarRevealParams {
   readonly revealDurationMs: number;
   readonly revealedForDataRef: RefObject<unknown>;
   readonly latestRenderData: unknown;
-  readonly revealKeyRef: RefObject<string | null>;
+  readonly revealedKeyRef: RefObject<string | null>;
   readonly currentRevealKey: string;
   readonly revealDeadlineTimerRef: RefObject<number | null>;
   readonly setPhase: (phase: ChartPhase) => void;
@@ -149,7 +126,7 @@ interface MarkBarRevealedParams {
   readonly marksGroup: SVGGElement;
   readonly revealedForDataRef: RefObject<unknown>;
   readonly latestRenderData: unknown;
-  readonly revealKeyRef: RefObject<string | null>;
+  readonly revealedKeyRef: RefObject<string | null>;
   readonly currentRevealKey: string;
   readonly setPhase: (phase: ChartPhase) => void;
 }
@@ -158,12 +135,12 @@ const markBarRevealed = ({
   marksGroup,
   revealedForDataRef,
   latestRenderData,
-  revealKeyRef,
+  revealedKeyRef,
   currentRevealKey,
   setPhase,
 }: Readonly<MarkBarRevealedParams>): void => {
   revealedForDataRef.current = latestRenderData;
-  revealKeyRef.current = currentRevealKey;
+  revealedKeyRef.current = currentRevealKey;
   markRevealed(marksGroup);
   setPhase("revealing");
 };
@@ -201,12 +178,12 @@ const beginBarReveal = ({
   revealDurationMs,
   revealedForDataRef,
   latestRenderData,
-  revealKeyRef,
+  revealedKeyRef,
   currentRevealKey,
   revealDeadlineTimerRef,
   setPhase,
 }: Readonly<BeginBarRevealParams>): void => {
-  markBarRevealed({ currentRevealKey, latestRenderData, marksGroup, revealKeyRef, revealedForDataRef, setPhase });
+  markBarRevealed({ currentRevealKey, latestRenderData, marksGroup, revealedForDataRef, revealedKeyRef, setPhase });
   armBarRevealDeadline({ renderDataLength, revealDeadlineTimerRef, revealDurationMs, setPhase, svgRoot });
 };
 
@@ -616,112 +593,6 @@ const syncDatePillForCategory = ({
   updateDatePillContent({ anchorX, categoryIndex, categoryLabel, dateLabels, discrete, pillBuild, showing });
 };
 
-const getBarTooltipValue = (point: Readonly<ChartPoint<ChartDatum, string, number>>): number => {
-  const raw: unknown = point.datum[point.markId];
-  return isNumber(raw) ? raw : (point.yValue);
-};
-
-interface CustomBarTooltipContentParams {
-  readonly content: (props: { readonly point: Readonly<ChartTooltipPoint>; readonly index: number }) => ReactNode;
-  readonly categoryIndex: number;
-  readonly categoryLabel: string;
-  readonly points: readonly Readonly<ChartPoint<ChartDatum, string, number>>[];
-  readonly panelClassName: string;
-  readonly panelStyle: CSSProperties | undefined;
-}
-
-const renderCustomBarTooltipContent = ({
-  content,
-  categoryIndex,
-  categoryLabel,
-  points,
-  panelClassName,
-  panelStyle,
-}: Readonly<CustomBarTooltipContentParams>): ReactNode => {
-  const pointRec: ChartTooltipPoint = { label: categoryLabel };
-  for (const point of points) {pointRec[point.markId] = getBarTooltipValue(point);}
-  return (
-    <div className={panelClassName} style={panelStyle}>
-      {content({ index: categoryIndex, point: pointRec })}
-    </div>
-  );
-};
-
-interface DefaultBarTooltipContentParams {
-  readonly tooltip: ChartTooltipConfig | undefined;
-  readonly points: readonly Readonly<ChartPoint<ChartDatum, string, number>>[];
-  readonly pointByMark: ReadonlyMap<string, Readonly<ChartPoint<ChartDatum, string, number>>>;
-  readonly seriesList: readonly Readonly<{ dataKey: string; color: string }>[];
-  readonly categoryLabel: string;
-  readonly panelClassName: string;
-  readonly panelStyle: CSSProperties | undefined;
-}
-
-interface BarTooltipRowsParams {
-  readonly tooltip: ChartTooltipConfig | undefined;
-  readonly pointRec: Readonly<ChartTooltipPoint>;
-  readonly pointByMark: ReadonlyMap<string, Readonly<ChartPoint<ChartDatum, string, number>>>;
-  readonly seriesList: readonly Readonly<{ dataKey: string; color: string }>[];
-}
-
-const buildBarTooltipRows = ({
-  tooltip: tt,
-  pointRec,
-  pointByMark,
-  seriesList,
-}: Readonly<BarTooltipRowsParams>): TooltipRow[] =>
-  tt?.rows
-    ? tt.rows(pointRec)
-    : seriesList.map((series) => {
-      const point = pointByMark.get(series.dataKey);
-      const pointColor = point?.color;
-      return { color: series.color || (pointColor !== undefined && pointColor !== "" ? pointColor : "transparent"), label: series.dataKey, value: point ? getBarTooltipValue(point) : 0 };
-    });
-
-const renderDefaultBarTooltipContent = ({
-  tooltip: tt,
-  points,
-  pointByMark,
-  seriesList,
-  categoryLabel,
-  panelClassName,
-  panelStyle,
-}: Readonly<DefaultBarTooltipContentParams>): ReactNode => {
-  const pointRec: ChartTooltipPoint = { label: categoryLabel };
-  for (const point of points) {pointRec[point.markId] = getBarTooltipValue(point);}
-  const rows = buildBarTooltipRows({ pointByMark, pointRec, seriesList, tooltip: tt });
-  return (
-    <div className={panelClassName} style={panelStyle}>
-      <TooltipContent title={categoryLabel} rows={rows}>
-        {tt?.children}
-      </TooltipContent>
-    </div>
-  );
-};
-
-interface BarTooltipBodyParams {
-  readonly state: BarChromeState | null;
-  readonly points: readonly Readonly<ChartPoint<ChartDatum, string, number>>[];
-  readonly categoryIndexByLabel: ReadonlyMap<string, number>;
-}
-
-const resolveBarTooltipBody = ({
-  state,
-  points,
-  categoryIndexByLabel,
-}: Readonly<BarTooltipBodyParams>): ReactNode => {
-  if (points.length === 0) {return undefined;}
-  const tt = state?.tooltip ?? undefined;
-  const categoryLabel = points[0].xValue;
-  const categoryIndex = categoryIndexByLabel.get(categoryLabel) ?? 0;
-  const pointByMark = new Map(points.map((point: Readonly<ChartPoint<ChartDatum, string, number>>) => [point.markId, point]));
-  const { panelClassName, panelStyle } = resolveBarTooltipPanel({ tooltip: tt });
-  if (tt?.content) {
-    return renderCustomBarTooltipContent({ categoryIndex, categoryLabel, content: tt.content, panelClassName, panelStyle, points });
-  }
-  return renderDefaultBarTooltipContent({ categoryLabel, panelClassName, panelStyle, pointByMark, points, seriesList: state?.series ?? [], tooltip: tt });
-};
-
 interface SettleBarRevealParams {
   readonly svgRoot: SVGSVGElement;
   readonly marksGroup: SVGGElement;
@@ -801,12 +672,12 @@ const handleBarSvgRender = ({
     renderDataLength,
     revealDeadlineTimerRef,
     revealDurationMs,
-    revealKeyRef,
     revealedForDataRef,
+    revealedKeyRef,
     setPhase,
     svgRoot,
   });
 };
 
 export type { BarChromeState, BuiltDepthGradient };
-export { BAR_ENTER_STAGGER_SPREAD_FRACTION, buildBarAxisSection, buildBarHoverMarks, buildNativeDepthGradients, clearDatePillForEmptyFocus, handleBarSvgRender, resolveBarTooltipBody, syncDatePillForCategory };
+export { BAR_ENTER_STAGGER_SPREAD_FRACTION, buildBarAxisSection, buildBarHoverMarks, buildNativeDepthGradients, clearDatePillForEmptyFocus, handleBarSvgRender, syncDatePillForCategory };

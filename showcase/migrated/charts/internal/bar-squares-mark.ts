@@ -145,7 +145,7 @@ const barSquaresMark = (data: readonly Readonly<ChartDatum>[], options: Readonly
       id,
       render: ({ scales }) => {
         const baseline = scales.y.map(0);
-        const scene = buildSquareScene({ bandPos, baseline, data, effectiveFill, effectiveGroupGap, fill, id, opacity, rx, seriesIndex, squareFit, squareGap, squareSize, xValues, yScale: scales.y, yValues });
+        const scene = buildSquareScene({ bandPos, bandWidth, baseline, data, effectiveFill, effectiveGroupGap, fill, id, opacity, rx, seriesIndex, squareFit, squareGap, squareSize, xValues, yScale: scales.y, yValues });
 
         return {
           nodes: wrapSquaresGroupNodes(id, scene.nodes),

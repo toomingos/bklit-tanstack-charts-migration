@@ -11,7 +11,6 @@ import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { scaleBand } from "d3-scale";
 import type { ScaleBand } from "d3-scale";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
-import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import type { ChartPoint, ChartRendererRenderContext } from "@tanstack/charts";
 import { extractChildren } from "./internal/children-extract";
 import { buildPill } from "./internal/date-pill";
@@ -37,8 +36,9 @@ import {
 } from "./internal/animation-defaults";
 import type { EnterTransition } from "./internal/enter-transition";
 import { BAR_DEPTH_BACK_NODES_PER_ROW, countSquarePrimitives } from "./internal/bar-chart-series-marks";
-import { clearDatePillForEmptyFocus, handleBarSvgRender, resolveBarTooltipBody, syncDatePillForCategory } from "./internal/bar-chart-overlays";
+import { clearDatePillForEmptyFocus, handleBarSvgRender, syncDatePillForCategory } from "./internal/bar-chart-overlays";
 import type { BarChromeState } from "./internal/bar-chart-overlays";
+import { useBarTooltipBody } from "./internal/bar-tooltip-body";
 import { useBarScales } from "./internal/use-bar-scales";
 import { useBarDefinition } from "./internal/use-bar-definition";
 import type { ChartDatum, ChartPhase } from "./internal/types";
@@ -229,7 +229,6 @@ const BarChart = ({
   useLayoutEffect(() => {
     chromeStateRef.current = {
       dateLabels: dateLabelsForPill,
-      series: dotSeriesList,
       tooltip: tooltip ?? undefined,
     };
   });
@@ -294,11 +293,7 @@ const BarChart = ({
     [categoryIndexByLabel, categoryScaleForOverlay, bandWidth, renderData.length, tooltipEnabled, tooltip, setLabelFade],
   );
 
-  const renderTooltipBody = useCallback(
-    (ctx: Readonly<ChartTooltipBodyRenderContext<ChartDatum, string, number>>): ReactNode =>
-      resolveBarTooltipBody({ categoryIndexByLabel, points: ctx.points, state: chromeStateRef.current }),
-    [categoryIndexByLabel],
-  );
+  const renderTooltipBody = useBarTooltipBody({ categoryAccessor: scales.categoryAccessor, series: dotSeriesList, tooltip });
 
 // HandleRender only tracks phase and syncs BarPulse; native motion owns the reveal.
 // Reveal end is timer-approximated: native motion exposes no per-mark completion hook.
