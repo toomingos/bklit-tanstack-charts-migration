@@ -26,6 +26,12 @@ const FUNNEL_SPREAD_EDGE_SIZE = "16%";
 // Shared flex-alignment keywords reused across spread/grouped label styles.
 const FLEX_START = "flex-start";
 const FLEX_END = "flex-end";
+// Default ring-layer count when the layers prop is omitted (bklit parity).
+const FUNNEL_DEFAULT_LAYERS = 3;
+// Default reveal stagger between stages in seconds (bklit parity).
+const FUNNEL_DEFAULT_STAGGER_DELAY_S = 0.12;
+// Default gap between stages in pixels (bklit parity).
+const FUNNEL_DEFAULT_GAP = 4;
 
 type FunnelLabelOrientation = "vertical" | "horizontal";
 type FunnelLabelAlign = "center" | "start" | "end";
@@ -478,7 +484,7 @@ interface FunnelDefsOptions {
   readonly color: string;
 }
 
-const isNumber = <T,>(value: T): value is T & number => typeof value === "number";
+const isNumber = <Subject,>(value: Subject): value is Subject & number => typeof value === "number";
 
 const renderFunnelDefs = (options: Readonly<FunnelDefsOptions>): ReactElement => {
   const { gradientStops, gradientId, patternId, renderPattern, isHorizontal, color } = options;
@@ -756,12 +762,12 @@ const renderBandGrid = (options: Readonly<BandGridOptions>): ReactElement => {
       viewBox={`0 0 ${chartW} ${chartH}`}
     >
       {grid.showBands &&
-        data.map((stage, i) => {
-          if (i % 2 !== 0) {return false;}
+        data.map((stage, stageIndex) => {
+          if (stageIndex % 2 !== 0) {return false;}
           return isHorizontal ? (
-            <rect fill={grid.bandColor} height={chartH} key={`band-${stage.label}`} width={segW} x={(segW + gap) * i} y={0} />
+            <rect fill={grid.bandColor} height={chartH} key={`band-${stage.label}`} width={segW} x={(segW + gap) * stageIndex} y={0} />
           ) : (
-            <rect fill={grid.bandColor} height={segH} key={`band-${stage.label}`} width={chartW} x={0} y={(segH + gap) * i} />
+            <rect fill={grid.bandColor} height={segH} key={`band-${stage.label}`} width={chartW} x={0} y={(segH + gap) * stageIndex} />
           );
         })}
     </svg>
@@ -965,7 +971,7 @@ const FunnelChart = ({
   data,
   orientation = "horizontal",
   color = "var(--chart-1)",
-  layers = 3,
+  layers = FUNNEL_DEFAULT_LAYERS,
   className,
   style,
   showPercentage = true,
@@ -975,9 +981,9 @@ const FunnelChart = ({
   onHoverChange,
   formatPercentage = fmtPct,
   formatValue = fmtVal,
-  staggerDelay = 0.12,
+  staggerDelay = FUNNEL_DEFAULT_STAGGER_DELAY_S,
   enterTransition,
-  gap = 4,
+  gap = FUNNEL_DEFAULT_GAP,
   renderPattern,
   edges = "curved",
   labelLayout = "spread",

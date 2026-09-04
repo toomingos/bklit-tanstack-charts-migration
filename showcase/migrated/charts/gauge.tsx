@@ -63,6 +63,13 @@ const GAUGE_BG_STAGGER_BASE_SEC = 0.015;
 // Responsive-layout minimum-width fallbacks (px).
 const GAUGE_ARC_MIN_WIDTH_PX = 300;
 const GAUGE_LINEAR_MIN_WIDTH_PX = 200;
+// Default prop fallbacks for gauge geometry (bklit defaults).
+const GAUGE_DEFAULT_END_ANGLE = 405;
+const GAUGE_DEFAULT_START_ANGLE = 135;
+const GAUGE_DEFAULT_NOTCH_LENGTH_PERCENT = 100;
+const GAUGE_DEFAULT_NOTCH_WIDTH_PERCENT = 80;
+const GAUGE_DEFAULT_SPACING = 25;
+const GAUGE_DEFAULT_TOTAL_NOTCHES = 40;
 // Fraction of the gauge size used as top padding for the center overlay label.
 const GAUGE_CENTER_TOP_PADDING_FRACTION = 0.08;
 // Fallback track fill for inactive arc notches (matches the theme border token).
@@ -897,14 +904,14 @@ const useArcRows = (
   const { height, width } = layout;
   return useMemo(() => computeArcRows({
     activeFill,
-    endAngle: endAngle ?? 405,
+    endAngle: endAngle ?? GAUGE_DEFAULT_END_ANGLE,
     fillState,
     height,
     inactiveFill,
-    notchLengthPercent: notchLengthPercent ?? 100,
-    spacing: spacing ?? 25,
-    startAngle: startAngle ?? 135,
-    totalNotches: totalNotches ?? 40,
+    notchLengthPercent: notchLengthPercent ?? GAUGE_DEFAULT_NOTCH_LENGTH_PERCENT,
+    spacing: spacing ?? GAUGE_DEFAULT_SPACING,
+    startAngle: startAngle ?? GAUGE_DEFAULT_START_ANGLE,
+    totalNotches: totalNotches ?? GAUGE_DEFAULT_TOTAL_NOTCHES,
     useGradient: useGradient ?? false,
     value,
     width,
@@ -969,12 +976,12 @@ const computeUniformArcRows = (
   const geometry = computeUniformArcGeometry({
     activeGrad0: fillState.activeGrad0,
     activeGrad1: fillState.activeGrad1,
-    endAngle: props.endAngle ?? 405,
+    endAngle: props.endAngle ?? GAUGE_DEFAULT_END_ANGLE,
     height: layout.height,
-    notchLengthPercent: props.notchLengthPercent ?? 100,
-    spacing: props.spacing ?? 25,
-    startAngle: props.startAngle ?? 135,
-    totalNotches: props.totalNotches ?? 40,
+    notchLengthPercent: props.notchLengthPercent ?? GAUGE_DEFAULT_NOTCH_LENGTH_PERCENT,
+    spacing: props.spacing ?? GAUGE_DEFAULT_SPACING,
+    startAngle: props.startAngle ?? GAUGE_DEFAULT_START_ANGLE,
+    totalNotches: props.totalNotches ?? GAUGE_DEFAULT_TOTAL_NOTCHES,
     useGradient: props.useGradient ?? false,
     useThemePaletteGradient: fillState.useThemePaletteGradient,
     value: props.value,
@@ -990,7 +997,7 @@ const computeUniformArcRows = (
     inactiveGrad0: fillState.inactiveGrad0,
     inactiveGrad1: fillState.inactiveGrad1,
     themeActiveGradientId: fillState.themeActiveGradientId,
-    totalNotches: props.totalNotches ?? 40,
+    totalNotches: props.totalNotches ?? GAUGE_DEFAULT_TOTAL_NOTCHES,
     useGradient: props.useGradient ?? false,
     useThemePaletteGradient: fillState.useThemePaletteGradient,
   });
@@ -1331,10 +1338,10 @@ const useLinearGaugeGeometry = (
       activeGrad0: fillState.activeGrad0,
       activeGrad1: fillState.activeGrad1,
       height: layout.height,
-      notchLengthPercent: props.notchLengthPercent ?? 100,
-      notchWidthPercent: props.notchWidthPercent ?? 80,
-      spacing: props.spacing ?? 25,
-      totalNotches: props.totalNotches ?? 40,
+      notchLengthPercent: props.notchLengthPercent ?? GAUGE_DEFAULT_NOTCH_LENGTH_PERCENT,
+      notchWidthPercent: props.notchWidthPercent ?? GAUGE_DEFAULT_NOTCH_WIDTH_PERCENT,
+      spacing: props.spacing ?? GAUGE_DEFAULT_SPACING,
+      totalNotches: props.totalNotches ?? GAUGE_DEFAULT_TOTAL_NOTCHES,
       uniformWidth: props.uniformWidth ?? true,
       useGradient: props.useGradient ?? false,
       useThemePaletteGradient: fillState.useThemePaletteGradient,
@@ -1376,7 +1383,7 @@ const useLinearGaugeFills = (
         linearMode: true,
         linearTrackFill: "var(--chart-background)",
         notchIndex,
-        totalNotches: props.totalNotches ?? 40,
+        totalNotches: props.totalNotches ?? GAUGE_DEFAULT_TOTAL_NOTCHES,
         useGradient: props.useGradient ?? false,
         useThemePaletteGradient: fillState.useThemePaletteGradient,
       }),

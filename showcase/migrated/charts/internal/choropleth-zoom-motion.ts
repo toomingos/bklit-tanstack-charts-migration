@@ -30,10 +30,12 @@ interface CubicBezierCoefficients {
   readonly cy: number;
 }
 
+// Ease-out second control-point x (0, 0, 0.58, 1); the only curve the zoom easing uses.
+const EASE_OUT_CONTROL_X2 = 0.58;
 // Ease-out control points (0, 0, 0.58, 1); the only curve the zoom easing uses.
 const easeOutCoefficients = (): CubicBezierCoefficients => {
   const cx = CUBIC_BEZIER_COEFFICIENT * 0;
-  const bx = CUBIC_BEZIER_COEFFICIENT * (0.58 - 0) - cx;
+  const bx = CUBIC_BEZIER_COEFFICIENT * (EASE_OUT_CONTROL_X2 - 0) - cx;
   const ax = 1 - cx - bx;
   const cy = CUBIC_BEZIER_COEFFICIENT * 0;
   const by = CUBIC_BEZIER_COEFFICIENT * (1 - 0) - cy;

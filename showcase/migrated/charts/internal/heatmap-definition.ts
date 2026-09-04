@@ -56,6 +56,7 @@ const buildLoadingHeatmapDefinition = ({
     // Ring for symmetry with the loaded branch below.
     focusRing: false,
     margin,
+    // SAFETY: An empty array inhabits every array type, so the assertion only restores the CellDatum element type erased by the literal and both definition branches share TDatum.
     marks: [] as typeof cellMarks,
     scales: {
       x: { axis: false, guide: false, scale: xScale },

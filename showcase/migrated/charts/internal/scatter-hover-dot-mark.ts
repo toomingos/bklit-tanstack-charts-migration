@@ -29,9 +29,9 @@ interface DotColorScope {
   readonly tooltip: Readonly<ChartTooltipConfig> | null | undefined;
 }
 
-const isString = <T>(value: T): value is T & string => typeof value === "string";
+const isString = <Value>(value: Value): value is Value & string => typeof value === "string";
 
-const isNumber = <T>(value: T): value is T & number => typeof value === "number";
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
 
 const resolveDotColor = (
   scope: Readonly<DotColorScope>,

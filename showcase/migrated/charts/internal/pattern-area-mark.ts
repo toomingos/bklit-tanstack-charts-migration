@@ -2,7 +2,7 @@ import { createMark } from "@tanstack/charts";
 import type { ChartCurve, ChartMark, ResolvedScale, SceneNode } from "@tanstack/charts";
 import type { ChartDatum } from "./types";
 
-export interface PatternAreaMarkOptions {
+interface PatternAreaMarkOptions {
   readonly id: string;
   readonly x: (datum: Readonly<ChartDatum>) => Date;
   readonly y: (datum: Readonly<ChartDatum>) => number;
@@ -73,7 +73,7 @@ const buildAreaChildren = (params: Readonly<PatternAreaSegmentsParams>): SceneNo
   return splitFiniteRuns(params.yValues).map((run, segmentIndex) => buildAreaSegmentNode({ ...params, baselineY, run, segmentIndex }));
 };
 
-export const patternAreaMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<PatternAreaMarkOptions>): ChartMark<ChartDatum, Date, number> => createMark(() => {
+const patternAreaMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<PatternAreaMarkOptions>): ChartMark<ChartDatum, Date, number> => createMark(() => {
     const xValues = data.map((datum) => options.x(datum));
     const yValues = data.map((datum) => options.y(datum));
     return {
@@ -106,3 +106,6 @@ export const patternAreaMark = (data: readonly Readonly<ChartDatum>[], options: 
       },
     };
   });
+
+export { patternAreaMark };
+export type { PatternAreaMarkOptions };

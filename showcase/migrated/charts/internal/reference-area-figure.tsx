@@ -7,6 +7,8 @@ import type { ReferenceAreaSpatial } from "./reference-area-scale";
 
 const DEFAULT_FILL = "color-mix(in oklch, var(--chart-foreground-muted) 12%, transparent)";
 const DEFAULT_FG_MUTED = "var(--chart-foreground-muted)";
+const DEFAULT_FADE_EDGES_LENGTH = 10;
+const DEFAULT_MARKER_SIZE = 6;
 
 // Static group style for the reference-area figure; hoisted so it keeps identity.
 const REFERENCE_AREA_GROUP_STYLE = { opacity: 0 } as const;
@@ -76,11 +78,11 @@ interface ResolvedReferenceAreaStyle {
 const resolveReferenceAreaStyle = (input: Readonly<ReferenceAreaStyleInput>): ResolvedReferenceAreaStyle => ({
   className: input.className,
   fadeEdges: input.fadeEdges ?? true,
-  fadeEdgesLength: input.fadeEdgesLength ?? 10,
+  fadeEdgesLength: input.fadeEdgesLength ?? DEFAULT_FADE_EDGES_LENGTH,
   fill: input.fill ?? DEFAULT_FILL,
   fillOpacity: input.fillOpacity ?? 1,
   markerColor: input.markerColor ?? "var(--chart-1)",
-  markerSize: input.markerSize ?? 6,
+  markerSize: input.markerSize ?? DEFAULT_MARKER_SIZE,
   pattern: input.pattern ?? "none",
   patternColor: input.patternColor ?? DEFAULT_FG_MUTED,
   patternComplement: input.patternComplement,

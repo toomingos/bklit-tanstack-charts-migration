@@ -6,7 +6,7 @@ import { resolveTrimmedDatumMetrics } from "./bar-trimmed-metrics";
 import type { TrimmedDatumMetrics, TrimmedYScale } from "./bar-trimmed-metrics";
 import type { ChartDatum } from "./types";
 
-export interface BarTrimmedMarkOptions {
+interface BarTrimmedMarkOptions {
   readonly id: string;
   readonly data: readonly Readonly<ChartDatum>[];
   readonly states?: readonly ChartMarkState<ChartDatum>[];
@@ -237,7 +237,7 @@ const wrapTrimmedGroupNodes = (id: string, nodes: SceneNode[]): SceneNode[] => (
   },
 ])
 
-export const barTrimmedMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<BarTrimmedMarkOptions>): ChartMark<ChartDatum, string, number> => {
+const barTrimmedMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<BarTrimmedMarkOptions>): ChartMark<ChartDatum, string, number> => {
   const { id, groupScale, fill, radius, bandWidth, bandScale, categoryAccessor, yAccessor, states, opacity } = options;
   return createMark(() => {
     const { xValues, rawY } = buildTrimmedChannelValues(data, categoryAccessor, yAccessor);
@@ -257,3 +257,6 @@ export const barTrimmedMark = (data: readonly Readonly<ChartDatum>[], options: R
     };
   });
 }
+
+export { barTrimmedMark };
+export type { BarTrimmedMarkOptions };

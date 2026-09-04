@@ -16,6 +16,8 @@ import type { ChartDatum, IndicatorWidth } from "./types";
 
 // Default hover-dot size (passed as the dot mark's `r`) when no size is provided.
 const DEFAULT_HOVER_DOT_SIZE = 5;
+// Default hover-dot ring width (passed as the dot mark's `strokeWidth`) when none is provided.
+const DEFAULT_HOVER_DOT_STROKE_WIDTH = 2;
 
 const isNumber = <Subject>(value: Subject): value is Subject & number => typeof value === "number";
 const isString = <Subject>(value: Subject): value is Subject & string => typeof value === "string";
@@ -98,7 +100,7 @@ const buildHoverDotMark = (params: Readonly<BuildHoverDotMarkParams>): ChartMark
   const { fill, renderData, series, xDataKey } = params;
   const dotOptions = params.options ?? {};
   const size = dotOptions.size ?? DEFAULT_HOVER_DOT_SIZE;
-  const strokeWidth = dotOptions.strokeWidth ?? 2;
+  const strokeWidth = dotOptions.strokeWidth ?? DEFAULT_HOVER_DOT_STROKE_WIDTH;
   const mark = dot(renderData, {
     fill,
     id: `${series.dataKey}__hoverdot`,

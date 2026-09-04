@@ -16,7 +16,7 @@ const HOVER_DOT_ID = "hover-dot";
 
 type CandlePattern = Readonly<{ href: string; preset: PatternPresetId | undefined }>;
 
-const isNumber = <T>(value: T): value is T & number => typeof value === "number";
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
 
 const readFiniteNumberField = (datum: Readonly<ChartDatum>, key: string): number | undefined => {
   const raw = datum[key];

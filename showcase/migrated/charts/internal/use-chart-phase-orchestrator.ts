@@ -5,7 +5,7 @@ import { resolveRestingChartPhase } from './chart-phase';
 import type { ChartPhase, ChartStatus } from './chart-phase';
 import type { ChartDatum } from './types';
 
-export interface UseChartPhaseOrchestratorOptions {
+interface UseChartPhaseOrchestratorOptions {
   chartStatus: ChartStatus;
   targetData: ChartDatum[];
   skeletonData: ChartDatum[];
@@ -289,3 +289,5 @@ export const useChartPhaseOrchestrator = ({
     revealEpoch,
   };
 }
+
+export type { UseChartPhaseOrchestratorOptions };

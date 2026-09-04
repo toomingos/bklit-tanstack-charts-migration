@@ -3,7 +3,7 @@ import { createMark } from "@tanstack/charts";
 import type { ChartCurve, ChartMark, ResolvedScale, SceneNode } from "@tanstack/charts";
 import type { ChartDatum } from "./types";
 
-export interface AreaFillOptions {
+interface AreaFillOptions {
   // By convention `${dataKey}__fill`.
   readonly id: string;
   readonly x: (datum: Readonly<ChartDatum>) => Date;
@@ -84,7 +84,7 @@ const buildAreaChildren = (params: Readonly<AreaChildrenParams>): SceneNode[] =>
   });
 }
 
-export const areaFill = (data: readonly Readonly<ChartDatum>[], options: Readonly<AreaFillOptions>): ChartMark<ChartDatum, Date, number> => createMark(() => {
+const areaFill = (data: readonly Readonly<ChartDatum>[], options: Readonly<AreaFillOptions>): ChartMark<ChartDatum, Date, number> => createMark(() => {
     const xValues = data.map((datum) => options.x(datum));
     const yValues = data.map((datum) => options.y(datum));
     return {
@@ -129,4 +129,7 @@ export const areaFill = (data: readonly Readonly<ChartDatum>[], options: Readonl
       },
     };
   });
+
+export { areaFill };
+export type { AreaFillOptions };
 

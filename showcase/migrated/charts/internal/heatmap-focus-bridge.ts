@@ -86,16 +86,16 @@ const createHeatmapPointerMoveHandler = ({
   renderContextRef,
   scheduleFocus,
 }: Readonly<CreateHeatmapPointerMoveHandlerParams>): ((event: Readonly<{ clientX: number; clientY: number }>) => void) => (event: Readonly<{ clientX: number; clientY: number }>) => {
-  const { ctx: c, cellData: cd, cellsInteractive: ci } = inputsRef.current;
-  if (!ci) {return;}
+  const { ctx, cellData, cellsInteractive } = inputsRef.current;
+  if (!cellsInteractive) {return;}
   const interaction = renderContextRef.current?.interaction;
   if (!interaction) {return;}
   dispatchHeatmapPointerHit({
-    cellData: cd,
+    cellData,
     clientX: event.clientX,
     clientY: event.clientY,
     coordinator,
-    ctx: c,
+    ctx,
     interaction,
     onFocus: scheduleFocus,
     onLeave: handleCellLeaveEvent,

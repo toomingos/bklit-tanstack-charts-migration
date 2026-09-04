@@ -7,7 +7,7 @@ import type { CSSProperties, ReactElement } from "react";
 // Label item (pre-computed by sunburst-chart's layout engine)
 // ---------------------------------------------------------------------------
 
-export interface LabelItem {
+interface LabelItem {
   x: number;
   y: number;
   deg: number;
@@ -23,7 +23,7 @@ export interface LabelItem {
 // Culling happens in sunburst-chart's labelItems builder, before items reach here.
 // ---------------------------------------------------------------------------
 
-export interface SunburstLabelsOverlayProps {
+interface SunburstLabelsOverlayProps {
   items: LabelItem[];
   fullRadius: number;
   size: number;
@@ -40,6 +40,9 @@ const SUNBURST_LABELS_OVERLAY_STYLE: Readonly<CSSProperties> = {
   width: "100%",
 };
 
+// Item count that means the overlay has nothing to render.
+const EMPTY_ITEMS_LENGTH = 0;
+
 // Shared label text paint — one identity for every <text>, not rebuilt per render.
 const SUNBURST_LABEL_TEXT_STYLE: Readonly<CSSProperties> = {
   fill: "var(--chart-label)",
@@ -53,12 +56,12 @@ const SUNBURST_LABEL_TEXT_STYLE: Readonly<CSSProperties> = {
   strokeWidth: 2.5,
 };
 
-export const SunburstLabelsOverlay = ({
+const SunburstLabelsOverlay = ({
   items,
   fullRadius: _fullRadius,
   size: _size,
 }: SunburstLabelsOverlayProps): ReactElement | undefined => {
-  if (items.length === 0) {return undefined;}
+  if (items.length === EMPTY_ITEMS_LENGTH) {return undefined;}
 
   return (
     <svg
@@ -86,3 +89,6 @@ export const SunburstLabelsOverlay = ({
     </svg>
   );
 };
+
+export { SunburstLabelsOverlay };
+export type { LabelItem, SunburstLabelsOverlayProps };

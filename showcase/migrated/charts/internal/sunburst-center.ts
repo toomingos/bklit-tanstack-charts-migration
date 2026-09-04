@@ -6,6 +6,8 @@
 // Config carrier — returns null, classified by displayName in sunburst-chart
 // ---------------------------------------------------------------------------
 
-export const SunburstCenter = (_props: { className?: string }): null => null;
+const SunburstCenter = (_props: { className?: string }): null => null;
 
 SunburstCenter.displayName = "SunburstCenter";
+
+export { SunburstCenter };

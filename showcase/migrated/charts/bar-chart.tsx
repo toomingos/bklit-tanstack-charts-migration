@@ -83,6 +83,8 @@ const BAR_TOOLTIP_OVERLAY_STYLE = { inset: 0, pointerEvents: "none", position: "
 const BAR_HIDDEN_DEFS_STYLE = { position: "absolute" } as const;
 // Single fixed fill, not a rotating per-series palette (unlike scatter).
 const DEFAULT_BAR_FILL = "var(--chart-line-primary)";
+// Default gap between bar groups (d3 scaleBand padding fraction).
+const DEFAULT_BAR_GAP = 0.2;
 
 // Dim transitions mirror bklit timings: bars/track 150ms in-out, squares/depth 150ms ease-out.
 const BAR_DIM_TRANSITION: NonNullable<ChartMarkState["transition"]> = { duration: 150, easing: "ease-in-out", type: "tween" };
@@ -1167,7 +1169,7 @@ const buildBarAxisSection = ({
             categoryOrder.length,
             barXAxis.showAllLabels ?? false,
             barXAxis.maxLabels ?? BAR_MAX_TICK_LABELS_DEFAULT,
-          ).map((i) => categoryOrder[i]),
+          ).map((labelIndex) => categoryOrder[labelIndex]),
         },
       }
     : {
@@ -2153,7 +2155,7 @@ const BarChart = ({
   margin: marginProp,
   aspectRatio = "2 / 1",
   className,
-  barGap = 0.2,
+  barGap = DEFAULT_BAR_GAP,
   barWidth,
   orientation,
   stacked,
@@ -2457,8 +2459,8 @@ const BarChart = ({
   const squaresDefs = useMemo<readonly ResolvedSquareDef[]>(() => {
     if (!barSquaresEnabled) {return [];}
     const out: { dataKey: string; gradientId: string; patternId: string | undefined; fill: string; gradientStops: { offset: number; color: string }[]; patternPreset?: PatternPresetId }[] = [];
-    for (let i = 0; i < resolvedBarSquares.length; i += 1) {
-      const def = buildSquareGradientDef({ baseId: squaresBaseId, index: i, square: resolvedBarSquares[i] });
+    for (let squareIndex = 0; squareIndex < resolvedBarSquares.length; squareIndex += 1) {
+      const def = buildSquareGradientDef({ baseId: squaresBaseId, index: squareIndex, square: resolvedBarSquares[squareIndex] });
       if (def) {
         out.push(def);
       }
@@ -2648,7 +2650,7 @@ const BarChart = ({
 
   const categoryIndexByLabel = useMemo(() => {
     const indexByLabel = new Map<string, number>();
-    for (let i = 0; i < categoryOrder.length; i += 1) {indexByLabel.set(categoryOrder[i], i);}
+    for (let categoryIndex = 0; categoryIndex < categoryOrder.length; categoryIndex += 1) {indexByLabel.set(categoryOrder[categoryIndex], categoryIndex);}
     return indexByLabel;
   }, [categoryOrder]);
 

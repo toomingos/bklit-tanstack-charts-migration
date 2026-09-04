@@ -19,7 +19,7 @@ const HOVER_STATE_TRANSITION = {
   type: "tween",
 } as const;
 
-const isNumber = <T>(value: T): value is T & number => typeof value === "number";
+const isNumber = <Subject>(value: Subject): value is Subject & number => typeof value === "number";
 
 interface ProjectedDatumChannels {
   readonly xValues: readonly (Readonly<Date> | undefined)[];

@@ -27,22 +27,25 @@ interface BucketHeatmapCellsParams {
   readonly rowOpacity: HeatmapRowOpacity;
 }
 
+// Fallback level used when a datum's level has no resolved style: the first (empty) level.
+const FALLBACK_LEVEL_INDEX = 0;
+
 const bucketHeatmapCellsByOpacity = ({
   cellData,
   resolvedLevelStyles,
   rowOpacity,
 }: Readonly<BucketHeatmapCellsParams>): Map<number, CellDatum[]> => {
   const buckets = new Map<number, CellDatum[]>();
-  for (const d of cellData) {
+  for (const datum of cellData) {
     const fillOpacity =
-      resolveHeatmapRowOpacity(d.row, rowOpacity) *
-      heatmapLevelCellFillOpacity(resolvedLevelStyles[d.level] ?? resolvedLevelStyles[0]);
+      resolveHeatmapRowOpacity(datum.row, rowOpacity) *
+      heatmapLevelCellFillOpacity(resolvedLevelStyles[datum.level] ?? resolvedLevelStyles[FALLBACK_LEVEL_INDEX]);
     let bucket = buckets.get(fillOpacity);
     if (!bucket) {
       bucket = [];
       buckets.set(fillOpacity, bucket);
     }
-    bucket.push(d);
+    bucket.push(datum);
   }
   return buckets;
 };
@@ -71,13 +74,13 @@ const buildHeatmapCellMark = ({
     // D5: epoch-suffixed so a revealEpoch bump re-triggers the 'enter'
     // Motion phase (matching legacy's "reveal replays on refresh") — see
     // The mount-flash trade-off note on the cell-motion helper above.
-    key: (d: Readonly<CellDatum>) => `${d.column}-${d.row}:${revealEpoch}`,
+    key: (datum: Readonly<CellDatum>) => `${datum.column}-${datum.row}:${revealEpoch}`,
     motion: cellMotion,
     radius: cornerRadius,
     states: hoverStates,
-    x: (d: Readonly<CellDatum>) => d.colKey,
-    y: (d: Readonly<CellDatum>) => d.rowKey,
-    z: (d: Readonly<CellDatum>) => d.level,
+    x: (datum: Readonly<CellDatum>) => datum.colKey,
+    y: (datum: Readonly<CellDatum>) => datum.rowKey,
+    z: (datum: Readonly<CellDatum>) => datum.level,
   });
 
 const useHeatmapCellMarks = ({

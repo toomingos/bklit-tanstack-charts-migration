@@ -4,8 +4,10 @@ import type { CSSProperties, KeyboardEvent, MouseEvent, ReactElement, ReactNode 
 const MARKER_ICON_FONT_SCALE = 0.5;
 const MARKER_ICON_HOVER_SCALE = 1.15;
 const MARKER_ICON_REST_SCALE = 1;
+const MARKER_CIRCLE_DEFAULT_BORDER_WIDTH = 1.5;
+const FOCUSABLE_TAB_INDEX = 0;
 
-export interface MarkerCircleHtmlProps {
+interface MarkerCircleHtmlProps {
   icon: ReactNode;
   size: number;
   color?: string;
@@ -31,7 +33,7 @@ interface MarkerActivationParams {
 }
 
 const performMarkerNavigation = (navigationHref: string, target: "_blank" | "_self"): void => {
-  if (navigationHref.length === 0) {return;}
+  if (navigationHref === "") {return;}
   if (target === "_blank") {
     globalThis.open(navigationHref, "_blank", "noopener,noreferrer");
   } else {
@@ -109,7 +111,7 @@ const buildMarkerCircleStyle = (params: Readonly<MarkerCircleStyleParams>): CSSP
   width: params.size,
 });
 
-export const MarkerCircleHtml = ({
+const MarkerCircleHtml = ({
   icon,
   size,
   color,
@@ -117,7 +119,7 @@ export const MarkerCircleHtml = ({
   href,
   target = "_self",
   borderColor,
-  borderWidth = 1.5,
+  borderWidth = MARKER_CIRCLE_DEFAULT_BORDER_WIDTH,
 }: Readonly<MarkerCircleHtmlProps>): ReactElement => {
   const hasAction = Boolean(onClick ?? href);
   // The href-as-navigation-target is falsy-checked (empty string means "no link"), so normalize
@@ -134,7 +136,7 @@ export const MarkerCircleHtml = ({
       onClick={hasAction ? handleClick : undefined}
       onKeyDown={hasAction ? handleKeyDown : undefined}
       role={hasAction ? "button" : undefined}
-      tabIndex={hasAction ? 0 : undefined}
+      tabIndex={hasAction ? FOCUSABLE_TAB_INDEX : undefined}
       style={circleStyle}
       onMouseEnter={handleIconEnter}
       onMouseLeave={handleIconLeave}
@@ -143,3 +145,6 @@ export const MarkerCircleHtml = ({
     </div>
   );
 };
+
+export { MarkerCircleHtml };
+export type { MarkerCircleHtmlProps };

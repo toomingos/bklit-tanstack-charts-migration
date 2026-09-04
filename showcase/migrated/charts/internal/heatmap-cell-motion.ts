@@ -23,20 +23,32 @@ import type { CellDatum } from "./heatmap-cell-data";
 // Transition below. Newton-Raphson on the bezier's x(t) (5 iterations is
 // More than enough at this curve's slope) to find t for a given x=p, then
 // Evaluates y(t).
-const solveCubicBezierEasing = (points: readonly [number, number, number, number]): ((p: number) => number) => {
+// Newton-Raphson iteration budget for the cubic-bezier solver below.
+// Changing the count reshapes every cell's enter easing, so it stays verbatim.
+const NEWTON_RAPHSON_ITERATION_COUNT = 6;
+// Convergence tolerance for the bezier x(t) solve; below this the residual is
+// Sub-progress-space noise on the resulting opacity.
+const BEZIER_SOLVE_TOLERANCE = 1e-5;
+// A heatmap with zero columns still renders one (empty) column slot so the
+// Band scales below stay defined.
+const MIN_COLUMN_COUNT = 1;
+// Seconds-to-milliseconds factor for the enter-fade duration.
+const MS_PER_SECOND = 1000;
+
+const solveCubicBezierEasing = (points: readonly [number, number, number, number]): ((progress: number) => number) => {
   const [x1, y1, x2, y2] = points;
-  const bx = (t: number): number => 3 * t * (1 - t) * (1 - t) * x1 + 3 * t * t * (1 - t) * x2 + t * t * t;
-  const by = (t: number): number => 3 * t * (1 - t) * (1 - t) * y1 + 3 * t * t * (1 - t) * y2 + t * t * t;
-  return (p: number) => {
-    if (p <= 0 || p >= 1) {return p <= 0 ? 0 : 1;}
-    let t = p;
-    for (let i = 0; i < 6; i += 1) {
-      const err = bx(t) - p;
-      const dx = 3 * (1 - t) * (1 - t) * x1 + 6 * t * (1 - t) * (x2 - x1) + 3 * t * t * (1 - x2);
-      if (Math.abs(err) < 1e-5 || dx === 0) {break;}
-      t -= err / dx;
+  const bezierX = (param: number): number => 3 * param * (1 - param) * (1 - param) * x1 + 3 * param * param * (1 - param) * x2 + param * param * param;
+  const bezierY = (param: number): number => 3 * param * (1 - param) * (1 - param) * y1 + 3 * param * param * (1 - param) * y2 + param * param * param;
+  return (progress: number) => {
+    if (progress <= 0 || progress >= 1) {return progress <= 0 ? 0 : 1;}
+    let param = progress;
+    for (let iteration = 0; iteration < NEWTON_RAPHSON_ITERATION_COUNT; iteration += 1) {
+      const err = bezierX(param) - progress;
+      const dx = 3 * (1 - param) * (1 - param) * x1 + 6 * param * (1 - param) * (x2 - x1) + 3 * param * param * (1 - x2);
+      if (Math.abs(err) < BEZIER_SOLVE_TOLERANCE || dx === 0) {break;}
+      param -= err / dx;
     }
-    return by(t);
+    return bezierY(param);
   };
 };
 
@@ -96,7 +108,7 @@ const useHeatmapCellScales = ({
   innerHeight,
 }: Readonly<HeatmapCellScalesParams>): HeatmapCellScales => {
   const columnKeys = useMemo(
-    () => Array.from({ length: Math.max(columnCount, 1) }, (_, i) => String(i)),
+    () => Array.from({ length: Math.max(columnCount, MIN_COLUMN_COUNT) }, (_unused, index) => String(index)),
     [columnCount],
   );
   const rowKeys = useMemo(() => [...dayLabels], [dayLabels]);
@@ -151,16 +163,16 @@ const createHeatmapCellMotionFn = ({
 }: Readonly<HeatmapCellMotionFnParams>): ChartMotionDefinition<CellDatum> =>
   (motionCtx: Readonly<{ phase: string; datum: Readonly<CellDatum> | undefined }>) => {
     if (motionCtx.phase !== "enter") {return false;}
-    const d = motionCtx.datum;
-    if (!d) {return undefined;}
+    const datum = motionCtx.datum;
+    if (!datum) {return undefined;}
     return {
       delay: computeHeatmapEnterFadeDelayMs({
         animationDurationMs: animationDuration,
-        column: d.column,
+        column: datum.column,
         enterStaggerScale,
         fadeDurationSec,
         revealEpoch,
-        row: d.row,
+        row: datum.row,
       }),
       transition: { duration: durMs, easing: easingFn, type: "tween" },
     };
@@ -187,7 +199,7 @@ const useHeatmapCellMotion = ({
   useMemo<ChartMotionDefinition<CellDatum> | false>(() => {
     if (!animateCells || animationDuration <= 0) {return false;}
     const fadeDurationSec = resolveHeatmapEnterFadeDurationSec(enterTransition, animationDuration);
-    const durMs = fadeDurationSec * 1000;
+    const durMs = fadeDurationSec * MS_PER_SECOND;
     const easingFn = solveCubicBezierEasing(enterTransition?.ease ?? HEATMAP_DEFAULT_ENTER_EASE);
     return createHeatmapCellMotionFn({ animationDuration, durMs, easingFn, enterStaggerScale, fadeDurationSec, revealEpoch });
   }, [animateCells, animationDuration, enterTransition, enterStaggerScale, revealEpoch]);

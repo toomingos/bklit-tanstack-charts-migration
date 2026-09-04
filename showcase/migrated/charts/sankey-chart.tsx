@@ -82,6 +82,8 @@ const DEFAULT_NODE_LINE_CAP = 4;
 const DEFAULT_LINK_STROKE_OPACITY = 0.5;
 // Charts narrower than this skip the WAAPI reveal (no room to animate).
 const MIN_SANKEY_RENDER_WIDTH_PX = 10;
+// Numeric fallback for the "W / H" aspectRatio prop when it fails to parse.
+const DEFAULT_SANKEY_ASPECT_RATIO = 2;
 
 const DEFAULT_COLORS: readonly string[] = CHART_CATEGORY_PALETTE_WITH_FALLBACK;
 
@@ -272,19 +274,19 @@ const renderSankeyTooltipBody = (point: ChartPoint | undefined, formatValue: (va
 }
 
 const createHoverHandlers = (hoveredNodeIndexRef: { current: number | null }, hoveredLinkIndexRef: { current: number | null }, focusPointerPoint: (predicate?: (point: ChartPoint) => boolean) => void): SankeyHoverHandlers => ({
-    onLinkEnter: (i: number): void => {
-      hoveredLinkIndexRef.current = i;
+    onLinkEnter: (linkIndex: number): void => {
+      hoveredLinkIndexRef.current = linkIndex;
       hoveredNodeIndexRef.current = null;
-      focusPointerPoint((point) => point.markId === SANKEY_LINK_MARK_ID && point.datumIndex === i);
+      focusPointerPoint((point) => point.markId === SANKEY_LINK_MARK_ID && point.datumIndex === linkIndex);
     },
     onLinkLeave: (): void => {
       hoveredLinkIndexRef.current = null;
       focusPointerPoint();
     },
-    onNodeEnter: (i: number): void => {
-      hoveredNodeIndexRef.current = i;
+    onNodeEnter: (nodeIndex: number): void => {
+      hoveredNodeIndexRef.current = nodeIndex;
       hoveredLinkIndexRef.current = null;
-      focusPointerPoint((point) => point.markId === SANKEY_NODE_POINT_MARK_ID && point.datumIndex === i);
+      focusPointerPoint((point) => point.markId === SANKEY_NODE_POINT_MARK_ID && point.datumIndex === nodeIndex);
     },
     onNodeLeave: (): void => {
       hoveredNodeIndexRef.current = null;
@@ -665,10 +667,10 @@ const SankeyChart = ({
     const numerator = parts.at(0);
     const denominator = parts.at(1);
     if (parts.length !== 2 || numerator === undefined || denominator === undefined) {
-      return 2;
+      return DEFAULT_SANKEY_ASPECT_RATIO;
     }
     if (!numerator || !denominator || Number.isNaN(numerator) || Number.isNaN(denominator)) {
-      return 2;
+      return DEFAULT_SANKEY_ASPECT_RATIO;
     }
     return numerator / denominator;
   }, [aspectRatio]);

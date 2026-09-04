@@ -7,7 +7,7 @@ import type { YDomain } from './y-domain';
 import { snapDomains, tweenDomains } from "./animated-y-tween";
 import type { TweenControl } from "./animated-y-tween";
 
-export interface UseAnimatedYDomainsOptions {
+interface UseAnimatedYDomainsOptions {
   enabled: boolean;
   durationMs: number;
   chartPhase: ChartPhase;
@@ -242,7 +242,7 @@ const useTargetTweenEffect = (args: Readonly<TargetEffectArgs>): void => {
   );
 };
 
-export const useAnimatedYDomains = (options: UseAnimatedYDomainsOptions): Record<string, YDomain> => {
+const useAnimatedYDomains = (options: UseAnimatedYDomainsOptions): Record<string, YDomain> => {
   const reducedMotion = usePrefersReducedMotion();
   const destinationByAxis = resolveAnimatedYDestinationDomains(
     options.chartPhase,
@@ -259,3 +259,6 @@ export const useAnimatedYDomains = (options: UseAnimatedYDomainsOptions): Record
   useTargetTweenEffect({ animatedRef, chartPhase: options.chartPhase, durationMs: options.durationMs, enabled: options.enabled, reducedMotion, refs, setAnimatedByAxis, targetByAxis: options.targetByAxis, tweenOnTargetChange: options.tweenOnTargetChange ?? false });
   return animatedByAxis;
 };
+
+export { useAnimatedYDomains };
+export type { UseAnimatedYDomainsOptions };

@@ -141,13 +141,13 @@ const useHeatmapCellsTooltipBody = ({
     const point = bodyCtx.points.at(0);
     const cfg = tooltipConfig;
     if (point === undefined || !cfg) {return undefined;}
-    const d = point.datum as CellDatum;
+    const { datum } = point;
     return (
       <div
         className={cfg.className ? `bkm-tooltip-panel ${cfg.className}` : "bkm-tooltip-panel"}
         style={tooltipPanelStyle}
       >
-        {renderHeatmapTooltipContent(d, cfg)}
+        {renderHeatmapTooltipContent(datum, cfg)}
       </div>
     );
   }, [tooltipConfig, tooltipPanelStyle]);

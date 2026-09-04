@@ -4,7 +4,7 @@ import { bandWidthForSquares } from "./bar-squares-layout";
 import { renderBarColumnTrackScene } from "./bar-column-track-scene";
 import type { ChartDatum } from "./types";
 
-export interface BarColumnTrackMarkOptions {
+interface BarColumnTrackMarkOptions {
   readonly id: string;
   readonly data: readonly Readonly<ChartDatum>[];
   readonly states?: readonly ChartMarkState<ChartDatum>[];
@@ -75,7 +75,7 @@ const buildBarColumnTrackMarkSpec = (data: readonly Readonly<ChartDatum>[], opti
   };
 }
 
-export const barColumnTrackMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<BarColumnTrackMarkOptions>): ChartMark<ChartDatum, string, number> => {
+const barColumnTrackMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<BarColumnTrackMarkOptions>): ChartMark<ChartDatum, string, number> => {
   const {
     id,
     seriesIndex,
@@ -113,3 +113,6 @@ export const barColumnTrackMark = (data: readonly Readonly<ChartDatum>[], option
     yAccessor,
   }));
 }
+
+export { barColumnTrackMark };
+export type { BarColumnTrackMarkOptions };

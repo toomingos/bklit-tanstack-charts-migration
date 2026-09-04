@@ -106,6 +106,43 @@ const stringifyReferenceAreaKeyPart = (value: unknown): string => {
   return JSON.stringify(value);
 };
 
+// Guards an open-ended config value against the number prop type.
+const isNumberValue = <Value,>(value: Value): value is Value & number => typeof value === "number";
+
+// Guards an open-ended config value against the boolean prop type.
+const isBooleanValue = <Value,>(value: Value): value is Value & boolean => typeof value === "boolean";
+
+// Guards an open-ended config value against the date prop type.
+const isDateValue = <Value,>(value: Value): value is Value & Date => value instanceof Date;
+
+// Guards an open-ended config value against the string-or-number prop type.
+const isStringOrNumberValue = <Value,>(value: Value): value is Value & (string | number) =>
+  isStringValue(value) || isNumberValue(value);
+
+// Guards an open-ended config value against the date-or-number prop type.
+const isDateOrNumberValue = <Value,>(value: Value): value is Value & (Date | number) =>
+  isDateValue(value) || isNumberValue(value);
+
+// First four preset ids. Split from the full membership check below.
+const isFirstPatternPreset = <Value,>(value: Value): value is Value & PatternPresetId =>
+  value === "none" || value === "diagonal" || value === "horizontal" || value === "vertical";
+
+// Last four preset ids. Split from the full membership check below.
+const isSecondPatternPreset = <Value,>(value: Value): value is Value & PatternPresetId =>
+  value === "cross" || value === "dots" || value === "circles" || value === "accent";
+
+// Guards an open-ended config value against the pattern-preset prop type.
+const isPatternPresetValue = <Value,>(value: Value): value is Value & PatternPresetId =>
+  isFirstPatternPreset(value) || isSecondPatternPreset(value);
+
+// Guards an open-ended config value against the stroke-style prop type.
+const isStrokeStyleValue = <Value,>(value: Value): value is Value & ("solid" | "dashed") =>
+  value === "solid" || value === "dashed";
+
+// Guards an open-ended config value against the overflow prop type.
+const isIfOverflowValue = <Value,>(value: Value): value is Value & ReferenceAreaIfOverflow =>
+  value === "hidden" || value === "visible" || value === "discard";
+
 const ReferenceAreaLayers = ({
   configs,
   geom,
@@ -120,7 +157,7 @@ const ReferenceAreaLayers = ({
         // SAFETY: Each config is the props object of a <ReferenceArea> child element.
         // Only elements whose role is "referenceArea" are collected (see extractReferenceAreaProps).
         // React types those props as ReferenceAreaProps at the JSX creation site.
-        // Every field read below therefore already has its asserted type.
+        // Every field read below is therefore narrowed to its prop type by the guards above.
         <ReferenceAreaLayer
           key={`ref-${stringifyReferenceAreaKeyPart(config.y1)}-${stringifyReferenceAreaKeyPart(config.y2)}-${stringifyReferenceAreaKeyPart(config.x1)}-${stringifyReferenceAreaKeyPart(config.x2)}-${stringifyReferenceAreaKeyPart(config.yAxisId)}`}
           width={geom.width}
@@ -137,33 +174,33 @@ const ReferenceAreaLayers = ({
           isCandlestickXScale={geom.isCandlestickXScale}
           phase={geom.phase}
           isLoaded={geom.isLoaded}
-          y1={config.y1 as number | undefined}
-          y2={config.y2 as number | undefined}
-          x1={config.x1 as Date | number | undefined}
-          x2={config.x2 as Date | number | undefined}
-          yAxisId={config.yAxisId as string | number | undefined}
-          fill={config.fill as string | undefined}
-          fillOpacity={config.fillOpacity as number | undefined}
-          pattern={config.pattern as PatternPresetId | undefined}
-          patternColor={config.patternColor as string | undefined}
-          patternScale={config.patternScale as number | undefined}
-          patternStrokeWidth={config.patternStrokeWidth as number | undefined}
-          patternRadius={config.patternRadius as number | undefined}
-          patternComplement={config.patternComplement as boolean | undefined}
-          patternFill={config.patternFill as string | undefined}
-          patternDotFill={config.patternDotFill as boolean | undefined}
-          patternTileBackground={config.patternTileBackground as string | undefined}
-          stroke={config.stroke as string | undefined}
-          strokeWidth={config.strokeWidth as number | undefined}
-          strokeStyle={config.strokeStyle as "solid" | "dashed" | undefined}
-          strokeDasharray={config.strokeDasharray as string | undefined}
-          fadeEdges={config.fadeEdges as boolean | undefined}
-          fadeEdgesLength={config.fadeEdgesLength as number | undefined}
-          showMarkers={config.showMarkers as boolean | undefined}
-          markerColor={config.markerColor as string | undefined}
-          markerSize={config.markerSize as number | undefined}
-          ifOverflow={config.ifOverflow as ReferenceAreaIfOverflow | undefined}
-          className={config.className as string | undefined}
+          y1={isNumberValue(config.y1) ? config.y1 : undefined}
+          y2={isNumberValue(config.y2) ? config.y2 : undefined}
+          x1={isDateOrNumberValue(config.x1) ? config.x1 : undefined}
+          x2={isDateOrNumberValue(config.x2) ? config.x2 : undefined}
+          yAxisId={isStringOrNumberValue(config.yAxisId) ? config.yAxisId : undefined}
+          fill={isStringValue(config.fill) ? config.fill : undefined}
+          fillOpacity={isNumberValue(config.fillOpacity) ? config.fillOpacity : undefined}
+          pattern={isPatternPresetValue(config.pattern) ? config.pattern : undefined}
+          patternColor={isStringValue(config.patternColor) ? config.patternColor : undefined}
+          patternScale={isNumberValue(config.patternScale) ? config.patternScale : undefined}
+          patternStrokeWidth={isNumberValue(config.patternStrokeWidth) ? config.patternStrokeWidth : undefined}
+          patternRadius={isNumberValue(config.patternRadius) ? config.patternRadius : undefined}
+          patternComplement={isBooleanValue(config.patternComplement) ? config.patternComplement : undefined}
+          patternFill={isStringValue(config.patternFill) ? config.patternFill : undefined}
+          patternDotFill={isBooleanValue(config.patternDotFill) ? config.patternDotFill : undefined}
+          patternTileBackground={isStringValue(config.patternTileBackground) ? config.patternTileBackground : undefined}
+          stroke={isStringValue(config.stroke) ? config.stroke : undefined}
+          strokeWidth={isNumberValue(config.strokeWidth) ? config.strokeWidth : undefined}
+          strokeStyle={isStrokeStyleValue(config.strokeStyle) ? config.strokeStyle : undefined}
+          strokeDasharray={isStringValue(config.strokeDasharray) ? config.strokeDasharray : undefined}
+          fadeEdges={isBooleanValue(config.fadeEdges) ? config.fadeEdges : undefined}
+          fadeEdgesLength={isNumberValue(config.fadeEdgesLength) ? config.fadeEdgesLength : undefined}
+          showMarkers={isBooleanValue(config.showMarkers) ? config.showMarkers : undefined}
+          markerColor={isStringValue(config.markerColor) ? config.markerColor : undefined}
+          markerSize={isNumberValue(config.markerSize) ? config.markerSize : undefined}
+          ifOverflow={isIfOverflowValue(config.ifOverflow) ? config.ifOverflow : undefined}
+          className={isStringValue(config.className) ? config.className : undefined}
         />
       ))}
     </>

@@ -6,6 +6,9 @@ import type { HeatmapColumn } from "./heatmap-utils";
 import { buildHoverCellGeometry } from "./heatmap-cell-data";
 import type { CellDatum } from "./heatmap-cell-data";
 
+// Fallback row count when no columns are present (one row per weekday).
+const DEFAULT_WEEK_ROW_COUNT = 7;
+
 const clearFocusTimer = (timerId: number | undefined): void => {
   if (timerId !== undefined) {
     globalThis.clearTimeout(timerId);
@@ -93,7 +96,7 @@ const handleHeatmapCellHover = ({
   // Engine. `cell()`/`rect()` builds each ChartPoint's `datum` as the
   // Exact input array element (dist/rect.js), so reference equality
   // Against the hit datum reliably locates the matching scene point.
-  const scenePoint = renderContext?.scene.points.find((p: Readonly<{ datum: Readonly<CellDatum> }>) => p.datum === hit.datum) ?? null;
+  const scenePoint = renderContext?.scene.points.find((candidate: Readonly<{ datum: Readonly<CellDatum> }>) => candidate.datum === hit.datum) ?? null;
   onFocus(scenePoint, `${hit.column}-${hit.row}`);
 };
 
@@ -146,7 +149,7 @@ const locateHoveredHeatmapCell = ({
   const foundCol = findHeatmapColumnForSceneX(ctx, posX);
   const foundRow = Math.floor(posY / ctx.binHeight);
 
-  if (foundCol < 0 || foundRow < 0 || foundRow >= (ctx.data[0]?.bins.length ?? 7)) {
+  if (foundCol < 0 || foundRow < 0 || foundRow >= (ctx.data[0]?.bins.length ?? DEFAULT_WEEK_ROW_COUNT)) {
     return undefined;
   }
 

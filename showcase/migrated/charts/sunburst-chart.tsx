@@ -206,13 +206,36 @@ const SUNBURST_SWEEP_EASE = "cubic-bezier(0.85,0,0.15,1)";
 // (deleted, C5); now the arc mark's native "update" transition.
 const SUNBURST_ZOOM_MS = 750;
 const SUNBURST_ZOOM_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+// Full opacity: the undimmed alpha for the hovered arc and its relatives.
+const FULL_OPACITY = 1;
+// Hover-dim alpha for arcs unrelated to the hovered arc (bklit 0.25, styles.css:424-427).
+const HOVER_DIM_ALPHA = 0.25;
+// Minimum visible ring depth: resolveVisibleDepth never drops below the focused ring itself.
+const MIN_VISIBLE_DEPTH = 1;
+// Label legibility floors: minimum arc length and ring thickness in pixels for a label to render.
+const LABEL_MIN_ARC_LENGTH_PX = 26;
+const LABEL_MIN_RING_WIDTH_PX = 16;
+// SB15 whole-stage fade-in duration, matching legacy motion.svg opacity 0 to 1.
+const STAGE_FADE_IN_MS = 350;
+// Slack added to sweep plus stagger when scheduling the reveal-phase deadline timer.
+const REVEAL_DEADLINE_SLACK_MS = 935;
+// Fraction of the sweep duration added to the max stagger delay before labels reveal.
+const LABELS_REVEAL_DELAY_FRACTION = 0.85;
+// Smallest chart radius in pixels after grow-padding is subtracted.
+const MIN_SUNBURST_RADIUS_PX = 8;
+// Default chart size and hover pop-out, matching bklit's SunburstChart defaults.
+const DEFAULT_SUNBURST_SIZE = 520;
+const DEFAULT_HOVER_POP = 8;
+// Degree geometry for label rotation: radians-to-degrees half-circle and the flip threshold.
+const DEGREES_PER_HALF_CIRCLE = 180;
+const LABEL_FLIP_THRESHOLD_DEGREES = 90;
 
 // ---------------------------------------------------------------------------
 // Helpers (shared — were duplicated across 4 call sites)
 // ---------------------------------------------------------------------------
 
 const applyAlphaToColor = (color: string, alpha: number): string => {
-  if (alpha >= 1) {return color;}
+  if (alpha >= FULL_OPACITY) {return color;}
   return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
 }
 
@@ -222,14 +245,14 @@ const isRelatedArc = (arc: ReadonlySunburstArc, hovered: ReadonlySunburstArc): b
 // Hover/dim small helpers, hoisted so render-path callbacks stay thin.
 const hoverDimFactor = (arcId: string, hoveredId: string | undefined): number => {
   if (hoveredId === undefined) {
-    return 1;
+    return FULL_OPACITY;
   }
   if (arcId === hoveredId || arcId.startsWith(`${hoveredId} / `) || hoveredId.startsWith(`${arcId} / `)) {
-    return 1;
+    return FULL_OPACITY;
   }
-  return 0.25;
+  return HOVER_DIM_ALPHA;
 };
-const resolveVisibleDepth = (maxDepth: number, focusDepth: number): number => Math.max(1, maxDepth - focusDepth);
+const resolveVisibleDepth = (maxDepth: number, focusDepth: number): number => Math.max(MIN_VISIBLE_DEPTH, maxDepth - focusDepth);
 const resolveCenterR = (focusDepth: number, maxDepth: number, radius: number): number =>
   ringOptions(focusDepth, maxDepth, radius).centerR;
 const resolveSunburstHintText = (hoveredTrail: readonly string[] | undefined, focusDepth: number): string => {
@@ -299,9 +322,9 @@ interface SunburstLabelEntry {
 
 // Normalizes a centroid angle into a readable label rotation in degrees.
 const normalizeLabelRotation = (midAngle: number): number => {
-  const rawDegrees = (midAngle * 180) / Math.PI - 90;
-  if (rawDegrees > 90) {return rawDegrees - 180;}
-  if (rawDegrees < -90) {return rawDegrees + 180;}
+  const rawDegrees = (midAngle * DEGREES_PER_HALF_CIRCLE) / Math.PI - LABEL_FLIP_THRESHOLD_DEGREES;
+  if (rawDegrees > LABEL_FLIP_THRESHOLD_DEGREES) {return rawDegrees - DEGREES_PER_HALF_CIRCLE;}
+  if (rawDegrees < -LABEL_FLIP_THRESHOLD_DEGREES) {return rawDegrees + DEGREES_PER_HALF_CIRCLE;}
   return rawDegrees;
 };
 
@@ -314,7 +337,7 @@ const buildLabelEntry = (
 ): SunburstLabelEntry[] => {
   if (hoveredArc && !isRelatedArc(arc, hoveredArc)) {return [];}
   const centroidRadius = geomCentroidRadius(base);
-  if ((base.a1 - base.a0) * centroidRadius < 26 || base.outerR - base.innerR < 16) {return [];}
+  if ((base.a1 - base.a0) * centroidRadius < LABEL_MIN_ARC_LENGTH_PX || base.outerR - base.innerR < LABEL_MIN_RING_WIDTH_PX) {return [];}
   const midAngle = geomCentroidAngle(base);
   const itemX = Math.sin(midAngle) * centroidRadius;
   const itemY = -Math.cos(midAngle) * centroidRadius;
@@ -363,7 +386,7 @@ const fadeInChartStage = (container: HTMLElement): (() => void) | undefined => {
   stage.style.opacity = "0";
   const fadeAnimation = stage.animate(
     [{ opacity: "0" }, { opacity: "1" }],
-    { duration: 350, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" },
+    { duration: STAGE_FADE_IN_MS, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" },
   );
   return (): void => {
     fadeAnimation.cancel();
@@ -375,13 +398,10 @@ const fadeInChartStage = (container: HTMLElement): (() => void) | undefined => {
 type SunburstPhase = "loading" | "revealing" | "ready";
 
 // ---------------------------------------------------------------------------
-// Types (matching bklit's public API)
+// Types (matching bklit's public API; re-exported in the trailing block below)
 // ---------------------------------------------------------------------------
 
-export type { ArcDatum, Focus } from "./internal/sunburst-geometry";
-export type { SunburstNode } from "./internal/sunburst-types";
-
-export interface SunburstChartProps {
+interface SunburstChartProps {
   data: SunburstNode;
   size?: number;
   playKey?: number;
@@ -416,12 +436,13 @@ export interface SunburstChartProps {
 // Not a function, so any memoised carrier — bklit memoises
 // `SunburstBreadcrumb` — silently failed to classify and was dropped. Matching
 // Bklit: accept both, and let `displayName` alone decide.
-const isStringType = (type: Readonly<{ displayName?: string }> | string): type is string => typeof type === "string";
+const isDisplayNameCarrier = (type: ReactElement["type"]): type is ReactElement["type"] & { displayName?: string } =>
+  typeof type === "function" || (typeof type === "object" && type !== null);
 
 const isChildOfKind = (child: ReactNode, displayName: string): boolean => {
   if (!isValidElement(child)) {return false;}
-  const type = child.type as { displayName?: string } | string;
-  if (isStringType(type)) {return false;}
+  const type: ReactElement["type"] = child.type;
+  if (!isDisplayNameCarrier(type)) {return false;}
   return displayNameOf(type) === displayName;
 }
 
@@ -463,22 +484,21 @@ const classifyChildren = (children: ReactNode): ClassifiedChildren => {
       labelsCount += 1;
     } else if (isChildOfKind(child, "SunburstHint")) {
       hintCount += 1;
-      hintProps = (child as ReactElement).props as SunburstHintProps;
+      if (isValidElement<SunburstHintProps>(child)) {
+        hintProps = child.props;
+      }
     } else if (isChildOfKind(child, "SunburstBreadcrumb")) {
       breadcrumbChildren.push(child);
     } else if (isChildOfKind(child, "SunburstSegment")) {
-      const props = (child as ReactElement).props as {
-        index: number;
-        color?: string;
-        fill?: string;
-        fillOpacity?: number;
-      };
-      segmentConfigs.push({
-        arcIndex: props.index,
-        color: props.color,
-        fill: props.fill,
-        fillOpacity: props.fillOpacity,
-      });
+      if (isValidElement<SunburstSegmentProps>(child)) {
+        const { index, color, fill, fillOpacity } = child.props;
+        segmentConfigs.push({
+          arcIndex: index,
+          color,
+          fill,
+          fillOpacity,
+        });
+      }
     } else {
       // Non-carrier child (e.g. plain text) — nothing to classify.
     }
@@ -509,7 +529,7 @@ interface SunburstChartInnerProps {
   focusId: string;
   isFocusControlled: boolean;
   setInternalFocusId: (id: string) => void;
-  setPhase: (p: SunburstPhase) => void;
+  setPhase: (phase: SunburstPhase) => void;
   onFocusChange?: (focusId: string) => void;
   hoveredIndexProp?: number | null;
   onHoverChange?: (index: number | null) => void;
@@ -553,7 +573,7 @@ const SunburstChartInner = ({
 
   const fullRadius = size / 2;
   const growPadding = paddingProp ?? defaultSunburstGrowPadding(maxDepth, size, hoverPop);
-  const radius = Math.max(8, fullRadius - growPadding);
+  const radius = Math.max(MIN_SUNBURST_RADIUS_PX, fullRadius - growPadding);
 
   // --- Hover state (direct React state, no coordinator mediator) ---
   const isHoverControlled = hoveredIndexProp !== undefined;
@@ -587,7 +607,7 @@ const SunburstChartInner = ({
   } = useMemo(() => classifyChildren(children), [children]);
 
   const segmentConfigMap = useMemo(
-    () => new Map(segmentConfigs.map((c) => [c.arcIndex, c])),
+    () => new Map(segmentConfigs.map((config) => [config.arcIndex, config])),
     [segmentConfigs],
   );
 
@@ -602,8 +622,8 @@ const SunburstChartInner = ({
     (arcIndex: number, fillOverride?: string, colorOverride?: string) => {
       if (fillOverride !== undefined && fillOverride !== "") {return fillOverride;}
       if (!Number.isInteger(arcIndex) || arcIndex < 0 || arcIndex >= arcs.length) {return defaultSunburstColors[0];}
-      const a = arcs[arcIndex];
-      return colorOverride ?? a.fill ?? a.color ?? getColor(a.categoryIndex);
+      const arc = arcs[arcIndex];
+      return colorOverride ?? arc.fill ?? arc.color ?? getColor(arc.categoryIndex);
     },
     [arcs, getColor],
   );
@@ -716,14 +736,14 @@ const SunburstChartInner = ({
   // (which only see the flat row + a bare node id) recover arcIndex,
   // Absolute depth, and color/fill overrides for a given rendered node.
   const flatRows = useMemo(() => buildSunburstFlatRows(data), [data]);
-  const arcsById = useMemo(() => new Map(arcs.map((a) => [a.id, a])), [arcs]);
+  const arcsById = useMemo(() => new Map(arcs.map((arc) => [arc.id, arc])), [arcs]);
 
   // C5: per-arc ring-staggered entrance delay, keyed by arc `id` (matches
   // `handleRender`'s pre-C5 `delayByArcId` lookup, now feeding the mark's
   // Own `motion` enter phase instead of a `.animate()` delay option).
   const revealDelayById = useMemo(() => {
     const timingList = buildRevealTiming(arcs, enterStaggerScale);
-    return new Map(timingList.map((t) => [t.arcId, t.delayMs]));
+    return new Map(timingList.map((timing) => [timing.arcId, timing.delayMs]));
   }, [arcs, enterStaggerScale]);
 
   // C5d: the mark's OWN id (not a per-datum `key` — `SunburstOptions` has no
@@ -757,17 +777,17 @@ const SunburstChartInner = ({
           marks: [
             sunburst(flatRows, {
               fill: (node: TSSunburstNode<SunburstFlatRow>) => {
-                const a = arcsById.get(node.id);
-      if (!a) {return defaultSunburstColors[0];}
-                const config = segmentConfigMap.get(a.arcIndex);
-                const resolvedFill = getFill(a.arcIndex, config?.fill, config?.color);
-                const relativeDepth = a.depth - focus.depth;
+                const arc = arcsById.get(node.id);
+      if (!arc) {return defaultSunburstColors[0];}
+                const config = segmentConfigMap.get(arc.arcIndex);
+                const resolvedFill = getFill(arc.arcIndex, config?.fill, config?.color);
+                const relativeDepth = arc.depth - focus.depth;
                 const baseOpacity = config?.fillOpacity ?? opacityForRelativeDepth(relativeDepth);
                 // C1 (states+legend) parity: non-hovered-arc dimming folded
                 // Into the per-datum `fill` alpha (native `sunburst()` has
                 // No per-datum opacity channel either — `fillOpacity` is a
                 // Whole-mark `number`, `hierarchy-sunburst.d.ts`).
-                const dimFactor = hoverDimFactor(a.id, hoveredArc?.id);
+                const dimFactor = hoverDimFactor(arc.id, hoveredArc?.id);
                 return applyAlphaToColor(resolvedFill, baseOpacity * dimFactor);
               },
               id: sunburstMarkId,
@@ -809,10 +829,10 @@ const SunburstChartInner = ({
                   },
                 };
               },
-              nodeId: (d: SunburstFlatRow) => d.id,
+              nodeId: (row: SunburstFlatRow) => row.id,
               // Shares the overlay-alignment note on innerRadius above.
               outerRadius: radius,
-              parentId: (d: SunburstFlatRow) => d.parentId,
+              parentId: (row: SunburstFlatRow) => row.parentId,
               // `rootId`/`visibleDepth` reproduce `geometryFor`'s
               // Focus-relative angle remap AND `ringOptions`'s ring count —
               // `resolveLayoutRoot` copies the subtree at `focus.id` and
@@ -836,7 +856,7 @@ const SunburstChartInner = ({
               // Own `value` whenever it has children — a leaf-only accessor
               // Is REQUIRED or an internal node carrying its own value
               // Diverges by up to ~3 rad (measured).
-              value: (d: SunburstFlatRow) => (d.hasChildren ? 0 : (d.rawValue ?? 0)),
+              value: (row: SunburstFlatRow) => (row.hasChildren ? 0 : (row.rawValue ?? 0)),
               // Shares the focus-remap note on rootId above.
               visibleDepth: visibleDepthValue,
             }),
@@ -895,7 +915,7 @@ const SunburstChartInner = ({
     }
     setPhase("revealing");
     const maxDelay = maxRevealDelayMs(arcs, enterStaggerScale);
-    revealDeadlineTimerRef.current = setRevealDeadline(sweepDurationMs + maxDelay + 935, {
+    revealDeadlineTimerRef.current = setRevealDeadline(sweepDurationMs + maxDelay + REVEAL_DEADLINE_SLACK_MS, {
       onDeadline: () => { setPhase("ready"); },
     });
     return () => {
@@ -950,8 +970,8 @@ const SunburstChartInner = ({
   const handleHitClick = useCallback(
     (arcIndex: number) => {
       if (!Number.isInteger(arcIndex) || arcIndex < 0 || arcIndex >= arcs.length) {return;}
-      const a = arcs[arcIndex];
-      if (a.hasChildren) {zoomTo(a.id);}
+      const arc = arcs[arcIndex];
+      if (arc.hasChildren) {zoomTo(arc.id);}
     },
     [arcs, zoomTo],
   );
@@ -965,8 +985,8 @@ const SunburstChartInner = ({
     (point: { datum: TSSunburstNode<SunburstFlatRow> } | null) => {
       // Pointer owns hover (D471).
       if (pointerInsideStageRef.current) {return;}
-      const a = point ? arcsById.get(point.datum.id) : undefined;
-      setHoveredArcIndex(a ? a.arcIndex : null);
+      const arc = point ? arcsById.get(point.datum.id) : undefined;
+      setHoveredArcIndex(arc ? arc.arcIndex : null);
     },
     [setHoveredArcIndex, arcsById],
   );
@@ -1017,7 +1037,7 @@ const SunburstChartInner = ({
 
   // --- Labels: zoom-morphed via transitionGeometry(prevFocus→focus, zoomT);
   // SB12 (legacy parity): unrelated arcs' labels are CULLED on hover (not dimmed).
-  const enterDurationMs = 1100;
+  const enterDurationMs = SUNBURST_SWEEP_MS;
 
   const labelItems = useMemo(() => {
     if (labelsCount === 0) {return [];}
@@ -1043,14 +1063,14 @@ const SunburstChartInner = ({
     const inZoom = zoomT < 1;
     const fromF = inZoom ? prevFocus : focus;
     const items: SunburstHitItem[] = [];
-    for (const a of sortedArcs) {
+    for (const arc of sortedArcs) {
       const base = inZoom
-        ? transitionGeometry(a, fromF, focus, maxDepth, radius, zoomT)
-        : geometryFor(a, focus, maxDepth, radius);
+        ? transitionGeometry(arc, fromF, focus, maxDepth, radius, zoomT)
+        : geometryFor(arc, focus, maxDepth, radius);
       if (base) {
         const pathData = arcPath(base, 1, 1);
         if (pathData !== null && pathData !== "") {
-          items.push({ arcIndex: a.arcIndex, hasChildren: a.hasChildren, pathData });
+          items.push({ arcIndex: arc.arcIndex, hasChildren: arc.hasChildren, pathData });
         }
       }
     }
@@ -1062,7 +1082,7 @@ const SunburstChartInner = ({
   // Returns delays sorted ascending, so its last element IS the max.
   const maxRevealDelay = useMemo(() => maxRevealDelayMs(arcs, enterStaggerScale), [arcs, enterStaggerScale]);
 
-  const labelsRevealDelayMs = maxRevealDelay + enterDurationMs * 0.85;
+  const labelsRevealDelayMs = maxRevealDelay + enterDurationMs * LABELS_REVEAL_DELAY_FRACTION;
 
   const labelRevealAnimsRef = useRef<Animation[]>([]);
 
@@ -1373,16 +1393,16 @@ const renderSunburstInner = (props: Readonly<SunburstInnerRenderProps>): ReactEl
 // SunburstChart
 // ---------------------------------------------------------------------------
 
-export const SunburstChart = ({
+const SunburstChart = ({
   data,
-  size = 520,
+  size = DEFAULT_SUNBURST_SIZE,
   playKey = 0,
   className,
   focusId: focusIdProp,
   onFocusChange,
   hoveredIndex: hoveredIndexProp,
   onHoverChange,
-  hoverPop = 8,
+  hoverPop = DEFAULT_HOVER_POP,
   padding: paddingProp,
   onPhaseChange,
   enterTransition,
@@ -1427,38 +1447,39 @@ export const SunburstChart = ({
 SunburstChart.displayName = "SunburstChart";
 
 // ---------------------------------------------------------------------------
-// Re-export config carriers (public API)
-// ---------------------------------------------------------------------------
-
-export { SunburstCenter } from "./internal/sunburst-center";
-export {
-  SunburstLabels,
-  type SunburstLabelsProps,
-} from "./internal/sunburst-labels";
-export {
-  SunburstHint,
-  type SunburstHintContext,
-  type SunburstHintProps,
-} from "./internal/sunburst-hint";
-export {
-  buildSunburstBreadcrumbItems,
-  SunburstBreadcrumb,
-  type SunburstBreadcrumbItem,
-  type SunburstBreadcrumbProps,
-  useSunburstBreadcrumbItems,
-} from "./internal/sunburst-breadcrumb";
-
-// ---------------------------------------------------------------------------
 // SunburstSegment config carrier — stays in this file
 // ---------------------------------------------------------------------------
 
-export interface SunburstSegmentProps {
+interface SunburstSegmentProps {
   index: number;
   color?: string;
   fill?: string;
   fillOpacity?: number;
 }
 
-export const SunburstSegment = (_props: SunburstSegmentProps): null => null;
+const SunburstSegment = (_props: SunburstSegmentProps): null => null;
 
 SunburstSegment.displayName = "SunburstSegment";
+
+// ---------------------------------------------------------------------------
+// Public API exports (single trailing block per import/exports-last and import/group-exports).
+// ---------------------------------------------------------------------------
+
+export { SunburstCenter } from "./internal/sunburst-center";
+export { SunburstLabels } from "./internal/sunburst-labels";
+export type { SunburstLabelsProps } from "./internal/sunburst-labels";
+export { SunburstHint } from "./internal/sunburst-hint";
+export type { SunburstHintContext, SunburstHintProps } from "./internal/sunburst-hint";
+export {
+  buildSunburstBreadcrumbItems,
+  SunburstBreadcrumb,
+  useSunburstBreadcrumbItems,
+} from "./internal/sunburst-breadcrumb";
+export type {
+  SunburstBreadcrumbItem,
+  SunburstBreadcrumbProps,
+} from "./internal/sunburst-breadcrumb";
+export type { ArcDatum, Focus } from "./internal/sunburst-geometry";
+export type { SunburstNode } from "./internal/sunburst-types";
+export { SunburstChart, SunburstSegment };
+export type { SunburstChartProps, SunburstSegmentProps };

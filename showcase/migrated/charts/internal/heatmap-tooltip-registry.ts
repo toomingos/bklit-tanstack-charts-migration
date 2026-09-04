@@ -1,4 +1,5 @@
-import { useLayoutEffect, type CSSProperties, type ReactElement } from "react";
+import { useLayoutEffect } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import type { HeatmapHoverCoordinator } from "./heatmap-hover-chrome";
 import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
 import { formatHeatmapContributionLabel } from "./heatmap-utils";
@@ -21,6 +22,10 @@ interface HeatmapTooltipConfig {
 
 const heatmapTooltipConfigs = new WeakMap<HeatmapHoverCoordinator, HeatmapTooltipConfig>();
 const heatmapTooltipListeners = new WeakMap<HeatmapHoverCoordinator, Set<() => void>>();
+
+const DEFAULT_TOOLTIP_SHOW_DELAY_MS = 0;
+const DEFAULT_TOOLTIP_HIDE_DELAY_MS = 120;
+const MIN_TOOLTIP_DELAY_MS = 0;
 
 const getHeatmapTooltipListenerSet = (coordinator: Readonly<HeatmapHoverCoordinator>): Set<() => void> => {
   let listeners = heatmapTooltipListeners.get(coordinator);
@@ -55,9 +60,6 @@ const getHeatmapTooltipConfig = (coordinator: Readonly<HeatmapHoverCoordinator> 
   return heatmapTooltipConfigs.get(coordinator) ?? null;
 };
 
-export { getHeatmapTooltipConfig, setHeatmapTooltipConfig, subscribeHeatmapTooltipConfig };
-export type { HeatmapTooltipConfig };
-
 interface HeatmapTooltipProps {
   readonly formatLabel?: (count: number, date: Readonly<Date>) => string;
   readonly className?: string;
@@ -91,8 +93,8 @@ const HeatmapTooltip = ({
   panelStyle,
   backgroundColor,
   // The deprecated `instant` prop is deliberately not destructured: it is a no-op kept for call-site compatibility.
-  showDelay = 0,
-  hideDelay = 120,
+  showDelay = DEFAULT_TOOLTIP_SHOW_DELAY_MS,
+  hideDelay = DEFAULT_TOOLTIP_HIDE_DELAY_MS,
 }: Readonly<HeatmapTooltipProps>): ReactElement | undefined => {
   const coordinator = useHeatmapCoordinatorOptional();
 
@@ -102,9 +104,9 @@ const HeatmapTooltip = ({
       backgroundColor,
       className,
       formatLabel,
-      hideDelayMs: Math.max(0, hideDelay),
+      hideDelayMs: Math.max(MIN_TOOLTIP_DELAY_MS, hideDelay),
       panelStyle,
-      showDelayMs: Math.max(0, showDelay),
+      showDelayMs: Math.max(MIN_TOOLTIP_DELAY_MS, showDelay),
     });
     return (): void => {
       setHeatmapTooltipConfig(coordinator, null);
@@ -114,5 +116,5 @@ const HeatmapTooltip = ({
   return undefined;
 };
 
-export { HeatmapTooltip };
-export type { HeatmapTooltipProps };
+export { getHeatmapTooltipConfig, HeatmapTooltip, setHeatmapTooltipConfig, subscribeHeatmapTooltipConfig };
+export type { HeatmapTooltipConfig, HeatmapTooltipProps };

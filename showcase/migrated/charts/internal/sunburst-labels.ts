@@ -5,7 +5,7 @@
 // Config carrier — returns null, classified by displayName in sunburst-chart
 // ---------------------------------------------------------------------------
 
-export interface SunburstLabelsProps {
+interface SunburstLabelsProps {
   fontSize?: number;
   fill?: string;
   stroke?: string;
@@ -13,6 +13,9 @@ export interface SunburstLabelsProps {
   className?: string;
 }
 
-export const SunburstLabels = (_props: SunburstLabelsProps): null => null;
+const SunburstLabels = (_props: SunburstLabelsProps): null => null;
 
 SunburstLabels.displayName = "SunburstLabels";
+
+export { SunburstLabels };
+export type { SunburstLabelsProps };

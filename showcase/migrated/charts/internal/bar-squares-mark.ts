@@ -5,7 +5,7 @@ import { buildSquareScene } from "./bar-squares-scene";
 import type { ChartDatum, GradientStop } from "./types";
 import type { PatternPresetId } from "./pattern-preset";
 
-export interface BarSquaresMarkOptions {
+interface BarSquaresMarkOptions {
   readonly id: string;
   readonly data: readonly Readonly<ChartDatum>[];
   readonly states?: readonly ChartMarkState<ChartDatum>[];
@@ -111,7 +111,7 @@ const wrapSquaresGroupNodes = (id: string, nodes: SceneNode[]): SceneNode[] => (
   },
 ])
 
-export const barSquaresMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<BarSquaresMarkOptions>): ChartMark<ChartDatum, string, number> => {
+const barSquaresMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<BarSquaresMarkOptions>): ChartMark<ChartDatum, string, number> => {
   const {
     id,
     seriesIndex,
@@ -156,3 +156,6 @@ export const barSquaresMark = (data: readonly Readonly<ChartDatum>[], options: R
     };
   });
 }
+
+export { barSquaresMark };
+export type { BarSquaresMarkOptions };

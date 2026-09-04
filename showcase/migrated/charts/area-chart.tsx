@@ -147,6 +147,8 @@ import "./styles.css";
 const AREA_DIM_OPACITY = 0.6;
 // Bklit default area-fill alpha when a series omits fillOpacity.
 const DEFAULT_AREA_FILL_OPACITY = 0.4;
+// Area boundary default stroke width when a series omits one.
+const DEFAULT_AREA_STROKE_WIDTH_PX = 2;
 // Gradient span clamps to this fraction at minimum so the stop never collapses to zero-width.
 const MIN_GRADIENT_SPAN_FRACTION = 0.01;
 const PERCENT_MULTIPLIER = 100;
@@ -164,6 +166,10 @@ const DEFAULT_Y_DOMAIN_TWEEN_FALLBACK_MS = 500;
 const DEFAULT_TICK_COUNT = 5;
 // Series-marker default radius when a marker config omits one.
 const DEFAULT_SERIES_MARKER_RADIUS_PX = 5;
+// Series-marker default stroke width when a marker config omits one.
+const DEFAULT_SERIES_MARKER_STROKE_WIDTH_PX = 2;
+// Series-marker default ring gap when a marker config omits one.
+const DEFAULT_SERIES_MARKER_RING_GAP_PX = 2;
 // Active-highlight halo padding as a fraction of the marker radius.
 const MARKER_HIGHLIGHT_PAD_RATIO = 0.35;
 // Fallback accent stroke for terminal/projection chrome when a series omits one.
@@ -625,8 +631,8 @@ const cancelAreaMarkerAnims = (animsRef: AreaMarkerAnimsRef): void => {
 // Visual extent of one marker config; mirrors the bklit series-marker stagger inputs.
 const resolveAreaMarkerVisualExtent = (markers: Readonly<SeriesPointMarkerStyle> | undefined): number => {
   const radius = markers?.radius ?? DEFAULT_SERIES_MARKER_RADIUS_PX;
-  const strokeWidth = markers?.strokeWidth ?? 2;
-  const ringGap = markers?.ringGap ?? 2;
+  const strokeWidth = markers?.strokeWidth ?? DEFAULT_SERIES_MARKER_STROKE_WIDTH_PX;
+  const ringGap = markers?.ringGap ?? DEFAULT_SERIES_MARKER_RING_GAP_PX;
   const outlineWidth = markers?.outlineWidth ?? 0;
   const showActiveHighlight = markers?.showActiveHighlight ?? true;
   const ring = strokeWidth > 0 ? ringGap + strokeWidth : 0;
@@ -845,7 +851,7 @@ const AreaChart = ({
           showLine: area.showLine ?? true,
           showMarkers: area.showMarkers,
           stroke: area.stroke ?? fill,
-          strokeWidth: area.strokeWidth ?? 2,
+          strokeWidth: area.strokeWidth ?? DEFAULT_AREA_STROKE_WIDTH_PX,
           yAxisId: area.yAxisId,
         };
       }),

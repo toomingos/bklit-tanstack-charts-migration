@@ -1,17 +1,20 @@
 import { createPortal } from "react-dom";
-import { useId, type ReactElement } from "react";
+import { useId } from "react";
+import type { ReactElement } from "react";
 import { useHeatmap } from "./heatmap-context";
 import {
   buildHeatmapSeparatorGradientStops,
   getHeatmapSeparatorLineY,
   getHeatmapSeparatorX,
   resolveHeatmapSeparatorStrokeDasharray,
-  type HeatmapSeparatorGradient,
-  type HeatmapSeparatorGradientStop,
-  type HeatmapSeparatorGroup,
-  type HeatmapSeparatorGroupBy,
-  type HeatmapSeparatorLayout,
-  type HeatmapSeparatorStrokeStyle,
+} from "./heatmap-utils";
+import type {
+  HeatmapSeparatorGradient,
+  HeatmapSeparatorGradientStop,
+  HeatmapSeparatorGroup,
+  HeatmapSeparatorGroupBy,
+  HeatmapSeparatorLayout,
+  HeatmapSeparatorStrokeStyle,
 } from "./heatmap-utils";
 
 // Shared class for the HTML axis/separator label layers portalled over the chart.
