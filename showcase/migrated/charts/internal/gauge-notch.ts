@@ -67,7 +67,11 @@ const isDefsComponent = (child: Readonly<ReactElement>): boolean => {
 }
 
 /** Gauge's only use of `children` — collects caller-supplied defs elements
-    (gradients/patterns) out of the children tree. */
+    (gradients/patterns) out of the children tree.
+ *
+ * @param {ReactNode} nodes - Children tree to harvest defs elements from; non-element nodes and non-defs elements are skipped.
+ * @returns {ReactElement[]} Collected defs elements in tree order, flattened through fragments.
+ */
 const collectGaugeDefsElements = (nodes: ReactNode): ReactElement[] => {
   const out: ReactElement[] = [];
   Children.forEach(nodes, (child) => {

@@ -86,7 +86,19 @@ const renderStaticClip = (params: Readonly<StaticClipParams>): ReactElement => {
   );
 };
 
-/** Width-grown clip (scaleX would reveal from center, not left-to-right). */
+/** Width-grown clip (scaleX would reveal from center, not left-to-right).
+ *
+ * @param {string} clipPathId - Clip path id referenced by the chart surface.
+ * @param {number} height - Chart height in CSS pixels before padding.
+ * @param {number} targetWidth - Final revealed width in CSS pixels; the rect animates from 0 to this plus padding.
+ * @param {EnterTransition} [enterTransition] - Transition override forwarded to the reveal engine; absent keeps the shared default.
+ * @param {number} revealEpoch - Effect dependency bumped to replay the reveal.
+ * @param {number} [padding] - Extra clip extent in CSS pixels around the chart; defaults to 0.
+ * @param {boolean} [animating] - False renders the full-width static clip with no WAAPI work; defaults to true.
+ * @param {ChartRevealClipMode} [mode] - Reveal grows left-to-right, conceal shrinks toward the right edge; defaults to reveal.
+ * @param {() => void} [onComplete] - Called when the conceal animation finishes; ignored on the reveal path.
+ * @returns {ReactElement} Clip path wrapping the animated rect, or the static full-width rect when not animating.
+ */
 const ChartRevealClip = ({
   clipPathId,
   height,

@@ -291,6 +291,9 @@ const hasText = (value: string | undefined): boolean => (value ?? "").length > 0
  * narrows instead of asserting. Always returns a Date (invalid when the value
  * is neither a Date nor a number/string timestamp); call sites below only ever
  * observe the Date branch.
+ *
+ * @param {unknown} rawDate - Raw datum date value; Date instances pass through, number/string timestamps are converted.
+ * @returns {Date} The coerced date, or an invalid Date when the value is neither a Date nor a usable timestamp.
  */
 const coerceDatumDate = (rawDate: unknown): Date => {
   if (rawDate instanceof Date) {return rawDate;}

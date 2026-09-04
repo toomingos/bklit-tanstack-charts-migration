@@ -4,7 +4,14 @@
 // Axis and scale option builders live in axis-scale-options.ts.
 // This module keeps bar label thinning and re-exports the full public surface so existing importers are untouched.
 
-/** Modulo thinning (`step = ceil(count/maxLabels)`); deliberately not the even-spacing optimizer. */
+/**
+ * Modulo thinning (`step = ceil(count/maxLabels)`); deliberately not the even-spacing optimizer.
+ *
+ * @param {number} count - Total label count; non-positive values yield an empty selection.
+ * @param {boolean} showAllLabels - Bypass flag returning every index unthinned.
+ * @param {number} maxLabels - Upper bound on kept labels; thinning engages only above it.
+ * @returns {number[]} Kept label indices in ascending order, spaced by the computed step.
+ */
 const selectBarLabelIndices = (count: number, showAllLabels: boolean, maxLabels = 12): number[] => {
   const all = Array.from({ length: count }, (_unused, index) => index);
   if (showAllLabels || count <= maxLabels) {return all;}

@@ -250,7 +250,13 @@ const searchEvenTickLayout = (params: Readonly<TickLayoutSearchInput>): number[]
   return [...best.indices];
 }
 
-/** Picks tick indices with the most even on-screen spacing (tries targetCount ± 1). */
+/** Picks tick indices with the most even on-screen spacing (tries targetCount ± 1).
+ *
+ * @param {number} length - Total datum count; non-positive yields no ticks and a single datum yields [0].
+ * @param {number} targetCount - Desired tick count; the search also tries one fewer and one more.
+ * @param {{ readonly labelForIndex?: (index: number) => string | undefined; readonly resolveXPx?: (index: number) => number; }} [options] - Optional label accessor for dedupe and pixel resolver for spacing measurement; spacing defaults to identity index order.
+ * @returns {number[]} Chosen datum indices in ascending order.
+ */
 const selectEvenlySpacedIndices = (length: number, targetCount: number, options?: {
     readonly labelForIndex?: (index: number) => string | undefined;
     readonly resolveXPx?: (index: number) => number;

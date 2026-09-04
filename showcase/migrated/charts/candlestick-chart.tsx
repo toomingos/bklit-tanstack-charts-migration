@@ -160,9 +160,9 @@ const CANDLE_DIM_TRANSITION: NonNullable<ChartMarkState["transition"]> = {
 /**
  * Pointer hover dims all candles uniformly; the hovered one redraws on top via a highlight mark.
  *
- * @param fadedOpacity - Opacity applied to non-hovered candles while a pointer focus is active.
- * @param showHoverFade - Whether the dim state should be registered at all.
- * @returns The dim-state list to attach to a candle mark (empty when hover-fade is disabled).
+ * @param {number} fadedOpacity - Opacity applied to non-hovered candles while a pointer focus is active.
+ * @param {boolean} showHoverFade - Whether the dim state should be registered at all.
+ * @returns {ChartMarkState<ChartDatum>[]} The dim-state list to attach to a candle mark (empty when hover-fade is disabled).
  */
 const candlestickDimStates = (fadedOpacity: number, showHoverFade: boolean): ChartMarkState<ChartDatum>[] => {
   const states: ChartMarkState<ChartDatum>[] = [];

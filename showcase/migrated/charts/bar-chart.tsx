@@ -111,13 +111,23 @@ const DEFAULT_HOVER_DOT_RADIUS_FRACTION = 0.25;
 // Default crosshair fade length (pixels).
 const DEFAULT_INDICATOR_FADE_LENGTH = 10;
 
-/** Row dim is group-scoped (unmatched focus); legend dim is series-scoped via whenSeriesDimmed. */
+/**
+ * Row dim is group-scoped (unmatched focus); legend dim is series-scoped via whenSeriesDimmed.
+ *
+ * @param {number} fadedOpacity - Opacity for unmatched rows, sourced per series/square at the call site.
+ * @param {Readonly<NonNullable<ChartMarkState["transition"]>>} transition - Motion transition shared with the row's mark states.
+ * @returns {ChartMarkState<ChartDatum>[]} Single unmatched-focus dim state for the row.
+ */
 const barRowDimStates = (
   fadedOpacity: number,
   transition: Readonly<NonNullable<ChartMarkState["transition"]>>,
 ): ChartMarkState<ChartDatum>[] => [{ style: { opacity: fadedOpacity }, transition, when: { focus: "unmatched" } }];
 
-/** Depth pointer-row dim; the any-legend-hover half lives in the marks' opacity option. */
+/**
+ * Depth pointer-row dim; the any-legend-hover half lives in the marks' opacity option.
+ *
+ * @returns {ChartMarkState<ChartDatum>[]} Single unmatched-focus pointer-source dim state at the faded opacity.
+ */
 const barDepthDimStates = (): ChartMarkState<ChartDatum>[] => [
   { style: { opacity: BAR_FADED_OPACITY }, transition: BAR_DEPTH_DIM_TRANSITION, when: { focus: "unmatched", source: "pointer" } },
 ];
@@ -470,7 +480,12 @@ const createBarHoverDotMark = ({
   };
 };
 
-/** Bklit categoryAccessor: shortDateFmt for Date, else String. */
+/**
+ * Bklit categoryAccessor: shortDateFmt for Date, else String.
+ *
+ * @param {string} xDataKey - Datum field holding the category value; Date values render via shortDateFmt.
+ * @returns {(datum: Readonly<ChartDatum>) => string} Accessor returning the category label, or empty string for unrecognized values.
+ */
 const barCategoryAccessor = (xDataKey: string) => (datum: Readonly<ChartDatum>): string => {
   const value = datum[xDataKey];
   if (value instanceof Date) {return shortDateFmt.format(value);}

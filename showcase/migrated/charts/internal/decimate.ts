@@ -136,7 +136,10 @@ const decimateTimeSeries = <Row extends Partial<Record<string, unknown>>>(data: 
 const MIN_RENDER_POINTS = 64;
 /** Points-per-pixel density target — enough for crisp curves without over-drawing. */
 const POINTS_PER_PIXEL = 1.5;
-/** ~1.5 points per pixel — enough for crisp curves without over-drawing. */
+/** ~1.5 points per pixel — enough for crisp curves without over-drawing.
+ * @param {number} innerWidth - Plot width in CSS pixels the point budget scales with.
+ * @returns {number} Point budget for the width, never below the minimum render floor.
+ */
 const maxRenderPointsForWidth = (innerWidth: number): number => Math.max(MIN_RENDER_POINTS, Math.ceil(innerWidth * POINTS_PER_PIXEL));
 
 export { decimateTimeSeries, maxRenderPointsForWidth };

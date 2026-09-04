@@ -18,7 +18,14 @@ const X_TICK_LABEL_DY_OFFSET = 26;
 // Y tick-label horizontal offset, mirrored by orientation.
 const Y_TICK_LABEL_DX = 8;
 
-/** Bklit formatLabel: formatValue override, else ≥1000 compacts to `"Nk"`. */
+/**
+ * Bklit formatLabel: formatValue override, else ≥1000 compacts to `"Nk"`.
+ *
+ * @param {number} value - Raw tick value in data units.
+ * @param {((value: number) => string) | undefined} formatValue - Caller-supplied formatter taking precedence when defined.
+ * @param {boolean} formatLargeNumbers - Whether values at or above 1000 compact to `"Nk"` via `toFixed(0)`.
+ * @returns {string} Label text for the tick.
+ */
 const formatYAxisTick = (value: number, formatValue: ((value: number) => string) | undefined, formatLargeNumbers: boolean): string => {
   if (formatValue) {return formatValue(value);}
   if (formatLargeNumbers && value >= COMPACT_THOUSANDS_DIVISOR) {
@@ -27,14 +34,30 @@ const formatYAxisTick = (value: number, formatValue: ((value: number) => string)
   return String(value);
 }
 
-/** D3 linear ticks of the re-niced y domain (1–10 count clamp). */
+/**
+ * D3 linear ticks of the re-niced y domain (1–10 count clamp).
+ *
+ * @param {readonly [number, number]} yDomain - Data-unit [min, max] domain re-niced before ticking.
+ * @param {number} [numTicks] - Desired tick-count hint forwarded to the tick-count resolver.
+ * @returns {number[]} Tick values in data units.
+ */
 const buildYAxisTickValues = (yDomain: readonly [number, number], numTicks?: number): number[] => scaleLinear()
     .domain(yDomain)
     .nice()
     .ticks(resolveYAxisTickCount(numTicks));
 
 
-/** Labels within tickerHalfWidth vanish, then ramp to 1 across fadeBuffer. */
+/**
+ * Labels within tickerHalfWidth vanish, then ramp to 1 across fadeBuffer.
+ *
+ * @param {number} labelX - Label anchor in scene-x pixels.
+ * @param {string} labelText - Rendered label text compared against the hovered label.
+ * @param {number} primaryX - Hovered ticker position in scene-x pixels that nearby labels fade around.
+ * @param {string | null} hoveredLabel - Label text pinned invisible while hovered, or `null` when none is.
+ * @param {number} tickerHalfWidth - Full-fade radius in scene-x pixels around the primary position.
+ * @param {number} fadeBuffer - Ramp width in scene-x pixels over which opacity recovers from 0 to 1.
+ * @returns {number} Opacity in [0, 1] for the label.
+ */
 const tickLabelFadeOpacity = (labelX: number, labelText: string, primaryX: number, hoveredLabel: string | null, tickerHalfWidth: number, fadeBuffer: number): number => {
   const distance = Math.abs(labelX - primaryX);
   if (distance < tickerHalfWidth) {return 0;}

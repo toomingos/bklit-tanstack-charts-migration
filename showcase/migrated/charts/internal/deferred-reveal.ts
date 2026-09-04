@@ -1,7 +1,13 @@
 
 const REVEALING_CLASS = "ts-chart__marks--revealing";
 
-/** Runs `finish` after two rAFs + a macrotask (past paint, bklit pre-commit timing). Returns a cancel fn. */
+/**
+ * Runs `finish` after two rAFs + a macrotask (past paint, bklit pre-commit timing). Returns a cancel fn.
+ *
+ * @param {() => void} finish - Callback invoked once two animation frames plus a zero-delay
+ *   macrotask have elapsed, so the browser has painted before the reveal starts.
+ * @returns {() => void} Cancel function that disarms any pending frames or timeout; safe to call after completion.
+ */
 const onPostPaint = (finish: () => void): () => void => {
   let raf1 = 0;
   let raf2 = 0;
@@ -29,24 +35,51 @@ const onPostPaint = (finish: () => void): () => void => {
 /** Reveal-root element. `SVGElement`, not just `HTMLElement`: marks groups and svg roots fail `instanceof HTMLElement`. */
 type RevealRoot = HTMLElement | SVGElement;
 
-/** True if `element` already carries the reveal stamp. */
+/**
+ * True if `element` already carries the reveal stamp.
+ *
+ * @param {RevealRoot | null | undefined} element - Candidate reveal root; `null`/`undefined`
+ *   means no element was resolved, which counts as not revealed.
+ * @returns {boolean} Whether the `bkmRevealed` dataset stamp is present.
+ */
 const isRevealed = (element: RevealRoot | null | undefined): boolean => element?.dataset.bkmRevealed === "1";
 
 
+/**
+ * Stamps the reveal marker so later passes skip this element; a no-op for missing elements.
+ *
+ * @param {RevealRoot | null | undefined} element - Reveal root to stamp; `null`/`undefined` is ignored.
+ */
 const markRevealed = (element: RevealRoot | null | undefined): void => {
   if (element) {element.dataset.bkmRevealed = "1";}
 }
 
-/** Removes the stamp so the next pass can animate again (re-armed reveal contract). */
+/**
+ * Removes the stamp so the next pass can animate again (re-armed reveal contract).
+ *
+ * @param {RevealRoot | null | undefined} element - Stamped reveal root to re-arm; `null`/`undefined` is ignored.
+ */
 const clearRevealed = (element: RevealRoot | null | undefined): void => {
   if (element) {delete element.dataset.bkmRevealed;}
 }
 
-/** Resolves the stamped element. Defaults to the marks group; svg-root selector for sunburst/choropleth/ring. */
+/**
+ * Resolves the stamped element. Defaults to the marks group; svg-root selector for sunburst/choropleth/ring.
+ *
+ * @param {HTMLElement} container - Chart container to search within; never the element returned.
+ * @param {string} [selector] - CSS selector for the reveal root, defaulting to the marks group.
+ * @returns {RevealRoot | null} The resolved reveal root, or `null` when no element matches.
+ */
 const findRevealRoot = (container: HTMLElement, selector = ".ts-chart__marks"): RevealRoot | null => container.querySelector<RevealRoot>(selector);
 
 
-/** Read-and-stamp guard; only where the caller commits on pass — else use `isRevealed`/`markRevealed`. */
+/**
+ * Read-and-stamp guard; only where the caller commits on pass — else use `isRevealed`/`markRevealed`.
+ *
+ * @param {HTMLElement} container - Chart container holding the reveal root.
+ * @param {string} [selector] - CSS selector forwarded to `findRevealRoot`; defaults to the marks group.
+ * @returns {RevealGuard} Guard outcome; `proceed` is true only when the root was found unstamped and is now stamped.
+ */
 const checkRevealGuard = (container: HTMLElement, selector?: string): RevealGuard => {
   const marksGroup = findRevealRoot(container, selector);
   if (!marksGroup || isRevealed(marksGroup)) {

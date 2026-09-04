@@ -109,7 +109,12 @@ const readPulseSyncState = (readArgs: Readonly<PulseSyncReadArgs>): PulseWaveAtt
   return attributes;
 };
 
-/** Topmost silhouette y (= lid's back edge): the sweep's end anchor. Odd token indices are y coords. */
+/**
+ * Topmost silhouette y (= lid's back edge): the sweep's end anchor. Odd token indices are y coords.
+ *
+ * @param {string} clipD - Silhouette path data; only the y token of each coordinate pair is read.
+ * @returns {number} Smallest y in CSS pixels, or Infinity when the path holds no numeric tokens.
+ */
 const silhouetteMinY = (clipD: string): number => {
   let minY = Number.POSITIVE_INFINITY;
   const nums = clipD.match(/-?\d*\.?\d+/gu) ?? [];
@@ -169,7 +174,11 @@ const applyPulseSweep = (sweepArgs: Readonly<PulseSweepArgs>): void => {
   sweepArgs.state.geomKey = sweepArgs.geomKey;
 };
 
-/** Per-group step of syncBarPulseGroups; early returns skip one group (forEach-callback semantics). */
+/**
+ * Per-group step of syncBarPulseGroups; early returns skip one group (forEach-callback semantics).
+ *
+ * @param {Readonly<{ svgRoot: SVGSVGElement; group: SVGGElement; active: boolean }>} args - Group sync inputs; `svgRoot` owns clip defs and retry scheduling, `group` is the pulse group to sync, and `active` selects the sweep versus the hide branch.
+ */
 const syncBarPulseGroup = (args: Readonly<{ svgRoot: SVGSVGElement; group: SVGGElement; active: boolean }>): void => {
   const state = preparePulseSync({ active: args.active, group: args.group });
   if (state === undefined) {return;}
@@ -179,7 +188,12 @@ const syncBarPulseGroup = (args: Readonly<{ svgRoot: SVGSVGElement; group: SVGGE
   applyPulseSweep({ clipId: travel.clipId, geomKey: travel.geomKey, group: args.group, state, travel: travel.travel, wave: syncState.wave });
 };
 
-/** Takes the chart's own SVG root directly; only `g.bkm-chart__bar-pulse` groups match. */
+/**
+ * Takes the chart's own SVG root directly; only `g.bkm-chart__bar-pulse` groups match.
+ *
+ * @param {SVGSVGElement} svgRoot - Chart's own SVG root; only `g.bkm-chart__bar-pulse` descendants are synced.
+ * @param {boolean} active - True runs the clip sweep; false cancels loops and hides the groups.
+ */
 const syncBarPulseGroups = (svgRoot: SVGSVGElement, active: boolean): void => {
   const groups = svgRoot.querySelectorAll<SVGGElement>("g.bkm-chart__bar-pulse");
   for (const group of groups) {

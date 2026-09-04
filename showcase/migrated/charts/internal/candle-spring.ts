@@ -109,7 +109,12 @@ const resolveSpringPhysics = (undampedFreq: number, dampingRatio: number, mass: 
   return { damping, mass, stiffness };
 }
 
-/** Port of motion-dom's `findSpring`; durationMs is milliseconds (framer's public duration is seconds). */
+/**
+ * Port of motion-dom's `findSpring`; durationMs is milliseconds (framer's public duration is seconds).
+ *
+ * @param {FindSpringParams} params - Solver inputs; duration is clamped to [0.01s, 10s] and bounce maps to a damping ratio in [0.05, 1].
+ * @returns {SpringPhysics} Stiffness/damping/mass triple; NaN roots fall back to stiffness 100 and damping 10.
+ */
 const findSpringStiffnessDamping = ({ durationMs, bounce, velocity = 0, mass = 1 }: FindSpringParams): SpringPhysics => {
   const dampingRatio = clampDampingRatio(bounce);
   const durationSec = clampDurationSec(durationMs);
@@ -175,7 +180,12 @@ const createOverdampedResolver = ({ dampingRatio, undampedAngularFreq, initialDe
   };
 }
 
-/** Port of motion-dom's closed-form `resolveSpring(t)`; t in ms, per-millisecond frequency. */
+/**
+ * Port of motion-dom's closed-form `resolveSpring(t)`; t in ms, per-millisecond frequency.
+ *
+ * @param {SpringResolverParams} params - Spring constants plus origin/target/initialVelocity; selects the under-, critically, or overdamped branch.
+ * @returns {(tMs: number) => number} Position evaluator in chart units for elapsed milliseconds.
+ */
 const createSpringResolver = ({ stiffness, damping, mass, origin, target, initialVelocity = 0 }: SpringResolverParams): ((tMs: number) => number) => {
   const dampingRatio = damping / (2 * Math.sqrt(stiffness * mass));
   const initialDelta = target - origin;

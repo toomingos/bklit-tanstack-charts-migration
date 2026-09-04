@@ -30,7 +30,13 @@ export interface LiveLineMarkOptions {
   readonly withFill: boolean;
 }
 
-/** Returns `[line]` or `[area, line]` (area painted first so the stroke sits on top, matching legacy DOM order). */
+/**
+ * Returns `[line]` or `[area, line]` (area painted first so the stroke sits on top, matching legacy DOM order).
+ *
+ * @param {readonly Readonly<ChartDatum>[]} data - Rolling datum window bound to both marks by reference.
+ * @param {Readonly<LiveLineMarkOptions>} options - Mark configuration; withFill adds the area mark beneath the line.
+ * @returns {ChartMark<ChartDatum, Date, number>[]} Line mark alone, or area-plus-line with the fill painted first.
+ */
 export const liveLineMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<LiveLineMarkOptions>): ChartMark<ChartDatum, Date, number>[] => {
   const marks: ChartMark<ChartDatum, Date, number>[] = [];
   if (options.withFill) {

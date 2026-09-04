@@ -56,7 +56,10 @@ type MarkerCarrier = JSXElementConstructor<unknown> & RoleCarrier & PassthroughC
 const isMarkerCarrier = (value: ChartChildType): value is MarkerCarrier =>
   value !== null && value !== undefined && typeof value !== "string";
 
-/** True for clip/child passthrough wrappers under either key (memo() types are objects, not functions). */
+/** True for clip/child passthrough wrappers under either key (memo() types are objects, not functions).
+ * @param {ChartChildType} type - Element type to probe for either passthrough marker property.
+ * @returns {boolean} Whether the type carries a passthrough marker and its children should be unwrapped.
+ */
 const isChartClipPassthrough = (type: ChartChildType): boolean => {
   if (!isMarkerCarrier(type)) {
     return false;

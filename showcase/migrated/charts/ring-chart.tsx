@@ -115,7 +115,10 @@ const useRingHoverCoordinator = (): RingHoverCoordinator => {
   return ctx;
 }
 
-/** Legacy useRingHover() over the imperative coordinator (useSyncExternalStore; caller-only re-render). */
+/** Legacy useRingHover() over the imperative coordinator (useSyncExternalStore; caller-only re-render).
+ *
+ * @returns {RingHoverValue} Current hovered index plus the setter routing through the coordinator.
+ */
 const useRingHover = (): RingHoverValue => {
   const coordinator = useRingHoverCoordinator();
   const hoveredIndex = useSyncExternalStore(
@@ -133,7 +136,10 @@ const useRingHover = (): RingHoverValue => {
   return { hoveredIndex, setHoveredIndex };
 }
 
-/** Legacy useRing() combiner shape. */
+/** Legacy useRing() combiner shape.
+ *
+ * @returns {RingContextValue} Merged stable context and hover values.
+ */
 const useRing = (): RingContextValue => ({ ...useRingStable(), ...useRingHover() })
 
 

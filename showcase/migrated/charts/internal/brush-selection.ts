@@ -211,7 +211,11 @@ const findNearestValue = (values: readonly Date[], target: Date): Date => {
   return searchNearestValue({ best: firstValue, bestDist: Math.abs(firstValue.getTime() - targetTime), targetTime, values });
 };
 
-/** Snaps a controlled brush range onto native `values` members (brushX requires endpoints in `values`). */
+/** Snaps a controlled brush range onto native `values` members (brushX requires endpoints in `values`).
+ * @param {{ readonly start: Date; readonly end: Date } | null} range - Controlled range to snap; absent or empty-value inputs pass through untouched.
+ * @param {readonly Date[] | null} values - Native domain members eligible as snap targets.
+ * @returns {{ start: Date; end: Date } | null} Range with both endpoints snapped to members, or the original reference when already snapped or unsnappable.
+ */
 const snapBrushRangeToValues = (range: { readonly start: Date; readonly end: Date } | null, values: readonly Date[] | null): { start: Date; end: Date } | null => {
   if (!range || !values || values.length === 0) {return range;}
   const start = findNearestValue(values, range.start);

@@ -43,6 +43,9 @@ const asRenderer = <TDatum, TXValue extends ChartValue, TYValue extends ChartVal
  * up to `NATIVE_MOTION_MAX_POINTS` datums, the static SVG renderer above it — see the token's
  * comment for the 0.15.0 O(elements x points) update-reconcile cost this sidesteps. Both instances
  * are module-level, so identity is stable within a cardinality regime.
+ *
+ * @param {number} pointCount - Datum count compared against `NATIVE_MOTION_MAX_POINTS` to pick the regime.
+ * @returns {ChartRenderer<TDatum, TXValue, TYValue>} Shared motion renderer at or below the threshold, otherwise the shared static SVG renderer.
  */
 const chartRendererFor = <
   TDatum,

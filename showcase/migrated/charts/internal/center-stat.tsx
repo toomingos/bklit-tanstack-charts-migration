@@ -55,7 +55,9 @@ const formatStatValue = (params: Readonly<FormatStatValueParams>): string => {
 const isCustomElementsDefined = <Candidate,>(registry: Candidate): registry is Candidate & CustomElementRegistry =>
   registry !== undefined;
 
-/** Gates `<NumberFlow>` behind `customElements.whenDefined`; static `Intl` fallback pre-hydration. */
+/** Gates `<NumberFlow>` behind `customElements.whenDefined`; static `Intl` fallback pre-hydration.
+ * @returns {boolean} Whether the animated number element is registered and ready to mount.
+ */
 const useNumberFlowElementReady = (): boolean => {
   const [ready, setReady] = useState(
     () => isCustomElementsDefined(globalThis.customElements) &&
@@ -171,7 +173,11 @@ interface CenterShellProps<Data> {
   readonly children?: (props: Readonly<CenterShellRenderProps<Data>>) => ReactNode;
 }
 
-/** 0 → double-rAF → value mount entrance; `intro=false` passes through untouched. */
+/** 0 → double-rAF → value mount entrance; `intro=false` passes through untouched.
+ * @param {number} value - Target display value the flow animates toward after mount.
+ * @param {boolean} intro - Whether to start at 0 and ramp up on the next frames.
+ * @returns {number} Value to bind to the flow; 0 until the entrance frames elapse when intro runs.
+ */
 const useIntroFlowValue = (value: number, intro: boolean): number => {
   const introStartedRef = useRef(false);
   const [flowValue, setFlowValue] = useState(() => (intro ? 0 : value));

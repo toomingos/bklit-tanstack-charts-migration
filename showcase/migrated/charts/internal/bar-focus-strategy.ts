@@ -56,7 +56,11 @@ interface BarFocusStrategyArgs {
   readonly marginLeft: number;
 }
 
-/** Picks the phase ref out of the overload union (both object shapes carrying one expose `phaseRef`). */
+/** Picks the phase ref out of the overload union (both object shapes carrying one expose `phaseRef`).
+ *
+ * @param {PhaseRefOrArgs} phaseRefOrArgs - Either a bare phase ref or the full strategy args carrying one.
+ * @returns {{ readonly current: ChartPhase }} The bare ref itself, or the args' `phaseRef` member.
+ */
 const resolvePhaseRef = (
   phaseRefOrArgs: PhaseRefOrArgs,
 ): { readonly current: ChartPhase } => {

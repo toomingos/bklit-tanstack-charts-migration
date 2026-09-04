@@ -69,7 +69,10 @@ interface TooltipBoxMotion {
   readonly springConfig: SpringConfig;
 }
 
-/** Maps a damping slider to the floating tooltip panel follow spring. `0` = instant. */
+/** Maps a damping slider to the floating tooltip panel follow spring. `0` = instant.
+ * @param {number | undefined} [damping] - Slider percent in [0, 100]; absent resolves to the default spring damping.
+ * @returns {TooltipBoxMotion} Follow-spring config, with animation disabled when the slider is fully instant.
+ */
 const resolveTooltipBoxMotion = (damping?: number): TooltipBoxMotion => {
   if (damping === 0) {
     return {
