@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 
-import { clearRevealed, findRevealRoot, isRevealed, markRevealed, type RevealRoot } from "./reveal-root";
+import { clearRevealed, findRevealRoot, isRevealed, markRevealed } from "./reveal-root";
+import type { RevealRoot } from "./reveal-root";
 
 const REVEALING_CLASS = "ts-chart__marks--revealing";
 const IMMEDIATE_TIMEOUT_MS = 0;

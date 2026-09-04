@@ -66,10 +66,12 @@ export default defineConfig({
         ignoreDefaultValues: true,
       },
     ],
-    // id-length: x/y are the coordinate vocabulary of every chart primitive and
-    // i/j are loop indices; renaming them obscures the math. All other
-    // one-character names (d, v, p, s, a, b, …) are renamed in code.
-    "id-length": ["error", { exceptions: ["x", "y", "i", "j"] }],
+    // id-length: x/y/z/r are the channel vocabulary of TanStack mark options (z carries
+    // series identity, r the dot radius), d is the SVG path-data attribute, and i/j are
+    // loop indices. These names are fixed by the mark API and the SVG spec, so renaming
+    // them is not available. All other one-character names (v, p, s, a, b, …) are
+    // renamed in code.
+    "id-length": ["error", { exceptions: ["x", "y", "z", "r", "d", "i", "j"] }],
     // Size/complexity thresholds below are raised off their stock defaults. The defaults
     // (max-lines 300, max-statements 10, max-lines-per-function 50, complexity 20,
     // max-dependencies 10) describe ordinary application code; a chart entry point is a single
@@ -256,6 +258,14 @@ export default defineConfig({
     // from this codebase, and cannot be changed without breaking rendering. (The one real hit,
     // `geoShape` in the choropleth code, is left as a known residual.)
     "anti-slop/no-shape-in-symbol-names": "off",
+    // unicorn/no-useless-undefined is OFF. Both shapes it flagged here are forced:
+    // 21 hits were `useRef<T | undefined>(undefined)` -- React 19 types `useRef` with a
+    // required argument, so dropping it is TS2554 (verified against this tsconfig); and
+    // 16 were `return undefined;` in a useEffect callback whose other branch returns a
+    // cleanup, where typescript/consistent-return requires the explicit value. Rewriting
+    // one file to bare `return;` traded 3 findings for 6 (consistent-return x3,
+    // no-useless-return x2, no-redundant-jump x1).
+    "unicorn/no-useless-undefined": "off",
 
     // React Compiler is NOT enabled (no `experimental.reactCompiler` in
     // next.config.mjs), so nothing caches these values automatically. The

@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactElement } from "react";
-import { HEATMAP_INACTIVE_TRANSITION_CSS, type HeatmapHoverStyleParams } from "./heatmap-hover-chrome";
+import { HEATMAP_INACTIVE_TRANSITION_CSS } from "./heatmap-hover-chrome";
+import type { HeatmapHoverStyleParams } from "./heatmap-hover-chrome";
 import type { HeatmapLevelStyles } from "./heatmap-colors";
 import { resolveHeatmapHoverStyle } from "./heatmap-utils";
 import { HeatmapLegendSwatch } from "./heatmap-legend-swatch";
