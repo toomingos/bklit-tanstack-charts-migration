@@ -96,7 +96,17 @@ export default defineConfig({
     // `return;` over `return undefined;`) that needs no null.
     "sonarjs/no-undefined-assignment": "off",
     "react/jsx-max-depth": "error",
-    "unicorn/no-null": "error",
+    // unicorn/no-null is OFF: it contradicts the library this codebase exists to migrate to.
+    // TanStack Charts 0.15.0 prescribes null. Its channel types are
+    // `Channel<TDatum, ChartValue | null | undefined>` (436 `| null` in the shipped .d.ts), and
+    // the docs are explicit: "Use null or undefined for missing observations to ensure lines and
+    // areas correctly represent gaps", "a null group indicates an ungrouped state", and "model
+    // missing observations as null or undefined rather than zero". The 297 hits were the library's
+    // own vocabulary — `scales: { x: null, y: null }`, `setControlledFocus(null)`, `onHover(null)`
+    // — plus React's render-nothing contract (`return null`). Rewriting them to undefined would
+    // migrate away from TanStack's documented data model, which is the opposite of the goal.
+    // This also closes the contradiction noted above no-undefined and no-undefined-assignment:
+    // with no-null off, `undefined` and `null` can each be used where the API asks for them.
     "typescript/explicit-function-return-type": "error",
     // Zero current hits — enabled to keep it that way.
     "react/no-unknown-property": "error",
@@ -134,7 +144,45 @@ export default defineConfig({
     "comments/max-lines": ["error", { max: 2 }],
     "no-restricted-properties": "error",
     "typescript/explicit-member-accessibility": "error",
-    "typescript/prefer-readonly-parameter-types": "error",
+    // prefer-readonly-parameter-types, scoped to what is actually satisfiable.
+    // Default settings treat a method as a mutable property, so any type carrying methods is
+    // flagged even when correctly wrapped: `Readonly<ChartPoint<...>>` — TanStack Charts' core
+    // point type, which this migration passes through every mark, tooltip and focus path — was
+    // reported no matter how it was written. treatMethodsAsReadonly restores the rule's real
+    // intent (don't mutate the caller's data) while letting TanStack's own types satisfy it.
+    // `allow` covers handles that are mutable by definition and cannot be made readonly at all:
+    // DOM elements, Animation, React refs, React events, and ReactNode/ReactElement. Verified:
+    // `Readonly<SVGGElement>` and `Readonly<RefObject<T>>` still fail; only a bespoke
+    // DeepReadonly<> passes, and these are objects the chart code legitimately mutates
+    // (`ref.current`, element attributes, animation playback).
+    "typescript/prefer-readonly-parameter-types": [
+      "error",
+      {
+        treatMethodsAsReadonly: true,
+        allow: [
+          "ReactNode",
+          "ReactElement",
+          "RefObject",
+          "MutableRefObject",
+          "Element",
+          "Node",
+          "Document",
+          "Window",
+          "Animation",
+          "Event",
+          "MouseEvent",
+          "PointerEvent",
+          "TouchEvent",
+          "KeyboardEvent",
+          "WheelEvent",
+          "FocusEvent",
+          "ResizeObserverEntry",
+          "AbortSignal",
+          "DOMRect",
+          "DOMRectReadOnly",
+        ],
+      },
+    ],
     "typescript/require-await": "error",
     "promise/always-return": "error",
     "promise/catch-or-return": "error",
