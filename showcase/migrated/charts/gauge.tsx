@@ -394,6 +394,12 @@ const useGaugeFillState = (props: Readonly<GaugeFillStateInput>): GaugeFillState
   };
 }
 
+// Both orientations forward the same nine fill props; collecting them here keeps the components short.
+const collectGaugeFillStateInput = (props: Readonly<GaugeFillStateInput>): GaugeFillStateInput => {
+  const { activeFill, activeFillOpacity, activeGradient, children, inactiveFill, inactiveFillOpacity, inactiveGradient, totalNotches, useGradient } = props;
+  return { activeFill, activeFillOpacity, activeGradient, children, inactiveFill, inactiveFillOpacity, inactiveGradient, totalNotches, useGradient };
+};
+
 interface ArcRadii {
   readonly innerRadiusRatio: number;
   readonly outerRadiusRatio: number;
@@ -1196,32 +1202,43 @@ const useGaugeArcStyles = (style: Readonly<CSSProperties> | undefined, layout: R
 
 type GaugeArcProps = Omit<GaugeProps, "orientation" | "labelPlacement" | "labelAlign" | "notchWidthPercent" | "linearHeight" | "geometryScrubbing">;
 
-const GaugeArc = (props: Readonly<GaugeArcProps>): ReactElement => {
-  const fillState = useGaugeFillState({
-    activeFill: props.activeFill,
-    activeFillOpacity: props.activeFillOpacity,
-    activeGradient: props.activeGradient,
-    children: props.children,
-    inactiveFill: props.inactiveFill,
-    inactiveFillOpacity: props.inactiveFillOpacity,
-    inactiveGradient: props.inactiveGradient,
-    totalNotches: props.totalNotches,
-    useGradient: props.useGradient,
-  });
+interface GaugeArcSizeProps {
+  readonly height?: number;
+  readonly minWidth?: number;
+  readonly width?: number;
+}
 
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const { width: measuredW, height: measuredH } = useDebouncedContainerSize(containerRef);
+// Merges the measured container size with the size props into the arc layout options.
+const collectGaugeArcLayoutOptions = (props: Readonly<GaugeArcSizeProps>, measuredW: number, measuredH: number): GaugeArcLayoutOptions => ({
+  heightProp: props.height,
+  measuredH,
+  measuredW,
+  minWidth: props.minWidth,
+  widthProp: props.width,
+});
 
-  const layout = resolveGaugeArcLayout({
-    heightProp: props.height,
-    measuredH,
-    measuredW,
-    minWidth: props.minWidth,
-    widthProp: props.width,
-  });
-  const arcRows = useArcRows(props, fillState, layout);
-  const uniformRows = useUniformArcRows(props, fillState, layout);
-  const definition = useArcDefinition({
+interface GaugeArcGeometryProps {
+  readonly enterStaggerScale?: number;
+  readonly enterTransition?: GaugeEnterTransition | undefined;
+  readonly notchCornerRadius?: number;
+  readonly uniformWidth?: boolean;
+}
+
+interface GaugeArcDefinitionInput {
+  readonly arcRows: Readonly<ArcRowsResult> | undefined;
+  readonly fillState: Readonly<GaugeFillState>;
+  readonly props: Readonly<GaugeArcGeometryProps>;
+  readonly uniformRows: Readonly<{
+    readonly active: readonly UniformArcRow[];
+    readonly bg: readonly UniformArcRow[];
+    readonly notchLength: number;
+  }> | undefined;
+}
+
+// Defaulted definition inputs: the stagger, transition, and geometry fallbacks live in one place.
+const resolveArcDefinitionOptions = (options: Readonly<GaugeArcDefinitionInput>): UseArcDefinitionOptions => {
+  const { arcRows, fillState, props, uniformRows } = options;
+  return {
     arcRows,
     enterStaggerScale: props.enterStaggerScale ?? 1,
     enterTransition: props.enterTransition,
@@ -1229,7 +1246,19 @@ const GaugeArc = (props: Readonly<GaugeArcProps>): ReactElement => {
     notchCornerRadius: props.notchCornerRadius ?? 0,
     uniformRows,
     uniformWidth: props.uniformWidth ?? false,
-  });
+  };
+};
+
+const GaugeArc = (props: Readonly<GaugeArcProps>): ReactElement => {
+  const fillState = useGaugeFillState(collectGaugeFillStateInput(props));
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const { width: measuredW, height: measuredH } = useDebouncedContainerSize(containerRef);
+
+  const layout = resolveGaugeArcLayout(collectGaugeArcLayoutOptions(props, measuredW, measuredH));
+  const arcRows = useArcRows(props, fillState, layout);
+  const uniformRows = useUniformArcRows(props, fillState, layout);
+  const definition = useArcDefinition(resolveArcDefinitionOptions({ arcRows, fillState, props, uniformRows }));
   const arcStyles = useGaugeArcStyles(props.style, layout);
   // Root JSX lives in this component rather than in a plain render helper.
   // The sizer ref attaches directly, so it never crosses a function during render.
@@ -1611,17 +1640,7 @@ const renderLinearGaugeBody = (options: Readonly<RenderLinearGaugeBodyOptions>):
 type GaugeLinearProps = Omit<GaugeProps, "orientation" | "startAngle" | "endAngle">;
 
 const GaugeLinear = (props: Readonly<GaugeLinearProps>): ReactElement => {
-  const fillState = useGaugeFillState({
-    activeFill: props.activeFill,
-    activeFillOpacity: props.activeFillOpacity,
-    activeGradient: props.activeGradient,
-    children: props.children,
-    inactiveFill: props.inactiveFill,
-    inactiveFillOpacity: props.inactiveFillOpacity,
-    inactiveGradient: props.inactiveGradient,
-    totalNotches: props.totalNotches,
-    useGradient: props.useGradient,
-  });
+  const fillState = useGaugeFillState(collectGaugeFillStateInput(props));
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const measuredWidth = useDebouncedContainerWidth(containerRef);

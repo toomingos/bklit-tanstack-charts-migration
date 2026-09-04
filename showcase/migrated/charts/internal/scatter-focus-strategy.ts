@@ -16,7 +16,7 @@ export const createScatterFocusStrategy = (phaseRef: { readonly current: ChartPh
       { point },
     ): readonly ChartPoint<ChartDatum, Date, number>[] {
       if (points.length === 0) {return [point];}
-      return collectFocusGroup(points, point, byXKey, byMarkId);
+      return collectFocusGroup({ memberKeyOf: byMarkId, points, primary: point, xKeyOf: byXKey });
     },
 
     navigation(
@@ -33,7 +33,7 @@ export const createScatterFocusStrategy = (phaseRef: { readonly current: ChartPh
       if (points.length === 0) {return [];}
       const nearest = findNearestPointByX(points, focusX, maxDistance);
       if (!nearest) {return [];}
-      return collectFocusGroup(points, nearest, byXKey, byMarkId);
+      return collectFocusGroup({ memberKeyOf: byMarkId, points, primary: nearest, xKeyOf: byXKey });
     },
   }
 );

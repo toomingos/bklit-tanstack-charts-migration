@@ -59,7 +59,7 @@ const projectionLineMark = (options: Readonly<ProjectionLineMarkOptions>): Chart
   const { startX, startY, endY, visibleEndX } = endpoints;
 
   const path = curveKind === "bezier"
-    ? buildHorizontalTangentBezierPath(startX, startY, visibleEndX, endY)
+    ? buildHorizontalTangentBezierPath({ x0: startX, x1: visibleEndX, y0: startY, y1: endY })
     : `M ${startX},${startY} L ${visibleEndX},${endY}`;
 
   const resolvedStroke = strokeStyle === "gradient" ? `url(#${gradientId})` : stroke;

@@ -13,7 +13,7 @@ interface EnsureSpringConfig {
 // `ref` is genuinely mutated (it is the spring instance's home); it cannot be
 // Readonly without breaking the lazy-init contract.
 const ensureSpring = (ref: { current: Spring | null }, config: Readonly<EnsureSpringConfig>): void => {
-  ref.current ??= createSpring(config.initial, config.stiffness, config.damping, config.onUpdate);
+  ref.current ??= createSpring({ damping: config.damping, initial: config.initial, onUpdate: config.onUpdate, stiffness: config.stiffness });
 };
 
 export { ensureSpring };

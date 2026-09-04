@@ -57,6 +57,7 @@ import { useChartLegendHover } from "./internal/chart-legend-hover-context";
 import { useFocusInjection } from "./internal/focus-injection";
 import { buildIndicatorMark } from "./internal/hover-geometry";
 import { buildNativeTooltipExtension } from "./internal/native-tooltip";
+import type { NativeTooltipExtension } from "./internal/native-tooltip";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { DEFAULT_ANIMATION_DURATION_MS } from "./internal/animation-defaults";
 import "./styles.css";
@@ -212,6 +213,62 @@ interface CandleHoverDotSceneParams {
   readonly isRing: boolean;
 }
 
+interface CandleHoverDotEntryParams {
+  readonly close: number | undefined;
+  readonly date: Date | undefined;
+  readonly datum: Readonly<ChartDatum>;
+  readonly datumIndex: number;
+  readonly dotCfg: Readonly<DotConfig>;
+  readonly isRing: boolean;
+  readonly scales: MarkRenderContext["scales"];
+  readonly size: number;
+  readonly strokeWidth: number;
+}
+
+interface CandleHoverDotEntry {
+  readonly node: SceneNode;
+  readonly point: ChartPoint<ChartDatum, Date, number>;
+}
+
+/**
+ * Builds the hover-dot entry for one candle row; invalid rows build nothing.
+ *
+ * @param {Readonly<CandleHoverDotEntryParams>} params - Resolved scales, row values, and dot styling inputs.
+ * @returns {CandleHoverDotEntry | undefined} Node plus point, or undefined when the row is invalid.
+ */
+const buildCandleHoverDotEntry = (params: Readonly<CandleHoverDotEntryParams>): CandleHoverDotEntry | undefined => {
+  const { close, date, datum, datumIndex, dotCfg, isRing, scales, size, strokeWidth } = params;
+  const x = date === undefined ? Number.NaN : scales.x.map(date);
+  const y = close === undefined ? Number.NaN : scales.y.map(close);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || date === undefined || close === undefined) {return undefined;}
+  const fill = resolveCandleDotColor(dotCfg.color, date, close);
+  const point: ChartPoint<ChartDatum, Date, number> = {
+    color: fill,
+    datum,
+    datumIndex,
+    group: null,
+    groupLabel: "hover-dot",
+    key: `hover-dot:${datumIndex}`,
+    markId: "hover-dot",
+    x,
+    xValue: date,
+    y,
+    yValue: close,
+  };
+  const node: SceneNode = {
+    key: `hover-dot:${datumIndex}`,
+    kind: "dot",
+    pointOwner: point,
+    radius: size,
+    style: isRing
+      ? { fill: "transparent", stroke: fill, strokeWidth }
+      : { fill, stroke: "var(--chart-background)", strokeWidth },
+    x,
+    y,
+  };
+  return { node, point };
+};
+
 /**
  * Builds the hover-dot scene for one render pass (nodes plus interaction points).
  *
@@ -223,39 +280,10 @@ const renderCandleHoverDotScene = (params: Readonly<CandleHoverDotSceneParams>):
   const nodes: SceneNode[] = [];
   const points: ChartPoint<ChartDatum, Date, number>[] = [];
   for (const [datumIndex, datum] of source.entries()) {
-    const date = xValues[datumIndex];
-    const close = closeValues[datumIndex];
-    if (date !== undefined && close !== undefined) {
-      const x = scales.x.map(date);
-      const y = scales.y.map(close);
-      if (Number.isFinite(x) && Number.isFinite(y)) {
-        const fill = resolveCandleDotColor(dotCfg.color, date, close);
-        const point: ChartPoint<ChartDatum, Date, number> = {
-          color: fill,
-          datum,
-          datumIndex,
-          group: null,
-          groupLabel: "hover-dot",
-          key: `hover-dot:${datumIndex}`,
-          markId: "hover-dot",
-          x,
-          xValue: date,
-          y,
-          yValue: close,
-        };
-        nodes.push({
-          key: `hover-dot:${datumIndex}`,
-          kind: "dot",
-          pointOwner: point,
-          radius: size,
-          style: isRing
-            ? { fill: "transparent", stroke: fill, strokeWidth }
-            : { fill, stroke: "var(--chart-background)", strokeWidth },
-          x,
-          y,
-        });
-        points.push(point);
-      }
+    const entry = buildCandleHoverDotEntry({ close: closeValues[datumIndex], date: xValues[datumIndex], datum, datumIndex, dotCfg, isRing, scales, size, strokeWidth });
+    if (entry !== undefined) {
+      nodes.push(entry.node);
+      points.push(entry.point);
     }
   }
   return { nodes, points };
@@ -402,6 +430,7 @@ const collectCandleHighlightChannels = (
 interface CandleHighlightSceneParams {
   readonly scales: MarkRenderContext["scales"];
   readonly source: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
   readonly xValues: readonly (Date | undefined)[];
   readonly lowValues: readonly (number | undefined)[];
   readonly highValues: readonly (number | undefined)[];
@@ -420,6 +449,231 @@ interface AppendCandleRowSink {
   readonly points: ChartPoint<ChartDatum, Date, number>[];
 }
 
+interface CandleHighlightRowFields {
+  readonly close: number;
+  readonly datum: Readonly<ChartDatum>;
+  readonly date: Date;
+  readonly high: number;
+  readonly low: number;
+  readonly open: number;
+}
+
+interface CandleHighlightRowPixels {
+  readonly cx: number;
+  readonly yClose: number;
+  readonly yHigh: number;
+  readonly yLow: number;
+  readonly yOpen: number;
+}
+
+interface CandleHighlightPixelParams {
+  readonly close: number;
+  readonly date: Date;
+  readonly high: number;
+  readonly low: number;
+  readonly open: number;
+  readonly scales: MarkRenderContext["scales"];
+}
+
+interface CandleRowFillParams {
+  readonly close: number;
+  readonly negativePattern: Readonly<CandlePatternRef>;
+  readonly open: number;
+  readonly positivePattern: Readonly<CandlePatternRef>;
+  readonly solidFillFor: (isPositive: boolean, hasOwnPattern: boolean) => string;
+}
+
+interface CandleRowFill {
+  readonly candlePattern: Readonly<CandlePatternRef>;
+  readonly fill: string;
+  readonly hasOwnPattern: boolean;
+  readonly isPositive: boolean;
+}
+
+interface CandleHighlightStrokeParams {
+  readonly bodyHeight: number;
+  readonly bodyWidthPx: number;
+  readonly bodyX: number;
+  readonly bodyY: number;
+  readonly fill: string;
+  readonly insideStrokeW: number;
+  readonly key: string;
+  readonly point: ChartPoint<ChartDatum, Date, number>;
+}
+
+interface CandleHighlightRowNodesParams {
+  readonly bodyWidthPx: number;
+  readonly candlePattern: Readonly<CandlePatternRef>;
+  readonly cx: number;
+  readonly fill: string;
+  readonly hasOwnPattern: boolean;
+  readonly insideStrokeW: number;
+  readonly key: string;
+  readonly point: ChartPoint<ChartDatum, Date, number>;
+  readonly yClose: number;
+  readonly yHigh: number;
+  readonly yLow: number;
+  readonly yOpen: number;
+}
+
+interface CandleRangeFields {
+  readonly date: Date;
+  readonly high: number;
+  readonly low: number;
+}
+
+interface CandleHighlightPrices {
+  readonly close: number;
+  readonly open: number;
+}
+
+/**
+ * Parses the date/low/high branch of one candle row; invalid branches parse nothing.
+ *
+ * @param {Readonly<CandleRowReadInput>} params - Rows plus the row index.
+ * @returns {CandleRangeFields | undefined} Validated range fields, or undefined when the branch is invalid.
+ */
+const parseCandleRangeFields = (params: Readonly<CandleRowReadInput>): CandleRangeFields | undefined => {
+  const datum = params.source[params.index];
+  const date = datum[params.xDataKey];
+  if (!(date instanceof Date)) {return undefined;}
+  const { high, low } = datum;
+  if (!isNumber(low) || !isNumber(high) || !areBothFinite(low, high)) {return undefined;}
+  return { date, high, low };
+};
+
+/**
+ * Parses the open/close branch of one highlight row; invalid branches parse nothing.
+ *
+ * @param {Readonly<CandleRowReadInput>} params - Rows plus the row index.
+ * @returns {CandleHighlightPrices | undefined} Validated price fields, or undefined when the branch is invalid.
+ */
+const parseCandleHighlightPrices = (params: Readonly<CandleRowReadInput>): CandleHighlightPrices | undefined => {
+  const datum = params.source[params.index];
+  const { close, open } = datum;
+  if (!isNumber(open)) {return undefined;}
+  if (!isNumber(close) || !areBothFinite(open, close)) {return undefined;}
+  return { close, open };
+};
+
+/**
+ * Reads one highlight row; invalid rows read nothing.
+ *
+ * @param {Readonly<CandleRowReadInput>} params - Rows plus the row index.
+ * @returns {CandleHighlightRowFields | undefined} Validated row fields, or undefined when the row is invalid.
+ */
+const readCandleHighlightFields = (params: Readonly<CandleRowReadInput>): CandleHighlightRowFields | undefined => {
+  const range = parseCandleRangeFields(params);
+  if (range === undefined) {return undefined;}
+  const prices = parseCandleHighlightPrices(params);
+  if (prices === undefined) {return undefined;}
+  const datum = params.source[params.index];
+  return { close: prices.close, date: range.date, datum, high: range.high, low: range.low, open: prices.open };
+};
+
+/**
+ * Maps one highlight row through the scales; off-scale rows map nothing.
+ *
+ * @param {Readonly<CandleHighlightPixelParams>} params - Validated row fields plus resolved scales.
+ * @returns {CandleHighlightRowPixels | undefined} Pixel coordinates, or undefined when any map is non-finite.
+ */
+const mapCandleHighlightPixels = (params: Readonly<CandleHighlightPixelParams>): CandleHighlightRowPixels | undefined => {
+  const { close, date, high, low, open, scales } = params;
+  const cx = scales.x.map(date);
+  const yLow = scales.y.map(low);
+  const yHigh = scales.y.map(high);
+  const yOpen = scales.y.map(open);
+  const yClose = scales.y.map(close);
+  if (!areBothFinite(cx, yLow) || !areBothFinite(yHigh, yOpen) || !Number.isFinite(yClose)) {return undefined;}
+  return { cx, yClose, yHigh, yLow, yOpen };
+};
+
+/**
+ * Resolves the fill for one candle row from polarity and pattern presence.
+ *
+ * @param {Readonly<CandleRowFillParams>} params - Row open/close plus pattern and fill inputs.
+ * @returns {CandleRowFill} Polarity, pattern, and resolved fill.
+ */
+const resolveCandleRowFill = (params: Readonly<CandleRowFillParams>): CandleRowFill => {
+  const { close, negativePattern, open, positivePattern, solidFillFor } = params;
+  const isPositive = close >= open;
+  const candlePattern = isPositive ? positivePattern : negativePattern;
+  const hasOwnPattern = Boolean(candlePattern.href);
+  const fill = solidFillFor(isPositive, hasOwnPattern);
+  return { candlePattern, fill, hasOwnPattern, isPositive };
+};
+
+/**
+ * Builds the inside-stroke node for one highlight row; zero widths build nothing.
+ *
+ * @param {Readonly<CandleHighlightStrokeParams>} params - Body geometry, fill, and the row point.
+ * @returns {SceneNode | undefined} Stroke node, or undefined when the stroke width is zero.
+ */
+const buildCandleHighlightStrokeNode = (params: Readonly<CandleHighlightStrokeParams>): SceneNode | undefined => {
+  const { bodyHeight, bodyWidthPx, bodyX, bodyY, fill, insideStrokeW, key, point } = params;
+  if (insideStrokeW <= 0) {return undefined;}
+  const strokeTargetY = bodyY + insideStrokeW / 2;
+  const strokeTargetHeight = bodyHeight - insideStrokeW;
+  return {
+    height: strokeTargetHeight,
+    key: `${key}:body-stroke`,
+    kind: "rect",
+    pointOwner: point,
+    radius: 1,
+    style: { fill: "none", stroke: fill, strokeWidth: insideStrokeW },
+    width: bodyWidthPx - insideStrokeW,
+    x: bodyX + insideStrokeW / 2,
+    y: strokeTargetY,
+  };
+};
+
+/**
+ * Builds every highlight node for one mapped row (wick, body, pattern overlay, inside stroke).
+ *
+ * @param {Readonly<CandleHighlightRowNodesParams>} params - Mapped pixels, fill, geometry, and the row point.
+ * @returns {SceneNode[]} Wick node first, then body, then overlays.
+ */
+const buildCandleHighlightRowNodes = (params: Readonly<CandleHighlightRowNodesParams>): SceneNode[] => {
+  const { bodyWidthPx, candlePattern, cx, fill, hasOwnPattern, insideStrokeW, key, point, yClose, yHigh, yLow, yOpen } = params;
+  const wickNode: SceneNode = {
+    height: Math.abs(yHigh - yLow) || 1,
+    key: `${key}:wick`,
+    kind: "rect",
+    pointOwner: point,
+    style: { fill },
+    width: WICK_WIDTH_PX,
+    x: cx - WICK_WIDTH_PX / 2,
+    y: Math.min(yLow, yHigh),
+  };
+  const bodyX = cx - bodyWidthPx / 2;
+  const bodyY = Math.min(yOpen, yClose);
+  const bodyHeight = Math.abs(yClose - yOpen) || 1;
+  const bodyNode: SceneNode = {
+    height: bodyHeight,
+    key: `${key}:body`,
+    kind: "rect",
+    pointOwner: point,
+    radius: 1,
+    style: { fill, stroke: fill, strokeWidth: 1 },
+    width: bodyWidthPx,
+    x: bodyX,
+    y: bodyY,
+  };
+  const patternNode: SceneNode | undefined = hasOwnPattern ? {
+    height: bodyHeight,
+    key: `${key}:body-pattern`,
+    kind: "rect",
+    pointOwner: point,
+    radius: 1,
+    style: { fill: candlePattern.href },
+    width: bodyWidthPx,
+    x: bodyX,
+    y: bodyY,
+  } : undefined;
+  const strokeNode = buildCandleHighlightStrokeNode({ bodyHeight, bodyWidthPx, bodyX, bodyY, fill, insideStrokeW, key, point });
+  return [wickNode, bodyNode, ...(patternNode === undefined ? [] : [patternNode]), ...(strokeNode === undefined ? [] : [strokeNode])];
+};
+
 /**
  * Appends the hover-highlight nodes for one candle row; invalid rows append nothing.
  *
@@ -427,80 +681,16 @@ interface AppendCandleRowSink {
  * @returns {void} Nothing; appends into params.nodes and params.points.
  */
 const appendCandleHighlightRow = (params: Readonly<CandleHighlightSceneParams> & AppendCandleRowSink): void => {
-  const { scales, source, xValues, lowValues, highValues, openValues, closeValues, positivePattern, negativePattern, solidFillFor, bodyWidthPx, insideStrokeW, index: i, nodes, points } = params;
-  const datum = source[i];
-    const date = xValues[i];
-    const low = lowValues[i];
-    const high = highValues[i];
-    const open = openValues[i];
-    const close = closeValues[i];
-    if (!(date instanceof Date) || !isNumber(low) || !isNumber(high)) {return;}
-    if (!isNumber(open) || !isNumber(close) || !areBothFinite(low, high) || !areBothFinite(open, close)) {return;}
-    const cx = scales.x.map(date);
-    const yLow = scales.y.map(low);
-    const yHigh = scales.y.map(high);
-    const yOpen = scales.y.map(open);
-    const yClose = scales.y.map(close);
-    if (!areBothFinite(cx, yLow) || !areBothFinite(yHigh, yOpen) || !Number.isFinite(yClose)) {return;}
-    const isPositive = close >= open;
-    const candlePattern = isPositive ? positivePattern : negativePattern;
-    const hasOwnPattern = Boolean(candlePattern.href);
-    const fill = solidFillFor(isPositive, hasOwnPattern);
-    const key = `hover-highlight:${i}`;
-    const point: ChartPoint<ChartDatum, Date, number> = {
-      color: fill, datum, datumIndex: i, group: null, groupLabel: HOVER_HIGHLIGHT_MARK_ID, key, markId: HOVER_HIGHLIGHT_MARK_ID, x: cx, xValue: date, y: yClose, yValue: close,
-    };
-    nodes.push({
-      height: Math.abs(yHigh - yLow) || 1,
-      key: `${key}:wick`,
-      kind: "rect",
-      pointOwner: point,
-      style: { fill },
-      width: WICK_WIDTH_PX,
-      x: cx - WICK_WIDTH_PX / 2,
-      y: Math.min(yLow, yHigh),
-    });
-    const bodyX = cx - bodyWidthPx / 2;
-    const bodyY = Math.min(yOpen, yClose);
-    const bodyHeight = Math.abs(yClose - yOpen) || 1;
-    nodes.push({
-      height: bodyHeight,
-      key: `${key}:body`,
-      kind: "rect",
-      pointOwner: point,
-      radius: 1,
-      style: { fill, stroke: fill, strokeWidth: 1 },
-      width: bodyWidthPx,
-      x: bodyX,
-      y: bodyY,
-    });
-    if (hasOwnPattern) {
-      nodes.push({
-        height: bodyHeight,
-        key: `${key}:body-pattern`,
-        kind: "rect",
-        pointOwner: point,
-        radius: 1,
-        style: { fill: candlePattern.href },
-        width: bodyWidthPx,
-        x: bodyX,
-        y: bodyY,
-      });
-    }
-    if (insideStrokeW > 0) {
-      nodes.push({
-        height: bodyHeight - insideStrokeW,
-        key: `${key}:body-stroke`,
-        kind: "rect",
-        pointOwner: point,
-        radius: 1,
-        style: { fill: "none", stroke: fill, strokeWidth: insideStrokeW },
-        width: bodyWidthPx - insideStrokeW,
-        x: bodyX + insideStrokeW / 2,
-        y: bodyY + insideStrokeW / 2,
-      });
-    }
-    points.push(point);
+  const fields = readCandleHighlightFields(params);
+  if (fields === undefined) {return;}
+  const pixels = mapCandleHighlightPixels({ close: fields.close, date: fields.date, high: fields.high, low: fields.low, open: fields.open, scales: params.scales });
+  if (pixels === undefined) {return;}
+  const fillInfo = resolveCandleRowFill({ close: fields.close, negativePattern: params.negativePattern, open: fields.open, positivePattern: params.positivePattern, solidFillFor: params.solidFillFor });
+  const point: ChartPoint<ChartDatum, Date, number> = {
+    color: fillInfo.fill, datum: fields.datum, datumIndex: params.index, group: null, groupLabel: HOVER_HIGHLIGHT_MARK_ID, key: `hover-highlight:${params.index}`, markId: HOVER_HIGHLIGHT_MARK_ID, x: pixels.cx, xValue: fields.date, y: pixels.yClose, yValue: fields.close,
+  };
+  params.nodes.push(...buildCandleHighlightRowNodes({ bodyWidthPx: params.bodyWidthPx, candlePattern: fillInfo.candlePattern, cx: pixels.cx, fill: fillInfo.fill, hasOwnPattern: fillInfo.hasOwnPattern, insideStrokeW: params.insideStrokeW, key: `hover-highlight:${params.index}`, point, yClose: pixels.yClose, yHigh: pixels.yHigh, yLow: pixels.yLow, yOpen: pixels.yOpen }));
+  params.points.push(point);
 };
 
 /**
@@ -510,11 +700,11 @@ const appendCandleHighlightRow = (params: Readonly<CandleHighlightSceneParams> &
  * @returns {CandleMarkScene} Scene nodes grouped under the hover-highlight mark plus their points.
  */
 const renderCandleHighlightScene = (params: Readonly<CandleHighlightSceneParams>): CandleMarkScene => {
-  const { scales, source, xValues, lowValues, highValues, openValues, closeValues, positivePattern, negativePattern, solidFillFor, bodyWidthPx, insideStrokeW } = params;
+  const { scales, source, xDataKey, xValues, lowValues, highValues, openValues, closeValues, positivePattern, negativePattern, solidFillFor, bodyWidthPx, insideStrokeW } = params;
   const nodes: SceneNode[] = [];
   const points: ChartPoint<ChartDatum, Date, number>[] = [];
   for (let i = 0; i < source.length; i += 1) {
-    appendCandleHighlightRow({ bodyWidthPx, closeValues, highValues, index: i, insideStrokeW, lowValues, negativePattern, nodes, openValues, points, positivePattern, scales, solidFillFor, source, xValues });
+    appendCandleHighlightRow({ bodyWidthPx, closeValues, highValues, index: i, insideStrokeW, lowValues, negativePattern, nodes, openValues, points, positivePattern, scales, solidFillFor, source, xDataKey, xValues });
   }
   return { nodes, points };
 };
@@ -536,7 +726,7 @@ const createCandlestickHighlightMark = (params: Readonly<CandleHighlightMarkPara
         },
         id: HOVER_HIGHLIGHT_MARK_ID,
         render: ({ scales }): MarkScene<ChartDatum, Date, number> => {
-          const scene = renderCandleHighlightScene({ bodyWidthPx, closeValues, highValues, insideStrokeW, lowValues, negativePattern, openValues, positivePattern, scales, solidFillFor, source, xValues });
+          const scene = renderCandleHighlightScene({ bodyWidthPx, closeValues, highValues, insideStrokeW, lowValues, negativePattern, openValues, positivePattern, scales, solidFillFor, source, xDataKey, xValues });
           return {
             nodes: [
               // App-owned mark groups use the bkm-chart__ prefix, not ts-chart__.
@@ -562,6 +752,115 @@ interface CandleWicksSceneParams {
   readonly showTargetGeometry: boolean;
 }
 
+interface CandleRowReadInput {
+  readonly index: number;
+  readonly source: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+}
+
+interface CandleWickRowFields {
+  readonly close: unknown;
+  readonly datum: Readonly<ChartDatum>;
+  readonly date: Date;
+  readonly high: number;
+  readonly isPositive: boolean;
+  readonly low: number;
+  readonly open: unknown;
+  readonly wickFill: string;
+}
+
+interface CandleWickPixelParams {
+  readonly close: unknown;
+  readonly date: Date;
+  readonly high: number;
+  readonly low: number;
+  readonly open: unknown;
+  readonly scales: MarkRenderContext["scales"];
+}
+
+interface CandleWickRowPixels {
+  readonly bodyTargetHeight: number | undefined;
+  readonly bodyTargetY: number | undefined;
+  readonly cx: number;
+  readonly wickTargetHeight: number;
+  readonly wickTargetY: number;
+  readonly yHigh: number;
+}
+
+interface CandleWickReadInput {
+  readonly index: number;
+  readonly negativePattern: Readonly<CandlePatternRef>;
+  readonly positivePattern: Readonly<CandlePatternRef>;
+  readonly solidFillFor: (isPositive: boolean, hasOwnPattern: boolean) => string;
+  readonly source: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+}
+
+interface CandleWickRowNodesParams {
+  readonly bodyTargetHeight: number | undefined;
+  readonly bodyTargetY: number | undefined;
+  readonly cx: number;
+  readonly isPositive: boolean;
+  readonly key: string;
+  readonly legendDimOpacity: (isPositive: boolean) => number | undefined;
+  readonly showTargetGeometry: boolean;
+  readonly wickFill: string;
+  readonly wickTargetHeight: number;
+  readonly wickTargetY: number;
+}
+
+const readCandleWickFields = (params: Readonly<CandleWickReadInput>): CandleWickRowFields | undefined => {
+  const range = parseCandleRangeFields(params);
+  if (range === undefined) {return undefined;}
+  const datum = params.source[params.index];
+  const { close, open } = datum;
+  const isPositive = isNumber(close) && isNumber(open) && close >= open;
+  const candlePattern = isPositive ? params.positivePattern : params.negativePattern;
+  const wickFill = params.solidFillFor(isPositive, Boolean(candlePattern.href));
+  return { close, date: range.date, datum, high: range.high, isPositive, low: range.low, open, wickFill };
+};
+
+/**
+ * Maps one wick row through the scales; off-scale rows map nothing.
+ *
+ * @param {Readonly<CandleWickPixelParams>} params - Validated range plus raw open/close and resolved scales.
+ * @returns {CandleWickRowPixels | undefined} Pixel coordinates and body targets, or undefined when off-scale.
+ */
+const mapCandleWickPixels = (params: Readonly<CandleWickPixelParams>): CandleWickRowPixels | undefined => {
+  const { close, date, high, low, open, scales } = params;
+  const cx = scales.x.map(date);
+  const yLow = scales.y.map(low);
+  const yHigh = scales.y.map(high);
+  if (!Number.isFinite(cx) || !Number.isFinite(yLow) || !Number.isFinite(yHigh)) {return undefined;}
+  const hasBodyValues = isFiniteNumber(open) && isFiniteNumber(close);
+  const bodyTargetY = hasBodyValues ? Math.min(scales.y.map(open), scales.y.map(close)) : undefined;
+  const bodyTargetHeight = hasBodyValues ? Math.abs(scales.y.map(close) - scales.y.map(open)) || 1 : undefined;
+  return { bodyTargetHeight, bodyTargetY, cx, wickTargetHeight: Math.abs(yHigh - yLow) || 1, wickTargetY: Math.min(yLow, yHigh), yHigh };
+};
+
+/**
+ * Builds the wick-segment nodes for one mapped row, split at the body edge.
+ *
+ * @param {Readonly<CandleWickRowNodesParams>} params - Mapped pixels, fill/dim inputs, and the row key.
+ * @returns {SceneNode[]} Upper/lower segments, or the whole wick when no body values exist.
+ */
+const buildCandleWickRowNodes = (params: Readonly<CandleWickRowNodesParams>): SceneNode[] => {
+  const { bodyTargetHeight, bodyTargetY, cx, isPositive, key, legendDimOpacity, showTargetGeometry, wickFill, wickTargetHeight, wickTargetY } = params;
+  const dimOpacity = legendDimOpacity(isPositive);
+  if (bodyTargetY === undefined || bodyTargetHeight === undefined) {
+    // Collapsed geometry is center-anchored, matching legacy's scaleY reveal origin.
+    return buildWickSegmentNodes(cx, wickTargetY + wickTargetHeight / 2, wickFill, dimOpacity, showTargetGeometry, key, wickTargetY, wickTargetHeight);
+  }
+  // Wicks split at the body edge: stacked dim opacities must not double-composite on overlap.
+  const collapseY = wickTargetY + wickTargetHeight / 2;
+  const bodyBottom = bodyTargetY + bodyTargetHeight;
+  const wickBottom = wickTargetY + wickTargetHeight;
+  return [
+    ...buildWickSegmentNodes(cx, collapseY, wickFill, dimOpacity, showTargetGeometry, `${key}:upper`, wickTargetY, bodyTargetY - wickTargetY),
+    ...buildWickSegmentNodes(cx, collapseY, wickFill, dimOpacity, showTargetGeometry, `${key}:lower`, bodyBottom, wickBottom - bodyBottom),
+  ];
+};
+
 /**
  * Appends the wick-segment nodes for one candle row; invalid rows append nothing.
  *
@@ -569,40 +868,15 @@ interface CandleWicksSceneParams {
  * @returns {void} Nothing; appends into params.nodes and params.points.
  */
 const appendCandleWickRow = (params: Readonly<CandleWicksSceneParams> & AppendCandleRowSink): void => {
-  const { scales, source, xDataKey, positivePattern, negativePattern, solidFillFor, legendDimOpacity, showTargetGeometry, index: i, nodes, points } = params;
-  const datum = source[i];
-    const date = datum[xDataKey];
-    const { high, low } = datum;
-    if (!(date instanceof Date) || !isNumber(low) || !isNumber(high) || !areBothFinite(low, high)) {return;}
-    const cx = scales.x.map(date);
-    const yLow = scales.y.map(low);
-    const yHigh = scales.y.map(high);
-    if (!Number.isFinite(cx) || !Number.isFinite(yLow) || !Number.isFinite(yHigh)) {return;}
-    const { close, open } = datum;
-    const isPositive = isNumber(close) && isNumber(datum.open) && close >= (datum.open);
-    const candlePattern = isPositive ? positivePattern : negativePattern;
-    const wickFill = solidFillFor(isPositive, Boolean(candlePattern.href));
-    const key = `wicks:${i}`;
-    // Collapsed geometry is center-anchored, matching legacy's scaleY reveal origin.
-    const wickTargetY = Math.min(yLow, yHigh);
-    const wickTargetHeight = Math.abs(yHigh - yLow) || 1;
-    // Wicks split at the body edge: stacked dim opacities must not double-composite on overlap.
-    const hasBodyValues = isFiniteNumber(open) && isFiniteNumber(close);
-    const bodyTargetY = hasBodyValues ? Math.min(scales.y.map(open), scales.y.map(close)) : undefined;
-    const bodyTargetHeight = hasBodyValues ? Math.abs(scales.y.map(close) - scales.y.map(open)) || 1 : undefined;
-    const collapseY = wickTargetY + wickTargetHeight / 2;
-    const dimOpacity = legendDimOpacity(isPositive);
-    if (bodyTargetY !== undefined && bodyTargetHeight !== undefined) {
-      const bodyBottom = bodyTargetY + bodyTargetHeight;
-      const wickBottom = wickTargetY + wickTargetHeight;
-      nodes.push(...buildWickSegmentNodes(cx, collapseY, wickFill, dimOpacity, showTargetGeometry, `${key}:upper`, wickTargetY, bodyTargetY - wickTargetY));
-      nodes.push(...buildWickSegmentNodes(cx, collapseY, wickFill, dimOpacity, showTargetGeometry, `${key}:lower`, bodyBottom, wickBottom - bodyBottom));
-    } else {
-      nodes.push(...buildWickSegmentNodes(cx, collapseY, wickFill, dimOpacity, showTargetGeometry, key, wickTargetY, wickTargetHeight));
-    }
-    points.push({
-      color: wickFill, datum, datumIndex: i, group: isPositive ? "positive" : "negative", groupLabel: isPositive ? "positive" : "negative", key, markId: "wicks", x: cx, xValue: date, y: yHigh, yValue: high,
-    });
+  const fields = readCandleWickFields(params);
+  if (fields === undefined) {return;}
+  const pixels = mapCandleWickPixels({ close: fields.close, date: fields.date, high: fields.high, low: fields.low, open: fields.open, scales: params.scales });
+  if (pixels === undefined) {return;}
+  const point: ChartPoint<ChartDatum, Date, number> = {
+    color: fields.wickFill, datum: fields.datum, datumIndex: params.index, group: fields.isPositive ? "positive" : "negative", groupLabel: fields.isPositive ? "positive" : "negative", key: `wicks:${params.index}`, markId: "wicks", x: pixels.cx, xValue: fields.date, y: pixels.yHigh, yValue: fields.high,
+  };
+  params.nodes.push(...buildCandleWickRowNodes({ bodyTargetHeight: pixels.bodyTargetHeight, bodyTargetY: pixels.bodyTargetY, cx: pixels.cx, isPositive: fields.isPositive, key: `wicks:${params.index}`, legendDimOpacity: params.legendDimOpacity, showTargetGeometry: params.showTargetGeometry, wickFill: fields.wickFill, wickTargetHeight: pixels.wickTargetHeight, wickTargetY: pixels.wickTargetY }));
+  params.points.push(point);
 };
 
 /**
@@ -634,6 +908,148 @@ interface CandleBodiesSceneParams {
   readonly showTargetGeometry: boolean;
 }
 
+interface CandleBodyRowFields {
+  readonly close: number;
+  readonly datum: Readonly<ChartDatum>;
+  readonly date: Date;
+  readonly open: number;
+}
+
+interface CandleBodyPixelParams {
+  readonly close: number;
+  readonly date: Date;
+  readonly open: number;
+  readonly scales: MarkRenderContext["scales"];
+}
+
+interface CandleBodyRowPixels {
+  readonly cx: number;
+  readonly yClose: number;
+  readonly yOpen: number;
+}
+
+interface CandleBodyStrokeParams {
+  readonly bodyTargetHeight: number;
+  readonly bodyTargetY: number;
+  readonly bodyWidthPx: number;
+  readonly cx: number;
+  readonly dimOpacity: number | undefined;
+  readonly fill: string;
+  readonly insideStrokeW: number;
+  readonly key: string;
+  readonly showTargetGeometry: boolean;
+}
+
+interface CandleBodyRowNodesParams {
+  readonly bodyWidthPx: number;
+  readonly candlePattern: Readonly<CandlePatternRef>;
+  readonly cx: number;
+  readonly dimOpacity: number | undefined;
+  readonly fill: string;
+  readonly hasOwnPattern: boolean;
+  readonly insideStrokeW: number;
+  readonly key: string;
+  readonly showTargetGeometry: boolean;
+  readonly yClose: number;
+  readonly yOpen: number;
+}
+
+/**
+ * Reads one body row; invalid rows read nothing.
+ *
+ * @param {Readonly<CandleRowReadInput>} params - Rows plus the row index.
+ * @returns {CandleBodyRowFields | undefined} Validated row fields, or undefined when the row is invalid.
+ */
+const readCandleBodyFields = (params: Readonly<CandleRowReadInput>): CandleBodyRowFields | undefined => {
+  const datum = params.source[params.index];
+  const date = datum[params.xDataKey];
+  if (!(date instanceof Date)) {return undefined;}
+  const { close, open } = datum;
+  if (!isNumber(open) || !isNumber(close) || !areBothFinite(open, close)) {return undefined;}
+  return { close, date, datum, open };
+};
+
+/**
+ * Maps one body row through the scales; off-scale rows map nothing.
+ *
+ * @param {Readonly<CandleBodyPixelParams>} params - Validated row fields plus resolved scales.
+ * @returns {CandleBodyRowPixels | undefined} Pixel coordinates, or undefined when any map is non-finite.
+ */
+const mapCandleBodyPixels = (params: Readonly<CandleBodyPixelParams>): CandleBodyRowPixels | undefined => {
+  const { close, date, open, scales } = params;
+  const cx = scales.x.map(date);
+  const yOpen = scales.y.map(open);
+  const yClose = scales.y.map(close);
+  if (!Number.isFinite(cx) || !Number.isFinite(yOpen) || !Number.isFinite(yClose)) {return undefined;}
+  return { cx, yClose, yOpen };
+};
+
+/**
+ * Builds the inside-stroke node for one body row; zero widths build nothing.
+ *
+ * @param {Readonly<CandleBodyStrokeParams>} params - Body targets, dim opacity, and fill.
+ * @returns {SceneNode | undefined} Stroke node, or undefined when the stroke width is zero.
+ */
+const buildCandleBodyStrokeNode = (params: Readonly<CandleBodyStrokeParams>): SceneNode | undefined => {
+  const { bodyTargetHeight, bodyTargetY, bodyWidthPx, cx, dimOpacity, fill, insideStrokeW, key, showTargetGeometry } = params;
+  if (insideStrokeW <= 0) {return undefined;}
+  const strokeTargetY = bodyTargetY + insideStrokeW / 2;
+  const strokeTargetHeight = bodyTargetHeight - insideStrokeW;
+  return {
+    className: CANDLE_CELL_CLASS_NAME,
+    height: showTargetGeometry ? strokeTargetHeight : 0,
+    key: `${key}:stroke`,
+    kind: "rect",
+    radius: 1,
+    style: { fill: "none", opacity: dimOpacity, stroke: fill, strokeWidth: insideStrokeW },
+    width: bodyWidthPx - insideStrokeW,
+    x: cx - bodyWidthPx / 2 + insideStrokeW / 2,
+    y: showTargetGeometry ? strokeTargetY : strokeTargetY + strokeTargetHeight / 2,
+  };
+};
+
+/**
+ * Builds every body node for one mapped row (fill, pattern overlay, inside stroke).
+ *
+ * @param {Readonly<CandleBodyRowNodesParams>} params - Mapped pixels plus fill/dim inputs.
+ * @returns {SceneNode[]} Fill node first, then overlays.
+ */
+const buildCandleBodyRowNodes = (params: Readonly<CandleBodyRowNodesParams>): SceneNode[] => {
+  const { bodyWidthPx, candlePattern, cx, dimOpacity, fill, hasOwnPattern, insideStrokeW, key, showTargetGeometry, yClose, yOpen } = params;
+  const bodyTargetY = Math.min(yOpen, yClose);
+  const bodyTargetHeight = Math.abs(yClose - yOpen) || 1;
+  const bodyY = showTargetGeometry ? bodyTargetY : bodyTargetY + bodyTargetHeight / 2;
+  const bodyHeight = showTargetGeometry ? bodyTargetHeight : 0;
+  const bodyNode: SceneNode = {
+    className: CANDLE_CELL_CLASS_NAME,
+    height: bodyHeight,
+    key,
+    kind: "rect",
+    radius: 1,
+    style: { fill, opacity: dimOpacity, stroke: fill, strokeWidth: 1 },
+    width: bodyWidthPx,
+    x: cx - bodyWidthPx / 2,
+    y: bodyY,
+  };
+  const strokeNode = buildCandleBodyStrokeNode({ bodyTargetHeight, bodyTargetY, bodyWidthPx, cx, dimOpacity, fill, insideStrokeW, key, showTargetGeometry });
+  const patternNode: SceneNode | undefined = hasOwnPattern ? {
+    className: CANDLE_CELL_CLASS_NAME,
+    height: bodyHeight,
+    key: `${key}:pattern`,
+    kind: "rect",
+    radius: 1,
+    style: { fill: candlePattern.href, opacity: dimOpacity },
+    width: bodyWidthPx,
+    x: cx - bodyWidthPx / 2,
+    y: bodyY,
+  } : undefined;
+  return [
+    bodyNode,
+    ...(patternNode === undefined ? [] : [patternNode]),
+    ...(strokeNode === undefined ? [] : [strokeNode]),
+  ];
+};
+
 /**
  * Appends the body nodes for one candle row; invalid rows append nothing.
  *
@@ -641,66 +1057,16 @@ interface CandleBodiesSceneParams {
  * @returns {void} Nothing; appends into params.nodes and params.points.
  */
 const appendCandleBodyRow = (params: Readonly<CandleBodiesSceneParams> & AppendCandleRowSink): void => {
-  const { scales, source, xDataKey, bodyWidthPx, insideStrokeW, positivePattern, negativePattern, solidFillFor, legendDimOpacity, showTargetGeometry, index: i, nodes, points } = params;
-  const datum = source[i];
-    const date = datum[xDataKey];
-    const { close, open } = datum;
-    if (!(date instanceof Date) || !isNumber(open) || !isNumber(close) || !areBothFinite(open, close)) {return;}
-    const cx = scales.x.map(date);
-    const yOpen = scales.y.map(open);
-    const yClose = scales.y.map(close);
-    if (!Number.isFinite(cx) || !Number.isFinite(yOpen) || !Number.isFinite(yClose)) {return;}
-    const isPositive = close >= open;
-    const candlePattern = isPositive ? positivePattern : negativePattern;
-    const hasOwnPattern = Boolean(candlePattern.href);
-    const fill = solidFillFor(isPositive, hasOwnPattern);
-    const key = `bodies:${i}`;
-    const bodyTargetY = Math.min(yOpen, yClose);
-    const bodyTargetHeight = Math.abs(yClose - yOpen) || 1;
-    const bodyY = showTargetGeometry ? bodyTargetY : bodyTargetY + bodyTargetHeight / 2;
-    const bodyHeight = showTargetGeometry ? bodyTargetHeight : 0;
-    nodes.push({
-      className: CANDLE_CELL_CLASS_NAME,
-      height: bodyHeight,
-      key,
-      kind: "rect",
-      radius: 1,
-      style: { fill, opacity: legendDimOpacity(isPositive), stroke: fill, strokeWidth: 1 },
-      width: bodyWidthPx,
-      x: cx - bodyWidthPx / 2,
-      y: bodyY,
-    });
-    if (hasOwnPattern) {
-      nodes.push({
-        className: CANDLE_CELL_CLASS_NAME,
-        height: bodyHeight,
-        key: `${key}:pattern`,
-        kind: "rect",
-        radius: 1,
-        style: { fill: candlePattern.href, opacity: legendDimOpacity(isPositive) },
-        width: bodyWidthPx,
-        x: cx - bodyWidthPx / 2,
-        y: bodyY,
-      });
-    }
-    if (insideStrokeW > 0) {
-      const strokeTargetY = bodyTargetY + insideStrokeW / 2;
-      const strokeTargetHeight = bodyTargetHeight - insideStrokeW;
-      nodes.push({
-        className: CANDLE_CELL_CLASS_NAME,
-        height: showTargetGeometry ? strokeTargetHeight : 0,
-        key: `${key}:stroke`,
-        kind: "rect",
-        radius: 1,
-        style: { fill: "none", opacity: legendDimOpacity(isPositive), stroke: fill, strokeWidth: insideStrokeW },
-        width: bodyWidthPx - insideStrokeW,
-        x: cx - bodyWidthPx / 2 + insideStrokeW / 2,
-        y: showTargetGeometry ? strokeTargetY : strokeTargetY + strokeTargetHeight / 2,
-      });
-    }
-    points.push({
-      color: fill, datum, datumIndex: i, group: isPositive ? "positive" : "negative", groupLabel: isPositive ? "positive" : "negative", key, markId: "bodies", x: cx, xValue: date, y: yClose, yValue: close,
-    });
+  const fields = readCandleBodyFields(params);
+  if (fields === undefined) {return;}
+  const pixels = mapCandleBodyPixels({ close: fields.close, date: fields.date, open: fields.open, scales: params.scales });
+  if (pixels === undefined) {return;}
+  const fillInfo = resolveCandleRowFill({ close: fields.close, negativePattern: params.negativePattern, open: fields.open, positivePattern: params.positivePattern, solidFillFor: params.solidFillFor });
+  const point: ChartPoint<ChartDatum, Date, number> = {
+    color: fillInfo.fill, datum: fields.datum, datumIndex: params.index, group: fillInfo.isPositive ? "positive" : "negative", groupLabel: fillInfo.isPositive ? "positive" : "negative", key: `bodies:${params.index}`, markId: "bodies", x: pixels.cx, xValue: fields.date, y: pixels.yClose, yValue: fields.close,
+  };
+  params.nodes.push(...buildCandleBodyRowNodes({ bodyWidthPx: params.bodyWidthPx, candlePattern: fillInfo.candlePattern, cx: pixels.cx, dimOpacity: params.legendDimOpacity(fillInfo.isPositive), fill: fillInfo.fill, hasOwnPattern: fillInfo.hasOwnPattern, insideStrokeW: params.insideStrokeW, key: `bodies:${params.index}`, showTargetGeometry: params.showTargetGeometry, yClose: pixels.yClose, yOpen: pixels.yOpen }));
+  params.points.push(point);
 };
 
 /**
@@ -1143,6 +1509,19 @@ interface CandleTooltipModel {
 }
 
 /**
+ * Resolves the tooltip close value, preserving the legacy string fallback.
+ *
+ * @param {Readonly<ChartDatum>} datum - Raw candle row backing the hovered point.
+ * @returns {string | number} Numeric close when number-typed, the raw string, or empty.
+ */
+const resolveCandleTooltipClose = (datum: Readonly<ChartDatum>): string | number => {
+  const closeRaw = datum.close;
+  if (isNumber(closeRaw)) {return closeRaw;}
+  if (isString(closeRaw)) {return closeRaw;}
+  return "";
+};
+
+/**
  * Resolves the tooltip model for a hovered candle (tooltip-render time).
  *
  * @param {ChartTooltipBodyRenderContext<ChartDatum, Date, number>} ctx - Tooltip render context with focus points.
@@ -1155,9 +1534,7 @@ const resolveCandleTooltipModel = (ctx: ChartTooltipBodyRenderContext<ChartDatum
   const bodyPoint = ctx.points.find((point) => point.markId === "bodies") ?? ctx.points[0];
   const { datum } = bodyPoint;
   const date = bodyPoint.xValue;
-  const closeRaw = datum.close;
-  const closeFallback: string = isString(closeRaw) ? closeRaw : "";
-  const close: string | number = isNumber(closeRaw) ? closeRaw : closeFallback;
+  const close = resolveCandleTooltipClose(datum);
   const pointRec = { close, date };
   return { close, date, pointRec, tt };
 };
@@ -1248,6 +1625,109 @@ const findCandleTimeExtent = (source: readonly Readonly<ChartDatum>[], xDataKey:
   }
   if (!Number.isFinite(minTime)) {return undefined;}
   return { maxTime, minTime };
+};
+
+interface CandleYScaleParams {
+  readonly formatLargeNumbers: boolean | undefined;
+  readonly formatValue: ((value: number) => string) | undefined;
+  readonly gridNumTicks: number | undefined;
+  readonly hasYAxis: boolean;
+  readonly yMax: number;
+  readonly yMin: number;
+  readonly yNumTicks: number | undefined;
+}
+
+/**
+ * Builds the y scale with padded domain ticks (definition-memo time).
+ *
+ * @param {Readonly<CandleYScaleParams>} params - Padded domain bounds plus axis/grid inputs.
+ * @returns {ChartScale} Linear y scale with legacy label formatting.
+ */
+const buildCandleYScale = (params: Readonly<CandleYScaleParams>): ChartScale => {
+  const { formatLargeNumbers, formatValue, gridNumTicks, hasYAxis, yMax, yMin, yNumTicks } = params;
+  const yScale: ChartScale = {
+    id: "y",
+    resolve(context) {
+      const scale = scaleLinear()
+        .domain([yMin, yMax])
+        .nice()
+        .range(context.range);
+      // Native y ticks follow the label-tick source; the grid follows the labels in that case.
+      const tickCount = hasYAxis ? resolveYAxisTickCount(yNumTicks) : coalesceTickCount(context.tickCount, gridNumTicks);
+      const tickValues = scale.ticks(tickCount);
+      return {
+        bandwidth: 0,
+        domain: scale.domain(),
+        id: context.id,
+        map: (value: unknown) => {
+          if (!isNumber(value)) {return Number.NaN;}
+          return scale(value);
+        },
+        ticks: tickValues.map((value) => ({
+          label: hasYAxis ? formatYAxisTick(value, formatValue, formatLargeNumbers ?? true) : String(value),
+          position: scale(value),
+          value,
+        })),
+        type: "linear",
+      };
+    },
+  };
+  return yScale;
+};
+
+interface CandleDefinitionMarksParams {
+  readonly bodyWidthPx: number;
+  readonly candleMotion: ChartMotionDefinition<ChartDatum>;
+  readonly discrete: boolean;
+  readonly fadedOpacity: number;
+  readonly indicatorGradientId: string;
+  readonly insideStrokeW: number;
+  readonly legendHoveredIndex: number | null;
+  readonly negativePattern: Readonly<CandlePatternRef>;
+  readonly positivePattern: Readonly<CandlePatternRef>;
+  readonly showHoverFade: boolean;
+  readonly showTargetGeometry: boolean;
+  readonly solidFillFor: (isPositive: boolean, hasOwnPattern: boolean) => string;
+  readonly source: readonly Readonly<ChartDatum>[];
+  readonly tooltip: Readonly<TooltipMapperSource> | null | undefined;
+  readonly tooltipSpring: Readonly<SpringConfig>;
+  readonly xDataKey: string;
+}
+
+/**
+ * Builds the core and hover marks in legacy paint order (definition-memo time).
+ *
+ * @param {Readonly<CandleDefinitionMarksParams>} params - Rows and every mark input.
+ * @returns {ChartMark<ChartDatum, Date, number>[]} Wicks, bodies, then hover marks.
+ */
+const buildCandleDefinitionMarks = (params: Readonly<CandleDefinitionMarksParams>): ChartMark<ChartDatum, Date, number>[] => {
+  const { bodyWidthPx, candleMotion, discrete, fadedOpacity, indicatorGradientId, insideStrokeW, legendHoveredIndex, negativePattern, positivePattern, showHoverFade, showTargetGeometry, solidFillFor, source, tooltip, tooltipSpring, xDataKey } = params;
+  const coreMarks = buildCandleCoreMarks({ bodyWidthPx, candleMotion, fadedOpacity, insideStrokeW, legendHoveredIndex, negativePattern, positivePattern, showHoverFade, showTargetGeometry, solidFillFor, source, xDataKey });
+  const hoverMarks = buildCandleHoverMarks({ bodyWidthPx, discrete, enabled: tooltip?.enabled ?? false, indicatorGradientId, insideStrokeW, negativePattern, positivePattern, solidFillFor, source, tooltip, tooltipSpring, xDataKey });
+  return [coreMarks.wicksMark, coreMarks.bodiesMark, ...hoverMarks];
+};
+
+interface CandleTooltipOptionParams {
+  readonly discrete: boolean;
+  readonly tooltipEnabled: boolean;
+}
+
+/**
+ * Builds the native tooltip extension for the chart definition (definition-memo time).
+ *
+ * @param {Readonly<CandleTooltipOptionParams>} params - Discrete mode and tooltip enablement.
+ * @returns {NativeTooltipExtension<ChartDatum, Date, number> | false} Tooltip extension, or false when disabled.
+ */
+const buildCandleTooltipOption = (params: Readonly<CandleTooltipOptionParams>): NativeTooltipExtension<ChartDatum, Date, number> | false => {
+  const { discrete, tooltipEnabled } = params;
+  return buildNativeTooltipExtension<ChartDatum, Date, number>({
+    anchorX: "value",
+    className: "bkm-native-tooltip",
+    discrete,
+    enabled: tooltipEnabled,
+    offset: BOX_OFFSET,
+    spring: TOOLTIP_BOX_SPRING,
+  });
 };
 
 interface CandlestickChartProps {
@@ -1492,53 +1972,12 @@ const CandlestickChart = ({
 
     const discrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
 
-    const yScale: ChartScale = {
-      id: "y",
-      resolve(context) {
-        const scale = scaleLinear()
-          .domain(yDomain)
-          .nice()
-          .range(context.range);
-        // Native y ticks follow the label-tick source; the grid follows the labels in that case.
-        const tickCount = yAxis ? resolveYAxisTickCount(yAxis.numTicks) : coalesceTickCount(context.tickCount, grid?.numTicks);
-        const tickValues = scale.ticks(tickCount);
-        return {
-          bandwidth: 0,
-          domain: scale.domain(),
-          id: context.id,
-          map: (value: unknown) => {
-            if (!isNumber(value)) {return Number.NaN;}
-            return scale(value);
-          },
-          ticks: tickValues.map((value) => ({
-            label: yAxis ? formatYAxisTick(value, yAxis.formatValue, yAxis.formatLargeNumbers ?? true) : String(value),
-            position: scale(value),
-            value,
-          })),
-          type: "linear",
-        };
-      },
-    };
+    const yScale = buildCandleYScale({ formatLargeNumbers: yAxis?.formatLargeNumbers, formatValue: yAxis?.formatValue, gridNumTicks: grid?.numTicks, hasYAxis: yAxis !== null, yMax: yDomain[1], yMin: yDomain[0], yNumTicks: yAxis?.numTicks });
 
-    const coreMarks = buildCandleCoreMarks({ bodyWidthPx, candleMotion, fadedOpacity: resolvedCandlestick.fadedOpacity, insideStrokeW: resolvedCandlestick.insideStrokeWidth, legendHoveredIndex, negativePattern, positivePattern, showHoverFade: resolvedCandlestick.showHoverFade, showTargetGeometry, solidFillFor, source: renderData, xDataKey });
-
-    const hoverMarks = buildCandleHoverMarks({ bodyWidthPx, discrete, enabled: tooltipEnabled, indicatorGradientId, insideStrokeW: resolvedCandlestick.insideStrokeWidth, negativePattern, positivePattern, solidFillFor, source: renderData, tooltip, tooltipSpring: chartConfig.tooltipSpring, xDataKey });
-
-    const marks: ChartMark<ChartDatum, Date, number>[] = [
-      coreMarks.wicksMark,
-      coreMarks.bodiesMark,
-      ...hoverMarks,
-    ];
+    const marks = buildCandleDefinitionMarks({ bodyWidthPx, candleMotion, discrete, fadedOpacity: resolvedCandlestick.fadedOpacity, indicatorGradientId, insideStrokeW: resolvedCandlestick.insideStrokeWidth, legendHoveredIndex, negativePattern, positivePattern, showHoverFade: resolvedCandlestick.showHoverFade, showTargetGeometry, solidFillFor, source: renderData, tooltip, tooltipSpring: chartConfig.tooltipSpring, xDataKey });
     const gridGuide = resolveGridGuide(grid);
 
-    const tooltipOption = buildNativeTooltipExtension<ChartDatum, Date, number>({
-      anchorX: "value",
-      className: "bkm-native-tooltip",
-      discrete,
-      enabled: tooltipEnabled,
-      offset: BOX_OFFSET,
-      spring: TOOLTIP_BOX_SPRING,
-    });
+    const tooltipOption = buildCandleTooltipOption({ discrete, tooltipEnabled });
 
     return defineChart({
       focus: candlestickFocusStrategy,
@@ -1549,7 +1988,12 @@ const CandlestickChart = ({
       // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.
       scales: {
         x: {
-          axis: buildFadeXAxisOptions(gridGuide.columnTicks, xAxis ?? undefined, margin.bottom, labelFade),
+          axis: buildFadeXAxisOptions({
+            columnTicks: gridGuide.columnTicks,
+            labelFade,
+            marginBottom: margin.bottom,
+            xAxis: xAxis ?? undefined,
+          }),
           grid: gridGuide.vertical,
           scale: xScale,
         },

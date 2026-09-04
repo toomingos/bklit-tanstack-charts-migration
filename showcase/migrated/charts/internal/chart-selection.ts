@@ -4,6 +4,7 @@ import { Children, Fragment, createContext, isValidElement, useCallback, useEffe
 import type { ReactElement, ReactNode, RefObject } from "react";
 import type { ChartValue } from "@tanstack/charts";
 import { resolveNearestIndex } from "./bisect";
+import { createSelectionHandlers, subscribeSelectionListeners } from "./chart-selection-events";
 import { roleOf } from "./children-extract";
 import type { ChartDatum } from "./types";
 
@@ -31,159 +32,88 @@ const toTimeMs = (inverted: Readonly<ChartValue> | undefined): number => {
   return Number.isFinite(parsed.getTime()) ? parsed.getTime() : 0;
 };
 
-const useChartSelection = (params: {
-  enabled: boolean;
-  innerWidth: number;
-  marginLeft: number;
-  data: ChartDatum[];
-  xDataKey: string;
-  resolveScenePos: (clientX: number, clientY: number) => { x: number; y: number } | null;
-  invertSceneX: (sceneX: number) => Readonly<ChartValue> | undefined;
-  containerRef: RefObject<HTMLDivElement | null>;
-  onDragStart?: () => void;
-  onDragEnd?: () => void;
-}): ChartSelectionResult => {
-  const { enabled, innerWidth, marginLeft, data, xDataKey, resolveScenePos, invertSceneX, containerRef, onDragStart, onDragEnd } = params;
-  const [selection, setSelection] = useState<ChartSelection | null>(null);
+interface DragCallbacks {
+  readonly onDragEnd?: () => void;
+  readonly onDragStart?: () => void;
+}
+
+interface UseChartSelectionParams {
+  readonly containerRef: RefObject<HTMLDivElement | null>;
+  readonly data: ChartDatum[];
+  readonly enabled: boolean;
+  readonly innerWidth: number;
+  readonly invertSceneX: (sceneX: number) => Readonly<ChartValue> | undefined;
+  readonly marginLeft: number;
+  readonly onDragEnd?: () => void;
+  readonly onDragStart?: () => void;
+  readonly resolveScenePos: (clientX: number, clientY: number) => { x: number; y: number } | null;
+  readonly xDataKey: string;
+}
+
+interface SyncedCallbacksParams {
+  readonly onDragEnd?: () => void;
+  readonly onDragStart?: () => void;
+}
+
+// Resolves a datum's x value to epoch milliseconds for nearest-index lookup.
+const datumTimeMs = (datum: Readonly<ChartDatum>, xDataKey: string): number => {
+  const rawValue: unknown = datum[xDataKey];
+  if (rawValue instanceof Date) {return rawValue.getTime();}
+  if (isNumber(rawValue)) {return new Date(rawValue).getTime();}
+  if (isString(rawValue)) {
+    const parsed = new Date(rawValue);
+    return Number.isFinite(parsed.getTime()) ? parsed.getTime() : 0;
+  }
+  return 0;
+};
+
+// Owns the mutable drag refs so the selection hook body stays small.
+const useSelectionDragRefs = (): SelectionDragRefs => {
   const draggingRef = useRef(false);
   const dragStartSceneXRef = useRef(0);
+  return { dragStartSceneXRef, draggingRef };
+};
+
+// Mirrors the latest drag callbacks into state during render so handlers read fresh values.
+const useSyncedDragCallbacks = (params: Readonly<SyncedCallbacksParams>): DragCallbacks => {
+  const { onDragEnd, onDragStart } = params;
   const [dragCallbacks, setDragCallbacks] = useState(() => ({ onDragEnd, onDragStart }));
   const [prevDragCallbacks, setPrevDragCallbacks] = useState({ onDragEnd, onDragStart });
   if (prevDragCallbacks.onDragStart !== onDragStart || prevDragCallbacks.onDragEnd !== onDragEnd) {
     setPrevDragCallbacks({ onDragEnd, onDragStart });
     setDragCallbacks({ onDragEnd, onDragStart });
   }
+  return dragCallbacks;
+};
 
+interface SelectionDragRefs {
+  readonly dragStartSceneXRef: RefObject<number>;
+  readonly draggingRef: RefObject<boolean>;
+}
+
+const useChartSelection = (params: Readonly<UseChartSelectionParams>): ChartSelectionResult => {
+  const { containerRef, data, enabled, innerWidth, invertSceneX, marginLeft, onDragEnd, onDragStart, resolveScenePos, xDataKey } = params;
+  const [selection, setSelection] = useState<ChartSelection | null>(null);
+  const { dragStartSceneXRef, draggingRef } = useSelectionDragRefs();
+  const dragCallbacks = useSyncedDragCallbacks({ onDragEnd, onDragStart });
   const resolveIndexFromScene = useCallback(
     (sceneX: number): number => {
       if (data.length === 0) {return 0;}
-      const inverted = invertSceneX(sceneX);
-      const targetMs = toTimeMs(inverted);
-      const accessor = (datum: Readonly<ChartDatum>): number => {
-        const rawValue: unknown = datum[xDataKey];
-        if (rawValue instanceof Date) {return rawValue.getTime();}
-        if (isNumber(rawValue)) {return new Date(rawValue).getTime();}
-        if (isString(rawValue)) {
-          const parsed = new Date(rawValue);
-          return Number.isFinite(parsed.getTime()) ? parsed.getTime() : 0;
-        }
-        return 0;
-      };
-      const idx = resolveNearestIndex(data, accessor, targetMs);
-      if (idx < 0) {return 0;}
-      return idx;
+      const targetMs = toTimeMs(invertSceneX(sceneX));
+      const resolvedIndex = resolveNearestIndex(data, (datum: Readonly<ChartDatum>): number => datumTimeMs(datum, xDataKey), targetMs);
+      if (resolvedIndex < 0) {return 0;}
+      return resolvedIndex;
     },
     [invertSceneX, data, xDataKey],
   );
 
   useEffect((): (() => void) | undefined => {
     if (!enabled || innerWidth <= 0) {return undefined;}
-    const el = containerRef.current;
-    if (!el) {return undefined;}
-
-    const onPointerDown = (pointerEvent: PointerEvent): void => {
-      if (pointerEvent.button !== 0) {return;}
-      const pos = resolveScenePos(pointerEvent.clientX, pointerEvent.clientY);
-      if (!pos) {return;}
-      draggingRef.current = true;
-      dragStartSceneXRef.current = pos.x;
-      dragCallbacks.onDragStart?.();
-      setSelection(null);
-      const captureTarget = pointerEvent.target;
-      if (captureTarget instanceof Element) {
-        captureTarget.setPointerCapture(pointerEvent.pointerId);
-      }
-    };
-
-    const onPointerMove = (pointerEvent: PointerEvent): void => {
-      if (!draggingRef.current) {return;}
-      const pos = resolveScenePos(pointerEvent.clientX, pointerEvent.clientY);
-      if (!pos) {return;}
-      const sScene = Math.min(dragStartSceneXRef.current, pos.x);
-      const eScene = Math.max(dragStartSceneXRef.current, pos.x);
-      setSelection({
-        active: true,
-        endIndex: resolveIndexFromScene(eScene),
-        endX: eScene - marginLeft,
-        startIndex: resolveIndexFromScene(sScene),
-        startX: sScene - marginLeft,
-      });
-    };
-
-    const onPointerUp = (): void => {
-      if (draggingRef.current) {
-        draggingRef.current = false;
-        dragCallbacks.onDragEnd?.();
-      }
-      setSelection(null);
-    };
-
-    const onPointerLeave = onPointerUp;
-
-    const onTouchStart = (touchEvent: TouchEvent): void => {
-      if (touchEvent.touches.length === 2) {
-        touchEvent.preventDefault();
-        dragCallbacks.onDragStart?.();
-        const p0 = resolveScenePos(touchEvent.touches[0].clientX, touchEvent.touches[0].clientY);
-        const p1 = resolveScenePos(touchEvent.touches[1].clientX, touchEvent.touches[1].clientY);
-        if (!p0 || !p1) {return;}
-        const sScene = Math.min(p0.x, p1.x);
-        const eScene = Math.max(p0.x, p1.x);
-        setSelection({
-          active: true,
-          endIndex: resolveIndexFromScene(eScene),
-          endX: eScene - marginLeft,
-          startIndex: resolveIndexFromScene(sScene),
-          startX: sScene - marginLeft,
-        });
-      }
-    };
-    const onTouchMove = (touchEvent: TouchEvent): void => {
-      if (touchEvent.touches.length === 2) {
-        touchEvent.preventDefault();
-        const p0 = resolveScenePos(touchEvent.touches[0].clientX, touchEvent.touches[0].clientY);
-        const p1 = resolveScenePos(touchEvent.touches[1].clientX, touchEvent.touches[1].clientY);
-        if (!p0 || !p1) {return;}
-        const sScene = Math.min(p0.x, p1.x);
-        const eScene = Math.max(p0.x, p1.x);
-        setSelection({
-          active: true,
-          endIndex: resolveIndexFromScene(eScene),
-          endX: eScene - marginLeft,
-          startIndex: resolveIndexFromScene(sScene),
-          startX: sScene - marginLeft,
-        });
-      }
-    };
-    const onTouchEnd = (): void => {
-      dragCallbacks.onDragEnd?.();
-      setSelection(null);
-    };
-    const dispatchTouchStart = (event: Event): void => {
-      if (event instanceof TouchEvent) {onTouchStart(event);}
-    };
-    const dispatchTouchMove = (event: Event): void => {
-      if (event instanceof TouchEvent) {onTouchMove(event);}
-    };
-
-    el.addEventListener("pointerdown", onPointerDown);
-    globalThis.addEventListener("pointermove", onPointerMove);
-    globalThis.addEventListener("pointerup", onPointerUp);
-    el.addEventListener("pointerleave", onPointerLeave);
-    el.addEventListener("touchstart", dispatchTouchStart, { passive: false });
-    el.addEventListener("touchmove", dispatchTouchMove, { passive: false });
-    el.addEventListener("touchend", onTouchEnd, { passive: true });
-
-    return (): void => {
-      el.removeEventListener("pointerdown", onPointerDown);
-      globalThis.removeEventListener("pointermove", onPointerMove);
-      globalThis.removeEventListener("pointerup", onPointerUp);
-      el.removeEventListener("pointerleave", onPointerLeave);
-      el.removeEventListener("touchstart", dispatchTouchStart);
-      el.removeEventListener("touchmove", dispatchTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
-    };
-  }, [enabled, innerWidth, marginLeft, resolveScenePos, resolveIndexFromScene, containerRef, dragCallbacks]);
+    const chartElement = containerRef.current;
+    if (!chartElement) {return undefined;}
+    const handlers = createSelectionHandlers({ dragCallbacks, dragStartSceneXRef, draggingRef, marginLeft, resolveIndexFromScene, resolveScenePos, setSelection });
+    return subscribeSelectionListeners(chartElement, handlers);
+  }, [enabled, innerWidth, marginLeft, resolveScenePos, resolveIndexFromScene, containerRef, dragCallbacks, draggingRef, dragStartSceneXRef]);
 
   const clearSelection = useCallback(() =>{  setSelection(null); }, []);
 
@@ -245,4 +175,4 @@ const extractSegmentComponents = (children: ReactNode): SegmentComponent[] => {
 }
 
 export { useChartSelection, ChartSelectionContext, extractSegmentComponents };
-export type { ChartSelection, SegmentComponent };
+export type { ChartSelection, DragCallbacks, SegmentComponent };

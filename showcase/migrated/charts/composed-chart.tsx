@@ -948,7 +948,13 @@ const ComposedChart = ({
     const xTickLabelOpacity = buildXTickLabelOpacity({ labelFade, xAxis });
     const { motion, tickLabelMotion } = buildComposedMotion(yDomainTweenGateActive);
     const xScaleOptions: ChartPositionScaleOptions<Date> = {
-      axis: buildPrecomputedXAxisOptions(gridGuide.columnTicks, xAxis, margin.bottom, xTickLabelOpacity, tickLabelMotion),
+      axis: buildPrecomputedXAxisOptions({
+        columnTicks: gridGuide.columnTicks,
+        marginBottom: margin.bottom,
+        tickLabelMotion,
+        xAxis,
+        xTickLabelOpacity,
+      }),
       grid: gridGuide.vertical,
       scale: xScale,
     };

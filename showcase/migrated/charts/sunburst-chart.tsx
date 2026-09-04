@@ -168,14 +168,19 @@ import {
   defaultSunburstGrowPadding,
   transitionGeometry,
 } from "./internal/sunburst-geometry";
-import type { ArcDatum, Focus, SunburstFlatRow } from "./internal/sunburst-geometry";
+import type { ArcDatum, ArcGeometry, Focus, SunburstFlatRow } from "./internal/sunburst-geometry";
 import {
   defaultSunburstColors,
   opacityForRelativeDepth,
 } from "./internal/sunburst-colors";
 import type { SunburstNode } from "./internal/sunburst-types";
 import { buildRevealTiming, maxRevealDelayMs } from "./internal/sunburst-reveal";
-import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { setRevealDeadline } from "./internal/deferred-reveal";
+import {
+  cancelLabelAnimations,
+  resetLabelsOverlayForReplay,
+  startLabelReveal,
+} from "./internal/sunburst-label-reveal";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { displayNameOf } from "./internal/children-extract";
 import { SunburstCenterOverlay } from "./internal/sunburst-center-overlay";
@@ -201,7 +206,6 @@ const SUNBURST_SWEEP_EASE = "cubic-bezier(0.85,0,0.15,1)";
 // (deleted, C5); now the arc mark's native "update" transition.
 const SUNBURST_ZOOM_MS = 750;
 const SUNBURST_ZOOM_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
-const SUNBURST_LABEL_TEXT_SELECTOR = "text.ts-bkm-sunburst-label";
 
 // ---------------------------------------------------------------------------
 // Helpers (shared — were duplicated across 4 call sites)
@@ -212,8 +216,8 @@ const applyAlphaToColor = (color: string, alpha: number): string => {
   return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
 }
 
-const isRelatedArc = (a: ArcDatum, hovered: ArcDatum): boolean =>
-  a.id === hovered.id || a.id.startsWith(`${hovered.id} / `) || hovered.id.startsWith(`${a.id} / `);
+const isRelatedArc = (arc: ReadonlySunburstArc, hovered: ReadonlySunburstArc): boolean =>
+  arc.id === hovered.id || arc.id.startsWith(`${hovered.id} / `) || hovered.id.startsWith(`${arc.id} / `);
 
 // Hover/dim small helpers, hoisted so render-path callbacks stay thin.
 const hoverDimFactor = (arcId: string, hoveredId: string | undefined): number => {
@@ -275,6 +279,97 @@ const getSunburstPathMap = (container: HTMLElement, markId: string): Map<string,
   }
   return map;
 }
+
+// Deep-readonly arc view for helper parameters. `Readonly<ArcDatum>` is not
+// Enough: `trail` stays a mutable array under it and the readonly rule does a
+// Deep check. This mirrors the local `ReadonlyArcDatum` in
+// Internal/sunburst-geometry.ts, which is not exported.
+type ReadonlySunburstArc = Readonly<Omit<ArcDatum, "trail">> & {
+  readonly trail: readonly string[];
+};
+
+// Single label overlay entry, resolved from an arc's zoom-morphed geometry.
+interface SunburstLabelEntry {
+  deg: number;
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+}
+
+// Normalizes a centroid angle into a readable label rotation in degrees.
+const normalizeLabelRotation = (midAngle: number): number => {
+  const rawDegrees = (midAngle * 180) / Math.PI - 90;
+  if (rawDegrees > 90) {return rawDegrees - 180;}
+  if (rawDegrees < -90) {return rawDegrees + 180;}
+  return rawDegrees;
+};
+
+// Builds the zero-or-one label entries for one arc's resolved geometry,
+// Applying the hover-cull and minimum-size rules.
+const buildLabelEntry = (
+  arc: ReadonlySunburstArc,
+  base: Readonly<ArcGeometry>,
+  hoveredArc: ReadonlySunburstArc | null,
+): SunburstLabelEntry[] => {
+  if (hoveredArc && !isRelatedArc(arc, hoveredArc)) {return [];}
+  const centroidRadius = geomCentroidRadius(base);
+  if ((base.a1 - base.a0) * centroidRadius < 26 || base.outerR - base.innerR < 16) {return [];}
+  const midAngle = geomCentroidAngle(base);
+  const itemX = Math.sin(midAngle) * centroidRadius;
+  const itemY = -Math.cos(midAngle) * centroidRadius;
+  return [{ deg: normalizeLabelRotation(midAngle), id: arc.id, label: arc.name, x: itemX, y: itemY }];
+};
+
+// Binds one rendered arc path's click-to-zoom listener, returning its cleanup.
+const bindArcClick = (
+  pathElement: SVGPathElement,
+  arc: ReadonlySunburstArc,
+  onZoomId: (zoomId: string) => void,
+): (() => void) => {
+  const handleClick = (): void => {
+    if (arc.hasChildren) {onZoomId(arc.id);}
+  };
+  pathElement.addEventListener("click", handleClick);
+  return (): void => {
+    pathElement.removeEventListener("click", handleClick);
+  };
+};
+
+// Attaches click-to-zoom listeners to every rendered arc path for programmatic
+// Dispatch (bench drilldown), returning the combined cleanup, or undefined when
+// No paths rendered yet.
+const attachSunburstPathClicks = (
+  elementMap: ReadonlyMap<string, SVGPathElement>,
+  sortedArcs: readonly ReadonlySunburstArc[],
+  onZoomId: (zoomId: string) => void,
+): (() => void) | undefined => {
+  if (elementMap.size === 0) {return undefined;}
+  const cleanups: Array<() => void> = [];
+  for (const arc of sortedArcs) {
+    const pathElement = elementMap.get(arc.id);
+    if (pathElement) {cleanups.push(bindArcClick(pathElement, arc, onZoomId));}
+  }
+  return (): void => {
+    for (const cleanup of cleanups) {cleanup();}
+  };
+};
+
+// Fades the chart stage in on mount, returning its teardown, or undefined when
+// The stage is not rendered yet.
+const fadeInChartStage = (container: HTMLElement): (() => void) | undefined => {
+  const stage = container.querySelector<SVGSVGElement>("svg.ts-chart");
+  if (!stage) {return undefined;}
+  stage.style.opacity = "0";
+  const fadeAnimation = stage.animate(
+    [{ opacity: "0" }, { opacity: "1" }],
+    { duration: 350, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" },
+  );
+  return (): void => {
+    fadeAnimation.cancel();
+    stage.style.opacity = "";
+  };
+};
 
 // Sunburst reveal phase, shared by the phase plumbing below.
 type SunburstPhase = "loading" | "revealing" | "ready";
@@ -548,17 +643,42 @@ const SunburstChartInner = ({
     [isFocusControlled, onFocusChange, setInternalFocusId],
   );
 
+  // Starts the generation-guarded zoom rAF tween from 0. The arc path's own
+  // D-morph is native (C5) and always interpolates from the path's current
+  // Live `d`, so an interrupted zoom naturally continues from wherever it
+  // Visually was, matching the old cancel-and-restart intent.
+  const beginZoomTween = useCallback((): void => {
+    if (prefersReducedMotion) {
+      setZoomT(1);
+      return;
+    }
+    zoomGen.current += 1;
+    const gen = zoomGen.current;
+    setZoomT(0);
+    requestAnimationFrame((): void => {
+      if (zoomGen.current !== gen) {return;}
+      const start = performance.now();
+      const tick = (): void => {
+        if (zoomGen.current !== gen) {return;}
+        const elapsed = performance.now() - start;
+        const progress = Math.min(1, elapsed / SUNBURST_ZOOM_MS);
+        setZoomT(progress);
+        if (progress < 1) {
+          requestAnimationFrame(tick);
+        } else {
+          setZoomT(1);
+        }
+      };
+      requestAnimationFrame(tick);
+    });
+  }, [prefersReducedMotion]);
+
   const zoomTo = useCallback(
     (nextId: string) => {
-      if (nextId === focusId) {return;}
-      if (!focusById.has(nextId)) {return;}
+      if (nextId === focusId || !focusById.has(nextId)) {return;}
 
       // Midpoint-snapshot nuance (audit §4 row1): if a zoom is already
-      // In-flight, bump the rAF generation so the old tick loop exits — the
-      // Arc path's own d-morph is native now (C5) and needs no separate
-      // Cancel; native's own reconcile always interpolates from the path's
-      // CURRENT live `d`, so an interrupted zoom naturally continues from
-      // Wherever it visually was, matching the old cancel-and-restart intent.
+      // In-flight, bump the rAF generation so the old tick loop exits.
       if (zoomT < 1) {
         zoomGen.current += 1;
       }
@@ -567,39 +687,13 @@ const SunburstChartInner = ({
       setPrevFocusId(focusId);
       commitFocus(nextId);
       setHoveredArcIndex(null);
-
-      zoomGen.current += 1;
-      const gen = zoomGen.current;
-
-      if (prefersReducedMotion) {
-        setZoomT(1);
-        return;
-      }
-
-      setZoomT(0);
-      requestAnimationFrame(() => {
-        if (zoomGen.current !== gen) {return;}
-        const start = performance.now();
-        const duration = 750;
-        const tick = (): void => {
-          if (zoomGen.current !== gen) {return;}
-          const elapsed = performance.now() - start;
-          const t = Math.min(1, elapsed / duration);
-          setZoomT(t);
-          if (t < 1) {
-            requestAnimationFrame(tick);
-          } else {
-            setZoomT(1);
-          }
-        }
-        requestAnimationFrame(tick);
-      });
+      beginZoomTween();
     },
     [
+      beginZoomTween,
       commitFocus,
       focusById,
       focusId,
-      prefersReducedMotion,
       setHoveredArcIndex,
       zoomT,
     ],
@@ -821,24 +915,7 @@ const SunburstChartInner = ({
     const container = containerRef.current;
     if (!container) {return undefined;}
     const elementMap = getSunburstPathMap(container, sunburstMarkId);
-    if (elementMap.size === 0) {return undefined;}
-
-    const cleanups: Array<() => void> = [];
-    for (const a of sortedArcs) {
-      const pathEl = elementMap.get(a.id);
-      if (pathEl) {
-        const onClick = () => {
-          if (a.hasChildren) {zoomToEvent(a.id);}
-        };
-        pathEl.addEventListener("click", onClick);
-        cleanups.push(() => {
-          pathEl.removeEventListener("click", onClick);
-        });
-      }
-    }
-    return () => {
-      for (const c of cleanups) {c();}
-    };
+    return attachSunburstPathClicks(elementMap, sortedArcs, zoomToEvent);
   }, [sortedArcs, sunburstMarkId]);
 
   // --- Hit layer handlers (bklit parity: enter per segment, leave only at ---
@@ -908,17 +985,7 @@ const SunburstChartInner = ({
     if (prefersReducedMotion) {return undefined;}
     const container = containerRef.current;
     if (!container) {return undefined;}
-    const stage = container.querySelector<SVGSVGElement>("svg.ts-chart");
-    if (!stage) {return undefined;}
-    stage.style.opacity = "0";
-    const anim = stage.animate(
-      [{ opacity: "0" }, { opacity: "1" }],
-      { duration: 350, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" },
-    );
-    return () => {
-      anim.cancel();
-      stage.style.opacity = "";
-    };
+    return fadeInChartStage(container);
   }, [prefersReducedMotion]);
 
   // C5: the zoom `d`-morph is native now (the arc mark's own "update"
@@ -956,22 +1023,12 @@ const SunburstChartInner = ({
     const inZoom = zoomT < 1;
     const fromF = inZoom ? prevFocus : focus;
     return arcs
-      .flatMap((a) => {
+      .flatMap((arc: ReadonlySunburstArc): SunburstLabelEntry[] => {
         const base = inZoom
-          ? transitionGeometry(a, fromF, focus, maxDepth, radius, zoomT)
-          : geometryFor(a, focus, maxDepth, radius);
+          ? transitionGeometry(arc, fromF, focus, maxDepth, radius, zoomT)
+          : geometryFor(arc, focus, maxDepth, radius);
         if (!base) {return [];}
-        if (hoveredArc && !isRelatedArc(a, hoveredArc)) {return [];}
-        const r = geomCentroidRadius(base);
-        const angleSpan = base.a1 - base.a0;
-        if (angleSpan * r < 26 || base.outerR - base.innerR < 16) {return [];}
-        const mid = geomCentroidAngle(base);
-        const x = Math.sin(mid) * r;
-        const y = -Math.cos(mid) * r;
-        let deg = (mid * 180) / Math.PI - 90;
-        if (deg > 90) {deg -= 180;}
-        if (deg < -90) {deg += 180;}
-        return [{ deg, id: a.id, label: a.name, x, y }];
+        return buildLabelEntry(arc, base, hoveredArc);
       });
   }, [labelsCount, arcs, focus, prevFocus, maxDepth, radius, hoveredArc, zoomT]);
 
@@ -1016,54 +1073,9 @@ const SunburstChartInner = ({
     if (!container) {return null;}
     const svg = container.querySelector<SVGSVGElement>("svg.ts-bkm-sunburst-labels");
     if (!svg) {return null;}
-    const svgDataset = svg.dataset;
-    for (const anim of labelRevealAnimsRef.current) {
-      try {
-        anim.cancel();
-      } catch {
-        // Teardown race — already cancelled.
-      }
-    }
+    cancelLabelAnimations(labelRevealAnimsRef.current);
     labelRevealAnimsRef.current = [];
-    const cancelLabelPostPaint = onPostPaint(() => {
-      const liveTexts = [...svg.querySelectorAll<SVGTextElement>(SUNBURST_LABEL_TEXT_SELECTOR)];
-      for (const t of liveTexts) {
-        if (t.isConnected) {
-          t.style.opacity = "0";
-          const anim = t.animate(
-            [{ opacity: "0" }, { opacity: "1" }],
-            {
-              delay: labelsRevealDelayMs,
-              duration: enterDurationMs,
-              easing: "cubic-bezier(0.85,0,0.15,1)",
-              fill: "backwards",
-            },
-          );
-          labelRevealAnimsRef.current.push(anim);
-          anim.onfinish = () => {
-            anim.cancel();
-            if (t.isConnected) {t.style.opacity = "1";}
-          };
-        }
-      }
-    });
-    const timer = globalThis.setTimeout(() => {
-      svgDataset.bkmLabelsRevealed = "1";
-      for (const t of svg.querySelectorAll<SVGTextElement>(SUNBURST_LABEL_TEXT_SELECTOR)) {
-        if (t.isConnected) {t.style.opacity = "";}
-      }
-    }, labelsRevealDelayMs + enterDurationMs + 30);
-    return () => {
-      cancelLabelPostPaint();
-      globalThis.clearTimeout(timer);
-      for (const anim of labelRevealAnimsRef.current) {
-        try {
-          anim.cancel();
-        } catch {
-          // Teardown race — already cancelled.
-        }
-      }
-    };
+    return startLabelReveal(svg, labelsRevealDelayMs, enterDurationMs);
   }, [labelsRevealDelayMs]);
 
   // Redundant dep omitted: runLabelsReveal already changes identity exactly
@@ -1099,26 +1111,16 @@ const SunburstChartInner = ({
 
     const container = containerRef.current;
     if (!container) {return;}
-    const labelsSvg = container.querySelector<SVGSVGElement>("svg.ts-bkm-sunburst-labels");
-    if (labelsSvg) {
-      delete labelsSvg.dataset.bkmLabelsRevealed;
-      for (const t of labelsSvg.querySelectorAll<SVGTextElement>(SUNBURST_LABEL_TEXT_SELECTOR)) {
-        t.style.opacity = "";
-      }
+    const rerunReveal = (): void => {
       runLabelsRevealRef.current?.();
-    }
+    };
+    resetLabelsOverlayForReplay(container, rerunReveal);
   }, [playKey]);
 
 
   useEffect(
     () => () => {
-      for (const anim of labelRevealAnimsRef.current) {
-        try {
-          anim.cancel();
-        } catch {
-          // Teardown race — already cancelled.
-        }
-      }
+      cancelLabelAnimations(labelRevealAnimsRef.current);
       labelRevealAnimsRef.current = [];
     },
     [],
@@ -1185,58 +1187,77 @@ const SunburstChartInner = ({
 };
 
 // ---------------------------------------------------------------------------
-// SunburstChart
+// Outer-component state, kept in small hooks so the component itself stays
+// Under its statement and line budgets. Every hook below is called
+// Unconditionally, in the same relative order as the code it replaces, with
+// Identical dependency lists.
 // ---------------------------------------------------------------------------
 
-export const SunburstChart = ({
-  data,
-  size = 520,
-  playKey = 0,
-  className,
-  focusId: focusIdProp,
-  onFocusChange,
-  hoveredIndex: hoveredIndexProp,
-  onHoverChange,
-  hoverPop = 8,
-  padding: paddingProp,
-  onPhaseChange,
-  enterTransition,
-  enterStaggerScale = 1,
-  children,
-}: SunburstChartProps) => {
-  // SB2 — sweep timing. `clipRevealTiming` only reads `type`/`duration`/
-  // `ease` (see `internal/enter-transition`), so passing the prop through
-  // Directly matches the old subset snapshot exactly; it runs inline every
-  // Render and the destructured primitives stay value-stable, so an
-  // Identity-only change of an inline `enterTransition` object retriggers
-  // Nothing downstream.
-  const { durationMs: sweepDurationMs, easingCss: sweepEasingCss } =
-    clipRevealTiming(enterTransition, SUNBURST_SWEEP_MS, SUNBURST_SWEEP_EASE);
-  // --- Phase tracking (deduped — just gate on last emitted value) ---
-  const phaseRef = useRef<SunburstPhase>("revealing");
-  const setPhase = useCallback((p: SunburstPhase) => {
-    if (phaseRef.current === p) {return;}
-    phaseRef.current = p;
-    onPhaseChange?.(p);
-  }, [onPhaseChange]);
+// SB2 — sweep timing. `clipRevealTiming` only reads `type`/`duration`/
+// `ease` (see `internal/enter-transition`), so passing the prop through
+// Directly matches the old subset snapshot exactly; it runs inline every
+// Render and the destructured primitives stay value-stable, so an
+// Identity-only change of an inline `enterTransition` object retriggers
+// Nothing downstream.
+const useSunburstSweepTiming = (
+  enterTransition: Readonly<EnterTransition> | undefined,
+): { durationMs: number; easingCss: string } =>
+  clipRevealTiming(enterTransition, SUNBURST_SWEEP_MS, SUNBURST_SWEEP_EASE);
 
-  // --- Layout (verbatim bklit math) ---
+// Phase tracking with last-value dedup so repeated commits stay silent.
+const useSunburstPhase = (
+  onPhaseChange: ((phase: SunburstPhase) => void) | undefined,
+): ((phase: SunburstPhase) => void) => {
+  const phaseRef = useRef<SunburstPhase>("revealing");
+  return useCallback((nextPhase: SunburstPhase): void => {
+    if (phaseRef.current === nextPhase) {return;}
+    phaseRef.current = nextPhase;
+    onPhaseChange?.(nextPhase);
+  }, [onPhaseChange]);
+};
+
+interface SunburstLayoutState {
+  arcs: ArcDatum[];
+  focusById: Map<string, Focus>;
+  maxDepth: number;
+  rootId: string;
+  sortedArcs: ArcDatum[];
+}
+
+// Layout derivation (verbatim bklit math), shared by the outer component.
+const useSunburstLayout = (data: SunburstNode): SunburstLayoutState => {
   const { arcs, maxDepth, focusById, rootId } = useMemo(
     () => buildArcs(data),
     [data],
   );
-
-  // Depth-descending sort for DOM order (outer rings first = hit-test priority)
+  // Depth-descending sort for DOM order (outer rings first = hit-test priority).
   const sortedArcs = useMemo(
-    () => arcs.toSorted((a, b) => b.depth - a.depth || b.arcIndex - a.arcIndex),
+    () => arcs.toSorted((firstArc: ReadonlySunburstArc, secondArc: ReadonlySunburstArc) => secondArc.depth - firstArc.depth || secondArc.arcIndex - firstArc.arcIndex),
     [arcs],
   );
+  return useMemo(() => ({ arcs, focusById, maxDepth, rootId, sortedArcs }), [
+    arcs,
+    focusById,
+    maxDepth,
+    rootId,
+    sortedArcs,
+  ]);
+};
 
-  // --- Focus state ---
+interface SunburstFocusControl {
+  focusId: string;
+  isFocusControlled: boolean;
+  setInternalFocusId: (id: string) => void;
+}
+
+// Uncontrolled-focus state plus the data-shape reset, kept together.
+const useSunburstFocusControl = (
+  rootId: string,
+  focusIdProp: string | undefined,
+): SunburstFocusControl => {
   const isFocusControlled = focusIdProp !== undefined;
   const [internalFocusId, setInternalFocusId] = useState(rootId);
   const focusId = focusIdProp ?? internalFocusId;
-
   // Data-shape change re-seeds the uncontrolled focus to the new root.
   // Done during render (previous-value comparison, control mode included so
   // A mode toggle resyncs exactly as the old `[rootId, isFocusControlled]`
@@ -1246,22 +1267,80 @@ export const SunburstChart = ({
     setPrevFocusReset({ isControlled: isFocusControlled, rootId });
     if (!isFocusControlled) {setInternalFocusId(rootId);}
   }
+  return { focusId, isFocusControlled, setInternalFocusId };
+};
 
-  const prefersReducedMotion = usePrefersReducedMotion();
+interface SunburstResolvedFocus {
+  focus: Focus | undefined;
+  layout: SunburstLayoutState;
+  rootFocus: Focus | undefined;
+}
 
-  const rootFocus = focusById.get(rootId);
-  const focus = focusById.get(focusId) ?? rootFocus;
-  const layout = useMemo(() => ({ arcs, focusById, maxDepth, rootId, sortedArcs }), [
-    arcs,
-    focusById,
-    maxDepth,
-    rootId,
-    sortedArcs,
-  ]);
-  if (!(focus && rootFocus)) {return null;}
+// Resolves the active focus against the layout and memoizes the inner layout.
+const useSunburstResolvedFocus = (
+  baseLayout: Readonly<SunburstLayoutState>,
+  focusId: string,
+): SunburstResolvedFocus => {
+  const rootFocus = baseLayout.focusById.get(baseLayout.rootId);
+  const focus = baseLayout.focusById.get(focusId) ?? rootFocus;
+  const layout = useMemo(() => ({
+    arcs: baseLayout.arcs,
+    focusById: baseLayout.focusById,
+    maxDepth: baseLayout.maxDepth,
+    rootId: baseLayout.rootId,
+    sortedArcs: baseLayout.sortedArcs,
+  }), [baseLayout]);
+  return { focus, layout, rootFocus };
+};
 
-  // The subtree below needs non-null focus/rootFocus; render it through an inner
-  // Component so every hook stays unconditional (react-hooks/rules-of-hooks).
+interface SunburstInnerRenderProps {
+  children: ReactNode;
+  className?: string;
+  data: SunburstNode;
+  enterStaggerScale: number;
+  focus: Focus;
+  focusId: string;
+  hoverPop: number;
+  hoveredIndexProp?: number | null;
+  isFocusControlled: boolean;
+  layout: SunburstLayoutState;
+  onFocusChange?: (focusId: string) => void;
+  onHoverChange?: (index: number | null) => void;
+  paddingProp?: number;
+  playKey: number;
+  prefersReducedMotion: boolean;
+  setInternalFocusId: (id: string) => void;
+  setPhase: (phase: SunburstPhase) => void;
+  size: number;
+  sweepDurationMs: number;
+  sweepEasingCss: string;
+}
+
+// Renders the inner chart as a plain function call (not a component), so the
+// Element tree — and therefore reconciliation — is unchanged.
+const renderSunburstInner = (props: Readonly<SunburstInnerRenderProps>): ReactElement => {
+  const {
+    children,
+    className,
+    data,
+    enterStaggerScale,
+    focus,
+    focusId,
+    hoverPop,
+    hoveredIndexProp,
+    isFocusControlled,
+    layout,
+    onFocusChange,
+    onHoverChange,
+    paddingProp,
+    playKey,
+    prefersReducedMotion,
+    setInternalFocusId,
+    setPhase,
+    size,
+    sweepDurationMs,
+    sweepEasingCss,
+  } = props;
   return (
     <SunburstChartInner
       data={data}
@@ -1287,6 +1366,61 @@ export const SunburstChart = ({
       {children}
     </SunburstChartInner>
   );
+};
+
+// ---------------------------------------------------------------------------
+// SunburstChart
+// ---------------------------------------------------------------------------
+
+export const SunburstChart = ({
+  data,
+  size = 520,
+  playKey = 0,
+  className,
+  focusId: focusIdProp,
+  onFocusChange,
+  hoveredIndex: hoveredIndexProp,
+  onHoverChange,
+  hoverPop = 8,
+  padding: paddingProp,
+  onPhaseChange,
+  enterTransition,
+  enterStaggerScale = 1,
+  children,
+}: SunburstChartProps) => {
+  const { durationMs: sweepDurationMs, easingCss: sweepEasingCss } =
+    useSunburstSweepTiming(enterTransition);
+  const setPhase = useSunburstPhase(onPhaseChange);
+  const baseLayout = useSunburstLayout(data);
+  const { focusId, isFocusControlled, setInternalFocusId } = useSunburstFocusControl(baseLayout.rootId, focusIdProp);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const { focus, layout, rootFocus } = useSunburstResolvedFocus(baseLayout, focusId);
+  if (!(focus && rootFocus)) {return null;}
+
+  // The subtree below needs non-null focus/rootFocus; render it through an inner
+  // Component so every hook stays unconditional (react-hooks/rules-of-hooks).
+  return renderSunburstInner({
+    children,
+    className,
+    data,
+    enterStaggerScale,
+    focus,
+    focusId,
+    hoverPop,
+    hoveredIndexProp,
+    isFocusControlled,
+    layout,
+    onFocusChange,
+    onHoverChange,
+    paddingProp,
+    playKey,
+    prefersReducedMotion,
+    setInternalFocusId,
+    setPhase,
+    size,
+    sweepDurationMs,
+    sweepEasingCss,
+  });
 };
 
 SunburstChart.displayName = "SunburstChart";

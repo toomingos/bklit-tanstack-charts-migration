@@ -167,17 +167,15 @@ const tweenDomains = (args: Readonly<TweenDomainsArgs>): TweenControl | undefine
     args.onSettled?.();
     return undefined;
   }
-  if (!args.enabled || args.reducedMotion) {
-    settleAndSkip(args);
-    return undefined;
+  if (args.enabled && !args.reducedMotion) {
+    const scan: TweenAxisScan = { axisIds: Object.keys(args.destination), destination: args.destination, fromSnapshot: args.animatedRef.current };
+    if (shouldTweenAnyAxis(scan)) {
+      const frameFor = buildFrameFor(scan.axisIds, snapshotTweenStart(scan), args.destination);
+      return runTweenLoop({ animatedRef: args.animatedRef, destination: args.destination, durationMs: args.durationMs, frameFor, onSettled: args.onSettled, setAnimatedByAxis: args.setAnimatedByAxis });
+    }
   }
-  const scan: TweenAxisScan = { axisIds: Object.keys(args.destination), destination: args.destination, fromSnapshot: args.animatedRef.current };
-  if (!shouldTweenAnyAxis(scan)) {
-    settleAndSkip(args);
-    return undefined;
-  }
-  const frameFor = buildFrameFor(scan.axisIds, snapshotTweenStart(scan), args.destination);
-  return runTweenLoop({ animatedRef: args.animatedRef, destination: args.destination, durationMs: args.durationMs, frameFor, onSettled: args.onSettled, setAnimatedByAxis: args.setAnimatedByAxis });
+  settleAndSkip(args);
+  return undefined;
 };
 
 export type { TweenControl, TweenDomainsArgs, TweenSettle, YDomainByAxis };

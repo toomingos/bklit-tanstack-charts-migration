@@ -6,12 +6,12 @@ import type {
 import { appendProjectionMarks } from "./composed-overlay-geometry";
 import { appendAreaMarks, appendBarMarks, appendLineMarks } from "./composed-series-marks";
 import {
-  buildHighlightBandMarks,
   buildHoverDotMark,
   buildIndicatorMark,
   resolveHoverDotFill,
 } from "./hover-geometry";
-import type { HighlightBandSeries } from "./hover-geometry";
+import { buildHighlightBandMarks } from "./highlight-band";
+import type { HighlightBandSeries } from "./highlight-band";
 import type { ChartDatum } from "./types";
 import type {
   ComposedMarksContext,
@@ -27,11 +27,13 @@ const appendHoverDotMarks = (
   for (const series of ctx.composedSeries) {
     marks.push(
       buildHoverDotMark(
-        ctx.data,
-        ctx.xDataKey,
-        { color: series.stroke, dataKey: series.dataKey },
-        resolveHoverDotFill(series.stroke, ctx.tooltip?.dotColor),
-        { discrete: ctx.isDiscrete, size: ctx.tooltip?.dotSize, strokeWidth: ctx.tooltip?.dotStrokeWidth },
+        {
+          fill: resolveHoverDotFill(series.stroke, ctx.tooltip?.dotColor),
+          options: { discrete: ctx.isDiscrete, size: ctx.tooltip?.dotSize, strokeWidth: ctx.tooltip?.dotStrokeWidth },
+          renderData: ctx.data,
+          series: { color: series.stroke, dataKey: series.dataKey },
+          xDataKey: ctx.xDataKey,
+        },
       ),
     );
   }
@@ -79,11 +81,13 @@ const appendHoverChromeMarks = (
   if (ctx.tooltipEnabled) {
     marks.push(
       ...buildHighlightBandMarks(
-        ctx.renderData,
-        ctx.xDataKey,
-        ctx.hoveredIndex,
-        collectHighlightBandSeries(ctx),
-        { discrete: ctx.isDiscrete },
+        {
+          hoveredIndex: ctx.hoveredIndex,
+          options: { discrete: ctx.isDiscrete },
+          renderData: ctx.renderData,
+          series: collectHighlightBandSeries(ctx),
+          xDataKey: ctx.xDataKey,
+        },
       ),
     );
   }

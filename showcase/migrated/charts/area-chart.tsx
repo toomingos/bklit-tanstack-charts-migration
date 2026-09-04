@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { CSSProperties, ReactElement, ReactNode } from "react";
+import type { CSSProperties, Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { curveMonotoneX } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
@@ -47,7 +47,6 @@ import {
 import { extractChildren } from "./internal/children-extract";
 import {
   buildCrosshairGradientDef,
-  buildHighlightBandMarks,
   buildHoverDotMark,
   buildIndicatorMark,
   isFocusOutsideXDomain,
@@ -55,6 +54,7 @@ import {
   pointerSeriesDimStates,
   useDatePillOverlay,
 } from "./internal/hover-geometry";
+import { buildHighlightBandMarks } from "./internal/highlight-band";
 import type { CrosshairGradientDef } from "./internal/hover-geometry";
 import { useFocusInjection } from "./internal/focus-injection";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
@@ -74,7 +74,9 @@ import {
   mergeProjectionXDomainMax,
   mergeProjectionYDomain,
 } from "./internal/projection-config";
+import type { ProjectionLineConfig } from "./internal/projection-config";
 import { projectionLineMark, resolveProjectionGradientDef } from "./internal/projection-line-mark";
+import type { ProjectionGradientDef } from "./internal/projection-line-mark";
 import { ProjectionMarkerOverlay } from './internal/terminal-marker';
 import type { ProjectionPhaseHandle } from './internal/terminal-marker';
 import { toDate } from "./internal/coerce-date";
@@ -95,7 +97,7 @@ import {
   tickLabelFadeOpacity,
 } from "./internal/axis-ticks";
 import { buildNativeTooltipExtension, renderSeriesTooltipBody } from "./internal/native-tooltip";
-import type { AreaConfig, BrushChildConfig, ChartDatum, ChartMarker, ChartStatus, PatternAreaConfig, SeriesPointMarkerStyle } from "./internal/types";
+import type { AreaConfig, BrushChildConfig, ChartDatum, ChartMarker, ChartStatus, PatternAreaConfig, ProjectionLineChildConfig, SeriesPointMarkerStyle } from "./internal/types";
 import { DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from './internal/chart-phase';
 import type { ChartPhase } from './internal/chart-phase';
 import { useChartConfig } from "./internal/chart-config-context";
@@ -106,6 +108,7 @@ import { resolveFadeEdgesMask } from "./internal/fade-mask";
 import { buildLoadingSkeletonRows } from "./internal/loading-chrome";
 import { LoadingLabel } from "./internal/loading-label";
 import { useChartLegendHover } from "./internal/chart-legend-hover-context";
+import type { DatePillController } from "./internal/date-pill-overlay";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { useChartMargin, DEFAULT_CHART_MARGIN } from "./internal/use-chart-margin";
 import { useMeasuredRect } from "./internal/use-container-size";
@@ -126,6 +129,7 @@ import { BrushChrome } from './internal/brush-chrome';
 import { selectionToPixelExtent } from "./internal/brush-chrome-helpers";
 import type { BrushHost } from './internal/brush-chrome';
 import { DashTailOverlay, resolveDashTailBounds } from "./internal/dash-tail";
+import { buildProjectionEndAnchors, buildTerminalAnchors } from "./internal/line-marker-anchors";
 import { buildMarkerGradientDefs, buildMarkerMarks } from "./internal/series-marker-mark";
 import { ChartMarkersOverlay } from "./internal/chart-markers";
 import { createActiveMarkersStore } from "./internal/active-markers-store";
@@ -135,6 +139,7 @@ import {
   DEFAULT_ANIMATION_EASING,
 } from "./internal/animation-defaults";
 import { runRevealWipe, snapRevealWipe } from "./internal/reveal-wipe";
+import type { RevealWipeEpochRef } from "./internal/reveal-wipe";
 import { clipRevealTiming } from './internal/enter-transition';
 import type { EnterTransition } from './internal/enter-transition';
 import "./styles.css";
@@ -280,7 +285,6 @@ const buildPatternAreaDefs = (
 // Primitive narrowing predicates; typeof stays inside type guards (allowInTypeGuards).
 const isString = <Value,>(value: Value): value is Value & string => typeof value === "string";
 const isNumber = <Value,>(value: Value): value is Value & number => typeof value === "number";
-const isFiniteNumber = <Value,>(value: Value): value is Value & number => typeof value === "number" && Number.isFinite(value);
 const isBoolean = <Value,>(value: Value): value is Value & boolean => typeof value === "boolean";
 const isAnimationFrameScheduler = <Value,>(value: Value): value is Value & typeof globalThis.requestAnimationFrame => typeof value === "function";
 
@@ -311,13 +315,6 @@ const pointColorForMark = (points: readonly { readonly markId: string; readonly 
 // Marker visibility is opt-in; an absent flag reads as hidden.
 const isMarkerConfigShown = (config: Readonly<{ showMarkers: boolean | undefined }>): boolean =>
   config.showMarkers ?? false;
-
-// Runtime `data` is untyped React child props, so a non-Date value sneaks past the static type.
-const coerceProjectionDate = (input: Readonly<Date> | undefined): Date | undefined => {
-  if (input instanceof Date) {return input;}
-  if (input === undefined) {return undefined;}
-  return new Date(input);
-};
 
 // Resolves the boolean-tween-on case (true -> fallback ms, false -> 0).
 // Split out from the caller below so it stays a single, non-nested ternary.
@@ -408,6 +405,334 @@ const renderCrosshairNode = (
       </defs>
     </svg>
   );
+};
+
+interface AreaProjectionGradientInput {
+  readonly baseId: string;
+  readonly config: Readonly<ProjectionLineConfig> | undefined;
+  readonly index: number;
+  readonly innerWidth: number;
+  readonly isLoading: boolean;
+  readonly line: Readonly<ProjectionLineChildConfig>;
+  readonly marginLeft: number;
+  readonly marginTop: number;
+  readonly xScale: (value: Readonly<Date>) => number;
+  readonly yScale: (value: number) => number;
+}
+
+// Gradient def for one projection line; undefined unless the line uses a gradient stroke.
+const resolveAreaProjectionGradient = (input: Readonly<AreaProjectionGradientInput>): ProjectionGradientDef | undefined => {
+  const { config, line } = input;
+  if ((line.strokeStyle ?? "solid") !== "gradient" || !config || config.data.length < 2) {return undefined;}
+  const stroke = line.stroke ?? PROJECTION_FALLBACK_STROKE;
+  const gradientStart = line.gradientStart ?? stroke;
+  const gradientEnd = line.gradientEnd ?? "var(--chart-5)";
+  const strokeWidth = line.strokeWidth ?? DEFAULT_PROJECTION_STROKE_WIDTH_PX;
+  const curveKind = line.curveKind ?? "linear";
+  const endpointRadius = line.endpointRadius ?? DEFAULT_TERMINAL_MARKER_RADIUS_PX;
+  return resolveProjectionGradientDef({
+    className: line.className ?? "chart-projection-line",
+    curveKind,
+    data: config.data,
+    endpointRadius,
+    gradientEnd,
+    gradientId: `${input.baseId}-proj-${input.index}`,
+    gradientStart,
+    id: `projection-line-${input.index}`,
+    innerWidth: input.innerWidth,
+    showEndMarker: line.showEndMarker ?? line.showEndpoints ?? true,
+    stroke,
+    strokeDasharray: line.strokeDasharray ?? "6,4",
+    strokeOpacity: line.strokeOpacity ?? 1,
+    strokeStyle: "gradient",
+    strokeVisible: !input.isLoading,
+    strokeWidth,
+    translateX: input.marginLeft,
+    translateY: input.marginTop,
+    xScale: input.xScale,
+    yAxisId: config.yAxisId,
+    yScale: input.yScale,
+  });
+};
+
+interface AreaProjectionGradientFrame {
+  readonly baseId: string;
+  readonly configs: readonly Readonly<ProjectionLineConfig>[];
+  readonly innerWidth: number;
+  readonly isLoading: boolean;
+  readonly lines: readonly Readonly<ProjectionLineChildConfig>[];
+  readonly marginLeft: number;
+  readonly marginTop: number;
+  readonly xScale: (value: Readonly<Date>) => number;
+  readonly yScale: (value: number) => number;
+}
+
+// Gradient defs for every projection line; non-gradient lines contribute nothing.
+const buildAreaProjectionGradientDefs = (frame: Readonly<AreaProjectionGradientFrame>): ProjectionGradientDef[] => frame.lines.flatMap((line: Readonly<ProjectionLineChildConfig>, index: number) => {
+  const gradient = resolveAreaProjectionGradient({
+    baseId: frame.baseId,
+    config: frame.configs.at(index),
+    index,
+    innerWidth: frame.innerWidth,
+    isLoading: frame.isLoading,
+    line,
+    marginLeft: frame.marginLeft,
+    marginTop: frame.marginTop,
+    xScale: frame.xScale,
+    yScale: frame.yScale,
+  });
+  return gradient ? [gradient] : [];
+});
+
+interface AreaFocusPrimaryInput {
+  readonly chartPhase: ChartPhase;
+  readonly dragActive: boolean;
+  readonly isLoaded: boolean;
+  readonly points: readonly ChartPoint<ChartDatum, Date, number>[];
+  readonly xDataKey: string;
+  readonly xDomain: readonly [Readonly<Date>, Readonly<Date>] | undefined;
+}
+
+interface AreaFocusPrimary {
+  readonly clearStaleFocus: boolean;
+  readonly primary: ChartPoint<ChartDatum, Date, number> | undefined;
+}
+
+// Picks the focused point, suppressing it while brushing, outside the x-domain, or pre-interaction.
+const resolveAreaFocusPrimary = (input: Readonly<AreaFocusPrimaryInput>): AreaFocusPrimary => {
+  const rawPrimary = input.points.at(0);
+  const outsideXDomain =
+    input.xDomain !== undefined && rawPrimary !== undefined && isFocusOutsideXDomain(rawPrimary.datum, input.xDataKey, input.xDomain);
+  const phaseGated = !(isChartInteractionPhase(input.chartPhase) && input.isLoaded);
+  const suppressed = outsideXDomain || input.dragActive || phaseGated;
+  return {
+    clearStaleFocus: suppressed && input.points.length > 0,
+    primary: suppressed ? undefined : rawPrimary,
+  };
+};
+
+interface AreaLabelFade {
+  hoveredLabel: string | undefined;
+  primaryX: number;
+}
+
+interface AreaDatePillRequest {
+  readonly datumIndex: number;
+  readonly primaryX: number;
+}
+
+interface AreaPillVisibilityRef {
+  current: boolean;
+}
+
+interface AreaDatePillParams {
+  readonly datePill: Readonly<DatePillController>;
+  readonly discrete: boolean;
+  readonly primary: Readonly<AreaDatePillRequest> | undefined;
+  readonly setLabelFade: Dispatch<SetStateAction<AreaLabelFade | undefined>>;
+  readonly showDatePill: boolean;
+  readonly validDate: Date | undefined;
+  readonly wasVisibleRef: AreaPillVisibilityRef;
+}
+
+// Mirrors the hover date-pill choreography; extracted so the focus callback stays short.
+const updateAreaDatePill = (params: Readonly<AreaDatePillParams>): void => {
+  const { datePill, primary, showDatePill, validDate, wasVisibleRef } = params;
+  if (primary && showDatePill) {
+    const label = validDate ? shortDateFmt.format(validDate) : null;
+    const jump = !wasVisibleRef.current;
+    wasVisibleRef.current = true;
+    datePill.show(primary.primaryX, { discrete: params.discrete, index: primary.datumIndex, jump, label });
+    // Skip definition rebuilds when the focus point didn't change.
+    params.setLabelFade((prev: Readonly<AreaLabelFade> | undefined) =>
+      prev && prev.primaryX === primary.primaryX && prev.hoveredLabel === label
+        ? prev
+        : { hoveredLabel: label ?? undefined, primaryX: primary.primaryX },
+    );
+  } else {
+    wasVisibleRef.current = false;
+    datePill.hide();
+    params.setLabelFade(undefined);
+  }
+};
+
+interface AreaRevealContainerRef {
+  readonly current: HTMLDivElement | null;
+}
+
+interface AreaRevealStateInput {
+  readonly animationDuration: number;
+  readonly chartPhase: ChartPhase;
+  readonly containerRef: AreaRevealContainerRef;
+  readonly durationMs: number;
+  readonly easingCss: string;
+  readonly epoch: number;
+  readonly epochRef: RevealWipeEpochRef;
+  readonly prefersReducedMotion: boolean;
+}
+
+interface AreaRevealState {
+  readonly marks: SVGGElement | null | undefined;
+  readonly shouldAnimate: boolean;
+}
+
+// Queries the marks layer and runs the reveal wipe; extracted so the render callback stays short.
+const resolveAreaRevealState = (input: Readonly<AreaRevealStateInput>): AreaRevealState => {
+  const marks = input.containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
+  const shouldAnimate = runRevealWipe({
+    active: input.chartPhase === "revealing",
+    animationDuration: input.animationDuration,
+    durationMs: input.durationMs,
+    easingCss: input.easingCss,
+    epoch: input.epoch,
+    epochRef: input.epochRef,
+    marks,
+    prefersReducedMotion: input.prefersReducedMotion,
+  });
+  return { marks, shouldAnimate };
+};
+
+interface AreaMarkerAnimsRef {
+  current: Animation[];
+}
+
+interface AreaMarkerRevealCancelRef {
+  current: (() => void) | null;
+}
+
+// Settled animations reject on cancel; the list is rebuilt by the reveal below.
+const cancelAreaMarkerAnims = (animsRef: AreaMarkerAnimsRef): void => {
+  for (const anim of animsRef.current) {
+    try {
+      anim.cancel();
+    } catch {
+      // Cancel rejects for settled animations; ignoring it is intentional.
+    }
+  }
+  animsRef.current = [];
+};
+
+// Visual extent of one marker config; mirrors the bklit series-marker stagger inputs.
+const resolveAreaMarkerVisualExtent = (markers: Readonly<SeriesPointMarkerStyle> | undefined): number => {
+  const radius = markers?.radius ?? DEFAULT_SERIES_MARKER_RADIUS_PX;
+  const strokeWidth = markers?.strokeWidth ?? 2;
+  const ringGap = markers?.ringGap ?? 2;
+  const outlineWidth = markers?.outlineWidth ?? 0;
+  const showActiveHighlight = markers?.showActiveHighlight ?? true;
+  const ring = strokeWidth > 0 ? ringGap + strokeWidth : 0;
+  const outline = Math.max(outlineWidth, 0);
+  const highlightPad = showActiveHighlight ? radius * MARKER_HIGHLIGHT_PAD_RATIO : 0;
+  return radius + ring + outline + highlightPad + 2;
+};
+
+interface AreaMarkerCircleFrame {
+  readonly animationEasing: string;
+  readonly durationSec: number;
+  readonly innerWidth: number;
+  readonly visualExtent: number;
+}
+
+// Staggers one marker circle with the reveal sweep; extracted so the group walk stays short.
+const animateAreaMarkerCircle = (circle: SVGCircleElement, frame: Readonly<AreaMarkerCircleFrame>): Animation => {
+  const cx = Number(circle.getAttribute("cx") ?? "0");
+  const leadingEdge = Math.max(0, cx - frame.visualExtent);
+  const delaySec = frame.innerWidth > 0 ? (leadingEdge / frame.innerWidth) * frame.durationSec : 0;
+  return circle.animate(
+    [{ filter: "blur(2px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1 }],
+    { delay: delaySec * MS_PER_SECOND, duration: SERIES_MARKER_ENTER_MS, easing: frame.animationEasing, fill: "backwards" },
+  );
+};
+
+interface AreaMarkerStaggerConfig {
+  readonly dataKey: string;
+  readonly markers: Readonly<SeriesPointMarkerStyle> | undefined;
+  readonly showMarkers: boolean | undefined;
+}
+
+interface AreaMarkerStaggerFrame {
+  readonly animationEasing: string;
+  readonly durationSec: number;
+  readonly innerWidth: number;
+}
+
+interface AreaMarkerGroupInput {
+  readonly config: Readonly<AreaMarkerStaggerConfig>;
+  readonly frame: Readonly<AreaMarkerStaggerFrame>;
+  readonly marks: SVGGElement;
+}
+
+// Reveal animations for one marker config; empty when its dot group is absent.
+const revealAreaMarkerGroup = (input: Readonly<AreaMarkerGroupInput>): Animation[] => {
+  const visualExtent = resolveAreaMarkerVisualExtent(input.config.markers);
+  const escaped = `${input.config.dataKey}__marker`.replaceAll('"', String.raw`\"`);
+  const group = input.marks.querySelector<SVGGElement>(`.ts-chart__dot[data-ts-key="${escaped}"]`);
+  if (!group) {return [];}
+  const anims: Animation[] = [];
+  const circles = group.querySelectorAll<SVGCircleElement>("circle");
+  for (const circle of circles) {
+    anims.push(animateAreaMarkerCircle(circle, { ...input.frame, visualExtent }));
+  }
+  return anims;
+};
+
+interface AreaMarkerCollectInput {
+  readonly animsRef: AreaMarkerAnimsRef;
+  readonly configs: readonly Readonly<AreaMarkerStaggerConfig>[];
+  readonly frame: Readonly<AreaMarkerStaggerFrame>;
+  readonly marks: SVGGElement;
+}
+
+// Runs the marker stagger for every opted-in config; extracted so the reveal runner stays short.
+const collectAreaMarkerAnims = (input: Readonly<AreaMarkerCollectInput>): void => {
+  for (const cfg of input.configs.filter((candidate) => isMarkerConfigShown(candidate))) {
+    input.animsRef.current.push(...revealAreaMarkerGroup({ config: cfg, frame: input.frame, marks: input.marks }));
+  }
+};
+
+interface AreaMarkerRevealState {
+  cancelled: boolean;
+  raf1: number;
+  raf2: number;
+  tId: ReturnType<typeof globalThis.setTimeout> | 0;
+}
+
+interface AreaMarkerRevealSchedule {
+  readonly animationEasing: string;
+  readonly animsRef: AreaMarkerAnimsRef;
+  readonly cancelRef: AreaMarkerRevealCancelRef;
+  readonly configs: readonly Readonly<AreaMarkerStaggerConfig>[];
+  readonly durationMs: number;
+  readonly innerWidth: number;
+  readonly marks: SVGGElement;
+}
+
+// Defers the marker stagger by two frames so the clip sweep has started; reuses the prior cancel.
+const scheduleAreaMarkerReveal = (schedule: Readonly<AreaMarkerRevealSchedule>): void => {
+  schedule.cancelRef.current?.();
+  // Marker stagger spans the clip reveal's duration (bklit series-markers.tsx:102).
+  const durationSec = schedule.durationMs / MS_PER_SECOND;
+  const frame: AreaMarkerStaggerFrame = { animationEasing: schedule.animationEasing, durationSec, innerWidth: schedule.innerWidth };
+  if (!isAnimationFrameScheduler(globalThis.requestAnimationFrame)) {
+    collectAreaMarkerAnims({ animsRef: schedule.animsRef, configs: schedule.configs, frame, marks: schedule.marks });
+    return;
+  }
+  const state: AreaMarkerRevealState = { cancelled: false, raf1: 0, raf2: 0, tId: 0 };
+  const doReveal = (): void => {
+    collectAreaMarkerAnims({ animsRef: schedule.animsRef, configs: schedule.configs, frame, marks: schedule.marks });
+  };
+  schedule.cancelRef.current = (): void => {
+    state.cancelled = true;
+    if (state.raf1) {cancelAnimationFrame(state.raf1);}
+    if (state.raf2) {cancelAnimationFrame(state.raf2);}
+    if (state.tId !== 0) {globalThis.clearTimeout(state.tId);}
+  };
+  globalThis.requestAnimationFrame(() => {
+    state.raf2 = globalThis.requestAnimationFrame(() => {
+      state.tId = globalThis.setTimeout(() => {
+        if (!state.cancelled) {doReveal();}
+      }, 0);
+    });
+  });
 };
 
 const AreaChart = ({
@@ -739,108 +1064,59 @@ const AreaChart = ({
   // Edge-fade mask aggregates per-series fadeEdges; sides resolve via CSS :not() rules.
   const fadeEdgesMask = resolveFadeEdgesMask(resolvedAreas.map((area: ReadonlyResolvedArea) => area.fadeEdges));
 
-  const areaTerminalAnchors = useMemo(() => {
-    if (terminalMarkers.length === 0 || renderData.length === 0 || width <= 0 || heightPx <= 0) {return [];}
-    // Terminal markers anchor to the last visible row, not the last raw data row.
-    const lastRow = renderData.at(-1);
-    if (!lastRow) {return [];}
-    const innerW = Math.max(0, width - margin.left - margin.right);
-    const innerH = Math.max(0, heightPx - margin.top - margin.bottom);
-    if (innerW <= 0 || innerH <= 0) {return [];}
-    const te = timeExtent;
-    const teRaw = timeExtentRaw;
-    if (!te || !teRaw) {return [];}
-    const xForDate = (date: Date): number => timeToPixelX(date, teRaw.minTime, te.maxTime, innerW);
-    const yScale2 = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
-    const out: { dataKey: string; cx: number; cy: number; fill: string; stroke: string; radius: number; ringGap: number; strokeWidth: number; outlineWidth: number; outlineColor?: string }[] = [];
-    for (const marker of terminalMarkers) {
-      const seriesValue = lastRow[marker.dataKey];
-      const dateVal = toDate(lastRow[xDataKey]);
-      // Pure mappings hoisted out of the guards so the loop body stays a single guarded push.
-      const cx = dateVal ? xForDate(dateVal) : Number.NaN;
-      const cy = isFiniteNumber(seriesValue) ? yScale2(seriesValue) : Number.NaN;
-      if (isFiniteNumber(seriesValue) && dateVal && Number.isFinite(cx) && Number.isFinite(cy)) {
-        out.push({ cx, cy, dataKey: marker.dataKey, fill: marker.fill ?? "transparent", outlineColor: marker.outlineColor, outlineWidth: marker.outlineWidth ?? 0, radius: marker.radius ?? DEFAULT_TERMINAL_MARKER_RADIUS_PX, ringGap: marker.ringGap ?? 0, stroke: marker.stroke ?? "var(--chart-1)", strokeWidth: marker.strokeWidth ?? DEFAULT_TERMINAL_MARKER_STROKE_WIDTH_PX });
-      }
-    }
-    return out;
-  }, [terminalMarkers, renderData, width, heightPx, margin, yDomainFinal, timeExtent, timeExtentRaw, xDataKey]);
-  const areaEndAnchors = useMemo(() => {
-    if (projectionEndMarkers.length === 0 || width <= 0 || heightPx <= 0) {return [];}
-    const innerW = Math.max(0, width - margin.left - margin.right);
-    const innerH = Math.max(0, heightPx - margin.top - margin.bottom);
-    if (innerW <= 0 || innerH <= 0) {return [];}
-    const te = timeExtent;
-    const teRaw = timeExtentRaw;
-    if (!te || !teRaw) {return [];}
-    const xForDate = (date: Date): number => timeToPixelX(date, teRaw.minTime, te.maxTime, innerW);
-    const yScale2 = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
-    const out: { cx: number; cy: number; stroke: string; strokeOpacity: number; radius: number }[] = [];
-    for (const marker of projectionEndMarkers) {
-      const last = marker.data.length >= 2 ? marker.data.at(-1) : undefined;
-      const dateVal = coerceProjectionDate(last?.date);
-      const hasValidDate = dateVal !== undefined && !Number.isNaN(dateVal.getTime());
-      // Pure mappings hoisted out of the guard so the loop body stays a single guarded push.
-      const rawX = hasValidDate && dateVal ? xForDate(dateVal) : Number.NaN;
-      const radius = marker.radius ?? DEFAULT_TERMINAL_MARKER_RADIUS_PX;
-      const edgePadding = radius + 1;
-      const cx = Math.min(rawX, Math.max(0, innerW - edgePadding));
-      const cy = last ? (yScale2(last.value) ?? 0) : Number.NaN;
-      if (last && hasValidDate && Number.isFinite(cx) && Number.isFinite(cy)) {
-        out.push({ cx, cy, radius, stroke: marker.stroke ?? PROJECTION_FALLBACK_STROKE, strokeOpacity: marker.strokeOpacity ?? 1 });
-      }
-    }
-    return out;
-  }, [projectionEndMarkers, width, heightPx, margin, yDomainFinal, timeExtent, timeExtentRaw]);
+  // Terminal markers anchor to the last visible row via the shared line-marker builder.
+  const areaTerminalAnchors = useMemo(() => buildTerminalAnchors({
+    defaults: {
+      fallbackStroke: "var(--chart-1)",
+      markerRadius: DEFAULT_TERMINAL_MARKER_RADIUS_PX,
+      terminalStrokeWidth: DEFAULT_TERMINAL_MARKER_STROKE_WIDTH_PX,
+    },
+    heightPx,
+    marginBottom: margin.bottom,
+    marginLeft: margin.left,
+    marginRight: margin.right,
+    marginTop: margin.top,
+    renderData,
+    terminalMarkers,
+    timeExtent,
+    timeExtentRaw,
+    width,
+    xDataKey,
+    yDomainFinal,
+  }), [terminalMarkers, renderData, width, heightPx, margin, yDomainFinal, timeExtent, timeExtentRaw, xDataKey]);
+  // Projection end markers clamp to the plot edge via the shared line-marker builder.
+  const areaEndAnchors = useMemo(() => buildProjectionEndAnchors({
+    fallbackStroke: PROJECTION_FALLBACK_STROKE,
+    heightPx,
+    marginBottom: margin.bottom,
+    marginLeft: margin.left,
+    marginRight: margin.right,
+    marginTop: margin.top,
+    markerRadius: DEFAULT_TERMINAL_MARKER_RADIUS_PX,
+    projectionEndMarkers,
+    timeExtent,
+    timeExtentRaw,
+    width,
+    yDomainFinal,
+  }), [projectionEndMarkers, width, heightPx, margin, yDomainFinal, timeExtent, timeExtentRaw]);
   const projectionGradientDefsArea = useMemo(() => {
     if (projectionConfigs.length === 0 || width <= 0) {return [];}
     const innerW = Math.max(0, width - margin.left - margin.right);
     const innerH = Math.max(0, heightPx - margin.top - margin.bottom);
     if (innerW <= 0 || innerH <= 0) {return [];}
+    if (!timeExtent || !timeExtentRaw) {return [];}
     const yScale = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
-    const te = timeExtent;
-    const teRaw = timeExtentRaw;
-    if (!te || !teRaw) {return [];}
-    const xScaleWithProjection = (value: Date): number => timeToPixelX(value, teRaw.minTime, te.maxTime, innerW);
-    const defs: { id: string; startX: number; startY: number; endX: number; endY: number; gradientStart: string; gradientEnd: string }[] = [];
-    for (const [index, line] of projectionLines.entries()) {
-      const cfg = projectionConfigs.at(index);
-      if ((line.strokeStyle ?? "solid") === "gradient" && cfg && cfg.data.length >= 2) {
-      const stroke = line.stroke ?? PROJECTION_FALLBACK_STROKE;
-      const gradientStart = line.gradientStart ?? stroke;
-      const gradientEnd = line.gradientEnd ?? "var(--chart-5)";
-      const strokeWidth = line.strokeWidth ?? DEFAULT_PROJECTION_STROKE_WIDTH_PX;
-      const curveKind = line.curveKind ?? "linear";
-      const endpointRadius = line.endpointRadius ?? DEFAULT_TERMINAL_MARKER_RADIUS_PX;
-      const showEndMarker = line.showEndMarker ?? line.showEndpoints ?? true;
-      const gid = `${projectionGradientBaseId}-proj-${index}`;
-      const gd = resolveProjectionGradientDef({
-        className: line.className ?? "chart-projection-line",
-        curveKind,
-        data: cfg.data,
-        endpointRadius,
-        gradientEnd,
-        gradientId: gid,
-        gradientStart,
-        id: `projection-line-${index}`,
-        innerWidth: innerW,
-        showEndMarker,
-        stroke,
-        strokeDasharray: line.strokeDasharray ?? "6,4",
-        strokeOpacity: line.strokeOpacity ?? 1,
-        strokeStyle: "gradient",
-        strokeVisible: !isLoading,
-        strokeWidth,
-        translateX: margin.left,
-        translateY: margin.top,
-        xScale: xScaleWithProjection,
-        yAxisId: cfg.yAxisId,
-        yScale: (value: number) => yScale(value) ?? 0,
-      });
-      if (gd) {defs.push(gd);}
-      }
-    }
-    return defs;
+    return buildAreaProjectionGradientDefs({
+      baseId: projectionGradientBaseId,
+      configs: projectionConfigs,
+      innerWidth: innerW,
+      isLoading,
+      lines: projectionLines,
+      marginLeft: margin.left,
+      marginTop: margin.top,
+      xScale: (value: Date): number => timeToPixelX(value, timeExtentRaw.minTime, timeExtent.maxTime, innerW),
+      yScale: (value: number): number => yScale(value) ?? 0,
+    });
   }, [projectionConfigs, projectionLines, width, margin, heightPx, yDomainFinal, timeExtent, timeExtentRaw, projectionGradientBaseId, isLoading]);
 
   const crosshairGradientDef = useMemo((): CrosshairGradientDef | undefined => {
@@ -939,7 +1215,7 @@ const AreaChart = ({
         );
       }
       if (areaMarkerConfigs.some((cfg: Readonly<(typeof areaMarkerConfigs)[number]>) => cfg.showMarkers ?? false)) {
-        marks.push(...buildMarkerMarks(renderData, xDataKey, areaMarkerConfigs, areaMarkerGradientIdByKey));
+        marks.push(...buildMarkerMarks({ gradientIdByKey: areaMarkerGradientIdByKey, renderData, series: areaMarkerConfigs, xDataKey }));
       }
     }
     if (tooltipEnabled && (tooltip?.showCrosshair ?? true)) {
@@ -966,11 +1242,13 @@ const AreaChart = ({
         }));
         marks.push(
           buildHoverDotMark(
-            hoverDotData,
-            xDataKey,
-            { color: area.stroke, dataKey: area.dataKey },
-            resolveHoverDotFill(area.stroke, tooltip?.dotColor),
-            { discrete: isDiscrete, size: tooltip?.dotSize, strokeWidth: tooltip?.dotStrokeWidth },
+            {
+              fill: resolveHoverDotFill(area.stroke, tooltip?.dotColor),
+              options: { discrete: isDiscrete, size: tooltip?.dotSize, strokeWidth: tooltip?.dotStrokeWidth },
+              renderData: hoverDotData,
+              series: { color: area.stroke, dataKey: area.dataKey },
+              xDataKey,
+            },
           ),
         );
       }
@@ -978,19 +1256,21 @@ const AreaChart = ({
     if (tooltipEnabled) {
       marks.push(
         ...buildHighlightBandMarks(
-          renderData,
-          xDataKey,
-          hoveredIndex ?? null,
-          resolvedAreas.map((area: ReadonlyResolvedArea) => ({
-            color: area.stroke,
-            curve: d3Curve(area.curve),
-            dataKey: area.dataKey,
-            showHighlight: area.showHighlight,
-            // Highlight band also gates on showLine; the dim state does not.
-            showLine: area.showLine,
-            strokeWidth: area.strokeWidth,
-          })),
-          { discrete: isDiscrete },
+          {
+            hoveredIndex: hoveredIndex ?? null,
+            options: { discrete: isDiscrete },
+            renderData,
+            series: resolvedAreas.map((area: ReadonlyResolvedArea) => ({
+              color: area.stroke,
+              curve: d3Curve(area.curve),
+              dataKey: area.dataKey,
+              showHighlight: area.showHighlight,
+              // Highlight band also gates on showLine; the dim state does not.
+              showLine: area.showLine,
+              strokeWidth: area.strokeWidth,
+            })),
+            xDataKey,
+          },
         ),
       );
     }
@@ -1127,13 +1407,25 @@ const AreaChart = ({
             },
           };
     const xScaleOptions: ChartPositionScaleOptions<Date> = {
-      axis: buildPrecomputedXAxisOptions(gridGuide.columnTicks, xAxis ?? undefined, margin.bottom, xTickLabelOpacity, tickLabelMotion),
+      axis: buildPrecomputedXAxisOptions({
+        columnTicks: gridGuide.columnTicks,
+        marginBottom: margin.bottom,
+        tickLabelMotion,
+        xAxis: xAxis ?? undefined,
+        xTickLabelOpacity,
+      }),
       grid: gridGuide.vertical,
       scale: xScale,
     };
     // Native y ticks follow bklit's niced-domain clamp; the grid follows the label ticks.
     const yScaleOptions: ChartPositionScaleOptions<number> = yAxis
-      ? buildYAxisOptions(scaleLinear().domain(yDomainFinal), yDomainFinal, gridGuide.horizontal, yAxis, tickLabelMotion)
+      ? buildYAxisOptions({
+        gridHorizontal: gridGuide.horizontal,
+        scale: scaleLinear().domain(yDomainFinal),
+        tickLabelMotion,
+        yAxis,
+        yDomainForTicks: yDomainFinal,
+      })
       : {
           axis: hiddenAxisOptions(gridGuide.ticks),
           grid: gridGuide.horizontal,
@@ -1221,39 +1513,30 @@ const AreaChart = ({
 
   const handleFocusChange = useCallback(
     (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
-      const rawPrimary = points.at(0);
-      const outsideXDomain =
-        xDomain !== undefined && rawPrimary !== undefined && isFocusOutsideXDomain(rawPrimary.datum, xDataKey, xDomain);
-      const phaseGated = !(isChartInteractionPhase(chartPhase) && isLoaded);
-      const suppressed = outsideXDomain || dragSelectionActiveRef.current || phaseGated;
-      if (suppressed && points.length > 0) {
+      const { clearStaleFocus, primary } = resolveAreaFocusPrimary({
+        chartPhase,
+        dragActive: dragSelectionActiveRef.current,
+        isLoaded,
+        points,
+        xDataKey,
+        xDomain,
+      });
+      if (clearStaleFocus) {
         interactionRef.current?.setControlledFocus(null, { source: "pointer" });
       }
-      const primary = suppressed ? undefined : rawPrimary;
-
       setHoveredIndex(primary ? primary.datumIndex : undefined);
-
-      const datum = primary?.datum;
-      const dateValue = resolveFocusDate(datum, xDataKey);
+      const dateValue = resolveFocusDate(primary?.datum, xDataKey);
       const validDate = dateValue && !Number.isNaN(dateValue.getTime()) ? dateValue : undefined;
       markerActiveStore.setActiveDate(validDate ?? null);
-
-      if (primary && (tooltip?.showDatePill ?? true)) {
-        const label = validDate ? shortDateFmt.format(validDate) : null;
-        const jump = !wasVisibleRef.current;
-        wasVisibleRef.current = true;
-        datePill.show(primary.x, { discrete: isDiscrete, index: primary.datumIndex, jump, label });
-        // Skip definition rebuilds when the focus point didn't change.
-        setLabelFade((prev: Readonly<{ primaryX: number; hoveredLabel: string | undefined }> | undefined) =>
-          prev && prev.primaryX === primary.x && prev.hoveredLabel === label
-            ? prev
-            : { hoveredLabel: label ?? undefined, primaryX: primary.x },
-        );
-      } else {
-        wasVisibleRef.current = false;
-        datePill.hide();
-        setLabelFade(undefined);
-      }
+      updateAreaDatePill({
+        datePill,
+        discrete: isDiscrete,
+        primary: primary ? { datumIndex: primary.datumIndex, primaryX: primary.x } : undefined,
+        setLabelFade,
+        showDatePill: tooltip?.showDatePill ?? true,
+        validDate,
+        wasVisibleRef,
+      });
     },
     [xDomain, xDataKey, chartPhase, isLoaded, markerActiveStore, tooltip, isDiscrete, datePill, interactionRef],
   );
@@ -1265,76 +1548,29 @@ const AreaChart = ({
   // Reveal sweep lives in internal/reveal-wipe.ts; its return gates the marker stagger.
   const handleRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     captureRenderContext(context);
-    const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-    const shouldAnimate = runRevealWipe({
-      active: chartPhase === "revealing",
+    const reveal = resolveAreaRevealState({
       animationDuration,
+      chartPhase,
+      containerRef,
       durationMs: revealDurationMs,
       easingCss: revealEasingCss,
       epoch: revealEpoch,
       epochRef: revealedEpochRef,
-      marks,
       prefersReducedMotion,
     });
-    if (!marks || !shouldAnimate) {return;}
+    const marks = reveal.marks;
+    if (!marks || !reveal.shouldAnimate) {return;}
     if (!areaMarkerConfigs.some((cfg: Readonly<(typeof areaMarkerConfigs)[number]>) => cfg.showMarkers ?? false)) {return;}
-    const innerW = Math.max(0, width - margin.left - margin.right);
-    // Marker stagger spans the clip reveal's duration (bklit series-markers.tsx:102).
-    const durationSec = revealDurationMs / MS_PER_SECOND;
-    // Settled animations reject on cancel; the list is rebuilt below.
-    for (const anim of areaMarkerRevealAnimsRef.current) {
-      try {
-        anim.cancel();
-      } catch {
-        // Cancel rejects for settled animations; ignoring it is intentional.
-      }
-    }
-    areaMarkerRevealAnimsRef.current = [];
-    areaMarkerRevealCancelRef.current?.();
-    const doReveal = (): void => {
-      for (const cfg of areaMarkerConfigs.filter((candidate) => isMarkerConfigShown(candidate))) {
-        const radius = cfg.markers?.radius ?? DEFAULT_SERIES_MARKER_RADIUS_PX;
-        const strokeWidth = cfg.markers?.strokeWidth ?? 2;
-        const ringGap = cfg.markers?.ringGap ?? 2;
-        const outlineWidth = cfg.markers?.outlineWidth ?? 0;
-        const showActiveHighlight = cfg.markers?.showActiveHighlight ?? true;
-        const ring = strokeWidth > 0 ? ringGap + strokeWidth : 0;
-        const outline = Math.max(outlineWidth, 0);
-        const highlightPad = showActiveHighlight ? radius * MARKER_HIGHLIGHT_PAD_RATIO : 0;
-        const visualExtent = radius + ring + outline + highlightPad + 2;
-        const escaped = `${cfg.dataKey}__marker`.replaceAll('"', String.raw`\"`);
-        const group = marks.querySelector<SVGGElement>(`.ts-chart__dot[data-ts-key="${escaped}"]`);
-        if (group) {
-          const circles = group.querySelectorAll<SVGCircleElement>("circle");
-          for (const circle of circles) {
-            const cx = Number(circle.getAttribute("cx") ?? "0");
-            const leadingEdge = Math.max(0, cx - visualExtent);
-            const delaySec = innerW > 0 ? (leadingEdge / innerW) * durationSec : 0;
-            const anim = circle.animate(
-              [{ filter: "blur(2px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1 }],
-              { delay: delaySec * MS_PER_SECOND, duration: SERIES_MARKER_ENTER_MS, easing: animationEasing, fill: "backwards" },
-            );
-            areaMarkerRevealAnimsRef.current.push(anim);
-          }
-        }
-      }
-    };
-    if (isAnimationFrameScheduler(globalThis.requestAnimationFrame)) {
-      let raf1 = 0; let raf2 = 0; let tId: ReturnType<typeof globalThis.setTimeout> | 0 = 0;
-      let cancelled = false;
-      const doRevealIfNotCancelled = (): void => { if (!cancelled) {doReveal();} };
-      raf1 = globalThis.requestAnimationFrame(() => {
-        raf2 = globalThis.requestAnimationFrame(() => {
-          tId = globalThis.setTimeout(doRevealIfNotCancelled, 0);
-        });
-      });
-      areaMarkerRevealCancelRef.current = (): void => {
-        cancelled = true;
-        if (raf1) {cancelAnimationFrame(raf1);}
-        if (raf2) {cancelAnimationFrame(raf2);}
-        if (tId !== 0) {globalThis.clearTimeout(tId);}
-      };
-    } else { doReveal(); }
+    cancelAreaMarkerAnims(areaMarkerRevealAnimsRef);
+    scheduleAreaMarkerReveal({
+      animationEasing,
+      animsRef: areaMarkerRevealAnimsRef,
+      cancelRef: areaMarkerRevealCancelRef,
+      configs: areaMarkerConfigs,
+      durationMs: revealDurationMs,
+      innerWidth: Math.max(0, width - margin.left - margin.right),
+      marks,
+    });
   }, [animationDuration, animationEasing, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, areaMarkerConfigs, width, margin.left, margin.right, prefersReducedMotion, captureRenderContext]);
 
   useEffect(() => {

@@ -3,6 +3,7 @@
 import NumberFlow from "@number-flow/react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
+import { useNumberFlowElementReady } from "./center-stat-ready";
 
 /** Subset of `Intl.NumberFormatOptions` supported by NumberFlow (bklit `ChartStatFlowFormat` port). */
 interface CenterStatFormat {
@@ -44,46 +45,6 @@ const formatStatValue = (params: Readonly<FormatStatValueParams>): string => {
     formatOptions,
   ).format(value);
   return `${prefix ?? ""}${formatted}${suffix ?? ""}`;
-}
-
-/**
- * Presence probe for the `customElements` DOM global; property access on `globalThis`
- * avoids the `ReferenceError` a bare reference throws during SSR.
- * @param {Candidate} registry The global registry, absent outside a DOM environment.
- * @returns {boolean} Whether the custom-elements registry is defined.
- */
-const isCustomElementsDefined = <Candidate,>(registry: Candidate): registry is Candidate & CustomElementRegistry =>
-  registry !== undefined;
-
-/** Gates `<NumberFlow>` behind `customElements.whenDefined`; static `Intl` fallback pre-hydration.
- * @returns {boolean} Whether the animated number element is registered and ready to mount.
- */
-const useNumberFlowElementReady = (): boolean => {
-  const [ready, setReady] = useState(
-    () => isCustomElementsDefined(globalThis.customElements) &&
-      Boolean(globalThis.customElements.get("number-flow-react")),
-  );
-
-  useEffect(() => {
-    if (ready) {return undefined;}
-    let cancelled = false;
-    const markReadyWhenDefined = async (): Promise<void> => {
-      try {
-        await customElements.whenDefined("number-flow-react");
-      } catch {
-        // Invalid element name — the static Intl fallback stays mounted.
-        return;
-      }
-      if (!cancelled) {setReady(true);}
-    };
-    // Fire-and-forget by design: the effect's cancellation flag above guards the late resolve.
-    void markReadyWhenDefined();
-    return (): void => {
-      cancelled = true;
-    };
-  }, [ready]);
-
-  return ready;
 }
 
 interface CenterStatProps {
@@ -173,6 +134,22 @@ interface CenterShellProps<Data> {
   readonly children?: (props: Readonly<CenterShellRenderProps<Data>>) => ReactNode;
 }
 
+/**
+ * Double-rAF scheduler for the mount entrance; keeps the effect body under the statement limit.
+ * @param {() => void} onFrames - Callback invoked after two animation frames elapse.
+ * @returns {() => void} Cleanup cancelling both pending frames.
+ */
+const scheduleDoubleRaf = (onFrames: () => void): (() => void) => {
+  let innerRaf = 0;
+  const outerRaf = requestAnimationFrame(() => {
+    innerRaf = requestAnimationFrame(onFrames);
+  });
+  return (): void => {
+    cancelAnimationFrame(outerRaf);
+    cancelAnimationFrame(innerRaf);
+  };
+}
+
 /** 0 → double-rAF → value mount entrance; `intro=false` passes through untouched.
  * @param {number} value - Target display value the flow animates toward after mount.
  * @param {boolean} intro - Whether to start at 0 and ramp up on the next frames.
@@ -190,13 +167,9 @@ const useIntroFlowValue = (value: number, intro: boolean): number => {
     if (!introStartedRef.current) {
       introStartedRef.current = true;
       setFlowValue(0);
-      let innerRaf = 0;
-      const outerRaf = requestAnimationFrame(() => {
-        innerRaf = requestAnimationFrame(() =>{  setFlowValue(value); });
-      });
+      const cancelFrames = scheduleDoubleRaf(() => { setFlowValue(value); });
       return (): void => {
-        cancelAnimationFrame(outerRaf);
-        cancelAnimationFrame(innerRaf);
+        cancelFrames();
         introStartedRef.current = false;
       };
     }

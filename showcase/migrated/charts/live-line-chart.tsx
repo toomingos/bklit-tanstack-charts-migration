@@ -853,11 +853,13 @@ const LiveLineChart = ({
       for (const visual of lineVisuals) {
         marks.push(
           buildHoverDotMark(
-            contextData,
-            "date",
-            { color: visual.resolvedStroke, dataKey: visual.cfg.dataKey },
-            resolveHoverDotFill(visual.dotColor, tooltip?.dotColor),
-            { size: tooltip?.dotSize, strokeWidth: tooltip?.dotStrokeWidth },
+            {
+              fill: resolveHoverDotFill(visual.dotColor, tooltip?.dotColor),
+              options: { size: tooltip?.dotSize, strokeWidth: tooltip?.dotStrokeWidth },
+              renderData: contextData,
+              series: { color: visual.resolvedStroke, dataKey: visual.cfg.dataKey },
+              xDataKey: "date",
+            },
           ),
         );
       }

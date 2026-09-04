@@ -140,8 +140,15 @@ class SpringEngine {
   }
 }
 
-const createSpring = (initial: number, stiffness: number, damping: number, onUpdate: (value: number) => void): Spring => {
-  const engine = new SpringEngine({ damping, initial, onUpdate, stiffness });
+interface CreateSpringOptions {
+  readonly damping: number;
+  readonly initial: number;
+  readonly onUpdate: (value: number) => void;
+  readonly stiffness: number;
+}
+
+const createSpring = (options: Readonly<CreateSpringOptions>): Spring => {
+  const engine = new SpringEngine({ damping: options.damping, initial: options.initial, onUpdate: options.onUpdate, stiffness: options.stiffness });
   return {
     jump(value: number) {
       engine.jumpTo(value);
@@ -156,4 +163,4 @@ const createSpring = (initial: number, stiffness: number, damping: number, onUpd
 }
 
 export { createSpring };
-export type { Spring };
+export type { CreateSpringOptions, Spring };

@@ -78,14 +78,8 @@ interface EnsureDotSpringsOptions {
 const ensureDotSprings = (options: Readonly<EnsureDotSpringsOptions>): void => {
   const { animate, circleRef, rectRef, size, spring, springXRef, springYRef, x, y } = options;
   if (!animate) {return;}
-  springXRef.current ??= createSpring(x, spring.stiffness, spring.damping, (nx) => {
-    if (circleRef.current) {circleRef.current.setAttribute("cx", String(nx));}
-    if (rectRef.current) {rectRef.current.setAttribute("x", String(nx - size));}
-  });
-  springYRef.current ??= createSpring(y, spring.stiffness, spring.damping, (ny) => {
-    if (circleRef.current) {circleRef.current.setAttribute("cy", String(ny));}
-    if (rectRef.current) {rectRef.current.setAttribute("y", String(ny - size));}
-  });
+  springXRef.current ??= createSpring({ damping: spring.damping, initial: x, onUpdate: (nx) => { if (circleRef.current) {circleRef.current.setAttribute("cx", String(nx));} if (rectRef.current) {rectRef.current.setAttribute("x", String(nx - size));} }, stiffness: spring.stiffness });
+  springYRef.current ??= createSpring({ damping: spring.damping, initial: y, onUpdate: (ny) => { if (circleRef.current) {circleRef.current.setAttribute("cy", String(ny));} if (rectRef.current) {rectRef.current.setAttribute("y", String(ny - size));} }, stiffness: spring.stiffness });
 };
 
 interface DotSpringTargets {
@@ -312,13 +306,8 @@ interface EnsureIndicatorSpringsOptions {
 const ensureIndicatorSprings = (options: Readonly<EnsureIndicatorSpringsOptions>): void => {
   const { animate, lineRef, lineX, lineSpringRef, rectRef, rectSpringRef, rectX, spring } = options;
   if (!animate) {return;}
-  rectSpringRef.current ??= createSpring(rectX, spring.stiffness, spring.damping, (nx) => {
-    rectRef.current?.setAttribute("x", String(nx));
-  });
-  lineSpringRef.current ??= createSpring(lineX, spring.stiffness, spring.damping, (nx) => {
-    lineRef.current?.setAttribute("x1", String(nx));
-    lineRef.current?.setAttribute("x2", String(nx));
-  });
+  rectSpringRef.current ??= createSpring({ damping: spring.damping, initial: rectX, onUpdate: (nx) => { rectRef.current?.setAttribute("x", String(nx)); }, stiffness: spring.stiffness });
+  lineSpringRef.current ??= createSpring({ damping: spring.damping, initial: lineX, onUpdate: (nx) => { lineRef.current?.setAttribute("x1", String(nx)); lineRef.current?.setAttribute("x2", String(nx)); }, stiffness: spring.stiffness });
 };
 
 interface IndicatorSpringTargets {
@@ -737,29 +726,25 @@ const useTooltipBoxMotion = (options: Readonly<TooltipBoxMotionOptions>): Toolti
   const runEntrance = useCallback((flipped: boolean) => {
     const panel = panelRef.current;
     if (!panel || !entrance) {return;}
-    entranceSpringRef.current ??= createSpring(
-      0,
-      ENTRANCE_SPRING.stiffness,
-      ENTRANCE_SPRING.damping,
-      (progress) => {
+    entranceSpringRef.current ??= createSpring({
+      damping: ENTRANCE_SPRING.damping,
+      initial: 0,
+      onUpdate: (progress) => {
         if (!panelRef.current) {return;}
         const from = flipped ? ENTRANCE_SLIDE_OFFSET_PX : -ENTRANCE_SLIDE_OFFSET_PX;
         panelRef.current.style.transformOrigin = flipped ? "right top" : "left top";
         panelRef.current.style.transform = `translateX(${from * (1 - progress)}px) scale(${ENTRANCE_START_SCALE + (1 - ENTRANCE_START_SCALE) * progress})`;
         panelRef.current.style.opacity = String(progress);
       },
-    );
+      stiffness: ENTRANCE_SPRING.stiffness,
+    });
     entranceSpringRef.current.jump(0);
     entranceSpringRef.current.set(1);
   }, [entrance]);
   const ensurePositionSprings = useCallback(() => {
     if (!animate) {return;}
-    leftSpringRef.current ??= createSpring(targetX, effectiveSpring.stiffness, effectiveSpring.damping, (leftPx) => {
-      if (layerRef.current) {layerRef.current.style.left = `${leftPx}px`;}
-    });
-    topSpringRef.current ??= createSpring(targetY, effectiveSpring.stiffness, effectiveSpring.damping, (topPx) => {
-      if (layerRef.current) {layerRef.current.style.top = `${topPx}px`;}
-    });
+    leftSpringRef.current ??= createSpring({ damping: effectiveSpring.damping, initial: targetX, onUpdate: (leftPx) => { if (layerRef.current) {layerRef.current.style.left = `${leftPx}px`;} }, stiffness: effectiveSpring.stiffness });
+    topSpringRef.current ??= createSpring({ damping: effectiveSpring.damping, initial: targetY, onUpdate: (topPx) => { if (layerRef.current) {layerRef.current.style.top = `${topPx}px`;} }, stiffness: effectiveSpring.stiffness });
   }, [animate, effectiveSpring, targetX, targetY]);
   return { ensurePositionSprings, layerRef, leftSpringRef, panelRef, prevFlipRef, runEntrance, topSpringRef };
 };
@@ -1144,12 +1129,8 @@ const useDateTickerAnimation = (options: Readonly<DateTickerAnimationOptions>): 
   const prevMonthRef = useRef(-1);
   useEffect((): (() => void) | undefined => {
     if (compact) {return undefined;}
-    daySpringRef.current ??= createSpring(0, TICKER_SPRING_STIFFNESS, TICKER_SPRING_DAMPING, (offsetY) => {
-      if (dayStackRef.current) {dayStackRef.current.style.transform = `translateY(${offsetY}px)`;}
-    });
-    monthSpringRef.current ??= createSpring(0, TICKER_SPRING_STIFFNESS, TICKER_SPRING_DAMPING, (offsetY) => {
-      if (monthStackRef.current) {monthStackRef.current.style.transform = `translateY(${offsetY}px)`;}
-    });
+    daySpringRef.current ??= createSpring({ damping: TICKER_SPRING_DAMPING, initial: 0, onUpdate: (offsetY) => { if (dayStackRef.current) {dayStackRef.current.style.transform = `translateY(${offsetY}px)`;} }, stiffness: TICKER_SPRING_STIFFNESS });
+    monthSpringRef.current ??= createSpring({ damping: TICKER_SPRING_DAMPING, initial: 0, onUpdate: (offsetY) => { if (monthStackRef.current) {monthStackRef.current.style.transform = `translateY(${offsetY}px)`;} }, stiffness: TICKER_SPRING_STIFFNESS });
     return (): void => {
       daySpringRef.current?.stop();
       monthSpringRef.current?.stop();

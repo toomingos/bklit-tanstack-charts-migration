@@ -151,18 +151,26 @@ interface MeasureDashEntryOptions {
   readonly xAccessor: (datum: Readonly<ChartDatum>) => Date | number;
 }
 
+interface MeasuredPathReading {
+  readonly pathData: string;
+  readonly length: number;
+}
+
+const readMeasuredSeriesPath = (container: HTMLElement | null, dataKey: string): MeasuredPathReading | undefined => {
+  const pathElement = findSeriesPath(container, dataKey);
+  if (!pathElement) {return undefined;}
+  return readSeriesPathLength(pathElement);
+}
+
 const measureDashEntry = (options: Readonly<MeasureDashEntryOptions>): Measured | undefined => {
-  const pathEl = findSeriesPath(options.container, options.entry.dataKey);
-  if (!pathEl) {return undefined;}
-  const reading = readSeriesPathLength(pathEl);
+  const reading = readMeasuredSeriesPath(options.container, options.entry.dataKey);
   if (!reading) {return undefined;}
   const { dashFromIndex } = options.entry;
   if (dashFromIndex === undefined) {return undefined;}
-  const idx = dashFromIndex;
-  const dashStartX = resolveDashStartX({ dashFromIndex: idx, data: options.renderData, xAccessor: options.xAccessor, xScale: options.xScale });
+  const dashStartX = resolveDashStartX({ dashFromIndex, data: options.renderData, xAccessor: options.xAccessor, xScale: options.xScale });
   return {
     dashArray: options.entry.dashArray ?? "6,4",
-    dashStartLength: (idx / Math.max(1, options.renderData.length - 1)) * reading.length,
+    dashStartLength: (dashFromIndex / Math.max(1, options.renderData.length - 1)) * reading.length,
     dashStartX,
     pathD: reading.pathData,
     pathLength: reading.length,

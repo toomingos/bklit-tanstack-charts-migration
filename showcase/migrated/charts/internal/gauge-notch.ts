@@ -93,8 +93,16 @@ const collectGaugeDefsElements = (nodes: ReactNode): ReactElement[] => {
   return out;
 }
 
+interface NotchDistanceOptions {
+  readonly endX: number;
+  readonly endY: number;
+  readonly startX: number;
+  readonly startY: number;
+}
+
 const lerpNotch = (fromValue: number, toValue: number, blend: number): number => fromValue + (toValue - fromValue) * blend;
-const distNotch = (startX: number, startY: number, endX: number, endY: number): number => Math.hypot(endX - startX, endY - startY);
+// Euclidean distance between two notch corners; options wrap keeps the arity lint-clean.
+const distNotch = (options: Readonly<NotchDistanceOptions>): number => Math.hypot(options.endX - options.startX, options.endY - options.startY);
 
 interface NotchEdgeLengths {
   readonly d12: number;
@@ -106,10 +114,10 @@ interface NotchEdgeLengths {
 const measureNotchEdges = (points: Readonly<NotchPoint>): NotchEdgeLengths => {
   const { x1, y1, x2, y2, x3, y3, x4, y4 } = points;
   return {
-    d12: distNotch(x1, y1, x2, y2),
-    d23: distNotch(x2, y2, x3, y3),
-    d34: distNotch(x3, y3, x4, y4),
-    d41: distNotch(x4, y4, x1, y1),
+    d12: distNotch({ endX: x2, endY: y2, startX: x1, startY: y1 }),
+    d23: distNotch({ endX: x3, endY: y3, startX: x2, startY: y2 }),
+    d34: distNotch({ endX: x4, endY: y4, startX: x3, startY: y3 }),
+    d41: distNotch({ endX: x1, endY: y1, startX: x4, startY: y4 }),
   };
 }
 

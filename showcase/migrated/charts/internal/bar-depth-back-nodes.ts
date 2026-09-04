@@ -3,7 +3,18 @@ import type { ChartDatum } from "./types";
 
 const GLASS_TIP_OPACITY = 0.2;
 
-const sideFacePoints = (bandX: number, bandWidth: number, depth: number, perspectiveRise: number, isRightOfCenter: boolean, topEdge: number, bottomEdge: number): [number, number][] => {
+interface SideFacePointsOptions {
+  readonly bandWidth: number;
+  readonly bandX: number;
+  readonly bottomEdge: number;
+  readonly depth: number;
+  readonly isRightOfCenter: boolean;
+  readonly perspectiveRise: number;
+  readonly topEdge: number;
+}
+
+const sideFacePoints = (options: Readonly<SideFacePointsOptions>): [number, number][] => {
+  const { bandWidth, bandX, bottomEdge, depth, isRightOfCenter, perspectiveRise, topEdge } = options;
   if (isRightOfCenter) {
     const x = bandX;
     return [
@@ -22,7 +33,17 @@ const sideFacePoints = (bandX: number, bandWidth: number, depth: number, perspec
   ];
 }
 
-const lidFacePoints = (bandX: number, bandWidth: number, depth: number, perspectiveRise: number, isRightOfCenter: boolean, topY: number): [number, number][] => {
+interface LidFacePointsOptions {
+  readonly bandWidth: number;
+  readonly bandX: number;
+  readonly depth: number;
+  readonly isRightOfCenter: boolean;
+  readonly perspectiveRise: number;
+  readonly topY: number;
+}
+
+const lidFacePoints = (options: Readonly<LidFacePointsOptions>): [number, number][] => {
+  const { bandWidth, bandX, depth, isRightOfCenter, perspectiveRise, topY } = options;
   const left = bandX;
   const right = bandX + bandWidth;
   if (isRightOfCenter) {
@@ -107,8 +128,8 @@ interface PushBackBarNodesParams {
 
 const pushBackBarNodes = (params: Readonly<PushBackBarNodesParams>): void => {
   const { bandWidth, bandX, bottomY, depth, fill, glassPosId, id, index, isRightOfCenter, nodes, opacity, perspectiveRise, sideShadeId, topShadeId, topY } = params;
-  const side = sideFacePoints(bandX, bandWidth, depth, perspectiveRise, isRightOfCenter, topY, bottomY);
-  const lid = lidFacePoints(bandX, bandWidth, depth, perspectiveRise, isRightOfCenter, topY);
+  const side = sideFacePoints({ bandWidth, bandX, bottomEdge: bottomY, depth, isRightOfCenter, perspectiveRise, topEdge: topY });
+  const lid = lidFacePoints({ bandWidth, bandX, depth, isRightOfCenter, perspectiveRise, topY });
   const sideKey = `${id}:side:${index}`;
   const lidKey = `${id}:lid:${index}`;
   nodes.push({

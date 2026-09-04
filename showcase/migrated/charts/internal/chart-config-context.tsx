@@ -69,6 +69,19 @@ interface TooltipBoxMotion {
   readonly springConfig: SpringConfig;
 }
 
+// Stiffness compensation for off-default damping positions; hoisted so resolveTooltipBoxMotion stays short.
+const resolveTooltipBoxStiffness = (effectiveDamping: number, baseStiffness: number): number => {
+  if (effectiveDamping < DEFAULT_TOOLTIP_BOX_DAMPING) {
+    const stiffenRatio = (DEFAULT_TOOLTIP_BOX_DAMPING - effectiveDamping) / DEFAULT_TOOLTIP_BOX_DAMPING;
+    return baseStiffness + stiffenRatio * TOOLTIP_BOX_STIFFEN_RANGE;
+  }
+  if (effectiveDamping > DEFAULT_TOOLTIP_BOX_DAMPING) {
+    const softenRatio = (effectiveDamping - DEFAULT_TOOLTIP_BOX_DAMPING) / (DAMPING_PERCENT_MAX - DEFAULT_TOOLTIP_BOX_DAMPING);
+    return baseStiffness - softenRatio * TOOLTIP_BOX_SOFTEN_RANGE;
+  }
+  return baseStiffness;
+};
+
 /** Maps a damping slider to the floating tooltip panel follow spring. `0` = instant.
  * @param {number | undefined} [damping] - Slider percent in [0, 100]; absent resolves to the default spring damping.
  * @returns {TooltipBoxMotion} Follow-spring config, with animation disabled when the slider is fully instant.
@@ -82,22 +95,7 @@ const resolveTooltipBoxMotion = (damping?: number): TooltipBoxMotion => {
   }
 
   const effectiveDamping = damping ?? DEFAULT_TOOLTIP_BOX_DAMPING;
-  let {stiffness} = DEFAULT_CHART_CONFIG.tooltipBoxSpring;
-
-  if (effectiveDamping < DEFAULT_TOOLTIP_BOX_DAMPING) {
-    const stiffenRatio =
-      (DEFAULT_TOOLTIP_BOX_DAMPING - effectiveDamping) /
-      DEFAULT_TOOLTIP_BOX_DAMPING;
-    stiffness += stiffenRatio * TOOLTIP_BOX_STIFFEN_RANGE;
-  } else if (effectiveDamping > DEFAULT_TOOLTIP_BOX_DAMPING) {
-    const softenRatio =
-      (effectiveDamping - DEFAULT_TOOLTIP_BOX_DAMPING) /
-      (DAMPING_PERCENT_MAX - DEFAULT_TOOLTIP_BOX_DAMPING);
-    stiffness -= softenRatio * TOOLTIP_BOX_SOFTEN_RANGE;
-  } else {
-    // At the default damping no stiffness adjustment is needed.
-  }
-
+  const stiffness = resolveTooltipBoxStiffness(effectiveDamping, DEFAULT_CHART_CONFIG.tooltipBoxSpring.stiffness);
   const springConfig: SpringConfig = {
     damping: effectiveDamping,
     stiffness: Math.max(TOOLTIP_BOX_MIN_STIFFNESS, Math.round(stiffness)),

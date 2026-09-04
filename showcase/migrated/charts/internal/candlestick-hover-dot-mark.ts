@@ -115,6 +115,11 @@ const buildHoverDotEntry = (options: Readonly<HoverDotDatumOptions>): HoverDotEn
   return { node, point };
 };
 
+// Bklit parity: dots always spring; ChartTooltip never gates them on discrete.
+const buildHoverDotMotion = (tooltipSpring: Readonly<SpringConfig>): ChartMotionDefinition<ChartDatum> => ({
+  transition: { damping: tooltipSpring.damping, stiffness: tooltipSpring.stiffness, type: "spring" },
+});
+
 /**
  * Plain-dot radius/stroke are hardcoded (only ring reads dotSize/scale/strokeWidth); ring stays a circle.
  *
@@ -126,10 +131,7 @@ const createCandlestickHoverDotMark = (
 ): ChartMark<ChartDatum, Date, number> => {
   const { source, xDataKey, dotCfg, tooltipSpring } = params;
   const { isRing, size, strokeWidth } = resolveHoverDotGeometry(dotCfg);
-  // Bklit parity: dots always spring; ChartTooltip never gates them on discrete.
-  const motion: ChartMotionDefinition<ChartDatum> = {
-    transition: { damping: tooltipSpring.damping, stiffness: tooltipSpring.stiffness, type: "spring" },
-  };
+  const motion: ChartMotionDefinition<ChartDatum> = buildHoverDotMotion(tooltipSpring);
   return {
     initialize: () => {
       const dateValues = source.map((datum) => readDateField(datum, xDataKey));

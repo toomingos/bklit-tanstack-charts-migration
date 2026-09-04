@@ -117,15 +117,7 @@ const buildShellContextBase = (params: Readonly<ShellContextBaseParams>): Omit<P
 };
 
 // PieCenter with a minimal pie context, sans slices or full PieChart.
-const PieCenterShell = ({
-  centerValue,
-  contextSize,
-  innerRadiusPx,
-  animateEntrance = true,
-  ...pieCenterProps
-}: Readonly<PieCenterShellProps>): ReactElement => {
-// Entrance state machine centralized in center-stat's useIntroFlowValue; reused here.
-  const flowTotal = useIntroFlowValue(centerValue, animateEntrance);
+const useShellContextValue = (flowTotal: number, contextSize: number, innerRadiusPx: number): PieStableValue => {
   const { arcs, data } = useShellPieModel(flowTotal);
 
   const getColor = useCallback((index: number): string => defaultPieColors[index % defaultPieColors.length]
@@ -136,7 +128,7 @@ const PieCenterShell = ({
     [data, getColor],
   );
 
-  const contextValue: PieStableValue = useMemo(
+  return useMemo(
     () => ({
       ...buildShellContextBase({ contextSize, getColor, getFill, innerRadiusPx, totalValue: flowTotal }),
       arcs,
@@ -152,16 +144,36 @@ const PieCenterShell = ({
       getFill,
     ],
   );
+};
+
+// PieCenter with a minimal pie context, sans slices or full PieChart.
+const PieCenterShell = ({
+  centerValue,
+  contextSize,
+  innerRadiusPx,
+  animateEntrance = true,
+  ...pieCenterProps
+}: Readonly<PieCenterShellProps>): ReactElement => {
+// Entrance state machine centralized in center-stat's useIntroFlowValue; reused here.
+  const flowTotal = useIntroFlowValue(centerValue, animateEntrance);
+  const contextValue = useShellContextValue(flowTotal, contextSize, innerRadiusPx);
 
 // Data-bkm-chart wrapper is load-bearing: center typography is scoped under it;
 // Display:contents keeps it out of layout.
+  const centerNode = (
+    <div data-bkm-chart="pie" style={SHELL_WRAPPER_STYLE}>
+      <PieCenter {...pieCenterProps} />
+    </div>
+  );
+  const innerNode = (
+    <PieHoverCoordinatorContext.Provider value={INERT_HOVER_COORDINATOR}>
+      {centerNode}
+    </PieHoverCoordinatorContext.Provider>
+  );
+
   return (
     <PieStableContext.Provider value={contextValue}>
-      <PieHoverCoordinatorContext.Provider value={INERT_HOVER_COORDINATOR}>
-        <div data-bkm-chart="pie" style={SHELL_WRAPPER_STYLE}>
-          <PieCenter {...pieCenterProps} />
-        </div>
-      </PieHoverCoordinatorContext.Provider>
+      {innerNode}
     </PieStableContext.Provider>
   );
 }

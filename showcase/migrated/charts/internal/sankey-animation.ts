@@ -43,14 +43,13 @@ const resolveTiming = (transition: Readonly<SankeyEnterTransition> | undefined, 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const GRADIENT_VERTICAL_ORIGIN = "0";
 
-const buildSankeyGradientElement = (gradient: Readonly<SankeyGradientDatum>): SVGLinearGradientElement => {
-  const element = document.createElementNS(SVG_NAMESPACE, "linearGradient");
-  element.setAttribute("id", gradient.id);
-  element.setAttribute("gradientUnits", "userSpaceOnUse");
-  element.setAttribute("x1", String(gradient.x1));
-  element.setAttribute("y1", GRADIENT_VERTICAL_ORIGIN);
-  element.setAttribute("x2", String(gradient.x2));
-  element.setAttribute("y2", GRADIENT_VERTICAL_ORIGIN);
+interface SankeyGradientStopParams {
+  readonly element: SVGLinearGradientElement;
+  readonly gradient: Readonly<SankeyGradientDatum>;
+}
+
+const appendSankeyGradientStops = (params: Readonly<SankeyGradientStopParams>): void => {
+  const { element, gradient } = params;
   const stops = [
     { color: gradient.sourceColor, offset: "0%" },
     { color: gradient.targetColor, offset: "100%" },
@@ -62,8 +61,19 @@ const buildSankeyGradientElement = (gradient: Readonly<SankeyGradientDatum>): SV
     stopNode.setAttribute("stop-opacity", "1");
     element.append(stopNode);
   }
+}
+
+const buildSankeyGradientElement = (gradient: Readonly<SankeyGradientDatum>): SVGLinearGradientElement => {
+  const element = document.createElementNS(SVG_NAMESPACE, "linearGradient");
+  element.setAttribute("id", gradient.id);
+  element.setAttribute("gradientUnits", "userSpaceOnUse");
+  element.setAttribute("x1", String(gradient.x1));
+  element.setAttribute("y1", GRADIENT_VERTICAL_ORIGIN);
+  element.setAttribute("x2", String(gradient.x2));
+  element.setAttribute("y2", GRADIENT_VERTICAL_ORIGIN);
+  appendSankeyGradientStops({ element, gradient });
   return element;
-};
+}
 
 const injectGradientDefs = (svg: SVGSVGElement, gradients: readonly Readonly<SankeyGradientDatum>[]): void => {
   if (gradients.length === 0) {return;}
@@ -79,7 +89,6 @@ const injectGradientDefs = (svg: SVGSVGElement, gradients: readonly Readonly<San
 }
 
 const queryNodeGroups = (svg: SVGSVGElement): (SVGGElement | null)[] => [...svg.querySelectorAll<SVGGElement>(`[data-ts-key^="sankey:node:"]`)];
-
 
 const queryLinkPaths = (svg: SVGSVGElement): (SVGPathElement | null)[] => {
   const flowGroup = svg.querySelector<SVGGElement>(`[data-ts-key="sankey:flow"]`);
@@ -103,175 +112,251 @@ interface SankeyRevealConfig {
   enterTransition?: SankeyEnterTransition;
 }
 
+interface SankeyLabelCollectionParams {
+  readonly prefix: string;
+  readonly svg: SVGSVGElement;
+}
+
+const collectSankeyLabels = (params: Readonly<SankeyLabelCollectionParams>): Map<number, SVGElement> => {
+  const { prefix, svg } = params;
+  const labels = new Map<number, SVGElement>();
+  for (const label of svg.querySelectorAll<SVGElement>(`[data-ts-key^="${prefix}"]`)) {
+    const index = Number(label.dataset.tsKey?.split(":").pop());
+    if (!Number.isNaN(index)) {labels.set(index, label);}
+  }
+  return labels;
+}
+
+interface SankeySlideParams {
+  readonly element: SVGElement;
+  readonly svg: SVGSVGElement;
+}
+
+const resolveSankeyLabelSlidePx = (params: Readonly<SankeySlideParams>): number => {
+  const { element, svg } = params;
+  const anchor = element.getAttribute("text-anchor");
+  if (anchor === "end") {return SANKEY_LABEL_SLIDE_PX;}
+  if (anchor === "start") {return -SANKEY_LABEL_SLIDE_PX;}
+  const halfWidth = (svg.viewBox.baseVal.width || svg.clientWidth) / 2;
+  const positionX = Number(element.getAttribute("x") ?? "0");
+  return positionX >= halfWidth ? -SANKEY_LABEL_SLIDE_PX : SANKEY_LABEL_SLIDE_PX;
+}
+
+interface SankeyAnimationSpec {
+  readonly delayMs: number;
+  readonly element: SVGElement;
+  readonly keyframes: Keyframe[];
+}
+
+interface SankeyLabelSpecParams {
+  readonly delayMs: number;
+  readonly label: SVGElement;
+  readonly svg: SVGSVGElement;
+}
+
+const buildSankeyLabelAnimationSpec = (params: Readonly<SankeyLabelSpecParams>): SankeyAnimationSpec => {
+  const { delayMs, label, svg } = params;
+  const slidePx = resolveSankeyLabelSlidePx({ element: label, svg });
+  return {
+    delayMs,
+    element: label,
+    keyframes: [
+      { opacity: "0", translate: `${slidePx}px 0px` },
+      { opacity: "1", translate: "0px 0px" },
+    ],
+  };
+}
+
+interface SankeyNodeSpecParams {
+  readonly nameLabels: ReadonlyMap<number, SVGElement>;
+  readonly nodeAnimDuration: number;
+  readonly nodeGroups: readonly (SVGGElement | null)[];
+  readonly svg: SVGSVGElement;
+  readonly valueLabels: ReadonlyMap<number, SVGElement>;
+}
+
+const buildSankeyNodeAnimationSpecs = (params: Readonly<SankeyNodeSpecParams>): SankeyAnimationSpec[] => {
+  const { nameLabels, nodeAnimDuration, nodeGroups, svg, valueLabels } = params;
+  const specs: SankeyAnimationSpec[] = [];
+  const totalNodes = nodeGroups.length;
+  for (let index = 0; index < nodeGroups.length; index += 1) {
+    const group = nodeGroups[index];
+    if (group) {
+      const staggerDelayMs =
+        totalNodes > 0 ? (index / totalNodes) * nodeAnimDuration * SANKEY_NODE_STAGGER_FRACTION : 0;
+
+      const rect = group.querySelector<SVGRectElement>("rect");
+      if (rect) {
+        rect.style.transformOrigin = "center";
+        specs.push({
+          delayMs: staggerDelayMs,
+          element: rect,
+          keyframes: [
+            { opacity: "0", transform: "scaleY(0)" },
+            { opacity: "1", transform: "scaleY(1)" },
+          ],
+        });
+      }
+
+      const nameLabelDelayMs = staggerDelayMs + nodeAnimDuration * SANKEY_NAME_LABEL_WINDOW_FRACTION * SANKEY_NAME_LABEL_OFFSET_FRACTION;
+      const valueLabelDelayMs = nameLabelDelayMs + SANKEY_VALUE_LABEL_DELAY_MS;
+
+      const nameLabel = nameLabels.get(index);
+      if (nameLabel) {
+        specs.push(buildSankeyLabelAnimationSpec({ delayMs: nameLabelDelayMs, label: nameLabel, svg }));
+      }
+
+      const valueLabel = valueLabels.get(index);
+      if (valueLabel) {
+        specs.push(buildSankeyLabelAnimationSpec({ delayMs: valueLabelDelayMs, label: valueLabel, svg }));
+      }
+    }
+  }
+  return specs;
+}
+
+interface SankeyLinkSpecParams {
+  readonly animationDuration: number;
+  readonly linkPaths: readonly (SVGPathElement | null)[];
+}
+
+const buildSankeyLinkAnimationSpecs = (params: Readonly<SankeyLinkSpecParams>): SankeyAnimationSpec[] => {
+  const { animationDuration, linkPaths } = params;
+  const specs: SankeyAnimationSpec[] = [];
+  const linkStartDelay = animationDuration * SANKEY_LINK_START_FRACTION;
+  const linkAnimWindow = animationDuration * SANKEY_LINK_WINDOW_FRACTION;
+  const totalLinks = linkPaths.length;
+  for (let index = 0; index < linkPaths.length; index += 1) {
+    const link = linkPaths[index];
+    if (link) {
+      const staggerDelayMs = totalLinks > 0 ? linkStartDelay + (index / totalLinks) * linkAnimWindow * SANKEY_LINK_STAGGER_FRACTION : linkStartDelay;
+      specs.push({
+        delayMs: staggerDelayMs,
+        element: link,
+        keyframes: [
+          { strokeDasharray: "1 1", strokeDashoffset: "1" },
+          { strokeDasharray: "1 1", strokeDashoffset: "0" },
+        ],
+      });
+    }
+  }
+  return specs;
+}
+
+interface SankeyPlayParams {
+  readonly animations: Animation[];
+  readonly durationMs: number;
+  readonly easingCss: string;
+  readonly specs: readonly SankeyAnimationSpec[];
+}
+
+const playSankeyAnimationSpecs = (params: Readonly<SankeyPlayParams>): number => {
+  const { animations, durationMs, easingCss, specs } = params;
+  let maxDelayMs = 0;
+  for (const spec of specs) {
+    if (spec.delayMs > maxDelayMs) {maxDelayMs = spec.delayMs;}
+    animations.push(
+      spec.element.animate(spec.keyframes, {
+        delay: spec.delayMs,
+        duration: durationMs,
+        easing: easingCss,
+        fill: "backwards",
+      }),
+    );
+  }
+  return maxDelayMs;
+}
+
+interface SankeyRevealRuntime {
+  animations: Animation[];
+  cancelPostPaint: (() => void) | undefined;
+  deadlineTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
+}
+
+const createSankeyRevealRuntime = (): SankeyRevealRuntime => ({
+  animations: [],
+  cancelPostPaint: undefined,
+  deadlineTimer: undefined,
+})
+
+const clearSankeyDeadline = (runtime: SankeyRevealRuntime): void => {
+  if (runtime.deadlineTimer !== undefined) {
+    globalThis.clearTimeout(runtime.deadlineTimer);
+    runtime.deadlineTimer = undefined;
+  }
+}
+
+const abortSankeyAnimations = (runtime: SankeyRevealRuntime): void => {
+  for (const animation of runtime.animations) {
+    try {
+      animation.cancel();
+    } catch {
+      // Teardown race: already cancelled or detached.
+    }
+  }
+  runtime.animations.length = 0;
+}
+
+interface SankeySettleParams {
+  readonly durationMs: number;
+  readonly maxDelayMs: number;
+  readonly runtime: SankeyRevealRuntime;
+}
+
+const settleSankeyAnimations = async (params: Readonly<SankeySettleParams>): Promise<void> => {
+  const { durationMs, maxDelayMs, runtime } = params;
+  runtime.deadlineTimer = globalThis.setTimeout(() => {
+    runtime.deadlineTimer = undefined;
+    abortSankeyAnimations(runtime);
+  }, durationMs + maxDelayMs + DEADLINE_SLACK_MS);
+
+  // Collected imperatively rather than with `.map()`.
+  // A callback returning `animation.finished` trips promise-function-async with no clean async spelling.
+  const pending: Promise<Animation>[] = [];
+  for (const animation of runtime.animations) {
+    pending.push(animation.finished);
+  }
+  await Promise.allSettled(pending);
+  clearSankeyDeadline(runtime);
+}
+
 const runSankeyReveal = (config: SankeyRevealConfig): SankeyRevealHandle => {
   const { svg, animationDuration, enterTransition } = config;
   const nodeGroups = queryNodeGroups(svg);
   const linkPaths = queryLinkPaths(svg);
   const marksGroup = svg.querySelector(".ts-chart__marks");
-
-  const animations: Animation[] = [];
-  let deadlineTimer: ReturnType<typeof globalThis.setTimeout> | undefined = undefined;
-  let cancelPostPaint: (() => void) | undefined = undefined;
-
-  const clearDeadline = (): void => {
-    if (deadlineTimer !== undefined) {
-      globalThis.clearTimeout(deadlineTimer);
-      deadlineTimer = undefined;
-    }
-  };
+  const runtime = createSankeyRevealRuntime();
 
   const cancel = (): void => {
-    if (cancelPostPaint) {
-      cancelPostPaint();
-      cancelPostPaint = undefined;
+    if (runtime.cancelPostPaint) {
+      runtime.cancelPostPaint();
+      runtime.cancelPostPaint = undefined;
     }
-    clearDeadline();
-    for (const anim of animations) {
-      try {
-        anim.cancel();
-      } catch {
-        // Teardown race: already cancelled or detached.
-      }
-    }
-    animations.length = 0;
+    clearSankeyDeadline(runtime);
+    abortSankeyAnimations(runtime);
     marksGroup?.classList.remove(REVEALING_CLASS);
   };
 
   marksGroup?.classList.add(REVEALING_CLASS);
 
-  cancelPostPaint = onPostPaint(async () => {
-    cancelPostPaint = undefined;
+  runtime.cancelPostPaint = onPostPaint(async () => {
+    runtime.cancelPostPaint = undefined;
 
-    const totalNodes = nodeGroups.length;
-    const totalLinks = linkPaths.length;
-    const nodeAnimDuration = animationDuration * SANKEY_NODE_ANIM_FRACTION;
     const { durationMs, easingCss } = resolveTiming(enterTransition, animationDuration);
-
-    const nameLabels = new Map<number, SVGElement>();
-    const valueLabels = new Map<number, SVGElement>();
-    for (const el of svg.querySelectorAll<SVGElement>(`[data-ts-key^="sankey:nlabel:"]`)) {
-      const idx = Number(el.dataset.tsKey?.split(":").pop());
-      if (!Number.isNaN(idx)) {nameLabels.set(idx, el);}
-    }
-    for (const el of svg.querySelectorAll<SVGElement>(`[data-ts-key^="sankey:vlabel:"]`)) {
-      const idx = Number(el.dataset.tsKey?.split(":").pop());
-      if (!Number.isNaN(idx)) {valueLabels.set(idx, el);}
-    }
-
-    let maxDelayMs = 0;
-    const animate = (el: SVGElement, keyframes: Keyframe[], delayMs: number): void => {
-      if (delayMs > maxDelayMs) {maxDelayMs = delayMs;}
-      animations.push(
-        el.animate(keyframes, {
-          delay: delayMs,
-          duration: durationMs,
-          easing: easingCss,
-          fill: "backwards",
-        }),
-      );
-    };
-
-    for (let i = 0; i < nodeGroups.length; i += 1) {
-      const group = nodeGroups[i];
-      if (group) {
-        const stagDelayMs = totalNodes > 0 ? (i / totalNodes) * nodeAnimDuration * SANKEY_NODE_STAGGER_FRACTION : 0;
-
-        const rect = group.querySelector<SVGRectElement>("rect");
-        if (rect) {
-          rect.style.transformOrigin = "center";
-          animate(
-            rect,
-            [
-              { opacity: "0", transform: "scaleY(0)" },
-              { opacity: "1", transform: "scaleY(1)" },
-            ],
-            stagDelayMs,
-          );
-        }
-
-        const nameLabelDelayMs = stagDelayMs + nodeAnimDuration * SANKEY_NAME_LABEL_WINDOW_FRACTION * SANKEY_NAME_LABEL_OFFSET_FRACTION;
-        const valueLabelDelayMs = nameLabelDelayMs + SANKEY_VALUE_LABEL_DELAY_MS;
-
-        const resolveSlidePx = (el: SVGElement): number => {
-          const anchor = el.getAttribute("text-anchor");
-          if (anchor === "end") {return SANKEY_LABEL_SLIDE_PX;}
-          if (anchor === "start") {return -SANKEY_LABEL_SLIDE_PX;}
-          const halfWidth = (svg.viewBox.baseVal.width || svg.clientWidth) / 2;
-          const x = Number(el.getAttribute("x") ?? "0");
-          return x >= halfWidth ? -SANKEY_LABEL_SLIDE_PX : SANKEY_LABEL_SLIDE_PX;
-        };
-
-        const nameLabel = nameLabels.get(i);
-        if (nameLabel) {
-          const dx = resolveSlidePx(nameLabel);
-          animate(
-            nameLabel,
-            [
-              { opacity: "0", translate: `${dx}px 0px` },
-              { opacity: "1", translate: "0px 0px" },
-            ],
-            nameLabelDelayMs,
-          );
-        }
-
-        const valueLabel = valueLabels.get(i);
-        if (valueLabel) {
-          const dx = resolveSlidePx(valueLabel);
-          animate(
-            valueLabel,
-            [
-              { opacity: "0", translate: `${dx}px 0px` },
-              { opacity: "1", translate: "0px 0px" },
-            ],
-            valueLabelDelayMs,
-          );
-        }
-      }
-    }
-
-    const linkStartDelay = animationDuration * SANKEY_LINK_START_FRACTION;
-    const linkAnimWindow = animationDuration * SANKEY_LINK_WINDOW_FRACTION;
-
-    for (let i = 0; i < linkPaths.length; i += 1) {
-      const el = linkPaths[i];
-      if (el) {
-        const stagDelayMs = totalLinks > 0 ? linkStartDelay + (i / totalLinks) * linkAnimWindow * SANKEY_LINK_STAGGER_FRACTION : linkStartDelay;
-
-        animate(
-          el,
-          [
-            { strokeDasharray: "1 1", strokeDashoffset: "1" },
-            { strokeDasharray: "1 1", strokeDashoffset: "0" },
-          ],
-          stagDelayMs,
-        );
-      }
-    }
+    const nodeAnimDuration = animationDuration * SANKEY_NODE_ANIM_FRACTION;
+    const nameLabels = collectSankeyLabels({ prefix: "sankey:nlabel:", svg });
+    const valueLabels = collectSankeyLabels({ prefix: "sankey:vlabel:", svg });
+    const specs = [
+      ...buildSankeyNodeAnimationSpecs({ nameLabels, nodeAnimDuration, nodeGroups, svg, valueLabels }),
+      ...buildSankeyLinkAnimationSpecs({ animationDuration, linkPaths }),
+    ];
+    const maxDelayMs = playSankeyAnimationSpecs({ animations: runtime.animations, durationMs, easingCss, specs });
 
     marksGroup?.classList.remove(REVEALING_CLASS);
 
-    if (animations.length === 0) {return;}
+    if (runtime.animations.length === 0) {return;}
 
-    deadlineTimer = globalThis.setTimeout(() => {
-      deadlineTimer = undefined;
-      for (const anim of animations) {
-        try {
-          anim.cancel();
-        } catch {
-          // Teardown race: already cancelled or detached.
-        }
-      }
-      animations.length = 0;
-    }, durationMs + maxDelayMs + DEADLINE_SLACK_MS);
-
-    // Collected imperatively rather than with `.map()`.
-    // A callback returning `anim.finished` trips promise-function-async with no clean async spelling.
-    const pending: Promise<Animation>[] = [];
-    for (const anim of animations) {
-      pending.push(anim.finished);
-    }
-    await Promise.allSettled(pending);
-    clearDeadline();
+    await settleSankeyAnimations({ durationMs, maxDelayMs, runtime });
   });
 
   return { cancel };

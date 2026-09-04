@@ -17,7 +17,7 @@ import { barY } from "@tanstack/charts/bar";
 import { defineChart } from "@tanstack/charts/scene";
 import { group } from "@tanstack/charts/group";
 import { whenFocused } from "@tanstack/charts/focus/mark";
-import type { ChartMark, ChartMarkState, ChartMotionDefinition, ChartMotionPhase, ChartMotionTiming, ChartPoint, ChartRendererRenderContext, DomChartDefinition, SceneNode } from "@tanstack/charts";
+import type { ChartFocusStrategy, ChartMark, ChartMarkState, ChartMotionDefinition, ChartMotionPhase, ChartMotionTiming, ChartPoint, ChartRendererRenderContext, DomChartDefinition, InitializedMark, MarkRenderContext, MarkScene, SceneNode } from "@tanstack/charts";
 import { extractChildren } from "./internal/children-extract";
 import { TooltipContent } from "./internal/tooltip-components";
 import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, FADE_BUFFER, TICKER_HALF_WIDTH, TOOLTIP_BOX_SPRING } from "./internal/design-tokens";
@@ -47,7 +47,7 @@ import type { PulseWaveGradientStop } from "./internal/bar-pulse-mark";
 import { barTrimmedMark } from "./internal/bar-trimmed-mark";
 import { renderPatternPreset } from "./internal/pattern-preset-render";
 import type { PatternPresetId } from "./internal/pattern-preset";
-import type { BarConfig, BarColumnTrackConfig, BarDepthBackConfig, BarDepthFrontConfig, BarSquaresConfig, ChartDatum, ChartPhase, ChartTooltipConfig, ChartTooltipPoint, TooltipRow } from "./internal/types";
+import type { BarConfig, BarColumnTrackConfig, BarDepthBackConfig, BarDepthFrontConfig, BarPulseConfig, BarSquaresConfig, BarXAxisConfig, ChartDatum, ChartPhase, ChartTooltipConfig, ChartTooltipPoint, TooltipRow } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { resolveGridGuide } from "./internal/grid";
 import { isRevealed, markRevealed, setRevealDeadline } from "./internal/deferred-reveal";
@@ -194,13 +194,14 @@ const collectInertBarProps = ({
   stackGap,
   squareSnap,
 }: Readonly<InertBarPropsWarningParams>): string[] => {
-  const inert: string[] = [];
-  if (barWidth !== undefined) {inert.push("barWidth");}
-  if (orientation !== undefined) {inert.push("orientation");}
-  if (stacked !== undefined) {inert.push("stacked");}
-  if (stackGap !== undefined) {inert.push("stackGap");}
-  if (squareSnap !== undefined) {inert.push("squareSnap");}
-  return inert;
+  const candidates: readonly (readonly [string, unknown])[] = [
+    ["barWidth", barWidth],
+    ["orientation", orientation],
+    ["stacked", stacked],
+    ["stackGap", stackGap],
+    ["squareSnap", squareSnap],
+  ];
+  return candidates.filter(([, value]) => value !== undefined).map(([name]) => name);
 };
 
 const warnInertBarProps = ({
@@ -313,6 +314,43 @@ const buildHoverDotMotion = (tooltipSpring: Readonly<SpringConfig>): ChartMotion
   transition: { damping: tooltipSpring.damping, stiffness: tooltipSpring.stiffness, type: "spring" },
 });
 
+interface HoverDotDatumResult {
+  readonly node: SceneNode;
+  readonly point: ChartPoint<ChartDatum, string, number>;
+}
+
+const buildHoverDotPoint = ({
+  datum,
+  datumIndex,
+  seriesKey,
+  x,
+  y,
+  category,
+  yv,
+  fill,
+}: {
+  readonly datum: Readonly<ChartDatum>;
+  readonly datumIndex: number;
+  readonly seriesKey: string;
+  readonly x: number;
+  readonly y: number;
+  readonly category: string;
+  readonly yv: number;
+  readonly fill: string;
+}): ChartPoint<ChartDatum, string, number> => ({
+  color: fill,
+  datum,
+  datumIndex,
+  group: null,
+  groupLabel: seriesKey,
+  key: `${seriesKey}:${datumIndex}`,
+  markId: seriesKey,
+  x,
+  xValue: category,
+  y,
+  yValue: yv,
+});
+
 interface HoverDotDatumParams {
   readonly datum: Readonly<ChartDatum>;
   readonly datumIndex: number;
@@ -331,10 +369,56 @@ interface HoverDotDatumParams {
   readonly strokeWidth: number;
 }
 
-interface HoverDotDatumResult {
-  readonly node: SceneNode;
+interface HoverDotNodeParams {
+  readonly seriesKey: string;
+  readonly datumIndex: number;
   readonly point: ChartPoint<ChartDatum, string, number>;
+  readonly x: number;
+  readonly y: number;
+  readonly fill: string;
+  readonly isRing: boolean;
+  readonly side: number;
+  readonly cornerRadius: number;
+  readonly size: number;
+  readonly strokeWidth: number;
 }
+
+const buildHoverDotNode = ({
+  seriesKey,
+  datumIndex,
+  point,
+  x,
+  y,
+  fill,
+  isRing,
+  side,
+  cornerRadius,
+  size,
+  strokeWidth,
+}: Readonly<HoverDotNodeParams>): SceneNode => {
+  if (isRing) {
+    return {
+      height: side,
+      key: `${seriesKey}:hover-dot:${datumIndex}`,
+      kind: "rect",
+      pointOwner: point,
+      radius: cornerRadius,
+      style: { fill: "transparent", stroke: fill, strokeWidth },
+      width: side,
+      x: x - size,
+      y: y - size,
+    };
+  }
+  return {
+    key: `${seriesKey}:hover-dot:${datumIndex}`,
+    kind: "dot",
+    pointOwner: point,
+    radius: size,
+    style: { fill, stroke: "var(--chart-background)", strokeWidth },
+    x,
+    y,
+  };
+};
 
 const buildHoverDotDatum = ({
   datum,
@@ -360,47 +444,87 @@ const buildHoverDotDatum = ({
   if (category === undefined || yv === undefined || !Number.isFinite(x) || !Number.isFinite(y)) {
     return undefined;
   }
-  const point: ChartPoint<ChartDatum, string, number> = {
-    color: fill,
-    datum,
+  const point = buildHoverDotPoint({ category, datum, datumIndex, fill, seriesKey, x, y, yv });
+  const node = buildHoverDotNode({
+    cornerRadius,
     datumIndex,
-    group: null,
-    groupLabel: seriesKey,
-    key: `${seriesKey}:${datumIndex}`,
-    markId: seriesKey,
-    x,
-    xValue: category,
-    y,
-    yValue: yv,
-  };
-  if (isRing) {
-    return {
-      node: {
-        height: side,
-        key: `${seriesKey}:hover-dot:${datumIndex}`,
-        kind: "rect",
-        pointOwner: point,
-        radius: cornerRadius,
-        style: { fill: "transparent", stroke: fill, strokeWidth },
-        width: side,
-        x: x - size,
-        y: y - size,
-      },
-      point,
-    };
-  }
-  return {
-    node: {
-      key: `${seriesKey}:hover-dot:${datumIndex}`,
-      kind: "dot",
-      pointOwner: point,
-      radius: size,
-      style: { fill, stroke: "var(--chart-background)", strokeWidth },
-      x,
-      y,
-    },
+    fill,
+    isRing,
     point,
-  };
+    seriesKey,
+    side,
+    size,
+    strokeWidth,
+    x,
+    y,
+  });
+  return { node, point };
+};
+
+interface BarHoverDotSceneParams {
+  readonly source: readonly Readonly<ChartDatum>[];
+  readonly seriesKey: string;
+  readonly xValues: readonly (string | undefined)[];
+  readonly yValues: readonly (number | undefined)[];
+  readonly mapY: (value: number) => number;
+  readonly bandStartForCategory: (category: string) => number;
+  readonly groupOffsetX: number;
+  readonly groupHalfWidth: number;
+  readonly fill: string;
+  readonly isRing: boolean;
+  readonly side: number;
+  readonly cornerRadius: number;
+  readonly size: number;
+  readonly strokeWidth: number;
+}
+
+interface BarHoverDotScene {
+  readonly nodes: SceneNode[];
+  readonly points: ChartPoint<ChartDatum, string, number>[];
+}
+
+const buildBarHoverDotScene = ({
+  source,
+  seriesKey,
+  xValues,
+  yValues,
+  mapY,
+  bandStartForCategory,
+  groupOffsetX,
+  groupHalfWidth,
+  fill,
+  isRing,
+  side,
+  cornerRadius,
+  size,
+  strokeWidth,
+}: Readonly<BarHoverDotSceneParams>): BarHoverDotScene => {
+  const nodes: SceneNode[] = [];
+  const points: ChartPoint<ChartDatum, string, number>[] = [];
+  for (const [datumIndex, datum] of source.entries()) {
+    const built = buildHoverDotDatum({
+      bandStartForCategory,
+      cornerRadius,
+      datum,
+      datumIndex,
+      fill,
+      groupHalfWidth,
+      groupOffsetX,
+      isRing,
+      mapY,
+      seriesKey,
+      side,
+      size,
+      strokeWidth,
+      xValues,
+      yValues,
+    });
+    if (built) {
+      nodes.push(built.node);
+      points.push(built.point);
+    }
+  }
+  return { nodes, points };
 };
 
 // Dot x emits resolved pixels directly: per-series group offset is barY-layout-only, not a dot() channel.
@@ -416,6 +540,82 @@ interface BarHoverDotMarkParams {
   readonly dotMarker: { readonly size: number; readonly strokeWidth: number; readonly isRing: boolean; readonly radiusFraction: number };
   readonly tooltipSpring: Readonly<SpringConfig>;
 }
+
+const buildHoverDotGroupNode = (seriesKey: string, nodes: SceneNode[]): SceneNode => ({
+  // App-owned mark groups use the bkm-chart__ prefix, not ts-chart__.
+  ariaHidden: true,
+  children: nodes,
+  className: "bkm-chart__hover-dot",
+  key: `${seriesKey}--hover-dot`,
+  kind: "group",
+});
+
+interface BarHoverDotInitParams {
+  readonly source: readonly Readonly<ChartDatum>[];
+  readonly series: { readonly dataKey: string };
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly projectValueForKey: (raw: number) => number;
+  readonly bandStartForCategory: (category: string) => number;
+  readonly groupOffsetX: number;
+  readonly groupHalfWidth: number;
+  readonly fill: string;
+  readonly isRing: boolean;
+  readonly side: number;
+  readonly cornerRadius: number;
+  readonly size: number;
+  readonly strokeWidth: number;
+  readonly motion: ChartMotionDefinition<ChartDatum>;
+}
+
+const buildHoverDotInitialState = ({
+  source,
+  series,
+  categoryAccessor,
+  projectValueForKey,
+  bandStartForCategory,
+  groupOffsetX,
+  groupHalfWidth,
+  fill,
+  isRing,
+  side,
+  cornerRadius,
+  size,
+  strokeWidth,
+  motion,
+}: Readonly<BarHoverDotInitParams>): InitializedMark<ChartDatum, string, number> => {
+  const { xValues, yValues } = buildHoverDotChannels({ categoryAccessor, projectValueForKey, series, source });
+  return {
+    channels: {
+      x: { scale: "x", values: xValues },
+      y: { scale: "y", values: yValues },
+    },
+    id: `${series.dataKey}--hover-dot`,
+    motion,
+    render: ({ scales }: MarkRenderContext): MarkScene<ChartDatum, string, number> => {
+      const mapY = (value: number): number => scales.y.map(value);
+      const scene = buildBarHoverDotScene({
+        bandStartForCategory,
+        cornerRadius,
+        fill,
+        groupHalfWidth,
+        groupOffsetX,
+        isRing,
+        mapY,
+        seriesKey: series.dataKey,
+        side,
+        size,
+        source,
+        strokeWidth,
+        xValues,
+        yValues,
+      });
+      return {
+        nodes: [buildHoverDotGroupNode(series.dataKey, scene.nodes)],
+        points: scene.points,
+      };
+    },
+  };
+};
 
 const createBarHoverDotMark = ({
   source,
@@ -434,58 +634,23 @@ const createBarHoverDotMark = ({
   const side = size * 2;
   const motion = buildHoverDotMotion(tooltipSpring);
   return {
-    initialize: () => {
-      const { xValues, yValues } = buildHoverDotChannels({ categoryAccessor, projectValueForKey, series, source });
-      return {
-        channels: {
-          x: { scale: "x", values: xValues },
-          y: { scale: "y", values: yValues },
-        },
-        id: `${series.dataKey}--hover-dot`,
+    initialize: () =>
+      buildHoverDotInitialState({
+        bandStartForCategory,
+        categoryAccessor,
+        cornerRadius,
+        fill,
+        groupHalfWidth,
+        groupOffsetX,
+        isRing,
         motion,
-        render: ({ scales }) => {
-          const nodes: SceneNode[] = [];
-          const points: ChartPoint<ChartDatum, string, number>[] = [];
-          const mapY = (value: number): number => scales.y.map(value);
-          for (const [datumIndex, datum] of source.entries()) {
-            const built = buildHoverDotDatum({
-              bandStartForCategory,
-              cornerRadius,
-              datum,
-              datumIndex,
-              fill,
-              groupHalfWidth,
-              groupOffsetX,
-              isRing,
-              mapY,
-              seriesKey: series.dataKey,
-              side,
-              size,
-              strokeWidth,
-              xValues,
-              yValues,
-            });
-            if (built) {
-              nodes.push(built.node);
-              points.push(built.point);
-            }
-          }
-          return {
-            nodes: [
-              {
-                // App-owned mark groups use the bkm-chart__ prefix, not ts-chart__.
-                ariaHidden: true,
-                children: nodes,
-                className: "bkm-chart__hover-dot",
-                key: `${series.dataKey}--hover-dot`,
-                kind: "group",
-              },
-            ],
-            points,
-          };
-        },
-      };
-    },
+        projectValueForKey,
+        series,
+        side,
+        size,
+        source,
+        strokeWidth,
+      }),
   };
 };
 
@@ -736,6 +901,1214 @@ const beginBarReveal = ({
   armBarRevealDeadline({ renderDataLength, revealDeadlineTimerRef, revealDurationMs, setPhase, svgRoot });
 };
 
+interface NativeDepthGradientParams {
+  readonly depthGradientIds: BarDepthGradientIds;
+  readonly depthGlassPosStops: readonly Readonly<GlassGradientStop>[];
+  readonly depthGlassNegStops: readonly Readonly<GlassGradientStop>[];
+  readonly pulseWaveStops: readonly Readonly<PulseWaveGradientStop>[];
+  readonly pulseWaveGradientId: string;
+}
+
+interface BuiltDepthGradientStop {
+  color: string;
+  offset: number;
+  opacity: number;
+}
+
+interface BuiltDepthGradient {
+  id: string;
+  stops: BuiltDepthGradientStop[];
+  x1: number;
+  x2: number;
+  y1: number;
+  y2: number;
+}
+
+interface DepthGlassGradientParams {
+  readonly depthGradientIds: BarDepthGradientIds;
+  readonly depthGlassPosStops: readonly Readonly<GlassGradientStop>[];
+  readonly depthGlassNegStops: readonly Readonly<GlassGradientStop>[];
+}
+
+// Glass faces share one objectBoundingBox def each; a single gradient is correct for every bar height.
+const buildDepthGlassGradients = ({
+  depthGradientIds,
+  depthGlassPosStops,
+  depthGlassNegStops,
+}: Readonly<DepthGlassGradientParams>): BuiltDepthGradient[] => [
+  {
+    id: depthGradientIds.glassPosId,
+    stops: depthGlassPosStops.map((stop: Readonly<GlassGradientStop>) => ({
+      color: stop.color,
+      offset: Number.parseFloat(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
+      opacity: Number(stop.opacity),
+    })),
+    x1: 0,
+    x2: 0,
+    y1: 0,
+    y2: 1,
+  },
+  {
+    id: depthGradientIds.glassNegId,
+    stops: depthGlassNegStops.map((stop: Readonly<GlassGradientStop>) => ({
+      color: stop.color,
+      offset: Number.parseFloat(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
+      opacity: Number(stop.opacity),
+    })),
+    x1: 0,
+    x2: 0,
+    y1: 0,
+    y2: 1,
+  },
+];
+
+interface PulseWaveGradientParams {
+  readonly pulseWaveStops: readonly Readonly<PulseWaveGradientStop>[];
+  readonly pulseWaveGradientId: string;
+}
+
+const buildPulseWaveGradient = ({
+  pulseWaveStops,
+  pulseWaveGradientId,
+}: Readonly<PulseWaveGradientParams>): BuiltDepthGradient => ({
+  id: pulseWaveGradientId,
+  stops: pulseWaveStops.map((stop: Readonly<PulseWaveGradientStop>) => ({
+    color: stop.color,
+    offset: Number.parseFloat(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
+    opacity: Number(stop.opacity),
+  })),
+  x1: 0,
+  x2: 0,
+  y1: 1,
+  y2: 0,
+});
+
+interface DepthShadeGradientParams {
+  readonly depthGradientIds: BarDepthGradientIds;
+  readonly pulseWaveStops: readonly Readonly<PulseWaveGradientStop>[];
+  readonly pulseWaveGradientId: string;
+}
+
+const buildDepthShadeGradients = ({
+  depthGradientIds,
+  pulseWaveStops,
+  pulseWaveGradientId,
+}: Readonly<DepthShadeGradientParams>): BuiltDepthGradient[] => [
+  {
+    id: depthGradientIds.sideShadeRtlId,
+    stops: [
+      { color: "black", offset: 0, opacity: 0.05 },
+      { color: "black", offset: 1, opacity: 0.55 },
+    ],
+    x1: 1,
+    x2: 0,
+    y1: 0,
+    y2: 1,
+  },
+  {
+    id: depthGradientIds.sideShadeLtrId,
+    stops: [
+      { color: "black", offset: 0, opacity: 0.05 },
+      { color: "black", offset: 1, opacity: 0.55 },
+    ],
+    x1: 0,
+    x2: 1,
+    y1: 0,
+    y2: 1,
+  },
+  {
+    id: depthGradientIds.topShadeId,
+    stops: [
+      { color: "black", offset: 0, opacity: 0 },
+      { color: "black", offset: 1, opacity: 0.18 },
+    ],
+    x1: 0,
+    x2: 0,
+    y1: 1,
+    y2: 0,
+  },
+  buildPulseWaveGradient({ pulseWaveGradientId, pulseWaveStops }),
+];
+
+// Shared depth gradient defs: objectBoundingBox makes one gradient correct for every bar height.
+const buildNativeDepthGradients = ({
+  depthGradientIds,
+  depthGlassPosStops,
+  depthGlassNegStops,
+  pulseWaveStops,
+  pulseWaveGradientId,
+}: Readonly<NativeDepthGradientParams>): BuiltDepthGradient[] => [
+  ...buildDepthGlassGradients({ depthGlassNegStops, depthGlassPosStops, depthGradientIds }),
+  ...buildDepthShadeGradients({ depthGradientIds, pulseWaveGradientId, pulseWaveStops }),
+];
+
+interface ResolvedBarSquare {
+  readonly dataKey: string;
+  readonly yAxisId?: string | number;
+  readonly fill: string;
+  readonly stroke?: string;
+  readonly squareGap: number;
+  readonly squareRadius: number;
+  readonly squareFit: boolean;
+  readonly useGradient: boolean;
+  readonly gradientStops: { offset: number; color: string }[];
+  readonly patternPreset?: BarSquaresConfig["patternPreset"];
+  readonly animate: boolean;
+  readonly fadedOpacity: number;
+  readonly staggerDelay?: number;
+  readonly groupGap: number;
+}
+
+interface ResolvedBarColumnTrack {
+  readonly fill: string;
+  readonly opacity: number;
+  readonly squareGap: number;
+  readonly squareRadius: number;
+  readonly groupGap: number;
+  readonly squareFit: boolean;
+  readonly staggerDelay?: number;
+}
+
+interface ResolvedSquareDef {
+  readonly dataKey: string;
+  readonly gradientId: string;
+  readonly patternId: string | undefined;
+  readonly fill: string;
+  readonly gradientStops: readonly Readonly<{ offset: number; color: string }>[];
+  readonly patternPreset?: PatternPresetId;
+}
+
+// Bklit parity: legend dim is per-mark opacity, not programmatic focus (single-owner slot).
+const barLegendDimOpacity = (
+  legendHoveredKey: string | undefined,
+  dataKey: string,
+  fadedOpacity: number,
+): number | undefined => (legendHoveredKey !== undefined && legendHoveredKey !== dataKey ? fadedOpacity : undefined);
+
+interface BarAxisSectionParams {
+  readonly barXAxis: BarXAxisConfig | null;
+  readonly gridGuide: ReturnType<typeof resolveGridGuide>;
+  readonly marginBottom: number;
+  readonly categoryOrder: readonly string[];
+  readonly labelFade: Readonly<{ primaryX: number; hoveredLabel: string | null }> | undefined;
+}
+
+// Values/count are mutually exclusive on tick options (passing both throws).
+const buildBarAxisSection = ({
+  barXAxis,
+  gridGuide,
+  marginBottom,
+  categoryOrder,
+  labelFade,
+}: Readonly<BarAxisSectionParams>) => {
+  // Bar never drew y-axis labels; nothing may paint once the axes CSS gate lifts.
+  const yAxisOptions = hiddenAxisOptions(gridGuide.ticks);
+  const xAxisOptions = barXAxis
+    ? {
+        line: false as const,
+        tickLabels: {
+          dy: marginBottom - BAR_TICK_LABEL_DY_OFFSET_PX,
+          fontSize: 12,
+          // Label position tween returns via tickLabels.motion (native text has no CSS left/top).
+          motion: (ctx: Readonly<{ phase: ChartMotionPhase; datumCount: number; datumIndex: number }>): false | ChartMotionTiming | undefined =>
+            ctx.phase === "enter" ? false : { transition: { duration: 500, easing: bezierEasing, type: "tween" as const } },
+          opacity: labelFade
+            ? (ctx: { readonly position: number; readonly value: unknown }): number =>
+                tickLabelFadeOpacity(
+                  ctx.position,
+                  String(ctx.value),
+                  labelFade.primaryX,
+                  labelFade.hoveredLabel,
+                  barXAxis.tickerHalfWidth ?? TICKER_HALF_WIDTH,
+                  FADE_BUFFER,
+                )
+            : 1,
+          thin: false,
+        },
+        ticks: {
+          format: String,
+          padding: 0,
+          size: 0,
+          values: selectBarLabelIndices(
+            categoryOrder.length,
+            barXAxis.showAllLabels ?? false,
+            barXAxis.maxLabels ?? BAR_MAX_TICK_LABELS_DEFAULT,
+          ).map((i) => categoryOrder[i]),
+        },
+      }
+    : {
+        line: false as const,
+        tickLabels: false as const,
+        ticks: { count: gridGuide.columnTicks, size: 0 },
+      };
+  return { gridGuide, xAxisOptions, yAxisOptions };
+};
+
+interface BarCrosshairMarkParams {
+  readonly tooltip: ChartTooltipConfig | null | undefined;
+  readonly tooltipEnabled: boolean;
+  readonly discrete: boolean;
+  readonly tooltipSpring: Readonly<SpringConfig>;
+  readonly indicatorGradientId: string;
+}
+
+const buildBarCrosshairMark = ({
+  tooltip,
+  tooltipEnabled,
+  discrete,
+  tooltipSpring,
+  indicatorGradientId,
+}: Readonly<BarCrosshairMarkParams>): ChartMark<ChartDatum, string, number> | undefined => {
+  if (!tooltipEnabled || !(tooltip?.showCrosshair ?? true)) {return undefined;}
+  // Bklit parity quirk: function indicatorColor is never invoked (string form only).
+  const indicatorCfg = toIndicatorConfig(tooltip);
+  const isDashed = Boolean(indicatorCfg.dasharray);
+  const fadeSides = resolveVerticalFadeSides(isDashed ? "none" : (indicatorCfg.fadeEdges ?? "both"));
+  const indicatorColorValue = isString(indicatorCfg.color) ? indicatorCfg.color : "var(--chart-crosshair)";
+  const indicatorSpringCfg = indicatorCfg.springConfig ?? tooltipSpring;
+  // Native crosshair defaults strokeOpacity to 0.35; override to 1.
+  return buildIndicatorMark({
+    color: indicatorColorValue,
+    columnWidth: indicatorCfg.columnWidth,
+    dasharray: indicatorCfg.dasharray,
+    discrete,
+    gradientId: indicatorGradientId,
+    span: indicatorCfg.span,
+    spring: indicatorSpringCfg,
+    strokeOpacity: 1,
+    useGradient: !isDashed && fadeSides.any,
+    width: indicatorCfg.width,
+  });
+};
+
+interface BarDotMarkerConfig {
+  readonly isRing: boolean;
+  readonly radiusFraction: number;
+  readonly size: number;
+  readonly strokeWidth: number;
+}
+
+const resolveBarDotMarker = (dotCfg: ReturnType<typeof toDotConfig>): BarDotMarkerConfig => {
+  const variant = dotCfg.variant ?? "dot";
+  const isRing = variant === "ring";
+  const rawSize = dotCfg.size ?? DEFAULT_HOVER_DOT_SIZE;
+  return {
+    isRing,
+    radiusFraction: dotCfg.radiusFraction ?? DEFAULT_HOVER_DOT_RADIUS_FRACTION,
+    size: rawSize * (dotCfg.scale ?? 1),
+    strokeWidth: dotCfg.strokeWidth ?? (isRing ? DEFAULT_HOVER_DOT_RING_STROKE_WIDTH : 2),
+  };
+};
+
+interface BarDotHoverMarksParams {
+  readonly tooltip: ChartTooltipConfig | null | undefined;
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly projectValue: (dataKey: string, value: number) => number;
+  readonly groupScaleForOverlay: ScaleBand<string>;
+  readonly categoryScaleForOverlay: ScaleBand<string>;
+  readonly dotSeriesList: readonly Readonly<{ readonly dataKey: string; readonly color: string }>[];
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly tooltipSpring: Readonly<SpringConfig>;
+}
+
+const buildBarDotHoverMarks = ({
+  tooltip,
+  categoryAccessor,
+  projectValue,
+  groupScaleForOverlay,
+  categoryScaleForOverlay,
+  dotSeriesList,
+  renderData,
+  tooltipSpring,
+}: Readonly<BarDotHoverMarksParams>): ChartMark<ChartDatum, string, number>[] => {
+  // Bklit parity: ring-dot sizing is inert (bandWidth was never populated).
+  const dotCfg = toDotConfig(tooltip);
+  const dotMarker = resolveBarDotMarker(dotCfg);
+  const tooltipRowColors = tooltip?.rows?.({}).map((row: Readonly<TooltipRow>) => row.color);
+  const groupHalfWidth = groupScaleForOverlay.bandwidth() / 2;
+  const hoverMarks: ChartMark<ChartDatum, string, number>[] = [];
+  for (const [seriesIndex, series] of dotSeriesList.entries()) {
+    const groupOffsetX = groupScaleForOverlay(series.dataKey) ?? 0;
+    const fill = resolveBarDotColor({ seriesColor: series.color, seriesIndex, tooltip, tooltipRowColors });
+    hoverMarks.push(
+      whenFocused(
+        createBarHoverDotMark({
+          bandStartForCategory: (category) => categoryScaleForOverlay(category) ?? 0,
+          categoryAccessor,
+          dotMarker,
+          fill,
+          groupHalfWidth,
+          groupOffsetX,
+          projectValueForKey: (raw) => projectValue(series.dataKey, raw),
+          series,
+          source: renderData,
+          tooltipSpring,
+        }),
+        { match: "group", retarget: true },
+      ),
+    );
+  }
+  return hoverMarks;
+};
+
+interface BarHoverMarksParams {
+  readonly tooltip: ChartTooltipConfig | null | undefined;
+  readonly tooltipEnabled: boolean;
+  readonly discrete: boolean;
+  readonly tooltipSpring: Readonly<SpringConfig>;
+  readonly indicatorGradientId: string;
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly projectValue: (dataKey: string, value: number) => number;
+  readonly groupScaleForOverlay: ScaleBand<string>;
+  readonly categoryScaleForOverlay: ScaleBand<string>;
+  readonly dotSeriesList: readonly Readonly<{ readonly dataKey: string; readonly color: string }>[];
+  readonly renderData: readonly Readonly<ChartDatum>[];
+}
+
+const buildBarHoverMarks = ({
+  tooltip,
+  tooltipEnabled,
+  discrete,
+  tooltipSpring,
+  indicatorGradientId,
+  categoryAccessor,
+  projectValue,
+  groupScaleForOverlay,
+  categoryScaleForOverlay,
+  dotSeriesList,
+  renderData,
+}: Readonly<BarHoverMarksParams>): ChartMark<ChartDatum, string, number>[] => {
+  const hoverMarks: ChartMark<ChartDatum, string, number>[] = [];
+  const crosshair = buildBarCrosshairMark({ discrete, indicatorGradientId, tooltip, tooltipEnabled, tooltipSpring });
+  if (crosshair) {hoverMarks.push(crosshair);}
+  if (tooltipEnabled && (tooltip?.showDots ?? true)) {
+    hoverMarks.push(...buildBarDotHoverMarks({ categoryAccessor, categoryScaleForOverlay, dotSeriesList, groupScaleForOverlay, projectValue, renderData, tooltip, tooltipSpring }));
+  }
+  return hoverMarks;
+};
+
+interface GroupedBarMarkParams {
+  readonly series: ResolvedSeries;
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly groupScale: ScaleBand<string>;
+  readonly groupBandwidth: number;
+  readonly barEnterMotion: ChartMotionDefinition<ChartDatum>;
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly projectValue: (dataKey: string, value: number) => number;
+  readonly legendHoveredKey: string | undefined;
+}
+
+const buildGroupedBarMark = ({
+  series,
+  renderData,
+  groupScale,
+  groupBandwidth,
+  barEnterMotion,
+  categoryAccessor,
+  projectValue,
+  legendHoveredKey,
+}: Readonly<GroupedBarMarkParams>): ChartMark<ChartDatum, string, number> =>
+  barY(renderData, {
+    fill: series.fill,
+    fillOpacity: barLegendDimOpacity(legendHoveredKey, series.dataKey, series.fadedOpacity),
+    id: series.dataKey,
+    layout: group({ scale: groupScale }),
+    motion: barEnterMotion,
+    radius: resolveCornerRadius(series.lineCap, groupBandwidth),
+    states: barRowDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
+    x: (datum: Readonly<ChartDatum>) => categoryAccessor(datum),
+    y: (datum: Readonly<ChartDatum>) => projectValue(series.dataKey, numericBarCell(datum, series.dataKey)),
+    z: () => series.dataKey,
+  });
+
+interface TrimmedBarMarkParams {
+  readonly series: ResolvedSeries;
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly width: number;
+  readonly margin: ChartMargin;
+  readonly bandWidth: number;
+  readonly groupBandwidth: number;
+  readonly groupScale: ScaleBand<string>;
+  readonly categoryScaleForOverlay: ScaleBand<string>;
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly projectValue: (dataKey: string, value: number) => number;
+  readonly legendHoveredKey: string | undefined;
+}
+
+const buildTrimmedBarMark = ({
+  series,
+  renderData,
+  width,
+  margin,
+  bandWidth,
+  groupBandwidth,
+  groupScale,
+  categoryScaleForOverlay,
+  categoryAccessor,
+  projectValue,
+  legendHoveredKey,
+}: Readonly<TrimmedBarMarkParams>): ChartMark<ChartDatum, string, number> => {
+  const innerWidth = Math.max(0, width - margin.left - margin.right);
+  return barTrimmedMark(renderData, {
+    bandScale: categoryScaleForOverlay,
+    bandWidth,
+    categoryAccessor,
+    centerX: margin.left + innerWidth / 2,
+    chartX: margin.left,
+    data: renderData,
+    fill: series.fill,
+    groupBandwidth,
+    groupScale,
+    id: series.dataKey,
+    innerWidth,
+    maxDepth: 0,
+    // Bklit parity: perspective bars force cornerRadius 0 (flat-top lid meets face gap-free).
+    opacity: barLegendDimOpacity(legendHoveredKey, series.dataKey, series.fadedOpacity),
+    radius: 0,
+    states: barRowDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
+    yAccessor: (datum: Readonly<ChartDatum>) => projectValue(series.dataKey, numericBarCell(datum, series.dataKey)),
+  });
+};
+
+interface BarPlainMarksParams {
+  readonly resolvedSeries: readonly ResolvedSeries[];
+  readonly groupScale: ScaleBand<string>;
+  readonly groupBandwidth: number;
+  readonly barEnterMotion: ChartMotionDefinition<ChartDatum>;
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly projectValue: (dataKey: string, value: number) => number;
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly legendHoveredKey: string | undefined;
+}
+
+const buildBarPlainMarks = ({
+  resolvedSeries,
+  groupScale,
+  groupBandwidth,
+  barEnterMotion,
+  categoryAccessor,
+  projectValue,
+  renderData,
+  legendHoveredKey,
+}: Readonly<BarPlainMarksParams>): ChartMark<ChartDatum, string, number>[] => {
+  const marks: ChartMark<ChartDatum, string, number>[] = [];
+  for (const series of resolvedSeries) {
+    marks.push(
+      buildGroupedBarMark({ barEnterMotion, categoryAccessor, groupBandwidth, groupScale, legendHoveredKey, projectValue, renderData, series }),
+    );
+  }
+  return marks;
+};
+
+interface BarTrackMarksParams {
+  readonly tracks: readonly ResolvedBarColumnTrack[];
+  readonly allSeriesKeys: readonly string[];
+  readonly bandWidth: number;
+  readonly categoryScaleForOverlay: ScaleBand<string>;
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly projectValue: (dataKey: string, value: number) => number;
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly seriesCount: number;
+}
+
+// Column track paints beneath bars/squares (underlay order).
+const buildBarTrackMarks = ({
+  tracks,
+  allSeriesKeys,
+  bandWidth,
+  categoryScaleForOverlay,
+  categoryAccessor,
+  projectValue,
+  renderData,
+  seriesCount,
+}: Readonly<BarTrackMarksParams>): ChartMark<ChartDatum, string, number>[] => {
+  const marks: ChartMark<ChartDatum, string, number>[] = [];
+  const bandPos = (label: string): number => categoryScaleForOverlay(label) ?? 0;
+  for (let trackIndex = 0; trackIndex < tracks.length; trackIndex += 1) {
+    const track = tracks[trackIndex];
+    for (let seriesIndex = 0; seriesIndex < allSeriesKeys.length; seriesIndex += 1) {
+      const dataKey = allSeriesKeys[seriesIndex];
+      const trackId = `bar-column-track-${trackIndex}-${seriesIndex}`;
+      marks.push(
+        barColumnTrackMark(renderData, {
+          bandPos,
+          bandWidth,
+          categoryAccessor,
+          data: renderData,
+          fill: track.fill,
+          groupGap: track.groupGap,
+          id: trackId,
+          opacity: track.opacity,
+          seriesCount,
+          seriesIndex,
+          squareFit: track.squareFit,
+          squareGap: track.squareGap,
+          squareRadius: track.squareRadius,
+          states: BAR_TRACK_DIM_STATES,
+          yAccessor: (datum: Readonly<ChartDatum>) => projectValue(dataKey, numericBarCell(datum, dataKey)),
+        }),
+      );
+    }
+  }
+  return marks;
+};
+
+interface BarSquareMarksParams {
+  readonly squares: readonly ResolvedBarSquare[];
+  readonly allSeriesKeys: readonly string[];
+  readonly squaresDefsByKey: ReadonlyMap<string, ResolvedSquareDef>;
+  readonly squaresBaseId: string;
+  readonly bandWidth: number;
+  readonly categoryScaleForOverlay: ScaleBand<string>;
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly projectValue: (dataKey: string, value: number) => number;
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly seriesCount: number;
+  readonly legendHoveredKey: string | undefined;
+}
+
+const buildBarSquareMarks = ({
+  squares,
+  allSeriesKeys,
+  squaresDefsByKey,
+  squaresBaseId,
+  bandWidth,
+  categoryScaleForOverlay,
+  categoryAccessor,
+  projectValue,
+  renderData,
+  seriesCount,
+  legendHoveredKey,
+}: Readonly<BarSquareMarksParams>): ChartMark<ChartDatum, string, number>[] => {
+  const marks: ChartMark<ChartDatum, string, number>[] = [];
+  const bandPos = (label: string): number => categoryScaleForOverlay(label) ?? 0;
+  for (let squaresIndex = 0; squaresIndex < squares.length; squaresIndex += 1) {
+    const square = squares[squaresIndex];
+    const seriesIndex = allSeriesKeys.indexOf(square.dataKey);
+    const def = squaresDefsByKey.get(square.dataKey);
+    const gradientId = def?.gradientId ?? `${squaresBaseId}-bar-squares-gradient-${squaresIndex}`;
+    const patternId = def?.patternId ?? `${squaresBaseId}-bar-squares-pattern-${squaresIndex}`;
+    marks.push(
+      barSquaresMark(renderData, {
+        bandPos,
+        bandWidth,
+        categoryAccessor,
+        data: renderData,
+        fill: def ? def.fill : square.fill,
+        gradientId,
+        gradientStops: square.gradientStops,
+        groupGap: square.groupGap,
+        id: square.dataKey,
+        opacity: barLegendDimOpacity(legendHoveredKey, square.dataKey, square.fadedOpacity),
+        patternId,
+        patternPreset: square.patternPreset,
+        seriesCount,
+        seriesIndex: seriesIndex === -1 ? squaresIndex : seriesIndex,
+        squareFit: square.squareFit,
+        squareGap: square.squareGap,
+        squareRadius: square.squareRadius,
+        states: barRowDimStates(square.fadedOpacity, BAR_SQUARES_DIM_TRANSITION),
+        useGradient: square.useGradient,
+        yAccessor: (datum: Readonly<ChartDatum>) => projectValue(square.dataKey, numericBarCell(datum, square.dataKey)),
+      }),
+    );
+  }
+  return marks;
+};
+
+interface BarDepthBackMarksParams {
+  readonly backs: readonly Readonly<BarDepthBackConfig>[];
+  readonly resolvedSeries: readonly ResolvedSeries[];
+  readonly bandWidth: number;
+  readonly categoryScaleForOverlay: ScaleBand<string>;
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly projectValue: (dataKey: string, value: number) => number;
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly depthGradientIds: BarDepthGradientIds;
+  readonly depthLegendOpacity: number | undefined;
+}
+
+const buildBarDepthBackMarks = ({
+  backs,
+  resolvedSeries,
+  bandWidth,
+  categoryScaleForOverlay,
+  categoryAccessor,
+  projectValue,
+  renderData,
+  depthGradientIds,
+  depthLegendOpacity,
+}: Readonly<BarDepthBackMarksParams>): ChartMark<ChartDatum, string, number>[] => {
+  const marks: ChartMark<ChartDatum, string, number>[] = [];
+  const bandPos = (label: string): number => categoryScaleForOverlay(label) ?? 0;
+  const seriesByDataKey = new Map(resolvedSeries.map((series) => [series.dataKey, series] as const));
+  for (const back of backs) {
+    const series = seriesByDataKey.get(back.dataKey);
+    if (series) {
+      marks.push(
+        barDepthBackMark(renderData, {
+          bandPos,
+          bandScale: categoryScaleForOverlay,
+          bandWidth,
+          categoryAccessor,
+          data: renderData,
+          fill: back.color ?? series.fill,
+          gradientIds: depthGradientIds,
+          id: `bar-depth-back-${back.dataKey}`,
+          opacity: depthLegendOpacity,
+          states: barDepthDimStates(),
+          yAccessor: (datum: Readonly<ChartDatum>) => projectValue(back.dataKey, numericBarCell(datum, back.dataKey)),
+        }),
+      );
+    }
+  }
+  return marks;
+};
+
+interface BarSeriesMarksParams {
+  readonly resolvedSeries: readonly ResolvedSeries[];
+  readonly squaresKeys: ReadonlySet<string>;
+  readonly depthKeys: ReadonlySet<string>;
+  readonly width: number;
+  readonly margin: ChartMargin;
+  readonly bandWidth: number;
+  readonly groupBandwidth: number;
+  readonly groupScale: ScaleBand<string>;
+  readonly categoryScaleForOverlay: ScaleBand<string>;
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly projectValue: (dataKey: string, value: number) => number;
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly barEnterMotion: ChartMotionDefinition<ChartDatum>;
+  readonly legendHoveredKey: string | undefined;
+}
+
+const buildBarSeriesMarks = ({
+  resolvedSeries,
+  squaresKeys,
+  depthKeys,
+  width,
+  margin,
+  bandWidth,
+  groupBandwidth,
+  groupScale,
+  categoryScaleForOverlay,
+  categoryAccessor,
+  projectValue,
+  renderData,
+  barEnterMotion,
+  legendHoveredKey,
+}: Readonly<BarSeriesMarksParams>): ChartMark<ChartDatum, string, number>[] => {
+  const marks: ChartMark<ChartDatum, string, number>[] = [];
+  const needsTrim = (dataKey: string): boolean => depthKeys.has(dataKey);
+  for (const series of resolvedSeries) {
+    if (squaresKeys.has(series.dataKey)) {
+      // Squares-owned series render through the squares mark above; skipped here.
+    } else if (needsTrim(series.dataKey)) {
+      marks.push(
+        buildTrimmedBarMark({ bandWidth, categoryAccessor, categoryScaleForOverlay, groupBandwidth, groupScale, legendHoveredKey, margin, projectValue, renderData, series, width }),
+      );
+    } else {
+      marks.push(
+        buildGroupedBarMark({ barEnterMotion, categoryAccessor, groupBandwidth, groupScale, legendHoveredKey, projectValue, renderData, series }),
+      );
+    }
+  }
+  return marks;
+};
+
+interface BarDepthFrontMarksParams {
+  readonly fronts: readonly Readonly<BarDepthFrontConfig>[];
+  readonly pulses: readonly Readonly<BarPulseConfig>[];
+  readonly bandWidth: number;
+  readonly categoryScaleForOverlay: ScaleBand<string>;
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly projectValue: (dataKey: string, value: number) => number;
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly depthGradientIds: BarDepthGradientIds;
+  readonly depthLegendOpacity: number | undefined;
+  readonly pulseWaveGradientId: string;
+}
+
+const buildBarDepthFrontMarks = ({
+  fronts,
+  pulses,
+  bandWidth,
+  categoryScaleForOverlay,
+  categoryAccessor,
+  projectValue,
+  renderData,
+  depthGradientIds,
+  depthLegendOpacity,
+  pulseWaveGradientId,
+}: Readonly<BarDepthFrontMarksParams>): ChartMark<ChartDatum, string, number>[] => {
+  const marks: ChartMark<ChartDatum, string, number>[] = [];
+  const bandPos = (label: string): number => categoryScaleForOverlay(label) ?? 0;
+  for (const front of fronts) {
+    marks.push(
+      barDepthFrontMark(renderData, {
+        bandPos,
+        bandScale: categoryScaleForOverlay,
+        bandWidth,
+        categoryAccessor,
+        data: renderData,
+        gradientIds: depthGradientIds,
+        id: `bar-depth-front-${front.dataKey}`,
+        opacity: depthLegendOpacity,
+        states: barDepthDimStates(),
+        yAccessor: (datum: Readonly<ChartDatum>) => projectValue(front.dataKey, numericBarCell(datum, front.dataKey)),
+      }),
+    );
+  }
+  for (const pulse of pulses) {
+    const pulseMark = barPulseMark(renderData, {
+      activeIndex: pulse.activeIndex,
+      bandPos,
+      bandScale: categoryScaleForOverlay,
+      bandWidth,
+      categoryAccessor,
+      data: renderData,
+      gradientId: pulseWaveGradientId,
+      id: `bar-pulse-${pulse.dataKey}`,
+      pulsePaused: pulse.pulsePaused,
+      yAccessor: (datum: Readonly<ChartDatum>) => projectValue(pulse.dataKey, numericBarCell(datum, pulse.dataKey)),
+    });
+    if (pulseMark) {marks.push(pulseMark);}
+  }
+  return marks;
+};
+
+interface BarTooltipOptionParams {
+  readonly renderDataLength: number;
+  readonly tooltipEnabled: boolean;
+}
+
+const buildBarTooltipOption = ({ renderDataLength, tooltipEnabled }: Readonly<BarTooltipOptionParams>): ReturnType<typeof buildNativeTooltipExtension<ChartDatum, string, number>> =>
+  buildNativeTooltipExtension<ChartDatum, string, number>({
+    anchorX: "group-center",
+    className: "bkm-native-tooltip",
+    discrete: renderDataLength > DISCRETE_INTERACTION_THRESHOLD,
+    enabled: tooltipEnabled,
+    offset: BOX_OFFSET,
+    spring: TOOLTIP_BOX_SPRING,
+  });
+
+interface BarUnderlayMarksParams extends BarTrackMarksParams, BarSquareMarksParams, BarDepthBackMarksParams {
+  readonly hasTrack: boolean;
+  readonly hasSquares: boolean;
+  readonly hasDepth: boolean;
+}
+
+// Track/squares/depth-back all paint beneath the bars (underlay order).
+const buildBarUnderlayMarks = ({
+  hasTrack,
+  hasSquares,
+  hasDepth,
+  tracks,
+  allSeriesKeys,
+  bandWidth,
+  categoryScaleForOverlay,
+  categoryAccessor,
+  projectValue,
+  renderData,
+  seriesCount,
+  squares,
+  squaresDefsByKey,
+  squaresBaseId,
+  legendHoveredKey,
+  backs,
+  resolvedSeries,
+  depthGradientIds,
+  depthLegendOpacity,
+}: Readonly<BarUnderlayMarksParams>): ChartMark<ChartDatum, string, number>[] => {
+  const marks: ChartMark<ChartDatum, string, number>[] = [];
+  if (hasTrack) {
+    marks.push(...buildBarTrackMarks({ allSeriesKeys, bandWidth, categoryAccessor, categoryScaleForOverlay, projectValue, renderData, seriesCount, tracks }));
+  }
+  if (hasSquares) {
+    marks.push(...buildBarSquareMarks({ allSeriesKeys, bandWidth, categoryAccessor, categoryScaleForOverlay, legendHoveredKey, projectValue, renderData, seriesCount, squares, squaresBaseId, squaresDefsByKey }));
+  }
+  if (hasDepth) {
+    marks.push(...buildBarDepthBackMarks({ backs, bandWidth, categoryAccessor, categoryScaleForOverlay, depthGradientIds, depthLegendOpacity, projectValue, renderData, resolvedSeries }));
+  }
+  return marks;
+};
+
+interface BarSpecCommonParams {
+  readonly margin: ChartMargin;
+  readonly gridGuide: ReturnType<typeof resolveGridGuide>;
+  readonly xAxisOptions: ReturnType<typeof buildBarAxisSection>["xAxisOptions"];
+  readonly yAxisOptions: ReturnType<typeof buildBarAxisSection>["yAxisOptions"];
+  readonly xScaleFactory: () => ScaleBand<string>;
+  readonly yScale: ReturnType<typeof createNicedYScale>;
+  readonly barFocusStrategy: ChartFocusStrategy<ChartDatum, string, number>;
+  readonly tooltipOption: ReturnType<typeof buildBarTooltipOption>;
+}
+
+interface BarPlainDefinitionParams extends BarPlainMarksParams, Omit<BarSpecCommonParams, "tooltipOption"> {
+  readonly hoverMarks: readonly ChartMark<ChartDatum, string, number>[];
+  readonly tooltipEnabled: boolean;
+}
+
+const buildPlainBarDefinition = ({
+  resolvedSeries,
+  groupScale,
+  groupBandwidth,
+  barEnterMotion,
+  categoryAccessor,
+  projectValue,
+  renderData,
+  legendHoveredKey,
+  hoverMarks,
+  margin,
+  gridGuide,
+  xAxisOptions,
+  yAxisOptions,
+  xScaleFactory,
+  yScale,
+  barFocusStrategy,
+  tooltipEnabled,
+}: Readonly<BarPlainDefinitionParams>): DomChartDefinition<ChartDatum, string, number> => {
+  const marks = buildBarPlainMarks({ barEnterMotion, categoryAccessor, groupBandwidth, groupScale, legendHoveredKey, projectValue, renderData, resolvedSeries });
+  marks.push(...hoverMarks);
+  const tooltipOption = buildBarTooltipOption({ renderDataLength: renderData.length, tooltipEnabled });
+  const spec = {
+    margin,
+    marks,
+    // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.
+    scales: {
+      x: { axis: xAxisOptions, grid: gridGuide.vertical, scale: xScaleFactory },
+      y: {
+        axis: yAxisOptions,
+        grid: gridGuide.horizontal,
+        scale: yScale,
+      },
+    },
+    svgAnimation: false as const,
+    theme: { muted: "var(--color-chart-label, var(--chart-label))" },
+  } as const;
+  return defineChart(defineChart(spec), { focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY, tooltip: tooltipOption });
+};
+
+interface BarFullMarksParams {
+  readonly allSeriesKeys: readonly string[];
+  readonly margin: ChartMargin;
+  readonly resolvedSeries: readonly ResolvedSeries[];
+  readonly resolvedBarSquares: readonly ResolvedBarSquare[];
+  readonly barDepthBacksRaw: readonly Readonly<BarDepthBackConfig>[];
+  readonly barDepthFrontsRaw: readonly Readonly<BarDepthFrontConfig>[];
+  readonly barPulsesRaw: readonly Readonly<BarPulseConfig>[];
+  readonly hasSquares: boolean;
+  readonly hasTrack: boolean;
+  readonly hasDepth: boolean;
+  readonly totalSeriesCount: number;
+  readonly bandWidth: number;
+  readonly width: number;
+  readonly groupBandwidth: number;
+  readonly groupScale: ScaleBand<string>;
+  readonly categoryScaleForOverlay: ScaleBand<string>;
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly projectValue: (dataKey: string, value: number) => number;
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly barEnterMotion: ChartMotionDefinition<ChartDatum>;
+  readonly legendHoveredKey: string | undefined;
+  readonly depthLegendOpacity: number | undefined;
+  readonly hoverMarks: readonly ChartMark<ChartDatum, string, number>[];
+  readonly resolvedBarColumnTracks: readonly ResolvedBarColumnTrack[];
+  readonly squaresDefsByKey: ReadonlyMap<string, ResolvedSquareDef>;
+  readonly squaresBaseId: string;
+  readonly depthGradientIds: BarDepthGradientIds;
+  readonly nativeDepthGradients: readonly BuiltDepthGradient[];
+  readonly pulseWaveGradientId: string;
+  readonly tooltipEnabled: boolean;
+}
+
+interface BarFullDefinitionParams extends BarFullMarksParams, Omit<BarSpecCommonParams, "tooltipOption"> {}
+
+const buildFullBarMarks = (params: Readonly<BarFullMarksParams>): ChartMark<ChartDatum, string, number>[] => {
+  const marks = buildBarUnderlayMarks({
+    allSeriesKeys: params.allSeriesKeys,
+    backs: params.barDepthBacksRaw,
+    bandWidth: params.bandWidth,
+    categoryAccessor: params.categoryAccessor,
+    categoryScaleForOverlay: params.categoryScaleForOverlay,
+    depthGradientIds: params.depthGradientIds,
+    depthLegendOpacity: params.depthLegendOpacity,
+    hasDepth: params.hasDepth,
+    hasSquares: params.hasSquares,
+    hasTrack: params.hasTrack,
+    legendHoveredKey: params.legendHoveredKey,
+    projectValue: params.projectValue,
+    renderData: params.renderData,
+    resolvedSeries: params.resolvedSeries,
+    seriesCount: params.totalSeriesCount,
+    squares: params.resolvedBarSquares,
+    squaresBaseId: params.squaresBaseId,
+    squaresDefsByKey: params.squaresDefsByKey,
+    tracks: params.resolvedBarColumnTracks,
+  });
+  const squaresKeys = new Set(params.resolvedBarSquares.map((square) => square.dataKey));
+  const depthKeys = params.hasDepth ? new Set([...params.barDepthBacksRaw.map((back) => back.dataKey), ...params.barDepthFrontsRaw.map((front) => front.dataKey)]) : new Set<string>();
+  marks.push(...buildBarSeriesMarks({ bandWidth: params.bandWidth, barEnterMotion: params.barEnterMotion, categoryAccessor: params.categoryAccessor, categoryScaleForOverlay: params.categoryScaleForOverlay, depthKeys, groupBandwidth: params.groupBandwidth, groupScale: params.groupScale, legendHoveredKey: params.legendHoveredKey, margin: params.margin, projectValue: params.projectValue, renderData: params.renderData, resolvedSeries: params.resolvedSeries, squaresKeys, width: params.width }));
+  if (params.hasDepth) {
+    marks.push(...buildBarDepthFrontMarks({ bandWidth: params.bandWidth, categoryAccessor: params.categoryAccessor, categoryScaleForOverlay: params.categoryScaleForOverlay, depthGradientIds: params.depthGradientIds, depthLegendOpacity: params.depthLegendOpacity, fronts: params.barDepthFrontsRaw, projectValue: params.projectValue, pulseWaveGradientId: params.pulseWaveGradientId, pulses: params.barPulsesRaw, renderData: params.renderData }));
+  }
+  marks.push(...params.hoverMarks);
+  return marks;
+};
+
+const buildFullBarDefinition = (params: Readonly<BarFullDefinitionParams>): DomChartDefinition<ChartDatum, string, number> => {
+  const marks = buildFullBarMarks(params);
+  const tooltipOption = buildBarTooltipOption({ renderDataLength: params.renderData.length, tooltipEnabled: params.tooltipEnabled });
+  const spec = {
+    gradients: params.nativeDepthGradients,
+    margin: params.margin,
+    marks,
+    // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.
+    scales: {
+      x: { axis: params.xAxisOptions, grid: params.gridGuide.vertical, scale: params.xScaleFactory },
+      y: {
+        axis: params.yAxisOptions,
+        grid: params.gridGuide.horizontal,
+        scale: params.yScale,
+      },
+    },
+    svgAnimation: false as const,
+    theme: { muted: "var(--color-chart-label, var(--chart-label))" },
+  } as const;
+  return defineChart(defineChart(spec), { focus: params.barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY, tooltip: tooltipOption });
+};
+
+// Plain-vs-full dispatch: bare bars take the short path; tracks/squares/depth use the full spec.
+const buildBarDefinition = (
+  params: Readonly<BarFullDefinitionParams>,
+): DomChartDefinition<ChartDatum, string, number> => {
+  if (!params.hasSquares && !params.hasTrack && !params.hasDepth) {
+    return buildPlainBarDefinition(params);
+  }
+  return buildFullBarDefinition(params);
+};
+
+interface SyncDatePillParams {
+  readonly pillBuild: PillBuild | null;
+  readonly showDatePill: boolean;
+  readonly dateLabels: readonly string[] | undefined;
+  readonly categoryIndex: number;
+  readonly categoryLabel: string;
+  readonly anchorX: number;
+  readonly discrete: boolean;
+  readonly showing: boolean;
+}
+
+const syncDatePillForCategory = ({
+  pillBuild,
+  showDatePill,
+  dateLabels,
+  categoryIndex,
+  categoryLabel,
+  anchorX,
+  discrete,
+  showing,
+}: Readonly<SyncDatePillParams>): void => {
+  if (!pillBuild) {return;}
+  if (!showDatePill) {
+    pillBuild.layer.style.display = "none";
+    return;
+  }
+  updateDatePillContent({ anchorX, categoryIndex, categoryLabel, dateLabels, discrete, pillBuild, showing });
+};
+
+const getBarTooltipValue = (point: Readonly<ChartPoint<ChartDatum, string, number>>): number => {
+  const raw: unknown = point.datum[point.markId];
+  return isNumber(raw) ? raw : (point.yValue);
+};
+
+interface CustomBarTooltipContentParams {
+  readonly content: (props: { readonly point: Readonly<ChartTooltipPoint>; readonly index: number }) => ReactNode;
+  readonly categoryIndex: number;
+  readonly categoryLabel: string;
+  readonly points: readonly Readonly<ChartPoint<ChartDatum, string, number>>[];
+  readonly panelClassName: string;
+  readonly panelStyle: CSSProperties | undefined;
+}
+
+const renderCustomBarTooltipContent = ({
+  content,
+  categoryIndex,
+  categoryLabel,
+  points,
+  panelClassName,
+  panelStyle,
+}: Readonly<CustomBarTooltipContentParams>): ReactNode => {
+  const pointRec: ChartTooltipPoint = { label: categoryLabel };
+  for (const point of points) {pointRec[point.markId] = getBarTooltipValue(point);}
+  return (
+    <div className={panelClassName} style={panelStyle}>
+      {content({ index: categoryIndex, point: pointRec })}
+    </div>
+  );
+};
+
+interface DefaultBarTooltipContentParams {
+  readonly tooltip: ChartTooltipConfig | undefined;
+  readonly points: readonly Readonly<ChartPoint<ChartDatum, string, number>>[];
+  readonly pointByMark: ReadonlyMap<string, Readonly<ChartPoint<ChartDatum, string, number>>>;
+  readonly seriesList: readonly Readonly<{ dataKey: string; color: string }>[];
+  readonly categoryLabel: string;
+  readonly panelClassName: string;
+  readonly panelStyle: CSSProperties | undefined;
+}
+
+interface BarTooltipRowsParams {
+  readonly tooltip: ChartTooltipConfig | undefined;
+  readonly pointRec: Readonly<ChartTooltipPoint>;
+  readonly pointByMark: ReadonlyMap<string, Readonly<ChartPoint<ChartDatum, string, number>>>;
+  readonly seriesList: readonly Readonly<{ dataKey: string; color: string }>[];
+}
+
+const buildBarTooltipRows = ({
+  tooltip: tt,
+  pointRec,
+  pointByMark,
+  seriesList,
+}: Readonly<BarTooltipRowsParams>): TooltipRow[] =>
+  tt?.rows
+    ? tt.rows(pointRec)
+    : seriesList.map((series) => {
+      const point = pointByMark.get(series.dataKey);
+      const pointColor = point?.color;
+      return { color: series.color || (pointColor !== undefined && pointColor !== "" ? pointColor : "transparent"), label: series.dataKey, value: point ? getBarTooltipValue(point) : 0 };
+    });
+
+const renderDefaultBarTooltipContent = ({
+  tooltip: tt,
+  points,
+  pointByMark,
+  seriesList,
+  categoryLabel,
+  panelClassName,
+  panelStyle,
+}: Readonly<DefaultBarTooltipContentParams>): ReactNode => {
+  const pointRec: ChartTooltipPoint = { label: categoryLabel };
+  for (const point of points) {pointRec[point.markId] = getBarTooltipValue(point);}
+  const rows = buildBarTooltipRows({ pointByMark, pointRec, seriesList, tooltip: tt });
+  return (
+    <div className={panelClassName} style={panelStyle}>
+      <TooltipContent title={categoryLabel} rows={rows}>
+        {tt?.children}
+      </TooltipContent>
+    </div>
+  );
+};
+
+interface BarTooltipBodyParams {
+  readonly state: BarChromeState | null;
+  readonly points: readonly Readonly<ChartPoint<ChartDatum, string, number>>[];
+  readonly categoryIndexByLabel: ReadonlyMap<string, number>;
+}
+
+const resolveBarTooltipBody = ({
+  state,
+  points,
+  categoryIndexByLabel,
+}: Readonly<BarTooltipBodyParams>): ReactNode => {
+  if (points.length === 0) {return undefined;}
+  const tt = state?.tooltip ?? undefined;
+  const categoryLabel = points[0].xValue;
+  const categoryIndex = categoryIndexByLabel.get(categoryLabel) ?? 0;
+  const pointByMark = new Map(points.map((point: Readonly<ChartPoint<ChartDatum, string, number>>) => [point.markId, point]));
+  const { panelClassName, panelStyle } = resolveBarTooltipPanel({ tooltip: tt });
+  if (tt?.content) {
+    return renderCustomBarTooltipContent({ categoryIndex, categoryLabel, content: tt.content, panelClassName, panelStyle, points });
+  }
+  return renderDefaultBarTooltipContent({ categoryLabel, panelClassName, panelStyle, pointByMark, points, seriesList: state?.series ?? [], tooltip: tt });
+};
+
+interface SettleBarRevealParams {
+  readonly svgRoot: SVGSVGElement;
+  readonly marksGroup: SVGGElement;
+  readonly phaseRef: { current: ChartPhase };
+  readonly revealedKeyRef: { current: string | null };
+  readonly revealKeyRef: { current: string };
+  readonly revealedForDataRef: { current: unknown };
+  readonly latestRenderDataRef: { current: unknown };
+}
+
+// Settles already-revealed state: replay keys and latched DOM stamps need no new reveal.
+// Returns true when settled, false when the caller must begin a fresh reveal.
+const settleBarRevealState = ({
+  svgRoot,
+  marksGroup,
+  phaseRef,
+  revealedKeyRef,
+  revealKeyRef,
+  revealedForDataRef,
+  latestRenderDataRef,
+}: Readonly<SettleBarRevealParams>): boolean => {
+  // Test the replay key before the DOM stamp (a latched stamp would swallow signature bumps).
+  if (syncBarPulseIfRevealed({ isReadyPhase: phaseRef.current === "ready", marksGroup, revealKeyChanged: revealedKeyRef.current !== revealKeyRef.current, svgRoot })) {
+    return true;
+  }
+  syncBarPulseGroups(svgRoot, false);
+  if (revealedForDataRef.current === latestRenderDataRef.current && revealedKeyRef.current === revealKeyRef.current) {
+    markRevealed(marksGroup);
+    syncBarPulseGroups(svgRoot, phaseRef.current === "ready");
+    return true;
+  }
+  return false;
+};
+
+interface BarSvgRenderParams {
+  readonly svgRoot: SVGSVGElement;
+  readonly animationDuration: number;
+  readonly phaseRef: { current: ChartPhase };
+  readonly revealedKeyRef: { current: string | null };
+  readonly revealKeyRef: { current: string };
+  readonly revealedForDataRef: { current: unknown };
+  readonly latestRenderDataRef: { current: unknown };
+  readonly renderDataLength: number;
+  readonly revealDurationMs: number;
+  readonly revealDeadlineTimerRef: { current: number | null };
+  readonly setPhase: (phase: ChartPhase) => void;
+}
+
+// HandleRender only tracks phase and syncs BarPulse; native motion owns the reveal.
+// Reveal end is timer-approximated: native motion exposes no per-mark completion hook.
+const handleBarSvgRender = ({
+  svgRoot,
+  animationDuration,
+  phaseRef,
+  revealedKeyRef,
+  revealKeyRef,
+  revealedForDataRef,
+  latestRenderDataRef,
+  renderDataLength,
+  revealDurationMs,
+  revealDeadlineTimerRef,
+  setPhase,
+}: Readonly<BarSvgRenderParams>): void => {
+  const marksGroup = svgRoot.querySelector<SVGGElement>(".ts-chart__marks");
+  if (!marksGroup || animationDuration <= 0) {
+    setPhase("ready");
+    syncBarPulseGroups(svgRoot, true);
+    return;
+  }
+  if (settleBarRevealState({ latestRenderDataRef, marksGroup, phaseRef, revealKeyRef, revealedForDataRef, revealedKeyRef, svgRoot })) {
+    return;
+  }
+  beginBarReveal({
+    currentRevealKey: revealKeyRef.current,
+    latestRenderData: latestRenderDataRef.current,
+    marksGroup,
+    renderDataLength,
+    revealDeadlineTimerRef,
+    revealDurationMs,
+    revealKeyRef,
+    revealedForDataRef,
+    setPhase,
+    svgRoot,
+  });
+};
+
 const BarChart = ({
   data,
   xDataKey = "name",
@@ -848,7 +2221,7 @@ const BarChart = ({
   const hasBarSquares = barSquaresRaw.length > 0;
   const hasBarColumnTrack = barColumnTracksRaw.length > 0;
 
-  const resolvedBarSquares = useMemo<readonly Readonly<(Required<Pick<BarSquaresConfig, "dataKey">> & Omit<BarSquaresConfig, "dataKey"> & { fill: string; squareGap: number; squareRadius: number; squareFit: boolean; useGradient: boolean; gradientStops: { offset: number; color: string }[]; fadedOpacity: number; groupGap: number; animate: boolean })>[] >(() => {
+  const resolvedBarSquares = useMemo<readonly ResolvedBarSquare[]>(() => {
     if (!hasBarSquares) {return [];}
     return barSquaresRaw.map((square: Readonly<BarSquaresConfig>) => ({
       animate: square.animate ?? true,
@@ -868,7 +2241,7 @@ const BarChart = ({
     }));
   }, [barSquaresRaw, hasBarSquares]);
 
-  const resolvedBarColumnTracks = useMemo<readonly Readonly<(Required<Pick<BarColumnTrackConfig, "fill">> & BarColumnTrackConfig & { opacity: number; squareGap: number; squareRadius: number; groupGap: number; squareFit: boolean })>[] >(() => {
+  const resolvedBarColumnTracks = useMemo<readonly ResolvedBarColumnTrack[]>(() => {
     if (!hasBarColumnTrack) {return [];}
     return barColumnTracksRaw.map((track: Readonly<BarColumnTrackConfig>) => ({
       fill: track.fill ?? "var(--chart-grid)",
@@ -1047,7 +2420,7 @@ const BarChart = ({
   // UserSpaceOnUse required: the crosshair is a zero-bbox line with nothing to map onto.
   const indicatorGradientId = useSanitizedId();
   const squaresBaseId = useSanitizedId();
-  const squaresDefs = useMemo<readonly Readonly<{ dataKey: string; gradientId: string; patternId: string | undefined; fill: string; gradientStops: readonly Readonly<{ offset: number; color: string }>[]; patternPreset?: PatternPresetId }>[]>(() => {
+  const squaresDefs = useMemo<readonly ResolvedSquareDef[]>(() => {
     if (!barSquaresEnabled) {return [];}
     const out: { dataKey: string; gradientId: string; patternId: string | undefined; fill: string; gradientStops: { offset: number; color: string }[]; patternPreset?: PatternPresetId }[] = [];
     for (let i = 0; i < resolvedBarSquares.length; i += 1) {
@@ -1083,77 +2456,7 @@ const BarChart = ({
   const pulseWaveStops = useMemo(() => buildPulseWaveStops(), []);
 
   const nativeDepthGradients = useMemo(
-    () => [
-      {
-        id: depthGradientIds.glassPosId,
-        stops: depthGlassPosStops.map((stop: Readonly<GlassGradientStop>) => ({
-          color: stop.color,
-          offset: Number.parseFloat(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
-          opacity: Number(stop.opacity),
-        })),
-        x1: 0,
-        x2: 0,
-        y1: 0,
-        y2: 1,
-      },
-      {
-        id: depthGradientIds.glassNegId,
-        stops: depthGlassNegStops.map((stop: Readonly<GlassGradientStop>) => ({
-          color: stop.color,
-          offset: Number.parseFloat(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
-          opacity: Number(stop.opacity),
-        })),
-        x1: 0,
-        x2: 0,
-        y1: 0,
-        y2: 1,
-      },
-      {
-        id: depthGradientIds.sideShadeRtlId,
-        stops: [
-          { color: "black", offset: 0, opacity: 0.05 },
-          { color: "black", offset: 1, opacity: 0.55 },
-        ],
-        x1: 1,
-        x2: 0,
-        y1: 0,
-        y2: 1,
-      },
-      {
-        id: depthGradientIds.sideShadeLtrId,
-        stops: [
-          { color: "black", offset: 0, opacity: 0.05 },
-          { color: "black", offset: 1, opacity: 0.55 },
-        ],
-        x1: 0,
-        x2: 1,
-        y1: 0,
-        y2: 1,
-      },
-      {
-        id: depthGradientIds.topShadeId,
-        stops: [
-          { color: "black", offset: 0, opacity: 0 },
-          { color: "black", offset: 1, opacity: 0.18 },
-        ],
-        x1: 0,
-        x2: 0,
-        y1: 1,
-        y2: 0,
-      },
-      {
-        id: pulseWaveGradientId,
-        stops: pulseWaveStops.map((stop: Readonly<PulseWaveGradientStop>) => ({
-          color: stop.color,
-          offset: Number.parseFloat(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
-          opacity: Number(stop.opacity),
-        })),
-        x1: 0,
-        x2: 0,
-        y1: 1,
-        y2: 0,
-      },
-    ],
+    () => buildNativeDepthGradients({ depthGlassNegStops, depthGlassPosStops, depthGradientIds, pulseWaveGradientId, pulseWaveStops }),
     [depthGradientIds, depthGlassPosStops, depthGlassNegStops, pulseWaveStops, pulseWaveGradientId],
   );
 
@@ -1161,395 +2464,115 @@ const BarChart = ({
 
   const [labelFade, setLabelFade] = useState<Readonly<{ primaryX: number; hoveredLabel: string | null }> | undefined>();
 
+  const gridGuide = useMemo(() => resolveGridGuide(grid), [grid]);
+
+  const axisSection = useMemo(
+    () => buildBarAxisSection({ barXAxis, categoryOrder, gridGuide, labelFade, marginBottom: margin.bottom }),
+    [barXAxis, categoryOrder, gridGuide, labelFade, margin.bottom],
+  );
+
+  const hoverMarks = useMemo(
+    () =>
+      buildBarHoverMarks({
+        categoryAccessor,
+        categoryScaleForOverlay,
+        // Dense data snaps instead of springing (bklit threshold, strict >).
+        discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
+        dotSeriesList,
+        groupScaleForOverlay,
+        indicatorGradientId,
+        projectValue,
+        renderData,
+        tooltip,
+        tooltipEnabled,
+        tooltipSpring: chartConfig.tooltipSpring,
+      }),
+    [categoryAccessor, categoryScaleForOverlay, chartConfig, dotSeriesList, groupScaleForOverlay, indicatorGradientId, projectValue, renderData, tooltip, tooltipEnabled],
+  );
+
   const definition = useMemo((): DomChartDefinition<ChartDatum, string, number> | undefined => {
     if (width <= 0 || (resolvedSeries.length === 0 && resolvedBarSquares.length === 0)) {return undefined;}
-    const gridGuide = resolveGridGuide(grid);
     const hasSquares = barSquaresEnabled;
     const hasTrack = barColumnTrackEnabled;
     const hasDepth = barDepthEnabled;
 
-    // Values/count are mutually exclusive on tick options (passing both throws).
-    const xAxisOptions = barXAxis
-      ? {
-          line: false as const,
-          tickLabels: {
-            dy: margin.bottom - BAR_TICK_LABEL_DY_OFFSET_PX,
-            fontSize: 12,
-            // Label position tween returns via tickLabels.motion (native text has no CSS left/top).
-            motion: (ctx: Readonly<{ phase: ChartMotionPhase; datumCount: number; datumIndex: number }>): false | ChartMotionTiming | undefined =>
-              ctx.phase === "enter" ? false : { transition: { duration: 500, easing: bezierEasing, type: "tween" as const } },
-            opacity: labelFade
-              ? (ctx: { readonly position: number; readonly value: unknown }): number =>
-                  tickLabelFadeOpacity(
-                    ctx.position,
-                    String(ctx.value),
-                    labelFade.primaryX,
-                    labelFade.hoveredLabel,
-                    barXAxis.tickerHalfWidth ?? TICKER_HALF_WIDTH,
-                    FADE_BUFFER,
-                  )
-              : 1,
-            thin: false,
-          },
-          ticks: {
-            format: String,
-            padding: 0,
-            size: 0,
-            values: selectBarLabelIndices(
-              categoryOrder.length,
-              barXAxis.showAllLabels ?? false,
-              barXAxis.maxLabels ?? BAR_MAX_TICK_LABELS_DEFAULT,
-            ).map((i) => categoryOrder[i]),
-          },
-        }
-      : {
-          line: false as const,
-          tickLabels: false as const,
-          ticks: { count: gridGuide.columnTicks, size: 0 },
-        };
-    // Bar never drew y-axis labels; nothing may paint once the axes CSS gate lifts.
-    const yAxisOptions = hiddenAxisOptions(gridGuide.ticks);
-    const tooltipOption = buildNativeTooltipExtension<ChartDatum, string, number>({
-      anchorX: "group-center",
-      className: "bkm-native-tooltip",
-      discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
-      enabled: tooltipEnabled,
-      offset: BOX_OFFSET,
-      spring: TOOLTIP_BOX_SPRING,
-    });
-
-    // Dense data snaps instead of springing (bklit threshold, strict >).
-    const discrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
-
-    const hoverMarks: ChartMark<ChartDatum, string, number>[] = [];
-    if (tooltipEnabled) {
-      if (tooltip?.showCrosshair ?? true) {
-        // Bklit parity quirk: function indicatorColor is never invoked (string form only).
-        const indicatorCfg = toIndicatorConfig(tooltip);
-        const isDashed = Boolean(indicatorCfg.dasharray);
-        const fadeSides = resolveVerticalFadeSides(isDashed ? "none" : (indicatorCfg.fadeEdges ?? "both"));
-        const indicatorColorValue = isString(indicatorCfg.color) ? indicatorCfg.color : "var(--chart-crosshair)";
-        const indicatorSpringCfg = indicatorCfg.springConfig ?? chartConfig.tooltipSpring;
-        // Native crosshair defaults strokeOpacity to 0.35; override to 1.
-        hoverMarks.push(
-          buildIndicatorMark({
-            color: indicatorColorValue,
-            columnWidth: indicatorCfg.columnWidth,
-            dasharray: indicatorCfg.dasharray,
-            discrete,
-            gradientId: indicatorGradientId,
-            span: indicatorCfg.span,
-            spring: indicatorSpringCfg,
-            strokeOpacity: 1,
-            useGradient: !isDashed && fadeSides.any,
-            width: indicatorCfg.width,
-          }),
-        );
-      }
-      if (tooltip?.showDots ?? true) {
-        // Bklit parity: ring-dot sizing is inert (bandWidth was never populated).
-        const dotCfg = toDotConfig(tooltip);
-        const variant = dotCfg.variant ?? "dot";
-        const isRing = variant === "ring";
-        const rawSize = dotCfg.size ?? DEFAULT_HOVER_DOT_SIZE;
-        const size = rawSize * (dotCfg.scale ?? 1);
-        const strokeWidth = dotCfg.strokeWidth ?? (isRing ? DEFAULT_HOVER_DOT_RING_STROKE_WIDTH : 2);
-        const radiusFraction = dotCfg.radiusFraction ?? DEFAULT_HOVER_DOT_RADIUS_FRACTION;
-        const tooltipRowColors = tooltip?.rows?.({}).map((row: Readonly<TooltipRow>) => row.color);
-        const groupHalfWidth = groupScaleForOverlay.bandwidth() / 2;
-        for (const [seriesIndex, series] of dotSeriesList.entries()) {
-          const groupOffsetX = groupScaleForOverlay(series.dataKey) ?? 0;
-          const fill = resolveBarDotColor({ seriesColor: series.color, seriesIndex, tooltip, tooltipRowColors });
-          hoverMarks.push(
-            whenFocused(
-              createBarHoverDotMark({
-                bandStartForCategory: (category) => categoryScaleForOverlay(category) ?? 0,
-                categoryAccessor,
-                dotMarker: { isRing, radiusFraction, size, strokeWidth },
-                fill,
-                groupHalfWidth,
-                groupOffsetX,
-                projectValueForKey: (raw) => projectValue(series.dataKey, raw),
-                series,
-                source: renderData,
-                tooltipSpring: chartConfig.tooltipSpring,
-              }),
-              { match: "group", retarget: true },
-            ),
-          );
-        }
-      }
-    }
-
+    const { xAxisOptions, yAxisOptions } = axisSection;
     // Bklit parity: legend dim is per-mark opacity, not programmatic focus (single-owner slot).
     const legendHoveredKey = legendHoveredIndex === null ? undefined : (allSeriesKeys[legendHoveredIndex] ?? undefined);
-    const legendDimOpacity = (dataKey: string, fadedOpacity: number): number | undefined =>
-      legendHoveredKey !== undefined && legendHoveredKey !== dataKey ? fadedOpacity : undefined;
     const depthLegendOpacity = legendHoveredIndex === null ? undefined : BAR_FADED_OPACITY;
-    if (!hasSquares && !hasTrack && !hasDepth) {
-      const marks: ChartMark<ChartDatum, string, number>[] = [];
-      for (const series of resolvedSeries) {
-        marks.push(
-          barY(renderData, {
-            fill: series.fill,
-            fillOpacity: legendDimOpacity(series.dataKey, series.fadedOpacity),
-            id: series.dataKey,
-            layout: group({ scale: groupScale }),
-            motion: barEnterMotion,
-            radius: resolveCornerRadius(series.lineCap, groupBandwidth),
-            states: barRowDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
-            x: (datum: Readonly<ChartDatum>) => categoryAccessor(datum),
-            y: (datum: Readonly<ChartDatum>) => projectValue(series.dataKey, numericBarCell(datum, series.dataKey)),
-            z: () => series.dataKey,
-          }),
-        );
-      }
-      marks.push(...hoverMarks);
-      const spec = {
-        margin,
-        marks,
-        // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.
-        scales: {
-          x: { axis: xAxisOptions, grid: gridGuide.vertical, scale: xScaleFactory },
-          y: {
-            axis: yAxisOptions,
-            grid: gridGuide.horizontal,
-            scale: yScale,
-          },
-        },
-        svgAnimation: false as const,
-        theme: { muted: "var(--color-chart-label, var(--chart-label))" },
-      } as const;
-      const base = defineChart(spec);
-      return defineChart(base, { focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY, tooltip: tooltipOption });
-    }
-    const marks: ChartMark<ChartDatum, string, number>[] = [];
-    const bandPosFn = (label: string): number => categoryScaleForOverlay(label) ?? 0;
-    const totalN = totalSeriesCount;
-    // Column track paints beneath bars/squares (underlay order).
-    if (hasTrack) {
-      for (let trackIndex = 0; trackIndex < resolvedBarColumnTracks.length; trackIndex += 1) {
-        const track = resolvedBarColumnTracks[trackIndex];
-        for (let seriesIndex = 0; seriesIndex < allSeriesKeys.length; seriesIndex += 1) {
-          const dataKey = allSeriesKeys[seriesIndex];
-          const trackId = `bar-column-track-${trackIndex}-${seriesIndex}`;
-          marks.push(
-            barColumnTrackMark(renderData, {
-              bandPos: bandPosFn,
-              bandWidth,
-              categoryAccessor,
-              data: renderData,
-              fill: track.fill,
-              groupGap: track.groupGap,
-              id: trackId,
-              opacity: track.opacity,
-              seriesCount: totalN,
-              seriesIndex,
-              squareFit: track.squareFit,
-              squareGap: track.squareGap,
-              squareRadius: track.squareRadius,
-              states: BAR_TRACK_DIM_STATES,
-              yAccessor: (datum: Readonly<ChartDatum>) => projectValue(dataKey, numericBarCell(datum, dataKey)),
-            }),
-          );
-        }
-      }
-    }
-    if (hasSquares) {
-      for (let squaresIndex = 0; squaresIndex < resolvedBarSquares.length; squaresIndex += 1) {
-        const square = resolvedBarSquares[squaresIndex];
-        const seriesIndex = allSeriesKeys.indexOf(square.dataKey);
-        const def = squaresDefsByKey.get(square.dataKey);
-        const gradientId = def?.gradientId ?? `${squaresBaseId}-bar-squares-gradient-${squaresIndex}`;
-        const patternId = def?.patternId ?? `${squaresBaseId}-bar-squares-pattern-${squaresIndex}`;
-        marks.push(
-          barSquaresMark(renderData, {
-            bandPos: bandPosFn,
-            bandWidth,
-            categoryAccessor,
-            data: renderData,
-            fill: def ? def.fill : square.fill,
-            gradientId,
-            gradientStops: square.gradientStops,
-            groupGap: square.groupGap,
-            id: square.dataKey,
-            opacity: legendDimOpacity(square.dataKey, square.fadedOpacity),
-            patternId,
-            patternPreset: square.patternPreset,
-            seriesCount: totalN,
-            seriesIndex: seriesIndex === -1 ? squaresIndex : seriesIndex,
-            squareFit: square.squareFit,
-            squareGap: square.squareGap,
-            squareRadius: square.squareRadius,
-            states: barRowDimStates(square.fadedOpacity, BAR_SQUARES_DIM_TRANSITION),
-            useGradient: square.useGradient,
-            yAccessor: (datum: Readonly<ChartDatum>) => projectValue(square.dataKey, numericBarCell(datum, square.dataKey)),
-          }),
-        );
-      }
-    }
-    if (hasDepth) {
-      const seriesByDataKey = new Map(resolvedSeries.map((series) => [series.dataKey, series] as const));
-      for (const back of barDepthBacksRaw) {
-        const series = seriesByDataKey.get(back.dataKey);
-        if (series) {
-          marks.push(
-            barDepthBackMark(renderData, {
-              bandPos: bandPosFn,
-              bandScale: categoryScaleForOverlay,
-              bandWidth,
-              categoryAccessor,
-              data: renderData,
-              fill: back.color ?? series.fill,
-              gradientIds: depthGradientIds,
-              id: `bar-depth-back-${back.dataKey}`,
-              opacity: depthLegendOpacity,
-              states: barDepthDimStates(),
-              yAccessor: (datum: Readonly<ChartDatum>) => projectValue(back.dataKey, numericBarCell(datum, back.dataKey)),
-            }),
-          );
-        }
-      }
-    }
-    const squaresKeys = new Set(resolvedBarSquares.map((square) => square.dataKey));
-    const depthKeys = hasDepth ? new Set([...barDepthBacksRaw.map((back: Readonly<BarDepthBackConfig>) => back.dataKey), ...barDepthFrontsRaw.map((front: Readonly<BarDepthFrontConfig>) => front.dataKey)]) : new Set<string>();
-    const needsTrim = (dataKey: string): boolean => hasDepth && depthKeys.has(dataKey);
-    for (const series of resolvedSeries) {
-      if (squaresKeys.has(series.dataKey)) {
-        // Squares-owned series render through the squares mark above; skipped here.
-      } else if (needsTrim(series.dataKey)) {
-        const innerW = Math.max(0, width - margin.left - margin.right);
-        marks.push(
-          barTrimmedMark(renderData, {
-            bandScale: categoryScaleForOverlay,
-            bandWidth,
-            categoryAccessor,
-            centerX: margin.left + innerW / 2,
-            chartX: margin.left,
-            data: renderData,
-            fill: series.fill,
-            groupBandwidth,
-            groupScale,
-            id: series.dataKey,
-            innerWidth: innerW,
-            maxDepth: 0,
-            // Bklit parity: perspective bars force cornerRadius 0 (flat-top lid meets face gap-free).
-            opacity: legendDimOpacity(series.dataKey, series.fadedOpacity),
-            radius: 0,
-            states: barRowDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
-            yAccessor: (datum: Readonly<ChartDatum>) => projectValue(series.dataKey, numericBarCell(datum, series.dataKey)),
-          }),
-        );
-      } else {
-        marks.push(
-          barY(renderData, {
-            fill: series.fill,
-            fillOpacity: legendDimOpacity(series.dataKey, series.fadedOpacity),
-            id: series.dataKey,
-            layout: group({ scale: groupScale }),
-            motion: barEnterMotion,
-            radius: resolveCornerRadius(series.lineCap, groupBandwidth),
-            states: barRowDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
-            x: (datum: Readonly<ChartDatum>) => categoryAccessor(datum),
-            y: (datum: Readonly<ChartDatum>) => projectValue(series.dataKey, numericBarCell(datum, series.dataKey)),
-            z: () => series.dataKey,
-          }),
-        );
-      }
-    }
-    if (hasDepth) {
-      for (const front of barDepthFrontsRaw) {
-        marks.push(
-          barDepthFrontMark(renderData, {
-            bandPos: bandPosFn,
-            bandScale: categoryScaleForOverlay,
-            bandWidth,
-            categoryAccessor,
-            data: renderData,
-            gradientIds: depthGradientIds,
-            id: `bar-depth-front-${front.dataKey}`,
-            opacity: depthLegendOpacity,
-            states: barDepthDimStates(),
-            yAccessor: (datum: Readonly<ChartDatum>) => projectValue(front.dataKey, numericBarCell(datum, front.dataKey)),
-          }),
-        );
-      }
-      for (const pulse of barPulsesRaw) {
-        const pulseMark = barPulseMark(renderData, {
-          activeIndex: pulse.activeIndex,
-          bandPos: bandPosFn,
-          bandScale: categoryScaleForOverlay,
-          bandWidth,
-          categoryAccessor,
-          data: renderData,
-          gradientId: pulseWaveGradientId,
-          id: `bar-pulse-${pulse.dataKey}`,
-          pulsePaused: pulse.pulsePaused,
-          yAccessor: (datum: Readonly<ChartDatum>) => projectValue(pulse.dataKey, numericBarCell(datum, pulse.dataKey)),
-        });
-        if (pulseMark) {marks.push(pulseMark);}
-      }
-    }
-    marks.push(...hoverMarks);
-    const spec = {
-      gradients: nativeDepthGradients,
+    return buildBarDefinition({
+      allSeriesKeys,
+      bandWidth,
+      barDepthBacksRaw,
+      barDepthFrontsRaw,
+      barEnterMotion,
+      barFocusStrategy,
+      barPulsesRaw,
+      categoryAccessor,
+      categoryScaleForOverlay,
+      depthGradientIds,
+      depthLegendOpacity,
+      gridGuide,
+      groupBandwidth,
+      groupScale,
+      hasDepth,
+      hasSquares,
+      hasTrack,
+      hoverMarks,
+      legendHoveredKey,
       margin,
-      marks,
-      // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.
-      scales: {
-        x: { axis: xAxisOptions, grid: gridGuide.vertical, scale: xScaleFactory },
-        y: {
-          axis: yAxisOptions,
-          grid: gridGuide.horizontal,
-          scale: yScale,
-        },
-      },
-      svgAnimation: false as const,
-      theme: { muted: "var(--color-chart-label, var(--chart-label))" },
-    } as const;
-    const base = defineChart(spec);
-    return defineChart(base, { focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY, tooltip: tooltipOption });
+      nativeDepthGradients,
+      projectValue,
+      pulseWaveGradientId,
+      renderData,
+      resolvedBarColumnTracks,
+      resolvedBarSquares,
+      resolvedSeries,
+      squaresBaseId,
+      squaresDefsByKey,
+      tooltipEnabled,
+      totalSeriesCount,
+      width,
+      xAxisOptions,
+      xScaleFactory,
+      yAxisOptions,
+      yScale,
+    });
   }, [
-    renderData,
-    categoryAccessor,
+    width,
     resolvedSeries,
     resolvedBarSquares,
-    resolvedBarColumnTracks,
-    barDepthBacksRaw,
-    barDepthFrontsRaw,
-    barPulsesRaw,
+    barSquaresEnabled,
+    barColumnTrackEnabled,
+    barDepthEnabled,
+    allSeriesKeys,
+    legendHoveredIndex,
+    axisSection,
+    hoverMarks,
+    gridGuide,
     groupScale,
     groupBandwidth,
     xScaleFactory,
     yScale,
     projectValue,
-    grid,
+    categoryAccessor,
     margin,
-    width,
     barFocusStrategy,
-    barSquaresEnabled,
-    barColumnTrackEnabled,
-    barDepthEnabled,
     totalSeriesCount,
-    allSeriesKeys,
-    legendHoveredIndex,
     bandWidth,
     categoryScaleForOverlay,
+    resolvedBarColumnTracks,
     squaresDefsByKey,
     squaresBaseId,
     depthGradientIds,
     nativeDepthGradients,
     pulseWaveGradientId,
     tooltipEnabled,
-    tooltip,
-    chartConfig,
-    groupScaleForOverlay,
-    dotSeriesList,
-    indicatorGradientId,
-    barXAxis,
-    categoryOrder,
-    labelFade,
+    renderData,
     barEnterMotion,
+    barDepthBacksRaw,
+    barDepthFrontsRaw,
+    barPulsesRaw,
   ]);
 
   const chromeStateRef = useRef<BarChromeState | null>(null);
@@ -1595,35 +2618,6 @@ const BarChart = ({
     return indexByLabel;
   }, [categoryOrder]);
 
-interface SyncDatePillParams {
-  readonly pillBuild: PillBuild | null;
-  readonly showDatePill: boolean;
-  readonly dateLabels: readonly string[] | undefined;
-  readonly categoryIndex: number;
-  readonly categoryLabel: string;
-  readonly anchorX: number;
-  readonly discrete: boolean;
-  readonly showing: boolean;
-}
-
-const syncDatePillForCategory = ({
-  pillBuild,
-  showDatePill,
-  dateLabels,
-  categoryIndex,
-  categoryLabel,
-  anchorX,
-  discrete,
-  showing,
-}: Readonly<SyncDatePillParams>): void => {
-  if (!pillBuild) {return;}
-  if (!showDatePill) {
-    pillBuild.layer.style.display = "none";
-    return;
-  }
-  updateDatePillContent({ anchorX, categoryIndex, categoryLabel, dateLabels, discrete, pillBuild, showing });
-};
-
   const handleFocusGroupChange = useCallback(
     (points: readonly Readonly<ChartPoint<ChartDatum, string, number>>[]) => {
       const pillBuild = pillRef.current;
@@ -1656,143 +2650,33 @@ const syncDatePillForCategory = ({
     [categoryIndexByLabel, categoryScaleForOverlay, bandWidth, renderData.length, tooltipEnabled, tooltip],
   );
 
-const getBarTooltipValue = (point: Readonly<ChartPoint<ChartDatum, string, number>>): number => {
-  const raw: unknown = point.datum[point.markId];
-  return isNumber(raw) ? raw : (point.yValue);
-};
-
-interface CustomBarTooltipContentParams {
-  readonly content: (props: { readonly point: Readonly<ChartTooltipPoint>; readonly index: number }) => ReactNode;
-  readonly categoryIndex: number;
-  readonly categoryLabel: string;
-  readonly points: readonly Readonly<ChartPoint<ChartDatum, string, number>>[];
-  readonly panelClassName: string;
-  readonly panelStyle: CSSProperties | undefined;
-}
-
-const renderCustomBarTooltipContent = ({
-  content,
-  categoryIndex,
-  categoryLabel,
-  points,
-  panelClassName,
-  panelStyle,
-}: Readonly<CustomBarTooltipContentParams>): ReactNode => {
-  const pointRec: ChartTooltipPoint = { label: categoryLabel };
-  for (const point of points) {pointRec[point.markId] = getBarTooltipValue(point);}
-  return (
-    <div className={panelClassName} style={panelStyle}>
-      {content({ index: categoryIndex, point: pointRec })}
-    </div>
-  );
-};
-
-interface DefaultBarTooltipContentParams {
-  readonly tooltip: ChartTooltipConfig | undefined;
-  readonly points: readonly Readonly<ChartPoint<ChartDatum, string, number>>[];
-  readonly pointByMark: ReadonlyMap<string, Readonly<ChartPoint<ChartDatum, string, number>>>;
-  readonly seriesList: readonly Readonly<{ dataKey: string; color: string }>[];
-  readonly categoryLabel: string;
-  readonly panelClassName: string;
-  readonly panelStyle: CSSProperties | undefined;
-}
-
-interface BarTooltipRowsParams {
-  readonly tooltip: ChartTooltipConfig | undefined;
-  readonly pointRec: Readonly<ChartTooltipPoint>;
-  readonly pointByMark: ReadonlyMap<string, Readonly<ChartPoint<ChartDatum, string, number>>>;
-  readonly seriesList: readonly Readonly<{ dataKey: string; color: string }>[];
-}
-
-const buildBarTooltipRows = ({
-  tooltip: tt,
-  pointRec,
-  pointByMark,
-  seriesList,
-}: Readonly<BarTooltipRowsParams>): TooltipRow[] =>
-  tt?.rows
-    ? tt.rows(pointRec)
-    : seriesList.map((series) => {
-      const point = pointByMark.get(series.dataKey);
-      const pointColor = point?.color;
-      return { color: series.color || (pointColor !== undefined && pointColor !== "" ? pointColor : "transparent"), label: series.dataKey, value: point ? getBarTooltipValue(point) : 0 };
-    });
-
-const renderDefaultBarTooltipContent = ({
-  tooltip: tt,
-  points,
-  pointByMark,
-  seriesList,
-  categoryLabel,
-  panelClassName,
-  panelStyle,
-}: Readonly<DefaultBarTooltipContentParams>): ReactNode => {
-  const pointRec: ChartTooltipPoint = { label: categoryLabel };
-  for (const point of points) {pointRec[point.markId] = getBarTooltipValue(point);}
-  const rows = buildBarTooltipRows({ pointByMark, pointRec, seriesList, tooltip: tt });
-  return (
-    <div className={panelClassName} style={panelStyle}>
-      <TooltipContent title={categoryLabel} rows={rows}>
-        {tt?.children}
-      </TooltipContent>
-    </div>
-  );
-};
-
   const renderTooltipBody = useCallback(
-    (ctx: Readonly<ChartTooltipBodyRenderContext<ChartDatum, string, number>>): ReactNode => {
-      if (ctx.points.length === 0) {return undefined;}
-      const state = chromeStateRef.current;
-      const tt = state?.tooltip ?? undefined;
-      const categoryLabel = ctx.points[0].xValue;
-      const categoryIndex = categoryIndexByLabel.get(categoryLabel) ?? 0;
-      const pointByMark = new Map(ctx.points.map((point: Readonly<ChartPoint<ChartDatum, string, number>>) => [point.markId, point]));
-      const { panelClassName, panelStyle } = resolveBarTooltipPanel({ tooltip: tt });
-      if (tt?.content) {
-        return renderCustomBarTooltipContent({ categoryIndex, categoryLabel, content: tt.content, panelClassName, panelStyle, points: ctx.points });
-      }
-      return renderDefaultBarTooltipContent({ categoryLabel, panelClassName, panelStyle, pointByMark, points: ctx.points, seriesList: state?.series ?? [], tooltip: tt });
-    },
+    (ctx: Readonly<ChartTooltipBodyRenderContext<ChartDatum, string, number>>): ReactNode =>
+      resolveBarTooltipBody({ categoryIndexByLabel, points: ctx.points, state: chromeStateRef.current }),
     [categoryIndexByLabel],
   );
 
 // HandleRender only tracks phase and syncs BarPulse; native motion owns the reveal.
 // Reveal end is timer-approximated: native motion exposes no per-mark completion hook.
-  const handleRender = useCallback((context: Readonly<ChartRendererRenderContext<ChartDatum, string, number>>) => {
+  const handleRender = useCallback((context: Readonly<ChartRendererRenderContext<ChartDatum, string, number>>): void => {
     captureRenderContext(context);
     const surfaceElement = context.surface.element;
     if (!(surfaceElement instanceof SVGSVGElement)) {
       setPhase("ready");
       return;
     }
-    const svgRoot = surfaceElement;
-    const marksGroup = svgRoot.querySelector<SVGGElement>(".ts-chart__marks");
-    if (!marksGroup || animationDuration <= 0) {
-      setPhase("ready");
-      syncBarPulseGroups(svgRoot, true);
-      return;
-    }
-    // Test the replay key before the DOM stamp (a latched stamp would swallow signature bumps).
-    if (syncBarPulseIfRevealed({ isReadyPhase: phaseRef.current === "ready", marksGroup, revealKeyChanged: revealedKeyRef.current !== revealKeyRef.current, svgRoot })) {
-      return;
-    }
-    syncBarPulseGroups(svgRoot, false);
-    if (revealedForDataRef.current === latestRenderDataRef.current && revealedKeyRef.current === revealKeyRef.current) {
-      markRevealed(marksGroup);
-      syncBarPulseGroups(svgRoot, phaseRef.current === "ready");
-      return;
-    }
-    beginBarReveal({
-      currentRevealKey: revealKeyRef.current,
-      latestRenderData: latestRenderDataRef.current,
-      marksGroup,
+    handleBarSvgRender({
+      animationDuration,
+      latestRenderDataRef,
+      phaseRef,
       renderDataLength: renderData.length,
       revealDeadlineTimerRef,
       revealDurationMs,
       revealKeyRef,
       revealedForDataRef,
+      revealedKeyRef,
       setPhase,
-      svgRoot,
+      svgRoot: surfaceElement,
     });
   }, [animationDuration, revealDurationMs, setPhase, renderData.length, captureRenderContext]);
 

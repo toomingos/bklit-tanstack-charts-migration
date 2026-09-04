@@ -371,6 +371,67 @@ const buildRadarGuides = (input: Readonly<RadarGuidesInput>): PolarGuide[] => {
 const seriesIndexOfRow = (row: RadarRow, resolvedCount: number): number =>
   Math.min(Math.trunc(Number(row.series)), resolvedCount - 1);
 
+const makeRadarAreaClassName = (hoveredAreaNodeKey: string | undefined, hoveredIndex: number | null): ((key: string) => string | undefined) => (key: string): string | undefined =>
+  key === hoveredAreaNodeKey && hoveredIndex !== null
+    ? `bkm-radar-area bkm-radar-area--hovered bkm-radar-area--hovered-${hoveredIndex % DEFAULT_RADAR_COLORS.length}`
+    : "bkm-radar-area";
+
+interface RadarDefinitionOptions {
+  readonly chartSize: number;
+  readonly resolvedAreas: readonly ResolvedRadarArea[];
+  readonly metricKeys: readonly string[];
+  readonly metricLabelByKey: Readonly<ReadonlyMap<string, string>>;
+  readonly grid: Readonly<RadarGridProps> | undefined;
+  readonly axis: Readonly<RadarAxisProps> | undefined;
+  readonly labels: Readonly<RadarLabelsProps> | undefined;
+  readonly levels: number;
+  readonly radarAreaMark: Readonly<PolarMark<RadarRow, string, number>>;
+  readonly radarDotMark: Readonly<PolarMark<RadarRow, string, number>>;
+  readonly margin: number;
+  readonly hoveredIndex: number | null;
+  readonly motionReplayKey: string;
+}
+
+// Chart definition from resolved areas, guides, and hover state.
+// Caller passes the same memoized marks with every input in its dependency array.
+const buildRadarDefinition = (options: Readonly<RadarDefinitionOptions>): DomChartDefinition<RadarRow, string, number> | undefined => {
+  const { chartSize, resolvedAreas, metricKeys, metricLabelByKey, grid, axis, labels, levels, radarAreaMark, radarDotMark, margin, hoveredIndex, motionReplayKey } = options;
+  if (chartSize < RADAR_MIN_CHART_SIZE_PX || resolvedAreas.length === 0 || metricKeys.length === 0) {return undefined;}
+
+  // Group keys run through valueKey's string:length: wrapper; reproduce it to find the hovered node.
+  const hoveredGroupKey = polarValueKey(`${motionReplayKey}:${String(hoveredIndex).padStart(Z_PAD, "0")}`);
+  const hoveredAreaNodeKey = hoveredIndex === null
+    ? undefined
+    : `radar-area:${hoveredGroupKey}`;
+
+  const guides = buildRadarGuides({ axis, grid, labels, levels, metricKeys, metricLabelByKey });
+  const hoveredAreaMark = withMarkNodeClassName(radarAreaMark, makeRadarAreaClassName(hoveredAreaNodeKey, hoveredIndex));
+
+  return defineChart({
+    focus: focusDisabled,
+    guides: false,
+    margin,
+    marks: [
+      polar({
+        guides,
+        id: "radar",
+        marks: [
+          // Hover dim/pop rides fill/stroke/r channels + one CSS class for stroke-width (no states option).
+          hoveredAreaMark,
+          radarDotMark,
+        ],
+        scales: {
+          angle: { scale: scalePoint().domain(metricKeys) },
+          radius: { scale: scaleLinear().domain([0, RADAR_RADIUS_DOMAIN_MAX]) },
+        },
+      }),
+    ],
+    scales: { x: null, y: null },
+    svgAnimation: false,
+    tooltip: false,
+  });
+};
+
 const makeRadarAreaFill = (resolvedAreas: readonly ResolvedRadarArea[], hoveredIndex: number | null): ((row: RadarRow) => string) => (row: RadarRow): string => {
   const clampedIdx = seriesIndexOfRow(row, resolvedAreas.length);
   const color = resolvedAreas[clampedIdx]?.color ?? DEFAULT_RADAR_COLORS[0];
@@ -388,11 +449,6 @@ const makeRadarAreaStroke = (resolvedAreas: readonly ResolvedRadarArea[], hovere
   const isDimmed = hoveredIndex !== null && !isHovered;
   return withAlpha(area.color, (isDimmed ? DIM_OPACITY : 1) * PERCENT_SCALE);
 }
-
-const makeRadarAreaClassName = (hoveredAreaNodeKey: string | undefined, hoveredIndex: number | null): ((key: string) => string | undefined) => (key: string): string | undefined =>
-  key === hoveredAreaNodeKey && hoveredIndex !== null
-    ? `bkm-radar-area bkm-radar-area--hovered bkm-radar-area--hovered-${hoveredIndex % DEFAULT_RADAR_COLORS.length}`
-    : "bkm-radar-area";
 
 const makeRadarDotFill = (resolvedAreas: readonly ResolvedRadarArea[], hoveredIndex: number | null): ((row: RadarRow) => string) => (row: RadarRow): string => {
   const clampedIdx = seriesIndexOfRow(row, resolvedAreas.length);
@@ -711,6 +767,26 @@ const runRadarHoverCleanups = (cleanups: readonly (() => void)[]): void => {
   for (const fn of cleanups) {fn();}
 }
 
+interface RadarHoverTargetOptions {
+  readonly container: Readonly<HTMLElement>;
+  readonly setHoveredIndex: RadarSetHoveredIndex;
+  readonly metricKeysLength: number;
+}
+
+// Hover wiring for area paths and dots; returns the effect cleanup.
+// Enter owns opacity only, hover owns fill/stroke/r: disjoint sets, no two-writer race.
+const bindRadarHoverTargets = (options: Readonly<RadarHoverTargetOptions>): (() => void) => {
+  const { container, setHoveredIndex, metricKeysLength } = options;
+  const areaEls = container.querySelectorAll<SVGPathElement>(".ts-chart__radial-area path");
+  const dotEls = container.querySelectorAll<SVGCircleElement>(".ts-chart__radial-dot circle");
+  const cleanups: (() => void)[] = [];
+  bindRadarAreaHovers(areaEls, setHoveredIndex, cleanups);
+  bindRadarDotHovers({ cleanups, dotEls, metricKeysLength, setHoveredIndex });
+  return (): void => {
+    runRadarHoverCleanups(cleanups);
+  };
+};
+
 const cancelRadarAnims = (anims: readonly Animation[]): void => {
   for (const anim of anims) {
     try { anim.cancel(); } catch {
@@ -887,42 +963,9 @@ const RadarChart = ({
     z: "replayGroup",
   }), [allRows, resolvedAreas, hoveredIndex, radarMarkMotion]);
 
-  const definition = useMemo((): DomChartDefinition<RadarRow, string, number> | undefined => {
-    if (chartSize < RADAR_MIN_CHART_SIZE_PX || resolvedAreas.length === 0 || metricKeys.length === 0) {return undefined;}
-
-    // Group keys run through valueKey's string:length: wrapper; reproduce it to find the hovered node.
-    const hoveredGroupKey = polarValueKey(`${motionReplayKey}:${String(hoveredIndex).padStart(Z_PAD, "0")}`);
-    const hoveredAreaNodeKey = hoveredIndex === null
-      ? undefined
-      : `radar-area:${hoveredGroupKey}`;
-
-    const guides = buildRadarGuides({ axis, grid, labels, levels, metricKeys, metricLabelByKey });
-    const hoveredAreaMark = withMarkNodeClassName(radarAreaMark, makeRadarAreaClassName(hoveredAreaNodeKey, hoveredIndex));
-
-    return defineChart({
-      focus: focusDisabled,
-      guides: false,
-      margin,
-      marks: [
-        polar({
-          guides,
-          id: "radar",
-          marks: [
-            // Hover dim/pop rides fill/stroke/r channels + one CSS class for stroke-width (no states option).
-            hoveredAreaMark,
-            radarDotMark,
-          ],
-          scales: {
-            angle: { scale: scalePoint().domain(metricKeys) },
-            radius: { scale: scaleLinear().domain([0, RADAR_RADIUS_DOMAIN_MAX]) },
-          },
-        }),
-      ],
-      scales: { x: null, y: null },
-      svgAnimation: false,
-      tooltip: false,
-    });
-  }, [
+  const definition = useMemo((): DomChartDefinition<RadarRow, string, number> | undefined =>
+    buildRadarDefinition({ axis, chartSize, grid, hoveredIndex, labels, levels, margin, metricKeys, metricLabelByKey, motionReplayKey, radarAreaMark, radarDotMark, resolvedAreas })
+  , [
     chartSize,
     grid,
     axis,
@@ -976,19 +1019,7 @@ const RadarChart = ({
     if (!container) {return undefined;}
     // With no series there are no hover targets, so there is nothing to bind.
     if (areaCount === 0) {return undefined;}
-
-    const areaEls = container.querySelectorAll<SVGPathElement>(".ts-chart__radial-area path");
-    const dotEls = container.querySelectorAll<SVGCircleElement>(".ts-chart__radial-dot circle");
-
-    const cleanups: (() => void)[] = [];
-
-    // Enter owns opacity only, hover owns fill/stroke/r: disjoint sets, no two-writer race.
-    bindRadarAreaHovers(areaEls, setHoveredIndex, cleanups);
-    bindRadarDotHovers({ cleanups, dotEls, metricKeysLength: metricKeys.length, setHoveredIndex });
-
-    return (): void => {
-      runRadarHoverCleanups(cleanups);
-    };
+    return bindRadarHoverTargets({ container, metricKeysLength: metricKeys.length, setHoveredIndex });
   }, [areaCount, metricKeys, setHoveredIndex]);
 
   useEffect(() => {

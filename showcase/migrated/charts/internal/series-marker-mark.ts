@@ -229,7 +229,17 @@ const buildMarkerMarksForSeries = ({ seriesConfig, renderData, xDataKey, gradien
   return [base, active];
 }
 
-const buildMarkerMarks = (renderData: readonly Readonly<ChartDatum>[], xDataKey: string, series: readonly Readonly<MarkerSeriesConfig>[], gradientIdByKey: Readonly<Map<string, string>>, legendHoveredKey?: string | null, pointerFocusActive = false): ChartMark<ChartDatum, Date, number>[] => {
+interface BuildMarkerMarksParams {
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+  readonly series: readonly Readonly<MarkerSeriesConfig>[];
+  readonly gradientIdByKey: Readonly<Map<string, string>>;
+  readonly legendHoveredKey?: string | null;
+  readonly pointerFocusActive?: boolean;
+}
+
+const buildMarkerMarks = (params: Readonly<BuildMarkerMarksParams>): ChartMark<ChartDatum, Date, number>[] => {
+  const { renderData, xDataKey, series, gradientIdByKey, legendHoveredKey, pointerFocusActive = false } = params;
   const marks: ChartMark<ChartDatum, Date, number>[] = [];
   for (const seriesConfig of series) {
     marks.push(...buildMarkerMarksForSeries({ gradientIdByKey, legendHoveredKey, pointerFocusActive, renderData, seriesConfig, xDataKey }));

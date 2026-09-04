@@ -80,16 +80,21 @@ const collectGroupMembers = <PointT extends ChartPointLike>(params: Readonly<Foc
   return unique;
 }
 
+interface CollectFocusGroupOptions<PointT> {
+  readonly memberKeyOf: (point: PointT) => string | number;
+  readonly points: readonly PointT[];
+  readonly primary: PointT;
+  readonly xKeyOf: (xValue: Readonly<ChartValue>) => string | number;
+}
+
 /**
  * Collects [primary, ...others] sharing the primary's x key, one per member key; others keep scan order (no y-sort).
  *
- * @param {readonly PointT[]} points - Full point list scanned for members sharing the primary's x key.
- * @param {PointT} primary - Anchor point seeding its own member slot and heading the result.
- * @param {(xValue: Readonly<ChartValue>) => string | number} xKeyOf - Maps a datum's domain value to its group key.
- * @param {(point: PointT) => string | number} memberKeyOf - Maps a point to its within-group member key; first point per key wins.
+ * @param {Readonly<CollectFocusGroupOptions<PointT>>} groupOptions - Full point list, anchor point, and the two key mappers.
  * @returns {PointT[]} Primary followed by one representative per remaining member key in scan order.
  */
-const collectFocusGroup = <PointT extends ChartPointLike>(points: readonly PointT[], primary: PointT, xKeyOf: (xValue: Readonly<ChartValue>) => string | number, memberKeyOf: (point: PointT) => string | number): PointT[] => {
+const collectFocusGroup = <PointT extends ChartPointLike>(groupOptions: Readonly<CollectFocusGroupOptions<PointT>>): PointT[] => {
+  const { memberKeyOf, points, primary, xKeyOf } = groupOptions;
   const unique = collectGroupMembers({ key: xKeyOf(primary.xValue), memberKeyOf, points, primary, xKeyOf });
   const others: PointT[] = [];
   for (const point of unique.values()) {

@@ -388,6 +388,25 @@ const startRingRevealAnimations = (params: Readonly<RingRevealStarterInput>): vo
   });
 };
 
+interface RingRevealBeginInput {
+  readonly container: HTMLElement;
+  readonly currData: readonly Readonly<RingData>[];
+  readonly currMap: ReadonlyMap<number, RingChildConfig>;
+  readonly enterStaggerScale: number;
+  readonly revealAnimsRef: RefObject<Animation[]>;
+  readonly revealDeadlineTimerRef: RefObject<number | null>;
+  readonly revealPostPaintCancelRef: RefObject<(() => void) | null>;
+  readonly marksGroup: SVGGElement;
+  readonly enterTransition: RingEnterTransition | undefined;
+  readonly toReveal: readonly number[];
+}
+
+// Timing resolution plus reveal start, split out so the onRender callback stays small.
+const beginRingReveal = (params: Readonly<RingRevealBeginInput>): void => {
+  const timing = revealTiming(resolveEnterTransition(params.enterTransition, RING_TWEEN_FALLBACK));
+  startRingRevealAnimations({ container: params.container, currData: params.currData, currMap: params.currMap, enterStaggerScale: params.enterStaggerScale, marksGroup: params.marksGroup, revealAnimsRef: params.revealAnimsRef, revealDeadlineTimerRef: params.revealDeadlineTimerRef, revealPostPaintCancelRef: params.revealPostPaintCancelRef, timing, toReveal: params.toReveal });
+};
+
 const cancelRevealAnimations = (revealAnims: readonly Animation[]): void => {
   for (const anim of revealAnims) {
     try { anim.cancel(); } catch {
@@ -658,8 +677,7 @@ const RingChart = ({
     const toReveal = collectRingsToReveal({ container, currData, currMap, marksGroup, seen: seenRingRevealedRef.current });
     if (toReveal.length === 0) {return;}
 
-    const timing = revealTiming(resolveEnterTransition(currTransition, RING_TWEEN_FALLBACK));
-    startRingRevealAnimations({ container, currData, currMap, enterStaggerScale: currStagger, marksGroup, revealAnimsRef, revealDeadlineTimerRef, revealPostPaintCancelRef, timing, toReveal });
+    beginRingReveal({ container, currData, currMap, enterStaggerScale: currStagger, enterTransition: currTransition, marksGroup, revealAnimsRef, revealDeadlineTimerRef, revealPostPaintCancelRef, toReveal });
   }, []);
 
   const ringHitBands = useMemo(

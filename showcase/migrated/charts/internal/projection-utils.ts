@@ -137,7 +137,16 @@ const computeProjectionAnchorTangentSlope = (options: Readonly<ComputeProjection
   return slopeFromLastSegment(collectHistoryPoints({ seriesKey, sourceData, startIndex, xDataKey }));
 }
 
-const buildHorizontalTangentBezierPath = (x0: number, y0: number, x1: number, y1: number, tension = 0.45): string => {
+interface HorizontalTangentBezierPathOptions {
+  readonly tension?: number;
+  readonly x0: number;
+  readonly x1: number;
+  readonly y0: number;
+  readonly y1: number;
+}
+
+const buildHorizontalTangentBezierPath = (options: Readonly<HorizontalTangentBezierPathOptions>): string => {
+  const { x0, y0, x1, y1, tension = 0.45 } = options;
   const dx = x1 - x0;
   if (Math.abs(dx) < DEGENERATE_DX_THRESHOLD) {
     return `M ${x0},${y0} L ${x1},${y1}`;
@@ -218,6 +227,7 @@ export {
 };
 export type {
   BuildProjectionPathOptions,
+  HorizontalTangentBezierPathOptions,
   ProjectionAutoMethod,
   ProjectionCurveKind,
   ProjectionMode,

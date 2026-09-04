@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import type { CSSProperties, Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
-import { scaleLinear, scaleUtc,scaleLinear as d3ScaleLinear } from "d3-scale";
+import { scaleLinear as d3ScaleLinear } from "d3-scale";
 import type { ScaleTime } from "d3-scale";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
@@ -18,13 +18,8 @@ import type {
   ChartControl,
   ChartInteractionController,
   ChartMark,
-  ChartMotionContext,
-  ChartMotionTiming,
   ChartPoint,
-  ChartPositionScaleOptions,
   ChartRendererRenderContext,
-  ChartScale,
-  ChartScaleResolveContext,
   SceneStyle,
 } from "@tanstack/charts";
 import { useChartRenderer } from "./internal/motion-renderer";
@@ -61,21 +56,11 @@ import { extractProfitLossHoveredIndex } from "./internal/profit-loss-config";
 import { toDate } from "./internal/coerce-date";
 import {
   DISCRETE_INTERACTION_THRESHOLD,
-  FADE_BUFFER,
-  SERIES_MARKER_ENTER_MS,
-  TICKER_HALF_WIDTH,
   TOOLTIP_BOX_SPRING,
 } from "./internal/design-tokens";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
-import {
-  buildPrecomputedXAxisOptions,
-  buildXAxisTickValues,
-  buildYAxisOptions,
-  hiddenAxisOptions,
-  tickLabelFadeOpacity,
-} from "./internal/axis-ticks";
 import { buildNativeTooltipExtension, renderSeriesTooltipBody } from "./internal/native-tooltip";
-import type { ChartDatum, ChartMarker, ChartStatus, ChartTooltipConfig, LineConfig, SeriesPointMarkerStyle, YAxisConfig } from "./internal/types";
+import type { ChartDatum, ChartMarker, ChartStatus, ChartTooltipConfig, LineConfig } from "./internal/types";
 import { DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from './internal/chart-phase';
 import type { ChartPhase } from './internal/chart-phase';
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
@@ -120,7 +105,6 @@ import {
   DEFAULT_ANIMATION_DURATION_MS,
   DEFAULT_ANIMATION_EASING,
 } from "./internal/animation-defaults";
-import type { XAxisConfig } from "./internal/series-config-types";
 import {
   buildProfitLossGradientDefs,
   buildProjectionGradientDefs,
@@ -143,6 +127,22 @@ import {
 } from "./internal/line-overlay-marks";
 import { clipRevealTiming } from './internal/enter-transition';
 import type { EnterTransition } from './internal/enter-transition';
+import {
+  DEFAULT_MARKER_RADIUS_PX,
+  cancelPendingMarkerReveal,
+  collectMarkerRevealAnimations,
+  hasVisibleMarkerSeries,
+  scheduleMarkerReveal,
+} from "./internal/line-marker-reveal";
+import {
+  buildLineXScaleOptions,
+  buildLineYScaleOptions,
+  createLineXScale,
+  resolveLineMotions,
+  resolveXTickLabelOpacity,
+} from "./internal/line-x-scale";
+import type { LabelFadeState } from "./internal/line-x-scale";
+import { useLineBrushRange } from "./internal/use-line-brush-range";
 import "./styles.css";
 
 const BRUSH_NATIVE_HIDDEN_STYLE: SceneStyle = {
@@ -163,12 +163,7 @@ const DEFAULT_PROJECTION_LINE_CLASS_NAME = "chart-projection-line";
 const DEFAULT_PROJECTION_ENDPOINT_RADIUS_PX = 5;
 // Fallback stroke for projection lines and end markers (bklit projection-line.tsx).
 const PROJECTION_FALLBACK_STROKE = "var(--chart-3)";
-const DEFAULT_X_AXIS_NUM_TICKS = 5;
 const MS_PER_SECOND = 1000;
-// Active-highlight glow padding is 35% of the marker radius (bklit series-markers.tsx).
-const MARKER_HIGHLIGHT_PAD_RATIO = 0.35;
-// `radius` default on series/terminal/end markers (distinct field from projection `endpointRadius`).
-const DEFAULT_MARKER_RADIUS_PX = 5;
 const DEFAULT_TERMINAL_MARKER_STROKE_WIDTH = 1.5;
 // Deterministic fake sine-wave path used only for the loading-skeleton pulse preview.
 const LOADING_SKELETON_BASE_VALUE = 110;
@@ -180,17 +175,9 @@ const HIDDEN_DEFS_SVG_STYLE: CSSProperties = { position: "absolute" };
 // Full-cover overlay host: stacked above the chart without intercepting pointer input.
 const OVERLAY_HOST_STYLE: CSSProperties = { inset: 0, pointerEvents: "none", position: "absolute" };
 
-// X tick-label fade target: the hovered tick's pixel position and rendered label.
-interface LabelFadeState {
-  primaryX: number;
-  hoveredLabel: string | null;
-}
-
 const isBoolean = <Subject,>(value: Subject): value is Subject & boolean => typeof value === "boolean";
 const isNumber = <Subject,>(value: Subject): value is Subject & number => typeof value === "number";
 const isString = <Subject,>(value: Subject): value is Subject & string => typeof value === "string";
-const isFunction = <Subject,>(value: Subject): value is Subject & ((...args: readonly never[]) => void) => typeof value === "function";
-const isDateOrNumber = <Subject,>(value: Subject): value is Subject & (Date | number) => value instanceof Date || isNumber(value);
 
 // Bklit parity: height comes from the measured box in both modes, not width/aspectRatio.
 const resolveChartHeightPx = (width: number, measuredHeight: number, aspectRatio: string): number => {
@@ -234,201 +221,7 @@ const scanRenderTimeExtent = (rows: readonly Readonly<ChartDatum>[], xKey: strin
   return { maxTime, minTime };
 };
 
-// Empty x-domain (no finite extent yet): a zero-width utc scale with no ticks.
-interface EmptyTimeScaleParams {
-  readonly id: string;
-  readonly rangeEnd: number;
-  readonly rangeStart: number;
-  readonly scaleRef: { current: ScaleTime<number, number> | null };
-}
-
-const resolveEmptyTimeScale = (params: Readonly<EmptyTimeScaleParams>): ReturnType<ChartScale["resolve"]> => {
-  const base = scaleUtc();
-  base.domain([0, 0]);
-  base.range([params.rangeStart, params.rangeEnd]);
-  params.scaleRef.current = base;
-  return {
-    bandwidth: 0,
-    domain: base.domain(),
-    id: params.id,
-    // Base() always returns a finite number for a numeric range (d3-scale ScaleTime.Output = number, never undefined).
-      map: (value) => base(isDateOrNumber(value) ? value : new Date(Number.NaN)),
-    ticks: [],
-    type: "time",
-  };
-};
-
-interface LineXTickListParams {
-  readonly base: ScaleTime<number, number>;
-  readonly rangeEnd: number;
-  readonly rangeStart: number;
-  readonly renderData: readonly ChartDatum[];
-  readonly tickCount: number;
-  readonly timeExtent: Readonly<{ maxTime: number; minTime: number }> | undefined;
-  readonly visibleData: readonly ChartDatum[];
-  readonly xAxis: Readonly<XAxisConfig> | null | undefined;
-  readonly xDataKey: string;
-  readonly xDomain: [Date, Date] | undefined;
-}
-
-const resolveLineXTickList = (
-  params: Readonly<LineXTickListParams>,
-): readonly { readonly label: string; readonly value: Readonly<Date> }[] => {
-  if (params.xAxis) {
-    return buildXAxisTickValues({
-      data: params.xDomain ? params.visibleData : params.renderData,
-      domainMaxTime: params.timeExtent?.maxTime,
-      formatValue: params.xAxis.formatValue,
-      numTicks: params.xAxis.numTicks ?? DEFAULT_X_AXIS_NUM_TICKS,
-      rangeEnd: params.rangeEnd,
-      rangeStart: params.rangeStart,
-      tickMode: params.xAxis.tickMode,
-      xDataKey: params.xDataKey,
-      xDomain: params.xDomain,
-    });
-  }
-  return params.base.ticks(params.tickCount).map((value: Readonly<Date>) => ({ label: value.toISOString(), value }));
-};
-
-interface LineXScaleParams {
-  readonly renderData: readonly ChartDatum[];
-  readonly scaleRef: { current: ScaleTime<number, number> | null };
-  readonly timeExtent: Readonly<{ maxTime: number; minTime: number }> | undefined;
-  readonly visibleData: readonly ChartDatum[];
-  readonly xAxis: Readonly<XAxisConfig> | null | undefined;
-  readonly xDataKey: string;
-  readonly xDomain: [Date, Date] | undefined;
-}
-
-const createLineXScale = (params: Readonly<LineXScaleParams>): ChartScale => ({
-  id: "x",
-  resolve(context: Readonly<Pick<ChartScaleResolveContext, "id" | "range" | "tickCount">>) {
-    const [r0, r1] = context.range;
-    const minTime = params.timeExtent ? params.timeExtent.minTime : Number.NaN;
-    const maxTime = params.timeExtent ? params.timeExtent.maxTime : Number.NaN;
-    if (!Number.isFinite(minTime)) {
-      return resolveEmptyTimeScale({ id: context.id, rangeEnd: r1, rangeStart: r0, scaleRef: params.scaleRef });
-    }
-    const base = scaleUtc().domain([minTime, maxTime]).range([r0, r1]);
-    params.scaleRef.current = base;
-    const tickList = resolveLineXTickList({ base, rangeEnd: r1, rangeStart: r0, renderData: params.renderData, tickCount: context.tickCount, timeExtent: params.timeExtent, visibleData: params.visibleData, xAxis: params.xAxis, xDataKey: params.xDataKey, xDomain: params.xDomain });
-    return {
-      bandwidth: 0,
-      domain: base.domain(),
-      id: context.id,
-      // Base() always returns a finite number for a numeric range (d3-scale ScaleTime.Output = number, never undefined).
-    map: (value) => base(isDateOrNumber(value) ? value : new Date(Number.NaN)),
-      ticks: tickList.map((tick: { readonly label: string; readonly value: Readonly<Date> }) => ({
-        label: tick.label,
-        position: base(tick.value),
-        value: tick.value,
-      })),
-      type: "time",
-    };
-  },
-});
-
-type XTickLabelOpacity = (ctx: Readonly<{ value: unknown; position: number }>) => number;
-
-const resolveXTickLabelOpacity = (
-  fade: Readonly<LabelFadeState> | undefined,
-  xAxis: Readonly<XAxisConfig> | null | undefined,
-): XTickLabelOpacity | 1 => {
-  if (!fade) {return 1;}
-  const captured = fade;
-  return (ctx: Readonly<{ value: unknown; position: number }>): number => {
-    const formatTickLabel = xAxis?.formatValue ?? ((date: Readonly<Date>): string => shortDateFmt.format(date));
-    const tickLabel = ctx.value instanceof Date ? formatTickLabel(ctx.value) : "";
-    return tickLabelFadeOpacity(
-      ctx.position,
-      tickLabel,
-      captured.primaryX,
-      captured.hoveredLabel,
-      xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH,
-      FADE_BUFFER,
-    );
-  };
-};
-
-interface LineXScaleOptionsParams {
-  readonly gridGuide: Readonly<ReturnType<typeof resolveGridGuide>>;
-  readonly marginBottom: number;
-  readonly tickLabelMotion: LineMotionFn;
-  readonly xAxis: Readonly<XAxisConfig> | null | undefined;
-  readonly xScale: ChartScale;
-  readonly xTickLabelOpacity: XTickLabelOpacity | 1;
-}
-
-const buildLineXScaleOptions = (params: Readonly<LineXScaleOptionsParams>): ChartPositionScaleOptions<Date> => ({
-  axis: buildPrecomputedXAxisOptions(params.gridGuide.columnTicks, params.xAxis ?? undefined, params.marginBottom, params.xTickLabelOpacity, params.tickLabelMotion),
-  grid: params.gridGuide.vertical,
-  scale: params.xScale,
-});
-
 // Per-role motion for line marks: enter is false (RevealWipe owns it); update tweens only on y-domain change, else snaps.
-type LineMotionFn = (context: Readonly<Pick<ChartMotionContext, "phase" | "role">>) => false | ChartMotionTiming | undefined;
-const resolveLineMarkMotion = (gateActive: boolean, tweenDurationMs: number): LineMotionFn =>
-  (context: Readonly<Pick<ChartMotionContext, "phase" | "role">>): false | ChartMotionTiming | undefined => {
-    if (context.role === "line" || context.role === "area" || context.role === "dot") {
-      if (context.phase === "enter") {return false as const;}
-      if (context.phase === "update") {
-        return gateActive
-          ? {
-              transition: {
-                duration: tweenDurationMs,
-                easing: bezierEasing,
-                type: "tween" as const,
-              },
-            }
-          : (false as const);
-      }
-    }
-    return undefined;
-  };
-
-// Label position tween returns via tickLabels.motion (native text has no CSS left/top).
-const resolveTickLabelMotion = (): LineMotionFn =>
-  (context: Readonly<Pick<ChartMotionContext, "phase" | "role">>): false | ChartMotionTiming | undefined =>
-    context.phase === "enter"
-      ? (false as const)
-      : {
-          transition: {
-            duration: DEFAULT_Y_DOMAIN_TWEEN_MS,
-            easing: bezierEasing,
-            type: "tween" as const,
-          },
-        };
-
-interface LineMotions {
-  readonly motion: LineMotionFn;
-  readonly tickLabelMotion: LineMotionFn;
-}
-
-const resolveLineMotions = (gateActive: boolean, tweenDurationMs: number): LineMotions => ({
-  motion: resolveLineMarkMotion(gateActive, tweenDurationMs),
-  tickLabelMotion: resolveTickLabelMotion(),
-});
-
-// Native y ticks follow bklit's niced-domain clamp; the grid follows the label ticks.
-interface LineYScaleOptionsParams {
-  readonly gridGuide: Readonly<ReturnType<typeof resolveGridGuide>>;
-  readonly niced: [number, number];
-  readonly tickLabelMotion: ReturnType<typeof resolveTickLabelMotion>;
-  readonly yAxis: Readonly<YAxisConfig> | null | undefined;
-}
-
-const buildLineYScaleOptions = (params: Readonly<LineYScaleOptionsParams>): ChartPositionScaleOptions<number> => {
-  const yScale = scaleLinear().domain(params.niced);
-  if (params.yAxis) {
-    return buildYAxisOptions(yScale, params.niced, params.gridGuide.horizontal, params.yAxis, params.tickLabelMotion);
-  }
-  return {
-    axis: hiddenAxisOptions(params.gridGuide.ticks),
-    grid: params.gridGuide.horizontal,
-    scale: yScale,
-  };
-};
-
 interface FocusGate {
   readonly chartPhase: ChartPhase;
   readonly dragSelectionActive: boolean;
@@ -507,80 +300,6 @@ const syncDatePillChrome = (primary: FocusPoint | undefined, params: Readonly<Da
     params.datePill.hide();
     params.setLabelFade(undefined);
   }
-};
-
-interface MarkerRevealSeriesConfig {
-  readonly dataKey: string;
-  readonly markers: Readonly<SeriesPointMarkerStyle> | undefined;
-  readonly showMarkers: boolean | undefined;
-  readonly stroke: string;
-}
-
-const hasVisibleMarkerSeries = (series: readonly Readonly<MarkerRevealSeriesConfig>[]): boolean =>
-  series.some((entry) => entry.showMarkers ?? false);
-
-const resolveMarkerVisualExtent = (markers: Readonly<SeriesPointMarkerStyle> | undefined): number => {
-  const radius = markers?.radius ?? DEFAULT_MARKER_RADIUS_PX;
-  const strokeWidth = markers?.strokeWidth ?? 2;
-  const ringGap = markers?.ringGap ?? 2;
-  const outlineWidth = markers?.outlineWidth ?? 0;
-  const showActiveHighlight = markers?.showActiveHighlight ?? true;
-  const ring = strokeWidth > 0 ? ringGap + strokeWidth : 0;
-  const outline = Math.max(outlineWidth, 0);
-  const highlightPad = showActiveHighlight ? radius * MARKER_HIGHLIGHT_PAD_RATIO : 0;
-  return radius + ring + outline + highlightPad + 2;
-};
-
-interface MarkerCircleRevealParams {
-  readonly animationEasing: string;
-  readonly durationSec: number;
-  readonly innerWidth: number;
-  readonly visualExtent: number;
-}
-
-const playMarkerCircleReveal = (circle: SVGCircleElement, params: Readonly<MarkerCircleRevealParams>): Animation => {
-  const cx = Number(circle.getAttribute("cx") ?? "0");
-  const leadingEdge = Math.max(0, cx - params.visualExtent);
-  const delaySec = params.innerWidth > 0 ? (leadingEdge / params.innerWidth) * params.durationSec : 0;
-  return circle.animate(
-    [{ filter: "blur(2px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1 }],
-    { delay: delaySec * MS_PER_SECOND, duration: SERIES_MARKER_ENTER_MS, easing: params.animationEasing, fill: "backwards" },
-  );
-};
-
-interface SeriesMarkerRevealParams {
-  readonly animationEasing: string;
-  readonly durationSec: number;
-  readonly innerWidth: number;
-  readonly marksGroup: SVGGElement;
-  readonly markerSeriesConfigs: readonly Readonly<MarkerRevealSeriesConfig>[];
-}
-
-const collectMarkerRevealAnimations = (params: Readonly<SeriesMarkerRevealParams>): Animation[] => {
-  const animations: Animation[] = [];
-  for (const seriesConfig of params.markerSeriesConfigs.filter((entry) => entry.showMarkers ?? false)) {
-    const visualExtent = resolveMarkerVisualExtent(seriesConfig.markers);
-    const escaped = `${seriesConfig.dataKey}__marker`.replaceAll('"', String.raw`\"`);
-    const group = params.marksGroup.querySelector<SVGGElement>(`.ts-chart__dot[data-ts-key="${escaped}"]`);
-    if (group) {
-      for (const circle of group.querySelectorAll<SVGCircleElement>("circle")) {
-        animations.push(playMarkerCircleReveal(circle, { animationEasing: params.animationEasing, durationSec: params.durationSec, innerWidth: params.innerWidth, visualExtent }));
-      }
-    }
-  }
-  return animations;
-};
-
-const cancelPendingMarkerReveal = (animationsRef: { current: Animation[] }, cancelRef: { current: (() => void) | null }): void => {
-  for (const anim of animationsRef.current) {
-    try {
-      anim.cancel();
-    } catch {
-      // Animation already settled — nothing to cancel.
-    }
-  }
-  animationsRef.current = [];
-  cancelRef.current?.();
 };
 
 const renderProjectionGradientDef = (
@@ -737,45 +456,6 @@ const findPointColorForSeries = (
   points: readonly { readonly markId: string; readonly color: string }[],
   dataKey: string,
 ): string | undefined => points.find((point) => point.markId === dataKey)?.color;
-
-// Two post-paint frames plus a macrotask settle before running the callback.
-const scheduleAfterTwoFrames = (callback: () => void): (() => void) => {
-  let raf1 = 0;
-  let raf2 = 0;
-  let tId: ReturnType<typeof globalThis.setTimeout> | undefined = undefined;
-  let cancelled = false;
-  raf1 = globalThis.requestAnimationFrame(() => {
-    raf2 = globalThis.requestAnimationFrame(() => {
-      tId = globalThis.setTimeout(() => {
-        if (!cancelled) {callback();}
-      }, 0);
-    });
-  });
-  return (): void => {
-    cancelled = true;
-    if (raf1) {cancelAnimationFrame(raf1);}
-    if (raf2) {cancelAnimationFrame(raf2);}
-    if (tId) {globalThis.clearTimeout(tId);}
-  };
-};
-
-const scheduleMarkerReveal = (doReveal: () => void, cancelRef: { current: (() => void) | null }): void => {
-  if (isFunction(globalThis.requestAnimationFrame)) {
-    cancelRef.current = scheduleAfterTwoFrames(doReveal);
-  } else {
-    doReveal();
-  }
-};
-
-// Brush ranges compare by endpoint time so a re-created but equal range keeps stable identity.
-const isSameBrushRange = (
-  left: Readonly<{ end: Date; start: Date }> | undefined,
-  right: Readonly<{ end: Date; start: Date }> | undefined,
-): boolean => {
-  if (left === right) {return true;}
-  if (!left || !right) {return false;}
-  return left.start.getTime() === right.start.getTime() && left.end.getTime() === right.end.getTime();
-};
 
 export interface LineChartProps {
   data: ChartDatum[];
@@ -945,16 +625,7 @@ export const LineChart = ({
     if (!brushTrackExtent) {return undefined;}
     return { end: brushTrackExtent[1], start: brushTrackExtent[0] };
   }, [brushTrackExtent]);
-  // BrushConfig.initialSelection is an external (ChartBrushProps) field typed `| null`.
-  const brushInitialSelection = brushConfig?.initialSelection;
-  // Value-stable range: only new start/end objects commit, or drags fight spurious updates.
-  const nextBrushRangeValue: BrushRange<Date> | undefined = brushInitialSelection
-    ? { end: brushInitialSelection.end, start: brushInitialSelection.start }
-    : brushFallbackRange;
-  const [brushRangeValue, setBrushRangeValue] = useState<BrushRange<Date> | undefined>(nextBrushRangeValue);
-  if (!isSameBrushRange(brushRangeValue, nextBrushRangeValue)) {
-    setBrushRangeValue(nextBrushRangeValue);
-  }
+  const brushRangeValue = useLineBrushRange({ fallbackRange: brushFallbackRange, initialSelection: brushConfig?.initialSelection });
   const brushOnSelectionChangeRef = useRef(brushConfig?.onSelectionChange);
   useEffect(() => {
     brushOnSelectionChangeRef.current = brushConfig?.onSelectionChange;

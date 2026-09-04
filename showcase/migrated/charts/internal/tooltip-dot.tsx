@@ -86,15 +86,9 @@ const useDotPositionSprings = (options: Readonly<DotPositionSpringsOptions>): vo
 
   const ensureSprings = useCallback(() => {
     if (!animate) {return;}
-    const springX = springXRef.current ?? createSpring(x, effectiveSpring.stiffness, effectiveSpring.damping, (nx) => {
-      if (circleRef.current) {circleRef.current.setAttribute("cx", String(nx));}
-      if (rectRef.current) {rectRef.current.setAttribute("x", String(nx - size));}
-    });
+    const springX = springXRef.current ?? createSpring({ damping: effectiveSpring.damping, initial: x, onUpdate: (nx) => { if (circleRef.current) {circleRef.current.setAttribute("cx", String(nx));} if (rectRef.current) {rectRef.current.setAttribute("x", String(nx - size));} }, stiffness: effectiveSpring.stiffness });
     springXRef.current = springX;
-    const springY = springYRef.current ?? createSpring(y, effectiveSpring.stiffness, effectiveSpring.damping, (ny) => {
-      if (circleRef.current) {circleRef.current.setAttribute("cy", String(ny));}
-      if (rectRef.current) {rectRef.current.setAttribute("y", String(ny - size));}
-    });
+    const springY = springYRef.current ?? createSpring({ damping: effectiveSpring.damping, initial: y, onUpdate: (ny) => { if (circleRef.current) {circleRef.current.setAttribute("cy", String(ny));} if (rectRef.current) {rectRef.current.setAttribute("y", String(ny - size));} }, stiffness: effectiveSpring.stiffness });
     springYRef.current = springY;
   }, [animate, circleRef, effectiveSpring, rectRef, size, x, y]);
 

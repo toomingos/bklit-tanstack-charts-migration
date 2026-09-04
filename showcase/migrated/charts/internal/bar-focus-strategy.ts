@@ -116,7 +116,7 @@ const findBandColumnPrimary = <PointT extends ChartPoint<ChartDatum, string, num
 const resolveBandColumnFocus = <PointT extends ChartPoint<ChartDatum, string, number>>(params: BandFocusParams<PointT>): readonly PointT[] => {
   const primary = findBandColumnPrimary(params);
   if (!primary) {return [];}
-  return collectFocusGroup(params.points, primary, byXKey, byMemberKey);
+  return collectFocusGroup({ memberKeyOf: byMemberKey, points: params.points, primary, xKeyOf: byXKey });
 }
 
 interface CategoryCentroid<PointT> {
@@ -187,7 +187,7 @@ const resolveNearestCategoryFocus = <PointT extends ChartPoint<ChartDatum, strin
   const candidates = collectCategoryCandidates(params.points, key);
   const primary = nearestByY(candidates, params.y);
   if (!primary) {return [];}
-  return collectFocusGroup(params.points, primary, byXKey, byMemberKey);
+  return collectFocusGroup({ memberKeyOf: byMemberKey, points: params.points, primary, xKeyOf: byXKey });
 }
 
 const createBarFocusStrategy = (phaseRefOrArgs: PhaseRefOrArgs): ChartFocusStrategy<ChartDatum, string, number> => {
@@ -207,7 +207,7 @@ const createBarFocusStrategy = (phaseRefOrArgs: PhaseRefOrArgs): ChartFocusStrat
       { point }: { readonly point: PointT },
     ): readonly PointT[] {
       if (points.length === 0) {return [point];}
-      return collectFocusGroup(points, point, byXKey, byMemberKey);
+      return collectFocusGroup({ memberKeyOf: byMemberKey, points, primary: point, xKeyOf: byXKey });
     },
 
     navigation<PointT extends ChartPoint<ChartDatum, string, number>>(

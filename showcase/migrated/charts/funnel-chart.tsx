@@ -285,7 +285,17 @@ interface FunnelSegmentProps {
 }
 
 // Innermost-ring fill precedence: pattern url, then gradient url, then the stage color.
-const resolveRingFill = (isInnermost: boolean, hasPattern: boolean, hasGradient: boolean, patternId: string, gradientId: string, fallback: string): string => {
+interface ResolveRingFillOptions {
+  readonly isInnermost: boolean;
+  readonly hasPattern: boolean;
+  readonly hasGradient: boolean;
+  readonly patternId: string;
+  readonly gradientId: string;
+  readonly fallback: string;
+}
+
+const resolveRingFill = (options: Readonly<ResolveRingFillOptions>): string => {
+  const { isInnermost, hasPattern, hasGradient, patternId, gradientId, fallback } = options;
   if (isInnermost && hasPattern) {return `url(#${patternId})`;}
   if (isInnermost && hasGradient) {return `url(#${gradientId})`;}
   return fallback;
@@ -510,7 +520,7 @@ const renderFunnelRings = (options: Readonly<FunnelRingsOptions>): ReactNode => 
   const { rings, patternId, gradientId, hasPattern, hasGradient, color, onRingRef } = options;
   return rings.map((ring: Readonly<FunnelRingGeometry>) => {
     const isInnermost = ring.ringIndex === rings.length - 1;
-    const ringFill: string = resolveRingFill(isInnermost, hasPattern, hasGradient, patternId, gradientId, color);
+    const ringFill: string = resolveRingFill({ fallback: color, gradientId, hasGradient, hasPattern, isInnermost, patternId });
     return (
       <path
         d={ring.path}
@@ -607,83 +617,45 @@ const renderSegmentOverlay = (options: Readonly<SegmentOverlayOptions>): ReactEl
   );
 };
 
-const FunnelSegment = (props: Readonly<FunnelSegmentProps>): ReactElement => {
-  const isHorizontal = useContext(FunnelOrientationContext);
+interface FunnelPointerHandlers {
+  readonly handlePointerEnter: () => void;
+  readonly handlePointerLeave: () => void;
+}
 
-  const {
-    index,
-    stage,
-    box,
-    normStart,
-    normEnd,
-    segDim,
-    crossDim,
-    color,
-    layers,
-    staggerDelay,
-    enterTransition,
-    renderPattern,
-    straight,
-    gradientStops,
-    coordinator,
-    pct,
-    showValues,
-    showPercentage,
-    showLabels,
-    formatPercentage,
-    formatValue,
-    labelLayout,
-    labelOrientation,
-    labelAlign,
-  } = props;
-
-  const { graphicRef, labelRef, labelInnerRef, ringRefs } = useFunnelSegmentRefs();
-
-  const frame = resolveSegmentFrame({ crossDim, index, isHorizontal, layers, normEnd, normStart, segDim, straight });
-
-  useFunnelSegmentHover({ coordinator, graphicRef, index, isHorizontal, labelRef, ringCount: frame.rings.length, ringRefs });
-  useFunnelSegmentMotion({ enterTransition, graphicRef, index, isHorizontal, labelInnerRef, staggerDelay });
-
+// Hover request callbacks shared by the segment overlay; split so the model hook stays small.
+const useFunnelPointerHandlers = (coordinator: Readonly<FunnelHoverCoordinator>, index: number): FunnelPointerHandlers => {
   const handlePointerEnter = useCallback(() =>{  coordinator.requestHover(index); }, [coordinator, index]);
   const handlePointerLeave = useCallback(() =>{  coordinator.requestUnhover(); }, [coordinator]);
+  return { handlePointerEnter, handlePointerLeave };
+};
 
-  const segmentLabels = resolveSegmentLabels({
-    formatPercentage,
-    formatValue,
-    isHorizontal,
-    labelAlign,
-    labelLayout,
-    labelOrientation,
-    pct,
-    showLabels,
-    showPercentage,
-    showValues,
-    stage,
-  });
+interface FunnelSegmentContent {
+  readonly handlePointerEnter: () => void;
+  readonly handlePointerLeave: () => void;
+  readonly segmentLabels: FunnelLabelFrame;
+}
 
+// Segment content: hover callbacks and label layout for one funnel stage.
+// Refs, frame geometry, and motion wiring stay in FunnelSegment.
+const useFunnelSegmentContent = (props: Readonly<FunnelSegmentProps>, isHorizontal: boolean): FunnelSegmentContent => {
+  const { coordinator, index, stage, pct, showValues, showPercentage, showLabels, formatPercentage, formatValue, labelLayout, labelOrientation, labelAlign } = props;
+  const { handlePointerEnter, handlePointerLeave } = useFunnelPointerHandlers(coordinator, index);
+  const segmentLabels = resolveSegmentLabels({ formatPercentage, formatValue, isHorizontal, labelAlign, labelLayout, labelOrientation, pct, showLabels, showPercentage, showValues, stage });
+  return { handlePointerEnter, handlePointerLeave, segmentLabels };
+};
+
+const FunnelSegment = (props: Readonly<FunnelSegmentProps>): ReactElement => {
+  const { box, color, gradientStops, renderPattern } = props;
+  const isHorizontal = useContext(FunnelOrientationContext);
+  const { graphicRef, labelRef, labelInnerRef, ringRefs } = useFunnelSegmentRefs();
+  const frame = resolveSegmentFrame({ crossDim: props.crossDim, index: props.index, isHorizontal, layers: props.layers, normEnd: props.normEnd, normStart: props.normStart, segDim: props.segDim, straight: props.straight });
+  useFunnelSegmentHover({ coordinator: props.coordinator, graphicRef, index: props.index, isHorizontal, labelRef, ringCount: frame.rings.length, ringRefs });
+  useFunnelSegmentMotion({ enterTransition: props.enterTransition, graphicRef, index: props.index, isHorizontal, labelInnerRef, staggerDelay: props.staggerDelay });
+  const content = useFunnelSegmentContent(props, isHorizontal);
   return (
     <>
-      {renderSegmentGraphic({
-        box,
-        color,
-        frame,
-        gradientStops,
-        graphicRef,
-        isHorizontal,
-        onRingRef: (ringIndex, el) => {
-          ringRefs.current[ringIndex] = el;
-        },
-        renderPattern,
-      })}
-      {renderSegmentOverlay({
-        box,
-        labelContent: segmentLabels.labelContent,
-        labelInnerRef,
-        labelRef,
-        onPointerEnter: handlePointerEnter,
-        onPointerLeave: handlePointerLeave,
-        outerLabelStyle: segmentLabels.outerLabelStyle,
-      })}
+      {renderSegmentGraphic({ box, color, frame, gradientStops, graphicRef, isHorizontal, onRingRef: (ringIndex, el) => { ringRefs.current[ringIndex] = el; }, renderPattern })}
+      {renderSegmentOverlay({ box, labelContent: content.segmentLabels.labelContent, labelInnerRef, labelRef, onPointerEnter: content.handlePointerEnter, onPointerLeave: content.handlePointerLeave, outerLabelStyle: content.segmentLabels.outerLabelStyle })}
     </>
   );
 };
@@ -919,6 +891,30 @@ const renderFunnelStage = (options: Readonly<FunnelStageNodeOptions>): ReactElem
 };
 
 
+interface FunnelFrameInput {
+  readonly data: readonly FunnelStage[];
+  readonly chartW: number;
+  readonly chartH: number;
+  readonly gap: number;
+  readonly gridProp: FunnelChartProps["grid"];
+  readonly isHorizontal: boolean;
+}
+
+interface ResolvedFunnelFrame {
+  readonly baseValue: number;
+  readonly frame: FunnelChartFrame;
+}
+
+// Empty-data guard plus frame computation; undefined means the chart renders null.
+// Percentage basis is data[0].value, not the series max (bklit parity).
+const resolveFunnelChartFrame = (input: Readonly<FunnelFrameInput>): ResolvedFunnelFrame | undefined => {
+  const { data, chartW, chartH, gap, gridProp, isHorizontal } = input;
+  if (data.length === 0) {return undefined;}
+  const first = data.at(0);
+  if (first === undefined) {return undefined;}
+  return { baseValue: first.value, frame: computeFunnelChartFrame({ baseValue: first.value, chartH, chartW, data, gap, gridProp, isHorizontal }) };
+};
+
 interface FunnelStagesOptions extends Omit<FunnelStageNodeOptions, "index" | "stage"> {
   readonly data: readonly FunnelStage[];
 }
@@ -926,6 +922,42 @@ interface FunnelStagesOptions extends Omit<FunnelStageNodeOptions, "index" | "st
 const renderFunnelStages = (options: Readonly<FunnelStagesOptions>): ReactNode => {
   const { data, ...stageOptions } = options;
   return data.map((stage, index) => renderFunnelStage({ ...stageOptions, index, stage }));
+};
+
+interface FunnelChartBodyOptions {
+  readonly baseValue: number;
+  readonly chartH: number;
+  readonly chartW: number;
+  readonly color: string;
+  readonly coordinator: Readonly<FunnelHoverCoordinator>;
+  readonly data: readonly FunnelStage[];
+  readonly edges: "curved" | "straight";
+  readonly enterTransition?: Readonly<FunnelEnterTransition>;
+  readonly formatPercentage: (pctValue: number) => string;
+  readonly formatValue: (stageValue: number) => string;
+  readonly frame: Readonly<FunnelChartFrame>;
+  readonly gap: number;
+  readonly labelAlign: FunnelLabelAlign;
+  readonly labelLayout: "spread" | "grouped";
+  readonly labelOrientation?: FunnelLabelOrientation;
+  readonly layers: number;
+  readonly renderPattern?: (id: string, color: string) => ReactNode;
+  readonly showLabels: boolean;
+  readonly showPercentage: boolean;
+  readonly showValues: boolean;
+  readonly staggerDelay: number;
+}
+
+// Chart-area content: band grid, stage segments, and line grid.
+const renderFunnelChartBody = (options: Readonly<FunnelChartBodyOptions>): ReactElement => {
+  const { baseValue, chartH, chartW, frame, gap } = options;
+  return (
+    <>
+      {frame.showBandGrid && renderBandGrid({ chartH, chartW, data: options.data, gap, grid: frame.grid, isHorizontal: frame.isHorizontal, segH: frame.segH, segW: frame.segW })}
+      {renderFunnelStages({ baseValue, chartH, chartW, color: options.color, coordinator: options.coordinator, data: options.data, edges: options.edges, enterTransition: options.enterTransition, formatPercentage: options.formatPercentage, formatValue: options.formatValue, frame, gap, isHorizontal: frame.isHorizontal, labelAlign: options.labelAlign, labelLayout: options.labelLayout, labelOrientation: options.labelOrientation, layers: options.layers, renderPattern: options.renderPattern, showLabels: options.showLabels, showPercentage: options.showPercentage, showValues: options.showValues, staggerDelay: options.staggerDelay })}
+      {frame.showLineGrid && renderLineGrid({ chartH, chartW, gap, grid: frame.grid, isHorizontal: frame.isHorizontal, segH: frame.segH, segW: frame.segW, stageCount: frame.stageCount })}
+    </>
+  );
 };
 
 
@@ -956,16 +988,11 @@ const FunnelChart = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sz = usePositiveChartSize(containerRef);
   const coordinator = useFunnelHoverCoordinator(hoveredIndexProp, onHoverChange);
-
-  if (data.length === 0) {
+  const resolved = resolveFunnelChartFrame({ chartH: sz.height, chartW: sz.width, data, gap, gridProp, isHorizontal: orientation === "horizontal" });
+  if (resolved === undefined) {
     return null;
   }
-  const first = data.at(0);
-  if (first === undefined) {
-    return null;
-  }
-  // Percentage basis is data[0].value, not the series max (bklit parity).
-  const frame = computeFunnelChartFrame({ baseValue: first.value, chartH: sz.height, chartW: sz.width, data, gap, gridProp, isHorizontal: orientation === "horizontal" });
+  const { baseValue, frame } = resolved;
 
   return (
     <FunnelOrientationContext.Provider value={frame.isHorizontal}>
@@ -975,38 +1002,7 @@ const FunnelChart = ({
       ref={containerRef}
       style={buildFunnelContainerStyle(frame.aspectRatio, style)}
     >
-      {frame.hasChartArea && (
-        <>
-          {frame.showBandGrid && renderBandGrid({ chartH: sz.height, chartW: sz.width, data, gap, grid: frame.grid, isHorizontal: frame.isHorizontal, segH: frame.segH, segW: frame.segW })}
-
-          {renderFunnelStages({
-            baseValue: first.value,
-            chartH: sz.height,
-            chartW: sz.width,
-            color,
-            coordinator,
-            data,
-            edges,
-            enterTransition,
-            formatPercentage,
-            formatValue,
-            frame,
-            gap,
-            isHorizontal: frame.isHorizontal,
-            labelAlign,
-            labelLayout,
-            labelOrientation,
-            layers,
-            renderPattern,
-            showLabels,
-            showPercentage,
-            showValues,
-            staggerDelay,
-          })}
-
-          {frame.showLineGrid && renderLineGrid({ chartH: sz.height, chartW: sz.width, gap, grid: frame.grid, isHorizontal: frame.isHorizontal, segH: frame.segH, segW: frame.segW, stageCount: frame.stageCount })}
-        </>
-      )}
+      {frame.hasChartArea && renderFunnelChartBody({ baseValue, chartH: sz.height, chartW: sz.width, color, coordinator, data, edges, enterTransition, formatPercentage, formatValue, frame, gap, labelAlign, labelLayout, labelOrientation, layers, renderPattern, showLabels, showPercentage, showValues, staggerDelay })}
     </div>
     </FunnelOrientationContext.Provider>
   );

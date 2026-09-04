@@ -59,14 +59,9 @@ const useIndicatorSprings = (params: Readonly<IndicatorSpringParams>): Indicator
 
   const ensureSprings = useCallback(() => {
     if (!animate) {return;}
-    const rectSpring = rectSpringRef.current ?? createSpring(rectX, effectiveSpring.stiffness, effectiveSpring.damping, (nx) => {
-      rectRef.current?.setAttribute("x", String(nx));
-    });
+    const rectSpring = rectSpringRef.current ?? createSpring({ damping: effectiveSpring.damping, initial: rectX, onUpdate: (nx) => { rectRef.current?.setAttribute("x", String(nx)); }, stiffness: effectiveSpring.stiffness });
     rectSpringRef.current = rectSpring;
-    const lineSpring = lineSpringRef.current ?? createSpring(lineX, effectiveSpring.stiffness, effectiveSpring.damping, (nx) => {
-      lineRef.current?.setAttribute("x1", String(nx));
-      lineRef.current?.setAttribute("x2", String(nx));
-    });
+    const lineSpring = lineSpringRef.current ?? createSpring({ damping: effectiveSpring.damping, initial: lineX, onUpdate: (nx) => { lineRef.current?.setAttribute("x1", String(nx)); lineRef.current?.setAttribute("x2", String(nx)); }, stiffness: effectiveSpring.stiffness });
     lineSpringRef.current = lineSpring;
   }, [animate, effectiveSpring, lineX, rectX]);
 

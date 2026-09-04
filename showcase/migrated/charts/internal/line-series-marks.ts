@@ -4,12 +4,12 @@ import { lineY } from "@tanstack/charts/line";
 import type { ChartMark } from "@tanstack/charts";
 import { resolveDashTailBounds } from "./dash-tail";
 import {
-  buildHighlightBandMarks,
   buildHoverDotMark,
   buildIndicatorMark,
   pointerSeriesDimStates,
   resolveHoverDotFill,
 } from "./hover-geometry";
+import { buildHighlightBandMarks } from "./highlight-band";
 import { buildMarkerMarks } from "./series-marker-mark";
 import type { MarkerSeriesConfig } from "./series-marker-mark";
 import type {
@@ -87,14 +87,7 @@ const buildMarkerDotMarks = (params: Readonly<MarkerDotMarksParams>): ChartMark<
   if (!params.markerSeriesConfigs.some((seriesConfig) => seriesConfig.showMarkers ?? false)) {
     return [];
   }
-  return buildMarkerMarks(
-    params.renderData,
-    params.xDataKey,
-    params.markerSeriesConfigs,
-    params.markerGradientIdByKey,
-    params.legendHoveredKey,
-    params.hasHover,
-  );
+  return buildMarkerMarks({ gradientIdByKey: params.markerGradientIdByKey, legendHoveredKey: params.legendHoveredKey, pointerFocusActive: params.hasHover, renderData: params.renderData, series: params.markerSeriesConfigs, xDataKey: params.xDataKey });
 };
 
 interface TooltipChromeMarksParams {
@@ -128,14 +121,16 @@ const buildHoverDotSeriesMarks = (params: Readonly<HoverDotSeriesMarksParams>): 
   for (const line of params.lines) {
     dots.push(
       buildHoverDotMark(
-        params.renderData,
-        params.xDataKey,
-        { color: line.stroke ?? params.defaultStroke, dataKey: line.dataKey },
-        resolveHoverDotFill(line.stroke ?? params.defaultStroke, params.tooltip?.dotColor),
         {
-          discrete: params.isDiscrete,
-          size: params.tooltip?.dotSize,
-          strokeWidth: params.tooltip?.dotStrokeWidth,
+          fill: resolveHoverDotFill(line.stroke ?? params.defaultStroke, params.tooltip?.dotColor),
+          options: {
+            discrete: params.isDiscrete,
+            size: params.tooltip?.dotSize,
+            strokeWidth: params.tooltip?.dotStrokeWidth,
+          },
+          renderData: params.renderData,
+          series: { color: line.stroke ?? params.defaultStroke, dataKey: line.dataKey },
+          xDataKey: params.xDataKey,
         },
       ),
     );
@@ -159,17 +154,19 @@ const buildHighlightBandSeriesMarks = (params: Readonly<HighlightBandSeriesMarks
     return [];
   }
   return buildHighlightBandMarks(
-    params.renderData,
-    params.xDataKey,
-    params.hoveredIndex,
-    params.lines.map((line: Readonly<LineConfig>) => ({
-      color: line.stroke ?? params.defaultStroke,
-      curve: d3Curve(line.curve ?? curveNatural),
-      dataKey: line.dataKey,
-      showHighlight: line.showHighlight ?? true,
-      strokeWidth: line.strokeWidth ?? params.defaultStrokeWidth,
-    })),
-    { discrete: params.isDiscrete },
+    {
+      hoveredIndex: params.hoveredIndex,
+      options: { discrete: params.isDiscrete },
+      renderData: params.renderData,
+      series: params.lines.map((line: Readonly<LineConfig>) => ({
+        color: line.stroke ?? params.defaultStroke,
+        curve: d3Curve(line.curve ?? curveNatural),
+        dataKey: line.dataKey,
+        showHighlight: line.showHighlight ?? true,
+        strokeWidth: line.strokeWidth ?? params.defaultStrokeWidth,
+      })),
+      xDataKey: params.xDataKey,
+    },
   );
 };
 

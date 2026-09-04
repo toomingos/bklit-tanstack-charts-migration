@@ -23,7 +23,7 @@ export const createCandlestickFocusStrategy = (args: Readonly<CandlestickFocusSt
       { point }: { readonly point: CandlestickPoint },
     ): readonly CandlestickPoint[] {
       if (points.length === 0) {return [point];}
-      return collectFocusGroup(points, point, epochMs, byMarkId);
+      return collectFocusGroup({ memberKeyOf: byMarkId, points, primary: point, xKeyOf: epochMs });
     },
 
     navigation(
@@ -40,7 +40,7 @@ export const createCandlestickFocusStrategy = (args: Readonly<CandlestickFocusSt
       if (points.length === 0) {return [];}
       const nearest = findNearestPointByX(points, x, maxDistance);
       if (!nearest) {return [];}
-      return collectFocusGroup(points, nearest, epochMs, byMarkId);
+      return collectFocusGroup({ memberKeyOf: byMarkId, points, primary: nearest, xKeyOf: epochMs });
     },
   };
 }

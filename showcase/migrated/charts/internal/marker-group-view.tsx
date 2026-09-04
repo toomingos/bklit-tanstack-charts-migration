@@ -7,17 +7,9 @@ import { MarkerCircleHtml } from "./marker-circle";
 import { renderMarkerFan } from "./marker-fan";
 import type { ChartMarker } from "./types";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { markerEnterStyle, markerGuideLineStyle } from "./marker-group-styles";
 // Collapsed (unfanned) marker scale while another bucket is fanned.
 const MARKER_COLLAPSED_SCALE = 0.6;
-// Guide-line opacity when neither hovered nor crosshair-active.
-const MARKER_GUIDE_DIMMED_OPACITY = 0.6;
-// Gap between the marker circle edge and the guide-line start.
-const MARKER_GUIDE_TOP_OFFSET_PX = 4;
-// Pre-reveal scale of the entering marker.
-const MARKER_ENTER_INITIAL_SCALE = 0.85;
-
-const MARKER_BLURRED_FILTER = "blur(2px)";
-const MARKER_SHARP_FILTER = "blur(0px)";
 
 // QA harness flag, set pre-boot by Playwright's addInitScript (see qa/screenshot.mjs).
 // Window-mirrored onto globalThis: identical object in browsers, readable during SSR.
@@ -53,18 +45,6 @@ interface MarkerGroupViewProps {
   onMarkerHoverChange?: (markers: ChartMarker[] | null) => void;
 }
 
-const resolveGuideOpacity = (hovered: boolean, isActive: boolean): number => {
-  if (hovered) {return 1;}
-  if (isActive === true) {return 0;}
-  return MARKER_GUIDE_DIMMED_OPACITY;
-};
-
-const resolveMarkerFilter = (revealed: boolean, shouldFan: boolean): string => {
-  if (!revealed) {return MARKER_BLURRED_FILTER;}
-  if (shouldFan) {return MARKER_BLURRED_FILTER;}
-  return MARKER_SHARP_FILTER;
-};
-
 const resolveFannedMarkers = (markers: readonly ChartMarker[], maxFanned: number | undefined): readonly ChartMarker[] => (
   maxFanned === undefined ? markers : markers.slice(0, maxFanned)
 );
@@ -91,26 +71,13 @@ interface MarkerGuideLineOptions {
   readonly isActive: boolean;
 }
 
-// Guide-line style is a pure function of its geometry so the render helper stays allocation-free in JSX.
-const markerGuideLineStyle = (lineHeight: number, y: number, hovered: boolean, isActive: boolean, size: number): CSSProperties => ({
-  borderLeft: "1px dashed var(--chart-marker-border)",
-  height: lineHeight + Math.abs(y),
-  left: 0,
-  opacity: resolveGuideOpacity(hovered, isActive),
-  pointerEvents: "none",
-  position: "absolute",
-  top: size / 2 + MARKER_GUIDE_TOP_OFFSET_PX,
-  transition: "opacity 200ms ease-out",
-  width: 1,
-});
-
 const renderMarkerGuideLine = (options: Readonly<MarkerGuideLineOptions>): ReactNode => {
   const { showLine, lineHeight, y, size, hovered, isActive } = options;
   if (!showLine || lineHeight <= 0) {return undefined;}
   return (
     <div
       aria-hidden="true"
-      style={markerGuideLineStyle(lineHeight, y, hovered, isActive, size)}
+      style={markerGuideLineStyle({ hovered, isActive, lineHeight, size, y })}
     />
   );
 }
@@ -144,24 +111,6 @@ interface MarkerEnterOptions {
   readonly attachEnterRef: (element: HTMLDivElement | null) => void;
 }
 
-// Enter-transition style is a pure function of its reveal inputs; see the guide-line factory above.
-const markerEnterStyle = (size: number, revealed: boolean, collapsedOpacity: number, collapsedScale: number, shouldFan: boolean): CSSProperties => ({
-  cursor: "pointer",
-  filter: resolveMarkerFilter(revealed, shouldFan),
-  height: size,
-  left: -size / 2,
-  opacity: revealed ? collapsedOpacity : 0,
-  pointerEvents: "auto",
-  position: "absolute",
-  top: -size / 2,
-  transform: `scale(${revealed ? collapsedScale : MARKER_ENTER_INITIAL_SCALE})`,
-  transformOrigin: "center center",
-  transition: revealed
-    ? "opacity 220ms ease-out, transform 220ms ease-out, filter 220ms ease-out"
-    : "none",
-  width: size,
-});
-
 // Inner marker box only tracks its size.
 const markerEnterInnerStyle = (size: number): CSSProperties => ({
   height: size,
@@ -176,7 +125,7 @@ const renderMarkerEnter = (options: Readonly<MarkerEnterOptions>): ReactNode => 
       ref={attachEnterRef}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
-      style={markerEnterStyle(size, revealed, collapsedOpacity, collapsedScale, shouldFan)}
+      style={markerEnterStyle({ collapsedOpacity, collapsedScale, revealed, shouldFan, size })}
     >
       <div style={markerEnterInnerStyle(size)}>
         {renderFirstMarkerCircle({ markers, size })}

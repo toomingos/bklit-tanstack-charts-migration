@@ -131,31 +131,50 @@ const renderLinePatternPreset = (linePreset: Readonly<LinePatternPresetArgs>): R
   }
 };
 
+interface PatternTileSetup {
+  readonly common: PatternTileCommon;
+  readonly scale: number;
+}
+
+interface PatternTileSetupOptions {
+  readonly id: string;
+  readonly options: Readonly<PatternPresetOptions>;
+  readonly preset: PatternPresetId;
+}
+
+// Tile sizing plus shared tile props; hoisted so renderPatternPreset stays short.
+const buildPatternTileSetup = (setupOptions: Readonly<PatternTileSetupOptions>): PatternTileSetup => {
+  const scale = setupOptions.options.scale ?? DEFAULT_PATTERN_SCALE;
+  const tile = patternPresetTileSize(setupOptions.preset, scale);
+  const tileBackground = setupOptions.options.tileBackground !== undefined && setupOptions.options.tileBackground !== ""
+    ? { background: setupOptions.options.tileBackground }
+    : undefined;
+  return {
+    common: {
+      height: tile.height,
+      id: setupOptions.id,
+      strokeWidth: tile.strokeWidth,
+      width: tile.width,
+      ...tileBackground,
+    },
+    scale,
+  };
+};
+
 const renderPatternPreset = (preset: PatternPresetId, id: string, options: Readonly<PatternPresetOptions> = {}): ReactNode => {
   if (preset === "none") {
     return undefined;
   }
 
   const color = options.color ?? "var(--chart-1)";
-  const scale = options.scale ?? DEFAULT_PATTERN_SCALE;
-  const tile = patternPresetTileSize(preset, scale);
-  const tileBackground = options.tileBackground !== undefined && options.tileBackground !== ""
-    ? { background: options.tileBackground }
-    : undefined;
-  const common: PatternTileCommon = {
-    height: tile.height,
-    id,
-    strokeWidth: tile.strokeWidth,
-    width: tile.width,
-    ...tileBackground,
-  };
+  const tileSetup = buildPatternTileSetup({ id, options, preset });
 
   if (preset === "dots" || preset === "circles") {
-    return renderPatternCircles({ color, common, options, preset, scale });
+    return renderPatternCircles({ color, common: tileSetup.common, options, preset, scale: tileSetup.scale });
   }
 
-  const strokeWidth = options.strokeWidth ?? tile.strokeWidth;
-  return renderLinePatternPreset({ color, common, preset, strokeWidth });
+  const strokeWidth = options.strokeWidth ?? tileSetup.common.strokeWidth;
+  return renderLinePatternPreset({ color, common: tileSetup.common, preset, strokeWidth });
 }
 
 export { renderPatternPreset };

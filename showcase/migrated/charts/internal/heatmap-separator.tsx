@@ -196,6 +196,45 @@ const renderSeparatorLines = ({
   </g>
 );
 
+interface SeparatorLineConfig {
+  readonly dasharray: string | undefined;
+  readonly gradientStops: readonly Readonly<HeatmapSeparatorGradientStop>[] | undefined;
+  readonly y1: number;
+  readonly y2: number;
+}
+
+interface ResolveSeparatorLineConfigParams {
+  readonly gradient: Readonly<HeatmapSeparatorGradient> | undefined;
+  readonly innerHeight: number;
+  readonly marginTop: number;
+  readonly paddingY: number;
+  readonly startOffset: number | undefined;
+  readonly strokeDasharray: string | undefined;
+  readonly strokeOpacity: number;
+  readonly strokeStyle: HeatmapSeparatorStrokeStyle;
+}
+
+// Resolves the horizontal line geometry and stroke for the separator overlay.
+// Hoisted so HeatmapSeparator stays under the statement limit.
+const resolveSeparatorLineConfig = ({
+  gradient,
+  innerHeight,
+  marginTop,
+  paddingY,
+  startOffset,
+  strokeDasharray,
+  strokeOpacity,
+  strokeStyle,
+}: Readonly<ResolveSeparatorLineConfigParams>): SeparatorLineConfig => {
+  const { y1, y2 } = getHeatmapSeparatorLineY({ innerHeight, marginTop, paddingY, startOffset });
+  return {
+    dasharray: resolveHeatmapSeparatorStrokeDasharray(strokeStyle, strokeDasharray),
+    gradientStops: gradient ? buildHeatmapSeparatorGradientStops(gradient, strokeOpacity) : undefined,
+    y1,
+    y2,
+  };
+};
+
 const HeatmapSeparator = ({
   className,
   paddingX = 0,
@@ -232,13 +271,11 @@ const HeatmapSeparator = ({
     xScale: ctx.xScale,
   });
   if (!layout || layout.atColumns.length === 0) {return labelPortal;}
-  const { y1, y2 } = getHeatmapSeparatorLineY({ innerHeight: ctx.innerHeight, marginTop: ctx.margin.top, paddingY, startOffset });
-  const dasharray = resolveHeatmapSeparatorStrokeDasharray(strokeStyle, strokeDasharray);
-  const gradientStops = gradient ? buildHeatmapSeparatorGradientStops(gradient, strokeOpacity) : undefined;
+  const lineConfig = resolveSeparatorLineConfig({ gradient, innerHeight: ctx.innerHeight, marginTop: ctx.margin.top, paddingY, startOffset, strokeDasharray, strokeOpacity, strokeStyle });
   return (
     <>
-      {gradientStops ? renderSeparatorGradientDef({ gradientId, gradientStops, y1, y2 }) : undefined}
-      {renderSeparatorLines({ atColumns: layout.atColumns, className, dasharray, gap: ctx.gap, gradientId, gradientStops, paddingX, separator: layout, stroke, strokeOpacity, strokeWidth, xScale: ctx.xScale, y1, y2 })}
+      {lineConfig.gradientStops ? renderSeparatorGradientDef({ gradientId, gradientStops: lineConfig.gradientStops, y1: lineConfig.y1, y2: lineConfig.y2 }) : undefined}
+      {renderSeparatorLines({ atColumns: layout.atColumns, className, dasharray: lineConfig.dasharray, gap: ctx.gap, gradientId, gradientStops: lineConfig.gradientStops, paddingX, separator: layout, stroke, strokeOpacity, strokeWidth, xScale: ctx.xScale, y1: lineConfig.y1, y2: lineConfig.y2 })}
       {labelPortal}
     </>
   );

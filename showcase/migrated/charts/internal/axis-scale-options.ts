@@ -82,8 +82,16 @@ interface XAxisPresentation {
       };
 }
 
-const buildFadeXAxisOptions = (columnTicks: number, xAxis: Readonly<XAxisConfig> | undefined, marginBottom: number, labelFade: { readonly primaryX: number; readonly hoveredLabel: string | null } | null): XAxisPresentation => (
-  {
+interface FadeXAxisOptionsParams {
+  readonly columnTicks: number;
+  readonly labelFade: { readonly primaryX: number; readonly hoveredLabel: string | null } | null;
+  readonly marginBottom: number;
+  readonly xAxis: Readonly<XAxisConfig> | undefined;
+}
+
+const buildFadeXAxisOptions = (params: Readonly<FadeXAxisOptionsParams>): XAxisPresentation => {
+  const { columnTicks, labelFade, marginBottom, xAxis } = params;
+  return {
     line: false,
     tickLabels: xAxis
       ? {
@@ -103,11 +111,20 @@ const buildFadeXAxisOptions = (columnTicks: number, xAxis: Readonly<XAxisConfig>
         }
       : false,
     ticks: { count: columnTicks, padding: 0, size: 0 },
-  }
-);
+  };
+};
 
-const buildPrecomputedXAxisOptions = (columnTicks: number, xAxis: Readonly<XAxisConfig> | undefined, marginBottom: number, xTickLabelOpacity: number | ((context: ChartAxisTickLabelContext<Date>) => number | undefined), tickLabelMotion: ChartMotionDefinition): XAxisPresentation => (
-  {
+interface PrecomputedXAxisOptionsParams {
+  readonly columnTicks: number;
+  readonly marginBottom: number;
+  readonly tickLabelMotion: ChartMotionDefinition;
+  readonly xAxis: Readonly<XAxisConfig> | undefined;
+  readonly xTickLabelOpacity: number | ((context: ChartAxisTickLabelContext<Date>) => number | undefined);
+}
+
+const buildPrecomputedXAxisOptions = (params: Readonly<PrecomputedXAxisOptionsParams>): XAxisPresentation => {
+  const { columnTicks, marginBottom, tickLabelMotion, xAxis, xTickLabelOpacity } = params;
+  return {
     line: false,
     tickLabels: xAxis
       ? {
@@ -119,11 +136,20 @@ const buildPrecomputedXAxisOptions = (columnTicks: number, xAxis: Readonly<XAxis
         }
       : false,
     ticks: { count: columnTicks, padding: 0, size: 0 },
-  }
-);
+  };
+};
 
-const buildYAxisOptions = (scale: ChartScale | ChartScaleInput<number>, yDomainForTicks: readonly [number, number], gridHorizontal: boolean, yAxis: Readonly<YAxisConfig>, tickLabelMotion: ChartMotionDefinition): ChartPositionScaleOptions<number> => (
-  {
+interface YAxisOptionsParams {
+  readonly gridHorizontal: boolean;
+  readonly scale: ChartScale | ChartScaleInput<number>;
+  readonly tickLabelMotion: ChartMotionDefinition;
+  readonly yAxis: Readonly<YAxisConfig>;
+  readonly yDomainForTicks: readonly [number, number];
+}
+
+const buildYAxisOptions = (params: Readonly<YAxisOptionsParams>): ChartPositionScaleOptions<number> => {
+  const { gridHorizontal, scale, tickLabelMotion, yAxis, yDomainForTicks } = params;
+  return {
     axis: {
       line: false,
       tickLabels: {
@@ -143,8 +169,8 @@ const buildYAxisOptions = (scale: ChartScale | ChartScaleInput<number>, yDomainF
     grid: gridHorizontal,
     scale,
     side: yAxis.orientation === "right" ? "right" : "left",
-  }
-);
+  };
+};
 
 interface HiddenAxisOptions {
   readonly line: false;

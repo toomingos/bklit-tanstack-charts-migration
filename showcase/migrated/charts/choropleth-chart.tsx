@@ -4,7 +4,7 @@ import type { ReactElement, ReactNode, RefObject } from 'react';
 import type { FeatureCollection,Feature,Geometry} from "geojson";
 import { geoCentroid, geoMercator, geoPath } from 'd3-geo';
 import type { GeoPermissibleObjects, GeoProjection } from 'd3-geo';
-import type { TransformMatrix, ProvidedZoom, ZoomState, GenericWheelEvent, Scale } from "./internal/zoom-engine";
+import type { TransformMatrix, ProvidedZoom, ZoomState } from "./internal/zoom-engine";
 import { Zoom } from "./internal/zoom-engine";
 import { identityMatrix } from "./internal/zoom-math";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
@@ -23,12 +23,13 @@ import { CHART_ROLE } from "./children";
 import { roleOf } from "./internal/children-extract";
 import { createChoroplethHoverChrome } from './internal/choropleth-hover-chrome';
 import type { ChoroplethHoverChrome } from './internal/choropleth-hover-chrome';
+import { TS_CHART_SVG_SELECTOR, useChoroplethReveal } from "./internal/choropleth-reveal";
+import { matricesEqual, queueZoomFrame, resolveWheelZoomDelta, resolveZoomFrameMatrix, zoomSnapshotChanged } from "./internal/choropleth-zoom-motion";
 import { intFmt } from "./internal/formatters";
 import { ChoroplethGraticuleOverlay } from "./internal/choropleth-graticule";
-import { findRevealRoot, isRevealed, markRevealed, onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
+import { findRevealRoot, isRevealed } from "./internal/deferred-reveal";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { useContainerWidth } from "./internal/use-container-size";
-import { clipRevealTiming } from './internal/enter-transition';
 import type { EnterTransition } from './internal/enter-transition';
 import "./styles.css";
 
@@ -166,11 +167,7 @@ const DEFAULT_MARGIN: Margin = { bottom: 0, left: 0, right: 0, top: 0 };
 const DEFAULT_INITIAL_ZOOM: TransformMatrix = identityMatrix();
 
 const ANIMATION_DURATION_MS = 800;
-const FEATURE_ENTER_MS = 1100;
-const REVEAL_EASING = "cubic-bezier(0.85, 0, 0.15, 1)";
 const CHOROPLETH_TOOLTIP_OFFSET = 16;
-// Selector for the TanStack-rendered svg element within a chart container.
-const TS_CHART_SVG_SELECTOR = "svg.ts-chart";
 
 // Config-carrier marker declared on the component type (children.tsx ChartChildComponent
 // Pattern), so attaching the role needs no assertion; the runtime shape is unchanged.
@@ -188,12 +185,12 @@ ChoroplethTooltip[CHART_ROLE] = "choroplethTooltip";
 const ChoroplethGraticule: ChoroplethChildComponent<ChoroplethGraticuleProps> = (_props: Readonly<ChoroplethGraticuleProps>): undefined => undefined;
 ChoroplethGraticule[CHART_ROLE] = "choroplethGraticule";
 
-const resolveFeatureFill = (feature: ChoroplethFeature, index: number, baseFill: string | undefined, getFeatureColor: ChoroplethFeatureProps["getFeatureColor"], getFeaturePattern: ChoroplethFeatureProps["getFeaturePattern"]): string => {
-  const patternId = getFeaturePattern?.(feature, index);
-  const baseFillValue = baseFill ?? "";
+const resolveFeatureFill = (feature: ChoroplethFeature, index: number, featureConfig: Readonly<ChoroplethFeatureProps> | undefined): string => {
+  const patternId = featureConfig?.getFeaturePattern?.(feature, index);
+  const baseFillValue = featureConfig?.fill ?? "";
   if ((patternId ?? "").length > 0) {return `url(#${patternId})`;}
   if (baseFillValue.length > 0) {return baseFillValue;}
-  if (getFeatureColor) {return getFeatureColor(feature, index);}
+  if (featureConfig?.getFeatureColor) {return featureConfig.getFeatureColor(feature, index);}
   return DEFAULT_CHOROPLETH_COLORS[index % DEFAULT_CHOROPLETH_COLORS.length] ?? "var(--chart-1)";
 }
 
@@ -214,21 +211,18 @@ const withAlpha = (color: string, alphaPercent: number): string => {
 }
 
 // Base 0.85, hovered 1, dimmed 0.4 (bklit hover-chrome values).
-const resolveFeatureAlpha = (key: string, hoveredKey: string | null, baseOpacity: number, dimOpacity: number): number => {
-  if (hoveredKey === null) {return baseOpacity;}
+interface FeatureAlphaLevels {
+  readonly base: number;
+  readonly dim: number;
+}
+
+const resolveFeatureAlpha = (key: string, hoveredKey: string | null, levels: Readonly<FeatureAlphaLevels>): number => {
+  if (hoveredKey === null) {return levels.base;}
   if (hoveredKey === key) {return 1;}
-  return dimOpacity;
+  return levels.dim;
 }
 
 
-// Zoom application eases matrix values over 180ms per frame (retired CSS transition's timing).
-const ZOOM_EASE_MS = 180;
-
-// Binomial coefficient of the cubic Bernstein basis in the bezier solver below.
-const CUBIC_BEZIER_COEFFICIENT = 3;
-// Newton-Raphson iteration cap and slope epsilon of the bezier solver.
-const BEZIER_SOLVER_MAX_ITERATIONS = 8;
-const BEZIER_SOLVER_EPSILON = 1e-6;
 // Default map center latitude (longitude 0 needs no name: it is exempt).
 const DEFAULT_CENTER_LATITUDE = 20;
 // Default map center (stable reference for the center prop default).
@@ -241,16 +235,6 @@ const CHOROPLETH_BASE_SCALE = 100;
 // Downward nudge of the default projection center (title/legend space).
 const CHOROPLETH_TRANSLATE_Y_OFFSET = 50;
 const DEFAULT_STROKE_WIDTH = 0.5;
-// Wheel-zoom step factors per tick, out and in.
-const WHEEL_ZOOM_OUT_FACTOR = 0.95;
-const WHEEL_ZOOM_IN_FACTOR = 1.05;
-
-// Static prop values hoisted so JSX props below keep a stable identity across renders.
-// Wheel step as a scale-delta pair; hoisted so the Zoom prop keeps a stable callback identity.
-const resolveWheelZoomDelta = (event: GenericWheelEvent): Scale => {
-  const zoomScale = event.deltaY > 0 ? WHEEL_ZOOM_OUT_FACTOR : WHEEL_ZOOM_IN_FACTOR;
-  return { scaleX: zoomScale, scaleY: zoomScale };
-};
 // Swatch marker for the tooltip value row.
 const TOOLTIP_SWATCH_STYLE = { backgroundColor: "var(--chart-1)" } as const;
 // Graticule overlay svg floats above the map without intercepting pointer events.
@@ -259,105 +243,6 @@ const GRATICULE_LAYER_STYLE = { left: 0, pointerEvents: "none", position: "absol
 const PATTERN_DEFS_STYLE = { height: 0, overflow: "hidden", position: "absolute", width: 0 } as const;
 // Inner overlay container fills the sized body.
 const CHOROPLETH_INNER_STYLE = { inset: 0, position: "absolute" } as const;
-
-interface CubicBezierCoefficients {
-  readonly ax: number;
-  readonly bx: number;
-  readonly cx: number;
-  readonly ay: number;
-  readonly by: number;
-  readonly cy: number;
-}
-
-// Ease-out control points (0, 0, 0.58, 1); the only curve the zoom easing uses.
-const easeOutCoefficients = (): CubicBezierCoefficients => {
-  const cx = CUBIC_BEZIER_COEFFICIENT * 0;
-  const bx = CUBIC_BEZIER_COEFFICIENT * (0.58 - 0) - cx;
-  const ax = 1 - cx - bx;
-  const cy = CUBIC_BEZIER_COEFFICIENT * 0;
-  const by = CUBIC_BEZIER_COEFFICIENT * (1 - 0) - cy;
-  const ay = 1 - cy - by;
-  return { ax, ay, bx, by, cx, cy };
-}
-
-const sampleBezierX = (coeffs: Readonly<CubicBezierCoefficients>, curveParam: number): number =>
-  ((coeffs.ax * curveParam + coeffs.bx) * curveParam + coeffs.cx) * curveParam;
-
-const sampleBezierY = (coeffs: Readonly<CubicBezierCoefficients>, curveParam: number): number =>
-  ((coeffs.ay * curveParam + coeffs.by) * curveParam + coeffs.cy) * curveParam;
-
-const sampleBezierDX = (coeffs: Readonly<CubicBezierCoefficients>, curveParam: number): number =>
-  (CUBIC_BEZIER_COEFFICIENT * coeffs.ax * curveParam + 2 * coeffs.bx) * curveParam + coeffs.cx;
-
-const solveBezierT = (coeffs: Readonly<CubicBezierCoefficients>, time: number): number => {
-  let solution = time;
-  for (let iteration = 0; iteration < BEZIER_SOLVER_MAX_ITERATIONS; iteration += 1) {
-    const dx = sampleBezierDX(coeffs, solution);
-    if (Math.abs(dx) < BEZIER_SOLVER_EPSILON) {break;}
-    solution -= (sampleBezierX(coeffs, solution) - time) / dx;
-  }
-  return solution;
-}
-
-const cubicBezierEaseOut = (time: number): number => {
-  if (time <= 0) {return 0;}
-  if (time >= 1) {return 1;}
-  const coeffs = easeOutCoefficients();
-  return sampleBezierY(coeffs, solveBezierT(coeffs, time));
-}
-
-const lerpMatrix = (from: Readonly<TransformMatrix>, to: Readonly<TransformMatrix>, progress: number): TransformMatrix => ({
-    scaleX: from.scaleX + (to.scaleX - from.scaleX) * progress,
-    scaleY: from.scaleY + (to.scaleY - from.scaleY) * progress,
-    skewX: from.skewX + (to.skewX - from.skewX) * progress,
-    skewY: from.skewY + (to.skewY - from.skewY) * progress,
-    translateX: from.translateX + (to.translateX - from.translateX) * progress,
-    translateY: from.translateY + (to.translateY - from.translateY) * progress,
-  })
-
-const matricesEqual = (matrixA: Readonly<TransformMatrix>, matrixB: Readonly<TransformMatrix>): boolean => {
-    const scaleMatches = matrixA.scaleX === matrixB.scaleX && matrixA.scaleY === matrixB.scaleY;
-    const translateMatches = matrixA.translateX === matrixB.translateX && matrixA.translateY === matrixB.translateY;
-    const skewMatches = matrixA.skewX === matrixB.skewX && matrixA.skewY === matrixB.skewY;
-    return scaleMatches && translateMatches && skewMatches;
-  }
-
-type ZoomEaseState = { from: TransformMatrix; start: number };
-
-interface ZoomFrameOptions {
-  readonly dragging: boolean;
-  readonly easeRef: RefObject<ZoomEaseState | undefined>;
-  readonly target: TransformMatrix;
-  readonly now: number;
-}
-
-const resolveZoomFrameMatrix = (options: Readonly<ZoomFrameOptions>): TransformMatrix => {
-  const { dragging, easeRef, target, now } = options;
-  const ease = easeRef.current;
-  if (dragging || !ease) {return target;}
-  const progress = Math.min((now - ease.start) / ZOOM_EASE_MS, 1);
-  if (progress >= 1) {
-    easeRef.current = undefined;
-    return target;
-  }
-  return lerpMatrix(ease.from, target, cubicBezierEaseOut(progress));
-};
-
-// True when the committed zoom snapshot differs (matrix or dragging flag).
-interface ZoomSnapshotOptions {
-  readonly matrix: TransformMatrix;
-  readonly dragging: boolean;
-  readonly committedMatrix: Readonly<TransformMatrix>;
-  readonly committedDragging: boolean;
-}
-
-const zoomSnapshotChanged = (options: Readonly<ZoomSnapshotOptions>): boolean =>
-  options.dragging !== options.committedDragging || !matricesEqual(options.matrix, options.committedMatrix);
-
-const queueZoomFrame = (shouldContinue: boolean, frame: (now: number) => void): number | undefined => {
-  if (!shouldContinue) {return undefined;}
-  return requestAnimationFrame(frame);
-};
 
 interface ExtractedConfig {
   featureConfig: ChoroplethFeatureProps | undefined;
@@ -380,21 +265,18 @@ interface FeaturePainters {
 
 const makeFeaturePainters = (options: Readonly<FeaturePaintOptions>): FeaturePainters => {
   const { featureConfig, hoveredKey, baseOpacity, dimOpacity } = options;
+  // Opacity pair is built once per painter (per memo recompute), so per-datum alpha reads share it.
+  const levels: FeatureAlphaLevels = { base: baseOpacity, dim: dimOpacity };
   return {
     // Pattern fills can't alpha-blend: pattern-filled features skip hover dim (fidelity gap).
     fill: (feature: ChoroplethFeature, { index }: { readonly index: number }): string => {
-      const resolved = resolveFeatureFill(
-        feature, index,
-        featureConfig?.fill,
-        featureConfig?.getFeatureColor,
-        featureConfig?.getFeaturePattern,
-      );
+      const resolved = resolveFeatureFill(feature, index, featureConfig);
       if ((featureConfig?.getFeaturePattern?.(feature, index) ?? "").length > 0) {return resolved;}
-      const alpha = resolveFeatureAlpha(choroplethSceneKey(feature), hoveredKey, baseOpacity, dimOpacity);
+      const alpha = resolveFeatureAlpha(choroplethSceneKey(feature), hoveredKey, levels);
       return withAlpha(resolved, alpha * ALPHA_TO_PERCENT);
     },
     stroke: (feature: Readonly<Pick<ChoroplethFeature, "properties" | "id">>): string => {
-      const alpha = resolveFeatureAlpha(choroplethSceneKey(feature), hoveredKey, baseOpacity, dimOpacity);
+      const alpha = resolveFeatureAlpha(choroplethSceneKey(feature), hoveredKey, levels);
       return withAlpha(featureConfig?.stroke ?? "var(--background)", alpha * ALPHA_TO_PERCENT);
     },
   };
@@ -566,163 +448,6 @@ const renderChoroplethTooltipBody = (
   const [firstPoint] = ctx.points;
   if (!firstPoint) {return undefined;}
   return renderFeatureTooltipCard(cfg, firstPoint.datum, firstPoint.datumIndex);
-};
-
-interface RevealPlaybackOptions {
-  readonly chartContainer: HTMLElement;
-  readonly durationMs: number;
-  readonly easingCss: string;
-  readonly animationsRef: RefObject<Animation[]>;
-}
-
-// Settle a reveal tween: drop the backwards fill once finished or cancelled.
-const settleGeoReveal = (anim: Animation): void => {
-  anim.onfinish = (): void => { try { anim.cancel(); } catch {
-    // Cancelling a finished tween throws: the reveal is already settled.
-  } };
-  anim.addEventListener("cancel", (): void => { try { anim.cancel(); } catch {
-    // Cancelling a cancelled tween throws: the settle is already done.
-  } });
-};
-
-const playGeoReveal = (options: Readonly<RevealPlaybackOptions>): void => {
-  const { chartContainer, durationMs, easingCss, animationsRef } = options;
-  const liveSvg = chartContainer.querySelector<SVGElement>(TS_CHART_SVG_SELECTOR);
-  const liveGeo = chartContainer.querySelector<SVGGElement>(".ts-chart__geo");
-  if (!liveSvg || !liveGeo) {return;}
-  liveGeo.classList.remove("ts-chart__marks--revealing");
-  // SVGGElement carries style via ElementCSSInlineStyle, so no HTMLElement cast is needed.
-  liveGeo.style.opacity = "";
-  const anim = liveGeo.animate(
-    [{ opacity: 0 }, { opacity: 1 }],
-    { duration: durationMs, easing: easingCss, fill: "backwards" },
-  );
-  animationsRef.current.push(anim);
-  settleGeoReveal(anim);
-};
-
-interface ArmRevealOptions {
-  readonly chartContainer: HTMLElement;
-  readonly durationMs: number;
-  readonly easingCss: string;
-  readonly animationsRef: RefObject<Animation[]>;
-  readonly deadlineRef: RefObject<number | undefined>;
-  readonly cancelRef: RefObject<(() => void) | undefined>;
-}
-
-const armRevealAnimation = (options: Readonly<ArmRevealOptions>): void => {
-  const { chartContainer, durationMs, easingCss, animationsRef, deadlineRef, cancelRef } = options;
-  const geoGroup = chartContainer.querySelector<SVGGElement>(".ts-chart__geo");
-  if (!geoGroup) {return;}
-  geoGroup.classList.add("ts-chart__marks--revealing");
-  deadlineRef.current = setRevealDeadline(durationMs, {
-    animationsRef,
-    onDeadline: () => {
-      // No deadline fallback: the animation finish handlers settle the reveal.
-    },
-  });
-  cancelRef.current = onPostPaint(() => {
-    playGeoReveal({ animationsRef, chartContainer, durationMs, easingCss });
-  });
-};
-
-interface RevealKey {
-  readonly signature: string;
-  readonly duration: number;
-}
-
-const readPendingRevealKey = (
-  seenKey: Readonly<RevealKey> | undefined,
-  revealKey: Readonly<RevealKey>,
-): RevealKey | undefined => {
-  const revealKeyChanged =
-    !seenKey ||
-    seenKey.signature !== revealKey.signature ||
-    seenKey.duration !== revealKey.duration;
-  if (!revealKeyChanged) {return undefined;}
-  return { ...revealKey };
-};
-
-interface ChoroplethRevealOptions {
-  readonly animationDuration: number;
-  readonly revealSignature: string;
-  readonly enterTransition: EnterTransition | undefined;
-}
-
-interface RevealKeyState {
-  readonly revealDurationMs: number;
-  readonly revealEasingCss: string;
-  readonly revealKey: RevealKey;
-  readonly seenRevealedRef: RefObject<RevealKey | undefined>;
-}
-
-// Reveal timing plus the pending/seen key refs the reveal decision reads.
-const useRevealKeyState = (
-  enterTransition: EnterTransition | undefined,
-  animationDuration: number,
-  revealSignature: string,
-): RevealKeyState => {
-  // Reveal key carries sankey's shape; null means never revealed (boolean snapped forever).
-  const { durationMs: revealDurationMs, easingCss: revealEasingCss } = useMemo(
-    () => clipRevealTiming(enterTransition, FEATURE_ENTER_MS, REVEAL_EASING),
-    [enterTransition],
-  );
-  // Derived render value (stable unless its inputs change); the reveal callback closes over it.
-  const revealKey = useMemo(
-    () => ({ duration: animationDuration, signature: revealSignature }),
-    [animationDuration, revealSignature],
-  );
-  const seenRevealedRef = useRef<RevealKey | undefined>(undefined);
-  return { revealDurationMs, revealEasingCss, revealKey, seenRevealedRef };
-};
-
-interface ChoroplethRevealApi {
-  readonly maybeStartReveal: (chartContainer: HTMLElement, svg: SVGSVGElement | null | undefined) => void;
-  readonly cancelReveal: () => void;
-  readonly hasRevealed: () => boolean;
-}
-
-const useChoroplethReveal = (options: Readonly<ChoroplethRevealOptions>): ChoroplethRevealApi => {
-  const { animationDuration, revealSignature, enterTransition } = options;
-  const { revealDurationMs, revealEasingCss, revealKey, seenRevealedRef } = useRevealKeyState(enterTransition, animationDuration, revealSignature);
-  const revealAnimsRef = useRef<Animation[]>([]);
-  const revealDeadlineTimerRef = useRef<number | undefined>(undefined);
-  const revealPostPaintCancelRef = useRef<(() => void) | undefined>(undefined);
-
-  const maybeStartReveal = useCallback((chartContainer: HTMLElement, svg: SVGSVGElement | null | undefined): void => {
-    if (animationDuration <= 0) {return;}
-    const pendingKey = readPendingRevealKey(seenRevealedRef.current, revealKey);
-    if (!pendingKey || !svg || isRevealed(svg)) {return;}
-    seenRevealedRef.current = pendingKey;
-    markRevealed(svg);
-    armRevealAnimation({
-      animationsRef: revealAnimsRef,
-      cancelRef: revealPostPaintCancelRef,
-      chartContainer,
-      deadlineRef: revealDeadlineTimerRef,
-      durationMs: revealDurationMs,
-      easingCss: revealEasingCss,
-    });
-  }, [animationDuration, revealDurationMs, revealEasingCss, revealKey, seenRevealedRef]);
-
-  const cancelReveal = useCallback((): void => {
-    if ((revealDeadlineTimerRef.current ?? 0) !== 0) {
-      globalThis.clearTimeout(revealDeadlineTimerRef.current);
-      revealDeadlineTimerRef.current = undefined;
-    }
-    revealPostPaintCancelRef.current?.();
-    revealPostPaintCancelRef.current = undefined;
-    for (const revealAnim of revealAnimsRef.current) {try { revealAnim.cancel(); } catch {
-      // Cancelling a finished animation throws: the cancel already settled it.
-    }}
-    revealAnimsRef.current = [];
-  }, []);
-
-  useEffect(() => (): void => { cancelReveal(); }, [cancelReveal]);
-
-  const hasRevealed = useCallback((): boolean => seenRevealedRef.current !== undefined, [seenRevealedRef]);
-
-  return { cancelReveal, hasRevealed, maybeStartReveal };
 };
 
 const syncZoomContainer = (
@@ -1219,6 +944,18 @@ const renderSizedBody = (options: Readonly<SizedBodyOptions>): ReactElement | un
 };
 
 
+// Container sizing (width probe plus the aspect-locked wrapper style) as one unit.
+interface ChoroplethContainerSizing {
+  readonly containerStyle: React.CSSProperties;
+  readonly width: number;
+}
+
+const useChoroplethContainerSizing = (containerRef: RefObject<HTMLDivElement | null>, ratio: number): ChoroplethContainerSizing => {
+  const width = useContainerWidth(containerRef);
+  const containerStyle = useMemo(() => ({ aspectRatio: String(ratio), overflow: "hidden", position: "relative", width: "100%" }) as const, [ratio]);
+  return { containerStyle, width };
+};
+
 const ChoroplethChart = ({
   data,
   margin: marginProp,
@@ -1239,8 +976,7 @@ const ChoroplethChart = ({
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
   const ratio = useMemo(() => parseAspectRatio(aspectRatio), [aspectRatio]);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const width = useContainerWidth(containerRef);
-  const containerStyle = useMemo(() => ({ aspectRatio: String(ratio), overflow: "hidden", position: "relative", width: "100%" }) as const, [ratio]);
+  const { containerStyle, width } = useChoroplethContainerSizing(containerRef, ratio);
 
   return (
     <div

@@ -71,18 +71,14 @@ const createFunnelSegmentHoverRuntime = (): FunnelSegmentHoverRuntime => {
   let config: FunnelSegmentHoverConfig | undefined = undefined;
   const ringSprings = new Map<number, Spring>();
 
-  const labelSpring: Spring = createSpring(1, LABEL_DIM_SPRING.stiffness, LABEL_DIM_SPRING.damping, (opacity) => {
-    if (config?.labelEl) {config.labelEl.style.opacity = String(opacity);}
-  });
+  const labelSpring: Spring = createSpring({ damping: LABEL_DIM_SPRING.damping, initial: 1, onUpdate: (opacity) => { if (config?.labelEl) {config.labelEl.style.opacity = String(opacity);} }, stiffness: LABEL_DIM_SPRING.stiffness });
 
   const ensureRingSpring = (ringIndex: number, el: SVGPathElement): Spring => {
     let spring = ringSprings.get(ringIndex);
     if (!spring) {
       const { stiffness, damping } = funnelRingSpringParams(ringIndex);
-      spring = createSpring(1, stiffness, damping, (scaleValue) => {
-// Orientation can change across renders; read axis at write time.
-        el.style.transform = config?.isHorizontal === true ? `scaleY(${scaleValue})` : `scaleX(${scaleValue})`;
-      });
+      // Orientation can change across renders; read axis at write time.
+      spring = createSpring({ damping, initial: 1, onUpdate: (scaleValue) => { el.style.transform = config?.isHorizontal === true ? `scaleY(${scaleValue})` : `scaleX(${scaleValue})`; }, stiffness });
       ringSprings.set(ringIndex, spring);
     }
     return spring;
