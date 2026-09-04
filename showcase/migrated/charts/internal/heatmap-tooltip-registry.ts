@@ -106,7 +106,7 @@ const HeatmapTooltip = ({
       panelStyle,
       showDelayMs: Math.max(0, showDelay),
     });
-    return () => {
+    return (): void => {
       setHeatmapTooltipConfig(coordinator, null);
     };
   }, [coordinator, formatLabel, className, panelStyle, backgroundColor, showDelay, hideDelay]);

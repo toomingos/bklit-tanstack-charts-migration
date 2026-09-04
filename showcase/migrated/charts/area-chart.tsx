@@ -1558,7 +1558,7 @@ const AreaChart = ({
       epochRef: revealedEpochRef,
       prefersReducedMotion,
     });
-    const marks = reveal.marks;
+    const { marks } = reveal;
     if (!marks || !reveal.shouldAnimate) {return;}
     if (!areaMarkerConfigs.some((cfg: Readonly<(typeof areaMarkerConfigs)[number]>) => cfg.showMarkers ?? false)) {return;}
     cancelAreaMarkerAnims(areaMarkerRevealAnimsRef);

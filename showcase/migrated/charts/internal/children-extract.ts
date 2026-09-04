@@ -90,61 +90,61 @@ const visitFrameChild = (child: ReactElement, recurse: (node: ReactNode) => void
 // Line-family series carriers: each appends its props to the matching spec array.
 const applyLineAreaRoles = (child: Readonly<ReactElement>, role: string | undefined, out: ExtractedChildren): boolean => {
   if (role === "line" && isValidElement<LineConfig>(child)) { out.lines.push(child.props); return true; }
-  else if (role === "area" && isValidElement<AreaConfig>(child)) { out.areas.push(child.props); return true; }
-  else if (role === "patternArea" && isValidElement<PatternAreaConfig>(child)) { out.patternAreas.push(child.props); return true; }
-  else if (role === "scatter" && isValidElement<ScatterConfig>(child)) { out.scatters.push(child.props); return true; }
-  else { return false; }
+  if (role === "area" && isValidElement<AreaConfig>(child)) { out.areas.push(child.props); return true; }
+  if (role === "patternArea" && isValidElement<PatternAreaConfig>(child)) { out.patternAreas.push(child.props); return true; }
+  if (role === "scatter" && isValidElement<ScatterConfig>(child)) { out.scatters.push(child.props); return true; }
+  return false;
 };
 
 // Bar-row carriers: each appends its props to the matching spec array.
 const applyBarRowRoles = (child: Readonly<ReactElement>, role: string | undefined, out: ExtractedChildren): boolean => {
   if (role === "bar" && isValidElement<BarConfig>(child)) { out.bars.push(child.props); return true; }
-  else if (role === "barSquares" && isValidElement<BarSquaresConfig>(child)) { out.barSquares.push(child.props); return true; }
-  else if (role === "barColumnTrack" && isValidElement<BarColumnTrackConfig>(child)) { out.barColumnTracks.push(child.props); return true; }
-  else if (role === "seriesBar" && isValidElement<SeriesBarConfig>(child)) { out.seriesBars.push(child.props); return true; }
-  else { return false; }
+  if (role === "barSquares" && isValidElement<BarSquaresConfig>(child)) { out.barSquares.push(child.props); return true; }
+  if (role === "barColumnTrack" && isValidElement<BarColumnTrackConfig>(child)) { out.barColumnTracks.push(child.props); return true; }
+  if (role === "seriesBar" && isValidElement<SeriesBarConfig>(child)) { out.seriesBars.push(child.props); return true; }
+  return false;
 };
 
 // Bar-depth carriers: variants push, the provider assigns the singleton slot.
 const applyBarDepthRoles = (child: Readonly<ReactElement>, role: string | undefined, out: ExtractedChildren): boolean => {
   if (role === "barDepthBack" && isValidElement<BarDepthBackConfig>(child)) { out.barDepthBacks.push(child.props); return true; }
-  else if (role === "barDepthFront" && isValidElement<BarDepthFrontConfig>(child)) { out.barDepthFronts.push(child.props); return true; }
-  else if (role === "barPulse" && isValidElement<BarPulseConfig>(child)) { out.barPulses.push(child.props); return true; }
-  else if (role === "barDepthProvider" && isValidElement<BarDepthProviderConfig & { children?: ReactNode }>(child)) { out.barDepthProvider = child.props; return true; }
-  else { return false; }
+  if (role === "barDepthFront" && isValidElement<BarDepthFrontConfig>(child)) { out.barDepthFronts.push(child.props); return true; }
+  if (role === "barPulse" && isValidElement<BarPulseConfig>(child)) { out.barPulses.push(child.props); return true; }
+  if (role === "barDepthProvider" && isValidElement<BarDepthProviderConfig & { children?: ReactNode }>(child)) { out.barDepthProvider = child.props; return true; }
+  return false;
 };
 
 // Axis carriers: each assigns its singleton spec slot, last one wins as before.
 const applyFrameAxisRoles = (child: Readonly<ReactElement>, role: string | undefined, out: ExtractedChildren): boolean => {
   if (role === "grid" && isValidElement<GridConfig>(child)) { out.grid = child.props; return true; }
-  else if (role === "xAxis" && isValidElement<XAxisConfig>(child)) { out.xAxis = child.props; return true; }
-  else if (role === "barXAxis" && isValidElement<BarXAxisConfig>(child)) { out.barXAxis = child.props; return true; }
-  else if (role === "yAxis" && isValidElement<YAxisConfig>(child)) { out.yAxis = { ...child.props }; return true; }
-  else { return false; }
+  if (role === "xAxis" && isValidElement<XAxisConfig>(child)) { out.xAxis = child.props; return true; }
+  if (role === "barXAxis" && isValidElement<BarXAxisConfig>(child)) { out.barXAxis = child.props; return true; }
+  if (role === "yAxis" && isValidElement<YAxisConfig>(child)) { out.yAxis = { ...child.props }; return true; }
+  return false;
 };
 
 // Surface carriers: each assigns its singleton spec slot, last one wins as before.
 const applyFrameSurfaceRoles = (child: Readonly<ReactElement>, role: string | undefined, out: ExtractedChildren): boolean => {
   if (role === "background" && isValidElement<BackgroundConfig>(child)) { out.background = child.props; return true; }
-  else if (role === "tooltip" && isValidElement<ChartTooltipConfig>(child)) { out.tooltip = { enabled: true, ...child.props }; return true; }
-  else if (role === "candlestick" && isValidElement<CandlestickConfig>(child)) { out.candlestick = { ...child.props }; return true; }
-  else { return false; }
+  if (role === "tooltip" && isValidElement<ChartTooltipConfig>(child)) { out.tooltip = { enabled: true, ...child.props }; return true; }
+  if (role === "candlestick" && isValidElement<CandlestickConfig>(child)) { out.candlestick = { ...child.props }; return true; }
+  return false;
 };
 
 // Projection carriers: each appends its props to the matching spec array.
 const applyProjectionRoles = (child: Readonly<ReactElement>, role: string | undefined, out: ExtractedChildren): boolean => {
   if (role === "projectionLine" && isValidElement<ProjectionLineProps>(child)) { out.projectionLines.push(child.props); return true; }
-  else if (role === "projectionEndMarker" && isValidElement<ProjectionLineEndMarkerProps>(child)) { out.projectionEndMarkers.push(child.props); return true; }
-  else if (role === "terminalMarker" && isValidElement<LineSeriesTerminalMarkerProps>(child)) { out.terminalMarkers.push(child.props); return true; }
-  else { return false; }
+  if (role === "projectionEndMarker" && isValidElement<ProjectionLineEndMarkerProps>(child)) { out.projectionEndMarkers.push(child.props); return true; }
+  if (role === "terminalMarker" && isValidElement<LineSeriesTerminalMarkerProps>(child)) { out.terminalMarkers.push(child.props); return true; }
+  return false;
 };
 
 // Marker carriers: marker lines push, chart markers assign the singleton slot.
 const applyMarkerRoles = (child: Readonly<ReactElement>, role: string | undefined, out: ExtractedChildren): boolean => {
   if (role === "profitLossLine" && isValidElement<ProfitLossLineProps>(child)) { out.profitLossLines.push(child.props); return true; }
-  else if (role === "chartMarkers" && isValidElement<ChartMarkersChildProps>(child)) { out.chartMarkers = child.props; return true; }
-  else if (role === "brush" && isValidElement<BrushChildConfig>(child)) { out.brushes.push(child.props); return true; }
-  else { return false; }
+  if (role === "chartMarkers" && isValidElement<ChartMarkersChildProps>(child)) { out.chartMarkers = child.props; return true; }
+  if (role === "brush" && isValidElement<BrushChildConfig>(child)) { out.brushes.push(child.props); return true; }
+  return false;
 };
 
 // Series-family fan-out: line, bar-row, and bar-depth carriers in the original chain order.

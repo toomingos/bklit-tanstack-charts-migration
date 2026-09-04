@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { ChartMarkState, ChartMotionDefinition, ChartRectStateStyle } from "@tanstack/charts";
+import type { ChartMark, ChartMarkState, ChartMotionDefinition, ChartRectStateStyle } from "@tanstack/charts";
 import { cell } from "@tanstack/charts/rect";
 import { heatmapLevelCellFillOpacity } from "./heatmap-colors";
 import type { HeatmapLevelStyles } from "./heatmap-colors";
@@ -63,7 +63,7 @@ const buildHeatmapCellMark = ({
   hoverStates,
   cellMotion,
   revealEpoch,
-}: Readonly<BuildHeatmapCellMarkParams>) =>
+}: Readonly<BuildHeatmapCellMarkParams>): ChartMark<Readonly<CellDatum>, string, string> =>
   cell(data, {
     fillOpacity,
     id: `heatmap-cell-fo-${fillOpacity}`,
@@ -88,7 +88,7 @@ const useHeatmapCellMarks = ({
   hoverStates,
   cellMotion,
   revealEpoch,
-}: Readonly<HeatmapCellMarksParams>) => {
+}: Readonly<HeatmapCellMarksParams>): ChartMark<Readonly<CellDatum>, string, string>[] => {
   // Bklit `resolveHeatmapRowOpacity` x `heatmapLevelCellFillOpacity` parity:
   // Legacy applied this product as each cell rect's OWN (non-hover-driven)
   // `fillOpacity`, independent of and layered under the hover dim. Rect/cell

@@ -51,7 +51,7 @@ const useHeatmapFocusScheduler = ({
   }, []);
 
   useEffect(
-    () => () => {
+    () => (): void => {
       if (focusTimerRef.current !== undefined) {
         globalThis.clearTimeout(focusTimerRef.current);
         focusTimerRef.current = undefined;
@@ -140,13 +140,13 @@ const useHeatmapPointerListeners = ({
       scheduleFocus,
     });
 
-    const handlePointerLeave = () => {
+    const handlePointerLeave = (): void => {
       handleCellLeaveEvent();
     };
 
     el.addEventListener("pointermove", handlePointerMove);
     el.addEventListener("pointerleave", handlePointerLeave);
-    return () => {
+    return (): void => {
       el.removeEventListener("pointermove", handlePointerMove);
       el.removeEventListener("pointerleave", handlePointerLeave);
     };

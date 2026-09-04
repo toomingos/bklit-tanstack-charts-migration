@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { ChartLegendHoverContext } from "./chart-legend-hover-context";
 
 const ChartLegendHoverProvider = ({
@@ -12,7 +12,7 @@ const ChartLegendHoverProvider = ({
   hoveredIndex: number | null;
   onHoverChange: (index: number | null) => void;
   children: ReactNode;
-}) => {
+}): ReactElement => {
   const value = useMemo(
     () => ({ hoveredIndex, setHoveredIndex: onHoverChange }),
     [hoveredIndex, onHoverChange]

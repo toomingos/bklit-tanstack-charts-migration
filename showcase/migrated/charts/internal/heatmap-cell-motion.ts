@@ -25,8 +25,8 @@ import type { CellDatum } from "./heatmap-cell-data";
 // Evaluates y(t).
 const solveCubicBezierEasing = (points: readonly [number, number, number, number]): ((p: number) => number) => {
   const [x1, y1, x2, y2] = points;
-  const bx = (t: number) => 3 * t * (1 - t) * (1 - t) * x1 + 3 * t * t * (1 - t) * x2 + t * t * t;
-  const by = (t: number) => 3 * t * (1 - t) * (1 - t) * y1 + 3 * t * t * (1 - t) * y2 + t * t * t;
+  const bx = (t: number): number => 3 * t * (1 - t) * (1 - t) * x1 + 3 * t * t * (1 - t) * x2 + t * t * t;
+  const by = (t: number): number => 3 * t * (1 - t) * (1 - t) * y1 + 3 * t * t * (1 - t) * y2 + t * t * t;
   return (p: number) => {
     if (p <= 0 || p >= 1) {return p <= 0 ? 0 : 1;}
     let t = p;
@@ -54,7 +54,7 @@ const useHeatmapColorScale = ({
     // `url(#<prefix>heatmap-level-N)`; the matching <pattern> defs are
     // Mounted in HeatmapCells' overlay svg under the same prefix (useId-
     // Scoped, so two chart instances don't collide — HM14/HM7 lesson).
-    const rangeEntry = (level: number) => {
+    const rangeEntry = (level: number): string => {
       const style = resolvedLevelStyles[level];
       if (!style || !isHeatmapLevelPattern(style)) {return style?.color ?? "currentColor";}
       const id = heatmapLevelPatternId(level);

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { ScaleBand, ScaleOrdinal } from "d3-scale";
+import type { DomChartDefinition } from "@tanstack/charts";
 import { defineChart } from "@tanstack/charts/scene";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { useHeatmap } from "./heatmap-context";
@@ -10,6 +11,7 @@ import type { HeatmapEnterTransition } from "./heatmap-animation";
 import { useHeatmapColorScale, useHeatmapCellMotion, useHeatmapCellScales } from "./heatmap-cell-motion";
 import { useHeatmapCellMarks } from "./heatmap-cell-marks";
 import type { HeatmapCellMark, HeatmapCellMarksParams, HeatmapHoverStateList, HeatmapRowOpacity } from "./heatmap-cell-marks";
+import type { CellDatum } from "./heatmap-cell-data";
 import { HEATMAP_CELL_INSET, heatmapHoverStates } from "./heatmap-hover-states";
 
 // Bklit `positionBox`/`HeatmapTooltipPanel` parity: 16px stand-off between
@@ -41,7 +43,7 @@ const buildLoadingHeatmapDefinition = ({
   margin,
   xScale,
   yScale,
-}: Readonly<LoadingHeatmapDefinitionParams>) =>
+}: Readonly<LoadingHeatmapDefinitionParams>): DomChartDefinition<Readonly<CellDatum>, string, string> =>
   defineChart({
     // D1: typed off `cellMarks` (not the generic-erased `ReturnType<typeof
     // Cell>[]` this used pre-C5) so this branch's `TDatum` matches the
@@ -107,7 +109,7 @@ const useHeatmapDefinition = ({
   margin,
   chartStatus,
   tooltipEnabled,
-}: Readonly<HeatmapDefinitionParams>) => {
+}: Readonly<HeatmapDefinitionParams>): DomChartDefinition<Readonly<CellDatum>, string, string> => {
   const definition = useMemo(() => {
     if (chartStatus === "loading") {
       return buildLoadingHeatmapDefinition({ cellMarks, colorScale, margin, xScale, yScale });
@@ -208,7 +210,7 @@ const useHeatmapChartDefinition = ({
   enterTransition,
   enterStaggerScale,
   animateCells,
-}: Readonly<HeatmapChartDefinitionParams>) => {
+}: Readonly<HeatmapChartDefinitionParams>): DomChartDefinition<Readonly<CellDatum>, string, string> => {
   const colorScale = useHeatmapColorScale({ patternIdPrefix, resolvedLevelStyles });
 
   const { xScale, yScale } = useHeatmapCellScales({ columnCount, dayLabels, innerHeight, innerWidth, margin });

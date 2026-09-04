@@ -72,11 +72,18 @@ const buildCellData = ({
   return data;
 };
 
+interface HoverCellGeometry {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+}
+
 const buildHoverCellGeometry = (
   columnIndex: number,
   rowIndex: number,
   ctx: Readonly<{ xScale: (columnIndex: number) => number; yScale: (rowIndex: number) => number; binWidth: number; binHeight: number; gap: number }>,
-) => ({
+): HoverCellGeometry => ({
   height: Math.max(ctx.binHeight - ctx.gap, 0),
   width: Math.max(ctx.binWidth - ctx.gap, 0),
   x: ctx.xScale(columnIndex),
@@ -84,4 +91,4 @@ const buildHoverCellGeometry = (
 });
 
 export { buildCellData, buildColumnCellData, buildHoverCellGeometry };
-export type { BuildCellDataParams, BuildColumnCellDataParams, CellDatum };
+export type { BuildCellDataParams, BuildColumnCellDataParams, CellDatum, HoverCellGeometry };

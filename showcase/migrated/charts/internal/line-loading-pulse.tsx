@@ -156,7 +156,7 @@ const usePulseSweep = ({
     const run = createPulseTween({ animRef, isCancelled, setProgress });
     startPulseMode({ half: LINE_LOADING_PULSE_CYCLE_S / 2, isCancelled, mode, notifyCycleComplete, readProgress, run });
     return (): void => { cancelled = true; };
-  }, [clipId, width, loopEpoch, mode]);
+  }, [animRef, clipId, loopEpoch, mode, setProgress, width]);
 };
 
 // Render-phase reset per the React docs pattern for previous renders.

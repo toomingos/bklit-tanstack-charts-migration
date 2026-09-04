@@ -545,7 +545,7 @@ const SunburstChartInner = ({
   sweepEasingCss,
   enterStaggerScale,
   children,
-}: SunburstChartInnerProps) => {
+}: SunburstChartInnerProps): ReactElement => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // --- Layout (verbatim bklit math) ---
@@ -1119,7 +1119,7 @@ const SunburstChartInner = ({
 
 
   useEffect(
-    () => () => {
+    () => (): void => {
       cancelLabelAnimations(labelRevealAnimsRef.current);
       labelRevealAnimsRef.current = [];
     },
@@ -1387,7 +1387,7 @@ export const SunburstChart = ({
   enterTransition,
   enterStaggerScale = 1,
   children,
-}: SunburstChartProps) => {
+}: SunburstChartProps): ReactElement | null => {
   const { durationMs: sweepDurationMs, easingCss: sweepEasingCss } =
     useSunburstSweepTiming(enterTransition);
   const setPhase = useSunburstPhase(onPhaseChange);

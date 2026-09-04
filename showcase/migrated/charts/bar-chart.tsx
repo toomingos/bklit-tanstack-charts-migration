@@ -1093,6 +1093,40 @@ interface BarAxisSectionParams {
   readonly labelFade: Readonly<{ primaryX: number; hoveredLabel: string | null }> | undefined;
 }
 
+type BarTickLabelMotionResult = false | ChartMotionTiming | undefined;
+
+interface BarVisibleXAxisOptions {
+  readonly line: false;
+  readonly tickLabels: {
+    readonly dy: number;
+    readonly fontSize: number;
+    readonly motion: (ctx: Readonly<{ phase: ChartMotionPhase; datumCount: number; datumIndex: number }>) => BarTickLabelMotionResult;
+    readonly opacity: number | ((ctx: { readonly position: number; readonly value: unknown }) => number);
+    readonly thin: boolean;
+  };
+  readonly ticks: {
+    readonly format: StringConstructor;
+    readonly padding: number;
+    readonly size: number;
+  readonly values: readonly string[];
+  };
+}
+
+interface BarHiddenXAxisOptions {
+  readonly line: false;
+  readonly tickLabels: false;
+  readonly ticks: {
+    readonly count: number;
+    readonly size: number;
+  };
+}
+
+interface BarAxisSection {
+  readonly gridGuide: ReturnType<typeof resolveGridGuide>;
+  readonly xAxisOptions: BarHiddenXAxisOptions | BarVisibleXAxisOptions;
+  readonly yAxisOptions: ReturnType<typeof hiddenAxisOptions>;
+}
+
 // Values/count are mutually exclusive on tick options (passing both throws).
 const buildBarAxisSection = ({
   barXAxis,
@@ -1100,7 +1134,7 @@ const buildBarAxisSection = ({
   marginBottom,
   categoryOrder,
   labelFade,
-}: Readonly<BarAxisSectionParams>) => {
+}: Readonly<BarAxisSectionParams>): BarAxisSection => {
   // Bar never drew y-axis labels; nothing may paint once the axes CSS gate lifts.
   const yAxisOptions = hiddenAxisOptions(gridGuide.ticks);
   const xAxisOptions = barXAxis

@@ -250,7 +250,7 @@ const HeatmapSeparator = ({
   gradient,
   strokeWidth = 1,
   strokeOpacity = 1,
-}: Readonly<HeatmapSeparatorProps>) => {
+}: Readonly<HeatmapSeparatorProps>): ReactElement | undefined => {
   const ctx = useHeatmap();
   const layout = ctx.separatorLayout;
   // Scoped with useId so two heatmap instances on one page don't share one

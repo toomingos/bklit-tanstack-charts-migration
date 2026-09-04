@@ -1,5 +1,4 @@
 import { Fragment, memo } from "react";
-import type { ReactElement } from "react";
 import { heatmapLevelPatternId, heatmapLevelPatternRenderOptions, isHeatmapLevelPattern } from "./heatmap-colors";
 import type { HeatmapLevelStyle, HeatmapLevelStyles } from "./heatmap-colors";
 import { renderPatternPreset } from "./pattern-preset-render";
