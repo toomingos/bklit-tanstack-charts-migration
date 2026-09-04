@@ -247,6 +247,15 @@ export default defineConfig({
     // once, in a named guard) while removing the contradiction. It clears nothing on its own;
     // the remaining hits are inline checks that still need extracting into guards.
     "anti-slop/no-runtime-typeof": ["error", { allowInTypeGuards: true }],
+    // sonarjs/function-name defaults to ^[_a-z][a-zA-Z0-9]*$, which forbids PascalCase. All 65
+    // hits were React components, and React requires PascalCase to distinguish them from host
+    // elements in JSX. Widened rather than disabled so genuinely misnamed functions still flag.
+    "sonarjs/function-name": ["error", { format: "^[_a-zA-Z][a-zA-Z0-9]*$" }],
+    // anti-slop/no-shape-in-symbol-names is OFF: 27 of its 28 hits are `shapeRendering`, the
+    // React spelling of the SVG shape-rendering attribute. The name comes from the SVG spec, not
+    // from this codebase, and cannot be changed without breaking rendering. (The one real hit,
+    // `geoShape` in the choropleth code, is left as a known residual.)
+    "anti-slop/no-shape-in-symbol-names": "off",
 
     // React Compiler is NOT enabled (no `experimental.reactCompiler` in
     // next.config.mjs), so nothing caches these values automatically. The
