@@ -439,7 +439,9 @@ const SankeyChart = ({
   // Hover lives in React state (dim rebuilds the definition); a ref mirror serves synchronous readers.
   const [hoveredLinkIndex, setHoveredLinkIndex] = useState<number | null>(null);
   const hoveredLinkIndexLiveRef = useRef<number | null>(null);
-  hoveredLinkIndexLiveRef.current = hoveredLinkIndex;
+  useEffect(() => {
+    hoveredLinkIndexLiveRef.current = hoveredLinkIndex;
+  }, [hoveredLinkIndex]);
   const hoveredLinkIndexRef = useMemo(
     (): SankeyHoverRefs => ({
       get current(): number | null {
@@ -469,14 +471,20 @@ const SankeyChart = ({
   );
 
   const isNodeHoverControlledRef = useRef(hoveredNodeIndexProp !== undefined);
-  isNodeHoverControlledRef.current = hoveredNodeIndexProp !== undefined;
   const controlledNodeIndexRef = useRef<number | null>(hoveredNodeIndexProp ?? null);
-  controlledNodeIndexRef.current = hoveredNodeIndexProp ?? null;
   const [internalHoveredNodeIndex, setInternalHoveredNodeIndex] = useState<number | null>(null);
   const internalHoveredNodeIndexRef = useRef<number | null>(null);
-  internalHoveredNodeIndexRef.current = internalHoveredNodeIndex;
   const onNodeHoverChangeRef = useRef(onNodeHoverChange);
-  onNodeHoverChangeRef.current = onNodeHoverChange;
+  useEffect(() => {
+    isNodeHoverControlledRef.current = hoveredNodeIndexProp !== undefined;
+    controlledNodeIndexRef.current = hoveredNodeIndexProp ?? null;
+  }, [hoveredNodeIndexProp]);
+  useEffect(() => {
+    internalHoveredNodeIndexRef.current = internalHoveredNodeIndex;
+  }, [internalHoveredNodeIndex]);
+  useEffect(() => {
+    onNodeHoverChangeRef.current = onNodeHoverChange;
+  }, [onNodeHoverChange]);
   const hoveredNodeIndexRef = useMemo(
     (): SankeyHoverRefs => ({
       get current(): number | null {
@@ -494,7 +502,8 @@ const SankeyChart = ({
     }),
     [],
   );
-  const effectiveHoveredNodeIndex = isNodeHoverControlledRef.current
+  const isNodeHoverControlled = hoveredNodeIndexProp !== undefined;
+  const effectiveHoveredNodeIndex = isNodeHoverControlled
     ? (hoveredNodeIndexProp ?? null)
     : internalHoveredNodeIndex;
 
@@ -618,12 +627,17 @@ const SankeyChart = ({
       svg.removeEventListener("pointermove", handlePointerMove);
       svg.removeEventListener("pointerleave", handlePointerLeave);
     };
-  }, [data, focusPointerPoint]);
+  }, [focusPointerPoint, hoveredLinkIndexRef, hoveredNodeIndexRef]);
 
-  useEffect(() => {
-    if (!isNodeHoverControlledRef.current) {return;}
-    setHoveredLinkIndex(null);
-  }, [hoveredNodeIndexProp]);
+  // When the parent seizes node-hover control, link hover is cleared here.
+  // Render-time previous-prop comparison commits no stale highlight frame.
+  const [prevHoveredNodeIndexProp, setPrevHoveredNodeIndexProp] = useState(hoveredNodeIndexProp);
+  if (prevHoveredNodeIndexProp !== hoveredNodeIndexProp) {
+    setPrevHoveredNodeIndexProp(hoveredNodeIndexProp);
+    if (hoveredNodeIndexProp !== undefined) {
+      setHoveredLinkIndex(null);
+    }
+  }
 
   const handleMouseLeave = useCallback(() => {
     hoveredNodeIndexRef.current = null;

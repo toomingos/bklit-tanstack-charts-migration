@@ -5,6 +5,7 @@ import {
   isValidElement,
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -1010,6 +1011,14 @@ const RadarChart = ({
   }, []);
 
 
+  // Non-reactive reveal trigger: the grid-reveal effect below only re-runs when
+  // Animation toggles, while always invoking the latest `handleRender` post-paint.
+  const handleGridRevealPaint = useEffectEvent((): void => {
+    const container = containerRef.current;
+    if (!container) {return;}
+    handleRender({ container });
+  });
+
   useLayoutEffect((): (() => void) | undefined => {
     if (gridRevealedRef.current) {return undefined;}
     if (!animate) {return undefined;}
@@ -1020,11 +1029,11 @@ const RadarChart = ({
         if (gridRevealedRef.current) {return;}
         if (!container.querySelector(MARKS_GROUP_SELECTOR)) {return;}
         if (hasLiveRevealAnims(container)) {return;}
-        handleRender({ container });
+        handleGridRevealPaint();
       });
     });
     return (): void =>{  cancelAnimationFrame(raf); };
-  }, [animate, handleRender]);
+  }, [animate]);
 
   // MotionReplayKey remounts grid/labels (WAAPI half); the area/dot half replays natively via keys.
   useLayoutEffect((): (() => void) | undefined => {

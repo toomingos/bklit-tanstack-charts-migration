@@ -1610,10 +1610,13 @@ const CandlestickChart = ({
     if (isNumber(value) || value === true || value === false) {return String(value);}
     return "";
   }), [renderData, xDataKey]);
-  chromeStateRef.current = {
-    dateLabels: dateLabelsForPill,
-    tooltip: tooltip ?? undefined,
-  };
+  // Latest-chrome sync runs post-commit so the render body stays pure.
+  useEffect(() => {
+    chromeStateRef.current = {
+      dateLabels: dateLabelsForPill,
+      tooltip: tooltip ?? undefined,
+    };
+  }, [dateLabelsForPill, tooltip]);
 
   const overlayHostRef = useRef<HTMLDivElement | null>(null);
   const hasDefinition = width > 0;

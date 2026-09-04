@@ -5,6 +5,7 @@ import {
   isValidElement,
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -448,7 +449,12 @@ const ComposedChart = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const width = useDebouncedContainerWidth(containerRef);
   const onPhaseChangeRef = useRef(onPhaseChange);
-  onPhaseChangeRef.current = onPhaseChange;
+  useEffect(() => {
+    onPhaseChangeRef.current = onPhaseChange;
+  }, [onPhaseChange]);
+  const notifyPhaseChange = useEffectEvent((phase: ChartPhase): void => {
+    onPhaseChange?.(phase);
+  });
 
   const {
     chartPhase,
@@ -470,16 +476,15 @@ const ComposedChart = ({
   );
 
   const phaseRef = useRef<ChartPhase>(chartPhase);
-  phaseRef.current = chartPhase;
-  // Definition reads phase through refs, not deps: phase flips must not rebuild marks mid-reveal.
-  const isLoadedRef = useRef<boolean>(isLoaded);
-  isLoadedRef.current = isLoaded;
+  useEffect(() => {
+    phaseRef.current = chartPhase;
+  }, [chartPhase]);
 
   // Reported "ready" waits for the bar-stagger deadline, not just the orchestrator timer.
   const pendingBarsRevealRef = useRef(false);
   useEffect(() => {
     if (chartPhase === "ready" && pendingBarsRevealRef.current) {return;}
-    onPhaseChangeRef.current?.(chartPhase);
+    notifyPhaseChange(chartPhase);
   }, [chartPhase]);
 
   useEffect(() => {
@@ -682,13 +687,14 @@ const ComposedChart = ({
   );
 
   // Bklit parity: new data paints immediately; only a y-domain change tweens.
-  const prevYDomainFinalRef = useRef(yDomainFinal);
-  const yDomainFinalMoved =
-    prevYDomainFinalRef.current[0] !== yDomainFinal[0] ||
-    prevYDomainFinalRef.current[1] !== yDomainFinal[1];
-  prevYDomainFinalRef.current = yDomainFinal;
+  const [prevYDomainFinal, setPrevYDomainFinal] = useState(yDomainFinal);
+  if (prevYDomainFinal[0] !== yDomainFinal[0] || prevYDomainFinal[1] !== yDomainFinal[1]) {
+    setPrevYDomainFinal(yDomainFinal);
+  }
   const yDomainChanged =
-    projectionConfigs.length === 0 ? nicedYDomainChanged : yDomainFinalMoved;
+    projectionConfigs.length === 0
+      ? nicedYDomainChanged
+      : prevYDomainFinal[0] !== yDomainFinal[0] || prevYDomainFinal[1] !== yDomainFinal[1];
 
   // Bars use bklit's exact computeSeriesBarWidth (slot x 0.88), not stock barY bandwidth.
 
@@ -931,13 +937,15 @@ const ComposedChart = ({
     xScaleD3Ref,
     yScaleD3Ref,
   ]);
+  // Tween gate reads live phase/loaded state during render; the memo below rebuilds
+  // Only when the gate flips, so phase transitions never rebuild marks mid-reveal.
+  const yDomainTweenGateActive = isChartInteractionPhase(chartPhase) && isLoaded && yDomainChanged;
   const definition = useMemo(() => {
     if (width <= 0 || !marks || !scales) {return NOTHING;}
     const { xScale, yScale } = scales;
 
     const gridGuide = resolveGridGuide(grid);
     const xTickLabelOpacity = buildXTickLabelOpacity({ labelFade, xAxis });
-    const yDomainTweenGateActive = isChartInteractionPhase(phaseRef.current) && isLoadedRef.current && yDomainChanged;
     const { motion, tickLabelMotion } = buildComposedMotion(yDomainTweenGateActive);
     const xScaleOptions: ChartPositionScaleOptions<Date> = {
       axis: buildPrecomputedXAxisOptions(gridGuide.columnTicks, xAxis, margin.bottom, xTickLabelOpacity, tickLabelMotion),
@@ -978,7 +986,7 @@ const ComposedChart = ({
     grid,
     labelFade,
     xAxis,
-    yDomainChanged,
+    yDomainTweenGateActive,
     margin,
     nativeComposedGradients,
     renderData,
@@ -1047,54 +1055,41 @@ const ComposedChart = ({
   );
 
   // Bisect twice per move: raw data for pill/rows, decimated renderData for the highlight band.
-  const hoverInputsRef = useRef({
-    clearFocusChrome,
-    data,
-    datePill,
-    isDiscrete,
-    renderData,
-    tooltip,
-    xDataKey,
+  const handlePointerMoveEvent = useEffectEvent((event: Readonly<PointerEvent>): void => {
+    runComposedPointerMove(event, {
+      chartPhase,
+      dragActive: dragSelectionActiveRef.current,
+      hoverInputs: {
+        clearFocusChrome,
+        data,
+        datePill,
+        isDiscrete,
+        renderData,
+        tooltip,
+        xDataKey,
+      },
+      interaction: interactionRef.current,
+      isLoaded,
+      setHoveredIndex,
+      setLabelFade,
+      wasVisibleRef,
+      xScale: xScaleD3Ref.current,
+    });
   });
-  hoverInputsRef.current = {
-    clearFocusChrome,
-    data,
-    datePill,
-    isDiscrete,
-    renderData,
-    tooltip,
-    xDataKey,
-  };
+  const handlePointerLeaveEvent = useEffectEvent((): void => {
+    clearFocusChrome();
+  });
 
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container || !tooltipEnabled) {return NOTHING;}
-
-    const handlePointerMove = (event: PointerEvent): void => {
-      runComposedPointerMove(event, {
-        chartPhase,
-        dragActive: dragSelectionActiveRef.current,
-        hoverInputs: hoverInputsRef.current,
-        interaction: interactionRef.current,
-        isLoaded,
-        setHoveredIndex,
-        setLabelFade,
-        wasVisibleRef,
-        xScale: xScaleD3Ref.current,
-      });
-    };
-
-    const handlePointerLeave = (): void => {
-      hoverInputsRef.current.clearFocusChrome();
-    };
-
-    container.addEventListener("pointermove", handlePointerMove);
-    container.addEventListener("pointerleave", handlePointerLeave);
+    container.addEventListener("pointermove", handlePointerMoveEvent);
+    container.addEventListener("pointerleave", handlePointerLeaveEvent);
     return (): void => {
-      container.removeEventListener("pointermove", handlePointerMove);
-      container.removeEventListener("pointerleave", handlePointerLeave);
+      container.removeEventListener("pointermove", handlePointerMoveEvent);
+      container.removeEventListener("pointerleave", handlePointerLeaveEvent);
     };
-  }, [tooltipEnabled, chartPhase, isLoaded, interactionRef, xScaleD3Ref]);
+  }, [tooltipEnabled]);
 
   const handleRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     captureRenderContext(context);

@@ -1,5 +1,5 @@
 // Bklit ChoroplethChart on TanStack geoShape; zoom rides projection params, not group transforms.
-import React, { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { Children, createContext, isValidElement, useCallback, useContext, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement, ReactNode, RefObject } from 'react';
 import type { FeatureCollection,Feature,Geometry} from "geojson";
 import { geoCentroid, geoMercator, geoPath } from 'd3-geo';
@@ -652,7 +652,7 @@ interface ChoroplethRevealOptions {
 interface RevealKeyState {
   readonly revealDurationMs: number;
   readonly revealEasingCss: string;
-  readonly revealKeyRef: RefObject<RevealKey>;
+  readonly revealKey: RevealKey;
   readonly seenRevealedRef: RefObject<RevealKey | undefined>;
 }
 
@@ -667,10 +667,13 @@ const useRevealKeyState = (
     () => clipRevealTiming(enterTransition, FEATURE_ENTER_MS, REVEAL_EASING),
     [enterTransition],
   );
-  const revealKeyRef = useRef({ duration: animationDuration, signature: revealSignature });
-  revealKeyRef.current = { duration: animationDuration, signature: revealSignature };
+  // Derived render value (stable unless its inputs change); the reveal callback closes over it.
+  const revealKey = useMemo(
+    () => ({ duration: animationDuration, signature: revealSignature }),
+    [animationDuration, revealSignature],
+  );
   const seenRevealedRef = useRef<RevealKey | undefined>(undefined);
-  return { revealDurationMs, revealEasingCss, revealKeyRef, seenRevealedRef };
+  return { revealDurationMs, revealEasingCss, revealKey, seenRevealedRef };
 };
 
 interface ChoroplethRevealApi {
@@ -681,14 +684,14 @@ interface ChoroplethRevealApi {
 
 const useChoroplethReveal = (options: Readonly<ChoroplethRevealOptions>): ChoroplethRevealApi => {
   const { animationDuration, revealSignature, enterTransition } = options;
-  const { revealDurationMs, revealEasingCss, revealKeyRef, seenRevealedRef } = useRevealKeyState(enterTransition, animationDuration, revealSignature);
+  const { revealDurationMs, revealEasingCss, revealKey, seenRevealedRef } = useRevealKeyState(enterTransition, animationDuration, revealSignature);
   const revealAnimsRef = useRef<Animation[]>([]);
   const revealDeadlineTimerRef = useRef<number | undefined>(undefined);
   const revealPostPaintCancelRef = useRef<(() => void) | undefined>(undefined);
 
   const maybeStartReveal = useCallback((chartContainer: HTMLElement, svg: SVGSVGElement | null | undefined): void => {
     if (animationDuration <= 0) {return;}
-    const pendingKey = readPendingRevealKey(seenRevealedRef.current, revealKeyRef.current);
+    const pendingKey = readPendingRevealKey(seenRevealedRef.current, revealKey);
     if (!pendingKey || !svg || isRevealed(svg)) {return;}
     seenRevealedRef.current = pendingKey;
     markRevealed(svg);
@@ -700,7 +703,7 @@ const useChoroplethReveal = (options: Readonly<ChoroplethRevealOptions>): Chorop
       durationMs: revealDurationMs,
       easingCss: revealEasingCss,
     });
-  }, [animationDuration, revealDurationMs, revealEasingCss, seenRevealedRef, revealKeyRef]);
+  }, [animationDuration, revealDurationMs, revealEasingCss, revealKey, seenRevealedRef]);
 
   const cancelReveal = useCallback((): void => {
     if ((revealDeadlineTimerRef.current ?? 0) !== 0) {
@@ -1009,7 +1012,10 @@ const ChoroplethChartBody = ({
     if (!candidate) {return;}
     ctx.interaction.setControlledFocus(candidate, { source: "pointer" });
   }, []);
-  refreshTooltipAnchorRef.current = refreshTooltipAnchor;
+  // Latest-callback sync runs post-commit so the render body stays pure.
+  useEffect(() => {
+    refreshTooltipAnchorRef.current = refreshTooltipAnchor;
+  }, [refreshTooltipAnchor]);
 
   const { maybeStartReveal: startReveal } = reveal;
   const handleRender = useCallback((
@@ -1043,6 +1049,12 @@ const ChoroplethChartBody = ({
     [getTooltipConfig],
   );
   const revealHasRevealed = reveal.hasRevealed;
+  // The fallback replay only invokes the latest render — reading it through an
+  // Effect event keeps the layout subscription stable across handleRender
+  // Identity changes (latest chrome/reveal still observed at replay time).
+  const replayRenderEvent = useEffectEvent((fallbackContainer: HTMLDivElement): void => {
+    handleRender({ container: fallbackContainer });
+  });
   useLayoutEffect((): (() => void) | undefined => {
     if (revealHasRevealed()) {return undefined;}
     if (animationDuration <= 0) {return undefined;}
@@ -1054,11 +1066,11 @@ const ChoroplethChartBody = ({
         if (!fallbackContainer.querySelector(".ts-chart__marks")) {return;}
         if (isRevealed(findRevealRoot(fallbackContainer, TS_CHART_SVG_SELECTOR))) {return;}
         if (fallbackContainer.getAnimations().length > 0) {return;}
-        handleRender({ container: fallbackContainer });
+        replayRenderEvent(fallbackContainer);
       });
     });
     return (): void =>{  cancelAnimationFrame(raf); };
-  }, [animationDuration, handleRender, revealHasRevealed]);
+  }, [animationDuration, revealHasRevealed]);
 
   const chartNode = (
     <>

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useSyncExternalStore } from 'react';
+import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { createHeatmapHoverCoordinator } from './heatmap-hover-chrome';
 import type { HeatmapHoverCoordinator, HeatmapHoveredCell, HeatmapTooltipData } from './heatmap-hover-chrome';
@@ -86,9 +86,10 @@ interface HeatmapInteractionProviderProps {
 }
 
 const HeatmapInteractionProvider = ({ children, coordinator }: Readonly<HeatmapInteractionProviderProps>): ReactElement => {
-  const ownRef = useRef<HeatmapHoverCoordinator | null>(null);
-  if (ownRef.current === null) {ownRef.current = createHeatmapHoverCoordinator();}
-  const resolved = coordinator ?? ownRef.current;
+  // Owned coordinator is memoized, never a ref, because its identity is read during render.
+  // The empty factory keeps one stable instance per mount.
+  const ownCoordinator = useMemo(() => createHeatmapHoverCoordinator(), []);
+  const resolved = coordinator ?? ownCoordinator;
   return <HeatmapInteractionContext.Provider value={resolved}>{children}</HeatmapInteractionContext.Provider>;
 };
 

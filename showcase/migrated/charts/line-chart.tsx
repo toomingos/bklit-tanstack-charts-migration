@@ -2,6 +2,7 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -766,6 +767,16 @@ const scheduleMarkerReveal = (doReveal: () => void, cancelRef: { current: (() =>
   }
 };
 
+// Brush ranges compare by endpoint time so a re-created but equal range keeps stable identity.
+const isSameBrushRange = (
+  left: Readonly<{ end: Date; start: Date }> | undefined,
+  right: Readonly<{ end: Date; start: Date }> | undefined,
+): boolean => {
+  if (left === right) {return true;}
+  if (!left || !right) {return false;}
+  return left.start.getTime() === right.start.getTime() && left.end.getTime() === right.end.getTime();
+};
+
 export interface LineChartProps {
   data: ChartDatum[];
   xDataKey?: string;
@@ -821,8 +832,9 @@ export const LineChart = ({
   const { width, height: measuredHeight } = useDebouncedContainerSize(containerRef);
   const heightPx = resolveChartHeightPx(width, measuredHeight, aspectRatio);
   const xScaleD3Ref = useRef<ScaleTime<number, number> | null>(null);
-  const onPhaseChangeRef = useRef(onPhaseChange);
-  onPhaseChangeRef.current = onPhaseChange;
+  const onPhaseChangeEvent = useEffectEvent((phase: ChartPhase): void => {
+    onPhaseChange?.(phase);
+  });
   const projectionPhasePortRef = useRef<ProjectionPhaseHandle | null>(null);
 
   const effectiveYDomainTweenDuration = useMemo(() => {
@@ -844,18 +856,15 @@ export const LineChart = ({
     yDomainTweenDuration: effectiveYDomainTweenDuration,
   });
 
-  const enterTransitionRef = useRef(enterTransition);
-  enterTransitionRef.current = enterTransition;
+  // Primitive deps: enterTransition is usually an inline object literal.
   const { durationMs: revealDurationMs, easingCss: revealEasingCss } = useMemo(
-    () => clipRevealTiming(enterTransitionRef.current, animationDuration, animationEasing),
-    [animationDuration, animationEasing],
+    () => clipRevealTiming(enterTransition, animationDuration, animationEasing),
+    [enterTransition, animationDuration, animationEasing],
   );
 
-  const phaseRef = useRef<ChartPhase>(chartPhase);
-  phaseRef.current = chartPhase;
   const isLoaded = orchIsLoaded;
 
-  useEffect(() => { onPhaseChangeRef.current?.(chartPhase); }, [chartPhase]);
+  useEffect(() => { onPhaseChangeEvent(chartPhase); }, [chartPhase]);
 
   useEffect(() => {
     projectionPhasePortRef.current?.setPhase(chartPhase);
@@ -939,20 +948,17 @@ export const LineChart = ({
   // BrushConfig.initialSelection is an external (ChartBrushProps) field typed `| null`.
   const brushInitialSelection = brushConfig?.initialSelection;
   // Value-stable range: only new start/end objects commit, or drags fight spurious updates.
-  const brushRangeValueRef = useRef<BrushRange<Date> | undefined>(undefined);
-  const brushRangeValue = useMemo<BrushRange<Date> | undefined>(() => {
-    const next: BrushRange<Date> | undefined = brushInitialSelection
-      ? { end: brushInitialSelection.end, start: brushInitialSelection.start }
-      : brushFallbackRange;
-    const prev = brushRangeValueRef.current;
-    if (prev && next && prev.start.getTime() === next.start.getTime() && prev.end.getTime() === next.end.getTime()) {
-      return prev;
-    }
-    brushRangeValueRef.current = next;
-    return next;
-  }, [brushInitialSelection, brushFallbackRange]);
+  const nextBrushRangeValue: BrushRange<Date> | undefined = brushInitialSelection
+    ? { end: brushInitialSelection.end, start: brushInitialSelection.start }
+    : brushFallbackRange;
+  const [brushRangeValue, setBrushRangeValue] = useState<BrushRange<Date> | undefined>(nextBrushRangeValue);
+  if (!isSameBrushRange(brushRangeValue, nextBrushRangeValue)) {
+    setBrushRangeValue(nextBrushRangeValue);
+  }
   const brushOnSelectionChangeRef = useRef(brushConfig?.onSelectionChange);
-  brushOnSelectionChangeRef.current = brushConfig?.onSelectionChange;
+  useEffect(() => {
+    brushOnSelectionChangeRef.current = brushConfig?.onSelectionChange;
+  });
   // Brush fires on every preview tick and commit (legacy tracked live), not commit-only.
   const handleBrushChange = useCallback((next: BrushRange<Readonly<Date>>, context: Readonly<{ reason: BrushXChange<Readonly<Date>> }>) => {
     const { reason } = context;
@@ -1037,13 +1043,15 @@ export const LineChart = ({
     [nicedDomainsByAxis, yDomainFinal],
   );
 
-  const prevYDomainFinalRef = useRef(yDomainFinal);
+  const [prevYDomainFinal, setPrevYDomainFinal] = useState(yDomainFinal);
+  if (prevYDomainFinal[0] !== yDomainFinal[0] || prevYDomainFinal[1] !== yDomainFinal[1]) {
+    setPrevYDomainFinal(yDomainFinal);
+  }
   const yDomainChangedForTween =
     projectionConfigs.length === 0
       ? nicedYDomainChanged
-      : prevYDomainFinalRef.current[0] !== yDomainFinal[0] ||
-        prevYDomainFinalRef.current[1] !== yDomainFinal[1];
-  prevYDomainFinalRef.current = yDomainFinal;
+      : prevYDomainFinal[0] !== yDomainFinal[0] ||
+        prevYDomainFinal[1] !== yDomainFinal[1];
 
   const isLoading = status === "loading";
   // Pulse mode follows lifecycle phase (loading loops, exiting finishes, revealing grows in).
@@ -1300,9 +1308,12 @@ export const LineChart = ({
   }, [tooltipEnabled, tooltip, crosshairGradientId]);
 
   const overlayRendered = (lineTerminalAnchors.length > 0 || lineEndAnchors.length > 0) && width > 0 && heightPx > 0;
+  const pushPhaseToProjectionPort = useEffectEvent((): void => {
+    projectionPhasePortRef.current?.setPhase(chartPhase);
+  });
   useLayoutEffect(() => {
     if (!overlayRendered) {return;}
-    projectionPhasePortRef.current?.setPhase(phaseRef.current);
+    pushPhaseToProjectionPort();
   }, [overlayRendered]);
 
   // Selection resolves through the host's live interaction/scene refs, not a duplicate scale.

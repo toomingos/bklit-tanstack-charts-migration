@@ -1,5 +1,5 @@
 // Left-to-right clip reveal driven by the shared WAAPI reveal engine.
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import type { ReactElement } from "react";
 import { buildProgressKeyframes, resolveEnterTransition, revealTiming } from './enter-transition';
 import type { EnterTransition } from './enter-transition';
@@ -115,11 +115,17 @@ const ChartRevealClip = ({
 
   const rectRef = useRef<SVGRectElement | null>(null);
 
+  // Latest conceal callback without retriggering the WAAPI animation on identity changes.
+  // The reveal replays only on the visual inputs plus the epoch.
+  const onConcealComplete = useEffectEvent((): void => {
+    onComplete?.();
+  });
+
   useEffect((): (() => void) | undefined => {
     if (!animating) {return undefined;}
     const rect = rectRef.current;
     if (!rect) {return undefined;}
-    return startRevealAnimation(rect, { enterTransition, isConceal: mode === "conceal", onComplete, paddedWidth, padding });
+    return startRevealAnimation(rect, { enterTransition, isConceal: mode === "conceal", onComplete: onConcealComplete, paddedWidth, padding });
   }, [animating, mode, revealEpoch, enterTransition, paddedWidth, padding]);
 
   if (!animating) {

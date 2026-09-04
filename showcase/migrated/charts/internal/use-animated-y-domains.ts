@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { ChartPhase } from "./chart-phase";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
@@ -31,16 +31,20 @@ interface TweenInputRefsArgs {
   readonly onSettled?: () => void;
 }
 
-// Render-time ref mirror for the tween inputs; one hook so the main hook stays short.
+// Mirror of the tween inputs as refs; one hook so the main hook stays short.
+// Writes land in an effect (never during render) so the body stays pure.
+// The mirror effect is declared before the tween effects so it always runs first.
 const useTweenInputRefs = (args: Readonly<TweenInputRefsArgs>): TweenInputRefs => {
   const destinationRef = useRef(args.destinationByAxis);
-  destinationRef.current = args.destinationByAxis;
   const skeletonRef = useRef(args.skeletonByAxis);
-  skeletonRef.current = args.skeletonByAxis;
   const targetRef = useRef(args.targetByAxis);
-  targetRef.current = args.targetByAxis;
   const onSettledRef = useRef(args.onSettled);
-  onSettledRef.current = args.onSettled;
+  useEffect(() => {
+    destinationRef.current = args.destinationByAxis;
+    skeletonRef.current = args.skeletonByAxis;
+    targetRef.current = args.targetByAxis;
+    onSettledRef.current = args.onSettled;
+  });
   return { destinationRef, onSettledRef, skeletonRef, targetRef };
 };
 
@@ -110,10 +114,34 @@ interface PhaseEffectArgs {
   readonly refs: Readonly<TweenInputRefs>;
 }
 
+// Trigger subset for the phase-transition effect; passed as one EffectEvent argument.
+interface PhaseTrigger {
+  readonly chartPhase: ChartPhase;
+  readonly durationMs: number;
+  readonly enabled: boolean;
+  readonly reducedMotion: boolean;
+}
+
 // Owns the phase-transition effect (plus its phase ref) so the main hook stays short.
+// Triggers travel as an EffectEvent argument so the dependency list stays honest.
+// The tween inputs (destination, skeleton, target, onSettled) stay latest-but-non-reactive.
+// Event closure keeps them fresh without re-triggering the once-per-transition reveal.
 const usePhaseTweenEffect = (args: Readonly<PhaseEffectArgs>): void => {
   const prevPhaseRef = useRef(args.chartPhase);
-  useEffect(() => runPhaseTween(args, prevPhaseRef), [args.chartPhase, args.durationMs, args.enabled, args.reducedMotion]);
+  const runEffectForPhase = useEffectEvent(
+    (trigger: Readonly<PhaseTrigger>): (() => void) | undefined =>
+      runPhaseTween({ ...args, ...trigger }, prevPhaseRef),
+  );
+  useEffect(
+    () =>
+      runEffectForPhase({
+        chartPhase: args.chartPhase,
+        durationMs: args.durationMs,
+        enabled: args.enabled,
+        reducedMotion: args.reducedMotion,
+      }),
+    [args.chartPhase, args.durationMs, args.enabled, args.reducedMotion],
+  );
 };
 
 interface TargetEffectArgs {
@@ -164,11 +192,54 @@ const runTargetTween = (run: Readonly<TargetEffectArgs>, targetSignature: string
   return undefined;
 };
 
+// Trigger subset for the live-target effect; passed as one EffectEvent argument.
+// Read-only view of the target, sufficient for dep honesty.
+// The tween itself consumes the refs mirror, so the mutable record never flows here.
+interface TargetTrigger {
+  readonly chartPhase: ChartPhase;
+  readonly durationMs: number;
+  readonly enabled: boolean;
+  readonly reducedMotion: boolean;
+  readonly signature: string;
+  readonly targetByAxis: Readonly<Record<string, Readonly<YDomain>>>;
+  readonly tweenOnTargetChange: boolean;
+}
+
 // Owns the target-signature ref and the live-target effect so the main hook stays short.
+// Triggers travel as an EffectEvent argument so the dependency list stays honest.
+// The tween inputs stay latest-but-non-reactive inside the event.
+// Event closure keeps them fresh without breaking the signature-guarded live update.
 const useTargetTweenEffect = (args: Readonly<TargetEffectArgs>): void => {
   const targetSignature = JSON.stringify(args.targetByAxis);
   const prevTargetSignatureRef = useRef(targetSignature);
-  useEffect(() => runTargetTween(args, targetSignature, prevTargetSignatureRef), [args.chartPhase, args.durationMs, args.enabled, args.reducedMotion, args.tweenOnTargetChange, args.targetByAxis, targetSignature]);
+  const runEffectForTarget = useEffectEvent(
+    (trigger: Readonly<TargetTrigger>): (() => void) | undefined =>
+      runTargetTween(
+        {
+          ...args,
+          chartPhase: trigger.chartPhase,
+          durationMs: trigger.durationMs,
+          enabled: trigger.enabled,
+          reducedMotion: trigger.reducedMotion,
+          tweenOnTargetChange: trigger.tweenOnTargetChange,
+        },
+        trigger.signature,
+        prevTargetSignatureRef,
+      ),
+  );
+  useEffect(
+    () =>
+      runEffectForTarget({
+        chartPhase: args.chartPhase,
+        durationMs: args.durationMs,
+        enabled: args.enabled,
+        reducedMotion: args.reducedMotion,
+        signature: targetSignature,
+        targetByAxis: args.targetByAxis,
+        tweenOnTargetChange: args.tweenOnTargetChange,
+      }),
+    [args.chartPhase, args.durationMs, args.enabled, args.reducedMotion, args.tweenOnTargetChange, args.targetByAxis, targetSignature],
+  );
 };
 
 export const useAnimatedYDomains = (options: UseAnimatedYDomainsOptions): Record<string, YDomain> => {

@@ -1,7 +1,7 @@
 // Bklit Gauge (arc + linear) on TanStack polar marks; linear notches bypass scales (no data domain).
 // UniformWidth notches use custom quads: pie slices can't express the perpendicular inner edge.
 import { useCallback, useId, useMemo, useRef } from "react";
-import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
 import { createMark } from '@tanstack/charts';
 import type { SceneNode, ChartMotionContext, ChartMotionTiming, ChartMotionPhase, ChartLinearGradient, DomChartDefinition, MarkScene } from '@tanstack/charts';
@@ -1168,59 +1168,6 @@ const renderGaugeArcInner = (options: Readonly<RenderGaugeArcInnerOptions>): Rea
   ) : undefined;
 };
 
-interface RenderGaugeArcRootOptions {
-  readonly centerOverlayStyle: CSSProperties;
-  readonly centerValue?: number;
-  readonly className?: string;
-  readonly containerRef: RefObject<HTMLDivElement | null>;
-  readonly defaultLabel: string;
-  readonly definition: DomChartDefinition | undefined;
-  readonly fillState: Readonly<GaugeFillState>;
-  readonly formatOptions: CenterStatFormat;
-  readonly innerWrapStyle: CSSProperties;
-  readonly layout: Readonly<GaugeArcLayout>;
-  readonly prefix?: string;
-  readonly rootStyle: CSSProperties;
-  readonly suffix?: string;
-}
-
-const renderGaugeArcRoot = (options: Readonly<RenderGaugeArcRootOptions>): ReactElement => {
-  const { centerOverlayStyle, centerValue, className, containerRef, defaultLabel, definition, fillState, formatOptions, innerWrapStyle, layout, prefix, rootStyle, suffix } = options;
-  const inner = renderGaugeArcInner({
-    centerOverlayStyle,
-    centerValue,
-    defaultLabel,
-    definition,
-    fillState,
-    formatOptions,
-    innerWrapStyle,
-    layout,
-    prefix,
-    suffix,
-  });
-  if (layout.fixedSize) {
-    return (
-      <div className={className} data-bkm-chart="gauge" style={rootStyle}>
-        {inner}
-      </div>
-    );
-  }
-  return (
-    <div
-      className={className}
-      data-bkm-chart="gauge"
-      style={rootStyle}
-    >
-      <div
-        ref={containerRef}
-        style={GAUGE_ARC_SIZER_STYLE}
-      >
-        {inner}
-      </div>
-    </div>
-  );
-};
-
 interface GaugeArcStyles {
   readonly centerOverlayStyle: CSSProperties;
   readonly innerWrapStyle: CSSProperties;
@@ -1283,19 +1230,39 @@ const GaugeArc = (props: Readonly<GaugeArcProps>): ReactElement => {
     uniformRows,
     uniformWidth: props.uniformWidth ?? false,
   });
-  return renderGaugeArcRoot({
+  const arcStyles = useGaugeArcStyles(props.style, layout);
+  // Root JSX lives in this component rather than in a plain render helper.
+  // The sizer ref attaches directly, so it never crosses a function during render.
+  const arcInner = renderGaugeArcInner({
+    centerOverlayStyle: arcStyles.centerOverlayStyle,
     centerValue: props.centerValue,
-    className: props.className,
-    containerRef,
     defaultLabel: props.defaultLabel ?? "Total",
     definition,
     fillState,
     formatOptions: props.formatOptions ?? defaultCenterStatFormat,
+    innerWrapStyle: arcStyles.innerWrapStyle,
     layout,
     prefix: props.prefix,
     suffix: props.suffix,
-    ...useGaugeArcStyles(props.style, layout),
   });
+  return layout.fixedSize ? (
+    <div className={props.className} data-bkm-chart="gauge" style={arcStyles.rootStyle}>
+      {arcInner}
+    </div>
+  ) : (
+    <div
+      className={props.className}
+      data-bkm-chart="gauge"
+      style={arcStyles.rootStyle}
+    >
+      <div
+        ref={containerRef}
+        style={GAUGE_ARC_SIZER_STYLE}
+      >
+        {arcInner}
+      </div>
+    </div>
+  );
 }
 
 interface LinearGaugeLayoutOptions {
@@ -1641,39 +1608,6 @@ const renderLinearGaugeBody = (options: Readonly<RenderLinearGaugeBodyOptions>):
   );
 };
 
-interface RenderLinearGaugeRootOptions {
-  readonly body: Readonly<ReactElement>;
-  readonly className?: string;
-  readonly containerRef: RefObject<HTMLDivElement | null>;
-  readonly containerStyle: CSSProperties;
-  readonly fixedWidth: boolean;
-  readonly innerWidthStyle: CSSProperties;
-  readonly layout: Readonly<LinearGaugeLayout>;
-  readonly rootStyle: CSSProperties;
-}
-
-const renderLinearGaugeRoot = (options: Readonly<RenderLinearGaugeRootOptions>): ReactElement => {
-  const { body, className, containerRef, containerStyle, fixedWidth, innerWidthStyle, layout, rootStyle } = options;
-  if (fixedWidth) {
-    return (
-      <div className={className} data-bkm-chart="gauge" style={rootStyle}>
-        <div style={innerWidthStyle}>{body}</div>
-      </div>
-    );
-  }
-  return (
-    <div
-      className={className}
-      data-bkm-chart="gauge"
-      style={rootStyle}
-    >
-      <div ref={containerRef} style={containerStyle}>
-        {layout.width > 0 ? body : undefined}
-      </div>
-    </div>
-  );
-};
-
 type GaugeLinearProps = Omit<GaugeProps, "orientation" | "startAngle" | "endAngle">;
 
 const GaugeLinear = (props: Readonly<GaugeLinearProps>): ReactElement => {
@@ -1704,26 +1638,34 @@ const GaugeLinear = (props: Readonly<GaugeLinearProps>): ReactElement => {
   const definition = useLinearGaugeDefinition({ fillState, fills, geometry, props });
   const linearStyles = useLinearGaugeStyles(props, layout);
 
-  return renderLinearGaugeRoot({
-    body: renderLinearGaugeBody({
-      chartWrapStyle: linearStyles.chartWrapStyle,
-      definition,
-      defsChildren: fillState.defsChildren,
-      height: layout.height,
-      label: linearStyles.label,
-      labelAlign: props.labelAlign ?? "start",
-      labelPlacement: props.labelPlacement ?? "top",
-      trackStyle: linearStyles.trackStyle,
-      width: layout.width,
-    }),
-    className: props.className,
-    containerRef,
-    containerStyle: linearStyles.containerStyle,
-    fixedWidth: layout.fixedWidth,
-    innerWidthStyle: linearStyles.innerWidthStyle,
-    layout,
-    rootStyle: linearStyles.rootStyle,
+  // Root JSX lives in this component rather than in a plain render helper.
+  // The sizer ref attaches directly, so it never crosses a function during render.
+  const linearBody = renderLinearGaugeBody({
+    chartWrapStyle: linearStyles.chartWrapStyle,
+    definition,
+    defsChildren: fillState.defsChildren,
+    height: layout.height,
+    label: linearStyles.label,
+    labelAlign: props.labelAlign ?? "start",
+    labelPlacement: props.labelPlacement ?? "top",
+    trackStyle: linearStyles.trackStyle,
+    width: layout.width,
   });
+  return layout.fixedWidth ? (
+    <div className={props.className} data-bkm-chart="gauge" style={linearStyles.rootStyle}>
+      <div style={linearStyles.innerWidthStyle}>{linearBody}</div>
+    </div>
+  ) : (
+    <div
+      className={props.className}
+      data-bkm-chart="gauge"
+      style={linearStyles.rootStyle}
+    >
+      <div ref={containerRef} style={linearStyles.containerStyle}>
+        {layout.width > 0 ? linearBody : undefined}
+      </div>
+    </div>
+  );
 }
 
 const Gauge = ({ orientation = "arc", ...rest }: Readonly<GaugeProps>): ReactElement => {

@@ -1410,9 +1410,9 @@ const AreaChart = ({
     return { containerRef, margin, trackExtent: brushTrackExtent };
   }, [brushTrackExtent, innerWidthForBrush, margin]);
   const brushPixelExtent = useMemo((): { x0: number; x1: number } | undefined => {
-    if (!brushHost || !brushRangeValue) {return undefined;}
-    return selectionToPixelExtent(brushRangeValue, brushHost.trackExtent, innerWidthForBrush) ?? undefined;
-  }, [brushHost, brushRangeValue, innerWidthForBrush]);
+    if (!brushTrackExtent || innerWidthForBrush <= 0 || !brushRangeValue) {return undefined;}
+    return selectionToPixelExtent(brushRangeValue, brushTrackExtent, innerWidthForBrush) ?? undefined;
+  }, [brushTrackExtent, brushRangeValue, innerWidthForBrush]);
   const areaChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
   // Stable identities for layer props that would otherwise allocate per render.

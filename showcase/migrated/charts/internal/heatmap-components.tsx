@@ -1139,7 +1139,11 @@ const HeatmapCells = ({
   const focusTimerRef = useRef<number | undefined>(undefined);
   const focusedKeyRef = useRef<string | undefined>(undefined);
   const inputsRef = useRef({ cellData, cellsInteractive, coordinator, ctx, tooltipConfig });
-  inputsRef.current = { cellData, cellsInteractive, coordinator, ctx, tooltipConfig };
+  // Latest render inputs sync post-commit; every reader (pointer handlers, focus
+  // Scheduler) runs at event time, strictly after this effect.
+  useEffect(() => {
+    inputsRef.current = { cellData, cellsInteractive, coordinator, ctx, tooltipConfig };
+  });
 
   // Debounced app -> chart focus bridge. `key` is `${column}-${row}` for a
   // Hovered cell or null for "no cell hovered"; repeated calls with the same

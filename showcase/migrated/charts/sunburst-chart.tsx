@@ -530,10 +530,15 @@ const SunburstChartInner = ({
   const playCycleRef = useRef<string>(`${playKey}`);
   const revealDeadlineTimerRef = useRef<number | null>(null);
 
-  useEffect(() => {
+  // Data-shape change resets the zoom to the new root. Done during render
+  // (previous-root comparison) so the first commit already carries the reset
+  // State instead of flashing one stale-focus frame through an effect.
+  const [prevRootId, setPrevRootId] = useState(rootId);
+  if (prevRootId !== rootId) {
+    setPrevRootId(rootId);
     setPrevFocusId(rootId);
     setZoomT(1);
-  }, [rootId]);
+  }
 
   const commitFocus = useCallback(
     (nextId: string) => {
@@ -1199,30 +1204,14 @@ export const SunburstChart = ({
   enterStaggerScale = 1,
   children,
 }: SunburstChartProps) => {
-  // SB2 — sweep timing. Primitive deps: callers pass `enterTransition` inline.
-  // An identity-only change must not retrigger the computation; the snapshot
-  // Below mirrors the dep primitives (line-chart precedent keeps the full ref).
-  const enterType = enterTransition?.type;
-  const enterDurationSec = enterTransition?.duration;
-  const enterEaseKey = enterTransition?.ease?.join(",");
-  const enterTransitionRef = useRef(enterTransition);
-  enterTransitionRef.current = enterTransition;
-  const { durationMs: sweepDurationMs, easingCss: sweepEasingCss } = useMemo(
-    () => {
-      const liveTransition = enterTransitionRef.current;
-      if (liveTransition === undefined) {return clipRevealTiming(undefined, SUNBURST_SWEEP_MS, SUNBURST_SWEEP_EASE);}
-      return clipRevealTiming(
-        {
-          duration: enterDurationSec,
-          ease: enterEaseKey === undefined ? undefined : liveTransition.ease,
-          type: enterType,
-        },
-        SUNBURST_SWEEP_MS,
-        SUNBURST_SWEEP_EASE,
-      );
-    },
-    [enterTransitionRef, enterType, enterDurationSec, enterEaseKey],
-  );
+  // SB2 — sweep timing. `clipRevealTiming` only reads `type`/`duration`/
+  // `ease` (see `internal/enter-transition`), so passing the prop through
+  // Directly matches the old subset snapshot exactly; it runs inline every
+  // Render and the destructured primitives stay value-stable, so an
+  // Identity-only change of an inline `enterTransition` object retriggers
+  // Nothing downstream.
+  const { durationMs: sweepDurationMs, easingCss: sweepEasingCss } =
+    clipRevealTiming(enterTransition, SUNBURST_SWEEP_MS, SUNBURST_SWEEP_EASE);
   // --- Phase tracking (deduped — just gate on last emitted value) ---
   const phaseRef = useRef<SunburstPhase>("revealing");
   const setPhase = useCallback((p: SunburstPhase) => {
@@ -1248,9 +1237,15 @@ export const SunburstChart = ({
   const [internalFocusId, setInternalFocusId] = useState(rootId);
   const focusId = focusIdProp ?? internalFocusId;
 
-  useEffect(() => {
+  // Data-shape change re-seeds the uncontrolled focus to the new root.
+  // Done during render (previous-value comparison, control mode included so
+  // A mode toggle resyncs exactly as the old `[rootId, isFocusControlled]`
+  // Effect did) so no stale-focus commit flashes first.
+  const [prevFocusReset, setPrevFocusReset] = useState({ isControlled: isFocusControlled, rootId });
+  if (prevFocusReset.rootId !== rootId || prevFocusReset.isControlled !== isFocusControlled) {
+    setPrevFocusReset({ isControlled: isFocusControlled, rootId });
     if (!isFocusControlled) {setInternalFocusId(rootId);}
-  }, [rootId, isFocusControlled]);
+  }
 
   const prefersReducedMotion = usePrefersReducedMotion();
 

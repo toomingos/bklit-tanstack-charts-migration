@@ -2,6 +2,7 @@ import { useCallback, useEffectEvent, useLayoutEffect, useRef } from 'react';
 import type { ReactElement, RefObject } from 'react';
 import { createSpring } from './spring';
 import type { Spring } from './spring';
+import { TooltipDotMarker } from './tooltip-dot-marker';
 import { useChartConfig } from './chart-config-context';
 import type { SpringConfig } from './chart-config-context';
 
@@ -18,14 +19,6 @@ interface TooltipDotProps {
   springConfig?: SpringConfig;
   animate?: boolean;
 }
-
-// Ring corner radius never exceeds half the ring's side length (a full stadium/circle shape).
-const RING_CORNER_RADIUS_MAX_FRACTION = 0.5;
-
-const ringCornerRadius = (halfExtent: number, cornerRadiusFraction: number): number => {
-  const side = halfExtent * 2;
-  return side * Math.max(0, Math.min(RING_CORNER_RADIUS_MAX_FRACTION, cornerRadiusFraction));
-};
 
 interface ResolveDotPaintOptions {
   readonly color: string;
@@ -136,90 +129,6 @@ const useDotPositionSprings = (options: Readonly<DotPositionSpringsOptions>): vo
   }, [visible]);
 };
 
-interface RenderDotRingOptions {
-  readonly animate: boolean;
-  readonly fill: string;
-  readonly rectRef: RefObject<SVGRectElement | null>;
-  readonly rx: number;
-  readonly side: number;
-  readonly size: number;
-  readonly stroke: string;
-  readonly strokeWidth: number;
-  readonly x: number;
-  readonly y: number;
-}
-
-const renderDotRing = (options: Readonly<RenderDotRingOptions>): ReactElement => {
-  const { animate, fill, rectRef, rx, side, size, stroke, strokeWidth, x, y } = options;
-  if (animate) {
-    return (
-      <rect
-        ref={rectRef}
-        height={side}
-        rx={rx}
-        ry={rx}
-        width={side}
-      />
-    );
-  }
-  return (
-    <rect
-      height={side}
-      rx={rx}
-      ry={rx}
-      width={side}
-      x={x - size}
-      y={y - size}
-      fill={fill}
-      stroke={stroke}
-      strokeWidth={strokeWidth}
-    />
-  );
-};
-
-interface RenderDotCircleOptions {
-  readonly animate: boolean;
-  readonly circleRef: RefObject<SVGCircleElement | null>;
-  readonly fill: string;
-  readonly size: number;
-  readonly stroke: string;
-  readonly strokeWidth: number;
-  readonly x: number;
-  readonly y: number;
-}
-
-const renderDotCircle = (options: Readonly<RenderDotCircleOptions>): ReactElement => {
-  const { animate, circleRef, fill, size, stroke, strokeWidth, x, y } = options;
-  if (animate) {
-    return <circle ref={circleRef} fill={fill} r={size} stroke={stroke} strokeWidth={strokeWidth} />;
-  }
-  return <circle cx={x} cy={y} fill={fill} r={size} stroke={stroke} strokeWidth={strokeWidth} />;
-};
-
-interface RenderDotOptions {
-  readonly animate: boolean;
-  readonly circleRef: RefObject<SVGCircleElement | null>;
-  readonly cornerRadiusFraction: number;
-  readonly fill: string;
-  readonly isRing: boolean;
-  readonly rectRef: RefObject<SVGRectElement | null>;
-  readonly size: number;
-  readonly stroke: string;
-  readonly strokeWidth: number;
-  readonly x: number;
-  readonly y: number;
-}
-
-const renderDot = (options: Readonly<RenderDotOptions>): ReactElement => {
-  const { cornerRadiusFraction, isRing, size } = options;
-  const side = size * 2;
-  const rx = ringCornerRadius(size, cornerRadiusFraction);
-  if (isRing) {
-    return renderDotRing({ ...options, rx, side });
-  }
-  return renderDotCircle(options);
-};
-
 const TooltipDot = ({
   x,
   y,
@@ -250,19 +159,21 @@ const TooltipDot = ({
     return undefined;
   }
 
-  return renderDot({
-    animate,
-    circleRef,
-    cornerRadiusFraction,
-    fill,
-    isRing: variant === "ring",
-    rectRef,
-    size,
-    stroke,
-    strokeWidth: effectiveStrokeWidth,
-    x,
-    y,
-  });
+  return (
+    <TooltipDotMarker
+      animate={animate}
+      circleRef={circleRef}
+      cornerRadiusFraction={cornerRadiusFraction}
+      fill={fill}
+      isRing={variant === "ring"}
+      rectRef={rectRef}
+      size={size}
+      stroke={stroke}
+      strokeWidth={effectiveStrokeWidth}
+      x={x}
+      y={y}
+    />
+  );
 };
 
 export { TooltipDot };

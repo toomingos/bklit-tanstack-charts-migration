@@ -1,6 +1,6 @@
 // Bklit FunnelChart as plain SVG (no TanStack funnel primitive; geometry is pure pixel arithmetic).
 // One FunnelSegment per stage owns graphic + label overlay; keyed by stage.label (replay-vs-snap free).
-import { createContext, useCallback, useContext, useEffect, useRef } from 'react';
+import { createContext, useCallback, useContext, useEffect, useEffectEvent, useRef } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, Ref, RefObject } from 'react';
 import { intFmt } from "./internal/formatters";
 import { usePositiveChartSize } from "./internal/use-container-size";
@@ -324,7 +324,8 @@ const useFunnelSegmentHover = (options: Readonly<FunnelSegmentHoverOptions>): vo
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!runtime) {return undefined;}
-    const ringEls = ringRefs.current.filter((el): el is SVGPathElement => el !== null);
+    // Cap the ring list at the current generation so ringCount stays a genuine dependency.
+    const ringEls = ringRefs.current.filter((el): el is SVGPathElement => el !== null).slice(0, ringCount);
     runtime.update({
       graphicEl: graphicRef.current,
       index,
@@ -413,12 +414,12 @@ interface FunnelSegmentMotionOptions {
 const useFunnelSegmentMotion = (options: Readonly<FunnelSegmentMotionOptions>): void => {
   const { graphicRef, labelInnerRef, index, staggerDelay, isHorizontal, enterTransition } = options;
   const prefersReducedMotion = usePrefersReducedMotion();
-  const enterTransitionRef = useRef(enterTransition);
-  enterTransitionRef.current = enterTransition;
+  // Latest enterTransition for the enter animation without retriggering it.
+  const readEnterTransition = useEffectEvent((): FunnelEnterTransition | undefined => enterTransition);
   useEffect(() => {
     const el = graphicRef.current;
     if (!el) {return undefined;}
-    return startGraphicEnterAnimation({ el, enterTransition: enterTransitionRef.current, index, isHorizontal, prefersReducedMotion, staggerDelay });
+    return startGraphicEnterAnimation({ el, enterTransition: readEnterTransition(), index, isHorizontal, prefersReducedMotion, staggerDelay });
   }, [graphicRef, index, staggerDelay, isHorizontal, prefersReducedMotion]);
   useEffect(() => {
     const el = labelInnerRef.current;
@@ -693,10 +694,13 @@ const useFunnelHoverCoordinator = (
   onHoverChange: ((index: number | null) => void) | undefined,
 ): FunnelHoverCoordinator => {
   // Controlled/uncontrolled hover split matches bklit FunnelChart.setHoveredIndex exactly.
-  const isControlledRef = useRef(hoveredIndexProp !== undefined);
-  isControlledRef.current = hoveredIndexProp !== undefined;
+  const isControlled = hoveredIndexProp !== undefined;
+  const isControlledRef = useRef(isControlled);
   const onHoverChangeRef = useRef(onHoverChange);
-  onHoverChangeRef.current = onHoverChange;
+  useEffect(() => {
+    isControlledRef.current = isControlled;
+    onHoverChangeRef.current = onHoverChange;
+  }, [isControlled, onHoverChange]);
 
   const coordinatorRef = useRef<FunnelHoverCoordinator | null>(null);
   coordinatorRef.current ??= createFunnelHoverCoordinator(

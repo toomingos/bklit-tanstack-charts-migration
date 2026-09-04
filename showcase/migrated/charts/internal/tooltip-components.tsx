@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
 import { createPortal } from "react-dom";
 import { createSpring } from './spring';
@@ -111,7 +111,7 @@ interface DotSpringsOptions {
 }
 
 // Hover-dot spring tracking: springs own animated attrs exclusively and are driven
-// Imperatively (jump on mount/visible, set during render), so React never sets them via JSX.
+// Imperatively (jump on mount/visible, set in a layout effect), so React never sets them via JSX.
 const useTooltipDotSprings = (options: Readonly<DotSpringsOptions>): DotSpringRefs => {
   const { animate, effectiveSpring, size, visible, x, y } = options;
   const circleRef = useRef<SVGCircleElement | null>(null);
@@ -121,15 +121,24 @@ const useTooltipDotSprings = (options: Readonly<DotSpringsOptions>): DotSpringRe
   const ensureSprings = useCallback(() => {
     ensureDotSprings({ animate, circleRef, rectRef, size, spring: effectiveSpring, springXRef, springYRef, x, y });
   }, [animate, effectiveSpring, size, x, y]);
-  // Springs own animated attrs exclusively; React must not set them via JSX.
-  if (animate && visible && springXRef.current && springYRef.current) {
+  // Spring drivers read the latest targets without re-triggering each other.
+  const syncDotSprings = useEffectEvent((shouldJump: boolean): void => {
+    if (shouldJump) {
+      ensureSprings();
+      springXRef.current?.jump(x);
+      springYRef.current?.jump(y);
+      return;
+    }
+    if (!animate || !visible) {return;}
     setDotSpringTargets({ springXRef, springYRef, x, y });
-  }
+  });
+  // Springs own animated attrs exclusively; React must not set them via JSX.
+  useLayoutEffect(() => {
+    syncDotSprings(false);
+  });
   useLayoutEffect((): (() => void) | undefined => {
-    if (!animate || !visible) {return undefined;}
-    ensureSprings();
-    springXRef.current?.jump(x);
-    springYRef.current?.jump(y);
+    if (!visible) {return undefined;}
+    syncDotSprings(true);
     return (): void => {
       springXRef.current?.stop();
       springYRef.current?.stop();
@@ -343,9 +352,14 @@ const useTooltipIndicatorSprings = (options: Readonly<IndicatorSpringsOptions>):
   const ensureSprings = useCallback(() => {
     ensureIndicatorSprings({ animate, lineRef, lineSpringRef, lineX, rectRef, rectSpringRef, rectX, spring: effectiveSpring });
   }, [animate, effectiveSpring, lineX, rectX]);
-  if (animate && rectSpringRef.current && lineSpringRef.current) {
+  // Cursor follow reads the latest targets without re-triggering the snap below.
+  const followIndicatorTargets = useEffectEvent((): void => {
+    if (!animate) {return;}
     setIndicatorSpringTargets({ lineSpringRef, lineX, rectSpringRef, rectX });
-  }
+  });
+  useLayoutEffect(() => {
+    followIndicatorTargets();
+  });
   useLayoutEffect(() => {
     if (!animate) {return;}
     ensureSprings();
@@ -900,6 +914,7 @@ const TooltipBoxInner = ({
     targetY: placement.ty,
   });
 
+  // Motion members stay listed so the sync only re-runs on real motion changes.
   useLayoutEffect(() => {
     syncTooltipBoxLayout({
       animate,
@@ -910,7 +925,15 @@ const TooltipBoxInner = ({
       entrance,
       flippedOverride,
       leftOverride,
-      motion,
+      motion: {
+        ensurePositionSprings: motion.ensurePositionSprings,
+        layerRef: motion.layerRef,
+        leftSpringRef: motion.leftSpringRef,
+        panelRef: motion.panelRef,
+        prevFlipRef: motion.prevFlipRef,
+        runEntrance: motion.runEntrance,
+        topSpringRef: motion.topSpringRef,
+      },
       offset,
       setStaticPosition,
       topOverride,
@@ -929,6 +952,14 @@ const TooltipBoxInner = ({
     animate,
     entrance,
     children,
+    boxSizeRef,
+    motion.ensurePositionSprings,
+    motion.layerRef,
+    motion.leftSpringRef,
+    motion.panelRef,
+    motion.prevFlipRef,
+    motion.runEntrance,
+    motion.topSpringRef,
   ]);
 
   useTooltipLayerFade(motion.layerRef, entrance);

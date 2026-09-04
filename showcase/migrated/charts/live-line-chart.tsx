@@ -535,25 +535,27 @@ const LiveLineChart = ({
   const xTickUnitMs = windowMs / Math.max(1, numXTicks - 1);
   const leadingMs = nowOffsetUnits * xTickUnitMs;
 
-  const initialFrame: AnimFrame = { displayValue: value, now: Date.now(), seq: 0, trueValue: value, yMax: 100, yMin: 0 };
-  const animRef = useRef<AnimFrame>(initialFrame);
-  const [frame, setFrame] = useState<AnimFrame>(initialFrame);
-  const committedFrameRef = useRef(initialFrame);
+  const [frame, setFrame] = useState<AnimFrame>(() => ({ displayValue: value, now: Date.now(), seq: 0, trueValue: value, yMax: 100, yMin: 0 }));
+  const animRef = useRef<AnimFrame>(frame);
+  const committedFrameRef = useRef(frame);
   const seqRef = useRef(0);
 
   const pausedRef = useRef(paused);
-  pausedRef.current = paused;
   const valueRef = useRef(value);
-  valueRef.current = value;
   const lerpSpeedRef = useRef(lerpSpeed);
-  lerpSpeedRef.current = lerpSpeed;
 
   const targetRange = useMemo(
     () => computeTargetRange(data, value, exaggerate),
     [data, value, exaggerate],
   );
   const targetRangeRef = useRef(targetRange);
-  targetRangeRef.current = targetRange;
+  // Sync the latest values for the RAF loop; the loop reads them asynchronously so effect timing preserves behaviour.
+  useEffect(() => {
+    pausedRef.current = paused;
+    valueRef.current = value;
+    lerpSpeedRef.current = lerpSpeed;
+    targetRangeRef.current = targetRange;
+  }, [paused, value, lerpSpeed, targetRange]);
 
   useEffect(() => {
     if (innerWidth <= 0 || innerHeight <= 0) {return undefined;}
@@ -703,7 +705,10 @@ const LiveLineChart = ({
   });
   const wasVisibleRef = useRef(false);
   const liveXAxisRef = useRef(liveXAxis);
-  liveXAxisRef.current = liveXAxis;
+  // Sync the latest axis config for tooltip callbacks without changing their identity.
+  useEffect(() => {
+    liveXAxisRef.current = liveXAxis;
+  }, [liveXAxis]);
 
   const handleFocusChange = useCallback(
     (points: readonly ReadonlyLivePoint[]) => {
@@ -775,16 +780,26 @@ const LiveLineChart = ({
     return Array.from({ length: tickCount }, (_slot, index) => new Date(startMs + index * step));
   }, [liveXAxis, xScale, numXTicks]);
 
-  const yIntervalRef = useRef(0);
-  const yTickValues = useMemo<number[]>(() => {
-    if (!liveYAxis) {return [];}
+  // Hysteresis keeps the tick interval stable across frames; the cached value lives in state because it is read during render.
+  const [cachedYInterval, setCachedYInterval] = useState(0);
+  const yInterval = useMemo(() => {
+    if (!liveYAxis) {return 0;}
     // Read the niced scale domain directly for tick sizing (legacy builds its yScale with nice:true).
     const [minVal, maxVal] = yScale.domain();
     const valRange = maxVal - minVal;
     const minGap = liveYAxis.minGap ?? DEFAULT_Y_MIN_GAP_PX;
-    const interval = pickNiceInterval(valRange, innerHeight, minGap, yIntervalRef.current);
-    yIntervalRef.current = interval;
-    if (interval <= 0 || valRange <= 0) {return [];}
+    return pickNiceInterval(valRange, innerHeight, minGap, cachedYInterval);
+  }, [liveYAxis, yScale, innerHeight, cachedYInterval]);
+  if (yInterval !== cachedYInterval && yInterval > 0) {
+    setCachedYInterval(yInterval);
+  }
+  const yTickValues = useMemo<number[]>(() => {
+    if (!liveYAxis || yInterval <= 0) {return [];}
+    // Read the niced scale domain directly for tick sizing (legacy builds its yScale with nice:true).
+    const [minVal, maxVal] = yScale.domain();
+    const valRange = maxVal - minVal;
+    if (valRange <= 0) {return [];}
+    const interval = yInterval;
     const allowDecimals = liveYAxis.allowDecimals ?? true;
     const expandedMin = minVal - interval * TICK_RANGE_EXPANSION_FACTOR;
     const expandedMax = maxVal + interval * TICK_RANGE_EXPANSION_FACTOR;
@@ -795,7 +810,7 @@ const LiveLineChart = ({
       if (Number.isInteger(rounded) || allowDecimals) {values.push(rounded);}
     }
     return values;
-  }, [liveYAxis, yScale, innerHeight]);
+  }, [liveYAxis, yScale, yInterval]);
 
   const definition = useMemo(() => {
     if (width <= 0 || innerWidth <= 0 || innerHeight <= 0 || contextData.length < 2) {return undefined;}
