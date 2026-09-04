@@ -43,7 +43,7 @@ const resolveBarXValue = (options: Readonly<ResolveBarXOptions>): number => {
   const key = toBandKey(value);
   if (key === undefined) {return fallback;}
   const position = band(key);
-  return position !== undefined ? position + band.bandwidth() / 2 : fallback;
+  return position === undefined ? fallback : position + band.bandwidth() / 2;
 }
 
 const buildBarDateMapper = (band: BarScale): XScaleMapper => (date: Date): number =>

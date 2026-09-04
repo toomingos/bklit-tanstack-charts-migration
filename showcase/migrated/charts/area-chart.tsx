@@ -1173,7 +1173,7 @@ const AreaChart = ({
     for (const pa of resolvedPatternAreas) {
       const curve = d3Curve(pa.curve);
       const patternId = patternIdByKey.get(pa.dataKey);
-      const fill = pa.fill ?? (patternId !== undefined ? `url(#${patternId})` : "var(--chart-1)");
+      const fill = pa.fill ?? (patternId === undefined ? "var(--chart-1)" : `url(#${patternId})`);
       marks.push(
         patternAreaMark(renderData, {
           curve,

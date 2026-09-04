@@ -339,7 +339,11 @@ const useFunnelSegmentHover = (options: Readonly<FunnelSegmentHoverOptions>): vo
   runtimeRef.current ??= createFunnelSegmentHoverRuntime();
   useEffect(() => {
     const runtime = runtimeRef.current;
-    if (!runtime) {return undefined;}
+    if (!runtime) {
+      return (): void => {
+        // Runtime absent: no hover subscription to clean up.
+      };
+    }
     // Cap the ring list at the current generation so ringCount stays a genuine dependency.
     const ringEls = ringRefs.current.filter((el): el is SVGPathElement => el !== null).slice(0, ringCount);
     runtime.update({
@@ -434,12 +438,20 @@ const useFunnelSegmentMotion = (options: Readonly<FunnelSegmentMotionOptions>): 
   const readEnterTransition = useEffectEvent((): FunnelEnterTransition | undefined => enterTransition);
   useEffect(() => {
     const el = graphicRef.current;
-    if (!el) {return undefined;}
+    if (!el) {
+      return (): void => {
+        // Element absent: no enter animation to cancel.
+      };
+    }
     return startGraphicEnterAnimation({ el, enterTransition: readEnterTransition(), index, isHorizontal, prefersReducedMotion, staggerDelay });
   }, [graphicRef, index, staggerDelay, isHorizontal, prefersReducedMotion]);
   useEffect(() => {
     const el = labelInnerRef.current;
-    if (!el) {return undefined;}
+    if (!el) {
+      return (): void => {
+        // Label element absent: no fade animation to cancel.
+      };
+    }
     return startLabelFadeAnimation({ el, index, prefersReducedMotion, staggerDelay });
   }, [index, labelInnerRef, staggerDelay, prefersReducedMotion]);
 };

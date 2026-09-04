@@ -171,7 +171,7 @@ const markerDotArgs = ({ seriesConfig, xDataKey, fill, outerRadius, id }: Readon
 });
 
 const resolveMarkerDimmed = (legendHoveredKey: string | null | undefined, dataKey: string, pointerFocusActive: boolean | undefined = false): boolean => {
-  if (pointerFocusActive === true) {return true;}
+  if (pointerFocusActive) {return true;}
   if (legendHoveredKey === undefined || legendHoveredKey === null) {return false;}
   return legendHoveredKey !== dataKey;
 };

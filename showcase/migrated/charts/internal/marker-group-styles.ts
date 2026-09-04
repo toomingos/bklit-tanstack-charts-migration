@@ -12,7 +12,7 @@ const MARKER_SHARP_FILTER = "blur(0px)";
 
 const resolveGuideOpacity = (hovered: boolean, isActive: boolean): number => {
   if (hovered) {return 1;}
-  if (isActive === true) {return 0;}
+  if (isActive) {return 0;}
   return MARKER_GUIDE_DIMMED_OPACITY;
 };
 

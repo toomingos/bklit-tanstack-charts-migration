@@ -244,7 +244,7 @@ interface DashTailMeasurementOptions {
 
 const useDashTailMeasurement = (options: Readonly<DashTailMeasurementOptions>): void => {
   const { activeSeries, containerRef, innerHeight, innerWidth, marginLeft, onMeasured, renderData, xDataKey } = options;
-  useLayoutEffect(() => {
+  useLayoutEffect((): (() => void) | undefined => {
     // No setState on the empty path: render already returns null, and setState here livelocks under the loading pulse.
     if (activeSeries.length === 0 || innerWidth <= 0 || innerHeight <= 0) {
       return undefined;

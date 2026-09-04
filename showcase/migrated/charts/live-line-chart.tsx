@@ -558,7 +558,11 @@ const LiveLineChart = ({
   }, [paused, value, lerpSpeed, targetRange]);
 
   useEffect(() => {
-    if (innerWidth <= 0 || innerHeight <= 0) {return undefined;}
+    if (innerWidth <= 0 || innerHeight <= 0) {
+      return (): void => {
+        // Zero-area chart: no frame loop to cancel.
+      };
+    }
     let raf = 0;
     let lastFrameCommit = 0;
     const tick = (): void => {

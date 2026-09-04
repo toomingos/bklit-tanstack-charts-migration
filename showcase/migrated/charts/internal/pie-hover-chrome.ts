@@ -159,17 +159,25 @@ const createOffsetArc = <TDatum>(getOffset: (datum: TDatum, index: number) => { 
   }) as Arc<unknown, TDatum>;
   for (const method of chainableMethods) {
     const forwarder = (...args: readonly unknown[]): ArcChainableOutcome<TDatum> => {
-      // SAFETY: `method` ranges over the nine chainable Arc member names above.
-      // Every one of those exists on each D3-shape arc generator with get/set overloads.
-      // Reflect.get returns the live member, typed here as the chainable slot it is.
-      // A missing entry throws a descriptive error before anything is called.
+      /*
+       * SAFETY: `method` ranges over the nine chainable Arc member names in the const tuple above,
+       * and every one exists at runtime on a d3-shape arc generator with get/set overloads.
+       *
+       * Checked indexed access (`base[method]`) was tried and does not compile: `Arc` has no index
+       * signature, and `digits` is absent from the installed @types/d3-shape entirely even though
+       * the runtime generator provides it. A typed mapped forwarder is therefore not expressible
+       * against these typings -- see the residuals note. Reflect keeps the lookup dynamic and the
+       * missing-member check explicit rather than silently producing undefined.
+       *
+       * Arity decides direction exactly as d3's own accessors do: no arguments reads, any argument
+       * writes and returns the wrapper so calls stay chainable.
+       */
       const fn = Reflect.get(base, method) as ArcChainableSlot<TDatum> | undefined;
       if (fn === undefined) {throw new Error(`createOffsetArc: missing arc method '${method}'`);}
       if (args.length === 0) {return fn();}
       fn(...args);
       return wrapped;
     };
-    // Same own-property assignment as the indexed write, without an open dictionary type.
     Reflect.set(wrapped, method, forwarder);
   }
   // Forwarder passes arguments through untouched so labels match the configured geometry

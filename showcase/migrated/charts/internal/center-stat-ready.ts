@@ -18,7 +18,7 @@ const useNumberFlowElementReady = (): boolean => {
       Boolean(globalThis.customElements.get("number-flow-react")),
   );
 
-  useEffect(() => {
+  useEffect((): (() => void) | undefined => {
     if (ready) {return undefined;}
     let cancelled = false;
     const markReadyWhenDefined = async (): Promise<void> => {

@@ -38,22 +38,22 @@ const useIntroFlowValue = (value: number, intro: boolean): number => {
   const introStartedRef = useRef(false);
   const [flowValue, setFlowValue] = useState(() => (intro ? 0 : value));
 
-  useEffect(() => {
+  useEffect((): (() => void) | undefined => {
     if (!intro) {
       setFlowValue(value);
       return undefined;
     }
-    if (!introStartedRef.current) {
-      introStartedRef.current = true;
-      setFlowValue(0);
-      const cancelFrames = scheduleDoubleRaf(() => { setFlowValue(value); });
-      return (): void => {
-        cancelFrames();
-        introStartedRef.current = false;
-      };
+    if (introStartedRef.current) {
+      setFlowValue(value);
+      return undefined;
     }
-    setFlowValue(value);
-    return undefined;
+    introStartedRef.current = true;
+    setFlowValue(0);
+    const cancelFrames = scheduleDoubleRaf(() => { setFlowValue(value); });
+    return (): void => {
+      cancelFrames();
+      introStartedRef.current = false;
+    };
   }, [intro, value]);
 
   return flowValue;

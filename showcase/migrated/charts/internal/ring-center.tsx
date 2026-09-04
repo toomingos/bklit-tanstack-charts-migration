@@ -39,7 +39,7 @@ const RingCenter = ({
   const coordinator = useRingHoverCoordinator();
   const hoveredIndex = useCenterStatHover(coordinator);
 
-  const hoveredData = hoveredIndex !== null ? (stable.data[hoveredIndex] ?? undefined) : undefined;
+  const hoveredData = hoveredIndex === null ? undefined : (stable.data[hoveredIndex] ?? undefined);
   const displayValue = hoveredData ? hoveredData.value : stable.totalValue;
   const displayLabel = hoveredData ? hoveredData.label : defaultLabel;
 

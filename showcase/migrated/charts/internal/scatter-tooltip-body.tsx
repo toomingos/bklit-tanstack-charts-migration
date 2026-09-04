@@ -74,7 +74,7 @@ const useScatterTooltipBody = ({
   xDataKey,
 }: Readonly<UseScatterTooltipBodyParams>): ScatterTooltipBody => {
   // Tooltip panel style merge: backgroundColor wins when non-empty.
-  const tooltipPanelStyle = useMemo<CSSProperties | undefined>(() => {
+  const tooltipPanelStyle = useMemo((): CSSProperties | undefined => {
     const panelStyle = tooltip?.panelStyle;
     const backgroundColor = tooltip?.backgroundColor;
     if (panelStyle === undefined && (backgroundColor === undefined || backgroundColor === "")) {return undefined;}

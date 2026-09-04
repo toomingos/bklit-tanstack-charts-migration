@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { ChartMotionDefinition } from "@tanstack/charts";
+import type { ChartMotionDefinition, ChartMotionTiming } from "@tanstack/charts";
 import { scaleBand, scaleOrdinal } from "d3-scale";
 import type { ScaleBand, ScaleOrdinal } from "d3-scale";
 import {
@@ -161,7 +161,7 @@ const createHeatmapCellMotionFn = ({
   fadeDurationSec,
   revealEpoch,
 }: Readonly<HeatmapCellMotionFnParams>): ChartMotionDefinition<CellDatum> =>
-  (motionCtx: Readonly<{ phase: string; datum: Readonly<CellDatum> | undefined }>) => {
+  (motionCtx: Readonly<{ phase: string; datum: Readonly<CellDatum> | undefined }>): false | ChartMotionTiming<CellDatum> | undefined => {
     if (motionCtx.phase !== "enter") {return false;}
     const datum = motionCtx.datum;
     if (!datum) {return undefined;}

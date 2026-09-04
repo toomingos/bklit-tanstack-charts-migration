@@ -205,7 +205,7 @@ const MarkerGroupView = ({
   }, []);
 
   useEffect(() => {
-    if (!animate || reduced) { return undefined; }
+    if (!animate || reduced) { return (): void => { /* No timer was scheduled. */ }; }
     const id = globalThis.setTimeout((): void =>{  setEnterElapsed(true); }, delayMs);
     return (): void =>{  globalThis.clearTimeout(id); };
   }, [animate, reduced, delayMs]);

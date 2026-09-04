@@ -71,9 +71,15 @@ const displayNameOfType = (componentType: ReactElement["type"]): string | undefi
   return isString(displayName) ? displayName : undefined;
 }
 
-const isPieCenterElement = (child: Readonly<ReactNode>): boolean => isValidElement(child) && child.type instanceof Function && displayNameOfType(child.type) === "PieCenter"
+/*
+ * No callable check is needed: `displayNameOfType` already returns undefined for anything that is
+ * not an object-or-function carrying a string `displayName`, so a host type ("div") can never match
+ * a component name. An `instanceof Function` guard here would also be realm-dependent, contradicting
+ * the realm-safe `isObjectOrFunction` above.
+ */
+const isPieCenterElement = (child: Readonly<ReactNode>): boolean => isValidElement(child) && displayNameOfType(child.type) === "PieCenter"
 
-const isPieSliceElement = (child: Readonly<ReactNode>): child is ReactElement<PieSliceProps> => isValidElement(child) && child.type instanceof Function && displayNameOfType(child.type) === "PieSlice"
+const isPieSliceElement = (child: Readonly<ReactNode>): child is ReactElement<PieSliceProps> => isValidElement(child) && displayNameOfType(child.type) === "PieSlice"
 
 const isDefsComponent = (child: Readonly<ReactElement>): boolean => {
   if (isString(child.type)) {return false;}

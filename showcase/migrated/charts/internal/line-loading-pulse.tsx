@@ -148,7 +148,7 @@ const usePulseSweep = ({
     onCycleComplete?.();
   });
   const readProgress = useEffectEvent((): number => progress);
-  useEffect(() => {
+  useEffect((): (() => void) | undefined => {
     const el = document.querySelector(`#${clipId}-rect`);
     if (!(el instanceof SVGRectElement) || width <= 0) {return undefined;}
     let cancelled = false;
