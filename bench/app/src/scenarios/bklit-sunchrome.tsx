@@ -1,28 +1,5 @@
-// P5.5 Strand 3 gate — sunburst CHROME (breadcrumb + render-prop hint).
-//
-// `bklit-sunburst.tsx` already gates the ring itself, but it renders the two
-// chrome components in their default form: `<SunburstHint />` with no
-// children (so the render-prop branch is never taken) and no breadcrumb at
-// all. Strand 3 ported both surfaces — SB4 gave `SunburstHint` bklit's
-// `ReactNode | ((ctx) => ReactNode)` children contract, SB8 ported
-// `SunburstBreadcrumb` + `useSunburstBreadcrumbItems` — so this scenario is
-// the same chart with both exercised:
-//
-//   <SunburstBreadcrumb><Crumbs /></SunburstBreadcrumb>
-//   <SunburstHint>{(ctx) => …}</SunburstHint>
-//
-// Everything else (data, size, settle arm, focus wiring) is copied from
-// `bklit-sunburst.tsx` unchanged, so any diff this scenario shows is the
-// chrome's and nothing else's.
-//
-// ONE DELIBERATE API DIVERGENCE, gated for its RENDERED result rather than
-// its call shape: bklit's `useSunburstBreadcrumbItems()` takes no arguments
-// and pulls `data`/`focus`/`zoomTo` off a sunburst context. Migrated has no
-// such context (lead ruling D323), so its hook takes `(data, focusId)` and
-// the caller navigates through the `onFocusChange` it already controls. The
-// crumb markup below is therefore written out identically on both sides and
-// fed by each side's own hook — what is being compared is the trail the two
-// hooks produce, which is the part that has to match.
+// Sunburst chrome gate: same chart as bklit-sunburst.tsx plus breadcrumb + render-prop hint exercised.
+// Hooks differ by side (bklit reads context, migrated takes args); the gate compares the rendered trail.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -50,11 +27,7 @@ const REVEAL_CLOCK_MARGIN_MS = 250;
 const SUNBURST_ZOOM_DURATION_MS = 750;
 const SUNBURST_ZOOM_SETTLE_MARGIN_MS = 150;
 
-// Drill hooks, verbatim from `bklit-sunburst.tsx` (see that file's header for
-// why a zoom must be driven by a replicated CLICK and not by setting the
-// controlled `focusId`). Needed here because at the root the trail is a single
-// crumb: the branch that distinguishes a LINK from the current PAGE only
-// appears once something is drilled into.
+// Zoom must dispatch a real click (setting focusId alone snaps); drills expose the link-vs-page branch.
 function segmentDomOrder(arcs: ArcDatum[]): number[] {
   return arcs
     .map((_, arcIndex) => arcIndex)
@@ -95,11 +68,7 @@ function sunburstSettleMs(arcs: ArcDatum[]): number {
   return maxDelay * 1000 + 935 + 1100;
 }
 
-// --- Crumb markup (byte-identical to the migrated scenario's copy) ---------
-// bklit's own docs demo renders the crumbs through the app's shadcn
-// `Breadcrumb*` primitives, which live in `apps/web` and are not available to
-// the bench. Plain inline-styled markup instead — the gate is the ITEMS the
-// hook produces, not the design system that draws them.
+// Crumb markup is byte-identical to migrated; plain markup (shadcn primitives unavailable in bench).
 
 interface CrumbItem {
   id: string;
@@ -162,7 +131,7 @@ function CrumbList({
   );
 }
 
-/** Context-fed on this side: the hook reads `data`/`focus`/`zoomTo` itself. */
+/** Context-fed on this side: the hook reads data/focus/zoomTo itself. */
 function BklitCrumbs() {
   const { items, zoomTo } = useSunburstBreadcrumbItems();
   return <CrumbList items={items} onNavigate={zoomTo} />;
@@ -227,9 +196,7 @@ export default function BklitSunChrome({ n }: { n: number }) {
         ))}
         <SunburstCenter />
         <SunburstLabels />
-        {/* The SB4 surface: a FUNCTION child, resolved against live hover
-            state. Reads every field of the hint context so a drift in any one
-            of them shows up in the diff. */}
+        {/* Function child over live hover state; reads every hint field so drift shows in the diff. */}
         <SunburstHint>
           {({ hintText, hoveredArc, focus }) =>
             hoveredArc ? (

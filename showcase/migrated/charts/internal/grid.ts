@@ -1,17 +1,18 @@
-// Single grid module (initiative 3 D1): one import path for the cartesian
-// charts' guides config. TanStack's native `grid`/`ticks` axis-guide options
-// render the ordinary grid lines (`.ts-chart__grid`); this module owns the
-// config resolution that was previously duplicated across the six cartesian
-// chart files (`grid?.horizontal ?? false`, `grid?.numTicks ?? 5`,
-// `grid?.vertical ?? false`) plus the bklit grid.tsx parity surface
-// (highlight rows, shimmer tokens). Highlight-row RENDERING is built by
-// `internal/grid-highlight-mark.ts` (`gridHighlightRowMarks()`, a ChartMark
-// builder); this module stays pure TS so it can be consumed by the plain
-// `defineChart` spec paths.
+// Resolved grid-guide config + highlight-row surface for the cartesian charts.
 
-import type { GridConfig } from "./types";
+// Minimal read-view of the grid config: the only fields these resolvers consume.
+// GridConfig itself lives in series-config-types.ts and carries mutable arrays.
+// Every caller passes a GridConfig, which remains assignable to this narrower view.
+interface GridGuideSource {
+  readonly horizontal?: boolean;
+  readonly vertical?: boolean;
+  readonly numTicks?: number;
+  readonly numTicksRows?: number;
+  readonly numTicksColumns?: number;
+  readonly highlightRowValues?: readonly number[];
+}
 
-export interface ResolvedGridGuide {
+interface ResolvedGridGuide {
   /** TanStack y-axis `grid` option (bklit `horizontal`). */
   horizontal: boolean;
   /** TanStack x-axis `grid` option (bklit `vertical`). */
@@ -22,45 +23,36 @@ export interface ResolvedGridGuide {
   columnTicks: number;
 }
 
-/**
- * Resolves the shared axis-guide options for a `<Grid>` child. Replaces the
- * per-chart `grid?.horizontal ?? …` / `grid?.numTicks ?? 5` /
- * `grid?.vertical ?? false` triples (single source, one impl, no forks).
- * Defaults match bklit grid.tsx GridProps: `horizontal` true, `vertical`
- * false, `numTicksRows` 5, `numTicksColumns` 10. CH3: both the legacy
- * `numTicksRows` and the pilot-rename `numTicks` are accepted for the
- * horizontal density.
- */
-export function resolveGridGuide(grid: GridConfig | null): ResolvedGridGuide {
-  return {
-    horizontal: grid?.horizontal ?? true,
-    vertical: grid?.vertical ?? false,
-    ticks: grid?.numTicksRows ?? grid?.numTicks ?? 5,
-    columnTicks: grid?.numTicksColumns ?? 10,
-  };
-}
+// Bklit grid defaults when the config omits tick counts.
+const DEFAULT_GRID_COLUMN_TICKS = 10;
+const DEFAULT_GRID_ROW_TICKS = 5;
 
-export interface ResolvedGridHighlightRow {
+// Single source for per-chart grid triples; accepts numTicksRows and pilot numTicks.
+const resolveGridGuide = (grid: GridGuideSource | null): ResolvedGridGuide => (
+  {
+    columnTicks: grid?.numTicksColumns ?? DEFAULT_GRID_COLUMN_TICKS,
+    horizontal: grid?.horizontal ?? true,
+    ticks: grid?.numTicksRows ?? grid?.numTicks ?? DEFAULT_GRID_ROW_TICKS,
+    vertical: grid?.vertical ?? false,
+  }
+);
+
+interface ResolvedGridHighlightRow {
   value: number;
   y: number;
 }
 
-/**
- * Resolves the highlight-row line positions for a `<Grid>` child. `yMap` maps
- * a domain value to its plot-area y pixel (the chart's own y scale). Values
- * with a non-finite y are dropped (bklit grid.tsx highlightRowValues guard).
- */
-export function resolveGridHighlightRows(
-  grid: GridConfig | null,
-  yMap: (value: number) => number | undefined,
-): ResolvedGridHighlightRow[] {
+// Non-finite-y values dropped (bklit highlightRowValues guard).
+const resolveGridHighlightRows = (grid: GridGuideSource | null, yMap: (value: number) => number | undefined): ResolvedGridHighlightRow[] => {
   const values = grid?.highlightRowValues;
-  if (!values || values.length === 0) return [];
+  if (!values || values.length === 0) {return [];}
   const out: ResolvedGridHighlightRow[] = [];
   for (const value of values) {
     const y = yMap(value);
-    if (y == null || !Number.isFinite(y)) continue;
-    out.push({ value, y });
+    if (y !== undefined && Number.isFinite(y)) {out.push({ value, y });}
   }
   return out;
 }
+
+export type { ResolvedGridGuide, ResolvedGridHighlightRow };
+export { resolveGridGuide, resolveGridHighlightRows };

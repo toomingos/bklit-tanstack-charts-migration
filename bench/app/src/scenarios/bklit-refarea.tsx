@@ -1,7 +1,4 @@
-// ReferenceArea visual-parity scenario (initiative 6 Q1 gate) — the
-// bklit-line tree plus a ReferenceArea band with the docs-demo prop shape
-// (y1/y2/showMarkers/strokeStyle), band values sized to the seeded
-// generator's ~1000-1300 seriesA walk so the band always intersects data.
+// Line tree plus docs-demo ReferenceArea band; values sized so the band always intersects data.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import { LineChart, Line, Grid, XAxis, ChartTooltip, ReferenceArea } from "@bklitui/ui/charts";

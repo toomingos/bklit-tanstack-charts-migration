@@ -1,13 +1,13 @@
 import { createMark } from "@tanstack/charts";
-import type { ChartMark, SceneNode } from "@tanstack/charts";
+import type { ChartMark } from "@tanstack/charts";
 import type { ChartDatum } from "./types";
 import { buildHorizontalTangentBezierPath } from "./projection-utils";
 import { resolveVisibleEndX } from "./projection-config";
 import type { ProjectionPoint } from "./projection-utils";
 
-export interface ProjectionLineMarkOptions {
+interface ProjectionLineMarkOptions {
   id: string;
-  data: ProjectionPoint[];
+  data: readonly Readonly<ProjectionPoint>[];
   yAxisId: string;
   stroke: string;
   strokeStyle: "solid" | "gradient";
@@ -21,7 +21,7 @@ export interface ProjectionLineMarkOptions {
   showEndMarker: boolean;
   endpointRadius: number;
   className: string;
-  xScale: (value: Date) => number;
+  xScale: (value: Readonly<Date>) => number;
   yScale: (value: number) => number;
   innerWidth: number;
   strokeVisible: boolean;
@@ -29,71 +29,78 @@ export interface ProjectionLineMarkOptions {
   translateY: number;
 }
 
-export function projectionLineMark(options: ProjectionLineMarkOptions): ChartMark<ChartDatum, Date, number> | null {
-  const { data, xScale, yScale, innerWidth, strokeVisible, stroke, strokeStyle, gradientId, strokeWidth, curveKind, strokeDasharray, strokeOpacity, showEndMarker, endpointRadius, id, className } = options;
-  if (data.length < 2) return null;
+interface ProjectionLineEndpoints {
+  endY: number;
+  startX: number;
+  startY: number;
+  visibleEndX: number;
+}
 
-  const startPoint = data[0];
-  const endPoint = data.at(-1);
-  if (!startPoint || !endPoint) return null;
+// Shared by both exported helpers below: resolves the on-screen start/end coordinates for a projection line, or reports there is nothing to draw.
+const resolveProjectionLineEndpoints = (
+  options: Readonly<ProjectionLineMarkOptions>,
+): ProjectionLineEndpoints | undefined => {
+  const [startPoint] = options.data;
+  const endPoint = options.data.at(-1);
+  if (options.data.length < 2 || !endPoint) {return undefined;}
+  const points = {
+    end: { x: options.xScale(endPoint.date), y: options.yScale(endPoint.value) },
+    start: { x: options.xScale(startPoint.date), y: options.yScale(startPoint.value) },
+  };
+  if (!Number.isFinite(points.start.x) || !Number.isFinite(points.start.y) || !Number.isFinite(points.end.x) || !Number.isFinite(points.end.y)) {return undefined;}
+  const visibleEndX = resolveVisibleEndX({ endX: points.end.x, endpointRadius: options.endpointRadius, innerWidth: options.innerWidth, showEndMarker: options.showEndMarker, strokeWidth: options.strokeWidth });
+  return { endY: points.end.y, startX: points.start.x, startY: points.start.y, visibleEndX };
+};
 
-  const startX = xScale(startPoint.date);
-  const startY = yScale(startPoint.value);
-  const endX = xScale(endPoint.date);
-  const endY = yScale(endPoint.value);
-  if (!Number.isFinite(startX) || !Number.isFinite(startY) || !Number.isFinite(endX) || !Number.isFinite(endY)) return null;
+const projectionLineMark = (options: Readonly<ProjectionLineMarkOptions>): ChartMark<ChartDatum, Date, number> | undefined => {
+  const { strokeVisible, stroke, strokeStyle, gradientId, strokeWidth, curveKind, strokeDasharray, strokeOpacity, id, className } = options;
+  const endpoints = resolveProjectionLineEndpoints(options);
+  if (!endpoints) {return undefined;}
+  const { startX, startY, endY, visibleEndX } = endpoints;
 
-  const visibleEndX = resolveVisibleEndX(endX, innerWidth, endpointRadius, strokeWidth, showEndMarker);
-
-  let path: string;
-  if (curveKind === "bezier") {
-    path = buildHorizontalTangentBezierPath(startX, startY, visibleEndX, endY);
-  } else {
-    path = `M ${startX},${startY} L ${visibleEndX},${endY}`;
-  }
+  const path = curveKind === "bezier"
+    ? buildHorizontalTangentBezierPath(startX, startY, visibleEndX, endY)
+    : `M ${startX},${startY} L ${visibleEndX},${endY}`;
 
   const resolvedStroke = strokeStyle === "gradient" ? `url(#${gradientId})` : stroke;
 
   return createMark(() => ({
-    id,
     channels: {
       x: { scale: "x", values: [] },
       y: { scale: "y", values: [] },
     },
+    id,
     render: () => ({
       nodes: [
         {
-          kind: "group",
-          key: id,
-          className,
-          translateX: options.translateX,
-          translateY: options.translateY,
           children: [
             {
-              kind: "polyline",
               key: `${id}:line`,
-              points: [],
+              kind: "polyline",
               path,
+              points: [],
               style: {
                 fill: "none",
                 stroke: strokeVisible ? resolvedStroke : "transparent",
-                strokeWidth,
-                // Dashed on hiDPI Chromium: renderer hardcodes vector-effect=
-                // "non-scaling-stroke" on polyline paths. styles.css overrides
-                // it (.chart-projection-line path { vector-effect: none }).
+                // Renderer hardcodes vector-effect="non-scaling-stroke" on polylines (breaks dashing on hiDPI Chromium); styles.css overrides it back for .chart-projection-line.
                 strokeDasharray,
-                strokeLinecap: "round",
                 strokeOpacity,
+                strokeWidth,
               },
-            } as SceneNode,
+            },
           ],
+          className,
+          key: id,
+          kind: "group",
+          translateX: options.translateX,
+          translateY: options.translateY,
         },
       ],
     }),
   }));
-}
+};
 
-export interface ProjectionGradientDef {
+interface ProjectionGradientDef {
   id: string;
   startX: number;
   startY: number;
@@ -103,25 +110,21 @@ export interface ProjectionGradientDef {
   gradientEnd: string;
 }
 
-export function resolveProjectionGradientDef(options: ProjectionLineMarkOptions): ProjectionGradientDef | null {
-  if (options.strokeStyle !== "gradient") return null;
-  if (options.data.length < 2) return null;
-  const startPoint = options.data[0];
-  const endPoint = options.data.at(-1);
-  if (!startPoint || !endPoint) return null;
-  const startX = options.xScale(startPoint.date);
-  const startY = options.yScale(startPoint.value);
-  const endX = options.xScale(endPoint.date);
-  const endY = options.yScale(endPoint.value);
-  if (!Number.isFinite(startX) || !Number.isFinite(startY) || !Number.isFinite(endX) || !Number.isFinite(endY)) return null;
-  const visibleEndX = resolveVisibleEndX(endX, options.innerWidth, options.endpointRadius, options.strokeWidth, options.showEndMarker);
+const resolveProjectionGradientDef = (options: Readonly<ProjectionLineMarkOptions>): ProjectionGradientDef | undefined => {
+  if (options.strokeStyle !== "gradient") {return undefined;}
+  const endpoints = resolveProjectionLineEndpoints(options);
+  if (!endpoints) {return undefined;}
+  const { startX, startY, endY, visibleEndX } = endpoints;
   return {
+    endX: visibleEndX,
+    endY,
+    gradientEnd: options.gradientEnd,
+    gradientStart: options.gradientStart,
     id: options.gradientId,
     startX,
     startY,
-    endX: visibleEndX,
-    endY,
-    gradientStart: options.gradientStart,
-    gradientEnd: options.gradientEnd,
   };
-}
+};
+
+export { projectionLineMark, resolveProjectionGradientDef };
+export type { ProjectionGradientDef, ProjectionLineMarkOptions };

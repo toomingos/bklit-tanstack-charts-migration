@@ -1,6 +1,4 @@
-// Migrated ScatterChart scenario — IDENTICAL usage to bklit-scatter.tsx (same
-// component tree, same props), only the import source changes. This is the
-// point: the migrated package must be a drop-in replacement.
+// Drop-in twin of bklit-scatter.tsx; only the import source changes.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScatterChart, Scatter, Grid, XAxis, ChartTooltip } from "@migrated/charts";
 import {

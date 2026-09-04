@@ -1,68 +1,87 @@
-// C5/B2/B5 (D432): converts an arbitrary caller-supplied CSS easing string
-// (the `animationEasing` prop, e.g. "cubic-bezier(0.85, 0, 0.15, 1)") into
-// the JS progress function TanStack's native motion tween accepts.
-// `ChartAnimationOptions['easing']` (@tanstack/charts dist/types.d.ts:955)
-// is a fixed keyword union or `(progress: number) => number` — never a raw
-// CSS string — so the old WAAPI reveal's `revealEasingCss` cannot be handed
-// to a mark's `motion` transition directly.
-//
-// `./bezier-easing.ts` only solves the ONE hardcoded bklit default curve
-// (0.85, 0, 0.15, 1) and is shared by other executors' charts (area/line/
-// composed-chart.tsx, use-animated-y-domains.ts) — it must not be
-// repurposed to take parameters. This is a parallel utility, scoped only to
-// bar/candlestick/scatter (the three charts that still expose a raw
-// `animationEasing` string prop for their entrance reveal), that
-// generalizes the same Newton-iteration cubic-bezier solve to arbitrary
-// control points.
 import type { ChartAnimationOptions } from "@tanstack/charts";
 
-export type MotionEasing = NonNullable<ChartAnimationOptions["easing"]>;
+type MotionEasing = NonNullable<ChartAnimationOptions["easing"]>;
 
-const NAMED_EASINGS = new Set(["linear", "ease", "ease-in", "ease-out", "ease-in-out"]);
+const CUBIC_BEZIER_RE = /^cubic-bezier\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)$/iu;
 
-const CUBIC_BEZIER_RE = /^cubic-bezier\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)$/i;
+// Cubic Bernstein basis coefficient (verbatim bklit easing math below).
+const CUBIC_BERNSTEIN_COEFFICIENT = 3;
+// Middle coefficient of the cubic bezier derivative (verbatim bklit easing math).
+const CUBIC_DERIVATIVE_MIDDLE_COEFFICIENT = 6;
+// Newton-solve iteration cap and convergence tolerance for cubic-bezier easing.
+const NEWTON_MAX_ITERATIONS = 6;
+const NEWTON_CONVERGENCE_TOLERANCE = 1e-5;
 
-/** Generic cubic-bezier(x1,y1,x2,y2) progress-function solver — same
- * Newton-iteration shape as `./bezier-easing.ts`'s hardcoded version,
- * parametrized over the four control-point coordinates. */
-function cubicBezierEasing(x1: number, y1: number, x2: number, y2: number): (p: number) => number {
-  return (p: number) => {
-    if (p <= 0) return 0;
-    if (p >= 1) return 1;
-    const bx = (t: number) => 3 * t * (1 - t) * (1 - t) * x1 + 3 * t * t * (1 - t) * x2 + t * t * t;
-    const by = (t: number) => 3 * t * (1 - t) * (1 - t) * y1 + 3 * t * t * (1 - t) * y2 + t * t * t;
-    let t = p;
-    for (let i = 0; i < 6; i++) {
-      const err = bx(t) - p;
-      if (Math.abs(err) < 1e-5) break;
-      const dx = 3 * (1 - t) * (1 - t) * x1 + 6 * t * (1 - t) * (x2 - x1) + 3 * t * t * (1 - x2);
-      if (dx === 0) break;
-      t -= err / dx;
-    }
-    return by(t);
-  };
+interface CubicBezierParams {
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
 }
 
-// Matches internal/animation-defaults.ts's DEFAULT_ANIMATION_EASING exactly
-// (cubic-bezier(0.85, 0, 0.15, 1)) — the fallback below is deliberately the
-// same curve `./bezier-easing.ts` hardcodes, just re-derived generically so
-// this module has no runtime dependency on that shared file.
-const DEFAULT_EASING = cubicBezierEasing(0.85, 0, 0.15, 1);
+const cubicXAt = (params: Readonly<CubicBezierParams>, bezierT: number): number =>
+  CUBIC_BERNSTEIN_COEFFICIENT * bezierT * (1 - bezierT) * (1 - bezierT) * params.x1
+  + CUBIC_BERNSTEIN_COEFFICIENT * bezierT * bezierT * (1 - bezierT) * params.x2
+  + bezierT * bezierT * bezierT;
 
-/** Converts a bklit `animationEasing` CSS string prop into a native motion
- * tween `easing`. Named CSS keywords pass straight through (native motion
- * accepts the same five: linear/ease/ease-in/ease-out/ease-in-out). A
- * `cubic-bezier(...)` string is solved generically. Anything else
- * unparseable (e.g. `steps(...)`, a CSS custom property) falls back to the
- * bklit default curve rather than throwing. */
-export function resolveMotionEasing(css: string | undefined): MotionEasing {
-  if (!css) return DEFAULT_EASING;
+const cubicYAt = (params: Readonly<CubicBezierParams>, bezierT: number): number =>
+  CUBIC_BERNSTEIN_COEFFICIENT * bezierT * (1 - bezierT) * (1 - bezierT) * params.y1
+  + CUBIC_BERNSTEIN_COEFFICIENT * bezierT * bezierT * (1 - bezierT) * params.y2
+  + bezierT * bezierT * bezierT;
+
+const cubicDXAt = (params: Readonly<CubicBezierParams>, solvedT: number): number =>
+  CUBIC_BERNSTEIN_COEFFICIENT * (1 - solvedT) * (1 - solvedT) * params.x1
+  + CUBIC_DERIVATIVE_MIDDLE_COEFFICIENT * solvedT * (1 - solvedT) * (params.x2 - params.x1)
+  + CUBIC_BERNSTEIN_COEFFICIENT * solvedT * solvedT * (1 - params.x2);
+
+// Newton-solves the bezier x for the target progress (verbatim bklit easing math).
+const solveBezierT = (params: Readonly<CubicBezierParams>, progress: number): number => {
+  let solvedT = progress;
+  for (let i = 0; i < NEWTON_MAX_ITERATIONS; i += 1) {
+    const err = cubicXAt(params, solvedT) - progress;
+    const dx = cubicDXAt(params, solvedT);
+    if (Math.abs(err) < NEWTON_CONVERGENCE_TOLERANCE || dx === 0) {break;}
+    solvedT -= err / dx;
+  }
+  return solvedT;
+};
+
+const cubicBezierEasing = (params: Readonly<CubicBezierParams>): ((progress: number) => number) => (progress: number) => {
+    if (progress <= 0) {return 0;}
+    if (progress >= 1) {return 1;}
+    return cubicYAt(params, solveBezierT(params, progress));
+  };
+
+
+// Default reveal easing control points (matches REVEAL_EASE_CSS in design-tokens).
+const DEFAULT_EASE_X1 = 0.85;
+const DEFAULT_EASE_X2 = 0.15;
+
+const DEFAULT_EASING = cubicBezierEasing({ x1: DEFAULT_EASE_X1, x2: DEFAULT_EASE_X2, y1: 0, y2: 1 });
+
+// Named CSS keyword easings pass through to native motion as-is.
+const keywordMotionEasing = (trimmed: string): MotionEasing | undefined => {
+  // Equality narrowing (not Set.has + `as`): the literal union is a subtype of
+  // MotionEasing, so the narrowed value returns with no assertion.
+  if (trimmed === "linear" || trimmed === "ease" || trimmed === "ease-in") {return trimmed;}
+  if (trimmed === "ease-out" || trimmed === "ease-in-out") {return trimmed;}
+  return undefined;
+};
+
+// Raw CSS easing strings can't feed native motion; solve cubic-bezier to a progress fn.
+const resolveMotionEasing = (css: string | undefined): MotionEasing => {
+  if (css === undefined || css.length === 0) {return DEFAULT_EASING;}
   const trimmed = css.trim().toLowerCase();
-  if (NAMED_EASINGS.has(trimmed)) return trimmed as MotionEasing;
+  const keyword = keywordMotionEasing(trimmed);
+  if (keyword !== undefined) {return keyword;}
+  // Numbered captures carry the control points (named groups need ES2018+;
+  // This package targets ES2017, so positional reads stay).
   const match = CUBIC_BEZIER_RE.exec(trimmed);
   if (match) {
-    const [, x1, y1, x2, y2] = match;
-    return cubicBezierEasing(Number(x1), Number(y1), Number(x2), Number(y2));
+    return cubicBezierEasing({ x1: Number(match[1]), x2: Number(match[3]), y1: Number(match[2]), y2: Number(match[4]) });
   }
   return DEFAULT_EASING;
 }
+
+export { resolveMotionEasing };
+export type { CubicBezierParams, MotionEasing };

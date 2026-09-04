@@ -1,10 +1,4 @@
-// Wave 1 C5/C6 fixture (P1.3 gate): composed chart with `stacked` +
-// `stackGap` enabled and TWO SeriesBar children (`bars` + `area` — both
-// numeric on SeededComposedRow; stacking needs >=2 bar series to produce
-// nonzero offsets). Line overlay kept so the stacked y-domain branch's
-// "max bar-sum vs largest non-bar series" comparison is exercised (legacy
-// composed-chart.tsx stacked domain logic). Same seeded generator and
-// settle/update wiring as bklit-composed.tsx.
+// Stacked gate: two SeriesBar children (stacking needs >=2 for nonzero offsets) plus Line overlay.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import {

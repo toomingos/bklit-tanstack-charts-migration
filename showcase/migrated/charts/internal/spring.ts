@@ -1,119 +1,159 @@
-// Damped-spring driver matching framer-motion's `useSpring` behavior
-// (mass 1, F = -stiffness·x - damping·v), used to drive imperative style
-// writes from rAF — the migrated hover chrome must not schedule React work
-// or import framer in the pointer path (docs/LOG.md D10).
-//
-// The value trajectory is the ANALYTIC solution sampled through TanStack's
-// `createChartSpring` (@tanstack/charts/spring) — the same closed-form
-// damped-harmonic-oscillator framer-motion resolves per animation — instead
-// of numerically integrating the ODE per frame (P3.12 / T-D10). Sampling is
-// by true clock time, so dropped frames never slow motion down; rest
-// thresholds mirror framer's generator: done when |value − target| <
-// restDelta AND |velocity| < restSpeed, tier picked per retarget from the
-// animation amplitude (`isGranularScale = |initialDelta| < 5`). A single
-// flat threshold cannot serve both unitless and pixel springs: REST_DELTA =
-// 0.05 exceeded RingChart's entire hover amplitude (scale 1 -> 1.03,
-// Δ = 0.03) and degenerated those springs into instant snaps (D51).
+// Analytic damped-spring sampler (framer useSpring behavior) driving rAF style writes.
+import { createChartSpring } from '@tanstack/charts/spring';
+import type { ChartSpring } from '@tanstack/charts/spring';
 
-import { createChartSpring, type ChartSpring } from "@tanstack/charts/spring";
-
-export interface Spring {
-  /** Retarget; starts the rAF loop if idle. */
-  set(target: number): void;
-  /** Snap to a value with no motion (used on show / discrete interaction). */
-  jump(value: number): void;
-  stop(): void;
+interface Spring {
+  set: (target: number) => void
+  jump: (value: number) => void
+  stop: () => void
 }
 
+// Flat rest thresholds snap tiny hover-scale springs; granular tier covers amplitudes < 5.
 const GRANULAR_SCALE_MAX_DELTA = 5;
 const REST_DELTA_GRANULAR = 0.005;
 const REST_SPEED_GRANULAR = 0.01;
 const REST_DELTA_DEFAULT = 0.5;
 const REST_SPEED_DEFAULT = 2;
 
-export function createSpring(
-  initial: number,
-  stiffness: number,
-  damping: number,
-  onUpdate: (value: number) => void,
-): Spring {
-  let current = initial;
-  let velocity = 0; // value units per second, carried across retargets
-  let target = initial;
-  let frame: number | null = null;
-  let startedAt = 0;
-  let granular = true;
-  // Rest thresholds are baked into the sampler options; rebuilt only when a
-  // retarget crosses the granularity boundary (framer picks the tier at
-  // animation creation, i.e. per retarget).
-  const sampler = () =>
-    granular
-      ? createChartSpring({
-          stiffness,
-          damping,
-          restDelta: REST_DELTA_GRANULAR,
-          restSpeed: REST_SPEED_GRANULAR,
-        })
-      : createChartSpring({
-          stiffness,
-          damping,
-          restDelta: REST_DELTA_DEFAULT,
-          restSpeed: REST_SPEED_DEFAULT,
-        });
-  let springInstance: ChartSpring = sampler();
-  let springState = { from: initial, to: initial, velocity: 0 };
+interface SpringSamplerParams {
+  readonly stiffness: number;
+  readonly damping: number;
+  readonly granular: boolean;
+}
 
-  const step = (now: number) => {
-    const sample = springInstance.sample(now - startedAt, springState);
-    if (sample.done) {
-      current = target;
-      velocity = 0;
-      frame = null;
-      onUpdate(current);
+const buildSpringSampler = ({ stiffness, damping, granular }: SpringSamplerParams): ChartSpring => granular
+    ? createChartSpring({
+        damping,
+        restDelta: REST_DELTA_GRANULAR,
+        restSpeed: REST_SPEED_GRANULAR,
+        stiffness,
+      })
+    : createChartSpring({
+        damping,
+        restDelta: REST_DELTA_DEFAULT,
+        restSpeed: REST_SPEED_DEFAULT,
+        stiffness,
+      });
+
+interface SpringSampleState {
+  from: number;
+  to: number;
+  velocity: number;
+}
+
+interface SpringEngineState {
+  current: number;
+  velocity: number;
+  target: number;
+  frame: number | undefined;
+  startedAt: number;
+  granular: boolean;
+  stiffness: number;
+  damping: number;
+  springInstance: ChartSpring;
+  springState: SpringSampleState;
+  schedule: (now: number) => void;
+  onUpdate: (value: number) => void;
+}
+
+interface SpringEngineParams {
+  readonly initial: number;
+  readonly stiffness: number;
+  readonly damping: number;
+  readonly onUpdate: (value: number) => void;
+}
+
+class SpringEngine {
+  private readonly state: SpringEngineState;
+
+  public constructor({ initial, stiffness, damping, onUpdate }: SpringEngineParams) {
+    const state: SpringEngineState = {
+      current: initial,
+      damping,
+      frame: undefined,
+      granular: true,
+      onUpdate,
+      schedule: (now: number): void => { this.advance(now); },
+      springInstance: buildSpringSampler({ damping, granular: true, stiffness }),
+      springState: { from: initial, to: initial, velocity: 0 },
+      startedAt: 0,
+      stiffness,
+      target: initial,
+      velocity: 0,
+    };
+    this.state = state;
+  }
+
+  public advance(now: number): void {
+    const sample = this.state.springInstance.sample(now - this.state.startedAt, this.state.springState);
+    const { done, value, velocity: sampleVelocity } = sample;
+    if (done) {
+      this.settle();
       return;
     }
-    current = sample.value;
-    velocity = sample.velocity;
-    onUpdate(current);
-    frame = requestAnimationFrame(step);
-  };
+    this.state.current = value;
+    this.state.velocity = sampleVelocity;
+    this.state.onUpdate(this.state.current);
+    this.state.frame = requestAnimationFrame(this.state.schedule);
+  }
 
+  public jumpTo(value: number): void {
+    this.state.target = value;
+    this.state.current = value;
+    this.state.velocity = 0;
+    this.state.springState = { from: value, to: value, velocity: 0 };
+    if (this.state.frame !== undefined) {
+      cancelAnimationFrame(this.state.frame);
+      this.state.frame = undefined;
+    }
+    this.state.onUpdate(this.state.current);
+  }
+
+  public setTarget(next: number): void {
+    if (next === this.state.target && this.state.frame === undefined && this.state.current === this.state.target) {return;}
+    this.state.target = next;
+    this.refreshSampler(Math.abs(this.state.target - this.state.current) < GRANULAR_SCALE_MAX_DELTA);
+    this.state.springState = { from: this.state.current, to: this.state.target, velocity: this.state.velocity };
+    this.state.startedAt = performance.now();
+    this.state.frame ??= requestAnimationFrame(this.state.schedule);
+  }
+
+  public stop(): void {
+    if (this.state.frame !== undefined) {
+      cancelAnimationFrame(this.state.frame);
+      this.state.frame = undefined;
+    }
+  }
+
+  private settle(): void {
+    this.state.current = this.state.target;
+    this.state.velocity = 0;
+    this.state.frame = undefined;
+    this.state.onUpdate(this.state.current);
+  }
+
+  private refreshSampler(nextGranular: boolean): void {
+    if (this.state.frame === undefined || nextGranular !== this.state.granular) {
+      this.state.granular = nextGranular;
+      this.state.springInstance = buildSpringSampler({ damping: this.state.damping, granular: nextGranular, stiffness: this.state.stiffness });
+    }
+  }
+}
+
+const createSpring = (initial: number, stiffness: number, damping: number, onUpdate: (value: number) => void): Spring => {
+  const engine = new SpringEngine({ damping, initial, onUpdate, stiffness });
   return {
-    set(next: number) {
-      // Same-value retarget while settled is a no-op (framer's `useSpring`
-      // behavior) — without this, every retarget of an already-at-rest spring
-      // schedules a one-step rAF whose only effect is rewriting the styles it
-      // already wrote.
-      if (next === target && frame === null && current === target) return;
-      target = next;
-      const nextGranular =
-        Math.abs(target - current) < GRANULAR_SCALE_MAX_DELTA;
-      if (frame === null || nextGranular !== granular) {
-        granular = nextGranular;
-        springInstance = sampler();
-      }
-      springState = { from: current, to: target, velocity };
-      startedAt = performance.now();
-      if (frame === null) {
-        frame = requestAnimationFrame(step);
-      }
-    },
     jump(value: number) {
-      target = value;
-      current = value;
-      velocity = 0;
-      springState = { from: value, to: value, velocity: 0 };
-      if (frame !== null) {
-        cancelAnimationFrame(frame);
-        frame = null;
-      }
-      onUpdate(current);
+      engine.jumpTo(value);
+    },
+    set(next: number) {
+      engine.setTarget(next);
     },
     stop() {
-      if (frame !== null) {
-        cancelAnimationFrame(frame);
-        frame = null;
-      }
+      engine.stop();
     },
   };
 }
+
+export { createSpring };
+export type { Spring };

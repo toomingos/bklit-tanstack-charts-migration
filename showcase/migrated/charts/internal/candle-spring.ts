@@ -1,185 +1,169 @@
-// Verbatim port of framer-motion's `duration`/`bounce` -> spring-physics
-// conversion, sampled once into a shared WAAPI keyframe array reused by
-// every candle's reveal tween (docs/LOG.md D19/D10: zero framer-motion or
-// React state in the animation path — WAAPI only).
-//
-// bklit candlestick.tsx `defaultEnter = { type: "spring", duration: 0.8,
-// bounce: 0.15 }` (seconds at the public Transition surface). This module
-// reproduces motion-dom's exact math (read verbatim from
-// node_modules/motion-dom/dist/es/animation/generators/spring/{find,
-// index}.mjs), not an approximation:
-//
-//  1. `findSpringStiffnessDamping` == find.mjs `findSpring`: Newton-iterates
-//     (12 iterations, `approximateRoot`) the underdamped envelope/derivative
-//     pair to solve for `undampedFreq`, including the literal quirk in the
-//     derivative — `g = calcAngularFreq(undampedFreq**2, dampingRatio)`
-//     (squaring `undampedFreq` there but NOT in `envelope`'s own `b`) —
-//     copied exactly rather than "fixed", since motion-dom ships it this way
-//     and our output must match its real behavior bit-for-bit.
-//  2. `createSpringResolver` == index.mjs `spring()`'s closed-form
-//     `resolveSpring(t)` (t in milliseconds), branching on
-//     `dampingRatio = damping / (2*sqrt(stiffness*mass))` exactly like
-//     motion-dom.
-//  3. `sampleSpringKeyframes` samples `resolveSpring` at `samples` evenly
-//     spaced points over `[0, durationMs]`, forcing the value to exactly
-//     `target` once `t >= durationMs` — motion's own `generator.next()`
-//     snaps `state.value = target` once `state.done = t >= duration` for
-//     duration/bounce springs (`isResolvedFromDuration`), and
-//     `calcGeneratorDuration` for those springs returns exactly the
-//     requested duration, so this reproduces the same "exact snap at the
-//     end" behavior instead of leaving a tiny residual gap from the
-//     oscillating closed form.
+// Motion-dom duration/bounce -> {stiffness, damping} solver + closed-form resolver, matching its math quirks.
 const SAFE_MIN = 0.001;
 const ROOT_ITERATIONS = 12;
 const MIN_DAMPING_RATIO = 0.05;
 const MAX_DAMPING_RATIO = 1;
 const MIN_DURATION_SEC = 0.01;
 const MAX_DURATION_SEC = 10;
+const MS_PER_SECOND = 1000;
+const INITIAL_GUESS_NUMERATOR = 5;
+const OVERDAMPED_FREQ_TIME_CLAMP = 300;
 
-function calcAngularFreq(undampedFreq: number, dampingRatio: number): number {
-  return undampedFreq * Math.sqrt(1 - dampingRatio * dampingRatio);
-}
+const calcAngularFreq = (undampedFreq: number, dampingRatio: number): number => undampedFreq * Math.sqrt(1 - dampingRatio * dampingRatio);
 
-function approximateRoot(
-  envelope: (x: number) => number,
-  derivative: (x: number) => number,
-  initialGuess: number,
-): number {
+
+const approximateRoot = (envelope: (x: number) => number, derivative: (x: number) => number, initialGuess: number): number => {
   let result = initialGuess;
-  for (let i = 1; i < ROOT_ITERATIONS; i++) {
-    result = result - envelope(result) / derivative(result);
+  for (let i = 1; i < ROOT_ITERATIONS; i += 1) {
+    result -= envelope(result) / derivative(result);
   }
   return result;
 }
 
-export interface SpringPhysics {
+interface SpringPhysics {
   stiffness: number;
   damping: number;
   mass: number;
 }
 
-/**
- * Port of motion-dom `findSpring`: solves `duration`/`bounce` (+ optional
- * `velocity`/`mass`) for the underlying `{ stiffness, damping }` pair.
- * `durationMs` is milliseconds (framer's public `duration` for a spring
- * Transition is seconds — convert before calling, matching motion-dom's own
- * `springDefaults.duration = 800 // in ms` default for its 0.8s default).
- */
-export function findSpringStiffnessDamping(
-  durationMs: number,
-  bounce: number,
-  velocity = 0,
-  mass = 1,
-): SpringPhysics {
-  let envelope: (undampedFreq: number) => number;
-  let derivative: (undampedFreq: number) => number;
+interface FindSpringParams {
+  readonly durationMs: number;
+  readonly bounce: number;
+  readonly velocity?: number;
+  readonly mass?: number;
+}
 
-  let dampingRatio = 1 - bounce;
-  dampingRatio = Math.min(
+interface SpringSolver {
+  readonly envelope: (undampedFreq: number) => number;
+  readonly derivative: (undampedFreq: number) => number;
+}
+
+interface UnderdampedSolverParams {
+  readonly dampingRatio: number;
+  readonly durationSec: number;
+  readonly velocity: number;
+}
+
+interface CriticallyDampedSolverParams {
+  readonly durationSec: number;
+  readonly velocity: number;
+}
+
+const clampDampingRatio = (bounce: number): number => {
+  const dampingRatio = 1 - bounce;
+  return Math.min(
     MAX_DAMPING_RATIO,
     Math.max(MIN_DAMPING_RATIO, dampingRatio),
   );
-  const durationSec = Math.min(
-    MAX_DURATION_SEC,
-    Math.max(MIN_DURATION_SEC, durationMs / 1000),
-  );
-
-  if (dampingRatio < 1) {
-    // Underdamped spring.
-    envelope = (undampedFreq: number) => {
-      const exponentialDecay = undampedFreq * dampingRatio;
-      const delta = exponentialDecay * durationSec;
-      const a = exponentialDecay - velocity;
-      const b = calcAngularFreq(undampedFreq, dampingRatio);
-      const c = Math.exp(-delta);
-      return SAFE_MIN - (a / b) * c;
-    };
-    derivative = (undampedFreq: number) => {
-      const exponentialDecay = undampedFreq * dampingRatio;
-      const delta = exponentialDecay * durationSec;
-      const d = delta * velocity + velocity;
-      const e = dampingRatio ** 2 * undampedFreq ** 2 * durationSec;
-      const f = Math.exp(-delta);
-      // Literal motion-dom quirk: `undampedFreq**2` here, NOT the same
-      // argument shape as `envelope`'s `b` — copied verbatim, see header.
-      const g = calcAngularFreq(undampedFreq ** 2, dampingRatio);
-      const factor = -envelope(undampedFreq) + SAFE_MIN > 0 ? -1 : 1;
-      return (factor * ((d - e) * f)) / g;
-    };
-  } else {
-    // Critically-damped spring (not reached at bklit's bounce=0.15, kept
-    // for fidelity with motion-dom's own branch).
-    envelope = (undampedFreq: number) => {
-      const a = Math.exp(-undampedFreq * durationSec);
-      const b = (undampedFreq - velocity) * durationSec + 1;
-      return -SAFE_MIN + a * b;
-    };
-    derivative = (undampedFreq: number) => {
-      const a = Math.exp(-undampedFreq * durationSec);
-      const b = (velocity - undampedFreq) * (durationSec * durationSec);
-      return a * b;
-    };
-  }
-
-  const initialGuess = 5 / durationSec;
-  const undampedFreq = approximateRoot(envelope, derivative, initialGuess);
-
-  if (Number.isNaN(undampedFreq)) {
-    // motion-dom's own NaN fallback (springDefaults.stiffness/damping).
-    return { stiffness: 100, damping: 10, mass };
-  }
-
-  const stiffness = undampedFreq ** 2 * mass;
-  const damping = dampingRatio * 2 * Math.sqrt(mass * stiffness);
-  return { stiffness, damping, mass };
 }
 
-/**
- * Port of motion-dom `spring()`'s closed-form `resolveSpring(t)`, t in
- * milliseconds. `origin`/`target` match framer's `keyframes[0]`/
- * `keyframes[last]`; `initialVelocity` matches framer's (already
- * ms->per-second-negated) `velocity` option — 0 for the mount reveal.
- */
-export function createSpringResolver(
-  stiffness: number,
-  damping: number,
-  mass: number,
-  origin: number,
-  target: number,
-  initialVelocity = 0,
-): (tMs: number) => number {
-  const dampingRatio = damping / (2 * Math.sqrt(stiffness * mass));
-  const initialDelta = target - origin;
-  // motion-dom: `millisecondsToSeconds(Math.sqrt(stiffness / mass))` — the
-  // resulting angular frequency is expressed "per millisecond" so `t` below
-  // is consumed directly in milliseconds, matching motion-dom's own usage.
-  const undampedAngularFreq = Math.sqrt(stiffness / mass) / 1000;
+const clampDurationSec = (durationMs: number): number => Math.min(
+  MAX_DURATION_SEC,
+  Math.max(MIN_DURATION_SEC, durationMs / MS_PER_SECOND),
+);
 
-  if (dampingRatio < 1) {
-    const angularFreq = calcAngularFreq(undampedAngularFreq, dampingRatio);
-    return (t: number): number => {
-      const envelope = Math.exp(-dampingRatio * undampedAngularFreq * t);
-      return (
-        target -
-        envelope *
-          (((initialVelocity + dampingRatio * undampedAngularFreq * initialDelta) /
-            angularFreq) *
-            Math.sin(angularFreq * t) +
-            initialDelta * Math.cos(angularFreq * t))
-      );
-    };
+const createUnderdampedSolver = ({ dampingRatio, durationSec, velocity }: UnderdampedSolverParams): SpringSolver => {
+  const envelope = (undampedFreq: number): number => {
+    const exponentialDecay = undampedFreq * dampingRatio;
+    const delta = exponentialDecay * durationSec;
+    const amplitudeNumerator = exponentialDecay - velocity;
+    const angularFreq = calcAngularFreq(undampedFreq, dampingRatio);
+    const decayFactor = Math.exp(-delta);
+    return SAFE_MIN - (amplitudeNumerator / angularFreq) * decayFactor;
+  };
+  const derivative = (undampedFreq: number): number => {
+    const exponentialDecay = undampedFreq * dampingRatio;
+    const delta = exponentialDecay * durationSec;
+    const velocityTerm = delta * velocity + velocity;
+    const dampingTerm = dampingRatio ** 2 * undampedFreq ** 2 * durationSec;
+    const decayFactor = Math.exp(-delta);
+    // Literal motion-dom quirk (undampedFreq**2, unlike envelope's angularFreq) — kept for bit-for-bit fidelity.
+    const quirkAngularFreq = calcAngularFreq(undampedFreq ** 2, dampingRatio);
+    const factor = -envelope(undampedFreq) + SAFE_MIN > 0 ? -1 : 1;
+    return (factor * ((velocityTerm - dampingTerm) * decayFactor)) / quirkAngularFreq;
+  };
+  return { derivative, envelope };
+}
+
+const createCriticallyDampedSolver = ({ durationSec, velocity }: CriticallyDampedSolverParams): SpringSolver => {
+  // Critically-damped branch (unreached at bklit bounce=0.15; motion-dom fidelity).
+  const envelope = (undampedFreq: number): number => {
+    const decayFactor = Math.exp(-undampedFreq * durationSec);
+    const growthFactor = (undampedFreq - velocity) * durationSec + 1;
+    return -SAFE_MIN + decayFactor * growthFactor;
+  };
+  const derivative = (undampedFreq: number): number => {
+    const decayFactor = Math.exp(-undampedFreq * durationSec);
+    const slopeFactor = (velocity - undampedFreq) * (durationSec * durationSec);
+    return decayFactor * slopeFactor;
+  };
+  return { derivative, envelope };
+}
+
+const resolveSpringPhysics = (undampedFreq: number, dampingRatio: number, mass: number): SpringPhysics => {
+  if (Number.isNaN(undampedFreq)) {
+    return { damping: 10, mass, stiffness: 100 };
   }
-  if (dampingRatio === 1) {
-    return (t: number): number =>
+  const stiffness = undampedFreq ** 2 * mass;
+  const damping = dampingRatio * 2 * Math.sqrt(mass * stiffness);
+  return { damping, mass, stiffness };
+}
+
+/** Port of motion-dom's `findSpring`; durationMs is milliseconds (framer's public duration is seconds). */
+const findSpringStiffnessDamping = ({ durationMs, bounce, velocity = 0, mass = 1 }: FindSpringParams): SpringPhysics => {
+  const dampingRatio = clampDampingRatio(bounce);
+  const durationSec = clampDurationSec(durationMs);
+  const solver = dampingRatio >= 1
+    ? createCriticallyDampedSolver({ durationSec, velocity })
+    : createUnderdampedSolver({ dampingRatio, durationSec, velocity });
+  const initialGuess = INITIAL_GUESS_NUMERATOR / durationSec;
+  const undampedFreq = approximateRoot(solver.envelope, solver.derivative, initialGuess);
+  return resolveSpringPhysics(undampedFreq, dampingRatio, mass);
+}
+
+interface SpringResolverParams {
+  readonly stiffness: number;
+  readonly damping: number;
+  readonly mass: number;
+  readonly origin: number;
+  readonly target: number;
+  readonly initialVelocity?: number;
+}
+
+interface DampedResolverParams {
+  readonly dampingRatio: number;
+  readonly undampedAngularFreq: number;
+  readonly initialDelta: number;
+  readonly initialVelocity: number;
+  readonly target: number;
+}
+
+const createUnderdampedResolver = ({ dampingRatio, undampedAngularFreq, initialDelta, initialVelocity, target }: DampedResolverParams): ((tMs: number) => number) => {
+  const angularFreq = calcAngularFreq(undampedAngularFreq, dampingRatio);
+  return (tMs: number): number => {
+    const envelope = Math.exp(-dampingRatio * undampedAngularFreq * tMs);
+    return (
       target -
-      Math.exp(-undampedAngularFreq * t) *
-        (initialDelta + (initialVelocity + undampedAngularFreq * initialDelta) * t);
-  }
+      envelope *
+        (((initialVelocity + dampingRatio * undampedAngularFreq * initialDelta) /
+          angularFreq) *
+          Math.sin(angularFreq * tMs) +
+          initialDelta * Math.cos(angularFreq * tMs))
+    );
+  };
+}
+
+const createCriticallyDampedResolver = ({ undampedAngularFreq, initialDelta, initialVelocity, target }: DampedResolverParams): ((tMs: number) => number) =>
+  (tMs: number): number => target -
+    Math.exp(-undampedAngularFreq * tMs) *
+      (initialDelta + (initialVelocity + undampedAngularFreq * initialDelta) * tMs);
+
+const createOverdampedResolver = ({ dampingRatio, undampedAngularFreq, initialDelta, initialVelocity, target }: DampedResolverParams): ((tMs: number) => number) => {
   const dampedAngularFreq =
     undampedAngularFreq * Math.sqrt(dampingRatio * dampingRatio - 1);
-  return (t: number): number => {
-    const envelope = Math.exp(-dampingRatio * undampedAngularFreq * t);
-    const freqForT = Math.min(dampedAngularFreq * t, 300);
+  return (tMs: number): number => {
+    const envelope = Math.exp(-dampingRatio * undampedAngularFreq * tMs);
+    const freqForT = Math.min(dampedAngularFreq * tMs, OVERDAMPED_FREQ_TIME_CLAMP);
     return (
       target -
       (envelope *
@@ -191,17 +175,22 @@ export function createSpringResolver(
   };
 }
 
-// C5/B4 (D432): `sampleSpringKeyframes` (the WAAPI 60-sample keyframe
-// baker) was deleted here — the native motion renderer's own spring
-// integrator (`@tanstack/charts/motion`) now drives the candle reveal
-// directly from `{ stiffness, damping }`, sampling the closed-form curve
-// itself every frame instead of a chart-time pre-baked keyframe array.
-// `findSpringStiffnessDamping` above is KEPT (still the duration/bounce ->
-// stiffness/damping solver feeding the native `transition: { type:
-// 'spring', stiffness, damping }`). `createSpringResolver` is ALSO KEPT
-// despite losing its only in-file caller: `internal/radar-spring.ts`
-// (foreign, executor C/polar-charts scope) imports it directly
-// (`import { createSpringResolver } from "./candle-spring"`) — confirmed
-// via grep before deleting anything here, so removing it would break that
-// file. Only the keyframe-baking function itself — this module's sole
-// WAAPI-specific piece — is gone.
+/** Port of motion-dom's closed-form `resolveSpring(t)`; t in ms, per-millisecond frequency. */
+const createSpringResolver = ({ stiffness, damping, mass, origin, target, initialVelocity = 0 }: SpringResolverParams): ((tMs: number) => number) => {
+  const dampingRatio = damping / (2 * Math.sqrt(stiffness * mass));
+  const initialDelta = target - origin;
+  const undampedAngularFreq = Math.sqrt(stiffness / mass) / MS_PER_SECOND;
+  const params: DampedResolverParams = { dampingRatio, initialDelta, initialVelocity, target, undampedAngularFreq };
+  if (dampingRatio < 1) {
+    return createUnderdampedResolver(params);
+  }
+  if (dampingRatio === 1) {
+    return createCriticallyDampedResolver(params);
+  }
+  return createOverdampedResolver(params);
+}
+
+// CreateSpringResolver has no in-file caller but is imported directly by internal/radar-spring.ts — keep.
+
+export { createSpringResolver, findSpringStiffnessDamping };
+export type { SpringPhysics, FindSpringParams, SpringResolverParams };

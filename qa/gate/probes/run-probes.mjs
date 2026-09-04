@@ -1,9 +1,5 @@
-// Runs the behavioural probes against ONE vite preview of bench/app/dist and
-// writes probes.json + probes.md into the run dir and docs/phase-6/gate/latest.
-//
+// Behavioural probes against one vite preview of bench/app/dist; writes probes.json + probes.md to the run dir and latest.
 //   pnpm gate:probes [-- --only hover-lag,legend-hover-dim,bardepth-toggle,no-rereveal --repeats 3 --run-dir <dir> --no-build]
-//
-// Holds the shared QA lock (port 5198) for the duration, like gate:qa.
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { QA_PORT, ROOT, RUNS_DIR, acquireQaLock, buildDistOnce, ensureDir, fmtMs, log, mdTable, nowStamp, parseArgs, publishLatest, relPath, startPreview, waitForQuietProcessTable, writeJson } from "../lib.mjs";

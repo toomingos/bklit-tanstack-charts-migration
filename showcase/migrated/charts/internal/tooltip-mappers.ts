@@ -1,107 +1,125 @@
-// T-C1: shared tooltip-config → visual-primitive-config mappers for the
-// hover-chrome family (hover/bar/candlestick/scatter/live). Consolidates the
-// near-verbatim per-module copies; `null`/undefined still yields `{}`, so
-// every caller's "no tooltip config" path is unchanged.
-// C3: the config interfaces (IndicatorConfig/DotConfig/BoxConfig) and the
-// indicator-width resolvers moved here verbatim from tooltip-chrome.ts, which
-// is deleted in C3 — this file is now their owner (live-hover-chrome remains
-// the last builder-style consumer until C5).
-import type * as React from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { IndicatorFadeEdges } from "./fade-mask";
 import type { SpringConfig } from "./chart-config-context";
-import type {
-  ChartTooltipConfig,
-  ChartTooltipPoint,
-  IndicatorWidth,
-  TooltipRow,
-} from "./types";
+import type { ChartDatum, ChartTooltipConfig, ChartTooltipPoint, IndicatorWidth, TooltipRow } from "./types";
 
-export type DotVariant = "dot" | "ring";
+type DotVariant = "dot" | "ring";
 
-export function resolveIndicatorWidth(width: IndicatorWidth): number {
-  if (typeof width === "number") return width;
+const INDICATOR_WIDTH_MEDIUM_PX = 4;
+const INDICATOR_WIDTH_THICK_PX = 8;
+
+const isNumericWidth = (width: IndicatorWidth): width is number => typeof width === "number";
+
+const resolveIndicatorWidth = (width: IndicatorWidth): number => {
+  if (isNumericWidth(width)) {return width;}
   switch (width) {
-    case "line": return 1;
-    case "thin": return 2;
-    case "medium": return 4;
-    case "thick": return 8;
-    default: return 1;
+    case "line": { return 1;
+    }
+    case "thin": { return 2;
+    }
+    case "medium": { return INDICATOR_WIDTH_MEDIUM_PX;
+    }
+    case "thick": { return INDICATOR_WIDTH_THICK_PX;
+    }
+    default: { return 1;
+    }
   }
-}
+};
 
-export function resolveIndicatorPixelWidth(cfg: { width?: IndicatorWidth; span?: number; columnWidth?: number }): number {
-  if (cfg.span !== undefined && cfg.columnWidth !== undefined) return cfg.span * cfg.columnWidth;
+const resolveIndicatorPixelWidth = (cfg: Readonly<{ width?: IndicatorWidth; span?: number; columnWidth?: number }>): number => {
+  if (cfg.span !== undefined && cfg.columnWidth !== undefined) {return cfg.span * cfg.columnWidth;}
   return resolveIndicatorWidth(cfg.width ?? "line");
-}
+};
 
-export interface IndicatorConfig {
+interface IndicatorConfig {
   width?: IndicatorWidth;
   span?: number;
   columnWidth?: number;
-  color?: string | ((point: Record<string, unknown>) => string);
+  color?: string | ((point: Readonly<ChartDatum>) => string);
   dasharray?: string;
   fadeEdges?: IndicatorFadeEdges | boolean;
   fadeLength?: number;
   springConfig?: SpringConfig;
 }
 
-export interface DotConfig {
+interface DotConfig {
   variant?: DotVariant;
   size?: number;
   radiusFraction?: number;
   scale?: number;
   strokeWidth?: number;
-  color?: string | ((point: Record<string, unknown>, line: { dataKey: string; stroke?: string }) => string);
+  color?: string | ((point: Readonly<ChartDatum>, line: Readonly<{ dataKey: string; stroke?: string }>) => string);
 }
 
-export interface BoxConfig {
+interface BoxConfig {
   springConfig?: SpringConfig;
   matchCrosshair?: boolean;
   damping?: number;
   boxSpringConfig?: SpringConfig;
   className?: string;
-  panelStyle?: React.CSSProperties;
+  panelStyle?: CSSProperties;
   backgroundColor?: string;
-  content?: (props: { point: ChartTooltipPoint; index: number }) => React.ReactNode;
-  children?: React.ReactNode;
-  rows?: (point: Record<string, unknown>) => TooltipRow[];
+  content?: (props: Readonly<{ point: Readonly<ChartTooltipPoint>; index: number }>) => ReactNode;
+  children?: ReactNode;
+  rows?: (point: Readonly<ChartDatum>) => TooltipRow[];
 }
 
-/** Structural subset the mappers actually read. ChartTooltipConfig and
-    live-hover-chrome's LiveHoverConfig both satisfy it — the one deliberate
-    widening is indicatorFadeEdges (IndicatorConfig itself allows boolean). */
-export type TooltipMapperSource = Omit<
+type TooltipMapperSource = Omit<
   Partial<ChartTooltipConfig>,
   "indicatorFadeEdges"
 > & {
   indicatorFadeEdges?: IndicatorConfig["fadeEdges"];
 };
 
-export function toDotConfig(cfg?: TooltipMapperSource | null): DotConfig {
-  if (!cfg) return {};
+// Minimal read-views of the tooltip config: the only fields each mapper consumes.
+// (ChartTooltipConfig itself carries ReactNode/CSSProperties/mutable fields, so it
+// Cannot satisfy prefer-readonly-parameter-types directly. ChartTooltipConfig and
+// TooltipMapperSource both remain assignable to these narrower views.)
+interface DotMapperSource {
+  readonly dotColor?: string | ((point: Readonly<ChartDatum>, line: Readonly<{ dataKey: string; stroke?: string }>) => string);
+  readonly dotRadiusFraction?: number;
+  readonly dotScale?: number;
+  readonly dotSize?: number;
+  readonly dotStrokeWidth?: number;
+  readonly dotVariant?: DotVariant;
+}
+
+interface IndicatorMapperSource {
+  readonly columnWidth?: number;
+  readonly indicatorColor?: string | ((point: Readonly<ChartDatum>) => string);
+  readonly indicatorDasharray?: string;
+  readonly indicatorFadeEdges?: IndicatorConfig["fadeEdges"];
+  readonly indicatorFadeLength?: number;
+  readonly indicatorSpan?: number;
+  readonly indicatorWidth?: IndicatorWidth;
+  readonly springConfig?: SpringConfig;
+}
+
+const toDotConfig = (cfg?: Readonly<DotMapperSource> | null): DotConfig => {
+  if (!cfg) {return {};}
   return {
-    variant: cfg.dotVariant,
-    size: cfg.dotSize,
+    color: cfg.dotColor,
     radiusFraction: cfg.dotRadiusFraction,
     scale: cfg.dotScale,
+    size: cfg.dotSize,
     strokeWidth: cfg.dotStrokeWidth,
-    color: cfg.dotColor as DotConfig["color"],
+    variant: cfg.dotVariant,
   };
-}
+};
 
-export function toIndicatorConfig(
-  cfg?: TooltipMapperSource | null,
-): IndicatorConfig {
-  if (!cfg) return {};
+const toIndicatorConfig = (cfg?: Readonly<IndicatorMapperSource> | null): IndicatorConfig => {
+  if (!cfg) {return {};}
   return {
-    width: cfg.indicatorWidth,
-    span: cfg.indicatorSpan,
+    color: cfg.indicatorColor,
     columnWidth: cfg.columnWidth,
-    color: cfg.indicatorColor as IndicatorConfig["color"],
     dasharray: cfg.indicatorDasharray,
-    fadeEdges: cfg.indicatorFadeEdges as IndicatorConfig["fadeEdges"],
+    fadeEdges: cfg.indicatorFadeEdges,
     fadeLength: cfg.indicatorFadeLength,
+    span: cfg.indicatorSpan,
     springConfig: cfg.springConfig,
+    width: cfg.indicatorWidth,
   };
-}
+};
 
+export { resolveIndicatorWidth, resolveIndicatorPixelWidth, toDotConfig, toIndicatorConfig };
+export type { DotVariant, IndicatorConfig, DotConfig, BoxConfig, TooltipMapperSource };

@@ -1,42 +1,31 @@
-// RingCenter — unchanged from D51. The ONLY React-rendered child in this
-// architecture. Reads hover state via `useCenterStatHover` (useSyncExternalStore
-// on the coordinator) and renders `<NumberFlow>` digit-roll via `CenterStat`.
+import type { ReactElement, ReactNode } from "react";
+import { useRingStable, useRingHoverCoordinator } from '../ring-chart';
+import type { RingData } from '../ring-chart';
+import { CenterShell, centerStatContainerClassName, centerStatLabelClassName, centerStatValueClassName, defaultCenterStatFormat, useCenterStatHover } from './center-stat';
+import type { CenterStatFormat } from './center-stat';
 
-import { type ReactNode } from "react";
-import {
-  type RingData,
-  useRingStable,
-  useRingHoverCoordinator,
-} from "../ring-chart";
-import {
-  CenterShell,
-  centerStatContainerClassName,
-  centerStatLabelClassName,
-  centerStatValueClassName,
-  defaultCenterStatFormat,
-  useCenterStatHover,
-  type CenterStatFormat,
-} from "./center-stat";
+// Inset subtracted from the inner diameter so the center stat box clears the ring edge.
+const CENTER_STAT_BOX_INSET_PX = 16;
 
-export interface RingCenterRenderProps {
-  value: number;
-  label: string;
-  isHovered: boolean;
-  data: RingData;
+interface RingCenterRenderProps {
+  readonly value: number;
+  readonly label: string;
+  readonly isHovered: boolean;
+  readonly data: RingData;
 }
 
-export interface RingCenterProps {
-  defaultLabel?: string;
-  formatOptions?: CenterStatFormat;
-  children?: (props: RingCenterRenderProps) => ReactNode;
-  className?: string;
-  valueClassName?: string;
-  labelClassName?: string;
-  prefix?: string;
-  suffix?: string;
+interface RingCenterProps {
+  readonly defaultLabel?: string;
+  readonly formatOptions?: CenterStatFormat;
+  readonly children?: (props: Readonly<RingCenterRenderProps>) => ReactNode;
+  readonly className?: string;
+  readonly valueClassName?: string;
+  readonly labelClassName?: string;
+  readonly prefix?: string;
+  readonly suffix?: string;
 }
 
-export function RingCenter({
+const RingCenter = ({
   defaultLabel = "Total",
   formatOptions = defaultCenterStatFormat,
   children,
@@ -45,19 +34,18 @@ export function RingCenter({
   labelClassName = centerStatLabelClassName,
   prefix,
   suffix,
-}: RingCenterProps) {
+}: Readonly<RingCenterProps>): ReactElement => {
   const stable = useRingStable();
   const coordinator = useRingHoverCoordinator();
   const hoveredIndex = useCenterStatHover(coordinator);
 
-  const hoveredData = hoveredIndex === null ? null : (stable.data[hoveredIndex] ?? null);
+  const hoveredData = hoveredIndex !== null ? (stable.data[hoveredIndex] ?? undefined) : undefined;
   const displayValue = hoveredData ? hoveredData.value : stable.totalValue;
   const displayLabel = hoveredData ? hoveredData.label : defaultLabel;
 
-  // Ring's own formula + no innerRadius<=0 guard (centralize row 7 "stays
-  // per-part" — RingCenter has never had one; do not "fix").
-  const centerSize = stable.baseInnerRadius * 2 - 16;
-  const containerClassName = className ? `${centerStatContainerClassName} ${className}` : centerStatContainerClassName;
+  // No <=0 guard on centerSize by design; do not add one.
+  const centerSize = stable.baseInnerRadius * 2 - CENTER_STAT_BOX_INSET_PX;
+  const containerClassName = (className?.length ?? 0) > 0 ? `${centerStatContainerClassName} ${className}` : centerStatContainerClassName;
 
   return (
     <CenterShell<RingData>
@@ -79,5 +67,7 @@ export function RingCenter({
 
 RingCenter.displayName = "RingCenter";
 
-// Legacy parity: bklit `ring-center.tsx` ships `export default RingCenter;` (T-E2).
+export { RingCenter };
+export type { RingCenterRenderProps, RingCenterProps };
+
 export default RingCenter;

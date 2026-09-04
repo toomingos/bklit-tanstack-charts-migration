@@ -1,62 +1,56 @@
-/**
- * App-owned polar hit-test for pie/ring (Phase 6.5 gate, D473).
- *
- * Pointer detection for pie/ring is app-owned again: `pointer: false` on the
- * definition + a `pointermove`/`pointerleave` pair on the chart's own wrapper
- * element, resolved against the STATIC authored geometry below. C5c (D447)
- * routed detection through native focus on a static hitbox twin; at 0.15.0
- * the motion surface hands `interactionPoints()` its in-flight
- * `presentationPoints` while any data transition runs (dist/motion.js:682,
- * dist/renderer.js:763), so the hover-driven definition rebuild made
- * `resolvePointerFocus` miss at an unmoved pointer → `onFocusChange(null)` →
- * unhover → rebuild → re-hit → ... (React #185 at 50 nested updates, the
- * 6.5 pie/ring blank captures). Legacy hit-tested a static transparent path
- * (bklit pie-slice.tsx); this is the arithmetic equivalent with no DOM.
- *
- * Angles use d3-shape's convention (0 at 12 o'clock, clockwise), the same
- * `startAngle`/`endAngle` values pie/ring feed `radialArc`.
- */
+// App-owned polar hit-test on static geometry: native focus misses during data
+// Transitions caused an unhover/rebuild loop; angles use d3 convention (0 at 12, CW).
 
-export interface PolarHitBand {
-  innerRadius: number;
-  outerRadius: number;
-  startAngle: number;
-  endAngle: number;
+interface PolarHitBand {
+  readonly innerRadius: number;
+  readonly outerRadius: number;
+  readonly startAngle: number;
+  readonly endAngle: number;
 }
 
 const TWO_PI = Math.PI * 2;
 
-/** Angle of (dx, dy) in d3's convention, normalised into
- *  `[startAngle, startAngle + 2π)` so it compares against a band directly. */
-function angleFrom(dx: number, dy: number, startAngle: number): number {
-  let a = Math.atan2(dx, -dy);
-  while (a < startAngle) a += TWO_PI;
-  while (a >= startAngle + TWO_PI) a -= TWO_PI;
-  return a;
+const angleFrom = (dx: number, dy: number, startAngle: number): number => {
+  let angle = Math.atan2(dx, -dy);
+  while (angle < startAngle) {angle += TWO_PI;}
+  while (angle >= startAngle + TWO_PI) {angle -= TWO_PI;}
+  return angle;
 }
 
-/**
- * Index of the LAST band containing `(x, y)` (coordinates relative to the
- * polar centre), or `null`. Last wins so paint-order containment matches
- * the old topmost-hitbox rule when bands overlap (they don't for pie/ring,
- * but the tie-break is defined).
- */
-export function hitTestPolarBands(x: number, y: number, bands: readonly PolarHitBand[]): number | null {
-  const r = Math.hypot(x, y);
+interface BandHitParams {
+  readonly band: Readonly<PolarHitBand>;
+  readonly radius: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+const bandMatchesHit = (params: Readonly<BandHitParams>): boolean => {
+  if (params.radius < params.band.innerRadius || params.radius > params.band.outerRadius) {return false;}
+  if (params.band.endAngle <= params.band.startAngle) {return false;}
+  const angle = angleFrom(params.x, params.y, params.band.startAngle);
+  return angle < params.band.endAngle;
+}
+
+// Last band wins, matching the old topmost-hitbox rule on overlap.
+const hitTestPolarBands = (x: number, y: number, bands: readonly PolarHitBand[]): number | null => {
+  const radius = Math.hypot(x, y);
   let hit: number | null = null;
-  for (let i = 0; i < bands.length; i++) {
-    const b = bands[i]!;
-    if (r < b.innerRadius || r > b.outerRadius) continue;
-    if (b.endAngle <= b.startAngle) continue;
-    const a = angleFrom(x, y, b.startAngle);
-    if (a < b.endAngle) hit = i;
+  for (let i = 0; i < bands.length; i += 1) {
+    const band = bands.at(i);
+    if (band !== undefined && bandMatchesHit({ band, radius, x, y })) {hit = i;}
   }
   return hit;
 }
 
-/** Pointer position relative to the centre of `el`'s box (which pie/ring
- *  render square, `size × size`, centre at `size / 2`). */
-export function pointerToCenterOffset(el: Element, clientX: number, clientY: number): { x: number; y: number } {
+interface CenterOffset {
+  readonly x: number;
+  readonly y: number;
+}
+
+const pointerToCenterOffset = (el: Element, clientX: number, clientY: number): CenterOffset => {
   const rect = el.getBoundingClientRect();
   return { x: clientX - rect.left - rect.width / 2, y: clientY - rect.top - rect.height / 2 };
 }
+
+export type { PolarHitBand };
+export { hitTestPolarBands, pointerToCenterOffset };

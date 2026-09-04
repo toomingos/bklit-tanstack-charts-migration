@@ -1,16 +1,5 @@
-// Deterministic sankey reveal probe.
-// Loads bench/app scenarios for bklit + migrated sankey (n=33) with an
-// init-script recorder installed BEFORE any page script runs, so the entire
-// entrance animation is captured from frame 0.
-//
-// Records per animation frame, for every link path:
-//   - computed stroke-dasharray / stroke-dashoffset
-//   - getTotalLength()
-//   - computed stroke-width
-// plus every Element.prototype.animate() call (keyframes + options),
-// plus the svg viewBox / client size each frame.
-//
-// Usage: node reveal-probe.mjs            (server must be on :5198)
+// Sankey reveal probe (bench :5198): init-script recorder captures the entrance from frame 0 (dash/width/animate calls/viewBox).
+// Usage: node reveal-probe.mjs (server must be on :5198)
 
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -64,7 +53,6 @@ const recorder = () => {
         } catch (_) {}
         const da = cs.strokeDasharray;
         const off = parseFloat(cs.strokeDashoffset || "0") || 0;
-        // first dash segment length (px) if any
         const first = da && da !== "none" ? parseFloat(da) : NaN;
         return {
           L: +L.toFixed(1),
@@ -109,7 +97,6 @@ function summarize(impl, rec) {
   const last = f[f.length - 1];
   lines.push(`viewBox=${last.vb} clientSize=${last.cw}x${last.ch} links=${last.n}`);
   lines.push(`settled stroke-widths: min=${Math.min(...last.rows.map((r) => r.sw))} max=${Math.max(...last.rows.map((r) => r.sw))} sum=${last.rows.reduce((a, b) => a + b.sw, 0).toFixed(1)}`);
-  // progress of a few links over time: visible fraction = 1 - off/L
   const pick = [0, 8, 16, 32].filter((i) => i < last.n);
   lines.push("");
   lines.push("t(ms) | " + pick.map((i) => `link${i}: L / dash / off / vis%`).join(" | "));
@@ -124,7 +111,6 @@ function summarize(impl, rec) {
     });
     lines.push(`${String(fr.t).padStart(5)} | ` + cells.join(" | "));
   }
-  // dash-vs-length mismatch check
   const bad = [];
   for (const fr of f) {
     for (let i = 0; i < fr.rows.length; i++) {
@@ -136,7 +122,6 @@ function summarize(impl, rec) {
   }
   lines.push("");
   lines.push(`dasharray != pathLength occurrences: ${bad.length}` + (bad.length ? ` e.g. ${JSON.stringify(bad.slice(0, 6))}` : ""));
-  // animate() call summary
   const byShape = {};
   for (const a of rec.anims) {
     const props = Array.isArray(a.kf) ? [...new Set(a.kf.flatMap((k) => Object.keys(k)))].sort().join("+") : Object.keys(a.kf).join("+");

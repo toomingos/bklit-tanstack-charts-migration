@@ -1,101 +1,85 @@
-// Verbatim port of the pure calendar / grid / formatting math from
-// repos/bklit-ui/packages/ui/src/charts/heatmap/heatmap-utils.ts
-// (docs/LOG.md D31: "verbatim calendar/grid math ported app-side"). This
-// module is data/geometry only — no React, no DOM — so it is ported as a
-// byte-faithful transcription of the bklit source rather than reinvented.
-//
-// This file was rewritten after re-reading the real bklit source directly:
-// an earlier draft (written from summarized/memory-based notes) had several
-// concrete defects relative to the real source — wrong `HeatmapBin`/
-// `HeatmapColumn.bin` field types, a wrong ghost-cell/display-range calendar
-// inference algorithm, a wrong `buildHeatmapSeparatorGradientStops` shape, a
-// `resolveHeatmapSeparatorStrokeDasharray` logic bug, a missing empty-groups
-// guard in the quarter branch of `resolveHeatmapSeparatorLayout`, a
-// `buildHeatmapQuarterSeparatorGroups` that didn't match the real
-// `quarterRangeStart` precedence chain, and a few narrower parameter types
-// on the separator-layout helpers (`Pick<HeatmapSeparatorLayout, ...>`
-// instead of the full type). All of those are corrected below against the
-// verbatim real source.
-//
-// Not every bklit export is reproduced — `HEATMAP_WEEKS_ONE_YEAR` /
-// `resolveHeatmapWeekRange` / the calendar-range helpers ARE ported (used by
-// the bench's default-data generator to mirror bklit's own docs-site data
-// shape), but bklit's `pattern-preset.tsx`-driven pattern-fill helpers are
-// not (see heatmap-colors.ts's disclosed scope cut). Only the functions
-// actually needed by heatmap-chart.tsx / heatmap-cells.tsx / heatmap-x-axis
-// / heatmap-y-axis / heatmap-tooltip / heatmap-legend / heatmap-separator /
-// heatmap-resolve-separator (and the bench scenario's data generator) are
-// ported. See the migration report for the full disclosed-scope-cut list.
 
-export interface HeatmapBin {
-  count: number;
-  bin: number;
-  date: Date;
+interface HeatmapBin {
+  readonly count: number;
+  readonly bin: number;
+  readonly date: Readonly<Date>;
 }
 
-export interface HeatmapColumn {
-  bin: number;
-  bins: HeatmapBin[];
+interface HeatmapColumn {
+  readonly bin: number;
+  readonly bins: readonly HeatmapBin[];
 }
-
-// --- calendar-range constants -------------------------------------------------
 
 /** Calendar months shown in default one-year contribution grids. */
-export const HEATMAP_MONTHS_ONE_YEAR = 12;
+const HEATMAP_MONTHS_ONE_YEAR = 12;
 
 /** Half-year contribution grids (gallery card demos). */
-export const HEATMAP_MONTHS_SIX = 6;
+const HEATMAP_MONTHS_SIX = 6;
 
 /** Nominal week count for one year (~52). Default data uses calendar-month math instead. */
-export const HEATMAP_WEEKS_ONE_YEAR = 52;
+const HEATMAP_WEEKS_ONE_YEAR = 52;
 
-const MS_PER_WEEK = 24 * 60 * 60 * 1000 * 7;
+const HOURS_PER_DAY = 24;
+const MINUTES_PER_HOUR = 60;
+const SECONDS_PER_MINUTE = 60;
+const MS_PER_SECOND = 1000;
+const DAYS_PER_WEEK = 7;
+const MS_PER_WEEK = HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MS_PER_SECOND * DAYS_PER_WEEK;
 
-export function getHeatmapCalendarRangeStart(today: Date, months: number): Date {
+/** Default minimum days a lead week must contain on/after `rangeStart` to avoid being skipped. */
+const DEFAULT_MIN_DAYS_IN_FIRST_WEEK = 4;
+
+const getHeatmapCalendarRangeStart = (today: Readonly<Date>, months: number): Date => {
   const monthOffset = months === HEATMAP_MONTHS_SIX ? months : months - 1;
   const start = new Date(today.getFullYear(), today.getMonth() - monthOffset, 1);
   start.setHours(0, 0, 0, 0);
   return start;
 }
 
-export function getHeatmapYearStartMonth(today: Date): Date {
-  return getHeatmapCalendarRangeStart(today, HEATMAP_MONTHS_ONE_YEAR);
-}
+const getHeatmapYearStartMonth = (today: Readonly<Date>): Date => getHeatmapCalendarRangeStart(today, HEATMAP_MONTHS_ONE_YEAR);
 
-export function getHeatmapWeekStartSunday(date: Date): Date {
+
+const getHeatmapWeekStartSunday = (date: Readonly<Date>): Date => {
   const sunday = new Date(date);
   sunday.setDate(sunday.getDate() - sunday.getDay());
   sunday.setHours(0, 0, 0, 0);
   return sunday;
 }
 
-export function getHeatmapWeekCount(startSunday: Date, endDate: Date): number {
+const getHeatmapWeekCount = (startSunday: Readonly<Date>, endDate: Readonly<Date>): number => {
   const endSunday = getHeatmapWeekStartSunday(endDate);
   return Math.floor((endSunday.getTime() - startSunday.getTime()) / MS_PER_WEEK) + 1;
 }
 
-/** Days in a Sun-Sat column on or after `threshold` (for trimming partial lead weeks). */
-export function countHeatmapWeekDaysOnOrAfter(weekStart: Date, threshold: Date): number {
+/**
+ * Days in a Sun-Sat column on or after `threshold` (for trimming partial lead weeks).
+ * @param {Readonly<Date>} weekStart - Start of the Sun-Sat week column.
+ * @param {Readonly<Date>} threshold - Cutoff date; days before this are not counted.
+ * @returns {number} Count of days in the week on or after `threshold`.
+ */
+const countHeatmapWeekDaysOnOrAfter = (weekStart: Readonly<Date>, threshold: Readonly<Date>): number => {
   const day = new Date(weekStart);
   day.setHours(0, 0, 0, 0);
   const cutoff = new Date(threshold);
   cutoff.setHours(0, 0, 0, 0);
   let count = 0;
-  for (let i = 0; i < 7; i++) {
-    if (day >= cutoff) count++;
+  for (let i = 0; i < DAYS_PER_WEEK; i += 1) {
+    if (day >= cutoff) {count += 1;}
     day.setDate(day.getDate() + 1);
   }
   return count;
 }
 
 /**
- * First Sunday week column where enough days fall on/after `rangeStart`.
- * Skips a lead week that is mostly before the range (e.g. late July before Aug 1).
+ * First Sunday week column with enough days on/after `rangeStart` — skips a lead week mostly before the range.
+ * @param {Readonly<Date>} rangeStart - Start of the desired calendar range.
+ * @param {number} [minDaysInFirstWeek] - Minimum days required in the first week to avoid skipping it.
+ * @returns {Date} The aligned week-start Sunday date.
  */
-export function getHeatmapWeekStartAlignedToRange(rangeStart: Date, minDaysInFirstWeek = 4): Date {
+const getHeatmapWeekStartAlignedToRange = (rangeStart: Readonly<Date>, minDaysInFirstWeek: number = DEFAULT_MIN_DAYS_IN_FIRST_WEEK): Date => {
   const startDate = getHeatmapWeekStartSunday(rangeStart);
   const weekEnd = new Date(startDate);
-  weekEnd.setDate(weekEnd.getDate() + 6);
+  weekEnd.setDate(weekEnd.getDate() + (DAYS_PER_WEEK - 1));
 
   // Keep the Sun-Sat column that contains the 1st (e.g. Jan 1 in a partial lead week).
   if (rangeStart >= startDate && rangeStart <= weekEnd) {
@@ -103,119 +87,162 @@ export function getHeatmapWeekStartAlignedToRange(rangeStart: Date, minDaysInFir
   }
 
   while (countHeatmapWeekDaysOnOrAfter(startDate, rangeStart) < minDaysInFirstWeek) {
-    startDate.setDate(startDate.getDate() + 7);
+    startDate.setDate(startDate.getDate() + DAYS_PER_WEEK);
   }
 
   return startDate;
 }
 
-export interface HeatmapWeekRange {
+interface HeatmapWeekRange {
   startDate: Date;
   weekCount: number;
   /** First in-range calendar day; bins before this are empty in default year grids. */
-  rangeStart: Date | null;
+  rangeStart?: Date;
 }
 
-/** Default `weeks` uses 12 calendar months; other values use a rolling week window. */
-export function resolveHeatmapWeekRange(today: Date, weeks: number = HEATMAP_WEEKS_ONE_YEAR): HeatmapWeekRange {
+/**
+ * Default `weeks` uses 12 calendar months; other values use a rolling week window.
+ * @param {Readonly<Date>} today - Reference "today" date the range is computed from.
+ * @param {number} [weeks] - Number of weeks in the grid, or the sentinel for the default 12-month range.
+ * @returns {HeatmapWeekRange} The resolved week range.
+ */
+// Rolling-week fallback for the non-default `weeks` window.
+const resolveRollingHeatmapWeekRange = (endDate: Readonly<Date>, weeks: number): HeatmapWeekRange => {
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - (weeks - 1) * DAYS_PER_WEEK);
+  startDate.setDate(startDate.getDate() - startDate.getDay());
+  startDate.setHours(0, 0, 0, 0);
+  return { startDate, weekCount: weeks };
+}
+
+const resolveHeatmapWeekRange = (today: Readonly<Date>, weeks: number = HEATMAP_WEEKS_ONE_YEAR): HeatmapWeekRange => {
   const endDate = new Date(today);
   endDate.setHours(0, 0, 0, 0);
 
   if (weeks === HEATMAP_WEEKS_ONE_YEAR) {
     const rangeStart = getHeatmapYearStartMonth(endDate);
     const startDate = getHeatmapWeekStartAlignedToRange(rangeStart);
-    return { startDate, weekCount: getHeatmapWeekCount(startDate, endDate), rangeStart };
+    return { rangeStart, startDate, weekCount: getHeatmapWeekCount(startDate, endDate) };
   }
 
-  const startDate = new Date(endDate);
-  startDate.setDate(startDate.getDate() - (weeks - 1) * 7);
-  startDate.setDate(startDate.getDate() - startDate.getDay());
-  startDate.setHours(0, 0, 0, 0);
-
-  return { startDate, weekCount: weeks, rangeStart: null };
+  return resolveRollingHeatmapWeekRange(endDate, weeks);
 }
 
-// --- contribution level -----------------------------------------------------
+const CONTRIBUTION_LEVEL_1_MAX = 1;
+const CONTRIBUTION_LEVEL_2_MAX = 2;
+const CONTRIBUTION_LEVEL_3_MAX = 3;
+const CONTRIBUTION_LEVEL_4_MAX = 4;
 
-/** heatmap-utils.ts `getHeatmapContributionLevel`, verbatim: discrete 5-level
-    threshold scale (D31 — NOT a continuous scale). */
-export function getHeatmapContributionLevel(count: number): number {
-  if (count <= 0) return 0;
-  if (count === 1) return 1;
-  if (count === 2) return 2;
-  if (count === 3) return 3;
-  return 4;
+/**
+ * Discrete 5-level threshold scale — not a continuous interpolation.
+ * @param {number} count - Contribution count for the cell.
+ * @returns {number} The discrete contribution level (0-4).
+ */
+const getHeatmapContributionLevel = (count: number): number => {
+  if (count <= 0) {return 0;}
+  if (count === CONTRIBUTION_LEVEL_1_MAX) {return CONTRIBUTION_LEVEL_1_MAX;}
+  if (count === CONTRIBUTION_LEVEL_2_MAX) {return CONTRIBUTION_LEVEL_2_MAX;}
+  if (count === CONTRIBUTION_LEVEL_3_MAX) {return CONTRIBUTION_LEVEL_3_MAX;}
+  return CONTRIBUTION_LEVEL_4_MAX;
 }
 
-// --- day labels / axis formatting -------------------------------------------
-
-export const HEATMAP_DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const HEATMAP_DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 /** First row of the grid — `0` = Sunday (GitHub default). */
-export type HeatmapWeekStartDay = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+type HeatmapWeekStartDay = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
-/** Day labels with row 0 aligned to `weekStartDay`. */
-export function getHeatmapDayLabels(weekStartDay: HeatmapWeekStartDay = 0): readonly string[] {
-  if (weekStartDay === 0) return HEATMAP_DAY_LABELS;
+/**
+ * Day labels with row 0 aligned to `weekStartDay`.
+ * @param {HeatmapWeekStartDay} [weekStartDay] - First row of the grid.
+ * @returns {readonly string[]} Day labels ordered starting at `weekStartDay`.
+ */
+const getHeatmapDayLabels = (weekStartDay: HeatmapWeekStartDay = 0): readonly string[] => {
+  if (weekStartDay === 0) {return HEATMAP_DAY_LABELS;}
   return [...HEATMAP_DAY_LABELS.slice(weekStartDay), ...HEATMAP_DAY_LABELS.slice(0, weekStartDay)];
 }
 
-export type HeatmapYAxisLabelFormat = "full" | "initial";
+type HeatmapYAxisLabelFormat = "full" | "initial";
 
-export function formatHeatmapYAxisLabel(label: string, labelFormat: HeatmapYAxisLabelFormat): string {
-  return labelFormat === "initial" ? label.charAt(0) : label;
-}
+const formatHeatmapYAxisLabel = (label: string, labelFormat: HeatmapYAxisLabelFormat): string => labelFormat === "initial" ? label.charAt(0) : label;
 
-export type HeatmapYAxisTickFilter = "all" | "odd" | "even";
 
-export function shouldShowHeatmapYAxisTick(row: number, tickFilter: HeatmapYAxisTickFilter): boolean {
+type HeatmapYAxisTickFilter = "all" | "odd" | "even";
+
+const shouldShowHeatmapYAxisTick = (row: number, tickFilter: HeatmapYAxisTickFilter): boolean => {
   switch (tickFilter) {
-    case "all":
+    case "all": {
       return true;
-    case "odd":
+    }
+    case "odd": {
       return row % 2 === 1;
-    case "even":
+    }
+    case "even": {
       return row % 2 === 0;
-    default:
+    }
+    default: {
       return row % 2 === 1;
+    }
   }
 }
 
-/** Rotates Sun-first column bins so display row 0 starts on `weekStartDay`. */
-export function rotateHeatmapColumnBins(
-  columns: HeatmapColumn[],
-  weekStartDay: HeatmapWeekStartDay = 0,
-): HeatmapColumn[] {
-  if (weekStartDay === 0) return columns;
-  return columns.map((column) => ({
+/**
+ * Rotates Sun-first column bins so display row 0 starts on `weekStartDay`.
+ *
+ * `columns` is intentionally NOT `readonly`: the `weekStartDay === 0` fast path
+ * returns it unchanged, and this function's return type (`HeatmapColumn[]`) is a
+ * stability boundary for `heatmap-chart-inner.tsx` (outside this batch), which
+ * assigns the result straight into a `columns: HeatmapColumn[]` field consumed
+ * further by `HeatmapContextValue.data`. Accepting `readonly HeatmapColumn[]`
+ * while returning `HeatmapColumn[]` on that path is a type error; widening the
+ * return type would ripple into that file, and copying the array on every call
+ * to satisfy `readonly` would add an allocation to a benchmarked render path for
+ * no behavioural benefit. Left mutable — see report.
+ */
+const rotateHeatmapColumnBins = (columns: HeatmapColumn[], weekStartDay: HeatmapWeekStartDay = 0): HeatmapColumn[] => {
+  if (weekStartDay === 0) {return columns;}
+  return columns.map((column: Readonly<HeatmapColumn>) => ({
     ...column,
     bins: [...column.bins.slice(weekStartDay), ...column.bins.slice(0, weekStartDay)],
   }));
 }
 
-// --- month anchors / tooltip date formatting --------------------------------
-
-/** Month label anchor for a week column — prefers the 1st, else the 1st of the first bin's month. */
-export function getHeatmapColumnMonthAnchor(column: HeatmapColumn): Date | null {
+/**
+ * Month label anchor for a week column — prefers the 1st, else the 1st of the first bin's month.
+ * @param column - Week column whose bins are scanned for a month anchor.
+ * @returns The 1st of the anchor month, or `undefined` when `column.bins` is empty.
+  */
+const getHeatmapColumnMonthAnchor = (column: Readonly<HeatmapColumn>): Date | undefined => {
   for (const bin of column.bins) {
-    if (bin.date && bin.date.getDate() === 1) return bin.date;
+    if (bin.date.getDate() === 1) {return bin.date;}
   }
-  const firstDate = column.bins[0]?.date;
-  if (!firstDate) return null;
+  // First bin via array destructuring; the empty-bins guard below stays load-bearing.
+  // Empty bins arrays are a real runtime case this function must handle.
+  if (column.bins.length === 0) {return undefined;}
+  const [firstBin] = column.bins;
+  const firstDate = firstBin.date;
   return new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
 }
 
-function formatHeatmapOrdinalDay(day: number): string {
-  if (day >= 11 && day <= 13) return `${day}th`;
-  switch (day % 10) {
-    case 1:
+const ORDINAL_TEEN_START = 11;
+const ORDINAL_TEEN_END = 13;
+const ORDINAL_SUFFIX_MOD = 10;
+const ORDINAL_RD_SUFFIX_DIGIT = 3;
+
+const formatHeatmapOrdinalDay = (day: number): string => {
+  if (day >= ORDINAL_TEEN_START && day <= ORDINAL_TEEN_END) {return `${day}th`;}
+  switch (day % ORDINAL_SUFFIX_MOD) {
+    case 1: {
       return `${day}st`;
-    case 2:
+    }
+    case 2: {
       return `${day}nd`;
-    case 3:
+    }
+    case ORDINAL_RD_SUFFIX_DIGIT: {
       return `${day}rd`;
-    default:
+    }
+    default: {
       return `${day}th`;
+    }
   }
 }
 
@@ -223,195 +250,264 @@ const heatmapTooltipMonthFmt = new Intl.DateTimeFormat("en-US", { month: "long" 
 const heatmapTooltipWeekdayFmt = new Intl.DateTimeFormat("en-US", { weekday: "long" });
 const heatmapMonthShortFmt = new Intl.DateTimeFormat("en-US", { month: "short" });
 
-export function formatHeatmapMonthShort(date: Date): string {
-  return heatmapMonthShortFmt.format(date);
-}
+const formatHeatmapMonthShort = (date: Readonly<Date>): string => heatmapMonthShortFmt.format(date);
 
-/** Tooltip header date — e.g. `January 20th 2026`. */
-export function formatHeatmapTooltipDate(date: Date): string {
+
+/**
+ * Tooltip header date — e.g. `January 20th 2026`.
+ * @param date - Date to format.
+ * @returns The formatted tooltip header string.
+ */
+const formatHeatmapTooltipDate = (date: Readonly<Date>): string => {
   const month = heatmapTooltipMonthFmt.format(date);
   const day = formatHeatmapOrdinalDay(date.getDate());
   return `${month} ${day} ${date.getFullYear()}`;
 }
 
 /** Tooltip weekday line — e.g. `Monday`. */
-export function formatHeatmapTooltipWeekday(date: Date): string {
-  return heatmapTooltipWeekdayFmt.format(date);
-}
+const formatHeatmapTooltipWeekday = (date: Readonly<Date>): string => heatmapTooltipWeekdayFmt.format(date);
 
-/** Tooltip contribution line — e.g. `3 contributions`. */
-export function formatHeatmapContributionLabel(count: number, _date?: Date): string {
+
+/**
+ * Tooltip contribution line — e.g. `3 contributions`.
+ * @param count - Contribution count for the cell.
+ * @param secondaryDate - Unused; kept for call-site symmetry with other tooltip formatters that take a date.
+ * @returns The formatted contribution label string.
+ */
+const formatHeatmapContributionLabel = (count: number, _secondaryDate?: Readonly<Date>): string => {
   const word = count === 1 ? "contribution" : "contributions";
   return `${count} ${word}`;
 }
 
-// --- xDomain column filtering ------------------------------------------------
+/**
+ * Purely internal helper (not re-exported from the package barrel), so its `Date | undefined`
+ * return uses `undefined` rather than `null` — there is no external consumer relying on `null`.
+ * @param column - Week column to read the first bin's date from.
+ * @returns {Date | undefined} The first bin's date, or `undefined` when `column.bins` is empty.
+ */
+const getHeatmapColumnStartDate = (column: Readonly<HeatmapColumn>): Date | undefined => column.bins[0]?.date;
 
-export function getHeatmapColumnStartDate(column: HeatmapColumn): Date | null {
-  return column.bins[0]?.date ?? null;
+
+/**
+ * Purely internal helper (not re-exported from the package barrel) — see
+ * `getHeatmapColumnStartDate` above for why this returns `undefined`, not `null`.
+ * @param column - Week column to read the last bin's date from.
+ * @returns {Date | undefined} The last bin's date, or `undefined` when `column.bins` is empty.
+ */
+const getHeatmapColumnEndDate = (column: Readonly<HeatmapColumn>): Date | undefined => {
+  const lastBin = column.bins.at(-1);
+  return lastBin?.date;
 }
 
-export function getHeatmapColumnEndDate(column: HeatmapColumn): Date | null {
-  const lastBin = column.bins[column.bins.length - 1];
-  return lastBin?.date ?? null;
+/**
+ * @param columns - Week columns to derive the overall time span from.
+ * @returns The `[start, end]` date span, or `undefined` when `columns` is empty or dates are unavailable.
+  */
+ // Last bin date across all columns; undefined when no column has bins.
+const readHeatmapLastColumnEnd = (columns: readonly HeatmapColumn[]): Date | undefined => {
+  const lastColumn = columns.at(-1);
+  if (!lastColumn) { return undefined; }
+  return getHeatmapColumnEndDate(lastColumn);
 }
 
-export function getHeatmapTimeExtent(columns: HeatmapColumn[]): [Date, Date] | null {
-  if (columns.length === 0) return null;
-  const firstColumn = columns[0];
-  if (!firstColumn) return null;
+const getHeatmapTimeExtent = (columns: readonly HeatmapColumn[]): [Date, Date] | undefined => {
+  if (columns.length === 0) {return undefined;}
+  // Non-empty per the length check above, so destructuring always yields a column.
+  const [firstColumn] = columns;
   const start = getHeatmapColumnStartDate(firstColumn);
-  const lastColumn = columns[columns.length - 1];
-  if (!lastColumn) return null;
-  const end = getHeatmapColumnEndDate(lastColumn);
-  if (!(start && end)) return null;
+  const end = readHeatmapLastColumnEnd(columns);
+  if (!(start && end)) {return undefined;}
   return [start, end];
 }
 
-// bklit heatmap-chart.tsx:342-357 builds `timeXScale`/`brushYScale` via
-// `@visx/scale`'s `scaleTime`/`scaleLinear` (thin d3-scale wrappers). Neither
-// `@visx/scale` nor `d3-scale` is a direct dependency of this port (mirrors
-// `internal/pie-geometry.ts`'s precedent of reimplementing `@visx/shape`'s
-// `arc()` rather than importing an undeclared transitive dep) — and no
-// internal bklit heatmap subcomponent consumes anything beyond these scales'
-// plain callable `(input) => output` mapping (verified: no
-// `heatmap-*.tsx` file other than heatmap-chart.tsx/heatmap-context.tsx
-// references `timeXScale`/`brushYScale`). These two helpers reproduce the
-// EXACT linear-interpolation mapping d3's `scaleTime`/`scaleLinear` compute
-// for the domain/range bklit configures them with (including linear
-// extrapolation outside the domain, matching un-clamped d3 scales) as plain
-// functions, without the full d3 "scale object" method surface
-// (`.domain()`/`.range()`/`.invert()`/`.ticks()`) that nothing here calls.
-export function buildHeatmapTimeXScale(timeExtent: [Date, Date] | null, innerWidth: number): (date: Date) => number {
+/**
+ * Plain reimplementation of d3 scaleTime's linear mapping (unclamped — extrapolates outside the domain,
+ * like scaleTime itself) rather than pulling in @visx/scale for an API surface nothing here uses.
+ * @param timeExtent - `[start, end]` date span, or `undefined` to fall back to a degenerate zero-span scale.
+ * @param innerWidth - Pixel width the time span maps onto.
+ * @returns A function mapping a `Date` to an x pixel position.
+ */
+const buildHeatmapTimeXScale = (timeExtent: readonly [Readonly<Date>, Readonly<Date>] | undefined, innerWidth: number): ((date: Readonly<Date>) => number) => {
   const [start, end] = timeExtent ?? [new Date(), new Date()];
   const startMs = start.getTime();
   const spanMs = end.getTime() - startMs;
-  return (date: Date) => (spanMs === 0 ? 0 : ((date.getTime() - startMs) / spanMs) * innerWidth);
+  return (date: Readonly<Date>) => (spanMs === 0 ? 0 : ((date.getTime() - startMs) / spanMs) * innerWidth);
 }
 
-export function buildHeatmapBrushYScale(innerHeight: number): (value: number) => number {
-  // d3 `scaleLinear({domain:[0,1], range:[innerHeight,0]})` — a decreasing map.
-  return (value: number) => innerHeight - value * innerHeight;
-}
+/**
+ * @param innerHeight - Pixel height of the brush track.
+ * @returns A function mapping a `[0, 1]` value to a y pixel position (decreasing).
+ */
+const buildHeatmapBrushYScale = (innerHeight: number): (value: number) => number =>
+  // D3 `scaleLinear({domain:[0,1], range:[innerHeight,0]})` — a decreasing map.
+  (value: number) => innerHeight - value * innerHeight;
 
-export function filterHeatmapColumns(columns: HeatmapColumn[], xDomain?: [Date, Date]): HeatmapColumn[] {
-  if (!xDomain) return columns;
+
+/**
+ * `columns` is intentionally NOT `readonly`: the `!xDomain` fast path returns it
+ * unchanged, and this function is re-exported from the package barrel
+ * (`migrated/charts/index.ts`) as public API — widening its parameter to
+ * `readonly` would require either changing the declared `HeatmapColumn[]` return
+ * type (a public signature change with unknown external callers) or copying the
+ * array on every call with no domain filter (an allocation on a benchmarked
+ * render path). Left mutable — see report.
+ * @param columns - Week columns to filter.
+ * @param xDomain - Inclusive `[start, end]` date domain; when omitted, all columns are returned.
+ * @returns The columns overlapping `xDomain`, or all `columns` when `xDomain` is omitted.
+ */
+const filterHeatmapColumns = (columns: HeatmapColumn[], xDomain?: readonly [Readonly<Date>, Readonly<Date>]): HeatmapColumn[] => {
+  if (!xDomain) {return columns;}
   const start = Math.min(xDomain[0].getTime(), xDomain[1].getTime());
   const end = Math.max(xDomain[0].getTime(), xDomain[1].getTime());
-  return columns.filter((column) => {
-    const weekStart = getHeatmapColumnStartDate(column)?.getTime();
-    const weekEnd = getHeatmapColumnEndDate(column)?.getTime();
-    if (weekStart == null || weekEnd == null) return false;
+  return columns.filter((column: Readonly<HeatmapColumn>) => {
+    const weekStartDate = getHeatmapColumnStartDate(column);
+    const weekEndDate = getHeatmapColumnEndDate(column);
+    if (!weekStartDate || !weekEndDate) {return false;}
+    const weekStart = weekStartDate.getTime();
+    const weekEnd = weekEndDate.getTime();
     return weekEnd >= start && weekStart <= end;
   });
 }
 
-// --- ghost cell / display range ----------------------------------------------
-
-export interface HeatmapDisplayRange {
-  start: Date | null;
-  end: Date | null;
-}
-
-/** Whether a bin falls outside the contribution display window (not merely inactive). */
-export function isHeatmapGhostBin(bin: HeatmapBin, range: HeatmapDisplayRange): boolean {
-  const time = bin.date.getTime();
-  if (range.end && time > range.end.getTime()) return true;
-  if (range.start && time < range.start.getTime()) return true;
-  return false;
-}
-
-/** Matches demo-style calendar grids to their range start (Jan 1, etc.). */
-export function inferHeatmapCalendarRangeStart(columns: HeatmapColumn[]): Date | null {
-  const firstColumn = columns[0];
-  if (!firstColumn) return null;
-
-  const gridStart = getHeatmapColumnStartDate(firstColumn);
-  if (!gridStart) return null;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  for (const months of [HEATMAP_MONTHS_SIX, HEATMAP_MONTHS_ONE_YEAR]) {
-    const rangeStart = getHeatmapCalendarRangeStart(today, months);
-    const alignedStart = getHeatmapWeekStartAlignedToRange(rangeStart);
-    if (gridStart.getTime() === alignedStart.getTime()) return rangeStart;
-  }
-
-  return null;
+interface HeatmapDisplayRange {
+  readonly start: Readonly<Date> | undefined;
+  readonly end: Readonly<Date> | undefined;
 }
 
 /**
- * Infers GitHub-style display range for calendar-month contribution grids.
- * Custom data that does not match a known grid shape returns null bounds (show all).
+ * Whether a bin falls outside the contribution display window (not merely inactive).
+ * @param bin - Bin to test.
+ * @param range - Display window bounds.
+ * @returns `true` when `bin.date` falls outside `range`.
  */
-export function resolveHeatmapDisplayRange(columns: HeatmapColumn[]): HeatmapDisplayRange {
-  if (columns.length === 0) return { start: null, end: null };
+const isHeatmapGhostBin = (bin: Readonly<HeatmapBin>, range: Readonly<HeatmapDisplayRange>): boolean => {
+  const time = bin.date.getTime();
+  if (range.end && time > range.end.getTime()) {return true;}
+  if (range.start && time < range.start.getTime()) {return true;}
+  return false;
+}
 
-  const extent = getHeatmapTimeExtent(columns);
-  if (!extent) return { start: null, end: null };
+/**
+ * Matches demo-style calendar grids to their range start (Jan 1, etc.).
+ *
+ * The `[firstColumn]` destructuring guard below is genuinely defensive, not dead
+ * code: array destructuring types `firstColumn` as always-defined regardless of
+ * `noUncheckedIndexedAccess` (which this project does not enable), but this is an
+ * exported function with no caller-enforced guarantee that `columns` is non-empty.
+ * @param columns - Week columns to infer a recognizable calendar range start from.
+  * @returns The inferred calendar range start, or `undefined` when the grid shape isn't recognized.
+  */
+ // Scans the recognized calendar shapes for one whose aligned start matches the grid.
+const matchHeatmapCalendarRangeStart = (gridStart: Readonly<Date>, today: Readonly<Date>): Date | undefined => {
+  for (const months of [HEATMAP_MONTHS_SIX, HEATMAP_MONTHS_ONE_YEAR]) {
+    const rangeStart = getHeatmapCalendarRangeStart(today, months);
+    const alignedStart = getHeatmapWeekStartAlignedToRange(rangeStart);
+    if (gridStart.getTime() === alignedStart.getTime()) {return rangeStart;}
+  }
+  return undefined;
+}
+
+const inferHeatmapCalendarRangeStart = (columns: readonly HeatmapColumn[]): Date | undefined => {
+  if (columns.length === 0) {return undefined;}
+  const [firstColumn] = columns;
+
+  const gridStart = getHeatmapColumnStartDate(firstColumn);
+  if (!gridStart) {return undefined;}
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const firstColumn = columns[0];
-  if (!firstColumn) return { start: null, end: null };
-
-  const gridStart = getHeatmapColumnStartDate(firstColumn);
-  if (!gridStart) return { start: null, end: null };
-
-  const inferredStart = inferHeatmapCalendarRangeStart(columns);
-
-  if (inferredStart && extent[1].getTime() >= today.getTime()) {
-    return { start: inferredStart, end: today };
-  }
-
-  return { start: null, end: null };
+  return matchHeatmapCalendarRangeStart(gridStart, today);
 }
 
-// --- separator layout ---------------------------------------------------------
+/**
+ * Infers GitHub-style display range for calendar-month grids; unrecognized shapes return undefined bounds (show all).
+  * @param columns - Week columns to resolve a display range for.
+  * @returns The inferred display range, with `undefined` bounds when the grid shape isn't recognized.
+ */
+// Grid base values shared by display-range resolution; undefined when the grid has no usable dates.
+const readHeatmapDisplayGridBase = (columns: readonly HeatmapColumn[]): { extent: [Date, Date]; today: Date; gridStart: Date } | undefined => {
+  const extent = getHeatmapTimeExtent(columns);
+  if (!extent) {return undefined;}
 
-export type HeatmapSeparatorGroupBy = "every" | "quarter";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-export interface HeatmapSeparatorParsedConfig {
+  // Non-empty per the `columns.length === 0` check above.
+  const [firstColumn] = columns;
+
+  const gridStart = getHeatmapColumnStartDate(firstColumn);
+  if (!gridStart) {return undefined;}
+
+  return { extent, gridStart, today };
+}
+
+// GitHub-style window for a recognized calendar grid; undefined bounds (show all) otherwise.
+const resolveInferredHeatmapDisplayRange = (inferredStart: Readonly<Date> | undefined, extentEnd: Readonly<Date>, today: Readonly<Date>): HeatmapDisplayRange => {
+  if (inferredStart && extentEnd.getTime() >= today.getTime()) {
+    return { end: today, start: inferredStart };
+  }
+  return { end: undefined, start: undefined };
+}
+
+const resolveHeatmapDisplayRange = (columns: readonly HeatmapColumn[]): HeatmapDisplayRange => {
+  if (columns.length === 0) {return { end: undefined, start: undefined };}
+
+  const base = readHeatmapDisplayGridBase(columns);
+  if (!base) {return { end: undefined, start: undefined };}
+
+  const inferredStart = inferHeatmapCalendarRangeStart(columns);
+  return resolveInferredHeatmapDisplayRange(inferredStart, base.extent[1], base.today);
+}
+
+type HeatmapSeparatorGroupBy = "every" | "quarter";
+
+interface HeatmapSeparatorParsedConfig {
   groupBy: HeatmapSeparatorGroupBy;
   every?: number;
   spacing: number;
 }
 
-export interface HeatmapSeparatorGroup {
-  startColumnIndex: number;
-  quarter: number;
-  year: number;
-  startDate: Date;
-  label: string;
+interface HeatmapSeparatorGroup {
+  readonly startColumnIndex: number;
+  readonly quarter: number;
+  readonly year: number;
+  readonly startDate: Readonly<Date>;
+  readonly label: string;
 }
 
-export interface HeatmapSeparatorLayout {
-  spacing: number;
-  atColumns: number[];
-  groups: HeatmapSeparatorGroup[];
+interface HeatmapSeparatorLayout {
+  readonly spacing: number;
+  readonly atColumns: readonly number[];
+  readonly groups: readonly HeatmapSeparatorGroup[];
 }
 
-export interface HeatmapColumnSeparatorsConfig {
+interface HeatmapColumnSeparatorsConfig {
   every?: number;
   groupBy?: HeatmapSeparatorGroupBy;
   spacing?: number;
 }
 
-export function normalizeHeatmapSeparatorConfig(
-  config: HeatmapColumnSeparatorsConfig | undefined,
-): HeatmapSeparatorParsedConfig | null {
-  if (!config) return null;
+/**
+ * @param config - Raw separator config prop.
+ * @returns The parsed separator config, or `null` when `config` is absent or invalid.
+ */
+const normalizeHeatmapSeparatorConfig = (config: Readonly<HeatmapColumnSeparatorsConfig> | undefined): HeatmapSeparatorParsedConfig | null => {
+  if (!config) {return null;}
   const groupBy = config.groupBy ?? "every";
-  if (groupBy === "quarter") return { groupBy: "quarter", spacing: config.spacing ?? 0 };
-  if (config.every == null || config.every <= 0) return null;
-  return { groupBy: "every", every: config.every, spacing: config.spacing ?? 0 };
+  if (groupBy === "quarter") {return { groupBy: "quarter", spacing: config.spacing ?? 0 };}
+  if ((config.every ?? 0) <= 0) {return null;}
+  return { every: config.every, groupBy: "every", spacing: config.spacing ?? 0 };
 }
 
-/** Column indices (0-based) where a vertical separator is drawn (fixed interval). */
-export function getHeatmapSeparatorColumnIndices(columnCount: number, every: number): number[] {
-  if (every <= 0 || columnCount <= every) return [];
+/**
+ * Column indices (0-based) where a vertical separator is drawn (fixed interval).
+ * @param columnCount - Total number of columns in the grid.
+ * @param every - Interval (in columns) between separators.
+ * @returns The 0-based column indices where a separator is drawn.
+ */
+const getHeatmapSeparatorColumnIndices = (columnCount: number, every: number): number[] => {
+  if (every <= 0 || columnCount <= every) {return [];}
   const indices: number[] = [];
   for (let columnIndex = every; columnIndex < columnCount; columnIndex += every) {
     indices.push(columnIndex);
@@ -419,153 +515,244 @@ export function getHeatmapSeparatorColumnIndices(columnCount: number, every: num
   return indices;
 }
 
-/** Calendar quarter (1-4) for Jan-Mar, Apr-Jun, Jul-Sep, Oct-Dec. */
-export function getCalendarQuarter(date: Date): number {
-  return Math.floor(date.getMonth() / 3) + 1;
+const MONTHS_PER_QUARTER = 3;
+
+/**
+ * Calendar quarter (1-4) for Jan-Mar, Apr-Jun, Jul-Sep, Oct-Dec.
+ * @param date - Date to resolve a quarter for.
+ * @returns The 1-based calendar quarter.
+ */
+const getCalendarQuarter = (date: Readonly<Date>): number => Math.floor(date.getMonth() / MONTHS_PER_QUARTER) + 1;
+
+
+const QUARTER_1_START_MONTH = 0;
+const QUARTER_2_START_MONTH = MONTHS_PER_QUARTER;
+const QUARTER_3_START_MONTH = QUARTER_2_START_MONTH + MONTHS_PER_QUARTER;
+const QUARTER_4_START_MONTH = QUARTER_3_START_MONTH + MONTHS_PER_QUARTER;
+const CALENDAR_QUARTER_START_MONTHS = [QUARTER_1_START_MONTH, QUARTER_2_START_MONTH, QUARTER_3_START_MONTH, QUARTER_4_START_MONTH] as const;
+
+/**
+ * Jan/Apr/Jul/Oct 1 dates strictly after `gridStart` and on or before `gridEnd`.
+ * @param gridStart - Exclusive lower bound.
+ * @param gridEnd - Inclusive upper bound.
+ * @returns The quarter-start dates within `(gridStart, gridEnd]`.
+ */
+// Quarter starts for one calendar year inside `(gridStart, gridEnd]`.
+const collectQuarterStartDatesForYear = (year: number, startTime: number, endTime: number): Date[] => {
+  const dates: Date[] = [];
+  for (const month of CALENDAR_QUARTER_START_MONTHS) {
+    const date = new Date(year, month, 1);
+    date.setHours(0, 0, 0, 0);
+    if (date.getTime() > startTime && date.getTime() <= endTime) {dates.push(date);}
+  }
+  return dates;
 }
 
-const CALENDAR_QUARTER_START_MONTHS = [0, 3, 6, 9] as const;
-
-/** Jan/Apr/Jul/Oct 1 dates strictly after `gridStart` and on or before `gridEnd`. */
-export function getCalendarQuarterStartDatesBetween(gridStart: Date, gridEnd: Date): Date[] {
+const getCalendarQuarterStartDatesBetween = (gridStart: Readonly<Date>, gridEnd: Readonly<Date>): Date[] => {
   const startTime = gridStart.getTime();
   const endTime = gridEnd.getTime();
   const dates: Date[] = [];
 
-  for (let year = gridStart.getFullYear(); year <= gridEnd.getFullYear(); year++) {
-    for (const month of CALENDAR_QUARTER_START_MONTHS) {
-      const date = new Date(year, month, 1);
-      date.setHours(0, 0, 0, 0);
-      const time = date.getTime();
-      if (time > startTime && time <= endTime) dates.push(date);
-    }
+  for (let year = gridStart.getFullYear(); year <= gridEnd.getFullYear(); year += 1) {
+    dates.push(...collectQuarterStartDatesForYear(year, startTime, endTime));
   }
 
   return dates;
 }
 
-/** Week column index whose Sun-Sat span contains `date`. */
-export function findHeatmapColumnIndexForDate(columns: HeatmapColumn[], date: Date): number | null {
+/**
+ * Week column index whose Sun-Sat span contains `date`.
+ * @param columns - Week columns to search.
+ * @param date - Date to locate.
+ * @returns The matching column index, or `undefined` when no column contains `date`.
+  */
+const findHeatmapColumnIndexForDate = (columns: readonly HeatmapColumn[], date: Readonly<Date>): number | undefined => {
   const target = new Date(date);
   target.setHours(0, 0, 0, 0);
   const targetTime = target.getTime();
 
-  for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
-    const column = columns[columnIndex];
-    if (!column) continue;
-
+  const columnIndex = columns.findIndex((column: Readonly<HeatmapColumn>) => {
     const weekStart = getHeatmapColumnStartDate(column);
     const weekEnd = getHeatmapColumnEndDate(column);
-    if (!(weekStart && weekEnd)) continue;
+    if (!(weekStart && weekEnd)) {return false;}
 
     weekStart.setHours(0, 0, 0, 0);
     weekEnd.setHours(0, 0, 0, 0);
-    if (targetTime >= weekStart.getTime() && targetTime <= weekEnd.getTime()) return columnIndex;
-  }
+    return targetTime >= weekStart.getTime() && targetTime <= weekEnd.getTime();
+  });
 
-  return null;
+  return columnIndex === -1 ? undefined : columnIndex;
 }
 
-export function buildHeatmapQuarterSeparatorGroups(columns: HeatmapColumn[]): HeatmapSeparatorGroup[] {
-  if (columns.length === 0) return [];
-
-  const extent = getHeatmapTimeExtent(columns);
-  if (!extent) return [];
-
-  const [extentStart, gridEnd] = extent;
+/**
+ * @param columns - Week columns to derive quarter-separator groups from.
+ * @returns The quarter groups, sorted by start column index.
+ */
+// Display/inferred/extent fallback chain for the quarter-separator range start.
+const resolveQuarterRangeStart = (columns: readonly HeatmapColumn[], extentStart: Readonly<Date>): Readonly<Date> => {
   const displayRange = resolveHeatmapDisplayRange(columns);
-  const quarterRangeStart = displayRange.start ?? inferHeatmapCalendarRangeStart(columns) ?? extentStart;
-  const firstQuarter = getCalendarQuarter(quarterRangeStart);
+  return displayRange.start ?? inferHeatmapCalendarRangeStart(columns) ?? extentStart;
+}
 
+interface QuarterSeparatorSeed {
+  readonly groups: HeatmapSeparatorGroup[];
+  readonly usedColumns: Set<number>;
+}
+
+// First quarter group plus its claimed column; later groups append after it.
+const createQuarterSeparatorSeed = (quarterRangeStart: Readonly<Date>): QuarterSeparatorSeed => {
+  const quarter = getCalendarQuarter(quarterRangeStart);
   const groups: HeatmapSeparatorGroup[] = [
     {
+      label: `Q${quarter}`,
+      quarter,
       startColumnIndex: 0,
-      quarter: firstQuarter,
-      year: quarterRangeStart.getFullYear(),
       startDate: quarterRangeStart,
-      label: `Q${firstQuarter}`,
+      year: quarterRangeStart.getFullYear(),
     },
   ];
+  return { groups, usedColumns: new Set<number>([0]) };
+}
 
-  const usedColumns = new Set<number>([0]);
-  const quarterStarts = getCalendarQuarterStartDatesBetween(quarterRangeStart, gridEnd);
+interface AppendQuarterSeparatorGroupParams {
+  readonly columns: readonly HeatmapColumn[];
+  readonly groups: HeatmapSeparatorGroup[];
+  readonly quarterStart: Readonly<Date>;
+  readonly usedColumns: Set<number>;
+}
 
-  for (const quarterStart of quarterStarts) {
-    const columnIndex = findHeatmapColumnIndexForDate(columns, quarterStart);
-    if (columnIndex == null || columnIndex === 0 || usedColumns.has(columnIndex)) continue;
-
+// One quarter-start date becomes a group unless its column is taken or is the seed column.
+const appendQuarterSeparatorGroup = (params: Readonly<AppendQuarterSeparatorGroupParams>): void => {
+  const { columns, groups, quarterStart, usedColumns } = params;
+  const columnIndex = findHeatmapColumnIndexForDate(columns, quarterStart);
+  if (columnIndex !== undefined && columnIndex !== 0 && !usedColumns.has(columnIndex)) {
     usedColumns.add(columnIndex);
     const quarter = getCalendarQuarter(quarterStart);
     groups.push({
-      startColumnIndex: columnIndex,
-      quarter,
-      year: quarterStart.getFullYear(),
-      startDate: quarterStart,
       label: `Q${quarter}`,
+      quarter,
+      startColumnIndex: columnIndex,
+      startDate: quarterStart,
+      year: quarterStart.getFullYear(),
     });
   }
+}
 
-  groups.sort((a, b) => a.startColumnIndex - b.startColumnIndex);
+interface AppendQuarterSeparatorGroupsParams {
+  readonly columns: readonly HeatmapColumn[];
+  readonly gridEnd: Readonly<Date>;
+  readonly groups: HeatmapSeparatorGroup[];
+  readonly quarterRangeStart: Readonly<Date>;
+  readonly usedColumns: Set<number>;
+}
+
+const appendQuarterSeparatorGroups = (params: Readonly<AppendQuarterSeparatorGroupsParams>): void => {
+  const { columns, gridEnd, groups, quarterRangeStart, usedColumns } = params;
+  const quarterStarts = getCalendarQuarterStartDatesBetween(quarterRangeStart, gridEnd);
+  for (const quarterStart of quarterStarts) {
+    appendQuarterSeparatorGroup({ columns, groups, quarterStart, usedColumns });
+  }
+}
+
+const buildHeatmapQuarterSeparatorGroups = (columns: readonly HeatmapColumn[]): HeatmapSeparatorGroup[] => {
+  if (columns.length === 0) {return [];}
+
+  const extent = getHeatmapTimeExtent(columns);
+  if (!extent) {return [];}
+
+  const quarterRangeStart = resolveQuarterRangeStart(columns, extent[0]);
+  const { groups, usedColumns } = createQuarterSeparatorSeed(quarterRangeStart);
+  appendQuarterSeparatorGroups({ columns, gridEnd: extent[1], groups, quarterRangeStart, usedColumns });
+
+  groups.sort((groupA: Readonly<HeatmapSeparatorGroup>, groupB: Readonly<HeatmapSeparatorGroup>) => groupA.startColumnIndex - groupB.startColumnIndex);
   return groups;
 }
 
-export function resolveHeatmapSeparatorLayout(
-  config: HeatmapSeparatorParsedConfig | null,
-  columns: HeatmapColumn[],
-): HeatmapSeparatorLayout | null {
-  if (!config) return null;
+/**
+ * @param config - Parsed separator config, or `null` to disable separators.
+ * @param columns - Week columns the layout is computed against.
+ * @returns The resolved separator layout, or `null` when separators are disabled or have no effect.
+ */
+// Quarter-grouped separators; null when separators are disabled or have no effect.
+const resolveQuarterSeparatorLayout = (config: Readonly<HeatmapSeparatorParsedConfig>, columns: readonly HeatmapColumn[]): HeatmapSeparatorLayout | null => {
+  const groups = buildHeatmapQuarterSeparatorGroups(columns);
+  if (groups.length === 0) {return null;}
 
-  if (config.groupBy === "quarter") {
-    const groups = buildHeatmapQuarterSeparatorGroups(columns);
-    if (groups.length === 0) return null;
-
-    return {
-      spacing: config.spacing,
-      atColumns: groups.map((group) => group.startColumnIndex).filter((columnIndex) => columnIndex > 0),
-      groups,
-    };
+  const atColumns: number[] = [];
+  for (const group of groups) {
+    if (group.startColumnIndex > 0) {atColumns.push(group.startColumnIndex);}
   }
 
-  if (!config.every || config.every <= 0) return null;
-
-  const atColumns = getHeatmapSeparatorColumnIndices(columns.length, config.every);
-
-  return { spacing: config.spacing, atColumns, groups: [] };
+  return { atColumns, groups, spacing: config.spacing };
 }
 
-export function getHeatmapSeparatorCount(separator: Pick<HeatmapSeparatorLayout, "atColumns"> | null): number {
-  return separator?.atColumns.length ?? 0;
+const resolveHeatmapSeparatorLayout = (config: Readonly<HeatmapSeparatorParsedConfig> | null, columns: readonly HeatmapColumn[]): HeatmapSeparatorLayout | null => {
+  if (!config) {return null;}
+
+  if (config.groupBy === "quarter") {
+    return resolveQuarterSeparatorLayout(config, columns);
+  }
+
+  // Bind before the guard so the positive-count narrowing carries to the call below.
+  const every = config.every ?? 0;
+  if (every <= 0) {return null;}
+
+  const atColumns = getHeatmapSeparatorColumnIndices(columns.length, every);
+
+  return { atColumns, groups: [], spacing: config.spacing };
 }
 
-/** Extra x-offset for a column when separator spacing is enabled. */
-export function getHeatmapColumnXOffset(
-  columnIndex: number,
-  separator: Pick<HeatmapSeparatorLayout, "spacing" | "atColumns"> | null,
-): number {
-  if (!separator || separator.spacing <= 0) return 0;
-  if (columnIndex <= 0) return 0;
+/**
+ * @param separator - Resolved separator layout, or `null`.
+ * @returns The number of separators.
+ */
+const getHeatmapSeparatorCount = (separator: Readonly<Pick<HeatmapSeparatorLayout, "atColumns">> | null): number => separator?.atColumns.length ?? 0;
+
+
+/**
+ * Extra x-offset for a column when separator spacing is enabled.
+ * @param columnIndex - Column index to offset.
+ * @param separator - Resolved separator layout, or `null`.
+ * @returns The cumulative x-offset in pixels.
+ */
+const getHeatmapColumnXOffset = (columnIndex: number, separator: Readonly<Pick<HeatmapSeparatorLayout, "spacing" | "atColumns">> | null): number => {
+  if (!separator || separator.spacing <= 0) {return 0;}
+  if (columnIndex <= 0) {return 0;}
 
   const separatorCount = separator.atColumns.filter((atColumn) => atColumn <= columnIndex).length;
   return separatorCount * separator.spacing;
 }
 
-export function getHeatmapPlotInnerWidth(
-  columnCount: number,
-  binWidth: number,
-  separator: Pick<HeatmapSeparatorLayout, "spacing" | "atColumns"> | null,
-): number {
+/**
+ * @param columnCount - Total number of columns.
+ * @param binWidth - Pixel width of one bin.
+ * @param separator - Resolved separator layout, or `null`.
+ * @returns The total plot inner width in pixels.
+ */
+const getHeatmapPlotInnerWidth = (columnCount: number, binWidth: number, separator: Readonly<Pick<HeatmapSeparatorLayout, "spacing" | "atColumns">> | null): number => {
   const separatorCount = separator ? getHeatmapSeparatorCount(separator) : 0;
   return columnCount * binWidth + separatorCount * (separator?.spacing ?? 0);
 }
 
-/** Vertical span for a separator line in plot coordinates. */
-export function getHeatmapSeparatorLineY(params: {
+interface HeatmapSeparatorLineYParams {
   innerHeight: number;
   marginTop: number;
   /** Distance from the chart container top to the line start. Default: plot top. */
   startOffset?: number;
   paddingY?: number;
-}): { y1: number; y2: number } {
+}
+
+interface HeatmapSeparatorLineYSpan {
+  y1: number;
+  y2: number;
+}
+
+/**
+ * Vertical span for a separator line in plot coordinates.
+ * @param params - Line span inputs.
+ * @returns The line's `y1`/`y2` endpoints.
+ */
+const getHeatmapSeparatorLineY = (params: Readonly<HeatmapSeparatorLineYParams>): HeatmapSeparatorLineYSpan => {
   const paddingY = params.paddingY ?? 0;
   const resolvedStart = params.startOffset ?? params.marginTop;
   const y1 = resolvedStart - params.marginTop + paddingY;
@@ -573,30 +760,36 @@ export function getHeatmapSeparatorLineY(params: {
   return { y1, y2 };
 }
 
-/** X position for a separator line (centered in the gutter when spacing > 0). */
-export function getHeatmapSeparatorX(
-  columnIndex: number,
-  gap: number,
-  separator: Pick<HeatmapSeparatorLayout, "spacing">,
-  xScale: (columnIndex: number) => number,
-): number {
-  if (separator.spacing > 0) return xScale(columnIndex) - separator.spacing / 2;
+/**
+ * X position for a separator line (centered in the gutter when spacing > 0).
+ * @param columnIndex - Column index the separator sits before.
+ * @param gap - Gap between columns when no separator spacing is set.
+ * @param separator - Resolved separator layout (spacing only).
+ * @param xScale - Column-index-to-x-pixel scale.
+ * @returns The x pixel position of the separator line.
+ */
+const getHeatmapSeparatorX = (columnIndex: number, gap: number, separator: Readonly<Pick<HeatmapSeparatorLayout, "spacing">>, xScale: (columnIndex: number) => number): number => {
+  if (separator.spacing > 0) {return xScale(columnIndex) - separator.spacing / 2;}
   return xScale(columnIndex) - gap / 2;
 }
 
 /** Separator line style. */
-export type HeatmapSeparatorStrokeStyle = "solid" | "dashed";
+type HeatmapSeparatorStrokeStyle = "solid" | "dashed";
 
-export function resolveHeatmapSeparatorStrokeDasharray(
-  strokeStyle: HeatmapSeparatorStrokeStyle = "solid",
-  strokeDasharray?: string,
-): string | undefined {
-  if (strokeStyle !== "dashed") return undefined;
-  return strokeDasharray ?? "4,4";
+const DEFAULT_DASHED_STROKE_DASHARRAY = "4,4";
+
+/**
+ * @param strokeStyle - Line style.
+ * @param strokeDasharray - Explicit dasharray override.
+ * @returns The stroke dasharray for `strokeStyle`, or `undefined` for a solid line.
+ */
+const resolveHeatmapSeparatorStrokeDasharray = (strokeStyle: HeatmapSeparatorStrokeStyle = "solid", strokeDasharray?: string): string | undefined => {
+  if (strokeStyle !== "dashed") {return undefined;}
+  return strokeDasharray ?? DEFAULT_DASHED_STROKE_DASHARRAY;
 }
 
 /** Vertical stroke gradient for separator lines (`from` -> optional `via` -> `to`). */
-export interface HeatmapSeparatorGradient {
+interface HeatmapSeparatorGradient {
   from: string;
   via?: string;
   to: string;
@@ -605,103 +798,135 @@ export interface HeatmapSeparatorGradient {
   toOpacity?: number;
 }
 
-export interface HeatmapSeparatorGradientStop {
+interface HeatmapSeparatorGradientStop {
   offset: string;
   color: string;
   opacity: number;
 }
 
-/** Builds SVG gradient stops for a vertical separator line. */
-export function buildHeatmapSeparatorGradientStops(
-  gradient: HeatmapSeparatorGradient,
-  strokeOpacity = 1,
-): HeatmapSeparatorGradientStop[] {
-  const scaleOpacity = (value: number | undefined, fallback = 1) => (value ?? fallback) * strokeOpacity;
+const DEFAULT_GRADIENT_STOP_OPACITY = 1;
 
-  if (gradient.via != null) {
+/**
+ * Builds SVG gradient stops for a vertical separator line.
+ * @param gradient - Gradient color/opacity stops.
+ * @param strokeOpacity - Overall stroke opacity multiplier.
+ * @returns The SVG gradient stops.
+ */
+const buildHeatmapSeparatorGradientStops = (gradient: Readonly<HeatmapSeparatorGradient>, strokeOpacity = 1): HeatmapSeparatorGradientStop[] => {
+  const scaleOpacity = (value: number | undefined, fallback: number = DEFAULT_GRADIENT_STOP_OPACITY): number => (value ?? fallback) * strokeOpacity;
+
+  if (gradient.via !== undefined) {
     return [
-      { offset: "0%", color: gradient.from, opacity: scaleOpacity(gradient.fromOpacity) },
-      { offset: "50%", color: gradient.via, opacity: scaleOpacity(gradient.viaOpacity) },
-      { offset: "100%", color: gradient.to, opacity: scaleOpacity(gradient.toOpacity) },
+      { color: gradient.from, offset: "0%", opacity: scaleOpacity(gradient.fromOpacity) },
+      { color: gradient.via, offset: "50%", opacity: scaleOpacity(gradient.viaOpacity) },
+      { color: gradient.to, offset: "100%", opacity: scaleOpacity(gradient.toOpacity) },
     ];
   }
 
   return [
-    { offset: "0%", color: gradient.from, opacity: scaleOpacity(gradient.fromOpacity) },
-    { offset: "100%", color: gradient.to, opacity: scaleOpacity(gradient.toOpacity) },
+    { color: gradient.from, offset: "0%", opacity: scaleOpacity(gradient.fromOpacity) },
+    { color: gradient.to, offset: "100%", opacity: scaleOpacity(gradient.toOpacity) },
   ];
 }
 
-// --- hover style resolution ---------------------------------------------------
-
-export interface HeatmapHoverStyleParams {
+interface HeatmapHoverStyleParams {
   inactiveOpacity: number;
   inactiveScale: number;
   activeScale: number;
 }
 
-/** Whether hover styling runs (disabled when all scale/opacity props are 1). */
-export function isHeatmapHoverEffectEnabled(params: HeatmapHoverStyleParams): boolean {
-  return params.inactiveOpacity !== 1 || params.inactiveScale !== 1 || params.activeScale !== 1;
-}
+/**
+ * Whether hover styling runs (disabled when all scale/opacity props are 1).
+ * @param params - Hover style params.
+ * @returns `true` when hover styling has a visible effect.
+ */
+const isHeatmapHoverEffectEnabled = (params: Readonly<HeatmapHoverStyleParams>): boolean => params.inactiveOpacity !== 1 || params.inactiveScale !== 1 || params.activeScale !== 1;
 
-/** Opacity and scale for highlighted vs dimmed cells and legend swatches. */
-export function resolveHeatmapHoverStyle(
-  isHighlighted: boolean,
-  isDimmed: boolean,
-  params: HeatmapHoverStyleParams,
-): { opacity: number; scale: number } {
-  if (isHighlighted && params.activeScale !== 1) return { opacity: 1, scale: params.activeScale };
-  if (isDimmed) return { opacity: params.inactiveOpacity, scale: params.inactiveScale };
-  return { opacity: 1, scale: 1 };
-}
 
-/** Per-row opacity multiplier for display rows (default 1). */
-export function resolveHeatmapRowOpacity(row: number, rowOpacity?: number | readonly number[]): number {
-  if (rowOpacity == null) return 1;
-  if (typeof rowOpacity === "number") return rowOpacity;
-  return rowOpacity[row] ?? 1;
+interface HeatmapHoverStyle {
+  opacity: number;
+  scale: number;
 }
 
 /**
- * Builds a per-row opacity map for HeatmapCells and HeatmapYAxis.
- * Pass explicit row indices (e.g. `[5, 6]` for display Sat/Sun when `weekStartDay={1}`)
- * or a predicate — `(row) => row >= 5` fades the last two rows.
+ * Opacity and scale for highlighted vs dimmed cells and legend swatches.
+ * @param isHighlighted - Whether the cell/swatch is the hovered one.
+ * @param isDimmed - Whether the cell/swatch should be dimmed.
+ * @param params - Hover style params.
+ * @returns The resolved opacity/scale.
  */
-export function buildHeatmapRowOpacity(
-  match: readonly number[] | ((row: number) => boolean),
-  fadedOpacity = 0.35,
-  activeOpacity = 1,
-  rowCount = 7,
-): number[] {
-  if (typeof match === "function") {
-    return Array.from({ length: rowCount }, (_, row) => (match(row) ? fadedOpacity : activeOpacity));
-  }
-
-  const opacity = new Array<number>(rowCount).fill(activeOpacity);
-  for (const row of match) {
-    if (row >= 0 && row < rowCount) opacity[row] = fadedOpacity;
-  }
-  return opacity;
+const resolveHeatmapHoverStyle = (isHighlighted: boolean, isDimmed: boolean, params: Readonly<HeatmapHoverStyleParams>): HeatmapHoverStyle => {
+  if (isHighlighted && params.activeScale !== 1) {return { opacity: 1, scale: params.activeScale };}
+  if (isDimmed) {return { opacity: params.inactiveOpacity, scale: params.inactiveScale };}
+  return { opacity: 1, scale: 1 };
 }
 
-// --- legend gradient -----------------------------------------------------------
+/**
+ * `Array.isArray`'s built-in type predicate narrows a `readonly number[] | X` union to
+ * `any[]` (it asserts `arg is any[]`), not `readonly number[]` — a known TS narrowing gap.
+ * This wrapper declares the honest predicate type so callers narrow soundly: the true
+ * branch is the array member of the caller's union and the false branch keeps the rest.
+ * @param value - Value to test; a `readonly number[]` or some other known type.
+ * @returns {boolean} Whether `value` is a `readonly number[]`.
+ */
+const isReadonlyNumberArray = <Other,>(value: Other): value is Extract<Other, readonly number[]> => Array.isArray(value);
 
-export interface HeatmapLegendGradientLevelStyle {
-  color: string;
+/**
+ * Per-row opacity multiplier for display rows (default 1).
+ * @param row - Row index.
+ * @param rowOpacity - A single opacity for all rows, or a per-row array.
+ * @returns The resolved opacity for `row`.
+ */
+const resolveHeatmapRowOpacity = (row: number, rowOpacity: number | readonly number[] = 1): number => {
+  if (isReadonlyNumberArray(rowOpacity)) {return rowOpacity[row] ?? 1;}
+  return rowOpacity;
 }
 
-/** CSS `linear-gradient` for a continuous legend bar from level styles. */
-export function buildHeatmapLegendGradient(levelStyles: readonly HeatmapLegendGradientLevelStyle[]): string {
+const DEFAULT_FADED_OPACITY = 0.35;
+const DEFAULT_ACTIVE_OPACITY = 1;
+const DEFAULT_ROW_COUNT = 7;
+
+/**
+ * Builds a per-row opacity map for HeatmapCells/HeatmapYAxis from explicit row indices or a predicate.
+ * @param match - Explicit faded row indices, or a predicate returning whether a row is faded.
+ * @param fadedOpacity - Opacity applied to matched (faded) rows.
+ * @param activeOpacity - Opacity applied to unmatched (active) rows.
+ * @param rowCount - Number of rows to build an opacity entry for.
+ * @returns The per-row opacity array.
+ */
+const buildHeatmapRowOpacity = (match: readonly number[] | ((row: number) => boolean), fadedOpacity: number = DEFAULT_FADED_OPACITY, activeOpacity: number = DEFAULT_ACTIVE_OPACITY, rowCount: number = DEFAULT_ROW_COUNT): number[] => {
+  if (isReadonlyNumberArray(match)) {
+    const opacity = Array.from({ length: rowCount }, () => activeOpacity);
+    for (const row of match) {
+      if (row >= 0 && row < rowCount) {opacity[row] = fadedOpacity;}
+    }
+    return opacity;
+  }
+
+  return Array.from({ length: rowCount }, (_unused, row) => (match(row) ? fadedOpacity : activeOpacity));
+}
+
+interface HeatmapLegendGradientLevelStyle {
+  readonly color: string;
+}
+
+const LEGEND_GRADIENT_MAX_PERCENT = 100;
+
+/**
+ * CSS `linear-gradient` for a continuous legend bar from level styles.
+ * @param levelStyles - Ordered level colors.
+ * @returns The `linear-gradient(...)` CSS value.
+ */
+const buildHeatmapLegendGradient = (levelStyles: readonly HeatmapLegendGradientLevelStyle[]): string => {
   const lastIndex = levelStyles.length - 1;
   const stops = levelStyles.map((style, index) => {
-    const offset = lastIndex === 0 ? 0 : (index / lastIndex) * 100;
+    const offset = lastIndex === 0 ? 0 : (index / lastIndex) * LEGEND_GRADIENT_MAX_PERCENT;
     return `${style.color} ${offset}%`;
   });
   return `linear-gradient(to right, ${stops.join(", ")})`;
 }
 
-export interface HeatmapDimensions {
+interface HeatmapDimensions {
   binWidth: number;
   binHeight: number;
   innerWidth: number;
@@ -710,59 +935,189 @@ export interface HeatmapDimensions {
   width: number;
 }
 
-export function computeHeatmapDimensions(params: {
-  width: number;
-  parentHeight: number;
-  margin: { top: number; right: number; bottom: number; left: number };
-  columnCount: number;
-  rowCount: number;
-  layout: "fluid" | "fill";
-  binSize: number | undefined;
-  separator: Pick<HeatmapSeparatorLayout, "spacing" | "atColumns"> | null;
-}): HeatmapDimensions {
-  const { width, parentHeight, margin, rowCount, layout, binSize, separator } = params;
-  const columnCount = Math.max(params.columnCount, 1);
-  const innerWidthBudget = Math.max(width - margin.left - margin.right, 0);
-  const availableHeight = Math.max(parentHeight - margin.top - margin.bottom, 0);
-  const separatorCount = separator ? getHeatmapSeparatorCount(separator) : 0;
-  const separatorSpacing = separator?.spacing ?? 0;
+interface HeatmapDimensionsMargin {
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
+}
 
-  let binWidth: number;
-  let binHeight: number;
+interface HeatmapDimensionsParams {
+  readonly width: number;
+  readonly parentHeight: number;
+  readonly margin: HeatmapDimensionsMargin;
+  readonly columnCount: number;
+  readonly rowCount: number;
+  readonly layout: "fluid" | "fill";
+  readonly binSize: number | undefined;
+  readonly separator: Pick<HeatmapSeparatorLayout, "spacing" | "atColumns"> | null;
+}
 
-  if (binSize != null && binSize > 0) {
-    binWidth = binSize;
-    binHeight = binSize;
-  } else if (layout === "fluid") {
-    const cellSize = Math.max((innerWidthBudget - separatorCount * separatorSpacing) / columnCount, 0);
-    binWidth = cellSize;
-    binHeight = cellSize;
-  } else {
-    const cellSize = Math.min(
-      Math.max((innerWidthBudget - separatorCount * separatorSpacing) / columnCount, 0),
-      availableHeight / rowCount,
-    );
-    binWidth = cellSize;
-    binHeight = cellSize;
-  }
+interface HeatmapCellSizeBudget {
+  readonly columnCount: number;
+  readonly innerWidthBudget: number;
+  readonly separatorCount: number;
+  readonly separatorSpacing: number;
+}
 
-  const plotInnerWidth = getHeatmapPlotInnerWidth(columnCount, binWidth, separator);
-  const innerHeight = rowCount * binHeight;
+const resolveHeatmapCellSize = (params: Readonly<HeatmapDimensionsParams>, budget: Readonly<HeatmapCellSizeBudget>): number => {
+  const { columnCount, innerWidthBudget, separatorCount, separatorSpacing } = budget;
+  const widthConstrainedSize = Math.max((innerWidthBudget - separatorCount * separatorSpacing) / columnCount, 0);
+  if (params.layout === "fluid") {return widthConstrainedSize;}
+  const availableHeight = Math.max(params.parentHeight - params.margin.top - params.margin.bottom, 0);
+  return Math.min(widthConstrainedSize, availableHeight / params.rowCount);
+}
+
+/**
+ * @param params - Sizing inputs.
+ * @returns The resolved chart/plot dimensions.
+ */
+interface SelectedHeatmapCellSize {
+  readonly cellSize: number;
+  readonly explicitBinSize: number | undefined;
+}
+
+// Explicit `binSize` wins; otherwise the layout-constrained size.
+const selectHeatmapCellSize = (params: Readonly<HeatmapDimensionsParams>, budget: Readonly<HeatmapCellSizeBudget>): SelectedHeatmapCellSize => {
+  const explicitBinSize = params.binSize !== undefined && params.binSize > 0 ? params.binSize : undefined;
+  const cellSize = explicitBinSize ?? resolveHeatmapCellSize(params, budget);
+  return { cellSize, explicitBinSize };
+}
+
+interface HeatmapChartOuterSize {
+  readonly height: number;
+  readonly width: number;
+}
+
+interface ResolveHeatmapOuterSizeParams {
+  readonly explicitBinSize: number | undefined;
+  readonly innerHeight: number;
+  readonly layout: "fluid" | "fill";
+  readonly margin: HeatmapDimensionsMargin;
+  readonly parentHeight: number;
+  readonly plotInnerWidth: number;
+  readonly width: number;
+}
+
+// Outer height/width around the resolved plot area.
+const resolveHeatmapOuterSize = (params: Readonly<ResolveHeatmapOuterSizeParams>): HeatmapChartOuterSize => {
+  const { explicitBinSize, innerHeight, layout, margin, parentHeight, plotInnerWidth, width } = params;
   const height =
     layout === "fluid"
       ? margin.top + innerHeight + margin.bottom
       : Math.max(parentHeight, margin.top + innerHeight + margin.bottom);
   const chartWidth =
-    binSize != null && binSize > 0 && layout === "fluid"
+    explicitBinSize !== undefined && layout === "fluid"
       ? margin.left + plotInnerWidth + margin.right
       : width;
+  return { height, width: chartWidth };
+}
+
+const computeHeatmapDimensions = (params: Readonly<HeatmapDimensionsParams>): HeatmapDimensions => {
+  const { width, margin, rowCount, layout, separator } = params;
+  const columnCount = Math.max(params.columnCount, 1);
+  const innerWidthBudget = Math.max(width - margin.left - margin.right, 0);
+  const separatorCount = separator ? getHeatmapSeparatorCount(separator) : 0;
+  const separatorSpacing = separator?.spacing ?? 0;
+
+  const selected = selectHeatmapCellSize(params, { columnCount, innerWidthBudget, separatorCount, separatorSpacing });
+  const plotInnerWidth = getHeatmapPlotInnerWidth(columnCount, selected.cellSize, separator);
+  const innerHeight = rowCount * selected.cellSize;
+  const outer = resolveHeatmapOuterSize({
+    explicitBinSize: selected.explicitBinSize,
+    innerHeight,
+    layout,
+    margin,
+    parentHeight: params.parentHeight,
+    plotInnerWidth,
+    width,
+  });
 
   return {
-    binWidth,
-    binHeight,
-    innerWidth: plotInnerWidth,
+    binHeight: selected.cellSize,
+    binWidth: selected.cellSize,
+    height: outer.height,
     innerHeight,
-    height,
-    width: chartWidth,
+    innerWidth: plotInnerWidth,
+    width: outer.width,
   };
 }
+
+export {
+  HEATMAP_MONTHS_ONE_YEAR,
+  HEATMAP_MONTHS_SIX,
+  HEATMAP_WEEKS_ONE_YEAR,
+  HEATMAP_DAY_LABELS,
+  getHeatmapCalendarRangeStart,
+  getHeatmapYearStartMonth,
+  getHeatmapWeekStartSunday,
+  getHeatmapWeekCount,
+  countHeatmapWeekDaysOnOrAfter,
+  getHeatmapWeekStartAlignedToRange,
+  resolveHeatmapWeekRange,
+  getHeatmapContributionLevel,
+  getHeatmapDayLabels,
+  formatHeatmapYAxisLabel,
+  shouldShowHeatmapYAxisTick,
+  rotateHeatmapColumnBins,
+  getHeatmapColumnMonthAnchor,
+  formatHeatmapMonthShort,
+  formatHeatmapTooltipDate,
+  formatHeatmapTooltipWeekday,
+  formatHeatmapContributionLabel,
+  getHeatmapColumnStartDate,
+  getHeatmapColumnEndDate,
+  getHeatmapTimeExtent,
+  buildHeatmapTimeXScale,
+  buildHeatmapBrushYScale,
+  filterHeatmapColumns,
+  isHeatmapGhostBin,
+  inferHeatmapCalendarRangeStart,
+  resolveHeatmapDisplayRange,
+  normalizeHeatmapSeparatorConfig,
+  getHeatmapSeparatorColumnIndices,
+  getCalendarQuarter,
+  getCalendarQuarterStartDatesBetween,
+  findHeatmapColumnIndexForDate,
+  buildHeatmapQuarterSeparatorGroups,
+  resolveHeatmapSeparatorLayout,
+  getHeatmapSeparatorCount,
+  getHeatmapColumnXOffset,
+  getHeatmapPlotInnerWidth,
+  getHeatmapSeparatorLineY,
+  getHeatmapSeparatorX,
+  resolveHeatmapSeparatorStrokeDasharray,
+  buildHeatmapSeparatorGradientStops,
+  isHeatmapHoverEffectEnabled,
+  resolveHeatmapHoverStyle,
+  resolveHeatmapRowOpacity,
+  buildHeatmapRowOpacity,
+  buildHeatmapLegendGradient,
+  computeHeatmapDimensions,
+};
+
+export type {
+  HeatmapBin,
+  HeatmapColumn,
+  HeatmapWeekRange,
+  HeatmapWeekStartDay,
+  HeatmapYAxisLabelFormat,
+  HeatmapYAxisTickFilter,
+  HeatmapDisplayRange,
+  HeatmapSeparatorGroupBy,
+  HeatmapSeparatorParsedConfig,
+  HeatmapSeparatorGroup,
+  HeatmapSeparatorLayout,
+  HeatmapColumnSeparatorsConfig,
+  HeatmapSeparatorLineYParams,
+  HeatmapSeparatorLineYSpan,
+  HeatmapSeparatorStrokeStyle,
+  HeatmapSeparatorGradient,
+  HeatmapSeparatorGradientStop,
+  HeatmapHoverStyleParams,
+  HeatmapHoverStyle,
+  HeatmapLegendGradientLevelStyle,
+  HeatmapDimensions,
+  HeatmapDimensionsMargin,
+  HeatmapDimensionsParams,
+};

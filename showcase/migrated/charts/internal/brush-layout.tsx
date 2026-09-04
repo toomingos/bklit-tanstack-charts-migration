@@ -1,57 +1,32 @@
 "use client";
 
-// bklit chart-brush-layout.tsx:100-122 — JSX layout half, ported 1:1
-// (adapt imports/style refs only). Cites refer to bklit file:line.
+// Bklit brush layout half, ported 1:1.
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import {
-  useBrushSelection,
-  type BrushLayoutState,
-} from "./brush-selection";
+import { useBrushSelection } from './brush-selection';
+import type { BrushLayoutState } from './brush-selection';
+import type { ChartDatum } from "./types";
 
-export type { BrushLayoutState };
-
-export interface BrushLayoutProps {
-  data: Record<string, unknown>[];
-  xDataKey?: string;
-  xExtentMax?: Date;
-  enabled: boolean;
-  height: number;
-  fitMainContent?: boolean;
-  className?: string;
-  children: (layout: BrushLayoutState) => React.ReactNode;
-  brushStrip?: (layout: BrushLayoutState) => React.ReactNode;
+interface BrushLayoutProps {
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly xDataKey?: string;
+  readonly xExtentMax?: Date;
+  readonly enabled: boolean;
+  readonly height: number;
+  readonly fitMainContent?: boolean;
+  readonly className?: string;
+  readonly children: (layout: Readonly<BrushLayoutState>) => React.ReactNode;
+  readonly brushStrip?: (layout: Readonly<BrushLayoutState>) => React.ReactNode;
 }
 
-// repos/bklit-ui/packages/ui/src/charts/chart-brush-layout.tsx:47-122 —
-// flex column: main content first (flex: 1 unless fitMainContent), brush
-// strip second at fixed height px, only when enabled && brushStrip. Wires
-// useBrushSelection and passes layout state to both render props.
-export const BrushLayout = React.memo(function BrushLayout({
-  data,
-  xDataKey = "date",
-  xExtentMax,
-  enabled,
-  height,
-  fitMainContent = false,
-  className,
-  children,
-  brushStrip,
-}: BrushLayoutProps) {
-  const layout = useBrushSelection({
-    data,
-    xDataKey,
-    xExtentMax,
-    enabled,
-  });
-
-  const layoutState: BrushLayoutState = React.useMemo(
+const useBrushLayoutState = (layout: ReturnType<typeof useBrushSelection>): BrushLayoutState =>
+  React.useMemo(
     () => ({
-      xDomain: layout.xDomain,
-      xDomainSlotCount: layout.xDomainSlotCount,
       brushSelection: layout.brushSelection,
       onBrushSelectionChange: layout.onBrushSelectionChange,
+      xDomain: layout.xDomain,
+      xDomainSlotCount: layout.xDomainSlotCount,
     }),
     [
       layout.xDomain,
@@ -61,7 +36,26 @@ export const BrushLayout = React.memo(function BrushLayout({
     ],
   );
 
-  // repos/bklit-ui/packages/ui/src/charts/chart-brush-layout.tsx:100-122
+const BrushLayout = React.memo(function BrushLayout({
+  data,
+  xDataKey = "date",
+  xExtentMax,
+  enabled,
+  height,
+  fitMainContent = false,
+  className,
+  children,
+  brushStrip,
+}: Readonly<BrushLayoutProps>) {
+  const layout = useBrushSelection({
+    data,
+    enabled,
+    xDataKey,
+    xExtentMax,
+  });
+
+  const layoutState = useBrushLayoutState(layout);
+
   return (
     <div
       className={cn(
@@ -78,11 +72,17 @@ export const BrushLayout = React.memo(function BrushLayout({
       >
         {children(layoutState)}
       </div>
-      {enabled && brushStrip ? (
+      {enabled && brushStrip && (
         <div className="min-h-0 shrink-0" style={{ height }}>
           {brushStrip(layoutState)}
         </div>
-      ) : null}
+      )}
     </div>
   );
 });
+
+BrushLayout.displayName = "BrushLayout";
+
+export { BrushLayout };
+export type { BrushLayoutProps };
+export type { BrushLayoutState } from './brush-selection';

@@ -1,0 +1,269 @@
+import { useCallback, useEffectEvent, useLayoutEffect, useRef } from 'react';
+import type { ReactElement, RefObject } from 'react';
+import { createSpring } from './spring';
+import type { Spring } from './spring';
+import { useChartConfig } from './chart-config-context';
+import type { SpringConfig } from './chart-config-context';
+
+interface TooltipDotProps {
+  x: number;
+  y: number;
+  visible: boolean;
+  color: string;
+  size?: number;
+  strokeColor?: string;
+  strokeWidth?: number;
+  variant?: "dot" | "ring";
+  cornerRadiusFraction?: number;
+  springConfig?: SpringConfig;
+  animate?: boolean;
+}
+
+// Ring corner radius never exceeds half the ring's side length (a full stadium/circle shape).
+const RING_CORNER_RADIUS_MAX_FRACTION = 0.5;
+
+const ringCornerRadius = (halfExtent: number, cornerRadiusFraction: number): number => {
+  const side = halfExtent * 2;
+  return side * Math.max(0, Math.min(RING_CORNER_RADIUS_MAX_FRACTION, cornerRadiusFraction));
+};
+
+interface ResolveDotPaintOptions {
+  readonly color: string;
+  readonly isRing: boolean;
+  readonly strokeColor: string;
+}
+
+interface DotPaint {
+  readonly fill: string;
+  readonly stroke: string;
+}
+
+const resolveDotPaint = (options: Readonly<ResolveDotPaintOptions>): DotPaint => {
+  const { color, isRing, strokeColor } = options;
+  return { fill: isRing ? "transparent" : color, stroke: isRing ? color : strokeColor };
+};
+
+interface RetargetDotSpringsOptions {
+  readonly animate: boolean;
+  readonly springXRef: RefObject<Spring | undefined>;
+  readonly springYRef: RefObject<Spring | undefined>;
+  readonly visible: boolean;
+  readonly x: number;
+  readonly y: number;
+}
+
+// Plain `set()` retargets the in-flight spring without cutting its animation (unlike `jump()`).
+const retargetDotSprings = (options: Readonly<RetargetDotSpringsOptions>): void => {
+  const { animate, springXRef, springYRef, visible, x, y } = options;
+  if (animate && visible) {
+    springXRef.current?.set(x);
+    springYRef.current?.set(y);
+  }
+};
+
+interface StopDotSpringsOptions {
+  readonly springXRef: RefObject<Spring | undefined>;
+  readonly springYRef: RefObject<Spring | undefined>;
+}
+
+// Teardown stops both springs and releases them so the next reveal re-seeds from rest.
+const stopDotSprings = (options: Readonly<StopDotSpringsOptions>): void => {
+  const { springXRef, springYRef } = options;
+  springXRef.current?.stop();
+  springYRef.current?.stop();
+  springXRef.current = undefined;
+  springYRef.current = undefined;
+};
+
+interface DotPositionSpringsOptions {
+  readonly animate: boolean;
+  readonly circleRef: RefObject<SVGCircleElement | null>;
+  readonly effectiveSpring: SpringConfig;
+  readonly rectRef: RefObject<SVGRectElement | null>;
+  readonly size: number;
+  readonly visible: boolean;
+  readonly x: number;
+  readonly y: number;
+}
+
+const useDotPositionSprings = (options: Readonly<DotPositionSpringsOptions>): void => {
+  const { animate, circleRef, effectiveSpring, rectRef, size, visible, x, y } = options;
+  const springXRef = useRef<Spring | undefined>(undefined);
+  const springYRef = useRef<Spring | undefined>(undefined);
+
+  const ensureSprings = useCallback(() => {
+    if (!animate) {return;}
+    const springX = springXRef.current ?? createSpring(x, effectiveSpring.stiffness, effectiveSpring.damping, (nx) => {
+      if (circleRef.current) {circleRef.current.setAttribute("cx", String(nx));}
+      if (rectRef.current) {rectRef.current.setAttribute("x", String(nx - size));}
+    });
+    springXRef.current = springX;
+    const springY = springYRef.current ?? createSpring(y, effectiveSpring.stiffness, effectiveSpring.damping, (ny) => {
+      if (circleRef.current) {circleRef.current.setAttribute("cy", String(ny));}
+      if (rectRef.current) {rectRef.current.setAttribute("y", String(ny - size));}
+    });
+    springYRef.current = springY;
+  }, [animate, circleRef, effectiveSpring, rectRef, size, x, y]);
+
+  // Springs own animated attrs exclusively; React must not set them via JSX.
+  // Plain `set()` retargets the in-flight spring without cutting its animation.
+  useLayoutEffect((): void => {
+    retargetDotSprings({ animate, springXRef, springYRef, visible, x, y });
+  }, [animate, visible, x, y]);
+
+  // This effect seeds the springs when the dot appears and tears them down when it hides.
+  // It must key on `visible` alone.
+  // Position changes are already driven by the position effect above.
+  // Re-running here on every x/y would `jump()` the springs and cut the in-flight animation.
+  // The other values are read through an EffectEvent so the dependency list is honest.
+  // No suppression comment is needed because nothing reactive is omitted.
+  // Same pattern the charts use for their `inputsRef` reads.
+  const seedDotSprings = useEffectEvent((): boolean => {
+    if (!animate) { return false; }
+    ensureSprings();
+    springXRef.current?.jump(x);
+    springYRef.current?.jump(y);
+    return true;
+  });
+
+  useLayoutEffect((): (() => void) | undefined => {
+    if (!visible) { return undefined; }
+    const seeded = seedDotSprings();
+    if (!seeded) { return undefined; }
+    return (): void => {
+      stopDotSprings({ springXRef, springYRef });
+    };
+  }, [visible]);
+};
+
+interface RenderDotRingOptions {
+  readonly animate: boolean;
+  readonly fill: string;
+  readonly rectRef: RefObject<SVGRectElement | null>;
+  readonly rx: number;
+  readonly side: number;
+  readonly size: number;
+  readonly stroke: string;
+  readonly strokeWidth: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+const renderDotRing = (options: Readonly<RenderDotRingOptions>): ReactElement => {
+  const { animate, fill, rectRef, rx, side, size, stroke, strokeWidth, x, y } = options;
+  if (animate) {
+    return (
+      <rect
+        ref={rectRef}
+        height={side}
+        rx={rx}
+        ry={rx}
+        width={side}
+      />
+    );
+  }
+  return (
+    <rect
+      height={side}
+      rx={rx}
+      ry={rx}
+      width={side}
+      x={x - size}
+      y={y - size}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+    />
+  );
+};
+
+interface RenderDotCircleOptions {
+  readonly animate: boolean;
+  readonly circleRef: RefObject<SVGCircleElement | null>;
+  readonly fill: string;
+  readonly size: number;
+  readonly stroke: string;
+  readonly strokeWidth: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+const renderDotCircle = (options: Readonly<RenderDotCircleOptions>): ReactElement => {
+  const { animate, circleRef, fill, size, stroke, strokeWidth, x, y } = options;
+  if (animate) {
+    return <circle ref={circleRef} fill={fill} r={size} stroke={stroke} strokeWidth={strokeWidth} />;
+  }
+  return <circle cx={x} cy={y} fill={fill} r={size} stroke={stroke} strokeWidth={strokeWidth} />;
+};
+
+interface RenderDotOptions {
+  readonly animate: boolean;
+  readonly circleRef: RefObject<SVGCircleElement | null>;
+  readonly cornerRadiusFraction: number;
+  readonly fill: string;
+  readonly isRing: boolean;
+  readonly rectRef: RefObject<SVGRectElement | null>;
+  readonly size: number;
+  readonly stroke: string;
+  readonly strokeWidth: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+const renderDot = (options: Readonly<RenderDotOptions>): ReactElement => {
+  const { cornerRadiusFraction, isRing, size } = options;
+  const side = size * 2;
+  const rx = ringCornerRadius(size, cornerRadiusFraction);
+  if (isRing) {
+    return renderDotRing({ ...options, rx, side });
+  }
+  return renderDotCircle(options);
+};
+
+const TooltipDot = ({
+  x,
+  y,
+  visible,
+  color,
+  size = 5,
+  strokeColor = "var(--chart-background)",
+  strokeWidth = 2,
+  variant = "dot",
+  cornerRadiusFraction = 0.25,
+  springConfig,
+  animate = true,
+}: Readonly<TooltipDotProps>): ReactElement | undefined => {
+  const { tooltipSpring } = useChartConfig();
+  const effectiveSpring = springConfig ?? tooltipSpring;
+  const { fill, stroke } = resolveDotPaint({ color, isRing: variant === "ring", strokeColor });
+  // The strokeWidth prop always has a default of 2 by the time it reaches here, so the
+  // Ring-specific 1.5 fallback below was already dead; kept as a plain read
+  // To preserve the existing (pre-existing-bug) behaviour exactly.
+  const effectiveStrokeWidth = strokeWidth;
+
+  const circleRef = useRef<SVGCircleElement | null>(null);
+  const rectRef = useRef<SVGRectElement | null>(null);
+
+  useDotPositionSprings({ animate, circleRef, effectiveSpring, rectRef, size, visible, x, y });
+
+  if (!visible) {
+    return undefined;
+  }
+
+  return renderDot({
+    animate,
+    circleRef,
+    cornerRadiusFraction,
+    fill,
+    isRing: variant === "ring",
+    rectRef,
+    size,
+    stroke,
+    strokeWidth: effectiveStrokeWidth,
+    x,
+    y,
+  });
+};
+
+export { TooltipDot };
+export type { TooltipDotProps };

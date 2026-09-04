@@ -1,18 +1,20 @@
-import { createContext, useContext, useMemo, useRef, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import {
-  createHeatmapHoverCoordinator,
-  type HeatmapHoverCoordinator,
-  type HeatmapHoveredCell,
-  type HeatmapTooltipData,
-} from "./heatmap-hover-chrome";
+import { createContext, useContext, useMemo, useRef, useSyncExternalStore } from 'react';
+import type { CSSProperties, ReactElement, ReactNode } from 'react';
+import { createHeatmapHoverCoordinator } from './heatmap-hover-chrome';
+import type { HeatmapHoverCoordinator, HeatmapHoveredCell, HeatmapTooltipData } from './heatmap-hover-chrome';
 
 const HeatmapInteractionContext = createContext<HeatmapHoverCoordinator | null>(null);
 
-export function useHeatmapCoordinatorOptional(): HeatmapHoverCoordinator | null {
-  return useContext(HeatmapInteractionContext);
-}
+type HeatmapTooltipDataUpdater = (prev: HeatmapTooltipData | null) => HeatmapTooltipData | null;
 
-function useHeatmapCoordinator(): HeatmapHoverCoordinator {
+type HeatmapTooltipDataValue = HeatmapTooltipData | null | HeatmapTooltipDataUpdater;
+
+const isTooltipDataUpdater = (value: HeatmapTooltipDataValue): value is HeatmapTooltipDataUpdater => typeof value === "function";
+
+const useHeatmapCoordinatorOptional = (): HeatmapHoverCoordinator | null => useContext(HeatmapInteractionContext);
+
+
+const useHeatmapCoordinator = (): HeatmapHoverCoordinator => {
   const coordinator = useHeatmapCoordinatorOptional();
   if (!coordinator) {
     throw new Error("Heatmap interaction components must be rendered inside <HeatmapInteractionProvider> (HeatmapChart provides one automatically).");
@@ -20,7 +22,7 @@ function useHeatmapCoordinator(): HeatmapHoverCoordinator {
   return coordinator;
 }
 
-export interface HeatmapInteractionContextValue {
+interface HeatmapInteractionContextValue {
   hoveredCell: HeatmapHoveredCell | null;
   hoveredLegendLevel: number | null;
   tooltipData: HeatmapTooltipData | null;
@@ -30,41 +32,47 @@ export interface HeatmapInteractionContextValue {
   clearInteraction: () => void;
 }
 
-export function useHeatmapInteractionOptional(): HeatmapInteractionContextValue | null {
+const useHeatmapInteractionOptional = (): HeatmapInteractionContextValue | null => {
   const coordinator = useHeatmapCoordinatorOptional();
   const hoveredCell = useSyncExternalStore(
-    coordinator ? coordinator.subscribe : () => () => {},
+    coordinator ? coordinator.subscribe : (): () => void => (): void => {
+      // No coordinator: nothing to unsubscribe.
+    },
     () => coordinator?.getHoveredCell() ?? null,
     () => null,
   );
   const hoveredLegendLevel = useSyncExternalStore(
-    coordinator ? coordinator.subscribe : () => () => {},
+    coordinator ? coordinator.subscribe : (): () => void => (): void => {
+      // No coordinator: nothing to unsubscribe.
+    },
     () => coordinator?.getHoveredLegendLevel() ?? null,
     () => null,
   );
   const tooltipData = useSyncExternalStore(
-    coordinator ? coordinator.subscribe : () => () => {},
+    coordinator ? coordinator.subscribe : (): () => void => (): void => {
+      // No coordinator: nothing to unsubscribe.
+    },
     () => coordinator?.getTooltipData() ?? null,
     () => null,
   );
   return useMemo<HeatmapInteractionContextValue | null>(() => {
-    if (!coordinator) return null;
+    if (!coordinator) {return null;}
     return {
+      clearInteraction: () =>{  coordinator.clearInteraction(); },
       hoveredCell,
       hoveredLegendLevel,
-      tooltipData,
-      setHoveredCell: (cell) => coordinator.setHoveredCell(cell),
-      setHoveredLegendLevel: (level) => coordinator.setHoveredLegendLevel(level),
+      setHoveredCell: (cell) =>{  coordinator.setHoveredCell(cell); },
+      setHoveredLegendLevel: (level) =>{  coordinator.setHoveredLegendLevel(level); },
       setTooltipData: (data) => {
-        const resolved = typeof data === "function" ? data(coordinator.getTooltipData()) : data;
+        const resolved = isTooltipDataUpdater(data) ? data(coordinator.getTooltipData()) : data;
         coordinator.setTooltipData(resolved);
       },
-      clearInteraction: () => coordinator.clearInteraction(),
+      tooltipData,
     };
   }, [coordinator, hoveredCell, hoveredLegendLevel, tooltipData]);
 }
 
-export function useHeatmapInteraction(): HeatmapInteractionContextValue {
+const useHeatmapInteraction = (): HeatmapInteractionContextValue => {
   const value = useHeatmapInteractionOptional();
   if (!value) {
     throw new Error("useHeatmapInteraction must be used within a HeatmapInteractionProvider (HeatmapChart provides one automatically).");
@@ -72,50 +80,51 @@ export function useHeatmapInteraction(): HeatmapInteractionContextValue {
   return value;
 }
 
-export interface HeatmapInteractionProviderProps {
+interface HeatmapInteractionProviderProps {
   children?: ReactNode;
   coordinator?: HeatmapHoverCoordinator;
 }
 
-export function HeatmapInteractionProvider({ children, coordinator }: HeatmapInteractionProviderProps) {
+const HeatmapInteractionProvider = ({ children, coordinator }: Readonly<HeatmapInteractionProviderProps>): ReactElement => {
   const ownRef = useRef<HeatmapHoverCoordinator | null>(null);
-  if (ownRef.current === null) ownRef.current = createHeatmapHoverCoordinator();
+  if (ownRef.current === null) {ownRef.current = createHeatmapHoverCoordinator();}
   const resolved = coordinator ?? ownRef.current;
   return <HeatmapInteractionContext.Provider value={resolved}>{children}</HeatmapInteractionContext.Provider>;
-}
+};
 
-export interface HeatmapInteractionBoundaryProps {
+interface HeatmapInteractionBoundaryProps {
   children?: ReactNode;
   className?: string;
   style?: CSSProperties;
 }
 
-export function HeatmapInteractionBoundary({ children, className, style }: HeatmapInteractionBoundaryProps) {
+const HeatmapInteractionBoundary = ({ children, className, style }: Readonly<HeatmapInteractionBoundaryProps>): ReactElement => {
   const coordinator = useHeatmapCoordinator();
   return (
     <div
       className={className}
       style={style}
-      onPointerLeave={() => coordinator.clearInteraction()}
+      onPointerLeave={() =>{  coordinator.clearInteraction(); }}
     >
       {children}
     </div>
   );
-}
+};
 
-export interface HeatmapInteractionRootProps {
+interface HeatmapInteractionRootProps {
   children?: ReactNode;
   className?: string;
   style?: CSSProperties;
   coordinator?: HeatmapHoverCoordinator;
 }
 
-export function HeatmapInteractionRoot({ children, className, style, coordinator }: HeatmapInteractionRootProps) {
-  return (
+const HeatmapInteractionRoot = ({ children, className, style, coordinator }: Readonly<HeatmapInteractionRootProps>): ReactElement => (
     <HeatmapInteractionProvider coordinator={coordinator}>
       <HeatmapInteractionBoundary className={className} style={style}>
         {children}
       </HeatmapInteractionBoundary>
     </HeatmapInteractionProvider>
-  );
-}
+);
+
+export { useHeatmapCoordinatorOptional, useHeatmapInteractionOptional, useHeatmapInteraction, HeatmapInteractionProvider, HeatmapInteractionBoundary, HeatmapInteractionRoot };
+export type { HeatmapInteractionContextValue, HeatmapInteractionProviderProps, HeatmapInteractionBoundaryProps, HeatmapInteractionRootProps };

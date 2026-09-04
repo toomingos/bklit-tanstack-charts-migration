@@ -1,9 +1,4 @@
-// Q2 API-compatibility fixture (research/05): exercises every public prop and
-// callback the migrated LineChart supports at pilot scope (docs/LOG.md D11 —
-// the canonical registry demo path plus the pilot's documented extras). Must
-// typecheck with zero errors via `tsc --noEmit` (included from
-// bench/app/tsconfig.json). Runtime smoke is covered by the bench scenarios
-// (console-errors column in docs/BENCHMARKS.md must be 0).
+// Q2 API fixture: exercises migrated LineChart public props; must typecheck (tsc --noEmit).
 import * as React from "react";
 import { curveLinear, curveNatural } from "d3-shape";
 import {
@@ -36,7 +31,6 @@ export function LineChartApiFixture() {
 
   return (
     <>
-      {/* Canonical demo path (registry example parity). */}
       <LineChart data={data} onPhaseChange={onPhaseChange}>
         <Grid horizontal />
         <Line
@@ -48,7 +42,6 @@ export function LineChartApiFixture() {
         <ChartTooltip />
       </LineChart>
 
-      {/* Full pilot prop surface. */}
       <LineChart
         data={data}
         xDataKey="date"

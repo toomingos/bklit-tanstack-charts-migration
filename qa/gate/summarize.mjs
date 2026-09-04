@@ -1,14 +1,7 @@
-// Turns a gate run's artefacts (qa-matrix.json, bench.json, bundle.json,
-// checks.json, census.json, probes.json — whichever exist) into SUMMARY.md: a
-// list of actionable issues with stable ids, a category, chart(s), cell(s),
-// evidence paths and an EMPTY hypothesis field (classification only, no
-// diagnosis). Optionally merges the issues into docs/phase-6/gate/ISSUES.md.
-//
+// Gate SUMMARY.md from a run's artefacts (qa-matrix/bench/bundle/checks/census/probes, whichever exist): actionable
+// issues with stable ids (qa:<chart>/<n>:<cat> bench:<cell>:<metric> bundle:<scenario> checks:<name> probe:<probe>:<chart>),
+// a category, evidence paths, and an intentionally EMPTY hypothesis field. Optionally merges into ISSUES.md.
 //   pnpm gate:summary [-- --run-dir <dir> --issues --label <run label>]
-//
-// Stable ids:  qa:<chart>/<n>:<category>   bench:<impl/chart/n>:<metric>
-//              bundle:<scenario>            checks:<name>   census
-//              probe:<probe>:<chart>[/<n>]
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { GATE_DOCS, GATE_PX, LATEST_DIR, ROOT, fmtMs, log, mdTable, parseArgs, publishLatest, readJson, relPath, writeJson } from "./lib.mjs";
@@ -18,9 +11,9 @@ export const ISSUES_FILE = path.join(GATE_DOCS, "ISSUES.md");
 export const CATEGORIES = ["hover-dim", "legend", "tooltip", "axis", "motion/reveal", "renderer-regime", "brush/zoom", "polar", "harness-race", "bench", "bundle", "census", "checks"];
 
 const POLAR = new Set(["pie", "ring", "radar", "gauge", "gaugelinear", "sunburst", "sunchrome", "radial", "radialbar", "radialarea", "polar"]);
-// D472: cardinality-gated renderer regime (NATIVE_MOTION_MAX_POINTS = 200).
+// GUARD: cardinality-gated renderer regime (NATIVE_MOTION_MAX_POINTS = 200).
 const REGIME_BASE = ["scatter", "composed", "line", "area", "bar", "candlestick"];
-const HARNESS_RACE = new Set(["choropleth/hover-30", "candlestick/hover-30"]); // D413 straddle cells
+const HARNESS_RACE = new Set(["choropleth/hover-30", "candlestick/hover-30"]); // known straddle cells
 
 export function classifyQaCell(chart, n, cell, row = {}) {
   const base = chart.replace(/multiaxis$/, "");
@@ -138,7 +131,6 @@ export function summaryMd({ runDir, label, art, issues }) {
   return out.join("\n") + "\n";
 }
 
-// ---- ISSUES.md ledger merge -------------------------------------------------
 const LEDGER_HEADER = ["| id | category | charts | cells / metric | first-seen run | status | owner note |", "| --- | --- | --- | --- | --- | --- | --- |"];
 
 export function parseLedger(text) {
@@ -152,9 +144,7 @@ export function parseLedger(text) {
   return rows;
 }
 
-// `scope` says which rows this run could have reproduced: qa rows only for the
-// chart/n pairs that were actually run, bench/bundle/checks/probe rows only when
-// that stage ran. Rows outside the scope keep their status untouched.
+// `scope` limits ledger updates to rows this run could reproduce; out-of-scope rows keep their status.
 export function mergeLedger(existingText, issues, runLabel, scope = null) {
   const rows = parseLedger(existingText);
   const seen = new Set();

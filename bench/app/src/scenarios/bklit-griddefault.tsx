@@ -1,7 +1,4 @@
-// Wave 1 AX2 fixture (P1.1 gate): identical to bklit-line.tsx except the
-// Grid child is PROP-LESS — the point of this scenario is to pixel-gate the
-// grid `horizontal` DEFAULT (legacy grid.tsx:97 defaults horizontal to true;
-// the migrated resolveGridGuide must match). Do not add grid props here.
+// Gates the grid horizontal default: keep Grid prop-less, do not add props here.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import { LineChart, Line, Grid, XAxis, ChartTooltip } from "@bklitui/ui/charts";

@@ -1,6 +1,4 @@
-// Wave 1 AX2 fixture (P1.1 gate) — IDENTICAL usage to bklit-griddefault.tsx,
-// only the import source changes: prop-less <Grid/> pixel-gates the migrated
-// grid `horizontal` default against legacy. Do not add grid props here.
+// AX2 gate: prop-less Grid pixel-gates the migrated horizontal default. GUARD: do not add grid props.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import { LineChart, Line, Grid, XAxis, ChartTooltip } from "@migrated/charts";

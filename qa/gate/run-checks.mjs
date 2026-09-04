@@ -1,19 +1,33 @@
-// Static checks + census for the gate: tsc, bench/app build, eslint (showcase),
-// reach-in guard (census.json), bundle gate (pin check only, no re-measure).
-//
+// Static checks + census for the gate: tsc, bench/app build, oxlint (ultracite), reach-in guard, bundle-gate pin check.
 //   pnpm gate:checks [-- --run-dir <dir> --skip build,lint]
-//
-// Output: checks.json (exit codes, durations, one-line summaries) + census.json
-// (scripts/reach-in-guard.mjs --json).
+// Output: checks.json + census.json.
 import path from "node:path";
 import { APP_DIR, ROOT, RUNS_DIR, ensureDir, fmtMs, log, nowStamp, parseArgs, publishLatest, relPath, runCmd, sleep, writeJson } from "./lib.mjs";
 
 const TAG = "[gate:checks]";
 
-function summarizeEslint(stdout) {
-  const m = /✖ (\d+) problems? \((\d+) errors?, (\d+) warnings?\)/.exec(stdout);
-  if (m) return { problems: +m[1], errors: +m[2], warnings: +m[3] };
-  return { problems: 0, errors: 0, warnings: 0 };
+function summarizeOxlint(stdout) {
+  // The lint check runs with `--format=json`: oxlint's default (graphical) reporter emits
+  // multi-line snippets, and its trailing "Found N warnings and M errors." line is not
+  // reliable under js-plugins. The JSON reporter gives one object per diagnostic.
+  //
+  // The payload is an OBJECT — `{ "diagnostics": [...], "number_of_files": N, ... }` — so
+  // slicing from the first "[" lands inside the array and leaves the object's trailing
+  // fields as garbage after the close bracket. Always slice from the first "{".
+  let diagnostics;
+  try {
+    const parsed = JSON.parse(stdout.slice(stdout.indexOf("{")));
+    diagnostics = Array.isArray(parsed) ? parsed : (parsed.diagnostics ?? []);
+  } catch {
+    return { parseError: true };
+  }
+  const errors = diagnostics.filter((d) => d.severity === "error").length;
+  const warnings = diagnostics.filter((d) => d.severity === "warning").length;
+  // Rule counts make a regression legible without reopening the log.
+  const byRule = {};
+  for (const d of diagnostics) byRule[d.code] = (byRule[d.code] ?? 0) + 1;
+  const topRules = Object.entries(byRule).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  return { problems: diagnostics.length, errors, warnings, topRules };
 }
 
 export async function runChecks(opts = {}) {
@@ -38,14 +52,13 @@ export async function runChecks(opts = {}) {
   await add("tsc", "npx", ["tsc", "--noEmit"], path.join(ROOT, "showcase"), (s) => ({ errors: (s.match(/error TS\d+/g) ?? []).length }));
   const build = await add("build", "npm", ["run", "build"], APP_DIR, (s) => ({ ok: /built in/.test(s) }));
   if (build && build.code !== 0 && !opts.noRetry) {
-    // showcase/migrated is edited concurrently by fix executors: a build failure
-    // may be transient. Retry once after 60 s and keep both attempts on record.
+    // GUARD: showcase/migrated is edited concurrently; a build failure may be transient, so retry once after 60s.
     log(TAG, "build failed — retrying once in 60 s (concurrent edits may be mid-flight)");
     await sleep(60_000);
     checks[checks.length - 1].name = "build (attempt 1)";
     await add("build", "npm", ["run", "build"], APP_DIR, (s) => ({ ok: /built in/.test(s), retried: true }));
   }
-  await add("lint", "npx", ["eslint", "migrated"], path.join(ROOT, "showcase"), summarizeEslint);
+  await add("lint", "npx", ["oxlint", "--type-aware", "--format=json", "migrated", "packages/migrated-charts"], path.join(ROOT, "showcase"), summarizeOxlint);
   const census = await add("census", "node", ["scripts/reach-in-guard.mjs", "--json"], ROOT, (s) => {
     try {
       const j = JSON.parse(s.slice(s.indexOf("{")));

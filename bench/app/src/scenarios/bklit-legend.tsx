@@ -1,11 +1,4 @@
-// Legend + ChartLegend visual-parity scenario (initiative 8, QA-ONLY — no
-// bench gating: a chart-less HTML legend has no B/T/M render-cost triangle,
-// D223 ruling 4). Renders the legacy ChartLegend (progress mode) and the
-// composable Legend stack (Marker/Label/Value/Progress) side by side from
-// one shared hovered index. There is no chart and no phase machinery, so
-// `window.__benchSettled` resolves after a double rAF; the legend-hover dim
-// (the global `.legend-container:has([data-hovered])` rule) is driven by
-// `window.__qaSetLegendHover` so QA captures are deterministic.
+// QA-only (no chart, no bench cost): legacy + composable legends side by side; hover via __qaSetLegendHover.
 import { useEffect, useState } from "react";
 import {
   ChartLegend,

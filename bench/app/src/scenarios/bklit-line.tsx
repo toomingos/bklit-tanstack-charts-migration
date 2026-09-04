@@ -1,6 +1,4 @@
-// Faithful port of repos/bklit-ui/packages/ui/registry/examples/line-chart.tsx
-// -- same component tree / props, data comes from the seeded generator
-// scaled to `n` instead of the 6-point demo array.
+// Registry port; seeded data scaled to n.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import { LineChart, Line, Grid, XAxis, ChartTooltip } from "@bklitui/ui/charts";

@@ -1,32 +1,34 @@
 "use client";
 
 import * as React from "react";
-import { scaleLinear, scaleUtc } from "d3-scale";
-import { edgeFadeMaskStops } from "./fade-mask";
-import { renderPatternPreset, type PatternPresetId, type PatternPresetOptions } from "./pattern-preset";
-import {
-  computeReferenceAreaRect,
-  type ReferenceAreaIfOverflow,
-  type ReferenceAreaRect,
-} from "./reference-area-geometry";
+import type { PatternPresetId } from './pattern-preset';
+import type { ReferenceAreaIfOverflow } from './reference-area-geometry';
 import type { ChartMargin } from "./use-chart-margin";
-import { domainForAxis } from "./y-domain";
-import { normalizeYAxisId } from "./y-axis-id";
-import { useSanitizedId } from "./use-sanitized-id";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { applyReferenceAreaVisibility, isReferenceAreaVisiblePhase, useReferenceAreaGeometry } from "./reference-area-scale";
+import { buildReferenceAreaFigure, resolveReferenceAreaPattern, resolveReferenceAreaStyle } from "./reference-area-figure";
 
-const DEFAULT_FILL = "color-mix(in oklch, var(--chart-foreground-muted) 12%, transparent)";
-const DEFAULT_FG_MUTED = "var(--chart-foreground-muted)";
-const REFERENCE_AREA_ENTER_MS = 420;
+const ReferenceAreaLayer = (props: ReferenceAreaLayerProps): React.ReactNode => {
+  const style = resolveReferenceAreaStyle(props);
+  const spatial = useReferenceAreaGeometry(props);
+  const patternNode = React.useMemo(() => resolveReferenceAreaPattern(style, spatial.patternId), [style.pattern, style.patternColor, style.patternScale, style.patternStrokeWidth, style.patternRadius, style.patternComplement, style.patternFill, style.patternDotFill, style.patternTileBackground, spatial.patternId]);
+  const visible = isReferenceAreaVisiblePhase(props.phase);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const gRef = React.useRef<SVGGElement | null>(null);
+  React.useLayoutEffect(() => {
+    const group = gRef.current;
+    if (!group) {return;}
+    applyReferenceAreaVisibility(group, { isLoaded: props.isLoaded, prefersReducedMotion, visible });
+  }, [visible, props.isLoaded, prefersReducedMotion]);
+  return buildReferenceAreaFigure({ figureRef: gRef, patternNode, spatial, style });
+}
 
-export interface ReferenceAreaLayerProps {
+interface ReferenceAreaLayerProps {
   y1?: number;
   y2?: number;
   x1?: Date | number;
   x2?: Date | number;
   yAxisId?: string | number;
-  /** RA2 — the chart's NICED per-axis y-domains. Optional: charts that are
-      single-axis by construction pass only `yDomain`. */
   yDomainsByAxis?: Record<string, [number, number]>;
   fill?: string;
   fillOpacity?: number;
@@ -57,7 +59,7 @@ export interface ReferenceAreaLayerProps {
   xDomain?: [number, number] | [Date, Date];
   xDataKey?: string;
   isTimeScale?: boolean;
-  barScale?: { (v: string): number | undefined; bandwidth: () => number; domain: () => string[] } | null;
+  barScale?: { (value: string): number | undefined; bandwidth: () => number; domain: () => string[] } | null;
   isBarChart?: boolean;
   bandWidth?: number;
   xRangePadding?: number;
@@ -66,251 +68,16 @@ export interface ReferenceAreaLayerProps {
   isLoaded?: boolean;
 }
 
-function bracketMarkerPath(centerX: number, edgeY: number, size: number, direction: "down" | "up"): string {
-  const half = size / 2;
-  if (direction === "down") return `M ${centerX - half} ${edgeY} L ${centerX + half} ${edgeY} L ${centerX} ${edgeY + size} Z`;
-  return `M ${centerX - half} ${edgeY} L ${centerX + half} ${edgeY} L ${centerX} ${edgeY - size} Z`;
-}
-
-function isReferenceAreaVisiblePhase(phase: string | undefined): boolean {
-  if (phase === undefined) return true;
-  return phase === "ready" || phase === "revealing" || phase === "gridTweenReady";
-}
-
-export function ReferenceAreaLayer(props: ReferenceAreaLayerProps) {
-  const {
-    y1, y2, x1, x2,
-    fill = DEFAULT_FILL,
-    fillOpacity = 1,
-    pattern = "none",
-    patternColor = DEFAULT_FG_MUTED,
-    patternScale = 1,
-    patternStrokeWidth,
-    patternRadius,
-    patternComplement,
-    patternFill,
-    patternDotFill,
-    patternTileBackground,
-    stroke = DEFAULT_FG_MUTED,
-    strokeWidth = 1,
-    strokeStyle = "dashed",
-    strokeDasharray = "4,4",
-    fadeEdges = true,
-    fadeEdgesLength = 10,
-    showMarkers = false,
-    markerColor = "var(--chart-1)",
-    markerSize = 6,
-    ifOverflow = "hidden",
-    className,
-    width, height, margin, yDomain, yDomainsByAxis, yAxisId, xDomain, xDataKey: _xDataKey, isTimeScale, barScale, isBarChart, xRangePadding, isCandlestickXScale,
-    phase, isLoaded,
-  } = props;
-
-  const innerWidth = Math.max(0, width - margin.left - margin.right);
-  const innerHeight = Math.max(0, height - margin.top - margin.bottom);
-  const uid = useSanitizedId();
-  const patternId = `bkm-ref-pattern-${uid}`;
-  const hMaskId = `bkm-ref-fade-${uid}`;
-  const hGradientId = `${hMaskId}-grad`;
-
-  // P6.1 / RA2 — a reference area is placed in the scale its OWN `yAxisId`
-  // names (bklit reference-area.tsx: `useYScale(yAxisId)`), not in the chart's
-  // primary scale. `yDomainsByAxis` carries the chart's NICED per-axis domains;
-  // `domainForAxis` applies legacy's fallback chain (requested axis, else the
-  // default axis, else `[0, 100]`). Charts that pass no map keep the single
-  // `yDomain` they always passed, so single-axis output is unchanged.
-  const effectiveYDomain = React.useMemo<[number, number]>(
-    () => (yDomainsByAxis ? domainForAxis(yDomainsByAxis, normalizeYAxisId(yAxisId)) : yDomain),
-    [yDomainsByAxis, yAxisId, yDomain],
-  );
-
-  const yScale = React.useMemo(
-    () => scaleLinear().domain(effectiveYDomain).range([innerHeight, 0]),
-    [effectiveYDomain, innerHeight],
-  );
-
-  const xScale: (v: Date) => number = React.useMemo(() => {
-    if (isBarChart && barScale) {
-      const band = barScale as unknown as { (v: string): number | undefined; bandwidth: () => number };
-      return (d: Date) => {
-        const raw = String(d instanceof Date ? d.toISOString() : String(d));
-        const n = band(raw);
-        if (typeof n === "number") return n + band.bandwidth() / 2;
-        return 0;
-      };
-    }
-    if (xDomain) {
-      const d0 = xDomain[0];
-      const d1 = xDomain[1];
-      const t0 = d0 instanceof Date ? d0.getTime() : (typeof d0 === "number" ? d0 : 0);
-      const t1 = d1 instanceof Date ? d1.getTime() : (typeof d1 === "number" ? d1 : 0);
-      if (isTimeScale || d0 instanceof Date) {
-        if (typeof xRangePadding === "number" && xRangePadding > 0) {
-          const insetLo = xRangePadding;
-          const insetHi = innerWidth - xRangePadding;
-          const insetScale = scaleUtc().domain([t0, t1]).range([insetLo, insetHi]);
-          return (d: Date) => insetScale(d) ?? 0;
-        }
-        if (isCandlestickXScale) {
-          const s = scaleUtc().domain([t0, t1]).range([0, innerWidth]);
-          return (d: Date) => s(d) ?? 0;
-        }
-        const s = scaleUtc().domain([t0, t1]).range([0, innerWidth]);
-        return (d: Date) => s(d) ?? 0;
-      }
-      const s = scaleLinear().domain([t0, t1]).range([0, innerWidth]);
-      return (d: Date) => s(d.getTime()) ?? 0;
-    }
-    return () => 0;
-  }, [xDomain, isTimeScale, isBarChart, barScale, isCandlestickXScale, innerWidth, xRangePadding]);
-
-  const rect: ReferenceAreaRect | null = React.useMemo(() => {
-    if (innerWidth <= 0 || innerHeight <= 0) return null;
-    if (isBarChart && barScale) {
-      const band = barScale as unknown as { (v: string): number | undefined; bandwidth: () => number };
-      const resolveBarX = (v: Date | number | string | undefined, fallback: number): number => {
-        if (v == null) return fallback;
-        if (v instanceof Date) {
-          const n = band(v.toISOString());
-          return typeof n === "number" ? n + band.bandwidth() / 2 : fallback;
-        }
-        if (typeof v === "number") {
-          const n = band(String(v));
-          if (typeof n === "number") return n + band.bandwidth() / 2;
-          return fallback;
-        }
-        const n = band(String(v));
-        return typeof n === "number" ? n + band.bandwidth() / 2 : fallback;
-      };
-      const left = resolveBarX(x1 as string | undefined, 0);
-      const right = resolveBarX(x2 as string | undefined, innerWidth);
-      const top = yScale(y1 as number) ?? 0;
-      const bottom = yScale(y2 as number) ?? innerHeight;
-      const hasY1 = y1 != null;
-      const hasY2 = y2 != null;
-      const topPx = hasY1 ? top : 0;
-      const bottomPx = hasY2 ? bottom : innerHeight;
-      const x = Math.min(left, right);
-      const y = Math.min(topPx, bottomPx);
-      const w = Math.abs(right - left);
-      const h = Math.abs(bottomPx - topPx);
-      if (w <= 0 || h <= 0) return null;
-      const r: ReferenceAreaRect = { x, y, width: w, height: h };
-      if (ifOverflow === "visible") return r;
-      if (ifOverflow === "discard") {
-        const inside = r.x >= 0 && r.y >= 0 && r.x + r.width <= innerWidth && r.y + r.height <= innerHeight;
-        return inside ? r : null;
-      }
-      const cx1 = Math.max(0, r.x);
-      const cy1 = Math.max(0, r.y);
-      const cx2 = Math.min(innerWidth, r.x + r.width);
-      const cy2 = Math.min(innerHeight, r.y + r.height);
-      const cw = cx2 - cx1;
-      const ch = cy2 - cy1;
-      if (cw <= 0 || ch <= 0) return null;
-      return { x: cx1, y: cy1, width: cw, height: ch };
-    }
-    return computeReferenceAreaRect({ innerWidth, innerHeight, x1: x1 as Date | number | undefined, x2: x2 as Date | number | undefined, y1, y2, ifOverflow, xScale, yScale });
-  }, [innerWidth, innerHeight, x1, x2, y1, y2, ifOverflow, xScale, yScale, isBarChart, barScale]);
-
-  const usesPattern = pattern !== "none";
-  const patternNode = React.useMemo(() => {
-    if (!usesPattern) return null;
-    return renderPatternPreset(pattern as PatternPresetId, patternId, {
-      color: patternColor,
-      scale: patternScale,
-      strokeWidth: patternStrokeWidth,
-      radius: patternRadius,
-      complement: patternComplement,
-      fill: patternFill,
-      dotFill: patternDotFill,
-      tileBackground: patternTileBackground,
-    } as PatternPresetOptions);
-  }, [usesPattern, pattern, patternId, patternColor, patternScale, patternStrokeWidth, patternRadius, patternComplement, patternFill, patternDotFill, patternTileBackground]);
-
-  const edgeMask = fadeEdges ? `url(#${hMaskId})` : undefined;
-  const lineDash = strokeStyle === "dashed" ? strokeDasharray : undefined;
-
-  const visible = isReferenceAreaVisiblePhase(phase);
-  const prefersReducedMotion = usePrefersReducedMotion();
-  const gRef = React.useRef<SVGGElement | null>(null);
-  React.useLayoutEffect(() => {
-    const g = gRef.current;
-    if (!g) return;
-    if (prefersReducedMotion) {
-      g.style.opacity = visible ? "1" : "0";
-      return;
-    }
-    if (isLoaded === false) {
-      g.style.opacity = "0";
-      return;
-    }
-    if (visible) {
-      g.style.transition = `opacity ${REFERENCE_AREA_ENTER_MS}ms ease-out`;
-      requestAnimationFrame(() => { g.style.opacity = "1"; });
-    } else {
-      g.style.opacity = "0";
-    }
-  }, [visible, isLoaded, prefersReducedMotion]);
-
-  if (!rect) return null;
-  const { x, y, width: rw, height: rh } = rect;
-  const topEdgeY = y;
-  const bottomEdgeY = y + rh;
-  const centerX = x + rw / 2;
-
-  const stops = fadeEdges ? edgeFadeMaskStops(fadeEdgesLength) : [];
-
-  return (
-    <svg
-      aria-hidden="true"
-      width={innerWidth}
-      height={innerHeight}
-      style={{ position: "absolute", left: margin.left, top: margin.top, overflow: "visible", pointerEvents: "none", zIndex: -1 }}
-    >
-      <g ref={gRef} className={className ?? "chart-reference-area"} style={{ opacity: 0 }}>
-        {edgeMask ? (
-          <defs>
-            <linearGradient id={hGradientId} x1="0%" x2="100%" y1="0%" y2="0%">
-              {stops.map((s) => (
-                <stop key={s.offset} offset={s.offset} stopColor="white" stopOpacity={s.opacity} />
-              ))}
-            </linearGradient>
-            <mask id={hMaskId}>
-              <rect fill={`url(#${hGradientId})`} height={innerHeight} width={innerWidth} x={0} y={0} />
-            </mask>
-          </defs>
-        ) : null}
-        {patternNode ? <defs>{patternNode}</defs> : null}
-        <rect fill={usesPattern && patternNode ? `url(#${patternId})` : fill} fillOpacity={fillOpacity} height={rh} mask={edgeMask} width={rw} x={x} y={y} />
-        <g mask={edgeMask}>
-          <line stroke={stroke} strokeDasharray={lineDash} strokeWidth={strokeWidth} x1={x} x2={x + rw} y1={topEdgeY} y2={topEdgeY} />
-          <line stroke={stroke} strokeDasharray={lineDash} strokeWidth={strokeWidth} x1={x} x2={x + rw} y1={bottomEdgeY} y2={bottomEdgeY} />
-        </g>
-        {showMarkers ? (
-          <>
-            <path d={bracketMarkerPath(centerX, topEdgeY, markerSize, "down")} fill={markerColor} />
-            <path d={bracketMarkerPath(centerX, bottomEdgeY, markerSize, "up")} fill={markerColor} />
-          </>
-        ) : null}
-      </g>
-    </svg>
-  );
-}
-
-export interface ReferenceAreaLayersGeom {
+interface ReferenceAreaLayersGeom {
   width: number;
   height: number;
   margin: ChartMargin;
-  /** The chart's PRIMARY niced y-domain — the one its marks actually paint in. */
   yDomain: [number, number];
-  /** RA2 — niced domains keyed by axis id, when the chart has more than the
-      primary axis. Omit for single-axis charts. */
   yDomainsByAxis?: Record<string, [number, number]>;
   xDomain?: [number, number] | [Date, Date];
   xDataKey?: string;
   isTimeScale?: boolean;
-  barScale?: { (v: string): number | undefined; bandwidth: () => number; domain: () => string[] } | null;
+  barScale?: { (value: string): number | undefined; bandwidth: () => number; domain: () => string[] } | null;
   isBarChart?: boolean;
   xRangePadding?: number;
   isCandlestickXScale?: boolean;
@@ -318,46 +85,43 @@ export interface ReferenceAreaLayersGeom {
   isLoaded?: boolean;
 }
 
-export function ReferenceAreaLayers({
+// Collected <ReferenceArea> child props: open-ended keys, owner-typed values.
+// Mirrors the element type of extractReferenceAreaProps (see reference-area-config).
+// Values stay open: the sole producer (live-line-chart extractLiveLineChildren) collects these
+// From children typed as the combined child-props intersection, so any narrower value type would
+// Need a type assertion at that push site. no-unsafe-dictionary-type is a documented residual here.
+type ReferenceAreaConfig = Record<string, unknown>;
+
+const isStringValue = <Value,>(value: Value): value is Value & string => typeof value === "string";
+
+const isKeyScalar = <Value,>(value: Value): value is Value & (number | boolean | bigint) =>
+  typeof value === "number" || typeof value === "boolean" || typeof value === "bigint";
+
+const stringifyReferenceAreaKeyPart = (value: unknown): string => {
+  if (isStringValue(value)) {return value;}
+  if (isKeyScalar(value)) {return String(value);}
+  if (value instanceof Date) {return String(value);}
+  if (value === undefined || value === null) {return "";}
+  return JSON.stringify(value);
+};
+
+const ReferenceAreaLayers = ({
   configs,
   geom,
 }: {
-  configs: Array<Record<string, unknown>>;
+  configs: ReferenceAreaConfig[];
   geom: ReferenceAreaLayersGeom;
-}) {
-  if (configs.length === 0) return null;
+}): React.ReactNode => {
+  if (configs.length === 0) {return undefined;}
   return (
     <>
-      {configs.map((p, i) => (
+      {configs.map((config: Readonly<ReferenceAreaConfig>) => (
+        // SAFETY: Each config is the props object of a <ReferenceArea> child element.
+        // Only elements whose role is "referenceArea" are collected (see extractReferenceAreaProps).
+        // React types those props as ReferenceAreaProps at the JSX creation site.
+        // Every field read below therefore already has its asserted type.
         <ReferenceAreaLayer
-          key={`ref-${i}`}
-          y1={p.y1 as number | undefined}
-          y2={p.y2 as number | undefined}
-          x1={p.x1 as Date | number | undefined}
-          x2={p.x2 as Date | number | undefined}
-          yAxisId={p.yAxisId as string | number | undefined}
-          fill={p.fill as string | undefined}
-          fillOpacity={p.fillOpacity as number | undefined}
-          pattern={p.pattern as PatternPresetId | undefined}
-          patternColor={p.patternColor as string | undefined}
-          patternScale={p.patternScale as number | undefined}
-          patternStrokeWidth={p.patternStrokeWidth as number | undefined}
-          patternRadius={p.patternRadius as number | undefined}
-          patternComplement={p.patternComplement as boolean | undefined}
-          patternFill={p.patternFill as string | undefined}
-          patternDotFill={p.patternDotFill as boolean | undefined}
-          patternTileBackground={p.patternTileBackground as string | undefined}
-          stroke={p.stroke as string | undefined}
-          strokeWidth={p.strokeWidth as number | undefined}
-          strokeStyle={p.strokeStyle as "solid" | "dashed" | undefined}
-          strokeDasharray={p.strokeDasharray as string | undefined}
-          fadeEdges={p.fadeEdges as boolean | undefined}
-          fadeEdgesLength={p.fadeEdgesLength as number | undefined}
-          showMarkers={p.showMarkers as boolean | undefined}
-          markerColor={p.markerColor as string | undefined}
-          markerSize={p.markerSize as number | undefined}
-          ifOverflow={p.ifOverflow as ReferenceAreaIfOverflow | undefined}
-          className={p.className as string | undefined}
+          key={`ref-${stringifyReferenceAreaKeyPart(config.y1)}-${stringifyReferenceAreaKeyPart(config.y2)}-${stringifyReferenceAreaKeyPart(config.x1)}-${stringifyReferenceAreaKeyPart(config.x2)}-${stringifyReferenceAreaKeyPart(config.yAxisId)}`}
           width={geom.width}
           height={geom.height}
           margin={geom.margin}
@@ -372,8 +136,38 @@ export function ReferenceAreaLayers({
           isCandlestickXScale={geom.isCandlestickXScale}
           phase={geom.phase}
           isLoaded={geom.isLoaded}
+          y1={config.y1 as number | undefined}
+          y2={config.y2 as number | undefined}
+          x1={config.x1 as Date | number | undefined}
+          x2={config.x2 as Date | number | undefined}
+          yAxisId={config.yAxisId as string | number | undefined}
+          fill={config.fill as string | undefined}
+          fillOpacity={config.fillOpacity as number | undefined}
+          pattern={config.pattern as PatternPresetId | undefined}
+          patternColor={config.patternColor as string | undefined}
+          patternScale={config.patternScale as number | undefined}
+          patternStrokeWidth={config.patternStrokeWidth as number | undefined}
+          patternRadius={config.patternRadius as number | undefined}
+          patternComplement={config.patternComplement as boolean | undefined}
+          patternFill={config.patternFill as string | undefined}
+          patternDotFill={config.patternDotFill as boolean | undefined}
+          patternTileBackground={config.patternTileBackground as string | undefined}
+          stroke={config.stroke as string | undefined}
+          strokeWidth={config.strokeWidth as number | undefined}
+          strokeStyle={config.strokeStyle as "solid" | "dashed" | undefined}
+          strokeDasharray={config.strokeDasharray as string | undefined}
+          fadeEdges={config.fadeEdges as boolean | undefined}
+          fadeEdgesLength={config.fadeEdgesLength as number | undefined}
+          showMarkers={config.showMarkers as boolean | undefined}
+          markerColor={config.markerColor as string | undefined}
+          markerSize={config.markerSize as number | undefined}
+          ifOverflow={config.ifOverflow as ReferenceAreaIfOverflow | undefined}
+          className={config.className as string | undefined}
         />
       ))}
     </>
   );
-}
+};
+
+export { ReferenceAreaLayer, ReferenceAreaLayers };
+export type { ReferenceAreaLayerProps, ReferenceAreaLayersGeom };

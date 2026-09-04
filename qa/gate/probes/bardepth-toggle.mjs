@@ -1,8 +1,5 @@
-// Probe: bardepth depth toggle. Mirrors the gate's depth-off / depth-on cells
-// via window.__qaSetBarDepthEnabled(bool) and records, per impl: element
-// counts and bar geometry in each state, the time the DOM takes to stop
-// changing after each toggle, and whether toggling back restores the exact
-// pre-toggle geometry (a leak or re-layout shows up as moved marks).
+// Bardepth depth-toggle probe (window.__qaSetBarDepthEnabled, mirroring the gate's depth cells): per-impl counts,
+// geometry per state, settle time per toggle, and whether toggling back restores exact geometry.
 import { diffMarks, openScene, sampleMarks } from "./lib-probe.mjs";
 
 async function settleMarks(page, { maxMs = 1500, stableMs = 250 } = {}) {

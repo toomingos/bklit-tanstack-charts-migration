@@ -1,20 +1,5 @@
-// P6.1 cluster 5 gate fixture — bklit-composed.tsx with a SECOND y-axis.
-//
-// `secondary` is `line / 50`, an order of magnitude below the primary series,
-// so an unprojected render collapses it onto the baseline and the diff is
-// unmissable. It is plotted as BOTH <Area> and <Line> on yAxisId="right",
-// preserving the base scenario's Area+Line-share-a-dataKey quirk on the
-// secondary axis so the gate covers areaFill AND lineY reprojection.
-//
-// <SeriesBar> stays on the primary axis deliberately: bklit's <SeriesBar> has
-// no `yAxisId` prop and its composed extractor
-// (repos/bklit-ui/.../composed-chart.tsx:82-86 `tryAppendSeriesBar`) omits it
-// where tryAppendLine/tryAppendArea pass it, so a bar always scans and paints
-// on the primary scale. A right-axis bar would be testing behaviour bklit
-// does not have.
-//
-// No <YAxis> child (matching the `composed` scenario) so the fixture gates
-// MARK geometry, not right-hand axis rendering.
+// Multi-axis control: secondary = line/50 on "right" as Area+Line pair; SeriesBar stays primary (has no yAxisId).
+// No YAxis child: gates mark geometry, not axis rendering.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import {
@@ -35,7 +20,7 @@ import { armBklitSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveComposed } from "../bench/live";
 
-/** `line / 50` — an order of magnitude below the primary series on purpose. */
+// secondary = line / 50, an order of magnitude below the primary series on purpose.
 const SECONDARY_AXIS_DIVISOR = 50;
 
 type MultiAxisRow = SeededComposedRow & { secondary: number };

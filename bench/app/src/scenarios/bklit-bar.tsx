@@ -1,8 +1,4 @@
-// Faithful port of repos/bklit-ui/packages/ui/registry/examples/bar-chart.tsx
-// -- the canonical demo uses string `month` categories; we use `xDataKey="date"`
-// instead (BarChart's categoryAccessor auto-formats Date values via
-// shortDateFmt, confirmed in bar-chart.tsx) so the SAME impl-independent
-// seeded time-series generator can be reused across line/area/bar.
+// Registry port; xDataKey="date" so the shared seeded generator works across line/area/bar.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart, Bar, BarXAxis, Grid, ChartTooltip } from "@bklitui/ui/charts";
 import {

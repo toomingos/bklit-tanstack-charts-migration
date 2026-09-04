@@ -1,6 +1,4 @@
-// Wave 1 C5/C6 fixture (P1.3 gate) — IDENTICAL usage to
-// bklit-composedstacked.tsx, only the import source changes: pixel-gates the
-// migrated composed `stacked`/`stackGap` implementation against legacy.
+// C5/C6 gate: pixel-gates migrated stacked/stackGap against legacy; only the import source changes.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import {

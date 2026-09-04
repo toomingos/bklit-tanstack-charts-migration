@@ -1,23 +1,13 @@
-// bklit y-axis-ticks.ts verbatim port — single source for the y-axis tick
-// count constants + clamp. C4: its overlay consumer (y-axis-overlay.tsx) is
-// deleted; now consumed by internal/axis-ticks.ts `buildYAxisTickValues` and
-// publicly re-exported from index.ts (bklit API parity).
+const Y_AXIS_DEFAULT_TICK_COUNT = 5;
 
-/** Default hint passed to `scale.ticks()` (d3 — approximate tick count). */
-export const Y_AXIS_DEFAULT_TICK_COUNT = 5;
+const Y_AXIS_MIN_TICK_COUNT = 1;
 
-/** Minimum valid `numTicks` for `scale.ticks()` — values ≤ 0 yield no ticks. */
-export const Y_AXIS_MIN_TICK_COUNT = 1;
+const Y_AXIS_MAX_TICK_COUNT = 10;
 
-/**
- * Upper bound for the tick count hint. D3 may return more "nice" ticks above
- * ~10; keeping the hint in a modest range avoids overcrowded axes.
- */
-export const Y_AXIS_MAX_TICK_COUNT = 10;
+const isNumber = <Subject>(value: Subject): value is Subject & number => typeof value === "number";
 
-/** Clamps a user `numTicks` value to a valid d3 tick-count hint. */
-export function resolveYAxisTickCount(numTicks?: number): number {
-  if (numTicks == null || !Number.isFinite(numTicks)) {
+const resolveYAxisTickCount = (numTicks?: number): number => {
+  if (!isNumber(numTicks) || !Number.isFinite(numTicks)) {
     return Y_AXIS_DEFAULT_TICK_COUNT;
   }
   const rounded = Math.round(numTicks);
@@ -29,3 +19,5 @@ export function resolveYAxisTickCount(numTicks?: number): number {
   }
   return rounded;
 }
+
+export { Y_AXIS_DEFAULT_TICK_COUNT, Y_AXIS_MAX_TICK_COUNT, Y_AXIS_MIN_TICK_COUNT, resolveYAxisTickCount };

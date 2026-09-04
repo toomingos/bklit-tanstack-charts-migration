@@ -1,13 +1,4 @@
-// Native TanStack Charts PERFORMANCE-CEILING approximation of bklit's
-// VERTICAL FunnelChart -- same philosophy/ring-approximation as
-// tanstack-funnel.tsx (see that file's full header comment for the design
-// rationale; not repeated here to avoid drift between two copies of the
-// same reasoning). The only structural difference from the horizontal
-// ceiling: bars run horizontally from a shared left edge, stacked down a
-// categorical stage axis -- `barX` (the horizontal-bar dual of `barY`) over
-// the SAME n stages, still the simplest native primitive for "n
-// decreasing-length nodes stacked vertically", still x3-ringed the same
-// cheap way.
+// Ceiling reference: vertical dual of tanstack-funnel.tsx (barX, same x3-ring approximation).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { scaleBand, scaleLinear } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";
@@ -21,12 +12,8 @@ import {
 import { armTanstackSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 
-// Matches tanstack-funnel.tsx's color choice (ceiling scenario styling, not
-// a CSS-variable pixel clone).
 const FUNNEL_COLOR = "#7c3aed";
 
-// bklit's own per-ring scale/opacity formulas, copied verbatim -- see
-// tanstack-funnel.tsx's header comment for the full derivation/citation.
 const LAYERS = 3;
 function ringScale(l: number): number {
   return 1 - (l / LAYERS) * 0.35;
@@ -53,8 +40,7 @@ export default function TanstackFunnelVertical({ n }: { n: number }) {
         tickRef.current += 1;
         setData(generateFunnelUpdate("funnelvertical", n, tickRef.current));
       });
-    // See bklit-funnelvertical.tsx: funnel's `n` is stage count, not a
-    // time-series window -- no live-append concept applies.
+    // GUARD: n is stage count; no live-append concept.
     window.__benchLiveTick = () => {};
   }, [n]);
 

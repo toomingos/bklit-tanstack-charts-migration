@@ -1,9 +1,5 @@
-// Probe: legend-hover dim on legendhover / candlelegend / markers (+ barsquares,
-// profitloss). Drives window.__qaSetLegendHover(i) exactly like the pixel gate,
-// then samples the dimmed-element count per frame until it stops changing:
-// time-to-dim, final dimmed count, time-to-undim after __qaSetLegendHover(null).
-// A parity flag fires when bklit and migrated disagree on WHETHER anything
-// dims, or on the count by more than 25%.
+// Legend-hover dim probe (window.__qaSetLegendHover, same driver as the pixel gate): per-frame dimmed count to
+// time-to-dim, final count, and time-to-undim. Flags fire on dim-presence mismatch or count differing >25%.
 import { dimmedCount, openScene } from "./lib-probe.mjs";
 
 export const DEFAULT_CELLS = [["legendhover", 1000], ["candlelegend", 1000], ["markers", 100], ["barsquares", 100], ["profitloss", 1000]];

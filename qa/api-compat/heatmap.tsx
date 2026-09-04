@@ -1,30 +1,7 @@
-// Q2 API-compatibility fixture: exercises the full public prop surface of
-// the migrated HeatmapChart family against
-// repos/bklit-ui/packages/ui/src/charts/heatmap/* (see the header comment of
-// migrated/charts/heatmap-chart.tsx for the full port/architecture notes).
-// Must typecheck with zero errors via `tsc --noEmit` (included from
-// bench/app/tsconfig.json) -- OPEN ITEM: as of this writing
-// `@migrated/charts`'s `index.ts` has not yet been wired with the Heatmap
-// family's export lines (Fable's job, per this deliverable's own
-// constraints -- see the migration report's "registry export lines" section
-// for the exact lines to add), so `tsc --noEmit` currently reports
-// `TS2305 has no exported member '...'` errors for every import below until
-// that wiring lands; every prop/type usage has otherwise been hand-verified
-// against heatmap-chart.tsx's own exported signatures. Runtime smoke is
-// covered by the bench scenarios (bklit-heatmap.tsx / migrated-heatmap.tsx).
-//
-// NOTE on HeatmapLegend/HeatmapLegendSwatch/HeatmapLegendGradient: these are
-// rendered OUTSIDE <HeatmapChart>, as siblings, matching the real (frozen)
-// bklit-heatmap.tsx scenario -- they do NOT read HeatmapContext, so they
-// take their own independent `levelStyles`/`inactiveOpacity`/`inactiveScale`/
-// `activeScale` props (see the family header comment in heatmap-chart.tsx).
-//
-// DISCLOSED SCOPE CUTS exercised as ABSENT below (not guessed at): the real
-// `HeatmapChartProps` prop list (per bklit-heatmap.tsx's own comment) also
-// includes `aspectRatio`, `loadingOpacity`, `showLoadingCells` -- none of
-// these are implemented (see heatmap-chart.tsx header), so none appear in
-// this fixture's prop usage or its exhaustive `HeatmapChartProps` reference
-// block below.
+// Q2 API fixture: exercises migrated HeatmapChart family public props; must typecheck (tsc --noEmit).
+// OPEN: index.ts not yet wired with Heatmap exports; tsc reports TS2305 until then.
+// HeatmapLegend* render OUTSIDE <HeatmapChart> with independent props (they don't read HeatmapContext).
+// Disclosed scope cuts, exercised as absent: aspectRatio, loadingOpacity, showLoadingCells.
 import * as React from "react";
 import {
   HeatmapChart,
@@ -56,8 +33,6 @@ import {
   HEATMAP_DEFAULT_LEVEL_STYLES,
   HEATMAP_INACTIVE_OPACITY,
 } from "@migrated/charts";
-
-// --- sample data -----------------------------------------------------------
 
 function buildSampleColumns(weekCount: number, startDate: Date): HeatmapColumn[] {
   const columns: HeatmapColumn[] = [];
@@ -118,8 +93,6 @@ export function HeatmapChartApiFixture() {
 
   return (
     <>
-      {/* Canonical docs-demo path (D30/D31 basis) -- fluid layout, default
-          everything else, full compositional child set. */}
       <HeatmapInteractionProvider>
         <HeatmapInteractionBoundary>
           <div className="flex w-full flex-col items-stretch gap-3">
@@ -134,8 +107,6 @@ export function HeatmapChartApiFixture() {
         </HeatmapInteractionBoundary>
       </HeatmapInteractionProvider>
 
-      {/* "fill" layout, fixed binSize override, explicit margin, xDomain
-          restriction, sizingColumnCount decoupled from actual data length. */}
       <HeatmapInteractionRoot>
         <HeatmapChart
           data={largeData}
@@ -152,10 +123,6 @@ export function HeatmapChartApiFixture() {
         </HeatmapChart>
       </HeatmapInteractionRoot>
 
-      {/* Custom levelColors / levelStyles / gap / weekStartDay / rowOpacity /
-          hover-param overrides / axis-format overrides, plus a
-          HeatmapSeparator child (every-N variant) and a matching sibling
-          legend using the SAME custom levelStyles. */}
       <HeatmapInteractionProvider>
         <HeatmapInteractionBoundary>
           <div className="flex w-full flex-col items-stretch gap-3">
@@ -177,12 +144,7 @@ export function HeatmapChartApiFixture() {
         </HeatmapInteractionBoundary>
       </HeatmapInteractionProvider>
 
-      {/* levelStyles (pattern fillMode accepted for API-compat even though
-          pattern rendering itself is a disclosed cut), quarter-grouped
-          separator with gradient/dashed stroke/showLabels, custom
-          animationDuration/enterTransition(tween)/enterStaggerScale,
-          animate={false} (skip reveal entirely), controlled status +
-          revealSignature replay. */}
+      {/* Pattern fillMode is accepted for API-compat though pattern rendering itself is a disclosed cut. */}
       <HeatmapInteractionProvider>
         <HeatmapInteractionBoundary>
           <div className="flex w-full flex-col items-stretch gap-3">
@@ -235,9 +197,6 @@ export function HeatmapChartApiFixture() {
         </HeatmapInteractionBoundary>
       </HeatmapInteractionProvider>
 
-      {/* animate={false} (spring transition variant, still no-op reveal), solid
-          strokeStyle separator, explicit stroke/strokeWidth, legend swatches
-          rendered standalone (not via <HeatmapLegend>). */}
       <HeatmapInteractionProvider>
         <HeatmapInteractionBoundary>
           <HeatmapChart data={basicData} enterTransition={springTransition} animate={false}>
@@ -254,13 +213,7 @@ export function HeatmapChartApiFixture() {
         </HeatmapInteractionBoundary>
       </HeatmapInteractionProvider>
 
-      {/* HeatmapChartLoading + generateHeatmapSkeletonFromTarget -- bklit's
-          single-overload, array-only shape (bklit generate-heatmap-skeleton-
-          data.ts:4-15 / heatmap-chart-loading.tsx:13-26). The prior
-          {columnCount,startDate} shape-object overload and
-          `GenerateHeatmapSkeletonOptions` were invented by an earlier pass on
-          this port and have been removed; `target` is renamed `data`, and
-          `loadingLabel` is renamed `label` to match bklit's own prop name. */}
+      {/* Loading shape matches bklit's single-overload array form (`data`/`label` prop names). */}
       <HeatmapChartLoading data={basicData} label="Loading…" className="w-full" xDomain={[anchorDate, new Date(2026, 5, 30)]} margin={{ top: 16, right: 4, bottom: 20, left: 28 }} gap={3} cornerRadius={3} />
       <HeatmapChartLoading data={largeData} />
       {(() => {
@@ -274,8 +227,6 @@ export function HeatmapChartApiFixture() {
         );
       })()}
 
-      {/* Exercise the status/revealSignature setters so this fixture also
-          typechecks as a plausible interactive consumer, not just static JSX. */}
       <button onClick={() => setStatus((s) => (s === "ready" ? "loading" : "ready"))} type="button">
         toggle status
       </button>
@@ -283,10 +234,7 @@ export function HeatmapChartApiFixture() {
         replay reveal
       </button>
 
-      {/* Exhaustive `HeatmapChartProps` reference (kept last, purely for
-          typecheck coverage of every documented prop at once). Deliberately
-          excludes aspectRatio/loadingOpacity/showLoadingCells -- disclosed
-          scope cuts, not implemented (see heatmap-chart.tsx header). */}
+      {/* Deliberately excludes aspectRatio/loadingOpacity/showLoadingCells (disclosed scope cuts). */}
       {((): HeatmapChartProps => ({
         data: basicData,
         xDomain: [anchorDate, new Date(2026, 5, 30)],

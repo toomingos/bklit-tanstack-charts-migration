@@ -1,152 +1,234 @@
-import type { ChartFocusStrategy, ChartPoint } from "@tanstack/charts";
+import type { ChartFocusStrategy, ChartPoint, ChartValue } from "@tanstack/charts";
 import { isChartInteractionPhase } from "./chart-phase";
 import { collectFocusGroup, focusValueKey, navigationOrder } from "./chart-focus-kit";
 import type { ChartDatum, ChartPhase } from "./types";
 
-// Module-level keyers: hoisted once, so hover events allocate no closures.
-function byXKey(xValue: unknown): string {
-  return focusValueKey(xValue);
-}
-function byMemberKey(p: ChartPoint<ChartDatum, string, number>): string {
-  return focusValueKey((p.group ?? p.markId) as unknown);
+// Hoisted once, so hover events allocate no closures.
+const byXKey = (xValue: Readonly<ChartValue>): string => focusValueKey(xValue);
+
+const byMemberKey = (point: { readonly group: unknown; readonly markId: unknown }): string => focusValueKey((point.group ?? point.markId));
+
+/** Picks the phase ref out of the overload union (both object shapes carrying one expose `phaseRef`). */
+type PhaseRefOrArgs = { readonly current: ChartPhase } | BarFocusStrategyArgs | { readonly phaseRef: { readonly current: ChartPhase } };
+
+// Overload-discriminator guard: only the full-args call shape carries a callable getter.
+const isFullBarFocusArgs = (value: PhaseRefOrArgs): value is BarFocusStrategyArgs =>
+  "getCategoryOrder" in value && typeof value.getCategoryOrder === "function";
+
+const isNearerY = <PointT extends { readonly y: number }>(candidate: PointT | undefined, bestY: number, y: number): candidate is PointT =>
+  candidate !== undefined && Math.abs(candidate.y - y) < bestY;
+
+interface NearestRowSearchParams<PointT> {
+  readonly rows: readonly PointT[];
+  readonly y: number;
+  readonly primary: PointT;
+  readonly bestY: number;
 }
 
-/**
- * Band-category focus strategy for vertical grouped BarChart.
- * - resolve: nearest category by scene-x (band center = mean of points' x per xValue), stable tie-break via `>=`.
- * - group: one point per `group` (z) sharing same xValue, in series-declaration
- *   order (bklit tooltip parity — bklit emits rows by iterating `lines`, no y-sort).
- * - navigation: unique xValues sorted by x→y, one representative per xValue.
- * Gated by `phaseRef.current !== "ready"` (canInteract) → [].
- */
-export type BarFocusStrategyArgs = {
-  phaseRef: { current: ChartPhase };
-  getCategoryOrder: () => readonly string[];
-  getInnerWidth: () => number;
-  marginLeft: number;
+const searchNearestRow = <PointT extends { readonly y: number }>({ rows, y, primary, bestY }: NearestRowSearchParams<PointT>): PointT => {
+  let current = primary;
+  let currentBest = bestY;
+  for (let i = 1; i < rows.length; i += 1) {
+    const candidate = rows.at(i);
+    if (isNearerY(candidate, currentBest, y)) {
+      current = candidate;
+      currentBest = Math.abs(candidate.y - y);
+    }
+  }
+  return current;
+}
+
+const nearestByY = <PointT extends { readonly y: number }>(
+  rows: readonly PointT[],
+  y: number,
+): PointT | undefined => {
+  const first = rows.at(0);
+  if (first === undefined) {return first;}
+  return searchNearestRow({ bestY: Math.abs(first.y - y), primary: first, rows, y });
 };
 
-export function createBarFocusStrategy(
-  phaseRefOrArgs: { current: ChartPhase } | BarFocusStrategyArgs | { phaseRef: { current: ChartPhase } },
-): ChartFocusStrategy<ChartDatum, string, number> {
-  const maybeArgs = phaseRefOrArgs as BarFocusStrategyArgs;
-  const hasGetters = typeof maybeArgs.getCategoryOrder === "function";
-  const phaseRef: { current: ChartPhase } = hasGetters
-    ? maybeArgs.phaseRef
-    : ((phaseRefOrArgs as { phaseRef?: { current: ChartPhase } }).phaseRef ??
-        (phaseRefOrArgs as { current: ChartPhase }));
-  const getCategoryOrder = hasGetters ? maybeArgs.getCategoryOrder : undefined;
-  const getInnerWidth = hasGetters ? maybeArgs.getInnerWidth : undefined;
-  const marginLeft = hasGetters ? maybeArgs.marginLeft : 0;
+
+/** Band-category focus: nearest column by scene-x, one point per member sharing the column. */
+interface BarFocusStrategyArgs {
+  readonly phaseRef: { readonly current: ChartPhase };
+  readonly getCategoryOrder: () => readonly string[];
+  readonly getInnerWidth: () => number;
+  readonly marginLeft: number;
+}
+
+/** Picks the phase ref out of the overload union (both object shapes carrying one expose `phaseRef`). */
+const resolvePhaseRef = (
+  phaseRefOrArgs: PhaseRefOrArgs,
+): { readonly current: ChartPhase } => {
+  if ("phaseRef" in phaseRefOrArgs) {return phaseRefOrArgs.phaseRef;}
+  return phaseRefOrArgs;
+};
+
+interface BandFocusParams<PointT> {
+  readonly points: readonly PointT[];
+  readonly x: number;
+  readonly y: number;
+  readonly getCategoryOrder: () => readonly string[];
+  readonly getInnerWidth: () => number;
+  readonly marginLeft: number;
+}
+
+interface ColumnIndexParams {
+  readonly x: number;
+  readonly marginLeft: number;
+  readonly innerWidth: number;
+  readonly catCount: number;
+}
+
+const columnIndexForX = ({ x, marginLeft, innerWidth, catCount }: ColumnIndexParams): number => {
+  const colWidth = innerWidth / catCount;
+  const pos = x - marginLeft;
+  const idx = Math.floor(pos / colWidth);
+  return Math.max(0, Math.min(catCount - 1, idx));
+}
+
+const readBandColumnGeometry = (getCategoryOrder: () => readonly string[], getInnerWidth: () => number): { categoryOrder: readonly string[]; innerWidth: number } | undefined => {
+  const categoryOrder = getCategoryOrder();
+  if (categoryOrder.length === 0) {return undefined;}
+  const innerWidth = getInnerWidth();
+  if (innerWidth <= 0) {return undefined;}
+  return { categoryOrder, innerWidth };
+}
+
+const filterByColumnKey = <PointT extends ChartPoint<ChartDatum, string, number>>(points: readonly PointT[], targetLabel: string): readonly PointT[] => {
+  const targetKey = focusValueKey(targetLabel);
+  return points.filter((point) => focusValueKey(point.xValue) === targetKey);
+}
+
+const findBandColumnPrimary = <PointT extends ChartPoint<ChartDatum, string, number>>(params: BandFocusParams<PointT>): PointT | undefined => {
+  const geometry = readBandColumnGeometry(params.getCategoryOrder, params.getInnerWidth);
+  if (!geometry) {return undefined;}
+  const idx = columnIndexForX({ catCount: geometry.categoryOrder.length, innerWidth: geometry.innerWidth, marginLeft: params.marginLeft, x: params.x });
+  const targetLabel = geometry.categoryOrder.at(idx);
+  if (targetLabel === undefined) {return undefined;}
+  return nearestByY(filterByColumnKey(params.points, targetLabel), params.y);
+}
+
+const resolveBandColumnFocus = <PointT extends ChartPoint<ChartDatum, string, number>>(params: BandFocusParams<PointT>): readonly PointT[] => {
+  const primary = findBandColumnPrimary(params);
+  if (!primary) {return [];}
+  return collectFocusGroup(params.points, primary, byXKey, byMemberKey);
+}
+
+interface CategoryCentroid<PointT> {
+  sum: number;
+  count: number;
+  representative: PointT;
+}
+
+const buildCategoryCentroids = <PointT extends ChartPoint<ChartDatum, string, number>>(points: readonly PointT[]): Map<string, CategoryCentroid<PointT>> => {
+  const byCategory = new Map<string, CategoryCentroid<PointT>>();
+  for (const point of points) {
+    const catKey = byXKey(point.xValue);
+    const entry = byCategory.get(catKey);
+    if (entry) {
+      entry.sum += point.x;
+      entry.count += 1;
+    } else {
+      byCategory.set(catKey, { count: 1, representative: point, sum: point.x });
+    }
+  }
+  return byCategory;
+}
+
+const findNearestCategory = <PointT extends ChartPoint<ChartDatum, string, number>>(byCategory: ReadonlyMap<string, CategoryCentroid<PointT>>, x: number, maxDistance: number): PointT | undefined => {
+  // Strict `<`: ties keep the earlier-scanned category (bklit bisect tie-break).
+  let nearest: PointT | undefined = undefined;
+  let distance = maxDistance;
+  for (const entry of byCategory.values()) {
+    const dist = Math.abs(entry.sum / entry.count - x);
+    if (dist < distance) {
+      nearest = entry.representative;
+      distance = dist;
+    }
+  }
+  return nearest;
+}
+
+const claimGroupKey = (seen: Set<string>, groupKey: string): boolean => {
+  if (seen.has(groupKey)) {return false;}
+  seen.add(groupKey);
+  return true;
+}
+
+const collectCategoryCandidates = <PointT extends ChartPoint<ChartDatum, string, number>>(points: readonly PointT[], key: string): PointT[] => {
+  const seen = new Set<string>();
+  const candidates: PointT[] = [];
+  for (const candPoint of points) {
+    if (focusValueKey(candPoint.xValue) === key) {
+      const groupKey = focusValueKey((candPoint.group ?? candPoint.markId));
+      if (claimGroupKey(seen, groupKey)) {candidates.push(candPoint);}
+    }
+  }
+  return candidates;
+}
+
+interface CategoryFocusParams<PointT> {
+  readonly points: readonly PointT[];
+  readonly x: number;
+  readonly y: number;
+  readonly maxDistance: number;
+}
+
+const resolveNearestCategoryFocus = <PointT extends ChartPoint<ChartDatum, string, number>>(params: CategoryFocusParams<PointT>): readonly PointT[] => {
+  const byCategory = buildCategoryCentroids(params.points);
+  const nearest = findNearestCategory(byCategory, params.x, params.maxDistance);
+  if (!nearest) {return [];}
+  const key = focusValueKey(nearest.xValue);
+  const candidates = collectCategoryCandidates(params.points, key);
+  const primary = nearestByY(candidates, params.y);
+  if (!primary) {return [];}
+  return collectFocusGroup(params.points, primary, byXKey, byMemberKey);
+}
+
+const createBarFocusStrategy = (phaseRefOrArgs: PhaseRefOrArgs): ChartFocusStrategy<ChartDatum, string, number> => {
+  // Discriminate the overload union with `in` plus a function check.
+  // Only the full-args member carries a callable getCategoryOrder, so no
+  // Casting is needed to separate the legacy phaseRef-only call shape.
+  const fullArgs: BarFocusStrategyArgs | undefined = isFullBarFocusArgs(phaseRefOrArgs)
+    ? phaseRefOrArgs
+    : undefined;
+  const phaseRef: { readonly current: ChartPhase } = resolvePhaseRef(phaseRefOrArgs);
+  const getCategoryOrder = fullArgs?.getCategoryOrder;
+  const getInnerWidth = fullArgs?.getInnerWidth;
+  const marginLeft = fullArgs?.marginLeft ?? 0;
   return {
-    resolve(
-      points: readonly ChartPoint<ChartDatum, string, number>[],
-      { x, y, maxDistance },
-    ): readonly ChartPoint<ChartDatum, string, number>[] {
-      if (!isChartInteractionPhase((phaseRef as { current: ChartPhase }).current)) return [];
-      if (points.length === 0) return [];
-
-      // When wired with bklit-parity getters, replicate bklit's exact
-      // Math.floor((x-margin.left)/columnWidth) band-index division
-      // (bar-chart.tsx handlePointerMove). This preserves the 0% QA gate
-      // (columnWidth intentionally ignores band padding, per audit §4 row 2)
-      // rather than switching to nearest band-center distance.
-      if (getCategoryOrder && getInnerWidth) {
-        const categoryOrder = getCategoryOrder();
-        const n = categoryOrder.length;
-        if (n === 0) return [];
-        const innerWidth = getInnerWidth();
-        if (innerWidth <= 0) return [];
-        const colWidth = innerWidth / n;
-        const pos = x - marginLeft;
-        let idx = Math.floor(pos / colWidth);
-        idx = Math.max(0, Math.min(n - 1, idx));
-        const targetLabel = categoryOrder[idx]!;
-        const targetKey = focusValueKey(targetLabel);
-        const matching = points.filter((p) => focusValueKey(p.xValue) === targetKey);
-        if (matching.length === 0) return [];
-        // Primary = closest in y to pointer among the category's points
-        // (mirrors focusX secondary).
-        let primary = matching[0]!;
-        let bestY = Math.abs(primary.y - y);
-        for (let i = 1; i < matching.length; i++) {
-          const c = matching[i]!;
-          const d = Math.abs(c.y - y);
-          if (d < bestY) {
-            bestY = d;
-            primary = c;
-          }
-        }
-        return collectFocusGroup(points, primary, byXKey, byMemberKey);
-      }
-
-      // Fallback: nearest band-center (used only if call-site omits getters).
-      const byCategory = new Map<
-        string,
-        { sum: number; count: number; representative: ChartPoint<ChartDatum, string, number> }
-      >();
-      for (const p of points) {
-        const k = byXKey(p.xValue);
-        let entry = byCategory.get(k);
-        if (!entry) {
-          entry = { sum: p.x, count: 1, representative: p };
-          byCategory.set(k, entry);
-        } else {
-          entry.sum += p.x;
-          entry.count += 1;
-        }
-      }
-
-      // Nearest band center, strict `<`: ties keep the earlier-scanned
-      // category, mirroring bklit's bisect tie-break toward earlier points.
-      let nearest: ChartPoint<ChartDatum, string, number> | undefined;
-      let distance = maxDistance;
-      for (const entry of byCategory.values()) {
-        const d = Math.abs(entry.sum / entry.count - x);
-        if (d >= distance) continue;
-        nearest = entry.representative;
-        distance = d;
-      }
-      if (!nearest) return [];
-
-      // Collect one per group sharing same xValue, then take the point
-      // closest in y to the pointer as primary (mirrors focusX secondary).
-      const key = focusValueKey(nearest.xValue);
-      const seen = new Set<string>();
-      const candidates: ChartPoint<ChartDatum, string, number>[] = [];
-      for (const cand of points) {
-        if (focusValueKey(cand.xValue) !== key) continue;
-        const g = focusValueKey((cand.group ?? cand.markId) as unknown);
-        if (seen.has(g)) continue;
-        seen.add(g);
-        candidates.push(cand);
-      }
-      if (candidates.length === 0) return [];
-      let primary = candidates[0]!;
-      let bestY = Math.abs(primary.y - y);
-      for (let i = 1; i < candidates.length; i++) {
-        const c = candidates[i]!;
-        const d = Math.abs(c.y - y);
-        if (d < bestY) {
-          bestY = d;
-          primary = c;
-        }
-      }
-      return collectFocusGroup(points, primary, byXKey, byMemberKey);
-    },
-
-    group(
-      points: readonly ChartPoint<ChartDatum, string, number>[],
-      { point },
-    ): readonly ChartPoint<ChartDatum, string, number>[] {
-      if (points.length === 0) return [point];
+    group<PointT extends ChartPoint<ChartDatum, string, number>>(
+      points: readonly PointT[],
+      { point }: { readonly point: PointT },
+    ): readonly PointT[] {
+      if (points.length === 0) {return [point];}
       return collectFocusGroup(points, point, byXKey, byMemberKey);
     },
 
-    navigation(
-      points: readonly ChartPoint<ChartDatum, string, number>[],
-    ): readonly ChartPoint<ChartDatum, string, number>[] {
+    navigation<PointT extends ChartPoint<ChartDatum, string, number>>(
+      points: readonly PointT[],
+    ): readonly PointT[] {
       return navigationOrder(points, byXKey);
+    },
+
+    resolve<PointT extends ChartPoint<ChartDatum, string, number>>(
+      points: readonly PointT[],
+      { x, y, maxDistance }: { readonly x: number; readonly y: number; readonly maxDistance: number },
+    ): readonly PointT[] {
+      if (!isChartInteractionPhase((phaseRef).current)) {return [];}
+      if (points.length === 0) {return [];}
+
+      // Floor(pos/columnWidth) band division, matching bklit (ignores band padding).
+      if (getCategoryOrder && getInnerWidth) {
+        return resolveBandColumnFocus({ getCategoryOrder, getInnerWidth, marginLeft, points, x, y });
+      }
+
+      // Fallback when call-site omits getters.
+      return resolveNearestCategoryFocus({ maxDistance, points, x, y });
     },
   };
 }
+
+export { createBarFocusStrategy };
+export type { BarFocusStrategyArgs };

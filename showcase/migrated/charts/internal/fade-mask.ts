@@ -1,112 +1,96 @@
-// Single fade-mask module (initiative 3 D3): verbatim port of bklit
-// `fade-edges.ts` + `indicator-fade.ts` semantics in one `internal/` file —
-// one impl, one import path. Consumed by:
-//   - the hover-chrome crosshair gradient (indicatorFadeGradientStops —
-//     replaces the previously inlined `[["0%",0],["10%",1],["50%",1],["90%",1],["100%",0]]`
-//     loop duplicated across the five hover-chrome forks),
-//   - the line/area edge-fade mask attributes (resolveFadeEdgesMask),
-//   - (future) initiative 4 indicator-fade and initiative 10 series dash-tail
-//     fades, which re-read these same helpers.
-//
-// The line/area marks-group fade itself is produced by the CSS `mask-image`
-// rules in styles.css (equivalent to bklit's SVG linearGradient mask, no
-// rendered-DOM patching); the `resolveFadeEdgesMask` helper below is the
-// single source that decides WHICH mask attribute(s) to set.
+// Bklit fade-edges + indicator-fade semantics in one module; the edge fade itself is CSS mask-image.
 
-/** Which side(s) of a series should fade to transparent at the chart edges.
- *  - `true`  → fade both edges (default for `<Line>`)
- *  - `false` → no fade (default for `<Area>`)
- *  - `"left"` / `"right"` → fade only that side */
-export type FadeEdges = boolean | "left" | "right";
 
-export interface FadeSides {
-  /** Whether the left edge should fade out. */
-  left: boolean;
-  /** Whether the right edge should fade out. */
-  right: boolean;
-  /** True if either side fades — use to gate gradient/mask defs. */
-  any: boolean;
+type FadeEdges = boolean | "left" | "right";
+
+interface FadeSides {
+  readonly left: boolean;
+  readonly right: boolean;
+  readonly any: boolean;
 }
 
-export function resolveFadeSides(fade: FadeEdges): FadeSides {
+const resolveFadeSides = (fade: FadeEdges): FadeSides => {
   if (fade === false) {
-    return { left: false, right: false, any: false };
+    return { any: false, left: false, right: false };
   }
   if (fade === "left") {
-    return { left: true, right: false, any: true };
+    return { any: true, left: true, right: false };
   }
   if (fade === "right") {
-    return { left: false, right: true, any: true };
+    return { any: true, left: false, right: true };
   }
-  return { left: true, right: true, any: true };
+  return { any: true, left: true, right: true };
 }
 
-export interface FadeGradientStop {
+interface FadeGradientStop {
   offset: string;
   opacity: number;
 }
 
-/**
- * Stops for a horizontal fade gradient with opacity 0 at the faded side(s)
- * and opacity 1 in the middle. Matches the historic 0/15/85/100 pattern.
- */
-export function fadeGradientStops(sides: FadeSides): FadeGradientStop[] {
-  return [
+const fadeGradientStops = (sides: FadeSides): FadeGradientStop[] => [
     { offset: "0%", opacity: sides.left ? 0 : 1 },
     { offset: "15%", opacity: 1 },
     { offset: "85%", opacity: 1 },
     { offset: "100%", opacity: sides.right ? 0 : 1 },
   ];
+
+
+// Fade gradient pinned to the viewport, not the series path bounds.
+interface ViewportFadeGradientAttrs {
+  readonly gradientUnits: "userSpaceOnUse";
+  readonly x1: number;
+  readonly x2: number;
+  readonly y1: number;
+  readonly y2: number;
 }
 
-/** Horizontal fade gradient pinned to the chart viewport (not the series path
- *  bounds). */
-export function viewportFadeGradientAttrs(innerWidth: number) {
-  return {
-    gradientUnits: "userSpaceOnUse" as const,
+const viewportFadeGradientAttrs = (innerWidth: number): ViewportFadeGradientAttrs => (
+  {
+    gradientUnits: "userSpaceOnUse",
     x1: 0,
     x2: innerWidth,
     y1: 0,
     y2: 0,
-  };
+  }
+);
+
+type IndicatorFadeEdges = "both" | "none" | "top" | "bottom";
+
+interface VerticalFadeSides {
+  readonly top: boolean;
+  readonly bottom: boolean;
+  readonly any: boolean;
 }
 
-/** Vertical fade on the tooltip crosshair indicator. */
-export type IndicatorFadeEdges = "both" | "none" | "top" | "bottom";
-
-export interface VerticalFadeSides {
-  top: boolean;
-  bottom: boolean;
-  any: boolean;
-}
-
-export function resolveVerticalFadeSides(
-  fade: IndicatorFadeEdges | boolean
-): VerticalFadeSides {
+const resolveVerticalFadeSides = (fade: IndicatorFadeEdges | boolean): VerticalFadeSides => {
   if (fade === false || fade === "none") {
-    return { top: false, bottom: false, any: false };
+    return { any: false, bottom: false, top: false };
   }
   if (fade === true || fade === "both") {
-    return { top: true, bottom: true, any: true };
+    return { any: true, bottom: true, top: true };
   }
   if (fade === "top") {
-    return { top: true, bottom: false, any: true };
+    return { any: true, bottom: false, top: true };
   }
-  return { top: false, bottom: true, any: true };
+  return { any: true, bottom: true, top: false };
 }
 
-export interface IndicatorFadeGradientStop {
+interface IndicatorFadeGradientStop {
   offset: string;
   opacity: number;
 }
 
-/** Opacity stops for the crosshair vertical gradient. */
-export function indicatorFadeGradientStops(
-  sides: VerticalFadeSides,
-  fadeLengthPercent = 10
-): IndicatorFadeGradientStop[] {
-  const fade = Math.min(40, Math.max(2, fadeLengthPercent));
-  const innerEnd = 100 - fade;
+const FULL_PERCENT = 100;
+// Indicator fade length is clamped to this percent at maximum so the gradient never inverts.
+const INDICATOR_FADE_MAX_LENGTH_PERCENT = 40;
+// Crosshair default fade length in percent (bklit vertical fade "both" default).
+const CROSSHAIR_FADE_LENGTH_PERCENT = 10;
+// Edge fade length is clamped to this percent at maximum so the two edge fades never overlap.
+const EDGE_FADE_MAX_LENGTH_PERCENT = 45;
+
+const indicatorFadeGradientStops = (sides: VerticalFadeSides, fadeLengthPercent = 10): IndicatorFadeGradientStop[] => {
+  const fade = Math.min(INDICATOR_FADE_MAX_LENGTH_PERCENT, Math.max(2, fadeLengthPercent));
+  const innerEnd = FULL_PERCENT - fade;
 
   if (!sides.any) {
     return [{ offset: "0%", opacity: 1 }];
@@ -137,54 +121,59 @@ export function indicatorFadeGradientStops(
   ];
 }
 
-/** bklit TooltipIndicator default: vertical fade `"both"` at `fadeLength=10`.
- *  Single definition site for the crosshair gradient stops previously inlined
- *  in every hover-chrome fork. */
-export function crosshairFadeStops(): IndicatorFadeGradientStop[] {
-  return indicatorFadeGradientStops(resolveVerticalFadeSides("both"), 10);
-}
+// Default crosshair stops (vertical fade "both", fadeLength 10).
+const crosshairFadeStops = (): IndicatorFadeGradientStop[] => indicatorFadeGradientStops(resolveVerticalFadeSides("both"), CROSSHAIR_FADE_LENGTH_PERCENT);
 
-export function clampFadeLength(length: number): number {
-  return Math.min(45, Math.max(0, length));
-}
 
-export function edgeFadeMaskStops(lengthPercent: number): Array<{ offset: string; opacity: number }> {
+const clampFadeLength = (length: number): number => Math.min(EDGE_FADE_MAX_LENGTH_PERCENT, Math.max(0, length));
+
+
+const edgeFadeMaskStops = (lengthPercent: number): { offset: string; opacity: number }[] => {
   const edge = clampFadeLength(lengthPercent);
   return [
     { offset: "0%", opacity: 0 },
     { offset: `${edge}%`, opacity: 1 },
-    { offset: `${100 - edge}%`, opacity: 1 },
+    { offset: `${FULL_PERCENT - edge}%`, opacity: 1 },
     { offset: "100%", opacity: 0 },
   ];
 }
 
-export interface FadeEdgesMaskAttrs {
-  /** Set to `""` (present) to enable the both-edge fade mask, else undefined. */
+interface FadeEdgesMaskAttrs {
   "data-bkm-fade-edges"?: string;
-  /** Set to `""` (present) to enable left-only fade, else undefined. */
   "data-bkm-fade-edges-left"?: string;
-  /** Set to `""` (present) to enable right-only fade, else undefined. */
   "data-bkm-fade-edges-right"?: string;
 }
 
-/**
- * Resolves the marks-group edge-fade mask attributes for a list of per-series
- * `fadeEdges` values ALREADY defaulted by the caller (`?? true` for <Line>,
- * `?? false` for <Area> — line-chart.tsx / area-chart.tsx apply their own
- * defaults before calling). Reproduces line-chart.tsx's exact attribute
- * computation (single source now): both-edge fade when ANY series is non-false,
- * with the directional left/right attributes set when any series requests that
- * side (the CSS `:not(...)` rules then pick left-only / right-only / both).
- */
-export function resolveFadeEdgesMask(
-  fades: readonly (boolean | "left" | "right")[]
-): FadeEdgesMaskAttrs {
-  const any = fades.some((f) => f !== false);
-  const left = fades.some((f) => f === true || f === "left");
-  const right = fades.some((f) => f === true || f === "right");
+// Caller pre-defaults fadeEdges (Line true, Area false); both-edge fade when any
+// Series is non-false, directional attrs per side (CSS :not() picks the variant).
+const resolveFadeEdgesMask = (fades: readonly (boolean | "left" | "right")[]): FadeEdgesMaskAttrs => {
+  const any = fades.some((fade) => fade !== false);
+  const left = fades.some((fade) => fade === true || fade === "left");
+  const right = fades.some((fade) => fade === true || fade === "right");
   return {
     "data-bkm-fade-edges": any ? "" : undefined,
     "data-bkm-fade-edges-left": left ? "" : undefined,
     "data-bkm-fade-edges-right": right ? "" : undefined,
   };
 }
+
+export type {
+  FadeEdges,
+  FadeEdgesMaskAttrs,
+  FadeGradientStop,
+  FadeSides,
+  IndicatorFadeEdges,
+  IndicatorFadeGradientStop,
+  VerticalFadeSides,
+};
+export {
+  clampFadeLength,
+  crosshairFadeStops,
+  edgeFadeMaskStops,
+  fadeGradientStops,
+  indicatorFadeGradientStops,
+  resolveFadeEdgesMask,
+  resolveFadeSides,
+  resolveVerticalFadeSides,
+  viewportFadeGradientAttrs,
+};

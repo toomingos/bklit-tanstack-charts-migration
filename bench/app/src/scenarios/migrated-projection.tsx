@@ -1,5 +1,4 @@
-// Migrated Projection scenario — IDENTICAL usage to bklit-projection.tsx
-// (same component tree, same props), only the import source changes.
+// Drop-in twin of bklit-projection.tsx; only the import source changes.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import {

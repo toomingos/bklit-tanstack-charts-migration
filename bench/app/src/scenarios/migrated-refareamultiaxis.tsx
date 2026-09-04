@@ -1,28 +1,7 @@
-// Migrated multi-axis ReferenceArea scenario — IDENTICAL usage to
-// bklit-refareamultiaxis.tsx (same component tree, same props), only the
-// import source changes. See that file for why the fixture is shaped this way.
-//
-// P6.1 cluster 6 gate fixture (RA2) — refarea with a SECOND y-axis and one
-// ReferenceArea per axis.
-//
-// The point of the fixture is the RIGHT-axis band: bklit's <ReferenceArea>
-// resolves its rect through `useYScale(yAxisId)`, so `y1={2} y2={18}` on the
-// right axis must fill most of the plot in the ~[0, 20] secondary domain. Read
-// against the primary ~[0, 1400] domain those same numbers collapse into a
-// sliver on the baseline — which is exactly the failure this gate is built to
-// see. The band is deliberately TALL: a first attempt used `12`..`15`, and the
-// D331 control PASSED at 0.064% because the misread band was only a few pixels
-// of dashed outline. Enlarging it was still not enough — the DEFAULT band fill
-// is `color-mix(... 12%, transparent)`, faint enough that pixelmatch's 0.1
-// threshold discards a full-height misplaced band (D337 again), so the band
-// also carries an explicit opaque `fill`/`fillOpacity`. A gate that cannot
-// detect the presence it seeks is not evidence.
-//
-// The LEFT band keeps the base scenario's `y1={1050} y2={1250}`, so the fixture
-// also proves the default-axis path did not move.
-//
-// No <YAxis> child (matching the `refarea` scenario) so the fixture gates the
-// BAND geometry, not right-hand axis rendering.
+// Gate fixture RA2: refarea with a second y-axis, one ReferenceArea per axis; same tree as bklit's.
+// GUARD: right band is tall (y1=2/y2=18) with opaque fill so a domain misread is detectable.
+// GUARD: no YAxis child; fixture gates band geometry, not axis rendering.
+// Left band keeps the base y1/y2 so the default-axis path is also gated.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import { LineChart, Line, Grid, XAxis, ChartTooltip, ReferenceArea } from "@migrated/charts";
@@ -35,7 +14,7 @@ import { armBklitSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveRow } from "../bench/live";
 
-/** `seriesB / 50` — an order of magnitude below `seriesA` on purpose. */
+// Secondary series an order of magnitude below seriesA.
 const SECONDARY_AXIS_DIVISOR = 50;
 
 type MultiAxisRow = SeededRow & { seriesC: number };

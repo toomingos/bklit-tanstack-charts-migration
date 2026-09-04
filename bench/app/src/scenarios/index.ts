@@ -106,22 +106,9 @@ import MigratedComposedStacked from "./migrated-composedstacked";
 
 export interface ScenarioProps {
   n: number;
-  /**
-   * Which measurement scenario this page load serves (parsed from
-   * `?scenario=`, default "mount"). Most charts ignore it; LiveLine keys
-   * off it (D22): "mount"/"hover" run the deterministic freeze protocol
-   * (K seeded ticks -> lerp convergence -> pause -> settle) for QA/M1,
-   * while "live" keeps the push loop armed so bench/run.mjs's M3b can
-   * drive `window.__benchLiveTick()` continuously.
-   */
+  // ?scenario=: LiveLine keys off it (freeze vs live push loop); most charts ignore it.
   scenario?: import("../bench/query").Scenario;
-  /**
-   * Chart data state (parsed from `?state=`, default "ready"). "loading"
-   * mounts the chart in its loading phase — scenarios whose chart supports
-   * `status="loading"` pass it through so qa/screenshot.mjs `--state loading`
-   * can pixel-compare loading chrome (D211/D212 loading gate). Scenarios
-   * without loading support ignore it.
-   */
+  // ?state=: "loading" mounts loading chrome where supported; others ignore it.
   state?: import("../bench/query").ChartState;
 }
 

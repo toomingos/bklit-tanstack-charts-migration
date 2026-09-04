@@ -1,4 +1,4 @@
-// Native TanStack Charts equivalent of bklit's area-chart.tsx demo.
+// Ceiling reference: bklit area-chart demo via defineChart + areaY.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { curveNatural } from "d3-shape";

@@ -1,88 +1,77 @@
-// Shared internals for the per-chart ChartFocusStrategy implementations
-// (bar / scatter / candlestick). Extraction-only: every helper here is the
-// byte-identical twin of logic previously inlined in
-// internal/{bar,scatter,candlestick}-focus-strategy.ts. One deliberate,
-// bklit-anchored divergence is preserved as a parameter:
-//   - member identity: bar keys by `group ?? markId` (one entry per series
-//     group), scatter/candlestick key by `markId`.
-// Others ordering is NEVER sorted by y (D320/D307: bklit emits tooltip
-// rows by iterating `lines` in declaration order — resolveTooltipFromX
-// builds a yPositions record, no grouped array, and zero `a.y - b.y`
-// sorts exist in legacy charts). TanStack's focusX grouped sorts by y
-// (charts-core-d3/src/focus.ts:64) but is the ceiling reference, not
-// parity; `collectFocusGroup` below always emits others in scan order.
+// Shared focus-strategy internals. Bar keys members by `group ?? markId`, scatter/candlestick by `markId`.
+import type { ChartValue } from "@tanstack/charts";
+
 interface ChartPointLike {
   readonly x: number;
   readonly y: number;
-  readonly xValue: unknown;
+  readonly xValue: ChartValue;
 }
 
-/** Byte-identical twin of the `valueKey` helpers inlined in
-    bar/scatter-focus-strategy.ts (Date → `date:<ms>`, else typed string). */
-export function focusValueKey(value: unknown): string {
-  if (value instanceof Date) return `date:${value.getTime()}`;
+// Epsilon absorbing float noise when comparing scene-x distances for nearest-point ties.
+const FOCUS_X_TIE_EPSILON = 1e-6;
+
+/** Date → `date:<ms>`, else `<type>:<value>`. */
+const focusValueKey = (value: unknown): string => {
+  if (value instanceof Date) {return `date:${value.getTime()}`;}
   return `${typeof value}:${String(value)}`;
 }
 
-/** Nearest point to scene-x `x` among `points`, strict `<`: ties keep the
-    earlier-scanned point, mirroring bklit's bisectDateLeft +
-    resolveNearestIndex tie-break toward the earlier point.
-    C2: epsilon-widened reject band (1e-6) so a float-pixel near-tie
-    (two candidates whose true scene-x distance is equal but differ by
-    sub-micro-px float noise) also resolves to the earlier-scanned point,
-    matching legacy's integer-ms strict `>` tie-break at exact midpoints. */
-export function findNearestPointByX<P extends ChartPointLike>(
-  points: readonly P[],
-  x: number,
-  maxDistance: number,
-): P | undefined {
-  let nearest: P | undefined;
+/** Nearest point to scene-x `x`; ties (within a 1e-6 epsilon, to absorb float noise) keep the earlier-scanned point. */
+const findNearestPointByX = <PointT extends ChartPointLike>(points: readonly PointT[], x: number, maxDistance: number): PointT | undefined => {
+  let nearest: PointT | undefined = undefined;
   let distance = maxDistance;
-  for (const p of points) {
-    const d = Math.abs(p.x - x);
-    if (d >= distance - 1e-6) continue;
-    nearest = p;
-    distance = d;
+  for (const point of points) {
+    const dist = Math.abs(point.x - x);
+    if (dist < distance - FOCUS_X_TIE_EPSILON) {
+      nearest = point;
+      distance = dist;
+    }
   }
   return nearest;
 }
 
-/** Collects [primary, ...others] for a hover group: one point per member key
-    among points sharing the primary's x key; primary first, then others in
-    scan order (no y-sort — bklit emits tooltip rows in declaration order;
-    see header). */
-export function collectFocusGroup<P extends ChartPointLike>(
-  points: readonly P[],
-  primary: P,
-  xKeyOf: (xValue: unknown) => string | number,
-  memberKeyOf: (p: P) => string | number,
-): P[] {
-  const key = xKeyOf(primary.xValue);
-  const unique = new Map<string | number, P>();
+interface FocusGroupMembersParams<PointT> {
+  readonly key: string | number;
+  readonly memberKeyOf: (point: PointT) => string | number;
+  readonly points: readonly PointT[];
+  readonly primary: PointT;
+  readonly xKeyOf: (xValue: Readonly<ChartValue>) => string | number;
+}
+
+// Index every point sharing the primary's x key by member key.
+// First wins, so the primary seeds its own slot and later duplicates drop.
+const collectGroupMembers = <PointT extends ChartPointLike>(params: Readonly<FocusGroupMembersParams<PointT>>): Map<string | number, PointT> => {
+  const { key, memberKeyOf, points, primary, xKeyOf } = params;
+  const unique = new Map<string | number, PointT>();
   unique.set(memberKeyOf(primary), primary);
   for (const cand of points) {
-    if (xKeyOf(cand.xValue) !== key) continue;
-    const mKey = memberKeyOf(cand);
-    if (!unique.has(mKey)) unique.set(mKey, cand);
+    if (xKeyOf(cand.xValue) === key) {
+      const mKey = memberKeyOf(cand);
+      if (!unique.has(mKey)) {unique.set(mKey, cand);}
+    }
   }
-  const others: P[] = [];
-  for (const p of unique.values()) {
-    if (p !== primary) others.push(p);
+  return unique;
+}
+
+/** Collects [primary, ...others] sharing the primary's x key, one per member key; others keep scan order (no y-sort). */
+const collectFocusGroup = <PointT extends ChartPointLike>(points: readonly PointT[], primary: PointT, xKeyOf: (xValue: Readonly<ChartValue>) => string | number, memberKeyOf: (point: PointT) => string | number): PointT[] => {
+  const unique = collectGroupMembers({ key: xKeyOf(primary.xValue), memberKeyOf, points, primary, xKeyOf });
+  const others: PointT[] = [];
+  for (const point of unique.values()) {
+    if (point !== primary) {others.push(point);}
   }
   return [primary, ...others];
 }
 
-/** Navigation order: all points sorted by scene-x then y, deduped to one
-    representative per x key (first wins). */
-export function navigationOrder<P extends { readonly x: number; readonly y: number; readonly xValue: unknown }>(
-  points: readonly P[],
-  xKeyOf: (xValue: unknown) => string | number,
-): P[] {
-  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-  const unique = new Map<string | number, P>();
-  for (const p of sorted) {
-    const k = xKeyOf(p.xValue);
-    if (!unique.has(k)) unique.set(k, p);
+/** All points sorted by scene-x then y, deduped to one representative per x key (first wins). */
+const navigationOrder = <PointT extends ChartPointLike>(points: readonly PointT[], xKeyOf: (xValue: Readonly<ChartValue>) => string | number): PointT[] => {
+  const sorted = points.toSorted((pointA, pointB) => pointA.x - pointB.x || pointA.y - pointB.y);
+  const unique = new Map<string | number, PointT>();
+  for (const point of sorted) {
+    const xKey = xKeyOf(point.xValue);
+    if (!unique.has(xKey)) {unique.set(xKey, point);}
   }
   return [...unique.values()];
 }
+
+export { focusValueKey, findNearestPointByX, collectFocusGroup, navigationOrder };

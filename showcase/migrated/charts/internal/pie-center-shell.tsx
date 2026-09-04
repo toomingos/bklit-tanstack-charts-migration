@@ -1,164 +1,157 @@
 "use client";
 
-// P5.6 Strand 4 — port of bklit `pie-center-shell.tsx`: `PieCenter` rendered
-// over a MINIMAL pie context, so a caller can reuse the donut center readout
-// without mounting slices or a whole `<PieChart>`.
-//
-// The one structural divergence from legacy is forced by migrated's own split:
-// legacy's single `PieContextValue` carries hover state (`hoveredIndex`,
-// `setHoveredIndex`, `animationKey`, `isLoaded`, `containerRef`), migrated's
-// `PieStableValue` does not — hover lives in `PieHoverCoordinatorContext`, and
-// `PieCenter` reads BOTH (`pie-center.tsx:85-86`, each throwing outside a
-// provider). So this shell provides two contexts where legacy provides one.
-// Legacy's `hoveredIndex: null` + `setHoveredIndex: () => undefined`
-// (`pie-center-shell.tsx:143-144`) become the inert coordinator below: the
-// shell is never hovered, so `PieCenter` always shows the total.
+// PieCenter over a minimal pie context (no slices); two providers where legacy has one
+// Because hover lives in PieHoverCoordinatorContext here (inert: never hovered).
 
 import { useCallback, useMemo } from "react";
+import type { ReactElement } from "react";
 import { useIntroFlowValue } from "./center-stat";
-import {
-  PieCenter,
-  PieHoverCoordinatorContext,
-  PieStableContext,
-  type PieCenterProps,
-  type PieStableValue,
-} from "./pie-center";
+import { PieHoverCoordinatorContext, PieStableContext } from './pie-center-context';
+import { PieCenter } from './pie-center-view';
+import type { PieCenterProps, PieStableValue } from './pie-center';
 import type { PieHoverCoordinator } from "./pie-hover-chrome";
-import { defaultPieColors, type PieArcData, type PieData } from "../pie-chart";
+import { defaultPieColors } from '../pie-chart';
+import type { PieArcData, PieData } from '../pie-chart';
 
-// repos/bklit-ui/packages/ui/src/charts/pie-center-shell.tsx:14
 const SHELL_HOVER_OFFSET = 10;
 
-/** Legacy's `hoveredIndex: null` / `setHoveredIndex: () => undefined` pair,
-    expressed in migrated's coordinator shape. Module-level and frozen: its
-    identity never changes, so `PieCenter`'s `useSyncExternalStore` subscription
-    never re-subscribes and never fires. */
-const INERT_HOVER_COORDINATOR: PieHoverCoordinator = {
-  getHovered: () => null,
-  requestHover: () => undefined,
-  requestUnhover: () => undefined,
-  setHovered: () => undefined,
-  subscribe: () => () => undefined,
+// Full-sweep arc end angle pairing with startAngle -π/2 (ported verbatim from legacy).
+const PIE_SHELL_END_ANGLE_FACTOR = 3;
+const PIE_SHELL_FULL_SWEEP_END_ANGLE = (PIE_SHELL_END_ANGLE_FACTOR * Math.PI) / 2;
+
+// Frozen inert coordinator: identity never changes, so subscriptions never re-fire.
+const inertUnsubscribe = (): void => {
+  /* No-op: shell center is never hovered */
 };
 
-export type PieCenterShellProps = Omit<PieCenterProps, "children"> & {
-  /** Value shown with NumberFlow (same role as pie total when not hovering) */
+const INERT_HOVER_COORDINATOR: PieHoverCoordinator = {
+  getHovered: () => null,
+  requestHover: () => {inertUnsubscribe();},
+  requestUnhover: () => {inertUnsubscribe();},
+  setHovered: () => {inertUnsubscribe();},
+  subscribe: () => inertUnsubscribe,
+};
+
+type PieCenterShellProps = Omit<PieCenterProps, "children"> & {
   centerValue: number;
-  /** Square reference size for pie context (matches `PieChart` `size`) */
   contextSize: number;
   /** Inner radius in px — must be > 0 so `PieCenter` renders */
   innerRadiusPx: number;
-  /**
-   * When true (default), the first paint uses `0` then updates to `centerValue`
-   * on the next frame so NumberFlow can run an entrance transition. Subsequent
-   * `centerValue` updates animate as usual.
-   */
+// First paint uses 0 so NumberFlow runs an entrance transition.
   animateEntrance?: boolean;
 };
 
-/**
- * Renders {@link PieCenter} with a minimal pie context so you can reuse the
- * same center layout as a donut pie without mounting slices or a full
- * `<PieChart>`.
- */
-export function PieCenterShell({
+// PieCenter with a minimal pie context, sans slices or full PieChart.
+interface ShellPieModel {
+  readonly arcs: PieArcData[];
+  readonly data: PieData[];
+}
+
+// Single datum collapses both legacy branches to one full-sweep arc.
+const buildShellArcs = (data: readonly PieData[]): PieArcData[] => {
+  if (data.length === 0) {return [];}
+  const [d0] = data;
+  return [
+    {
+      data: d0,
+      endAngle: PIE_SHELL_FULL_SWEEP_END_ANGLE,
+      index: 0,
+      padAngle: 0,
+      startAngle: -Math.PI / 2,
+      value: d0.value > 0 ? d0.value : 0,
+    },
+  ];
+};
+
+// Single-datum pie model behind the shell.
+// Placeholder datum carries the entrance-animated total, plus its full-sweep arc.
+const useShellPieModel = (flowTotal: number): ShellPieModel => {
+  const data: PieData[] = useMemo(
+    () => [{ label: "_pieCenterShell", value: Math.max(flowTotal, 0) }],
+    [flowTotal],
+  );
+  const arcs = useMemo((): PieArcData[] => buildShellArcs(data), [data]);
+  return { arcs, data };
+};
+
+const resolveShellFill = (data: readonly PieData[], index: number, getColor: (colorIndex: number) => string): string => {
+  const item = data.at(index);
+  const fill = item?.fill ?? "";
+  if (fill !== "") {return fill;}
+  return getColor(index);
+};
+
+interface ShellContextBaseParams {
+  readonly contextSize: number;
+  readonly getColor: (colorIndex: number) => string;
+  readonly getFill: (fillIndex: number) => string;
+  readonly innerRadiusPx: number;
+  readonly totalValue: number;
+}
+
+// Static shell context: geometry and callbacks.
+// The caller attaches the datum model (arcs + data).
+// Arrays stay mutable here because PieStableValue requires mutable arrays.
+const buildShellContextBase = (params: Readonly<ShellContextBaseParams>): Omit<PieStableValue, "arcs" | "data"> => {
+  const { contextSize, getColor, getFill, innerRadiusPx, totalValue } = params;
+  const center = contextSize / 2;
+  const outerRadius = center - SHELL_HOVER_OFFSET;
+  return {
+    center,
+    cornerRadius: 0,
+    enterStaggerScale: 1,
+    geometryScrubbing: false,
+    getColor,
+    getFill,
+    hoverOffset: SHELL_HOVER_OFFSET,
+    innerRadius: innerRadiusPx,
+    outerRadius,
+    padAngle: 0,
+    scrubSlicePaths: null,
+    size: contextSize,
+    totalValue,
+  };
+};
+
+// PieCenter with a minimal pie context, sans slices or full PieChart.
+const PieCenterShell = ({
   centerValue,
   contextSize,
   innerRadiusPx,
   animateEntrance = true,
   ...pieCenterProps
-}: PieCenterShellProps) {
-  // Legacy re-implements the 0 → double-rAF → value entrance inline
-  // (`pie-center-shell.tsx:44-70`). That state machine was already centralized
-  // into `center-stat.tsx`'s `useIntroFlowValue` for T-C4, verbatim including
-  // the cleanup re-arm — so this reuses it rather than shipping a second copy.
+}: Readonly<PieCenterShellProps>): ReactElement => {
+// Entrance state machine centralized in center-stat's useIntroFlowValue; reused here.
   const flowTotal = useIntroFlowValue(centerValue, animateEntrance);
+  const { arcs, data } = useShellPieModel(flowTotal);
 
-  const data: PieData[] = useMemo(
-    () => [{ label: "_pieCenterShell", value: Math.max(flowTotal, 0) }],
-    [flowTotal],
-  );
-
-  const totalValue = flowTotal;
-
-  // Legacy runs d3's `pie()` here (`:79-112`), but with a SINGLE datum the
-  // generator can only return the full sweep it was configured with
-  // (`startAngle -π/2`, `endAngle 3π/2`, `padAngle 0`), and its `v <= 0`
-  // fallback hand-writes those very angles. Both branches therefore collapse
-  // to this one arc; only `value` differs, exactly as legacy has it.
-  const arcs = useMemo((): PieArcData[] => {
-    const d0 = data[0];
-    if (!d0) return [];
-    return [
-      {
-        data: d0,
-        index: 0,
-        startAngle: -Math.PI / 2,
-        endAngle: (3 * Math.PI) / 2,
-        padAngle: 0,
-        value: d0.value > 0 ? d0.value : 0,
-      },
-    ];
-  }, [data]);
-
-  const getColor = useCallback((index: number) => {
-    return defaultPieColors[index % defaultPieColors.length] as string;
-  }, []);
+  const getColor = useCallback((index: number): string => defaultPieColors[index % defaultPieColors.length]
+  , []);
 
   const getFill = useCallback(
-    (index: number) => {
-      const item = data[index];
-      if (item?.fill) return item.fill;
-      return getColor(index);
-    },
+    (index: number): string => resolveShellFill(data, index, getColor),
     [data, getColor],
   );
 
-  const center = contextSize / 2;
-  const outerRadius = center - SHELL_HOVER_OFFSET;
-
   const contextValue: PieStableValue = useMemo(
     () => ({
-      data,
+      ...buildShellContextBase({ contextSize, getColor, getFill, innerRadiusPx, totalValue: flowTotal }),
       arcs,
-      size: contextSize,
-      center,
-      outerRadius,
-      innerRadius: innerRadiusPx,
-      padAngle: 0,
-      cornerRadius: 0,
-      hoverOffset: SHELL_HOVER_OFFSET,
-      enterStaggerScale: 1,
-      totalValue,
-      getColor,
-      getFill,
-      geometryScrubbing: false,
-      scrubSlicePaths: null,
+      data,
     }),
     [
       data,
       arcs,
       contextSize,
-      center,
-      outerRadius,
+      flowTotal,
       innerRadiusPx,
-      totalValue,
       getColor,
       getFill,
     ],
   );
 
-  // The `data-bkm-chart` wrapper is NOT cosmetic. Legacy's center typography
-  // rides on Tailwind utility classes, which resolve anywhere; migrated's ports
-  // them to `.ts-bkm-center-stat*` rules that are ALL scoped under
-  // `[data-bkm-chart]` (styles.css:512-560). Inside `<PieChart>` that ancestor
-  // exists (`pie-chart.tsx:762,775`); a standalone shell has none, so every
-  // one of those rules drops and the readout renders as unstyled 16px text —
-  // caught in the Strand 4 gate captures (bklit bold ~30px vs migrated plain).
-  // `display: contents` keeps the wrapper out of layout entirely, so it only
-  // supplies the selector ancestor and changes nothing else: `CenterShell`
-  // already sizes and centers itself with an inline px box
-  // (internal/center-stat.tsx:343-355).
+// Data-bkm-chart wrapper is load-bearing: center typography is scoped under it;
+// Display:contents keeps it out of layout.
   return (
     <PieStableContext.Provider value={contextValue}>
       <PieHoverCoordinatorContext.Provider value={INERT_HOVER_COORDINATOR}>
@@ -171,3 +164,6 @@ export function PieCenterShell({
 }
 
 PieCenterShell.displayName = "PieCenterShell";
+
+export { PieCenterShell };
+export type { PieCenterShellProps };

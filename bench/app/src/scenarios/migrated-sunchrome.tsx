@@ -1,11 +1,4 @@
-// P5.5 Strand 3 gate — migrated side. Mirror of `bklit-sunchrome.tsx`; see
-// that file's header for what this scenario exists to prove and for the one
-// deliberate API divergence (migrated's `useSunburstBreadcrumbItems` takes
-// `(data, focusId)` because there is no sunburst context — lead ruling D323 —
-// and navigates through the `onFocusChange` the caller already controls).
-//
-// Data, size, settle arm and focus wiring are copied from
-// `migrated-sunburst.tsx` unchanged; only the two chrome children differ.
+// Mirror of bklit-sunchrome.tsx; data/settle/focus from migrated-sunburst.tsx, chrome differs.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -35,9 +28,6 @@ const REVEAL_CLOCK_MARGIN_MS = 250;
 const SUNBURST_ZOOM_DURATION_MS = 750;
 const SUNBURST_ZOOM_SETTLE_MARGIN_MS = 150;
 
-// Drill hook, verbatim from `migrated-sunburst.tsx` — the TanStack DOM puts
-// one `<path>` per arc inside `[data-ts-key="sunburst-arcs"]`, in the same
-// depth-descending order bklit's `sortSunburstSegments` produces.
 function segmentDomOrder(arcs: ArcDatum[]): number[] {
   return arcs
     .map((_, arcIndex) => arcIndex)
@@ -77,8 +67,7 @@ function sunburstSettleMs(arcs: ArcDatum[]): number {
   return maxDelay * 1000 + 935 + 1100;
 }
 
-// --- Crumb markup (byte-identical to the bklit scenario's copy) ------------
-
+// GUARD: crumb markup must stay byte-identical to the bklit scenario's copy.
 interface CrumbItem {
   id: string;
   label: string;
@@ -140,8 +129,6 @@ function CrumbList({
   );
 }
 
-/** Prop-fed on this side: the same trail, derived from the `data` + `focusId`
-    the caller already holds instead of from a provider. */
 function MigratedCrumbs({
   data,
   focusId,

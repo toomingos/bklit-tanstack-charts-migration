@@ -1,10 +1,5 @@
-// Q2 API-compatibility fixture (research/05): exercises every public prop
-// the migrated CandlestickChart supports at pilot scope. Must typecheck
-// with zero errors via `tsc --noEmit` (included from bench/app/tsconfig.json).
-// Runtime smoke is covered by the bench scenarios (console-errors column in
-// docs/BENCHMARKS.md must be 0). Note: CandlestickChart has no
-// onPhaseChange/status prop (bklit parity — verified directly in
-// repos/bklit-ui/packages/ui/src/charts/candlestick-chart.tsx).
+// Q2 API fixture: exercises migrated CandlestickChart public props; must typecheck (tsc --noEmit).
+// No onPhaseChange/status prop by bklit parity.
 import * as React from "react";
 import {
   Candlestick,
@@ -33,7 +28,6 @@ const data: Row[] = [
 export function CandlestickChartApiFixture() {
   return (
     <>
-      {/* Canonical demo path (registry example parity). */}
       <CandlestickChart data={data}>
         <Grid horizontal vertical />
         <Candlestick />
@@ -42,7 +36,6 @@ export function CandlestickChartApiFixture() {
         <ChartTooltip />
       </CandlestickChart>
 
-      {/* Full pilot prop surface. */}
       <CandlestickChart
         data={data}
         xDataKey="date"

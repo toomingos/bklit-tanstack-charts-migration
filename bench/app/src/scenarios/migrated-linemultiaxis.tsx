@@ -1,6 +1,4 @@
-// Migrated multi-axis LineChart scenario — IDENTICAL usage to
-// bklit-linemultiaxis.tsx (same component tree, same props), only the import
-// source changes. See that file for why the fixture is shaped this way.
+// Twin of bklit-linemultiaxis.tsx; only the import source changes.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import { LineChart, Line, Grid, XAxis, ChartTooltip } from "@migrated/charts";
@@ -13,7 +11,7 @@ import { armBklitSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveRow } from "../bench/live";
 
-/** `seriesB / 50` — an order of magnitude below `seriesA` on purpose. */
+// Secondary series an order of magnitude below seriesA.
 const SECONDARY_AXIS_DIVISOR = 50;
 
 type MultiAxisRow = SeededRow & { seriesC: number };

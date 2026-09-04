@@ -1,47 +1,12 @@
 "use client";
-// Migrated bklit-ui LiveLineChart — same public API (push-model `data`/
-// `value`, time-cutoff `window`, `paused`, `<LiveLine>`/`<LiveXAxis>`/
-// `<LiveYAxis>`/`<ChartTooltip>` children), rendered via TanStack Charts.
-// docs/LOG.md D22: a NEW top-level component (not a LineChart variant),
-// reusing only internal/spring.ts and the shared formatters.
-//
-// C5 (E1-E6): the mark, axis overlays, and hover/tooltip chrome are now all
-// native — replacing internal/live-line-mark.ts's old `createMark` polyline
-// builder and internal/live-hover-chrome.ts's imperative DOM chrome (deleted;
-// see git history / the C5 report for its prior contents). Architecture:
-//  - One continuous rAF loop (`tick`, mirrors live-line-chart.tsx tick()
-//    378-430) runs for the component's lifetime. EVERY raw tick it advances
-//    `now` (frozen while `paused`) and asymmetrically lerps the y-domain
-//    (instant expand / 0.08-exponential contract per tick, `nextAnimFrame`
-//    below — this lerp step itself is NOT throttled: only the REACT COMMIT
-//    of its result is throttled, exactly like bklit).
-//  - Only every LIVE_FRAME_COMMIT_MS=32ms does the loop commit `frame` to
-//    React state (`startTransition`, matching bklit 420-427). That throttled
-//    commit is what feeds TanStack's `definition` (line/area marks,
-//    reconciled by the native rolling-path motion contract) and the five
-//    React-rendered "live tip" chrome elements below.
-//  - E2: the y-lerp (`frame.yMin`/`frame.yMax`) affects ONLY the x/y SCALE
-//    DOMAINS the marks are plotted against — every committed SAMPLE (real or
-//    synthetic "tip") carries the TRUE, un-lerped value (`frame.trueValue`,
-//    literally the `value` prop as of that commit). The old contextData used
-//    to push two synthetic points carrying `frame.displayValue` (the LERPED
-//    value) — that broke the rolling contract's "retained semantic value
-//    unchanged" invariant once those points got stable keys, and the task
-//    explicitly calls out that the lerp must stay a domain-only affair.
-//  - E3: hover/tooltip is now the C2/C3 native pattern (`focus:"group-x"` +
-//    the `@tanstack/charts/tooltip` extension + `renderTooltipBody`, native
-//    `crosshair()`/`dot()` marks via internal/hover-geometry.ts) instead of
-//    live-hover-chrome.ts's imperative pointer-ref/DOM-write path — this is
-//    exactly the follow-up that file's own header called out: "once
-//    live-line-mark gains rolling-path/ChartPoints support, re-evaluate
-//    whether the native tooltip extension can anchor to those points."
-//  - E4: LiveXAxis/LiveYAxis no longer paint an HTML overlay — they configure
-//    the native x/y axis (tick values + format + tickLabels), C4-style.
+// RAF loop lerps y-domain per tick, commits to React at LIVE_FRAME_COMMIT_MS; samples carry true values.
 import * as React from "react";
 import { bisector } from "d3-array";
 import { scaleLinear, scaleUtc } from "d3-scale";
-import { curveMonotoneX, type CurveFactory } from "d3-shape";
-import { RendererChart, type ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
+import { curveMonotoneX } from 'd3-shape';
+import type { CurveFactory } from 'd3-shape';
+import { RendererChart } from '@tanstack/react-charts/tooltip';
+import type { ChartTooltipBodyRenderContext } from '@tanstack/react-charts/tooltip';
 import { d3Curve } from "@tanstack/charts/d3/shape";
 import { defineChart } from "@tanstack/charts/scene";
 import type {
@@ -53,11 +18,12 @@ import type {
   ChartPositionScaleOptions,
   ChartRendererRenderContext,
 } from "@tanstack/charts";
-import { roleOf } from "./children";
+import { roleOf } from "./internal/children-extract";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { hmsTimeFmt } from "./internal/formatters";
 import { liveLineMark } from "./internal/live-line-mark";
-import { useChartMargin, useMeasuredRect } from "./internal";
+import { useChartMargin } from "./internal/use-chart-margin";
+import { useMeasuredRect } from "./internal/use-container-size";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import {
   buildCrosshairGradientDef,
@@ -79,10 +45,6 @@ import type {
 } from "./internal/types";
 import "./styles.css";
 
-// ---------------------------------------------------------------------------
-// Constants (bklit live-line-chart.tsx 77-80)
-// ---------------------------------------------------------------------------
-
 interface Margin {
   top: number;
   right: number;
@@ -91,44 +53,61 @@ interface Margin {
 }
 
 const LERP_SPEED = 0.08;
-const DEFAULT_MARGIN: Margin = { top: 24, right: 16, bottom: 32, left: 16 };
-/** React commit interval for the live animation loop (~30fps). Also used as
- *  the rolling-path motion's tween `duration` (fact 15 / E2): each commit's
- *  shift animates over exactly the interval between commits, so consecutive
- *  shifts hand off into one continuous motion instead of stair-stepping. */
+const DEFAULT_MARGIN: Margin = { bottom: 32, left: 16, right: 16, top: 24 };
+/** React commit interval (~30fps); doubles as the rolling-path tween so commits hand off continuously. */
 const LIVE_FRAME_COMMIT_MS = 32;
-/**
- * Once the chart is paused, the bklit-compatible y/value lerp continues to
- * converge.  Keep that state advancing, but do not send changes smaller than
- * a quarter pixel through React/TanStack: they cannot change a rendered
- * pixel, while they otherwise rebuild the complete chart definition.
- */
+/** Skip commits under a quarter pixel of change: invisible, but rebuilds the whole definition. */
 const PAUSED_FRAME_PIXEL_THRESHOLD = 0.25;
+/** Y-domain padding around the live range; exaggerate mode hugs the line. */
+const EXAGGERATED_RANGE_PADDING_FACTOR = 0.03;
+const STANDARD_RANGE_PADDING_FACTOR = 0.15;
+/** Fallback pad when the live range is flat (rawRange is 0). */
+const EXAGGERATED_FLAT_RANGE_PAD = 0.04;
+const STANDARD_FLAT_RANGE_PAD = 10;
 
-export interface LiveLinePoint {
+interface LiveLinePoint {
   time: number;
   value: number;
 }
 
-export interface LiveLineChartProps {
-  /** Streaming data — array of { time: unixSeconds, value }. */
+// `Readonly<LiveLineConfig>` alone leaves the nested `momentumColors` object mutable, which typescript(prefer-readonly-parameter-types) still flags.
+type ReadonlyLiveLineConfig = Readonly<Omit<LiveLineConfig, "momentumColors">> & {
+  readonly momentumColors?: Readonly<MomentumColors>;
+};
+
+// ChartPoint carries TanStack-owned mutable fields (the datum record, the Date xValue, the ChartValue interval bounds); this spells them deeply readonly instead of dropping them.
+type ReadonlyLivePoint = Readonly<
+  Omit<ChartPoint<ChartDatum, Date, number>, "datum" | "xValue" | "x1Value" | "x2Value" | "y1Value" | "y2Value">
+> & {
+  readonly datum: Readonly<ChartDatum>;
+  readonly xValue: Readonly<Date>;
+  readonly x1Value?: number | string | Readonly<Date>;
+  readonly x2Value?: number | string | Readonly<Date>;
+  readonly y1Value?: number | string | Readonly<Date>;
+  readonly y2Value?: number | string | Readonly<Date>;
+};
+
+interface LiveTipChromeProps {
+  readonly cfg: ReadonlyLiveLineConfig;
+  readonly dotColor: string;
+  readonly liveValue: number;
+  readonly liveDotX: number;
+  readonly liveDotY: number;
+  readonly resolvedStroke: string;
+  readonly innerWidth: number;
+  readonly registerLiveGroup: (el: SVGGElement | null) => void;
+}
+
+interface LiveLineChartProps {
   data: LiveLinePoint[];
-  /** Latest value (smoothly interpolated to). */
   value: number;
-  /** Key used for the value field in context data. Default: "value". */
   dataKey?: string;
-  /** Visible time window in seconds. Default: 30. */
   window?: number;
-  /** Number of X-axis ticks (used to compute leading offset). Default: 5. */
   numXTicks?: number;
-  /** Leading offset in X-tick units (0 = now at right edge). Default: 0. */
   nowOffsetUnits?: number;
-  /** Tight Y-axis. Default: false. */
   exaggerate?: boolean;
-  /** Interpolation speed (0-1). Default: 0.08. */
   lerpSpeed?: number;
   margin?: Partial<Margin>;
-  /** Freeze chart scrolling. Default: false. */
   paused?: boolean;
   children?: React.ReactNode;
   className?: string;
@@ -140,49 +119,53 @@ interface AnimFrame {
   yMin: number;
   yMax: number;
   displayValue: number;
-  /** E2: the TRUE current value as of this frame — never lerped. Mirrors the
-   *  `targetValue` argument `nextAnimFrame` was called with. Committed
-   *  samples read this, never `displayValue`. */
+  /** True current value, never lerped; committed samples read this, not displayValue. */
   trueValue: number;
-  /** Monotonic per-COMMIT sequence number (bumped only when `setFrame`
-   *  actually runs, not every raw rAF tick). Used to mint a fresh key for
-   *  the two synthetic "tip" samples every commit — see contextData below. */
+  /** Bumped per commit (not per tick); mints fresh keys for synthetic tip samples. */
   seq: number;
 }
 
-// ---------------------------------------------------------------------------
-// Ported helpers (bklit live-line-chart.tsx 89-187)
-// ---------------------------------------------------------------------------
+// Primitive `typeof` checks live in these predicates (anti-slop allows `typeof`
+// Inside a type guard); call sites below branch on the guard instead.
+const isNumber = (value: unknown): value is number => typeof value === "number";
+const isString = (value: unknown): value is string => typeof value === "string";
 
-function computeTargetRange(
-  data: LiveLinePoint[],
+// Named owner contract for the live y-domain target (replaces the inline
+// Anonymous return type the widening rule rejects).
+interface TargetRange {
+  readonly yMax: number;
+  readonly yMin: number;
+}
+
+const computeTargetRange = (
+  data: readonly Readonly<LiveLinePoint>[],
   value: number,
   exaggerate: boolean,
-): { yMin: number; yMax: number } {
+): TargetRange => {
   if (data.length === 0) {
-    return { yMin: 0, yMax: 100 };
+    return { yMax: 100, yMin: 0 };
   }
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
-  for (const d of data) {
-    if (d.value < min) min = d.value;
-    if (d.value > max) max = d.value;
+  for (const point of data) {
+    if (point.value < min) {min = point.value;}
+    if (point.value > max) {max = point.value;}
   }
-  if (value < min) min = value;
-  if (value > max) max = value;
+  if (value < min) {min = value;}
+  if (value > max) {max = value;}
   const rawRange = max - min;
-  const paddingFactor = exaggerate ? 0.03 : 0.15;
-  const rangePad = rawRange * paddingFactor || (exaggerate ? 0.04 : 10);
-  return { yMin: min - rangePad, yMax: max + rangePad };
-}
+  const paddingFactor = exaggerate ? EXAGGERATED_RANGE_PADDING_FACTOR : STANDARD_RANGE_PADDING_FACTOR;
+  const rangePad = rawRange * paddingFactor || (exaggerate ? EXAGGERATED_FLAT_RANGE_PAD : STANDARD_FLAT_RANGE_PAD);
+  return { yMax: max + rangePad, yMin: min - rangePad };
+};
 
-function nextAnimFrame(
-  prev: AnimFrame,
-  targetRange: { yMin: number; yMax: number },
+const nextAnimFrame = (
+  prev: Readonly<AnimFrame>,
+  targetRange: { readonly yMin: number; readonly yMax: number },
   targetValue: number,
   speed: number,
   isPaused: boolean,
-): Omit<AnimFrame, "seq"> {
+): Omit<AnimFrame, "seq"> => {
   const nextNow = isPaused ? prev.now : Date.now();
   const nextYMin =
     targetRange.yMin < prev.yMin
@@ -193,859 +176,226 @@ function nextAnimFrame(
       ? targetRange.yMax
       : prev.yMax + (targetRange.yMax - prev.yMax) * speed;
   const nextValue = prev.displayValue + (targetValue - prev.displayValue) * speed;
-  return { now: nextNow, yMin: nextYMin, yMax: nextYMax, displayValue: nextValue, trueValue: targetValue };
-}
+  return { displayValue: nextValue, now: nextNow, trueValue: targetValue, yMax: nextYMax, yMin: nextYMin };
+};
 
-function frameChangePixels(prev: AnimFrame, next: AnimFrame, height: number): number {
+const frameChangePixels = (prev: Readonly<AnimFrame>, next: Readonly<AnimFrame>, height: number): number => {
   const range = Math.max(Math.abs(prev.yMax - prev.yMin), Math.abs(next.yMax - next.yMin));
-  if (!(range > 0) || !(height > 0)) return Number.POSITIVE_INFINITY;
+  if (range <= 0 || height <= 0) {return Number.POSITIVE_INFINITY;}
   const domainChange = Math.max(
     Math.abs(next.yMin - prev.yMin),
     Math.abs(next.yMax - prev.yMax),
   );
   const valueChange = Math.abs(next.displayValue - prev.displayValue);
   return (Math.max(domainChange, valueChange) / range) * height;
-}
+};
 
-const bisectTime = bisector<LiveLinePoint, number>((d) => d.time).left;
+const timeBisector = bisector<LiveLinePoint, number>((point: Readonly<LiveLinePoint>) => point.time);
 
-export type Momentum = "up" | "down" | "flat";
+type Momentum = "up" | "down" | "flat";
 
-/** bklit live-line.tsx `detectMomentum` (21-59), re-targeted at the
-    committed `contextData` rows this port builds (same shape:
-    `Record<string, unknown>[]` keyed by `dataKey`). */
-export function detectMomentum(data: ChartDatum[], dataKey: string, lookback = 20): Momentum {
-  if (data.length < 5) return "flat";
+/** Minimum samples before judging momentum; the tail window covers the same span. */
+const MOMENTUM_MIN_SAMPLES = 5;
+const MOMENTUM_TAIL_SAMPLES = 5;
+/** Tail delta must exceed this fraction of the lookback range to count as up/down. */
+const MOMENTUM_DELTA_THRESHOLD_FACTOR = 0.12;
+
+const detectMomentum = (data: readonly Readonly<ChartDatum>[], dataKey: string, lookback = 20): Momentum => {
+  if (data.length < MOMENTUM_MIN_SAMPLES) {return "flat";}
   const start = Math.max(0, data.length - lookback);
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
-  for (let i = start; i < data.length; i++) {
-    const v = data[i]?.[dataKey];
-    if (typeof v === "number") {
-      if (v < min) min = v;
-      if (v > max) max = v;
+  for (let index = start; index < data.length; index += 1) {
+    const rawValue = data[index]?.[dataKey];
+    if (isNumber(rawValue)) {
+      if (rawValue < min) {min = rawValue;}
+      if (rawValue > max) {max = rawValue;}
     }
   }
   const range = max - min;
-  if (range === 0) return "flat";
-  const tailStart = Math.max(start, data.length - 5);
-  const first = (data[tailStart]?.[dataKey] as number) ?? 0;
-  const last = (data[data.length - 1]?.[dataKey] as number) ?? 0;
+  if (range === 0) {return "flat";}
+  const tailStart = Math.max(start, data.length - MOMENTUM_TAIL_SAMPLES);
+  const firstRaw: unknown = data[tailStart][dataKey];
+  const lastRaw: unknown = data.at(-1)?.[dataKey];
+  const first = isNumber(firstRaw) ? firstRaw : 0;
+  const last = isNumber(lastRaw) ? lastRaw : 0;
   const delta = last - first;
-  const threshold = range * 0.12;
-  if (delta > threshold) return "up";
-  if (delta < -threshold) return "down";
+  const threshold = range * MOMENTUM_DELTA_THRESHOLD_FACTOR;
+  if (delta > threshold) {return "up";}
+  if (delta < -threshold) {return "down";}
   return "flat";
-}
+};
 
-// ---------------------------------------------------------------------------
-// LiveYAxis hysteresis interval picker (bklit live-y-axis.tsx 15-72)
-// ---------------------------------------------------------------------------
+// Hysteresis keeps prevInterval within [0.5x, 3x] of minGap to avoid tick flicker.
+const TICK_HYSTERESIS_MIN_FACTOR = 0.5;
+const TICK_HYSTERESIS_MAX_FACTOR = 3;
+/** Odd divisor in the nice-tick divisor sets (ported verbatim from the legacy tick search). */
+const NICE_DIVISOR_ODD = 2.5;
+/** Decimal base for the nice-tick span search. */
+const NICE_SPAN_BASE = 10;
+/** Fallback y tick count when no nice span is found. */
+const FALLBACK_Y_TICK_COUNT = 5;
 
-function pickNiceInterval(
+const pickNiceInterval = (
   valRange: number,
   chartHeight: number,
   minGap: number,
   prevInterval: number,
-): number {
-  if (valRange <= 0 || chartHeight <= 0) return 1;
+): number => {
+  if (valRange <= 0 || chartHeight <= 0) {return 1;}
   const pxPerUnit = chartHeight / valRange;
   if (prevInterval > 0) {
     const px = prevInterval * pxPerUnit;
-    if (px >= minGap * 0.5 && px <= minGap * 3) return prevInterval;
+    if (px >= minGap * TICK_HYSTERESIS_MIN_FACTOR && px <= minGap * TICK_HYSTERESIS_MAX_FACTOR) {return prevInterval;}
   }
   const divisorSets = [
-    [2, 2.5, 2],
-    [2, 2, 2.5],
-    [2.5, 2, 2],
+    [2, NICE_DIVISOR_ODD, 2],
+    [2, 2, NICE_DIVISOR_ODD],
+    [NICE_DIVISOR_ODD, 2, 2],
   ];
   let best = Number.POSITIVE_INFINITY;
   for (const divs of divisorSets) {
-    let span = 10 ** Math.ceil(Math.log10(valRange));
-    let i = 0;
-    let d = divs[i % 3] ?? 2;
-    while ((span / d) * pxPerUnit >= minGap) {
-      span /= d;
-      i++;
-      d = divs[i % 3] ?? 2;
+    let span = NICE_SPAN_BASE ** Math.ceil(Math.log10(valRange));
+    let divIndex = 0;
+    let divisor = divs[divIndex % divs.length] ?? 2;
+    while ((span / divisor) * pxPerUnit >= minGap) {
+      span /= divisor;
+      divIndex += 1;
+      divisor = divs[divIndex % divs.length] ?? 2;
     }
-    if (span < best) best = span;
+    if (span < best) {best = span;}
   }
-  return best === Number.POSITIVE_INFINITY ? valRange / 5 : best;
-}
+  return best === Number.POSITIVE_INFINITY ? valRange / FALLBACK_Y_TICK_COUNT : best;
+};
 
 const EDGE_FADE_PX = 28;
 
-function edgeOpacity(y: number, chartHeight: number): number {
-  const fromEdge = Math.min(y, chartHeight - y);
-  if (fromEdge >= EDGE_FADE_PX) return 1;
-  if (fromEdge <= 0) return 0;
+const edgeOpacity = (yPos: number, chartHeight: number): number => {
+  const fromEdge = Math.min(yPos, chartHeight - yPos);
+  if (fromEdge >= EDGE_FADE_PX) {return 1;}
+  if (fromEdge <= 0) {return 0;}
   return fromEdge / EDGE_FADE_PX;
-}
+};
 
-// ---------------------------------------------------------------------------
-// Dedicated single-pass extraction (docs/LOG.md D22 — mirrors
-// composed-chart.tsx's precedent of NOT using the generic extractChildren).
-// ---------------------------------------------------------------------------
+/**
+ * Explicit non-empty-string test: `if (s)` is also false for `""`, which this file never wants to conflate.
+ * @param {string | undefined} value Possibly-absent string to test.
+ * @returns {boolean} True when value is a non-empty string.
+ */
+const hasText = (value: string | undefined): boolean => (value ?? "").length > 0;
+
+/**
+ * Datum dates are minted by contextData via `new Date(...)` but re-typed as
+ * `unknown` by the ChartDatum record; like readDate in projection-utils, this
+ * narrows instead of asserting. Always returns a Date (invalid when the value
+ * is neither a Date nor a number/string timestamp); call sites below only ever
+ * observe the Date branch.
+ */
+const coerceDatumDate = (rawDate: unknown): Date => {
+  if (rawDate instanceof Date) {return rawDate;}
+  if (isNumber(rawDate) || isString(rawDate)) {return new Date(rawDate);}
+  return new Date(Number.NaN);
+};
 
 interface ExtractedLiveLineChildren {
   liveLines: LiveLineConfig[];
-  liveXAxis: LiveXAxisConfig | null;
-  liveYAxis: LiveYAxisConfig | null;
-  tooltip: ChartTooltipConfig | null;
-  referenceAreas: Array<Record<string, unknown>>;
+  liveXAxis: LiveXAxisConfig | undefined;
+  liveYAxis: LiveYAxisConfig | undefined;
+  tooltip: ChartTooltipConfig | undefined;
+  referenceAreas: ChartDatum[];
 }
 
-function extractLiveLineChildren(children: React.ReactNode): ExtractedLiveLineChildren {
+// Element props are consumed per-role after the roleOf dispatch below, so each branch only reads its own config's fields; pinning the combined shape here keeps every branch well-typed without per-branch assertions (all fields except LiveLineConfig.dataKey are optional, and the tooltip spread only copies fields present at runtime).
+// Reference-area elements carry arbitrary pass-through config fields; they are pushed wholesale into referenceAreas (ChartDatum[]) below, so no open index signature is needed here.
+type LiveLineChildProps = LiveLineConfig &
+  LiveXAxisConfig &
+  LiveYAxisConfig &
+  ChartTooltipConfig & {
+  children?: React.ReactNode;
+  };
+
+/**
+ * Collects one non-fragment child element into the live-line extraction sink; unknown roles collect nothing.
+ *
+ * @param {Readonly<React.ReactElement<LiveLineChildProps>>} child - Child element whose role selects the sink slot.
+ * @param {ExtractedLiveLineChildren} out - Sink receiving the extracted configs.
+ * @returns {void} Nothing; writes into out.
+ */
+const collectLiveLineChild = (child: Readonly<React.ReactElement<LiveLineChildProps>>, out: ExtractedLiveLineChildren): void => {
+  const role = roleOf(child.type);
+  if (role === "liveLine") {out.liveLines.push(child.props);}
+  else if (role === "liveXAxis") {out.liveXAxis = child.props;}
+  else if (role === "liveYAxis") {out.liveYAxis = child.props;}
+  else if (role === "referenceArea") {out.referenceAreas.push({ ...child.props });}
+  else if (role === "tooltip") {out.tooltip = { enabled: true, ...child.props };}
+  else {
+    // Unknown roles carry no live-line state; nothing to extract.
+  }
+};
+
+const extractLiveLineChildren = (children: React.ReactNode): ExtractedLiveLineChildren => {
   const out: ExtractedLiveLineChildren = {
     liveLines: [],
-    liveXAxis: null,
-    liveYAxis: null,
-    tooltip: null,
+    liveXAxis: undefined,
+    liveYAxis: undefined,
     referenceAreas: [],
+    tooltip: undefined,
   };
   const visit = (node: React.ReactNode): void => {
     for (const child of React.Children.toArray(node)) {
-      if (!React.isValidElement(child)) continue;
-      if (child.type === React.Fragment) {
-        visit((child.props as { children?: React.ReactNode }).children);
-        continue;
+      if (React.isValidElement<LiveLineChildProps>(child)) {
+        if (child.type === React.Fragment) {visit(child.props.children);}
+        else {collectLiveLineChild(child, out);}
       }
-      const role = roleOf(child.type);
-      if (role === "liveLine") out.liveLines.push(child.props as LiveLineConfig);
-      else if (role === "liveXAxis") out.liveXAxis = child.props as LiveXAxisConfig;
-      else if (role === "liveYAxis") out.liveYAxis = child.props as LiveYAxisConfig;
-      else if (role === "referenceArea") out.referenceAreas.push(child.props as Record<string, unknown>);
-      else if (role === "tooltip")
-        out.tooltip = { enabled: true, ...(child.props as ChartTooltipConfig) };
     }
   };
   visit(children);
   return out;
-}
+};
 
-const defaultFormatTime = (t: number) => hmsTimeFmt.format(new Date(t));
-const defaultFormatValue = (v: number) => v.toFixed(2);
+const defaultFormatTime = (timeMs: number): string => hmsTimeFmt.format(new Date(timeMs));
+const defaultFormatValue = (value: number): string => value.toFixed(2);
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+// Tooltip cell text: numbers go through the series formatter, strings pass
+// Through, and anything else renders empty instead of `[object Object]`.
+const formatTooltipCellValue = (raw: unknown, formatValue: (value: number) => string): string => {
+  if (isNumber(raw)) {return formatValue(raw);}
+  if (isString(raw)) {return raw;}
+  return "";
+};
+/** Seconds-to-milliseconds factor for live time-window conversions. */
+const MS_PER_SECOND = 1000;
+/** Offset from the end of contextData to the live "now" point (the last entries are tip samples). */
+const NOW_POINT_OFFSET_FROM_END = -2;
+/** Pill date labels are padded up to this count so the ticker stays painted when data is sparse. */
+const DATE_PILL_LABEL_FILL_MAX = 60;
+/** Default minimum pixel gap between live y-axis ticks. */
+const DEFAULT_Y_MIN_GAP_PX = 36;
+/** Half-interval domain expansion when deriving live y tick values. */
+const TICK_RANGE_EXPANSION_FACTOR = 0.5;
+/** Decimal rounding factor for live y tick values. */
+const TICK_ROUNDING_FACTOR = 1e10;
+/** X tick label downward nudge below the axis line. */
+const X_TICK_LABEL_DY_OFFSET_PX = 26;
+/** Y tick label horizontal nudge away from the axis. */
+const Y_TICK_LABEL_DX_PX = 8;
+/** Scale factor for fade-gradient stop offsets expressed as percentages. */
+const PERCENT_SCALE = 100;
+/** Fade mask overhang above/below the plot so the live tip halo is not clipped. */
+const FADE_MASK_TOP_OVERHANG_PX = 20;
+const FADE_MASK_VERTICAL_OVERHANG_PX = 40;
 
-export function LiveLineChart({
-  data,
-  value,
-  dataKey = "value",
-  window: windowSecs = 30,
-  numXTicks = 5,
-  nowOffsetUnits = 0,
-  exaggerate = false,
-  lerpSpeed = LERP_SPEED,
-  margin: marginProp,
-  paused = false,
-  children,
-  className,
-  style,
-}: LiveLineChartProps) {
-  // Keep the value object stable when callers pass the same margin values.
-  // TanStack treats definition identity as its update boundary; a fresh
-  // margin object would otherwise invalidate the definition even on renders
-  // caused by unrelated parent work.  Individual fields are dependencies so
-  // this does not hide a public margin change behind a mutable object.
-  // E2: also the rolling contract's "fixed plot margins" requirement — the
-  // margin passed to `defineChart` must not vary between committed frames.
-  const margin = useChartMargin(marginProp, DEFAULT_MARGIN);
-  const uid = React.useId();
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const { width, height } = useMeasuredRect(containerRef);
+// Five chrome elements render at the throttled frame rate; scrub-dim applies imperatively.
+const DEFAULT_LIVE_DOT_SIZE_PX = 4;
+/** Pulse halo peak radius as a multiple of the live dot size. */
+const LIVE_DOT_PULSE_RADIUS_FACTOR = 3.5;
+/** Badge horizontal offset from the live dot. */
+const LIVE_BADGE_OFFSET_X_PX = 12;
+/** Badge width: measured label characters plus horizontal padding. */
+const LIVE_BADGE_CHAR_WIDTH_PX = 7.5;
+const LIVE_BADGE_HORIZONTAL_PADDING_PX = 16;
 
-  const { liveLines, liveXAxis, liveYAxis, tooltip, referenceAreas: liveRefAreas } = React.useMemo(
-    () => extractLiveLineChildren(children),
-    [children],
-  );
-
-  const windowMs = windowSecs * 1000;
-  const innerWidth = Math.max(0, width - margin.left - margin.right);
-  const innerHeight = Math.max(0, height - margin.top - margin.bottom);
-  const xTickUnitMs = windowMs / Math.max(1, numXTicks - 1);
-  const leadingMs = nowOffsetUnits * xTickUnitMs;
-
-  // ---- Animation state (bklit LiveLineChartCore 335-347) ----
-  const initialFrame: AnimFrame = { now: Date.now(), yMin: 0, yMax: 100, displayValue: value, trueValue: value, seq: 0 };
-  const animRef = React.useRef<AnimFrame>(initialFrame);
-  const [frame, setFrame] = React.useState<AnimFrame>(initialFrame);
-  const committedFrameRef = React.useRef(initialFrame);
-  const seqRef = React.useRef(0);
-
-  // Refs so the long-lived rAF loop always reads current props/derived
-  // values without needing to restart on every render (bklit uses the same
-  // ref pattern for `pausedRef`/`dataRef`/`dataKeyRef`, 349-357).
-  const pausedRef = React.useRef(paused);
-  pausedRef.current = paused;
-  const valueRef = React.useRef(value);
-  valueRef.current = value;
-  const lerpSpeedRef = React.useRef(lerpSpeed);
-  lerpSpeedRef.current = lerpSpeed;
-
-  const targetRange = React.useMemo(
-    () => computeTargetRange(data, value, exaggerate),
-    [data, value, exaggerate],
-  );
-  const targetRangeRef = React.useRef(targetRange);
-  targetRangeRef.current = targetRange;
-
-  // ---- The rAF loop (bklit LiveLineChartCore tick(), 378-430) — now DATA
-  // POLICY ONLY (now/y-domain lerp + throttled commit). Hover/tooltip
-  // resolution used to live here too (cursorXRef, live-hover-chrome); that
-  // is entirely native now (E3) and needs no per-tick imperative work. ----
-  React.useEffect(() => {
-    if (innerWidth <= 0 || innerHeight <= 0) return;
-    let raf = 0;
-    let lastFrameCommit = 0;
-    const tick = () => {
-      raf = 0;
-      const next = nextAnimFrame(
-        animRef.current,
-        targetRangeRef.current,
-        valueRef.current,
-        lerpSpeedRef.current,
-        pausedRef.current,
-      );
-      animRef.current = { ...next, seq: animRef.current.seq };
-
-      const now = performance.now();
-      const pixelChange = frameChangePixels(committedFrameRef.current, animRef.current, innerHeight);
-      const shouldWake = !pausedRef.current || pixelChange >= PAUSED_FRAME_PIXEL_THRESHOLD;
-      if (shouldWake && now - lastFrameCommit >= LIVE_FRAME_COMMIT_MS) {
-        lastFrameCommit = now;
-        seqRef.current += 1;
-        const committed: AnimFrame = { ...next, seq: seqRef.current };
-        committedFrameRef.current = committed;
-        animRef.current = committed;
-        React.startTransition(() => setFrame(committed));
-      }
-      if (!shouldWake) return;
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => {
-      if (raf !== 0) cancelAnimationFrame(raf);
-    };
-  }, [innerWidth, innerHeight, paused, targetRange]);
-
-  // ---- Scales from the last COMMITTED frame (bklit 444-464). D496: y IS
-  // `.nice()`'d here, for parity with legacy's core scale (bklit
-  // live-line-chart.tsx:249-253, :457-463, both `nice: true`). The earlier
-  // C5 comment here claimed `.nice()` broke motion.md's `y:'reproject'`
-  // requirement ("one affine y transform maps the new projection back to
-  // the previous frame") — that reasoning was wrong: any two linear scales
-  // sharing the same pixel range are related by a single affine map
-  // regardless of how their domains were derived, so a niced domain is
-  // exactly as reprojectable as a raw one. Nicing only makes the domain step
-  // discretely at some commits, which legacy's `nice: true` core scale does
-  // too. Every mark-facing/definition-facing y domain below reads off this
-  // scale's (niced) `.domain()`, never the raw `frame.yMin`/`frame.yMax`
-  // pair, so the whole chart shares one niced extent — see the area-baseline
-  // and `yTickValues` comments below for the two call sites that changed. ----
-  const domainEndMs = frame.now + leadingMs;
-  const xScale = React.useMemo(
-    () =>
-      scaleUtc()
-        .domain([new Date(domainEndMs - windowMs), new Date(domainEndMs)])
-        .range([0, innerWidth]),
-    [domainEndMs, windowMs, innerWidth],
-  );
-  const yScale = React.useMemo(
-    () => scaleLinear().domain([frame.yMin, frame.yMax]).nice().range([innerHeight, 0]),
-    [frame.yMin, frame.yMax, innerHeight],
-  );
-
-  const xAccessor = React.useCallback(
-    (d: ChartDatum): Date => (d.date instanceof Date ? d.date : new Date(d.date as number)),
-    [],
-  );
-  const keyAccessor = React.useCallback((d: ChartDatum): ChartKey => d.__key as ChartKey, []);
-
-  // ---- contextData: overscanned window slice + 2 synthetic "tip" samples
-  // (bklit 466-500) ----
-  const contextData = React.useMemo<ChartDatum[]>(() => {
-    const windowStart = domainEndMs - windowMs;
-    let startIdx = bisectTime(data, windowStart / 1000, 0);
-    if (startIdx > 0) startIdx--;
-    const sliced = data.slice(startIdx);
-    const records: ChartDatum[] = sliced.map((p) => ({
-      date: new Date(p.time * 1000),
-      [dataKey]: p.value,
-      // Rolling contract: retained keys must be the exact old suffix / new
-      // prefix (motion.md:301-313) — a real sample's own timestamp is stable
-      // for its whole lifetime in the window, so it is always "the same key"
-      // across commits until it scrolls out.
-      __key: p.time,
-    }));
-    // E2: TRUE value (frame.trueValue), never the lerped frame.displayValue.
-    // E5/rolling contract: a fresh key EVERY commit (frame.seq) — these two
-    // points must never be "retained" across commits, since their x AND y
-    // both legitimately change every commit (they track `now`); a stable key
-    // here would violate "retained semantic x, y values must be unchanged"
-    // and force a fallback snap on every single frame instead of only when
-    // truly needed. A per-commit-unique key instead makes them a clean
-    // balanced remove+add pair every commit, which the contract allows
-    // alongside the affine shift of the real, retained samples.
-    records.push({ date: new Date(frame.now), [dataKey]: frame.trueValue, __key: `__tipA:${frame.seq}` });
-    records.push({ date: new Date(frame.now + xTickUnitMs), [dataKey]: frame.trueValue, __key: `__tipB:${frame.seq}` });
-    return records;
-  }, [data, frame.now, frame.trueValue, frame.seq, domainEndMs, windowMs, dataKey, xTickUnitMs]);
-
-  // ---- Momentum + resolved colors, per <LiveLine> (bklit live-line.tsx) ----
-  const lineVisuals = React.useMemo(() => {
-    return liveLines.map((cfg) => {
-      const momentum = detectMomentum(contextData, cfg.dataKey);
-      const baseStroke = cfg.stroke ?? "var(--chart-line-primary)";
-      const defaultMomentumColors: MomentumColors = {
-        up: "var(--chart-1)",
-        down: "var(--chart-5)",
-        flat: baseStroke,
-      };
-      const dotMomentumColors = cfg.momentumColors ?? defaultMomentumColors;
-      const dotColor = dotMomentumColors[momentum];
-      const resolvedStroke = cfg.momentumColors ? cfg.momentumColors[momentum] : baseStroke;
-      const nowPoint =
-        contextData.length >= 2 ? contextData[contextData.length - 2] : contextData[contextData.length - 1];
-      const liveValue =
-        nowPoint && typeof nowPoint[cfg.dataKey] === "number" ? (nowPoint[cfg.dataKey] as number) : 0;
-      const liveDotX = nowPoint ? (xScale(xAccessor(nowPoint)) ?? 0) : innerWidth;
-      const liveDotY = yScale(liveValue) ?? 0;
-      return { cfg, momentum, baseStroke, resolvedStroke, dotColor, liveValue, liveDotX, liveDotY };
-    });
-  }, [liveLines, contextData, xScale, yScale, xAccessor, innerWidth]);
-
-  // D465: per-series stroke/area gradients, previously two JSX <linearGradient>
-  // elements per series (see the removed <defs> entries below) — moved into
-  // the chart definition's `gradients:` array (area-chart.tsx's
-  // nativeAreaGradients is the model). Explicit y1:0/y2:1 required: the
-  // library default is y1:1/y2:0, the opposite of the retired JSX attrs
-  // (x1="0" x2="0" y1="0" y2="1"), which would flip the gradient direction.
-  const nativeLineGradients = React.useMemo(
-    () =>
-      lineVisuals.flatMap((v) => [
-        {
-          id: `bkm-live-stroke-${uid}-${v.cfg.dataKey}`,
-          x1: 0,
-          y1: 0,
-          x2: 0,
-          y2: 1,
-          stops: [
-            { offset: 0, color: v.resolvedStroke, opacity: 1 },
-            { offset: 1, color: v.resolvedStroke, opacity: 0.6 },
-          ],
-        },
-        {
-          id: `bkm-live-area-${uid}-${v.cfg.dataKey}`,
-          x1: 0,
-          y1: 0,
-          x2: 0,
-          y2: 1,
-          stops: [
-            { offset: 0, color: v.resolvedStroke, opacity: 0.1 },
-            { offset: 1, color: v.resolvedStroke, opacity: 0 },
-          ],
-        },
-      ]),
-    [lineVisuals, uid],
-  );
-
-  // ---- E3: native hover/tooltip wiring ----
-  const tooltipOn = tooltip !== null && tooltip.enabled !== false;
-  const chartConfig = useChartConfig();
-  const liveGroupElsRef = React.useRef<Map<string, SVGGElement>>(new Map());
-  // F-pill fix: hover-geometry.ts's useDatePillOverlay always constructs a
-  // date "ticker" element inside the pill (buildPill unconditionally passes
-  // a getLabels callback) — but ticker.update() (the only thing that
-  // actually paints text into it) only runs when the `dateLabels` array is
-  // non-empty (`show()`'s `dateLabelsRef.current.length > 0` guard, D479).
-  // This file previously passed a permanently-EMPTY array, so the ticker was
-  // built (replacing the pill's plain <span> in the DOM — buildPill's
-  // `inner.textContent = ""` branch, internal/date-pill.ts:104) but never
-  // populated: the pill box rendered with no content, letting the underlying
-  // axis tick label show through unobscured. Fix (matching line-chart.tsx's
-  // own dateLabelsForPill wiring): supply the REAL, per-datum formatted time
-  // label for every contextData row, indexed exactly like `primary.
-  // datumIndex` below, so ticker.update() has something to paint. Padded to
-  // stay > 60 entries so the ticker's own `compact` heuristic
-  // (date-pill.ts:67, `labels.length > 60`) always selects its plain
-  // single-line span — liveline's HH:MM:SS labels have no "month day"
-  // structure for the ticker's non-compact month/day-stack mode to split on.
-  const dateLabelsForPill = React.useMemo(() => {
-    const formatTime = liveXAxis?.formatTime ?? defaultFormatTime;
-    const labels = contextData.map((d) => {
-      const dateVal = d.date instanceof Date ? d.date : new Date(d.date as number);
-      return formatTime(dateVal.getTime());
-    });
-    while (labels.length > 0 && labels.length <= 60) labels.push(labels[labels.length - 1] as string);
-    return labels;
-  }, [contextData, liveXAxis]);
-  // F-pill fix (part 2): bklit-ui's legacy LiveXAxis (repos/bklit-ui/.../
-  // live-x-axis.tsx) paints its hover pill unconditionally whenever the axis
-  // is present and the pointer is hovering — it has no `showDatePill` concept
-  // at all (grep over repos/bklit-ui/.../charts/*.tsx confirms zero hits);
-  // that flag only exists on migrated/line's/area's `<ChartTooltip>` (an
-  // API surface legacy's line/area DO expose it for). The bench scenario
-  // passes `showDatePill={false}` to `<ChartTooltip>` for THIS chart too
-  // (bench/app/src/scenarios/*-liveline.tsx, identical on both sides), but
-  // for live charts legacy simply ignores it — so gating this file's pill on
-  // that same flag was wrong: it suppressed the pill in migrated while
-  // legacy kept showing it, which is exactly the "hover date pill missing"
-  // diff this fix targets. Gate on liveXAxis presence + tooltipOn only.
-  const datePill = useDatePillOverlay({
-    enabled: tooltipOn && liveXAxis !== null,
-    dateLabels: dateLabelsForPill,
-    tooltipSpring: chartConfig.tooltipSpring,
-  });
-  const wasVisibleRef = React.useRef(false);
-  const liveXAxisRef = React.useRef(liveXAxis);
-  liveXAxisRef.current = liveXAxis;
-
-  const handleFocusChange = React.useCallback(
-    (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
-      const primary = points[0];
-      // Legacy live-hover-chrome.ts's registerLiveGroups/updateHover dimmed
-      // the "live tip" groups (pulse/glow/solid dot/badge) to opacity 0.25
-      // while scrubbing, via a plain CSS transition already on the group
-      // element (`transition: "opacity 300ms ease-in-out"` below). Native
-      // focus now drives that same toggle directly, independent of whether
-      // a <ChartTooltip> is even configured — bklit's dim keyed off pointer
-      // position, not tooltip presence.
-      const dim = primary != null;
-      for (const el of liveGroupElsRef.current.values()) {
-        el.style.opacity = dim ? "0.25" : "1";
-      }
-      if (!tooltipOn) return;
-      const axisCfg = liveXAxisRef.current;
-      if (primary && axisCfg) {
-        const datum = primary.datum as ChartDatum;
-        const dateVal = datum.date instanceof Date ? datum.date : new Date(datum.date as number);
-        const formatTime = axisCfg.formatTime ?? defaultFormatTime;
-        const label = formatTime(dateVal.getTime());
-        const jump = !wasVisibleRef.current;
-        wasVisibleRef.current = true;
-        datePill.show(primary.x, { index: primary.datumIndex, label, discrete: false, jump });
-      } else {
-        wasVisibleRef.current = false;
-        datePill.hide();
-      }
-    },
-    [tooltipOn, datePill],
-  );
-
-  const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
-  const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
-    interactionRef.current = context.interaction;
-  }, []);
-
-  const crosshairGradientId = `bkm-live-crosshair-${uid}`;
-  const crosshairGradientDef = React.useMemo(() => {
-    if (!(tooltipOn && (tooltip?.showCrosshair ?? true))) return null;
-    const color = typeof tooltip?.indicatorColor === "string" ? tooltip.indicatorColor : "var(--chart-crosshair)";
-    return buildCrosshairGradientDef(crosshairGradientId, color);
-  }, [tooltipOn, tooltip, crosshairGradientId]);
-
-  const renderTooltipBody = React.useCallback(
-    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode =>
-      renderSeriesTooltipBody(ctx, {
-        tooltip,
-        resolveTitle: (datum) => {
-          const dateVal = datum.date instanceof Date ? datum.date : new Date(datum.date as number);
-          const formatTime = liveXAxisRef.current?.formatTime ?? defaultFormatTime;
-          return formatTime(dateVal.getTime());
-        },
-        buildRows: (datum) =>
-          lineVisuals.map((v) => {
-            const raw = datum[v.cfg.dataKey];
-            const formatValue = v.cfg.formatValue ?? defaultFormatValue;
-            return {
-              color: v.resolvedStroke,
-              label: v.cfg.dataKey,
-              value: typeof raw === "number" ? formatValue(raw) : String(raw ?? ""),
-            };
-          }),
-      }),
-    [tooltip, lineVisuals],
-  );
-
-  // ---- E4: native axis tick lists (values only — position/format/opacity
-  // come from the native axis machinery itself, unlike the deleted HTML
-  // overlay which had to compute pixel coordinates by hand). ----
-  const xTickValues = React.useMemo(() => {
-    if (!liveXAxis) return [] as Date[];
-    const n = liveXAxis.numTicks ?? numXTicks;
-    const [start, end] = xScale.domain();
-    const startMs = start.getTime();
-    const endMs = end.getTime();
-    const step = (endMs - startMs) / Math.max(1, n - 1);
-    return Array.from({ length: n }, (_, i) => new Date(startMs + i * step));
-  }, [liveXAxis, xScale, numXTicks]);
-
-  const yIntervalRef = React.useRef(0);
-  const yTickValues = React.useMemo(() => {
-    if (!liveYAxis) return [] as number[];
-    // F2-tick fix / D496: legacy's yScale is built with `nice: true`
-    // (live-y-axis.tsx reads off `useChartStable().yScale`, whose domain is
-    // the bklit-ui core's `scaleLinear({..., nice: true})`, live-line-
-    // chart.tsx ~446-452) — LiveYAxis's `pickNiceInterval`/tick-expansion
-    // both size themselves off that ALREADY-NICED domain. Our `yScale` above
-    // is now niced too (D496), so just read its domain directly — no more
-    // local nice-a-copy needed. Confirmed empirically: replaying the real
-    // seeded n=100 walk, the niced path reproduces legacy's actual picked
-    // interval (50); a raw domain settles on a different (smaller) value,
-    // which is exactly the D-tick bug this fixes.
-    const [minVal, maxVal] = yScale.domain() as [number, number];
-    const valRange = maxVal - minVal;
-    const minGap = liveYAxis.minGap ?? 36;
-    const interval = pickNiceInterval(valRange, innerHeight, minGap, yIntervalRef.current);
-    yIntervalRef.current = interval;
-    if (interval <= 0 || valRange <= 0) return [] as number[];
-    const allowDecimals = liveYAxis.allowDecimals ?? true;
-    const expandedMin = minVal - interval * 0.5;
-    const expandedMax = maxVal + interval * 0.5;
-    const first = Math.ceil(expandedMin / interval) * interval;
-    const values: number[] = [];
-    for (let v = first; v <= expandedMax; v += interval) {
-      const rounded = Math.round(v * 1e10) / 1e10;
-      if (!Number.isInteger(rounded) && !allowDecimals) continue;
-      values.push(rounded);
-    }
-    return values;
-  }, [liveYAxis, yScale, innerHeight]);
-
-  // ---- TanStack definition: native line/area, crosshair, hover dots ----
-  const definition = React.useMemo(() => {
-    if (width <= 0 || innerWidth <= 0 || innerHeight <= 0 || contextData.length < 2) return null;
-    const marks: ChartMark<ChartDatum, Date, number>[] = [];
-    for (const v of lineVisuals) {
-      const cfg = v.cfg;
-      const curve: CurveFactory = cfg.curve ?? curveMonotoneX;
-      const strokeGradId = `bkm-live-stroke-${uid}-${cfg.dataKey}`;
-      const areaGradId = `bkm-live-area-${uid}-${cfg.dataKey}`;
-      marks.push(
-        ...liveLineMark(contextData, {
-          id: cfg.dataKey,
-          x: xAccessor,
-          y: (d) => d[cfg.dataKey] as number,
-          key: keyAccessor,
-          fill: `url(#${areaGradId})`,
-          stroke: `url(#${strokeGradId})`,
-          strokeWidth: cfg.strokeWidth ?? 2,
-          curve: d3Curve(curve),
-          // E2/D496: DOMAIN-space baseline, not a pixel constant — keeps the
-          // area reproject-compatible (see internal/live-line-mark.ts). Reads
-          // the (niced) `yScale.domain()[0]`, not raw `frame.yMin`: legacy's
-          // visx `AreaClosed` defaults its baseline to `yScale.range()[0]`
-          // (the plot's bottom pixel) whenever no `y0` is given, which for a
-          // niced scale is the niced domain min, not the raw lerped one — so
-          // matching that pixel position here requires the niced value too.
-          y1: yScale.domain()[0] as number,
-          withFill: cfg.fill !== false,
-        }),
-      );
-    }
-    // E3 (C3 pattern): crosshair + per-series hover dot, gated the same way
-    // live-hover-chrome.ts's chromeConfigRef used to gate showCrosshair/
-    // showDots — both require tooltipOn (bklit: no <ChartTooltip>, no chrome
-    // at all).
-    if (tooltipOn && (tooltip?.showCrosshair ?? true)) {
-      marks.push(
-        buildIndicatorMark({
-          gradientId: crosshairGradientId,
-          width: tooltip?.indicatorWidth,
-          dasharray: tooltip?.indicatorDasharray,
-          color: typeof tooltip?.indicatorColor === "string" ? tooltip.indicatorColor : undefined,
-        }) as unknown as ChartMark<ChartDatum, Date, number>,
-      );
-    }
-    if (tooltipOn && (tooltip?.showDots ?? true)) {
-      for (const v of lineVisuals) {
-        marks.push(
-          buildHoverDotMark(
-            contextData,
-            "date",
-            { dataKey: v.cfg.dataKey, color: v.resolvedStroke },
-            resolveHoverDotFill(v.dotColor, tooltip?.dotColor),
-            { size: tooltip?.dotSize, strokeWidth: tooltip?.dotStrokeWidth },
-          ),
-        );
-      }
-    }
-    // E5: definition-level rolling contract (fact 15 / motion.md:270-313).
-    // Marks themselves suppress their own one-time mount ENTER
-    // (internal/live-line-mark.ts) and fall through to this for every other
-    // phase — this is the steady-state timing every ordinary commit uses.
-    const rollingMotion: ChartMotionDefinition<ChartDatum> = {
-      path: { update: "rolling", x: "shift", y: "reproject", fallback: "snap" },
-      transition: { type: "tween", duration: LIVE_FRAME_COMMIT_MS, easing: "linear" },
-    };
-    const xScaleOptions: ChartPositionScaleOptions<Date> = {
-      scale: xScale,
-      axis: liveXAxis
-        ? {
-            ticks: {
-              values: xTickValues,
-              size: 0,
-              padding: 0,
-              format: (d: Date) =>
-                (liveXAxis.formatTime ?? defaultFormatTime)(d instanceof Date ? d.getTime() : (d as number)),
-            },
-            line: false,
-            tickLabels: { fontSize: 12, thin: false, opacity: 1, dy: margin.bottom - 26 },
-          }
-        : false,
-    };
-    const yScaleOptions: ChartPositionScaleOptions<number> = {
-      scale: yScale,
-      side: liveYAxis?.position === "right" ? "right" : "left",
-      axis: liveYAxis
-        ? {
-            ticks: {
-              values: yTickValues,
-              format: (v: number) => (liveYAxis.formatValue ?? defaultFormatValue)(v),
-              size: 0,
-              padding: 0,
-            },
-            line: false,
-            tickLabels: {
-              fontSize: 12,
-              thin: false,
-              // F1-1e: legacy LiveYAxis's font-mono <span> baseline sits
-              // below native's `dominant-baseline="middle"` centering;
-              // nudge down to match (see styles.css's liveline y-axis mono
-              // rule for the font-family half of this fix — switching that
-              // rule's font stack to `var(--font-mono, "Geist Mono", ...)`
-              // fixed the glyph height/width mismatch but left the same
-              // vertical offset). Measured via settled A/B PNGs across all
-              // three y ticks (label-box centers 67/139/212 legacy vs
-              // 63/136/208 native at dy=10): +4px residual, so dy=14.
-              dy: 14,
-              // C4 parity with the deleted `edgeOpacity` HTML fade —
-              // `ctx.position` is the tick's rendered scene-space y (relative
-              // to the SVG origin, not the plot origin), so it must be
-              // shifted by `margin.top` before comparing against the
-              // plot-relative `innerHeight` (unlike line-chart.tsx's
-              // xTickLabelOpacity, which already receives a plot-relative x).
-              opacity: (ctx: { value: unknown; position: number }) =>
-                edgeOpacity(ctx.position - margin.top, innerHeight),
-              dx: liveYAxis.position === "right" ? 8 : -8,
-            },
-          }
-        : false,
-    };
-    return defineChart({
-      marks,
-      scales: {
-        x: xScaleOptions,
-        y: yScaleOptions,
-      },
-      theme: { muted: "var(--color-chart-label, var(--chart-label))" },
-      margin,
-      clip: true,
-      motion: rollingMotion,
-      focus: "group-x" as const,
-      focusRing: false,
-      maxFocusDistance: Number.POSITIVE_INFINITY,
-      gradients: nativeLineGradients,
-      tooltip: buildNativeTooltipExtension<ChartDatum, Date, number>({
-        enabled: tooltipOn,
-        spring: TOOLTIP_SPRING,
-        discrete: false,
-        className: "bkm-native-tooltip",
-        // D-tooltip-geometry fix: previously passed no `anchor` at all
-        // (bare point-anchor default), which put the panel at the focused
-        // point's y — see native-tooltip.tsx's plot-top anchor for parity
-        // with the other cartesian charts' legacy geometry.
-        anchorX: "point",
-      }),
-    });
-  }, [
-    width,
-    innerWidth,
-    innerHeight,
-    contextData,
-    lineVisuals,
-    nativeLineGradients,
-    xScale,
-    yScale,
-    margin,
-    uid,
-    xAccessor,
-    keyAccessor,
-    tooltipOn,
-    tooltip,
-    crosshairGradientId,
-    liveXAxis,
-    liveYAxis,
-    xTickValues,
-    yTickValues,
-  ]);
-
-  const fadeMaskId = lineVisuals.length > 0 ? `bkm-live-fade-mask-${uid}` : null;
-
-  return (
-    <div
-      ref={containerRef}
-      className={className}
-      data-bkm-chart="liveline"
-      style={{ position: "relative", width: "100%", height: 300, touchAction: "none", isolation: "isolate", ...style } as React.CSSProperties}
-    >
-      {liveRefAreas.length > 0 && width > 0 && height > 0 && (
-        <ReferenceAreaLayers
-          configs={liveRefAreas}
-          geom={{
-            width,
-            height,
-            margin,
-            yDomain: yScale.domain() as [number, number],
-            xDomain: xScale.domain() as [Date, Date],
-            isTimeScale: true,
-          }}
-        />
-      )}
-      {definition ? (
-        <>
-          <div
-            style={
-              fadeMaskId
-                ? ({
-                    maskImage: `url(#${fadeMaskId})`,
-                    WebkitMaskImage: `url(#${fadeMaskId})`,
-                  } as React.CSSProperties)
-                : undefined
-            }
-          >
-            <RendererChart
-              ariaLabel="Live line chart"
-              renderer={chartMotionRenderer<ChartDatum, Date, number>()}
-              definition={definition}
-              width={width}
-              height={height}
-              onFocusGroupChange={handleFocusChange}
-              onRender={handleRender}
-              renderTooltipBody={tooltipOn ? renderTooltipBody : undefined}
-            />
-          </div>
-          <svg
-            aria-hidden="true"
-            width={width}
-            height={height}
-            style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none" }}
-          >
-            <g transform={`translate(${margin.left},${margin.top})`}>
-              <defs>
-                {lineVisuals.map((v) => {
-                  const fadeId = `bkm-live-fade-${uid}-${v.cfg.dataKey}`;
-                  return (
-                    <React.Fragment key={v.cfg.dataKey}>
-                      <linearGradient id={fadeId} x1="0" x2="1" y1="0" y2="0">
-                        <stop offset="0%" stopColor="white" stopOpacity={0} />
-                        <stop offset="4%" stopColor="white" stopOpacity={1} />
-                        {v.liveDotX < innerWidth - 1 ? (
-                          <>
-                            <stop
-                              offset={`${(v.liveDotX / Math.max(1, innerWidth)) * 100}%`}
-                              stopColor="white"
-                              stopOpacity={1}
-                            />
-                            <stop offset="100%" stopColor="white" stopOpacity={0} />
-                          </>
-                        ) : (
-                          <stop offset="100%" stopColor="white" stopOpacity={1} />
-                        )}
-                      </linearGradient>
-                      {fadeMaskId && v === lineVisuals[0] ? (
-                        // 1b fix (b): the wrapper's CSS mask (below, applied to
-                        // the whole <RendererChart>) originally only had this
-                        // gradient rect over the plot, which left axis label
-                        // text at alpha 0 outside [margin.left, margin.left +
-                        // innerWidth) — legacy only masked the line/area marks,
-                        // never the axes. 0.15.0 marks have no per-mark
-                        // mask/clipPath style (SceneStyle has no such field —
-                        // see dist/types.d.ts's SceneStyle), so fix (a)
-                        // (mask on the marks only) isn't available; instead we
-                        // extend this mask to cover the whole container: solid
-                        // white over the left margin band (the y-axis label
-                        // column) and over the x-label band beneath the plot,
-                        // so those regions are left fully opaque.
-                        <mask id={fadeMaskId} maskUnits="userSpaceOnUse">
-                          <rect
-                            fill={`url(#${fadeId})`}
-                            x={margin.left}
-                            y={margin.top - 20}
-                            width={innerWidth}
-                            height={innerHeight + 40}
-                          />
-                          <rect fill="white" x={0} y={0} width={margin.left} height={height} />
-                          <rect
-                            fill="white"
-                            x={0}
-                            y={height - margin.bottom}
-                            width={width}
-                            height={margin.bottom}
-                          />
-                        </mask>
-                      ) : null}
-                    </React.Fragment>
-                  );
-                })}
-                {crosshairGradientDef ? (
-                  <linearGradient
-                    id={crosshairGradientDef.id}
-                    gradientUnits="userSpaceOnUse"
-                    x1={0}
-                    x2={0}
-                    y1={margin.top}
-                    y2={margin.top + innerHeight}
-                  >
-                    {crosshairGradientDef.stops.map((s) => (
-                      <stop key={s.offset} offset={s.offset} stopColor={crosshairGradientDef.color} stopOpacity={s.opacity} />
-                    ))}
-                  </linearGradient>
-                ) : null}
-              </defs>
-
-              {lineVisuals.map((v) => (
-                <LiveTipChrome
-                  key={v.cfg.dataKey}
-                  cfg={v.cfg}
-                  dotColor={v.dotColor}
-                  liveValue={v.liveValue}
-                  liveDotX={v.liveDotX}
-                  liveDotY={v.liveDotY}
-                  resolvedStroke={v.resolvedStroke}
-                  innerWidth={innerWidth}
-                  registerLiveGroup={(el) => {
-                    const groups = liveGroupElsRef.current;
-                    if (el) groups.set(v.cfg.dataKey, el);
-                    else groups.delete(v.cfg.dataKey);
-                  }}
-                />
-              ))}
-            </g>
-          </svg>
-        </>
-      ) : null}
-      {tooltipOn && liveXAxis ? (
-        <div ref={datePill.overlayHostRef} style={{ position: "absolute", inset: 0, pointerEvents: "none" }} />
-      ) : null}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Five chrome elements (bklit live-line.tsx 231-317), React-rendered at the
-// throttled `frame` commit rate — dashed reference line, pulsing ring (SMIL,
-// unchanged from bklit), glow dot, solid dot, value badge. The scrub-dim
-// (`isScrubbing`) is applied imperatively via `handleFocusChange` above
-// (`el.style.opacity`), a plain CSS transition already declared inline here —
-// not React state, not the deleted live-hover-chrome.ts module.
-// ---------------------------------------------------------------------------
-
-function LiveTipChrome({
+const LiveTipChrome = ({
   cfg,
   dotColor,
   liveValue,
@@ -1054,18 +404,9 @@ function LiveTipChrome({
   resolvedStroke,
   innerWidth,
   registerLiveGroup,
-}: {
-  cfg: LiveLineConfig;
-  dotColor: string;
-  liveValue: number;
-  liveDotX: number;
-  liveDotY: number;
-  resolvedStroke: string;
-  innerWidth: number;
-  registerLiveGroup: (el: SVGGElement | null) => void;
-}) {
+}: Readonly<LiveTipChromeProps>): React.ReactElement => {
   const pulse = cfg.pulse ?? true;
-  const dotSize = cfg.dotSize ?? 4;
+  const dotSize = cfg.dotSize ?? DEFAULT_LIVE_DOT_SIZE_PX;
   const badge = cfg.badge ?? true;
   const formatValue = cfg.formatValue ?? defaultFormatValue;
 
@@ -1098,7 +439,7 @@ function LiveTipChrome({
                 dur="1.5s"
                 from={String(dotSize)}
                 repeatCount="indefinite"
-                to={String(dotSize * 3.5)}
+                to={String(dotSize * LIVE_DOT_PULSE_RADIUS_FACTOR)}
               />
               <animate attributeName="opacity" dur="1.5s" from="0.5" repeatCount="indefinite" to="0" />
             </circle>
@@ -1114,13 +455,13 @@ function LiveTipChrome({
           />
         </g>
         {badge && (
-          <g transform={`translate(${liveDotX + 12},${liveDotY})`}>
+          <g transform={`translate(${liveDotX + LIVE_BADGE_OFFSET_X_PX},${liveDotY})`}>
             <rect
               fill="var(--popover)"
               height={24}
               opacity={0.95}
               rx={6}
-              width={formatValue(liveValue).length * 7.5 + 16}
+              width={formatValue(liveValue).length * LIVE_BADGE_CHAR_WIDTH_PX + LIVE_BADGE_HORIZONTAL_PADDING_PX}
               x={0}
               y={-12}
             />
@@ -1139,6 +480,583 @@ function LiveTipChrome({
       </g>
     </>
   );
-}
+};
+
+const LiveLineChart = ({
+  data,
+  value,
+  dataKey = "value",
+  window: windowSecs = 30,
+  numXTicks = 5,
+  nowOffsetUnits = 0,
+  exaggerate = false,
+  lerpSpeed = LERP_SPEED,
+  margin: marginProp,
+  paused = false,
+  children,
+  className,
+  style,
+}: LiveLineChartProps): React.ReactElement => {
+  // Fixed plot margins between commits: TanStack treats definition identity as its update boundary.
+  const margin = useChartMargin(marginProp, DEFAULT_MARGIN);
+  const uid = React.useId();
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const { width, height } = useMeasuredRect(containerRef);
+
+  const { liveLines, liveXAxis, liveYAxis, tooltip, referenceAreas: liveRefAreas } = React.useMemo(
+    () => extractLiveLineChildren(children),
+    [children],
+  );
+
+  const windowMs = windowSecs * MS_PER_SECOND;
+  const innerWidth = Math.max(0, width - margin.left - margin.right);
+  const innerHeight = Math.max(0, height - margin.top - margin.bottom);
+  const xTickUnitMs = windowMs / Math.max(1, numXTicks - 1);
+  const leadingMs = nowOffsetUnits * xTickUnitMs;
+
+  const initialFrame: AnimFrame = { displayValue: value, now: Date.now(), seq: 0, trueValue: value, yMax: 100, yMin: 0 };
+  const animRef = React.useRef<AnimFrame>(initialFrame);
+  const [frame, setFrame] = React.useState<AnimFrame>(initialFrame);
+  const committedFrameRef = React.useRef(initialFrame);
+  const seqRef = React.useRef(0);
+
+  const pausedRef = React.useRef(paused);
+  pausedRef.current = paused;
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+  const lerpSpeedRef = React.useRef(lerpSpeed);
+  lerpSpeedRef.current = lerpSpeed;
+
+  const targetRange = React.useMemo(
+    () => computeTargetRange(data, value, exaggerate),
+    [data, value, exaggerate],
+  );
+  const targetRangeRef = React.useRef(targetRange);
+  targetRangeRef.current = targetRange;
+
+  React.useEffect(() => {
+    if (innerWidth <= 0 || innerHeight <= 0) {return undefined;}
+    let raf = 0;
+    let lastFrameCommit = 0;
+    const tick = (): void => {
+      raf = 0;
+      const next = nextAnimFrame(
+        animRef.current,
+        targetRangeRef.current,
+        valueRef.current,
+        lerpSpeedRef.current,
+        pausedRef.current,
+      );
+      animRef.current = { ...next, seq: animRef.current.seq };
+
+      const now = performance.now();
+      const pixelChange = frameChangePixels(committedFrameRef.current, animRef.current, innerHeight);
+      const shouldWake = !pausedRef.current || pixelChange >= PAUSED_FRAME_PIXEL_THRESHOLD;
+      if (shouldWake && now - lastFrameCommit >= LIVE_FRAME_COMMIT_MS) {
+        lastFrameCommit = now;
+        seqRef.current += 1;
+        const committed: AnimFrame = { ...next, seq: seqRef.current };
+        committedFrameRef.current = committed;
+        animRef.current = committed;
+        React.startTransition(() =>{  setFrame(committed); });
+      }
+      if (!shouldWake) {return;}
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return (): void => {
+      if (raf !== 0) {cancelAnimationFrame(raf);}
+    };
+  }, [innerWidth, innerHeight]);
+
+  // Every y domain reads the niced scale domain, never raw frame values (single shared extent).
+  const domainEndMs = frame.now + leadingMs;
+  const xScale = React.useMemo(
+    () =>
+      scaleUtc()
+        .domain([new Date(domainEndMs - windowMs), new Date(domainEndMs)])
+        .range([0, innerWidth]),
+    [domainEndMs, windowMs, innerWidth],
+  );
+  const yScale = React.useMemo(
+    () => scaleLinear().domain([frame.yMin, frame.yMax]).nice().range([innerHeight, 0]),
+    [frame.yMin, frame.yMax, innerHeight],
+  );
+
+  const xAccessor = React.useCallback((datum: Readonly<ChartDatum>): Date => coerceDatumDate(datum.date), []);
+  const keyAccessor = React.useCallback((datum: Readonly<ChartDatum>): ChartKey => {
+    const rawKey: unknown = datum.liveKey;
+    return isString(rawKey) || isNumber(rawKey) ? rawKey : "";
+  }, []);
+
+  const contextData = React.useMemo<ChartDatum[]>(() => {
+    const windowStart = domainEndMs - windowMs;
+    let startIdx = timeBisector.left(data, windowStart / MS_PER_SECOND, 0);
+    if (startIdx > 0) {startIdx -= 1;}
+    const sliced = data.slice(startIdx);
+    const records: ChartDatum[] = sliced.map((point: Readonly<LiveLinePoint>) => ({
+      date: new Date(point.time * MS_PER_SECOND),
+      // Retained keys stay stable across commits (timestamp-keyed); tip samples rotate per commit.
+      liveKey: point.time,
+      [dataKey]: point.value,
+    }));
+    // Tip samples take a fresh key every commit: their x and y both legitimately change each frame.
+    records.push({ date: new Date(frame.now), liveKey: `__tipA:${frame.seq}`, [dataKey]: frame.trueValue }, { date: new Date(frame.now + xTickUnitMs), liveKey: `__tipB:${frame.seq}`, [dataKey]: frame.trueValue });
+    return records;
+  }, [data, frame.now, frame.trueValue, frame.seq, domainEndMs, windowMs, dataKey, xTickUnitMs]);
+
+  const lineVisuals = React.useMemo(() => 
+    liveLines.map((cfg: ReadonlyLiveLineConfig) => {
+      const momentum = detectMomentum(contextData, cfg.dataKey);
+      const baseStroke = cfg.stroke ?? "var(--chart-line-primary)";
+      const defaultMomentumColors: MomentumColors = {
+        down: "var(--chart-5)",
+        flat: baseStroke,
+        up: "var(--chart-1)",
+      };
+      const dotMomentumColors = cfg.momentumColors ?? defaultMomentumColors;
+      const dotColor = dotMomentumColors[momentum];
+      const resolvedStroke = cfg.momentumColors ? cfg.momentumColors[momentum] : baseStroke;
+      const nowPoint =
+        contextData.length >= 2 ? contextData.at(NOW_POINT_OFFSET_FROM_END) : contextData.at(-1);
+      const liveRaw: unknown = nowPoint?.[cfg.dataKey];
+      const liveValue = isNumber(liveRaw) ? liveRaw : 0;
+      const liveDotX = nowPoint ? (xScale(xAccessor(nowPoint)) ?? 0) : innerWidth;
+      const liveDotY = yScale(liveValue) ?? 0;
+      return { baseStroke, cfg, dotColor, liveDotX, liveDotY, liveValue, momentum, resolvedStroke };
+    })
+  , [liveLines, contextData, xScale, yScale, xAccessor, innerWidth]);
+
+  // Explicit y1:0/y2:1 required: the library default gradient direction is the opposite.
+  const nativeLineGradients = React.useMemo(
+    () =>
+      lineVisuals.flatMap((visual: Readonly<(typeof lineVisuals)[number]>) => [
+        {
+          id: `bkm-live-stroke-${uid}-${visual.cfg.dataKey}`,
+          stops: [
+            { color: visual.resolvedStroke, offset: 0, opacity: 1 },
+            { color: visual.resolvedStroke, offset: 1, opacity: 0.6 },
+          ],
+          x1: 0,
+          x2: 0,
+          y1: 0,
+          y2: 1,
+        },
+        {
+          id: `bkm-live-area-${uid}-${visual.cfg.dataKey}`,
+          stops: [
+            { color: visual.resolvedStroke, offset: 0, opacity: 0.1 },
+            { color: visual.resolvedStroke, offset: 1, opacity: 0 },
+          ],
+          x1: 0,
+          x2: 0,
+          y1: 0,
+          y2: 1,
+        },
+      ]),
+    [lineVisuals, uid],
+  );
+
+  const tooltipOn = tooltip !== undefined && tooltip.enabled !== false;
+  const chartConfig = useChartConfig();
+  const liveGroupElsRef = React.useRef<Map<string, SVGGElement>>(new Map());
+  // Pill labels come from real per-datum formatted times; empty arrays leave the ticker unpainted.
+  const dateLabelsForPill = React.useMemo(() => {
+    const formatTime = liveXAxis?.formatTime ?? defaultFormatTime;
+    const labels = contextData.map((datum: Readonly<ChartDatum>) => {
+      const dateVal = coerceDatumDate(datum.date);
+      return formatTime(dateVal.getTime());
+    });
+    while (labels.length > 0 && labels.length <= DATE_PILL_LABEL_FILL_MAX) {
+      const lastLabel = labels.at(-1);
+      if (lastLabel === undefined) {break;}
+      labels.push(lastLabel);
+    }
+    return labels;
+  }, [contextData, liveXAxis]);
+  // Pill gates on axis presence + tooltipOn, not showDatePill (legacy live axis has no such flag).
+  const datePill = useDatePillOverlay({
+    dateLabels: dateLabelsForPill,
+    enabled: tooltipOn && liveXAxis !== undefined,
+    tooltipSpring: chartConfig.tooltipSpring,
+  });
+  const wasVisibleRef = React.useRef(false);
+  const liveXAxisRef = React.useRef(liveXAxis);
+  liveXAxisRef.current = liveXAxis;
+
+  const handleFocusChange = React.useCallback(
+    (points: readonly ReadonlyLivePoint[]) => {
+      const [primary] = points;
+      const dim = primary !== undefined;
+      for (const el of liveGroupElsRef.current.values()) {
+        el.style.opacity = dim ? "0.25" : "1";
+      }
+      if (!tooltipOn) {return;}
+      const axisCfg = liveXAxisRef.current;
+      if (primary && axisCfg) {
+        const { datum } = primary;
+        const dateVal = coerceDatumDate(datum.date);
+        const formatTime = axisCfg.formatTime ?? defaultFormatTime;
+        const label = formatTime(dateVal.getTime());
+        const jump = !wasVisibleRef.current;
+        wasVisibleRef.current = true;
+        datePill.show(primary.x, { discrete: false, index: primary.datumIndex, jump, label });
+      } else {
+        wasVisibleRef.current = false;
+        datePill.hide();
+      }
+    },
+    [tooltipOn, datePill],
+  );
+
+  const interactionRef = React.useRef<ChartInteractionController<ChartDatum, Date, number> | null>(null);
+  const handleRender = React.useCallback((context: Readonly<ChartRendererRenderContext<ChartDatum, Date, number>>) => {
+    interactionRef.current = context.interaction;
+  }, []);
+
+  const crosshairGradientId = `bkm-live-crosshair-${uid}`;
+  const crosshairGradientDef = React.useMemo(() => {
+    if (!(tooltipOn && (tooltip?.showCrosshair ?? true))) {return undefined;}
+    const color = isString(tooltip?.indicatorColor) ? tooltip.indicatorColor : "var(--chart-crosshair)";
+    return buildCrosshairGradientDef(crosshairGradientId, color);
+  }, [tooltipOn, tooltip, crosshairGradientId]);
+
+  const renderTooltipBody = React.useCallback(
+    (ctx: Readonly<ChartTooltipBodyRenderContext<ChartDatum, Date, number>>): React.ReactNode =>
+      renderSeriesTooltipBody(ctx, {
+        buildRows: (datum: Readonly<ChartDatum>) =>
+          lineVisuals.map((visual: Readonly<(typeof lineVisuals)[number]>) => {
+            const raw = datum[visual.cfg.dataKey];
+            const formatValue = visual.cfg.formatValue ?? defaultFormatValue;
+            return {
+              color: visual.resolvedStroke,
+              label: visual.cfg.dataKey,
+              value: formatTooltipCellValue(raw, formatValue),
+            };
+          }),
+        resolveTitle: (datum) => {
+          const dateVal = coerceDatumDate(datum.date);
+          const formatTime = liveXAxisRef.current?.formatTime ?? defaultFormatTime;
+          return formatTime(dateVal.getTime());
+        },
+        tooltip,
+      }),
+    [tooltip, lineVisuals],
+  );
+
+  const xTickValues = React.useMemo<Date[]>(() => {
+    if (!liveXAxis) {return [];}
+    const tickCount = liveXAxis.numTicks ?? numXTicks;
+    const [start, end] = xScale.domain();
+    const startMs = start.getTime();
+    const endMs = end.getTime();
+    const step = (endMs - startMs) / Math.max(1, tickCount - 1);
+    return Array.from({ length: tickCount }, (_slot, index) => new Date(startMs + index * step));
+  }, [liveXAxis, xScale, numXTicks]);
+
+  const yIntervalRef = React.useRef(0);
+  const yTickValues = React.useMemo<number[]>(() => {
+    if (!liveYAxis) {return [];}
+    // Read the niced scale domain directly for tick sizing (legacy builds its yScale with nice:true).
+    const [minVal, maxVal] = yScale.domain();
+    const valRange = maxVal - minVal;
+    const minGap = liveYAxis.minGap ?? DEFAULT_Y_MIN_GAP_PX;
+    const interval = pickNiceInterval(valRange, innerHeight, minGap, yIntervalRef.current);
+    yIntervalRef.current = interval;
+    if (interval <= 0 || valRange <= 0) {return [];}
+    const allowDecimals = liveYAxis.allowDecimals ?? true;
+    const expandedMin = minVal - interval * TICK_RANGE_EXPANSION_FACTOR;
+    const expandedMax = maxVal + interval * TICK_RANGE_EXPANSION_FACTOR;
+    const first = Math.ceil(expandedMin / interval) * interval;
+    const values: number[] = [];
+    for (let tickValue = first; tickValue <= expandedMax; tickValue += interval) {
+      const rounded = Math.round(tickValue * TICK_ROUNDING_FACTOR) / TICK_ROUNDING_FACTOR;
+      if (Number.isInteger(rounded) || allowDecimals) {values.push(rounded);}
+    }
+    return values;
+  }, [liveYAxis, yScale, innerHeight]);
+
+  const definition = React.useMemo(() => {
+    if (width <= 0 || innerWidth <= 0 || innerHeight <= 0 || contextData.length < 2) {return undefined;}
+    const marks: ChartMark<ChartDatum, Date, number>[] = [];
+    for (const visual of lineVisuals) {
+      const {cfg} = visual;
+      const curve: CurveFactory = cfg.curve ?? curveMonotoneX;
+      const strokeGradId = `bkm-live-stroke-${uid}-${cfg.dataKey}`;
+      const areaGradId = `bkm-live-area-${uid}-${cfg.dataKey}`;
+      marks.push(
+        ...liveLineMark(contextData, {
+          curve: d3Curve(curve),
+          fill: `url(#${areaGradId})`,
+          id: cfg.dataKey,
+          key: keyAccessor,
+          stroke: `url(#${strokeGradId})`,
+          strokeWidth: cfg.strokeWidth ?? 2,
+          withFill: cfg.fill !== false,
+          x: xAccessor,
+          y: (datum: Readonly<ChartDatum>) => {
+            const rawValue: unknown = datum[cfg.dataKey];
+            return isNumber(rawValue) ? rawValue : undefined;
+          },
+          // Area baseline is domain-space (niced domain min), not a pixel constant.
+          y1: yScale.domain()[0],
+        }),
+      );
+    }
+    if (tooltipOn && (tooltip?.showCrosshair ?? true)) {
+      marks.push(
+        buildIndicatorMark({
+          color: isString(tooltip?.indicatorColor) ? tooltip.indicatorColor : undefined,
+          dasharray: tooltip?.indicatorDasharray,
+          gradientId: crosshairGradientId,
+          width: tooltip?.indicatorWidth,
+        }),
+      );
+    }
+    if (tooltipOn && (tooltip?.showDots ?? true)) {
+      for (const visual of lineVisuals) {
+        marks.push(
+          buildHoverDotMark(
+            contextData,
+            "date",
+            { color: visual.resolvedStroke, dataKey: visual.cfg.dataKey },
+            resolveHoverDotFill(visual.dotColor, tooltip?.dotColor),
+            { size: tooltip?.dotSize, strokeWidth: tooltip?.dotStrokeWidth },
+          ),
+        );
+      }
+    }
+    const rollingMotion: ChartMotionDefinition<ChartDatum> = {
+      path: { fallback: "snap", update: "rolling", x: "shift", y: "reproject" },
+      transition: { duration: LIVE_FRAME_COMMIT_MS, easing: "linear", type: "tween" },
+    };
+    const xScaleOptions: ChartPositionScaleOptions<Date> = {
+      axis: liveXAxis
+        ? {
+            line: false,
+            tickLabels: { dy: margin.bottom - X_TICK_LABEL_DY_OFFSET_PX, fontSize: 12, opacity: 1, thin: false },
+            ticks: {
+              format: (tickDate: Readonly<Date>) =>
+                (liveXAxis.formatTime ?? defaultFormatTime)(tickDate.getTime()),
+              padding: 0,
+              size: 0,
+              values: xTickValues,
+            },
+          }
+        : false,
+      scale: xScale,
+    };
+    const yScaleOptions: ChartPositionScaleOptions<number> = {
+      axis: liveYAxis
+        ? {
+            line: false,
+            tickLabels: {
+              dx: liveYAxis.position === "right" ? Y_TICK_LABEL_DX_PX : -Y_TICK_LABEL_DX_PX,
+              // Y labels nudge +4px (dy=14): native middle-baseline centering sits above legacy's mono spans.
+              dy: 14,
+              fontSize: 12,
+              opacity: (ctx: Readonly<{ value: unknown; position: number }>) =>
+                edgeOpacity(ctx.position - margin.top, innerHeight),
+              thin: false,
+            },
+            ticks: {
+              format: (tickValue: number) => (liveYAxis.formatValue ?? defaultFormatValue)(tickValue),
+              padding: 0,
+              size: 0,
+              values: yTickValues,
+            },
+          }
+        : false,
+      scale: yScale,
+      side: liveYAxis?.position === "right" ? "right" : "left",
+    };
+    return defineChart({
+      clip: true,
+      focus: "group-x" as const,
+      focusRing: false,
+      gradients: nativeLineGradients,
+      margin,
+      marks,
+      maxFocusDistance: Number.POSITIVE_INFINITY,
+      motion: rollingMotion,
+      scales: {
+        x: xScaleOptions,
+        y: yScaleOptions,
+      },
+      theme: { muted: "var(--color-chart-label, var(--chart-label))" },
+      tooltip: buildNativeTooltipExtension<ChartDatum, Date, number>({
+        anchorX: "point",
+        className: "bkm-native-tooltip",
+        discrete: false,
+        enabled: tooltipOn,
+        spring: TOOLTIP_SPRING,
+      }),
+    });
+  }, [
+    width,
+    innerWidth,
+    innerHeight,
+    contextData,
+    lineVisuals,
+    nativeLineGradients,
+    xScale,
+    yScale,
+    margin,
+    uid,
+    xAccessor,
+    keyAccessor,
+    tooltipOn,
+    tooltip,
+    crosshairGradientId,
+    liveXAxis,
+    liveYAxis,
+    xTickValues,
+    yTickValues,
+  ]);
+
+  const [xDomainStart, xDomainEnd] = xScale.domain();
+  const [yDomainStart, yDomainEnd] = yScale.domain();
+  const fadeMaskId = lineVisuals.length > 0 ? `bkm-live-fade-mask-${uid}` : undefined;
+
+  return (
+    <div
+      ref={containerRef}
+      className={className}
+      data-bkm-chart="liveline"
+      style={{ height: 300, isolation: "isolate", position: "relative", touchAction: "none", width: "100%", ...style }}
+    >
+      {liveRefAreas.length > 0 && width > 0 && height > 0 && (
+        <ReferenceAreaLayers
+          configs={liveRefAreas}
+          geom={{
+            height,
+            isTimeScale: true,
+            margin,
+            width,
+            xDomain: [xDomainStart, xDomainEnd],
+            yDomain: [yDomainStart, yDomainEnd],
+          }}
+        />
+      )}
+      {definition ? (
+        <>
+          <div
+            style={
+              hasText(fadeMaskId)
+                ? ({
+                    WebkitMaskImage: `url(#${fadeMaskId})`,
+                    maskImage: `url(#${fadeMaskId})`,
+                  })
+                : undefined
+            }
+          >
+            <RendererChart
+              ariaLabel="Live line chart"
+              renderer={chartMotionRenderer<ChartDatum, Date, number>()}
+              definition={definition}
+              width={width}
+              height={height}
+              onFocusGroupChange={handleFocusChange}
+              onRender={handleRender}
+              renderTooltipBody={tooltipOn ? renderTooltipBody : undefined}
+            />
+          </div>
+          <svg
+            aria-hidden="true"
+            width={width}
+            height={height}
+            style={{ inset: 0, overflow: "visible", pointerEvents: "none", position: "absolute" }}
+          >
+            <g transform={`translate(${margin.left},${margin.top})`}>
+              <defs>
+                {lineVisuals.map((visual: Readonly<(typeof lineVisuals)[number]>) => {
+                  const fadeId = `bkm-live-fade-${uid}-${visual.cfg.dataKey}`;
+                  return (
+                    <React.Fragment key={visual.cfg.dataKey}>
+                      <linearGradient id={fadeId} x1="0" x2="1" y1="0" y2="0">
+                        <stop offset="0%" stopColor="white" stopOpacity={0} />
+                        <stop offset="4%" stopColor="white" stopOpacity={1} />
+                        {visual.liveDotX < innerWidth - 1 ? (
+                          <>
+                            <stop
+                              offset={`${(visual.liveDotX / Math.max(1, innerWidth)) * PERCENT_SCALE}%`}
+                              stopColor="white"
+                              stopOpacity={1}
+                            />
+                            <stop offset="100%" stopColor="white" stopOpacity={0} />
+                          </>
+                        ) : (
+                          <stop offset="100%" stopColor="white" stopOpacity={1} />
+                        )}
+                      </linearGradient>
+                      {hasText(fadeMaskId) && visual === lineVisuals[0] ? (
+                        // Mask covers the whole container (not just the plot): per-mark mask/clipPath has no native channel.
+                        <mask id={fadeMaskId} maskUnits="userSpaceOnUse">
+                          <rect
+                            fill={`url(#${fadeId})`}
+                            x={margin.left}
+                            y={margin.top - FADE_MASK_TOP_OVERHANG_PX}
+                            width={innerWidth}
+                            height={innerHeight + FADE_MASK_VERTICAL_OVERHANG_PX}
+                          />
+                          <rect fill="white" x={0} y={0} width={margin.left} height={height} />
+                          <rect
+                            fill="white"
+                            x={0}
+                            y={height - margin.bottom}
+                            width={width}
+                            height={margin.bottom}
+                          />
+                        </mask>
+                      ) : undefined}
+                    </React.Fragment>
+                  );
+                })}
+                {crosshairGradientDef ? (
+                  <linearGradient
+                    id={crosshairGradientDef.id}
+                    gradientUnits="userSpaceOnUse"
+                    x1={0}
+                    x2={0}
+                    y1={margin.top}
+                    y2={margin.top + innerHeight}
+                  >
+                    {crosshairGradientDef.stops.map((stop: Readonly<{ offset: string; opacity: number }>) => (
+                      <stop key={stop.offset} offset={stop.offset} stopColor={crosshairGradientDef.color} stopOpacity={stop.opacity} />
+                    ))}
+                  </linearGradient>
+                ) : undefined}
+              </defs>
+
+              {lineVisuals.map((visual: Readonly<(typeof lineVisuals)[number]>) => (
+                <LiveTipChrome
+                  key={visual.cfg.dataKey}
+                  cfg={visual.cfg}
+                  dotColor={visual.dotColor}
+                  liveValue={visual.liveValue}
+                  liveDotX={visual.liveDotX}
+                  liveDotY={visual.liveDotY}
+                  resolvedStroke={visual.resolvedStroke}
+                  innerWidth={innerWidth}
+                  registerLiveGroup={(el) => {
+                    const groups = liveGroupElsRef.current;
+                    if (el) {groups.set(visual.cfg.dataKey, el);}
+                    else {groups.delete(visual.cfg.dataKey);}
+                  }}
+                />
+              ))}
+            </g>
+          </svg>
+        </>
+      ) : undefined}
+      {tooltipOn && liveXAxis ? (
+        <div ref={datePill.overlayHostRef} style={{ inset: 0, pointerEvents: "none", position: "absolute" }} />
+      ) : undefined}
+    </div>
+  );
+};
 
 export default LiveLineChart;
+
+export type { LiveLinePoint, LiveLineChartProps, Momentum };
+export { detectMomentum, LiveLineChart };

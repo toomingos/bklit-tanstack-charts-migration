@@ -7,7 +7,9 @@
     "prebuild": "bash scripts/clone-repos.sh && pnpm install --prod=false --no-frozen-lockfile",
     "build": "next build",
     "start": "next start -p 5200",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "oxlint --type-aware --max-warnings 0",
+    "lint:fix": "oxlint --type-aware --fix",
+    "lint:eslint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
@@ -63,10 +65,17 @@
     "@types/react-dom": "19.2.2",
     "@types/topojson-client": "^3.1.5",
     "eslint": "^9.39.1",
+    "eslint-plugin-github": "^6.1.2",
     "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-sonarjs": "^4.2.0",
     "globals": "^17.11.0",
+    "oxfmt": "^0.66.0",
+    "oxlint": "^1.81.0",
+    "oxlint-plugin-react-doctor": "^0.9.13",
+    "oxlint-tsgolint": "^7.0.2001",
     "tailwindcss": "^4.1.8",
     "typescript": "5.8.2",
-    "typescript-eslint": "^8.47.0"
+    "typescript-eslint": "^8.47.0",
+    "ultracite": "^7.10.7"
   }
 }

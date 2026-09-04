@@ -4,122 +4,176 @@ import * as React from "react";
 import type { ChartSelection, SegmentComponent } from "./chart-selection";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 
-export type SegmentLineVariant = "dashed" | "solid" | "gradient";
+type SegmentLineVariant = "dashed" | "solid" | "gradient";
 
-export type { SegmentComponent };
+// Minimum drag width in px before the brush selection overlay becomes visible.
+const SEGMENT_SELECTION_MIN_WIDTH_PX = 5;
+const SEGMENT_LINE_DASH_PATTERN = "4,4";
+const SEGMENT_LINE_FALLBACK_STROKE = "var(--chart-segment-line)";
+const SEGMENT_BACKGROUND_FALLBACK_FILL = "var(--chart-segment-background)";
+const SEGMENT_GRADIENT_FADE_START = "0%";
+const SEGMENT_GRADIENT_FADE_END = "100%";
+const SEGMENT_GRADIENT_SOLID_START = "10%";
+const SEGMENT_GRADIENT_SOLID_END = "90%";
+const SEGMENT_FADE_TRANSITION = "opacity 150ms ease-out";
 
-export function SegmentOverlay({
+interface SegmentLineStyle {
+  readonly stroke: string;
+  readonly strokeWidth: number;
+  readonly variant: SegmentLineVariant;
+}
+
+interface SegmentRenderParams {
+  readonly component: Readonly<SegmentComponent>;
+  readonly selection: Readonly<ChartSelection>;
+  readonly innerHeight: number;
+  readonly vis: boolean;
+  readonly reducedMotion: boolean;
+}
+
+// Segment carrier props arrive as React children props (see extractSegmentComponents);
+// Only these visual fields are read, each parsed at its use site below.
+interface SegmentVisualProps {
+  readonly fill?: unknown;
+  readonly variant?: unknown;
+  readonly stroke?: unknown;
+  readonly strokeWidth?: unknown;
+}
+
+// Boundary predicates: React children props are honestly unknown; narrow once here.
+const isString = (value: unknown): value is string => typeof value === "string";
+const isNumber = (value: unknown): value is number => typeof value === "number";
+
+const resolveSegmentFill = (props: Readonly<SegmentVisualProps>): string =>
+  isString(props.fill) ? props.fill : SEGMENT_BACKGROUND_FALLBACK_FILL;
+
+const resolveSegmentLineVariant = (props: Readonly<SegmentVisualProps>): SegmentLineVariant => {
+  const variantProp: unknown = props.variant;
+  return variantProp === "dashed" || variantProp === "solid" || variantProp === "gradient" ? variantProp : "dashed";
+};
+
+const resolveSegmentLineStyle = (props: Readonly<SegmentVisualProps>): SegmentLineStyle => ({
+  stroke: isString(props.stroke) ? props.stroke : SEGMENT_LINE_FALLBACK_STROKE,
+  strokeWidth: isNumber(props.strokeWidth) ? props.strokeWidth : 1,
+  variant: resolveSegmentLineVariant(props),
+});
+
+const renderSegmentGradientDefs = (gid: string, stroke: string): React.ReactElement => (
+  <defs>
+    <linearGradient id={gid} x1="0%" x2="0%" y1="0%" y2="100%">
+      <stop offset={SEGMENT_GRADIENT_FADE_START} stopColor={stroke} stopOpacity={0} />
+      <stop offset={SEGMENT_GRADIENT_SOLID_START} stopColor={stroke} stopOpacity={1} />
+      <stop offset={SEGMENT_GRADIENT_SOLID_END} stopColor={stroke} stopOpacity={1} />
+      <stop offset={SEGMENT_GRADIENT_FADE_END} stopColor={stroke} stopOpacity={0} />
+    </linearGradient>
+  </defs>
+);
+
+const renderSegmentBackground = (params: Readonly<SegmentRenderParams>): React.ReactElement => {
+  const { component, selection, innerHeight, vis, reducedMotion } = params;
+  const baseStyle = { opacity: vis ? 1 : 0 };
+  return (
+    <rect
+      key={component.key}
+      fill={resolveSegmentFill(component.props)}
+      x={Math.min(selection.startX, selection.endX)}
+      y={0}
+      width={Math.abs(selection.endX - selection.startX)}
+      height={innerHeight}
+      style={reducedMotion ? baseStyle : { ...baseStyle, transition: SEGMENT_FADE_TRANSITION }}
+    />
+  );
+};
+
+interface SegmentEdgeLineParams {
+  readonly lineKey: string;
+  readonly gradientId: string;
+  readonly x: number;
+  readonly innerHeight: number;
+  readonly style: Readonly<SegmentLineStyle>;
+}
+
+const renderSegmentEdgeLine = (params: Readonly<SegmentEdgeLineParams>): React.ReactElement => {
+  const { lineKey, gradientId, x, innerHeight, style } = params;
+  if (style.variant === "gradient") {
+    return (
+      <g key={lineKey}>
+        {renderSegmentGradientDefs(gradientId, style.stroke)}
+        <line stroke={`url(#${gradientId})`} strokeWidth={style.strokeWidth} x1={x} x2={x} y1={0} y2={innerHeight} />
+      </g>
+    );
+  }
+  return (
+    <line
+      key={lineKey}
+      stroke={style.stroke}
+      strokeWidth={style.strokeWidth}
+      strokeDasharray={style.variant === "dashed" ? SEGMENT_LINE_DASH_PATTERN : undefined}
+      x1={x}
+      x2={x}
+      y1={0}
+      y2={innerHeight}
+    />
+  );
+};
+
+const renderSegmentComponent = (params: Readonly<SegmentRenderParams>): React.ReactElement | undefined => {
+  const { component, selection, vis } = params;
+  if (component.type === "segmentBackground") {
+    return renderSegmentBackground(params);
+  }
+  if (component.type === "segmentLineFrom" || component.type === "segmentLineTo") {
+    if (!vis) {
+      return undefined;
+    }
+    const isFrom = component.type === "segmentLineFrom";
+    return renderSegmentEdgeLine({
+      gradientId: `bkm-seg-${isFrom ? "from" : "to"}-${component.key}`,
+      innerHeight: params.innerHeight,
+      lineKey: component.key,
+      style: resolveSegmentLineStyle(component.props),
+      x: isFrom ? selection.startX : selection.endX,
+    });
+  }
+  return undefined;
+};
+
+const SegmentOverlay = ({
   selection,
   innerWidth,
   innerHeight,
   marginLeft,
   marginTop,
   components,
-}: {
-  selection: ChartSelection | null;
+}: Readonly<{
+  selection: Readonly<ChartSelection> | null;
   innerWidth: number;
   innerHeight: number;
   marginLeft: number;
   marginTop: number;
-  components: SegmentComponent[];
-}) {
+  components: readonly Readonly<SegmentComponent>[];
+}>): React.ReactElement | null => {
   const prefersReducedMotion = usePrefersReducedMotion();
-  if (!selection || components.length === 0) return null;
-  const vis = selection.active && Math.abs(selection.endX - selection.startX) > 5;
+  if (!selection || components.length === 0) {return null;}
+  const vis = selection.active && Math.abs(selection.endX - selection.startX) > SEGMENT_SELECTION_MIN_WIDTH_PX;
+  const shared: Readonly<Omit<SegmentRenderParams, "component">> = {
+    innerHeight,
+    reducedMotion: prefersReducedMotion,
+    selection,
+    vis,
+  };
   return (
     <svg
       width={innerWidth}
       height={innerHeight}
-      style={{ position: "absolute", left: marginLeft, top: marginTop, overflow: "visible", pointerEvents: "none" }}
+      style={{ left: marginLeft, overflow: "visible", pointerEvents: "none", position: "absolute", top: marginTop }}
       aria-hidden="true"
     >
-      {components.map((c) => {
-        if (c.type === "segmentBackground") {
-          const fill = (c.props.fill as string | undefined) ?? "var(--chart-segment-background)";
-          const minX = Math.min(selection.startX, selection.endX);
-          const w = Math.abs(selection.endX - selection.startX);
-          return (
-            <rect
-              key={c.key}
-              fill={fill}
-              x={minX}
-              y={0}
-              width={w}
-              height={innerHeight}
-              style={prefersReducedMotion ? { opacity: vis ? 1 : 0 } : { opacity: vis ? 1 : 0, transition: "opacity 150ms ease-out" }}
-            />
-          );
-        }
-        if (c.type === "segmentLineFrom") {
-          if (!vis) return null;
-          const stroke = (c.props.stroke as string | undefined) ?? "var(--chart-segment-line)";
-          const sw = (c.props.strokeWidth as number | undefined) ?? 1;
-          const variant = (c.props.variant as SegmentLineVariant | undefined) ?? "dashed";
-          if (variant === "gradient") {
-            const gid = `bkm-seg-from-${c.key}`;
-            return (
-              <g key={c.key}>
-                <defs>
-                  <linearGradient id={gid} x1="0%" x2="0%" y1="0%" y2="100%">
-                    <stop offset="0%" stopColor={stroke} stopOpacity={0} />
-                    <stop offset="10%" stopColor={stroke} stopOpacity={1} />
-                    <stop offset="90%" stopColor={stroke} stopOpacity={1} />
-                    <stop offset="100%" stopColor={stroke} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <line stroke={`url(#${gid})`} strokeWidth={sw} x1={selection.startX} x2={selection.startX} y1={0} y2={innerHeight} />
-              </g>
-            );
-          }
-          return (
-            <line
-              key={c.key}
-              stroke={stroke}
-              strokeWidth={sw}
-              strokeDasharray={variant === "dashed" ? "4,4" : undefined}
-              x1={selection.startX}
-              x2={selection.startX}
-              y1={0}
-              y2={innerHeight}
-            />
-          );
-        }
-        if (c.type === "segmentLineTo") {
-          if (!vis) return null;
-          const stroke = (c.props.stroke as string | undefined) ?? "var(--chart-segment-line)";
-          const sw = (c.props.strokeWidth as number | undefined) ?? 1;
-          const variant = (c.props.variant as SegmentLineVariant | undefined) ?? "dashed";
-          if (variant === "gradient") {
-            const gid = `bkm-seg-to-${c.key}`;
-            return (
-              <g key={c.key}>
-                <defs>
-                  <linearGradient id={gid} x1="0%" x2="0%" y1="0%" y2="100%">
-                    <stop offset="0%" stopColor={stroke} stopOpacity={0} />
-                    <stop offset="10%" stopColor={stroke} stopOpacity={1} />
-                    <stop offset="90%" stopColor={stroke} stopOpacity={1} />
-                    <stop offset="100%" stopColor={stroke} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <line stroke={`url(#${gid})`} strokeWidth={sw} x1={selection.endX} x2={selection.endX} y1={0} y2={innerHeight} />
-              </g>
-            );
-          }
-          return (
-            <line
-              key={c.key}
-              stroke={stroke}
-              strokeWidth={sw}
-              strokeDasharray={variant === "dashed" ? "4,4" : undefined}
-              x1={selection.endX}
-              x2={selection.endX}
-              y1={0}
-              y2={innerHeight}
-            />
-          );
-        }
-        return null;
-      })}
+      {components.map((component) => renderSegmentComponent({ ...shared, component }))}
     </svg>
   );
-}
+};
+
+export { SegmentOverlay };
+export type { SegmentLineVariant };
+export type { SegmentComponent } from "./chart-selection";

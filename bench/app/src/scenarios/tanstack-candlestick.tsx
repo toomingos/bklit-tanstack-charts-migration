@@ -1,14 +1,4 @@
-// Native TanStack Charts equivalent of bklit's candlestick-chart.tsx demo,
-// following the three-link structure documented in
-// repos/tanstack-charts/benchmarks/conformance/cases/28-candlestick/tanstack.ts
-// (one wick `link` per candle low->high, plus pre-split gains/losses body
-// `link`s open->close so up/down candles get distinct colors without a
-// color-scale channel) -- default/unstyled TanStack theming only (see
-// docs/LOG.md) -- this is the performance-ceiling reference, NOT a
-// bklit-styled clone (same philosophy as tanstack-line.tsx's header
-// comment). Colors (#64748b wick, #10b981 gains, #ef4444 losses) are taken
-// verbatim from that conformance fixture, the canonical "plain TanStack"
-// candlestick reference.
+// Ceiling reference: fixture 28-candlestick three-link structure (wick + pre-split gain/loss bodies).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";
@@ -23,22 +13,7 @@ import { armTanstackSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveCandle } from "../bench/live";
 
-// --- Body stroke-width approximation -------------------------------------
-// The conformance fixture this scenario is modeled on hardcodes a fixed
-// 5px body stroke width (fine for its 30-candle fixture, but at bench sizes
-// n=1000/10000 a fixed 5px would visibly overlap into a solid block -- not
-// a "density-appropriate" ceiling render). Per the task, this instead
-// derives stroke width from (an approximation of) chart inner width / n.
-//
-// This is a deliberate APPROXIMATION, not a live measurement: `Chart` fills
-// 100% of its container's width (packages/core/src/sizing.ts) and #chart-root
-// has a fixed CSS width of 1100px with 24px padding each side (bench/app/src
-// /styles.css), but the chart's own auto-computed margin (from axis label
-// widths, packages/charts-core/src/facet.ts) isn't knowable before render
-// without an extra measure-then-reflow pass -- which would risk perturbing
-// the very M1a/M1c mount timings this harness measures. 64px stands in for
-// a typical y-axis price-label + tick reservation. Getting this exactly
-// right isn't the point; "density-appropriate instead of a fixed 5px" is.
+// Body width from approx inner width / n (fixed 5px would block up at n=1000+); never measured live.
 const CHART_ROOT_WIDTH = 1100;
 const CHART_ROOT_PADDING = 24;
 const ESTIMATED_AXIS_MARGIN = 64;
@@ -78,11 +53,6 @@ export default function TanstackCandlestick({ n }: { n: number }) {
     const losses = data.filter((d) => d.close < d.open);
     return defineChart({
       marks: [
-        // Wick: low -> high, thin. Its y channel values (low, high) are the
-        // widest extent in the dataset, so the auto-computed y domain across
-        // all three marks below already comes out to [min(low), max(high)]
-        // nice -- body-link y values (open/close) are always within that
-        // range, so no manual y domain override is needed to get there.
         link(data, {
           id: "wick",
           x1: "date",
@@ -93,7 +63,6 @@ export default function TanstackCandlestick({ n }: { n: number }) {
           stroke: "#64748b",
           strokeWidth: 1,
         }),
-        // Body, up candles (close >= open, matching bklit's isPositive rule).
         link(gains, {
           id: "gains",
           x1: "date",
@@ -104,7 +73,6 @@ export default function TanstackCandlestick({ n }: { n: number }) {
           stroke: "#10b981",
           strokeWidth: bodyStrokeWidth,
         }),
-        // Body, down candles.
         link(losses, {
           id: "losses",
           x1: "date",

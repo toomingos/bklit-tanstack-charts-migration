@@ -1,16 +1,5 @@
-// Q2 API-compatibility fixture: exercises the full public prop surface of
-// the migrated FunnelChart (both orientations) against
-// repos/bklit-ui/packages/ui/src/charts/funnel-chart.tsx. Must typecheck
-// with zero errors via `tsc --noEmit` (included from bench/app/tsconfig.json)
-// -- OPEN ITEM: as of this writing `@migrated/charts`'s `index.ts` has not
-// yet been wired with FunnelChart's export lines (Fable's job, per this
-// deliverable's own constraints -- see the migration report's "registry
-// export lines" section for the exact lines to add), so `tsc --noEmit`
-// currently reports one `TS2305 has no exported member 'FunnelChart'` error
-// for this file until that wiring lands; every other prop/type usage below
-// has been verified error-free via a scoped relative-import probe. Runtime
-// smoke is covered by the bench scenarios (bklit-funnel(vertical).tsx /
-// migrated-funnel(vertical).tsx).
+// Q2 API fixture: exercises migrated FunnelChart public props (both orientations); must typecheck (tsc --noEmit).
+// OPEN: index.ts not yet wired with FunnelChart exports; tsc reports TS2305 until then.
 import * as React from "react";
 import {
   FunnelChart,
@@ -61,14 +50,10 @@ export function FunnelChartApiFixture() {
 
   return (
     <>
-      {/* Canonical docs-demo path (D30 basis) -- horizontal, fixed color +
-          layers, everything else default. */}
       <FunnelChart color="var(--chart-1)" data={basicData} layers={3} />
 
-      {/* Vertical orientation, same data. */}
       <FunnelChart color="var(--chart-1)" data={basicData} layers={3} orientation="vertical" />
 
-      {/* Straight edges, custom gap, controlled hover, className/style. */}
       <FunnelChart
         className="fixture-funnel"
         data={basicData}
@@ -80,24 +65,16 @@ export function FunnelChartApiFixture() {
         style={{ width: "100%" }}
       />
 
-      {/* Per-stage color/gradient overrides, displayValue, custom
-          renderPattern (innermost ring only), showValues/showPercentage/
-          showLabels toggles. */}
       <FunnelChart data={richData} renderPattern={renderPattern} showLabels showPercentage showValues />
 
       <FunnelChart data={richData} showLabels={false} showPercentage={false} showValues={false} />
 
-      {/* Custom formatPercentage/formatValue. */}
       <FunnelChart data={basicData} formatPercentage={customFormatPercentage} formatValue={customFormatValue} />
 
-      {/* Explicit enterTransition (tween) + staggerDelay override. */}
       <FunnelChart data={basicData} enterTransition={tweenTransition} staggerDelay={0.2} />
 
-      {/* Spring enterTransition (bounce shorthand + explicit constants). */}
       <FunnelChart data={basicData} enterTransition={springTransition} orientation="vertical" />
 
-      {/* Grid: boolean shorthand and full object form (bands/lines toggled
-          independently, custom colors/opacity/width) -- both orientations. */}
       <FunnelChart data={basicData} grid />
       <FunnelChart data={basicData} grid={false} />
       <FunnelChart
@@ -107,14 +84,10 @@ export function FunnelChartApiFixture() {
       />
       <FunnelChart data={basicData} grid={{ bands: false, lines: true }} />
 
-      {/* labelLayout="grouped" with explicit labelOrientation/labelAlign,
-          both orientations. */}
       <FunnelChart data={basicData} labelAlign="start" labelLayout="grouped" labelOrientation="horizontal" />
       <FunnelChart data={basicData} labelAlign="end" labelLayout="grouped" labelOrientation="vertical" orientation="vertical" />
       <FunnelChart data={basicData} labelAlign="center" labelLayout="spread" />
 
-      {/* Exhaustive `FunnelChartProps` reference (kept last, purely for
-          typecheck coverage of every documented prop at once). */}
       {((): FunnelChartProps => ({
         data: richData,
         orientation: "vertical",

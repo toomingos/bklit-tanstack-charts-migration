@@ -1,16 +1,5 @@
-// P6.1 / T-F1 — the multi-axis NEW-BEHAVIOUR fixture (not a regression check).
-//
-// Two series on two different `yAxisId` values with deliberately mismatched
-// magnitudes: `seriesA` runs ~1000 on the default (`"left"`) axis, `seriesC` is
-// `seriesB / 50` and runs ~12 on `"right"`. That ratio is the control D331 asks
-// for — if per-axis domains are NOT resolved, `seriesC` collapses onto the
-// bottom edge of a shared [0, ~1100] domain and the diff is enormous; if they
-// ARE, it uses the full plot height exactly as `seriesA` does. A PASS here can
-// only happen when both impls resolve two domains, so the gate can move.
-//
-// No `<YAxis>` child, matching the `line` scenario: this fixture gates the MARK
-// geometry the projector produces, not right-hand axis rendering (which is a
-// separate surface and not part of the scale-resolution layer).
+// Multi-axis control: seriesC runs ~12 on "right" vs seriesA ~1000; shared-domain collapse is unmissable.
+// No YAxis child: gates mark geometry, not axis rendering.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import { LineChart, Line, Grid, XAxis, ChartTooltip } from "@bklitui/ui/charts";
@@ -23,7 +12,7 @@ import { armBklitSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveRow } from "../bench/live";
 
-/** `seriesB / 50` — an order of magnitude below `seriesA` on purpose. */
+// seriesC = seriesB / 50, an order of magnitude below seriesA on purpose.
 const SECONDARY_AXIS_DIVISOR = 50;
 
 type MultiAxisRow = SeededRow & { seriesC: number };

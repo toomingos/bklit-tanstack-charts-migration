@@ -3,92 +3,66 @@
 import { createMark } from "@tanstack/charts";
 import { dot } from "@tanstack/charts/dot";
 import { whenFocused } from "@tanstack/charts/focus/mark";
-import type { ChartMark } from "@tanstack/charts";
+import type { ChartMark, MarkInitializeContext, MarkRenderContext, SceneNode } from "@tanstack/charts";
 import type { ChartDatum, SeriesPointMarkerStyle } from "./types";
 
-// C3->C2 (D452+ ruling): restores bklit's original TWO-LAYER marker chrome
-// (series-markers.tsx:240-297) instead of the single reactive-circle
-// collapse this file used to do. `ChartDotStateStyle` (dist/types.d.ts:89)
-// still cannot express `filter: blur(...)` through a dot mark's `states` —
-// that finding stands — but scene nodes carry their own `className` field
-// (dist/types.d.ts SceneNodeBase:838) which the SVG renderer emits verbatim
-// (dist/svg-renderer.js:93), and `createMark` (dist/mark.d.ts) lets an app
-// mark control its own scene nodes. `withMarkerBaseClassName` below wraps
-// the plain circle-grid `dot()` mark to stamp `bkm-marker-base`
-// (+ `bkm-marker-base--dim` when hovered/legend-dimmed) onto the ONE group
-// node `dot()`'s `render` already emits per series (dist/dot.js
-// `renderPositions`: `{kind:"group", className:"ts-chart__dot", children}`)
-// — CSS in styles.css drives the opacity+blur transition from there, zero
-// renderer-DOM reach-in (we only ever read/append `className`, matching the
-// className the mark itself produced). The bright/crisp active point is a
-// SECOND, separate `dot()` mark filtered to the focused x via `whenFocused`
-// (same mechanism as `buildHoverDotMark` in hover-geometry.ts), left
-// unblurred/undimmed and drawn after the base layer.
-//
-// `dimmed` (base-layer class) = pointer focus active anywhere on the chart
-// OR legend-hover on a different series (legacy: "a pointer hover or legend
-// hover is active" dims the WHOLE base layer, not just the non-hovered
-// points — the active point no longer lives in this layer at all, it is the
-// separate crisp mark). Computed at mark-BUILD time from React state the
-// caller already tracks (line-chart.tsx's `hoveredIndex`/`legendHoveredKey`,
-// scatter-chart.tsx's pointer-focus-active state) rather than through native
-// `states`, since `states` cannot set `className` (no such field in
-// `ChartMarkStateStyle`, dist/types.d.ts:72-89) and a plain per-mark static
-// prop can't react to interaction on its own — the caller re-derives the
-// mark array (a `React.useMemo` definition dependency) on every
-// hover/legend change instead, same as the pre-existing `legendDimmed`
-// per-mark `fillOpacity` prop this replaces.
 const MARKER_ACTIVE_SCALE = 1.35;
 
-/**
- * Wraps a plain `dot()` mark to stamp `bkm-marker-base`
- * (+ `bkm-marker-base--dim`) onto its rendered group node(s). Exported so
- * scatter-chart.tsx's dot mark can reuse the exact same wrapper (D452+
- * ruling item 4).
- */
-export function withMarkerBaseClassName(
-  mark: ChartMark<any, any, any>,
-  dimmed: boolean,
-): ChartMark<any, any, any> {
+// Bklit marker defaults: plain-dot radius and active-highlight padding factor.
+const DEFAULT_MARKER_RADIUS = 5;
+const ACTIVE_HIGHLIGHT_RADIUS_FACTOR = 0.35;
+// Scale factor converting a 0–1 value ratio into a 0–100 gradient-stop percentage.
+const PERCENT_SCALE = 100;
+// Half-pixel feather around gradient stop boundaries (anti-aliasing).
+const GRADIENT_EDGE_FEATHER_PX = 0.5;
+
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
+
+// Dim/blur via CSS className (states can't express filter); the active dot is a separate mark.
+const withMarkerBaseClassName = (mark: Readonly<ChartMark<ChartDatum, Date, number>>, dimmed: boolean): ChartMark<ChartDatum, Date, number> => {
   const className = dimmed ? "bkm-marker-base bkm-marker-base--dim" : "bkm-marker-base";
-  return createMark((ctx) => {
+  return createMark((ctx: Readonly<MarkInitializeContext>) => {
     const inner = mark.initialize(ctx);
     return {
       ...inner,
-      render: (renderCtx) => {
+      render: (renderCtx: Readonly<MarkRenderContext>) => {
         const scene = inner.render(renderCtx);
+        const nodes: SceneNode[] = [];
+        for (const node of scene.nodes) {
+          nodes.push({
+            ...node,
+            className: node.className !== undefined && node.className !== "" ? `${node.className} ${className}` : className,
+          });
+        }
         return {
           ...scene,
-          nodes: scene.nodes.map((node) => ({
-            ...node,
-            className: node.className ? `${node.className} ${className}` : className,
-          })),
+          nodes,
         };
       },
     };
   }, mark.motion, mark.renderer);
 }
 
-export interface MarkerSeriesConfig {
-  dataKey: string;
-  stroke: string;
-  showMarkers?: boolean;
-  markers?: SeriesPointMarkerStyle;
+interface MarkerSeriesConfig {
+  readonly dataKey: string;
+  readonly stroke: string;
+  readonly showMarkers?: boolean;
+  readonly markers?: Readonly<SeriesPointMarkerStyle>;
 }
 
-export function getMarkerVisualExtent(style: Pick<SeriesPointMarkerStyle, "radius" | "strokeWidth" | "ringGap" | "outlineWidth" | "showActiveHighlight">): number {
-  const radius = style.radius ?? 5;
+const getMarkerVisualExtent = (style: Readonly<Pick<SeriesPointMarkerStyle, "radius" | "strokeWidth" | "ringGap" | "outlineWidth" | "showActiveHighlight">>): number => {
+  const radius = style.radius ?? DEFAULT_MARKER_RADIUS;
   const strokeWidth = style.strokeWidth ?? 2;
   const ringGap = style.ringGap ?? 2;
   const outlineWidth = style.outlineWidth ?? 0;
   const showActiveHighlight = style.showActiveHighlight ?? true;
   const ring = strokeWidth > 0 ? ringGap + strokeWidth : 0;
-  const outline = outlineWidth > 0 ? outlineWidth : 0;
-  const highlightPad = showActiveHighlight ? radius * 0.35 : 0;
+  const outline = Math.max(outlineWidth, 0);
+  const highlightPad = showActiveHighlight ? radius * ACTIVE_HIGHLIGHT_RADIUS_FACTOR : 0;
   return radius + ring + outline + highlightPad + 2;
 }
 
-export interface MarkerGradientDef {
+interface MarkerGradientDef {
   dataKey: string;
   id: string;
   fill: string;
@@ -100,90 +74,173 @@ export interface MarkerGradientDef {
   outerRadius: number;
 }
 
-export function buildMarkerGradientDefs(series: MarkerSeriesConfig[], baseId: string): MarkerGradientDef[] {
+interface MarkerRingGeometry {
+  readonly radius: number;
+  readonly strokeWidth: number;
+  readonly ringGap: number;
+  readonly hasRing: boolean;
+  readonly outerRadius: number;
+}
+
+const resolveMarkerRingGeometry = (markers: Readonly<SeriesPointMarkerStyle> | undefined): MarkerRingGeometry => {
+  const radius = markers?.radius ?? DEFAULT_MARKER_RADIUS;
+  const strokeWidth = markers?.strokeWidth ?? 2;
+  const ringGap = markers?.ringGap ?? 2;
+  const hasRing = strokeWidth > 0;
+  return { hasRing, outerRadius: hasRing ? radius + ringGap + strokeWidth : radius, radius, ringGap, strokeWidth };
+}
+
+interface MarkerGradientStops {
+  readonly fillFadeStart: number;
+  readonly fillFadeEnd: number;
+  readonly gapFadeStart: number;
+  readonly gapFadeEnd: number;
+}
+
+const resolveMarkerGradientStops = (radius: number, ringGap: number, outerRadius: number): MarkerGradientStops => {
+  const fillEnd = (radius / outerRadius) * PERCENT_SCALE;
+  const gapEnd = ((radius + ringGap) / outerRadius) * PERCENT_SCALE;
+  const halfPx = (GRADIENT_EDGE_FEATHER_PX / outerRadius) * PERCENT_SCALE;
+  return {
+    fillFadeEnd: Math.min(PERCENT_SCALE, fillEnd + halfPx),
+    fillFadeStart: Math.max(0, fillEnd - halfPx),
+    gapFadeEnd: Math.min(PERCENT_SCALE, gapEnd + halfPx),
+    gapFadeStart: Math.max(0, gapEnd - halfPx),
+  };
+}
+
+const buildMarkerGradientForSeries = (seriesConfig: Readonly<MarkerSeriesConfig>, baseId: string, idx: number): MarkerGradientDef | undefined => {
+  if (seriesConfig.showMarkers !== true) {return undefined;}
+  const { radius, ringGap, hasRing, outerRadius } = resolveMarkerRingGeometry(seriesConfig.markers);
+  if (!hasRing) {return undefined;}
+  const fill = seriesConfig.markers?.fill ?? seriesConfig.stroke;
+  const stroke = seriesConfig.markers?.stroke ?? seriesConfig.markers?.fill ?? seriesConfig.stroke;
+  return {
+    dataKey: seriesConfig.dataKey,
+    fill,
+    ...resolveMarkerGradientStops(radius, ringGap, outerRadius),
+    id: `${baseId}-mgrad-${idx}`,
+    outerRadius,
+    stroke,
+  };
+}
+
+const buildMarkerGradientDefs = (series: readonly Readonly<MarkerSeriesConfig>[], baseId: string): MarkerGradientDef[] => {
   const defs: MarkerGradientDef[] = [];
   let idx = 0;
-  for (const s of series) {
-    if (!s.showMarkers) continue;
-    const radius = s.markers?.radius ?? 5;
-    const strokeWidth = s.markers?.strokeWidth ?? 2;
-    const ringGap = s.markers?.ringGap ?? 2;
-    if (strokeWidth <= 0) continue;
-    const fill = s.markers?.fill ?? s.stroke;
-    const stroke = s.markers?.stroke ?? s.markers?.fill ?? s.stroke;
-    const outerRadius = radius + ringGap + strokeWidth;
-    const fillEnd = (radius / outerRadius) * 100;
-    const gapEnd = ((radius + ringGap) / outerRadius) * 100;
-    const halfPx = (0.5 / outerRadius) * 100;
-    defs.push({
-      dataKey: s.dataKey,
-      id: `${baseId}-mgrad-${idx++}`,
-      fill,
-      stroke,
-      fillFadeStart: Math.max(0, fillEnd - halfPx),
-      fillFadeEnd: Math.min(100, fillEnd + halfPx),
-      gapFadeStart: Math.max(0, gapEnd - halfPx),
-      gapFadeEnd: Math.min(100, gapEnd + halfPx),
-      outerRadius,
-    });
+  for (const seriesConfig of series) {
+    const def = buildMarkerGradientForSeries(seriesConfig, baseId, idx);
+    if (def !== undefined) {
+      defs.push(def);
+      idx += 1;
+    }
   }
   return defs;
 }
 
-export function buildMarkerMarks(
-  renderData: ChartDatum[],
-  xDataKey: string,
-  series: MarkerSeriesConfig[],
-  gradientIdByKey: Map<string, string>,
-  // C5: legend-hovered series dataKey, or null when no legend entry is
-  // hovered — series-markers.tsx:240-244's `isLegendDimmed` term.
-  legendHoveredKey?: string | null,
-  // C2 (D452+): whether ANY pointer focus is active on the chart right now
-  // (line-chart.tsx's `hoveredIndex != null`) — legacy dims/blurs the WHOLE
-  // base marker layer on any pointer hover, not just at the non-matched x.
-  pointerFocusActive?: boolean,
-): ChartMark<ChartDatum, Date, number>[] {
+interface MarkerDotArgs {
+  fill: string;
+  id: string;
+  r: number;
+  stroke: string;
+  x: (datum: Readonly<ChartDatum>) => Date | undefined;
+  y: (datum: Readonly<ChartDatum>) => number | undefined;
+}
+
+interface MarkerDotArgsParams {
+  readonly seriesConfig: Readonly<MarkerSeriesConfig>;
+  readonly xDataKey: string;
+  readonly fill: string;
+  readonly outerRadius: number;
+  readonly id: string;
+}
+
+const markerDotArgs = ({ seriesConfig, xDataKey, fill, outerRadius, id }: Readonly<MarkerDotArgsParams>): MarkerDotArgs => ({
+  fill,
+  id,
+  r: outerRadius,
+  stroke: "none",
+  x: (datum: Readonly<ChartDatum>): Date | undefined => {
+    const value = datum[xDataKey];
+    return value instanceof Date ? value : undefined;
+  },
+  y: (datum: Readonly<ChartDatum>): number | undefined => {
+    const value = datum[seriesConfig.dataKey];
+    return isNumber(value) ? value : undefined;
+  },
+});
+
+const resolveMarkerDimmed = (legendHoveredKey: string | null | undefined, dataKey: string, pointerFocusActive: boolean | undefined = false): boolean => {
+  if (pointerFocusActive === true) {return true;}
+  if (legendHoveredKey === undefined || legendHoveredKey === null) {return false;}
+  return legendHoveredKey !== dataKey;
+};
+
+interface MarkerMarksForSeriesParams {
+  readonly seriesConfig: Readonly<MarkerSeriesConfig>;
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+  readonly gradientIdByKey: Readonly<Map<string, string>>;
+  readonly legendHoveredKey?: string | null;
+  readonly pointerFocusActive: boolean;
+}
+
+const resolveMarkerFill = (seriesConfig: Readonly<MarkerSeriesConfig>, hasRing: boolean, gradientIdByKey: Readonly<Map<string, string>>): string => {
+  const fill = seriesConfig.markers?.fill ?? seriesConfig.stroke;
+  const gradientId = hasRing ? gradientIdByKey.get(seriesConfig.dataKey) : undefined;
+  return gradientId !== undefined && gradientId !== "" ? `url(#${gradientId})` : fill;
+}
+
+interface ActiveMarkerMarkParams {
+  readonly seriesConfig: Readonly<MarkerSeriesConfig>;
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+  readonly resolvedFill: string;
+  readonly outerRadius: number;
+  readonly showActiveHighlight: boolean;
+}
+
+const maybeBuildActiveMarkerMark = ({ seriesConfig, renderData, xDataKey, resolvedFill, outerRadius, showActiveHighlight }: Readonly<ActiveMarkerMarkParams>): ChartMark<ChartDatum, Date, number> | undefined => {
+  if (!showActiveHighlight) {return undefined;}
+  const activeMark = dot(renderData, markerDotArgs({ fill: resolvedFill, id: `${seriesConfig.dataKey}__marker-active`, outerRadius: outerRadius * MARKER_ACTIVE_SCALE, seriesConfig, xDataKey }));
+  return whenFocused(activeMark, { match: "x", retarget: true });
+}
+
+interface DimmedBaseMarkParams {
+  readonly seriesConfig: Readonly<MarkerSeriesConfig>;
+  readonly baseMark: ChartMark<ChartDatum, Date, number>;
+  readonly legendHoveredKey?: string | null;
+  readonly pointerFocusActive: boolean;
+}
+
+const buildDimmedBaseMark = ({ seriesConfig, baseMark, legendHoveredKey, pointerFocusActive }: Readonly<DimmedBaseMarkParams>): ChartMark<ChartDatum, Date, number> => {
+  const dimmed = resolveMarkerDimmed(legendHoveredKey, seriesConfig.dataKey, pointerFocusActive);
+  return withMarkerBaseClassName(baseMark, dimmed);
+}
+
+const buildMarkerMarksForSeries = ({ seriesConfig, renderData, xDataKey, gradientIdByKey, legendHoveredKey, pointerFocusActive }: Readonly<MarkerMarksForSeriesParams>): ChartMark<ChartDatum, Date, number>[] => {
+  if (seriesConfig.showMarkers !== true) {return [];}
+  const { hasRing, outerRadius } = resolveMarkerRingGeometry(seriesConfig.markers);
+  const resolvedFill = resolveMarkerFill(seriesConfig, hasRing, gradientIdByKey);
+  const baseMark = dot(renderData, markerDotArgs({ fill: resolvedFill, id: `${seriesConfig.dataKey}__marker`, outerRadius, seriesConfig, xDataKey }));
+  const base = buildDimmedBaseMark({ baseMark, legendHoveredKey, pointerFocusActive, seriesConfig });
+  const active = maybeBuildActiveMarkerMark({ outerRadius, renderData, resolvedFill, seriesConfig, showActiveHighlight: seriesConfig.markers?.showActiveHighlight ?? true, xDataKey });
+  if (active === undefined) {return [base];}
+  return [base, active];
+}
+
+const buildMarkerMarks = (renderData: readonly Readonly<ChartDatum>[], xDataKey: string, series: readonly Readonly<MarkerSeriesConfig>[], gradientIdByKey: Readonly<Map<string, string>>, legendHoveredKey?: string | null, pointerFocusActive = false): ChartMark<ChartDatum, Date, number>[] => {
   const marks: ChartMark<ChartDatum, Date, number>[] = [];
-  for (const s of series) {
-    if (!s.showMarkers) continue;
-    const radius = s.markers?.radius ?? 5;
-    const strokeWidth = s.markers?.strokeWidth ?? 2;
-    const ringGap = s.markers?.ringGap ?? 2;
-    const hasRing = strokeWidth > 0;
-    const outerRadius = hasRing ? radius + ringGap + strokeWidth : radius;
-    const fill = s.markers?.fill ?? s.stroke;
-    const gradientId = hasRing ? gradientIdByKey.get(s.dataKey) : undefined;
-    const showActiveHighlight = s.markers?.showActiveHighlight ?? true;
-    const legendDimmed = legendHoveredKey != null && legendHoveredKey !== s.dataKey;
-    const dimmed = legendDimmed || (pointerFocusActive ?? false);
-    const resolvedFill = gradientId ? `url(#${gradientId})` : fill;
-    const baseMark = dot(renderData, {
-      id: `${s.dataKey}__marker`,
-      x: (d: ChartDatum) => d[xDataKey] as Date,
-      y: (d: ChartDatum) => d[s.dataKey] as number,
-      r: outerRadius,
-      fill: resolvedFill,
-      stroke: "none",
-    }) as unknown as ChartMark<ChartDatum, Date, number>;
-    marks.push(withMarkerBaseClassName(baseMark, dimmed) as unknown as ChartMark<ChartDatum, Date, number>);
-    // Crisp active point: a SECOND, separate dot mark filtered to the
-    // focused x (retarget:true glides the same node between x's, same
-    // mechanism as hover-geometry.ts's `buildHoverDotMark`), left out of
-    // the base layer entirely so it is never blurred/dimmed. Matches
-    // legacy's `ChartMarkerActiveHighlight` (series-markers.tsx:299-320).
-    if (showActiveHighlight) {
-      const activeMark = dot(renderData, {
-        id: `${s.dataKey}__marker-active`,
-        x: (d: ChartDatum) => d[xDataKey] as Date,
-        y: (d: ChartDatum) => d[s.dataKey] as number,
-        r: outerRadius * MARKER_ACTIVE_SCALE,
-        fill: resolvedFill,
-        stroke: "none",
-      });
-      marks.push(
-        whenFocused(activeMark, { match: "x", retarget: true }) as unknown as ChartMark<ChartDatum, Date, number>,
-      );
-    }
+  for (const seriesConfig of series) {
+    marks.push(...buildMarkerMarksForSeries({ gradientIdByKey, legendHoveredKey, pointerFocusActive, renderData, seriesConfig, xDataKey }));
   }
   return marks;
 }
+
+export {
+  buildMarkerGradientDefs,
+  buildMarkerMarks,
+  getMarkerVisualExtent,
+  withMarkerBaseClassName,
+};
+export type { MarkerGradientDef, MarkerSeriesConfig };

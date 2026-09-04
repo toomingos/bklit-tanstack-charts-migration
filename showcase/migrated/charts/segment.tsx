@@ -2,36 +2,41 @@
 
 import { CHART_ROLE } from "./children";
 
-export interface SegmentBackgroundProps {
+interface SegmentChildComponent<ComponentProps> {
+  (props: ComponentProps): undefined;
+  [CHART_ROLE]?: string;
+  displayName?: string;
+}
+
+interface SegmentBackgroundProps {
   fill?: string;
 }
 
-export function SegmentBackground(_props: SegmentBackgroundProps): null {
-  return null;
-}
-(SegmentBackground as unknown as Record<symbol, string>)[CHART_ROLE] = "segmentBackground";
+const SegmentBackground: SegmentChildComponent<SegmentBackgroundProps> = (_props: Readonly<SegmentBackgroundProps>): undefined => undefined;
+
+SegmentBackground[CHART_ROLE] = "segmentBackground";
 SegmentBackground.displayName = "SegmentBackground";
 
-export type SegmentLineVariant = "dashed" | "solid" | "gradient";
+type SegmentLineVariant = "dashed" | "solid" | "gradient";
 
-export interface SegmentLineProps {
+interface SegmentLineProps {
   stroke?: string;
   strokeWidth?: number;
   variant?: SegmentLineVariant;
 }
 
-export function SegmentLineFrom(_props: SegmentLineProps): null {
-  return null;
-}
-(SegmentLineFrom as unknown as Record<symbol, string>)[CHART_ROLE] = "segmentLineFrom";
+const SegmentLineFrom: SegmentChildComponent<SegmentLineProps> = (_props: Readonly<SegmentLineProps>): undefined => undefined;
+
+SegmentLineFrom[CHART_ROLE] = "segmentLineFrom";
 SegmentLineFrom.displayName = "SegmentLineFrom";
 
-export function SegmentLineTo(_props: SegmentLineProps): null {
-  return null;
-}
-(SegmentLineTo as unknown as Record<symbol, string>)[CHART_ROLE] = "segmentLineTo";
+const SegmentLineTo: SegmentChildComponent<SegmentLineProps> = (_props: Readonly<SegmentLineProps>): undefined => undefined;
+
+SegmentLineTo[CHART_ROLE] = "segmentLineTo";
 SegmentLineTo.displayName = "SegmentLineTo";
 
 export { ChartSelectionContext } from "./internal/chart-selection";
 export type { ChartSelection } from "./internal/chart-selection";
 export { SegmentOverlay } from "./internal/segment-visuals";
+export { SegmentBackground, SegmentLineFrom, SegmentLineTo };
+export type { SegmentBackgroundProps, SegmentLineVariant, SegmentLineProps };

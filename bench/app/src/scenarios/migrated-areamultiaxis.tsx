@@ -1,6 +1,4 @@
-// Migrated AREA multi-axis scenario — IDENTICAL usage to
-// bklit-areamultiaxis.tsx; only the import source changes. See that file for
-// why the fixture is shaped this way.
+// Twin of bklit-areamultiaxis.tsx; only the import source changes.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import { AreaChart, Area, Grid, XAxis, ChartTooltip } from "@migrated/charts";
@@ -13,7 +11,7 @@ import { armBklitSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveRow } from "../bench/live";
 
-/** `seriesB / 50` — an order of magnitude below `seriesA` on purpose. */
+// Secondary series an order of magnitude below seriesA.
 const SECONDARY_AXIS_DIVISOR = 50;
 
 type MultiAxisRow = SeededRow & { seriesC: number };

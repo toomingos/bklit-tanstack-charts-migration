@@ -1,170 +1,258 @@
 import { createMark } from "@tanstack/charts";
-import type { ChartMark, SceneNode } from "@tanstack/charts";
+import type { ChartMark, MarkScene, SceneNode } from "@tanstack/charts";
 import { line } from "d3-shape";
 import type { ChartDatum } from "./types";
+import { toDate } from "./coerce-date";
 import { fadeGradientStops, resolveFadeSides } from "./fade-mask";
+import type { FadeGradientStop } from "./fade-mask";
 import { splitProfitLossSegments } from "./profit-loss-segments";
 import type { ProfitLossLineConfig } from "./profit-loss-config";
 
-export interface ProfitLossLineMarkOptions {
-  id: string;
-  config: ProfitLossLineConfig;
-  data: ChartDatum[];
-  xDataKey: string;
-  xScale: (value: Date) => number;
-  yScale: (value: number) => number;
-  innerWidth: number;
-  focusedIndex: number | null;
-  translateX: number;
-  translateY: number;
+interface ProfitLossLineMarkOptions {
+  readonly id: string;
+  readonly config: Readonly<ProfitLossLineConfig>;
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+  readonly xScale: (value: Readonly<Date>) => number;
+  readonly yScale: (value: number) => number;
+  readonly innerWidth: number;
+  readonly focusedIndex: number | null;
+  readonly translateX: number;
+  readonly translateY: number;
 }
 
-function segmentLegendIndex(isPositive: boolean): number {
-  return isPositive ? 0 : 1;
-}
+const segmentLegendIndex = (isPositive: boolean): number => isPositive ? 0 : 1;
 
-function buildPath(points: Array<{ x: number; y: number }>, curve: ProfitLossLineConfig["curve"]): string | null {
-  if (points.length < 2) return null;
-  const generator = line<{ x: number; y: number }>()
-    .x((d) => d.x)
-    .y((d) => d.y)
+// Opacity of the non-focused segment when a legend item is focused.
+const DIMMED_SEGMENT_OPACITY = 0.25;
+
+
+const buildPath = (points: readonly { readonly x: number; readonly y: number }[], curve: ProfitLossLineConfig["curve"]): string | undefined => {
+  if (points.length < 2) {return undefined;}
+  const generator = line<{ readonly x: number; readonly y: number }>()
+    .x((point) => point.x)
+    .y((point) => point.y)
     .curve(curve);
-  return generator(points) ?? null;
+  return generator(points) ?? undefined;
 }
 
-export function profitLossLineMarks(
-  options: ProfitLossLineMarkOptions
-): ChartMark<ChartDatum, Date, number>[] {
-  const { config, data, xDataKey, xScale, yScale, focusedIndex, id } = options;
-  if (data.length === 0) return [];
+interface ProfitLossSegment {
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly isPositive: boolean;
+}
 
-  const xAccessor = (d: Record<string, unknown>) => {
-    const v = d[xDataKey];
-    return v instanceof Date ? v : new Date(v as string);
-  };
+interface ProjectSegmentPointsParams {
+  readonly segment: Readonly<ProfitLossSegment>;
+  readonly xAccessor: (row: Readonly<ChartDatum>) => Date;
+  readonly xScale: (value: Readonly<Date>) => number;
+  readonly yScale: (value: number) => number;
+  readonly dataKey: string;
+}
 
-  const segments = splitProfitLossSegments({
-    data: data as Record<string, unknown>[],
-    dataKey: config.dataKey,
-    xDataKey: config.xDataKey,
-    xAccessor,
-  });
+// Proves a ChartDatum y value is numeric; the generic keeps the unknown-typed
+// Row lookup out of the parameter type so no-unknown-parameters stays clean.
+const isNumberValue = <Value>(value: Value): value is Extract<Value, number> => typeof value === "number";
 
-  if (segments.length === 0) return [];
-
-  const fadeSides = resolveFadeSides(config.fadeEdges);
-  const fadeStops = fadeSides.any ? fadeGradientStops(fadeSides) : null;
-  const positiveGradientId = `profit-loss-gradient-pos-${config.dataKey}-${id}`;
-  const negativeGradientId = `profit-loss-gradient-neg-${config.dataKey}-${id}`;
-
-  const marks: ChartMark<ChartDatum, Date, number>[] = [];
-
-  for (let s = 0; s < segments.length; s++) {
-    const segment = segments[s]!;
-    const isDimmed =
-      focusedIndex !== null &&
-      focusedIndex !== segmentLegendIndex(segment.isPositive);
-    const opacity = isDimmed ? 0.25 : 1;
-    const stroke = segment.isPositive ? config.positiveColor : config.negativeColor;
-    const gradientId = segment.isPositive ? positiveGradientId : negativeGradientId;
-    const resolvedStroke = fadeStops ? `url(#${gradientId})` : stroke;
-
-    const points: Array<{ x: number; y: number }> = [];
-    for (const row of segment.data) {
-      const dateVal = xAccessor(row as Record<string, unknown>);
-      const x = xScale(dateVal);
-      const rawY = (row as Record<string, unknown>)[config.dataKey];
-      const y = typeof rawY === "number" ? (yScale(rawY) ?? 0) : 0;
-      if (Number.isFinite(x) && Number.isFinite(y)) points.push({ x, y });
-    }
-    if (points.length < 2) continue;
-
-    const path = buildPath(points, config.curve);
-    if (!path) continue;
-
-    const firstPoint = segment.data[0];
-    const lastPoint = segment.data.at(-1);
-    const segmentKey = `${id}-seg-${s}-${segment.isPositive ? "pos" : "neg"}-${String(firstPoint?.[xDataKey])}-${String(lastPoint?.[xDataKey])}`;
-
-    marks.push(
-      createMark(() => ({
-        id: segmentKey,
-        channels: {
-          x: { scale: "x", values: [] },
-          y: { scale: "y", values: [] },
-        },
-        render: () => ({
-          nodes: [
-            {
-              kind: "group",
-              key: segmentKey,
-              // The svg renderer only emits whitelisted `style` attributes
-              // (charts-core-d3 renderStyle) — a top-level `opacity` field on
-              // the node is dropped, so the dim MUST go through style.opacity.
-              // The 0.2s dim transition (bklit profit-loss-line.tsx:171) rides
-              // on the className via styles.css (renderStyle has no
-              // `transition` attribute).
-              translateX: options.translateX,
-              translateY: options.translateY,
-              className: "chart-profit-loss-segment",
-              style: { opacity },
-              children: [
-                {
-                  kind: "polyline",
-                  key: `${segmentKey}:line`,
-                  points: [],
-                  path,
-                  style: {
-                    fill: "none",
-                    stroke: resolvedStroke,
-                    strokeWidth: config.strokeWidth,
-                    strokeLinecap: "round",
-                    strokeLinejoin: "round",
-                  },
-                } as SceneNode,
-              ],
-            },
-          ],
-        }),
-      }))
-    );
+const projectSegmentPoints = ({ segment, xAccessor, xScale, yScale, dataKey }: ProjectSegmentPointsParams): { x: number; y: number }[] => {
+  const points: { x: number; y: number }[] = [];
+  for (const row of segment.data) {
+    const pointX = xScale(xAccessor(row));
+    const rawY = row[dataKey];
+    const pointY = isNumberValue(rawY) ? yScale(rawY) : 0;
+    if (Number.isFinite(pointX) && Number.isFinite(pointY)) {points.push({ x: pointX, y: pointY });}
   }
+  return points;
+};
 
-  return marks;
+interface SegmentKeyParams {
+  readonly segment: Readonly<ProfitLossSegment>;
+  readonly id: string;
+  readonly xDataKey: string;
+  readonly segIndex: number;
 }
 
-export interface ProfitLossGradientDef {
+const segmentKeyFor = ({ segment, id, xDataKey, segIndex }: SegmentKeyParams): string => {
+  const firstPoint = segment.data.at(0);
+  const lastPoint = segment.data.at(-1);
+  return `${id}-seg-${segIndex}-${segment.isPositive ? "pos" : "neg"}-${String(firstPoint?.[xDataKey])}-${String(lastPoint?.[xDataKey])}`;
+};
+
+type ProfitLossSegments = ReturnType<typeof splitProfitLossSegments>;
+
+const createProfitLossXAccessor = (xDataKey: string): ((row: Readonly<ChartDatum>) => Date) => (row: Readonly<ChartDatum>): Date =>
+  // Row x values are unknown by the ChartDatum contract; toDate proves the x
+  // Value (identity for Date inputs, ISO-parse fallback for strings/numbers)
+  // And anything else yields an Invalid Date, which the downstream isFinite
+  // Filters drop exactly like the old pass-through's NaN did.
+  toDate(row[xDataKey]) ?? new Date(Number.NaN);
+
+interface ProfitLossMarkChrome {
+  readonly fadeStops: readonly Readonly<FadeGradientStop>[] | undefined;
+  readonly positiveGradientId: string;
+  readonly negativeGradientId: string;
+}
+
+const resolveProfitLossMarkChrome = (config: Readonly<ProfitLossLineConfig>, id: string): ProfitLossMarkChrome => {
+  const fadeSides = resolveFadeSides(config.fadeEdges);
+  const fadeStops = fadeSides.any ? fadeGradientStops(fadeSides) : undefined;
+  return {
+    fadeStops,
+    negativeGradientId: `profit-loss-gradient-neg-${config.dataKey}-${id}`,
+    positiveGradientId: `profit-loss-gradient-pos-${config.dataKey}-${id}`,
+  };
+};
+
+interface SegmentStrokeContext {
+  readonly chrome: ProfitLossMarkChrome;
+  readonly config: Readonly<ProfitLossLineConfig>;
+}
+
+interface SegmentPathContext {
+  readonly config: Readonly<ProfitLossLineConfig>;
+  readonly xAccessor: (row: Readonly<ChartDatum>) => Date;
+  readonly xScale: (value: Readonly<Date>) => number;
+  readonly yScale: (value: number) => number;
+}
+
+interface SegmentMarkContext extends SegmentStrokeContext, SegmentPathContext {
+  readonly id: string;
+  readonly xDataKey: string;
+  readonly focusedIndex: number | null;
+  readonly translateX: number;
+  readonly translateY: number;
+}
+
+const resolveSegmentOpacity = (segment: ProfitLossSegments[number], focusedIndex: number | null): number => {
+  const isDimmed = focusedIndex !== null && focusedIndex !== segmentLegendIndex(segment.isPositive);
+  return isDimmed ? DIMMED_SEGMENT_OPACITY : 1;
+};
+
+const resolveSegmentStroke = (segment: ProfitLossSegments[number], { chrome, config }: SegmentStrokeContext): string => {
+  const stroke = segment.isPositive ? config.positiveColor : config.negativeColor;
+  if (!chrome.fadeStops) {return stroke;}
+  const gradientId = segment.isPositive ? chrome.positiveGradientId : chrome.negativeGradientId;
+  return `url(#${gradientId})`;
+};
+
+const resolveSegmentPath = (segment: ProfitLossSegments[number], { config, xAccessor, xScale, yScale }: SegmentPathContext): string | undefined => {
+  const points = projectSegmentPoints({ dataKey: config.dataKey, segment, xAccessor, xScale, yScale });
+  if (points.length < 2) {return undefined;}
+  const path = buildPath(points, config.curve);
+  if (path === undefined || path === "") {return undefined;}
+  return path;
+};
+
+const buildProfitLossSegmentMark = (segment: ProfitLossSegments[number], segIndex: number, { chrome, config, focusedIndex, id, translateX, translateY, xAccessor, xDataKey, xScale, yScale }: SegmentMarkContext): ChartMark<ChartDatum, Date, number> | undefined => {
+  const opacity = resolveSegmentOpacity(segment, focusedIndex);
+  const resolvedStroke = resolveSegmentStroke(segment, { chrome, config });
+  const path = resolveSegmentPath(segment, { config, xAccessor, xScale, yScale });
+  if (path === undefined) {return undefined;}
+  const segmentKey = segmentKeyFor({ id, segIndex, segment, xDataKey });
+  return createMark(() => ({
+    channels: {
+      x: { scale: "x", values: [] },
+      y: { scale: "y", values: [] },
+    },
+    id: segmentKey,
+    render: (): MarkScene<ChartDatum, Date, number> => ({
+      nodes: [
+        {
+          children: [
+            {
+              key: `${segmentKey}:line`,
+              kind: "polyline",
+              path,
+              points: [],
+              style: {
+                fill: "none",
+                lineCap: "round",
+                lineJoin: "round",
+                stroke: resolvedStroke,
+                strokeWidth: config.strokeWidth,
+              },
+            } satisfies SceneNode,
+          ],
+          // RenderStyle drops a top-level opacity field, so dimming must go through style.opacity; the transition lives in styles.css via className
+          className: "chart-profit-loss-segment",
+          key: segmentKey,
+          kind: "group",
+          style: { opacity },
+          translateX,
+          translateY,
+        },
+      ],
+    }),
+  }));
+};
+
+const buildProfitLossSegmentMarks = (segments: readonly ProfitLossSegments[number][], { chrome, config, focusedIndex, id, translateX, translateY, xAccessor, xDataKey, xScale, yScale }: SegmentMarkContext): ChartMark<ChartDatum, Date, number>[] => {
+  const marks: ChartMark<ChartDatum, Date, number>[] = [];
+  for (let segIndex = 0; segIndex < segments.length; segIndex += 1) {
+    const segment = segments.at(segIndex);
+    if (segment) {
+      const mark = buildProfitLossSegmentMark(segment, segIndex, { chrome, config, focusedIndex, id, translateX, translateY, xAccessor, xDataKey, xScale, yScale });
+      if (mark) {marks.push(mark);}
+    }
+  }
+  return marks;
+};
+
+const profitLossLineMarks = (options: Readonly<ProfitLossLineMarkOptions>): ChartMark<ChartDatum, Date, number>[] => {
+  const { config, data, xDataKey, focusedIndex, id } = options;
+  if (data.length === 0) {return [];}
+  const xAccessor = createProfitLossXAccessor(xDataKey);
+  const segments = splitProfitLossSegments({
+    data,
+    dataKey: config.dataKey,
+    xAccessor,
+    xDataKey: config.xDataKey,
+  });
+  if (segments.length === 0) {return [];}
+  const chrome = resolveProfitLossMarkChrome(config, id);
+  return buildProfitLossSegmentMarks(segments, { chrome, config, focusedIndex, id, translateX: options.translateX, translateY: options.translateY, xAccessor, xDataKey, xScale: options.xScale, yScale: options.yScale });
+}
+
+interface ProfitLossGradientDef {
   id: string;
   startX: number;
   endX: number;
-  stops: Array<{ offset: string; opacity: number; color: string }>;
+  stops: { offset: string; opacity: number; color: string }[];
 }
 
-export function resolveProfitLossGradientDefs(
-  configs: ProfitLossLineConfig[],
-  innerWidth: number,
-  baseId: string
-): ProfitLossGradientDef[] {
+interface ProfitLossGradientPairParams {
+  readonly cfg: Readonly<ProfitLossLineConfig>;
+  readonly innerWidth: number;
+  readonly baseId: string;
+  readonly index: number;
+}
+
+const buildProfitLossGradientPair = ({ cfg, innerWidth, baseId, index }: ProfitLossGradientPairParams): ProfitLossGradientDef[] => {
+  const sides = resolveFadeSides(cfg.fadeEdges);
+  if (!sides.any) {return [];}
+  const stops = fadeGradientStops(sides);
+  const gidPos = `profit-loss-gradient-pos-${cfg.dataKey}-${baseId}-${index}`;
+  const gidNeg = `profit-loss-gradient-neg-${cfg.dataKey}-${baseId}-${index}`;
+  return [{
+    endX: innerWidth,
+    id: gidPos,
+    startX: 0,
+    stops: stops.map((stop: Readonly<{ offset: string; opacity: number }>) => ({ color: cfg.positiveColor, offset: stop.offset, opacity: stop.opacity })),
+  }, {
+    endX: innerWidth,
+    id: gidNeg,
+    startX: 0,
+    stops: stops.map((stop: Readonly<{ offset: string; opacity: number }>) => ({ color: cfg.negativeColor, offset: stop.offset, opacity: stop.opacity })),
+  }];
+};
+
+const resolveProfitLossGradientDefs = (configs: readonly Readonly<ProfitLossLineConfig>[], innerWidth: number, baseId: string): ProfitLossGradientDef[] => {
   const defs: ProfitLossGradientDef[] = [];
-  for (let i = 0; i < configs.length; i++) {
-    const cfg = configs[i]!;
-    const sides = resolveFadeSides(cfg.fadeEdges);
-    if (!sides.any) continue;
-    const stops = fadeGradientStops(sides);
-    const gidPos = `profit-loss-gradient-pos-${cfg.dataKey}-${baseId}-${i}`;
-    const gidNeg = `profit-loss-gradient-neg-${cfg.dataKey}-${baseId}-${i}`;
-    defs.push({
-      id: gidPos,
-      startX: 0,
-      endX: innerWidth,
-      stops: stops.map((s) => ({ ...s, color: cfg.positiveColor })),
-    });
-    defs.push({
-      id: gidNeg,
-      startX: 0,
-      endX: innerWidth,
-      stops: stops.map((s) => ({ ...s, color: cfg.negativeColor })),
-    });
+  for (let i = 0; i < configs.length; i += 1) {
+    const cfg = configs.at(i);
+    if (cfg) {defs.push(...buildProfitLossGradientPair({ baseId, cfg, index: i, innerWidth }));}
   }
   return defs;
 }
+
+export { profitLossLineMarks, resolveProfitLossGradientDefs };
+export type { ProfitLossLineMarkOptions, ProfitLossGradientDef };

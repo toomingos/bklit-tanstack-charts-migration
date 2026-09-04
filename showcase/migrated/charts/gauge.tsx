@@ -1,244 +1,358 @@
-// Migrated bklit-ui Gauge — same public API
-// (repos/bklit-ui/packages/ui/src/charts/gauge.tsx,
-// notch-gauge-shared.ts, gauge-label-layout.tsx, pie-center-shell.tsx),
-// covering BOTH orientations (docs/LOG.md D28/D29 rulings, binding):
-//
-// Gauge is a segmented NOTCH meter — no needle, no pointer interaction of
-// any kind (D28). `activeNotches = round(value/100 * totalNotches)`; two
-// structurally disjoint render paths dispatch on `orientation`:
-//
-//  - Arc: stock `@tanstack/charts/polar` `radialArc` (D82 REDO —
-//    replaces the custom PolarMark from D28/D79) for the DEFAULT tapered
-//    notches (`uniformWidth=false`): TWO `radialArc` marks, one for the
-//    background/track (ALL notches at inactive fill opacity) and one for the
-//    active overlay (ONLY active notches at active fill opacity). Notch
-//    angles are pre-computed from bklit's own notchAngle/gapAngle math,
-//    converted to radians (`(degrees+90)*PI/180` — bit-identical at the
-//    135/405 defaults, node-verified), and passed as per-datum
-//    `startAngle`/`endAngle` channels. `polar()` uses `radiusRatio: 1`;
-//    inner/outer radii are functions of the layout radius matching bklit's
-//    0.28/0.42 × size ratios. The focus engine is disabled via the
-//    native `focusDisabled` (`@tanstack/charts/focus/disabled`), the
-//    same strategy pie/ring/sunburst/radar import directly; Gauge has
-//    zero hover/tooltip. Smooth pie-slice arcs replace bklit's bespoke
-//    trapezoid geometry (notch corner fillets are approximated via
-//    `radialArc`'s `cornerRadius`; at normal viewing distances the notch
-//    shape is not distinguishable from bklit's quadrilateral paths — see
-//    QA gates for pixel-diff verification). `uniformWidth=true` instead
-//    uses ONE custom `PolarMark<unknown>` emitting bklit's own
-//    `createNotchPath` rectangular quads (inner edge perpendicular to the
-//    radial centerline — pie slices cannot express it), computed by the
-//    verbatim `computeArcNotches` port, in the SAME `gauge-bg`/
-//    `gauge-active` group keys so the reveal reconciler is shared.
-//  - Linear: ONE custom mark (`createMark`, T17) emitting bklit's own
-//    `createNotchPath` rectangular quads directly — no cartesian() exists
-//    (D30 justification funnel-chart.tsx's header cites), and a horizontal
-//    notch strip has no natural cartesian x/y domain to hand to
-//    `defineChart` (each notch's slot position is `i*(slotWidth+gapWidth)`,
-//    not a data-driven x/y value pair) — so the mark bypasses scales
-//    entirely, same as the arc `uniformWidth` custom PolarMark.
-//
-// --- C4 (native motion, Phase 6, D432) -------------------------------------
-// Reveal/update animation is now fully native: every notch is an
-// individually-keyed scene node (`radialArc`'s own `key`, or this file's
-// explicit `gauge-bg:{i}`/`gauge-active:{i}` keys on the custom marks), so
-// `@tanstack/charts`' own keyed diff drives entrance (new key), exit
-// (removed key) and update (existing key, e.g. a geometry-affecting prop
-// change) — see each mark's `motion` callback below for the authored
-// per-phase delay/transition. This reproduces the exact bklit D28 idiom
-// (value increase = spring-pop only the NEWLY-active notches; value
-// decrease = instant vanish, no exit animation — native `exit` gets a
-// `{type:"tween",duration:0}` transition to match) with NO bookkeeping code
-// in this file: no `seen` sets, no epoch/generation counters, no
-// `onRender`/`handleRender` at all. `internal/gauge-reveal.ts`'s header has
-// the full derivation (including the one disclosed delta: native per-datum
-// arc entrance animates opacity only, not the legacy scale(0)->scale(1)
-// half of the pop — confirmed via direct `dist/motion.js` reading, no
-// native per-datum scale primitive exists for arc-role marks).
-//
-// Gradient `<defs>` for the arc path's theme-palette gradient
-// (`useGradient && activeGradient === undefined`) use `defineChart`'s own
-// `gradients: ChartLinearGradient[]` option. Previously routed through
-// `renderSvg={renderChartSvgWithResources}` on the old `<Chart>` — reading
-// `dist/svg-resources.js` this session shows `renderChartSvgWithResources`
-// is a bare re-export of `renderChartSvg` (`dist/svg.js`), i.e. `<Chart>`'s
-// own DEFAULT renderer, which already renders `scene.gradients` into a
-// `<defs>` block via `renderGradients()` unconditionally — so that prop was
-// always redundant, not a special add-on. `<RendererChart>`'s adapter
-// (`@tanstack/charts/adapter/renderer`) shares the same scene-rendering
-// core, so gradients keep working with no `renderSvg` prop at all — nothing
-// to replace it with. bklit's `children`-as-defs escape hatch
-// (`collectGaugeDefsElements` — arbitrary caller-supplied
-// `<linearGradient>`/`<pattern>` JSX passed as `<Gauge>` children) is
-// unrelated to this and unaffected: it works on BOTH orientations exactly
-// as before (linear drops the elements into its own real `<defs>`; arc
-// mounts them on a 0×0 sibling overlay svg after the chart — SVG
-// paint-server `url(#id)` references resolve document-wide, not just within
-// the same `<svg>` subtree).
-//
-// Center readout reuses internal/center-stat.tsx's `CenterStat` UNMODIFIED
-// (per this deliverable's own instruction) via internal/gauge-center.tsx's
-// `GaugeCenterOverlay` (arc — PieCenterShell's 0->centerValue double-rAF
-// mount-entrance trick, ported 1:1) and `GaugeLabelStat` + `GaugeLabelLayout`
-// (linear — direct pass-through, NO entrance trick, matching bklit's own
-// real orientation divergence — see gauge-center.tsx's header for the
-// source citations).
-//
-// Reduced motion: no longer a local `usePrefersReducedMotion` branch here —
-// the native motion renderer (`internal/motion-renderer.ts`'s
-// `chartMotionRenderer()`) already respects `prefers-reduced-motion` by
-// default (`respectReducedMotion: true`, confirmed against
-// `dist/motion.js`'s `createSvgMotionRuntime` policy default), the same
-// trust-the-renderer stance pie/ring's C2/C3 native motion paths take.
-//
-// Disclosed addition (pie/ring precedent): a `style?: CSSProperties` prop
-// forwarded onto the outermost wrapper div — not part of bklit's own
-// `GaugeProps`.
-//
-// Disclosed, NOT fixed, quirk preserved verbatim: bklit's linear
-// `ParentSize` measures the OUTER sizing wrapper's width BEFORE
-// `GaugeLabelLayout` composes a `labelPlacement="left"|"right"` flex row
-// alongside the notch track — meaning the track is asked to render at the
-// FULL measured width even when a left/right label's own footprint (plus
-// its `gap-4`) would need to share that space, since the two are
-// siblings-in-a-flex-row nested INSIDE the same already-measured wrapper.
-// This can visually overflow/crowd the container edge for left/right
-// placements in bklit itself; this port reproduces the exact same nesting
-// order (measure, then compose the label layout inside that measurement)
-// rather than "fixing" a behavior this migration's mandate is to match,
-// not improve. `labelPlacement="top"|"bottom"` (the only placements the
-// frozen bench scenario and docs-mdx pattern actually use) never
-// exhibits this, since a column stack never competes for width.
+// Bklit Gauge (arc + linear) on TanStack polar marks; linear notches bypass scales (no data domain).
+// UniformWidth notches use custom quads: pie slices can't express the perpendicular inner edge.
 import * as React from "react";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
-import { createMark, type SceneNode } from "@tanstack/charts";
+import { createMark } from '@tanstack/charts';
+import type { SceneNode, ChartMotionContext, ChartMotionTiming, ChartMotionPhase, ChartLinearGradient, DomChartDefinition, MarkScene } from '@tanstack/charts';
 import { defineChart } from "@tanstack/charts/scene";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
-import { polar, radialArc, type PolarMark } from "@tanstack/charts/polar";
-import {
-  collectGaugeDefsElements,
-  computeArcNotches,
-  computeLinearNotches,
-  createNotchPath,
-  DEFAULT_ACTIVE_FILL_OPACITY,
-  DEFAULT_ACTIVE_GRADIENT,
-  DEFAULT_INACTIVE_FILL_OPACITY,
-  DEFAULT_LINEAR_GAUGE_HEIGHT,
-  interpolateGaugeHex,
-  resolveGaugeActiveFill,
-  resolveGaugeBgFill,
-  type ComputedNotch,
-  type NotchPoint,
-} from "./internal/gauge-notch";
-import {
-  GAUGE_SPRING_FALLBACK,
-  gaugeMotionTransition,
-  type GaugeEnterTransition,
-} from "./internal/gauge-reveal";
+import { polar, radialArc } from '@tanstack/charts/polar';
+import type { PolarMark } from '@tanstack/charts/polar';
+import { collectGaugeDefsElements, computeArcNotches, computeLinearNotches, createNotchPath, DEFAULT_ACTIVE_FILL_OPACITY, DEFAULT_ACTIVE_GRADIENT, DEFAULT_INACTIVE_FILL_OPACITY, DEFAULT_LINEAR_GAUGE_HEIGHT, interpolateGaugeHex, resolveGaugeActiveFill, resolveGaugeBgFill } from './internal/gauge-notch';
+import type { ComputedNotch, NotchPoint } from './internal/gauge-notch';
+import { GAUGE_SPRING_FALLBACK, gaugeMotionTransition } from './internal/gauge-reveal';
+import type { GaugeEnterTransition } from './internal/gauge-reveal';
 import { resolveEnterTransition } from "./internal/enter-transition";
-import {
-  GaugeCenterOverlay,
-  GaugeLabelLayout,
-  GaugeLabelStat,
-  type GaugeLabelAlign,
-  type GaugeLabelPlacement,
-} from "./internal/gauge-center";
+import { GaugeCenterOverlay, GaugeLabelLayout, GaugeLabelStat } from './internal/gauge-center';
+import type { GaugeLabelAlign, GaugeLabelPlacement } from './internal/gauge-center';
 import { nativeStaggerDelayMs } from "./internal/native-stagger";
-import { defaultCenterStatFormat, type CenterStatFormat } from "./internal/center-stat";
+import { defaultCenterStatFormat } from './internal/center-stat';
+import type { CenterStatFormat } from './internal/center-stat';
 import { chartMotionRenderer } from "./internal/motion-renderer";
-import type { ChartMotionContext } from "@tanstack/charts";
 import {
   useDebouncedContainerSize,
   useDebouncedContainerWidth,
-} from "./internal";
+} from "./internal/use-container-size";
 import "./styles.css";
 
-export type { GaugeEnterTransition } from "./internal/enter-transition";
-export type { GaugeLabelAlign, GaugeLabelPlacement } from "./internal/gauge-center";
-
-// Gauge has zero pointer/tooltip interaction — see the native `focusDisabled`
-// import above (`@tanstack/charts/focus/disabled`).
-
-/** Flat row fed to `radialArc` — one datum per rendered arc path. */
 interface GaugeArcRow {
-  notchIndex: number;
-  startAngle: number;
-  endAngle: number;
-  padAngle: number;
-  fill: string;
+  readonly notchIndex: number;
+  readonly startAngle: number;
+  readonly endAngle: number;
+  readonly padAngle: number;
+  readonly fill: string;
 }
 
-const ARC_ASPECT_RATIO = 21 / 16;
+const ARC_ASPECT_WIDTH = 21;
+const ARC_ASPECT_HEIGHT = 16;
+const ARC_ASPECT_RATIO = ARC_ASPECT_WIDTH / ARC_ASPECT_HEIGHT;
 const ARC_MAX_WIDTH = 560;
+// Percent-scale factor: converts 0-100 percent inputs to 0-1 fractions.
+const PERCENT_MULTIPLIER = 100;
+// Seconds-to-milliseconds factor for stagger delays (nativeStaggerDelayMs takes ms).
+const MS_PER_SECOND = 1000;
+// Bklit 0deg = 3-o'clock/CCW maps to d3 0deg = 12-o'clock/CW: offset the origin by a quarter turn.
+const POLAR_ZERO_OFFSET_DEGREES = 90;
+const DEGREES_PER_HALF_TURN = 180;
+// Clamp lower bound for the notchLengthPercent prop (percent).
+const NOTCH_LENGTH_PERCENT_MIN = 5;
+// Bklit outerRadius = size*0.42 with polarRadius = size/2, hence ratio 0.84;
+// The innerRadiusRatio equals outer minus depthSpan times depthFactor (from bklit's radius formulas).
+const GAUGE_OUTER_RADIUS_RATIO = 0.84;
+const GAUGE_RADIUS_DEPTH_SPAN = 0.28;
+// Fraction of each notch slot painted as the visible notch (remainder is gap).
+const NOTCH_VISUAL_SPAN_FRACTION = 0.8;
+// Enter-stagger scale clamp range.
+const STAGGER_SCALE_MIN = 0.25;
+const STAGGER_SCALE_MAX = 2.5;
+// Per-notch stagger timing (seconds) for the active and background notch groups.
+const GAUGE_ACTIVE_STAGGER_BASE_SEC = 0.02;
+const GAUGE_ACTIVE_STAGGER_SPREAD_SEC = 0.3;
+const GAUGE_BG_STAGGER_BASE_SEC = 0.015;
+// Responsive-layout minimum-width fallbacks (px).
+const GAUGE_ARC_MIN_WIDTH_PX = 300;
+const GAUGE_LINEAR_MIN_WIDTH_PX = 200;
+// Fraction of the gauge size used as top padding for the center overlay label.
+const GAUGE_CENTER_TOP_PADDING_FRACTION = 0.08;
+// Fallback track fill for inactive arc notches (matches the theme border token).
+const GAUGE_ARC_TRACK_FILL = "var(--border)";
+// Fallback solid fill for active arc notches (matches the primary chart token).
+const GAUGE_ACTIVE_SOLID_FILL = "var(--chart-1)";
+// Theme-palette gradient endpoints for the active notch group.
+const GAUGE_THEME_GRADIENT_START = "var(--chart-1)";
+const GAUGE_THEME_GRADIENT_END = "var(--chart-5)";
+// Stroke value that hides notch outlines.
+const GAUGE_HIDDEN_STROKE = "none";
+// Shared class for arc notch groups.
+const GAUGE_ARC_MARK_CLASS = "ts-chart__arc";
+// Group keys for the background and active notch groups.
+const GAUGE_BG_GROUP_KEY = "gauge-bg";
+const GAUGE_ACTIVE_GROUP_KEY = "gauge-active";
+const GAUGE_ACTIVE_GROUP_PREFIX = "gauge-active:";
 
-export type GaugeOrientation = "arc" | "linear";
+interface ArcBgFillInput {
+  readonly hasCustomInactive: boolean;
+  readonly inactiveFill?: string;
+  readonly useThemePaletteGradient: boolean;
+  readonly useGradient: boolean;
+  readonly inactiveGrad0: string;
+  readonly inactiveGrad1: string;
+  readonly notchFraction: number;
+}
 
-export interface GaugeProps {
-  /** Arc (default) or horizontal linear notch track */
-  orientation?: GaugeOrientation;
-  /** Fill level 0-100 */
-  value: number;
-  /** Number of notches */
-  totalNotches?: number;
-  /** Percentage of the track reserved for gaps between notches */
-  spacing?: number;
-  notchCornerRadius?: number;
+const resolveArcBgFill = (input: Readonly<ArcBgFillInput>): string => {
+  const { hasCustomInactive, inactiveFill, useThemePaletteGradient, useGradient, inactiveGrad0, inactiveGrad1, notchFraction } = input;
+  if (hasCustomInactive) {
+    return inactiveFill ?? GAUGE_ARC_TRACK_FILL;
+  }
+  if (useThemePaletteGradient) {
+    return GAUGE_ARC_TRACK_FILL;
+  }
+  if (useGradient) {
+    return interpolateGaugeHex(inactiveGrad0, inactiveGrad1, notchFraction);
+  }
+  return GAUGE_ARC_TRACK_FILL;
+};
+
+interface ArcActiveFillInput {
+  readonly hasCustomActive: boolean;
+  readonly activeFill?: string;
+  readonly useThemePaletteGradient: boolean;
+  readonly themeActiveGradientId: string;
+  readonly useGradient: boolean;
+  readonly activeGrad0: string;
+  readonly activeGrad1: string;
+  readonly notchFraction: number;
+}
+
+const resolveArcActiveFill = (input: Readonly<ArcActiveFillInput>): string => {
+  const { hasCustomActive, activeFill, useThemePaletteGradient, themeActiveGradientId, useGradient, activeGrad0, activeGrad1, notchFraction } = input;
+  if (hasCustomActive) {
+    return activeFill ?? GAUGE_ACTIVE_SOLID_FILL;
+  }
+  if (useThemePaletteGradient) {
+    return `url(#${themeActiveGradientId})`;
+  }
+  if (useGradient) {
+    return interpolateGaugeHex(activeGrad0, activeGrad1, notchFraction);
+  }
+  return GAUGE_ACTIVE_SOLID_FILL;
+};
+
+const gaugeArcRowKey = (row: Readonly<GaugeArcRow>): string => String(row.notchIndex);
+
+const buildGaugeThemeGradients = (themeActiveGradientId: string, useThemePaletteGradient: boolean): ChartLinearGradient[] => {
+  if (!useThemePaletteGradient) {return [];}
+  return [
+    {
+      id: themeActiveGradientId,
+      stops: [
+        { color: GAUGE_THEME_GRADIENT_START, offset: 0 },
+        { color: GAUGE_THEME_GRADIENT_END, offset: 1 },
+      ],
+      x1: 0,
+      x2: 1,
+      y1: 0,
+      y2: 0,
+    },
+  ];
+};
+
+interface GaugeNotchTimingOptions {
+  readonly enterStaggerScale: number;
+  readonly enterTransition: GaugeEnterTransition | undefined;
+  readonly idx: number;
+  readonly isActiveGroup: boolean;
+  readonly phase: ChartMotionPhase;
+}
+
+// Shared enter/update/exit timing for arc and linear notch groups.
+// Exit snaps; update retargets with the enter spring; enter staggers per notch index.
+const resolveGaugeNotchTiming = (options: Readonly<GaugeNotchTimingOptions>): ChartMotionTiming => {
+  const { enterStaggerScale, enterTransition, idx, isActiveGroup, phase } = options;
+  if (phase === "exit") {
+    return { transition: { duration: 0, type: "tween" as const } };
+  }
+  const resolved = resolveEnterTransition(enterTransition, GAUGE_SPRING_FALLBACK);
+  if (phase === "update") {
+    return { transition: gaugeMotionTransition(resolved) };
+  }
+  // Stagger scalar clamped to [0.25, 2.5].
+  const stagger = Math.max(STAGGER_SCALE_MIN, Math.min(STAGGER_SCALE_MAX, enterStaggerScale));
+  return {
+    delay: isActiveGroup
+      ? nativeStaggerDelayMs(GAUGE_ACTIVE_STAGGER_BASE_SEC * stagger * MS_PER_SECOND, GAUGE_ACTIVE_STAGGER_SPREAD_SEC * stagger * MS_PER_SECOND, idx, "arc")
+      : nativeStaggerDelayMs(GAUGE_BG_STAGGER_BASE_SEC * stagger * MS_PER_SECOND, 0, idx, "arc"),
+    transition: gaugeMotionTransition(resolved),
+  };
+};
+
+interface UniformArcRow {
+  readonly notchIndex: number;
+  readonly points: Readonly<NotchPoint>;
+  readonly fill: string;
+}
+
+interface UniformArcNodeInput {
+  readonly centerX: number;
+  readonly centerY: number;
+  readonly notchCornerRadius: number;
+  readonly notchLength: number;
+  readonly row: Readonly<UniformArcRow>;
+}
+
+const uniformArcNodePath = (input: Readonly<UniformArcNodeInput>): string =>
+  createNotchPath(
+    {
+      x1: input.row.points.x1 - input.centerX,
+      x2: input.row.points.x2 - input.centerX,
+      x3: input.row.points.x3 - input.centerX,
+      x4: input.row.points.x4 - input.centerX,
+      y1: input.row.points.y1 - input.centerY,
+      y2: input.row.points.y2 - input.centerY,
+      y3: input.row.points.y3 - input.centerY,
+      y4: input.row.points.y4 - input.centerY,
+    },
+    input.notchCornerRadius,
+    input.notchLength,
+  );
+
+interface UniformArcNodesInput {
+  readonly rows: readonly UniformArcRow[];
+  readonly keyPrefix: string;
+  readonly centerX: number;
+  readonly centerY: number;
+  readonly notchCornerRadius: number;
+  readonly notchLength: number;
+  readonly fillOpacity: number;
+}
+
+const buildUniformArcNodes = (input: Readonly<UniformArcNodesInput>): SceneNode[] => {
+  const { rows, keyPrefix, centerX, centerY, notchCornerRadius, notchLength, fillOpacity } = input;
+  return rows.map((row): SceneNode => ({
+    key: `${keyPrefix}:${row.notchIndex}`,
+    kind: "polyline",
+    path: uniformArcNodePath({ centerX, centerY, notchCornerRadius, notchLength, row }),
+    points: [],
+    style: {
+      fill: row.fill,
+      fillOpacity,
+      stroke: GAUGE_HIDDEN_STROKE,
+    },
+  }));
+};
+
+interface LinearNotchNodesInput {
+  readonly notches: readonly ComputedNotch[];
+  readonly keyPrefix: string;
+  readonly resolveFill: (notch: ComputedNotch) => string;
+  readonly notchCornerRadius: number;
+  readonly cornerVerticalDepth: number;
+  readonly fillOpacity: number;
+}
+
+const buildLinearNotchNodes = (input: Readonly<LinearNotchNodesInput>): SceneNode[] => {
+  const { notches, keyPrefix, resolveFill, notchCornerRadius, cornerVerticalDepth, fillOpacity } = input;
+  return notches.map((notch): SceneNode => ({
+    key: `${keyPrefix}:${notch.index}`,
+    kind: "polyline",
+    path: createNotchPath(notch.points, notchCornerRadius, cornerVerticalDepth),
+    points: [],
+    style: {
+      fill: resolveFill(notch),
+      fillOpacity,
+      stroke: GAUGE_HIDDEN_STROKE,
+    },
+  }));
+};
+
+type GaugeOrientation = "arc" | "linear";
+
+interface GaugeProps {
+  readonly orientation?: GaugeOrientation;
+  readonly value: number;
+  readonly totalNotches?: number;
+  readonly spacing?: number;
+  readonly notchCornerRadius?: number;
   /** `true` = rectangular notches; `false` = tapered toward center / midline */
-  uniformWidth?: boolean;
-  startAngle?: number;
-  endAngle?: number;
-  useGradient?: boolean;
-  activeGradient?: readonly [string, string];
-  inactiveGradient?: readonly [string, string];
-  /** Center statistic — omit to hide the label block */
-  centerValue?: number;
-  defaultLabel?: string;
-  prefix?: string;
-  suffix?: string;
-  formatOptions?: CenterStatFormat;
-  /** Label position for `orientation="linear"`. Arc gauges always overlay center. */
-  labelPlacement?: GaugeLabelPlacement;
-  /** Cross-axis alignment (start / center / end), same model as chart legend */
-  labelAlign?: GaugeLabelAlign;
-  inactiveFill?: string;
-  activeFill?: string;
-  inactiveFillOpacity?: number;
-  activeFillOpacity?: number;
-  /** Custom `<linearGradient>`/`<pattern>` defs (children-as-defs escape
-      hatch, honored on both orientations). */
-  children?: React.ReactNode;
-  className?: string;
-  width?: number;
-  height?: number;
-  minWidth?: number;
-  notchLengthPercent?: number;
-  /** Linear only — notch width as % of each slot (default 80) */
-  notchWidthPercent?: number;
-  /** Linear only — bar thickness in px when responsive (default 24) */
-  linearHeight?: number;
-  enterTransition?: GaugeEnterTransition;
-  enterStaggerScale?: number;
-  /** Studio-only: static paths while scrubbing geometry controls */
-  geometryScrubbing?: boolean;
-  /** Disclosed addition (pie/ring precedent) — not part of bklit's own GaugeProps. */
-  style?: React.CSSProperties;
+  readonly uniformWidth?: boolean;
+  readonly startAngle?: number;
+  readonly endAngle?: number;
+  readonly useGradient?: boolean;
+  readonly activeGradient?: readonly [string, string];
+  readonly inactiveGradient?: readonly [string, string];
+  readonly centerValue?: number;
+  readonly defaultLabel?: string;
+  readonly prefix?: string;
+  readonly suffix?: string;
+  readonly formatOptions?: CenterStatFormat;
+  readonly labelPlacement?: GaugeLabelPlacement;
+  readonly labelAlign?: GaugeLabelAlign;
+  readonly inactiveFill?: string;
+  readonly activeFill?: string;
+  readonly inactiveFillOpacity?: number;
+  readonly activeFillOpacity?: number;
+  /** Custom gradient/pattern defs (children-as-defs escape hatch, both orientations). */
+  readonly children?: React.ReactNode;
+  readonly className?: string;
+  readonly width?: number;
+  readonly height?: number;
+  readonly minWidth?: number;
+  readonly notchLengthPercent?: number;
+  readonly notchWidthPercent?: number;
+  readonly linearHeight?: number;
+  readonly enterTransition?: GaugeEnterTransition;
+  readonly enterStaggerScale?: number;
+  readonly geometryScrubbing?: boolean;
+  /** Extra vs bklit: style, forwarded to the outer wrapper div. */
+  readonly style?: Readonly<React.CSSProperties>;
 }
 
-// --- Fill state — notch-gauge-shared.ts's `useGaugeFillState`, ported
-// verbatim (gauge.tsx lines 223-267), shared by both orientations. ---
 interface GaugeFillStateInput {
-  useGradient?: boolean;
-  activeGradient?: readonly [string, string];
-  inactiveGradient?: readonly [string, string];
-  inactiveFill?: string;
-  activeFill?: string;
-  inactiveFillOpacity?: number;
-  activeFillOpacity?: number;
-  children?: React.ReactNode;
-  totalNotches?: number;
+  readonly useGradient?: boolean;
+  readonly activeGradient?: readonly [string, string];
+  readonly inactiveGradient?: readonly [string, string];
+  readonly inactiveFill?: string;
+  readonly activeFill?: string;
+  readonly inactiveFillOpacity?: number;
+  readonly activeFillOpacity?: number;
+  readonly children?: React.ReactNode;
+  readonly totalNotches?: number;
 }
 
-function useGaugeFillState(props: GaugeFillStateInput) {
+interface GaugeFillState {
+  readonly activeGrad0: string;
+  readonly activeGrad1: string;
+  readonly defsChildren: readonly Readonly<React.ReactElement>[];
+  readonly hasCustomActive: boolean;
+  readonly hasCustomInactive: boolean;
+  readonly inactiveGrad0: string;
+  readonly inactiveGrad1: string;
+  readonly resolvedActiveFillOpacity: number;
+  readonly resolvedInactiveFillOpacity: number;
+  readonly themeActiveGradientId: string;
+  readonly totalNotches: number;
+  readonly useThemePaletteGradient: boolean;
+}
+
+interface GaugeGradientInputs {
+  readonly activeGradient?: readonly [string, string];
+  readonly inactiveGradient?: readonly [string, string];
+  readonly useGradient: boolean;
+}
+
+interface ResolvedGaugeGradients {
+  readonly activeGrad0: string;
+  readonly activeGrad1: string;
+  readonly inactiveGrad0: string;
+  readonly inactiveGrad1: string;
+  readonly useThemePaletteGradient: boolean;
+}
+
+const resolveGaugeGradients = (inputs: Readonly<GaugeGradientInputs>): ResolvedGaugeGradients => {
+  const { activeGradient, inactiveGradient, useGradient } = inputs;
+  const activeGrad0 = activeGradient?.[0] ?? DEFAULT_ACTIVE_GRADIENT[0];
+  const activeGrad1 = activeGradient?.[1] ?? DEFAULT_ACTIVE_GRADIENT[1];
+  return {
+    activeGrad0,
+    activeGrad1,
+    inactiveGrad0: inactiveGradient?.[0] ?? activeGrad0,
+    inactiveGrad1: inactiveGradient?.[1] ?? activeGrad1,
+    useThemePaletteGradient: useGradient && activeGradient === undefined,
+  };
+};
+
+const useGaugeFillState = (props: Readonly<GaugeFillStateInput>): GaugeFillState => {
   const {
     useGradient = false,
     activeGradient,
@@ -251,178 +365,539 @@ function useGaugeFillState(props: GaugeFillStateInput) {
     totalNotches = 40,
   } = props;
 
-  const themeActiveGradientId = `gauge-theme-active-${React.useId().replace(/:/g, "")}`;
+  const themeActiveGradientId = `gauge-theme-active-${React.useId().replaceAll(':', "")}`;
   const defsChildren = React.useMemo(() => collectGaugeDefsElements(children), [children]);
 
   const hasCustomInactive = inactiveFill !== undefined && inactiveFill.length > 0;
   const hasCustomActive = activeFill !== undefined && activeFill.length > 0;
 
-  const activeGrad0 = activeGradient?.[0] ?? DEFAULT_ACTIVE_GRADIENT[0];
-  const activeGrad1 = activeGradient?.[1] ?? DEFAULT_ACTIVE_GRADIENT[1];
-  const inactiveGrad0 = inactiveGradient?.[0] ?? activeGrad0;
-  const inactiveGrad1 = inactiveGradient?.[1] ?? activeGrad1;
-  const useThemePaletteGradient = useGradient && activeGradient === undefined;
+  const { activeGrad0, activeGrad1, inactiveGrad0, inactiveGrad1, useThemePaletteGradient } = resolveGaugeGradients({ activeGradient, inactiveGradient, useGradient });
 
   return {
-    themeActiveGradientId,
-    defsChildren,
-    hasCustomInactive,
-    hasCustomActive,
     activeGrad0,
     activeGrad1,
+    defsChildren,
+    hasCustomActive,
+    hasCustomInactive,
     inactiveGrad0,
     inactiveGrad1,
-    useThemePaletteGradient,
     resolvedActiveFillOpacity: activeFillOpacity ?? DEFAULT_ACTIVE_FILL_OPACITY,
     resolvedInactiveFillOpacity: inactiveFillOpacity ?? DEFAULT_INACTIVE_FILL_OPACITY,
+    themeActiveGradientId,
     totalNotches,
+    useThemePaletteGradient,
   };
 }
 
-// ============================================================================
-// Arc
-// ============================================================================
-type GaugeArcProps = Omit<GaugeProps, "orientation" | "labelPlacement" | "labelAlign" | "notchWidthPercent" | "linearHeight" | "geometryScrubbing">;
+interface ArcRadii {
+  readonly innerRadiusRatio: number;
+  readonly outerRadiusRatio: number;
+}
 
-function GaugeArc(props: GaugeArcProps) {
-  const {
-    width: widthProp,
-    height: heightProp,
-    className,
-    minWidth,
-    style,
-    value,
-    totalNotches = 40,
-    spacing = 25,
-    notchCornerRadius = 0,
-    uniformWidth = false,
-    startAngle = 135,
-    endAngle = 405,
-    useGradient = false,
-    activeGradient,
-    inactiveGradient,
-    centerValue,
-    defaultLabel = "Total",
-    prefix,
-    suffix,
-    formatOptions = defaultCenterStatFormat,
-    inactiveFill,
-    activeFill,
-    inactiveFillOpacity,
-    activeFillOpacity,
-    children,
-    notchLengthPercent = 100,
-    enterTransition,
-    enterStaggerScale = 1,
-  } = props;
+const resolveArcRadii = (notchLengthPercent: number): ArcRadii => {
+  // Bklit outerRadius = size*0.42 with polarRadius = size/2, hence ratio 0.84.
+  // InnerRadiusRatio = 0.84 - 0.28*depthFactor (from bklit's radius formulas).
+  const depthFactor = Math.min(PERCENT_MULTIPLIER, Math.max(NOTCH_LENGTH_PERCENT_MIN, notchLengthPercent)) / PERCENT_MULTIPLIER;
+  return {
+    innerRadiusRatio: GAUGE_OUTER_RADIUS_RATIO - GAUGE_RADIUS_DEPTH_SPAN * depthFactor,
+    outerRadiusRatio: GAUGE_OUTER_RADIUS_RATIO,
+  };
+};
 
-  const fillState = useGaugeFillState({
-    useGradient,
-    activeGradient,
-    inactiveGradient,
-    inactiveFill,
-    activeFill,
-    inactiveFillOpacity,
-    activeFillOpacity,
-    children,
-    totalNotches,
-  });
+interface ArcAngles {
+  readonly gapAngleRad: number;
+  readonly notchAngleRad: number;
+  readonly notchVisualSpanRad: number;
+  readonly slotWidthRad: number;
+  readonly startAngleRad: number;
+}
 
-  const fixedSize = widthProp != null && heightProp != null;
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
-  // G5 (bklit ParentSize debounceTime={10}): responsive arc measurement goes
-  // through the debounced width+height hook. The ref is only ever attached on
-  // the responsive render path (the fixed-size wrapper never mounts it), so
-  // the hook observes nothing in fixed mode — same net effect as legacy not
-  // rendering ParentSize in that branch.
-  const { width: measuredW, height: measuredH } = useDebouncedContainerSize(containerRef);
+interface ResolveArcAnglesOptions {
+  readonly endAngle: number;
+  readonly spacing: number;
+  readonly startAngle: number;
+  readonly totalNotches: number;
+}
 
-  const width = widthProp ?? measuredW;
-  const height = heightProp ?? measuredH;
-  const size = Math.min(width, height);
+const resolveArcAngles = (options: Readonly<ResolveArcAnglesOptions>): ArcAngles => {
+  const { endAngle, spacing, startAngle, totalNotches } = options;
+  // Bklit 0°=3-o'clock/CCW maps to d3 0°=12-o'clock/CW via radians = (degrees+90)*PI/180.
+  const startAngleRad = ((startAngle + POLAR_ZERO_OFFSET_DEGREES) * Math.PI) / DEGREES_PER_HALF_TURN;
+  const endAngleRad = ((endAngle + POLAR_ZERO_OFFSET_DEGREES) * Math.PI) / DEGREES_PER_HALF_TURN;
+  const totalAngleRad = endAngleRad - startAngleRad;
+  const spacingPct = Math.min(PERCENT_MULTIPLIER, Math.max(0, spacing)) / PERCENT_MULTIPLIER;
+  const availableAngleRad = totalAngleRad * (1 - spacingPct);
+  const notchAngleRad = totalNotches > 0 ? availableAngleRad / totalNotches : 0;
+  const gapAngleRad = totalNotches > 1 ? (totalAngleRad * spacingPct) / (totalNotches - 1) : 0;
+  return {
+    gapAngleRad,
+    notchAngleRad,
+    notchVisualSpanRad: notchAngleRad * NOTCH_VISUAL_SPAN_FRACTION,
+    slotWidthRad: notchAngleRad + gapAngleRad,
+    startAngleRad,
+  };
+};
 
-  // --- Compute arc rows (flat datums for radialArc, one per notch) ---
-  const arcRows = React.useMemo((): { bgRows: GaugeArcRow[]; activeRows: GaugeArcRow[]; innerRadiusRatio: number; outerRadiusRatio: number } | null => {
-    if (width <= 0 || height <= 0) return null;
+interface ArcRowPair {
+  readonly active: GaugeArcRow | undefined;
+  readonly bg: GaugeArcRow;
+}
 
-    // Radius ratios: bklit outerRadius = size * 0.42 → polarRadius = size/2 → ratio = 0.84
-    const outerRadiusRatio = 0.84;
-    const depthFactor = Math.min(100, Math.max(5, notchLengthPercent)) / 100;
-    // bklit innerRadius = outerRadius - (outerRadius - size*0.28) * depthFactor
-    //   = size * 0.42 - size * 0.14 * depthFactor
-    // innerRadiusRatio = (size*0.42 - size*0.14*depthFactor) / (size/2) = 0.84 - 0.28*depthFactor
-    const innerRadiusRatio = 0.84 - 0.28 * depthFactor;
+interface ArcRowPairOptions {
+  readonly activeFill?: string;
+  readonly activeGrad0: string;
+  readonly activeGrad1: string;
+  readonly activeNotches: number;
+  readonly angles: Readonly<ArcAngles>;
+  readonly denom: number;
+  readonly hasCustomActive: boolean;
+  readonly hasCustomInactive: boolean;
+  readonly i: number;
+  readonly inactiveFill?: string;
+  readonly inactiveGrad0: string;
+  readonly inactiveGrad1: string;
+  readonly themeActiveGradientId: string;
+  readonly useGradient: boolean;
+  readonly useThemePaletteGradient: boolean;
+}
 
-    // Degrees → TanStack/d3 arc radians: bklit's 135/405 angle convention (0°
-    // = 3 o'clock, CCW positive, from notch-gauge-shared's `cos/sin` math)
-    // maps onto d3's arc convention (0 = 12 o'clock, CW positive) via
-    // `radians = (degrees + 90) * PI/180` — verified bit-identical at the
-    // defaults: 135 → −3π/4, 405 → 3π/4.
-    const startAngleRad = ((startAngle + 90) * Math.PI) / 180;
-    const endAngleRad = ((endAngle + 90) * Math.PI) / 180;
-    const totalAngleRad = endAngleRad - startAngleRad;
-    const spacingPct = Math.min(100, Math.max(0, spacing)) / 100;
-    const availableAngleRad = totalAngleRad * (1 - spacingPct);
-    const notchAngleRad = totalNotches > 0 ? availableAngleRad / totalNotches : 0;
-    const gapAngleRad = totalNotches > 1
-      ? (totalAngleRad * spacingPct) / (totalNotches - 1)
-      : 0;
-    const notchVisualSpanRad = notchAngleRad * 0.8;
-    const slotWidthRad = notchAngleRad + gapAngleRad;
-
-    const activeNotches = Math.round((value / 100) * totalNotches);
-    const denom = totalNotches > 1 ? totalNotches - 1 : 1;
-
-    const {
+const buildArcRowPair = (options: Readonly<ArcRowPairOptions>): ArcRowPair => {
+  const { activeFill, activeGrad0, activeGrad1, activeNotches, angles, denom, hasCustomActive, hasCustomInactive, i, inactiveFill, inactiveGrad0, inactiveGrad1, themeActiveGradientId, useGradient, useThemePaletteGradient } = options;
+  const slotCenterRad = angles.startAngleRad + i * angles.slotWidthRad + angles.notchAngleRad / 2;
+  const bg: GaugeArcRow = {
+    endAngle: slotCenterRad + angles.notchVisualSpanRad / 2,
+    fill: resolveArcBgFill({
       hasCustomInactive,
-      hasCustomActive,
-      useThemePaletteGradient: useTPG,
+      inactiveFill,
       inactiveGrad0,
       inactiveGrad1,
-      activeGrad0,
-      activeGrad1,
-      themeActiveGradientId,
-    } = fillState;
-
-    const bgRows: GaugeArcRow[] = [];
-    const activeRows: GaugeArcRow[] = [];
-
-    for (let i = 0; i < totalNotches; i++) {
-      const slotCenterRad = startAngleRad + i * slotWidthRad + notchAngleRad / 2;
-      const row: GaugeArcRow = {
+      notchFraction: i / denom,
+      useGradient,
+      useThemePaletteGradient,
+    }),
+    notchIndex: i,
+    padAngle: 0,
+    startAngle: slotCenterRad - angles.notchVisualSpanRad / 2,
+  };
+  if (i < activeNotches) {
+    return {
+      active: {
+        endAngle: bg.endAngle,
+        fill: resolveArcActiveFill({
+          activeFill,
+          activeGrad0,
+          activeGrad1,
+          hasCustomActive,
+          notchFraction: i / denom,
+          themeActiveGradientId,
+          useGradient,
+          useThemePaletteGradient,
+        }),
         notchIndex: i,
-        startAngle: slotCenterRad - notchVisualSpanRad / 2,
-        endAngle: slotCenterRad + notchVisualSpanRad / 2,
         padAngle: 0,
-        fill: hasCustomInactive
-          ? (inactiveFill ?? "var(--border)")
-          : useTPG
-            ? "var(--border)"
-            : useGradient
-              ? interpolateGaugeHex(inactiveGrad0, inactiveGrad1, i / denom)
-              : "var(--border)",
-      };
-      bgRows.push(row);
+        startAngle: bg.startAngle,
+      },
+      bg,
+    };
+  }
+  return { active: undefined, bg };
+};
 
-      if (i < activeNotches) {
-        activeRows.push({
-          notchIndex: i,
-          startAngle: row.startAngle,
-          endAngle: row.endAngle,
-          padAngle: 0,
-          fill: hasCustomActive
-            ? (activeFill ?? "var(--chart-1)")
-            : useTPG
-              ? `url(#${themeActiveGradientId})`
-              : useGradient
-                ? interpolateGaugeHex(activeGrad0, activeGrad1, i / denom)
-                : "var(--chart-1)",
-        });
-      }
-    }
+interface ArcRowList {
+  readonly activeRows: readonly GaugeArcRow[];
+  readonly bgRows: readonly GaugeArcRow[];
+}
 
-    return { bgRows, activeRows, innerRadiusRatio, outerRadiusRatio };
-  }, [
+interface BuildArcRowsOptions {
+  readonly activeFill?: string;
+  readonly activeGrad0: string;
+  readonly activeGrad1: string;
+  readonly activeNotches: number;
+  readonly angles: Readonly<ArcAngles>;
+  readonly denom: number;
+  readonly hasCustomActive: boolean;
+  readonly hasCustomInactive: boolean;
+  readonly inactiveFill?: string;
+  readonly inactiveGrad0: string;
+  readonly inactiveGrad1: string;
+  readonly themeActiveGradientId: string;
+  readonly totalNotches: number;
+  readonly useGradient: boolean;
+  readonly useThemePaletteGradient: boolean;
+}
+
+const buildArcRows = (options: Readonly<BuildArcRowsOptions>): ArcRowList => {
+  const { activeFill, activeGrad0, activeGrad1, activeNotches, angles, denom, hasCustomActive, hasCustomInactive, inactiveFill, inactiveGrad0, inactiveGrad1, themeActiveGradientId, totalNotches, useGradient, useThemePaletteGradient } = options;
+  const bgRows: GaugeArcRow[] = [];
+  const activeRows: GaugeArcRow[] = [];
+  for (let i = 0; i < totalNotches; i += 1) {
+    const pair = buildArcRowPair({
+      activeFill, activeGrad0, activeGrad1, activeNotches, angles, denom, hasCustomActive, hasCustomInactive, i, inactiveFill, inactiveGrad0, inactiveGrad1, themeActiveGradientId, useGradient, useThemePaletteGradient,
+    });
+    bgRows.push(pair.bg);
+    if (pair.active !== undefined) {activeRows.push(pair.active);}
+  }
+  return { activeRows, bgRows };
+};
+
+interface ComputeArcRowsOptions {
+  readonly activeFill?: string;
+  readonly endAngle: number;
+  readonly fillState: Readonly<GaugeFillState>;
+  readonly inactiveFill?: string;
+  readonly notchLengthPercent: number;
+  readonly spacing: number;
+  readonly startAngle: number;
+  readonly totalNotches: number;
+  readonly useGradient: boolean;
+  readonly value: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+interface ArcRowsResult {
+  readonly activeRows: readonly GaugeArcRow[];
+  readonly bgRows: readonly GaugeArcRow[];
+  readonly innerRadiusRatio: number;
+  readonly outerRadiusRatio: number;
+}
+
+const computeArcRows = (options: Readonly<ComputeArcRowsOptions>): ArcRowsResult | undefined => {
+  const { activeFill, endAngle, fillState, inactiveFill, notchLengthPercent, spacing, startAngle, totalNotches, useGradient, value, width, height } = options;
+  if (width <= 0 || height <= 0) {return undefined;}
+  const radii = resolveArcRadii(notchLengthPercent);
+  const angles = resolveArcAngles({ endAngle, spacing, startAngle, totalNotches });
+  const activeNotches = Math.round((value / PERCENT_MULTIPLIER) * totalNotches);
+  const denom = totalNotches > 1 ? totalNotches - 1 : 1;
+  const rows = buildArcRows({
+    activeFill,
+    activeGrad0: fillState.activeGrad0,
+    activeGrad1: fillState.activeGrad1,
+    activeNotches,
+    angles,
+    denom,
+    hasCustomActive: fillState.hasCustomActive,
+    hasCustomInactive: fillState.hasCustomInactive,
+    inactiveFill,
+    inactiveGrad0: fillState.inactiveGrad0,
+    inactiveGrad1: fillState.inactiveGrad1,
+    themeActiveGradientId: fillState.themeActiveGradientId,
+    totalNotches,
+    useGradient,
+    useThemePaletteGradient: fillState.useThemePaletteGradient,
+  });
+  return { activeRows: rows.activeRows, bgRows: rows.bgRows, innerRadiusRatio: radii.innerRadiusRatio, outerRadiusRatio: radii.outerRadiusRatio };
+};
+
+interface UniformArcRowPair {
+  readonly active: UniformArcRow | undefined;
+  readonly bg: UniformArcRow;
+}
+
+interface UniformArcRowPairOptions {
+  readonly activeFill?: string;
+  readonly hasCustomActive: boolean;
+  readonly hasCustomInactive: boolean;
+  readonly inactiveFill?: string;
+  readonly inactiveGrad0: string;
+  readonly inactiveGrad1: string;
+  readonly notch: ComputedNotch;
+  readonly themeActiveGradientId: string;
+  readonly totalNotches: number;
+  readonly useGradient: boolean;
+  readonly useThemePaletteGradient: boolean;
+}
+
+const buildUniformArcRowPair = (options: Readonly<UniformArcRowPairOptions>): UniformArcRowPair => {
+  const { activeFill, hasCustomActive, hasCustomInactive, inactiveFill, inactiveGrad0, inactiveGrad1, notch, themeActiveGradientId, totalNotches, useGradient, useThemePaletteGradient } = options;
+  const bg: UniformArcRow = {
+    fill: resolveGaugeBgFill({
+      arcTrackFill: GAUGE_ARC_TRACK_FILL,
+      hasCustomInactive,
+      inactiveFill,
+      inactiveGrad0,
+      inactiveGrad1,
+      linearMode: false,
+      linearTrackFill: "var(--chart-background)",
+      notchIndex: notch.index,
+      totalNotches,
+      useGradient,
+      useThemePaletteGradient,
+    }),
+    notchIndex: notch.index,
+    points: notch.points,
+  };
+  if (!notch.isActive) {return { active: undefined, bg };}
+  return {
+    active: {
+      fill: resolveGaugeActiveFill({
+        activeFill,
+        activeFillSolid: GAUGE_ACTIVE_SOLID_FILL,
+        hasCustomActive,
+        notch,
+        themeActiveGradientId,
+        useGradient,
+        useThemePaletteGradient,
+      }),
+      notchIndex: notch.index,
+      points: notch.points,
+    },
+    bg,
+  };
+};
+
+interface ArcNotchMotionOptions {
+  readonly enterStaggerScale: number;
+  readonly enterTransition: GaugeEnterTransition | undefined;
+  readonly isActiveGroup: boolean;
+}
+
+const createArcNotchMotion = (
+  options: Readonly<ArcNotchMotionOptions>,
+): ((ctx: ChartMotionContext<GaugeArcRow>) => ChartMotionTiming<GaugeArcRow>) => {
+  const { enterStaggerScale, enterTransition, isActiveGroup } = options;
+  return (ctx) => resolveGaugeNotchTiming({
+    enterStaggerScale,
+    enterTransition,
+    idx: ctx.datumIndex ?? 0,
+    isActiveGroup,
+    phase: ctx.phase,
+  });
+};
+
+interface UniformArcGroupNodesOptions {
+  readonly active: readonly UniformArcRow[];
+  readonly activeFillOpacity: number;
+  readonly bg: readonly UniformArcRow[];
+  readonly centerX: number;
+  readonly centerY: number;
+  readonly inactiveFillOpacity: number;
+  readonly notchCornerRadius: number;
+  readonly notchLength: number;
+}
+
+// Group keys opt out of motion; animating group+child opacity would compound.
+const buildUniformArcGroupNodes = (options: Readonly<UniformArcGroupNodesOptions>): SceneNode[] => {
+  const { active, activeFillOpacity, bg, centerX, centerY, inactiveFillOpacity, notchCornerRadius, notchLength } = options;
+  const nodes: SceneNode[] = [];
+  if (bg.length > 0) {
+    nodes.push({
+      ariaHidden: true,
+      children: buildUniformArcNodes({
+        centerX,
+        centerY,
+        fillOpacity: inactiveFillOpacity,
+        keyPrefix: GAUGE_BG_GROUP_KEY,
+        notchCornerRadius,
+        notchLength,
+        rows: bg,
+      }),
+      className: GAUGE_ARC_MARK_CLASS,
+      key: GAUGE_BG_GROUP_KEY,
+      kind: "group",
+    });
+  }
+  if (active.length > 0) {
+    nodes.push({
+      ariaHidden: true,
+      children: buildUniformArcNodes({
+        centerX,
+        centerY,
+        fillOpacity: activeFillOpacity,
+        keyPrefix: GAUGE_ACTIVE_GROUP_KEY,
+        notchCornerRadius,
+        notchLength,
+        rows: active,
+      }),
+      className: GAUGE_ARC_MARK_CLASS,
+      key: GAUGE_ACTIVE_GROUP_KEY,
+      kind: "group",
+    });
+  }
+  return nodes;
+};
+
+interface UniformArcQuadMarkOptions {
+  readonly active: readonly UniformArcRow[];
+  readonly activeFillOpacity: number;
+  readonly bg: readonly UniformArcRow[];
+  readonly enterStaggerScale: number;
+  readonly enterTransition: GaugeEnterTransition | undefined;
+  readonly inactiveFillOpacity: number;
+  readonly notchCornerRadius: number;
+  readonly notchLength: number;
+}
+
+// Node coords are polar-relative; absolute-pixel points shift by -(centerX, centerY) at render.
+const buildUniformArcQuadMark = (options: Readonly<UniformArcQuadMarkOptions>): PolarMark => {
+  const { active, activeFillOpacity, bg, enterStaggerScale, enterTransition, inactiveFillOpacity, notchCornerRadius, notchLength } = options;
+  return {
+    initialize: () => ({
+      angleValues: [],
+      colorValues: [],
+      id: GAUGE_BG_GROUP_KEY,
+      includeZeroRadius: false,
+      radiusValues: [],
+      render: ({ layout }) => ({
+        nodes: buildUniformArcGroupNodes({
+          active,
+          activeFillOpacity,
+          bg,
+          centerX: layout.centerX,
+          centerY: layout.centerY,
+          inactiveFillOpacity,
+          notchCornerRadius,
+          notchLength,
+        }),
+      }),
+      requiresAngleScale: false,
+      requiresRadiusScale: false,
+    }),
+    motion: (ctx) => {
+      const sep = ctx.key.indexOf(":");
+      if (sep === -1) {return false;}
+      return resolveGaugeNotchTiming({
+        enterStaggerScale,
+        enterTransition,
+        idx: Number(ctx.key.slice(sep + 1)),
+        isActiveGroup: ctx.key.startsWith(GAUGE_ACTIVE_GROUP_PREFIX),
+        phase: ctx.phase,
+      });
+    },
+  };
+};
+
+interface TaperedArcMarksOptions {
+  readonly activeFillOpacity: number;
+  readonly activeNotchMotion: (ctx: ChartMotionContext<GaugeArcRow>) => ChartMotionTiming<GaugeArcRow>;
+  readonly activeRows: readonly GaugeArcRow[];
+  readonly bgNotchMotion: (ctx: ChartMotionContext<GaugeArcRow>) => ChartMotionTiming<GaugeArcRow>;
+  readonly bgRows: readonly GaugeArcRow[];
+  readonly inactiveFillOpacity: number;
+  readonly innerRadiusRatio: number;
+  readonly notchCornerRadius: number;
+  readonly outerRadiusRatio: number;
+}
+
+const buildTaperedArcMarks = (options: Readonly<TaperedArcMarksOptions>): PolarMark[] => {
+  const { activeFillOpacity, activeNotchMotion, activeRows, bgNotchMotion, bgRows, inactiveFillOpacity, innerRadiusRatio, notchCornerRadius, outerRadiusRatio } = options;
+  return [
+    radialArc<GaugeArcRow>(bgRows, {
+      cornerRadius: notchCornerRadius,
+      endAngle: "endAngle",
+      fill: (row) => row.fill,
+      fillOpacity: inactiveFillOpacity,
+      id: GAUGE_BG_GROUP_KEY,
+      innerRadius: ({ radius }: { readonly radius: number }) => radius * innerRadiusRatio,
+      key: gaugeArcRowKey,
+      motion: bgNotchMotion,
+      outerRadius: ({ radius }: { readonly radius: number }) => radius * outerRadiusRatio,
+      padAngle: "padAngle",
+      startAngle: "startAngle",
+    }),
+    radialArc<GaugeArcRow>(activeRows, {
+      cornerRadius: notchCornerRadius,
+      endAngle: "endAngle",
+      fill: (row) => row.fill,
+      fillOpacity: activeFillOpacity,
+      id: GAUGE_ACTIVE_GROUP_KEY,
+      innerRadius: ({ radius }: { readonly radius: number }) => radius * innerRadiusRatio,
+      key: gaugeArcRowKey,
+      motion: activeNotchMotion,
+      outerRadius: ({ radius }: { readonly radius: number }) => radius * outerRadiusRatio,
+      padAngle: "padAngle",
+      startAngle: "startAngle",
+    }),
+  ];
+};
+
+interface UniformArcGeometryOptions {
+  readonly activeGrad0: string;
+  readonly activeGrad1: string;
+  readonly endAngle: number;
+  readonly height: number;
+  readonly notchLengthPercent: number;
+  readonly spacing: number;
+  readonly startAngle: number;
+  readonly totalNotches: number;
+  readonly useGradient: boolean;
+  readonly useThemePaletteGradient: boolean;
+  readonly value: number;
+  readonly width: number;
+}
+
+const computeUniformArcGeometry = (
+  options: Readonly<UniformArcGeometryOptions>,
+): ReturnType<typeof computeArcNotches> | undefined => {
+  const { activeGrad0, activeGrad1, endAngle, height, notchLengthPercent, spacing, startAngle, totalNotches, useGradient, useThemePaletteGradient, value, width } = options;
+  if (width <= 0 || height <= 0) {return undefined;}
+  return computeArcNotches({
+    activeGrad0,
+    activeGrad1,
+    endAngle,
+    height,
+    notchLengthPercent,
+    spacing,
+    startAngle,
+    totalNotches,
+    uniformWidth: true,
+    useGradient,
+    useThemePaletteGradient,
+    value,
+    width,
+  });
+};
+
+interface GaugeArcLayoutOptions {
+  readonly heightProp?: number;
+  readonly measuredH: number;
+  readonly measuredW: number;
+  readonly minWidth?: number;
+  readonly widthProp?: number;
+}
+
+interface GaugeArcLayout {
+  readonly fixedSize: boolean;
+  readonly height: number;
+  readonly resolvedMinWidth: number;
+  readonly size: number;
+  readonly width: number;
+}
+
+const resolveGaugeArcLayout = (options: Readonly<GaugeArcLayoutOptions>): GaugeArcLayout => {
+  const { heightProp, measuredH, measuredW, minWidth, widthProp } = options;
+  const width = widthProp ?? measuredW;
+  const height = heightProp ?? measuredH;
+  return {
+    fixedSize: widthProp !== undefined && heightProp !== undefined,
+    height,
+    resolvedMinWidth: minWidth ?? GAUGE_ARC_MIN_WIDTH_PX,
+    size: Math.min(width, height),
+    width,
+  };
+};
+
+const useArcRows = (
+  props: Readonly<GaugeArcProps>,
+  fillState: Readonly<GaugeFillState>,
+  layout: Readonly<GaugeArcLayout>,
+): ArcRowsResult | undefined => {
+  const { activeFill, endAngle, inactiveFill, notchLengthPercent, spacing, startAngle, totalNotches, useGradient, value } = props;
+  const { height, width } = layout;
+  return React.useMemo(() => computeArcRows({
+    activeFill,
+    endAngle: endAngle ?? 405,
+    fillState,
+    height,
+    inactiveFill,
+    notchLengthPercent: notchLengthPercent ?? 100,
+    spacing: spacing ?? 25,
+    startAngle: startAngle ?? 135,
+    totalNotches: totalNotches ?? 40,
+    useGradient: useGradient ?? false,
+    value,
+    width,
+  }), [
     width,
     height,
     totalNotches,
@@ -436,88 +911,100 @@ function GaugeArc(props: GaugeArcProps) {
     inactiveFill,
     activeFill,
   ]);
+};
 
-  // `uniformWidth` — bklit's rectangular quads (gauge.tsx `GaugeNotchSvg`,
-  // `createNotchPath` with `cornerDepth = notchLength`): the notch's inner
-  // edge is PERPENDICULAR to its radial centerline instead of sitting on the
-  // inner-radius circle, so `radialArc` pie slices cannot express it. All
-  // geometry comes from `computeArcNotches` (the verbatim port of bklit's
-  // own arc notch math, absolute pixel space) + bklit's own fill resolvers;
-  // fills are precomputed here so the custom PolarMark's render closure only
-  // re-emits paths when this memo's inputs change.
-  interface UniformArcRow {
-    notchIndex: number;
-    points: NotchPoint;
-    fill: string;
-  }
-  const uniformRows = React.useMemo<{
-    bg: UniformArcRow[];
-    active: UniformArcRow[];
-    notchLength: number;
-  } | null>(() => {
-    if (width <= 0 || height <= 0) return null;
-    const geometry = computeArcNotches({
-      width,
-      height,
-      totalNotches,
-      spacing,
-      uniformWidth: true,
-      startAngle,
-      endAngle,
-      notchLengthPercent,
-      value,
-      useGradient,
-      useThemePaletteGradient: fillState.useThemePaletteGradient,
-      activeGrad0: fillState.activeGrad0,
-      activeGrad1: fillState.activeGrad1,
+interface UniformArcRowList {
+  readonly active: UniformArcRow[];
+  readonly bg: UniformArcRow[];
+}
+
+interface ComputeUniformArcRowsOptions {
+  readonly activeFill?: string;
+  readonly geometry: { readonly notches: readonly ComputedNotch[]; readonly notchLength: number; readonly size: number; readonly centerX: number; readonly centerY: number };
+  readonly hasCustomActive: boolean;
+  readonly hasCustomInactive: boolean;
+  readonly inactiveFill?: string;
+  readonly inactiveGrad0: string;
+  readonly inactiveGrad1: string;
+  readonly themeActiveGradientId: string;
+  readonly totalNotches: number;
+  readonly useGradient: boolean;
+  readonly useThemePaletteGradient: boolean;
+}
+
+const collectUniformArcRows = (options: Readonly<ComputeUniformArcRowsOptions>): UniformArcRowList => {
+  const { activeFill, geometry, hasCustomActive, hasCustomInactive, inactiveFill, inactiveGrad0, inactiveGrad1, themeActiveGradientId, totalNotches, useGradient, useThemePaletteGradient } = options;
+  const bg: UniformArcRow[] = [];
+  const active: UniformArcRow[] = [];
+  for (const notch of geometry.notches) {
+    const pair = buildUniformArcRowPair({
+      activeFill, hasCustomActive, hasCustomInactive, inactiveFill, inactiveGrad0, inactiveGrad1, notch, themeActiveGradientId, totalNotches, useGradient, useThemePaletteGradient,
     });
-    const bg: UniformArcRow[] = [];
-    const active: UniformArcRow[] = [];
-    for (const notch of geometry.notches) {
-      bg.push({
-        notchIndex: notch.index,
-        points: notch.points,
-        fill: resolveGaugeBgFill({
-          notchIndex: notch.index,
-          totalNotches,
-          hasCustomInactive: fillState.hasCustomInactive,
-          inactiveFill,
-          useThemePaletteGradient: fillState.useThemePaletteGradient,
-          useGradient,
-          inactiveGrad0: fillState.inactiveGrad0,
-          inactiveGrad1: fillState.inactiveGrad1,
-          arcTrackFill: "var(--border)",
-          linearTrackFill: "var(--chart-background)",
-          linearMode: false,
-        }),
-      });
-      if (notch.isActive) {
-        active.push({
-          notchIndex: notch.index,
-          points: notch.points,
-          fill: resolveGaugeActiveFill({
-            notch,
-            hasCustomActive: fillState.hasCustomActive,
-            activeFill,
-            useThemePaletteGradient: fillState.useThemePaletteGradient,
-            themeActiveGradientId: fillState.themeActiveGradientId,
-            useGradient,
-            activeFillSolid: "var(--chart-1)",
-          }),
-        });
-      }
-    }
-    return { bg, active, notchLength: geometry.notchLength };
-  }, [
-    width,
-    height,
-    totalNotches,
-    spacing,
-    startAngle,
-    endAngle,
-    notchLengthPercent,
-    value,
-    useGradient,
+    bg.push(pair.bg);
+    if (pair.active !== undefined) {active.push(pair.active);}
+  }
+  return { active, bg };
+};
+
+const computeUniformArcRows = (
+  props: Readonly<GaugeArcProps>,
+  fillState: Readonly<GaugeFillState>,
+  layout: Readonly<GaugeArcLayout>,
+): {
+  readonly active: UniformArcRow[];
+  readonly bg: UniformArcRow[];
+  readonly notchLength: number;
+} | undefined => {
+  const geometry = computeUniformArcGeometry({
+    activeGrad0: fillState.activeGrad0,
+    activeGrad1: fillState.activeGrad1,
+    endAngle: props.endAngle ?? 405,
+    height: layout.height,
+    notchLengthPercent: props.notchLengthPercent ?? 100,
+    spacing: props.spacing ?? 25,
+    startAngle: props.startAngle ?? 135,
+    totalNotches: props.totalNotches ?? 40,
+    useGradient: props.useGradient ?? false,
+    useThemePaletteGradient: fillState.useThemePaletteGradient,
+    value: props.value,
+    width: layout.width,
+  });
+  if (geometry === undefined) {return undefined;}
+  const rows = collectUniformArcRows({
+    activeFill: props.activeFill,
+    geometry,
+    hasCustomActive: fillState.hasCustomActive,
+    hasCustomInactive: fillState.hasCustomInactive,
+    inactiveFill: props.inactiveFill,
+    inactiveGrad0: fillState.inactiveGrad0,
+    inactiveGrad1: fillState.inactiveGrad1,
+    themeActiveGradientId: fillState.themeActiveGradientId,
+    totalNotches: props.totalNotches ?? 40,
+    useGradient: props.useGradient ?? false,
+    useThemePaletteGradient: fillState.useThemePaletteGradient,
+  });
+  return { active: rows.active, bg: rows.bg, notchLength: geometry.notchLength };
+};
+
+const useUniformArcRows = (
+  props: Readonly<GaugeArcProps>,
+  fillState: Readonly<GaugeFillState>,
+  layout: Readonly<GaugeArcLayout>,
+): {
+  readonly active: UniformArcRow[];
+  readonly bg: UniformArcRow[];
+  readonly notchLength: number;
+} | undefined =>
+  React.useMemo(() => computeUniformArcRows(props, fillState, layout), [
+    layout.width,
+    layout.height,
+    props.totalNotches,
+    props.spacing,
+    props.startAngle,
+    props.endAngle,
+    props.notchLengthPercent,
+    props.value,
+    props.useGradient,
     fillState.useThemePaletteGradient,
     fillState.hasCustomInactive,
     fillState.hasCustomActive,
@@ -526,246 +1013,105 @@ function GaugeArc(props: GaugeArcProps) {
     fillState.activeGrad0,
     fillState.activeGrad1,
     fillState.themeActiveGradientId,
-    inactiveFill,
-    activeFill,
+    props.inactiveFill,
+    props.activeFill,
   ]);
 
-  // --- TanStack definition: TWO radialArc marks (bg track + active overlay) ---
-  // `uniformWidth` switch: false → stock `radialArc` pie slices (banked
-  // approximation of bklit's tapered quads, D82); true → ONE custom
-  // PolarMark that emits bklit's own `createNotchPath` rectangular quads in
-  // two scene groups keyed exactly "gauge-bg"/"gauge-active" so the shared
-  // reveal machinery (`collectTargets` → `[data-ts-key=...]` groups → path
-  // children) keeps working unchanged. Node coordinates are polar-relative
-  // (TanStack translates the polar container by layout.centerX/Y), so the
-  // absolute-pixel points from `computeArcNotches` are shifted by
-  // `-(layout.centerX, layout.centerY)` at render time.
-  const definition = React.useMemo(() => {
-    if (!arcRows || (uniformWidth && !uniformRows)) return null;
+const defineArcChart = (
+  marks: readonly PolarMark[],
+  themeActiveGradientId: string,
+  useThemePaletteGradient: boolean,
+): DomChartDefinition =>
+  defineChart({
+    focus: focusDisabled,
+    gradients: buildGaugeThemeGradients(themeActiveGradientId, useThemePaletteGradient),
+    guides: false,
+    marks: [
+      polar({
+        marks,
+        radiusRatio: 1,
+      }),
+    ],
+    scales: { x: null, y: null },
+  });
 
-    // T-D3: bklit's own stagger scalar, clamped exactly as the pre-C4
-    // `handleRender` clamped it — app-level config, unaffected by the
-    // enter/exit/update mechanism switching to native.
-    const stagger = Math.max(0.25, Math.min(2.5, enterStaggerScale));
+interface BuildArcDefinitionOptions {
+  readonly activeFillOpacity: number;
+  readonly arcRows: Readonly<ArcRowsResult> | undefined;
+  readonly enterStaggerScale: number;
+  readonly enterTransition: GaugeEnterTransition | undefined;
+  readonly inactiveFillOpacity: number;
+  readonly notchCornerRadius: number;
+  readonly themeActiveGradientId: string;
+  readonly uniformRows: Readonly<{
+    readonly active: readonly UniformArcRow[];
+    readonly bg: readonly UniformArcRow[];
+    readonly notchLength: number;
+  }> | undefined;
+  readonly uniformWidth: boolean;
+  readonly useThemePaletteGradient: boolean;
+}
 
-    // C4 (native motion, D432): shared per-notch enter/exit/update — new
-    // key (activeNotches grew, or first mount) pops in with the legacy
-    // bg/active stagger delay; removed key (activeNotches shrank) vanishes
-    // instantly (`{type:"tween",duration:0}`, matching bklit's D28 "value
-    // decrease = no exit animation" idiom); an existing, still-present key
-    // whose `d`/fill changed (e.g. a geometry prop change) morphs on the
-    // SAME resolved enterTransition timing — native's own keyed diff
-    // (`reconcileMotionElement`, dist/motion.js) replaces the old
-    // `reconcileGaugeReveal` bookkeeping entirely (gauge-reveal.ts header).
-    const notchMotion = (isActiveGroup: boolean) =>
-      (ctx: ChartMotionContext<GaugeArcRow>) => {
-        if (ctx.phase === "exit") {
-          return { transition: { type: "tween" as const, duration: 0 } };
-        }
-        const resolved = resolveEnterTransition(enterTransition, GAUGE_SPRING_FALLBACK);
-        if (ctx.phase === "update") {
-          return { transition: gaugeMotionTransition(resolved) };
-        }
-        const idx = ctx.datumIndex ?? 0;
-        return {
-          delay: isActiveGroup
-            ? nativeStaggerDelayMs(0.02 * stagger * 1000, 0.3 * stagger * 1000, idx, "arc")
-            : nativeStaggerDelayMs(0.015 * stagger * 1000, 0, idx, "arc"),
-          transition: gaugeMotionTransition(resolved),
-        };
-      };
-
-    if (uniformWidth && uniformRows) {
-      const { bg, active, notchLength } = uniformRows;
-      // The custom quad mark's own scene tree nests per-notch children
-      // (`gauge-bg:{i}`/`gauge-active:{i}`) inside two GROUP nodes
-      // (`gauge-bg`/`gauge-active`, keyed without a `:`). Only the
-      // per-notch children carry semantic identity — giving the group
-      // its OWN opacity fade on top of each child's fade would compound
-      // multiplicatively (nested SVG group/child opacity stacks), so the
-      // group-level keys opt out (`return false`) and only children
-      // animate, same net contract as the stock `radialArc` marks below
-      // (whose own per-datum keys have no such wrapper ambiguity).
-      const quadMark: PolarMark<unknown> = {
-        motion: (ctx) => {
-          const sep = ctx.key.indexOf(":");
-          if (sep === -1) return false;
-          const isActiveGroup = ctx.key.startsWith("gauge-active:");
-          if (ctx.phase === "exit") {
-            return { transition: { type: "tween", duration: 0 } };
-          }
-          const resolved = resolveEnterTransition(enterTransition, GAUGE_SPRING_FALLBACK);
-          if (ctx.phase === "update") {
-            return { transition: gaugeMotionTransition(resolved) };
-          }
-          const idx = Number(ctx.key.slice(sep + 1));
-          return {
-            delay: isActiveGroup
-              ? nativeStaggerDelayMs(0.02 * stagger * 1000, 0.3 * stagger * 1000, idx, "arc")
-              : nativeStaggerDelayMs(0.015 * stagger * 1000, 0, idx, "arc"),
-            transition: gaugeMotionTransition(resolved),
-          };
-        },
-        initialize: () => ({
-          id: "gauge-bg",
-          colorValues: [],
-          angleValues: [],
-          radiusValues: [],
-          includeZeroRadius: false,
-          requiresAngleScale: false,
-          requiresRadiusScale: false,
-          render: ({ layout }) => {
-            const tx = layout.centerX;
-            const ty = layout.centerY;
-            const pathFor = (row: UniformArcRow): string =>
-              createNotchPath(
-                {
-                  x1: row.points.x1 - tx,
-                  y1: row.points.y1 - ty,
-                  x2: row.points.x2 - tx,
-                  y2: row.points.y2 - ty,
-                  x3: row.points.x3 - tx,
-                  y3: row.points.y3 - ty,
-                  x4: row.points.x4 - tx,
-                  y4: row.points.y4 - ty,
-                },
-                notchCornerRadius,
-                notchLength,
-              );
-            const nodes: SceneNode[] = [];
-            if (bg.length > 0) {
-              nodes.push({
-                kind: "group",
-                key: "gauge-bg",
-                className: "ts-chart__arc",
-                ariaHidden: true,
-                children: bg.map(
-                  (row): SceneNode => ({
-                    kind: "polyline",
-                    key: `gauge-bg:${row.notchIndex}`,
-                    points: [],
-                    path: pathFor(row),
-                    style: {
-                      fill: row.fill,
-                      fillOpacity: fillState.resolvedInactiveFillOpacity,
-                      stroke: "none",
-                    },
-                  }),
-                ),
-              });
-            }
-            if (active.length > 0) {
-              nodes.push({
-                kind: "group",
-                key: "gauge-active",
-                className: "ts-chart__arc",
-                ariaHidden: true,
-                children: active.map(
-                  (row): SceneNode => ({
-                    kind: "polyline",
-                    key: `gauge-active:${row.notchIndex}`,
-                    points: [],
-                    path: pathFor(row),
-                    style: {
-                      fill: row.fill,
-                      fillOpacity: fillState.resolvedActiveFillOpacity,
-                      stroke: "none",
-                    },
-                  }),
-                ),
-              });
-            }
-            return { nodes };
-          },
-        }),
-      };
-
-      return defineChart({
-        marks: [
-          polar({
-            radiusRatio: 1,
-            marks: [quadMark],
-          }),
-        ],
-        scales: { x: null, y: null },
-        guides: false,
-        focus: focusDisabled,
-        gradients: fillState.useThemePaletteGradient
-          ? [
-              {
-                id: fillState.themeActiveGradientId,
-                x1: 0,
-                y1: 0,
-                x2: 1,
-                y2: 0,
-                stops: [
-                  { offset: 0, color: "var(--chart-1)" },
-                  { offset: 1, color: "var(--chart-5)" },
-                ],
-              },
-            ]
-          : [],
-      });
-    }
-
-    const { bgRows, activeRows, innerRadiusRatio, outerRadiusRatio } = arcRows;
-
-    return defineChart({
-      marks: [
-        polar({
-          radiusRatio: 1,
-          marks: [
-            // Background/track — EVERY notch rendered once
-            radialArc<GaugeArcRow>(bgRows, {
-              id: "gauge-bg",
-              startAngle: "startAngle",
-              endAngle: "endAngle",
-              padAngle: "padAngle",
-              innerRadius: ({ radius }: { radius: number }) => radius * innerRadiusRatio,
-              outerRadius: ({ radius }: { radius: number }) => radius * outerRadiusRatio,
-              key: (d) => String(d.notchIndex),
-              fill: (d) => d.fill,
-              fillOpacity: fillState.resolvedInactiveFillOpacity,
-              cornerRadius: notchCornerRadius,
-              motion: notchMotion(false),
-            }),
-            // Active overlay — ONLY active notches overlaid with active fill
-            radialArc<GaugeArcRow>(activeRows, {
-              id: "gauge-active",
-              startAngle: "startAngle",
-              endAngle: "endAngle",
-              padAngle: "padAngle",
-              innerRadius: ({ radius }: { radius: number }) => radius * innerRadiusRatio,
-              outerRadius: ({ radius }: { radius: number }) => radius * outerRadiusRatio,
-              key: (d) => String(d.notchIndex),
-              fill: (d) => d.fill,
-              fillOpacity: fillState.resolvedActiveFillOpacity,
-              cornerRadius: notchCornerRadius,
-              motion: notchMotion(true),
-            }),
-          ],
-        }),
-      ],
-      scales: { x: null, y: null },
-      guides: false,
-      focus: focusDisabled,
-      gradients: fillState.useThemePaletteGradient
-        ? [
-            {
-              id: fillState.themeActiveGradientId,
-              x1: 0,
-              y1: 0,
-              x2: 1,
-              y2: 0,
-              stops: [
-                { offset: 0, color: "var(--chart-1)" },
-                { offset: 1, color: "var(--chart-5)" },
-              ],
-            },
-          ]
-        : [],
+const buildArcDefinition = (options: Readonly<BuildArcDefinitionOptions>): DomChartDefinition | undefined => {
+  const { activeFillOpacity, arcRows, enterStaggerScale, enterTransition, inactiveFillOpacity, notchCornerRadius, themeActiveGradientId, uniformRows, uniformWidth, useThemePaletteGradient } = options;
+  if (!arcRows || (uniformWidth && !uniformRows)) {return undefined;}
+  const bgNotchMotion = createArcNotchMotion({ enterStaggerScale, enterTransition, isActiveGroup: false });
+  const activeNotchMotion = createArcNotchMotion({ enterStaggerScale, enterTransition, isActiveGroup: true });
+  if (uniformWidth && uniformRows) {
+    const quadMark = buildUniformArcQuadMark({
+      active: uniformRows.active,
+      activeFillOpacity,
+      bg: uniformRows.bg,
+      enterStaggerScale,
+      enterTransition,
+      inactiveFillOpacity,
+      notchCornerRadius,
+      notchLength: uniformRows.notchLength,
     });
-  }, [
+    return defineArcChart([quadMark], themeActiveGradientId, useThemePaletteGradient);
+  }
+  const marks = buildTaperedArcMarks({
+    activeFillOpacity,
+    activeNotchMotion,
+    activeRows: arcRows.activeRows,
+    bgNotchMotion,
+    bgRows: arcRows.bgRows,
+    inactiveFillOpacity,
+    innerRadiusRatio: arcRows.innerRadiusRatio,
+    notchCornerRadius,
+    outerRadiusRatio: arcRows.outerRadiusRatio,
+  });
+  return defineArcChart(marks, themeActiveGradientId, useThemePaletteGradient);
+};
+
+interface UseArcDefinitionOptions {
+  readonly arcRows: Readonly<ArcRowsResult> | undefined;
+  readonly enterStaggerScale: number;
+  readonly enterTransition: GaugeEnterTransition | undefined;
+  readonly fillState: Readonly<GaugeFillState>;
+  readonly notchCornerRadius: number;
+  readonly uniformRows: Readonly<{
+    readonly active: readonly UniformArcRow[];
+    readonly bg: readonly UniformArcRow[];
+    readonly notchLength: number;
+  }> | undefined;
+  readonly uniformWidth: boolean;
+}
+
+const useArcDefinition = (options: Readonly<UseArcDefinitionOptions>): DomChartDefinition | undefined => {
+  const { arcRows, enterStaggerScale, enterTransition, fillState, notchCornerRadius, uniformRows, uniformWidth } = options;
+  return React.useMemo(() => buildArcDefinition({
+    activeFillOpacity: fillState.resolvedActiveFillOpacity,
+    arcRows,
+    enterStaggerScale,
+    enterTransition,
+    inactiveFillOpacity: fillState.resolvedInactiveFillOpacity,
+    notchCornerRadius,
+    themeActiveGradientId: fillState.themeActiveGradientId,
+    uniformRows,
+    uniformWidth,
+    useThemePaletteGradient: fillState.useThemePaletteGradient,
+  }), [
     arcRows,
     uniformWidth,
     uniformRows,
@@ -777,378 +1123,458 @@ function GaugeArc(props: GaugeArcProps) {
     enterTransition,
     enterStaggerScale,
   ]);
+};
 
-  const resolvedMinWidth = minWidth ?? 300;
+interface RenderGaugeArcInnerOptions {
+  readonly centerValue?: number;
+  readonly defaultLabel: string;
+  readonly definition: DomChartDefinition | undefined;
+  readonly fillState: Readonly<GaugeFillState>;
+  readonly formatOptions: CenterStatFormat;
+  readonly layout: Readonly<GaugeArcLayout>;
+  readonly prefix?: string;
+  readonly suffix?: string;
+}
 
-  const inner =
-    definition && size > 0 ? (
-      <div style={{ position: "relative", width, height }}>
-        <RendererChart
-          ariaLabel="Gauge chart"
-          definition={definition}
-          height={height}
-          renderer={chartMotionRenderer()}
-          width={width}
-        />
-        {fillState.defsChildren.length > 0 ? (
-          // G2 (parity fix): bklit's children-as-defs escape hatch
-          // (collectGaugeDefsElements — arbitrary caller `<linearGradient>`/
-          // `<pattern>` JSX) previously dropped on the arc path. Mounted on a
-          // 0×0 overlay svg AFTER <Chart>: SVG paint-server url(#id) refs
-          // resolve document-wide (same verified mechanism as scatter's
-          // sibling defs svg), and the after-<Chart> position keeps the real
-          // chart SVG as the first svg in the QA harness's DOM-order lookup.
-          <svg
-            width={0}
-            height={0}
-            style={{ position: "absolute" }}
-            aria-hidden="true"
-            focusable="false"
-          >
-            <defs>{fillState.defsChildren}</defs>
-          </svg>
-        ) : null}
-        {centerValue != null ? (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              pointerEvents: "none",
-              paddingTop: size * 0.08,
-            }}
-          >
-            <GaugeCenterOverlay
-              centerValue={centerValue}
-              contextSize={size}
-              defaultLabel={defaultLabel}
-              formatOptions={formatOptions}
-              prefix={prefix}
-              suffix={suffix}
-            />
-          </div>
-        ) : null}
-      </div>
-    ) : null;
+const renderGaugeArcInner = (options: Readonly<RenderGaugeArcInnerOptions>): React.ReactNode => {
+  const { centerValue, defaultLabel, definition, fillState, formatOptions, layout, prefix, suffix } = options;
+  return definition && layout.size > 0 ? (
+    <div style={{ height: layout.height, position: "relative", width: layout.width }}>
+      <RendererChart
+        ariaLabel="Gauge chart"
+        definition={definition}
+        height={layout.height}
+        renderer={chartMotionRenderer()}
+        width={layout.width}
+      />
+      {fillState.defsChildren.length > 0 ? (
+        // Overlay svg mounts after the chart: url(#id) resolves document-wide; chart svg stays first in DOM.
+        <svg
+          width={0}
+          height={0}
+          style={{ position: "absolute" }}
+          aria-hidden="true"
+          focusable="false"
+        >
+          <defs>{fillState.defsChildren}</defs>
+        </svg>
+      ) : undefined}
+      {centerValue === undefined ? undefined : (
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            flexDirection: "column",
+            inset: 0,
+            justifyContent: "center",
+            paddingTop: layout.size * GAUGE_CENTER_TOP_PADDING_FRACTION,
+            pointerEvents: "none",
+            position: "absolute",
+          }}
+        >
+          <GaugeCenterOverlay
+            centerValue={centerValue}
+            contextSize={layout.size}
+            defaultLabel={defaultLabel}
+            formatOptions={formatOptions}
+            prefix={prefix}
+            suffix={suffix}
+          />
+        </div>
+      )}
+    </div>
+  ) : undefined;
+};
 
-  if (fixedSize) {
+interface RenderGaugeArcRootOptions {
+  readonly centerValue?: number;
+  readonly className?: string;
+  readonly containerRef: React.RefObject<HTMLDivElement | null>;
+  readonly defaultLabel: string;
+  readonly definition: DomChartDefinition | undefined;
+  readonly fillState: Readonly<GaugeFillState>;
+  readonly formatOptions: CenterStatFormat;
+  readonly layout: Readonly<GaugeArcLayout>;
+  readonly prefix?: string;
+  readonly style?: Readonly<React.CSSProperties>;
+  readonly suffix?: string;
+}
+
+const renderGaugeArcRoot = (options: Readonly<RenderGaugeArcRootOptions>): React.ReactElement => {
+  const { centerValue, className, containerRef, defaultLabel, definition, fillState, formatOptions, layout, prefix, style, suffix } = options;
+  const inner = renderGaugeArcInner({
+    centerValue,
+    defaultLabel,
+    definition,
+    fillState,
+    formatOptions,
+    layout,
+    prefix,
+    suffix,
+  });
+  if (layout.fixedSize) {
     return (
-      <div className={className} data-bkm-chart="gauge" style={{ position: "relative", display: "inline-flex", maxWidth: "100%", ...style }}>
+      <div className={className} data-bkm-chart="gauge" style={{ display: "inline-flex", maxWidth: "100%", position: "relative", ...style }}>
         {inner}
       </div>
     );
   }
-
   return (
     <div
       className={className}
       data-bkm-chart="gauge"
-      style={{ position: "relative", width: "100%", maxWidth: "100%", minWidth: resolvedMinWidth, ...style }}
+      style={{ maxWidth: "100%", minWidth: layout.resolvedMinWidth, position: "relative", width: "100%", ...style }}
     >
       <div
         ref={containerRef}
         style={{
-          margin: "0 auto",
-          width: "100%",
-          maxWidth: ARC_MAX_WIDTH,
           aspectRatio: String(ARC_ASPECT_RATIO),
+          margin: "0 auto",
+          maxWidth: ARC_MAX_WIDTH,
+          width: "100%",
         }}
       >
         {inner}
       </div>
     </div>
   );
-}
+};
 
-// ============================================================================
-// Linear
-// ============================================================================
-type GaugeLinearProps = Omit<GaugeProps, "orientation" | "startAngle" | "endAngle">;
+type GaugeArcProps = Omit<GaugeProps, "orientation" | "labelPlacement" | "labelAlign" | "notchWidthPercent" | "linearHeight" | "geometryScrubbing">;
 
-function GaugeLinear(props: GaugeLinearProps) {
-  const {
-    width: widthProp,
-    height: heightProp,
-    className,
-    minWidth,
-    style,
-    value,
-    totalNotches = 40,
-    spacing = 25,
-    notchCornerRadius = 0,
-    uniformWidth = true,
-    useGradient = false,
-    activeGradient,
-    inactiveGradient,
-    centerValue,
-    defaultLabel = "Total",
-    prefix,
-    suffix,
-    formatOptions = defaultCenterStatFormat,
-    labelPlacement = "top",
-    labelAlign = "start",
-    inactiveFill,
-    activeFill,
-    inactiveFillOpacity,
-    activeFillOpacity,
-    children,
-    notchLengthPercent = 100,
-    notchWidthPercent = 80,
-    linearHeight,
-    enterTransition,
-    enterStaggerScale = 1,
-    geometryScrubbing = false,
-  } = props;
-
+const GaugeArc = (props: Readonly<GaugeArcProps>): React.ReactElement => {
   const fillState = useGaugeFillState({
-    useGradient,
-    activeGradient,
-    inactiveGradient,
-    inactiveFill,
-    activeFill,
-    inactiveFillOpacity,
-    activeFillOpacity,
-    children,
-    totalNotches,
+    activeFill: props.activeFill,
+    activeFillOpacity: props.activeFillOpacity,
+    activeGradient: props.activeGradient,
+    children: props.children,
+    inactiveFill: props.inactiveFill,
+    inactiveFillOpacity: props.inactiveFillOpacity,
+    inactiveGradient: props.inactiveGradient,
+    totalNotches: props.totalNotches,
+    useGradient: props.useGradient,
   });
 
-  const resolvedLinearHeight = linearHeight ?? DEFAULT_LINEAR_GAUGE_HEIGHT;
-  const resolvedMinWidth = minWidth ?? 200;
-  const fixedWidth = widthProp != null;
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  // G5 (bklit ParentSize debounceTime={10}): same debounce as the arc path —
-  // the ref is only attached on the responsive render path.
-  const measuredWidth = useDebouncedContainerWidth(containerRef);
+  const { width: measuredW, height: measuredH } = useDebouncedContainerSize(containerRef);
 
-  const width = widthProp ?? measuredWidth;
-  const height = heightProp ?? resolvedLinearHeight;
+  const layout = resolveGaugeArcLayout({
+    heightProp: props.height,
+    measuredH,
+    measuredW,
+    minWidth: props.minWidth,
+    widthProp: props.width,
+  });
+  const arcRows = useArcRows(props, fillState, layout);
+  const uniformRows = useUniformArcRows(props, fillState, layout);
+  const definition = useArcDefinition({
+    arcRows,
+    enterStaggerScale: props.enterStaggerScale ?? 1,
+    enterTransition: props.enterTransition,
+    fillState,
+    notchCornerRadius: props.notchCornerRadius ?? 0,
+    uniformRows,
+    uniformWidth: props.uniformWidth ?? false,
+  });
 
-  const geometry = React.useMemo(() => {
-    if (width <= 0 || height <= 0) return null;
+  return renderGaugeArcRoot({
+    centerValue: props.centerValue,
+    className: props.className,
+    containerRef,
+    defaultLabel: props.defaultLabel ?? "Total",
+    definition,
+    fillState,
+    formatOptions: props.formatOptions ?? defaultCenterStatFormat,
+    layout,
+    prefix: props.prefix,
+    style: props.style,
+    suffix: props.suffix,
+  });
+}
+
+interface LinearGaugeLayoutOptions {
+  readonly heightProp?: number;
+  readonly linearHeight?: number;
+  readonly measuredWidth: number;
+  readonly minWidth?: number;
+  readonly widthProp?: number;
+}
+
+interface LinearGaugeLayout {
+  readonly fixedWidth: boolean;
+  readonly height: number;
+  readonly resolvedMinWidth: number;
+  readonly width: number;
+}
+
+const resolveLinearGaugeLayout = (options: Readonly<LinearGaugeLayoutOptions>): LinearGaugeLayout => {
+  const { heightProp, linearHeight, measuredWidth, minWidth, widthProp } = options;
+  const resolvedLinearHeight = linearHeight ?? DEFAULT_LINEAR_GAUGE_HEIGHT;
+  return {
+    fixedWidth: widthProp !== undefined,
+    height: heightProp ?? resolvedLinearHeight,
+    resolvedMinWidth: minWidth ?? GAUGE_LINEAR_MIN_WIDTH_PX,
+    width: widthProp ?? measuredWidth,
+  };
+};
+
+const useLinearGaugeGeometry = (
+  props: Readonly<GaugeLinearProps>,
+  fillState: Readonly<GaugeFillState>,
+  layout: Readonly<LinearGaugeLayout>,
+): ReturnType<typeof computeLinearNotches> | undefined =>
+  React.useMemo(() => {
+    if (layout.width <= 0 || layout.height <= 0) {return undefined;}
     return computeLinearNotches({
-      width,
-      height,
-      totalNotches,
-      spacing,
-      uniformWidth,
-      notchLengthPercent,
-      notchWidthPercent,
-      value,
-      useGradient,
-      useThemePaletteGradient: fillState.useThemePaletteGradient,
       activeGrad0: fillState.activeGrad0,
       activeGrad1: fillState.activeGrad1,
+      height: layout.height,
+      notchLengthPercent: props.notchLengthPercent ?? 100,
+      notchWidthPercent: props.notchWidthPercent ?? 80,
+      spacing: props.spacing ?? 25,
+      totalNotches: props.totalNotches ?? 40,
+      uniformWidth: props.uniformWidth ?? true,
+      useGradient: props.useGradient ?? false,
+      useThemePaletteGradient: fillState.useThemePaletteGradient,
+      value: props.value,
+      width: layout.width,
     });
   }, [
-    width,
-    height,
-    totalNotches,
-    spacing,
-    uniformWidth,
-    notchLengthPercent,
-    notchWidthPercent,
-    value,
-    useGradient,
+    layout.width,
+    layout.height,
+    props.totalNotches,
+    props.spacing,
+    props.uniformWidth,
+    props.notchLengthPercent,
+    props.notchWidthPercent,
+    props.value,
+    props.useGradient,
     fillState.useThemePaletteGradient,
     fillState.activeGrad0,
     fillState.activeGrad1,
   ]);
 
+interface LinearGaugeFills {
+  readonly resolveActiveFill: (notch: ComputedNotch) => string;
+  readonly resolveBgFill: (notchIndex: number) => string;
+}
+
+const useLinearGaugeFills = (
+  props: Readonly<GaugeLinearProps>,
+  fillState: Readonly<GaugeFillState>,
+): LinearGaugeFills => {
   const resolveBgFill = React.useCallback(
     (notchIndex: number) =>
       resolveGaugeBgFill({
-        notchIndex,
-        totalNotches,
+        arcTrackFill: GAUGE_ARC_TRACK_FILL,
         hasCustomInactive: fillState.hasCustomInactive,
-        inactiveFill,
-        useThemePaletteGradient: fillState.useThemePaletteGradient,
-        useGradient,
+        inactiveFill: props.inactiveFill,
         inactiveGrad0: fillState.inactiveGrad0,
         inactiveGrad1: fillState.inactiveGrad1,
-        arcTrackFill: "var(--border)",
-        linearTrackFill: "var(--chart-background)",
         linearMode: true,
+        linearTrackFill: "var(--chart-background)",
+        notchIndex,
+        totalNotches: props.totalNotches ?? 40,
+        useGradient: props.useGradient ?? false,
+        useThemePaletteGradient: fillState.useThemePaletteGradient,
       }),
     [
-      totalNotches,
+      props.totalNotches,
       fillState.hasCustomInactive,
-      inactiveFill,
+      props.inactiveFill,
       fillState.useThemePaletteGradient,
-      useGradient,
+      props.useGradient,
       fillState.inactiveGrad0,
       fillState.inactiveGrad1,
     ],
   );
-
   const resolveActiveFill = React.useCallback(
     (notch: ComputedNotch) =>
       resolveGaugeActiveFill({
-        notch,
+        activeFill: props.activeFill,
+        activeFillSolid: GAUGE_ACTIVE_SOLID_FILL,
         hasCustomActive: fillState.hasCustomActive,
-        activeFill,
-        useThemePaletteGradient: fillState.useThemePaletteGradient,
+        notch,
         themeActiveGradientId: fillState.themeActiveGradientId,
-        useGradient,
-        activeFillSolid: "var(--chart-1)",
+        useGradient: props.useGradient ?? false,
+        useThemePaletteGradient: fillState.useThemePaletteGradient,
       }),
     [
       fillState.hasCustomActive,
-      activeFill,
+      props.activeFill,
       fillState.useThemePaletteGradient,
       fillState.themeActiveGradientId,
-      useGradient,
+      props.useGradient,
     ],
   );
+  return { resolveActiveFill, resolveBgFill };
+};
 
-  // --- TanStack definition (T17): ONE custom mark (`createMark`, placed
-  // directly in `defineChart`'s flat `marks` array — no cartesian() exists,
-  // same D30 justification funnel-chart.tsx's header cites) emitting bklit's
-  // own `createNotchPath` rectangular quads into the SAME "gauge-bg"/
-  // "gauge-active" scene-group keys the arc `uniformWidth` custom PolarMark
-  // uses above, so `handleRender` below can reuse that mark's exact
-  // `data-ts-key` query pattern. UNLIKE the arc mark, this mark's nodes need
-  // ZERO translation: `computeLinearNotches`' `.points` are already absolute
-  // pixel coordinates in the svg's own 0..width/0..height space (arc's
-  // points are polar-relative, hence its `-(centerX, centerY)` shift) —
-  // `margin: {top:0,right:0,bottom:0,left:0}` pins `chart.x/y` at 0 so
-  // nothing WOULD offset them even if this mark's `render` consulted
-  // `chart`/`layout` (it doesn't), and `notch.points` is passed into
-  // `createNotchPath` completely unchanged, byte-identical to the pre-port
-  // `<path d={createNotchPath(notch.points, ...)}>` calls this replaces.
-  const definition = React.useMemo(() => {
-    if (!geometry) return null;
-    const notches = geometry.notches;
-    const cornerVerticalDepth = geometry.cornerVerticalDepth;
-    const activeNotches = notches.filter((notch) => notch.isActive);
+interface LinearGaugeNodesOptions {
+  readonly activeFillOpacity: number;
+  readonly activeNotches: readonly ComputedNotch[];
+  readonly cornerVerticalDepth: number;
+  readonly inactiveFillOpacity: number;
+  readonly notchCornerRadius: number;
+  readonly notches: readonly ComputedNotch[];
+  readonly resolveActiveFill: (notch: ComputedNotch) => string;
+  readonly resolveBgFillByNotch: (notch: ComputedNotch) => string;
+}
 
-    // T-D3: same clamped stagger scalar as arc's own memo.
-    const stagger = Math.max(0.25, Math.min(2.5, enterStaggerScale));
-
-    // C4 (native motion, D432): same per-notch enter/exit/update contract
-    // as GaugeArc's `notchMotion` (this memo's own sibling helper couldn't
-    // be shared directly — GaugeLinear's mark has no `ChartMotionContext`
-    // datum binding since it bypasses scales entirely, same reason its
-    // `render` reads closured `notches`/`activeNotches` instead of channels
-    // — so notch index comes from parsing `ctx.key`, exactly like arc's
-    // `uniformWidth` custom PolarMark). `geometryScrubbing` additionally
-    // suppresses ALL motion while a caller is actively dragging the value
-    // (only GaugeLinear exposes that prop) — matches the pre-C4
-    // `handleRender`'s own `if (geometryScrubbing || !geometry) return;`
-    // early-out, which skipped scheduling reveal animations outright.
-    const quadMark = createMark(
-      () => ({
-        id: "gauge-linear",
-        channels: {},
-        render: () => {
-          const nodes: SceneNode[] = [];
-          if (notches.length > 0) {
-            nodes.push({
-              kind: "group",
-              key: "gauge-bg",
-              className: "ts-chart__arc",
-              ariaHidden: true,
-              children: notches.map(
-                (notch): SceneNode => ({
-                  kind: "polyline",
-                  key: `gauge-bg:${notch.index}`,
-                  points: [],
-                  path: createNotchPath(notch.points, notchCornerRadius, cornerVerticalDepth),
-                  style: {
-                    fill: resolveBgFill(notch.index),
-                    fillOpacity: fillState.resolvedInactiveFillOpacity,
-                    stroke: "none",
-                  },
-                }),
-              ),
-            });
-          }
-          if (activeNotches.length > 0) {
-            nodes.push({
-              kind: "group",
-              key: "gauge-active",
-              className: "ts-chart__arc",
-              ariaHidden: true,
-              children: activeNotches.map(
-                (notch): SceneNode => ({
-                  kind: "polyline",
-                  key: `gauge-active:${notch.index}`,
-                  points: [],
-                  path: createNotchPath(notch.points, notchCornerRadius, cornerVerticalDepth),
-                  style: {
-                    fill: resolveActiveFill(notch),
-                    fillOpacity: fillState.resolvedActiveFillOpacity,
-                    stroke: "none",
-                  },
-                }),
-              ),
-            });
-          }
-          return { nodes };
-        },
+const renderLinearGaugeNodes = (options: Readonly<LinearGaugeNodesOptions>): SceneNode[] => {
+  const { activeFillOpacity, activeNotches, cornerVerticalDepth, inactiveFillOpacity, notchCornerRadius, notches, resolveActiveFill, resolveBgFillByNotch } = options;
+  const nodes: SceneNode[] = [];
+  if (notches.length > 0) {
+    nodes.push({
+      ariaHidden: true,
+      children: buildLinearNotchNodes({
+        cornerVerticalDepth,
+        fillOpacity: inactiveFillOpacity,
+        keyPrefix: GAUGE_BG_GROUP_KEY,
+        notchCornerRadius,
+        notches,
+        resolveFill: resolveBgFillByNotch,
       }),
-      (ctx) => {
-        if (geometryScrubbing) return false;
-        const sep = ctx.key.indexOf(":");
-        if (sep === -1) return false;
-        const isActiveGroup = ctx.key.startsWith("gauge-active:");
-        if (ctx.phase === "exit") {
-          return { transition: { type: "tween", duration: 0 } };
-        }
-        const resolved = resolveEnterTransition(enterTransition, GAUGE_SPRING_FALLBACK);
-        if (ctx.phase === "update") {
-          return { transition: gaugeMotionTransition(resolved) };
-        }
-        const idx = Number(ctx.key.slice(sep + 1));
-        return {
-          delay: isActiveGroup
-            ? nativeStaggerDelayMs(0.02 * stagger * 1000, 0.3 * stagger * 1000, idx, "arc")
-            : nativeStaggerDelayMs(0.015 * stagger * 1000, 0, idx, "arc"),
-          transition: gaugeMotionTransition(resolved),
-        };
-      },
-    );
-
-    return defineChart({
-      marks: [quadMark],
-      scales: { x: null, y: null },
-      guides: false,
-      focus: focusDisabled,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
-      gradients: fillState.useThemePaletteGradient
-        ? [
-            {
-              id: fillState.themeActiveGradientId,
-              x1: 0,
-              y1: 0,
-              x2: 1,
-              y2: 0,
-              stops: [
-                { offset: 0, color: "var(--chart-1)" },
-                { offset: 1, color: "var(--chart-5)" },
-              ],
-            },
-          ]
-        : [],
+      className: GAUGE_ARC_MARK_CLASS,
+      key: GAUGE_BG_GROUP_KEY,
+      kind: "group",
     });
+  }
+  if (activeNotches.length > 0) {
+    nodes.push({
+      ariaHidden: true,
+      children: buildLinearNotchNodes({
+        cornerVerticalDepth,
+        fillOpacity: activeFillOpacity,
+        keyPrefix: GAUGE_ACTIVE_GROUP_KEY,
+        notchCornerRadius,
+        notches: activeNotches,
+        resolveFill: resolveActiveFill,
+      }),
+      className: GAUGE_ARC_MARK_CLASS,
+      key: GAUGE_ACTIVE_GROUP_KEY,
+      kind: "group",
+    });
+  }
+  return nodes;
+};
+
+interface BuildLinearQuadMarkOptions {
+  readonly activeFillOpacity: number;
+  readonly activeNotches: readonly ComputedNotch[];
+  readonly cornerVerticalDepth: number;
+  readonly enterStaggerScale: number;
+  readonly enterTransition: GaugeEnterTransition | undefined;
+  readonly geometryScrubbing: boolean;
+  readonly inactiveFillOpacity: number;
+  readonly notchCornerRadius: number;
+  readonly notches: readonly ComputedNotch[];
+  readonly resolveActiveFill: (notch: ComputedNotch) => string;
+  readonly resolveBgFillByNotch: (notch: ComputedNotch) => string;
+}
+
+const buildLinearQuadMark = (options: Readonly<BuildLinearQuadMarkOptions>): ReturnType<typeof createMark> => {
+  const { activeFillOpacity, activeNotches, cornerVerticalDepth, enterStaggerScale, enterTransition, geometryScrubbing, inactiveFillOpacity, notchCornerRadius, notches, resolveActiveFill, resolveBgFillByNotch } = options;
+  return createMark(
+    () => ({
+      channels: {},
+      id: "gauge-linear",
+      render: (): MarkScene => ({
+        nodes: renderLinearGaugeNodes({
+          activeFillOpacity, activeNotches, cornerVerticalDepth, inactiveFillOpacity, notchCornerRadius, notches, resolveActiveFill, resolveBgFillByNotch,
+        }),
+      }),
+    }),
+    (ctx) => {
+      if (geometryScrubbing) {return false;}
+      const sep = ctx.key.indexOf(":");
+      if (sep === -1) {return false;}
+      return resolveGaugeNotchTiming({
+        enterStaggerScale,
+        enterTransition,
+        idx: Number(ctx.key.slice(sep + 1)),
+        isActiveGroup: ctx.key.startsWith(GAUGE_ACTIVE_GROUP_PREFIX),
+        phase: ctx.phase,
+      });
+    },
+  );
+};
+
+const buildLinearGaugeChart = (
+  quadMark: Readonly<ReturnType<typeof createMark>>,
+  themeActiveGradientId: string,
+  useThemePaletteGradient: boolean,
+): DomChartDefinition =>
+  defineChart({
+    focus: focusDisabled,
+    gradients: buildGaugeThemeGradients(themeActiveGradientId, useThemePaletteGradient),
+    guides: false,
+    margin: { bottom: 0, left: 0, right: 0, top: 0 },
+    marks: [quadMark],
+    scales: { x: null, y: null },
+  });
+
+interface UseLinearGaugeDefinitionOptions {
+  readonly fills: Readonly<LinearGaugeFills>;
+  readonly fillState: Readonly<GaugeFillState>;
+  readonly geometry: { readonly notches: readonly ComputedNotch[]; readonly notchDepth: number; readonly cornerVerticalDepth: number; readonly centerY: number } | undefined;
+  readonly props: Readonly<GaugeLinearProps>;
+}
+
+const useLinearGaugeDefinition = (options: Readonly<UseLinearGaugeDefinitionOptions>): DomChartDefinition | undefined =>
+  React.useMemo(() => {
+    const { fills, fillState, geometry, props } = options;
+    if (!geometry) {return undefined;}
+    const { notches } = geometry;
+    const { cornerVerticalDepth } = geometry;
+    const activeNotches = notches.filter((notch) => notch.isActive);
+    const resolveBgFillByNotch = (notch: ComputedNotch): string => fills.resolveBgFill(notch.index);
+    const quadMark = buildLinearQuadMark({
+      activeFillOpacity: fillState.resolvedActiveFillOpacity,
+      activeNotches,
+      cornerVerticalDepth,
+      enterStaggerScale: props.enterStaggerScale ?? 1,
+      enterTransition: props.enterTransition,
+      geometryScrubbing: props.geometryScrubbing ?? false,
+      inactiveFillOpacity: fillState.resolvedInactiveFillOpacity,
+      notchCornerRadius: props.notchCornerRadius ?? 0,
+      notches,
+      resolveActiveFill: fills.resolveActiveFill,
+      resolveBgFillByNotch,
+    });
+    return buildLinearGaugeChart(quadMark, fillState.themeActiveGradientId, fillState.useThemePaletteGradient);
   }, [
-    geometry,
-    notchCornerRadius,
-    resolveBgFill,
-    resolveActiveFill,
-    fillState.resolvedInactiveFillOpacity,
-    fillState.resolvedActiveFillOpacity,
-    fillState.useThemePaletteGradient,
-    fillState.themeActiveGradientId,
-    geometryScrubbing,
-    enterTransition,
-    enterStaggerScale,
+    options.geometry,
+    options.props.notchCornerRadius,
+    options.fills.resolveBgFill,
+    options.fills.resolveActiveFill,
+    options.fillState.resolvedInactiveFillOpacity,
+    options.fillState.resolvedActiveFillOpacity,
+    options.fillState.useThemePaletteGradient,
+    options.fillState.themeActiveGradientId,
+    options.props.geometryScrubbing,
+    options.props.enterTransition,
+    options.props.enterStaggerScale,
   ]);
 
+interface RenderLinearGaugeBodyOptions {
+  readonly centerValue?: number;
+  readonly defaultLabel: string;
+  readonly definition: DomChartDefinition | undefined;
+  readonly defsChildren: readonly Readonly<React.ReactElement>[];
+  readonly formatOptions: CenterStatFormat;
+  readonly height: number;
+  readonly labelAlign: GaugeLabelAlign;
+  readonly labelPlacement: GaugeLabelPlacement;
+  readonly prefix?: string;
+  readonly suffix?: string;
+  readonly width: number;
+}
+
+const renderLinearGaugeBody = (options: Readonly<RenderLinearGaugeBodyOptions>): React.ReactElement => {
+  const { centerValue, defaultLabel, definition, defsChildren, formatOptions, height, labelAlign, labelPlacement, prefix, suffix, width } = options;
   const label =
-    centerValue == null ? null : (
+    centerValue === undefined ? undefined : (
       <GaugeLabelStat
         align={labelAlign}
         centerValue={centerValue}
@@ -1158,22 +1584,9 @@ function GaugeLinear(props: GaugeLinearProps) {
         suffix={suffix}
       />
     );
-
-  // T17/C4: raw `<svg>` → TanStack `<RendererChart>` (mirrors GaugeArc's G2
-  // pattern exactly). Literal-px `width`/`height` (not `width:"100%"`) on
-  // this host div, matching arc's own `{position:"relative", width,
-  // height}` — `width` here is already the exact measured container pixel
-  // width fed into `computeLinearNotches`/the viewBox math, so this is
-  // deterministic rather than relying on a second, independent `%`-based
-  // resolution to coincide with it. See the T17 report for the one place
-  // this literal-px choice changes behavior versus the pre-port
-  // `width:"100%"` svg: the disclosed, pre-existing
-  // `labelPlacement="left"|"right"` overflow quirk (this file's header) now
-  // overflows its flex sibling instead of visually squishing — neither the
-  // frozen bench scenario nor docs-mdx pattern hits that branch.
   const svg =
     definition && width > 0 ? (
-      <div style={{ position: "relative", width, height }}>
+      <div style={{ height, position: "relative", width }}>
         <RendererChart
           ariaLabel="Gauge chart"
           definition={definition}
@@ -1181,66 +1594,117 @@ function GaugeLinear(props: GaugeLinearProps) {
           renderer={chartMotionRenderer()}
           width={width}
         />
-        {fillState.defsChildren.length > 0 ? (
-          // G2 (parity fix, mirrored verbatim from GaugeArc): bklit's
-          // children-as-defs escape hatch can no longer drop into this
-          // component's own <defs> since it no longer owns a hand-rolled
-          // <svg>. Mounted on a 0×0 overlay svg AFTER <RendererChart>: SVG
-          // paint-server url(#id) refs resolve document-wide (same verified
-          // mechanism as arc's/scatter's sibling defs svg), and the
-          // after-chart position keeps the real chart svg first in DOM
-          // order for the QA harness's svg lookup. (The theme palette
-          // gradient itself does NOT need this treatment — it's declared via
-          // `defineChart`'s own `gradients` option above and rendered
-          // in-document by the renderer's own default scene rendering, same
-          // as arc — see this file's header for the `renderChartSvgWithResources`
-          // redundancy finding.)
+        {defsChildren.length > 0 ? (
           <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
-            <defs>{fillState.defsChildren}</defs>
+            <defs>{defsChildren}</defs>
           </svg>
-        ) : null}
+        ) : undefined}
       </div>
-    ) : null;
-
+    ) : undefined;
   const track = (
-    <div style={{ position: "relative", width: "100%", height }}>{svg}</div>
+    <div style={{ height, position: "relative", width: "100%" }}>{svg}</div>
   );
-
-  const body = (
+  return (
     <GaugeLabelLayout align={labelAlign} label={label} placement={labelPlacement}>
       {track}
     </GaugeLabelLayout>
   );
+};
 
+interface RenderLinearGaugeRootOptions {
+  readonly body: Readonly<React.ReactElement>;
+  readonly className?: string;
+  readonly containerRef: React.RefObject<HTMLDivElement | null>;
+  readonly fixedWidth: boolean;
+  readonly layout: Readonly<LinearGaugeLayout>;
+  readonly style?: Readonly<React.CSSProperties>;
+  readonly widthProp?: number;
+}
+
+const renderLinearGaugeRoot = (options: Readonly<RenderLinearGaugeRootOptions>): React.ReactElement => {
+  const { body, className, containerRef, fixedWidth, layout, style, widthProp } = options;
   if (fixedWidth) {
     return (
-      <div className={className} data-bkm-chart="gauge" style={{ position: "relative", width: "100%", maxWidth: "100%", ...style }}>
+      <div className={className} data-bkm-chart="gauge" style={{ maxWidth: "100%", position: "relative", width: "100%", ...style }}>
         <div style={{ width: widthProp }}>{body}</div>
       </div>
     );
   }
-
   return (
     <div
       className={className}
       data-bkm-chart="gauge"
-      style={{ position: "relative", width: "100%", minWidth: 0, maxWidth: "100%", ...style }}
+      style={{ maxWidth: "100%", minWidth: 0, position: "relative", width: "100%", ...style }}
     >
-      <div ref={containerRef} style={{ width: "100%", minWidth: resolvedMinWidth }}>
-        {width > 0 ? body : null}
+      <div ref={containerRef} style={{ minWidth: layout.resolvedMinWidth, width: "100%" }}>
+        {layout.width > 0 ? body : undefined}
       </div>
     </div>
   );
+};
+
+type GaugeLinearProps = Omit<GaugeProps, "orientation" | "startAngle" | "endAngle">;
+
+const GaugeLinear = (props: Readonly<GaugeLinearProps>): React.ReactElement => {
+  const fillState = useGaugeFillState({
+    activeFill: props.activeFill,
+    activeFillOpacity: props.activeFillOpacity,
+    activeGradient: props.activeGradient,
+    children: props.children,
+    inactiveFill: props.inactiveFill,
+    inactiveFillOpacity: props.inactiveFillOpacity,
+    inactiveGradient: props.inactiveGradient,
+    totalNotches: props.totalNotches,
+    useGradient: props.useGradient,
+  });
+
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const measuredWidth = useDebouncedContainerWidth(containerRef);
+
+  const layout = resolveLinearGaugeLayout({
+    heightProp: props.height,
+    linearHeight: props.linearHeight,
+    measuredWidth,
+    minWidth: props.minWidth,
+    widthProp: props.width,
+  });
+  const geometry = useLinearGaugeGeometry(props, fillState, layout);
+  const fills = useLinearGaugeFills(props, fillState);
+  const definition = useLinearGaugeDefinition({ fillState, fills, geometry, props });
+
+  return renderLinearGaugeRoot({
+    body: renderLinearGaugeBody({
+      centerValue: props.centerValue,
+      defaultLabel: props.defaultLabel ?? "Total",
+      definition,
+      defsChildren: fillState.defsChildren,
+      formatOptions: props.formatOptions ?? defaultCenterStatFormat,
+      height: layout.height,
+      labelAlign: props.labelAlign ?? "start",
+      labelPlacement: props.labelPlacement ?? "top",
+      prefix: props.prefix,
+      suffix: props.suffix,
+      width: layout.width,
+    }),
+    className: props.className,
+    containerRef,
+    fixedWidth: layout.fixedWidth,
+    layout,
+    style: props.style,
+    widthProp: props.width,
+  });
 }
 
-// ============================================================================
-// Public dispatcher
-// ============================================================================
-export function Gauge({ orientation = "arc", ...rest }: GaugeProps) {
+const Gauge = ({ orientation = "arc", ...rest }: Readonly<GaugeProps>): React.ReactElement => {
   if (orientation === "linear") {
     return <GaugeLinear {...rest} />;
   }
   return <GaugeArc {...rest} />;
-}
+};
 
 Gauge.displayName = "Gauge";
+
+export type { GaugeOrientation, GaugeProps };
+export { Gauge };
+export type { GaugeEnterTransition } from "./internal/enter-transition";
+export type { GaugeLabelAlign, GaugeLabelPlacement } from "./internal/gauge-center";

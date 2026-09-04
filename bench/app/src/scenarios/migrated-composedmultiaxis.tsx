@@ -1,24 +1,6 @@
-// Migrated multi-axis ComposedChart scenario — IDENTICAL usage to
-// bklit-composedmultiaxis.tsx (same component tree, same props), only the
-// import source changes. See that file for why the fixture is shaped this way.
-//
-// P6.1 cluster 5 gate fixture — composed with a SECOND y-axis.
-//
-// `secondary` is `line / 50`, an order of magnitude below the primary series,
-// so an unprojected render collapses it onto the baseline and the diff is
-// unmissable. It is plotted as BOTH <Area> and <Line> on yAxisId="right",
-// preserving the base scenario's Area+Line-share-a-dataKey quirk on the
-// secondary axis so the gate covers areaFill AND lineY reprojection.
-//
-// <SeriesBar> stays on the primary axis deliberately: bklit's <SeriesBar> has
-// no `yAxisId` prop and its composed extractor
-// (repos/bklit-ui/.../composed-chart.tsx:82-86 `tryAppendSeriesBar`) omits it
-// where tryAppendLine/tryAppendArea pass it, so a bar always scans and paints
-// on the primary scale. A right-axis bar would be testing behaviour bklit
-// does not have.
-//
-// No <YAxis> child (matching the `composed` scenario) so the fixture gates
-// MARK geometry, not right-hand axis rendering.
+// Gate fixture: composed with a second y-axis; same tree as bklit's.
+// GUARD: secondary on right-axis Area+Line; bar stays primary (bklit has no right-axis bar).
+// GUARD: no YAxis child; fixture gates mark geometry, not axis rendering.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import {
@@ -39,7 +21,7 @@ import { armBklitSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveComposed } from "../bench/live";
 
-/** `line / 50` — an order of magnitude below the primary series on purpose. */
+// Secondary series an order of magnitude below the primary series.
 const SECONDARY_AXIS_DIVISOR = 50;
 
 type MultiAxisRow = SeededComposedRow & { secondary: number };

@@ -1,9 +1,4 @@
-// Q2 API-compatibility fixture: exercises the full public prop surface of
-// the migrated RingChart family (RingChart/Ring/RingCenter) against
-// repos/bklit-ui/packages/ui/src/charts/{ring-chart,ring,ring-context,
-// ring-center}.tsx. Must typecheck with zero errors via `tsc --noEmit`
-// (included from bench/app/tsconfig.json). Runtime smoke is covered by the
-// bench scenarios (bklit-ring.tsx / migrated-ring.tsx).
+// Q2 API fixture: exercises migrated RingChart family public props; must typecheck (tsc --noEmit).
 import * as React from "react";
 import {
   Ring,
@@ -16,8 +11,7 @@ import {
   type RingLineCap,
 } from "@migrated/charts";
 
-// `maxValue` is REQUIRED on RingData (the missing field that type-breaks
-// bklit's own registry example, docs/LOG.md D27) — every datum here has it.
+// `maxValue` is REQUIRED on RingData (bklit's own registry example omits it and type-breaks).
 const data: RingData[] = [
   { label: "Move", value: 420, maxValue: 500 },
   { label: "Exercise", value: 28, maxValue: 30, color: "var(--chart-2)" },
@@ -38,8 +32,6 @@ export function RingChartApiFixture() {
 
   return (
     <>
-      {/* Canonical docs-demo path (D27 basis) — fixed size, one Ring per
-          datum, always-mounted RingCenter, uncontrolled hover. */}
       <RingChart data={data} size={280}>
         {data.map((item, index) => (
           <Ring index={index} key={item.label} />
@@ -47,16 +39,13 @@ export function RingChartApiFixture() {
         <RingCenter />
       </RingChart>
 
-      {/* Custom concentric geometry (strokeWidth/ringGap/baseInnerRadius)
-          plus the dead-in-bklit `animationDuration` prop (declared, never
-          read — preserved for API compatibility, see ring-chart.tsx header). */}
+      {/* `animationDuration` is dead in bklit (declared, never read); preserved for API compatibility. */}
       <RingChart animationDuration={800} baseInnerRadius={48} data={data} ringGap={4} size={260} strokeWidth={10}>
         {data.map((item, index) => (
           <Ring index={index} key={item.label} />
         ))}
       </RingChart>
 
-      {/* Partial start/end angle (three-quarter arc). */}
       <RingChart data={data} endAngle={Math.PI} size={280} startAngle={-Math.PI / 2}>
         {data.map((item, index) => (
           <Ring index={index} key={item.label} />
@@ -64,9 +53,7 @@ export function RingChartApiFixture() {
         <RingCenter defaultLabel="Progress" />
       </RingChart>
 
-      {/* Controlled hover mode — hoveredIndex/onHoverChange threaded
-          through; per-Ring color override, showGlow toggles (dead in bklit
-          at runtime, API-preserved), lineCap variants, animate=false. */}
+      {/* Controlled hover; per-Ring color override, showGlow toggles (dead in bklit at runtime, API-preserved). */}
       <RingChart
         className="fixture-ring"
         data={data}
@@ -82,23 +69,19 @@ export function RingChartApiFixture() {
         <RingCenter />
       </RingChart>
 
-      {/* Explicit enterTransition (tween) + enterStaggerScale. */}
       <RingChart data={data} enterStaggerScale={1.5} enterTransition={tweenTransition} size={260}>
         {data.map((item, index) => (
           <Ring animate index={index} key={item.label} />
         ))}
       </RingChart>
 
-      {/* Spring enterTransition (bounce shorthand + explicit constants). */}
       <RingChart data={data} enterTransition={springTransition} size={260}>
         {data.map((item, index) => (
           <Ring index={index} key={item.label} />
         ))}
       </RingChart>
 
-      {/* geometryScrubbing — plain static paths, no WAAPI reveal / spring
-          hover morphing; RingCenter still mounts (always showing the
-          default variant while scrubbing). */}
+      {/* geometryScrubbing: static paths, no WAAPI reveal; RingCenter still mounts (default variant while scrubbing). */}
       <RingChart data={data} geometryScrubbing size={260}>
         {data.map((item, index) => (
           <Ring index={index} key={item.label} />
@@ -106,9 +89,7 @@ export function RingChartApiFixture() {
         <RingCenter />
       </RingChart>
 
-      {/* RingCenter full surface — custom render-prop children (only
-          invoked while hovered, ring-center.tsx `if (children &&
-          hoveredData)`), format options, prefix/suffix, class overrides. */}
+      {/* RingCenter render-prop children run only while hovered. */}
       <RingChart data={data} size={320}>
         {data.map((item, index) => (
           <Ring index={index} key={item.label} />
@@ -133,15 +114,12 @@ export function RingChartApiFixture() {
         </RingCenter>
       </RingChart>
 
-      {/* Responsive sizing (no `size` prop — parent-container measured). */}
       <RingChart data={data}>
         {data.map((item, index) => (
           <Ring index={index} key={item.label} />
         ))}
       </RingChart>
 
-      {/* Exhaustive `RingChartProps` reference (kept last, purely for
-          typecheck coverage of every documented prop at once). */}
       {((): RingChartProps => ({
         data,
         size: 280,

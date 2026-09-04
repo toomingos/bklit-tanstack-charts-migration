@@ -1,26 +1,5 @@
-// Migrated twin of bklit-legendhover.tsx (sed-generated: import source +
-// component name only). Legend-hover series-dim scenario (initiative 8 loop-2, D225 — QA-ONLY,
-// no bench gating: same D223 ruling 4 class as the legend/candlelegend
-// pairs, this exists to exercise the legend→chart dim path, not to add a
-// new render-cost triangle). ONE ChartLegendHoverProvider wraps BOTH a
-// ComposedChart (SeriesBar + Area + Line — the bklit-composed tree
-// verbatim) and a 2-series BarChart, so a single hovered index drives:
-//   - line/area dim (hover-chrome single-writer OR-term; bklit
-//     line.tsx/area.tsx seriesIndex = index into the MIXED `lines` array,
-//     which includes the SeriesBar shim upserted by composed-chart.tsx's
-//     tryAppendSeriesBar — so here Line/Area sit at MIXED index 1),
-//   - composed SeriesBar dim (bklit series-bar.tsx:127-137 seriesIndex =
-//     index into composedBarDataKeys, a BAR-ONLY space — so the bar sits
-//     at index 0 AND the line sits at index 1 simultaneously; legend
-//     index 0 keeps the bar full + dims the line, index 1 the reverse.
-//     That two-index-space quirk is bklit's own behavior and this
-//     scenario demonstrates it deliberately),
-//   - standalone BarChart per-series dim (bar-hover-chrome / bklit
-//     bar-squares.tsx `lines.findIndex`).
-// `window.__qaSetLegendHover` drives deterministic QA captures (legend /
-// candlelegend precedent). Settle: both charts expose the standard
-// onPhaseChange reveal contract, so `armManualSettle` resolves only after
-// EACH chart has seen non-ready -> ready (armBklitSettle's arm, per chart).
+// QA-ONLY legend-hover dim scenario (no bench gating); twin of bklit-legendhover.tsx.
+// GUARD: two index spaces coexist (bar-only 0, mixed 1); keep both dims.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import {
@@ -49,15 +28,11 @@ import { armManualSettle, type BklitPhase } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveComposed, appendLiveRow } from "../bench/live";
 
-// Two slots on purpose: index 0 = composed bar (bar-only space) AND bar
-// chart seriesA; index 1 = composed line/area (mixed space) AND seriesB.
 const LEGEND_ITEMS = [
   { label: "Series 0", value: 100, color: "var(--chart-1)" },
   { label: "Series 1", value: 100, color: "var(--chart-2)" },
 ];
 
-// The reveals run in parallel (~1100ms default), so the shared 2500ms-class
-// fallback still comfortably covers the slower of the two.
 const DUAL_SETTLE_FALLBACK_MS = 4000;
 
 export default function MigratedLegendHover({ n }: { n: number }) {
@@ -71,8 +46,7 @@ export default function MigratedLegendHover({ n }: { n: number }) {
   const tickRef = useRef(0);
   const liveTickRef = useRef(0);
 
-  // armBklitSettle's "saw a non-ready phase, then ready again" arm, applied
-  // per chart; resolve the shared manual settle once BOTH have completed.
+  // Resolve shared settle once BOTH charts complete non-ready -> ready.
   const { onComposedPhase, onBarPhase } = useMemo(() => {
     const { resolve } = armManualSettle(DUAL_SETTLE_FALLBACK_MS);
     const done = [false, false];

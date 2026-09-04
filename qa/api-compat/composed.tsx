@@ -1,10 +1,5 @@
-// Q2 API-compatibility fixture (research/05): exercises every public prop and
-// callback the migrated ComposedChart supports at pilot scope (unstacked
-// grouped bars + area + line, per the migration's architecture decisions —
-// `stacked` is accepted for parity but always renders unstacked). Must
-// typecheck with zero errors via `tsc --noEmit` (included from
-// bench/app/tsconfig.json). Runtime smoke is covered by the bench scenarios
-// (console-errors column in docs/BENCHMARKS.md must be 0).
+// Q2 API fixture: exercises migrated ComposedChart public props; must typecheck (tsc --noEmit).
+// `stacked` is accepted for parity but always renders unstacked.
 import * as React from "react";
 import { curveLinear, curveNatural } from "d3-shape";
 import {
@@ -38,9 +33,7 @@ export function ComposedChartApiFixture() {
 
   return (
     <>
-      {/* Canonical demo path (registry example parity — bklit-composed.tsx).
-          Area and Line intentionally share one dataKey ("line") — bklit's
-          own `upsertLineConfig` quirk, kept verbatim. */}
+      {/* Area and Line share one dataKey ("line"): bklit's own upsertLineConfig quirk, kept verbatim. */}
       <ComposedChart data={data} onPhaseChange={onPhaseChange}>
         <Grid horizontal />
         <SeriesBar dataKey="bars" fill="var(--chart-1)" />
@@ -55,7 +48,6 @@ export function ComposedChartApiFixture() {
         <ChartTooltip />
       </ComposedChart>
 
-      {/* Full pilot prop surface. */}
       <ComposedChart
         data={data}
         xDataKey="date"

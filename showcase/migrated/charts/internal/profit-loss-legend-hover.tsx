@@ -1,31 +1,35 @@
 "use client";
 
-import { createContext, type ReactNode, useContext } from "react";
-import { CHART_CHILD_PASSTHROUGH } from "../children";
+import { useMemo } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import { CHART_CHILD_PASSTHROUGH } from "./children-extract";
+import { ProfitLossLegendHoverContext } from "./profit-loss-legend-hover-context";
+import type { ProfitLossLegendHoverContextValue } from "./profit-loss-legend-hover-context";
 
-interface ProfitLossLegendHoverContextValue {
-  hoveredIndex: number | null;
+// Marker declared on the component type. Same pattern as
+// ChartChildComponent in ../children: the detector reads
+// CHART_CHILD_PASSTHROUGH off the function, so declaring it keeps the
+// Attachment site assertion-free.
+interface ProfitLossLegendHoverProviderComponent {
+  (props: { readonly hoveredIndex: number | null; readonly children: ReactNode }): ReactElement;
+  [CHART_CHILD_PASSTHROUGH]?: boolean;
 }
 
-const ProfitLossLegendHoverContext =
-  createContext<ProfitLossLegendHoverContextValue | null>(null);
-
-export function ProfitLossLegendHoverProvider({
+const ProfitLossLegendHoverProvider: ProfitLossLegendHoverProviderComponent = ({
   hoveredIndex,
   children,
 }: {
-  hoveredIndex: number | null;
-  children: ReactNode;
-}) {
+  readonly hoveredIndex: number | null;
+  readonly children: ReactNode;
+}): ReactElement => {
+  const value = useMemo((): ProfitLossLegendHoverContextValue => ({ hoveredIndex }), [hoveredIndex]);
   return (
-    <ProfitLossLegendHoverContext.Provider value={{ hoveredIndex }}>
+    <ProfitLossLegendHoverContext.Provider value={value}>
       {children}
     </ProfitLossLegendHoverContext.Provider>
   );
-}
-(ProfitLossLegendHoverProvider as unknown as Record<symbol, unknown>)[CHART_CHILD_PASSTHROUGH] = true;
+};
 
-export function useProfitLossLegendHover(): ProfitLossLegendHoverContextValue {
-  const context = useContext(ProfitLossLegendHoverContext);
-  return context ?? { hoveredIndex: null };
-}
+ProfitLossLegendHoverProvider[CHART_CHILD_PASSTHROUGH] = true;
+
+export { ProfitLossLegendHoverProvider };

@@ -1,6 +1,4 @@
-// Migrated LineChart scenario — IDENTICAL usage to bklit-line.tsx (same
-// component tree, same props), only the import source changes. This is the
-// point: the migrated package must be a drop-in replacement.
+// Drop-in twin of bklit-line.tsx; only the import source changes.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import { LineChart, Line, Grid, XAxis, ChartTooltip } from "@migrated/charts";

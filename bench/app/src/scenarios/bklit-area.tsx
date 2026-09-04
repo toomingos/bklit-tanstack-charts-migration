@@ -1,4 +1,4 @@
-// Faithful port of repos/bklit-ui/packages/ui/registry/examples/area-chart.tsx
+// Registry port; seeded data scaled to n.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import { AreaChart, Area, Grid, XAxis, ChartTooltip } from "@bklitui/ui/charts";

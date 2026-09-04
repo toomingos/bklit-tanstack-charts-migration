@@ -1,4 +1,5 @@
-import { createContext, useContext, type RefObject } from "react";
+import { createContext, useContext } from 'react';
+import type { RefObject } from 'react';
 import type { HeatmapChartPhase, HeatmapRevealMode } from "./heatmap-lifecycle";
 import type {
   HeatmapColumn,
@@ -11,18 +12,18 @@ import type {
 import type { HeatmapEnterTransition } from "./heatmap-animation";
 import type { ChartStatus } from "./types";
 
-export interface HeatmapMargin {
+interface HeatmapMargin {
   top: number;
   right: number;
   bottom: number;
   left: number;
 }
 
-export type HeatmapLayout = "fluid" | "fill";
+type HeatmapLayout = "fluid" | "fill";
 
-export const DEFAULT_MARGIN: HeatmapMargin = { top: 28, right: 16, bottom: 0, left: 40 };
+const DEFAULT_MARGIN: HeatmapMargin = { bottom: 0, left: 40, right: 16, top: 28 };
 
-export interface HeatmapContextValue {
+interface HeatmapContextValue {
   data: HeatmapColumn[];
   binWidth: number;
   binHeight: number;
@@ -35,7 +36,7 @@ export interface HeatmapContextValue {
   xScale: (columnIndex: number) => number;
   yScale: (rowIndex: number) => number;
   separatorLayout: HeatmapSeparatorLayout | null;
-  timeXScale: (date: Date) => number;
+  timeXScale: (date: Readonly<Date>) => number;
   brushYScale: (value: number) => number;
   isReady: boolean;
   levelStyles: HeatmapLevelStyles;
@@ -61,10 +62,13 @@ export interface HeatmapContextValue {
   htmlLayerEl: HTMLDivElement | null;
 }
 
-export const HeatmapContext = createContext<HeatmapContextValue | null>(null);
+const HeatmapContext = createContext<HeatmapContextValue | null>(null);
 
-export function useHeatmap(): HeatmapContextValue {
+const useHeatmap = (): HeatmapContextValue => {
   const ctx = useContext(HeatmapContext);
-  if (!ctx) throw new Error("Heatmap.* components must be rendered inside <HeatmapChart>.");
+  if (!ctx) {throw new Error("Heatmap.* components must be rendered inside <HeatmapChart>.");}
   return ctx;
 }
+
+export { DEFAULT_MARGIN, HeatmapContext, useHeatmap };
+export type { HeatmapMargin, HeatmapLayout, HeatmapContextValue };

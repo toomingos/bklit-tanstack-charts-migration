@@ -1,23 +1,23 @@
 import { curveLinear } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
 import * as React from "react";
-import { isChartClipPassthrough } from "../children";
+import { isChartClipPassthrough } from "./children-extract";
 
-export const PROFIT_LOSS_POSITIVE_COLOR = "var(--color-emerald-500)";
-export const PROFIT_LOSS_NEGATIVE_COLOR = "var(--color-red-500)";
+const PROFIT_LOSS_POSITIVE_COLOR = "var(--color-emerald-500)";
+const PROFIT_LOSS_NEGATIVE_COLOR = "var(--color-red-500)";
+const PROFIT_LOSS_DEFAULT_STROKE_WIDTH = 2.5;
 
-export function profitLossColor(value: number): string {
-  return value >= 0 ? PROFIT_LOSS_POSITIVE_COLOR : PROFIT_LOSS_NEGATIVE_COLOR;
-}
+const profitLossColor = (value: number): string => value >= 0 ? PROFIT_LOSS_POSITIVE_COLOR : PROFIT_LOSS_NEGATIVE_COLOR;
 
-export const PROFIT_LOSS_TOOLTIP_LABEL_FALLBACK = "Profit/Loss";
 
-export function resolveProfitLossTooltipLabel(label: string): string {
+const PROFIT_LOSS_TOOLTIP_LABEL_FALLBACK = "Profit/Loss";
+
+const resolveProfitLossTooltipLabel = (label: string): string => {
   const trimmed = label.trim();
   return trimmed || PROFIT_LOSS_TOOLTIP_LABEL_FALLBACK;
 }
 
-export interface ProfitLossLineConfig {
+interface ProfitLossLineConfig {
   dataKey: string;
   xDataKey: string;
   strokeWidth: number;
@@ -27,39 +27,78 @@ export interface ProfitLossLineConfig {
   fadeEdges: boolean | "left" | "right";
 }
 
-export function normalizeProfitLossConfig(
-  props: Record<string, unknown> | undefined
-): ProfitLossLineConfig | null {
-  if (!props || typeof props["dataKey"] !== "string") return null;
+// Raw profit-loss props as they arrive from extracted children: every field is
+// Optional at the boundary, so the normalizer below fills defaults explicitly.
+interface ProfitLossConfigSource {
+  readonly curve?: CurveFactory;
+  readonly dataKey?: string;
+  readonly fadeEdges?: boolean | "left" | "right";
+  readonly negativeColor?: string;
+  readonly positiveColor?: string;
+  readonly strokeWidth?: number;
+  readonly xDataKey?: string;
+}
+
+const isString = (value: string | undefined): value is string => typeof value === "string";
+
+const normalizeProfitLossConfig = (props: Readonly<ProfitLossConfigSource> | undefined): ProfitLossLineConfig | null => {
+  if (!props) {return null;}
+  const { curve, dataKey, fadeEdges, negativeColor, positiveColor, strokeWidth, xDataKey } = props;
+  if (!isString(dataKey)) {return null;}
   return {
-    dataKey: props["dataKey"] as string,
-    xDataKey: (props["xDataKey"] as string | undefined) ?? "date",
-    strokeWidth: (props["strokeWidth"] as number | undefined) ?? 2.5,
-    positiveColor: (props["positiveColor"] as string | undefined) ?? PROFIT_LOSS_POSITIVE_COLOR,
-    negativeColor: (props["negativeColor"] as string | undefined) ?? PROFIT_LOSS_NEGATIVE_COLOR,
-    curve: (props["curve"] as CurveFactory | undefined) ?? curveLinear,
-    fadeEdges: (props["fadeEdges"] as boolean | "left" | "right" | undefined) ?? false,
+    curve: curve ?? curveLinear,
+    dataKey,
+    fadeEdges: fadeEdges ?? false,
+    negativeColor: negativeColor ?? PROFIT_LOSS_NEGATIVE_COLOR,
+    positiveColor: positiveColor ?? PROFIT_LOSS_POSITIVE_COLOR,
+    strokeWidth: strokeWidth ?? PROFIT_LOSS_DEFAULT_STROKE_WIDTH,
+    xDataKey: xDataKey ?? "date",
   };
 }
 
-export function extractProfitLossHoveredIndex(children: React.ReactNode): number | null {
-  let hoveredIndex: number | null = null;
-  const visit = (node: React.ReactNode): void => {
-    for (const child of React.Children.toArray(node)) {
-      if (!React.isValidElement(child)) continue;
-      // P5.6 CH2: goes through the shared predicate so bklit's legacy string
-      // key is honoured here too, not just in `children.tsx`.
-      if (isChartClipPassthrough(child.type)) {
-        const pp = child.props as { hoveredIndex?: number | null; children?: React.ReactNode };
-        hoveredIndex = pp.hoveredIndex ?? null;
-        if (pp.children) visit(pp.children);
-        continue;
-      }
-      if (child.type === React.Fragment) {
-        visit((child.props as { children?: React.ReactNode }).children);
-      }
-    }
+const appendFlattenedNode = (node: React.ReactNode, out: React.ReactNode[]): void => {
+  const flat = [node].flat(Number.POSITIVE_INFINITY);
+  for (const child of flat) {out.push(child);}
+};
+
+interface ProfitLossHoverState {
+  hoveredIndex: number | null;
+}
+
+type VisitProfitLossNode = (node: React.ReactNode) => void;
+
+const visitProfitLossChild = (child: React.ReactNode, state: ProfitLossHoverState, visit: VisitProfitLossNode): void => {
+  if (!React.isValidElement(child)) {return;}
+  // Shared predicate so the legacy string key is honoured here too, not just in children.tsx
+  if (isChartClipPassthrough(child.type) && React.isValidElement<{ hoveredIndex?: number | null; children?: React.ReactNode }>(child)) {
+    state.hoveredIndex = child.props.hoveredIndex ?? null;
+    const nested = child.props.children;
+    if (nested !== undefined && nested !== null) {visit(nested);}
+    return;
+  }
+  if (child.type === React.Fragment && React.isValidElement<{ children?: React.ReactNode }>(child)) {
+    visit(child.props.children);
+  }
+}
+
+const extractProfitLossHoveredIndex = (children: React.ReactNode): number | null => {
+  const state: ProfitLossHoverState = { hoveredIndex: null };
+  const visit: VisitProfitLossNode = (node: React.ReactNode): void => {
+    const flat: React.ReactNode[] = [];
+    appendFlattenedNode(node, flat);
+    for (const child of flat) {visitProfitLossChild(child, state, visit);}
   };
   visit(children);
-  return hoveredIndex;
+  return state.hoveredIndex;
 }
+
+export {
+  PROFIT_LOSS_NEGATIVE_COLOR,
+  PROFIT_LOSS_POSITIVE_COLOR,
+  PROFIT_LOSS_TOOLTIP_LABEL_FALLBACK,
+  extractProfitLossHoveredIndex,
+  normalizeProfitLossConfig,
+  profitLossColor,
+  resolveProfitLossTooltipLabel,
+};
+export type { ProfitLossLineConfig };

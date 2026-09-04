@@ -1,15 +1,4 @@
-// Faithful port of repos/bklit-ui/packages/ui/registry/examples/composed-chart.tsx
-// -- same component tree/props, data comes from the seeded generator scaled
-// to `n` instead of the 4-point demo array. The registry demo's `SeriesBar`
-// plots `revenue` (bar-only) while `Area`/`Line` BOTH plot `runRate` -- i.e.
-// Area and Line intentionally share one dataKey (composed-chart.tsx's
-// `upsertLineConfig`: "Area+Line pairs share a dataKey -- keep the later
-// config (Line over Area)", verified in
-// repos/bklit-ui/packages/ui/src/charts/composed-chart.tsx). That quirk is
-// kept verbatim here: `Area dataKey="line"` and `Line dataKey="line"` both
-// read the same seeded series (see generateComposed in ../../../data.ts,
-// where `area`/`line` are numerically identical, just as `revenue`/`runRate`
-// are two independently-named-but-related series in the original demo).
+// Registry port; Area and Line intentionally share one dataKey (demo quirk, kept verbatim).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import {
@@ -36,13 +25,7 @@ export default function BklitComposed({ n }: { n: number }) {
   );
   const tickRef = useRef(0);
   const liveTickRef = useRef(0);
-  // ComposedChart forwards `onPhaseChange` straight through to
-  // `TimeSeriesChartInner` (see composed-chart.tsx's `ChartInner` ->
-  // `TimeSeriesChartInner` prop passthrough) -- same reveal-lifecycle
-  // callback contract as Line/Area/Bar/Scatter, so the shared
-  // `armBklitSettle` "saw a non-ready phase, then saw ready again" arm
-  // applies unchanged (no phase-less-chart timer fallback needed here,
-  // unlike candlestick).
+  // onPhaseChange passthrough matches Line/Area/Bar/Scatter, so the shared settle arm applies.
   const { onPhaseChange } = useMemo(() => armBklitSettle(), []);
 
   useEffect(() => {

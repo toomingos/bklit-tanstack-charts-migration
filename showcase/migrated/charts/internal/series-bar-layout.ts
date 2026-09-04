@@ -1,8 +1,34 @@
-// Verbatim port of bklit-ui's packages/ui/src/charts/series-bar-layout.ts
-// (read-only source at repos/bklit-ui/.../series-bar-layout.ts). Pure
-// geometry, no framework deps — safe to copy byte-for-byte logic.
+// Slot-fill ratios from bklit: a lone bar fills 88% of its slot; a grouped row is
+// Capped at 92% of the slot, shrinking bars to a 4px floor when crowded.
+const SERIES_BAR_SLOT_FILL_RATIO = 0.88;
+const SERIES_BAR_GROUP_FILL_RATIO = 0.92;
+const SERIES_BAR_MIN_SHRUNK_WIDTH_PX = 4;
 
-export function computeSeriesBarWidth(input: {
+const resolveSeriesBarSlot = (columnWidth: number, innerWidth: number, dataLength: number): number => {
+  if (columnWidth > 0) {return columnWidth;}
+  return dataLength < 2 ? innerWidth : innerWidth / (dataLength - 1);
+}
+
+interface ShrinkBarWidthParams {
+  readonly width: number;
+  readonly slot: number;
+  readonly groupCount: number;
+  readonly gap: number;
+}
+
+const shrinkBarWidthToGroup = (params: Readonly<ShrinkBarWidthParams>): number => {
+  if (params.groupCount <= 1) {return params.width;}
+  const maxGroup = params.slot * SERIES_BAR_GROUP_FILL_RATIO;
+  const needed = params.groupCount * params.width + (params.groupCount - 1) * params.gap;
+  if (needed <= maxGroup || maxGroup <= 0) {return params.width;}
+  return Math.max(SERIES_BAR_MIN_SHRUNK_WIDTH_PX, (maxGroup - (params.groupCount - 1) * params.gap) / params.groupCount);
+}
+
+const applyComposedMaxBarSize = (width: number, composedMaxBarSize: number | undefined): number => {
+  if (composedMaxBarSize === undefined) {return width;}
+  return Math.min(width, composedMaxBarSize);
+}
+const computeSeriesBarWidth = (input: Readonly<{
   innerWidth: number;
   dataLength: number;
   columnWidth: number;
@@ -11,7 +37,7 @@ export function computeSeriesBarWidth(input: {
   composedMaxBarSize?: number;
   composedBarGap?: number;
   stacked?: boolean;
-}): number {
+}>): number => {
   const {
     innerWidth,
     dataLength,
@@ -24,41 +50,21 @@ export function computeSeriesBarWidth(input: {
   } = input;
   const gap = composedBarGap;
   const groupCount = stacked ? 1 : Math.max(1, seriesCount);
-  let slot = columnWidth;
-  if (slot <= 0) {
-    slot = dataLength < 2 ? innerWidth : innerWidth / (dataLength - 1);
-  }
-  let width =
-    composedBarSize ?? Math.min(slot * 0.88, composedMaxBarSize ?? Number.POSITIVE_INFINITY);
-  if (composedMaxBarSize != null) {
-    width = Math.min(width, composedMaxBarSize);
-  }
-  if (groupCount > 1) {
-    const maxGroup = slot * 0.92;
-    const needed = groupCount * width + (groupCount - 1) * gap;
-    if (needed > maxGroup && maxGroup > 0) {
-      width = Math.max(4, (maxGroup - (groupCount - 1) * gap) / groupCount);
-    }
-  }
+  const slot = resolveSeriesBarSlot(columnWidth, innerWidth, dataLength);
+  const baseWidth =
+    composedBarSize ?? Math.min(slot * SERIES_BAR_SLOT_FILL_RATIO, composedMaxBarSize ?? Number.POSITIVE_INFINITY);
+  const cappedWidth = applyComposedMaxBarSize(baseWidth, composedMaxBarSize);
+  const width = shrinkBarWidthToGroup({ gap, groupCount, slot, width: cappedWidth });
   return Math.max(2, width);
 }
 
-// Ported for parity/testability with bklit's own series-bar-layout.test.ts.
-// NOT used by composed-chart.tsx's reveal implementation: the shared
-// clip-path wipe there reuses the same plain SVG-bbox percentage technique
-// as Line/Area (`inset(0 100% 0 0)` -> `inset(0 0% 0 0)`), and the marks
-// group's own rendered bounding box (leftmost/rightmost bar edges) already
-// equals `[-groupWidth/2, innerWidth+groupWidth/2]` for the unstacked-grouped
-// case (verified algebraically against `computeSeriesBarLayout`'s barLeft
-// formula in series-bar.tsx) — i.e. the browser's fill-box computation
-// reproduces this exact padding automatically, with no separate padded
-// clip-rect element needed. Kept here for documentation/parity only.
-export function computeSeriesBarRevealClipPadding(input: {
+// Test-suite parity only; the runtime reveal path uses the rendered bbox instead.
+const computeSeriesBarRevealClipPadding = (input: Readonly<{
   barWidth: number;
   seriesCount: number;
   gap?: number;
   stacked?: boolean;
-}): number {
+}>): number => {
   const { barWidth, seriesCount, gap = 4, stacked = false } = input;
   if (stacked || seriesCount <= 1) {
     return Math.ceil(barWidth / 2);
@@ -66,3 +72,5 @@ export function computeSeriesBarRevealClipPadding(input: {
   const groupWidth = seriesCount * barWidth + (seriesCount - 1) * gap;
   return Math.ceil(groupWidth / 2);
 }
+
+export { computeSeriesBarWidth, computeSeriesBarRevealClipPadding };

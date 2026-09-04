@@ -1,54 +1,27 @@
-// Migrated bklit-ui RadarChart — same public API, rendered by TanStack
-// Charts' `polar()` mark family (@tanstack/charts/polar).
-//
-// Architecture (C1+C6, Phase 6, D432): `<RendererChart renderer=
-// {chartMotionRenderer()}>` replaces `<Chart>`. The area/dot entrance (bklit's
-// useMountProgress "campaign": 0.6s+0.15s*i, 1100ms default tween, cubic-
-// bezier(0.85,0,0.15,1), or an explicit spring `enterTransition`) is now the
-// `radialArea`/`radialDot` marks' own native `motion` (radarMarkMotion,
-// below) instead of hand-rolled per-series WAAPI `.animate()` calls — see
-// `radarMotionTransition` (internal/radar-reveal.ts) for the resolved-timing
-// -> native-transition conversion. KEPT AS-IS (D420-style scoped exception):
-// the grid-ring / axis-spoke / metric-label reveal in `handleRender` below
-// stays hand-rolled WAAPI — `bklitRadarGrid`/`angleGrid` are `PolarGuide`
-// scene nodes, not marks, so they have no `motion` field to hang native
-// timing off. Hover does NOT use the focus subsystem — `focus:
-// focusDisabled` below; it is element-level `pointerenter`/`pointerleave`
-// bound directly to the area `path`s and dot `circle`s, driving area
-// dim/glow/scale and dot r reactively through per-datum `fill`/`stroke`/`r`
-// channels (D384). Those channel changes were always instant (no `.animate()`
-// call) in legacy, so the marks' native "update" transition is pinned to
-// duration 0 (see radarMarkMotion) to preserve that exactly — only the
-// "enter" phase gets the authored delay/timing.
-
+// Bklit RadarChart on TanStack polar marks; area/dot entrance is native motion, grid reveal stays WAAPI.
 import * as React from "react";
 import { scaleLinear, scalePoint } from "d3-scale";
 import { curveLinearClosed } from "d3-shape";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
-import type { ChartMotionContext, ChartValue, MarkScene, SceneNode } from "@tanstack/charts";
+import type { ChartMotionContext, ChartValue, DomChartDefinition, MarkScene, SceneNode } from "@tanstack/charts";
 import { defineChart } from "@tanstack/charts/scene";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
-import { fold } from "@tanstack/charts/transform/fold";
 import { angleGrid, polar, radialArea, radialDot } from "@tanstack/charts/polar";
 import type { PolarGuide, PolarMark } from "@tanstack/charts/polar";
-import { CHART_ROLE, roleOf } from "./children";
+import { CHART_ROLE } from "./children";
+import { roleOf } from "./internal/children-extract";
 import {
   buildProgressKeyframes as buildRadarProgressKeyframes,
   revealTiming as radarRevealTiming,
   resolveEnterTransition as resolveRadarEnterTransition,
 } from "./internal/enter-transition";
-// bklitRadarGrid stays in radar-reveal (custom PolarGuide, not timing
-// machinery); radarMotionTransition is C6's resolved-timing -> native-
-// transition converter (added this pass, sits beside bklitRadarGrid as
-// radar's own per-family motion helper — mirrors gauge-reveal.ts's
-// `gaugeMotionTransition`).
 import { bklitRadarGrid, radarMotionTransition } from "./internal/radar-reveal";
 import {
   estimateSpringSettleMs,
   sampleSpringProgress,
 } from "./internal/radar-spring";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
-import { useDebouncedContainerSize } from "./internal";
+import { useDebouncedContainerSize } from "./internal/use-container-size";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import "./styles.css";
 
@@ -59,10 +32,8 @@ const RADAR_BORDER_VAR = "var(--border)";
 const RADAR_LABEL_VAR = "var(--chart-label, oklch(0.65 0.01 260))";
 const RADAR_FOREGROUND_MUTED_VAR = "var(--chart-foreground-muted)";
 const RADAR_BACKGROUND_VAR = "var(--chart-background)";
-// Exported as `defaultRadarColors` from the barrel (bklit radar-context.tsx:23,
-// where it is built from `radarCssVars.area1..5` — value-identical). P6.3/D355:
-// legacy exports all four `default*Colors`; migrated exported only pie and ring.
-export const DEFAULT_RADAR_COLORS = [
+// Shared categorical palette; legacy builds its own from radarCssVars.area1..5 (value-identical).
+const DEFAULT_RADAR_COLORS = [
   "var(--chart-1)",
   "var(--chart-2)",
   "var(--chart-3)",
@@ -75,17 +46,20 @@ const LABEL_DEFAULT_FONT_SIZE = 11;
 
 const Z_PAD = 5;
 
-// Shared reveal-flight guard used by both the mount and motionReplayKey
-// replay layout effects: bails when TanStack's own motions are still live
-// (e.g. mid data-update reconcile) so WAAPI reveal anims never stomp them.
-function hasLiveRevealAnims(container: HTMLElement): boolean {
+// Selector for the TanStack marks group rendered inside the chart container.
+const MARKS_GROUP_SELECTOR = ".ts-chart__marks";
+
+// WAAPI reveal never stomps live TanStack motions: bail while the renderer is mid-reconcile.
+// Element.getAnimations is typed on every Element; WAAPI itself is already assumed
+// (path.animate runs unconditionally in the reveal below), so no optionality remains.
+const hasLiveRevealAnims = (container: HTMLElement): boolean => {
   const els = container.querySelectorAll('[data-ts-key^="radar-area:"]');
   for (const el of els) {
-    if ((el as unknown as { getAnimations?: () => Animation[] }).getAnimations?.().length) return true;
+    if (el.getAnimations().length > 0) {return true;}
   }
   const fallback = container.querySelectorAll(".ts-chart__radial-area path");
   for (const el of fallback) {
-    if ((el as unknown as { getAnimations?: () => Animation[] }).getAnimations?.().length) return true;
+    if (el.getAnimations().length > 0) {return true;}
   }
   return false;
 }
@@ -95,62 +69,58 @@ const FILL_OPACITY_REST = 0.15;
 const STROKE_WIDTH_REST = 2;
 const DOT_R_HOVER = 6;
 const DOT_R_REST = 4;
-// Non-hovered-series dim factor (bklit: `path.style.opacity = "0.3"` when
-// another series is hovered). `radialArea`/`radialDot` have no per-datum
-// `opacity` channel (see the mark-building comment below), so this is
-// multiplied into the per-datum `fill`/`stroke` alpha instead.
+// Dim factor multiplies into fill/stroke alpha: radial marks have no per-datum opacity channel.
 const DIM_OPACITY = 0.3;
 
-// Bakes an alpha percentage into a color string via `color-mix`, since
-// `radialArea`/`radialDot`'s `fillOpacity`/`strokeOpacity`/`opacity` options
-// are plain per-call numbers (not per-datum channels) in @tanstack/charts
-// 0.15.0's polar mark family — only `fill` (and, for area, `stroke`) accept
-// a per-row accessor. This is how per-series hover dim is expressed without
-// direct-DOM style writes.
-function withAlpha(color: string, alphaPercent: number): string {
-  const pct = Math.max(0, Math.min(100, alphaPercent));
+// Percent scale: alpha fractions convert to color-mix percentages via *100, clamped to [0, 100].
+const ALPHA_PERCENT_MAX = 100;
+const PERCENT_SCALE = 100;
+// Default enter duration; the reveal scales stagger delays by enterDurationMs / this value.
+const RADAR_ENTER_DURATION_MS = 1100;
+// Per-ring grid reveal stagger, scaled by staggerScale * durationFactor.
+const RADAR_GRID_STAGGER_MS = 80;
+// Base delay added after the last grid ring before the first series campaign starts.
+const RADAR_CAMPAIGN_BASE_DELAY_MS = 200;
+// Per-series stagger added on top of the campaign base delay.
+const RADAR_SERIES_STAGGER_MS = 150;
+// Below this size there is nothing to lay out; the chart definition stays undefined.
+const RADAR_MIN_CHART_SIZE_PX = 10;
+// Default grid/spoke stroke opacity (bklit grid chrome).
+const RADAR_GRID_STROKE_OPACITY = 0.6;
+// Axis-label spring (stiffness/damping/mass) shared by the settle estimate and the sampler.
+const LABEL_SPRING_STIFFNESS = 80;
+const LABEL_SPRING_DAMPING = 15;
+const LABEL_SPRING_MASS = 1;
+// Per-spoke reveal stagger, scaled by staggerScale * durationFactor.
+const SPOKE_STAGGER_MS = 50;
+// Label fade-in base delay: 5 grid staggers, halved.
+const LABEL_BASE_DELAY_GRID_STAGGER_FACTOR = 5;
+const LABEL_BASE_DELAY_FRACTION = 0.5;
+// Label fade-in runs at half the enter duration.
+const LABEL_FADE_DURATION_FRACTION = 0.5;
+// Per-label stagger inside each label group (grid-ring labels vs angle labels).
+const GRID_LABEL_STAGGER_MS = 60;
+const ANGLE_LABEL_STAGGER_MS = 80;
+// Spring progress sampling step for the label outward-spring keyframes.
+const LABEL_SPRING_SAMPLE_STEP_MS = 40;
+// Radius scale domain max (radar values are percentages).
+const RADAR_RADIUS_DOMAIN_MAX = 100;
+
+const withAlpha = (color: string, alphaPercent: number): string => {
+  const pct = Math.max(0, Math.min(ALPHA_PERCENT_MAX, alphaPercent));
   return `color-mix(in oklab, ${color} ${pct}%, transparent)`;
 }
 
-// `radialArea`'s per-group scene key is `${id}:${valueKey(groupKey)}`
-// (dist/polar.js `groupIndices`), not `${id}:${groupKey}` directly —
-// `valueKey` (dist/scales.js) tags every value with its `typeof` for
-// cross-type uniqueness. `valueKey` isn't publicly exported (package.json
-// `exports` has no `./scales` entry, only `./scales/band|linear|ordinal|
-// point`), so this reproduces its string branch (the only branch a
-// `replayGroup` — always a template-literal string — can hit) locally, same
-// pattern as `choroplethSceneKey` (E2) reproducing `geoShape`'s key formula.
-function polarValueKey(value: string): string {
-  return `string:${value.length}:${value}`;
-}
+const polarValueKey = (value: string): string => `string:${value.length}:${value}`
 
-// E3/E4 (coordinator ruling): `SceneNodeBase.className` (dist/types.d.ts) is a
-// public field the SVG renderer and DOM reconciler both emit verbatim as the
-// node's `class` attribute (dist/svg-renderer.js `renderCommon`, dist/
-// reconcile.js's generic attribute sync) — so a `PolarMark` can be wrapped to
-// post-process its own rendered `MarkScene.nodes` and stamp an app-owned CSS
-// class onto the one scene node matching a given key, entirely through the
-// public `PolarMark`/`MarkScene`/`SceneNode` surface (`@tanstack/charts/polar`,
-// `@tanstack/charts`) — no DOM reach-in, no internal `createPolarMark`
-// (dist/polar-mark-internal.js, not exported via package.json `exports`).
-// `radialArea`'s per-series nodes are children of ONE wrapping group (its own
-// `className` option applies uniformly to every series), so per-series
-// targeting requires walking the returned scene tree by node `key` — this is
-// that walk. Also used to fix E3 (stroke-width hover-pop): the mark's own
-// `strokeWidth` option is emitted as a plain SVG presentation attribute
-// (dist/svg-renderer.js `renderStyle`), which has *lower* cascade priority
-// than an author stylesheet class rule, so `.bkm-radar-area--hovered {
-// stroke-width: 3px }` cleanly overrides it for just the matched node.
-function withMarkNodeClassName<TDatum, TAngle extends ChartValue, TRadius extends ChartValue>(
-  mark: PolarMark<TDatum, TAngle, TRadius>,
-  classNameForKey: (key: string) => string | undefined,
-): PolarMark<TDatum, TAngle, TRadius> {
-  function stampNode(node: SceneNode): SceneNode {
+// Per-series targeting walks the scene tree by node key through the public PolarMark surface.
+const withMarkNodeClassName = <TDatum, TAngle extends ChartValue, TRadius extends ChartValue,>(mark: Readonly<PolarMark<TDatum, TAngle, TRadius>>, classNameForKey: (key: string) => string | undefined): PolarMark<TDatum, TAngle, TRadius> => {
+  const stampNode = (node: Readonly<SceneNode>): SceneNode => {
     if (node.kind === "group") {
       return { ...node, children: node.children.map(stampNode) };
     }
     const extra = classNameForKey(node.key);
-    return extra ? { ...node, className: [node.className, extra].filter(Boolean).join(" ") } : node;
+    return (extra ?? "") === "" ? node : { ...node, className: [node.className, extra].filter(Boolean).join(" ") };
   }
   return {
     ...mark,
@@ -167,43 +137,43 @@ function withMarkNodeClassName<TDatum, TAngle extends ChartValue, TRadius extend
   };
 }
 
-export interface RadarMetric {
-  key: string;
-  label: string;
+interface RadarMetric {
+  readonly key: string;
+  readonly label: string;
 }
 
-export interface RadarData {
-  label: string;
-  color?: string;
-  values: Record<string, number>;
+interface RadarData {
+  readonly label: string;
+  readonly color?: string;
+  readonly values: Readonly<Record<string, number>>;
 }
 
-export interface RadarEnterTransition {
-  type?: "spring" | "tween";
-  duration?: number;
-  ease?: readonly [number, number, number, number];
-  bounce?: number;
-  stiffness?: number;
-  damping?: number;
-  mass?: number;
+interface RadarEnterTransition {
+  readonly type?: "spring" | "tween";
+  readonly duration?: number;
+  readonly ease?: readonly [number, number, number, number];
+  readonly bounce?: number;
+  readonly stiffness?: number;
+  readonly damping?: number;
+  readonly mass?: number;
 }
 
-export interface RadarChartProps {
-  data: RadarData[];
-  metrics: RadarMetric[];
-  size?: number;
-  levels?: number;
-  margin?: number;
-  animate?: boolean;
-  enterDurationMs?: number;
-  staggerScale?: number;
-  enterTransition?: RadarEnterTransition;
-  motionReplayKey?: string;
-  hoveredIndex?: number | null;
-  onHoverChange?: (index: number | null) => void;
-  className?: string;
-  style?: React.CSSProperties;
-  children?: React.ReactNode;
+interface RadarChartProps {
+  readonly data: readonly RadarData[];
+  readonly metrics: readonly RadarMetric[];
+  readonly size?: number;
+  readonly levels?: number;
+  readonly margin?: number;
+  readonly animate?: boolean;
+  readonly enterDurationMs?: number;
+  readonly staggerScale?: number;
+  readonly enterTransition?: RadarEnterTransition;
+  readonly motionReplayKey?: string;
+  readonly hoveredIndex?: number | null;
+  readonly onHoverChange?: (index: number | null) => void;
+  readonly className?: string;
+  readonly style?: React.CSSProperties;
+  readonly children?: React.ReactNode;
 }
 
 const ROLE_GRID = "radar-grid";
@@ -211,67 +181,76 @@ const ROLE_AXIS = "radar-axis";
 const ROLE_LABELS = "radar-labels";
 const ROLE_AREA = "radar-area";
 
-type RoleCarrier = { [CHART_ROLE]?: string };
-
-export interface RadarGridProps {
-  showLabels?: boolean;
-  stroke?: string;
-  strokeOpacity?: number;
-  className?: string;
+// Config-carrier components: Null-rendering functions with the chart-role marker
+// Declared on the component type, so every attachment site stays assertion-free.
+interface RadarChildComponent<ComponentProps> {
+  (props: ComponentProps): null;
+  [CHART_ROLE]?: string;
 }
-export function RadarGrid(_props: RadarGridProps): null { return null; }
-(RadarGrid as RoleCarrier)[CHART_ROLE] = ROLE_GRID;
 
-export interface RadarAxisProps {
-  stroke?: string;
-  strokeOpacity?: number;
-  className?: string;
+interface RadarGridProps {
+  readonly showLabels?: boolean;
+  readonly stroke?: string;
+  readonly strokeOpacity?: number;
+  readonly className?: string;
 }
-export function RadarAxis(_props: RadarAxisProps): null { return null; }
-(RadarAxis as RoleCarrier)[CHART_ROLE] = ROLE_AXIS;
+const RadarGrid: RadarChildComponent<RadarGridProps> = (_props: Readonly<RadarGridProps>): null => null;
+RadarGrid[CHART_ROLE] = ROLE_GRID;
 
-export interface RadarLabelsProps {
-  offset?: number;
-  fontSize?: number;
-  interactive?: boolean;
-  className?: string;
+interface RadarAxisProps {
+  readonly stroke?: string;
+  readonly strokeOpacity?: number;
+  readonly className?: string;
 }
-export function RadarLabels(_props: RadarLabelsProps): null { return null; }
-(RadarLabels as RoleCarrier)[CHART_ROLE] = ROLE_LABELS;
+const RadarAxis: RadarChildComponent<RadarAxisProps> = (_props: Readonly<RadarAxisProps>): null => null;
+RadarAxis[CHART_ROLE] = ROLE_AXIS;
 
-export interface RadarAreaProps {
-  index: number;
-  color?: string;
-  showPoints?: boolean;
-  showStroke?: boolean;
-  showGlow?: boolean;
-  className?: string;
+interface RadarLabelsProps {
+  readonly offset?: number;
+  readonly fontSize?: number;
+  readonly interactive?: boolean;
+  readonly className?: string;
 }
-export function RadarArea(_props: RadarAreaProps): null { return null; }
-(RadarArea as RoleCarrier)[CHART_ROLE] = ROLE_AREA;
+const RadarLabels: RadarChildComponent<RadarLabelsProps> = (_props: Readonly<RadarLabelsProps>): null => null;
+RadarLabels[CHART_ROLE] = ROLE_LABELS;
+
+interface RadarAreaProps {
+  readonly index: number;
+  readonly color?: string;
+  readonly showPoints?: boolean;
+  readonly showStroke?: boolean;
+  readonly showGlow?: boolean;
+  readonly className?: string;
+}
+const RadarArea: RadarChildComponent<RadarAreaProps> = (_props: Readonly<RadarAreaProps>): null => null;
+RadarArea[CHART_ROLE] = ROLE_AREA;
 
 interface ExtractedRadarChildren {
-  grid: RadarGridProps | null;
-  axis: RadarAxisProps | null;
-  labels: RadarLabelsProps | null;
+  grid?: RadarGridProps;
+  axis?: RadarAxisProps;
+  labels?: RadarLabelsProps;
   areas: RadarAreaProps[];
 }
 
-function extractRadarChildren(children: React.ReactNode): ExtractedRadarChildren {
-  const out: ExtractedRadarChildren = { grid: null, axis: null, labels: null, areas: [] };
+const collectRadarChild = (child: Readonly<React.ReactElement>, out: ExtractedRadarChildren): void => {
+  const role = roleOf(child.type);
+  if (role === ROLE_GRID && React.isValidElement<RadarGridProps>(child)) {out.grid = child.props;}
+  else if (role === ROLE_AXIS && React.isValidElement<RadarAxisProps>(child)) {out.axis = child.props;}
+  else if (role === ROLE_LABELS && React.isValidElement<RadarLabelsProps>(child)) {out.labels = child.props;}
+  else if (role === ROLE_AREA && React.isValidElement<RadarAreaProps>(child)) {out.areas.push(child.props);}
+  else {
+    // Unknown roles carry no radar geometry: only grid, axis, labels, and areas populate the spec.
+  }
+}
+
+const extractRadarChildren = (children: React.ReactNode): ExtractedRadarChildren => {
+  const out: ExtractedRadarChildren = { areas: [] };
   const visit = (node: React.ReactNode): void => {
     for (const child of React.Children.toArray(node)) {
-      if (!React.isValidElement(child)) continue;
-      if (child.type === React.Fragment) {
-        visit((child.props as { children?: React.ReactNode }).children);
-        continue;
+      if (React.isValidElement(child)) {
+        if (child.type === React.Fragment && React.isValidElement<{ children?: React.ReactNode }>(child)) {visit(child.props.children);}
+        else {collectRadarChild(child, out);}
       }
-      const role = roleOf(child.type);
-      const props = child.props as never;
-      if (role === ROLE_GRID) out.grid = props;
-      else if (role === ROLE_AXIS) out.axis = props;
-      else if (role === ROLE_LABELS) out.labels = props;
-      else if (role === ROLE_AREA) out.areas.push(props);
     }
   };
   visit(children);
@@ -279,34 +258,496 @@ function extractRadarChildren(children: React.ReactNode): ExtractedRadarChildren
 }
 
 interface ResolvedRadarArea {
-  index: number;
-  datum: RadarData;
-  color: string;
-  showPoints: boolean;
-  showStroke: boolean;
-  showGlow: boolean;
-  className: string;
+  readonly index: number;
+  readonly datum: RadarData;
+  readonly color: string;
+  readonly showPoints: boolean;
+  readonly showStroke: boolean;
+  readonly showGlow: boolean;
+  readonly className: string;
 }
 
 interface RadarRow {
-  metric: string;
-  value: number;
-  series: string;
-  // C6: z-grouping identity for `radialArea`/`radialDot` — see `allRows`
-  // below. Kept SEPARATE from `series` (still parsed as a plain zero-padded
-  // index for color lookups by several channel accessors below) so bumping
-  // `motionReplayKey` changes group identity without disturbing color math.
-  replayGroup: string;
+  readonly metric: string;
+  readonly value: number;
+  readonly series: string;
+  readonly replayGroup: string;
 }
 
-export function RadarChart({
+interface RadarEnterSnapshot {
+  readonly enterTransition: RadarEnterTransition | undefined;
+  readonly staggerScale: number;
+  readonly enterDurationMs: number;
+  readonly levels: number;
+}
+
+interface RadarSeriesEnter {
+  readonly delay: number;
+  readonly transition: ReturnType<typeof radarMotionTransition>;
+}
+
+const resolveRadarSeriesEnter = (seriesIndex: number, snapshot: Readonly<RadarEnterSnapshot>): RadarSeriesEnter => {
+  const resolved = resolveRadarEnterTransition(snapshot.enterTransition);
+  const durationFactor = snapshot.enterDurationMs / RADAR_ENTER_DURATION_MS;
+  const gridStaggerMs = RADAR_GRID_STAGGER_MS * snapshot.staggerScale * durationFactor;
+  const campaignBaseDelayMs = (snapshot.levels * gridStaggerMs + RADAR_CAMPAIGN_BASE_DELAY_MS) * durationFactor;
+  const delayMs = campaignBaseDelayMs + seriesIndex * RADAR_SERIES_STAGGER_MS * snapshot.staggerScale * durationFactor;
+  return { delay: delayMs, transition: radarMotionTransition(resolved) };
+}
+
+interface RadarGuidesInput {
+  readonly grid: Readonly<RadarGridProps> | undefined;
+  readonly axis: Readonly<RadarAxisProps> | undefined;
+  readonly labels: Readonly<RadarLabelsProps> | undefined;
+  readonly levels: number;
+  readonly metricKeys: readonly string[];
+  readonly metricLabelByKey: Readonly<ReadonlyMap<string, string>>;
+}
+
+const buildRadarGridGuide = (grid: Readonly<RadarGridProps>, levels: number, metricsCount: number): PolarGuide => bklitRadarGrid({
+  className: grid.className,
+  labelClassName: "ts-bkm-radar-grid-labels",
+  labelFill: RADAR_FOREGROUND_MUTED_VAR,
+  levels,
+  metricsCount,
+  showLabels: grid.showLabels ?? true,
+  stroke: grid.stroke ?? RADAR_BORDER_VAR,
+  strokeOpacity: grid.strokeOpacity ?? RADAR_GRID_STROKE_OPACITY,
+});
+
+const makeRadarLabelFormat = (metricLabelByKey: Readonly<ReadonlyMap<string, string>>): ((value: Readonly<ChartValue>) => string) => (value: Readonly<ChartValue>): string =>
+  metricLabelByKey.get(String(value)) ?? String(value);
+
+const buildRadarSpokeGuide = (axis: Readonly<RadarAxisProps> | undefined, labels: Readonly<RadarLabelsProps> | undefined, metricLabelByKey: Readonly<ReadonlyMap<string, string>>): PolarGuide => {
+  const spokeOptions = axis
+    ? {
+      className: (axis.className ?? "") === "" ? "ts-bkm-radar-spokes" : `ts-bkm-radar-spokes ${axis.className}`,
+      stroke: axis.stroke ?? RADAR_BORDER_VAR,
+      strokeOpacity: axis.strokeOpacity ?? RADAR_GRID_STROKE_OPACITY,
+      strokeWidth: 1,
+    }
+    : { strokeWidth: 0 };
+  const labelOptions = labels
+    ? {
+      format: makeRadarLabelFormat(metricLabelByKey),
+      labelAnchor: "middle" as const,
+      labelBaseline: "middle" as const,
+      labelClassName: [
+        "ts-bkm-radar-axis-labels",
+        labels.interactive === true ? "ts-bkm-radar-axis-labels--interactive" : "",
+        labels.className ?? "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      labelFill: RADAR_LABEL_VAR,
+      labelFontSize: labels.fontSize ?? LABEL_DEFAULT_FONT_SIZE,
+      labelOffset: labels.offset ?? LABEL_DEFAULT_OFFSET,
+      labels: true as const,
+    }
+    : { labels: false as const };
+  return angleGrid({ ...spokeOptions, ...labelOptions });
+}
+
+const buildRadarGuides = (input: Readonly<RadarGuidesInput>): PolarGuide[] => {
+  const { grid, axis, labels, levels, metricKeys, metricLabelByKey } = input;
+  const guides: PolarGuide[] = [];
+  if (grid) {guides.push(buildRadarGridGuide(grid, levels, metricKeys.length));}
+  if (axis || labels) {guides.push(buildRadarSpokeGuide(axis, labels, metricLabelByKey));}
+  return guides;
+}
+
+const seriesIndexOfRow = (row: RadarRow, resolvedCount: number): number =>
+  Math.min(Math.trunc(Number(row.series)), resolvedCount - 1);
+
+const makeRadarAreaFill = (resolvedAreas: readonly ResolvedRadarArea[], hoveredIndex: number | null): ((row: RadarRow) => string) => (row: RadarRow): string => {
+  const clampedIdx = seriesIndexOfRow(row, resolvedAreas.length);
+  const color = resolvedAreas[clampedIdx]?.color ?? DEFAULT_RADAR_COLORS[0];
+  const isHovered = hoveredIndex === clampedIdx;
+  const isDimmed = hoveredIndex !== null && !isHovered;
+  const baseAlpha = isHovered ? FILL_OPACITY_HOVER : FILL_OPACITY_REST;
+  return withAlpha(color, (isDimmed ? baseAlpha * DIM_OPACITY : baseAlpha) * PERCENT_SCALE);
+}
+
+const makeRadarAreaStroke = (resolvedAreas: readonly ResolvedRadarArea[], hoveredIndex: number | null): ((row: RadarRow) => string) => (row: RadarRow): string => {
+  const clampedIdx = seriesIndexOfRow(row, resolvedAreas.length);
+  const area = resolvedAreas[clampedIdx];
+  if (!area.showStroke) {return "none";}
+  const isHovered = hoveredIndex === clampedIdx;
+  const isDimmed = hoveredIndex !== null && !isHovered;
+  return withAlpha(area.color, (isDimmed ? DIM_OPACITY : 1) * PERCENT_SCALE);
+}
+
+const makeRadarAreaClassName = (hoveredAreaNodeKey: string | undefined, hoveredIndex: number | null): ((key: string) => string | undefined) => (key: string): string | undefined =>
+  key === hoveredAreaNodeKey && hoveredIndex !== null
+    ? `bkm-radar-area bkm-radar-area--hovered bkm-radar-area--hovered-${hoveredIndex % DEFAULT_RADAR_COLORS.length}`
+    : "bkm-radar-area";
+
+const makeRadarDotFill = (resolvedAreas: readonly ResolvedRadarArea[], hoveredIndex: number | null): ((row: RadarRow) => string) => (row: RadarRow): string => {
+  const clampedIdx = seriesIndexOfRow(row, resolvedAreas.length);
+  const color = resolvedAreas[clampedIdx]?.color ?? DEFAULT_RADAR_COLORS[0];
+  const isDimmed = hoveredIndex !== null && hoveredIndex !== clampedIdx;
+  return withAlpha(color, (isDimmed ? DIM_OPACITY : 1) * PERCENT_SCALE);
+}
+
+const makeRadarDotRadius = (resolvedCount: number, hoveredIndex: number | null): ((row: RadarRow) => number) => (row: RadarRow): number =>
+  hoveredIndex === seriesIndexOfRow(row, resolvedCount) ? DOT_R_HOVER : DOT_R_REST;
+
+type RadarRevealTiming = ReturnType<typeof radarRevealTiming>;
+
+const flagRadarSvgRevealed = (container: HTMLElement): void => {
+  const svgForBkm = container.querySelector<SVGElement>("svg.ts-chart");
+  if (svgForBkm && (svgForBkm.dataset.bkmRevealed ?? "") === "") {svgForBkm.dataset.bkmRevealed = "1";}
+}
+
+const beginRadarReveal = (container: HTMLElement, animate: boolean, revealedRef: React.RefObject<boolean>): SVGGElement | undefined => {
+  if (!animate || revealedRef.current) {return undefined;}
+  const marksGroup = container.querySelector<SVGGElement>(MARKS_GROUP_SELECTOR);
+  if (!marksGroup) {return undefined;}
+  revealedRef.current = true;
+  flagRadarSvgRevealed(container);
+  marksGroup.classList.add("ts-chart__marks--revealing");
+  return marksGroup;
+}
+
+interface RadarRevealSetup {
+  readonly deadlineMs: number;
+  readonly durationFactor: number;
+  readonly gridStaggerMs: number;
+  readonly labelSpringSettleMs: number;
+  readonly renderStaggerScale: number;
+  readonly timing: RadarRevealTiming;
+}
+
+const resolveRadarRevealSetup = (snapshot: Readonly<RadarEnterSnapshot>): RadarRevealSetup => {
+  const resolved = resolveRadarEnterTransition(snapshot.enterTransition);
+  const timing = radarRevealTiming(resolved);
+  const renderStaggerScale = snapshot.staggerScale;
+  const durationFactor = snapshot.enterDurationMs / RADAR_ENTER_DURATION_MS;
+  const gridStaggerMs = RADAR_GRID_STAGGER_MS * renderStaggerScale * durationFactor;
+  const labelSpringSettleMs = estimateSpringSettleMs(LABEL_SPRING_STIFFNESS, LABEL_SPRING_DAMPING, LABEL_SPRING_MASS);
+  const deadlineMs = Math.max(timing.durationMs + snapshot.levels * gridStaggerMs, labelSpringSettleMs);
+  return { deadlineMs, durationFactor, gridStaggerMs, labelSpringSettleMs, renderStaggerScale, timing };
+}
+
+const clearRadarLabelStyles = (liveMarksGroup: SVGGElement): void => {
+  const clearLabels = liveMarksGroup.querySelectorAll<HTMLElement>('[data-ts-key$=":labels"]');
+  for (const labelGroup of clearLabels) {for (const labelText of labelGroup.querySelectorAll<SVGTextElement>("text")) {labelText.style.opacity = "";}}
+}
+
+const clearRadarRevealStyles = (liveMarksGroup: SVGGElement): void => {
+  const gridRings = liveMarksGroup.querySelectorAll<SVGPathElement>('[data-ts-key^="radar-ring:"]');
+  const spokes = liveMarksGroup.querySelectorAll<SVGLineElement>('[data-ts-key^="spoke:"]');
+  for (const el of gridRings) { el.style.transform = ""; el.style.opacity = ""; }
+  for (const el of spokes) { el.style.transform = ""; el.style.opacity = ""; }
+  clearRadarLabelStyles(liveMarksGroup);
+}
+
+interface RadarLabelGroups {
+  readonly gridLabelsGroup: Element | null;
+  readonly angleLabelsGroup: Element | null;
+}
+
+const findRadarLabelGroups = (liveMarksGroup: SVGGElement, container: HTMLElement): RadarLabelGroups => {
+  const gridLabelsGroup = liveMarksGroup.querySelector('[data-ts-key="radar:bklit-radar-grid-0:labels"]') ??
+    liveMarksGroup.querySelector('[data-ts-key="polar-0:bklit-radar-grid-0:labels"]') ??
+    container.querySelector('[data-ts-key="radar:bklit-radar-grid-0:labels"]');
+  const angleLabelsGroup = liveMarksGroup.querySelector('[data-ts-key="radar:angle-grid-1:labels"]') ??
+    liveMarksGroup.querySelector('[data-ts-key="polar-0:angle-grid-1:labels"]') ??
+    container.querySelector('[data-ts-key="radar:angle-grid-1:labels"]');
+  return { angleLabelsGroup, gridLabelsGroup };
+}
+
+interface RadarRingRevealOptions {
+  readonly liveMarksGroup: SVGGElement;
+  readonly timing: RadarRevealTiming;
+  readonly gridStaggerMs: number;
+  readonly revealAnims: Animation[];
+}
+
+interface RadarRingOptions {
+  readonly path: SVGPathElement;
+  readonly ringIdx: number;
+  readonly timing: RadarRevealTiming;
+  readonly gridStaggerMs: number;
+  readonly revealAnims: Animation[];
+}
+
+const revealRadarRing = (options: Readonly<RadarRingOptions>): void => {
+  const { path, ringIdx, timing, gridStaggerMs, revealAnims } = options;
+  const delay = ringIdx * gridStaggerMs;
+  const kfScale = buildRadarProgressKeyframes(timing, (progress) => ({ transform: `scale(${progress})` }));
+  const kfOpacity = buildRadarProgressKeyframes(timing, (progress) => ({ opacity: String(progress) }));
+  const animScale = path.animate(kfScale, { delay, duration: timing.durationMs, easing: timing.easing, fill: "backwards" });
+  const animOpacity = path.animate(kfOpacity, { delay, duration: timing.durationMs, easing: timing.easing, fill: "backwards" });
+  revealAnims.push(animScale, animOpacity);
+  animScale.onfinish = (): void =>{  animScale.cancel(); };
+  animOpacity.onfinish = (): void =>{  animOpacity.cancel(); };
+}
+
+const revealRadarRings = (options: Readonly<RadarRingRevealOptions>): void => {
+  const { liveMarksGroup, timing, gridStaggerMs, revealAnims } = options;
+  const gridRings = liveMarksGroup.querySelectorAll<SVGPathElement>('[data-ts-key^="radar-ring:"]');
+  for (const [ringIdx, path] of gridRings.entries()) {
+    revealRadarRing({ gridStaggerMs, path, revealAnims, ringIdx, timing });
+  }
+}
+
+interface RadarSpokeRevealOptions {
+  readonly liveMarksGroup: SVGGElement;
+  readonly timing: RadarRevealTiming;
+  readonly spokeStaggerMs: number;
+  readonly revealAnims: Animation[];
+}
+
+interface RadarSpokeOptions {
+  readonly line: SVGLineElement;
+  readonly spokeIdx: number;
+  readonly timing: RadarRevealTiming;
+  readonly spokeStaggerMs: number;
+  readonly revealAnims: Animation[];
+}
+
+const revealRadarSpoke = (options: Readonly<RadarSpokeOptions>): void => {
+  const { line, spokeIdx, timing, spokeStaggerMs, revealAnims } = options;
+  const delay = spokeIdx * spokeStaggerMs;
+  const kfScale = buildRadarProgressKeyframes(timing, (progress) => ({ transform: `scale(${progress})` }));
+  const kfOpacity = buildRadarProgressKeyframes(timing, (progress) => ({ opacity: String(progress) }));
+  const animScale = line.animate(kfScale, { delay, duration: timing.durationMs, easing: timing.easing, fill: "backwards" });
+  const animOpacity = line.animate(kfOpacity, { delay, duration: timing.durationMs, easing: timing.easing, fill: "backwards" });
+  revealAnims.push(animScale, animOpacity);
+  animScale.onfinish = (): void =>{  animScale.cancel(); };
+  animOpacity.onfinish = (): void =>{  animOpacity.cancel(); };
+}
+
+const revealRadarSpokes = (options: Readonly<RadarSpokeRevealOptions>): void => {
+  const { liveMarksGroup, timing, spokeStaggerMs, revealAnims } = options;
+  const spokes = liveMarksGroup.querySelectorAll<SVGLineElement>('[data-ts-key^="spoke:"]');
+  for (const [spokeIdx, line] of spokes.entries()) {
+    revealRadarSpoke({ line, revealAnims, spokeIdx, spokeStaggerMs, timing });
+  }
+}
+
+interface RadarLabelTextRevealOptions {
+  readonly texts: NodeListOf<SVGTextElement>;
+  readonly baseDelay: number;
+  readonly staggerMs: number;
+  readonly timing: RadarRevealTiming;
+  readonly durationMs: number;
+  readonly revealAnims: Animation[];
+}
+
+const revealRadarLabelTexts = (options: Readonly<RadarLabelTextRevealOptions>): void => {
+  const { texts, baseDelay, staggerMs, timing, durationMs, revealAnims } = options;
+  for (const [textIdx, labelText] of texts.entries()) {
+    const delay = baseDelay + textIdx * staggerMs;
+    const keyframes = buildRadarProgressKeyframes(timing, (progress) => ({ opacity: String(progress) }));
+    const anim = labelText.animate(keyframes, { delay, duration: durationMs, easing: timing.easing, fill: "backwards" });
+    revealAnims.push(anim);
+    anim.onfinish = (): void =>{  anim.cancel(); };
+  }
+}
+
+interface RadarLabelRevealOptions {
+  readonly gridLabelsGroup: Element | null;
+  readonly angleLabelsGroup: Element | null;
+  readonly gridStaggerMs: number;
+  readonly renderStaggerScale: number;
+  readonly durationFactor: number;
+  readonly timing: RadarRevealTiming;
+  readonly revealAnims: Animation[];
+}
+
+const revealRadarLabels = (options: Readonly<RadarLabelRevealOptions>): void => {
+  const { gridLabelsGroup, angleLabelsGroup, gridStaggerMs, renderStaggerScale, durationFactor, timing, revealAnims } = options;
+  const labelGroups = [gridLabelsGroup, angleLabelsGroup].filter((group): group is Element => group !== null);
+  for (const [groupIdx, labelGroup] of labelGroups.entries()) {
+    const baseDelay = LABEL_BASE_DELAY_GRID_STAGGER_FACTOR * gridStaggerMs * LABEL_BASE_DELAY_FRACTION;
+    const texts = labelGroup.querySelectorAll<SVGTextElement>("text");
+    revealRadarLabelTexts({ baseDelay, durationMs: timing.durationMs * LABEL_FADE_DURATION_FRACTION, revealAnims, staggerMs: (groupIdx === 0 ? GRID_LABEL_STAGGER_MS : ANGLE_LABEL_STAGGER_MS) * renderStaggerScale * durationFactor, texts, timing });
+  }
+}
+
+interface RadarSpringRevealOptions {
+  readonly angleLabelsGroup: Element | null;
+  readonly labelSpringSettleMs: number;
+  readonly revealAnims: Animation[];
+}
+
+interface SpringRadarLabelOptions {
+  readonly labelEl: SVGTextElement;
+  readonly target: Readonly<{ x: number; y: number }>;
+  readonly springProgress: readonly number[];
+  readonly settleMs: number;
+  readonly revealAnims: Animation[];
+}
+
+const springRadarLabel = (options: Readonly<SpringRadarLabelOptions>): void => {
+  const { labelEl, target, springProgress, settleMs, revealAnims } = options;
+  const { x, y } = target;
+  if (Number.isFinite(x) && Number.isFinite(y)) {
+    const keyframes = springProgress.map((progress) =>
+      ({ transform: `translate(${-(1 - progress) * x}px, ${-(1 - progress) * y}px)` }),
+    );
+    const anim = labelEl.animate(keyframes, {
+      delay: 0,
+      duration: settleMs,
+      easing: "linear",
+      fill: "backwards",
+    });
+    revealAnims.push(anim);
+    anim.onfinish = (): void => {
+      anim.cancel();
+      labelEl.style.transform = "";
+    };
+  }
+}
+
+const revealRadarLabelSprings = (options: Readonly<RadarSpringRevealOptions>): void => {
+  const { angleLabelsGroup, labelSpringSettleMs, revealAnims } = options;
+  if (!angleLabelsGroup) {return;}
+  // Labels spring outward from center (stiffness 80/damping 15/mass 1) via the shared sampler.
+  const springProgress = sampleSpringProgress({ damping: LABEL_SPRING_DAMPING, durationMs: labelSpringSettleMs, mass: LABEL_SPRING_MASS, samples: LABEL_SPRING_SAMPLE_STEP_MS, stiffness: LABEL_SPRING_STIFFNESS });
+  const labelEls = [...angleLabelsGroup.querySelectorAll<SVGTextElement>('text')];
+  const targets = labelEls.map((labelEl) => ({
+    x: Number(labelEl.getAttribute("x") ?? "NaN"),
+    y: Number(labelEl.getAttribute("y") ?? "NaN"),
+  }));
+  for (const [labelIdx, labelEl] of labelEls.entries()) {
+    springRadarLabel({ labelEl, revealAnims, settleMs: labelSpringSettleMs, springProgress, target: targets[labelIdx] });
+  }
+}
+
+type RadarSetHoveredIndex = (index: number | null | ((prev: number | null) => number | null)) => void;
+
+interface PushResolvedAreaOptions {
+  readonly area: Readonly<RadarAreaProps>;
+  readonly colorForIndex: (index: number) => string;
+  readonly data: readonly RadarData[];
+  readonly out: ResolvedRadarArea[];
+}
+
+const pushResolvedRadarArea = (options: PushResolvedAreaOptions): void => {
+  // Skip areas whose index falls outside the data: the lookup below would yield no datum.
+  if (!Number.isInteger(options.area.index) || options.area.index < 0 || options.area.index >= options.data.length) {return;}
+  const datum: RadarData = options.data[options.area.index];
+  options.out.push({
+    className: options.area.className ?? "",
+    color: options.area.color ?? options.colorForIndex(options.area.index),
+    datum,
+    index: options.area.index,
+    showGlow: options.area.showGlow ?? true,
+    showPoints: options.area.showPoints ?? true,
+    showStroke: options.area.showStroke ?? true,
+  });
+};
+
+const bindRadarAreaHovers = (areaEls: NodeListOf<SVGPathElement>, setHoveredIndex: RadarSetHoveredIndex, cleanups: (() => void)[]): void => {
+  const areaArr = [...areaEls];
+  for (let i = 0; i < areaArr.length; i += 1) {
+    const path = areaArr[i];
+    const idx = i;
+    path.style.cursor = "pointer";
+    const enter = (): void => {
+      setHoveredIndex(idx);
+    };
+    const leave = (): void => {
+      setHoveredIndex((prev: number | null) => (prev === idx ? null : prev));
+    };
+    path.addEventListener("pointerenter", enter);
+    path.addEventListener("pointerleave", leave);
+    cleanups.push(() => {
+      path.removeEventListener("pointerenter", enter);
+      path.removeEventListener("pointerleave", leave);
+    });
+  }
+}
+
+interface RadarDotHoverOptions {
+  readonly dotEls: NodeListOf<SVGCircleElement>;
+  readonly metricKeysLength: number;
+  readonly setHoveredIndex: RadarSetHoveredIndex;
+  readonly cleanups: (() => void)[];
+}
+
+const bindRadarDotHover = (circle: SVGCircleElement, seriesIdx: number, setHoveredIndex: RadarSetHoveredIndex): (() => void) => {
+  circle.style.cursor = "pointer";
+  const enter = (): void => {
+    setHoveredIndex(seriesIdx);
+  };
+  const leave = (): void => {
+    setHoveredIndex((prev: number | null) => (prev === seriesIdx ? null : prev));
+  };
+  circle.addEventListener("pointerenter", enter);
+  circle.addEventListener("pointerleave", leave);
+  return (): void => {
+    circle.removeEventListener("pointerenter", enter);
+    circle.removeEventListener("pointerleave", leave);
+  };
+}
+
+const bindRadarDotHovers = (options: Readonly<RadarDotHoverOptions>): void => {
+  const { dotEls, metricKeysLength, setHoveredIndex, cleanups } = options;
+  const dotArr = [...dotEls];
+  for (let i = 0; i < dotArr.length; i += 1) {
+    const circle = dotArr[i];
+    const seriesIdx = Math.floor(i / Math.max(1, metricKeysLength));
+    cleanups.push(bindRadarDotHover(circle, seriesIdx, setHoveredIndex));
+  }
+}
+
+const runRadarHoverCleanups = (cleanups: readonly (() => void)[]): void => {
+  for (const fn of cleanups) {fn();}
+}
+
+const cancelRadarAnims = (anims: readonly Animation[]): void => {
+  for (const anim of anims) {
+    try { anim.cancel(); } catch {
+      // Cancelling a finished animation throws: the reveal is already settled.
+    }
+  }
+}
+
+interface RadarReplayRefs {
+  readonly prevMotionReplayKeyRef: React.RefObject<string>;
+  readonly revealAnimsRef: React.RefObject<Animation[]>;
+  readonly gridRevealedRef: React.RefObject<boolean>;
+}
+
+const resetRadarReplay = (motionReplayKey: string, refs: RadarReplayRefs): void => {
+  refs.prevMotionReplayKeyRef.current = motionReplayKey;
+  for (const anim of refs.revealAnimsRef.current) {
+    try { anim.cancel(); } catch {
+      // Cancelling a finished animation throws: the replay reset already settled it.
+    }
+  }
+  refs.revealAnimsRef.current = [];
+  refs.gridRevealedRef.current = false;
+}
+
+const scheduleRadarReveal = (container: HTMLElement, shouldReveal: () => boolean, handleRender: (args: { container: HTMLElement }) => void): (() => void) => {
+  const raf = requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (!shouldReveal()) {return;}
+      handleRender({ container });
+    });
+  });
+  return (): void =>{  cancelAnimationFrame(raf); };
+}
+
+type HoveredIndexUpdater = (prev: number | null) => number | null;
+
+// Anti-slop permits `typeof` inside a type guard; setHoveredIndex branches on this predicate instead.
+const isHoveredIndexUpdater = (index: number | null | HoveredIndexUpdater): index is HoveredIndexUpdater =>
+  typeof index === "function";
+
+const RadarChart = ({
   data,
   metrics,
   size: fixedSize,
   levels = DEFAULT_LEVELS,
   margin = DEFAULT_MARGIN,
   animate = true,
-  enterDurationMs = 1100,
+  enterDurationMs = RADAR_ENTER_DURATION_MS,
   staggerScale = 1,
   enterTransition,
   motionReplayKey = "",
@@ -315,16 +756,8 @@ export function RadarChart({
   className,
   style,
   children,
-}: RadarChartProps) {
+}: Readonly<RadarChartProps>): React.ReactElement => {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  // P9 (bklit ParentSize debounceTime={10}, radar-chart.tsx:237): measurement
-  // goes through the debounced width+height hook, same as pie (:243-251),
-  // ring (:267-276) and gauge's G5 call sites. The retired
-  // `useMeasuredRect(containerRef, !fixedSize)` passed `enabled` purely to
-  // skip mounting a ResizeObserver in fixed mode — an optimization, not
-  // behavior: containerRef is attached on the single root div on every render
-  // branch (:885) and `chartSize` falls back to `fixedSize` below, so a
-  // measured value in fixed mode is never read.
   const { width, height } = useDebouncedContainerSize(containerRef);
   const chartSize = fixedSize ?? Math.min(width, height);
 
@@ -338,8 +771,9 @@ export function RadarChart({
   const hoveredIndex = isControlled ? (controlledHoveredIndex ?? null) : internalHoveredIndex;
 
   const setHoveredIndex = React.useCallback(
-    (index: number | null | ((prev: number | null) => number | null)) => {
-      const next = typeof index === "function" ? (index as (p: number | null) => number | null)(isControlled ? controlledHoveredIndex ?? null : internalHoveredIndex) : index;
+    (index: number | null | HoveredIndexUpdater) => {
+      const prevValue = isControlled ? controlledHoveredIndex ?? null : internalHoveredIndex;
+      const next = isHoveredIndexUpdater(index) ? index(prevValue) : index;
       if (isControlled) {
         onHoverChange?.(next);
       } else {
@@ -349,10 +783,6 @@ export function RadarChart({
     [isControlled, onHoverChange, controlledHoveredIndex, internalHoveredIndex],
   );
 
-  // C6: `gridRevealedRef` is the once-per-cycle guard for the KEPT grid/
-  // spoke/label WAAPI reveal below — the area/dot per-index bookkeeping
-  // (`areaPathsRef`/`dotCirclesRef`/`pendingRevealRef`/`seenRevealedRef`)
-  // is gone; that reveal is native now and needs no imperative tracking.
   const gridRevealedRef = React.useRef(false);
   const revealAnimsRef = React.useRef<Animation[]>([]);
   const revealDeadlineTimerRef = React.useRef<number | null>(null);
@@ -362,294 +792,122 @@ export function RadarChart({
   const colorForIndex = React.useCallback(
     (index: number): string => {
       const item = data[index];
-      if (item?.color) return item.color;
-      return DEFAULT_RADAR_COLORS[index % DEFAULT_RADAR_COLORS.length]!;
+      const itemColor: string = item.color ?? "";
+      if (itemColor !== "") {return itemColor;}
+      return DEFAULT_RADAR_COLORS[index % DEFAULT_RADAR_COLORS.length];
     },
     [data],
   );
 
   const resolvedAreas = React.useMemo<ResolvedRadarArea[]>(() => {
     const out: ResolvedRadarArea[] = [];
-    for (const area of areas) {
-      const datum = data[area.index];
-      if (!datum) continue;
-      out.push({
-        index: area.index,
-        datum,
-        color: area.color ?? colorForIndex(area.index),
-        showPoints: area.showPoints ?? true,
-        showStroke: area.showStroke ?? true,
-        showGlow: area.showGlow ?? true,
-        className: area.className ?? "",
-      });
-    }
+    for (const area of areas) {pushResolvedRadarArea({ area, colorForIndex, data, out });}
     return out;
   }, [areas, data, colorForIndex]);
 
-  const metricKeys = React.useMemo(() => metrics.map((m) => m.key), [metrics]);
-  const hoverInputsRef = React.useRef({
-    resolvedAreas,
-    metricKeysLength: metricKeys.length,
-  });
-  hoverInputsRef.current = {
-    resolvedAreas,
-    metricKeysLength: metricKeys.length,
-  };
+  const metricKeys = React.useMemo(() => metrics.map((metric) => metric.key), [metrics]);
+  const areaCount = resolvedAreas.length;
 
   const metricLabelByKey = React.useMemo(() => {
     const map = new Map<string, string>();
-    for (const metric of metrics) map.set(metric.key, metric.label);
+    for (const metric of metrics) {map.set(metric.key, metric.label);}
     return map;
   }, [metrics]);
 
   const allRows = React.useMemo<RadarRow[]>(() => {
-    // Row 27 (T-D14): wide→long reshape delegated to TanStack-native `fold`
-    // (@tanstack/charts/transform/fold), which iterates data-outer /
-    // fields-inner — the same row order the hand loops produced. The
-    // zero-padded series id (Z_PAD) is applied to each wide datum BEFORE the
-    // fold, so every long row spreads it through; Z_PAD stays because fold's
-    // gap note explicitly keeps "series-id Z-pad custom". The `?? 0` default
-    // for missing metric values is preserved when staging the wide datum.
-    // Note: unlike the hand loops, fold rejects duplicate metric keys
-    // (assertFoldOptions) — a degenerate config that previously produced
-    // duplicated spokes.
-    const padded = resolvedAreas.map((area, i) => {
-      const paddedIndex = String(i).padStart(Z_PAD, "0");
-      const datum: Record<string, number | string> = {
-        series: paddedIndex,
-        // C6: `motionReplayKey`-embedded z-grouping identity (RadarRow
-        // comment above) — a bump makes every group's `z` value "new", so
-        // `radialArea`/`radialDot`'s own keyed diff (polar.js `groupKey`)
-        // treats every area/dot as freshly entering and replays the native
-        // campaign, mirroring sunburst's playKey-embedded-key precedent
-        // (C5). Ordinary re-renders (hover, data updates) leave
-        // `motionReplayKey` untouched, so group identity — and therefore
-        // matched "update" tracks, not replayed "enter" ones — stays stable.
-        replayGroup: `${motionReplayKey}:${paddedIndex}`,
-      };
+    // Wide->long reshape is a manual fold: Metric keys are dynamic strings, which match
+    // No public fold overload (fields requires a literal tuple), so TanStack fold is unusable here.
+    const rows: RadarRow[] = [];
+    for (const [areaIndex, area] of resolvedAreas.entries()) {
+      const paddedIndex = String(areaIndex).padStart(Z_PAD, "0");
+      // MotionReplayKey rides the z-group identity so bumps replay the campaign (sunburst playKey precedent).
+      const replayGroup = `${motionReplayKey}:${paddedIndex}`;
       for (const metric of metrics) {
-        datum[metric.key] = area.datum.values[metric.key] ?? 0;
+        rows.push({
+          metric: metric.key,
+          replayGroup,
+          series: paddedIndex,
+          value: area.datum.values[metric.key] ?? 0,
+        });
       }
-      return datum;
-    });
-    // Both PUBLIC fold overloads (transform-fold.ts:55,66) gate `fields`
-    // through `LiteralFoldFields`, which resolves to `never` unless the tuple
-    // length is a literal. Our field list is dynamic (metrics are runtime
-    // config), so neither overload can match. The third signature (:78) is the
-    // implementation signature and is NOT callable from outside the module, so
-    // there is no loose overload to route through — a double cast is the only
-    // route. Runtime validation (assertFoldOptions) still applies.
-    const folded = (
-      fold as unknown as (
-        source: Iterable<Record<string, number | string>>,
-        options: { readonly fields: readonly string[]; readonly as?: { readonly key: string; readonly value: string } },
-      ) => Record<string, unknown>[]
-    )(padded, {
-      fields: metrics.map((m) => m.key),
-      as: { key: "metric", value: "value" },
-    });
-    return folded.map((row) => ({
-      metric: String((row as Record<string, unknown>).metric),
-      value: Number((row as Record<string, unknown>).value),
-      series: String((row as Record<string, unknown>).series),
-      replayGroup: String((row as Record<string, unknown>).replayGroup),
-    }));
+    }
+    return rows;
   }, [resolvedAreas, metrics, motionReplayKey]);
 
-  // C6: shared native `motion` for `radialArea`/`radialDot` — legacy delays
-  // BOTH by the same per-series formula (radar-area.tsx's `campaignBaseDelay
-  // + areaIdx*150*staggerScale*durationFactor`; the dot loop below it reuses
-  // the identical `delayMs`, no separate per-dot stagger), so one callback
-  // covers both marks. `ctx.seriesIndex` is the z-group ("series") ordinal —
-  // the same ordering `resolvedAreas`/`allRows` fold rows in (z: "series",
-  // zero-padded so lexicographic === numeric order), so it stands in for the
-  // old `parseInt(row.series, 10)` DOM-order lookup. Refs only (stable
-  // identity across renders) so this needs no dependency-array entry beyond
-  // being referenced by `definition` below.
+  const prevMotionReplayKeyRef = React.useRef(motionReplayKey);
+
   const radarMarkMotion = React.useCallback(
-    (ctx: ChartMotionContext<RadarRow>) => {
-      if (!animateRef.current) return false as const;
+    (ctx: Readonly<ChartMotionContext<RadarRow>>) => {
+      if (!animate) {return false as const;}
       if (ctx.phase !== "enter") {
-        // Hover-driven fill/stroke/r channel changes (and series removal)
-        // were always instant, no-animation React re-renders in legacy — kept
-        // instant here so native's own "update"/"exit" tracks don't newly
-        // introduce a transition legacy never had.
-        return { transition: { type: "tween" as const, duration: 0 } };
+        // Hover/remove changes stay instant: legacy never transitioned those, so update/exit pin to 0.
+        return { transition: { duration: 0, type: "tween" as const } };
       }
-      const seriesIndex = ctx.seriesIndex ?? 0;
-      const resolved = resolveRadarEnterTransition(enterTransitionRef.current);
-      const staggerScale = enterStaggerScaleRef.current;
-      const durationFactor = enterDurationMsRef.current / 1100;
-      const gridStaggerMs = 80 * staggerScale * durationFactor;
-      const campaignBaseDelayMs = (levelsRef.current * gridStaggerMs + 200) * durationFactor;
-      const delayMs = campaignBaseDelayMs + seriesIndex * 150 * staggerScale * durationFactor;
-      return { delay: delayMs, transition: radarMotionTransition(resolved) };
+      return resolveRadarSeriesEnter(ctx.seriesIndex ?? 0, { enterDurationMs, enterTransition, levels, staggerScale });
     },
-    [],
+    [animate, enterDurationMs, enterTransition, levels, staggerScale],
   );
 
-  // TanStack definition: area/dot entrance is native `motion` (C6); grid/
-  // spoke/label reveal is WAAPI deferred (bklit parity, KEPT — see header).
-  const definition = React.useMemo(() => {
-    if (chartSize < 10 || resolvedAreas.length === 0 || metricKeys.length === 0) return null;
+  const radarAreaMark = React.useMemo(() => radialArea(allRows, {
+    angle: "metric",
+    curve: curveLinearClosed,
+    fill: makeRadarAreaFill(resolvedAreas, hoveredIndex),
+    fillOpacity: 1,
+    id: "radar-area",
+    key: "metric",
+    motion: radarMarkMotion,
+    radius: "value",
+    stroke: makeRadarAreaStroke(resolvedAreas, hoveredIndex),
+    strokeWidth: STROKE_WIDTH_REST,
+    z: "replayGroup",
+  }), [allRows, resolvedAreas, hoveredIndex, radarMarkMotion]);
 
-    // Mirrors `radialArea`'s own per-group scene key formula (dist/polar.js
-    // `groupIndices`/`key: \`${id}:${groupKey}\``, `id: "radar-area"`) so
-    // `withMarkNodeClassName` can find the one hovered series' node — see
-    // that helper's comment (E3/E4). `groupKey` there is NOT the raw `z`
-    // value (a row's `replayGroup`) — `groupIndices` runs it through
-    // `valueKey()` (dist/scales.js) first, which for a string tags it with
-    // its length: `string:${value.length}:${value}` (verified empirically —
-    // a rendered node's `data-ts-key` was e.g. `radar-area:string:6::00000`
-    // for the raw group value `":00000"`, length 6). `valueKey` itself isn't
-    // publicly exported (package.json `exports` has no `./scales` entry, only
-    // `./scales/band|linear|ordinal|point`), so `polarValueKey` below
-    // reproduces its (trivial, string-only) branch locally — same pattern as
-    // `choroplethSceneKey` (E2) reproducing `geoShape`'s key formula.
-    const hoveredReplayGroup =
-      hoveredIndex === null ? null : `${motionReplayKey}:${String(hoveredIndex).padStart(Z_PAD, "0")}`;
-    const hoveredAreaNodeKey = hoveredReplayGroup === null ? null : `radar-area:${polarValueKey(hoveredReplayGroup)}`;
+  const radarDotMark = React.useMemo(() => radialDot(allRows, {
+    angle: "metric",
+    fill: makeRadarDotFill(resolvedAreas, hoveredIndex),
+    id: "radar-dot",
+    key: "metric",
+    motion: radarMarkMotion,
+    r: makeRadarDotRadius(resolvedAreas.length, hoveredIndex),
+    radius: "value",
+    stroke: RADAR_BACKGROUND_VAR,
+    strokeWidth: 2,
+    z: "replayGroup",
+  }), [allRows, resolvedAreas, hoveredIndex, radarMarkMotion]);
 
-    const guides: PolarGuide[] = [];
-    if (grid) {
-      guides.push(
-        bklitRadarGrid({
-          levels,
-          metricsCount: metricKeys.length,
-          stroke: grid.stroke ?? RADAR_BORDER_VAR,
-          strokeOpacity: grid.strokeOpacity ?? 0.6,
-          showLabels: grid.showLabels ?? true,
-          className: grid.className,
-          labelClassName: "ts-bkm-radar-grid-labels",
-          labelFill: RADAR_FOREGROUND_MUTED_VAR,
-        }),
-      );
-    }
+  const definition = React.useMemo((): DomChartDefinition<RadarRow, string, number> | undefined => {
+    if (chartSize < RADAR_MIN_CHART_SIZE_PX || resolvedAreas.length === 0 || metricKeys.length === 0) {return undefined;}
 
-    if (axis || labels) {
-      const spokeOptions = axis
-        ? {
-            className: axis.className
-              ? `ts-bkm-radar-spokes ${axis.className}`
-              : "ts-bkm-radar-spokes",
-            stroke: axis.stroke ?? RADAR_BORDER_VAR,
-            strokeOpacity: axis.strokeOpacity ?? 0.6,
-            strokeWidth: 1,
-          }
-        : { strokeWidth: 0 };
-      const labelOptions = labels
-        ? {
-            labels: true as const,
-            labelOffset: labels.offset ?? LABEL_DEFAULT_OFFSET,
-            labelFontSize: labels.fontSize ?? LABEL_DEFAULT_FONT_SIZE,
-            labelAnchor: "middle" as const,
-            labelBaseline: "middle" as const,
-            labelFill: RADAR_LABEL_VAR,
-            labelClassName: [
-              "ts-bkm-radar-axis-labels",
-              labels.interactive ? "ts-bkm-radar-axis-labels--interactive" : "",
-              labels.className ?? "",
-            ]
-              .filter(Boolean)
-              .join(" "),
-            format: (value: unknown) =>
-              metricLabelByKey.get(String(value)) ?? String(value),
-          }
-        : { labels: false as const };
-      guides.push(angleGrid({ ...spokeOptions, ...labelOptions }));
-    }
+    // Group keys run through valueKey's string:length: wrapper; reproduce it to find the hovered node.
+    const hoveredGroupKey = polarValueKey(`${motionReplayKey}:${String(hoveredIndex).padStart(Z_PAD, "0")}`);
+    const hoveredAreaNodeKey = hoveredIndex === null
+      ? undefined
+      : `radar-area:${hoveredGroupKey}`;
+
+    const guides = buildRadarGuides({ axis, grid, labels, levels, metricKeys, metricLabelByKey });
+    const hoveredAreaMark = withMarkNodeClassName(radarAreaMark, makeRadarAreaClassName(hoveredAreaNodeKey, hoveredIndex));
 
     return defineChart({
+      focus: focusDisabled,
+      guides: false,
+      margin,
       marks: [
         polar({
-          id: "radar",
-          scales: {
-            angle: { scale: scalePoint<string>().domain(metricKeys) },
-            radius: { scale: scaleLinear().domain([0, 100]) },
-          },
           guides,
+          id: "radar",
           marks: [
-            // Hover dim/pop is expressed reactively through per-datum `fill`/
-            // `stroke`/`r` channels (native — evaluated per z-group on every
-            // definition rebuild, which React re-runs when `hoveredIndex`
-            // changes) rather than direct-DOM style/attribute mutation.
-            // `radialArea`/`radialDot` (@tanstack/charts/polar, v0.15.0) have
-            // no `states` option (unlike cartesian `dot`/`area`) and their
-            // `fillOpacity`/`strokeWidth`/`opacity` channels are plain
-            // per-call numbers, not per-datum — only `fill` (both marks) and
-            // `stroke` (area only) accept a per-row accessor. Dim is
-            // therefore baked into fill/stroke alpha via `color-mix` on those
-            // two channels. E3 (stroke-width hover-pop) and E4 (glow +
-            // scale-pop) are reintroduced via `withMarkNodeClassName` below,
-            // which stamps `bkm-radar-area--hovered` onto just the hovered
-            // series' scene node so a CSS class rule (radar block, styles.css)
-            // can do the rest — see that helper's comment for why this is a
-            // public, DOM-reach-in-free hook.
-            withMarkNodeClassName(
-              radialArea(allRows, {
-                id: "radar-area",
-                angle: "metric",
-                radius: "value",
-                z: "replayGroup",
-                key: "metric",
-                curve: curveLinearClosed,
-                fill: (row: RadarRow) => {
-                  const idx = parseInt(row.series, 10);
-                  const i = Math.min(idx, resolvedAreas.length - 1);
-                  const color = resolvedAreas[i]?.color ?? DEFAULT_RADAR_COLORS[0]!;
-                  const isHovered = hoveredIndex === i;
-                  const isDimmed = hoveredIndex !== null && !isHovered;
-                  const baseAlpha = isHovered ? FILL_OPACITY_HOVER : FILL_OPACITY_REST;
-                  return withAlpha(color, (isDimmed ? baseAlpha * DIM_OPACITY : baseAlpha) * 100);
-                },
-                fillOpacity: 1,
-                stroke: (row: RadarRow) => {
-                  const idx = parseInt(row.series, 10);
-                  const i = Math.min(idx, resolvedAreas.length - 1);
-                  const area = resolvedAreas[i];
-                  if (!area?.showStroke) return "none";
-                  const isHovered = hoveredIndex === i;
-                  const isDimmed = hoveredIndex !== null && !isHovered;
-                  return withAlpha(area.color ?? DEFAULT_RADAR_COLORS[0]!, (isDimmed ? DIM_OPACITY : 1) * 100);
-                },
-                strokeWidth: STROKE_WIDTH_REST,
-                motion: radarMarkMotion,
-              }),
-              (key) =>
-                key === hoveredAreaNodeKey
-                  ? `bkm-radar-area bkm-radar-area--hovered bkm-radar-area--hovered-${hoveredIndex! % DEFAULT_RADAR_COLORS.length}`
-                  : "bkm-radar-area",
-            ),
-            radialDot(allRows, {
-              id: "radar-dot",
-              angle: "metric",
-              radius: "value",
-              z: "replayGroup",
-              key: "metric",
-              r: (row: RadarRow) => {
-                const idx = parseInt(row.series, 10);
-                const i = Math.min(idx, resolvedAreas.length - 1);
-                return hoveredIndex === i ? DOT_R_HOVER : DOT_R_REST;
-              },
-              fill: (row: RadarRow) => {
-                const idx = parseInt(row.series, 10);
-                const i = Math.min(idx, resolvedAreas.length - 1);
-                const color = resolvedAreas[i]?.color ?? DEFAULT_RADAR_COLORS[0]!;
-                const isDimmed = hoveredIndex !== null && hoveredIndex !== i;
-                return withAlpha(color, (isDimmed ? DIM_OPACITY : 1) * 100);
-              },
-              stroke: RADAR_BACKGROUND_VAR,
-              strokeWidth: 2,
-              motion: radarMarkMotion,
-            }),
+            // Hover dim/pop rides fill/stroke/r channels + one CSS class for stroke-width (no states option).
+            hoveredAreaMark,
+            radarDotMark,
           ],
+          scales: {
+            angle: { scale: scalePoint().domain(metricKeys) },
+            radius: { scale: scaleLinear().domain([0, RADAR_RADIUS_DOMAIN_MAX]) },
+          },
         }),
       ],
-      margin,
-      guides: false,
       scales: { x: null, y: null },
       svgAnimation: false,
-      focus: focusDisabled,
       tooltip: false,
     });
   }, [
@@ -661,330 +919,128 @@ export function RadarChart({
     metricKeys,
     metricLabelByKey,
     resolvedAreas,
-    allRows,
+    radarAreaMark,
+    radarDotMark,
     margin,
     hoveredIndex,
     motionReplayKey,
-    radarMarkMotion,
   ]);
 
-  const enterTransitionRef = React.useRef(enterTransition);
-  enterTransitionRef.current = enterTransition;
-  const enterStaggerScaleRef = React.useRef(staggerScale);
-  enterStaggerScaleRef.current = staggerScale;
-  const enterDurationMsRef = React.useRef(enterDurationMs);
-  enterDurationMsRef.current = enterDurationMs;
-  const levelsRef = React.useRef(levels);
-  levelsRef.current = levels;
-  const animateRef = React.useRef(animate);
-  animateRef.current = animate;
-  // First-commit value; the replay layout effect below only fires on an
-  // actual key CHANGE (bklit's `key={`...-${motionReplayKey}`}` remounts).
-  const prevMotionReplayKeyRef = React.useRef(motionReplayKey);
-
-  // C6: area/dot's own campaign reveal is native now (radarMarkMotion,
-  // above) — this function's only remaining job is the KEPT grid-ring /
-  // axis-spoke / metric-label WAAPI reveal (D420-style scoped exception,
-  // see header). `gridRevealedRef` (a plain boolean, not a per-index Set) is
-  // the once-per-cycle guard: fires once per mount / `motionReplayKey` bump,
-  // never re-fires on a hover-only re-render (hover never remounts this
-  // component's marks group, and `handleRender` itself isn't re-invoked by
-  // TanStack for hover — only React's own re-renders touch the fill/stroke/r
-  // channels, which is exactly why native "onRender" doesn't refire here).
   const handleRender = React.useCallback(
-    ({ container }: { container: HTMLElement }) => {
-      if (!animateRef.current) return;
-      if (gridRevealedRef.current) return;
-      const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks") as SVGGElement | null;
-      if (!marksGroup) return;
-      gridRevealedRef.current = true;
-
-      const svgForBkm = container.querySelector<SVGElement>("svg.ts-chart") as SVGElement | null;
-      if (svgForBkm && !svgForBkm.getAttribute("data-bkm-revealed")) {
-        svgForBkm.setAttribute("data-bkm-revealed", "1");
-      }
-      marksGroup.classList.add("ts-chart__marks--revealing");
-
-      const resolved = resolveRadarEnterTransition(enterTransitionRef.current);
-      const timing = radarRevealTiming(resolved);
-      const staggerScale = enterStaggerScaleRef.current;
-      // bklit `durationFactor = enterDurationMs / 1100` (radar-grid.tsx /
-      // radar-area.tsx): a pure delay scaler for grid/area/label stagger,
-      // INDEPENDENT of the transition's own tween/spring timing.
-      const durationFactor = enterDurationMsRef.current / 1100;
-      const gridStaggerMs = 80 * staggerScale * durationFactor;
-
-      // RD6 label spring (stiffness 80 / damping 15 / mass 1, bklit
-      // radar-labels.tsx) is NOT scaled by durationFactor in legacy, so its
-      // settle time can exceed the grid's own `timing.durationMs +
-      // levels*gridStaggerMs` when enterDurationMs is small — the deadline
-      // must cover the longest live reveal animation or it snaps labels
-      // mid-spring.
-      const labelSpringSettleMs = estimateSpringSettleMs(80, 15, 1);
+    ({ container }: { container: HTMLElement }): (() => void) | undefined => {
+      if (!beginRadarReveal(container, animate, gridRevealedRef)) {return;}
+      // DurationFactor scales stagger delays only, not transition timing.
+      // Label springs ignore durationFactor: the deadline must cover the longest live animation.
+      const setup = resolveRadarRevealSetup({ enterDurationMs, enterTransition, levels, staggerScale });
 
       revealDeadlineTimerRef.current = setRevealDeadline(
-        Math.max(timing.durationMs + levelsRef.current * gridStaggerMs, labelSpringSettleMs),
+        setup.deadlineMs,
         {
           animationsRef: revealAnimsRef,
-          onDeadline: () => {},
+          onDeadline: () => {
+            // No deadline fallback: the animation finish handlers settle the reveal.
+          },
         },
       );
 
       revealPostPaintCancelRef.current = onPostPaint(() => {
-        const liveMarksGroup = container.querySelector<SVGGElement>(".ts-chart__marks") as SVGGElement | null;
-        if (!liveMarksGroup) return;
-
-        {
-          const gridRings = liveMarksGroup.querySelectorAll<SVGPathElement>('[data-ts-key^="radar-ring:"]');
-          const spokes = liveMarksGroup.querySelectorAll<SVGLineElement>('[data-ts-key^="spoke:"]');
-          for (const el of gridRings) { (el as SVGElement).style.transform = ""; (el as SVGElement).style.opacity = ""; }
-          for (const el of spokes) { (el as SVGElement).style.transform = ""; (el as SVGElement).style.opacity = ""; }
-          const clearLabels = liveMarksGroup.querySelectorAll<HTMLElement>('[data-ts-key$=":labels"]');
-          for (const g of clearLabels) for (const t of g.querySelectorAll<SVGTextElement>("text")) t.style.opacity = "";
-          const gridLabelsGroup = (liveMarksGroup.querySelector('[data-ts-key="radar:bklit-radar-grid-0:labels"]') ??
-            liveMarksGroup.querySelector('[data-ts-key="polar-0:bklit-radar-grid-0:labels"]') ??
-            container.querySelector('[data-ts-key="radar:bklit-radar-grid-0:labels"]')) as HTMLElement | null;
-          const angleLabelsGroup = (liveMarksGroup.querySelector('[data-ts-key="radar:angle-grid-1:labels"]') ??
-            liveMarksGroup.querySelector('[data-ts-key="polar-0:angle-grid-1:labels"]') ??
-            container.querySelector('[data-ts-key="radar:angle-grid-1:labels"]')) as HTMLElement | null;
-
-          gridRings.forEach((path, i) => {
-            const delay = i * gridStaggerMs;
-            const kfScale = buildRadarProgressKeyframes(timing, (p) => ({ transform: `scale(${p})` } as unknown as Keyframe));
-            const kfOpacity = buildRadarProgressKeyframes(timing, (p) => ({ opacity: String(p) } as unknown as Keyframe));
-            const a1 = path.animate(kfScale, { duration: timing.durationMs, delay, easing: timing.easing, fill: "backwards" });
-            const a2 = path.animate(kfOpacity, { duration: timing.durationMs, delay, easing: timing.easing, fill: "backwards" });
-            revealAnimsRef.current.push(a1, a2);
-            a1.onfinish = () => a1.cancel();
-            a2.onfinish = () => a2.cancel();
-          });
-
-          spokes.forEach((line, i) => {
-            const delay = i * 50 * staggerScale * durationFactor;
-            const kfScale = buildRadarProgressKeyframes(timing, (p) => ({ transform: `scale(${p})` } as unknown as Keyframe));
-            const kfOpacity = buildRadarProgressKeyframes(timing, (p) => ({ opacity: String(p) } as unknown as Keyframe));
-            const a1 = line.animate(kfScale, { duration: timing.durationMs, delay, easing: timing.easing, fill: "backwards" });
-            const a2 = line.animate(kfOpacity, { duration: timing.durationMs, delay, easing: timing.easing, fill: "backwards" });
-            revealAnimsRef.current.push(a1, a2);
-            a1.onfinish = () => a1.cancel();
-            a2.onfinish = () => a2.cancel();
-          });
-
-          const labelGroups = [gridLabelsGroup, angleLabelsGroup].filter(Boolean) as HTMLElement[];
-          labelGroups.forEach((g, gi) => {
-            const baseDelay = 5 * gridStaggerMs * 0.5;
-            const texts = g.querySelectorAll<SVGTextElement>("text");
-            texts.forEach((t, i) => {
-              const delay = baseDelay + i * (gi === 0 ? 60 : 80) * staggerScale * durationFactor;
-              const kf = buildRadarProgressKeyframes(timing, (p) => ({ opacity: String(p) } as unknown as Keyframe));
-              const anim = t.animate(kf, { duration: timing.durationMs * 0.5, delay, easing: timing.easing, fill: "backwards" });
-              revealAnimsRef.current.push(anim);
-              anim.onfinish = () => anim.cancel();
-            });
-          });
-
-          // RD6 — bklit radar-labels.tsx springs each metric label outward
-          // from the chart center: motion x/y from 0 → target with spring
-          // stiffness 80 / damping 15 / mass 1 and NO delay (the 0.5s fade
-          // is delayed; the spring is not), while angleGrid places labels
-          // statically at x/y attributes. The group is translated to the
-          // polar center, so `translate(-(1-p)*x, -(1-p)*y)` reproduces the
-          // legacy arc exactly. Sampled via the shared closed-form spring
-          // sampler (WAAPI can't integrate spring physics natively).
-          if (angleLabelsGroup) {
-            const springProgress = sampleSpringProgress(80, 15, 1, labelSpringSettleMs, 40);
-            const labelEls = Array.from(angleLabelsGroup.querySelectorAll<SVGTextElement>("text"));
-            const targets = labelEls.map((t) => ({
-              x: parseFloat(t.getAttribute("x") ?? "NaN"),
-              y: parseFloat(t.getAttribute("y") ?? "NaN"),
-            }));
-            labelEls.forEach((t, i) => {
-              const { x, y } = targets[i]!;
-              if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-              const kfs = springProgress.map((p) =>
-                ({ transform: `translate(${-(1 - p) * x}px, ${-(1 - p) * y}px)` } as unknown as Keyframe),
-              );
-              const anim = t.animate(kfs, {
-                duration: labelSpringSettleMs,
-                delay: 0,
-                easing: "linear",
-                fill: "backwards",
-              });
-              revealAnimsRef.current.push(anim);
-              anim.onfinish = () => {
-                anim.cancel();
-                t.style.transform = "";
-              };
-            });
-          }
-        }
+        const liveMarksGroup = container.querySelector<SVGGElement>(MARKS_GROUP_SELECTOR);
+        if (!liveMarksGroup) {return;}
+        clearRadarRevealStyles(liveMarksGroup);
+        const { gridLabelsGroup, angleLabelsGroup } = findRadarLabelGroups(liveMarksGroup, container);
+        revealRadarRings({ gridStaggerMs: setup.gridStaggerMs, liveMarksGroup, revealAnims: revealAnimsRef.current, timing: setup.timing });
+        revealRadarSpokes({ liveMarksGroup, revealAnims: revealAnimsRef.current, spokeStaggerMs: SPOKE_STAGGER_MS * setup.renderStaggerScale * setup.durationFactor, timing: setup.timing });
+        revealRadarLabels({ angleLabelsGroup, durationFactor: setup.durationFactor, gridLabelsGroup, gridStaggerMs: setup.gridStaggerMs, renderStaggerScale: setup.renderStaggerScale, revealAnims: revealAnimsRef.current, timing: setup.timing });
+        revealRadarLabelSprings({ angleLabelsGroup, labelSpringSettleMs: setup.labelSpringSettleMs, revealAnims: revealAnimsRef.current });
 
         liveMarksGroup.classList.remove("ts-chart__marks--revealing");
       });
     },
-    [],
+    [animate, enterDurationMs, enterTransition, levels, staggerScale],
   );
 
-  // Hover-state detection only: sets `hoveredIndex` from element-level
-  // pointer events. Dim/pop styling is no longer applied here — it is
-  // expressed reactively through the `radialArea`/`radialDot` channels in
-  // the `definition` useMemo above, which recomputes when `hoveredIndex`
-  // changes (React re-renders the chart with the new per-datum fill/stroke/r
-  // values). This effect only needs to re-run when the set of elements to
-  // listen on changes (data shape), not on every hover.
-  React.useLayoutEffect(() => {
+  React.useLayoutEffect((): (() => void) | undefined => {
     const container = containerRef.current;
-    if (!container) return;
+    if (!container) {return undefined;}
+    // With no series there are no hover targets, so there is nothing to bind.
+    if (areaCount === 0) {return undefined;}
 
     const areaEls = container.querySelectorAll<SVGPathElement>(".ts-chart__radial-area path");
     const dotEls = container.querySelectorAll<SVGCircleElement>(".ts-chart__radial-dot circle");
-    const areaArr = Array.from(areaEls);
-    const dotArr = Array.from(dotEls);
 
     const cleanups: (() => void)[] = [];
 
-    // C6: the pre-native reveal used to suppress hover while an area's `d`
-    // WAS the campaign's own WAAPI-owned attribute (`pendingRevealRef`,
-    // two-writer hazard). Native's enter motion now controls ONLY opacity
-    // (the C1-C5 "enter is opacity-only" precedent, see radar-reveal.ts) —
-    // hover writes fill/stroke/r, a disjoint attribute set, so there is no
-    // second writer left to race. No guard needed.
-    for (let i = 0; i < areaArr.length; i++) {
-      const path = areaArr[i];
-      if (!path) continue;
-      const idx = i;
-      path.style.cursor = "pointer";
-      const enter = () => {
-        setHoveredIndex(idx);
-      };
-      const leave = () => {
-        setHoveredIndex((prev: number | null) => (prev === idx ? null : prev));
-      };
-      path.addEventListener("pointerenter", enter);
-      path.addEventListener("pointerleave", leave);
-      cleanups.push(() => {
-        path.removeEventListener("pointerenter", enter);
-        path.removeEventListener("pointerleave", leave);
-      });
-    }
+    // Enter owns opacity only, hover owns fill/stroke/r: disjoint sets, no two-writer race.
+    bindRadarAreaHovers(areaEls, setHoveredIndex, cleanups);
+    bindRadarDotHovers({ cleanups, dotEls, metricKeysLength: metricKeys.length, setHoveredIndex });
 
-    for (let i = 0; i < dotArr.length; i++) {
-      const circle = dotArr[i];
-      if (!circle) continue;
-      const seriesIdx = Math.floor(i / Math.max(1, hoverInputsRef.current.metricKeysLength));
-      circle.style.cursor = "pointer";
-      const enter = () => {
-        setHoveredIndex(seriesIdx);
-      };
-      const leave = () => {
-        setHoveredIndex((prev: number | null) => (prev === seriesIdx ? null : prev));
-      };
-      circle.addEventListener("pointerenter", enter);
-      circle.addEventListener("pointerleave", leave);
-      cleanups.push(() => {
-        circle.removeEventListener("pointerenter", enter);
-        circle.removeEventListener("pointerleave", leave);
-      });
-    }
-
-    return () => {
-      for (const fn of cleanups) fn();
+    return (): void => {
+      runRadarHoverCleanups(cleanups);
     };
-  }, [resolvedAreas.length, metricKeys, setHoveredIndex]);
+  }, [areaCount, metricKeys, setHoveredIndex]);
 
   React.useEffect(() => {
     const revealAnims = revealAnimsRef.current;
     isMountedRef.current = true;
-    return () => {
+    return (): void => {
       isMountedRef.current = false;
       setTimeout(() => {
-        if (isMountedRef.current) return;
+        if (isMountedRef.current) {return;}
         if (revealDeadlineTimerRef.current !== null) {
-          window.clearTimeout(revealDeadlineTimerRef.current);
+          globalThis.clearTimeout(revealDeadlineTimerRef.current);
           revealDeadlineTimerRef.current = null;
         }
         revealPostPaintCancelRef.current?.();
         revealPostPaintCancelRef.current = null;
-        for (const anim of revealAnims) {
-          try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
-        }
+        cancelRadarAnims(revealAnims);
         revealAnimsRef.current = [];
       }, 0);
     };
   }, []);
 
-  // Keep component TanStack-native: no imperative pre-paint hide here.
-  // Flicker is handled inside handleRender → onPostPaint with fill:backwards WAAPI (zero wrappers).
-  // Left intentionally minimal.
 
-  React.useLayoutEffect(() => {
-    if (gridRevealedRef.current) return;
-    if (!animateRef.current) return;
+  React.useLayoutEffect((): (() => void) | undefined => {
+    if (gridRevealedRef.current) {return undefined;}
+    if (!animate) {return undefined;}
     const container = containerRef.current;
-    if (!container) return;
+    if (!container) {return undefined;}
     const raf = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        if (gridRevealedRef.current) return;
-        if (!container.querySelector(".ts-chart__marks")) return;
-        if (hasLiveRevealAnims(container)) return;
+        if (gridRevealedRef.current) {return;}
+        if (!container.querySelector(MARKS_GROUP_SELECTOR)) {return;}
+        if (hasLiveRevealAnims(container)) {return;}
         handleRender({ container });
       });
     });
-    return () => cancelAnimationFrame(raf);
-  }, [handleRender]);
+    return (): void =>{  cancelAnimationFrame(raf); };
+  }, [animate, handleRender]);
 
-  // bklit `motionReplayKey` parity: in bklit it is spliced into the grid /
-  // level-label / area `key`s and `useMountProgress(...)`'s replay token, so
-  // changing it REMOUNTS those elements and re-runs the whole enter reveal.
-  // C6: the AREA/DOT half of that replay is native now — `motionReplayKey` IS
-  // wired into the mark keys (via `allRows`' `replayGroup` field, folded into
-  // `radialArea`/`radialDot`'s own `z` grouping identity, above), mirroring
-  // sunburst's playKey-embedded-key precedent (C5): a bump makes every
-  // area/dot group's key "new", so native's own keyed diff replays the whole
-  // staggered campaign on its own — no imperative re-drive needed for that
-  // half. This effect's remaining job is the KEPT grid/spoke/label WAAPI
-  // reveal below, which has no mark key to hang a replay off (PolarGuide
-  // scene nodes, not marks) and so still needs an explicit reset + re-run.
-  // Skipped entirely while `animate={false}` (bklit renders static).
-  React.useLayoutEffect(() => {
-    if (!animateRef.current) return;
-    if (prevMotionReplayKeyRef.current === motionReplayKey) return;
-    prevMotionReplayKeyRef.current = motionReplayKey;
-    for (const anim of revealAnimsRef.current) {
-      try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
-    }
-    revealAnimsRef.current = [];
-    gridRevealedRef.current = false;
+  // MotionReplayKey remounts grid/labels (WAAPI half); the area/dot half replays natively via keys.
+  React.useLayoutEffect((): (() => void) | undefined => {
+    if (!animate || prevMotionReplayKeyRef.current === motionReplayKey) {return undefined;}
+    resetRadarReplay(motionReplayKey, { gridRevealedRef, prevMotionReplayKeyRef, revealAnimsRef });
     const container = containerRef.current;
-    if (!container) return;
-    const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (!animateRef.current) return;
-        if (!container.querySelector(".ts-chart__marks")) return;
-        if (hasLiveRevealAnims(container)) return;
-        handleRender({ container });
-      });
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [motionReplayKey, handleRender]);
+    if (!container) {return undefined;}
+    return scheduleRadarReveal(container, (): boolean => animate && container.querySelector(MARKS_GROUP_SELECTOR) !== null && !hasLiveRevealAnims(container), handleRender);
+  }, [animate, motionReplayKey, handleRender]);
 
   return (
     <div
       ref={containerRef}
       className={className}
       style={{
-        position: "relative",
-        display: "flex",
         alignItems: "center",
+        display: "flex",
         justifyContent: "center",
-        ...(fixedSize
-          ? { width: fixedSize, height: fixedSize }
-          : { width: "100%", aspectRatio: "1 / 1" }),
+        position: "relative",
+        ...((fixedSize ?? 0) === 0
+          ? { aspectRatio: "1 / 1", width: "100%" }
+          : { height: fixedSize, width: fixedSize }),
         ...style,
       }}
       data-bkm-chart="radar"
     >
-      {definition ? (
+      {definition && (
         <RendererChart
           ariaLabel="Radar chart"
           width={chartSize}
@@ -993,10 +1049,27 @@ export function RadarChart({
           renderer={chartMotionRenderer<RadarRow, string, number>()}
           onRender={handleRender}
         />
-      ) : null}
+      )}
     </div>
   );
 }
 
-// Legacy parity: bklit `radar-chart.tsx` ships `export default RadarChart;` (T-E2).
+export {
+  DEFAULT_RADAR_COLORS,
+  RadarArea,
+  RadarAxis,
+  RadarChart,
+  RadarGrid,
+  RadarLabels,
+};
+export type {
+  RadarAreaProps,
+  RadarAxisProps,
+  RadarChartProps,
+  RadarData,
+  RadarEnterTransition,
+  RadarGridProps,
+  RadarLabelsProps,
+  RadarMetric,
+};
 export default RadarChart;

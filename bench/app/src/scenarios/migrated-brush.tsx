@@ -1,11 +1,4 @@
-// Migrated brush scenario — IDENTICAL composition to bklit-brush.tsx (same
-// tree, same props, same seeded data), only the import source and the two
-// layout component names change (bklit ChartBrushLayout → migrated
-// BrushLayout; ChartBrush keeps its name). This is the point: the migrated
-// brush must be a drop-in for the bklit docs-demo composition
-// (repos/bklit-ui/apps/web/components/docs/line-chart-brush-demo.tsx).
-// See bklit-brush.tsx for the full scenario contract (__qaSetBrush hook,
-// settle, live/update ticks) — mirrored here line-for-line.
+// Drop-in twin of bklit-brush.tsx (BrushLayout renamed); contract mirrored line-for-line.
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BrushLayout,
@@ -25,7 +18,6 @@ import { armBklitSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveRow } from "../bench/live";
 
-// repos/bklit-ui/apps/web/components/docs/line-chart-brush-demo.tsx:25
 const brushStripMargin = { top: 4, right: 40, bottom: 4, left: 40 };
 
 type QaSetBrush = (startFrac: number | null, endFrac?: number) => void;
@@ -75,7 +67,7 @@ export default function MigratedBrush({ n, state }: { n: number; state?: "ready"
   }, [n]);
 
   return (
-    // demo:28 gives the layout a definite height — see bklit-brush.tsx.
+    // GUARD: layout needs a definite height.
     <div style={{ height: 360, minHeight: 0 }}>
       <BrushLayout
         brushStrip={(brushLayout) => {

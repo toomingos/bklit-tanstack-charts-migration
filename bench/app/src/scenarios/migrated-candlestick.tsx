@@ -1,7 +1,4 @@
-// Migrated CandlestickChart scenario — IDENTICAL usage to
-// bklit-candlestick.tsx (same component tree, same props, same
-// armBklitTimerSettle(1100) settle mechanism since CandlestickChart exposes
-// no onPhaseChange/status here either), only the import source changes.
+// Drop-in twin of bklit-candlestick.tsx; import source only (flat-timer settle, no phases).
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CandlestickChart,
@@ -20,11 +17,6 @@ import { armBklitTimerSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveCandle } from "../bench/live";
 
-// Mirrors bklit-candlestick.tsx exactly: CandlestickChart has no
-// onPhaseChange/status prop (verified directly in
-// repos/bklit-ui/packages/ui/src/charts/candlestick-chart.tsx) and this
-// migrated component intentionally doesn't add one either (parity) — so the
-// same flat-timer settle mechanism is required here too.
 const CANDLESTICK_ANIMATION_DURATION_MS = 1100;
 
 export default function MigratedCandlestick({ n }: { n: number }) {

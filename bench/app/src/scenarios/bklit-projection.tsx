@@ -1,7 +1,4 @@
-// ProjectionLine + LineSeriesTerminalMarker visual-parity scenario
-// (initiative 7 Q1 gate) — the bklit-line tree plus an auto-mode gradient
-// bezier projection with terminal + end markers, projection path rebuilt
-// from the live data each update so update/live scenarios stay coherent.
+// Line tree plus auto-mode gradient projection + terminal/end markers; path rebuilt per update.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import {

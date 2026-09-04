@@ -1,25 +1,8 @@
 #!/usr/bin/env node
-// Reach-in guard (Phase 6, D418 / 6.5 gate).
-//
-// Greps `showcase/migrated/**/*.{ts,tsx}` for JS/TS that addresses the
-// @tanstack/charts renderer DOM — the census patterns from
-// research/phase-6/08-reach-in-census.md:
-//   querySelector(All)?(  ·  ts-chart__ / ts-sankey__ literals  ·  data-ts-key
-//   · elementMap (the pie-hover-chrome route the census flagged as grep-invisible)
-// Comments are stripped before matching; `className:` role opt-ins on authored
-// scene nodes are excluded (see isRoleOptIn, D467); styles.css is a sanctioned CSS surface
-// and is out of scope by construction (only .ts/.tsx are scanned).
-//
-// The ledger (scripts/reach-in-ledger.json) is a RATCHET, not an allowlist:
-// every file with surviving sites is named with its pinned maximum and the
-// D-entry that accepted it. The guard fails when
-//   (a) any file NOT in the ledger has a hit, or
-//   (b) a ledgered file exceeds its pinned maximum.
-// A ledgered file that drops below its pin is reported so the pin can be
-// lowered (do it in the same commit). Raising a pin or adding a file requires
-// a new D-entry in docs/phase-6/LOG.md — there is no --update flag on purpose.
-//
-// Usage:  node scripts/reach-in-guard.mjs [--report] [--json]
+// Reach-in guard: greps showcase/migrated/**/*.ts(x) for renderer-DOM reach-ins (querySelector, ts-chart__/ts-sankey__, data-ts-key, elementMap).
+// Comments are stripped before matching; className role opt-ins and styles.css are out of scope by construction.
+// GUARD: the ledger is a RATCHET (pinned max + ruling per file); unlisted hits or over-pin fail, under-pin lowers the pin.
+// Raising a pin or adding a file needs a D-entry; no --update flag by design. Usage: node scripts/reach-in-guard.mjs [--report] [--json]
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,8 +28,7 @@ function walk(dir, out = []) {
   return out;
 }
 
-// Comment stripper that respects string / template literals so `//` inside a
-// string (e.g. a URL) survives and `/* */` inside a string is not eaten.
+// Stripping respects string/template literals so // or /* */ inside strings (e.g. URLs) survive.
 function stripComments(src) {
   let out = "";
   let i = 0;
@@ -61,8 +43,7 @@ function stripComments(src) {
     if (c === "/" && next === "*") {
       const end = src.indexOf("*/", i + 2);
       const stop = end === -1 ? n : end + 2;
-      // keep newlines so line numbers stay stable
-      out += src.slice(i, stop).replace(/[^\n]/g, "");
+      out += src.slice(i, stop).replace(/[^\n]/g, ""); // keep newlines so line numbers stay stable
       i = stop;
       continue;
     }
@@ -94,11 +75,7 @@ function stripComments(src) {
   return out;
 }
 
-// A `className: "ts-chart__bar-y"` on an authored scene node is NOT a DOM
-// reach-in: native motion resolves choreography roles by class substring
-// (dist/motion.js markMotionRole: includes("ts-chart__bar") etc.), so the
-// class is the library's own role-opt-in contract (D467). Only lines that
-// also query the DOM keep counting.
+// className ts-chart__* without a querySelector is the native-motion role-opt-in contract, not a reach-in.
 function isRoleOptIn(line) {
   return /className\s*[:=(]/.test(line) && !/querySelector/.test(line);
 }

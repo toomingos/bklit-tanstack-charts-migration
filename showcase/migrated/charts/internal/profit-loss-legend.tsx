@@ -1,40 +1,41 @@
 "use client";
 
+import type { ReactElement } from "react";
 import { cn } from "@/lib/utils";
-import { Legend, LegendItem, LegendLabel, LegendMarker } from "./legend";
+import { Legend } from "./legend";
+import { ProfitLossLegendTemplate } from "./profit-loss-legend-template";
 import {
   PROFIT_LOSS_NEGATIVE_COLOR,
   PROFIT_LOSS_POSITIVE_COLOR,
 } from "./profit-loss-config";
 
-export const PROFIT_LOSS_LEGEND_ITEMS = [
-  { label: "Profit", value: 0, color: PROFIT_LOSS_POSITIVE_COLOR },
-  { label: "Loss", value: 0, color: PROFIT_LOSS_NEGATIVE_COLOR },
+const PROFIT_LOSS_LEGEND_ITEMS = [
+  { color: PROFIT_LOSS_POSITIVE_COLOR, label: "Profit", value: 0 },
+  { color: PROFIT_LOSS_NEGATIVE_COLOR, label: "Loss", value: 0 },
 ] as const;
 
-export interface ProfitLossLegendProps {
+interface ProfitLossLegendProps {
   hoveredIndex?: number | null;
   onHoverChange?: (index: number | null) => void;
   align?: "start" | "center" | "end";
   className?: string;
 }
 
-const LEGEND_ALIGN_CLASSES: Record<
-  NonNullable<ProfitLossLegendProps["align"]>,
-  string
-> = {
-  start: "justify-start",
+const LEGEND_ALIGN_CLASSES = {
   center: "justify-center",
   end: "justify-end",
-};
+  start: "justify-start",
+} as const satisfies Record<
+  NonNullable<ProfitLossLegendProps["align"]>,
+  string
+>;
 
-export function ProfitLossLegend({
+const ProfitLossLegend = ({
   hoveredIndex = null,
   onHoverChange,
   align = "start",
   className,
-}: ProfitLossLegendProps) {
-  return (
+}: Readonly<ProfitLossLegendProps>): ReactElement => (
     <div
       className={cn(
         "flex w-full shrink-0 px-1 py-2",
@@ -48,11 +49,11 @@ export function ProfitLossLegend({
         items={[...PROFIT_LOSS_LEGEND_ITEMS]}
         onHoverChange={onHoverChange}
       >
-        <LegendItem className="flex items-center gap-2">
-          <LegendMarker className="h-2.5 w-2.5" />
-          <LegendLabel className="text-xs" />
-        </LegendItem>
+        <ProfitLossLegendTemplate />
       </Legend>
     </div>
   );
-}
+
+export type { ProfitLossLegendProps };
+export { PROFIT_LOSS_LEGEND_ITEMS, ProfitLossLegend };
+

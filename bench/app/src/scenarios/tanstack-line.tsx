@@ -1,7 +1,4 @@
-// Native TanStack Charts equivalent of bklit's line-chart.tsx demo, expressed
-// via `defineChart` + `lineY` per research/02-tanstack-charts-inventory.md.
-// Default/unstyled TanStack theming only (see docs/LOG.md) -- this is the
-// performance-ceiling reference, not a bklit-styled clone.
+// Ceiling reference: defineChart + lineY; default TanStack theming.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { curveNatural } from "d3-shape";

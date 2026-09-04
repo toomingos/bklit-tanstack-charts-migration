@@ -1,54 +1,8 @@
 #!/usr/bin/env node
-// qa/zoom-gate.mjs — choropleth zoom/pan verification gate.
-//
-// qa/screenshot.mjs's 4 probes (settled + hover@30/50/70%) never touch
-// zoom: it never calls page.mouse.wheel, never does a drag (mouse.down /
-// mouse.up), and has no choropleth-specific branch at all -- every probe
-// therefore captures the map at its default (identity) transform. A
-// completely broken zoom/pan engine would still report 0.0000% differing
-// pixels there. This verification gap is already acknowledged in
-// docs/phase-5/LOG.md D365 and research/phase-5/02-visx-removal.md:73 (the
-// choropleth's zoom/pan is currently @visx/zoom and is slated to be
-// replaced by a hand-rolled engine).
-//
-// This script closes that gap for the choropleth chart ONLY: it drives
-// BOTH implementations' zoom transform deterministically via
-// window.__benchZoomTo(state) -- exposed by bench/app/src/scenarios/
-// bklit-choropleth.tsx:180 and migrated-choropleth.tsx:78 (ZoomQaBridge),
-// NOT via real pointer wheel/drag emulation -- for three named states:
-//   - "reset"  -- identity transform (zoom.reset()).
-//   - "zoomed" -- 2x scale anchored at the SVG's own center point.
-//   - "panned" -- 1.6x scale anchored at the (30%, 30%) point, so the
-//     result is both scaled AND visibly off-center vs "zoomed", which is
-//     what actually distinguishes a pure-zoom capture from a pan capture.
-// See bklit-choropleth.tsx's header comment (~line 74) for the full
-// transform math and the "why setTransformMatrix, not .scale()/.translate()"
-// rationale; migrated-choropleth.tsx reproduces it verbatim.
-//
-// setTransformMatrix is an ABSOLUTE assignment (unlike .scale()/.translate(),
-// which compose relative to whatever transform is already applied), so per
-// bklit-choropleth.tsx's own comment, calling __benchZoomTo("zoomed") twice
-// in a row -- or after "panned" -- always lands on the exact same matrix.
-// This script still does exactly ONE fresh page load per (impl, state) pair
-// regardless of that idempotency, mirroring qa/screenshot.mjs's per-capture
-// browser-context isolation (captureLoad opens a fresh context per load).
-//
-// Diffing is NOT reimplemented: pixelmatch invocation, threshold (0.1,
-// includeAA:false), and the diffRatio shape all come from
-// qa/screenshot.mjs's exported `compareBuffers`, so this gate's numbers are
-// directly comparable to the main gate's.
-//
-// Gate: same 0.5% differing-pixels threshold as qa/screenshot.mjs's real
-// (non-self-test) compare gate.
-//
-// Usage:
-//   node qa/zoom-gate.mjs [--n 1000] [--impl-a bklit] [--impl-b migrated] [--base-url <url>]
-//
-// Env: QA_PORT=<port> overrides :5198 -- the SAME port qa/screenshot.mjs
-// uses (this is the same bench-app vite-preview server, just driven
-// post-load rather than re-launched; bench/app itself runs on 5199 and
-// showcase on 5200, neither of which this script touches).
-// QA_SKIP_REBUILD=1 skips the stale-build check (mirrors qa/screenshot.mjs).
+// Choropleth zoom/pan gate: screenshot.mjs never drives zoom (identity transform only), so this drives
+// window.__benchZoomTo through reset/zoomed/panned and diffs via screenshot.mjs compareBuffers (gate 0.5%).
+// Usage: node qa/zoom-gate.mjs [--n 1000] [--impl-a bklit] [--impl-b migrated] [--base-url <url>]
+// Env QA_PORT (default 5198; bench/app is 5199, showcase 5200); QA_SKIP_REBUILD=1 mirrors screenshot.mjs.
 
 import { chromium } from "playwright";
 import { writeFileSync, mkdirSync, rmdirSync, existsSync, readdirSync, statSync } from "node:fs";
@@ -56,37 +10,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
-// ---------------------------------------------------------------------- //
-// Reusing qa/screenshot.mjs's compareBuffers WITHOUT modifying it
-// ---------------------------------------------------------------------- //
-//
-// screenshot.mjs cannot be `import`ed the normal way from another script:
-// it has NO `import.meta.url === ...`-style entrypoint guard (verified --
-// grepped the whole file), so its module body unconditionally calls
-// `main()` at the top level, and `main()` synchronously calls
-// `process.exit(1)` the instant it sees argv without --chart/--charts (its
-// very first check, before any `await`). A plain
-// `import { compareBuffers } from "./screenshot.mjs"` at the top of this
-// file was tried first and confirmed to kill the whole process immediately
-// -- `node qa/zoom-gate.mjs` just printed screenshot.mjs's own usage text
-// and exited, before a single line of this script ran.
-//
-// `loadCompareBuffers()` below gets the REAL, unmodified `compareBuffers`
-// out of screenshot.mjs via a dynamic import, while making that import
-// side-effect-free: `process.argv` is temporarily pointed at an
-// args-free argv (so screenshot.mjs's own parseArgs reliably takes the
-// "missing --chart" branch regardless of whatever flags THIS script was
-// invoked with), and `process.exit` is temporarily replaced with a stub
-// that throws once (aborting main()'s synchronous execution at that very
-// first exit() call, before it ever reaches ensureServer/browser/network
-// work) and silently swallows the second call (screenshot.mjs's own
-// `main().catch(err => { ...; process.exit(1); })` handler catching that
-// thrown sentinel and calling exit again) so nothing becomes an unhandled
-// rejection. Both are restored immediately after. Verified in isolation:
-// after this, screenshot.mjs's main() never reaches any of its real work
-// (no server, no browser, no file writes) -- only compareBuffers is
-// extracted, and it is byte-for-byte the same function screenshot.mjs
-// itself calls.
+// screenshot.mjs has no entrypoint guard (import auto-runs main() + process.exit); dynamic import with
+// argv/exit stubbed extracts the real compareBuffers unmodified.
 async function loadCompareBuffers() {
   const originalArgv = process.argv;
   process.argv = [originalArgv[0], originalArgv[1]];
@@ -97,9 +22,7 @@ async function loadCompareBuffers() {
     if (exitCalls === 1) {
       throw new Error("[qa-zoom] neutralized screenshot.mjs's auto-run main() (expected, see loadCompareBuffers)");
     }
-    // Second+ call is screenshot.mjs's own `main().catch()` handler
-    // reacting to the thrown sentinel above -- swallow it so it doesn't
-    // become an unhandled rejection.
+    // Second+ call is screenshot.mjs's own main().catch() reacting to the sentinel above; swallow it.
   };
   try {
     const mod = await import("./screenshot.mjs");
@@ -120,11 +43,7 @@ const BASE_URL = `http://localhost:${PORT}`;
 const VIEWPORT = { width: 1200, height: 800 };
 const DEVICE_SCALE_FACTOR = 1;
 const CHART = "choropleth";
-// Choropleth's `n` is nominal (bklit-choropleth.tsx D34 note: the map's
-// geometry is FIXED at ~177 vendored-asset features; `n` only seeds the
-// per-country color/value map), so any n is equally valid for a zoom
-// capture -- default matches qa/screenshot.mjs's DEFAULT_N and the value
-// this chart has historically been probed with (see qa/results/choropleth).
+// Choropleth n is nominal (fixed ~177-feature geometry; n only seeds colors), so any n works; 1000 matches screenshot.mjs.
 const DEFAULT_N = 1000;
 const DEFAULT_IMPL_A = "bklit";
 const DEFAULT_IMPL_B = "migrated";
@@ -132,31 +51,15 @@ const COMPARE_GATE = 0.005; // 0.5%, same as qa/screenshot.mjs's COMPARE_GATE
 
 const ZOOM_STATES = ["reset", "zoomed", "panned"];
 
-// The <g> that receives the zoom transform carries `transition: transform
-// 0.18s ease-out` on BOTH implementations whenever zoom.isDragging is false
-// (repos/bklit-ui/packages/ui/src/charts/choropleth/choropleth-chart.tsx:227;
-// showcase/migrated/charts/choropleth-chart.tsx:536) -- __benchZoomTo never
-// sets isDragging, so that branch always applies. Settle is detected with a
-// real `transitionend` event (filtered to propertyName "transform") bubbled
-// up to `window`, NOT a guessed fixed wait, wherever a transition actually
-// starts. The one case a transitionend can never fire is the FIRST "reset"
-// call against a freshly mounted chart: it is already at the identity
-// transform, so setTransformMatrix() there is a no-op and no transition is
-// triggered at all. ZOOM_SETTLE_TIMEOUT_MS is the fallback for exactly that
-// case -- set well above 0.18s (~2.8x) so it is never the limiting factor
-// when a real transform change (and thus a real transitionend) occurs.
+// GUARD: zoom <g> carries a 0.18s transform transition; settle via transitionend on transform, with a
+// 500ms fallback for the no-op first reset (never fires transitionend); +100ms paint margin mirrors screenshot.mjs.
 const ZOOM_SETTLE_TIMEOUT_MS = 500;
-// Small paint/compositing margin applied after settle is detected/assumed,
-// mirroring qa/screenshot.mjs's 200ms margin after __benchSettled resolves.
+// Small paint/compositing margin after settle (mirrors screenshot.mjs's 200ms margin after __benchSettled).
 const ZOOM_PAINT_MARGIN_MS = 100;
 
 function sceneUrl(baseUrl, { impl, chart, n }) {
   return `${baseUrl}/?impl=${impl}&chart=${chart}&n=${n}`;
 }
-
-// ---------------------------------------------------------------------- //
-// Capture: load the scenario fresh, settle, drive to one zoom state, shoot
-// ---------------------------------------------------------------------- //
 
 async function captureZoomState(browser, baseUrl, { impl, n, state }) {
   const context = await browser.newContext({
@@ -167,8 +70,6 @@ async function captureZoomState(browser, baseUrl, { impl, n, state }) {
   await page.goto(sceneUrl(baseUrl, { impl, chart: CHART, n }), { waitUntil: "commit" });
   await page.waitForFunction(() => window.__benchPaintDone === true, { timeout: 30000 });
   await page.evaluate(() => window.__benchSettled);
-  // Mirrors qa/screenshot.mjs captureLoad's post-__benchSettled margin for
-  // any final paint/compositing to land before we touch zoom state.
   await page.waitForTimeout(200);
 
   const hasHook = await page.evaluate(() => typeof window.__benchZoomTo === "function");
@@ -207,10 +108,6 @@ async function captureZoomState(browser, baseUrl, { impl, n, state }) {
   return { buffer, settleMethod };
 }
 
-// ---------------------------------------------------------------------- //
-// Run all 3 states, diff each (implA, implB) pair, write report + PNGs
-// ---------------------------------------------------------------------- //
-
 async function runZoomGate(browser, baseUrl, { n, implA, implB, compareBuffers }) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outDir = path.join(RESULTS_DIR, `${CHART}-zoom`, timestamp);
@@ -239,9 +136,6 @@ async function runZoomGate(browser, baseUrl, { n, implA, implB, compareBuffers }
   }
 
   const overallPass = comparisons.every((c) => c.pass);
-  // Same shape as qa/screenshot.mjs's report.json (chart/n/mode/implA/implB/
-  // timestamp/gate/viewport/comparisons/overallPass) plus a `states` field,
-  // so tooling written against the main gate's report can read either.
   const report = {
     chart: CHART,
     n,
@@ -259,16 +153,7 @@ async function runZoomGate(browser, baseUrl, { n, implA, implB, compareBuffers }
   return { report, outDir };
 }
 
-// ---------------------------------------------------------------------- //
-// Server bootstrap -- mirrors qa/screenshot.mjs's ensureServer /
-// rebuildIfStale / waitForServer / newestSourceMtimeMs. screenshot.mjs only
-// exports `compareBuffers`, so this bootstrap logic is duplicated here
-// rather than imported (screenshot.mjs itself is not modified). Uses the
-// SAME build-lock directory (APP_DIR/.build-lock) so a concurrent
-// `qa/screenshot.mjs` build is serialized against this one rather than
-// racing it.
-// ---------------------------------------------------------------------- //
-
+// Server bootstrap mirrors screenshot.mjs (same APP_DIR/.build-lock dir so concurrent builds serialize).
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: "inherit", ...opts });
@@ -392,10 +277,6 @@ async function ensureServer(baseUrl) {
   console.log(`[qa-zoom] server ready at ${baseUrl}`);
   return { stop: async () => child.kill() };
 }
-
-// ---------------------------------------------------------------------- //
-// CLI
-// ---------------------------------------------------------------------- //
 
 function parseArgs(argv) {
   const args = {};

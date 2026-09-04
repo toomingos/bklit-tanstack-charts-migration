@@ -1,21 +1,9 @@
-// Bench gate driver — wraps the protected bench/run.mjs.
-//
+// Bench gate driver (wraps protected bench/run.mjs). Boots one vite preview on :5199, builds dist once.
 //   pnpm gate:bench [-- --cells paired|all|subset|<impl/chart/n,...> --no-build --run-dir <dir>]
-//
-//   paired  (default) the 10 exclusive paired cells of BASELINE §3b
-//                     (bklit control + migrated for line/1000, area/1000,
-//                     composed/1000, bar/100, scatter/1000) — one harness
-//                     process per cell, so `bench/results/latest.json` is
-//                     re-read after every process (the harness overwrites it
-//                     with only the last invocation).
-//   all               the harness's own `--all` 24-cell matrix (bklit+tanstack)
-//                     PLUS the 5 migrated cells (migrated is not in --all).
-//   subset            2 cells (migrated/line/1000, migrated/bar/100) for a
-//                     budget-limited smoke.
-//
-// Boots ONE vite preview on :5199 and passes --base-url; builds dist once.
-// Output: bench.json + bench.md (each metric vs qa/gate/bench-baseline.json,
-// % delta, D273 ±20% flag on M1b/M1c/M3a; M1a informational/VOID).
+//   paired (default): 10 exclusive paired cells of BASELINE §3b; one harness process per cell, re-reading
+//     bench/results/latest.json after each (the harness overwrites it with only the last invocation).
+//   all: the harness's own --all 24-cell matrix (bklit+tanstack) PLUS the 5 migrated cells. subset: 2-cell smoke.
+// Output: bench.json + bench.md vs qa/gate/bench-baseline.json (% delta, D273 ±20% flag on M1b/M1c/M3a; M1a void).
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -97,16 +85,12 @@ export function compareBench(results, baseline) {
         p95: r.metrics?.[metric]?.p95 != null ? Number(r.metrics[metric].p95.toFixed(2)) : null,
       });
     }
-    // Console-error baseline comes from the baseline cell (legacy bklit/bar at
-    // n>=1000 has emitted ~515k/1.54M negative-<rect>-attribute errors since the
-    // Phase-5 close run — inherited, not a regression); a non-zero baseline flags
-    // only past the D273 tolerance (counts drift ~0.3 % run to run), zero flags on any error.
+    // GUARD: console-error baseline comes from the baseline cell (legacy bklit/bar at n>=1000 emits ~515k/1.54M
+    // negative-<rect>-attribute errors since Phase-5 close); non-zero baselines flag past D273 tolerance, zero flags on any error.
     const errValue = r.consoleErrorCount ?? r.metrics?.consoleErrorCount ?? null;
     const errBase = base?.consoleErrorCount ?? 0;
     rows.push({ cell: key, impl: r.impl, chart: r.chart, n: r.n, metric: "consoleErrorCount", label: "console errors", value: errValue, baseline: errBase, baselineSource: base ? base.source : null, deltaPct: null, gated: true, flag: errBase > 0 ? (errValue ?? 0) > errBase * (1 + baseline.flagPct / 100) : (errValue ?? 0) > 0, void: false });
-    // Tooltip baseline likewise comes from the baseline cell (legacy bklit/line/1000
-    // has never satisfied the harness's >=3-text-nodes signal in any recorded run
-    // back to 2026-08-23, Phase-5 close included); default true.
+    // GUARD: tooltip baseline comes from the baseline cell (legacy bklit/line/1000 never satisfied the >=3-text-nodes signal); default true.
     const tipBase = base?.m3c_tooltipAppeared ?? true;
     rows.push({ cell: key, impl: r.impl, chart: r.chart, n: r.n, metric: "m3c_tooltipAppeared", label: "tooltip appeared", value: r.metrics?.m3c_tooltipAppeared ?? null, baseline: tipBase, baselineSource: base ? base.source : null, deltaPct: null, gated: true, flag: tipBase === true && r.metrics?.m3c_tooltipAppeared === false, void: false });
   }

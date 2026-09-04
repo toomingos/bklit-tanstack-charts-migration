@@ -1,8 +1,4 @@
-// Q2 API-compatibility fixture (research/05): exercises the migrated
-// SankeyChart's public prop surface. Must typecheck with zero errors via
-// `tsc --noEmit` (included from bench/app/tsconfig.json). Runtime smoke is
-// covered by the bench scenarios (console-errors column in
-// docs/BENCHMARKS.md must be 0).
+// Q2 API fixture: exercises migrated SankeyChart public props; must typecheck (tsc --noEmit).
 import * as React from "react";
 import {
   SankeyChart,
@@ -11,8 +7,7 @@ import {
   SankeyTooltip,
 } from "@migrated/charts";
 
-// VERBATIM registry data (matches SANKEY_REGISTRY_DATA in bench/data.ts —
-// same 5 nodes, 4 links as the n=4 gate fixture).
+// Registry data verbatim (matches SANKEY_REGISTRY_DATA in bench/data.ts, the n=4 gate fixture).
 const registryData = {
   nodes: [
     { name: "Ads" },
@@ -32,7 +27,6 @@ const registryData = {
 export function SankeyChartApiFixture() {
   return (
     <>
-      {/* Canonical registry demo path (matches bklit registry example). */}
       <div id="chart-root" style={{ width: "100%", maxWidth: 768 }}>
         <SankeyChart data={registryData} aspectRatio="16 / 9">
           <SankeyLink />
@@ -41,7 +35,6 @@ export function SankeyChartApiFixture() {
         </SankeyChart>
       </div>
 
-      {/* Full pilot prop surface. */}
       <SankeyChart
         data={registryData}
         aspectRatio="2 / 1"

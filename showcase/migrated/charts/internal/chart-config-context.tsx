@@ -1,46 +1,39 @@
-// bklit chart-config-context.tsx ported verbatim (repos/bklit-ui/packages/
-// ui/src/charts/chart-config-context.tsx). Spring token VALUES come from
-// internal/design-tokens.ts — the same objects, one definition site, no
-// re-inlined literals (research/phase-3/plans/02-sizing-contexts D1).
-
-import { createContext, type ReactNode, useContext, useMemo } from "react";
+import { createContext, useContext, useMemo } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import {
   HIGHLIGHT_SPRING,
   TOOLTIP_BOX_SPRING,
   TOOLTIP_SPRING,
 } from "./design-tokens";
 
-export interface SpringConfig {
-  stiffness: number;
-  damping: number;
+interface SpringConfig {
+  readonly stiffness: number;
+  readonly damping: number;
 }
 
-export interface ChartConfigValue {
-  /** Crosshair indicator, tooltip dot, date pill. */
-  tooltipSpring: SpringConfig;
-  /** Floating tooltip panel. */
-  tooltipBoxSpring: SpringConfig;
-  /** Line/area hover-highlight band (x + width). */
-  highlightSpring: SpringConfig;
+interface ChartConfigValue {
+  readonly tooltipSpring: SpringConfig;
+  readonly tooltipBoxSpring: SpringConfig;
+  readonly highlightSpring: SpringConfig;
 }
 
-export const DEFAULT_CHART_CONFIG: ChartConfigValue = {
-  tooltipSpring: TOOLTIP_SPRING,
-  tooltipBoxSpring: TOOLTIP_BOX_SPRING,
+const DEFAULT_CHART_CONFIG: ChartConfigValue = {
   highlightSpring: HIGHLIGHT_SPRING,
+  tooltipBoxSpring: TOOLTIP_BOX_SPRING,
+  tooltipSpring: TOOLTIP_SPRING,
 };
 
-const ChartConfigContext = createContext<ChartConfigValue | null>(null);
+const ChartConfigContext = createContext<ChartConfigValue | undefined>(undefined);
 
-export interface ChartConfigProviderProps {
-  value?: Partial<ChartConfigValue>;
-  children: ReactNode;
+interface ChartConfigProviderProps {
+  readonly value?: Partial<ChartConfigValue>;
+  readonly children: ReactNode;
 }
 
-export function ChartConfigProvider({
+const ChartConfigProvider = ({
   value,
   children,
-}: ChartConfigProviderProps) {
+}: Readonly<ChartConfigProviderProps>): ReactElement => {
   const merged = useMemo<ChartConfigValue>(
     () => ({
       ...DEFAULT_CHART_CONFIG,
@@ -54,20 +47,30 @@ export function ChartConfigProvider({
       {children}
     </ChartConfigContext.Provider>
   );
-}
+};
 
-export function useChartConfig(): ChartConfigValue {
-  return useContext(ChartConfigContext) ?? DEFAULT_CHART_CONFIG;
-}
+const useChartConfig = (): ChartConfigValue => useContext(ChartConfigContext) ?? DEFAULT_CHART_CONFIG;
+
 
 const DEFAULT_TOOLTIP_BOX_DAMPING =
   DEFAULT_CHART_CONFIG.tooltipBoxSpring.damping;
 
+// Stiffness added when the damping slider goes fully instant (0).
+const TOOLTIP_BOX_STIFFEN_RANGE = 400;
+// Damping slider is a 0-100 percent scale; values above default soften the spring.
+const DAMPING_PERCENT_MAX = 100;
+// Stiffness removed when the damping slider goes fully loose (100).
+const TOOLTIP_BOX_SOFTEN_RANGE = 85;
+// Floor for the resolved tooltip-box stiffness (avoids a floppy/NaN spring).
+const TOOLTIP_BOX_MIN_STIFFNESS = 12;
+
+interface TooltipBoxMotion {
+  readonly animate: boolean;
+  readonly springConfig: SpringConfig;
+}
+
 /** Maps a damping slider to the floating tooltip panel follow spring. `0` = instant. */
-export function resolveTooltipBoxMotion(damping?: number): {
-  animate: boolean;
-  springConfig: SpringConfig;
-} {
+const resolveTooltipBoxMotion = (damping?: number): TooltipBoxMotion => {
   if (damping === 0) {
     return {
       animate: false,
@@ -76,25 +79,28 @@ export function resolveTooltipBoxMotion(damping?: number): {
   }
 
   const effectiveDamping = damping ?? DEFAULT_TOOLTIP_BOX_DAMPING;
-  let stiffness = DEFAULT_CHART_CONFIG.tooltipBoxSpring.stiffness;
+  let {stiffness} = DEFAULT_CHART_CONFIG.tooltipBoxSpring;
 
   if (effectiveDamping < DEFAULT_TOOLTIP_BOX_DAMPING) {
-    const t =
+    const stiffenRatio =
       (DEFAULT_TOOLTIP_BOX_DAMPING - effectiveDamping) /
       DEFAULT_TOOLTIP_BOX_DAMPING;
-    stiffness += t * 400;
+    stiffness += stiffenRatio * TOOLTIP_BOX_STIFFEN_RANGE;
   } else if (effectiveDamping > DEFAULT_TOOLTIP_BOX_DAMPING) {
-    const t =
+    const softenRatio =
       (effectiveDamping - DEFAULT_TOOLTIP_BOX_DAMPING) /
-      (100 - DEFAULT_TOOLTIP_BOX_DAMPING);
-    stiffness -= t * 85;
+      (DAMPING_PERCENT_MAX - DEFAULT_TOOLTIP_BOX_DAMPING);
+    stiffness -= softenRatio * TOOLTIP_BOX_SOFTEN_RANGE;
+  } else {
+    // At the default damping no stiffness adjustment is needed.
   }
 
-  return {
-    animate: true,
-    springConfig: {
-      stiffness: Math.max(12, Math.round(stiffness)),
-      damping: effectiveDamping,
-    },
+  const springConfig: SpringConfig = {
+    damping: effectiveDamping,
+    stiffness: Math.max(TOOLTIP_BOX_MIN_STIFFNESS, Math.round(stiffness)),
   };
+  return { animate: true, springConfig };
 }
+
+export { DEFAULT_CHART_CONFIG, ChartConfigProvider, useChartConfig, resolveTooltipBoxMotion };
+export type { SpringConfig, ChartConfigValue, ChartConfigProviderProps, TooltipBoxMotion };

@@ -1,67 +1,58 @@
 "use client";
 
-// bklit filter-data-by-x-domain.ts + chart-brush-layout.tsx:40-98 — state +
-// layout pure-function + state-owner layer. Ported verbatim (adapt
-// imports/types only) from repos/bklit-ui/packages/ui/src/charts/filter-data-by-x-domain.ts
-// and repos/bklit-ui/packages/ui/src/charts/chart-brush-layout.tsx:47-98.
-// Comment citations refer to the bklit file:line of the original.
+// Brush state + layout (bklit filter-data-by-x-domain + brush-layout port).
 
 import * as React from "react";
+import type { ChartDatum } from "./types";
+import { toDate } from "./coerce-date";
 
-export interface BrushSelection {
-  start: Date;
-  end: Date;
+interface BrushSelection {
+  readonly start: Date;
+  readonly end: Date;
 }
 
-export interface BrushLayoutState {
+interface BrushLayoutState {
   xDomain: [Date, Date] | undefined;
   xDomainSlotCount: number | undefined;
   brushSelection: BrushSelection | null;
   onBrushSelectionChange: (selection: BrushSelection | null) => void;
 }
 
-export interface UseBrushSelectionOptions {
-  data: Record<string, unknown>[];
+interface UseBrushSelectionOptions {
+  data: readonly Readonly<ChartDatum>[];
   xDataKey?: string;
   xExtentMax?: Date;
   enabled: boolean;
 }
 
-export interface UseBrushSelectionResult extends BrushLayoutState {
+interface UseBrushSelectionResult extends BrushLayoutState {
   fullExtent: [Date, Date] | null;
   handleBrushSelectionChange: (selection: BrushSelection | null) => void;
 }
 
-// repos/bklit-ui/packages/ui/src/charts/filter-data-by-x-domain.ts:1-15
-export function filterDataByXDomain(
-  data: Record<string, unknown>[],
-  xDomain: [Date, Date],
-  xAccessor: (d: Record<string, unknown>) => Date,
-): Record<string, unknown>[] {
+// Repos/bklit-ui/packages/ui/src/charts/filter-data-by-x-domain.ts:1-15
+const filterDataByXDomain = (data: readonly Readonly<ChartDatum>[], xDomain: readonly [Date, Date], xAccessor: (row: Readonly<ChartDatum>) => Date): ChartDatum[] => {
   const start = xDomain[0].getTime();
   const end = xDomain[1].getTime();
   const minTime = Math.min(start, end);
   const maxTime = Math.max(start, end);
 
-  // repos/bklit-ui/packages/ui/src/charts/filter-data-by-x-domain.ts:11-14 — inclusive bounds
-  return data.filter((d) => {
-    const time = xAccessor(d).getTime();
+  return data.filter((row) => {
+    const time = xAccessor(row).getTime();
     return time >= minTime && time <= maxTime;
   });
 }
 
-// repos/bklit-ui/packages/ui/src/charts/filter-data-by-x-domain.ts:17-43
-export function resolveDataXExtent(
-  data: Record<string, unknown>[],
-  xAccessor: (d: Record<string, unknown>) => Date,
-): [Date, Date] | null {
-  if (data.length === 0) {
+const toTimeBoundsOrNull = (minTime: number, maxTime: number): { minTime: number; maxTime: number } | null => {
+  if (minTime === Number.POSITIVE_INFINITY) {
     return null;
   }
+  return { maxTime, minTime };
+}
 
+const findDataTimeBounds = (data: readonly Readonly<ChartDatum>[], xAccessor: (row: Readonly<ChartDatum>) => Date): { minTime: number; maxTime: number } | null => {
   let minTime = Number.POSITIVE_INFINITY;
   let maxTime = Number.NEGATIVE_INFINITY;
-
   for (const point of data) {
     const time = xAccessor(point).getTime();
     if (time < minTime) {
@@ -71,20 +62,18 @@ export function resolveDataXExtent(
       maxTime = time;
     }
   }
-
-  if (minTime === Number.POSITIVE_INFINITY) {
-    return null;
-  }
-
-  return [new Date(minTime), new Date(maxTime)];
+  return toTimeBoundsOrNull(minTime, maxTime);
 }
 
-// repos/bklit-ui/packages/ui/src/charts/filter-data-by-x-domain.ts:46-59
-export function resolveBrushTrackXExtent(
-  data: Record<string, unknown>[],
-  xAccessor: (d: Record<string, unknown>) => Date,
-  xExtentMax?: Date,
-): [Date, Date] | null {
+const resolveDataXExtent = (data: readonly Readonly<ChartDatum>[], xAccessor: (row: Readonly<ChartDatum>) => Date): [Date, Date] | null => {
+  const bounds = findDataTimeBounds(data, xAccessor);
+  if (!bounds) {
+    return null;
+  }
+  return [new Date(bounds.minTime), new Date(bounds.maxTime)];
+}
+
+const resolveBrushTrackXExtent = (data: readonly Readonly<ChartDatum>[], xAccessor: (row: Readonly<ChartDatum>) => Date, xExtentMax?: Date): [Date, Date] | null => {
   const extent = resolveDataXExtent(data, xAccessor);
   if (!extent) {
     return null;
@@ -95,24 +84,67 @@ export function resolveBrushTrackXExtent(
   return [extent[0], xExtentMax];
 }
 
-// repos/bklit-ui/packages/ui/src/charts/chart-brush-layout.tsx:40-45
-export function createXAccessor(xDataKey: string) {
-  return (d: Record<string, unknown>): Date => {
-    const value = d[xDataKey];
-    return value instanceof Date ? value : new Date(value as string | number);
+const createXAccessor = (xDataKey: string) => (row: Readonly<ChartDatum>): Date => {
+    const value = row[xDataKey];
+    if (value instanceof Date) {return value;}
+    return toDate(value) ?? new Date(String(value));
   };
+
+// Dataset swap resets both the latched extent and the selection back to full extent.
+const syncBrushToFullExtent = (fullExtent: [Date, Date] | null, setPrevFullExtent: (extent: [Date, Date] | null) => void, setBrushSelection: (selection: BrushSelection | null) => void): void => {
+  setPrevFullExtent(fullExtent);
+  setBrushSelection(
+    fullExtent ? { end: fullExtent[1], start: fullExtent[0] } : null,
+  );
 }
 
-// repos/bklit-ui/packages/ui/src/charts/chart-brush-layout.tsx:47-98 —
-// dataset swap resets the brush (useEffect, not initializer), clear (= null)
-// means BACK TO FULL EXTENT never undefined, slot-count is ALWAYS the full
-// dataset length (load-bearing: column widths stay constant while zooming).
-export function useBrushSelection(
-  options: UseBrushSelectionOptions,
-): UseBrushSelectionResult {
+// Null (zero-width drag) resets to full extent.
+const applyBrushSelectionChange = (selection: BrushSelection | null, fullExtent: [Date, Date] | null, setBrushSelection: (selection: BrushSelection | null) => void): void => {
+  if (!selection) {
+    if (fullExtent) {
+      setBrushSelection({ end: fullExtent[1], start: fullExtent[0] });
+    }
+    return;
+  }
+  setBrushSelection(selection);
+}
+
+interface BrushLayoutStateParams {
+  readonly brushSelection: BrushSelection | null;
+  readonly dataLength: number;
+  readonly enabled: boolean;
+  readonly handleBrushSelectionChange: (selection: BrushSelection | null) => void;
+}
+
+const buildBrushLayoutState = ({ brushSelection, dataLength, enabled, handleBrushSelectionChange }: BrushLayoutStateParams): BrushLayoutState => ({
+  brushSelection,
+  onBrushSelectionChange: handleBrushSelectionChange,
+  xDomain:
+    enabled && brushSelection
+      ? [brushSelection.start, brushSelection.end]
+      : undefined,
+  xDomainSlotCount: enabled ? dataLength : undefined,
+});
+
+interface BrushSelectionResultParams {
+  readonly layoutState: BrushLayoutState;
+  readonly fullExtent: [Date, Date] | null;
+  readonly handleBrushSelectionChange: (selection: BrushSelection | null) => void;
+}
+
+const buildBrushSelectionResult = ({ layoutState, fullExtent, handleBrushSelectionChange }: BrushSelectionResultParams): UseBrushSelectionResult => ({
+  ...layoutState,
+  brushSelection: layoutState.brushSelection,
+  fullExtent,
+  handleBrushSelectionChange,
+  onBrushSelectionChange: handleBrushSelectionChange,
+});
+
+
+// Dataset swap resets the brush via effect; null clears back to full extent; slot count stays full length.
+const useBrushSelection = (options: Readonly<UseBrushSelectionOptions>): UseBrushSelectionResult => {
   const { data, xDataKey = "date", xExtentMax, enabled } = options;
 
-  // repos/bklit-ui/packages/ui/src/charts/chart-brush-layout.tsx:58-62
   const xAccessor = React.useMemo(
     () => createXAccessor(xDataKey),
     [xDataKey],
@@ -124,86 +156,76 @@ export function useBrushSelection(
 
   const [brushSelection, setBrushSelection] =
     React.useState<BrushSelection | null>(null);
+  const [prevFullExtent, setPrevFullExtent] =
+    React.useState<[Date, Date] | null>(null);
 
-  // repos/bklit-ui/packages/ui/src/charts/chart-brush-layout.tsx:66-72 — useEffect NOT initializer
-  React.useEffect(() => {
-    if (!fullExtent) {
-      setBrushSelection(null);
-      return;
-    }
-    setBrushSelection({ start: fullExtent[0], end: fullExtent[1] });
-  }, [fullExtent]);
+  // Dataset swap resets the brush (adjust state during render, not in an effect).
+  if (fullExtent !== prevFullExtent) {
+    syncBrushToFullExtent(fullExtent, setPrevFullExtent, setBrushSelection);
+  }
 
-  // repos/bklit-ui/packages/ui/src/charts/chart-brush-layout.tsx:74-85 — null (zero-width drag) resets to full extent
   const handleBrushSelectionChange = React.useCallback(
-    (selection: BrushSelection | null) => {
-      if (!selection) {
-        if (fullExtent) {
-          setBrushSelection({ start: fullExtent[0], end: fullExtent[1] });
-        }
-        return;
-      }
-      setBrushSelection(selection);
+    (selection: BrushSelection | null): void => {
+      applyBrushSelectionChange(selection, fullExtent, setBrushSelection);
     },
     [fullExtent],
   );
 
-  // repos/bklit-ui/packages/ui/src/charts/chart-brush-layout.tsx:87-98 — xDomain gated by enabled && selection; slotCount = full data.length
   const layoutState = React.useMemo<BrushLayoutState>(
-    () => ({
-      xDomain:
-        enabled && brushSelection
-          ? ([brushSelection.start, brushSelection.end] as [Date, Date])
-          : undefined,
-      xDomainSlotCount: enabled ? data.length : undefined,
-      brushSelection,
-      onBrushSelectionChange: handleBrushSelectionChange,
-    }),
+    () => buildBrushLayoutState({ brushSelection, dataLength: data.length, enabled, handleBrushSelectionChange }),
     [brushSelection, data.length, enabled, handleBrushSelectionChange],
   );
 
   return React.useMemo<UseBrushSelectionResult>(
-    () => ({
-      ...layoutState,
-      fullExtent,
-      handleBrushSelectionChange,
-      onBrushSelectionChange: handleBrushSelectionChange,
-      brushSelection: layoutState.brushSelection,
-    }),
+    () => buildBrushSelectionResult({ fullExtent, handleBrushSelectionChange, layoutState }),
     [layoutState, fullExtent, handleBrushSelectionChange],
   );
 }
 
-/**
- * D474 (6.5 gate): snap a controlled brush range onto members of the native
- * control's `values` list. `brushX({ values })` requires BOTH range endpoints
- * to be members of `values` (dist/interaction-axis-internal.js:109-115 throws
- * "The x-axis interaction range must use an explicit value" otherwise), while
- * `useBrushSelection` / `onBrushSelectionChange` callers legitimately commit
- * interpolated Dates (legacy pixel-drag math, the QA `__qaSetBrush` driver).
- * Nearest member wins; the returned object is the input when nothing moved.
- */
-export function snapBrushRangeToValues(
-  range: { start: Date; end: Date } | null,
-  values: readonly Date[] | null,
-): { start: Date; end: Date } | null {
-  if (!range || !values || values.length === 0) return range;
-  const nearest = (target: Date): Date => {
-    const t = target.getTime();
-    let best = values[0]!;
-    let bestDist = Math.abs(best.getTime() - t);
-    for (let i = 1; i < values.length; i++) {
-      const v = values[i]!;
-      const d = Math.abs(v.getTime() - t);
-      if (d < bestDist) {
-        best = v;
-        bestDist = d;
-      }
-    }
-    return best;
-  };
-  const start = nearest(range.start);
-  const end = nearest(range.end);
-  if (start === range.start && end === range.end) return range;
-  return { start, end };
+const isCloserValue = (candidate: Date | undefined, bestDist: number, targetTime: number): candidate is Date => candidate !== undefined && Math.abs(candidate.getTime() - targetTime) < bestDist;
+
+interface NearestValueSearchParams {
+  readonly values: readonly Date[];
+  readonly targetTime: number;
+  readonly best: Date;
+  readonly bestDist: number;
 }
+
+const searchNearestValue = ({ values, targetTime, best, bestDist }: NearestValueSearchParams): Date => {
+  let current = best;
+  let currentDist = bestDist;
+  for (let valueIndex = 1; valueIndex < values.length; valueIndex += 1) {
+    const candidate = values.at(valueIndex);
+    if (isCloserValue(candidate, currentDist, targetTime)) {
+      current = candidate;
+      currentDist = Math.abs(candidate.getTime() - targetTime);
+    }
+  }
+  return current;
+};
+
+const findNearestValue = (values: readonly Date[], target: Date): Date => {
+  const targetTime = target.getTime();
+  const firstValue = values.at(0);
+  if (firstValue === undefined) {return target;}
+  return searchNearestValue({ best: firstValue, bestDist: Math.abs(firstValue.getTime() - targetTime), targetTime, values });
+};
+
+/** Snaps a controlled brush range onto native `values` members (brushX requires endpoints in `values`). */
+const snapBrushRangeToValues = (range: { readonly start: Date; readonly end: Date } | null, values: readonly Date[] | null): { start: Date; end: Date } | null => {
+  if (!range || !values || values.length === 0) {return range;}
+  const start = findNearestValue(values, range.start);
+  const end = findNearestValue(values, range.end);
+  if (start === range.start && end === range.end) {return range;}
+  return { end, start };
+}
+
+export type { BrushSelection, BrushLayoutState, UseBrushSelectionOptions, UseBrushSelectionResult };
+export {
+  filterDataByXDomain,
+  resolveDataXExtent,
+  resolveBrushTrackXExtent,
+  createXAccessor,
+  useBrushSelection,
+  snapBrushRangeToValues,
+};

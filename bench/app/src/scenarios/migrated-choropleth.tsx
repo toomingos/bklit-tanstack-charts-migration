@@ -1,9 +1,4 @@
-// Migrated ChoroplethChart scenario — IDENTICAL usage to bklit-choropleth.tsx
-// (same component tree, same props), only the import source changes. The
-// migrated package must be a drop-in replacement.
-//
-// See bklit-choropleth.tsx for full design rationale (settle detection,
-// zoom QA hook, color scale, legend) — reproduced here verbatim.
+// Drop-in twin of bklit-choropleth.tsx; only the import source changes.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -31,7 +26,6 @@ declare global {
   }
 }
 
-// Breakpoints scaled to this bench's [0, 5_000_000) seeded value range
 function colorForValue(value: number | undefined): string {
   if (value === undefined) return "var(--muted)";
   if (value >= 4_000_000) return "var(--chart-scale-05)";
@@ -67,7 +61,6 @@ const CHOROPLETH_ANIMATION_DURATION_MS = 800;
 const CHOROPLETH_FEATURE_ENTER_MS = 1100;
 const CHOROPLETH_SETTLE_MARGIN_MS = 100;
 
-/** Zoom QA bridge — same pattern as bklit-choropleth.tsx */
 function ZoomQaBridge() {
   const { zoom } = useChoroplethZoom();
   const { width, height } = useChoropleth();
@@ -94,7 +87,6 @@ function ZoomQaBridge() {
         });
         return;
       }
-      // "panned"
       const s = 1.6;
       const px = width * 0.3;
       const py = height * 0.3;

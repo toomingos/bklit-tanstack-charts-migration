@@ -1,7 +1,4 @@
-// Segment drag-selection parity scenario (initiative 6 Q2 drag probe +
-// settled Q1) — the bklit-line tree plus the three Segment components at
-// their defaults. The settled frame shows no segment chrome (selection
-// only exists during a drag); the drag probe drives pointer events.
+// Line tree plus default Segment trio; settled frame shows no chrome (selection exists only mid-drag).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import {

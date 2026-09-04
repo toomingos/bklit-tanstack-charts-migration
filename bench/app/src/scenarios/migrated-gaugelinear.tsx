@@ -1,15 +1,4 @@
-// Migrated Gauge (linear) scenario -- IDENTICAL usage/scope to
-// bklit-gaugelinear.tsx (same docs-mdx-derived "with label below center"
-// component tree/props -- see that file's own header for the full D28
-// rationale on why this is a SEPARATE `ChartKind` ("gaugelinear") from the
-// arc pilot, each covering its own structurally disjoint `Gauge` code path
-// at its own gated `n`), only the import source changes.
-//
-// Same `armManualSettle` + same `gaugeSettleMs` STAGGER math +
-// `REVEAL_CLOCK_MARGIN_MS` as bklit-gaugelinear.tsx / migrated-gauge.tsx
-// (reveal timing is orientation-agnostic), but the per-notch reveal TAIL
-// deliberately differs from bklit's -- see SPRING_SETTLE_TAIL_MS below and
-// migrated-gauge.tsx's full derivation (docs/LOG.md D56).
+// Same tree/props as bklit-gaugelinear.tsx; only the import source changes (spring tail, see below).
 import { useMemo, useEffect, useRef, useState } from "react";
 import { Gauge } from "@migrated/charts";
 import {
@@ -20,14 +9,11 @@ import {
 import { armManualSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 
-// DELIBERATELY DIFFERENT from bklit-gaugelinear.tsx's 450 — reveal timing is
-// orientation-agnostic, so see migrated-gauge.tsx's full derivation for why
-// migrated's baked WAAPI tween runs 712ms (SETTLE_EPSILON = 0.001) where
-// bklit's live framer-motion spring is 1%-settled at 450 (docs/LOG.md D56).
+// GUARD: 712, NOT bklit's 450 (see migrated-gauge.tsx); timing is orientation-agnostic.
 const SPRING_SETTLE_TAIL_MS = 712;
 
 function gaugeSettleMs(value: number, totalNotches: number): number {
-  const stagger = 1; // enterStaggerScale default
+  const stagger = 1;
   const activeNotches = Math.round((value / 100) * totalNotches);
   const bgLastDelayMs = Math.max(0, totalNotches - 1) * 0.015 * stagger * 1000;
   const activeLastDelayMs =
@@ -38,7 +24,6 @@ function gaugeSettleMs(value: number, totalNotches: number): number {
   return lastDelayMs + SPRING_SETTLE_TAIL_MS;
 }
 
-// Same constant/derivation as bklit-gaugelinear.tsx's REVEAL_CLOCK_MARGIN_MS.
 const REVEAL_CLOCK_MARGIN_MS = 250;
 
 export default function MigratedGaugeLinear({ n }: { n: number }) {
@@ -63,7 +48,7 @@ export default function MigratedGaugeLinear({ n }: { n: number }) {
         tickRef.current += 1;
         setGauge(generateGaugeUpdate("gaugelinear", n, tickRef.current));
       });
-    // Same as migrated-gauge.tsx: `n` is totalNotches, no live-append concept.
+    // GUARD: n is totalNotches; no live-append concept.
     window.__benchLiveTick = () => {};
   }, [n]);
 

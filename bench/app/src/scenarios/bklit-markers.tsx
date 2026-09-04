@@ -1,14 +1,4 @@
-// SeriesMarkers point grid + dash-tail overlay + ChartMarkers fan-out pair
-// (initiative 10, D229 ruling 10): a 2-series LineChart where seriesA carries
-// `showMarkers` (SeriesMarkers point grid) + `dashFromIndex`/`dashArray`
-// (dash-tail overlay) and a `<ChartMarkers>` set with a same-date cluster
-// (3 markers -> exercises the fan-out badge path) plus 2 single-date
-// markers, paired with a 2-item legend (D225-class legend-hover pattern,
-// mirroring migrated-candlestick-legend.tsx) so the legend-hover OR-term
-// over the marker grid + dash-tail dim (hover-chrome.ts) is exercised too.
-// Cluster/single dates are picked as INDEX FRACTIONS of the seeded rows
-// (not hardcoded dates) so the scenario stays valid across `n` and across
-// update/live ticks (bench/data.ts dates are stable across those).
+// 2-series LineChart with marker grid + dash tail + ChartMarkers; dates are index fractions so n stays valid.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import {
@@ -48,11 +38,10 @@ function buildMarkers(rows: SeededRow[]): ChartMarker[] {
   const single1 = rowAt(rows, 0.2);
   const single2 = rowAt(rows, 0.7);
   return [
-    // Same-date cluster (>=3 markers sharing one date) -> fan-out badge path.
+    // Same-date cluster: exercises the fan-out badge path.
     { date: cluster, icon: "\u{1F680}", title: "Launch", description: "Release shipped" },
     { date: cluster, icon: "⚠️", title: "Alert", description: "Threshold breached" },
     { date: cluster, icon: "\u{1F527}", title: "Fix", description: "Hotfix deployed" },
-    // Single-date markers.
     { date: single1, icon: "\u{1F389}", title: "Milestone", description: "100k users" },
     { date: single2, icon: "\u{1F4C8}", title: "Growth", description: "Quarterly peak" },
   ];

@@ -1,10 +1,4 @@
-// Migrated HeatmapChart scenario — byte-mirror of bklit-heatmap.tsx (same
-// component tree, same props, same n-independent
-// armBklitTimerSettle(HEATMAP_ANIMATION_DURATION_MS + HEATMAP_SETTLE_MARGIN_MS)
-// settle mechanism since the migrated HeatmapChart exposes no
-// onPhaseChange/status output here either, matching the CandlestickChart/
-// migrated-candlestick.tsx precedent), only the import source changes
-// (@bklitui/ui/charts -> @migrated/charts).
+// Byte-mirror of bklit-heatmap.tsx; only the import source changes.
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   HeatmapChart,
@@ -24,15 +18,7 @@ import {
 import { armBklitTimerSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 
-// Mirrors bklit-heatmap.tsx exactly: the migrated HeatmapChart intentionally
-// keeps the same internal 4-state lifecycle machine
-// (loading/revealing/ready/exitingReady) and flips revealing -> ready via a
-// plain timer fired `animationDuration` after mount/reveal-signature-change
-// — no onPhaseChange/status output is added here either (parity). The
-// per-cell staggered fade delay+duration is bounded WITHIN
-// animationDuration regardless of `n` (week count), so this settle time is
-// intentionally n-independent, matching bklit-heatmap.tsx's own documented
-// D31 citation.
+// GUARD: settle is n-independent (cell stagger bounded by animationDuration); no phases.
 const HEATMAP_ANIMATION_DURATION_MS = 1600;
 const HEATMAP_SETTLE_MARGIN_MS = 100;
 
@@ -42,9 +28,7 @@ export default function MigratedHeatmap({ n, state }: { n: number; state?: "read
   );
   const tickRef = useRef(0);
 
-  // Arm once per mount, synchronously during render (matching the
-  // bklit-heatmap.tsx convention) so it isn't re-armed on every
-  // data-driven re-render.
+  // Armed once per mount so data re-renders don't re-arm it.
   useMemo(() => {
     armBklitTimerSettle(HEATMAP_ANIMATION_DURATION_MS + HEATMAP_SETTLE_MARGIN_MS);
   }, []);
@@ -55,9 +39,7 @@ export default function MigratedHeatmap({ n, state }: { n: number; state?: "read
         tickRef.current += 1;
         setColumns(generateHeatmapUpdate("heatmap", n, tickRef.current));
       });
-    // Heatmap's `n` is week count (D31), not a live-append time-series
-    // axis -- there is no "append one live point" concept to port here
-    // (radar/pie/ring/gauge/funnel precedent).
+    // GUARD: n is week count; no live-append concept.
     window.__benchLiveTick = () => {};
   }, [n]);
 

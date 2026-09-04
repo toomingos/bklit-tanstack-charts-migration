@@ -1,59 +1,6 @@
-// Migrated SankeyChart — TanStack Charts (native sankeyDiagram() + motion
-// renderer) + a sanctioned WAAPI reveal reach-in.
-//
-// Architecture:
-//   - Single composite mark (sankey-mark.ts, native `sankeyDiagram()` host)
-//     for links + nodes; `<RendererChart renderer={chartMotionRenderer()}>`
-//     (C5, D1) drives every native entrance/hover transition elsewhere in
-//     the app, but every mark this chart owns suppresses native `motion`
-//     (`motion: false` at the host, the `link()` mark, and the custom body
-//     mark) so it never races the WAAPI reveal below.
-//   - Layout computed inside the mark from TanStack's live `chart` bounds
-//     (render({ chart })) — no component-side measurement or layoutRef
-//     side-channel
-//   - Gradient injection → dedicated injection function called from
-//     onRender; label CSS transitions now live in styles.css directly (D3 —
-//     see internal/sankey-animation.ts's header)
-//   - WAAPI reveal (D3 sanctioned reach-in — internal/sankey-animation.ts) →
-//     runSankeyReveal owns the whole lifecycle (pre-paint hide via the
-//     shared --revealing class, post-paint WAAPI, deadline, teardown) behind
-//     a single RevealHandle; the component holds one seen-key gate (data/
-//     signature/duration) and nothing else. It self-queries its node/link
-//     elements off `surface.element as SVGSVGElement` — no cached element
-//     refs on this component.
-//   - Hover detection (D4) → a single pointermove/pointerleave effect on the
-//     rendered SVG, geometry-hit-testing `interaction.clientToScene`'s
-//     scene-space point against the mark's own laid-out node/link rows
-//     (laidOutNodesRef/laidOutLinksRef, populated by createSankeyMark's
-//     marks() pass) — no DOM element caching, no data-ts-key queries.
-//   - Hover dim (C1 states+legend) → reactive, not DOM mutation: hover
-//     indices live in React state (hoveredLinkIndex / internalHoveredNodeIndex
-//     / the controlled hoveredNodeIndex prop), which feed markConfig → the
-//     `definition` useMemo rebuilds createSankeyMark(), whose render pass
-//     bakes connectivity-based dim/boost straight into node/label resting
-//     styles and the native link() mark's per-datum `strokeOpacity` channel
-//     (internal/sankey-mark.ts). internal/sankey-hover-chrome.ts supplies the
-//     pure connectivity math plus the geometry hit-test helper; it no longer
-//     writes to the DOM. Smooth dim/restore rides the flat 0.18s ease-out CSS
-//     transition styles.css now installs unconditionally (moved from the old
-//     injectLabelCssTransitions per D3).
-//   - Tooltip → native `tooltip` extension + `renderTooltipBody` (C2), bridged
-//     from app-owned hover detection via `interaction.setControlledFocus`
-//
-
-// Public API matches bklit's SankeyChart exactly.
-
-import {
-  Children,
-  isValidElement,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactElement,
-  type ReactNode,
-} from "react";
+// Bklit SankeyChart on TanStack Charts (native sankeyDiagram + WAAPI reveal, reactive hover dim).
+import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactElement, ReactNode, RefObject } from 'react';
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import { defineChart } from "@tanstack/charts/scene";
 import { tooltip } from "@tanstack/charts/tooltip";
@@ -64,58 +11,50 @@ import type {
   ChartScene,
 } from "@tanstack/charts";
 import type { SankeyLink as NativeSankeyLink } from "@tanstack/charts/network/sankey";
-import {
-  type LaidOutNode,
+import type {
+  LaidOutNode,
 } from "./internal/sankey-layout";
-import {
-  createSankeyMark,
-  SANKEY_LINK_MARK_ID,
-  SANKEY_NODE_POINT_MARK_ID,
-  type LaidOutLink,
-  type SankeyGradientDatum,
-} from "./internal/sankey-mark";
-import {
-  injectGradientDefs,
-  runSankeyReveal,
-  stampSankeyLinkPathLength,
-  type SankeyEnterTransition,
-  type SankeyRevealHandle,
-} from "./internal/sankey-animation";
+import { createSankeyMark, SANKEY_LINK_MARK_ID, SANKEY_NODE_POINT_MARK_ID } from './internal/sankey-mark';
+import type { LaidOutLink, SankeyGradientDatum } from './internal/sankey-mark';
+import { injectGradientDefs, runSankeyReveal, stampSankeyLinkPathLength } from './internal/sankey-animation';
+import type { SankeyEnterTransition, SankeyRevealHandle } from './internal/sankey-animation';
 import "./styles.css";
 import { findHoveredSankeyTarget } from "./internal/sankey-hover-chrome";
+import type { SankeyHitTarget } from "./internal/sankey-hover-chrome";
 import { intFmt } from "./internal/formatters";
 import { CHART_CATEGORY_PALETTE_WITH_FALLBACK } from "./internal/design-tokens";
+import type { SankeyLinkProps } from "./internal/sankey-link";
+import type { SankeyNodeProps } from "./internal/sankey-node";
+import type { SankeyTooltipProps } from "./internal/sankey-tooltip";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 
-// ─── Public types (match bklit's API exactly) ──────────────────────────────
-
-export interface SankeyNodeDatum {
+interface SankeyNodeDatum {
   name: string;
   category?: "source" | "landing" | "outcome";
   [key: string]: unknown;
 }
 
-export interface SankeyLinkDatum {
+interface SankeyLinkDatum {
   source: number;
   target: number;
   value: number;
   [key: string]: unknown;
 }
 
-export interface SankeyData {
+interface SankeyData {
   nodes: SankeyNodeDatum[];
   links: SankeyLinkDatum[];
 }
 
-export interface Margin {
+interface Margin {
   top: number;
   right: number;
   bottom: number;
   left: number;
 }
 
-export interface SankeyChartProps {
+interface SankeyChartProps {
   data: SankeyData;
   margin?: Partial<Margin>;
   animationDuration?: number;
@@ -126,179 +65,307 @@ export interface SankeyChartProps {
   nodePadding?: number;
   className?: string;
   children: ReactNode;
-  /** Controlled hovered node index (e.g. from ChartLegend). */
   hoveredNodeIndex?: number | null;
-  /** Called when node hover changes from the chart surface. */
   onNodeHoverChange?: (index: number | null) => void;
 }
 
-export interface SankeyLinkProps {
-  stroke?: string;
-  strokeOpacity?: number;
-  fadedOpacity?: number;
-  useGradient?: boolean;
-}
-
-export type SankeyLabelOrientation = "horizontal" | "vertical";
-
-export interface SankeyNodeProps {
-  fill?: string;
-  lineCap?: number;
-  fadedOpacity?: number;
-  showLabels?: boolean;
-  showValueLabels?: boolean;
-  labelOrientation?: SankeyLabelOrientation;
-  getNodeColor?: (node: LaidOutNode, index: number) => string;
-}
-
-export interface SankeyTooltipProps {
-  formatValue?: (value: number) => string;
-  className?: string;
-}
-
-// ─── Defaults ──────────────────────────────────────────────────────────────
-
-const DEFAULT_MARGIN: Margin = { top: 40, right: 180, bottom: 40, left: 180 };
+const DEFAULT_MARGIN: Margin = { bottom: 40, left: 180, right: 180, top: 40 };
 const DEFAULT_ANIMATION_DURATION = 1100;
 const DEFAULT_NODE_WIDTH = 16;
 const DEFAULT_NODE_PADDING = 24;
+// Dimmed opacities applied to non-hovered sankey elements during hover focus.
+const DEFAULT_FADED_LINK_OPACITY = 0.1;
+const DEFAULT_FADED_NODE_OPACITY = 0.4;
+// Node dot radius fallback (prop keeps bklit's `lineCap` name for API parity).
+const DEFAULT_NODE_LINE_CAP = 4;
+// Base link stroke opacity.
+const DEFAULT_LINK_STROKE_OPACITY = 0.5;
+// Charts narrower than this skip the WAAPI reveal (no room to animate).
+const MIN_SANKEY_RENDER_WIDTH_PX = 10;
 
-// T-D15 (P3.1): sourced from the shared 5-entry categorical palette (with
-// its literal hex fallbacks preserved exactly) rather than a local literal
-// set — see internal/design-tokens.ts.
 const DEFAULT_COLORS: readonly string[] = CHART_CATEGORY_PALETTE_WITH_FALLBACK;
 
-function defaultNodeColor(index: number): string {
-  return DEFAULT_COLORS[index % DEFAULT_COLORS.length] ?? DEFAULT_COLORS[0]!;
+const defaultNodeColor = (index: number): string => DEFAULT_COLORS[index % DEFAULT_COLORS.length] ?? DEFAULT_COLORS[0]
+
+const isString = <Value,>(value: Value): value is Value & string => typeof value === "string";
+
+const isNumber = <Value,>(value: Value): value is Value & number => typeof value === "number";
+
+const isFunctionValue = <Value,>(value: Value): value is Value & ((...args: readonly unknown[]) => void) =>
+  typeof value === "function";
+
+const isObjectValue = <Value,>(value: Value): value is Value & object => typeof value === "object";
+
+// Narrow tooltip views over the laid-out rows the marks emit.
+// Node points carry the laid-out node; link points carry the native link context.
+interface SankeyTooltipNodeDatum {
+  readonly name: string;
+  readonly value?: number;
 }
 
-// ─── Config extraction from children ───────────────────────────────────────
-
-function extractChildByDisplayName(children: ReactNode, name: string): ReactElement | null {
-  let found: ReactElement | null = null;
-  Children.forEach(children, (child) => {
-    if (isValidElement(child) && (child.type as { displayName?: string }).displayName === name) {
-      found = child as ReactElement;
-    }
-  });
-  return found;
+interface SankeyTooltipLinkEndpoint {
+  readonly data: SankeyTooltipNodeDatum;
 }
 
-function extractSankeyLinkConfig(children: ReactNode): SankeyLinkProps {
-  const child = extractChildByDisplayName(children, "SankeyLink");
-  return (child?.props as SankeyLinkProps) ?? {};
+interface SankeyTooltipLinkDatum {
+  readonly sourceNode: SankeyTooltipLinkEndpoint;
+  readonly targetNode: SankeyTooltipLinkEndpoint;
+  readonly sourceIndex: number;
+  readonly targetIndex: number;
+  readonly value: number;
 }
 
-function extractSankeyNodeConfig(children: ReactNode): SankeyNodeProps {
-  const child = extractChildByDisplayName(children, "SankeyNode");
-  return (child?.props as SankeyNodeProps) ?? {};
+type SankeyTooltipDatum = SankeyTooltipNodeDatum | SankeyTooltipLinkDatum;
+
+// Datum flowing through this chart's renderer, definition, and render callbacks.
+type SankeyRenderDatum = LaidOutNode | NativeSankeyLink<SankeyNodeDatum, SankeyLinkDatum, number>;
+
+const isSankeyTooltipDatum = <Value,>(value: Value): value is Value & SankeyTooltipDatum => isObjectValue(value);
+
+interface SankeyLinkEndName {
+  readonly name?: string;
 }
 
-function extractSankeyTooltipConfig(children: ReactNode): SankeyTooltipProps {
-  const child = extractChildByDisplayName(children, "SankeyTooltip");
-  return (child?.props as SankeyTooltipProps) ?? {};
+interface SankeyLinkEnd {
+  readonly data?: SankeyLinkEndName;
 }
 
-// ─── Tooltip (native tooltip extension + renderTooltipBody, C2) ────────────
-//
-// Replaces the old cursor-following `position:fixed` panel (SankeyChartTooltip)
-// with the native DOM tooltip extension (`definition.tooltip`), driven by the
-// app-owned hover detection below via `interaction.setControlledFocus(point,
-// {source:'pointer'})` — see the `focusPointerPoint` bridge in SankeyChart.
-// `renderTooltipBody` reproduces the old panel's exact inner markup (title,
-// colored dot, label, formatted value); the tooltip host itself now owns
-// positioning (`anchor:'point'`, `placement`, `offset` on the tooltip option
-// below approximate the old right-offset, vertically-centered placement).
-function renderSankeyTooltipBody(
-  point: ChartPoint | undefined,
-  formatValue: (v: number) => string,
-  className?: string,
-): ReactNode {
-  if (!point) return null;
+interface SankeyHoverHandlers {
+  readonly onLinkEnter: (index: number) => void;
+  readonly onLinkLeave: () => void;
+  readonly onNodeEnter: (index: number) => void;
+  readonly onNodeLeave: () => void;
+}
+
+const hasDisplayName = (type: ReactElement["type"], name: string): boolean => {
+  if (isString(type)) {return false;}
+  if (!isFunctionValue(type) && !isObjectValue(type)) {return false;}
+  return "displayName" in type && type.displayName === name;
+}
+
+const extractChildByDisplayName = <P,>(children: ReactNode, name: string): ReactElement<P> | undefined => {
+  const matches = Children.toArray(children).filter(
+    (child): child is ReactElement<P> =>
+      isValidElement(child) && hasDisplayName(child.type, name),
+  );
+  return matches.at(-1);
+}
+
+const extractSankeyLinkConfig = (children: ReactNode): SankeyLinkProps => {
+  const child = extractChildByDisplayName<SankeyLinkProps>(children, "SankeyLink");
+  return child?.props ?? {};
+}
+
+const extractSankeyNodeConfig = (children: ReactNode): SankeyNodeProps => {
+  const child = extractChildByDisplayName<SankeyNodeProps>(children, "SankeyNode");
+  return child?.props ?? {};
+}
+
+const extractSankeyTooltipConfig = (children: ReactNode): SankeyTooltipProps => {
+  const child = extractChildByDisplayName<SankeyTooltipProps>(children, "SankeyTooltip");
+  return child?.props ?? {};
+}
+
+const sankeyNodeName = (node: { readonly name?: string }, index: number): string =>
+  node.name ?? `Node ${index}`;
+
+const sankeyLinkEndName = (end: { readonly data?: { readonly name?: string } } | undefined, index: number): string =>
+  end?.data?.name ?? `Node ${index}`;
+
+const sankeyLinkValue = (value: number | undefined): number => value ?? 0;
+
+const datumName = (datum: SankeyTooltipDatum): string | undefined => {
+  if (!("name" in datum)) {return undefined;}
+  const name: unknown = datum.name;
+  return isString(name) ? name : undefined;
+}
+
+const datumValue = (datum: SankeyTooltipDatum): number | undefined => {
+  if (!("value" in datum)) {return undefined;}
+  const value: unknown = datum.value;
+  return isNumber(value) ? value : undefined;
+}
+
+const linkEndDataOf = (data: SankeyTooltipNodeDatum | undefined): SankeyLinkEndName => {
+  const name: unknown = data?.name;
+  if (!isString(name)) {return {};}
+  return { name };
+}
+
+const linkEndOf = (end: SankeyTooltipLinkEndpoint | undefined): SankeyLinkEnd | undefined => {
+  if (end === undefined || !("data" in end)) {return undefined;}
+  return { data: linkEndDataOf(end.data) };
+}
+
+const readLinkIndexValue = (datum: object, key: "sourceIndex" | "targetIndex"): number | undefined => {
+  if (key === "sourceIndex") {
+    const raw: unknown = "sourceIndex" in datum ? datum.sourceIndex : undefined;
+    return isNumber(raw) ? raw : undefined;
+  }
+  const raw: unknown = "targetIndex" in datum ? datum.targetIndex : undefined;
+  return isNumber(raw) ? raw : undefined;
+};
+
+const linkIndexOf = (datum: SankeyTooltipDatum, key: "sourceIndex" | "targetIndex"): number =>
+  readLinkIndexValue(datum, key) ?? 0;
+
+const sankeyLinkTitle = (datum: SankeyTooltipDatum): string => {
+  const sourceNode = "sourceNode" in datum ? linkEndOf(datum.sourceNode) : undefined;
+  const targetNode = "targetNode" in datum ? linkEndOf(datum.targetNode) : undefined;
+  const sourceName = sankeyLinkEndName(sourceNode, linkIndexOf(datum, "sourceIndex"));
+  const targetName = sankeyLinkEndName(targetNode, linkIndexOf(datum, "targetIndex"));
+  return `${sourceName} → ${targetName}`;
+};
+
+const renderSankeyTooltipRow = (isNode: boolean, formatValue: (value: number) => string, datum: SankeyTooltipDatum): ReactElement => (
+  <div style={{ alignItems: "center", display: "flex", gap: 16, justifyContent: "space-between" }}>
+    <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
+      <span style={{ backgroundColor: isNode ? "var(--chart-line-primary)" : "var(--chart-foreground-muted)", borderRadius: "50%", display: "inline-block", flexShrink: 0, height: 10, width: 10 }} />
+      <span style={{ color: "var(--chart-tooltip-muted, var(--muted-foreground))", fontSize: 14, lineHeight: "20px" }}>
+        {isNode ? "Sessions" : "Flow"}
+      </span>
+    </div>
+    <span style={{ fontSize: 14, fontVariantNumeric: "tabular-nums", fontWeight: 500, lineHeight: "20px" }}>
+      {formatValue(sankeyLinkValue(datumValue(datum)))}
+    </span>
+  </div>
+);
+
+const renderSankeyTooltipBody = (point: ChartPoint | undefined, formatValue: (value: number) => string, className?: string): ReactNode => {
+  if (!point) {return undefined;}
 
   const isNode = point.markId === SANKEY_NODE_POINT_MARK_ID;
-  let title: string;
-  let value: number;
-  if (isNode) {
-    const node = point.datum as LaidOutNode & { name?: string };
-    title = node.name ?? `Node ${point.datumIndex}`;
-    value = node.value ?? 0;
-  } else {
-    const linkRow = point.datum as NativeSankeyLink<SankeyNodeDatum, SankeyLinkDatum>;
-    const sourceName = linkRow.sourceNode?.data?.name ?? `Node ${linkRow.sourceIndex}`;
-    const targetName = linkRow.targetNode?.data?.name ?? `Node ${linkRow.targetIndex}`;
-    title = `${sourceName} → ${targetName}`;
-    value = linkRow.value ?? 0;
-  }
-  const label = isNode ? "Sessions" : "Flow";
-  // bklit's SankeyTooltip rows: node dots use --chart-line-primary,
-  // link dots use --chart-foreground-muted (tooltip-content.tsx colors).
-  const dotColor = isNode ? "var(--chart-line-primary)" : "var(--chart-foreground-muted)";
+  const rawDatum: unknown = point.datum;
+  const datum: SankeyTooltipDatum | undefined = isSankeyTooltipDatum(rawDatum) ? rawDatum : undefined;
+  if (datum === undefined) {return undefined;}
+  const title: string = isNode
+    ? sankeyNodeName({ name: datumName(datum) }, point.datumIndex)
+    : sankeyLinkTitle(datum);
 
-  // Panel chrome: the old fixed-position panel's minWidth/radius/shadow/
-  // background/blur inline styles are byte-equivalent to styles.css's
-  // `.bkm-tooltip-panel` rule — reuse it (consumer className appended here,
-  // same element the old panel applied it to).
   return (
-    <div className={className ? `bkm-tooltip-panel ${className}` : "bkm-tooltip-panel"}>
+    <div className={className !== undefined && className !== "" ? `bkm-tooltip-panel ${className}` : "bkm-tooltip-panel"}>
     <div style={{ padding: "10px 12px" }}>
-      <div style={{ marginBottom: 8, textAlign: "left", fontWeight: 500, fontSize: 12, lineHeight: "16px" }}>
+      <div style={{ fontSize: 12, fontWeight: 500, lineHeight: "16px", marginBottom: 8, textAlign: "left" }}>
         {title}
       </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", backgroundColor: dotColor, flexShrink: 0 }} />
-          <span style={{ color: "var(--chart-tooltip-muted, var(--muted-foreground))", fontSize: 14, lineHeight: "20px" }}>
-            {label}
-          </span>
-        </div>
-        <span style={{ fontWeight: 500, fontSize: 14, lineHeight: "20px", fontVariantNumeric: "tabular-nums" }}>
-          {formatValue(value)}
-        </span>
-      </div>
+      {renderSankeyTooltipRow(isNode, formatValue, datum)}
     </div>
     </div>
   );
 }
 
-// ─── Hover event handlers factory ──────────────────────────────────────────
-
-// C2 (tooltip): tooltip content no longer needs precomputing here (name/value
-// lookups moved into renderSankeyTooltipBody, reading straight off the
-// focused ChartPoint's `datum`) — this factory now only updates the
-// app-owned hover refs (unchanged — still what drives markConfig's
-// connectivity dim) and bridges to the native tooltip via
-// `focusPointerPoint`, matching each hover source's ChartPoint by markId +
-// datumIndex (SANKEY_NODE_MARK_ID for nodes, "flow" — the native link()
-// mark's id — for links).
-function createHoverHandlers(
-  hoveredNodeIndexRef: { current: number | null },
-  hoveredLinkIndexRef: { current: number | null },
-  focusPointerPoint: (predicate: ((point: ChartPoint) => boolean) | null) => void,
-) {
-  return {
-    onNodeEnter: (i: number) => {
-      hoveredNodeIndexRef.current = i;
-      hoveredLinkIndexRef.current = null;
-      focusPointerPoint((point) => point.markId === SANKEY_NODE_POINT_MARK_ID && point.datumIndex === i);
-    },
-    onNodeLeave: () => {
-      hoveredNodeIndexRef.current = null;
-      focusPointerPoint(null);
-    },
-    onLinkEnter: (i: number) => {
+const createHoverHandlers = (hoveredNodeIndexRef: { current: number | null }, hoveredLinkIndexRef: { current: number | null }, focusPointerPoint: (predicate: ((point: ChartPoint) => boolean) | null) => void): SankeyHoverHandlers => ({
+    onLinkEnter: (i: number): void => {
       hoveredLinkIndexRef.current = i;
       hoveredNodeIndexRef.current = null;
       focusPointerPoint((point) => point.markId === SANKEY_LINK_MARK_ID && point.datumIndex === i);
     },
-    onLinkLeave: () => {
+    onLinkLeave: (): void => {
       hoveredLinkIndexRef.current = null;
       focusPointerPoint(null);
     },
-  };
+    onNodeEnter: (i: number): void => {
+      hoveredNodeIndexRef.current = i;
+      hoveredLinkIndexRef.current = null;
+      focusPointerPoint((point) => point.markId === SANKEY_NODE_POINT_MARK_ID && point.datumIndex === i);
+    },
+    onNodeLeave: (): void => {
+      hoveredNodeIndexRef.current = null;
+      focusPointerPoint(null);
+    },
+  })
+
+interface SankeyRevealReset {
+  readonly revealHandleRef: RefObject<SankeyRevealHandle | null>;
+  readonly seenRef: RefObject<RevealKey | null>;
+  readonly signature: string;
+  readonly duration: number;
 }
 
-// ─── Main component ────────────────────────────────────────────────────────
+const resetSankeyReveal = (params: Readonly<SankeyRevealReset>): void => {
+  const { revealHandleRef, seenRef, signature, duration } = params;
+  revealHandleRef.current?.cancel();
+  revealHandleRef.current = null;
+  seenRef.current = { duration, signature };
+}
+
+interface SankeyRevealStart extends SankeyRevealReset {
+  readonly animationDuration: number;
+  readonly enterTransition: SankeyEnterTransition | undefined;
+  readonly svg: SVGSVGElement;
+}
+
+const startSankeyReveal = (params: Readonly<SankeyRevealStart>): void => {
+  const { revealHandleRef, seenRef, signature, duration, animationDuration, enterTransition, svg } = params;
+  seenRef.current = { duration, signature };
+  revealHandleRef.current?.cancel();
+  revealHandleRef.current = runSankeyReveal({
+    animationDuration,
+    enterTransition,
+    svg,
+  });
+}
+
+interface SankeyRevealUpdate {
+  readonly revealSignature: string;
+  readonly animationDuration: number;
+  readonly enterTransition: SankeyEnterTransition | undefined;
+  readonly prefersReducedMotion: boolean;
+  readonly seenRef: RefObject<RevealKey | null>;
+  readonly revealHandleRef: RefObject<SankeyRevealHandle | null>;
+}
+
+const updateSankeyReveal = (svg: SVGSVGElement, params: Readonly<SankeyRevealUpdate>): void => {
+  const { revealSignature, animationDuration, enterTransition, prefersReducedMotion, seenRef, revealHandleRef } = params;
+  const seen = seenRef.current;
+  if (seen?.signature === revealSignature && seen.duration === animationDuration) { return; }
+  if (prefersReducedMotion || animationDuration <= 0) {
+    resetSankeyReveal({ duration: animationDuration, revealHandleRef, seenRef, signature: revealSignature });
+    return;
+  }
+  if (svg.getBoundingClientRect().width < MIN_SANKEY_RENDER_WIDTH_PX) { return; }
+  startSankeyReveal({ animationDuration, duration: animationDuration, enterTransition, revealHandleRef, seenRef, signature: revealSignature, svg });
+}
+
+interface SankeyHoverHitParams {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly laidOutLinks: LaidOutLink[];
+  readonly laidOutNodes: LaidOutNode[];
+}
+
+const findSankeyHoverHit = (
+  interaction: ChartInteractionController<SankeyRenderDatum>,
+  params: Readonly<SankeyHoverHitParams>,
+): SankeyHitTarget | undefined => {
+  const { clientX, clientY, laidOutLinks, laidOutNodes } = params;
+  const point = interaction.clientToScene(clientX, clientY);
+  if (!point) { return undefined; }
+  const hit = findHoveredSankeyTarget(point, laidOutNodes, laidOutLinks);
+  if (!hit) { return undefined; }
+  return hit;
+}
+
+interface SankeyHoverRefs {
+  current: number | null;
+}
+
+const buildSankeyClearHover = (
+  hoveredNodeIndexRef: SankeyHoverRefs,
+  hoveredLinkIndexRef: SankeyHoverRefs,
+  focusPointerPoint: (predicate: ((point: ChartPoint) => boolean) | null) => void,
+): (() => void) => (): void => {
+  let cleared = false;
+  if (hoveredNodeIndexRef.current !== null) {
+    hoveredNodeIndexRef.current = null;
+    cleared = true;
+  }
+  if (hoveredLinkIndexRef.current !== null) {
+    hoveredLinkIndexRef.current = null;
+    cleared = true;
+  }
+  if (cleared) {focusPointerPoint(null);}
+}
 
 // The reveal's replay key: a new reveal runs when any of these change.
 interface RevealKey {
@@ -306,7 +373,7 @@ interface RevealKey {
   duration: number;
 }
 
-export function SankeyChart({
+const SankeyChart = ({
   data,
   margin: marginProp,
   animationDuration = DEFAULT_ANIMATION_DURATION,
@@ -319,57 +386,40 @@ export function SankeyChart({
   children,
   hoveredNodeIndex: hoveredNodeIndexProp,
   onNodeHoverChange,
-}: SankeyChartProps) {
+}: SankeyChartProps): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gradientDataRef = useRef<SankeyGradientDatum[] | null>(null);
   const prefersReducedMotion = usePrefersReducedMotion();
 
-  // ── Reveal state: one seen-key gate + one handle ──
-  // handleRender runs the reveal once per replay key (revealSignature,
-  // animationDuration — same triggers as bklit's revealEpoch, which does NOT
-  // include data identity: a new-array data prop with the same signature
-  // must not replay the enter animation). Unmount cleanup resets the key so
-  // a StrictMode/adapter re-mount replays instead of staying un-revealed.
+  // Replay triggers are signature+duration only; same-signature new data must not replay.
   const seenRevealKeyRef = useRef<RevealKey | null>(null);
   const revealHandleRef = useRef<SankeyRevealHandle | null>(null);
 
   const laidOutNodesRef = useRef<LaidOutNode[] | null>(null);
-  // D4: link hit-test geometry (see internal/sankey-mark.ts's LaidOutLink) —
-  // populated by createSankeyMark's marks() pass, read by the pointermove
-  // hit-test below. Replaces the old linkElementsRef DOM-element cache.
   const laidOutLinksRef = useRef<LaidOutLink[] | null>(null);
 
-  useEffect(() => {
-    return () => {
+  useEffect(() => 
+    (): void => {
       revealHandleRef.current?.cancel();
       revealHandleRef.current = null;
       seenRevealKeyRef.current = null;
-    };
-  }, []);
+    }
+  , []);
 
-  const linkConfig = useMemo(() => ({ useGradient: true, ...extractSankeyLinkConfig(children) }), [children]);
+  const linkConfig: SankeyLinkProps = useMemo(() => ({ useGradient: true, ...extractSankeyLinkConfig(children) }), [children]);
   const nodeConfig = useMemo(() => extractSankeyNodeConfig(children), [children]);
   const tooltipConfig = useMemo(() => extractSankeyTooltipConfig(children), [children]);
 
   const getNodeColorFn = useCallback(
     (node: LaidOutNode, index: number) => {
-      if (nodeConfig.fill) return nodeConfig.fill;
-      if (nodeConfig.getNodeColor) return nodeConfig.getNodeColor(node, index);
+      if (nodeConfig.fill !== undefined && nodeConfig.fill !== "") {return nodeConfig.fill;}
+      if (nodeConfig.getNodeColor) {return nodeConfig.getNodeColor(node, index);}
       return defaultNodeColor(index);
     },
     [nodeConfig],
   );
 
-  // ── Hover state (React state — drives the reactive dim mechanism) ──
-  // C1 states+legend: hoveredLinkIndex/internalHoveredNodeIndex used to live
-  // in plain refs, with a separate imperative `applyHoverStyles()` DOM-write
-  // pass invoked on every hover change. Dim is now expressed as per-datum
-  // style/channel values computed inside internal/sankey-mark.ts, rebuilt by
-  // the `definition` useMemo below whenever hover state changes — so hover
-  // must be React state (not a bare ref) to actually trigger that rebuild.
-  // A same-value ref mirror is kept alongside each piece of state purely for
-  // synchronous imperative reads (the pointermove gate, handleMouseLeave)
-  // that don't need to be reactive themselves.
+  // Hover lives in React state (dim rebuilds the definition); a ref mirror serves synchronous readers.
   const [hoveredLinkIndex, setHoveredLinkIndex] = useState<number | null>(null);
   const hoveredLinkIndexLiveRef = useRef<number | null>(null);
   hoveredLinkIndexLiveRef.current = hoveredLinkIndex;
@@ -377,27 +427,17 @@ export function SankeyChart({
     get current(): number | null {
       return hoveredLinkIndexLiveRef.current;
     },
-    set current(v: number | null) {
-      setHoveredLinkIndex(v);
+    set current(next: number | null) {
+      setHoveredLinkIndex(next);
     },
   };
-  // C2 (tooltip): pointer-driven native tooltip bridge. NOT
-  // useFocusInjection().focusPoint (hardcodes source:'programmatic', which
-  // would incorrectly satisfy C1's whenSeriesDimmed legend-dim predicate) —
-  // a local variant that always injects source:'pointer'. scene/interaction
-  // are captured from the same onRender context as the reveal logic below;
-  // sankey's own SVG hit-testing (createHoverHandlers/
-  // attachSankeyHoverListeners) stays the sole hover-detection source, so the
-  // chart definition also sets `pointer: false` to keep TanStack's native
-  // pointer-driven focus resolution from fighting these calls (its
-  // mousemove handler would otherwise call setControlledFocus-equivalent
-  // updateFocus([]) on every move — dist/renderer.js:451).
-  const sceneRef = useRef<ChartScene | null>(null);
-  const interactionRef = useRef<ChartInteractionController | null>(null);
+  // Inject source:'pointer' — programmatic would wrongly satisfy the legend-dim predicate.
+  const sceneRef = useRef<ChartScene<SankeyRenderDatum> | null>(null);
+  const interactionRef = useRef<ChartInteractionController<SankeyRenderDatum> | null>(null);
   const focusPointerPoint = useCallback(
     (predicate: ((point: ChartPoint) => boolean) | null) => {
       const interaction = interactionRef.current;
-      if (!interaction) return;
+      if (!interaction) {return;}
       if (!predicate) {
         interaction.setControlledFocus(null, { source: "pointer" });
         return;
@@ -408,16 +448,6 @@ export function SankeyChart({
     [],
   );
 
-  // Controlled/uncontrolled node hover, ported from bklit's SankeyChartCore
-  // (`isNodeHoverControlled ? hoveredNodeIndexProp : internalHoveredNodeIndex`).
-  // In controlled mode the surface never stores the index itself — a write
-  // reports via onNodeHoverChange and the caller re-renders with a new
-  // hoveredNodeIndex prop, which the `definition` useMemo below reacts to
-  // directly. Link hover stays uncontrolled (legacy keeps it in component
-  // state). All four inputs flow through render-refreshed refs so the ref
-  // adapter stays correct even when captured by long-lived listener
-  // closures; the setter now triggers a React state update (via the stable
-  // `setInternalHoveredNodeIndex` identity) instead of a bare ref mutation.
   const isNodeHoverControlledRef = useRef(hoveredNodeIndexProp !== undefined);
   isNodeHoverControlledRef.current = hoveredNodeIndexProp !== undefined;
   const controlledNodeIndexRef = useRef<number | null>(hoveredNodeIndexProp ?? null);
@@ -433,17 +463,14 @@ export function SankeyChart({
         ? controlledNodeIndexRef.current
         : internalHoveredNodeIndexRef.current;
     },
-    set current(v: number | null) {
+    set current(next: number | null) {
       if (isNodeHoverControlledRef.current) {
-        onNodeHoverChangeRef.current?.(v);
+        onNodeHoverChangeRef.current?.(next);
       } else {
-        setInternalHoveredNodeIndex(v);
+        setInternalHoveredNodeIndex(next);
       }
     },
   };
-  // The mark's own hover-index inputs: the SAME effective value the getter
-  // above resolves, read directly (not through the getter/setter shim) so it
-  // can sit in a dependency array.
   const effectiveHoveredNodeIndex = isNodeHoverControlledRef.current
     ? (hoveredNodeIndexProp ?? null)
     : internalHoveredNodeIndex;
@@ -451,24 +478,20 @@ export function SankeyChart({
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
 
   const markConfig = useMemo(() => ({
-    strokeOpacity: linkConfig.strokeOpacity ?? 0.5,
-    strokeOverride: linkConfig.stroke,
-    useGradient: linkConfig.useGradient ?? true,
+    fadedLinkOpacity: linkConfig.fadedOpacity ?? DEFAULT_FADED_LINK_OPACITY,
+    fadedNodeOpacity: nodeConfig.fadedOpacity ?? DEFAULT_FADED_NODE_OPACITY,
+    hoveredLinkIndex,
+    hoveredNodeIndex: effectiveHoveredNodeIndex,
+    labelOrientation: nodeConfig.labelOrientation ?? "horizontal",
+    lineCap: nodeConfig.lineCap ?? DEFAULT_NODE_LINE_CAP,
     nodeColorFn: getNodeColorFn,
-    lineCap: nodeConfig.lineCap ?? 4,
-    nodeWidth,
     nodePadding,
+    nodeWidth,
     showLabels: nodeConfig.showLabels ?? true,
     showValueLabels: nodeConfig.showValueLabels ?? true,
-    // bklit's SankeyNode defaults labelOrientation="horizontal" — keep parity.
-    labelOrientation: nodeConfig.labelOrientation ?? "horizontal",
-    // Connectivity-based hover dim (C1 states+legend) — see
-    // internal/sankey-mark.ts's marks() callback for where this resolves
-    // into per-datum style/channel values.
-    hoveredNodeIndex: effectiveHoveredNodeIndex,
-    hoveredLinkIndex,
-    fadedNodeOpacity: nodeConfig.fadedOpacity ?? 0.4,
-    fadedLinkOpacity: linkConfig.fadedOpacity ?? 0.1,
+    strokeOpacity: linkConfig.strokeOpacity ?? DEFAULT_LINK_STROKE_OPACITY,
+    strokeOverride: linkConfig.stroke,
+    useGradient: linkConfig.useGradient ?? true,
   }), [
     linkConfig,
     getNodeColorFn,
@@ -486,135 +509,55 @@ export function SankeyChart({
   const definition = useMemo(
     () =>
       defineChart({
-        marks: [createSankeyMark(data, markConfig, gradientDataRef, laidOutNodesRef, laidOutLinksRef)],
-        guides: false,
-        scales: { x: null, y: null },
-        margin,
-        // T-D15 (P3.1): explicit 5-entry palette override (with literal hex
-        // fallbacks), NOT the native 6-entry defaultChartTheme.palette — see
-        // internal/design-tokens.ts. Node/link colors are already resolved
-        // JS-side via defaultNodeColor/DEFAULT_COLORS, so this has no pixel
-        // effect today.
-        theme: { palette: CHART_CATEGORY_PALETTE_WITH_FALLBACK },
-        // P3.3/T-D2 CSS-suppression-cleanup: sankey owns its own hover
-        // feedback (internal/sankey-hover-chrome.ts), same as every other
-        // custom-mark chart in this migration — suppress TanStack's native
-        // focus ring natively instead of relying solely on the
-        // `[data-ts-chart-focus] {display:none}` CSS rule.
         focusRing: false,
-        // C2 (tooltip): TanStack's own pointer-driven focus resolution is
-        // off — app-owned SVG hit-testing (sankey-hover-chrome.ts) stays the
-        // sole hover-detection source, bridged to the tooltip's focus state
-        // via `focusPointerPoint`/`setControlledFocus` below. Without this,
-        // every native mousemove would call updateFocus([]) and clear
-        // whatever this bridge just set (dist/renderer.js:451).
+        guides: false,
+        margin,
+        marks: [createSankeyMark({ config: markConfig, data, gradientDataRef, laidOutLinksRef, laidOutNodesRef })],
+        // App-owned hit-testing stays the sole hover source; native mousemove must not clear bridged focus.
         pointer: false,
+        scales: { x: null, y: null },
+        // Palette override has no pixel effect (colors resolve JS-side); keeps native surfaces agreeing.
+        theme: { palette: CHART_CATEGORY_PALETTE_WITH_FALLBACK },
         tooltip: {
-          use: tooltip,
-          // Host chrome reset by the `.bkm-native-tooltip` rule in styles.css
-          // (dist/tooltip.js's createTooltip sets its own position/padding/
-          // border/background/font via inline CSS-var-driven defaults); panel
-          // chrome + the consumer's className land on the `.bkm-tooltip-panel`
-          // wrapper inside `renderSankeyTooltipBody`, matching where the old
-          // fixed-position panel applied them.
-          className: "bkm-native-tooltip",
-          sticky: false,
-          // Old panel: cursor-following, offset 16px to the right, vertically
-          // centered/clamped on the cursor. The native tooltip anchors to
-          // point geometry rather than the raw pointer (app-owned hit-testing
-          // means `interaction`'s own pointer state isn't populated) — anchor
-          // on the focused node/link point, offset to its right (falling
-          // back left near the edge), same 16px offset as the old OFFSET
-          // constant.
           anchor: "point",
-          placement: ["right", "left"],
+          className: "bkm-native-tooltip",
           offset: 16,
+          placement: ["right", "left"],
+          sticky: false,
+          use: tooltip,
         },
       }),
     [data, markConfig, margin],
   );
 
-  // ── onRender: gradients, WAAPI reveal (labels now live as SceneLabel in the mark) ──
-  // Hover listener attachment is NOT here — it's in a separate useEffect below.
-  // D1: `context.svg` (legacy `ChartRenderContext`) doesn't exist on
-  // `ChartRendererRenderContext` (dom-types.d.ts:112 — `container`/`scene`/
-  // `surface`/`interaction`, no `svg` field) — `context.surface.element` is
-  // its replacement (typed `Element`; the motion renderer's surface is
-  // always an `<svg class="ts-chart">` root, confirmed via motion-renderer.ts
-  // and dist/motion.js's SVG-only renderer contract, so the cast is safe).
-  const handleRender = useCallback((context: ChartRendererRenderContext<any, any, any>) => {
-    // C2 (tooltip): capture scene/interaction first (compose with reveal
-    // logic below, same as focus-injection.ts's captureRenderContext) — see
-    // focusPointerPoint above. `any` datum/x/y generics: the composite
-    // sankeyDiagram() mark's node/link union datum type is internal to
-    // sankey-mark.ts (SankeyNodeData/SankeyLinkData aren't exported), and
-    // ChartRendererRenderContext is invariant on TDatum (ChartInteraction
-    // Controller's setControlledFocus takes ChartPoint<TDatum> as an input,
-    // i.e. contravariant position) — so the bare default-generic annotation
-    // doesn't structurally match what <RendererChart definition={definition}
-    // onRender={...}> infers. sceneRef/interactionRef below are still
-    // concretely typed (ChartScene/ChartInteractionController), so this
-    // doesn't leak `any` past this one parameter.
+  const handleRender = useCallback((context: ChartRendererRenderContext<SankeyRenderDatum>) => {
+    // Context datum matches the renderer prop below so RendererChart infers one datum type.
     sceneRef.current = context.scene;
-    interactionRef.current = context.interaction as unknown as ChartInteractionController;
+    interactionRef.current = context.interaction;
 
-    const svg = context.surface.element as SVGSVGElement;
+    const surfaceEl = context.surface.element;
+    if (!(surfaceEl instanceof SVGSVGElement)) {return;}
 
-    // Phase 1: inject gradients (labels/nodes are now SceneLabel/rect nodes
-    // in the mark itself; hover dim/undim CSS transitions moved to
-    // styles.css per D3 — see internal/sankey-animation.ts's header).
     const gradients = gradientDataRef.current;
     if (gradients && gradients.length > 0) {
-      injectGradientDefs(svg, gradients);
+      injectGradientDefs(surfaceEl, gradients);
     }
-    stampSankeyLinkPathLength(svg);
+    stampSankeyLinkPathLength(surfaceEl);
 
-    // Phase 2: reveal — once per replay key (signature/duration change).
-    const seen = seenRevealKeyRef.current;
-    if (seen !== null && seen.signature === revealSignature && seen.duration === animationDuration) {
-      return;
-    }
-
-    // Reduced motion / zero duration: the scene's resting state is already
-    // fully visible (reveal keyframes all end at resting values), so just
-    // make sure no reveal is running and consume the key.
-    if (prefersReducedMotion || animationDuration <= 0) {
-      revealHandleRef.current?.cancel();
-      revealHandleRef.current = null;
-      seenRevealKeyRef.current = { signature: revealSignature, duration: animationDuration };
-      return;
-    }
-
-    // Not laid out yet (bklit renders null under width 10): leave the key
-    // unconsumed so the resize-triggered onRender retries.
-    if (svg.getBoundingClientRect().width < 10) return;
-
-    seenRevealKeyRef.current = { signature: revealSignature, duration: animationDuration };
-    revealHandleRef.current?.cancel();
-    revealHandleRef.current = runSankeyReveal({
-      svg,
+    updateSankeyReveal(surfaceEl, {
       animationDuration,
       enterTransition,
+      prefersReducedMotion,
+      revealHandleRef,
+      revealSignature,
+      seenRef: seenRevealKeyRef,
     });
   }, [revealSignature, animationDuration, enterTransition, prefersReducedMotion]);
 
-  // ── Hover listener attachment (bar-chart pattern: separate effect) ──
-  // D4: hover detection is now a geometry hit-test against the mark's own
-  // laid-out node/link rows (laidOutNodesRef/laidOutLinksRef, populated by
-  // createSankeyMark's marks() pass in internal/sankey-mark.ts), driven by
-  // `interaction.clientToScene` (dist/dom-types.d.ts:33) — the same pattern
-  // internal/heatmap-components.tsx's HeatmapCells pointermove handler
-  // already uses. Replaces the old attachSankeyHoverListeners element-level
-  // mouseenter/mouseleave wiring (retired along with populateNodeElements/
-  // populateLinkElements): the native motion renderer's scene DOM is no
-  // longer treated as a stable pre-query surface for per-element listeners
-  // chart-wide under C5. Sankey's native layout coordinates are already in
-  // the same absolute/margin-inclusive space `clientToScene` returns (dist/
-  // types.d.ts's `ChartBounds`), so no margin subtraction is needed here
-  // (unlike heatmap's plot-local scales).
-  useEffect(() => {
-    const svg = containerRef.current?.querySelector("svg") as SVGSVGElement | null;
-    if (!svg) return;
+  // Layout coords are margin-inclusive already, so no margin subtraction before hit-test.
+  useEffect((): (() => void) | undefined => {
+    const svg = containerRef.current?.querySelector<SVGSVGElement>("svg");
+    if (!svg) {return undefined;}
 
     const handlers = createHoverHandlers(
       hoveredNodeIndexRef,
@@ -622,32 +565,17 @@ export function SankeyChart({
       focusPointerPoint,
     );
 
-    // Only touches hover state when something was actually hovered — avoids
-    // redundant setState/onNodeHoverChange calls (and redundant
-    // focusPointerPoint(null) writes) on every idle pointermove over empty
-    // chart space.
-    const clearHover = () => {
-      let cleared = false;
-      if (hoveredNodeIndexRef.current !== null) {
-        hoveredNodeIndexRef.current = null;
-        cleared = true;
-      }
-      if (hoveredLinkIndexRef.current !== null) {
-        hoveredLinkIndexRef.current = null;
-        cleared = true;
-      }
-      if (cleared) focusPointerPoint(null);
-    };
+    const clearHover = buildSankeyClearHover(hoveredNodeIndexRef, hoveredLinkIndexRef, focusPointerPoint);
 
-    const handlePointerMove = (event: PointerEvent) => {
+    const handlePointerMove = (event: PointerEvent): void => {
       const interaction = interactionRef.current;
-      if (!interaction) return;
-      const point = interaction.clientToScene(event.clientX, event.clientY);
-      if (!point) {
-        clearHover();
-        return;
-      }
-      const hit = findHoveredSankeyTarget(point, laidOutNodesRef.current ?? [], laidOutLinksRef.current ?? []);
+      if (!interaction) {return;}
+      const hit = findSankeyHoverHit(interaction, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        laidOutLinks: laidOutLinksRef.current ?? [],
+        laidOutNodes: laidOutNodesRef.current ?? [],
+      });
       if (!hit) {
         clearHover();
         return;
@@ -659,35 +587,21 @@ export function SankeyChart({
       }
     };
 
-    const handlePointerLeave = () => clearHover();
+    const handlePointerLeave = (): void =>{  clearHover(); };
 
     svg.addEventListener("pointermove", handlePointerMove);
     svg.addEventListener("pointerleave", handlePointerLeave);
-    return () => {
+    return (): void => {
       svg.removeEventListener("pointermove", handlePointerMove);
       svg.removeEventListener("pointerleave", handlePointerLeave);
     };
   }, [data, focusPointerPoint]);
 
-  // Controlled-mode sync: a hoveredNodeIndex prop change (e.g. ChartLegend
-  // hover) clears any local link-hover state left over from surface
-  // interaction. The dim repaint itself no longer needs an explicit trigger
-  // here — `effectiveHoveredNodeIndex` (derived straight from
-  // `hoveredNodeIndexProp` in controlled mode) already sits in markConfig's
-  // dependency array, so the prop change alone reactively rebuilds the mark.
-  // C2: no tooltip-state clear needed here anymore — ChartLegend-driven
-  // (programmatic-source) focus is a separate concern from this pointer
-  // bridge, and this surface's own pointer hover already clears itself via
-  // onNodeLeave/onLinkLeave.
   useEffect(() => {
-    if (!isNodeHoverControlledRef.current) return;
+    if (!isNodeHoverControlledRef.current) {return;}
     setHoveredLinkIndex(null);
   }, [hoveredNodeIndexProp]);
 
-  // C2 (tooltip): mouse-move/position tracking retired along with the old
-  // cursor-following panel — the native tooltip positions itself
-  // (anchor/placement/offset on the definition above). handleMouseLeave
-  // keeps clearing the app-owned hover refs and the bridged focus.
   const handleMouseLeave = useCallback(() => {
     hoveredNodeIndexRef.current = null;
     hoveredLinkIndexRef.current = null;
@@ -697,11 +611,16 @@ export function SankeyChart({
   const formatValue = tooltipConfig.formatValue ?? intFmt;
 
   const parsedAspectRatio = useMemo(() => {
-    const parts = aspectRatio.split("/").map((s) => parseFloat(s.trim()));
-    if (parts.length === 2 && parts[0] && parts[1] && !isNaN(parts[0]) && !isNaN(parts[1])) {
-      return parts[0] / parts[1];
+    const parts = aspectRatio.split("/").map((part) => Number(part.trim()));
+    const numerator = parts.at(0);
+    const denominator = parts.at(1);
+    if (parts.length !== 2 || numerator === undefined || denominator === undefined) {
+      return 2;
     }
-    return 2;
+    if (!numerator || !denominator || Number.isNaN(numerator) || Number.isNaN(denominator)) {
+      return 2;
+    }
+    return numerator / denominator;
   }, [aspectRatio]);
 
   return (
@@ -709,7 +628,7 @@ export function SankeyChart({
       className={className}
       data-bkm-chart="sankey"
       ref={containerRef}
-      style={{ position: "relative", width: "100%", aspectRatio, userSelect: "none" }}
+      style={{ aspectRatio, position: "relative", userSelect: "none", width: "100%" }}
       onMouseLeave={handleMouseLeave}
     >
       <RendererChart
@@ -726,21 +645,18 @@ export function SankeyChart({
 
 SankeyChart.displayName = "SankeyChart";
 
-// ─── Config-carrier children (return null, like bklit's composition model) ──
-
-export function SankeyLink(_props: SankeyLinkProps): null {
-  return null;
-}
-SankeyLink.displayName = "SankeyLink";
-
-export function SankeyNode(_props: SankeyNodeProps): null {
-  return null;
-}
-SankeyNode.displayName = "SankeyNode";
-
-export function SankeyTooltip(_props: SankeyTooltipProps): null {
-  return null;
-}
-SankeyTooltip.displayName = "SankeyTooltip";
-
+export { SankeyLink } from "./internal/sankey-link";
+export { SankeyNode } from "./internal/sankey-node";
+export { SankeyTooltip } from "./internal/sankey-tooltip";
+export { SankeyChart };
+export type { SankeyLinkProps } from "./internal/sankey-link";
+export type { SankeyLabelOrientation, SankeyNodeProps } from "./internal/sankey-node";
+export type { SankeyTooltipProps } from "./internal/sankey-tooltip";
+export type {
+  SankeyChartProps,
+  SankeyData,
+  SankeyLinkDatum,
+  SankeyNodeDatum,
+  Margin,
+};
 export default SankeyChart;

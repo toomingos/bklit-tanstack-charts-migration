@@ -1,58 +1,30 @@
 "use client";
 
 import * as React from "react";
-import type { ChartPhase } from "./chart-phase";
-import { resolveEnterTransition, type EnterTransition } from "./enter-transition";
+import type { RefObject } from "react";
+import { resolveEnterTransition } from './enter-transition';
+import type { EnterTransition } from './enter-transition';
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import {
+  TERMINAL_MARKER_HIDDEN_TRANSFORM,
+  useFreshRef,
+  useProjectionPhasePort,
+  useReplayVisibleTerminalMarkers,
+  useTerminalMarkerPhaseApplier,
+  useTerminalMarkerRefs,
+} from "./terminal-marker-phase";
+import type { ProjectionPhaseHandle, TerminalMarkerAnchor, TerminalMarkerClock } from "./terminal-marker-phase";
 
+// Marker anchors arrive via props and may be nullish at runtime from untyped consumers;
+// The nullable return keeps the fallback chain a genuine check.
+const optionalText = (value: string): string | undefined => value;
+// Projection end dots render slightly smaller than their anchor radius.
+const PROJECTION_END_MARKER_RADIUS_SCALE = 0.85;
 const TERMINAL_MARKER_FADE_DURATION_MS = 280;
 const TERMINAL_MARKER_FADE_EASING = "cubic-bezier(0.22,1,0.36,1)";
 
-export interface TerminalMarkerAnchor {
-  dataKey: string;
-  cx: number;
-  cy: number;
-  fill: string;
-  stroke: string;
-  radius: number;
-  ringGap: number;
-  strokeWidth: number;
-  outlineWidth: number;
-  outlineColor?: string;
-}
-
-export interface ProjectionEndMarkerAnchor {
-  cx: number;
-  cy: number;
-  stroke: string;
-  strokeOpacity: number;
-  radius: number;
-}
-
-export interface ProjectionPhaseHandle {
-  setPhase(phase: ChartPhase): void;
-}
-
-interface ProjectionMarkerOverlayProps {
-  width: number;
-  height: number;
-  margin: { top: number; left: number; right: number; bottom: number };
-  terminalMarkers: TerminalMarkerAnchor[];
-  projectionEndMarkers: ProjectionEndMarkerAnchor[];
-  phasePort: React.MutableRefObject<ProjectionPhaseHandle | null>;
-  enterTransition?: EnterTransition;
-}
-
-function isTerminalMarkerPhaseVisible(phase: ChartPhase): boolean {
-  return phase === "ready" || phase === "exitingReady";
-}
-
-function isProjectionEndMarkerPhaseVisible(phase: ChartPhase): boolean {
-  return phase === "revealing" || phase === "ready" || phase === "exitingReady";
-}
-
-function resolveTerminalTiming(enterTransition: EnterTransition | undefined): { durationMs: number; easing: string } {
-  if (enterTransition && typeof enterTransition === "object") {
+const resolveTerminalTiming = (enterTransition: Readonly<EnterTransition> | undefined): TerminalMarkerClock => {
+  if (enterTransition !== undefined) {
     const resolved = resolveEnterTransition(enterTransition);
     if (resolved.kind === "tween") {
       return { durationMs: resolved.durationMs, easing: resolved.easingCss };
@@ -62,175 +34,99 @@ function resolveTerminalTiming(enterTransition: EnterTransition | undefined): { 
   return { durationMs: TERMINAL_MARKER_FADE_DURATION_MS, easing: TERMINAL_MARKER_FADE_EASING };
 }
 
-export function ProjectionMarkerOverlay(props: ProjectionMarkerOverlayProps): React.ReactNode {
-  const { width, height, margin, terminalMarkers, projectionEndMarkers, phasePort } = props;
-  const enterTransition = (props as { enterTransition?: EnterTransition }).enterTransition;
-  const prefersReduced = usePrefersReducedMotion();
-  const timing = resolveTerminalTiming(enterTransition);
-  const endGroupRef = React.useRef<SVGGElement | null>(null);
-  const markerRefs = React.useRef<Map<string, SVGGElement>>(new Map());
-  const lastPhaseRef = React.useRef<ChartPhase | null>(null);
-  const runningAnimsRef = React.useRef<Map<string, Animation>>(new Map());
-  const timingRef = React.useRef(timing);
-  const prefersReducedRef = React.useRef(prefersReduced);
-  timingRef.current = timing;
-  prefersReducedRef.current = prefersReduced;
+interface ProjectionEndMarkerAnchor {
+  readonly cx: number;
+  readonly cy: number;
+  readonly stroke: string;
+  readonly strokeOpacity: number;
+  readonly radius: number;
+}
 
-  const applyPhase = React.useCallback((next: ChartPhase) => {
-    if (lastPhaseRef.current === next) return;
-    const prev = lastPhaseRef.current;
-    lastPhaseRef.current = next;
-    const terminalVisible = isTerminalMarkerPhaseVisible(next);
-    const projectionVisible = isProjectionEndMarkerPhaseVisible(next);
-    const prevTerminalVisible = prev ? isTerminalMarkerPhaseVisible(prev) : false;
-    if (endGroupRef.current) {
-      endGroupRef.current.style.opacity = projectionVisible ? "1" : "0";
-    }
-    if (terminalVisible === prevTerminalVisible) return;
-    for (const [key, el] of markerRefs.current) {
-      const existing = runningAnimsRef.current.get(key);
-      if (existing) {
-        try {
-          existing.cancel();
-        } catch {
-          // detached
-        }
-        runningAnimsRef.current.delete(key);
-      }
-      if (prefersReducedRef.current) {
-        el.style.opacity = terminalVisible ? "1" : "0";
-        el.style.transform = terminalVisible ? "scale(1)" : "scale(0.55)";
-        continue;
-      }
-      if (terminalVisible) {
-        el.style.opacity = "0";
-        el.style.transform = "scale(0.55)";
-        const anim = el.animate(
-          [
-            { opacity: 0, transform: "scale(0.55)" },
-            { opacity: 1, transform: "scale(1)" },
-          ],
-          { duration: timingRef.current.durationMs, easing: timingRef.current.easing, fill: "forwards" },
-        );
-        runningAnimsRef.current.set(key, anim);
-        anim.onfinish = () => {
-          runningAnimsRef.current.delete(key);
-          el.style.opacity = "1";
-          el.style.transform = "scale(1)";
-        };
-        anim.oncancel = () => {
-          runningAnimsRef.current.delete(key);
-        };
-      } else {
-        el.style.opacity = "1";
-        el.style.transform = "scale(1)";
-        const anim = el.animate(
-          [
-            { opacity: 1, transform: "scale(1)" },
-            { opacity: 0, transform: "scale(0.55)" },
-          ],
-          { duration: timingRef.current.durationMs, easing: timingRef.current.easing, fill: "forwards" },
-        );
-        runningAnimsRef.current.set(key, anim);
-        anim.onfinish = () => {
-          runningAnimsRef.current.delete(key);
-          el.style.opacity = "0";
-          el.style.transform = "scale(0.55)";
-        };
-        anim.oncancel = () => {
-          runningAnimsRef.current.delete(key);
-        };
-      }
-    }
-  }, []);
+interface ProjectionMarkerOverlayProps {
+  readonly width: number;
+  readonly height: number;
+  readonly margin: { readonly top: number; readonly left: number; readonly right: number; readonly bottom: number };
+  readonly terminalMarkers: readonly TerminalMarkerAnchor[];
+  readonly projectionEndMarkers: readonly ProjectionEndMarkerAnchor[];
+  readonly phasePort: React.RefObject<ProjectionPhaseHandle | null>;
+  readonly enterTransition?: EnterTransition;
+}
 
-  React.useLayoutEffect(() => {
-    const handle: ProjectionPhaseHandle = { setPhase: (p) => applyPhase(p) };
-    phasePort.current = handle;
-    const anims = runningAnimsRef.current;
-    return () => {
-      if (phasePort.current === handle) phasePort.current = null;
-      for (const anim of anims.values()) {
-        try {
-          anim.cancel();
-        } catch {
-          // detached
-        }
-      }
-      anims.clear();
-    };
-  }, [phasePort, applyPhase]);
+const renderProjectionEndMarkers = (markers: readonly ProjectionEndMarkerAnchor[]): React.JSX.Element[] =>
+  markers.map((marker: Readonly<ProjectionEndMarkerAnchor>) => (
+    <circle key={`pend-${marker.cx}-${marker.cy}`} cx={marker.cx} cy={marker.cy} r={marker.radius * PROJECTION_END_MARKER_RADIUS_SCALE} fill={marker.stroke} fillOpacity={marker.strokeOpacity} />
+  ));
 
-  React.useLayoutEffect(() => {
-    const phase = lastPhaseRef.current;
-    if (!phase) return;
-    if (!isTerminalMarkerPhaseVisible(phase)) return;
-    for (const [key, el] of markerRefs.current) {
-      if (runningAnimsRef.current.has(key)) continue;
-      if (el.style.opacity === "1") continue;
-      if (prefersReducedRef.current) {
-        el.style.opacity = "1";
-        el.style.transform = "scale(1)";
-        continue;
-      }
-      el.style.opacity = "0";
-      el.style.transform = "scale(0.55)";
-      const anim = el.animate(
-        [{ opacity: 0, transform: "scale(0.55)" }, { opacity: 1, transform: "scale(1)" }],
-        { duration: timingRef.current.durationMs, easing: timingRef.current.easing, fill: "forwards" },
-      );
-      runningAnimsRef.current.set(key, anim);
-      anim.onfinish = () => {
-        runningAnimsRef.current.delete(key);
-        el.style.opacity = "1";
-        el.style.transform = "scale(1)";
-      };
-      anim.oncancel = () => {
-        runningAnimsRef.current.delete(key);
-      };
-    }
-  }, [terminalMarkers]);
+interface TerminalMarkerInnerParams {
+  readonly marker: Readonly<TerminalMarkerAnchor>;
+  readonly resolvedStroke: string;
+  readonly outlineRadius: number;
+  readonly ringRadius: number;
+}
 
-  if (terminalMarkers.length === 0 && projectionEndMarkers.length === 0) return null;
+const renderTerminalMarkerInner = (params: Readonly<TerminalMarkerInnerParams>): React.JSX.Element => {
+  const { marker, outlineRadius, resolvedStroke, ringRadius } = params;
+  return (
+    <g transform={`translate(${marker.cx},${marker.cy})`}>
+      {marker.outlineWidth > 0 && <circle cx={0} cy={0} fill="none" r={outlineRadius} stroke={marker.outlineColor ?? resolvedStroke} strokeWidth={marker.outlineWidth} />}
+      <circle cx={0} cy={0} r={marker.radius} fill={marker.fill} />
+      {marker.strokeWidth > 0 && <circle cx={0} cy={0} r={ringRadius} fill="none" stroke={marker.stroke} strokeWidth={marker.strokeWidth} />}
+    </g>
+  );
+}
+
+const renderTerminalMarkerNode = (marker: Readonly<TerminalMarkerAnchor>, markerRefs: RefObject<Map<string, SVGGElement>>): React.JSX.Element => {
+  const resolvedStroke = optionalText(marker.stroke) ?? optionalText(marker.fill) ?? "currentColor";
+  const ringOuter = marker.strokeWidth > 0 ? marker.radius + marker.ringGap + marker.strokeWidth : marker.radius;
+  const outlineRadius = marker.outlineWidth > 0 ? ringOuter + marker.outlineWidth / 2 : 0;
+  const ringRadius = marker.radius + marker.ringGap + marker.strokeWidth / 2;
+  return (
+    <g
+      key={marker.dataKey}
+      ref={(el): void => {
+        if (el) {markerRefs.current.set(marker.dataKey, el);}
+        else {markerRefs.current.delete(marker.dataKey);}
+      }}
+      style={
+        {
+          opacity: 0,
+          transform: TERMINAL_MARKER_HIDDEN_TRANSFORM,
+          transformBox: "fill-box",
+          transformOrigin: `${marker.cx}px ${marker.cy}px`,
+        } satisfies React.CSSProperties
+      }
+    >
+      {renderTerminalMarkerInner({ marker, outlineRadius, resolvedStroke, ringRadius })}
+    </g>
+  );
+};
+
+const renderTerminalMarkerNodes = (markers: readonly TerminalMarkerAnchor[], markerRefs: RefObject<Map<string, SVGGElement>>): React.JSX.Element[] =>
+  markers.map((marker: Readonly<TerminalMarkerAnchor>) => renderTerminalMarkerNode(marker, markerRefs));
+
+const ProjectionMarkerOverlay = (props: Readonly<ProjectionMarkerOverlayProps>): React.ReactNode => {
+  const { width, height, margin, terminalMarkers, projectionEndMarkers, phasePort, enterTransition } = props;
+  const timingRef = useFreshRef(resolveTerminalTiming(enterTransition));
+  const prefersReducedRef = useFreshRef(usePrefersReducedMotion());
+  const refs = useTerminalMarkerRefs();
+  const applyPhase = useTerminalMarkerPhaseApplier({ prefersReducedRef, refs, timingRef });
+  useProjectionPhasePort(phasePort, applyPhase, refs.runningAnimsRef);
+  useReplayVisibleTerminalMarkers({ prefersReducedRef, refs, terminalMarkers, timingRef });
+
+  if (terminalMarkers.length === 0 && projectionEndMarkers.length === 0) {return undefined;}
 
   return (
-    <svg width={width} height={height} style={{ position: "absolute", inset: 0, pointerEvents: "none" }} aria-hidden="true">
+    <svg width={width} height={height} style={{ inset: 0, pointerEvents: "none", position: "absolute" }} aria-hidden="true">
       <g transform={`translate(${margin.left},${margin.top})`}>
-        <g ref={endGroupRef} style={{ opacity: 0 }}>
-          {projectionEndMarkers.map((m, i) => (
-            <circle key={`pend-${i}`} cx={m.cx} cy={m.cy} r={m.radius * 0.85} fill={m.stroke} fillOpacity={m.strokeOpacity} />
-          ))}
+        <g ref={refs.endGroupRef} style={{ opacity: 0 }}>
+          {renderProjectionEndMarkers(projectionEndMarkers)}
         </g>
-        {terminalMarkers.map((m) => {
-          const resolvedStroke = m.stroke ?? m.fill ?? "currentColor";
-          const ringOuter = m.strokeWidth > 0 ? m.radius + m.ringGap + m.strokeWidth : m.radius;
-          const outlineRadius = m.outlineWidth > 0 ? ringOuter + m.outlineWidth / 2 : 0;
-          const ringRadius = m.radius + m.ringGap + m.strokeWidth / 2;
-          return (
-            <g
-              key={m.dataKey}
-              ref={(el) => {
-                if (el) markerRefs.current.set(m.dataKey, el);
-                else markerRefs.current.delete(m.dataKey);
-              }}
-              style={
-                {
-                  transformBox: "fill-box" as unknown as string,
-                  transformOrigin: `${m.cx}px ${m.cy}px`,
-                  opacity: 0,
-                  transform: "scale(0.55)",
-                } as React.CSSProperties
-              }
-            >
-              <g transform={`translate(${m.cx},${m.cy})`}>
-                {m.outlineWidth > 0 ? <circle cx={0} cy={0} fill="none" r={outlineRadius} stroke={m.outlineColor ?? resolvedStroke} strokeWidth={m.outlineWidth} /> : null}
-                <circle cx={0} cy={0} r={m.radius} fill={m.fill} />
-                {m.strokeWidth > 0 ? <circle cx={0} cy={0} r={ringRadius} fill="none" stroke={m.stroke} strokeWidth={m.strokeWidth} /> : null}
-              </g>
-            </g>
-          );
-        })}
+        {renderTerminalMarkerNodes(terminalMarkers, refs.markerRefs)}
       </g>
     </svg>
   );
-}
+};
+
+export { ProjectionMarkerOverlay };
+export type { TerminalMarkerAnchor, ProjectionPhaseHandle } from "./terminal-marker-phase";
+export type { ProjectionEndMarkerAnchor };

@@ -1,13 +1,6 @@
 #!/usr/bin/env node
-// Bundle-size gate (Phase 6.5, M2c). Compares the latest
-// bench/results/bundle-sizes.json (written by `pnpm bench:bundles`, i.e.
-// bench/measure-bundle.mjs — esbuild, minified, gzip, entry = the scenario's
-// default export so tree-shaking is real; see D462) against the pinned
-// thresholds in bench/results/bundle-gate.json:
-//   { "tolerancePct": 3, "scenarios": { "migrated/line": { "gzip": 150800 }, ... } }
-// Fails when any pinned scenario's gzip exceeds pin * (1 + tolerancePct/100).
-// Pins are lowered freely; raising one needs a D-entry in docs/phase-6/LOG.md.
-// Usage: node scripts/bundle-gate.mjs [--sizes <path>] [--gate <path>]
+// Bundle-size gate: pinned gzip in bundle-gate.json vs bench/results/bundle-sizes.json; fails past pin * (1 + tolerancePct/100).
+// Lower pins freely; raising one needs a D-entry. Usage: node scripts/bundle-gate.mjs [--sizes <path>] [--gate <path>]
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

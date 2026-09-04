@@ -1,9 +1,5 @@
-// Bundle gate driver — wraps bench/measure-bundle.mjs (esbuild + gzip, 104
-// bundles -> bench/results/bundle-sizes.json) and scripts/bundle-gate.mjs
-// (43 migrated pins in bench/results/bundle-gate.json, tolerance 3%).
-//
+// Bundle gate driver (wraps bench/measure-bundle.mjs + scripts/bundle-gate.mjs: 104 bundles, 43 migrated pins, 3%).
 //   pnpm gate:bundle [-- --no-measure --run-dir <dir>]
-//
 // Output: bundle.json + bundle.md (gzip per scenario vs pin, delta %, verdict).
 import { writeFileSync } from "node:fs";
 import path from "node:path";
@@ -20,7 +16,7 @@ export function compareBundles(sizes, gate) {
     const delta = gzip != null ? ((gzip - pin.gzip) / pin.gzip) * 100 : null;
     rows.push({ scenario, gzip, raw: s ? s.raw : null, pin: pin.gzip, limit: Math.round(pin.gzip * (1 + tol / 100)), deltaPct: delta != null ? Number(delta.toFixed(2)) : null, verdict: gzip == null ? "MISSING" : gzip <= pin.gzip * (1 + tol / 100) ? "ok" : "FAIL" });
   }
-  // Unpinned scenarios (bklit/tanstack controls, migrated without a pin) — informational.
+  // Unpinned scenarios (controls, migrated without a pin) are informational only.
   for (const [scenario, s] of Object.entries(sizes)) {
     if (gate.scenarios?.[scenario]) continue;
     rows.push({ scenario, gzip: s ? s.gzip : null, raw: s ? s.raw : null, pin: null, limit: null, deltaPct: null, verdict: s ? "info" : "MEASURE-FAILED" });

@@ -1,33 +1,25 @@
 #!/usr/bin/env node
-
-/**
- * Sync script: reads docs/BENCHMARKS.md, parses structured benchmark data,
- * and writes showcase/lib/benchmark-data.ts.
- *
- * Usage: node scripts/sync-data.mjs   (from showcase/ or repo root)
- */
+// Syncs docs/BENCHMARKS.md generated tables -> showcase/lib/benchmark-data.ts. Usage: node scripts/sync-data.mjs
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
-// Resolve paths relative to this script
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "../..");
 const BENCH_PATH = resolve(ROOT, "docs/BENCHMARKS.md");
 const OUT_PATH = resolve(__dirname, "../lib/benchmark-data.ts");
 
-// Headings to skip (variant tables; their data maps to the parent chart)
+// Variant tables map to the parent chart; skip these headings.
 const SKIP_HEADINGS = new Set(["funnelvertical", "gaugelinear"]);
 
-// Parse a markdown table cell value to a number, handling "(not run)" and "n/a"
 function parseCell(raw) {
   const s = raw.trim();
   if (!s || s === "(not run)" || s === "n/a" || s === "—") return null;
   return parseFloat(s);
 }
 
-// Parse M3a/M3c cells: "31.7 / 33.5" → first number (31.7)
+// M3a/M3c cells are "a / b"; the first number wins.
 function parsePair(raw) {
   const s = raw.trim();
   if (!s || s === "(not run)" || s === "n/a" || s === "—") return null;
@@ -36,7 +28,6 @@ function parsePair(raw) {
   return parseFloat(first);
 }
 
-// Read the benchmarks file
 const content = readFileSync(BENCH_PATH, "utf-8");
 const lines = content.split("\n");
 
@@ -49,7 +40,6 @@ let pastGeneratedMarker = false;
 for (let i = 0; i < lines.length; i++) {
   const line = lines[i];
 
-  // Only start parsing after the generated tables marker
   if (!pastGeneratedMarker) {
     if (line.includes("<!-- BEGIN GENERATED BENCHMARK TABLES -->")) {
       pastGeneratedMarker = true;
@@ -57,7 +47,6 @@ for (let i = 0; i < lines.length; i++) {
     continue;
   }
 
-  // Detect headings
   const headingMatch = line.match(/^### (.+)$/);
   if (headingMatch) {
     const name = headingMatch[1].trim();
@@ -67,7 +56,6 @@ for (let i = 0; i < lines.length; i++) {
       currentChart = null;
       continue;
     }
-    // Skip non-chart headings (metric definitions etc.)
     if (lower.startsWith("m1") || lower.startsWith("m2") || lower.startsWith("m3") ||
         lower === "results" || lower === "benchmark gates") {
       currentChart = null;
@@ -78,7 +66,6 @@ for (let i = 0; i < lines.length; i++) {
       currentChart = null;
       continue;
     }
-    // Map heading to route: lowercase the heading name
     const route = lower;
     if (!charts.has(route)) {
       charts.set(route, { sizes: new Set(), rows: [] });
@@ -90,11 +77,9 @@ for (let i = 0; i < lines.length; i++) {
   if (inSkippedCombinations) continue;
   if (!currentChart) continue;
 
-  // Parse table rows: | n | impl | M1a | M1b | M1c | M2a | M2b | M3a | M3c | tooltip | M2c | console errors | source run |
-  // Skip separator rows (contain only |---|---|---...)
+  // Row columns: | n | impl | M1a | M1b | M1c | M2a | M2b | M3a | M3c | tooltip | M2c | console errors | source run |
   if (line.startsWith("|") && !/^\|[\s-]+\|/.test(line)) {
     const cells = line.split("|");
-    // Expect 14 cells (first empty): index 0=empty, 1=n, 2=impl, 3=M1a, 4=M1b, 5=M1c, 6=M2a, 7=M2b, 8=M3a, 9=M3c
     if (cells.length < 10) continue;
 
     const nRaw = cells[1].trim();

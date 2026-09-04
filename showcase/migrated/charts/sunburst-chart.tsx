@@ -144,6 +144,7 @@ import {
   isValidElement,
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -181,15 +182,15 @@ import type { SunburstNode } from "./internal/sunburst-types";
 import { buildRevealTiming, maxRevealDelayMs } from "./internal/sunburst-reveal";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
-import { displayNameOf } from "./children";
-import { SunburstCenterOverlay } from "./internal/sunburst-center";
-import { SunburstLabelsOverlay } from "./internal/sunburst-labels";
+import { displayNameOf } from "./internal/children-extract";
+import { SunburstCenterOverlay } from "./internal/sunburst-center-overlay";
+import { SunburstLabelsOverlay } from "./internal/sunburst-labels-overlay";
 import {
   SunburstHitLayer,
   type SunburstHitItem,
 } from "./internal/sunburst-hit";
+import { resolveSunburstHintContent } from "./internal/sunburst-hint-content";
 import {
-  resolveSunburstHintContent,
   SunburstHintDisplay,
   type SunburstHintProps,
 } from "./internal/sunburst-hint";
@@ -199,60 +200,92 @@ import { motionEasingFromCss } from "./internal/pie-hover-chrome";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import "./styles.css";
 
-// bklit sunburst arc sweep: 1100ms cubic-bezier(.85,0,.15,1) (was inlined at
-// the two call sites below before P5.5 SB2 gave `enterTransition` a home).
+// Bklit sunburst arc sweep: 1100ms cubic-bezier(.85,0,.15,1) (was inlined at
+// The two call sites below before P5.5 SB2 gave `enterTransition` a home).
 const SUNBURST_SWEEP_MS = 1100;
 const SUNBURST_SWEEP_EASE = "cubic-bezier(0.85,0,0.15,1)";
-// bklit sunburst zoom morph: 750ms cubic-bezier(0.22,1,0.36,1) — legacy
-// verbatim, previously the WAAPI zoom effect's `.animate()` options
+// Bklit sunburst zoom morph: 750ms cubic-bezier(0.22,1,0.36,1) — legacy
+// Verbatim, previously the WAAPI zoom effect's `.animate()` options
 // (deleted, C5); now the arc mark's native "update" transition.
 const SUNBURST_ZOOM_MS = 750;
 const SUNBURST_ZOOM_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+const SUNBURST_LABEL_TEXT_SELECTOR = "text.ts-bkm-sunburst-label";
 
 // ---------------------------------------------------------------------------
 // Helpers (shared — were duplicated across 4 call sites)
 // ---------------------------------------------------------------------------
 
-function applyAlphaToColor(color: string, alpha: number): string {
-  if (alpha >= 1) return color;
+const applyAlphaToColor = (color: string, alpha: number): string => {
+  if (alpha >= 1) {return color;}
   return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
 }
 
-function isRelatedArc(a: ArcDatum, hovered: ArcDatum): boolean {
-  return a.id === hovered.id || a.id.startsWith(`${hovered.id} / `) || hovered.id.startsWith(`${a.id} / `);
-}
+const isRelatedArc = (a: ArcDatum, hovered: ArcDatum): boolean =>
+  a.id === hovered.id || a.id.startsWith(`${hovered.id} / `) || hovered.id.startsWith(`${a.id} / `);
+
+// Hover/dim small helpers, hoisted so render-path callbacks stay thin.
+const hoverDimFactor = (arcId: string, hoveredId: string | undefined): number => {
+  if (hoveredId === undefined) {
+    return 1;
+  }
+  if (arcId === hoveredId || arcId.startsWith(`${hoveredId} / `) || hoveredId.startsWith(`${arcId} / `)) {
+    return 1;
+  }
+  return 0.25;
+};
+const resolveVisibleDepth = (maxDepth: number, focusDepth: number): number => Math.max(1, maxDepth - focusDepth);
+const resolveCenterR = (focusDepth: number, maxDepth: number, radius: number): number =>
+  ringOptions(focusDepth, maxDepth, radius).centerR;
+const resolveSunburstHintText = (hoveredTrail: readonly string[] | undefined, focusDepth: number): string => {
+  if (hoveredTrail !== undefined) {
+    return hoveredTrail.join("  \u203A  ");
+  }
+  if (focusDepth === 0) {
+    return "Click a segment to zoom in · hover to inspect";
+  }
+  return "Click the center to zoom out";
+};
 
 // C5d — native `sunburst()`'s own scene keys are NOT the old
 // `radialArc`+custom-`key` scheme (`sunburst-arc-{playKey}-{arcIndex}`);
-// they're internally fixed as `${markId}:node:${valueKey(node.id)}`
+// They're internally fixed as `${markId}:node:${valueKey(node.id)}`
 // (`dist/hierarchy-sunburst.js`'s `key`, `dist/scales.js`'s `valueKey` — no
-// public `key` option exists on `SunburstOptions`, verified against
+// Public `key` option exists on `SunburstOptions`, verified against
 // `hierarchy-sunburst.d.ts`). `valueKey` encodes a string id as
 // `string:<length>:<id>`, so this reconstructs the expected id per rendered
-// path by slicing exactly `<length>` characters after that header — a
-// length-prefixed decode (not a delimiter split) so an arc id containing
+// Path by slicing exactly `<length>` characters after that header — a
+// Length-prefixed decode (not a delimiter split) so an arc id containing
 // "-", ":", or " / " (our own `nodeId` separator) can never be
-// misparsed. `markId` must be the SAME string passed as the mark's `id`
-// option below (`sunburst-arcs-{playKey}`) or no path will match.
-function getSunburstPathMap(container: HTMLElement, markId: string): Map<string, SVGPathElement> {
+// Misparsed. `markId` must be the SAME string passed as the mark's `id`
+// Option below (`sunburst-arcs-{playKey}`) or no path will match.
+// Decodes a native sunburst scene key's trailing "<length>:<id>" payload.
+// Returns undefined when the key does not carry a parseable id.
+const parseSunburstPathId = (key: string, prefix: string): string | undefined => {
+  // The remainder is "<length>:<id>".
+  const rest = key.slice(prefix.length);
+  const sep = rest.indexOf(":");
+  if (sep === -1) {return undefined;}
+  const length = Number(rest.slice(0, sep));
+  if (!Number.isFinite(length)) {return undefined;}
+  return rest.slice(sep + 1, sep + 1 + length);
+};
+
+const getSunburstPathMap = (container: HTMLElement, markId: string): Map<string, SVGPathElement> => {
   const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
   const prefix = `${markId}:node:string:`;
   const allPaths = marksGroup
     ? marksGroup.querySelectorAll<SVGPathElement>(`path[data-ts-key^="${prefix}"]`)
-    : (container.querySelectorAll<SVGPathElement>(`path[data-ts-key^="${prefix}"]`) as NodeListOf<SVGPathElement>);
+    : container.querySelectorAll<SVGPathElement>(`path[data-ts-key^="${prefix}"]`);
   const map = new Map<string, SVGPathElement>();
   for (const el of allPaths) {
-    const k = el.getAttribute("data-ts-key") ?? "";
-    const rest = k.slice(prefix.length); // "<length>:<id>"
-    const sep = rest.indexOf(":");
-    if (sep === -1) continue;
-    const length = Number(rest.slice(0, sep));
-    if (!Number.isFinite(length)) continue;
-    const id = rest.slice(sep + 1, sep + 1 + length);
-    if (!map.has(id)) map.set(id, el as SVGPathElement);
+    const id = parseSunburstPathId(el.getAttribute("data-ts-key") ?? "", prefix);
+    if (id !== undefined && !map.has(id)) {map.set(id, el);}
   }
   return map;
 }
+
+// Sunburst reveal phase, shared by the phase plumbing below.
+type SunburstPhase = "loading" | "revealing" | "ready";
 
 // ---------------------------------------------------------------------------
 // Types (matching bklit's public API)
@@ -272,7 +305,7 @@ export interface SunburstChartProps {
   onHoverChange?: (index: number | null) => void;
   hoverPop?: number;
   padding?: number;
-  onPhaseChange?: (phase: "loading" | "revealing" | "ready") => void;
+  onPhaseChange?: (phase: SunburstPhase) => void;
   /** P5.5 SB2 — bklit `sunburst-chart.tsx:101`. Overrides the per-arc angular
       sweep's duration/easing (spring coerced to tween, bklit `animation.ts:18`;
       the sweep animates path `d`, which springs cannot drive natively). */
@@ -290,16 +323,16 @@ export interface SunburstChartProps {
 // ---------------------------------------------------------------------------
 
 // P5.5 SB8 — the `typeof child.type === "function"` guard this used to carry
-// was narrower than bklit's `componentDisplayName`
+// Was narrower than bklit's `componentDisplayName`
 // (`repos/bklit-ui/.../sunburst-chart.tsx:38-44`), which reads `displayName`
-// off `child.type` whatever it is. A `memo()` element's `type` is an OBJECT,
-// not a function, so any memoised carrier — bklit memoises
+// Off `child.type` whatever it is. A `memo()` element's `type` is an OBJECT,
+// Not a function, so any memoised carrier — bklit memoises
 // `SunburstBreadcrumb` — silently failed to classify and was dropped. Matching
-// bklit: accept both, and let `displayName` alone decide.
-function isChildOfKind(child: ReactNode, displayName: string): boolean {
-  if (!isValidElement(child)) return false;
+// Bklit: accept both, and let `displayName` alone decide.
+const isChildOfKind = (child: ReactNode, displayName: string): boolean => {
+  if (!isValidElement(child)) {return false;}
   const type = child.type as { displayName?: string } | string;
-  if (typeof type === "string") return false;
+  if (typeof type === "string") {return false;}
   return displayNameOf(type) === displayName;
 }
 
@@ -316,7 +349,7 @@ interface ClassifiedChildren {
   hintCount: number;
   /** P5.5 SB4 — the last `<SunburstHint>`'s own props, so the chart can
       resolve its render-prop `children` against live state. */
-  hintProps: SunburstHintProps | null;
+  hintProps: SunburstHintProps | undefined;
   /** P5.5 SB8 — bklit's `isOutsideSvgComponent` (`sunburst-chart.tsx:56-58`)
       pulls `SunburstBreadcrumb` out of the SVG and renders it ABOVE the square
       chart box (`:449-454`). Unlike the other carriers this one draws its own
@@ -325,22 +358,22 @@ interface ClassifiedChildren {
   segmentConfigs: SunburstSegmentConfig[];
 }
 
-function classifyChildren(children: ReactNode): ClassifiedChildren {
+const classifyChildren = (children: ReactNode): ClassifiedChildren => {
   let centerCount = 0;
   let labelsCount = 0;
   let hintCount = 0;
-  let hintProps: SunburstHintProps | null = null;
+  let hintProps: SunburstHintProps | undefined;
   const breadcrumbChildren: ReactNode[] = [];
   const segmentConfigs: SunburstSegmentConfig[] = [];
 
   Children.forEach(children, (child) => {
-    if (!isValidElement(child)) return;
+    if (!isValidElement(child)) {return;}
     if (isChildOfKind(child, "SunburstCenter")) {
-      centerCount++;
+      centerCount += 1;
     } else if (isChildOfKind(child, "SunburstLabels")) {
-      labelsCount++;
+      labelsCount += 1;
     } else if (isChildOfKind(child, "SunburstHint")) {
-      hintCount++;
+      hintCount += 1;
       hintProps = (child as ReactElement).props as SunburstHintProps;
     } else if (isChildOfKind(child, "SunburstBreadcrumb")) {
       breadcrumbChildren.push(child);
@@ -357,109 +390,19 @@ function classifyChildren(children: ReactNode): ClassifiedChildren {
         fill: props.fill,
         fillOpacity: props.fillOpacity,
       });
+    } else {
+      // Non-carrier child (e.g. plain text) — nothing to classify.
     }
   });
 
   return {
+    breadcrumbChildren,
     centerCount,
-    labelsCount,
     hintCount,
     hintProps,
-    breadcrumbChildren,
+    labelsCount,
     segmentConfigs,
   };
-}
-
-// ---------------------------------------------------------------------------
-// SunburstChart
-// ---------------------------------------------------------------------------
-
-export function SunburstChart({
-  data,
-  size = 520,
-  playKey = 0,
-  className,
-  focusId: focusIdProp,
-  onFocusChange,
-  hoveredIndex: hoveredIndexProp,
-  onHoverChange,
-  hoverPop = 8,
-  padding: paddingProp,
-  onPhaseChange,
-  enterTransition,
-  enterStaggerScale = 1,
-  children,
-}: SunburstChartProps) {
-  // SB2 — sweep timing. Primitive deps: callers pass `enterTransition` inline.
-  const enterType = enterTransition?.type;
-  const enterDurationSec = enterTransition?.duration;
-  const enterEaseKey = enterTransition?.ease?.join(",");
-  const { durationMs: sweepDurationMs, easingCss: sweepEasingCss } = useMemo(
-    () => clipRevealTiming(enterTransition, SUNBURST_SWEEP_MS, SUNBURST_SWEEP_EASE),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [enterType, enterDurationSec, enterEaseKey],
-  );
-  // --- Phase tracking (deduped — just gate on last emitted value) ---
-  const phaseRef = useRef<"loading" | "revealing" | "ready">("revealing");
-  const setPhase = useCallback((p: "loading" | "revealing" | "ready") => {
-    if (phaseRef.current === p) return;
-    phaseRef.current = p;
-    onPhaseChange?.(p);
-  }, [onPhaseChange]);
-
-  // --- Layout (verbatim bklit math) ---
-  const { arcs, maxDepth, focusById, rootId } = useMemo(
-    () => buildArcs(data),
-    [data],
-  );
-
-  // Depth-descending sort for DOM order (outer rings first = hit-test priority)
-  const sortedArcs = useMemo(
-    () => [...arcs].sort((a, b) => b.depth - a.depth || b.arcIndex - a.arcIndex),
-    [arcs],
-  );
-
-  // --- Focus state ---
-  const isFocusControlled = focusIdProp !== undefined;
-  const [internalFocusId, setInternalFocusId] = useState(rootId);
-  const focusId = isFocusControlled ? focusIdProp! : internalFocusId;
-
-  useEffect(() => {
-    if (!isFocusControlled) setInternalFocusId(rootId);
-  }, [rootId, isFocusControlled]);
-
-  const prefersReducedMotion = usePrefersReducedMotion();
-
-  const rootFocus = focusById.get(rootId);
-  const focus = focusById.get(focusId) ?? rootFocus;
-  if (!(focus && rootFocus)) return null;
-
-  // The subtree below needs non-null focus/rootFocus; render it through an inner
-  // component so every hook stays unconditional (react-hooks/rules-of-hooks).
-  return (
-    <SunburstChartInner
-      data={data}
-      size={size}
-      className={className}
-      focus={focus}
-      layout={{ arcs, maxDepth, focusById, rootId, sortedArcs }}
-      focusId={focusId}
-      isFocusControlled={isFocusControlled}
-      setInternalFocusId={setInternalFocusId}
-      setPhase={setPhase}
-      onFocusChange={onFocusChange}
-      hoveredIndexProp={hoveredIndexProp}
-      onHoverChange={onHoverChange}
-      hoverPop={hoverPop}
-      paddingProp={paddingProp}
-      prefersReducedMotion={prefersReducedMotion}
-      playKey={playKey}
-      sweepDurationMs={sweepDurationMs}
-      sweepEasingCss={sweepEasingCss}
-      enterStaggerScale={enterStaggerScale}
-      children={children}
-    />
-  );
 }
 
 interface SunburstChartInnerProps {
@@ -477,7 +420,7 @@ interface SunburstChartInnerProps {
   focusId: string;
   isFocusControlled: boolean;
   setInternalFocusId: (id: string) => void;
-  setPhase: (p: "loading" | "revealing" | "ready") => void;
+  setPhase: (p: SunburstPhase) => void;
   onFocusChange?: (focusId: string) => void;
   hoveredIndexProp?: number | null;
   onHoverChange?: (index: number | null) => void;
@@ -492,7 +435,7 @@ interface SunburstChartInnerProps {
   children: ReactNode;
 }
 
-function SunburstChartInner({
+const SunburstChartInner = ({
   data,
   size,
   className,
@@ -513,7 +456,7 @@ function SunburstChartInner({
   sweepEasingCss,
   enterStaggerScale,
   children,
-}: SunburstChartInnerProps) {
+}: SunburstChartInnerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // --- Layout (verbatim bklit math) ---
@@ -526,7 +469,7 @@ function SunburstChartInner({
   // --- Hover state (direct React state, no coordinator mediator) ---
   const isHoverControlled = hoveredIndexProp !== undefined;
   const [internalHoveredIndex, setInternalHoveredIndex] = useState<number | null>(null);
-  const hoveredArcIndex = isHoverControlled ? hoveredIndexProp! : internalHoveredIndex;
+  const hoveredArcIndex = hoveredIndexProp ?? internalHoveredIndex;
 
   const setHoveredArcIndex = useCallback(
     (index: number | null) => {
@@ -540,7 +483,7 @@ function SunburstChartInner({
   );
 
   const hoveredArc = useMemo(() => {
-    if (hoveredArcIndex == null) return null;
+    if (hoveredArcIndex === null) {return null;}
     return arcs[hoveredArcIndex] ?? null;
   }, [arcs, hoveredArcIndex]);
 
@@ -562,15 +505,15 @@ function SunburstChartInner({
   // --- Color helpers ---
   const getColor = useCallback(
     (categoryIndex: number, nodeColor?: string) =>
-      nodeColor ?? (defaultSunburstColors[categoryIndex % defaultSunburstColors.length] as string),
+      nodeColor ?? defaultSunburstColors[categoryIndex % defaultSunburstColors.length],
     [],
   );
 
   const getFill = useCallback(
     (arcIndex: number, fillOverride?: string, colorOverride?: string) => {
-      if (fillOverride) return fillOverride;
+      if (fillOverride) {return fillOverride;}
       const a = arcs[arcIndex];
-      if (!a) return defaultSunburstColors[0] as string;
+                if (!a) {return defaultSunburstColors[0];}
       return colorOverride ?? a.fill ?? a.color ?? getColor(a.categoryIndex);
     },
     [arcs, getColor],
@@ -578,18 +521,18 @@ function SunburstChartInner({
 
   // --- Zoom state ---
   // SB14 (legacy parity): a click commits the new focus IMMEDIATELY; zoomT
-  // tweens 0→1 and transitionGeometry(prev→committed, zoomT) covers the
-  // morph. The committed target geometry renders underneath the in-flight
-  // d-morph, so there is no visual jump.
+  // Tweens 0→1 and transitionGeometry(prev→committed, zoomT) covers the
+  // Morph. The committed target geometry renders underneath the in-flight
+  // D-morph, so there is no visual jump.
   const [zoomT, setZoomT] = useState(1);
   const [prevFocusId, setPrevFocusId] = useState(rootId);
   const prevFocus = focusById.get(prevFocusId) ?? focus;
   const zoomGen = useRef(0);
   // SB1: reveal-cycle identity — bumped when playKey changes so the
-  // once-per-mount LABELS-reveal guard resets below (the arc reveal itself
-  // now replays via the mark's own playKey-embedded key, C5 — see file
-  // header — so this ref only guards `runLabelsReveal`'s mount-vs-replay
-  // distinction, not any arc-path animation).
+  // Once-per-mount LABELS-reveal guard resets below (the arc reveal itself
+  // Now replays via the mark's own playKey-embedded key, C5 — see file
+  // Header — so this ref only guards `runLabelsReveal`'s mount-vs-replay
+  // Distinction, not any arc-path animation).
   const playCycleRef = useRef<string>(`${playKey}`);
   const revealDeadlineTimerRef = useRef<number | null>(null);
 
@@ -600,25 +543,25 @@ function SunburstChartInner({
 
   const commitFocus = useCallback(
     (nextId: string) => {
-      if (isFocusControlled) onFocusChange?.(nextId);
-      else setInternalFocusId(nextId);
+      if (isFocusControlled) {onFocusChange?.(nextId);}
+      else {setInternalFocusId(nextId);}
     },
     [isFocusControlled, onFocusChange, setInternalFocusId],
   );
 
   const zoomTo = useCallback(
     (nextId: string) => {
-      if (nextId === focusId) return;
-      if (!focusById.has(nextId)) return;
+      if (nextId === focusId) {return;}
+      if (!focusById.has(nextId)) {return;}
 
       // Midpoint-snapshot nuance (audit §4 row1): if a zoom is already
-      // in-flight, bump the rAF generation so the old tick loop exits — the
-      // arc path's own d-morph is native now (C5) and needs no separate
-      // cancel; native's own reconcile always interpolates from the path's
+      // In-flight, bump the rAF generation so the old tick loop exits — the
+      // Arc path's own d-morph is native now (C5) and needs no separate
+      // Cancel; native's own reconcile always interpolates from the path's
       // CURRENT live `d`, so an interrupted zoom naturally continues from
-      // wherever it visually was, matching the old cancel-and-restart intent.
+      // Wherever it visually was, matching the old cancel-and-restart intent.
       if (zoomT < 1) {
-        zoomGen.current++;
+        zoomGen.current += 1;
       }
 
       // Commit immediately — prevFocusId becomes the tween's FROM state.
@@ -626,7 +569,8 @@ function SunburstChartInner({
       commitFocus(nextId);
       setHoveredArcIndex(null);
 
-      const gen = ++zoomGen.current;
+      zoomGen.current += 1;
+      const gen = zoomGen.current;
 
       if (prefersReducedMotion) {
         setZoomT(1);
@@ -635,11 +579,11 @@ function SunburstChartInner({
 
       setZoomT(0);
       requestAnimationFrame(() => {
-        if (zoomGen.current !== gen) return;
+        if (zoomGen.current !== gen) {return;}
         const start = performance.now();
         const duration = 750;
-        function tick() {
-          if (zoomGen.current !== gen) return;
+        const tick = (): void => {
+          if (zoomGen.current !== gen) {return;}
           const elapsed = performance.now() - start;
           const t = Math.min(1, elapsed / duration);
           setZoomT(t);
@@ -662,102 +606,85 @@ function SunburstChartInner({
     ],
   );
 
+  // Click listeners below only invoke the latest zoom — reading it through an
+  // Effect event keeps the listener subscription stable across zoomTo
+  // Identity changes (latest focus/zoomT still observed at click time).
+  const zoomToEvent = useEffectEvent((nextId: string): void => {
+    zoomTo(nextId);
+  });
+
   // --- C5d: flat source rows + id lookup for native `sunburst()` ---
   // Native's hierarchy pipeline stratifies FLAT rows (nodeId/parentId), not
-  // the nested `SunburstNode` tree `buildArcs` walks — `buildSunburstFlatRows`
-  // flattens the SAME `data` prop with the SAME `nodeId` scheme so ids match
+  // The nested `SunburstNode` tree `buildArcs` walks — `buildSunburstFlatRows`
+  // Flattens the SAME `data` prop with the SAME `nodeId` scheme so ids match
   // `ArcDatum.id` 1:1. `arcsById` is the bridge: focus/drill/hover/dim ALL
-  // still read from `buildArcs`'s own `arcs`/`focusById` (D-TBD below, and
-  // the file header) — this map is how the native mark's per-node callbacks
+  // Still read from `buildArcs`'s own `arcs`/`focusById` (D-TBD below, and
+  // The file header) — this map is how the native mark's per-node callbacks
   // (which only see the flat row + a bare node id) recover arcIndex,
-  // absolute depth, and color/fill overrides for a given rendered node.
+  // Absolute depth, and color/fill overrides for a given rendered node.
   const flatRows = useMemo(() => buildSunburstFlatRows(data), [data]);
   const arcsById = useMemo(() => new Map(arcs.map((a) => [a.id, a])), [arcs]);
 
   // C5: per-arc ring-staggered entrance delay, keyed by arc `id` (matches
   // `handleRender`'s pre-C5 `delayByArcId` lookup, now feeding the mark's
-  // own `motion` enter phase instead of a `.animate()` delay option).
+  // Own `motion` enter phase instead of a `.animate()` delay option).
   const revealDelayById = useMemo(() => {
     const timingList = buildRevealTiming(arcs, enterStaggerScale);
     return new Map(timingList.map((t) => [t.arcId, t.delayMs]));
   }, [arcs, enterStaggerScale]);
 
   // C5d: the mark's OWN id (not a per-datum `key` — `SunburstOptions` has no
-  // such option, verified against `hierarchy-sunburst.d.ts`) folds `playKey`
-  // in directly. Native derives every rendered path's scene key from this
+  // Such option, verified against `hierarchy-sunburst.d.ts`) folds `playKey`
+  // In directly. Native derives every rendered path's scene key from this
   // (`${id}:node:${valueKey(node.id)}`, `hierarchy-sunburst.js`), so bumping
-  // it changes EVERY child's key at once — the whole group re-enters as a
-  // fresh subtree (`reconcileMotionElement`'s top-level identity match
-  // fails), replaying the full staggered reveal exactly like a fresh mount.
+  // It changes EVERY child's key at once — the whole group re-enters as a
+  // Fresh subtree (`reconcileMotionElement`'s top-level identity match
+  // Fails), replaying the full staggered reveal exactly like a fresh mount.
   // `getSunburstPathMap` below must be given this SAME string.
   const sunburstMarkId = `sunburst-arcs-${playKey}`;
+  // C5d: focus-derived mark options, hoisted so the definition below stays shallow.
+  const visibleDepthValue = resolveVisibleDepth(maxDepth, focus.depth);
+  const centerRValue = resolveCenterR(focus.depth, maxDepth, radius);
 
   // --- TanStack definition: native `sunburst()` (C5d, D-TBD — see file ---
   // --- header for the full design writeup and the hover-grow deviation) ---
-  const definition = useMemo(() => {
-    return defineChart({
+  const definition = useMemo(() => defineChart({
+      // C5c (D435): native default focus (no `focus` key) replaces
+      // `focusDisabled` — enables keyboard-driven focus resolution (see file
+      // Header; pointer-driven hover stays on SunburstHitLayer, which
+      // Occludes native pointer resolution and is required to stay for
+      // D384's click contract). `focusRing: false` suppresses the default
+      // Indicator since the dim geometry above already IS sunburst's
+      // Authored focus treatment.
+      focusRing: false,
+      guides: false,
       marks: [
         polar({
-          radiusRatio: 1,
-          // Parity condition 3 (verified against real d3-hierarchy 3.1.2,
-          // see file header): native's own default sweep is 0→2π starting at
-          // 3 o'clock, NOT bklit's 12-o'clock-clockwise origin
-          // (`sunburst-geometry.ts`'s `TOP = -Math.PI/2`) — must be set
-          // explicitly or every arc lands rotated 90° from legacy.
-          startAngle: -Math.PI / 2,
           endAngle: -Math.PI / 2 + 2 * Math.PI,
           marks: [
             sunburst(flatRows, {
-              id: sunburstMarkId,
-              nodeId: (d: SunburstFlatRow) => d.id,
-              parentId: (d: SunburstFlatRow) => d.parentId,
-              // Parity condition 1 (verified against real d3-hierarchy
-              // 3.1.2, see file header): native's `hierarchy.root.sum(...)`
-              // ADDS a node's own value on top of its children's, unlike
-              // `sumValues` (sunburst-geometry.ts) which ignores a node's
-              // own `value` whenever it has children — a leaf-only accessor
-              // is REQUIRED or an internal node carrying its own value
-              // diverges by up to ~3 rad (measured).
-              value: (d: SunburstFlatRow) => (d.hasChildren ? 0 : (d.rawValue ?? 0)),
-              // `rootId`/`visibleDepth` reproduce `geometryFor`'s
-              // focus-relative angle remap AND `ringOptions`'s ring count —
-              // `resolveLayoutRoot` copies the subtree at `focus.id` and
-              // `d3-hierarchy`'s `copy()` resets the copy's depth to 0
-              // (confirmed in `dist/d3-hierarchy` docs), so `partition()`
-              // re-normalizes the subtree to fill the full sweep exactly
-              // like `mapAngle` does. `visibleDepth` is passed explicitly
-              // (not left to native's own subtree-height default) so ring
-              // count stays keyed off the GLOBAL `maxDepth` — matching
-              // `ringOptions`'s `visibleRings` formula exactly — instead of
-              // silently diverging for an irregular (uneven-depth) tree,
-              // which would misalign native's rings against the still-
-              // `ringOptions`-driven labels/hit-layer/center-circle overlays.
-              rootId: focus.id,
-              visibleDepth: Math.max(1, maxDepth - focus.depth),
-              // Matches `ringOptions(focus.depth, maxDepth, radius)`'s own
-              // `centerR`/outer-edge — same `radius` (growPadding-shrunk)
-              // the hit layer/labels/center overlay below already share, so
-              // native's rings land exactly on top of those overlays.
-              innerRadius: ringOptions(focus.depth, maxDepth, radius).centerR,
-              outerRadius: radius,
               fill: (node: TSSunburstNode<SunburstFlatRow>) => {
                 const a = arcsById.get(node.id);
-                if (!a) return defaultSunburstColors[0] as string;
+      if (!a) {return defaultSunburstColors[0];}
                 const config = segmentConfigMap.get(a.arcIndex);
                 const resolvedFill = getFill(a.arcIndex, config?.fill, config?.color);
                 const relativeDepth = a.depth - focus.depth;
                 const baseOpacity = config?.fillOpacity ?? opacityForRelativeDepth(relativeDepth);
                 // C1 (states+legend) parity: non-hovered-arc dimming folded
-                // into the per-datum `fill` alpha (native `sunburst()` has
-                // no per-datum opacity channel either — `fillOpacity` is a
-                // whole-mark `number`, `hierarchy-sunburst.d.ts`).
-                const dimFactor = hoveredArc ? (isRelatedArc(a, hoveredArc) ? 1 : 0.25) : 1;
+                // Into the per-datum `fill` alpha (native `sunburst()` has
+                // No per-datum opacity channel either — `fillOpacity` is a
+                // Whole-mark `number`, `hierarchy-sunburst.d.ts`).
+                const dimFactor = hoverDimFactor(a.id, hoveredArc?.id);
                 return applyAlphaToColor(resolvedFill, baseOpacity * dimFactor);
               },
-              stroke: "var(--chart-background)",
-              strokeWidth: 1,
+              id: sunburstMarkId,
+              // Matches `ringOptions(focus.depth, maxDepth, radius)`'s own
+              // `centerR`/outer-edge — same `radius` (growPadding-shrunk)
+              // The hit layer/labels/center overlay below already share, so
+              // Native's rings land exactly on top of those overlays.
+              innerRadius: centerRValue,
               // C5d: reveal sweep (enter) + zoom morph (update) — see file
-              // header for the full design writeup. `ctx.datum` here is the
+              // Header for the full design writeup. `ctx.datum` here is the
               // WRAPPED `SunburstNode<TDatum>` context (confirmed against
               // `hierarchy-sunburst.d.ts`'s `ChartMarkMotionOptions<
               // SunburstNode<TDatum>>` and the shipped
@@ -766,16 +693,16 @@ function SunburstChartInner({
               motion: (ctx: ChartMotionContext<TSSunburstNode<SunburstFlatRow>>) => {
                 if (ctx.phase === "exit") {
                   // No legacy exit animation ever existed for an individual
-                  // arc vanishing (only genuinely-degenerate arcs exit, an
-                  // edge case) — instant vanish, same idiom gauge/pie use.
-                  return { transition: { type: "tween", duration: 0 } };
+                  // Arc vanishing (only genuinely-degenerate arcs exit, an
+                  // Edge case) — instant vanish, same idiom gauge/pie use.
+                  return { transition: { duration: 0, type: "tween" } };
                 }
                 if (ctx.phase === "update") {
                   return {
                     transition: {
-                      type: "tween",
                       duration: SUNBURST_ZOOM_MS,
                       easing: motionEasingFromCss(SUNBURST_ZOOM_EASE),
+                      type: "tween",
                     },
                   };
                 }
@@ -783,40 +710,69 @@ function SunburstChartInner({
                 return {
                   delay: delayMs,
                   transition: {
-                    type: "tween",
                     duration: sweepDurationMs,
                     easing: motionEasingFromCss(sweepEasingCss),
+                    type: "tween",
                   },
                 };
               },
+              nodeId: (d: SunburstFlatRow) => d.id,
+              // Shares the overlay-alignment note on innerRadius above.
+              outerRadius: radius,
+              parentId: (d: SunburstFlatRow) => d.parentId,
+              // `rootId`/`visibleDepth` reproduce `geometryFor`'s
+              // Focus-relative angle remap AND `ringOptions`'s ring count —
+              // `resolveLayoutRoot` copies the subtree at `focus.id` and
+              // `d3-hierarchy`'s `copy()` resets the copy's depth to 0
+              // (confirmed in `dist/d3-hierarchy` docs), so `partition()`
+              // Re-normalizes the subtree to fill the full sweep exactly
+              // Like `mapAngle` does. `visibleDepth` is passed explicitly
+              // (not left to native's own subtree-height default) so ring
+              // Count stays keyed off the GLOBAL `maxDepth` — matching
+              // `ringOptions`'s `visibleRings` formula exactly — instead of
+              // Silently diverging for an irregular (uneven-depth) tree,
+              // Which would misalign native's rings against the still-
+              // `ringOptions`-driven labels/hit-layer/center-circle overlays.
+              rootId: focus.id,
+              stroke: "var(--chart-background)",
+              strokeWidth: 1,
+              // Parity condition 1 (verified against real d3-hierarchy
+              // 3.1.2, see file header): native's `hierarchy.root.sum(...)`
+              // ADDS a node's own value on top of its children's, unlike
+              // `sumValues` (sunburst-geometry.ts) which ignores a node's
+              // Own `value` whenever it has children — a leaf-only accessor
+              // Is REQUIRED or an internal node carrying its own value
+              // Diverges by up to ~3 rad (measured).
+              value: (d: SunburstFlatRow) => (d.hasChildren ? 0 : (d.rawValue ?? 0)),
+              // Shares the focus-remap note on rootId above.
+              visibleDepth: visibleDepthValue,
             }),
           ],
+          radiusRatio: 1,
+          // Parity condition 3 (verified against real d3-hierarchy 3.1.2,
+          // See file header): native's own default sweep is 0→2π starting at
+          // 3 o'clock, NOT bklit's 12-o'clock-clockwise origin
+          // (`sunburst-geometry.ts`'s `TOP = -Math.PI/2`) — must be set
+          // Explicitly or every arc lands rotated 90° from legacy.
+          startAngle: -Math.PI / 2,
         }),
       ],
-      guides: false,
       scales: { x: null, y: null },
-      // C5c (D435): native default focus (no `focus` key) replaces
-      // `focusDisabled` — enables keyboard-driven focus resolution (see file
-      // header; pointer-driven hover stays on SunburstHitLayer, which
-      // occludes native pointer resolution and is required to stay for
-      // D384's click contract). `focusRing: false` suppresses the default
-      // indicator since the dim geometry above already IS sunburst's
-      // authored focus treatment.
-      focusRing: false,
-      tooltip: false,
       // T-D15 (P3.1): explicit 5-entry palette override, NOT the native
       // 6-entry defaultChartTheme.palette — see internal/design-tokens.ts.
       // Every row already carries an explicit per-datum `fill` (getFill /
-      // defaultSunburstColors above), so this has no pixel effect today.
+      // Colors above), so this has no pixel effect today.
       theme: { palette: CHART_CATEGORY_PALETTE },
-    });
-  }, [
+      tooltip: false,
+    }),
+  [
     flatRows,
     arcsById,
     sunburstMarkId,
     focus,
-    maxDepth,
     radius,
+    visibleDepthValue,
+    centerRValue,
     segmentConfigMap,
     getFill,
     hoveredArc,
@@ -827,31 +783,31 @@ function SunburstChartInner({
 
   // --- C5: reveal-phase tracking (bench settle detection) ---------------
   // The arc SWEEP itself is now fully native (the mark's own `motion`
-  // above) — this effect no longer drives any animation, it only tracks
+  // Above) — this effect no longer drives any animation, it only tracks
   // `onPhaseChange` timing so external callers still see "revealing" then
   // "ready" on the same rough schedule the WAAPI reveal used to produce.
   // Deliberately keyed on `[arcs, playKey, ...]`, not `arcRows`: `arcs`
   // (and therefore which keys are "new") only changes on mount or when
   // `data` changes shape — a hover/zoom-triggered `arcRows` recompute must
   // NOT restart this timer (matches the pre-C5 `seenRevealedRef` guard's
-  // intent, now for free via the effect's own dependency list). A playKey
-  // bump both restarts this timer AND (via the mark's `key`, above)
-  // independently triggers native's own enter/exit replay — the two are
-  // deliberately decoupled: this effect only ever reports phase, never
-  // animates.
-  useEffect(() => {
+  // Intent, now for free via the effect's own dependency list). A playKey
+  // Bump both restarts this timer AND (via the mark's `key`, above)
+  // Independently triggers native's own enter/exit replay — the two are
+  // Deliberately decoupled: this effect only ever reports phase, never
+  // Animates.
+  useEffect((): (() => void) | undefined => {
     if (prefersReducedMotion) {
       setPhase("ready");
-      return;
+      return undefined;
     }
     setPhase("revealing");
     const maxDelay = maxRevealDelayMs(arcs, enterStaggerScale);
     revealDeadlineTimerRef.current = setRevealDeadline(sweepDurationMs + maxDelay + 935, {
-      onDeadline: () => setPhase("ready"),
+      onDeadline: () => { setPhase("ready"); },
     });
     return () => {
       if (revealDeadlineTimerRef.current !== null) {
-        window.clearTimeout(revealDeadlineTimerRef.current);
+        globalThis.clearTimeout(revealDeadlineTimerRef.current);
         revealDeadlineTimerRef.current = null;
       }
     };
@@ -859,46 +815,47 @@ function SunburstChartInner({
 
   // --- TanStack-path click listeners (synthetic-dispatch contract) ---
   // Real pointer interaction is served by the hit layer above the stage svg;
-  // these click-only listeners exist for programmatic dispatch on the
+  // These click-only listeners exist for programmatic dispatch on the
   // TanStack-rendered paths (bench scenario `__benchDrilldown` clicks
   // `path[data-ts-key^="sunburst-arcs:"]` directly).
-  useEffect(() => {
+  useEffect((): (() => void) | undefined => {
     const container = containerRef.current;
-    if (!container) return;
+    if (!container) {return undefined;}
     const elementMap = getSunburstPathMap(container, sunburstMarkId);
-    if (elementMap.size === 0) return;
+    if (elementMap.size === 0) {return undefined;}
 
     const cleanups: Array<() => void> = [];
     for (const a of sortedArcs) {
       const pathEl = elementMap.get(a.id);
-      if (!pathEl) continue;
-      const onClick = () => {
-        if (a.hasChildren) zoomTo(a.id);
-      };
-      pathEl.addEventListener("click", onClick);
-      cleanups.push(() => {
-        pathEl.removeEventListener("click", onClick);
-      });
+      if (pathEl) {
+        const onClick = () => {
+          if (a.hasChildren) {zoomToEvent(a.id);}
+        };
+        pathEl.addEventListener("click", onClick);
+        cleanups.push(() => {
+          pathEl.removeEventListener("click", onClick);
+        });
+      }
     }
     return () => {
-      for (const c of cleanups) c();
+      for (const c of cleanups) {c();}
     };
-  }, [sortedArcs, sunburstMarkId, zoomTo]);
+  }, [sortedArcs, sunburstMarkId]);
 
   // --- Hit layer handlers (bklit parity: enter per segment, leave only at ---
   // --- svg level — last-enter-wins; click zooms when segment has children) ---
   // C5: the pre-native reveal used to suppress hover while a path's `d` was
-  // still owned by an in-flight WAAPI reveal `.animate()` (a two-writer
-  // hazard against the SAME attribute). Native motion owns both the reveal
-  // and hover-grow through the ONE reconcile pipeline now, so there is no
-  // second writer left to race — no guard needed.
+  // Still owned by an in-flight WAAPI reveal `.animate()` (a two-writer
+  // Hazard against the SAME attribute). Native motion owns both the reveal
+  // And hover-grow through the ONE reconcile pipeline now, so there is no
+  // Second writer left to race — no guard needed.
   // 6.5 gate (D448 → D471): the pointer overlay and native keyboard focus
-  // share ONE hover cell with no source tag. While the pointer is inside the
-  // overlay it owns that cell — native `onFocusChange` re-reports the still-
-  // focused keyboard point on every host render (dist/renderer.js:165-168)
-  // and fires `null` on `focusout` (renderer.js:615), and without this guard
-  // both would overwrite a live pointer hover. Keyboard focus still drives
-  // hover whenever the pointer is outside the stage.
+  // Share ONE hover cell with no source tag. While the pointer is inside the
+  // Overlay it owns that cell — native `onFocusChange` re-reports the still-
+  // Focused keyboard point on every host render (dist/renderer.js:165-168)
+  // And fires `null` on `focusout` (renderer.js:615), and without this guard
+  // Both would overwrite a live pointer hover. Keyboard focus still drives
+  // Hover whenever the pointer is outside the stage.
   const pointerInsideStageRef = useRef(false);
 
   const handleHitEnter = useCallback(
@@ -917,19 +874,20 @@ function SunburstChartInner({
   const handleHitClick = useCallback(
     (arcIndex: number) => {
       const a = arcs[arcIndex];
-      if (a?.hasChildren) zoomTo(a.id);
+      if (a?.hasChildren) {zoomTo(a.id);}
     },
     [arcs, zoomTo],
   );
 
   // C5c (D435): keyboard-only native focus forwarding — see file header.
   // Pointer resolution never fires here in practice (SunburstHitLayer
-  // occludes svg.ts-chart), but Tab/arrow-key focus is independent of
-  // pointer z-order and DOES resolve, so this is a genuine (if narrow)
-  // capability add: keyboard users get arc dim/grow hover-preview.
+  // Occludes svg.ts-chart), but Tab/arrow-key focus is independent of
+  // Pointer z-order and DOES resolve, so this is a genuine (if narrow)
+  // Capability add: keyboard users get arc dim/grow hover-preview.
   const handleSunburstFocusChange = useCallback(
     (point: { datum: TSSunburstNode<SunburstFlatRow> } | null) => {
-      if (pointerInsideStageRef.current) return; // pointer owns hover (D471)
+      // Pointer owns hover (D471).
+      if (pointerInsideStageRef.current) {return;}
       const a = point ? arcsById.get(point.datum.id) : undefined;
       setHoveredArcIndex(a ? a.arcIndex : null);
     },
@@ -938,21 +896,21 @@ function SunburstChartInner({
 
   // C5c (D435): the SB15 `useLayoutEffect` DOM reach-in that used to query
   // `container.querySelector("svg.ts-chart")` directly for a `pointerleave`
-  // listener is RETIRED — confirmed dead in practice (svg.ts-chart never
-  // receives pointerenter, hence never pointerleave, in any region covered
-  // by SunburstHitLayer's identically-sized, later-painted overlay).
+  // Listener is RETIRED — confirmed dead in practice (svg.ts-chart never
+  // Receives pointerenter, hence never pointerleave, in any region covered
+  // By SunburstHitLayer's identically-sized, later-painted overlay).
   // `SunburstHitLayer`'s own `<svg onPointerLeave={onHitLeaveAll}>` (its
-  // outer element, full footprint, unchanged below) already reproduces the
+  // Outer element, full footprint, unchanged below) already reproduces the
   // "leave the stage clears hover" behavior and was doing the actual work.
 
   // --- SB15: 350ms fade-in of the whole chart stage on mount ---
   // Legacy: motion.svg opacity 0→1, duration 0.35, ease [0.22,1,0.36,1].
-  useLayoutEffect(() => {
-    if (prefersReducedMotion) return;
+  useLayoutEffect((): (() => void) | undefined => {
+    if (prefersReducedMotion) {return undefined;}
     const container = containerRef.current;
-    if (!container) return;
+    if (!container) {return undefined;}
     const stage = container.querySelector<SVGSVGElement>("svg.ts-chart");
-    if (!stage) return;
+    if (!stage) {return undefined;}
     stage.style.opacity = "0";
     const anim = stage.animate(
       [{ opacity: "0" }, { opacity: "1" }],
@@ -965,21 +923,21 @@ function SunburstChartInner({
   }, [prefersReducedMotion]);
 
   // C5: the zoom `d`-morph is native now (the arc mark's own "update"
-  // transition, SUNBURST_ZOOM_MS/EASE above) — `arcRows` already recomputes
-  // off `focus` on every `zoomTo` commit, so TanStack's own keyed reconcile
-  // triggers the morph with zero imperative code here. The WAAPI zoom
-  // effect (`buildZoomKeyframes`, queried `elementMap`, per-arc `.animate()`
-  // calls) is deleted outright, not ported — `zoomT`'s rAF tick loop
+  // Transition, SUNBURST_ZOOM_MS/EASE above) — `arcRows` already recomputes
+  // Off `focus` on every `zoomTo` commit, so TanStack's own keyed reconcile
+  // Triggers the morph with zero imperative code here. The WAAPI zoom
+  // Effect (`buildZoomKeyframes`, queried `elementMap`, per-arc `.animate()`
+  // Calls) is deleted outright, not ported — `zoomT`'s rAF tick loop
   // (`zoomTo`, above) still drives the label/hit-layer/center-circle
-  // overlays below, which are NOT TanStack scene nodes and have no native
-  // motion equivalent to fall back on. (`revealDeadlineTimerRef`'s teardown
-  // is already handled by the reveal-phase effect's own cleanup, above —
-  // no separate unmount effect needed here.)
+  // Overlays below, which are NOT TanStack scene nodes and have no native
+  // Motion equivalent to fall back on. (`revealDeadlineTimerRef`'s teardown
+  // Is already handled by the reveal-phase effect's own cleanup, above —
+  // No separate unmount effect needed here.)
 
   // --- Center circle geometry ---
   // SB13 (legacy parity): interpolate the hub radius during zoom —
-  // centerR(focus)·zoomT + centerR(prevFocus)·(1−zoomT) — so the hub grows/
-  // shrinks with the d-morph instead of snapping at commit.
+  // Hub radius blends as centerR(focus)·zoomT + centerR(prevFocus)·(1−zoomT) — so the hub grows/
+  // Shrinks with the d-morph instead of snapping at commit.
   const liveCenterR = useMemo(() => {
     const toR = ringOptions(focus.depth, maxDepth, radius).centerR;
     const fromR = ringOptions(prevFocus.depth, maxDepth, radius).centerR;
@@ -995,38 +953,35 @@ function SunburstChartInner({
   const enterDurationMs = 1100;
 
   const labelItems = useMemo(() => {
-    if (labelsCount === 0) return [];
+    if (labelsCount === 0) {return [];}
     const inZoom = zoomT < 1;
     const fromF = inZoom ? prevFocus : focus;
     return arcs
-      .map((a) => {
+      .flatMap((a) => {
         const base = inZoom
           ? transitionGeometry(a, fromF, focus, maxDepth, radius, zoomT)
           : geometryFor(a, focus, maxDepth, radius);
-        if (!base) return null;
-        if (hoveredArc && !isRelatedArc(a, hoveredArc)) return null;
+        if (!base) {return [];}
+        if (hoveredArc && !isRelatedArc(a, hoveredArc)) {return [];}
         const r = geomCentroidRadius(base);
         const angleSpan = base.a1 - base.a0;
-        if (angleSpan * r < 26 || base.outerR - base.innerR < 16) return null;
+        if (angleSpan * r < 26 || base.outerR - base.innerR < 16) {return [];}
         const mid = geomCentroidAngle(base);
         const x = Math.sin(mid) * r;
         const y = -Math.cos(mid) * r;
         let deg = (mid * 180) / Math.PI - 90;
-        if (deg > 90) deg -= 180;
-        if (deg < -90) deg += 180;
-        return { x, y, deg, label: a.name, id: a.id };
-      })
-      .filter(Boolean) as Array<{
-        x: number; y: number; deg: number; label: string; id: string;
-      }>;
+        if (deg > 90) {deg -= 180;}
+        if (deg < -90) {deg += 180;}
+        return [{ deg, id: a.id, label: a.name, x, y }];
+      });
   }, [labelsCount, arcs, focus, prevFocus, maxDepth, radius, hoveredArc, zoomT]);
 
   // --- Hit layer: bklit-parity hit-testing on BASE (ungrown) geometry ---
-  // bklit's SunburstSegment hit-tests a transparent fill-only path at base
-  // geometry; the grown visual path is pointer-events:none. Porting that
-  // model: hover resolves against static geometry (grow never slides
-  // geometry under the pointer) and the fill-only edge behavior at the
-  // shared-boundary ray matches bklit's knife-edge hit-test outcome.
+  // Bklit's SunburstSegment hit-tests a transparent fill-only path at base
+  // Geometry; the grown visual path is pointer-events:none. Porting that
+  // Model: hover resolves against static geometry (grow never slides
+  // Geometry under the pointer) and the fill-only edge behavior at the
+  // Shared-boundary ray matches bklit's knife-edge hit-test outcome.
   const hitItems = useMemo((): SunburstHitItem[] => {
     const inZoom = zoomT < 1;
     const fromF = inZoom ? prevFocus : focus;
@@ -1035,17 +990,19 @@ function SunburstChartInner({
       const base = inZoom
         ? transitionGeometry(a, fromF, focus, maxDepth, radius, zoomT)
         : geometryFor(a, focus, maxDepth, radius);
-      if (!base) continue;
-      const d = arcPath(base, 1, 1);
-      if (!d) continue;
-      items.push({ arcIndex: a.arcIndex, d, hasChildren: a.hasChildren });
+      if (base) {
+        const pathData = arcPath(base, 1, 1);
+        if (pathData) {
+          items.push({ arcIndex: a.arcIndex, hasChildren: a.hasChildren, pathData });
+        }
+      }
     }
     return items;
   }, [sortedArcs, focus, prevFocus, maxDepth, radius, zoomT]);
 
   // SB18: was a local re-implementation of the identical logic. `maxRevealDelayMs`
   // (internal/sunburst-reveal.ts:75) is the shared helper; `buildRevealTiming`
-  // returns delays sorted ascending, so its last element IS the max.
+  // Returns delays sorted ascending, so its last element IS the max.
   const maxRevealDelay = useMemo(() => maxRevealDelayMs(arcs, enterStaggerScale), [arcs, enterStaggerScale]);
 
   const labelsRevealDelayMs = maxRevealDelay + enterDurationMs * 0.85;
@@ -1053,59 +1010,70 @@ function SunburstChartInner({
   const labelRevealAnimsRef = useRef<Animation[]>([]);
 
   // Deferred label reveal (once per reveal cycle; hover/zoom must not restart
-  // it). SB1: the playKey replay effect clears the dataset guard + inline
-  // opacity and re-runs this via its labelsRevealDelayMs dependency.
+  // It). SB1: the playKey replay effect clears the dataset guard + inline
+  // Opacity and re-runs this via its labelsRevealDelayMs dependency.
   const runLabelsReveal = useCallback(() => {
     const container = containerRef.current;
-    if (!container) return null;
+    if (!container) {return null;}
     const svg = container.querySelector<SVGSVGElement>("svg.ts-bkm-sunburst-labels");
-    if (!svg) return null;
+    if (!svg) {return null;}
     const svgDataset = (svg as unknown as HTMLElement & { dataset: DOMStringMap }).dataset;
     for (const anim of labelRevealAnimsRef.current) {
-      try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
+      try {
+        anim.cancel();
+      } catch {
+        // Teardown race — already cancelled.
+      }
     }
     labelRevealAnimsRef.current = [];
     const cancelLabelPostPaint = onPostPaint(() => {
-      const liveTexts = Array.from(svg.querySelectorAll<SVGTextElement>("text.ts-bkm-sunburst-label"));
+      const liveTexts = [...svg.querySelectorAll<SVGTextElement>(SUNBURST_LABEL_TEXT_SELECTOR)];
       for (const t of liveTexts) {
-        if (!t.isConnected) continue;
-        t.style.opacity = "0";
-        const anim = t.animate(
-          [{ opacity: "0" }, { opacity: "1" }],
-          {
-            duration: enterDurationMs,
-            delay: labelsRevealDelayMs,
-            easing: "cubic-bezier(0.85,0,0.15,1)",
-            fill: "backwards",
-          },
-        );
-        labelRevealAnimsRef.current.push(anim);
-        anim.onfinish = () => {
-          anim.cancel();
-          if (t.isConnected) t.style.opacity = "1";
-        };
+        if (t.isConnected) {
+          t.style.opacity = "0";
+          const anim = t.animate(
+            [{ opacity: "0" }, { opacity: "1" }],
+            {
+              delay: labelsRevealDelayMs,
+              duration: enterDurationMs,
+              easing: "cubic-bezier(0.85,0,0.15,1)",
+              fill: "backwards",
+            },
+          );
+          labelRevealAnimsRef.current.push(anim);
+          anim.onfinish = () => {
+            anim.cancel();
+            if (t.isConnected) {t.style.opacity = "1";}
+          };
+        }
       }
     });
-    const timer = window.setTimeout(() => {
+    const timer = globalThis.setTimeout(() => {
       svgDataset.bkmLabelsRevealed = "1";
-      for (const t of svg.querySelectorAll<SVGTextElement>("text.ts-bkm-sunburst-label")) {
-        if (t.isConnected) t.style.opacity = "";
+      for (const t of svg.querySelectorAll<SVGTextElement>(SUNBURST_LABEL_TEXT_SELECTOR)) {
+        if (t.isConnected) {t.style.opacity = "";}
       }
     }, labelsRevealDelayMs + enterDurationMs + 30);
     return () => {
       cancelLabelPostPaint();
-      window.clearTimeout(timer);
+      globalThis.clearTimeout(timer);
       for (const anim of labelRevealAnimsRef.current) {
-        try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
+        try {
+          anim.cancel();
+        } catch {
+          // Teardown race — already cancelled.
+        }
       }
     };
   }, [labelsRevealDelayMs]);
 
-  useLayoutEffect(() => {
-    if (labelsCount === 0) return;
-    if (prefersReducedMotion) return;
+  // Redundant dep omitted: runLabelsReveal already changes identity exactly
+  // When labelsRevealDelayMs changes (its useCallback dep, above).
+  useLayoutEffect((): (() => void) | undefined => {
+    if (labelsCount === 0) {return undefined;}
+    if (prefersReducedMotion) {return undefined;}
     return runLabelsReveal() ?? undefined;
-  }, [labelsCount, labelsRevealDelayMs, prefersReducedMotion, runLabelsReveal]);
+  }, [labelsCount, prefersReducedMotion, runLabelsReveal]);
 
   // --- Latest-ref so the SB1 replay can re-drive labels without adding ---
   // --- runLabelsReveal as an effect dep (which would loop). ---
@@ -1116,26 +1084,26 @@ function SunburstChartInner({
 
   // --- SB1: playKey replays the initialization animation ---
   // Legacy keys its enter tweens with `${playKey}-enter-${arcId}`, so bumping
-  // playKey restarts the whole reveal. C5: the ARC reveal replay is now
-  // entirely native — `playKey` is folded into the mark's own `key`
+  // Bumping the key restarts the whole reveal. C5: the ARC reveal replay is now
+  // Entirely native — `playKey` is folded into the mark's own `key`
   // (definition useMemo, above), so a playKey bump makes every arc key
   // "new" and native replays the full staggered enter on its own; phase
-  // tracking (`setPhase("revealing")` → `"ready"`) is likewise already
-  // covered by the reveal-phase effect above (also keyed on `[..., playKey,
+  // Tracking (`setPhase("revealing")` → `"ready"`) is likewise already
+  // Covered by the reveal-phase effect above (also keyed on `[..., playKey,
   // ...]`). This effect's only remaining job is the LABELS overlay, which
-  // stays WAAPI (a separate DOM overlay, no native mark to hang motion off)
-  // and needs its own once-per-cycle dataset-guard reset + replay.
+  // Stays WAAPI (a separate DOM overlay, no native mark to hang motion off)
+  // And needs its own once-per-cycle dataset-guard reset + replay.
   useEffect(() => {
     const next = `${playKey}`;
-    if (next === playCycleRef.current) return;
+    if (next === playCycleRef.current) {return;}
     playCycleRef.current = next;
 
     const container = containerRef.current;
-    if (!container) return;
+    if (!container) {return;}
     const labelsSvg = container.querySelector<SVGSVGElement>("svg.ts-bkm-sunburst-labels");
     if (labelsSvg) {
       delete (labelsSvg as unknown as HTMLElement & { dataset: DOMStringMap }).dataset.bkmLabelsRevealed;
-      for (const t of labelsSvg.querySelectorAll<SVGTextElement>("text.ts-bkm-sunburst-label")) {
+      for (const t of labelsSvg.querySelectorAll<SVGTextElement>(SUNBURST_LABEL_TEXT_SELECTOR)) {
         t.style.opacity = "";
       }
       runLabelsRevealRef.current?.();
@@ -1143,28 +1111,31 @@ function SunburstChartInner({
   }, [playKey]);
 
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       for (const anim of labelRevealAnimsRef.current) {
-        try { anim.cancel(); } catch { /* teardown race — already cancelled */ }
+        try {
+          anim.cancel();
+        } catch {
+          // Teardown race — already cancelled.
+        }
       }
       labelRevealAnimsRef.current = [];
-    };
-  }, []);
+    },
+    [],
+  );
 
   // --- Hint text ---
-  const hintText = hoveredArc
-    ? hoveredArc.trail.join("  \u203A  ")
-    : focus.depth === 0
-      ? "Click a segment to zoom in · hover to inspect"
-      : "Click the center to zoom out";
+  const hintText = resolveSunburstHintText(hoveredArc?.trail, focus.depth);
+  // Hoisted so the zoom-to-parent closure below captures a narrowed string.
+  const zoomParentId = focus.parentId;
 
   return (
     <div
       className={className}
       data-bkm-chart="sunburst"
       ref={containerRef}
-      style={{ maxWidth: "100%", width: size, position: "relative" }}
+      style={{ maxWidth: "100%", position: "relative", width: size }}
     >
       {breadcrumbChildren}
       <div style={{ aspectRatio: "1 / 1", maxWidth: size, position: "relative" }}>
@@ -1188,7 +1159,7 @@ function SunburstChartInner({
           visible={centerCount > 0 && liveCenterR > 1}
           liveCenterR={liveCenterR}
           centerColor={centerColor}
-          onZoomToParent={focus.parentId ? () => zoomTo(focus.parentId!) : undefined}
+          onZoomToParent={zoomParentId ? () => { zoomTo(zoomParentId); } : undefined}
         />
         {labelsCount > 0 && (
           <SunburstLabelsOverlay items={labelItems} fullRadius={fullRadius} size={size} />
@@ -1197,15 +1168,111 @@ function SunburstChartInner({
       {hintCount > 0 && (
         <SunburstHintDisplay className={hintProps?.className}>
           {resolveSunburstHintContent(hintProps?.children, {
+            focus,
             hintText,
             hoveredArc,
-            focus,
           })}
         </SunburstHintDisplay>
       )}
     </div>
   );
-}
+};
+
+// ---------------------------------------------------------------------------
+// SunburstChart
+// ---------------------------------------------------------------------------
+
+export const SunburstChart = ({
+  data,
+  size = 520,
+  playKey = 0,
+  className,
+  focusId: focusIdProp,
+  onFocusChange,
+  hoveredIndex: hoveredIndexProp,
+  onHoverChange,
+  hoverPop = 8,
+  padding: paddingProp,
+  onPhaseChange,
+  enterTransition,
+  enterStaggerScale = 1,
+  children,
+}: SunburstChartProps) => {
+  // SB2 — sweep timing. Primitive deps: callers pass `enterTransition` inline.
+  // An identity-only change must not retrigger the computation; the ref still
+  // Hands the memo the latest full object (line-chart precedent).
+  const enterType = enterTransition?.type;
+  const enterDurationSec = enterTransition?.duration;
+  const enterEaseKey = enterTransition?.ease?.join(",");
+  const enterTransitionRef = useRef(enterTransition);
+  enterTransitionRef.current = enterTransition;
+  const { durationMs: sweepDurationMs, easingCss: sweepEasingCss } = useMemo(
+    () => clipRevealTiming(enterTransitionRef.current, SUNBURST_SWEEP_MS, SUNBURST_SWEEP_EASE),
+    [enterType, enterDurationSec, enterEaseKey],
+  );
+  // --- Phase tracking (deduped — just gate on last emitted value) ---
+  const phaseRef = useRef<SunburstPhase>("revealing");
+  const setPhase = useCallback((p: SunburstPhase) => {
+    if (phaseRef.current === p) {return;}
+    phaseRef.current = p;
+    onPhaseChange?.(p);
+  }, [onPhaseChange]);
+
+  // --- Layout (verbatim bklit math) ---
+  const { arcs, maxDepth, focusById, rootId } = useMemo(
+    () => buildArcs(data),
+    [data],
+  );
+
+  // Depth-descending sort for DOM order (outer rings first = hit-test priority)
+  const sortedArcs = useMemo(
+    () => arcs.toSorted((a, b) => b.depth - a.depth || b.arcIndex - a.arcIndex),
+    [arcs],
+  );
+
+  // --- Focus state ---
+  const isFocusControlled = focusIdProp !== undefined;
+  const [internalFocusId, setInternalFocusId] = useState(rootId);
+  const focusId = focusIdProp ?? internalFocusId;
+
+  useEffect(() => {
+    if (!isFocusControlled) {setInternalFocusId(rootId);}
+  }, [rootId, isFocusControlled]);
+
+  const prefersReducedMotion = usePrefersReducedMotion();
+
+  const rootFocus = focusById.get(rootId);
+  const focus = focusById.get(focusId) ?? rootFocus;
+  if (!(focus && rootFocus)) {return null;}
+
+  // The subtree below needs non-null focus/rootFocus; render it through an inner
+  // Component so every hook stays unconditional (react-hooks/rules-of-hooks).
+  return (
+    <SunburstChartInner
+      data={data}
+      size={size}
+      className={className}
+      focus={focus}
+      layout={{ arcs, focusById, maxDepth, rootId, sortedArcs }}
+      focusId={focusId}
+      isFocusControlled={isFocusControlled}
+      setInternalFocusId={setInternalFocusId}
+      setPhase={setPhase}
+      onFocusChange={onFocusChange}
+      hoveredIndexProp={hoveredIndexProp}
+      onHoverChange={onHoverChange}
+      hoverPop={hoverPop}
+      paddingProp={paddingProp}
+      prefersReducedMotion={prefersReducedMotion}
+      playKey={playKey}
+      sweepDurationMs={sweepDurationMs}
+      sweepEasingCss={sweepEasingCss}
+      enterStaggerScale={enterStaggerScale}
+    >
+      {children}
+    </SunburstChartInner>
+  );
+};
 
 SunburstChart.displayName = "SunburstChart";
 
@@ -1242,8 +1309,6 @@ export interface SunburstSegmentProps {
   fillOpacity?: number;
 }
 
-export function SunburstSegment(_props: SunburstSegmentProps): null {
-  return null;
-}
+export const SunburstSegment = (_props: SunburstSegmentProps): null => null;
 
 SunburstSegment.displayName = "SunburstSegment";

@@ -1,12 +1,6 @@
-// Probe: "no re-reveal on prop toggle". After settle, flip a prop through the
-// scenario's QA hook and sample bar/mark heights + opacities at +100, +400 and
-// +900 ms. A mount-style reveal replaying on a prop change shows as marks whose
-// height/y or opacity still move between +100 and +900 ms (bars growing from
-// the baseline, marks fading in). Toggles exercised:
-//   bardepth/100   __qaSetBarDepthEnabled(true)   (depth off -> on)
-//   patternarea/1000 __qaSetPatternPreset("dots")  (pattern swap)
-//   brush/1000     __qaSetBrush(0.25, 0.75)        (domain change)
-//   legendhover/1000 __qaSetLegendHover(0)         (legend dim)
+// No-re-reveal probe: after settle, flip a prop through the scenario QA hook and sample marks at +100/+400/+900ms.
+// Toggles: bardepth/100 __qaSetBarDepthEnabled(true); patternarea/1000 __qaSetPatternPreset("dots");
+// brush/1000 __qaSetBrush(0.25,0.75); legendhover/1000 __qaSetLegendHover(0).
 import { diffMarks, openScene, sampleMarks } from "./lib-probe.mjs";
 
 export const DEFAULT_TOGGLES = [
@@ -39,8 +33,7 @@ export async function noReRevealProbe(browser, baseUrl, { toggles = DEFAULT_TOGG
         const dBefore_900 = diffMarks(before, samples[2].marks);
         const lowOpacityAt100 = samples[0].marks.marks.filter((m) => m.opacity < 0.5).length;
         const lowOpacityAt900 = samples[2].marks.marks.filter((m) => m.opacity < 0.5).length;
-        // Re-reveal signature: still moving after +400ms, or marks near-transparent at
-        // +100 that are opaque at +900 (fade-in replay), or heights growing.
+        // Re-reveal = still moving after +400ms, or near-transparent at +100 but opaque at +900 (fade-in replay).
         const stillMoving = d400_900.moved > 0 || d400_900.opacityChanged > 0;
         const fadeReplay = lowOpacityAt100 > lowOpacityAt900 + 2;
         rows.push({ chart: t.chart, n: t.n, impl, toggle: t.label, hookOk: hook, before: before.count, d100_400, d400_900, dBefore_900, lowOpacityAt100, lowOpacityAt900, stillMovingAfter400: stillMoving, fadeReplay, reRevealSuspected: stillMoving || fadeReplay, samples: samples.map((x) => ({ at: x.at, count: x.marks.count, first: x.marks.marks.slice(0, 6) })), errors: [...new Set(s.errors)].slice(0, 3) });

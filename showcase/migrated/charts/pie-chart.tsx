@@ -1,194 +1,83 @@
-// PieChart — ports repos/bklit-ui/packages/ui/src/charts/{pie-chart,
-// pie-slice,pie-context,pie-center}.tsx.
-//
-// --- Architecture (TanStack-native, PLAN Phase 1.2 redo, D77) ------------
-// The previous revision (D49) sidestepped TanStack entirely — plain React
-// Context + hand-rolled d3-shape arcs, with one `<PieSlice>` React component
-// per datum carrying its own refs, effects, paths, and event handlers. That
-// faithfully reproduced bklit's composable-children API but inherited bklit's
-// per-component React overhead (~2ms/slice), landing M1a at 12.7ms vs B 15.1ms
-// vs T 10.8ms at n=4 (G2 0.56 vs the 0.6 bar on 4.3ms of headroom — D55).
-//
-// This revision uses the TanStack rendering pipeline directly:
-// `radialArc` marks inside a `polar()` container, emitted by `defineChart`
-// and rendered by `<Chart>`. The `<PieSlice>` children are classified but never
-// rendered as React components — their props are extracted and baked into the
-// mark definitions. The WAAPI reveal, imperative hover springs, and
-// `PieCenter` overlay are layered on TanStack-rendered DOM via
-// `data-ts-key` queries. `focusDisabled` suppresses TanStack's own pointer
-// handling so Pie's custom hover owns the surface entirely.
-//
-// Expected M1a savings: eliminates N × ~2ms per-slice React overhead plus
-// per-slice hook registration, context reads, and path computation in React
-// render. The SVG rendering moves from React-managed DOM to TanStack's
-// optimized scene-graph pipeline (same transformation that took Ring from
-// 23.2ms → 13.6ms at n=4, a 41% improvement).
-//
-// --- C5c (native focus, Phase 6, D435): DOM pointer chrome retired --------
-// `focusDisabled` and the `querySelectorAll('path[data-ts-key^="pie-hitbox:"]')`
-// + `pointerenter`/`pointerleave` `useLayoutEffect` (both described below and
-// in C2's note) are GONE. The static hitbox twin (`hitboxMark`, unchanged)
-// now carries native focus instead: `focus` is omitted from `defineChart`
-// (library default — pointer resolves the topmost containing interactive
-// primitive, which is always the hitbox twin since it paints last), and
-// `<RendererChart onFocusChange>` forwards the resolved point's
-// `datum.sliceIndex` straight to the SAME `PieHoverCoordinator` used before
-// (`requestHover`/`requestUnhover`) — the coordinator, broadcast store, fade,
-// and spring geometry are UNCHANGED, only the DOM-query pointer-detection
-// layer is gone. `groupEl.style.cursor` writes are replaced by a CSS rule
-// (styles.css, reported to the C5c orchestrator — this file cannot own that
-// shared stylesheet). Net-new, previously entirely absent: native keyboard
-// focus (Tab into the SVG, arrow keys) now also resolves points and fires
-// `onFocusChange`, so keyboard users get slice hover-preview + fade for the
-// first time. One accepted approximation: `RadialArcOptions` has no API to
-// exclude the visible `sliceMark`'s points from native focus/keyboard
-// candidacy (dist/polar.d.ts, @tanstack/charts@0.15.0), so keyboard
-// arrow-navigation exposes both the visible mark's and the hitbox twin's
-// points as separate stops at the same position — pointer hover is
-// unaffected (paint-order containment always resolves to the hitbox, which
-// is declared last) since it only matters for pointer resolution.
-//
-// --- Preserved from D49 (all previous findings verified and carried forward)
-// * d3 pie() computation — identical config to bklit (`.sort(null)` for QA
-//   determinism)
-// * PieHoverCoordinator — hover-index state broadcast (still imperative:
-//   pointer detection + `requestHover`/`requestUnhover`, C2 below)
-// * PieCenter overlay (internal/pie-center.tsx) rendering shared CenterStat
-//   (real @number-flow/react digit roll; the D49-era "NumberFlow omission"
-//   deviation is resolved — see center-stat.tsx's header)
-// * `className` dead prop on PieSlice (D49 finding)
-//
-// --- C1 (states+legend, Phase 6): fade moved off DOM, glow deleted --------
-// Pie uses a native `radialArc` mark (no `states` option — Cartesian-only;
-// see polar.d.ts) so the non-hovered-slice fade (bklit: opacity 0.4, 0.15s
-// ease-in-out — pie-hover-chrome.ts's original `OPACITY_TRANSITION`, NOT the
-// 0.4s figure in some historical docs) can no longer live as an imperative
-// `el.style.opacity` write. It now rides a REACTIVE definition instead: a
-// tiny `fadeHoveredIndex` React-state slice (below), fed by the existing
-// imperative `PieHoverCoordinator` via `subscribe`, drives each row's `fill`
-// through `applyAlphaToColor` in the `definition` useMemo — same
-// `color-mix()` pattern sunburst-chart.tsx already used for depth opacity,
-// necessary because radialArc's `opacity` mark option is a single number for
-// the whole mark, not a per-datum channel. bklit's glow (`showGlow`
-// drop-shadow) was DEAD at runtime (D49) and is deleted outright by C1, not
-// ported.
-//
-// --- C2 (native motion, Phase 6, D432): WAAPI reveal + hover springs
-// deleted, both now native ------------------------------------------------
-// `<RendererChart renderer={chartMotionRenderer()}>` replaces `<Chart>`.
-// `sliceMark`'s entrance (angular sweep) plays via the mark's own `motion`
-// callback — `stagger({each,offset})` reproduces the legacy per-slice delay
-// formula (pie-slice.tsx: `(0.1 + dataIndex*0.08) * enterStaggerScale`) — so
-// the hand-rolled `handleRender` WAAPI reveal (per-slice `.animate()` with
-// sampled `d` keyframes) is GONE outright, not ported. The translate/grow
-// hover effects are no longer per-frame `setAttribute('d', …)` writes either:
-// `pieRows` (below) computes each slice's live geometry (`dx`/`dy` offset via
-// `createOffsetArc`, grown `outerRadius`) REACTIVELY off `fadeHoveredIndex`,
-// and `sliceMark.generator` bakes that into the arc `d` — the same
-// `{stiffness:400,damping:25}` HOVER_SPRING (pie-hover-chrome.ts) now drives
-// the keyed-`d` morph via the mark's `motion` update-phase transition instead
-// of `pie-hover-chrome.ts`'s `createSpring` runtime. Only pointer detection
-// (hitbox `pointerenter`/`pointerleave` -> `coordinator.requestHover`) stays
-// imperative — DOM events have no reactive-definition equivalent.
-// * Scrub layers bypass TanStack marks entirely (plain React SVG paths)
-// * `<defs>` children (gradients/patterns) rendered in a dedicated hidden SVG
+// Bklit PieChart on TanStack Charts (single radialArc in polar); slices are carriers, detection app-owned.
 import { pie as d3Pie } from "d3-shape";
-import {
-  Children,
-  isValidElement,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactElement,
-  type ReactNode,
-} from "react";
+import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
 import { defineChart } from "@tanstack/charts/scene";
 import { polar, radialArc } from "@tanstack/charts/polar";
+import type { PolarMark } from "@tanstack/charts/polar";
 import { stagger } from "@tanstack/charts/motion/definition";
 import { pieArcPath, sliceMidOffset } from "./internal/pie-geometry";
-import { displayNameOf } from "./children";
 
-import {
-  createOffsetArc,
-  createPieHoverCoordinator,
-  FADE_OPACITY,
-  HOVER_SPRING,
-  motionEasingFromCss,
-  type PieHoverCoordinator,
-  type PieSliceHoverEffect,
-} from "./internal/pie-hover-chrome";
+import { createOffsetArc, createPieHoverCoordinator, FADE_OPACITY, HOVER_SPRING, motionEasingFromCss } from './internal/pie-hover-chrome';
+import type { PieHoverCoordinator, PieSliceHoverEffect } from './internal/pie-hover-chrome';
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import { hitTestPolarBands, pointerToCenterOffset } from "./internal/polar-hit";
-import {
-  resolveEnterTransition,
-  type PieEnterTransition,
-  type ResolvedTiming,
-} from "./internal/enter-transition";
-import { useDebouncedContainerSize } from "./internal";
-import {
-  PieStableContext,
-  PieHoverCoordinatorContext,
-  type PieStableValue,
-} from "./internal/pie-center";
+import { resolveEnterTransition } from './internal/enter-transition';
+import type { PieEnterTransition, ResolvedTiming } from './internal/enter-transition';
+import { useDebouncedContainerSize } from "./internal/use-container-size";
+import { PieStableContext, PieHoverCoordinatorContext } from './internal/pie-center-context';
+import type { PieStableValue } from './internal/pie-center';
 import { CHART_CATEGORY_PALETTE } from "./internal/design-tokens";
 import "./styles.css";
 
-export type { PieSliceHoverEffect } from "./internal/pie-hover-chrome";
-export type { PieEnterTransition } from "./internal/enter-transition";
+const DEFAULT_HOVER_OFFSET = 10;
 
-export const DEFAULT_HOVER_OFFSET = 10;
+// Fraction-to-percent scale (alpha fade, stagger offsets).
+const PERCENT_SCALE = 100;
+// Full-circle sweep from -π/2: endAngle = 3π/2.
+const PIE_END_ANGLE_PI_NUMERATOR = 3;
+// Slice enter stagger (scaled by enterStaggerScale).
+const PIE_STAGGER_EACH_MS = 80;
+const PIE_STAGGER_OFFSET_MS = 100;
+// Charts smaller than this render the empty placeholder (no room for arcs).
+const MIN_PIE_SIZE_PX = 10;
 
-// T-D15 (P3.1): sourced from the shared 5-entry categorical palette rather
-// than a local literal set — see internal/design-tokens.ts. Deliberately NOT
-// TanStack's native `defaultChartTheme.palette` (6 entries) — see that
-// module's comment for why a 6-long cycle would desync from index 5 on.
-export const defaultPieColors: readonly string[] = CHART_CATEGORY_PALETTE;
+// 5-entry palette, not TanStack's native 6: a 6-cycle desyncs after index 5.
+const defaultPieColors: readonly string[] = CHART_CATEGORY_PALETTE;
 
-export interface PieData {
-  label: string;
-  value: number;
-  color?: string;
-  fill?: string;
+interface PieData {
+  readonly label: string;
+  readonly value: number;
+  readonly color?: string;
+  readonly fill?: string;
 }
 
-export interface PieArcData {
-  data: PieData;
-  index: number;
-  startAngle: number;
-  endAngle: number;
-  padAngle: number;
-  value: number;
+interface PieArcData {
+  readonly data: PieData;
+  readonly index: number;
+  readonly startAngle: number;
+  readonly endAngle: number;
+  readonly padAngle: number;
+  readonly value: number;
 }
 
 
-// Children classification — PieSlice elements are NOT rendered as React
-// components in this revision. Their props are extracted and baked into the
-// TanStack `radialArc` marks. PieCenter elements ARE rendered (overlay).
-// Defs children (gradients/patterns) go to a dedicated hidden SVG.
-// ---------------------------------------------------------------------------
-
-// C1 (states+legend): bakes the non-hovered-slice fade into the per-datum
-// `fill` string (radialArc has no per-datum opacity channel — see file
-// header). Same helper/pattern as sunburst-chart.tsx's `applyAlphaToColor`.
-function applyAlphaToColor(color: string, alpha: number): string {
-  if (alpha >= 1) return color;
-  return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
+// RadialArc has no per-datum opacity; fade rides fill alpha via color-mix (same as sunburst).
+const applyAlphaToColor = (color: string, alpha: number): string => {
+  if (alpha >= 1) {return color;}
+  return `color-mix(in srgb, ${color} ${Math.round(alpha * PERCENT_SCALE)}%, transparent)`;
 }
 
-function isPieCenterElement(child: ReactNode): boolean {
-  return isValidElement(child) && typeof child.type === "function" && displayNameOf(child.type as { displayName?: string }) === "PieCenter";
+// Boundary predicates: React child types arrive as string-or-constructor unions; narrow once here.
+const isString = (value: unknown): value is string => typeof value === "string";
+// Object() boxes primitives, so identity holds exactly for objects and functions (any realm, any prototype).
+const isObjectOrFunction = (value: unknown): value is object => value !== null && Object(value) === value;
+
+const displayNameOfType = (componentType: unknown): string | undefined => {
+  if (!isObjectOrFunction(componentType)) {return undefined;}
+  if (!("displayName" in componentType)) {return undefined;}
+  const displayName: unknown = componentType.displayName;
+  return isString(displayName) ? displayName : undefined;
 }
 
-function isPieSliceElement(child: ReactNode): boolean {
-  return isValidElement(child) && typeof child.type === "function" && displayNameOf(child.type as { displayName?: string }) === "PieSlice";
-}
+const isPieCenterElement = (child: Readonly<ReactNode>): boolean => isValidElement(child) && child.type instanceof Function && displayNameOfType(child.type) === "PieCenter"
 
-function isDefsComponent(child: ReactElement): boolean {
-  const name = displayNameOf(child.type as { displayName?: string }) ?? "";
+const isPieSliceElement = (child: Readonly<ReactNode>): child is ReactElement<PieSliceProps> => isValidElement(child) && child.type instanceof Function && displayNameOfType(child.type) === "PieSlice"
+
+const isDefsComponent = (child: Readonly<ReactElement>): boolean => {
+  if (isString(child.type)) {return false;}
+  const name = displayNameOfType(child.type) ?? "";
   return (
     name.includes("Gradient") ||
     name.includes("Pattern") ||
@@ -198,18 +87,14 @@ function isDefsComponent(child: ReactElement): boolean {
 }
 
 interface PieSliceConfig {
-  index: number;
-  color?: string;
-  fill?: string;
-  animate: boolean;
-  // Extracted for bklit prop parity (`<PieSlice showGlow={false}>` still
-  // compiles/classifies), but unread from here on — C1 deleted the dead
-  // glow computation this fed (internal/pie-hover-chrome.ts never rendered
-  // it; see that file's header). Same category as PieSlice's dead
-  // `className` prop (D49).
-  showGlow: boolean;
-  hoverEffect: PieSliceHoverEffect;
-  hoverOffset?: number;
+  readonly index: number;
+  readonly color?: string;
+  readonly fill?: string;
+  readonly animate: boolean;
+  // ShowGlow extracted for prop parity only; glow rendering was dead code and is unread.
+  readonly showGlow: boolean;
+  readonly hoverEffect: PieSliceHoverEffect;
+  readonly hoverOffset?: number;
 }
 
 interface ClassifiedChildren {
@@ -218,48 +103,38 @@ interface ClassifiedChildren {
   sliceConfigs: PieSliceConfig[];
 }
 
-function classifyChildren(children: ReactNode, geometryScrubbing: boolean): ClassifiedChildren {
+const classifyChildren = (children: Readonly<ReactNode>, geometryScrubbing: boolean): ClassifiedChildren => {
   const centerChildren: ReactNode[] = [];
   const defsChildren: ReactElement[] = [];
   const sliceConfigs: PieSliceConfig[] = [];
 
-  Children.forEach(children, (child) => {
-    if (!isValidElement(child)) return;
+  Children.forEach(children, (child: Readonly<ReactNode>) => {
+    if (!isValidElement(child)) {return;}
     if (isPieCenterElement(child)) {
       centerChildren.push(child);
     } else if (isDefsComponent(child)) {
       defsChildren.push(child);
     } else if (isPieSliceElement(child) && !geometryScrubbing) {
-      const props = (child as ReactElement).props as {
-        index: number;
-        color?: string;
-        fill?: string;
-        animate?: boolean;
-        showGlow?: boolean;
-        hoverEffect?: PieSliceHoverEffect;
-        hoverOffset?: number;
-      };
+      const { props } = child;
       sliceConfigs.push({
-        index: props.index,
+        animate: props.animate !== false,
         color: props.color,
         fill: props.fill,
-        animate: props.animate !== false,
-        showGlow: props.showGlow !== false,
         hoverEffect: props.hoverEffect ?? "translate",
         hoverOffset: props.hoverOffset,
+        index: props.index,
+        showGlow: props.showGlow !== false,
       });
+    } else {
+      // Non-slice children and scrubbed geometry carry no slice config.
     }
   });
 
   return { centerChildren, defsChildren, sliceConfigs };
 }
 
-// ---------------------------------------------------------------------------
-// PieChart
-// ---------------------------------------------------------------------------
-
-export interface PieChartProps {
-  data: PieData[];
+interface PieChartProps {
+  readonly data: PieData[];
   size?: number;
   innerRadius?: number;
   padAngle?: number;
@@ -278,40 +153,212 @@ export interface PieChartProps {
 }
 
 interface PieRowDatum {
-  startAngle: number;
-  endAngle: number;
-  fill: string;
-  sliceIndex: number;
-  // C2 (D432, native motion): per-datum GEOMETRY, reactive on hover state —
-  // replaces pie-hover-chrome.ts's imperative per-frame `d` rewrite. `grow`
-  // varies `outerRadius`; `translate`/`none` vary `dx`/`dy` (consumed by
-  // `createOffsetArc`, since RadialArcOptions has no transform channel).
-  // Both a slice's own hover AND every other slice fading in/out share the
-  // SAME rebuild (`fadeHoveredIndex` already drives `fill` — this is the
-  // same "hover change -> recompute rows -> rebuild definition -> TanStack
-  // reconciles" model sunburst-chart.tsx's C1 work established), so no new
-  // hover-triggered-reanimation guard is needed beyond the mark's own
-  // `motion` callback distinguishing "enter" (stagger sweep) from "update"
-  // (hover spring) below.
-  innerRadius: number;
-  outerRadius: number;
-  cornerRadius: number;
-  dx: number;
-  dy: number;
-  /** `PieSlice`'s `animate` prop (default true) — legacy suppressed the
-      WAAPI reveal per-slice; native suppression is `motion: false` on the
-      enter phase for that datum, read via `ctx.datum.animate` below. */
-  animate: boolean;
+  readonly startAngle: number;
+  readonly endAngle: number;
+  readonly fill: string;
+  readonly sliceIndex: number;
+  readonly innerRadius: number;
+  readonly outerRadius: number;
+  readonly cornerRadius: number;
+  readonly dx: number;
+  readonly dy: number;
+  /** PieSlice's `animate` prop — false suppresses the enter motion via `ctx.datum.animate`. */
+  readonly animate: boolean;
 }
 
-export function PieChart({
+interface ResolvePieRowFillParams {
+  readonly fadeHoveredIndex: number | null;
+  readonly getFill: (index: number) => string;
+  readonly index: number;
+  readonly sliceConfig: PieSliceConfig | undefined;
+}
+
+const resolvePieRowFill = (params: Readonly<ResolvePieRowFillParams>): string => {
+  const { fadeHoveredIndex, getFill, index, sliceConfig } = params;
+  const customFill = sliceConfig?.fill;
+  const baseFill = customFill !== undefined && customFill !== "" ? customFill : getFill(index);
+  const isFaded = fadeHoveredIndex !== null && fadeHoveredIndex !== index;
+  return isFaded ? applyAlphaToColor(baseFill, FADE_OPACITY) : baseFill;
+}
+
+interface BuildPieRowDatumParams {
+  readonly arc: Readonly<PieArcData>;
+  readonly availableRadius: number;
+  readonly cornerRadius: number;
+  readonly fadeHoveredIndex: number | null;
+  readonly getFill: (index: number) => string;
+  readonly hoverOffset: number;
+  readonly innerRadius: number;
+  readonly sliceConfig: PieSliceConfig | undefined;
+}
+
+const buildPieRowDatum = (params: Readonly<BuildPieRowDatumParams>): PieRowDatum => {
+  const { arc, availableRadius, cornerRadius, fadeHoveredIndex, getFill, hoverOffset, innerRadius, sliceConfig } = params;
+  const isHovered = fadeHoveredIndex === arc.index;
+  const fill = resolvePieRowFill({ fadeHoveredIndex, getFill, index: arc.index, sliceConfig });
+  const effect = sliceConfig?.hoverEffect ?? "translate";
+  const sliceHoverOffset = sliceConfig?.hoverOffset ?? hoverOffset;
+  const growBy = isHovered && effect === "grow" ? sliceHoverOffset : 0;
+  const translateDistance = isHovered && effect === "translate" ? sliceHoverOffset : 0;
+  const { x: dx, y: dy } = sliceMidOffset(arc.startAngle, arc.endAngle, translateDistance);
+  return {
+    animate: sliceConfig?.animate ?? true,
+    cornerRadius: availableRadius > 0 ? cornerRadius : 0,
+    dx,
+    dy,
+    endAngle: arc.endAngle,
+    fill,
+    innerRadius,
+    outerRadius: availableRadius + growBy,
+    sliceIndex: arc.index,
+    startAngle: arc.startAngle,
+  };
+}
+
+interface CreatePieSliceMarkParams {
+  readonly enterStaggerScale: number;
+  readonly enterTransition: PieEnterTransition | undefined;
+}
+
+const createPieSliceMark = (pieRows: readonly PieRowDatum[], params: Readonly<CreatePieSliceMarkParams>): PolarMark<PieRowDatum, number, number> => {
+  const { enterStaggerScale, enterTransition } = params;
+  return radialArc<PieRowDatum>(pieRows, {
+    fill: (datum: Readonly<PieRowDatum>) => datum.fill,
+    generator: () => {
+      const gen = createOffsetArc<PieRowDatum>((datum: Readonly<PieRowDatum>) => ({ dx: datum.dx, dy: datum.dy }));
+      gen
+        .startAngle((datum: Readonly<PieRowDatum>) => datum.startAngle)
+        .endAngle((datum: Readonly<PieRowDatum>) => datum.endAngle)
+        .innerRadius((datum: Readonly<PieRowDatum>) => datum.innerRadius)
+        .outerRadius((datum: Readonly<PieRowDatum>) => datum.outerRadius)
+        .cornerRadius((datum: Readonly<PieRowDatum>) => datum.cornerRadius);
+      return gen;
+    },
+    id: "pie-slices",
+    key: (datum) => String(datum.sliceIndex),
+    // Enter replays legacy stagger unless overridden; other phases ride HOVER_SPRING (harmless for values).
+    motion: (ctx: Readonly<{ datum?: Readonly<PieRowDatum>; phase: string }>) => {
+      if (ctx.phase !== "enter") {
+        return {
+          transition: { damping: HOVER_SPRING.damping, stiffness: HOVER_SPRING.stiffness, type: "spring" },
+        };
+      }
+      if (ctx.datum && !ctx.datum.animate) {return false;}
+      if (enterTransition) {
+        const resolved: ResolvedTiming = resolveEnterTransition(enterTransition);
+        return {
+          transition:
+            resolved.kind === "spring"
+              ? { damping: resolved.damping, mass: resolved.mass, stiffness: resolved.stiffness, type: "spring" }
+              : {
+                  duration: resolved.durationMs,
+                  easing: motionEasingFromCss(resolved.easingCss),
+                  type: "tween",
+                },
+        };
+      }
+      return stagger({ each: PIE_STAGGER_EACH_MS * enterStaggerScale, offset: PIE_STAGGER_OFFSET_MS * enterStaggerScale, phase: "enter" });
+    },
+    opacity: 1,
+  });
+}
+
+const renderPieDefsSvg = (defsChildren: readonly ReactElement[]): ReactElement | undefined => {
+  if (defsChildren.length === 0) { return undefined; }
+  return (
+    <svg width={0} height={0} aria-hidden="true" style={{ left: 0, pointerEvents: "none", position: "absolute", top: 0 }}>
+      <defs>{defsChildren}</defs>
+    </svg>
+  );
+}
+
+interface PieScrubSvgParams {
+  readonly center: number;
+  readonly data: readonly PieData[];
+  readonly defsChildren: readonly ReactElement[];
+  readonly getFill: (index: number) => string;
+  readonly scrubSlicePaths: readonly string[] | null;
+  readonly size: number;
+}
+
+const renderPieScrubSvg = (params: Readonly<PieScrubSvgParams>): ReactElement => {
+  const { center, data, defsChildren, getFill, scrubSlicePaths, size } = params;
+  return (
+    <svg
+      aria-hidden="true"
+      height={size}
+      style={{ contain: "layout style paint" }}
+      width={size}
+    >
+      {defsChildren.length > 0 && <defs>{defsChildren}</defs>}
+      <g transform={`translate(${center}, ${center})`}>
+        {scrubSlicePaths?.map((slicePath, index) =>
+          slicePath ? (
+            <path
+              d={slicePath}
+              fill={getFill(index)}
+              key={data[index]?.label ?? index}
+              pointerEvents="none"
+            />
+          ) : undefined,
+        )}
+      </g>
+    </svg>
+  );
+}
+
+const renderPieCenterOverlay = (centerChildren: readonly ReactNode[]): ReactElement | undefined => {
+  if (centerChildren.length === 0) { return undefined; }
+  return (
+    <div
+      style={{
+        alignItems: "center",
+        display: "flex",
+        inset: 0,
+        justifyContent: "center",
+        pointerEvents: "none",
+        position: "absolute",
+      }}
+    >
+      {centerChildren}
+    </div>
+  );
+}
+
+interface PieInnerContentParams {
+  readonly center: number;
+  readonly centerChildren: readonly ReactNode[];
+  readonly data: readonly PieData[];
+  readonly defsChildren: readonly ReactElement[];
+  readonly geometryScrubbing: boolean;
+  readonly getFill: (index: number) => string;
+  readonly renderChart: () => ReactElement;
+  readonly scrubSlicePaths: readonly string[] | null;
+  readonly size: number;
+}
+
+const renderPieInnerContent = (params: Readonly<PieInnerContentParams>): ReactElement => {
+  const { center, centerChildren, data, defsChildren, geometryScrubbing, getFill, renderChart, scrubSlicePaths, size } = params;
+  return (
+    <>
+      {/* Hidden defs svg: url(#id) refs resolve document-wide. */}
+      {renderPieDefsSvg(defsChildren)}
+      {geometryScrubbing
+        ? renderPieScrubSvg({ center, data, defsChildren, getFill, scrubSlicePaths, size })
+        : renderChart()}
+      {renderPieCenterOverlay(centerChildren)}
+    </>
+  );
+}
+
+const PieChart = ({
   data,
   size: fixedSize,
   innerRadius = 0,
   padAngle = 0,
   cornerRadius = 0,
   startAngle = -Math.PI / 2,
-  endAngle = (3 * Math.PI) / 2,
+  endAngle = (PIE_END_ANGLE_PI_NUMERATOR * Math.PI) / 2,
   className,
   style,
   hoveredIndex,
@@ -321,30 +368,29 @@ export function PieChart({
   enterStaggerScale = 1,
   geometryScrubbing = false,
   children,
-}: PieChartProps) {
+}: Readonly<PieChartProps>): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  // P9 (bklit ParentSize debounceTime={10}): measurement goes through the
-  // debounced width+height hook, same as gauge's G5 call sites. The retired
-  // `useMeasuredRect(containerRef, !fixedSize)` passed `enabled` purely to
-  // skip mounting a ResizeObserver in fixed mode — an optimization, not
-  // behavior: containerRef is attached on BOTH render branches (:757, :774)
-  // and `size` falls back to `fixedSize` below, so a measured value in fixed
-  // mode is never read.
+  // ResizeObserver mounts unconditionally; fixed-size mode never reads the measurement.
   const { width, height } = useDebouncedContainerSize(containerRef);
   const size = fixedSize ?? Math.min(width, height);
 
-  // --- Hover coordinator (unchanged from D49) ---
+  // Latest-value refs: the coordinator persists across renders, so its callbacks read props
+  // Through refs refreshed post-commit instead of closing over a single render.
   const isControlledRef = useRef(hoveredIndex !== undefined);
-  isControlledRef.current = hoveredIndex !== undefined;
   const onHoverChangeRef = useRef(onHoverChange);
-  onHoverChangeRef.current = onHoverChange;
+  useEffect(() => {
+    isControlledRef.current = hoveredIndex !== undefined;
+    onHoverChangeRef.current = onHoverChange;
+  }, [hoveredIndex, onHoverChange]);
+  // Stable callbacks (not recreated per render) so the coordinator is created exactly once.
+  const notifyHoverChange = useCallback((index: number | null): void => {
+    onHoverChangeRef.current?.(index);
+  }, []);
+  const readIsControlled = useCallback((): boolean => isControlledRef.current, []);
 
   const coordinatorRef = useRef<PieHoverCoordinator | null>(null);
   if (coordinatorRef.current === null) {
-    coordinatorRef.current = createPieHoverCoordinator(
-      (index) => onHoverChangeRef.current?.(index),
-      () => isControlledRef.current,
-    );
+    coordinatorRef.current = createPieHoverCoordinator(notifyHoverChange, readIsControlled);
   }
   const coordinator = coordinatorRef.current;
 
@@ -354,43 +400,39 @@ export function PieChart({
     }
   }, [hoveredIndex, coordinator]);
 
-  // C1 (states+legend): the fade's ONLY reactive (React-state) consumer of
-  // the coordinator — pointer detection, translate/grow springs, and cursor
-  // handling all stay imperative (unchanged, per file header). This drives
-  // the per-datum `fill` alpha in `definition` below; a hover change
-  // recomputes `pieRows` → rebuilds the definition → TanStack reconciles
-  // fresh colors. That rebuild-on-change IS the library's reactive model —
-  // there is no per-datum `opacity` VisualChannel on radialArc to hang a
-  // "states"-style definition off (polar.d.ts: `opacity` is a single number
-  // for the whole mark), so the fade rides `fill` instead, same as
-  // sunburst-chart.tsx's depth/hover opacity.
   const [fadeHoveredIndex, setFadeHoveredIndex] = useState<number | null>(() => coordinator.getHovered());
-  useEffect(() => coordinator.subscribe(() => setFadeHoveredIndex(coordinator.getHovered())), [coordinator]);
+  useEffect(() => coordinator.subscribe(() =>{  setFadeHoveredIndex(coordinator.getHovered()); }), [coordinator]);
 
-  const totalValue = useMemo(() => data.reduce((sum, d) => sum + d.value, 0), [data]);
+  const totalValue = useMemo(() => data.reduce((sum, datum: Readonly<PieData>) => sum + datum.value, 0), [data]);
 
   const getColor = useCallback(
-    (index: number) => data[index]?.color || (defaultPieColors[index % defaultPieColors.length] as string),
+    (index: number) => {
+      const custom = data[index]?.color;
+      return custom !== undefined && custom !== "" ? custom : (defaultPieColors[index % defaultPieColors.length]);
+    },
     [data],
   );
   const getFill = useCallback(
-    (index: number) => data[index]?.fill || getColor(index),
+    (index: number) => {
+      const custom = data[index]?.fill;
+      return custom !== undefined && custom !== "" ? custom : getColor(index);
+    },
     [data, getColor],
   );
 
   const arcs = useMemo((): PieArcData[] => {
     const pieGenerator = d3Pie<PieData>()
-      .value((d) => d.value)
+      .value((datum: Readonly<PieData>) => datum.value)
       .startAngle(startAngle)
       .endAngle(endAngle)
       .padAngle(padAngle)
       .sort(null);
-    return pieGenerator(data).map((arc, index) => ({
+    return pieGenerator(data).map((arc: Readonly<PieArcData>, index: number) => ({
       data: arc.data,
-      index,
-      startAngle: arc.startAngle,
       endAngle: arc.endAngle,
+      index,
       padAngle: arc.padAngle,
+      startAngle: arc.startAngle,
       value: arc.value,
     }));
   }, [data, startAngle, endAngle, padAngle]);
@@ -399,8 +441,8 @@ export function PieChart({
   const outerRadius = center - hoverOffset;
 
   const scrubSlicePaths = useMemo((): readonly string[] | null => {
-    if (!geometryScrubbing) return null;
-    return arcs.map((arc) =>
+    if (!geometryScrubbing) {return null;}
+    return arcs.map((arc: Readonly<PieArcData>) =>
       pieArcPath(innerRadius, outerRadius, arc.startAngle, arc.endAngle, cornerRadius, arc.padAngle),
     );
   }, [geometryScrubbing, arcs, innerRadius, outerRadius, cornerRadius]);
@@ -410,31 +452,29 @@ export function PieChart({
     [children, geometryScrubbing],
   );
 
-  // Convert slice configs to a lookup map keyed by index — eliminates
-  // O(N²) `find()` scans in the definition + imperative effect.
   const sliceConfigMap = useMemo(
-    () => new Map(sliceConfigs.map((c) => [c.index, c])),
+    () => new Map(sliceConfigs.map((config: Readonly<PieSliceConfig>) => [config.index, config])),
     [sliceConfigs],
   );
 
   const stable: PieStableValue = useMemo(
     () => ({
-      data,
       arcs,
-      size,
       center,
-      outerRadius,
-      innerRadius,
-      padAngle,
       cornerRadius,
-      hoverOffset,
-      enterTransition,
+      data,
       enterStaggerScale,
-      totalValue,
+      enterTransition,
+      geometryScrubbing,
       getColor,
       getFill,
-      geometryScrubbing,
+      hoverOffset,
+      innerRadius,
+      outerRadius,
+      padAngle,
       scrubSlicePaths,
+      size,
+      totalValue,
     }),
     [
       data, arcs, size, center, outerRadius, innerRadius, padAngle,
@@ -443,201 +483,101 @@ export function PieChart({
     ],
   );
 
-  // --- TanStack definition: ONE radialArc mark with N data rows ---
-  // Phase 2.5→2.2 edge case: Pie's per-element overhead is tiny (~0.12ms),
-  // so 50 separate marks cost 50× mark-validation. One multi-row mark
-  // validates once, generates per-row arcs via per-datum `fill` channel.
+  // One multi-row mark, not N per-slice marks: validation cost is per-mark.
   const availableRadius = center - hoverOffset;
 
   const definition = useMemo(() => {
     if (geometryScrubbing) {
       return defineChart({
-        marks: [polar({ inset: hoverOffset, radiusRatio: 1, marks: [] })],
-        guides: false, scales: { x: null, y: null },
-        tooltip: false,
-        // T-D15 (P3.1): explicit 5-entry palette override — see
-        // internal/design-tokens.ts. No visible marks in this branch, wired
-        // for consistency with the populated branch below.
+        guides: false,
+        marks: [polar({ inset: hoverOffset, marks: [], radiusRatio: 1 })],
+        scales: { x: null, y: null },
         theme: { palette: CHART_CATEGORY_PALETTE },
+        tooltip: false,
       });
     }
 
-    const pieRows: PieRowDatum[] = arcs.map((arc) => {
-      const config = sliceConfigMap.get(arc.index);
-      const baseFill = config?.fill || getFill(arc.index);
-      // C1 (states+legend): reactive fade — while ANY slice is hovered, every
-      // OTHER slice's fill alpha-mixes down to FADE_OPACITY (bklit: 0.4,
-      // 0.15s ease-in-out fill transition — see file header). Recomputing
-      // this per hover change is the "reactive definition" standing in for
-      // `states`, which radialArc doesn't have.
-      const isFaded = fadeHoveredIndex !== null && fadeHoveredIndex !== arc.index;
-      // C2 (D432, native motion): geometry rides the SAME reactive rebuild
-      // as fill — `hoverEffect` per slice picks which of "grow"
-      // (outerRadius) or "translate" (dx/dy via createOffsetArc) actually
-      // moves; "none" leaves both at rest.
-      const isHovered = fadeHoveredIndex === arc.index;
-      const effect = config?.hoverEffect ?? "translate";
-      const sliceHoverOffset = config?.hoverOffset ?? hoverOffset;
-      const growBy = isHovered && effect === "grow" ? sliceHoverOffset : 0;
-      const translateDistance = isHovered && effect === "translate" ? sliceHoverOffset : 0;
-      const { x: dx, y: dy } = sliceMidOffset(arc.startAngle, arc.endAngle, translateDistance);
-      return {
-        startAngle: arc.startAngle,
-        endAngle: arc.endAngle,
-        fill: isFaded ? applyAlphaToColor(baseFill, FADE_OPACITY) : baseFill,
-        sliceIndex: arc.index,
+    const pieRows: PieRowDatum[] = arcs.map((arc: Readonly<PieArcData>) =>
+      buildPieRowDatum({
+        arc,
+        availableRadius,
+        cornerRadius,
+        fadeHoveredIndex,
+        getFill,
+        hoverOffset,
         innerRadius,
-        outerRadius: availableRadius + growBy,
-        cornerRadius: availableRadius > 0 ? cornerRadius : 0,
-        dx,
-        dy,
-        animate: config?.animate ?? true,
-      };
-    });
+        sliceConfig: sliceConfigMap.get(arc.index),
+      }),
+    );
 
-    const sliceMark = radialArc<PieRowDatum>(pieRows, {
-      id: "pie-slices",
-      key: (d) => String(d.sliceIndex),
-      // C2 (D432): per-datum geometry (grow radius AND translate offset)
-      // replaces the mark-level innerRadius/outerRadius/cornerRadius used
-      // pre-C2 — `generator` is the confirmed mechanism for this (sunburst
-      // C1 precedent, sunburst-chart.tsx:636-646); `createOffsetArc`
-      // (pie-hover-chrome.ts) additionally lets the SAME generator express
-      // the translate hover effect, which RadialArcOptions has no channel
-      // for on its own.
-      generator: () => {
-        const gen = createOffsetArc<PieRowDatum>((d) => ({ dx: d.dx, dy: d.dy }));
-        gen
-          .startAngle((d) => d.startAngle)
-          .endAngle((d) => d.endAngle)
-          .innerRadius((d) => d.innerRadius)
-          .outerRadius((d) => d.outerRadius)
-          .cornerRadius((d) => d.cornerRadius);
-        return gen;
-      },
-      fill: (d) => d.fill,
-      opacity: 1,
-      // C2 (D432): "enter" keeps the legacy per-slice angular-sweep stagger
-      // (this file's pre-C5 handleRender / bklit pie-slice.tsx: offset
-      // 0.1s, each 0.08s, scaled by enterStaggerScale) via native
-      // `stagger()` — the renderer's default transition (1100ms tween)
-      // already equals REVEAL_DURATION_MS/REVEAL_EASE_CSS (design-tokens.ts
-      // T-D1), so only the delay needs authoring UNLESS a caller passes an
-      // explicit `enterTransition` override, which replaces duration/easing
-      // AND (authored delay replaces automatic stagger) the per-slice delay
-      // outright. Every OTHER phase — hover grow/translate AND ordinary
-      // data-value changes, which `ChartMotionContext` cannot distinguish —
-      // uses HOVER_SPRING (pie-hover-chrome.ts, bklit's own
-      // {stiffness:400,damping:25}): a documented, low-risk deviation from
-      // legacy (which never animated plain data-value changes at all,
-      // per-slice reveal was gated by a mount-only `seen` set) since a
-      // responsive spring is strictly an enhancement over an un-animated
-      // snap, and hover fidelity — the actually-legacy-matching case — is
-      // now driven natively instead of a per-frame `setAttribute('d', …)`.
-      motion: (ctx) => {
-        if (ctx.phase !== "enter") {
-          return {
-            transition: { type: "spring", stiffness: HOVER_SPRING.stiffness, damping: HOVER_SPRING.damping },
-          };
-        }
-        if (ctx.datum && !ctx.datum.animate) return false;
-        if (enterTransition) {
-          const resolved: ResolvedTiming = resolveEnterTransition(enterTransition);
-          return {
-            transition:
-              resolved.kind === "spring"
-                ? { type: "spring", stiffness: resolved.stiffness, damping: resolved.damping, mass: resolved.mass }
-                : {
-                    type: "tween",
-                    duration: resolved.durationMs,
-                    // ChartMotionTweenTransition['easing'] takes a named
-                    // keyword or a progress function — never a raw CSS
-                    // string — so `resolved.easingCss` (always a
-                    // `cubic-bezier(...)` string, see resolveEnterTransition)
-                    // is converted via motionEasingFromCss (pie-hover-chrome.ts).
-                    easing: motionEasingFromCss(resolved.easingCss),
-                  },
-          };
-        }
-        return stagger({ each: 80 * enterStaggerScale, offset: 100 * enterStaggerScale, phase: "enter" });
-      },
-    });
+    const sliceMark = createPieSliceMark(pieRows, { enterStaggerScale, enterTransition });
 
 
     return defineChart({
-      marks: [polar({ inset: hoverOffset, radiusRatio: 1, marks: [sliceMark] })],
-      guides: false, scales: { x: null, y: null },
-      // D473 (6.5 gate, supersedes C5c/D447): pointer detection is app-owned
-      // again (`pointer: false` + the wrapper's pointer handlers below,
-      // resolved against the static authored geometry via
-      // internal/polar-hit.ts). Native focus at 0.15.0 re-resolves the
-      // pointer against the motion surface's IN-FLIGHT presentation points on
-      // every definition update, so the hover-driven rebuild lost the hit,
-      // emitted `onFocusChange(null)`, and the unhover rebuild re-hit it —
-      // an unbounded hover/unhover loop (React #185). `focusRing: false`
-      // stays: the reactive grow/translate/fade geometry above IS pie's
-      // authored focus treatment.
-      pointer: false, focusRing: false, tooltip: false,
-      // T-D15 (P3.1): explicit 5-entry palette override, NOT the native
-      // 6-entry defaultChartTheme.palette (see internal/design-tokens.ts).
-      // Every row already carries an explicit per-datum `fill` (getFill
-      // above), so this has no pixel effect today — it exists so any native
-      // surface that reads the resolved theme's palette (rather than a
-      // per-datum channel) agrees with the JS-side color, and to route this
-      // part through the theme system per T-D15's contract.
+      // Detection is app-owned: native focus re-resolved against in-flight points caused a hover loop.
+      focusRing: false,
+      guides: false,
+      marks: [polar({ inset: hoverOffset, marks: [sliceMark], radiusRatio: 1 })],
+      pointer: false,
+      scales: { x: null, y: null },
+      // Palette override has no pixel effect (rows carry explicit fill); keeps native surfaces agreeing.
       theme: { palette: CHART_CATEGORY_PALETTE },
+      tooltip: false,
     });
   }, [
     arcs, sliceConfigMap, getFill, availableRadius, innerRadius, cornerRadius, hoverOffset,
     geometryScrubbing, fadeHoveredIndex, enterTransition, enterStaggerScale,
   ]);
-
-  // --- App-owned pointer detection (D473, supersedes C5c/D435): native
-  // motion (C2, D432) still owns entrance reveal and the hover
-  // grow/translate/fade geometry (reactive via `pieRows` ->
-  // `fadeHoveredIndex`). Detection hit-tests the pointer against the STATIC
-  // rest geometry — the same annulus the legacy transparent hitbox path
-  // painted (bklit pie-slice.tsx) — so band growth can never eject a
-  // stationary cursor, and no renderer DOM is touched. Requests are
-  // de-duplicated on the last REQUESTED index (not `getHovered()`), so a
-  // leave→re-enter of the same slice still cancels the coordinator's
-  // pending unhover.
+  // Hit-test against static rest geometry so band growth never ejects a stationary cursor.
   const pieHitBands = useMemo(
-    () => arcs.map((arc) => ({ innerRadius, outerRadius: availableRadius, startAngle: arc.startAngle, endAngle: arc.endAngle })),
+    () => arcs.map((arc: Readonly<PieArcData>) => ({ endAngle: arc.endAngle, innerRadius, outerRadius: availableRadius, startAngle: arc.startAngle })),
     [arcs, innerRadius, availableRadius],
   );
   const lastHitRequestRef = useRef<number | null>(null);
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (geometryScrubbing) return;
+      if (geometryScrubbing) {return;}
       const { x, y } = pointerToCenterOffset(event.currentTarget, event.clientX, event.clientY);
       const hit = hitTestPolarBands(x, y, pieHitBands);
-      if (hit === lastHitRequestRef.current) return;
+      if (hit === lastHitRequestRef.current) {return;}
       lastHitRequestRef.current = hit;
-      if (hit === null) coordinator.requestUnhover();
-      else coordinator.requestHover(hit);
+      if (hit === null) {coordinator.requestUnhover();}
+      else {coordinator.requestHover(hit);}
     },
     [coordinator, geometryScrubbing, pieHitBands],
   );
   const handlePointerLeave = useCallback(() => {
-    if (lastHitRequestRef.current === null) return;
+    if (lastHitRequestRef.current === null) {return;}
     lastHitRequestRef.current = null;
     coordinator.requestUnhover();
   }, [coordinator]);
 
-  if (size < 10) {
+  if (size < MIN_PIE_SIZE_PX) {
     return (
       <div
         className={className}
         data-bkm-chart="pie"
         ref={containerRef}
         style={{
-          ...(fixedSize ? { width: fixedSize, height: fixedSize } : { width: "100%", aspectRatio: "1 / 1" }),
+          ...(fixedSize !== undefined && fixedSize !== 0 ? { height: fixedSize, width: fixedSize } : { aspectRatio: "1 / 1", width: "100%" }),
           ...style,
         }}
       />
     );
   }
+
+  // Element factory (not a component).
+  // The same chart element renders in the same tree slot.
+  // Reconciliation is unchanged; only the call is visible here.
+  const renderChart = (): ReactElement => (
+    <RendererChart
+      ariaLabel="Pie chart"
+      width={size}
+      height={size}
+      definition={definition}
+      renderer={chartMotionRenderer<PieRowDatum, number, number>()}
+    />
+  );
 
   return (
     <div
@@ -647,70 +587,27 @@ export function PieChart({
       onPointerMove={handlePointerMove}
       onPointerLeave={handlePointerLeave}
       style={{
-        position: "relative",
-        display: "flex",
         alignItems: "center",
+        display: "flex",
         justifyContent: "center",
-        ...(fixedSize ? { width: fixedSize, height: fixedSize } : { width: "100%", aspectRatio: "1 / 1" }),
+        position: "relative",
+        ...(fixedSize !== undefined && fixedSize !== 0 ? { height: fixedSize, width: fixedSize } : { aspectRatio: "1 / 1", width: "100%" }),
         ...style,
       }}
     >
       <PieStableContext.Provider value={stable}>
         <PieHoverCoordinatorContext.Provider value={coordinator}>
-          {/* Dedicated hidden SVG for gradient/pattern <defs> children.
-              url(#id) references resolve across SVG trees in the same
-              document (Chrome 52+, FF, Safari all support this). */}
-          {defsChildren.length > 0 && (
-            <svg width={0} height={0} style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}>
-              <defs>{defsChildren}</defs>
-            </svg>
-          )}
-
-          {geometryScrubbing ? (
-            <svg
-              aria-hidden="true"
-              height={size}
-              style={{ contain: "layout style paint" }}
-              width={size}
-            >
-              {defsChildren.length > 0 && <defs>{defsChildren}</defs>}
-              <g transform={`translate(${center}, ${center})`}>
-                {scrubSlicePaths?.map((d, index) =>
-                  d ? (
-                    <path
-                      d={d}
-                      fill={getFill(index)}
-                      key={data[index]?.label ?? index}
-                      pointerEvents="none"
-                    />
-                  ) : null,
-                )}
-              </g>
-            </svg>
-          ) : (
-            <RendererChart
-              ariaLabel="Pie chart"
-              width={size}
-              height={size}
-              definition={definition}
-              renderer={chartMotionRenderer<PieRowDatum, number, number>()}
-            />
-          )}
-
-          {centerChildren.length > 0 && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                pointerEvents: "none",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              {centerChildren}
-            </div>
-          )}
+          {renderPieInnerContent({
+            center,
+            centerChildren,
+            data,
+            defsChildren,
+            geometryScrubbing,
+            getFill,
+            renderChart,
+            scrubSlicePaths,
+            size,
+          })}
         </PieHoverCoordinatorContext.Provider>
       </PieStableContext.Provider>
     </div>
@@ -719,15 +616,8 @@ export function PieChart({
 
 PieChart.displayName = "PieChart";
 
-// ---------------------------------------------------------------------------
-// PieSlice — config carrier only. Never rendered as a React component in
-// the TanStack-native architecture. Exists so JSX `<PieSlice />` compiles,
-// and `displayName` is set for children classification (`displayNameOf`).
-// All props are extracted in `classifyChildren()` and baked into TanStack
-// mark definitions.
-// ---------------------------------------------------------------------------
 
-export interface PieSliceProps {
+interface PieSliceProps {
   index: number;
   color?: string;
   fill?: string;
@@ -738,11 +628,22 @@ export interface PieSliceProps {
   className?: string;
 }
 
-export function PieSlice(_props: PieSliceProps): null {
-  return null;
-}
+const PieSlice = (_props: Readonly<PieSliceProps>): null => null;
 
 PieSlice.displayName = "PieSlice";
 
-// Legacy parity: bklit `pie-chart.tsx` ships `export default PieChart;` (T-E2).
+export type { PieSliceHoverEffect } from './internal/pie-hover-chrome';
+export type { PieEnterTransition } from './internal/enter-transition';
+export {
+  DEFAULT_HOVER_OFFSET,
+  defaultPieColors,
+  PieChart,
+  PieSlice,
+};
+export type {
+  PieArcData,
+  PieChartProps,
+  PieData,
+  PieSliceProps,
+};
 export default PieChart;

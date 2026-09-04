@@ -1,43 +1,93 @@
-// P5.2 T-E1b — bklit chart-reveal-clip.tsx port. Left-to-right clip reveal /
-// conceal for cartesian series, driven by the shared WAAPI reveal engine
-// (./enter-transition) instead of framer-motion: the rect's geometry
-// properties are keyframed from the SAME sampled-progress timing (tween
-// bezier at animation level / pre-sampled spring curve) the hosts' own
-// reveals use, so a caller-supplied spring transition reproduces the real
-// spring trajectory rather than a linear approximation.
+// Left-to-right clip reveal driven by the shared WAAPI reveal engine.
 import { useEffect, useRef } from "react";
-import {
-  buildProgressKeyframes,
-  resolveEnterTransition,
-  revealTiming,
-  type EnterTransition,
-} from "./enter-transition";
+import type { ReactElement } from "react";
+import { buildProgressKeyframes, resolveEnterTransition, revealTiming } from './enter-transition';
+import type { EnterTransition } from './enter-transition';
 
-export type ChartRevealClipMode = "reveal" | "conceal";
+type ChartRevealClipMode = "reveal" | "conceal";
 
-export interface ChartRevealClipProps {
+interface ChartRevealClipProps {
   clipPathId: string;
   height: number;
   targetWidth: number;
   enterTransition?: EnterTransition;
-  /** Bumps when motion settings change to replay the reveal. */
   revealEpoch: number;
-  /** Extra inset around the clip rect so edge glyphs are not cut off. */
   padding?: number;
-  /** When false, clip stays at full width (no grow animation). */
   animating?: boolean;
-  /** Reveal grows 0 → full; conceal shrinks full → 0 (ready → loading). */
   mode?: ChartRevealClipMode;
-  /** Called when a conceal animation finishes. */
   onComplete?: () => void;
 }
 
-/**
- * Left-to-right clip reveal for cartesian series.
- * Grows clip rect width from 0 → full (true LTR; scaleX is avoided — it
- * reveals from center) — bklit chart-reveal-clip.tsx:33-34 contract, verbatim.
- */
-export function ChartRevealClip({
+interface RevealAnimationParams {
+  readonly enterTransition: EnterTransition | undefined;
+  readonly isConceal: boolean;
+  readonly onComplete: (() => void) | undefined;
+  readonly paddedWidth: number;
+  readonly padding: number;
+}
+
+// Starts the WAAPI width-reveal on the clip rect; returns the effect cleanup.
+const startRevealAnimation = (rect: SVGRectElement, params: Readonly<RevealAnimationParams>): (() => void) => {
+  const { enterTransition, isConceal, onComplete, paddedWidth, padding } = params;
+  const resolved = resolveEnterTransition(enterTransition);
+  const timing = revealTiming(resolved);
+  const rightEdge = -padding + paddedWidth;
+
+  rect.setAttribute("x", String(-padding));
+  rect.setAttribute("width", isConceal ? String(paddedWidth) : "0");
+
+  const frames = buildProgressKeyframes(timing, (progress) => isConceal
+      ? {
+          width: `${Math.max(0, paddedWidth * (1 - progress))}px`,
+          x: `${rightEdge - paddedWidth * progress}px`,
+        }
+      : { width: `${Math.max(0, paddedWidth * progress)}px` },
+  );
+  const anim = rect.animate(frames, {
+    duration: timing.durationMs,
+    easing: timing.easing,
+    fill: "forwards",
+  });
+  anim.onfinish = (): void => {
+    if (isConceal) {
+      rect.setAttribute("width", "0");
+      rect.setAttribute("x", String(rightEdge));
+      onComplete?.();
+    } else {
+      rect.setAttribute("width", String(paddedWidth));
+    }
+    anim.cancel();
+  };
+  return (): void => {
+    anim.onfinish = null;
+    anim.cancel();
+  };
+};
+
+interface StaticClipParams {
+  readonly clipPathId: string;
+  readonly paddedHeight: number;
+  readonly paddedWidth: number;
+  readonly padding: number;
+}
+
+// Non-animated clip: full-width rect, no WAAPI work.
+const renderStaticClip = (params: Readonly<StaticClipParams>): ReactElement => {
+  const { clipPathId, paddedHeight, paddedWidth, padding } = params;
+  return (
+    <clipPath id={clipPathId}>
+      <rect
+        height={paddedHeight}
+        width={paddedWidth}
+        x={-padding}
+        y={-padding}
+      />
+    </clipPath>
+  );
+};
+
+/** Width-grown clip (scaleX would reveal from center, not left-to-right). */
+const ChartRevealClip = ({
   clipPathId,
   height,
   targetWidth,
@@ -47,69 +97,21 @@ export function ChartRevealClip({
   animating = true,
   mode = "reveal",
   onComplete,
-}: ChartRevealClipProps) {
+}: Readonly<ChartRevealClipProps>): ReactElement => {
   const paddedWidth = Math.max(0, targetWidth + padding * 2);
   const paddedHeight = height + padding * 2;
 
   const rectRef = useRef<SVGRectElement | null>(null);
 
-  useEffect(() => {
-    if (!animating) return;
+  useEffect((): (() => void) | undefined => {
+    if (!animating) {return undefined;}
     const rect = rectRef.current;
-    if (!rect) return;
-
-    const resolved = resolveEnterTransition(enterTransition);
-    const timing = revealTiming(resolved);
-    const isConceal = mode === "conceal";
-    const rightEdge = -padding + paddedWidth;
-
-    // Static attributes carry the pre-animation state (framer `initial`
-    // parity): reveal starts collapsed; conceal starts full-width.
-    rect.setAttribute("x", String(-padding));
-    rect.setAttribute("width", isConceal ? String(paddedWidth) : "0");
-
-    const frames = buildProgressKeyframes(timing, (progress) =>
-      isConceal
-        ? {
-            width: `${Math.max(0, paddedWidth * (1 - progress))}px`,
-            x: `${rightEdge - paddedWidth * progress}px`,
-          }
-        : { width: `${Math.max(0, paddedWidth * progress)}px` },
-    );
-    const anim = rect.animate(frames, {
-      duration: timing.durationMs,
-      easing: timing.easing,
-      fill: "forwards",
-    });
-    anim.onfinish = () => {
-      // Commit end-state attributes so the element no longer relies on the
-      // persisted animation fill, then drop it.
-      if (isConceal) {
-        rect.setAttribute("width", "0");
-        rect.setAttribute("x", String(rightEdge));
-        onComplete?.();
-      } else {
-        rect.setAttribute("width", String(paddedWidth));
-      }
-      anim.cancel();
-    };
-    return () => {
-      anim.onfinish = null;
-      anim.cancel();
-    };
+    if (!rect) {return undefined;}
+    return startRevealAnimation(rect, { enterTransition, isConceal: mode === "conceal", onComplete, paddedWidth, padding });
   }, [animating, mode, revealEpoch, enterTransition, paddedWidth, padding]);
 
   if (!animating) {
-    return (
-      <clipPath id={clipPathId}>
-        <rect
-          height={paddedHeight}
-          width={paddedWidth}
-          x={-padding}
-          y={-padding}
-        />
-      </clipPath>
-    );
+    return renderStaticClip({ clipPathId, paddedHeight, paddedWidth, padding });
   }
 
   return (
@@ -123,4 +125,7 @@ export function ChartRevealClip({
       />
     </clipPath>
   );
-}
+};
+
+export { ChartRevealClip };
+export type { ChartRevealClipMode, ChartRevealClipProps };

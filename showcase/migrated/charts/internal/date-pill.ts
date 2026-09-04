@@ -1,18 +1,17 @@
-// Date pill + odometer ticker.
-// SANCTIONED-EXTENSION (research/phase-6/03): the pill is app-owned HTML
-// positioned from `onFocusGroupChange` — it never touches renderer DOM.
-// Extraction-only (C3): `createDateTicker` and `buildPill` are the
-// byte-identical twins of the versions previously in
-// internal/tooltip-chrome.ts (deleted in C3). C4: the axis-label proximity
-// fade that shipped alongside them (`applyLabelFade`/`resetLabelFade` over
-// app-authored `[data-bkm-xlabel]` spans) is gone — axis labels are native
-// tick labels now, faded via the charts' `tickLabels.opacity` callbacks
-// (internal/axis-ticks.ts `tickLabelFadeOpacity`).
-import { createSpring, type Spring } from "./spring";
+// App-owned HTML pill positioned from `onFocusGroupChange`; never touches renderer DOM.
+// Axis-label fade lives in native `tickLabels.opacity` (axis-ticks.ts), not here.
+import { createSpring } from './spring';
+import type { Spring } from './spring';
 import { TICKER_ITEM_HEIGHT } from "./design-tokens";
 import type { SpringConfig } from "./chart-config-context";
 
-export interface PillBuild {
+// Date-ticker digit-roll spring (matches bklit's pill follow feel).
+const DATE_TICKER_SPRING_STIFFNESS = 400;
+const DATE_TICKER_SPRING_DAMPING = 35;
+// Label counts above this use the single compact label instead of month/day rollers.
+const COMPACT_LABEL_COUNT_THRESHOLD = 60;
+
+interface PillBuild {
   layer: HTMLDivElement;
   pill: HTMLDivElement;
   inner: HTMLDivElement;
@@ -21,86 +20,303 @@ export interface PillBuild {
   ticker: ReturnType<typeof createDateTicker> | null;
 }
 
-function createDateTicker(
-  doc: Document,
-  getLabels: () => string[],
-) {
-  const root = doc.createElement("div");
-  const compactLabel = doc.createElement("span");
-  compactLabel.style.whiteSpace = "nowrap"; compactLabel.style.fontWeight = "500";
-  compactLabel.style.fontSize = "0.875rem"; compactLabel.style.lineHeight = "1.25rem";
-  const stacksOuter = doc.createElement("div");
-  stacksOuter.style.display = "flex"; stacksOuter.style.alignItems = "center"; stacksOuter.style.justifyContent = "center";
-  stacksOuter.style.gap = "0.25rem"; stacksOuter.style.height = "1.5rem"; stacksOuter.style.overflow = "hidden";
-  const monthWrap = doc.createElement("div"); monthWrap.style.position = "relative"; monthWrap.style.height = "1.5rem"; monthWrap.style.overflow = "hidden";
-  const monthStack = doc.createElement("div"); monthStack.style.display = "flex"; monthStack.style.flexDirection = "column"; monthWrap.appendChild(monthStack);
-  const dayWrap = doc.createElement("div"); dayWrap.style.position = "relative"; dayWrap.style.height = "1.5rem"; dayWrap.style.overflow = "hidden";
-  const dayStack = doc.createElement("div"); dayStack.style.display = "flex"; dayStack.style.flexDirection = "column"; dayWrap.appendChild(dayStack);
-  stacksOuter.append(monthWrap, dayWrap);
-  let isCompact = false;
-  let monthSegments: Array<{ month: string; startIndex: number }> = [];
-  let prevMonthIndex = -1;
-  const dayYSpring = createSpring(0, 400, 35, (y) => { dayStack.style.transform = `translateY(${y}px)`; });
-  const monthYSpring = createSpring(0, 400, 35, (y) => { monthStack.style.transform = `translateY(${y}px)`; });
-  const rebuild = () => {
-    const labels = getLabels(); monthSegments = [];
-    for (let i = 0; i < labels.length; i++) {
-      const m = (labels[i] ?? "").split(" ")[0] ?? "";
-      const prev = monthSegments[monthSegments.length - 1];
-      if (!prev || prev.month !== m) monthSegments.push({ month: m, startIndex: i });
-    }
-    monthStack.textContent = ""; dayStack.textContent = "";
-    for (const seg of monthSegments) {
-      const row = doc.createElement("div"); row.style.display = "flex"; row.style.height = `${TICKER_ITEM_HEIGHT}px`;
-      row.style.flexShrink = "0"; row.style.alignItems = "center"; row.style.justifyContent = "center";
-      const span = doc.createElement("span"); span.style.whiteSpace = "nowrap"; span.style.fontWeight = "500"; span.style.fontSize = "0.875rem"; span.style.lineHeight = "1.25rem"; span.textContent = seg.month; row.appendChild(span); monthStack.appendChild(row);
-    }
-    for (let i = 0; i < labels.length; i++) {
-      const day = (labels[i] ?? "").split(" ")[1] ?? "";
-      const row = doc.createElement("div"); row.style.display = "flex"; row.style.height = `${TICKER_ITEM_HEIGHT}px`;
-      row.style.flexShrink = "0"; row.style.alignItems = "center"; row.style.justifyContent = "center";
-      const span = doc.createElement("span"); span.style.whiteSpace = "nowrap"; span.style.fontWeight = "500"; span.style.fontSize = "0.875rem"; span.style.lineHeight = "1.25rem"; span.textContent = day; row.appendChild(span); dayStack.appendChild(row);
-    }
-    prevMonthIndex = -1;
-  };
-  const update = (currentIndex: number, discrete: boolean) => {
-    const labels = getLabels(); const compact = labels.length > 60;
-    if (compact !== isCompact) {
-      isCompact = compact; root.textContent = "";
-      if (compact) {
-        const inner = doc.createElement("div"); inner.style.display = "flex"; inner.style.height = "1.5rem"; inner.style.alignItems = "center"; inner.style.justifyContent = "center"; inner.appendChild(compactLabel); root.appendChild(inner);
-      } else { rebuild(); root.appendChild(stacksOuter); }
-    }
-    if (isCompact) { compactLabel.textContent = labels[currentIndex] ?? labels[0] ?? ""; return; }
-    if (monthSegments.length === 0) rebuild();
-    let mIdx = 0;
-    for (let i = monthSegments.length - 1; i >= 0; i--) { const seg = monthSegments[i]; if (seg && seg.startIndex <= currentIndex) { mIdx = i; break; } }
-    const targetDayY = -currentIndex * TICKER_ITEM_HEIGHT;
-    const targetMonthY = -mIdx * TICKER_ITEM_HEIGHT;
-    if (discrete) dayYSpring.jump(targetDayY); else dayYSpring.set(targetDayY);
-    const monthChanged = prevMonthIndex !== mIdx; const isFirst = prevMonthIndex === -1;
-    if (isFirst || monthChanged) { if (discrete) monthYSpring.jump(targetMonthY); else monthYSpring.set(targetMonthY); prevMonthIndex = mIdx; }
-  };
-  const detach = () => { dayYSpring.stop(); monthYSpring.stop(); };
-  const setCompactLabel = (label: string) => {
-    if (!isCompact) { isCompact = true; root.textContent = ""; const inner = doc.createElement("div"); inner.style.display = "flex"; inner.style.height = "1.5rem"; inner.style.alignItems = "center"; inner.style.justifyContent = "center"; inner.appendChild(compactLabel); root.appendChild(inner); }
-    compactLabel.textContent = label;
-  };
-  return { root, compactLabel, update, detach, setCompactLabel, rebuild };
+interface MonthSegment {
+  readonly month: string;
+  readonly startIndex: number;
 }
 
-export function buildPill(
-  doc: Document,
-  tooltipSpring: SpringConfig,
-  getLabels?: () => string[],
-): PillBuild {
-  const layer = doc.createElement("div"); layer.className = "bkm-date-pill-layer";
-  const pill = doc.createElement("div"); pill.className = "bkm-date-pill";
-  const inner = doc.createElement("div"); inner.className = "bkm-date-pill-inner";
-  const label = doc.createElement("span"); inner.appendChild(label); pill.appendChild(inner); layer.appendChild(pill);
+interface TickerScope {
+  readonly doc: Document;
+}
+
+interface TickerState {
+  isCompact: boolean;
+  monthSegments: MonthSegment[];
+  prevMonthIndex: number;
+}
+
+const collectMonthSegments = (labels: readonly string[]): MonthSegment[] => {
+  const segments: MonthSegment[] = [];
+  for (let i = 0; i < labels.length; i += 1) {
+    const month = (labels[i] ?? "").split(" ")[0] ?? "";
+    const prev = segments.at(-1);
+    if (!prev || prev.month !== month) {segments.push({ month, startIndex: i });}
+  }
+  return segments;
+};
+
+const resolveMonthIndex = (monthSegments: readonly MonthSegment[], currentIndex: number): number => {
+  let monthIndex = 0;
+  for (let i = monthSegments.length - 1; i >= 0; i -= 1) {
+    const seg = monthSegments.at(i);
+    if ((seg?.startIndex ?? Number.POSITIVE_INFINITY) <= currentIndex) {monthIndex = i; break;}
+  }
+  return monthIndex;
+};
+
+const prepareCompactLabel = ({ doc }: TickerScope): HTMLSpanElement => {
+  const compactLabel = doc.createElement("span");
+  compactLabel.style.whiteSpace = "nowrap";
+  compactLabel.style.fontWeight = "500";
+  compactLabel.style.fontSize = "0.875rem";
+  compactLabel.style.lineHeight = "1.25rem";
+  return compactLabel;
+};
+
+const prepareStacksOuter = ({ doc }: TickerScope): HTMLDivElement => {
+  const stacksOuter = doc.createElement("div");
+  stacksOuter.style.display = "flex";
+  stacksOuter.style.alignItems = "center";
+  stacksOuter.style.justifyContent = "center";
+  stacksOuter.style.gap = "0.25rem";
+  stacksOuter.style.height = "1.5rem";
+  stacksOuter.style.overflow = "hidden";
+  return stacksOuter;
+};
+
+interface TickerColumn {
+  readonly wrap: HTMLDivElement;
+  readonly stack: HTMLDivElement;
+}
+
+const prepareTickerColumn = ({ doc }: TickerScope): TickerColumn => {
+  const wrap = doc.createElement("div");
+  wrap.style.position = "relative";
+  wrap.style.height = "1.5rem";
+  wrap.style.overflow = "hidden";
+  const stack = doc.createElement("div");
+  stack.style.display = "flex";
+  stack.style.flexDirection = "column";
+  wrap.append(stack);
+  return { stack, wrap };
+};
+
+interface TickerStacks {
+  readonly stacksOuter: HTMLDivElement;
+  readonly monthStack: HTMLDivElement;
+  readonly dayStack: HTMLDivElement;
+}
+
+const prepareTickerStacks = ({ doc }: TickerScope): TickerStacks => {
+  const stacksOuter = prepareStacksOuter({ doc });
+  const monthColumn = prepareTickerColumn({ doc });
+  const dayColumn = prepareTickerColumn({ doc });
+  stacksOuter.append(monthColumn.wrap, dayColumn.wrap);
+  return { dayStack: dayColumn.stack, monthStack: monthColumn.stack, stacksOuter };
+};
+
+interface TickerSprings {
+  readonly dayYSpring: Spring;
+  readonly monthYSpring: Spring;
+}
+
+interface TickerSpringsScope {
+  readonly dayStack: HTMLDivElement;
+  readonly monthStack: HTMLDivElement;
+}
+
+const createTickerSprings = ({ dayStack, monthStack }: TickerSpringsScope): TickerSprings => {
+  const dayYSpring = createSpring(0, DATE_TICKER_SPRING_STIFFNESS, DATE_TICKER_SPRING_DAMPING, (y) => { dayStack.style.transform = `translateY(${y}px)`; });
+  const monthYSpring = createSpring(0, DATE_TICKER_SPRING_STIFFNESS, DATE_TICKER_SPRING_DAMPING, (y) => { monthStack.style.transform = `translateY(${y}px)`; });
+  return { dayYSpring, monthYSpring };
+};
+
+interface TickerSpanScope extends TickerScope {
+  readonly text: string;
+}
+
+const createTickerSpan = ({ doc, text }: TickerSpanScope): HTMLSpanElement => {
+  const span = doc.createElement("span");
+  span.style.whiteSpace = "nowrap";
+  span.style.fontWeight = "500";
+  span.style.fontSize = "0.875rem";
+  span.style.lineHeight = "1.25rem";
+  span.textContent = text;
+  return span;
+};
+
+const styleTickerRow = (row: HTMLDivElement): void => {
+  row.style.display = "flex";
+  row.style.height = `${TICKER_ITEM_HEIGHT}px`;
+  row.style.flexShrink = "0";
+  row.style.alignItems = "center";
+  row.style.justifyContent = "center";
+};
+
+interface MonthRowsScope extends TickerScope {
+  readonly monthStack: HTMLDivElement;
+  readonly monthSegments: readonly MonthSegment[];
+}
+
+const buildMonthRows = ({ doc, monthStack, monthSegments }: MonthRowsScope): void => {
+  for (const seg of monthSegments) {
+    const row = doc.createElement("div");
+    styleTickerRow(row);
+    row.append(createTickerSpan({ doc, text: seg.month }));
+    monthStack.append(row);
+  }
+};
+
+interface DayRowsScope extends TickerScope {
+  readonly dayStack: HTMLDivElement;
+  readonly labels: readonly string[];
+}
+
+const buildDayRows = ({ doc, dayStack, labels }: DayRowsScope): void => {
+  for (const label of labels) {
+    const day = label.split(" ")[1] ?? "";
+    const row = doc.createElement("div");
+    styleTickerRow(row);
+    row.append(createTickerSpan({ doc, text: day }));
+    dayStack.append(row);
+  }
+};
+
+interface CompactInnerScope extends TickerScope {
+  readonly compactLabel: HTMLSpanElement;
+}
+
+const createCompactInner = ({ doc, compactLabel }: CompactInnerScope): HTMLDivElement => {
+  const inner = doc.createElement("div");
+  inner.style.display = "flex";
+  inner.style.height = "1.5rem";
+  inner.style.alignItems = "center";
+  inner.style.justifyContent = "center";
+  inner.append(compactLabel);
+  return inner;
+};
+
+interface TickerModeScope extends TickerScope {
+  readonly compact: boolean;
+  readonly isCompact: boolean;
+  readonly root: HTMLDivElement;
+  readonly stacksOuter: HTMLDivElement;
+  readonly compactLabel: HTMLSpanElement;
+  readonly rebuild: () => void;
+}
+
+const syncTickerCompactMode = ({ compact, compactLabel, doc, isCompact, rebuild, root, stacksOuter }: TickerModeScope): boolean => {
+  if (compact === isCompact) {return isCompact;}
+  root.textContent = "";
+  if (compact) {
+    root.append(createCompactInner({ compactLabel, doc }));
+  } else {
+    rebuild();
+    root.append(stacksOuter);
+  }
+  return compact;
+};
+
+interface CompactLabelScope {
+  readonly compactLabel: HTMLSpanElement;
+  readonly labels: readonly string[];
+  readonly currentIndex: number;
+}
+
+const applyCompactLabel = ({ compactLabel, labels, currentIndex }: CompactLabelScope): void => {
+  const current: string | undefined = labels.at(currentIndex);
+  const first: string | undefined = labels.at(0);
+  compactLabel.textContent = current ?? first ?? "";
+};
+
+interface TickerDriveScope {
+  readonly currentIndex: number;
+  readonly monthIndex: number;
+  readonly discrete: boolean;
+  readonly prevMonthIndex: number;
+  readonly dayYSpring: Spring;
+  readonly monthYSpring: Spring;
+}
+
+const driveTickerSprings = ({ currentIndex, discrete, monthIndex, monthYSpring, dayYSpring, prevMonthIndex }: TickerDriveScope): number => {
+  const targetDayY = -currentIndex * TICKER_ITEM_HEIGHT;
+  const targetMonthY = -monthIndex * TICKER_ITEM_HEIGHT;
+  if (discrete) {dayYSpring.jump(targetDayY);} else {dayYSpring.set(targetDayY);}
+  if (prevMonthIndex === -1 || prevMonthIndex !== monthIndex) {
+    if (discrete) {monthYSpring.jump(targetMonthY);} else {monthYSpring.set(targetMonthY);}
+    return monthIndex;
+  }
+  return prevMonthIndex;
+};
+
+interface DateTicker {
+  readonly compactLabel: HTMLSpanElement;
+  readonly detach: () => void;
+  readonly rebuild: () => void;
+  readonly root: HTMLDivElement;
+  readonly setCompactLabel: (label: string) => void;
+  readonly update: (currentIndex: number, discrete: boolean) => void;
+}
+
+const createDateTicker = (doc: Document, getLabels: () => string[]): DateTicker => {
+  const root = doc.createElement("div");
+  const compactLabel = prepareCompactLabel({ doc });
+  const { stacksOuter, monthStack, dayStack } = prepareTickerStacks({ doc });
+  const tickerState: TickerState = { isCompact: false, monthSegments: [], prevMonthIndex: -1 };
+  const { dayYSpring, monthYSpring } = createTickerSprings({ dayStack, monthStack });
+  const rebuild = (): void => {
+    const labels = getLabels();
+    tickerState.monthSegments = collectMonthSegments(labels);
+    monthStack.textContent = "";
+    dayStack.textContent = "";
+    buildMonthRows({ doc, monthSegments: tickerState.monthSegments, monthStack });
+    buildDayRows({ dayStack, doc, labels });
+    tickerState.prevMonthIndex = -1;
+  };
+  const update = (currentIndex: number, discrete: boolean): void => {
+    const labels = getLabels();
+    tickerState.isCompact = syncTickerCompactMode({ compact: labels.length > COMPACT_LABEL_COUNT_THRESHOLD, compactLabel, doc, isCompact: tickerState.isCompact, rebuild, root, stacksOuter });
+    if (tickerState.isCompact) {
+      applyCompactLabel({ compactLabel, currentIndex, labels });
+      return;
+    }
+    if (tickerState.monthSegments.length === 0) {rebuild();}
+    tickerState.prevMonthIndex = driveTickerSprings({ currentIndex, dayYSpring, discrete, monthIndex: resolveMonthIndex(tickerState.monthSegments, currentIndex), monthYSpring, prevMonthIndex: tickerState.prevMonthIndex });
+  };
+  const detach = (): void => { dayYSpring.stop(); monthYSpring.stop(); };
+  const setCompactLabel = (label: string): void => {
+    if (!tickerState.isCompact) {
+      tickerState.isCompact = true;
+      root.textContent = "";
+      root.append(createCompactInner({ compactLabel, doc }));
+    }
+    compactLabel.textContent = label;
+  };
+  return { compactLabel, detach, rebuild, root, setCompactLabel, update };
+}
+
+const createDivWithClass = (doc: Document, className: string): HTMLDivElement => {
+  const element = doc.createElement("div");
+  element.className = className;
+  return element;
+};
+
+interface PillElements {
+  readonly layer: HTMLDivElement;
+  readonly pill: HTMLDivElement;
+  readonly inner: HTMLDivElement;
+  readonly label: HTMLSpanElement;
+}
+
+const buildPillElements = (doc: Document): PillElements => {
+  const layer = createDivWithClass(doc, "bkm-date-pill-layer");
+  const pill = createDivWithClass(doc, "bkm-date-pill");
+  const inner = createDivWithClass(doc, "bkm-date-pill-inner");
+  const label = doc.createElement("span");
+  inner.append(label);
+  pill.append(inner);
+  layer.append(pill);
   layer.style.display = "none";
+  return { inner, label, layer, pill };
+};
+
+const buildPill = (doc: Document, tooltipSpring: Readonly<SpringConfig>, getLabels?: () => string[]): PillBuild => {
+  const { inner, label, layer, pill } = buildPillElements(doc);
   const spring = createSpring(0, tooltipSpring.stiffness, tooltipSpring.damping, (x) => { layer.style.left = `${x}px`; });
   const ticker = getLabels ? createDateTicker(doc, getLabels) : null;
-  if (ticker) { inner.textContent = ""; inner.appendChild(ticker.root); }
-  return { layer, pill, inner, label, spring, ticker };
+  if (ticker) { inner.textContent = ""; inner.append(ticker.root); }
+  return { inner, label, layer, pill, spring, ticker };
 }
+
+export { buildPill };
+export type { PillBuild };

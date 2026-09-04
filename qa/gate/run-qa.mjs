@@ -1,16 +1,6 @@
-// Parallel, batched QA pixel-gate sweep.
-//
+// Parallel QA pixel-gate sweep: quiet-table check, build dist once, one vite preview on :5198, N workers each
+// running qa/screenshot.mjs with QA_SKIP_REBUILD=1 (longest-known runs first), then the compare step.
 //   pnpm gate:qa [-- --workers 4 --repeat 1 --roster qa/gate/roster.txt --charts a,b --no-build --run-dir <dir> --label x]
-//
-// What it does (vs. the sequential scratch sweep):
-//   1. refuses to start while another harness / preview is running (or waits);
-//   2. builds bench/app/dist EXACTLY ONCE (harness staleness rule);
-//   3. boots ONE `vite preview` on :5198 and fans the roster out to N worker
-//      processes, each `node qa/screenshot.mjs --chart C --n N --base-url ...`
-//      with QA_SKIP_REBUILD=1 (per-run browser, A/B captured concurrently as
-//      the harness already does), longest-known runs first (funnel ~2 min);
-//   4. collects each run's report.json + log, writes qa-runs.json, then runs
-//      the compare step (qa-matrix.json/.md) into the run dir and latest/.
 import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -41,8 +31,7 @@ import {
 import { buildMatrix, matrixToMd, reportsFromRunsFile } from "./compare-qa.mjs";
 
 const TAG = "[gate:qa]";
-// Fallback duration hints (seconds) when no previous timing file exists —
-// only used to order the queue longest-first.
+// Fallback duration hints (seconds) when no previous timings exist; only used to order the queue longest-first.
 const DURATION_HINT = { funnel: 130, funnelvertical: 130, gauge: 21, gaugelinear: 21, markers: 14, patternarea: 16, brush: 14, bardepth: 12, legend: 8 };
 
 export async function runQaSweep(opts = {}) {
@@ -51,8 +40,7 @@ export async function runQaSweep(opts = {}) {
   const logDir = ensureDir(path.join(runDir, "logs", "qa"));
   const started = new Date().toISOString();
 
-  // Shared-port protocol: hold the QA lock for the whole batch, then require a
-  // quiet process table (a foreign run may still be winding down).
+  // Hold the QA lock for the whole batch, then require a quiet process table.
   const releaseLock = await acquireQaLock(TAG);
   await waitForQuietProcessTable(TAG, { abort: !!opts.noWait });
   const build = await buildDistOnce(TAG, { force: !!opts.forceBuild, skip: !!opts.noBuild, logFile: path.join(logDir, "build.log") });
@@ -74,8 +62,7 @@ export async function runQaSweep(opts = {}) {
   const passes = [];
   try {
     for (let pass = 1; pass <= repeat; pass++) {
-      // --repeat N: run the roster N times under the same lock / preview / dist
-      // (a same-dist run-to-run consistency sample); pass k>1 gets its own run dir.
+      // --repeat N re-runs the roster under the same lock/preview/dist; pass k>1 gets its own run dir.
       const passDir = pass === 1 ? runDir : ensureDir(`${runDir}-r${pass}`);
       const passLogDir = pass === 1 ? logDir : ensureDir(path.join(passDir, "logs", "qa"));
       if (repeat > 1) log(TAG, `pass ${pass}/${repeat} -> ${relPath(passDir)}`);
@@ -117,8 +104,7 @@ async function runOnePass({ jobs, workers, preview, logDir, runDir, started, bui
   const wallMs = Date.now() - t0;
   const timings = Object.fromEntries(results.map((r) => [r.key, r.durationMs]));
   const runsFile = path.join(runDir, "qa-runs.json");
-  // A foreign `vite build` (an executor rebuilding bench/app/dist outside the
-  // lock) mid-pass means the cells were captured against two different dists.
+  // GUARD: a foreign vite build mid-pass means cells straddle two dists; flag it, don't silently mix.
   const distEnd = distFingerprint();
   const distChangedDuringPass = JSON.stringify(distEnd) !== JSON.stringify(dist);
   if (distChangedDuringPass) log(TAG, `WARNING: bench/app/dist changed during the pass (${dist.indexMtime} -> ${distEnd.indexMtime}); cells straddle two builds`);
@@ -139,7 +125,7 @@ async function runOnePass({ jobs, workers, preview, logDir, runDir, started, bui
   writeJson(path.join(runDir, "qa-timings.json"), timings);
   log(TAG, `sweep wall-clock ${fmtMs(wallMs)} (sum of runs ${fmtMs(results.reduce((a, r) => a + r.durationMs, 0))}); ${results.filter((r) => r.exit !== 0).length} non-zero exits`);
 
-  // Compare step (history cutoff = this run's start so the run never judges itself).
+  // Compare cutoff = this run's start, so the run never judges itself against its own captures.
   const matrix = buildMatrix(reportsFromRunsFile(runsFile), { before: started, label });
   matrix.run = { runDir: relPath(runDir), started, workers, wallClockMs: wallMs };
   writeJson(path.join(runDir, "qa-matrix.json"), matrix);

@@ -1,23 +1,5 @@
-// Brush pair (initiative 9, D227) — faithful port of
-// repos/bklit-ui/apps/web/components/docs/line-chart-brush-demo.tsx:
-// ChartBrushLayout owning the selection, a fixed-height brush strip
-// (LineChart + fadeEdges Line + ChartBrush with the diagonal pattern
-// preset per D227 ruling 8) and a main LineChart consuming
-// xDomain/xDomainSlotCount with tweenYDomainOnXDomainChange + yDomainTween
-// — both flags exactly as the demo passes them (:66-68). Data comes from
-// the seeded generator scaled to `n` instead of the 30-point demo array.
-//
-// `window.__qaSetBrush(startFrac, endFrac | null)` drives deterministic QA
-// captures (D227 ruling 6): fractions of the CURRENT data's full x extent
-// are mapped to Dates and committed through the layout's own
-// onBrushSelectionChange — the exact same handler a pointer drag on the
-// strip commits through (ChartBrush onSelectionChange), so QA exercises
-// the real state path, not a parallel one. `__qaSetBrush(null)` sends the
-// null clear (zero-width-drag signal → reset to full extent).
-//
-// Settle: the MAIN chart carries the standard armBklitSettle phase
-// contract. The strip chart mounts with animationDuration={0} and a
-// non-animated Line (demo verbatim) so it does not gate settle.
+// Docs brush-demo port; __qaSetBrush commits through the layout's own handler (same path as a drag).
+// Strip chart is non-animated so only the main chart gates settle.
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChartBrush,
@@ -37,7 +19,7 @@ import { armBklitSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveRow } from "../bench/live";
 
-// repos/bklit-ui/apps/web/components/docs/line-chart-brush-demo.tsx:25
+// Demo's own strip margin.
 const brushStripMargin = { top: 4, right: 40, bottom: 4, left: 40 };
 
 type QaSetBrush = (startFrac: number | null, endFrac?: number) => void;
@@ -51,9 +33,7 @@ export default function BklitBrush({ n, state }: { n: number; state?: "ready" | 
   const liveTickRef = useRef(0);
   const { onPhaseChange } = useMemo(() => armBklitSettle(), []);
 
-  // Latest data + committed-selection handler for the window hook. The
-  // handler ref is (re)assigned from inside the render prop each render —
-  // ChartBrushLayout owns the state; we only forward into its handler.
+  // Forward into the layout-owned handler; refs track latest data/handler for the QA hook.
   const dataRef = useRef(data);
   dataRef.current = data;
   const commitRef = useRef<((sel: BrushSel) => void) | null>(null);
@@ -90,8 +70,7 @@ export default function BklitBrush({ n, state }: { n: number; state?: "ready" | 
   }, [n]);
 
   return (
-    // demo:28 gives the layout a definite height (flex-1 main + 72px strip
-    // resolve against it); #chart-root is auto-height so "100%" collapses.
+    // Fixed height: #chart-root is auto-height so "100%" would collapse.
     <div style={{ height: 360, minHeight: 0 }}>
       <ChartBrushLayout
         brushStrip={(brushLayout) => {

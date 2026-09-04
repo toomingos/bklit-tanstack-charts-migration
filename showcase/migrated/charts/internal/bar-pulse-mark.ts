@@ -1,358 +1,284 @@
 import { createMark } from "@tanstack/charts";
-import type { ChartMark, SceneNode } from "@tanstack/charts";
+import type { ChartMark, MarkRenderContext, MarkScene, SceneNode } from "@tanstack/charts";
 import { barDepthAndRise, barDepthMaxDepth } from "./bar-depth-geometry";
 import type { ChartDatum } from "./types";
 
-export const PULSE_WAVE_HEIGHT_RATIO = 0.55;
-export const PULSE_WAVE_HEIGHT_MIN_PX = 36;
-export const PULSE_WAVE_DURATION_S = 2.4;
-export const PULSE_WAVE_PEAK_OPACITY = 0.85;
+const PULSE_WAVE_HEIGHT_RATIO = 0.55;
+const PULSE_WAVE_HEIGHT_MIN_PX = 36;
 
-// bklit bar-depth.tsx BarPulse wave gradient — vertical bell curve with a
-// centered bright band (y1=1, y2=0 makes offset 50% the rect's center, so the
-// brightest pixel sits mid-rect during travel). Ported verbatim; the
-// <linearGradient> def itself is built by bar-chart.tsx's depth defs svg
-// (house pattern — the app runtime's plain SVG renderer emits no
-// spec.gradients defs, so fills reference host-built url(#id) gradients).
-export interface PulseWaveGradientStop {
-  offset: string;
-  color: string;
-  opacity: string;
+interface BarSilhouetteArgs {
+  readonly bandX: number;
+  readonly bandWidth: number;
+  readonly topY: number;
+  readonly bottomY: number;
+  readonly depth: number;
+  readonly perspectiveRise: number;
+  readonly isRightOfCenter: boolean;
 }
 
-export function buildPulseWaveStops(): PulseWaveGradientStop[] {
-  return [
-    { offset: "0%", color: "white", opacity: "0" },
-    { offset: "10%", color: "white", opacity: "0" },
-    { offset: "22%", color: "white", opacity: String(PULSE_WAVE_PEAK_OPACITY * 0.18) },
-    { offset: "34%", color: "white", opacity: String(PULSE_WAVE_PEAK_OPACITY * 0.5) },
-    { offset: "44%", color: "white", opacity: String(PULSE_WAVE_PEAK_OPACITY * 0.85) },
-    { offset: "50%", color: "white", opacity: String(PULSE_WAVE_PEAK_OPACITY) },
-    { offset: "56%", color: "white", opacity: String(PULSE_WAVE_PEAK_OPACITY * 0.85) },
-    { offset: "66%", color: "white", opacity: String(PULSE_WAVE_PEAK_OPACITY * 0.5) },
-    { offset: "78%", color: "white", opacity: String(PULSE_WAVE_PEAK_OPACITY * 0.18) },
-    { offset: "90%", color: "white", opacity: "0" },
-    { offset: "100%", color: "white", opacity: "0" },
-  ];
-}
-
-export function buildBarSilhouettePath(
-  bandX: number,
-  bandWidth: number,
-  topY: number,
-  bottomY: number,
-  depth: number,
-  perspectiveRise: number,
-  isRightOfCenter: boolean,
-): string {
-  if (depth <= 0) {
-    return [`M ${bandX} ${topY}`, `L ${bandX + bandWidth} ${topY}`, `L ${bandX + bandWidth} ${bottomY}`, `L ${bandX} ${bottomY}`, "Z"].join(" ");
+const buildBarSilhouettePath = (silhouette: Readonly<BarSilhouetteArgs>): string => {
+  if (silhouette.depth <= 0) {
+    return [`M ${silhouette.bandX} ${silhouette.topY}`, `L ${silhouette.bandX + silhouette.bandWidth} ${silhouette.topY}`, `L ${silhouette.bandX + silhouette.bandWidth} ${silhouette.bottomY}`, `L ${silhouette.bandX} ${silhouette.bottomY}`, "Z"].join(" ");
   }
-  if (isRightOfCenter) {
+  if (silhouette.isRightOfCenter) {
     return [
-      `M ${bandX - depth} ${topY - perspectiveRise}`,
-      `L ${bandX + bandWidth - depth} ${topY - perspectiveRise}`,
-      `L ${bandX + bandWidth} ${topY}`,
-      `L ${bandX + bandWidth} ${bottomY}`,
-      `L ${bandX} ${bottomY}`,
-      `L ${bandX - depth} ${bottomY - perspectiveRise}`,
+      `M ${silhouette.bandX - silhouette.depth} ${silhouette.topY - silhouette.perspectiveRise}`,
+      `L ${silhouette.bandX + silhouette.bandWidth - silhouette.depth} ${silhouette.topY - silhouette.perspectiveRise}`,
+      `L ${silhouette.bandX + silhouette.bandWidth} ${silhouette.topY}`,
+      `L ${silhouette.bandX + silhouette.bandWidth} ${silhouette.bottomY}`,
+      `L ${silhouette.bandX} ${silhouette.bottomY}`,
+      `L ${silhouette.bandX - silhouette.depth} ${silhouette.bottomY - silhouette.perspectiveRise}`,
       "Z",
     ].join(" ");
   }
   return [
-    `M ${bandX} ${topY}`,
-    `L ${bandX + depth} ${topY - perspectiveRise}`,
-    `L ${bandX + bandWidth + depth} ${topY - perspectiveRise}`,
-    `L ${bandX + bandWidth + depth} ${bottomY - perspectiveRise}`,
-    `L ${bandX + bandWidth} ${bottomY}`,
-    `L ${bandX} ${bottomY}`,
+    `M ${silhouette.bandX} ${silhouette.topY}`,
+    `L ${silhouette.bandX + silhouette.depth} ${silhouette.topY - silhouette.perspectiveRise}`,
+    `L ${silhouette.bandX + silhouette.bandWidth + silhouette.depth} ${silhouette.topY - silhouette.perspectiveRise}`,
+    `L ${silhouette.bandX + silhouette.bandWidth + silhouette.depth} ${silhouette.bottomY - silhouette.perspectiveRise}`,
+    `L ${silhouette.bandX + silhouette.bandWidth} ${silhouette.bottomY}`,
+    `L ${silhouette.bandX} ${silhouette.bottomY}`,
     "Z",
   ].join(" ");
 }
 
-export interface BarPulseMarkOptions {
-  id: string;
-  data: ChartDatum[];
-  bandWidth: number;
-  bandScale?: { step?: () => number };
-  bandPos: (label: string) => number;
-  categoryAccessor: (d: ChartDatum) => string;
-  yAccessor: (d: ChartDatum) => number;
-  activeIndex?: number;
-  pulsePaused?: boolean;
+interface BarPulseMarkOptions {
+  readonly id: string;
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly bandWidth: number;
+  readonly bandScale?: { readonly step?: () => number };
+  readonly bandPos: (label: string) => number;
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly yAccessor: (datum: Readonly<ChartDatum>) => number;
+  readonly activeIndex?: number;
+  readonly pulsePaused?: boolean;
   /** Id of the host-built wave linearGradient def (see buildPulseWaveStops). */
-  gradientId: string;
+  readonly gradientId: string;
 }
 
-export function barPulseMark(
-  data: ChartDatum[],
-  options: BarPulseMarkOptions,
-): ChartMark<ChartDatum, string, number> | null {
-  const { id, bandWidth, bandScale, bandPos, categoryAccessor, yAccessor, activeIndex, pulsePaused, gradientId } = options;
-  if (pulsePaused) return null;
-  if (activeIndex == null || !Number.isFinite(activeIndex)) return null;
-  if (activeIndex < 0 || activeIndex >= data.length) return null;
-  // C5/B3 (D432): motion forced off at the mark level. The pulse group's own
-  // growth/opacity choreography is entirely imperative (syncBarPulseGroups'
-  // WAAPI translateY loop below) — native `motion` must never touch this
-  // mark's nodes, and critically the group's className used to accidentally
-  // match native motion's `ts-chart__bar` role substring (see the rename
-  // below), which would otherwise have applied baseline-growth to the wave
-  // rect. `() => false` unconditionally disables enter/update/exit motion
-  // regardless of role resolution, so the rename is belt-and-suspenders with
-  // this, not a replacement for it.
-  return createMark(() => {
-    const xValues = data.map((d) => categoryAccessor(d));
-    const yValues = data.map((d) => yAccessor(d));
-    return {
-      id,
-      channels: {
-        x: { scale: "x", values: xValues },
-        y: {
-          scale: "y",
-          values: yValues.filter((v): v is number => typeof v === "number" && Number.isFinite(v)),
-          includeZero: true,
+interface ActivePulseIndexArgs {
+  readonly activeIndex: number | undefined;
+  readonly dataLength: number;
+  readonly pulsePaused: boolean | undefined;
+}
+
+// Validates the pulse target; undefined when the pulse must not render. Hoisted so barPulseMark stays short.
+const resolveActivePulseIndex = (indexArgs: Readonly<ActivePulseIndexArgs>): number | undefined => {
+  if (indexArgs.pulsePaused === true) {return undefined;}
+  if (indexArgs.activeIndex === undefined || !Number.isFinite(indexArgs.activeIndex)) {return undefined;}
+  if (indexArgs.activeIndex < 0 || indexArgs.activeIndex >= indexArgs.dataLength) {return undefined;}
+  return indexArgs.activeIndex;
+};
+
+interface BarPulseChannelsArgs {
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
+  readonly yAccessor: (datum: Readonly<ChartDatum>) => number;
+}
+
+interface BarPulseChannels {
+  xValues: string[];
+  yValues: number[];
+}
+
+// Channel values for the pulse mark; hoisted so the mark factory stays short.
+const buildBarPulseChannels = (channelArgs: Readonly<BarPulseChannelsArgs>): BarPulseChannels => ({
+  xValues: channelArgs.data.map((datum) => channelArgs.categoryAccessor(datum)),
+  yValues: channelArgs.data.map((datum) => channelArgs.yAccessor(datum)),
+});
+
+interface ActivePulseBarArgs {
+  readonly activeIndex: number;
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly xValues: readonly string[];
+  readonly yValues: readonly number[];
+  readonly scales: MarkRenderContext["scales"];
+}
+
+interface ActivePulseBar {
+  xValue: string | undefined;
+  yValue: number;
+  baseline: number;
+  valuePos: number;
+}
+
+// Finite-number check for pulse channel values; hoisted so readers stay short.
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
+
+// Active bar values plus its pixel positions; undefined when nothing may paint. Hoisted so the scene renderer stays short.
+const readActivePulseBar = (readArgs: Readonly<ActivePulseBarArgs>): ActivePulseBar | undefined => {
+  const datum = readArgs.data.at(readArgs.activeIndex);
+  if (!datum) {return undefined;}
+  const yValue = readArgs.yValues[readArgs.activeIndex];
+  if (!isNumber(yValue) || !Number.isFinite(yValue) || yValue <= 0) {return undefined;}
+  const baseline = readArgs.scales.y.map(0);
+  const valuePos = readArgs.scales.y.map(yValue);
+  return { baseline, valuePos, xValue: readArgs.xValues[readArgs.activeIndex], yValue };
+};
+
+interface DepthOffsetArgs {
+  readonly bandX: number;
+  readonly bandWidth: number;
+  readonly innerWidth: number;
+  readonly centerX: number;
+}
+
+interface DepthOffset {
+  absOffset: number;
+  isRightOfCenter: boolean;
+}
+
+// Perspective offset of the bar from the chart center; hoisted so the frame resolver stays short.
+const resolveDepthOffset = (offsetArgs: Readonly<DepthOffsetArgs>): DepthOffset => {
+  const cx = offsetArgs.bandX + offsetArgs.bandWidth / 2;
+  const offsetFromCenter = offsetArgs.innerWidth > 0 ? (cx - offsetArgs.centerX) / (offsetArgs.innerWidth / 2) : 0;
+  return { absOffset: Math.min(1, Math.abs(offsetFromCenter)), isRightOfCenter: offsetFromCenter > 0 };
+};
+
+interface PulseBarFrameArgs {
+  readonly bandX: number;
+  readonly bandWidth: number;
+  readonly bandScale?: { readonly step?: () => number };
+  readonly innerWidth: number;
+  readonly centerX: number;
+  readonly baseline: number;
+  readonly valuePos: number;
+}
+
+interface PulseBarFrame {
+  bandX: number;
+  depth: number;
+  perspectiveRise: number;
+  isRightOfCenter: boolean;
+  topY: number;
+  bottomY: number;
+  barHeight: number;
+}
+
+// Bar frame in pixels; undefined when the bar has no positive length. Hoisted so the scene renderer stays short.
+const resolvePulseBarFrame = (frameArgs: Readonly<PulseBarFrameArgs>): PulseBarFrame | undefined => {
+  if (!Number.isFinite(frameArgs.valuePos)) {return undefined;}
+  const barLengthPx = frameArgs.baseline - frameArgs.valuePos;
+  if (barLengthPx <= 0) {return undefined;}
+  const maxDepth = barDepthMaxDepth(frameArgs.bandScale?.step?.() ?? frameArgs.bandWidth, frameArgs.bandWidth);
+  const offset = resolveDepthOffset({ bandWidth: frameArgs.bandWidth, bandX: frameArgs.bandX, centerX: frameArgs.centerX, innerWidth: frameArgs.innerWidth });
+  const { depth, perspectiveRise } = barDepthAndRise(offset.absOffset, barLengthPx, maxDepth);
+  return { bandX: frameArgs.bandX, barHeight: barLengthPx, bottomY: frameArgs.baseline, depth, isRightOfCenter: offset.isRightOfCenter, perspectiveRise, topY: frameArgs.valuePos };
+};
+
+interface PulseNodeArgs {
+  readonly id: string;
+  readonly frame: Readonly<PulseBarFrame>;
+  readonly bandWidth: number;
+  readonly gradientId: string;
+}
+
+// Silhouette + wave nodes; hoisted so the scene renderer stays a short decision chain.
+const buildBarPulseNodes = (nodeArgs: Readonly<PulseNodeArgs>): SceneNode[] => {
+  const silhouettePath = buildBarSilhouettePath({ bandWidth: nodeArgs.bandWidth, bandX: nodeArgs.frame.bandX, bottomY: nodeArgs.frame.bottomY, depth: nodeArgs.frame.depth, isRightOfCenter: nodeArgs.frame.isRightOfCenter, perspectiveRise: nodeArgs.frame.perspectiveRise, topY: nodeArgs.frame.topY });
+  const waveHeight = Math.max(nodeArgs.frame.barHeight * PULSE_WAVE_HEIGHT_RATIO, PULSE_WAVE_HEIGHT_MIN_PX);
+  const nodes: SceneNode[] = [
+    {
+      ariaHidden: true,
+      children: [
+        // Invisible silhouette read back as the clipPath source (no scene clipPath node type).
+        {
+          key: `${nodeArgs.id}:silhouette`,
+          kind: "area",
+          path: silhouettePath,
+          points: [],
+          style: { fill: "none" },
         },
+        // Wave parked at sweep start (bar bottom); clipped + animated imperatively post-reveal.
+        {
+          height: waveHeight,
+          key: `${nodeArgs.id}:wave`,
+          kind: "rect",
+          style: { fill: `url(#${nodeArgs.gradientId})` },
+          width: nodeArgs.bandWidth + 2 * nodeArgs.frame.depth + 2,
+          x: nodeArgs.frame.bandX - nodeArgs.frame.depth - 1,
+          y: nodeArgs.frame.bottomY,
+        },
+      ],
+      // Renamed off the `ts-chart__bar` substring so native motion role probing never matches.
+      className: "bkm-chart__bar-pulse",
+      key: nodeArgs.id,
+      kind: "group",
+    },
+  ];
+  return nodes;
+};
+
+interface PulseSceneArgs {
+  readonly context: MarkRenderContext;
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly xValues: readonly string[];
+  readonly yValues: readonly number[];
+  readonly bandWidth: number;
+  readonly bandScale?: { readonly step?: () => number };
+  readonly bandPos: (label: string) => number;
+  readonly activeIndex: number;
+  readonly gradientId: string;
+  readonly id: string;
+}
+
+// Scene for the active bar; empty when nothing may paint. Hoisted so the mark factory stays short.
+const renderBarPulseScene = (sceneArgs: Readonly<PulseSceneArgs>): MarkScene<ChartDatum, string, number> => {
+  const active = readActivePulseBar({ activeIndex: sceneArgs.activeIndex, data: sceneArgs.data, scales: sceneArgs.context.scales, xValues: sceneArgs.xValues, yValues: sceneArgs.yValues });
+  if (!active) {return { nodes: [], points: [] };}
+  const frame = resolvePulseBarFrame({ bandScale: sceneArgs.bandScale, bandWidth: sceneArgs.bandWidth, bandX: sceneArgs.bandPos(String(active.xValue)), baseline: active.baseline, centerX: sceneArgs.context.chart.x + sceneArgs.context.chart.width / 2, innerWidth: sceneArgs.context.chart.width, valuePos: active.valuePos });
+  if (!frame) {return { nodes: [], points: [] };}
+  return { nodes: buildBarPulseNodes({ bandWidth: sceneArgs.bandWidth, frame, gradientId: sceneArgs.gradientId, id: sceneArgs.id }) };
+};
+
+interface BarPulseMarkInstanceArgs {
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly options: Readonly<BarPulseMarkOptions>;
+  readonly index: number;
+}
+
+// Mark instance wiring; hoisted so barPulseMark stays a short validation + delegation.
+const createBarPulseMarkInstance = (instanceArgs: Readonly<BarPulseMarkInstanceArgs>): ChartMark<ChartDatum, string, number> => {
+  const channels = buildBarPulseChannels({ categoryAccessor: instanceArgs.options.categoryAccessor, data: instanceArgs.data, yAccessor: instanceArgs.options.yAccessor });
+  // Motion forced off: the pulse choreography is imperative (WAAPI loop below), and this must never match native motion's role probe.
+  return createMark(() => ({
+    channels: {
+      x: { scale: "x", values: channels.xValues },
+      y: {
+        includeZero: true,
+        scale: "y",
+        values: channels.yValues.filter((value): value is number => typeof value === "number" && Number.isFinite(value)),
       },
-      render: ({ scales, chart }) => {
-        const baseline = scales.y.map(0);
-        const yScale = scales.y;
-        const innerWidth = chart.width;
-        const centerX = chart.x + innerWidth / 2;
-        const step = (bandScale as unknown as { step?: () => number })?.step?.() ?? bandWidth;
-        const maxDepth = barDepthMaxDepth(step, bandWidth);
-        const i = activeIndex;
-        const datum = data[i];
-        if (!datum) return { nodes: [], points: [] };
-        const yValue = yValues[i];
-        if (typeof yValue !== "number" || !Number.isFinite(yValue) || yValue <= 0) return { nodes: [], points: [] };
-        const valuePos = yScale.map(yValue);
-        if (!Number.isFinite(valuePos)) return { nodes: [], points: [] };
-        const barLengthPx = baseline - valuePos;
-        if (barLengthPx <= 0) return { nodes: [], points: [] };
-        const xValue = xValues[i]!;
-        const bandX = bandPos(String(xValue));
-        const cx = bandX + bandWidth / 2;
-        const offsetFromCenter = innerWidth > 0 ? (cx - centerX) / (innerWidth / 2) : 0;
-        const isRightOfCenter = offsetFromCenter > 0;
-        const absOffset = Math.min(1, Math.abs(offsetFromCenter));
-        const { depth, perspectiveRise } = barDepthAndRise(absOffset, barLengthPx, maxDepth);
-        const topY = valuePos;
-        const bottomY = baseline;
-        const barHeight = bottomY - topY;
-        const silhouettePath = buildBarSilhouettePath(bandX, bandWidth, topY, bottomY, depth, perspectiveRise, isRightOfCenter);
-        const waveHeight = Math.max(barHeight * PULSE_WAVE_HEIGHT_RATIO, PULSE_WAVE_HEIGHT_MIN_PX);
-        return {
-          nodes: [
-            {
-              kind: "group",
-              key: id,
-              // C5/B3 (D432): renamed off the `ts-chart__bar` substring —
-              // native motion's markMotionRole() (dist/motion.js) resolves
-              // role via `className.includes("ts-chart__bar")`, which the
-              // pre-C5 name accidentally matched, handing the wave rect
-              // incorrect baseline-growth choreography once native motion
-              // landed. `bkm-chart__*` never matches any native role probe.
-              className: "bkm-chart__bar-pulse",
-              ariaHidden: true,
-              children: [
-                // Invisible silhouette — read back by syncBarPulseGroups as the
-                // clipPath source (the scene layer has no clipPath node type).
-                {
-                  kind: "area",
-                  key: `${id}:silhouette`,
-                  points: [],
-                  path: silhouettePath,
-                  style: { fill: "none" },
-                } as SceneNode,
-                // Wave band parked at its sweep START (the bar's bottom edge),
-                // spanning bar + depth like legacy's rect (the clip crops the
-                // overflow). syncBarPulseGroups clips it to the silhouette and
-                // starts the WAAPI translateY loop once the reveal completes.
-                {
-                  kind: "rect",
-                  key: `${id}:wave`,
-                  x: bandX - depth - 1,
-                  y: bottomY,
-                  width: bandWidth + 2 * depth + 2,
-                  height: waveHeight,
-                  style: { fill: `url(#${gradientId})` },
-                } as SceneNode,
-              ],
-            },
-          ],
-        };
-      },
-    };
-  }, () => false);
-}
+    },
+    id: instanceArgs.options.id,
+    render: (context: MarkRenderContext): MarkScene<ChartDatum, string, number> => renderBarPulseScene({
+      activeIndex: instanceArgs.index,
+      bandPos: instanceArgs.options.bandPos,
+      bandScale: instanceArgs.options.bandScale,
+      bandWidth: instanceArgs.options.bandWidth,
+      context,
+      data: instanceArgs.data,
+      gradientId: instanceArgs.options.gradientId,
+      id: instanceArgs.options.id,
+      xValues: channels.xValues,
+      yValues: channels.yValues,
+    }),
+  }), () => false);
+};
 
-// ─── Pulse loop wiring ────────────────────────────────────────────────
-//
-// The wave's clip + infinite WAAPI sweep cannot live in the scene. `SceneGroup`
-// DOES carry a `clip?: ChartBounds` (types.d.ts:853) and the SVG renderer emits
-// a real `<defs><clipPath><rect>` for it (svg-renderer.js:81) — but that clip is
-// rectangular only, and the wave needs the bar silhouette's polygon (D381). On
-// top of that the identity-based reconciler wipes injected nodes/attributes on
-// every render. So — unlike bar/squares/track growth, which C5 (D432) moved
-// onto the native motion renderer's own baseline-growth choreography — the
-// pulse loop stays owned imperatively: syncBarPulseGroups is
-// re-invoked after every chart render (bar-chart.tsx handleRender) and on
-// every phase flip, reads the geometry back off the scene-emitted nodes, and
-// (re)applies three things: the injected <clipPath> def, the group's
-// clip-path attribute, and ONE WAAPI translateY loop per group. The loop is
-// recreated only when the silhouette/rect geometry actually changes.
-//
-// Visibility parity with legacy BarPulse (repos/bklit-ui …/bar-depth.tsx):
-// held until the bars finish growing (`isLoaded` → here: chart phase
-// "ready"), frozen/absent under `pulsePaused` (the mark returns null, so the
-// whole group disappears). Legacy has no prefers-reduced-motion branch — the
-// loop intentionally honors none either.
+const barPulseMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<BarPulseMarkOptions>): ChartMark<ChartDatum, string, number> | null => {
+  const index = resolveActivePulseIndex({ activeIndex: options.activeIndex, dataLength: data.length, pulsePaused: options.pulsePaused });
+  if (index === undefined) {return null;}
+  return createBarPulseMarkInstance({ data, index, options });
+};
 
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-interface BarPulseLoopState {
-  anim: Animation | null;
-  geomKey: string | null;
-}
-
-const loopStates = new WeakMap<SVGGElement, BarPulseLoopState>();
-// Clip ids are document-global; a per-<svg> sequence keeps them unique so two
-// charts on one page can't collide. Stored on the retained svg root itself,
-// so a given svg keeps its slot for its lifetime.
-let pulseClipSeq = 0;
-
-function sanitizeIdToken(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_-]/g, "");
-}
-
-function ensurePulseClipDef(svg: SVGSVGElement, group: SVGGElement, clipD: string): string {
-  let seq = svg.dataset.bkmPulseSeq;
-  if (!seq) {
-    pulseClipSeq += 1;
-    seq = String(pulseClipSeq);
-    svg.dataset.bkmPulseSeq = seq;
-  }
-  const groupKey = sanitizeIdToken(group.getAttribute("data-ts-key") ?? "pulse");
-  const clipId = `bkm-pulse-clip-${seq}-${groupKey}`;
-  let defs = group.querySelector<SVGDefsElement>(":scope > defs");
-  if (!defs) {
-    defs = document.createElementNS(SVG_NS, "defs") as SVGDefsElement;
-    group.insertBefore(defs, group.firstChild);
-  }
-  let clipPath = defs.querySelector<SVGClipPathElement>(`:scope > #${CSS.escape(clipId)}`);
-  if (!clipPath) {
-    clipPath = document.createElementNS(SVG_NS, "clipPath") as SVGClipPathElement;
-    clipPath.id = clipId;
-    clipPath.appendChild(document.createElementNS(SVG_NS, "path"));
-    defs.appendChild(clipPath);
-  }
-  const clipShape = clipPath.querySelector<SVGPathElement>("path");
-  if (clipShape && clipShape.getAttribute("d") !== clipD) clipShape.setAttribute("d", clipD);
-  return clipId;
-}
-
-/** Topmost y in the silhouette path (= lid's back edge) — the sweep's END
- * anchor. Our own generator emits absolute M/L pairs, so y coords sit at
- * odd token indices. */
-function silhouetteMinY(clipD: string): number {
-  let minY = Number.POSITIVE_INFINITY;
-  const nums = clipD.match(/-?\d*\.?\d+/g) ?? [];
-  for (let i = 1; i < nums.length; i += 2) {
-    const v = Number.parseFloat(nums[i]!);
-    if (Number.isFinite(v) && v < minY) minY = v;
-  }
-  return minY;
-}
-
-/**
- * Re-apply clip + sweep to every `.bkm-chart__bar-pulse` group under the
- * chart's own `svgRoot`. Called from every bar-chart.tsx handleRender exit
- * path and on phase flips.
- * `active` is false while a reveal is in flight — groups stay hidden and
- * their loops cancelled (legacy holds the wave until bars finish growing).
- *
- * Geometry is validated BEFORE the group is un-hidden: a sync that can't
- * find the scene-emitted silhouette/wave yet (reconciler mid-rebuild race)
- * leaves the group safely hidden and schedules a next-frame retry, so an
- * unclipped wave rect can never paint outside the bar.
- */
-const pendingRetries = new WeakMap<SVGSVGElement, { count: number }>();
-
-function schedulePulseRetry(svgRoot: SVGSVGElement, active: boolean): void {
-  let box = pendingRetries.get(svgRoot);
-  if (!box) {
-    box = { count: 0 };
-    pendingRetries.set(svgRoot, box);
-  }
-  // Bounded: a genuinely-gone chart stops retrying after a few frames.
-  if (box.count >= 10) return;
-  box.count += 1;
-  requestAnimationFrame(() => {
-    box!.count = 0;
-    syncBarPulseGroups(svgRoot, active);
-  });
-}
-
-/**
- * C5/B3 (D432): takes the chart's own SVG root directly (`context.surface
- * .element as SVGSVGElement` from `onRender` under the native motion
- * renderer) instead of an ancestor container to re-query `svg.ts-chart`
- * within — the caller already has the exact root via the renderer's own
- * render context, so the extra descendant query (and its implicit
- * "possibly more than one `.ts-chart` under this host" handling) is
- * unnecessary indirection. Only `g.bkm-chart__bar-pulse` groups (the C5
- * rename above) are matched.
- */
-export function syncBarPulseGroups(svgRoot: SVGSVGElement, active: boolean): void {
-  const groups = svgRoot.querySelectorAll<SVGGElement>("g.bkm-chart__bar-pulse");
-  groups.forEach((group) => {
-    let state = loopStates.get(group);
-    if (!state) {
-      state = { anim: null, geomKey: null };
-      loopStates.set(group, state);
-    }
-    if (!active) {
-      if (state.anim) {
-        state.anim.cancel();
-        state.anim = null;
-        state.geomKey = null;
-      }
-      group.style.display = "none";
-      return;
-    }
-    const silhouette = group.querySelector<SVGPathElement>(`path[data-ts-key$=":silhouette"]`);
-    const wave = group.querySelector<SVGRectElement>(`rect[data-ts-key$=":wave"]`);
-    if (!silhouette || !wave) {
-      // Scene children not resolvable yet — stay hidden, heal next frame.
-      schedulePulseRetry(svgRoot, true);
-      return;
-    }
-    const clipD = silhouette.getAttribute("d") ?? "";
-    const waveX = Number.parseFloat(wave.getAttribute("x") ?? "0");
-    const waveY = Number.parseFloat(wave.getAttribute("y") ?? "0");
-    const waveH = Number.parseFloat(wave.getAttribute("height") ?? "0");
-    if (!clipD || !Number.isFinite(waveY) || !Number.isFinite(waveH) || waveH <= 0) {
-      schedulePulseRetry(svgRoot, true);
-      return;
-    }
-    group.style.display = "";
-    const minY = silhouetteMinY(clipD);
-    // Travel flows root → tip: from the parked start (bar bottom edge) up
-    // to just above the lid's back edge (negative delta). ease-in-out +
-    // Infinity mirrors legacy's motion transition exactly.
-    const yEnd = (Number.isFinite(minY) ? minY : waveY) - waveH;
-    const travel = yEnd - waveY;
-    const geomKey = `${clipD}|${waveX}|${waveY}|${waveH}`;
-    const clipId = ensurePulseClipDef(svgRoot, group, clipD);
-    const desiredClip = `url(#${clipId})`;
-    if (group.getAttribute("clip-path") !== desiredClip) group.setAttribute("clip-path", desiredClip);
-    if (state.geomKey === geomKey && state.anim) return;
-    state.anim?.cancel();
-    state.anim = wave.animate(
-      [{ transform: "translateY(0px)" }, { transform: `translateY(${travel}px)` }],
-      { duration: PULSE_WAVE_DURATION_S * 1000, easing: "ease-in-out", iterations: Infinity },
-    );
-    state.geomKey = geomKey;
-  });
-}
+export {
+  barPulseMark,
+  buildBarSilhouettePath,
+  PULSE_WAVE_HEIGHT_MIN_PX,
+  PULSE_WAVE_HEIGHT_RATIO,
+};
+export { buildPulseWaveStops, PULSE_WAVE_DURATION_S, PULSE_WAVE_PEAK_OPACITY } from "./bar-pulse-clip";
+export { syncBarPulseGroups } from "./bar-pulse-sync";
+export type { BarPulseMarkOptions };
+export type { PulseWaveGradientStop } from "./bar-pulse-clip";

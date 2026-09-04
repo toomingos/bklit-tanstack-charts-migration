@@ -1,9 +1,4 @@
-// Q2 API-compatibility fixture (research/05): exercises every public prop
-// the migrated ScatterChart supports at pilot scope (docs/LOG.md D14 — the
-// canonical registry demo path plus the pilot's documented extras). Must
-// typecheck with zero errors via `tsc --noEmit` (included from
-// bench/app/tsconfig.json). Runtime smoke is covered by the bench scenarios
-// (console-errors column in docs/BENCHMARKS.md must be 0).
+// Q2 API fixture: exercises migrated ScatterChart public props; must typecheck (tsc --noEmit).
 import * as React from "react";
 import {
   ChartTooltip,
@@ -33,7 +28,6 @@ export function ScatterChartApiFixture() {
 
   return (
     <>
-      {/* Canonical demo path (registry example parity). */}
       <ScatterChart data={data} onPhaseChange={onPhaseChange}>
         <Grid horizontal />
         <Scatter dataKey="sessions" />
@@ -42,7 +36,6 @@ export function ScatterChartApiFixture() {
         <ChartTooltip />
       </ScatterChart>
 
-      {/* Full pilot prop surface. */}
       <ScatterChart
         data={data}
         xDataKey="date"

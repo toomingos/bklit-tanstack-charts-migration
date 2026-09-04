@@ -1,14 +1,5 @@
-// Deterministic sankey resize probe (showcase app, localhost:5200).
-// Loads /charts/sankey, scrolls both charts into view so they mount, then
-// resizes the window and re-measures both implementations.
-//
-// Reports per impl, per viewport width:
-//   - svg viewBox + client size
-//   - d3-sankey layout signature (distinct node-rect x positions, sum of rect heights)
-//   - link stroke-width sum / max
-//   - ratio (stroke-width sum / rect-height sum): scale-invariant when the
-//     layout is recomputed for the new size; drifts when a stale scene is
-//     merely rescaled by the viewBox while strokes stay non-scaling.
+// Sankey resize probe (showcase :5200): mounts both charts, resizes the window, re-measures layout.
+// Ratio (stroke-width sum / rect-height sum) is scale-invariant on recompute; drifts when a stale scene is merely viewBox-rescaled.
 import { chromium } from "playwright";
 
 const URL_ = "http://localhost:5200/charts/sankey";

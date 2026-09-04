@@ -1,6 +1,7 @@
-export type ChartStatus = "loading" | "ready";
 
-export type ChartPhase =
+type ChartStatus = "loading" | "ready";
+
+type ChartPhase =
   | "loading"
   | "exiting"
   | "gridTweenReady"
@@ -10,32 +11,33 @@ export type ChartPhase =
   | "gridTweenLoading"
   | "revealingLoading";
 
-export const DEFAULT_CHART_STATUS: ChartStatus = "ready";
+const DEFAULT_CHART_STATUS: ChartStatus = "ready";
 
-export const DEFAULT_Y_DOMAIN_TWEEN_MS = 500;
+const DEFAULT_Y_DOMAIN_TWEEN_MS = 500;
 
-/**
- * bklit `chart-phase.ts:28`. A y-domain move smaller than 2% of the larger of
- * the two spans is snapped rather than tweened — below that the animation is
- * invisible but still costs a 500ms window in which the grid is mid-flight.
- */
-export const Y_DOMAIN_TWEEN_SKIP_THRESHOLD = 0.02;
+/** A y-domain move under 2% of the larger span is snapped, not tweened — below that the animation is invisible but still costs a 500ms mid-flight grid window. */
+const Y_DOMAIN_TWEEN_SKIP_THRESHOLD = 0.02;
 
-export function resolveRestingChartPhase(status: ChartStatus): ChartPhase {
-  return status === "loading" ? "loading" : "ready";
-}
+/** Default y-domain upper bound for the skeleton/target domain before data resolves. */
+const DEFAULT_Y_DOMAIN_MAX = 100;
 
-export function isChartInteractionPhase(phase: ChartPhase): boolean {
-  return phase === "ready";
-}
+// Tuple-typed defaults so the lifecycle literal below needs no narrowing assertion.
+const DEFAULT_SKELETON_Y_DOMAIN: [number, number] = [0, DEFAULT_Y_DOMAIN_MAX];
+const DEFAULT_TARGET_Y_DOMAIN: [number, number] = [0, DEFAULT_Y_DOMAIN_MAX];
 
-export const DEFAULT_CHART_LIFECYCLE = {
+const resolveRestingChartPhase = (status: ChartStatus): ChartPhase => status === "loading" ? "loading" : "ready";
+
+
+const isChartInteractionPhase = (phase: ChartPhase): boolean => phase === "ready";
+
+
+const DEFAULT_CHART_LIFECYCLE = {
   chartPhase: "ready",
   chartStatus: "ready",
   loadingLabel: undefined,
+  yDomainSkeletonByAxis: { left: DEFAULT_SKELETON_Y_DOMAIN },
+  yDomainTargetByAxis: { left: DEFAULT_TARGET_Y_DOMAIN },
   yDomainTweenDuration: DEFAULT_Y_DOMAIN_TWEEN_MS,
-  yDomainSkeletonByAxis: { left: [0, 100] as [number, number] },
-  yDomainTargetByAxis: { left: [0, 100] as [number, number] },
 } as const satisfies {
   chartPhase: ChartPhase;
   chartStatus: ChartStatus;
@@ -44,3 +46,6 @@ export const DEFAULT_CHART_LIFECYCLE = {
   yDomainSkeletonByAxis: Record<string, [number, number]>;
   yDomainTargetByAxis: Record<string, [number, number]>;
 };
+
+export { DEFAULT_CHART_STATUS, DEFAULT_Y_DOMAIN_TWEEN_MS, Y_DOMAIN_TWEEN_SKIP_THRESHOLD, resolveRestingChartPhase, isChartInteractionPhase, DEFAULT_CHART_LIFECYCLE };
+export type { ChartStatus, ChartPhase };

@@ -1,11 +1,15 @@
+import type { ChartDatum } from "./types";
+
 type SegmentSign = "positive" | "negative";
 
-export interface ProfitLossSegment {
-  data: Record<string, unknown>[];
-  isPositive: boolean;
+interface ProfitLossSegment {
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly isPositive: boolean;
 }
 
-function resolveSign(value: number, fallback: SegmentSign): SegmentSign {
+const isNumber = (value: unknown): value is number => typeof value === "number";
+
+const resolveSign = (value: number, fallback: SegmentSign): SegmentSign => {
   if (value > 0) {
     return "positive";
   }
@@ -15,108 +19,155 @@ function resolveSign(value: number, fallback: SegmentSign): SegmentSign {
   return fallback;
 }
 
-function findInitialSign(
-  data: Record<string, unknown>[],
-  dataKey: string
-): SegmentSign {
+const findInitialSign = (data: readonly Readonly<ChartDatum>[], dataKey: string): SegmentSign => {
   for (const row of data) {
-    const value = row[dataKey];
-    if (typeof value !== "number") {
-      continue;
-    }
-    if (value > 0) {
-      return "positive";
-    }
-    if (value < 0) {
-      return "negative";
+    const value: unknown = row[dataKey];
+    if (isNumber(value)) {
+      if (value > 0) {
+        return "positive";
+      }
+      if (value < 0) {
+        return "negative";
+      }
     }
   }
   return "positive";
 }
 
-function interpolateZeroCrossing(
-  a: Record<string, unknown>,
-  b: Record<string, unknown>,
-  dataKey: string,
-  xDataKey: string,
-  xAccessor: (d: Record<string, unknown>) => Date
-): Record<string, unknown> {
-  const ya = a[dataKey] as number;
-  const yb = b[dataKey] as number;
-  const t = ya / (ya - yb);
-  const start = xAccessor(a).getTime();
-  const end = xAccessor(b).getTime();
-  const crossDate = new Date(start + t * (end - start));
+interface InterpolateZeroCrossingParams {
+  readonly prevRow: Readonly<ChartDatum>;
+  readonly nextRow: Readonly<ChartDatum>;
+  readonly dataKey: string;
+  readonly xDataKey: string;
+  readonly xAccessor: (row: Readonly<ChartDatum>) => Date;
+  readonly prevValue: number;
+  readonly nextValue: number;
+}
+
+const interpolateZeroCrossing = ({
+  prevRow,
+  nextRow,
+  dataKey,
+  xDataKey,
+  xAccessor,
+  prevValue,
+  nextValue,
+}: Readonly<InterpolateZeroCrossingParams>): ChartDatum => {
+  const ratio = prevValue / (prevValue - nextValue);
+  const start = xAccessor(prevRow).getTime();
+  const end = xAccessor(nextRow).getTime();
+  const crossDate = new Date(start + ratio * (end - start));
 
   return {
-    ...a,
+    ...prevRow,
     [xDataKey]: crossDate,
     [dataKey]: 0,
   };
 }
 
-export function splitProfitLossSegments({
+interface ProfitLossScanState {
+  readonly segments: ProfitLossSegment[];
+  currentSegment: Readonly<ChartDatum>[];
+  currentSign: SegmentSign;
+}
+
+const closeActiveSegment = (state: ProfitLossScanState): void => {
+  if (state.currentSegment.length === 0) {
+    return;
+  }
+  state.segments.push({
+    data: state.currentSegment,
+    isPositive: state.currentSign === "positive",
+  });
+}
+
+interface CrossingSegmentParams {
+  readonly cross: Readonly<ChartDatum>;
+  readonly nextRow: Readonly<ChartDatum>;
+  readonly nextValue: number;
+}
+
+const appendCrossingSegment = (state: ProfitLossScanState, params: Readonly<CrossingSegmentParams>): void => {
+  state.currentSegment.push(params.cross);
+  closeActiveSegment(state);
+  state.currentSegment = [params.cross, params.nextRow];
+  state.currentSign = resolveSign(params.nextValue, state.currentSign);
+}
+
+const appendContinuingRow = (state: ProfitLossScanState, nextRow: Readonly<ChartDatum>, nextValue: number | undefined): void => {
+  state.currentSegment.push(nextRow);
+  if (nextValue !== undefined && nextValue !== 0) {
+    state.currentSign = resolveSign(nextValue, state.currentSign);
+  }
+}
+
+const isSignCrossing = (prevValue: number, nextValue: number): boolean => prevValue !== 0 && nextValue !== 0 && Math.sign(prevValue) !== Math.sign(nextValue);
+
+interface AdvancePairParams {
+  readonly prevRow: Readonly<ChartDatum>;
+  readonly nextRow: Readonly<ChartDatum>;
+  readonly dataKey: string;
+  readonly xDataKey: string;
+  readonly xAccessor: (row: Readonly<ChartDatum>) => Date;
+}
+
+const advanceProfitLossPair = (state: ProfitLossScanState, params: Readonly<AdvancePairParams>): void => {
+  const prevValue: unknown = params.prevRow[params.dataKey];
+  const nextValue: unknown = params.nextRow[params.dataKey];
+  if (isNumber(prevValue) && isNumber(nextValue) && isSignCrossing(prevValue, nextValue)) {
+    const cross = interpolateZeroCrossing({ dataKey: params.dataKey, nextRow: params.nextRow, nextValue, prevRow: params.prevRow, prevValue, xAccessor: params.xAccessor, xDataKey: params.xDataKey });
+    appendCrossingSegment(state, { cross, nextRow: params.nextRow, nextValue });
+    return;
+  }
+  appendContinuingRow(state, params.nextRow, isNumber(nextValue) ? nextValue : undefined);
+}
+
+interface ScanProfitLossRowsParams {
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly dataKey: string;
+  readonly xDataKey: string;
+  readonly xAccessor: (row: Readonly<ChartDatum>) => Date;
+  readonly firstPoint: Readonly<ChartDatum>;
+}
+
+const scanProfitLossRows = ({ data, dataKey, xDataKey, xAccessor, firstPoint }: Readonly<ScanProfitLossRowsParams>): ProfitLossScanState => {
+  const state: ProfitLossScanState = {
+    currentSegment: [firstPoint],
+    currentSign: findInitialSign(data, dataKey),
+    segments: [],
+  };
+  for (let segIndex = 0; segIndex < data.length - 1; segIndex += 1) {
+    const prevRow = data.at(segIndex);
+    const nextRow = data.at(segIndex + 1);
+    if (prevRow && nextRow) {
+      advanceProfitLossPair(state, { dataKey, nextRow, prevRow, xAccessor, xDataKey });
+    }
+  }
+  return state;
+}
+
+const splitProfitLossSegments = ({
   data,
   dataKey,
   xDataKey = "date",
   xAccessor,
 }: {
-  data: Record<string, unknown>[];
-  dataKey: string;
-  xDataKey?: string;
-  xAccessor: (d: Record<string, unknown>) => Date;
-}): ProfitLossSegment[] {
+  readonly data: readonly Readonly<ChartDatum>[];
+  readonly dataKey: string;
+  readonly xDataKey?: string;
+  readonly xAccessor: (row: Readonly<ChartDatum>) => Date;
+}): ProfitLossSegment[] => {
   if (data.length === 0) {
     return [];
   }
-
-  const segments: ProfitLossSegment[] = [];
-  let currentSign = findInitialSign(data, dataKey);
-  const firstPoint = data[0];
+  const firstPoint = data.at(0);
   if (!firstPoint) {
     return [];
   }
-  let currentSegment: Record<string, unknown>[] = [firstPoint];
-
-  for (let i = 0; i < data.length - 1; i++) {
-    const a = data[i];
-    const b = data[i + 1];
-    if (!(a && b)) {
-      continue;
-    }
-    const ya = a[dataKey] as number;
-    const yb = b[dataKey] as number;
-
-    if (
-      typeof ya === "number" &&
-      typeof yb === "number" &&
-      ya !== 0 &&
-      yb !== 0 &&
-      Math.sign(ya) !== Math.sign(yb)
-    ) {
-      const cross = interpolateZeroCrossing(a, b, dataKey, xDataKey, xAccessor);
-      currentSegment.push(cross);
-      segments.push({
-        data: currentSegment,
-        isPositive: currentSign === "positive",
-      });
-      currentSegment = [cross, b];
-      currentSign = resolveSign(yb, currentSign);
-      continue;
-    }
-
-    currentSegment.push(b);
-    if (typeof yb === "number" && yb !== 0) {
-      currentSign = resolveSign(yb, currentSign);
-    }
-  }
-
-  if (currentSegment.length > 0) {
-    segments.push({
-      data: currentSegment,
-      isPositive: currentSign === "positive",
-    });
-  }
-
-  return segments;
+  const state = scanProfitLossRows({ data, dataKey, firstPoint, xAccessor, xDataKey });
+  closeActiveSegment(state);
+  return state.segments;
 }
+
+export { splitProfitLossSegments };
+export type { ProfitLossSegment };

@@ -1,33 +1,7 @@
-/**
- * P6.3 / CH17 Bucket 2 — the `*CssVars` maps, restored.
- *
- * P5.3's ledger flagged these seven as "ACCEPTED under a doctrine not yet
- * written down", describing them as an architectural swap of DOC-4's shape:
- * "legacy generated CSS custom properties from TS constants; migrated declares
- * them in styles.css". **That premise does not survive inspection and the lead
- * ruling is RESTORE, not ACCEPT** — see the D355 log row.
- *
- * Both halves of the premise are wrong. Legacy generates no custom property:
- * `ringCssVars` et al are plain TS objects whose VALUES are `var(--…)`
- * reference *strings*, consumed as `fill={ringCssVars.ringBackground}`
- * (bklit `ring.tsx:189`, `ring-chart.tsx:364`). And migrated's `styles.css`
- * does not declare the underlying `--chart-*` properties either — the host
- * app's theme does, in BOTH implementations. So nothing was swapped: migrated
- * simply inlined the literal strings at their use sites (`ring-chart.tsx:71`
- * `const RING_BACKGROUND = "var(--border)"`) and dropped the public maps.
- *
- * That makes this a plain public-API gap under MAIN GOAL (c) — a consumer
- * doing `import { ringCssVars } from "@bklit/ui/charts"` breaks — and these
- * are pure data with zero behaviour, so restoring them is the cheapest
- * possible parity repair. The chart internals are deliberately NOT rewired to
- * read from here: that would be a behaviour-bearing refactor of nine charts to
- * serve an export, and the inlined literals are already correct.
- */
-
 import { HEATMAP_DEFAULT_LEVEL_COLORS } from "./heatmap-colors";
 
-/** Sequential scale CSS variables for heatmaps, choropleths, and binned data (01 = lowest, 05 = highest). */
-export const CHART_SCALE_VARS = [
+/** Sequential scale CSS variables (01 = lowest, 05 = highest). */
+const CHART_SCALE_VARS = [
   "var(--chart-scale-01)",
   "var(--chart-scale-02)",
   "var(--chart-scale-03)",
@@ -35,90 +9,88 @@ export const CHART_SCALE_VARS = [
   "var(--chart-scale-05)",
 ] as const;
 
-export type ChartScaleVars = typeof CHART_SCALE_VARS;
+type ChartScaleVars = typeof CHART_SCALE_VARS;
 
-export const chartScaleCssVars = {
+// Shared series/background/foreground variable names (single source for the per-chart maps below).
+const CHART_BACKGROUND_VAR = "var(--chart-background)";
+const CHART_FOREGROUND_VAR = "var(--chart-foreground)";
+const CHART_FOREGROUND_MUTED_VAR = "var(--chart-foreground-muted)";
+const CHART_LABEL_VAR = "var(--chart-label)";
+const CHART_SERIES_1_VAR = "var(--chart-1)";
+const CHART_SERIES_2_VAR = "var(--chart-2)";
+const CHART_SERIES_3_VAR = "var(--chart-3)";
+const CHART_SERIES_4_VAR = "var(--chart-4)";
+const CHART_SERIES_5_VAR = "var(--chart-5)";
+
+const chartScaleCssVars = {
+  patternColor: "var(--chart-scale-pattern-color)",
   scale01: CHART_SCALE_VARS[0],
   scale02: CHART_SCALE_VARS[1],
   scale03: CHART_SCALE_VARS[2],
   scale04: CHART_SCALE_VARS[3],
   scale05: CHART_SCALE_VARS[4],
-  patternColor: "var(--chart-scale-pattern-color)",
 } as const;
 
-// CSS variable references for pie chart theming
-export const pieCssVars = {
-  background: "var(--chart-background)",
-  foreground: "var(--chart-foreground)",
-  foregroundMuted: "var(--chart-foreground-muted)",
-  label: "var(--chart-label)",
-  // Default slice colors from chart palette
-  slice1: "var(--chart-1)",
-  slice2: "var(--chart-2)",
-  slice3: "var(--chart-3)",
-  slice4: "var(--chart-4)",
-  slice5: "var(--chart-5)",
+const pieCssVars = {
+  background: CHART_BACKGROUND_VAR,
+  foreground: CHART_FOREGROUND_VAR,
+  foregroundMuted: CHART_FOREGROUND_MUTED_VAR,
+  label: CHART_LABEL_VAR,
+  slice1: CHART_SERIES_1_VAR,
+  slice2: CHART_SERIES_2_VAR,
+  slice3: CHART_SERIES_3_VAR,
+  slice4: CHART_SERIES_4_VAR,
+  slice5: CHART_SERIES_5_VAR,
 };
 
-// CSS variable references for ring chart theming
-export const ringCssVars = {
-  background: "var(--chart-background)",
-  foreground: "var(--chart-foreground)",
-  foregroundMuted: "var(--chart-foreground-muted)",
-  label: "var(--chart-label)",
+const ringCssVars = {
+  background: CHART_BACKGROUND_VAR,
+  foreground: CHART_FOREGROUND_VAR,
+  foregroundMuted: CHART_FOREGROUND_MUTED_VAR,
+  label: CHART_LABEL_VAR,
+  ring1: CHART_SERIES_1_VAR,
+  ring2: CHART_SERIES_2_VAR,
+  ring3: CHART_SERIES_3_VAR,
+  ring4: CHART_SERIES_4_VAR,
+  ring5: CHART_SERIES_5_VAR,
   ringBackground: "var(--border)",
-  // Default ring colors from chart palette
-  ring1: "var(--chart-1)",
-  ring2: "var(--chart-2)",
-  ring3: "var(--chart-3)",
-  ring4: "var(--chart-4)",
-  ring5: "var(--chart-5)",
 };
 
-// CSS variable references for radar chart theming
-export const radarCssVars = {
-  background: "var(--chart-background)",
-  foreground: "var(--chart-foreground)",
-  foregroundMuted: "var(--chart-foreground-muted)",
-  label: "var(--chart-label, oklch(0.65 0.01 260))",
-  grid: "var(--chart-grid)",
+const radarCssVars = {
+  area1: CHART_SERIES_1_VAR,
+  area2: CHART_SERIES_2_VAR,
+  area3: CHART_SERIES_3_VAR,
+  area4: CHART_SERIES_4_VAR,
+  area5: CHART_SERIES_5_VAR,
+  background: CHART_BACKGROUND_VAR,
   border: "var(--border)",
-  // Default radar colors from chart palette
-  area1: "var(--chart-1)",
-  area2: "var(--chart-2)",
-  area3: "var(--chart-3)",
-  area4: "var(--chart-4)",
-  area5: "var(--chart-5)",
+  foreground: CHART_FOREGROUND_VAR,
+  foregroundMuted: CHART_FOREGROUND_MUTED_VAR,
+  grid: "var(--chart-grid)",
+  label: "var(--chart-label, oklch(0.65 0.01 260))",
 };
 
-// CSS variables for sankey theming
-export const sankeyCssVars = {
-  background: "var(--chart-background)",
-  foreground: "var(--chart-foreground)",
+const sankeyCssVars = {
+  background: CHART_BACKGROUND_VAR,
+  foreground: CHART_FOREGROUND_VAR,
+  linkColor: "var(--chart-foreground-muted, hsl(0, 0%, 50%))",
   nodePrimary: "var(--chart-line-primary)",
   nodeSecondary: "var(--chart-line-secondary)",
-  linkColor: "var(--chart-foreground-muted, hsl(0, 0%, 50%))",
 };
 
-// CSS variables for choropleth theming
-export const choroplethCssVars = {
+const choroplethCssVars = {
+  background: "var(--background)",
+  patternColor: chartScaleCssVars.patternColor,
   scale01: chartScaleCssVars.scale01,
   scale02: chartScaleCssVars.scale02,
   scale03: chartScaleCssVars.scale03,
   scale04: chartScaleCssVars.scale04,
   scale05: chartScaleCssVars.scale05,
-  patternColor: chartScaleCssVars.patternColor,
   stroke: "var(--chart-grid)",
-  background: "var(--background)",
 };
 
-/**
- * `@deprecated` verbatim from bklit `heatmap-context.tsx` — the deprecation
- * notice is part of the public surface and is carried over unchanged.
- *
- * @deprecated Use {@link HEATMAP_DEFAULT_LEVEL_COLORS}
- */
-export const heatmapCssVars = {
+/** @deprecated Use HEATMAP_DEFAULT_LEVEL_COLORS */
+const heatmapCssVars = {
   empty: HEATMAP_DEFAULT_LEVEL_COLORS[0],
   level1: HEATMAP_DEFAULT_LEVEL_COLORS[1],
   level2: HEATMAP_DEFAULT_LEVEL_COLORS[2],
@@ -126,10 +98,7 @@ export const heatmapCssVars = {
   level4: HEATMAP_DEFAULT_LEVEL_COLORS[4],
 } as const;
 
-/**
- * bklit `choropleth-context.tsx`: `defaultChoroplethColors = [...CHART_SCALE_VARS]`.
- * Value-identical to the private `DEFAULT_CHOROPLETH_COLORS` at
- * `choropleth-chart.tsx:212`, which stays where it is — see the header note on
- * not rewiring internals to serve an export.
- */
-export const defaultChoroplethColors: string[] = [...CHART_SCALE_VARS];
+const defaultChoroplethColors: string[] = [...CHART_SCALE_VARS];
+
+export { CHART_SCALE_VARS, chartScaleCssVars, pieCssVars, ringCssVars, radarCssVars, sankeyCssVars, choroplethCssVars, heatmapCssVars, defaultChoroplethColors };
+export type { ChartScaleVars };

@@ -1,21 +1,5 @@
 "use client";
-// C3: shared native-mark hover geometry for line-chart.tsx / area-chart.tsx
-// (composed-chart.tsx wires the pieces it needs directly, since it drives
-// focus off its own raw/decimated bisector rather than native `focus:"group-x"`).
-// Replaces internal/hover-chrome.ts + internal/use-hover-chrome.ts (both
-// deleted in this commit): the crosshair indicator, the hover dots, the
-// series pointer-hover dim, and the highlight band are now native marks /
-// declarative mark `states` driven by the chart's own focus mechanism — zero
-// per-frame imperative DOM writes. The one remaining imperative surface is
-// the date-pill overlay, which is APP-OWNED HTML (never `.ts-chart__*`
-// renderer DOM) per the sanctioned extension in ./date-pill.
-//
-// ZERO renderer DOM reach-ins: nothing in this file ever queries
-// `.ts-chart__*`. (C4: the axis-label proximity fade that used to live on
-// `useDatePillOverlay` moved to the charts' native per-tick
-// `tickLabels.opacity` callbacks — see internal/axis-ticks.ts
-// `tickLabelFadeOpacity`; the controller is now show/hide/position only.)
-import * as React from "react";
+// Native-mark hover geometry; date-pill overlay is app-owned HTML (see ./date-pill).
 import { crosshair } from "@tanstack/charts/crosshair";
 import { createMark } from "@tanstack/charts";
 import { dot } from "@tanstack/charts/dot";
@@ -31,437 +15,275 @@ import type {
 } from "@tanstack/charts";
 import { resolveIndicatorPixelWidth } from "./tooltip-mappers";
 import { crosshairFadeStops } from "./fade-mask";
-import { buildPill, type PillBuild } from "./date-pill";
 import { HIGHLIGHT_SPRING, TOOLTIP_SPRING } from "./design-tokens";
 import type { SpringConfig } from "./chart-config-context";
 import type { ChartDatum, IndicatorWidth } from "./types";
 
-// ── Crosshair (native indicator, replaces buildIndicator/positionIndicator) ─
+// Default hover-dot size (passed as the dot mark's `r`) when no size is provided.
+const DEFAULT_HOVER_DOT_SIZE = 5;
 
-export interface CrosshairGradientDef {
+const isNumber = <Subject>(value: Subject): value is Subject & number => typeof value === "number";
+const isString = <Subject>(value: Subject): value is Subject & string => typeof value === "string";
+
+
+interface CrosshairGradientDef {
   id: string;
   color: string;
   stops: { offset: string; opacity: number }[];
 }
 
-/** bklit TooltipIndicator default vertical fade ("both", fadeLength=10) as an
- *  app-owned `<linearGradient>` def, rendered near the chart's other
- *  gradient defs (projection/marker) — the crosshair mark below references
- *  it by `url(#id)`, same mechanism as those existing defs. */
-export function buildCrosshairGradientDef(id: string, color: string): CrosshairGradientDef {
-  return { id, color, stops: crosshairFadeStops() };
+// Bklit TooltipIndicator default vertical fade ("both", fadeLength=10).
+const buildCrosshairGradientDef = (id: string, color: string): CrosshairGradientDef => (
+  { color, id, stops: crosshairFadeStops() }
+);
+
+interface IndicatorMarkOptions {
+  readonly gradientId: string;
+  readonly width?: IndicatorWidth;
+  readonly span?: number;
+  readonly columnWidth?: number;
+  readonly dasharray?: string;
+  readonly color?: string;
+  readonly discrete?: boolean;
+// Precomputed gradient-vs-solid gate; defaults to `!dasharray`.
+  readonly useGradient?: boolean;
+  readonly strokeOpacity?: number;
+  readonly spring?: Readonly<SpringConfig>;
 }
 
-export interface IndicatorMarkOptions {
-  gradientId: string;
-  width?: IndicatorWidth;
-  span?: number;
-  columnWidth?: number;
-  dasharray?: string;
-  /** Solid color, used only when the gradient is not (see `useGradient`) —
-   *  bklit disables the vertical fade for dashed indicators, so a dashed
-   *  rule has no reason to reference the fade gradient at all. */
-  color?: string;
-  /** Discrete/dense data (bklit's `pointCount > DISCRETE_INTERACTION_THRESHOLD`)
-   *  snaps instead of springing, matching the existing native-tooltip gate
-   *  already used elsewhere in these files. */
-  discrete?: boolean;
-  /** Overrides the default gradient-vs-solid gate. Defaults to `!dasharray`
-   *  (line/area/composed/live-line: any non-dashed indicator uses the fade
-   *  gradient). bar/scatter/candlestick additionally gate on `fadeEdges`
-   *  (`!isDashed && resolveVerticalFadeSides(...).any`, since a dashed
-   *  indicator already forces `fadeSides.any` false there too) — pass that
-   *  precomputed boolean here rather than duplicating fade-mask logic in
-   *  this file. */
-  useGradient?: boolean;
-  /** Native `crosshair()` defaults `x.strokeOpacity` to 0.35
-   *  (dist/crosshair.js `resolveRuleStyle`); line/area/composed/live-line
-   *  rely on that default (omit this option). bar/scatter/candlestick
-   *  override to 1 to avoid a silent visual regression from that default. */
-  strokeOpacity?: number;
-  /** Spring config for the indicator's motion transition. Defaults to
-   *  TOOLTIP_SPRING (line/area/composed/live-line's existing behavior).
-   *  bar/scatter/candlestick pass `indicatorCfg.springConfig ??
-   *  chartConfig.tooltipSpring`. */
-  spring?: SpringConfig;
-}
-
-/** Native `crosshair()` x-only rule, replacing hover-chrome's imperative
- *  indicator: `y:false`/`marker:false`/label off — bklit's indicator is a
- *  single vertical rule with no native focus ring (`focusRing:false` on the
- *  chart spec already matches this). */
-export function buildIndicatorMark(options: IndicatorMarkOptions): ChartMark<never, never, never> {
+// Native crosshair() x-only rule replacing the imperative indicator.
+const buildIndicatorMark = (options: Readonly<IndicatorMarkOptions>): ChartMark<never, never, never> => {
   const strokeWidth = resolveIndicatorPixelWidth({
-    width: options.width,
-    span: options.span,
     columnWidth: options.columnWidth,
+    span: options.span,
+    width: options.width,
   });
-  const useGradient = options.useGradient ?? !options.dasharray;
+  const useGradient = options.useGradient ?? (options.dasharray ?? "") === "";
   const spring = options.spring ?? TOOLTIP_SPRING;
   return crosshair({
+    marker: false,
+    motion: options.discrete === true
+      ? false
+      : { transition: { damping: spring.damping, stiffness: spring.stiffness, type: "spring" } },
     x: {
+      label: false,
       stroke: useGradient ? `url(#${options.gradientId})` : (options.color ?? "var(--chart-crosshair)"),
+      strokeDasharray: options.dasharray,
       strokeOpacity: options.strokeOpacity,
       strokeWidth,
-      strokeDasharray: options.dasharray,
-      label: false,
     },
     y: false,
-    marker: false,
-    motion: options.discrete
-      ? false
-      : { transition: { type: "spring", stiffness: spring.stiffness, damping: spring.damping } },
   });
 }
 
-// ── Hover dots (native dot() + whenFocused, replaces ensureDot/updateDotPosition) ─
 
-export interface HoverDotSeries {
+interface HoverDotSeries {
   dataKey: string;
   color: string;
 }
 
-export interface HoverDotOptions {
-  /** bklit TooltipDot default size. */
+interface HoverDotOptions {
   size?: number;
-  /** bklit: isRing ? 1.5 : 2 — plain 'dot' variant (not 'ring') defaults to 2. */
   strokeWidth?: number;
   stroke?: string;
   discrete?: boolean;
 }
 
-/**
- * Native `dot()` mark filtered to the currently-focused x via
- * `whenFocused(mark, {match:"x", retarget:true})`.
- *
- * `retarget:true`: keeps the ONE matching scene node's structural key stable
- * across focus changes (instead of unmount-the-old/mount-the-new), so the
- * mark's own `motion` spring below can slide the SAME dot element between x
- * positions — the native equivalent of hover-chrome's
- * TOOLTIP_SPRING-driven `updateDotPosition`. Without `retarget`, each focus
- * change would crossfade a fresh node in place, losing the "one dot glides
- * along the line" feel bklit has.
- *
- * `match:"x"`: each series already gets its OWN `dot()` mark (one call per
- * series, no `z`/`color` channel), so its candidate points already belong to
- * exactly one series — matching by x is sufficient to pick the single point
- * at the focused index and is simpler/more robust than `"series"` or
- * `"group"` (whose semantics are about disambiguating BETWEEN series within
- * one mark, not applicable here).
- */
-export function buildHoverDotMark(
-  renderData: ChartDatum[],
-  xDataKey: string,
-  series: HoverDotSeries,
-  fill: string,
-  options: HoverDotOptions = {},
-): ChartMark<ChartDatum, Date, number> {
-  const size = options.size ?? 5;
+// WhenFocused(match:"x", retarget:true): one shared dot glides between x positions,
+// Not a fresh crossfade per focus change.
+const buildHoverDotMark = (renderData: readonly Readonly<ChartDatum>[], xDataKey: string, series: Readonly<HoverDotSeries>, fill: string, options: Readonly<HoverDotOptions> = {}): ChartMark<ChartDatum, Date, number> => {
+  const size = options.size ?? DEFAULT_HOVER_DOT_SIZE;
   const strokeWidth = options.strokeWidth ?? 2;
   const mark = dot(renderData, {
-    id: `${series.dataKey}__hoverdot`,
-    x: (d: ChartDatum) => d[xDataKey] as Date,
-    y: (d: ChartDatum) => d[series.dataKey] as number,
-    r: size,
     fill,
+    id: `${series.dataKey}__hoverdot`,
+    motion: options.discrete === true
+      ? false
+      : { transition: { damping: TOOLTIP_SPRING.damping, stiffness: TOOLTIP_SPRING.stiffness, type: "spring" } },
+    r: size,
     stroke: options.stroke ?? "var(--chart-background)",
     strokeWidth,
-    motion: options.discrete
-      ? false
-      : { transition: { type: "spring", stiffness: TOOLTIP_SPRING.stiffness, damping: TOOLTIP_SPRING.damping } },
+    x: (datum: Readonly<ChartDatum>) => {
+      const raw: unknown = datum[xDataKey];
+      return raw instanceof Date ? raw : undefined;
+    },
+    y: (datum: Readonly<ChartDatum>) => {
+      const raw: unknown = datum[series.dataKey];
+      return isNumber(raw) ? raw : undefined;
+    },
   });
-  return whenFocused(mark, { match: "x", retarget: true }) as unknown as ChartMark<ChartDatum, Date, number>;
+  return whenFocused(mark, { match: "x", retarget: true });
 }
 
-/** bklit `resolveDotColor` minus its two PER-POINT-dynamic branches
- *  (`tooltip.rows[i].color`, `tooltip.dotColor` as a function of the hovered
- *  point) — native `dot()`'s `fill` is a static string, not a per-datum
- *  channel, so a color that changes with which point is hovered has no
- *  native route without a channel/reach-in. Static `tooltip.dotColor` and
- *  the series color both still work; see the C3 report for the dropped
- *  dynamic-color cases. */
-export function resolveHoverDotFill(
-  seriesColor: string,
-  dotColor: string | ((point: Record<string, unknown>, line: { dataKey: string; stroke?: string }) => string) | undefined,
-): string {
-  if (typeof dotColor === "string") return dotColor;
+// Native fill is static: per-point-dynamic dot colors have no native route.
+const resolveHoverDotFill = (seriesColor: string, dotColor: string | ((point: Readonly<ChartDatum>, line: { readonly dataKey: string; readonly stroke?: string }) => string) | undefined): string => {
+  if (isString(dotColor)) {return dotColor;}
   return seriesColor;
 }
 
-// ── Pointer-hover dim (series dim on hover — distinct from legend dim) ────
-// D425: the 0.4s (line/area) / 0.12s (composed bar) transition lives in
-// styles.css as a `.ts-chart__*` CSS rule, NOT in `states[].transition` —
-// none of the states below carry a `transition` field.
+// Dim transition lives in styles.css, not in states[].transition.
 
-/**
- * Declarative selector: "this mark is pointer-hover-dimmed whenever ANY
- * point anywhere is pointer-focused." A `lineY`/`areaFill` mark's single
- * scene node "owns" every one of its data points as a focus candidate
- * (confirmed via dist/mark-state.js `matchingContext` + dist/focus-layer.js
- * `matchesFocusAnchor` — a line mark has no way to render a PARTIAL dim), so
- * `match:"group"` — true when any owned point is part of the focused x's
- * point group, i.e. true for every series simultaneously — reproduces
- * bklit's SeriesHoverDim exactly: it dims every series uniformly on hover;
- * the separate highlight-band mark below then restores full brightness for
- * the near slice.
- */
-export const POINTER_HOVER_DIM_SELECTOR: ChartMarkStateSelector = {
+// "group" match dims every series uniformly while any point is pointer-focused.
+const POINTER_HOVER_DIM_SELECTOR: ChartMarkStateSelector = {
   focus: "group",
   source: "pointer",
 };
 
-export function pointerHoverDimState<TDatum = unknown>(opacity: number): ChartMarkState<TDatum, any> {
-  return { when: POINTER_HOVER_DIM_SELECTOR, style: { opacity } };
-}
+const pointerHoverDimState = <TDatum = unknown>(opacity: number): ChartMarkState<TDatum> => (
+  { style: { opacity }, when: POINTER_HOVER_DIM_SELECTOR }
+);
 
-/**
- * The pointer-hover series-dim `states` array shared by line-chart.tsx (line
- * dim), area-chart.tsx (area-boundary dim), and composed-chart.tsx (area +
- * line dim, two call sites). No `transition` field (D425 — the 0.4s rides
- * `.ts-chart__line path` in styles.css instead). The legend-hover dim term
- * that used to sit alongside it (a programmatic-focus `whenSeriesDimmed()`
- * state, C1) is gone — D480: legend dim is now a plain per-mark
- * `strokeOpacity`/`opacity` computed inside each chart's definition from
- * `legendHoveredIndex`, because native focus is a single-owner slot and the
- * programmatic series focus evicted the pointer focus (tooltip, crosshair,
- * hover dots) whenever the legend was hovered — legacy keeps both.
- */
-export function pointerSeriesDimStates<TDatum = unknown>(opacity: number): ChartMarkState<TDatum>[] {
-  return [pointerHoverDimState<TDatum>(opacity)];
-}
+// No transition field; legend dim is computed per-mark from legendHoveredIndex.
+const pointerSeriesDimStates = <TDatum = unknown>(opacity: number): ChartMarkState<TDatum>[] => [pointerHoverDimState<TDatum>(opacity)];
 
-/**
- * Composed bars: dim every row EXCEPT the one at the focused x. There is no
- * declarative selector for "not x" (`ChartMarkStateSelector.focus` only
- * accepts one positive match or the whole-group `'unmatched'` special case),
- * so this is a predicate function. `resolveMarkStateScene` (dist/mark-state.js)
- * early-returns unchanged when `context.focus` is absent, so no extra "is
- * anything focused" guard is needed here — the predicate simply never
- * matches while nothing is hovered.
- */
-export function pointerRowDimState<TDatum = unknown>(opacity: number): ChartMarkState<TDatum, any> {
-  return {
-    when: (ctx) => ctx.focus.source === "pointer" && !ctx.matches("x"),
+
+// No declarative "not x" selector exists, so this is a predicate function.
+const pointerRowDimState = <TDatum = unknown>(opacity: number): ChartMarkState<TDatum> => (
+  {
     style: { opacity },
-  };
+    when: (ctx) => ctx.focus.source === "pointer" && !ctx.matches("x"),
+  }
+);
+
+
+interface HighlightBandSeries {
+  readonly dataKey: string;
+  readonly color: string;
+  readonly strokeWidth: number;
+  readonly showHighlight: boolean;
+// Area only: band needs showHighlight && showLine; dim needs showHighlight alone.
+  readonly showLine?: boolean;
+  readonly curve?: ChartCurve;
 }
 
-// ── Highlight band (near-hover full-brightness overlay) ───────────────────
+// Display-only recursion: strips interaction so the re-sliced band can't re-resolve focus
+// And feed back into setHoveredIndex (infinite update loop).
+const stripInteraction = (node: SceneNode): SceneNode => {
+  if (node.kind === "group") {
+    return { ...node, children: node.children.map(stripInteraction) };
+  }
+  if ("interaction" in node && node.interaction) {
+    const { interaction: _interaction, ...rest } = node;
+    return _interaction ? rest : node;
+  }
+  return node;
+};
 
-export interface HighlightBandSeries {
-  dataKey: string;
-  color: string;
-  strokeWidth: number;
-  showHighlight: boolean;
-  /** Area-only (A4): bklit gates the highlight band on `showHighlight &&
-   *  showLine` while SeriesHoverDim keys off `showHighlight` alone — the dim
-   *  state above stays on, only the band itself is suppressed here. */
-  showLine?: boolean;
-  curve?: ChartCurve;
+// Display-only wrapper: strips interaction so the re-sliced band can't re-resolve focus
+// And feed back into setHoveredIndex (infinite update loop).
+const withoutInteraction = <TDatum, TXValue extends ChartValue, TYValue extends ChartValue>(mark: ChartMark<TDatum, TXValue, TYValue>): ChartMark<TDatum, TXValue, TYValue> => createMark((ctx) => {
+  const inner = mark.initialize(ctx);
+  return {
+    ...inner,
+    render: (renderCtx) => {
+      const scene = inner.render(renderCtx);
+      return { ...scene, nodes: scene.nodes.map(stripInteraction) };
+    },
+  };
+}, mark.motion, mark.renderer);
+
+interface HighlightLineMarkArgs {
+  readonly slice: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+  readonly hoverSeries: Readonly<HighlightBandSeries>;
+  readonly discrete: boolean | undefined;
 }
 
-// D-loop-fix: strips `interaction` off every rendered scene node so the
-// wrapped mark contributes NEITHER pointer hit-test targets
-// (`nearest.js` collectTargets requires `node.interaction`) NOR focus
-// candidate points (`scene.js` collectRenderedPoints reads
-// `node.interaction.point(s)`) — while leaving the painted geometry
-// (path/style) completely untouched. Same `createMark`-wrapping shape as
-// `withMarkerBaseClassName` in series-marker-mark.ts.
-//
-// Root cause this exists for: `buildHighlightBandMarks` below re-slices its
-// `lineY` mark's data to `[hoveredIndex-1, hoveredIndex+1]` on every
-// `hoveredIndex` change. A plain `lineY` mark is NOT decorative — its
-// polyline segments always carry `interaction: {points, affinity:"x"}`
-// (dist/line.js), so its (moving) points were feeding straight into the
-// chart's shared `focus:"group-x"` candidate pool AND into
-// `findContainingScenePoint`'s stroke hit-test targets (dist/nearest.js).
-// Because the highlight band's short polyline sits UNDER the pointer at a
-// slightly different stroke geometry than the full line each time it
-// re-slices, native pointer-focus could re-resolve to a different (or no)
-// point purely because THIS chart's own hover-reactive mark moved — which
-// fed back into `setHoveredIndex`, re-sliced the band again, and so on
-// (React's "Maximum update depth exceeded", `#185`). Wrapping the mark here
-// removes it from both pools entirely: it is display-only.
-function withoutInteraction<TDatum, TXValue extends ChartValue, TYValue extends ChartValue>(
-  mark: ChartMark<TDatum, TXValue, TYValue>,
-): ChartMark<TDatum, TXValue, TYValue> {
-  const stripInteraction = (node: SceneNode): SceneNode => {
-    if (node.kind === "group") {
-      return { ...node, children: node.children.map(stripInteraction) };
-    }
-    if ("interaction" in node && node.interaction) {
-      const { interaction: _interaction, ...rest } = node;
-      return rest as SceneNode;
-    }
-    return node;
-  };
-  return createMark((ctx) => {
-    const inner = mark.initialize(ctx);
-    return {
-      ...inner,
-      render: (renderCtx) => {
-        const scene = inner.render(renderCtx);
-        return { ...scene, nodes: scene.nodes.map(stripInteraction) };
+// One re-sliced highlight line; hoisted so buildHighlightBandMarks stays short.
+const buildHighlightLineMark = (markArgs: Readonly<HighlightLineMarkArgs>): ChartMark<ChartDatum, Date, number> =>
+  withoutInteraction(
+    lineY(markArgs.slice, {
+      curve: markArgs.hoverSeries.curve,
+      id: `${markArgs.hoverSeries.dataKey}__highlight`,
+      motion: markArgs.discrete === true
+        ? false
+        : {
+            path: "morph",
+            transition: { damping: HIGHLIGHT_SPRING.damping, stiffness: HIGHLIGHT_SPRING.stiffness, type: "spring" },
+          },
+      stroke: markArgs.hoverSeries.color,
+      strokeWidth: markArgs.hoverSeries.strokeWidth,
+      x: (datum: Readonly<ChartDatum>) => {
+        const raw: unknown = datum[markArgs.xDataKey];
+        return raw instanceof Date ? raw : undefined;
       },
-    };
-  }, mark.motion, mark.renderer) as unknown as ChartMark<TDatum, TXValue, TYValue>;
-}
+      y: (datum: Readonly<ChartDatum>) => {
+        const raw: unknown = datum[markArgs.hoverSeries.dataKey];
+        return isNumber(raw) ? raw : undefined;
+      },
+    }),
+  );
 
-/**
- * A second `lineY` mark per series, its data sliced to
- * `[hoveredIndex-1, hoveredIndex+1]` (clamped to the render-data bounds),
- * drawn at full brightness — the reactive React-state replacement for
- * hover-chrome's imperative clip-rect sweep + `path.getAttribute("d")` clone
- * onto a shadow `<path>`.
- *
- * Motion choice: `path:"morph"` + a HIGHLIGHT_SPRING transition is the
- * closest native approximation of the old `highlightSpring`-driven
- * clip-x/width sweep. It is NOT equivalent: the old mechanism kept the full
- * series path always painted and animated a *clip window* sliding over it
- * (the geometry itself never changed), whereas this re-renders a short,
- * index-clamped 2-3-point path on every hoveredIndex change and asks the
- * renderer's path-morph motion to tween between successive `d` strings. For
- * adjacent-index moves (the overwhelmingly common case) the visual result is
- * close; for a hoveredIndex jump of more than one step (e.g. a fast pointer
- * skip) the morph interpolates between two disjoint short paths rather than
- * sweeping across the ground between them. Shipped as the best available
- * native equivalent; reported as an approximation gap, not silently dropped.
- */
-export function buildHighlightBandMarks(
-  renderData: ChartDatum[],
-  xDataKey: string,
-  hoveredIndex: number | null,
-  series: readonly HighlightBandSeries[],
-  options: { discrete?: boolean } = {},
-): ChartMark<ChartDatum, Date, number>[] {
-  if (hoveredIndex == null || renderData.length === 0) return [];
+// 2-3-point hover window; undefined when there is nothing to highlight.
+const sliceHighlightWindow = (renderData: readonly Readonly<ChartDatum>[], hoveredIndex: number | null): readonly Readonly<ChartDatum>[] | undefined => {
+  if (hoveredIndex === null || renderData.length === 0) {return undefined;}
   const lo = Math.max(0, hoveredIndex - 1);
   const hi = Math.min(renderData.length - 1, hoveredIndex + 1);
-  if (hi < lo) return [];
+  if (hi < lo) {return undefined;}
   const slice = renderData.slice(lo, hi + 1);
-  if (slice.length === 0) return [];
+  if (slice.length === 0) {return undefined;}
+  return slice;
+};
+
+// 2-3-point slice at full brightness; path morph approximates the old clip sweep,
+// Exact for adjacent-index moves only.
+const buildHighlightBandMarks = (renderData: readonly Readonly<ChartDatum>[], xDataKey: string, hoveredIndex: number | null, series: readonly Readonly<HighlightBandSeries>[], options: { readonly discrete?: boolean } = {}): ChartMark<ChartDatum, Date, number>[] => {
+  const slice = sliceHighlightWindow(renderData, hoveredIndex);
+  if (slice === undefined) {return [];}
   const marks: ChartMark<ChartDatum, Date, number>[] = [];
-  for (const s of series) {
-    if (!s.showHighlight || s.showLine === false) continue;
-    marks.push(
-      withoutInteraction(
-        lineY(slice, {
-          id: `${s.dataKey}__highlight`,
-          x: (d: ChartDatum) => d[xDataKey] as Date,
-          y: (d: ChartDatum) => d[s.dataKey] as number,
-          curve: s.curve,
-          stroke: s.color,
-          strokeWidth: s.strokeWidth,
-          motion: options.discrete
-            ? false
-            : {
-                transition: { type: "spring", stiffness: HIGHLIGHT_SPRING.stiffness, damping: HIGHLIGHT_SPRING.damping },
-                path: "morph",
-              },
-        }),
-      ),
-    );
+  for (const hoverSeries of series) {
+    if (hoverSeries.showHighlight && hoverSeries.showLine !== false) {
+      marks.push(buildHighlightLineMark({ discrete: options.discrete, hoverSeries, slice, xDataKey }));
+    }
   }
   return marks;
 }
 
-// ── Guards (ported semantics from use-hover-chrome.ts) ─────────────────────
 
-/** bklit shell comment — interaction bisects only visiblePlotData; with
- *  domain-clamp the focus stack is over full data, so an edge pointer can
- *  resolve an off-viewport point. True when `datum`'s x value falls outside
- *  the inclusive `xDomain`. */
-export function isFocusOutsideXDomain(
-  datum: unknown,
-  xDataKey: string,
-  xDomain: readonly [Date, Date] | undefined,
-): boolean {
-  if (!xDomain) return false;
-  const v = (datum as Record<string, unknown> | null | undefined)?.[xDataKey];
-  const d = v instanceof Date ? v : v != null ? new Date(v as string | number) : null;
-  if (!d || Number.isNaN(d.getTime())) return false;
-  const t = d.getTime();
-  const a = xDomain[0]!.getTime();
-  const b = xDomain[1]!.getTime();
-  return t < Math.min(a, b) || t > Math.max(a, b);
+// Real shape check for x-domain probing.
+// Focus callbacks hand us untyped datum values, so confirm object-ness before key lookup instead of asserting it.
+const isStringKeyedRecord = <Subject>(value: Subject): value is Subject & ChartDatum =>
+  typeof value === "object" && value !== null;
+
+const toDateOrUndefined = (value: unknown): Date | undefined => {
+  if (value instanceof Date) {return value;}
+  if (isString(value) || isNumber(value)) {return new Date(value);}
+  return undefined;
+};
+
+// True when datum's x falls outside the inclusive xDomain.
+const isFocusOutsideXDomain = (datum: Readonly<ChartDatum>, xDataKey: string, xDomain: readonly [Date, Date] | undefined): boolean => {
+  if (!xDomain) {return false;}
+  const rawValue: unknown = isStringKeyedRecord(datum) ? datum[xDataKey] : undefined;
+  const resolvedDate = toDateOrUndefined(rawValue);
+  if (!resolvedDate || Number.isNaN(resolvedDate.getTime())) {return false;}
+  const timeMs = resolvedDate.getTime();
+  const domainStart = xDomain[0].getTime();
+  const domainEnd = xDomain[1].getTime();
+  return timeMs < Math.min(domainStart, domainEnd) || timeMs > Math.max(domainStart, domainEnd);
 }
 
-// ── Date pill overlay (app-owned HTML; sanctioned per date-pill.ts) ───────
 
-export interface DatePillController {
-  /** Callback ref for the overlay host `<div>` (D479) — pass as `ref=`. */
-  overlayHostRef: React.RefCallback<HTMLDivElement>;
-  /** Shows/positions the pill. `jump` snaps instead of springing (first-show
-   *  / discrete data, mirroring hover-chrome's `showing || discrete`
-   *  branch). */
-  show(x: number, opts: { index: number; label: string | null; discrete: boolean; jump: boolean }): void;
-  hide(): void;
-}
+export {
+  buildCrosshairGradientDef,
+  buildHighlightBandMarks,
+  buildHoverDotMark,
+  buildIndicatorMark,
+  isFocusOutsideXDomain,
+  POINTER_HOVER_DIM_SELECTOR,
+  pointerHoverDimState,
+  pointerRowDimState,
+  pointerSeriesDimStates,
+  resolveHoverDotFill,
+};
 
-export function useDatePillOverlay(options: {
-  enabled: boolean;
-  dateLabels: readonly string[];
-  tooltipSpring: SpringConfig;
-}): DatePillController {
-  const { enabled, tooltipSpring } = options;
-  const pillRef = React.useRef<PillBuild | null>(null);
-  const hostRef = React.useRef<HTMLDivElement | null>(null);
-  const dateLabelsRef = React.useRef(options.dateLabels);
-  dateLabelsRef.current = options.dateLabels;
-  const springRef = React.useRef(tooltipSpring);
-  springRef.current = tooltipSpring;
+export { useDatePillOverlay } from "./date-pill-overlay";
+export type { DatePillController } from "./date-pill-overlay";
 
-  // D479 (6.5 gate): the host `<div>` mounts AFTER the first layout effect
-  // in every consumer (it renders only once the chart has a measured width,
-  // i.e. a render later than the hook's first commit), so a plain ref read
-  // inside a `[enabled, spring]` effect never saw it and the pill never
-  // mounted (the phase-6 QA date-pill misses). Mount/unmount now follow the
-  // host element itself via a callback ref; a spring change re-mounts.
-  const mountPill = React.useCallback((el: HTMLDivElement | null) => {
-    const prev = pillRef.current;
-    if (prev) {
-      pillRef.current = null;
-      prev.layer.remove();
-      prev.spring.stop();
-      prev.ticker?.detach();
-    }
-    hostRef.current = el;
-    if (!el) return;
-    const pill = buildPill(el.ownerDocument, springRef.current, () => dateLabelsRef.current as string[]);
-    el.appendChild(pill.layer);
-    pillRef.current = pill;
-  }, []);
-  const overlayHostRef = React.useCallback(
-    (el: HTMLDivElement | null) => mountPill(enabled ? el : null),
-    [mountPill, enabled],
-  );
-  React.useLayoutEffect(() => {
-    // Spring/enabled changes: re-mount against the current host.
-    mountPill(enabled ? hostRef.current : null);
-  }, [mountPill, enabled, tooltipSpring.stiffness, tooltipSpring.damping]);
-  React.useLayoutEffect(() => () => mountPill(null), [mountPill]);
-
-  const show = React.useCallback(
-    (x: number, opts: { index: number; label: string | null; discrete: boolean; jump: boolean }) => {
-      const pill = pillRef.current;
-      if (!pill) return;
-      pill.layer.style.display = "";
-      if (pill.ticker && dateLabelsRef.current.length > 0) {
-        pill.ticker.update(opts.index, opts.discrete);
-      } else if (opts.label != null) {
-        pill.label.textContent = opts.label;
-      }
-      if (opts.jump || opts.discrete) pill.spring.jump(x);
-      else pill.spring.set(x);
-    },
-    [],
-  );
-
-  const hide = React.useCallback(() => {
-    const pill = pillRef.current;
-    if (!pill) return;
-    pill.layer.style.display = "none";
-  }, []);
-
-  return { overlayHostRef, show, hide };
-}
+export type {
+  CrosshairGradientDef,
+  HighlightBandSeries,
+  HoverDotOptions,
+  HoverDotSeries,
+  IndicatorMarkOptions,
+};

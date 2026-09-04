@@ -1,14 +1,8 @@
-// Compare step for the QA pixel gate — port of the scratch gate-compare.py
-// (docs/phase-5 D402/D403 rule): every cell is judged against the MODE
-// DISTRIBUTION of its own history in qa/results/<chart>/*/report.json, never a
-// single baseline sample. Also carries the Phase-5 close board
-// (docs/phase-5/captures/5-3-5-final-matrix.md) as "baseline px".
-//
+// Compare step for the QA pixel gate: every cell is judged against the MODE DISTRIBUTION of its own history
+// in qa/results/<chart>/*/report.json, never a single baseline sample. Writes <out>/qa-matrix.json + qa-matrix.md.
 //   node qa/gate/compare-qa.mjs --runs <qa-runs.json> --out <dir>
 //   node qa/gate/compare-qa.mjs --logs <dir of harness stdout logs> --out <dir> [--label sequential]
 //   node qa/gate/compare-qa.mjs --diff <a/qa-matrix.json> <b/qa-matrix.json>
-//
-// Writes <out>/qa-matrix.json + qa-matrix.md.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,7 +19,7 @@ import {
   writeJson,
 } from "./lib.mjs";
 
-/** Harness timestamps come as ISO or filesystem-safe (":." -> "-"); normalise to ISO for comparisons. */
+/** Harness timestamps come as ISO or filesystem-safe; normalise to ISO for comparisons. */
 export function normTs(ts) {
   if (!ts) return "";
   return String(ts).replace(/T(\d\d)-(\d\d)-(\d\d)-(\d\d\d)Z$/, "T$1:$2:$3.$4Z");
@@ -47,11 +41,7 @@ export function loadPhase5Board() {
   return out;
 }
 
-/**
- * Historical distribution for (chart, n, state, cell) from qa/results, taken
- * from reports with implB === "migrated" and timestamp < `before` (so a gate
- * run never judges itself against its own captures).
- */
+// GUARD: history only from bklit-vs-migrated reports with timestamp < `before`, so a run never judges itself.
 export function loadHistory({ before, minTimestamp = "2026-08-20" } = {}) {
   const hist = new Map(); // key -> { values: number[], runs: number }
   if (!existsSync(QA_RESULTS_DIR)) return hist;
@@ -114,7 +104,6 @@ export function judgeCell(px, hist) {
   return { status: "out-of-range", newValue: true };
 }
 
-/** Parse one harness stdout log into a pseudo-report (for sequential logs). */
 export function parseHarnessLog(text) {
   const head = text.match(/^\[qa\] (\w+) n=(\d+)/m);
   const cells = [];
@@ -147,7 +136,6 @@ export function parseHarnessLog(text) {
   return { chart, n, state, comparisons: cells, outDir, tooltipFailures: [] };
 }
 
-/** Build the matrix rows from a list of harness reports. */
 export function buildMatrix(reports, { before, label } = {}) {
   const board = loadPhase5Board();
   const hist = loadHistory({ before });
@@ -290,11 +278,7 @@ export function reportsFromRunsFile(runsFile) {
   });
 }
 
-/**
- * Reports for a roster from qa/results by timestamp window — used to rebuild
- * the matrix of a sweep that was run outside the driver (e.g. the sequential
- * scratch sweep): first report per (chart, n) with start <= timestamp < end.
- */
+// Rebuilds the matrix of a sweep run outside the driver: first report per (chart, n) in [start, end).
 export function reportsFromResultsWindow(roster, start, end) {
   return roster.map((j) => {
     const cdir = path.join(QA_RESULTS_DIR, j.chart);

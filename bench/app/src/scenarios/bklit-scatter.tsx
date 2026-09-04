@@ -1,4 +1,4 @@
-// Faithful port of repos/bklit-ui/packages/ui/registry/examples/scatter-chart.tsx
+// Registry port; seeded data scaled to n.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScatterChart, Scatter, Grid, XAxis, ChartTooltip } from "@bklitui/ui/charts";
 import {

@@ -1,10 +1,4 @@
-// ProfitLossLine + ProfitLossLegend visual-parity scenario (initiative 8 Q1
-// gate) — the verified bklit demo shape (profit-loss-line-demo.tsx): legend
-// OUTSIDE the chart, an invisible zero-width Line registering the y-domain,
-// and ProfitLossLine wrapped in ProfitLossLegendHoverProvider. The pnl
-// series is derived deterministically from the seeded rows (seriesA minus
-// its mean) so it crosses zero; identical derivation on both impl sides.
-// `window.__qaSetLegendHover` drives the legend-hover dim for QA probes.
+// Demo shape: outside legend, invisible domain-registering Line, pnl = seriesA minus mean (crosses zero).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveLinear } from "@visx/curve";
 import {

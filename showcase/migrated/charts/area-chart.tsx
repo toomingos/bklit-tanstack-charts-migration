@@ -1,30 +1,15 @@
-// Migrated bklit-ui AreaChart — same public API, rendered by TanStack
-// Charts. Minimal diff on line-chart.tsx (docs/LOG.md D10/area task):
-//   - Two marks per series: `areaFill` (custom fill mark, id `${dataKey}__fill`)
-//     under a `lineY` (boundary stroke, id `dataKey` — SAME id convention as
-//     <Line>, so the native crosshair/hover-dot/highlight-band marks in
-//     internal/hover-geometry.ts work unchanged) on top, per "Layering area
-//     and line" (TanStack docs).
-//   - Per-series vertical gradient (fill fading to transparent, bklit's
-//     area-gradient-defs.tsx defaults) rendered in a 0x0 sibling <svg>
-//     AFTER <Chart> — same url()-resolves-document-wide technique as
-//     scatter-chart.tsx's marker gradients.
-//   - areaY's own `fillOpacity` is always 1: bklit never double-applies
-//     fillOpacity on both the shape and the gradient — all of it lives in
-//     the gradient stops (area.tsx: `<AreaClosed fill={areaFill} .../>`
-//     with NO fillOpacity prop at all).
-//   - Area's own bklit defaults differ from Line's: curveMonotoneX (not
-//     curveNatural), fadeEdges default false (not true), strokeWidth
-//     default 2 (not 2.5).
-//   - Hover dim is 0.6 (not Line's 0.3) — area.tsx hardcodes
-//     `<SeriesHoverDim dimOpacity={0.6} .../>`; ported to `AREA_DIM_OPACITY`
-//     below, applied via both native mark `states` (lineY) and a reactive
-//     `fillOpacity` term (areaFill — see its header for why it can't use
-//     `states`).
-//   - No path-morph on data update (bklit Area has no useAnimatedSeriesPath
-//     equivalent) — same as migrated Line, the shared shell's y-domain
-//     tween is the only data-update animation either chart has (I8).
-import * as React from "react";
+// Bklit AreaChart on TanStack Charts. Two marks per series (areaFill + lineY); hover dim 0.6.
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { curveMonotoneX } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
@@ -34,26 +19,32 @@ import { d3Curve } from "@tanstack/charts/d3/shape";
 import { defineChart } from "@tanstack/charts/scene";
 import { lineY } from "@tanstack/charts/line";
 import type {
+  ChartAxisTickLabelContext,
   ChartControl,
   ChartMark,
   ChartMotionContext,
+  ChartMotionTiming,
   ChartPoint,
   ChartPositionScaleOptions,
   ChartRendererRenderContext,
+  ChartScale,
+  ChartScaleResolveContext,
+  DomChartDefinition,
   SceneStyle,
-  StaticChartDefinition,
 } from "@tanstack/charts";
-import { brushX, type BrushRange, type BrushXChange } from "@tanstack/charts/interaction/brush";
+import { brushX } from '@tanstack/charts/interaction/brush';
+import type { BrushRange, BrushXChange } from '@tanstack/charts/interaction/brush';
 import { controlledSignal } from "@tanstack/charts/interaction/signal";
 import { useChartRenderer } from "./internal/motion-renderer";
 import { areaFill } from "./internal/area-fill-mark";
 import { patternAreaMark } from "./internal/pattern-area-mark";
-import { renderPatternPreset } from "./internal/pattern-preset";
+import { renderPatternPreset } from "./internal/pattern-preset-render";
+import type { PatternPresetId } from "./internal/pattern-preset";
 import {
   decimateTimeSeries,
   maxRenderPointsForWidth,
 } from "./internal/decimate";
-import { extractChildren } from "./children";
+import { extractChildren } from "./internal/children-extract";
 import {
   buildCrosshairGradientDef,
   buildHighlightBandMarks,
@@ -64,6 +55,7 @@ import {
   pointerSeriesDimStates,
   useDatePillOverlay,
 } from "./internal/hover-geometry";
+import type { CrosshairGradientDef } from "./internal/hover-geometry";
 import { useFocusInjection } from "./internal/focus-injection";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
@@ -82,7 +74,8 @@ import {
   mergeProjectionYDomain,
 } from "./internal/projection-config";
 import { projectionLineMark, resolveProjectionGradientDef } from "./internal/projection-line-mark";
-import { ProjectionMarkerOverlay, type ProjectionPhaseHandle } from "./internal/terminal-marker";
+import { ProjectionMarkerOverlay } from './internal/terminal-marker';
+import type { ProjectionPhaseHandle } from './internal/terminal-marker';
 import { toDate } from "./internal/coerce-date";
 import { timeToPixelX } from "./internal/x-time-scale";
 import {
@@ -101,18 +94,21 @@ import {
   tickLabelFadeOpacity,
 } from "./internal/axis-ticks";
 import { buildNativeTooltipExtension, renderSeriesTooltipBody } from "./internal/native-tooltip";
-import type { ChartDatum, ChartStatus } from "./internal/types";
-import { type ChartPhase, DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./internal/chart-phase";
-import type { ChartScale } from "@tanstack/charts";
+import type { AreaConfig, BrushChildConfig, ChartDatum, ChartStatus, PatternAreaConfig, SeriesPointMarkerStyle } from "./internal/types";
+import { DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from './internal/chart-phase';
+import type { ChartPhase } from './internal/chart-phase';
 import { useChartConfig } from "./internal/chart-config-context";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { bezierEasing } from "./internal/bezier-easing";
 import { resolveGridGuide } from "./internal/grid";
 import { resolveFadeEdgesMask } from "./internal/fade-mask";
-import { LoadingLabel, buildLoadingSkeletonRows } from "./internal/loading-chrome";
-import { useChartLegendHover } from "./internal/chart-legend-hover";
+import { buildLoadingSkeletonRows } from "./internal/loading-chrome";
+import { LoadingLabel } from "./internal/loading-label";
+import { useChartLegendHover } from "./internal/chart-legend-hover-context";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
-import { useChartMargin, DEFAULT_CHART_MARGIN, useMeasuredRect, type ChartMargin } from "./internal";
+import { useChartMargin, DEFAULT_CHART_MARGIN } from "./internal/use-chart-margin";
+import { useMeasuredRect } from "./internal/use-container-size";
+import type { ChartMargin } from "./internal/use-chart-margin";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { DEFAULT_Y_AXIS_ID } from "./internal/y-axis-id";
 import {
@@ -125,25 +121,50 @@ import {
 } from "./internal/y-domain";
 import { useChartPhaseOrchestrator } from "./internal/use-chart-phase-orchestrator";
 import { filterDataByXDomain, createXAccessor, snapBrushRangeToValues } from "./internal/brush-selection";
-import { BrushChrome, selectionToPixelExtent, type BrushHost } from "./internal/brush-chrome";
+import { BrushChrome } from './internal/brush-chrome';
+import { selectionToPixelExtent } from "./internal/brush-chrome-helpers";
+import type { BrushHost } from './internal/brush-chrome';
 import { DashTailOverlay, resolveDashTailBounds } from "./internal/dash-tail";
 import { buildMarkerGradientDefs, buildMarkerMarks } from "./internal/series-marker-mark";
 import { ChartMarkersOverlay } from "./internal/chart-markers";
-import { createActiveMarkersStore, MarkerActiveTooltipProvider } from "./internal/marker-tooltip";
+import { createActiveMarkersStore } from "./internal/active-markers-store";
+import { MarkerActiveTooltipProvider } from "./internal/marker-active-tooltip-provider";
 import {
   DEFAULT_ANIMATION_DURATION_MS,
   DEFAULT_ANIMATION_EASING,
 } from "./internal/animation-defaults";
 import { runRevealWipe, snapRevealWipe } from "./internal/reveal-wipe";
-import { clipRevealTiming, type EnterTransition } from "./internal/enter-transition";
+import { clipRevealTiming } from './internal/enter-transition';
+import type { EnterTransition } from './internal/enter-transition';
 import "./styles.css";
-// Area's own hover dim (area.tsx hardcodes dimOpacity={0.6}; Line uses 0.3).
-const AREA_DIM_OPACITY = 0.6;
 
-// C6: native brushX's own selection/handle painting is hidden — see
-// line-chart.tsx's BRUSH_NATIVE_HIDDEN_STYLE for the full rationale
-// (identical here). The BrushChrome portal reproduces bklit's visuals;
-// native brushX still owns 100% of the mechanics underneath.
+const AREA_DIM_OPACITY = 0.6;
+// Bklit default area-fill alpha when a series omits fillOpacity.
+const DEFAULT_AREA_FILL_OPACITY = 0.4;
+// Gradient span clamps to this fraction at minimum so the stop never collapses to zero-width.
+const MIN_GRADIENT_SPAN_FRACTION = 0.01;
+const PERCENT_MULTIPLIER = 100;
+// Below this, a measured box height reads as "not yet measured" (falls back to aspectRatio).
+const MIN_MEASURED_HEIGHT_PX = 0.5;
+// Terminal/projection-end marker default radius when a series omits one.
+const DEFAULT_TERMINAL_MARKER_RADIUS_PX = 5;
+// Terminal marker default stroke width when a series omits one.
+const DEFAULT_TERMINAL_MARKER_STROKE_WIDTH_PX = 1.5;
+// Projection line default stroke width when a series omits one.
+const DEFAULT_PROJECTION_STROKE_WIDTH_PX = 2;
+// Fallback y-domain tween duration when yDomainTween is `true` (or truthy) but no explicit ms was given.
+const DEFAULT_Y_DOMAIN_TWEEN_FALLBACK_MS = 500;
+// Fallback d3 tick count when the axis config omits numTicks.
+const DEFAULT_TICK_COUNT = 5;
+// Series-marker default radius when a marker config omits one.
+const DEFAULT_SERIES_MARKER_RADIUS_PX = 5;
+// Active-highlight halo padding as a fraction of the marker radius.
+const MARKER_HIGHLIGHT_PAD_RATIO = 0.35;
+// Fallback accent stroke for terminal/projection chrome when a series omits one.
+const PROJECTION_FALLBACK_STROKE = "var(--chart-3)";
+const MS_PER_SECOND = 1000;
+
+// Native brushX painting hidden; the BrushChrome portal reproduces bklit visuals.
 const BRUSH_NATIVE_HIDDEN_STYLE: SceneStyle = {
   fill: "transparent",
   fillOpacity: 0,
@@ -152,7 +173,7 @@ const BRUSH_NATIVE_HIDDEN_STYLE: SceneStyle = {
 };
 const EMPTY_BRUSH_CONTROLS: readonly ChartControl<Date, number>[] = [];
 
-export interface AreaChartProps {
+interface AreaChartProps {
   data: ChartDatum[];
   xDataKey?: string;
   status?: ChartStatus;
@@ -162,49 +183,23 @@ export interface AreaChartProps {
   className?: string;
   onPhaseChange?: (phase: ChartPhase) => void;
   loadingLabel?: string;
-  children?: React.ReactNode;
-  style?: React.CSSProperties;
+  children?: ReactNode;
+  style?: CSSProperties;
   animationEasing?: string;
   yDomainTween?: boolean;
   yDomainTweenDuration?: number;
-  // bklit time-series-chart-shell.tsx:162-167 — brush-driven viewport
   xDomain?: [Date, Date];
-  /**
-   * P5.7 L11 — ACCEPTED as inert, with the mechanism corrected. The ruling was
-   * "FIX-trivial (pass to brush layout) or ACCEPT" on the premise that
-   * `internal/brush-layout.tsx:52` has an `xDomainSlotCount` waiting to be fed.
-   * It does not: that line is the PRODUCER. `useBrushSelection` computes
-   * `xDomainSlotCount: enabled ? data.length : undefined`
-   * (`internal/brush-selection.ts:158`), `BrushLayout` forwards it DOWN through
-   * `children(layoutState)` — so the value flows brush -> chart, and there is no
-   * parameter here to thread it into. Threading it "in" would have reversed the
-   * data flow.
-   *
-   * Its one real consumer in bklit is `columnWidth`
-   * (`time-series-chart-shell.tsx:317-326`: `innerWidth / (slotCount - 1)`,
-   * where `slotCount` prefers this prop over `visiblePlotData.length` while
-   * brushing), which the shell publishes on chart context for the tooltip
-   * indicator's `span * columnWidth` sizing and for composed's bar widths.
-   * Migrated's line/area path computes NO `columnWidth` anywhere — the whole
-   * symbol is absent from both files and from the hover-chrome module — because
-   * the tooltip indicator is TanStack-driven here. So wiring this prop would
-   * mean inventing a `columnWidth` that nothing reads: dead code, not parity.
-   * Kept in the type so the public API still accepts what bklit accepts.
-   */
+  /** Accepted but inert (no columnWidth consumer here); kept for bklit API parity. */
   xDomainSlotCount?: number;
   tweenYDomainOnXDomainChange?: boolean;
-  /** P5.5 (charter gap, D329) — bklit `area-chart.tsx:41`. Same contract as
-      LineChart's: overrides the clip-reveal timing, spring coerced to tween. */
+  /** Overrides the clip-reveal timing; springs coerce to tweens. */
   enterTransition?: EnterTransition;
-  /** P5.5 (charter gap, D329) — bklit `area-chart.tsx:43`. Replay epoch input;
-      forwarded to the orchestrator, which already keys its reveal on it. */
+  /** Replay epoch input: changing it replays the mount reveal without a data change. */
   revealSignature?: string;
 }
 
 interface ResolvedArea {
   dataKey: string;
-  /** P6.1 (L10): carried through so `resolvedAreas` can be the series list the
-      per-axis domain resolver groups on — undefined means the default axis. */
   yAxisId?: string | number;
   fill: string;
   stroke: string;
@@ -219,10 +214,198 @@ interface ResolvedArea {
   dashFromIndex?: number;
   dashArray?: string;
   showMarkers?: boolean;
-  markers?: import("./internal/types").SeriesPointMarkerStyle;
+  markers?: SeriesPointMarkerStyle;
 }
 
-export function AreaChart({
+// Bklit `Readonly<ResolvedArea>` alone leaves the nested `markers` object mutable, which
+// Typescript(prefer-readonly-parameter-types) still flags; this wraps it deeply.
+type ReadonlyResolvedArea = Readonly<Omit<ResolvedArea, "markers">> & {
+  readonly markers?: Readonly<SeriesPointMarkerStyle>;
+};
+
+// Bklit `Readonly<AreaConfig>` alone leaves the nested `markers` object mutable, which
+// Typescript(prefer-readonly-parameter-types) still flags; this wraps it deeply.
+type ReadonlyAreaConfig = Readonly<Omit<AreaConfig, "markers">> & {
+  readonly markers?: Readonly<SeriesPointMarkerStyle>;
+};
+
+interface ResolvedPatternArea {
+  dataKey: string;
+  fill?: string;
+  patternPreset?: PatternPresetId;
+  patternColor?: string;
+  curve: CurveFactory;
+}
+
+interface AreaPatternDef {
+  dataKey: string;
+  id: string;
+  preset: PatternPresetId;
+  color?: string;
+  node: ReactNode;
+}
+
+// Bklit parity: height comes from the measured box in both modes, not width/aspectRatio.
+const resolveHeightPx = (width: number, measuredHeight: number, aspectRatio: string): number => {
+  if (width <= 0) {return 0;}
+  if (measuredHeight > MIN_MEASURED_HEIGHT_PX) {return measuredHeight;}
+  return width / parseAspectRatio(aspectRatio);
+};
+
+// Only series that omit fill AND resolve to a real (non-"none") preset get a <pattern> def.
+const buildPatternAreaDefs = (
+  patternAreaList: readonly Readonly<ResolvedPatternArea>[],
+  baseId: string,
+): AreaPatternDef[] => {
+  const defs: AreaPatternDef[] = [];
+  for (const [index, patternArea] of patternAreaList.entries()) {
+    const preset = patternArea.patternPreset ?? "diagonal";
+    const needsPatternDef = patternArea.fill === undefined && preset !== "none";
+    if (needsPatternDef) {
+      const id = `${baseId}-pattern-area-${index}`;
+      const node = renderPatternPreset(preset, `${id}-base`, { color: patternArea.patternColor });
+      if (node !== null) {
+        defs.push({ color: patternArea.patternColor, dataKey: patternArea.dataKey, id, node, preset });
+      }
+    }
+  }
+  return defs;
+};
+
+// Primitive narrowing predicates; typeof stays inside type guards (allowInTypeGuards).
+const isString = (value: unknown): value is string => typeof value === "string";
+const isNumber = (value: unknown): value is number => typeof value === "number";
+const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
+const isAnimationFrameScheduler = (value: unknown): value is typeof globalThis.requestAnimationFrame => typeof value === "function";
+
+// First non-empty entry wins; absent/empty entries fall through (bklit `||`-chain parity).
+const firstNonEmptyString = (values: readonly (string | undefined)[]): string | undefined =>
+  values.find((value) => (value?.length ?? 0) > 0);
+
+// Stringifies an untyped datum field without Object's default "[object Object]" dump.
+const stringifyDatumField = (value: unknown, absent: string): string => {
+  if (isString(value)) {return value;}
+  if (isNumber(value)) {return String(value);}
+  if (value instanceof Date) {return String(value);}
+  if (value === null || value === undefined) {return absent;}
+  return JSON.stringify(value) ?? absent;
+};
+
+// Focus dates arrive as Date instances or raw timestamps; anything else reads as absent.
+const resolveFocusDate = (datum: Readonly<ChartDatum> | undefined, xDataKey: string): Date | undefined => {
+  const rawDate = datum?.[xDataKey];
+  if (rawDate instanceof Date) {return rawDate;}
+  return isString(rawDate) || isNumber(rawDate) ? new Date(rawDate) : undefined;
+};
+
+// First matching point color for a mark id; absent when the series has no focused point.
+const pointColorForMark = (points: readonly { readonly markId: string; readonly color?: string }[], markId: string): string | undefined =>
+  points.find((point) => point.markId === markId)?.color;
+
+// Marker visibility is opt-in; an absent flag reads as hidden.
+const isMarkerConfigShown = (config: Readonly<{ showMarkers: boolean | undefined }>): boolean =>
+  config.showMarkers ?? false;
+
+// Runtime `data` is untyped React child props, so a non-Date value sneaks past the static type.
+const coerceProjectionDate = (input: Readonly<Date> | undefined): Date | undefined => {
+  if (input instanceof Date) {return input;}
+  if (input === undefined) {return undefined;}
+  return new Date(input);
+};
+
+// Resolves the boolean-tween-on case (true -> fallback ms, false -> 0).
+// Split out from the caller below so it stays a single, non-nested ternary.
+const resolveBooleanTweenBaseMs = (yDomainTweenEnabled: boolean): number =>
+  yDomainTweenEnabled ? DEFAULT_Y_DOMAIN_TWEEN_FALLBACK_MS : 0;
+
+// The `yDomainTween` prop's declared type is boolean-only, but this also accepts a raw ms
+// Number for callers that bypass the TS surface — preserved for backward compatibility.
+const resolveEffectiveYDomainTweenDuration = (
+  yDomainTween: boolean,
+  forceTweenOnXDomainChange: boolean,
+  xDomain: readonly [Readonly<Date>, Readonly<Date>] | undefined,
+): number => {
+  // SAFETY: non-boolean runtime callers (untyped JS consumers) may still pass a raw ms number.
+  const base = isBoolean(yDomainTween) ? resolveBooleanTweenBaseMs(yDomainTween) : (yDomainTween as number);
+  if (!forceTweenOnXDomainChange || !xDomain) {return base;}
+  return base || DEFAULT_Y_DOMAIN_TWEEN_FALLBACK_MS;
+};
+
+// Brush ranges compare by endpoint time so a re-created but equal range keeps stable identity.
+const isSameBrushRange = (
+  left: { readonly start: Date; readonly end: Date } | undefined,
+  right: { readonly start: Date; readonly end: Date } | undefined,
+): boolean => {
+  if (left === right) {return true;}
+  if (!left || !right) {return false;}
+  return left.start.getTime() === right.start.getTime() && left.end.getTime() === right.end.getTime();
+};
+
+// Raw x-extent from the rendered rows; xDomain short-circuits the scan (bklit parity).
+interface TimeExtentMs {
+  readonly minTime: number;
+  readonly maxTime: number;
+}
+
+const collectDatumTimes = (
+  renderData: readonly Readonly<ChartDatum>[],
+  xDataKey: string,
+): number[] => {
+  const times: number[] = [];
+  for (const datum of renderData) {
+    const value = datum[xDataKey];
+    if (value instanceof Date) {times.push(value.getTime());}
+  }
+  return times;
+};
+
+const computeTimeExtentRaw = (
+  renderData: readonly Readonly<ChartDatum>[],
+  xDataKey: string,
+  xDomain: readonly [Readonly<Date>, Readonly<Date>] | undefined,
+): TimeExtentMs | undefined => {
+  if (xDomain) {return { maxTime: xDomain[1].getTime(), minTime: xDomain[0].getTime() };}
+  const times = collectDatumTimes(renderData, xDataKey);
+  if (times.length === 0) {return undefined;}
+  return { maxTime: Math.max(...times), minTime: Math.min(...times) };
+};
+
+interface CrosshairGradientStop {
+  readonly offset: string;
+  readonly opacity: number;
+}
+
+interface CrosshairGradientSource {
+  readonly color: string;
+  readonly id: string;
+  readonly stops: readonly CrosshairGradientStop[];
+}
+
+// Crosshair svg in one place. Stops render one level deep, so the svg tree
+// Stays within jsx-max-depth (svg > defs > linearGradient).
+const renderCrosshairNode = (
+  crosshairGradientDef: CrosshairGradientSource | undefined,
+  marginTop: number,
+  plotHeight: number,
+): ReactNode => {
+  if (!crosshairGradientDef) {return undefined;}
+  const { color, id, stops: gradientStops } = crosshairGradientDef;
+  const stops = gradientStops.map((stop: Readonly<{ offset: string; opacity: number }>) => (
+    <stop key={stop.offset} offset={stop.offset} stopColor={color} stopOpacity={stop.opacity} />
+  ));
+  return (
+    <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id={id} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={marginTop} y2={marginTop + plotHeight}>
+          {stops}
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+};
+
+const AreaChart = ({
   data,
   xDataKey = "date",
   status = "ready",
@@ -242,725 +425,547 @@ export function AreaChart({
   tweenYDomainOnXDomainChange = false,
   enterTransition,
   revealSignature = "",
-}: AreaChartProps) {
+}: Readonly<AreaChartProps>): ReactElement => {
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const { width, height: measuredHeight } = useMeasuredRect(containerRef);
-  const onPhaseChangeRef = React.useRef(onPhaseChange);
-  onPhaseChangeRef.current = onPhaseChange;
-  const projectionPhasePortRef = React.useRef<ProjectionPhaseHandle | null>(null);
+  const onPhaseChangeEvent = useEffectEvent((phase: ChartPhase): void => {
+    onPhaseChange?.(phase);
+  });
+  const projectionPhasePortRef = useRef<ProjectionPhaseHandle | null>(null);
 
-  // bklit shell:373-395 — tweenOnTargetChange: yDomainTween || (tweenYDomainOnXDomainChange && xDomain != null)
-  const effectiveYDomainTweenDuration = React.useMemo(() => {
-    const base = typeof yDomainTween === "boolean" ? (yDomainTween ? 500 : 0) : (yDomainTween as number);
-    if (!tweenYDomainOnXDomainChange || xDomain == null) return base;
-    return base || 500;
-  }, [yDomainTween, tweenYDomainOnXDomainChange, xDomain]);
+  // XDomain-driven tweening forces a nonzero duration even when yDomainTween is 0/false.
+  const effectiveYDomainTweenDuration = useMemo(
+    () => resolveEffectiveYDomainTweenDuration(yDomainTween, tweenYDomainOnXDomainChange, xDomain),
+    [yDomainTween, tweenYDomainOnXDomainChange, xDomain],
+  );
   const {
     chartPhase,
     isLoaded: orchIsLoaded,
     revealEpoch,
     notifyYDomainTweenComplete,
   } = useChartPhaseOrchestrator({
-    chartStatus: status,
-    targetData: data as unknown as Record<string, unknown>[],
-    skeletonData: [],
     animationDuration,
-    yDomainTweenDuration: effectiveYDomainTweenDuration,
+    chartStatus: status,
     revealSignature,
+    skeletonData: [],
+    targetData: data,
+    yDomainTweenDuration: effectiveYDomainTweenDuration,
   });
 
-  // Clip-reveal timing, bklit `animation.ts:18` semantics. Primitive deps:
-  // callers pass `enterTransition` as an inline object literal.
-  const enterType = enterTransition?.type;
-  const enterDuration = enterTransition?.duration;
-  const enterEaseKey = enterTransition?.ease?.join(",");
-  const { durationMs: revealDurationMs, easingCss: revealEasingCss } = React.useMemo(
+  // Primitive deps: enterTransition is usually an inline object literal.
+  const { durationMs: revealDurationMs, easingCss: revealEasingCss } = useMemo(
     () => clipRevealTiming(enterTransition, animationDuration, animationEasing),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [enterType, enterDuration, enterEaseKey, animationDuration, animationEasing],
+    [enterTransition, animationDuration, animationEasing],
   );
 
-  const phaseRef = React.useRef<ChartPhase>(chartPhase);
-  phaseRef.current = chartPhase;
   const isLoaded = orchIsLoaded;
 
-  React.useEffect(() => { onPhaseChangeRef.current?.(chartPhase); }, [chartPhase]);
+  useEffect(() => { onPhaseChangeEvent(chartPhase); }, [chartPhase]);
 
-  // Projection overlay phase port: the orchestrator owns the phase; the
-  // overlay (terminal-marker.tsx) consumes it imperatively via the port.
-  React.useEffect(() => {
+  useEffect(() => {
     projectionPhasePortRef.current?.setPhase(chartPhase);
   }, [chartPhase]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (chartPhase === "gridTweenReady" || chartPhase === "gridTweenLoading") {
       notifyYDomainTweenComplete();
     }
   }, [chartPhase, notifyYDomainTweenComplete]);
 
-  const { areas, patternAreas, grid, xAxis, yAxis, background, tooltip, projectionLines, projectionEndMarkers, terminalMarkers, chartMarkers, brushes } = React.useMemo(
+  const { areas, patternAreas, grid, xAxis, yAxis, background, tooltip, projectionLines, projectionEndMarkers, terminalMarkers, chartMarkers, brushes } = useMemo(
     () => extractChildren(children),
     [children],
   );
-  // C3: moved up from below the `definition` memo — the native crosshair/
-  // hover-dot/highlight-band marks built inside that memo need this flag.
   const tooltipEnabled = tooltip?.enabled ?? false;
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const prefersReducedMotion = usePrefersReducedMotion();
   const { captureRenderContext, sceneRef, interactionRef, clientToScene } =
     useFocusInjection<ChartDatum, Date, number>();
-  const projectionConfigs = React.useMemo(() => extractProjectionLineConfigs(children), [children]);
+  const projectionConfigs = useMemo(() => extractProjectionLineConfigs(children), [children]);
   const projectionGradientBaseId = useSanitizedId();
 
-  // bklit area.tsx / extractAreaConfigs resolved defaults:
-  //  - fill default "var(--chart-line-primary)"
-  //  - stroke default `stroke ?? fill ?? "var(--chart-line-primary)"`
-  //    (extractAreaConfigs's own fallback chain over the RAW props, which
-  //    lands on the identical value as Area's internal `resolvedStroke`
-  //    whenever `fill` is left at its own default — verified by reading
-  //    both call sites in repos/bklit-ui/packages/ui/src/charts/area.tsx
-  //    and area-chart.tsx)
-  //  - strokeWidth default 2 (area.tsx — Line's bklit default is 2.5)
-  //  - fillOpacity default 0.4 (area.tsx)
-  //  - curve default curveMonotoneX (area.tsx — Line's default is
-  //    curveNatural; the registry demo/bench scenario overrides this
-  //    explicitly with curveNatural on both charts)
-  //  - fadeEdges default false (area.tsx — Line's default is true)
-  //  - showHighlight default true (area.tsx)
-  const resolvedAreas = React.useMemo<ResolvedArea[]>(
+  // Bklit defaults: stroke = fill = var(--chart-line-primary), width 2, fillOpacity 0.4, curveMonotoneX.
+  const resolvedAreas = useMemo<ResolvedArea[]>(
     () =>
-      areas.map((a) => {
-        const fill = a.fill ?? "var(--chart-line-primary)";
+      areas.map((area: ReadonlyAreaConfig) => {
+        const fill = area.fill ?? "var(--chart-line-primary)";
         return {
-          dataKey: a.dataKey,
-          yAxisId: a.yAxisId,
+          curve: area.curve ?? curveMonotoneX,
+          dashArray: area.dashArray,
+          dashFromIndex: area.dashFromIndex,
+          dataKey: area.dataKey,
+          fadeEdges: area.fadeEdges ?? false,
           fill,
-          stroke: a.stroke ?? fill,
-          strokeWidth: a.strokeWidth ?? 2,
-          fillOpacity: a.fillOpacity ?? 0.4,
-          curve: a.curve ?? curveMonotoneX,
-          showLine: a.showLine ?? true,
-          gradientToOpacity: a.gradientToOpacity ?? 0,
-          gradientSpan: a.gradientSpan ?? 1,
-          fadeEdges: a.fadeEdges ?? false,
-          showHighlight: a.showHighlight ?? true,
-          dashFromIndex: (a as { dashFromIndex?: number }).dashFromIndex,
-          dashArray: (a as { dashArray?: string }).dashArray,
-          showMarkers: a.showMarkers,
-          markers: a.markers,
+          fillOpacity: area.fillOpacity ?? DEFAULT_AREA_FILL_OPACITY,
+          gradientSpan: area.gradientSpan ?? 1,
+        gradientToOpacity: area.gradientToOpacity ?? 0,
+          markers: area.markers,
+          showHighlight: area.showHighlight ?? true,
+          showLine: area.showLine ?? true,
+          showMarkers: area.showMarkers,
+          stroke: area.stroke ?? fill,
+          strokeWidth: area.strokeWidth ?? 2,
+          yAxisId: area.yAxisId,
         };
       }),
     [areas],
   );
 
-  interface ResolvedPatternArea {
-    dataKey: string;
-    fill?: string;
-    patternPreset?: import("./internal/pattern-preset").PatternPresetId;
-    patternColor?: string;
-    curve: CurveFactory;
-  }
-  const resolvedPatternAreas = React.useMemo<ResolvedPatternArea[]>(
+  const resolvedPatternAreas = useMemo<ResolvedPatternArea[]>(
     () =>
-      patternAreas.map((p) => ({
-        dataKey: p.dataKey,
-        fill: p.fill,
-        patternPreset: p.patternPreset,
-        patternColor: p.patternColor,
-        curve: p.curve ?? curveMonotoneX,
+      patternAreas.map((patternArea: Readonly<PatternAreaConfig>) => ({
+        curve: patternArea.curve ?? curveMonotoneX,
+        dataKey: patternArea.dataKey,
+        fill: patternArea.fill,
+        patternColor: patternArea.patternColor,
+        patternPreset: patternArea.patternPreset,
       })),
     [patternAreas],
   );
   const patternBaseId = useSanitizedId();
-  const patternDefs = React.useMemo(() => {
-    const out: Array<{
-      dataKey: string;
-      id: string;
-      preset: import("./internal/pattern-preset").PatternPresetId;
-      color?: string;
-      node: React.ReactNode;
-    }> = [];
-    for (let i = 0; i < resolvedPatternAreas.length; i++) {
-      const pa = resolvedPatternAreas[i]!;
-      if (pa.fill != null) continue;
-      const preset = pa.patternPreset ?? "diagonal";
-      if (preset === "none") continue;
-      const id = `${patternBaseId}-pattern-area-${i}`;
-      const node = renderPatternPreset(preset, `${id}-base`, { color: pa.patternColor });
-      if (!node) continue;
-      out.push({ dataKey: pa.dataKey, id, preset, color: pa.patternColor, node });
-    }
-    return out;
-  }, [resolvedPatternAreas, patternBaseId]);
-  const patternIdByKey = React.useMemo(() => {
-    const m = new Map<string, string>();
-    for (const d of patternDefs) m.set(d.dataKey, d.id);
-    return m;
+  const patternDefs = useMemo(
+    () => buildPatternAreaDefs(resolvedPatternAreas, patternBaseId),
+    [resolvedPatternAreas, patternBaseId],
+  );
+  const patternIdByKey = useMemo(() => {
+    const idByKey = new Map<string, string>();
+    for (const patternDef of patternDefs) {idByKey.set(patternDef.dataKey, patternDef.id);}
+    return idByKey;
   }, [patternDefs]);
 
   const innerWidth = Math.max(0, width - margin.left - margin.right);
-  const renderData = React.useMemo(() => {
-    if (innerWidth <= 0) return data;
+  const renderData = useMemo(() => {
+    if (innerWidth <= 0) {return data;}
     return decimateTimeSeries(
       data,
       maxRenderPointsForWidth(innerWidth),
-      [...resolvedAreas.map((a) => a.dataKey), ...resolvedPatternAreas.map((p) => p.dataKey)],
+      [...resolvedAreas.map((area: ReadonlyResolvedArea) => area.dataKey), ...resolvedPatternAreas.map((patternArea: Readonly<ResolvedPatternArea>) => patternArea.dataKey)],
     );
   }, [data, innerWidth, resolvedAreas, resolvedPatternAreas]);
-  // C3: bklit's `pointCount > DISCRETE_INTERACTION_THRESHOLD` gate, reused by
-  // the native crosshair/hover-dot/highlight-band marks below (snap instead
-  // of spring on dense data).
+  // Dense data snaps instead of springing (bklit pointCount gate).
   const isDiscrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
-  // C3: replaces hover-chrome's imperative `highlightXSpring`/
-  // `highlightWidthSpring` clip-rect sweep — the reactive index driving the
-  // native highlight-band marks below.
-  const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
-  // C4: replaces date-pill.ts's imperative `applyFade`/`resetFade` span
-  // styling — drives the native x `tickLabels.opacity` callback below.
-  const [labelFade, setLabelFade] = React.useState<{ primaryX: number; hoveredLabel: string | null } | null>(null);
-  // C3: app-owned <linearGradient> def id for the native crosshair mark's
-  // vertical fade — same useSanitizedId()/rendered-<defs> mechanism as the
-  // projection/marker gradient defs.
+  const [hoveredIndex, setHoveredIndex] = useState<number | undefined>();
+  const [labelFade, setLabelFade] = useState<{ primaryX: number; hoveredLabel: string | undefined } | undefined>();
   const crosshairGradientId = useSanitizedId();
 
   const areaMarkerBaseId = useSanitizedId();
-  const areaMarkerConfigs = React.useMemo(() => resolvedAreas.map((a) => ({ dataKey: a.dataKey, stroke: a.stroke, showMarkers: a.showMarkers, markers: a.markers })), [resolvedAreas]);
-  const areaMarkerGradientDefs = React.useMemo(() => buildMarkerGradientDefs(areaMarkerConfigs, areaMarkerBaseId), [areaMarkerConfigs, areaMarkerBaseId]);
-  const areaMarkerGradientIdByKey = React.useMemo(() => {
-    const m = new Map<string, string>();
-    for (const g of areaMarkerGradientDefs) m.set(g.dataKey, g.id);
-    return m;
+  const areaMarkerConfigs = useMemo(() => resolvedAreas.map((area: ReadonlyResolvedArea) => ({ dataKey: area.dataKey, markers: area.markers, showMarkers: area.showMarkers, stroke: area.stroke })), [resolvedAreas]);
+  const areaMarkerGradientDefs = useMemo(() => buildMarkerGradientDefs(areaMarkerConfigs, areaMarkerBaseId), [areaMarkerConfigs, areaMarkerBaseId]);
+  const areaMarkerGradientIdByKey = useMemo(() => {
+    const idByKey = new Map<string, string>();
+    for (const gradientDef of areaMarkerGradientDefs) {idByKey.set(gradientDef.dataKey, gradientDef.id);}
+    return idByKey;
   }, [areaMarkerGradientDefs]);
 
-  // bklit shell:265-277 visibleData; shell:341 yDomain on visible slice; shell:303-306 marks stay on full data (domain-clamp).
-  const xAccessorForBrush = React.useMemo(() => createXAccessor(xDataKey), [xDataKey]);
-  const visibleData = React.useMemo(() => {
-    if (!xDomain) return data as unknown as Record<string, unknown>[];
-    return filterDataByXDomain(data as unknown as Record<string, unknown>[], xDomain, xAccessorForBrush) as unknown as ChartDatum[];
+  // YDomain scans visibleData when brushing; marks stay on full data (domain-clamp).
+  const xAccessorForBrush = useMemo(() => createXAccessor(xDataKey), [xDataKey]);
+  const visibleData = useMemo(() => {
+    if (!xDomain) {return data;}
+    return filterDataByXDomain(data, xDomain, xAccessorForBrush);
   }, [data, xDomain, xAccessorForBrush]);
 
-  // bklit y-domain parity — exact port of time-series-chart-shell.tsx
-  // `resolveTimeSeriesYDomain` + `niceYDomain` (d3 .nice() applied by the
-  // configured scale below): all-values>=0 -> [0, max*1.1]; mixed-sign ->
-  // [min,max] padded 5% each side; empty -> [0,100]. Shared via
-  // internal/y-domain.ts with line-chart.tsx and composed-chart.tsx (same
-  // shell), scoped to `resolvedAreas` dataKeys.
-  // shell:341 — yDomainTarget uses visibleData when brushing (marks stay on full data).
-  // P5.7 Strand 5 — same loading-state y-domain divergence fixed in
-  // `line-chart.tsx` (see the long note there): bklit derives the loading
-  // gridlines from a skeleton series, migrated derived them from the caller's
-  // real rows in every phase. Area shares the shell, so it shares the defect.
-  const skeletonRows = React.useMemo(
+  // Bklit parity: all>=0 -> [0, max*1.1]; mixed-sign -> [min,max] +/-5%; empty -> [0,100].
+  // Loading gridlines derive from skeleton rows, not caller data (bklit shells its own).
+  const skeletonRows = useMemo(
     () => buildLoadingSkeletonRows(data.length, resolvedAreas[0]?.dataKey ?? "value"),
     [data.length, resolvedAreas],
   );
-  // P6.1 / T-F1 (L10) — one domain per `yAxisId` group instead of one for the
-  // whole chart. `resolvedAreas` is the series list either way, and for a chart
-  // where every area sits on the default axis (every area chart in the codebase
-  // today) this returns `{ left: <exactly the old tuple> }`, so `yDomain` below
-  // is byte-identical and nothing downstream moves.
-  const yDomainSource = React.useMemo(
-    () => (status === "loading" ? skeletonRows : visibleData) as unknown as ChartDatum[],
-    [status, skeletonRows, visibleData],
-  );
-  const yDomainsByAxis = React.useMemo(
+  const yDomainSource = status === "loading" ? skeletonRows : visibleData;
+  const yDomainsByAxis = useMemo(
     () =>
       resolveYDomainsByAxis({
+        resolveDomain: (axisAreas: readonly ReadonlyResolvedArea[]) => resolveTimeSeriesYDomain(yDomainSource, axisAreas),
         series: resolvedAreas,
-        resolveDomain: (axisAreas) => resolveTimeSeriesYDomain(yDomainSource, axisAreas),
       }),
     [yDomainSource, resolvedAreas],
   );
-  const yDomain = React.useMemo(
+  const yDomain = useMemo(
     () => domainForAxis(yDomainsByAxis, DEFAULT_Y_AXIS_ID),
     [yDomainsByAxis],
   );
 
-  // bklit data-update behavior (chart-phase.ts): new data paints IMMEDIATELY;
-  // only a y-DOMAIN change tweens (500ms scale tween). bklit's Area has no
-  // path-morph equivalent to a hypothetical `useAnimatedSeriesPath` (it
-  // never had one — that's Line-specific machinery bklit doesn't ship for
-  // Area either), so this is exactly Line's existing conditional: animate
-  // the scene only when the final domain actually moved, otherwise snap.
+  // Bklit parity: new data paints immediately; only a y-domain change tweens.
   const { niced: nicedYDomain, changed: nicedYDomainChanged } =
     useNicedYDomainChanged(yDomain);
 
-  // Projection merge on top of the niced base. The merged result is NOT
-  // nice'd again — bklit `buildYScalesFromDomains` builds `scaleLinear({domain})`
-  // with no nice; value-identical to the plain niced domain when no
-  // projection is present.
-  const yDomainFinal = React.useMemo<[number, number]>(() => {
-    if (projectionConfigs.length === 0) return nicedYDomain;
+  // Projection merge is not re-niced (bklit builds scaleLinear({domain}) with no nice).
+  const yDomainFinal = useMemo<[number, number]>(() => {
+    if (projectionConfigs.length === 0) {return nicedYDomain;}
     return mergeProjectionYDomain(nicedYDomain, projectionConfigs, DEFAULT_Y_AXIS_ID);
   }, [nicedYDomain, projectionConfigs]);
 
-  // Secondary axes are expressed by reprojecting values into the primary
-  // domain — TanStack's spec carries exactly one `y` scale (see
-  // `createAxisValueProjector`). Each per-axis domain is niced the same way the
-  // primary one is, so a series on `"right"` gets the same tick-friendly extent
-  // it would have had as the only series on the chart.
-  const nicedDomainsByAxis = React.useMemo(() => {
+  // One y scale in the spec; secondary axes reproject values into the primary domain.
+  const nicedDomainsByAxis = useMemo(() => {
     const out: Record<string, [number, number]> = {};
     for (const [axisId, domain] of Object.entries(yDomainsByAxis)) {
-      out[axisId] = createNicedYScale(domain).domain() as [number, number];
+      const nicedDomain = createNicedYScale(domain).domain();
+      out[axisId] = [nicedDomain[0], nicedDomain[1]];
     }
     return out;
   }, [yDomainsByAxis]);
-  const projectorFor = React.useMemo(
+  const projectorFor = useMemo(
     () => createAxisValueProjector(nicedDomainsByAxis, yDomainFinal),
     [nicedDomainsByAxis, yDomainFinal],
   );
 
-  // The y-domain tween triggers on the FINAL (projection-merged) domain;
-  // identical to the shared niced-domain signal when no projection exists.
-  const prevYDomainFinalRef = React.useRef(yDomainFinal);
+  const [prevYDomainFinal, setPrevYDomainFinal] = useState(yDomainFinal);
+  if (prevYDomainFinal[0] !== yDomainFinal[0] || prevYDomainFinal[1] !== yDomainFinal[1]) {
+    setPrevYDomainFinal(yDomainFinal);
+  }
   const yDomainChanged =
     projectionConfigs.length === 0
       ? nicedYDomainChanged
-      : prevYDomainFinalRef.current[0] !== yDomainFinal[0] ||
-        prevYDomainFinalRef.current[1] !== yDomainFinal[1];
-  prevYDomainFinalRef.current = yDomainFinal;
+      : prevYDomainFinal[0] !== yDomainFinal[0] || prevYDomainFinal[1] !== yDomainFinal[1];
 
-  // Per-series vertical gradient defs — verbatim port of bklit
-  // area-gradient-defs.tsx's stop-list math: top stop at `fillOpacity`, mid
-  // stop at offset `gradientSpan*100%` fading to `gradientToOpacity`, plus a
-  // trailing 100%-stop at `gradientToOpacity` ONLY when span < 1 (span=1
-  // collapses to exactly the historic two stops). span clamps to
-  // [0.01, 1] (AreaGradientDefs' `Math.min(1, Math.max(0.01, ...))`).
-  // Emitted natively via `spec.gradients` (T-D5): TanStack's SVG renderer
-  // writes these into `<defs data-ts-key="gradients">` inside the chart svg
-  // and rewrites matching `fill="url(#id)"` mark refs itself.
+  // Gradient stops carry fillOpacity (never double-applied); span clamps to [0.01, 1].
   const gradientBaseId = useSanitizedId();
-  const gradientDefs = React.useMemo(
+  const gradientDefs = useMemo(
     () =>
-      resolvedAreas.map((area, i) => ({
+      resolvedAreas.map((area: ReadonlyResolvedArea, areaIndex) => ({
         dataKey: area.dataKey,
-        id: `${gradientBaseId}-area-grad-${i}`,
         fill: area.fill,
         fillOpacity: area.fillOpacity,
-        gradientToOpacity: area.gradientToOpacity ?? 0,
-        spanPct: Math.min(1, Math.max(0.01, area.gradientSpan ?? 1)) * 100,
+        gradientToOpacity: area.gradientToOpacity,
+        id: `${gradientBaseId}-area-grad-${areaIndex}`,
+        spanPct: Math.min(1, Math.max(MIN_GRADIENT_SPAN_FRACTION, area.gradientSpan)) * PERCENT_MULTIPLIER,
       })),
     [gradientBaseId, resolvedAreas],
   );
-  const nativeAreaGradients = React.useMemo(
+  const nativeAreaGradients = useMemo(
     () =>
-      gradientDefs.map((g) => ({
-        id: g.id,
-        // objectBoundingBox fractions — serialized as x1="0%" y1="0%"
-        // x2="0%" y2="100%", byte-identical to the retired JSX attrs.
-        x1: 0,
-        y1: 0,
-        x2: 0,
-        y2: 1,
+      gradientDefs.map((gradientDef: Readonly<(typeof gradientDefs)[number]>) => ({
+        id: gradientDef.id,
         stops: [
-          { offset: 0, color: g.fill, opacity: g.fillOpacity },
-          { offset: g.spanPct / 100, color: g.fill, opacity: g.gradientToOpacity },
-          ...(g.spanPct < 100
-            ? [{ offset: 1, color: g.fill, opacity: g.gradientToOpacity }]
+          { color: gradientDef.fill, offset: 0, opacity: gradientDef.fillOpacity },
+          { color: gradientDef.fill, offset: gradientDef.spanPct / PERCENT_MULTIPLIER, opacity: gradientDef.gradientToOpacity },
+          ...(gradientDef.spanPct < PERCENT_MULTIPLIER
+            ? [{ color: gradientDef.fill, offset: 1, opacity: gradientDef.gradientToOpacity }]
             : []),
         ],
+        x1: 0,
+        x2: 0,
+        y1: 0,
+        y2: 1,
       })),
     [gradientDefs],
   );
-  const gradientIdBySeries = React.useMemo(() => {
+  const gradientIdBySeries = useMemo(() => {
     const map = new Map<string, string>();
-    for (const g of gradientDefs) map.set(g.dataKey, g.id);
+    for (const gradientDef of gradientDefs) {map.set(gradientDef.dataKey, gradientDef.id);}
     return map;
   }, [gradientDefs]);
 
-  // bklit sizes the chart from the measured container box in BOTH modes —
-  // see line-chart.tsx: width/aspectRatio is only the pre-measure fallback.
-  const heightPx = width > 0 ? (measuredHeight > 0.5 ? measuredHeight : width / parseAspectRatio(aspectRatio)) : 0;
-  // bklit shell:285-301 + shell:291-295 — when xDomain is set, the brushed extent IS xDomain (no projection merge).
-  const timeExtentRaw = React.useMemo(() => {
-    if (xDomain) return { minTime: xDomain[0].getTime(), maxTime: xDomain[1].getTime() } as const;
-    let minTime = Infinity;
-    let maxTime = -Infinity;
-    for (const d of renderData) {
-      const v = d[xDataKey];
-      if (v instanceof Date) { const t = v.getTime(); if (t < minTime) minTime = t; if (t > maxTime) maxTime = t; }
-    }
-    if (!Number.isFinite(minTime)) return null;
-    return { minTime, maxTime } as const;
-  }, [renderData, xDataKey, xDomain]);
-  // Rendered x-domain: data extent extended by the projection tail so every
-  // consumer (spec scale, selection scale, reference areas, x-axis overlay)
-  // matches the rendered mapping. When xDomain is set, no projection merge.
-  const timeExtent = React.useMemo(() => {
-    if (!timeExtentRaw) return null;
-    if (xDomain) return timeExtentRaw;
-    if (projectionConfigs.length === 0) return timeExtentRaw;
-    return { minTime: timeExtentRaw.minTime, maxTime: mergeProjectionXDomainMax(timeExtentRaw.maxTime, projectionConfigs) } as const;
+  const heightPx = resolveHeightPx(width, measuredHeight, aspectRatio);
+  const timeExtentRaw = useMemo(
+    () => computeTimeExtentRaw(renderData, xDataKey, xDomain),
+    [renderData, xDataKey, xDomain],
+  );
+  // Rendered x-domain extends the data extent by the projection tail; xDomain skips the merge.
+  const timeExtent = useMemo(() => {
+    if (timeExtentRaw === undefined) {return timeExtentRaw;}
+    if (xDomain) {return timeExtentRaw;}
+    if (projectionConfigs.length === 0) {return timeExtentRaw;}
+    return { maxTime: mergeProjectionXDomainMax(timeExtentRaw.maxTime, projectionConfigs), minTime: timeExtentRaw.minTime } as const;
   }, [timeExtentRaw, projectionConfigs, xDomain]);
 
-  // C6: native brushX control (strip host only — instances with no
-  // <ChartBrush> child have brushes.length === 0 and all of this collapses to
-  // EMPTY_BRUSH_CONTROLS/no-ops). See line-chart.tsx for the full design
-  // rationale (identical here); this host owns the control directly via
-  // defineChart's `controls:` instead of needing a second <Chart> host.
-  const brushConfig = brushes[0] ?? null;
-  const hasBrush = brushConfig != null;
-  const brushTrackExtent = React.useMemo<[Date, Date] | null>(() => {
-    if (!timeExtent) return null;
-    return [new Date(timeExtent.minTime), new Date(timeExtent.maxTime)];
-  }, [timeExtent]);
-  const brushFallbackRange = React.useMemo<BrushRange<Date> | null>(() => {
-    if (!brushTrackExtent) return null;
-    return { start: brushTrackExtent[0], end: brushTrackExtent[1] };
+  const brushConfig: BrushChildConfig | undefined = brushes.at(0);
+  const hasBrush = Boolean(brushConfig);
+  const brushTrackExtent = useMemo<[Date, Date] | undefined>(
+    () => timeExtent === undefined ? undefined : [new Date(timeExtent.minTime), new Date(timeExtent.maxTime)],
+    [timeExtent],
+  );
+  const brushFallbackRange = useMemo((): BrushRange<Date> | undefined => {
+    if (!brushTrackExtent) {return undefined;}
+    return { end: brushTrackExtent[1], start: brushTrackExtent[0] };
   }, [brushTrackExtent]);
-  const brushInitialSelection = brushConfig?.initialSelection ?? null;
-  const brushRangeValueRef = React.useRef<BrushRange<Date> | null>(null);
-  const brushRangeValue = React.useMemo<BrushRange<Date> | null>(() => {
-    const next: BrushRange<Date> | null = brushInitialSelection
-      ? { start: brushInitialSelection.start, end: brushInitialSelection.end }
-      : brushFallbackRange;
-    const prev = brushRangeValueRef.current;
-    if (prev && next && prev.start.getTime() === next.start.getTime() && prev.end.getTime() === next.end.getTime()) {
-      return prev;
-    }
-    brushRangeValueRef.current = next;
-    return next;
-  }, [brushInitialSelection, brushFallbackRange]);
-  const brushOnSelectionChangeRef = React.useRef(brushConfig?.onSelectionChange);
-  brushOnSelectionChangeRef.current = brushConfig?.onSelectionChange;
-  const handleBrushChange = React.useCallback((next: BrushRange<Date>, context: { reason: BrushXChange<Date> }) => {
+  const brushInitialSelection = brushConfig?.initialSelection;
+  const nextBrushRangeValue: BrushRange<Date> | undefined = brushInitialSelection
+    ? { end: brushInitialSelection.end, start: brushInitialSelection.start }
+    : brushFallbackRange;
+  const [brushRangeValue, setBrushRangeValue] = useState<BrushRange<Date> | undefined>(nextBrushRangeValue);
+  if (!isSameBrushRange(brushRangeValue, nextBrushRangeValue)) {
+    setBrushRangeValue(nextBrushRangeValue);
+  }
+  const brushOnSelectionChangeRef = useRef(brushConfig?.onSelectionChange);
+  useEffect(() => {
+    brushOnSelectionChangeRef.current = brushConfig?.onSelectionChange;
+  });
+  const handleBrushChange = useCallback((next: BrushRange<Date>, context: { reason: BrushXChange<Date> }) => {
     const { reason } = context;
-    if (reason.type === "cancel") return;
+    if (reason.type === "cancel") {return;}
     const startMs = next.start.getTime();
     const endMs = next.end.getTime();
     if (startMs === endMs) {
-      if (reason.type === "commit") brushOnSelectionChangeRef.current?.(null);
+      if (reason.type === "commit") {brushOnSelectionChangeRef.current?.(null);}
       return;
     }
-    brushOnSelectionChangeRef.current?.({ start: next.start, end: next.end });
+    brushOnSelectionChangeRef.current?.({ end: next.end, start: next.start });
   }, []);
-  const brushValues = React.useMemo<Date[] | null>(() => {
-    if (!hasBrush) return null;
+  const brushValues = useMemo((): Date[] | undefined => {
+    if (!hasBrush) {return undefined;}
     const out: Date[] = [];
-    for (const d of data as unknown as Record<string, unknown>[]) {
-      const v = xAccessorForBrush(d);
-      if (v instanceof Date) out.push(v);
+    for (const datum of data) {
+      const xValue = xAccessorForBrush(datum);
+      if (xValue instanceof Date) {out.push(xValue);}
     }
     return out;
   }, [hasBrush, data, xAccessorForBrush]);
-  const brushControls = React.useMemo<readonly ChartControl<Date, number>[]>(() => {
-    if (!hasBrush || !brushRangeValue || !brushValues || brushValues.length === 0) return EMPTY_BRUSH_CONTROLS;
-    // D474: endpoints must be members of `values` (see snapBrushRangeToValues).
+  const brushControls = useMemo<readonly ChartControl<Date, number>[]>(() => {
+    if (!hasBrush || !brushRangeValue || !brushValues || brushValues.length === 0) {return EMPTY_BRUSH_CONTROLS;}
+    // Brush endpoints must be members of values (snap first).
     const snappedRange = snapBrushRangeToValues(brushRangeValue, brushValues) ?? brushRangeValue;
     return [
       brushX<Date>({
-        range: controlledSignal<BrushRange<Date>, BrushXChange<Date>>(snappedRange, handleBrushChange),
-        values: brushValues,
-        format: (d: Date) => shortDateFmt.format(d),
         ariaLabel: "Brush selection",
-        startAriaLabel: "Selection start",
         endAriaLabel: "Selection end",
-        selectionStyle: BRUSH_NATIVE_HIDDEN_STYLE,
+        format: (date: Date) => shortDateFmt.format(date),
         handleStyle: BRUSH_NATIVE_HIDDEN_STYLE,
+        range: controlledSignal<BrushRange<Date>, BrushXChange<Date>>(snappedRange, handleBrushChange),
+        selectionStyle: BRUSH_NATIVE_HIDDEN_STYLE,
+        startAriaLabel: "Selection start",
+        values: brushValues,
       }),
     ];
   }, [hasBrush, brushRangeValue, brushValues, handleBrushChange]);
 
   const isLoading = status === "loading";
 
-  // bklit area.tsx fadeEdges → edge-fade mask (styles.css), resolved via the
-  // shared fade-mask module (single source, same as line-chart.tsx). Defaults
-  // are applied per-series first (`?? false` — Area's own default), then the
-  // helper computes the aggregate + directional attributes: both-edge mask
-  // when ANY series is non-false, left/right attributes when any series
-  // requests that side (the CSS :not() rules pick left-only/right-only/both).
-  const fadeEdgesMask = resolveFadeEdgesMask(resolvedAreas.map((a) => a.fadeEdges));
+  // Edge-fade mask aggregates per-series fadeEdges; sides resolve via CSS :not() rules.
+  const fadeEdgesMask = resolveFadeEdgesMask(resolvedAreas.map((area: ReadonlyResolvedArea) => area.fadeEdges));
 
-  const areaTerminalAnchors = React.useMemo(() => {
-    if (terminalMarkers.length === 0 || renderData.length === 0 || width <= 0 || heightPx <= 0) return [];
-    // P6.2 — the last VISIBLE row, not the last row of the raw `data` prop.
-    // bklit publishes `visiblePlotData` as the provider's `data`
-    // (time-series-chart-shell.tsx:418), and <LineSeriesTerminalMarker> anchors
-    // to `data.at(-1)` off that (line-series-terminal-marker.tsx:37), so under a
-    // narrowed `xDomain` the marker sits on the last point INSIDE the viewport.
-    // Reading the unfiltered prop mapped a date past `xDomain[1]` and pushed the
-    // marker off the right edge of the plot (D347).
-    const lastRow = renderData[renderData.length - 1] as Record<string, unknown> | undefined;
-    if (!lastRow) return [];
+  const areaTerminalAnchors = useMemo(() => {
+    if (terminalMarkers.length === 0 || renderData.length === 0 || width <= 0 || heightPx <= 0) {return [];}
+    // Terminal markers anchor to the last visible row, not the last raw data row.
+    const lastRow = renderData.at(-1);
+    if (!lastRow) {return [];}
     const innerW = Math.max(0, width - margin.left - margin.right);
     const innerH = Math.max(0, heightPx - margin.top - margin.bottom);
-    if (innerW <= 0 || innerH <= 0) return [];
+    if (innerW <= 0 || innerH <= 0) {return [];}
     const te = timeExtent;
     const teRaw = timeExtentRaw;
-    if (!te || !teRaw) return [];
-    const xForDate = (d: Date) => timeToPixelX(d, teRaw.minTime, te.maxTime, innerW);
+    if (!te || !teRaw) {return [];}
+    const xForDate = (date: Date): number => timeToPixelX(date, teRaw.minTime, te.maxTime, innerW);
     const yScale2 = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
-    const out: Array<{ dataKey: string; cx: number; cy: number; fill: string; stroke: string; radius: number; ringGap: number; strokeWidth: number; outlineWidth: number; outlineColor?: string }> = [];
-    for (const tm of terminalMarkers as unknown as Array<Record<string, unknown>>) {
-      const dataKey = tm["dataKey"] as string;
-      const v = lastRow[dataKey];
-      if (typeof v !== "number" || !Number.isFinite(v)) continue;
+    const out: { dataKey: string; cx: number; cy: number; fill: string; stroke: string; radius: number; ringGap: number; strokeWidth: number; outlineWidth: number; outlineColor?: string }[] = [];
+    for (const marker of terminalMarkers) {
+      const seriesValue = lastRow[marker.dataKey];
       const dateVal = toDate(lastRow[xDataKey]);
-      if (!dateVal) continue;
-      const cx = xForDate(dateVal);
-      const cy = (yScale2(v) ?? 0) as number;
-      if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue;
-      out.push({ dataKey, cx, cy, fill: (tm["fill"] as string | undefined) ?? "transparent", stroke: (tm["stroke"] as string | undefined) ?? "var(--chart-1)", radius: (tm["radius"] as number | undefined) ?? 5, ringGap: (tm["ringGap"] as number | undefined) ?? 0, strokeWidth: (tm["strokeWidth"] as number | undefined) ?? 1.5, outlineWidth: (tm["outlineWidth"] as number | undefined) ?? 0, outlineColor: tm["outlineColor"] as string | undefined });
+      // Pure mappings hoisted out of the guards so the loop body stays a single guarded push.
+      const cx = dateVal ? xForDate(dateVal) : Number.NaN;
+      const cy = isFiniteNumber(seriesValue) ? yScale2(seriesValue) : Number.NaN;
+      if (isFiniteNumber(seriesValue) && dateVal && Number.isFinite(cx) && Number.isFinite(cy)) {
+        out.push({ cx, cy, dataKey: marker.dataKey, fill: marker.fill ?? "transparent", outlineColor: marker.outlineColor, outlineWidth: marker.outlineWidth ?? 0, radius: marker.radius ?? DEFAULT_TERMINAL_MARKER_RADIUS_PX, ringGap: marker.ringGap ?? 0, stroke: marker.stroke ?? "var(--chart-1)", strokeWidth: marker.strokeWidth ?? DEFAULT_TERMINAL_MARKER_STROKE_WIDTH_PX });
+      }
     }
     return out;
   }, [terminalMarkers, renderData, width, heightPx, margin, yDomainFinal, timeExtent, timeExtentRaw, xDataKey]);
-  const areaEndAnchors = React.useMemo(() => {
-    if (projectionEndMarkers.length === 0 || width <= 0 || heightPx <= 0) return [];
+  const areaEndAnchors = useMemo(() => {
+    if (projectionEndMarkers.length === 0 || width <= 0 || heightPx <= 0) {return [];}
     const innerW = Math.max(0, width - margin.left - margin.right);
     const innerH = Math.max(0, heightPx - margin.top - margin.bottom);
-    if (innerW <= 0 || innerH <= 0) return [];
+    if (innerW <= 0 || innerH <= 0) {return [];}
     const te = timeExtent;
     const teRaw = timeExtentRaw;
-    if (!te || !teRaw) return [];
-    const xForDate = (d: Date) => timeToPixelX(d, teRaw.minTime, te.maxTime, innerW);
+    if (!te || !teRaw) {return [];}
+    const xForDate = (date: Date): number => timeToPixelX(date, teRaw.minTime, te.maxTime, innerW);
     const yScale2 = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
-    const out: Array<{ cx: number; cy: number; stroke: string; strokeOpacity: number; radius: number }> = [];
-    for (const em of projectionEndMarkers as unknown as Array<Record<string, unknown>>) {
-      const pts = em["data"] as Array<{ date: Date; value: number }> | undefined;
-      if (!pts || pts.length < 2) continue;
-      const last = pts[pts.length - 1]!;
-      const dateVal = last.date instanceof Date ? last.date : new Date(last.date as unknown as string);
-      if (Number.isNaN(dateVal.getTime())) continue;
-      const rawX = xForDate(dateVal);
-      const radius = (em["radius"] as number | undefined) ?? 5;
+    const out: { cx: number; cy: number; stroke: string; strokeOpacity: number; radius: number }[] = [];
+    for (const marker of projectionEndMarkers) {
+      const last = marker.data.length >= 2 ? marker.data.at(-1) : undefined;
+      const dateVal = coerceProjectionDate(last?.date);
+      const hasValidDate = dateVal !== undefined && !Number.isNaN(dateVal.getTime());
+      // Pure mappings hoisted out of the guard so the loop body stays a single guarded push.
+      const rawX = hasValidDate && dateVal ? xForDate(dateVal) : Number.NaN;
+      const radius = marker.radius ?? DEFAULT_TERMINAL_MARKER_RADIUS_PX;
       const edgePadding = radius + 1;
       const cx = Math.min(rawX, Math.max(0, innerW - edgePadding));
-      const cy = (yScale2(last.value) ?? 0) as number;
-      if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue;
-      out.push({ cx, cy, stroke: (em["stroke"] as string | undefined) ?? "var(--chart-3)", strokeOpacity: (em["strokeOpacity"] as number | undefined) ?? 1, radius });
+      const cy = last ? (yScale2(last.value) ?? 0) : Number.NaN;
+      if (last && hasValidDate && Number.isFinite(cx) && Number.isFinite(cy)) {
+        out.push({ cx, cy, radius, stroke: marker.stroke ?? PROJECTION_FALLBACK_STROKE, strokeOpacity: marker.strokeOpacity ?? 1 });
+      }
     }
     return out;
   }, [projectionEndMarkers, width, heightPx, margin, yDomainFinal, timeExtent, timeExtentRaw]);
-  const projectionGradientDefsArea = React.useMemo(() => {
-    if (projectionConfigs.length === 0 || width <= 0) return [];
+  const projectionGradientDefsArea = useMemo(() => {
+    if (projectionConfigs.length === 0 || width <= 0) {return [];}
     const innerW = Math.max(0, width - margin.left - margin.right);
     const innerH = Math.max(0, heightPx - margin.top - margin.bottom);
-    if (innerW <= 0 || innerH <= 0) return [];
+    if (innerW <= 0 || innerH <= 0) {return [];}
     const yScale = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
     const te = timeExtent;
     const teRaw = timeExtentRaw;
-    if (!te || !teRaw) return [];
-    const xScaleWithProjection = (value: Date) => timeToPixelX(value, teRaw.minTime, te.maxTime, innerW);
-    const defs: Array<{ id: string; startX: number; startY: number; endX: number; endY: number; gradientStart: string; gradientEnd: string }> = [];
-    for (let i = 0; i < projectionLines.length; i++) {
-      const p = projectionLines[i] as unknown as Record<string, unknown> | undefined;
-      if (!p || ((p["strokeStyle"] as string | undefined) ?? "solid") !== "gradient") continue;
-      const cfg = projectionConfigs[i];
-      if (!cfg || cfg.data.length < 2) continue;
-      const stroke = (p["stroke"] as string | undefined) ?? "var(--chart-3)";
-      const gradientStart = (p["gradientStart"] as string | undefined) ?? stroke;
-      const gradientEnd = (p["gradientEnd"] as string | undefined) ?? "var(--chart-5)";
-      const strokeWidth = (p["strokeWidth"] as number | undefined) ?? 2;
-      const curveKind = (p["curveKind"] as string | undefined) ?? "linear";
-      const endpointRadius = (p["endpointRadius"] as number | undefined) ?? 5;
-      const showEndMarker = ((p["showEndMarker"] as boolean | undefined) ?? (p["showEndpoints"] as boolean | undefined) ?? true) as boolean;
-      const gid = `${projectionGradientBaseId}-proj-${i}`;
+    if (!te || !teRaw) {return [];}
+    const xScaleWithProjection = (value: Date): number => timeToPixelX(value, teRaw.minTime, te.maxTime, innerW);
+    const defs: { id: string; startX: number; startY: number; endX: number; endY: number; gradientStart: string; gradientEnd: string }[] = [];
+    for (const [index, line] of projectionLines.entries()) {
+      const cfg = projectionConfigs.at(index);
+      if ((line.strokeStyle ?? "solid") === "gradient" && cfg && cfg.data.length >= 2) {
+      const stroke = line.stroke ?? PROJECTION_FALLBACK_STROKE;
+      const gradientStart = line.gradientStart ?? stroke;
+      const gradientEnd = line.gradientEnd ?? "var(--chart-5)";
+      const strokeWidth = line.strokeWidth ?? DEFAULT_PROJECTION_STROKE_WIDTH_PX;
+      const curveKind = line.curveKind ?? "linear";
+      const endpointRadius = line.endpointRadius ?? DEFAULT_TERMINAL_MARKER_RADIUS_PX;
+      const showEndMarker = line.showEndMarker ?? line.showEndpoints ?? true;
+      const gid = `${projectionGradientBaseId}-proj-${index}`;
       const gd = resolveProjectionGradientDef({
-        id: `projection-line-${i}`,
+        className: line.className ?? "chart-projection-line",
+        curveKind,
         data: cfg.data,
-        yAxisId: cfg.yAxisId,
-        stroke,
-        strokeStyle: "gradient",
-        gradientStart,
+        endpointRadius,
         gradientEnd,
         gradientId: gid,
-        strokeWidth,
-        curveKind: curveKind as "linear" | "bezier",
-        strokeDasharray: (p["strokeDasharray"] as string | undefined) ?? "6,4",
-        strokeOpacity: (p["strokeOpacity"] as number | undefined) ?? 1,
-        showEndMarker,
-        endpointRadius,
-        className: (p["className"] as string | undefined) ?? "chart-projection-line",
-        xScale: xScaleWithProjection,
-        yScale: (v: number) => yScale(v) ?? 0,
+        gradientStart,
+        id: `projection-line-${index}`,
         innerWidth: innerW,
+        showEndMarker,
+        stroke,
+        strokeDasharray: line.strokeDasharray ?? "6,4",
+        strokeOpacity: line.strokeOpacity ?? 1,
+        strokeStyle: "gradient",
         strokeVisible: !isLoading,
+        strokeWidth,
         translateX: margin.left,
         translateY: margin.top,
+        xScale: xScaleWithProjection,
+        yAxisId: cfg.yAxisId,
+        yScale: (value: number) => yScale(value) ?? 0,
       });
-      if (gd) defs.push(gd);
+      if (gd) {defs.push(gd);}
+      }
     }
     return defs;
   }, [projectionConfigs, projectionLines, width, margin, heightPx, yDomainFinal, timeExtent, timeExtentRaw, projectionGradientBaseId, isLoading]);
 
-  // C3: app-owned <linearGradient> def feeding the native crosshair mark's
-  // `stroke: url(#id)` vertical fade — see line-chart.tsx for the full
-  // color-fallback rationale (ported verbatim from
-  // internal/tooltip-chrome.ts's `buildIndicator`).
-  const crosshairGradientDef = React.useMemo(() => {
-    if (!(tooltipEnabled && (tooltip?.showCrosshair ?? true))) return null;
-    const color = typeof tooltip?.indicatorColor === "string" ? tooltip.indicatorColor : "var(--chart-crosshair)";
+  const crosshairGradientDef = useMemo((): CrosshairGradientDef | undefined => {
+    if (!(tooltipEnabled && (tooltip?.showCrosshair ?? true))) {return undefined;}
+    const indicatorColor = tooltip?.indicatorColor;
+    const color = isString(indicatorColor) ? indicatorColor : "var(--chart-crosshair)";
     return buildCrosshairGradientDef(crosshairGradientId, color);
   }, [tooltipEnabled, tooltip, crosshairGradientId]);
 
-  const definition = React.useMemo(() => {
-    if (width <= 0) return null;
+  const definition = useMemo((): DomChartDefinition<ChartDatum, Date, number> | undefined => {
+    if (width <= 0) {return undefined;}
     if (isLoading) {
       const gridGuide = resolveGridGuide(grid);
-      const emptySpec = {
-        marks: [] as unknown as ChartMark<ChartDatum, Date, number>[],
+      const emptyMarks: ChartMark<ChartDatum, Date, number>[] = [];
+      return defineChart({
+        focus: "group-x",
+        // Bklit has no focus ring; the hover dot is the indicator.
+        focusRing: false,
+        margin,
+        marks: emptyMarks,
+        maxFocusDistance: Number.POSITIVE_INFINITY,
         scales: {
           x: {
-            scale: scaleUtc as unknown as ChartScale,
+            axis: { line: false, tickLabels: false, ticks: { count: gridGuide.columnTicks, size: 0 } },
             grid: gridGuide.vertical,
-            axis: { ticks: { count: gridGuide.columnTicks, size: 0 }, line: false, tickLabels: false },
+            scale: scaleUtc,
           },
           y: {
-            scale: scaleLinear().domain(yDomainFinal) as unknown as ChartScale,
-            grid: gridGuide.horizontal,
             axis: hiddenAxisOptions(gridGuide.ticks),
+            grid: gridGuide.horizontal,
+            scale: scaleLinear().domain(yDomainFinal),
           },
         },
-        margin,
-        focus: "group-x" as const,
-        // bklit has no native focus ring — its hover dot is the springed TooltipDot.
-        focusRing: false,
-        maxFocusDistance: Number.POSITIVE_INFINITY,
-        svgAnimation: false as const,
-      } as const;
-      const base = defineChart(emptySpec as never);
-      return base as unknown as StaticChartDefinition<ChartDatum, Date, number, "dom">;
+        svgAnimation: false,
+      });
     }
-    // Typed accessors (ChartDatum values are `unknown`, so bare key strings
-    // don't satisfy TanStack's ChannelAccessor value types); the explicit
-    // element type keeps defineChart's D/X/Y inference concrete.
     const marks: ChartMark<ChartDatum, Date, number>[] = [];
     for (const pa of resolvedPatternAreas) {
       const curve = d3Curve(pa.curve);
-      const fill = pa.fill ?? (patternIdByKey.get(pa.dataKey) ? `url(#${patternIdByKey.get(pa.dataKey)!})` : "var(--chart-1)");
+      const patternId = patternIdByKey.get(pa.dataKey);
+      const fill = pa.fill ?? (patternId !== undefined ? `url(#${patternId})` : "var(--chart-1)");
       marks.push(
         patternAreaMark(renderData, {
-          id: `pattern-area-${pa.dataKey}`,
-          x: (d: ChartDatum) => d[xDataKey] as Date,
-          y: (d: ChartDatum) => d[pa.dataKey] as number,
           curve,
           fill,
+          id: `pattern-area-${pa.dataKey}`,
+          x: (datum: Readonly<ChartDatum>) => xAccessorForBrush(datum),
+          y: (datum: Readonly<ChartDatum>) => Number(datum[pa.dataKey]),
         }),
       );
     }
-    // C1 (P6): legend-hover fill dim — areaFill emits no ChartPoints, so mark
-    // states can't reach it; the dim arrives reactively via fillOpacity here.
-    // C3: pointer-hover dim (hover-chrome.ts DIM_OPACITY, parameterized to
-    // Area's 0.6) rides the SAME reactive fillOpacity term for the same
-    // reason — areaFill has no ChartPoints for native `states` to match
-    // either. Unlike the legend term (which dims every OTHER series and
-    // spares the highlighted one), pointer-hover dims EVERY series
-    // uniformly the instant any point is focused (matching the boundary
-    // lineY's own `pointerHoverDimState` below and bklit's SeriesHoverDim,
-    // which dims all series alike and relies on the highlight band to
-    // restore the near slice) — so it does not gate on `area.dataKey`.
+    // AreaFill emits no ChartPoints, so legend + pointer dim ride reactive fillOpacity (0.6).
     const legendHoveredKey =
-      legendHoveredIndex != null ? (areas[legendHoveredIndex]?.dataKey ?? null) : null;
-    const pointerHoverDimmed = tooltipEnabled && hoveredIndex != null;
+      legendHoveredIndex === null ? undefined : (areas[legendHoveredIndex]?.dataKey ?? undefined);
+    const pointerHoverDimmed = tooltipEnabled && hoveredIndex !== undefined;
     for (const area of resolvedAreas) {
       const gradientId = gradientIdBySeries.get(area.dataKey);
       const curve = d3Curve(area.curve);
-      // P6.1 (L10): identity unless this series names a non-primary axis. Both
-      // the fill and the boundary line take it, or the two would disagree.
       const projectY = projectorFor(area.yAxisId);
-      // Fill FIRST, lineY SECOND ("Layering area and line" — TanStack docs:
-      // area marks never draw their own boundary stroke; composing a lineY
-      // on top is the documented pattern). `areaFill` is a minimal custom
-      // mark replacing `areaY`: identical pixels and DOM contract, but no
-      // per-datum ChartPoints / retained polygon arrays — areaY's duplicate
-      // focus geometry put heap 19% over bklit at n=1000, failing G4 (the
-      // boundary lineY below already supplies this series' focus points).
-      // fillOpacity 1 at rest — bklit never double-applies it (the opacity
-      // lives in the gradient stops above); 0.6 is the legend-dim term
-      // (SeriesHoverDim, matching the boundary lineY's state below).
+      // Fill first, lineY second: area marks draw no boundary stroke (documented TanStack pattern).
+      // Do not swap areaFill for areaY: duplicate focus geometry failed the heap gate at n=1000.
       marks.push(
         areaFill(renderData, {
-          id: `${area.dataKey}__fill`,
-          x: (d: ChartDatum) => d[xDataKey] as Date,
-          y: (d: ChartDatum) => projectY(d[area.dataKey] as number),
           curve,
-          fill: gradientId ? `url(#${gradientId})` : area.fill,
+          fill: (gradientId?.length ?? 0) > 0 ? `url(#${gradientId})` : area.fill,
           fillOpacity:
-            pointerHoverDimmed || !(legendHoveredKey == null || legendHoveredKey === area.dataKey)
+            pointerHoverDimmed || !(legendHoveredKey === undefined || legendHoveredKey === area.dataKey)
               ? AREA_DIM_OPACITY
               : 1,
+          id: `${area.dataKey}__fill`,
+          x: (datum: Readonly<ChartDatum>) => xAccessorForBrush(datum),
+          y: (datum: Readonly<ChartDatum>) => projectY(Number(datum[area.dataKey])),
         }),
       );
-      // Same id as a migrated Line's boundary mark would use for this
-      // dataKey — the native crosshair/hover-dot/highlight-band marks below
-      // (and the tooltip's own point lookup) find this mark by `dataKey`
-      // with no Area-specific branching.
+      // Boundary shares Line's mark id scheme so crosshair/dots/tooltip need no Area branch.
       {
         const hasDashTail = resolveDashTailBounds(area.dashFromIndex, renderData.length);
-        // A4: bklit keeps its measuring LinePath mounted when showLine=false
-        // (only its stroke goes transparent), so this mark stays too — it
-        // also carries the series' focus geometry for group-x hover.
+        // ShowLine=false keeps the mark mounted with transparent stroke (carries focus geometry).
         const boundaryVisible = area.showLine && !hasDashTail;
-        // D480: legend dim as a plain `strokeOpacity` (same legendHoveredKey
-        // term as the fill above) — see line-chart.tsx's twin comment.
-        const legendDimmed = legendHoveredKey != null && legendHoveredKey !== area.dataKey;
+        // Bklit parity: legend dim is plain strokeOpacity, not a focus state (single-owner slot).
+        const legendDimmed = legendHoveredKey !== undefined && legendHoveredKey !== area.dataKey;
+        const legendStrokeOpacity: number | undefined = legendDimmed ? AREA_DIM_OPACITY : undefined;
         marks.push(
           lineY(renderData, {
-            id: area.dataKey,
-            x: (d: ChartDatum) => d[xDataKey] as Date,
-            y: (d: ChartDatum) => projectY(d[area.dataKey] as number),
-            // Series identity for group-x focus: without z, every series' points
-            // carry group=null and focusX dedupes the group down to one point,
-            // so multi-series hover would only ever surface a single series.
-            z: () => area.dataKey,
             curve,
-            stroke: boundaryVisible ? area.stroke : "transparent",
-            strokeOpacity: !boundaryVisible ? 0 : legendDimmed ? AREA_DIM_OPACITY : undefined,
-            strokeWidth: area.strokeWidth,
-            // C3: pointer-hover dim (0.6, D425 — timing rides
-            // `.ts-chart__line path` in styles.css, no `transition` field).
+            id: area.dataKey,
             states: pointerSeriesDimStates<ChartDatum>(AREA_DIM_OPACITY),
+            stroke: boundaryVisible ? area.stroke : "transparent",
+            strokeOpacity: boundaryVisible ? legendStrokeOpacity : 0,
+            strokeWidth: area.strokeWidth,
+            x: (datum: Readonly<ChartDatum>) => xAccessorForBrush(datum),
+            y: (datum: Readonly<ChartDatum>) => projectY(Number(datum[area.dataKey])),
+            // Z carries series identity; without it group-x focus dedupes to one series.
+            z: () => area.dataKey,
           }),
         );
       }
-      // showMarkers && showSeriesContent gate matches bklit area.tsx:337 (`showMarkers && showSeriesContent`).
-      const showAreaSeriesContent = !isLoading;
-      if (showAreaSeriesContent && areaMarkerConfigs.some((s) => s.showMarkers)) {
+      if (areaMarkerConfigs.some((cfg: Readonly<(typeof areaMarkerConfigs)[number]>) => cfg.showMarkers ?? false)) {
         marks.push(...buildMarkerMarks(renderData, xDataKey, areaMarkerConfigs, areaMarkerGradientIdByKey));
       }
     }
-    // C3: native crosshair/hover-dot/highlight-band marks (replace
-    // hover-chrome.ts's imperative indicator/dot/highlight-sweep overlays).
-    // Same construction as line-chart.tsx; see internal/hover-geometry.ts
-    // for the shared implementation and its `retarget`/`motion` reasoning.
     if (tooltipEnabled && (tooltip?.showCrosshair ?? true)) {
+      const indicatorColor = tooltip?.indicatorColor;
       marks.push(
         buildIndicatorMark({
-          gradientId: crosshairGradientId,
-          width: tooltip?.indicatorWidth,
-          span: tooltip?.indicatorSpan,
+          color: isString(indicatorColor) ? indicatorColor : undefined,
           columnWidth: tooltip?.columnWidth,
           dasharray: tooltip?.indicatorDasharray,
-          color: typeof tooltip?.indicatorColor === "string" ? tooltip.indicatorColor : undefined,
           discrete: isDiscrete,
-        }) as unknown as ChartMark<ChartDatum, Date, number>,
+          gradientId: crosshairGradientId,
+          span: tooltip?.indicatorSpan,
+          width: tooltip?.indicatorWidth,
+        }),
       );
     }
     if (tooltipEnabled && (tooltip?.showDots ?? true)) {
       for (const area of resolvedAreas) {
-        // D4 (D-pending): `buildHoverDotMark` positions its dot with the
-        // chart's one declared y scale (the primary axis') — same
-        // single-scale constraint `projectY` above works around for the
-        // fill/boundary marks (P6.1/L10 comment above). A series on a
-        // second axis needs its raw value reprojected into primary-domain
-        // space BEFORE it reaches the dot mark, or the primary scale places
-        // it at the wrong pixel. Reproject just this series' `dataKey` into
-        // a per-call copy of `renderData` — `projectY` is identity for the
-        // primary axis, so this is a no-op there.
+        // Hover dots reproject second-axis values into primary-domain space before the mark.
         const projectYForDot = projectorFor(area.yAxisId);
-        const hoverDotData = renderData.map((d) => ({
-          ...d,
-          [area.dataKey]: projectYForDot(d[area.dataKey] as number),
+        const hoverDotData = renderData.map((datum: Readonly<ChartDatum>) => ({
+          ...datum,
+          [area.dataKey]: projectYForDot(Number(datum[area.dataKey])),
         }));
         marks.push(
           buildHoverDotMark(
             hoverDotData,
             xDataKey,
-            { dataKey: area.dataKey, color: area.stroke },
+            { color: area.stroke, dataKey: area.dataKey },
             resolveHoverDotFill(area.stroke, tooltip?.dotColor),
-            { size: tooltip?.dotSize, strokeWidth: tooltip?.dotStrokeWidth, discrete: isDiscrete },
+            { discrete: isDiscrete, size: tooltip?.dotSize, strokeWidth: tooltip?.dotStrokeWidth },
           ),
         );
       }
@@ -970,160 +975,135 @@ export function AreaChart({
         ...buildHighlightBandMarks(
           renderData,
           xDataKey,
-          hoveredIndex,
-          resolvedAreas.map((area) => ({
-            dataKey: area.dataKey,
+          hoveredIndex ?? null,
+          resolvedAreas.map((area: ReadonlyResolvedArea) => ({
             color: area.stroke,
-            strokeWidth: area.strokeWidth,
-            showHighlight: area.showHighlight,
-            // A4: bklit gates SeriesHighlightLayer on `showHighlight &&
-            // showLine` — the dim state above stays on regardless; only the
-            // band itself is suppressed when showLine is false.
-            showLine: area.showLine,
             curve: d3Curve(area.curve),
+            dataKey: area.dataKey,
+            showHighlight: area.showHighlight,
+            // Highlight band also gates on showLine; the dim state does not.
+            showLine: area.showLine,
+            strokeWidth: area.strokeWidth,
           })),
           { discrete: isDiscrete },
         ),
       );
     }
-    // Projection marks render inside the same marks group as the series
-    // (clip-path reveal covers them; strokeVisible handles loading).
-    if (projectionConfigs.length > 0) {
-      const innerW = Math.max(0, width - margin.left - margin.right);
-      const innerH = Math.max(0, heightPx - margin.top - margin.bottom);
-      const te = timeExtent;
-      const teRaw = timeExtentRaw;
-      if (innerW > 0 && innerH > 0 && te && teRaw) {
+    const innerW = Math.max(0, width - margin.left - margin.right);
+    const innerH = Math.max(0, heightPx - margin.top - margin.bottom);
+    const te = timeExtent;
+    const teRaw = timeExtentRaw;
+    if (projectionConfigs.length > 0 && Math.min(innerW, innerH) > 0 && te && teRaw) {
         const yScale = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
-        const xScaleWithProjection = (value: Date) => timeToPixelX(value, teRaw.minTime, te.maxTime, innerW);
-        for (let i = 0; i < projectionConfigs.length; i++) {
-          const cfg = projectionConfigs[i];
-          const p = projectionLines[i] as unknown as Record<string, unknown> | undefined;
-          if (!p || !cfg || cfg.data.length < 2) continue;
-          const stroke = (p["stroke"] as string | undefined) ?? "var(--chart-3)";
-          const gid = `${projectionGradientBaseId}-proj-${i}`;
-          const mark = projectionLineMark({
-            id: `projection-line-${i}`,
+        const xScaleWithProjection = (value: Date): number => timeToPixelX(value, teRaw.minTime, te.maxTime, innerW);
+        for (const [index, cfg] of projectionConfigs.entries()) {
+          // Defensive runtime check: projectionConfigs and projectionLines walk `children` via separate
+          // Extractors; nothing statically guarantees they stay index-aligned in length.
+          const line = projectionLines.at(index);
+          const stroke = line?.stroke ?? PROJECTION_FALLBACK_STROKE;
+          const gid = `${projectionGradientBaseId}-proj-${index}`;
+          const mark = line && cfg.data.length >= 2 ? projectionLineMark({
+            className: line.className ?? "chart-projection-line",
+            curveKind: line.curveKind ?? "linear",
             data: cfg.data,
-            yAxisId: cfg.yAxisId,
-            stroke,
-            strokeStyle: ((p["strokeStyle"] as string | undefined) ?? "solid") as "solid" | "gradient",
-            gradientStart: (p["gradientStart"] as string | undefined) ?? stroke,
-            gradientEnd: (p["gradientEnd"] as string | undefined) ?? "var(--chart-5)",
+            endpointRadius: line.endpointRadius ?? DEFAULT_TERMINAL_MARKER_RADIUS_PX,
+            gradientEnd: line.gradientEnd ?? "var(--chart-5)",
             gradientId: gid,
-            strokeWidth: (p["strokeWidth"] as number | undefined) ?? 2,
-            curveKind: ((p["curveKind"] as string | undefined) ?? "linear") as "linear" | "bezier",
-            strokeDasharray: (p["strokeDasharray"] as string | undefined) ?? "6,4",
-            strokeOpacity: (p["strokeOpacity"] as number | undefined) ?? 1,
-            showEndMarker: ((p["showEndMarker"] as boolean | undefined) ?? (p["showEndpoints"] as boolean | undefined) ?? true) as boolean,
-            endpointRadius: (p["endpointRadius"] as number | undefined) ?? 5,
-            className: (p["className"] as string | undefined) ?? "chart-projection-line",
-            xScale: xScaleWithProjection,
-            yScale: (v: number) => yScale(v) ?? 0,
+            gradientStart: line.gradientStart ?? stroke,
+            id: `projection-line-${index}`,
             innerWidth: innerW,
+            showEndMarker: line.showEndMarker ?? line.showEndpoints ?? true,
+            stroke,
+            strokeDasharray: line.strokeDasharray ?? "6,4",
+            strokeOpacity: line.strokeOpacity ?? 1,
+            strokeStyle: line.strokeStyle ?? "solid",
             strokeVisible: !isLoading,
+            strokeWidth: line.strokeWidth ?? DEFAULT_PROJECTION_STROKE_WIDTH_PX,
             translateX: margin.left,
             translateY: margin.top,
-          });
-          if (mark) marks.push(mark);
+            xScale: xScaleWithProjection,
+            yAxisId: cfg.yAxisId,
+            yScale: (value: number) => yScale(value) ?? 0,
+          }) : undefined;
+          if (mark) {marks.push(mark);}
         }
-      }
     }
-    // C4: unconditional resolve()-based custom x scale (was previously
-    // conditional on `projectionConfigs.length > 0`, falling back to the
-    // plain `scaleUtc` factory otherwise). `timeExtent === timeExtentRaw`
-    // whenever there are no projections (see the `timeExtent` memo above),
-    // so this is domain-identical on that path — and it gives the native x
-    // axis a resolve() hook to emit bklit's own tick-choice list from, same
-    // as line-chart.tsx.
     const xScale: ChartScale = {
       id: "x",
-      resolve(context) {
+      resolve(context: Readonly<ChartScaleResolveContext>) {
         const [r0, r1] = context.range;
         const te = timeExtent;
         if (!te) {
           const base = scaleUtc().domain([0, 0]).range([r0, r1]);
           return {
-            id: context.id,
-            type: "time" as const,
+            bandwidth: 0,
             domain: base.domain(),
-            map: (v: unknown) => {
-              const m = base(v as Date);
-              return m === undefined ? Number.NaN : m;
+            id: context.id,
+            map: (value: unknown) => {
+              const date = toDate(value);
+              if (date === null) {return Number.NaN;}
+              return base(date) ?? Number.NaN;
             },
             ticks: [],
-            bandwidth: 0,
+            type: "time" as const,
           };
         }
         const base = scaleUtc().domain([te.minTime, te.maxTime]).range([r0, r1]);
         const tickList = xAxis
           ? buildXAxisTickValues({
               data: xDomain ? visibleData : renderData,
-              xDataKey,
-              rangeStart: r0,
-              rangeEnd: r1,
-              numTicks: xAxis.numTicks ?? 5,
-              formatValue: xAxis.formatValue,
               domainMaxTime: timeExtent?.maxTime,
-              xDomain: xDomain ?? null,
+              formatValue: xAxis.formatValue,
+              numTicks: xAxis.numTicks ?? DEFAULT_TICK_COUNT,
+              rangeEnd: r1,
+              rangeStart: r0,
               tickMode: xAxis.tickMode,
+              xDataKey,
+              xDomain,
             })
-          : base.ticks(context.tickCount ?? 5).map((value: Date) => ({ value, label: value.toISOString() }));
+          : base.ticks(context.tickCount ?? DEFAULT_TICK_COUNT).map((value: Date) => ({ label: value.toISOString(), value }));
         return {
-          id: context.id,
-          type: "time" as const,
-          domain: base.domain(),
-          map: (v: unknown) => {
-            const m = base(v as Date);
-            return m === undefined ? Number.NaN : m;
-          },
-          ticks: tickList.map((t) => ({
-            value: t.value,
-            position: base(t.value) ?? Number.NaN,
-            label: t.label,
-          })),
           bandwidth: 0,
+          domain: base.domain(),
+          id: context.id,
+          map: (value: unknown) => {
+            const date = toDate(value);
+            if (date === null) {return Number.NaN;}
+            return base(date) ?? Number.NaN;
+          },
+          ticks: tickList.map((tick) => ({
+            label: tick.label,
+            position: base(tick.value) ?? Number.NaN,
+            value: tick.value,
+          })),
+          type: "time" as const,
         };
       },
     };
     const gridGuide = resolveGridGuide(grid);
-    // C4: proximity-fade opacity for x tick labels — replaces date-pill.ts's
-    // imperative span opacity styling (see line-chart.tsx's twin comment).
     const xTickLabelOpacity = labelFade
-      ? (ctx: { value: unknown; position: number }) =>
+      ? (ctx: ChartAxisTickLabelContext<Date>): number =>
           tickLabelFadeOpacity(
             ctx.position,
-            (xAxis?.formatValue ?? shortDateFmt.format)(ctx.value as Date),
+            xAxis?.formatValue ? xAxis.formatValue(ctx.value) : shortDateFmt.format(ctx.value),
             labelFade.primaryX,
-            labelFade.hoveredLabel,
+            labelFade.hoveredLabel ?? null,
             xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH,
             FADE_BUFFER,
           )
       : 1;
-    // C5 (D432/A3): `svgAnimation` (renderer.js's blanket per-render-pass
-    // reconcile, read only by the static SVG renderer) is dead once
-    // rendering through `motion()` — replaced by a chart-level `motion`
-    // callback carrying the SAME gate, now scoped per mark role/phase
-    // instead of blanket (see line-chart.tsx's twin comment for the full
-    // reasoning):
-    //  - phase "enter" on line/area/dot: `false` — RevealWipe (A2,
-    //    internal/reveal-wipe.ts) owns entrance for these roles.
-    //  - phase "update" on line/area/dot: I8 (chart-phase.ts, this file's
-    //    own header comment above) — new data paints immediately; only a
-    //    y-domain change tweens (500ms scale tween). Reusing the exact
-    //    pre-C5 `svgAnimation` gate reproduces this.
-    //  - anything else: `undefined` — falls through to cascade default.
+    // Enter is false (RevealWipe owns it); update tweens only on y-domain change, else snaps.
     const yDomainTweenGateActive = isChartInteractionPhase(chartPhase) && isLoaded && yDomainChanged;
-    const motion = (context: ChartMotionContext<unknown>) => {
+    const motion = (context: ChartMotionContext): false | ChartMotionTiming | undefined => {
       if (context.role === "line" || context.role === "area" || context.role === "dot") {
-        if (context.phase === "enter") return false as const;
+        if (context.phase === "enter") {return false as const;}
         if (context.phase === "update") {
           return yDomainTweenGateActive
             ? {
                 transition: {
-                  type: "tween" as const,
-                  duration: effectiveYDomainTweenDuration as number,
+                  duration: effectiveYDomainTweenDuration,
                   easing: bezierEasing,
+                  type: "tween" as const,
                 },
               }
             : (false as const);
@@ -1131,146 +1111,115 @@ export function AreaChart({
       }
       return undefined;
     };
-    // C5 (D432/A5): AX5 — see line-chart.tsx's twin comment. Scoped to
-    // tick-label position only, never `ticks`/the grid.
-    const tickLabelMotion = (context: ChartMotionContext<unknown>) =>
+    // Label position tween returns via tickLabels.motion (native text has no CSS left/top).
+    const tickLabelMotion = (context: ChartMotionContext): false | ChartMotionTiming | undefined =>
       context.phase === "enter"
         ? (false as const)
         : {
             transition: {
-              type: "tween" as const,
               duration: DEFAULT_Y_DOMAIN_TWEEN_MS,
               easing: bezierEasing,
+              type: "tween" as const,
             },
           };
     const xScaleOptions: ChartPositionScaleOptions<Date> = {
-      scale: xScale,
-      grid: gridGuide.vertical,
       axis: buildPrecomputedXAxisOptions(gridGuide.columnTicks, xAxis ?? undefined, margin.bottom, xTickLabelOpacity, tickLabelMotion),
+      grid: gridGuide.vertical,
+      scale: xScale,
     };
-    // C4: with a native y axis configured, tick VALUES come from
-    // buildYAxisTickValues instead of gridGuide.ticks's plain count hint —
-    // same grid-follows-labels deviation note as line-chart.tsx.
+    // Native y ticks follow bklit's niced-domain clamp; the grid follows the label ticks.
     const yScaleOptions: ChartPositionScaleOptions<number> = yAxis
       ? buildYAxisOptions(scaleLinear().domain(yDomainFinal), yDomainFinal, gridGuide.horizontal, yAxis, tickLabelMotion)
       : {
-          scale: scaleLinear().domain(yDomainFinal),
-          grid: gridGuide.horizontal,
           axis: hiddenAxisOptions(gridGuide.ticks),
+          grid: gridGuide.horizontal,
+          scale: scaleLinear().domain(yDomainFinal),
         };
     return defineChart({
+      controls: brushControls,
+      focus: "group-x",
+      focusRing: false,
+      gradients: nativeAreaGradients,
+      margin,
       marks,
-      // CH3/CH4: tick counts reach the guides only via `axis.ticks.count`
-      // (charts-core resolveTickCount → context.tickCount); a bare `ticks:`
-      // key on the spec is never read.
+      // Hover works anywhere over the plot; TanStack defaults to 48px.
+      maxFocusDistance: Number.POSITIVE_INFINITY,
+      motion,
+      // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.
       scales: {
         x: xScaleOptions,
         y: yScaleOptions,
       },
-      // C4: the only styling channel for native tick-label `fill` (v0.15.0).
-      theme: { muted: "var(--color-chart-label, var(--chart-label))" },
-      margin,
-      focus: "group-x",
-      focusRing: false,
-      // D472: read only by the static SVG renderer (`chartRendererFor` above
-      // NATIVE_MOTION_MAX_POINTS) — the same y-domain tween gate the `motion`
-      // callback above carries for the native motion renderer (pre-C5 shape).
       svgAnimation: yDomainTweenGateActive
-        ? { duration: effectiveYDomainTweenDuration as number, easing: bezierEasing }
+        ? { duration: effectiveYDomainTweenDuration, easing: bezierEasing }
         : (false as const),
-      // bklit's hover works anywhere over the plot; TanStack defaults to 48px.
-      maxFocusDistance: Number.POSITIVE_INFINITY,
-      gradients: nativeAreaGradients,
-      // C2 (P6): native tooltip extension replaces the imperative box panel
-      // (tooltip-chrome.ts's buildBox/applyBoxContent/positionBox). Area
-      // drives it off the SAME native focus:"group-x" mechanism the
-      // crosshair chrome already uses (line-chart.tsx parity).
+      theme: { muted: "var(--color-chart-label, var(--chart-label))" },
       tooltip: buildNativeTooltipExtension<ChartDatum, Date, number>({
+        anchorX: "point",
+        className: "bkm-native-tooltip",
+        discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
         enabled: tooltip?.enabled ?? false,
         spring: TOOLTIP_BOX_SPRING,
-        discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
-        className: "bkm-native-tooltip",
-        // D475: legacy box sat at the plot top edge, x at the focused point
-        // (tooltip-chrome.ts) — see native-tooltip.tsx's plot-top anchor.
-        anchorX: "point",
       }),
-      motion,
-      // C6: native brushX (strip host only — empty array elsewhere).
-      controls: brushControls,
     });
-  }, [renderData, xDataKey, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients, legendHoveredIndex, areas, tooltip, tooltipEnabled, crosshairGradientId, isDiscrete, hoveredIndex, xAxis, yAxis, visibleData, xDomain, labelFade, brushControls]);
+  }, [renderData, xDataKey, xAccessorForBrush, resolvedAreas, resolvedPatternAreas, patternIdByKey, gradientIdBySeries, grid, width, yDomainFinal, yDomainChanged, projectorFor, margin, isLoading, chartPhase, isLoaded, projectionConfigs, projectionLines, projectionGradientBaseId, heightPx, timeExtent, timeExtentRaw, effectiveYDomainTweenDuration, areaMarkerConfigs, areaMarkerGradientIdByKey, nativeAreaGradients, legendHoveredIndex, areas, tooltip, tooltipEnabled, crosshairGradientId, isDiscrete, hoveredIndex, xAxis, yAxis, visibleData, xDomain, labelFade, brushControls]);
 
-  // C3: hover-chrome.ts's imperative overlays are gone — native crosshair/
-  // hover-dot/highlight-band marks (built inside the `definition` memo
-  // above) and the app-owned date-pill overlay (below) replace them.
-  // `tooltipEnabled` was moved up above the `definition` memo (it gates
-  // those marks too). Focus-point dedup: both the areaFill mark (no
-  // ChartPoints — see internal/area-fill-mark.ts's header) and the lineY
-  // boundary mark participate in focus, but only the boundary mark emits a
-  // ChartPoint per datum, so `onFocusGroupChange` never sees a duplicate per
-  // series — no explicit filtering needed.
-  // C2 (P6): renders inside the native tooltip extension's unstyled
-  // `.ts-chart-tooltip__body` portal target — see line-chart.tsx for the
-  // full contract note. Rows default from `resolvedAreas`, honoring
-  // `tooltip.rows`/`tooltip.content`.
-  const renderTooltipBody = React.useCallback(
-    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): React.ReactNode =>
+  const renderTooltipBody = useCallback(
+    (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>): ReactNode =>
       renderSeriesTooltipBody(ctx, {
-        tooltip,
+        buildRows: (datum, rowsCtx) =>
+          resolvedAreas.map((area: ReadonlyResolvedArea) => {
+            const value = datum[area.dataKey];
+            // First non-empty color wins (bklit || chain); preserves "" falling through to transparent.
+            const pointColor = pointColorForMark(rowsCtx.points, area.dataKey);
+            return {
+              color: firstNonEmptyString([area.stroke, pointColor]) ?? "transparent",
+              label: area.dataKey,
+              value: isNumber(value) ? value : stringifyDatumField(value, "0"),
+            };
+          }),
         resolveTitle: (datum) => {
           const date = datum[xDataKey];
           return date instanceof Date ? weekdayDateFmt.format(date) : undefined;
         },
-        buildRows: (datum, rowsCtx) =>
-          resolvedAreas.map((area) => {
-            const v = datum[area.dataKey];
-            return {
-              color: area.stroke || rowsCtx.points.find((p) => p.markId === area.dataKey)?.color || "transparent",
-              label: area.dataKey,
-              value: typeof v === "number" ? v : String(v ?? 0),
-            };
-          }),
+        tooltip,
       }),
     [tooltip, xDataKey, resolvedAreas],
   );
-  // C3: replaces hover-chrome.ts + use-hover-chrome.ts entirely. Mirrors
-  // line-chart.tsx's own wiring (no profit/loss term — Area has none).
-  // `interactionRef`/`sceneRef` now come straight from `useFocusInjection` above.
-  const dragSelectionActiveRef = React.useRef(false);
-  const wasVisibleRef = React.useRef(false);
+  const dragSelectionActiveRef = useRef(false);
+  const wasVisibleRef = useRef(false);
   const chartConfig = useChartConfig();
-  const dateLabelsForPill = React.useMemo(
+  const dateLabelsForPill = useMemo(
     () =>
-      renderData.map((d) => {
-        const v = d[xDataKey];
-        if (v instanceof Date) return shortDateFmt.format(v as Date);
-        return String(v ?? "");
+      renderData.map((datum: Readonly<ChartDatum>) => {
+        const value = datum[xDataKey];
+        if (value instanceof Date) {return shortDateFmt.format(value);}
+        return stringifyDatumField(value, "");
       }),
     [renderData, xDataKey],
   );
   const datePill = useDatePillOverlay({
-    enabled: tooltipEnabled && (tooltip?.showDatePill ?? true),
     dateLabels: dateLabelsForPill,
+    enabled: tooltipEnabled && (tooltip?.showDatePill ?? true),
     tooltipSpring: chartConfig.tooltipSpring,
   });
-  // LM7/LM8 (P1.12): shared store carrying the live tooltip date for
-  // ChartMarkersOverlay's isActive + useActiveMarkers consumers.
-  const markerActiveStore = React.useMemo(() => createActiveMarkersStore(), []);
+  // Live tooltip date store for marker-active consumers.
+  const markerActiveStore = useMemo(() => createActiveMarkersStore(), []);
 
-  const clearFocusChrome = React.useCallback(() => {
+  const clearFocusChrome = useCallback(() => {
     interactionRef.current?.setControlledFocus(null, { source: "pointer" });
-    setHoveredIndex(null);
+    setHoveredIndex(undefined);
     markerActiveStore.setActiveDate(null);
     wasVisibleRef.current = false;
     datePill.hide();
-    setLabelFade(null);
+    setLabelFade(undefined);
   }, [markerActiveStore, datePill, interactionRef]);
 
-  const handleFocusChange = React.useCallback(
+  const handleFocusChange = useCallback(
     (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
-      const rawPrimary = points[0];
+      const rawPrimary = points.at(0);
       const outsideXDomain =
-        xDomain != null && rawPrimary != null && isFocusOutsideXDomain(rawPrimary.datum, xDataKey, xDomain);
+        xDomain !== undefined && rawPrimary !== undefined && isFocusOutsideXDomain(rawPrimary.datum, xDataKey, xDomain);
       const phaseGated = !(isChartInteractionPhase(chartPhase) && isLoaded);
       const suppressed = outsideXDomain || dragSelectionActiveRef.current || phaseGated;
       if (suppressed && points.length > 0) {
@@ -1278,420 +1227,405 @@ export function AreaChart({
       }
       const primary = suppressed ? undefined : rawPrimary;
 
-      setHoveredIndex(primary ? primary.datumIndex : null);
+      setHoveredIndex(primary ? primary.datumIndex : undefined);
 
-      const datum = primary?.datum as Record<string, unknown> | undefined;
-      const rawDate = datum?.[xDataKey];
-      const d = rawDate instanceof Date ? rawDate : rawDate != null ? new Date(rawDate as string | number) : null;
-      markerActiveStore.setActiveDate(d && !Number.isNaN(d.getTime()) ? d : null);
+      const datum = primary?.datum;
+      const dateValue = resolveFocusDate(datum, xDataKey);
+      const validDate = dateValue && !Number.isNaN(dateValue.getTime()) ? dateValue : undefined;
+      markerActiveStore.setActiveDate(validDate ?? null);
 
       if (primary && (tooltip?.showDatePill ?? true)) {
-        const label = d ? shortDateFmt.format(d) : null;
+        const label = validDate ? shortDateFmt.format(validDate) : null;
         const jump = !wasVisibleRef.current;
         wasVisibleRef.current = true;
-        datePill.show(primary.x, { index: primary.datumIndex, label, discrete: isDiscrete, jump });
-        // C4: reactive state instead of date-pill.ts's imperative
-        // span-opacity write — consumed by the x scale's native
-        // `tickLabels.opacity` callback. Guarded so an unchanged focus point
-        // doesn't force a `definition` rebuild every pointer move.
-        setLabelFade((prev) =>
+        datePill.show(primary.x, { discrete: isDiscrete, index: primary.datumIndex, jump, label });
+        // Skip definition rebuilds when the focus point didn't change.
+        setLabelFade((prev: Readonly<{ primaryX: number; hoveredLabel: string | undefined }> | undefined) =>
           prev && prev.primaryX === primary.x && prev.hoveredLabel === label
             ? prev
-            : { primaryX: primary.x, hoveredLabel: label },
+            : { hoveredLabel: label ?? undefined, primaryX: primary.x },
         );
       } else {
         wasVisibleRef.current = false;
         datePill.hide();
-        setLabelFade(null);
+        setLabelFade(undefined);
       }
     },
-    [xDomain, xDataKey, chartPhase, isLoaded, markerActiveStore, tooltip, isDiscrete, datePill, xAxis, interactionRef],
+    [xDomain, xDataKey, chartPhase, isLoaded, markerActiveStore, tooltip, isDiscrete, datePill, interactionRef],
   );
 
-  const areaMarkerRevealAnimsRef = React.useRef<Animation[]>([]);
-  const areaMarkerRevealCancelRef = React.useRef<(() => void) | null>(null);
-  // Replay key (D311 shape). `marks.dataset.bkmRevealed` latches for the life of
-  // the marks node; the epoch re-opens a window the flag has closed. See
-  // line-chart.tsx for the full note.
-  const revealedEpochRef = React.useRef<number | null>(null);
-  // A1 (D432): `RendererChart`'s `onRender` passes a `ChartRendererRenderContext`
-  // (`{container, scene, surface, interaction}`) — no `svg` field. Nothing in
-  // this file's `handleRender` ever reached into `context.svg`, so only the
-  // annotation changes (see line-chart.tsx's twin comment).
-  const handleRender = React.useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
-    // `useFocusInjection<ChartDatum, Date, number>()`'s `captureRenderContext`
-    // is now typed to match this concretely-typed context exactly, so no cast
-    // is needed; the same call also feeds `interactionRef`/`sceneRef` above
-    // (clearFocusChrome's pointer-source clear + scene-space scale capture).
+  const areaMarkerRevealAnimsRef = useRef<Animation[]>([]);
+  const areaMarkerRevealCancelRef = useRef<(() => void) | null>(null);
+  // Replay key re-opens a reveal window the bkmRevealed latch closed (signature bumps replay).
+  const revealedEpochRef = useRef<number | null>(null);
+  // Reveal sweep lives in internal/reveal-wipe.ts; its return gates the marker stagger.
+  const handleRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     captureRenderContext(context);
     const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-    // A2 (D420/D432): reveal sweep now lives in internal/reveal-wipe.ts,
-    // shared byte-for-byte with line-chart.tsx/composed-chart.tsx. Its
-    // return value gates the per-marker fade stagger below exactly as the
-    // old inline `shouldAnimate` did.
     const shouldAnimate = runRevealWipe({
-      marks,
-      epoch: revealEpoch,
-      epochRef: revealedEpochRef,
       active: chartPhase === "revealing",
       animationDuration,
-      prefersReducedMotion,
       durationMs: revealDurationMs,
       easingCss: revealEasingCss,
+      epoch: revealEpoch,
+      epochRef: revealedEpochRef,
+      marks,
+      prefersReducedMotion,
     });
-    if (!marks || !shouldAnimate) return;
-    if (!areaMarkerConfigs.some((s) => s.showMarkers)) return;
+    if (!marks || !shouldAnimate) {return;}
+    if (!areaMarkerConfigs.some((cfg: Readonly<(typeof areaMarkerConfigs)[number]>) => cfg.showMarkers ?? false)) {return;}
     const innerW = Math.max(0, width - margin.left - margin.right);
-    // bklit series-markers.tsx:102 — the marker stagger spans the CLIP reveal.
-    const durationSec = revealDurationMs / 1000;
-    for (const anim of areaMarkerRevealAnimsRef.current) { try { anim.cancel(); } catch { /* already canceled */ } }
+    // Marker stagger spans the clip reveal's duration (bklit series-markers.tsx:102).
+    const durationSec = revealDurationMs / MS_PER_SECOND;
+    for (const anim of areaMarkerRevealAnimsRef.current) { try { anim.cancel(); } catch { /* Settled animations reject on cancel; the list is rebuilt below. */ } }
     areaMarkerRevealAnimsRef.current = [];
     areaMarkerRevealCancelRef.current?.();
-    const doReveal = () => {
-      for (const s of areaMarkerConfigs) {
-        if (!s.showMarkers) continue;
-        const radius = s.markers?.radius ?? 5;
-        const strokeWidth = s.markers?.strokeWidth ?? 2;
-        const ringGap = s.markers?.ringGap ?? 2;
-        const outlineWidth = s.markers?.outlineWidth ?? 0;
-        const showActiveHighlight = s.markers?.showActiveHighlight ?? true;
+    const doReveal = (): void => {
+      for (const cfg of areaMarkerConfigs.filter((candidate) => isMarkerConfigShown(candidate))) {
+        const radius = cfg.markers?.radius ?? DEFAULT_SERIES_MARKER_RADIUS_PX;
+        const strokeWidth = cfg.markers?.strokeWidth ?? 2;
+        const ringGap = cfg.markers?.ringGap ?? 2;
+        const outlineWidth = cfg.markers?.outlineWidth ?? 0;
+        const showActiveHighlight = cfg.markers?.showActiveHighlight ?? true;
         const ring = strokeWidth > 0 ? ringGap + strokeWidth : 0;
-        const outline = outlineWidth > 0 ? outlineWidth : 0;
-        const highlightPad = showActiveHighlight ? radius * 0.35 : 0;
+        const outline = Math.max(outlineWidth, 0);
+        const highlightPad = showActiveHighlight ? radius * MARKER_HIGHLIGHT_PAD_RATIO : 0;
         const visualExtent = radius + ring + outline + highlightPad + 2;
-        const escaped = `${s.dataKey}__marker`.replace(/"/g, '\\"');
+        const escaped = `${cfg.dataKey}__marker`.replaceAll('"', String.raw`\"`);
         const group = marks.querySelector<SVGGElement>(`.ts-chart__dot[data-ts-key="${escaped}"]`);
-        if (!group) continue;
-        const circles = group.querySelectorAll<SVGCircleElement>("circle");
-        for (const circle of circles) {
-          const cx = Number.parseFloat(circle.getAttribute("cx") ?? "0");
-          const leadingEdge = Math.max(0, cx - visualExtent);
-          const delaySec = innerW > 0 ? (leadingEdge / innerW) * durationSec : 0;
-          const anim = circle.animate(
-            [{ opacity: 0, filter: "blur(2px)" }, { opacity: 1, filter: "blur(0px)" }],
-            { duration: SERIES_MARKER_ENTER_MS, delay: delaySec * 1000, easing: animationEasing, fill: "backwards" },
-          );
-          areaMarkerRevealAnimsRef.current.push(anim);
+        if (group) {
+          const circles = group.querySelectorAll<SVGCircleElement>("circle");
+          for (const circle of circles) {
+            const cx = Number(circle.getAttribute("cx") ?? "0");
+            const leadingEdge = Math.max(0, cx - visualExtent);
+            const delaySec = innerW > 0 ? (leadingEdge / innerW) * durationSec : 0;
+            const anim = circle.animate(
+              [{ filter: "blur(2px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1 }],
+              { delay: delaySec * MS_PER_SECOND, duration: SERIES_MARKER_ENTER_MS, easing: animationEasing, fill: "backwards" },
+            );
+            areaMarkerRevealAnimsRef.current.push(anim);
+          }
         }
       }
     };
-    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
-      let raf1 = 0, raf2 = 0, tId: number | null = null;
+    if (isAnimationFrameScheduler(globalThis.requestAnimationFrame)) {
+      let raf1 = 0; let raf2 = 0; let tId: ReturnType<typeof globalThis.setTimeout> | 0 = 0;
       let cancelled = false;
-      raf1 = window.requestAnimationFrame(() => {
-        raf2 = window.requestAnimationFrame(() => {
-          tId = window.setTimeout(() => { if (!cancelled) doReveal(); }, 0);
+      const doRevealIfNotCancelled = (): void => { if (!cancelled) {doReveal();} };
+      raf1 = globalThis.requestAnimationFrame(() => {
+        raf2 = globalThis.requestAnimationFrame(() => {
+          tId = globalThis.setTimeout(doRevealIfNotCancelled, 0);
         });
       });
-      areaMarkerRevealCancelRef.current = () => {
+      areaMarkerRevealCancelRef.current = (): void => {
         cancelled = true;
-        if (raf1) cancelAnimationFrame(raf1);
-        if (raf2) cancelAnimationFrame(raf2);
-        if (tId !== null) window.clearTimeout(tId);
+        if (raf1) {cancelAnimationFrame(raf1);}
+        if (raf2) {cancelAnimationFrame(raf2);}
+        if (tId !== 0) {globalThis.clearTimeout(tId);}
       };
     } else { doReveal(); }
   }, [animationDuration, animationEasing, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, areaMarkerConfigs, width, margin.left, margin.right, prefersReducedMotion, captureRenderContext]);
 
-  React.useEffect(() => {
-    if (chartPhase !== "revealing") return;
+  useEffect(() => {
+    if (chartPhase !== "revealing") {return;}
     snapRevealWipe({
-      marks: containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks"),
       active: true,
       animationDuration,
+      marks: containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks"),
       prefersReducedMotion,
     });
-  }, [chartPhase, revealEpoch, animationDuration, prefersReducedMotion]);
-  React.useEffect(() => () => {
-    for (const a of areaMarkerRevealAnimsRef.current) { try { a.cancel(); } catch { /* already canceled */ } }
+  }, [chartPhase, animationDuration, prefersReducedMotion]);
+  useEffect((): () => void => (): void => {
+    for (const anim of areaMarkerRevealAnimsRef.current) { try { anim.cancel(); } catch { /* Settled animations reject on cancel; unmount discards them. */ } }
     areaMarkerRevealCancelRef.current?.();
   }, []);
 
   const overlayRenderedArea = (areaTerminalAnchors.length > 0 || areaEndAnchors.length > 0) && width > 0 && heightPx > 0;
-  React.useLayoutEffect(() => {
-    if (!overlayRenderedArea) return;
-    projectionPhasePortRef.current?.setPhase(phaseRef.current);
+  const pushPhaseToProjectionPort = useEffectEvent((): void => {
+    projectionPhasePortRef.current?.setPhase(chartPhase);
+  });
+  useLayoutEffect(() => {
+    if (!overlayRenderedArea) {return;}
+    pushPhaseToProjectionPort();
   }, [overlayRenderedArea]);
 
   const innerWidthArea = Math.max(0, width - margin.left - margin.right);
-  const areaXScaleD3Ref = React.useRef<ReturnType<typeof scaleUtc> | null>(null);
-  React.useEffect(() => {
+  const areaXScaleD3Ref = useRef<((value: Date) => number | undefined) | null>(null);
+  useEffect(() => {
     if (!timeExtent) { areaXScaleD3Ref.current = null; return; }
-    areaXScaleD3Ref.current = scaleUtc().domain([timeExtent.minTime, timeExtent.maxTime]).range([0, innerWidthArea]) as unknown as ReturnType<typeof scaleUtc>;
+    areaXScaleD3Ref.current = scaleUtc().domain([timeExtent.minTime, timeExtent.maxTime]).range([0, innerWidthArea]);
   }, [timeExtent, innerWidthArea]);
-  // C6: replaces the deleted plot-local `xScaleSel` duplicate d3 scale —
-  // resolves through the host's own live interaction/scene refs.
+  // Selection resolves through the host's live interaction/scene refs, not a duplicate scale.
   const resolveScenePos = clientToScene;
-  const invertSceneX = React.useCallback(
-    (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? null,
+  const invertSceneX = useCallback(
+    (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? undefined,
     [sceneRef],
   );
   const { selection: chartSelection } = useChartSelection({
+    containerRef,
+    data,
     enabled: true,
     innerWidth: innerWidthArea,
-    marginLeft: margin.left,
-    data: data as unknown as Array<Record<string, unknown>>,
-    xDataKey,
-    resolveScenePos,
     invertSceneX,
-    containerRef,
+    marginLeft: margin.left,
+    onDragEnd: () => {
+      dragSelectionActiveRef.current = false;
+    },
     onDragStart: () => {
       dragSelectionActiveRef.current = true;
       clearFocusChrome();
     },
-    onDragEnd: () => {
-      dragSelectionActiveRef.current = false;
-    },
+    resolveScenePos,
+    xDataKey,
   });
-  const segmentComponents = React.useMemo(() => extractSegmentComponents(children), [children]);
-  const refAreaChildren = React.useMemo(() => extractReferenceAreaProps(children), [children]);
-  // D431: ReferenceArea axisLabelColor per-tick y-label color dropped —
-  // native tickLabels have no per-tick fill channel (v0.15.0).
+  const segmentComponents = useMemo(() => extractSegmentComponents(children), [children]);
+  const refAreaChildren = useMemo(() => extractReferenceAreaProps(children), [children]);
+  // Per-tick y-label color dropped: native tickLabels have no per-tick fill channel.
 
-  // BrushHost + clipping — same shape as line-chart.tsx (strip = un-brushed => trackExtent = final xScale domain).
-  // brushTrackExtent/hasBrush/brushRangeValue come from the native brushX
-  // controls block above (mirrors line-chart.tsx); this just derives the
-  // portal-chrome geometry (pixel host + pixel extent) from them.
+  // With narrowed xDomain, full-data paths map outside the plot; clip them to the plot rect.
   const innerWidthForBrush = Math.max(0, width - margin.left - margin.right);
   const innerHeightForBrush = Math.max(0, heightPx - margin.top - margin.bottom);
   const areaBrushClipId = useSanitizedId();
-  const needsAreaBrushClip = !!xDomain && innerWidthForBrush > 0 && innerHeightForBrush > 0;
-  const brushHost = React.useMemo<BrushHost | null>(() => {
-    if (!brushTrackExtent || innerWidthForBrush <= 0) return null;
-    return { containerRef: containerRef as unknown as React.RefObject<HTMLElement | null>, margin, trackExtent: brushTrackExtent };
+  const needsAreaBrushClip = Boolean(xDomain) && innerWidthForBrush > 0 && innerHeightForBrush > 0;
+  const brushHost = useMemo((): BrushHost | undefined => {
+    if (!brushTrackExtent || innerWidthForBrush <= 0) {return undefined;}
+    return { containerRef, margin, trackExtent: brushTrackExtent };
   }, [brushTrackExtent, innerWidthForBrush, margin]);
-  const brushPixelExtent = React.useMemo(() => {
-    if (!brushHost || !brushRangeValue) return null;
-    return selectionToPixelExtent(brushRangeValue, brushHost.trackExtent, innerWidthForBrush);
+  const brushPixelExtent = useMemo((): { x0: number; x1: number } | undefined => {
+    if (!brushHost || !brushRangeValue) {return undefined;}
+    return selectionToPixelExtent(brushRangeValue, brushHost.trackExtent, innerWidthForBrush) ?? undefined;
   }, [brushHost, brushRangeValue, innerWidthForBrush]);
-  // D-pending (D1): mount-stable, prop-independent renderer choice — see
-  // `useChartRenderer` in internal/motion-renderer.ts.
   const areaChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
+
+  const referenceAreaLayer = heightPx > 0 ? (
+    <ReferenceAreaLayers
+      configs={refAreaChildren}
+      geom={{
+        height: heightPx,
+        isLoaded,
+        isTimeScale: true,
+        margin,
+        phase: chartPhase,
+        width,
+        xDomain: timeExtent ? [new Date(timeExtent.minTime), new Date(timeExtent.maxTime)] : undefined,
+        yDomain: yDomainFinal,
+        yDomainsByAxis: nicedDomainsByAxis,
+      }}
+    />
+  ) : undefined;
+  const projectionMarkerLayer = overlayRenderedArea ? (
+    <ProjectionMarkerOverlay
+      width={width}
+      height={heightPx}
+      margin={margin}
+      terminalMarkers={areaTerminalAnchors}
+      projectionEndMarkers={areaEndAnchors}
+      phasePort={projectionPhasePortRef}
+    />
+  ) : undefined;
+  const datePillLayer = tooltipEnabled ? (
+    <div
+      ref={datePill.overlayHostRef}
+      style={{ inset: 0, pointerEvents: "none", position: "absolute" }}
+    />
+  ) : undefined;
+  const chartMarkerLayer = chartMarkers ? (
+    <MarkerActiveTooltipProvider store={markerActiveStore}>
+    <ChartMarkersOverlay
+      items={chartMarkers.items}
+      size={chartMarkers.size}
+      showLines={chartMarkers.showLines}
+      animate={chartMarkers.animate}
+      maxFanned={chartMarkers.maxFanned}
+      xScale={(date: Date): number | undefined => {
+        const scale = areaXScaleD3Ref.current;
+        if (!scale) {return undefined;}
+        return scale(date);
+      }}
+      marginLeft={margin.left}
+      marginTop={margin.top}
+      innerHeight={Math.max(0, heightPx - margin.top - margin.bottom)}
+      containerRef={containerRef}
+      animationDuration={animationDuration}
+      onMarkerHoverChange={(markers) => {
+        // Hovering markers hides crosshair/tooltip and drops isActive until next chart hover (legacy).
+        if (markers) {
+          clearFocusChrome();
+        }
+      }}
+    />
+    </MarkerActiveTooltipProvider>
+  ) : undefined;
+
+  // Brush clip rect sits one level deep so the svg > defs tree stays within jsx-max-depth.
+  // Conditional-held (like the other layer nodes) so the depth rule counts each tree on its own.
+  const brushClipContent = needsAreaBrushClip ? (
+    <clipPath id={areaBrushClipId}>
+      <rect x={margin.left} y={margin.top} width={innerWidthForBrush} height={innerHeightForBrush} />
+    </clipPath>
+  ) : undefined;
+  const brushClipNode = needsAreaBrushClip ? (
+    <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
+      <defs>
+        {brushClipContent}
+      </defs>
+    </svg>
+  ) : undefined;
+  const brushChromeNode = hasBrush && brushHost && brushPixelExtent ? (
+    <BrushChrome
+      host={brushHost}
+      x0={brushPixelExtent.x0}
+      x1={brushPixelExtent.x1}
+      innerWidth={innerWidthForBrush}
+      innerHeight={innerHeightForBrush}
+      blurPx={brushConfig?.blurPx}
+      fadeOuterEdges={brushConfig?.fadeOuterEdges}
+      selectionPattern={brushConfig?.selectionPattern}
+      selectedBoxStyle={brushConfig?.selectedBoxStyle}
+    />
+  ) : undefined;
+  const loadingLabelNode = isLoading && (loadingLabel?.length ?? 0) > 0 ? <LoadingLabel text={loadingLabel ?? ""} /> : undefined;
+  const backgroundNode = background ? (
+    <BackgroundLayer
+      config={background}
+      innerWidth={innerWidth}
+      innerHeight={Math.max(0, heightPx - margin.top - margin.bottom)}
+      marginLeft={margin.left}
+      marginTop={margin.top}
+      isLoaded={isLoaded}
+    />
+  ) : undefined;
+  const chartBodyNode = definition ? (
+    <div style={needsAreaBrushClip ? { clipPath: `url(#${areaBrushClipId})` } : undefined}>
+      <RendererChart
+        renderer={areaChartRenderer}
+        ariaLabel="Area chart"
+        aspectRatio={parseAspectRatio(aspectRatio)}
+        height={heightPx > 0 ? heightPx : undefined}
+        definition={definition}
+        onFocusGroupChange={handleFocusChange}
+        onRender={handleRender}
+        renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
+      />
+    </div>
+  ) : undefined;
+  const overlayNode = definition && (
+    <>
+      {referenceAreaLayer}
+      <SegmentOverlay
+        selection={chartSelection}
+        innerWidth={innerWidthArea}
+        innerHeight={heightPx - margin.top - margin.bottom}
+        marginLeft={margin.left}
+        marginTop={margin.top}
+        components={segmentComponents}
+      />
+      {projectionMarkerLayer}
+      {datePillLayer}
+      <DashTailOverlay
+        containerRef={containerRef}
+        width={width}
+        height={heightPx}
+        margin={margin}
+        renderData={renderData}
+        xDataKey={xDataKey}
+        series={resolvedAreas.flatMap((area: ReadonlyResolvedArea) =>
+          area.showLine
+            ? [{
+                dashArray: area.dashArray,
+                dashFromIndex: area.dashFromIndex,
+                dataKey: area.dataKey,
+                stroke: area.stroke,
+                strokeWidth: area.strokeWidth,
+              }]
+            : [],
+        )}
+        innerWidth={innerWidth}
+        innerHeight={Math.max(0, heightPx - margin.top - margin.bottom)}
+      />
+      {chartMarkerLayer}
+    </>
+  );
+  const crosshairNode = renderCrosshairNode(crosshairGradientDef, margin.top, Math.max(0, heightPx - margin.top - margin.bottom));
+  const projectionGradientNodes = projectionGradientDefsArea.map((grad: Readonly<(typeof projectionGradientDefsArea)[number]>) => (
+    <linearGradient key={grad.id} id={grad.id} gradientUnits="userSpaceOnUse" x1={grad.startX} y1={grad.startY} x2={grad.endX} y2={grad.endY}>
+      <stop offset="0%" stopColor={grad.gradientStart} />
+      <stop offset="100%" stopColor={grad.gradientEnd} />
+    </linearGradient>
+  ));
+  const areaMarkerGradientNodes = areaMarkerGradientDefs.map((grad: Readonly<(typeof areaMarkerGradientDefs)[number]>) => (
+    <radialGradient key={grad.id} id={grad.id}>
+      <stop offset="0%" stopColor={grad.fill} stopOpacity={1} />
+      <stop offset={`${grad.fillFadeStart}%`} stopColor={grad.fill} stopOpacity={1} />
+      <stop offset={`${grad.fillFadeEnd}%`} stopColor={grad.fill} stopOpacity={0} />
+      <stop offset={`${grad.gapFadeStart}%`} stopColor={grad.stroke} stopOpacity={0} />
+      <stop offset={`${grad.gapFadeEnd}%`} stopColor={grad.stroke} stopOpacity={1} />
+      <stop offset="100%" stopColor={grad.stroke} stopOpacity={1} />
+    </radialGradient>
+  ));
+  const markerGradientDefsNode = (projectionGradientDefsArea.length > 0 || areaMarkerGradientDefs.length > 0) && (
+    <svg
+      width={0}
+      height={0}
+      style={{ position: "absolute" }}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <defs>
+        {projectionGradientNodes}
+        {areaMarkerGradientNodes}
+      </defs>
+    </svg>
+  );
+  const patternDefNodes = patternDefs.map((patternDef: Readonly<(typeof patternDefs)[number]>) => (
+    <Fragment key={patternDef.id}>
+      {patternDef.node}
+      {/* Tile grid shifts by margin: bklit anchors tiles at (margin.left, margin.top). */}
+      <pattern
+        id={patternDef.id}
+        href={`#${patternDef.id}-base`}
+        xlinkHref={`#${patternDef.id}-base`}
+        patternTransform={`translate(${margin.left} ${margin.top})`}
+      />
+    </Fragment>
+  ));
+  const patternDefsNode = patternDefs.length > 0 && (
+    <svg
+      width={0}
+      height={0}
+      style={{ position: "absolute" }}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <defs>{patternDefNodes}</defs>
+    </svg>
+  );
 
   return (
     <ChartSelectionContext.Provider value={chartSelection}>
     <div
       ref={containerRef}
       className={className}
-      // bklit area-chart.tsx:232 — touchAction "none" keeps vertical page
-      // scroll from hijacking drag-selection strokes on touch devices.
-      style={{ position: "relative", width: "100%", aspectRatio, touchAction: "none", isolation: "isolate", ...style } as React.CSSProperties}
+      // Touch-action none: vertical page scroll must not hijack touch drag-selection.
+      style={{ aspectRatio, isolation: "isolate", position: "relative", touchAction: "none", width: "100%", ...style }}
       data-bkm-chart="area"
-      {...fadeEdgesMask}
+      data-bkm-fade-edges={fadeEdgesMask["data-bkm-fade-edges"]}
+      data-bkm-fade-edges-left={fadeEdgesMask["data-bkm-fade-edges-left"]}
+      data-bkm-fade-edges-right={fadeEdgesMask["data-bkm-fade-edges-right"]}
     >
-      {needsAreaBrushClip ? (
-        <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
-          <defs>
-            <clipPath id={areaBrushClipId}>
-              <rect x={margin.left} y={margin.top} width={innerWidthForBrush} height={innerHeightForBrush} />
-            </clipPath>
-          </defs>
-        </svg>
-      ) : null}
-      {hasBrush && brushHost && brushPixelExtent ? (
-        <BrushChrome
-          host={brushHost}
-          x0={brushPixelExtent.x0}
-          x1={brushPixelExtent.x1}
-          innerWidth={innerWidthForBrush}
-          innerHeight={innerHeightForBrush}
-          blurPx={brushConfig?.blurPx}
-          fadeOuterEdges={brushConfig?.fadeOuterEdges}
-          selectionPattern={brushConfig?.selectionPattern}
-          selectedBoxStyle={brushConfig?.selectedBoxStyle}
-        />
-      ) : null}
-      {isLoading && loadingLabel ? <LoadingLabel text={loadingLabel} /> : null}
-      {background ? (
-        <BackgroundLayer
-          config={background}
-          innerWidth={innerWidth}
-          innerHeight={Math.max(0, heightPx - margin.top - margin.bottom)}
-          marginLeft={margin.left}
-          marginTop={margin.top}
-          isLoaded={isLoaded}
-        />
-      ) : null}
-      {definition ? (
-        <div style={needsAreaBrushClip ? { clipPath: `url(#${areaBrushClipId})` } : undefined}>
-          <RendererChart
-            renderer={areaChartRenderer}
-            ariaLabel="Area chart"
-            aspectRatio={parseAspectRatio(aspectRatio)}
-            height={heightPx > 0 ? heightPx : undefined}
-            definition={definition}
-            onFocusGroupChange={handleFocusChange}
-            onRender={handleRender}
-            renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
-          />
-        </div>
-      ) : null}
-      {definition && (
-        <>
-          {heightPx > 0 && (
-            <ReferenceAreaLayers
-              configs={refAreaChildren}
-              geom={{
-                width,
-                height: heightPx,
-                margin,
-                yDomain: yDomainFinal,
-                yDomainsByAxis: nicedDomainsByAxis,
-                xDomain: timeExtent ? ([new Date(timeExtent.minTime), new Date(timeExtent.maxTime)] as unknown as [Date, Date]) : undefined,
-                isTimeScale: true,
-                phase: chartPhase,
-                isLoaded,
-              }}
-            />
-          )}
-          <SegmentOverlay
-            selection={chartSelection}
-            innerWidth={innerWidthArea}
-            innerHeight={heightPx - margin.top - margin.bottom}
-            marginLeft={margin.left}
-            marginTop={margin.top}
-            components={segmentComponents}
-          />
-          {overlayRenderedArea ? (
-            <ProjectionMarkerOverlay
-              width={width}
-              height={heightPx}
-              margin={margin}
-              terminalMarkers={areaTerminalAnchors}
-              projectionEndMarkers={areaEndAnchors}
-              phasePort={projectionPhasePortRef}
-            />
-          ) : null}
-          {tooltipEnabled ? (
-            <div
-              ref={datePill.overlayHostRef}
-              style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
-            />
-          ) : null}
-          <DashTailOverlay
-            containerRef={containerRef as unknown as React.RefObject<HTMLElement | null>}
-            width={width}
-            height={heightPx}
-            margin={margin}
-            renderData={renderData as unknown as Record<string, unknown>[]}
-            xDataKey={xDataKey}
-            // A4: series with showLine=false get no dash tail (bklit gates
-            // SeriesDashTailOverlay on `showSeriesStroke = ... && showLine`).
-            series={resolvedAreas.flatMap((a) =>
-              a.showLine
-                ? [{
-                    dataKey: a.dataKey,
-                    stroke: a.stroke,
-                    strokeWidth: a.strokeWidth,
-                    dashFromIndex: a.dashFromIndex,
-                    dashArray: a.dashArray,
-                  }]
-                : [],
-            )}
-            innerWidth={innerWidth}
-            innerHeight={Math.max(0, heightPx - margin.top - margin.bottom)}
-          />
-          {chartMarkers ? (
-            <MarkerActiveTooltipProvider store={markerActiveStore}>
-            <ChartMarkersOverlay
-              items={chartMarkers.items}
-              size={chartMarkers.size}
-              showLines={chartMarkers.showLines}
-              animate={chartMarkers.animate}
-              maxFanned={chartMarkers.maxFanned}
-              xScale={(d: Date) => {
-                const s = areaXScaleD3Ref.current;
-                if (!s) return null;
-                const v = (s as unknown as { (x: Date): number | undefined })(d);
-                return v == null ? null : v;
-              }}
-              marginLeft={margin.left}
-              marginTop={margin.top}
-              innerHeight={Math.max(0, heightPx - margin.top - margin.bottom)}
-              containerRef={containerRef as unknown as React.RefObject<HTMLElement | null>}
-              animationDuration={animationDuration}
-              onMarkerHoverChange={(markers) => {
-                // LM6 legacy interplay: hovering a marker group hides the
-                // crosshair/tooltip chrome (legacy setTooltipData(null)) AND
-                // drops isActive (guide lines return to rest opacity);
-                // leaving leaves both cleared until the next chart hover,
-                // like legacy.
-                if (markers) {
-                  clearFocusChrome();
-                }
-              }}
-            />
-            </MarkerActiveTooltipProvider>
-          ) : null}
-        </>
-      )}
-      {crosshairGradientDef ? (
-        <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true" focusable="false">
-          <defs>
-            <linearGradient id={crosshairGradientDef.id} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={margin.top} y2={margin.top + Math.max(0, heightPx - margin.top - margin.bottom)}>
-              {crosshairGradientDef.stops.map((s) => (
-                <stop key={s.offset} offset={s.offset} stopColor={crosshairGradientDef.color} stopOpacity={s.opacity} />
-              ))}
-            </linearGradient>
-          </defs>
-        </svg>
-      ) : null}
-      {(projectionGradientDefsArea.length > 0 || areaMarkerGradientDefs.length > 0) && (
-            <svg
-              width={0}
-              height={0}
-              style={{ position: "absolute" }}
-              aria-hidden="true"
-              focusable="false"
-            >
-              <defs>
-                {projectionGradientDefsArea.map((g) => (
-                  <linearGradient key={g.id} id={g.id} gradientUnits="userSpaceOnUse" x1={g.startX} y1={g.startY} x2={g.endX} y2={g.endY}>
-                    <stop offset="0%" stopColor={g.gradientStart} />
-                    <stop offset="100%" stopColor={g.gradientEnd} />
-                  </linearGradient>
-                ))}
-                {areaMarkerGradientDefs.map((g) => (
-                  <radialGradient key={g.id} id={g.id}>
-                    <stop offset="0%" stopColor={g.fill} stopOpacity={1} />
-                    <stop offset={`${g.fillFadeStart}%`} stopColor={g.fill} stopOpacity={1} />
-                    <stop offset={`${g.fillFadeEnd}%`} stopColor={g.fill} stopOpacity={0} />
-                    <stop offset={`${g.gapFadeStart}%`} stopColor={g.stroke} stopOpacity={0} />
-                    <stop offset={`${g.gapFadeEnd}%`} stopColor={g.stroke} stopOpacity={1} />
-                    <stop offset="100%" stopColor={g.stroke} stopOpacity={1} />
-                  </radialGradient>
-                ))}
-              </defs>
-            </svg>
-          )}
-      {patternDefs.length > 0 && (
-        <svg
-          width={0}
-          height={0}
-          style={{ position: "absolute" }}
-          aria-hidden="true"
-          focusable="false"
-        >
-          <defs>{patternDefs.map((p) => (
-            <React.Fragment key={p.id}>
-              {p.node}
-              {/* bklit paints marks inside <g transform=translate(margin)>, so its
-                  userSpaceOnUse tiles anchor at (margin.left, margin.top); TanStack
-                  bakes margins into path coordinates, so the tile grid must be
-                  phase-shifted by the margin to match. */}
-              <pattern
-                id={p.id}
-                href={`#${p.id}-base`}
-                xlinkHref={`#${p.id}-base`}
-                patternTransform={`translate(${margin.left} ${margin.top})`}
-              />
-            </React.Fragment>
-          ))}</defs>
-        </svg>
-      )}
+      {brushClipNode}
+      {brushChromeNode}
+      {loadingLabelNode}
+      {backgroundNode}
+      {chartBodyNode}
+      {overlayNode}
+      {crosshairNode}
+      {markerGradientDefsNode}
+      {patternDefsNode}
     </div>
     </ChartSelectionContext.Provider>
   );
-}
+};
 
-// Legacy parity: bklit `area-chart.tsx` ships `export default AreaChart;` (T-E2).
-export default AreaChart;
+export { AreaChart };
+export type { AreaChartProps };

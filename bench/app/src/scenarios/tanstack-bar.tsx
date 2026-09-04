@@ -1,9 +1,4 @@
-// Native TanStack Charts equivalent of bklit's bar-chart.tsx demo (two
-// grouped series per category). TanStack's grammar-of-graphics model wants
-// tidy/long rows, so the shared wide-format seeded rows (`{date, seriesA,
-// seriesB}`) are reshaped into long rows here -- same underlying seeded
-// values as the bklit scenario, just a different row shape (required by the
-// mark API, not a data change).
+// Ceiling reference: wide seeded rows reshaped to long rows (mark API shape, not a data change).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { scaleBand, scaleLinear } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";

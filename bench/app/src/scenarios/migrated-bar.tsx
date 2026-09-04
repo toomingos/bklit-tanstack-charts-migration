@@ -1,6 +1,4 @@
-// Migrated BarChart scenario — IDENTICAL usage to bklit-bar.tsx (same
-// component tree, same props), only the import source changes. This is the
-// point: the migrated package must be a drop-in replacement.
+// Drop-in twin of bklit-bar.tsx; only the import source changes.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart, Bar, BarXAxis, Grid, ChartTooltip } from "@migrated/charts";
 import {

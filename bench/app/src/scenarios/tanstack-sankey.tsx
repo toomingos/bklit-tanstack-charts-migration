@@ -1,38 +1,5 @@
-// ceiling-not-clone
-//
-// TanStack-native performance-ceiling reference for bklit's SankeyChart. No
-// sankey mark exists anywhere in TanStack Charts (a genuine gap chart --
-// docs/LOG.md D35), so this scenario runs d3-sankey's OWN layout algorithm
-// directly -- the SAME library bklit's own SankeyChart uses internally
-// (repos/bklit-ui/packages/ui/src/charts/sankey/sankey-chart.tsx:
-// `sankey<...>().nodeWidth(nodeWidth).nodePadding(nodePadding)
-// .nodeAlign(sankeyCenter).extent([[0,0],[innerWidth,innerHeight]])`) --
-// against the chart's real pixel bounds (`MarkRenderContext.chart:
-// ChartBounds`, exact width/height/x/y; no virtual-domain-to-scale mapping
-// needed, same `x:null,y:null` idiom used by every other non-cartesian
-// ceiling scenario here: tanstack-radar.tsx, tanstack-pie.tsx,
-// tanstack-gauge.tsx, tanstack-sunburst.tsx). Baking `chart.x`/`chart.y`
-// straight into d3-sankey's own `.extent(...)` bounds (rather than the
-// origin-at-0 extent bklit uses internally) means every computed node/link
-// coordinate is already in absolute chart space -- no separate translate
-// step needed for either the `rect` nodes or the `sankeyLinkHorizontal()`
-// path string.
-//
-// A minimal custom `createMark` (pattern: migrated/charts/internal/
-// area-fill-mark.ts) emits:
-//  - one `kind:'rect'` scene node per sankey node (D35's node-mark mapping).
-//  - one `kind:'area'` scene node per sankey link, `path` from d3-sankey's
-//    own `sankeyLinkHorizontal()` generator, NO fill (`fill:'none'`, stroke
-//    only, `strokeWidth = link.width`) -- D35's link-mark mapping ("links
-//    are STROKED cubic-Bezier centerlines...NOT filled ribbons -> migrated
-//    link mark = kind:'area' + path + stroke styles").
-// This renders the same node/path COUNT and layout geometry as bklit's real
-// component for the same seeded data, with none of bklit's chrome: no
-// hover-dim/connectivity highlighting, no framer-motion stagger reveal, no
-// gradients, no real tooltip DOM, no category-gated "0 sessions" display-
-// value bug. Same line every other ceiling scenario in this harness draws
-// (tanstack-heatmap.tsx, tanstack-funnel.tsx, tanstack-composed.tsx):
-// native/unstyled rendering, comparable geometry, NOT a pixel clone.
+// Ceiling reference: d3-sankey layout (same lib bklit uses) via a custom positionless mark.
+// GUARD: no sankey mark exists in TanStack; links are stroked centerlines, not filled ribbons.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { sankey, sankeyCenter, sankeyLinkHorizontal } from "d3-sankey";
 import type {
@@ -53,9 +20,6 @@ import {
 import { armTanstackSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 
-// Same convention as every other ceiling scenario (tanstack-pie.tsx,
-// tanstack-radar.tsx): a small fixed hex cycle, NOT bklit's `--chart-1..5`
-// CSS custom properties.
 const SANKEY_PALETTE = [
   "#7c3aed",
   "#0ea5e9",
@@ -65,16 +29,10 @@ const SANKEY_PALETTE = [
   "#64748b",
 ];
 
-// Matches the docs-demo tree's explicit overrides (repos/bklit-ui/apps/web/
-// content/docs/components/sankey-chart.mdx) -- default nodeWidth=16/
-// nodePadding=24 (sankey-chart.tsx `DEFAULT_MARGIN`/prop defaults).
 const SANKEY_NODE_WIDTH = 16;
 const SANKEY_NODE_PADDING = 24;
 
-// Empty-ish "extra properties" type for d3-sankey's L generic -- an index
-// signature of `unknown` (not `never`) so it doesn't conflict with
-// `SankeyLinkMinimal`'s own typed `source`/`target`/`value`/etc fields when
-// intersected (`SankeyLink<N,L> = L & SankeyLinkMinimal<N,L>`).
+// unknown (not never) so it intersects cleanly with d3-sankey's link fields.
 interface SankeyLinkExtra {
   [key: string]: unknown;
 }
@@ -98,11 +56,7 @@ function layoutSankey(
       [bounds.x, bounds.y],
       [bounds.x + Math.max(1, bounds.width), bounds.y + Math.max(1, bounds.height)],
     ]);
-  // d3-sankey mutates its input node/link objects in place (the same reason
-  // bklit's own sankey-chart.tsx defensively clones before calling the
-  // generator) -- clone here too so re-running layout on a later render
-  // always starts from the plain seeded data, never a previous layout's
-  // leftover x0/x1/y0/y1/sourceLinks/targetLinks fields.
+  // d3-sankey mutates inputs; clone so re-layout starts from clean seeded data.
   const graph: SankeyGraph<SeededSankeyNode, SankeyLinkExtra> = {
     nodes: data.nodes.map((node) => ({ ...node })),
     links: data.links.map((link) => ({ ...link })),
@@ -110,21 +64,13 @@ function layoutSankey(
   return layout(graph);
 }
 
-// Positionless custom mark: `never` scale ids tell the grammar this mark binds
-// no cartesian scale, which is what lets the spec below pass `x: null`/`y: null`
-// (`ChartXSpec` narrows to `{ x?: null }` only when `ChartMarkScaleX` is `never`).
-// A bare `ChartMark` defaults its scale ids to 'x'/'y' and would demand real
-// scale options — see docs/phase-5/LOG.md.
+// never scale ids let the spec pass x:null/y:null.
 function sankeyCeilingMark(
   data: SeededSankeyData,
   id: string,
 ): ChartMark<unknown, ChartValue, ChartValue, ChartValue, ChartValue, never, never> {
   return createMark(() => ({
     id,
-    // No cartesian channels: this mark positions everything itself from
-    // d3-sankey's own layout output against real chart pixel bounds (see
-    // header comment) -- same "positionless custom mark" shape as this
-    // codebase's `polar()` container, just without that machinery.
     channels: {},
     render: ({ chart }) => {
       const { nodes, links } = layoutSankey(data, chart);
@@ -162,8 +108,7 @@ function sankeyCeilingMark(
         },
       }));
 
-      // Links drawn first, nodes on top -- matches bklit's own tree order
-      // (`<SankeyLink /><SankeyNode />`, both gate fixtures).
+      // Links first, nodes on top (bklit tree order).
       return {
         nodes: [
           {
@@ -197,8 +142,7 @@ export default function TanstackSankey({ n }: { n: number }) {
         tickRef.current += 1;
         setData(generateSankeyUpdate("sankey", n, tickRef.current));
       });
-    // Sankey's `n` is link count (D35), not a live-append time-series axis
-    // -- no-op, matching tanstack-heatmap.tsx/tanstack-sunburst.tsx.
+    // GUARD: n is link count; no live-append axis.
     window.__benchLiveTick = () => {};
   }, [n]);
 
@@ -206,8 +150,6 @@ export default function TanstackSankey({ n }: { n: number }) {
     () =>
       defineChart({
         marks: [sankeyCeilingMark(data, "sankey")],
-        // Positionless custom mark -- no cartesian x/y scales or guides
-        // (same idiom as every other non-cartesian ceiling scenario here).
         guides: false,
         x: null,
         y: null,

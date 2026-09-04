@@ -1,5 +1,4 @@
-// Migrated ReferenceArea scenario — IDENTICAL usage to bklit-refarea.tsx
-// (same component tree, same props), only the import source changes.
+// Drop-in twin of bklit-refarea.tsx; only the import source changes.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import { LineChart, Line, Grid, XAxis, ChartTooltip, ReferenceArea } from "@migrated/charts";

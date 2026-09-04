@@ -1,8 +1,4 @@
-// Migrated ComposedChart scenario — IDENTICAL usage to bklit-composed.tsx
-// (same component tree, same props: SeriesBar dataKey="bars", Area+Line BOTH
-// dataKey="line" — bklit's own Area+Line-share-a-dataKey quirk, kept
-// verbatim), only the import source changes. This is the point: the
-// migrated package must be a drop-in replacement.
+// Drop-in twin of bklit-composed.tsx; Area+Line share dataKey="line" (bklit quirk, kept verbatim).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import {

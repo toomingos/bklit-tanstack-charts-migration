@@ -1,0 +1,11 @@
+// Background config-carrier child: never rendered, compiled once into a TanStack defineChart spec.
+import { CHART_ROLE } from "./chart-child-carrier";
+import type { ChartChildComponent } from "./chart-child-carrier";
+import type { BackgroundConfig } from "./types";
+
+const Background: ChartChildComponent<BackgroundConfig> = (_props: Readonly<BackgroundConfig>): null => null;
+
+Background[CHART_ROLE] = "background";
+Background.displayName = "Background";
+
+export { Background };

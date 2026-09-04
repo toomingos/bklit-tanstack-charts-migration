@@ -1,77 +1,123 @@
 import * as React from "react";
-import { roleOf } from "../children";
+import { roleOf } from "./children-extract";
 import type { ProjectionPoint } from "./projection-utils";
 import { projectionDateExtents, projectionValueExtents } from "./projection-utils";
-// P6.1: was a private byte-identical copy of the same normalizer.
 import { normalizeYAxisId } from "./y-axis-id";
 
-export interface ProjectionLineConfig {
-  yAxisId: string;
-  data: ProjectionPoint[];
+interface ProjectionLineConfig {
+  readonly yAxisId: string;
+  readonly data: readonly Readonly<ProjectionPoint>[];
 }
 
 interface ProjectionLineConfigProps {
-  data?: ProjectionPoint[];
+  data?: readonly Readonly<ProjectionPoint>[];
   yAxisId?: string | number;
 }
 
-function normalizeProjectionData(data: ProjectionPoint[] | undefined): ProjectionPoint[] {
-  if (!data?.length) {
+// Baseline ceiling when a non-negative domain collapses to zero; headroom and
+// Padding fractions for folding projection paths into the visible domain.
+const PROJECTION_FALLBACK_DOMAIN_MAX = 100;
+const PROJECTION_HEADROOM_FACTOR = 1.1;
+const PROJECTION_DOMAIN_PADDING_FRACTION = 0.05;
+const VISIBLE_END_STROKE_HALF_FACTOR = 0.5;
+
+const normalizeProjectionData = (data: readonly Readonly<ProjectionPoint>[] | undefined): ProjectionPoint[] => {
+  if (data === undefined || data.length === 0) {
     return [];
   }
-  return data.map((point) => ({
+  return data.map((point: Readonly<ProjectionPoint>) => ({
     date: point.date instanceof Date ? point.date : new Date(point.date),
     value: point.value,
   }));
 }
 
-export function extractProjectionLineConfigs(children: React.ReactNode): ProjectionLineConfig[] {
+const pushProjectionLineConfig = (props: Readonly<ProjectionLineConfigProps>, configs: ProjectionLineConfig[]): void => {
+  const data = normalizeProjectionData(props.data);
+  if (data.length >= 2) {
+    configs.push({
+      data,
+      yAxisId: normalizeYAxisId(props.yAxisId),
+    });
+  }
+};
+
+type ProjectionChildElement = React.ReactElement<{ children?: React.ReactNode }>;
+
+type ProjectionVisit = (node: React.ReactNode) => void;
+
+const tryPushProjectionLineConfig = (child: ProjectionChildElement, configs: ProjectionLineConfig[]): boolean => {
+  const role = roleOf(child.type);
+  // The role check establishes the component contract at runtime.
+  // A "projectionLine" element always carries ProjectionLineConfigProps,
+  // So re-narrowing the valid element pins that shape with no `as`.
+  if (role === "projectionLine" && React.isValidElement<ProjectionLineConfigProps>(child)) {
+    pushProjectionLineConfig(child.props, configs);
+    return true;
+  }
+  return false;
+};
+
+const visitProjectionChild = (child: ProjectionChildElement, configs: ProjectionLineConfig[], visit: ProjectionVisit): void => {
+  if (child.type === React.Fragment) {
+    visit(child.props.children);
+    return;
+  }
+  if (tryPushProjectionLineConfig(child, configs)) {return;}
+  const nestedChildren = child.props.children;
+  if (nestedChildren !== undefined && nestedChildren !== null) {visit(nestedChildren);}
+};
+
+const extractProjectionLineConfigs = (children: React.ReactNode): ProjectionLineConfig[] => {
   const configs: ProjectionLineConfig[] = [];
-  const visit = (node: React.ReactNode) => {
+  const visit = (node: React.ReactNode): void => {
     for (const child of React.Children.toArray(node)) {
-      if (!React.isValidElement(child)) continue;
-      if (child.type === React.Fragment) {
-        visit((child.props as { children?: React.ReactNode }).children);
-        continue;
+      // Pin the props generic at the validity check, not via `as`.
+      // Every valid element carries a props object, so reading
+      // `children` needs no assertion.
+      if (React.isValidElement<{ children?: React.ReactNode }>(child)) {
+        visitProjectionChild(child, configs, visit);
       }
-      const role = roleOf(child.type);
-      if (role === "projectionLine") {
-        const props = child.props as ProjectionLineConfigProps | undefined;
-        const data = normalizeProjectionData(props?.data);
-        if (data.length >= 2) {
-          configs.push({
-            yAxisId: normalizeYAxisId(props?.yAxisId),
-            data,
-          });
-        }
-        continue;
-      }
-      const cp = child.props as { children?: React.ReactNode } | undefined;
-      if (cp?.children) visit(cp.children);
     }
   };
   visit(children);
   return configs;
 }
 
-export function mergeProjectionYDomain(domain: [number, number], configs: ProjectionLineConfig[], yAxisId: string): [number, number] {
-  const paths = configs.filter((config) => config.yAxisId === yAxisId).map((config) => config.data);
+const collapseNonNegativeYDomain = (nextMax: number): [number, number] => [
+  0,
+  nextMax <= 0 ? PROJECTION_FALLBACK_DOMAIN_MAX : nextMax * PROJECTION_HEADROOM_FACTOR,
+];
+
+interface ProjectionValueExtents {
+  readonly minValue: number;
+  readonly maxValue: number;
+}
+
+const foldProjectionExtents = (min: number, max: number, extents: Readonly<ProjectionValueExtents>): [number, number] => {
+  const nextMin = Math.min(min, extents.minValue);
+  const nextMax = Math.max(max, extents.maxValue);
+  if (nextMin >= 0 && min >= 0) {
+    return collapseNonNegativeYDomain(nextMax);
+  }
+  const padding = (nextMax - nextMin) * PROJECTION_DOMAIN_PADDING_FRACTION || 1;
+  return [nextMin - padding, nextMax + padding];
+};
+
+const mergeProjectionYDomain = (domain: [number, number], configs: readonly ProjectionLineConfig[], yAxisId: string): [number, number] => {
+  const paths: (readonly Readonly<ProjectionPoint>[])[] = [];
+  for (const config of configs) {
+    if (config.yAxisId === yAxisId) {paths.push(config.data);}
+  }
   const extents = projectionValueExtents(paths);
   if (!extents) {
     return domain;
   }
   const [min, max] = domain;
-  const nextMin = Math.min(min, extents.minValue);
-  const nextMax = Math.max(max, extents.maxValue);
-  if (nextMin >= 0 && min >= 0) {
-    return [0, nextMax <= 0 ? 100 : nextMax * 1.1];
-  }
-  const padding = (nextMax - nextMin) * 0.05 || 1;
-  return [nextMin - padding, nextMax + padding];
+  return foldProjectionExtents(min, max, extents);
 }
 
-export function mergeProjectionXDomainMax(maxTime: number, configs: ProjectionLineConfig[]): number {
-  const paths = configs.map((config) => config.data);
+const mergeProjectionXDomainMax = (maxTime: number, configs: readonly ProjectionLineConfig[]): number => {
+  const paths = configs.map((config: ProjectionLineConfig) => config.data);
   const extents = projectionDateExtents(paths);
   if (!extents) {
     return maxTime;
@@ -79,7 +125,19 @@ export function mergeProjectionXDomainMax(maxTime: number, configs: ProjectionLi
   return Math.max(maxTime, extents.maxTime);
 }
 
-export function resolveVisibleEndX(endX: number, innerWidth: number, endpointRadius: number, strokeWidth: number, showEndMarker: boolean): number {
-  const edgePadding = (showEndMarker ? endpointRadius : 0) + strokeWidth * 0.5 + 1;
+interface VisibleEndXParams {
+  readonly endX: number;
+  readonly innerWidth: number;
+  readonly endpointRadius: number;
+  readonly strokeWidth: number;
+  readonly showEndMarker: boolean;
+}
+
+const resolveVisibleEndX = (params: Readonly<VisibleEndXParams>): number => {
+  const { endX, innerWidth, endpointRadius, strokeWidth, showEndMarker } = params;
+  const edgePadding = (showEndMarker ? endpointRadius : 0) + strokeWidth * VISIBLE_END_STROKE_HALF_FACTOR + 1;
   return Math.min(endX, Math.max(0, innerWidth - edgePadding));
 }
+
+export { extractProjectionLineConfigs, mergeProjectionYDomain, mergeProjectionXDomainMax, resolveVisibleEndX };
+export type { ProjectionLineConfig, VisibleEndXParams };

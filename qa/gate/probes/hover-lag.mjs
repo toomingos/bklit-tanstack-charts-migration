@@ -1,10 +1,6 @@
-// Probe: post-settle hover lag. After settle (+3 s), move the pointer from
-// (2,2) to the 0.5 fraction of the largest svg and measure, per impl, the time
-// from the first pointermove to (a) the first dimmed mark, (b) the first
-// visible tooltip, and (c) the last DOM change (dim/tooltip settle), sampled
-// per animation frame for 1.5 s. Repeated `repeats` times; medians reported.
-// The pixel gate captures 700 ms after the move (HOVER_WAIT_MS) — anything
-// with lastChangeMs > 700 is a cell the gate can capture mid-transition.
+// Post-settle hover lag: after settle (+3s), move to the 0.5 fraction of the largest svg; per impl, time from
+// first pointermove to first dim, first tooltip, and last DOM change (1.5s frame sample, medians of repeats).
+// GUARD: the pixel gate captures 700ms after the move, so lastChangeMs > 700 means a mid-transition capture.
 import { installSampler, largestSvgBox, median, openScene, readSampler } from "./lib-probe.mjs";
 
 export const DEFAULT_CELLS = [
@@ -58,7 +54,6 @@ export async function hoverLagProbe(browser, baseUrl, { cells = DEFAULT_CELLS, r
       });
     }
   }
-  // Pair bklit vs migrated per cell.
   const pairs = [];
   for (const [chart, n] of cells) {
     const a = rows.find((r) => r.chart === chart && r.n === n && r.impl === "bklit");

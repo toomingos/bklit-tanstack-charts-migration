@@ -1,25 +1,16 @@
 "use client";
 
-import { Progress } from "@base-ui/react/progress";
-import {
-  cloneElement,
-  isValidElement,
-  type ReactElement,
-  type ReactNode,
-  useState,
-} from "react";
+import { isValidElement, useState } from 'react';
+import type { ReactElement } from 'react';
 import { cn } from "@/lib/utils";
-import { intFmt } from "./formatters";
-import {
-  type LegendItemData,
-  LegendItemProvider,
-  LegendProvider,
-  useLegend,
-  useLegendItem,
-} from "./legend-context";
+import { LegendItemProvider, LegendProvider } from './legend-context';
+import type { LegendItemData } from './legend-context';
 
-export interface LegendProps {
-  items: LegendItemData[];
+// Scale factor converting a 0–1 value ratio into a 0–100 percentage.
+const PERCENT_SCALE = 100;
+
+interface LegendProps {
+  readonly items: readonly LegendItemData[];
   hoveredIndex?: number | null;
   onHoverChange?: (index: number | null) => void;
   title?: string;
@@ -28,7 +19,39 @@ export interface LegendProps {
   children: ReactElement;
 }
 
-export function Legend({
+const legendItemPercentage = (item: Readonly<LegendItemData>): number => {
+  const maxValue = item.maxValue ?? 0;
+  if (maxValue === 0) {return 0;}
+  return (item.value / maxValue) * PERCENT_SCALE;
+}
+
+interface RenderLegendRowParams {
+  readonly item: Readonly<LegendItemData>;
+  readonly index: number;
+  readonly hoveredIndex: number | null | undefined;
+  readonly children: ReactElement;
+}
+
+const renderLegendRow = (params: Readonly<RenderLegendRowParams>): ReactElement | undefined => {
+  const { item, index, hoveredIndex, children: rowChildren } = params;
+  const isHovered = hoveredIndex === index;
+  const isFaded = hoveredIndex !== null && hoveredIndex !== index;
+  const itemContext = {
+    index,
+    isFaded,
+    isHovered,
+    item,
+    percentage: legendItemPercentage(item),
+  };
+  if (!isValidElement(rowChildren)) {return undefined;}
+  return (
+    <LegendItemProvider key={item.label} value={itemContext}>
+      {rowChildren}
+    </LegendItemProvider>
+  );
+}
+
+const Legend = ({
   items,
   hoveredIndex: controlledHoveredIndex,
   onHoverChange,
@@ -36,7 +59,7 @@ export function Legend({
   titleClassName = "text-sm font-semibold",
   className = "",
   children,
-}: LegendProps) {
+}: Readonly<LegendProps>): ReactElement => {
   const [internalHoveredIndex, setInternalHoveredIndex] = useState<
     number | null
   >(null);
@@ -45,7 +68,7 @@ export function Legend({
   const hoveredIndex = isControlled
     ? controlledHoveredIndex
     : internalHoveredIndex;
-  const setHoveredIndex = (index: number | null) => {
+  const setHoveredIndex = (index: number | null): void => {
     if (isControlled) {
       onHoverChange?.(index);
     } else {
@@ -54,185 +77,45 @@ export function Legend({
   };
 
   const contextValue = {
-    items,
     hoveredIndex,
+    items,
     setHoveredIndex,
   };
 
   return (
     <LegendProvider value={contextValue}>
       <div className={cn("legend-container flex flex-col gap-2", className)}>
-        {title && (
+        {(title ?? "").length > 0 && (
           <h3 className={cn("mb-1 text-legend-foreground", titleClassName)}>
             {title}
           </h3>
         )}
-        {items.map((item, index) => {
-          const isHovered = hoveredIndex === index;
-          const isFaded = hoveredIndex !== null && hoveredIndex !== index;
-          const percentage = item.maxValue
-            ? (item.value / item.maxValue) * 100
-            : 0;
-
-          const itemContext = {
-            item,
-            index,
-            isHovered,
-            isFaded,
-            percentage,
-          };
-
-          if (isValidElement(children)) {
-            return (
-              <LegendItemProvider key={item.label} value={itemContext}>
-                {cloneElement(children)}
-              </LegendItemProvider>
-            );
-          }
-
-          return null;
-        })}
+        {items.map((item: Readonly<LegendItemData>, index: number) =>
+          renderLegendRow({ children, hoveredIndex, index, item }),
+        )}
       </div>
     </LegendProvider>
   );
-}
+};
 
 Legend.displayName = "Legend";
 
-export interface LegendItemProps {
-  className?: string;
-  children: ReactNode;
-}
+// Subcomponents live in sibling files (one component per file); re-exported
+// here unchanged so existing importers keep working.
+export { LegendItem } from './legend-item';
+export { LegendMarker } from './legend-marker';
+export { LegendLabel } from './legend-label';
+export { LegendValue } from './legend-value';
+export { LegendProgress } from './legend-progress';
+export type { LegendItemProps } from './legend-item';
+export type { LegendMarkerProps } from './legend-marker';
+export type { LegendLabelProps } from './legend-label';
+export type { LegendValueProps } from './legend-value';
+export type { LegendProgressProps } from './legend-progress';
 
-export function LegendItem({ className = "", children }: LegendItemProps) {
-  const { setHoveredIndex } = useLegend();
-  const { index, isHovered } = useLegendItem();
-
-  return (
-    <div
-      className={cn(
-        "cursor-pointer rounded-lg px-2 py-1.5 transition-all duration-150 ease-out",
-        isHovered && "bg-legend-muted",
-        className
-      )}
-      data-hovered={isHovered ? "" : undefined}
-      onMouseEnter={() => setHoveredIndex(index)}
-      onMouseLeave={() => setHoveredIndex(null)}
-    >
-      {children}
-    </div>
-  );
-}
-
-LegendItem.displayName = "LegendItem";
-
-export interface LegendMarkerProps {
-  className?: string;
-}
-
-export function LegendMarker({ className = "h-2.5 w-2.5" }: LegendMarkerProps) {
-  const { item } = useLegendItem();
-
-  return (
-    <div
-      className={cn("shrink-0 rounded-full", className)}
-      style={{ backgroundColor: item.color }}
-    />
-  );
-}
-
-LegendMarker.displayName = "LegendMarker";
-
-export interface LegendLabelProps {
-  className?: string;
-}
-
-export function LegendLabel({
-  className = "text-sm font-medium",
-}: LegendLabelProps) {
-  const { item } = useLegendItem();
-
-  return (
-    <span className={cn("text-legend-foreground", className)}>
-      {item.label}
-    </span>
-  );
-}
-
-LegendLabel.displayName = "LegendLabel";
-
-export interface LegendValueProps {
-  className?: string;
-  showPercentage?: boolean;
-  percentageClassName?: string;
-  formatValue?: (value: number) => string;
-  formatPercentage?: (percentage: number) => string;
-}
-
-export function LegendValue({
-  className = "text-sm tabular-nums",
-  showPercentage = false,
-  percentageClassName = "text-xs tabular-nums",
-  formatValue = intFmt,
-  formatPercentage = (p) => `${p.toFixed(0)}%`,
-}: LegendValueProps) {
-  const { item, percentage } = useLegendItem();
-
-  return (
-    <span
-      className={cn(
-        "flex items-center gap-2 text-legend-muted-foreground",
-        className
-      )}
-    >
-      <span>{formatValue(item.value)}</span>
-      {showPercentage && item.maxValue && (
-        <span className={percentageClassName}>
-          {formatPercentage(percentage)}
-        </span>
-      )}
-    </span>
-  );
-}
-
-LegendValue.displayName = "LegendValue";
-
-export interface LegendProgressProps {
-  trackClassName?: string;
-  indicatorClassName?: string;
-  height?: string;
-}
-
-export function LegendProgress({
-  trackClassName = "",
-  indicatorClassName = "",
-  height = "h-1.5",
-}: LegendProgressProps) {
-  const { item } = useLegendItem();
-
-  if (!item.maxValue) {
-    return null;
-  }
-
-  return (
-    <Progress.Root max={item.maxValue} value={item.value}>
-      <Progress.Track
-        className={cn(
-          "w-full overflow-hidden rounded-full bg-legend-track",
-          height,
-          trackClassName
-        )}
-      >
-        <Progress.Indicator
-          className={cn(
-            "h-full rounded-full transition-all duration-500",
-            indicatorClassName
-          )}
-          style={{ backgroundColor: item.color }}
-        />
-      </Progress.Track>
-    </Progress.Root>
-  );
-}
-
-LegendProgress.displayName = "LegendProgress";
+export type {
+  LegendProps,
+};
+export {
+  Legend,
+};

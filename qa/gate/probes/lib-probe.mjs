@@ -1,6 +1,5 @@
-// Shared Playwright helpers for the gate probes (modelled on the scratch
-// hoverprobe/toggleprobe: wait for window.__benchSettled + __benchPaintDone,
-// then ≥3 s more — bar hover is dead until the chart's phase reaches "ready").
+// Shared Playwright helpers for the gate probes. Settle = __benchSettled + __benchPaintDone + 3s more:
+// bar hover stays dead until the chart's phase reaches "ready".
 import { chromium } from "playwright";
 
 export const VIEWPORT = { width: 1200, height: 800 };
@@ -31,7 +30,7 @@ export async function openScene(browser, baseUrl, params, { settleMs = POST_SETT
   return { page, context, errors, close: () => context.close() };
 }
 
-/** Bounding box of the largest <svg> wider than 100px (harness convention). */
+/** Largest <svg> wider than 100px (harness convention). */
 export async function largestSvgBox(page) {
   return page.evaluate(() => {
     let best = null;
@@ -43,13 +42,8 @@ export async function largestSvgBox(page) {
   });
 }
 
-/**
- * Install an in-page sampler: from the first pointermove it records, per
- * animation frame, the count of dimmed mark elements (computed opacity < 0.99
- * on rect/path/circle/g inside the largest svg), tooltip visibility (either
- * `.ts-chart-tooltip` or the harness's #chart-root text-length heuristic), and
- * the time of the last change. Read back with readSampler().
- */
+// GUARD: in-page sampler records dimmed marks (opacity < 0.99), tooltip visibility (.ts-chart-tooltip or
+// #chart-root text-length heuristic), and last-change time from the first pointermove. Read back with readSampler().
 export async function installSampler(page, { maxMs = 2000 } = {}) {
   await page.evaluate((maxMs) => {
     const svgs = [...document.querySelectorAll("svg")].filter((s) => s.getBoundingClientRect().width > 100);
@@ -106,7 +100,6 @@ export async function readSampler(page) {
   });
 }
 
-/** Snapshot of mark geometry/opacity for re-reveal detection. */
 export async function sampleMarks(page, { selector = "rect,path,circle", limit = 24 } = {}) {
   return page.evaluate(({ selector, limit }) => {
     const svgs = [...document.querySelectorAll("svg")].filter((s) => s.getBoundingClientRect().width > 100);

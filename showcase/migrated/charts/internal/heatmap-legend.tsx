@@ -1,96 +1,36 @@
-import { useId, useSyncExternalStore, type CSSProperties } from "react";
+import { useSyncExternalStore } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
 import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
+import { HEATMAP_INACTIVE_OPACITY } from './heatmap-hover-chrome';
+import type { HeatmapHoverCoordinator, HeatmapHoverStyleParams } from './heatmap-hover-chrome';
 import {
-  HEATMAP_INACTIVE_OPACITY,
-  HEATMAP_INACTIVE_TRANSITION_CSS,
-  type HeatmapHoverStyleParams,
-} from "./heatmap-hover-chrome";
-import {
-  buildHeatmapLegendGradient,
   getHeatmapContributionLevel,
   isHeatmapHoverEffectEnabled,
-  resolveHeatmapHoverStyle,
 } from "./heatmap-utils";
-import {
-  defaultHeatmapColorScale,
-  heatmapLevelPatternId,
-  heatmapLevelPatternRenderOptions,
-  isHeatmapLevelPattern,
-  type HeatmapLevelStyle,
-  type HeatmapLevelStyles,
-} from "./heatmap-colors";
-import { renderPatternPreset } from "./pattern-preset";
+import { defaultHeatmapColorScale } from './heatmap-colors';
+import type { HeatmapLevelStyles } from './heatmap-colors';
+import { HeatmapLegendGradient } from "./heatmap-legend-gradient";
+import { renderLegendSwatch } from "./heatmap-legend-swatch-entry";
 
-export const HEATMAP_LEGEND_LEVELS = [0, 1, 2, 3, 4] as const;
+const HEATMAP_LEGEND_HIGH_LEVEL = 3;
+const HEATMAP_LEGEND_MAX_LEVEL = 4;
+const HEATMAP_LEGEND_LEVELS = [0, 1, 2, HEATMAP_LEGEND_HIGH_LEVEL, HEATMAP_LEGEND_MAX_LEVEL] as const;
 
-export type HeatmapLegendVariant = "swatches" | "gradient";
+type HeatmapLegendVariant = "swatches" | "gradient";
 
-export interface HeatmapLegendSwatchProps {
-  level: number;
-  style: HeatmapLevelStyle;
-  cellSize: number;
-  cornerRadius: number;
-}
+type LegendAlign = "start" | "center" | "end";
 
-export function HeatmapLegendSwatch({ level, style, cellSize, cornerRadius }: HeatmapLegendSwatchProps) {
-  // Unconditional (rules of hooks); consumed only by the pattern branch.
-  const reactId = useId().replace(/:/g, "");
-  const shellStyle = {
-    width: cellSize,
-    height: cellSize,
-    borderRadius: cornerRadius,
-  };
-
-  // Port of bklit's heatmap-legend-swatch.tsx pattern branch: pattern-mode
-  // levels draw the actual <pattern> tile in an inline svg (opacity =
-  // patternOpacity). Ids are useId-scoped so multiple charts/legends on one
-  // page don't collide (HM14/HM7).
-  if (isHeatmapLevelPattern(style) && style.pattern) {
-    const patternId = `${reactId}-${heatmapLevelPatternId(level)}`;
-    const patternNode = renderPatternPreset(
-      style.pattern,
-      `${patternId}-base`,
-      heatmapLevelPatternRenderOptions(style),
-    );
-    const opacity = style.patternOpacity ?? 1;
-
-    return (
-      <span
-        aria-hidden="true"
-        className="ts-bkm-heatmap-legend-swatch ts-bkm-heatmap-legend-swatch--pattern"
-        style={{ ...shellStyle, overflow: "hidden", opacity }}
-      >
-        <svg aria-hidden="true" viewBox={`0 0 ${cellSize} ${cellSize}`} style={{ display: "block", width: "100%", height: "100%" }}>
-          {patternNode ? <defs>{patternNode}</defs> : null}
-          <rect
-            fill={patternNode ? `url(#${patternId})` : style.color}
-            height={cellSize}
-            rx={cornerRadius}
-            ry={cornerRadius}
-            width={cellSize}
-          />
-        </svg>
-      </span>
-    );
+const resolveLegendJustifyContent = (align: LegendAlign): string => {
+  if (align === "start") {
+    return "flex-start";
   }
+  if (align === "center") {
+    return "center";
+  }
+  return "flex-end";
+};
 
-  return (
-    <span
-      aria-hidden="true"
-      className="ts-bkm-heatmap-legend-swatch"
-      style={{
-        width: cellSize,
-        height: cellSize,
-        borderRadius: cornerRadius,
-        backgroundColor: style.color,
-        border: level === 0 ? `1px solid ${style.color}` : undefined,
-        boxSizing: "border-box",
-      }}
-    />
-  );
-}
-
-export interface HeatmapLegendProps {
+interface HeatmapLegendProps {
   lessLabel?: string;
   moreLabel?: string;
   cellSize?: number;
@@ -110,7 +50,187 @@ export interface HeatmapLegendProps {
   className?: string;
 }
 
-export function HeatmapLegend({
+// Default level styles from the color scale; hoisted so HeatmapLegend stays short.
+const resolveLegendLevelStyles = (levelStylesProp: HeatmapLevelStyles | undefined, colorScale: (count: number | null | undefined) => string): HeatmapLevelStyles =>
+  levelStylesProp ?? [
+    { color: colorScale(0), fillMode: "solid", pattern: "none" },
+    { color: colorScale(1), fillMode: "solid", pattern: "none" },
+    { color: colorScale(2), fillMode: "solid", pattern: "none" },
+    { color: colorScale(HEATMAP_LEGEND_HIGH_LEVEL), fillMode: "solid", pattern: "none" },
+    { color: colorScale(HEATMAP_LEGEND_MAX_LEVEL), fillMode: "solid", pattern: "none" },
+  ];
+
+interface LegendHighlight {
+  readonly highlightedLevel: number | null;
+  readonly isDimming: boolean;
+}
+
+interface LegendHighlightArgs {
+  readonly coordinator: Readonly<HeatmapHoverCoordinator> | null;
+  readonly hoverParams: Readonly<HeatmapHoverStyleParams>;
+  readonly isInteractive: boolean;
+}
+
+// Legend hover state from the coordinator; separate hook so HeatmapLegend stays short.
+const useLegendHighlight = (highlight: Readonly<LegendHighlightArgs>): LegendHighlight => {
+  const { coordinator } = highlight;
+  const hoveredLegendLevel = useSyncExternalStore(
+    coordinator ? coordinator.subscribe : (): () => void => (): void => {
+      // No coordinator exists, so there is nothing to unsubscribe.
+    },
+    () => coordinator?.getHoveredLegendLevel() ?? null,
+    () => null,
+  );
+  const tooltipCount = useSyncExternalStore(
+    coordinator ? coordinator.subscribe : (): () => void => (): void => {
+      // No coordinator exists, so there is nothing to unsubscribe.
+    },
+    () => coordinator?.getTooltipData()?.count ?? null,
+    () => null,
+  );
+
+  const highlightedLevel = hoveredLegendLevel ?? (tooltipCount === null ? null : getHeatmapContributionLevel(tooltipCount));
+  const inactiveEnabled = isHeatmapHoverEffectEnabled(highlight.hoverParams);
+  const isDimming = highlight.isInteractive && highlightedLevel !== null && inactiveEnabled;
+  return { highlightedLevel, isDimming };
+};
+
+interface LegendChromeArgs {
+  readonly fontSize: number | undefined;
+  readonly align: "start" | "center" | "end";
+  readonly labelClassName: string | undefined;
+}
+
+interface LegendChrome {
+  rootStyle: CSSProperties;
+  labelClass: string;
+}
+
+// Root style + label class; hoisted so HeatmapLegend stays short.
+const resolveLegendChrome = (chrome: Readonly<LegendChromeArgs>): LegendChrome => {
+  const rootStyle: CSSProperties = { justifyContent: resolveLegendJustifyContent(chrome.align) };
+  if (chrome.fontSize !== undefined) {
+    rootStyle.fontSize = chrome.fontSize;
+  }
+  const labelClass = chrome.labelClassName !== undefined && chrome.labelClassName !== "" ? `ts-bkm-heatmap-legend-label ${chrome.labelClassName}` : "ts-bkm-heatmap-legend-label";
+  return { labelClass, rootStyle };
+};
+
+interface LegendContentArgs {
+  readonly variant: HeatmapLegendVariant;
+  readonly levelStyles: HeatmapLevelStyles;
+  readonly cellSize: number;
+  readonly gap: number;
+  readonly cornerRadius: number;
+  readonly gradientSpan: number;
+  readonly highlightedLevel: number | null;
+  readonly isDimming: boolean;
+  readonly inactiveOpacity: number;
+  readonly inactiveScale: number;
+  readonly activeScale: number;
+  readonly isInteractive: boolean;
+  readonly hoverParams: Readonly<HeatmapHoverStyleParams>;
+  readonly onEnter: (level: number) => void;
+  readonly onLeave: () => void;
+}
+
+// Gradient-vs-swatches branch; plain function (not a component) so the element tree is unchanged.
+const renderLegendContent = (content: Readonly<LegendContentArgs>): ReactElement => {
+  const { onEnter: handleEnter, onLeave: handleLeave } = content;
+  if (content.variant === "gradient") {
+    return (
+      <HeatmapLegendGradient
+        levels={HEATMAP_LEGEND_LEVELS}
+        levelStyles={content.levelStyles}
+        cellSize={content.cellSize}
+        gap={content.gap}
+        cornerRadius={content.cornerRadius}
+        gradientSpan={content.gradientSpan}
+        highlightedLevel={content.highlightedLevel}
+        isDimming={content.isDimming}
+        inactiveOpacity={content.inactiveOpacity}
+        inactiveScale={content.inactiveScale}
+        activeScale={content.activeScale}
+        isInteractive={content.isInteractive}
+        onEnter={handleEnter}
+        onLeave={handleLeave}
+      />
+    );
+  }
+  return (
+    <div className="ts-bkm-heatmap-legend-swatches" style={{ gap: content.gap }}>
+      {HEATMAP_LEGEND_LEVELS.map((level) => renderLegendSwatch({
+        cellSize: content.cellSize,
+        cornerRadius: content.cornerRadius,
+        highlightedLevel: content.highlightedLevel,
+        hoverParams: content.hoverParams,
+        isDimming: content.isDimming,
+        isInteractive: content.isInteractive,
+        level,
+        levelStyles: content.levelStyles,
+        onEnter: handleEnter,
+        onLeave: handleLeave,
+      }))}
+    </div>
+  );
+};
+
+interface LegendHandlers {
+  onEnter: (level: number) => void;
+  onLeave: () => void;
+}
+
+interface LegendHandlersArgs {
+  readonly coordinator: Readonly<HeatmapHoverCoordinator> | null;
+  readonly isInteractive: boolean;
+}
+
+// Legend pointer handlers; hoisted so the legend model stays short.
+const buildLegendHandlers = (handlerArgs: Readonly<LegendHandlersArgs>): LegendHandlers => {
+  const handleLegendEnter = (level: number): void => {
+    if (!handlerArgs.isInteractive || !handlerArgs.coordinator) {return;}
+    handlerArgs.coordinator.setHoveredLegendLevel(level);
+    handlerArgs.coordinator.setHoveredCell(null);
+    handlerArgs.coordinator.setTooltipData(null);
+  };
+  const handleLegendLeave = (): void => {
+    if (!handlerArgs.isInteractive || !handlerArgs.coordinator) {return;}
+    handlerArgs.coordinator.setHoveredLegendLevel(null);
+  };
+  return { onEnter: handleLegendEnter, onLeave: handleLegendLeave };
+};
+
+interface LegendModelArgs {
+  readonly interactive: boolean | undefined;
+  readonly levelStylesProp: HeatmapLevelStyles | undefined;
+  readonly colorScale: (count: number | null | undefined) => string;
+  readonly activeScale: number;
+  readonly inactiveOpacity: number;
+  readonly inactiveScale: number;
+}
+
+interface LegendModel {
+  readonly isInteractive: boolean;
+  readonly levelStyles: HeatmapLevelStyles;
+  readonly hoverParams: HeatmapHoverStyleParams;
+  readonly highlightedLevel: number | null;
+  readonly isDimming: boolean;
+  readonly onEnter: (level: number) => void;
+  readonly onLeave: () => void;
+}
+
+// Derived legend state; one hook so HeatmapLegend stays short.
+const useLegendModel = (model: Readonly<LegendModelArgs>): LegendModel => {
+  const coordinator = useHeatmapCoordinatorOptional();
+  const isInteractive = model.interactive ?? Boolean(coordinator);
+  const levelStyles = resolveLegendLevelStyles(model.levelStylesProp, model.colorScale);
+  const hoverParams: HeatmapHoverStyleParams = { activeScale: model.activeScale, inactiveOpacity: model.inactiveOpacity, inactiveScale: model.inactiveScale };
+  const { highlightedLevel, isDimming } = useLegendHighlight({ coordinator, hoverParams, isInteractive });
+  const { onEnter, onLeave } = buildLegendHandlers({ coordinator, isInteractive });
+  return { highlightedLevel, hoverParams, isDimming, isInteractive, levelStyles, onEnter, onLeave };
+};
+
+const HeatmapLegend = ({
   lessLabel = "Less",
   moreLabel = "More",
   cellSize = 11,
@@ -128,178 +248,47 @@ export function HeatmapLegend({
   activeScale = 1,
   interactive,
   className,
-}: HeatmapLegendProps) {
-  const coordinator = useHeatmapCoordinatorOptional();
-  const isInteractive = interactive ?? coordinator != null;
-  const levelStyles: HeatmapLevelStyles =
-    levelStylesProp ?? [
-      { color: colorScale(0), fillMode: "solid", pattern: "none" },
-      { color: colorScale(1), fillMode: "solid", pattern: "none" },
-      { color: colorScale(2), fillMode: "solid", pattern: "none" },
-      { color: colorScale(3), fillMode: "solid", pattern: "none" },
-      { color: colorScale(4), fillMode: "solid", pattern: "none" },
-    ];
-
-  const hoveredLegendLevel = useSyncExternalStore(
-    coordinator ? coordinator.subscribe : () => () => {},
-    () => coordinator?.getHoveredLegendLevel() ?? null,
-    () => null,
-  );
-  const tooltipCount = useSyncExternalStore(
-    coordinator ? coordinator.subscribe : () => () => {},
-    () => coordinator?.getTooltipData()?.count ?? null,
-    () => null,
-  );
-
-  const highlightedLevel = hoveredLegendLevel ?? (tooltipCount != null ? getHeatmapContributionLevel(tooltipCount) : null);
-  const hoverParams: HeatmapHoverStyleParams = { inactiveOpacity, inactiveScale, activeScale };
-  const inactiveEnabled = isHeatmapHoverEffectEnabled(hoverParams);
-  const isDimming = isInteractive && highlightedLevel !== null && inactiveEnabled;
-
-  const handleLegendEnter = (level: number) => {
-    if (!isInteractive || !coordinator) return;
-    coordinator.setHoveredLegendLevel(level);
-    coordinator.setHoveredCell(null);
-    coordinator.setTooltipData(null);
-  };
-  const handleLegendLeave = () => {
-    if (!isInteractive || !coordinator) return;
-    coordinator.setHoveredLegendLevel(null);
-  };
-
-  const justifyContent = align === "start" ? "flex-start" : align === "center" ? "center" : "flex-end";
-  const rootStyle: CSSProperties = { justifyContent, ...(fontSize == null ? null : { fontSize }) };
-  const labelClass = labelClassName ? `ts-bkm-heatmap-legend-label ${labelClassName}` : "ts-bkm-heatmap-legend-label";
+}: Readonly<HeatmapLegendProps>): ReactElement => {
+  const model = useLegendModel({ activeScale, colorScale, inactiveOpacity, inactiveScale, interactive, levelStylesProp });
+  const { labelClass, rootStyle } = resolveLegendChrome({ align, fontSize, labelClassName });
 
   return (
-    <div className={className ? `ts-bkm-heatmap-legend ${className}` : "ts-bkm-heatmap-legend"} style={rootStyle}>
+    <div className={className !== undefined && className !== "" ? `ts-bkm-heatmap-legend ${className}` : "ts-bkm-heatmap-legend"} style={rootStyle}>
       <span className={labelClass}>{lessLabel}</span>
-      {variant === "gradient" ? (
-        <HeatmapLegendGradient
-          levels={HEATMAP_LEGEND_LEVELS}
-          levelStyles={levelStyles}
-          cellSize={cellSize}
-          gap={gap}
-          cornerRadius={cornerRadius}
-          gradientSpan={gradientSpan}
-          highlightedLevel={highlightedLevel}
-          isDimming={isDimming}
-          inactiveOpacity={inactiveOpacity}
-          inactiveScale={inactiveScale}
-          activeScale={activeScale}
-          isInteractive={isInteractive}
-          onEnter={handleLegendEnter}
-          onLeave={handleLegendLeave}
-        />
-      ) : (
-        <div className="ts-bkm-heatmap-legend-swatches" style={{ gap }}>
-          {HEATMAP_LEGEND_LEVELS.map((level) => {
-            const isHighlighted = highlightedLevel === level;
-            const isDimmed = isDimming && !isHighlighted;
-            const hoverStyle = resolveHeatmapHoverStyle(isHighlighted, isDimmed, hoverParams);
-            const style = levelStyles[level] ?? levelStyles[0];
-            return (
-              <span
-                key={level}
-                aria-hidden="true"
-                className="ts-bkm-heatmap-legend-swatch-wrap"
-                onPointerEnter={() => handleLegendEnter(level)}
-                onPointerLeave={handleLegendLeave}
-                style={{
-                  opacity: hoverStyle.opacity,
-                  transform: `scale(${hoverStyle.scale})`,
-                  transition: `opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}, transform ${HEATMAP_INACTIVE_TRANSITION_CSS}`,
-                  cursor: isInteractive ? "pointer" : undefined,
-                }}
-              >
-                <HeatmapLegendSwatch level={level} style={style} cellSize={cellSize} cornerRadius={cornerRadius} />
-              </span>
-            );
-          })}
-        </div>
-      )}
+      {renderLegendContent({
+        activeScale,
+        cellSize,
+        cornerRadius,
+        gap,
+        gradientSpan,
+        highlightedLevel: model.highlightedLevel,
+        hoverParams: model.hoverParams,
+        inactiveOpacity,
+        inactiveScale,
+        isDimming: model.isDimming,
+        isInteractive: model.isInteractive,
+        levelStyles: model.levelStyles,
+        onEnter: model.onEnter,
+        onLeave: model.onLeave,
+        variant,
+      })}
       <span className={labelClass}>{moreLabel}</span>
     </div>
   );
 }
 
-export interface HeatmapLegendGradientProps {
-  levels: readonly number[];
-  levelStyles: HeatmapLevelStyles;
-  cellSize: number;
-  gap: number;
-  cornerRadius: number;
-  gradientSpan: number;
-  highlightedLevel: number | null;
-  isDimming: boolean;
-  inactiveOpacity: number;
-  inactiveScale: number;
-  activeScale: number;
-  isInteractive: boolean;
-  onEnter: (level: number) => void;
-  onLeave: () => void;
-}
+export type {
+  HeatmapLegendVariant,
+  HeatmapLegendProps,
+};
+export type { HeatmapLegendGradientProps } from "./heatmap-legend-gradient";
+export type { HeatmapLegendSwatchProps } from "./heatmap-legend-swatch";
+export {
+  HEATMAP_LEGEND_LEVELS,
+  HeatmapLegend,
+};
+export { HeatmapLegendGradient } from "./heatmap-legend-gradient";
+export { HeatmapLegendSwatch } from "./heatmap-legend-swatch";
 
-export function HeatmapLegendGradient({
-  levels,
-  levelStyles,
-  cellSize,
-  gap,
-  cornerRadius,
-  gradientSpan,
-  highlightedLevel,
-  isDimming,
-  inactiveOpacity,
-  inactiveScale,
-  activeScale,
-  isInteractive,
-  onEnter,
-  onLeave,
-}: HeatmapLegendGradientProps) {
-  const barWidth = gradientSpan * cellSize + (gradientSpan - 1) * gap;
-  const barHeight = cellSize;
-  const pillRadius = Math.min(cornerRadius, barHeight / 2);
-  const segmentWidth = barWidth / levels.length;
-  const gradient = buildHeatmapLegendGradient(levelStyles);
-  const barOpacity = isDimming && highlightedLevel === null ? inactiveOpacity : 1;
-
-  return (
-    <div className="ts-bkm-heatmap-legend-gradient" style={{ width: barWidth, height: barHeight }}>
-      <div
-        aria-hidden="true"
-        className="ts-bkm-heatmap-legend-gradient-bar"
-        style={{
-          borderRadius: pillRadius,
-          background: gradient,
-          opacity: barOpacity,
-          transition: `opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}`,
-        }}
-      />
-      {levels.map((level, index) => {
-        const isHighlighted = highlightedLevel === level;
-        const isDimmed = isDimming && !isHighlighted;
-        const hoverStyle = resolveHeatmapHoverStyle(isHighlighted, isDimmed, { inactiveOpacity, inactiveScale, activeScale });
-        return (
-          <span
-            key={level}
-            className="ts-bkm-heatmap-legend-gradient-segment"
-            onPointerEnter={() => onEnter(level)}
-            onPointerLeave={onLeave}
-            style={{
-              left: index * segmentWidth,
-              width: segmentWidth,
-              height: barHeight,
-              cursor: isInteractive ? "pointer" : undefined,
-              opacity: hoverStyle.opacity,
-              transform: `scale(${hoverStyle.scale})`,
-              transition: `opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}, transform ${HEATMAP_INACTIVE_TRANSITION_CSS}`,
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-// Legacy parity: bklit `heatmap-legend.tsx` ships `export default HeatmapLegend;` (T-E2).
+// Default export kept for parity with the legacy chart.
 export default HeatmapLegend;

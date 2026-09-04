@@ -1,19 +1,28 @@
-// bklit easing cubic-bezier(0.85, 0, 0.15, 1) as a JS easing fn for
-// TanStack's scene animation (cubic bezier solved for progress; standard
-// Newton-iteration implementation).
-export function bezierEasing(p: number): number {
-  const x1 = 0.85, y1 = 0, x2 = 0.15, y2 = 1;
-  if (p <= 0) return 0;
-  if (p >= 1) return 1;
-  const bx = (t: number) => 3 * t * (1 - t) * (1 - t) * x1 + 3 * t * t * (1 - t) * x2 + t * t * t;
-  const by = (t: number) => 3 * t * (1 - t) * (1 - t) * y1 + 3 * t * t * (1 - t) * y2 + t * t * t;
-  let t = p;
-  for (let i = 0; i < 6; i++) {
-    const err = bx(t) - p;
-    if (Math.abs(err) < 1e-5) break;
-    const dx = 3 * (1 - t) * (1 - t) * x1 + 6 * t * (1 - t) * (x2 - x1) + 3 * t * t * (1 - x2);
-    if (dx === 0) break;
-    t -= err / dx;
+// Bklit cubic-bezier(0.85, 0, 0.15, 1) as a JS easing fn (Newton iteration).
+const CUBIC_BEZIER_DEGREE = 3;
+const CUBIC_BEZIER_DERIVATIVE_MIDDLE_COEFFICIENT = 6;
+const NEWTON_MAX_ITERATIONS = 6;
+const NEWTON_CONVERGENCE_TOLERANCE = 1e-5;
+const BEZIER_X1 = 0.85;
+const BEZIER_X2 = 0.15;
+const BEZIER_Y1 = 0;
+const BEZIER_Y2 = 1;
+const cubicBezierX = (bezierT: number, x1: number, x2: number): number => CUBIC_BEZIER_DEGREE * bezierT * (1 - bezierT) * (1 - bezierT) * x1 + CUBIC_BEZIER_DEGREE * bezierT * bezierT * (1 - bezierT) * x2 + bezierT * bezierT * bezierT;
+const cubicBezierY = (bezierT: number, y1: number, y2: number): number => CUBIC_BEZIER_DEGREE * bezierT * (1 - bezierT) * (1 - bezierT) * y1 + CUBIC_BEZIER_DEGREE * bezierT * bezierT * (1 - bezierT) * y2 + bezierT * bezierT * bezierT;
+const bezierDerivativeX = (solvedT: number, x1: number, x2: number): number => CUBIC_BEZIER_DEGREE * (1 - solvedT) * (1 - solvedT) * x1 + CUBIC_BEZIER_DERIVATIVE_MIDDLE_COEFFICIENT * solvedT * (1 - solvedT) * (x2 - x1) + CUBIC_BEZIER_DEGREE * solvedT * solvedT * (1 - x2);
+const solveBezierT = (progress: number, x1: number, x2: number): number => {
+  let solvedT = progress;
+  for (let i = 0; i < NEWTON_MAX_ITERATIONS; i += 1) {
+    const err = cubicBezierX(solvedT, x1, x2) - progress;
+    const dx = bezierDerivativeX(solvedT, x1, x2);
+    if (Math.abs(err) < NEWTON_CONVERGENCE_TOLERANCE || dx === 0) {break;}
+    solvedT -= err / dx;
   }
-  return by(t);
+  return solvedT;
+}
+export const bezierEasing = (progress: number): number => {
+  if (progress <= 0) {return 0;}
+  if (progress >= 1) {return 1;}
+  const solvedT = solveBezierT(progress, BEZIER_X1, BEZIER_X2);
+  return cubicBezierY(solvedT, BEZIER_Y1, BEZIER_Y2);
 }

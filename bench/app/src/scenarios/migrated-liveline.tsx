@@ -1,10 +1,4 @@
-// Migrated LiveLineChart scenario — IDENTICAL usage to bklit-liveline.tsx
-// (same component tree, same props, same freeze protocol / `?scenario=live`
-// branch / `window.__benchLiveTick`/`__benchUpdate`/`__benchSettled` hooks),
-// only the import source changes. This is the point: the migrated package
-// must be a drop-in replacement. See bklit-liveline.tsx's own header for the
-// full rationale behind the freeze protocol / real-cadence tick choice —
-// not re-derived here, this file's contract is to match it exactly.
+// Drop-in twin of bklit-liveline.tsx (tree/props/freeze protocol); only the import source changes.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChartTooltip,
@@ -27,10 +21,7 @@ import type { Scenario } from "../bench/query";
 const TICK_INTERVAL_MS = 600;
 const FREEZE_TICK_COUNT = 10;
 const LERP_CONVERGENCE_WAIT_MS = 2000;
-// Freeze mode's real duration is ~= FREEZE_TICK_COUNT*TICK_INTERVAL_MS +
-// LERP_CONVERGENCE_WAIT_MS (~8s at K=10/600ms/2000ms); this fallback is sized
-// with generous headroom over that so it never fires under normal operation
-// (same "safety net only" contract as every other settle arm's fallback).
+// Fallback sized with headroom over the ~8s freeze duration; safety net only.
 const SETTLE_FALLBACK_MS = 15000;
 
 function formatUsd(v: number): string {
@@ -92,8 +83,6 @@ export default function MigratedLiveLine({
     let cancelled = false;
 
     if (scenario === "live") {
-      // No freeze ticks: just wait out the initial reveal's y-lerp, resolve,
-      // then leave the chart's own rAF loop running untouched (never pause).
       (async () => {
         await new Promise((r) => setTimeout(r, LERP_CONVERGENCE_WAIT_MS));
         if (cancelled) return;
@@ -106,8 +95,6 @@ export default function MigratedLiveLine({
       };
     }
 
-    // Freeze protocol (D22 ruling 2): push K seeded ticks at the real 600ms
-    // cadence, wait out the y-lerp, pause, wait a couple rAFs, resolve.
     let count = 0;
     const id = setInterval(() => {
       count += 1;

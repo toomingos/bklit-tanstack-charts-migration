@@ -1,17 +1,12 @@
-// Types originally from repos/bklit-ui/packages/ui/src/charts/sunburst.ts
-// and repos/bklit-ui/packages/ui/src/charts/sunburst-data.ts.
-// Copied here so migrated/charts has zero imports from repos/.
-
-export interface SunburstNode {
+interface SunburstNode {
   name: string;
   value?: number;
   color?: string;
-  /** Optional fill override for patterns/gradients (e.g., "url(#patternId)") */
   fill?: string;
   children?: SunburstNode[];
 }
 
-export interface ArcDatum {
+interface ArcDatum {
   id: string;
   name: string;
   depth: number;
@@ -22,15 +17,12 @@ export interface ArcDatum {
   parentId: string | null;
   a0: number;
   a1: number;
-  /** Stable index for Studio layer wiring. */
   arcIndex: number;
-  /** Optional color override from data node. */
   color?: string;
-  /** Optional fill override from data node (patterns). */
   fill?: string;
 }
 
-export interface Focus {
+interface Focus {
   id: string;
   name: string;
   depth: number;
@@ -40,9 +32,11 @@ export interface Focus {
   a1: number;
 }
 
-export interface ArcGeometry {
+interface ArcGeometry {
   a0: number;
   a1: number;
   innerR: number;
   outerR: number;
 }
+
+export type { SunburstNode, ArcDatum, Focus, ArcGeometry };

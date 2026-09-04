@@ -1,6 +1,4 @@
-// Native TanStack Charts equivalent of bklit's scatter-chart.tsx demo (two
-// point-cloud series, `sessions` and `conversions`, both against the same
-// date x-axis -- matches the canonical bklit demo's two `<Scatter>` dataKeys).
+// Ceiling reference: two point-cloud series against the same date x-axis.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";

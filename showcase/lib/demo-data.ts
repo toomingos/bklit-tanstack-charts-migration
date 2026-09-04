@@ -581,7 +581,9 @@ export function generateChoroplethValues(
 
 export interface CountryProperties {
   name: string;
-  [key: string]: unknown;
+  // TopoJSON country properties are plain JSON scalars; the charts consume them through
+  // ChoroplethFeatureProperties, whose index signature is narrowed to the same union.
+  [key: string]: string | number | boolean | null | undefined;
 }
 
 // --- TopoJSON -> GeoJSON conversion (matches bench choropleth-world-data.ts)

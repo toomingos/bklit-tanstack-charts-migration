@@ -1,6 +1,4 @@
-// Migrated ProfitLoss scenario — IDENTICAL usage to bklit-profitloss.tsx
-// (same component tree, same props, same pnl derivation), only the import
-// source changes. `window.__qaSetLegendHover` drives the legend-hover dim.
+// Drop-in twin of bklit-profitloss.tsx; only the import source changes.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveLinear } from "@visx/curve";
 import {

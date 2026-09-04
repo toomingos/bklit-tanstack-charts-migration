@@ -1,11 +1,4 @@
-// Migrated SankeyChart bench scenario.
-// Identical to bklit-sankey.tsx but imports from @migrated/charts instead of
-// @bklitui/ui/charts.
-//
-// See bklit-sankey.tsx for the full settle-detection doc block — the same
-// settle arithmetic applies here (WAAPI-staggered reveal equivalent to bklit's
-// framer-motion stagger). Imports `sankeySettleMs`, `sankeyDataForN`, and
-// update-generation functions from bench/data and bench infrastructure.
+// Twin of bklit-sankey.tsx; only the import source changes (same settle arithmetic).
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   SankeyChart,
@@ -22,10 +15,7 @@ import {
 import { armBklitTimerSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 
-// ─── Settle detection (M1b) ────────────────────────────────────────────────
-// Same formulas as bklit-sankey.tsx — the migrated component uses identical
-// stagger delays and reveal duration (1100ms cubic-bezier).
-
+// GUARD: same formulas as bklit-sankey.tsx (identical stagger delays and 1100ms reveal).
 const SANKEY_ANIMATION_DURATION_MS = 1100;
 const SANKEY_ENTER_TRANSITION_DURATION_MS = 1100;
 const SANKEY_SETTLE_MARGIN_MS = 150;

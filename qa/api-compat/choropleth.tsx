@@ -1,13 +1,5 @@
-// Q2 API-compatibility fixture: exercises the full public prop surface of
-// the migrated ChoroplethChart family against
-// repos/bklit-ui/packages/ui/src/charts/choropleth/*. Must typecheck with
-// zero errors via `tsc --noEmit` (included from bench/app/tsconfig.json).
-// Runtime smoke is covered by the bench scenarios (bklit-choropleth.tsx /
-// migrated-choropleth.tsx).
-//
-// Uses a minimal inline FeatureCollection (3 simple polygon features) to
-// avoid pulling in the heavy world-atlas TopoJSON dependency. The projections
-// (Mercator, center=[0,20]) will still produce valid visual output.
+// Q2 API fixture: exercises migrated ChoroplethChart family public props; must typecheck (tsc --noEmit).
+// Inline 3-polygon FeatureCollection avoids the world-atlas TopoJSON dependency.
 import * as React from "react";
 import {
   ChoroplethChart,
@@ -26,11 +18,6 @@ import {
 } from "@migrated/charts";
 import type { FeatureCollection, Feature, Geometry, Polygon } from "geojson";
 
-// ---------------------------------------------------------------------------
-// Minimal inline GeoJSON — three simple rectangular polygons in rough world
-// space (lon ∈ [-180, 180], lat ∈ [-90, 90]), enough to exercise the full
-// choropleth API without an external TopoJSON dependency.
-// ---------------------------------------------------------------------------
 const POLYGON_A: Polygon = {
   type: "Polygon",
   coordinates: [[[-80, 30], [-40, 30], [-40, 55], [-80, 55], [-80, 30]]],
@@ -70,9 +57,6 @@ const SAMPLE_DATA_LARGE: FeatureCollection<Geometry, { name: string }> = {
   features: [],
 };
 
-// ---------------------------------------------------------------------------
-// Feature color / tooltip value callbacks
-// ---------------------------------------------------------------------------
 function featureColor(feature: ChoroplethFeature, _index: number): string {
   const name = feature.properties?.name ?? "";
   if (name === "Region A") return "#8B5CF6";
@@ -88,9 +72,6 @@ function featureValue(feature: ChoroplethFeature, _index: number): number | unde
   return undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Consumer hook usage (exercises context hooks)
-// ---------------------------------------------------------------------------
 function useChoroplethConsumer(): { width: number; height: number } {
   const { width, height } = useChoropleth();
   return { width, height };
@@ -107,19 +88,14 @@ function ContextHookWrapper() {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Main fixture
-// ---------------------------------------------------------------------------
 export function ChoroplethChartApiFixture() {
   return (
     <>
-      {/* Canonical zoom-enabled path (matching bench scenario). */}
       <ChoroplethChart data={SAMPLE_DATA} zoomEnabled>
         <ChoroplethFeatureComponent getFeatureColor={featureColor} />
         <ChoroplethTooltip getFeatureValue={featureValue} valueLabel="Population" />
       </ChoroplethChart>
 
-      {/* All optional props populated. */}
       <ChoroplethChart
         data={SAMPLE_DATA}
         margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
@@ -158,13 +134,11 @@ export function ChoroplethChartApiFixture() {
         <div className="fixture-overlay">Legend content</div>
       </ChoroplethChart>
 
-      {/* Zoom disabled (static map). */}
       <ChoroplethChart data={SAMPLE_DATA} zoomEnabled={false}>
         <ChoroplethFeatureComponent fill="var(--chart-2)" stroke="var(--background)" />
         <ChoroplethTooltip />
       </ChoroplethChart>
 
-      {/* Min/max zoom constraints, custom aspect ratio, wide margin. */}
       <ChoroplethChart
         data={SAMPLE_DATA}
         aspectRatio="4 / 3"
@@ -176,7 +150,6 @@ export function ChoroplethChartApiFixture() {
         <ChoroplethFeatureComponent strokeWidth={0} getFeatureColor={featureColor} />
       </ChoroplethChart>
 
-      {/* Exhaustive prop typecheck (string-aspect, large margin, no children yet). */}
       <ChoroplethChart
         data={SAMPLE_DATA}
         aspectRatio="3/2"
@@ -210,15 +183,10 @@ export function ChoroplethChartApiFixture() {
         <ContextHookWrapper />
       </ChoroplethChart>
 
-      {/* Exhaustive `ChoroplethChartProps` reference (typecheck-only — kept
-          last to verify every documented prop at once). */}
       {((): ChoroplethChartProps => ({
         data: SAMPLE_DATA,
         margin: { top: 0, right: 0, bottom: 0, left: 0 },
         animationDuration: 800,
-        // P5.5 CP1 gave this prop a real type (`EnterTransition`) instead of
-        // `unknown`; the literal was always correctly shaped, so only the
-        // now-wrong `as unknown` cast had to go.
         enterTransition: { type: "tween", duration: 1.1, ease: [0.85, 0, 0.15, 1] },
         revealSignature: "v1",
         aspectRatio: "16 / 9",

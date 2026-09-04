@@ -1,12 +1,5 @@
-// Q2 API-compatibility fixture (research/05): exercises every public prop
-// the migrated LiveLineChart supports at pilot scope (docs/LOG.md D22 — a
-// NEW top-level component, not a LineChart variant; canonical demo path is
-// repos/bklit-ui/apps/web/components/docs/live-line-chart-demo.tsx, see
-// bench/app/src/scenarios/bklit-liveline.tsx's header for why the registry
-// example itself is not the basis). Must typecheck with zero errors via
-// `tsc --noEmit` (included from bench/app/tsconfig.json). Runtime smoke is
-// covered by the bench scenarios (console-errors column in
-// docs/BENCHMARKS.md must be 0).
+// Q2 API fixture: exercises migrated LiveLineChart (new top-level component, not a LineChart variant);
+// canonical path is live-line-chart-demo.tsx. Must typecheck (tsc --noEmit).
 import * as React from "react";
 import { curveLinear } from "d3-shape";
 import {
@@ -37,7 +30,6 @@ const momentumColors: MomentumColors = {
 export function LiveLineChartApiFixture() {
   return (
     <>
-      {/* Canonical demo path (live-line-chart-demo.tsx parity). */}
       <LiveLineChart data={data} value={102} window={30}>
         <LiveLine
           dataKey="value"
@@ -55,7 +47,6 @@ export function LiveLineChartApiFixture() {
         <LiveYAxis formatValue={formatUsd} position="left" />
       </LiveLineChart>
 
-      {/* Full pilot prop surface. */}
       <LiveLineChart
         data={data}
         value={102}
@@ -92,9 +83,7 @@ export function LiveLineChartApiFixture() {
         />
       </LiveLineChart>
 
-      {/* A second series — momentumColors unset (dot still recolors by
-          momentum via the default triple; stroke does not), fill/pulse/badge
-          all disabled. */}
+      {/* momentumColors unset: dot still recolors by momentum, stroke does not; fill/pulse/badge off. */}
       <LiveLineChart data={data} value={102} window={30}>
         <LiveLine dataKey="value" fill={false} pulse={false} badge={false} />
       </LiveLineChart>

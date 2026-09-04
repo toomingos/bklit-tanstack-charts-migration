@@ -1,93 +1,142 @@
-/**
- * Largest-Triangle-Three-Buckets downsampling for time-series SVG paths.
- * Keeps first/last points and picks visually significant points per bucket.
- *
- * Originally from repos/bklit-ui/packages/ui/src/charts/decimate-time-series.ts.
- */
-export function decimateTimeSeries<T extends Record<string, unknown>>(
-  data: T[],
-  maxPoints: number,
-  valueKeys: string[] = []
-): T[] {
-  const len = data.length;
-  if (maxPoints >= len || maxPoints < 3) {
-    return data;
+// Largest-Triangle-Three-Buckets downsampling; keeps first/last, picks per-bucket maxima.
+// Minimum point budget below which decimation is a no-op (first + last + >=1 pick).
+const LTTB_MIN_POINTS = 3;
+// Lookahead offset for the next-bucket average window (range ends at i + 2, average window at i + 3).
+const LTTB_NEXT_BUCKET_END_OFFSET = 3;
+// Triangle-area scale factor (half the parallelogram area).
+const TRIANGLE_AREA_HALF = 0.5;
+
+// Typeof checks live only in the predicate below; call sites use the guard.
+const isNumber = (value: unknown): value is number => typeof value === "number";
+
+type BucketValueAt = (index: number) => number;
+
+interface NextBucketAverage {
+  readonly avgX: number;
+  readonly avgY: number;
+}
+
+interface NextBucketAverageParams {
+  readonly start: number;
+  readonly end: number;
+  readonly fallbackX: number;
+  readonly fallbackY: number;
+  readonly valueAt: BucketValueAt;
+}
+
+const averageNextBucket = (params: Readonly<NextBucketAverageParams>): NextBucketAverage => {
+  const nextCount = Math.max(0, params.end - params.start);
+  if (nextCount <= 0) {
+    return { avgX: params.fallbackX, avgY: params.fallbackY };
   }
+  let avgX = 0;
+  let avgY = 0;
+  for (let j = params.start; j < params.end; j += 1) {
+    avgX += j;
+    avgY += params.valueAt(j);
+  }
+  return { avgX: avgX / nextCount, avgY: avgY / nextCount };
+};
 
-  const getY = (point: T, index: number): number => {
-    if (valueKeys.length === 0) {
-      for (const val of Object.values(point)) {
-        if (typeof val === "number") {
-          return val;
-        }
-      }
-      return index;
+interface BucketMaxParams {
+  readonly rangeStart: number;
+  readonly rangeEnd: number;
+  readonly ax: number;
+  readonly ay: number;
+  readonly avgX: number;
+  readonly avgY: number;
+  readonly valueAt: BucketValueAt;
+}
+
+const pickBucketMaxIndex = (params: Readonly<BucketMaxParams>): number => {
+  let maxArea = -1;
+  let maxIndex = params.rangeStart;
+  for (let j = params.rangeStart; j < params.rangeEnd; j += 1) {
+    const area = Math.abs(
+      (params.ax - params.avgX) * (params.valueAt(j) - params.ay) - (params.ax - j) * (params.avgY - params.ay),
+    ) * TRIANGLE_AREA_HALF;
+    if (area > maxArea) {
+      maxArea = area;
+      maxIndex = j;
     }
+  }
+  return maxIndex;
+};
 
+interface BucketPickParams {
+  readonly bucketSize: number;
+  readonly bucketIndex: number;
+  readonly len: number;
+  readonly previousIndex: number;
+  readonly valueAt: BucketValueAt;
+}
+
+const selectBucketPick = (params: Readonly<BucketPickParams>): number => {
+  const rangeStart = Math.floor((params.bucketIndex + 1) * params.bucketSize) + 1;
+  const rangeEnd = Math.min(Math.floor((params.bucketIndex + 2) * params.bucketSize) + 1, params.len - 1);
+  const nextRangeStart = Math.floor((params.bucketIndex + 2) * params.bucketSize) + 1;
+  const nextRangeEnd = Math.min(Math.floor((params.bucketIndex + LTTB_NEXT_BUCKET_END_OFFSET) * params.bucketSize) + 1, params.len);
+  const avg = averageNextBucket({ end: nextRangeEnd, fallbackX: params.len - 1, fallbackY: params.valueAt(params.len - 1), start: nextRangeStart, valueAt: params.valueAt });
+  const ay = params.valueAt(params.previousIndex);
+  return pickBucketMaxIndex({ avgX: avg.avgX, avgY: avg.avgY, ax: params.previousIndex, ay, rangeEnd, rangeStart, valueAt: params.valueAt });
+};
+
+interface BucketSampleParams<Row> {
+  readonly data: readonly Row[];
+  readonly maxPoints: number;
+  readonly valueAt: BucketValueAt;
+}
+
+const sampleLttbBuckets = <Row>(params: Readonly<BucketSampleParams<Row>>): Row[] => {
+  const bucketSize = (params.data.length - 2) / (params.maxPoints - 2);
+  const sampled: Row[] = [params.data[0]];
+  let previousIndex = 0;
+  for (let i = 0; i < params.maxPoints - 2; i += 1) {
+    const maxIndex = selectBucketPick({ bucketIndex: i, bucketSize, len: params.data.length, previousIndex, valueAt: params.valueAt });
+    sampled.push(params.data[maxIndex]);
+    previousIndex = maxIndex;
+  }
+  sampled.push(params.data[params.data.length - 1]);
+  return sampled;
+};
+
+const decimateTimeSeries = <Row extends Partial<Record<string, unknown>>>(data: readonly Row[], maxPoints: number, valueKeys: readonly string[] = []): readonly Row[] => {
+  const averagedKeyValue = (point: Row, index: number): number => {
     let sum = 0;
     let count = 0;
     for (const key of valueKeys) {
       const val = point[key];
-      if (typeof val === "number") {
+      if (isNumber(val)) {
         sum += val;
-        count++;
+        count += 1;
       }
     }
     return count > 0 ? sum / count : index;
   };
-
-  const sampled: T[] = [data[0] as T];
-  const bucketSize = (len - 2) / (maxPoints - 2);
-  let previousIndex = 0;
-
-  for (let i = 0; i < maxPoints - 2; i++) {
-    const rangeStart = Math.floor((i + 1) * bucketSize) + 1;
-    const rangeEnd = Math.min(Math.floor((i + 2) * bucketSize) + 1, len - 1);
-
-    const nextRangeStart = Math.floor((i + 2) * bucketSize) + 1;
-    const nextRangeEnd = Math.min(Math.floor((i + 3) * bucketSize) + 1, len);
-    const nextCount = Math.max(0, nextRangeEnd - nextRangeStart);
-
-    let avgX = len - 1;
-    let avgY = getY(data[len - 1] as T, len - 1);
-    if (nextCount > 0) {
-      avgX = 0;
-      avgY = 0;
-      for (let j = nextRangeStart; j < nextRangeEnd; j++) {
-        avgX += j;
-        avgY += getY(data[j] as T, j);
-      }
-      avgX /= nextCount;
-      avgY /= nextCount;
+  const rowYValue = (point: Row, index: number): number => {
+    if (valueKeys.length > 0) {
+      return averagedKeyValue(point, index);
     }
-
-    const pointA = data[previousIndex] as T;
-    const ax = previousIndex;
-    const ay = getY(pointA, previousIndex);
-
-    let maxArea = -1;
-    let maxIndex = rangeStart;
-
-    for (let j = rangeStart; j < rangeEnd; j++) {
-      const area =
-        Math.abs(
-          (ax - avgX) * (getY(data[j] as T, j) - ay) - (ax - j) * (avgY - ay)
-        ) * 0.5;
-      if (area > maxArea) {
-        maxArea = area;
-        maxIndex = j;
+    for (const val of Object.values(point)) {
+      if (isNumber(val)) {
+        return val;
       }
     }
-
-    sampled.push(data[maxIndex] as T);
-    previousIndex = maxIndex;
+    return index;
+  };
+  const len = data.length;
+  if (maxPoints >= len || maxPoints < LTTB_MIN_POINTS) {
+    return data;
   }
-
-  sampled.push(data[len - 1] as T);
-  return sampled;
+  const valueAt = (index: number): number => rowYValue(data[index], index);
+  return sampleLttbBuckets({ data, maxPoints, valueAt });
 }
 
+/** Minimum render points even for narrow charts (avoids degenerate buckets). */
+const MIN_RENDER_POINTS = 64;
+/** Points-per-pixel density target — enough for crisp curves without over-drawing. */
+const POINTS_PER_PIXEL = 1.5;
 /** ~1.5 points per pixel — enough for crisp curves without over-drawing. */
-export function maxRenderPointsForWidth(innerWidth: number): number {
-  return Math.max(64, Math.ceil(innerWidth * 1.5));
-}
+const maxRenderPointsForWidth = (innerWidth: number): number => Math.max(MIN_RENDER_POINTS, Math.ceil(innerWidth * POINTS_PER_PIXEL));
+
+export { decimateTimeSeries, maxRenderPointsForWidth };

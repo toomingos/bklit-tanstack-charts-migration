@@ -1,198 +1,154 @@
-import { linearRegressionRowsY } from "@tanstack/charts/regression";
+import { buildAutoFutureValues, slopeFromLastSegment } from "./projection-forecast";
+import { isFiniteNumber } from "./series-bar-scene";
+import type { ChartDatum } from "./series-config-types";
+import type { HistoryPoint } from "./projection-forecast";
 
-export type ProjectionMode = "auto" | "target" | "manual";
-export type ProjectionAutoMethod = "linearRegression" | "lastSegment";
-export type ProjectionCurveKind = "linear" | "bezier";
+// Fallback x-interval when the series has no usable adjacent-row or span delta (one day in ms).
+const FALLBACK_INTERVAL_MS_PER_DAY = 86_400_000;
+// |dx| below this is treated as a vertical segment (zero slope) instead of dividing.
+const DEGENERATE_DX_THRESHOLD = 1e-6;
+// Clamp bounds for the horizontal-tangent bezier tension parameter.
+const MAX_BEZIER_TENSION = 0.5;
+const MIN_BEZIER_TENSION = 0.05;
+
+const isString = (candidate: unknown): candidate is string => typeof candidate === "string";
+
+type ProjectionMode = "auto" | "target" | "manual";
+type ProjectionAutoMethod = "linearRegression" | "lastSegment";
+type ProjectionCurveKind = "linear" | "bezier";
 /** @deprecated Stepped density removed — projections always anchor → horizon. */
-export type ProjectionPathDensity = "stepped" | "endpoints";
+type ProjectionPathDensity = "stepped" | "endpoints";
 
-export interface ProjectionPoint {
-  date: Date;
-  value: number;
+interface ProjectionPoint {
+  readonly date: Readonly<Date>;
+  readonly value: number;
 }
 
-export interface BuildProjectionPathOptions {
-  sourceData: Record<string, unknown>[];
-  seriesKey: string;
-  xDataKey?: string;
-  mode: ProjectionMode;
-  autoMethod?: ProjectionAutoMethod;
-  pathDensity?: ProjectionPathDensity;
-  startIndex?: number;
-  horizonPoints?: number;
-  endValue?: number;
-  points?: ProjectionPoint[];
+interface BuildProjectionPathOptions {
+  readonly sourceData: readonly Readonly<ChartDatum>[];
+  readonly seriesKey: string;
+  readonly xDataKey?: string;
+  readonly mode: ProjectionMode;
+  readonly autoMethod?: ProjectionAutoMethod;
+  readonly pathDensity?: ProjectionPathDensity;
+  readonly startIndex?: number;
+  readonly horizonPoints?: number;
+  readonly endValue?: number;
+  readonly points?: readonly Readonly<ProjectionPoint>[];
 }
 
-function readDate(row: Record<string, unknown>, xDataKey: string): Date | null {
+const readDate = (row: Readonly<ChartDatum>, xDataKey: string): Date | undefined => {
   const raw = row[xDataKey];
   if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
     return raw;
   }
-  if (typeof raw === "number" && Number.isFinite(raw)) {
+  if (isFiniteNumber(raw)) {
     const date = new Date(raw);
-    return Number.isNaN(date.getTime()) ? null : date;
+    return Number.isNaN(date.getTime()) ? undefined : date;
   }
-  if (typeof raw === "string") {
+  if (isString(raw)) {
     const date = new Date(raw);
-    return Number.isNaN(date.getTime()) ? null : date;
+    return Number.isNaN(date.getTime()) ? undefined : date;
   }
-  return null;
+  return undefined;
 }
 
-function readValue(row: Record<string, unknown>, seriesKey: string): number | null {
+const readValue = (row: Readonly<ChartDatum>, seriesKey: string): number | undefined => {
   const raw = row[seriesKey];
-  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+  return isFiniteNumber(raw) ? raw : undefined;
 }
 
-function resolveStartIndex(sourceData: Record<string, unknown>[], startIndex: number | undefined): number {
-  if (startIndex == null || !Number.isFinite(startIndex)) {
+const resolveStartIndex = (sourceData: readonly Readonly<ChartDatum>[], startIndex: number | undefined): number => {
+  if (!isFiniteNumber(startIndex)) {
     return Math.max(0, sourceData.length - 1);
   }
   return Math.min(Math.max(0, Math.floor(startIndex)), sourceData.length - 1);
 }
 
-function intervalFromAdjacentRows(sourceData: Record<string, unknown>[], xDataKey: string, startIndex: number): number | null {
+const intervalFromAdjacentRows = (sourceData: readonly Readonly<ChartDatum>[], xDataKey: string, startIndex: number): number | undefined => {
   if (startIndex < 1) {
-    return null;
+    return undefined;
   }
-  const prevRow = sourceData[startIndex - 1];
-  const currentRow = sourceData[startIndex];
-  const prev = prevRow ? readDate(prevRow, xDataKey) : null;
-  const current = currentRow ? readDate(currentRow, xDataKey) : null;
+  const prevRow = sourceData.at(startIndex - 1);
+  const currentRow = sourceData.at(startIndex);
+  const prev = prevRow === undefined ? undefined : readDate(prevRow, xDataKey);
+  const current = currentRow === undefined ? undefined : readDate(currentRow, xDataKey);
   if (!(prev && current)) {
-    return null;
+    return undefined;
   }
   const delta = current.getTime() - prev.getTime();
-  return delta > 0 ? delta : null;
+  return delta > 0 ? delta : undefined;
 }
 
-function intervalFromSeriesSpan(sourceData: Record<string, unknown>[], xDataKey: string): number | null {
+const intervalFromSeriesSpan = (sourceData: readonly Readonly<ChartDatum>[], xDataKey: string): number | undefined => {
   if (sourceData.length < 2) {
-    return null;
+    return undefined;
   }
-  const firstRow = sourceData[0];
+  const firstRow = sourceData.at(0);
   const lastRow = sourceData.at(-1);
-  const first = firstRow ? readDate(firstRow, xDataKey) : null;
-  const last = lastRow ? readDate(lastRow, xDataKey) : null;
+  const first = firstRow === undefined ? undefined : readDate(firstRow, xDataKey);
+  const last = lastRow === undefined ? undefined : readDate(lastRow, xDataKey);
   if (!(first && last)) {
-    return null;
+    return undefined;
   }
   const span = last.getTime() - first.getTime();
-  return span > 0 ? span / (sourceData.length - 1) : null;
+  return span > 0 ? span / (sourceData.length - 1) : undefined;
 }
 
-function resolveIntervalMs(sourceData: Record<string, unknown>[], xDataKey: string, startIndex: number): number {
-  return intervalFromAdjacentRows(sourceData, xDataKey, startIndex) ?? intervalFromSeriesSpan(sourceData, xDataKey) ?? 86_400_000;
+const resolveIntervalMs = (sourceData: readonly Readonly<ChartDatum>[], xDataKey: string, startIndex: number): number => intervalFromAdjacentRows(sourceData, xDataKey, startIndex) ?? intervalFromSeriesSpan(sourceData, xDataKey) ?? FALLBACK_INTERVAL_MS_PER_DAY;
+
+
+const readHistoryPoint = (row: Readonly<ChartDatum> | undefined, seriesKey: string, xDataKey: string): HistoryPoint | undefined => {
+  if (row === undefined) {return undefined;}
+  const date = readDate(row, xDataKey);
+  const value = readValue(row, seriesKey);
+  if (date === undefined || value === undefined) {return undefined;}
+  return { timeMs: date.getTime(), value };
 }
 
-// Row 26 (T-D14): least-squares fitting delegated to TanStack-native
-// `linearRegressionRowsY` (@tanstack/charts/regression). The native call
-// returns sampled {x, y} fit points across the data domain (or [] when a fit
-// is impossible — <2 finite observations or zero variance), so the slope is
-// recovered from the two extreme samples as Δy/Δx. `ci: 0` skips the
-// confidence-band t-critical computation; `samples: 2` yields exactly the
-// first/last domain samples. The extrapolation-past-extremes horizon walk in
-// buildAutoFutureValues below has no native equivalent and stays custom.
-function linearRegressionSlope(points: { t: number; y: number }[]): number {
-  if (points.length < 2) {
-    return 0;
-  }
-  const samples = linearRegressionRowsY(
-    points.map(({ t, y }) => ({ t, y })),
-    { x: "t", y: "y", samples: 2, ci: 0 },
-  );
-  if (samples.length < 2) {
-    return 0;
-  }
-  const first = samples[0];
-  const last = samples[samples.length - 1];
-  const dt = Number(last.x) - Number(first.x);
-  return dt === 0 ? 0 : (last.y - first.y) / dt;
+interface CollectHistoryPointsOptions {
+  readonly sourceData: readonly Readonly<ChartDatum>[];
+  readonly seriesKey: string;
+  readonly xDataKey: string;
+  readonly startIndex: number;
 }
 
-function buildAutoFutureValues(options: {
-  anchorTime: number;
-  anchorValue: number;
-  autoMethod: ProjectionAutoMethod;
-  historyPoints: { t: number; y: number }[];
-  horizonPoints: number;
-  intervalMs: number;
-  pathDensity: ProjectionPathDensity;
-}): ProjectionPoint[] {
-  const { anchorTime, anchorValue, autoMethod, historyPoints, horizonPoints, intervalMs, pathDensity } = options;
-  const slope =
-    autoMethod === "lastSegment" && historyPoints.length >= 2
-      ? (() => {
-          const prev = historyPoints.at(-2);
-          const last = historyPoints.at(-1);
-          if (!(prev && last)) {
-            return 0;
-          }
-          const dt = last.t - prev.t;
-          return dt === 0 ? 0 : (last.y - prev.y) / dt;
-        })()
-      : linearRegressionSlope(historyPoints);
-
-  if (pathDensity === "endpoints") {
-    const endTime = anchorTime + intervalMs * horizonPoints;
-    const endValue = anchorValue + slope * intervalMs * horizonPoints;
-    return [
-      { date: new Date(anchorTime), value: anchorValue },
-      { date: new Date(endTime), value: endValue },
-    ];
+const collectHistoryPoints = (options: Readonly<CollectHistoryPointsOptions>): HistoryPoint[] => {
+  const { sourceData, seriesKey, xDataKey, startIndex } = options;
+  const historyPoints: HistoryPoint[] = [];
+  for (let rowIndex = 0; rowIndex <= startIndex; rowIndex += 1) {
+    const point = readHistoryPoint(sourceData.at(rowIndex), seriesKey, xDataKey);
+    if (point !== undefined) {historyPoints.push(point);}
   }
-
-  const result: ProjectionPoint[] = [{ date: new Date(anchorTime), value: anchorValue }];
-  for (let i = 1; i <= horizonPoints; i++) {
-    const t = anchorTime + intervalMs * i;
-    const value = anchorValue + slope * intervalMs * i;
-    result.push({ date: new Date(t), value });
-  }
-  return result;
+  return historyPoints;
 }
 
-export function computeProjectionAnchorTangentSlope(sourceData: Record<string, unknown>[], seriesKey: string, xDataKey = "date", startIndexProp?: number): number {
-  if (sourceData.length < 2) {
-    return 0;
-  }
+interface ComputeProjectionAnchorTangentSlopeOptions {
+  readonly sourceData: readonly Readonly<ChartDatum>[];
+  readonly seriesKey: string;
+  readonly xDataKey?: string;
+  readonly startIndexProp?: number;
+}
+
+const computeProjectionAnchorTangentSlope = (options: Readonly<ComputeProjectionAnchorTangentSlopeOptions>): number => {
+  const { sourceData, seriesKey, xDataKey = "date", startIndexProp } = options;
+  if (sourceData.length < 2) {return 0;}
   const startIndex = resolveStartIndex(sourceData, startIndexProp);
-  const historyPoints: { t: number; y: number }[] = [];
-  for (let i = 0; i <= startIndex; i++) {
-    const row = sourceData[i];
-    if (!row) {
-      continue;
-    }
-    const date = readDate(row, xDataKey);
-    const value = readValue(row, seriesKey);
-    if (date && value != null) {
-      historyPoints.push({ t: date.getTime(), y: value });
-    }
-  }
-  if (historyPoints.length < 2) {
-    return 0;
-  }
-  const prev = historyPoints.at(-2);
-  const last = historyPoints.at(-1);
-  if (!(prev && last)) {
-    return 0;
-  }
-  const dt = last.t - prev.t;
-  return dt === 0 ? 0 : (last.y - prev.y) / dt;
+  return slopeFromLastSegment(collectHistoryPoints({ seriesKey, sourceData, startIndex, xDataKey }));
 }
 
-export function buildHorizontalTangentBezierPath(x0: number, y0: number, x1: number, y1: number, tension = 0.45): string {
+const buildHorizontalTangentBezierPath = (x0: number, y0: number, x1: number, y1: number, tension = 0.45): string => {
   const dx = x1 - x0;
-  if (Math.abs(dx) < 1e-6) {
+  if (Math.abs(dx) < DEGENERATE_DX_THRESHOLD) {
     return `M ${x0},${y0} L ${x1},${y1}`;
   }
-  const t = Math.min(0.5, Math.max(0.05, tension));
-  const c1x = x0 + dx * t;
-  const c2x = x1 - dx * t;
+  const clampedTension = Math.min(MAX_BEZIER_TENSION, Math.max(MIN_BEZIER_TENSION, tension));
+  const c1x = x0 + dx * clampedTension;
+  const c2x = x1 - dx * clampedTension;
   return `M ${x0},${y0} C ${c1x},${y0} ${c2x},${y1} ${x1},${y1}`;
 }
 
-function buildTargetPath(options: { anchorTime: number; anchorValue: number; endValue: number; horizonPoints: number; intervalMs: number }): ProjectionPoint[] {
+const buildTargetPath = (options: { readonly anchorTime: number; readonly anchorValue: number; readonly endValue: number; readonly horizonPoints: number; readonly intervalMs: number }): ProjectionPoint[] => {
   const { anchorTime, anchorValue, endValue, horizonPoints, intervalMs } = options;
   const endTime = anchorTime + intervalMs * horizonPoints;
   return [
@@ -201,7 +157,38 @@ function buildTargetPath(options: { anchorTime: number; anchorValue: number; end
   ];
 }
 
-export function buildProjectionPath(options: BuildProjectionPathOptions): ProjectionPoint[] {
+interface ProjectionAnchor {
+  readonly anchorTime: number;
+  readonly anchorValue: number;
+  readonly intervalMs: number;
+  readonly startIndex: number;
+}
+
+interface ResolveProjectionAnchorOptions {
+  readonly sourceData: readonly Readonly<ChartDatum>[];
+  readonly seriesKey: string;
+  readonly xDataKey: string;
+  readonly startIndexProp: number | undefined;
+}
+
+const readAnchorPoint = (anchorRow: Readonly<ChartDatum>, seriesKey: string, xDataKey: string): { readonly anchorTime: number; readonly anchorValue: number } | undefined => {
+  const anchorDate = readDate(anchorRow, xDataKey);
+  const anchorValue = readValue(anchorRow, seriesKey);
+  if (anchorDate === undefined || anchorValue === undefined) {return undefined;}
+  return { anchorTime: anchorDate.getTime(), anchorValue };
+}
+
+const resolveProjectionAnchor = (options: Readonly<ResolveProjectionAnchorOptions>): ProjectionAnchor | undefined => {
+  const { sourceData, seriesKey, xDataKey, startIndexProp } = options;
+  const startIndex = resolveStartIndex(sourceData, startIndexProp);
+  const anchorRow = sourceData.at(startIndex);
+  const anchor = anchorRow === undefined ? undefined : readAnchorPoint(anchorRow, seriesKey, xDataKey);
+  if (sourceData.length === 0 || anchor === undefined) {return undefined;}
+  const intervalMs = resolveIntervalMs(sourceData, xDataKey, startIndex);
+  return { anchorTime: anchor.anchorTime, anchorValue: anchor.anchorValue, intervalMs, startIndex };
+}
+
+const buildProjectionPath = (options: Readonly<BuildProjectionPathOptions>): ProjectionPoint[] => {
   const { sourceData, seriesKey, xDataKey = "date", mode, autoMethod = "linearRegression", pathDensity = "endpoints", startIndex: startIndexProp, horizonPoints = 6, endValue, points } = options;
 
   if (mode === "manual" && points && points.length >= 2) {
@@ -211,80 +198,29 @@ export function buildProjectionPath(options: BuildProjectionPathOptions): Projec
     }));
   }
 
-  if (sourceData.length === 0) {
+  const anchor = resolveProjectionAnchor({ seriesKey, sourceData, startIndexProp, xDataKey });
+  if (anchor === undefined) {
     return [];
   }
 
-  const startIndex = resolveStartIndex(sourceData, startIndexProp);
-  const anchorRow = sourceData[startIndex];
-  if (!anchorRow) {
-    return [];
+  if (mode === "target" && isFiniteNumber(endValue)) {
+    return buildTargetPath({ anchorTime: anchor.anchorTime, anchorValue: anchor.anchorValue, endValue, horizonPoints, intervalMs: anchor.intervalMs });
   }
 
-  const anchorDate = readDate(anchorRow, xDataKey);
-  const anchorValue = readValue(anchorRow, seriesKey);
-  if (!anchorDate || anchorValue == null) {
-    return [];
-  }
-
-  const intervalMs = resolveIntervalMs(sourceData, xDataKey, startIndex);
-  const anchorTime = anchorDate.getTime();
-
-  const historyPoints: { t: number; y: number }[] = [];
-  for (let i = 0; i <= startIndex; i++) {
-    const row = sourceData[i];
-    if (!row) {
-      continue;
-    }
-    const date = readDate(row, xDataKey);
-    const value = readValue(row, seriesKey);
-    if (date && value != null) {
-      historyPoints.push({ t: date.getTime(), y: value });
-    }
-  }
-
-  if (mode === "target" && endValue != null && Number.isFinite(endValue)) {
-    return buildTargetPath({ anchorTime, anchorValue, endValue, horizonPoints, intervalMs });
-  }
-
-  return buildAutoFutureValues({ anchorTime, anchorValue, autoMethod, historyPoints, horizonPoints, intervalMs, pathDensity });
+  return buildAutoFutureValues({ anchorTime: anchor.anchorTime, anchorValue: anchor.anchorValue, autoMethod, historyPoints: collectHistoryPoints({ seriesKey, sourceData, startIndex: anchor.startIndex, xDataKey }), horizonPoints, intervalMs: anchor.intervalMs, pathDensity });
 }
 
-export function projectionValueExtents(paths: ProjectionPoint[][]): { minValue: number; maxValue: number } | null {
-  let minValue = Number.POSITIVE_INFINITY;
-  let maxValue = Number.NEGATIVE_INFINITY;
-  for (const path of paths) {
-    for (const point of path) {
-      if (point.value < minValue) {
-        minValue = point.value;
-      }
-      if (point.value > maxValue) {
-        maxValue = point.value;
-      }
-    }
-  }
-  if (minValue === Number.POSITIVE_INFINITY) {
-    return null;
-  }
-  return { minValue, maxValue };
-}
-
-export function projectionDateExtents(paths: ProjectionPoint[][]): { minTime: number; maxTime: number } | null {
-  let minTime = Number.POSITIVE_INFINITY;
-  let maxTime = Number.NEGATIVE_INFINITY;
-  for (const path of paths) {
-    for (const point of path) {
-      const time = point.date.getTime();
-      if (time < minTime) {
-        minTime = time;
-      }
-      if (time > maxTime) {
-        maxTime = time;
-      }
-    }
-  }
-  if (minTime === Number.POSITIVE_INFINITY) {
-    return null;
-  }
-  return { minTime, maxTime };
-}
+export { projectionDateExtents, projectionValueExtents } from "./projection-extents";
+export {
+  buildHorizontalTangentBezierPath,
+  buildProjectionPath,
+  computeProjectionAnchorTangentSlope,
+};
+export type {
+  BuildProjectionPathOptions,
+  ProjectionAutoMethod,
+  ProjectionCurveKind,
+  ProjectionMode,
+  ProjectionPathDensity,
+  ProjectionPoint,
+};

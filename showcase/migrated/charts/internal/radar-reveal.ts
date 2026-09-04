@@ -1,167 +1,150 @@
-// Custom "bklit-exact" radial grid PolarGuide for RadarChart.
-// This is a from-scratch PolarGuide (NOT a wrapper around
-// `@tanstack/charts/polar`'s own `radialGrid`) because reading bklit's
-// `radar-grid.tsx` directly turned up two real divergences:
-//
-// a) bklit's ring vertices sit HALF A STEP off of each spoke angle.
-//    `radialGrid({shape:"polygon"})` always places vertices ON the spokes
-//    with no phase-offset option. Reproduced via `angle_i = (i + 0.5) * step`.
-// b) bklit's ring values are a flat `(i+1)*100/levels` subdivision, NOT
-//    d3's "nice ticks" algorithm. Reproduced via `targetRadius = (i+1)*layout.radius/levels`.
-//
-// Grid VALUE LABELS match `radialGrid`'s defaults, so they're folded in here.
-
 import { curveLinearClosed, lineRadial } from "d3-shape";
+// Ring vertices sit half a step off spokes; values are flat subdivisions, not d3 nice ticks.
 import type { ChartMotionTransition, SceneNode } from "@tanstack/charts";
 import type { PolarGuide, PolarGuideScene } from "@tanstack/charts/polar";
-import {
-  TWEEN_FALLBACK,
-  type EnterTransition,
-  type ResolvedTiming,
-} from "./enter-transition";
+import { TWEEN_FALLBACK } from './enter-transition';
+import type { EnterTransition, ResolvedTiming } from './enter-transition';
 import { motionEasingFromCss } from "./pie-hover-chrome";
 
-export interface BklitRadarGridOptions {
-  levels: number;
-  metricsCount: number;
-  stroke: string;
-  strokeOpacity: number;
-  showLabels: boolean;
-  className?: string;
-  labelClassName: string;
-  labelFill: string;
+interface BklitRadarGridOptions {
+  readonly levels: number;
+  readonly metricsCount: number;
+  readonly stroke: string;
+  readonly strokeOpacity: number;
+  readonly showLabels: boolean;
+  readonly className?: string;
+  readonly labelClassName: string;
+  readonly labelFill: string;
 }
 
-function classes(base: string, custom: string | undefined): string {
-  return custom ? `${base} ${custom}` : base;
+const classes = (base: string, custom: string | undefined): string => (custom?.length ?? 0) > 0 ? `${base} ${custom}` : base;
+
+// Ring vertices sit half a step off the spokes (see header note).
+const RADAR_VERTEX_HALF_STEP = 0.5;
+// Ring-label values are flat subdivisions expressed as percentages.
+const RADAR_LABEL_PERCENT_SCALE = 100;
+
+
+interface RadarRingLevelParams {
+  readonly rings: SceneNode[];
+  readonly labels: SceneNode[];
+  readonly levelIndex: number;
+  readonly levels: number;
+  readonly metricCount: number;
+  readonly step: number;
+  readonly radius: number;
+  readonly stroke: string;
+  readonly strokeOpacity: number;
+  readonly showLabels: boolean;
+  readonly labelFill: string;
 }
 
-export function bklitRadarGrid(options: BklitRadarGridOptions): PolarGuide {
-  return {
+const appendRadarRingLevel = (params: Readonly<RadarRingLevelParams>): void => {
+  const targetRadius = ((params.levelIndex + 1) * params.radius) / params.levels;
+  const rows: readonly { readonly angle: number; readonly radius: number }[] = Array.from({ length: params.metricCount }, (_unused, metricIndex) => ({
+    angle: (metricIndex + RADAR_VERTEX_HALF_STEP) * params.step,
+    radius: targetRadius,
+  }));
+  const path =
+    lineRadial<(typeof rows)[number]>()
+      .angle((row) => row.angle)
+      .radius((row) => row.radius)
+      .curve(curveLinearClosed)(rows) ?? "";
+  if (path) {
+    params.rings.push({
+      key: `radar-ring:${params.levelIndex}`,
+      kind: "polyline",
+      path,
+      points: [],
+      style: {
+        fill: "none",
+        lineCap: "round",
+        stroke: params.stroke,
+        strokeOpacity: params.strokeOpacity,
+        strokeWidth: 1,
+      },
+    });
+  }
+  if (params.showLabels) {
+    params.labels.push({
+      anchor: "start",
+      baseline: "middle",
+      fontSize: 9,
+      key: `radar-ring-label:${params.levelIndex}`,
+      kind: "label",
+      style: { fill: params.labelFill },
+      text: String(((params.levelIndex + 1) * RADAR_LABEL_PERCENT_SCALE) / params.levels),
+      x: 4,
+      y: -targetRadius,
+    });
+  }
+};
+
+
+const bklitRadarGrid = (options: Readonly<BklitRadarGridOptions>): PolarGuide => (
+  {
     render({ layout, guideIndex, parentId }): PolarGuideScene {
-      const {
-        levels,
-        metricsCount,
-        stroke,
-        strokeOpacity,
-        showLabels,
-        className,
-        labelClassName,
-        labelFill,
-      } = options;
-      const n = Math.max(1, metricsCount);
-      const step = (Math.PI * 2) / n;
+      const metricCount = Math.max(1, options.metricsCount);
+      const step = (Math.PI * 2) / metricCount;
       const rings: SceneNode[] = [];
       const labels: SceneNode[] = [];
-      for (let i = 0; i < levels; i++) {
-        const targetRadius = ((i + 1) * layout.radius) / levels;
-        const rows = Array.from({ length: n }, (_unused, m) => ({
-          angle: (m + 0.5) * step,
-          radius: targetRadius,
-        }));
-        const path =
-          lineRadial<(typeof rows)[number]>()
-            .angle((row) => row.angle)
-            .radius((row) => row.radius)
-            .curve(curveLinearClosed)(rows) ?? "";
-        if (path) {
-          rings.push({
-            kind: "polyline",
-            key: `radar-ring:${i}`,
-            points: [],
-            path,
-            style: {
-              fill: "none",
-              stroke,
-              strokeOpacity,
-              strokeWidth: 1,
-              lineCap: "round",
-            },
-          });
-        }
-        if (showLabels) {
-          labels.push({
-            kind: "label",
-            key: `radar-ring-label:${i}`,
-            x: 4,
-            y: -targetRadius,
-            text: String(((i + 1) * 100) / levels),
-            anchor: "start",
-            baseline: "middle",
-            fontSize: 9,
-            style: { fill: labelFill },
-          });
-        }
+      for (let levelIndex = 0; levelIndex < options.levels; levelIndex += 1) {
+        appendRadarRingLevel({
+          labelFill: options.labelFill,
+          labels,
+          levelIndex,
+          levels: options.levels,
+          metricCount,
+          radius: layout.radius,
+          rings,
+          showLabels: options.showLabels,
+          step,
+          stroke: options.stroke,
+          strokeOpacity: options.strokeOpacity,
+        });
       }
       const id = `${parentId}:bklit-radar-grid-${guideIndex}`;
       return {
         background: [
           {
-            kind: "group",
-            key: id,
-            className: classes("ts-chart__radial-grid", className),
             ariaHidden: true,
             children: rings,
+            className: classes("ts-chart__radial-grid", options.className),
+            key: id,
+            kind: "group",
           },
         ],
-        foreground: labels.length
+        foreground: labels.length > 0
           ? [
               {
-                kind: "group",
-                key: `${id}:labels`,
-                className: classes("ts-chart__text", labelClassName),
                 ariaHidden: true,
                 children: labels,
+                className: classes("ts-chart__text", options.labelClassName),
+                key: `${id}:labels`,
+                kind: "group",
               },
             ]
           : undefined,
       };
     },
-  };
-}
+  }
+);
 
-// --- Reveal timing ---
-// The generic `resolveEnterTransition`/`revealTiming`/`buildProgressKeyframes`
-// machinery now lives in `./enter-transition` (one implementation, one import
-// path — initiative 1 consolidation). Radar's only per-family difference was
-// its function NAMES (`resolveRadarEnterTransition`/`radarRevealTiming`/
-// `buildRadarProgressKeyframes`), preserved below as aliases so radar-chart.tsx
-// doesn't churn. Radar's default fallback kind is the shared tween
-// (RADAR_TWEEN_FALLBACK === TWEEN_FALLBACK), and its per-sub-component fallback
-// kinds are expressed through each call site's `fallback` argument — no
-// radar-specific fork of the functions.
 
+type RadarEnterTransition = EnterTransition;
+type RadarResolvedTiming = ResolvedTiming;
+
+const RADAR_TWEEN_FALLBACK: RadarResolvedTiming = TWEEN_FALLBACK;
+
+const radarMotionTransition = (resolved: RadarResolvedTiming): ChartMotionTransition => resolved.kind === "spring"
+    ? { damping: resolved.damping, mass: resolved.mass, stiffness: resolved.stiffness, type: "spring" }
+    : { duration: resolved.durationMs, easing: motionEasingFromCss(resolved.easingCss), type: "tween" };
+
+export type { BklitRadarGridOptions, RadarEnterTransition, RadarResolvedTiming };
+export { bklitRadarGrid, RADAR_TWEEN_FALLBACK, radarMotionTransition };
 export {
   buildProgressKeyframes as buildRadarProgressKeyframes,
   resolveEnterTransition as resolveRadarEnterTransition,
   revealTiming as radarRevealTiming,
 } from "./enter-transition";
 
-export type RadarEnterTransition = EnterTransition;
-export type RadarResolvedTiming = ResolvedTiming;
-
-export const RADAR_TWEEN_FALLBACK: RadarResolvedTiming = TWEEN_FALLBACK;
-
-// C6 (native motion, Phase 6, D432): radar's area/dot entrance ("campaign")
-// used to be a hand-rolled WAAPI keyframe `.animate()` per series (uniform-
-// sampled `scale(p)` transform via `buildRadarProgressKeyframes`, or the
-// pre-sampled spring curve for a spring `enterTransition` — both funnelled
-// through `resolveRadarEnterTransition`/`radarRevealTiming`). That per-series
-// campaign is now the `radialArea`/`radialDot` marks' own native `motion`
-// enter phase (radar-chart.tsx) — converts the SAME resolved tween/spring
-// timing into the native `ChartMotionTransition` shape (mirrors gauge's own
-// `gaugeMotionTransition`, gauge-reveal.ts) instead of pre-sampling it into a
-// keyframe array. One disclosed delta (established C1-C5 precedent, gauge/
-// pie/ring/sunburst): native's per-datum "enter" for a newly-added mark
-// animates opacity only — there is no native "scale-from-0" primitive to
-// hang the legacy `transform:scale(p)` radial-growth look on, so entrance
-// reads as a stagger-delayed fade-in rather than a literal scale-up. Grid
-// rings / axis spokes / metric labels are NOT marks (they are `PolarGuide`
-// scene nodes with no `motion` field) and keep their own hand-rolled WAAPI
-// reveal in radar-chart.tsx's `handleRender`, unchanged (D420-style scoped
-// exception).
-export function radarMotionTransition(resolved: RadarResolvedTiming): ChartMotionTransition {
-  return resolved.kind === "spring"
-    ? { type: "spring", stiffness: resolved.stiffness, damping: resolved.damping, mass: resolved.mass }
-    : { type: "tween", duration: resolved.durationMs, easing: motionEasingFromCss(resolved.easingCss) };
-}

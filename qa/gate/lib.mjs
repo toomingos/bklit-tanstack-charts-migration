@@ -1,10 +1,5 @@
-// Shared helpers for the Phase-6 gate drivers (qa/gate/*.mjs).
-//
-// These drivers WRAP the protected harnesses (qa/screenshot.mjs, bench/run.mjs,
-// bench/report.mjs) — they never modify them. They build bench/app/dist once,
-// boot ONE vite preview per port, and fan work out to child harness processes
-// with `--base-url` + QA_SKIP_REBUILD=1 (the harness's own contract for "the
-// caller guarantees dist is fresh and a server is already up").
+// Shared helpers for the gate drivers (qa/gate/*.mjs). They wrap the protected harnesses without modifying
+// them: build bench/app/dist once, boot one vite preview per port, fan out with --base-url + QA_SKIP_REBUILD=1.
 import { spawn, execSync, execFileSync } from "node:child_process";
 import {
   existsSync,
@@ -30,17 +25,15 @@ export const QA_RESULTS_DIR = path.join(ROOT, "qa", "results");
 export const BENCH_RESULTS_DIR = path.join(ROOT, "bench", "results");
 export const QA_PORT = 5198;
 export const BENCH_PORT = 5199;
-/** qa/screenshot.mjs gate: 0.5% of a 1200x800 viewport (D-entries: 4800 of 960000). */
+// GUARD: qa/screenshot.mjs gate is 0.5% of a 1200x800 viewport.
 export const GATE_PX = 4800;
 export const TOTAL_PX = 960000;
 
 export function nowStamp() {
-  // Filesystem-safe ISO stamp (matches the harnesses' own run-dir convention).
-  return new Date().toISOString().replace(/[:.]/g, "-");
+  return new Date().toISOString().replace(/[:.]/g, "-"); // filesystem-safe ISO stamp, same convention as the harnesses
 }
 
 export function parseArgs(argv, spec = {}) {
-  // spec: { name: "bool" | "string" | "number" }
   const out = { _: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -99,11 +92,7 @@ export function fmtMs(ms) {
   return `${Math.floor(s / 60)}m${String(Math.round(s % 60)).padStart(2, "0")}s`;
 }
 
-/**
- * Names of harness / preview processes that must not be running before a gate
- * run starts (the harnesses bind fixed ports and the QA gate is sensitive to
- * CPU contention). Mirrors the operator rule: pgrep must be empty.
- */
+// GUARD: harnesses bind fixed ports and the QA gate is CPU-sensitive; refuse to start unless the table is quiet.
 export function foreignHarnessProcesses(ignorePids = []) {
   let out = "";
   try {
@@ -138,7 +127,6 @@ export async function waitForQuietProcessTable(tag, { maxWaitMs = 20 * 60_000, a
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Run a command, streaming to an optional log file; resolves with {code, durationMs, stdout}. */
 export function runCmd(cmd, args, { cwd = ROOT, env = {}, logFile, capture = true, tag } = {}) {
   return new Promise((resolve) => {
     const t0 = Date.now();
@@ -164,10 +152,7 @@ export function runCmd(cmd, args, { cwd = ROOT, env = {}, logFile, capture = tru
   });
 }
 
-// ---------------------------------------------------------------------------
-// Build once (same staleness rule as the harnesses: dist/index.html older than
-// any source under bench/app/src, bench/app/index.html, showcase/migrated,
-// repos/bklit-ui/packages/ui/src).
+// Build-once staleness rule (same as the harnesses): dist/index.html older than any source under the four roots.
 function newestMtime(dir) {
   let newest = 0;
   const stack = [dir];
@@ -231,9 +216,7 @@ export async function buildDistOnce(tag, { force = false, skip = false, logFile 
   return { built: true, reason: st.reason, code: r.code, durationMs: r.durationMs };
 }
 
-// ---------------------------------------------------------------------------
-// One vite preview per port. Uses the same command line as the harnesses
-// (`npm run preview -- --port P --strictPort` in bench/app).
+// One vite preview per port, same command line as the harnesses.
 async function serverUp(url) {
   try {
     const res = await fetch(url);
@@ -298,7 +281,6 @@ export function jobKey(j) {
   return `${j.chart}/${j.n}${j.state ? `/${j.state}` : ""}`;
 }
 
-/** Simple promise worker pool preserving job order in the results array. */
 export async function runPool(jobs, workers, fn, onDone) {
   const results = new Array(jobs.length);
   let next = 0;
@@ -331,16 +313,12 @@ export function relPath(p) {
   return path.relative(ROOT, p);
 }
 
-// ---------------------------------------------------------------------------
-// Shared QA lock. Port 5198 is shared with other agents' harness runs
-// (their wrapper: $S/qa-locked.sh, mkdir-based lock). The driver holds the SAME
-// lock for the whole batch so no foreign screenshot.mjs run can rebuild dist or
-// reuse our preview mid-sweep. Override the path with QA_LOCK_DIR.
+// GUARD: shared QA lock for port 5198 + bench/app/dist, same mkdir lock other agents use; held for the whole batch.
 export const QA_LOCK_DIR =
   process.env.QA_LOCK_DIR ??
   "/private/tmp/claude-501/-Users-tomasdomingos-bklit-tanstack-charts-migration/18004630-5cf2-458a-8984-0bb5f70c912c/scratchpad/qa.lock";
 
-let qaLockDepth = 0; // re-entrant within one process (gate:all holds it across stages)
+let qaLockDepth = 0; // re-entrant within one process
 
 function lockOwnerAlive() {
   try {
@@ -362,11 +340,7 @@ function portListening(port) {
   }
 }
 
-/**
- * Shared-port protocol (same as $S/qa-locked.sh): mkdir $S/qa.lock, write our
- * pid into qa.lock/pid, rm -rf on exit. A lock whose owner pid is gone and
- * with nothing listening on 5198 is stale and is broken.
- */
+// GUARD: mkdir lock + pid file; a lock whose owner is gone with nothing on 5198 is stale and gets broken.
 export async function acquireQaLock(tag, { maxWaitMs = 25 * 60_000 } = {}) {
   if (qaLockDepth > 0) {
     qaLockDepth++;
@@ -410,7 +384,6 @@ export async function acquireQaLock(tag, { maxWaitMs = 25 * 60_000 } = {}) {
   return release;
 }
 
-/** Cheap identity of the served dist: asset file names + index.html mtime. */
 export function distFingerprint() {
   const dist = path.join(APP_DIR, "dist");
   try {

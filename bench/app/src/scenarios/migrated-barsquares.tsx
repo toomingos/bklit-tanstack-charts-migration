@@ -1,10 +1,4 @@
-// Migrated twin of bklit-barsquares.tsx. BarSquares/BarColumnTrack are
-// fully wired internally (children.tsx CHART_ROLE registrations, bar-
-// chart.tsx resolvedBarSquares/resolvedBarColumnTracks) and are re-exported
-// from the top-level `@migrated/charts` barrel (dispatch C landed the
-// barrel exports alongside the BarDepth/BarPulse family). These ARE the
-// real CHART_ROLE-carrying components bar-chart.tsx's extractChildren()
-// recognizes -- not a reimplementation.
+// Twin of bklit-barsquares.tsx; real barrel BarSquares/BarColumnTrack, not a reimplementation.
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart,

@@ -1,13 +1,5 @@
-// Migrated twin of bklit-patternarea.tsx. Migrated PatternArea/AreaConfig
-// takes the convenience `patternPreset` prop (plan-loop-1 ruling 1) plus a
-// raw `fill: string` escape hatch -- area-chart.tsx already resolves
-// `patternPreset` -> its own D228-safe sibling-defs <svg> internally
-// (`resolvedPatternAreas`/`patternDefs`, placed after <Chart>), so this
-// scenario just passes `patternPreset` directly; no manual defs plumbing
-// needed on this side (unlike bklit's raw-URL shape).
-// `window.__qaSetPatternPreset` cycles through the 8 PATTERN_PRESET_IDS
-// (ruling 7), routed through the SAME state area-chart.tsx reads for
-// `patternPreset`, exercising the real prop path.
+// Twin of bklit-patternarea.tsx; patternPreset resolves internally, so no manual defs plumbing.
+// GUARD: __qaSetPatternPreset must route through the same state the chart reads (real prop path).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import {
@@ -28,10 +20,6 @@ import { armBklitSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveRow } from "../bench/live";
 
-// The barrel-export gap this mirror was written around is CLOSED (P5.1/D312):
-// `PatternPresetId` is now re-exported from `@migrated/charts`
-// (index.ts:375-378, alongside `PatternPresetOptions`), so the scenario tracks
-// the real union instead of a hand-copy that could silently drift from it.
 const DEFAULT_PATTERN: PatternPresetId = "diagonal";
 
 export default function MigratedPatternArea({ n }: { n: number }) {

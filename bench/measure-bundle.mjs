@@ -1,12 +1,5 @@
 #!/usr/bin/env node
-// bench/measure-bundle.mjs — per-scenario bundle-size measurement via esbuild.
-// Bundles each (impl, chart) combo's scenario import tree (minified, gzipped,
-// with react/react-dom externalized as shared runtime deps) and writes the
-// results to bench/results/bundle-sizes.json. Run once per migration phase;
-// bench/run.mjs and bench/report.mjs consume the output for M2c.
-//
-// Usage:
-//   node bench/measure-bundle.mjs
+// Per-scenario bundle sizes via esbuild (min+gzip, react externals) -> bundle-sizes.json.
 
 import { build } from "esbuild";
 import { gzipSync } from "node:zlib";
@@ -22,9 +15,6 @@ const SCENARIOS_DIR = resolve(APP_DIR, "src", "scenarios");
 const RESULTS_DIR = resolve(__dirname, "results");
 const REPOS_DIR = resolve(ROOT, "repos");
 
-// ---------------------------------------------------------------------------
-// Gather (impl, chart) combos from the scenarios directory
-// ---------------------------------------------------------------------------
 const files = readdirSync(SCENARIOS_DIR);
 
 /** @type {{ impl: string, chart: string }[]} */
@@ -40,9 +30,6 @@ console.log(
   `[measure-bundle] found ${combos.length} (impl, chart) combos across ${files.length} scenario files\n`,
 );
 
-// ---------------------------------------------------------------------------
-// Build TanStack subpath-export alias maps (exact match, longest-first)
-// ---------------------------------------------------------------------------
 function loadExports(pkgJsonPath, packageName, pkgDir) {
   const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
   /** @type {Record<string, string>} */
@@ -53,24 +40,16 @@ function loadExports(pkgJsonPath, packageName, pkgDir) {
     if (typeof target !== "string") continue;
     const importPath =
       subpath === "." ? packageName : `${packageName}/${subpath.slice(2)}`;
-    // Published packages use conditional exports objects
-    // ({ types, import }); the vendored source clone used plain strings.
     const resolvedTarget =
       typeof target === "string" ? target : (target.import ?? target.default);
     const cleanTarget = resolvedTarget.replace(/^\.\//, "");
     entries.push([importPath, resolve(pkgDir, cleanTarget)]);
   }
-  // Longest key first so specific subpaths take precedence
   entries.sort((a, b) => b[0].length - a[0].length);
   return entries;
 }
 
-// TanStack Charts, resolved from the published package installed in
-// bench/app/node_modules (pinned exact: 0.15.0) — the same runtime
-// bench/app/vite.config.ts and the showcase now resolve. Phase 5.0.1 replaced
-// the vendored source clone; M2c therefore measures pre-built dist JS rather
-// than TS source, so bundle numbers are NOT comparable across the 5.0 boundary
-// (see docs/phase-5/LOG.md, supersedes D146/D238).
+// TanStack resolved from bench/app/node_modules (0.15.0 dist); not comparable pre-5.0 boundary.
 const chartsCoreDir = resolve(APP_DIR, "node_modules/@tanstack/charts");
 const reactChartsDir = resolve(APP_DIR, "node_modules/@tanstack/react-charts");
 
@@ -94,10 +73,7 @@ console.log(
   `[measure-bundle] loaded ${tanstackAliasEntries.length} TanStack subpath-exports\n`,
 );
 
-// ---------------------------------------------------------------------------
-// Extension resolution helper — esbuild treats a `path` returned from
-// `onResolve` as final, so we must resolve extensions ourselves.
-// ---------------------------------------------------------------------------
+// esbuild onResolve results are final, so resolve extensions manually.
 const EXTS = ["", ".tsx", ".ts", ".jsx", ".js", ".mjs", "/index.tsx", "/index.ts", "/index.jsx", "/index.js", "/index.mjs"];
 
 function resolveExt(basePath) {
@@ -112,16 +88,11 @@ function resolveExt(basePath) {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Esbuild alias plugin — mirrors bench/app/vite.config.ts resolution
-// ---------------------------------------------------------------------------
-
 /** @type {import("esbuild").Plugin} */
 const aliasPlugin = {
   name: "alias",
   setup(build) {
-    // TanStack packages: exact-match via the precomputed exports map
-    // (paths already include extensions, so no further resolution needed).
+    // Exact-match via exports map (paths already resolved).
     build.onResolve(
       { filter: /^@tanstack\/(charts|react-charts)/ },
       (args) => {
@@ -131,8 +102,6 @@ const aliasPlugin = {
       },
     );
 
-    // d3-scale / d3-shape — used by migrated chart sources; resolved from
-    // bench/app's node_modules exactly as vite.config.ts does.
     build.onResolve({ filter: /^d3-scale$/ }, () => ({
       path: resolve(APP_DIR, "node_modules/d3-scale/src/index.js"),
     }));
@@ -143,12 +112,9 @@ const aliasPlugin = {
       path: resolve(APP_DIR, "node_modules/d3-array/src/index.js"),
     }));
 
-    // bklit-ui chart barrel (exact match, resolved file)
     build.onResolve({ filter: /^@bklitui\/ui\/charts$/ }, () => ({
       path: resolve(REPOS_DIR, "bklit-ui/packages/ui/src/charts/index.ts"),
     }));
-    // bklit-ui chart subpath (e.g. decimate-time-series) — prefix replace
-    // then resolve extension
     build.onResolve({ filter: /^@bklitui\/ui\/charts\// }, (args) => {
       const basePath = args.path.replace(
         "@bklitui/ui/charts/",
@@ -158,7 +124,6 @@ const aliasPlugin = {
       return resolved ? { path: resolved } : undefined;
     });
 
-    // bklit-ui icons (used internally by bklit chart sources)
     build.onResolve({ filter: /^@bklitui\/icons/ }, (args) => {
       const basePath = args.path.replace(
         "@bklitui/icons",
@@ -168,7 +133,6 @@ const aliasPlugin = {
       return resolved ? { path: resolved } : undefined;
     });
 
-    // bklit-ui tsconfig `@` path alias (used internally, e.g. `@/lib/utils`)
     build.onResolve({ filter: /^@\// }, (args) => {
       const basePath = args.path.replace(
         "@/",
@@ -178,7 +142,6 @@ const aliasPlugin = {
       return resolved ? { path: resolved } : undefined;
     });
 
-    // @number-flow/react — used internally by migrated ring/gauge charts
     build.onResolve({ filter: /^@number-flow\/react/ }, (args) => {
       const basePath = args.path.replace(
         "@number-flow/react",
@@ -188,11 +151,9 @@ const aliasPlugin = {
       return resolved ? { path: resolved } : undefined;
     });
 
-    // Migrated charts barrel (exact match -> index.ts)
     build.onResolve({ filter: /^@migrated\/charts$/ }, () => ({
       path: resolve(ROOT, "showcase/migrated/charts/index.ts"),
     }));
-    // Migrated charts subpath (e.g. @migrated/charts/line-chart)
     build.onResolve({ filter: /^@migrated\/charts\// }, (args) => {
       const basePath = args.path.replace(
         "@migrated/charts/",
@@ -202,8 +163,7 @@ const aliasPlugin = {
       return resolved ? { path: resolved } : undefined;
     });
 
-    // CSS imports — return empty content so they don't fail the build;
-    // CSS doesn't contribute to JS bundle size.
+    // CSS adds nothing to JS size; stub it out.
     build.onLoad({ filter: /\.css$/ }, () => ({
       contents: "",
       loader: "css",
@@ -211,27 +171,15 @@ const aliasPlugin = {
   },
 };
 
-// ---------------------------------------------------------------------------
-// Build & measure each combo
-// ---------------------------------------------------------------------------
-
 /** @type {Record<string, { raw: number, gzip: number } | null>} */
 const results = {};
 let failures = 0;
 
-// Temp output dir — esbuild needs a resolved output path when CSS imports
-// are present (even with `write: false`).
+// esbuild needs an outdir for CSS handling even with write:false.
 const TMP_DIR = mkdtempSync(resolve(tmpdir(), "bklit-bundle-"));
 
 for (const { impl, chart } of combos) {
-  // Minimal entry: imports the scenario component and re-exports it, so the
-  // component's transitive dependency graph is what gets measured. (Phase 6,
-  // D462: the previous bare `import "./x.tsx"` used nothing from the module,
-  // so esbuild tree-shook every side-effect-free graph — bklit-ui declares
-  // `sideEffects:false` — down to zero and measured only the shared TopoJSON
-  // fixture from bench/data.ts, while the migrated barrel, which esbuild had
-  // to treat as side-effectful, was kept whole. Numbers before this fix are
-  // not comparable.)
+  // Entry must re-export the scenario: bare import tree-shakes to zero (sideEffects:false).
   const entry = `import Scenario from "./${impl}-${chart}.tsx"; export default Scenario;`;
 
   try {
@@ -270,9 +218,6 @@ for (const { impl, chart } of combos) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Write output
-// ---------------------------------------------------------------------------
 mkdirSync(RESULTS_DIR, { recursive: true });
 const outPath = resolve(RESULTS_DIR, "bundle-sizes.json");
 writeFileSync(outPath, JSON.stringify(results, null, 2) + "\n");

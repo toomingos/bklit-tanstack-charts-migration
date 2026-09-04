@@ -1,11 +1,5 @@
-// Q2 API-compatibility fixture (research/05): exercises every public prop
-// the migrated RadarChart supports at pilot scope (docs/LOG.md D24 — the
-// canonical docs-demo path plus the pilot's documented extras). Must
-// typecheck with zero errors via `tsc --noEmit` (included from
-// bench/app/tsconfig.json). Runtime smoke is covered by the bench scenarios
-// (console-errors column in docs/BENCHMARKS.md must be 0). Note: RadarChart
-// has no onPhaseChange/status prop (bklit parity — verified directly in
-// repos/bklit-ui/packages/ui/src/charts/radar-chart.tsx).
+// Q2 API fixture: exercises migrated RadarChart public props; must typecheck (tsc --noEmit).
+// No onPhaseChange/status prop by bklit parity.
 import * as React from "react";
 import {
   RadarArea,
@@ -49,7 +43,6 @@ export function RadarChartApiFixture() {
 
   return (
     <>
-      {/* Canonical demo path (docs demo parity). */}
       <RadarChart data={data} metrics={metrics} size={400}>
         <RadarGrid />
         <RadarAxis />
@@ -59,7 +52,6 @@ export function RadarChartApiFixture() {
         ))}
       </RadarChart>
 
-      {/* Full pilot prop surface — tween enterTransition variant. */}
       <RadarChart
         data={data}
         metrics={metrics}
@@ -89,8 +81,7 @@ export function RadarChartApiFixture() {
         />
       </RadarChart>
 
-      {/* Full pilot prop surface — spring enterTransition variant, animate
-          disabled, no grid labels, uncontrolled hover. */}
+      {/* Spring enterTransition variant, animate disabled, uncontrolled hover. */}
       <RadarChart
         data={data}
         metrics={metrics}
@@ -109,9 +100,7 @@ export function RadarChartApiFixture() {
         ))}
       </RadarChart>
 
-      {/* Responsive sizing (no `size` prop) with no optional children at
-          all — <RadarAxis>/<RadarLabels>/<RadarGrid> are independently
-          optional per bklit parity. */}
+      {/* Responsive sizing (no `size`); RadarAxis/Labels/Grid independently optional per bklit parity. */}
       <RadarChart data={data} metrics={metrics}>
         {data.map((series, index) => (
           <RadarArea index={index} key={series.label} />

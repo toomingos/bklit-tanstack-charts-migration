@@ -1,17 +1,4 @@
-// bklit BarSquares + BarColumnTrack scenario (initiative 11, plan-loop-1
-// §2.3/§2.4/§8). Combined per the plan's Q1 proposal (shared
-// computeSquareColumn quantization dependency, §2.4) -- BarColumnTrack
-// renders as an underlay BEFORE the squares series (bar-squares.tsx
-// composition order), one gradient-fill series + one pattern-fill series
-// (gallery's "shape + gradient/pattern variants", §2.8) to exercise
-// ruling 10's nested pattern-inside-gradient composition.
-// Per-bar hover-dim ("bar-hover probe") is exercised by the QA harness'
-// STANDARD hover-fraction sweep (qa/screenshot.mjs's generic path -- no
-// special branch needed, mirrors the plain "bar" scenario). The
-// legend-hover probe uses `window.__qaSetLegendHover` (candlelegend /
-// legendhover / markers precedent) wrapping BOTH BarSquares series AND
-// BarColumnTrack (bar-squares.tsx: BarSquares reads useChartLegendHover
-// per-bar; BarColumnTrack fades out entirely, binary, on ANY hover).
+// BarColumnTrack underlay + gradient and pattern BarSquares series; legend hover dims both surfaces.
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart,

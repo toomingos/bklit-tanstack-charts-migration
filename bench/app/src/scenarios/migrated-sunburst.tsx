@@ -1,20 +1,4 @@
-// Migrated SunburstChart scenario — mirrors bklit-sunburst.tsx's harness
-// contract exactly: same data generation, same settle arm, same zoom hooks.
-//
-// Uses the TanStack-native SunburstChart from migrated/charts/sunburst-chart.tsx
-// (D81 redo: stock `radialArc` with custom d3 `arc()` generator replacing the
-// D79 custom PolarMark).
-//
-// Settle detection: computed from `buildSunburstEnterTiming` maxDelay +
-// 1100ms reveal duration + 935ms labels delay, matching bklit-sunburst.tsx's
-// formula. Armed via `armManualSettle` with REVEAL_CLOCK_MARGIN_MS to match
-// the bklit scenario's settle arm (Fable edit, D51/D52 precedent).
-//
-// Zoom (`__benchDrilldown`/`__benchDrillUp`): dispatches click events on the
-// TanStack-rendered SVG <path> elements inside `[data-ts-key="sunburst-arcs"]`.
-// With D81's `radialArc`, there is ONE <path> per arc datum, in
-// depth-descending order (matching bklit's `sortSunburstSegments`), so
-// segment DOM order maps directly via `markGroup.children[domIndex]`.
+// Same harness contract as bklit-sunburst.tsx (data/settle/zoom hooks); TanStack-native chart.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -39,7 +23,7 @@ import { measureUpdatePaint } from "../bench/paint";
 
 const SUNBURST_SIZE = 360;
 
-// --- Settle computation (verbatim from bklit-sunburst.tsx) ---
+// Verbatim from bklit-sunburst.tsx.
 function sunburstSettleMs(arcs: ArcDatum[]): number {
   const { maxDelay } = buildSunburstEnterTiming(arcs, 1);
   return maxDelay * 1000 + 935 + 1100;
@@ -47,9 +31,6 @@ function sunburstSettleMs(arcs: ArcDatum[]): number {
 
 const REVEAL_CLOCK_MARGIN_MS = 250;
 
-// --- DOM helpers for zoom click dispatching ---
-
-/** bklit's `sortSunburstSegments` ordering: depth desc, then arcIndex desc. */
 function segmentDomOrder(arcs: ArcDatum[]): number[] {
   return arcs
     .map((_, arcIndex) => arcIndex)
@@ -68,22 +49,15 @@ function dispatchClick(el: Element | null | undefined): void {
   );
 }
 
-/**
- * Click a segment by its arcIndex. The TanStack-rendered DOM inside
- * `[data-ts-key^="sunburst-arcs-"]` has one `<path>` per arc, in
- * depth-descending order matching `segmentDomOrder`.
- */
 function clickSegment(
   container: HTMLElement,
   arcs: ArcDatum[],
   targetArcIndex: number,
 ): boolean {
-  // The mark id folds in the chart's playKey (`sunburst-arcs-${playKey}`,
-  // showcase/migrated/charts/sunburst-chart.tsx), so match by prefix (D471).
+  // Mark id folds in playKey; match by prefix.
   const markGroup = container.querySelector('[data-ts-key^="sunburst-arcs-"]');
   if (!markGroup) return false;
 
-  // Get all path children from the single mark group
   const children: Element[] = [];
   markGroup.querySelectorAll("[data-ts-key] path").forEach((p) => children.push(p));
 
@@ -98,19 +72,13 @@ function clickSegment(
   return true;
 }
 
-/**
- * Click the center overlay. The center is an absolute-positioned div with
- * a circle child. We dispatch a click on the inner circle div.
- */
 function clickCenter(container: HTMLElement): boolean {
-  // Find the center overlay's clickable circle div
   const center = container.querySelector('[data-bkm-chart="sunburst"] div[role="button"]') as HTMLElement | null;
   if (!center) return false;
   dispatchClick(center);
   return true;
 }
 
-// Zoom settle
 const SUNBURST_ZOOM_DURATION_MS = 750;
 const SUNBURST_ZOOM_SETTLE_MARGIN_MS = 150;
 
@@ -128,7 +96,6 @@ export default function MigratedSunburst({ n }: { n: number }) {
     setFocusId(rootId);
   }, [rootId]);
 
-  // Mount settle arm (matches bklit-sunburst.tsx exactly)
   useMemo(() => {
     const settleMs = sunburstSettleMs(arcs) + REVEAL_CLOCK_MARGIN_MS;
     const { resolve } = armManualSettle(settleMs + 3000);

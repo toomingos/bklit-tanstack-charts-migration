@@ -1,234 +1,85 @@
 "use client";
 
 import * as React from "react";
+import { useDashTailMeasurement } from "./dash-tail-measure";
+import type { DashTailSeries, Measured } from "./dash-tail-measure";
+import type { ChartDatum } from "./types";
 import { useSanitizedId } from "./use-sanitized-id";
 
-export function resolveDashTailBounds(
-  dashFromIndex: number | undefined,
-  dataLength: number
-): boolean {
-  return (
-    dashFromIndex != null &&
+// Numeric-cell guard for the optional dashFromIndex prop.
+// Absent or non-numeric means "no dash tail", so the prop is parsed here.
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
+
+const resolveDashTailBounds = (dashFromIndex: number | undefined, dataLength: number): boolean => (
+    isNumber(dashFromIndex) &&
     dashFromIndex >= 0 &&
     dashFromIndex < dataLength - 1
   );
+
+
+interface DashTailOverlayProps {
+  readonly containerRef: React.RefObject<HTMLElement | null>;
+  readonly width: number;
+  readonly height: number;
+  readonly margin: { readonly top: number; readonly left: number; readonly right: number; readonly bottom: number };
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+  readonly series: readonly DashTailSeries[];
+  readonly innerWidth: number;
+  readonly innerHeight: number;
 }
 
-export function resolveDashStartX(
-  data: Record<string, unknown>[],
-  dashFromIndex: number,
-  xScale: (value: Date | number) => number | undefined,
-  xAccessor: (datum: Record<string, unknown>) => Date | number
-): number {
-  const dashFromPoint = data[dashFromIndex];
-  if (!dashFromPoint) {
-    return 0;
-  }
-  return xScale(xAccessor(dashFromPoint)) ?? 0;
+interface DashTailEntryOptions {
+  readonly entryKey: string;
+  readonly measuredEntry: Readonly<Measured>;
+  readonly baseId: string;
+  readonly marginTop: number;
+  readonly marginLeft: number;
+  readonly innerWidth: number;
+  readonly innerHeight: number;
 }
 
-export interface DashTailSeries {
-  dataKey: string;
-  stroke: string;
-  strokeWidth: number;
-  dashFromIndex?: number;
-  dashArray?: string;
+const renderDashTailEntry = (options: Readonly<DashTailEntryOptions>): React.ReactElement => {
+  const { baseId, entryKey, innerHeight, innerWidth, marginLeft, marginTop, measuredEntry } = options;
+  const clipId = `${baseId}-dash-${entryKey.replaceAll(/[^a-zA-Z0-9_-]/gu, "_")}`;
+  const pad = measuredEntry.strokeWidth * 2;
+  const tailWidth = Math.max(0, marginLeft + innerWidth - measuredEntry.dashStartX + pad);
+  const defsEl = React.createElement("defs", undefined, React.createElement("clipPath", { id: clipId }, React.createElement("rect", { height: innerHeight + pad, width: tailWidth, x: measuredEntry.dashStartX - measuredEntry.strokeWidth, y: marginTop - measuredEntry.strokeWidth })));
+  const basePathEl = React.createElement("path", { d: measuredEntry.pathD, fill: "none", stroke: measuredEntry.stroke, strokeDasharray: `${measuredEntry.dashStartLength} ${Math.max(1, measuredEntry.pathLength - measuredEntry.dashStartLength)}`, strokeLinecap: "round", strokeWidth: measuredEntry.strokeWidth });
+  const tailPathEl = React.createElement("path", { clipPath: `url(#${clipId})`, d: measuredEntry.pathD, fill: "none", stroke: measuredEntry.stroke, strokeDasharray: measuredEntry.dashArray, strokeLinecap: "round", strokeWidth: measuredEntry.strokeWidth });
+  return React.createElement(
+    "g",
+    { "data-bkm-dash-tail": entryKey, key: entryKey },
+    defsEl,
+    basePathEl,
+    tailPathEl
+  );
 }
 
-export interface DashTailOverlayProps {
-  containerRef: React.RefObject<HTMLElement | null>;
-  width: number;
-  height: number;
-  margin: { top: number; left: number; right: number; bottom: number };
-  renderData: Record<string, unknown>[];
-  xDataKey: string;
-  series: DashTailSeries[];
-  innerWidth: number;
-  innerHeight: number;
-}
-
-interface Measured {
-  pathD: string;
-  pathLength: number;
-  dashStartX: number;
-  dashStartLength: number;
-  stroke: string;
-  strokeWidth: number;
-  dashArray: string;
-}
-
-function findSeriesPath(container: HTMLElement | null, dataKey: string): SVGPathElement | null {
-  if (!container) return null;
-  const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
-  if (!marksGroup) return null;
-  const escaped = dataKey.replace(/"/g, '\\"');
-  const group = marksGroup.querySelector<SVGGElement>(`.ts-chart__line[data-ts-key^="${escaped}:"]`);
-  return group?.querySelector<SVGPathElement>("path") ?? null;
-}
-
-export function DashTailOverlay(props: DashTailOverlayProps): React.ReactNode {
+const DashTailOverlay = (props: Readonly<DashTailOverlayProps>): React.ReactNode => {
   const { containerRef, width, height, margin, renderData, xDataKey, series, innerWidth, innerHeight } = props;
   const baseId = useSanitizedId();
   const [measured, setMeasured] = React.useState<Map<string, Measured>>(new Map());
 
   const activeSeries = React.useMemo(
-    () => series.filter((s) => resolveDashTailBounds(s.dashFromIndex, renderData.length)),
+    () => series.filter((seriesEntry) => resolveDashTailBounds(seriesEntry.dashFromIndex, renderData.length)),
     [series, renderData.length]
   );
 
-  React.useLayoutEffect(() => {
-    if (activeSeries.length === 0) {
-      // No setState here: render already returns null when activeSeries is
-      // empty, so a stale `measured` map is invisible, and any setState in
-      // this every-render effect (deps get fresh identity from the host's
-      // inline `series` prop) livelocks React under the loading pulse's
-      // render cadence (React #185 — pending lanes defeat the eager
-      // same-state bailout).
-      return;
-    }
-    if (innerWidth <= 0 || innerHeight <= 0) return;
-    let cancelled = false;
-    let raf = 0;
-    // Cap the mount-timing retry: a missing path after this many frames is a
-    // wiring defect, not a race — keep polling would re-render every frame.
-    let attempts = 0;
-    const MAX_ATTEMPTS = 120;
+  useDashTailMeasurement({ activeSeries, containerRef, innerHeight, innerWidth, marginLeft: margin.left, onMeasured: setMeasured, renderData, xDataKey });
 
-    const doMeasure = () => {
-      const container = containerRef.current;
-      if (!container) {
-        raf = requestAnimationFrame(doMeasure);
-        return;
-      }
-      const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
-      if (!marksGroup) {
-        raf = requestAnimationFrame(doMeasure);
-        return;
-      }
-      let minTime = Infinity;
-      let maxTime = -Infinity;
-      for (const d of renderData) {
-        const v = (d as Record<string, unknown>)[xDataKey];
-        if (v instanceof Date) {
-          const t = v.getTime();
-          if (t < minTime) minTime = t;
-          if (t > maxTime) maxTime = t;
-        } else if (typeof v === "number" && Number.isFinite(v)) {
-          if (v < minTime) minTime = v;
-          if (v > maxTime) maxTime = v;
-        }
-      }
-      // The source path's `d` is drawn by the host chart in the SAME
-      // coordinate space as the root chart <svg> itself — the host bakes
-      // margin.left/margin.top directly into its scale ranges (chart.x =
-      // margin.left) rather than nesting marks under a translated <g>
-      // (confirmed live: `.ts-chart__marks` carries no transform, and the
-      // seriesA path's `d` starts at "M40,..." for margin.left=40). So
-      // dashStartX must land in that SAME absolute space — offset by
-      // margin.left — not in local 0..innerWidth inner coordinates.
-      const hasTimeDomain = Number.isFinite(minTime) && Number.isFinite(maxTime);
-      const xScale = (value: Date | number): number | undefined => {
-        if (!hasTimeDomain) return margin.left;
-        const range = maxTime - minTime;
-        if (range <= 0) return margin.left;
-        const t = value instanceof Date ? value.getTime() : typeof value === "number" ? value : 0;
-        return margin.left + ((t - minTime) / range) * innerWidth;
-      };
-      const xAccessor = (datum: Record<string, unknown>): Date | number => datum[xDataKey] as Date | number;
+  if (activeSeries.length === 0 || measured.size === 0) {return undefined;}
 
-      const next = new Map<string, Measured>();
-      let anyMissing = false;
-      for (const s of activeSeries) {
-        const idx = s.dashFromIndex!;
-        const pathEl = findSeriesPath(container, s.dataKey);
-        if (!pathEl) {
-          anyMissing = true;
-          continue;
-        }
-        const d = pathEl.getAttribute("d");
-        const len = d ? pathEl.getTotalLength() : 0;
-        if (!d || len <= 0) {
-          anyMissing = true;
-          continue;
-        }
-        const dashStartX = resolveDashStartX(renderData, idx, xScale, xAccessor);
-        const dashStartLength = (idx / Math.max(1, renderData.length - 1)) * len;
-        if (dashStartLength >= len) continue;
-        next.set(s.dataKey, {
-          pathD: d,
-          pathLength: len,
-          dashStartX,
-          dashStartLength,
-          stroke: s.stroke,
-          strokeWidth: s.strokeWidth,
-          dashArray: s.dashArray ?? "6,4",
-        });
-      }
-      if (!cancelled) {
-        // Skip the state write when nothing changed — the retry path would
-        // otherwise commit a fresh Map (new identity) every frame.
-        setMeasured((prev) => {
-          if (prev.size === next.size) {
-            let same = true;
-            for (const [k, m] of next) {
-              const p = prev.get(k);
-              if (
-                !p ||
-                p.pathD !== m.pathD ||
-                p.pathLength !== m.pathLength ||
-                p.dashStartX !== m.dashStartX ||
-                p.stroke !== m.stroke ||
-                p.strokeWidth !== m.strokeWidth ||
-                p.dashArray !== m.dashArray
-              ) {
-                same = false;
-                break;
-              }
-            }
-            if (same) return prev;
-          }
-          return next;
-        });
-      }
-      if (anyMissing && !cancelled && attempts < MAX_ATTEMPTS) {
-        attempts += 1;
-        raf = requestAnimationFrame(doMeasure);
-      }
-    };
-
-    doMeasure();
-    return () => {
-      cancelled = true;
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, [activeSeries, renderData, xDataKey, innerWidth, innerHeight, containerRef, margin.left]);
-
-  if (activeSeries.length === 0 || measured.size === 0) return null;
-
-  // No wrapping translate here: the overlay <svg> is sized/positioned to
-  // exactly cover the same box as the host chart's own root <svg> (both are
-  // absolutely-positioned at inset:0 within the same container), and the
-  // redrawn `pathD` already carries the host's margin baked into its own
-  // coordinates. Re-adding translate(margin.left, margin.top) on top of
-  // that double-counts the margin and pushes the redrawn line
-  // right/down of the original (the defect this overlay exists to avoid).
+  // No wrapping translate: pathD already carries host margins; re-adding them double-counts.
   return React.createElement(
     "svg",
-    { width, height, style: { position: "absolute", inset: 0, pointerEvents: "none" } as React.CSSProperties, "aria-hidden": "true" },
-    Array.from(measured.entries()).map(([key, m]) => {
-      const clipId = `${baseId}-dash-${key.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-      const pad = m.strokeWidth * 2;
-      // dashStartX is already absolute (margin.left-inclusive, see xScale
-      // above), so the tail extends to margin.left + innerWidth, not to
-      // innerWidth alone.
-      const tailWidth = Math.max(0, margin.left + innerWidth - m.dashStartX + pad);
-      return React.createElement(
-        "g",
-        { key, "data-bkm-dash-tail": key },
-        React.createElement("defs", null, React.createElement("clipPath", { id: clipId }, React.createElement("rect", { x: m.dashStartX - m.strokeWidth, y: margin.top - m.strokeWidth, width: tailWidth, height: innerHeight + pad }))),
-        React.createElement("path", { d: m.pathD, fill: "none", stroke: m.stroke, strokeWidth: m.strokeWidth, strokeLinecap: "round", strokeDasharray: `${m.dashStartLength} ${Math.max(1, m.pathLength - m.dashStartLength)}` }),
-        React.createElement("path", { d: m.pathD, fill: "none", stroke: m.stroke, strokeWidth: m.strokeWidth, strokeLinecap: "round", strokeDasharray: m.dashArray, clipPath: `url(#${clipId})` })
-      );
-    })
+    { "aria-hidden": "true", height, style: { inset: 0, pointerEvents: "none", position: "absolute" }, width },
+    [...measured.entries()].map(([entryKey, measuredEntry]: readonly [string, Measured]) =>
+      renderDashTailEntry({ baseId, entryKey, innerHeight, innerWidth, marginLeft: margin.left, marginTop: margin.top, measuredEntry }))
   );
 }
+
+export { resolveDashStartX } from "./dash-tail-measure";
+export type { DashTailSeries } from "./dash-tail-measure";
+export type { DashTailOverlayProps };
+export { resolveDashTailBounds, DashTailOverlay };

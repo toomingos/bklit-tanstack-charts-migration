@@ -1,10 +1,4 @@
-// P6.1 / T-F1 — the AREA multi-axis NEW-BEHAVIOUR fixture. Same shape and same
-// reasoning as `bklit-linemultiaxis.tsx`: `seriesA` (~1000) on the default
-// `"left"` axis, `seriesC = seriesB / 50` (~12) on `"right"`, so a build that
-// ignores per-axis domains collapses the second series onto the bottom edge and
-// the gate moves. Area takes the projector on BOTH its marks — the fill and the
-// boundary line — which is the one thing this fixture checks that the line one
-// cannot.
+// Multi-axis control (same shape as line): area projects BOTH fill and boundary line marks.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { curveNatural } from "@visx/curve";
 import { AreaChart, Area, Grid, XAxis, ChartTooltip } from "@bklitui/ui/charts";
@@ -17,7 +11,7 @@ import { armBklitSettle } from "../bench/settle";
 import { measureUpdatePaint } from "../bench/paint";
 import { appendLiveRow } from "../bench/live";
 
-/** `seriesB / 50` — an order of magnitude below `seriesA` on purpose. */
+// seriesC = seriesB / 50, an order of magnitude below seriesA on purpose.
 const SECONDARY_AXIS_DIVISOR = 50;
 
 type MultiAxisRow = SeededRow & { seriesC: number };

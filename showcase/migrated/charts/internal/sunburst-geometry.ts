@@ -4,227 +4,69 @@
 // Only the functions/types actually used by sunburst-chart.tsx and
 // sunburst-reveal.ts are included.
 
-import type { ArcDatum, ArcGeometry, Focus, SunburstNode } from "./sunburst-types";
-
-// ---------------------------------------------------------------------------
-// Re-exports for convenience (types also re-exported)
-// ---------------------------------------------------------------------------
-
-export type { ArcDatum, ArcGeometry, Focus, SunburstNode };
+import type { ArcDatum, ArcGeometry, Focus } from "./sunburst-types";
+import { ID_SEP, TOP, TWO_PI } from "./sunburst-layout";
+import { lerpGeometry, pointGeometry } from "./sunburst-arc-path";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const TOP = -Math.PI / 2;
-const TWO_PI = 2 * Math.PI;
-const ID_SEP = " / ";
 const DRILL_CENTER_SCALE = 0.65;
 const DRILL_CENTER_DEPTH_SHRINK = 0.08;
-const HOVER_GROW_RING_BUDGET = 0.28;
-const HOVER_GROW_SEGMENT_CAP = 0.1;
+const MIN_DRILL_CENTER_SCALE = 0.45;
+const FOCUS_SPAN_EPSILON = 1e-9;
 
-// ---------------------------------------------------------------------------
-// Layout builders
-// ---------------------------------------------------------------------------
-
-export function nodeId(parentId: string | null, name: string): string {
-  return parentId ? `${parentId}${ID_SEP}${name}` : name;
-}
-
-export function sumValues(node: SunburstNode): number {
-  if (node.children?.length) {
-    return node.children.reduce((sum, child) => sum + sumValues(child), 0);
-  }
-  return node.value ?? 0;
-}
-
-interface BuildContext {
-  arcs: ArcDatum[];
-  focusById: Map<string, Focus>;
-  maxDepth: number;
-  rootId: string;
-  arcIndex: number;
-}
-
-function toRadians(normalized: number): number {
-  return TOP + normalized * TWO_PI;
-}
-
-function layoutNode(
-  node: SunburstNode,
-  id: string,
-  depth: number,
-  a0: number,
-  a1: number,
-  parentId: string | null,
-  categoryIndex: number,
-  trail: string[],
-  ctx: BuildContext,
-) {
-  const value = sumValues(node);
-  const hasChildren = Boolean(node.children?.length);
-
-  if (depth > 0) {
-    ctx.arcs.push({
-      id,
-      name: node.name,
-      depth,
-      value,
-      categoryIndex,
-      hasChildren,
-      trail: [...trail, node.name],
-      parentId,
-      a0,
-      a1,
-      arcIndex: ctx.arcIndex,
-      color: node.color,
-      fill: node.fill,
-    });
-    ctx.arcIndex += 1;
-  }
-
-  ctx.focusById.set(id, {
-    id,
-    name: node.name,
-    depth,
-    parentId,
-    categoryIndex,
-    a0,
-    a1,
-  });
-  ctx.maxDepth = Math.max(ctx.maxDepth, depth);
-
-  if (!(hasChildren && node.children?.length)) {
-    return;
-  }
-
-  const span = a1 - a0;
-  let cursor = a0;
-  for (const [index, child] of node.children.entries()) {
-    const childValue = sumValues(child);
-    const childSpan = value > 0 ? (childValue / value) * span : 0;
-    const childId = nodeId(id, child.name);
-    const childCategory = depth === 0 ? index : categoryIndex;
-    layoutNode(
-      child,
-      childId,
-      depth + 1,
-      cursor,
-      cursor + childSpan,
-      id,
-      childCategory,
-      depth === 0 ? [node.name] : trail,
-      ctx,
-    );
-    cursor += childSpan;
-  }
-}
-
-export function buildArcs(data: SunburstNode) {
-  const rootId = data.name;
-  const ctx: BuildContext = {
-    arcs: [],
-    focusById: new Map(),
-    maxDepth: 0,
-    rootId,
-    arcIndex: 0,
-  };
-
-  layoutNode(data, rootId, 0, 0, 1, null, 0, [], ctx);
-
-  for (const arc of ctx.arcs) {
-    arc.a0 = toRadians(arc.a0);
-    arc.a1 = toRadians(arc.a1);
-  }
-  for (const focus of ctx.focusById.values()) {
-    focus.a0 = toRadians(focus.a0);
-    focus.a1 = toRadians(focus.a1);
-  }
-
-  return {
-    arcs: ctx.arcs,
-    maxDepth: ctx.maxDepth,
-    total: sumValues(data),
-    focusById: ctx.focusById,
-    rootId,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Flat rows for native `sunburst()` (C5d, D-TBD) — native's hierarchy
-// pipeline (`hierarchy-flat-internal.js`'s `buildFlatHierarchy`) is a
-// `d3-hierarchy` `stratify()` over FLAT rows with `nodeId`/`parentId`
-// accessors, not a nested-tree walk. This flattens the SAME nested
-// `SunburstNode` `data` prop `buildArcs` walks, using the IDENTICAL `nodeId`
-// scheme (so ids match 1:1 with `ArcDatum.id`/`Focus.id` from `buildArcs` —
-// required for `arcsById` cross-referencing in sunburst-chart.tsx) — but
-// carries each node's OWN raw `value` (`rawValue`, undefined for a node with
-// no `value` field), not `sumValues`'s pre-aggregated subtree total. This
-// distinction is required by parity condition 1 (see sunburst-chart.tsx):
-// native's own `hierarchy.root.sum(...)` (`hierarchy-flat-internal.js:97`)
-// ADDS a node's own value on top of its children's, so the `value` accessor
-// passed to `sunburst()` must return 0 for any node with children (letting
-// only the children's sums flow up) — passing our own pre-summed
-// `ArcDatum.value` here would double-count.
-// ---------------------------------------------------------------------------
-
-export interface SunburstFlatRow {
-  id: string;
-  parentId: string | null;
-  hasChildren: boolean;
-  rawValue: number | undefined;
-}
-
-export function buildSunburstFlatRows(data: SunburstNode): SunburstFlatRow[] {
-  const rows: SunburstFlatRow[] = [];
-  function walk(node: SunburstNode, id: string, parentId: string | null) {
-    const hasChildren = Boolean(node.children?.length);
-    rows.push({ id, parentId, hasChildren, rawValue: node.value });
-    if (hasChildren) {
-      for (const child of node.children!) {
-        walk(child, nodeId(id, child.name), id);
-      }
-    }
-  }
-  walk(data, nodeId(null, data.name), null);
-  return rows;
-}
+// Same reasoning as ReadonlySunburstNode: ArcDatum.trail (sunburst-types.ts) is a mutable
+// Array upstream, and the geometry helpers below never mutate it.
+type ReadonlyArcDatum = Readonly<Omit<ArcDatum, "trail">> & { readonly trail: readonly string[] };
 
 // ---------------------------------------------------------------------------
 // Ring layout
 // ---------------------------------------------------------------------------
 
-export function ringOptions(
-  focusDepth: number,
-  maxDepth: number,
-  radius: number,
-) {
+interface RingOptions {
+  centerR: number;
+  ringWidth: number;
+}
+
+const ringOptions = (focusDepth: number, maxDepth: number, radius: number): RingOptions => {
   const oneLevelCenterR = radius / maxDepth;
   if (focusDepth === 0) {
     return { centerR: 0, ringWidth: oneLevelCenterR };
   }
   const depthPastFirstDrill = Math.max(0, focusDepth - 1);
   const centerScale = Math.max(
-    0.45,
+    MIN_DRILL_CENTER_SCALE,
     DRILL_CENTER_SCALE - depthPastFirstDrill * DRILL_CENTER_DEPTH_SHRINK,
   );
   const centerR = oneLevelCenterR * centerScale;
   const visibleRings = Math.max(1, maxDepth - focusDepth);
   const ringWidth = (radius - centerR) / visibleRings;
   return { centerR, ringWidth };
-}
+};
 
 // ---------------------------------------------------------------------------
 // Geometry per arc
 // ---------------------------------------------------------------------------
 
-export function geometryFor(
-  arc: ArcDatum,
-  focus: Focus,
+// Arc/focus/maxDepth/radius: exported and called with 4 positional args by sunburst-chart.tsx
+// (outside this batch) — bundling them into an options object would break that public call
+// Signature, so the eslint(max-params) finding here is left and reported; readonly-ness is still
+// Tightened via ReadonlyArcDatum/Readonly<Focus>.
+const geometryFor = (
+  arc: ReadonlyArcDatum,
+  focus: Readonly<Focus>,
   maxDepth: number,
   radius: number,
-): ArcGeometry | null {
+): ArcGeometry | null => {
+  // Returns null (not undefined) for "no geometry": unicorn(no-null) wants undefined here, but
+  // Eslint(no-undefined) (also active, no exceptions) bans the undefined literal, and
+  // Typescript(consistent-return) rejects a function that sometimes returns a value and
+  // Sometimes returns nothing (a bare `return;`). Null is the only return shape that satisfies
+  // Consistent-return and no-undefined at once — the resulting no-null findings below (and on
+  // Every other "maybe nothing" return in this file) are a genuine rule-config conflict, not a
+  // Fixable code defect; see the batch report.
   if (arc.depth <= focus.depth) {
     return null;
   }
@@ -235,8 +77,8 @@ export function geometryFor(
   const { centerR, ringWidth } = ringOptions(focus.depth, maxDepth, radius);
   const relativeDepth = arc.depth - focus.depth;
   const focusSpan = focus.a1 - focus.a0;
-  const mapAngle = (angle: number) => {
-    if (focusSpan <= 1e-9) {
+  const mapAngle = (angle: number): number => {
+    if (focusSpan <= FOCUS_SPAN_EPSILON) {
       return TOP;
     }
     return TOP + ((angle - focus.a0) / focusSpan) * TWO_PI;
@@ -248,192 +90,61 @@ export function geometryFor(
     innerR: centerR + (relativeDepth - 1) * ringWidth,
     outerR: centerR + relativeDepth * ringWidth,
   };
-}
+};
 
 // ---------------------------------------------------------------------------
 // Geometry helpers
 // ---------------------------------------------------------------------------
 
-export function geomCentroidAngle(geometry: ArcGeometry): number {
-  return (geometry.a0 + geometry.a1) / 2;
-}
+const geomCentroidAngle = (geometry: Readonly<ArcGeometry>): number => (geometry.a0 + geometry.a1) / 2;
 
-export function geomCentroidRadius(geometry: ArcGeometry): number {
-  return (geometry.innerR + geometry.outerR) / 2;
-}
+const geomCentroidRadius = (geometry: Readonly<ArcGeometry>): number => (geometry.innerR + geometry.outerR) / 2;
 
-/** Normalized clockwise angle from 12 o'clock (0 → 1). */
-export function clockwiseFraction(angle: number): number {
+// Normalized clockwise angle from 12 o'clock (0 → 1).
+const clockwiseFraction = (angle: number): number => {
   let normalized = angle - TOP;
   if (normalized < 0) {
     normalized += TWO_PI;
   }
   return normalized / TWO_PI;
-}
+};
 
-// ---------------------------------------------------------------------------
-// Arc path construction (d-string)
-// ---------------------------------------------------------------------------
-
-export function arcPath(
-  geometry: ArcGeometry,
-  progress: number,
-  radialProgress = progress,
-): string | null {
-  if (progress <= 0 && radialProgress <= 0) {
-    return null;
-  }
-
-  const p = Math.min(1, Math.max(0, progress));
-  const radialP = Math.min(1, Math.max(0, radialProgress));
-  const { a0, a1, innerR, outerR } = geometry;
-
-  if (p >= 1 && radialP >= 1) {
-    return arcPathFromGeometry(geometry);
-  }
-
-  const span = a1 - a0;
-
-  const currentA0 = a0;
-  const currentA1 = a0 + span * p;
-  const currentInner = innerR < 1 ? 0 : innerR;
-  const currentOuter =
-    innerR < 1 ? outerR * radialP : innerR + (outerR - innerR) * radialP;
-
-  return arcPathFromRadii(currentA0, currentA1, currentInner, currentOuter);
-}
-
-function arcPathFromGeometry(geometry: ArcGeometry): string | null {
-  const { a0, a1, innerR, outerR } = geometry;
-  return arcPathFromRadii(a0, a1, innerR, outerR);
-}
-
-function arcPathFromRadii(
-  currentA0: number,
-  currentA1: number,
-  currentInner: number,
-  currentOuter: number,
-): string | null {
-  if (currentOuter - currentInner < 0.5 || currentA1 - currentA0 < 0.001) {
-    return null;
-  }
-
-  const largeArc = currentA1 - currentA0 > Math.PI ? 1 : 0;
-  const outerX0 = Math.sin(currentA0) * currentOuter;
-  const outerY0 = -Math.cos(currentA0) * currentOuter;
-  const outerX1 = Math.sin(currentA1) * currentOuter;
-  const outerY1 = -Math.cos(currentA1) * currentOuter;
-
-  if (currentInner < 1) {
-    return `M 0 0 L ${outerX0} ${outerY0} A ${currentOuter} ${currentOuter} 0 ${largeArc} 1 ${outerX1} ${outerY1} Z`;
-  }
-
-  const innerX1 = Math.sin(currentA1) * currentInner;
-  const innerY1 = -Math.cos(currentA1) * currentInner;
-  const innerX0 = Math.sin(currentA0) * currentInner;
-  const innerY0 = -Math.cos(currentA0) * currentInner;
-
-  return `M ${outerX0} ${outerY0} A ${currentOuter} ${currentOuter} 0 ${largeArc} 1 ${outerX1} ${outerY1} L ${innerX1} ${innerY1} A ${currentInner} ${currentInner} 0 ${largeArc} 0 ${innerX0} ${innerY0} Z`;
-}
-
-// ---------------------------------------------------------------------------
-// Geometry interpolation (lerp + transition)
-// ---------------------------------------------------------------------------
-
-function lerpAngle(from: number, to: number, progress: number): number {
-  let delta = to - from;
-  while (delta > Math.PI) {
-    delta -= TWO_PI;
-  }
-  while (delta < -Math.PI) {
-    delta += TWO_PI;
-  }
-  return from + delta * progress;
-}
-
-export function lerpGeometry(
-  from: ArcGeometry,
-  to: ArcGeometry,
-  progress: number,
-): ArcGeometry {
-  const t = Math.min(1, Math.max(0, progress));
-  const fromMid = (from.a0 + from.a1) / 2;
-  const toMid = (to.a0 + to.a1) / 2;
-  const fromHalf = (from.a1 - from.a0) / 2;
-  const toHalf = (to.a1 - to.a0) / 2;
-  const mid = lerpAngle(fromMid, toMid, t);
-  const half = fromHalf + (toHalf - fromHalf) * t;
-
-  return {
-    a0: mid - half,
-    a1: mid + half,
-    innerR: from.innerR + (to.innerR - from.innerR) * t,
-    outerR: from.outerR + (to.outerR - from.outerR) * t,
-  };
-}
-
-function pointGeometry(source: ArcGeometry): ArcGeometry {
-  const mid = (source.a0 + source.a1) / 2;
-  const radius = (source.innerR + source.outerR) / 2;
-  const pin = Math.max(0, Math.min(radius * 0.12, source.innerR));
-  return { a0: mid, a1: mid, innerR: pin, outerR: pin };
-}
-
-/** Zoom morph — lerps matching arcs; entering/exiting arcs collapse to a point. */
-export function transitionGeometry(
-  arc: ArcDatum,
-  fromFocus: Focus,
-  toFocus: Focus,
+// Arc/fromFocus/toFocus/maxDepth/radius/progress: exported and called with 6 positional args by
+// Sunburst-chart.tsx (outside this batch) — bundling them would break that public call signature,
+// So the eslint(max-params) finding here is left and reported; readonly-ness is still tightened
+// Via ReadonlyArcDatum/Readonly<Focus>.
+// Zoom morph — lerps matching arcs; entering/exiting arcs collapse to a point.
+const transitionGeometry = (
+  arc: ReadonlyArcDatum,
+  fromFocus: Readonly<Focus>,
+  toFocus: Readonly<Focus>,
   maxDepth: number,
   radius: number,
   progress: number,
-): ArcGeometry | null {
+): ArcGeometry | null => {
   const from = geometryFor(arc, fromFocus, maxDepth, radius);
   const to = geometryFor(arc, toFocus, maxDepth, radius);
 
-  if (!(from || to)) {
-    return null;
+  // Same no-null/no-undefined/consistent-return conflict as geometryFor above.
+  if (from === null) {
+    return to === null ? null : lerpGeometry(pointGeometry(to), to, progress);
   }
-  if (from && to) {
-    return lerpGeometry(from, to, progress);
-  }
-  if (from) {
-    return lerpGeometry(from, pointGeometry(from), progress);
-  }
-  if (to) {
-    return lerpGeometry(pointGeometry(to), to, progress);
-  }
-  return null;
-}
+  return to === null ? lerpGeometry(from, pointGeometry(from), progress) : lerpGeometry(from, to, progress);
+};
 
 // ---------------------------------------------------------------------------
-// Hover grow
+// Exports
 // ---------------------------------------------------------------------------
 
-function hoverGrowForPathSegment(
-  hoverPop: number,
-  ringWidth: number,
-  pathLength: number,
-): number {
-  const maxTotalGrow = ringWidth * HOVER_GROW_RING_BUDGET;
-  const budgetPerSegment = maxTotalGrow / pathLength;
-  const perSegmentCap = ringWidth * HOVER_GROW_SEGMENT_CAP;
-  return Math.min(hoverPop, perSegmentCap, budgetPerSegment);
-}
-
-export function defaultSunburstGrowPadding(
-  maxDepth: number,
-  size: number,
-  hoverPop: number,
-): number {
-  const fullRadius = size / 2;
-  const rootRingWidth = fullRadius / Math.max(1, maxDepth);
-  const pathLength = Math.max(1, maxDepth - 1);
-  const segmentGrow = hoverGrowForPathSegment(
-    hoverPop,
-    rootRingWidth,
-    pathLength,
-  );
-  return Math.ceil(segmentGrow * pathLength + segmentGrow);
-}
-
+export { buildArcs, buildSunburstFlatRows, nodeId, sumValues } from "./sunburst-layout";
+export { arcPath, defaultSunburstGrowPadding, lerpGeometry } from "./sunburst-arc-path";
+export {
+  clockwiseFraction,
+  geomCentroidAngle,
+  geomCentroidRadius,
+  geometryFor,
+  ringOptions,
+  transitionGeometry,
+};
+export type { SunburstFlatRow, SunburstLayout } from "./sunburst-layout";
+export type { ArcDatum, ArcGeometry, Focus, SunburstNode } from "./sunburst-types";

@@ -1,6 +1,4 @@
-// Migrated SCATTER multi-axis scenario — IDENTICAL usage to
-// bklit-scattermultiaxis.tsx; only the import source changes. See that file for
-// why the fixture is shaped this way.
+// Twin of bklit-scattermultiaxis.tsx; only the import source changes.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScatterChart, Scatter, Grid, XAxis, ChartTooltip } from "@migrated/charts";
 import {

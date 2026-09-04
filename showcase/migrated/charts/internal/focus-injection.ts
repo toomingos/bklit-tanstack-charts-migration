@@ -12,62 +12,32 @@ import type {
 import type { RefObject } from "react";
 import { useCallback, useRef } from "react";
 
-/**
- * Sanctioned legend/app -> chart focus injection (phase 6, C1).
- *
- * Captures the interaction controller + compiled scene from the React
- * `<Chart onRender>` context and injects programmatic focus for a series
- * (legend hover) or clears it. Marks style themselves via `states`; there is
- * no DOM access here — the controller and scene are documented API surfaces
- * (dist/dom-types.d.ts:31-38,167-172).
- */
+// Legend/app -> chart focus injection; marks style via states, no DOM access.
 
-/**
- * `ChartInteractionController.setControlledFocus`'s `source` option
- * (dist/dom-types.d.ts's `ChartControlledFocusOptions`) — narrower than the
- * library's general `ChartFocusSource` union (which also has 'keyboard' and
- * 'restored', neither of which `setControlledFocus` accepts).
- */
-export type ChartFocusInjectionSource = NonNullable<ChartControlledFocusOptions["source"]>;
+// Source subset accepted by setControlledFocus (no keyboard/restored).
+type ChartFocusInjectionSource = NonNullable<ChartControlledFocusOptions["source"]>;
 
-export interface FocusInjection<
+interface FocusInjection<
   TDatum = unknown,
   TXValue extends ChartValue = ChartValue,
   TYValue extends ChartValue = ChartValue,
 > {
-  /** Compose into the chart's existing onRender handler (call first). */
   captureRenderContext: (
     context: Pick<ChartRenderContext<TDatum, TXValue, TYValue>, "scene" | "interaction">
   ) => void;
-  /**
-   * Focus the first scene point matching an arbitrary predicate; null clears.
-   * Raw-point injection defaults to source 'programmatic'
-   * (docs/reference/dom-host.md:211-213); pass an explicit `source` (e.g.
-   * 'pointer') to reproduce app-owned pointer-hover focus bridges instead.
-   */
+// Null clears; default source programmatic, pointer for hover bridges.
   focusPoint: (
     predicate: ((point: ChartPoint<TDatum, TXValue, TYValue>) => boolean) | null,
     source?: ChartFocusInjectionSource
   ) => void;
-  /** Clear any injected focus. */
   clearFocus: (source?: ChartFocusInjectionSource) => void;
-  /**
-   * The captured scene/interaction refs, for callers that need to reach past
-   * focusPoint's predicate-search shape (e.g. a plot-local
-   * `clientToScene`/`invertSceneX` pair built on top of `interactionRef`/
-   * `sceneRef` directly).
-   */
+// Escape hatch for callers needing scene/interaction directly.
   sceneRef: RefObject<ChartScene<TDatum, TXValue, TYValue> | null>;
   interactionRef: RefObject<ChartInteractionController<TDatum, TXValue, TYValue> | null>;
-  /** Converts browser client coordinates into scene coordinates via the captured interaction controller. */
   clientToScene: (clientX: number, clientY: number) => ChartTooltipPosition | null;
 }
 
-export function useFocusInjection<
-  TDatum = unknown,
-  TXValue extends ChartValue = ChartValue,
-  TYValue extends ChartValue = ChartValue,
->(): FocusInjection<TDatum, TXValue, TYValue> {
+const useFocusInjection = <TDatum = unknown, TXValue extends ChartValue = ChartValue, TYValue extends ChartValue = ChartValue>(): FocusInjection<TDatum, TXValue, TYValue> => {
   const sceneRef = useRef<ChartScene<TDatum, TXValue, TYValue> | null>(null);
   const interactionRef = useRef<ChartInteractionController<TDatum, TXValue, TYValue> | null>(null);
 
@@ -85,7 +55,7 @@ export function useFocusInjection<
       source: ChartFocusInjectionSource = "programmatic"
     ) => {
       const interaction = interactionRef.current;
-      if (!interaction) return;
+      if (!interaction) {return;}
       if (!predicate) {
         interaction.setControlledFocus(null, { source });
         return;
@@ -97,7 +67,7 @@ export function useFocusInjection<
   );
 
   const clearFocus = useCallback(
-    (source?: ChartFocusInjectionSource) => focusPoint(null, source),
+    (source?: ChartFocusInjectionSource) =>{  focusPoint(null, source); },
     [focusPoint]
   );
 
@@ -108,10 +78,13 @@ export function useFocusInjection<
 
   return {
     captureRenderContext,
-    focusPoint,
     clearFocus,
-    sceneRef,
-    interactionRef,
     clientToScene,
+    focusPoint,
+    interactionRef,
+    sceneRef,
   };
 }
+
+export { useFocusInjection };
+export type { ChartFocusInjectionSource, FocusInjection };

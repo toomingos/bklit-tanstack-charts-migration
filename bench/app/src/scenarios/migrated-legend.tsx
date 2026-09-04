@@ -1,5 +1,4 @@
-// Migrated Legend scenario — IDENTICAL usage to bklit-legend.tsx (same
-// component tree, same items/props), only the import source changes.
+// Drop-in twin of bklit-legend.tsx; only the import source changes.
 import { useEffect, useState } from "react";
 import {
   ChartLegend,

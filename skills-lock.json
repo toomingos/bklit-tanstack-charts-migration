@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "opencode-subagents": {
+      "source": "toomingos/opencode-subagents",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "ac6d750707503a3a81d5803c8ae62c5ac108b90e893056f1dbb878d1d7aeda07"
+    },
+    "ultracite": {
+      "source": "haydenbleasel/ultracite",
+      "sourceType": "github",
+      "skillPath": "skills/ultracite/SKILL.md",
+      "computedHash": "ef2be373e387b4b1c57a06a70ad7ddbf5dc3b9e10994e0562bee389ee5f93113"
+    }
+  }
+}
