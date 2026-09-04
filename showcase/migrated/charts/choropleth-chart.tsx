@@ -534,6 +534,11 @@ const extractChoroplethChildren = (children: ReactNode): ExtractedConfig => {
   return { featureConfig, graticuleConfig, overlayChildren, tooltipConfig };
 }
 
+interface ChoroplethRevealInputs {
+  readonly animationDuration: number;
+  readonly revealSignature: string;
+}
+
 
 const ChoroplethChartBody = ({
   data,
@@ -629,14 +634,20 @@ const ChoroplethChartBody = ({
   }, [width, height, margin, scaleProp, center, translateProp, displayMatrix]);
 
   // IsLoaded/revealEpoch exist for useChoropleth() lifecycle parity; the reveal itself is WAAPI.
+  // Epoch counts reveal cycles including the initial mount, so it starts at 1.
+  const [prevRevealInputs, setPrevRevealInputs] = useState<ChoroplethRevealInputs>({ animationDuration, revealSignature });
   const [isLoaded, setIsLoaded] = useState(false);
-  const [revealEpoch, setRevealEpoch] = useState(0);
-  useEffect(() => {
+  const [revealEpoch, setRevealEpoch] = useState(1);
+  // Render-time adjustment: new reveal inputs re-arm the cycle instead of syncing state in the effect below.
+  if (prevRevealInputs.animationDuration !== animationDuration || prevRevealInputs.revealSignature !== revealSignature) {
+    setPrevRevealInputs({ animationDuration, revealSignature });
     setRevealEpoch((epoch) => epoch + 1);
     setIsLoaded(false);
+  }
+  useEffect(() => {
     const timeout = setTimeout((): void =>{  setIsLoaded(true); }, animationDuration);
     return (): void =>{  clearTimeout(timeout); };
-  }, [animationDuration, revealSignature]);
+  }, [animationDuration, revealEpoch]);
 
   const geoPathGenerator = useMemo(
     () => (projection ? geoPath(projection) : undefined),

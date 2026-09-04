@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
 import { createPortal } from "react-dom";
 import { createSpring } from './spring';
@@ -971,13 +971,17 @@ const TooltipBoxInner = ({
   });
 }
 
+// Mounted flag without a post-paint setState: false on the server, true once mounted.
+const subscribeMounted = (notify: () => void): (() => void) => (): void => {
+  // Final snapshot check on unsubscribe; the snapshot is constant so this never re-renders.
+  notify();
+};
+const getMountedSnapshot = (): boolean => true;
+const getMountedServerSnapshot = (): boolean => false;
+
 // Inner-only-on-visible: springs init at the cursor, not (0,0).
 const TooltipBox = (props: Readonly<TooltipBoxProps>): ReactNode => {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(subscribeMounted, getMountedSnapshot, getMountedServerSnapshot);
 
   const container = props.containerRef.current;
   if (!(mounted && container)) {

@@ -1,5 +1,5 @@
 // Center-stat hooks: hover coordination plus the mount-entrance flow value.
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 /** Pub/sub contract any chart hover coordinator satisfies; keeps this hook chart-agnostic. */
 interface CenterStatHoverSource {
@@ -34,29 +34,33 @@ const scheduleDoubleRaf = (onFrames: () => void): (() => void) => {
  * @param {boolean} intro - Whether to start at 0 and ramp up on the next frames.
  * @returns {number} Value to bind to the flow; 0 until the entrance frames elapse when intro runs.
  */
+interface IntroFlowInputs {
+  readonly intro: boolean;
+  readonly value: number;
+}
+
 const useIntroFlowValue = (value: number, intro: boolean): number => {
-  const introStartedRef = useRef(false);
-  const [flowValue, setFlowValue] = useState(() => (intro ? 0 : value));
+  const [prevInputs, setPrevInputs] = useState<IntroFlowInputs>({ intro, value });
+  const [entered, setEntered] = useState(() => !intro);
+
+  // Render-time adjustment: a new target restarts the entrance from 0.
+  if (prevInputs.intro !== intro || prevInputs.value !== value) {
+    setPrevInputs({ intro, value });
+    setEntered(false);
+  }
 
   useEffect((): (() => void) | undefined => {
-    if (!intro) {
-      setFlowValue(value);
+    if (!intro || entered) {
       return undefined;
     }
-    if (introStartedRef.current) {
-      setFlowValue(value);
-      return undefined;
-    }
-    introStartedRef.current = true;
-    setFlowValue(0);
-    const cancelFrames = scheduleDoubleRaf(() => { setFlowValue(value); });
-    return (): void => {
-      cancelFrames();
-      introStartedRef.current = false;
-    };
-  }, [intro, value]);
+    const cancelFrames = scheduleDoubleRaf(() => { setEntered(true); });
+    return cancelFrames;
+  }, [entered, intro]);
 
-  return flowValue;
+  if (!intro || entered) {
+    return value;
+  }
+  return 0;
 }
 
 export {

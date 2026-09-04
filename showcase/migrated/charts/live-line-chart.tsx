@@ -707,6 +707,7 @@ const LiveLineChart = ({
     enabled: tooltipOn && liveXAxis !== undefined,
     tooltipSpring: chartConfig.tooltipSpring,
   });
+  const { overlayHostRef: datePillOverlayHostRef } = datePill;
   const wasVisibleRef = useRef(false);
   const liveXAxisRef = useRef(liveXAxis);
   // Sync the latest axis config for tooltip callbacks without changing their identity.
@@ -993,6 +994,12 @@ const LiveLineChart = ({
         : undefined,
     [fadeMaskId],
   );
+  const datePillHostNode = tooltipOn && liveXAxis ? (
+    <div
+      ref={datePillOverlayHostRef}
+      style={CHART_OVERLAY_STYLE}
+    />
+  ) : undefined;
 
   return (
     <div
@@ -1111,9 +1118,7 @@ const LiveLineChart = ({
           </svg>
         </>
       ) : undefined}
-      {tooltipOn && liveXAxis ? (
-        <div ref={datePill.overlayHostRef} style={CHART_OVERLAY_STYLE} />
-      ) : undefined}
+      {datePillHostNode}
     </div>
   );
 };

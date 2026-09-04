@@ -401,11 +401,8 @@ const PieChart = ({
   }, []);
   const readIsControlled = useCallback((): boolean => isControlledRef.current, []);
 
-  const coordinatorRef = useRef<PieHoverCoordinator | null>(null);
-  if (coordinatorRef.current === null) {
-    coordinatorRef.current = createPieHoverCoordinator(notifyHoverChange, readIsControlled);
-  }
-  const coordinator = coordinatorRef.current;
+  // Created once via lazy state init (render-pure); the callbacks read latest props through refs.
+  const [coordinator] = useState<PieHoverCoordinator>(() => createPieHoverCoordinator(notifyHoverChange, readIsControlled));
 
   useEffect(() => {
     if (hoveredIndex !== undefined) {

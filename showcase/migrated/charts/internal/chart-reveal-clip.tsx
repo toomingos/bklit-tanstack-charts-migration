@@ -20,6 +20,7 @@ interface ChartRevealClipProps {
 
 interface RevealAnimationParams {
   readonly enterTransition: EnterTransition | undefined;
+  readonly epoch: number;
   readonly isConceal: boolean;
   readonly onComplete: (() => void) | undefined;
   readonly paddedWidth: number;
@@ -28,9 +29,8 @@ interface RevealAnimationParams {
 
 // Starts the WAAPI width-reveal on the clip rect; returns the effect cleanup.
 const startRevealAnimation = (rect: SVGRectElement, params: Readonly<RevealAnimationParams>): (() => void) => {
-  const { enterTransition, isConceal, onComplete, paddedWidth, padding } = params;
-  const resolved = resolveEnterTransition(enterTransition);
-  const timing = revealTiming(resolved);
+  const { enterTransition, epoch, isConceal, onComplete, paddedWidth, padding } = params;
+  const timing = revealTiming(resolveEnterTransition(enterTransition));
   const rightEdge = -padding + paddedWidth;
 
   rect.setAttribute("x", String(-padding));
@@ -48,6 +48,8 @@ const startRevealAnimation = (rect: SVGRectElement, params: Readonly<RevealAnima
     easing: timing.easing,
     fill: "forwards",
   });
+  // Tags the animation with the epoch that started it so epoch bumps are observable in devtools.
+  anim.id = `chart-reveal-${epoch}`;
   anim.onfinish = (): void => {
     if (isConceal) {
       rect.setAttribute("width", "0");
@@ -125,7 +127,7 @@ const ChartRevealClip = ({
     if (!animating) {return undefined;}
     const rect = rectRef.current;
     if (!rect) {return undefined;}
-    return startRevealAnimation(rect, { enterTransition, isConceal: mode === "conceal", onComplete: onConcealComplete, paddedWidth, padding });
+    return startRevealAnimation(rect, { enterTransition, epoch: revealEpoch, isConceal: mode === "conceal", onComplete: onConcealComplete, paddedWidth, padding });
   }, [animating, mode, revealEpoch, enterTransition, paddedWidth, padding]);
 
   if (!animating) {

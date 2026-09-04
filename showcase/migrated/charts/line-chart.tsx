@@ -640,10 +640,7 @@ export const LineChart = ({
     return { end: brushTrackExtent[1], start: brushTrackExtent[0] };
   }, [brushTrackExtent]);
   const brushRangeValue = useLineBrushRange({ fallbackRange: brushFallbackRange, initialSelection: brushConfig?.initialSelection });
-  const brushOnSelectionChangeRef = useRef(brushConfig?.onSelectionChange);
-  useEffect(() => {
-    brushOnSelectionChangeRef.current = brushConfig?.onSelectionChange;
-  });
+  const brushOnSelectionChange = brushConfig?.onSelectionChange;
   // Brush fires on every preview tick and commit (legacy tracked live), not commit-only.
   const handleBrushChange = useCallback((next: BrushRange<Readonly<Date>>, context: Readonly<{ reason: BrushXChange<Readonly<Date>> }>) => {
     const { reason } = context;
@@ -652,11 +649,11 @@ export const LineChart = ({
     const endMs = next.end.getTime();
     if (startMs === endMs) {
       // Zero-width clears only on commit; transient mid-drag previews must not null xDomain.
-      if (reason.type === "commit") {brushOnSelectionChangeRef.current?.(null);}
+      if (reason.type === "commit") {brushOnSelectionChange?.(null);}
       return;
     }
-    brushOnSelectionChangeRef.current?.({ end: next.end, start: next.start });
-  }, []);
+    brushOnSelectionChange?.({ end: next.end, start: next.start });
+  }, [brushOnSelectionChange]);
   // Brush values use full (non-decimated) x data for snap points and keyboard stepping.
   const brushValues = useMemo((): Date[] | undefined => {
     if (!hasBrush) {return undefined;}
@@ -1039,13 +1036,11 @@ export const LineChart = ({
     if (!brushTrackExtent || innerWidthForBrush <= 0) {return undefined;}
     return { containerRef, margin, trackExtent: brushTrackExtent };
   }, [brushTrackExtent, innerWidthForBrush, margin]);
-  const brushPixelExtent = useMemo(
-    () =>
-      brushHost === undefined || brushRangeValue === undefined
-        ? undefined
-        : (selectionToPixelExtent(brushRangeValue, brushHost.trackExtent, innerWidthForBrush) ?? undefined),
-    [brushHost, brushRangeValue, innerWidthForBrush],
-  );
+  const brushPixelExtent = useMemo(() => {
+    const hasBrushPixelExtent = brushTrackExtent !== undefined && brushRangeValue !== undefined && innerWidthForBrush > 0;
+    if (!hasBrushPixelExtent) {return undefined;}
+    return selectionToPixelExtent(brushRangeValue, brushTrackExtent, innerWidthForBrush) ?? undefined;
+  }, [brushTrackExtent, brushRangeValue, innerWidthForBrush]);
   const lineChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
   // Overlay subtrees live outside the definition fragment so no single

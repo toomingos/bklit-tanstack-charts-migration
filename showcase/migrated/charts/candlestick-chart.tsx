@@ -1345,6 +1345,8 @@ interface CandleRevealCycleParams {
   readonly canInteractRef: { current: boolean };
   readonly revealDeadlineTimerRef: { current: ReturnType<typeof globalThis.setTimeout> | undefined };
   readonly setRevealed: (revealed: boolean) => void;
+  /** Re-arm signal (bklit [animationDuration, revealSignature] deps). Changing it re-runs the reveal effect; the cycle itself needs no value from it, so it stays unread. */
+  readonly signature: unknown;
 }
 
 /**
@@ -2041,7 +2043,7 @@ const CandlestickChart = ({
   ]);
 
   // Reveal deps are exactly [animationDuration, revealSignature] — data-only updates never replay.
-  useEffect(() => runCandleRevealCycle({ animationDuration, canInteractRef, revealDeadlineTimerRef, revealEpochRef, setRevealed }), [animationDuration, revealSignature]);
+  useEffect(() => runCandleRevealCycle({ animationDuration, canInteractRef, revealDeadlineTimerRef, revealEpochRef, setRevealed, signature: revealSignature }), [animationDuration, revealSignature]);
 
 
   const chromeStateRef = useRef<CandlestickChromeState | null>(null);
@@ -2071,7 +2073,8 @@ const CandlestickChart = ({
 
   useLayoutEffect((): (() => void) | undefined => {
     const el = overlayHostRef.current;
-    if (!el || !tooltipEnabled) {return undefined;}
+    // The overlay host mounts only under the chart definition (width > 0).
+    if (!hasDefinition || !el || !tooltipEnabled) {return undefined;}
     const doc = el.ownerDocument;
     const pillBuild = buildPill(doc, chartConfig.tooltipSpring, () => chromeStateRef.current?.dateLabels ?? []);
     el.append(pillBuild.layer);

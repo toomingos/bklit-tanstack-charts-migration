@@ -576,12 +576,18 @@ const RingChart = ({
 
   const ANIMATION_KEY = 0;
   const [isLoaded, setIsLoaded] = useState(false);
-  useEffect(() => {
-    if (geometryScrubbing) {return undefined;}
+  // Reset the load gate when scrubbing toggles (render-time adjustment: the timeout below only
+  // Ever sets true, so the false reset lives here; matches the prev-state pattern in area/line).
+  const [prevGeometryScrubbing, setPrevGeometryScrubbing] = useState(geometryScrubbing);
+  if (prevGeometryScrubbing !== geometryScrubbing) {
+    setPrevGeometryScrubbing(geometryScrubbing);
     setIsLoaded(false);
+  }
+  useEffect(() => {
+    if (geometryScrubbing || isLoaded) {return undefined;}
     const timer = setTimeout((): void =>{  setIsLoaded(true); }, RING_LOAD_DELAY_MS);
     return (): void =>{  clearTimeout(timer); };
-  }, [enterTransition, enterStaggerScale, geometryScrubbing]);
+  }, [geometryScrubbing, isLoaded]);
   const effectiveIsLoaded = geometryScrubbing || isLoaded;
 
   const stable: RingStableValue = useMemo(

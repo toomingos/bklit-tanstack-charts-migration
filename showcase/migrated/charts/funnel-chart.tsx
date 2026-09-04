@@ -1,6 +1,6 @@
 // Bklit FunnelChart as plain SVG (no TanStack funnel primitive; geometry is pure pixel arithmetic).
 // One FunnelSegment per stage owns graphic + label overlay; keyed by stage.label (replay-vs-snap free).
-import { createContext, useCallback, useContext, useEffect, useEffectEvent, useRef } from 'react';
+import { createContext, useCallback, useContext, useEffect, useEffectEvent, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, Ref, RefObject } from 'react';
 import { intFmt } from "./internal/formatters";
 import { usePositiveChartSize } from "./internal/use-container-size";
@@ -692,12 +692,11 @@ const useFunnelHoverCoordinator = (
     onHoverChangeRef.current = onHoverChange;
   }, [isControlled, onHoverChange]);
 
-  const coordinatorRef = useRef<FunnelHoverCoordinator | null>(null);
-  coordinatorRef.current ??= createFunnelHoverCoordinator(
+  // Created once via lazy state init (render-pure); the callbacks read latest props through refs.
+  const [coordinator] = useState<FunnelHoverCoordinator>(() => createFunnelHoverCoordinator(
     (index) => onHoverChangeRef.current?.(index),
     () => isControlledRef.current,
-  );
-  const coordinator = coordinatorRef.current;
+  ));
 
   useEffect(() => {
     if (hoveredIndexProp !== undefined) {
