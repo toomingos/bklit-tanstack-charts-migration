@@ -67,17 +67,16 @@ const isOriginPair = <Value,>(value: Value): value is Value & readonly [number, 
   return isNumber(first) && isNumber(second);
 };
 
-// The gesture library documents origin as a number pair, but the resolved handler state
-// Reaches this module typed as `any`; re-narrow to that documented shape here.
-const readPinchOrigin = (origin: unknown): readonly [number, number] => {
-  if (isOriginPair(origin)) {return origin;}
-  return [0, 0];
-};
+// Fallback pinch origin when the gesture state carries no usable number pair.
+const PINCH_ORIGIN_FALLBACK = [0, 0] as const;
 
 // Pinch zoom around the gesture origin; hoisted so handlePinch stays short. Returns the gesture memo.
 const applyPinchZoom = (pinchArgs: Readonly<PinchZoomArgs>): PinchOriginMemo | undefined => {
   const gestureMemo: unknown = pinchArgs.gesture.memo;
-  const [ox, oy] = readPinchOrigin(pinchArgs.gesture.origin);
+  // The gesture library documents origin as a number pair, but the resolved handler state
+  // Reaches this module typed as `any`; re-narrow to that documented shape here.
+  const gestureOrigin: unknown = pinchArgs.gesture.origin;
+  const [ox, oy] = isOriginPair(gestureOrigin) ? gestureOrigin : PINCH_ORIGIN_FALLBACK;
   let currentMemo: PinchOriginMemo | undefined = isPinchOriginMemo(gestureMemo) ? gestureMemo : undefined;
   if (pinchArgs.container) {
     const { top, left } = currentMemo ?? pinchArgs.container.getBoundingClientRect();

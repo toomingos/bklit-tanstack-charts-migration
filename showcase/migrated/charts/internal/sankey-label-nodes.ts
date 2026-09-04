@@ -76,7 +76,8 @@ interface SankeyPushLabelParams {
 }
 
 // Typeof checks live only in the predicate below; call sites use the guard.
-const isNumber = (value: unknown): value is number => typeof value === "number";
+// Generic parameter (same shape as composed-data-math) keeps `unknown` call sites compiling.
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
 
 const pushSankeyLabel = (params: Readonly<SankeyPushLabelParams>): void => {
   const { sink, x, y, text, anchor, fontSize, extra } = params;

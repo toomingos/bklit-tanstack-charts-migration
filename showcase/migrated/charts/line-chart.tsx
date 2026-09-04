@@ -251,7 +251,7 @@ const resolveEmptyTimeScale = (params: Readonly<EmptyTimeScaleParams>): ReturnTy
     domain: base.domain(),
     id: params.id,
     // Base() always returns a finite number for a numeric range (d3-scale ScaleTime.Output = number, never undefined).
-      map: (value: unknown) => base(isDateOrNumber(value) ? value : new Date(Number.NaN)),
+      map: (value) => base(isDateOrNumber(value) ? value : new Date(Number.NaN)),
     ticks: [],
     type: "time",
   };
@@ -316,7 +316,7 @@ const createLineXScale = (params: Readonly<LineXScaleParams>): ChartScale => ({
       domain: base.domain(),
       id: context.id,
       // Base() always returns a finite number for a numeric range (d3-scale ScaleTime.Output = number, never undefined).
-    map: (value: unknown) => base(isDateOrNumber(value) ? value : new Date(Number.NaN)),
+    map: (value) => base(isDateOrNumber(value) ? value : new Date(Number.NaN)),
       ticks: tickList.map((tick: { readonly label: string; readonly value: Readonly<Date> }) => ({
         label: tick.label,
         position: base(tick.value),

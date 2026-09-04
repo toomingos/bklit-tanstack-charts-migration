@@ -11,7 +11,7 @@ const DEGENERATE_DX_THRESHOLD = 1e-6;
 const MAX_BEZIER_TENSION = 0.5;
 const MIN_BEZIER_TENSION = 0.05;
 
-const isString = (candidate: unknown): candidate is string => typeof candidate === "string";
+const isString = <Value>(candidate: Value): candidate is Value & string => typeof candidate === "string";
 
 type ProjectionMode = "auto" | "target" | "manual";
 type ProjectionAutoMethod = "linearRegression" | "lastSegment";

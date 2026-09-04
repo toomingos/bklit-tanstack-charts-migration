@@ -17,7 +17,7 @@ import type {
 } from "@tanstack/charts";
 import { defineChart } from "@tanstack/charts/scene";
 import { tooltip } from "@tanstack/charts/tooltip";
-import { geoShape } from "@tanstack/charts/geo";
+import { geoShape as geoMark } from "@tanstack/charts/geo";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import { CHART_ROLE } from "./children";
 import { roleOf } from "./internal/children-extract";
@@ -446,7 +446,7 @@ const buildChoroplethDefinition = (
     guides: false,
     margin: 0,
     marks: [
-      geoShape(data.features, {
+      geoMark(data.features, {
         fill: painters.fill,
         id: "choropleth",
         key: choroplethFeatureKey,
@@ -871,7 +871,6 @@ const ChoroplethChartBody = ({
   const onZoomTick = useCallback((zoom: Readonly<Pick<ChoroplethZoomInstance<HTMLElement>, "transformMatrix" | "isDragging">>) => {
     targetMatrixRef.current = zoom.transformMatrix;
     isDraggingRef.current = zoom.isDragging;
-    if (typeof globalThis === "undefined") {return;}
     if (zoom.isDragging) {
       easeRef.current = undefined;
     } else if (matricesEqual(zoom.transformMatrix, committedMatrixRef.current)) {

@@ -1,7 +1,6 @@
 import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
-  SyntheticEvent as ReactSyntheticEvent,
   TouchEvent as ReactTouchEvent,
   WheelEvent as ReactWheelEvent,
 } from "react";
@@ -21,25 +20,25 @@ type InteractionEvent =
 
 type EventType = InteractionEvent | GenericWheelEvent;
 
-const isElementNode = (elem: unknown): elem is Element => Boolean(elem) && elem instanceof Element;
+const isElementNode = <Elem>(elem: Elem): elem is Elem & Element => Boolean(elem) && elem instanceof Element;
 
 
-const isSVGElementNode = (elem: unknown): elem is SVGElement => elem instanceof SVGElement || (typeof elem === "object" && elem !== null && "ownerSVGElement" in elem);
+const isSVGElementNode = <Elem>(elem: Elem): elem is Elem & SVGElement => elem instanceof SVGElement || (typeof elem === "object" && elem !== null && "ownerSVGElement" in elem);
 
 
-const isSVGSVGElementNode = (elem: unknown): elem is SVGSVGElement => elem instanceof SVGSVGElement || (typeof elem === "object" && elem !== null && "createSVGPoint" in elem);
+const isSVGSVGElementNode = <Elem>(elem: Elem): elem is Elem & SVGSVGElement => elem instanceof SVGSVGElement || (typeof elem === "object" && elem !== null && "createSVGPoint" in elem);
 
 
-const isSVGGraphicsElementNode = (elem: unknown): elem is SVGGraphicsElement => elem instanceof SVGGraphicsElement || (typeof elem === "object" && elem !== null && "getScreenCTM" in elem);
+const isSVGGraphicsElementNode = <Elem>(elem: Elem): elem is Elem & SVGGraphicsElement => elem instanceof SVGGraphicsElement || (typeof elem === "object" && elem !== null && "getScreenCTM" in elem);
 
 
-const isTouchEventType = (event: unknown): event is TouchEvent | ReactTouchEvent => typeof event === "object" && event !== null && "changedTouches" in event;
+const isTouchEventType = <EventValue>(event: EventValue): event is EventValue & (TouchEvent | ReactTouchEvent) => typeof event === "object" && event !== null && "changedTouches" in event;
 
 
-const isMouseEventType = (event: unknown): event is MouseEvent | ReactMouseEvent => typeof event === "object" && event !== null && "clientX" in event;
+const isMouseEventType = <EventValue>(event: EventValue): event is EventValue & (MouseEvent | ReactMouseEvent) => typeof event === "object" && event !== null && "clientX" in event;
 
 
-const isEventType = (event: unknown): event is Event | ReactSyntheticEvent => {
+const isEventType = <EventValue>(event: EventValue): event is EventValue & EventType => {
   if (event instanceof Event) {return true;}
   if (typeof event !== "object" || event === null) {return false;}
   return "nativeEvent" in event && event.nativeEvent instanceof Event;

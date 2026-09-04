@@ -1,5 +1,7 @@
 // Largest-Triangle-Three-Buckets downsampling; keeps first/last, picks per-bucket maxima.
 // Minimum point budget below which decimation is a no-op (first + last + >=1 pick).
+import type { ChartDatum } from "./series-config-types";
+
 const LTTB_MIN_POINTS = 3;
 // Lookahead offset for the next-bucket average window (range ends at i + 2, average window at i + 3).
 const LTTB_NEXT_BUCKET_END_OFFSET = 3;
@@ -7,7 +9,7 @@ const LTTB_NEXT_BUCKET_END_OFFSET = 3;
 const TRIANGLE_AREA_HALF = 0.5;
 
 // Typeof checks live only in the predicate below; call sites use the guard.
-const isNumber = (value: unknown): value is number => typeof value === "number";
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
 
 type BucketValueAt = (index: number) => number;
 
@@ -100,7 +102,7 @@ const sampleLttbBuckets = <Row>(params: Readonly<BucketSampleParams<Row>>): Row[
   return sampled;
 };
 
-const decimateTimeSeries = <Row extends Partial<Record<string, unknown>>>(data: readonly Row[], maxPoints: number, valueKeys: readonly string[] = []): readonly Row[] => {
+const decimateTimeSeries = <Row extends ChartDatum>(data: readonly Row[], maxPoints: number, valueKeys: readonly string[] = []): readonly Row[] => {
   const averagedKeyValue = (point: Row, index: number): number => {
     let sum = 0;
     let count = 0;

@@ -40,8 +40,8 @@ interface ComputedNotch {
 }
 
 // Typeof checks live only in the predicates below; call sites use the guards.
-const isFunctionType = (value: unknown): value is object => typeof value === "function";
-const isStringType = (value: unknown): value is string => typeof value === "string";
+const isFunctionType = <Value>(value: Value): value is Value & object => typeof value === "function";
+const isStringType = <Value>(value: Value): value is Value & string => typeof value === "string";
 
 const DEFS_EXACT_TYPE_LABELS: readonly string[] = [
   "LinearGradient",

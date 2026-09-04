@@ -63,8 +63,8 @@ interface SegmentVisualProps {
 }
 
 // Boundary predicates: React children props are honestly unknown; narrow once here.
-const isString = (value: unknown): value is string => typeof value === "string";
-const isNumber = (value: unknown): value is number => typeof value === "number";
+const isString = <Value,>(value: Value): value is Value & string => typeof value === "string";
+const isNumber = <Value,>(value: Value): value is Value & number => typeof value === "number";
 
 const resolveSegmentFill = (props: Readonly<SegmentVisualProps>): string =>
   isString(props.fill) ? props.fill : SEGMENT_BACKGROUND_FALLBACK_FILL;

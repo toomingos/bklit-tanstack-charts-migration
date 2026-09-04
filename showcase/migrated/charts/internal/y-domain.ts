@@ -32,7 +32,8 @@ interface MutableTimeSeriesExtent {
   max: number;
 }
 
-const trackFiniteValue = (acc: MutableTimeSeriesExtent, value: unknown): void => {
+const trackFiniteValue = (acc: MutableTimeSeriesExtent, row: Readonly<ChartDatum>, dataKey: string): void => {
+  const value = row[dataKey];
   if (!isFiniteNumber(value)) {
     return;
   }
@@ -42,7 +43,7 @@ const trackFiniteValue = (acc: MutableTimeSeriesExtent, value: unknown): void =>
 
 const accumulateRowExtent = (row: Readonly<ChartDatum>, series: readonly { readonly dataKey: string }[], acc: MutableTimeSeriesExtent): void => {
   for (const seriesEntry of series) {
-    trackFiniteValue(acc, row[seriesEntry.dataKey]);
+    trackFiniteValue(acc, row, seriesEntry.dataKey);
   }
 }
 

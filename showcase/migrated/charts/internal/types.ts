@@ -14,6 +14,7 @@ import type {
   BarPulseConfig as BarPulseConfigType,
   BarSquaresConfig as BarSquaresConfigType,
   BarXAxisConfig as BarXAxisConfigType,
+  ChartDatum as ChartDatumType,
   FadeEdges as FadeEdgesType,
   GridConfig as GridConfigType,
   LineConfig as LineConfigType,
@@ -24,9 +25,8 @@ import type {
   XAxisConfig as XAxisConfigType,
 } from "./series-config-types";
 
-interface ChartTooltipPoint {
+interface ChartTooltipPoint extends ChartDatumType {
   readonly date?: Readonly<Date>;
-  [key: string]: unknown;
 }
 
 type DotVariant = "dot" | "ring";
@@ -48,9 +48,9 @@ interface ChartTooltipConfig {
   dotRadiusFraction?: number;
   dotScale?: number;
   dotStrokeWidth?: number;
-  dotColor?: string | ((point: Readonly<Record<string, unknown>>, line: { readonly dataKey: string; readonly stroke?: string }) => string);
-  indicatorColor?: string | ((point: Readonly<Record<string, unknown>>) => string);
-  rows?: (point: Readonly<Record<string, unknown>>) => TooltipRow[];
+  dotColor?: string | ((point: Readonly<ChartDatumType>, line: { readonly dataKey: string; readonly stroke?: string }) => string);
+  indicatorColor?: string | ((point: Readonly<ChartDatumType>) => string);
+  rows?: (point: Readonly<ChartDatumType>) => TooltipRow[];
   content?: (props: { readonly point: Readonly<ChartTooltipPoint>; readonly index: number }) => ReactNode;
   children?: ReactNode;
   className?: string;

@@ -72,7 +72,7 @@ const buildSquareChannelValues = (data: readonly Readonly<ChartDatum>[], categor
 })
 
 // Typeof checks live only in the predicate below; call sites use the guard.
-const isNumber = (value: unknown): value is number => typeof value === "number";
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
 
 interface SquareMarkXChannel {
   readonly scale: string;

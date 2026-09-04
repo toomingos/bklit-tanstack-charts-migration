@@ -321,10 +321,12 @@ export interface SunburstChartProps {
 // Not a function, so any memoised carrier — bklit memoises
 // `SunburstBreadcrumb` — silently failed to classify and was dropped. Matching
 // Bklit: accept both, and let `displayName` alone decide.
+const isStringType = (type: Readonly<{ displayName?: string }> | string): type is string => typeof type === "string";
+
 const isChildOfKind = (child: ReactNode, displayName: string): boolean => {
   if (!isValidElement(child)) {return false;}
   const type = child.type as { displayName?: string } | string;
-  if (typeof type === "string") {return false;}
+  if (isStringType(type)) {return false;}
   return displayNameOf(type) === displayName;
 }
 
@@ -1009,7 +1011,7 @@ const SunburstChartInner = ({
     if (!container) {return null;}
     const svg = container.querySelector<SVGSVGElement>("svg.ts-bkm-sunburst-labels");
     if (!svg) {return null;}
-    const svgDataset = (svg as unknown as HTMLElement & { dataset: DOMStringMap }).dataset;
+    const svgDataset = svg.dataset;
     for (const anim of labelRevealAnimsRef.current) {
       try {
         anim.cancel();
@@ -1094,7 +1096,7 @@ const SunburstChartInner = ({
     if (!container) {return;}
     const labelsSvg = container.querySelector<SVGSVGElement>("svg.ts-bkm-sunburst-labels");
     if (labelsSvg) {
-      delete (labelsSvg as unknown as HTMLElement & { dataset: DOMStringMap }).dataset.bkmLabelsRevealed;
+      delete labelsSvg.dataset.bkmLabelsRevealed;
       for (const t of labelsSvg.querySelectorAll<SVGTextElement>(SUNBURST_LABEL_TEXT_SELECTOR)) {
         t.style.opacity = "";
       }

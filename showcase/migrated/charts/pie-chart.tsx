@@ -60,11 +60,12 @@ const applyAlphaToColor = (color: string, alpha: number): string => {
 }
 
 // Boundary predicates: React child types arrive as string-or-constructor unions; narrow once here.
-const isString = (value: unknown): value is string => typeof value === "string";
+// Generic parameters (same shape as composed-data-math) keep `unknown` call sites compiling.
+const isString = <Value,>(value: Value): value is Value & string => typeof value === "string";
 // Object() boxes primitives, so identity holds exactly for objects and functions (any realm, any prototype).
-const isObjectOrFunction = (value: unknown): value is object => value !== null && Object(value) === value;
+const isObjectOrFunction = <Value,>(value: Value): value is Value & object => value !== null && Object(value) === value;
 
-const displayNameOfType = (componentType: unknown): string | undefined => {
+const displayNameOfType = (componentType: ReactElement["type"]): string | undefined => {
   if (!isObjectOrFunction(componentType)) {return undefined;}
   if (!("displayName" in componentType)) {return undefined;}
   const displayName: unknown = componentType.displayName;

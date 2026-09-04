@@ -14,9 +14,9 @@ interface TimeBounds {
 
 // Type-guard predicates own the primitive `typeof` checks here;
 // Call sites below branch on the guard instead of repeating `typeof`.
-const isNumber = (value: unknown): value is number => typeof value === "number";
-const isString = (value: unknown): value is string => typeof value === "string";
-const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
+const isString = <Value>(value: Value): value is Value & string => typeof value === "string";
+const isBoolean = <Value>(value: Value): value is Value & boolean => typeof value === "boolean";
 
 const readNumericCell = (row: Readonly<ChartDatum>, dataKey: string): number | undefined => {
   const value: unknown = row[dataKey];

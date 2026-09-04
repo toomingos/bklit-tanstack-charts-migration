@@ -18,7 +18,7 @@ import type {
   ComposedSeriesEntry,
 } from "./composed-model";
 
-const isString = (value: unknown): value is string => typeof value === "string";
+const isString = <Value>(value: Value): value is Value & string => typeof value === "string";
 
 const appendHoverDotMarks = (
   marks: ChartMark<ChartDatum, Date, number>[],

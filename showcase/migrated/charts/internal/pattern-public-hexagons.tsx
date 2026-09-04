@@ -9,7 +9,7 @@ const PatternHexagons = ({
   fill,
   height,
   id,
-  shapeRendering,
+  shapeRendering: edgeRendering,
   size,
   stroke,
   strokeDasharray,
@@ -22,7 +22,7 @@ const PatternHexagons = ({
     fill={fill}
     height={height}
     id={id}
-    shapeRendering={shapeRendering}
+    shapeRendering={edgeRendering}
     size={size}
     stroke={stroke}
     strokeDasharray={strokeDasharray}

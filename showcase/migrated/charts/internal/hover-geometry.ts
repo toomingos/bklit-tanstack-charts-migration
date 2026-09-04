@@ -245,17 +245,18 @@ const buildHighlightBandMarks = (renderData: readonly Readonly<ChartDatum>[], xD
 const isStringKeyedRecord = <Subject>(value: Subject): value is Subject & ChartDatum =>
   typeof value === "object" && value !== null;
 
-const toDateOrUndefined = (value: unknown): Date | undefined => {
-  if (value instanceof Date) {return value;}
-  if (isString(value) || isNumber(value)) {return new Date(value);}
+// Parses a datum's x cell into a Date; unparseable input yields undefined (caller treats it as in-domain).
+const toDateOrUndefined = (datum: Readonly<ChartDatum>, xDataKey: string): Date | undefined => {
+  const rawValue: unknown = isStringKeyedRecord(datum) ? datum[xDataKey] : undefined;
+  if (rawValue instanceof Date) {return rawValue;}
+  if (isString(rawValue) || isNumber(rawValue)) {return new Date(rawValue);}
   return undefined;
 };
 
 // True when datum's x falls outside the inclusive xDomain.
 const isFocusOutsideXDomain = (datum: Readonly<ChartDatum>, xDataKey: string, xDomain: readonly [Date, Date] | undefined): boolean => {
   if (!xDomain) {return false;}
-  const rawValue: unknown = isStringKeyedRecord(datum) ? datum[xDataKey] : undefined;
-  const resolvedDate = toDateOrUndefined(rawValue);
+  const resolvedDate = toDateOrUndefined(datum, xDataKey);
   if (!resolvedDate || Number.isNaN(resolvedDate.getTime())) {return false;}
   const timeMs = resolvedDate.getTime();
   const domainStart = xDomain[0].getTime();

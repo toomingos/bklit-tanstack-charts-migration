@@ -28,7 +28,7 @@ const PathImpl = ({
   strokeWidth,
   strokeDasharray,
   strokeLinecap = "square",
-  shapeRendering = "auto",
+  shapeRendering: edgeRendering = "auto",
   background,
   className,
 }: Readonly<PatternPathProps>): ReactElement => (
@@ -42,7 +42,7 @@ const PathImpl = ({
       strokeWidth={strokeWidth}
       strokeDasharray={strokeDasharray}
       strokeLinecap={strokeLinecap}
-      shapeRendering={shapeRendering}
+      shapeRendering={edgeRendering}
     />
   </Pattern>
 );

@@ -121,9 +121,9 @@ const firstNonEmptyString = (first: string | undefined, second: string | undefin
 };
 
 // Primitive narrowing predicates; typeof stays inside type guards (allowInTypeGuards).
-const isString = (value: unknown): value is string => typeof value === "string";
-const isNumber = (value: unknown): value is number => typeof value === "number";
-const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+const isString = <Value,>(value: Value): value is Value & string => typeof value === "string";
+const isNumber = <Value,>(value: Value): value is Value & number => typeof value === "number";
+const isFiniteNumber = <Value,>(value: Value): value is Value & number => typeof value === "number" && Number.isFinite(value);
 
 // Pre-render placeholder: the ref below is reassigned every render before any reader runs.
 const INITIAL_SCATTER_PILL_CHROME_STATE: ScatterPillChromeState = {
@@ -133,7 +133,7 @@ const INITIAL_SCATTER_PILL_CHROME_STATE: ScatterPillChromeState = {
   xDataKey: "",
 };
 
-const stringifyDatumValue = (value: unknown, fallback: string): string => {
+const stringifyDatumValue = <Value,>(value: Value, fallback: string): string => {
   if (isString(value)) {return value;}
   if (isNumber(value)) {return String(value);}
   if (value instanceof Date) {return String(value);}
@@ -146,7 +146,7 @@ interface YGradientConfig {
   readonly to?: string;
 }
 
-const isYGradientConfig = (value: unknown): value is YGradientConfig => typeof value === "object" && value !== null;
+const isYGradientConfig = <Value,>(value: Value): value is Value & YGradientConfig => typeof value === "object" && value !== null;
 
 interface ScatterTimeExtent {
   readonly maxTime: number;
@@ -892,7 +892,7 @@ const ScatterChart = ({
           bandwidth: 0,
           domain: scale.domain(),
           id: context.id,
-          map: (value: unknown): number => {
+          map: (value) => {
             const parsed = toDate(value);
             if (!parsed) {return Number.NaN;}
             return scale(parsed);
@@ -952,7 +952,7 @@ const ScatterChart = ({
           bandwidth: 0,
           domain: scale.domain(),
           id: context.id,
-          map: (value: unknown): number => {
+          map: (value) => {
             if (!isNumber(value) || !Number.isFinite(value)) {return Number.NaN;}
             return scale(value);
           },

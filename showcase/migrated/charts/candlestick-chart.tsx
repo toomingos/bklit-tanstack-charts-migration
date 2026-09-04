@@ -97,13 +97,13 @@ const areBothFinite = (first: number, second: number): boolean => Number.isFinit
 
 // Primitive narrowing lives in these predicates (anti-slop allowInTypeGuards);
 // Call sites branch on the domain value instead of repeating `typeof`.
-const isNumber = (value: unknown): value is number => typeof value === "number";
-const isString = (value: unknown): value is string => typeof value === "string";
-const isFiniteNumber = (value: unknown): value is number => isNumber(value) && Number.isFinite(value);
+const isNumber = <Value,>(value: Value): value is Value & number => typeof value === "number";
+const isString = <Value,>(value: Value): value is Value & string => typeof value === "string";
+const isFiniteNumber = <Value,>(value: Value): value is Value & number => isNumber(value) && Number.isFinite(value);
 
 // DotConfig color is string | fn | undefined; this names the fn branch for narrowing.
 type CandleDotColorFn = Exclude<DotConfig["color"], string | undefined>;
-const isCandleDotColorFn = (value: unknown): value is CandleDotColorFn => typeof value === "function";
+const isCandleDotColorFn = <Value,>(value: Value): value is Value & CandleDotColorFn => typeof value === "function";
 
 // Pattern overlay reference shared by the wicks/bodies/highlight marks and the resolver.
 interface CandlePatternRef {

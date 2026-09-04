@@ -1,8 +1,8 @@
 // Date valid iff instanceof Date + finite time; strings/numbers take an ISO-parse fallback (bklit compat).
-const isValidDate = (value: unknown): value is Date => value instanceof Date && Number.isFinite(value.getTime());
+const isValidDate = <Value>(value: Value): value is Value & Date => value instanceof Date && Number.isFinite(value.getTime());
 
 // Anti-slop permits `typeof` inside a type guard; toDate branches on this predicate instead.
-const isDateConstructorInput = (value: unknown): value is string | number =>
+const isDateConstructorInput = <Value>(value: Value): value is Value & (string | number) =>
   typeof value === "string" || typeof value === "number";
 
 

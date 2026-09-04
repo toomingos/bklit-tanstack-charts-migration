@@ -140,8 +140,8 @@ interface AnimFrame {
 
 // Primitive `typeof` checks live in these predicates (anti-slop allows `typeof`
 // Inside a type guard); call sites below branch on the guard instead.
-const isNumber = (value: unknown): value is number => typeof value === "number";
-const isString = (value: unknown): value is string => typeof value === "string";
+const isNumber = <Value,>(value: Value): value is Value & number => typeof value === "number";
+const isString = <Value,>(value: Value): value is Value & string => typeof value === "string";
 
 // Named owner contract for the live y-domain target (replaces the inline
 // Anonymous return type the widening rule rejects).
@@ -304,9 +304,9 @@ const hasText = (value: string | undefined): boolean => (value ?? "").length > 0
  * is neither a Date nor a number/string timestamp); call sites below only ever
  * observe the Date branch.
  *
- * @param {unknown} rawDate - Raw datum date value; Date instances pass through, number/string timestamps are converted.
- * @returns {Date} The coerced date, or an invalid Date when the value is neither a Date nor a usable timestamp.
- */
+  * @param {unknown} rawDate - Raw datum date value; Date instances pass through, number/string timestamps are converted.
+  * @returns {Date} The coerced date, or an invalid Date when the value is neither a Date nor a usable timestamp.
+  */
 const coerceDatumDate = (rawDate: unknown): Date => {
   if (rawDate instanceof Date) {return rawDate;}
   if (isNumber(rawDate) || isString(rawDate)) {return new Date(rawDate);}

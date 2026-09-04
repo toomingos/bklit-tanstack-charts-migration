@@ -10,18 +10,30 @@ interface ChartPointLike {
 // Epsilon absorbing float noise when comparing scene-x distances for nearest-point ties.
 const FOCUS_X_TIE_EPSILON = 1e-6;
 
+// Primitive guards own the `typeof` checks (anti-slop allows them inside type predicates);
+// Branch on these instead of narrowing representations inline.
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
+const isString = <Value>(value: Value): value is Value & string => typeof value === "string";
+const isBoolean = <Value>(value: Value): value is Value & boolean => typeof value === "boolean";
+
 /**
  * Stable grouping key for a datum's domain value.
  *
- * Dates key as `date:<epoch-ms>` so distinct instants never collide; anything else keys as
- * `<typeof>:<String(value)>` so values of different runtime types stay distinct.
+ * Dates key as `date:<epoch-ms>` so distinct instants never collide; numbers, strings, and
+ * booleans key as `<kind>:<String(value)>` so values of different runtime kinds stay distinct;
+ * anything else (both group and mark id missing, exotic payloads) keys as `other:<String(value)>`.
+ * Keys are only ever compared for equality, so the fallback tag just needs to stay out of the
+ * other kinds' way.
  *
- * @param {unknown} value - Domain value to key, read from the point's `xValue` at call sites.
+ * @param {Value} value - Domain value to key, read from the point's `xValue` at call sites.
  * @returns {string} Key identifying the domain value for focus grouping.
  */
-const focusValueKey = (value: unknown): string => {
+const focusValueKey = <Value>(value: Value): string => {
   if (value instanceof Date) {return `date:${value.getTime()}`;}
-  return `${typeof value}:${String(value)}`;
+  if (isNumber(value)) {return `number:${String(value)}`;}
+  if (isString(value)) {return `string:${value}`;}
+  if (isBoolean(value)) {return `boolean:${String(value)}`;}
+  return `other:${String(value)}`;
 }
 
 /**

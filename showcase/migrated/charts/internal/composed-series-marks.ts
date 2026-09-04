@@ -19,7 +19,7 @@ import type {
 } from "./composed-model";
 
 // SeriesBarMark has no states option; states attach via a wrapped initialize() return.
-const isNumber = (value: unknown): value is number => typeof value === "number";
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
 const withMarkStates = <
   TDatum,
   TXPointValue extends ChartValue,

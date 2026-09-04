@@ -278,18 +278,18 @@ const buildPatternAreaDefs = (
 };
 
 // Primitive narrowing predicates; typeof stays inside type guards (allowInTypeGuards).
-const isString = (value: unknown): value is string => typeof value === "string";
-const isNumber = (value: unknown): value is number => typeof value === "number";
-const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
-const isAnimationFrameScheduler = (value: unknown): value is typeof globalThis.requestAnimationFrame => typeof value === "function";
+const isString = <Value,>(value: Value): value is Value & string => typeof value === "string";
+const isNumber = <Value,>(value: Value): value is Value & number => typeof value === "number";
+const isFiniteNumber = <Value,>(value: Value): value is Value & number => typeof value === "number" && Number.isFinite(value);
+const isBoolean = <Value,>(value: Value): value is Value & boolean => typeof value === "boolean";
+const isAnimationFrameScheduler = <Value,>(value: Value): value is Value & typeof globalThis.requestAnimationFrame => typeof value === "function";
 
 // First non-empty entry wins; absent/empty entries fall through (bklit `||`-chain parity).
 const firstNonEmptyString = (values: readonly (string | undefined)[]): string | undefined =>
   values.find((value) => (value?.length ?? 0) > 0);
 
 // Stringifies an untyped datum field without Object's default "[object Object]" dump.
-const stringifyDatumField = (value: unknown, absent: string): string => {
+const stringifyDatumField = <Value,>(value: Value, absent: string): string => {
   if (isString(value)) {return value;}
   if (isNumber(value)) {return String(value);}
   if (value instanceof Date) {return String(value);}
@@ -1043,7 +1043,7 @@ const AreaChart = ({
             bandwidth: 0,
             domain: base.domain(),
             id: context.id,
-            map: (value: unknown) => {
+            map: (value) => {
               const date = toDate(value);
               if (date === null) {return Number.NaN;}
               return base(date) ?? Number.NaN;
@@ -1070,7 +1070,7 @@ const AreaChart = ({
           bandwidth: 0,
           domain: base.domain(),
           id: context.id,
-          map: (value: unknown) => {
+          map: (value) => {
             const date = toDate(value);
             if (date === null) {return Number.NaN;}
             return base(date) ?? Number.NaN;

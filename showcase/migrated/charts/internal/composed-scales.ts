@@ -77,7 +77,7 @@ const buildComposedXScale = (ctx: Readonly<ComposedScalesContext>): ChartScale =
       bandwidth: 0,
       domain: scale.domain(),
       id: context.id,
-      map: (value: unknown) => {
+      map: (value) => {
         const parsed = toDate(value);
         if (!parsed) {return Number.NaN;}
         const mapped = scale(parsed);
@@ -94,7 +94,8 @@ const buildComposedXScale = (ctx: Readonly<ComposedScalesContext>): ChartScale =
 });
 
 // Anti-slop permits `typeof` inside a type guard; the y-scale map branches on this predicate instead.
-const isNumber = (value: unknown): value is number => typeof value === "number";
+// Generic parameter (same shape as composed-data-math) keeps `unknown` call sites compiling.
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
 
 const buildComposedYScale = (ctx: Readonly<ComposedScalesContext>): ChartScale => ({
   id: "y",
@@ -109,7 +110,7 @@ const buildComposedYScale = (ctx: Readonly<ComposedScalesContext>): ChartScale =
       bandwidth: 0,
       domain: scale.domain(),
       id: context.id,
-      map: (value: unknown) => {
+      map: (value) => {
         const mapped = isNumber(value) ? scale(value) : Number.NaN;
         return mapped;
       },

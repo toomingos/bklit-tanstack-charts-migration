@@ -235,8 +235,8 @@ interface BarChromeState {
   readonly dateLabels: string[];
 }
 
-const isString = (candidate: unknown): candidate is string => typeof candidate === "string";
-const isNumber = (candidate: unknown): candidate is number => typeof candidate === "number";
+const isString = <Value,>(candidate: Value): candidate is Value & string => typeof candidate === "string";
+const isNumber = <Value,>(candidate: Value): candidate is Value & number => typeof candidate === "number";
 
 const resolveCornerRadius = (
   lineCap: BarConfig["lineCap"] | undefined,

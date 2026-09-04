@@ -3,17 +3,18 @@ import type {
   SankeyNode as D3SankeyNode,
 } from "d3-sankey";
 
-type SankeyLinkExtra = Record<string, unknown>;
+type LaidOutNodeDatum = {
+  readonly name: string;
+  readonly category?: string;
+};
 
-type LaidOutNode = D3SankeyNode<
-  { name: string; category?: string; [key: string]: unknown },
-  SankeyLinkExtra
->;
+type LaidOutLinkDatum = {
+  readonly value: number;
+};
 
-type LaidOutLink = D3SankeyLink<
-  { name: string; category?: string; [key: string]: unknown },
-  SankeyLinkExtra
->;
+type LaidOutNode = D3SankeyNode<LaidOutNodeDatum, LaidOutLinkDatum>;
+
+type LaidOutLink = D3SankeyLink<LaidOutNodeDatum, LaidOutLinkDatum>;
 
 const SANKEY_LABEL_OFFSET = 12;
 const SANKEY_VALUE_LABEL_GAP = 16;

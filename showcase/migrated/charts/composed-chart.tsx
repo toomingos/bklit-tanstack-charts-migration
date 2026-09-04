@@ -157,7 +157,7 @@ const DEFAULT_TICK_COUNT = 5;
 // Narrowing predicates for open-ended chart values.
 // Props and datum fields arrive as unknown; each predicate carries one typeof check.
 const isStringValue = (value: ChartTooltipConfig["indicatorColor"]): value is string => typeof value === "string";
-const isNumberValue = (value: unknown): value is number => typeof value === "number";
+const isNumberValue = <Value,>(value: Value): value is Value & number => typeof value === "number";
 // Locally-owned optional values represent "absent" as `undefined`, never `null`. This file can spell neither the `undefined` identifier (eslint(no-undefined)) nor the `void` operator (eslint(no-void)) in value position — both are enabled, and each rule's suggested fix is exactly what the other rule bans.
 // NOTHING is destructured from an object typed with an optional `undefined`-valued property, reaching the same runtime value without ever writing either banned token in value position.
 const { NOTHING }: { NOTHING?: undefined } = {};

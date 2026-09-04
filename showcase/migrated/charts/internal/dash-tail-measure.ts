@@ -2,6 +2,7 @@
 
 import { useLayoutEffect } from "react";
 import type { RefObject } from "react";
+import type { ChartDatum } from "./types";
 
 interface DashTailSeries {
   readonly dataKey: string;
@@ -14,10 +15,10 @@ interface DashTailSeries {
 // Retry ceiling for the mount-timing loop: a persistent miss is a wiring defect, not a race.
 const DASH_TAIL_MAX_MEASURE_ATTEMPTS = 120;
 
-// Numeric-cell guard for this module's untyped data-row reads.
-// Rows arrive as open-ended user data, so the unknown parameter is the honest
+// Numeric-cell guard for this module's open-ended data-row reads.
+// Rows arrive as user data, so the generic subject is the honest
 // I/O-boundary type and this predicate is the parser the runtime-typeof rule asks for.
-const isNumber = (value: unknown): value is number => typeof value === "number";
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
 
 interface Measured {
   readonly pathD: string;
@@ -54,10 +55,10 @@ const findSeriesPath = (container: HTMLElement | null, dataKey: string): SVGPath
 }
 
 interface ResolveDashStartXOptions {
-  readonly data: readonly Readonly<Record<string, unknown>>[];
+  readonly data: readonly Readonly<ChartDatum>[];
   readonly dashFromIndex: number;
   readonly xScale: (value: Readonly<Date> | number) => number | undefined;
-  readonly xAccessor: (datum: Readonly<Record<string, unknown>>) => Date | number;
+  readonly xAccessor: (datum: Readonly<ChartDatum>) => Date | number;
 }
 
 const resolveDashStartX = (options: Readonly<ResolveDashStartXOptions>): number => {
@@ -79,21 +80,21 @@ interface DashTimeBounds {
   maxTime: number;
 }
 
-const readDashTimeValue = (datum: Readonly<Record<string, unknown>>, xDataKey: string): number | undefined => {
+const readDashTimeValue = (datum: Readonly<ChartDatum>, xDataKey: string): number | undefined => {
   const rawValue = datum[xDataKey];
   if (rawValue instanceof Date) {return rawValue.getTime();}
   if (isNumber(rawValue) && Number.isFinite(rawValue)) {return rawValue;}
   return undefined;
 }
 
-const trackDashTimeValue = (bounds: DashTimeBounds, datum: Readonly<Record<string, unknown>>, xDataKey: string): void => {
+const trackDashTimeValue = (bounds: DashTimeBounds, datum: Readonly<ChartDatum>, xDataKey: string): void => {
   const time = readDashTimeValue(datum, xDataKey);
   if (time === undefined) {return;}
   if (time < bounds.minTime) {bounds.minTime = time;}
   if (time > bounds.maxTime) {bounds.maxTime = time;}
 }
 
-const computeDashTimeDomain = (renderData: readonly Readonly<Record<string, unknown>>[], xDataKey: string): DashTimeDomain => {
+const computeDashTimeDomain = (renderData: readonly Readonly<ChartDatum>[], xDataKey: string): DashTimeDomain => {
   const bounds: DashTimeBounds = { maxTime: -Infinity, minTime: Infinity };
   for (const datum of renderData) {
     trackDashTimeValue(bounds, datum, xDataKey);
@@ -127,8 +128,8 @@ const createDashXScale = (options: Readonly<DashXScaleOptions>): ((value: Readon
   };
 }
 
-const createDashXAccessor = (xDataKey: string): ((datum: Readonly<Record<string, unknown>>) => Date | number) =>
-  (datum: Readonly<Record<string, unknown>>): Date | number => {
+const createDashXAccessor = (xDataKey: string): ((datum: Readonly<ChartDatum>) => Date | number) =>
+  (datum: Readonly<ChartDatum>): Date | number => {
     const rawValue = datum[xDataKey];
     if (rawValue instanceof Date) {return rawValue;}
     if (isNumber(rawValue)) {return rawValue;}
@@ -145,9 +146,9 @@ const readSeriesPathLength = (pathEl: SVGPathElement): { readonly pathData: stri
 interface MeasureDashEntryOptions {
   readonly entry: Readonly<DashTailSeries>;
   readonly container: HTMLElement | null;
-  readonly renderData: readonly Readonly<Record<string, unknown>>[];
+  readonly renderData: readonly Readonly<ChartDatum>[];
   readonly xScale: (value: Readonly<Date> | number) => number | undefined;
-  readonly xAccessor: (datum: Readonly<Record<string, unknown>>) => Date | number;
+  readonly xAccessor: (datum: Readonly<ChartDatum>) => Date | number;
 }
 
 const measureDashEntry = (options: Readonly<MeasureDashEntryOptions>): Measured | undefined => {
@@ -190,9 +191,9 @@ interface DashMeasureReading {
 interface CollectDashMeasurementsOptions {
   readonly activeSeries: readonly DashTailSeries[];
   readonly container: HTMLElement | null;
-  readonly renderData: readonly Readonly<Record<string, unknown>>[];
+  readonly renderData: readonly Readonly<ChartDatum>[];
   readonly xScale: (value: Readonly<Date> | number) => number | undefined;
-  readonly xAccessor: (datum: Readonly<Record<string, unknown>>) => Date | number;
+  readonly xAccessor: (datum: Readonly<ChartDatum>) => Date | number;
 }
 
 const collectDashMeasurements = (options: Readonly<CollectDashMeasurementsOptions>): DashMeasureReading => {
@@ -229,7 +230,7 @@ interface DashTailMeasurementOptions {
   readonly innerWidth: number;
   readonly innerHeight: number;
   readonly marginLeft: number;
-  readonly renderData: readonly Readonly<Record<string, unknown>>[];
+  readonly renderData: readonly Readonly<ChartDatum>[];
   readonly onMeasured: (updater: (prev: Map<string, Measured>) => Map<string, Measured>) => void;
 }
 

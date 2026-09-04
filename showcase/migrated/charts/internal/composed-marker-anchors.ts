@@ -103,9 +103,9 @@ interface EndMarkerPointFields {
 
 // Primitive `typeof` checks live in these predicates (anti-slop allows `typeof`
 // Inside a type guard); call sites below branch on the guard instead.
-const isNumber = (value: unknown): value is number => typeof value === "number";
-const isString = (value: unknown): value is string => typeof value === "string";
-const isEndMarkerPoint = (value: unknown): value is EndMarkerPointFields =>
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
+const isString = <Value>(value: Value): value is Value & string => typeof value === "string";
+const isEndMarkerPoint = <Value>(value: Value): value is Value & EndMarkerPointFields =>
   typeof value === "object" && value !== null && "date" in value && "value" in value;
 
 const readTerminalSeriesValue = (

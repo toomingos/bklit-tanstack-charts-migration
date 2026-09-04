@@ -7,7 +7,7 @@ interface ProfitLossSegment {
   readonly isPositive: boolean;
 }
 
-const isNumber = (value: unknown): value is number => typeof value === "number";
+const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
 
 const resolveSign = (value: number, fallback: SegmentSign): SegmentSign => {
   if (value > 0) {
