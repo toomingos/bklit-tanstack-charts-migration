@@ -1,6 +1,3 @@
-// Named numeric constants for the visx-ported pattern geometry.
-// Verbatim ports of the path formulas; each name describes a fraction.
-// Fractional roles keep the tiles readable without changing any value.
 const HALF_DIVISOR = 2;
 const QUARTER_DIVISOR = 4;
 const EIGHTH_DIVISOR = 8;

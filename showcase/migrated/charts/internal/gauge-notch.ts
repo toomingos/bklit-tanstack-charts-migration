@@ -1,6 +1,5 @@
-// Bespoke notch geometry/fill primitives shared by both Gauge orientations:
-// `createNotchPath` is a straight-chord + quadratic-Bézier-fillet routine,
-// Zero d3-arc involved.
+// Bespoke notch geometry/fill primitives shared by both Gauge orientations.
+// `createNotchPath` uses straight chords + quadratic-Bézier fillets, no d3-arc.
 import { Fragment, isValidElement } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { NOTCH_FALLBACK_FILL, interpolateGaugeHex } from "./gauge-notch-geometry";

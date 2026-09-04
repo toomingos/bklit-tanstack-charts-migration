@@ -1,7 +1,6 @@
-// Scatter shared series config and enter motion extracted from scatter-chart.tsx.
-// Enter is opacity-only with per-datum delay (leadingEdge/innerWidth fraction); blur has no channel.
-// No scale/r enter existed in bklit (hidden/visible scale both 1); only hover pops r x1.35.
-// The Y-gradient mark lives in scatter-y-gradient-mark.ts.
+/*
+ * Enter is opacity-only with per-datum delay; bklit had no scale/r enter, only hover pops r.
+ */
 import type {
   ChartMotionContext,
   ChartMotionDefinition,

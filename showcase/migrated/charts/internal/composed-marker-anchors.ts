@@ -75,9 +75,9 @@ interface CollectEndAnchorsParams {
   readonly markers: readonly Readonly<ProjectionEndMarkerProps>[];
 }
 
-// Terminal/end-marker payloads arrive untyped at this boundary (the caller
-// Extracts React element props loosely), so the contract names the real keys
-// While leaving each value unknown; the guards below validate field by field.
+/*
+ * Payloads arrive untyped because the caller extracts React element props loosely.
+ */
 interface TerminalMarkerProps {
   readonly dataKey?: unknown;
   readonly fill?: unknown;

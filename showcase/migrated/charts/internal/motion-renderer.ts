@@ -1,19 +1,7 @@
-// C5 (D432): the single shared motion renderer for every migrated chart.
-//
-// `motion()` is stateless until `mount()` — each mount call builds a fresh closure, so one
-// module-level instance can serve every simultaneously mounted chart. Keep the instance identity
-// STABLE: `RendererChart` passes `renderer` through `adapter.update`, and a new identity per
-// render would churn the host.
-//
-// `initial: "always"` is REQUIRED, not a preference: `RendererChart` always injects `prerender()`
-// markup via dangerouslySetInnerHTML before `mount()` adopts it, and the motion renderer treats an
-// adopted `svg.ts-chart` root as server-rendered — with the default `initial: true` it would NEVER
-// play entrance choreography in React. Legacy bklit replays its reveal on every mount (including
-// post-hydration), so `always` is also the parity-correct setting.
-//
-// The renderer-wide default transition (1,100ms tween, default entrance ease) equals bklit's
-// REVEAL_DURATION_MS / REVEAL_EASE_CSS constants (design-tokens.ts T-D1) — charts only declare
-// definition-local `motion` where legacy timing differs from that default.
+/*
+ * Shared motion renderer for every migrated chart; `motion()` is stateless until `mount()`, so one
+ * module-level instance serves all charts. Its default 1,100ms tween matches bklit REVEAL_DURATION_MS.
+ */
 import { useRef } from "react";
 import { motion } from "@tanstack/charts/motion";
 import { renderChartSvg } from "@tanstack/charts/svg";
@@ -21,16 +9,15 @@ import { createSvgChartRenderer } from "@tanstack/charts/svg/renderer";
 import type { ChartRenderer, ChartValue } from "@tanstack/charts";
 import { NATIVE_MOTION_MAX_POINTS } from "./design-tokens";
 
+/*
+ * `initial: "always"` is required: RendererChart injects prerender() markup before mount() adopts it,
+ * so the renderer reads it as server-rendered and the default `initial: true` never plays the entrance.
+ */
 const instance = motion({ initial: "always" });
 // D472: the static SVG renderer `<Chart>` itself uses; same gradient/tooltip/focus support, no
 // motion cascade, reads the definition's `svgAnimation` gate.
 const staticInstance = createSvgChartRenderer(renderChartSvg);
 
-// Both renderers are datum-agnostic at runtime: they read points through the definition's
-// accessors and never inspect TDatum, so one shared instance genuinely serves every chart. The
-// generics exist only to satisfy `RendererChart`'s `renderer` prop at each call site, which is why
-// this cast cannot be avoided by typing the instances differently — the invariant is guaranteed by
-// the renderers being closed over nothing but the definition passed to `mount()`.
 // SAFETY: both renderers read points through the definition's accessors and never inspect
 // TDatum at runtime, so retyping the shared instances for each host is sound.
 const asRenderer = <TDatum, TXValue extends ChartValue, TYValue extends ChartValue>(
@@ -58,17 +45,10 @@ const chartRendererFor = <
     pointCount > NATIVE_MOTION_MAX_POINTS ? staticInstance : instance,
   );
 
-// D-pending (D1): renderer choice must be mount-stable AND prop-independent. `chartRendererFor`
-// alone re-evaluates `pointCount > NATIVE_MOTION_MAX_POINTS` on every render, so a datum count
-// (or, in bar-chart, a primitive estimate) that crosses the threshold across the chart's lifetime
-// — e.g. a live-data chart growing past 200 rows, or a depth toggle that changes the primitive
-// count — swaps the renderer instance mid-mount. `RendererChart` treats a changed `renderer`
-// identity as a surface remount and replays the mount entrance, which reads as a spurious
-// re-reveal to anything watching the DOM (QA capture included). This hook latches the renderer
-// choice to whatever `estimate` the FIRST render passes — a `useRef` seeded once and never
-// reassigned — so the regime a chart mounts into is the regime it keeps for its whole lifetime,
-// regardless of later prop/data changes. `chartRendererFor` stays exported for the rare non-hook
-// (non-component) caller.
+/*
+ * RendererChart remounts on renderer identity change, replaying the entrance as a spurious
+ * re-reveal; the first estimate therefore latches the regime for the chart's lifetime.
+ */
 const useChartRenderer = <
   TDatum,
   TXValue extends ChartValue = ChartValue,

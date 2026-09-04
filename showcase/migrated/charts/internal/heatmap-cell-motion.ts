@@ -13,16 +13,9 @@ import type { HeatmapLevelStyles } from "./heatmap-colors";
 import type { HeatmapMargin } from "./heatmap-context";
 import type { CellDatum } from "./heatmap-cell-data";
 
-// D5: local cubic-bezier progress-function solver — `ChartAnimationOptions`'s
-// `easing` field (dist/types.d.ts) only accepts the named keywords or a
-// Custom `(progress:number)=>number`, never a raw `cubic-bezier()` string
-// (same constraint already documented above HEATMAP_HOVER_TRANSITION), so
-// `HeatmapEnterTransition.ease`'s 4-tuple control points (bklit parity, e.g.
-// HEATMAP_DEFAULT_ENTER_EASE = [0.85, 0, 0.916, 0.282], heatmap-animation.ts:17)
-// Need converting to a progress function for the native per-cell `motion`
-// Transition below. Newton-Raphson on the bezier's x(t) (5 iterations is
-// More than enough at this curve's slope) to find t for a given x=p, then
-// Evaluates y(t).
+/*
+ * Native motion easing accepts only keywords or a progress fn, so the 4-tuple ease is solved here.
+ */
 // Newton-Raphson iteration budget for the cubic-bezier solver below.
 // Changing the count reshapes every cell's enter easing, so it stays verbatim.
 const NEWTON_RAPHSON_ITERATION_COUNT = 6;
@@ -70,10 +63,10 @@ const useHeatmapColorScale = ({
   patternIdPrefix,
 }: Readonly<HeatmapColorScaleParams>): ScaleOrdinal<number, string> =>
   useMemo<ScaleOrdinal<number, string>>(() => {
-    // Bklit parity (buildHeatmapFillScale): pattern-mode levels fill with
-    // `url(#<prefix>heatmap-level-N)`; the matching <pattern> defs are
-    // Mounted in HeatmapCells' overlay svg under the same prefix (useId-
-    // Scoped, so two chart instances don't collide — HM14/HM7 lesson).
+    /*
+     * Bklit parity: pattern-mode fills reference overlay-svg defs under the same prefix, useId-scoped
+     * so two chart instances do not collide.
+     */
     const rangeEntry = (level: number): string => {
       const style = resolvedLevelStyles[level];
       if (!isHeatmapLevelPattern(style)) {return style.color;}
@@ -193,17 +186,10 @@ const useHeatmapCellMotion = ({
   enterStaggerScale,
   revealEpoch,
 }: Readonly<HeatmapCellMotionParams>): ChartMotionDefinition<CellDatum> | false =>
-  // D5: per-cell enter-fade reveal, expressed via `cell()`'s native `motion`
-  // Option (dist/types.d.ts:449, `ChartMarkMotionOptions`) instead of the old
-  // Imperative WAAPI driver (deferred-reveal.ts, now unused here). The
-  // Per-cell delay math is byte-for-byte the seeded-PRNG formula already
-  // Ported verbatim in heatmap-animation.ts (`computeHeatmapEnterFadeDelayMs`,
-  // :73-80 — `seed = heatmapCellSeed(column,row) + revealEpoch*524_287`) —
-  // `revealEpoch` is captured by closure below exactly as that formula
-  // Requires (coordinator correction 2). Only `opacity` is animated
-  // (`motionAttributes` allowlist confirms opacity is in; legacy's reveal
-  // Was itself opacity-only per prior confirmation), so this is a pure
-  // 1:1 native substitution — no reach-in needed for T1-parity-tier heatmap.
+  /*
+   * Native cell() motion replaces the old imperative WAAPI driver; delay math stays byte-for-byte
+   * seeded-PRNG parity with heatmap-animation.ts.
+   */
   useMemo<ChartMotionDefinition<CellDatum> | false>(() => {
     if (!animateCells || animationDuration <= 0) {return false;}
     const fadeDurationSec = resolveHeatmapEnterFadeDurationSec(enterTransition, animationDuration);

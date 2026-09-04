@@ -98,13 +98,8 @@ const useDotPositionSprings = (options: Readonly<DotPositionSpringsOptions>): vo
     retargetDotSprings({ animate, springXRef, springYRef, visible, x, y });
   }, [animate, visible, x, y]);
 
-  // This effect seeds the springs when the dot appears and tears them down when it hides.
-  // It must key on `visible` alone.
-  // Position changes are already driven by the position effect above.
-  // Re-running here on every x/y would `jump()` the springs and cut the in-flight animation.
-  // The other values are read through an EffectEvent so the dependency list is honest.
-  // No suppression comment is needed because nothing reactive is omitted.
-  // Same pattern the charts use for their `inputsRef` reads.
+  // Keys on `visible` alone; re-running on x/y would `jump()` and cut the animation.
+  // Positions are driven by the retarget effect above, other values via EffectEvent.
   const seedDotSprings = useEffectEvent((): boolean => {
     if (!animate) { return false; }
     ensureSprings();
@@ -139,9 +134,8 @@ const TooltipDot = ({
   const { tooltipSpring } = useChartConfig();
   const effectiveSpring = springConfig ?? tooltipSpring;
   const { fill, stroke } = resolveDotPaint({ color, isRing: variant === "ring", strokeColor });
-  // The strokeWidth prop always has a default of 2 by the time it reaches here, so the
-  // Ring-specific 1.5 fallback below was already dead; kept as a plain read
-  // To preserve the existing (pre-existing-bug) behaviour exactly.
+  // Default of 2 already applies here, so the ring 1.5 fallback is dead; kept as a plain read.
+  // Preserves the pre-existing behaviour exactly.
   const effectiveStrokeWidth = strokeWidth;
 
   const circleRef = useRef<SVGCircleElement | null>(null);

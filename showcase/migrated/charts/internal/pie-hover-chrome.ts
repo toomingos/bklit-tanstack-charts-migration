@@ -67,9 +67,9 @@ const motionEasingFromCss = (css: string): ((progress: number) => number) => {
 }
 
 
-// D3 arc() calls only moveTo/lineTo/arc/closePath: a proxy context offsets (dx,dy)
-// Per datum while emitting a plain d string (zero-offset fast path skips the proxy).
-// Throws for context methods d3-shape's arc() never calls (arcTo/bezier/quadratic/rect).
+/*
+ * D3 arc() only calls moveTo/lineTo/arc/closePath; all other context methods throw.
+ */
 const unexpectedArcMethod = (name: string): (() => never) => () => {
   throw new Error(`createOffsetArc: d3-shape's arc() called unexpected context method '${name}'`);
 };
@@ -91,10 +91,6 @@ const createOffsetProxyContext = ({ real, dx, dy }: Readonly<OffsetProxyParams>)
   rect: unexpectedArcMethod("rect"),
 });
 
-// SAFETY: D3-shape's arc() only invokes the CanvasPath subset (moveTo/lineTo/arc/closePath).
-// Each call on its context is forwarded with the (dx, dy) offset to the real d3-path Path above.
-// All remaining Path methods throw via unexpectedArcMethod.
-// That covers every context method arc() can reach (see module header).
 interface RenderOffsetArcParams<TDatum> {
   readonly base: Arc<unknown, TDatum>;
   readonly datum: TDatum;
@@ -142,12 +138,10 @@ type ArcChainableSlot<TDatum> = (...args: readonly unknown[]) => ArcChainableOut
 
 const createOffsetArc = <TDatum>(getOffset: (datum: TDatum, index: number) => { dx: number; dy: number }): Arc<unknown, TDatum> => {
   const base = d3Arc<TDatum>();
-// SAFETY: The closure below plus the centroid and nine chainable forwarders after it form
-// The full Arc<unknown, TDatum> surface TanStack's radialArc generator consumes.
-// String-returning invocation with a null context and offset replay onto a d3-path Path
-// With a path context are both covered, as are centroid and every chainable accessor.
-// D3-shape passes the datum index as the first extra call argument, hence the tuple.
-// The assertion only bridges the methods attached after creation, not the call shape.
+/*
+ * SAFETY: Closure plus centroid and nine chainable forwarders form the full Arc surface consumed below.
+ * Assertion only bridges methods attached after creation, not the call shape.
+ */
   const wrapped = ((datum: TDatum, ...rest: readonly [number?, ...unknown[]]) => {
     const index = rest[0] ?? 0;
     const { dx, dy } = getOffset(datum, index);
@@ -160,17 +154,8 @@ const createOffsetArc = <TDatum>(getOffset: (datum: TDatum, index: number) => { 
   for (const method of chainableMethods) {
     const forwarder = (...args: readonly unknown[]): ArcChainableOutcome<TDatum> => {
       /*
-       * SAFETY: `method` ranges over the nine chainable Arc member names in the const tuple above,
-       * and every one exists at runtime on a d3-shape arc generator with get/set overloads.
-       *
-       * Checked indexed access (`base[method]`) was tried and does not compile: `Arc` has no index
-       * signature, and `digits` is absent from the installed @types/d3-shape entirely even though
-       * the runtime generator provides it. A typed mapped forwarder is therefore not expressible
-       * against these typings -- see the residuals note. Reflect keeps the lookup dynamic and the
-       * missing-member check explicit rather than silently producing undefined.
-       *
-       * Arity decides direction exactly as d3's own accessors do: no arguments reads, any argument
-       * writes and returns the wrapper so calls stay chainable.
+       * SAFETY: `method` ranges over the nine chainable Arc names existing at runtime with get/set overloads.
+       * Typed indexed access cannot compile (no index signature; `digits` missing from types), so Reflect keeps it dynamic.
        */
       const fn = Reflect.get(base, method) as ArcChainableSlot<TDatum> | undefined;
       if (fn === undefined) {throw new Error(`createOffsetArc: missing arc method '${method}'`);}

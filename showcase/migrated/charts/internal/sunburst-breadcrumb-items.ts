@@ -12,10 +12,10 @@ type ReadonlySunburstBreadcrumbNode = Readonly<Omit<SunburstNode, "children">> &
   readonly children?: readonly ReadonlySunburstBreadcrumbNode[];
 };
 
-// Deep-readonly view of SunburstNode: the breadcrumb helpers only read the input
-// Tree, but SunburstNode (sunburst-types.ts) keeps a mutable `children` array for
-// Callers that build trees imperatively — same reason sunburst-geometry.ts composes
-// Its readonly view locally rather than upstream, so this file does the same.
+/*
+ * Breadcrumb helpers only read the tree, but SunburstNode keeps mutable children for imperative builders.
+ * So this file composes its readonly view locally like sunburst-geometry.ts does.
+ */
 const collectSunburstCrumbTrail = (focus: Readonly<Focus>, focusById: Readonly<ReadonlyMap<string, Readonly<Focus>>>): Focus[] => {
   const crumbs: Focus[] = [];
   let cur: Focus | undefined = focus;

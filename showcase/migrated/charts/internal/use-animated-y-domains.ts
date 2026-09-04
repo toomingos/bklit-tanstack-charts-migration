@@ -31,9 +31,8 @@ interface TweenInputRefsArgs {
   readonly onSettled?: () => void;
 }
 
-// Mirror of the tween inputs as refs; one hook so the main hook stays short.
-// Writes land in an effect (never during render) so the body stays pure.
-// The mirror effect is declared before the tween effects so it always runs first.
+// Writes land in an effect so the body stays pure.
+// Declared before the tween effects so it always runs first.
 const useTweenInputRefs = (args: Readonly<TweenInputRefsArgs>): TweenInputRefs => {
   const destinationRef = useRef(args.destinationByAxis);
   const skeletonRef = useRef(args.skeletonByAxis);
@@ -122,10 +121,8 @@ interface PhaseTrigger {
   readonly reducedMotion: boolean;
 }
 
-// Owns the phase-transition effect (plus its phase ref) so the main hook stays short.
 // Triggers travel as an EffectEvent argument so the dependency list stays honest.
-// The tween inputs (destination, skeleton, target, onSettled) stay latest-but-non-reactive.
-// Event closure keeps them fresh without re-triggering the once-per-transition reveal.
+// Inputs stay latest-but-non-reactive so the reveal fires once per transition.
 const usePhaseTweenEffect = (args: Readonly<PhaseEffectArgs>): void => {
   const prevPhaseRef = useRef(args.chartPhase);
   const runEffectForPhase = useEffectEvent(
@@ -192,9 +189,8 @@ const runTargetTween = (run: Readonly<TargetEffectArgs>, targetSignature: string
   return undefined;
 };
 
-// Trigger subset for the live-target effect; passed as one EffectEvent argument.
 // Read-only view of the target, sufficient for dep honesty.
-// The tween itself consumes the refs mirror, so the mutable record never flows here.
+// The tween consumes the refs mirror, so the mutable record never flows here.
 interface TargetTrigger {
   readonly chartPhase: ChartPhase;
   readonly durationMs: number;
@@ -205,10 +201,8 @@ interface TargetTrigger {
   readonly tweenOnTargetChange: boolean;
 }
 
-// Owns the target-signature ref and the live-target effect so the main hook stays short.
 // Triggers travel as an EffectEvent argument so the dependency list stays honest.
-// The tween inputs stay latest-but-non-reactive inside the event.
-// Event closure keeps them fresh without breaking the signature-guarded live update.
+// Inputs stay latest-but-non-reactive without breaking the signature-guarded update.
 const useTargetTweenEffect = (args: Readonly<TargetEffectArgs>): void => {
   const targetSignature = JSON.stringify(args.targetByAxis);
   const prevTargetSignatureRef = useRef(targetSignature);

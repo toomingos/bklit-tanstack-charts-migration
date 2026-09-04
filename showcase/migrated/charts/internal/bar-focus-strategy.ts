@@ -191,9 +191,6 @@ const resolveNearestCategoryFocus = <PointT extends ChartPoint<ChartDatum, strin
 }
 
 const createBarFocusStrategy = (phaseRefOrArgs: PhaseRefOrArgs): ChartFocusStrategy<ChartDatum, string, number> => {
-  // Discriminate the overload union with `in` plus a function check.
-  // Only the full-args member carries a callable getCategoryOrder, so no
-  // Casting is needed to separate the legacy phaseRef-only call shape.
   const fullArgs: BarFocusStrategyArgs | undefined = isFullBarFocusArgs(phaseRefOrArgs)
     ? phaseRefOrArgs
     : undefined;

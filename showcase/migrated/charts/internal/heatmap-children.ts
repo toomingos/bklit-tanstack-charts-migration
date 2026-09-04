@@ -5,10 +5,10 @@ import type { HeatmapSeparatorProps } from "./heatmap-components";
 
 // Child-traversal helpers for the heatmap surface, extracted so heatmap-chart-surface.tsx exports only its component.
 
-// This is a type guard for React-element-props-shaped objects that expose a children field.
-// It replaces an `as` cast so narrowing is real, not asserted.
-// Its parameter is genuinely unknown: it is `ReactElement.props`, whose declared type is the element's own, often unrelated, prop type.
-// There is no more specific domain type to accept before this function has established the shape itself.
+/*
+ * Replaces an `as` cast so narrowing is real, not asserted; the parameter stays generic
+ * because `ReactElement.props` carries the element's own unrelated prop type.
+ */
 const hasChildrenProp = <Subject>(props: Subject): props is Subject & { children?: ReactNode } =>
   typeof props === "object" && props !== null && "children" in props;
 

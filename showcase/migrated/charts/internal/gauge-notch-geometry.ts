@@ -1,12 +1,7 @@
-// Arc/linear notch layout shared by both Gauge orientations:
-// `computeArcNotches`/`computeLinearNotches` let both the TanStack
-// Custom-mark (arc) and plain-SVG (linear) render paths share the same
-// Geometry computation.
-//
-// Every point returned by `computeArcNotches` is in absolute pixel space
-// (`centerX = width/2`, `centerY = height/2`, un-shifted); the arc path uses
-// Stock `radialArc`, whose polar container handles coordinate centering via
-// `resolvePolarLayout` (`radiusRatio: 1` gives radius = min(w,h)/2).
+/*
+ * Arc/linear notch layout shared by both Gauge orientations; arc points are absolute pixels
+ * and the polar container handles centering via `resolvePolarLayout` (`radiusRatio: 1`).
+ */
 import type { ComputedNotch } from "./gauge-notch";
 
 // Hex color channel slice offsets (`#rrggbb` minus the `#` prefix) and radix.
@@ -18,9 +13,10 @@ const HEX_RADIX = 16;
 // Arc gauge radii as fractions of `size` (min(width, height)).
 const GAUGE_OUTER_RADIUS_RATIO = 0.42;
 const GAUGE_INNER_RADIUS_BASE_RATIO = 0.28;
-// Linear notch taper (inner vs outer half-width); kept as its own integer
-// Ratio — `28 / 42` is not bit-identical to `0.28 / 0.42` in floating point,
-// So it must not reuse the radius ratios above.
+/*
+ * Linear notch taper kept as integers: `28 / 42` is not bit-identical to `0.28 / 0.42`,
+ * so it must not reuse the radius ratios above.
+ */
 const LINEAR_TAPER_INNER = 28;
 const LINEAR_TAPER_OUTER = 42;
 

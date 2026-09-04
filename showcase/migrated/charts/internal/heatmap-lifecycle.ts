@@ -90,9 +90,7 @@ const useHeatmapPhaseState = (status: ChartStatus, animate: boolean, animationDu
   const [revealEpoch, setRevealEpoch] = useState(0);
   const [revealMode, setRevealMode] = useState<HeatmapRevealMode>(null);
   const phaseRef = useRef(chartPhase);
-  // Latest-phase mirror for the enter-reveal effect below.
-  // Sync runs in a layout effect, not during render.
-  // The passive effect therefore always reads the committed phase.
+  // Layout-effect sync so the passive enter-reveal effect reads the committed phase.
   useLayoutEffect(() => {
     phaseRef.current = chartPhase;
   }, [chartPhase]);
@@ -191,9 +189,7 @@ const useHeatmapChartLifecycle = (params: HeatmapLifecycleParams): HeatmapLifecy
   useEffect(() => {
     if (!animation.animateEnter || phase.chartPhase !== "revealing") {return;}
     armHeatmapFinishTimer({ finishTimerRef: timers.finishTimerRef, setChartPhase: phase.setChartPhase, setIsLoaded: phase.setIsLoaded, setRevealMode: phase.setRevealMode, timeoutMs: animationDurationMs });
-    // Capture the armed timer id for cleanup instead of reading the ref there.
-    // Nothing else writes this ref between arming and cleanup.
-    // The captured id is exactly the timer the cleanup must clear.
+    // Captured at arm time so cleanup clears exactly this timer.
     const armedTimerId = timers.finishTimerRef.current;
     return (): void => {
       if (armedTimerId !== null) {

@@ -42,9 +42,10 @@ const useScatterPhaseModel = ({
     onPhaseChangeRef.current?.(phase);
   }, []);
 
-  // Band-category focus reproduces bklit bisect semantics over ChartPoints (strict > tie-break).
-  // Memoized once: the strategy closes over the stable phase ref, so recreating it would
-  // Resubscribe focus handling for no new information.
+  /*
+   * Band-category focus reproduces bklit bisect semantics over ChartPoints (strict > tie-break),
+   * memoized once over the stable phase ref to avoid pointless focus resubscription.
+   */
   const scatterFocusStrategy = useMemo(
     () => createScatterFocusStrategy(phaseRef),
     [phaseRef],

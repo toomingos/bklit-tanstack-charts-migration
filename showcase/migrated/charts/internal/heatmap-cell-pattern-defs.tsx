@@ -4,15 +4,10 @@ import { heatmapLevelPatternId, heatmapLevelPatternRenderOptions, isHeatmapLevel
 import type { HeatmapLevelStyle, HeatmapLevelStyles } from "./heatmap-colors";
 import { renderPatternPreset } from "./pattern-preset-render";
 
-// Port of repos/bklit-ui/packages/ui/src/charts/heatmap/
-// The heatmap-pattern-defs.tsx file renders the <pattern> defs backing pattern-mode
-// Pattern-mode levelStyles (HM14): one deviation forced by the TanStack backend — bklit
-// Paints cells inside `<g transform=translate(margin)>`, so its
-// Tiles using userSpaceOnUse anchor at the plot origin; TanStack bakes margins into
-// Rect coordinates, so each base pattern is wrapped in a phase-shifting
-// Pattern (same trick as area-chart.tsx) to land the tile grid on the same
-// Phase. Ids derive from bklit's `heatmap-level-N` names under a useId-
-// Scoped prefix so multiple instances/legends on one page never collide.
+/*
+ * TanStack bakes margins into rect coordinates while bklit translates a group, so each base
+ * pattern is wrapped in a phase-shifting pattern to land the tile grid on the same phase.
+ */
 const renderHeatmapCellPatternDefs = ({
   levelStyles,
   patternIdPrefix,

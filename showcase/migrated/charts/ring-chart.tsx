@@ -482,11 +482,9 @@ const RingChart = ({
   const { width, height } = useDebouncedContainerSize(containerRef);
   const size = fixedSize ?? Math.min(width, height);
 
-  // Latest-prop readers for the stable hover coordinator. The coordinator calls these at pointer
-  // Time, never during render, and the refs are written from an Effect — so the coordinator
-  // Identity (and its in-flight hover state) survives onHoverChange/hoveredIndex identity changes.
-  // An Effect Event cannot be used here: it may only be called from inside an Effect, not stored
-  // In a long-lived coordinator.
+  /*
+   * Coordinator reads latest props at pointer time so its identity survives prop churn; an Effect Event cannot be stored in a long-lived coordinator.
+   */
   const onHoverChangeRef = useRef(onHoverChange);
   const isControlledRef = useRef(hoveredIndex !== undefined);
   useEffect(() => {
@@ -664,11 +662,9 @@ const RingChart = ({
 
   const seenRingRevealedRef = useRef<Set<number>>(new Set());
 
-  // Reveal inputs are read through a ref written from an Effect so the stable onRender identity
-  // Below survives data/transition identity churn (the useCallback memoisation is load-bearing for
-  // Benchmarked render performance). onRender fires at paint time, never during render, so reading
-  // The ref inside the callback is safe. An Effect Event cannot be used: it may only be called from
-  // Inside an Effect, and this callback is handed to the renderer.
+  /*
+   * Stable onRender identity is load-bearing for benchmarked render performance, so inputs arrive via ref read at paint time; an Effect Event cannot be handed to the renderer.
+   */
   const revealInputsRef = useRef({ data, enterStaggerScale, enterTransition, geometryScrubbing, ringConfigMap });
   useEffect(() => {
     revealInputsRef.current = { data, enterStaggerScale, enterTransition, geometryScrubbing, ringConfigMap };

@@ -1,9 +1,8 @@
 import { ensurePulseClipDef, MS_PER_SECOND, PULSE_WAVE_DURATION_S } from "./bar-pulse-clip";
 
-// Imperative pulse clip + WAAPI sweep for bar-pulse-mark: scene clips are
-// Rectangular-only (the wave needs the polygon), and the reconciler wipes
-// Injected nodes. Split out so bar-pulse-mark.ts stays under the size limits.
-// Held until bars finish growing ("ready"); absent under pulsePaused; no reduced-motion branch (legacy parity).
+/*
+ * Scene clips are rectangular-only and the reconciler wipes injected nodes, so the wave needs an imperative clip.
+ */
 
 // Shared numeric thresholds; module scope so the helpers stay short and magic-free.
 const MIN_WAVE_HEIGHT = 0;

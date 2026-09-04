@@ -3,10 +3,6 @@
 
 import type { CSSProperties, ReactElement } from "react";
 
-// ---------------------------------------------------------------------------
-// Center overlay — absolute-positioned circle over the chart
-// ---------------------------------------------------------------------------
-
 // Overlay positioning is static; only pointer events depend on clickability.
 const SUNBURST_OVERLAY_CLICKABLE_STYLE = {
   left: "50%",

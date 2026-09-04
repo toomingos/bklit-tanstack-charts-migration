@@ -1,143 +1,7 @@
-// SunburstChart — TanStack-native redo from first principles (D102).
-//
-// Architecture:
-//   <SunburstSegment> children are config carriers (return null, classified by
-//   displayName). A single <RendererChart renderer={chartMotionRenderer()}>
-//   renders ONE `polar()` container with ONE native `sunburst()` mark
-//   (`@tanstack/charts/hierarchy/sunburst`) fed FLAT rows
-//   (`buildSunburstFlatRows`, sunburst-geometry.ts) — native's own d3-
-//   hierarchy pipeline (stratify → sum → partition) computes every arc's
-//   angle/radius, replacing the pre-C5d design's hand-rolled `geometryFor`/
-//   `ringOptions` math driving a raw custom `d3Arc()` generator on
-//   `radialArc`. `sunburst()` is the sole carrier of `[sceneMotionNode]`
-//   scene metadata (`dist/motion.js`) in the whole mark catalog — i.e. the
-//   only mark whose `d` morph is genuinely SHAPE-aware
-//   (`compatiblePathGeometry`/`hierarchyRelatedGeometry`) instead of the
-//   generic numeric-token `d`-string diff every raw-generator arc mark
-//   (gauge/pie/ring, and this file pre-C5d) falls back to.
-//
-// --- C5d (native semantic motion, Phase 6): three angle-parity conditions,
-// verified against real d3-hierarchy 3.1.2 -------------------------------
-//   1. `value` is LEAF-ONLY (`d.hasChildren ? 0 : (d.rawValue ?? 0)`):
-//      native's `hierarchy.root.sum()` ADDS an internal node's own value on
-//      top of its children's, unlike `sumValues` (sunburst-geometry.ts,
-//      unchanged, still feeds `buildArcs`) which ignores a node's own value
-//      whenever it has children. Getting this wrong measurably diverges
-//      angles by up to ~3 rad for a tree where internal nodes carry values.
-//   2. NO `sort` is passed to `sunburst()` — native only sorts siblings if
-//      explicitly told to; omitted, it preserves `data`'s own child order,
-//      matching `buildArcs`'s own pre-order traversal.
-//   3. The polar CONTAINER (not the mark) sets `startAngle: -Math.PI/2,
-//      endAngle: -Math.PI/2 + 2*Math.PI` — native's own polar default is
-//      0→2π starting at 3 o'clock (`dist/polar.d.ts`), not bklit's
-//      12-o'clock-clockwise origin every other geometry helper in this file
-//      assumes (`sunburst-geometry.ts`'s `TOP = -Math.PI/2`).
-//   A 4th, self-discovered parity requirement beyond those three: native's
-//   automatic `visibleDepth` default is the LOCAL subtree height under the
-//   active `rootId`, which can silently diverge from `ringOptions`'s
-//   `visibleRings = Math.max(1, maxDepth - focus.depth)` (keyed off the
-//   GLOBAL `maxDepth`) for a tree with irregular branch depths — so
-//   `visibleDepth` is passed explicitly to force exact ring-count parity
-//   against the still-`ringOptions`-driven hit-layer/labels/center overlay.
-//
-//   Focus/drill/hover/dim STILL read exclusively from `buildArcs`/`arcs`/
-//   `arcsById` (never from native mark data) — REQUIRED because native
-//   filters `node.x1 > node.x0`, so a zero-value branch produces no arc at
-//   all (vs. the pre-C5d code's zero-span arc that painted nothing but was
-//   still a real row). Keeping drill on `arcsById`/`zoomTo(id)` keeps a
-//   zero-value branch reachable via keyboard/hit-layer/programmatic drill
-//   even though native never paints a path for it.
-//
-//   Zoom morph (native "update"): `rootId: focus.id` + the explicit
-//   `visibleDepth` above reproduce `geometryFor`'s focus-relative angle
-//   remap — d3-hierarchy's `.copy()` resets a re-rooted subtree's depth to
-//   0, so `partition()` re-normalizes it to fill the full sweep exactly
-//   like the old `mapAngle` did. Persisting arcs keep their native scene key
-//   (`${markId}:node:${valueKey(node.id)}`, id-derived, focus-independent)
-//   across a `zoomTo` commit, so they hit the mark's "update" phase — a
-//   REAL semantic `d`-morph, not a numeric-token diff — while
-//   newly-(in)visible descendants unfold from / collapse into their nearest
-//   surviving ancestor sector (native `hierarchyRelatedGeometry`, confirmed
-//   in `dist/motion.js`; this is a strict upgrade over the pre-C5d design's
-//   `buildZoomKeyframes` 30-sample generator, DELETED outright).
-//   Reveal (native "enter"): per-arc ring-staggered delay (unchanged
-//   `buildRevealTiming` math, internal/sunburst-reveal.ts) + the resolved
-//   sweep tween (`sweepDurationMs`/`sweepEasingCss`, SB2 below), read off
-//   `ctx.datum.id` — `ctx.datum` in `sunburst()`'s `motion` callback is the
-//   WRAPPED `SunburstNode<TDatum>` (`ChartMarkMotionOptions<SunburstNode
-//   <TDatum>>`, confirmed against `hierarchy-sunburst.d.ts` AND the shipped
-//   `docs/reference/marks/sunburst.md`), so no raw-flat-row key-decoding is
-//   needed here (unlike the DOM click-listener below, which has no typed
-//   API to lean on and must decode native's internal key scheme itself).
-//   `playKey` is folded into the MARK's own `id` (`sunburst-arcs-{playKey}`)
-//   rather than a per-datum `key` — `SunburstOptions` has no such option
-//   (verified against `hierarchy-sunburst.d.ts`) — so a playKey bump changes
-//   every child's derived scene key at once, replaying the full staggered
-//   reveal exactly like a fresh mount.
-//   Reduced motion: the arc mark's own motion (enter/update/exit) needs no
-//   local `prefersReducedMotion` branch — `chartMotionRenderer()`'s policy
-//   defaults `respectReducedMotion: true` (gauge/pie/ring precedent).
-//   `prefersReducedMotion` STILL gates three unrelated, non-native-scene
-//   concerns below: the whole-stage 350ms fade-in (SB15), the zoomT rAF
-//   tween-vs-snap branch (labels/hit-layer/center-circle overlays, none of
-//   which are TanStack scene nodes), and the phase-tracking deadline timer
-//   (skipped straight to "ready" — see the consolidated reveal-phase effect
-//   below) — none of those have a native-motion equivalent to fall back on.
-//
-//   Hover chrome, DELIBERATE deviation (D-TBD, disclose to orchestrator):
-//   native `sunburst()` has NO per-datum radius/size VisualChannel — only
-//   `fill`/`stroke` are per-node (`hierarchy-sunburst.d.ts`'s
-//   `SunburstSharedOptions`); `innerRadius`/`outerRadius`/`ringPadding` are
-//   whole-mark scalars or responsive `PolarLength` callbacks, never a
-//   per-datum channel. The radial hover pop-out is therefore not expressible
-//   on native `sunburst()` at 0.15.0 and is DROPPED outright; `hoverPop` is
-//   kept as a prop for API compatibility but is now inert (D450). Hover-DIM
-//   is fully preserved: non-related-arc dimming (bklit:
-//   0.25 alpha, 160ms ease-out, styles.css:424-427) is still computed as a
-//   `fill` color-mix alpha inside the mark's `fill` callback, reactive by
-//   construction (the callback closes over `hoveredArc`, which is React
-//   state — a hover change recomputes `definition` → native reconciles
-//   fresh `fill` colors, same "no imperative DOM opacity mutation" model as
-//   before).
-//
-// --- C5c (native focus, Phase 6, D435): scoped correction, not a straight
-// port of pie/ring's pattern -------------------------------------------
-//   Unlike pie/ring, sunburst's ACTUAL hover mechanism is NOT a
-//   `querySelectorAll`+`addEventListener` DOM reach-in against
-//   TanStack-rendered nodes — it is `SunburstHitLayer` (internal/sunburst-
-//   hit.tsx), a separate, ordinary React-owned SVG overlay with plain JSX
-//   `onPointerEnter`/`onClick` props. `SunburstHitLayer` is rendered as a
-//   LATER JSX sibling of `<RendererChart>` inside the same `position:
-//   relative` box, absolutely positioned at 100%×100% — it therefore sits
-//   geometrically on top of and fully occludes `<RendererChart>`'s own
-//   `svg.ts-chart` (both cover the identical size×size rect). This is
-//   REQUIRED to stay (D384): the click half's bench-dispatched synthetic
-//   `.click()` needs a real DOM element to target with no `clientX`/
-//   `clientY`, which only a real rendered `<path>` element (not native
-//   pointer-coordinate resolution) can serve. Because it fully occludes the
-//   chart's own SVG, native pointer events NEVER reach `svg.ts-chart` in any
-//   region covered by an arc — so native pointer-driven `onFocusChange`
-//   cannot replace `SunburstHitLayer`'s hover handlers; they stay unchanged.
-//   `focus: focusDisabled` is still dropped (native default) and
-//   `<RendererChart onFocusChange>` is still wired to `setHoveredArcIndex`,
-//   because KEYBOARD focus (Tab into the SVG, arrow keys) is NOT blocked by
-//   the overlay — it targets `svg.ts-chart` directly via its own `tabIndex`,
-//   independent of pointer z-order — so this rung is a genuine, if narrower,
-//   capability add: keyboard users get arc hover-preview (dim/grow) for the
-//   first time. The one reach-in this rung DOES retire is SB15's
-//   `useLayoutEffect` querying `svg.ts-chart` for a `pointerleave` listener
-//   — confirmed dead in practice by the same occlusion finding
-//   (`svg.ts-chart` never receives a `pointerenter`, so never fires
-//   `pointerleave`, in any pointer-covered region); `SunburstHitLayer`'s own
-//   `<svg onPointerLeave={onHitLeaveAll}>` (identical footprint, rendered on
-//   top) already reproduces the intended "leave the stage clears hover"
-//   behavior and was doing the actual work all along.
-//   6.5 gate check (D448 → D471): the occlusion argument above covers
-//   pointer RESOLUTION only. The host also re-reports its still-focused
-//   keyboard point on every render and emits `null` on `focusout`, so the
-//   two paths CAN fight over the single hover cell. `pointerInsideStageRef`
-//   (below, at the hit handlers) makes the pointer the owner while it is
-//   inside the stage; keyboard focus drives hover only when it is not.
+/*
+ * TanStack-native redo (D102). Architecture, the C5d angle-parity conditions verified against
+ * d3-hierarchy 3.1.2, and the deliberate hover-pop deviation: ./sunburst-architecture.md
+ */
 
 import {
   Children,
@@ -201,9 +65,7 @@ import "./styles.css";
 // The two call sites below before P5.5 SB2 gave `enterTransition` a home).
 const SUNBURST_SWEEP_MS = 1100;
 const SUNBURST_SWEEP_EASE = "cubic-bezier(0.85,0,0.15,1)";
-// Bklit sunburst zoom morph: 750ms cubic-bezier(0.22,1,0.36,1) — legacy
-// Verbatim, previously the WAAPI zoom effect's `.animate()` options
-// (deleted, C5); now the arc mark's native "update" transition.
+// Legacy zoom timing, now the arc mark's native update transition.
 const SUNBURST_ZOOM_MS = 750;
 const SUNBURST_ZOOM_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 // Full opacity: the undimmed alpha for the hovered arc and its relatives.
@@ -231,10 +93,6 @@ const ALPHA_TO_PERCENT = 100;
 // Degree geometry for label rotation: radians-to-degrees half-circle and the flip threshold.
 const DEGREES_PER_HALF_CIRCLE = 180;
 const LABEL_FLIP_THRESHOLD_DEGREES = 90;
-
-// ---------------------------------------------------------------------------
-// Helpers (shared — were duplicated across 4 call sites)
-// ---------------------------------------------------------------------------
 
 const applyAlphaToColor = (color: string, alpha: number): string => {
   if (alpha >= FULL_OPACITY) {return color;}
@@ -267,18 +125,9 @@ const resolveSunburstHintText = (hoveredTrail: readonly string[] | undefined, fo
   return "Click the center to zoom out";
 };
 
-// C5d — native `sunburst()`'s own scene keys are NOT the old
-// `radialArc`+custom-`key` scheme (`sunburst-arc-{playKey}-{arcIndex}`);
-// They're internally fixed as `${markId}:node:${valueKey(node.id)}`
-// (`dist/hierarchy-sunburst.js`'s `key`, `dist/scales.js`'s `valueKey` — no
-// Public `key` option exists on `SunburstOptions`, verified against
-// `hierarchy-sunburst.d.ts`). `valueKey` encodes a string id as
-// `string:<length>:<id>`, so this reconstructs the expected id per rendered
-// Path by slicing exactly `<length>` characters after that header — a
-// Length-prefixed decode (not a delimiter split) so an arc id containing
-// "-", ":", or " / " (our own `nodeId` separator) can never be
-// Misparsed. `markId` must be the SAME string passed as the mark's `id`
-// Option below (`sunburst-arcs-{playKey}`) or no path will match.
+/*
+ * Native keys are fixed `${markId}:node:${valueKey(id)}` with no key option; length-prefix decode keeps separator-bearing ids intact.
+ */
 // Decodes a native sunburst scene key's trailing "<length>:<id>" payload.
 // Returns undefined when the key does not carry a parseable id.
 const parseSunburstPathId = (key: string, prefix: string): string | undefined => {
@@ -305,10 +154,9 @@ const getSunburstPathMap = (container: HTMLElement, markId: string): Map<string,
   return map;
 }
 
-// Deep-readonly arc view for helper parameters. `Readonly<ArcDatum>` is not
-// Enough: `trail` stays a mutable array under it and the readonly rule does a
-// Deep check. This mirrors the local `ReadonlyArcDatum` in
-// Internal/sunburst-geometry.ts, which is not exported.
+/*
+ * Deep-readonly arc view: `Readonly<ArcDatum>` leaves `trail` mutable; mirrors the unexported helper in sunburst-geometry.ts.
+ */
 type ReadonlySunburstArc = Readonly<Omit<ArcDatum, "trail">> & {
   readonly trail: readonly string[];
 };
@@ -361,9 +209,6 @@ const bindArcClick = (
   };
 };
 
-// Attaches click-to-zoom listeners to every rendered arc path for programmatic
-// Dispatch (bench drilldown), returning the combined cleanup, or undefined when
-// No paths rendered yet.
 const attachSunburstPathClicks = (
   elementMap: ReadonlyMap<string, SVGPathElement>,
   sortedArcs: readonly ReadonlySunburstArc[],
@@ -399,10 +244,6 @@ const fadeInChartStage = (container: HTMLElement): (() => void) | undefined => {
 // Sunburst reveal phase, shared by the phase plumbing below.
 type SunburstPhase = "loading" | "revealing" | "ready";
 
-// ---------------------------------------------------------------------------
-// Types (matching bklit's public API; re-exported in the trailing block below)
-// ---------------------------------------------------------------------------
-
 interface SunburstChartProps {
   data: SunburstNode;
   size?: number;
@@ -427,17 +268,9 @@ interface SunburstChartProps {
   children: ReactNode;
 }
 
-// ---------------------------------------------------------------------------
-// Children classification — SunburstSegment are config carriers.
-// ---------------------------------------------------------------------------
-
-// P5.5 SB8 — the `typeof child.type === "function"` guard this used to carry
-// Was narrower than bklit's `componentDisplayName`
-// (`repos/bklit-ui/.../sunburst-chart.tsx:38-44`), which reads `displayName`
-// Off `child.type` whatever it is. A `memo()` element's `type` is an OBJECT,
-// Not a function, so any memoised carrier — bklit memoises
-// `SunburstBreadcrumb` — silently failed to classify and was dropped. Matching
-// Bklit: accept both, and let `displayName` alone decide.
+/*
+ * Match bklit: accept function or object types so memoised carriers still classify by displayName alone.
+ */
 const isDisplayNameCarrier = (type: ReactElement["type"]): type is ReactElement["type"] & { displayName?: string } =>
   typeof type === "function" || (typeof type === "object" && type !== null);
 
@@ -630,26 +463,22 @@ const SunburstChartInner = ({
     [arcs, getColor],
   );
 
-  // --- Zoom state ---
-  // SB14 (legacy parity): a click commits the new focus IMMEDIATELY; zoomT
-  // Tweens 0→1 and transitionGeometry(prev→committed, zoomT) covers the
-  // Morph. The committed target geometry renders underneath the in-flight
-  // D-morph, so there is no visual jump.
+  /*
+   * Click commits focus immediately; the committed geometry renders under the in-flight morph so nothing jumps.
+   */
   const [zoomT, setZoomT] = useState(1);
   const [prevFocusId, setPrevFocusId] = useState(rootId);
   const prevFocus = focusById.get(prevFocusId) ?? focus;
   const zoomGen = useRef(0);
-  // SB1: reveal-cycle identity — bumped when playKey changes so the
-  // Once-per-mount LABELS-reveal guard resets below (the arc reveal itself
-  // Now replays via the mark's own playKey-embedded key, C5 — see file
-  // Header — so this ref only guards `runLabelsReveal`'s mount-vs-replay
-  // Distinction, not any arc-path animation).
+  /*
+   * Reveal-cycle identity: resets only the labels-reveal mount-vs-replay guard; arcs replay via the mark's own key.
+   */
   const playCycleRef = useRef<string>(`${playKey}`);
   const revealDeadlineTimerRef = useRef<number | null>(null);
 
-  // Data-shape change resets the zoom to the new root. Done during render
-  // (previous-root comparison) so the first commit already carries the reset
-  // State instead of flashing one stale-focus frame through an effect.
+  /*
+   * Reset during render so the first commit carries it; an effect would flash one stale-focus frame.
+   */
   const [prevRootId, setPrevRootId] = useState(rootId);
   if (prevRootId !== rootId) {
     setPrevRootId(rootId);
@@ -665,10 +494,9 @@ const SunburstChartInner = ({
     [isFocusControlled, onFocusChange, setInternalFocusId],
   );
 
-  // Starts the generation-guarded zoom rAF tween from 0. The arc path's own
-  // D-morph is native (C5) and always interpolates from the path's current
-  // Live `d`, so an interrupted zoom naturally continues from wherever it
-  // Visually was, matching the old cancel-and-restart intent.
+  /*
+   * Native morph interpolates from the live `d`, so an interrupted zoom continues visually; the generation guard retires old ticks.
+   */
   const beginZoomTween = useCallback((): void => {
     if (prefersReducedMotion) {
       setZoomT(1);
@@ -721,41 +549,24 @@ const SunburstChartInner = ({
     ],
   );
 
-  // Click listeners below only invoke the latest zoom — reading it through an
-  // Effect event keeps the listener subscription stable across zoomTo
-  // Identity changes (latest focus/zoomT still observed at click time).
   const zoomToEvent = useEffectEvent((nextId: string): void => {
     zoomTo(nextId);
   });
 
-  // --- C5d: flat source rows + id lookup for native `sunburst()` ---
-  // Native's hierarchy pipeline stratifies FLAT rows (nodeId/parentId), not
-  // The nested `SunburstNode` tree `buildArcs` walks — `buildSunburstFlatRows`
-  // Flattens the SAME `data` prop with the SAME `nodeId` scheme so ids match
-  // `ArcDatum.id` 1:1. `arcsById` is the bridge: focus/drill/hover/dim ALL
-  // Still read from `buildArcs`'s own `arcs`/`focusById` (D-TBD below, and
-  // The file header) — this map is how the native mark's per-node callbacks
-  // (which only see the flat row + a bare node id) recover arcIndex,
-  // Absolute depth, and color/fill overrides for a given rendered node.
+  /*
+   * Native stratifies flat rows, not the nested tree; `arcsById` bridges native callbacks back to `buildArcs` state.
+   */
   const flatRows = useMemo(() => buildSunburstFlatRows(data), [data]);
   const arcsById = useMemo(() => new Map(arcs.map((arc) => [arc.id, arc])), [arcs]);
 
-  // C5: per-arc ring-staggered entrance delay, keyed by arc `id` (matches
-  // `handleRender`'s pre-C5 `delayByArcId` lookup, now feeding the mark's
-  // Own `motion` enter phase instead of a `.animate()` delay option).
   const revealDelayById = useMemo(() => {
     const timingList = buildRevealTiming(arcs, enterStaggerScale);
     return new Map(timingList.map((timing) => [timing.arcId, timing.delayMs]));
   }, [arcs, enterStaggerScale]);
 
-  // C5d: the mark's OWN id (not a per-datum `key` — `SunburstOptions` has no
-  // Such option, verified against `hierarchy-sunburst.d.ts`) folds `playKey`
-  // In directly. Native derives every rendered path's scene key from this
-  // (`${id}:node:${valueKey(node.id)}`, `hierarchy-sunburst.js`), so bumping
-  // It changes EVERY child's key at once — the whole group re-enters as a
-  // Fresh subtree (`reconcileMotionElement`'s top-level identity match
-  // Fails), replaying the full staggered reveal exactly like a fresh mount.
-  // `getSunburstPathMap` below must be given this SAME string.
+  /*
+   * `playKey` is folded into the mark id so a bump re-keys every child at once; `getSunburstPathMap` must receive the same string.
+   */
   const sunburstMarkId = `sunburst-arcs-${playKey}`;
   // C5d: focus-derived mark options, hoisted so the definition below stays shallow.
   const visibleDepthValue = resolveVisibleDepth(maxDepth, focus.depth);
@@ -764,13 +575,9 @@ const SunburstChartInner = ({
   // --- TanStack definition: native `sunburst()` (C5d, D-TBD — see file ---
   // --- header for the full design writeup and the hover-grow deviation) ---
   const definition = useMemo(() => defineChart({
-      // C5c (D435): native default focus (no `focus` key) replaces
-      // `focusDisabled` — enables keyboard-driven focus resolution (see file
-      // Header; pointer-driven hover stays on SunburstHitLayer, which
-      // Occludes native pointer resolution and is required to stay for
-      // D384's click contract). `focusRing: false` suppresses the default
-      // Indicator since the dim geometry above already IS sunburst's
-      // Authored focus treatment.
+      /*
+       * Keyboard focus only; `focusRing: false` because dim geometry is already the authored focus treatment.
+       */
       focusRing: false,
       guides: false,
       marks: [
@@ -785,31 +592,23 @@ const SunburstChartInner = ({
                 const resolvedFill = getFill(arc.arcIndex, config?.fill, config?.color);
                 const relativeDepth = arc.depth - focus.depth;
                 const baseOpacity = config?.fillOpacity ?? opacityForRelativeDepth(relativeDepth);
-                // C1 (states+legend) parity: non-hovered-arc dimming folded
-                // Into the per-datum `fill` alpha (native `sunburst()` has
-                // No per-datum opacity channel either — `fillOpacity` is a
-                // Whole-mark `number`, `hierarchy-sunburst.d.ts`).
+                /*
+                 * Native has no per-datum opacity channel, so hover dimming is folded into the per-datum `fill` alpha.
+                 */
                 const dimFactor = hoverDimFactor(arc.id, hoveredArc?.id);
                 return applyAlphaToColor(resolvedFill, baseOpacity * dimFactor);
               },
               id: sunburstMarkId,
-              // Matches `ringOptions(focus.depth, maxDepth, radius)`'s own
-              // `centerR`/outer-edge — same `radius` (growPadding-shrunk)
-              // The hit layer/labels/center overlay below already share, so
-              // Native's rings land exactly on top of those overlays.
+              /*
+               * Same growPadding-shrunk radius as the overlays, so native rings land exactly on hit layer, labels, and center.
+               */
               innerRadius: centerRValue,
-              // C5d: reveal sweep (enter) + zoom morph (update) — see file
-              // Header for the full design writeup. `ctx.datum` here is the
-              // WRAPPED `SunburstNode<TDatum>` context (confirmed against
-              // `hierarchy-sunburst.d.ts`'s `ChartMarkMotionOptions<
-              // SunburstNode<TDatum>>` and the shipped
-              // `docs/reference/marks/sunburst.md`), not the raw flat row —
-              // `ctx.datum.id` is directly usable for the delay lookup.
+              /*
+               * `ctx.datum` is the wrapped `SunburstNode`, not the raw flat row; `ctx.datum.id` needs no key-decoding.
+               */
               motion: (ctx: ChartMotionContext<TSSunburstNode<SunburstFlatRow>>) => {
                 if (ctx.phase === "exit") {
-                  // No legacy exit animation ever existed for an individual
-                  // Arc vanishing (only genuinely-degenerate arcs exit, an
-                  // Edge case) — instant vanish, same idiom gauge/pie use.
+                  // No legacy exit animation existed; degenerate arcs vanish instantly.
                   return { transition: { duration: 0, type: "tween" } };
                 }
                 if (ctx.phase === "update") {
@@ -835,48 +634,31 @@ const SunburstChartInner = ({
               // Shares the overlay-alignment note on innerRadius above.
               outerRadius: radius,
               parentId: (row: SunburstFlatRow) => row.parentId,
-              // `rootId`/`visibleDepth` reproduce `geometryFor`'s
-              // Focus-relative angle remap AND `ringOptions`'s ring count —
-              // `resolveLayoutRoot` copies the subtree at `focus.id` and
-              // `d3-hierarchy`'s `copy()` resets the copy's depth to 0
-              // (confirmed in `dist/d3-hierarchy` docs), so `partition()`
-              // Re-normalizes the subtree to fill the full sweep exactly
-              // Like `mapAngle` does. `visibleDepth` is passed explicitly
-              // (not left to native's own subtree-height default) so ring
-              // Count stays keyed off the GLOBAL `maxDepth` — matching
-              // `ringOptions`'s `visibleRings` formula exactly — instead of
-              // Silently diverging for an irregular (uneven-depth) tree,
-              // Which would misalign native's rings against the still-
-              // `ringOptions`-driven labels/hit-layer/center-circle overlays.
+              /*
+               * Re-rooting resets subtree depth to 0 so partition refills the sweep; explicit `visibleDepth` keeps irregular trees aligned with overlays.
+               */
               rootId: focus.id,
               stroke: "var(--chart-background)",
               strokeWidth: 1,
-              // Parity condition 1 (verified against real d3-hierarchy
-              // 3.1.2, see file header): native's `hierarchy.root.sum(...)`
-              // ADDS a node's own value on top of its children's, unlike
-              // `sumValues` (sunburst-geometry.ts) which ignores a node's
-              // Own `value` whenever it has children — a leaf-only accessor
-              // Is REQUIRED or an internal node carrying its own value
-              // Diverges by up to ~3 rad (measured).
+              /*
+               * Leaf-only values: native `sum` adds an internal node's own value, diverging angles by up to ~3 rad if passed through.
+               */
               value: (row: SunburstFlatRow) => (row.hasChildren ? 0 : (row.rawValue ?? 0)),
               // Shares the focus-remap note on rootId above.
               visibleDepth: visibleDepthValue,
             }),
           ],
           radiusRatio: 1,
-          // Parity condition 3 (verified against real d3-hierarchy 3.1.2,
-          // See file header): native's own default sweep is 0→2π starting at
-          // 3 o'clock, NOT bklit's 12-o'clock-clockwise origin
-          // (`sunburst-geometry.ts`'s `TOP = -Math.PI/2`) — must be set
-          // Explicitly or every arc lands rotated 90° from legacy.
+          /*
+           * Native sweeps from 3 o'clock by default; bklit geometry assumes a 12-o'clock origin, so set it explicitly.
+           */
           startAngle: -Math.PI / 2,
         }),
       ],
       scales: { x: null, y: null },
-      // T-D15 (P3.1): explicit 5-entry palette override, NOT the native
-      // 6-entry defaultChartTheme.palette — see internal/design-tokens.ts.
-      // Every row already carries an explicit per-datum `fill` (getFill /
-      // Colors above), so this has no pixel effect today.
+      /*
+       * Explicit 5-entry palette override; every row already carries per-datum `fill`, so no pixel effect today.
+       */
       theme: { palette: CHART_CATEGORY_PALETTE },
       tooltip: false,
     }),
@@ -896,20 +678,9 @@ const SunburstChartInner = ({
     sweepEasingCss,
   ]);
 
-  // --- C5: reveal-phase tracking (bench settle detection) ---------------
-  // The arc SWEEP itself is now fully native (the mark's own `motion`
-  // Above) — this effect no longer drives any animation, it only tracks
-  // `onPhaseChange` timing so external callers still see "revealing" then
-  // "ready" on the same rough schedule the WAAPI reveal used to produce.
-  // Deliberately keyed on `[arcs, playKey, ...]`, not `arcRows`: `arcs`
-  // (and therefore which keys are "new") only changes on mount or when
-  // `data` changes shape — a hover/zoom-triggered `arcRows` recompute must
-  // NOT restart this timer (matches the pre-C5 `seenRevealedRef` guard's
-  // Intent, now for free via the effect's own dependency list). A playKey
-  // Bump both restarts this timer AND (via the mark's `key`, above)
-  // Independently triggers native's own enter/exit replay — the two are
-  // Deliberately decoupled: this effect only ever reports phase, never
-  // Animates.
+  /*
+   * Phase reporting only, never animation; deps on `[arcs, playKey, ...]` keep hover/zoom recomputes from restarting the timer.
+   */
   useEffect((): (() => void) | undefined => {
     if (prefersReducedMotion) {
       setPhase("ready");
@@ -928,11 +699,9 @@ const SunburstChartInner = ({
     };
   }, [arcs, playKey, enterStaggerScale, sweepDurationMs, prefersReducedMotion, setPhase]);
 
-  // --- TanStack-path click listeners (synthetic-dispatch contract) ---
-  // Real pointer interaction is served by the hit layer above the stage svg;
-  // These click-only listeners exist for programmatic dispatch on the
-  // TanStack-rendered paths (bench scenario `__benchDrilldown` clicks
-  // `path[data-ts-key^="sunburst-arcs:"]` directly).
+  /*
+   * Click-only listeners for programmatic bench dispatch on rendered paths; real pointer interaction stays on the hit layer.
+   */
   useEffect((): (() => void) | undefined => {
     const container = containerRef.current;
     if (!container) {return undefined;}
@@ -940,20 +709,9 @@ const SunburstChartInner = ({
     return attachSunburstPathClicks(elementMap, sortedArcs, zoomToEvent);
   }, [sortedArcs, sunburstMarkId]);
 
-  // --- Hit layer handlers (bklit parity: enter per segment, leave only at ---
-  // --- svg level — last-enter-wins; click zooms when segment has children) ---
-  // C5: the pre-native reveal used to suppress hover while a path's `d` was
-  // Still owned by an in-flight WAAPI reveal `.animate()` (a two-writer
-  // Hazard against the SAME attribute). Native motion owns both the reveal
-  // And hover-grow through the ONE reconcile pipeline now, so there is no
-  // Second writer left to race — no guard needed.
-  // 6.5 gate (D448 → D471): the pointer overlay and native keyboard focus
-  // Share ONE hover cell with no source tag. While the pointer is inside the
-  // Overlay it owns that cell — native `onFocusChange` re-reports the still-
-  // Focused keyboard point on every host render (dist/renderer.js:165-168)
-  // And fires `null` on `focusout` (renderer.js:615), and without this guard
-  // Both would overwrite a live pointer hover. Keyboard focus still drives
-  // Hover whenever the pointer is outside the stage.
+  /*
+   * Pointer owns the shared hover cell while inside the stage; keyboard focus drives hover only when it is outside.
+   */
   const pointerInsideStageRef = useRef(false);
 
   const handleHitEnter = useCallback(
@@ -978,11 +736,6 @@ const SunburstChartInner = ({
     [arcs, zoomTo],
   );
 
-  // C5c (D435): keyboard-only native focus forwarding — see file header.
-  // Pointer resolution never fires here in practice (SunburstHitLayer
-  // Occludes svg.ts-chart), but Tab/arrow-key focus is independent of
-  // Pointer z-order and DOES resolve, so this is a genuine (if narrow)
-  // Capability add: keyboard users get arc dim/grow hover-preview.
   const handleSunburstFocusChange = useCallback(
     (point: { datum: TSSunburstNode<SunburstFlatRow> } | null) => {
       // Pointer owns hover (D471).
@@ -993,15 +746,6 @@ const SunburstChartInner = ({
     [setHoveredArcIndex, arcsById],
   );
 
-  // C5c (D435): the SB15 `useLayoutEffect` DOM reach-in that used to query
-  // `container.querySelector("svg.ts-chart")` directly for a `pointerleave`
-  // Listener is RETIRED — confirmed dead in practice (svg.ts-chart never
-  // Receives pointerenter, hence never pointerleave, in any region covered
-  // By SunburstHitLayer's identically-sized, later-painted overlay).
-  // `SunburstHitLayer`'s own `<svg onPointerLeave={onHitLeaveAll}>` (its
-  // Outer element, full footprint, unchanged below) already reproduces the
-  // "leave the stage clears hover" behavior and was doing the actual work.
-
   // --- SB15: 350ms fade-in of the whole chart stage on mount ---
   // Legacy: motion.svg opacity 0→1, duration 0.35, ease [0.22,1,0.36,1].
   useLayoutEffect((): (() => void) | undefined => {
@@ -1011,22 +755,8 @@ const SunburstChartInner = ({
     return fadeInChartStage(container);
   }, [prefersReducedMotion]);
 
-  // C5: the zoom `d`-morph is native now (the arc mark's own "update"
-  // Transition, SUNBURST_ZOOM_MS/EASE above) — `arcRows` already recomputes
-  // Off `focus` on every `zoomTo` commit, so TanStack's own keyed reconcile
-  // Triggers the morph with zero imperative code here. The WAAPI zoom
-  // Effect (`buildZoomKeyframes`, queried `elementMap`, per-arc `.animate()`
-  // Calls) is deleted outright, not ported — `zoomT`'s rAF tick loop
-  // (`zoomTo`, above) still drives the label/hit-layer/center-circle
-  // Overlays below, which are NOT TanStack scene nodes and have no native
-  // Motion equivalent to fall back on. (`revealDeadlineTimerRef`'s teardown
-  // Is already handled by the reveal-phase effect's own cleanup, above —
-  // No separate unmount effect needed here.)
-
   // --- Center circle geometry ---
-  // SB13 (legacy parity): interpolate the hub radius during zoom —
-  // Hub radius blends as centerR(focus)·zoomT + centerR(prevFocus)·(1−zoomT) — so the hub grows/
-  // Shrinks with the d-morph instead of snapping at commit.
+  // Hub radius blends with the in-flight d-morph instead of snapping at commit.
   const liveCenterR = useMemo(() => {
     const toR = ringOptions(focus.depth, maxDepth, radius).centerR;
     const fromR = ringOptions(prevFocus.depth, maxDepth, radius).centerR;
@@ -1055,12 +785,9 @@ const SunburstChartInner = ({
       });
   }, [labelsCount, arcs, focus, prevFocus, maxDepth, radius, hoveredArc, zoomT]);
 
-  // --- Hit layer: bklit-parity hit-testing on BASE (ungrown) geometry ---
-  // Bklit's SunburstSegment hit-tests a transparent fill-only path at base
-  // Geometry; the grown visual path is pointer-events:none. Porting that
-  // Model: hover resolves against static geometry (grow never slides
-  // Geometry under the pointer) and the fill-only edge behavior at the
-  // Shared-boundary ray matches bklit's knife-edge hit-test outcome.
+  /*
+   * Hover resolves against static base geometry, matching bklit's fill-only hit path and knife-edge boundary outcome.
+   */
   const hitItems = useMemo((): SunburstHitItem[] => {
     const inZoom = zoomT < 1;
     const fromF = inZoom ? prevFocus : focus;
@@ -1079,18 +806,12 @@ const SunburstChartInner = ({
     return items;
   }, [sortedArcs, focus, prevFocus, maxDepth, radius, zoomT]);
 
-  // SB18: was a local re-implementation of the identical logic. `maxRevealDelayMs`
-  // (internal/sunburst-reveal.ts:75) is the shared helper; `buildRevealTiming`
-  // Returns delays sorted ascending, so its last element IS the max.
   const maxRevealDelay = useMemo(() => maxRevealDelayMs(arcs, enterStaggerScale), [arcs, enterStaggerScale]);
 
   const labelsRevealDelayMs = maxRevealDelay + enterDurationMs * LABELS_REVEAL_DELAY_FRACTION;
 
   const labelRevealAnimsRef = useRef<Animation[]>([]);
 
-  // Deferred label reveal (once per reveal cycle; hover/zoom must not restart
-  // It). SB1: the playKey replay effect clears the dataset guard + inline
-  // Opacity and re-runs this via its labelsRevealDelayMs dependency.
   const runLabelsReveal = useCallback(() => {
     const container = containerRef.current;
     if (!container) {return null;}
@@ -1116,17 +837,9 @@ const SunburstChartInner = ({
     runLabelsRevealRef.current = runLabelsReveal;
   });
 
-  // --- SB1: playKey replays the initialization animation ---
-  // Legacy keys its enter tweens with `${playKey}-enter-${arcId}`, so bumping
-  // Bumping the key restarts the whole reveal. C5: the ARC reveal replay is now
-  // Entirely native — `playKey` is folded into the mark's own `key`
-  // (definition useMemo, above), so a playKey bump makes every arc key
-  // "new" and native replays the full staggered enter on its own; phase
-  // Tracking (`setPhase("revealing")` → `"ready"`) is likewise already
-  // Covered by the reveal-phase effect above (also keyed on `[..., playKey,
-  // ...]`). This effect's only remaining job is the LABELS overlay, which
-  // Stays WAAPI (a separate DOM overlay, no native mark to hang motion off)
-  // And needs its own once-per-cycle dataset-guard reset + replay.
+  /*
+   * Arcs and phase already replay via the mark key and reveal-phase effect; this effect replays only the WAAPI labels overlay.
+   */
   useEffect(() => {
     const next = `${playKey}`;
     if (next === playCycleRef.current) {return;}
@@ -1209,19 +922,13 @@ const SunburstChartInner = ({
   );
 };
 
-// ---------------------------------------------------------------------------
-// Outer-component state, kept in small hooks so the component itself stays
-// Under its statement and line budgets. Every hook below is called
-// Unconditionally, in the same relative order as the code it replaces, with
-// Identical dependency lists.
-// ---------------------------------------------------------------------------
+/*
+ * Small hooks keep the outer component under its statement and line budgets; all are called unconditionally in order.
+ */
 
-// SB2 — sweep timing. `clipRevealTiming` only reads `type`/`duration`/
-// `ease` (see `internal/enter-transition`), so passing the prop through
-// Directly matches the old subset snapshot exactly; it runs inline every
-// Render and the destructured primitives stay value-stable, so an
-// Identity-only change of an inline `enterTransition` object retriggers
-// Nothing downstream.
+/*
+ * Only `type`/`duration`/`ease` are read and the primitives stay value-stable, so inline-object identity changes retrigger nothing.
+ */
 const useSunburstSweepTiming = (
   enterTransition: Readonly<EnterTransition> | undefined,
 ): { durationMs: number; easingCss: string } =>
@@ -1281,10 +988,9 @@ const useSunburstFocusControl = (
   const isFocusControlled = focusIdProp !== undefined;
   const [internalFocusId, setInternalFocusId] = useState(rootId);
   const focusId = focusIdProp ?? internalFocusId;
-  // Data-shape change re-seeds the uncontrolled focus to the new root.
-  // Done during render (previous-value comparison, control mode included so
-  // A mode toggle resyncs exactly as the old `[rootId, isFocusControlled]`
-  // Effect did) so no stale-focus commit flashes first.
+  /*
+   * Re-seed during render so no stale-focus commit flashes first; a mode toggle resyncs the same way.
+   */
   const [prevFocusReset, setPrevFocusReset] = useState({ isControlled: isFocusControlled, rootId });
   if (prevFocusReset.rootId !== rootId || prevFocusReset.isControlled !== isFocusControlled) {
     setPrevFocusReset({ isControlled: isFocusControlled, rootId });
@@ -1391,10 +1097,6 @@ const renderSunburstInner = (props: Readonly<SunburstInnerRenderProps>): ReactEl
   );
 };
 
-// ---------------------------------------------------------------------------
-// SunburstChart
-// ---------------------------------------------------------------------------
-
 const SunburstChart = ({
   data,
   size = DEFAULT_SUNBURST_SIZE,
@@ -1448,10 +1150,6 @@ const SunburstChart = ({
 
 SunburstChart.displayName = "SunburstChart";
 
-// ---------------------------------------------------------------------------
-// SunburstSegment config carrier — stays in this file
-// ---------------------------------------------------------------------------
-
 interface SunburstSegmentProps {
   index: number;
   color?: string;
@@ -1462,10 +1160,6 @@ interface SunburstSegmentProps {
 const SunburstSegment = (_props: SunburstSegmentProps): null => null;
 
 SunburstSegment.displayName = "SunburstSegment";
-
-// ---------------------------------------------------------------------------
-// Public API exports (single trailing block per import/exports-last and import/group-exports).
-// ---------------------------------------------------------------------------
 
 export { SunburstCenter } from "./internal/sunburst-center";
 export { SunburstLabels } from "./internal/sunburst-labels";

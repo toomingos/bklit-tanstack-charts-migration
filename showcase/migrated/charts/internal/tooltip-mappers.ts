@@ -71,10 +71,10 @@ type TooltipMapperSource = Omit<
   indicatorFadeEdges?: IndicatorConfig["fadeEdges"];
 };
 
-// Minimal read-views of the tooltip config: the only fields each mapper consumes.
-// (ChartTooltipConfig itself carries ReactNode/CSSProperties/mutable fields, so it
-// Cannot satisfy prefer-readonly-parameter-types directly. ChartTooltipConfig and
-// TooltipMapperSource both remain assignable to these narrower views.)
+/*
+ * Read-views of the tooltip config: ChartTooltipConfig carries mutable fields, so mappers take these narrower views.
+ * both ChartTooltipConfig and TooltipMapperSource remain assignable here.
+ */
 interface DotMapperSource {
   readonly dotColor?: string | ((point: Readonly<ChartDatum>, line: Readonly<{ dataKey: string; stroke?: string }>) => string);
   readonly dotRadiusFraction?: number;

@@ -45,10 +45,9 @@ interface PassthroughCarrier {
   readonly [CHART_CLIP_PASSTHROUGH]?: boolean;
 }
 
-// The `type` field of a React element: a host tag, a component (function,
-// Class, or memo object), or absent. Spelled with unknown props so every
-// Component shape stays assignable; the carrier interfaces above describe
-// The marker properties the predicate below probes for.
+/*
+ * Spelled with unknown props so every component shape stays assignable to the carrier probes below.
+ */
 type ChartChildType = string | JSXElementConstructor<unknown> | null | undefined;
 
 type MarkerCarrier = JSXElementConstructor<unknown> & RoleCarrier & PassthroughCarrier;

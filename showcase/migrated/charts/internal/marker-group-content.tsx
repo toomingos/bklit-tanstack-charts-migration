@@ -1,8 +1,6 @@
 "use client";
 
-// Content box for a marker bucket: guide line, enter-transition box, and fan-out.
-// Split out of marker-group-view so the enter-box ref attaches directly to its
-// JSX node; threading the ref callback through a plain render helper trips react(refs).
+// Split from marker-group-view so the enter-box ref attaches directly; threading it through a helper trips react(refs).
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import { Badge } from "./marker-badge";
 import { MarkerCircleHtml } from "./marker-circle";
@@ -27,8 +25,7 @@ const SINGLE_MARKER_COUNT = 1;
 // Fan-out always slices from the start of the marker list.
 const MARKER_SLICE_START_INDEX = 0;
 
-// QA harness flag, set pre-boot by Playwright's addInitScript (see qa/screenshot.mjs).
-// Window-mirrored onto globalThis: identical object in browsers, readable during SSR.
+// QA flag set pre-boot by Playwright (see qa/screenshot.mjs); mirrored for SSR reads.
 // The double-underscore name is the harness contract.
 declare global {
   interface Window {

@@ -1,10 +1,9 @@
 import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 import type { ChartMarker } from "./types";
 
-// Hosts publish the focused tooltip date here; consumers read it via the hooks below.
-// Split out of marker-active-tooltip-provider.tsx: the store, its context, and its hooks
-// Live in this file so that module only exports its provider component
-// (see react(only-export-components)).
+/*
+ * Split from marker-active-tooltip-provider.tsx so that module only exports its provider component.
+ */
 
 interface ActiveMarkersStore {
   subscribe: (listener: () => void) => () => void;

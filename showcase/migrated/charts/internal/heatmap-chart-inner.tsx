@@ -12,10 +12,9 @@ import type { HeatmapEnterTransition } from "./heatmap-animation";
 import { HeatmapChartSurface } from "./heatmap-chart-surface";
 import type { ChartStatus } from "./types";
 
-// This file is extracted from heatmap-chart.tsx.
-// It is the context derivation and render gate for a mounted HeatmapChart, once the container has a measured, non-zero size.
-// The layout, dimension, and color-scale hooks it depends on live in the sibling heatmap-chart-inner-layout.ts module, split out purely to keep this file under the line-count limit.
-// The memoisation shape, and its dependency arrays, is unchanged from the original single-file implementation.
+/*
+ * Extracted from heatmap-chart.tsx; memoisation shape and deps are unchanged from the single-file version.
+ */
 
 interface HeatmapChartInnerProps {
   data: HeatmapColumn[];
@@ -68,9 +67,9 @@ interface HeatmapContextValueInputs {
   weekStartDay: HeatmapWeekStartDay;
 }
 
-// This builds the memoised HeatmapContext value from the inner component's derived hook results.
-// It is pulled out of HeatmapChartInner purely to keep that component's own function body short.
-// The useMemo call site below still lists the exact same fine-grained dependencies the object construction used to close over, so memoisation behaviour is unchanged.
+/*
+ * Extracted only to shorten HeatmapChartInner; memoisation behaviour is unchanged.
+ */
 const buildHeatmapContextValue = (inputs: Readonly<HeatmapContextValueInputs>): HeatmapContextValue => {
   const showLoadingLabel = (inputs.loadingLabel ?? "").trim().length > 0 &&
     inputs.status === "loading" &&
@@ -125,9 +124,9 @@ interface HeatmapContextValueDerived {
   htmlLayerEl: HTMLDivElement | null;
 }
 
-// This memoises the HeatmapContext value for HeatmapChartInner.
-// It is its own hook (rather than inline in HeatmapChartInner) purely to keep that component's own function body short.
-// Every dependency read inside the memo callback below is a member access (props.foo, derived.bar), never the bare props or derived identifiers, so the dependency array can list exactly the fields that are actually read.
+/*
+ * Deps list exactly the fields read below via member access, never the bare props or derived objects.
+ */
 const useHeatmapChartContextValue = (
   props: Readonly<HeatmapChartInnerProps>,
   derived: Readonly<HeatmapContextValueDerived>,

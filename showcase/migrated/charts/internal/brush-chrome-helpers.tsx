@@ -1,8 +1,9 @@
 import type { CSSProperties, ReactNode } from "react";
 
-// Pure geometry/style helpers for brush-chrome, split out so brush-chrome.tsx
-// Stays under the size limits. renderTrackSide is a plain function (not a
-// Component) so the portal element tree is unchanged.
+/*
+ * Split out so brush-chrome.tsx stays under size limits; renderTrackSide is a plain
+ * function so the portal element tree is unchanged.
+ */
 
 interface BrushChromePattern {
   readonly preset: "none" | "diagonal" | "horizontal" | "vertical" | "cross" | "dots" | "accent";

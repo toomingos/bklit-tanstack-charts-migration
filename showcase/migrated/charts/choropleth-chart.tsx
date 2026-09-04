@@ -311,11 +311,10 @@ interface ChoroplethDefinitionOptions {
   readonly hasTooltipChild: boolean;
 }
 
-// The generics are pinned explicitly: geoShape infers its value type from the feature
-// Data (number), but the chart is driven with ChartValue, and RendererChart takes its
-// Generics from this prop. Annotating the return states that once, where it is checked —
-// The previous `undefined as unknown as StaticChartDefinition<…>` cast asserted the same
-// Thing unsafely, and on a branch that cannot run (the parent gates on width/height).
+/*
+ * Generics pinned explicitly: the mark infers number but the chart is driven with ChartValue,
+ * so the return annotation states that once, where it is checked, instead of a cast.
+ */
 const buildChoroplethDefinition = (
   options: Readonly<ChoroplethDefinitionOptions>,
 ): StaticChartDefinition<ChoroplethFeature, ChartValue, ChartValue, "dom"> | undefined => {
@@ -785,9 +784,10 @@ const ChoroplethChartBody = ({
     [getTooltipConfig],
   );
   const revealHasRevealed = reveal.hasRevealed;
-  // The fallback replay only invokes the latest render — reading it through an
-  // Effect event keeps the layout subscription stable across handleRender
-  // Identity changes (latest chrome/reveal still observed at replay time).
+  /*
+   * Fallback replay reads through an effect event so the layout subscription stays stable
+   * across render identity changes (latest chrome/reveal still observed at replay time).
+   */
   const replayRenderEvent = useEffectEvent((fallbackContainer: HTMLDivElement): void => {
     handleRender({ container: fallbackContainer });
   });

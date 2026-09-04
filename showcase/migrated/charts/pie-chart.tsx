@@ -72,10 +72,8 @@ const displayNameOfType = (componentType: ReactElement["type"]): string | undefi
 }
 
 /*
- * No callable check is needed: `displayNameOfType` already returns undefined for anything that is
- * not an object-or-function carrying a string `displayName`, so a host type ("div") can never match
- * a component name. An `instanceof Function` guard here would also be realm-dependent, contradicting
- * the realm-safe `isObjectOrFunction` above.
+ * Host types can never match: only object-or-function types carrying a string `displayName` qualify.
+ * An `instanceof Function` guard would be realm-dependent, contradicting `isObjectOrFunction`.
  */
 const isPieCenterElement = (child: Readonly<ReactNode>): boolean => isValidElement(child) && displayNameOfType(child.type) === "PieCenter"
 
@@ -586,9 +584,9 @@ const PieChart = ({
     );
   }
 
-  // Element factory (not a component).
-  // The same chart element renders in the same tree slot.
-  // Reconciliation is unchanged; only the call is visible here.
+/*
+ * Element factory, not a component: the same element renders in the same slot, so reconciliation is unchanged.
+ */
   const renderChart = (): ReactElement => (
     <RendererChart
       ariaLabel="Pie chart"

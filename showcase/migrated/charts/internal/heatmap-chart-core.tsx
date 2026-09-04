@@ -12,10 +12,9 @@ import type { HeatmapColumn, HeatmapColumnSeparatorsConfig, HeatmapWeekStartDay 
 import type { HeatmapLevelColors, HeatmapLevelStyles } from "./heatmap-colors";
 import { usePositiveChartSize } from "./use-container-size";
 
-// This file is extracted from heatmap-chart.tsx and holds the actual HeatmapChart implementation.
-// It lives under internal/ rather than the top-level heatmap-chart.tsx.
-// This lets heatmap-chart-loading.tsx import it as a sibling instead of reaching back up to the barrel file, which would create an import cycle.
-// The top-level heatmap-chart.tsx re-exports the same names, so the public API (HeatmapChart, HeatmapChartProps) is unchanged.
+/*
+ * Extracted from heatmap-chart.tsx into internal/ so heatmap-chart-loading stays cycle-free; public API unchanged.
+ */
 
 const DEFAULT_CHART_STATUS: HeatmapChartInnerProps["status"] = "ready";
 const DEFAULT_HEATMAP_MIN_HEIGHT_PX = 160;
@@ -52,9 +51,6 @@ interface HeatmapChartProps {
 const elementHasChildrenProp = (child: Readonly<ReactElement>): child is ReactElement<{ children?: ReactNode }> =>
   hasChildrenProp(child.props);
 
-// This finds the first HeatmapSeparator among possibly nested children and lifts its props into a config.
-// Every path ends in a genuine `return <expression>;`, never a bare `return;` and never an implicit fall-through.
-// The "not found" case is produced only by Array#find's own undefined-when-no-match behaviour, never by writing the word undefined or void in this file.
 const resolveHeatmapSeparatorConfigFromChildren = (children: Readonly<ReactNode>): HeatmapColumnSeparatorsConfig | undefined => {
   const flat = flattenChartChildren(children);
   const direct = flat.find((child: Readonly<ReactElement>) => isHeatmapSeparatorChild(child));
@@ -87,19 +83,18 @@ interface HeatmapChartRootInputs {
   children: ReactNode;
 }
 
-// This bundles the non-JSX setup (sizing, the hover coordinator, the resolved container style, and the separator config) so HeatmapChart's own body stays short.
-// The memoisation shape is unchanged from the original single-hook implementation.
-// The containerRef is accepted as its own parameter (rather than folded into the returned object) so the returned HeatmapChartRoot never itself carries a ref field.
+/*
+ * ContainerRef stays a separate parameter so the returned root never carries a ref field.
+ */
 const useHeatmapChartRoot = (
   containerRef: RefObject<HTMLDivElement | null>,
   inputs: Readonly<HeatmapChartRootInputs>,
 ): HeatmapChartRoot => {
   const sz = usePositiveChartSize(containerRef);
 
-  // This lazily constructs a single hover coordinator for the component's lifetime.
-  // State lazy initialisation keeps the instance stable without render-time ref access.
-  // No re-render is skipped or delayed by doing so.
-  // Moving it into an effect would leave the first render without a coordinator, breaking pointer and hover wiring.
+  /*
+   * Lazy state keeps one coordinator without render-time ref access; an effect would leave the first render unwired.
+   */
   const [coordinator] = useState(() => createHeatmapHoverCoordinator());
 
   const containerStyle = useHeatmapContainerStyle(inputs.aspectRatio, sz.height > 0);

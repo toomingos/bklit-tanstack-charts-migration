@@ -20,9 +20,7 @@ interface HeatmapCellsTooltip {
 const useHeatmapCellsTooltip = (
   coordinator: Readonly<HeatmapHoverCoordinator> | null,
 ): HeatmapCellsTooltip => {
-  // C2: config published by a sibling <HeatmapTooltip/> (if any) via the
-  // Module-scoped registry above — drives both the native tooltip's
-  // Enablement and the debounced focus-injection delays below.
+  /* C2: sibling <HeatmapTooltip/> publishes via the registry; drives enablement and delays. */
   const subscribeTooltipConfig = useCallback(
     (listener: () => void) => subscribeHeatmapTooltipConfig(coordinator, listener),
     [coordinator],

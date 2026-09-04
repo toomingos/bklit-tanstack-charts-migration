@@ -1,6 +1,3 @@
-// Candlestick mark-building: hover-dot, hover-highlight, wick, and body geometry for
-// CandlestickChart's `definition` memo. Pulled out verbatim (no behaviour change) so the
-// Chart component itself stays readable; every export here is a pure factory of one mark.
 export { createCandlestickHoverDotMark } from "./candlestick-hover-dot-mark";
 export type { CandleHoverDotMarkParams } from "./candlestick-hover-dot-mark";
 export { createCandlestickHighlightMark } from "./candlestick-highlight-mark";

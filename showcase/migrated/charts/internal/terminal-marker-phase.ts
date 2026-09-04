@@ -30,8 +30,7 @@ const isProjectionEndMarkerPhaseVisible = (phase: ChartPhase): boolean => phase 
 
 
 // Latest-value mirror so WAAPI callbacks read fresh props without re-subscribing.
-// Synced in a layout effect: before paint, before any handler can run.
-// Never assigned during render, so the render body stays pure.
+// Synced in a layout effect so the render body stays pure.
 const useFreshRef = <Value,>(value: Value): RefObject<Value> => {
   const ref = useRef<Value>(value);
   useLayoutEffect(() => {
@@ -61,9 +60,9 @@ const useTerminalMarkerRefs = (): TerminalMarkerRefs => {
   );
 }
 
-// The maps and elements below are deliberately mutated in place: the WAAPI
-// Cycle writes element styles and the animation registry directly on show/hide,
-// Exactly as the pre-split implementation did. Copies would desync the cycle.
+/*
+ * Mutated in place: copies would desync the WAAPI show/hide cycle, as before the split.
+ */
 const cancelRunningMarkerAnim = (runningAnims: Map<string, Animation>, key: string): void => {
   const existing = runningAnims.get(key);
   if (!existing) { return; }

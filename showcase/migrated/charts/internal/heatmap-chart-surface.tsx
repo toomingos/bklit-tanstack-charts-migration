@@ -3,9 +3,7 @@ import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useHeatmap } from "./heatmap-context";
 import { flattenChartChildren, isHeatmapSeparatorChild } from "./heatmap-children";
 
-// This file is extracted from heatmap-chart.tsx.
-// It is the DOM surface that hosts a HeatmapChart's children (cells, axes, and so on), plus the separator overlay SVG and the imperative HTML annotation layer.
-// It is kept in its own file so heatmap-chart.tsx declares a single component (react/no-multi-comp).
+// Split so heatmap-chart.tsx declares a single component (react/no-multi-comp).
 
 interface HeatmapSeparatorChildren {
   separators: ReactElement[];

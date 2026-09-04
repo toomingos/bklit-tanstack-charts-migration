@@ -10,9 +10,9 @@ import type {
 } from "@tanstack/charts";
 import type { ChartDatum } from "./types";
 
-// Legacy live-line has no mount reveal (data just streams in), so the default
-// ENTER growth animation is suppressed on first paint only; later phases fall
-// Through to the definition-level rolling-path motion.
+/*
+ * Legacy live-line has no mount reveal, so ENTER is suppressed on first paint only.
+ */
 const suppressMountEnter: ChartMotionDefinition<ChartDatum> = (context: Readonly<ChartMotionContext<ChartDatum>>) => context.phase === "enter" ? false : undefined;
 
 export interface LiveLineMarkOptions {

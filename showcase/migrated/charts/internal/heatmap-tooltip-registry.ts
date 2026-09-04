@@ -4,13 +4,7 @@ import type { HeatmapHoverCoordinator } from "./heatmap-hover-chrome";
 import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
 import { formatHeatmapContributionLabel } from "./heatmap-utils";
 
-// Module-scoped pub/sub bridging `HeatmapTooltip` (config-carrier sibling,
-// Renders null) to `HeatmapCells` (owns the `<Chart>` definition). The two
-// Are React siblings under an ancestor (`HeatmapInteractionProvider`) that
-// Is out of scope to edit, so they can't share config via props/context —
-// Instead both already receive the same stable `HeatmapHoverCoordinator`
-// Object from that ancestor, and this WeakMap keyed on that identity
-// Carries the tooltip config across without touching the provider.
+// Sibling bridge: the provider ancestor is out of scope, so tooltip config travels via WeakMap on coordinator identity.
 interface HeatmapTooltipConfig {
   readonly formatLabel: (count: number, date: Readonly<Date>) => string;
   readonly className: string;
@@ -77,16 +71,7 @@ interface HeatmapTooltipProps {
   readonly hideDelay?: number;
 }
 
-// C2 (phase 6): `HeatmapTooltip` no longer renders a bespoke portal panel —
-// It publishes its config into the module-scoped registry above so the
-// Sibling `<HeatmapCells>` can enable TanStack's native `tooltip` extension
-// And build the panel markup itself via `renderTooltipBody` (same content
-// As the legacy `HeatmapTooltipPanel`, just positioned by the native
-// Placement engine instead of bespoke flip/clamp math). Rendering an
-// `<HeatmapTooltip/>` remains opt-in: no sibling means no registered
-// Config, which keeps the native tooltip disabled (`tooltip: false`) on
-// `<HeatmapCells>`'s definition, preserving prior "no tooltip unless
-// Explicitly requested" behavior.
+// Publishes config for HeatmapCells' native tooltip; no sibling keeps it disabled (opt-in preserved).
 const HeatmapTooltip = ({
   formatLabel = formatHeatmapContributionLabel,
   className = "",

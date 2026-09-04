@@ -38,9 +38,9 @@ interface IndicatorSpringSyncParams {
   readonly rectX: number;
 }
 
-// Load-bearing: springs must receive this render's target before paint, not
-// After — deferring to an effect would show a one-frame-stale position.
-// Mirrors the identical pattern in TooltipDot.
+/*
+ * Springs retarget before paint; deferring shows a one-frame-stale position, as in TooltipDot.
+ */
 const syncIndicatorSprings = (params: Readonly<IndicatorSpringSyncParams>): void => {
   const { animate, lineSpringRef, lineX, rectSpringRef, rectX } = params;
   if (animate && rectSpringRef.current && lineSpringRef.current) {
@@ -95,9 +95,6 @@ interface IndicatorElementParams {
   readonly renderMode: Readonly<IndicatorRenderMode>;
 }
 
-// Selects the indicator variant: dashed line, solid rect, or edge-faded rect.
-// Plain function (not a component), inlined into the caller's tree.
-// Reconciliation is unchanged.
 const renderIndicatorElement = (params: Readonly<IndicatorElementParams>): ReactElement => {
   const { animate, fadeLength, gradientId, height, indicatorFill, lineRef, lineX, pixelWidth, rectRef, rectX, renderMode } = params;
   const { fadeSides, resolvedDasharray } = renderMode;

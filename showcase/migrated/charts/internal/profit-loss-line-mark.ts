@@ -80,10 +80,8 @@ const segmentKeyFor = ({ segment, id, xDataKey, segIndex }: SegmentKeyParams): s
 type ProfitLossSegments = ReturnType<typeof splitProfitLossSegments>;
 
 const createProfitLossXAccessor = (xDataKey: string): ((row: Readonly<ChartDatum>) => Date) => (row: Readonly<ChartDatum>): Date =>
-  // Row x values are unknown by the ChartDatum contract; toDate proves the x
-  // Value (identity for Date inputs, ISO-parse fallback for strings/numbers)
-  // And anything else yields an Invalid Date, which the downstream isFinite
-  // Filters drop exactly like the old pass-through's NaN did.
+  // Row x is unknown by contract; toDate proves it, yielding Invalid Date for unparseable values.
+  // Downstream isFinite filters drop those exactly like the old pass-through's NaN did.
   toDate(row[xDataKey]) ?? new Date(Number.NaN);
 
 interface ProfitLossMarkChrome {

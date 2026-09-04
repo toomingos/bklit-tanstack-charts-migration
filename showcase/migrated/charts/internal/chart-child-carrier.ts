@@ -29,11 +29,10 @@ interface ChartChildComponent<ComponentProps> {
   displayName?: string;
 }
 
-// `Readonly<X>` alone leaves nested object/array fields mutable, which
-// This still flags under typescript(prefer-readonly-parameter-types); these wrap the
-// Nested fields deeply. Configs carrying ReactNode (tooltip children,
-// Marker icon/content, provider children) have no deeply-readonly spelling
-// And keep their findings as reported residuals.
+/*
+ * Shallow `Readonly` leaves nested fields mutable, so configs wrap nested fields explicitly here.
+ * ReactNode carriers have no deeply-readonly spelling and stay reported residuals.
+ */
 type ReadonlyLineConfig = Readonly<Omit<LineConfig, "markers">> & {
   readonly markers?: Readonly<SeriesPointMarkerStyle>;
 };
@@ -59,9 +58,7 @@ type ReadonlyLiveLineConfig = Readonly<Omit<LiveLineConfig, "momentumColors">> &
   readonly momentumColors?: Readonly<MomentumColors>;
 };
 
-// A nested `Date` field still flags under `Readonly<ProjectionPoint>` (a
-// Top-level `Readonly<Date>` parameter is accepted, a nested `Date` is not),
-// The date is therefore spelled `Readonly<Date>` here; `value` is a primitive.
+// Nested `Date` still flags where top-level `Readonly<Date>` is accepted, so it is spelled explicitly.
 type ReadonlyProjectionPoint = Readonly<Omit<ProjectionPoint, "date">> & {
   readonly date: Readonly<Date>;
 };

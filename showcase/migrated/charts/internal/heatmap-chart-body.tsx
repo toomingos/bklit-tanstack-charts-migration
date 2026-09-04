@@ -26,9 +26,6 @@ interface HeatmapChartBodyProps {
   children: ReactNode;
 }
 
-// This renders the interaction provider and the inner chart once the
-// Container has a measured, non-zero size. It is pulled out of HeatmapChart
-// Purely to keep that component's own function body short.
 const HeatmapChartBody = ({ root, containerRef, innerProps, children }: Readonly<HeatmapChartBodyProps>): ReactElement => (
   <HeatmapInteractionProvider coordinator={root.coordinator}>
     {root.width > 0 && root.height > 0 && (

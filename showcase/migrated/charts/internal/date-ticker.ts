@@ -1,6 +1,3 @@
-// Date-ticker digit-roll readout used inside the date pill (month/day rollers).
-// Moved here from date-pill.ts so that module stays under max-lines; the pill
-// Shell in date-pill.ts owns positioning while this module owns ticker DOM.
 import { createSpring } from './spring';
 import type { Spring } from './spring';
 import { TICKER_ITEM_HEIGHT } from "./design-tokens";

@@ -26,9 +26,10 @@ export interface MarkerPrimaryProps {
   onLeave: () => void;
 }
 
-// The outer wrapper is already `position: absolute` at exactly size x size, so it doubles as the
-// Positioning context for Badge's own `position: absolute` -- no separate relative-sized child
-// Wrapper is needed (that redundant div was the only thing pushing this past jsx-max-depth).
+/*
+ * Outer wrapper is already `position: absolute` at size x size, so it doubles as Badge's positioning context.
+ * No separate relative-sized child wrapper is needed.
+ */
 export const MarkerPrimary = ({
   primaryMarker,
   count,

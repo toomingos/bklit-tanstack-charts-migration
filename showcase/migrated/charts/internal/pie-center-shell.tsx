@@ -89,8 +89,6 @@ interface ShellContextBaseParams {
   readonly totalValue: number;
 }
 
-// Static shell context: geometry and callbacks.
-// The caller attaches the datum model (arcs + data).
 // Arrays stay mutable here because PieStableValue requires mutable arrays.
 const buildShellContextBase = (params: Readonly<ShellContextBaseParams>): Omit<PieStableValue, "arcs" | "data"> => {
   const { contextSize, getColor, getFill, innerRadiusPx, totalValue } = params;

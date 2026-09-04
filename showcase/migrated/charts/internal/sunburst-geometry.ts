@@ -1,16 +1,11 @@
-// Sunburst geometry, focus, hover, and layout functions — verbatim from
-// Upstream file repos/bklit-ui/packages/ui/src/charts/sunburst.ts.
-// Copied here so migrated/charts has zero imports from repos/.
-// Only the functions/types actually used by sunburst-chart.tsx and
-// By sunburst-reveal.ts are included.
+/*
+ * Verbatim from repos/bklit-ui/packages/ui/src/charts/sunburst.ts, trimmed to what
+ * sunburst-chart.tsx and sunburst-reveal.ts use so migrated/charts imports nothing from repos/.
+ */
 
 import type { ArcDatum, ArcGeometry, Focus } from "./sunburst-types";
 import { ID_SEP, TOP, TWO_PI } from "./sunburst-layout";
 import { lerpGeometry, pointGeometry } from "./sunburst-arc-path";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
 
 const DRILL_CENTER_SCALE = 0.65;
 const DRILL_CENTER_DEPTH_SHRINK = 0.08;
@@ -33,10 +28,6 @@ const CLOCKWISE_ORIGIN = 0;
 // Array upstream, and the geometry helpers below never mutate it.
 type ReadonlyArcDatum = Readonly<Omit<ArcDatum, "trail">> & { readonly trail: readonly string[] };
 
-// ---------------------------------------------------------------------------
-// Ring layout
-// ---------------------------------------------------------------------------
-
 interface RingOptions {
   centerR: number;
   ringWidth: number;
@@ -58,27 +49,18 @@ const ringOptions = (focusDepth: number, maxDepth: number, radius: number): Ring
   return { centerR, ringWidth };
 };
 
-// ---------------------------------------------------------------------------
-// Geometry per arc
-// ---------------------------------------------------------------------------
-
-// Arc/focus/maxDepth/radius: exported and called with 4 positional args by sunburst-chart.tsx
-// (outside this batch) — bundling them into an options object would break that public call
-// Signature, so the eslint(max-params) finding here is left and reported; readonly-ness is still
-// Tightened via ReadonlyArcDatum/Readonly<Focus>.
+/*
+ * Called with 4 positional args by sunburst-chart.tsx; bundling would break public call signature.
+ */
 const geometryFor = (
   arc: ReadonlyArcDatum,
   focus: Readonly<Focus>,
   maxDepth: number,
   radius: number,
 ): ArcGeometry | null => {
-  // Returns null (not undefined) for "no geometry": unicorn(no-null) wants undefined here, but
-  // Eslint(no-undefined) (also active, no exceptions) bans the undefined literal, and
-  // Typescript(consistent-return) rejects a function that sometimes returns a value and
-  // Sometimes returns nothing (a bare `return;`). Null is the only return shape that satisfies
-  // Consistent-return and no-undefined at once — the resulting no-null findings below (and on
-  // Every other "maybe nothing" return in this file) are a genuine rule-config conflict, not a
-  // Fixable code defect; see the batch report.
+  /*
+   * Null marks "no geometry" by contract; callers compare against null explicitly.
+   */
   if (arc.depth <= focus.depth) {
     return null;
   }
@@ -104,10 +86,6 @@ const geometryFor = (
   };
 };
 
-// ---------------------------------------------------------------------------
-// Geometry helpers
-// ---------------------------------------------------------------------------
-
 const geomCentroidAngle = (geometry: Readonly<ArcGeometry>): number => (geometry.a0 + geometry.a1) / CENTROID_DIVISOR;
 
 const geomCentroidRadius = (geometry: Readonly<ArcGeometry>): number => (geometry.innerR + geometry.outerR) / CENTROID_DIVISOR;
@@ -121,11 +99,10 @@ const clockwiseFraction = (angle: number): number => {
   return normalized / TWO_PI;
 };
 
-// Arc/fromFocus/toFocus/maxDepth/radius/progress: exported and called with 6 positional args by
-// Sunburst-chart.tsx (outside this batch) — bundling them would break that public call signature,
-// So the eslint(max-params) finding here is left and reported; readonly-ness is still tightened
-// Via ReadonlyArcDatum/Readonly<Focus>.
-// Zoom morph — lerps matching arcs; entering/exiting arcs collapse to a point.
+/*
+ * Called with 6 positional args by sunburst-chart.tsx; bundling would break public call signature.
+ * Zoom morph lerps matching arcs; entering/exiting arcs collapse to a point.
+ */
 const transitionGeometry = (
   arc: ReadonlyArcDatum,
   fromFocus: Readonly<Focus>,
@@ -143,10 +120,6 @@ const transitionGeometry = (
   }
   return to === null ? lerpGeometry(from, pointGeometry(from), progress) : lerpGeometry(from, to, progress);
 };
-
-// ---------------------------------------------------------------------------
-// Exports
-// ---------------------------------------------------------------------------
 
 export { buildArcs, buildSunburstFlatRows, nodeId, sumValues } from "./sunburst-layout";
 export { arcPath, defaultSunburstGrowPadding, lerpGeometry } from "./sunburst-arc-path";

@@ -20,12 +20,9 @@ interface HeatmapFocusScheduler {
 const useHeatmapFocusScheduler = ({
   tooltipConfig,
 }: Readonly<UseHeatmapFocusSchedulerParams>): HeatmapFocusScheduler => {
-  // C2: captured from the public `onRender` boundary (composed below into
-  // `handleRender`) — the app-owned pointer-hover detection below uses this
-  // To drive the native tooltip via `setControlledFocus`, mirroring the
-  // Sanctioned capture pattern in `./focus-injection.ts` but with
-  // `source: 'pointer'` (never 'programmatic', which would trigger C1's
-  // Legend-dim mark states).
+  /*
+   * Mirrors `./focus-injection.ts` capture; `source: 'pointer'` avoids C1 legend-dim states.
+   */
   const renderContextRef = useRef<HeatmapRenderSnapshot | undefined>(undefined);
   const focusTimerRef = useRef<number | undefined>(undefined);
   const focusedKeyRef = useRef<string | undefined>(undefined);
@@ -36,10 +33,9 @@ const useHeatmapFocusScheduler = ({
     tooltipConfigRef.current = tooltipConfig;
   });
 
-  // Debounced app -> chart focus bridge. `key` is `${column}-${row}` for a
-  // Hovered cell or null for "no cell hovered"; repeated calls with the same
-  // Key (e.g. every pointermove within one cell) are no-ops so the timers
-  // Below are only (re)armed on an actual enter/leave transition.
+  /*
+   * Same-key calls are no-ops so focus timers re-arm only on enter/leave transitions.
+   */
   const scheduleFocus = useCallback((point: ChartPoint<CellDatum, string, string> | null, key?: string) => {
     if (focusedKeyRef.current === key) {return;}
     focusedKeyRef.current = key;
@@ -122,9 +118,9 @@ const useHeatmapPointerListeners = ({
   renderContextRef,
   scheduleFocus,
 }: Readonly<UseHeatmapPointerListenersParams>): void => {
-  // Pointer listeners below only invoke the latest leave — reading it through
-  // An effect event keeps the listener subscription stable across
-  // Leave-callback identity changes (latest coordinator still observed).
+  /*
+   * Effect event keeps the listener subscription stable across leave-callback changes.
+   */
   const handleCellLeaveEvent = useEffectEvent((): void => {
     handleCellLeave();
   });
@@ -215,13 +211,6 @@ const useHeatmapPointerBridge = ({
     scheduleFocus,
   });
 
-  // D5: the reveal is now driven entirely by native `motion` on the cell
-  // Marks (`cellMotion` above) — `handleRender` only needs to capture the
-  // Scene/interaction controller for the pointer-hover -> native-tooltip
-  // Bridge (C2). The old imperative WAAPI reveal driver (deferred-reveal.ts's
-  // `runDeferredReveal`, the manual `rect[data-ts-key]` query + `.animate()`
-  // Loop, and the double-rAF "wait for rects to land" fallback effect below
-  // It) is deleted — native motion needs no post-paint retry mechanism.
   const handleRender = useCallback((renderCtx: ChartRendererRenderContext<CellDatum, string, string>) => {
     renderContextRef.current = { interaction: renderCtx.interaction, scene: renderCtx.scene };
   }, [renderContextRef]);

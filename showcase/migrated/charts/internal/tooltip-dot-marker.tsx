@@ -1,5 +1,3 @@
-// Static and animated dot-versus-ring marker for the chart tooltip.
-// This module keeps one component per file.
 // Sizer refs attach directly in JSX instead of crossing a plain helper.
 import type { ReactElement, RefObject } from "react";
 
@@ -26,8 +24,6 @@ interface TooltipDotMarkerProps {
 }
 
 // Springs own the animated attrs exclusively.
-// Animated branches bind only the ref and leave position to the spring callbacks.
-// Static branches set position directly through React.
 const TooltipDotMarker = ({
   animate,
   circleRef,

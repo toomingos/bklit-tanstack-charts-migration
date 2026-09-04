@@ -2,9 +2,8 @@ import { useCallback, useLayoutEffect, useRef, type RefCallback, type RefObject 
 import { buildPill, type PillBuild } from "./date-pill";
 import type { SpringConfig } from "./chart-config-context";
 
-// Date-pill overlay controller split out of hover-geometry.
-// Both files stay under the size limits. Behaviour is verbatim.
-// Host mounts after the first layout effect; the pill layer is app-owned HTML.
+// Date-pill overlay split from hover-geometry; behaviour verbatim.
+// Pill layer is app-owned HTML mounted via callback ref.
 
 interface DatePillController {
 // Callback ref: the host mounts after the first layout effect.
@@ -119,11 +118,8 @@ const useDatePillOverlay = (options: Readonly<DatePillOverlayOptions>): DatePill
     springRef.current = options.tooltipSpring;
   });
   useLayoutEffect(() => {
-    // Re-mirrors the spring tune this effect subscribes to.
-    // Same values the mirror effect above writes each commit.
-    // Reading them here keeps the stiffness/damping deps honest.
-    // `buildPill` copies the tune into its own spring.
-    // Fresh object identity is therefore unobservable downstream.
+    // Re-mirrors the spring tune so the stiffness/damping deps stay honest.
+    // Fresh identity is unobservable: buildPill copies the tune into its own spring.
     springRef.current = { damping: options.tooltipSpring.damping, stiffness: options.tooltipSpring.stiffness };
     mountDatePill({ dateLabelsRef, hostRef, pillRef, springRef }, options.enabled ? hostRef.current : null);
   }, [options.enabled, options.tooltipSpring.stiffness, options.tooltipSpring.damping]);

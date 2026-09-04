@@ -1,14 +1,7 @@
-// Center-readout components for both Gauge orientations — reuses
-// `CenterStat` unmodified as the shared value/label stack, with the same
-// Real divergence bklit has between orientations: `GaugeCenterOverlay` (arc)
-// Has a mount-entrance trick (`flowValue` starts at 0, a double-rAF sets it
-// To `centerValue` so it rolls in from zero on first mount only); `GaugeLabelStat`
-// (linear) is a direct, un-animated pass-through. This is a genuine bklit
-// Behavioral difference between orientations, not an inconsistency.
-//
-// `GaugeLabelLayout` expresses bklit's same four-placement/three-align
-// Composition logic as inline flexbox styles instead of Tailwind utility
-// Classes, since migrated/charts lives outside the app's Tailwind `@source` scan.
+/*
+ * Arc overlay rolls in from zero on first mount while linear stat passes through un-animated,
+ * preserving bklit's genuine orientation difference; layout uses inline flexbox outside Tailwind scan.
+ */
 import type { ReactElement } from "react";
 import { CenterShell } from './center-stat';
 import type { CenterStatFormat } from './center-stat';

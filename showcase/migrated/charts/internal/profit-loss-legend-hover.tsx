@@ -6,10 +6,10 @@ import { CHART_CHILD_PASSTHROUGH } from "./children-extract";
 import { ProfitLossLegendHoverContext } from "./profit-loss-legend-hover-context";
 import type { ProfitLossLegendHoverContextValue } from "./profit-loss-legend-hover-context";
 
-// Marker declared on the component type. Same pattern as
-// ChartChildComponent in ../children: the detector reads
-// CHART_CHILD_PASSTHROUGH off the function, so declaring it keeps the
-// Attachment site assertion-free.
+/*
+ * Detector reads CHART_CHILD_PASSTHROUGH off the function, so the marker lives on the type.
+ * To keep the attachment site assertion-free.
+ */
 interface ProfitLossLegendHoverProviderComponent {
   (props: { readonly hoveredIndex: number | null; readonly children: ReactNode }): ReactElement;
   [CHART_CHILD_PASSTHROUGH]?: boolean;

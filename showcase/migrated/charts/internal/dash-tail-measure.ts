@@ -15,9 +15,9 @@ interface DashTailSeries {
 // Retry ceiling for the mount-timing loop: a persistent miss is a wiring defect, not a race.
 const DASH_TAIL_MAX_MEASURE_ATTEMPTS = 120;
 
-// Numeric-cell guard for this module's open-ended data-row reads.
-// Rows arrive as user data, so the generic subject is the honest
-// I/O-boundary type and this predicate is the parser the runtime-typeof rule asks for.
+/*
+ * Rows arrive as untyped user data, so the generic subject keeps the I/O boundary honest for runtime-typeof.
+ */
 const isNumber = <Value>(value: Value): value is Value & number => typeof value === "number";
 
 interface Measured {

@@ -1,6 +1,7 @@
-// Scatter hover-dot mark extracted from scatter-chart.tsx.
-// Custom hover-dot mark: resolved pixels + source datum identity for focus matching.
-// Bklit parity quirk: function dotColor IS invoked here (unlike indicatorColor, never evaluated).
+/*
+ * Hover-dot carries datum identity for focus matching; function dotColor is invoked here,
+ * unlike indicatorColor which is never evaluated (bklit parity).
+ */
 import type {
   ChartMark,
   ChartMotionDefinition,

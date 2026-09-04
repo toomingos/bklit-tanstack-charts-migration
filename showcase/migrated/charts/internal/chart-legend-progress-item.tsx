@@ -5,9 +5,6 @@ import type { CSSProperties, ReactElement } from "react";
 import { cn } from "@/lib/utils";
 import type { LegendItem } from "./chart-legend";
 
-// Fraction-to-percentage scale for value/maxValue legend ratios.
-// Fallback for a missing or empty progress maximum; zero disables the ratio.
-// Fraction digits for the whole-percent legend label.
 const LEGEND_PERCENT_SCALE = 100;
 const LEGEND_EMPTY_VALUE = 0;
 const LEGEND_PERCENT_FRACTION_DIGITS = 0;

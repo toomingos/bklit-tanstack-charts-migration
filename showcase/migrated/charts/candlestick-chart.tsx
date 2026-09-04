@@ -181,8 +181,7 @@ const buildWickSegmentNodes = (params: Readonly<CandleWickSegmentNodesParams>): 
   }];
 };
 
-// The engine always provides resolve-context tickCount, but the grid fallback stays.
-// So a build against an engine that omits it still resolves the legacy default.
+// Grid fallback stays so builds against engines omitting tickCount keep the legacy default.
 // Nullable params keep the coalescing guards genuinely conditional.
 const coalesceTickCount = (primary: number | undefined, secondary: number | undefined): number =>
   primary ?? secondary ?? DEFAULT_TICK_COUNT;

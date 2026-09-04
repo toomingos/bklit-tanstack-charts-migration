@@ -1,7 +1,7 @@
-// Candlestick field parsers shared by the hover and candle mark modules.
-// Boundary parsers: ChartDatum fields are `unknown`; narrow once here instead of scattering unsafe casts through the mark loops.
-// Missing values use `undefined` (not `null`) throughout this module family: these arrays and records are entirely local, and the mark `values`
-// Channel accepts `readonly unknown[]`, so nothing external forces one sentinel over the other.
+/*
+ * Boundary parsers: ChartDatum fields are `unknown`, narrowed once here for the mark loops.
+ * missing values stay `undefined`: module-local only, and the mark channel takes `readonly unknown[]`.
+ */
 import type { PatternPresetId } from "./pattern-preset";
 import type { ChartDatum } from "./types";
 

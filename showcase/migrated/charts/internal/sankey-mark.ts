@@ -239,11 +239,10 @@ const createSankeyMark = (params: Readonly<CreateSankeyMarkParams>): ReturnType<
 
   return sankeyDiagram({
     id: "sankey",
-    // Key order is load-bearing: sankeyDiagram's 7 const generics infer
-    // TNode/TLink from the nodeKey/source/target/value accessors, and the
-    // Marks callbacks' contextual types depend on that inference resolving
-    // First — alphabetical order widens the mark datum X/Y and breaks the
-    // RendererChart renderer prop type in sankey-chart.tsx (sort-keys waiver).
+    /*
+     * Key order is load-bearing: accessors must precede marks so const generics resolve TNode/TLink first.
+     * Alphabetical order widens mark datum X/Y and breaks the renderer prop type in sankey-chart.tsx.
+     */
     motion: false,
     nodes: params.data.nodes,
     links: params.data.links,

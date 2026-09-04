@@ -3,8 +3,6 @@ import type { RefObject } from "react";
 import { domainsEqual, shouldTweenYDomain } from "./y-domain";
 import type { YDomain } from "./y-domain";
 
-// Pure Y-domain tween engine for useAnimatedYDomains: hosts the rAF loop and the
-// Per-axis start/scan helpers so the hook file stays under the size limits.
 // Nothing here calls hooks; the hook file owns all hook calls and effects.
 
 // Upper bound of the fallback Y domain used when no axis domain is known yet.
@@ -12,9 +10,6 @@ const FALLBACK_DOMAIN_UPPER_BOUND = 100;
 
 const FALLBACK_DOMAIN: YDomain = [0, FALLBACK_DOMAIN_UPPER_BOUND];
 
-// Axis-keyed domain snapshot shared across the tween helpers. Keys are axis
-// Ids known only at runtime, so the index signature stays open; the named
-// Contract keeps return positions honest about what the map holds.
 interface YDomainByAxis {
   readonly [axisId: string]: YDomain;
 }

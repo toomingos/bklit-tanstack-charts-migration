@@ -6,9 +6,7 @@ import type { HeatmapColumn } from "./heatmap-utils";
 import { generateHeatmapSkeletonFromTarget } from "./heatmap-chart-skeleton";
 import { HeatmapCells, HeatmapXAxis, HeatmapYAxis } from "./heatmap-components";
 
-// This is extracted from heatmap-chart.tsx.
-// It is the ready-made skeleton wrapper around <HeatmapChart status="loading">.
-// It imports HeatmapChart from the sibling heatmap-chart-core module, rather than the top-level heatmap-chart.tsx barrel, to avoid a parent-relative import and an import cycle.
+// Sibling core import avoids an import cycle with the heatmap-chart barrel.
 
 interface HeatmapChartLoadingProps {
   readonly data: readonly Readonly<HeatmapColumn>[];

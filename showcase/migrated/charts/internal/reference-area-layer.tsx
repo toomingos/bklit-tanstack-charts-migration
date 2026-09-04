@@ -86,11 +86,9 @@ interface ReferenceAreaLayersGeom {
   isLoaded?: boolean;
 }
 
-// Collected <ReferenceArea> child props: open-ended keys, owner-typed values.
-// Mirrors the element type of extractReferenceAreaProps (see reference-area-config).
-// Values stay open: the sole producer (live-line-chart extractLiveLineChildren) collects these
-// From children typed as the combined child-props intersection, so any narrower value type would
-// Need a type assertion at that push site. no-unsafe-dictionary-type is a documented residual here.
+/*
+ * Values stay open so the live-line child collector needs no assertion; the dictionary residual is documented.
+ */
 type ReferenceAreaConfig = Record<string, unknown>;
 
 const isStringValue = <Value,>(value: Value): value is Value & string => typeof value === "string";
@@ -149,10 +147,8 @@ const EMPTY_REFERENCE_AREA_CONFIG_COUNT = 0;
 // Narrow converters for open-ended child-props values. One converter serves each prop
 // Type so the element factory below holds no branches of its own.
 
-// SAFETY: Each config is the props object of a <ReferenceArea> child element.
-// Only elements whose role is "referenceArea" are collected (see extractReferenceAreaProps).
-// React types those props as ReferenceAreaProps at the JSX creation site.
-// Every field read below is therefore narrowed to its prop type by the guards above.
+// SAFETY: Configs are ReferenceArea child props collected by role, typed as ReferenceAreaProps at creation.
+// Guards above therefore narrow each field read to its declared prop type.
 
 // Narrows an open-ended config value to the number prop type.
 const narrowNumberProp = <Value,>(value: Value): (Value & number) | undefined => {

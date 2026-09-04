@@ -71,9 +71,8 @@ const buildHeatmapCellMark = ({
     fillOpacity,
     id: `heatmap-cell-fo-${fillOpacity}`,
     inset: HEATMAP_CELL_INSET,
-    // D5: epoch-suffixed so a revealEpoch bump re-triggers the 'enter'
-    // Motion phase (matching legacy's "reveal replays on refresh") — see
-    // The mount-flash trade-off note on the cell-motion helper above.
+    // D5: epoch-suffixed so a revealEpoch bump re-triggers the 'enter' motion phase.
+    // Matching legacy's "reveal replays on refresh" behavior.
     key: (datum: Readonly<CellDatum>) => `${datum.column}-${datum.row}:${revealEpoch}`,
     motion: cellMotion,
     radius: cornerRadius,
@@ -92,28 +91,10 @@ const useHeatmapCellMarks = ({
   cellMotion,
   revealEpoch,
 }: Readonly<HeatmapCellMarksParams>): ChartMark<Readonly<CellDatum>, string, string>[] => {
-  // Bklit `resolveHeatmapRowOpacity` x `heatmapLevelCellFillOpacity` parity:
-  // Legacy applied this product as each cell rect's OWN (non-hover-driven)
-  // `fillOpacity`, independent of and layered under the hover dim. Rect/cell
-  // Marks only take a single SCALAR `fillOpacity` per mark instance (not a
-  // Per-datum channel — dist/rect.d.ts), so cells are bucketed into one
-  // `cell()` mark per distinct resolved value. Buckets are keyed by data
-  // (row/level), never by hover, so membership — and therefore each cell's
-  // Owning mark/DOM element identity — never changes on hover, preserving
-  // Smooth `states` transitions (no remount/snap). In the common case
-  // (uniform rowOpacity, solid levelStyles) this collapses to exactly one
-  // Bucket, i.e. one mark, matching the pre-C3 shape.
-  //
-  // Trade-off (disclosed, no QA possible per rules): folding `revealEpoch`
-  // Into `key()` forces every cell's mark identity (and DOM node) to change
-  // On every epoch bump so the native motion engine re-runs the 'enter'
-  // Phase — matching legacy's "reveal replays on refresh"
-  // Behavior. `heatmap-lifecycle.ts`'s `revealEpoch` bumps both on
-  // Loading->ready AND on a mount-time effect that fires on initial mount
-  // Too, so mount already goes through key `...:0` -> (if the mount effect
-  // Also bumps) `...:1`, i.e. an unmount/remount of every cell's mark within
-  // The same paint pass this file cannot single-step through without a
-  // Browser (no-QA rule) — flagged here rather than silently assumed benign.
+  /*
+   * One mark per distinct fillOpacity (marks take a scalar, not a per-datum channel), keyed by
+   * data so hover never remounts cells; epoch-folded keys replay legacy's reveal on refresh.
+   */
   const cellMarks = useMemo(() => {
     const buckets = bucketHeatmapCellsByOpacity({ cellData, resolvedLevelStyles, rowOpacity });
     return [...buckets.entries()].map(([fillOpacity, data]: readonly [number, readonly Readonly<CellDatum>[]]) =>

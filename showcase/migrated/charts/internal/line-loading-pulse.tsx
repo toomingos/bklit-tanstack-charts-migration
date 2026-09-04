@@ -137,10 +137,10 @@ const renderPulseDefs = ({
   );
 };
 
-// The rAF sweep owns its effect-event callbacks so the component body stays small.
-// Latest callback and progress stay out of the effect dependencies.
-// Restarting the sweep on their identity change would break the loop.
-// Effect dependencies are unchanged to keep the loop stable.
+/*
+ * Latest callback and progress stay out of the effect deps; restarting the sweep on
+ * their identity change would break the loop.
+ */
 const usePulseSweep = ({
   animRef, clipId, loopEpoch, mode, onCycleComplete, progress, setProgress, width,
 }: Readonly<PulseSweepParams>): void => {
@@ -159,10 +159,10 @@ const usePulseSweep = ({
   }, [animRef, clipId, loopEpoch, mode, setProgress, width]);
 };
 
-// Render-phase reset per the React docs pattern for previous renders.
-// Loop and enter modes always restart the sweep from zero.
-// Committing zero directly avoids a synchronous setState in the effect.
-// Exit mode preserves the in-flight progress untouched.
+/*
+ * Render-phase reset per the React docs pattern; committing zero here avoids a
+ * synchronous setState in the effect, while exit mode keeps in-flight progress.
+ */
 const usePulseProgressReset = ({ loopEpoch, mode, setProgress, width }: Readonly<PulseProgressResetParams>): void => {
   const [prevPulseInputs, setPrevPulseInputs] = useState({ loopEpoch, mode, width });
   if (prevPulseInputs.loopEpoch !== loopEpoch || prevPulseInputs.mode !== mode || prevPulseInputs.width !== width) {

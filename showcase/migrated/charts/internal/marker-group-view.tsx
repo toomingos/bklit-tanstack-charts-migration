@@ -65,9 +65,6 @@ const MarkerGroupView = ({
     onMarkerHoverChange?.(null);
   }, [onMarkerHoverChange]);
 
-  // Reveal state is derived here during render, not set in the effect above.
-  // The props combined with the enter-delay flag keep prop transitions correct.
-  // No extra render is needed.
   return (
     <MarkerGroupContent
       animate={animate} bucketKey={bucket.key} enterElapsed={enterElapsed} enterRef={enterRef}

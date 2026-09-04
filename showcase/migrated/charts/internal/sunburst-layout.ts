@@ -1,7 +1,5 @@
 // Sunburst tree layout — nested-tree walk plus flat rows for the native mark.
-// Extracted from sunburst-geometry.ts (same module family; re-exported there so the
-// Public import path is unchanged). Verbatim from:
-// From repos/bklit-ui/packages/ui/src/charts/sunburst.ts.
+// Extracted from sunburst-geometry.ts; verbatim from repos/bklit-ui sunburst.ts.
 
 import type { ArcDatum, Focus, SunburstNode } from "./sunburst-types";
 
@@ -9,16 +7,13 @@ const TOP = -Math.PI / 2;
 const TWO_PI = 2 * Math.PI;
 const ID_SEP = " / ";
 
-// Deep-readonly mirror of SunburstNode: every function below only reads the input tree, but
-// SunburstNode (sunburst-types.ts) keeps a mutable `children` array for callers that build
-// Trees imperatively, so the readonly view is composed locally rather than upstream.
+// Deep-readonly mirror of SunburstNode: readers only, but upstream keeps mutable `children`.
+// Composed locally so imperative tree builders keep working.
 type ReadonlySunburstNode = Readonly<Omit<SunburstNode, "children">> & {
   readonly children?: readonly ReadonlySunburstNode[];
 };
 
-// ---------------------------------------------------------------------------
-// Layout builders
-// ---------------------------------------------------------------------------
+// Layout builders.
 
 const nodeId = (parentId: string | null, name: string): string =>
   parentId !== null && parentId.length > 0 ? `${parentId}${ID_SEP}${name}` : name;
@@ -58,16 +53,10 @@ interface ChildrenPass {
   readonly value: number;
 }
 
-// Takes `visit` as a parameter, rather than calling layoutNode by name, so this stays defined
-// Before layoutNode with no two-way forward reference (mutually referencing two bindings by name
-// Is a no-use-before-define finding here, even for hoisted `function` declarations); layoutNode
-// Passes itself as `visit` below, a same-binding self-reference, which is exempt. Also split out
-// Of layoutNode purely to keep that one under eslint(max-statements).
-//
-// Ctx (here, and in the `visit` callback type, and on layoutNode below) is the per-tree
-// Accumulator that every call in this recursion genuinely mutates, so all three stay plain
-// (non-readonly) BuildContext — marking any of them readonly would make those mutations, or the
-// Structural match between `visit` and layoutNode's own signature, a type error.
+/*
+ * Takes `visit` instead of naming layoutNode to avoid a no-use-before-define cycle.
+ * Ctx stays mutable BuildContext: the recursion mutates the accumulator throughout.
+ */
 const layoutChildren = (
   pass: Readonly<ChildrenPass>,
   ctx: BuildContext,
@@ -168,23 +157,10 @@ const buildArcs = (data: ReadonlySunburstNode): SunburstLayout => {
   return { arcs: ctx.arcs, focusById: ctx.focusById, maxDepth: ctx.maxDepth, rootId, total: sumValues(data) };
 };
 
-// ---------------------------------------------------------------------------
-// Flat rows for native `sunburst()` (C5d, D-TBD) — native's hierarchy
-// Pipeline (`hierarchy-flat-internal.js`'s `buildFlatHierarchy`) is a
-// `d3-hierarchy` `stratify()` over FLAT rows with `nodeId`/`parentId`
-// Accessors, not a nested-tree walk. This flattens the SAME nested
-// `SunburstNode` `data` prop `buildArcs` walks, using the IDENTICAL `nodeId`
-// Scheme (so ids match 1:1 with `ArcDatum.id`/`Focus.id` from `buildArcs` —
-// Required for `arcsById` cross-referencing in sunburst-chart.tsx) — but
-// Carries each node's OWN raw `value` (`rawValue`, undefined for a node with
-// No `value` field), not `sumValues`'s pre-aggregated subtree total. This
-// Distinction is required by parity condition 1 (see sunburst-chart.tsx):
-// Native's own `hierarchy.root.sum(...)` (`hierarchy-flat-internal.js:97`)
-// ADDS a node's own value on top of its children's, so the `value` accessor
-// Passed to `sunburst()` must return 0 for any node with children (letting
-// Only the children's sums flow up) — passing our own pre-summed
-// `ArcDatum.value` here would double-count.
-// ---------------------------------------------------------------------------
+/*
+ * Flat rows for native `sunburst()`: same `nodeId` scheme so ids match `buildArcs`, raw values only.
+ * Raw `value` is required — native's `root.sum(...)` aggregates, so pre-summed totals double-count.
+ */
 
 interface SunburstFlatRow {
   id: string;

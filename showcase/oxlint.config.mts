@@ -25,7 +25,7 @@ export default defineConfig({
   ],
   // oxlint does not merge `settings` or `jsPlugins` from extended configs;
   // both must be declared on the root config.
-  jsPlugins: jsPlugins.jsPlugins,
+  jsPlugins: [...jsPlugins.jsPlugins, "./oxlint-plugins/comments.js"],
   settings: jsPluginSettings,
   overrides: [
     {
@@ -128,6 +128,10 @@ export default defineConfig({
     "max-lines": "error",
     "init-declarations": "error",
     "capitalized-comments": "error",
+    // Local plugin (oxlint-plugins/comments.js). Long prose blocks here have consistently drifted
+    // out of date with the code they describe, and a comment needing a paragraph usually means the
+    // code below it should be clearer. JSDoc is exempt: the jsdoc/require-* rules below mandate it.
+    "comments/max-lines": ["error", { max: 2 }],
     "no-restricted-properties": "error",
     "typescript/explicit-member-accessibility": "error",
     "typescript/prefer-readonly-parameter-types": "error",

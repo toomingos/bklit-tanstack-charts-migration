@@ -48,9 +48,6 @@ type ProjectionVisit = (node: ReactNode) => void;
 
 const tryPushProjectionLineConfig = (child: ProjectionChildElement, configs: ProjectionLineConfig[]): boolean => {
   const role = roleOf(child.type);
-  // The role check establishes the component contract at runtime.
-  // A "projectionLine" element always carries ProjectionLineConfigProps,
-  // So re-narrowing the valid element pins that shape with no `as`.
   if (role === "projectionLine" && isValidElement<ProjectionLineConfigProps>(child)) {
     pushProjectionLineConfig(child.props, configs);
     return true;
@@ -78,9 +75,6 @@ const extractProjectionLineConfigs = (children: ReactNode): ProjectionLineConfig
       }
       return;
     }
-    // Pin the props generic at the validity check, not via `as`.
-    // Every valid element carries a props object, so reading
-    // `children` needs no assertion.
     if (isValidElement<{ children?: ReactNode }>(node)) {
       visitProjectionChild(node, configs, visit);
     }

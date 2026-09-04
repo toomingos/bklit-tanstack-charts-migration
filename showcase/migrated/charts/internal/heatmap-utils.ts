@@ -425,9 +425,8 @@ const matchHeatmapCalendarRangeStart = (gridStart: Readonly<Date>, today: Readon
   return undefined;
 }
 
-// The `[firstColumn]` destructuring guard below is genuinely defensive, not dead code.
 // Destructuring types `firstColumn` as always-defined without `noUncheckedIndexedAccess`.
-// Exported callers give no guarantee that `columns` is non-empty, so the guard stays.
+// Exported callers give no guarantee `columns` is non-empty, so the guard stays.
 const inferHeatmapCalendarRangeStart = (columns: readonly HeatmapColumn[]): Date | undefined => {
   if (columns.length === 0) {return undefined;}
   const [firstColumn] = columns;

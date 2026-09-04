@@ -1,6 +1,5 @@
-// Sunburst label-reveal pipeline (extracted from sunburst-chart.tsx: it is the
-// Self-contained WAAPI overlay cycle — post-paint text animation plus settle
-// Timer — with no shared state besides the animation list the caller owns).
+// Sunburst label-reveal pipeline: self-contained WAAPI overlay cycle of post-paint animation plus settle timer.
+// No shared state besides the caller-owned animation list.
 import { onPostPaint } from "./deferred-reveal";
 
 const SUNBURST_LABEL_TEXT_SELECTOR = "text.ts-bkm-sunburst-label";

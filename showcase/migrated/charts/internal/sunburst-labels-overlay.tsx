@@ -3,10 +3,6 @@
 
 import type { CSSProperties, ReactElement } from "react";
 
-// ---------------------------------------------------------------------------
-// Label item (pre-computed by sunburst-chart's layout engine)
-// ---------------------------------------------------------------------------
-
 interface LabelItem {
   x: number;
   y: number;
@@ -15,13 +11,9 @@ interface LabelItem {
   id: string;
 }
 
-// ---------------------------------------------------------------------------
-// Labels overlay — SVG layer with rotated <text> elements
-// Matches bklit: labels reveal with opacity 0→1 at delay = maxDelay + duration*0.85
-// (duration=1.1s, maxDelay from ring-staggered segment delays). Unrelated arcs'
-// Labels are culled on hover exactly like bklit's !isRelated guard.
-// Culling happens in sunburst-chart's labelItems builder, before items reach here.
-// ---------------------------------------------------------------------------
+/*
+ * Culling happens upstream in sunburst-chart's labelItems builder, mirroring bklit's !isRelated guard.
+ */
 
 interface SunburstLabelsOverlayProps {
   items: LabelItem[];

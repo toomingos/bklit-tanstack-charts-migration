@@ -10,9 +10,7 @@ const POINT_PIN_RADIUS_RATIO = 0.12;
 const HOVER_GROW_RING_BUDGET = 0.28;
 const HOVER_GROW_SEGMENT_CAP = 0.1;
 
-// ---------------------------------------------------------------------------
 // Arc path construction (d-string)
-// ---------------------------------------------------------------------------
 
 interface ArcPoints {
   x0: number;
@@ -35,9 +33,6 @@ const arcInnerPoints = (a0: number, a1: number, inner: number): ArcPoints => ({
   y1: -Math.cos(a1) * inner,
 });
 
-// Merges the original arcPathFromGeometry + arcPathFromRadii pair into one function taking a
-// Single geometry object — same no-null reasoning as geometryFor above; also removes the
-// Eslint(max-params) finding the old 4-primitive-argument arcPathFromRadii had.
 const arcPathFromGeometry = (geometry: Readonly<ArcGeometry>): string | null => {
   const { a0, a1, innerR, outerR } = geometry;
   if (outerR - innerR < MIN_ARC_THICKNESS_PX || a1 - a0 < MIN_ARC_ANGLE_RAD) {
@@ -81,9 +76,7 @@ const arcPath = (geometry: Readonly<ArcGeometry>, progress: number, radialProgre
   return arcPathFromGeometry(currentGeometry);
 };
 
-// ---------------------------------------------------------------------------
 // Geometry interpolation (lerp + transition)
-// ---------------------------------------------------------------------------
 
 const lerpAngle = (from: number, to: number, progress: number): number => {
   let delta = to - from;
@@ -120,9 +113,7 @@ const pointGeometry = (source: Readonly<ArcGeometry>): ArcGeometry => {
   return { a0: mid, a1: mid, innerR: pin, outerR: pin };
 };
 
-// ---------------------------------------------------------------------------
 // Hover grow
-// ---------------------------------------------------------------------------
 
 const hoverGrowForPathSegment = (hoverPop: number, ringWidth: number, pathLength: number): number => {
   const maxTotalGrow = ringWidth * HOVER_GROW_RING_BUDGET;

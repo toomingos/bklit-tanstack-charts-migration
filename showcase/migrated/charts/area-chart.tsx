@@ -298,14 +298,14 @@ const isAnimationFrameScheduler = <Value,>(value: Value): value is Value & typeo
 const firstNonEmptyString = (values: readonly (string | undefined)[]): string | undefined =>
   values.find((value) => (value?.length ?? 0) > 0);
 
-// D3 continuous scales answer null/NaN input with their unknown value, which stays undefined
-// Because this file never sets .unknown(). The D3 types say number, so this parameter carries
-// The widening and the zero fallback stays load-bearing.
+/*
+ * D3 scales answer null/NaN with their unknown value, still typed as number, so this widening is real.
+ */
 const withZeroFallback = (mapped: number | undefined): number => mapped ?? 0;
 
-// At runtime JSON.stringify answers functions/symbols with undefined, but the lib types the
-// Result as string. This parameter carries that widening, so the absent fallback below
-// Stays load-bearing.
+/*
+ * JSON.stringify answers functions/symbols with undefined despite its string return type, so the widening is real.
+ */
 const withAbsentFallback = (text: string | undefined, absent: string): string => text ?? absent;
 
 // Stringifies an untyped datum field without Object's default "[object Object]" dump.

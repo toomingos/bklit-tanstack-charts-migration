@@ -29,9 +29,9 @@ interface ArmHeatmapFocusTimerParams {
   readonly tooltipConfig: HeatmapTooltipConfig | null;
 }
 
-// Bklit spec: 120ms hide delay, debouncing the focus clear (not the
-// Tooltip) — cancelled in `scheduleFocus` if the pointer re-enters a
-// Cell first. `showDelayMs` applies when a cell is hovered.
+/*
+ * Hide delay debounces the focus clear (cancelled on re-enter); show delay applies on hover.
+ */
 const armHeatmapFocusTimer = ({
   interaction,
   point,
@@ -92,10 +92,9 @@ const handleHeatmapCellHover = ({
     y: ctx.margin.top + geo.y + geo.height / 2,
   });
 
-  // C2: bridge the app-detected hover to the native tooltip/focus
-  // Engine. `cell()`/`rect()` builds each ChartPoint's `datum` as the
-  // Exact input array element (dist/rect.js), so reference equality
-  // Against the hit datum reliably locates the matching scene point.
+  /*
+   * C2: datum identity matches the input element, so equality locates the scene point.
+   */
   const scenePoint = renderContext?.scene.points.find((candidate: Readonly<{ datum: Readonly<CellDatum> }>) => candidate.datum === hit.datum) ?? null;
   onFocus(scenePoint, `${hit.column}-${hit.row}`);
 };
@@ -164,16 +163,9 @@ interface HeatmapSceneHitParams {
   readonly ctx: Readonly<HeatmapPointerHitContext>;
 }
 
-// C3: `clientToScene` (dist/dom-types.d.ts:33) is the documented
-// Controller API for client->chart coordinate conversion, replacing a
-// DOM `querySelector` + `getBoundingClientRect` reach-in into the
-// Renderer's own SVG. It returns MARGIN-INCLUSIVE "scene" coordinates —
-// The same space `xScale`/`yScale` operate in inside `defineChart`
-// (dist/svg-coordinates.js's `svgClientToScene`, verified against
-// `heatmap-context.ts`/`heatmap-chart.tsx`'s plot-local `xScale`/
-// `yScale`, which are `column*binWidth + offset` from 0) — so the
-// Existing plot-local column/row math in `locateHoveredHeatmapCell`
-// Still needs the same `- margin.left` / `- margin.top` subtraction.
+/*
+ * ClientToScene returns margin-inclusive scene coordinates, so margin subtraction still applies.
+ */
 const resolveHeatmapSceneHit = ({
   interaction,
   clientX,
@@ -198,9 +190,6 @@ interface DispatchHeatmapPointerHitParams {
   readonly renderContext: HeatmapRenderSnapshot | undefined;
 }
 
-// Pointer position -> hover/leave dispatch for the overlay svg listeners.
-// Extracted from `handlePointerMove` so the handler stays under the
-// Statement limit; the call graph is unchanged.
 const dispatchHeatmapPointerHit = ({
   cellData,
   clientX,

@@ -22,10 +22,8 @@ import type {
 import { buildHeatmapColorScaleFromStyles, buildHeatmapFillScale, resolveHeatmapLevelStyles } from "./heatmap-colors";
 import type { HeatmapLevelColors, HeatmapLevelStyles } from "./heatmap-colors";
 
-// This file is extracted from heatmap-chart-inner.tsx.
-// It holds the layout, scale, and margin hooks for a mounted HeatmapChart, once the container has a measured, non-zero size.
-// It is a sibling module purely to keep heatmap-chart-inner.tsx under the file line-count limit.
-// The memoisation shape, and every dependency array, is unchanged from the original single-file implementation.
+// Sibling split keeps heatmap-chart-inner.tsx under the file line-count limit.
+// Memoisation shape and dependency arrays match the original single-file implementation.
 
 const DEFAULT_WEEK_ROW_COUNT = 7;
 const MIN_RENDERABLE_DIMENSION_PX = 10;
@@ -160,9 +158,9 @@ interface HeatmapLayoutDimensionsInputs {
   readonly sizingColumnCount: number | undefined;
 }
 
-// This bundles useHeatmapColumnLayout and useHeatmapDimensions behind one call, since the second depends on the first's output.
-// It exists purely so the caller in heatmap-chart-inner.tsx does not need to spell out either hook's full input object inline.
-// It takes a locally-defined inputs shape rather than HeatmapChartInnerProps, so this module never has to import back from heatmap-chart-inner.tsx, which would create an import cycle.
+/*
+ * Local inputs shape avoids an import cycle back into heatmap-chart-inner.tsx.
+ */
 const useHeatmapLayoutDimensions = (
   inputs: Readonly<HeatmapLayoutDimensionsInputs>,
   margin: Readonly<HeatmapMargin>,

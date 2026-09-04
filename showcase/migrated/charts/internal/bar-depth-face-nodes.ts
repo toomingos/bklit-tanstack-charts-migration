@@ -36,9 +36,10 @@ interface ReadBarDepthValuePosParams {
   readonly yValue: number;
 }
 
-// Validation mirrors the original render loop verbatim.
-// Untyped consumers can hand the mark non-finite values at runtime.
-// The checks stay even though the static types call them unnecessary.
+/*
+ * Validation mirrors the original render loop: untyped callers can pass non-finite values
+ * at runtime, so the checks stay despite the static types.
+ */
 const readBarDepthValuePos = (params: Readonly<ReadBarDepthValuePosParams>): number | undefined => {
   const { datum, xValue, yScale, yValue } = params;
   if (!datum || xValue === undefined) { return undefined; }

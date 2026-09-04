@@ -26,9 +26,10 @@ const computeIndicatorGeometry = (
 
 interface IndicatorRenderMode {
   fadeSides: VerticalFadeSides;
-  // Defined only when the caller passed a non-empty dasharray; mirrors the
-  // Original `Boolean(strokeDasharray)` gate exactly ("" and undefined both
-  // Fall through to the solid/faded rect rendering).
+  /*
+   * Mirrors the original `Boolean(strokeDasharray)` gate: "" and undefined fall through.
+   * To the solid/faded rect rendering path.
+   */
   resolvedDasharray: string | undefined;
 }
 

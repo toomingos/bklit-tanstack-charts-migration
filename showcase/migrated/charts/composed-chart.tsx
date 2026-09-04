@@ -173,9 +173,9 @@ const stringifyDatumField = (value: unknown, absent: string): string => {
 // NOTHING is destructured from an object typed with an optional `undefined`-valued property, reaching the same runtime value without ever writing either banned token in value position.
 const { NOTHING }: { NOTHING?: undefined } = {};
 
-// Module-scope fallbacks for overlay builders: created once, shared by every memo eval.
-// Optional marker styling is string/number-or-absent by the marker contract;
-// Non-conforming values fall back to the same defaults bklit uses when unset.
+/*
+ * Module-scope defaults shared by every memo eval, matching bklit unset values.
+ */
 const TERMINAL_ANCHOR_FALLBACKS = {
   fill: "transparent",
   outlineWidth: 0,
@@ -204,9 +204,9 @@ const renderProjectionGradientStops = (grad: Readonly<ProjectionGradientDef>): R
   </>
 );
 
-// Bklit `Readonly<CrosshairGradientDef>` alone leaves the nested `stops` array
-// Mutable, which the rule typescript(prefer-readonly-parameter-types) still
-// Flags (same pattern as ReadonlyAreaConfig below).
+/*
+ * Readonly is shallow, so the nested stops array needs its own readonly wrapper.
+ */
 type ReadonlyCrosshairGradientDef = Readonly<Omit<CrosshairGradientDef, "stops">> & {
   readonly stops: readonly Readonly<CrosshairGradientDef["stops"][number]>[];
 };
@@ -242,9 +242,9 @@ interface ComposedChartProps {
 }
 
 
-// Bklit `Readonly<AreaConfig>` alone leaves the nested `markers` object mutable, which
-// The rule typescript(prefer-readonly-parameter-types) still flags; these wrap it deeply
-// (same pattern as area-chart.tsx).
+/*
+ * Readonly is shallow, so the nested markers object needs its own readonly wrapper.
+ */
 type ReadonlyAreaConfig = Readonly<Omit<AreaConfig, "markers">> & {
   readonly markers?: Readonly<SeriesPointMarkerStyle>;
 };
@@ -293,9 +293,9 @@ const registerSeriesBarChild = (child: Readonly<ReactElement<Readonly<SeriesBarC
   sink.barConfigs.push(bar);
   upsertComposedSeries(sink.composedSeries, {
     dataKey: bar.dataKey,
-    // `dimOpacity` is intentionally omitted here (bars have no hover-dim role).
-    // Upsert always overwrites the field on an existing entry regardless.
-    // Bars always scan and paint on the primary axis (bklit omits yAxisId for SeriesBar).
+    /*
+     * Bars carry no hover-dim role and paint on the primary axis, so both fields stay unset.
+     */
     showHighlight: false,
     stroke: bar.stroke ?? bar.fill ?? DEFAULT_COLOR,
     strokeWidth: 0,
@@ -382,9 +382,9 @@ const registerBarAreaChild = (child: Readonly<ReactElement>, sink: ComposedChild
 const visitComposedChild = (child: Readonly<ReactElement>, sink: ComposedChildSink): void => {
   if (registerBarAreaChild(child, sink)) {return;}
   const role = roleOf(child.type);
-  // The roleOf helper maps each child component type to its props contract, so
-  // Pinning the isValidElement generic to the role's config type recovers props
-  // Without asserting.
+  /*
+   * Pin the generic to the role's config type to recover props without asserting.
+   */
   if (role === "line" && isValidElement<LineConfig>(child)) {
     registerLineChild(child, sink);
     return;
@@ -804,9 +804,9 @@ const ComposedChart = ({
       yDomain: yDomainFinal,
     });
     if (!frame) {return [];}
-    // Indexed reads are typed as the element type; the loop bound keeps the index
-    // In range. Style fields are string/number/boolean-or-absent by the marker
-    // Contract, validated with typeof (see composed-overlay-geometry).
+    /*
+     * Loop bound keeps the index in range; marker fields are validated with typeof.
+     */
     return collectProjectionGradients({
       cfgs: projectionConfigs,
       gradientBaseId: projectionGradientBaseIdComposed,

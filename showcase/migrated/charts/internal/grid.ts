@@ -1,8 +1,9 @@
 // Resolved grid-guide config + highlight-row surface for the cartesian charts.
 
-// Minimal read-view of the grid config: the only fields these resolvers consume.
-// GridConfig itself lives in series-config-types.ts and carries mutable arrays.
-// Every caller passes a GridConfig, which remains assignable to this narrower view.
+/*
+ * Read-view of the grid config: GridConfig carries mutable arrays, so resolvers take this narrower view.
+ * every caller passes a GridConfig, which remains assignable here.
+ */
 interface GridGuideSource {
   readonly horizontal?: boolean;
   readonly vertical?: boolean;

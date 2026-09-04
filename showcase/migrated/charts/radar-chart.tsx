@@ -65,8 +65,6 @@ const Z_PAD = 5;
 const MARKS_GROUP_SELECTOR = ".ts-chart__marks";
 
 // WAAPI reveal never stomps live TanStack motions: bail while the renderer is mid-reconcile.
-// Element.getAnimations is typed on every Element; WAAPI itself is already assumed
-// (path.animate runs unconditionally in the reveal below), so no optionality remains.
 const hasLiveRevealAnims = (container: HTMLElement): boolean => {
   const els = container.querySelectorAll('[data-ts-key^="radar-area:"]');
   for (const el of els) {

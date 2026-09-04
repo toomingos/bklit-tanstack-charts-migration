@@ -1,7 +1,4 @@
 // Pure tick-choice math feeding the native axis pipeline (no DOM, no React).
-// Even-spacing layout search lives in tick-layout.ts.
-// X-axis value builders live in x-axis-tick-values.ts.
-// Axis and scale option builders live in axis-scale-options.ts.
 // This module keeps bar label thinning and re-exports the full public surface so existing importers are untouched.
 
 /**
