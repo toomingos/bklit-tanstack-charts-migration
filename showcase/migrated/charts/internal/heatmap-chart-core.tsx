@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import type { HeatmapMargin, HeatmapLayout } from "./heatmap-context";
 import { HeatmapChartBody } from "./heatmap-chart-body";
@@ -93,9 +93,9 @@ const useHeatmapChartRoot = (
   const sz = usePositiveChartSize(containerRef);
 
   /*
-   * Lazy state keeps one coordinator without render-time ref access; an effect would leave the first render unwired.
+   * Stable coordinator without render-time ref access; an effect would leave the first render unwired.
    */
-  const [coordinator] = useState(() => createHeatmapHoverCoordinator());
+  const coordinator = useMemo(() => createHeatmapHoverCoordinator(), []);
 
   const containerStyle = useHeatmapContainerStyle(inputs.aspectRatio, sz.height > 0);
   const handlePointerLeave = useCallback(() => {

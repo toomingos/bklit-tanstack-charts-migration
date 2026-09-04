@@ -26,7 +26,10 @@ const isReferenceAreaVisiblePhase = (phase: string | undefined): boolean => {
   return phase === "ready" || phase === "revealing" || phase === "gridTweenReady";
 }
 
-const toBandKey = (value: Date | number | string | null | undefined): string | undefined => {
+// Band-scale lookup key: child configs are untyped, so an explicit null can reach this file.
+type BandKeyValue = Date | number | string | null | undefined;
+
+const toBandKey = (value: BandKeyValue): string | undefined => {
   if (value === null || value === undefined) {return undefined;}
   if (value instanceof Date) {return value.toISOString();}
   return String(value);
@@ -34,7 +37,7 @@ const toBandKey = (value: Date | number | string | null | undefined): string | u
 
 interface ResolveBarXOptions {
   readonly band: BarScale;
-  readonly value: Date | number | string | null | undefined;
+  readonly value: BandKeyValue;
   readonly fallback: number;
 }
 

@@ -8,10 +8,9 @@ import type { ReactElement } from "react";
 import { useIntroFlowValue } from "./center-stat";
 import { PieHoverCoordinatorContext, PieStableContext } from './pie-center-context';
 import { PieCenterShellCenter } from "./pie-center-shell-center";
-import type { PieCenterProps, PieStableValue } from './pie-center';
+import type { PieCenterProps, PieStableValue, PieData, PieArcData } from './pie-center';
 import type { PieHoverCoordinator } from "./pie-hover-chrome";
 import { defaultPieColors } from './pie-default-colors';
-import type { PieArcData, PieData } from '../pie-chart';
 
 const SHELL_HOVER_OFFSET = 10;
 

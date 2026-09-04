@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import { HeatmapChartInner } from "./heatmap-chart-inner";
 import type { HeatmapChartInnerProps } from "./heatmap-chart-inner";
-import { HeatmapInteractionProvider } from "./heatmap-interaction";
+import { HeatmapInteractionProvider } from "./heatmap-interaction-provider";
 import type { HeatmapHoverCoordinator } from "./heatmap-hover-chrome";
 import type { HeatmapColumnSeparatorsConfig } from "./heatmap-utils";
 

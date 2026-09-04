@@ -188,7 +188,7 @@ const useHeatmapChartLifecycle = (params: HeatmapLifecycleParams): HeatmapLifecy
   }, [animation.animateEnter, animationDurationMs, status, revealSignature, phase.phaseRef, phase.setChartPhase, phase.setIsLoaded, phase.setRevealEpoch, phase.setRevealMode]);
 
   useEffect(() => {
-    if (!animation.animateEnter || phase.chartPhase !== "revealing") {return;}
+    if (!animation.animateEnter || phase.chartPhase !== "revealing") {return undefined;}
     armHeatmapFinishTimer({ finishTimerRef: timers.finishTimerRef, setChartPhase: phase.setChartPhase, setIsLoaded: phase.setIsLoaded, setRevealMode: phase.setRevealMode, timeoutMs: animationDurationMs });
     // Captured at arm time so cleanup clears exactly this timer.
     const armedTimerId = timers.finishTimerRef.current;

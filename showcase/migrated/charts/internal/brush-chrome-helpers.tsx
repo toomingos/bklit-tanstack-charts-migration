@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import type { PatternPresetId } from "./pattern-preset-helpers";
 
 /*
  * Split out so brush-chrome.tsx stays under size limits; renderTrackSide is a plain
@@ -6,7 +7,7 @@ import type { CSSProperties, ReactNode } from "react";
  */
 
 interface BrushChromePattern {
-  readonly preset: "none" | "diagonal" | "horizontal" | "vertical" | "cross" | "dots" | "accent";
+  readonly preset: PatternPresetId;
   readonly color?: string;
   readonly opacity?: number;
   readonly scale?: number;

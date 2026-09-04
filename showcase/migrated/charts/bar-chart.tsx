@@ -178,51 +178,6 @@ interface BarChartProps {
   readonly children?: ReactNode;
 }
 
-// Inert props accepted for API parity; dev-only warning names the ones passed.
-let didWarnInertBarProps = false;
-
-interface InertBarPropsWarningParams {
-  readonly barWidth: number | undefined;
-  readonly orientation: BarOrientation | undefined;
-  readonly stacked: boolean | undefined;
-  readonly stackGap: number | undefined;
-  readonly squareSnap: { readonly squareGap: number; readonly groupGap?: number; readonly fit?: boolean } | undefined;
-}
-
-const collectInertBarProps = ({
-  barWidth,
-  orientation,
-  stacked,
-  stackGap,
-  squareSnap,
-}: Readonly<InertBarPropsWarningParams>): string[] => {
-  const candidates: readonly (readonly [string, unknown])[] = [
-    ["barWidth", barWidth],
-    ["orientation", orientation],
-    ["stacked", stacked],
-    ["stackGap", stackGap],
-    ["squareSnap", squareSnap],
-  ];
-  return candidates.filter(([, value]) => value !== undefined).map(([name]) => name);
-};
-
-const warnInertBarProps = ({
-  barWidth,
-  orientation,
-  stacked,
-  stackGap,
-  squareSnap,
-}: Readonly<InertBarPropsWarningParams>): void => {
-  if (process.env.NODE_ENV === "production" || didWarnInertBarProps) {return;}
-  const inert = collectInertBarProps({ barWidth, orientation, squareSnap, stackGap, stacked });
-  if (inert.length === 0) {return;}
-  didWarnInertBarProps = true;
-  console.warn(
-    `[BarChart] accepted-but-inert prop${inert.length > 1 ? "s" : ""}: ${inert.join(", ")}. ` +
-      "The migrated bar pilot renders vertical, grouped bars only (DOC-9); these are accepted for API parity but have no effect.",
-  );
-};
-
 interface ResolvedSeries {
   readonly dataKey: string;
   readonly yAxisId?: string | number;
@@ -2156,15 +2111,9 @@ const BarChart = ({
   aspectRatio = "2 / 1",
   className,
   barGap = DEFAULT_BAR_GAP,
-  barWidth,
-  orientation,
-  stacked,
-  stackGap,
-  squareSnap,
   onPhaseChange,
   children,
 }: Readonly<BarChartProps>): ReactElement => {
-  warnInertBarProps({ barWidth, orientation, squareSnap, stackGap, stacked });
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const width = useContainerWidth(containerRef);
@@ -2625,7 +2574,6 @@ const BarChart = ({
   });
 
   const overlayHostRef = useRef<HTMLDivElement | null>(null);
-  const hasDefinition = width > 0;
 
   const pillRef = useRef<PillBuild | null>(null);
   // First pill show jumps the spring; later moves spring (mirrors legacy showing flag).
@@ -2645,7 +2593,7 @@ const BarChart = ({
       pillBuild.ticker?.detach();
       pillBuild.layer.remove();
     };
-  }, [tooltipEnabled, hasDefinition, chartConfig]);
+  }, [tooltipEnabled, chartConfig]);
 
   const categoryIndexByLabel = useMemo(() => {
     const indexByLabel = new Map<string, number>();

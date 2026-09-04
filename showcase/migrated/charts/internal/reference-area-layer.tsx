@@ -7,12 +7,13 @@ import type { ReferenceAreaIfOverflow } from './reference-area-geometry';
 import type { ChartMargin } from "./use-chart-margin";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { applyReferenceAreaVisibility, isReferenceAreaVisiblePhase, useReferenceAreaGeometry } from "./reference-area-scale";
+import type { ReferenceAreaPropValue } from "./reference-area-config";
 import { buildReferenceAreaFigure, resolveReferenceAreaPattern, resolveReferenceAreaStyle } from "./reference-area-figure";
 
 const ReferenceAreaLayer = (props: ReferenceAreaLayerProps): ReactNode => {
   const style = resolveReferenceAreaStyle(props);
   const spatial = useReferenceAreaGeometry(props);
-  const patternNode = useMemo(() => resolveReferenceAreaPattern(style, spatial.patternId), [style, spatial.patternId]);
+  const patternNode = useMemo((): ReactNode => resolveReferenceAreaPattern(style, spatial.patternId), [style, spatial.patternId]);
   const visible = isReferenceAreaVisiblePhase(props.phase);
   const prefersReducedMotion = usePrefersReducedMotion();
   const gRef = useRef<SVGGElement | null>(null);
@@ -87,16 +88,16 @@ interface ReferenceAreaLayersGeom {
 }
 
 /*
- * Values stay open so the live-line child collector needs no assertion; the dictionary residual is documented.
+ * Config values keep the owner's prop-value contract so the child collector needs no assertion.
  */
-type ReferenceAreaConfig = Record<string, unknown>;
+type ReferenceAreaConfig = Record<string, ReferenceAreaPropValue>;
 
 const isStringValue = <Value,>(value: Value): value is Value & string => typeof value === "string";
 
 const isKeyScalar = <Value,>(value: Value): value is Value & (number | boolean | bigint) =>
   typeof value === "number" || typeof value === "boolean" || typeof value === "bigint";
 
-const stringifyReferenceAreaKeyPart = (value: unknown): string => {
+const stringifyReferenceAreaKeyPart = (value: ReferenceAreaPropValue | null): string => {
   if (isStringValue(value)) {return value;}
   if (isKeyScalar(value)) {return String(value);}
   if (value instanceof Date) {return String(value);}

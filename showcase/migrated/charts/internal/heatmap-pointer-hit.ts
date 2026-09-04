@@ -9,18 +9,20 @@ import type { CellDatum } from "./heatmap-cell-data";
 // Fallback row count when no columns are present (one row per weekday).
 const DEFAULT_WEEK_ROW_COUNT = 7;
 
-const clearFocusTimer = (timerId: number | undefined): void => {
+type HeatmapFocusTimerId = ReturnType<typeof globalThis.setTimeout>;
+
+const clearFocusTimer = (timerId: HeatmapFocusTimerId | undefined): void => {
   if (timerId !== undefined) {
     globalThis.clearTimeout(timerId);
   }
 };
 
-const armFocusTimer = (delayMs: number, apply: () => void): number | undefined => {
+const armFocusTimer = (delayMs: number, apply: () => void): HeatmapFocusTimerId | undefined => {
   if (delayMs <= 0) {
     apply();
     return undefined;
   }
-  return window.setTimeout(apply, delayMs);
+  return globalThis.setTimeout(apply, delayMs);
 };
 
 interface ArmHeatmapFocusTimerParams {
@@ -36,7 +38,7 @@ const armHeatmapFocusTimer = ({
   interaction,
   point,
   tooltipConfig,
-}: Readonly<ArmHeatmapFocusTimerParams>): number | undefined => {
+}: Readonly<ArmHeatmapFocusTimerParams>): HeatmapFocusTimerId | undefined => {
   const delayMs = point ? (tooltipConfig?.showDelayMs ?? 0) : (tooltipConfig?.hideDelayMs ?? 0);
   return armFocusTimer(delayMs, () => { interaction.setControlledFocus(point, { source: "pointer" }); });
 };

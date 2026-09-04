@@ -1,11 +1,10 @@
 "use client";
 
-import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
 import { resolveEnterTransition } from './enter-transition';
 import type { EnterTransition } from './enter-transition';
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import {
-  TERMINAL_MARKER_HIDDEN_TRANSFORM,
   useFreshRef,
   useProjectionPhasePort,
   useReplayVisibleTerminalMarkers,
@@ -13,6 +12,7 @@ import {
   useTerminalMarkerRefs,
 } from "./terminal-marker-phase";
 import type { ProjectionPhaseHandle, TerminalMarkerAnchor, TerminalMarkerClock } from "./terminal-marker-phase";
+import { TerminalMarkerNode } from "./terminal-marker-node";
 
 // Projection end dots render slightly smaller than their anchor radius.
 const PROJECTION_END_MARKER_RADIUS_SCALE = 0.85;
@@ -57,58 +57,6 @@ const renderProjectionEndMarkers = (markers: readonly ProjectionEndMarkerAnchor[
     <circle key={`pend-${marker.cx}-${marker.cy}`} cx={marker.cx} cy={marker.cy} r={marker.radius * PROJECTION_END_MARKER_RADIUS_SCALE} fill={marker.stroke} fillOpacity={marker.strokeOpacity} />
   ));
 
-interface TerminalMarkerInnerParams {
-  readonly marker: Readonly<TerminalMarkerAnchor>;
-  readonly resolvedStroke: string;
-  readonly outlineRadius: number;
-  readonly ringRadius: number;
-}
-
-const renderTerminalMarkerInner = (params: Readonly<TerminalMarkerInnerParams>): ReactElement => {
-  const { marker, outlineRadius, resolvedStroke, ringRadius } = params;
-  return (
-    <g transform={`translate(${marker.cx},${marker.cy})`}>
-      {marker.outlineWidth > 0 && <circle cx={0} cy={0} fill="none" r={outlineRadius} stroke={marker.outlineColor ?? resolvedStroke} strokeWidth={marker.outlineWidth} />}
-      <circle cx={0} cy={0} r={marker.radius} fill={marker.fill} />
-      {marker.strokeWidth > 0 && <circle cx={0} cy={0} r={ringRadius} fill="none" stroke={marker.stroke} strokeWidth={marker.strokeWidth} />}
-    </g>
-  );
-}
-
-// Marker anchors arrive via props and may be nullish at runtime from untyped consumers;
-// The nullable return keeps the fallback chain a genuine check.
-const optionalText = (value: string): string | undefined => value;
-
-// Hidden-state style for one terminal marker node, keyed by its anchor.
-const terminalMarkerNodeStyle = (cx: number, cy: number): CSSProperties => ({
-  opacity: 0,
-  transform: TERMINAL_MARKER_HIDDEN_TRANSFORM,
-  transformBox: "fill-box",
-  transformOrigin: `${cx}px ${cy}px`,
-});
-
-const renderTerminalMarkerNode = (marker: Readonly<TerminalMarkerAnchor>, markerRefs: RefObject<Map<string, SVGGElement>>): ReactElement => {
-  const resolvedStroke = optionalText(marker.stroke) ?? optionalText(marker.fill) ?? "currentColor";
-  const ringOuter = marker.strokeWidth > 0 ? marker.radius + marker.ringGap + marker.strokeWidth : marker.radius;
-  const outlineRadius = marker.outlineWidth > 0 ? ringOuter + marker.outlineWidth / 2 : 0;
-  const ringRadius = marker.radius + marker.ringGap + marker.strokeWidth / 2;
-  return (
-    <g
-      key={marker.dataKey}
-      ref={(element): void => {
-        if (element) {markerRefs.current.set(marker.dataKey, element);}
-        else {markerRefs.current.delete(marker.dataKey);}
-      }}
-      style={terminalMarkerNodeStyle(marker.cx, marker.cy)}
-    >
-      {renderTerminalMarkerInner({ marker, outlineRadius, resolvedStroke, ringRadius })}
-    </g>
-  );
-};
-
-const renderTerminalMarkerNodes = (markers: readonly TerminalMarkerAnchor[], markerRefs: RefObject<Map<string, SVGGElement>>): ReactElement[] =>
-  markers.map((marker: Readonly<TerminalMarkerAnchor>) => renderTerminalMarkerNode(marker, markerRefs));
-
 const ProjectionMarkerOverlay = (props: Readonly<ProjectionMarkerOverlayProps>): ReactNode => {
   const { width, height, margin, terminalMarkers, projectionEndMarkers, phasePort, enterTransition } = props;
   const timingRef = useFreshRef(resolveTerminalTiming(enterTransition));
@@ -126,7 +74,9 @@ const ProjectionMarkerOverlay = (props: Readonly<ProjectionMarkerOverlayProps>):
         <g ref={refs.endGroupRef} style={PROJECTION_END_GROUP_STYLE}>
           {renderProjectionEndMarkers(projectionEndMarkers)}
         </g>
-        {renderTerminalMarkerNodes(terminalMarkers, refs.markerRefs)}
+        {terminalMarkers.map((marker: Readonly<TerminalMarkerAnchor>) => (
+          <TerminalMarkerNode key={marker.dataKey} marker={marker} markerRefs={refs.markerRefs} />
+        ))}
       </g>
     </svg>
   );

@@ -30,8 +30,8 @@ const extractBarDepthValues = (
 }
 
 interface ReadBarDepthValuePosParams {
-  readonly datum: ChartDatum;
-  readonly xValue: string;
+  readonly datum: ChartDatum | null | undefined;
+  readonly xValue: string | undefined;
   readonly yScale: ResolvedScale;
   readonly yValue: number;
 }

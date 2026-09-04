@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { geoGraticule, geoPath } from 'd3-geo';
 import type { GeoGeometryObjects, GeoProjection } from 'd3-geo';
-import type { ChoroplethGraticuleProps } from "../choropleth-chart";
+import type { ChoroplethGraticuleProps } from "./choropleth-graticule-props";
 
 export interface ChoroplethGraticuleRenderProps extends ChoroplethGraticuleProps {
   readonly projection: GeoProjection;

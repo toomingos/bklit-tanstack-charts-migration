@@ -31,9 +31,14 @@ import type {
   ChartRendererRenderContext,
 } from "@tanstack/charts";
 import { roleOf } from "./internal/children-extract";
+import { referenceAreaPushProps } from "./internal/reference-area-config";
+import type { ReferenceAreaPropValue } from "./internal/reference-area-config";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import type { ReferenceAreaLayersGeom } from "./internal/reference-area-layer";
 import { hmsTimeFmt } from "./internal/formatters";
+import { LiveTipChrome } from "./internal/live-tip-chrome";
+import { detectMomentum } from "./internal/live-momentum";
+import type { Momentum } from "./internal/live-momentum";
 import { liveLineMark } from "./internal/live-line-mark";
 import { useChartMargin } from "./internal/use-chart-margin";
 import { useMeasuredRect } from "./internal/use-container-size";
@@ -99,18 +104,6 @@ type ReadonlyLivePoint = Readonly<
   readonly y1Value?: number | string | Readonly<Date>;
   readonly y2Value?: number | string | Readonly<Date>;
 };
-
-interface LiveTipChromeProps {
-  readonly cfg: ReadonlyLiveLineConfig;
-  readonly dotColor: string;
-  readonly getLiveGroups: () => Map<string, SVGGElement>;
-  readonly groupKey: string;
-  readonly liveValue: number;
-  readonly liveDotX: number;
-  readonly liveDotY: number;
-  readonly resolvedStroke: string;
-  readonly innerWidth: number;
-}
 
 interface LiveLineChartProps {
   readonly data: readonly LiveLinePoint[];
@@ -224,68 +217,6 @@ const frameChangePixels = (prev: Readonly<AnimFrame>, next: Readonly<AnimFrame>,
 };
 
 const timeBisector = bisector<LiveLinePoint, number>((point: Readonly<LiveLinePoint>) => point.time);
-
-type Momentum = "up" | "down" | "flat";
-
-/** Minimum samples before judging momentum; the tail window covers the same span. */
-const MOMENTUM_MIN_SAMPLES = 5;
-const MOMENTUM_TAIL_SAMPLES = 5;
-/** Tail delta must exceed this fraction of the lookback range to count as up/down. */
-const MOMENTUM_DELTA_THRESHOLD_FACTOR = 0.12;
-
-interface DatumRangeScan {
-  readonly dataKey: string;
-  readonly end: number;
-  readonly source: readonly Readonly<ChartDatum>[];
-  readonly start: number;
-}
-
-const scanDatumRange = (scan: Readonly<DatumRangeScan>): number => {
-  let min = Number.POSITIVE_INFINITY;
-  let max = Number.NEGATIVE_INFINITY;
-  for (let index = scan.start; index < scan.end; index += 1) {
-    const rawValue = scan.source[index]?.[scan.dataKey];
-    if (isNumber(rawValue)) {
-      if (rawValue < min) {min = rawValue;}
-      if (rawValue > max) {max = rawValue;}
-    }
-  }
-  return max - min;
-};
-
-interface TailDeltaRead {
-  readonly dataKey: string;
-  readonly from: number;
-  readonly source: readonly Readonly<ChartDatum>[];
-}
-
-const readTailDelta = (read: Readonly<TailDeltaRead>): number => {
-  const firstRaw: unknown = read.source[read.from][read.dataKey];
-  const lastRaw: unknown = read.source.at(-1)?.[read.dataKey];
-  const first = isNumber(firstRaw) ? firstRaw : 0;
-  const last = isNumber(lastRaw) ? lastRaw : 0;
-  return last - first;
-};
-
-const classifyMomentum = (delta: number, threshold: number): Momentum => {
-  if (delta > threshold) {return "up";}
-  if (delta < -threshold) {return "down";}
-  return "flat";
-};
-
-/** Default lookback window for momentum detection, in samples. */
-const MOMENTUM_DEFAULT_LOOKBACK = 20;
-
-const detectMomentum = (data: readonly Readonly<ChartDatum>[], dataKey: string, lookback = MOMENTUM_DEFAULT_LOOKBACK): Momentum => {
-  if (data.length < MOMENTUM_MIN_SAMPLES) {return "flat";}
-  const start = Math.max(0, data.length - lookback);
-  const range = scanDatumRange({ dataKey, end: data.length, source: data, start });
-  if (range === 0) {return "flat";}
-  const tailStart = Math.max(start, data.length - MOMENTUM_TAIL_SAMPLES);
-  const delta = readTailDelta({ dataKey, from: tailStart, source: data });
-  const threshold = range * MOMENTUM_DELTA_THRESHOLD_FACTOR;
-  return classifyMomentum(delta, threshold);
-};
 
 // Hysteresis keeps prevInterval within [0.5x, 3x] of minGap to avoid tick flicker.
 const TICK_HYSTERESIS_MIN_FACTOR = 0.5;
@@ -403,11 +334,11 @@ interface ExtractedLiveLineChildren {
   liveXAxis: LiveXAxisConfig | undefined;
   liveYAxis: LiveYAxisConfig | undefined;
   tooltip: ChartTooltipConfig | undefined;
-  readonly referenceAreas: ChartDatum[];
+  readonly referenceAreas: Record<string, ReferenceAreaPropValue>[];
 }
 
 // Element props are consumed per-role after the roleOf dispatch below, so each branch only reads its own config's fields; pinning the combined shape here keeps every branch well-typed without per-branch assertions (all fields except LiveLineConfig.dataKey are optional, and the tooltip spread only copies fields present at runtime).
-// Reference-area elements carry arbitrary pass-through config fields; they are pushed wholesale into referenceAreas (ChartDatum[]) below, so no open index signature is needed here.
+// Reference-area elements go through the shared push classifier so the sink keeps the owner prop-value contract.
 type LiveLineChildProps = LiveLineConfig &
   LiveXAxisConfig &
   LiveYAxisConfig &
@@ -427,7 +358,10 @@ const collectLiveLineChild = (child: Readonly<ReactElement<LiveLineChildProps>>,
   if (role === "liveLine") {out.liveLines.push(child.props);}
   else if (role === "liveXAxis") {out.liveXAxis = child.props;}
   else if (role === "liveYAxis") {out.liveYAxis = child.props;}
-  else if (role === "referenceArea") {out.referenceAreas.push({ ...child.props });}
+  else if (role === "referenceArea") {
+    const pushed = referenceAreaPushProps(child);
+    if (pushed !== undefined) {out.referenceAreas.push(pushed);}
+  }
   else if (role === "tooltip") {out.tooltip = { enabled: true, ...child.props };}
   else {
     // Unknown roles carry no live-line state; nothing to extract.
@@ -542,122 +476,8 @@ const expandNiceTicks = (expansion: Readonly<NiceTickExpansion>): number[] => {
 };
 
 // Static overlay styles hoisted so host elements reuse stable identities.
-const LIVE_TIP_GROUP_STYLE = { transition: "opacity 300ms ease-in-out" } as const;
 const CHART_OVERLAY_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
 const LIVE_SVG_OVERLAY_STYLE = { inset: 0, overflow: "visible", pointerEvents: "none", position: "absolute" } as const;
-
-// Five chrome elements render at the throttled frame rate; scrub-dim applies imperatively.
-const DEFAULT_LIVE_DOT_SIZE_PX = 4;
-/** Pulse halo peak radius as a multiple of the live dot size. */
-const LIVE_DOT_PULSE_RADIUS_FACTOR = 3.5;
-/** Badge horizontal offset from the live dot. */
-const LIVE_BADGE_OFFSET_X_PX = 12;
-/** Badge width: measured label characters plus horizontal padding. */
-const LIVE_BADGE_CHAR_WIDTH_PX = 7.5;
-const LIVE_BADGE_HORIZONTAL_PADDING_PX = 16;
-
-interface PulseHaloOptions {
-  readonly dotColor: string;
-  readonly dotSize: number;
-  readonly x: number;
-  readonly y: number;
-}
-
-// Expanding halo ring behind the live dot; the SMIL pulses run on the compositor.
-const renderPulseHalo = (options: Readonly<PulseHaloOptions>): ReactElement => (
-  <circle
-    cx={options.x}
-    cy={options.y}
-    fill="none"
-    opacity={0.4}
-    r={options.dotSize * 2}
-    stroke={options.dotColor}
-    strokeWidth={1.5}
-  >
-    <animate
-      attributeName="r"
-      dur="1.5s"
-      from={String(options.dotSize)}
-      repeatCount="indefinite"
-      to={String(options.dotSize * LIVE_DOT_PULSE_RADIUS_FACTOR)}
-    />
-    <animate attributeName="opacity" dur="1.5s" from="0.5" repeatCount="indefinite" to="0" />
-  </circle>
-);
-
-interface LiveBadgeOptions {
-  readonly formatValue: (value: number) => string;
-  readonly liveValue: number;
-  readonly x: number;
-  readonly y: number;
-}
-
-// Value label floating beside the live dot; width tracks the formatted text.
-const renderLiveBadge = (options: Readonly<LiveBadgeOptions>): ReactElement => (
-  <g transform={`translate(${options.x + LIVE_BADGE_OFFSET_X_PX},${options.y})`}>
-    <rect
-      fill="var(--popover)"
-      height={24}
-      opacity={0.95}
-      rx={6}
-      width={options.formatValue(options.liveValue).length * LIVE_BADGE_CHAR_WIDTH_PX + LIVE_BADGE_HORIZONTAL_PADDING_PX}
-      x={0}
-      y={-12}
-    />
-    <text
-      fill="var(--popover-foreground)"
-      fontFamily="SF Mono, Menlo, Monaco, monospace"
-      fontSize={11}
-      fontWeight={500}
-      x={8}
-      y={4}
-    >
-      {options.formatValue(options.liveValue)}
-    </text>
-  </g>
-);
-
-interface CrosshairLineOptions {
-  readonly innerWidth: number;
-  readonly resolvedStroke: string;
-  readonly y: number;
-}
-
-// Horizontal dashed guide at the live value, spanning the plot width.
-const renderCrosshairLine = (options: Readonly<CrosshairLineOptions>): ReactElement => (
-  <line
-    opacity={0.25}
-    stroke={options.resolvedStroke}
-    strokeDasharray="4,4"
-    strokeWidth={1}
-    x1={0}
-    x2={options.innerWidth}
-    y1={options.y}
-    y2={options.y}
-  />
-);
-
-interface LiveDotOptions {
-  readonly dotColor: string;
-  readonly size: number;
-  readonly x: number;
-  readonly y: number;
-}
-
-// Core live dot with its soft halo disc.
-const renderLiveDot = (options: Readonly<LiveDotOptions>): ReactElement => (
-  <>
-    <circle cx={options.x} cy={options.y} fill={options.dotColor} opacity={0.1} r={options.size + 2} />
-    <circle
-      cx={options.x}
-      cy={options.y}
-      fill={options.dotColor}
-      r={options.size}
-      stroke="var(--chart-background)"
-      strokeWidth={2}
-    />
-  </>
-);
 
 interface LineVisualSnapshot {
   readonly cfg: ReadonlyLiveLineConfig;
@@ -793,44 +613,6 @@ const renderFadeDefs = (options: Readonly<FadeDefsOptions>): ReactNode => (
     ) : undefined}
   </>
 );
-
-const LiveTipChrome = ({
-  cfg,
-  dotColor,
-  getLiveGroups,
-  groupKey,
-  liveValue,
-  liveDotX,
-  liveDotY,
-  resolvedStroke,
-  innerWidth,
-}: Readonly<LiveTipChromeProps>): ReactElement => {
-  const pulse = cfg.pulse ?? true;
-  const dotSize = cfg.dotSize ?? DEFAULT_LIVE_DOT_SIZE_PX;
-  const badge = cfg.badge ?? true;
-  const formatValue = cfg.formatValue ?? defaultFormatValue;
-  const handleLiveGroupRef = useCallback(
-    (element: SVGGElement | null): void => {
-      const groups = getLiveGroups();
-      if (element) {groups.set(groupKey, element);}
-      else {groups.delete(groupKey);}
-    },
-    [getLiveGroups, groupKey],
-  );
-
-  return (
-    <>
-      {renderCrosshairLine({ innerWidth, resolvedStroke, y: liveDotY })}
-      <g ref={handleLiveGroupRef} style={LIVE_TIP_GROUP_STYLE}>
-        <g>
-          {pulse && renderPulseHalo({ dotColor, dotSize, x: liveDotX, y: liveDotY })}
-          {renderLiveDot({ dotColor, size: dotSize, x: liveDotX, y: liveDotY })}
-        </g>
-        {badge && renderLiveBadge({ formatValue, liveValue, x: liveDotX, y: liveDotY })}
-      </g>
-    </>
-  );
-};
 
 const LiveLineChart = ({
   data,
@@ -1397,5 +1179,6 @@ const LiveLineChart = ({
   );
 };
 
-export type { LiveLinePoint, LiveLineChartProps, Momentum };
-export { detectMomentum, LiveLineChart };
+export type { LiveLinePoint, LiveLineChartProps };
+export type { Momentum } from "./internal/live-momentum";
+export { LiveLineChart };

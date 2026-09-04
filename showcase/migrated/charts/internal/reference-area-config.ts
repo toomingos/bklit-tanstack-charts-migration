@@ -1,7 +1,7 @@
-import { Children, Fragment, isValidElement } from "react";
+import { Fragment, isValidElement } from "react";
 import type { ReactNode } from "react";
 import { roleOf } from "./children-extract";
-import type { ReferenceAreaProps } from "../reference-area";
+import type { ReferenceAreaProps } from "./reference-area-props";
 
 // Props bag for a collected <ReferenceArea> child: open-ended keys (any prop may be present).
 // Value contract is the owner's own prop types.
@@ -33,15 +33,20 @@ const classifyReferenceAreaChild = (child: ReactNode): ReferenceAreaChildAction 
   return { kind: "visit", node: descent };
 };
 
-export const extractReferenceAreaProps = (children: ReactNode): Record<string, ReferenceAreaPropValue>[] => {
+const extractReferenceAreaProps = (children: ReactNode): Record<string, ReferenceAreaPropValue>[] => {
   const out: Record<string, ReferenceAreaPropValue>[] = [];
   const visit = (node: ReactNode): void => {
-    for (const child of Children.toArray(node)) {
-      const action = classifyReferenceAreaChild(child);
-      if (action.kind === "push") {out.push(action.props);}
-      if (action.kind === "visit") {visit(action.node);}
+    // Flatten nested child arrays without React.Children; key assignment is unused here.
+    for (const child of [node].flat(Infinity)) {
+      if (isValidElement(child)) {
+        const action = classifyReferenceAreaChild(child);
+        if (action.kind === "push") {out.push(action.props);}
+        if (action.kind === "visit") {visit(action.node);}
+      }
     }
   };
   visit(children);
   return out;
 }
+
+export { extractReferenceAreaProps, referenceAreaPushProps, type ReferenceAreaPropValue };

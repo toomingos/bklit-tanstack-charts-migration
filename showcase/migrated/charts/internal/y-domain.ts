@@ -1,5 +1,5 @@
 // All>=0 -> [0,max*1.1]; mixed-sign -> 5% pad; empty -> [0,100]. Scatter has own rules.
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo, useState } from "react";
 import { scaleLinear } from "d3-scale";
 import type { ScaleLinear } from "d3-scale";
 
@@ -82,15 +82,10 @@ const useNicedYDomainChanged = (yDomain: readonly [number, number]): NicedYDomai
     },
     [yDomain],
   );
-  const prevRef = useRef(niced);
-  const changed = prevRef.current[0] !== niced[0] || prevRef.current[1] !== niced[1];
-  /*
-   * The previous-domain write lands in an effect so render stays pure. The comparison
-   * above still reads the last committed domain, so tween detection is unchanged.
-   */
-  useEffect(() => {
-    prevRef.current = niced;
-  }, [niced]);
+  const [prevNiced, setPrevNiced] = useState(niced);
+  const changed = prevNiced[0] !== niced[0] || prevNiced[1] !== niced[1];
+  // Render-time adjustment keeps render pure; same prev-state pattern as ring-chart.
+  if (changed) {setPrevNiced(niced);}
   return { changed, niced };
 }
 

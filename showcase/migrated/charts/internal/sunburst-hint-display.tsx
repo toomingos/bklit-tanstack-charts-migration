@@ -4,7 +4,7 @@ import type { ReactElement, ReactNode } from "react";
 
 interface SunburstHintDisplayProps {
   readonly children: ReactNode;
-  readonly className?: string;
+  readonly hintClassName?: string;
 }
 
 const HINT_DISPLAY_EMPTY_STYLE = { minHeight: 20 } as const;
@@ -16,12 +16,12 @@ const HINT_DISPLAY_PLACEHOLDER_STYLE = {
   textAlign: "center",
 } as const;
 
-const SunburstHintDisplay = ({ children, className }: SunburstHintDisplayProps): ReactElement => (
+const SunburstHintDisplay = ({ children, hintClassName }: SunburstHintDisplayProps): ReactElement => (
     <div
       aria-live="polite"
-      className={className}
+      className={hintClassName}
       style={
-        className !== undefined && className !== ""
+        hintClassName !== undefined && hintClassName !== ""
           ? HINT_DISPLAY_EMPTY_STYLE
           : HINT_DISPLAY_PLACEHOLDER_STYLE
       }

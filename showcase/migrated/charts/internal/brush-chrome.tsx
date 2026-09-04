@@ -1,12 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import type { ReactNode, RefObject, SVGProps } from "react";
 import { BrushBorderChrome } from "./brush-border-chrome";
 import { BrushHandleChrome } from "./brush-handle-chrome";
 import { BrushSelectionPatternChrome } from "./brush-selection-pattern-chrome";
 import { BrushTrackChrome } from "./brush-track-chrome";
 import type { BrushChromePattern } from "./brush-chrome-helpers";
+
+// Mount subscription for the portal chrome: no events to subscribe to, so the
+// Subscribe stays a stable no-op and snapshots flip false (SSR) to true (client).
+const subscribeBrushMount = (): (() => void) => (): void => {
+  // No events to subscribe to; the snapshot flips on hydration alone.
+};
+const getBrushMountSnapshot = (): boolean => true;
+const getBrushMountServerSnapshot = (): boolean => false;
 
 // Portal chrome for the host-owned native brushX: container/margin/trackExtent only.
 interface BrushHost {
@@ -41,8 +49,7 @@ const BrushChrome = ({
   selectionPattern,
   selectedBoxStyle,
 }: Readonly<BrushChromeProps>): ReactNode => {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() =>{  setMounted(true); }, []);
+  const mounted = useSyncExternalStore(subscribeBrushMount, getBrushMountSnapshot, getBrushMountServerSnapshot);
   if (innerWidth <= 0 || innerHeight <= 0) {return undefined;}
   const clampedX0 = Math.max(0, Math.min(innerWidth, x0));
   const clampedX1 = Math.max(0, Math.min(innerWidth, x1));

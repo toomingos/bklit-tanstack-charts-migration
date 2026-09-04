@@ -1,6 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from 'react';
-import type { CSSProperties, ReactElement, ReactNode } from 'react';
-import { createHeatmapHoverCoordinator } from './heatmap-hover-chrome';
+import { createContext, useContext, useMemo, useSyncExternalStore } from 'react';
 import type { HeatmapHoverCoordinator, HeatmapHoveredCell, HeatmapTooltipData } from './heatmap-hover-chrome';
 
 const HeatmapInteractionContext = createContext<HeatmapHoverCoordinator | null>(null);
@@ -80,53 +78,5 @@ const useHeatmapInteraction = (): HeatmapInteractionContextValue => {
   return value;
 }
 
-interface HeatmapInteractionProviderProps {
-  readonly children?: ReactNode;
-  readonly coordinator?: HeatmapHoverCoordinator;
-}
-
-const HeatmapInteractionProvider = ({ children, coordinator }: Readonly<HeatmapInteractionProviderProps>): ReactElement => {
-  // Owned coordinator is memoized, never a ref, because its identity is read during render.
-  // The empty factory keeps one stable instance per mount.
-  const ownCoordinator = useMemo(() => createHeatmapHoverCoordinator(), []);
-  const resolved = coordinator ?? ownCoordinator;
-  return <HeatmapInteractionContext.Provider value={resolved}>{children}</HeatmapInteractionContext.Provider>;
-};
-
-interface HeatmapInteractionBoundaryProps {
-  readonly children?: ReactNode;
-  readonly className?: string;
-  readonly style?: CSSProperties;
-}
-
-const HeatmapInteractionBoundary = ({ children, className, style }: Readonly<HeatmapInteractionBoundaryProps>): ReactElement => {
-  const coordinator = useHeatmapCoordinator();
-  const handlePointerLeave = useCallback((): void => { coordinator.clearInteraction(); }, [coordinator]);
-  return (
-    <div
-      className={className}
-      style={style}
-      onPointerLeave={handlePointerLeave}
-    >
-      {children}
-    </div>
-  );
-};
-
-interface HeatmapInteractionRootProps {
-  readonly children?: ReactNode;
-  readonly className?: string;
-  readonly style?: CSSProperties;
-  readonly coordinator?: HeatmapHoverCoordinator;
-}
-
-const HeatmapInteractionRoot = ({ children, className, style, coordinator }: Readonly<HeatmapInteractionRootProps>): ReactElement => (
-    <HeatmapInteractionProvider coordinator={coordinator}>
-      <HeatmapInteractionBoundary className={className} style={style}>
-        {children}
-      </HeatmapInteractionBoundary>
-    </HeatmapInteractionProvider>
-);
-
-export { useHeatmapCoordinatorOptional, useHeatmapInteractionOptional, useHeatmapInteraction, HeatmapInteractionProvider, HeatmapInteractionBoundary, HeatmapInteractionRoot };
-export type { HeatmapInteractionContextValue, HeatmapInteractionProviderProps, HeatmapInteractionBoundaryProps, HeatmapInteractionRootProps };
+export { HeatmapInteractionContext, useHeatmapCoordinator, useHeatmapCoordinatorOptional, useHeatmapInteractionOptional, useHeatmapInteraction };
+export type { HeatmapInteractionContextValue };

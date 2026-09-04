@@ -1,4 +1,6 @@
 // Center-stat number formatting: NumberFlow format subset plus the static Intl fallback.
+/** Currency display variants supported by NumberFlow (bklit `ChartStatFlowFormat` port). */
+type CenterStatCurrencyDisplay = "symbol" | "narrowSymbol" | "code" | "name";
 /** Subset of `Intl.NumberFormatOptions` supported by NumberFlow (bklit `ChartStatFlowFormat` port). */
 interface CenterStatFormat {
   readonly notation?: "standard" | "compact";
@@ -10,7 +12,7 @@ interface CenterStatFormat {
   readonly maximumSignificantDigits?: number;
   readonly style?: "decimal" | "percent" | "currency";
   readonly currency?: string;
-  readonly currencyDisplay?: "symbol" | "narrowSymbol" | "code" | "name";
+  readonly currencyDisplay?: CenterStatCurrencyDisplay;
   readonly unit?: string;
   readonly unitDisplay?: "short" | "long" | "narrow";
 }

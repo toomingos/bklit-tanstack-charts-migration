@@ -16,7 +16,6 @@ const isString = <Value>(candidate: Value): candidate is Value & string => typeo
 type ProjectionMode = "auto" | "target" | "manual";
 type ProjectionAutoMethod = "linearRegression" | "lastSegment";
 type ProjectionCurveKind = "linear" | "bezier";
-/** @deprecated Stepped density removed — projections always anchor → horizon. */
 type ProjectionPathDensity = "stepped" | "endpoints";
 
 interface ProjectionPoint {

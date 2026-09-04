@@ -18,7 +18,6 @@ function funnelSettleMs(n: number): number {
 
 // Covers the arming-to-effect gap before the WAAPI reveal timeline starts.
 const REVEAL_CLOCK_MARGIN_MS = 250;
-const REVEAL_CLOCK_MARGIN_MS = 250;
 
 export default function MigratedFunnel({ n }: { n: number }) {
   const [data, setData] = useState<SeededFunnelStage[]>(() =>

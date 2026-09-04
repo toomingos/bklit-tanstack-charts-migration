@@ -9,7 +9,7 @@ interface PatternPathProps {
   readonly height: number;
   readonly path?: string;
   readonly fill?: string;
-  readonly className?: string;
+  readonly pathClassName?: string;
   readonly background?: string;
   readonly stroke?: string;
   readonly strokeWidth?: number | string;
@@ -30,12 +30,12 @@ const PathImpl = ({
   strokeLinecap = "square",
   shapeRendering: edgeRendering = "auto",
   background,
-  className,
+  pathClassName,
 }: Readonly<PatternPathProps>): ReactElement => (
   <Pattern id={id} width={width} height={height}>
     {Boolean(background) && <rect width={width} height={height} fill={background} />}
     <path
-      className={cx("visx-pattern-path", className)}
+      className={cx("visx-pattern-path", pathClassName)}
       d={path}
       fill={fill}
       stroke={stroke}

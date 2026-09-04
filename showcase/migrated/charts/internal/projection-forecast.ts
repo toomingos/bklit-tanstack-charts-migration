@@ -89,11 +89,11 @@ interface BuildAutoFutureValuesOptions {
   readonly historyPoints: readonly HistoryPoint[];
   readonly horizonPoints: number;
   readonly intervalMs: number;
-  readonly pathDensity: ProjectionPathDensity;
+  readonly pathDensity?: ProjectionPathDensity;
 }
 
 const buildAutoFutureValues = (options: Readonly<BuildAutoFutureValuesOptions>): ProjectionPoint[] => {
-  const { anchorTime, anchorValue, autoMethod, historyPoints, horizonPoints, intervalMs, pathDensity } = options;
+  const { anchorTime, anchorValue, autoMethod, historyPoints, horizonPoints, intervalMs, pathDensity = "endpoints" } = options;
   const slope = resolveAutoSlope(autoMethod, historyPoints);
   if (pathDensity === "endpoints") {
     return buildEndpointProjectionValues({ anchorTime, anchorValue, horizonPoints, intervalMs, slope });

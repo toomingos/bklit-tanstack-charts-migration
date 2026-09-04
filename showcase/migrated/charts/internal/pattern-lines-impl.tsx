@@ -2,9 +2,23 @@ import type { ReactElement } from "react";
 import { Pattern } from "./pattern";
 import { cx, pathForOrientation, VERTICAL_ORIENTATION } from "./pattern-line-utils";
 import type { PatternOrientationType } from "./pattern-line-utils";
-import type { PatternLinecap, PatternLinesProps } from "./pattern-lines";
+import type { PatternLinecap } from "./pattern-lines";
 
 // Line-pattern implementation split out so pattern-lines holds only the public PatternLines component.
+// Internal class-name prop is lineClassName: forbid-component-props bans className on components.
+interface LinesImplProps {
+  readonly id: string;
+  readonly width: number;
+  readonly height: number;
+  readonly lineClassName?: string;
+  readonly background?: string;
+  readonly stroke?: string;
+  readonly strokeWidth?: number | string;
+  readonly strokeDasharray?: string | number;
+  readonly strokeLinecap?: PatternLinecap;
+  readonly shapeRendering?: string | number;
+  readonly orientation?: readonly PatternOrientationType[];
+}
 interface LinePathArgs {
   readonly id: string;
   readonly orientation: PatternOrientationType;
@@ -47,8 +61,8 @@ const LinesImpl = ({
   shapeRendering = "auto",
   orientation = VERTICAL_ORIENTATION,
   background,
-  className,
-}: Readonly<PatternLinesProps>): ReactElement => {
+  lineClassName,
+}: Readonly<LinesImplProps>): ReactElement => {
   const orientations = isOrientationList(orientation) ? orientation : [orientation];
   return (
     <Pattern id={id} width={width} height={height}>
@@ -61,7 +75,7 @@ const LinesImpl = ({
         />
       )}
       {orientations.map((orientationItem) => renderLinePath({
-        className,
+        className: lineClassName,
         height,
         id,
         orientation: orientationItem,

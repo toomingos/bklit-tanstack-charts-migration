@@ -39,7 +39,7 @@ const HexagonsImpl = ({
   const sqrtSize = Math.sqrt(size);
   return (
     <PathImpl
-      className={cx("visx-pattern-hexagon", className)}
+      pathClassName={cx("visx-pattern-hexagon", className)}
       path={`M ${height},0 l ${height},0 l ${height / HALF_DIVISOR},${(height * sqrtSize) / HALF_DIVISOR} l ${-height / HALF_DIVISOR},${(height * sqrtSize) / HALF_DIVISOR} l ${-height},0 l ${-height / HALF_DIVISOR},${(-height * sqrtSize) / HALF_DIVISOR} Z M 0,${(height * sqrtSize) / HALF_DIVISOR} l ${height / HALF_DIVISOR},0 M ${HEXAGON_TILE_SPAN * height},${(height * sqrtSize) / HALF_DIVISOR} l ${-height / HALF_DIVISOR},0`}
       id={id}
       width={size}

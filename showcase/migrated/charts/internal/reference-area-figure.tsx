@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 import { edgeFadeMaskStops } from "./fade-mask";
 import { renderPatternPreset } from "./pattern-preset-render";
 import type { PatternPresetId } from "./pattern-preset";
@@ -170,6 +170,16 @@ const buildReferenceAreaMarkers = (rect: Readonly<ReferenceAreaRect>, style: Rea
   );
 }
 
+// Overlay svg floats above the plot area; geometry comes from the resolved spatial model.
+const referenceAreaSvgStyle = (spatial: Readonly<ReferenceAreaSpatial>): CSSProperties => ({
+  left: spatial.margin.left,
+  overflow: "visible",
+  pointerEvents: "none",
+  position: "absolute",
+  top: spatial.margin.top,
+  zIndex: -1,
+});
+
 const buildReferenceAreaFigure = (options: Readonly<ReferenceAreaFigureOptions>): ReactNode => {
   const { style, spatial, patternNode, figureRef } = options;
   const rect: ReferenceAreaRect | undefined = spatial.rect;
@@ -189,7 +199,7 @@ const buildReferenceAreaFigure = (options: Readonly<ReferenceAreaFigureOptions>)
       aria-hidden="true"
       width={spatial.innerWidth}
       height={spatial.innerHeight}
-      style={{ left: spatial.margin.left, overflow: "visible", pointerEvents: "none", position: "absolute", top: spatial.margin.top, zIndex: -1 }}
+      style={referenceAreaSvgStyle(spatial)}
     >
       <g ref={figureRef} className={style.className ?? "chart-reference-area"} style={REFERENCE_AREA_GROUP_STYLE}>
         {buildFadeMaskDefs(chrome.edgeMask, style, spatial)}

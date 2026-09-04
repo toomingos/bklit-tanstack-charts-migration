@@ -308,8 +308,12 @@ const withZeroFallback = (mapped: number | undefined): number => mapped ?? 0;
  */
 const withAbsentFallback = (text: string | undefined, absent: string): string => text ?? absent;
 
+// Raw ChartDatum record field at the TanStack I/O boundary; call sites narrow
+// It with the isNumber/isString guards instead of asserting a shape.
+type RawDatumField = ChartDatum[string];
+
 // Stringifies an untyped datum field without Object's default "[object Object]" dump.
-const stringifyDatumField = (value: unknown, absent: string): string => {
+const stringifyDatumField = (value: RawDatumField, absent: string): string => {
   if (isString(value)) {return value;}
   if (isNumber(value)) {return String(value);}
   if (value instanceof Date) {return String(value);}
@@ -1033,21 +1037,18 @@ const AreaChart = ({
   if (!isSameBrushRange(brushRangeValue, nextBrushRangeValue)) {
     setBrushRangeValue(nextBrushRangeValue);
   }
-  const brushOnSelectionChangeRef = useRef(brushConfig?.onSelectionChange);
-  useEffect(() => {
-    brushOnSelectionChangeRef.current = brushConfig?.onSelectionChange;
-  });
+  const brushOnSelectionChange = brushConfig?.onSelectionChange;
   const handleBrushChange = useCallback((next: BrushRange<Date>, context: Readonly<{ reason: BrushXChange<Date> }>) => {
     const { reason } = context;
     if (reason.type === "cancel") {return;}
     const startMs = next.start.getTime();
     const endMs = next.end.getTime();
     if (startMs === endMs) {
-      if (reason.type === "commit") {brushOnSelectionChangeRef.current?.(null);}
+      if (reason.type === "commit") {brushOnSelectionChange?.(null);}
       return;
     }
-    brushOnSelectionChangeRef.current?.({ end: next.end, start: next.start });
-  }, []);
+    brushOnSelectionChange?.({ end: next.end, start: next.start });
+  }, [brushOnSelectionChange]);
   const brushValues = useMemo((): Date[] | undefined => {
     if (!hasBrush) {return undefined;}
     const out: Date[] = [];
@@ -1515,6 +1516,7 @@ const AreaChart = ({
     enabled: tooltipEnabled && (tooltip?.showDatePill ?? true),
     tooltipSpring: chartConfig.tooltipSpring,
   });
+  const { overlayHostRef: datePillOverlayHostRef } = datePill;
   // Live tooltip date store for marker-active consumers.
   const markerActiveStore = useMemo(() => createActiveMarkersStore(), []);
 
@@ -1723,7 +1725,7 @@ const AreaChart = ({
   ) : undefined;
   const datePillLayer = tooltipEnabled ? (
     <div
-      ref={datePill.overlayHostRef}
+      ref={datePillOverlayHostRef}
       style={DATE_PILL_HOST_STYLE}
     />
   ) : undefined;

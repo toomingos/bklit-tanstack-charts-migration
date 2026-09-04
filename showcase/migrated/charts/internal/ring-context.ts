@@ -52,6 +52,15 @@ type RingContextValue = RingStableValue & RingHoverValue;
 const RingStableContext = createContext<RingStableValue | undefined>(undefined);
 const RingHoverCoordinatorContext = createContext<RingHoverCoordinator | undefined>(undefined);
 
+// Default per-ring colors, in bklit ring-context.tsx order.
+const defaultRingColors = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+];
+
 const useRingStable = (): RingStableValue => {
   const ctx = useContext(RingStableContext);
   if (!ctx) {
@@ -102,6 +111,7 @@ const useRing = (): RingContextValue => ({ ...useRingStable(), ...useRingHover()
 export {
   RingHoverCoordinatorContext,
   RingStableContext,
+  defaultRingColors,
   useRing,
   useRingHover,
   useRingHoverCoordinator,

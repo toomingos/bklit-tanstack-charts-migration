@@ -17,7 +17,7 @@ import { resolveEnterTransition } from './internal/enter-transition';
 import type { PieEnterTransition, ResolvedTiming } from './internal/enter-transition';
 import { useDebouncedContainerSize } from "./internal/use-container-size";
 import { PieStableContext, PieHoverCoordinatorContext } from './internal/pie-center-context';
-import type { PieStableValue } from './internal/pie-center';
+import type { PieStableValue, PieData, PieArcData } from './internal/pie-center';
 import { defaultPieColors } from "./internal/pie-default-colors";
 import type { PieSliceProps } from "./internal/pie-slice";
 import { CHART_CATEGORY_PALETTE } from "./internal/design-tokens";
@@ -34,23 +34,6 @@ const PIE_STAGGER_EACH_MS = 80;
 const PIE_STAGGER_OFFSET_MS = 100;
 // Charts smaller than this render the empty placeholder (no room for arcs).
 const MIN_PIE_SIZE_PX = 10;
-
-interface PieData {
-  readonly label: string;
-  readonly value: number;
-  readonly color?: string;
-  readonly fill?: string;
-}
-
-interface PieArcData {
-  readonly data: PieData;
-  readonly index: number;
-  readonly startAngle: number;
-  readonly endAngle: number;
-  readonly padAngle: number;
-  readonly value: number;
-}
-
 
 // RadialArc has no per-datum opacity; fade rides fill alpha via color-mix (same as sunburst).
 const applyAlphaToColor = (color: string, alpha: number): string => {
@@ -637,7 +620,5 @@ export {
   PieChart,
 };
 export type {
-  PieArcData,
   PieChartProps,
-  PieData,
 };

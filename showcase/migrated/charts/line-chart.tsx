@@ -687,10 +687,8 @@ export const LineChart = ({
     () => buildLoadingSkeletonRows(data.length, lines[0]?.dataKey ?? "value"),
     [data.length, lines],
   );
-  const yDomainSource = useMemo(
-    () => status === "loading" ? skeletonRows : visibleData,
-    [status, skeletonRows, visibleData],
-  );
+  // Cheap ternary over two memoized sources; a useMemo here costs more than it saves.
+  const yDomainSource = status === "loading" ? skeletonRows : visibleData;
   const yDomainsByAxis = useMemo(
     () =>
       resolveYDomainsByAxis({

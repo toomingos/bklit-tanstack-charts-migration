@@ -4,7 +4,6 @@
  */
 
 import {
-  Children,
   isValidElement,
   useCallback,
   useEffect,
@@ -51,6 +50,7 @@ import { SunburstCenterOverlay } from "./internal/sunburst-center-overlay";
 import { SunburstLabelsOverlay } from "./internal/sunburst-labels-overlay";
 import { SunburstHitLayer } from "./internal/sunburst-hit";
 import type { SunburstHitItem } from "./internal/sunburst-hit";
+import type { SunburstSegmentProps } from "./internal/sunburst-segment";
 import { resolveSunburstHintContent } from "./internal/sunburst-hint-content";
 import { SunburstHintDisplay } from "./internal/sunburst-hint";
 import type { SunburstHintProps } from "./internal/sunburst-hint";
@@ -272,7 +272,7 @@ interface SunburstChartProps {
  * Match bklit: accept function or object types so memoised carriers still classify by displayName alone.
  */
 const isDisplayNameCarrier = (type: ReactElement["type"]): type is ReactElement["type"] & { displayName?: string } =>
-  typeof type === "function" || (typeof type === "object" && type !== null);
+  typeof type === "function" || typeof type === "object";
 
 const isChildOfKind = (child: ReactNode, displayName: string): boolean => {
   if (!isValidElement(child)) {return false;}
@@ -311,8 +311,8 @@ const classifyChildren = (children: ReactNode): ClassifiedChildren => {
   const breadcrumbChildren: ReactNode[] = [];
   const segmentConfigs: SunburstSegmentConfig[] = [];
 
-  Children.forEach(children, (child) => {
-    if (!isValidElement(child)) {return;}
+  // Flatten nested child arrays without React.Children; key assignment is unused here.
+  for (const child of [children].flat(Infinity)) {
     if (isChildOfKind(child, "SunburstCenter")) {
       centerCount += 1;
     } else if (isChildOfKind(child, "SunburstLabels")) {
@@ -337,7 +337,7 @@ const classifyChildren = (children: ReactNode): ClassifiedChildren => {
     } else {
       // Non-carrier child (e.g. plain text) — nothing to classify.
     }
-  });
+  };
 
   return {
     breadcrumbChildren,
@@ -352,7 +352,7 @@ const classifyChildren = (children: ReactNode): ClassifiedChildren => {
 interface SunburstChartInnerProps {
   readonly data: SunburstNode;
   readonly size: number;
-  readonly className?: string;
+  readonly rootClassName?: string;
   readonly focus: Focus;
   readonly layout: {
     arcs: ArcDatum[];
@@ -382,7 +382,7 @@ interface SunburstChartInnerProps {
 const SunburstChartInner = ({
   data,
   size,
-  className,
+  rootClassName,
   focus,
   layout,
   focusId,
@@ -769,8 +769,6 @@ const SunburstChartInner = ({
 
   // --- Labels: zoom-morphed via transitionGeometry(prevFocus→focus, zoomT);
   // SB12 (legacy parity): unrelated arcs' labels are CULLED on hover (not dimmed).
-  const enterDurationMs = SUNBURST_SWEEP_MS;
-
   const labelItems = useMemo(() => {
     if (labelsCount === 0) {return [];}
     const inZoom = zoomT < 1;
@@ -808,7 +806,7 @@ const SunburstChartInner = ({
 
   const maxRevealDelay = useMemo(() => maxRevealDelayMs(arcs, enterStaggerScale), [arcs, enterStaggerScale]);
 
-  const labelsRevealDelayMs = maxRevealDelay + enterDurationMs * LABELS_REVEAL_DELAY_FRACTION;
+  const labelsRevealDelayMs = maxRevealDelay + SUNBURST_SWEEP_MS * LABELS_REVEAL_DELAY_FRACTION;
 
   const labelRevealAnimsRef = useRef<Animation[]>([]);
 
@@ -819,8 +817,8 @@ const SunburstChartInner = ({
     if (!svg) {return null;}
     cancelLabelAnimations(labelRevealAnimsRef.current);
     labelRevealAnimsRef.current = [];
-    return startLabelReveal(svg, labelsRevealDelayMs, enterDurationMs);
-  }, [labelsRevealDelayMs, enterDurationMs]);
+    return startLabelReveal(svg, labelsRevealDelayMs, SUNBURST_SWEEP_MS);
+  }, [labelsRevealDelayMs]);
 
   // Redundant dep omitted: runLabelsReveal already changes identity exactly
   // When labelsRevealDelayMs changes (its useCallback dep, above).
@@ -876,7 +874,7 @@ const SunburstChartInner = ({
 
   return (
     <div
-      className={className}
+      className={rootClassName}
       data-bkm-chart="sunburst"
       ref={containerRef}
       style={outerStyle}
@@ -910,7 +908,7 @@ const SunburstChartInner = ({
         )}
       </div>
       {hintCount > 0 && (
-        <SunburstHintDisplay className={hintProps?.className}>
+        <SunburstHintDisplay hintClassName={hintProps?.className}>
           {resolveSunburstHintContent(hintProps?.children, {
             focus,
             hintText,
@@ -1074,7 +1072,7 @@ const renderSunburstInner = (props: Readonly<SunburstInnerRenderProps>): ReactEl
     <SunburstChartInner
       data={data}
       size={size}
-      className={className}
+      rootClassName={className}
       focus={focus}
       layout={layout}
       focusId={focusId}
@@ -1150,17 +1148,6 @@ const SunburstChart = ({
 
 SunburstChart.displayName = "SunburstChart";
 
-interface SunburstSegmentProps {
-  readonly index: number;
-  readonly color?: string;
-  readonly fill?: string;
-  readonly fillOpacity?: number;
-}
-
-const SunburstSegment = (_props: SunburstSegmentProps): null => null;
-
-SunburstSegment.displayName = "SunburstSegment";
-
 export { SunburstCenter } from "./internal/sunburst-center";
 export { SunburstLabels } from "./internal/sunburst-labels";
 export type { SunburstLabelsProps } from "./internal/sunburst-labels";
@@ -1169,15 +1156,14 @@ export type { SunburstHintContext, SunburstHintProps } from "./internal/sunburst
 export {
   SunburstBreadcrumb,
 } from "./internal/sunburst-breadcrumb";
-export {
-  buildSunburstBreadcrumbItems,
-  useSunburstBreadcrumbItems,
-} from "./internal/sunburst-breadcrumb-items";
+export { buildSunburstBreadcrumbItems, useSunburstBreadcrumbItems } from "./internal/sunburst-breadcrumb-items";
 export type {
   SunburstBreadcrumbProps,
 } from "./internal/sunburst-breadcrumb";
 export type { SunburstBreadcrumbItem } from "./internal/sunburst-breadcrumb-items";
 export type { ArcDatum, Focus } from "./internal/sunburst-geometry";
 export type { SunburstNode } from "./internal/sunburst-types";
-export { SunburstChart, SunburstSegment };
-export type { SunburstChartProps, SunburstSegmentProps };
+export { SunburstChart };
+export { SunburstSegment } from "./internal/sunburst-segment";
+export type { SunburstChartProps };
+export type { SunburstSegmentProps } from "./internal/sunburst-segment";

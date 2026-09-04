@@ -35,7 +35,7 @@ const PatternLines = ({
 }: Readonly<PatternLinesProps>): ReactElement => (
   <LinesImpl
     background={background}
-    className={className}
+    lineClassName={className}
     height={height}
     id={id}
     orientation={orientation}

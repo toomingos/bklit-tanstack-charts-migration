@@ -27,6 +27,7 @@ import { TS_CHART_SVG_SELECTOR, useChoroplethReveal } from "./internal/choroplet
 import { matricesEqual, queueZoomFrame, resolveWheelZoomDelta, resolveZoomFrameMatrix, zoomSnapshotChanged } from "./internal/choropleth-zoom-motion";
 import { intFmt } from "./internal/formatters";
 import { ChoroplethGraticuleOverlay } from "./internal/choropleth-graticule";
+import type { ChoroplethGraticuleProps } from "./internal/choropleth-graticule-props";
 import { findRevealRoot, isRevealed } from "./internal/deferred-reveal";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { useContainerWidth } from "./internal/use-container-size";
@@ -88,12 +89,6 @@ interface ChoroplethTooltipProps {
   readonly className?: string;
   readonly panelStyle?: React.CSSProperties;
   readonly backgroundColor?: string;
-}
-
-interface ChoroplethGraticuleProps {
-  readonly stroke?: string;
-  readonly strokeWidth?: number;
-  readonly step?: [number, number];
 }
 
 type ChoroplethZoomInstance<TElement extends Element> = ProvidedZoom<TElement> & ZoomState;
@@ -194,7 +189,7 @@ const resolveFeatureFill = (feature: ChoroplethFeature, index: number, featureCo
   return DEFAULT_CHOROPLETH_COLORS[index % DEFAULT_CHOROPLETH_COLORS.length] ?? "var(--chart-1)";
 }
 
-const choroplethFeatureKey = (feature: Readonly<Pick<ChoroplethFeature, "properties" | "id">>): string => feature.properties?.name ?? String(feature.id ?? "")
+const choroplethFeatureKey = (feature: Readonly<Pick<ChoroplethFeature, "properties" | "id">>): string => feature.properties.name ?? String(feature.id ?? "")
 
 // Feature keys carry valueKey's string:<length>: wrapper; match the wrapped form, not the raw name.
 const geoValueKey = (value: string): string => `string:${value.length}:${value}`
@@ -413,7 +408,7 @@ const renderDefaultTooltipCard = (
 ): ReactElement => {
   const name = cfg.getFeatureName
     ? cfg.getFeatureName(feature, index)
-    : (feature.properties?.name ?? `Feature ${index}`);
+    : (feature.properties.name ?? `Feature ${index}`);
   const value = cfg.getFeatureValue?.(feature, index);
   return (
     <div
@@ -779,7 +774,7 @@ const ChoroplethChartBody = ({
     containerRefForFallback.current = el;
   }, []);
   const handleTooltipBody = useCallback(
-    (ctx: ChartTooltipBodyRenderContext<ChoroplethFeature, ChartValue>): ReactNode =>
+    (ctx: ChartTooltipBodyRenderContext<ChoroplethFeature>): ReactNode =>
       renderChoroplethTooltipBody(ctx, getTooltipConfig),
     [getTooltipConfig],
   );
@@ -1038,9 +1033,9 @@ export type {
   ChoroplethFeature,
   ChoroplethFeatureProperties,
   ChoroplethFeatureProps,
-  ChoroplethGraticuleProps,
   ChoroplethTooltipProps,
   ChoroplethZoomContextValue,
   ChoroplethZoomInstance,
   Margin,
 };
+export type { ChoroplethGraticuleProps } from "./internal/choropleth-graticule-props";

@@ -7,7 +7,7 @@ import { defineChart } from "@tanstack/charts/scene";
 import { polar, radialArc } from "@tanstack/charts/polar";
 import { pieArcPath } from "./internal/pie-geometry";
 import { RingCenter } from "./internal/ring-center";
-import { RingHoverCoordinatorContext, RingStableContext } from "./internal/ring-context";
+import { RingHoverCoordinatorContext, RingStableContext, defaultRingColors } from "./internal/ring-context";
 import type { RingData, RingStableValue, ScrubRingLayer } from "./internal/ring-context";
 import { createRingHoverCoordinator, ringHoverScale } from './internal/ring-hover-chrome';
 import type { RingHoverCoordinator } from './internal/ring-hover-chrome';
@@ -38,14 +38,6 @@ const MARKS_GROUP_SELECTOR = ".ts-chart__marks";
 // Static subtree styles; hoisted so no object is allocated per render.
 const SCRUB_SVG_STYLE = { contain: "layout style paint" } as const;
 const RING_CENTER_OVERLAY_STYLE = { alignItems: "center", display: "flex", inset: 0, justifyContent: "center", pointerEvents: "none", position: "absolute" } as const;
-
-const defaultRingColors = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-];
 
 type RingLineCap = "round" | "butt";
 
@@ -88,8 +80,9 @@ const classifyChildren = (children: Readonly<ReactNode>, geometryScrubbing: bool
   const ringConfigs: RingChildConfig[] = [];
 
   for (const child of Children.toArray(children)) {
-    if (!isValidElement(child)) {continue;}
-    if (isRingCenterElement(child)) {
+    if (!isValidElement(child)) {
+      // Non-element children carry no ring configuration.
+    } else if (isRingCenterElement(child)) {
       centerChildren.push(child);
     } else if (isRingElement(child) && isValidElement<RingProps>(child) && !geometryScrubbing) {
       const { props } = child;
@@ -825,7 +818,6 @@ const Ring = (_props: Readonly<RingProps>): undefined => undefined;
 Ring.displayName = "Ring";
 
 export {
-  defaultRingColors,
   Ring,
   RingChart,
 };
@@ -834,6 +826,5 @@ export type {
   RingLineCap,
   RingProps,
 };
-export { useRing, useRingHover, useRingHoverCoordinator, useRingStable } from "./internal/ring-context";
 export type { RingContextValue, RingData, RingHoverValue, RingStableValue, ScrubRingLayer } from "./internal/ring-context";
 export type { RingEnterTransition } from './internal/enter-transition';

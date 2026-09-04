@@ -38,7 +38,7 @@ const WavesImpl = ({
   className,
 }: Readonly<PatternWavesProps>): ReactElement => (
   <PathImpl
-      className={cx("visx-pattern-wave", className)}
+      pathClassName={cx("visx-pattern-wave", className)}
       path={`M 0 ${height / HALF_DIVISOR} c ${height / EIGHTH_DIVISOR} ${-height / QUARTER_DIVISOR} , ${(height * WAVE_CONTROL_NUMERATOR) / EIGHTH_DIVISOR} ${-height / QUARTER_DIVISOR} , ${height / HALF_DIVISOR} 0
              c ${height / EIGHTH_DIVISOR} ${height / QUARTER_DIVISOR} , ${(height * WAVE_CONTROL_NUMERATOR) / EIGHTH_DIVISOR} ${height / QUARTER_DIVISOR} , ${height / HALF_DIVISOR} 0 M ${-height / HALF_DIVISOR} ${height / HALF_DIVISOR}
              c ${height / EIGHTH_DIVISOR} ${height / QUARTER_DIVISOR} , ${(height * WAVE_CONTROL_NUMERATOR) / EIGHTH_DIVISOR} ${height / QUARTER_DIVISOR} , ${height / HALF_DIVISOR} 0 M ${height} ${height / HALF_DIVISOR}

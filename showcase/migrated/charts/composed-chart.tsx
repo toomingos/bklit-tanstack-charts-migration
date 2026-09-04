@@ -1,6 +1,5 @@
 // Bklit ComposedChart on TanStack Charts. SeriesBar (raw) + Area/Line (decimated); one entry per dataKey.
 import {
-  Children,
   Fragment,
   isValidElement,
   useCallback,
@@ -161,13 +160,26 @@ const DEFAULT_TICK_COUNT = 5;
 // Props and datum fields arrive as unknown; each predicate carries one typeof check.
 const isStringValue = (value: ChartTooltipConfig["indicatorColor"]): value is string => typeof value === "string";
 const isNumberValue = <Value,>(value: Value): value is Value & number => typeof value === "number";
+const isStringField = <Subject,>(value: Subject): value is Subject & string => typeof value === "string";
+
+interface StringifyDatumFieldParams {
+  readonly absent: string;
+  readonly value: unknown;
+}
+
+// JSON.stringify returns undefined for functions, symbols, and undefined at runtime.
+// The lib types it as string, so stringifyJson pins the honest type and fallbacks stay conditional.
+const stringifyJson = (params: Readonly<{ value: unknown }>): string | undefined =>
+  JSON.stringify(params.value);
+
 // Stringifies an untyped datum field without Object's default "[object Object]" dump (same pattern as area-chart.tsx).
-const stringifyDatumField = (value: unknown, absent: string): string => {
-  if (typeof value === "string") {return value;}
-  if (typeof value === "number") {return String(value);}
+const stringifyDatumField = (params: Readonly<StringifyDatumFieldParams>): string => {
+  const { absent, value } = params;
+  if (isStringField(value)) {return value;}
+  if (isNumberValue(value)) {return String(value);}
   if (value instanceof Date) {return String(value);}
   if (value === null || value === undefined) {return absent;}
-  return JSON.stringify(value) ?? absent;
+  return stringifyJson({ value }) ?? absent;
 };
 // Locally-owned optional values represent "absent" as `undefined`, never `null`. This file can spell neither the `undefined` identifier (eslint(no-undefined)) nor the `void` operator (eslint(no-void)) in value position — both are enabled, and each rule's suggested fix is exactly what the other rule bans.
 // NOTHING is destructured from an object typed with an optional `undefined`-valued property, reaching the same runtime value without ever writing either banned token in value position.
@@ -393,7 +405,8 @@ const visitComposedChild = (child: Readonly<ReactElement>, sink: ComposedChildSi
 };
 
 const visitComposedChildren = (node: ReactNode, sink: ComposedChildSink): void => {
-  for (const child of Children.toArray(node)) {
+  // Flatten nested child arrays without React.Children; key assignment is unused here.
+  for (const child of [node].flat(Infinity)) {
     if (isValidElement(child)) {
       // Fragment props are `{ children?: ReactNode }` by React's own contract; pinning the
       // Generic recovers the type without asserting.
@@ -548,7 +561,7 @@ const ComposedChart = ({
   const projectionConfigs = useMemo(() => extractProjectionLineConfigs(children), [children]);
   const composedProjectionLines = useMemo((): ChartDatum[] => {
     const out: ChartDatum[] = [];
-    for (const child of Children.toArray(children)) {
+    for (const child of [children].flat(Infinity)) {
       if (isValidElement(child) && child.type !== Fragment) {
         const role = roleOf(child.type);
         if (role === "projectionLine" && isValidElement<ChartDatum>(child)) {out.push(child.props);}
@@ -558,7 +571,7 @@ const ComposedChart = ({
   }, [children]);
   const composedProjectionEndMarkers = useMemo((): ChartDatum[] => {
     const out: ChartDatum[] = [];
-    for (const child of Children.toArray(children)) {
+    for (const child of [children].flat(Infinity)) {
       if (isValidElement(child) && child.type !== Fragment) {
         const role = roleOf(child.type);
         if (role === "projectionEndMarker" && isValidElement<ChartDatum>(child)) {out.push(child.props);}
@@ -568,7 +581,7 @@ const ComposedChart = ({
   }, [children]);
   const composedTerminalMarkers = useMemo((): ChartDatum[] => {
     const out: ChartDatum[] = [];
-    for (const child of Children.toArray(children)) {
+    for (const child of [children].flat(Infinity)) {
       if (isValidElement(child) && child.type !== Fragment) {
         const role = roleOf(child.type);
         if (role === "terminalMarker" && isValidElement<ChartDatum>(child)) {out.push(child.props);}
@@ -1026,7 +1039,7 @@ const ComposedChart = ({
             rows.push({
               color: strokeColor ?? (pointColor !== NOTHING && pointColor !== "" ? pointColor : "transparent"),
               label: series.dataKey,
-              value: isNumberValue(value) ? value : stringifyDatumField(value, "0"),
+              value: isNumberValue(value) ? value : stringifyDatumField({ absent: "0", value }),
             });
           }
           return rows;
@@ -1046,7 +1059,7 @@ const ComposedChart = ({
   const dateLabelsForPill = useMemo(() => renderData.map((row: Readonly<ChartDatum>) => {
     const value = row[xDataKey];
     if (value instanceof Date) {return shortDateFmt.format(value);}
-    return stringifyDatumField(value, "");
+    return stringifyDatumField({ absent: "", value });
   }), [renderData, xDataKey]);
   const datePill = useDatePillOverlay({
     dateLabels: dateLabelsForPill,

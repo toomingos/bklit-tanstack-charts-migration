@@ -24,7 +24,7 @@ const useHeatmapFocusScheduler = ({
    * Mirrors `./focus-injection.ts` capture; `source: 'pointer'` avoids C1 legend-dim states.
    */
   const renderContextRef = useRef<HeatmapRenderSnapshot | undefined>(undefined);
-  const focusTimerRef = useRef<number | undefined>(undefined);
+  const focusTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | undefined>(undefined);
   const focusedKeyRef = useRef<string | undefined>(undefined);
   const tooltipConfigRef = useRef(tooltipConfig);
   // Latest config sync post-commit; the scheduler below reads it at event

@@ -1,7 +1,22 @@
 import type { ReactNode } from 'react';
 import type { PieEnterTransition } from "./enter-transition";
-import type { PieData, PieArcData } from "../pie-chart";
 import type { CenterStatFormat } from './center-stat';
+
+interface PieData {
+  readonly label: string;
+  readonly value: number;
+  readonly color?: string;
+  readonly fill?: string;
+}
+
+interface PieArcData {
+  readonly data: PieData;
+  readonly index: number;
+  readonly startAngle: number;
+  readonly endAngle: number;
+  readonly padAngle: number;
+  readonly value: number;
+}
 
 interface PieStableValue {
   readonly data: PieData[];
@@ -61,4 +76,6 @@ export type {
   PieCenterFormat,
   PieCenterRenderProps,
   PieCenterProps,
+  PieData,
+  PieArcData,
 };

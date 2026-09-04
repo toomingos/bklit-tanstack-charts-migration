@@ -18,14 +18,23 @@ export {
 export {
   useHeatmapInteractionOptional,
   useHeatmapInteraction,
-  HeatmapInteractionProvider,
-  HeatmapInteractionBoundary,
-  HeatmapInteractionRoot,
   type HeatmapInteractionContextValue,
-  type HeatmapInteractionProviderProps,
-  type HeatmapInteractionBoundaryProps,
-  type HeatmapInteractionRootProps,
 } from "./internal/heatmap-interaction";
+
+export {
+  HeatmapInteractionProvider,
+  type HeatmapInteractionProviderProps,
+} from "./internal/heatmap-interaction-provider";
+
+export {
+  HeatmapInteractionBoundary,
+  type HeatmapInteractionBoundaryProps,
+} from "./internal/heatmap-interaction-boundary";
+
+export {
+  HeatmapInteractionRoot,
+  type HeatmapInteractionRootProps,
+} from "./internal/heatmap-interaction-root";
 
 export {
   HeatmapCells,

@@ -14,16 +14,15 @@ import { NATIVE_MOTION_MAX_POINTS } from "./design-tokens";
  * so the renderer reads it as server-rendered and the default `initial: true` never plays the entrance.
  */
 const instance = motion({ initial: "always" });
-// D472: the static SVG renderer `<Chart>` itself uses; same gradient/tooltip/focus support, no
-// motion cascade, reads the definition's `svgAnimation` gate.
+// D472: The static SVG renderer `<Chart>` itself uses; same gradient/tooltip/focus support, no
+// Motion cascade, reads the definition's `svgAnimation` gate.
 const staticInstance = createSvgChartRenderer(renderChartSvg);
 
-// SAFETY: both renderers read points through the definition's accessors and never inspect
-// TDatum at runtime, so retyping the shared instances for each host is sound.
+// TanStack's UniversalChartRenderer is definition-agnostic by design, so each host
+// Converts it with no assertion and stable shared identity.
 const asRenderer = <TDatum, TXValue extends ChartValue, TYValue extends ChartValue>(
   renderer: typeof instance | typeof staticInstance,
-): ChartRenderer<TDatum, TXValue, TYValue> =>
-  renderer as ChartRenderer<TDatum, TXValue, TYValue>;
+): ChartRenderer<TDatum, TXValue, TYValue> => renderer;
 
 /**
  * D472: cardinality-gated renderer for per-datum keyed marks (dots, bars, candles). Motion renderer

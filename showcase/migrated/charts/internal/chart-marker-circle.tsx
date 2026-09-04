@@ -5,7 +5,6 @@ const MARKER_ICON_FONT_SCALE = 0.5;
 const MARKER_ICON_HOVER_SCALE = 1.15;
 const MARKER_ICON_REST_SCALE = 1;
 const MARKER_CIRCLE_DEFAULT_BORDER_WIDTH = 1.5;
-const FOCUSABLE_TAB_INDEX = 0;
 
 interface MarkerCircleHtmlProps {
   readonly icon: ReactNode;
@@ -19,10 +18,10 @@ interface MarkerCircleHtmlProps {
 }
 
 interface MarkerActivation {
-  readonly handleClick: (event: MouseEvent<HTMLDivElement>) => void;
-  readonly handleKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
-  readonly handleIconEnter: (event: MouseEvent<HTMLDivElement>) => void;
-  readonly handleIconLeave: (event: MouseEvent<HTMLDivElement>) => void;
+  readonly handleClick: (event: MouseEvent<HTMLElement>) => void;
+  readonly handleKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+  readonly handleIconEnter: (event: MouseEvent<HTMLElement>) => void;
+  readonly handleIconLeave: (event: MouseEvent<HTMLElement>) => void;
 }
 
 interface MarkerActivationParams {
@@ -56,13 +55,13 @@ const useMarkerActivation = (params: Readonly<MarkerActivationParams>): MarkerAc
     [onClick, navigationHref, target],
   );
   const handleClick = useCallback(
-    (event: MouseEvent<HTMLDivElement>): void => {
+    (event: MouseEvent<HTMLElement>): void => {
       activate(event);
     },
     [activate],
   );
   const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLDivElement>): void => {
+    (event: KeyboardEvent<HTMLElement>): void => {
       if (!hasAction) {return;}
       if (event.key !== "Enter" && event.key !== " ") {return;}
       event.preventDefault();
@@ -71,14 +70,14 @@ const useMarkerActivation = (params: Readonly<MarkerActivationParams>): MarkerAc
     [hasAction, activate],
   );
   const handleIconEnter = useCallback(
-    (event: MouseEvent<HTMLDivElement>): void => {
+    (event: MouseEvent<HTMLElement>): void => {
       if (hasAction) {
         event.currentTarget.style.transform = `scale(${MARKER_ICON_HOVER_SCALE})`;
       }
     },
     [hasAction],
   );
-  const handleIconLeave = useCallback((event: MouseEvent<HTMLDivElement>): void => {
+  const handleIconLeave = useCallback((event: MouseEvent<HTMLElement>): void => {
     event.currentTarget.style.transform = `scale(${MARKER_ICON_REST_SCALE})`;
   }, []);
   return { handleClick, handleIconEnter, handleIconLeave, handleKeyDown };
@@ -96,6 +95,7 @@ const MARKER_CIRCLE_BORDER_RADIUS = 9999;
 
 const buildMarkerCircleStyle = (params: Readonly<MarkerCircleStyleParams>): CSSProperties => ({
   alignItems: "center",
+  appearance: "none",
   backgroundColor: params.color ?? "var(--chart-marker-background)",
   border: `${params.borderWidth}px solid ${params.borderColor ?? "var(--chart-marker-border)"}`,
   borderRadius: MARKER_CIRCLE_BORDER_RADIUS,
@@ -103,10 +103,12 @@ const buildMarkerCircleStyle = (params: Readonly<MarkerCircleStyleParams>): CSSP
   color: "var(--chart-marker-foreground)",
   cursor: params.hasAction ? "pointer" : undefined,
   display: "flex",
+  fontFamily: "inherit",
   fontSize: params.size * MARKER_ICON_FONT_SCALE,
   height: params.size,
   justifyContent: "center",
   overflow: "hidden",
+  padding: 0,
   transition: "transform 150ms ease-out",
   width: params.size,
 });
@@ -125,24 +127,31 @@ const MarkerCircleHtml = ({
   // The href-as-navigation-target is falsy-checked (empty string means "no link"), so normalize
   // Through `??` once instead of comparing against the `undefined` literal downstream.
   const navigationHref = href ?? "";
-  const { handleClick, handleKeyDown, handleIconEnter, handleIconLeave } = useMarkerActivation({ hasAction, navigationHref, onClick, target });
+  const { handleClick, handleIconEnter, handleIconLeave } = useMarkerActivation({ hasAction, navigationHref, onClick, target });
   const circleStyle = useMemo<CSSProperties>(
     () => buildMarkerCircleStyle({ borderColor, borderWidth, color, hasAction, size }),
     [color, borderWidth, borderColor, hasAction, size],
   );
 
+  // Static markers stay a plain div; actionable markers are a native button so
+  // Keyboard activation and semantics come from the element, not ARIA (marker-circle.tsx parity).
+  if (!hasAction) {
+    return (
+      <div style={circleStyle}>
+        {icon}
+      </div>
+    );
+  }
   return (
-    <div
-      onClick={hasAction ? handleClick : undefined}
-      onKeyDown={hasAction ? handleKeyDown : undefined}
-      role={hasAction ? "button" : undefined}
-      tabIndex={hasAction ? FOCUSABLE_TAB_INDEX : undefined}
+    <button
+      type="button"
+      onClick={handleClick}
       style={circleStyle}
       onMouseEnter={handleIconEnter}
       onMouseLeave={handleIconLeave}
     >
       {icon}
-    </div>
+    </button>
   );
 };
 

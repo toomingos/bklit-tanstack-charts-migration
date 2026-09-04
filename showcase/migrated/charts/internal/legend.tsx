@@ -68,8 +68,8 @@ const Legend = ({
 
 Legend.displayName = "Legend";
 
-// Subcomponents live in sibling files (one component per file); re-exported
-// here unchanged so existing importers keep working.
+// Subcomponents live in sibling files (one component per file).
+// Re-exported here so existing importers keep working.
 export { LegendItem } from './legend-item';
 export { LegendMarker } from './legend-marker';
 export { LegendLabel } from './legend-label';
