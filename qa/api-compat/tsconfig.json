@@ -1,0 +1,4 @@
+{
+  "extends": "../../bench/app/tsconfig.json",
+  "include": ["all.ts"]
+}

@@ -19,7 +19,9 @@
     "gate:checks": "node qa/gate/run-checks.mjs",
     "gate:probes": "node qa/gate/probes/run-probes.mjs",
     "gate:summary": "node qa/gate/summarize.mjs",
-    "gate:all": "node qa/gate/run-all.mjs"
+    "gate:all": "node qa/gate/run-all.mjs",
+    "api-compat:gen": "node qa/api-compat/generate.mjs",
+    "api-compat": "bench/app/node_modules/.bin/tsc --noEmit -p qa/api-compat/tsconfig.json"
   },
   "devDependencies": {
     "@types/d3-sankey": "^0.12.5",

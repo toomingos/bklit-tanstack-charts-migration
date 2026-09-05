@@ -28,7 +28,7 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 1 | V1.8 | aria forwarding | todo | | | |
 | 1 | V1.9 | package contract | todo | | | |
 | 1 | V4.1 | `qa/unit` scaffold (scene tests, probes) | todo | | | |
-| 1 | V4.2 | generated type fixture | todo | | | |
+| 1 | V4.2 | generated type fixture | merged | `ses_f8eae74d6ffevmKWqC0OMWAzCO` | (next commit) | D514 · 292 value + 211 type `Eq` lines · 478 red / 420 exports = V1.6 backlog · 81 migrated-only exports · G3 folded |
 | 1 | V4.4 | gate integrity | todo | | | |
 | 2 | V1.3 | registering children | todo | | | |
 | 2 | V1.4 | optional layers own imports | todo | | | |
@@ -77,6 +77,8 @@ stamp), UPSTREAM (I-number in `07`). No vector = synthesis defect: amend `08` §
 | G | Found by | Symptom | Vector | Disposition | Ref |
 |---|---|---|---|---|---|
 | G1 | V0.2b executor (`ses_f8ed0d417ffeeTMDv0dnyJ32LO`) | `bench/app/src/scenarios/migrated-choropleth.tsx:137` fails bench tsc: `CountryProperties` (`[key: string]: unknown`) not assignable to `ChoroplethFeatureProperties`; pre-existing, independent of 0.16.0; `npm run build` unaffected | V4 (gate integrity: bench app must typecheck) | FOLD into V0.4 housekeeping (typed bench data, no showcase edit) — done | D513 |
+| G2 | V0.3 gate (lead) | `gate:checks` census fails: 17 reach-in ledger failures (15 internal modules not in ledger, radar 20>19, sunburst 8>7); total 67 sites ≤ phase-6's 79; ledger predates the module split in `f5928ab` (guard already failing at `325a065`, before 7.0) | V4 (gate integrity) | FOLD into V4.4 (re-key ledger to split modules, pins = today's counts, total ≤ 79) | D515 |
+| G3 | V4.2 executor (`ses_f8eae74d6ffevmKWqC0OMWAzCO`) | `cd bench/app && npx tsc --noEmit` had 22 pre-existing errors (`toSorted` needs lib ES2023; implicit-any comparators in 5 migrated internals) invisible to the gate because `gate:checks` only runs `vite build` | V4 (gate integrity) | FOLD: lib `ES2022` → `ES2023` in `bench/app/tsconfig.json` by the lead in the V4.2 commit (bench tsc 0); V4.4 adds bench tsc to `gate:checks` | D514 |
 
 ## Idiom checklist (V0.6 / V3.8)
 
