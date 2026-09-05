@@ -14,9 +14,9 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | V0.2 | pin 0.16.0, fix R1 breaking surface (15 definitions) | merged | `0bcf471` | D510 · executors `ses_f8ed0fe71ffeZPR00ZjS98CmRI` (migrated), `ses_f8ed0d417ffeeTMDv0dnyJ32LO` (bench) |
 | V0.3 | re-baseline at new HEAD, tree hash, `bundle-sizes.json` | todo | | |
 | V0.4 | housekeeping (`__tm`, 9 orphans, nested `defineChart`) | todo | | |
-| V0.5 | file I1, I2, I4, I5, I6, F-260 comment; numbers in `07` | merged | (see git) | D511 · #126 #127 #128 #129 #130 #131 · code links land with the owning items |
-| V0.6 | idiom checklist below matches `08` §3 | todo | | |
-| — | `10-parity-contract.md` reviewed by lead | todo | | |
+| V0.5 | file I1, I2, I4, I5, I6, F-260 comment; numbers in `07` | merged | `437af3a` | D511 · #126 #127 #128 #129 #130 #131 · code links land with the owning items |
+| V0.6 | idiom checklist below matches `08` §3 | merged | (see git) | checked 2026-09-05: 12 idioms, 16 family rows, wording matches §3 |
+| — | `10-parity-contract.md` reviewed by lead | merged | (see git) | reviewed 2026-09-05 (V0.1 session): 292 value + 211 type exports, 3 exceptions, 23 tests (D508) |
 
 ## Waves 1–4 — 7.1 Host and package, 7.2 Native definition, 7.3 Evidence
 
