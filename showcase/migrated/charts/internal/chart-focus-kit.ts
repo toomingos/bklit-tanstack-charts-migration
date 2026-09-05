@@ -7,6 +7,11 @@ interface ChartPointLike {
   readonly xValue: ChartValue;
 }
 
+// Bar rows key focus by row index (bklit band-index parity): duplicate labels must not collapse.
+interface ChartPointIndexLike extends ChartPointLike {
+  readonly datumIndex: number;
+}
+
 // Epsilon absorbing float noise when comparing scene-x distances for nearest-point ties.
 const FOCUS_X_TIE_EPSILON = 1e-6;
 
@@ -120,4 +125,47 @@ const navigationOrder = <PointT extends ChartPointLike>(points: readonly PointT[
   return [...unique.values()];
 }
 
-export { focusValueKey, findNearestPointByX, collectFocusGroup, navigationOrder };
+interface CollectFocusGroupByIndexOptions<PointT> {
+  readonly memberKeyOf: (point: PointT) => string | number;
+  readonly points: readonly PointT[];
+  readonly primary: PointT;
+}
+
+/**
+  * Collects [primary, ...others] sharing the primary's row index, one per member key; others keep scan order (no y-sort).
+  *
+  * @param {Readonly<CollectFocusGroupByIndexOptions<PointT>>} groupOptions - Full point list, anchor point, and the member key mapper.
+  * @returns {PointT[]} Primary followed by one representative per remaining member key in scan order.
+  */
+const collectFocusGroupByIndex = <PointT extends ChartPointIndexLike>(groupOptions: Readonly<CollectFocusGroupByIndexOptions<PointT>>): PointT[] => {
+  const { memberKeyOf, points, primary } = groupOptions;
+  const unique = new Map<string | number, PointT>();
+  unique.set(memberKeyOf(primary), primary);
+  for (const cand of points) {
+    if (cand.datumIndex === primary.datumIndex) {
+      const mKey = memberKeyOf(cand);
+      if (!unique.has(mKey)) {unique.set(mKey, cand);}
+    }
+  }
+  const others: PointT[] = [];
+  for (const point of unique.values()) {
+    if (point !== primary) {others.push(point);}
+  }
+  return [primary, ...others];
+}
+
+/**
+  * Row order for keyboard navigation: one representative per row index (first wins), ascending by index.
+  *
+  * @param {readonly PointT[]} points - Points to order for keyboard navigation.
+  * @returns {PointT[]} One representative per row index in row order.
+  */
+const navigationOrderByIndex = <PointT extends ChartPointIndexLike>(points: readonly PointT[]): PointT[] => {
+  const unique = new Map<number, PointT>();
+  for (const point of points) {
+    if (!unique.has(point.datumIndex)) {unique.set(point.datumIndex, point);}
+  }
+  return [...unique.values()].toSorted((pointA, pointB) => pointA.datumIndex - pointB.datumIndex);
+}
+
+export { focusValueKey, findNearestPointByX, collectFocusGroup, collectFocusGroupByIndex, navigationOrder, navigationOrderByIndex };

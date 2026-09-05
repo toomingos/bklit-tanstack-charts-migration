@@ -1,73 +1,74 @@
 "use client";
 
-// Turnkey loading placeholder: <BarPulse> sweeping over skeleton bars (BarChart has no status prop).
-import { useMemo } from "react";
-import type { ReactElement } from "react";
-import { BarChart } from "./bar-chart";
-import { Bar, BarPulse, Grid } from "./children";
-import {
-  buildLoadingSkeletonSeries,
-  loadingSkeletonBarHeights,
-} from "./internal/loading-chrome";
-import type { ChartMargin } from "./internal";
-
-const LOADING_DATA_KEY = "value";
-const FALLBACK_LOADING_BARS = 12;
-/** Bklit's 0.45 alpha is folded into the fill: no fill-opacity seam on BarConfig. */
-const DEFAULT_LOADING_BAR_FILL =
-  "color-mix(in oklch, var(--foreground) 45%, transparent)";
-/** Complement of bklit's default bar fraction (0.7): each bar occupies 70% of its band. */
-const LOADING_BAR_GAP = 0.3;
-/** Passed explicitly — `<Bar>`'s default bandwidth-derived rounding is much heavier at this bar width than legacy's rx=2. */
-const LOADING_BAR_CORNER_RADIUS = 2;
+// Turnkey bar loading skeleton (static hashed bars under the sweep mask).
+// Standalone measured SVG: BarChart reveal, domain, and hover stay out.
+import { useMemo, useRef } from "react";
+import type { CSSProperties, ReactElement } from "react";
+import { BarLoadingSweep } from "./internal/bar-loading-sweep";
+import { parseAspectRatio } from "./internal/parse-aspect-ratio";
+import { DEFAULT_CHART_MARGIN, useChartMargin } from "./internal/use-chart-margin";
+import type { ChartMargin } from "./internal/use-chart-margin";
+import { useContainerWidth } from "./internal/use-container-size";
 
 interface BarChartLoadingProps {
+  /** Chart margins. */
   readonly margin?: Partial<Readonly<ChartMargin>>;
+  /** Aspect ratio as "width / height". Default: "2 / 1" */
   readonly aspectRatio?: string;
+  /** Additional class name for the container. */
   readonly className?: string;
+  /** Number of skeleton bars. Default: 12 */
   readonly barCount?: number;
+  /** Bar fill color. Default: `var(--foreground)` */
   readonly fill?: string;
-  /** Pause the shimmer sweep (used to capture deterministic frames for QA). Default: false. */
+  /** Freeze the mask at its initial phase (migrated-only QA determinism). */
   readonly pulsePaused?: boolean;
 }
 
 const BarChartLoading = ({
-  margin,
+  margin: marginProp,
   aspectRatio = "2 / 1",
   className = "",
-  barCount = FALLBACK_LOADING_BARS,
-  fill = DEFAULT_LOADING_BAR_FILL,
+  barCount,
+  fill,
   pulsePaused = false,
 }: Readonly<BarChartLoadingProps>): ReactElement => {
-  // Fixed base date keeps labels off "today"; values become placeholder heights.
-  const data = useMemo(() => {
-    const heights = loadingSkeletonBarHeights(barCount);
-    const series = buildLoadingSkeletonSeries(LOADING_DATA_KEY, barCount);
-    for (const [index, row] of series.entries()) {
-      row[LOADING_DATA_KEY] = heights[index];
-    }
-    return series;
-  }, [barCount]);
-
+  const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const width = useContainerWidth(containerRef);
+  const rootStyle = useMemo(
+    (): CSSProperties => ({
+      aspectRatio,
+      position: "relative",
+      width: "100%",
+    }),
+    [aspectRatio],
+  );
+  if (width <= 0) {
+    return <div ref={containerRef} className={className} style={rootStyle} />;
+  }
+  const heightPx = width / parseAspectRatio(aspectRatio);
+  const innerWidth = Math.max(0, width - margin.left - margin.right);
+  const innerHeight = Math.max(0, heightPx - margin.top - margin.bottom);
   return (
-    <BarChart
-      aspectRatio={aspectRatio}
-      barGap={LOADING_BAR_GAP}
-      className={className}
-      data={data}
-      margin={margin}
-      xDataKey="date"
-    >
-      {/* Explicit: the grid defaults horizontal to true with no <Grid> child at all. */}
-      <Grid horizontal={false} />
-
-      <Bar
-        dataKey={LOADING_DATA_KEY}
-        fill={fill}
-        lineCap={LOADING_BAR_CORNER_RADIUS}
-      />
-      <BarPulse dataKey={LOADING_DATA_KEY} pulsePaused={pulsePaused} />
-    </BarChart>
+    <div ref={containerRef} className={className} style={rootStyle}>
+      <svg
+        aria-hidden="true"
+        className="overflow-visible"
+        height={heightPx}
+        width={width}
+      >
+        <g transform={`translate(${margin.left},${margin.top})`}>
+          <BarLoadingSweep
+            barCount={barCount}
+            fill={fill}
+            innerHeight={innerHeight}
+            innerWidth={innerWidth}
+            pulsePaused={pulsePaused}
+          />
+        </g>
+      </svg>
+    </div>
   );
 };
 

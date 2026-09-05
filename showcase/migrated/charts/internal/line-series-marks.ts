@@ -53,10 +53,13 @@ const buildBaseSeriesMarks = (params: Readonly<BaseSeriesMarksParams>): ChartMar
   const legendDimmed = Boolean(params.legendHoveredKey) && params.legendHoveredKey !== line.dataKey;
   const projectY = params.projectorFor(line.yAxisId);
   const strokeOpacity = resolveLineStrokeOpacity(hasDashTail, legendDimmed);
+  // Single opacity slot: legend dim already sets strokeOpacity, so the
+  // Pointer state must stay off or the two compound (0.09, not 0.3).
+  const states = legendDimmed ? [] : pointerSeriesDimStates<ChartDatum>(params.legendDimOpacity);
   return lineY(params.renderData, {
     curve: d3Curve(line.curve ?? curveNatural),
     id: line.dataKey,
-    states: pointerSeriesDimStates<ChartDatum>(params.legendDimOpacity),
+    states,
     stroke: hasDashTail ? "transparent" : line.stroke,
     strokeOpacity,
     strokeWidth: line.strokeWidth ?? params.defaultStrokeWidth,

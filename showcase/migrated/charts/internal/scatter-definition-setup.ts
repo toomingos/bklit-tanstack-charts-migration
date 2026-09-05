@@ -28,7 +28,6 @@ const MIN_RENDERABLE_WIDTH = 0;
 interface BuildScatterAllMarksParams {
   readonly crosshairGradientId: string;
   readonly data: readonly ChartDatum[];
-  readonly gradientIdBySeries: Readonly<Map<string, string>>;
   readonly innerWidth: number;
   readonly pointerFocusActive: boolean;
   readonly projectorFor: (axisId?: string | number) => (value: number) => number;
@@ -49,7 +48,6 @@ interface ScatterAllMarks {
 const buildScatterAllMarks = ({
   crosshairGradientId,
   data,
-  gradientIdBySeries,
   innerWidth,
   pointerFocusActive,
   projectorFor,
@@ -67,7 +65,6 @@ const buildScatterAllMarks = ({
   const seriesMarks = buildAllSeriesMarks({
     durationSec,
     easing,
-    gradientIdBySeries,
     innerWidth,
     pointerFocusActive,
     projectorFor,
@@ -92,7 +89,6 @@ interface BuildScatterDefinitionStateParams {
   readonly config: { readonly tooltipBoxSpring: Readonly<SpringConfig>; readonly tooltipSpring: Readonly<SpringConfig> };
   readonly crosshairGradientId: string;
   readonly data: readonly ChartDatum[];
-  readonly gradientIdBySeries: Readonly<Map<string, string>>;
   readonly grid: ExtractedChildren["grid"];
   readonly labelFade: ScatterLabelFade | null;
   readonly margin: ChartMargin;
@@ -114,7 +110,6 @@ const buildScatterDefinitionState = ({
   config,
   crosshairGradientId,
   data,
-  gradientIdBySeries,
   grid,
   labelFade,
   margin,
@@ -134,7 +129,6 @@ const buildScatterDefinitionState = ({
   const marks = buildScatterAllMarks({
     crosshairGradientId,
     data,
-    gradientIdBySeries,
     innerWidth: Math.max(MIN_RENDERABLE_WIDTH, width - margin.left - margin.right),
     pointerFocusActive,
     projectorFor,
@@ -203,7 +197,6 @@ const useScatterDefinitionModel = ({
       config: { tooltipBoxSpring, tooltipSpring },
       crosshairGradientId: series.crosshairGradientId,
       data,
-      gradientIdBySeries: series.gradientIdBySeries,
       grid: series.grid,
       labelFade,
       margin,
@@ -220,7 +213,7 @@ const useScatterDefinitionModel = ({
       xScale: scales.xScale,
       yScale: scales.yScale,
     });
-  }, [series.crosshairGradientId, data, series.gradientIdBySeries, series.grid, labelFade, margin, pointerFocusActive, domains.projectorFor, series.resolvedSeries, timing.revealDurationMs, timing.revealEasingCss, scatterFocusStrategy, series.tooltip, tooltipBoxSpring, tooltipSpring, series.width, series.xAxis, xDataKey, scales.xScale, scales.yScale]);
+  }, [series.crosshairGradientId, data, series.grid, labelFade, margin, pointerFocusActive, domains.projectorFor, series.resolvedSeries, timing.revealDurationMs, timing.revealEasingCss, scatterFocusStrategy, series.tooltip, tooltipBoxSpring, tooltipSpring, series.width, series.xAxis, xDataKey, scales.xScale, scales.yScale]);
 
   return { definition, margin, setLabelFade, setPointerFocusActive, tooltipSpring };
 };

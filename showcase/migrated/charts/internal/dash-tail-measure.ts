@@ -10,6 +10,8 @@ interface DashTailSeries {
   readonly strokeWidth: number;
   readonly dashFromIndex?: number;
   readonly dashArray?: string;
+  // Bklit SeriesHoverDim gate (line.tsx `enabled`): false skips hover dim entirely.
+  readonly dimEnabled?: boolean;
 }
 
 // Retry ceiling for the mount-timing loop: a persistent miss is a wiring defect, not a race.

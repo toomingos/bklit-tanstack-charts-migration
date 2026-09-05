@@ -20,11 +20,18 @@ const barDepthAndRise = (absOffset: number, naturalHeight: number, maxDepth: num
   return { depth, perspectiveRise: depth * BAR_DEPTH_PERSPECTIVE_RATIO };
 }
 
+// Perspective trim: shift the front face down so the lid lands on the value.
+const barDepthTopTrim = (absOffset: number, naturalHeight: number, maxDepth: number): number => {
+  const { perspectiveRise } = barDepthAndRise(absOffset, naturalHeight, maxDepth);
+  return Math.min(perspectiveRise, Math.max(0, naturalHeight - 1));
+}
+
 export {
   BAR_DEPTH_MAX_PX,
   BAR_DEPTH_PERSPECTIVE_RATIO,
   BAR_DEPTH_MIN_PX,
   barDepthMaxDepth,
   barDepthAndRise,
+  barDepthTopTrim,
 };
 export type { BarDepthAndRiseResult };

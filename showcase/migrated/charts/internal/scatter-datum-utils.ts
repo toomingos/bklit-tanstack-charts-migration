@@ -54,17 +54,6 @@ const computeTimeExtent = (data: readonly Readonly<ChartDatum>[], xDataKey: stri
   return { maxTime: Math.max(...times), minTime: Math.min(...times) };
 };
 
-interface ScatterGradientDef {
-  readonly dataKey: string;
-  readonly fill: string;
-  readonly fillFadeEnd: number;
-  readonly fillFadeStart: number;
-  readonly gapFadeEnd: number;
-  readonly gapFadeStart: number;
-  readonly id: string;
-  readonly stroke: string;
-}
-
 interface ScatterYGradientDef {
   readonly from: string;
   readonly id: string;
@@ -81,4 +70,4 @@ export {
   isYGradientConfig,
   stringifyDatumValue,
 };
-export type { ScatterGradientDef, ScatterTimeExtent, ScatterYGradientDef, YGradientConfig };
+export type { ScatterTimeExtent, ScatterYGradientDef, YGradientConfig };

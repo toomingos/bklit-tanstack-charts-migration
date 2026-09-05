@@ -1,8 +1,6 @@
 import type { ChartMark, ChartMotionDefinition } from "@tanstack/charts";
-import { dot } from "@tanstack/charts/dot";
 import { whenFocused } from "@tanstack/charts/focus/mark";
-import { toDate } from "./coerce-date";
-import { isFiniteNumber } from "./scatter-datum-utils";
+import { createScatterDotMark } from "./scatter-dot-mark";
 import { createScatterEnterMotion, createYGradientScatterMark } from "./scatter-marks";
 import type { ResolvedSeries } from "./scatter-marks";
 import { withMarkerBaseClassName } from "./series-marker-mark";
@@ -47,40 +45,34 @@ const buildSeriesEnterMotion = ({
 };
 
 interface BuildActiveScatterMarkParams {
-  readonly baseR: number;
   readonly projectY: (value: number) => number;
   readonly renderData: readonly Readonly<ChartDatum>[];
-  readonly resolvedFill: string;
   readonly series: Readonly<ResolvedSeries>;
   readonly xDataKey: string;
 }
 
 const buildActiveScatterMark = ({
-  baseR,
   projectY,
   renderData,
-  resolvedFill,
   series,
   xDataKey,
 }: Readonly<BuildActiveScatterMarkParams>): ChartMark<ChartDatum, Date, number> => {
-  const activeScatterMark = dot(renderData, {
-    fill: resolvedFill,
-    id: `${series.dataKey}__active`,
-    r: baseR * ACTIVE_HIGHLIGHT_SCALE,
-    stroke: "none",
-    x: (datum: Readonly<ChartDatum>) => toDate(datum[xDataKey]),
-    y: (datum: Readonly<ChartDatum>) => {
-      const value = datum[series.dataKey];
-      return isFiniteNumber(value) ? projectY(value) : undefined;
-    },
+  // Bklit scales the whole marker (disc, ring gap, ring stroke) about the dot centre.
+  // Baking ACTIVE_HIGHLIGHT_SCALE into the geometry reproduces that transform.
+  const activeScatterMark = createScatterDotMark({
+    markId: `${series.dataKey}__active`,
+    motion: false,
+    projectY,
+    scale: ACTIVE_HIGHLIGHT_SCALE,
+    series,
+    source: renderData,
+    xDataKey,
   });
   return whenFocused(activeScatterMark, { match: "group", retarget: true });
 };
 
 interface BuildScatterSeriesMarksParams {
   readonly enterMotion: ChartMotionDefinition<ChartDatum> | false;
-  readonly gradientId: string | undefined;
-  readonly hasRing: boolean;
   readonly projectY: (value: number) => number;
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly scatterDimmed: boolean;
@@ -90,8 +82,6 @@ interface BuildScatterSeriesMarksParams {
 
 const buildScatterSeriesMarks = ({
   enterMotion,
-  gradientId,
-  hasRing,
   projectY,
   renderData,
   scatterDimmed,
@@ -101,24 +91,19 @@ const buildScatterSeriesMarks = ({
   if (series.useYGradient) {
     return [createYGradientScatterMark({ motion: enterMotion, projectY, series, source: renderData, xDataKey })];
   }
-  const baseR = hasRing ? series.radius + series.ringGap + series.strokeWidth : series.radius;
-  const resolvedFill = gradientId === undefined ? series.fill : `url(#${gradientId})`;
-  const baseScatterMark = dot(renderData, {
-    fill: resolvedFill,
-    id: series.dataKey,
+  const baseScatterMark = createScatterDotMark({
+    markId: series.dataKey,
     motion: enterMotion,
-    r: baseR,
-    stroke: "none",
-    x: (datum: Readonly<ChartDatum>) => toDate(datum[xDataKey]),
-    y: (datum: Readonly<ChartDatum>) => {
-      const value = datum[series.dataKey];
-      return isFiniteNumber(value) ? projectY(value) : undefined;
-    },
+    projectY,
+    scale: 1,
+    series,
+    source: renderData,
+    xDataKey,
   });
   if (!series.showActiveHighlight) {return [withMarkerBaseClassName(baseScatterMark, scatterDimmed)];}
   return [
     withMarkerBaseClassName(baseScatterMark, scatterDimmed),
-    buildActiveScatterMark({ baseR, projectY, renderData, resolvedFill, series, xDataKey }),
+    buildActiveScatterMark({ projectY, renderData, series, xDataKey }),
   ];
 };
 
@@ -132,7 +117,6 @@ interface SeriesMarksProjector {
 interface BuildAllSeriesMarksParams extends SeriesMarksProjector {
   readonly durationSec: number;
   readonly easing: MotionEasing;
-  readonly gradientIdBySeries: Readonly<Map<string, string>>;
   readonly innerWidth: number;
   readonly pointerFocusActive: boolean;
 }
@@ -140,7 +124,6 @@ interface BuildAllSeriesMarksParams extends SeriesMarksProjector {
 const buildAllSeriesMarks = ({
   durationSec,
   easing,
-  gradientIdBySeries,
   innerWidth,
   pointerFocusActive,
   projectorFor,
@@ -160,13 +143,9 @@ const buildAllSeriesMarks = ({
       ringGap: series.ringGap,
       strokeWidth: series.strokeWidth,
     });
-    const hasRing = series.strokeWidth > NO_RING_EXTENT;
-    const gradientId = hasRing ? gradientIdBySeries.get(series.dataKey) : undefined;
     marks.push(
       ...buildScatterSeriesMarks({
         enterMotion,
-        gradientId,
-        hasRing,
         projectY,
         renderData,
         scatterDimmed: series.fadeOnHover && pointerFocusActive,

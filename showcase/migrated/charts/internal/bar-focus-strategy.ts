@@ -1,10 +1,7 @@
-import type { ChartFocusStrategy, ChartPoint, ChartValue } from "@tanstack/charts";
+import type { ChartFocusStrategy, ChartPoint } from "@tanstack/charts";
 import { isChartInteractionPhase } from "./chart-phase";
-import { collectFocusGroup, focusValueKey, navigationOrder } from "./chart-focus-kit";
+import { collectFocusGroupByIndex, focusValueKey, navigationOrderByIndex } from "./chart-focus-kit";
 import type { ChartDatum, ChartPhase } from "./types";
-
-// Hoisted once, so hover events allocate no closures.
-const byXKey = (xValue: Readonly<ChartValue>): string => focusValueKey(xValue);
 
 const byMemberKey = (point: { readonly group: unknown; readonly markId: unknown }): string => focusValueKey((point.group ?? point.markId));
 
@@ -48,7 +45,7 @@ const nearestByY = <PointT extends { readonly y: number }>(
 };
 
 
-/** Band-category focus: nearest column by scene-x, one point per member sharing the column. */
+/** Band-index focus: nearest column by scene-x, one point per member sharing the row. */
 interface BarFocusStrategyArgs {
   readonly phaseRef: { readonly current: ChartPhase };
   readonly getCategoryOrder: () => readonly string[];
@@ -99,24 +96,20 @@ const readBandColumnGeometry = (getCategoryOrder: () => readonly string[], getIn
   return { categoryOrder, innerWidth };
 }
 
-const filterByColumnKey = <PointT extends ChartPoint<ChartDatum, string, number>>(points: readonly PointT[], targetLabel: string): readonly PointT[] => {
-  const targetKey = focusValueKey(targetLabel);
-  return points.filter((point) => focusValueKey(point.xValue) === targetKey);
-}
+const filterByRowIndex = <PointT extends ChartPoint<ChartDatum, string, number>>(points: readonly PointT[], datumIndex: number): readonly PointT[] =>
+  points.filter((point) => point.datumIndex === datumIndex);
 
 const findBandColumnPrimary = <PointT extends ChartPoint<ChartDatum, string, number>>(params: BandFocusParams<PointT>): PointT | undefined => {
   const geometry = readBandColumnGeometry(params.getCategoryOrder, params.getInnerWidth);
   if (!geometry) {return undefined;}
   const idx = columnIndexForX({ catCount: geometry.categoryOrder.length, innerWidth: geometry.innerWidth, marginLeft: params.marginLeft, x: params.x });
-  const targetLabel = geometry.categoryOrder.at(idx);
-  if (targetLabel === undefined) {return undefined;}
-  return nearestByY(filterByColumnKey(params.points, targetLabel), params.y);
+  return nearestByY(filterByRowIndex(params.points, idx), params.y);
 }
 
 const resolveBandColumnFocus = <PointT extends ChartPoint<ChartDatum, string, number>>(params: BandFocusParams<PointT>): readonly PointT[] => {
   const primary = findBandColumnPrimary(params);
   if (!primary) {return [];}
-  return collectFocusGroup({ memberKeyOf: byMemberKey, points: params.points, primary, xKeyOf: byXKey });
+  return collectFocusGroupByIndex({ memberKeyOf: byMemberKey, points: params.points, primary });
 }
 
 interface CategoryCentroid<PointT> {
@@ -128,7 +121,7 @@ interface CategoryCentroid<PointT> {
 const buildCategoryCentroids = <PointT extends ChartPoint<ChartDatum, string, number>>(points: readonly PointT[]): Map<string, CategoryCentroid<PointT>> => {
   const byCategory = new Map<string, CategoryCentroid<PointT>>();
   for (const point of points) {
-    const catKey = byXKey(point.xValue);
+    const catKey = focusValueKey(point.xValue);
     const entry = byCategory.get(catKey);
     if (entry) {
       entry.sum += point.x;
@@ -160,11 +153,11 @@ const claimGroupKey = (seen: Set<string>, groupKey: string): boolean => {
   return true;
 }
 
-const collectCategoryCandidates = <PointT extends ChartPoint<ChartDatum, string, number>>(points: readonly PointT[], key: string): PointT[] => {
+const collectRowCandidates = <PointT extends ChartPoint<ChartDatum, string, number>>(points: readonly PointT[], datumIndex: number): PointT[] => {
   const seen = new Set<string>();
   const candidates: PointT[] = [];
   for (const candPoint of points) {
-    if (focusValueKey(candPoint.xValue) === key) {
+    if (candPoint.datumIndex === datumIndex) {
       const groupKey = focusValueKey((candPoint.group ?? candPoint.markId));
       if (claimGroupKey(seen, groupKey)) {candidates.push(candPoint);}
     }
@@ -183,11 +176,10 @@ const resolveNearestCategoryFocus = <PointT extends ChartPoint<ChartDatum, strin
   const byCategory = buildCategoryCentroids(params.points);
   const nearest = findNearestCategory(byCategory, params.x, params.maxDistance);
   if (!nearest) {return [];}
-  const key = focusValueKey(nearest.xValue);
-  const candidates = collectCategoryCandidates(params.points, key);
+  const candidates = collectRowCandidates(params.points, nearest.datumIndex);
   const primary = nearestByY(candidates, params.y);
   if (!primary) {return [];}
-  return collectFocusGroup({ memberKeyOf: byMemberKey, points: params.points, primary, xKeyOf: byXKey });
+  return collectFocusGroupByIndex({ memberKeyOf: byMemberKey, points: params.points, primary });
 }
 
 const createBarFocusStrategy = (phaseRefOrArgs: PhaseRefOrArgs): ChartFocusStrategy<ChartDatum, string, number> => {
@@ -204,13 +196,13 @@ const createBarFocusStrategy = (phaseRefOrArgs: PhaseRefOrArgs): ChartFocusStrat
       { point }: { readonly point: PointT },
     ): readonly PointT[] {
       if (points.length === 0) {return [point];}
-      return collectFocusGroup({ memberKeyOf: byMemberKey, points, primary: point, xKeyOf: byXKey });
+      return collectFocusGroupByIndex({ memberKeyOf: byMemberKey, points, primary: point });
     },
 
     navigation<PointT extends ChartPoint<ChartDatum, string, number>>(
       points: readonly PointT[],
     ): readonly PointT[] {
-      return navigationOrder(points, byXKey);
+      return navigationOrderByIndex(points);
     },
 
     resolve<PointT extends ChartPoint<ChartDatum, string, number>>(

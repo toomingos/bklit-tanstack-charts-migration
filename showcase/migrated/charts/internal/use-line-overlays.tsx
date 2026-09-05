@@ -4,6 +4,7 @@ import type { ReactNode, RefObject } from "react";
 import type { ScaleTime } from "d3-scale";
 import { useEffectEvent } from "./use-effect-event";
 import { buildCrosshairGradientDef } from "./hover-geometry";
+import { LEGEND_DIM_OPACITY } from "./line-series-marks";
 import { useSanitizedId } from "./use-sanitized-id";
 import { resolveFadeEdgesMask } from "./fade-mask";
 import type { FadeEdgesMaskAttrs } from "./fade-mask";
@@ -77,10 +78,12 @@ interface LineOverlaysParams {
   readonly definition: LineChartSpec["definition"];
   readonly dragSelectionActiveRef: LineFocusChrome["dragSelectionActiveRef"];
   readonly hasBrush: boolean;
+  readonly hasHover: boolean;
   readonly heightPx: number;
   readonly innerWidth: number;
   readonly isLoaded: boolean;
   readonly isLoading: boolean;
+  readonly legendHoveredIndex: number | null;
   readonly lines: ExtractedChildren["lines"];
   readonly loadingLabel: string | undefined;
   readonly margin: Readonly<ChartMargin>;
@@ -123,7 +126,7 @@ interface LineOverlays {
 }
 
 const useLineOverlays = (params: Readonly<LineOverlaysParams>): LineOverlays => {
-  const { animationDuration, background, brushConfig, brushRangeValue, brushTrackExtent, chartMarkers, chartPhase, children, clearFocusChrome, clientToScene, containerRef, crosshairGradientId, data, datePill, defaultLineStroke, defaultLineStrokeWidth, definition, dragSelectionActiveRef, hasBrush, heightPx, innerWidth, isLoaded, isLoading, lines, loadingLabel, margin, markerActiveStore, markerGradientDefs, nicedDomainsByAxis, projectionConfigs, projectionEndMarkers, projectionGradientBaseId, projectionLines, projectionPhasePortRef, profitLossLines, renderData, sceneRef, terminalMarkers, timeExtent, timeExtentRaw, tooltip, tooltipEnabled, width, xDataKey, xDomain, xScaleD3Ref, yDomainFinal } = params;
+  const { animationDuration, background, brushConfig, brushRangeValue, brushTrackExtent, chartMarkers, chartPhase, children, clearFocusChrome, clientToScene, containerRef, crosshairGradientId, data, datePill, defaultLineStroke, defaultLineStrokeWidth, definition, dragSelectionActiveRef, hasBrush, hasHover, heightPx, innerWidth, isLoaded, isLoading, legendHoveredIndex, lines, loadingLabel, margin, markerActiveStore, markerGradientDefs, nicedDomainsByAxis, projectionConfigs, projectionEndMarkers, projectionGradientBaseId, projectionLines, projectionPhasePortRef, profitLossLines, renderData, sceneRef, terminalMarkers, timeExtent, timeExtentRaw, tooltip, tooltipEnabled, width, xDataKey, xDomain, xScaleD3Ref, yDomainFinal } = params;
   const fadeEdgesMask = resolveFadeEdgesMask(lines.map((line) => line.fadeEdges ?? true));
   // Pulse mode follows lifecycle phase (loading loops, exiting finishes, revealing grows in).
   const pulseMode = resolveLineLoadingPulseMode(chartPhase);
@@ -344,9 +347,13 @@ const useLineOverlays = (params: Readonly<LineOverlaysParams>): LineOverlays => 
     dashArray: line.dashArray,
     dashFromIndex: line.dashFromIndex,
     dataKey: line.dataKey,
+    // Bklit Line `enabled` gate (line.tsx:266+336): showHighlight && !loading pulse.
+    dimEnabled: (line.showHighlight ?? true) && !isLoading,
     stroke: line.stroke ?? defaultLineStroke,
     strokeWidth: line.strokeWidth ?? defaultLineStrokeWidth,
-  })), [lines, defaultLineStroke, defaultLineStrokeWidth]);
+  })), [isLoading, lines, defaultLineStroke, defaultLineStrokeWidth]);
+  // Same key derivation as use-line-chart-spec (single-owner legend-dim slot).
+  const legendHoveredKey = legendHoveredIndex === null ? undefined : lines[legendHoveredIndex]?.dataKey;
   const definitionOverlayNode = definition && (
     <>
       {referenceAreaLayersNode}
@@ -374,6 +381,9 @@ const useLineOverlays = (params: Readonly<LineOverlaysParams>): LineOverlays => 
         series={dashTailSeries}
         innerWidth={innerWidth}
         innerHeight={Math.max(0, heightPx - margin.top - margin.bottom)}
+        dimOpacity={LEGEND_DIM_OPACITY}
+        hasHover={hasHover}
+        legendHoveredKey={legendHoveredKey}
       />
       {chartMarkersOverlayNode}
     </>

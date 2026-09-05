@@ -255,12 +255,6 @@ const BarChart = ({
     };
   }, [tooltipEnabled, chartConfig]);
 
-  const categoryIndexByLabel = useMemo(() => {
-    const indexByLabel = new Map<string, number>();
-    for (let categoryIndex = 0; categoryIndex < categoryOrder.length; categoryIndex += 1) {indexByLabel.set(categoryOrder[categoryIndex], categoryIndex);}
-    return indexByLabel;
-  }, [categoryOrder]);
-
   const handleFocusGroupChange = useCallback(
     (points: readonly Readonly<ChartPoint<ChartDatum, string, number>>[]) => {
       const pillBuild = pillRef.current;
@@ -269,7 +263,8 @@ const BarChart = ({
         return;
       }
       const categoryLabel = points[0].xValue;
-      const categoryIndex = categoryIndexByLabel.get(categoryLabel) ?? 0;
+      // Bklit indexes the hovered row (tooltipData.index); a label map is wrong with duplicate labels.
+      const categoryIndex = points[0].datumIndex;
       // Anchor from the band-scale clone, not mean point.x (asymmetric under group padding).
       const anchorX = (categoryScaleForOverlay(categoryLabel) ?? 0) + bandWidth / 2;
       syncDatePillForCategory({
@@ -290,7 +285,7 @@ const BarChart = ({
           : { hoveredLabel: categoryLabel, primaryX: anchorX },
       );
     },
-    [categoryIndexByLabel, categoryScaleForOverlay, bandWidth, renderData.length, tooltipEnabled, tooltip, setLabelFade],
+    [categoryScaleForOverlay, bandWidth, renderData.length, tooltipEnabled, tooltip, setLabelFade],
   );
 
   const renderTooltipBody = useBarTooltipBody({ categoryAccessor: scales.categoryAccessor, series: dotSeriesList, tooltip });

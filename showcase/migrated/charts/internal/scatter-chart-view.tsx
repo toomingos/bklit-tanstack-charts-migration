@@ -62,35 +62,6 @@ const buildScatterCrosshairGradientNode = ({
   );
 };
 
-const buildScatterRadialGradientNodes = (
-  gradientDefs: ScatterSeriesSetup["gradientDefs"],
-): ReactNode => gradientDefs.map((def) => (
-  <radialGradient key={def.id} id={def.id}>
-    <stop offset="0%" stopColor={def.fill} stopOpacity={1} />
-    <stop
-      offset={`${def.fillFadeStart}%`}
-      stopColor={def.fill}
-      stopOpacity={1}
-    />
-    <stop
-      offset={`${def.fillFadeEnd}%`}
-      stopColor={def.fill}
-      stopOpacity={0}
-    />
-    <stop
-      offset={`${def.gapFadeStart}%`}
-      stopColor={def.stroke}
-      stopOpacity={0}
-    />
-    <stop
-      offset={`${def.gapFadeEnd}%`}
-      stopColor={def.stroke}
-      stopOpacity={1}
-    />
-    <stop offset="100%" stopColor={def.stroke} stopOpacity={1} />
-  </radialGradient>
-));
-
 interface BuildScatterYGradientNodesParams {
   readonly refAreaGeom: ScatterReferenceAreas["refAreaGeom"];
   readonly yGradientDefs: ScatterReferenceAreas["yGradientDefs"];
@@ -116,18 +87,16 @@ const buildScatterYGradientNodes = ({
 
 interface BuildScatterDefsSvgParams {
   readonly crosshairFade: ScatterReferenceAreas["crosshairFade"];
-  readonly gradientDefs: ScatterSeriesSetup["gradientDefs"];
   readonly refAreaGeom: ScatterReferenceAreas["refAreaGeom"];
   readonly yGradientDefs: ScatterReferenceAreas["yGradientDefs"];
 }
 
 const buildScatterDefsSvg = ({
   crosshairFade,
-  gradientDefs,
   refAreaGeom,
   yGradientDefs,
 }: Readonly<BuildScatterDefsSvgParams>): ReactNode => {
-  const showDefsSvg = gradientDefs.length > 0 || yGradientDefs.length > 0 || crosshairFade !== undefined;
+  const showDefsSvg = yGradientDefs.length > 0 || crosshairFade !== undefined;
   if (!showDefsSvg) {return undefined;}
   return (
     // Defs svg renders AFTER the chart: the harness locates charts via #chart-root svg.first().
@@ -139,7 +108,6 @@ const buildScatterDefsSvg = ({
       focusable="false"
     >
       <defs>
-        {buildScatterRadialGradientNodes(gradientDefs)}
         {buildScatterYGradientNodes({ refAreaGeom, yGradientDefs })}
         {buildScatterCrosshairGradientNode({ crosshairFade, refAreaGeom })}
       </defs>
@@ -220,7 +188,7 @@ interface BuildScatterChartTreeParams {
   readonly pill: Pick<ScatterPillModel, "handleFocusGroupChange" | "overlayHostRef">;
   readonly refAreas: Pick<ScatterReferenceAreas, "containerStyle" | "crosshairFade" | "parsedAspectRatio" | "refAreaChildren" | "refAreaGeom" | "yGradientDefs">;
   readonly selection: ScatterSelectionModel;
-  readonly series: Pick<ScatterSeriesSetup, "background" | "containerRef" | "gradientDefs">;
+  readonly series: Pick<ScatterSeriesSetup, "background" | "containerRef">;
   readonly timing: Pick<ScatterTimingModel, "handleRender">;
 }
 
@@ -253,7 +221,6 @@ const buildScatterChartTree = ({
           })}
           {buildScatterDefsSvg({
             crosshairFade: refAreas.crosshairFade,
-            gradientDefs: series.gradientDefs,
             refAreaGeom: refAreas.refAreaGeom,
             yGradientDefs: refAreas.yGradientDefs,
           })}
@@ -271,7 +238,6 @@ export {
   buildScatterCrosshairGradientNode,
   buildScatterDefsSvg,
   buildScatterOverlayNode,
-  buildScatterRadialGradientNodes,
   buildScatterRefAreaNode,
   buildScatterRendererNode,
   buildScatterYGradientNodes,

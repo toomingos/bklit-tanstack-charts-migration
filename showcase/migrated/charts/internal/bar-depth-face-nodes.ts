@@ -1,4 +1,4 @@
-import { barDepthAndRise, barDepthMaxDepth, BAR_DEPTH_MIN_PX } from "./bar-depth-geometry";
+import { barDepthAndRise, barDepthMaxDepth, barDepthTopTrim, BAR_DEPTH_MIN_PX } from "./bar-depth-geometry";
 import { pushBackBarNodes, pushBackBarPoints } from "./bar-depth-back-nodes";
 import type { ChartPoint, ResolvedScale, SceneNode } from "@tanstack/charts";
 import type { ChartDatum } from "./types";
@@ -89,15 +89,19 @@ const resolveBackBarPlacement = (params: Readonly<ResolveBackBarPlacementParams>
   const cx = bandX + bandWidth / 2;
   const offsetFromCenter = innerWidth > 0 ? (cx - centerX) / (innerWidth / 2) : 0;
   const isRightOfCenter = offsetFromCenter > 0;
-  const measured = measureBackBarDepth({ absOffset: Math.min(1, Math.abs(offsetFromCenter)), barLengthPx: baseline - valuePos, maxDepth });
+  const absOffset = Math.min(1, Math.abs(offsetFromCenter));
+  const naturalHeight = baseline - valuePos;
+  const measured = measureBackBarDepth({ absOffset, barLengthPx: naturalHeight, maxDepth });
   if (!measured) { return undefined; }
+  // Trim the faces down so the lid back edge lands on the value position.
+  const topYTrim = barDepthTopTrim(absOffset, naturalHeight, maxDepth);
   return {
     bottomY: baseline,
     depth: measured.depth,
     isRightOfCenter,
     perspectiveRise: measured.perspectiveRise,
     sideShadeId: isRightOfCenter ? sideShadeRtlId : sideShadeLtrId,
-    topY: valuePos,
+    topY: valuePos + topYTrim,
   };
 }
 

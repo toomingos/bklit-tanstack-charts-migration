@@ -1023,6 +1023,13 @@
   transition: opacity 0.4s ease-in-out;
 }
 
+/* Dash-tail overlay dim (bklit line.tsx SeriesHoverDim, same 0.4s
+   ease-in-out): the overlay <g> carries the dim opacity attribute, the
+   timing rides this class exactly like the lineY rule above. */
+.bkm-dash-tail {
+  transition: opacity 0.4s ease-in-out;
+}
+
 /* Composed-chart bar-row pointer-hover dim (hover-chrome.ts
    BAR_DIM_TRANSITION, 0.12s ease-in-out) — scoped to composed only so it
    never collides with bar-chart.tsx's own [data-bkm-chart="bar"] hover-dim

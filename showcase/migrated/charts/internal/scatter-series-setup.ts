@@ -4,7 +4,6 @@ import { extractChildren } from "./children-extract";
 import { useContainerWidth } from "./use-container-size";
 import { useSanitizedId } from "./use-sanitized-id";
 import { isYGradientConfig } from "./scatter-datum-utils";
-import type { ScatterGradientDef } from "./scatter-datum-utils";
 import type { ResolvedSeries } from "./scatter-marks";
 import type { ExtractedChildren } from "./types";
 import { CHART_CATEGORY_PALETTE } from "./design-tokens";
@@ -20,9 +19,6 @@ const SCATTER_SERIES_RADIUS_DEFAULT = 5;
 const SCATTER_EMPTY_RANGE_PADDING_PX = 12;
 // X range padding adds this to the largest series radius.
 const SCATTER_RANGE_PADDING_EXTRA_PX = 10;
-// Gradient stop percents: full-scale percent plus the ~1px anti-facet fade band half-width.
-const SCATTER_GRADIENT_PERCENT_MAX = 100;
-const SCATTER_GRADIENT_HALF_PX = 0.5;
 
 const DEFAULT_Y_GRADIENT_FROM = "var(--color-red-500)";
 const DEFAULT_Y_GRADIENT_TO = "var(--color-emerald-500)";
@@ -60,35 +56,6 @@ const resolveScatterSeries = (
     };
   });
 
-// One dot() mark per series with gradient fill+ring halves per-point DOM nodes (40k to 20k at n=10k).
-// Gradient edges use ~1px bands, not hard stops: hard stops facet into polygons at small radii.
-const buildScatterGradientDefs = (
-  resolvedSeries: readonly Readonly<ResolvedSeries>[],
-  gradientBaseId: string,
-): readonly ScatterGradientDef[] => {
-  const defs: ScatterGradientDef[] = [];
-  for (const series of resolvedSeries) {
-    if (series.strokeWidth > 0 && !series.useYGradient) {
-      const outerRadius = series.radius + series.ringGap + series.strokeWidth;
-      const fillEnd = (series.radius / outerRadius) * SCATTER_GRADIENT_PERCENT_MAX;
-      const gapEnd =
-        ((series.radius + series.ringGap) / outerRadius) * SCATTER_GRADIENT_PERCENT_MAX;
-      const halfPx = (SCATTER_GRADIENT_HALF_PX / outerRadius) * SCATTER_GRADIENT_PERCENT_MAX;
-      defs.push({
-        dataKey: series.dataKey,
-        fill: series.fill,
-        fillFadeEnd: Math.min(SCATTER_GRADIENT_PERCENT_MAX, fillEnd + halfPx),
-        fillFadeStart: Math.max(0, fillEnd - halfPx),
-        gapFadeEnd: Math.min(SCATTER_GRADIENT_PERCENT_MAX, gapEnd + halfPx),
-        gapFadeStart: Math.max(0, gapEnd - halfPx),
-        id: `${gradientBaseId}-grad-${defs.length}`,
-        stroke: series.stroke,
-      });
-    }
-  }
-  return defs;
-};
-
 interface UseScatterSeriesSetupParams {
   readonly children: ReactNode;
 }
@@ -97,8 +64,6 @@ interface ScatterSeriesSetup {
   readonly background: ExtractedChildren["background"];
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly crosshairGradientId: string;
-  readonly gradientDefs: readonly ScatterGradientDef[];
-  readonly gradientIdBySeries: Readonly<Map<string, string>>;
   readonly grid: ExtractedChildren["grid"];
   readonly resolvedSeries: readonly ResolvedSeries[];
   readonly tooltip: ExtractedChildren["tooltip"];
@@ -132,22 +97,10 @@ const useScatterSeriesSetup = ({
     return Math.max(...resolvedSeries.map((series) => series.radius)) + SCATTER_RANGE_PADDING_EXTRA_PX;
   }, [resolvedSeries]);
 
-  const gradientDefs = useMemo<readonly ScatterGradientDef[]>(
-    () => buildScatterGradientDefs(resolvedSeries, gradientBaseId),
-    [gradientBaseId, resolvedSeries],
-  );
-  const gradientIdBySeries = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const def of gradientDefs) {map.set(def.dataKey, def.id);}
-    return map;
-  }, [gradientDefs]);
-
   return {
     background,
     containerRef,
     crosshairGradientId,
-    gradientDefs,
-    gradientIdBySeries,
     grid,
     resolvedSeries,
     tooltip,
@@ -157,5 +110,5 @@ const useScatterSeriesSetup = ({
   };
 };
 
-export { buildScatterGradientDefs, DEFAULT_SCATTER_COLORS, resolveScatterSeries, useScatterSeriesSetup };
+export { DEFAULT_SCATTER_COLORS, resolveScatterSeries, useScatterSeriesSetup };
 export type { ScatterSeriesSetup, UseScatterSeriesSetupParams };

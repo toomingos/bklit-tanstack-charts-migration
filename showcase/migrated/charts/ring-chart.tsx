@@ -379,7 +379,7 @@ const RingChart = ({
 
   const { handleRender, hasRevealedRings } = useRingReveal({ data, enterStaggerScale, enterTransition, geometryScrubbing, ringConfigMap });
 
-  const { handlePointerLeave, handlePointerMove } = useRingPointer({ coordinator, data, endAngle, geometryScrubbing, getRingRadii, startAngle });
+  const { handlePointerLeave, handlePointerOut, handlePointerOver } = useRingPointer({ coordinator, data, geometryScrubbing });
 
   useLayoutEffect(() => {
     if (geometryScrubbing) {return undefined;}
@@ -459,7 +459,8 @@ const RingChart = ({
       className={className}
       data-bkm-chart="ring"
       ref={containerRef}
-      onPointerMove={handlePointerMove}
+      onPointerOut={handlePointerOut}
+      onPointerOver={handlePointerOver}
       onPointerLeave={handlePointerLeave}
       style={containerStyle}
     >

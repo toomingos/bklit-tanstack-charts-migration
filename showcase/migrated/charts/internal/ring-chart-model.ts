@@ -1,6 +1,6 @@
 // Ring child classification, WAAPI track-reveal helpers, and chart state hooks.
 // The hooks own contiguous state+effect groups; callers keep call order identical.
-import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Children, isValidElement, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { RingCenter } from "./ring-center";
 import type { RingData } from "./ring-context";
@@ -10,7 +10,6 @@ import { buildProgressKeyframes, RING_TWEEN_FALLBACK, resolveEnterTransition, re
 import type { RevealTiming, RingEnterTransition } from './enter-transition';
 import { onPostPaint, setRevealDeadline } from "./deferred-reveal";
 import { nativeStaggerDelayMs } from "./native-stagger";
-import { hitTestPolarBands, pointerToCenterOffset } from "./polar-hit";
 
 const MS_PER_SECOND = 1000;
 const RING_TRACK_STAGGER_EACH_S = 0.08;
@@ -375,42 +374,64 @@ const useRingReveal = (options: Readonly<UseRingRevealOptions>): RingRevealState
 interface UseRingPointerOptions {
   readonly coordinator: RingHoverCoordinator;
   readonly data: readonly RingData[];
-  readonly endAngle: number;
   readonly geometryScrubbing: boolean;
-  readonly getRingRadii: (index: number) => { innerRadius: number; outerRadius: number };
-  readonly startAngle: number;
 }
 
 interface RingPointerHandlers {
   readonly handlePointerLeave: () => void;
-  readonly handlePointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
+  readonly handlePointerOut: (event: React.PointerEvent<HTMLDivElement>) => void;
+  readonly handlePointerOver: (event: React.PointerEvent<HTMLDivElement>) => void;
+}
+
+// App-authored mark-group keys only (renderer path keys never parsed).
+const RING_MARK_KEY_RE = /^ring-(\d+)-(?:track|progress)$/u;
+
+// Browser hit-test target to ring index (bklit per-g enter/leave parity).
+const ringIndexFromEventTarget = (target: EventTarget | null): number | null => {
+  let node = target instanceof Element ? target : null;
+  while (node) {
+    const keyed = node.closest<SVGElement>("[data-ts-key]");
+    if (!keyed) {return null;}
+    const match = RING_MARK_KEY_RE.exec(keyed.dataset.tsKey ?? "");
+    if (match) {return Number(match[1]);}
+    node = keyed.parentElement;
+  }
+  return null;
 }
 
 const useRingPointer = (options: Readonly<UseRingPointerOptions>): RingPointerHandlers => {
-  const { coordinator, data, endAngle, geometryScrubbing, getRingRadii, startAngle } = options;
-  const ringHitBands = useMemo(
-    () => data.map((_ring: Readonly<RingData>, i: number) => ({ ...getRingRadii(i), endAngle, startAngle })),
-    [data, getRingRadii, startAngle, endAngle],
-  );
+  const { coordinator, data, geometryScrubbing } = options;
   const lastHitRequestRef = useRef<number | null>(null);
-  const handlePointerMove = useCallback(
+  const handlePointerOver = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (geometryScrubbing) {return;}
-      const { x, y } = pointerToCenterOffset(event.currentTarget, event.clientX, event.clientY);
-      const hit = hitTestPolarBands(x, y, ringHitBands);
+      const hit = ringIndexFromEventTarget(event.target);
+      if (hit === null || hit < 0 || hit >= data.length) {return;}
       if (hit === lastHitRequestRef.current) {return;}
       lastHitRequestRef.current = hit;
-      if (hit === null) {coordinator.requestUnhover();}
-      else {coordinator.requestHover(hit);}
+      coordinator.requestHover(hit);
     },
-    [coordinator, geometryScrubbing, ringHitBands],
+    [coordinator, data.length, geometryScrubbing],
+  );
+  const handlePointerOut = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (geometryScrubbing) {return;}
+      const hit = ringIndexFromEventTarget(event.target);
+      if (hit === null || hit !== lastHitRequestRef.current) {return;}
+      // Same-ring track/progress moves keep hover; gap and hole exits clear it.
+      const next = ringIndexFromEventTarget(event.relatedTarget);
+      if (next !== null && next >= 0 && next < data.length) {return;}
+      lastHitRequestRef.current = null;
+      coordinator.requestUnhover();
+    },
+    [coordinator, data.length, geometryScrubbing],
   );
   const handlePointerLeave = useCallback(() => {
     if (lastHitRequestRef.current === null) {return;}
     lastHitRequestRef.current = null;
     coordinator.requestUnhover();
   }, [coordinator]);
-  return { handlePointerLeave, handlePointerMove };
+  return { handlePointerLeave, handlePointerOut, handlePointerOver };
 };
 
 export {

@@ -1,4 +1,4 @@
-// Bklit ScatterChart on TanStack Charts. One dot mark per series (gradient fill+ring); no decimation.
+// Bklit ScatterChart on TanStack Charts. One disc+ring dot mark per series; no decimation.
 import type { ReactElement } from "react";
 import { useScatterSeriesSetup } from "./internal/scatter-series-setup";
 import { useScatterDomains } from "./internal/scatter-domains-setup";

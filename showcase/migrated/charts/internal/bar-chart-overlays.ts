@@ -216,6 +216,11 @@ interface DepthGlassGradientParams {
   readonly depthGlassNegStops: readonly Readonly<GlassGradientStop>[];
 }
 
+// Percent-string stop offsets ("0%"–"100%") parse to 0–1 fractions.
+// Number("0%") is NaN, so strip the percent unit before coercing.
+const gradientStopOffset = (offset: string): number =>
+  Number(offset.replace("%", "")) / GRADIENT_STOP_PERCENT_DIVISOR;
+
 // Glass faces share one objectBoundingBox def each; a single gradient is correct for every bar height.
 const buildDepthGlassGradients = ({
   depthGradientIds,
@@ -226,7 +231,7 @@ const buildDepthGlassGradients = ({
     id: depthGradientIds.glassPosId,
     stops: depthGlassPosStops.map((stop: Readonly<GlassGradientStop>) => ({
       color: stop.color,
-      offset: Number(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
+      offset: gradientStopOffset(stop.offset),
       opacity: Number(stop.opacity),
     })),
     x1: 0,
@@ -238,7 +243,7 @@ const buildDepthGlassGradients = ({
     id: depthGradientIds.glassNegId,
     stops: depthGlassNegStops.map((stop: Readonly<GlassGradientStop>) => ({
       color: stop.color,
-      offset: Number(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
+      offset: gradientStopOffset(stop.offset),
       opacity: Number(stop.opacity),
     })),
     x1: 0,
@@ -260,7 +265,7 @@ const buildPulseWaveGradient = ({
   id: pulseWaveGradientId,
   stops: pulseWaveStops.map((stop: Readonly<PulseWaveGradientStop>) => ({
     color: stop.color,
-    offset: Number(stop.offset) / GRADIENT_STOP_PERCENT_DIVISOR,
+    offset: gradientStopOffset(stop.offset),
     opacity: Number(stop.opacity),
   })),
   x1: 0,

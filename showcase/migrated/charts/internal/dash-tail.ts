@@ -28,6 +28,10 @@ interface DashTailOverlayProps {
   readonly series: readonly DashTailSeries[];
   readonly innerWidth: number;
   readonly innerHeight: number;
+  // SeriesHoverDim parity: dimOpacity while hovering, else 1 (absent = no dim).
+  readonly dimOpacity?: number;
+  readonly hasHover?: boolean;
+  readonly legendHoveredKey?: string;
 }
 
 interface DashTailEntryOptions {
@@ -38,10 +42,25 @@ interface DashTailEntryOptions {
   readonly marginLeft: number;
   readonly innerWidth: number;
   readonly innerHeight: number;
+  readonly dimmed: boolean;
+  readonly dimOpacity: number | undefined;
 }
 
+// Single opacity slot for pointer hover, legend dim, or both combined.
+const resolveDashDimmed = (
+  dimOpacity: number | undefined,
+  hasHover: boolean,
+  legendHoveredKey: string | undefined,
+  seriesEntry: Readonly<DashTailSeries> | undefined,
+  entryKey: string,
+): boolean => {
+  if (dimOpacity === undefined || seriesEntry?.dimEnabled === false) {return false;}
+  if (hasHover) {return true;}
+  return legendHoveredKey !== undefined && legendHoveredKey !== entryKey;
+};
+
 const renderDashTailEntry = (options: Readonly<DashTailEntryOptions>): ReactElement => {
-  const { baseId, entryKey, innerHeight, innerWidth, marginLeft, marginTop, measuredEntry } = options;
+  const { baseId, dimOpacity, dimmed, entryKey, innerHeight, innerWidth, marginLeft, marginTop, measuredEntry } = options;
   const clipId = `${baseId}-dash-${entryKey.replaceAll(/[^a-zA-Z0-9_-]/gu, "_")}`;
   const pad = measuredEntry.strokeWidth * 2;
   const tailWidth = Math.max(0, marginLeft + innerWidth - measuredEntry.dashStartX + pad);
@@ -50,7 +69,9 @@ const renderDashTailEntry = (options: Readonly<DashTailEntryOptions>): ReactElem
   const tailPathEl = createElement("path", { clipPath: `url(#${clipId})`, d: measuredEntry.pathD, fill: "none", stroke: measuredEntry.stroke, strokeDasharray: measuredEntry.dashArray, strokeLinecap: "round", strokeWidth: measuredEntry.strokeWidth });
   return createElement(
     "g",
-    { "data-bkm-dash-tail": entryKey, key: entryKey },
+    dimOpacity === undefined
+      ? { "data-bkm-dash-tail": entryKey, key: entryKey }
+      : { className: "bkm-dash-tail", "data-bkm-dash-tail": entryKey, key: entryKey, opacity: dimmed ? dimOpacity : 1 },
     defsEl,
     basePathEl,
     tailPathEl
@@ -58,7 +79,7 @@ const renderDashTailEntry = (options: Readonly<DashTailEntryOptions>): ReactElem
 }
 
 const DashTailOverlay = (props: Readonly<DashTailOverlayProps>): ReactNode => {
-  const { containerRef, width, height, margin, renderData, xDataKey, series, innerWidth, innerHeight } = props;
+  const { containerRef, dimOpacity, hasHover = false, height, innerHeight, innerWidth, legendHoveredKey, margin, renderData, series, width, xDataKey } = props;
   const baseId = useSanitizedId();
   const [measured, setMeasured] = useState<Map<string, Measured>>(new Map());
 
@@ -72,11 +93,12 @@ const DashTailOverlay = (props: Readonly<DashTailOverlayProps>): ReactNode => {
   if (activeSeries.length === 0 || measured.size === 0) {return undefined;}
 
   // No wrapping translate: pathD already carries host margins; re-adding them double-counts.
+  const seriesByKey = new Map(series.map((seriesEntry) => [seriesEntry.dataKey, seriesEntry]));
   return createElement(
     "svg",
     { "aria-hidden": "true", height, style: { inset: 0, pointerEvents: "none", position: "absolute" }, width },
     [...measured.entries()].map(([entryKey, measuredEntry]: readonly [string, Measured]) =>
-      renderDashTailEntry({ baseId, entryKey, innerHeight, innerWidth, marginLeft: margin.left, marginTop: margin.top, measuredEntry }))
+      renderDashTailEntry({ baseId, dimOpacity, dimmed: resolveDashDimmed(dimOpacity, hasHover, legendHoveredKey, seriesByKey.get(entryKey), entryKey), entryKey, innerHeight, innerWidth, marginLeft: margin.left, marginTop: margin.top, measuredEntry }))
   );
 }
 

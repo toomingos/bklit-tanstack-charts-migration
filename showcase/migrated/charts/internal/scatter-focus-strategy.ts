@@ -31,7 +31,9 @@ export const createScatterFocusStrategy = (phaseRef: { readonly current: ChartPh
     ): readonly ChartPoint<ChartDatum, Date, number>[] {
       if (!isChartInteractionPhase(phaseRef.current)) {return [];}
       if (points.length === 0) {return [];}
-      const nearest = findNearestPointByX(points, focusX, maxDistance);
+      // Bklit consumes integer MouseEvent pixels; TanStack sees fractional PointerEvents.
+      // Floor focusX so the same client pointer resolves the same datum (hover-70: 722).
+      const nearest = findNearestPointByX(points, Math.floor(focusX), maxDistance);
       if (!nearest) {return [];}
       return collectFocusGroup({ memberKeyOf: byMarkId, points, primary: nearest, xKeyOf: byXKey });
     },
