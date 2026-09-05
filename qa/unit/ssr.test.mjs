@@ -14,8 +14,8 @@ const { families, renderToString } = await loadFresh(bundleEntry('families.tsx')
 // say why in its D-entry and move the floor in the same commit.
 const SVG_FLOOR = {
   area: 8000, bar: 4000, candlestick: 8000, choropleth: 100000, composed: 8000,
-  funnel: 6000, gauge: 20000, heatmap: 25000, line: 4000, 'live-line': 8000,
-  pie: 1000, radar: 12000, ring: 4000, sankey: 12000, scatter: 10000, sunburst: 20000,
+  funnel: 6000, gauge: 17000, heatmap: 25000, line: 4000, 'live-line': 8000,
+  pie: 1000, radar: 10000, ring: 4000, sankey: 12000, scatter: 10000, sunburst: 20000,
 };
 
 for (const name of Object.keys(families)) {

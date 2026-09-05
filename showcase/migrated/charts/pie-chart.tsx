@@ -4,17 +4,17 @@ import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useS
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import { defineChart } from "@tanstack/charts/scene";
-import type { ChartMarkState } from "@tanstack/charts";
-import { polar, radialArc } from "@tanstack/charts/polar";
+import type { ChartMarkState, ChartRendererRenderContext, DomChartDefinition } from "@tanstack/charts";
+import { useFocusInjection } from "./internal/focus-injection";
+import { focusGroupAngle, polar, radialArc } from "@tanstack/charts/polar";
 import type { PolarMark } from "@tanstack/charts/polar";
 import { withStates } from "./internal/with-states";
 import { stagger } from "@tanstack/charts/motion/definition";
-import { pieArcPath, sliceMidOffset } from "./internal/pie-geometry";
+import { pieArcPath } from "./internal/pie-geometry";
 
-import { createOffsetArc, createPieHoverCoordinator, FADE_OPACITY, HOVER_SPRING, motionEasingFromCss } from './internal/pie-hover-chrome';
-import type { PieHoverCoordinator, PieSliceHoverEffect } from './internal/pie-hover-chrome';
+import { createHoverSource, createOffsetArc, FADE_OPACITY, HOVER_SPRING, motionEasingFromCss } from './internal/hover-motion';
+import type { HoverSource, PieSliceHoverEffect } from './internal/hover-motion';
 import { chartMotionRenderer } from "./internal/motion-renderer";
-import { hitTestPolarBands, pointerToCenterOffset } from "./internal/polar-hit";
 import { resolveEnterTransition } from './internal/enter-transition';
 import type { PieEnterTransition, ResolvedTiming } from './internal/enter-transition';
 import { PieStableContext, PieHoverCoordinatorContext } from './internal/pie-center-context';
@@ -158,18 +158,15 @@ interface PieRowDatum {
 
 
 interface ResolvePieRowFillParams {
-  readonly fadeHoveredIndex: number | null;
   readonly getFill: (index: number) => string;
   readonly index: number;
   readonly sliceConfig: PieSliceConfig | undefined;
 }
 
 const resolvePieRowFill = (params: Readonly<ResolvePieRowFillParams>): string => {
-  const { fadeHoveredIndex, getFill, index, sliceConfig } = params;
+  const { getFill, index, sliceConfig } = params;
   const customFill = sliceConfig?.fill;
-  const baseFill = customFill !== undefined && customFill !== "" ? customFill : getFill(index);
-  const isFaded = fadeHoveredIndex !== null && fadeHoveredIndex !== index;
-  return isFaded ? applyAlphaToColor(baseFill, FADE_OPACITY) : baseFill;
+  return customFill !== undefined && customFill !== "" ? customFill : getFill(index);
 }
 
 interface PieDimStatesParams {
@@ -185,7 +182,6 @@ const pieDimStates = (params: Readonly<PieDimStatesParams>): ChartMarkState<PieR
       fill: (context): string =>
         applyAlphaToColor(
           resolvePieRowFill({
-            fadeHoveredIndex: null,
             getFill: params.getFill,
             index: context.datum.sliceIndex,
             sliceConfig: params.sliceConfigOf(context.datum.sliceIndex),
@@ -202,31 +198,24 @@ interface BuildPieRowDatumParams {
   readonly arc: Readonly<PieArcData>;
   readonly availableRadius: number;
   readonly cornerRadius: number;
-  readonly fadeHoveredIndex: number | null;
   readonly getFill: (index: number) => string;
-  readonly hoverOffset: number;
   readonly innerRadius: number;
   readonly sliceConfig: PieSliceConfig | undefined;
 }
 
+// Hover-invariant rows: slice translate/grow is a 0.16.0 library gap.
+// Props stay accepted for parity; dim states below are the hover treatment.
 const buildPieRowDatum = (params: Readonly<BuildPieRowDatumParams>): PieRowDatum => {
-  const { arc, availableRadius, cornerRadius, fadeHoveredIndex, getFill, hoverOffset, innerRadius, sliceConfig } = params;
-  const isHovered = fadeHoveredIndex === arc.index;
-  const fill = resolvePieRowFill({ fadeHoveredIndex, getFill, index: arc.index, sliceConfig });
-  const effect = sliceConfig?.hoverEffect ?? "translate";
-  const sliceHoverOffset = sliceConfig?.hoverOffset ?? hoverOffset;
-  const growBy = isHovered && effect === "grow" ? sliceHoverOffset : 0;
-  const translateDistance = isHovered && effect === "translate" ? sliceHoverOffset : 0;
-  const { x: dx, y: dy } = sliceMidOffset(arc.startAngle, arc.endAngle, translateDistance);
+  const { arc, availableRadius, cornerRadius, getFill, innerRadius, sliceConfig } = params;
   return {
     animate: sliceConfig?.animate ?? true,
     cornerRadius: availableRadius > 0 ? cornerRadius : 0,
-    dx,
-    dy,
+    dx: 0,
+    dy: 0,
     endAngle: arc.endAngle,
-    fill,
+    fill: resolvePieRowFill({ getFill, index: arc.index, sliceConfig }),
     innerRadius,
-    outerRadius: availableRadius + growBy,
+    outerRadius: availableRadius,
     sliceIndex: arc.index,
     startAngle: arc.startAngle,
   };
@@ -375,6 +364,61 @@ const renderPieInnerContent = (params: Readonly<PieInnerContentParams>): ReactEl
   );
 }
 
+interface BuildPieDefinitionOptions {
+  readonly arcs: readonly PieArcData[];
+  readonly sliceConfigMap: ReadonlyMap<number, PieSliceConfig>;
+  readonly getFill: (index: number) => string;
+  readonly availableRadius: number;
+  readonly innerRadius: number;
+  readonly cornerRadius: number;
+  readonly hoverOffset: number;
+  readonly geometryScrubbing: boolean;
+  readonly enterTransition: PieEnterTransition | undefined;
+  readonly enterStaggerScale: number;
+}
+
+// Hover-invariant: no option derives from hovered/focused state.
+// Pointer focus never rebuilds the definition (the hover loop).
+const buildPieDefinition = (options: Readonly<BuildPieDefinitionOptions>): DomChartDefinition<PieRowDatum, number, number> => {
+  const { arcs, sliceConfigMap, getFill, availableRadius, innerRadius, cornerRadius, hoverOffset, geometryScrubbing, enterTransition, enterStaggerScale } = options;
+  if (geometryScrubbing) {
+    return defineChart({
+      guides: false,
+      marks: [polar({ inset: hoverOffset, marks: [], radiusRatio: 1, scales: { angle: null, radius: null } })],
+      scales: { x: null, y: null },
+      theme: { palette: CHART_CATEGORY_PALETTE },
+      tooltip: false,
+    });
+  }
+
+  const pieRows: PieRowDatum[] = arcs.map((arc: Readonly<PieArcData>) =>
+    buildPieRowDatum({
+      arc,
+      availableRadius,
+      cornerRadius,
+      getFill,
+      innerRadius,
+      sliceConfig: sliceConfigMap.get(arc.index),
+    }),
+  );
+
+  const sliceMark = createPieSliceMark(pieRows, { enterStaggerScale, enterTransition });
+
+
+  return defineChart({
+    // Package owns pointer and focus (angular-ray grouping); dim rides the states.
+    focus: focusGroupAngle,
+    focusRing: false,
+    guides: false,
+    // Slice dim resolves through focus states (I1 wrapper), exercised by fixtures/states.
+    marks: [withStates(polar({ inset: hoverOffset, marks: [sliceMark], radiusRatio: 1, scales: { angle: null, radius: null } }), pieRows, pieDimStates({ getFill, sliceConfigOf: (index: number) => sliceConfigMap.get(index) }))],
+    scales: { x: null, y: null },
+    // Palette override has no pixel effect (rows carry explicit fill); keeps native surfaces agreeing.
+    theme: { palette: CHART_CATEGORY_PALETTE },
+    tooltip: false,
+  });
+};
+
 const PieChart = ({
   data,
   size: fixedSize,
@@ -399,36 +443,40 @@ const PieChart = ({
   // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
   // Fixed-size mode never reads the measurement.
   const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
-  const handleHostRender = useCallback((context: { readonly scene?: { readonly width?: number } }): void => {
-    adoptHostWidth(setLiveWidth, context.scene?.width);
-  }, []);
+  const { captureRenderContext, clearFocus, focusPoint } = useFocusInjection<PieRowDatum, number, number>();
+  const handleHostRender = useCallback((context: Readonly<ChartRendererRenderContext<PieRowDatum, number, number>>): void => {
+    captureRenderContext(context);
+    adoptHostWidth(setLiveWidth, context.scene.width);
+  }, [captureRenderContext]);
   const size = fixedSize ?? liveWidth;
 
-  // Latest-value refs: the coordinator persists across renders, so its callbacks read props
-  // Through refs refreshed post-commit instead of closing over a single render.
-  const isControlledRef = useRef(hoveredIndex !== undefined);
-  const onHoverChangeRef = useRef(onHoverChange);
-  useEffect(() => {
-    isControlledRef.current = hoveredIndex !== undefined;
-    onHoverChangeRef.current = onHoverChange;
-  }, [hoveredIndex, onHoverChange]);
-  // Stable callbacks (not recreated per render) so the coordinator is created exactly once.
-  const notifyHoverChange = useCallback((index: number | null): void => {
-    onHoverChangeRef.current?.(index);
-  }, []);
-  const readIsControlled = useCallback((): boolean => isControlledRef.current, []);
-
-  // Created once via lazy state init (render-pure); the callbacks read latest props through refs.
-  const [coordinator] = useState<PieHoverCoordinator>(() => createPieHoverCoordinator(notifyHoverChange, readIsControlled));
+  // Package-owned hover: host focus lands in the store below.
+  // Center components subscribe to the same source (controlled: notify only).
+  const [hoverSource] = useState<HoverSource>(() => createHoverSource());
 
   useEffect(() => {
     if (hoveredIndex !== undefined) {
-      coordinator.setHovered(hoveredIndex);
+      hoverSource.setHovered(hoveredIndex);
     }
-  }, [hoveredIndex, coordinator]);
+  }, [hoveredIndex, hoverSource]);
 
-  const [fadeHoveredIndex, setFadeHoveredIndex] = useState<number | null>(() => coordinator.getHovered());
-  useEffect(() => coordinator.subscribe(() =>{  setFadeHoveredIndex(coordinator.getHovered()); }), [coordinator]);
+  // Controlled hover paints through package focus, never a definition rebuild.
+  const isControlled = hoveredIndex !== undefined;
+  useEffect(() => {
+    if (!isControlled) {return;}
+    if (hoveredIndex === null) { clearFocus(); return; }
+    const target = hoveredIndex;
+    focusPoint((point) => point.datum.sliceIndex === target);
+  }, [isControlled, hoveredIndex, focusPoint, clearFocus]);
+
+  const handleFocusChange = useCallback((point: { readonly datum: Readonly<PieRowDatum> } | null): void => {
+    const next = point === null ? null : point.datum.sliceIndex;
+    if (hoveredIndex !== undefined) {
+      onHoverChange?.(next);
+      return;
+    }
+    hoverSource.setHovered(next);
+  }, [hoveredIndex, onHoverChange, hoverSource]);
 
   const totalValue = useMemo(() => data.reduce((sum, datum: Readonly<PieData>) => sum + datum.value, 0), [data]);
 
@@ -520,74 +568,21 @@ const PieChart = ({
   // One multi-row mark, not N per-slice marks: validation cost is per-mark.
   const availableRadius = center - hoverOffset;
 
-  const definition = useMemo(() => {
-    if (geometryScrubbing) {
-      return defineChart({
-        guides: false,
-        marks: [polar({ inset: hoverOffset, marks: [], radiusRatio: 1, scales: { angle: null, radius: null } })],
-        scales: { x: null, y: null },
-        theme: { palette: CHART_CATEGORY_PALETTE },
-        tooltip: false,
-      });
-    }
-
-    const pieRows: PieRowDatum[] = arcs.map((arc: Readonly<PieArcData>) =>
-      buildPieRowDatum({
-        arc,
-        availableRadius,
-        cornerRadius,
-        fadeHoveredIndex,
-        getFill,
-        hoverOffset,
-        innerRadius,
-        sliceConfig: sliceConfigMap.get(arc.index),
-      }),
-    );
-
-    const sliceMark = createPieSliceMark(pieRows, { enterStaggerScale, enterTransition });
-
-
-    return defineChart({
-      // Detection is app-owned: native focus re-resolved against in-flight points caused a hover loop.
-      focusRing: false,
-      guides: false,
-      // Slice dim also resolves through focus states (I1 wrapper): inert live
-      // (no native focus yet; V2.2 wires it) and exercised by fixtures/states.
-      marks: [withStates(polar({ inset: hoverOffset, marks: [sliceMark], radiusRatio: 1, scales: { angle: null, radius: null } }), pieRows, pieDimStates({ getFill, sliceConfigOf: (index: number) => sliceConfigMap.get(index) }))],
-      pointer: false,
-      scales: { x: null, y: null },
-      // Palette override has no pixel effect (rows carry explicit fill); keeps native surfaces agreeing.
-      theme: { palette: CHART_CATEGORY_PALETTE },
-      tooltip: false,
-    });
-  }, [
+  const definition = useMemo(() => buildPieDefinition({
+    arcs,
+    availableRadius,
+    cornerRadius,
+    enterStaggerScale,
+    enterTransition,
+    geometryScrubbing,
+    getFill,
+    hoverOffset,
+    innerRadius,
+    sliceConfigMap,
+  }), [
     arcs, sliceConfigMap, getFill, availableRadius, innerRadius, cornerRadius, hoverOffset,
-    geometryScrubbing, fadeHoveredIndex, enterTransition, enterStaggerScale,
+    geometryScrubbing, enterTransition, enterStaggerScale,
   ]);
-  // Hit-test against static rest geometry so band growth never ejects a stationary cursor.
-  const pieHitBands = useMemo(
-    () => arcs.map((arc: Readonly<PieArcData>) => ({ endAngle: arc.endAngle, innerRadius, outerRadius: availableRadius, startAngle: arc.startAngle })),
-    [arcs, innerRadius, availableRadius],
-  );
-  const lastHitRequestRef = useRef<number | null>(null);
-  const handlePointerMove = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (geometryScrubbing) {return;}
-      const { x, y } = pointerToCenterOffset(event.currentTarget, event.clientX, event.clientY);
-      const hit = hitTestPolarBands(x, y, pieHitBands);
-      if (hit === lastHitRequestRef.current) {return;}
-      lastHitRequestRef.current = hit;
-      if (hit === null) {coordinator.requestUnhover();}
-      else {coordinator.requestHover(hit);}
-    },
-    [coordinator, geometryScrubbing, pieHitBands],
-  );
-  const handlePointerLeave = useCallback(() => {
-    if (lastHitRequestRef.current === null) {return;}
-    lastHitRequestRef.current = null;
-    coordinator.requestUnhover();
-  }, [coordinator]);
-
   const placeholderStyle = useMemo((): CSSProperties => ({
     ...(fixedSize !== undefined && fixedSize !== 0 ? { height: fixedSize, width: fixedSize } : { aspectRatio: "1 / 1", width: "100%" }),
     ...style,
@@ -625,6 +620,8 @@ const PieChart = ({
         initialWidth={size}
         definition={definition}
         renderer={chartMotionRenderer<PieRowDatum, number, number>()}
+        onRender={handleHostRender}
+        onFocusChange={handleFocusChange}
       />
     ) : (
       <ChartHost
@@ -635,6 +632,7 @@ const PieChart = ({
         definition={definition}
         renderer={chartMotionRenderer<PieRowDatum, number, number>()}
         onRender={handleHostRender}
+        onFocusChange={handleFocusChange}
       />
     )
   );
@@ -644,12 +642,10 @@ const PieChart = ({
       className={className}
       data-bkm-chart="pie"
       ref={containerRef}
-      onPointerMove={handlePointerMove}
-      onPointerLeave={handlePointerLeave}
       style={containerStyle}
     >
       <PieStableContext.Provider value={stable}>
-        <PieHoverCoordinatorContext.Provider value={coordinator}>
+        <PieHoverCoordinatorContext.Provider value={hoverSource}>
           {renderPieInnerContent({
             center,
             centerChildren,
@@ -670,13 +666,14 @@ const PieChart = ({
 PieChart.displayName = "PieChart";
 
 
-export type { PieSliceHoverEffect } from './internal/pie-hover-chrome';
+export type { PieSliceHoverEffect } from './internal/hover-motion';
 export type { PieEnterTransition } from './internal/enter-transition';
 export { PieSlice } from "./internal/pie-slice";
 export type { PieSliceProps } from "./internal/pie-slice";
 export {
   DEFAULT_HOVER_OFFSET,
   PieChart,
+  buildPieDefinition,
   pieDimStates,
 };
 export type {

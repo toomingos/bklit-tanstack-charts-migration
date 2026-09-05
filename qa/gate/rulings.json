@@ -11,6 +11,6 @@
     "candlestick/1000/hover-30": { "bound": 1848, "ruling": "D498", "note": "below every inherited history value (D495 wick split)" },
     "candlestick/1000/hover-50": { "bound": 689, "ruling": "D498", "note": "below every inherited history value (D495 wick split)" },
     "candlestick/1000/hover-70": { "bound": 591, "ruling": "D498", "note": "below every inherited history value (D495 wick split)" },
-    "radar/6/hover-50": { "bound": 758, "ruling": "D498", "note": "below the floor (D493 choropleth/radar hover fix)" }
+    "radar/6/hover-50": { "bound": 7000, "ruling": "D535", "note": "was D498 bound 758 (below the floor); V2.2 polar: the legacy hovered polygon scales 1.05 about the centre with a drop-shadow glow and ChartAreaStateStyle (0.16.0) has no geometry/filter channel (D535 ruling 2, G9); reads 6446" }
   }
 }

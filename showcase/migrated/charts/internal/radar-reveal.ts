@@ -4,7 +4,7 @@ import type { ChartMotionTransition, SceneNode } from "@tanstack/charts";
 import type { PolarGuide, PolarGuideScene } from "@tanstack/charts/polar";
 import { TWEEN_FALLBACK } from './enter-transition';
 import type { EnterTransition, ResolvedTiming } from './enter-transition';
-import { motionEasingFromCss } from "./pie-hover-chrome";
+import { motionEasingFromCss } from "./hover-motion";
 
 interface BklitRadarGridOptions {
   readonly levels: number;
@@ -18,6 +18,14 @@ interface BklitRadarGridOptions {
 }
 
 const classes = (base: string, custom: string | undefined): string => (custom?.length ?? 0) > 0 ? `${base} ${custom}` : base;
+
+// Long-form row behind the polar marks; shared with the focus strategy.
+interface RadarRow {
+  readonly metric: string;
+  readonly value: number;
+  readonly series: string;
+  readonly replayGroup: string;
+}
 
 // Ring vertices sit half a step off the spokes (see header note).
 const RADAR_VERTEX_HALF_STEP = 0.5;
@@ -140,7 +148,7 @@ const radarMotionTransition = (resolved: RadarResolvedTiming): ChartMotionTransi
     ? { damping: resolved.damping, mass: resolved.mass, stiffness: resolved.stiffness, type: "spring" }
     : { duration: resolved.durationMs, easing: motionEasingFromCss(resolved.easingCss), type: "tween" };
 
-export type { BklitRadarGridOptions, RadarEnterTransition, RadarResolvedTiming };
+export type { BklitRadarGridOptions, RadarEnterTransition, RadarResolvedTiming, RadarRow };
 export { bklitRadarGrid, RADAR_TWEEN_FALLBACK, radarMotionTransition };
 export {
   buildProgressKeyframes as buildRadarProgressKeyframes,

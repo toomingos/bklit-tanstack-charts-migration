@@ -112,7 +112,7 @@ const createFunnelSegmentHoverRuntime = (): FunnelSegmentHoverRuntime => {
   };
 }
 
-export { createPieHoverCoordinator as createFunnelHoverCoordinator } from "./pie-hover-chrome";
-export type { PieHoverCoordinator as FunnelHoverCoordinator } from "./pie-hover-chrome";
+export { createPieHoverCoordinator as createFunnelHoverCoordinator } from "./hover-motion";
+export type { PieHoverCoordinator as FunnelHoverCoordinator } from "./hover-motion";
 export { FUNNEL_FADE_OPACITY, createFunnelSegmentHoverRuntime };
 export type { FunnelSegmentHoverConfig, FunnelSegmentHoverRuntime };

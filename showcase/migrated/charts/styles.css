@@ -189,9 +189,6 @@
        and receives focus on pointerdown, painting the UA outline; bklit
        charts are never focused by click. Keyboard focus (:focus-visible)
        keeps the ring for a11y. --- */
-[data-bkm-chart] svg:focus:not(:focus-visible) {
-  outline: none;
-}
 
 /* ---------------------------------------------------------------------- */
 /* Hover chrome (hover-chrome.ts) — exact port of bklit tooltip styling.  */
@@ -1083,64 +1080,4 @@
 [data-bkm-chart="liveline"] .ts-chart__axes text[dominant-baseline="middle"] {
   font-family:
     var(--font-mono, "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
-}
-
-/* ── Radar block (E3+E4, radar-chart.tsx `withMarkNodeClassName`) ───────
-   `radar-chart.tsx`'s `withMarkNodeClassName` wrapper stamps these classes
-   onto the `radialArea` mark's own rendered scene nodes (a public
-   `PolarMark`-wrapping hook — SceneNodeBase.className, dist/types.d.ts — no
-   DOM reach-in). `.bkm-radar-area` lands on every series' area <path>;
-   `.bkm-radar-area--hovered` additionally lands on just the hovered
-   series'.
-
-   E3 (stroke-width hover-pop, legacy 2px rest / 3px hovered): the mark's
-   own `strokeWidth` option is emitted as a plain SVG presentation
-   attribute (dist/svg-renderer.js `renderStyle`), which has lower cascade
-   priority than this stylesheet rule, so `stroke-width` below cleanly
-   overrides it for the hovered node only, without a per-datum channel.
-
-   E4 (glow + 1.05 scale-pop): the area <path>'s own coordinates are
-   already relative to the polar centre — `polar()`'s composite render
-   (dist/polar.js) wraps every child mark in one ancestor group translated
-   by `(layout.centerX, layout.centerY)`, and `radialArea`'s own wrapping
-   group (id "radar-area") applies no further transform — so the path's
-   local SVG user-space origin (0, 0) *is* the polar centre. `transform-
-   origin: 0 0` (a raw length, not a percentage, so `transform-box` doesn't
-   affect it) therefore scales exactly around the chart centre with no
-   per-node pixel computation needed; verified visually (QA) that vertices
-   move outward on hover rather than the shape scaling from its own bbox.
-
-   Glow colour: `SceneStyle` (dist/types.d.ts) has no generic `color`/
-   `filter` field and scene nodes can't carry an inline CSS custom
-   property, so a per-series *exact* runtime colour can't reach this
-   stylesheet without a DOM reach-in. Compromise used (reported): one class
-   per default palette index (`--chart-1`..`--chart-5`, the same
-   `DEFAULT_RADAR_COLORS` the mark itself falls back to per-series index —
-   see `radar-chart.tsx` line ~354) — exact for the default/no-custom-color
-   case (incl. this bench's QA scenarios), an approximation if a consumer
-   supplies fully custom per-area colors. */
-[data-bkm-chart="radar"] .bkm-radar-area {
-  transition: filter 0.2s, transform 0.2s, stroke-width 0.2s;
-  transform-origin: 0 0;
-}
-
-[data-bkm-chart="radar"] .bkm-radar-area--hovered {
-  stroke-width: 3px;
-  transform: scale(1.05);
-}
-
-[data-bkm-chart="radar"] .bkm-radar-area--hovered-0 {
-  filter: drop-shadow(0 0 12px var(--chart-1));
-}
-[data-bkm-chart="radar"] .bkm-radar-area--hovered-1 {
-  filter: drop-shadow(0 0 12px var(--chart-2));
-}
-[data-bkm-chart="radar"] .bkm-radar-area--hovered-2 {
-  filter: drop-shadow(0 0 12px var(--chart-3));
-}
-[data-bkm-chart="radar"] .bkm-radar-area--hovered-3 {
-  filter: drop-shadow(0 0 12px var(--chart-4));
-}
-[data-bkm-chart="radar"] .bkm-radar-area--hovered-4 {
-  filter: drop-shadow(0 0 12px var(--chart-5));
 }

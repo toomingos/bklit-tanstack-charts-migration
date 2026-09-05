@@ -2,7 +2,7 @@
 // So legacy's scale(0)->scale(1) half is dropped. Timing resolution: ./enter-transition.
 import type { ChartMotionTransition } from "@tanstack/charts";
 import type { EnterTransition, ResolvedTiming } from "./enter-transition";
-import { motionEasingFromCss } from "./pie-hover-chrome";
+import { motionEasingFromCss } from "./hover-motion";
 
 type GaugeEnterTransition = EnterTransition;
 type GaugeResolvedTiming = ResolvedTiming;

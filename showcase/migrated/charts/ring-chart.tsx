@@ -4,17 +4,18 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import { defineChart } from "@tanstack/charts/scene";
-import { polar, radialArc } from "@tanstack/charts/polar";
+import type { ChartRendererRenderContext, DomChartDefinition } from "@tanstack/charts";
+import { useFocusInjection } from "./internal/focus-injection";
+import { focusGroupAngle, polar, radialArc } from "@tanstack/charts/polar";
 import { pieArcPath } from "./internal/pie-geometry";
 import { RingHoverCoordinatorContext, RingStableContext, defaultRingColors } from "./internal/ring-context";
 import type { RingData, RingStableValue, ScrubRingLayer } from "./internal/ring-context";
-import { ringHoverScale } from './internal/ring-hover-chrome';
-import { HOVER_SPRING, motionEasingFromCss } from "./internal/pie-hover-chrome";
+import { HOVER_SPRING, motionEasingFromCss } from "./internal/hover-motion";
 import { RING_TWEEN_FALLBACK, resolveEnterTransition } from './internal/enter-transition';
 import type { ResolvedTiming, RingEnterTransition } from './internal/enter-transition';
 import { nativeStaggerDelayMs } from "./internal/native-stagger";
 import { chartMotionRenderer } from "./internal/motion-renderer";
-import { MARKS_GROUP_SELECTOR, classifyChildren, useRingHoverState, useRingPointer, useRingReveal } from "./internal/ring-chart-model";
+import { MARKS_GROUP_SELECTOR, classifyChildren, ringIndexFromMarkId, useRingHoverState, useRingReveal } from "./internal/ring-chart-model";
 import type { RingChildConfig, RingProps } from "./internal/ring-chart-model";
 import "./styles.css";
 
@@ -36,7 +37,6 @@ interface RingArcGeometry {
   readonly innerRatio: number;
   readonly outerRatio: number;
   readonly cornerRatio: number;
-  readonly hoverScale: number;
 }
 
 interface RingMarkPairInput {
@@ -47,7 +47,6 @@ interface RingMarkPairInput {
   readonly getRingRadii: (index: number) => { innerRadius: number; outerRadius: number };
   readonly getColor: (index: number) => string;
   readonly availableRadius: number;
-  readonly liveHoveredIndex: number | null;
   readonly startAngle: number;
   readonly endAngle: number;
   readonly arcRange: number;
@@ -57,14 +56,12 @@ interface RingMarkPairInput {
   readonly enterStaggerScale: number;
 }
 
-// Hover scale multiplies radii (1.03 hovered / 1.02 pushed-out / 1 rest — bklit parity).
-const resolveRingArcGeometry = (params: Readonly<{ availableRadius: number; config: Readonly<RingChildConfig> | undefined; index: number; innerRadius: number; outerRadius: number; liveHoveredIndex: number | null }>): RingArcGeometry => {
+// Hover-invariant ratios: the 1.03/1.02 radius scale is a 0.16.0 library gap.
+// Hover keeps no geometric effect; the ring still resolves for center chrome.
+const resolveRingArcGeometry = (params: Readonly<{ availableRadius: number; config: Readonly<RingChildConfig> | undefined; innerRadius: number; outerRadius: number }>): RingArcGeometry => {
   const cornerPx = params.config?.lineCap === "round" ? (params.outerRadius - params.innerRadius) / 2 : 0;
-  const isHovered = params.liveHoveredIndex === params.index;
-  const isPushedOut = params.liveHoveredIndex !== null && params.liveHoveredIndex < params.index;
   return {
     cornerRatio: cornerPx / params.availableRadius,
-    hoverScale: ringHoverScale(isHovered, isPushedOut),
     innerRatio: params.innerRadius / params.availableRadius,
     outerRatio: params.outerRadius / params.availableRadius,
   };
@@ -94,17 +91,17 @@ const appendRingTrackMark = (params: Readonly<RingTrackMarkInput>): void => {
   // Track enter stays WAAPI: motion false suppresses native's clip sweep underneath it.
   arcMarks.push(
     radialArc<RingArcDatum>([trackRow], {
-      cornerRadius: ({ radius }: Readonly<{ radius: number }>) => radius * geometry.cornerRatio * geometry.hoverScale,
+      cornerRadius: ({ radius }: Readonly<{ radius: number }>) => radius * geometry.cornerRatio,
       fill: RING_BACKGROUND,
       id: `ring-${index}-track`,
-      innerRadius: ({ radius }: Readonly<{ radius: number }>) => radius * geometry.innerRatio * geometry.hoverScale,
+      innerRadius: ({ radius }: Readonly<{ radius: number }>) => radius * geometry.innerRatio,
       key: () => "track",
       motion: (ctx: Readonly<{ phase: string }>) => {
         if (ctx.phase === "enter") {return false;}
         return { transition: { damping: HOVER_SPRING.damping, stiffness: HOVER_SPRING.stiffness, type: "spring" } };
       },
       opacity: 1,
-      outerRadius: ({ radius }: Readonly<{ radius: number }>) => radius * geometry.outerRatio * geometry.hoverScale,
+      outerRadius: ({ radius }: Readonly<{ radius: number }>) => radius * geometry.outerRatio,
     }),
   );
 };
@@ -132,10 +129,10 @@ const appendRingProgressMark = (params: Readonly<RingProgressMarkInput>): void =
   };
   params.arcMarks.push(
     radialArc<RingArcDatum>([progressRow], {
-      cornerRadius: ({ radius }: Readonly<{ radius: number }>) => radius * params.geometry.cornerRatio * params.geometry.hoverScale,
+      cornerRadius: ({ radius }: Readonly<{ radius: number }>) => radius * params.geometry.cornerRatio,
       fill: params.color,
       id: `ring-${params.index}-progress`,
-      innerRadius: ({ radius }: Readonly<{ radius: number }>) => radius * params.geometry.innerRatio * params.geometry.hoverScale,
+      innerRadius: ({ radius }: Readonly<{ radius: number }>) => radius * params.geometry.innerRatio,
       key: () => "progress",
       // Progress entrance is native's default arc sweep; only the delay (+ caller transition) is authored.
       motion: (ctx: Readonly<{ phase: string }>) => {
@@ -153,15 +150,15 @@ const appendRingProgressMark = (params: Readonly<RingProgressMarkInput>): void =
         return { transition: { damping: HOVER_SPRING.damping, stiffness: HOVER_SPRING.stiffness, type: "spring" } };
       },
       opacity: 1,
-      outerRadius: ({ radius }: Readonly<{ radius: number }>) => radius * params.geometry.outerRatio * params.geometry.hoverScale,
+      outerRadius: ({ radius }: Readonly<{ radius: number }>) => radius * params.geometry.outerRatio,
     }),
   );
 };
 
 const appendRingArcMarks = (params: Readonly<RingMarkPairInput>): void => {
-  const { arcMarks, index, ringData, config, getRingRadii, getColor, availableRadius, liveHoveredIndex } = params;
+  const { arcMarks, index, ringData, config, getRingRadii, getColor, availableRadius } = params;
   const { innerRadius, outerRadius } = getRingRadii(index);
-  const geometry = resolveRingArcGeometry({ availableRadius, config, index, innerRadius, liveHoveredIndex, outerRadius });
+  const geometry = resolveRingArcGeometry({ availableRadius, config, innerRadius, outerRadius });
   const color = resolveRingColor({ config, getColor, index });
   const progress = resolveRingProgress(ringData);
   appendRingTrackMark({ arcMarks, endAngle: params.endAngle, geometry, index, startAngle: params.startAngle });
@@ -196,6 +193,57 @@ interface RingArcDatum {
 
 type AnyRadialArcMark = ReturnType<typeof radialArc<RingArcDatum>>;
 
+interface BuildRingDefinitionOptions {
+  readonly data: readonly RingData[];
+  readonly ringConfigMap: ReadonlyMap<number, RingChildConfig>;
+  readonly getRingRadii: (index: number) => { innerRadius: number; outerRadius: number };
+  readonly getColor: (index: number) => string;
+  readonly availableRadius: number;
+  readonly padding: number;
+  readonly startAngle: number;
+  readonly endAngle: number;
+  readonly arcRange: number;
+  readonly geometryScrubbing: boolean;
+  readonly enterTransition: RingEnterTransition | undefined;
+  readonly enterStaggerScale: number;
+}
+
+// Hover-invariant: no option derives from hovered/focused state.
+// Pointer focus never rebuilds the definition (the error-185 loop).
+const buildRingDefinition = (options: Readonly<BuildRingDefinitionOptions>): DomChartDefinition<RingArcDatum, number, number> => {
+  const { data, ringConfigMap, getRingRadii, getColor, availableRadius, padding, startAngle, endAngle, arcRange, geometryScrubbing, enterTransition, enterStaggerScale } = options;
+  if (geometryScrubbing) {
+    return defineChart({
+      guides: false,
+      marks: [polar({ inset: padding, marks: [], radiusRatio: 1, scales: { angle: null, radius: null } })],
+      scales: { x: null, y: null },
+      tooltip: false,
+    });
+  }
+
+  const arcMarks: AnyRadialArcMark[] = [];
+
+  // Per-ring enter delay uses the legacy formula directly (no shared stagger() sequence across marks).
+  const progressStaggerEachMs = RING_PROGRESS_STAGGER_EACH_S * enterStaggerScale * MS_PER_SECOND;
+  const progressStaggerOffsetMs = RING_PROGRESS_STAGGER_OFFSET_S * enterStaggerScale * MS_PER_SECOND;
+
+  for (let i = 0; i < data.length; i += 1) {
+    const ringData = data[i];
+    appendRingArcMarks({ arcMarks, arcRange, availableRadius, config: ringConfigMap.get(i), endAngle, enterStaggerScale, enterTransition, getColor, getRingRadii, index: i, progressStaggerEachMs, progressStaggerOffsetMs, ringData, startAngle });
+  }
+
+  return defineChart({
+    // Package owns pointer and focus (angular-ray grouping).
+    // Hover radius scale is dropped: no arc geometry in mark states.
+    focus: focusGroupAngle,
+    focusRing: false,
+    guides: false,
+    marks: [polar({ inset: padding, marks: arcMarks, radiusRatio: 1, scales: { angle: null, radius: null } })],
+    scales: { x: null, y: null },
+    tooltip: false,
+  });
+};
+
 const RingChart = ({
   data,
   size: fixedSize,
@@ -221,7 +269,28 @@ const RingChart = ({
   const size = fixedSize ?? liveWidth;
   const isFixedSize = fixedSize !== undefined && fixedSize !== 0;
 
-  const { coordinator, liveHoveredIndex } = useRingHoverState({ hoveredIndex, onHoverChange });
+  const { hoverSource } = useRingHoverState({ hoveredIndex, onHoverChange });
+  const { captureRenderContext, clearFocus, focusPoint } = useFocusInjection<RingArcDatum, number, number>();
+
+  // Controlled hover paints through package focus, never a definition rebuild.
+  const isControlled = hoveredIndex !== undefined;
+  useEffect(() => {
+    if (!isControlled) {return;}
+    if (hoveredIndex === null) { clearFocus(); return; }
+    const target = hoveredIndex;
+    focusPoint((point) => ringIndexFromMarkId(point.markId) === target);
+  }, [isControlled, hoveredIndex, focusPoint, clearFocus]);
+
+  // Package-owned hover: the focused mark id resolves the ring; controlled mode only notifies.
+  const handleFocusChange = useCallback((point: { readonly markId: string } | null): void => {
+    const candidate = point ? ringIndexFromMarkId(point.markId) : null;
+    const next = candidate !== null && candidate < data.length ? candidate : null;
+    if (hoveredIndex !== undefined) {
+      onHoverChange?.(next);
+      return;
+    }
+    hoverSource.setHovered(next);
+  }, [data.length, hoveredIndex, hoverSource, onHoverChange]);
 
   const center = size / 2;
   const ringCount = data.length;
@@ -350,46 +419,28 @@ const RingChart = ({
     return (): void =>{  clearTimeout(id); };
   }, []);
 
-  const definition = useMemo(() => {
-    if (geometryScrubbing) {
-      return defineChart({
-        guides: false,
-        marks: [polar({ inset: padding, marks: [], radiusRatio: 1, scales: { angle: null, radius: null } })],
-        scales: { x: null, y: null },
-        tooltip: false,
-      });
-    }
-
-    const arcMarks: AnyRadialArcMark[] = [];
-
-    // Per-ring enter delay uses the legacy formula directly (no shared stagger() sequence across marks).
-    const progressStaggerEachMs = RING_PROGRESS_STAGGER_EACH_S * enterStaggerScale * MS_PER_SECOND;
-    const progressStaggerOffsetMs = RING_PROGRESS_STAGGER_OFFSET_S * enterStaggerScale * MS_PER_SECOND;
-
-    for (let i = 0; i < data.length; i += 1) {
-      const ringData = data[i];
-      appendRingArcMarks({ arcMarks, arcRange, availableRadius, config: ringConfigMap.get(i), endAngle, enterStaggerScale, enterTransition, getColor, getRingRadii, index: i, liveHoveredIndex, progressStaggerEachMs, progressStaggerOffsetMs, ringData, startAngle });
-    }
-
-    return defineChart({
-      // Pointer:false + app-owned hit-test: native focus re-resolved against in-flight points caused a hover loop.
-      focusRing: false,
-      guides: false,
-      marks: [polar({ inset: padding, marks: arcMarks, radiusRatio: 1, scales: { angle: null, radius: null } })],
-      pointer: false,
-      scales: { x: null, y: null },
-      tooltip: false,
-    });
-  }, [data, ringConfigMap, getRingRadii, getColor, availableRadius, padding, startAngle, endAngle, arcRange, geometryScrubbing, liveHoveredIndex, enterTransition, enterStaggerScale]);
+  const definition = useMemo(() => buildRingDefinition({
+    arcRange,
+    availableRadius,
+    data,
+    endAngle,
+    enterStaggerScale,
+    enterTransition,
+    geometryScrubbing,
+    getColor,
+    getRingRadii,
+    padding,
+    ringConfigMap,
+    startAngle,
+  }), [data, ringConfigMap, getRingRadii, getColor, availableRadius, padding, startAngle, endAngle, arcRange, geometryScrubbing, enterTransition, enterStaggerScale]);
 
   const { handleRender: revealHandleRender, hasRevealedRings } = useRingReveal({ data, enterStaggerScale, enterTransition, geometryScrubbing, ringConfigMap });
   // Host-owned sizing: the host adopts the measured width through this render callback.
-  const handleRender = useCallback((context: { container: HTMLElement; scene?: { width?: number } }): void => {
+  const handleRender = useCallback((context: Readonly<ChartRendererRenderContext<RingArcDatum, number, number>>): void => {
+    captureRenderContext(context);
     revealHandleRender(context);
-    adoptHostWidth(setLiveWidth, context.scene?.width);
-  }, [revealHandleRender]);
-
-  const { handlePointerLeave, handlePointerOut, handlePointerOver } = useRingPointer({ coordinator, data, geometryScrubbing });
+    adoptHostWidth(setLiveWidth, context.scene.width);
+  }, [captureRenderContext, revealHandleRender]);
 
   useLayoutEffect(() => {
     if (geometryScrubbing) {return undefined;}
@@ -407,11 +458,11 @@ const RingChart = ({
       requestAnimationFrame(() => {
         if (hasAnims()) {return;}
         if (!container.querySelector(MARKS_GROUP_SELECTOR)) {return;}
-        handleRender({ container });
+        revealHandleRender({ container });
       });
     });
     return (): void =>{  cancelAnimationFrame(raf); };
-  }, [data.length, geometryScrubbing, handleRender, hasRevealedRings, containerRef]);
+  }, [data.length, geometryScrubbing, revealHandleRender, hasRevealedRings, containerRef]);
 
   const renderContent = size >= RING_MIN_RENDER_SIZE;
 
@@ -456,6 +507,7 @@ const RingChart = ({
       initialWidth={isFixedSize ? size : HOST_INITIAL_WIDTH}
       definition={definition}
       onRender={handleRender}
+      onFocusChange={handleFocusChange}
       renderer={chartMotionRenderer<RingArcDatum, number, number>()}
     />
   );
@@ -472,14 +524,11 @@ const RingChart = ({
       className={className}
       data-bkm-chart="ring"
       ref={containerRef}
-      onPointerOut={handlePointerOut}
-      onPointerOver={handlePointerOver}
-      onPointerLeave={handlePointerLeave}
       style={containerStyle}
     >
       {renderContent && (
         <RingStableContext.Provider value={stable}>
-          <RingHoverCoordinatorContext.Provider value={coordinator}>
+          <RingHoverCoordinatorContext.Provider value={hoverSource}>
             {chartNode}
 
             {centerOverlayNode}
@@ -500,6 +549,7 @@ Ring.displayName = "Ring";
 export {
   Ring,
   RingChart,
+  buildRingDefinition,
 };
 export type {
   RingChartProps,

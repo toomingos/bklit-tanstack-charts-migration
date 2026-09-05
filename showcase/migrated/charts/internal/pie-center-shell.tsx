@@ -9,7 +9,7 @@ import { useIntroFlowValue } from "./center-stat";
 import { PieHoverCoordinatorContext, PieStableContext } from './pie-center-context';
 import { PieCenterShellCenter } from "./pie-center-shell-center";
 import type { PieCenterProps, PieStableValue, PieData, PieArcData } from './pie-center';
-import type { PieHoverCoordinator } from "./pie-hover-chrome";
+import type { HoverSource } from "./hover-motion";
 import { defaultPieColors } from './pie-default-colors';
 
 const SHELL_HOVER_OFFSET = 10;
@@ -23,10 +23,8 @@ const inertUnsubscribe = (): void => {
   /* No-op: shell center is never hovered */
 };
 
-const INERT_HOVER_COORDINATOR: PieHoverCoordinator = {
+const INERT_HOVER_COORDINATOR: HoverSource = {
   getHovered: () => null,
-  requestHover: () => {inertUnsubscribe();},
-  requestUnhover: () => {inertUnsubscribe();},
   setHovered: () => {inertUnsubscribe();},
   subscribe: () => inertUnsubscribe,
 };

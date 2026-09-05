@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
 import type { RefObject } from "react";
 import type { RingEnterTransition } from "./enter-transition";
-import type { RingHoverCoordinator } from "./ring-hover-chrome";
+import type { HoverSource } from "./hover-motion";
 
 interface RingData {
   readonly label: string;
@@ -50,7 +50,7 @@ interface RingHoverValue {
 type RingContextValue = RingStableValue & RingHoverValue;
 
 const RingStableContext = createContext<RingStableValue | undefined>(undefined);
-const RingHoverCoordinatorContext = createContext<RingHoverCoordinator | undefined>(undefined);
+const RingHoverCoordinatorContext = createContext<HoverSource | undefined>(undefined);
 
 // Default per-ring colors, in bklit ring-context.tsx order.
 const defaultRingColors = [
@@ -71,7 +71,7 @@ const useRingStable = (): RingStableValue => {
   return ctx;
 }
 
-const useRingHoverCoordinator = (): RingHoverCoordinator => {
+const useRingHoverCoordinator = (): HoverSource => {
   const ctx = useContext(RingHoverCoordinatorContext);
   if (!ctx) {
     throw new Error(
@@ -81,9 +81,9 @@ const useRingHoverCoordinator = (): RingHoverCoordinator => {
   return ctx;
 }
 
-/** Legacy useRingHover() over the imperative coordinator (useSyncExternalStore; caller-only re-render).
+/** Legacy useRingHover() over the package-focus hover source (useSyncExternalStore; caller-only re-render).
  *
- * @returns {RingHoverValue} Current hovered index plus the setter routing through the coordinator.
+ * @returns {RingHoverValue} Current hovered index plus the setter routing through the hover source.
  */
 const useRingHover = (): RingHoverValue => {
   const coordinator = useRingHoverCoordinator();
@@ -94,8 +94,7 @@ const useRingHover = (): RingHoverValue => {
   );
   const setHoveredIndex = useCallback(
     (index: number | null) => {
-      if (index === null) {coordinator.requestUnhover();}
-      else {coordinator.requestHover(index);}
+      coordinator.setHovered(index);
     },
     [coordinator],
   );

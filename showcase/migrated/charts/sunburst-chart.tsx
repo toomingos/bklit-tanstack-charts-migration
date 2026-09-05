@@ -13,11 +13,11 @@ import {
   useState,
 } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { useEffectEvent } from "./internal/use-effect-event";
 import { ChartHost } from "./internal/chart-host";
+import type { ChartRendererRenderContext } from "@tanstack/charts";
+import { useFocusInjection } from "./internal/focus-injection";
 import type { SunburstNode as TSSunburstNode } from "@tanstack/charts/hierarchy/sunburst";
 import {
-  arcPath,
   buildArcs,
   geometryFor,
   ringOptions,
@@ -42,8 +42,6 @@ import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { displayNameOf } from "./internal/children-extract";
 import { SunburstCenterOverlay } from "./internal/sunburst-center-overlay";
 import { SunburstLabelsOverlay } from "./internal/sunburst-labels-overlay";
-import { SunburstHitLayer } from "./internal/sunburst-hit";
-import type { SunburstHitItem } from "./internal/sunburst-hit";
 import type { SunburstSegmentProps } from "./internal/sunburst-segment";
 import { resolveSunburstHintContent } from "./internal/sunburst-hint-content";
 import { SunburstHintDisplay } from "./internal/sunburst-hint";
@@ -94,35 +92,6 @@ const resolveSunburstHintText = (hoveredTrail: readonly string[] | undefined, fo
 };
 
 /*
- * Native keys are fixed `${markId}:node:${valueKey(id)}` with no key option; length-prefix decode keeps separator-bearing ids intact.
- */
-// Decodes a native sunburst scene key's trailing "<length>:<id>" payload.
-// Returns undefined when the key does not carry a parseable id.
-const parseSunburstPathId = (key: string, prefix: string): string | undefined => {
-  // The remainder is "<length>:<id>".
-  const rest = key.slice(prefix.length);
-  const sep = rest.indexOf(":");
-  if (sep === -1) {return undefined;}
-  const length = Number(rest.slice(0, sep));
-  if (!Number.isFinite(length)) {return undefined;}
-  return rest.slice(sep + 1, sep + 1 + length);
-};
-
-const getSunburstPathMap = (container: HTMLElement, markId: string): Map<string, SVGPathElement> => {
-  const marksGroup = container.querySelector<SVGGElement>(".ts-chart__marks");
-  const prefix = `${markId}:node:string:`;
-  const allPaths = marksGroup
-    ? marksGroup.querySelectorAll<SVGPathElement>(`path[data-ts-key^="${prefix}"]`)
-    : container.querySelectorAll<SVGPathElement>(`path[data-ts-key^="${prefix}"]`);
-  const map = new Map<string, SVGPathElement>();
-  for (const el of allPaths) {
-    const id = parseSunburstPathId(el.dataset.tsKey ?? "", prefix);
-    if (id !== undefined && !map.has(id)) {map.set(id, el);}
-  }
-  return map;
-}
-
-/*
  * Deep-readonly arc view: `Readonly<ArcDatum>` leaves `trail` mutable; mirrors the unexported helper in sunburst-geometry.ts.
  */
 type ReadonlySunburstArc = Readonly<Omit<ArcDatum, "trail">> & {
@@ -160,37 +129,6 @@ const buildLabelEntry = (
   const itemX = Math.sin(midAngle) * centroidRadius;
   const itemY = -Math.cos(midAngle) * centroidRadius;
   return [{ deg: normalizeLabelRotation(midAngle), id: arc.id, label: arc.name, x: itemX, y: itemY }];
-};
-
-// Binds one rendered arc path's click-to-zoom listener, returning its cleanup.
-const bindArcClick = (
-  pathElement: SVGPathElement,
-  arc: ReadonlySunburstArc,
-  onZoomId: (zoomId: string) => void,
-): (() => void) => {
-  const handleClick = (): void => {
-    if (arc.hasChildren) {onZoomId(arc.id);}
-  };
-  pathElement.addEventListener("click", handleClick);
-  return (): void => {
-    pathElement.removeEventListener("click", handleClick);
-  };
-};
-
-const attachSunburstPathClicks = (
-  elementMap: ReadonlyMap<string, SVGPathElement>,
-  sortedArcs: readonly ReadonlySunburstArc[],
-  onZoomId: (zoomId: string) => void,
-): (() => void) | undefined => {
-  if (elementMap.size === 0) {return undefined;}
-  const cleanups: (() => void)[] = [];
-  for (const arc of sortedArcs) {
-    const pathElement = elementMap.get(arc.id);
-    if (pathElement) {cleanups.push(bindArcClick(pathElement, arc, onZoomId));}
-  }
-  return (): void => {
-    for (const cleanup of cleanups) {cleanup();}
-  };
 };
 
 // Fades the chart stage in on mount, returning its teardown, or undefined when
@@ -331,7 +269,6 @@ interface SunburstChartInnerProps {
     maxDepth: number;
     focusById: Map<string, Focus>;
     rootId: string;
-    sortedArcs: ArcDatum[];
   };
   readonly focusId: string;
   readonly isFocusControlled: boolean;
@@ -378,7 +315,7 @@ const SunburstChartInner = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // --- Layout (verbatim bklit math) ---
-  const { arcs, maxDepth, focusById, rootId, sortedArcs } = layout;
+  const { arcs, maxDepth, focusById, rootId } = layout;
 
   const fullRadius = size / 2;
   const growPadding = paddingProp ?? defaultSunburstGrowPadding(maxDepth, size, hoverPop);
@@ -404,6 +341,21 @@ const SunburstChartInner = ({
     if (hoveredArcIndex === null) {return null;}
     return arcs[hoveredArcIndex] ?? null;
   }, [arcs, hoveredArcIndex]);
+
+  const { captureRenderContext, clearFocus, focusPoint } = useFocusInjection<TSSunburstNode<SunburstFlatRow>, number, number>();
+
+  // Controlled hover paints through package focus, never a definition rebuild.
+  // (Zoom-by-click/keyboard stays on definition selection in the hook below.)
+  useEffect(() => {
+    if (!isHoverControlled) {return;}
+    if (hoveredIndexProp === null || hoveredIndexProp < 0 || hoveredIndexProp >= arcs.length) { clearFocus(); return; }
+    const targetId = arcs[hoveredIndexProp].id;
+    focusPoint((point) => point.datum.id === targetId);
+  }, [isHoverControlled, hoveredIndexProp, arcs, focusPoint, clearFocus]);
+
+  const handleHostRender = useCallback((context: Readonly<ChartRendererRenderContext<TSSunburstNode<SunburstFlatRow>, number, number>>): void => {
+    captureRenderContext(context);
+  }, [captureRenderContext]);
 
   // --- Children classification ---
   const {
@@ -452,22 +404,27 @@ const SunburstChartInner = ({
     zoomMs: SUNBURST_ZOOM_MS,
   });
 
-  const zoomToEvent = useEffectEvent((nextId: string): void => {
-    zoomTo(nextId);
+  // TanStack definition plus the native key bridges; hook owns the memos.
+  // Activation zooms through the definition selection (stable: see below).
+  const zoomToRef = useRef(zoomTo);
+  useEffect(() => {
+    zoomToRef.current = zoomTo;
   });
-
-  // TanStack definition plus the native key bridges; hook owns the memos below.
-  const { arcsById, definition, sunburstMarkId } = useSunburstDefinition({
+  const selectToZoom = useCallback((zoomId: string): void => {
+    zoomToRef.current(zoomId);
+  }, []);
+  const { arcsById, definition } = useSunburstDefinition({
     arcs,
     data,
     enterStaggerScale,
     focus,
     getFill,
-    hoveredArc,
     maxDepth,
+    onActivateId: selectToZoom,
     playKey,
     radius,
     segmentConfigMap,
+    size,
     sweepDurationMs,
     sweepEasingCss,
     zoomEasingCss: SUNBURST_ZOOM_EASE,
@@ -495,47 +452,10 @@ const SunburstChartInner = ({
     };
   }, [arcs, playKey, enterStaggerScale, sweepDurationMs, prefersReducedMotion, setPhase, revealDeadlineTimerRef]);
 
-  /*
-   * Click-only listeners for programmatic bench dispatch on rendered paths; real pointer interaction stays on the hit layer.
-   */
-  useEffect((): (() => void) | undefined => {
-    const container = containerRef.current;
-    if (!container) {return undefined;}
-    const elementMap = getSunburstPathMap(container, sunburstMarkId);
-    return attachSunburstPathClicks(elementMap, sortedArcs, zoomToEvent);
-  }, [sortedArcs, sunburstMarkId]);
-
-  /*
-   * Pointer owns the shared hover cell while inside the stage; keyboard focus drives hover only when it is outside.
-   */
-  const pointerInsideStageRef = useRef(false);
-
-  const handleHitEnter = useCallback(
-    (arcIndex: number) => {
-      pointerInsideStageRef.current = true;
-      setHoveredArcIndex(arcIndex);
-    },
-    [setHoveredArcIndex],
-  );
-
-  const handleHitLeaveAll = useCallback(() => {
-    pointerInsideStageRef.current = false;
-    setHoveredArcIndex(null);
-  }, [setHoveredArcIndex]);
-
-  const handleHitClick = useCallback(
-    (arcIndex: number) => {
-      if (!Number.isInteger(arcIndex) || arcIndex < 0 || arcIndex >= arcs.length) {return;}
-      const arc = arcs[arcIndex];
-      if (arc.hasChildren) {zoomTo(arc.id);}
-    },
-    [arcs, zoomTo],
-  );
-
+  // Package owns pointer and focus. Hover resolves through native focus;
+  // Click/keyboard activation zooms through the definition selection.
   const handleSunburstFocusChange = useCallback(
     (point: { datum: TSSunburstNode<SunburstFlatRow> } | null) => {
-      // Pointer owns hover (D471).
-      if (pointerInsideStageRef.current) {return;}
       const arc = point ? arcsById.get(point.datum.id) : undefined;
       setHoveredArcIndex(arc ? arc.arcIndex : null);
     },
@@ -578,27 +498,6 @@ const SunburstChartInner = ({
         return buildLabelEntry(arc, base, hoveredArc);
       });
   }, [labelsCount, arcs, focus, prevFocus, maxDepth, radius, hoveredArc, zoomT]);
-
-  /*
-   * Hover resolves against static base geometry, matching bklit's fill-only hit path and knife-edge boundary outcome.
-   */
-  const hitItems = useMemo((): SunburstHitItem[] => {
-    const inZoom = zoomT < 1;
-    const fromF = inZoom ? prevFocus : focus;
-    const items: SunburstHitItem[] = [];
-    for (const arc of sortedArcs) {
-      const base = inZoom
-        ? transitionGeometry({ arc, fromFocus: fromF, maxDepth, progress: zoomT, radius, toFocus: focus })
-        : geometryFor(arc, focus, maxDepth, radius);
-      if (base) {
-        const pathData = arcPath(base, 1, 1);
-        if (pathData !== null && pathData !== "") {
-          items.push({ arcIndex: arc.arcIndex, hasChildren: arc.hasChildren, pathData });
-        }
-      }
-    }
-    return items;
-  }, [sortedArcs, focus, prevFocus, maxDepth, radius, zoomT]);
 
   const maxRevealDelay = useMemo(() => maxRevealDelayMs(arcs, enterStaggerScale), [arcs, enterStaggerScale]);
 
@@ -685,15 +584,8 @@ const SunburstChartInner = ({
           initialWidth={size}
           definition={definition}
           renderer={chartMotionRenderer<TSSunburstNode<SunburstFlatRow>, number, number>()}
+          onRender={handleHostRender}
           onFocusChange={handleSunburstFocusChange}
-        />
-        <SunburstHitLayer
-          items={hitItems}
-          fullRadius={fullRadius}
-          size={size}
-          onHitEnter={handleHitEnter}
-          onHitLeaveAll={handleHitLeaveAll}
-          onHitClick={handleHitClick}
         />
         <SunburstCenterOverlay
           visible={centerCount > 0 && liveCenterR > 1}
@@ -747,7 +639,6 @@ interface SunburstLayoutState {
   readonly focusById: Map<string, Focus>;
   maxDepth: number;
   readonly rootId: string;
-  readonly sortedArcs: ArcDatum[];
 }
 
 // Layout derivation (verbatim bklit math), shared by the outer component.
@@ -756,17 +647,11 @@ const useSunburstLayout = (data: SunburstNode): SunburstLayoutState => {
     () => buildArcs(data),
     [data],
   );
-  // Depth-descending sort for DOM order (outer rings first = hit-test priority).
-  const sortedArcs = useMemo(
-    () => arcs.toSorted((firstArc: ReadonlySunburstArc, secondArc: ReadonlySunburstArc) => secondArc.depth - firstArc.depth || secondArc.arcIndex - firstArc.arcIndex),
-    [arcs],
-  );
-  return useMemo(() => ({ arcs, focusById, maxDepth, rootId, sortedArcs }), [
+  return useMemo(() => ({ arcs, focusById, maxDepth, rootId }), [
     arcs,
     focusById,
     maxDepth,
     rootId,
-    sortedArcs,
   ]);
 };
 
@@ -813,7 +698,6 @@ const useSunburstResolvedFocus = (
     focusById: baseLayout.focusById,
     maxDepth: baseLayout.maxDepth,
     rootId: baseLayout.rootId,
-    sortedArcs: baseLayout.sortedArcs,
   }), [baseLayout]);
   return { focus, layout, rootFocus };
 };

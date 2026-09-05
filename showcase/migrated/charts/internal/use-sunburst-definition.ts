@@ -5,13 +5,14 @@ import { polar } from "@tanstack/charts/polar";
 import { sunburst } from "@tanstack/charts/hierarchy/sunburst";
 import type { SunburstNode as TSSunburstNode } from "@tanstack/charts/hierarchy/sunburst";
 import { withStates } from "./with-states";
+import { createSunburstFocus } from "./sunburst-focus";
 import { buildSunburstFlatRows, ringOptions } from "./sunburst-geometry";
 import type { ArcDatum, Focus, SunburstFlatRow } from "./sunburst-geometry";
 import { defaultSunburstColors, opacityForRelativeDepth } from "./sunburst-colors";
 import type { SunburstNode } from "./sunburst-types";
 import { buildRevealTiming } from "./sunburst-reveal";
 import { CHART_CATEGORY_PALETTE } from "./design-tokens";
-import { motionEasingFromCss } from "./pie-hover-chrome";
+import { motionEasingFromCss } from "./hover-motion";
 
 // Full opacity: the undimmed alpha for the hovered arc and its relatives.
 const FULL_OPACITY = 1;
@@ -27,16 +28,7 @@ const applyAlphaToColor = (color: string, alpha: number): string => {
   return `color-mix(in srgb, ${color} ${Math.round(alpha * ALPHA_TO_PERCENT)}%, transparent)`;
 };
 
-// Hover/dim small helpers, hoisted so render-path callbacks stay thin.
-const hoverDimFactor = (arcId: string, hoveredId: string | undefined): number => {
-  if (hoveredId === undefined) {
-    return FULL_OPACITY;
-  }
-  if (arcId === hoveredId || arcId.startsWith(`${hoveredId} / `) || hoveredId.startsWith(`${arcId} / `)) {
-    return FULL_OPACITY;
-  }
-  return HOVER_DIM_ALPHA;
-};
+// Hover/dim small helper, hoisted so render-path callbacks stay thin.
 
 interface SunburstFocusDimDeps {
   readonly arcsById: ReadonlyMap<string, ArcDatum>;
@@ -77,10 +69,6 @@ interface SunburstSegmentConfigView {
   readonly fillOpacity?: number;
 }
 
-interface SunburstHoveredArcView {
-  readonly id: string;
-}
-
 type SunburstFillResolver = (arcIndex: number, fillOverride?: string, colorOverride?: string) => string;
 
 interface UseSunburstDefinitionOptions {
@@ -89,15 +77,17 @@ interface UseSunburstDefinitionOptions {
   readonly focus: Readonly<Focus>;
   readonly maxDepth: number;
   readonly radius: number;
+  readonly size: number;
   readonly playKey: number;
   readonly enterStaggerScale: number;
   readonly segmentConfigMap: ReadonlyMap<number, SunburstSegmentConfigView>;
   readonly getFill: SunburstFillResolver;
-  readonly hoveredArc: Readonly<SunburstHoveredArcView> | null;
   readonly sweepDurationMs: number;
   readonly sweepEasingCss: string;
   readonly zoomMs: number;
   readonly zoomEasingCss: string;
+  /** Click/keyboard activation zooms; wired through the definition selection controller. */
+  readonly onActivateId: (id: string) => void;
 }
 
 interface UseSunburstDefinitionState {
@@ -106,47 +96,32 @@ interface UseSunburstDefinitionState {
   readonly definition: StaticChartDefinition<TSSunburstNode<SunburstFlatRow>, number, number, "dom">;
 }
 
-const useSunburstDefinition = (options: Readonly<UseSunburstDefinitionOptions>): UseSunburstDefinitionState => {
-  const {
-    data,
-    arcs,
-    focus,
-    maxDepth,
-    radius,
-    playKey,
-    enterStaggerScale,
-    segmentConfigMap,
-    getFill,
-    hoveredArc,
-    sweepDurationMs,
-    sweepEasingCss,
-    zoomMs,
-    zoomEasingCss,
-  } = options;
+interface BuildSunburstDefinitionOptions {
+  readonly flatRows: readonly SunburstFlatRow[];
+  readonly arcsById: ReadonlyMap<string, ArcDatum>;
+  readonly sunburstMarkId: string;
+  readonly focus: Readonly<Focus>;
+  readonly maxDepth: number;
+  readonly radius: number;
+  readonly size: number;
+  readonly visibleDepthValue: number;
+  readonly centerRValue: number;
+  readonly segmentConfigMap: ReadonlyMap<number, SunburstSegmentConfigView>;
+  readonly getFill: SunburstFillResolver;
+  readonly revealDelayById: ReadonlyMap<string, number>;
+  readonly sweepDurationMs: number;
+  readonly sweepEasingCss: string;
+  readonly zoomMs: number;
+  readonly zoomEasingCss: string;
+  /** Click/keyboard activation zooms; wired through the definition selection controller. */
+  readonly onActivateId: (id: string) => void;
+}
 
-  /*
-   * Native stratifies flat rows, not the nested tree; `arcsById` bridges native callbacks back to `buildArcs` state.
-   */
-  const flatRows = useMemo(() => buildSunburstFlatRows(data), [data]);
-  const arcsById = useMemo(() => new Map(arcs.map((arc) => [arc.id, arc])), [arcs]);
-
-  const revealDelayById = useMemo(() => {
-    const timingList = buildRevealTiming(arcs, enterStaggerScale);
-    return new Map(timingList.map((timing) => [timing.arcId, timing.delayMs]));
-  }, [arcs, enterStaggerScale]);
-
-  /*
-   * `playKey` is folded into the mark id so a bump re-keys every child at once; `getSunburstPathMap` must receive the same string.
-   */
-  const sunburstMarkId = `sunburst-arcs-${playKey}`;
-  // C5d: focus-derived mark options, hoisted so the definition below stays shallow.
-  const visibleDepthValue = resolveVisibleDepth(maxDepth, focus.depth);
-  const centerRValue = resolveCenterR(focus.depth, maxDepth, radius);
-
-  // --- TanStack definition: native `sunburst()` (C5d, D-TBD — see file ---
-  // --- header for the full design writeup and the hover-grow deviation) ---
-  const definition = useMemo(() => {
-    const arcsMark = sunburst(flatRows, {
+// Hover-invariant: no option derives from hovered state.
+// Zoom stays on definition selection; module-level for headless proof.
+const buildSunburstDefinition = (options: Readonly<BuildSunburstDefinitionOptions>): StaticChartDefinition<TSSunburstNode<SunburstFlatRow>, number, number, "dom"> => {
+  const { flatRows, arcsById, sunburstMarkId, focus, maxDepth, radius, size, visibleDepthValue, centerRValue, segmentConfigMap, getFill, revealDelayById, sweepDurationMs, sweepEasingCss, zoomMs, zoomEasingCss, onActivateId } = options;
+  const arcsMark = sunburst(flatRows, {
       fill: (node: TSSunburstNode<SunburstFlatRow>) => {
         const arc = arcsById.get(node.id);
         if (!arc) {return defaultSunburstColors[0];}
@@ -154,11 +129,8 @@ const useSunburstDefinition = (options: Readonly<UseSunburstDefinitionOptions>):
         const resolvedFill = getFill(arc.arcIndex, config?.fill, config?.color);
         const relativeDepth = arc.depth - focus.depth;
         const baseOpacity = config?.fillOpacity ?? opacityForRelativeDepth(relativeDepth);
-        /*
-         * Native has no per-datum opacity channel, so hover dimming is folded into the per-datum `fill` alpha.
-         */
-        const dimFactor = hoverDimFactor(arc.id, hoveredArc?.id);
-        return applyAlphaToColor(resolvedFill, baseOpacity * dimFactor);
+        // Unrelated-arc dim rides the focus states below, not this channel.
+        return applyAlphaToColor(resolvedFill, baseOpacity);
       },
       id: sunburstMarkId,
       /*
@@ -220,6 +192,9 @@ const useSunburstDefinition = (options: Readonly<UseSunburstDefinitionOptions>):
       startAngle: -Math.PI / 2,
     });
     return defineChart({
+      // Package owns pointer focus through the app-owned angular strategy.
+      // Unrelated-arc dim rides the states below; zoom stays on selection.
+      focus: createSunburstFocus({ arcsById, focus, maxDepth, radius, size }),
       /*
        * Keyboard focus only; `focusRing: false` because dim geometry is already the authored focus treatment.
        */
@@ -228,32 +203,106 @@ const useSunburstDefinition = (options: Readonly<UseSunburstDefinitionOptions>):
       marks: [withStates(containerMark, flatRows, sunburstFocusStates({ arcsById, focus, getFill, segmentConfigMap }))],
       scales: { x: null, y: null },
       /*
+       * Click/keyboard activation zooms (selection.change runs beside
+       * onSelect; ChartHost exposes no onSelect prop).
+       */
+      selection: {
+        change: (point, _source): void => {
+          if (point === null) {return;}
+          const arc = arcsById.get(point.datum.id);
+          if (arc?.hasChildren === true) {onActivateId(arc.id);}
+        },
+        type: "keyed",
+      },
+      /*
        * Explicit 5-entry palette override; every row already carries per-datum `fill`, so no pixel effect today.
        */
       theme: { palette: CHART_CATEGORY_PALETTE },
       tooltip: false,
     });
-  },
-  [
+};
+
+const useSunburstDefinition = (options: Readonly<UseSunburstDefinitionOptions>): UseSunburstDefinitionState => {
+  const {
+    data,
+    arcs,
+    focus,
+    maxDepth,
+    radius,
+    size,
+    playKey,
+    enterStaggerScale,
+    segmentConfigMap,
+    getFill,
+    sweepDurationMs,
+    sweepEasingCss,
+    zoomMs,
+    zoomEasingCss,
+    onActivateId,
+  } = options;
+
+  /*
+   * Native stratifies flat rows, not the nested tree; `arcsById` bridges native callbacks back to `buildArcs` state.
+   */
+  const flatRows = useMemo(() => buildSunburstFlatRows(data), [data]);
+  const arcsById = useMemo(() => new Map(arcs.map((arc) => [arc.id, arc])), [arcs]);
+
+  const revealDelayById = useMemo(() => {
+    const timingList = buildRevealTiming(arcs, enterStaggerScale);
+    return new Map(timingList.map((timing) => [timing.arcId, timing.delayMs]));
+  }, [arcs, enterStaggerScale]);
+
+  /*
+   * `playKey` is folded into the mark id so a bump re-keys every child at once; `getSunburstPathMap` must receive the same string.
+   */
+  const sunburstMarkId = `sunburst-arcs-${playKey}`;
+  // C5d: focus-derived mark options, hoisted so the definition below stays shallow.
+  const visibleDepthValue = resolveVisibleDepth(maxDepth, focus.depth);
+  const centerRValue = resolveCenterR(focus.depth, maxDepth, radius);
+
+  // --- TanStack definition: native `sunburst()` (C5d, D-TBD — see file ---
+  // --- header for the full design writeup and the hover-grow deviation) ---
+  const definition = useMemo(() => buildSunburstDefinition({
+    arcsById,
+    centerRValue,
+    flatRows,
+    focus,
+    getFill,
+    maxDepth,
+    onActivateId,
+    radius,
+    revealDelayById,
+    segmentConfigMap,
+    size,
+    sunburstMarkId,
+    sweepDurationMs,
+    sweepEasingCss,
+    visibleDepthValue,
+    zoomEasingCss,
+    zoomMs,
+  }), [
     flatRows,
     arcsById,
     sunburstMarkId,
     focus,
+    maxDepth,
     radius,
+    size,
     visibleDepthValue,
     centerRValue,
     segmentConfigMap,
     getFill,
-    hoveredArc,
     revealDelayById,
     sweepDurationMs,
     sweepEasingCss,
     zoomMs,
     zoomEasingCss,
+    onActivateId,
   ]);
 
   return { arcsById, definition, sunburstMarkId };
 };
 
-export { useSunburstDefinition };
-export type { UseSunburstDefinitionOptions, UseSunburstDefinitionState };
+
+export { buildSunburstDefinition, useSunburstDefinition };
+export type { BuildSunburstDefinitionOptions, UseSunburstDefinitionOptions, UseSunburstDefinitionState };

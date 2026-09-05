@@ -6,7 +6,6 @@ import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-
 import { createMark } from '@tanstack/charts';
 import type { ChartMark, SceneNode, DomChartDefinition, MarkScene } from '@tanstack/charts';
 import { defineChart } from "@tanstack/charts/scene";
-import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { polar } from '@tanstack/charts/polar';
 import type { PolarMark } from '@tanstack/charts/polar';
 import { collectGaugeDefsElements, computeLinearNotches, DEFAULT_ACTIVE_FILL_OPACITY, DEFAULT_ACTIVE_GRADIENT, DEFAULT_INACTIVE_FILL_OPACITY, DEFAULT_LINEAR_GAUGE_HEIGHT, resolveGaugeActiveFill, resolveGaugeBgFill } from './internal/gauge-notch';
@@ -377,7 +376,9 @@ const defineArcChart = (
   useThemePaletteGradient: boolean,
 ): DomChartDefinition =>
   defineChart({
-    focus: focusDisabled,
+    // Package owns pointer and focus. Single-value gauges carry no hover
+    // Behaviour: the ring stays off, so nothing focus-driven paints.
+    focusRing: false,
     gradients: buildGaugeThemeGradients(themeActiveGradientId, useThemePaletteGradient),
     guides: false,
     marks: [
@@ -407,6 +408,7 @@ interface BuildArcDefinitionOptions {
   readonly useThemePaletteGradient: boolean;
 }
 
+// Hover-invariant by construction: gauges carry no hover behavior.
 const buildArcDefinition = (options: Readonly<BuildArcDefinitionOptions>): DomChartDefinition | undefined => {
   const { activeFillOpacity, arcRows, enterStaggerScale, enterTransition, inactiveFillOpacity, notchCornerRadius, themeActiveGradientId, uniformRows, uniformWidth, useThemePaletteGradient } = options;
   if (!arcRows || (uniformWidth && !uniformRows)) {return undefined;}
@@ -884,7 +886,9 @@ const buildLinearGaugeChart = (
   useThemePaletteGradient: boolean,
 ): DomChartDefinition =>
   defineChart({
-    focus: focusDisabled,
+    // Package owns pointer and focus. Single-value gauges carry no hover
+    // Behaviour: the ring stays off, so nothing focus-driven paints.
+    focusRing: false,
     gradients: buildGaugeThemeGradients(themeActiveGradientId, useThemePaletteGradient),
     guides: false,
     margin: { bottom: 0, left: 0, right: 0, top: 0 },
@@ -1091,6 +1095,6 @@ const Gauge = ({ orientation = "arc", ...rest }: Readonly<GaugeProps>): ReactEle
 Gauge.displayName = "Gauge";
 
 export type { GaugeOrientation, GaugeProps };
-export { Gauge };
+export { Gauge, buildArcDefinition };
 export type { GaugeEnterTransition } from "./internal/enter-transition";
 export type { GaugeLabelAlign, GaugeLabelPlacement } from "./internal/gauge-center";

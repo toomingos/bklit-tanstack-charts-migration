@@ -5,7 +5,7 @@ import path from "node:path";
 import { APP_DIR, ROOT, RUNS_DIR, ensureDir, fmtMs, log, nowStamp, parseArgs, publishLatest, relPath, runCmd, sleep, writeJson, writeTreeHash } from "./lib.mjs";
 
 const TAG = "[gate:checks]";
-const LINT_FLOOR = 7; // pinned pre-existing oxlint errors at the V0.3 baseline (D518); fail only above it.
+const LINT_FLOOR = 4; // pinned pre-existing oxlint errors (D518 baseline 7, lowered to 4 by V2.2 polar, D535); fail only above it.
 
 function summarizeOxlint(stdout) {
   // The lint check runs with `--format=json`: oxlint's default (graphical) reporter emits

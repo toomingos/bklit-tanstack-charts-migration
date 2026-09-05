@@ -15,12 +15,13 @@ import { useEffectEvent } from "./internal/use-effect-event";
 import { scaleLinear, scalePoint } from "d3-scale";
 import { curveLinearClosed } from "d3-shape";
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
-import type { ChartMarkState, ChartMarkStateTransition, ChartMotionContext, ChartValue, DomChartDefinition, MarkScene, SceneNode } from "@tanstack/charts";
+import type { ChartMarkState, ChartMarkStateTransition, ChartMotionContext, ChartMotionDefinition, ChartRendererRenderContext, ChartValue, DomChartDefinition } from "@tanstack/charts";
 import { defineChart } from "@tanstack/charts/scene";
-import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { angleGrid, polar, radialArea, radialDot } from "@tanstack/charts/polar";
 import type { PolarGuide, PolarMark } from "@tanstack/charts/polar";
 import { withStates } from "./internal/with-states";
+import { createRadarFocus } from "./internal/radar-focus";
+import { useFocusInjection } from "./internal/focus-injection";
 import { roleOf } from "./internal/children-extract";
 import type { RadarAreaProps } from "./internal/radar-area-child";
 import type { RadarAxisProps } from "./internal/radar-axis-child";
@@ -32,6 +33,7 @@ import {
   resolveEnterTransition as resolveRadarEnterTransition,
 } from "./internal/enter-transition";
 import { bklitRadarGrid, radarMotionTransition } from "./internal/radar-reveal";
+import type { RadarRow } from "./internal/radar-reveal";
 import {
   estimateSpringSettleMs,
   sampleSpringProgress,
@@ -129,32 +131,6 @@ const withAlpha = (color: string, alphaPercent: number): string => {
   return `color-mix(in oklab, ${color} ${pct}%, transparent)`;
 }
 
-const polarValueKey = (value: string): string => `string:${value.length}:${value}`
-
-// Per-series targeting walks the scene tree by node key through the public PolarMark surface.
-const withMarkNodeClassName = <TDatum, TAngle extends ChartValue, TRadius extends ChartValue,>(mark: Readonly<PolarMark<TDatum, TAngle, TRadius>>, classNameForKey: (key: string) => string | undefined): PolarMark<TDatum, TAngle, TRadius> => {
-  const stampNode = (node: Readonly<SceneNode>): SceneNode => {
-    if (node.kind === "group") {
-      return { ...node, children: node.children.map(stampNode) };
-    }
-    const extra = classNameForKey(node.key);
-    return (extra ?? "") === "" ? node : { ...node, className: [node.className, extra].filter(Boolean).join(" ") };
-  }
-  return {
-    ...mark,
-    initialize: (context) => {
-      const initialized = mark.initialize(context);
-      return {
-        ...initialized,
-        render: (renderContext): MarkScene<TDatum, TAngle, TRadius> => {
-          const scene = initialized.render(renderContext);
-          return { ...scene, nodes: scene.nodes.map(stampNode) };
-        },
-      };
-    },
-  };
-}
-
 interface RadarMetric {
   readonly key: string;
   readonly label: string;
@@ -241,13 +217,6 @@ interface ResolvedRadarArea {
   readonly showStroke: boolean;
   readonly showGlow: boolean;
   readonly className: string;
-}
-
-interface RadarRow {
-  readonly metric: string;
-  readonly value: number;
-  readonly series: string;
-  readonly replayGroup: string;
 }
 
 interface RadarEnterSnapshot {
@@ -338,8 +307,8 @@ const seriesIndexOfRow = (row: RadarRow, resolvedCount: number): number =>
 const RADAR_AREA_MARK_ID = "radar-area";
 const RADAR_DOT_MARK_ID = "radar-dot";
 
-// Series focus states on the polar container (Polar drops child-mark states):
-// MarkId-scoped dim plus the D424 stroke pop and dot-ring dim.
+// Series focus states: unmatched dim plus hovered fill boost, stroke pop, dot `r`.
+// The 1.05 area scale is dropped: area nodes expose no geometry channel.
 const radarFocusStates = (resolvedAreas: readonly ResolvedRadarArea[]): ChartMarkState<RadarRow>[] => {
   const colorOf = (row: RadarRow): string =>
     resolvedAreas[seriesIndexOfRow(row, resolvedAreas.length)]?.color ?? DEFAULT_RADAR_COLORS[0];
@@ -356,7 +325,12 @@ const radarFocusStates = (resolvedAreas: readonly ResolvedRadarArea[]): ChartMar
       when: (context): boolean => context.point.markId === RADAR_AREA_MARK_ID && !context.matches("group"),
     },
     {
-      style: { strokeWidth: STROKE_WIDTH_POP },
+      style: {
+        fill: (context): string => withAlpha(colorOf(context.datum), FILL_OPACITY_HOVER * PERCENT_SCALE),
+        stroke: (context): string =>
+          showStrokeOf(context.datum) ? withAlpha(colorOf(context.datum), PERCENT_SCALE) : "none",
+        strokeWidth: STROKE_WIDTH_POP,
+      },
       transition: RADAR_FOCUS_DIM_TRANSITION,
       when: (context): boolean => context.point.markId === RADAR_AREA_MARK_ID && context.matches("group"),
     },
@@ -368,13 +342,13 @@ const radarFocusStates = (resolvedAreas: readonly ResolvedRadarArea[]): ChartMar
       transition: RADAR_FOCUS_DOT_TRANSITION,
       when: (context): boolean => context.point.markId === RADAR_DOT_MARK_ID && !context.matches("group"),
     },
+    {
+      style: { r: DOT_R_HOVER },
+      transition: RADAR_FOCUS_DOT_TRANSITION,
+      when: (context): boolean => context.point.markId === RADAR_DOT_MARK_ID && context.matches("group"),
+    },
   ];
 };
-
-const makeRadarAreaClassName = (hoveredAreaNodeKey: string | undefined, hoveredIndex: number | null): ((key: string) => string | undefined) => (key: string): string | undefined =>
-  key === hoveredAreaNodeKey && hoveredIndex !== null
-    ? `bkm-radar-area bkm-radar-area--hovered bkm-radar-area--hovered-${hoveredIndex % DEFAULT_RADAR_COLORS.length}`
-    : "bkm-radar-area";
 
 interface RadarDefinitionOptions {
   readonly chartSize: number;
@@ -389,31 +363,39 @@ interface RadarDefinitionOptions {
   readonly radarDotMark: Readonly<PolarMark<RadarRow, string, number>>;
   readonly rows: readonly RadarRow[];
   readonly margin: number;
-  readonly hoveredIndex: number | null;
-  readonly motionReplayKey: string;
 }
 
-// Chart definition from resolved areas, guides, and hover state.
-// Caller passes the same memoized marks with every input in its dependency array.
+// Hover-invariant definition: no option derives from hovered/focused state.
+// Pointer focus never rebuilds it; module-level for headless proof.
 const buildRadarDefinition = (options: Readonly<RadarDefinitionOptions>): DomChartDefinition<RadarRow, string, number> | undefined => {
-  const { chartSize, resolvedAreas, metricKeys, metricLabelByKey, grid, axis, labels, levels, radarAreaMark, radarDotMark, rows, margin, hoveredIndex, motionReplayKey } = options;
+  const { chartSize, resolvedAreas, metricKeys, metricLabelByKey, grid, axis, labels, levels, radarAreaMark, radarDotMark, rows, margin } = options;
   if (chartSize < RADAR_MIN_CHART_SIZE_PX || resolvedAreas.length === 0 || metricKeys.length === 0) {return undefined;}
 
-  // Group keys run through valueKey's string:length: wrapper; reproduce it to find the hovered node.
-  const hoveredGroupKey = polarValueKey(`${motionReplayKey}:${String(hoveredIndex).padStart(Z_PAD, "0")}`);
-  const hoveredAreaNodeKey = hoveredIndex === null
-    ? undefined
-    : `radar-area:${hoveredGroupKey}`;
-
+  // Split containers: guide nodes match no point, so fallback would dim them.
+  // Guides ride a stateless polar; only the series polar gets states.
   const guides = buildRadarGuides({ axis, grid, labels, levels, metricKeys, metricLabelByKey });
-  const hoveredAreaMark = withMarkNodeClassName(radarAreaMark, makeRadarAreaClassName(hoveredAreaNodeKey, hoveredIndex));
-  // Focus states wrap the container (Guide nodes match by fallback ownership).
-  const radarPolar = polar({
+  // Channel dummy: guide scales throw unless a mark materializes both channels.
+  // SAFETY: empty rows keep RadarRow channels; no datum is ever read.
+  const guideChannelMark = radialDot([] as RadarRow[], {
+    angle: "metric",
+    id: "radar-guides-channels",
+    key: "metric",
+    motion: false,
+    radius: "value",
+  });
+  const guidesPolar = polar({
     guides,
     id: "radar",
+    marks: [guideChannelMark],
+    scales: {
+      angle: { scale: scalePoint().domain(metricKeys) },
+      radius: { scale: scaleLinear().domain([0, RADAR_RADIUS_DOMAIN_MAX]) },
+    },
+  });
+  const seriesPolar = polar({
+    id: "radar-series",
     marks: [
-      // Hover dim/pop rides fill/stroke/r channels + one CSS class for stroke-width (no states option).
-      hoveredAreaMark,
+      radarAreaMark,
       radarDotMark,
     ],
     scales: {
@@ -423,11 +405,15 @@ const buildRadarDefinition = (options: Readonly<RadarDefinitionOptions>): DomCha
   });
 
   return defineChart({
-    focus: focusDisabled,
+    // Package owns pointer and focus through the app-owned polygon strategy.
+    // Stroke pop, dot dim/r and area fill boost are the authored treatment.
+    focus: createRadarFocus({ metricKeys }),
+    focusRing: false,
     guides: false,
     margin,
     marks: [
-      withStates(radarPolar, rows, radarFocusStates(resolvedAreas)),
+      guidesPolar,
+      withStates(seriesPolar, rows, radarFocusStates(resolvedAreas)),
     ],
     scales: { x: null, y: null },
     svgAnimation: false,
@@ -435,33 +421,61 @@ const buildRadarDefinition = (options: Readonly<RadarDefinitionOptions>): DomCha
   });
 };
 
-const makeRadarAreaFill = (resolvedAreas: readonly ResolvedRadarArea[], hoveredIndex: number | null): ((row: RadarRow) => string) => (row: RadarRow): string => {
+const makeRadarAreaFill = (resolvedAreas: readonly ResolvedRadarArea[]): ((row: RadarRow) => string) => (row: RadarRow): string => {
   const clampedIdx = seriesIndexOfRow(row, resolvedAreas.length);
   const color = resolvedAreas[clampedIdx]?.color ?? DEFAULT_RADAR_COLORS[0];
-  const isHovered = hoveredIndex === clampedIdx;
-  const isDimmed = hoveredIndex !== null && !isHovered;
-  const baseAlpha = isHovered ? FILL_OPACITY_HOVER : FILL_OPACITY_REST;
-  return withAlpha(color, (isDimmed ? baseAlpha * DIM_OPACITY : baseAlpha) * PERCENT_SCALE);
+  // Series dim and the hovered fill boost ride the focus states, not this channel.
+  return withAlpha(color, FILL_OPACITY_REST * PERCENT_SCALE);
 }
 
-const makeRadarAreaStroke = (resolvedAreas: readonly ResolvedRadarArea[], hoveredIndex: number | null): ((row: RadarRow) => string) => (row: RadarRow): string => {
+const makeRadarAreaStroke = (resolvedAreas: readonly ResolvedRadarArea[]): ((row: RadarRow) => string) => (row: RadarRow): string => {
   const clampedIdx = seriesIndexOfRow(row, resolvedAreas.length);
   const area = resolvedAreas[clampedIdx];
   if (!area.showStroke) {return "none";}
-  const isHovered = hoveredIndex === clampedIdx;
-  const isDimmed = hoveredIndex !== null && !isHovered;
-  return withAlpha(area.color, (isDimmed ? DIM_OPACITY : 1) * PERCENT_SCALE);
+  return withAlpha(area.color, PERCENT_SCALE);
 }
 
-const makeRadarDotFill = (resolvedAreas: readonly ResolvedRadarArea[], hoveredIndex: number | null): ((row: RadarRow) => string) => (row: RadarRow): string => {
+const makeRadarDotFill = (resolvedAreas: readonly ResolvedRadarArea[]): ((row: RadarRow) => string) => (row: RadarRow): string => {
   const clampedIdx = seriesIndexOfRow(row, resolvedAreas.length);
   const color = resolvedAreas[clampedIdx]?.color ?? DEFAULT_RADAR_COLORS[0];
-  const isDimmed = hoveredIndex !== null && hoveredIndex !== clampedIdx;
-  return withAlpha(color, (isDimmed ? DIM_OPACITY : 1) * PERCENT_SCALE);
+  // Unrelated-dot dim rides the focus states.
+  return withAlpha(color, PERCENT_SCALE);
 }
 
-const makeRadarDotRadius = (resolvedCount: number, hoveredIndex: number | null): ((row: RadarRow) => number) => (row: RadarRow): number =>
-  hoveredIndex === seriesIndexOfRow(row, resolvedCount) ? DOT_R_HOVER : DOT_R_REST;
+interface BuildRadarMarkOptions {
+  readonly rows: readonly RadarRow[];
+  readonly resolvedAreas: readonly ResolvedRadarArea[];
+  readonly motion: ChartMotionDefinition<RadarRow>;
+}
+
+// Hover-invariant area mark: hover fill boost rides the focus states.
+const buildRadarAreaMark = (options: Readonly<BuildRadarMarkOptions>): PolarMark<RadarRow, string, number> => radialArea(options.rows, {
+  angle: "metric",
+  curve: curveLinearClosed,
+  fill: makeRadarAreaFill(options.resolvedAreas),
+  fillOpacity: 1,
+  id: RADAR_AREA_MARK_ID,
+  key: "metric",
+  motion: options.motion,
+  radius: "value",
+  stroke: makeRadarAreaStroke(options.resolvedAreas),
+  strokeWidth: STROKE_WIDTH_REST,
+  z: "replayGroup",
+});
+
+// Hover-invariant dot mark: hover radius rides `r` in the focus states.
+const buildRadarDotMark = (options: Readonly<BuildRadarMarkOptions>): PolarMark<RadarRow, string, number> => radialDot(options.rows, {
+  angle: "metric",
+  fill: makeRadarDotFill(options.resolvedAreas),
+  id: RADAR_DOT_MARK_ID,
+  key: "metric",
+  motion: options.motion,
+  r: DOT_R_REST,
+  radius: "value",
+  stroke: RADAR_BACKGROUND_VAR,
+  strokeWidth: 2,
+  z: "replayGroup",
+});
 
 type RadarRevealTiming = ReturnType<typeof radarRevealTiming>;
 
@@ -688,8 +702,6 @@ const revealRadarLabelSprings = (options: Readonly<RadarSpringRevealOptions>): v
   }
 }
 
-type RadarSetHoveredIndex = (index: number | null | ((prev: number | null) => number | null)) => void;
-
 interface PushResolvedAreaOptions {
   readonly area: Readonly<RadarAreaProps>;
   readonly colorForIndex: (index: number) => string;
@@ -710,84 +722,6 @@ const pushResolvedRadarArea = (options: PushResolvedAreaOptions): void => {
     showPoints: options.area.showPoints ?? true,
     showStroke: options.area.showStroke ?? true,
   });
-};
-
-const bindRadarAreaHovers = (areaEls: NodeListOf<SVGPathElement>, setHoveredIndex: RadarSetHoveredIndex, cleanups: (() => void)[]): void => {
-  const areaArr = [...areaEls];
-  for (let i = 0; i < areaArr.length; i += 1) {
-    const path = areaArr[i];
-    const idx = i;
-    path.style.cursor = "pointer";
-    const enter = (): void => {
-      setHoveredIndex(idx);
-    };
-    const leave = (): void => {
-      setHoveredIndex((prev: number | null) => (prev === idx ? null : prev));
-    };
-    path.addEventListener("pointerenter", enter);
-    path.addEventListener("pointerleave", leave);
-    cleanups.push(() => {
-      path.removeEventListener("pointerenter", enter);
-      path.removeEventListener("pointerleave", leave);
-    });
-  }
-}
-
-interface RadarDotHoverOptions {
-  readonly dotEls: NodeListOf<SVGCircleElement>;
-  readonly metricKeysLength: number;
-  readonly setHoveredIndex: RadarSetHoveredIndex;
-  readonly cleanups: (() => void)[];
-}
-
-const bindRadarDotHover = (circle: SVGCircleElement, seriesIdx: number, setHoveredIndex: RadarSetHoveredIndex): (() => void) => {
-  circle.style.cursor = "pointer";
-  const enter = (): void => {
-    setHoveredIndex(seriesIdx);
-  };
-  const leave = (): void => {
-    setHoveredIndex((prev: number | null) => (prev === seriesIdx ? null : prev));
-  };
-  circle.addEventListener("pointerenter", enter);
-  circle.addEventListener("pointerleave", leave);
-  return (): void => {
-    circle.removeEventListener("pointerenter", enter);
-    circle.removeEventListener("pointerleave", leave);
-  };
-}
-
-const bindRadarDotHovers = (options: Readonly<RadarDotHoverOptions>): void => {
-  const { dotEls, metricKeysLength, setHoveredIndex, cleanups } = options;
-  const dotArr = [...dotEls];
-  for (let i = 0; i < dotArr.length; i += 1) {
-    const circle = dotArr[i];
-    const seriesIdx = Math.floor(i / Math.max(1, metricKeysLength));
-    cleanups.push(bindRadarDotHover(circle, seriesIdx, setHoveredIndex));
-  }
-}
-
-const runRadarHoverCleanups = (cleanups: readonly (() => void)[]): void => {
-  for (const fn of cleanups) {fn();}
-}
-
-interface RadarHoverTargetOptions {
-  readonly container: Readonly<HTMLElement>;
-  readonly setHoveredIndex: RadarSetHoveredIndex;
-  readonly metricKeysLength: number;
-}
-
-// Hover wiring for area paths and dots; returns the effect cleanup.
-// Enter owns opacity only, hover owns fill/stroke/r: disjoint sets, no two-writer race.
-const bindRadarHoverTargets = (options: Readonly<RadarHoverTargetOptions>): (() => void) => {
-  const { container, setHoveredIndex, metricKeysLength } = options;
-  const areaEls = container.querySelectorAll<SVGPathElement>(".ts-chart__radial-area path");
-  const dotEls = container.querySelectorAll<SVGCircleElement>(".ts-chart__radial-dot circle");
-  const cleanups: (() => void)[] = [];
-  bindRadarAreaHovers(areaEls, setHoveredIndex, cleanups);
-  bindRadarDotHovers({ cleanups, dotEls, metricKeysLength, setHoveredIndex });
-  return (): void => {
-    runRadarHoverCleanups(cleanups);
-  };
 };
 
 const cancelRadarAnims = (anims: readonly Animation[]): void => {
@@ -825,12 +759,6 @@ const scheduleRadarReveal = (container: HTMLElement, shouldReveal: () => boolean
   return (): void =>{  cancelAnimationFrame(raf); };
 }
 
-type HoveredIndexUpdater = (prev: number | null) => number | null;
-
-// Anti-slop permits `typeof` inside a type guard; setHoveredIndex branches on this predicate instead.
-const isHoveredIndexUpdater = (index: number | null | HoveredIndexUpdater): index is HoveredIndexUpdater =>
-  typeof index === "function";
-
 const RadarChart = ({
   data,
   metrics,
@@ -861,21 +789,24 @@ const RadarChart = ({
   );
 
   const isControlled = controlledHoveredIndex !== undefined;
-  const [internalHoveredIndex, setInternalHoveredIndex] = useState<number | null>(null);
-  const hoveredIndex = isControlled ? (controlledHoveredIndex ?? null) : internalHoveredIndex;
+  const controlledIndex = controlledHoveredIndex ?? null;
 
-  const setHoveredIndex = useCallback(
-    (index: number | null | HoveredIndexUpdater) => {
-      const prevValue = isControlled ? controlledHoveredIndex ?? null : internalHoveredIndex;
-      const next = isHoveredIndexUpdater(index) ? index(prevValue) : index;
-      if (isControlled) {
-        onHoverChange?.(next);
-      } else {
-        setInternalHoveredIndex(next);
-      }
-    },
-    [isControlled, onHoverChange, controlledHoveredIndex, internalHoveredIndex],
-  );
+  const { captureRenderContext, clearFocus, focusPoint } = useFocusInjection<RadarRow, string, number>();
+
+  // Controlled hover paints through package focus, never a definition rebuild.
+  useEffect(() => {
+    if (!isControlled) {return;}
+    if (controlledIndex === null) { clearFocus(); return; }
+    const target = controlledIndex;
+    focusPoint((point) => Number(point.datum.series) === target);
+  }, [isControlled, controlledIndex, focusPoint, clearFocus]);
+
+  // Controlled mode notifies only; uncontrolled hover is fully package-internal.
+  const handleFocusChange = useCallback((point: { readonly datum: Readonly<RadarRow> } | null): void => {
+    if (!isControlled) {return;}
+    const candidate = point ? Number(point.datum.series) : Number.NaN;
+    onHoverChange?.(Number.isInteger(candidate) ? candidate : null);
+  }, [isControlled, onHoverChange]);
 
   const gridRevealedRef = useRef(false);
   const revealAnimsRef = useRef<Animation[]>([]);
@@ -900,7 +831,6 @@ const RadarChart = ({
   }, [areas, data, colorForIndex]);
 
   const metricKeys = useMemo(() => metrics.map((metric) => metric.key), [metrics]);
-  const areaCount = resolvedAreas.length;
 
   const metricLabelByKey = useMemo(() => {
     const map = new Map<string, string>();
@@ -942,35 +872,12 @@ const RadarChart = ({
     [animate, enterDurationMs, enterTransition, levels, staggerScale],
   );
 
-  const radarAreaMark = useMemo(() => radialArea(allRows, {
-    angle: "metric",
-    curve: curveLinearClosed,
-    fill: makeRadarAreaFill(resolvedAreas, hoveredIndex),
-    fillOpacity: 1,
-    id: RADAR_AREA_MARK_ID,
-    key: "metric",
-    motion: radarMarkMotion,
-    radius: "value",
-    stroke: makeRadarAreaStroke(resolvedAreas, hoveredIndex),
-    strokeWidth: STROKE_WIDTH_REST,
-    z: "replayGroup",
-  }), [allRows, resolvedAreas, hoveredIndex, radarMarkMotion]);
+  const radarAreaMark = useMemo(() => buildRadarAreaMark({ motion: radarMarkMotion, resolvedAreas, rows: allRows }), [allRows, resolvedAreas, radarMarkMotion]);
 
-  const radarDotMark = useMemo(() => radialDot(allRows, {
-    angle: "metric",
-    fill: makeRadarDotFill(resolvedAreas, hoveredIndex),
-    id: RADAR_DOT_MARK_ID,
-    key: "metric",
-    motion: radarMarkMotion,
-    r: makeRadarDotRadius(resolvedAreas.length, hoveredIndex),
-    radius: "value",
-    stroke: RADAR_BACKGROUND_VAR,
-    strokeWidth: 2,
-    z: "replayGroup",
-  }), [allRows, resolvedAreas, hoveredIndex, radarMarkMotion]);
+  const radarDotMark = useMemo(() => buildRadarDotMark({ motion: radarMarkMotion, resolvedAreas, rows: allRows }), [allRows, resolvedAreas, radarMarkMotion]);
 
   const definition = useMemo((): DomChartDefinition<RadarRow, string, number> | undefined =>
-    buildRadarDefinition({ axis, chartSize, grid, hoveredIndex, labels, levels, margin, metricKeys, metricLabelByKey, motionReplayKey, radarAreaMark, radarDotMark, resolvedAreas, rows: allRows })
+    buildRadarDefinition({ axis, chartSize, grid, labels, levels, margin, metricKeys, metricLabelByKey, radarAreaMark, radarDotMark, resolvedAreas, rows: allRows })
   , [
     allRows,
     chartSize,
@@ -984,8 +891,6 @@ const RadarChart = ({
     radarAreaMark,
     radarDotMark,
     margin,
-    hoveredIndex,
-    motionReplayKey,
   ]);
 
   const handleRender = useCallback(
@@ -1022,13 +927,11 @@ const RadarChart = ({
     [animate, enterDurationMs, enterTransition, levels, staggerScale],
   );
 
-  useLayoutEffect((): (() => void) | undefined => {
-    const container = containerRef.current;
-    if (!container) {return undefined;}
-    // With no series there are no hover targets, so there is nothing to bind.
-    if (areaCount === 0) {return undefined;}
-    return bindRadarHoverTargets({ container, metricKeysLength: metricKeys.length, setHoveredIndex });
-  }, [areaCount, metricKeys, setHoveredIndex]);
+  // Host entry: captures the interaction for controlled focus, then delegates.
+  const handleHostRender = useCallback((context: Readonly<ChartRendererRenderContext<RadarRow, string, number>>): void => {
+    captureRenderContext(context);
+    handleRender({ container: context.container, scene: context.scene });
+  }, [captureRenderContext, handleRender]);
 
   useEffect(() => {
     const revealAnims = revealAnimsRef.current;
@@ -1111,7 +1014,8 @@ const RadarChart = ({
             initialWidth={chartSize}
             definition={definition}
             renderer={chartMotionRenderer<RadarRow, string, number>()}
-            onRender={handleRender}
+            onRender={handleHostRender}
+            onFocusChange={handleFocusChange}
           />
         ) : (
           <ChartHost
@@ -1121,7 +1025,8 @@ const RadarChart = ({
             initialWidth={HOST_INITIAL_WIDTH}
             definition={definition}
             renderer={chartMotionRenderer<RadarRow, string, number>()}
-            onRender={handleRender}
+            onRender={handleHostRender}
+            onFocusChange={handleFocusChange}
           />
         )
       )}
@@ -1137,5 +1042,5 @@ export type { RadarAreaProps } from "./internal/radar-area-child";
 export type { RadarAxisProps } from "./internal/radar-axis-child";
 export type { RadarGridProps } from "./internal/radar-grid-child";
 export type { RadarLabelsProps } from "./internal/radar-labels-child";
-export { DEFAULT_RADAR_COLORS, RadarChart };
+export { DEFAULT_RADAR_COLORS, RadarChart, buildRadarAreaMark, buildRadarDefinition, buildRadarDotMark };
 export type { RadarChartProps, RadarData, RadarEnterTransition, RadarMetric };

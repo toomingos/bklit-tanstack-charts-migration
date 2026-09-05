@@ -1,5 +1,4 @@
-// Zero-React-state hover chrome for pie slices (translate/grow/none + 0.4 dim).
-// Each PieSlice owns one runtime subscribed to a chart-level coordinator.
+// Shared hover motion primitives (verbatim from pie-hover-chrome.ts, V2.2).
 import { arc as d3Arc } from 'd3-shape';
 import type { Arc } from 'd3-shape';
 import { path as d3Path } from 'd3-path';
@@ -8,7 +7,7 @@ import { createBroadcastStore } from "./broadcast-store";
 
 type PieSliceHoverEffect = "translate" | "grow" | "none";
 
-// Re-exported so pie-chart can drive the same spring via mark-level motion.
+// Re-exported so pie/ring charts can drive the same spring via mark-level motion.
 const HOVER_SPRING = { damping: 25, stiffness: 400 } as const;
 const FADE_OPACITY = 0.4;
 
@@ -80,8 +79,26 @@ interface OffsetProxyParams {
   readonly dy: number;
 }
 
-const createOffsetProxyContext = ({ real, dx, dy }: Readonly<OffsetProxyParams>): Path => ({
-  arc: (arcX: number, arcY: number, radius: number, a0: number, a1: number, ccw = false) =>{  real.arc(arcX + dx, arcY + dy, radius, a0, a1, ccw); },
+// Positional args of the canvas arc call, forwarded with the (dx, dy) offset.
+type ArcProxyArgs = [x: number, y: number, radius: number, a0: number, a1: number, ccw?: boolean];
+
+// The proxy's own surface, mirroring the Path subset arc() can invoke.
+interface OffsetProxy {
+  arc: (...args: ArcProxyArgs) => void;
+  arcTo: (...args: readonly never[]) => never;
+  bezierCurveTo: (...args: readonly never[]) => never;
+  closePath: () => void;
+  lineTo: (endX: number, endY: number) => void;
+  moveTo: (endX: number, endY: number) => void;
+  quadraticCurveTo: (...args: readonly never[]) => never;
+  rect: (...args: readonly never[]) => never;
+}
+
+const createOffsetProxyContext = ({ real, dx, dy }: Readonly<OffsetProxyParams>): OffsetProxy => ({
+  arc: (...arcArgs: ArcProxyArgs): void => {
+    const [arcX, arcY, radius, a0, a1, ccw = false] = arcArgs;
+    real.arc(arcX + dx, arcY + dy, radius, a0, a1, ccw);
+  },
   arcTo: unexpectedArcMethod("arcTo"),
   bezierCurveTo: unexpectedArcMethod("bezierCurveTo"),
   closePath: () =>{  real.closePath(); },
@@ -99,79 +116,39 @@ interface RenderOffsetArcParams<TDatum> {
   readonly dy: number;
 }
 
+// Narrows the offset proxy to a canvas context for arc(): the guard checks
+// The four methods arc() calls, so no assertion crosses the boundary.
+const isCallable = (value: unknown): value is (...args: readonly never[]) => void => typeof value === "function";
+
+const isOffsetCapable = (proxy: OffsetProxy): proxy is OffsetProxy & CanvasRenderingContext2D =>
+  isCallable(proxy.arc) && isCallable(proxy.closePath) && isCallable(proxy.lineTo) && isCallable(proxy.moveTo);
+
 const renderOffsetArcString = <TDatum>({ base, datum, rest, dx, dy }: Readonly<RenderOffsetArcParams<TDatum>>): string => {
   const real: Path = d3Path();
   const proxyContext = createOffsetProxyContext({ dx, dy, real });
-// SAFETY: D3-shape's arc() only invokes the CanvasPath subset (moveTo/lineTo/arc/closePath), each
-// Forwarded with the (dx, dy) offset to the real d3-path Path above; the rest throw.
-  base.context(proxyContext as CanvasRenderingContext2D);
+  if (!isOffsetCapable(proxyContext)) {throw new Error("createOffsetArc: offset proxy lost a CanvasPath method");}
+  base.context(proxyContext);
   base(datum, ...rest);
   base.context(null);
   return real.toString();
 };
 
-// The nine chainable Arc members createOffsetArc forwards (module scope: one shared tuple).
-const chainableMethods = [
-  "innerRadius",
-  "outerRadius",
-  "cornerRadius",
-  "padRadius",
-  "startAngle",
-  "endAngle",
-  "padAngle",
-  "context",
-  "digits",
-] as const;
-
-// Outcome of invoking a forwarded chainable: the live getter value with no args,
-// The wrapper itself after forwarding a set for chaining.
-type ArcChainableOutcome<TDatum> =
-  | Arc<unknown, TDatum>
-  | CanvasRenderingContext2D
-  | ((...accessorArgs: readonly unknown[]) => number)
-  | number
-  | string
-  | boolean
-  | null;
-
-type ArcChainableSlot<TDatum> = (...args: readonly unknown[]) => ArcChainableOutcome<TDatum>;
-
-// Predicate proves the dynamically read member is callable (anti-slop allows typeof here).
-const isChainableSlot = <TDatum>(candidate: unknown): candidate is ArcChainableSlot<TDatum> => typeof candidate === "function";
-
 const createOffsetArc = <TDatum>(getOffset: (datum: TDatum, index: number) => { dx: number; dy: number }): Arc<unknown, TDatum> => {
   const base = d3Arc<TDatum>();
-/*
- * SAFETY: Closure plus centroid and nine chainable forwarders form the full Arc surface consumed below.
- * Assertion only bridges methods attached after creation, not the call shape.
- */
-  const wrapped = ((datum: TDatum, ...rest: readonly [number?, ...unknown[]]) => {
-    const index = rest[0] ?? 0;
-    const { dx, dy } = getOffset(datum, index);
-    if (dx === 0 && dy === 0) {
-      base.context(null);
-      return base(datum, ...rest);
-    }
-    return renderOffsetArcString({ base, datum, dx, dy, rest });
-  }) as Arc<unknown, TDatum>;
-  for (const method of chainableMethods) {
-    const forwarder = (...args: readonly unknown[]): ArcChainableOutcome<TDatum> => {
-      /*
-       * SAFETY: `method` ranges over the nine chainable Arc names existing at runtime with get/set overloads.
-       * Typed indexed access cannot compile (no index signature; `digits` missing from types), so Reflect keeps it dynamic.
-       */
-      const candidate: unknown = Reflect.get(base, method);
-      if (!isChainableSlot<TDatum>(candidate)) {throw new Error(`createOffsetArc: missing arc method '${method}'`);}
-      if (args.length === 0) {return candidate();}
-      candidate(...args);
-      return wrapped;
-    };
-    Reflect.set(wrapped, method, forwarder);
-  }
-  // Forwarder passes arguments through untouched so labels match the configured geometry
-  // (typed directly against Arc's centroid signature, so no assertion is needed here).
-  wrapped.centroid = (datum: TDatum, ...args: readonly unknown[]): [number, number] => base.centroid(datum, ...args);
-  return wrapped;
+  // Generator config methods close over their state and ignore `this`:
+  // Copying them onto the wrapper shares one config for offset calls.
+  return Object.assign(
+    (datum: TDatum, ...rest: readonly [number?, ...unknown[]]): string | null => {
+      const index = rest[0] ?? 0;
+      const { dx, dy } = getOffset(datum, index);
+      if (dx === 0 && dy === 0) {
+        base.context(null);
+        return base(datum, ...rest);
+      }
+      return renderOffsetArcString({ base, datum, dx, dy, rest });
+    },
+    base,
+  );
 }
 
 
@@ -213,12 +190,31 @@ const createPieHoverCoordinator = (onHoverChange: (index: number | null) => void
   };
 }
 
+/*
+ * Package-focus hover carrier for center components (CenterStatHoverSource).
+ */
+interface HoverSource {
+  readonly getHovered: () => number | null
+  readonly setHovered: (index: number | null) => void
+  readonly subscribe: (listener: () => void) => () => void
+}
+
+const createHoverSource = (): HoverSource => {
+  const store = createBroadcastStore<number | null>({ equals: (current, next) => current === next, initial: null });
+  return {
+    getHovered: () => store.get(),
+    setHovered: (index) => { store.set(index); },
+    subscribe: (listener) => store.subscribe(listener),
+  };
+}
+
 
 export {
+  createHoverSource,
   createOffsetArc,
   createPieHoverCoordinator,
   FADE_OPACITY,
   HOVER_SPRING,
   motionEasingFromCss,
 };
-export type { PieHoverCoordinator, PieSliceHoverEffect };
+export type { HoverSource, PieHoverCoordinator, PieSliceHoverEffect };

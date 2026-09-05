@@ -1,11 +1,11 @@
 // Ring child classification, WAAPI track-reveal helpers, and chart state hooks.
 // The hooks own contiguous state+effect groups; callers keep call order identical.
-import { Children, isValidElement, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Children, isValidElement, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { RingCenter } from "./ring-center";
 import type { RingData } from "./ring-context";
-import { createRingHoverCoordinator } from './ring-hover-chrome';
-import type { RingHoverCoordinator } from './ring-hover-chrome';
+import { createHoverSource } from "./hover-motion";
+import type { HoverSource } from "./hover-motion";
 import { buildProgressKeyframes, RING_TWEEN_FALLBACK, resolveEnterTransition, revealTiming } from './enter-transition';
 import type { RevealTiming, RingEnterTransition } from './enter-transition';
 import { onPostPaint, setRevealDeadline } from "./deferred-reveal";
@@ -282,41 +282,22 @@ interface UseRingHoverStateOptions {
 }
 
 interface RingHoverState {
-  readonly coordinator: RingHoverCoordinator;
-  readonly liveHoveredIndex: number | null;
+  readonly hoverSource: HoverSource;
 }
 
 const useRingHoverState = (options: Readonly<UseRingHoverStateOptions>): RingHoverState => {
-  const { hoveredIndex, onHoverChange } = options;
-  /*
-   * Coordinator reads latest props at pointer time so its identity survives prop churn; an Effect Event cannot be stored in a long-lived coordinator.
-   */
-  const onHoverChangeRef = useRef(onHoverChange);
-  const isControlledRef = useRef(hoveredIndex !== undefined);
-  useEffect(() => {
-    onHoverChangeRef.current = onHoverChange;
-    isControlledRef.current = hoveredIndex !== undefined;
-  });
-
-  // Created once: the callbacks above always read the latest props, so the
-  // Coordinator identity (and its in-flight hover state) survives re-renders.
-  const [coordinator] = useState((): RingHoverCoordinator => createRingHoverCoordinator(
-    (index: number | null): void => { onHoverChangeRef.current?.(index); },
-    (): boolean => isControlledRef.current,
-  ));
+  const { hoveredIndex } = options;
+  // Package-owned hover: host focus lands in the store below.
+  // Center components subscribe to the same source (controlled: notify only).
+  const [hoverSource] = useState<HoverSource>(() => createHoverSource());
 
   useEffect(() => {
     if (hoveredIndex !== undefined) {
-      coordinator.setHovered(hoveredIndex);
+      hoverSource.setHovered(hoveredIndex);
     }
-  }, [hoveredIndex, coordinator]);
+  }, [hoveredIndex, hoverSource]);
 
-  const liveHoveredIndex = useSyncExternalStore(
-    coordinator.subscribe,
-    coordinator.getHovered,
-    coordinator.getHovered,
-  );
-  return { coordinator, liveHoveredIndex };
+  return { hoverSource };
 };
 
 interface UseRingRevealOptions {
@@ -371,75 +352,24 @@ const useRingReveal = (options: Readonly<UseRingRevealOptions>): RingRevealState
   return { handleRender, hasRevealedRings };
 };
 
-interface UseRingPointerOptions {
-  readonly coordinator: RingHoverCoordinator;
-  readonly data: readonly RingData[];
-  readonly geometryScrubbing: boolean;
-}
-
-interface RingPointerHandlers {
-  readonly handlePointerLeave: () => void;
-  readonly handlePointerOut: (event: React.PointerEvent<HTMLDivElement>) => void;
-  readonly handlePointerOver: (event: React.PointerEvent<HTMLDivElement>) => void;
-}
-
 // App-authored mark-group keys only (renderer path keys never parsed).
 const RING_MARK_KEY_RE = /^ring-(\d+)-(?:track|progress)$/u;
 
-// Browser hit-test target to ring index (bklit per-g enter/leave parity).
-const ringIndexFromEventTarget = (target: EventTarget | null): number | null => {
-  let node = target instanceof Element ? target : null;
-  while (node) {
-    const keyed = node.closest<SVGElement>("[data-ts-key]");
-    if (!keyed) {return null;}
-    const match = RING_MARK_KEY_RE.exec(keyed.dataset.tsKey ?? "");
-    if (match) {return Number(match[1]);}
-    node = keyed.parentElement;
-  }
-  return null;
+// Package focus reports markId (`ring-<i>-track|progress`); ring rows carry
+// No index in the datum, so the hovered ring resolves from the focused mark.
+const ringIndexFromMarkId = (markId: string): number | null => {
+  const match = RING_MARK_KEY_RE.exec(markId);
+  if (!match) {return null;}
+  const index = Number(match[1]);
+  return Number.isInteger(index) && index >= 0 ? index : null;
 }
-
-const useRingPointer = (options: Readonly<UseRingPointerOptions>): RingPointerHandlers => {
-  const { coordinator, data, geometryScrubbing } = options;
-  const lastHitRequestRef = useRef<number | null>(null);
-  const handlePointerOver = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (geometryScrubbing) {return;}
-      const hit = ringIndexFromEventTarget(event.target);
-      if (hit === null || hit < 0 || hit >= data.length) {return;}
-      if (hit === lastHitRequestRef.current) {return;}
-      lastHitRequestRef.current = hit;
-      coordinator.requestHover(hit);
-    },
-    [coordinator, data.length, geometryScrubbing],
-  );
-  const handlePointerOut = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (geometryScrubbing) {return;}
-      const hit = ringIndexFromEventTarget(event.target);
-      if (hit === null || hit !== lastHitRequestRef.current) {return;}
-      // Same-ring track/progress moves keep hover; gap and hole exits clear it.
-      const next = ringIndexFromEventTarget(event.relatedTarget);
-      if (next !== null && next >= 0 && next < data.length) {return;}
-      lastHitRequestRef.current = null;
-      coordinator.requestUnhover();
-    },
-    [coordinator, data.length, geometryScrubbing],
-  );
-  const handlePointerLeave = useCallback(() => {
-    if (lastHitRequestRef.current === null) {return;}
-    lastHitRequestRef.current = null;
-    coordinator.requestUnhover();
-  }, [coordinator]);
-  return { handlePointerLeave, handlePointerOut, handlePointerOver };
-};
 
 export {
   MARKS_GROUP_SELECTOR,
   cancelPendingRingReveal,
   classifyChildren,
+  ringIndexFromMarkId,
   useRingHoverState,
-  useRingPointer,
   useRingReveal,
 };
 export type {
@@ -447,10 +377,8 @@ export type {
   RingChildConfig,
   RingHoverState,
   RingLineCap,
-  RingPointerHandlers,
   RingProps,
   RingRevealState,
   UseRingHoverStateOptions,
-  UseRingPointerOptions,
   UseRingRevealOptions,
 };

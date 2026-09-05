@@ -1,4 +1,4 @@
-import type { PieSliceHoverEffect } from "./pie-hover-chrome";
+import type { PieSliceHoverEffect } from "./hover-motion";
 
 // Config element for one pie slice; read by PieChart, renders nothing itself.
 interface PieSliceProps {
