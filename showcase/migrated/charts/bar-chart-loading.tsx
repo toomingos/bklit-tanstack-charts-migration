@@ -6,7 +6,8 @@ import { useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import "./styles.css";
 import { BarLoadingSweep } from "./internal/bar-loading-sweep";
-import { parseAspectRatio } from "./internal/parse-aspect-ratio";
+import { resolveChartHeightPx } from "./internal/line-chart-support";
+import { useMeasuredRect } from "./internal/use-container-size";
 import { DEFAULT_CHART_MARGIN, useChartMargin } from "./internal/use-chart-margin";
 import type { ChartMargin } from "./internal/use-chart-margin";
 import { HOST_INITIAL_WIDTH } from "./internal/chart-host";
@@ -36,8 +37,9 @@ const BarChartLoading = ({
 }: Readonly<BarChartLoadingProps>): ReactElement => {
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  // Host-owned sizing: the skeleton renders at the host initial width (also on the server).
-  const width = HOST_INITIAL_WIDTH;
+  // Measured box wins (legacy delegates to BarChart status="loading" at the measured size).
+  const { height: measuredHeight, width: measuredWidth } = useMeasuredRect(containerRef);
+  const width = measuredWidth > 0 ? measuredWidth : HOST_INITIAL_WIDTH;
   const rootStyle = useMemo(
     (): CSSProperties => ({
       aspectRatio,
@@ -46,7 +48,7 @@ const BarChartLoading = ({
     }),
     [aspectRatio],
   );
-  const heightPx = width / parseAspectRatio(aspectRatio);
+  const heightPx = resolveChartHeightPx(width, measuredHeight, aspectRatio);
   const innerWidth = Math.max(0, width - margin.left - margin.right);
   const innerHeight = Math.max(0, heightPx - margin.top - margin.bottom);
   return (

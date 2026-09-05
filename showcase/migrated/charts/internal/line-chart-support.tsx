@@ -7,6 +7,8 @@ import { shortDateFmt } from "./formatters";
 import { DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./chart-phase";
 import type { ChartPhase } from "./chart-phase";
 import { parseAspectRatio } from "./parse-aspect-ratio";
+// eslint-disable-next-line unicorn/prefer-export-from -- re-exported through the single export block below (import/group-exports).
+import { useDebouncedContainerSize } from "./use-container-size";
 import type { MarkerGradientDef } from "./series-marker-mark";
 import type { ChartDatum, ChartTooltipConfig } from "./types";
 import type { LabelFadeState } from "./line-x-scale";
@@ -272,5 +274,6 @@ export {
   scanRenderTimeExtent,
   stringifyDatumValue,
   syncDatePillChrome,
+  useDebouncedContainerSize,
 };
 export type { BrushClipParams, CrosshairGradientParams, DatePillSyncParams, FocusClearRef, FocusGate, FocusPoint, GateFocusPrimaryParams, StringifyDatumValueParams };

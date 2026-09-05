@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { useEffectEvent } from "./use-effect-event";
 import { useChartMargin, DEFAULT_CHART_MARGIN } from "./use-chart-margin";
+import { useMeasuredRect } from "./use-container-size";
 import { HOST_INITIAL_WIDTH, adoptHostWidth } from "./chart-host";
 import { useChartPhaseOrchestrator } from "./use-chart-phase-orchestrator";
 import { clipRevealTiming } from "./enter-transition";
@@ -84,12 +85,13 @@ const useAreaChartSetup = (params: Readonly<AreaChartSetupParams>): AreaChartSet
   const margin = useChartMargin(params.marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  // Height comes from the measured box: the package derives scene.height from width/aspect.
   const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
   const adoptWidth = useCallback((sceneWidth: number | undefined): void => {
     adoptHostWidth(setLiveWidth, sceneWidth);
   }, []);
   const width = liveWidth;
-  const measuredHeight = 0;
+  const { height: measuredHeight } = useMeasuredRect(containerRef);
   const onPhaseChangeEvent = useEffectEvent((phase: ChartPhase): void => {
     params.onPhaseChange?.(phase);
   });

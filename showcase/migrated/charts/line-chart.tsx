@@ -58,6 +58,7 @@ import {
   resolveChartHeightPx,
   resolveEffectiveYDomainTweenBase,
   stringifyDatumValue,
+  useDebouncedContainerSize,
 } from "./internal/line-chart-support";
 import { useLineMarkerGradients } from "./internal/use-line-marker-gradients";
 import { useLineBrushControls } from "./internal/use-line-brush-controls";
@@ -121,9 +122,10 @@ export const LineChart = ({
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  // Height comes from the measured box: the package derives scene.height from width/aspect.
   const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
   const width = liveWidth;
-  const measuredHeight = 0;
+  const { height: measuredHeight } = useDebouncedContainerSize(containerRef);
   const heightPx = resolveChartHeightPx(width, measuredHeight, aspectRatio);
   const xScaleD3Ref = useRef<ScaleTime<number, number> | null>(null);
   const onPhaseChangeEvent = useEffectEvent((phase: ChartPhase): void => {
