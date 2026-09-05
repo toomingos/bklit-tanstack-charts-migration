@@ -1,0 +1,966 @@
+{
+  "generatedAt": "2026-09-05T12:15:39.806Z",
+  "runDir": "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z",
+  "measured": false,
+  "measureExit": null,
+  "measureMs": 0,
+  "gateExit": 0,
+  "gateStdoutTail": [
+    "  ok    migrated/sunburst        gzip    97.5 kB  pin    97.5 kB  limit   100.4 kB  +0.0%",
+    "  ok    migrated/sunchrome       gzip    98.1 kB  pin    98.1 kB  limit   101.1 kB  +0.0%",
+    "[bundle-gate] OK"
+  ],
+  "pinnedAt": "2026-09-05 HEAD 61d6179 (V0.3 baseline, @tanstack/charts 0.16.0; previous pin 2026-09-01 c1e9ced)",
+  "tolerancePct": 3,
+  "summary": {
+    "pinned": 43,
+    "fail": 0,
+    "missing": 0,
+    "measureFailed": 0,
+    "sumGzip": 5605143,
+    "sumPin": 5605143,
+    "sumDeltaPct": 0,
+    "maxDelta": {
+      "scenario": "migrated/area",
+      "deltaPct": 0
+    }
+  },
+  "rows": [
+    {
+      "scenario": "migrated/area",
+      "gzip": 168043,
+      "raw": 495689,
+      "pin": 168043,
+      "limit": 173084,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/arealoading",
+      "gzip": 127922,
+      "raw": 388106,
+      "pin": 127922,
+      "limit": 131760,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/areamultiaxis",
+      "gzip": 168116,
+      "raw": 495922,
+      "pin": 168116,
+      "limit": 173159,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/bar",
+      "gzip": 134546,
+      "raw": 395258,
+      "pin": 134546,
+      "limit": 138582,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/bardepth",
+      "gzip": 134747,
+      "raw": 395784,
+      "pin": 134747,
+      "limit": 138789,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/barloading",
+      "gzip": 2449,
+      "raw": 5274,
+      "pin": 2449,
+      "limit": 2522,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/barmultiaxis",
+      "gzip": 134603,
+      "raw": 395378,
+      "pin": 134603,
+      "limit": 138641,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/barsquares",
+      "gzip": 146726,
+      "raw": 428589,
+      "pin": 146726,
+      "limit": 151128,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/brush",
+      "gzip": 178442,
+      "raw": 521879,
+      "pin": 178442,
+      "limit": 183795,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/candlestick",
+      "gzip": 127176,
+      "raw": 369312,
+      "pin": 127176,
+      "limit": 130991,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/candlestick-legend",
+      "gzip": 137813,
+      "raw": 402364,
+      "pin": 137813,
+      "limit": 141947,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/candletween",
+      "gzip": 127244,
+      "raw": 369410,
+      "pin": 127244,
+      "limit": 131061,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/choropleth",
+      "gzip": 119026,
+      "raw": 337721,
+      "pin": 119026,
+      "limit": 122597,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/composed",
+      "gzip": 140194,
+      "raw": 409980,
+      "pin": 140194,
+      "limit": 144400,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/composedmultiaxis",
+      "gzip": 140253,
+      "raw": 410125,
+      "pin": 140253,
+      "limit": 144461,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/composedstacked",
+      "gzip": 140180,
+      "raw": 409969,
+      "pin": 140180,
+      "limit": 144385,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/funnel",
+      "gzip": 48669,
+      "raw": 131689,
+      "pin": 48669,
+      "limit": 50129,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/funnelvertical",
+      "gzip": 48688,
+      "raw": 131728,
+      "pin": 48688,
+      "limit": 50149,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/gauge",
+      "gzip": 104637,
+      "raw": 304293,
+      "pin": 104637,
+      "limit": 107776,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/gaugelinear",
+      "gzip": 104744,
+      "raw": 304419,
+      "pin": 104744,
+      "limit": 107886,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/griddefault",
+      "gzip": 170324,
+      "raw": 498270,
+      "pin": 170324,
+      "limit": 175434,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/heatmap",
+      "gzip": 105621,
+      "raw": 305256,
+      "pin": 105621,
+      "limit": 108790,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/legend",
+      "gzip": 12434,
+      "raw": 36988,
+      "pin": 12434,
+      "limit": 12807,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/legendhover",
+      "gzip": 174096,
+      "raw": 516674,
+      "pin": 174096,
+      "limit": 179319,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/line",
+      "gzip": 170390,
+      "raw": 498358,
+      "pin": 170390,
+      "limit": 175502,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/linemultiaxis",
+      "gzip": 170469,
+      "raw": 498538,
+      "pin": 170469,
+      "limit": 175583,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/liveline",
+      "gzip": 125519,
+      "raw": 355896,
+      "pin": 125519,
+      "limit": 129285,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/markers",
+      "gzip": 181897,
+      "raw": 532325,
+      "pin": 181897,
+      "limit": 187354,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/patternarea",
+      "gzip": 168100,
+      "raw": 495825,
+      "pin": 168100,
+      "limit": 173143,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/pie",
+      "gzip": 92430,
+      "raw": 261214,
+      "pin": 92430,
+      "limit": 95203,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/profitloss",
+      "gzip": 178434,
+      "raw": 522433,
+      "pin": 178434,
+      "limit": 183787,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/projection",
+      "gzip": 173485,
+      "raw": 507057,
+      "pin": 173485,
+      "limit": 178690,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/projectionxdomain",
+      "gzip": 173534,
+      "raw": 507142,
+      "pin": 173534,
+      "limit": 178740,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/radar",
+      "gzip": 103613,
+      "raw": 291463,
+      "pin": 103613,
+      "limit": 106721,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/refarea",
+      "gzip": 170480,
+      "raw": 498495,
+      "pin": 170480,
+      "limit": 175594,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/refareamultiaxis",
+      "gzip": 170607,
+      "raw": 498783,
+      "pin": 170607,
+      "limit": 175725,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/ring",
+      "gzip": 102295,
+      "raw": 290558,
+      "pin": 102295,
+      "limit": 105364,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/sankey",
+      "gzip": 104293,
+      "raw": 295682,
+      "pin": 104293,
+      "limit": 107422,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/scatter",
+      "gzip": 126075,
+      "raw": 365315,
+      "pin": 126075,
+      "limit": 129857,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/scattermultiaxis",
+      "gzip": 126095,
+      "raw": 365331,
+      "pin": 126095,
+      "limit": 129878,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/segment",
+      "gzip": 170460,
+      "raw": 498610,
+      "pin": 170460,
+      "limit": 175574,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/sunburst",
+      "gzip": 99807,
+      "raw": 277911,
+      "pin": 99807,
+      "limit": 102801,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/sunchrome",
+      "gzip": 100467,
+      "raw": 279315,
+      "pin": 100467,
+      "limit": 103481,
+      "deltaPct": 0,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "bklit/area",
+      "gzip": 136508,
+      "raw": 392836,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/arealoading",
+      "gzip": 90835,
+      "raw": 268332,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/areamultiaxis",
+      "gzip": 136590,
+      "raw": 393069,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/bar",
+      "gzip": 121716,
+      "raw": 350432,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/bardepth",
+      "gzip": 124441,
+      "raw": 359746,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/barloading",
+      "gzip": 70063,
+      "raw": 210225,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/barmultiaxis",
+      "gzip": 121779,
+      "raw": 350552,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/barsquares",
+      "gzip": 127321,
+      "raw": 368279,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/brush",
+      "gzip": 151525,
+      "raw": 442298,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/candlestick-legend",
+      "gzip": 128452,
+      "raw": 367827,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/candlestick",
+      "gzip": 124781,
+      "raw": 357327,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/candletween",
+      "gzip": 124853,
+      "raw": 357425,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/choropleth",
+      "gzip": 119551,
+      "raw": 340272,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/composed",
+      "gzip": 139058,
+      "raw": 399506,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/composedmultiaxis",
+      "gzip": 139146,
+      "raw": 399651,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/composedstacked",
+      "gzip": 139095,
+      "raw": 399524,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/funnel",
+      "gzip": 90965,
+      "raw": 262607,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/funnelvertical",
+      "gzip": 90982,
+      "raw": 262646,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/gauge",
+      "gzip": 100795,
+      "raw": 290188,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/gaugelinear",
+      "gzip": 100900,
+      "raw": 290314,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/griddefault",
+      "gzip": 136221,
+      "raw": 392021,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/heatmap",
+      "gzip": 123718,
+      "raw": 353706,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/legend",
+      "gzip": 11657,
+      "raw": 34545,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/legendhover",
+      "gzip": 148750,
+      "raw": 425995,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/line",
+      "gzip": 136280,
+      "raw": 392109,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/linemultiaxis",
+      "gzip": 136344,
+      "raw": 392289,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/liveline",
+      "gzip": 123209,
+      "raw": 350841,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/markers",
+      "gzip": 145356,
+      "raw": 415558,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/patternarea",
+      "gzip": 138299,
+      "raw": 398992,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/pie",
+      "gzip": 97053,
+      "raw": 276245,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/profitloss",
+      "gzip": 138423,
+      "raw": 398048,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/projection",
+      "gzip": 138627,
+      "raw": 398456,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/projectionxdomain",
+      "gzip": 138713,
+      "raw": 398541,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/radar",
+      "gzip": 106927,
+      "raw": 309965,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/refarea",
+      "gzip": 139220,
+      "raw": 401391,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/refareamultiaxis",
+      "gzip": 139326,
+      "raw": 401679,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/ring",
+      "gzip": 103908,
+      "raw": 296392,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/sankey",
+      "gzip": 100947,
+      "raw": 286160,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/scatter",
+      "gzip": 123780,
+      "raw": 354104,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/scattermultiaxis",
+      "gzip": 123798,
+      "raw": 354120,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/segment",
+      "gzip": 138331,
+      "raw": 397505,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/sunburst",
+      "gzip": 87399,
+      "raw": 247187,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/sunchrome",
+      "gzip": 88013,
+      "raw": 248449,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/area",
+      "gzip": 88781,
+      "raw": 246431,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/bar",
+      "gzip": 83286,
+      "raw": 229332,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/candlestick",
+      "gzip": 84278,
+      "raw": 234804,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/choropleth",
+      "gzip": 79101,
+      "raw": 215632,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/composed",
+      "gzip": 91486,
+      "raw": 254454,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/funnel",
+      "gzip": 83063,
+      "raw": 228504,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/funnelvertical",
+      "gzip": 83070,
+      "raw": 228517,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/gauge",
+      "gzip": 73250,
+      "raw": 200454,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/gaugelinear",
+      "gzip": 79639,
+      "raw": 217347,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/heatmap",
+      "gzip": 74788,
+      "raw": 205223,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/line",
+      "gzip": 86650,
+      "raw": 241273,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/liveline",
+      "gzip": 84495,
+      "raw": 235068,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/pie",
+      "gzip": 73394,
+      "raw": 201223,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/radar",
+      "gzip": 83038,
+      "raw": 231277,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/ring",
+      "gzip": 73389,
+      "raw": 200573,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/sankey",
+      "gzip": 72245,
+      "raw": 199141,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/scatter",
+      "gzip": 84613,
+      "raw": 235792,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/sunburst",
+      "gzip": 73573,
+      "raw": 201059,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    }
+  ]
+}

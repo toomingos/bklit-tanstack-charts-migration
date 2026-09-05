@@ -1,0 +1,38 @@
+{
+  "label": "V0.3 baseline @ 61d6179 (frozen worktree)",
+  "runDir": "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z",
+  "wallClockMs": 2753130,
+  "stages": [
+    {
+      "name": "checks",
+      "ok": true,
+      "durationMs": 18502
+    },
+    {
+      "name": "qa",
+      "ok": true,
+      "durationMs": 651101
+    },
+    {
+      "name": "probes",
+      "ok": true,
+      "durationMs": 1222433
+    },
+    {
+      "name": "bench",
+      "ok": true,
+      "durationMs": 849303
+    },
+    {
+      "name": "bundle",
+      "ok": true,
+      "durationMs": 11782
+    },
+    {
+      "name": "summary",
+      "ok": true,
+      "durationMs": 7
+    }
+  ],
+  "issues": 54
+}

@@ -1,0 +1,100 @@
+{
+  "generatedAt": "2026-09-05T12:13:19.544Z",
+  "runDir": "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z",
+  "checks": [
+    {
+      "name": "tsc",
+      "cmd": "npx tsc --noEmit",
+      "cwd": "showcase",
+      "exit": 0,
+      "durationMs": 5939,
+      "summary": {
+        "errors": 0
+      },
+      "lastLine": "npm warn Unknown env config \"node-linker\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
+      "log": "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/logs/checks/tsc.log"
+    },
+    {
+      "name": "build",
+      "cmd": "npm run build",
+      "cwd": "bench/app",
+      "exit": 0,
+      "durationMs": 3847,
+      "summary": {
+        "ok": true
+      },
+      "lastLine": "✓ built in 3.35s",
+      "log": "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/logs/checks/build.log"
+    },
+    {
+      "name": "lint",
+      "cmd": "npx oxlint --type-aware --format=json migrated packages/migrated-charts",
+      "cwd": "showcase",
+      "exit": 1,
+      "durationMs": 7877,
+      "summary": {
+        "problems": 7,
+        "errors": 7,
+        "warnings": 0,
+        "topRules": [
+          [
+            "typescript(no-unsafe-type-assertion)",
+            2
+          ],
+          [
+            "typescript(no-deprecated)",
+            2
+          ],
+          [
+            "anti-slop(no-reflect-get)",
+            1
+          ],
+          [
+            "sonarjs(variable-name)",
+            1
+          ],
+          [
+            "eslint(sort-keys)",
+            1
+          ]
+        ]
+      },
+      "lastLine": "            }",
+      "log": "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/logs/checks/lint.log"
+    },
+    {
+      "name": "census",
+      "cmd": "node scripts/reach-in-guard.mjs --json",
+      "cwd": "",
+      "exit": 1,
+      "durationMs": 136,
+      "summary": {
+        "total": 67,
+        "files": 21,
+        "failures": 17
+      },
+      "lastLine": "}",
+      "log": "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/logs/checks/census.log"
+    },
+    {
+      "name": "bundle-gate",
+      "cmd": "node scripts/bundle-gate.mjs",
+      "cwd": "",
+      "exit": 1,
+      "durationMs": 66,
+      "summary": {
+        "ok": 0,
+        "fail": 0
+      },
+      "lastLine": "[bundle-gate] FAILED (37)",
+      "log": "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/logs/checks/bundle-gate.log"
+    }
+  ],
+  "summary": {
+    "failed": [
+      "lint",
+      "census",
+      "bundle-gate"
+    ]
+  }
+}

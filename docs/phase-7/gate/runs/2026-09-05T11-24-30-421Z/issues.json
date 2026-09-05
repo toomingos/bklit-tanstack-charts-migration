@@ -1,0 +1,261 @@
+{
+  "generatedAt": "2026-09-05T12:16:23.644Z",
+  "runDir": "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z",
+  "label": "V0.3 baseline @ 61d6179 (frozen worktree)",
+  "issues": [
+    {
+      "id": "qa:markers/100:hover-dim",
+      "category": "hover-dim",
+      "charts": [
+        "markers/100"
+      ],
+      "cells": [
+        "hover-30: 4847 px (no-history)",
+        "hover-70: 4912 px (no-history)"
+      ],
+      "evidence": [
+        "qa/results/markers/2026-09-05T11-25-31-176Z/hover-30-diff.png",
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/logs/qa/markers-100.log",
+        "qa/results/markers/2026-09-05T11-25-31-176Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:barloading/100:motion/reveal",
+      "category": "motion/reveal",
+      "charts": [
+        "barloading/100"
+      ],
+      "cells": [
+        "hover-50: 53588 px (no-history)",
+        "hover-70: 33734 px (no-history)"
+      ],
+      "evidence": [
+        "qa/results/barloading/2026-09-05T11-25-50-479Z/hover-50-diff.png",
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/logs/qa/barloading-100.log",
+        "qa/results/barloading/2026-09-05T11-25-50-479Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:sankey/33:hover-dim",
+      "category": "hover-dim",
+      "charts": [
+        "sankey/33"
+      ],
+      "cells": [
+        "hover-30: 8377 px (no-history)",
+        "hover-70: 7367 px (no-history)"
+      ],
+      "evidence": [
+        "qa/results/sankey/2026-09-05T11-27-44-593Z/hover-30-diff.png",
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/logs/qa/sankey-33.log",
+        "qa/results/sankey/2026-09-05T11-27-44-593Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "bench:migrated/line/1000:m1c_scriptMs",
+      "category": "bench",
+      "charts": [
+        "migrated/line/1000"
+      ],
+      "cells": [
+        "m1c_scriptMs: 95.61 vs baseline 76.7 (+24.7%)"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/bench.json",
+        "bench/results/2026-09-05T11-57-21-194Z",
+        "bench/results/2026-09-05T11-58-40-323Z"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "bench:migrated/scatter/1000:m3a_updateMs",
+      "category": "bench",
+      "charts": [
+        "migrated/scatter/1000"
+      ],
+      "cells": [
+        "m3a_updateMs: 22.9 vs baseline 28.8 (-20.5%)"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/bench.json",
+        "bench/results/2026-09-05T11-57-21-194Z",
+        "bench/results/2026-09-05T11-58-40-323Z"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "checks:lint",
+      "category": "checks",
+      "charts": [
+        "—"
+      ],
+      "cells": [
+        "npx oxlint --type-aware --format=json migrated packages/migrated-charts exit 1 {\"problems\":7,\"errors\":7,\"warnings\":0,\"topRules\":[[\"typescript(no-unsafe-type-assertion)\",2],[\"typescript(no-deprecated)\",2],[\"anti-slop(no-reflect-get)\",1],[\"sonarjs(variable-name)\",1],[\"eslint(sort-keys)\",1]]}"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/logs/checks/lint.log"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "census",
+      "category": "census",
+      "charts": [
+        "—"
+      ],
+      "cells": [
+        "node scripts/reach-in-guard.mjs --json exit 1 {\"total\":67,\"files\":21,\"failures\":17}"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/logs/checks/census.log"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:hover-lag:bar/100",
+      "category": "hover-dim",
+      "charts": [
+        "bar/100"
+      ],
+      "cells": [
+        "settles-after-700ms-capture"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:hover-lag:scatter/1000",
+      "category": "hover-dim",
+      "charts": [
+        "scatter/1000"
+      ],
+      "cells": [
+        "dim-lag>200ms"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:hover-lag:candlestick/1000",
+      "category": "tooltip",
+      "charts": [
+        "candlestick/1000"
+      ],
+      "cells": [
+        "tooltip-lag>200ms"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:hover-lag:pie/1000",
+      "category": "hover-dim",
+      "charts": [
+        "pie/1000"
+      ],
+      "cells": [
+        "dim-presence-mismatch"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:hover-lag:sankey/33",
+      "category": "hover-dim",
+      "charts": [
+        "sankey/33"
+      ],
+      "cells": [
+        "dim-presence-mismatch",
+        "settles-after-700ms-capture"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:legend-hover-dim:legendhover/1000",
+      "category": "legend",
+      "charts": [
+        "legendhover/1000"
+      ],
+      "cells": [
+        "item-0: dim presence mismatch (bklit +2, migrated +0)",
+        "item-0: bklit does not fully undim (0 -> 2)",
+        "item-1: dim presence mismatch (bklit +998, migrated +0)",
+        "item-1: bklit does not fully undim (2 -> 0)",
+        "item-1: migrated does not fully undim (1000 -> 0)"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:legend-hover-dim:candlelegend/1000",
+      "category": "legend",
+      "charts": [
+        "candlelegend/1000"
+      ],
+      "cells": [
+        "item-0: dimmed count differs >25% (bklit +511, migrated +1533)",
+        "item-1: dimmed count differs >25% (bklit +489, migrated +1465)"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:legend-hover-dim:markers/100",
+      "category": "legend",
+      "charts": [
+        "markers/100"
+      ],
+      "cells": [
+        "item-0: bklit does not fully undim (3 -> 4)",
+        "item-0: migrated does not fully undim (0 -> 2)",
+        "item-1: bklit does not fully undim (4 -> 3)",
+        "item-1: migrated does not fully undim (1 -> 2)"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:legend-hover-dim:barsquares/100",
+      "category": "legend",
+      "charts": [
+        "barsquares/100"
+      ],
+      "cells": [
+        "item-0: dim presence mismatch (bklit +4011, migrated +0)",
+        "item-0: bklit does not fully undim (200 -> 4211)",
+        "item-0: migrated does not fully undim (4211 -> 200)",
+        "item-1: dim presence mismatch (bklit +6715, migrated +0)",
+        "item-1: bklit does not fully undim (200 -> 6915)",
+        "item-1: migrated does not fully undim (6915 -> 200)"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-05T11-24-30-421Z/probes.json"
+      ],
+      "hypothesis": ""
+    }
+  ]
+}

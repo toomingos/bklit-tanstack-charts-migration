@@ -12,7 +12,7 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 |---|---|---|---|---|
 | V0.1 | commit open diff, merge `chore/oxlint-migrated-charts` | merged | `6c5bc53` | — |
 | V0.2 | pin 0.16.0, fix R1 breaking surface (15 definitions) | merged | `0bcf471` | D510 · executors `ses_f8ed0fe71ffeZPR00ZjS98CmRI` (migrated), `ses_f8ed0d417ffeeTMDv0dnyJ32LO` (bench) |
-| V0.3 | re-baseline at new HEAD, tree hash, `bundle-sizes.json` | todo | | |
+| V0.3 | re-baseline at new HEAD, tree hash, `bundle-sizes.json` | merged | (next commit) | D518 · run `2026-09-05T11-24-30-421Z` @ `61d6179`, tree `69b9ef07` · `docs/phase-7/gate/BASELINE.md` · bundle pins re-pinned (41 up, 2 down) · G2 open for V4.4 |
 | V0.4 | housekeeping (`__tm`, 9 orphans, nested `defineChart`) | merged | `ad584cd` | D513 · executor `ses_f8ec060e3ffea8L3Q3VTYvzpO3` (resumed once for the cascade) · orphans 18 → 0 · G1 folded |
 | V0.5 | file I1, I2, I4, I5, I6, F-260 comment; numbers in `07` | merged | `437af3a` | D511 · #126 #127 #128 #129 #130 #131 · code links land with the owning items |
 | V0.6 | idiom checklist below matches `08` §3 | merged | `075e331` | checked 2026-09-05: 12 idioms, 16 family rows, wording matches §3 |
@@ -26,7 +26,7 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 1 | V1.2 | scales and bounds from the store | todo | | | |
 | 1 | V1.6 | export parity | todo | | | |
 | 1 | V1.8 | aria forwarding | merged | `ses_f8eae9829ffegZk4H0yURVPpUM` | `e50babd` | D516 · `ariaLabel="` literals 16 → 0 · funnel props only until V3.1 (R2) · heatmap via context |
-| 1 | V1.9 | package contract | merged | `ses_f8eae8f80ffemH1q37JpHnKBRr` | (next commit) | D517 · pack 450 files, fresh Next app builds + renders · +10 deps declared, removals owned by later items · G4 |
+| 1 | V1.9 | package contract | merged | `ses_f8eae8f80ffemH1q37JpHnKBRr` | `e29b694` | D517 · pack 450 files, fresh Next app builds + renders · +10 deps declared, removals owned by later items · G4 |
 | 1 | V4.1 | `qa/unit` scaffold (scene tests, probes) | merged | `ses_f8eae88aeffeCW2EwgcvXZY2hd` | `0c25747` | D515 · `pnpm test` 84 tests / 46 pass / 38 todo / 0.4 s · probes pinned per family |
 | 1 | V4.2 | generated type fixture | merged | `ses_f8eae74d6ffevmKWqC0OMWAzCO` | `04ad318` | D514 · 292 value + 211 type `Eq` lines · 478 red / 420 exports = V1.6 backlog · 81 migrated-only exports · G3 folded |
 | 1 | V4.4 | gate integrity | todo | | | |
