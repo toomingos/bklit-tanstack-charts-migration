@@ -1,6 +1,6 @@
 # Phase 7 — Upstream issues to file on TanStack/charts
 
-Date: 2026-09-04. Status: **drafted, not filed.** Revised the same day after the lead pass against `v0.16.0` (`repos/tanstack-charts`, 258ed39) and `API-FRICTION.md`: I4–I6 added, the pattern decision reversed, I2 demoted. Filing is V0.5 in `08`.
+Date: 2026-09-04. Status: **filed 2026-09-05 (V0.5)** — I1 #126, I2 #127, I4 #128, I5 #129, I6 #130, F-260 evidence issue #131; I3 deferred (after V2.5 + V3.5). Drafted 2026-09-04. Revised the same day after the lead pass against `v0.16.0` (`repos/tanstack-charts`, 258ed39) and `API-FRICTION.md`: I4–I6 added, the pattern decision reversed, I2 demoted. Filing is V0.5 in `08`.
 
 Search basis: all 19 issues and 106 PRs on `TanStack/charts` (open + closed), grepped title+body per topic. Discussions are disabled, so issues are the only tracker. There is no issue template and `CONTRIBUTING.md` has no issue-filing section. The accepted house style (from #93, #94, #95, #117, #119, all implemented within days): one paragraph on what the option surface exposes today, the concrete missing capability, the workaround it forces, then a single "Would it be possible to expose…" ask. Bug reports add a version line and a minimal runnable repro. Separate issues land better than an omnibus.
 
@@ -10,13 +10,13 @@ Ruling (user, 2026-09-04): file issues only, no PRs, and only for features other
 
 | # | Topic | Prior art upstream | Decision | When |
 |---|---|---|---|---|
-| I1 | `states` on polar marks and `geoShape` | none. #90 (merged 2026-08-12) added `focusGroupAngle` for radial focus *resolution*, not styling. #15 modelled focus effects as `whenFocused` marks. | **File** | now |
-| I2 | Legend hover highlight / dim | none. #95 (open) + PR #122 cover legend *presentation* only (typography, indicator, spacing). Upstream's own catalog (cases 120, 121, 127) keeps legends in app HTML and drives controlled focus, so this is a convenience ask, not a gap. | **File, low priority**, as a sibling to #95 | now |
+| I1 ([#126](https://github.com/TanStack/charts/issues/126)) | `states` on polar marks and `geoShape` | none. #90 (merged 2026-08-12) added `focusGroupAngle` for radial focus *resolution*, not styling. #15 modelled focus effects as `whenFocused` marks. | **File** | now |
+| I2 ([#127](https://github.com/TanStack/charts/issues/127)) | Legend hover highlight / dim | none. #95 (open) + PR #122 cover legend *presentation* only (typography, indicator, spacing). Upstream's own catalog (cases 120, 121, 127) keeps legends in app HTML and drives controlled focus, so this is a convenience ask, not a gap. | **File, low priority**, as a sibling to #95 | now |
 | I3 | Motion renderer per-element point scan (D472) | none. #41 introduced `motion()`, #96 entrance/exit/stagger, #58 rolling path. No perf report. | **File as bug with repro**, only if the cost remains after V3.5 makes `motion()` the sole owner and V2.5 adds `spatialIndex` | after V2.5 + V3.5 |
-| I4 | `<pattern>` resources in `ChartSpec` (hatch, dots, animated sweep) | **F-259** (open, `API-FRICTION.md:7784`): "Chart resources cannot declare patterns"; it rejects an app-injected pattern inside the chart svg as a workaround. No issue yet. | **File**, citing F-259 with the bklit use cases | now |
-| I5 | `radialGradient` in `ChartSpec.gradients` | none. `gradients` is linear only (`objectBoundingBox` %, `types.d.ts:400-406`). | **File** | now |
-| I6 | `@tanstack/react-charts` peer `react` `^19.0.0` although only React 18 hooks are used | none | **File** | now |
-| — | F-260 static guide stroke treatment (dashed grid) | **F-260** (open, `API-FRICTION.md:7800`). | Do not open a new issue; **add an evidence comment** on the friction entry's tracking issue if one exists, else a short issue referencing F-260, with the bklit default `strokeDasharray="4,4"` grid | now |
+| I4 ([#128](https://github.com/TanStack/charts/issues/128)) | `<pattern>` resources in `ChartSpec` (hatch, dots, animated sweep) | **F-259** (open, `API-FRICTION.md:7784`): "Chart resources cannot declare patterns"; it rejects an app-injected pattern inside the chart svg as a workaround. No issue yet. | **File**, citing F-259 with the bklit use cases | now |
+| I5 ([#129](https://github.com/TanStack/charts/issues/129)) | `radialGradient` in `ChartSpec.gradients` | none. `gradients` is linear only (`objectBoundingBox` %, `types.d.ts:400-406`). | **File** | now |
+| I6 ([#130](https://github.com/TanStack/charts/issues/130)) | `@tanstack/react-charts` peer `react` `^19.0.0` although only React 18 hooks are used | none | **File** | now |
+| — ([#131](https://github.com/TanStack/charts/issues/131)) | F-260 static guide stroke treatment (dashed grid) | **F-260** (open, `API-FRICTION.md:7800`). | Do not open a new issue; **add an evidence comment** on the friction entry's tracking issue if one exists, else a short issue referencing F-260, with the bklit default `strokeDasharray="4,4"` grid | now |
 | — | F-261 per-corner bar radius | **F-261** (open). | Drop. bklit uses uniform `rx`; not our gap. | — |
 | — | Funnel mark | #81 (merged) added catalog case `125-sales-funnel` from `areaX` + `text`. | Do not file. Composition of existing marks; we migrate to it (V3.1). | — |
 | — | Clip reveal / wipe entrance | none | Do not file. `motion({ initial: 'always' })` grows marks from the baseline and is how upstream reproduced the Bklit entrance (case 112, `benchmarks/motion/README.md`). | — |
@@ -111,6 +111,8 @@ Ruling (user, 2026-09-04): file issues only, no PRs, and only for features other
 Not a new issue. F-260 "Static guides cannot express stroke treatment" is open in `API-FRICTION.md:7800`. Add one comment where upstream tracks it (or a two-paragraph issue referencing F-260 if no tracker exists): bklit's grid default is `strokeDasharray="4,4"` on every cartesian chart, and axis line width is themed per chart; migrating to `gridX`/`gridY` loses the dash because guides expose colour and opacity only. Until it resolves this is listed as a known degradation (`08` §8).
 
 ## Bookkeeping
+
+- Filed 2026-09-05 from `toomingos`, all against 0.16.0, no duplicates found (issue list re-checked: newest prior issue #119, 2026-08-27; no GitHub tracker for F-260 existed, so #131 is a short issue referencing it). Numbers: I1 #126, I2 #127, I4 #128, I5 #129, I6 #130, F-260 #131. LOG D511.
 
 - File from the user's GitHub account; record issue numbers here and in the Phase 7 LOG entry.
 - After filing, link I1 from the `withStates` wrapper, I2 from the legend hover hook, I4 and I5 from `internal/resource-host.tsx` (the R10 seam comment), I6 from `showcase/migrated/package.json`, and F-260 from the grid style constants, so the interim code names its upstream ask.

@@ -11,10 +11,10 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | Item | Title | State | Commit | D-entries |
 |---|---|---|---|---|
 | V0.1 | commit open diff, merge `chore/oxlint-migrated-charts` | merged | `6c5bc53` | — |
-| V0.2 | pin 0.16.0, fix R1 breaking surface (15 definitions) | merged | (see git) | D510 · executors `ses_f8ed0fe71ffeZPR00ZjS98CmRI` (migrated), `ses_f8ed0d417ffeeTMDv0dnyJ32LO` (bench) |
+| V0.2 | pin 0.16.0, fix R1 breaking surface (15 definitions) | merged | `0bcf471` | D510 · executors `ses_f8ed0fe71ffeZPR00ZjS98CmRI` (migrated), `ses_f8ed0d417ffeeTMDv0dnyJ32LO` (bench) |
 | V0.3 | re-baseline at new HEAD, tree hash, `bundle-sizes.json` | todo | | |
 | V0.4 | housekeeping (`__tm`, 9 orphans, nested `defineChart`) | todo | | |
-| V0.5 | file I1, I2, I4, I5, I6, F-260 comment; numbers in `07` | todo | | |
+| V0.5 | file I1, I2, I4, I5, I6, F-260 comment; numbers in `07` | merged | (see git) | D511 · #126 #127 #128 #129 #130 #131 · code links land with the owning items |
 | V0.6 | idiom checklist below matches `08` §3 | todo | | |
 | — | `10-parity-contract.md` reviewed by lead | todo | | |
 
