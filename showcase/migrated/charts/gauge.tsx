@@ -550,7 +550,10 @@ interface GaugeArcStyles {
 // Wrapper styles for the arc gauge, memoized so the host divs keep a stable style identity.
 const useGaugeArcStyles = (style: Readonly<CSSProperties> | undefined, layout: Readonly<GaugeArcLayout>): GaugeArcStyles => {
   const { fixedSize, height, resolvedMinWidth, size, width } = layout;
-  const innerWrapStyle = useMemo<CSSProperties>(() => ({ height, position: "relative", width }), [height, width]);
+  // Responsive arc: fluid width lets the host measure the aspect-locked sizer.
+  const innerWrapStyle = useMemo<CSSProperties>(() => (fixedSize
+    ? { height, position: "relative", width }
+    : { height, position: "relative", width: "100%" }), [fixedSize, height, width]);
   const centerOverlayStyle = useMemo<CSSProperties>(() => ({
     alignItems: "center",
     display: "flex",
@@ -949,7 +952,10 @@ interface LinearGaugeStyles {
 const useLinearGaugeStyles = (props: Readonly<GaugeLinearProps>, layout: Readonly<LinearGaugeLayout>): LinearGaugeStyles => {
   const { centerValue, defaultLabel, formatOptions, labelAlign, prefix, style, suffix, width: propWidth } = props;
   const { fixedWidth, height, resolvedMinWidth, width } = layout;
-  const chartWrapStyle = useMemo<CSSProperties>(() => ({ height, position: "relative", width }), [height, width]);
+  // Responsive linear: fluid width lets the host measure the container.
+  const chartWrapStyle = useMemo<CSSProperties>(() => (fixedWidth
+    ? { height, position: "relative", width }
+    : { height, position: "relative", width: "100%" }), [fixedWidth, height, width]);
   const trackStyle = useMemo<CSSProperties>(() => ({ height, position: "relative", width: "100%" }), [height]);
   const label = useMemo(() => (centerValue === undefined ? undefined : (
     <GaugeLabelStat
