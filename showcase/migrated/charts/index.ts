@@ -52,7 +52,7 @@ export { useSunburstBreadcrumbItems } from "./internal/sunburst-breadcrumb-items
 export type { SunburstNode, ArcDatum, ArcGeometry, Focus } from "./internal/sunburst-types";
 export { ChoroplethChart, ChoroplethFeatureComponent, ChoroplethTooltip, ChoroplethGraticule, useChoroplethZoom, useChoropleth } from "./choropleth-chart";
 export type { ChoroplethChartProps, ChoroplethFeatureProps, ChoroplethTooltipProps, ChoroplethGraticuleProps, ChoroplethContextValue, ChoroplethFeature, ChoroplethFeatureProperties } from "./choropleth-chart";
-export type { TransformMatrix } from "./internal/zoom-engine";
+export type { TransformMatrix } from "./internal/choropleth-zoom-types";
 export { ChartConfigProvider } from "./internal/chart-config-provider";
 export { useChartConfig } from "./internal/use-chart-config";
 export { DEFAULT_CHART_CONFIG } from "./internal/chart-config-context";

@@ -1,6 +1,6 @@
 // Choropleth zoom-motion helpers: bezier ease, matrix lerp, and per-frame matrix resolution.
 import type { RefObject } from "react";
-import type { GenericWheelEvent, Scale, TransformMatrix } from "./zoom-engine";
+import type { TransformMatrix } from "./choropleth-zoom-types";
 
 // Zoom application eases matrix values over 180ms per frame (retired CSS transition's timing).
 const ZOOM_EASE_MS = 180;
@@ -10,16 +10,6 @@ const CUBIC_BEZIER_COEFFICIENT = 3;
 // Newton-Raphson iteration cap and slope epsilon of the bezier solver.
 const BEZIER_SOLVER_MAX_ITERATIONS = 8;
 const BEZIER_SOLVER_EPSILON = 1e-6;
-// Wheel-zoom step factors per tick, out and in.
-const WHEEL_ZOOM_OUT_FACTOR = 0.95;
-const WHEEL_ZOOM_IN_FACTOR = 1.05;
-
-// Static prop values hoisted so JSX props below keep a stable identity across renders.
-// Wheel step as a scale-delta pair; hoisted so the Zoom prop keeps a stable callback identity.
-const resolveWheelZoomDelta = (event: GenericWheelEvent): Scale => {
-  const zoomScale = event.deltaY > 0 ? WHEEL_ZOOM_OUT_FACTOR : WHEEL_ZOOM_IN_FACTOR;
-  return { scaleX: zoomScale, scaleY: zoomScale };
-};
 
 interface CubicBezierCoefficients {
   readonly ax: number;
@@ -131,7 +121,6 @@ const queueZoomFrame = (shouldContinue: boolean, frame: (now: number) => void): 
 export {
   matricesEqual,
   queueZoomFrame,
-  resolveWheelZoomDelta,
   resolveZoomFrameMatrix,
   zoomSnapshotChanged,
 };

@@ -1,7 +1,7 @@
 // Zoom context plus the memoised provider: the context value is a memo, never an inline object.
 import { createContext, useContext, useMemo } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { ProvidedZoom, ZoomState } from "./zoom-engine";
+import type { ProvidedZoom, ZoomState } from "./choropleth-zoom-types";
 
 type ChoroplethZoomInstance<TElement extends Element> = ProvidedZoom<TElement> & ZoomState;
 

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import type { TransformMatrix } from "./zoom-engine";
+import type { TransformMatrix } from "./choropleth-zoom-types";
 import {
   matricesEqual,
   queueZoomFrame,

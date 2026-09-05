@@ -48,8 +48,9 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 3 | V2.6 | crosshair + package tooltip | todo | | | |
 | 3 | V3.2 | package layouts (geo, sankey, sunburst) | split per family below | | | |
 | 3 | V3.2 sankey | `sankeyDiagram` with package `rect`/`text` marks, declared gradients, `d3-sankey`/`createElementNS` = 0 | merged | `ses_f8d1639a1ffe2MAuWkNXCijbi3` | (next commit) | D536 · `d3-sankey` imports 0 · sankey `createElementNS` 0 · `sankey-gradients.ts` deleted · `withStates` on link/rect (D528(a) no longer reproduces) · label baseline residual 0.0844 em (G13) · QA settled 1028 / ruled / 2953 / 4519 · probe 120/208 ms |
-| 3 | V3.2 geo | `geoShape` + `d3-zoom` gesture policy; delete the five vendored `internal/zoom-*.ts`; `ProvidedZoom`/`ZoomState`/`TransformMatrix` kept as a type facade | dispatched | | | after V2.2 choropleth (`de70384`) |
+| 3 | V3.2 geo | `geoShape` + `d3-zoom` gesture policy; delete the five vendored `internal/zoom-*.ts`; `ProvidedZoom`/`ZoomState`/`TransformMatrix` kept as a type facade | merged | `ses_f8d031f9dffeQOJ3lEjSybdeXO` | (next commit) | D538 · `zoom-*.ts` deleted (−976) · `d3-zoom` + `d3-selection` declared · `Math.log2` wheel step · QA choropleth 0 / 791 / 697 / 1348 PASS · probe 107/107 ms |
 | 3 | V3.2 sunburst | package `sunburst()` owns the partition; delete `sunburst-geometry.ts`/hand layout from the chart path; focus strategy reads package scene geometry; carries G12 (hover-30 cells) | dispatched | | | after V2.2 polar (`fa11cfd`) |
+| 3 | V2.2 sankey follow-up | hover dim owned once: `withStates` on package link/rect, hover-invariant definition, delete the reactive rebuild (G15) | dispatched | | | after V3.2 sankey (`7e183af`) |
 | 3 | V3.4 | declared resources + R10 seam | todo | | | |
 | 3 | V3.7 | config parity | todo | | | |
 | 3 | V4.6 | 23 legacy tests ported | merged | `ses_f8df2fa43ffe2dgjjTlywgbbxC` | `5cabf0b` | D530 · 23 files, imports only · 38 pass / 87 named todos (V3.7 backlog) / 1 signature gap (`buildHorizontalTangentBezierPath`, V3.7) · `pnpm test` 230 / 123 / 0 / 107 |

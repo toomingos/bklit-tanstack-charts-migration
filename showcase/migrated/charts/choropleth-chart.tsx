@@ -5,9 +5,8 @@ import { useEffectEvent } from './internal/use-effect-event';
 import type { FeatureCollection,Feature,Geometry} from "geojson";
 import { geoCentroid, geoMercator } from 'd3-geo';
 import type { GeoPermissibleObjects, GeoProjection } from 'd3-geo';
-import type { TransformMatrix, ProvidedZoom } from "./internal/zoom-engine";
-import { Zoom } from "./internal/zoom-engine";
-import { identityMatrix } from "./internal/zoom-math";
+import type { TransformMatrix, ProvidedZoom } from "./internal/choropleth-zoom-types";
+import { ChoroplethZoom, identityMatrix } from "./internal/choropleth-zoom";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import type {
@@ -27,7 +26,6 @@ import { roleOf } from "./internal/children-extract";
 import { ChoroplethZoomValue } from "./internal/choropleth-zoom-context";
 import { TS_CHART_SVG_SELECTOR, useChoroplethReveal } from "./internal/choropleth-reveal";
 import { createChoroplethFocus } from "./internal/choropleth-focus";
-import { resolveWheelZoomDelta } from "./internal/choropleth-zoom-motion";
 import { useChoroplethZoomMotion } from "./internal/use-choropleth-zoom-motion";
 import { useChoroplethPaths } from "./internal/use-choropleth-paths";
 import { intFmt } from "./internal/formatters";
@@ -540,18 +538,6 @@ interface ChoroplethRevealInputs {
   readonly revealSignature: string;
 }
 
-// Zoom ticks schedule animation frames; false until the client commits (SSR has no rAF).
-const useMountedRef = (): RefObject<boolean> => {
-  const mountedRef = useRef(false);
-  useEffect(() => {
-    mountedRef.current = true;
-    return (): void => {
-      mountedRef.current = false;
-    };
-  }, []);
-  return mountedRef;
-};
-
 // Tooltip card config from the tooltip child (extracted to keep the body under max-statements).
 const useChoroplethTooltipCard = (
   tooltipConfig: ChoroplethTooltipProps | undefined,
@@ -610,8 +596,6 @@ const ChoroplethChartBody = ({
   const hasTooltipChild = Boolean(tooltipConfig);
 
   const zoomRefForChrome = useRef<ProvidedZoom<HTMLElement> | null>(null);
-  // Zoom ticks schedule animation frames; skip them until the client commits (SSR has no rAF).
-  const mountedRef = useMountedRef();
 
   // Zoom-motion state plus the per-frame tick; hook owns the contiguous group below.
   const { displayMatrix, getIsDragging, onZoomTick, setRefreshTooltipAnchor } =
@@ -826,31 +810,25 @@ const ChoroplethChartBody = ({
   }
 
   return (
-    <Zoom<HTMLElement>
+    <ChoroplethZoom
       height={height}
       width={width}
       initialTransformMatrix={initialZoom}
-      scaleXMin={zoomMin}
-      scaleXMax={zoomMax}
-      scaleYMin={zoomMin}
-      scaleYMax={zoomMax}
-      wheelDelta={resolveWheelZoomDelta}
+      zoomMin={zoomMin}
+      zoomMax={zoomMax}
+      onZoomTick={onZoomTick}
     >
       {(zoom) => {
         zoomRefForChrome.current = zoom;
-        const activeZoom = zoom;
-        if (mountedRef.current) {
-          onZoomTick(activeZoom);
-        }
         return (
-          <ChoroplethZoomValue zoom={activeZoom}>
+          <ChoroplethZoomValue zoom={zoom}>
             <ChoroplethContext.Provider value={choroplethContextValue}>
               {inner}
             </ChoroplethContext.Provider>
           </ChoroplethZoomValue>
         );
       }}
-    </Zoom>
+    </ChoroplethZoom>
   );
 }
 
@@ -983,7 +961,7 @@ const ChoroplethChart = ({
 
 ChoroplethChart.displayName = "ChoroplethChart";
 
-export type { TransformMatrix } from "./internal/zoom-engine";
+export type { TransformMatrix } from "./internal/choropleth-zoom-types";
 export { ChoroplethZoomContext, useChoroplethZoom } from "./internal/choropleth-zoom-context";
 export type { ChoroplethZoomContextValue, ChoroplethZoomInstance } from "./internal/choropleth-zoom-context";
 export {

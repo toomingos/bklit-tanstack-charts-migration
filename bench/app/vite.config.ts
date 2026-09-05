@@ -57,6 +57,8 @@ export default defineConfig({
       { find: "d3-array", replacement: r("./node_modules/d3-array/src/index.js") },
       { find: "d3-geo", replacement: r("./node_modules/d3-geo/src/index.js") },
       { find: "d3-sankey", replacement: r("./node_modules/d3-sankey/src/index.js") },
+      { find: "d3-zoom", replacement: r("./node_modules/d3-zoom/src/index.js") },
+      { find: "d3-selection", replacement: r("./node_modules/d3-selection/src/index.js") },
       { find: "geojson", replacement: r("./node_modules/@types/geojson/index.d.ts") },
       { find: "@visx/zoom/lib/types", replacement: r("./node_modules/@visx/zoom/esm/types.js") },
       { find: "@visx/zoom/lib/util/matrix", replacement: r("./node_modules/@visx/zoom/esm/util/matrix.js") },
