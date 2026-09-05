@@ -4,7 +4,7 @@
 //     bench/results/latest.json after each (the harness overwrites it with only the last invocation).
 //   all: the harness's own --all 24-cell matrix (bklit+tanstack) PLUS the 5 migrated cells. subset: 2-cell smoke.
 // Output: bench.json + bench.md vs qa/gate/bench-baseline.json (% delta, D273 ±20% flag on M1b/M1c/M3a; M1a void).
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   BENCH_PORT,
@@ -12,6 +12,7 @@ import {
   ROOT,
   RUNS_DIR,
   buildDistOnce,
+  currentHead,
   ensureDir,
   fmtMs,
   log,
@@ -138,6 +139,18 @@ export async function runBenchGate(opts = {}) {
   const runDir = ensureDir(opts.runDir ?? path.join(RUNS_DIR, nowStamp()));
   const logDir = ensureDir(path.join(runDir, "logs", "bench"));
   const baseline = readJson(BASELINE_FILE);
+  // The baseline is an earlier stage's artefact: refuse a tree-hash mismatch.
+  // bench-baseline.json predates tree-hash (phase-5 medians, kept deliberately): warn, do not refuse.
+  try {
+    const stored = readFileSync(`${BASELINE_FILE}.tree-hash`, "utf8").trim().split("\n")[0];
+    const head = currentHead();
+    if (head && stored !== head && !opts.allowHashMismatch) {
+      throw new Error(`${TAG} refusing: bench baseline is from ${stored.slice(0, 12)} but HEAD is now ${head.slice(0, 12)} — re-measure the baseline or pass --allow-hash-mismatch`);
+    }
+  } catch (e) {
+    if (e.code === "ENOENT") log(TAG, "bench baseline predates tree-hash (pre-V4.4) — continuing");
+    else throw e;
+  }
   const sel = opts.cells ?? "paired";
   let cells;
   let useAll = false;
@@ -216,8 +229,8 @@ export async function runBenchGate(opts = {}) {
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(ROOT, "qa", "gate", "run-bench.mjs");
 if (isMain) {
-  const a = parseArgs(process.argv.slice(2), { cells: "string", "run-dir": "string", "no-build": "bool", "force-build": "bool", "no-wait": "bool", "reuse-server": "bool", port: "number" });
-  runBenchGate({ cells: a.cells, runDir: a["run-dir"], noBuild: a["no-build"], forceBuild: a["force-build"], noWait: a["no-wait"], reuseServer: a["reuse-server"], port: a.port })
+  const a = parseArgs(process.argv.slice(2), { cells: "string", "run-dir": "string", "no-build": "bool", "force-build": "bool", "no-wait": "bool", "reuse-server": "bool", port: "number", "allow-hash-mismatch": "bool" });
+  runBenchGate({ cells: a.cells, runDir: a["run-dir"], noBuild: a["no-build"], forceBuild: a["force-build"], noWait: a["no-wait"], reuseServer: a["reuse-server"], port: a.port, allowHashMismatch: !!a["allow-hash-mismatch"] })
     .then((b) => process.exit(b.summary.flags || b.summary.failedInvocations ? 1 : 0))
     .catch((e) => {
       console.error(e);

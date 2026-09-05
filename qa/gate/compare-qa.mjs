@@ -11,6 +11,8 @@ import {
   TOTAL_PX,
   QA_RESULTS_DIR,
   ROOT,
+  applyRulings,
+  assertTreeHash,
   ensureDir,
   mdTable,
   parseArgs,
@@ -192,12 +194,14 @@ export function buildMatrix(reports, { before, label } = {}) {
     }
   }
   const gated = rows.filter((r) => r.px !== undefined && !r.informational);
+  applyRulings(rows); // hand-ruled cells (qa/gate/rulings.json) read ruled (<D>) instead of FAIL
   const summary = {
     label: label ?? null,
     runs: reports.length,
     cells: rows.filter((r) => r.px !== undefined).length,
     gatedCells: gated.length,
-    gateFail: gated.filter((r) => r.gate === "FAIL").length,
+    gateFail: gated.filter((r) => r.gate === "FAIL" && !r.ruled).length,
+    ruled: rows.filter((r) => r.ruled).length,
     harnessFail: rows.filter((r) => r.harness === "FAIL" && !r.informational).length,
     outOfRange: gated.filter((r) => r.status === "out-of-range").length,
     newValues: gated.filter((r) => r.newValue).length,
@@ -218,7 +222,7 @@ export function matrixToMd(matrix) {
     `Generated ${matrix.generatedAt}. Gate = ${matrix.gatePx} px of ${matrix.totalPx} (0.5%). History = qa/results/<chart>/*/report.json` +
       ` (bklit vs migrated${matrix.historyCutoff ? `, before ${matrix.historyCutoff}` : ""}); status per D402/D403: mode / seen / in-range (new value inside [min,max]) / out-of-range / no-history.`,
     "",
-    `**${s.runs} runs, ${s.cells} cells (${s.gatedCells} gated): gate FAIL ${s.gateFail}, harness FAIL ${s.harnessFail}, out-of-range ${s.outOfRange}, new values ${s.newValues}, no-history ${s.noHistory}, tooltip failures ${s.tooltipFailures}, errors ${s.errors}, runs with non-zero exit ${s.runsNonZeroExit}.**`,
+    `**${s.runs} runs, ${s.cells} cells (${s.gatedCells} gated): gate FAIL ${s.gateFail}${s.ruled ? `, ruled ${s.ruled}` : ""}, harness FAIL ${s.harnessFail}, out-of-range ${s.outOfRange}, new values ${s.newValues}, no-history ${s.noHistory}, tooltip failures ${s.tooltipFailures}, errors ${s.errors}, runs with non-zero exit ${s.runsNonZeroExit}.**`,
     "",
   ];
   const rows = matrix.rows.map((r) =>
@@ -230,7 +234,7 @@ export function matrixToMd(matrix) {
           `${r.state === "loading" ? "loading/" : ""}${r.cell}`,
           r.px,
           r.pct.toFixed(4),
-          r.gate,
+          r.ruled ? `ruled (${r.ruled})` : r.gate,
           r.harness,
           r.baselinePx ?? "—",
           r.histRange ? `[${r.histRange[0]},${r.histRange[1]}] n=${r.histCount}` : "—",
@@ -311,7 +315,7 @@ export function reportsFromLogDir(dir) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2), { runs: "string", logs: "string", window: "string", roster: "string", out: "string", label: "string", before: "string", diff: "bool" });
+  const args = parseArgs(process.argv.slice(2), { runs: "string", logs: "string", window: "string", roster: "string", out: "string", label: "string", before: "string", diff: "bool", "allow-hash-mismatch": "bool" });
   if (args.diff) {
     const [fa, fb] = args._;
     const d = diffMatrices(readJson(fa), readJson(fb));
@@ -320,7 +324,11 @@ async function main() {
     return;
   }
   let reports;
-  if (args.runs) reports = reportsFromRunsFile(args.runs);
+  if (args.runs) {
+    // The runs file is an earlier stage's artefact: refuse a tree-hash mismatch.
+    assertTreeHash(path.dirname(path.resolve(args.runs)), { allow: !!args["allow-hash-mismatch"], tag: "[gate:qa]" });
+    reports = reportsFromRunsFile(args.runs);
+  }
   else if (args.logs) reports = reportsFromLogDir(args.logs);
   else if (args.window) {
     const [start, end] = args.window.split(",");

@@ -394,3 +394,102 @@ export function distFingerprint() {
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Tree hash (V4.4): every gate run records the tree under test so a fresh clone
+// re-derives the verdict. run-all/run-checks write <runDir>/tree-hash (=
+// `git rev-parse HEAD`, plus a `dirty` marker when tracked files differ) and
+// publish it to qa/gate/latest/. Stages that read an earlier stage's artefacts
+// call assertTreeHash and refuse on a real mismatch; a missing hash is a
+// pre-V4.4 artefact (warn, do not refuse) so old baselines stay readable.
+
+export function currentHead() {
+  try {
+    return execSync("git rev-parse HEAD", { cwd: ROOT, encoding: "utf8" }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function treeIsDirty() {
+  try {
+    const s = execSync("git status --porcelain", { cwd: ROOT, encoding: "utf8" });
+    return s.split("\n").some((l) => l && !l.startsWith("??"));
+  } catch {
+    return false;
+  }
+}
+
+export function writeTreeHash(dir) {
+  const head = currentHead();
+  if (!head) {
+    log("[tree-hash]", "no git HEAD — skipping");
+    return null;
+  }
+  const dirty = treeIsDirty();
+  const p = path.join(ensureDir(dir), "tree-hash");
+  writeFileSync(p, dirty ? `${head}\ndirty\n` : `${head}\n`);
+  publishLatest([p]);
+  log("[tree-hash]", `${head.slice(0, 12)}${dirty ? " +dirty" : ""} -> ${relPath(p)} (+ latest)`);
+  return { head, dirty };
+}
+
+export function assertTreeHash(dir, { allow = false, tag = "[tree-hash]" } = {}) {
+  let lines = null;
+  try {
+    lines = readFileSync(path.join(dir, "tree-hash"), "utf8").trim().split("\n").filter(Boolean);
+  } catch {
+    lines = null;
+  }
+  if (!lines || !lines.length) {
+    log(tag, `WARNING: no tree-hash in ${relPath(dir)} (pre-V4.4 artefact, hash unknown) — continuing`);
+    return { status: "unknown" };
+  }
+  const head = currentHead();
+  const stored = lines[0];
+  const dirty = lines[1] === "dirty";
+  if (head && stored !== head && !allow) {
+    throw new Error(
+      `${relPath(dir)} artefacts are from ${stored.slice(0, 12)}${dirty ? " (dirty worktree)" : ""} but HEAD is now ${head.slice(0, 12)} — re-run the producing stage so the verdict re-derives, or pass --allow-hash-mismatch`,
+    );
+  }
+  return { status: stored === head ? "match" : "mismatch-allowed", stored, head, dirty };
+}
+
+// ---------------------------------------------------------------------------
+// Hand rulings (V4.4): QA cells accepted by a written D-entry in the archived
+// phase-6 LOG (D498, via D493/D495) live in qa/gate/rulings.json as
+// cell id -> { bound, ruling }. run-qa (via buildMatrix) and summarize consult
+// them: a gate-FAIL cell with px <= bound reads `ruled (<D>)` instead of FAIL.
+
+let rulingsCache = null;
+
+export function loadRulings() {
+  if (!rulingsCache) {
+    try {
+      rulingsCache = JSON.parse(readFileSync(path.join(ROOT, "qa", "gate", "rulings.json"), "utf8")).cells ?? {};
+    } catch {
+      rulingsCache = {};
+    }
+  }
+  return rulingsCache;
+}
+
+export function rulingFor(chart, n, state, cell) {
+  const R = loadRulings();
+  return R[`${chart}/${n}/${cell}`] ?? (state === "loading" ? R[`${chart}/${n}/loading/${cell}`] : undefined) ?? null;
+}
+
+/** Stamp row.ruled (the D-entry) on gate-FAIL rows a hand ruling accepts. Returns the count. */
+export function applyRulings(rows) {
+  let n = 0;
+  for (const r of rows) {
+    if (r.gate !== "FAIL" || typeof r.px !== "number" || r.ruled) continue;
+    const rule = rulingFor(r.chart, r.n, r.state, r.cell);
+    if (rule && r.px <= rule.bound) {
+      r.ruled = rule.ruling;
+      n++;
+    }
+  }
+  return n;
+}

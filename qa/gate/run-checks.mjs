@@ -2,9 +2,10 @@
 //   pnpm gate:checks [-- --run-dir <dir> --skip build,lint]
 // Output: checks.json + census.json.
 import path from "node:path";
-import { APP_DIR, ROOT, RUNS_DIR, ensureDir, fmtMs, log, nowStamp, parseArgs, publishLatest, relPath, runCmd, sleep, writeJson } from "./lib.mjs";
+import { APP_DIR, ROOT, RUNS_DIR, ensureDir, fmtMs, log, nowStamp, parseArgs, publishLatest, relPath, runCmd, sleep, writeJson, writeTreeHash } from "./lib.mjs";
 
 const TAG = "[gate:checks]";
+const LINT_FLOOR = 7; // pinned pre-existing oxlint errors at the V0.3 baseline (D518); fail only above it.
 
 function summarizeOxlint(stdout) {
   // The lint check runs with `--format=json`: oxlint's default (graphical) reporter emits
@@ -34,6 +35,7 @@ export async function runChecks(opts = {}) {
   const runDir = ensureDir(opts.runDir ?? path.join(RUNS_DIR, nowStamp()));
   const logDir = ensureDir(path.join(runDir, "logs", "checks"));
   const skip = new Set(opts.skip ? String(opts.skip).split(",") : []);
+  writeTreeHash(runDir); // record the tree under test before any stage reads it
   const checks = [];
   const add = async (name, cmd, args, cwd, summarize) => {
     if (skip.has(name)) {
@@ -49,7 +51,32 @@ export async function runChecks(opts = {}) {
     log(TAG, `${name}: exit=${r.code} ${fmtMs(r.durationMs)}${summary ? " " + JSON.stringify(summary) : ""}`);
     return r;
   };
-  await add("tsc", "npx", ["tsc", "--noEmit"], path.join(ROOT, "showcase"), (s) => ({ errors: (s.match(/error TS\d+/g) ?? []).length }));
+  const finish = () => {
+    const out = { generatedAt: new Date().toISOString(), runDir: relPath(runDir), checks, summary: { failed: checks.filter((c) => !c.skipped && c.exit !== 0 && !/attempt 1/.test(c.name)).map((c) => c.name) } };
+    writeJson(path.join(runDir, "checks.json"), out);
+    publishLatest([path.join(runDir, "checks.json"), path.join(runDir, "census.json")]);
+    log(TAG, `failed: ${out.summary.failed.join(", ") || "none"} -> ${relPath(runDir)}/checks.json`);
+    return out;
+  };
+  // Static checks first: tsc, then lint. A red typecheck stops the pipeline here.
+  const tsc = await add("tsc", "npx", ["tsc", "--noEmit"], path.join(ROOT, "showcase"), (s) => ({ errors: (s.match(/error TS\d+/g) ?? []).length }));
+  if (tsc && tsc.code !== 0) {
+    log(TAG, "tsc failed — stopping the checks pipeline here");
+    return finish();
+  }
+  const lint = await add("lint", "npx", ["oxlint", "--type-aware", "--deny-warnings", "--format=json", "migrated", "packages/migrated-charts"], path.join(ROOT, "showcase"), summarizeOxlint);
+  if (lint) {
+    const rec = checks[checks.length - 1];
+    const errs = rec.summary && !rec.summary.parseError ? rec.summary.errors : null;
+    const warns = rec.summary && !rec.summary.parseError ? rec.summary.warnings : null;
+    rec.floor = LINT_FLOOR;
+    if (errs !== null && warns !== null && errs <= LINT_FLOOR && warns === 0) {
+      rec.exit = 0; // at/below the pinned floor: report the count, pass
+      rec.floored = true;
+    }
+    log(TAG, `lint: ${errs ?? "?"} error(s), ${warns ?? "?"} warning(s) vs floor ${LINT_FLOOR} -> ${rec.exit === 0 ? "ok" : "FAIL"}`);
+  }
+  await add("bench-tsc", "npx", ["tsc", "--noEmit", "-p", "tsconfig.json"], APP_DIR, (s) => ({ errors: (s.match(/error TS\d+/g) ?? []).length }));
   const build = await add("build", "npm", ["run", "build"], APP_DIR, (s) => ({ ok: /built in/.test(s) }));
   if (build && build.code !== 0 && !opts.noRetry) {
     // GUARD: showcase/migrated is edited concurrently; a build failure may be transient, so retry once after 60s.
@@ -58,7 +85,11 @@ export async function runChecks(opts = {}) {
     checks[checks.length - 1].name = "build (attempt 1)";
     await add("build", "npm", ["run", "build"], APP_DIR, (s) => ({ ok: /built in/.test(s), retried: true }));
   }
-  await add("lint", "npx", ["oxlint", "--type-aware", "--format=json", "migrated", "packages/migrated-charts"], path.join(ROOT, "showcase"), summarizeOxlint);
+  await add("unit", "pnpm", ["test"], ROOT, (s) => {
+    const m = {};
+    for (const mm of s.matchAll(/ℹ (pass|fail) (\d+)/g)) m[mm[1]] = Number(mm[2]);
+    return Object.keys(m).length ? m : null;
+  });
   const census = await add("census", "node", ["scripts/reach-in-guard.mjs", "--json"], ROOT, (s) => {
     try {
       const j = JSON.parse(s.slice(s.indexOf("{")));
@@ -77,11 +108,7 @@ export async function runChecks(opts = {}) {
     writeJson(path.join(runDir, "census.json"), { generatedAt: new Date().toISOString(), exit: census.code, ledger: "scripts/reach-in-ledger.json", ...json });
   }
   await add("bundle-gate", "node", ["scripts/bundle-gate.mjs"], ROOT, (s) => ({ ok: (s.match(/^ok /gm) ?? []).length, fail: (s.match(/^FAIL /gm) ?? []).length }));
-  const out = { generatedAt: new Date().toISOString(), runDir: relPath(runDir), checks, summary: { failed: checks.filter((c) => !c.skipped && c.exit !== 0 && !/attempt 1/.test(c.name)).map((c) => c.name) } };
-  writeJson(path.join(runDir, "checks.json"), out);
-  publishLatest([path.join(runDir, "checks.json"), path.join(runDir, "census.json")]);
-  log(TAG, `failed: ${out.summary.failed.join(", ") || "none"} -> ${relPath(runDir)}/checks.json`);
-  return out;
+  return finish();
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(ROOT, "qa", "gate", "run-checks.mjs");

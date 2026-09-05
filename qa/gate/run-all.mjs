@@ -2,7 +2,7 @@
 // -> bundle -> SUMMARY.md, all published to qa/gate/latest (runs under docs/phase-7/gate/runs).
 //   pnpm gate:all [-- --workers 4 --repeat 1 --bench paired|all|subset|none --bench-parallel --probes --skip-checks --charts a,b --label "..."]
 import path from "node:path";
-import { LATEST_DIR, RUNS_DIR, acquireQaLock, ensureDir, fmtMs, log, nowStamp, parseArgs, relPath, writeJson } from "./lib.mjs";
+import { LATEST_DIR, RUNS_DIR, acquireQaLock, ensureDir, fmtMs, log, nowStamp, parseArgs, relPath, writeJson, writeTreeHash } from "./lib.mjs";
 import { runChecks } from "./run-checks.mjs";
 import { runQaSweep } from "./run-qa.mjs";
 import { runBenchGate } from "./run-bench.mjs";
@@ -15,6 +15,7 @@ const TAG = "[gate:all]";
 export async function runAll(opts = {}) {
   const stamp = nowStamp();
   const runDir = ensureDir(path.join(RUNS_DIR, stamp));
+  writeTreeHash(runDir); // record the tree under test, even when --skip-checks
   const label = opts.label ?? `gate:all ${stamp}`;
   const t0 = Date.now();
   const stages = [];

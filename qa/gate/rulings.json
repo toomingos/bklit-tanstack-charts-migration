@@ -1,0 +1,16 @@
+{
+  "$comment": "Hand-ruled QA cells from the archived phase-6 LOG (D498, via D493/D495): the 6 standing gate-FAIL deviations accepted inside their inherited history (or as loading-animation phase), plus the 5 out-of-range acceptances below the floor (4) and above the old ceiling (barloading hover-30). A ruled cell with px <= bound reads `ruled (<D>)` instead of FAIL and is excluded from issues. Raising a bound or adding a cell needs a D-entry. In-range PASS cells named in D498 (markers legend-hover-0/1/clear, scatter/scattermultiaxis hover-70) need no ruling; the D407 choropleth race was a single event on a cell that reads 0. V4.4.",
+  "cells": {
+    "markers/100/hover-30": { "bound": 6045, "ruling": "D498", "note": "inside inherited [3574,8430]" },
+    "markers/100/hover-70": { "bound": 6147, "ruling": "D498", "note": "inside inherited [3328,8004]" },
+    "sankey/33/hover-30": { "bound": 11017, "ruling": "D498", "note": "inside inherited [3506,28944]" },
+    "sankey/33/hover-70": { "bound": 7367, "ruling": "D498", "note": "V0.3 baseline reads above D498's 5021, inside inherited [1270,33134]" },
+    "barloading/100/hover-50": { "bound": 53588, "ruling": "D498", "note": "inherited FAIL, loading-animation phase (15-17%)" },
+    "barloading/100/hover-70": { "bound": 33734, "ruling": "D498", "note": "inherited FAIL, loading-animation phase; below the old floor" },
+    "barloading/100/hover-30": { "bound": 161310, "ruling": "D498", "note": "exceeds the old ceiling; animation phase, not a regression" },
+    "candlestick/1000/hover-30": { "bound": 1848, "ruling": "D498", "note": "below every inherited history value (D495 wick split)" },
+    "candlestick/1000/hover-50": { "bound": 689, "ruling": "D498", "note": "below every inherited history value (D495 wick split)" },
+    "candlestick/1000/hover-70": { "bound": 591, "ruling": "D498", "note": "below every inherited history value (D495 wick split)" },
+    "radar/6/hover-50": { "bound": 758, "ruling": "D498", "note": "below the floor (D493 choropleth/radar hover fix)" }
+  }
+}

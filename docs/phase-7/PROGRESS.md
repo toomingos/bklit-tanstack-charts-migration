@@ -12,7 +12,7 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 |---|---|---|---|---|
 | V0.1 | commit open diff, merge `chore/oxlint-migrated-charts` | merged | `6c5bc53` | — |
 | V0.2 | pin 0.16.0, fix R1 breaking surface (15 definitions) | merged | `0bcf471` | D510 · executors `ses_f8ed0fe71ffeZPR00ZjS98CmRI` (migrated), `ses_f8ed0d417ffeeTMDv0dnyJ32LO` (bench) |
-| V0.3 | re-baseline at new HEAD, tree hash, `bundle-sizes.json` | merged | (next commit) | D518 · run `2026-09-05T11-24-30-421Z` @ `61d6179`, tree `69b9ef07` · `docs/phase-7/gate/BASELINE.md` · bundle pins re-pinned (41 up, 2 down) · G2 open for V4.4 |
+| V0.3 | re-baseline at new HEAD, tree hash, `bundle-sizes.json` | merged | `019215c` | D518 · run `2026-09-05T11-24-30-421Z` @ `61d6179`, tree `69b9ef07` · `docs/phase-7/gate/BASELINE.md` · bundle pins re-pinned (41 up, 2 down) · G2 open for V4.4 |
 | V0.4 | housekeeping (`__tm`, 9 orphans, nested `defineChart`) | merged | `ad584cd` | D513 · executor `ses_f8ec060e3ffea8L3Q3VTYvzpO3` (resumed once for the cascade) · orphans 18 → 0 · G1 folded |
 | V0.5 | file I1, I2, I4, I5, I6, F-260 comment; numbers in `07` | merged | `437af3a` | D511 · #126 #127 #128 #129 #130 #131 · code links land with the owning items |
 | V0.6 | idiom checklist below matches `08` §3 | merged | `075e331` | checked 2026-09-05: 12 idioms, 16 family rows, wording matches §3 |
@@ -29,7 +29,7 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 1 | V1.9 | package contract | merged | `ses_f8eae8f80ffemH1q37JpHnKBRr` | `e29b694` | D517 · pack 450 files, fresh Next app builds + renders · +10 deps declared, removals owned by later items · G4 |
 | 1 | V4.1 | `qa/unit` scaffold (scene tests, probes) | merged | `ses_f8eae88aeffeCW2EwgcvXZY2hd` | `0c25747` | D515 · `pnpm test` 84 tests / 46 pass / 38 todo / 0.4 s · probes pinned per family |
 | 1 | V4.2 | generated type fixture | merged | `ses_f8eae74d6ffevmKWqC0OMWAzCO` | `04ad318` | D514 · 292 value + 211 type `Eq` lines · 478 red / 420 exports = V1.6 backlog · 81 migrated-only exports · G3 folded |
-| 1 | V4.4 | gate integrity | todo | | | |
+| 1 | V4.4 | gate integrity | merged | `ses_f8e7dd459ffeYm5llQgxkw0yTz` | (next commit) | D519 · tree-hash + refusal · checks order tsc→lint(floor 7)→bench tsc→build→unit→census→bundle · 11 rulings in `qa/gate/rulings.json` (baseline: gate FAIL 0 / ruled 6) · ledger re-keyed, guard 17 → 0 |
 | 2 | V1.3 | registering children | todo | | | |
 | 2 | V1.4 | optional layers own imports | todo | | | |
 | 2 | V1.5 | `cursorHost`, x-domain padding | todo | | | |
@@ -77,8 +77,8 @@ stamp), UPSTREAM (I-number in `07`). No vector = synthesis defect: amend `08` §
 | G | Found by | Symptom | Vector | Disposition | Ref |
 |---|---|---|---|---|---|
 | G1 | V0.2b executor (`ses_f8ed0d417ffeeTMDv0dnyJ32LO`) | `bench/app/src/scenarios/migrated-choropleth.tsx:137` fails bench tsc: `CountryProperties` (`[key: string]: unknown`) not assignable to `ChoroplethFeatureProperties`; pre-existing, independent of 0.16.0; `npm run build` unaffected | V4 (gate integrity: bench app must typecheck) | FOLD into V0.4 housekeeping (typed bench data, no showcase edit) — done | D513 |
-| G2 | V0.3 gate (lead) | `gate:checks` census fails: 17 reach-in ledger failures (15 internal modules not in ledger, radar 20>19, sunburst 8>7); total 67 sites ≤ phase-6's 79; ledger predates the module split in `f5928ab` (guard already failing at `325a065`, before 7.0) | V4 (gate integrity) | FOLD into V4.4 (re-key ledger to split modules, pins = today's counts, total ≤ 79) | D512 (V0.3) |
-| G3 | V4.2 executor (`ses_f8eae74d6ffevmKWqC0OMWAzCO`) | `cd bench/app && npx tsc --noEmit` had 22 pre-existing errors (`toSorted` needs lib ES2023; implicit-any comparators in 5 migrated internals) invisible to the gate because `gate:checks` only runs `vite build` | V4 (gate integrity) | FOLD: lib `ES2022` → `ES2023` in `bench/app/tsconfig.json` by the lead in the V4.2 commit (bench tsc 0); V4.4 adds bench tsc to `gate:checks` | D514 |
+| G2 | V0.3 gate (lead) | `gate:checks` census fails: 17 reach-in ledger failures (15 internal modules not in ledger, radar 20>19, sunburst 8>7); total 67 sites ≤ phase-6's 79; ledger predates the module split in `f5928ab` (guard already failing at `325a065`, before 7.0) | V4 (gate integrity) | FOLD into V4.4 (re-key ledger to split modules, pins = today's counts, total ≤ 79) — done, guard 0 failures | D512 (V0.3), D519 |
+| G3 | V4.2 executor (`ses_f8eae74d6ffevmKWqC0OMWAzCO`) | `cd bench/app && npx tsc --noEmit` had 22 pre-existing errors (`toSorted` needs lib ES2023; implicit-any comparators in 5 migrated internals) invisible to the gate because `gate:checks` only runs `vite build` | V4 (gate integrity) | FOLD: lib `ES2022` → `ES2023` in `bench/app/tsconfig.json` by the lead in the V4.2 commit (bench tsc 0); V4.4 adds bench tsc to `gate:checks` — done | D514, D519 |
 
 | G4 | V1.9 executor (`ses_f8eae8f80ffemH1q37JpHnKBRr`) + lead | `showcase/package.json` cannot drop `@tanstack/charts`/`@tanstack/react-charts` yet: the showcase resolves `@showcase/migrated-charts` to `migrated/charts/index.ts` through tsconfig `paths` (source, not an installed package), `showcase/migrated` is no workspace member, and `qa/unit/lib/render.mjs` + `next.config.mjs` read `showcase/node_modules/@tanstack/charts`; a fresh `pnpm install` after the drop would lose the package | V5 (package shape) | FOLD into V5.3: make `showcase/migrated` a workspace package consumed as `@showcase/migrated-src` (showcase, qa/unit, next.config point at it), then drop the deps from the showcase root | D517 |
 

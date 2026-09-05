@@ -4,7 +4,7 @@
 //   pnpm gate:summary [-- --run-dir <dir> --issues --label <run label>]
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { GATE_DOCS, GATE_PX, LATEST_DIR, ROOT, fmtMs, log, mdTable, parseArgs, publishLatest, readJson, relPath, writeJson } from "./lib.mjs";
+import { GATE_DOCS, GATE_PX, LATEST_DIR, ROOT, applyRulings, assertTreeHash, fmtMs, log, mdTable, parseArgs, publishLatest, readJson, relPath, writeJson } from "./lib.mjs";
 
 const TAG = "[gate:summary]";
 export const ISSUES_FILE = path.join(GATE_DOCS, "ISSUES.md");
@@ -40,7 +40,7 @@ function qaIssues(matrix) {
   }
   for (const r of matrix.rows) {
     const failing = r.gate === "FAIL" || r.gate === "ERROR" || r.status === "out-of-range" || r.tooltipA === false && r.tooltipB === true || r.tooltipA === true && r.tooltipB === false;
-    if (!failing || r.informational) continue;
+    if (!failing || r.informational || r.ruled) continue;
     const sib = byRun.get(`${r.chart}/${r.n}`).filter((x) => x !== r && /^hover-/.test(x.cell) && x.gate === "FAIL").length;
     const tooltipFailure = r.tooltipA != null && r.tooltipB != null && r.tooltipA !== r.tooltipB;
     const cat = r.gate === "ERROR" ? "harness-race" : classifyQaCell(r.chart, r.n, r.cell, { ...r, tooltipFailure, siblingsFail: sib > 0 });
@@ -103,6 +103,7 @@ function probeIssues(probes) {
 export function collectIssues(runDir) {
   const rd = (f) => (existsSync(path.join(runDir, f)) ? readJson(path.join(runDir, f)) : null);
   const art = { matrix: rd("qa-matrix.json"), bench: rd("bench.json"), bundle: rd("bundle.json"), checks: rd("checks.json"), census: rd("census.json"), probes: rd("probes.json") };
+  if (art.matrix) applyRulings(art.matrix.rows); // old matrices predate the ruled stamp; re-apply at read time
   const issues = [...qaIssues(art.matrix), ...benchIssues(art.bench), ...bundleIssues(art.bundle), ...checksIssues(art.checks, art.census), ...probeIssues(art.probes)].map((i) => ({ ...i, hypothesis: "" }));
   return { art, issues };
 }
@@ -111,8 +112,10 @@ const esc = (s) => String(s).replace(/\|/g, "\\|");
 
 export function summaryMd({ runDir, label, art, issues }) {
   const m = art.matrix, b = art.bench, u = art.bundle, c = art.checks, p = art.probes;
+  const ruled = m ? m.rows.filter((r) => r.ruled).length : 0;
+  const gateFail = m ? m.rows.filter((r) => r.px !== undefined && !r.informational && r.gate === "FAIL" && !r.ruled).length : 0;
   const out = [`# Gate summary — ${label ?? path.basename(runDir)}`, "", `Run dir: \`${relPath(runDir)}\`. Generated ${new Date().toISOString()}.`, "", "## Headline", ""];
-  out.push(`- QA: ${m ? `${m.summary.runs} runs / ${m.summary.cells} cells; gate FAIL ${m.summary.gateFail}, harness FAIL ${m.summary.harnessFail}, out-of-range ${m.summary.outOfRange}, new values ${m.summary.newValues}, tooltip failures ${m.summary.tooltipFailures}, errors ${m.summary.errors}${m.run ? `; ${m.run.workers} workers, wall-clock ${fmtMs(m.run.wallClockMs)}` : ""} (gate ${GATE_PX} px)` : "not run"}`);
+  out.push(`- QA: ${m ? `${m.summary.runs} runs / ${m.summary.cells} cells; gate FAIL ${gateFail}${ruled ? `, ruled ${ruled}` : ""}, harness FAIL ${m.summary.harnessFail}, out-of-range ${m.summary.outOfRange}, new values ${m.summary.newValues}, tooltip failures ${m.summary.tooltipFailures}, errors ${m.summary.errors}${m.run ? `; ${m.run.workers} workers, wall-clock ${fmtMs(m.run.wallClockMs)}` : ""} (gate ${GATE_PX} px)` : "not run"}`);
   out.push(`- Bench: ${b ? `${b.summary.cells} cells (${b.summary.skipped} skipped); ${b.summary.flags} flagged (±${b.flagPct}% D273), console-error cells ${b.summary.consoleErrors}, tooltip-missing ${b.summary.tooltipMissing}, failed invocations ${b.summary.failedInvocations}, wall-clock ${fmtMs(b.summary.wallClockMs)}` : "not run"}`);
   out.push(`- Bundle: ${u ? `${u.summary.pinned} pinned, FAIL ${u.summary.fail}, MISSING ${u.summary.missing}, measure-failed ${u.summary.measureFailed}, Σgzip ${u.summary.sumGzip} vs Σpin ${u.summary.sumPin} (${u.summary.sumDeltaPct > 0 ? "+" : ""}${u.summary.sumDeltaPct}%)` : "not run"}`);
   out.push(`- Checks: ${c ? c.checks.map((x) => `${x.name}=${x.skipped ? "skipped" : x.exit === 0 ? "ok" : "FAIL(" + x.exit + ")"}`).join(", ") : "not run"}`);
@@ -172,7 +175,8 @@ export function mergeLedger(existingText, issues, runLabel, scope = null) {
   return marker.test(existingText) ? existingText.replace(marker, block) : `${existingText.trimEnd()}\n\n${block}\n`;
 }
 
-export function summarize({ runDir = LATEST_DIR, label, issuesFile } = {}) {
+export function summarize({ runDir = LATEST_DIR, label, issuesFile, allowHashMismatch = false } = {}) {
+  assertTreeHash(runDir, { allow: allowHashMismatch, tag: TAG });
   const { art, issues } = collectIssues(runDir);
   const lbl = label ?? art.matrix?.label ?? path.basename(runDir);
   const md = summaryMd({ runDir, label: lbl, art, issues });
@@ -191,6 +195,11 @@ export function summarize({ runDir = LATEST_DIR, label, issuesFile } = {}) {
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(ROOT, "qa", "gate", "summarize.mjs");
 if (isMain) {
-  const a = parseArgs(process.argv.slice(2), { "run-dir": "string", label: "string", issues: "bool" });
-  summarize({ runDir: a["run-dir"] ? path.resolve(a["run-dir"]) : LATEST_DIR, label: a.label, issuesFile: a.issues ? ISSUES_FILE : null });
+  const a = parseArgs(process.argv.slice(2), { "run-dir": "string", label: "string", issues: "bool", "allow-hash-mismatch": "bool" });
+  try {
+    summarize({ runDir: a["run-dir"] ? path.resolve(a["run-dir"]) : LATEST_DIR, label: a.label, issuesFile: a.issues ? ISSUES_FILE : null, allowHashMismatch: !!a["allow-hash-mismatch"] });
+  } catch (e) {
+    console.error(`${TAG} ${e.message}`);
+    process.exit(1);
+  }
 }
