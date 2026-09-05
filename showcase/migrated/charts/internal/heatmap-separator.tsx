@@ -1,12 +1,8 @@
-import { createPortal } from "react-dom";
-import { useId } from "react";
+import { useId, useMemo } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { useHeatmap } from "./heatmap-context";
-import { useSeparatorLabelPresentation } from "./heatmap-separator-label";
 import {
   buildHeatmapSeparatorGradientStops,
-  getHeatmapSeparatorLineY,
-  getHeatmapSeparatorX,
   resolveHeatmapSeparatorStrokeDasharray,
 } from "./heatmap-utils";
 import type {
@@ -18,7 +14,8 @@ import type {
   HeatmapSeparatorStrokeStyle,
 } from "./heatmap-utils";
 
-// Shared class for the HTML axis/separator label layers portalled over the chart.
+// Shared class for the HTML axis/separator label layers (package axes render
+// Their own labels; separator quarter labels render as SVG text below).
 const HEATMAP_AXIS_LAYER_CLASS = "ts-bkm-heatmap-axis-layer";
 
 interface HeatmapSeparatorProps {
@@ -44,46 +41,35 @@ interface HeatmapSeparatorProps {
 // Default quarter label for heatmap separators (`Q1`-`Q4`).
 const defaultHeatmapSeparatorLabelFormat = (quarter: number): string => `Q${quarter}`;
 
-interface SeparatorLabelPortalParams {
-  readonly className: string | undefined;
-  readonly labelClassName: string | undefined;
-  readonly labelFormat: (quarter: number, startDate: Readonly<Date>) => string;
+// Gutter offset before a column (derived from layout; no scale object).
+const separatorOffsetBefore = (
+  column: number,
+  separator: Readonly<Pick<HeatmapSeparatorLayout, "spacing" | "atColumns">> | null,
+): number => {
+  if (!separator || separator.spacing <= 0 || column <= 0) {return 0;}
+  let count = 0;
+  for (const atColumn of separator.atColumns) {
+    if (atColumn <= column) {count += 1;}
+  }
+  return count * separator.spacing;
+};
+
+interface SeparatorLabelPresentation {
   readonly labelGroups: readonly HeatmapSeparatorGroup[];
-  readonly labelStyles: readonly Readonly<CSSProperties>[];
-  readonly layerStyle: Readonly<CSSProperties>;
-  readonly htmlLayerEl: HTMLDivElement | null;
-  readonly showLabels: boolean;
+  readonly labelX: readonly number[];
 }
 
-const buildSeparatorLabelPortal = ({
-  className,
-  labelClassName,
-  labelFormat,
-  labelGroups,
-  labelStyles,
-  layerStyle,
-  htmlLayerEl,
-  showLabels,
-}: Readonly<SeparatorLabelPortalParams>): ReturnType<typeof createPortal> | undefined => {
-  if (!showLabels || labelGroups.length === 0 || !htmlLayerEl) {return undefined;}
-  return createPortal(
-    <div
-      className={className !== undefined && className !== "" ? `${HEATMAP_AXIS_LAYER_CLASS} ${className}` : HEATMAP_AXIS_LAYER_CLASS}
-      style={layerStyle}
-    >
-      {labelGroups.map((group, groupIndex) => (
-        <span
-          key={group.startColumnIndex}
-          className={labelClassName !== undefined && labelClassName !== "" ? `ts-bkm-heatmap-separator-label ${labelClassName}` : "ts-bkm-heatmap-separator-label"}
-          style={labelStyles[groupIndex]}
-        >
-          {labelFormat(group.quarter, group.startDate)}
-        </span>
-      ))}
-    </div>,
-    htmlLayerEl,
-  );
-};
+// Quarter-label x positions from the cell grid (no portal; rendered as SVG text).
+const useSeparatorLabelPresentation = (
+  cellSize: number,
+  separator: HeatmapSeparatorLayout | null,
+): SeparatorLabelPresentation => useMemo(() => {
+  const groups = separator?.groups ?? [];
+  return {
+    labelGroups: groups,
+    labelX: groups.map((group) => group.startColumnIndex * cellSize + separatorOffsetBefore(group.startColumnIndex, separator)),
+  };
+}, [cellSize, separator]);
 
 interface SeparatorGradientDefParams {
   readonly gradientId: string;
@@ -162,13 +148,24 @@ interface SeparatorLinesParams {
   readonly gradientStops: readonly Readonly<HeatmapSeparatorGradientStop>[] | undefined;
   readonly paddingX: number;
   readonly separator: Readonly<HeatmapSeparatorLayout>;
+  readonly cellSize: number;
   readonly stroke: string;
   readonly strokeOpacity: number;
   readonly strokeWidth: number;
-  readonly xScale: (columnIndex: number) => number;
   readonly y1: number;
   readonly y2: number;
 }
+
+const separatorLineX = (
+  columnIndex: number,
+  gap: number,
+  separator: Readonly<Pick<HeatmapSeparatorLayout, "spacing" | "atColumns">>,
+  cellSize: number,
+): number => {
+  const base = columnIndex * cellSize + separatorOffsetBefore(columnIndex, separator);
+  if (separator.spacing > 0) {return base - separator.spacing / 2;}
+  return base - gap / 2;
+};
 
 const renderSeparatorLines = ({
   atColumns,
@@ -179,65 +176,29 @@ const renderSeparatorLines = ({
   gradientStops,
   paddingX,
   separator,
+  cellSize,
   stroke,
   strokeOpacity,
   strokeWidth,
-  xScale,
   y1,
   y2,
 }: Readonly<SeparatorLinesParams>): ReactElement => (
   <g className="ts-bkm-heatmap-separators">
     {atColumns.map((columnIndex) => {
-      const x = getHeatmapSeparatorX(columnIndex, gap, separator, xScale);
+      const x = separatorLineX(columnIndex, gap, separator, cellSize);
       return renderSeparatorColumn({ className, columnIndex, dasharray, gradientId, gradientStops, paddingX, stroke, strokeOpacity, strokeWidth, x, y1, y2 });
     })}
   </g>
 );
 
-interface SeparatorLineConfig {
-  readonly dasharray: string | undefined;
-  readonly gradientStops: readonly Readonly<HeatmapSeparatorGradientStop>[] | undefined;
-  readonly y1: number;
-  readonly y2: number;
-}
-
-interface ResolveSeparatorLineConfigParams {
-  readonly gradient: Readonly<HeatmapSeparatorGradient> | undefined;
-  readonly innerHeight: number;
-  readonly marginTop: number;
-  readonly paddingY: number;
-  readonly startOffset: number | undefined;
-  readonly strokeDasharray: string | undefined;
-  readonly strokeOpacity: number;
-  readonly strokeStyle: HeatmapSeparatorStrokeStyle;
-}
-
-// Resolves the horizontal line geometry and stroke for the separator overlay.
-// Hoisted so HeatmapSeparator stays under the statement limit.
-const resolveSeparatorLineConfig = ({
-  gradient,
-  innerHeight,
-  marginTop,
-  paddingY,
-  startOffset,
-  strokeDasharray,
-  strokeOpacity,
-  strokeStyle,
-}: Readonly<ResolveSeparatorLineConfigParams>): SeparatorLineConfig => {
-  const { y1, y2 } = getHeatmapSeparatorLineY({ innerHeight, marginTop, paddingY, startOffset });
-  return {
-    dasharray: resolveHeatmapSeparatorStrokeDasharray(strokeStyle, strokeDasharray),
-    gradientStops: gradient ? buildHeatmapSeparatorGradientStops(gradient, strokeOpacity) : undefined,
-    y1,
-    y2,
-  };
-};
+const LABEL_TEXT_STYLE: CSSProperties = { fontSize: 12 };
+const LABEL_ABOVE_PLOT_DY = -8;
 
 const HeatmapSeparator = ({
   className,
   paddingX = 0,
   paddingY = 0,
-  startOffset,
+  startOffset: _startOffset,
   labelOffset = 0,
   showLabels = false,
   labelFormat = defaultHeatmapSeparatorLabelFormat,
@@ -249,29 +210,55 @@ const HeatmapSeparator = ({
   strokeWidth = 1,
   strokeOpacity = 1,
 }: Readonly<HeatmapSeparatorProps>): ReactElement | undefined => {
+  void _startOffset;
   const ctx = useHeatmap();
   const layout = ctx.separatorLayout;
-  // Scoped with useId so two heatmap instances on one page don't share one
-  // Gradient def (HM7; bklit does the same via useId).
+  // Scoped with useId so two heatmap instances on one page don't share one gradient def.
   const gradientId = `heatmap-separator-gradient-${useId().replaceAll(":", "")}`;
-  const presentation = useSeparatorLabelPresentation(labelOffset, startOffset);
-  const labelPortal = buildSeparatorLabelPortal({
-    className,
-    htmlLayerEl: ctx.htmlLayerEl,
-    labelClassName,
-    labelFormat,
-    labelGroups: presentation.labelGroups,
-    labelStyles: presentation.labelStyles,
-    layerStyle: presentation.layerStyle,
-    showLabels,
-  });
-  if (!layout || layout.atColumns.length === 0) {return labelPortal;}
-  const lineConfig = resolveSeparatorLineConfig({ gradient, innerHeight: ctx.innerHeight, marginTop: ctx.margin.top, paddingY, startOffset, strokeDasharray, strokeOpacity, strokeStyle });
+  const cellSize = ctx.binWidth;
+  const presentation = useSeparatorLabelPresentation(cellSize, layout);
+  const dasharray = resolveHeatmapSeparatorStrokeDasharray(strokeStyle, strokeDasharray);
+  const gradientStops = gradient ? buildHeatmapSeparatorGradientStops(gradient, strokeOpacity) : undefined;
+  // The surface <g> is already translated to the plot origin, so the span is plot-local.
+  const y1 = paddingY;
+  const y2 = Math.max(ctx.innerHeight - paddingY, y1);
+  if (!layout || layout.atColumns.length === 0) {
+    if (!showLabels || presentation.labelGroups.length === 0) {return undefined;}
+    return (
+      <g className="ts-bkm-heatmap-separator-labels">
+        {presentation.labelGroups.map((group, groupIndex) => (
+          <text
+            key={group.startColumnIndex}
+            className={labelClassName !== undefined && labelClassName !== "" ? `ts-bkm-heatmap-separator-label ${labelClassName}` : "ts-bkm-heatmap-separator-label"}
+            x={presentation.labelX[groupIndex]}
+            y={LABEL_ABOVE_PLOT_DY + labelOffset}
+            style={LABEL_TEXT_STYLE}
+          >
+            {labelFormat(group.quarter, group.startDate)}
+          </text>
+        ))}
+      </g>
+    );
+  }
   return (
     <>
-      {lineConfig.gradientStops ? renderSeparatorGradientDef({ gradientId, gradientStops: lineConfig.gradientStops, y1: lineConfig.y1, y2: lineConfig.y2 }) : undefined}
-      {renderSeparatorLines({ atColumns: layout.atColumns, className, dasharray: lineConfig.dasharray, gap: ctx.gap, gradientId, gradientStops: lineConfig.gradientStops, paddingX, separator: layout, stroke, strokeOpacity, strokeWidth, xScale: ctx.xScale, y1: lineConfig.y1, y2: lineConfig.y2 })}
-      {labelPortal}
+      {gradientStops ? renderSeparatorGradientDef({ gradientId, gradientStops, y1, y2 }) : undefined}
+      {renderSeparatorLines({ atColumns: layout.atColumns, cellSize, className, dasharray, gap: ctx.gap, gradientId, gradientStops, paddingX, separator: layout, stroke, strokeOpacity, strokeWidth, y1, y2 })}
+      {showLabels && presentation.labelGroups.length > 0 ? (
+        <g className="ts-bkm-heatmap-separator-labels">
+          {presentation.labelGroups.map((group, groupIndex) => (
+            <text
+              key={group.startColumnIndex}
+              className={labelClassName !== undefined && labelClassName !== "" ? `ts-bkm-heatmap-separator-label ${labelClassName}` : "ts-bkm-heatmap-separator-label"}
+              x={presentation.labelX[groupIndex]}
+              y={LABEL_ABOVE_PLOT_DY + labelOffset}
+              style={LABEL_TEXT_STYLE}
+            >
+              {labelFormat(group.quarter, group.startDate)}
+            </text>
+          ))}
+        </g>
+      ) : undefined}
     </>
   );
 };

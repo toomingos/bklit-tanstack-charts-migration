@@ -1,16 +1,21 @@
-import { useMemo, useSyncExternalStore } from 'react';
+import { useId, useMemo, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactElement } from 'react';
-import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
-import { HEATMAP_INACTIVE_OPACITY } from './heatmap-hover-chrome';
-import type { HeatmapHoverCoordinator, HeatmapHoverStyleParams } from './heatmap-hover-chrome';
+import { HEATMAP_INACTIVE_OPACITY, HEATMAP_INACTIVE_TRANSITION_CSS, useHeatmapCoordinatorOptional } from "./heatmap-context";
+import type { HeatmapHoverCoordinator, HeatmapHoverStyleParams } from "./heatmap-context";
+import { renderPatternPreset } from "./pattern-preset-render";
 import {
+  defaultHeatmapColorScale,
+  heatmapLevelPatternId,
+  heatmapLevelPatternRenderOptions,
+  isHeatmapLevelPattern,
+} from './heatmap-colors';
+import type { HeatmapLevelStyle, HeatmapLevelStyles } from './heatmap-colors';
+import {
+  buildHeatmapLegendGradient,
   getHeatmapContributionLevel,
   isHeatmapHoverEffectEnabled,
+  resolveHeatmapHoverStyle,
 } from "./heatmap-utils";
-import { defaultHeatmapColorScale } from './heatmap-colors';
-import type { HeatmapLevelStyles } from './heatmap-colors';
-import { HeatmapLegendGradient } from "./heatmap-legend-gradient";
-import { renderLegendSwatch } from "./heatmap-legend-swatch-entry";
 
 const HEATMAP_LEGEND_HIGH_LEVEL = 3;
 const HEATMAP_LEGEND_MAX_LEVEL = 4;
@@ -134,6 +139,331 @@ interface LegendContentArgs {
   readonly onLeave: () => void;
   readonly swatchesStyle: CSSProperties;
 }
+
+interface HeatmapLegendGradientProps {
+  readonly levels: readonly number[];
+  readonly levelStyles: HeatmapLevelStyles;
+  readonly cellSize: number;
+  readonly gap: number;
+  readonly cornerRadius: number;
+  readonly gradientSpan: number;
+  readonly highlightedLevel: number | null;
+  readonly isDimming: boolean;
+  readonly inactiveOpacity: number;
+  readonly inactiveScale: number;
+  readonly activeScale: number;
+  readonly isInteractive: boolean;
+  readonly onEnter: (level: number) => void;
+  readonly onLeave: () => void;
+}
+
+interface GradientSegmentVisualArgs {
+  readonly barHeight: number;
+  readonly index: number;
+  readonly segmentWidth: number;
+  readonly isHighlighted: boolean;
+  readonly isDimming: boolean;
+  readonly activeScale: number;
+  readonly inactiveOpacity: number;
+  readonly inactiveScale: number;
+  readonly isInteractive: boolean;
+}
+
+const buildGradientSegmentVisual = (segment: Readonly<GradientSegmentVisualArgs>): CSSProperties => {
+  const isDimmed = segment.isDimming && !segment.isHighlighted;
+  const hoverStyle = resolveHeatmapHoverStyle(segment.isHighlighted, isDimmed, { activeScale: segment.activeScale, inactiveOpacity: segment.inactiveOpacity, inactiveScale: segment.inactiveScale });
+  const segmentStyle: CSSProperties = {
+    height: segment.barHeight,
+    left: segment.index * segment.segmentWidth,
+    opacity: hoverStyle.opacity,
+    transform: `scale(${hoverStyle.scale})`,
+    transition: `opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}, transform ${HEATMAP_INACTIVE_TRANSITION_CSS}`,
+    width: segment.segmentWidth,
+  };
+  if (segment.isInteractive) {
+    segmentStyle.cursor = "pointer";
+  }
+  return segmentStyle;
+};
+
+interface GradientSegmentArgs {
+  readonly level: number;
+  readonly index: number;
+  readonly barHeight: number;
+  readonly segmentWidth: number;
+  readonly highlightedLevel: number | null;
+  readonly isDimming: boolean;
+  readonly activeScale: number;
+  readonly inactiveOpacity: number;
+  readonly inactiveScale: number;
+  readonly isInteractive: boolean;
+  readonly onEnter: (level: number) => void;
+  readonly onLeave: () => void;
+}
+
+// Enter-handler factory; module scope so the render path passes no inline closures.
+const createGradientEnterHandler = (segment: Readonly<GradientSegmentArgs>): (() => void) => (): void => {
+  segment.onEnter(segment.level);
+};
+
+// One gradient segment; plain function (not a component) so the element tree is unchanged.
+const renderGradientSegment = (segment: Readonly<GradientSegmentArgs>): ReactElement => {
+  const isHighlighted = segment.highlightedLevel === segment.level;
+  const { onLeave: handleLeave } = segment;
+  const handleEnter = createGradientEnterHandler(segment);
+  const segmentStyle = buildGradientSegmentVisual({
+    activeScale: segment.activeScale,
+    barHeight: segment.barHeight,
+    inactiveOpacity: segment.inactiveOpacity,
+    inactiveScale: segment.inactiveScale,
+    index: segment.index,
+    isDimming: segment.isDimming,
+    isHighlighted,
+    isInteractive: segment.isInteractive,
+    segmentWidth: segment.segmentWidth,
+  });
+  return (
+    <span
+      key={segment.level}
+      className="ts-bkm-heatmap-legend-gradient-segment"
+      onPointerEnter={handleEnter}
+      onPointerLeave={handleLeave}
+      style={segmentStyle}
+    />
+  );
+};
+
+interface GradientBarArgs {
+  readonly barWidth: number;
+  readonly barHeight: number;
+  readonly gradient: string;
+  readonly pillRadius: number;
+  readonly barOpacity: number;
+}
+
+// Gradient bar style; module-scope factory matching buildGradientSegmentVisual above.
+const buildGradientBarStyle = (bar: Readonly<GradientBarArgs>): CSSProperties => ({
+  background: bar.gradient,
+  borderRadius: bar.pillRadius,
+  opacity: bar.barOpacity,
+  transition: `opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}`,
+});
+
+// Gradient bar panel; plain function (not a component) so the element tree is unchanged.
+const renderGradientBar = (bar: Readonly<GradientBarArgs>): ReactElement => {
+  const barStyle = buildGradientBarStyle(bar);
+  return (
+    <div
+      aria-hidden="true"
+      className="ts-bkm-heatmap-legend-gradient-bar"
+      style={barStyle}
+    />
+  );
+};
+
+const HeatmapLegendGradient = ({
+  levels,
+  levelStyles,
+  cellSize,
+  gap,
+  cornerRadius,
+  gradientSpan,
+  highlightedLevel,
+  isDimming,
+  inactiveOpacity,
+  inactiveScale,
+  activeScale,
+  isInteractive,
+  onEnter,
+  onLeave,
+}: Readonly<HeatmapLegendGradientProps>): ReactElement => {
+  const barWidth = gradientSpan * cellSize + (gradientSpan - 1) * gap;
+  const barHeight = cellSize;
+  const pillRadius = Math.min(cornerRadius, barHeight / 2);
+  const segmentWidth = barWidth / levels.length;
+  const gradient = buildHeatmapLegendGradient(levelStyles);
+  const barOpacity = isDimming && highlightedLevel === null ? inactiveOpacity : 1;
+  const containerStyle = useMemo((): CSSProperties => ({ height: barHeight, width: barWidth }), [barHeight, barWidth]);
+
+  return (
+    <div className="ts-bkm-heatmap-legend-gradient" style={containerStyle}>
+      {renderGradientBar({ barHeight, barOpacity, barWidth, gradient, pillRadius })}
+      {levels.map((level, index) => renderGradientSegment({
+        activeScale,
+        barHeight,
+        highlightedLevel,
+        inactiveOpacity,
+        inactiveScale,
+        index,
+        isDimming,
+        isInteractive,
+        level,
+        onEnter,
+        onLeave,
+        segmentWidth,
+      }))}
+    </div>
+  );
+}
+
+// Static svg fill style for the pattern branch; hoisted so it keeps identity.
+const SWATCH_SVG_STYLE = { display: "block", height: "100%", width: "100%" } as const;
+
+// The base level has no pattern to draw, so it renders as a hairline swatch.
+const BASE_HEATMAP_LEVEL = 0;
+
+// A pattern without an explicit opacity renders fully opaque.
+const FULL_PATTERN_OPACITY = 1;
+
+interface HeatmapLegendSwatchProps {
+  readonly level: number;
+  readonly style: HeatmapLevelStyle;
+  readonly cellSize: number;
+  readonly cornerRadius: number;
+}
+
+interface PatternSwatchArgs {
+  readonly style: HeatmapLevelStyle;
+  readonly level: number;
+  readonly reactId: string;
+  readonly cellSize: number;
+  readonly cornerRadius: number;
+}
+
+// Pattern shell style; hoisted so the swatch passes no fresh object to JSX.
+const buildPatternShellStyle = (swatch: Readonly<PatternSwatchArgs>): CSSProperties => ({
+  borderRadius: swatch.cornerRadius,
+  height: swatch.cellSize,
+  opacity: swatch.style.patternOpacity ?? FULL_PATTERN_OPACITY,
+  overflow: "hidden",
+  width: swatch.cellSize,
+});
+
+// Pattern branch of the legend swatch; undefined when the level is solid. Hoisted so the swatch stays short.
+const renderPatternSwatch = (swatch: Readonly<PatternSwatchArgs>): ReactElement | undefined => {
+  if (!isHeatmapLevelPattern(swatch.style) || !swatch.style.pattern) {return undefined;}
+  // Ids are useId-scoped so multiple charts/legends on one page don't collide.
+  const patternId = `${swatch.reactId}-${heatmapLevelPatternId(swatch.level)}`;
+  const patternNode = renderPatternPreset(
+    swatch.style.pattern,
+    `${patternId}-base`,
+    heatmapLevelPatternRenderOptions(swatch.style),
+  );
+
+  return (
+    <span
+      aria-hidden="true"
+      className="ts-bkm-heatmap-legend-swatch ts-bkm-heatmap-legend-swatch--pattern"
+      style={buildPatternShellStyle(swatch)}
+    >
+      <svg aria-hidden="true" viewBox={`0 0 ${swatch.cellSize} ${swatch.cellSize}`} style={SWATCH_SVG_STYLE}>
+        {patternNode !== undefined && patternNode !== null ? <defs>{patternNode}</defs> : undefined}
+        <rect
+          fill={patternNode !== undefined && patternNode !== null ? `url(#${patternId})` : swatch.style.color}
+          height={swatch.cellSize}
+          rx={swatch.cornerRadius}
+          ry={swatch.cornerRadius}
+          width={swatch.cellSize}
+        />
+      </svg>
+    </span>
+  );
+};
+
+interface SolidSwatchArgs {
+  readonly style: HeatmapLevelStyle;
+  readonly level: number;
+  readonly cellSize: number;
+  readonly cornerRadius: number;
+}
+
+// Solid swatch style; hoisted so the swatch stays short.
+const buildSolidSwatchStyle = (swatch: Readonly<SolidSwatchArgs>): CSSProperties => {
+  const solidStyle: CSSProperties = {
+    backgroundColor: swatch.style.color,
+    borderRadius: swatch.cornerRadius,
+    boxSizing: "border-box",
+    height: swatch.cellSize,
+    width: swatch.cellSize,
+  };
+  if (swatch.level === BASE_HEATMAP_LEVEL) {
+    solidStyle.border = `1px solid ${swatch.style.color}`;
+  }
+  return solidStyle;
+};
+
+const HeatmapLegendSwatch = ({ level, style, cellSize, cornerRadius }: Readonly<HeatmapLegendSwatchProps>): ReactElement => {
+  // Unconditional (rules of hooks); consumed only by the pattern branch.
+  const reactId = useId().replaceAll(':', "");
+  const patternElement = renderPatternSwatch({ cellSize, cornerRadius, level, reactId, style });
+  if (patternElement !== undefined) {return patternElement;}
+
+  return (
+    <span
+      aria-hidden="true"
+      className="ts-bkm-heatmap-legend-swatch"
+      style={buildSolidSwatchStyle({ cellSize, cornerRadius, level, style })}
+    />
+  );
+};
+
+interface LegendSwatchArgs {
+  readonly level: number;
+  readonly highlightedLevel: number | null;
+  readonly isDimming: boolean;
+  readonly hoverParams: Readonly<HeatmapHoverStyleParams>;
+  readonly levelStyles: HeatmapLevelStyles;
+  readonly isInteractive: boolean;
+  readonly cellSize: number;
+  readonly cornerRadius: number;
+  readonly onEnter: (level: number) => void;
+  readonly onLeave: () => void;
+}
+
+// Fallback level when the swatch level has no dedicated style entry.
+const FIRST_LEVEL_INDEX = 0;
+
+// Enter-handler factory; module scope so the render path passes no inline closures.
+const createSwatchEnterHandler = (swatch: Readonly<LegendSwatchArgs>): (() => void) => (): void => {
+  swatch.onEnter(swatch.level);
+};
+
+// Swatch wrapper style; module-scope factory so no object literal lives in the render path.
+const buildSwatchWrapStyle = (swatch: Readonly<LegendSwatchArgs>): CSSProperties => {
+  const isHighlighted = swatch.highlightedLevel === swatch.level;
+  const isDimmed = swatch.isDimming && !isHighlighted;
+  const hoverStyle = resolveHeatmapHoverStyle(isHighlighted, isDimmed, swatch.hoverParams);
+  const swatchWrapStyle: CSSProperties = {
+    opacity: hoverStyle.opacity,
+    transform: `scale(${hoverStyle.scale})`,
+    transition: `opacity ${HEATMAP_INACTIVE_TRANSITION_CSS}, transform ${HEATMAP_INACTIVE_TRANSITION_CSS}`,
+  };
+  if (swatch.isInteractive) {
+    swatchWrapStyle.cursor = "pointer";
+  }
+  return swatchWrapStyle;
+};
+
+// One swatch with its hover wrapper; plain function (not a component) so the element tree is unchanged.
+const renderLegendSwatch = (swatch: Readonly<LegendSwatchArgs>): ReactElement => {
+  const swatchWrapStyle = buildSwatchWrapStyle(swatch);
+  const style = swatch.levelStyles[swatch.level] ?? swatch.levelStyles[FIRST_LEVEL_INDEX];
+  const { onLeave: handleLeave } = swatch;
+  const handleEnter = createSwatchEnterHandler(swatch);
+  const swatchNode = (<HeatmapLegendSwatch level={swatch.level} style={style} cellSize={swatch.cellSize} cornerRadius={swatch.cornerRadius} />);
+  return (
+    <span
+      key={swatch.level}
+      aria-hidden="true"
+      className="ts-bkm-heatmap-legend-swatch-wrap"
+      onPointerEnter={handleEnter}
+      onPointerLeave={handleLeave}
+      style={swatchWrapStyle}
+    >
+      {swatchNode}
+    </span>
+  );
+};
 
 // Gradient-vs-swatches branch; plain function (not a component) so the element tree is unchanged.
 const renderLegendContent = (content: Readonly<LegendContentArgs>): ReactElement => {
@@ -280,15 +610,16 @@ const HeatmapLegend = ({
   );
 }
 
+
 export type {
   HeatmapLegendVariant,
   HeatmapLegendProps,
+  HeatmapLegendGradientProps,
+  HeatmapLegendSwatchProps,
 };
-export type { HeatmapLegendGradientProps } from "./heatmap-legend-gradient";
-export type { HeatmapLegendSwatchProps } from "./heatmap-legend-swatch";
 export {
   HEATMAP_LEGEND_LEVELS,
   HeatmapLegend,
+  HeatmapLegendGradient,
+  HeatmapLegendSwatch,
 };
-export { HeatmapLegendGradient } from "./heatmap-legend-gradient";
-export { HeatmapLegendSwatch } from "./heatmap-legend-swatch";

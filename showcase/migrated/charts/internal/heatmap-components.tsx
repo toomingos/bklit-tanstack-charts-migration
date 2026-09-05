@@ -1,16 +1,129 @@
-import type { ReactElement } from "react";
-import { useHeatmap } from "./heatmap-context";
-import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
-import { HEATMAP_INACTIVE_OPACITY } from "./heatmap-hover-chrome";
-import {
-  useHeatmapCellsData,
-  useHeatmapCellsDefinition,
-  useHeatmapCellsTooltip,
-  useHeatmapCellsTooltipBody,
-  useHeatmapPatternPrefix,
-} from "./heatmap-cells-hooks";
+import { Fragment, memo, useCallback, useId, useMemo, useSyncExternalStore } from "react";
+import type { CSSProperties, ReactElement } from "react";
+import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
+import type { ChartRendererRenderContext } from "@tanstack/charts";
+import { chartMotionRenderer } from "./motion-renderer";
+import { HEATMAP_INACTIVE_OPACITY, useHeatmap, useHeatmapCoordinatorOptional } from "./heatmap-context";
+import { getHeatmapTooltipConfig, subscribeHeatmapTooltipConfig } from "./heatmap-tooltip-registry";
+import type { HeatmapTooltipConfig } from "./heatmap-tooltip-registry";
 import { useHeatmapPointerBridge } from "./heatmap-focus-bridge";
-import { buildHeatmapCellsTree } from "./heatmap-cells-view";
+import { hasPatternLevelStyles, useHeatmapChartDefinition } from "./heatmap-definition";
+import { heatmapLevelPatternId, heatmapLevelPatternRenderOptions, isHeatmapLevelPattern } from "./heatmap-colors";
+import type { HeatmapLevelStyle, HeatmapLevelStyles } from "./heatmap-colors";
+import { renderPatternPreset } from "./pattern-preset-render";
+import { buildCellData } from "./heatmap-cell-data";
+import type { CellDatum } from "./heatmap-cell-data";
+import { formatHeatmapTooltipDate, formatHeatmapTooltipWeekday, getHeatmapDayLabels, resolveHeatmapDisplayRange } from "./heatmap-utils";
+import type { HeatmapYAxisLabelFormat, HeatmapYAxisTickFilter } from "./heatmap-utils";
+
+// Static element styles hoisted so `HeatmapCells` passes stable identities.
+const HEATMAP_CELLS_CONTAINER_STYLE = { position: "relative", zIndex: 1 } as const;
+const HEATMAP_CELLS_INNER_STYLE = { position: "relative" } as const;
+const HEATMAP_HOVER_SVG_STYLE = { inset: 0, position: "absolute" } as const;
+const HEATMAP_RENDERER_STYLE = { overflow: "visible" } as const;
+
+/*
+ * TanStack bakes margins into rect coordinates while bklit translates a group, so each base
+ * pattern is wrapped in a phase-shifting pattern to land the tile grid on the same phase.
+ */
+const renderHeatmapCellPatternDefs = ({
+  levelStyles,
+  patternIdPrefix,
+  phaseX,
+  phaseY,
+}: Readonly<{
+  levelStyles: HeatmapLevelStyles;
+  patternIdPrefix: string | undefined;
+  phaseX: number;
+  phaseY: number;
+}>) : ReactElement | undefined => {
+  const nodes = levelStyles.flatMap((style: Readonly<HeatmapLevelStyle>, level) => {
+    if (!isHeatmapLevelPattern(style) || !style.pattern) {
+      return [];
+    }
+    const id = heatmapLevelPatternId(level);
+    const scopedId = patternIdPrefix !== undefined && patternIdPrefix !== "" ? `${patternIdPrefix}-${id}` : id;
+    const node = renderPatternPreset(
+      style.pattern,
+      `${scopedId}-base`,
+      heatmapLevelPatternRenderOptions(style),
+    );
+    if (node === undefined || node === null) {return [];}
+    return [
+      <Fragment key={scopedId}>
+        {node}
+        <pattern
+          id={scopedId}
+          href={`#${scopedId}-base`}
+          xlinkHref={`#${scopedId}-base`}
+          patternTransform={`translate(${phaseX} ${phaseY})`}
+        />
+      </Fragment>,
+    ];
+  });
+  if (nodes.length === 0) {return undefined;}
+  return <defs>{nodes}</defs>;
+};
+
+const HeatmapPatternDefs = memo(renderHeatmapCellPatternDefs);
+
+HeatmapPatternDefs.displayName = "HeatmapPatternDefs";
+
+const renderHeatmapTooltipContent = (datum: Readonly<CellDatum>, config: Readonly<HeatmapTooltipConfig>): ReactElement => (
+  <div className="bkm-tooltip-content">
+    <div className="ts-bkm-heatmap-tooltip-date">{formatHeatmapTooltipDate(datum.date)}</div>
+    <div className="ts-bkm-heatmap-tooltip-weekday">{formatHeatmapTooltipWeekday(datum.date)}</div>
+    <div className="ts-bkm-heatmap-tooltip-divider" />
+    <div className="ts-bkm-heatmap-tooltip-value">{config.formatLabel(datum.count, datum.date)}</div>
+  </div>
+);
+
+interface HeatmapCellsTooltip {
+  readonly tooltipConfig: HeatmapTooltipConfig | null;
+  readonly tooltipPanelStyle: CSSProperties | undefined;
+}
+
+const useHeatmapCellsTooltip = (
+  coordinator: Parameters<typeof subscribeHeatmapTooltipConfig>[0],
+): HeatmapCellsTooltip => {
+  const subscribeTooltipConfig = useCallback(
+    (listener: () => void) => subscribeHeatmapTooltipConfig(coordinator, listener),
+    [coordinator],
+  );
+  const tooltipConfig = useSyncExternalStore(
+    subscribeTooltipConfig,
+    () => getHeatmapTooltipConfig(coordinator),
+    () => null,
+  );
+  const tooltipPanelStyle = useMemo(
+    () => ({ backgroundColor: tooltipConfig?.backgroundColor, ...tooltipConfig?.panelStyle }),
+    [tooltipConfig],
+  );
+  return { tooltipConfig, tooltipPanelStyle };
+};
+
+type HeatmapTooltipBodyFn = (bodyCtx: Readonly<{ points: readonly { readonly datum: Readonly<CellDatum> }[] }>) => ReactElement | undefined;
+
+const useHeatmapCellsTooltipBody = ({
+  tooltipConfig,
+  tooltipPanelStyle,
+}: Readonly<{ tooltipConfig: HeatmapTooltipConfig | null; tooltipPanelStyle: CSSProperties | undefined }>): HeatmapTooltipBodyFn => {
+  const renderTooltipBody = useCallback((bodyCtx: Readonly<{ points: readonly { readonly datum: Readonly<CellDatum> }[] }>): ReactElement | undefined => {
+    const point = bodyCtx.points.at(0);
+    const cfg = tooltipConfig;
+    if (point === undefined || !cfg) {return undefined;}
+    const { datum } = point;
+    return (
+      <div
+        className={cfg.className ? `bkm-tooltip-panel ${cfg.className}` : "bkm-tooltip-panel"}
+        style={tooltipPanelStyle}
+      >
+        {renderHeatmapTooltipContent(datum, cfg)}
+      </div>
+    );
+  }, [tooltipConfig, tooltipPanelStyle]);
+  return renderTooltipBody;
+};
 
 interface HeatmapCellsProps {
   readonly cornerRadius?: number;
@@ -40,19 +153,44 @@ const HeatmapCells = ({
   const ctx = useHeatmap();
   const coordinator = useHeatmapCoordinatorOptional();
   const { tooltipConfig, tooltipPanelStyle } = useHeatmapCellsTooltip(coordinator);
-  const { cellData, dayLabels } = useHeatmapCellsData({ ctx, hideGhostCells });
-  const patternIdPrefix = useHeatmapPatternPrefix(ctx.levelStyles);
-  const definition = useHeatmapCellsDefinition({
+  const dayLabels = useMemo(() => getHeatmapDayLabels(ctx.weekStartDay), [ctx.weekStartDay]);
+  const displayRange = useMemo(
+    () => (hideGhostCells ? resolveHeatmapDisplayRange(ctx.data) : undefined),
+    [ctx.data, hideGhostCells],
+  );
+  const cellData = useMemo(
+    () => buildCellData({ columns: ctx.data, dayLabels, displayRange, hideGhost: hideGhostCells }),
+    [ctx.data, dayLabels, displayRange, hideGhostCells],
+  );
+  const patternIdRaw = useId().replaceAll(":", "");
+  const patternIdPrefix = useMemo(
+    () => (hasPatternLevelStyles(ctx.levelStyles) ? `hm-${patternIdRaw}` : undefined),
+    [patternIdRaw, ctx.levelStyles],
+  );
+  const bandwidthHint = Math.max(ctx.binWidth, 1);
+  const definition = useHeatmapChartDefinition({
     activeScale,
+    animateCells: ctx.animateCells,
+    animationDuration: ctx.animationDuration,
+    bandwidthHint,
     cellData,
+    chartStatus: ctx.chartStatus,
+    columns: ctx.data,
     cornerRadius,
-    ctx,
-    dayLabels,
+    enterStaggerScale: ctx.enterStaggerScale,
+    enterTransition: ctx.enterTransition,
     inactiveOpacity,
     inactiveScale,
+    margin: { bottom: ctx.margin.bottom, left: ctx.margin.left, right: ctx.margin.right, top: ctx.margin.top },
     patternIdPrefix,
+    resolvedLevelStyles: ctx.levelStyles,
+    revealEpoch: ctx.revealEpoch,
     rowOpacity,
     tooltipEnabled: tooltipConfig !== null,
+    weekStartDay: ctx.weekStartDay,
+    yLabelFormat: ctx.yLabelFormat,
+    yRowOpacity: ctx.yRowOpacity,
+    yTickFilter: ctx.yTickFilter,
   });
   const { containerRef, handleRender } = useHeatmapPointerBridge({
     cellData,
@@ -62,29 +200,70 @@ const HeatmapCells = ({
     tooltipConfig,
   });
   const renderTooltipBody = useHeatmapCellsTooltipBody({ tooltipConfig, tooltipPanelStyle });
+  const handleRenderWithWidth = useCallback((renderCtx: ChartRendererRenderContext<CellDatum, string, string>): void => {
+    handleRender(renderCtx);
+    ctx.reportWidth?.(renderCtx.scene.width);
+  }, [handleRender, ctx]);
   return (
-    <>
-      {buildHeatmapCellsTree({
-        ariaDescription: ariaDescription ?? ctx.ariaDescription,
-        ariaLabel: ariaLabel ?? ctx.ariaLabel,
-        containerRef,
-        ctx,
-        definition,
-        handleRender,
-        patternIdPrefix,
-        renderTooltipBody,
-      })}
-    </>
+    <div ref={containerRef} style={HEATMAP_CELLS_CONTAINER_STYLE}>
+      <div style={HEATMAP_CELLS_INNER_STYLE}>
+        <ChartHost
+          renderer={chartMotionRenderer<CellDatum, string, string>()}
+          className="ts-bkm-heatmap-svg"
+          ariaLabel={ariaLabel ?? ctx.ariaLabel ?? "Heatmap chart"}
+          ariaDescription={ariaDescription ?? ctx.ariaDescription}
+          definition={definition}
+          initialWidth={HOST_INITIAL_WIDTH}
+          height={ctx.height}
+          style={HEATMAP_RENDERER_STYLE}
+          onRender={handleRenderWithWidth}
+          renderTooltipBody={renderTooltipBody}
+        />
+      </div>
+      <svg
+        width={ctx.width}
+        height={ctx.height}
+        aria-hidden="true"
+        className="ts-bkm-heatmap-hover-svg"
+        style={HEATMAP_HOVER_SVG_STYLE}
+      >
+        <HeatmapPatternDefs
+          levelStyles={ctx.levelStyles}
+          patternIdPrefix={patternIdPrefix}
+          phaseX={ctx.margin.left}
+          phaseY={ctx.margin.top}
+        />
+      </svg>
+    </div>
   );
 };
+
+interface HeatmapXAxisProps {
+  readonly className?: string;
+}
+
+// Package axes render the month labels from the band scales; this carrier
+// Keeps the legacy slot working while rendering nothing itself.
+const HeatmapXAxis = (_props: Readonly<HeatmapXAxisProps>): undefined => undefined;
+
+HeatmapXAxis.displayName = "HeatmapXAxis";
+
+interface HeatmapYAxisProps {
+  readonly className?: string;
+  readonly tickFilter?: HeatmapYAxisTickFilter;
+  readonly labelFormat?: HeatmapYAxisLabelFormat;
+  readonly rowOpacity?: number | readonly number[];
+}
+
+// Package y axis renders day labels from `ticks.values`/`ticks.format`; the
+// Parent reads these props when building the definition.
+const HeatmapYAxis = (_props: Readonly<HeatmapYAxisProps>): undefined => undefined;
+
+HeatmapYAxis.displayName = "HeatmapYAxis";
 
 export { HeatmapSeparator } from "./heatmap-separator";
 export type { HeatmapSeparatorProps } from "./heatmap-separator";
 export { HeatmapTooltip } from "./heatmap-tooltip-registry";
 export type { HeatmapTooltipProps } from "./heatmap-tooltip-registry";
-export { HeatmapXAxis } from "./heatmap-x-axis";
-export type { HeatmapXAxisProps } from "./heatmap-x-axis";
-export { HeatmapYAxis } from "./heatmap-y-axis";
-export type { HeatmapYAxisProps } from "./heatmap-y-axis";
-export { HeatmapCells };
-export type { HeatmapCellsProps };
+export { HeatmapCells, HeatmapXAxis, HeatmapYAxis };
+export type { HeatmapCellsProps, HeatmapXAxisProps, HeatmapYAxisProps };

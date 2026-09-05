@@ -68,23 +68,8 @@ const buildCellData = ({
   return data;
 };
 
-interface HoverCellGeometry {
-  height: number;
-  width: number;
-  readonly x: number;
-  readonly y: number;
-}
+// Base cell inset: native-`inset` equivalent of bklit's center-origin scale pop.
+const HEATMAP_CELL_INSET = 1;
 
-const buildHoverCellGeometry = (
-  columnIndex: number,
-  rowIndex: number,
-  ctx: Readonly<{ xScale: (columnIndex: number) => number; yScale: (rowIndex: number) => number; binWidth: number; binHeight: number; gap: number }>,
-): HoverCellGeometry => ({
-  height: Math.max(ctx.binHeight - ctx.gap, 0),
-  width: Math.max(ctx.binWidth - ctx.gap, 0),
-  x: ctx.xScale(columnIndex),
-  y: ctx.yScale(rowIndex) + ctx.gap,
-});
-
-export { buildCellData, buildColumnCellData, buildHoverCellGeometry };
-export type { BuildCellDataParams, BuildColumnCellDataParams, CellDatum, HoverCellGeometry };
+export { buildCellData, buildColumnCellData, HEATMAP_CELL_INSET };
+export type { BuildCellDataParams, BuildColumnCellDataParams, CellDatum };

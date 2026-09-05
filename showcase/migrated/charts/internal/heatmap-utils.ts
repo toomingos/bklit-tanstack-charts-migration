@@ -205,7 +205,7 @@ const shouldShowHeatmapYAxisTick = (row: number, tickFilter: HeatmapYAxisTickFil
  *
  * `columns` is intentionally NOT `readonly`: the `weekStartDay === 0` fast path
  * returns it unchanged, and this function's return type (`HeatmapColumn[]`) is a
- * stability boundary for `heatmap-chart-inner.tsx` (outside this batch), which
+ * stability boundary for `heatmap-chart-core.tsx`, which
  * assigns the result straight into a `columns: HeatmapColumn[]` field consumed
  * further by `HeatmapContextValue.data`. Accepting `readonly HeatmapColumn[]`
  * while returning `HeatmapColumn[]` on that path is a type error; widening the
@@ -342,27 +342,8 @@ const getHeatmapTimeExtent = (columns: readonly HeatmapColumn[]): [Date, Date] |
   return [start, end];
 }
 
-/**
- * Plain reimplementation of d3 scaleTime's linear mapping (unclamped — extrapolates outside the domain,
- * like scaleTime itself) rather than pulling in @visx/scale for an API surface nothing here uses.
- * @param {readonly [Readonly<Date>, Readonly<Date>] | undefined} timeExtent - `[start, end]` date span, or `undefined` to fall back to a degenerate zero-span scale.
- * @param {number} innerWidth - Pixel width the time span maps onto.
- * @returns {((date: Readonly<Date>) => number)} A function mapping a `Date` to an x pixel position.
- */
-const buildHeatmapTimeXScale = (timeExtent: readonly [Readonly<Date>, Readonly<Date>] | undefined, innerWidth: number): ((date: Readonly<Date>) => number) => {
-  const [start, end] = timeExtent ?? [new Date(), new Date()];
-  const startMs = start.getTime();
-  const spanMs = end.getTime() - startMs;
-  return (date: Readonly<Date>) => (spanMs === 0 ? 0 : ((date.getTime() - startMs) / spanMs) * innerWidth);
-}
-
-/**
- * @param {number} innerHeight - Pixel height of the brush track.
- * @returns {(value: number) => number} A function mapping a `[0, 1]` value to a y pixel position (decreasing).
- */
-const buildHeatmapBrushYScale = (innerHeight: number): (value: number) => number =>
-  // D3 `scaleLinear({domain:[0,1], range:[innerHeight,0]})` — a decreasing map.
-  (value: number) => innerHeight - value * innerHeight;
+// Position helpers removed: V3.3 moved cells to package band scales;
+// Time/brush linear maps and column-offset math deleted.)
 
 
 /**
@@ -725,37 +706,8 @@ const resolveHeatmapSeparatorLayout = (config: Readonly<HeatmapSeparatorParsedCo
   return { atColumns, groups: [], spacing: config.spacing };
 }
 
-/**
- * @param {Readonly<Pick<HeatmapSeparatorLayout, "atColumns">> | null} separator - Resolved separator layout, or `null`.
- * @returns {number} The number of separators.
- */
-const getHeatmapSeparatorCount = (separator: Readonly<Pick<HeatmapSeparatorLayout, "atColumns">> | null): number => separator?.atColumns.length ?? 0;
-
-
-/**
- * Extra x-offset for a column when separator spacing is enabled.
- * @param {number} columnIndex - Column index to offset.
- * @param {Readonly<Pick<HeatmapSeparatorLayout, "spacing" | "atColumns">> | null} separator - Resolved separator layout, or `null`.
- * @returns {number} The cumulative x-offset in pixels.
- */
-const getHeatmapColumnXOffset = (columnIndex: number, separator: Readonly<Pick<HeatmapSeparatorLayout, "spacing" | "atColumns">> | null): number => {
-  if (!separator || separator.spacing <= 0) {return 0;}
-  if (columnIndex <= 0) {return 0;}
-
-  const separatorCount = separator.atColumns.filter((atColumn) => atColumn <= columnIndex).length;
-  return separatorCount * separator.spacing;
-}
-
-/**
- * @param {number} columnCount - Total number of columns.
- * @param {number} binWidth - Pixel width of one bin.
- * @param {Readonly<Pick<HeatmapSeparatorLayout, "spacing" | "atColumns">> | null} separator - Resolved separator layout, or `null`.
- * @returns {number} The total plot inner width in pixels.
- */
-const getHeatmapPlotInnerWidth = (columnCount: number, binWidth: number, separator: Readonly<Pick<HeatmapSeparatorLayout, "spacing" | "atColumns">> | null): number => {
-  const separatorCount = separator ? getHeatmapSeparatorCount(separator) : 0;
-  return columnCount * binWidth + separatorCount * (separator?.spacing ?? 0);
-}
+// Separator/plot position helpers removed: separators read store bounds;
+// Column offsets and plot widths come from the package band scales.)
 
 interface HeatmapSeparatorLineYParams {
   readonly innerHeight: number;
@@ -770,31 +722,8 @@ interface HeatmapSeparatorLineYSpan {
   readonly y2: number;
 }
 
-/**
- * Vertical span for a separator line in plot coordinates.
- * @param {Readonly<HeatmapSeparatorLineYParams>} params - Line span inputs.
- * @returns {HeatmapSeparatorLineYSpan} The line's `y1`/`y2` endpoints.
- */
-const getHeatmapSeparatorLineY = (params: Readonly<HeatmapSeparatorLineYParams>): HeatmapSeparatorLineYSpan => {
-  const paddingY = params.paddingY ?? 0;
-  const resolvedStart = params.startOffset ?? params.marginTop;
-  const y1 = resolvedStart - params.marginTop + paddingY;
-  const y2 = Math.max(params.innerHeight - paddingY, y1);
-  return { y1, y2 };
-}
-
-/**
- * X position for a separator line (centered in the gutter when spacing > 0).
- * @param {number} columnIndex - Column index the separator sits before.
- * @param {number} gap - Gap between columns when no separator spacing is set.
- * @param {Readonly<Pick<HeatmapSeparatorLayout, "spacing">>} separator - Resolved separator layout (spacing only).
- * @param {(columnIndex: number) => number} xScale - Column-index-to-x-pixel scale.
- * @returns {number} The x pixel position of the separator line.
- */
-const getHeatmapSeparatorX = (columnIndex: number, gap: number, separator: Readonly<Pick<HeatmapSeparatorLayout, "spacing">>, xScale: (columnIndex: number) => number): number => {
-  if (separator.spacing > 0) {return xScale(columnIndex) - separator.spacing / 2;}
-  return xScale(columnIndex) - gap / 2;
-}
+// Separator line geometry removed: separators are decorative package marks
+// Positioned by the band scales, not by arithmetic line helpers.)
 
 /** Separator line style. */
 type HeatmapSeparatorStrokeStyle = "solid" | "dashed";
@@ -949,122 +878,8 @@ const buildHeatmapLegendGradient = (levelStyles: readonly HeatmapLegendGradientL
   return `linear-gradient(to right, ${stops.join(", ")})`;
 }
 
-interface HeatmapDimensions {
-  readonly binWidth: number;
-  readonly binHeight: number;
-  readonly innerWidth: number;
-  readonly innerHeight: number;
-  height: number;
-  width: number;
-}
-
-interface HeatmapDimensionsMargin {
-  readonly top: number;
-  readonly right: number;
-  readonly bottom: number;
-  readonly left: number;
-}
-
-interface HeatmapDimensionsParams {
-  readonly width: number;
-  readonly parentHeight: number;
-  readonly margin: HeatmapDimensionsMargin;
-  readonly columnCount: number;
-  readonly rowCount: number;
-  readonly layout: "fluid" | "fill";
-  readonly binSize: number | undefined;
-  readonly separator: Pick<HeatmapSeparatorLayout, "spacing" | "atColumns"> | null;
-}
-
-interface HeatmapCellSizeBudget {
-  readonly columnCount: number;
-  readonly innerWidthBudget: number;
-  readonly separatorCount: number;
-  readonly separatorSpacing: number;
-}
-
-const resolveHeatmapCellSize = (params: Readonly<HeatmapDimensionsParams>, budget: Readonly<HeatmapCellSizeBudget>): number => {
-  const { columnCount, innerWidthBudget, separatorCount, separatorSpacing } = budget;
-  const widthConstrainedSize = Math.max((innerWidthBudget - separatorCount * separatorSpacing) / columnCount, 0);
-  if (params.layout === "fluid") {return widthConstrainedSize;}
-  const availableHeight = Math.max(params.parentHeight - params.margin.top - params.margin.bottom, 0);
-  return Math.min(widthConstrainedSize, availableHeight / params.rowCount);
-}
-
-/**
- * @param params - Sizing inputs.
- * @returns The resolved chart/plot dimensions.
- */
-interface SelectedHeatmapCellSize {
-  readonly cellSize: number;
-  readonly explicitBinSize: number | undefined;
-}
-
-// Explicit `binSize` wins; otherwise the layout-constrained size.
-const selectHeatmapCellSize = (params: Readonly<HeatmapDimensionsParams>, budget: Readonly<HeatmapCellSizeBudget>): SelectedHeatmapCellSize => {
-  const explicitBinSize = params.binSize !== undefined && params.binSize > 0 ? params.binSize : undefined;
-  const cellSize = explicitBinSize ?? resolveHeatmapCellSize(params, budget);
-  return { cellSize, explicitBinSize };
-}
-
-interface HeatmapChartOuterSize {
-  readonly height: number;
-  readonly width: number;
-}
-
-interface ResolveHeatmapOuterSizeParams {
-  readonly explicitBinSize: number | undefined;
-  readonly innerHeight: number;
-  readonly layout: "fluid" | "fill";
-  readonly margin: HeatmapDimensionsMargin;
-  readonly parentHeight: number;
-  readonly plotInnerWidth: number;
-  readonly width: number;
-}
-
-// Outer height/width around the resolved plot area.
-const resolveHeatmapOuterSize = (params: Readonly<ResolveHeatmapOuterSizeParams>): HeatmapChartOuterSize => {
-  const { explicitBinSize, innerHeight, layout, margin, parentHeight, plotInnerWidth, width } = params;
-  const height =
-    layout === "fluid"
-      ? margin.top + innerHeight + margin.bottom
-      : Math.max(parentHeight, margin.top + innerHeight + margin.bottom);
-  const chartWidth =
-    explicitBinSize !== undefined && layout === "fluid"
-      ? margin.left + plotInnerWidth + margin.right
-      : width;
-  return { height, width: chartWidth };
-}
-
-const computeHeatmapDimensions = (params: Readonly<HeatmapDimensionsParams>): HeatmapDimensions => {
-  const { width, margin, rowCount, layout, separator } = params;
-  const columnCount = Math.max(params.columnCount, 1);
-  const innerWidthBudget = Math.max(width - margin.left - margin.right, 0);
-  const separatorCount = separator ? getHeatmapSeparatorCount(separator) : 0;
-  const separatorSpacing = separator?.spacing ?? 0;
-
-  const selected = selectHeatmapCellSize(params, { columnCount, innerWidthBudget, separatorCount, separatorSpacing });
-  const plotInnerWidth = getHeatmapPlotInnerWidth(columnCount, selected.cellSize, separator);
-  const innerHeight = rowCount * selected.cellSize;
-  const outer = resolveHeatmapOuterSize({
-    explicitBinSize: selected.explicitBinSize,
-    innerHeight,
-    layout,
-    margin,
-    parentHeight: params.parentHeight,
-    plotInnerWidth,
-    width,
-  });
-
-  return {
-    binHeight: selected.cellSize,
-    binWidth: selected.cellSize,
-    height: outer.height,
-    innerHeight,
-    innerWidth: plotInnerWidth,
-    width: outer.width,
-  };
-}
+// Chart dimensions removed: the host owns sizing and the package band
+// Scales own the pixel range; outer height derives from width in chart-core.)
 
 export {
   HEATMAP_MONTHS_ONE_YEAR,
@@ -1091,8 +906,6 @@ export {
   getHeatmapColumnStartDate,
   getHeatmapColumnEndDate,
   getHeatmapTimeExtent,
-  buildHeatmapTimeXScale,
-  buildHeatmapBrushYScale,
   filterHeatmapColumns,
   isHeatmapGhostBin,
   inferHeatmapCalendarRangeStart,
@@ -1104,11 +917,6 @@ export {
   findHeatmapColumnIndexForDate,
   buildHeatmapQuarterSeparatorGroups,
   resolveHeatmapSeparatorLayout,
-  getHeatmapSeparatorCount,
-  getHeatmapColumnXOffset,
-  getHeatmapPlotInnerWidth,
-  getHeatmapSeparatorLineY,
-  getHeatmapSeparatorX,
   resolveHeatmapSeparatorStrokeDasharray,
   buildHeatmapSeparatorGradientStops,
   isHeatmapHoverEffectEnabled,
@@ -1116,7 +924,6 @@ export {
   resolveHeatmapRowOpacity,
   buildHeatmapRowOpacity,
   buildHeatmapLegendGradient,
-  computeHeatmapDimensions,
 };
 
 export type {
@@ -1140,7 +947,4 @@ export type {
   HeatmapHoverStyleParams,
   HeatmapHoverStyle,
   HeatmapLegendGradientLevelStyle,
-  HeatmapDimensions,
-  HeatmapDimensionsMargin,
-  HeatmapDimensionsParams,
 };

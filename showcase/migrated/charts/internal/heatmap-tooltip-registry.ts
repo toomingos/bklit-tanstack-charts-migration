@@ -1,7 +1,7 @@
 import { useLayoutEffect } from "react";
 import type { CSSProperties, ReactElement } from "react";
-import type { HeatmapHoverCoordinator } from "./heatmap-hover-chrome";
-import { useHeatmapCoordinatorOptional } from "./heatmap-interaction";
+import type { HeatmapHoverCoordinator } from "./heatmap-context";
+import { useHeatmapCoordinatorOptional } from "./heatmap-context";
 import { formatHeatmapContributionLabel } from "./heatmap-utils";
 
 // Sibling bridge: the provider ancestor is out of scope, so tooltip config travels via WeakMap on coordinator identity.
