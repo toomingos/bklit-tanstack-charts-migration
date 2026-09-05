@@ -32,5 +32,5 @@ const subscribeReducedMotion = (notify: () => void): (() => void) => {
 const getReducedMotionSnapshot = (): boolean => getMediaQuery().matches;
 
 
-export const usePrefersReducedMotion = (): boolean => useSyncExternalStore(subscribeReducedMotion, getReducedMotionSnapshot);
+export const usePrefersReducedMotion = (): boolean => useSyncExternalStore(subscribeReducedMotion, getReducedMotionSnapshot, () => false);
 

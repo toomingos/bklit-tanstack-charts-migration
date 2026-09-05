@@ -3,6 +3,7 @@
 // Turnkey <AreaChart status="loading"> placeholder; shimmer props accepted-but-inert for parity.
 import { useMemo } from "react";
 import type { ReactElement } from "react";
+import "./styles.css";
 import { curveNatural } from "d3-shape";
 import { AreaChart } from "./area-chart";
 import { Area, Grid } from "./children";

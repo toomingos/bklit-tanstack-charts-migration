@@ -3,8 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "sideEffects": [
-    "*.css",
-    "./index.ts"
+    "**/*.css"
   ],
   "exports": {
     ".": "./index.ts"

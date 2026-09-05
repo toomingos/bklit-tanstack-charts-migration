@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
-import { cn } from "@/lib/utils";
+import { cn } from "./cn";
 import { LegendProvider } from './legend-context';
 import type { LegendItemData } from './legend-context';
 import { LegendRow } from "./legend-row";

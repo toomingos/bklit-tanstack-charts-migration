@@ -4,6 +4,7 @@
 // Standalone measured SVG: BarChart reveal, domain, and hover stay out.
 import { useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement } from "react";
+import "./styles.css";
 import { BarLoadingSweep } from "./internal/bar-loading-sweep";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { DEFAULT_CHART_MARGIN, useChartMargin } from "./internal/use-chart-margin";

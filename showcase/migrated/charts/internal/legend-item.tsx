@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import type { ReactElement, ReactNode } from 'react';
-import { cn } from "@/lib/utils";
+import { cn } from "./cn";
 import { useLegend, useLegendItem } from './legend-context';
 
 interface LegendItemProps {

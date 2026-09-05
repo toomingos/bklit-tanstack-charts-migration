@@ -2,7 +2,7 @@
 // Allocates inline closures during render.
 import { useCallback } from "react";
 import type { ReactElement } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "./cn";
 import { ProgressItem } from "./chart-legend-progress-item";
 import { SimpleItem } from "./chart-legend-simple-item";
 import type { ChartLegendProps, LegendItem } from "./chart-legend";

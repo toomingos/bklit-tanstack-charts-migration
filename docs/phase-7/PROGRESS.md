@@ -25,8 +25,8 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 1 | V1.1 | host module + legacy hooks | todo | | | |
 | 1 | V1.2 | scales and bounds from the store | todo | | | |
 | 1 | V1.6 | export parity | todo | | | |
-| 1 | V1.8 | aria forwarding | merged | `ses_f8eae9829ffegZk4H0yURVPpUM` | (next commit) | D516 · `ariaLabel="` literals 16 → 0 · funnel props only until V3.1 (R2) · heatmap via context |
-| 1 | V1.9 | package contract | todo | | | |
+| 1 | V1.8 | aria forwarding | merged | `ses_f8eae9829ffegZk4H0yURVPpUM` | `e50babd` | D516 · `ariaLabel="` literals 16 → 0 · funnel props only until V3.1 (R2) · heatmap via context |
+| 1 | V1.9 | package contract | merged | `ses_f8eae8f80ffemH1q37JpHnKBRr` | (next commit) | D517 · pack 450 files, fresh Next app builds + renders · +10 deps declared, removals owned by later items · G4 |
 | 1 | V4.1 | `qa/unit` scaffold (scene tests, probes) | merged | `ses_f8eae88aeffeCW2EwgcvXZY2hd` | `0c25747` | D515 · `pnpm test` 84 tests / 46 pass / 38 todo / 0.4 s · probes pinned per family |
 | 1 | V4.2 | generated type fixture | merged | `ses_f8eae74d6ffevmKWqC0OMWAzCO` | `04ad318` | D514 · 292 value + 211 type `Eq` lines · 478 red / 420 exports = V1.6 backlog · 81 migrated-only exports · G3 folded |
 | 1 | V4.4 | gate integrity | todo | | | |
@@ -79,6 +79,8 @@ stamp), UPSTREAM (I-number in `07`). No vector = synthesis defect: amend `08` §
 | G1 | V0.2b executor (`ses_f8ed0d417ffeeTMDv0dnyJ32LO`) | `bench/app/src/scenarios/migrated-choropleth.tsx:137` fails bench tsc: `CountryProperties` (`[key: string]: unknown`) not assignable to `ChoroplethFeatureProperties`; pre-existing, independent of 0.16.0; `npm run build` unaffected | V4 (gate integrity: bench app must typecheck) | FOLD into V0.4 housekeeping (typed bench data, no showcase edit) — done | D513 |
 | G2 | V0.3 gate (lead) | `gate:checks` census fails: 17 reach-in ledger failures (15 internal modules not in ledger, radar 20>19, sunburst 8>7); total 67 sites ≤ phase-6's 79; ledger predates the module split in `f5928ab` (guard already failing at `325a065`, before 7.0) | V4 (gate integrity) | FOLD into V4.4 (re-key ledger to split modules, pins = today's counts, total ≤ 79) | D512 (V0.3) |
 | G3 | V4.2 executor (`ses_f8eae74d6ffevmKWqC0OMWAzCO`) | `cd bench/app && npx tsc --noEmit` had 22 pre-existing errors (`toSorted` needs lib ES2023; implicit-any comparators in 5 migrated internals) invisible to the gate because `gate:checks` only runs `vite build` | V4 (gate integrity) | FOLD: lib `ES2022` → `ES2023` in `bench/app/tsconfig.json` by the lead in the V4.2 commit (bench tsc 0); V4.4 adds bench tsc to `gate:checks` | D514 |
+
+| G4 | V1.9 executor (`ses_f8eae8f80ffemH1q37JpHnKBRr`) + lead | `showcase/package.json` cannot drop `@tanstack/charts`/`@tanstack/react-charts` yet: the showcase resolves `@showcase/migrated-charts` to `migrated/charts/index.ts` through tsconfig `paths` (source, not an installed package), `showcase/migrated` is no workspace member, and `qa/unit/lib/render.mjs` + `next.config.mjs` read `showcase/node_modules/@tanstack/charts`; a fresh `pnpm install` after the drop would lose the package | V5 (package shape) | FOLD into V5.3: make `showcase/migrated` a workspace package consumed as `@showcase/migrated-src` (showcase, qa/unit, next.config point at it), then drop the deps from the showcase root | D517 |
 
 ## Idiom checklist (V0.6 / V3.8)
 

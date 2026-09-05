@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactElement } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "./cn";
 import { Legend } from "./legend";
 import { ProfitLossLegendTemplate } from "./profit-loss-legend-template";
 import {

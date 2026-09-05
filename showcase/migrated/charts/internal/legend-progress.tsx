@@ -3,7 +3,7 @@
 import { Progress } from "@base-ui/react/progress";
 import type { CSSProperties, ReactElement } from 'react';
 import { useMemo } from 'react';
-import { cn } from "@/lib/utils";
+import { cn } from "./cn";
 import { useLegendItem } from './legend-context';
 
 interface LegendProgressProps {

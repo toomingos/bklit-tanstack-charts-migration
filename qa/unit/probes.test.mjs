@@ -28,25 +28,26 @@ function probe(name) {
 const SSR_NO_SNAPSHOT =
   'Missing getServerSnapshot, which is required for server-rendered content. Will revert to client rendering.';
 
-// Measured 2026-09-05 (node --test, deterministic docs-data seeds). The real
+// Measured 2026-09-05 (node --test, deterministic docs-data seeds); V1.9 gave
+// `usePrefersReducedMotion` a server snapshot, so no family throws now. The real
 // test per family pins this object; the todos below pin the P-22/P-23 targets.
 const TODAY = {
-  area: { error: SSR_NO_SNAPSHOT },
+  area: { roleImg: 0, tabStops: 0, ariaLabel: false },
   bar: { roleImg: 0, tabStops: 0, ariaLabel: false },
   candlestick: { roleImg: 0, tabStops: 0, ariaLabel: false },
   choropleth: { roleImg: 0, tabStops: 0, ariaLabel: false },
-  composed: { error: SSR_NO_SNAPSHOT },
+  composed: { roleImg: 0, tabStops: 0, ariaLabel: false },
   funnel: { roleImg: 0, tabStops: 0, ariaLabel: false },
   gauge: { roleImg: 0, tabStops: 0, ariaLabel: false },
   heatmap: { roleImg: 0, tabStops: 0, ariaLabel: false },
-  line: { error: SSR_NO_SNAPSHOT },
+  line: { roleImg: 0, tabStops: 0, ariaLabel: false },
   'live-line': { roleImg: 0, tabStops: 0, ariaLabel: false },
   pie: { roleImg: 1, tabStops: 1, ariaLabel: true },
   radar: { roleImg: 1, tabStops: 1, ariaLabel: true },
   ring: { roleImg: 1, tabStops: 1, ariaLabel: true },
-  sankey: { error: SSR_NO_SNAPSHOT },
+  sankey: { roleImg: 1, tabStops: 1, ariaLabel: true },
   scatter: { roleImg: 0, tabStops: 0, ariaLabel: false },
-  sunburst: { error: SSR_NO_SNAPSHOT },
+  sunburst: { roleImg: 1, tabStops: 1, ariaLabel: true },
 };
 
 console.log(

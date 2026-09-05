@@ -2,7 +2,7 @@
 
 import { Progress } from "@base-ui/react/progress";
 import type { CSSProperties, ReactElement } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "./cn";
 import type { LegendItem } from "./chart-legend";
 
 const LEGEND_PERCENT_SCALE = 100;

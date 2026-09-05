@@ -1,7 +1,56 @@
 {
   "name": "@showcase/migrated-src",
+  "version": "0.2.0",
   "private": true,
   "sideEffects": [
     "**/*.css"
+  ],
+  "dependencies": {
+    "@base-ui/react": "^1.0.0-alpha.8",
+    "@number-flow/react": "^0.5.4",
+    "@tanstack/charts": "0.16.0",
+    "@tanstack/react-charts": "0.16.0",
+    "@types/geojson": "^7946.0.16",
+    "@use-gesture/react": "10.3.1",
+    "clsx": "^2.1.1",
+    "d3-array": "3.2.4",
+    "d3-delaunay": "6.0.4",
+    "d3-geo": "3.1.0",
+    "d3-path": "3.1.0",
+    "d3-sankey": "0.12.3",
+    "d3-scale": "4.0.2",
+    "d3-shape": "^3.2.0",
+    "d3-zoom": "3.0.0",
+    "tailwind-merge": "^2.6.0",
+    "topojson-client": "3.1.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "exports": {
+    ".": "./charts/index.ts",
+    "./area": "./charts/area-chart.tsx",
+    "./area-loading": "./charts/area-chart-loading.tsx",
+    "./bar": "./charts/bar-chart.tsx",
+    "./bar-loading": "./charts/bar-chart-loading.tsx",
+    "./candlestick": "./charts/candlestick-chart.tsx",
+    "./choropleth": "./charts/choropleth-chart.tsx",
+    "./composed": "./charts/composed-chart.tsx",
+    "./funnel": "./charts/funnel-chart.tsx",
+    "./gauge": "./charts/gauge.tsx",
+    "./heatmap": "./charts/heatmap-chart.ts",
+    "./line": "./charts/line-chart.tsx",
+    "./live-line": "./charts/live-line-chart.tsx",
+    "./pie": "./charts/pie-chart.tsx",
+    "./radar": "./charts/radar-chart.tsx",
+    "./ring": "./charts/ring-chart.tsx",
+    "./sankey": "./charts/sankey-chart.tsx",
+    "./scatter": "./charts/scatter-chart.tsx",
+    "./sunburst": "./charts/sunburst-chart.tsx",
+    "./styles.css": "./charts/styles.css"
+  },
+  "files": [
+    "charts"
   ]
 }

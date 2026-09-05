@@ -2,7 +2,7 @@
 
 import type { ReactElement, ReactNode } from "react";
 import { intFmt } from "./formatters";
-import { cn } from "@/lib/utils";
+import { cn } from "./cn";
 import { LEGEND_PERCENT_SCALE } from "./chart-legend-progress-item";
 import { CustomLegendRow } from "./chart-legend-custom-row";
 import { DefaultLegendRow } from "./chart-legend-default-row";

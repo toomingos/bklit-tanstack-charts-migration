@@ -9,6 +9,7 @@ import { useScatterPillModel } from "./internal/scatter-pill-setup";
 import { useScatterSelectionModel } from "./internal/scatter-selection-setup";
 import { buildScatterChartTree } from "./internal/scatter-chart-view";
 import type { ScatterChartProps } from "./internal/scatter-chart-props";
+import "./styles.css";
 
 const ScatterChart = ({
   data,
