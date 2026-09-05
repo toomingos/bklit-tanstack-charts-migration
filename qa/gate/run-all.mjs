@@ -1,5 +1,5 @@
 // Whole gate in one run dir: checks -> QA sweep (parallel) -> probes (opt-in) -> bench (sequential; CPU-sensitive)
-// -> bundle -> SUMMARY.md, all published to docs/phase-6/gate/latest.
+// -> bundle -> SUMMARY.md, all published to qa/gate/latest (runs under docs/phase-7/gate/runs).
 //   pnpm gate:all [-- --workers 4 --repeat 1 --bench paired|all|subset|none --bench-parallel --probes --skip-checks --charts a,b --label "..."]
 import path from "node:path";
 import { LATEST_DIR, RUNS_DIR, acquireQaLock, ensureDir, fmtMs, log, nowStamp, parseArgs, relPath, writeJson } from "./lib.mjs";

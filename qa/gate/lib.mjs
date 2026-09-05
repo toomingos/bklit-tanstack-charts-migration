@@ -18,8 +18,8 @@ import { fileURLToPath } from "node:url";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const APP_DIR = path.join(ROOT, "bench", "app");
-export const GATE_DOCS = path.join(ROOT, "docs", "phase-6", "gate");
-export const LATEST_DIR = path.join(GATE_DOCS, "latest");
+export const GATE_DOCS = path.join(ROOT, "docs", "phase-7", "gate");
+export const LATEST_DIR = path.join(ROOT, "qa", "gate", "latest");
 export const RUNS_DIR = path.join(GATE_DOCS, "runs");
 export const QA_RESULTS_DIR = path.join(ROOT, "qa", "results");
 export const BENCH_RESULTS_DIR = path.join(ROOT, "bench", "results");
@@ -72,7 +72,7 @@ export function readJson(p, fallback = undefined) {
   }
 }
 
-/** Copy a file into docs/phase-6/gate/latest/ (overwrite). */
+/** Copy a file into qa/gate/latest/ (overwrite). */
 export function publishLatest(files) {
   ensureDir(LATEST_DIR);
   for (const f of files) {
