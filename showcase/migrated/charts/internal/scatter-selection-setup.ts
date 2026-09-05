@@ -127,12 +127,7 @@ interface ScatterReferenceAreas {
   readonly parsedAspectRatio: number;
   readonly refAreaChildren: ReturnType<typeof extractReferenceAreaProps>;
   readonly refAreaGeom: {
-    readonly height: number;
-    readonly isTimeScale: boolean;
-    readonly margin: ChartMargin;
-    readonly width: number;
     readonly xDomain: [Date, Date] | undefined;
-    readonly xRangePadding: number;
     readonly yDomain: [number, number];
     readonly yDomainsByAxis: Record<string, [number, number]>;
   };
@@ -144,14 +139,11 @@ const useScatterReferenceAreas = ({
   aspectRatio,
   children,
   crosshairGradientId,
-  margin,
   nicedDomainsByAxis,
   nicedYDomain,
   resolvedSeries,
   timeExtent,
   tooltip,
-  width,
-  xRangePadding,
 }: Readonly<UseScatterReferenceAreasParams>): ScatterReferenceAreas => {
   const refAreaChildren = useMemo(() => extractReferenceAreaProps(children), [children]);
   const yGradientDefs = useMemo<readonly ScatterYGradientDef[]>(
@@ -168,22 +160,16 @@ const useScatterReferenceAreas = ({
   );
   const parsedAspectRatio = parseAspectRatio(aspectRatio);
 
-  const heightPxScatter = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
   const xDomain: [Date, Date] | undefined = useMemo(
     () => timeExtent ? [new Date(timeExtent.minTime), new Date(timeExtent.maxTime)] : undefined,
     [timeExtent],
   );
   const refAreaGeom = useMemo(() => ({
-    height: heightPxScatter,
-    isTimeScale: true,
-    margin,
-    width,
     xDomain,
-    xRangePadding,
     // Reference areas read the NICED domain the dots paint in, not raw yDomain.
     yDomain: nicedYDomain,
     yDomainsByAxis: nicedDomainsByAxis,
-  }), [heightPxScatter, margin, nicedDomainsByAxis, nicedYDomain, width, xDomain, xRangePadding]);
+  }), [nicedDomainsByAxis, nicedYDomain, xDomain]);
   return { containerStyle, crosshairFade, parsedAspectRatio, refAreaChildren, refAreaGeom, xDomain, yGradientDefs };
 };
 

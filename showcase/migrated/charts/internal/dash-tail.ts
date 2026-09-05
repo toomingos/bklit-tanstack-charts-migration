@@ -2,6 +2,7 @@
 
 import { createElement, useMemo, useState } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
+import { useChartStable } from "./chart-context";
 import { useDashTailMeasurement } from "./dash-tail-measure";
 import type { DashTailSeries, Measured } from "./dash-tail-measure";
 import type { ChartDatum } from "./types";
@@ -20,14 +21,9 @@ const resolveDashTailBounds = (dashFromIndex: number | undefined, dataLength: nu
 
 interface DashTailOverlayProps {
   readonly containerRef: RefObject<HTMLElement | null>;
-  readonly width: number;
-  readonly height: number;
-  readonly margin: { readonly top: number; readonly left: number; readonly right: number; readonly bottom: number };
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly xDataKey: string;
   readonly series: readonly DashTailSeries[];
-  readonly innerWidth: number;
-  readonly innerHeight: number;
   // SeriesHoverDim parity: dimOpacity while hovering, else 1 (absent = no dim).
   readonly dimOpacity?: number;
   readonly hasHover?: boolean;
@@ -79,7 +75,13 @@ const renderDashTailEntry = (options: Readonly<DashTailEntryOptions>): ReactElem
 }
 
 const DashTailOverlay = (props: Readonly<DashTailOverlayProps>): ReactNode => {
-  const { containerRef, dimOpacity, hasHover = false, height, innerHeight, innerWidth, legendHoveredKey, margin, renderData, series, width, xDataKey } = props;
+  const { containerRef, dimOpacity, hasHover = false, legendHoveredKey, renderData, series, xDataKey } = props;
+  // Plot bounds come from the host scene, never from margin props (V1.2/G6).
+  const { chart, margin } = useChartStable();
+  const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
+  const { height, width } = { height: margin.top + plot.height + margin.bottom, width: margin.left + plot.width + margin.right };
+  const innerWidth = plot.width;
+  const innerHeight = plot.height;
   const baseId = useSanitizedId();
   const [measured, setMeasured] = useState<Map<string, Measured>>(new Map());
 

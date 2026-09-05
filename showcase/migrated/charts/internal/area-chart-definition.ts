@@ -1,6 +1,8 @@
 // Area chart definition builder: assembles the TanStack definition from resolved model state.
 // Each branching ladder is a named helper; verbatim logic otherwise.
 import { scaleLinear, scaleUtc } from "d3-scale";
+import type { ScaleTime } from "d3-scale";
+import type { RefObject } from "react";
 import { defineChart } from "@tanstack/charts/scene";
 import type {
   ChartAxisTickLabelContext,
@@ -14,7 +16,6 @@ import type {
   DomChartDefinition,
 } from "@tanstack/charts";
 import { toDate } from "./coerce-date";
-import { timeToPixelX } from "./x-time-scale";
 import {
   buildPrecomputedXAxisOptions,
   buildXAxisTickValues,
@@ -49,7 +50,6 @@ import {
   DEFAULT_TERMINAL_MARKER_RADIUS_PX,
   DEFAULT_TICK_COUNT,
   PROJECTION_FALLBACK_STROKE,
-  withZeroFallback,
 } from "./area-chart-model";
 import type {
   NativeAreaGradient,
@@ -107,6 +107,7 @@ interface AreaChartDefinitionParams {
   readonly xAxis: ExtractedChildren["xAxis"];
   readonly xDataKey: string;
   readonly xDomain: readonly [Readonly<Date>, Readonly<Date>] | undefined;
+  readonly xScaleD3Ref: RefObject<ScaleTime<number, number> | null>;
   readonly yAxis: ExtractedChildren["yAxis"];
   readonly yDomainChanged: boolean;
   readonly yDomainFinal: readonly [number, number];
@@ -158,13 +159,8 @@ interface AreaProjectionMarkFrame {
   readonly baseId: string;
   readonly config: Readonly<ProjectionLineConfig>;
   readonly index: number;
-  readonly innerWidth: number;
   readonly isLoading: boolean;
   readonly line: Readonly<ProjectionLineChildConfig> | undefined;
-  readonly marginLeft: number;
-  readonly marginTop: number;
-  readonly xScale: (value: Date) => number;
-  readonly yScale: (value: number) => number;
 }
 
 // One projection line mark; undefined when the line has fewer than two points.
@@ -183,7 +179,6 @@ const resolveAreaProjectionMark = (frame: Readonly<AreaProjectionMarkFrame>): Ch
     gradientId: gid,
     gradientStart: line.gradientStart ?? stroke,
     id: `projection-line-${frame.index}`,
-    innerWidth: frame.innerWidth,
     showEndMarker: line.showEndMarker ?? line.showEndpoints ?? true,
     stroke,
     strokeDasharray: line.strokeDasharray ?? "6,4",
@@ -191,11 +186,8 @@ const resolveAreaProjectionMark = (frame: Readonly<AreaProjectionMarkFrame>): Ch
     strokeStyle: line.strokeStyle ?? "solid",
     strokeVisible: !frame.isLoading,
     strokeWidth: line.strokeWidth ?? DEFAULT_PROJECTION_STROKE_WIDTH_PX,
-    translateX: frame.marginLeft,
-    translateY: frame.marginTop,
-    xScale: frame.xScale,
     yAxisId: frame.config.yAxisId,
-    yScale: frame.yScale,
+    yFallbackZero: true,
   });
 };
 
@@ -204,24 +196,17 @@ interface AreaProjectionMarksParams {
   readonly heightPx: number;
   readonly isLoading: boolean;
   readonly lines: readonly Readonly<ProjectionLineChildConfig>[];
-  readonly margin: Readonly<ChartMargin>;
   readonly projectionGradientBaseId: string;
   readonly timeExtent: Readonly<TimeExtentMs> | undefined;
   readonly timeExtentRaw: Readonly<TimeExtentMs> | undefined;
   readonly width: number;
-  readonly yDomainFinal: readonly [number, number];
 }
 
 // Projection tail marks clamp to the plot rect; skipped when the plot has no area.
 const buildAreaProjectionMarks = (params: Readonly<AreaProjectionMarksParams>): ChartMark<ChartDatum, Date, number>[] => {
   if (params.configs.length === 0) {return [];}
-  const innerW = Math.max(0, params.width - params.margin.left - params.margin.right);
-  const innerH = Math.max(0, params.heightPx - params.margin.top - params.margin.bottom);
   const { timeExtent, timeExtentRaw } = params;
-  if (Math.min(innerW, innerH) <= 0 || !timeExtent || !timeExtentRaw) {return [];}
-  const yScale = scaleLinear().domain(params.yDomainFinal).range([innerH, 0]);
-  const xScaleWithProjection = (value: Date): number => timeToPixelX(value, timeExtentRaw.minTime, timeExtent.maxTime, innerW);
-  const projectY = (value: number): number => withZeroFallback(yScale(value));
+  if (params.width <= 0 || params.heightPx <= 0 || !timeExtent || !timeExtentRaw) {return [];}
   const marks: ChartMark<ChartDatum, Date, number>[] = [];
   for (const [index, config] of params.configs.entries()) {
     // Defensive runtime check: projectionConfigs and projectionLines walk `children` via separate
@@ -230,13 +215,8 @@ const buildAreaProjectionMarks = (params: Readonly<AreaProjectionMarksParams>): 
       baseId: params.projectionGradientBaseId,
       config,
       index,
-      innerWidth: innerW,
       isLoading: params.isLoading,
       line: params.lines.at(index),
-      marginLeft: params.margin.left,
-      marginTop: params.margin.top,
-      xScale: xScaleWithProjection,
-      yScale: projectY,
     });
     if (mark) {marks.push(mark);}
   }
@@ -287,6 +267,7 @@ interface AreaXScaleParams {
   readonly xAxis: ExtractedChildren["xAxis"];
   readonly xDataKey: string;
   readonly xDomain: readonly [Readonly<Date>, Readonly<Date>] | undefined;
+  readonly xScaleRef: RefObject<ScaleTime<number, number> | null>;
 }
 
 const buildAreaXScale = (params: Readonly<AreaXScaleParams>): ChartScale => ({
@@ -295,6 +276,7 @@ const buildAreaXScale = (params: Readonly<AreaXScaleParams>): ChartScale => ({
     const [r0, r1] = context.range;
     if (!params.timeExtent) {
       const base = scaleUtc().domain([0, 0]).range([r0, r1]);
+      params.xScaleRef.current = base;
       return {
         bandwidth: 0,
         domain: base.domain(),
@@ -309,6 +291,7 @@ const buildAreaXScale = (params: Readonly<AreaXScaleParams>): ChartScale => ({
       };
     }
     const base = scaleUtc().domain([params.timeExtent.minTime, params.timeExtent.maxTime]).range([r0, r1]);
+    params.xScaleRef.current = base;
     const tickList = resolveAreaXTickList({
       rangeEnd: r1,
       rangeStart: r0,
@@ -415,6 +398,7 @@ interface AreaScaleOptionsParams {
   readonly xAxis: ExtractedChildren["xAxis"];
   readonly xDataKey: string;
   readonly xDomain: readonly [Readonly<Date>, Readonly<Date>] | undefined;
+  readonly xScaleD3Ref: RefObject<ScaleTime<number, number> | null>;
   readonly yAxis: ExtractedChildren["yAxis"];
   readonly yDomainFinal: readonly [number, number];
 }
@@ -445,6 +429,7 @@ const buildAreaScaleOptions = (params: Readonly<AreaScaleOptionsParams>): AreaSc
       xAxis: params.xAxis,
       xDataKey: params.xDataKey,
       xDomain: params.xDomain,
+      xScaleRef: params.xScaleD3Ref,
     }),
   };
   const yScaleOptions: ChartPositionScaleOptions<number> = params.yAxis
@@ -464,7 +449,6 @@ const buildAreaScaleOptions = (params: Readonly<AreaScaleOptionsParams>): AreaSc
 };
 
 const buildAreaChartDefinition = (params: Readonly<AreaChartDefinitionParams>): DomChartDefinition<ChartDatum, Date, number> | undefined => {
-  if (params.width <= 0) {return undefined;}
   if (params.isLoading) {
     return buildAreaLoadingDefinition({ grid: params.grid, margin: params.margin, yDomainFinal: params.yDomainFinal });
   }
@@ -523,12 +507,10 @@ const buildAreaChartDefinition = (params: Readonly<AreaChartDefinitionParams>): 
       heightPx: params.heightPx,
       isLoading: params.isLoading,
       lines: params.projectionLines,
-      margin: params.margin,
       projectionGradientBaseId: params.projectionGradientBaseId,
       timeExtent: params.timeExtent,
       timeExtentRaw: params.timeExtentRaw,
       width: params.width,
-      yDomainFinal: params.yDomainFinal,
     }),
   );
   // Enter is false (RevealWipe owns it); update tweens only on y-domain change, else snaps.
@@ -546,6 +528,7 @@ const buildAreaChartDefinition = (params: Readonly<AreaChartDefinitionParams>): 
     xAxis: params.xAxis,
     xDataKey: params.xDataKey,
     xDomain: params.xDomain,
+    xScaleD3Ref: params.xScaleD3Ref,
     yAxis: params.yAxis,
     yDomainFinal: params.yDomainFinal,
   });

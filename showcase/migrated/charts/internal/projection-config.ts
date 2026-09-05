@@ -127,16 +127,16 @@ const mergeProjectionXDomainMax = (maxTime: number, configs: readonly Projection
 
 interface VisibleEndXParams {
   readonly endX: number;
-  readonly innerWidth: number;
+  readonly rightEdge: number;
   readonly endpointRadius: number;
   readonly strokeWidth: number;
   readonly showEndMarker: boolean;
 }
 
 const resolveVisibleEndX = (params: Readonly<VisibleEndXParams>): number => {
-  const { endX, innerWidth, endpointRadius, strokeWidth, showEndMarker } = params;
+  const { endX, rightEdge, endpointRadius, strokeWidth, showEndMarker } = params;
   const edgePadding = (showEndMarker ? endpointRadius : 0) + strokeWidth * VISIBLE_END_STROKE_HALF_FACTOR + 1;
-  return Math.min(endX, Math.max(0, innerWidth - edgePadding));
+  return Math.min(endX, rightEdge - edgePadding);
 }
 
 export { extractProjectionLineConfigs, mergeProjectionYDomain, mergeProjectionXDomainMax, resolveVisibleEndX };

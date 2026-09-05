@@ -104,7 +104,6 @@ const buildComposedMarks = (ctx: Readonly<ComposedMarksContext>): ChartMark<Char
   appendHoverChromeMarks(marks, ctx);
   appendProjectionMarks(marks, {
     heightPx: ctx.heightPx,
-    margin: ctx.margin,
     markerFallbacks: ctx.projectionMarkerFallbacks,
     projectionConfigs: ctx.projectionConfigs,
     projectionGradientBaseId: ctx.projectionGradientBaseId,
@@ -113,7 +112,6 @@ const buildComposedMarks = (ctx: Readonly<ComposedMarksContext>): ChartMark<Char
     timeExtent: ctx.timeExtent,
     timeExtentRaw: ctx.timeExtentRaw,
     width: ctx.width,
-    yDomain: ctx.yDomain,
   });
   return marks;
 };

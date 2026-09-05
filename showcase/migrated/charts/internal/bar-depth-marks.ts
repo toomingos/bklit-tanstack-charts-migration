@@ -1,6 +1,7 @@
 import { createMark } from "@tanstack/charts";
 import type { ChartMark, ChartMarkState, ChartPoint, MarkRenderContext, SceneNode } from "@tanstack/charts";
 import { appendBackBarFaces, extractBarDepthValues, groupBarDepthNodes, resolveBackBarFrame } from "./bar-depth-face-nodes";
+import { resolveBandFrame } from "./bar-depth-geometry";
 import { GLASS_TIP_OPACITY as GLASS_TIP } from "./bar-depth-back-nodes";
 import type { BarDepthGradientIds } from "./bar-depth-face-nodes";
 import type { ChartDatum } from "./types";
@@ -36,9 +37,6 @@ const buildNegBarStops = (groundShadow: number): GlassGradientStop[] => [
 interface BarDepthBackMarkOptions {
   readonly id: string;
   readonly data: readonly Readonly<ChartDatum>[];
-  readonly bandWidth: number;
-  readonly bandScale?: Readonly<{ step?: () => number }>;
-  readonly bandPos: (label: string) => number;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly yAccessor: (datum: Readonly<ChartDatum>) => number;
   readonly fill: string;
@@ -48,7 +46,7 @@ interface BarDepthBackMarkOptions {
 }
 
 const barDepthBackMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<BarDepthBackMarkOptions>): ChartMark<ChartDatum, string, number> => {
-  const { id, bandWidth, bandScale, bandPos, categoryAccessor, yAccessor, fill, gradientIds, states, opacity } = options;
+  const { id, categoryAccessor, yAccessor, fill, gradientIds, states, opacity } = options;
   const { glassPosId, sideShadeRtlId, sideShadeLtrId, topShadeId } = gradientIds;
   return createMark(() => {
     const { xValues, yValues } = extractBarDepthValues(data, categoryAccessor, yAccessor);
@@ -66,7 +64,9 @@ const barDepthBackMark = (data: readonly Readonly<ChartDatum>[], options: Readon
         const nodes: SceneNode[] = [];
         const points: ChartPoint<ChartDatum, string, number>[] = [];
         const baseline = scales.y.map(0);
-        const frame = resolveBackBarFrame({ bandScale, bandWidth, chartWidth: chart.width, chartX: chart.x });
+        // Band geometry resolves at scene build from the package scale (V1.2/G6).
+        const { bandPos, bandStep, bandWidth } = resolveBandFrame(scales.x);
+        const frame = resolveBackBarFrame({ bandStep, bandWidth, chartWidth: chart.width, chartX: chart.x });
         for (let i = 0; i < data.length; i += 1) {
           appendBackBarFaces({
             bandPos,

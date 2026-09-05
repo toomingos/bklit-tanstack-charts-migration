@@ -9,6 +9,7 @@ import { useChartPhaseOrchestrator } from "./use-chart-phase-orchestrator";
 import { clipRevealTiming } from "./enter-transition";
 import type { EnterTransition } from "./enter-transition";
 import { extractChildren } from "./children-extract";
+import type { ChartChildRegistration } from "./chart-child-registry";
 import { useChartLegendHover } from "./chart-legend-hover-context";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useFocusInjection } from "./focus-injection";
@@ -28,6 +29,7 @@ interface AreaChartSetupParams {
   readonly aspectRatio: string;
   readonly children: ReactNode;
   readonly data: ChartDatum[];
+  readonly registryEntries: readonly ChartChildRegistration[];
   readonly enterTransition: Readonly<EnterTransition> | undefined;
   readonly marginProp: Partial<ChartMargin> | undefined;
   readonly onPhaseChange: ((phase: ChartPhase) => void) | undefined;
@@ -133,8 +135,8 @@ const useAreaChartSetup = (params: Readonly<AreaChartSetupParams>): AreaChartSet
   }, [chartPhase, notifyYDomainTweenComplete]);
 
   const { areas, patternAreas, grid, xAxis, yAxis, background, tooltip, projectionLines, projectionEndMarkers, terminalMarkers, chartMarkers, brushes } = useMemo(
-    () => extractChildren(params.children),
-    [params.children],
+    () => extractChildren(params.children, params.registryEntries),
+    [params.children, params.registryEntries],
   );
   const tooltipEnabled = tooltip?.enabled ?? false;
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();

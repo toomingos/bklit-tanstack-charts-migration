@@ -186,6 +186,32 @@ const buildBandScale = (
     .range(effectiveRange(resolved, fallbackRange));
 };
 
+// Package-resolved band mapping (bar x): the domain/map/bandwidth the package
+// Committed to. Overlays read this instead of rebuilding the band by hand.
+interface ResolvedBandBinding {
+  (value: string): number | undefined;
+  readonly bandwidth: () => number;
+  readonly domain: () => string[];
+}
+
+// Bands resolve with nonzero bandwidth; time/linear resolvers return 0.
+const resolveBandBinding = (
+  resolved: ResolvedScale | undefined,
+): ResolvedBandBinding | undefined => {
+  if (resolved === undefined || resolved.bandwidth <= 0) {
+    return undefined;
+  }
+  const binding = (value: string): number | undefined => {
+    const center = resolved.map(value);
+    // Package band map returns the band center; the binding exposes starts.
+    if (!Number.isFinite(center)) {return undefined;}
+    return center - resolved.bandwidth / 2;
+  };
+  binding.bandwidth = (): number => resolved.bandwidth;
+  binding.domain = (): string[] => resolved.domain.map(String);
+  return binding;
+};
+
 // Package datum rows are objects; anything else yields an empty payload.
 const isDatumRecord = (candidate: unknown): candidate is Record<string, unknown> =>
   candidate !== null && typeof candidate === "object";
@@ -332,10 +358,12 @@ export {
   buildTimeScale,
   createChartHostStore,
   focusGroupToTooltip,
+  resolveBandBinding,
 };
 export type {
   ChartHostHoverSnapshot,
   ChartHostRenderContext,
   ChartHostStableSnapshot,
   ChartHostStore,
+  ResolvedBandBinding,
 };

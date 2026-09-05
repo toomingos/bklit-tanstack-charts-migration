@@ -3,7 +3,9 @@
 import { useCallback, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefCallback, RefObject } from "react";
 import type { ChartTooltipBodyRenderContext } from '@tanstack/react-charts/tooltip';
-import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
+import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH } from "./chart-host";
+import type { ChartChildRegistration } from "./chart-child-registry";
+import { useChartStable } from "./chart-context";
 import type {
   ChartInteractionController,
   ChartPoint,
@@ -16,7 +18,6 @@ import { ReferenceAreaLayers } from "./reference-area-layer";
 import type { ReferenceAreaLayersGeom } from "./reference-area-layer";
 import { LiveTipChrome } from "./live-tip-chrome";
 import { buildCrosshairGradientDef } from "./hover-geometry";
-import type { ChartMargin } from "./use-chart-margin";
 import type { DatePillController } from "./date-pill-overlay";
 import type { ReferenceAreaPropValue } from "./reference-area-config";
 import type { Momentum } from "./live-momentum";
@@ -93,8 +94,18 @@ const LIVE_SVG_OVERLAY_STYLE = { inset: 0, overflow: "visible", pointerEvents: "
 interface LineVisualSnapshot {
   readonly cfg: ReadonlyLiveLineConfig;
   readonly dotColor: string;
-  readonly liveDotX: number;
-  readonly liveDotY: number;
+  readonly liveDate: Date | undefined;
+  readonly liveValue: number;
+  readonly momentum: Momentum;
+  readonly resolvedStroke: string;
+}
+
+// Tip dot with host-resolved pixels (V1.2/G6); computed inside the host.
+interface LiveDotSnapshot {
+  readonly cfg: ReadonlyLiveLineConfig;
+  readonly dotColor: string;
+  readonly dotX: number;
+  readonly dotY: number;
   readonly liveValue: number;
   readonly momentum: Momentum;
   readonly resolvedStroke: string;
@@ -103,21 +114,21 @@ interface LineVisualSnapshot {
 interface FadeGradientOptions {
   readonly innerWidth: number;
   readonly uid: string;
-  readonly visual: Readonly<LineVisualSnapshot>;
+  readonly visual: Readonly<LiveDotSnapshot>;
 }
 
 // Per-series edge-fade gradient tracking the live dot; the trailing stop pins full opacity.
 const renderFadeGradient = (options: Readonly<FadeGradientOptions>): ReactElement => {
   const { visual } = options;
   const fadeId = `bkm-live-fade-${options.uid}-${visual.cfg.dataKey}`;
-  const tracksDot = visual.liveDotX < options.innerWidth - 1;
+  const tracksDot = visual.dotX < options.innerWidth - 1;
   return (
     <linearGradient key={visual.cfg.dataKey} id={fadeId} x1="0" x2="1" y1="0" y2="0">
       <stop offset="0%" stopColor="white" stopOpacity={0} />
       <stop offset="4%" stopColor="white" stopOpacity={1} />
       {tracksDot && (
         <stop
-          offset={`${(visual.liveDotX / Math.max(1, options.innerWidth)) * PERCENT_SCALE}%`}
+          offset={`${(visual.dotX / Math.max(1, options.innerWidth)) * PERCENT_SCALE}%`}
           stopColor="white"
           stopOpacity={1}
         />
@@ -141,7 +152,7 @@ interface FadeMaskOptions {
   readonly marginLeft: number;
   readonly marginTop: number;
   readonly uid: string;
-  readonly visual: Readonly<LineVisualSnapshot>;
+  readonly visual: Readonly<LiveDotSnapshot>;
   readonly width: number;
 }
 
@@ -183,17 +194,17 @@ interface FadeDefsOptions {
   readonly marginLeft: number;
   readonly marginTop: number;
   readonly uid: string;
-  readonly visuals: readonly LineVisualSnapshot[];
+  readonly visuals: readonly LiveDotSnapshot[];
   readonly width: number;
 }
 
 // Edge-fade gradients plus the plot mask and crosshair gradient for the overlay svg.
 const renderFadeDefs = (options: Readonly<FadeDefsOptions>): ReactNode => (
   <>
-    {options.visuals.map((visual: Readonly<LineVisualSnapshot>): ReactNode =>
+    {options.visuals.map((visual: Readonly<LiveDotSnapshot>): ReactNode =>
       renderFadeGradient({ innerWidth: options.innerWidth, uid: options.uid, visual }),
     )}
-    {options.visuals.map((visual: Readonly<LineVisualSnapshot>): ReactNode =>
+    {options.visuals.map((visual: Readonly<LiveDotSnapshot>): ReactNode =>
       renderFadeMask({
         fadeMaskId: options.fadeMaskId,
         height: options.height,
@@ -332,6 +343,7 @@ const useLiveCrosshair = (options: Readonly<UseLiveCrosshairOptions>): LiveCross
 interface RenderLiveLineBodyOptions {
   readonly ariaDescription?: string;
   readonly ariaLabel?: string;
+  readonly children: ReactNode;
   readonly crosshairView: Readonly<CrosshairDefView> | undefined;
   readonly datePillOverlayHostRef: RefCallback<HTMLDivElement>;
   readonly definition: DomChartDefinition<ChartDatum, Date, number> | undefined;
@@ -341,39 +353,92 @@ interface RenderLiveLineBodyOptions {
   readonly handleFocusChange: (points: readonly ReadonlyLivePoint[]) => void;
   readonly handleRender: (context: Readonly<ChartRendererRenderContext<ChartDatum, Date, number>>) => void;
   readonly height: number;
-  readonly innerHeight: number;
-  readonly innerWidth: number;
   readonly lineVisuals: readonly LineVisualSnapshot[];
   readonly liveRefAreas: Record<string, ReferenceAreaPropValue>[];
-  readonly margin: Readonly<ChartMargin>;
   readonly referenceAreaGeom: ReferenceAreaLayersGeom;
   readonly renderTooltipBody: (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>) => ReactNode;
+  readonly handleRegistryEntries: (entries: readonly ChartChildRegistration[]) => void;
   readonly showDatePillHost: boolean;
   readonly tooltipOn: boolean;
   readonly uid: string;
-  readonly width: number;
 }
+
+// Tip dots and fade chrome resolve through host scales (V1.2/G6).
+const LiveOverlayChrome = (properties: Readonly<{
+  readonly crosshairView: Readonly<CrosshairDefView> | undefined;
+  readonly fadeMaskId: string | undefined;
+  readonly getLiveGroups: () => Map<string, SVGGElement>;
+  readonly uid: string;
+  readonly visuals: readonly LineVisualSnapshot[];
+}>): ReactNode => {
+  const { chart, margin, xScale, yScale } = useChartStable();
+  const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
+  const { crosshairView, fadeMaskId, getLiveGroups, uid, visuals } = properties;
+  const dots: readonly LiveDotSnapshot[] = useMemo(
+    () => visuals.map((visual) => ({
+      cfg: visual.cfg,
+      dotColor: visual.dotColor,
+      dotX: visual.liveDate === undefined ? plot.width : xScale(visual.liveDate),
+      dotY: yScale(visual.liveValue),
+      liveValue: visual.liveValue,
+      momentum: visual.momentum,
+      resolvedStroke: visual.resolvedStroke,
+    })),
+    [visuals, plot.width, xScale, yScale],
+  );
+  const fullWidth = margin.left + plot.width + margin.right;
+  const fullHeight = margin.top + plot.height + margin.bottom;
+  return (
+    <svg
+      aria-hidden="true"
+      width={fullWidth}
+      height={fullHeight}
+      style={LIVE_SVG_OVERLAY_STYLE}
+    >
+      <defs>
+        {renderFadeDefs({
+          crosshair: crosshairView,
+          fadeMaskId,
+          height: fullHeight,
+          innerHeight: plot.height,
+          innerWidth: plot.width,
+          marginBottom: margin.bottom,
+          marginLeft: margin.left,
+          marginTop: margin.top,
+          uid,
+          visuals: dots,
+          width: fullWidth,
+        })}
+      </defs>
+      {dots.map((dot: Readonly<LiveDotSnapshot>) => (
+        <LiveTipChrome
+          key={dot.cfg.dataKey}
+          cfg={dot.cfg}
+          dotColor={dot.dotColor}
+          getLiveGroups={getLiveGroups}
+          groupKey={dot.cfg.dataKey}
+          liveValue={dot.liveValue}
+          liveDotX={dot.dotX}
+          liveDotY={dot.dotY}
+          resolvedStroke={dot.resolvedStroke}
+          innerWidth={plot.width}
+        />
+      ))}
+    </svg>
+  );
+};
 
 // Chart body subtree as a plain render helper (not a component): inlined into
 // The same element tree, so reconciliation and animations are unchanged.
 const renderLiveLineBody = (options: Readonly<RenderLiveLineBodyOptions>): ReactNode => {
-  const { ariaDescription, ariaLabel = "Live line chart", crosshairView, datePillOverlayHostRef, definition, fadeMaskId, fadeMaskStyle, getLiveGroups, handleFocusChange, handleRender, height, innerHeight, innerWidth, lineVisuals, liveRefAreas, margin, referenceAreaGeom, renderTooltipBody, showDatePillHost, tooltipOn, uid, width } = options;
+  const { ariaDescription, ariaLabel = "Live line chart", children, crosshairView, datePillOverlayHostRef, definition, fadeMaskId, fadeMaskStyle, getLiveGroups, handleFocusChange, handleRegistryEntries, handleRender, height, lineVisuals, liveRefAreas, referenceAreaGeom, renderTooltipBody, showDatePillHost, tooltipOn, uid } = options;
   const datePillHostNode = showDatePillHost ? (
     <div
       ref={datePillOverlayHostRef}
       style={CHART_OVERLAY_STYLE}
     />
   ) : undefined;
-  return (
-    <>
-      {liveRefAreas.length > 0 && width > 0 && height > 0 && (
-        <ReferenceAreaLayers
-          configs={liveRefAreas}
-          geom={referenceAreaGeom}
-        />
-      )}
-      {definition ? (
-        <>
+  return definition ? (
           <div
             style={fadeMaskStyle}
           >
@@ -387,52 +452,26 @@ const renderLiveLineBody = (options: Readonly<RenderLiveLineBodyOptions>): React
               onFocusGroupChange={handleFocusChange}
               onRender={handleRender}
               renderTooltipBody={tooltipOn ? renderTooltipBody : undefined}
-            />
-          </div>
-          <svg
-            aria-hidden="true"
-            width={width}
-            height={height}
-            style={LIVE_SVG_OVERLAY_STYLE}
-          >
-            <g transform={`translate(${margin.left},${margin.top})`}>
-              <defs>
-                {renderFadeDefs({
-                  crosshair: crosshairView,
-                  fadeMaskId,
-                  height,
-                  innerHeight,
-                  innerWidth,
-                  marginBottom: margin.bottom,
-                  marginLeft: margin.left,
-                  marginTop: margin.top,
-                  uid,
-                  visuals: lineVisuals,
-                  width,
-                })}
-              </defs>
-
-              {lineVisuals.map((visual: Readonly<(typeof lineVisuals)[number]>) => (
-                <LiveTipChrome
-                  key={visual.cfg.dataKey}
-                  cfg={visual.cfg}
-                  dotColor={visual.dotColor}
-                  getLiveGroups={getLiveGroups}
-                  groupKey={visual.cfg.dataKey}
-                  liveValue={visual.liveValue}
-                  liveDotX={visual.liveDotX}
-                  liveDotY={visual.liveDotY}
-                  resolvedStroke={visual.resolvedStroke}
-                  innerWidth={innerWidth}
+            >
+              {children}
+              <ChartRegistryBridge onEntries={handleRegistryEntries} />
+              {liveRefAreas.length > 0 && (
+                <ReferenceAreaLayers
+                  configs={liveRefAreas}
+                  geom={referenceAreaGeom}
                 />
-              ))}
-            </g>
-          </svg>
-        </>
-      ) : undefined}
-      {datePillHostNode}
-    </>
-  );
+              )}
+              <LiveOverlayChrome
+                crosshairView={crosshairView}
+                fadeMaskId={fadeMaskId}
+                getLiveGroups={getLiveGroups}
+                uid={uid}
+                visuals={lineVisuals}
+              />
+              {datePillHostNode}
+            </ChartHost>
+          </div>
+  ) : undefined;
 };
 
 export {

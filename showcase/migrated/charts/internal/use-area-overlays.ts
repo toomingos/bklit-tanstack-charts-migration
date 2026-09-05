@@ -1,87 +1,68 @@
-// Area overlays hook: anchors, projection gradient defs, crosshair from area-chart.tsx.
-// Hook call order is unchanged; logic moved verbatim.
+// Area overlays hook: data for host-child chrome; anchors/gradients resolve inside the host.
 import { useMemo } from "react";
-import { scaleLinear } from "d3-scale";
-import { timeToPixelX } from "./x-time-scale";
-import { buildTerminalAnchors, buildProjectionEndAnchors } from "./line-marker-anchors";
-import {
-  buildCrosshairGradientDef,
-} from "./hover-geometry";
+import type { RefObject } from "react";
+import { buildCrosshairGradientDef } from "./hover-geometry";
 import type { CrosshairGradientDef } from "./hover-geometry";
 import { resolveFadeEdgesMask } from "./fade-mask";
 import { resolveProjectionGradientDef } from "./projection-line-mark";
 import type { ProjectionGradientDef } from "./projection-line-mark";
 import type { ProjectionLineConfig } from "./projection-config";
-import type { ChartMargin } from "./use-chart-margin";
-import type { ChartDatum, ExtractedChildren, ProjectionLineChildConfig } from "./types";
 import {
-  DEFAULT_PROJECTION_STROKE_WIDTH_PX,
   DEFAULT_TERMINAL_MARKER_RADIUS_PX,
-  DEFAULT_TERMINAL_MARKER_STROKE_WIDTH_PX,
   PROJECTION_FALLBACK_STROKE,
   isString,
-  withZeroFallback,
 } from "./area-chart-model";
 import type { ReadonlyResolvedArea, TimeExtentMs } from "./area-chart-model";
+import type { ProjectionPhaseHandle } from "./terminal-marker";
+import type { ChartDatum, ExtractedChildren, ProjectionLineChildConfig } from "./types";
+import type { ChartPhase } from "./chart-phase";
+
+interface AreaProjectionMappers {
+  readonly innerWidth: number;
+  readonly rightEdge: number;
+  readonly xMap: (value: Readonly<Date>) => number;
+  readonly yMap: (value: number) => number;
+}
 
 interface AreaProjectionGradientInput {
   readonly baseId: string;
   readonly config: Readonly<ProjectionLineConfig> | undefined;
   readonly index: number;
-  readonly innerWidth: number;
-  readonly isLoading: boolean;
+  readonly mappers: Readonly<AreaProjectionMappers> | undefined;
   readonly line: Readonly<ProjectionLineChildConfig>;
-  readonly marginLeft: number;
-  readonly marginTop: number;
-  readonly xScale: (value: Readonly<Date>) => number;
-  readonly yScale: (value: number) => number;
 }
 
 // Gradient def for one projection line; undefined unless the line uses a gradient stroke.
 const resolveAreaProjectionGradient = (input: Readonly<AreaProjectionGradientInput>): ProjectionGradientDef | undefined => {
-  const { config, line } = input;
-  if ((line.strokeStyle ?? "solid") !== "gradient" || !config || config.data.length < 2) {return undefined;}
+  const { config, line, mappers } = input;
+  if (mappers === undefined) {return undefined;}
+  if ((line.strokeStyle ?? "solid") !== "gradient") {return undefined;}
+  if (!config || config.data.length < 2) {return undefined;}
   const stroke = line.stroke ?? PROJECTION_FALLBACK_STROKE;
   const gradientStart = line.gradientStart ?? stroke;
   const gradientEnd = line.gradientEnd ?? "var(--chart-5)";
-  const strokeWidth = line.strokeWidth ?? DEFAULT_PROJECTION_STROKE_WIDTH_PX;
-  const curveKind = line.curveKind ?? "linear";
+  const strokeWidth = line.strokeWidth ?? 2;
   const endpointRadius = line.endpointRadius ?? DEFAULT_TERMINAL_MARKER_RADIUS_PX;
   return resolveProjectionGradientDef({
-    className: line.className ?? "chart-projection-line",
-    curveKind,
     data: config.data,
     endpointRadius,
     gradientEnd,
     gradientId: `${input.baseId}-proj-${input.index}`,
     gradientStart,
-    id: `projection-line-${input.index}`,
-    innerWidth: input.innerWidth,
+    rightEdge: mappers.rightEdge,
     showEndMarker: line.showEndMarker ?? line.showEndpoints ?? true,
-    stroke,
-    strokeDasharray: line.strokeDasharray ?? "6,4",
-    strokeOpacity: line.strokeOpacity ?? 1,
     strokeStyle: "gradient",
-    strokeVisible: !input.isLoading,
     strokeWidth,
-    translateX: input.marginLeft,
-    translateY: input.marginTop,
-    xScale: input.xScale,
-    yAxisId: config.yAxisId,
-    yScale: input.yScale,
+    xMap: mappers.xMap,
+    yMap: mappers.yMap,
   });
 };
 
 interface AreaProjectionGradientFrame {
   readonly baseId: string;
   readonly configs: readonly Readonly<ProjectionLineConfig>[];
-  readonly innerWidth: number;
-  readonly isLoading: boolean;
   readonly lines: readonly Readonly<ProjectionLineChildConfig>[];
-  readonly marginLeft: number;
-  readonly marginTop: number;
-  readonly xScale: (value: Readonly<Date>) => number;
-  readonly yScale: (value: number) => number;
+  readonly mappers: Readonly<AreaProjectionMappers> | undefined;
 }
 
 // Gradient defs for every projection line; non-gradient lines contribute nothing.
@@ -90,56 +71,66 @@ const buildAreaProjectionGradientDefs = (frame: Readonly<AreaProjectionGradientF
     baseId: frame.baseId,
     config: frame.configs.at(index),
     index,
-    innerWidth: frame.innerWidth,
-    isLoading: frame.isLoading,
     line,
-    marginLeft: frame.marginLeft,
-    marginTop: frame.marginTop,
-    xScale: frame.xScale,
-    yScale: frame.yScale,
+    mappers: frame.mappers,
   });
   return gradient ? [gradient] : [];
 });
 
-interface AreaOverlaysParams {
-  readonly crosshairGradientId: string;
+interface AreaProjectionChromeProps {
+  readonly chartPhase: ChartPhase;
   readonly heightPx: number;
-  readonly isLoading: boolean;
-  readonly margin: Readonly<ChartMargin>;
+  readonly phasePort: RefObject<ProjectionPhaseHandle | null>;
   readonly projectionConfigs: readonly Readonly<ProjectionLineConfig>[];
   readonly projectionEndMarkers: ExtractedChildren["projectionEndMarkers"];
   readonly projectionGradientBaseId: string;
   readonly projectionLines: readonly Readonly<ProjectionLineChildConfig>[];
   readonly renderData: readonly Readonly<ChartDatum>[];
-  readonly resolvedAreas: readonly ReadonlyResolvedArea[];
   readonly terminalMarkers: ExtractedChildren["terminalMarkers"];
-  readonly timeExtent: Readonly<TimeExtentMs> | undefined;
-  readonly timeExtentRaw: Readonly<TimeExtentMs> | undefined;
-  readonly tooltip: ExtractedChildren["tooltip"];
-  readonly tooltipEnabled: boolean;
+  readonly timeExtent: TimeExtentMs | undefined;
+  readonly timeExtentRaw: TimeExtentMs | undefined;
   readonly width: number;
   readonly xDataKey: string;
   readonly yDomainFinal: readonly [number, number];
 }
 
+interface AreaOverlaysParams {
+  readonly crosshairGradientId: string;
+  readonly projectionConfigs: readonly Readonly<ProjectionLineConfig>[];
+  readonly projectionEndMarkers: ExtractedChildren["projectionEndMarkers"];
+  readonly projectionGradientBaseId: string;
+  readonly projectionLines: readonly Readonly<ProjectionLineChildConfig>[];
+  readonly projectionPhasePortRef: RefObject<ProjectionPhaseHandle | null>;
+  readonly renderData: readonly Readonly<ChartDatum>[];
+  readonly resolvedAreas: readonly ReadonlyResolvedArea[];
+  readonly terminalMarkers: ExtractedChildren["terminalMarkers"];
+  readonly timeExtent: TimeExtentMs | undefined;
+  readonly timeExtentRaw: TimeExtentMs | undefined;
+  readonly tooltip: ExtractedChildren["tooltip"];
+  readonly tooltipEnabled: boolean;
+  readonly width: number;
+  readonly heightPx: number;
+  readonly chartPhase: ChartPhase;
+  readonly xDataKey: string;
+  readonly yDomainFinal: readonly [number, number];
+}
+
 interface AreaOverlays {
-  readonly areaEndAnchors: ReturnType<typeof buildProjectionEndAnchors>;
-  readonly areaTerminalAnchors: ReturnType<typeof buildTerminalAnchors>;
   readonly crosshairGradientDef: CrosshairGradientDef | undefined;
   readonly fadeEdgesMask: ReturnType<typeof resolveFadeEdgesMask>;
-  readonly projectionGradientDefsArea: ProjectionGradientDef[];
+  readonly projectionChromeProps: AreaProjectionChromeProps | undefined;
 }
 
 const useAreaOverlays = (params: Readonly<AreaOverlaysParams>): AreaOverlays => {
   const {
+    chartPhase,
     crosshairGradientId,
     heightPx,
-    isLoading,
-    margin,
     projectionConfigs,
     projectionEndMarkers,
     projectionGradientBaseId,
     projectionLines,
+    projectionPhasePortRef,
     renderData,
     resolvedAreas,
     terminalMarkers,
@@ -154,60 +145,6 @@ const useAreaOverlays = (params: Readonly<AreaOverlaysParams>): AreaOverlays => 
   // Edge-fade mask aggregates per-series fadeEdges; sides resolve via CSS :not() rules.
   const fadeEdgesMask = resolveFadeEdgesMask(resolvedAreas.map((area: ReadonlyResolvedArea) => area.fadeEdges));
 
-  // Terminal markers anchor to the last visible row via the shared line-marker builder.
-  const areaTerminalAnchors = useMemo(() => buildTerminalAnchors({
-    defaults: {
-      fallbackStroke: "var(--chart-1)",
-      markerRadius: DEFAULT_TERMINAL_MARKER_RADIUS_PX,
-      terminalStrokeWidth: DEFAULT_TERMINAL_MARKER_STROKE_WIDTH_PX,
-    },
-    heightPx,
-    marginBottom: margin.bottom,
-    marginLeft: margin.left,
-    marginRight: margin.right,
-    marginTop: margin.top,
-    renderData,
-    terminalMarkers,
-    timeExtent,
-    timeExtentRaw,
-    width,
-    xDataKey,
-    yDomainFinal,
-  }), [terminalMarkers, renderData, width, heightPx, margin, yDomainFinal, timeExtent, timeExtentRaw, xDataKey]);
-  // Projection end markers clamp to the plot edge via the shared line-marker builder.
-  const areaEndAnchors = useMemo(() => buildProjectionEndAnchors({
-    fallbackStroke: PROJECTION_FALLBACK_STROKE,
-    heightPx,
-    marginBottom: margin.bottom,
-    marginLeft: margin.left,
-    marginRight: margin.right,
-    marginTop: margin.top,
-    markerRadius: DEFAULT_TERMINAL_MARKER_RADIUS_PX,
-    projectionEndMarkers,
-    timeExtent,
-    timeExtentRaw,
-    width,
-    yDomainFinal,
-  }), [projectionEndMarkers, width, heightPx, margin, yDomainFinal, timeExtent, timeExtentRaw]);
-  const projectionGradientDefsArea = useMemo(() => {
-    if (projectionConfigs.length === 0 || width <= 0) {return [];}
-    const innerW = Math.max(0, width - margin.left - margin.right);
-    const innerH = Math.max(0, heightPx - margin.top - margin.bottom);
-    if (innerW <= 0 || innerH <= 0 || !timeExtent || !timeExtentRaw) {return [];}
-    const yScale = scaleLinear().domain(yDomainFinal).range([innerH, 0]);
-    return buildAreaProjectionGradientDefs({
-      baseId: projectionGradientBaseId,
-      configs: projectionConfigs,
-      innerWidth: innerW,
-      isLoading,
-      lines: projectionLines,
-      marginLeft: margin.left,
-      marginTop: margin.top,
-      xScale: (value: Date): number => timeToPixelX(value, timeExtentRaw.minTime, timeExtent.maxTime, innerW),
-      yScale: (value: number): number => withZeroFallback(yScale(value)),
-    });
-  }, [projectionConfigs, projectionLines, width, margin, heightPx, yDomainFinal, timeExtent, timeExtentRaw, projectionGradientBaseId, isLoading]);
-
   const crosshairGradientDef = useMemo((): CrosshairGradientDef | undefined => {
     if (!(tooltipEnabled && (tooltip?.showCrosshair ?? true))) {return undefined;}
     const indicatorColor = tooltip?.indicatorColor;
@@ -215,14 +152,33 @@ const useAreaOverlays = (params: Readonly<AreaOverlaysParams>): AreaOverlays => 
     return buildCrosshairGradientDef(crosshairGradientId, color);
   }, [tooltipEnabled, tooltip, crosshairGradientId]);
 
+  // Anchors and gradient defs mount inside the host so bounds come from the store (V1.2/G6).
+  const projectionChromeProps: AreaProjectionChromeProps | undefined =
+    (projectionConfigs.length > 0 || projectionEndMarkers.length > 0 || terminalMarkers.length > 0)
+      ? {
+        chartPhase,
+        heightPx,
+        phasePort: projectionPhasePortRef,
+        projectionConfigs,
+        projectionEndMarkers,
+        projectionGradientBaseId,
+        projectionLines,
+        renderData,
+        terminalMarkers,
+        timeExtent,
+        timeExtentRaw,
+        width,
+        xDataKey,
+        yDomainFinal,
+      }
+      : undefined;
+
   return {
-    areaEndAnchors,
-    areaTerminalAnchors,
     crosshairGradientDef,
     fadeEdgesMask,
-    projectionGradientDefsArea,
+    projectionChromeProps,
   };
 };
 
-export { useAreaOverlays };
-export type { AreaOverlays, AreaOverlaysParams };
+export { buildAreaProjectionGradientDefs, useAreaOverlays };
+export type { AreaOverlays, AreaOverlaysParams, AreaProjectionChromeProps, AreaProjectionMappers };

@@ -1,7 +1,7 @@
 import { createMark } from "@tanstack/charts";
 import type { ChartMark, ChartMarkState, ChartPoint, MaterializedChannel, SceneNode } from "@tanstack/charts";
 import type { ScaleBand } from "d3-scale";
-import { barDepthAndRise, barDepthMaxDepth } from "./bar-depth-geometry";
+import { barDepthAndRise, barDepthMaxDepth, resolveBandFrame } from "./bar-depth-geometry";
 import { resolveTrimmedDatumMetrics } from "./bar-trimmed-metrics";
 import type { TrimmedDatumMetrics, TrimmedYScale } from "./bar-trimmed-metrics";
 import type { ChartDatum } from "./types";
@@ -15,14 +15,8 @@ interface BarTrimmedMarkOptions {
   readonly groupScale: ScaleBand<string>;
   readonly fill: string;
   readonly radius: number;
-  readonly bandWidth: number;
-  readonly bandScale?: { readonly step?: () => number };
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly yAccessor: (datum: Readonly<ChartDatum>) => number;
-  readonly innerWidth: number;
-  readonly chartX: number;
-  readonly centerX: number;
-  readonly maxDepth: number;
 }
 
 interface TrimmedChannelValues {
@@ -76,7 +70,7 @@ interface TrimmedRenderGeometry {
 interface TrimmedRenderGeometryParams {
   readonly chartWidth: number;
   readonly chartX: number;
-  readonly bandScale?: { readonly step?: () => number };
+  readonly bandStep: number;
   readonly bandWidth: number;
   readonly groupScale: ScaleBand<string>;
   readonly totalBandwidth: number;
@@ -85,9 +79,9 @@ interface TrimmedRenderGeometryParams {
 const resolveTrimmedRenderGeometry = (params: Readonly<TrimmedRenderGeometryParams>): TrimmedRenderGeometry => {
   const innerW = params.chartWidth;
   const cx0 = params.chartX + innerW / 2;
-  const step = params.bandScale?.step?.() ?? params.bandWidth;
-  const maxD = barDepthMaxDepth(step, params.bandWidth);
+  const maxD = barDepthMaxDepth(params.bandStep, params.bandWidth);
   // Range the shared group scale to the category band on a copy (no mutation).
+  // STORE-derived (D521b): groupScale comes from the resolved scale; copy plus re-range re-houses it, not a LOCAL rebuild.
   const gs = params.groupScale.copy().range([0, params.totalBandwidth]);
   const width = gs.bandwidth();
   return { cx0, gs, innerW, maxD, totalBandwidth: params.totalBandwidth, width };
@@ -238,7 +232,7 @@ const wrapTrimmedGroupNodes = (id: string, nodes: SceneNode[]): SceneNode[] => (
 ])
 
 const barTrimmedMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<BarTrimmedMarkOptions>): ChartMark<ChartDatum, string, number> => {
-  const { id, groupScale, fill, radius, bandWidth, bandScale, categoryAccessor, yAccessor, states, opacity } = options;
+  const { id, groupScale, fill, radius, categoryAccessor, yAccessor, states, opacity } = options;
   return createMark(() => {
     const { xValues, rawY } = buildTrimmedChannelValues(data, categoryAccessor, yAccessor);
     return {
@@ -246,7 +240,9 @@ const barTrimmedMark = (data: readonly Readonly<ChartDatum>[], options: Readonly
       id,
       render: ({ scales, chart }) => {
         const baseline = scales.y.map(0);
-        const geometry = resolveTrimmedRenderGeometry({ bandScale, bandWidth, chartWidth: chart.width, chartX: chart.x, groupScale, totalBandwidth: scales.x.bandwidth || bandWidth });
+        // Band geometry resolves at scene build from the package scale (V1.2/G6).
+        const { bandStep, bandWidth } = resolveBandFrame(scales.x);
+        const geometry = resolveTrimmedRenderGeometry({ bandStep, bandWidth, chartWidth: chart.width, chartX: chart.x, groupScale, totalBandwidth: scales.x.bandwidth || bandWidth });
         const scene = buildTrimmedScene({ baseline, data, fill, geometry, id, mapX: (value: string) => scales.x.map(value), opacity, radius, rawY, xValues, yScale: scales.y });
         return {
           nodes: wrapTrimmedGroupNodes(id, scene.nodes),

@@ -13,12 +13,7 @@ interface ProfitLossLineMarkOptions {
   readonly config: Readonly<ProfitLossLineConfig>;
   readonly data: readonly Readonly<ChartDatum>[];
   readonly xDataKey: string;
-  readonly xScale: (value: Readonly<Date>) => number;
-  readonly yScale: (value: number) => number;
-  readonly innerWidth: number;
   readonly focusedIndex: number | null;
-  readonly translateX: number;
-  readonly translateY: number;
 }
 
 const segmentLegendIndex = (isPositive: boolean): number => isPositive ? 0 : 1;
@@ -112,12 +107,11 @@ interface SegmentPathContext {
   readonly yScale: (value: number) => number;
 }
 
-interface SegmentMarkContext extends SegmentStrokeContext, SegmentPathContext {
+interface SegmentMarkContext extends SegmentStrokeContext {
   readonly id: string;
   readonly xDataKey: string;
   readonly focusedIndex: number | null;
-  readonly translateX: number;
-  readonly translateY: number;
+  readonly xAccessor: (row: Readonly<ChartDatum>) => Date;
 }
 
 const resolveSegmentOpacity = (segment: ProfitLossSegments[number], focusedIndex: number | null): number => {
@@ -140,55 +134,61 @@ const resolveSegmentPath = (segment: ProfitLossSegments[number], { config, xAcce
   return path;
 };
 
-const buildProfitLossSegmentMark = (segment: ProfitLossSegments[number], segIndex: number, { chrome, config, focusedIndex, id, translateX, translateY, xAccessor, xDataKey, xScale, yScale }: SegmentMarkContext): ChartMark<ChartDatum, Date, number> | undefined => {
+const buildProfitLossSegmentMark = (segment: ProfitLossSegments[number], segIndex: number, { chrome, config, focusedIndex, id, xAccessor, xDataKey }: SegmentMarkContext): ChartMark<ChartDatum, Date, number> | undefined => {
   const opacity = resolveSegmentOpacity(segment, focusedIndex);
   const resolvedStroke = resolveSegmentStroke(segment, { chrome, config });
-  const path = resolveSegmentPath(segment, { config, xAccessor, xScale, yScale });
-  if (path === undefined) {return undefined;}
   const segmentKey = segmentKeyFor({ id, segIndex, segment, xDataKey });
+  // Scene-build mapping from package scales (V1.2/G6); the mark carries data.
   return createMark(() => ({
     channels: {
       x: { scale: "x", values: [] },
       y: { scale: "y", values: [] },
     },
     id: segmentKey,
-    render: (): MarkScene<ChartDatum, Date, number> => ({
-      nodes: [
-        {
-          children: [
-            {
-              key: `${segmentKey}:line`,
-              kind: "polyline",
-              path,
-              points: [],
-              style: {
-                fill: "none",
-                lineCap: "round",
-                lineJoin: "round",
-                stroke: resolvedStroke,
-                strokeWidth: config.strokeWidth,
-              },
-            } satisfies SceneNode,
-          ],
-          // RenderStyle drops a top-level opacity field, so dimming must go through style.opacity; the transition lives in styles.css via className
-          className: "chart-profit-loss-segment",
-          key: segmentKey,
-          kind: "group",
-          style: { opacity },
-          translateX,
-          translateY,
-        },
-      ],
-    }),
+    render: ({ scales }): MarkScene<ChartDatum, Date, number> => {
+      const path = resolveSegmentPath(segment, {
+        config,
+        xAccessor,
+        xScale: (value: Readonly<Date>): number => scales.x.map(value),
+        yScale: (value: number): number => scales.y.map(value),
+      });
+      if (path === undefined) {return { nodes: [] };}
+      return {
+        nodes: [
+          {
+            children: [
+              {
+                key: `${segmentKey}:line`,
+                kind: "polyline",
+                path,
+                points: [],
+                style: {
+                  fill: "none",
+                  lineCap: "round",
+                  lineJoin: "round",
+                  stroke: resolvedStroke,
+                  strokeWidth: config.strokeWidth,
+                },
+              } satisfies SceneNode,
+            ],
+            // RenderStyle drops a top-level opacity field, so dimming must go through style.opacity; the transition lives in styles.css via className
+            className: "chart-profit-loss-segment",
+            key: segmentKey,
+            kind: "group",
+            style: { opacity },
+          },
+        ],
+      };
+    },
   }));
 };
 
-const buildProfitLossSegmentMarks = (segments: readonly ProfitLossSegments[number][], { chrome, config, focusedIndex, id, translateX, translateY, xAccessor, xDataKey, xScale, yScale }: SegmentMarkContext): ChartMark<ChartDatum, Date, number>[] => {
+const buildProfitLossSegmentMarks = (segments: readonly ProfitLossSegments[number][], { chrome, config, focusedIndex, id, xAccessor, xDataKey }: SegmentMarkContext): ChartMark<ChartDatum, Date, number>[] => {
   const marks: ChartMark<ChartDatum, Date, number>[] = [];
   for (let segIndex = 0; segIndex < segments.length; segIndex += 1) {
     const segment = segments.at(segIndex);
     if (segment) {
-      const mark = buildProfitLossSegmentMark(segment, segIndex, { chrome, config, focusedIndex, id, translateX, translateY, xAccessor, xDataKey, xScale, yScale });
+      const mark = buildProfitLossSegmentMark(segment, segIndex, { chrome, config, focusedIndex, id, xAccessor, xDataKey });
       if (mark) {marks.push(mark);}
     }
   }
@@ -207,7 +207,7 @@ const profitLossLineMarks = (options: Readonly<ProfitLossLineMarkOptions>): Char
   });
   if (segments.length === 0) {return [];}
   const chrome = resolveProfitLossMarkChrome(config, id);
-  return buildProfitLossSegmentMarks(segments, { chrome, config, focusedIndex, id, translateX: options.translateX, translateY: options.translateY, xAccessor, xDataKey, xScale: options.xScale, yScale: options.yScale });
+  return buildProfitLossSegmentMarks(segments, { chrome, config, focusedIndex, id, xAccessor, xDataKey });
 }
 
 interface ProfitLossGradientDef {

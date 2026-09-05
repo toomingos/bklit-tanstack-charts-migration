@@ -45,11 +45,10 @@ interface UseBarScalesResult {
   readonly barFocusStrategy: ChartFocusStrategy<ChartDatum, string, number>;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly categoryOrder: string[];
-  readonly categoryScaleForOverlay: ScaleBand<string>;
   readonly dotSeriesList: { readonly color: string; readonly dataKey: string }[];
   readonly groupBandwidth: number;
+  readonly groupGap: number;
   readonly groupScale: ScaleBand<string>;
-  readonly groupScaleForOverlay: ScaleBand<string>;
   readonly hasBarColumnTrack: boolean;
   readonly hasBarSquares: boolean;
   readonly innerWidth: number;
@@ -218,14 +217,13 @@ const useBarScales = (options: Readonly<UseBarScalesOptions>): UseBarScalesResul
     [projectYByKey],
   );
 
+  // D3 band rescale() op order without a d3 object (V1.2/G6).
   const bandWidth = useMemo(() => {
     if (innerWidth <= 0 || categoryOrder.length === 0) {return 0;}
-    const ranged = scaleBand()
-      .domain(categoryOrder)
-      .range([margin.left, margin.left + innerWidth])
-      .padding(barGap);
-    return ranged.bandwidth();
-  }, [categoryOrder, barGap, innerWidth, margin.left]);
+    const paddingInner = Math.min(1, barGap);
+    const step = innerWidth / Math.max(1, categoryOrder.length - paddingInner + barGap * 2);
+    return step * (1 - paddingInner);
+  }, [categoryOrder, barGap, innerWidth]);
 
   const seriesCount = resolvedSeries.length;
   const totalSeriesCount = resolvedSeries.length + resolvedBarSquares.length;
@@ -249,21 +247,6 @@ const useBarScales = (options: Readonly<UseBarScalesOptions>): UseBarScalesResul
       .paddingOuter(0);
   }, [resolvedSeries, seriesCount, totalSeriesCount, bandWidth, allSeriesKeys]);
 
-  const categoryScaleForOverlay = useMemo<ScaleBand<string>>(() => 
-    scaleBand()
-      .domain(categoryOrder)
-      .range([margin.left, margin.left + innerWidth])
-      .padding(barGap)
-  , [categoryOrder, margin.left, innerWidth, barGap]);
-
-  const groupScaleForOverlay = useMemo<ScaleBand<string>>(() => 
-    scaleBand()
-      .domain(groupScale.domain())
-      .paddingInner(groupScale.paddingInner())
-      .paddingOuter(groupScale.paddingOuter())
-      .range([0, bandWidth])
-  , [groupScale, bandWidth]);
-
   // Bklit-parity band-index focus (floor((x-margin.left)/innerWidth*n)), not nearest-center.
   const getCategoryOrder = useCallback(() => categoryOrder, [categoryOrder]);
   const getInnerWidth = useCallback(() => innerWidth, [innerWidth]);
@@ -283,11 +266,10 @@ const useBarScales = (options: Readonly<UseBarScalesOptions>): UseBarScalesResul
     barFocusStrategy,
     categoryAccessor,
     categoryOrder,
-    categoryScaleForOverlay,
     dotSeriesList,
     groupBandwidth,
+    groupGap: GROUP_GAP,
     groupScale,
-    groupScaleForOverlay,
     hasBarColumnTrack,
     hasBarSquares,
     innerWidth,
@@ -304,4 +286,4 @@ const useBarScales = (options: Readonly<UseBarScalesOptions>): UseBarScalesResul
 };
 
 export type { UseBarScalesOptions, UseBarScalesResult };
-export { useBarScales };
+export { GROUP_GAP, useBarScales };

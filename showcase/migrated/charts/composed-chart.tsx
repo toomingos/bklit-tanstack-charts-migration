@@ -1,7 +1,7 @@
 // Bklit ComposedChart on TanStack Charts. SeriesBar (raw) + Area/Line (decimated); one entry per dataKey.
-import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { ChartHost, HOST_INITIAL_WIDTH } from "./internal/chart-host";
+import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, useRegistryEntriesState } from "./internal/chart-host";
 import { defineChart } from "@tanstack/charts/scene";
 import { useChartRenderer } from "./internal/motion-renderer";
 import { useFocusInjection } from "./internal/focus-injection";
@@ -26,7 +26,6 @@ import {
 } from "./internal/design-tokens";
 import { buildNativeTooltipExtension } from "./internal/native-tooltip";
 import { BackgroundLayer } from "./internal/background-layer";
-import { ProjectionMarkerOverlay } from './internal/terminal-marker';
 import { NOTHING, useComposedResolved, useComposedYDomains } from "./internal/composed-series";
 import type {
   ChartDatum,
@@ -51,17 +50,15 @@ import {
   useComposedTooltipBody,
 } from "./internal/composed-definition";
 import { useComposedOverlayAnchors } from "./internal/use-composed-overlays";
+import { ComposedCrosshairDef, ComposedProjectionChrome } from "./internal/composed-overlay-chrome";
 import {
   useComposedPhaseAndReveal,
   useComposedRenderCallback,
 } from "./internal/use-composed-reveal";
-import {
-  renderCrosshairNode,
-  renderProjectionGradientsNode,
-} from "./internal/composed-gradient-nodes";
 import "./styles.css";
 
 const DEFAULT_BAR_GAP = 4;
+
 // Overlay host positioning: fully static, shared across renders.
 const DATE_PILL_HOST_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
 
@@ -121,11 +118,13 @@ const ComposedChart = ({
     onPhaseChange,
     revealSignature,
   });
+  // Registry union (V1.3 carriers): entries report up from inside the host.
+  const [registryEntries, handleRegistryEntries] = useRegistryEntriesState();
   const {
     barConfigs, areaConfigs, lineConfigs, composedSeries, grid, xAxis, background, tooltip,
     projectionConfigs, composedProjectionLines, composedProjectionEndMarkers, composedTerminalMarkers,
     projectionGradientBaseId: projectionGradientBaseIdComposed,
-  } = useComposedChildren(children);
+  } = useComposedChildren(children, registryEntries);
   const prefersReducedMotion = usePrefersReducedMotion();
 
   const { captureRenderContext, sceneRef, interactionRef, clientToScene } =
@@ -159,20 +158,11 @@ const ComposedChart = ({
 
   const heightPxComp = phaseAndReveal.width / parseAspectRatio(aspectRatio);
   const {
-    composedEndAnchors, composedTerminalAnchors, projectionGradientDefs: projectionGradientDefsComposed,
     timeExtent: timeExtentComp, timeExtentRaw: timeExtentCompRaw,
   } = useComposedOverlayAnchors({
-    composedProjectionEndMarkers,
-    composedProjectionLines,
-    composedTerminalMarkers,
-    heightPx: heightPxComp,
-    margin: phaseAndReveal.margin,
     projectionConfigs,
-    projectionGradientBaseId: projectionGradientBaseIdComposed,
     renderData,
-    width: phaseAndReveal.width,
     xDataKey,
-    yDomain: yDomainFinal,
   });
 
   const dragSelectionActiveRef = useRef(false);
@@ -331,50 +321,38 @@ const ComposedChart = ({
   const refAreaChildrenComp = useMemo(() => extractReferenceAreaProps(children), [children]);
   const segChildrenComp = useMemo(() => extractSegmentComponents(children), [children]);
 
-  const overlayRenderedComposed = (composedTerminalAnchors.length > 0 || composedEndAnchors.length > 0) && phaseAndReveal.width > 0 && heightPxComp > 0;
-  useLayoutEffect(() => {
-    if (!overlayRenderedComposed) {return;}
-    phaseAndReveal.projectionPhasePortRef.current?.setPhase(phaseAndReveal.phaseRef.current);
-  }, [overlayRenderedComposed, phaseAndReveal.projectionPhasePortRef, phaseAndReveal.phaseRef]);
-  const composedChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
-
   const containerStyle = useMemo((): CSSProperties => ({ aspectRatio, isolation: "isolate", position: "relative", width: "100%" }), [aspectRatio]);
   const refAreaGeom = useMemo((): ReferenceAreaLayersGeom => ({
-    height: heightPxComp,
     isLoaded: phaseAndReveal.isLoaded,
-    isTimeScale: true,
-    margin: phaseAndReveal.margin,
     phase: phaseAndReveal.chartPhase,
-    width: phaseAndReveal.width,
     xDomain: timeExtentComp ? [new Date(timeExtentComp.minTime), new Date(timeExtentComp.maxTime)] : NOTHING,
     yDomain: yDomainComp,
     yDomainsByAxis: nicedDomainsByAxis,
-  }), [heightPxComp, phaseAndReveal.isLoaded, phaseAndReveal.margin, phaseAndReveal.chartPhase, phaseAndReveal.width, timeExtentComp, yDomainComp, nicedDomainsByAxis]);
+  }), [phaseAndReveal.isLoaded, phaseAndReveal.chartPhase, timeExtentComp, yDomainComp, nicedDomainsByAxis]);
   const backgroundLayer = background ? (
     <BackgroundLayer
       config={background}
-      innerWidth={innerWidth}
-      innerHeight={Math.max(0, heightPxComp - phaseAndReveal.margin.top - phaseAndReveal.margin.bottom)}
-      marginLeft={phaseAndReveal.margin.left}
-      marginTop={phaseAndReveal.margin.top}
     />
   ) : NOTHING;
-  const projectionGradientsNode = renderProjectionGradientsNode(projectionGradientDefsComposed);
-  const markerOverlayNode = overlayRenderedComposed ? (
-    <ProjectionMarkerOverlay
-      width={phaseAndReveal.width}
-      height={heightPxComp}
-      margin={phaseAndReveal.margin}
-      terminalMarkers={composedTerminalAnchors}
-      projectionEndMarkers={composedEndAnchors}
+  const projectionChromeNode = (
+    <ComposedProjectionChrome
+      composedProjectionEndMarkers={composedProjectionEndMarkers}
+      composedProjectionLines={composedProjectionLines}
+      composedTerminalMarkers={composedTerminalMarkers}
+      heightPx={heightPxComp}
       phasePort={phaseAndReveal.projectionPhasePortRef}
+      phaseRef={phaseAndReveal.phaseRef}
+      projectionConfigs={projectionConfigs}
+      projectionGradientBaseId={projectionGradientBaseIdComposed}
+      renderData={renderData}
+      timeExtent={timeExtentComp}
+      timeExtentRaw={timeExtentCompRaw}
+      width={phaseAndReveal.width}
+      xDataKey={xDataKey}
+      yDomain={yDomainFinal}
     />
-  ) : NOTHING;
-  const crosshairNode = renderCrosshairNode({
-    def: crosshairGradientDef,
-    heightPx: heightPxComp,
-    margin: phaseAndReveal.margin,
-  });
+  );
+  const composedChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
   const datePillNode = tooltipEnabled ? (
     <div
       ref={datePill.overlayHostRef}
@@ -385,7 +363,6 @@ const ComposedChart = ({
   // Inlined into the same element tree (a variable, not a component), so this
   // Changes nothing at runtime; it only flattens source nesting for jsx-max-depth.
   const definitionNode = definition ? (
-    <>
       <ChartHost
         renderer={composedChartRenderer}
         ariaLabel={ariaLabel}
@@ -397,26 +374,24 @@ const ComposedChart = ({
         onFocusGroupChange={handleFocusGroupChange}
         onRender={handleRender}
         renderTooltipBody={tooltipEnabled ? renderTooltipBody : NOTHING}
-      />
-      {projectionGradientsNode}
-      {heightPxComp > 0 && (
-      <ReferenceAreaLayers
-        configs={refAreaChildrenComp}
-        geom={refAreaGeom}
-      />
-      )}
-      <SegmentOverlay
-        selection={compSelection}
-        innerWidth={innerWidthComp}
-        innerHeight={heightPxComp - phaseAndReveal.margin.top - phaseAndReveal.margin.bottom}
-        marginLeft={phaseAndReveal.margin.left}
-        marginTop={phaseAndReveal.margin.top}
-        components={segChildrenComp}
-      />
-      {markerOverlayNode}
-      {crosshairNode}
-      {datePillNode}
-    </>
+      >
+        {children}
+        <ChartRegistryBridge onEntries={handleRegistryEntries} />
+        {backgroundLayer}
+        {heightPxComp > 0 && (
+        <ReferenceAreaLayers
+          configs={refAreaChildrenComp}
+          geom={refAreaGeom}
+        />
+        )}
+        <SegmentOverlay
+          selection={compSelection}
+          components={segChildrenComp}
+        />
+        {projectionChromeNode}
+        <ComposedCrosshairDef gradientDef={crosshairGradientDef} />
+        {datePillNode}
+      </ChartHost>
   ) : NOTHING;
 
   return (
@@ -427,7 +402,6 @@ const ComposedChart = ({
       style={containerStyle}
       data-bkm-chart="composed"
     >
-      {backgroundLayer}
       {definitionNode}
     </div>
     </ChartSelectionContext.Provider>

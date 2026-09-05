@@ -44,14 +44,12 @@ interface ComposedMotion {
 interface CollectProjectionGradientsParams {
   readonly cfgs: readonly Readonly<ProjectionLineConfig>[];
   readonly gradientBaseId: string;
-  readonly innerWidth: number;
   readonly lines: readonly Readonly<ChartDatum>[];
   readonly markerFallbacks: Readonly<ProjectionMarkerFallbacks>;
+  readonly rightEdge: number;
   readonly strokeFallbacks: Readonly<ProjectionStrokeFallbacks>;
-  readonly translateX: number;
-  readonly translateY: number;
-  readonly xScale: (value: Readonly<Date>) => number;
-  readonly yScale: (value: number) => number;
+  readonly xMap: (value: Readonly<Date>) => number;
+  readonly yMap: (value: number) => number;
 }
 
 // The engine always provides resolve-context tickCount, but the chart-level fallback stays.
@@ -173,15 +171,13 @@ const collectProjectionGradients = (params: Readonly<CollectProjectionGradientsP
     const gd = buildComposedProjectionGradient({
       cfg: params.cfgs[projIndex],
       gradientBaseId: params.gradientBaseId,
-      innerWidth: params.innerWidth,
       markerFallbacks: params.markerFallbacks,
       proj,
       projIndex,
+      rightEdge: params.rightEdge,
       strokeFallbacks: params.strokeFallbacks,
-      translateX: params.translateX,
-      translateY: params.translateY,
-      xScale: params.xScale,
-      yScale: params.yScale,
+      xMap: params.xMap,
+      yMap: params.yMap,
     });
     if (gd) {defs.push(gd);}
   }

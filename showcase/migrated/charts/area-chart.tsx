@@ -1,8 +1,9 @@
 // Bklit AreaChart on TanStack Charts. Two marks per series (areaFill + lineY); hover dim 0.6.
-import { useCallback, useLayoutEffect, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
+import type { ScaleTime } from "d3-scale";
 import type { ChartRendererRenderContext } from "@tanstack/charts";
-import { useEffectEvent } from "./internal/use-effect-event";
+import { useRegistryEntriesState } from "./internal/chart-host";
 import { ChartSelectionContext } from "./internal/chart-selection";
 import {
   DEFAULT_ANIMATION_DURATION_MS,
@@ -82,6 +83,9 @@ const AreaChart = ({
   ariaLabel,
   ariaDescription,
 }: Readonly<AreaChartProps>): ReactElement => {
+  // Registry union (V1.3 carriers): entries report up from inside the host.
+  const [registryEntries, handleRegistryEntries] = useRegistryEntriesState();
+  const xScaleD3Ref = useRef<ScaleTime<number, number> | null>(null);
   const setup = useAreaChartSetup({
     animationDuration,
     animationEasing,
@@ -91,6 +95,7 @@ const AreaChart = ({
     enterTransition,
     marginProp,
     onPhaseChange,
+    registryEntries,
     revealSignature,
     status,
     tweenYDomainOnXDomainChange,
@@ -126,14 +131,14 @@ const AreaChart = ({
   });
   const isLoading = status === "loading";
   const overlays = useAreaOverlays({
+    chartPhase: setup.chartPhase,
     crosshairGradientId: series.crosshairGradientId,
     heightPx: setup.heightPx,
-    isLoading,
-    margin: setup.margin,
     projectionConfigs: setup.projectionConfigs,
     projectionEndMarkers: setup.projectionEndMarkers,
     projectionGradientBaseId: setup.projectionGradientBaseId,
     projectionLines: setup.projectionLines,
+    projectionPhasePortRef: setup.projectionPhasePortRef,
     renderData: series.renderData,
     resolvedAreas: series.resolvedAreas,
     terminalMarkers: setup.terminalMarkers,
@@ -182,10 +187,11 @@ const AreaChart = ({
     xAxis: setup.xAxis,
     xDataKey,
     xDomain,
+    xScaleD3Ref,
     yAxis: setup.yAxis,
     yDomainChanged: yDomain.yDomainChanged,
     yDomainFinal: yDomain.yDomainFinal,
-  }), [series.renderData, xDataKey, yDomain.xAccessorForBrush, series.resolvedAreas, series.resolvedPatternAreas, series.patternIdByKey, fills.gradientIdBySeries, setup.grid, setup.width, yDomain.yDomainFinal, yDomain.yDomainChanged, yDomain.projectorFor, setup.margin, isLoading, setup.chartPhase, setup.isLoaded, setup.projectionConfigs, setup.projectionLines, setup.projectionGradientBaseId, setup.heightPx, fills.timeExtent, fills.timeExtentRaw, setup.effectiveYDomainTweenDuration, series.areaMarkerConfigs, series.areaMarkerGradientIdByKey, fills.nativeAreaGradients, setup.legendHoveredIndex, setup.areas, setup.tooltip, setup.tooltipEnabled, series.crosshairGradientId, series.isDiscrete, series.hoveredIndex, setup.xAxis, setup.yAxis, yDomain.visibleData, xDomain, series.labelFade, brush.brushControls]);
+  }), [series.renderData, xDataKey, yDomain.xAccessorForBrush, series.resolvedAreas, series.resolvedPatternAreas, series.patternIdByKey, fills.gradientIdBySeries, setup.grid, setup.width, yDomain.yDomainFinal, yDomain.yDomainChanged, yDomain.projectorFor, setup.margin, isLoading, setup.chartPhase, setup.isLoaded, setup.projectionConfigs, setup.projectionLines, setup.projectionGradientBaseId, setup.heightPx, fills.timeExtent, fills.timeExtentRaw, setup.effectiveYDomainTweenDuration, series.areaMarkerConfigs, series.areaMarkerGradientIdByKey, fills.nativeAreaGradients, setup.legendHoveredIndex, setup.areas, setup.tooltip, setup.tooltipEnabled, series.crosshairGradientId, series.isDiscrete, series.hoveredIndex, setup.xAxis, setup.yAxis, yDomain.visibleData, xDomain, series.labelFade, brush.brushControls, xScaleD3Ref]);
   const focus = useAreaFocus({
     chartPhase: setup.chartPhase,
     interactionRef: setup.interactionRef,
@@ -214,15 +220,6 @@ const AreaChart = ({
     revealEpoch: setup.revealEpoch,
   });
 
-  const overlayRenderedArea = (overlays.areaTerminalAnchors.length > 0 || overlays.areaEndAnchors.length > 0) && setup.width > 0 && setup.heightPx > 0;
-  const pushPhaseToProjectionPort = useEffectEvent((): void => {
-    setup.projectionPhasePortRef.current?.setPhase(setup.chartPhase);
-  });
-  useLayoutEffect(() => {
-    if (!overlayRenderedArea) {return;}
-    pushPhaseToProjectionPort();
-  }, [overlayRenderedArea]);
-
   // Host-owned sizing: the host adopts the measured width through this render callback.
   const { handleRender: revealHandleRender } = reveal;
   const { adoptWidth: adoptAreaWidth } = setup;
@@ -241,17 +238,12 @@ const AreaChart = ({
     onDragEnd: focus.handleSelectionDragEnd,
     onDragStart: focus.handleSelectionDragStart,
     sceneRef: setup.sceneRef,
-    timeExtent: fills.timeExtent,
     xDataKey,
   });
   const layerProps = useAreaLayerProps({
-    areaXScaleD3Ref: selection.areaXScaleD3Ref,
     aspectRatio,
-    brushRangeValue: brush.brushRangeValue,
-    brushTrackExtent: brush.brushTrackExtent,
     chartPhase: setup.chartPhase,
     clearFocusChrome: focus.clearFocusChrome,
-    containerRef: setup.containerRef,
     heightPx: setup.heightPx,
     isLoaded: setup.isLoaded,
     margin: setup.margin,
@@ -263,8 +255,6 @@ const AreaChart = ({
     xDomain,
     yDomainFinal: yDomain.yDomainFinal,
   });
-  const brushInnerWidth = setup.innerWidth;
-  const brushInnerHeight = Math.max(0, setup.heightPx - setup.margin.top - setup.margin.bottom);
 
   return (
     <ChartSelectionContext.Provider value={selection.chartSelection}>
@@ -278,15 +268,6 @@ const AreaChart = ({
       data-bkm-fade-edges-left={overlays.fadeEdgesMask["data-bkm-fade-edges-left"]}
       data-bkm-fade-edges-right={overlays.fadeEdgesMask["data-bkm-fade-edges-right"]}
     >
-      <AreaChartBackdrop
-        background={setup.background}
-        innerWidth={setup.innerWidth}
-        innerHeight={brushInnerHeight}
-        isLoaded={setup.isLoaded}
-        isLoading={isLoading}
-        loadingLabel={loadingLabel}
-        margin={setup.margin}
-      />
       <AreaChartBody
         areaChartRenderer={layerProps.areaChartRenderer}
         ariaDescription={ariaDescription}
@@ -299,50 +280,55 @@ const AreaChart = ({
         heightPx={setup.heightPx}
         renderTooltipBody={focus.renderTooltipBody}
         tooltipEnabled={setup.tooltipEnabled}
-      />
-      <AreaChartOverlays
-        animationDuration={animationDuration}
-        areaEndAnchors={overlays.areaEndAnchors}
-        areaTerminalAnchors={overlays.areaTerminalAnchors}
-        chartMarkers={setup.chartMarkers}
-        chartSelection={selection.chartSelection}
-        containerRef={setup.containerRef}
-        datePillOverlayHostRef={focus.datePillOverlayHostRef}
-        definition={definition}
-        onMarkerHoverChange={layerProps.handleMarkerHoverChange}
-        heightPx={setup.heightPx}
-        innerHeight={brushInnerHeight}
-        innerWidth={setup.innerWidth}
-        innerWidthArea={setup.innerWidth}
-        margin={setup.margin}
-        markerActiveStore={focus.markerActiveStore}
-        projectionPhasePortRef={setup.projectionPhasePortRef}
-        refAreaChildren={selection.refAreaChildren}
-        referenceAreaGeom={layerProps.referenceAreaGeom}
-        renderData={series.renderData}
-        resolvedAreas={series.resolvedAreas}
-        resolveAreaX={layerProps.resolveAreaX}
-        segmentComponents={selection.segmentComponents}
-        tooltipEnabled={setup.tooltipEnabled}
-        width={setup.width}
-        xDataKey={xDataKey}
-      />
-      <AreaChartDefSvgs
-        areaBrushClipId={layerProps.areaBrushClipId}
-        areaMarkerGradientDefs={series.areaMarkerGradientDefs}
-        brushConfig={brush.brushConfig}
-        brushHost={layerProps.brushHost}
-        brushPixelExtent={layerProps.brushPixelExtent}
-        crosshairGradientDef={overlays.crosshairGradientDef}
-        hasBrush={brush.hasBrush}
-        innerHeightForBrush={brushInnerHeight}
-        innerWidthForBrush={brushInnerWidth}
-        margin={setup.margin}
-        needsAreaBrushClip={layerProps.needsAreaBrushClip}
-        patternDefs={series.patternDefs}
-        plotHeight={brushInnerHeight}
-        projectionGradientDefsArea={overlays.projectionGradientDefsArea}
-      />
+        handleRegistryEntries={handleRegistryEntries}
+        hostChildren={
+          <>
+            <AreaChartBackdrop
+              background={setup.background}
+              isLoaded={setup.isLoaded}
+              isLoading={isLoading}
+              loadingLabel={loadingLabel}
+            />
+            <AreaChartOverlays
+              animationDuration={animationDuration}
+              chartMarkers={setup.chartMarkers}
+              chartSelection={selection.chartSelection}
+              containerRef={setup.containerRef}
+              datePillOverlayHostRef={focus.datePillOverlayHostRef}
+              definition={definition}
+              onMarkerHoverChange={layerProps.handleMarkerHoverChange}
+              heightPx={setup.heightPx}
+              markerActiveStore={focus.markerActiveStore}
+              projectionChromeProps={overlays.projectionChromeProps}
+              projectionPhasePortRef={setup.projectionPhasePortRef}
+              refAreaChildren={selection.refAreaChildren}
+              referenceAreaGeom={layerProps.referenceAreaGeom}
+              renderData={series.renderData}
+              resolvedAreas={series.resolvedAreas}
+              segmentComponents={selection.segmentComponents}
+              tooltipEnabled={setup.tooltipEnabled}
+              width={setup.width}
+              xDataKey={xDataKey}
+              xScaleD3Ref={xScaleD3Ref}
+            />
+            <AreaChartDefSvgs
+              areaBrushClipId={layerProps.areaBrushClipId}
+              areaMarkerGradientDefs={series.areaMarkerGradientDefs}
+              brushConfig={brush.brushConfig}
+              brushRangeValue={brush.brushRangeValue}
+              brushTrackExtent={brush.brushTrackExtent}
+              containerRef={setup.containerRef}
+              crosshairGradientDef={overlays.crosshairGradientDef}
+              hasBrush={brush.hasBrush}
+              margin={setup.margin}
+              needsAreaBrushClip={layerProps.needsAreaBrushClip}
+              patternDefs={series.patternDefs}
+            />
+          </>
+        }
+      >
+        {children}
+      </AreaChartBody>
     </div>
     </ChartSelectionContext.Provider>
   );

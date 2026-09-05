@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from "react";
 import { roleOf } from "./children-extract";
 import { ChildPropGuards } from "./chart-child-carrier";
 import type { AnyChildProps } from "./chart-child-carrier";
+import { shallowEqualChildProps } from "./chart-child-registry";
 import type { ChartChildRegistration } from "./chart-child-registry";
 import { DEFAULT_AREA_STROKE_WIDTH, DEFAULT_COLOR, DEFAULT_LINE_STROKE_WIDTH, NOTHING } from "./composed-series";
 import type { ComposedSeriesEntry } from "./composed-model";
@@ -158,8 +159,15 @@ const registerBarAreaChild = (child: Readonly<ReactElement>, sink: ComposedChild
   return false;
 };
 
-const visitComposedChild = (child: Readonly<ReactElement>, sink: ComposedChildSink, seen: Set<unknown>): void => {
+// Scanned element identity for registry dedup (V1.2 regression fix).
+interface ScannedComposedChild {
+  readonly role: string | undefined;
+  readonly props: unknown;
+}
+
+const visitComposedChild = (child: Readonly<ReactElement>, sink: ComposedChildSink, seen: Set<unknown>, scanned: ScannedComposedChild[]): void => {
   seen.add(child.props);
+  scanned.push({ props: child.props, role: roleOf(child.type) });
   if (registerBarAreaChild(child, sink)) {return;}
   const role = roleOf(child.type);
   /*
@@ -173,13 +181,13 @@ const visitComposedChild = (child: Readonly<ReactElement>, sink: ComposedChildSi
 };
 
 // Flatten nested child arrays without React.Children; unused key assignment.
-const visitComposedChildren = (node: ReactNode, sink: ComposedChildSink, seen: Set<unknown>): void => {
+const visitComposedChildren = (node: ReactNode, sink: ComposedChildSink, seen: Set<unknown>, scanned: ScannedComposedChild[]): void => {
   for (const child of [node].flat(Infinity)) {
     if (isValidElement(child)) {
       // Fragment props are `{ children?: ReactNode }` by React's own contract; pinning the
       // Generic recovers the type without asserting.
-      if (child.type === Fragment && isValidElement<{ children?: ReactNode }>(child)) {visitComposedChildren(child.props.children, sink, seen);}
-      else {visitComposedChild(child, sink, seen);}
+      if (child.type === Fragment && isValidElement<{ children?: ReactNode }>(child)) {visitComposedChildren(child.props.children, sink, seen, scanned);}
+      else {visitComposedChild(child, sink, seen, scanned);}
     }
   }
 };
@@ -264,9 +272,12 @@ const extractComposed = (
     xAxis: NOTHING,
   };
   const seen = new Set<unknown>();
-  visitComposedChildren(children, sink, seen);
+  const scanned: ScannedComposedChild[] = [];
+  visitComposedChildren(children, sink, seen, scanned);
   for (const entry of registryEntries) {
-    pushComposedRegistry(entry.role, entry.props, sink, seen);
+    if (!seen.has(entry.props) && !scanned.some((sibling) => sibling.role === entry.role && shallowEqualChildProps(sibling.props, entry.props))) {
+      pushComposedRegistry(entry.role, entry.props, sink, seen);
+    }
   }
   return {
     areaConfigs: sink.areaConfigs,

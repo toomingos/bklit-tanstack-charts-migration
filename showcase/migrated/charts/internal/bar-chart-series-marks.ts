@@ -222,12 +222,8 @@ const buildGroupedBarMark = ({
 interface TrimmedBarMarkParams {
   readonly series: ResolvedSeries;
   readonly renderData: readonly Readonly<ChartDatum>[];
-  readonly width: number;
-  readonly margin: ChartMargin;
-  readonly bandWidth: number;
   readonly groupBandwidth: number;
   readonly groupScale: ScaleBand<string>;
-  readonly categoryScaleForOverlay: ScaleBand<string>;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly projectValue: (dataKey: string, value: number) => number;
   readonly legendHoveredKey: string | undefined;
@@ -236,37 +232,25 @@ interface TrimmedBarMarkParams {
 const buildTrimmedBarMark = ({
   series,
   renderData,
-  width,
-  margin,
-  bandWidth,
   groupBandwidth,
   groupScale,
-  categoryScaleForOverlay,
   categoryAccessor,
   projectValue,
   legendHoveredKey,
-}: Readonly<TrimmedBarMarkParams>): ChartMark<ChartDatum, string, number> => {
-  const innerWidth = Math.max(0, width - margin.left - margin.right);
-  return barTrimmedMark(renderData, {
-    bandScale: categoryScaleForOverlay,
-    bandWidth,
+}: Readonly<TrimmedBarMarkParams>): ChartMark<ChartDatum, string, number> =>
+  barTrimmedMark(renderData, {
     categoryAccessor,
-    centerX: margin.left + innerWidth / 2,
-    chartX: margin.left,
     data: renderData,
     fill: series.fill,
     groupBandwidth,
     groupScale,
     id: series.dataKey,
-    innerWidth,
-    maxDepth: 0,
     // Bklit parity: perspective bars force cornerRadius 0 (flat-top lid meets face gap-free).
     opacity: barLegendDimOpacity(legendHoveredKey, series.dataKey, series.fadedOpacity),
     radius: 0,
     states: barRowDimStates(series.fadedOpacity, BAR_DIM_TRANSITION),
     yAccessor: (datum: Readonly<ChartDatum>) => projectValue(series.dataKey, numericBarCell(datum, series.dataKey)),
   });
-};
 
 interface BarPlainMarksParams {
   readonly resolvedSeries: readonly ResolvedSeries[];
@@ -301,8 +285,6 @@ const buildBarPlainMarks = ({
 interface BarTrackMarksParams {
   readonly tracks: readonly ResolvedBarColumnTrack[];
   readonly allSeriesKeys: readonly string[];
-  readonly bandWidth: number;
-  readonly categoryScaleForOverlay: ScaleBand<string>;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly projectValue: (dataKey: string, value: number) => number;
   readonly renderData: readonly Readonly<ChartDatum>[];
@@ -313,15 +295,12 @@ interface BarTrackMarksParams {
 const buildBarTrackMarks = ({
   tracks,
   allSeriesKeys,
-  bandWidth,
-  categoryScaleForOverlay,
   categoryAccessor,
   projectValue,
   renderData,
   seriesCount,
 }: Readonly<BarTrackMarksParams>): ChartMark<ChartDatum, string, number>[] => {
   const marks: ChartMark<ChartDatum, string, number>[] = [];
-  const bandPos = (label: string): number => categoryScaleForOverlay(label) ?? 0;
   for (let trackIndex = 0; trackIndex < tracks.length; trackIndex += 1) {
     const track = tracks[trackIndex];
     for (let seriesIndex = 0; seriesIndex < allSeriesKeys.length; seriesIndex += 1) {
@@ -329,8 +308,6 @@ const buildBarTrackMarks = ({
       const trackId = `bar-column-track-${trackIndex}-${seriesIndex}`;
       marks.push(
         barColumnTrackMark(renderData, {
-          bandPos,
-          bandWidth,
           categoryAccessor,
           data: renderData,
           fill: track.fill,
@@ -356,8 +333,6 @@ interface BarSquareMarksParams {
   readonly allSeriesKeys: readonly string[];
   readonly squaresDefsByKey: ReadonlyMap<string, ResolvedSquareDef>;
   readonly squaresBaseId: string;
-  readonly bandWidth: number;
-  readonly categoryScaleForOverlay: ScaleBand<string>;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly projectValue: (dataKey: string, value: number) => number;
   readonly renderData: readonly Readonly<ChartDatum>[];
@@ -370,8 +345,6 @@ const buildBarSquareMarks = ({
   allSeriesKeys,
   squaresDefsByKey,
   squaresBaseId,
-  bandWidth,
-  categoryScaleForOverlay,
   categoryAccessor,
   projectValue,
   renderData,
@@ -379,7 +352,6 @@ const buildBarSquareMarks = ({
   legendHoveredKey,
 }: Readonly<BarSquareMarksParams>): ChartMark<ChartDatum, string, number>[] => {
   const marks: ChartMark<ChartDatum, string, number>[] = [];
-  const bandPos = (label: string): number => categoryScaleForOverlay(label) ?? 0;
   for (let squaresIndex = 0; squaresIndex < squares.length; squaresIndex += 1) {
     const square = squares[squaresIndex];
     const seriesIndex = allSeriesKeys.indexOf(square.dataKey);
@@ -388,8 +360,6 @@ const buildBarSquareMarks = ({
     const patternId = def?.patternId ?? `${squaresBaseId}-bar-squares-pattern-${squaresIndex}`;
     marks.push(
       barSquaresMark(renderData, {
-        bandPos,
-        bandWidth,
         categoryAccessor,
         data: renderData,
         fill: def ? def.fill : square.fill,
@@ -417,8 +387,6 @@ const buildBarSquareMarks = ({
 interface BarDepthBackMarksParams {
   readonly backs: readonly Readonly<BarDepthBackConfig>[];
   readonly resolvedSeries: readonly ResolvedSeries[];
-  readonly bandWidth: number;
-  readonly categoryScaleForOverlay: ScaleBand<string>;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly projectValue: (dataKey: string, value: number) => number;
   readonly renderData: readonly Readonly<ChartDatum>[];
@@ -429,8 +397,6 @@ interface BarDepthBackMarksParams {
 const buildBarDepthBackMarks = ({
   backs,
   resolvedSeries,
-  bandWidth,
-  categoryScaleForOverlay,
   categoryAccessor,
   projectValue,
   renderData,
@@ -438,16 +404,12 @@ const buildBarDepthBackMarks = ({
   depthLegendOpacity,
 }: Readonly<BarDepthBackMarksParams>): ChartMark<ChartDatum, string, number>[] => {
   const marks: ChartMark<ChartDatum, string, number>[] = [];
-  const bandPos = (label: string): number => categoryScaleForOverlay(label) ?? 0;
   const seriesByDataKey = new Map(resolvedSeries.map((series) => [series.dataKey, series] as const));
   for (const back of backs) {
     const series = seriesByDataKey.get(back.dataKey);
     if (series) {
       marks.push(
         barDepthBackMark(renderData, {
-          bandPos,
-          bandScale: categoryScaleForOverlay,
-          bandWidth,
           categoryAccessor,
           data: renderData,
           fill: back.color ?? series.fill,
@@ -467,12 +429,8 @@ interface BarSeriesMarksParams {
   readonly resolvedSeries: readonly ResolvedSeries[];
   readonly squaresKeys: ReadonlySet<string>;
   readonly depthKeys: ReadonlySet<string>;
-  readonly width: number;
-  readonly margin: ChartMargin;
-  readonly bandWidth: number;
   readonly groupBandwidth: number;
   readonly groupScale: ScaleBand<string>;
-  readonly categoryScaleForOverlay: ScaleBand<string>;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly projectValue: (dataKey: string, value: number) => number;
   readonly renderData: readonly Readonly<ChartDatum>[];
@@ -484,12 +442,8 @@ const buildBarSeriesMarks = ({
   resolvedSeries,
   squaresKeys,
   depthKeys,
-  width,
-  margin,
-  bandWidth,
   groupBandwidth,
   groupScale,
-  categoryScaleForOverlay,
   categoryAccessor,
   projectValue,
   renderData,
@@ -503,7 +457,7 @@ const buildBarSeriesMarks = ({
       // Squares-owned series render through the squares mark above; skipped here.
     } else if (needsTrim(series.dataKey)) {
       marks.push(
-        buildTrimmedBarMark({ bandWidth, categoryAccessor, categoryScaleForOverlay, groupBandwidth, groupScale, legendHoveredKey, margin, projectValue, renderData, series, width }),
+        buildTrimmedBarMark({ categoryAccessor, groupBandwidth, groupScale, legendHoveredKey, projectValue, renderData, series }),
       );
     } else {
       marks.push(
@@ -517,8 +471,6 @@ const buildBarSeriesMarks = ({
 interface BarDepthFrontMarksParams {
   readonly fronts: readonly Readonly<BarDepthFrontConfig>[];
   readonly pulses: readonly Readonly<BarPulseConfig>[];
-  readonly bandWidth: number;
-  readonly categoryScaleForOverlay: ScaleBand<string>;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly projectValue: (dataKey: string, value: number) => number;
   readonly renderData: readonly Readonly<ChartDatum>[];
@@ -530,8 +482,6 @@ interface BarDepthFrontMarksParams {
 const buildBarDepthFrontMarks = ({
   fronts,
   pulses,
-  bandWidth,
-  categoryScaleForOverlay,
   categoryAccessor,
   projectValue,
   renderData,
@@ -540,13 +490,9 @@ const buildBarDepthFrontMarks = ({
   pulseWaveGradientId,
 }: Readonly<BarDepthFrontMarksParams>): ChartMark<ChartDatum, string, number>[] => {
   const marks: ChartMark<ChartDatum, string, number>[] = [];
-  const bandPos = (label: string): number => categoryScaleForOverlay(label) ?? 0;
   for (const front of fronts) {
     marks.push(
       barDepthFrontMark(renderData, {
-        bandPos,
-        bandScale: categoryScaleForOverlay,
-        bandWidth,
         categoryAccessor,
         data: renderData,
         gradientIds: depthGradientIds,
@@ -560,9 +506,6 @@ const buildBarDepthFrontMarks = ({
   for (const pulse of pulses) {
     const pulseMark = barPulseMark(renderData, {
       activeIndex: pulse.activeIndex,
-      bandPos,
-      bandScale: categoryScaleForOverlay,
-      bandWidth,
       categoryAccessor,
       data: renderData,
       gradientId: pulseWaveGradientId,
@@ -603,8 +546,6 @@ const buildBarUnderlayMarks = ({
   hasDepth,
   tracks,
   allSeriesKeys,
-  bandWidth,
-  categoryScaleForOverlay,
   categoryAccessor,
   projectValue,
   renderData,
@@ -620,13 +561,13 @@ const buildBarUnderlayMarks = ({
 }: Readonly<BarUnderlayMarksParams>): ChartMark<ChartDatum, string, number>[] => {
   const marks: ChartMark<ChartDatum, string, number>[] = [];
   if (hasTrack) {
-    marks.push(...buildBarTrackMarks({ allSeriesKeys, bandWidth, categoryAccessor, categoryScaleForOverlay, projectValue, renderData, seriesCount, tracks }));
+    marks.push(...buildBarTrackMarks({ allSeriesKeys, categoryAccessor, projectValue, renderData, seriesCount, tracks }));
   }
   if (hasSquares) {
-    marks.push(...buildBarSquareMarks({ allSeriesKeys, bandWidth, categoryAccessor, categoryScaleForOverlay, legendHoveredKey, projectValue, renderData, seriesCount, squares, squaresBaseId, squaresDefsByKey }));
+    marks.push(...buildBarSquareMarks({ allSeriesKeys, categoryAccessor, legendHoveredKey, projectValue, renderData, seriesCount, squares, squaresBaseId, squaresDefsByKey }));
   }
   if (hasDepth) {
-    marks.push(...buildBarDepthBackMarks({ backs, bandWidth, categoryAccessor, categoryScaleForOverlay, depthGradientIds, depthLegendOpacity, projectValue, renderData, resolvedSeries }));
+    marks.push(...buildBarDepthBackMarks({ backs, categoryAccessor, depthGradientIds, depthLegendOpacity, projectValue, renderData, resolvedSeries }));
   }
   return marks;
 };
@@ -699,11 +640,9 @@ interface BarFullMarksParams {
   readonly hasTrack: boolean;
   readonly hasDepth: boolean;
   readonly totalSeriesCount: number;
-  readonly bandWidth: number;
   readonly width: number;
   readonly groupBandwidth: number;
   readonly groupScale: ScaleBand<string>;
-  readonly categoryScaleForOverlay: ScaleBand<string>;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly projectValue: (dataKey: string, value: number) => number;
   readonly renderData: readonly Readonly<ChartDatum>[];
@@ -726,9 +665,7 @@ const buildFullBarMarks = (params: Readonly<BarFullMarksParams>): ChartMark<Char
   const marks = buildBarUnderlayMarks({
     allSeriesKeys: params.allSeriesKeys,
     backs: params.barDepthBacksRaw,
-    bandWidth: params.bandWidth,
     categoryAccessor: params.categoryAccessor,
-    categoryScaleForOverlay: params.categoryScaleForOverlay,
     depthGradientIds: params.depthGradientIds,
     depthLegendOpacity: params.depthLegendOpacity,
     hasDepth: params.hasDepth,
@@ -746,9 +683,9 @@ const buildFullBarMarks = (params: Readonly<BarFullMarksParams>): ChartMark<Char
   });
   const squaresKeys = new Set(params.resolvedBarSquares.map((square) => square.dataKey));
   const depthKeys = params.hasDepth ? new Set([...params.barDepthBacksRaw.map((back) => back.dataKey), ...params.barDepthFrontsRaw.map((front) => front.dataKey)]) : new Set<string>();
-  marks.push(...buildBarSeriesMarks({ bandWidth: params.bandWidth, barEnterMotion: params.barEnterMotion, categoryAccessor: params.categoryAccessor, categoryScaleForOverlay: params.categoryScaleForOverlay, depthKeys, groupBandwidth: params.groupBandwidth, groupScale: params.groupScale, legendHoveredKey: params.legendHoveredKey, margin: params.margin, projectValue: params.projectValue, renderData: params.renderData, resolvedSeries: params.resolvedSeries, squaresKeys, width: params.width }));
+  marks.push(...buildBarSeriesMarks({ barEnterMotion: params.barEnterMotion, categoryAccessor: params.categoryAccessor, depthKeys, groupBandwidth: params.groupBandwidth, groupScale: params.groupScale, legendHoveredKey: params.legendHoveredKey, projectValue: params.projectValue, renderData: params.renderData, resolvedSeries: params.resolvedSeries, squaresKeys }));
   if (params.hasDepth) {
-    marks.push(...buildBarDepthFrontMarks({ bandWidth: params.bandWidth, categoryAccessor: params.categoryAccessor, categoryScaleForOverlay: params.categoryScaleForOverlay, depthGradientIds: params.depthGradientIds, depthLegendOpacity: params.depthLegendOpacity, fronts: params.barDepthFrontsRaw, projectValue: params.projectValue, pulseWaveGradientId: params.pulseWaveGradientId, pulses: params.barPulsesRaw, renderData: params.renderData }));
+    marks.push(...buildBarDepthFrontMarks({ categoryAccessor: params.categoryAccessor, depthGradientIds: params.depthGradientIds, depthLegendOpacity: params.depthLegendOpacity, fronts: params.barDepthFrontsRaw, projectValue: params.projectValue, pulseWaveGradientId: params.pulseWaveGradientId, pulses: params.barPulsesRaw, renderData: params.renderData }));
   }
   marks.push(...params.hoverMarks);
   return marks;

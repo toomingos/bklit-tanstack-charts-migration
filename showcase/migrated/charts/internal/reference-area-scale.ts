@@ -1,12 +1,11 @@
 import { useMemo } from "react";
-import { scaleLinear, scaleUtc } from "d3-scale";
-import type { ScaleLinear } from "d3-scale";
 import { applyReferenceAreaOverflow, computeReferenceAreaRect } from "./reference-area-geometry";
 import type { ReferenceAreaIfOverflow, ReferenceAreaRect } from "./reference-area-geometry";
-import type { ChartMargin } from "./use-chart-margin";
 import { domainForAxis } from "./y-domain";
 import { normalizeYAxisId } from "./y-axis-id";
 import { useSanitizedId } from "./use-sanitized-id";
+import { useChartStable } from "./chart-context";
+import type { ResolvedBandBinding } from "./chart-host-store";
 
 type XScaleMapper = (value: Date) => number;
 
@@ -49,77 +48,10 @@ const resolveBarXValue = (options: Readonly<ResolveBarXOptions>): number => {
   return position === undefined ? fallback : position + band.bandwidth() / 2;
 }
 
-const buildBarDateMapper = (band: BarScale): XScaleMapper => (date: Date): number =>
+const buildBarDateMapper = (band: ResolvedBandBinding): XScaleMapper => (date: Date): number =>
   resolveBarXValue({ band, fallback: 0, value: date });
 
-interface InsetTimeMapperOptions {
-  readonly t0: number;
-  readonly t1: number;
-  readonly innerWidth: number;
-  readonly xRangePadding: number;
-}
-
-const buildInsetTimeMapper = (options: Readonly<InsetTimeMapperOptions>): XScaleMapper => {
-  const { t0, t1, innerWidth, xRangePadding } = options;
-  const insetLo = xRangePadding;
-  const insetHi = innerWidth - xRangePadding;
-  const insetScale = scaleUtc().domain([t0, t1]).range([insetLo, insetHi]);
-  return (date: Date): number => insetScale(date);
-}
-
-interface TimeDomainMapperOptions {
-  readonly t0: number;
-  readonly t1: number;
-  readonly innerWidth: number;
-  readonly xRangePadding: number | undefined;
-  readonly isCandlestickXScale: boolean | undefined;
-}
-
-const buildTimeDomainMapper = (options: Readonly<TimeDomainMapperOptions>): XScaleMapper => {
-  const { t0, t1, innerWidth, xRangePadding, isCandlestickXScale } = options;
-  if (xRangePadding !== undefined && xRangePadding > 0) {return buildInsetTimeMapper({ innerWidth, t0, t1, xRangePadding });}
-  if (isCandlestickXScale === true) {
-    const candleScale = scaleUtc().domain([t0, t1]).range([0, innerWidth]);
-    return (date: Date): number => candleScale(date);
-  }
-  const timeScale = scaleUtc().domain([t0, t1]).range([0, innerWidth]);
-  return (date: Date): number => timeScale(date);
-}
-
-interface BuildXScaleOptions {
-  readonly isBarChart: boolean | undefined;
-  readonly barScale: BarScale | null | undefined;
-  readonly xDomain: readonly [number, number] | readonly [Date, Date] | undefined;
-  readonly isTimeScale: boolean | undefined;
-  readonly isCandlestickXScale: boolean | undefined;
-  readonly innerWidth: number;
-  readonly xRangePadding: number | undefined;
-}
-
-interface XDomainMapperOptions {
-  readonly xDomain: readonly [number, number] | readonly [Date, Date];
-  readonly isTimeScale: boolean | undefined;
-  readonly isCandlestickXScale: boolean | undefined;
-  readonly innerWidth: number;
-  readonly xRangePadding: number | undefined;
-}
-
-const buildXDomainMapper = (options: Readonly<XDomainMapperOptions>): XScaleMapper => {
-  const { xDomain, isTimeScale, isCandlestickXScale, innerWidth, xRangePadding } = options;
-  const [d0, d1] = xDomain;
-  const t0 = d0 instanceof Date ? d0.getTime() : d0;
-  const t1 = d1 instanceof Date ? d1.getTime() : d1;
-  if (isTimeScale === true || d0 instanceof Date) {return buildTimeDomainMapper({ innerWidth, isCandlestickXScale, t0, t1, xRangePadding });}
-  const linearScale = scaleLinear().domain([t0, t1]).range([0, innerWidth]);
-  return (date: Date): number => linearScale(date.getTime());
-}
-
-const buildXScaleMapper = (options: Readonly<BuildXScaleOptions>): XScaleMapper => {
-  const { isBarChart, barScale, xDomain, isTimeScale, isCandlestickXScale, innerWidth, xRangePadding } = options;
-  if (isBarChart === true && barScale !== null && barScale !== undefined) {return buildBarDateMapper(barScale);}
-  if (xDomain !== undefined) {return buildXDomainMapper({ innerWidth, isCandlestickXScale, isTimeScale, xDomain, xRangePadding });}
-  return (): number => 0;
-}
+// Host scale supplies the x range; the area only supplies its domain.
 
 interface BarBoundsOptions {
   readonly left: number;
@@ -197,18 +129,11 @@ const useReferenceAreaIds = (): ReferenceAreaIds => {
 }
 
 interface ReferenceAreaGeometryOptions {
-  readonly width: number;
-  readonly height: number;
-  readonly margin: ChartMargin;
   readonly yDomain: [number, number];
   readonly yDomainsByAxis?: Record<string, [number, number]>;
   readonly yAxisId?: string | number;
   readonly xDomain?: readonly [number, number] | [Date, Date];
-  readonly isTimeScale?: boolean;
-  readonly barScale?: BarScale | null;
   readonly isBarChart?: boolean;
-  readonly xRangePadding?: number;
-  readonly isCandlestickXScale?: boolean;
   readonly x1?: Date | number;
   readonly x2?: Date | number;
   readonly y1?: number;
@@ -219,9 +144,9 @@ interface ReferenceAreaGeometryOptions {
 interface ReferenceAreaSpatial {
   readonly innerWidth: number;
   readonly innerHeight: number;
-  readonly margin: ChartMargin;
+  readonly margin: { readonly bottom: number; readonly left: number; readonly right: number; readonly top: number };
   readonly xScale: XScaleMapper;
-  readonly yScale: ScaleLinear<number, number>;
+  readonly yScale: (value: number) => number;
   readonly rect: ReferenceAreaRect | undefined;
   readonly patternId: string;
   readonly hMaskId: string;
@@ -229,37 +154,49 @@ interface ReferenceAreaSpatial {
 }
 
 const useReferenceAreaGeometry = (options: Readonly<ReferenceAreaGeometryOptions>): ReferenceAreaSpatial => {
-  const { width, height, margin, yDomain, yDomainsByAxis, yAxisId, xDomain, isTimeScale, barScale, isBarChart, xRangePadding, isCandlestickXScale, x1, x2, y1, y2, ifOverflow } = options;
-  const innerWidth = Math.max(0, width - margin.left - margin.right);
-  const innerHeight = Math.max(0, height - margin.top - margin.bottom);
+  const { yDomain, yDomainsByAxis, yAxisId, xDomain, isBarChart, x1, x2, y1, y2, ifOverflow } = options;
+  // Plot bounds come from the host scene, never from margin props (V1.2/G6).
+  const { chart, margin, xBand, xScale: hostXScale, yScale: hostYScale } = useChartStable();
+  const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
+  const innerWidth = plot.width;
+  const innerHeight = plot.height;
   const ids = useReferenceAreaIds();
   const effectiveYDomain = useMemo<[number, number]>(
     // Areas place in their own yAxisId's scale, not the chart primary.
     () => (yDomainsByAxis ? domainForAxis(yDomainsByAxis, normalizeYAxisId(yAxisId)) : yDomain),
     [yDomainsByAxis, yAxisId, yDomain],
   );
-  const yScale = useMemo(
-    () => scaleLinear().domain(effectiveYDomain).range([innerHeight, 0]),
-    [effectiveYDomain, innerHeight],
+  // Package scales map to full-container pixels; the figure svg sits at the plot origin, so mappings shift to plot-local here.
+  const yScale = ((hostCopy) => (value: number): number => hostCopy(value) - plot.y)(
+    hostYScale.copy().domain(effectiveYDomain),
   );
-  const xScale = useMemo<XScaleMapper>(
-    () => buildXScaleMapper({ barScale, innerWidth, isBarChart, isCandlestickXScale, isTimeScale, xDomain, xRangePadding }),
-    [xDomain, isTimeScale, isBarChart, barScale, isCandlestickXScale, innerWidth, xRangePadding],
-  );
+  const xScale: XScaleMapper = (() => {
+    if (isBarChart === true && xBand !== undefined) {
+      return (date: Date): number => buildBarDateMapper(xBand)(date) - plot.x;
+    }
+    if (xDomain === undefined) {return (): number => 0;}
+    const [d0, d1] = xDomain;
+    const t0 = d0 instanceof Date ? d0.getTime() : d0;
+    const t1 = d1 instanceof Date ? d1.getTime() : d1;
+    const ranged = hostXScale.copy().domain([t0, t1]);
+    return (date: Date): number => ranged(date) - plot.x;
+  })();
   const rect = useMemo<ReferenceAreaRect | undefined>(() => {
     if (innerWidth <= 0 || innerHeight <= 0) {return undefined;}
-    if (isBarChart === true && barScale !== null && barScale !== undefined) {
-      const band = barScale;
-      const left = resolveBarXValue({ band, fallback: 0, value: x1 });
-      const right = resolveBarXValue({ band, fallback: innerWidth, value: x2 });
+    if (isBarChart === true) {
+      if (xBand === undefined) {return undefined;}
+      const leftRaw = resolveBarXValue({ band: xBand, fallback: Number.NaN, value: x1 });
+      const rightRaw = resolveBarXValue({ band: xBand, fallback: Number.NaN, value: x2 });
+      const left = Number.isFinite(leftRaw) ? leftRaw - plot.x : 0;
+      const right = Number.isFinite(rightRaw) ? rightRaw - plot.x : innerWidth;
       const topPx = isYValuePresent(y1) ? yScale(y1) : 0;
       const bottomPx = isYValuePresent(y2) ? yScale(y2) : innerHeight;
       return clipBarAreaRect({ bottomPx, ifOverflow: ifOverflow ?? "hidden", innerHeight, innerWidth, left, right, topPx });
     }
     return computeReferenceAreaRect({ ifOverflow, innerHeight, innerWidth, x1, x2, xScale, y1, y2, yScale }) ?? undefined;
-  }, [innerWidth, innerHeight, x1, x2, y1, y2, ifOverflow, xScale, yScale, isBarChart, barScale]);
+  }, [innerWidth, innerHeight, x1, x2, y1, y2, ifOverflow, xScale, yScale, isBarChart, xBand, plot.x]);
   return { hGradientId: ids.hGradientId, hMaskId: ids.hMaskId, innerHeight, innerWidth, margin, patternId: ids.patternId, rect, xScale, yScale };
 }
 
-export { applyReferenceAreaVisibility, buildXScaleMapper, clipBarAreaRect, isReferenceAreaVisiblePhase, isYValuePresent, resolveBarXValue, useReferenceAreaGeometry, useReferenceAreaIds };
+export { applyReferenceAreaVisibility, clipBarAreaRect, isReferenceAreaVisiblePhase, isYValuePresent, resolveBarXValue, useReferenceAreaGeometry, useReferenceAreaIds };
 export type { BarScale, ReferenceAreaGeometryOptions, ReferenceAreaSpatial, ReferenceAreaVisibility, XScaleMapper };

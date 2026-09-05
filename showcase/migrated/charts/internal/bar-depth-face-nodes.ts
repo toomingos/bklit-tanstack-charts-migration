@@ -112,17 +112,17 @@ interface BackBarFrame {
 }
 
 interface ResolveBackBarFrameParams {
-  readonly bandScale: Readonly<{ step?: () => number }> | undefined;
+  readonly bandStep: number;
   readonly bandWidth: number;
   readonly chartX: number;
   readonly chartWidth: number;
 }
 
 const resolveBackBarFrame = (params: Readonly<ResolveBackBarFrameParams>): BackBarFrame => {
-  const { bandScale, bandWidth, chartX, chartWidth } = params;
+  const { bandStep, bandWidth, chartX, chartWidth } = params;
   const innerWidth = chartWidth;
   const centerX = chartX + innerWidth / 2;
-  const step = bandScale?.step?.() ?? bandWidth;
+  const step = bandStep;
   const maxDepth = barDepthMaxDepth(step, bandWidth);
   return { centerX, innerWidth, maxDepth };
 }

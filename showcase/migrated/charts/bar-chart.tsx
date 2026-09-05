@@ -9,10 +9,8 @@ import {
   useState,
 } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { scaleBand } from "d3-scale";
-import type { ScaleBand } from "d3-scale";
 import type { ChartPoint, ChartRendererRenderContext } from "@tanstack/charts";
-import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
+import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, adoptHostWidth, useRegistryEntriesState } from "./internal/chart-host";
 import { extractChildren } from "./internal/children-extract";
 import { buildPill } from "./internal/date-pill";
 import type { PillBuild } from "./internal/date-pill";
@@ -118,6 +116,11 @@ const BarChart = ({
     phaseRef.current = phase;
     onPhaseChangeRef.current?.(phase);
   }, []);
+  // Registry union (V1.3 carriers): entries report up from inside the host.
+  const [registryEntries, handleRegistryEntries] = useRegistryEntriesState();
+  // Package-resolved band snapshot for the date-pill anchor (V1.2/G6); hover
+  // Cannot precede first paint, so the null fallback never paints.
+  const bandSnapshotRef = useRef<{ map: (label: string) => number | undefined; bandwidth: number } | null>(null);
 
   useEffect(() => {
     onPhaseChangeRef.current?.("revealing");
@@ -134,8 +137,8 @@ const BarChart = ({
   , []);
 
   const { bars, barSquares: barSquaresRaw, barColumnTracks: barColumnTracksRaw, barDepthBacks: barDepthBacksRaw, barDepthFronts: barDepthFrontsRaw, barPulses: barPulsesRaw, barDepthProvider, grid, barXAxis, background, tooltip } = useMemo(
-    () => extractChildren(children),
-    [children],
+    () => extractChildren(children, registryEntries),
+    [children, registryEntries],
   );
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const { captureRenderContext } = useFocusInjection<ChartDatum, string, number>();
@@ -167,9 +170,7 @@ const BarChart = ({
   const {
     bandWidth,
     categoryOrder,
-    categoryScaleForOverlay,
     dotSeriesList,
-    innerWidth,
     nicedDomainsByAxis,
     nicedPrimaryDomain,
     resolvedBarSquares,
@@ -180,7 +181,6 @@ const BarChart = ({
     allSeriesKeys: scales.allSeriesKeys,
     animationDuration,
     animationEasing,
-    bandWidth,
     barDepthBacksRaw,
     barDepthFrontsRaw,
     barDepthProvider,
@@ -189,13 +189,11 @@ const BarChart = ({
     barXAxis,
     categoryAccessor: scales.categoryAccessor,
     categoryOrder,
-    categoryScaleForOverlay,
     dotSeriesList,
     enterTransition,
     grid,
     groupBandwidth: scales.groupBandwidth,
     groupScale: scales.groupScale,
-    groupScaleForOverlay: scales.groupScaleForOverlay,
     hasBarColumnTrack: scales.hasBarColumnTrack,
     hasBarSquares: scales.hasBarSquares,
     legendHoveredIndex,
@@ -271,8 +269,9 @@ const BarChart = ({
       const categoryLabel = points[0].xValue;
       // Bklit indexes the hovered row (tooltipData.index); a label map is wrong with duplicate labels.
       const categoryIndex = points[0].datumIndex;
-      // Anchor from the band-scale clone, not mean point.x (asymmetric under group padding).
-      const anchorX = (categoryScaleForOverlay(categoryLabel) ?? 0) + bandWidth / 2;
+      // Anchor from the package-resolved band, not mean point.x (asymmetric under group padding).
+      const band = bandSnapshotRef.current;
+      const anchorX = band === null ? 0 : (band.map(categoryLabel) ?? 0) + band.bandwidth / 2;
       syncDatePillForCategory({
         anchorX,
         categoryIndex,
@@ -285,13 +284,13 @@ const BarChart = ({
       });
       pillVisibleRef.current = true;
 
-      setLabelFade((prev) =>
-        prev?.primaryX === anchorX && prev.hoveredLabel === categoryLabel
-          ? prev
-          : { hoveredLabel: categoryLabel, primaryX: anchorX },
-      );
+      setLabelFade((previous) => {
+        if (previous === undefined) {return { hoveredLabel: categoryLabel, primaryX: anchorX };}
+        if (previous.primaryX === anchorX && previous.hoveredLabel === categoryLabel) {return previous;}
+        return { hoveredLabel: categoryLabel, primaryX: anchorX };
+      });
     },
-    [categoryScaleForOverlay, bandWidth, renderData.length, tooltipEnabled, tooltip, setLabelFade],
+    [renderData.length, tooltipEnabled, tooltip, setLabelFade],
   );
 
   const renderTooltipBody = useBarTooltipBody({ categoryAccessor: scales.categoryAccessor, series: dotSeriesList, tooltip });
@@ -301,6 +300,19 @@ const BarChart = ({
   const handleRender = useCallback((context: Readonly<ChartRendererRenderContext<ChartDatum, string, number>>): void => {
     captureRenderContext(context);
     adoptHostWidth(setLiveWidth, context.scene.width);
+    // Snapshot the package-resolved band for the date-pill anchor (V1.2/G6).
+    const resolved = context.scene.scales.x;
+    if (resolved.bandwidth > 0) {
+      const snapshot = resolved;
+      bandSnapshotRef.current = {
+        bandwidth: snapshot.bandwidth,
+        map: (label: string): number | undefined => {
+          const center = snapshot.map(label);
+          // Package band map returns the band center; the anchor needs starts.
+          return Number.isFinite(center) ? center - snapshot.bandwidth / 2 : undefined;
+        },
+      };
+    }
     const surfaceElement = context.surface.element;
     if (!(surfaceElement instanceof SVGSVGElement)) {
       setPhase("ready");
@@ -339,26 +351,18 @@ const BarChart = ({
   }, [hasBarSquares, resolvedBarSquares, renderData.length, heightPxBar, margin.top, margin.bottom, totalSeriesCount, bandWidth, hasBarDepth, barDepthBacksRaw, barDepthFrontsRaw]);
   const barChartRenderer = useChartRenderer<ChartDatum, string, number>(motionPrimitiveEstimate);
 
-  const barScaleForRef = useMemo((): ScaleBand<string> | undefined => {
-    if (categoryOrder.length === 0) {return undefined;}
-    return scaleBand().domain(categoryOrder).range([0, Math.max(0, width - margin.left - margin.right)]).padding(barGap);
-  }, [categoryOrder, width, margin.left, margin.right, barGap]);
-
   const barRootStyle = useMemo((): CSSProperties => ({ aspectRatio, isolation: "isolate", position: "relative", width: "100%" }), [aspectRatio]);
 
+  // Reference-area geometry reads bounds from the host; only data domains travel by prop.
   const referenceAreaGeom = useMemo((): ReferenceAreaLayersGeom | undefined => {
-    if (heightPxBar <= 0 || barScaleForRef === undefined) { return undefined; }
+    if (heightPxBar <= 0 || categoryOrder.length === 0) { return undefined; }
     return {
-      barScale: barScaleForRef,
-      height: heightPxBar,
       isBarChart: true,
-      margin,
-      width,
       // Reference areas need the NICED domain the bars paint in, not raw yDomain.
       yDomain: nicedPrimaryDomain,
       yDomainsByAxis: nicedDomainsByAxis,
     };
-  }, [barScaleForRef, heightPxBar, margin, nicedDomainsByAxis, nicedPrimaryDomain, width]);
+  }, [heightPxBar, categoryOrder, nicedDomainsByAxis, nicedPrimaryDomain]);
 
   const tooltipBody = tooltipEnabled ? renderTooltipBody : undefined;
   const squaresGradientDefs = squaresDefs.map((def) => (
@@ -400,17 +404,7 @@ const BarChart = ({
       style={barRootStyle}
       data-bkm-chart="bar"
     >
-      {background && (
-        <BackgroundLayer
-          config={background}
-          innerWidth={innerWidth}
-          innerHeight={Math.max(0, heightPxBar - margin.top - margin.bottom)}
-          marginLeft={margin.left}
-          marginTop={margin.top}
-        />
-      )}
       {definition && (
-        <>
           <ChartHost
             ariaLabel={ariaLabel}
             ariaDescription={ariaDescription}
@@ -423,15 +417,22 @@ const BarChart = ({
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
             renderTooltipBody={tooltipBody}
-          />
-          {referenceAreaLayer}
-          {tooltipEnabled && (
-            <div
-              ref={overlayHostRef}
-              style={BAR_TOOLTIP_OVERLAY_STYLE}
-            />
-          )}
-        </>
+          >
+            {children}
+            <ChartRegistryBridge onEntries={handleRegistryEntries} />
+            {background && (
+              <BackgroundLayer
+                config={background}
+              />
+            )}
+            {referenceAreaLayer}
+            {tooltipEnabled && (
+              <div
+                ref={overlayHostRef}
+                style={BAR_TOOLTIP_OVERLAY_STYLE}
+              />
+            )}
+          </ChartHost>
       )}
       {(squaresDefs.length > 0 || crosshairFadeGradient) && (
         <svg width={0} height={0} style={BAR_HIDDEN_DEFS_STYLE} aria-hidden="true" focusable="false">

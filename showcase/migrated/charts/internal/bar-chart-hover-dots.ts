@@ -296,7 +296,6 @@ interface BarHoverDotMarkParams {
   readonly series: { readonly dataKey: string };
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly projectValueForKey: (raw: number) => number;
-  readonly bandStartForCategory: (category: string) => number;
   readonly groupOffsetX: number;
   readonly groupHalfWidth: number;
   readonly fill: string;
@@ -318,7 +317,6 @@ interface BarHoverDotInitParams {
   readonly series: { readonly dataKey: string };
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly projectValueForKey: (raw: number) => number;
-  readonly bandStartForCategory: (category: string) => number;
   readonly groupOffsetX: number;
   readonly groupHalfWidth: number;
   readonly fill: string;
@@ -335,7 +333,6 @@ const buildHoverDotInitialState = ({
   series,
   categoryAccessor,
   projectValueForKey,
-  bandStartForCategory,
   groupOffsetX,
   groupHalfWidth,
   fill,
@@ -356,9 +353,15 @@ const buildHoverDotInitialState = ({
     motion,
     render: ({ scales }: MarkRenderContext): MarkScene<ChartDatum, string, number> => {
       const mapY = (value: number): number => scales.y.map(value);
+      // Package band map returns centers; dots place from band starts (V1.2/G6).
+      const bandStartForCategory = (category: string): number => {
+        const center = scales.x.map(category);
+        const half = (scales.x.bandwidth || 0) / 2;
+        return Number.isFinite(center) ? center - half : 0;
+      };
       const scene = buildBarHoverDotScene({
         bandStartForCategory,
-        cornerRadius,
+              cornerRadius,
         fill,
         groupHalfWidth,
         groupOffsetX,
@@ -385,7 +388,6 @@ const createBarHoverDotMark = ({
   series,
   categoryAccessor,
   projectValueForKey,
-  bandStartForCategory,
   groupOffsetX,
   groupHalfWidth,
   fill,
@@ -399,8 +401,7 @@ const createBarHoverDotMark = ({
   return {
     initialize: () =>
       buildHoverDotInitialState({
-        bandStartForCategory,
-        categoryAccessor,
+              categoryAccessor,
         cornerRadius,
         fill,
         groupHalfWidth,

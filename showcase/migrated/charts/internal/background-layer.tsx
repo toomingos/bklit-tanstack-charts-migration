@@ -3,24 +3,23 @@ import { useMemo } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { Background } from "./background";
 import type { BackgroundConfig } from "./types";
+import { useChartStable } from "./chart-context";
 
 export interface BackgroundLayerProps {
   readonly config: Readonly<BackgroundConfig> | null;
-  readonly innerWidth: number;
-  readonly innerHeight: number;
-  readonly marginLeft: number;
-  readonly marginTop: number;
   readonly isLoaded?: boolean;
 }
 
 export const BackgroundLayer = ({
   config,
-  innerWidth,
-  innerHeight,
-  marginLeft,
-  marginTop,
   isLoaded = true,
 }: Readonly<BackgroundLayerProps>): ReactElement | undefined => {
+  // Plot bounds come from the host scene, never from margin props (V1.2/G6).
+  const { chart, margin } = useChartStable();
+  const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
+  const innerWidth = plot.width;
+  const innerHeight = plot.height;
+  const { left: marginLeft, top: marginTop } = margin;
   const layerStyle = useMemo((): CSSProperties => ({
     left: marginLeft,
     overflow: "visible",

@@ -12,6 +12,7 @@ import type {
   SetStateAction,
 } from "react";
 import type { ChartPhase, ChartStatus } from "./chart-phase";
+import type { ResolvedBandBinding } from "./chart-host-store";
 import type { YDomain } from "./y-domain";
 import { DEFAULT_Y_AXIS_ID } from "./y-axis-id";
 import type { ChartSelection } from "./use-chart-interaction";
@@ -187,6 +188,8 @@ interface ChartContextValue extends ChartHoverContextValue {
   // Bar chart specific (optional - only present in BarChart)
   /** Band scale for categorical x-axis (bar charts) */
   barScale?: ScaleBand<string>;
+  /** Package-resolved band mapping (bar x); overlays read this, never a hand band. */
+  xBand?: ResolvedBandBinding;
   /** Width of each bar band */
   bandWidth?: number;
   /** X accessor for bar charts (returns string instead of Date) */
@@ -291,6 +294,7 @@ const ChartProvider = (properties: {
       stacked: value.stacked,
       width: value.width,
       xAccessor: value.xAccessor,
+      xBand: value.xBand,
       xDomain: value.xDomain,
       xDomainSlotCount: value.xDomainSlotCount,
       xScale: value.xScale,
@@ -338,6 +342,7 @@ const ChartProvider = (properties: {
       value.stacked,
       value.width,
       value.xAccessor,
+      value.xBand,
       value.xDomain,
       value.xDomainSlotCount,
       value.xScale,

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactElement, ReactNode, RefObject } from "react";
+import { useChartStable } from "./chart-context";
 import { resolveEnterTransition } from './enter-transition';
 import type { EnterTransition } from './enter-transition';
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
@@ -43,9 +44,6 @@ interface ProjectionEndMarkerAnchor {
 }
 
 interface ProjectionMarkerOverlayProps {
-  readonly width: number;
-  readonly height: number;
-  readonly margin: { readonly top: number; readonly left: number; readonly right: number; readonly bottom: number };
   readonly terminalMarkers: readonly TerminalMarkerAnchor[];
   readonly projectionEndMarkers: readonly ProjectionEndMarkerAnchor[];
   readonly phasePort: RefObject<ProjectionPhaseHandle | null>;
@@ -58,26 +56,30 @@ const renderProjectionEndMarkers = (markers: readonly ProjectionEndMarkerAnchor[
   ));
 
 const ProjectionMarkerOverlay = (props: Readonly<ProjectionMarkerOverlayProps>): ReactNode => {
-  const { width, height, margin, terminalMarkers, projectionEndMarkers, phasePort, enterTransition } = props;
+  const { terminalMarkers, projectionEndMarkers, phasePort, enterTransition } = props;
+  // Plot bounds come from the host scene, never from margin props (V1.2/G6).
+  // Anchors arrive in full-container pixels, so the svg covers the container.
+  const { chart, margin } = useChartStable();
+  const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
   const timingRef = useFreshRef(resolveTerminalTiming(enterTransition));
   const prefersReducedRef = useFreshRef(usePrefersReducedMotion());
   const refs = useTerminalMarkerRefs();
   const applyPhase = useTerminalMarkerPhaseApplier({ prefersReducedRef, refs, timingRef });
   useProjectionPhasePort(phasePort, applyPhase, refs.runningAnimsRef);
   useReplayVisibleTerminalMarkers({ prefersReducedRef, refs, terminalMarkers, timingRef });
+  const fullWidth = margin.left + plot.width + margin.right;
+  const fullHeight = margin.top + plot.height + margin.bottom;
 
   if (terminalMarkers.length === 0 && projectionEndMarkers.length === 0) {return undefined;}
 
   return (
-    <svg width={width} height={height} style={PROJECTION_OVERLAY_STYLE} aria-hidden="true">
-      <g transform={`translate(${margin.left},${margin.top})`}>
-        <g ref={refs.endGroupRef} style={PROJECTION_END_GROUP_STYLE}>
-          {renderProjectionEndMarkers(projectionEndMarkers)}
-        </g>
-        {terminalMarkers.map((marker: Readonly<TerminalMarkerAnchor>) => (
-          <TerminalMarkerNode key={marker.dataKey} marker={marker} markerRefs={refs.markerRefs} />
-        ))}
+    <svg width={fullWidth} height={fullHeight} style={PROJECTION_OVERLAY_STYLE} aria-hidden="true">
+      <g ref={refs.endGroupRef} style={PROJECTION_END_GROUP_STYLE}>
+        {renderProjectionEndMarkers(projectionEndMarkers)}
       </g>
+      {terminalMarkers.map((marker: Readonly<TerminalMarkerAnchor>) => (
+        <TerminalMarkerNode key={marker.dataKey} marker={marker} markerRefs={refs.markerRefs} />
+      ))}
     </svg>
   );
 };

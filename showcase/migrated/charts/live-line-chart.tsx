@@ -13,11 +13,10 @@ import {
 } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { bisector } from "d3-array";
-import { scaleLinear, scaleUtc } from "d3-scale";
 import { curveMonotoneX } from 'd3-shape';
 import type { CurveFactory } from 'd3-shape';
 import type { ChartTooltipBodyRenderContext } from '@tanstack/react-charts/tooltip';
-import { HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
+import { HOST_INITIAL_WIDTH, adoptHostWidth, useRegistryEntriesState } from "./internal/chart-host";
 import { d3Curve } from "@tanstack/charts/d3/shape";
 import { defineChart } from "@tanstack/charts/scene";
 import type {
@@ -54,6 +53,7 @@ import type {
 import { LIVE_FRAME_COMMIT_MS, useLiveFrame } from "./internal/live-line-frame";
 import type { LiveLinePoint } from "./internal/live-line-frame";
 import { useLiveTicks } from "./internal/live-line-ticks";
+import { useLiveLineScales } from "./internal/live-line-scales";
 import {
   coerceDatumDate,
   defaultFormatTime,
@@ -247,6 +247,9 @@ const LiveLineChart = ({
   const uid = useId();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { adoptWidth, height, width } = useLiveLineHostSize(style);
+  // Registry union (V1.3 carriers): entries report up from inside the host.
+  // Live-line extraction is scan-only; the guard keeps this a no-op.
+  const [, handleRegistryEntries] = useRegistryEntriesState();
 
   const { liveLines, liveXAxis, liveYAxis, tooltip, referenceAreas: liveRefAreas } = useMemo(
     () => extractLiveLineChildren(children),
@@ -263,17 +266,15 @@ const LiveLineChart = ({
 
   // Every y domain reads the niced scale domain, never raw frame values (single shared extent).
   const domainEndMs = frame.now + leadingMs;
-  const xScale = useMemo(
-    () =>
-      scaleUtc()
-        .domain([new Date(domainEndMs - windowMs), new Date(domainEndMs)])
-        .range([0, innerWidth]),
-    [domainEndMs, windowMs, innerWidth],
-  );
-  const yScale = useMemo(
-    () => scaleLinear().domain([frame.yMin, frame.yMax]).nice().range([innerHeight, 0]),
-    [frame.yMin, frame.yMax, innerHeight],
-  );
+  const domainStartMs = domainEndMs - windowMs;
+  const { xScaleFactory, yNicedDomain, yScaleFactory } = useLiveLineScales({
+    domainEndMs,
+    domainStartMs,
+    yMax: frame.yMax,
+    yMin: frame.yMin,
+  });
+  const tickDomainX = useMemo(() => ({ domain: (): Date[] => [new Date(domainStartMs), new Date(domainEndMs)] }), [domainStartMs, domainEndMs]);
+  const tickDomainY = useMemo(() => ({ domain: (): number[] => [yNicedDomain[0], yNicedDomain[1]] }), [yNicedDomain]);
 
   const xAccessor = useCallback((datum: Readonly<ChartDatum>): Date => coerceDatumDate(datum.date), []);
   const keyAccessor = useCallback((datum: Readonly<ChartDatum>): ChartKey => {
@@ -297,7 +298,7 @@ const LiveLineChart = ({
     return records;
   }, [data, frame.now, frame.trueValue, frame.seq, domainEndMs, windowMs, dataKey, xTickUnitMs]);
 
-  const lineVisuals = useMemo(() => 
+  const lineVisuals = useMemo(() =>
     liveLines.map((cfg: ReadonlyLiveLineConfig) => {
       const momentum = detectMomentum(contextData, cfg.dataKey);
       const { dotColor, resolvedStroke } = resolveLineStroke(cfg, momentum);
@@ -305,11 +306,11 @@ const LiveLineChart = ({
         contextData.length >= 2 ? contextData.at(NOW_POINT_OFFSET_FROM_END) : contextData.at(-1);
       const liveRaw: unknown = nowPoint?.[cfg.dataKey];
       const liveValue = isNumber(liveRaw) ? liveRaw : 0;
-      const liveDotX = nowPoint ? xScale(xAccessor(nowPoint)) : innerWidth;
-      const liveDotY = yScale(liveValue);
-      return { cfg, dotColor, liveDotX, liveDotY, liveValue, momentum, resolvedStroke };
+      // Tip pixels resolve in the host from host scales (V1.2/G6); only the date travels.
+      const liveDate = nowPoint ? xAccessor(nowPoint) : undefined;
+      return { cfg, dotColor, liveDate, liveValue, momentum, resolvedStroke };
     })
-  , [liveLines, contextData, xScale, yScale, xAccessor, innerWidth]);
+  , [liveLines, contextData, xAccessor]);
 
   // Explicit y1:0/y2:1 required: the library default gradient direction is the opposite.
   const nativeLineGradients = useMemo(
@@ -406,7 +407,7 @@ const LiveLineChart = ({
     [tooltip, lineVisuals],
   );
 
-  const { xTickValues, yTickValues } = useLiveTicks({ innerHeight, liveXAxis, liveYAxis, numXTicks, xScale, yScale });
+  const { xTickValues, yTickValues } = useLiveTicks({ innerHeight, liveXAxis, liveYAxis, numXTicks, xScale: tickDomainX, yScale: tickDomainY });
 
   const definition = useMemo(() => {
     if (width <= 0 || innerWidth <= 0 || innerHeight <= 0 || contextData.length < 2) {return undefined;}
@@ -431,7 +432,7 @@ const LiveLineChart = ({
             return isNumber(rawValue) ? rawValue : undefined;
           },
           // Area baseline is domain-space (niced domain min), not a pixel constant.
-          y1: yScale.domain()[0],
+          y1: yNicedDomain[0],
         }),
       );
     }
@@ -478,7 +479,7 @@ const LiveLineChart = ({
             },
           }
         : false,
-      scale: xScale,
+      scale: xScaleFactory,
     };
     const yScaleOptions: ChartPositionScaleOptions<number> = {
       axis: liveYAxis
@@ -501,7 +502,7 @@ const LiveLineChart = ({
             },
           }
         : false,
-      scale: yScale,
+      scale: yScaleFactory,
       side: liveYAxis?.position === "right" ? "right" : "left",
     };
     return defineChart({
@@ -533,8 +534,9 @@ const LiveLineChart = ({
     contextData,
     lineVisuals,
     nativeLineGradients,
-    xScale,
-    yScale,
+    xScaleFactory,
+    yScaleFactory,
+    yNicedDomain,
     margin,
     uid,
     xAccessor,
@@ -548,8 +550,9 @@ const LiveLineChart = ({
     yTickValues,
   ]);
 
-  const [xDomainStart, xDomainEnd] = xScale.domain();
-  const [yDomainStart, yDomainEnd] = yScale.domain();
+  const xDomainStart = useMemo(() => new Date(domainStartMs), [domainStartMs]);
+  const xDomainEnd = useMemo(() => new Date(domainEndMs), [domainEndMs]);
+  const [yDomainStart, yDomainEnd] = yNicedDomain;
   const fadeMaskId = lineVisuals.length > 0 ? `bkm-live-fade-mask-${uid}` : undefined;
 
   // Stable identities for the object props below; each array names every value its body reads.
@@ -566,14 +569,10 @@ const LiveLineChart = ({
   );
   const referenceAreaGeom = useMemo<ReferenceAreaLayersGeom>(
     () => ({
-      height,
-      isTimeScale: true,
-      margin,
-      width,
       xDomain: [xDomainStart, xDomainEnd],
       yDomain: [yDomainStart, yDomainEnd],
     }),
-    [height, margin, width, xDomainStart, xDomainEnd, yDomainStart, yDomainEnd],
+    [xDomainStart, xDomainEnd, yDomainStart, yDomainEnd],
   );
   const fadeMaskStyle = useMemo(
     () =>
@@ -588,6 +587,7 @@ const LiveLineChart = ({
   const body = renderLiveLineBody({
     ariaDescription,
     ariaLabel,
+    children,
     crosshairView,
     datePillOverlayHostRef,
     definition,
@@ -595,19 +595,16 @@ const LiveLineChart = ({
     fadeMaskStyle,
     getLiveGroups,
     handleFocusChange,
+    handleRegistryEntries,
     handleRender,
     height,
-    innerHeight,
-    innerWidth,
     lineVisuals,
     liveRefAreas,
-    margin,
     referenceAreaGeom,
     renderTooltipBody,
     showDatePillHost: tooltipOn && liveXAxis !== undefined,
     tooltipOn,
     uid,
-    width,
   });
 
   return (

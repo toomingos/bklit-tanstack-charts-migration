@@ -13,8 +13,6 @@ interface BarSquaresMarkOptions {
   readonly seriesIndex: number;
   readonly seriesCount: number;
   readonly groupGap: number;
-  readonly bandWidth: number;
-  readonly bandPos: (categoryLabel: string) => number;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly yAccessor: (datum: Readonly<ChartDatum>) => number;
   readonly fill: string;
@@ -117,8 +115,6 @@ const barSquaresMark = (data: readonly Readonly<ChartDatum>[], options: Readonly
     seriesIndex,
     seriesCount,
     groupGap,
-    bandWidth,
-    bandPos,
     categoryAccessor,
     yAccessor,
     fill,
@@ -135,8 +131,6 @@ const barSquaresMark = (data: readonly Readonly<ChartDatum>[], options: Readonly
 
   const effectiveFill = resolveSquaresEffectiveFill({ fill, gradientId, patternId, patternPreset, useGradient });
 
-  const { squareSize, effectiveGroupGap, rx } = resolveSquaresGeometry({ bandWidth, groupGap, seriesCount, squareRadius });
-
   return createMark(() => {
     const { xValues, yValues } = buildSquareChannelValues(data, categoryAccessor, yAccessor);
 
@@ -144,6 +138,14 @@ const barSquaresMark = (data: readonly Readonly<ChartDatum>[], options: Readonly
       channels: buildSquareMarkChannels(xValues, yValues),
       id,
       render: ({ scales }) => {
+        // Band geometry resolves at scene build from the package scale (V1.2/G6).
+        // Package band map returns centers; squares place from band starts.
+        const bandWidth = scales.x.bandwidth || 0;
+        const bandPos = (categoryLabel: string): number => {
+          const center = scales.x.map(categoryLabel);
+          return Number.isFinite(center) ? center - bandWidth / 2 : 0;
+        };
+        const { squareSize, effectiveGroupGap, rx } = resolveSquaresGeometry({ bandWidth, groupGap, seriesCount, squareRadius });
         const baseline = scales.y.map(0);
         const scene = buildSquareScene({ bandPos, bandWidth, baseline, data, effectiveFill, effectiveGroupGap, fill, id, opacity, rx, seriesIndex, squareFit, squareGap, squareSize, xValues, yScale: scales.y, yValues });
 

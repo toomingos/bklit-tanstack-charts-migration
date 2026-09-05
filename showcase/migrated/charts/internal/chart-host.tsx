@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
 import { Chart, RendererChart as TooltipRendererChart } from "@tanstack/react-charts/tooltip";
 import type {
@@ -20,9 +20,11 @@ import {
   buildTimeScale,
   createChartHostStore,
   focusGroupToTooltip,
+  resolveBandBinding,
 } from "./chart-host-store";
 import { DEFAULT_Y_AXIS_ID } from "./y-axis-id";
-import { ChartChildRegistryProvider } from "./chart-child-registry";
+import { ChartChildRegistryProvider, shallowEqualChildProps, useChartChildEntries } from "./chart-child-registry";
+import type { ChartChildRegistration } from "./chart-child-registry";
 import { ChartProvider } from "./chart-context";
 import type {
   ChartContextValue,
@@ -186,6 +188,8 @@ const ChartHost = <
     const yScale = buildLinearScale(yResolved, [innerHeight, 0]);
     const yScales: Record<string, ReturnType<typeof buildLinearScale>> = {};
     yScales[DEFAULT_Y_AXIS_ID] = yScale;
+    // Package-resolved band mapping for bar overlays (V1.2/G6).
+    const xBand = resolveBandBinding(xResolved);
     const tooltip: TooltipData | null =
       hoverSnapshot.tooltipOverride ??
       focusGroupToTooltip(hoverSnapshot.focusGroup);
@@ -235,6 +239,7 @@ const ChartHost = <
       tooltipData: tooltip,
       width,
       xAccessor: defaultXAccessor,
+      xBand,
       xDomain: undefined,
       xDomainSlotCount: undefined,
       xScale,
@@ -302,5 +307,33 @@ const ChartHost = <
   );
 };
 
-export { ChartHost, adoptHostWidth, DEFAULT_INITIAL_WIDTH as HOST_INITIAL_WIDTH };
+// Registry bridge (V1.2/G6): host child reading entries for the entry above.
+const ChartRegistryBridge = (properties: {
+  readonly onEntries: (entries: readonly ChartChildRegistration[]) => void;
+}): null => {
+  const entries = useChartChildEntries();
+  const { onEntries } = properties;
+  useEffect(() => {
+    onEntries(entries);
+  }, [entries, onEntries]);
+  return null;
+};
+
+// Registry entries state for entries (V1.2/G6); guard keeps the memo stable.
+const useRegistryEntriesState = (): readonly [
+  readonly ChartChildRegistration[],
+  (entries: readonly ChartChildRegistration[]) => void,
+] => {
+  const [entries, setEntries] = useState<readonly ChartChildRegistration[]>([]);
+  const report = useCallback((next: readonly ChartChildRegistration[]): void => {
+    setEntries((previous) => {
+      if (previous.length !== next.length) {return next;}
+      const same = previous.every((entry, index) => entry.role === next[index].role && shallowEqualChildProps(entry.props, next[index].props));
+      return same ? previous : next;
+    });
+  }, []);
+  return [entries, report];
+};
+
+export { ChartHost, ChartRegistryBridge, adoptHostWidth, useRegistryEntriesState, DEFAULT_INITIAL_WIDTH as HOST_INITIAL_WIDTH };
 export type { ChartHostProps };

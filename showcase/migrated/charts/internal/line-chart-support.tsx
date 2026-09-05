@@ -1,17 +1,14 @@
 // Shared line-chart primitives: style constants, pure geometry helpers, and defs renderers.
 import type { CSSProperties, Dispatch, ReactElement, RefObject, SetStateAction } from "react";
-import { scaleLinear as d3ScaleLinear } from "d3-scale";
 import type { ChartControl, ChartInteractionController, ChartPoint, SceneStyle } from "@tanstack/charts";
 import { isFocusOutsideXDomain } from "./hover-geometry";
 import type { useDatePillOverlay } from "./hover-geometry";
-import { LineLoadingPulse } from "./line-loading-pulse";
-import type { LineLoadingPulseMode } from "./loading-chrome";
 import { shortDateFmt } from "./formatters";
 import { DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./chart-phase";
 import type { ChartPhase } from "./chart-phase";
 import { parseAspectRatio } from "./parse-aspect-ratio";
 import type { MarkerGradientDef } from "./series-marker-mark";
-import type { ChartDatum, ChartTooltipConfig, LineConfig } from "./types";
+import type { ChartDatum, ChartTooltipConfig } from "./types";
 import type { LabelFadeState } from "./line-x-scale";
 
 const BRUSH_NATIVE_HIDDEN_STYLE: SceneStyle = {
@@ -34,11 +31,6 @@ const DEFAULT_PROJECTION_ENDPOINT_RADIUS_PX = 5;
 const PROJECTION_FALLBACK_STROKE = "var(--chart-3)";
 const MS_PER_SECOND = 1000;
 const DEFAULT_TERMINAL_MARKER_STROKE_WIDTH = 1.5;
-// Deterministic fake sine-wave path used only for the loading-skeleton pulse preview.
-const LOADING_SKELETON_BASE_VALUE = 110;
-const LOADING_SKELETON_WAVE_FREQUENCY = 1.15;
-const LOADING_SKELETON_WAVE_AMPLITUDE = 36;
-const LOADING_SKELETON_TREND_STEP = 9;
 // Zero-size gradient-defs svg: stacked out of layout without display:none (keeps defs resolvable).
 const HIDDEN_DEFS_SVG_STYLE: CSSProperties = { position: "absolute" };
 // Full-cover overlay host: stacked above the chart without intercepting pointer input.
@@ -228,50 +220,6 @@ const renderMarkerGradientDef = (def: Readonly<MarkerGradientDef>): ReactElement
   </radialGradient>
 );
 
-// Deterministic skeleton pulse: a fixed-count sine-wave preview of the series shape.
-const SKELETON_POINT_COUNT = 7;
-
-interface SkeletonPoint {
-  readonly x: number;
-  readonly y: number;
-}
-
-const skeletonWavePoints = (innerWidth: number, yScale: (value: number) => number, seriesCount: number): SkeletonPoint[] => {
-  if (seriesCount === 0) {
-    return [];
-  }
-  const points: SkeletonPoint[] = [];
-  for (let index = 0; index < SKELETON_POINT_COUNT; index += 1) {
-    const x = (index / (SKELETON_POINT_COUNT - 1)) * innerWidth;
-    const waveValue = LOADING_SKELETON_BASE_VALUE + Math.sin(index * LOADING_SKELETON_WAVE_FREQUENCY) * LOADING_SKELETON_WAVE_AMPLITUDE + index * LOADING_SKELETON_TREND_STEP;
-    points.push({ x, y: yScale(waveValue) });
-  }
-  return points;
-};
-
-const skeletonPathD = (points: readonly SkeletonPoint[]): string => {
-  if (points.length < 2) {
-    return "";
-  }
-  let pathD = `M${points[0].x},${points[0].y}`;
-  for (let index = 1; index < points.length; index += 1) {
-    pathD += ` L${points[index].x},${points[index].y}`;
-  }
-  return pathD;
-};
-
-interface LoadingSkeletonPathParams {
-  readonly innerHeight: number;
-  readonly innerWidth: number;
-  readonly seriesCount: number;
-  readonly yDomain: readonly [number, number];
-}
-
-const buildLoadingSkeletonPath = (params: Readonly<LoadingSkeletonPathParams>): string => {
-  const yScale = d3ScaleLinear().domain(params.yDomain).range([params.innerHeight, 0]);
-  return skeletonPathD(skeletonWavePoints(params.innerWidth, yScale, params.seriesCount));
-};
-
 interface BrushClipParams {
   readonly clipId: string;
   readonly height: number;
@@ -287,48 +235,6 @@ const renderBrushClipDefs = (params: Readonly<BrushClipParams>): ReactElement =>
     </clipPath>
   </defs>
 );
-
-interface LoadingSkeletonParams {
-  readonly heightPx: number;
-  readonly lines: readonly Readonly<LineConfig>[];
-  readonly marginBottom: number;
-  readonly marginLeft: number;
-  readonly marginRight: number;
-  readonly marginTop: number;
-  readonly pulseMode: LineLoadingPulseMode | null;
-  readonly width: number;
-  readonly yDomainFinal: [number, number];
-}
-
-const renderLoadingSkeleton = (params: Readonly<LoadingSkeletonParams>): ReactElement => {
-  const innerWidth = Math.max(0, params.width - params.marginLeft - params.marginRight);
-  const innerHeight = Math.max(0, params.heightPx - params.marginTop - params.marginBottom);
-  const linePts = innerWidth <= 0 || innerHeight <= 0
-    ? ""
-    : buildLoadingSkeletonPath({ innerHeight, innerWidth, seriesCount: params.lines.length, yDomain: params.yDomainFinal });
-  return (
-    <svg
-      width={params.width}
-      height={params.heightPx}
-      style={OVERLAY_HOST_STYLE}
-      aria-hidden="true"
-    >
-      <g transform={`translate(${params.marginLeft},${params.marginTop})`}>
-        {linePts !== "" && (
-          <LineLoadingPulse
-            pathD={linePts}
-            width={innerWidth}
-            height={innerHeight}
-            stroke={params.lines[0]?.loadingStroke}
-            strokeOpacity={params.lines[0]?.loadingStrokeOpacity}
-            strokeWidth={params.lines[0]?.strokeWidth ?? DEFAULT_LINE_STROKE_WIDTH}
-            mode={params.pulseMode ?? "loop"}
-          />
-        )}
-      </g>
-    </svg>
-  );
-};
 
 // First-match native point color for a series key; keeps the tooltip row map shallow.
 const findPointColorForSeries = (
@@ -348,8 +254,6 @@ export {
   MS_PER_SECOND,
   OVERLAY_HOST_STYLE,
   PROJECTION_FALLBACK_STROKE,
-  SKELETON_POINT_COUNT,
-  buildLoadingSkeletonPath,
   findPointColorForSeries,
   firstNonEmptyString,
   gateFocusPrimary,
@@ -359,7 +263,6 @@ export {
   referenceXDomainForExtent,
   renderBrushClipDefs,
   renderCrosshairGradient,
-  renderLoadingSkeleton,
   renderMarkerGradientDef,
   renderProfitLossGradientDef,
   renderProjectionGradientDef,
@@ -367,9 +270,7 @@ export {
   resolveEffectiveYDomainTweenBase,
   resolveProfitLossSignIndex,
   scanRenderTimeExtent,
-  skeletonPathD,
-  skeletonWavePoints,
   stringifyDatumValue,
   syncDatePillChrome,
 };
-export type { BrushClipParams, CrosshairGradientParams, DatePillSyncParams, FocusClearRef, FocusGate, FocusPoint, GateFocusPrimaryParams, LoadingSkeletonParams, LoadingSkeletonPathParams, SkeletonPoint, StringifyDatumValueParams };
+export type { BrushClipParams, CrosshairGradientParams, DatePillSyncParams, FocusClearRef, FocusGate, FocusPoint, GateFocusPrimaryParams, StringifyDatumValueParams };

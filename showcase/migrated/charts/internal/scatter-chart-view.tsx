@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
 import { ChartSelectionContext } from "./chart-selection";
+import { useChartStable } from "./chart-context";
 import { BackgroundLayer } from "./background-layer";
 import { ReferenceAreaLayers } from "./reference-area-layer";
 import type { ScatterDefinitionModel } from "./scatter-definition-setup";
@@ -16,34 +17,28 @@ const SCATTER_OVERLAY_HOST_STYLE: CSSProperties = { inset: 0, pointerEvents: "no
 
 interface BuildScatterBackgroundNodeParams {
   readonly background: ScatterSeriesSetup["background"];
-  readonly refAreaGeom: ScatterReferenceAreas["refAreaGeom"];
 }
 
 const buildScatterBackgroundNode = ({
   background,
-  refAreaGeom,
 }: Readonly<BuildScatterBackgroundNodeParams>): ReactNode => {
   if (!background) {return undefined;}
   return (
     <BackgroundLayer
       config={background}
-      innerWidth={Math.max(0, refAreaGeom.width - refAreaGeom.margin.left - refAreaGeom.margin.right)}
-      innerHeight={Math.max(0, refAreaGeom.height - refAreaGeom.margin.top - refAreaGeom.margin.bottom)}
-      marginLeft={refAreaGeom.margin.left}
-      marginTop={refAreaGeom.margin.top}
     />
   );
 };
 
 interface BuildScatterCrosshairGradientNodeParams {
   readonly crosshairFade: ScatterReferenceAreas["crosshairFade"];
-  readonly refAreaGeom: ScatterReferenceAreas["refAreaGeom"];
 }
 
-const buildScatterCrosshairGradientNode = ({
+const ScatterCrosshairGradientNode = ({
   crosshairFade,
-  refAreaGeom,
 }: Readonly<BuildScatterCrosshairGradientNodeParams>): ReactNode => {
+  const { chart, margin } = useChartStable();
+  const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
   if (!crosshairFade) {return undefined;}
   return (
     <linearGradient
@@ -52,8 +47,8 @@ const buildScatterCrosshairGradientNode = ({
       gradientUnits="userSpaceOnUse"
       x1={0}
       x2={0}
-      y1={refAreaGeom.margin.top}
-      y2={refAreaGeom.margin.top + Math.max(0, refAreaGeom.height - refAreaGeom.margin.top - refAreaGeom.margin.bottom)}
+      y1={margin.top}
+      y2={margin.top + plot.height}
     >
       {crosshairFade.stops.map((stop) => (
         <stop key={stop.offset} offset={stop.offset} stopColor={crosshairFade.color} stopOpacity={stop.opacity} />
@@ -63,37 +58,37 @@ const buildScatterCrosshairGradientNode = ({
 };
 
 interface BuildScatterYGradientNodesParams {
-  readonly refAreaGeom: ScatterReferenceAreas["refAreaGeom"];
   readonly yGradientDefs: ScatterReferenceAreas["yGradientDefs"];
 }
 
-const buildScatterYGradientNodes = ({
-  refAreaGeom,
+const ScatterYGradientNodes = ({
   yGradientDefs,
-}: Readonly<BuildScatterYGradientNodesParams>): ReactNode => yGradientDefs.map((def) => (
-  <linearGradient
-    key={def.id}
-    id={def.id}
-    gradientUnits="userSpaceOnUse"
-    x1={0}
-    x2={0}
-    y1={refAreaGeom.height}
-    y2={0}
-  >
-    <stop offset="0%" stopColor={def.from} />
-    <stop offset="100%" stopColor={def.to} />
-  </linearGradient>
-));
+}: Readonly<BuildScatterYGradientNodesParams>): ReactNode => {
+  const { chart, margin } = useChartStable();
+  const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
+  return yGradientDefs.map((def) => (
+    <linearGradient
+      key={def.id}
+      id={def.id}
+      gradientUnits="userSpaceOnUse"
+      x1={0}
+      x2={0}
+      y1={margin.top + plot.height + margin.bottom}
+      y2={0}
+    >
+      <stop offset="0%" stopColor={def.from} />
+      <stop offset="100%" stopColor={def.to} />
+    </linearGradient>
+  ));
+};
 
 interface BuildScatterDefsSvgParams {
   readonly crosshairFade: ScatterReferenceAreas["crosshairFade"];
-  readonly refAreaGeom: ScatterReferenceAreas["refAreaGeom"];
   readonly yGradientDefs: ScatterReferenceAreas["yGradientDefs"];
 }
 
-const buildScatterDefsSvg = ({
+const ScatterDefsSvg = ({
   crosshairFade,
-  refAreaGeom,
   yGradientDefs,
 }: Readonly<BuildScatterDefsSvgParams>): ReactNode => {
   const showDefsSvg = yGradientDefs.length > 0 || crosshairFade !== undefined;
@@ -108,33 +103,61 @@ const buildScatterDefsSvg = ({
       focusable="false"
     >
       <defs>
-        {buildScatterYGradientNodes({ refAreaGeom, yGradientDefs })}
-        {buildScatterCrosshairGradientNode({ crosshairFade, refAreaGeom })}
+        <ScatterYGradientNodes yGradientDefs={yGradientDefs} />
+        <ScatterCrosshairGradientNode crosshairFade={crosshairFade} />
       </defs>
     </svg>
+  );
+};
+
+interface BuildScatterRefAreaNodeParams {
+  readonly configs: ScatterReferenceAreas["refAreaChildren"];
+  readonly geom: ScatterReferenceAreas["refAreaGeom"];
+}
+
+const buildScatterRefAreaNode = ({
+  configs,
+  geom,
+}: Readonly<BuildScatterRefAreaNodeParams>): ReactNode => {
+  if (configs.length === 0) {return undefined;}
+  return (
+    <ReferenceAreaLayers
+      configs={configs}
+      geom={geom}
+    />
   );
 };
 
 interface BuildScatterRendererNodeParams {
   readonly ariaDescription?: string;
   readonly ariaLabel?: string;
+  readonly background: ScatterSeriesSetup["background"];
+  readonly configs: ScatterReferenceAreas["refAreaChildren"];
+  readonly crosshairFade: ScatterReferenceAreas["crosshairFade"];
   readonly definition: ScatterDefinitionModel["definition"];
+  readonly geom: ScatterReferenceAreas["refAreaGeom"];
   readonly handleFocusGroupChange: ScatterPillModel["handleFocusGroupChange"];
   readonly handleRender: ScatterTimingModel["handleRender"];
   readonly parsedAspectRatio: number;
   readonly renderTooltipBody: ScatterSelectionModel["renderTooltipBody"];
   readonly renderer: ScatterChartSelection["scatterChartRenderer"];
+  readonly yGradientDefs: ScatterReferenceAreas["yGradientDefs"];
 }
 
 const buildScatterRendererNode = ({
   ariaDescription,
   ariaLabel = "Scatter chart",
+  background,
+  configs,
+  crosshairFade,
   definition,
+  geom,
   handleFocusGroupChange,
   handleRender,
   parsedAspectRatio,
   renderTooltipBody,
   renderer,
+  yGradientDefs,
 }: Readonly<BuildScatterRendererNodeParams>): ReactNode => {
   if (definition === undefined) {return undefined;}
   return (
@@ -148,25 +171,11 @@ const buildScatterRendererNode = ({
       onFocusGroupChange={handleFocusGroupChange}
       onRender={handleRender}
       renderTooltipBody={renderTooltipBody}
-    />
-  );
-};
-
-interface BuildScatterRefAreaNodeParams {
-  readonly configs: ScatterReferenceAreas["refAreaChildren"];
-  readonly geom: ScatterReferenceAreas["refAreaGeom"];
-}
-
-const buildScatterRefAreaNode = ({
-  configs,
-  geom,
-}: Readonly<BuildScatterRefAreaNodeParams>): ReactNode => {
-  if (geom.height <= 0) {return undefined;}
-  return (
-    <ReferenceAreaLayers
-      configs={configs}
-      geom={geom}
-    />
+    >
+      {buildScatterBackgroundNode({ background })}
+      {buildScatterRefAreaNode({ configs, geom })}
+      <ScatterDefsSvg crosshairFade={crosshairFade} yGradientDefs={yGradientDefs} />
+    </ChartHost>
   );
 };
 
@@ -218,25 +227,23 @@ const buildScatterChartTree = ({
       style={refAreas.containerStyle}
       data-bkm-chart="scatter"
     >
-      {buildScatterBackgroundNode({ background: series.background, refAreaGeom: refAreas.refAreaGeom })}
       {marks.definition && (
         <>
           {buildScatterRendererNode({
             ariaDescription,
             ariaLabel,
+            background: series.background,
+            configs: refAreas.refAreaChildren,
+            crosshairFade: refAreas.crosshairFade,
             definition: marks.definition,
+            geom: refAreas.refAreaGeom,
             handleFocusGroupChange: pill.handleFocusGroupChange,
             handleRender: timing.handleRender,
             parsedAspectRatio: refAreas.parsedAspectRatio,
             renderTooltipBody: selection.renderTooltipBody,
             renderer: selection.scatterChartRenderer,
-          })}
-          {buildScatterDefsSvg({
-            crosshairFade: refAreas.crosshairFade,
-            refAreaGeom: refAreas.refAreaGeom,
             yGradientDefs: refAreas.yGradientDefs,
           })}
-          {buildScatterRefAreaNode({ configs: refAreas.refAreaChildren, geom: refAreas.refAreaGeom })}
           {buildScatterOverlayNode({ hostRef: pill.overlayHostRef, tooltipEnabled: selection.tooltipEnabled })}
         </>
       )}
@@ -245,14 +252,14 @@ const buildScatterChartTree = ({
 );
 
 export {
+  ScatterCrosshairGradientNode,
+  ScatterDefsSvg,
+  ScatterYGradientNodes,
   buildScatterBackgroundNode,
   buildScatterChartTree,
-  buildScatterCrosshairGradientNode,
-  buildScatterDefsSvg,
   buildScatterOverlayNode,
   buildScatterRefAreaNode,
   buildScatterRendererNode,
-  buildScatterYGradientNodes,
 };
 export type {
   BuildScatterBackgroundNodeParams,

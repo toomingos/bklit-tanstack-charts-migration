@@ -1,28 +1,19 @@
 // Area layer-props hook: brush geometry, renderer, reference-area geom, container styles.
-// Hook call order is unchanged; logic moved verbatim.
 import { useCallback, useMemo } from "react";
-import type { CSSProperties, RefObject } from "react";
-import type { BrushRange } from "@tanstack/charts/interaction/brush";
+import type { CSSProperties } from "react";
 import type { ChartRenderer } from "@tanstack/charts";
 import { useSanitizedId } from "./use-sanitized-id";
-import { selectionToPixelExtent } from "./brush-chrome-helpers";
-import type { BrushHost } from "./brush-chrome";
 import { useChartRenderer } from "./motion-renderer";
 import type { ReferenceAreaLayersGeom } from "./reference-area-layer";
 import type { ChartPhase } from "./chart-phase";
 import type { ChartDatum, ChartMarker } from "./types";
 import type { ChartMargin } from "./use-chart-margin";
 import type { TimeExtentMs } from "./area-chart-model";
-import type { AreaSelection } from "./use-area-selection";
 
 interface AreaLayerPropsParams {
-  readonly areaXScaleD3Ref: AreaSelection["areaXScaleD3Ref"];
   readonly aspectRatio: string;
-  readonly brushRangeValue: BrushRange<Date> | undefined;
-  readonly brushTrackExtent: [Date, Date] | undefined;
   readonly chartPhase: ChartPhase;
   readonly clearFocusChrome: () => void;
-  readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly heightPx: number;
   readonly isLoaded: boolean;
   readonly margin: Readonly<ChartMargin>;
@@ -38,25 +29,18 @@ interface AreaLayerPropsParams {
 interface AreaLayerProps {
   readonly areaBrushClipId: string;
   readonly areaChartRenderer: ChartRenderer<ChartDatum, Date, number>;
-  readonly brushHost: BrushHost | undefined;
-  readonly brushPixelExtent: { x0: number; x1: number } | undefined;
   readonly chartBodyClipStyle: CSSProperties | undefined;
   readonly containerStyle: CSSProperties;
   readonly handleMarkerHoverChange: (markers: readonly Readonly<ChartMarker>[] | null) => void;
   readonly needsAreaBrushClip: boolean;
   readonly referenceAreaGeom: ReferenceAreaLayersGeom;
-  readonly resolveAreaX: (date: Readonly<Date>) => number | undefined;
 }
 
 const useAreaLayerProps = (params: Readonly<AreaLayerPropsParams>): AreaLayerProps => {
   const {
-    areaXScaleD3Ref,
     aspectRatio,
-    brushRangeValue,
-    brushTrackExtent,
     chartPhase,
     clearFocusChrome,
-    containerRef,
     heightPx,
     isLoaded,
     margin,
@@ -73,36 +57,20 @@ const useAreaLayerProps = (params: Readonly<AreaLayerPropsParams>): AreaLayerPro
   const innerHeightForBrush = Math.max(0, heightPx - margin.top - margin.bottom);
   const areaBrushClipId = useSanitizedId();
   const needsAreaBrushClip = Boolean(xDomain) && innerWidthForBrush > 0 && innerHeightForBrush > 0;
-  const brushHost = useMemo((): BrushHost | undefined => {
-    if (!brushTrackExtent || innerWidthForBrush <= 0) {return undefined;}
-    return { containerRef, margin, trackExtent: brushTrackExtent };
-  }, [brushTrackExtent, innerWidthForBrush, margin, containerRef]);
-  const brushPixelExtent = useMemo((): { x0: number; x1: number } | undefined => {
-    if (!brushTrackExtent || innerWidthForBrush <= 0 || !brushRangeValue) {return undefined;}
-    return selectionToPixelExtent(brushRangeValue, brushTrackExtent, innerWidthForBrush) ?? undefined;
-  }, [brushTrackExtent, brushRangeValue, innerWidthForBrush]);
   const areaChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderDataLength);
 
   // Stable identities for layer props that would otherwise allocate per render.
+  // Reference-area geometry reads bounds from the host; only data domains travel by prop.
   const referenceAreaGeom = useMemo(
     (): ReferenceAreaLayersGeom => ({
-      height: heightPx,
       isLoaded,
-      isTimeScale: true,
-      margin,
       phase: chartPhase,
-      width,
       xDomain: timeExtent ? [new Date(timeExtent.minTime), new Date(timeExtent.maxTime)] : undefined,
       yDomain: yDomainFinal,
       yDomainsByAxis: nicedDomainsByAxis,
     }),
-    [heightPx, isLoaded, margin, chartPhase, width, timeExtent, yDomainFinal, nicedDomainsByAxis],
+    [isLoaded, chartPhase, timeExtent, yDomainFinal, nicedDomainsByAxis],
   );
-  const resolveAreaX = useCallback((date: Readonly<Date>): number | undefined => {
-    const scale = areaXScaleD3Ref.current;
-    if (!scale) {return undefined;}
-    return scale(date);
-  }, [areaXScaleD3Ref]);
   const handleMarkerHoverChange = useCallback((markers: readonly Readonly<ChartMarker>[] | null): void => {
     // Hovering markers hides crosshair/tooltip and drops isActive until next chart hover (legacy).
     if (markers) {
@@ -124,14 +92,11 @@ const useAreaLayerProps = (params: Readonly<AreaLayerPropsParams>): AreaLayerPro
   return {
     areaBrushClipId,
     areaChartRenderer,
-    brushHost,
-    brushPixelExtent,
     chartBodyClipStyle,
     containerStyle,
     handleMarkerHoverChange,
     needsAreaBrushClip,
     referenceAreaGeom,
-    resolveAreaX,
   };
 };
 

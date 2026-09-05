@@ -7,7 +7,7 @@ import {
 } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
+import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, adoptHostWidth, useRegistryEntriesState } from "./internal/chart-host";
 import { defineChart } from "@tanstack/charts";
 import type {
   ChartMotionContext,
@@ -131,9 +131,11 @@ const CandlestickChart = ({
   const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
   const width = liveWidth;
 
+  // Registry union (V1.3 carriers): entries report up from inside the host.
+  const [registryEntries, handleRegistryEntries] = useRegistryEntriesState();
   const { candlestick, grid, xAxis, yAxis, background, tooltip } = useMemo(
-    () => extractChildren(children),
-    [children],
+    () => extractChildren(children, registryEntries),
+    [children, registryEntries],
   );
   const tooltipEnabled = tooltip?.enabled ?? false;
 
@@ -376,14 +378,9 @@ const CandlestickChart = ({
   const refAreaChildrenCandle = useMemo(() => extractReferenceAreaProps(children), [children]);
   const timeExtentCandle = useMemo(() => findCandleTimeExtent(renderData, xDataKey), [renderData, xDataKey]);
   const referenceAreaGeomCandle = useMemo((): ReferenceAreaLayersGeom => ({
-    height: heightPxCandle,
-    isCandlestickXScale: true,
-    isTimeScale: true,
-    margin,
-    width,
     xDomain: timeExtentCandle ? [new Date(timeExtentCandle.minTime), new Date(timeExtentCandle.maxTime)] : undefined,
     yDomain,
-  }), [heightPxCandle, margin, timeExtentCandle, width, yDomain]);
+  }), [timeExtentCandle, yDomain]);
   const referenceAreaLayer = heightPxCandle > EMPTY_CONTAINER_PX ? (
     <ReferenceAreaLayers
       configs={refAreaChildrenCandle}
@@ -414,17 +411,21 @@ const CandlestickChart = ({
         onRender={handleRender}
         renderTooltipBody={enabledRenderTooltipBody}
         style={style}
-      />
-      {referenceAreaLayer}
-      <SegmentOverlay
-        selection={candleSelection}
-        innerWidth={innerWidth}
-        innerHeight={heightPxCandle - margin.top - margin.bottom}
-        marginLeft={margin.left}
-        marginTop={margin.top}
-        components={segChildrenCandle}
-      />
-      {pillOverlayLayer}
+      >
+        {children}
+        <ChartRegistryBridge onEntries={handleRegistryEntries} />
+        {background ? (
+          <BackgroundLayer
+            config={background}
+          />
+        ) : undefined}
+        {referenceAreaLayer}
+        <SegmentOverlay
+          selection={candleSelection}
+          components={segChildrenCandle}
+        />
+        {pillOverlayLayer}
+      </ChartHost>
     </>
   ) : undefined;
   const crosshairLayerNode = crosshairFadeGradient ? (
@@ -452,15 +453,6 @@ const CandlestickChart = ({
       style={containerStyle}
       data-bkm-chart="candlestick"
     >
-      {background ? (
-        <BackgroundLayer
-          config={background}
-          innerWidth={innerWidth}
-          innerHeight={Math.max(MIN_GEOMETRY_EXTENT_PX, heightPxCandle - margin.top - margin.bottom)}
-          marginLeft={margin.left}
-          marginTop={margin.top}
-        />
-      ) : undefined}
       {definitionContentNode}
       {crosshairLayerNode}
     </div>

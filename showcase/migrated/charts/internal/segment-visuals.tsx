@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import type { ChartSelection, SegmentComponent } from "./chart-selection";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { useChartStable } from "./chart-context";
 
 type SegmentLineVariant = "dashed" | "solid" | "gradient";
 
@@ -159,20 +160,18 @@ const renderSegmentComponent = (params: Readonly<SegmentRenderParams>): ReactEle
 
 const SegmentOverlay = ({
   selection,
-  innerWidth,
-  innerHeight,
-  marginLeft,
-  marginTop,
   components,
 }: Readonly<{
   selection: Readonly<ChartSelection> | null;
-  innerWidth: number;
-  innerHeight: number;
-  marginLeft: number;
-  marginTop: number;
   components: readonly Readonly<SegmentComponent>[];
 }>): ReactElement | null => {
   const prefersReducedMotion = usePrefersReducedMotion();
+  // Plot bounds come from the host scene, never from margin props (V1.2/G6).
+  const { chart, margin } = useChartStable();
+  const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
+  const innerWidth = plot.width;
+  const innerHeight = plot.height;
+  const { left: marginLeft, top: marginTop } = margin;
   const overlayStyle = useMemo((): CSSProperties => ({
     left: marginLeft,
     overflow: "visible",

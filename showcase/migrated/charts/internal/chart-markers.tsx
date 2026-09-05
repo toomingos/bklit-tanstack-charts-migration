@@ -2,9 +2,11 @@
 
 import { useCallback, useMemo } from "react";
 import type { CSSProperties, ReactElement, RefObject } from "react";
+import type { ScaleTime } from "d3-scale";
 import { MarkerGroupView } from "./marker-group-view";
 import type { Bucket } from "./marker-group-view";
 import { useActiveMarkerDate } from "./active-markers-store";
+import { useChartStable } from "./chart-context";
 import { nativeStaggerDelayMs } from "./native-stagger";
 import type { ChartMarker } from "./types";
 
@@ -21,10 +23,7 @@ interface ChartMarkersProps {
   readonly showLines?: boolean;
   readonly animate?: boolean;
   readonly maxFanned?: number;
-  readonly xScale: ((date: Date) => number | null | undefined) | null;
-  readonly marginLeft: number;
-  readonly marginTop: number;
-  readonly innerHeight: number;
+  readonly xScaleD3Ref: RefObject<ScaleTime<number, number> | null>;
   readonly containerRef: RefObject<HTMLElement | null>;
   readonly animationDuration: number;
   /** Fires with the hovered bucket's markers on enter, null on leave; callers use this to suppress the crosshair chrome. */
@@ -78,7 +77,13 @@ const renderMarkerBucket = (options: Readonly<RenderMarkerBucketOptions>): React
 }
 
 const ChartMarkersOverlay = (props: ChartMarkersProps): ReactElement | null => {
-  const { items, size = 28, showLines = true, animate = true, maxFanned, xScale, marginLeft, marginTop, innerHeight, animationDuration, onMarkerHoverChange } = props;
+  const { items, size = 28, showLines = true, animate = true, maxFanned, xScaleD3Ref, animationDuration, onMarkerHoverChange } = props;
+  // Host bounds with the resolver-stash x reader offset into the overlay.
+  const { chart, margin } = useChartStable();
+  const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
+  const marginLeft = margin.left;
+  const marginTop = margin.top;
+  const innerHeight = plot.height;
   // Outside a MarkerActiveTooltipProvider this store read is a noop -> null -> bucket never "active".
   const activeDate = useActiveMarkerDate();
   const buckets = useMemo<Bucket[]>(() => {
@@ -100,6 +105,13 @@ const ChartMarkersOverlay = (props: ChartMarkersProps): ReactElement | null => {
   const handleHoverChange = useCallback((markers: ChartMarker[] | null) => {
     onMarkerHoverChange?.(markers);
   }, [onMarkerHoverChange]);
+
+  // Subtract margin.left: the stash scale is margin-inclusive and the overlay adds margin itself.
+  // Read inline (not memoized): the stash populates during package render.
+  const stashScale = xScaleD3Ref.current;
+  const xScale: ((date: Date) => number | undefined) | null = stashScale
+    ? (date: Date): number | undefined => stashScale(date) - marginLeft
+    : null;
 
   if (items.length === 0 || !xScale) {return null;}
 

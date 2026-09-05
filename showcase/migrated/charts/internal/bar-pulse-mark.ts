@@ -1,6 +1,6 @@
 import { createMark } from "@tanstack/charts";
 import type { ChartMark, MarkRenderContext, MarkScene, SceneNode } from "@tanstack/charts";
-import { barDepthAndRise, barDepthMaxDepth } from "./bar-depth-geometry";
+import { barDepthAndRise, barDepthMaxDepth, resolveBandFrame } from "./bar-depth-geometry";
 import type { ChartDatum } from "./types";
 
 const PULSE_WAVE_HEIGHT_RATIO = 0.55;
@@ -45,9 +45,6 @@ const buildBarSilhouettePath = (silhouette: Readonly<BarSilhouetteArgs>): string
 interface BarPulseMarkOptions {
   readonly id: string;
   readonly data: readonly Readonly<ChartDatum>[];
-  readonly bandWidth: number;
-  readonly bandScale?: { readonly step?: () => number };
-  readonly bandPos: (label: string) => number;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly yAccessor: (datum: Readonly<ChartDatum>) => number;
   readonly activeIndex?: number;
@@ -138,7 +135,7 @@ const resolveDepthOffset = (offsetArgs: Readonly<DepthOffsetArgs>): DepthOffset 
 interface PulseBarFrameArgs {
   readonly bandX: number;
   readonly bandWidth: number;
-  readonly bandScale?: { readonly step?: () => number };
+  readonly bandStep: number;
   readonly innerWidth: number;
   readonly centerX: number;
   readonly baseline: number;
@@ -160,7 +157,7 @@ const resolvePulseBarFrame = (frameArgs: Readonly<PulseBarFrameArgs>): PulseBarF
   if (!Number.isFinite(frameArgs.valuePos)) {return undefined;}
   const barLengthPx = frameArgs.baseline - frameArgs.valuePos;
   if (barLengthPx <= 0) {return undefined;}
-  const maxDepth = barDepthMaxDepth(frameArgs.bandScale?.step?.() ?? frameArgs.bandWidth, frameArgs.bandWidth);
+  const maxDepth = barDepthMaxDepth(frameArgs.bandStep, frameArgs.bandWidth);
   const offset = resolveDepthOffset({ bandWidth: frameArgs.bandWidth, bandX: frameArgs.bandX, centerX: frameArgs.centerX, innerWidth: frameArgs.innerWidth });
   const { depth, perspectiveRise } = barDepthAndRise(offset.absOffset, barLengthPx, maxDepth);
   return { bandX: frameArgs.bandX, barHeight: barLengthPx, bottomY: frameArgs.baseline, depth, isRightOfCenter: offset.isRightOfCenter, perspectiveRise, topY: frameArgs.valuePos };
@@ -214,9 +211,6 @@ interface PulseSceneArgs {
   readonly data: readonly Readonly<ChartDatum>[];
   readonly xValues: readonly string[];
   readonly yValues: readonly number[];
-  readonly bandWidth: number;
-  readonly bandScale?: { readonly step?: () => number };
-  readonly bandPos: (label: string) => number;
   readonly activeIndex: number;
   readonly gradientId: string;
   readonly id: string;
@@ -226,9 +220,11 @@ interface PulseSceneArgs {
 const renderBarPulseScene = (sceneArgs: Readonly<PulseSceneArgs>): MarkScene<ChartDatum, string, number> => {
   const active = readActivePulseBar({ activeIndex: sceneArgs.activeIndex, data: sceneArgs.data, scales: sceneArgs.context.scales, xValues: sceneArgs.xValues, yValues: sceneArgs.yValues });
   if (!active) {return { nodes: [], points: [] };}
-  const frame = resolvePulseBarFrame({ bandScale: sceneArgs.bandScale, bandWidth: sceneArgs.bandWidth, bandX: sceneArgs.bandPos(String(active.xValue)), baseline: active.baseline, centerX: sceneArgs.context.chart.x + sceneArgs.context.chart.width / 2, innerWidth: sceneArgs.context.chart.width, valuePos: active.valuePos });
+  // Band geometry resolves at scene build from the package scale (V1.2/G6).
+  const { bandPos, bandStep, bandWidth } = resolveBandFrame(sceneArgs.context.scales.x);
+  const frame = resolvePulseBarFrame({ bandStep, bandWidth, bandX: bandPos(String(active.xValue)), baseline: active.baseline, centerX: sceneArgs.context.chart.x + sceneArgs.context.chart.width / 2, innerWidth: sceneArgs.context.chart.width, valuePos: active.valuePos });
   if (!frame) {return { nodes: [], points: [] };}
-  return { nodes: buildBarPulseNodes({ bandWidth: sceneArgs.bandWidth, frame, gradientId: sceneArgs.gradientId, id: sceneArgs.id }) };
+  return { nodes: buildBarPulseNodes({ bandWidth, frame, gradientId: sceneArgs.gradientId, id: sceneArgs.id }) };
 };
 
 interface BarPulseMarkInstanceArgs {
@@ -253,9 +249,6 @@ const createBarPulseMarkInstance = (instanceArgs: Readonly<BarPulseMarkInstanceA
     id: instanceArgs.options.id,
     render: (context: MarkRenderContext): MarkScene<ChartDatum, string, number> => renderBarPulseScene({
       activeIndex: instanceArgs.index,
-      bandPos: instanceArgs.options.bandPos,
-      bandScale: instanceArgs.options.bandScale,
-      bandWidth: instanceArgs.options.bandWidth,
       context,
       data: instanceArgs.data,
       gradientId: instanceArgs.options.gradientId,

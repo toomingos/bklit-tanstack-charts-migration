@@ -1,6 +1,5 @@
 // Bar axis, hover chrome, tooltip body, date pill, reveal and depth gradients.
 // Split from bar-chart.tsx without behaviour change.
-import type { ScaleBand } from "d3-scale";
 import type { ChartMark, ChartMotionPhase, ChartMotionTiming } from "@tanstack/charts";
 import { whenFocused } from "@tanstack/charts/focus/mark";
 import { selectBarLabelIndices, tickLabelFadeOpacity, hiddenAxisOptions } from "./axis-ticks";
@@ -486,8 +485,8 @@ interface BarDotHoverMarksParams {
   readonly tooltip: ChartTooltipConfig | null | undefined;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly projectValue: (dataKey: string, value: number) => number;
-  readonly groupScaleForOverlay: ScaleBand<string>;
-  readonly categoryScaleForOverlay: ScaleBand<string>;
+  readonly groupBandwidth: number;
+  readonly groupGap: number;
   readonly dotSeriesList: readonly Readonly<{ readonly dataKey: string; readonly color: string }>[];
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly tooltipSpring: Readonly<SpringConfig>;
@@ -497,8 +496,8 @@ const buildBarDotHoverMarks = ({
   tooltip,
   categoryAccessor,
   projectValue,
-  groupScaleForOverlay,
-  categoryScaleForOverlay,
+  groupBandwidth,
+  groupGap,
   dotSeriesList,
   renderData,
   tooltipSpring,
@@ -507,15 +506,16 @@ const buildBarDotHoverMarks = ({
   const dotCfg = toDotConfig(tooltip);
   const dotMarker = resolveBarDotMarker(dotCfg);
   const tooltipRowColors = tooltip?.rows?.({}).map((row: Readonly<TooltipRow>) => row.color);
-  const groupHalfWidth = groupScaleForOverlay.bandwidth() / 2;
+  // Group offsets replicate the overlay band layout arithmetically (V1.2/G6):
+  // Offset(i) = i * (groupBandwidth + gap), matching d3-band positions exactly.
+  const groupHalfWidth = groupBandwidth / 2;
   const hoverMarks: ChartMark<ChartDatum, string, number>[] = [];
   for (const [seriesIndex, series] of dotSeriesList.entries()) {
-    const groupOffsetX = groupScaleForOverlay(series.dataKey) ?? 0;
+    const groupOffsetX = seriesIndex * (groupBandwidth + groupGap);
     const fill = resolveBarDotColor({ seriesColor: series.color, seriesIndex, tooltip, tooltipRowColors });
     hoverMarks.push(
       whenFocused(
         createBarHoverDotMark({
-          bandStartForCategory: (category) => categoryScaleForOverlay(category) ?? 0,
           categoryAccessor,
           dotMarker,
           fill,
@@ -541,8 +541,8 @@ interface BarHoverMarksParams {
   readonly indicatorGradientId: string;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly projectValue: (dataKey: string, value: number) => number;
-  readonly groupScaleForOverlay: ScaleBand<string>;
-  readonly categoryScaleForOverlay: ScaleBand<string>;
+  readonly groupBandwidth: number;
+  readonly groupGap: number;
   readonly dotSeriesList: readonly Readonly<{ readonly dataKey: string; readonly color: string }>[];
   readonly renderData: readonly Readonly<ChartDatum>[];
 }
@@ -555,8 +555,8 @@ const buildBarHoverMarks = ({
   indicatorGradientId,
   categoryAccessor,
   projectValue,
-  groupScaleForOverlay,
-  categoryScaleForOverlay,
+  groupBandwidth,
+  groupGap,
   dotSeriesList,
   renderData,
 }: Readonly<BarHoverMarksParams>): ChartMark<ChartDatum, string, number>[] => {
@@ -564,7 +564,7 @@ const buildBarHoverMarks = ({
   const crosshair = buildBarCrosshairMark({ discrete, indicatorGradientId, tooltip, tooltipEnabled, tooltipSpring });
   if (crosshair) {hoverMarks.push(crosshair);}
   if (tooltipEnabled && (tooltip?.showDots ?? true)) {
-    hoverMarks.push(...buildBarDotHoverMarks({ categoryAccessor, categoryScaleForOverlay, dotSeriesList, groupScaleForOverlay, projectValue, renderData, tooltip, tooltipSpring }));
+    hoverMarks.push(...buildBarDotHoverMarks({ categoryAccessor, dotSeriesList, groupBandwidth, groupGap, projectValue, renderData, tooltip, tooltipSpring }));
   }
   return hoverMarks;
 };

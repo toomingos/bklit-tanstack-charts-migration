@@ -17,8 +17,8 @@ import {
   buildTooltipChromeMarks,
 } from "./line-series-marks";
 import {
-  buildGridHighlightRowMarks,
-} from "./line-marker-anchors";
+  gridHighlightRowMarks,
+} from "./grid-highlight-mark";
 import {
   buildProfitLossMarks,
   buildProjectionLineMarks,
@@ -43,7 +43,6 @@ interface LineChartSpecParams {
   readonly crosshairGradientId: string;
   readonly effectiveYDomainTweenDuration: number;
   readonly grid: ExtractedChildren["grid"];
-  readonly heightPx: number;
   readonly hoveredIndex: number | null;
   readonly hoveredIndexForPL: number | null;
   readonly isDiscrete: boolean;
@@ -82,7 +81,7 @@ interface LineChartSpec {
 }
 
 const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec => {
-  const { brushControls, chartPhase, crosshairGradientId, effectiveYDomainTweenDuration, grid, heightPx, hoveredIndex, hoveredIndexForPL, isDiscrete, isLoading, isLoaded, labelFade, legendHoveredIndex, lines, margin, markerGradientIdByKey, markerSeriesConfigs, plTooltipSignIndex, profitLossLines, projectionConfigs, projectionGradientBaseId, projectionLines, projectorFor, renderData, timeExtent, timeExtentRaw, tooltip, tooltipEnabled, visibleData, width, xAxis, xDataKey, xDomain, xScaleD3Ref, yAxis, yDomainChangedForTween, yDomainFinal } = params;
+  const { brushControls, chartPhase, crosshairGradientId, effectiveYDomainTweenDuration, grid, hoveredIndex, hoveredIndexForPL, isDiscrete, isLoading, isLoaded, labelFade, legendHoveredIndex, lines, margin, markerGradientIdByKey, markerSeriesConfigs, plTooltipSignIndex, profitLossLines, projectionConfigs, projectionGradientBaseId, projectionLines, projectorFor, renderData, timeExtent, timeExtentRaw, tooltip, tooltipEnabled, visibleData, width, xAxis, xDataKey, xDomain, xScaleD3Ref, yAxis, yDomainChangedForTween, yDomainFinal } = params;
   const marks = useMemo<ChartMark<ChartDatum, Date, number>[]>(
     () => {
       if (isLoading) {return [];}
@@ -93,18 +92,19 @@ const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec 
         ...buildMarkerDotMarks({ hasHover: hoveredIndex !== null, legendHoveredKey, markerGradientIdByKey, markerSeriesConfigs, renderData, xDataKey }),
         ...buildTooltipChromeMarks({ crosshairGradientId, defaultStroke: DEFAULT_LINE_STROKE, defaultStrokeWidth: DEFAULT_LINE_STROKE_WIDTH, hoveredIndex, isDiscrete, lines, renderData, tooltip, tooltipEnabled, xDataKey }),
       );
-      base.unshift(...buildGridHighlightRowMarks({ grid, heightPx, marginBottom: margin.bottom, marginLeft: margin.left, marginRight: margin.right, marginTop: margin.top, width, yDomainFinal }));
+      // Highlight rows are native ruleY marks; identity preserves filtering.
+      base.unshift(...gridHighlightRowMarks({ grid, yScale: (value: number): number => value }));
       base.push(
-        ...buildProfitLossMarks({ focusedIndex: hoveredIndexForPL ?? plTooltipSignIndex, gradientBaseId: projectionGradientBaseId, heightPx, isLoading, marginBottom: margin.bottom, marginLeft: margin.left, marginRight: margin.right, marginTop: margin.top, profitLossLines, renderData, timeExtent, timeExtentRaw, width, xDataKey, yDomainFinal }),
-        ...buildProjectionLineMarks({ fallbackStroke: PROJECTION_FALLBACK_STROKE, gradientBaseId: projectionGradientBaseId, heightPx, isLoading, marginBottom: margin.bottom, marginLeft: margin.left, marginRight: margin.right, marginTop: margin.top, projectionConfigs, projectionDefaultClassName: DEFAULT_PROJECTION_LINE_CLASS_NAME, projectionDefaultEndpointRadius: DEFAULT_PROJECTION_ENDPOINT_RADIUS_PX, projectionLines, timeExtent, timeExtentRaw, width, yDomainFinal }),
+        ...buildProfitLossMarks({ focusedIndex: hoveredIndexForPL ?? plTooltipSignIndex, gradientBaseId: projectionGradientBaseId, isLoading, profitLossLines, renderData, timeExtent, timeExtentRaw, width, xDataKey }),
+        ...buildProjectionLineMarks({ fallbackStroke: PROJECTION_FALLBACK_STROKE, gradientBaseId: projectionGradientBaseId, isLoading, projectionConfigs, projectionDefaultClassName: DEFAULT_PROJECTION_LINE_CLASS_NAME, projectionDefaultEndpointRadius: DEFAULT_PROJECTION_ENDPOINT_RADIUS_PX, projectionLines, timeExtent, timeExtentRaw, width }),
       );
       return base;
     },
-    [renderData, xDataKey, lines, isLoading, width, heightPx, yDomainFinal, projectorFor, projectionConfigs, projectionLines, projectionGradientBaseId, margin, profitLossLines, hoveredIndexForPL, plTooltipSignIndex, grid, markerSeriesConfigs, markerGradientIdByKey, timeExtent, timeExtentRaw, tooltipEnabled, tooltip, crosshairGradientId, isDiscrete, hoveredIndex, legendHoveredIndex],
+    [renderData, xDataKey, lines, isLoading, width, projectorFor, projectionConfigs, projectionLines, projectionGradientBaseId, profitLossLines, hoveredIndexForPL, plTooltipSignIndex, grid, markerSeriesConfigs, markerGradientIdByKey, timeExtent, timeExtentRaw, tooltipEnabled, tooltip, crosshairGradientId, isDiscrete, hoveredIndex, legendHoveredIndex],
   );
 
   const spec = useMemo(() => {
-    if (width <= 0) {return undefined;}
+    // Width never drops below the host initialWidth (V1.7): no width guard.
     const xScale = createLineXScale({ renderData, scaleRef: xScaleD3Ref, timeExtent, visibleData, xAxis, xDataKey, xDomain });
     const gridGuide = resolveGridGuide(grid);
     const xTickLabelOpacity = resolveXTickLabelOpacity(labelFade, xAxis);
@@ -139,12 +139,9 @@ const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec 
         spring: TOOLTIP_BOX_SPRING,
       }),
     };
-  }, [marks, renderData, xDataKey, grid, width, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, xDomain, timeExtent, tooltip, xAxis, yAxis, visibleData, labelFade, brushControls, xScaleD3Ref]);
+  }, [marks, renderData, xDataKey, grid, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, xDomain, timeExtent, tooltip, xAxis, yAxis, visibleData, labelFade, brushControls, xScaleD3Ref]);
 
-  const definition = useMemo((): DomChartDefinition<ChartDatum, Date, number> | undefined => {
-    if (spec === undefined) {return undefined;}
-    return defineChart(spec);
-  }, [spec]);
+  const definition = useMemo((): DomChartDefinition<ChartDatum, Date, number> => defineChart(spec), [spec]);
   return { definition };
 };
 

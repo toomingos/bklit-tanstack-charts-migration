@@ -7,6 +7,7 @@ import type { ChartFocusStrategy, ChartMotionDefinition, ChartMotionPhase, Chart
 import { isString } from "./bar-chart-hover-dots";
 import { BAR_ENTER_STAGGER_SPREAD_FRACTION, buildBarAxisSection, buildBarHoverMarks, buildNativeDepthGradients } from "./bar-chart-overlays";
 import { buildBarDefinition, buildSquareGradientDef } from "./bar-chart-series-marks";
+import { GROUP_GAP } from "./use-bar-scales";
 import type { ResolvedBarColumnTrack, ResolvedBarSquare, ResolvedSeries, ResolvedSquareDef, SquareGradientDef } from "./bar-chart-series-marks";
 import { buildNegBarStops, buildPosBarStops, BAR_FADED_OPACITY, DEFAULT_GROUND_SHADOW as DEFAULT_BAR_DEPTH_GROUND_SHADOW } from "./bar-depth-marks";
 import type { BarDepthGradientIds } from "./bar-depth-marks";
@@ -32,7 +33,6 @@ interface UseBarDefinitionOptions {
   readonly allSeriesKeys: readonly string[];
   readonly animationDuration: number;
   readonly animationEasing: string;
-  readonly bandWidth: number;
   readonly barDepthBacksRaw: readonly Readonly<BarDepthBackConfig>[];
   readonly barDepthFrontsRaw: readonly Readonly<BarDepthFrontConfig>[];
   readonly barDepthProvider: BarDepthProviderConfig | null;
@@ -41,13 +41,11 @@ interface UseBarDefinitionOptions {
   readonly barXAxis: ExtractedChildren["barXAxis"];
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly categoryOrder: readonly string[];
-  readonly categoryScaleForOverlay: ScaleBand<string>;
   readonly dotSeriesList: readonly { readonly color: string; readonly dataKey: string }[];
   readonly enterTransition: Readonly<EnterTransition> | undefined;
   readonly grid: ExtractedChildren["grid"];
   readonly groupBandwidth: number;
   readonly groupScale: ScaleBand<string>;
-  readonly groupScaleForOverlay: ScaleBand<string>;
   readonly hasBarColumnTrack: boolean;
   readonly hasBarSquares: boolean;
   readonly legendHoveredIndex: number | null;
@@ -81,7 +79,6 @@ const useBarDefinition = (options: Readonly<UseBarDefinitionOptions>): UseBarDef
     allSeriesKeys,
     animationDuration,
     animationEasing,
-    bandWidth,
     barDepthBacksRaw,
     barDepthFrontsRaw,
     barDepthProvider,
@@ -90,13 +87,11 @@ const useBarDefinition = (options: Readonly<UseBarDefinitionOptions>): UseBarDef
     barXAxis,
     categoryAccessor,
     categoryOrder,
-    categoryScaleForOverlay,
     dotSeriesList,
     enterTransition,
     grid,
     groupBandwidth,
     groupScale,
-    groupScaleForOverlay,
     hasBarColumnTrack,
     hasBarSquares,
     legendHoveredIndex,
@@ -198,11 +193,11 @@ const useBarDefinition = (options: Readonly<UseBarDefinitionOptions>): UseBarDef
     () =>
       buildBarHoverMarks({
         categoryAccessor,
-        categoryScaleForOverlay,
         // Dense data snaps instead of springing (bklit threshold, strict >).
         discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
         dotSeriesList,
-        groupScaleForOverlay,
+        groupBandwidth,
+        groupGap: dotSeriesList.length > 1 ? GROUP_GAP : 0,
         indicatorGradientId,
         projectValue,
         renderData,
@@ -210,11 +205,11 @@ const useBarDefinition = (options: Readonly<UseBarDefinitionOptions>): UseBarDef
         tooltipEnabled,
         tooltipSpring: chartConfig.tooltipSpring,
       }),
-    [categoryAccessor, categoryScaleForOverlay, chartConfig, dotSeriesList, groupScaleForOverlay, indicatorGradientId, projectValue, renderData, tooltip, tooltipEnabled],
+    [categoryAccessor, chartConfig, dotSeriesList, groupBandwidth, indicatorGradientId, projectValue, renderData, tooltip, tooltipEnabled],
   );
 
   const definition = useMemo((): DomChartDefinition<ChartDatum, string, number> | undefined => {
-    if (width <= 0 || (resolvedSeries.length === 0 && resolvedBarSquares.length === 0)) {return undefined;}
+    if (resolvedSeries.length === 0 && resolvedBarSquares.length === 0) {return undefined;}
     const hasSquares = barSquaresEnabled;
     const hasTrack = barColumnTrackEnabled;
     const hasDepth = barDepthEnabled;
@@ -225,15 +220,13 @@ const useBarDefinition = (options: Readonly<UseBarDefinitionOptions>): UseBarDef
     const depthLegendOpacity = legendHoveredIndex === null ? undefined : BAR_FADED_OPACITY;
     return buildBarDefinition({
       allSeriesKeys,
-      bandWidth,
-      barDepthBacksRaw,
+        barDepthBacksRaw,
       barDepthFrontsRaw,
       barEnterMotion,
       barFocusStrategy,
       barPulsesRaw,
       categoryAccessor,
-      categoryScaleForOverlay,
-      depthGradientIds,
+        depthGradientIds,
       depthLegendOpacity,
       gridGuide,
       groupBandwidth,
@@ -282,8 +275,6 @@ const useBarDefinition = (options: Readonly<UseBarDefinitionOptions>): UseBarDef
     margin,
     barFocusStrategy,
     totalSeriesCount,
-    bandWidth,
-    categoryScaleForOverlay,
     resolvedBarColumnTracks,
     squaresDefsByKey,
     squaresBaseId,

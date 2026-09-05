@@ -1,13 +1,10 @@
-import { scaleLinear } from "d3-scale";
-import type { ChartMark } from "@tanstack/charts";
-import { timeToPixelX } from "./x-time-scale";
+import { useMemo } from "react";
+import { useChartStable } from "./chart-context";
 import { toDate } from "./coerce-date";
 import type { TerminalMarkerAnchor } from "./terminal-marker-phase";
 import type { ProjectionEndMarkerAnchor } from "./terminal-marker";
 import type { ProjectionPoint } from "./projection-utils";
-import { gridHighlightRowMarks } from "./grid-highlight-mark";
-import { resolveGridGuide } from "./grid";
-import type { ChartDatum, GridConfig, SeriesPointMarkerStyle } from "./types";
+import type { ChartDatum, SeriesPointMarkerStyle } from "./types";
 
 // Rendered x-domain extent; mirrors the inline timeExtentRaw/timeExtent shapes.
 interface OverlayTimeExtent {
@@ -15,89 +12,13 @@ interface OverlayTimeExtent {
   readonly minTime: number;
 }
 
-interface GridHighlightRowMarksParams {
-  readonly grid: GridConfig | null;
-  readonly heightPx: number;
-  readonly marginBottom: number;
-  readonly marginLeft: number;
-  readonly marginRight: number;
-  readonly marginTop: number;
-  readonly width: number;
-  readonly yDomainFinal: readonly [number, number];
-}
-
-const buildGridHighlightRowMarks = (params: Readonly<GridHighlightRowMarksParams>): ChartMark<ChartDatum, Date, number>[] => {
-  const gridGuide = resolveGridGuide(params.grid);
-  const highlightGrid = params.grid && gridGuide.horizontal ? params.grid : undefined;
-  if (!highlightGrid || !highlightGrid.highlightRowValues || highlightGrid.highlightRowValues.length === 0 || params.width <= 0) {
-    return [];
-  }
-  const innerWidth = Math.max(0, params.width - params.marginLeft - params.marginRight);
-  const innerHeight = Math.max(0, params.heightPx - params.marginTop - params.marginBottom);
-  if (innerWidth <= 0 || innerHeight <= 0) {
-    return [];
-  }
-  const highlightScale = scaleLinear().domain(params.yDomainFinal).range([innerHeight, 0]);
-  return gridHighlightRowMarks({
-    grid: params.grid,
-    yScale: (value: number) => highlightScale(value),
-  });
-};
-
-interface OverlayScales {
+// Host-sourced overlay mapping (V1.2/G6); built by the host-child wrapper.
+interface OverlayMappers {
+  readonly xMap: (value: Readonly<Date>) => number;
+  readonly yMap: (value: number) => number;
   readonly innerWidth: number;
-  readonly xScale: (value: Readonly<Date>) => number;
-  readonly yScale: (value: number) => number;
+  readonly rightEdge: number;
 }
-
-interface OverlayScaleParams {
-  readonly extentMaxTime: number;
-  readonly innerHeight: number;
-  readonly innerWidth: number;
-  readonly rawMinTime: number;
-  readonly yDomainFinal: readonly [number, number];
-}
-
-const resolveOverlayScales = (params: Readonly<OverlayScaleParams>): OverlayScales => ({
-  innerWidth: params.innerWidth,
-  xScale: (value: Readonly<Date>): number => timeToPixelX(value, params.rawMinTime, params.extentMaxTime, params.innerWidth),
-  yScale: scaleLinear().domain(params.yDomainFinal).range([params.innerHeight, 0]),
-});
-
-interface AnchorFrame {
-  readonly extentMaxTime: number;
-  readonly innerWidth: number;
-  readonly rawMinTime: number;
-  readonly yScale: (value: number) => number;
-}
-
-interface AnchorFrameParams {
-  readonly heightPx: number;
-  readonly marginBottom: number;
-  readonly marginLeft: number;
-  readonly marginRight: number;
-  readonly marginTop: number;
-  readonly timeExtent: Readonly<OverlayTimeExtent> | undefined;
-  readonly timeExtentRaw: Readonly<OverlayTimeExtent> | undefined;
-  readonly width: number;
-  readonly yDomainFinal: readonly [number, number];
-}
-
-const resolveAnchorFrame = (params: Readonly<AnchorFrameParams>): AnchorFrame | undefined => {
-  const innerWidth = Math.max(0, params.width - params.marginLeft - params.marginRight);
-  const innerHeight = Math.max(0, params.heightPx - params.marginTop - params.marginBottom);
-  const rawExtent = params.timeExtentRaw;
-  const extent = params.timeExtent;
-  if (innerWidth <= 0 || innerHeight <= 0 || !extent || !rawExtent) {
-    return undefined;
-  }
-  return {
-    extentMaxTime: extent.maxTime,
-    innerWidth,
-    rawMinTime: rawExtent.minTime,
-    yScale: scaleLinear().domain(params.yDomainFinal).range([innerHeight, 0]),
-  };
-};
 
 type TerminalMarkerSource = Readonly<SeriesPointMarkerStyle> & {
   readonly dataKey: string;
@@ -111,23 +32,15 @@ interface TerminalAnchorDefaults {
 
 interface TerminalAnchorParams {
   readonly defaults: Readonly<TerminalAnchorDefaults>;
-  readonly heightPx: number;
-  readonly marginBottom: number;
-  readonly marginLeft: number;
-  readonly marginRight: number;
-  readonly marginTop: number;
+  readonly mappers: Readonly<OverlayMappers>;
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly terminalMarkers: readonly Readonly<TerminalMarkerSource>[];
-  readonly timeExtent: Readonly<OverlayTimeExtent> | undefined;
-  readonly timeExtentRaw: Readonly<OverlayTimeExtent> | undefined;
-  readonly width: number;
   readonly xDataKey: string;
-  readonly yDomainFinal: readonly [number, number];
 }
 
 interface TerminalAnchorContext {
   readonly defaults: Readonly<TerminalAnchorDefaults>;
-  readonly frame: Readonly<AnchorFrame>;
+  readonly mappers: Readonly<OverlayMappers>;
   readonly lastRow: Readonly<ChartDatum>;
   readonly xDataKey: string;
 }
@@ -144,8 +57,8 @@ const resolveTerminalAnchor = (
   if (!isNumber(rowValue) || !Number.isFinite(rowValue) || !dateValue) {
     return undefined;
   }
-  const cx = timeToPixelX(dateValue, context.frame.rawMinTime, context.frame.extentMaxTime, context.frame.innerWidth);
-  const cy = context.frame.yScale(rowValue);
+  const cx = context.mappers.xMap(dateValue);
+  const cy = context.mappers.yMap(rowValue);
   if (!Number.isFinite(cx) || !Number.isFinite(cy)) {
     return undefined;
   }
@@ -164,16 +77,15 @@ const resolveTerminalAnchor = (
 };
 
 const buildTerminalAnchors = (params: Readonly<TerminalAnchorParams>): TerminalMarkerAnchor[] => {
-  if (params.terminalMarkers.length === 0 || params.renderData.length === 0 || params.width <= 0 || params.heightPx <= 0) {
+  if (params.terminalMarkers.length === 0 || params.renderData.length === 0) {
     return [];
   }
-  const frame = resolveAnchorFrame(params);
   const lastRow = params.renderData.at(-1);
-  if (!frame || !lastRow) {
+  if (!lastRow) {
     return [];
   }
   return params.terminalMarkers.flatMap((marker: Readonly<TerminalMarkerSource>) => {
-    const anchor = resolveTerminalAnchor(marker, { defaults: params.defaults, frame, lastRow, xDataKey: params.xDataKey });
+    const anchor = resolveTerminalAnchor(marker, { defaults: params.defaults, lastRow, mappers: params.mappers, xDataKey: params.xDataKey });
     return anchor ? [anchor] : [];
   });
 };
@@ -187,22 +99,14 @@ interface ProjectionEndMarkerSource {
 
 interface ProjectionEndAnchorParams {
   readonly fallbackStroke: string;
-  readonly heightPx: number;
-  readonly marginBottom: number;
-  readonly marginLeft: number;
-  readonly marginRight: number;
-  readonly marginTop: number;
+  readonly mappers: Readonly<OverlayMappers>;
   readonly markerRadius: number;
   readonly projectionEndMarkers: readonly Readonly<ProjectionEndMarkerSource>[];
-  readonly timeExtent: Readonly<OverlayTimeExtent> | undefined;
-  readonly timeExtentRaw: Readonly<OverlayTimeExtent> | undefined;
-  readonly width: number;
-  readonly yDomainFinal: readonly [number, number];
 }
 
 interface ProjectionEndAnchorContext {
   readonly fallbackStroke: string;
-  readonly frame: Readonly<AnchorFrame>;
+  readonly mappers: Readonly<OverlayMappers>;
   readonly markerRadius: number;
 }
 
@@ -217,10 +121,10 @@ const resolveProjectionEndAnchor = (
   const dateValue = last.date instanceof Date ? last.date : new Date(last.date);
   const radius = marker.radius ?? context.markerRadius;
   const cx = Math.min(
-    timeToPixelX(dateValue, context.frame.rawMinTime, context.frame.extentMaxTime, context.frame.innerWidth),
-    Math.max(0, context.frame.innerWidth - (radius + 1)),
+    context.mappers.xMap(dateValue),
+    Math.max(0, context.mappers.innerWidth - (radius + 1)),
   );
-  const cy = context.frame.yScale(last.value);
+  const cy = context.mappers.yMap(last.value);
   if (Number.isNaN(dateValue.getTime()) || !Number.isFinite(cx) || !Number.isFinite(cy)) {
     return undefined;
   }
@@ -228,30 +132,46 @@ const resolveProjectionEndAnchor = (
 };
 
 const buildProjectionEndAnchors = (params: Readonly<ProjectionEndAnchorParams>): ProjectionEndMarkerAnchor[] => {
-  if (params.projectionEndMarkers.length === 0 || params.width <= 0 || params.heightPx <= 0) {
-    return [];
-  }
-  const frame = resolveAnchorFrame(params);
-  if (!frame) {
+  if (params.projectionEndMarkers.length === 0) {
     return [];
   }
   return params.projectionEndMarkers.flatMap((marker: Readonly<ProjectionEndMarkerSource>) => {
-    const anchor = resolveProjectionEndAnchor(marker, { fallbackStroke: params.fallbackStroke, frame, markerRadius: params.markerRadius });
+    const anchor = resolveProjectionEndAnchor(marker, { fallbackStroke: params.fallbackStroke, mappers: params.mappers, markerRadius: params.markerRadius });
     return anchor ? [anchor] : [];
   });
 };
 
+// Host-child mapper source (V1.2/G6); must render under ChartHost.
+const useOverlayMappers = (params: Readonly<{
+  readonly extentMaxTime: number | undefined;
+  readonly rawMinTime: number | undefined;
+  readonly yDomainFinal: readonly [number, number];
+}>): OverlayMappers | undefined => {
+  const { chart, xScale, yScale } = useChartStable();
+  const { extentMaxTime, rawMinTime, yDomainFinal } = params;
+  const [y0, y1] = yDomainFinal;
+  return useMemo((): OverlayMappers | undefined => {
+    if (chart === undefined || rawMinTime === undefined || extentMaxTime === undefined) {
+      return undefined;
+    }
+    const x = xScale.copy().domain([rawMinTime, extentMaxTime]);
+    const y = yScale.copy().domain([y0, y1]);
+    return {
+      innerWidth: chart.width,
+      rightEdge: chart.x + chart.width,
+      xMap: (value: Readonly<Date>): number => x(value),
+      yMap: (value: number): number => y(value),
+    };
+  }, [chart, xScale, yScale, rawMinTime, extentMaxTime, y0, y1]);
+};
+
 export {
-  buildGridHighlightRowMarks,
   buildProjectionEndAnchors,
   buildTerminalAnchors,
-  resolveOverlayScales,
+  useOverlayMappers,
 };
 export type {
-  AnchorFrame,
-  GridHighlightRowMarksParams,
-  OverlayScales,
-  OverlayScaleParams,
+  OverlayMappers,
   OverlayTimeExtent,
   ProjectionEndAnchorParams,
   TerminalAnchorParams,

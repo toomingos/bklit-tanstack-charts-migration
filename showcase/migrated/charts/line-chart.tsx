@@ -10,7 +10,7 @@ import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useEffectEvent } from "./internal/use-effect-event";
 import type { ScaleTime } from "d3-scale";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
+import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, adoptHostWidth, useRegistryEntriesState } from "./internal/chart-host";
 import { useChartRenderer } from "./internal/motion-renderer";
 import {
   decimateTimeSeries,
@@ -55,7 +55,6 @@ import {
   firstNonEmptyString,
   isNumber,
   isString,
-  renderLoadingSkeleton,
   resolveChartHeightPx,
   resolveEffectiveYDomainTweenBase,
   stringifyDatumValue,
@@ -132,6 +131,9 @@ export const LineChart = ({
   });
   const projectionPhasePortRef = useRef<ProjectionPhaseHandle | null>(null);
 
+  // Registry union (V1.3 carriers): entries report up from inside the host.
+  const [registryEntries, handleRegistryEntries] = useRegistryEntriesState();
+
   const effectiveYDomainTweenDuration = useMemo(() => {
     const base = resolveEffectiveYDomainTweenBase(yDomainTween);
     if (!tweenYDomainOnXDomainChange || !xDomain) {return base;}
@@ -172,8 +174,8 @@ export const LineChart = ({
   }, [chartPhase, notifyYDomainTweenComplete]);
 
   const { lines, grid, xAxis, yAxis, background, tooltip, projectionLines, projectionEndMarkers, terminalMarkers, profitLossLines, chartMarkers, brushes } = useMemo(
-    () => extractChildren(children),
-    [children],
+    () => extractChildren(children, registryEntries),
+    [children, registryEntries],
   );
 
   const tooltipEnabled = tooltip?.enabled ?? false;
@@ -228,7 +230,6 @@ export const LineChart = ({
     crosshairGradientId,
     effectiveYDomainTweenDuration,
     grid,
-    heightPx,
     hoveredIndex,
     hoveredIndexForPL,
     isDiscrete,
@@ -326,16 +327,12 @@ export const LineChart = ({
   }, [revealHandleRender]);
 
   const {
-    backgroundNode,
-    brushChromeNode,
-    brushClipId,
-    brushClipNode,
     chartSelection,
-    definitionOverlayNode,
     fadeEdgesMask,
+    hostChildren,
     loadingLabelNode,
+    brushClipId,
     needsBrushClip,
-    pulseMode,
   } = useLineOverlays({
     animationDuration,
     background,
@@ -408,7 +405,11 @@ export const LineChart = ({
         onRender={handleRender}
         renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
         style={style}
-      />
+      >
+        {children}
+        <ChartRegistryBridge onEntries={handleRegistryEntries} />
+        {hostChildren}
+      </ChartHost>
     </div>
   );
   const containerStyle = useMemo((): CSSProperties => ({ aspectRatio, isolation: "isolate", position: "relative", width: "100%", ...style }), [aspectRatio, style]);
@@ -423,23 +424,8 @@ export const LineChart = ({
       data-bkm-fade-edges-left={fadeEdgesMask["data-bkm-fade-edges-left"]}
       data-bkm-fade-edges-right={fadeEdgesMask["data-bkm-fade-edges-right"]}
     >
-      {brushClipNode}
-      {brushChromeNode}
       {loadingLabelNode}
-      {backgroundNode}
       {rendererNode}
-      {definitionOverlayNode}
-      {!definition && isLoading && width > 0 && renderLoadingSkeleton({
-        heightPx,
-        lines,
-        marginBottom: margin.bottom,
-        marginLeft: margin.left,
-        marginRight: margin.right,
-        marginTop: margin.top,
-        pulseMode,
-        width,
-        yDomainFinal,
-      })}
     </div>
     </ChartSelectionContext.Provider>
   );

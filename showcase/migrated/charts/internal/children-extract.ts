@@ -3,6 +3,7 @@
 import { Fragment, isValidElement } from "react";
 import type { JSXElementConstructor, ReactElement, ReactNode } from "react";
 import { ChildPropGuards, roleOf } from "./chart-child-carrier";
+import { shallowEqualChildProps } from "./chart-child-registry";
 import type { ChartChildRegistration } from "./chart-child-registry";
 import type {
   AreaConfig,
@@ -217,13 +218,20 @@ const pushRegistryEntry = (role: string, props: AnyChildProps, out: ExtractedChi
   pushMarkerRegistry(role, props, out);
 };
 
-const visit = (node: ReactNode, out: ExtractedChildren, seen: Set<unknown>): void => {
-  const recurse = (nested: ReactNode): void => {visit(nested, out, seen);};
+// Scanned element identity for registry dedup (V1.2 regression fix).
+interface ScannedChild {
+  readonly role: string | undefined;
+  readonly props: unknown;
+}
+
+const visit = (node: ReactNode, out: ExtractedChildren, seen: Set<unknown>, scanned: ScannedChild[]): void => {
+  const recurse = (nested: ReactNode): void => {visit(nested, out, seen, scanned);};
   // Flatten nested child arrays without React.Children; key assignment is unused here.
   for (const child of [node].flat(Infinity)) {
     if (isValidElement(child) && !visitFrameChild(child, recurse)) {
       seen.add(child.props);
       const role = roleOf(child.type);
+      scanned.push({ props: child.props, role });
       // Unknown roles carry no chart config: only known carriers populate the spec.
       applySeriesConfigRole(child, role, out);
       applyFrameOverlayRole(child, role, out);
@@ -267,9 +275,10 @@ const extractChildren = (
     yAxis: null,
   };
   const seen = new Set<unknown>();
-  visit(children, out, seen);
+  const scanned: ScannedChild[] = [];
+  visit(children, out, seen, scanned);
   for (const entry of registryEntries) {
-    if (!seen.has(entry.props)) {
+    if (!seen.has(entry.props) && !scanned.some((sibling) => sibling.role === entry.role && shallowEqualChildProps(sibling.props, entry.props))) {
       seen.add(entry.props);
       pushRegistryEntry(entry.role, entry.props, out);
     }

@@ -15,9 +15,24 @@ interface ChartChildRegistration {
   readonly key: string | null;
 }
 
+// Shallow prop equality for registry dedup (V1.2 regression fix).
+const isPropsRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const shallowEqualChildProps = (left: unknown, right: unknown): boolean => {
+  if (Object.is(left, right)) {return true;}
+  if (!isPropsRecord(left) || !isPropsRecord(right)) {return false;}
+  const leftKeys = Object.keys(left).filter((key) => key !== "children");
+  const rightKeys = Object.keys(right).filter((key) => key !== "children");
+  if (leftKeys.length !== rightKeys.length) {return false;}
+  return leftKeys.every((key) => Object.hasOwn(right, key) && Object.is(left[key], right[key]));
+};
+
 interface ChartChildRegistryValue {
   readonly version: number;
-  readonly register: (entry: ChartChildRegistration) => () => void;
+  readonly register: (entry: ChartChildRegistration) => number;
+  readonly update: (id: number, entry: ChartChildRegistration) => void;
+  readonly unregister: (id: number) => void;
   readonly snapshot: () => readonly ChartChildRegistration[];
 }
 
@@ -27,7 +42,7 @@ const ChartChildRegistryContext = createContext<ChartChildRegistryValue | null>(
 const useChartChildRegistry = (): ChartChildRegistryValue | null =>
   useContext(ChartChildRegistryContext);
 
-// Entries bump `version`; subscribers re-derive once per batch.
+// Entries bump `version` only on real change; subscribers re-derive once per batch.
 const ChartChildRegistryProvider = (properties: {
   readonly children: ReactNode;
 }): ReactElement => {
@@ -35,29 +50,34 @@ const ChartChildRegistryProvider = (properties: {
   const entriesRef = useRef(new Map<number, ChartChildRegistration>());
   const nextIdRef = useRef(0);
   const [version, setVersion] = useState(0);
+  const register = useCallback((entry: ChartChildRegistration): number => {
+    nextIdRef.current += 1;
+    const id = nextIdRef.current;
+    entriesRef.current.set(id, entry);
+    setVersion((current) => current + 1);
+    return id;
+  }, []);
+  // Fresh-but-equal props (every consumer render) store silently; the version
+  // — and every downstream definition memo — stays put.
+  const update = useCallback((id: number, entry: ChartChildRegistration): void => {
+    const prev = entriesRef.current.get(id);
+    if (prev !== undefined && prev.role === entry.role && shallowEqualChildProps(prev.props, entry.props)) {return;}
+    entriesRef.current.set(id, entry);
+    setVersion((current) => current + 1);
+  }, []);
   const unregister = useCallback((id: number): void => {
     entriesRef.current.delete(id);
     setVersion((current) => current + 1);
   }, []);
-  const register = useCallback(
-    (entry: ChartChildRegistration): (() => void) => {
-      nextIdRef.current += 1;
-      const id = nextIdRef.current;
-      entriesRef.current.set(id, entry);
-      setVersion((current) => current + 1);
-      return (): void => {
-        unregister(id);
-      };
-    },
-    [unregister],
-  );
   const value = useMemo(
     (): ChartChildRegistryValue => ({
       register,
       snapshot: (): readonly ChartChildRegistration[] => [...entriesRef.current.values()],
+      unregister,
+      update,
       version,
     }),
-    [register, version],
+    [register, unregister, update, version],
   );
   return createElement(ChartChildRegistryContext.Provider, { value }, children);
 };
@@ -75,6 +95,7 @@ export {
   ChartChildRegistryContext,
   ChartChildRegistryProvider,
   OUTSIDE_CHART_MESSAGE,
+  shallowEqualChildProps,
   useChartChildEntries,
   useChartChildRegistry,
 };

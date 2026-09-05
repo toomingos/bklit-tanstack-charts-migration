@@ -4,7 +4,6 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { PatternPresetId } from './pattern-preset';
 import type { ReferenceAreaIfOverflow } from './reference-area-geometry';
-import type { ChartMargin } from "./use-chart-margin";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { applyReferenceAreaVisibility, isReferenceAreaVisiblePhase, useReferenceAreaGeometry } from "./reference-area-scale";
 import type { ReferenceAreaPropValue } from "./reference-area-config";
@@ -54,35 +53,21 @@ interface ReferenceAreaLayerProps {
   readonly markerSize?: number;
   readonly ifOverflow?: ReferenceAreaIfOverflow;
   readonly className?: string;
-  width: number;
-  height: number;
-  readonly margin: ChartMargin;
   readonly yDomain: [number, number];
   readonly xDomain?: readonly [number, number] | [Date, Date];
   readonly xDataKey?: string;
-  readonly isTimeScale?: boolean;
-  readonly barScale?: { (value: string): number | undefined; bandwidth: () => number; domain: () => string[] } | null;
   readonly isBarChart?: boolean;
   readonly bandWidth?: number;
-  readonly xRangePadding?: number;
-  readonly isCandlestickXScale?: boolean;
   readonly phase?: string;
   readonly isLoaded?: boolean;
 }
 
 interface ReferenceAreaLayersGeom {
-  width: number;
-  height: number;
-  readonly margin: ChartMargin;
   readonly yDomain: [number, number];
   readonly yDomainsByAxis?: Record<string, [number, number]>;
   readonly xDomain?: readonly [number, number] | [Date, Date];
   readonly xDataKey?: string;
-  readonly isTimeScale?: boolean;
-  readonly barScale?: { (value: string): number | undefined; bandwidth: () => number; domain: () => string[] } | null;
   readonly isBarChart?: boolean;
-  readonly xRangePadding?: number;
-  readonly isCandlestickXScale?: boolean;
   readonly phase?: string;
   readonly isLoaded?: boolean;
 }
@@ -200,24 +185,17 @@ const narrowIfOverflowProp = <Value,>(value: Value): (Value & ReferenceAreaIfOve
 };
 
 // Readonly view of the geometry passthrough for the element factory below.
-type ReferenceAreaLayersGeomView = Pick<ReferenceAreaLayersGeom, "barScale" | "height" | "isBarChart" | "isCandlestickXScale" | "isLoaded" | "isTimeScale" | "margin" | "phase" | "width" | "xDataKey" | "xDomain" | "xRangePadding" | "yDomain" | "yDomainsByAxis">;
+type ReferenceAreaLayersGeomView = Pick<ReferenceAreaLayersGeom, "isBarChart" | "isLoaded" | "phase" | "xDataKey" | "xDomain" | "yDomain" | "yDomainsByAxis">;
 
 // Builds one reference-area element from an open-ended child-props config.
 const buildReferenceAreaLayerElement = (config: Readonly<ReferenceAreaConfig>, geom: Readonly<ReferenceAreaLayersGeomView>): ReactElement => (
   <ReferenceAreaLayer
     key={`ref-${stringifyReferenceAreaKeyPart(config.y1)}-${stringifyReferenceAreaKeyPart(config.y2)}-${stringifyReferenceAreaKeyPart(config.x1)}-${stringifyReferenceAreaKeyPart(config.x2)}-${stringifyReferenceAreaKeyPart(config.yAxisId)}`}
-    width={geom.width}
-    height={geom.height}
-    margin={geom.margin}
     yDomain={geom.yDomain}
     yDomainsByAxis={geom.yDomainsByAxis}
     xDomain={geom.xDomain}
     xDataKey={geom.xDataKey}
-    isTimeScale={geom.isTimeScale}
-    barScale={geom.barScale}
     isBarChart={geom.isBarChart}
-    xRangePadding={geom.xRangePadding}
-    isCandlestickXScale={geom.isCandlestickXScale}
     phase={geom.phase}
     isLoaded={geom.isLoaded}
     y1={narrowNumberProp(config.y1)}

@@ -160,14 +160,8 @@ const domainForAxis = (domainsByAxis: Record<string, YDomain>, axisId: string): 
 
 
 
-const useYScale = (domainsByAxis: Record<string, YDomain>, innerHeight: number, yAxisId?: string | number): NicedYScale => {
-  const domain = domainForAxis(domainsByAxis, normalizeYAxisId(yAxisId));
-  const [d0, d1] = domain;
-  return useMemo(
-    () => createNicedYScale([d0, d1]).range([innerHeight, 0]),
-    [d0, d1, innerHeight],
-  );
-}
+// D521c: the host reader `useChartStable` in chart-context.tsx wins; the LOCAL
+// Builder was dead (zero callers; the barrel exports the host reader).
 
 const domainsEqual = (left: Readonly<Record<string, Readonly<YDomain>>>, right: Readonly<Record<string, Readonly<YDomain>>>): boolean => {
   const leftKeys = Object.keys(left);
@@ -221,7 +215,6 @@ export {
   getPrimaryYScale,
   createAxisValueProjector,
   domainForAxis,
-  useYScale,
   domainsEqual,
   shouldTweenYDomain,
   isYDomainTweenPhase,
