@@ -6,7 +6,7 @@ import worldTopologyRaw from "../assets/world-countries-110m.json";
 
 export interface CountryProperties {
   name: string;
-  [key: string]: unknown;
+  [key: string]: string | number | boolean | null | undefined;
 }
 
 export type CountryFeature = Feature<Geometry, CountryProperties>;

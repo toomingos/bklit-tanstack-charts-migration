@@ -13,10 +13,10 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | V0.1 | commit open diff, merge `chore/oxlint-migrated-charts` | merged | `6c5bc53` | — |
 | V0.2 | pin 0.16.0, fix R1 breaking surface (15 definitions) | merged | `0bcf471` | D510 · executors `ses_f8ed0fe71ffeZPR00ZjS98CmRI` (migrated), `ses_f8ed0d417ffeeTMDv0dnyJ32LO` (bench) |
 | V0.3 | re-baseline at new HEAD, tree hash, `bundle-sizes.json` | todo | | |
-| V0.4 | housekeeping (`__tm`, 9 orphans, nested `defineChart`) | todo | | |
+| V0.4 | housekeeping (`__tm`, 9 orphans, nested `defineChart`) | merged | (see git) | D513 · executor `ses_f8ec060e3ffea8L3Q3VTYvzpO3` (resumed once for the cascade) · orphans 18 → 0 · G1 folded |
 | V0.5 | file I1, I2, I4, I5, I6, F-260 comment; numbers in `07` | merged | `437af3a` | D511 · #126 #127 #128 #129 #130 #131 · code links land with the owning items |
-| V0.6 | idiom checklist below matches `08` §3 | merged | (see git) | checked 2026-09-05: 12 idioms, 16 family rows, wording matches §3 |
-| — | `10-parity-contract.md` reviewed by lead | merged | (see git) | reviewed 2026-09-05 (V0.1 session): 292 value + 211 type exports, 3 exceptions, 23 tests (D508) |
+| V0.6 | idiom checklist below matches `08` §3 | merged | `075e331` | checked 2026-09-05: 12 idioms, 16 family rows, wording matches §3 |
+| — | `10-parity-contract.md` reviewed by lead | merged | `075e331` | reviewed 2026-09-05 (V0.1 session): 292 value + 211 type exports, 3 exceptions, 23 tests (D508) |
 
 ## Waves 1–4 — 7.1 Host and package, 7.2 Native definition, 7.3 Evidence
 
@@ -76,7 +76,7 @@ stamp), UPSTREAM (I-number in `07`). No vector = synthesis defect: amend `08` §
 
 | G | Found by | Symptom | Vector | Disposition | Ref |
 |---|---|---|---|---|---|
-| G1 | V0.2b executor (`ses_f8ed0d417ffeeTMDv0dnyJ32LO`) | `bench/app/src/scenarios/migrated-choropleth.tsx:137` fails bench tsc: `CountryProperties` (`[key: string]: unknown`) not assignable to `ChoroplethFeatureProperties`; pre-existing, independent of 0.16.0; `npm run build` unaffected | V4 (gate integrity: bench app must typecheck) | FOLD into V0.4 housekeeping (typed bench data, no showcase edit) | D510 |
+| G1 | V0.2b executor (`ses_f8ed0d417ffeeTMDv0dnyJ32LO`) | `bench/app/src/scenarios/migrated-choropleth.tsx:137` fails bench tsc: `CountryProperties` (`[key: string]: unknown`) not assignable to `ChoroplethFeatureProperties`; pre-existing, independent of 0.16.0; `npm run build` unaffected | V4 (gate integrity: bench app must typecheck) | FOLD into V0.4 housekeeping (typed bench data, no showcase edit) — done | D513 |
 
 ## Idiom checklist (V0.6 / V3.8)
 

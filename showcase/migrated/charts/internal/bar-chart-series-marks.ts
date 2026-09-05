@@ -684,7 +684,7 @@ const buildPlainBarDefinition = ({
     svgAnimation: false as const,
     theme: { muted: "var(--color-chart-label, var(--chart-label))" },
   } as const;
-  return defineChart(defineChart(spec), { focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY, tooltip: tooltipOption });
+  return defineChart({ ...spec, focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY, tooltip: tooltipOption });
 };
 
 interface BarFullMarksParams {
@@ -773,7 +773,7 @@ const buildFullBarDefinition = (params: Readonly<BarFullDefinitionParams>): DomC
     svgAnimation: false as const,
     theme: { muted: "var(--color-chart-label, var(--chart-label))" },
   } as const;
-  return defineChart(defineChart(spec), { focus: params.barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY, tooltip: tooltipOption });
+  return defineChart({ ...spec, focus: params.barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY, tooltip: tooltipOption });
 };
 
 // Plain-vs-full dispatch: bare bars take the short path; tracks/squares/depth use the full spec.
