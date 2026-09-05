@@ -1,7 +1,7 @@
 // Sanctioned WAAPI reach-in: dash draw-on + per-role stagger have no native motion expression.
 import { onPostPaint } from "./deferred-reveal";
 import { REVEAL_EASE_CSS } from "./design-tokens";
-import { buildSankeyLinkAnimationSpecs, buildSankeyNodeAnimationSpecs, collectSankeyLabels, playSankeyAnimationSpecs, queryLinkPaths, queryNodeGroups } from "./sankey-reveal-specs";
+import { buildSankeyLinkAnimationSpecs, buildSankeyNodeAnimationSpecs, collectSankeyLabels, playSankeyAnimationSpecs, queryLinkPaths, queryNodeRects } from "./sankey-reveal-specs";
 
 interface SankeyEnterTransition {
   readonly type?: "spring" | "tween";
@@ -105,20 +105,20 @@ interface SankeyRevealFrameParams {
   readonly animationDuration: number;
   readonly enterTransition: SankeyEnterTransition | undefined;
   readonly linkPaths: readonly (SVGPathElement | null)[];
-  readonly nodeGroups: readonly (SVGGElement | null)[];
+  readonly nodeRects: readonly (SVGRectElement | null)[];
   readonly runtime: SankeyRevealRuntime;
   readonly svg: SVGSVGElement;
 }
 
 // Builds and plays the node and link specs for one post-paint reveal frame.
 const playSankeyRevealFrame = (params: Readonly<SankeyRevealFrameParams>): SankeyRevealFrameTiming => {
-  const { animationDuration, enterTransition, linkPaths, nodeGroups, runtime, svg } = params;
+  const { animationDuration, enterTransition, linkPaths, nodeRects, runtime, svg } = params;
   const { durationMs, easingCss } = resolveTiming(enterTransition, animationDuration);
   const nodeAnimDuration = animationDuration * SANKEY_NODE_ANIM_FRACTION;
   const nameLabels = collectSankeyLabels({ prefix: "sankey:nlabel:", svg });
   const valueLabels = collectSankeyLabels({ prefix: "sankey:vlabel:", svg });
   const specs = [
-    ...buildSankeyNodeAnimationSpecs({ nameLabels, nodeAnimDuration, nodeGroups, svg, valueLabels }),
+    ...buildSankeyNodeAnimationSpecs({ nameLabels, nodeAnimDuration, nodeRects, svg, valueLabels }),
     ...buildSankeyLinkAnimationSpecs({ animationDuration, linkPaths }),
   ];
   const maxDelayMs = playSankeyAnimationSpecs({ animations: runtime.animations, durationMs, easingCss, specs });
@@ -127,7 +127,7 @@ const playSankeyRevealFrame = (params: Readonly<SankeyRevealFrameParams>): Sanke
 
 const runSankeyReveal = (config: SankeyRevealConfig): SankeyRevealHandle => {
   const { svg, animationDuration, enterTransition } = config;
-  const nodeGroups = queryNodeGroups(svg);
+  const nodeRects = queryNodeRects(svg);
   const linkPaths = queryLinkPaths(svg);
   const marksGroup = svg.querySelector(".ts-chart__marks");
   const runtime = createSankeyRevealRuntime();
@@ -146,7 +146,7 @@ const runSankeyReveal = (config: SankeyRevealConfig): SankeyRevealHandle => {
 
   runtime.cancelPostPaint = onPostPaint((): void => {
     runtime.cancelPostPaint = undefined;
-    const { durationMs, maxDelayMs } = playSankeyRevealFrame({ animationDuration, enterTransition, linkPaths, nodeGroups, runtime, svg });
+    const { durationMs, maxDelayMs } = playSankeyRevealFrame({ animationDuration, enterTransition, linkPaths, nodeRects, runtime, svg });
     marksGroup?.classList.remove(REVEALING_CLASS);
     if (runtime.animations.length === EMPTY_ANIMATION_COUNT) {return;}
     // Detached settle: Promise.allSettled never rejects, so awaiting is unnecessary.
@@ -156,7 +156,6 @@ const runSankeyReveal = (config: SankeyRevealConfig): SankeyRevealHandle => {
   return { cancel };
 }
 
-export { injectGradientDefs } from "./sankey-gradients";
 export { stampSankeyLinkPathLength } from "./sankey-reveal-specs";
 export { runSankeyReveal };
 export type { SankeyEnterTransition, SankeyRevealConfig, SankeyRevealHandle };

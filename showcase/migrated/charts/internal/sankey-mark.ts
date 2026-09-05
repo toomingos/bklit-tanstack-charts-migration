@@ -1,23 +1,43 @@
 import type { RefObject } from "react";
-import { createMark } from "@tanstack/charts";
 import { link } from "@tanstack/charts/link";
-import type { ChartBounds, ChartMark, ChartPoint, ChartSpatialIndex, ChartValue, MarkInitialization, MarkScene, SceneNode } from "@tanstack/charts";
+import { rect } from "@tanstack/charts/rect";
+import { text } from "@tanstack/charts/text";
+import type { ChartPoint, ChartSpatialIndex, ChartValue } from "@tanstack/charts";
 import { sankeyDiagram } from '@tanstack/charts/network/sankey';
 import { d3Curve } from "@tanstack/charts/d3/shape";
 import { curveBumpX } from "d3-shape";
 import type { LaidOutNode } from './sankey-layout';
-import { buildSankeyLabelNodes, toLaidOutNode } from "./sankey-label-nodes";
-import { resolveSankeyFlowStroke, resolveSankeyFlowOpacity } from "./sankey-flow-style";
+import { SANKEY_LABEL_OFFSET, SANKEY_VALUE_LABEL_GAP } from "./sankey-layout";
+import {
+  formatSankeyValueLabel,
+  resolveSankeyNodeFrame,
+  sankeyDisplayValue,
+  toLaidOutNode,
+  SANKEY_DIMMED_VALUE_OPACITY_SCALE,
+  SANKEY_LABEL_FILL,
+  SANKEY_LABEL_ROTATE_CW,
+  SANKEY_NAME_FONT_SIZE,
+  SANKEY_VALUE_FONT_SIZE,
+  SANKEY_VALUE_LABEL_FILL_OPACITY,
+} from "./sankey-label-nodes";
 import type { LaidOutLink, LinkRow, NodeRow, SankeyLinkData, SankeyNodeData } from "./sankey-label-nodes";
+import { resolveSankeyFlowStroke } from "./sankey-flow-style";
 import type { SankeyLabelOrientation } from "./sankey-node";
 import { computeNodeHoverConnected, computeLinkHoverConnected, findHoveredSankeyTarget } from "./sankey-hover-chrome";
+import { withStates } from "./with-states";
 
-// Scene keys sankey:node/rect/nlabel/vlabel:i are the WAAPI reveal's DOM contract.
-const SANKEY_MARK_ID = "sankey";
+// Scene keys sankey:nlabel/vlabel:i are the WAAPI reveal's DOM contract.
 const SANKEY_NODE_MARK_ID = "sankey-node";
 const SANKEY_LINK_MARK_ID = "sankey:flow";
 const SANKEY_NODE_POINT_MARK_ID = `sankey:${SANKEY_NODE_MARK_ID}`;
-const SANKEY_GRADIENT_FALLBACK_X2 = 100;
+const SANKEY_NAME_LABEL_MARK_ID = "nlabel";
+const SANKEY_VALUE_LABEL_MARK_ID = "vlabel";
+
+// Rect fill is constant. Per-datum paint rides the color channel instead.
+const sankeyIdentityColorScale = Object.assign(
+  (value: string): string => value,
+  { copy: () => sankeyIdentityColorScale },
+);
 
 interface SankeyMarkConfig {
   readonly strokeOpacity: number;
@@ -36,155 +56,120 @@ interface SankeyMarkConfig {
   readonly fadedLinkOpacity: number;
 }
 
-interface SankeyGradientDatum {
-  readonly index: number;
-  readonly id: string;
-  readonly x1: number;
-  readonly x2: number;
-  readonly sourceColor: string;
-  readonly targetColor: string;
-}
-
 interface CreateSankeyMarkParams {
   readonly data: Readonly<{ nodes: readonly SankeyNodeData[]; links: readonly SankeyLinkData[] }>;
   readonly config: SankeyMarkConfig;
-  readonly gradientDataRef: RefObject<SankeyGradientDatum[] | null>;
   readonly laidOutNodesRef: RefObject<LaidOutNode[] | null>;
   readonly laidOutLinksRef: RefObject<LaidOutLink[] | null>;
 }
 
 const SANKEY_CURVE = d3Curve(curveBumpX);
 
-interface SankeyNodeSceneInput {
-  readonly node: Readonly<LaidOutNode>;
-  readonly index: number;
-  readonly nodeColorFn: (node: Readonly<LaidOutNode>, index: number) => string;
-  readonly lineCap: number;
-  readonly anyHovered: boolean;
-  readonly connected: boolean;
-  readonly fadedNodeOpacity: number;
+// Fraction-to-percent scale for alpha-baked dim fills.
+const PERCENT_SCALE = 100;
+// Connected-flow hover boost (legacy sankey-link.tsx getTargetOpacity).
+const SANKEY_HOVER_STROKE_BOOST = 1.3;
+
+// Legacy alphabetic `dy=0.35em` minus the package's fixed middle baseline (0.2656em, Geist, measured; D536).
+// Applied in screen space like legacy: +x at -90, -x at +90, +y unrotated.
+const SANKEY_LABEL_BASELINE_RESIDUAL_EM = 0.0844;
+
+interface SankeyLabelBaselineShift {
+  readonly dx: number;
+  readonly dy: number;
 }
 
-interface SankeyNodeSceneOutput {
-  readonly point: ChartPoint<LaidOutNode>;
-  readonly scene: SceneNode;
-}
-
-const buildSankeyNodeScene = (params: Readonly<SankeyNodeSceneInput>): SankeyNodeSceneOutput => {
-  const { node, index, nodeColorFn, lineCap, anyHovered, connected, fadedNodeOpacity } = params;
-  const nodeX = node.x0 ?? 0;
-  const nodeY = node.y0 ?? 0;
-  const nodeW = Math.max(0, (node.x1 ?? 0) - nodeX);
-  const nodeH = Math.max(0, (node.y1 ?? 0) - nodeY);
-  const nodeFill = nodeColorFn(node, index);
-  return {
-    point: {
-      color: nodeFill,
-      datum: node,
-      datumIndex: index,
-      group: null,
-      groupLabel: SANKEY_MARK_ID,
-      key: `${SANKEY_MARK_ID}:node:${index}`,
-      markId: SANKEY_NODE_MARK_ID,
-      x: nodeX + nodeW / 2,
-      xValue: index,
-      y: nodeY + nodeH / 2,
-      yValue: node.value ?? 0,
-    },
-    scene: {
-      ariaHidden: true,
-      children: [
-        {
-          className: "bkm-sankey__node-rect",
-          height: nodeH,
-          key: `${SANKEY_MARK_ID}:rect:${index}`,
-          kind: "rect" as const,
-          radius: lineCap,
-          style: {
-            fill: nodeFill,
-            fillOpacity: 1,
-            opacity: anyHovered && !connected ? fadedNodeOpacity : 1,
-          },
-          width: nodeW,
-          x: nodeX,
-          y: nodeY,
-        },
-      ],
-      className: "bkm-sankey__node",
-      key: `${SANKEY_MARK_ID}:node:${index}`,
-      kind: "group" as const,
-    },
-  };
+const sankeyLabelBaselineShift = (fontSize: number, rotate: number): SankeyLabelBaselineShift => {
+  const shift = fontSize * SANKEY_LABEL_BASELINE_RESIDUAL_EM;
+  if (rotate === -SANKEY_LABEL_ROTATE_CW) {return { dx: shift, dy: 0 };}
+  if (rotate === SANKEY_LABEL_ROTATE_CW) {return { dx: -shift, dy: 0 };}
+  return { dx: 0, dy: shift };
 };
 
-interface SankeyBodyMarkInput {
-  readonly config: SankeyMarkConfig;
-  readonly laidOutNodes: readonly Readonly<LaidOutNode>[];
-  readonly links: readonly Readonly<LinkRow>[];
-  readonly nodeConnected: readonly boolean[];
-  readonly anyHovered: boolean;
+// Alpha-baked fills match the legacy element opacity.
+// Single-paint elements (node rects, labels) carry no stroke.
+const applySankeyDimAlpha = (color: string, alpha: number): string => {
+  if (alpha >= 1) {return color;}
+  return `color-mix(in srgb, ${color} ${Math.round(alpha * PERCENT_SCALE)}%, transparent)`;
+};
+
+interface SankeyLabelPlacement {
+  readonly nameX: number;
+  readonly nameY: number;
+  readonly valueX: number;
+  readonly valueY: number;
+  readonly anchor: "start" | "middle" | "end";
+  readonly rotate: number;
+  readonly nameText: string;
+  readonly valueText: string;
+  readonly nameFill: string;
+  readonly valueFill: string;
 }
 
-const assembleSankeyBodyScene = (params: Readonly<{ nodeScenes: readonly SceneNode[]; labelNodes: readonly SceneNode[]; nodePoints: readonly ChartPoint<LaidOutNode>[] }>): MarkScene<LaidOutNode> => ({
-  nodes: [
-    {
-      ariaHidden: true,
-      children: [...params.nodeScenes],
-      className: "bkm-sankey__nodes",
-      key: `${SANKEY_MARK_ID}:nodes`,
-      kind: "group" as const,
-    },
-    ...(params.labelNodes.length > 0
-      ? [
-          {
-            ariaHidden: true,
-            children: [...params.labelNodes],
-            className: "bkm-sankey__labels",
-            key: `${SANKEY_MARK_ID}:labels`,
-            kind: "group" as const,
-          },
-        ]
-      : []),
-  ],
-  points: [...params.nodePoints],
-});
+interface SankeyLabelPlacementParams {
+  readonly laidOutNodes: readonly Readonly<LaidOutNode>[];
+  readonly links: readonly Readonly<LinkRow>[];
+  readonly chartX: number;
+  readonly chartWidth: number;
+  readonly labelOrientation: "horizontal" | "vertical";
+  readonly nodeConnected: readonly boolean[];
+  readonly anyHovered: boolean;
+  readonly fadedNodeOpacity: number;
+  readonly showValueLabels: boolean;
+}
 
-const createSankeyBodyMark = (params: Readonly<SankeyBodyMarkInput>): ChartMark<LaidOutNode> => createMark((): MarkInitialization<LaidOutNode> => ({
-    channels: {},
-    id: SANKEY_MARK_ID,
-    render: ({ chart }: Readonly<{ chart: Readonly<ChartBounds> }>): MarkScene<LaidOutNode> => {
-      const nodePoints: ChartPoint<LaidOutNode>[] = [];
-      const nodeScenes: SceneNode[] = params.laidOutNodes.map((node: Readonly<LaidOutNode>, index: number) => {
-        const { point, scene } = buildSankeyNodeScene({
-          anyHovered: params.anyHovered,
-          connected: params.nodeConnected[index] ?? false,
-          fadedNodeOpacity: params.config.fadedNodeOpacity,
-          index,
-          lineCap: params.config.lineCap,
-          node,
-          nodeColorFn: params.config.nodeColorFn,
-        });
-        nodePoints.push(point);
-        return scene;
-      });
-
-      const labelNodes = buildSankeyLabelNodes({
-        anyHovered: params.anyHovered,
-        chartWidth: chart.width,
-        chartX: chart.x,
-        fadedNodeOpacity: params.config.fadedNodeOpacity,
-        labelOrientation: params.config.labelOrientation ?? "horizontal",
-        laidOutNodes: params.laidOutNodes,
-        links: params.links,
-        markId: SANKEY_MARK_ID,
-        nodeConnected: params.nodeConnected,
-        showLabels: params.config.showLabels !== false,
-        showValueLabels: params.config.showValueLabels !== false,
-      });
-
-      return assembleSankeyBodyScene({ labelNodes, nodePoints, nodeScenes });
-    },
-  }), false);
+// The package text mark centers on a middle baseline natively.
+// It replaces the legacy 0.35em alphabetic-baseline emulation.
+const placeSankeyLabels = (params: Readonly<SankeyLabelPlacementParams>): SankeyLabelPlacement[] => {
+  const { laidOutNodes, links, chartX, chartWidth, labelOrientation, nodeConnected, anyHovered, fadedNodeOpacity, showValueLabels } = params;
+  return laidOutNodes.map((node, index) => {
+    const frame = resolveSankeyNodeFrame({ chartWidth, chartX, index, node });
+    const displayVal = sankeyDisplayValue(node.category, index, links);
+    const isDimmed = anyHovered && !(nodeConnected[index] ?? false);
+    const nameFill = isDimmed ? applySankeyDimAlpha(SANKEY_LABEL_FILL, fadedNodeOpacity) : SANKEY_LABEL_FILL;
+    let valueFill = applySankeyDimAlpha(SANKEY_LABEL_FILL, SANKEY_VALUE_LABEL_FILL_OPACITY);
+    if (isDimmed) {
+      valueFill = applySankeyDimAlpha(SANKEY_LABEL_FILL, fadedNodeOpacity * SANKEY_DIMMED_VALUE_OPACITY_SCALE);
+    }
+    const nameText = frame.nodeName;
+    const valueText = formatSankeyValueLabel(displayVal);
+    if (labelOrientation === "vertical") {
+      const rotate = frame.isLeftSide ? -SANKEY_LABEL_ROTATE_CW : SANKEY_LABEL_ROTATE_CW;
+      const halfGap = SANKEY_VALUE_LABEL_GAP / 2;
+      const labelX = frame.isLeftSide ? frame.nodeX - SANKEY_LABEL_OFFSET : frame.nodeX + frame.nodeW + SANKEY_LABEL_OFFSET;
+      let nameShift = 0;
+      if (showValueLabels) {
+        nameShift = frame.isLeftSide ? halfGap : -halfGap;
+      }
+      return {
+        anchor: "middle",
+        nameFill,
+        nameText,
+        nameX: labelX + nameShift,
+        nameY: frame.centerY,
+        rotate,
+        valueFill,
+        valueText,
+        valueX: labelX + (frame.isLeftSide ? -halfGap : halfGap),
+        valueY: frame.centerY,
+      };
+    }
+    const anchor = frame.isLeftSide ? "end" : "start";
+    const labelX = frame.isLeftSide ? frame.nodeX - SANKEY_LABEL_OFFSET : frame.nodeX + frame.nodeW + SANKEY_LABEL_OFFSET;
+    return {
+      anchor,
+      nameFill,
+      nameText,
+      nameX: labelX,
+      nameY: frame.centerY,
+      rotate: 0,
+      valueFill,
+      valueText,
+      valueX: labelX,
+      valueY: frame.centerY + SANKEY_VALUE_LABEL_GAP,
+    };
+  });
+};
 
 interface SankeyHoverState {
   readonly nodeConnected: readonly boolean[];
@@ -198,25 +183,6 @@ const resolveSankeyHoverState = (params: Readonly<{ hoveredNodeIndex: number | n
     return computeLinkHoverConnected(params.hoveredLinkIndex, params.nodeCount, linkPairs);
   }
   return computeNodeHoverConnected(params.hoveredNodeIndex, params.nodeCount, linkPairs);
-};
-
-const refreshSankeyGradients = (params: Readonly<{ shouldUseGradient: boolean; links: readonly Readonly<LinkRow>[]; laidOutNodes: readonly Readonly<LaidOutNode>[]; nodeColorFn: (node: Readonly<LaidOutNode>, index: number) => string; gradientDataRef: { current: SankeyGradientDatum[] | null } }>): void => {
-  if (!params.shouldUseGradient) {
-    params.gradientDataRef.current = null;
-    return;
-  }
-  params.gradientDataRef.current = params.links.map((linkRow: Readonly<LinkRow>, index: number) => {
-    const srcNode = params.laidOutNodes[linkRow.sourceIndex];
-    const tgtNode = params.laidOutNodes[linkRow.targetIndex];
-    return {
-      id: `sankey-grad-${index}`,
-      index,
-      sourceColor: params.nodeColorFn(srcNode, linkRow.sourceIndex),
-      targetColor: params.nodeColorFn(tgtNode, linkRow.targetIndex),
-      x1: srcNode.x1 ?? 0,
-      x2: tgtNode.x0 ?? SANKEY_GRADIENT_FALLBACK_X2,
-    };
-  });
 };
 
 const snapshotSankeyLayout = (params: Readonly<{ nodes: readonly Readonly<NodeRow>[]; links: readonly Readonly<LinkRow>[]; laidOutNodesRef: RefObject<LaidOutNode[] | null>; laidOutLinksRef: { current: LaidOutLink[] | null } }>): LaidOutNode[] => {
@@ -268,32 +234,105 @@ const createSankeyMark = (params: Readonly<CreateSankeyMarkParams>): ReturnType<
     align: "center",
     nodeWidth: config.nodeWidth,
     nodePadding: config.nodePadding,
-    marks: ({ nodes, links }) => {
+    marks: ({ chart, nodes, links }) => {
       const laidOutNodes = snapshotSankeyLayout({ laidOutLinksRef: params.laidOutLinksRef, laidOutNodesRef: params.laidOutNodesRef, links, nodes });
       const { nodeConnected, linkConnected, anyHovered } =
         resolveSankeyHoverState({ hoveredLinkIndex: config.hoveredLinkIndex, hoveredNodeIndex: config.hoveredNodeIndex, links, nodeCount: laidOutNodes.length });
-      refreshSankeyGradients({ gradientDataRef: params.gradientDataRef, laidOutNodes, links, nodeColorFn: config.nodeColorFn, shouldUseGradient });
 
-      return [
-        link(links, {
-          curve: SANKEY_CURVE,
-          id: "flow",
-          lineCap: "butt",
-          motion: false,
-          stroke: (flowRow, { index }: Readonly<{ index: number }>) => resolveSankeyFlowStroke({ laidOutNodes, nodeColorFn: config.nodeColorFn, shouldUseGradient, strokeOverride: config.strokeOverride }, flowRow, index),
-          strokeOpacity: (_flowRow, { index }: Readonly<{ index: number }>) => resolveSankeyFlowOpacity({ anyHovered, fadedLinkOpacity: config.fadedLinkOpacity, linkConnected, strokeOpacity: config.strokeOpacity }, index),
-          strokeWidth: (flowRow) => Math.max(1, flowRow.width),
-          x1: "x1",
-          x2: "x2",
-          y1: "y1",
-          y2: "y2",
-        }),
-        createSankeyBodyMark({ anyHovered, config, laidOutNodes, links, nodeConnected }),
-      ] as const;
+      const nodeFill = (index: number): string =>
+        config.nodeColorFn(laidOutNodes[index], index);
+
+      const flowMark = withStates(link(links, {
+        curve: SANKEY_CURVE,
+        id: "flow",
+        lineCap: "butt",
+        motion: false,
+        stroke: (flowRow, { index }: Readonly<{ index: number }>) => resolveSankeyFlowStroke({ laidOutNodes, nodeColorFn: config.nodeColorFn, shouldUseGradient, strokeOverride: config.strokeOverride }, flowRow, index),
+        strokeOpacity: config.strokeOpacity,
+        strokeWidth: (flowRow) => Math.max(1, flowRow.width),
+        x1: "x1",
+        x2: "x2",
+        y1: "y1",
+        y2: "y2",
+      }), links, [{
+        style: { strokeOpacity: config.fadedLinkOpacity },
+        transition: { duration: 150, easing: "ease-out", type: "tween" },
+        when: (context): boolean => !context.matches("group") && !(linkConnected[context.index] ?? false),
+      }, {
+        // Legacy sankey-link.tsx: highlighted flows paint at min(1, strokeOpacity * 1.3).
+        style: { strokeOpacity: Math.min(1, config.strokeOpacity * SANKEY_HOVER_STROKE_BOOST) },
+        transition: { duration: 150, easing: "ease-out", type: "tween" },
+        when: (context): boolean => anyHovered && (linkConnected[context.index] ?? false),
+      }]);
+
+      const nodeMark = withStates(rect(nodes, {
+        color: (_row, { index }: Readonly<{ index: number }>) => nodeFill(index),
+        id: SANKEY_NODE_MARK_ID,
+        inset: 0,
+        key: "key",
+        motion: false,
+        radius: config.lineCap,
+        x1: "x0",
+        x2: "x1",
+        y1: "y0",
+        y2: "y1",
+      }), nodes, [{
+        style: { opacity: config.fadedNodeOpacity },
+        transition: { duration: 150, easing: "ease-out", type: "tween" },
+        when: (context): boolean => !context.matches("group") && !(nodeConnected[context.index] ?? false),
+      }]);
+
+      if (config.showLabels === false) {
+        return [flowMark, nodeMark] as const;
+      }
+      const placements = placeSankeyLabels({
+        anyHovered,
+        chartWidth: chart.width,
+        chartX: chart.x,
+        fadedNodeOpacity: config.fadedNodeOpacity,
+        labelOrientation: config.labelOrientation ?? "horizontal",
+        laidOutNodes,
+        links,
+        nodeConnected,
+        showValueLabels: config.showValueLabels !== false,
+      });
+      const nameMark = text(nodes, {
+        anchor: (_row, { index }: Readonly<{ index: number }>) => placements[index]?.anchor ?? "middle",
+        dx: (_row, { index }: Readonly<{ index: number }>) => sankeyLabelBaselineShift(SANKEY_NAME_FONT_SIZE, placements[index]?.rotate ?? 0).dx,
+        dy: (_row, { index }: Readonly<{ index: number }>) => sankeyLabelBaselineShift(SANKEY_NAME_FONT_SIZE, placements[index]?.rotate ?? 0).dy,
+        fill: (_row, { index }: Readonly<{ index: number }>) => placements[index]?.nameFill ?? SANKEY_LABEL_FILL,
+        fontSize: SANKEY_NAME_FONT_SIZE,
+        fontWeight: 500,
+        id: SANKEY_NAME_LABEL_MARK_ID,
+        key: "key",
+        motion: false,
+        rotate: (_row, { index }: Readonly<{ index: number }>) => placements[index]?.rotate ?? 0,
+        text: (_row, { index }: Readonly<{ index: number }>) => placements[index]?.nameText ?? "",
+        x: (_row, { index }: Readonly<{ index: number }>) => placements[index]?.nameX ?? 0,
+        y: (_row, { index }: Readonly<{ index: number }>) => placements[index]?.nameY ?? 0,
+      });
+      if (config.showValueLabels === false) {
+        return [flowMark, nodeMark, nameMark] as const;
+      }
+      const valueMark = text(nodes, {
+        anchor: (_row, { index }: Readonly<{ index: number }>) => placements[index]?.anchor ?? "middle",
+        dx: (_row, { index }: Readonly<{ index: number }>) => sankeyLabelBaselineShift(SANKEY_VALUE_FONT_SIZE, placements[index]?.rotate ?? 0).dx,
+        dy: (_row, { index }: Readonly<{ index: number }>) => sankeyLabelBaselineShift(SANKEY_VALUE_FONT_SIZE, placements[index]?.rotate ?? 0).dy,
+        fill: (_row, { index }: Readonly<{ index: number }>) => placements[index]?.valueFill ?? SANKEY_LABEL_FILL,
+        fontSize: SANKEY_VALUE_FONT_SIZE,
+        id: SANKEY_VALUE_LABEL_MARK_ID,
+        key: "key",
+        motion: false,
+        rotate: (_row, { index }: Readonly<{ index: number }>) => placements[index]?.rotate ?? 0,
+        text: (_row, { index }: Readonly<{ index: number }>) => placements[index]?.valueText ?? "",
+        x: (_row, { index }: Readonly<{ index: number }>) => placements[index]?.valueX ?? 0,
+        y: (_row, { index }: Readonly<{ index: number }>) => placements[index]?.valueY ?? 0,
+      });
+      return [flowMark, nodeMark, nameMark, valueMark] as const;
     },
   });
 }
 
-export { createSankeyMark, createSankeySpatialIndex, SANKEY_LINK_MARK_ID, SANKEY_MARK_ID, SANKEY_NODE_MARK_ID, SANKEY_NODE_POINT_MARK_ID };
-export type { SankeyGradientDatum, SankeyMarkConfig };
+export { createSankeyMark, createSankeySpatialIndex, sankeyIdentityColorScale, SANKEY_LINK_MARK_ID, SANKEY_NODE_POINT_MARK_ID };
+export type { SankeyMarkConfig };
 export type { LaidOutLink } from "./sankey-label-nodes";

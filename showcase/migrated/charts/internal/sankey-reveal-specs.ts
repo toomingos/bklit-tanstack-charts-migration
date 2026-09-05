@@ -12,7 +12,7 @@ const NO_DELAY_MS = 0;
 const HALF_DIVISOR = 2;
 const INDEX_STEP = 1;
 
-const queryNodeGroups = (svg: SVGSVGElement): (SVGGElement | null)[] => [...svg.querySelectorAll<SVGGElement>(`[data-ts-key^="sankey:node:"]`)];
+const queryNodeRects = (svg: SVGSVGElement): (SVGRectElement | null)[] => [...svg.querySelectorAll<SVGRectElement>(`[data-ts-key^="sankey:sankey-node:"]`)];
 
 const queryLinkPaths = (svg: SVGSVGElement): (SVGPathElement | null)[] => {
   const flowGroup = svg.querySelector<SVGGElement>(`[data-ts-key="sankey:flow"]`);
@@ -84,7 +84,7 @@ const buildSankeyLabelAnimationSpec = (params: Readonly<SankeyLabelSpecParams>):
 interface SankeyNodeSpecParams {
   readonly nameLabels: ReadonlyMap<number, SVGElement>;
   readonly nodeAnimDuration: number;
-  readonly nodeGroups: readonly (SVGGElement | null)[];
+  readonly nodeRects: readonly (SVGRectElement | null)[];
   readonly svg: SVGSVGElement;
   readonly valueLabels: ReadonlyMap<number, SVGElement>;
 }
@@ -102,7 +102,7 @@ const resolveNodeStaggerDelayMs = (params: Readonly<SankeyNodeStaggerParams>): n
 }
 
 interface SankeyNodeRectParams {
-  readonly group: SVGGElement;
+  readonly rect: SVGRectElement;
   readonly index: number;
   readonly nodeAnimDuration: number;
   readonly specs: SankeyAnimationSpec[];
@@ -111,10 +111,8 @@ interface SankeyNodeRectParams {
 
 // Grow spec for one node rect; keeps the node loop under max-statements.
 const appendNodeRectSpec = (params: Readonly<SankeyNodeRectParams>): void => {
-  const { group, index, nodeAnimDuration, specs, totalNodes } = params;
+  const { rect, index, nodeAnimDuration, specs, totalNodes } = params;
   const staggerDelayMs = resolveNodeStaggerDelayMs({ index, nodeAnimDuration, totalNodes });
-  const rect = group.querySelector<SVGRectElement>("rect");
-  if (!rect) {return;}
   rect.style.transformOrigin = "center";
   specs.push({
     delayMs: staggerDelayMs,
@@ -152,13 +150,13 @@ const appendNodeLabelSpecs = (params: Readonly<SankeyNodeLabelParams>): void => 
 }
 
 const buildSankeyNodeAnimationSpecs = (params: Readonly<SankeyNodeSpecParams>): SankeyAnimationSpec[] => {
-  const { nameLabels, nodeAnimDuration, nodeGroups, svg, valueLabels } = params;
+  const { nameLabels, nodeAnimDuration, nodeRects, svg, valueLabels } = params;
   const specs: SankeyAnimationSpec[] = [];
-  for (let index = 0; index < nodeGroups.length; index += INDEX_STEP) {
-    const group = nodeGroups[index];
-    if (group) {
-      appendNodeRectSpec({ group, index, nodeAnimDuration, specs, totalNodes: nodeGroups.length });
-      appendNodeLabelSpecs({ index, nameLabels, nodeAnimDuration, specs, svg, totalNodes: nodeGroups.length, valueLabels });
+  for (let index = 0; index < nodeRects.length; index += INDEX_STEP) {
+    const rect = nodeRects[index];
+    if (rect) {
+      appendNodeRectSpec({ index, nodeAnimDuration, rect, specs, totalNodes: nodeRects.length });
+      appendNodeLabelSpecs({ index, nameLabels, nodeAnimDuration, specs, svg, totalNodes: nodeRects.length, valueLabels });
     }
   }
   return specs;
@@ -215,5 +213,5 @@ const playSankeyAnimationSpecs = (params: Readonly<SankeyPlayParams>): number =>
   return maxDelayMs;
 }
 
-export { buildSankeyLinkAnimationSpecs, buildSankeyNodeAnimationSpecs, collectSankeyLabels, playSankeyAnimationSpecs, queryLinkPaths, queryNodeGroups, stampSankeyLinkPathLength };
+export { buildSankeyLinkAnimationSpecs, buildSankeyNodeAnimationSpecs, collectSankeyLabels, playSankeyAnimationSpecs, queryLinkPaths, queryNodeRects, stampSankeyLinkPathLength };
 export type { SankeyAnimationSpec };

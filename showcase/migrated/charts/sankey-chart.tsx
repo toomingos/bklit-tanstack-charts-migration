@@ -6,6 +6,7 @@ import { defineChart } from "@tanstack/charts/scene";
 import { tooltip } from "@tanstack/charts/tooltip";
 import type {
   ChartInteractionController,
+  ChartLinearGradient,
   ChartPoint,
   ChartRendererRenderContext,
   ChartScene,
@@ -14,9 +15,10 @@ import type { SankeyLink as NativeSankeyLink } from "@tanstack/charts/network/sa
 import type {
   LaidOutNode,
 } from "./internal/sankey-layout";
-import { createSankeyMark, createSankeySpatialIndex, SANKEY_LINK_MARK_ID, SANKEY_NODE_POINT_MARK_ID } from './internal/sankey-mark';
-import type { LaidOutLink, SankeyGradientDatum } from './internal/sankey-mark';
-import { injectGradientDefs, runSankeyReveal, stampSankeyLinkPathLength } from './internal/sankey-animation';
+import { createSankeyMark, createSankeySpatialIndex, sankeyIdentityColorScale, SANKEY_LINK_MARK_ID, SANKEY_NODE_POINT_MARK_ID } from './internal/sankey-mark';
+import type { LaidOutLink } from './internal/sankey-mark';
+import { sankeyFlowGradientId } from "./internal/sankey-flow-style";
+import { runSankeyReveal, stampSankeyLinkPathLength } from './internal/sankey-animation';
 import type { SankeyEnterTransition, SankeyRevealHandle } from './internal/sankey-animation';
 import "./styles.css";
 import { intFmt } from "./internal/formatters";
@@ -94,8 +96,6 @@ const FALLBACK_LINK_VALUE = 0;
 const FALLBACK_LINK_ENDPOINT_INDEX = 0;
 // Non-positive durations skip the WAAPI reveal entirely.
 const MIN_ANIMATION_DURATION = 0;
-// Gradient definitions are injected only when the layout emitted at least one.
-const EMPTY_GRADIENT_COUNT = 0;
 // The tooltip renders the first focused point only.
 const FIRST_TOOLTIP_POINT_INDEX = 0;
 // Positions within a "W / H" aspect-ratio pair.
@@ -206,9 +206,20 @@ const sankeyLinkEndName = (end: { readonly data?: { readonly name?: string } } |
 const sankeyLinkValue = (value: number | undefined): number => value ?? FALLBACK_LINK_VALUE;
 
 const datumName = (datum: SankeyTooltipDatum): string | undefined => {
-  if (!("name" in datum)) {return undefined;}
-  const name: unknown = datum.name;
-  return isString(name) ? name : undefined;
+  if ("name" in datum) {
+    const name: unknown = datum.name;
+    if (isString(name)) {return name;}
+  }
+  // Package node rows carry the raw row under `data` (no top-level name).
+  const raw: unknown = datum;
+  if (isObjectValue(raw) && "data" in raw) {
+    const nested: unknown = raw.data;
+    if (isObjectValue(nested) && "name" in nested) {
+      const name: unknown = nested.name;
+      if (isString(name)) {return name;}
+    }
+  }
+  return undefined;
 }
 
 const datumValue = (datum: SankeyTooltipDatum): number | undefined => {
@@ -386,7 +397,6 @@ const SankeyChart = ({
   ariaDescription,
 }: SankeyChartProps): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const gradientDataRef = useRef<SankeyGradientDatum[] | null>(null);
   const prefersReducedMotion = usePrefersReducedMotion();
 
   // Replay triggers are signature+duration only; same-signature new data must not replay.
@@ -416,6 +426,28 @@ const SankeyChart = ({
     },
     [nodeConfig],
   );
+
+  // Box fractions reproduce the legacy userSpaceOnUse gradient.
+  // Centreline spans the two node edges.
+  const sankeyFlowGradients = useMemo<readonly ChartLinearGradient[]>(() => {
+    if (!(linkConfig.useGradient ?? true)) {return [];}
+    if (linkConfig.stroke !== undefined && linkConfig.stroke !== "") {return [];}
+    return data.links.map((linkDatum, index) => {
+      const sourceNode: LaidOutNode = { ...data.nodes[linkDatum.source], index: linkDatum.source };
+      const targetNode: LaidOutNode = { ...data.nodes[linkDatum.target], index: linkDatum.target };
+      return {
+        id: sankeyFlowGradientId(index),
+        stops: [
+          { color: getNodeColorFn(sourceNode, linkDatum.source), offset: 0 },
+          { color: getNodeColorFn(targetNode, linkDatum.target), offset: 1 },
+        ],
+        x1: 0,
+        x2: 1,
+        y1: 0,
+        y2: 0,
+      };
+    });
+  }, [data, getNodeColorFn, linkConfig.stroke, linkConfig.useGradient]);
 
   // Hover lives in React state (dim rebuilds the definition); a ref mirror serves synchronous readers.
   const [hoveredLinkIndex, setHoveredLinkIndex] = useState<number | null>(null);
@@ -507,10 +539,14 @@ const SankeyChart = ({
   const definition = useMemo(
     () =>
       defineChart({
+        // The rect color channel holds the final paint.
+        // Backed by the identity scale below.
+        color: { scale: sankeyIdentityColorScale },
         focusRing: false,
+        gradients: sankeyFlowGradients,
         guides: false,
         margin,
-        marks: [createSankeyMark({ config: markConfig, data, gradientDataRef, laidOutLinksRef, laidOutNodesRef })],
+        marks: [createSankeyMark({ config: markConfig, data, laidOutLinksRef, laidOutNodesRef })],
         scales: { x: null, y: null },
         // Package hover order: nodes first, links in reverse paint order.
         spatialIndex: (points) => createSankeySpatialIndex(points, laidOutNodesRef.current ?? [], laidOutLinksRef.current ?? []),
@@ -528,7 +564,7 @@ const SankeyChart = ({
           use: tooltip,
         },
       }),
-    [data, gradientDataRef, laidOutLinksRef, laidOutNodesRef, markConfig, margin],
+    [data, laidOutLinksRef, laidOutNodesRef, markConfig, margin, sankeyFlowGradients],
   );
 
   const handleRender = useCallback((context: ChartRendererRenderContext<SankeyRenderDatum>) => {
@@ -539,10 +575,6 @@ const SankeyChart = ({
     const surfaceEl = context.surface.element;
     if (!(surfaceEl instanceof SVGSVGElement)) {return;}
 
-    const gradients = gradientDataRef.current;
-    if (gradients && gradients.length > EMPTY_GRADIENT_COUNT) {
-      injectGradientDefs(surfaceEl, gradients);
-    }
     stampSankeyLinkPathLength(surfaceEl);
 
     updateSankeyReveal(surfaceEl, {
@@ -553,7 +585,7 @@ const SankeyChart = ({
       revealSignature,
       seenRef: seenRevealKeyRef,
     });
-  }, [animationDuration, enterTransition, gradientDataRef, prefersReducedMotion, revealSignature]);
+  }, [animationDuration, enterTransition, prefersReducedMotion, revealSignature]);
 
   // Package-owned pointer: focus changes drive the reactive dim; no DOM listener.
   const handleFocusChange = useCallback((point: ChartPoint | null) => {
