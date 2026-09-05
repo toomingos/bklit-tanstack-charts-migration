@@ -22,14 +22,14 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 
 | Wave | Item | Title | State | Session | Commit | D-entries |
 |---|---|---|---|---|---|---|
-| 1 | V1.1 | host module + legacy hooks | todo | | | |
+| 1 | V1.1 | host module + legacy hooks | merged | `ses_f8eaea0aeffephB8JH5HsfyVlr` | (next commit) | D520 · fixture renders `<svg`, 12 `Eq<>` · library-cannot: `ResolvedScale` carries no scale (0.16.0) · resumed once |
 | 1 | V1.2 | scales and bounds from the store | todo | | | |
 | 1 | V1.6 | export parity | todo | | | |
 | 1 | V1.8 | aria forwarding | merged | `ses_f8eae9829ffegZk4H0yURVPpUM` | `e50babd` | D516 · `ariaLabel="` literals 16 → 0 · funnel props only until V3.1 (R2) · heatmap via context |
 | 1 | V1.9 | package contract | merged | `ses_f8eae8f80ffemH1q37JpHnKBRr` | `e29b694` | D517 · pack 450 files, fresh Next app builds + renders · +10 deps declared, removals owned by later items · G4 |
 | 1 | V4.1 | `qa/unit` scaffold (scene tests, probes) | merged | `ses_f8eae88aeffeCW2EwgcvXZY2hd` | `0c25747` | D515 · `pnpm test` 84 tests / 46 pass / 38 todo / 0.4 s · probes pinned per family |
 | 1 | V4.2 | generated type fixture | merged | `ses_f8eae74d6ffevmKWqC0OMWAzCO` | `04ad318` | D514 · 292 value + 211 type `Eq` lines · 478 red / 420 exports = V1.6 backlog · 81 migrated-only exports · G3 folded |
-| 1 | V4.4 | gate integrity | merged | `ses_f8e7dd459ffeYm5llQgxkw0yTz` | (next commit) | D519 · tree-hash + refusal · checks order tsc→lint(floor 7)→bench tsc→build→unit→census→bundle · 11 rulings in `qa/gate/rulings.json` (baseline: gate FAIL 0 / ruled 6) · ledger re-keyed, guard 17 → 0 |
+| 1 | V4.4 | gate integrity | merged | `ses_f8e7dd459ffeYm5llQgxkw0yTz` | `1ae5f10` | D519 · tree-hash + refusal · checks order tsc→lint(floor 7)→bench tsc→build→unit→census→bundle · 11 rulings in `qa/gate/rulings.json` (baseline: gate FAIL 0 / ruled 6) · ledger re-keyed, guard 17 → 0 |
 | 2 | V1.3 | registering children | todo | | | |
 | 2 | V1.4 | optional layers own imports | todo | | | |
 | 2 | V1.5 | `cursorHost`, x-domain padding | todo | | | |
