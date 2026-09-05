@@ -105,6 +105,8 @@ interface GaugeProps {
   readonly geometryScrubbing?: boolean;
   /** Extra vs bklit: style, forwarded to the outer wrapper div. */
   readonly style?: Readonly<CSSProperties>;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 interface GaugeFillStateInput {
@@ -483,6 +485,8 @@ const useArcDefinition = (options: Readonly<UseArcDefinitionOptions>): DomChartD
 };
 
 interface RenderGaugeArcInnerOptions {
+  readonly ariaDescription?: string;
+  readonly ariaLabel?: string;
   readonly centerOverlayStyle: CSSProperties;
   readonly centerValue?: number;
   readonly defaultLabel: string;
@@ -496,11 +500,12 @@ interface RenderGaugeArcInnerOptions {
 }
 
 const renderGaugeArcInner = (options: Readonly<RenderGaugeArcInnerOptions>): ReactNode => {
-  const { centerOverlayStyle, centerValue, defaultLabel, definition, fillState, formatOptions, innerWrapStyle, layout, prefix, suffix } = options;
+  const { ariaDescription, ariaLabel = "Gauge chart", centerOverlayStyle, centerValue, defaultLabel, definition, fillState, formatOptions, innerWrapStyle, layout, prefix, suffix } = options;
   return definition && layout.size > 0 ? (
     <div style={innerWrapStyle}>
       <RendererChart
-        ariaLabel="Gauge chart"
+        ariaLabel={ariaLabel}
+        ariaDescription={ariaDescription}
         definition={definition}
         height={layout.height}
         renderer={chartMotionRenderer()}
@@ -625,6 +630,8 @@ const GaugeArc = (props: Readonly<GaugeArcProps>): ReactElement => {
   // Root JSX lives in this component rather than in a plain render helper.
   // The sizer ref attaches directly, so it never crosses a function during render.
   const arcInner = renderGaugeArcInner({
+    ariaDescription: props.ariaDescription,
+    ariaLabel: props.ariaLabel,
     centerOverlayStyle: arcStyles.centerOverlayStyle,
     centerValue: props.centerValue,
     defaultLabel: props.defaultLabel ?? "Total",
@@ -959,6 +966,8 @@ const useLinearGaugeStyles = (props: Readonly<GaugeLinearProps>, layout: Readonl
 };
 
 interface RenderLinearGaugeBodyOptions {
+  readonly ariaDescription?: string;
+  readonly ariaLabel?: string;
   readonly chartWrapStyle: CSSProperties;
   readonly definition: DomChartDefinition | undefined;
   readonly defsChildren: readonly Readonly<ReactElement>[];
@@ -971,12 +980,13 @@ interface RenderLinearGaugeBodyOptions {
 }
 
 const renderLinearGaugeBody = (options: Readonly<RenderLinearGaugeBodyOptions>): ReactElement => {
-  const { chartWrapStyle, definition, defsChildren, height, label, labelAlign, labelPlacement, trackStyle, width } = options;
+  const { ariaDescription, ariaLabel = "Gauge chart", chartWrapStyle, definition, defsChildren, height, label, labelAlign, labelPlacement, trackStyle, width } = options;
   const svg =
     definition && width > 0 ? (
       <div style={chartWrapStyle}>
         <RendererChart
-          ariaLabel="Gauge chart"
+          ariaLabel={ariaLabel}
+          ariaDescription={ariaDescription}
           definition={definition}
           height={height}
           renderer={chartMotionRenderer()}
@@ -1022,6 +1032,8 @@ const GaugeLinear = (props: Readonly<GaugeLinearProps>): ReactElement => {
   // Root JSX lives in this component rather than in a plain render helper.
   // The sizer ref attaches directly, so it never crosses a function during render.
   const linearBody = renderLinearGaugeBody({
+    ariaDescription: props.ariaDescription,
+    ariaLabel: props.ariaLabel,
     chartWrapStyle: linearStyles.chartWrapStyle,
     definition,
     defsChildren: fillState.defsChildren,

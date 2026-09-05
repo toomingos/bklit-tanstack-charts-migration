@@ -21,6 +21,8 @@ interface HeatmapCellsProps {
   readonly rowOpacity?: number | readonly number[];
   readonly interactive?: boolean;
   readonly hideGhostCells?: boolean;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 const HeatmapCells = ({
@@ -32,6 +34,8 @@ const HeatmapCells = ({
   rowOpacity,
   interactive = true,
   hideGhostCells = true,
+  ariaLabel,
+  ariaDescription,
 }: Readonly<HeatmapCellsProps>): ReactElement => {
   const ctx = useHeatmap();
   const coordinator = useHeatmapCoordinatorOptional();
@@ -61,6 +65,8 @@ const HeatmapCells = ({
   return (
     <>
       {buildHeatmapCellsTree({
+        ariaDescription: ariaDescription ?? ctx.ariaDescription,
+        ariaLabel: ariaLabel ?? ctx.ariaLabel,
         containerRef,
         ctx,
         definition,

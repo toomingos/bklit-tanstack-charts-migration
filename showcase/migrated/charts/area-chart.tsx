@@ -54,6 +54,8 @@ interface AreaChartProps {
   readonly enterTransition?: EnterTransition;
   /** Replay epoch input: changing it replays the mount reveal without a data change. */
   readonly revealSignature?: string;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 const AreaChart = ({
@@ -76,6 +78,8 @@ const AreaChart = ({
   tweenYDomainOnXDomainChange = false,
   enterTransition,
   revealSignature = "",
+  ariaLabel,
+  ariaDescription,
 }: Readonly<AreaChartProps>): ReactElement => {
   const setup = useAreaChartSetup({
     animationDuration,
@@ -276,6 +280,8 @@ const AreaChart = ({
       />
       <AreaChartBody
         areaChartRenderer={layerProps.areaChartRenderer}
+        ariaDescription={ariaDescription}
+        ariaLabel={ariaLabel}
         aspectRatio={aspectRatio}
         chartBodyClipStyle={layerProps.chartBodyClipStyle}
         definition={definition}

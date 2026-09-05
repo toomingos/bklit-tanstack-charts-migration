@@ -70,6 +70,8 @@ interface FunnelChartProps {
         readonly lineOpacity?: number;
         readonly lineWidth?: number;
       };
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 const fmtPct = (pctValue: number): string => `${Math.round(pctValue)}%`;

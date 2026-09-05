@@ -187,6 +187,8 @@ interface RadarChartProps {
   readonly className?: string;
   readonly style?: CSSProperties;
   readonly children?: ReactNode;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 const ROLE_GRID = "radar-grid";
@@ -801,6 +803,8 @@ const RadarChart = ({
   className,
   style,
   children,
+  ariaLabel = "Radar chart",
+  ariaDescription,
 }: Readonly<RadarChartProps>): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { width, height } = useDebouncedContainerSize(containerRef);
@@ -1052,7 +1056,8 @@ const RadarChart = ({
     >
       {definition && (
         <RendererChart
-          ariaLabel="Radar chart"
+          ariaLabel={ariaLabel}
+          ariaDescription={ariaDescription}
           width={chartSize}
           height={chartSize}
           definition={definition}

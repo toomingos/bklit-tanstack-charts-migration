@@ -60,6 +60,8 @@ interface HeatmapContextValue {
   readonly showLoadingLabel: boolean;
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly htmlLayerEl: HTMLDivElement | null;
+  readonly ariaDescription: string | undefined;
+  readonly ariaLabel: string | undefined;
 }
 
 const HeatmapContext = createContext<HeatmapContextValue | undefined>(undefined);

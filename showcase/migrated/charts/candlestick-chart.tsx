@@ -94,6 +94,8 @@ interface CandlestickChartProps {
   /** Explicit constant body width in px (overrides the computed width). */
   readonly candleWidth?: number;
   readonly children?: ReactNode;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 
@@ -121,6 +123,8 @@ const CandlestickChart = ({
   candleGap = DEFAULT_CANDLE_GAP_RATIO,
   candleWidth: candleWidthProp,
   children,
+  ariaLabel = "Candlestick chart",
+  ariaDescription,
 }: CandlestickChartProps): ReactElement => {
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -397,7 +401,8 @@ const CandlestickChart = ({
       {positivePatternLayer}
       {negativePatternLayer}
       <RendererChart
-        ariaLabel="Candlestick chart"
+        ariaLabel={ariaLabel}
+        ariaDescription={ariaDescription}
         aspectRatio={parseAspectRatio(aspectRatio)}
         definition={definition}
         renderer={candlestickChartRenderer}

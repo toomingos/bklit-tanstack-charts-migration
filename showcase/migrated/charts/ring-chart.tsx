@@ -186,6 +186,8 @@ interface RingChartProps {
   readonly enterStaggerScale?: number;
   readonly geometryScrubbing?: boolean;
   readonly children: ReactNode;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 interface RingArcDatum {
@@ -211,6 +213,8 @@ const RingChart = ({
   enterStaggerScale = 1,
   geometryScrubbing = false,
   children,
+  ariaLabel = "Ring chart",
+  ariaDescription,
 }: Readonly<RingChartProps>): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { width, height } = useDebouncedContainerSize(containerRef);
@@ -438,7 +442,8 @@ const RingChart = ({
   );
   const chartNode = geometryScrubbing ? scrubSvgNode : (
     <RendererChart
-      ariaLabel="Ring chart"
+      ariaLabel={ariaLabel}
+      ariaDescription={ariaDescription}
       width={size}
       height={size}
       definition={definition}

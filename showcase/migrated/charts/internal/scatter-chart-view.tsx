@@ -116,6 +116,8 @@ const buildScatterDefsSvg = ({
 };
 
 interface BuildScatterRendererNodeParams {
+  readonly ariaDescription?: string;
+  readonly ariaLabel?: string;
   readonly definition: ScatterDefinitionModel["definition"];
   readonly handleFocusGroupChange: ScatterPillModel["handleFocusGroupChange"];
   readonly handleRender: ScatterTimingModel["handleRender"];
@@ -125,6 +127,8 @@ interface BuildScatterRendererNodeParams {
 }
 
 const buildScatterRendererNode = ({
+  ariaDescription,
+  ariaLabel = "Scatter chart",
   definition,
   handleFocusGroupChange,
   handleRender,
@@ -135,7 +139,8 @@ const buildScatterRendererNode = ({
   if (definition === undefined) {return undefined;}
   return (
     <RendererChart
-      ariaLabel="Scatter chart"
+      ariaLabel={ariaLabel}
+      ariaDescription={ariaDescription}
       aspectRatio={parsedAspectRatio}
       definition={definition}
       renderer={renderer}
@@ -183,6 +188,8 @@ const buildScatterOverlayNode = ({
 };
 
 interface BuildScatterChartTreeParams {
+  readonly ariaDescription?: string;
+  readonly ariaLabel?: string;
   readonly className: string | undefined;
   readonly marks: Pick<ScatterDefinitionModel, "definition">;
   readonly pill: Pick<ScatterPillModel, "handleFocusGroupChange" | "overlayHostRef">;
@@ -193,6 +200,8 @@ interface BuildScatterChartTreeParams {
 }
 
 const buildScatterChartTree = ({
+  ariaDescription,
+  ariaLabel,
   className,
   marks,
   pill,
@@ -212,6 +221,8 @@ const buildScatterChartTree = ({
       {marks.definition && (
         <>
           {buildScatterRendererNode({
+            ariaDescription,
+            ariaLabel,
             definition: marks.definition,
             handleFocusGroupChange: pill.handleFocusGroupChange,
             handleRender: timing.handleRender,

@@ -67,6 +67,8 @@ interface SankeyChartProps {
   readonly children: ReactNode;
   readonly hoveredNodeIndex?: number | null;
   readonly onNodeHoverChange?: (index: number | null) => void;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 const DEFAULT_MARGIN: Margin = { bottom: 40, left: 180, right: 180, top: 40 };
@@ -424,6 +426,8 @@ const SankeyChart = ({
   children,
   hoveredNodeIndex: hoveredNodeIndexProp,
   onNodeHoverChange,
+  ariaLabel = "Sankey chart",
+  ariaDescription,
 }: SankeyChartProps): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gradientDataRef = useRef<SankeyGradientDatum[] | null>(null);
@@ -708,7 +712,8 @@ const SankeyChart = ({
     >
       <RendererChart
         renderer={chartMotionRenderer<LaidOutNode | NativeSankeyLink<SankeyNodeDatum, SankeyLinkDatum, number>>()}
-        ariaLabel="Sankey chart"
+        ariaLabel={ariaLabel}
+        ariaDescription={ariaDescription}
         aspectRatio={parsedAspectRatio}
         definition={definition}
         onRender={handleRender}

@@ -43,6 +43,8 @@ interface HeatmapChartInnerProps {
   readonly animate: boolean;
   readonly loadingOpacity: number;
   readonly showLoadingCells: boolean;
+  readonly ariaDescription: string | undefined;
+  readonly ariaLabel: string | undefined;
   readonly children?: ReactNode;
 }
 
@@ -65,6 +67,8 @@ interface HeatmapContextValueInputs {
   readonly loadingCellRandomness: number;
   readonly loadingLabel: string | undefined;
   readonly weekStartDay: HeatmapWeekStartDay;
+  readonly ariaDescription: string | undefined;
+  readonly ariaLabel: string | undefined;
 }
 
 /*
@@ -78,6 +82,8 @@ const buildHeatmapContextValue = (inputs: Readonly<HeatmapContextValueInputs>): 
   return {
     animateCells: inputs.lifecycle.animateCells,
     animationDuration: inputs.animationDuration,
+    ariaDescription: inputs.ariaDescription,
+    ariaLabel: inputs.ariaLabel,
     binHeight: inputs.dims.dimensions.binHeight,
     binWidth: inputs.dims.dimensions.binWidth,
     brushYScale: inputs.dims.brushYScale,
@@ -135,6 +141,8 @@ const useHeatmapChartContextValue = (
     () =>
       buildHeatmapContextValue({
         animationDuration: props.animationDuration,
+        ariaDescription: props.ariaDescription,
+        ariaLabel: props.ariaLabel,
         colorScales: derived.colorScales,
         columnLayout: derived.columnLayout,
         containerRef: props.containerRef,
@@ -163,6 +171,8 @@ const useHeatmapChartContextValue = (
       props.status,
       derived.lifecycle,
       props.animationDuration,
+      props.ariaDescription,
+      props.ariaLabel,
       props.enterTransition,
       props.enterStaggerScale,
       props.loadingOpacity,

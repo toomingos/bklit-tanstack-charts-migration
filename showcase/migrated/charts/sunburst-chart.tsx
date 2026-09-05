@@ -234,6 +234,8 @@ interface SunburstChartProps {
       never plumbed from the prop. */
   readonly enterStaggerScale?: number;
   readonly children: ReactNode;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 /*
@@ -318,6 +320,8 @@ const classifyChildren = (children: ReactNode): ClassifiedChildren => {
 }
 
 interface SunburstChartInnerProps {
+  readonly ariaDescription?: string;
+  readonly ariaLabel?: string;
   readonly data: SunburstNode;
   readonly size: number;
   readonly rootClassName?: string;
@@ -348,6 +352,8 @@ interface SunburstChartInnerProps {
 }
 
 const SunburstChartInner = ({
+  ariaDescription,
+  ariaLabel,
   data,
   size,
   rootClassName,
@@ -672,7 +678,8 @@ const SunburstChartInner = ({
       {breadcrumbChildren}
       <div style={boxStyle}>
         <RendererChart
-          ariaLabel={`Sunburst chart of ${data.name}`}
+          ariaLabel={ariaLabel ?? `Sunburst chart of ${data.name}`}
+          ariaDescription={ariaDescription}
           width={size}
           height={size}
           definition={definition}
@@ -811,6 +818,8 @@ const useSunburstResolvedFocus = (
 };
 
 interface SunburstInnerRenderProps {
+  readonly ariaDescription?: string;
+  readonly ariaLabel?: string;
   readonly children: ReactNode;
   readonly className?: string;
   readonly data: SunburstNode;
@@ -837,6 +846,8 @@ interface SunburstInnerRenderProps {
 // Element tree — and therefore reconciliation — is unchanged.
 const renderSunburstInner = (props: Readonly<SunburstInnerRenderProps>): ReactElement => {
   const {
+    ariaDescription,
+    ariaLabel,
     children,
     className,
     data,
@@ -861,6 +872,8 @@ const renderSunburstInner = (props: Readonly<SunburstInnerRenderProps>): ReactEl
   return (
     <SunburstChartInner
       data={data}
+      ariaDescription={ariaDescription}
+      ariaLabel={ariaLabel}
       size={size}
       rootClassName={className}
       focus={focus}
@@ -900,6 +913,8 @@ const SunburstChart = ({
   enterTransition,
   enterStaggerScale = 1,
   children,
+  ariaLabel,
+  ariaDescription,
 }: SunburstChartProps): ReactElement | null => {
   const { durationMs: sweepDurationMs, easingCss: sweepEasingCss } =
     useSunburstSweepTiming(enterTransition);
@@ -913,6 +928,8 @@ const SunburstChart = ({
   // The subtree below needs non-null focus/rootFocus; render it through an inner
   // Component so every hook stays unconditional (react-hooks/rules-of-hooks).
   return renderSunburstInner({
+    ariaDescription,
+    ariaLabel,
     children,
     className,
     data,

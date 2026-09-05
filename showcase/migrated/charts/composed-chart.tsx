@@ -85,6 +85,8 @@ interface ComposedChartProps {
   /** Replay epoch input: changing it replays the reveal. */
   readonly revealSignature?: string;
   readonly children?: ReactNode;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 // Stacked y-max is the largest per-row bar-sum vs largest non-bar value (bklit parity);
@@ -107,6 +109,8 @@ const ComposedChart = ({
   enterTransition,
   revealSignature = "",
   children,
+  ariaLabel = "Composed chart",
+  ariaDescription,
 }: Readonly<ComposedChartProps>): ReactElement => {
   const phaseAndReveal = useComposedPhaseAndReveal({
     animationDuration,
@@ -383,7 +387,8 @@ const ComposedChart = ({
     <>
       <RendererChart
         renderer={composedChartRenderer}
-        ariaLabel="Composed chart"
+        ariaLabel={ariaLabel}
+        ariaDescription={ariaDescription}
         aspectRatio={parseAspectRatio(aspectRatio)}
         definition={definition}
         onFocusGroupChange={handleFocusGroupChange}

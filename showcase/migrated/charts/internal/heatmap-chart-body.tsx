@@ -32,6 +32,8 @@ const HeatmapChartBody = ({ root, containerRef, innerProps, children }: Readonly
       <HeatmapChartInner
         animate={innerProps.animate}
         animationDuration={innerProps.animationDuration}
+        ariaDescription={innerProps.ariaDescription}
+        ariaLabel={innerProps.ariaLabel}
         binSize={innerProps.binSize}
         colorScale={innerProps.colorScale}
         containerHeight={root.height}

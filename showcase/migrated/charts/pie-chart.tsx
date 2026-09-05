@@ -137,6 +137,8 @@ interface PieChartProps {
   readonly enterTransition?: PieEnterTransition;
   readonly enterStaggerScale?: number;
   readonly geometryScrubbing?: boolean;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 interface PieRowDatum {
@@ -362,6 +364,8 @@ const PieChart = ({
   enterStaggerScale = 1,
   geometryScrubbing = false,
   children,
+  ariaLabel = "Pie chart",
+  ariaDescription,
 }: Readonly<PieChartProps>): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   // ResizeObserver mounts unconditionally; fixed-size mode never reads the measurement.
@@ -579,7 +583,8 @@ const PieChart = ({
  */
   const renderChart = (): ReactElement => (
     <RendererChart
-      ariaLabel="Pie chart"
+      ariaLabel={ariaLabel}
+      ariaDescription={ariaDescription}
       width={size}
       height={size}
       definition={definition}

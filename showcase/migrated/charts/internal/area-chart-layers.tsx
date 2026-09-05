@@ -75,6 +75,8 @@ const renderCrosshairNode = (
 
 interface AreaChartBodyProps {
   readonly areaChartRenderer: ChartRenderer<ChartDatum, Date, number>;
+  readonly ariaDescription?: string;
+  readonly ariaLabel?: string;
   readonly aspectRatio: string;
   readonly chartBodyClipStyle: CSSProperties | undefined;
   readonly definition: DomChartDefinition<ChartDatum, Date, number> | undefined;
@@ -90,7 +92,8 @@ const AreaChartBody = (props: Readonly<AreaChartBodyProps>): ReactNode => {
     <div style={props.chartBodyClipStyle}>
       <RendererChart
         renderer={props.areaChartRenderer}
-        ariaLabel="Area chart"
+        ariaLabel={props.ariaLabel ?? "Area chart"}
+        ariaDescription={props.ariaDescription}
         aspectRatio={parseAspectRatio(props.aspectRatio)}
         height={props.heightPx > 0 ? props.heightPx : undefined}
         definition={props.definition}

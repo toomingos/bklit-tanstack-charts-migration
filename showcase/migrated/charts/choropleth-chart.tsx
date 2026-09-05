@@ -72,6 +72,8 @@ interface ChoroplethChartProps {
   readonly initialZoom?: TransformMatrix;
   readonly className?: string;
   readonly children: ReactNode;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 interface ChoroplethFeatureProps {
@@ -545,6 +547,8 @@ const ChoroplethChartBody = ({
   children,
   width,
   height,
+  ariaLabel = "Choropleth chart",
+  ariaDescription,
 }: ChoroplethChartProps & { width: number; height: number }): ReactElement => {
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
   const ratio = useMemo(() => parseAspectRatio(aspectRatio), [aspectRatio]);
@@ -753,7 +757,8 @@ const ChoroplethChartBody = ({
       {definition ? (
         <RendererChart
           renderer={chartMotionRenderer<ChoroplethFeature>()}
-          ariaLabel="Choropleth chart"
+          ariaLabel={ariaLabel}
+          ariaDescription={ariaDescription}
           aspectRatio={ratio}
           definition={definition}
           onRender={handleRender}
@@ -853,6 +858,8 @@ interface SizedBodyOptions {
   readonly width: number;
   readonly ratio: number;
   readonly children: ReactNode;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 const renderSizedBody = (options: Readonly<SizedBodyOptions>): ReactElement | undefined => {
@@ -876,6 +883,8 @@ const renderSizedBody = (options: Readonly<SizedBodyOptions>): ReactElement | un
       initialZoom={options.initialZoom}
       width={width}
       height={height}
+      ariaLabel={options.ariaLabel}
+      ariaDescription={options.ariaDescription}
     >
       {options.children}
     </ChoroplethChartBody>
@@ -911,6 +920,8 @@ const ChoroplethChart = ({
   initialZoom = DEFAULT_INITIAL_ZOOM,
   className = "",
   children,
+  ariaLabel,
+  ariaDescription,
 }: ChoroplethChartProps): ReactElement => {
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
   const ratio = useMemo(() => parseAspectRatio(aspectRatio), [aspectRatio]);
@@ -926,6 +937,8 @@ const ChoroplethChart = ({
     >
       {renderSizedBody({
         animationDuration,
+        ariaDescription,
+        ariaLabel,
         aspectRatio,
         center,
         children,

@@ -26,6 +26,8 @@ const renderHeatmapTooltipContent = (datum: Readonly<CellDatum>, config: Readonl
 );
 
 interface BuildHeatmapCellsTreeParams {
+  readonly ariaDescription?: string;
+  readonly ariaLabel?: string;
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly ctx: ReturnType<typeof useHeatmap>;
   readonly definition: ReturnType<typeof useHeatmapChartDefinition>;
@@ -35,6 +37,8 @@ interface BuildHeatmapCellsTreeParams {
 }
 
 const buildHeatmapCellsTree = ({
+  ariaDescription,
+  ariaLabel = "Heatmap chart",
   containerRef,
   ctx,
   definition,
@@ -47,7 +51,8 @@ const buildHeatmapCellsTree = ({
       <RendererChart
         renderer={chartMotionRenderer<CellDatum, string, string>()}
         className="ts-bkm-heatmap-svg"
-        ariaLabel="Heatmap chart"
+        ariaLabel={ariaLabel}
+        ariaDescription={ariaDescription}
         definition={definition}
         width={ctx.width}
         height={ctx.height}

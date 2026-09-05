@@ -18,6 +18,8 @@ interface ScatterChartProps {
   /** Replay epoch input: bumping it replays the enter reveal. */
   readonly revealSignature?: string;
   readonly children?: ReactNode;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 export type { ScatterChartProps };

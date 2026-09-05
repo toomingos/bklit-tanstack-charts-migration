@@ -46,6 +46,8 @@ interface HeatmapChartProps {
   readonly columnSeparators?: Readonly<HeatmapColumnSeparatorsConfig>;
   readonly weekStartDay?: HeatmapWeekStartDay;
   readonly children: ReactNode;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 const elementHasChildrenProp = (child: Readonly<ReactElement>): child is ReactElement<{ children?: ReactNode }> =>
@@ -136,10 +138,14 @@ const resolveHeatmapInnerProps = (props: Readonly<HeatmapChartProps>): HeatmapCh
     animate = true,
     loadingOpacity = HEATMAP_LOADING_CHART_OPACITY,
     showLoadingCells = true,
+    ariaDescription,
+    ariaLabel,
   } = props;
   return {
     animate,
     animationDuration,
+    ariaDescription,
+    ariaLabel,
     binSize,
     colorScale,
     data,

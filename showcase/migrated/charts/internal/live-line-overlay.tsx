@@ -330,6 +330,8 @@ const useLiveCrosshair = (options: Readonly<UseLiveCrosshairOptions>): LiveCross
 };
 
 interface RenderLiveLineBodyOptions {
+  readonly ariaDescription?: string;
+  readonly ariaLabel?: string;
   readonly crosshairView: Readonly<CrosshairDefView> | undefined;
   readonly datePillOverlayHostRef: RefCallback<HTMLDivElement>;
   readonly definition: DomChartDefinition<ChartDatum, Date, number> | undefined;
@@ -355,7 +357,7 @@ interface RenderLiveLineBodyOptions {
 // Chart body subtree as a plain render helper (not a component): inlined into
 // The same element tree, so reconciliation and animations are unchanged.
 const renderLiveLineBody = (options: Readonly<RenderLiveLineBodyOptions>): ReactNode => {
-  const { crosshairView, datePillOverlayHostRef, definition, fadeMaskId, fadeMaskStyle, getLiveGroups, handleFocusChange, handleRender, height, innerHeight, innerWidth, lineVisuals, liveRefAreas, margin, referenceAreaGeom, renderTooltipBody, showDatePillHost, tooltipOn, uid, width } = options;
+  const { ariaDescription, ariaLabel = "Live line chart", crosshairView, datePillOverlayHostRef, definition, fadeMaskId, fadeMaskStyle, getLiveGroups, handleFocusChange, handleRender, height, innerHeight, innerWidth, lineVisuals, liveRefAreas, margin, referenceAreaGeom, renderTooltipBody, showDatePillHost, tooltipOn, uid, width } = options;
   const datePillHostNode = showDatePillHost ? (
     <div
       ref={datePillOverlayHostRef}
@@ -376,7 +378,8 @@ const renderLiveLineBody = (options: Readonly<RenderLiveLineBodyOptions>): React
             style={fadeMaskStyle}
           >
             <RendererChart
-              ariaLabel="Live line chart"
+              ariaLabel={ariaLabel}
+              ariaDescription={ariaDescription}
               renderer={chartMotionRenderer<ChartDatum, Date, number>()}
               definition={definition}
               width={width}

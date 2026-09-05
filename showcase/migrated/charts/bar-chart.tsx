@@ -79,6 +79,8 @@ interface BarChartProps {
   readonly squareSnap?: { readonly squareGap: number; readonly groupGap?: number; readonly fit?: boolean };
   readonly onPhaseChange?: (phase: ChartPhase) => void;
   readonly children?: ReactNode;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 const isString = <Value,>(candidate: Value): candidate is Value & string => typeof candidate === "string";
@@ -97,6 +99,8 @@ const BarChart = ({
   barGap = DEFAULT_BAR_GAP,
   onPhaseChange,
   children,
+  ariaLabel = "Bar chart",
+  ariaDescription,
 }: Readonly<BarChartProps>): ReactElement => {
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -405,7 +409,8 @@ const BarChart = ({
       {definition && (
         <>
           <RendererChart
-            ariaLabel="Bar chart"
+            ariaLabel={ariaLabel}
+            ariaDescription={ariaDescription}
             aspectRatio={parseAspectRatio(aspectRatio)}
             definition={definition}
             renderer={barChartRenderer}

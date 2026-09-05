@@ -91,6 +91,8 @@ interface LiveLineChartProps {
   readonly children?: ReactNode;
   readonly className?: string;
   readonly style?: CSSProperties;
+  readonly ariaLabel?: string;
+  readonly ariaDescription?: string;
 }
 
 const timeBisector = bisector<LiveLinePoint, number>((point: Readonly<LiveLinePoint>) => point.time);
@@ -212,6 +214,8 @@ const LiveLineChart = ({
   children,
   className,
   style,
+  ariaLabel,
+  ariaDescription,
 }: LiveLineChartProps): ReactElement => {
   // Fixed plot margins between commits: TanStack treats definition identity as its update boundary.
   const margin = useChartMargin(marginProp, DEFAULT_MARGIN);
@@ -552,6 +556,8 @@ const LiveLineChart = ({
     [fadeMaskId],
   );
   const body = renderLiveLineBody({
+    ariaDescription,
+    ariaLabel,
     crosshairView,
     datePillOverlayHostRef,
     definition,

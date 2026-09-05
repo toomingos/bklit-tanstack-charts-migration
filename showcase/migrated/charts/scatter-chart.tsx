@@ -22,6 +22,8 @@ const ScatterChart = ({
   className,
   onPhaseChange,
   children,
+  ariaLabel,
+  ariaDescription,
 }: Readonly<ScatterChartProps>): ReactElement => {
   const series = useScatterSeriesSetup({ children });
   const domains = useScatterDomains({ data, resolvedSeries: series.resolvedSeries });
@@ -50,7 +52,7 @@ const ScatterChart = ({
   return (
     <>
       {buildScatterChartTree({
-        className, marks, pill, refAreas: selection,
+        ariaDescription, ariaLabel, className, marks, pill, refAreas: selection,
         selection, series, timing,
       })}
     </>
