@@ -1,0 +1,16 @@
+{
+  "marks": 2,
+  "points": 3,
+  "domains": {
+    "x": [
+      0,
+      1
+    ],
+    "y": [
+      0,
+      30
+    ]
+  },
+  "resourceIds": [],
+  "unreferenced": []
+}

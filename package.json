@@ -9,6 +9,7 @@
     "bench:bundles": "node bench/measure-bundle.mjs",
     "bench:report": "node bench/report.mjs",
     "qa": "node qa/screenshot.mjs",
+    "test": "node --test \"qa/unit/*.test.mjs\"",
     "dev:app": "pnpm --dir bench/app dev",
     "build:app": "pnpm --dir bench/app build",
     "guard:reach-in": "node scripts/reach-in-guard.mjs --report",

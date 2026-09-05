@@ -27,8 +27,8 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 1 | V1.6 | export parity | todo | | | |
 | 1 | V1.8 | aria forwarding | todo | | | |
 | 1 | V1.9 | package contract | todo | | | |
-| 1 | V4.1 | `qa/unit` scaffold (scene tests, probes) | todo | | | |
-| 1 | V4.2 | generated type fixture | merged | `ses_f8eae74d6ffevmKWqC0OMWAzCO` | (next commit) | D514 · 292 value + 211 type `Eq` lines · 478 red / 420 exports = V1.6 backlog · 81 migrated-only exports · G3 folded |
+| 1 | V4.1 | `qa/unit` scaffold (scene tests, probes) | merged | `ses_f8eae88aeffeCW2EwgcvXZY2hd` | (next commit) | D515 · `pnpm test` 84 tests / 46 pass / 38 todo / 0.4 s · probes pinned per family |
+| 1 | V4.2 | generated type fixture | merged | `ses_f8eae74d6ffevmKWqC0OMWAzCO` | `04ad318` | D514 · 292 value + 211 type `Eq` lines · 478 red / 420 exports = V1.6 backlog · 81 migrated-only exports · G3 folded |
 | 1 | V4.4 | gate integrity | todo | | | |
 | 2 | V1.3 | registering children | todo | | | |
 | 2 | V1.4 | optional layers own imports | todo | | | |
