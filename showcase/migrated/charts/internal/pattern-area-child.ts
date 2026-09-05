@@ -1,9 +1,13 @@
 // PatternArea config-carrier child: never rendered, compiled once into a TanStack defineChart spec.
 import { CHART_ROLE } from "./chart-child-carrier";
+import { useChartChild } from "./use-chart-child";
 import type { ChartChildComponent } from "./chart-child-carrier";
 import type { PatternAreaConfig } from "./types";
 
-const PatternArea: ChartChildComponent<PatternAreaConfig> = (_props: Readonly<PatternAreaConfig>): null => null;
+const PatternArea: ChartChildComponent<PatternAreaConfig> = (props: Readonly<PatternAreaConfig>): null => {
+  useChartChild("patternArea", props);
+  return null;
+};
 
 PatternArea[CHART_ROLE] = "patternArea";
 PatternArea.displayName = "PatternArea";

@@ -22,6 +22,7 @@ import {
   focusGroupToTooltip,
 } from "./chart-host-store";
 import { DEFAULT_Y_AXIS_ID } from "./y-axis-id";
+import { ChartChildRegistryProvider } from "./chart-child-registry";
 import { ChartProvider } from "./chart-context";
 import type {
   ChartContextValue,
@@ -290,11 +291,12 @@ const ChartHost = <
       />
     );
 
+  // Registry pass: carriers register pre-paint; the bump re-renders once.
   return (
     <ChartProvider value={value}>
       <div ref={containerRef}>
         {chartNode}
-        {children}
+        <ChartChildRegistryProvider>{children}</ChartChildRegistryProvider>
       </div>
     </ChartProvider>
   );

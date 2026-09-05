@@ -1,6 +1,9 @@
 import { Fragment, isValidElement, useMemo } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { roleOf } from "./children-extract";
+import { ChildPropGuards } from "./chart-child-carrier";
+import type { AnyChildProps } from "./chart-child-carrier";
+import type { ChartChildRegistration } from "./chart-child-registry";
 import { DEFAULT_AREA_STROKE_WIDTH, DEFAULT_COLOR, DEFAULT_LINE_STROKE_WIDTH, NOTHING } from "./composed-series";
 import type { ComposedSeriesEntry } from "./composed-model";
 import { extractProjectionLineConfigs } from "./projection-config";
@@ -155,7 +158,8 @@ const registerBarAreaChild = (child: Readonly<ReactElement>, sink: ComposedChild
   return false;
 };
 
-const visitComposedChild = (child: Readonly<ReactElement>, sink: ComposedChildSink): void => {
+const visitComposedChild = (child: Readonly<ReactElement>, sink: ComposedChildSink, seen: Set<unknown>): void => {
+  seen.add(child.props);
   if (registerBarAreaChild(child, sink)) {return;}
   const role = roleOf(child.type);
   /*
@@ -168,19 +172,87 @@ const visitComposedChild = (child: Readonly<ReactElement>, sink: ComposedChildSi
   registerChromeChild(child, sink);
 };
 
-const visitComposedChildren = (node: ReactNode, sink: ComposedChildSink): void => {
-  // Flatten nested child arrays without React.Children; key assignment is unused here.
+// Flatten nested child arrays without React.Children; unused key assignment.
+const visitComposedChildren = (node: ReactNode, sink: ComposedChildSink, seen: Set<unknown>): void => {
   for (const child of [node].flat(Infinity)) {
     if (isValidElement(child)) {
       // Fragment props are `{ children?: ReactNode }` by React's own contract; pinning the
       // Generic recovers the type without asserting.
-      if (child.type === Fragment && isValidElement<{ children?: ReactNode }>(child)) {visitComposedChildren(child.props.children, sink);}
-      else {visitComposedChild(child, sink);}
+      if (child.type === Fragment && isValidElement<{ children?: ReactNode }>(child)) {visitComposedChildren(child.props.children, sink, seen);}
+      else {visitComposedChild(child, sink, seen);}
     }
   }
 };
 
-const extractComposed = (children: ReactNode): ExtractedComposed => {
+// Registry union for the composed slots; unknown roles stay ignored.
+const pushComposedRegistry = (
+  role: string,
+  props: AnyChildProps,
+  sink: ComposedChildSink,
+  seen: Set<unknown>,
+): void => {
+  if (seen.has(props)) {
+    return;
+  }
+  seen.add(props);
+  if (ChildPropGuards.seriesBar(role, props)) {
+    sink.barConfigs.push(props);
+    upsertComposedSeries(sink.composedSeries, {
+      dataKey: props.dataKey,
+      showHighlight: false,
+      stroke: props.stroke ?? props.fill ?? DEFAULT_COLOR,
+      strokeWidth: 0,
+    });
+    return;
+  }
+  if (ChildPropGuards.area(role, props)) {
+    sink.areaConfigs.push(props);
+    upsertComposedSeries(sink.composedSeries, {
+      dataKey: props.dataKey,
+      dimOpacity: 0.6,
+      showHighlight: props.showHighlight ?? true,
+      stroke: props.stroke ?? props.fill ?? DEFAULT_COLOR,
+      strokeWidth: props.strokeWidth ?? DEFAULT_AREA_STROKE_WIDTH,
+      yAxisId: props.yAxisId,
+    });
+    return;
+  }
+  if (ChildPropGuards.line(role, props)) {
+    sink.lineConfigs.push(props);
+    upsertComposedSeries(sink.composedSeries, {
+      dataKey: props.dataKey,
+      dimOpacity: 0.3,
+      showHighlight: props.showHighlight ?? true,
+      stroke: props.stroke ?? DEFAULT_COLOR,
+      strokeWidth: props.strokeWidth ?? DEFAULT_LINE_STROKE_WIDTH,
+      yAxisId: props.yAxisId,
+    });
+    return;
+  }
+  if (ChildPropGuards.grid(role, props)) {
+    sink.grid = props;
+    return;
+  }
+  if (ChildPropGuards.xAxis(role, props)) {
+    sink.xAxis = props;
+    return;
+  }
+  if (ChildPropGuards.background(role, props)) {
+    sink.background = props;
+    return;
+  }
+  if (ChildPropGuards.tooltip(role, props)) {
+    sink.tooltip = { enabled: true, ...props };
+  }
+};
+
+// Shared empty union: keeps hook dependency arrays stable when no host runs.
+const NO_REGISTRY_ENTRIES: readonly ChartChildRegistration[] = [];
+
+const extractComposed = (
+  children: ReactNode,
+  registryEntries: readonly ChartChildRegistration[] = NO_REGISTRY_ENTRIES,
+): ExtractedComposed => {
   const sink: ComposedChildSink = {
     areaConfigs: [],
     background: null,
@@ -191,7 +263,11 @@ const extractComposed = (children: ReactNode): ExtractedComposed => {
     tooltip: NOTHING,
     xAxis: NOTHING,
   };
-  visitComposedChildren(children, sink);
+  const seen = new Set<unknown>();
+  visitComposedChildren(children, sink, seen);
+  for (const entry of registryEntries) {
+    pushComposedRegistry(entry.role, entry.props, sink, seen);
+  }
   return {
     areaConfigs: sink.areaConfigs,
     background: sink.background,
@@ -220,9 +296,12 @@ interface UseComposedChildrenResult {
   readonly xAxis: XAxisConfig | undefined;
 }
 
-const useComposedChildren = (children: ReactNode): UseComposedChildrenResult => {
+const useComposedChildren = (
+  children: ReactNode,
+  registryEntries: readonly ChartChildRegistration[] = NO_REGISTRY_ENTRIES,
+): UseComposedChildrenResult => {
   const { barConfigs, areaConfigs, lineConfigs, composedSeries, grid, xAxis, background, tooltip } =
-    useMemo(() => extractComposed(children), [children]);
+    useMemo(() => extractComposed(children, registryEntries), [children, registryEntries]);
   const projectionConfigs = useMemo(() => extractProjectionLineConfigs(children), [children]);
   const composedProjectionLines = useMemo((): ChartDatum[] => {
     const out: ChartDatum[] = [];

@@ -1,9 +1,13 @@
 // BarSquares config-carrier child: never rendered, compiled once into a TanStack defineChart spec.
 import { CHART_ROLE } from "./chart-child-carrier";
+import { useChartChild } from "./use-chart-child";
 import type { ChartChildComponent, ReadonlyBarSquaresConfig } from "./chart-child-carrier";
 import type { BarSquaresConfig } from "./types";
 
-const BarSquares: ChartChildComponent<BarSquaresConfig> = (_props: ReadonlyBarSquaresConfig): null => null;
+const BarSquares: ChartChildComponent<BarSquaresConfig> = (props: ReadonlyBarSquaresConfig): null => {
+  useChartChild("barSquares", props);
+  return null;
+};
 
 BarSquares[CHART_ROLE] = "barSquares";
 BarSquares.displayName = "BarSquares";

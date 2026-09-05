@@ -1,17 +1,15 @@
 // Radar labels config-carrier child: never rendered, compiled once into a TanStack defineChart spec.
 import { CHART_ROLE } from "./chart-child-carrier";
-import type { ChartChildComponent } from "./chart-child-carrier";
+import { useChartChild } from "./use-chart-child";
+import type { ChartChildComponent, RadarLabelsProps } from "./chart-child-carrier";
 
-interface RadarLabelsProps {
-  readonly offset?: number;
-  readonly fontSize?: number;
-  readonly interactive?: boolean;
-  readonly className?: string;
-}
-
-const RadarLabels: ChartChildComponent<RadarLabelsProps> = (_props: Readonly<RadarLabelsProps>): null => null;
+const RadarLabels: ChartChildComponent<RadarLabelsProps> = (props: Readonly<RadarLabelsProps>): null => {
+  useChartChild("radar-labels", props);
+  return null;
+};
 
 RadarLabels[CHART_ROLE] = "radar-labels";
+RadarLabels.displayName = "RadarLabels";
 
 export { RadarLabels };
-export type { RadarLabelsProps };
+export type { RadarLabelsProps } from "./chart-child-carrier";

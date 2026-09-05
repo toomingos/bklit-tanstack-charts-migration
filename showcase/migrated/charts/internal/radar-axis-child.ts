@@ -1,16 +1,15 @@
 // Radar axis config-carrier child: never rendered, compiled once into a TanStack defineChart spec.
 import { CHART_ROLE } from "./chart-child-carrier";
-import type { ChartChildComponent } from "./chart-child-carrier";
+import { useChartChild } from "./use-chart-child";
+import type { ChartChildComponent, RadarAxisProps } from "./chart-child-carrier";
 
-interface RadarAxisProps {
-  readonly stroke?: string;
-  readonly strokeOpacity?: number;
-  readonly className?: string;
-}
-
-const RadarAxis: ChartChildComponent<RadarAxisProps> = (_props: Readonly<RadarAxisProps>): null => null;
+const RadarAxis: ChartChildComponent<RadarAxisProps> = (props: Readonly<RadarAxisProps>): null => {
+  useChartChild("radar-axis", props);
+  return null;
+};
 
 RadarAxis[CHART_ROLE] = "radar-axis";
+RadarAxis.displayName = "RadarAxis";
 
 export { RadarAxis };
-export type { RadarAxisProps };
+export type { RadarAxisProps } from "./chart-child-carrier";

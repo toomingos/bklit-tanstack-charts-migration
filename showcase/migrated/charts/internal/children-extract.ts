@@ -2,7 +2,8 @@
 // Split from the children barrel so that barrel re-exports components only.
 import { Fragment, isValidElement } from "react";
 import type { JSXElementConstructor, ReactElement, ReactNode } from "react";
-import { CHART_ROLE } from "./chart-child-carrier";
+import { ChildPropGuards, roleOf } from "./chart-child-carrier";
+import type { ChartChildRegistration } from "./chart-child-registry";
 import type {
   AreaConfig,
   BackgroundConfig,
@@ -27,6 +28,7 @@ import type {
   ExtractedChildren,
 } from "./types";
 import type {
+  AnyChildProps,
   ChartMarkersChildProps,
   LineSeriesTerminalMarkerProps,
   ProfitLossLineProps,
@@ -39,7 +41,6 @@ const CHART_CHILD_PASSTHROUGH = Symbol.for("migrated.chartChildPassthrough");
 // Legacy string-key alias: bklit stamps the literal key, so the detector accepts both keys.
 const CHART_CLIP_PASSTHROUGH = "__chartClipPassthrough" as const;
 
-interface RoleCarrier { readonly [CHART_ROLE]?: string }
 interface PassthroughCarrier {
   readonly [CHART_CHILD_PASSTHROUGH]?: boolean;
   readonly [CHART_CLIP_PASSTHROUGH]?: boolean;
@@ -50,7 +51,7 @@ interface PassthroughCarrier {
  */
 type ChartChildType = string | JSXElementConstructor<unknown> | null | undefined;
 
-type MarkerCarrier = JSXElementConstructor<unknown> & RoleCarrier & PassthroughCarrier;
+type MarkerCarrier = JSXElementConstructor<unknown> & PassthroughCarrier;
 
 const isMarkerCarrier = (value: ChartChildType): value is MarkerCarrier =>
   value !== null && value !== undefined && typeof value !== "string";
@@ -68,14 +69,6 @@ const isChartClipPassthrough = (type: ChartChildType): boolean => {
     type[CHART_CLIP_PASSTHROUGH] === true
   );
 }
-
-const roleOf = (type: ChartChildType): string | undefined => {
-  if (!isMarkerCarrier(type)) {
-    return undefined;
-  }
-  return type[CHART_ROLE];
-};
-
 
 const displayNameOf = <WithDisplayName extends { displayName?: string }>(componentType: Readonly<WithDisplayName> | null | undefined): string | undefined => componentType?.displayName;
 
@@ -159,11 +152,77 @@ const applyFrameOverlayRole = (child: Readonly<ReactElement>, role: string | und
   applyFrameAxisRoles(child, role, out) || applyFrameSurfaceRoles(child, role, out) ||
   applyProjectionRoles(child, role, out) || applyMarkerRoles(child, role, out);
 
-const visit = (node: ReactNode, out: ExtractedChildren): void => {
-  const recurse = (nested: ReactNode): void => {visit(nested, out);};
+// Registry union groups mirror the scan groups; unknown roles are ignored.
+const pushLineAreaRegistry = (role: string, props: AnyChildProps, out: ExtractedChildren): boolean => {
+  if (ChildPropGuards.line(role, props)) { out.lines.push(props); return true; }
+  if (ChildPropGuards.area(role, props)) { out.areas.push(props); return true; }
+  if (ChildPropGuards.patternArea(role, props)) { out.patternAreas.push(props); return true; }
+  if (ChildPropGuards.scatter(role, props)) { out.scatters.push(props); return true; }
+  return false;
+};
+
+const pushBarRowRegistry = (role: string, props: AnyChildProps, out: ExtractedChildren): boolean => {
+  if (ChildPropGuards.bar(role, props)) { out.bars.push(props); return true; }
+  if (ChildPropGuards.barSquares(role, props)) { out.barSquares.push(props); return true; }
+  if (ChildPropGuards.barColumnTrack(role, props)) { out.barColumnTracks.push(props); return true; }
+  if (ChildPropGuards.seriesBar(role, props)) { out.seriesBars.push(props); return true; }
+  return false;
+};
+
+const pushBarDepthRegistry = (role: string, props: AnyChildProps, out: ExtractedChildren): boolean => {
+  if (ChildPropGuards.barDepthBack(role, props)) { out.barDepthBacks.push(props); return true; }
+  if (ChildPropGuards.barDepthFront(role, props)) { out.barDepthFronts.push(props); return true; }
+  if (ChildPropGuards.barPulse(role, props)) { out.barPulses.push(props); return true; }
+  if (ChildPropGuards.barDepthProvider(role, props)) { out.barDepthProvider = props; return true; }
+  return false;
+};
+
+const pushFrameAxisRegistry = (role: string, props: AnyChildProps, out: ExtractedChildren): boolean => {
+  if (ChildPropGuards.grid(role, props)) { out.grid = props; return true; }
+  if (ChildPropGuards.xAxis(role, props)) { out.xAxis = props; return true; }
+  if (ChildPropGuards.barXAxis(role, props)) { out.barXAxis = props; return true; }
+  if (ChildPropGuards.yAxis(role, props)) { out.yAxis = { ...props }; return true; }
+  return false;
+};
+
+const pushFrameSurfaceRegistry = (role: string, props: AnyChildProps, out: ExtractedChildren): boolean => {
+  if (ChildPropGuards.background(role, props)) { out.background = props; return true; }
+  if (ChildPropGuards.tooltip(role, props)) { out.tooltip = { enabled: true, ...props }; return true; }
+  if (ChildPropGuards.candlestick(role, props)) { out.candlestick = { ...props }; return true; }
+  return false;
+};
+
+const pushProjectionRegistry = (role: string, props: AnyChildProps, out: ExtractedChildren): boolean => {
+  if (ChildPropGuards.projectionLine(role, props)) { out.projectionLines.push(props); return true; }
+  if (ChildPropGuards.projectionEndMarker(role, props)) { out.projectionEndMarkers.push(props); return true; }
+  if (ChildPropGuards.terminalMarker(role, props)) { out.terminalMarkers.push(props); return true; }
+  return false;
+};
+
+const pushMarkerRegistry = (role: string, props: AnyChildProps, out: ExtractedChildren): boolean => {
+  if (ChildPropGuards.profitLossLine(role, props)) { out.profitLossLines.push(props); return true; }
+  if (ChildPropGuards.chartMarkers(role, props)) { out.chartMarkers = props; return true; }
+  if (ChildPropGuards.brush(role, props)) { out.brushes.push(props); return true; }
+  return false;
+};
+
+// Rendered carriers (HOC wrappers) merge here; the scan stays the first path.
+const pushRegistryEntry = (role: string, props: AnyChildProps, out: ExtractedChildren): void => {
+  if (pushLineAreaRegistry(role, props, out)) { return; }
+  if (pushBarRowRegistry(role, props, out)) { return; }
+  if (pushBarDepthRegistry(role, props, out)) { return; }
+  if (pushFrameAxisRegistry(role, props, out)) { return; }
+  if (pushFrameSurfaceRegistry(role, props, out)) { return; }
+  if (pushProjectionRegistry(role, props, out)) { return; }
+  pushMarkerRegistry(role, props, out);
+};
+
+const visit = (node: ReactNode, out: ExtractedChildren, seen: Set<unknown>): void => {
+  const recurse = (nested: ReactNode): void => {visit(nested, out, seen);};
   // Flatten nested child arrays without React.Children; key assignment is unused here.
   for (const child of [node].flat(Infinity)) {
     if (isValidElement(child) && !visitFrameChild(child, recurse)) {
+      seen.add(child.props);
       const role = roleOf(child.type);
       // Unknown roles carry no chart config: only known carriers populate the spec.
       applySeriesConfigRole(child, role, out);
@@ -173,7 +232,13 @@ const visit = (node: ReactNode, out: ExtractedChildren): void => {
 };
 
 
-const extractChildren = (children: ReactNode): ExtractedChildren => {
+// Shared empty union: keeps hook dependency arrays stable when no host runs.
+const NO_REGISTRY_ENTRIES: readonly ChartChildRegistration[] = [];
+
+const extractChildren = (
+  children: ReactNode,
+  registryEntries: readonly ChartChildRegistration[] = NO_REGISTRY_ENTRIES,
+): ExtractedChildren => {
   const out: ExtractedChildren = {
     areas: [],
     background: null,
@@ -201,7 +266,14 @@ const extractChildren = (children: ReactNode): ExtractedChildren => {
     xAxis: null,
     yAxis: null,
   };
-  visit(children, out);
+  const seen = new Set<unknown>();
+  visit(children, out, seen);
+  for (const entry of registryEntries) {
+    if (!seen.has(entry.props)) {
+      seen.add(entry.props);
+      pushRegistryEntry(entry.role, entry.props, out);
+    }
+  }
   return out;
 }
 
@@ -211,5 +283,5 @@ export {
   displayNameOf,
   extractChildren,
   isChartClipPassthrough,
-  roleOf,
 };
+export { roleOf } from "./chart-child-carrier";

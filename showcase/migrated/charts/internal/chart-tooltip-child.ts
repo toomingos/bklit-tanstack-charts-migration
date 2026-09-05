@@ -1,10 +1,15 @@
 // ChartTooltip config-carrier child: never rendered, compiled once into a TanStack defineChart spec.
 import { CHART_ROLE } from "./chart-child-carrier";
+import { useChartChild } from "./use-chart-child";
 import type { ChartChildComponent } from "./chart-child-carrier";
 import type { ChartTooltipConfig } from "./types";
 
-const ChartTooltip: ChartChildComponent<ChartTooltipConfig> = (_props: Readonly<ChartTooltipConfig>): null => null;
+const ChartTooltip: ChartChildComponent<ChartTooltipConfig> = (props: Readonly<ChartTooltipConfig>): null => {
+  useChartChild("tooltip", props);
+  return null;
+};
 
 ChartTooltip[CHART_ROLE] = "tooltip";
+ChartTooltip.displayName = "ChartTooltip";
 
 export { ChartTooltip };

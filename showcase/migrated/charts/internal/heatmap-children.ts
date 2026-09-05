@@ -1,5 +1,6 @@
 import { Fragment, isValidElement } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { roleOf } from "./chart-child-carrier";
 import { HeatmapSeparator } from "./heatmap-components";
 import type { HeatmapSeparatorProps } from "./heatmap-components";
 
@@ -29,7 +30,7 @@ const flattenChartChildren = (node: Readonly<ReactNode>): ReactElement[] => {
 };
 
 const isHeatmapSeparatorChild = (child: Readonly<ReactNode>): child is ReactElement<HeatmapSeparatorProps> =>
-  isValidElement(child) && child.type === HeatmapSeparator;
+  isValidElement(child) && (child.type === HeatmapSeparator || roleOf(child.type) === "heatmapSeparator");
 
 export {
   hasChildrenProp,
