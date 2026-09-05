@@ -1,21 +1,19 @@
-// Bklit SankeyChart on TanStack Charts (native sankeyDiagram + WAAPI reveal, reactive hover dim).
-import { isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// Bklit SankeyChart on TanStack Charts (native sankeyDiagram + WAAPI reveal, package-state hover dim).
+import { isValidElement, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
 import { ChartHost, HOST_INITIAL_WIDTH } from "./internal/chart-host";
 import { defineChart } from "@tanstack/charts/scene";
 import { tooltip } from "@tanstack/charts/tooltip";
 import type {
-  ChartInteractionController,
   ChartLinearGradient,
   ChartPoint,
   ChartRendererRenderContext,
-  ChartScene,
 } from "@tanstack/charts";
 import type { SankeyLink as NativeSankeyLink } from "@tanstack/charts/network/sankey";
 import type {
   LaidOutNode,
 } from "./internal/sankey-layout";
-import { createSankeyMark, createSankeySpatialIndex, sankeyIdentityColorScale, SANKEY_LINK_MARK_ID, SANKEY_NODE_POINT_MARK_ID } from './internal/sankey-mark';
+import { createSankeyMark, createSankeySpatialIndex, sankeyIdentityColorScale, SANKEY_NODE_POINT_MARK_ID } from './internal/sankey-mark';
 import type { LaidOutLink } from './internal/sankey-mark';
 import { sankeyFlowGradientId } from "./internal/sankey-flow-style";
 import { runSankeyReveal, stampSankeyLinkPathLength } from './internal/sankey-animation';
@@ -27,6 +25,7 @@ import type { SankeyLinkProps } from "./internal/sankey-link";
 import type { SankeyNodeProps } from "./internal/sankey-node";
 import type { SankeyTooltipProps } from "./internal/sankey-tooltip";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
+import { useFocusInjection } from "./internal/focus-injection";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 
 interface SankeyNodeDatum {
@@ -348,32 +347,6 @@ const updateSankeyReveal = (svg: SVGSVGElement, params: Readonly<SankeyRevealUpd
   startSankeyReveal({ animationDuration, duration: animationDuration, enterTransition, revealHandleRef, seenRef, signature: revealSignature, svg });
 }
 
-interface SankeyHoverRefs {
-  current: number | null;
-}
-
-// Package focus feeds the reactive dim; module scope keeps focus callbacks stable.
-const applySankeyFocusPoint = (
-  point: ChartPoint | null,
-  hoveredNodeIndexRef: SankeyHoverRefs,
-  setHoveredLinkIndex: (index: number | null) => void,
-): void => {
-  if (!point) {
-    hoveredNodeIndexRef.current = null;
-    setHoveredLinkIndex(null);
-    return;
-  }
-  if (point.markId === SANKEY_NODE_POINT_MARK_ID) {
-    hoveredNodeIndexRef.current = point.datumIndex;
-    setHoveredLinkIndex(null);
-    return;
-  }
-  if (point.markId === SANKEY_LINK_MARK_ID) {
-    setHoveredLinkIndex(point.datumIndex);
-    hoveredNodeIndexRef.current = null;
-  }
-};
-
 // The reveal's replay key: a new reveal runs when any of these change.
 interface RevealKey {
   readonly signature: string;
@@ -449,69 +422,19 @@ const SankeyChart = ({
     });
   }, [data, getNodeColorFn, linkConfig.stroke, linkConfig.useGradient]);
 
-  // Hover lives in React state (dim rebuilds the definition); a ref mirror serves synchronous readers.
-  const [hoveredLinkIndex, setHoveredLinkIndex] = useState<number | null>(null);
-  // Inject source:'pointer' — programmatic would wrongly satisfy the legend-dim predicate.
-  const sceneRef = useRef<ChartScene<SankeyRenderDatum> | null>(null);
-  const interactionRef = useRef<ChartInteractionController<SankeyRenderDatum> | null>(null);
-  const focusPointerPoint = useCallback(
-    (predicate?: (point: ChartPoint) => boolean) => {
-      const interaction = interactionRef.current;
-      if (!interaction) {return;}
-      if (!predicate) {
-        interaction.setControlledFocus(null, { source: "pointer" });
-        return;
-      }
-      const point = sceneRef.current?.points.find(predicate) ?? null;
-      interaction.setControlledFocus(point, { source: "pointer" });
-    },
-    [],
-  );
-
-  const isNodeHoverControlledRef = useRef(hoveredNodeIndexProp !== undefined);
-  const controlledNodeIndexRef = useRef<number | null>(hoveredNodeIndexProp ?? null);
-  const [internalHoveredNodeIndex, setInternalHoveredNodeIndex] = useState<number | null>(null);
-  const internalHoveredNodeIndexRef = useRef<number | null>(null);
+  // Package-owned hover: dim rides mark states, so hover never rebuilds the definition.
+  // Focus changes only notify the hover callback; the tooltip reads package points.
+  const { captureRenderContext, clearFocus, focusPoint } = useFocusInjection<SankeyRenderDatum>();
   const onNodeHoverChangeRef = useRef(onNodeHoverChange);
-  useEffect(() => {
-    isNodeHoverControlledRef.current = hoveredNodeIndexProp !== undefined;
-    controlledNodeIndexRef.current = hoveredNodeIndexProp ?? null;
-  }, [hoveredNodeIndexProp]);
-  useEffect(() => {
-    internalHoveredNodeIndexRef.current = internalHoveredNodeIndex;
-  }, [internalHoveredNodeIndex]);
   useEffect(() => {
     onNodeHoverChangeRef.current = onNodeHoverChange;
   }, [onNodeHoverChange]);
-  const hoveredNodeIndexRef = useMemo(
-    (): SankeyHoverRefs => ({
-      get current(): number | null {
-        return isNodeHoverControlledRef.current
-          ? controlledNodeIndexRef.current
-          : internalHoveredNodeIndexRef.current;
-      },
-      set current(next: number | null) {
-        if (isNodeHoverControlledRef.current) {
-          onNodeHoverChangeRef.current?.(next);
-        } else {
-          setInternalHoveredNodeIndex(next);
-        }
-      },
-    }),
-    [],
-  );
-  const isNodeHoverControlled = hoveredNodeIndexProp !== undefined;
-  const effectiveHoveredNodeIndex = isNodeHoverControlled
-    ? (hoveredNodeIndexProp ?? null)
-    : internalHoveredNodeIndex;
 
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
 
   const markConfig = useMemo(() => ({
     fadedLinkOpacity: linkConfig.fadedOpacity ?? DEFAULT_FADED_LINK_OPACITY,
     fadedNodeOpacity: nodeConfig.fadedOpacity ?? DEFAULT_FADED_NODE_OPACITY,
-    hoveredLinkIndex,
-    hoveredNodeIndex: effectiveHoveredNodeIndex,
     labelOrientation: nodeConfig.labelOrientation ?? "horizontal",
     lineCap: nodeConfig.lineCap ?? DEFAULT_NODE_LINE_CAP,
     nodeColorFn: getNodeColorFn,
@@ -532,8 +455,6 @@ const SankeyChart = ({
     nodeConfig.showValueLabels,
     nodeConfig.labelOrientation,
     nodeConfig.fadedOpacity,
-    effectiveHoveredNodeIndex,
-    hoveredLinkIndex,
   ]);
 
   const definition = useMemo(
@@ -569,8 +490,7 @@ const SankeyChart = ({
 
   const handleRender = useCallback((context: ChartRendererRenderContext<SankeyRenderDatum>) => {
     // Context datum matches the renderer prop below so RendererChart infers one datum type.
-    sceneRef.current = context.scene;
-    interactionRef.current = context.interaction;
+    captureRenderContext(context);
 
     const surfaceEl = context.surface.element;
     if (!(surfaceEl instanceof SVGSVGElement)) {return;}
@@ -585,38 +505,29 @@ const SankeyChart = ({
       revealSignature,
       seenRef: seenRevealKeyRef,
     });
-  }, [animationDuration, enterTransition, prefersReducedMotion, revealSignature]);
+  }, [animationDuration, captureRenderContext, enterTransition, prefersReducedMotion, revealSignature]);
 
-  // Package-owned pointer: focus changes drive the reactive dim; no DOM listener.
+  // Package-owned pointer: focus changes only notify; dim rides the mark states.
   const handleFocusChange = useCallback((point: ChartPoint | null) => {
-    applySankeyFocusPoint(point, hoveredNodeIndexRef, setHoveredLinkIndex);
-  }, [hoveredNodeIndexRef]);
+    const next = point?.markId === SANKEY_NODE_POINT_MARK_ID ? point.datumIndex : null;
+    onNodeHoverChangeRef.current?.(next);
+  }, []);
 
   // Parent-controlled node hover paints through package focus, not the DOM.
-  // Link state clears through the onFocusChange round-trip, not here.
   useEffect(() => {
     if (hoveredNodeIndexProp === undefined) {return;}
-    const interaction = interactionRef.current;
-    if (!interaction) {return;}
     if (hoveredNodeIndexProp === null) {
-      interaction.setControlledFocus(null, { source: "programmatic" });
+      clearFocus();
       return;
     }
-    const point = sceneRef.current?.points.find(
-      (scenePoint) => scenePoint.markId === SANKEY_NODE_POINT_MARK_ID && scenePoint.datumIndex === hoveredNodeIndexProp,
-    ) ?? null;
-    interaction.setControlledFocus(point, { source: "programmatic" });
-  }, [hoveredNodeIndexProp]);
+    const target = hoveredNodeIndexProp;
+    focusPoint((scenePoint) => scenePoint.markId === SANKEY_NODE_POINT_MARK_ID && scenePoint.datumIndex === target);
+  }, [clearFocus, focusPoint, hoveredNodeIndexProp]);
 
   const handleMouseLeave = useCallback(() => {
-    if (isNodeHoverControlledRef.current) {
-      onNodeHoverChangeRef.current?.(null);
-    } else {
-      setInternalHoveredNodeIndex(null);
-    }
-    setHoveredLinkIndex(null);
-    focusPointerPoint();
-  }, [focusPointerPoint]);
+    onNodeHoverChangeRef.current?.(null);
+    clearFocus("pointer");
+  }, [clearFocus]);
 
   const formatValue = tooltipConfig.formatValue ?? intFmt;
   const tooltipClassName = tooltipConfig.className;

@@ -1,75 +1,3 @@
-interface SankeyHoverResult {
-  readonly nodeConnected: readonly boolean[];
-  readonly linkConnected: readonly boolean[];
-  readonly anyHovered: boolean;
-}
-
-interface SankeyHoverLink {
-  readonly source: number;
-  readonly target: number;
-}
-
-interface SankeyLinkHit {
-  readonly connected: boolean;
-  readonly other?: number;
-}
-
-interface SankeyNodeHoverConnected {
-  readonly linkConnected: readonly boolean[];
-  readonly nodeConnected: readonly boolean[];
-}
-
-const emptyFlags = (length: number): boolean[] => Array.from({ length }, () => false);
-
-const resolveNodeLinkHit = (link: SankeyHoverLink | undefined, hoveredNodeIndex: number, nodeCount: number): SankeyLinkHit => {
-  if (!link) {return { connected: false };}
-  if (link.source !== hoveredNodeIndex && link.target !== hoveredNodeIndex) {return { connected: false };}
-  const other = link.source === hoveredNodeIndex ? link.target : link.source;
-  if (other < 0 || other >= nodeCount) {return { connected: true };}
-  return { connected: true, other };
-};
-
-const collectNodeHoverConnected = (hoveredNodeIndex: number, nodeCount: number, links: readonly SankeyHoverLink[]): SankeyNodeHoverConnected => {
-  const nodeConnected = emptyFlags(nodeCount);
-  const linkConnected = emptyFlags(links.length);
-  nodeConnected[hoveredNodeIndex] = true;
-  for (let li = 0; li < links.length; li += 1) {
-    const hit = resolveNodeLinkHit(links[li], hoveredNodeIndex, nodeCount);
-    if (hit.connected) {
-      linkConnected[li] = true;
-      if (hit.other !== undefined) {nodeConnected[hit.other] = true;}
-    }
-  }
-  return { linkConnected, nodeConnected };
-};
-
-const computeNodeHoverConnected = (hoveredNodeIndex: number | null, nodeCount: number, links: readonly { readonly source: number; readonly target: number }[]): SankeyHoverResult => {
-  const anyHovered = hoveredNodeIndex !== null;
-  if (hoveredNodeIndex === null) {
-    return { anyHovered, linkConnected: emptyFlags(links.length), nodeConnected: emptyFlags(nodeCount) };
-  }
-  return { anyHovered, ...collectNodeHoverConnected(hoveredNodeIndex, nodeCount, links) };
-}
-
-const resolveLinkEndpoints = (link: SankeyHoverLink | undefined, nodeCount: number): number[] => {
-  if (!link) {return [];}
-  const endpoints: number[] = [];
-  if (link.source >= 0 && link.source < nodeCount) {endpoints.push(link.source);}
-  if (link.target >= 0 && link.target < nodeCount) {endpoints.push(link.target);}
-  return endpoints;
-};
-
-const computeLinkHoverConnected = (hoveredLinkIndex: number | null, nodeCount: number, links: readonly { readonly source: number; readonly target: number }[]): SankeyHoverResult => {
-  const anyHovered = hoveredLinkIndex !== null;
-  const nodeConnected = emptyFlags(nodeCount);
-  const linkConnected = emptyFlags(links.length);
-  if (hoveredLinkIndex === null || hoveredLinkIndex >= links.length) {return { anyHovered, linkConnected, nodeConnected };}
-  linkConnected[hoveredLinkIndex] = true;
-  const endpoints = resolveLinkEndpoints(links[hoveredLinkIndex], nodeCount);
-  for (const endpoint of endpoints) {nodeConnected[endpoint] = true;}
-  return { anyHovered, linkConnected, nodeConnected };
-}
-
 interface SankeyNodeHitBox {
   readonly x0?: number;
   readonly x1?: number;
@@ -162,5 +90,5 @@ const findHoveredSankeyTarget = (point: { readonly x: number; readonly y: number
   return null;
 }
 
-export { computeNodeHoverConnected, computeLinkHoverConnected, findHoveredSankeyTarget };
-export type { SankeyHoverResult, SankeyNodeHitBox, SankeyLinkHitBox, SankeyHitTarget };
+export { findHoveredSankeyTarget };
+export type { SankeyNodeHitBox, SankeyLinkHitBox, SankeyHitTarget };
