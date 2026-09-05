@@ -1,9 +1,10 @@
 import { useMemo } from "react";
-import type { ChartMotionContext, StaticChartDefinition } from "@tanstack/charts";
+import type { ChartMarkState, ChartMotionContext, StaticChartDefinition } from "@tanstack/charts";
 import { defineChart } from "@tanstack/charts/scene";
 import { polar } from "@tanstack/charts/polar";
 import { sunburst } from "@tanstack/charts/hierarchy/sunburst";
 import type { SunburstNode as TSSunburstNode } from "@tanstack/charts/hierarchy/sunburst";
+import { withStates } from "./with-states";
 import { buildSunburstFlatRows, ringOptions } from "./sunburst-geometry";
 import type { ArcDatum, Focus, SunburstFlatRow } from "./sunburst-geometry";
 import { defaultSunburstColors, opacityForRelativeDepth } from "./sunburst-colors";
@@ -36,6 +37,35 @@ const hoverDimFactor = (arcId: string, hoveredId: string | undefined): number =>
   }
   return HOVER_DIM_ALPHA;
 };
+
+interface SunburstFocusDimDeps {
+  readonly arcsById: ReadonlyMap<string, ArcDatum>;
+  readonly segmentConfigMap: ReadonlyMap<number, SunburstSegmentConfigView>;
+  readonly getFill: SunburstFillResolver;
+  readonly focus: Readonly<Focus>;
+}
+
+// Arc focus dim (I1 wrapper) from the undimmed base; styles.css sunburst term.
+// Polar flattens child nodes, so the wrapper below sits on the container.
+const sunburstFocusStates = (
+  deps: Readonly<SunburstFocusDimDeps>,
+): ChartMarkState<TSSunburstNode<SunburstFlatRow>>[] => [
+  {
+    style: {
+      fill: (context): string => {
+        const arc = deps.arcsById.get(context.datum.id);
+        if (!arc) {return defaultSunburstColors[0];}
+        const config = deps.segmentConfigMap.get(arc.arcIndex);
+        const resolvedFill = deps.getFill(arc.arcIndex, config?.fill, config?.color);
+        const relativeDepth = arc.depth - deps.focus.depth;
+        const baseOpacity = config?.fillOpacity ?? opacityForRelativeDepth(relativeDepth);
+        return applyAlphaToColor(resolvedFill, baseOpacity * HOVER_DIM_ALPHA);
+      },
+    },
+    transition: { duration: 160, easing: "ease-out", type: "tween" },
+    when: { focus: "unmatched" },
+  },
+];
 
 const resolveVisibleDepth = (maxDepth: number, focusDepth: number): number => Math.max(MIN_VISIBLE_DEPTH, maxDepth - focusDepth);
 const resolveCenterR = (focusDepth: number, maxDepth: number, radius: number): number =>
@@ -115,95 +145,95 @@ const useSunburstDefinition = (options: Readonly<UseSunburstDefinitionOptions>):
 
   // --- TanStack definition: native `sunburst()` (C5d, D-TBD — see file ---
   // --- header for the full design writeup and the hover-grow deviation) ---
-  const definition = useMemo(() => defineChart({
+  const definition = useMemo(() => {
+    const arcsMark = sunburst(flatRows, {
+      fill: (node: TSSunburstNode<SunburstFlatRow>) => {
+        const arc = arcsById.get(node.id);
+        if (!arc) {return defaultSunburstColors[0];}
+        const config = segmentConfigMap.get(arc.arcIndex);
+        const resolvedFill = getFill(arc.arcIndex, config?.fill, config?.color);
+        const relativeDepth = arc.depth - focus.depth;
+        const baseOpacity = config?.fillOpacity ?? opacityForRelativeDepth(relativeDepth);
+        /*
+         * Native has no per-datum opacity channel, so hover dimming is folded into the per-datum `fill` alpha.
+         */
+        const dimFactor = hoverDimFactor(arc.id, hoveredArc?.id);
+        return applyAlphaToColor(resolvedFill, baseOpacity * dimFactor);
+      },
+      id: sunburstMarkId,
+      /*
+       * Same growPadding-shrunk radius as the overlays, so native rings land exactly on hit layer, labels, and center.
+       */
+      innerRadius: centerRValue,
+      /*
+       * `ctx.datum` is the wrapped `SunburstNode`, not the raw flat row; `ctx.datum.id` needs no key-decoding.
+       */
+      motion: (ctx: ChartMotionContext<TSSunburstNode<SunburstFlatRow>>) => {
+        if (ctx.phase === "exit") {
+          // No legacy exit animation existed; degenerate arcs vanish instantly.
+          return { transition: { duration: 0, type: "tween" } };
+        }
+        if (ctx.phase === "update") {
+          return {
+            transition: {
+              duration: zoomMs,
+              easing: motionEasingFromCss(zoomEasingCss),
+              type: "tween",
+            },
+          };
+        }
+        const delayMs = ctx.datum ? (revealDelayById.get(ctx.datum.id) ?? 0) : 0;
+        return {
+          delay: delayMs,
+          transition: {
+            duration: sweepDurationMs,
+            easing: motionEasingFromCss(sweepEasingCss),
+            type: "tween",
+          },
+        };
+      },
+      nodeId: (row: SunburstFlatRow) => row.id,
+      // Shares the overlay-alignment note on innerRadius above.
+      outerRadius: radius,
+      parentId: (row: SunburstFlatRow) => row.parentId,
+      /*
+       * Re-rooting resets subtree depth to 0 so partition refills the sweep; explicit `visibleDepth` keeps irregular trees aligned with overlays.
+       */
+      rootId: focus.id,
+      stroke: "var(--chart-background)",
+      strokeWidth: 1,
+      /*
+       * Leaf-only values: native `sum` adds an internal node's own value, diverging angles by up to ~3 rad if passed through.
+       */
+      value: (row: SunburstFlatRow) => (row.hasChildren ? 0 : (row.rawValue ?? 0)),
+      // Shares the focus-remap note on rootId above.
+      visibleDepth: visibleDepthValue,
+    });
+    const containerMark = polar({
+      endAngle: -Math.PI / 2 + 2 * Math.PI,
+      marks: [arcsMark],
+      radiusRatio: 1,
+      scales: { angle: null, radius: null },
+      /*
+       * Native sweeps from 3 o'clock by default; bklit geometry assumes a 12-o'clock origin, so set it explicitly.
+       */
+      startAngle: -Math.PI / 2,
+    });
+    return defineChart({
       /*
        * Keyboard focus only; `focusRing: false` because dim geometry is already the authored focus treatment.
        */
       focusRing: false,
       guides: false,
-      marks: [
-        polar({
-          endAngle: -Math.PI / 2 + 2 * Math.PI,
-          marks: [
-            sunburst(flatRows, {
-              fill: (node: TSSunburstNode<SunburstFlatRow>) => {
-                const arc = arcsById.get(node.id);
-      if (!arc) {return defaultSunburstColors[0];}
-                const config = segmentConfigMap.get(arc.arcIndex);
-                const resolvedFill = getFill(arc.arcIndex, config?.fill, config?.color);
-                const relativeDepth = arc.depth - focus.depth;
-                const baseOpacity = config?.fillOpacity ?? opacityForRelativeDepth(relativeDepth);
-                /*
-                 * Native has no per-datum opacity channel, so hover dimming is folded into the per-datum `fill` alpha.
-                 */
-                const dimFactor = hoverDimFactor(arc.id, hoveredArc?.id);
-                return applyAlphaToColor(resolvedFill, baseOpacity * dimFactor);
-              },
-              id: sunburstMarkId,
-              /*
-               * Same growPadding-shrunk radius as the overlays, so native rings land exactly on hit layer, labels, and center.
-               */
-              innerRadius: centerRValue,
-              /*
-               * `ctx.datum` is the wrapped `SunburstNode`, not the raw flat row; `ctx.datum.id` needs no key-decoding.
-               */
-              motion: (ctx: ChartMotionContext<TSSunburstNode<SunburstFlatRow>>) => {
-                if (ctx.phase === "exit") {
-                  // No legacy exit animation existed; degenerate arcs vanish instantly.
-                  return { transition: { duration: 0, type: "tween" } };
-                }
-                if (ctx.phase === "update") {
-                  return {
-                    transition: {
-                      duration: zoomMs,
-                      easing: motionEasingFromCss(zoomEasingCss),
-                      type: "tween",
-                    },
-                  };
-                }
-                const delayMs = ctx.datum ? (revealDelayById.get(ctx.datum.id) ?? 0) : 0;
-                return {
-                  delay: delayMs,
-                  transition: {
-                    duration: sweepDurationMs,
-                    easing: motionEasingFromCss(sweepEasingCss),
-                    type: "tween",
-                  },
-                };
-              },
-              nodeId: (row: SunburstFlatRow) => row.id,
-              // Shares the overlay-alignment note on innerRadius above.
-              outerRadius: radius,
-              parentId: (row: SunburstFlatRow) => row.parentId,
-              /*
-               * Re-rooting resets subtree depth to 0 so partition refills the sweep; explicit `visibleDepth` keeps irregular trees aligned with overlays.
-               */
-              rootId: focus.id,
-              stroke: "var(--chart-background)",
-              strokeWidth: 1,
-              /*
-               * Leaf-only values: native `sum` adds an internal node's own value, diverging angles by up to ~3 rad if passed through.
-               */
-              value: (row: SunburstFlatRow) => (row.hasChildren ? 0 : (row.rawValue ?? 0)),
-              // Shares the focus-remap note on rootId above.
-              visibleDepth: visibleDepthValue,
-            }),
-          ],
-          radiusRatio: 1,
-          scales: { angle: null, radius: null },
-          /*
-           * Native sweeps from 3 o'clock by default; bklit geometry assumes a 12-o'clock origin, so set it explicitly.
-           */
-          startAngle: -Math.PI / 2,
-        }),
-      ],
+      marks: [withStates(containerMark, flatRows, sunburstFocusStates({ arcsById, focus, getFill, segmentConfigMap }))],
       scales: { x: null, y: null },
       /*
        * Explicit 5-entry palette override; every row already carries per-datum `fill`, so no pixel effect today.
        */
       theme: { palette: CHART_CATEGORY_PALETTE },
       tooltip: false,
-    }),
+    });
+  },
   [
     flatRows,
     arcsById,

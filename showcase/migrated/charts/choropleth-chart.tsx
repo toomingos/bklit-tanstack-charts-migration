@@ -11,6 +11,7 @@ import { identityMatrix } from "./internal/zoom-math";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import type {
+  ChartMarkState,
   ChartPoint,
   ChartRendererRenderContext,
   ChartValue,
@@ -19,6 +20,7 @@ import type {
 import { defineChart } from "@tanstack/charts/scene";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { geoShape as geoMark } from "@tanstack/charts/geo";
+import { withStates } from "./internal/with-states";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import { CHART_ROLE } from "./children";
 import { roleOf } from "./internal/children-extract";
@@ -272,6 +274,36 @@ const makeFeaturePainters = (options: Readonly<FeaturePaintOptions>): FeaturePai
   };
 };
 
+interface ChoroplethFocusStatesOptions {
+  readonly featureConfig: ChoroplethFeatureProps | undefined;
+  readonly dimOpacity: number;
+}
+
+// Feature focus dim (I1 wrapper); pattern fills dim via opacity (D424 restore).
+// Transition matches the geo term in styles.css (choropleth: 0.18s ease-out).
+const choroplethFocusStates = (options: Readonly<ChoroplethFocusStatesOptions>): ChartMarkState<ChoroplethFeature>[] => {
+  const { dimOpacity, featureConfig } = options;
+  const isPatternFeature = (feature: ChoroplethFeature, index: number): boolean =>
+    (featureConfig?.getFeaturePattern?.(feature, index) ?? "").length > 0;
+  return [
+    {
+      style: {
+        // Pattern fills skip the fill entry (url() paints can't alpha-blend).
+        fill: (context): string => {
+          if (isPatternFeature(context.datum, context.index)) {
+            return resolveFeatureFill(context.datum, context.index, featureConfig);
+          }
+          return withAlpha(resolveFeatureFill(context.datum, context.index, featureConfig), dimOpacity * ALPHA_TO_PERCENT);
+        },
+        opacity: (context): number => (isPatternFeature(context.datum, context.index) ? dimOpacity : 1),
+        stroke: (): string => withAlpha(featureConfig?.stroke ?? "var(--background)", dimOpacity * ALPHA_TO_PERCENT),
+      },
+      transition: { duration: 180, easing: "ease-out", type: "tween" },
+      when: { focus: "unmatched" },
+    },
+  ];
+};
+
 // MultiPolygon anchors use projectPoint(geoCentroid(feature)): path.centroid skews toward Alaska.
 const choroplethTooltipAnchor = (projForMark: GeoProjection) =>
   (
@@ -318,7 +350,7 @@ const buildChoroplethDefinition = (
     guides: false,
     margin: 0,
     marks: [
-      geoMark(data.features, {
+      withStates(geoMark(data.features, {
         fill: painters.fill,
         id: "choropleth",
         key: choroplethFeatureKey,
@@ -328,7 +360,7 @@ const buildChoroplethDefinition = (
         stroke: painters.stroke,
         strokeOpacity: 1,
         strokeWidth: featureConfig?.strokeWidth ?? DEFAULT_STROKE_WIDTH,
-      }),
+      }), data.features, choroplethFocusStates({ dimOpacity, featureConfig })),
     ],
     // Library pointer handling stays off: app-owned detection is the single hover source of truth.
     pointer: false,

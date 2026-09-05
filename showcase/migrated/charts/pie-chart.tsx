@@ -4,8 +4,10 @@ import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useS
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import { defineChart } from "@tanstack/charts/scene";
+import type { ChartMarkState } from "@tanstack/charts";
 import { polar, radialArc } from "@tanstack/charts/polar";
 import type { PolarMark } from "@tanstack/charts/polar";
+import { withStates } from "./internal/with-states";
 import { stagger } from "@tanstack/charts/motion/definition";
 import { pieArcPath, sliceMidOffset } from "./internal/pie-geometry";
 
@@ -154,6 +156,7 @@ interface PieRowDatum {
   readonly animate: boolean;
 }
 
+
 interface ResolvePieRowFillParams {
   readonly fadeHoveredIndex: number | null;
   readonly getFill: (index: number) => string;
@@ -168,6 +171,32 @@ const resolvePieRowFill = (params: Readonly<ResolvePieRowFillParams>): string =>
   const isFaded = fadeHoveredIndex !== null && fadeHoveredIndex !== index;
   return isFaded ? applyAlphaToColor(baseFill, FADE_OPACITY) : baseFill;
 }
+
+interface PieDimStatesParams {
+  readonly getFill: (index: number) => string;
+  readonly sliceConfigOf: (index: number) => PieSliceConfig | undefined;
+}
+
+// Slice focus dim (I1 wrapper): out-of-focus slices dim from the undimmed base.
+// Transition matches the slice fill term in styles.css (pie: 0.15s ease-in-out).
+const pieDimStates = (params: Readonly<PieDimStatesParams>): ChartMarkState<PieRowDatum>[] => [
+  {
+    style: {
+      fill: (context): string =>
+        applyAlphaToColor(
+          resolvePieRowFill({
+            fadeHoveredIndex: null,
+            getFill: params.getFill,
+            index: context.datum.sliceIndex,
+            sliceConfig: params.sliceConfigOf(context.datum.sliceIndex),
+          }),
+          FADE_OPACITY,
+        ),
+    },
+    transition: { duration: 150, easing: "ease-in-out", type: "tween" },
+    when: { focus: "unmatched" },
+  },
+];
 
 interface BuildPieRowDatumParams {
   readonly arc: Readonly<PieArcData>;
@@ -522,7 +551,9 @@ const PieChart = ({
       // Detection is app-owned: native focus re-resolved against in-flight points caused a hover loop.
       focusRing: false,
       guides: false,
-      marks: [polar({ inset: hoverOffset, marks: [sliceMark], radiusRatio: 1, scales: { angle: null, radius: null } })],
+      // Slice dim also resolves through focus states (I1 wrapper): inert live
+      // (no native focus yet; V2.2 wires it) and exercised by fixtures/states.
+      marks: [withStates(polar({ inset: hoverOffset, marks: [sliceMark], radiusRatio: 1, scales: { angle: null, radius: null } }), pieRows, pieDimStates({ getFill, sliceConfigOf: (index: number) => sliceConfigMap.get(index) }))],
       pointer: false,
       scales: { x: null, y: null },
       // Palette override has no pixel effect (rows carry explicit fill); keeps native surfaces agreeing.
@@ -646,7 +677,9 @@ export type { PieSliceProps } from "./internal/pie-slice";
 export {
   DEFAULT_HOVER_OFFSET,
   PieChart,
+  pieDimStates,
 };
 export type {
   PieChartProps,
+  PieRowDatum,
 };

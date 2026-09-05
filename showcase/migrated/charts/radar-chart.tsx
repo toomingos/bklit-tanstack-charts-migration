@@ -15,11 +15,12 @@ import { useEffectEvent } from "./internal/use-effect-event";
 import { scaleLinear, scalePoint } from "d3-scale";
 import { curveLinearClosed } from "d3-shape";
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
-import type { ChartMotionContext, ChartValue, DomChartDefinition, MarkScene, SceneNode } from "@tanstack/charts";
+import type { ChartMarkState, ChartMarkStateTransition, ChartMotionContext, ChartValue, DomChartDefinition, MarkScene, SceneNode } from "@tanstack/charts";
 import { defineChart } from "@tanstack/charts/scene";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { angleGrid, polar, radialArea, radialDot } from "@tanstack/charts/polar";
 import type { PolarGuide, PolarMark } from "@tanstack/charts/polar";
+import { withStates } from "./internal/with-states";
 import { roleOf } from "./internal/children-extract";
 import type { RadarAreaProps } from "./internal/radar-area-child";
 import type { RadarAxisProps } from "./internal/radar-axis-child";
@@ -79,6 +80,11 @@ const hasLiveRevealAnims = (container: HTMLElement): boolean => {
 const FILL_OPACITY_HOVER = 0.35;
 const FILL_OPACITY_REST = 0.15;
 const STROKE_WIDTH_REST = 2;
+// D424 restore: hovered-series stroke pop (bklit getStrokeWidth: hovered 3).
+const STROKE_WIDTH_POP = 3;
+// Focus-dim transitions (bklit radar-area.tsx: area 0.2s, dots 0.15s).
+const RADAR_FOCUS_DIM_TRANSITION: ChartMarkStateTransition = { duration: 200, easing: "ease-in-out", type: "tween" };
+const RADAR_FOCUS_DOT_TRANSITION: ChartMarkStateTransition = { duration: 150, easing: "ease-in-out", type: "tween" };
 const DOT_R_HOVER = 6;
 const DOT_R_REST = 4;
 // Dim factor multiplies into fill/stroke alpha: radial marks have no per-datum opacity channel.
@@ -329,6 +335,42 @@ const buildRadarGuides = (input: Readonly<RadarGuidesInput>): PolarGuide[] => {
 const seriesIndexOfRow = (row: RadarRow, resolvedCount: number): number =>
   Math.min(Math.trunc(Number(row.series)), resolvedCount - 1);
 
+const RADAR_AREA_MARK_ID = "radar-area";
+const RADAR_DOT_MARK_ID = "radar-dot";
+
+// Series focus states on the polar container (Polar drops child-mark states):
+// MarkId-scoped dim plus the D424 stroke pop and dot-ring dim.
+const radarFocusStates = (resolvedAreas: readonly ResolvedRadarArea[]): ChartMarkState<RadarRow>[] => {
+  const colorOf = (row: RadarRow): string =>
+    resolvedAreas[seriesIndexOfRow(row, resolvedAreas.length)]?.color ?? DEFAULT_RADAR_COLORS[0];
+  const showStrokeOf = (row: RadarRow): boolean =>
+    resolvedAreas[seriesIndexOfRow(row, resolvedAreas.length)]?.showStroke ?? true;
+  return [
+    {
+      style: {
+        fill: (context): string => withAlpha(colorOf(context.datum), FILL_OPACITY_REST * DIM_OPACITY * PERCENT_SCALE),
+        stroke: (context): string =>
+          showStrokeOf(context.datum) ? withAlpha(colorOf(context.datum), DIM_OPACITY * PERCENT_SCALE) : "none",
+      },
+      transition: RADAR_FOCUS_DIM_TRANSITION,
+      when: (context): boolean => context.point.markId === RADAR_AREA_MARK_ID && !context.matches("group"),
+    },
+    {
+      style: { strokeWidth: STROKE_WIDTH_POP },
+      transition: RADAR_FOCUS_DIM_TRANSITION,
+      when: (context): boolean => context.point.markId === RADAR_AREA_MARK_ID && context.matches("group"),
+    },
+    {
+      style: {
+        fill: (context): string => withAlpha(colorOf(context.datum), DIM_OPACITY * PERCENT_SCALE),
+        stroke: withAlpha(RADAR_BACKGROUND_VAR, DIM_OPACITY * PERCENT_SCALE),
+      },
+      transition: RADAR_FOCUS_DOT_TRANSITION,
+      when: (context): boolean => context.point.markId === RADAR_DOT_MARK_ID && !context.matches("group"),
+    },
+  ];
+};
+
 const makeRadarAreaClassName = (hoveredAreaNodeKey: string | undefined, hoveredIndex: number | null): ((key: string) => string | undefined) => (key: string): string | undefined =>
   key === hoveredAreaNodeKey && hoveredIndex !== null
     ? `bkm-radar-area bkm-radar-area--hovered bkm-radar-area--hovered-${hoveredIndex % DEFAULT_RADAR_COLORS.length}`
@@ -345,6 +387,7 @@ interface RadarDefinitionOptions {
   readonly levels: number;
   readonly radarAreaMark: Readonly<PolarMark<RadarRow, string, number>>;
   readonly radarDotMark: Readonly<PolarMark<RadarRow, string, number>>;
+  readonly rows: readonly RadarRow[];
   readonly margin: number;
   readonly hoveredIndex: number | null;
   readonly motionReplayKey: string;
@@ -353,7 +396,7 @@ interface RadarDefinitionOptions {
 // Chart definition from resolved areas, guides, and hover state.
 // Caller passes the same memoized marks with every input in its dependency array.
 const buildRadarDefinition = (options: Readonly<RadarDefinitionOptions>): DomChartDefinition<RadarRow, string, number> | undefined => {
-  const { chartSize, resolvedAreas, metricKeys, metricLabelByKey, grid, axis, labels, levels, radarAreaMark, radarDotMark, margin, hoveredIndex, motionReplayKey } = options;
+  const { chartSize, resolvedAreas, metricKeys, metricLabelByKey, grid, axis, labels, levels, radarAreaMark, radarDotMark, rows, margin, hoveredIndex, motionReplayKey } = options;
   if (chartSize < RADAR_MIN_CHART_SIZE_PX || resolvedAreas.length === 0 || metricKeys.length === 0) {return undefined;}
 
   // Group keys run through valueKey's string:length: wrapper; reproduce it to find the hovered node.
@@ -364,25 +407,27 @@ const buildRadarDefinition = (options: Readonly<RadarDefinitionOptions>): DomCha
 
   const guides = buildRadarGuides({ axis, grid, labels, levels, metricKeys, metricLabelByKey });
   const hoveredAreaMark = withMarkNodeClassName(radarAreaMark, makeRadarAreaClassName(hoveredAreaNodeKey, hoveredIndex));
+  // Focus states wrap the container (Guide nodes match by fallback ownership).
+  const radarPolar = polar({
+    guides,
+    id: "radar",
+    marks: [
+      // Hover dim/pop rides fill/stroke/r channels + one CSS class for stroke-width (no states option).
+      hoveredAreaMark,
+      radarDotMark,
+    ],
+    scales: {
+      angle: { scale: scalePoint().domain(metricKeys) },
+      radius: { scale: scaleLinear().domain([0, RADAR_RADIUS_DOMAIN_MAX]) },
+    },
+  });
 
   return defineChart({
     focus: focusDisabled,
     guides: false,
     margin,
     marks: [
-      polar({
-        guides,
-        id: "radar",
-        marks: [
-          // Hover dim/pop rides fill/stroke/r channels + one CSS class for stroke-width (no states option).
-          hoveredAreaMark,
-          radarDotMark,
-        ],
-        scales: {
-          angle: { scale: scalePoint().domain(metricKeys) },
-          radius: { scale: scaleLinear().domain([0, RADAR_RADIUS_DOMAIN_MAX]) },
-        },
-      }),
+      withStates(radarPolar, rows, radarFocusStates(resolvedAreas)),
     ],
     scales: { x: null, y: null },
     svgAnimation: false,
@@ -902,7 +947,7 @@ const RadarChart = ({
     curve: curveLinearClosed,
     fill: makeRadarAreaFill(resolvedAreas, hoveredIndex),
     fillOpacity: 1,
-    id: "radar-area",
+    id: RADAR_AREA_MARK_ID,
     key: "metric",
     motion: radarMarkMotion,
     radius: "value",
@@ -914,7 +959,7 @@ const RadarChart = ({
   const radarDotMark = useMemo(() => radialDot(allRows, {
     angle: "metric",
     fill: makeRadarDotFill(resolvedAreas, hoveredIndex),
-    id: "radar-dot",
+    id: RADAR_DOT_MARK_ID,
     key: "metric",
     motion: radarMarkMotion,
     r: makeRadarDotRadius(resolvedAreas.length, hoveredIndex),
@@ -925,8 +970,9 @@ const RadarChart = ({
   }), [allRows, resolvedAreas, hoveredIndex, radarMarkMotion]);
 
   const definition = useMemo((): DomChartDefinition<RadarRow, string, number> | undefined =>
-    buildRadarDefinition({ axis, chartSize, grid, hoveredIndex, labels, levels, margin, metricKeys, metricLabelByKey, motionReplayKey, radarAreaMark, radarDotMark, resolvedAreas })
+    buildRadarDefinition({ axis, chartSize, grid, hoveredIndex, labels, levels, margin, metricKeys, metricLabelByKey, motionReplayKey, radarAreaMark, radarDotMark, resolvedAreas, rows: allRows })
   , [
+    allRows,
     chartSize,
     grid,
     axis,
