@@ -349,7 +349,7 @@ const RingChart = ({
     if (geometryScrubbing) {
       return defineChart({
         guides: false,
-        marks: [polar({ inset: padding, marks: [], radiusRatio: 1 })],
+        marks: [polar({ inset: padding, marks: [], radiusRatio: 1, scales: { angle: null, radius: null } })],
         scales: { x: null, y: null },
         tooltip: false,
       });
@@ -370,7 +370,7 @@ const RingChart = ({
       // Pointer:false + app-owned hit-test: native focus re-resolved against in-flight points caused a hover loop.
       focusRing: false,
       guides: false,
-      marks: [polar({ inset: padding, marks: arcMarks, radiusRatio: 1 })],
+      marks: [polar({ inset: padding, marks: arcMarks, radiusRatio: 1, scales: { angle: null, radius: null } })],
       pointer: false,
       scales: { x: null, y: null },
       tooltip: false,

@@ -95,8 +95,10 @@ export default function TanstackLiveLine({
             y: "value",
           }),
         ],
-        x: { scale: scaleUtc },
-        y: { scale: scaleLinear, nice: true, grid: true },
+        scales: {
+          x: { scale: scaleUtc },
+          y: { scale: scaleLinear, nice: true, grid: true },
+        },
         tooltip,
       }),
     [visibleData],

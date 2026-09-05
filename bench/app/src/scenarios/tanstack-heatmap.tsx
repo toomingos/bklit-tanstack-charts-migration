@@ -79,17 +79,19 @@ export default function TanstackHeatmap({ n }: { n: number }) {
             radius: 2,
           }),
         ],
-        x: {
-          scale: scaleBand<number>()
-            .domain(weeks)
-            .paddingInner(0.06)
-            .paddingOuter(0.03),
-        },
-        y: {
-          scale: scaleBand<string>()
-            .domain(WEEKDAYS as unknown as string[])
-            .paddingInner(0.06)
-            .paddingOuter(0.03),
+        scales: {
+          x: {
+            scale: scaleBand<number>()
+              .domain(weeks)
+              .paddingInner(0.06)
+              .paddingOuter(0.03),
+          },
+          y: {
+            scale: scaleBand<string>()
+              .domain(WEEKDAYS as unknown as string[])
+              .paddingInner(0.06)
+              .paddingOuter(0.03),
+          },
         },
         color: {
           scale: scaleThreshold<number, string>()

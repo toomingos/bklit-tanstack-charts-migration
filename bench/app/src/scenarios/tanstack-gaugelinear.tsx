@@ -61,8 +61,10 @@ export default function TanstackGaugeLinear({ n }: { n: number }) {
           fill: (notch) => (notch.active ? "#10b981" : "#e5e7eb"),
         }),
       ],
-      x: { scale: () => scaleBand<string>().paddingInner(0.15), grid: false },
-      y: { scale: scaleLinear().domain([0, 1]), grid: false },
+      scales: {
+        x: { scale: () => scaleBand<string>().paddingInner(0.15), grid: false },
+        y: { scale: scaleLinear().domain([0, 1]), grid: false },
+      },
       tooltip: false,
     });
   }, [gauge]);

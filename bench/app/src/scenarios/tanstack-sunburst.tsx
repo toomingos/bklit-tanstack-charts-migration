@@ -123,6 +123,7 @@ export default function TanstackSunburst({ n }: { n: number }) {
     return defineChart({
       marks: [
         polar({
+          scales: { angle: null, radius: null },
           radiusRatio: 0.88,
           marks: [
             radialArc(data, {
@@ -154,8 +155,7 @@ export default function TanstackSunburst({ n }: { n: number }) {
         }),
       ],
       guides: false,
-      x: null,
-      y: null,
+      scales: { x: null, y: null },
       margin: 0,
     });
   }, [tree]);

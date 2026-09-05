@@ -523,7 +523,7 @@ interface UniformArcQuadMarkOptions {
 }
 
 // Node coords are polar-relative; absolute-pixel points shift by -(centerX, centerY) at render.
-const buildUniformArcQuadMark = (options: Readonly<UniformArcQuadMarkOptions>): PolarMark => {
+const buildUniformArcQuadMark = (options: Readonly<UniformArcQuadMarkOptions>): PolarMark<UniformArcRow, number, number, never, never> => {
   const { active, activeFillOpacity, bg, enterStaggerScale, enterTransition, inactiveFillOpacity, notchCornerRadius, notchLength } = options;
   return {
     initialize: () => ({
@@ -573,7 +573,7 @@ interface TaperedArcMarksOptions {
   readonly outerRadiusRatio: number;
 }
 
-const buildTaperedArcMarks = (options: Readonly<TaperedArcMarksOptions>): PolarMark[] => {
+const buildTaperedArcMarks = (options: Readonly<TaperedArcMarksOptions>): PolarMark<GaugeArcRow, number, number, never, never>[] => {
   const { activeFillOpacity, activeNotchMotion, activeRows, bgNotchMotion, bgRows, inactiveFillOpacity, innerRadiusRatio, notchCornerRadius, outerRadiusRatio } = options;
   return [
     radialArc<GaugeArcRow>(bgRows, {

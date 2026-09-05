@@ -67,8 +67,10 @@ export default function TanstackComposed({ n }: { n: number }) {
             strokeWidth: 2,
           }),
         ],
-        x: { scale: scaleUtc, nice: true },
-        y: { scale: scaleLinear, nice: true, grid: true },
+        scales: {
+          x: { scale: scaleUtc, nice: true },
+          y: { scale: scaleLinear, nice: true, grid: true },
+        },
         tooltip,
       }),
     [data],

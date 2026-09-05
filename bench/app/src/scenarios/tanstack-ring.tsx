@@ -105,14 +105,14 @@ export default function TanstackRing({ n }: { n: number }) {
     return defineChart({
       marks: [
         polar({
+          scales: { angle: null, radius: null },
           inset: 8,
           radiusRatio: 0.92,
           marks: arcMarks,
         }),
       ],
       guides: false,
-      x: null,
-      y: null,
+      scales: { x: null, y: null },
     });
   }, [data]);
 

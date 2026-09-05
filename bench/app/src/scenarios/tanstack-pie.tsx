@@ -49,6 +49,7 @@ export default function TanstackPie({ n }: { n: number }) {
     return defineChart({
       marks: [
         polar({
+          scales: { angle: null, radius: null },
           inset: 8,
           radiusRatio: 0.82,
           marks: [
@@ -62,8 +63,7 @@ export default function TanstackPie({ n }: { n: number }) {
         }),
       ],
       guides: false,
-      x: null,
-      y: null,
+      scales: { x: null, y: null },
     });
   }, [data]);
 

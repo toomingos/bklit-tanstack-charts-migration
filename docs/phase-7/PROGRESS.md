@@ -10,8 +10,8 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 
 | Item | Title | State | Commit | D-entries |
 |---|---|---|---|---|
-| V0.1 | commit open diff, merge `chore/oxlint-migrated-charts` | todo | | |
-| V0.2 | pin 0.16.0, fix R1 breaking surface (15 definitions) | todo | | |
+| V0.1 | commit open diff, merge `chore/oxlint-migrated-charts` | merged | `6c5bc53` | — |
+| V0.2 | pin 0.16.0, fix R1 breaking surface (15 definitions) | merged | (see git) | D510 · executors `ses_f8ed0fe71ffeZPR00ZjS98CmRI` (migrated), `ses_f8ed0d417ffeeTMDv0dnyJ32LO` (bench) |
 | V0.3 | re-baseline at new HEAD, tree hash, `bundle-sizes.json` | todo | | |
 | V0.4 | housekeeping (`__tm`, 9 orphans, nested `defineChart`) | todo | | |
 | V0.5 | file I1, I2, I4, I5, I6, F-260 comment; numbers in `07` | todo | | |
@@ -76,7 +76,7 @@ stamp), UPSTREAM (I-number in `07`). No vector = synthesis defect: amend `08` §
 
 | G | Found by | Symptom | Vector | Disposition | Ref |
 |---|---|---|---|---|---|
-| | | | | | |
+| G1 | V0.2b executor (`ses_f8ed0d417ffeeTMDv0dnyJ32LO`) | `bench/app/src/scenarios/migrated-choropleth.tsx:137` fails bench tsc: `CountryProperties` (`[key: string]: unknown`) not assignable to `ChoroplethFeatureProperties`; pre-existing, independent of 0.16.0; `npm run build` unaffected | V4 (gate integrity: bench app must typecheck) | FOLD into V0.4 housekeeping (typed bench data, no showcase edit) | D510 |
 
 ## Idiom checklist (V0.6 / V3.8)
 

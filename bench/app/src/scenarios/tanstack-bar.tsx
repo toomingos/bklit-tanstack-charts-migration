@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { scaleBand, scaleLinear } from "d3-scale";
 import { Chart } from "@tanstack/react-charts";
-import { barY, defineChart } from "@tanstack/charts";
+import { barY, defineChart, group } from "@tanstack/charts";
 import { tooltip } from "@tanstack/charts/tooltip";
 import {
   generateTimeSeries,
@@ -61,13 +61,17 @@ export default function TanstackBar({ n }: { n: number }) {
           z: "series",
           color: "series",
           key: "key",
-          groupScale: () =>
-            scaleBand<string>().domain(["seriesA", "seriesB"]).paddingInner(0.1),
+          layout: group({
+            scale: () =>
+              scaleBand<string>().domain(["seriesA", "seriesB"]).paddingInner(0.1),
+          }),
           inset: 1,
         }),
       ],
-      x: { scale: () => scaleBand<string>().paddingInner(0.2), grid: false },
-      y: { scale: scaleLinear, nice: true, grid: true },
+      scales: {
+        x: { scale: () => scaleBand<string>().paddingInner(0.2), grid: false },
+        y: { scale: scaleLinear, nice: true, grid: true },
+      },
       tooltip,
     });
   }, [data]);

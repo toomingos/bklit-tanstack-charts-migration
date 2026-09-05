@@ -45,8 +45,10 @@ export default function TanstackLine({ n }: { n: number }) {
             curve: d3Curve(curveNatural),
           }),
         ],
-        x: { scale: scaleUtc, nice: true },
-        y: { scale: scaleLinear, nice: true, grid: true },
+        scales: {
+          x: { scale: scaleUtc, nice: true },
+          y: { scale: scaleLinear, nice: true, grid: true },
+        },
         tooltip,
       }),
     [data],

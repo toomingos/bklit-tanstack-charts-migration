@@ -4,7 +4,7 @@ import { useCallback, useId, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
 import { createMark } from '@tanstack/charts';
-import type { SceneNode, DomChartDefinition, MarkScene } from '@tanstack/charts';
+import type { ChartMark, SceneNode, DomChartDefinition, MarkScene } from '@tanstack/charts';
 import { defineChart } from "@tanstack/charts/scene";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
 import { polar } from '@tanstack/charts/polar';
@@ -374,7 +374,7 @@ const useUniformArcRows = (
   ]);
 
 const defineArcChart = (
-  marks: readonly PolarMark[],
+  marks: readonly PolarMark<GaugeArcRow | UniformArcRow, number, number, never, never>[],
   themeActiveGradientId: string,
   useThemePaletteGradient: boolean,
 ): DomChartDefinition =>
@@ -386,6 +386,7 @@ const defineArcChart = (
       polar({
         marks,
         radiusRatio: 1,
+        scales: { angle: null, radius: null },
       }),
     ],
     scales: { x: null, y: null },
@@ -836,13 +837,13 @@ interface BuildLinearQuadMarkOptions {
   readonly resolveBgFillByNotch: (notch: ComputedNotch) => string;
 }
 
-const buildLinearQuadMark = (options: Readonly<BuildLinearQuadMarkOptions>): ReturnType<typeof createMark> => {
+const buildLinearQuadMark = (options: Readonly<BuildLinearQuadMarkOptions>): ChartMark<never, never, never> => {
   const { activeFillOpacity, activeNotches, cornerVerticalDepth, enterStaggerScale, enterTransition, geometryScrubbing, inactiveFillOpacity, notchCornerRadius, notches, resolveActiveFill, resolveBgFillByNotch } = options;
-  return createMark(
+  return createMark<never, never, never>(
     () => ({
       channels: {},
       id: "gauge-linear",
-      render: (): MarkScene => ({
+      render: (): MarkScene<never, never, never> => ({
         nodes: renderLinearGaugeNodes({
           activeFillOpacity, activeNotches, cornerVerticalDepth, inactiveFillOpacity, notchCornerRadius, notches, resolveActiveFill, resolveBgFillByNotch,
         }),
@@ -864,7 +865,7 @@ const buildLinearQuadMark = (options: Readonly<BuildLinearQuadMarkOptions>): Ret
 };
 
 const buildLinearGaugeChart = (
-  quadMark: Readonly<ReturnType<typeof createMark>>,
+  quadMark: ChartMark<never, never, never>,
   themeActiveGradientId: string,
   useThemePaletteGradient: boolean,
 ): DomChartDefinition =>

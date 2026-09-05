@@ -21,11 +21,11 @@ importers:
         specifier: file:./packages/migrated-charts
         version: file:packages/migrated-charts(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@tanstack/charts':
-        specifier: 0.15.0
-        version: 0.15.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: 0.16.0
+        version: 0.16.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@tanstack/react-charts':
-        specifier: 0.15.0
-        version: 0.15.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: 0.16.0
+        version: 0.16.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@use-gesture/react':
         specifier: 10.3.1
         version: 10.3.1(react@19.2.8)
@@ -1071,8 +1071,8 @@ packages:
   '@tailwindcss/postcss@4.3.3':
     resolution: {integrity: sha512-JTSZZGQi1AyKirbLN3azmjVzef92tcX7h+iSqPdaeStyFpGpDlKvvpxeOE8njhbUanbRwr3z8DyzhICWnMtQeg==}
 
-  '@tanstack/charts@0.15.0':
-    resolution: {integrity: sha512-SGcusQOZg5/4MvaeObSVV97hlBcHxfx9FhdPSbtzWPoAtBWRLejAqaRr9lUks1FOuZOI2cTU87uVpbq9ZZkTNA==}
+  '@tanstack/charts@0.16.0':
+    resolution: {integrity: sha512-adG4sVaWjSqGsp/8YU5q7AjoYoPaivVseDjWWcV4osKemfTHnGFlPqlymxbhWxk1BF3p5Rewgqs4BlgZAXve8g==}
     peerDependencies:
       '@angular/core': '>=19'
       '@angular/platform-browser': '>=19'
@@ -1115,8 +1115,8 @@ packages:
       vue:
         optional: true
 
-  '@tanstack/react-charts@0.15.0':
-    resolution: {integrity: sha512-MBPP3lj1PQ9xF0AUpEh77UDOmX9LFr2rHbZjy/Gqd5aVENhtbJlkj07GJpvJqub/HIKsJ/14SFOX5TGAt1TjTw==}
+  '@tanstack/react-charts@0.16.0':
+    resolution: {integrity: sha512-cMHcKDH4Yk+1IaiFabllkZn7laJue1W+myL+2RJaXweCQAe6yn/euTupP+5IJ6jqk6/5KXM3xgK48c4XG+FpbQ==}
     peerDependencies:
       react: ^19.0.0
       react-dom: ^19.0.0
@@ -3812,7 +3812,7 @@ snapshots:
       postcss: 8.5.25
       tailwindcss: 4.3.3
 
-  '@tanstack/charts@0.15.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@tanstack/charts@0.16.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@types/d3-force': 3.0.10
       '@types/d3-geo': 3.1.1
@@ -3837,9 +3837,9 @@ snapshots:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
-  '@tanstack/react-charts@0.15.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@tanstack/react-charts@0.16.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@tanstack/charts': 0.15.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@tanstack/charts': 0.16.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
     transitivePeerDependencies:

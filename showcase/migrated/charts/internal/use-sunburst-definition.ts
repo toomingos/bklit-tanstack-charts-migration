@@ -190,6 +190,7 @@ const useSunburstDefinition = (options: Readonly<UseSunburstDefinitionOptions>):
             }),
           ],
           radiusRatio: 1,
+          scales: { angle: null, radius: null },
           /*
            * Native sweeps from 3 o'clock by default; bklit geometry assumes a 12-o'clock origin, so set it explicitly.
            */

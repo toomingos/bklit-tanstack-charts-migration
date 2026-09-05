@@ -52,8 +52,10 @@ export default function TanstackScatter({ n }: { n: number }) {
             fill: "var(--ts-chart-2, #f97316)",
           }),
         ],
-        x: { scale: scaleUtc, nice: true },
-        y: { scale: scaleLinear, nice: true, grid: true },
+        scales: {
+          x: { scale: scaleUtc, nice: true },
+          y: { scale: scaleLinear, nice: true, grid: true },
+        },
         tooltip,
       }),
     [data],

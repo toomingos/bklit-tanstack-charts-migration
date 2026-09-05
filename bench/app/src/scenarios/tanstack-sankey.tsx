@@ -151,8 +151,7 @@ export default function TanstackSankey({ n }: { n: number }) {
       defineChart({
         marks: [sankeyCeilingMark(data, "sankey")],
         guides: false,
-        x: null,
-        y: null,
+        scales: { x: null, y: null },
       }),
     [data],
   );

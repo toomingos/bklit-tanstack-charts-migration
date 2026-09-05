@@ -84,8 +84,10 @@ export default function TanstackCandlestick({ n }: { n: number }) {
           strokeWidth: bodyStrokeWidth,
         }),
       ],
-      x: { scale: scaleUtc, nice: true },
-      y: { scale: scaleLinear, nice: true, grid: true },
+      scales: {
+        x: { scale: scaleUtc, nice: true },
+        y: { scale: scaleLinear, nice: true, grid: true },
+      },
       tooltip,
     });
   }, [data, n]);

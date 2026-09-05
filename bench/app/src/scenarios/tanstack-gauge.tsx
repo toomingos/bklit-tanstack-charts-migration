@@ -68,6 +68,7 @@ export default function TanstackGauge({ n }: { n: number }) {
     return defineChart({
       marks: [
         polar({
+          scales: { angle: null, radius: null },
           startAngle: START_ANGLE,
           endAngle: END_ANGLE,
           radiusRatio: 0.9,
@@ -92,8 +93,7 @@ export default function TanstackGauge({ n }: { n: number }) {
         }),
       ],
       guides: false,
-      x: null,
-      y: null,
+      scales: { x: null, y: null },
     });
   }, [gauge]);
 

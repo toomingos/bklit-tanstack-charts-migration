@@ -61,8 +61,10 @@ export default function TanstackFunnelVertical({ n }: { n: number }) {
           inset: 2,
         }),
       ),
-      x: { scale: scaleLinear, nice: true, grid: true },
-      y: { scale: () => scaleBand<string>().paddingInner(0.15), grid: false },
+      scales: {
+        x: { scale: scaleLinear, nice: true, grid: true },
+        y: { scale: () => scaleBand<string>().paddingInner(0.15), grid: false },
+      },
       tooltip,
     });
   }, [data]);

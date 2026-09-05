@@ -207,7 +207,7 @@ interface CreatePieSliceMarkParams {
   readonly enterTransition: PieEnterTransition | undefined;
 }
 
-const createPieSliceMark = (pieRows: readonly PieRowDatum[], params: Readonly<CreatePieSliceMarkParams>): PolarMark<PieRowDatum, number, number> => {
+const createPieSliceMark = (pieRows: readonly PieRowDatum[], params: Readonly<CreatePieSliceMarkParams>): PolarMark<PieRowDatum, number, number, never, never> => {
   const { enterStaggerScale, enterTransition } = params;
   return radialArc<PieRowDatum>(pieRows, {
     fill: (datum: Readonly<PieRowDatum>) => datum.fill,
@@ -488,7 +488,7 @@ const PieChart = ({
     if (geometryScrubbing) {
       return defineChart({
         guides: false,
-        marks: [polar({ inset: hoverOffset, marks: [], radiusRatio: 1 })],
+        marks: [polar({ inset: hoverOffset, marks: [], radiusRatio: 1, scales: { angle: null, radius: null } })],
         scales: { x: null, y: null },
         theme: { palette: CHART_CATEGORY_PALETTE },
         tooltip: false,
@@ -515,7 +515,7 @@ const PieChart = ({
       // Detection is app-owned: native focus re-resolved against in-flight points caused a hover loop.
       focusRing: false,
       guides: false,
-      marks: [polar({ inset: hoverOffset, marks: [sliceMark], radiusRatio: 1 })],
+      marks: [polar({ inset: hoverOffset, marks: [sliceMark], radiusRatio: 1, scales: { angle: null, radius: null } })],
       pointer: false,
       scales: { x: null, y: null },
       // Palette override has no pixel effect (rows carry explicit fill); keeps native surfaces agreeing.

@@ -88,8 +88,10 @@ export default function TanstackRadar({ n }: { n: number }) {
         polar({
           radiusRatio: 0.72,
           // Angle: scaleBand reference (not called); domain inferred from rows.
-          angle: { scale: scaleBand<string> },
-          radius: { scale: scaleLinear().domain([0, 100]) },
+          scales: {
+            angle: { scale: scaleBand<string> },
+            radius: { scale: scaleLinear().domain([0, 100]) },
+          },
           guides: [
             radialGrid({ ticks: 5, shape: "polygon", labels: false }),
             angleGrid({
@@ -123,8 +125,7 @@ export default function TanstackRadar({ n }: { n: number }) {
         }),
       ],
       guides: false,
-      x: null,
-      y: null,
+      scales: { x: null, y: null },
     });
   }, [set]);
 

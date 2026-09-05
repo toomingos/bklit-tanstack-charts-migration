@@ -80,8 +80,7 @@ export default function TanstackChoropleth({ n }: { n: number }) {
           strokeWidth: 0.55,
         }),
       ],
-      x: null,
-      y: null,
+      scales: { x: null, y: null },
       guides: false,
       margin: 12,
     });
