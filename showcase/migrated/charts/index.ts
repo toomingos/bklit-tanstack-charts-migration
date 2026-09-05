@@ -47,9 +47,9 @@ export { HeatmapChart, HeatmapChartLoading, HeatmapCells, HeatmapXAxis, HeatmapY
 export type { HeatmapChartProps, HeatmapChartLoadingProps, HeatmapCellsProps, HeatmapXAxisProps, HeatmapYAxisProps, HeatmapTooltipProps, HeatmapLegendProps, HeatmapLegendVariant, HeatmapSeparatorProps, HeatmapContextValue, HeatmapLayout, HeatmapBin, HeatmapColumn, HeatmapWeekStartDay, HeatmapYAxisLabelFormat, HeatmapYAxisTickFilter, HeatmapLevelColors, HeatmapLevelStyle, HeatmapLevelStyles, HeatmapLevelFillMode } from "./heatmap-chart";
 export { SunburstChart, SunburstSegment, SunburstCenter, SunburstLabels, SunburstHint, SunburstBreadcrumb } from "./sunburst-chart";
 export type { SunburstChartProps, SunburstSegmentProps, SunburstLabelsProps, SunburstHintContext, SunburstHintProps, SunburstBreadcrumbItem, SunburstBreadcrumbProps } from "./sunburst-chart";
-export { sumValues, buildArcs, ringOptions, geometryFor, geomCentroidAngle, geomCentroidRadius, clockwiseFraction, arcPath, transitionGeometry, defaultSunburstGrowPadding, lerpGeometry } from "./internal/sunburst-geometry";
+export { sumValues, buildArcs, ringOptions, geometryFor, geomCentroidAngle, geomCentroidRadius, clockwiseFraction, arcPath, transitionGeometry, defaultSunburstGrowPadding, lerpGeometry } from "./internal/parity/sunburst-geometry";
 export { useSunburstBreadcrumbItems } from "./internal/sunburst-breadcrumb-items";
-export type { SunburstNode, ArcDatum, ArcGeometry, Focus } from "./internal/sunburst-types";
+export type { SunburstNode, ArcDatum, ArcGeometry, Focus } from "./internal/parity/sunburst-geometry";
 export { ChoroplethChart, ChoroplethFeatureComponent, ChoroplethTooltip, ChoroplethGraticule, useChoroplethZoom, useChoropleth } from "./choropleth-chart";
 export type { ChoroplethChartProps, ChoroplethFeatureProps, ChoroplethTooltipProps, ChoroplethGraticuleProps, ChoroplethContextValue, ChoroplethFeature, ChoroplethFeatureProperties } from "./choropleth-chart";
 export type { TransformMatrix } from "./internal/choropleth-zoom-types";

@@ -11,61 +11,78 @@ Architecture:
   displayName). A single <RendererChart renderer={chartMotionRenderer()}>
   renders ONE `polar()` container with ONE native `sunburst()` mark
   (`@tanstack/charts/hierarchy/sunburst`) fed FLAT rows
-  (`buildSunburstFlatRows`, sunburst-geometry.ts) — native's own d3-
+  (`buildSunburstFlatRows`, internal/sunburst-rows.ts) — native's own d3-
   hierarchy pipeline (stratify → sum → partition) computes every arc's
-  angle/radius, replacing the pre-C5d design's hand-rolled `geometryFor`/
-  `ringOptions` math driving a raw custom `d3Arc()` generator on
-  `radialArc`. `sunburst()` is the sole carrier of `[sceneMotionNode]`
-  scene metadata (`dist/motion.js`) in the whole mark catalog — i.e. the
-  only mark whose `d` morph is genuinely SHAPE-aware
-  (`compatiblePathGeometry`/`hierarchyRelatedGeometry`) instead of the
-  generic numeric-token `d`-string diff every raw-generator arc mark
-  (gauge/pie/ring, and this file pre-C5d) falls back to.
+  angle/radius. The hand partition (the old buildArcs/ringOptions/geometryFor
+  math driving a raw custom arc generator) is deleted from the chart path;
+  its code survives only as the barrel's legacy parity exports under
+  internal/parity/. Nothing the chart renders, focuses, labels, reveals or
+  zooms computes a per-sector angle or radius from node values or depth:
+  per-sector geometry is read from what the package publishes — the
+  `ChartPoint` for key `${markId}:node:${nodeId}` (`xValue` = centroid
+  angle, `yValue` = centroid radius, `x`/`y` = centroid in scene px,
+  `datum` = the node with id/parentId/ancestorIds/branchId/depth/height/
+  value/data) and the scene `area` node with the same key (`points` =
+  sampled sector polygon, `path`). Angular extents and ring radii exist in
+  the package only under an internal symbol that is not exported from its
+  `package.json`, so the chart never imports them: arc length along a sector
+  is measured along the polygon's outer edge, and pointer-in-sector is a
+  point-in-polygon test on `points`.
 
 --- C5d (native semantic motion, Phase 6): three angle-parity conditions,
 verified against real d3-hierarchy 3.1.2 -------------------------------
   1. `value` is LEAF-ONLY (`d.hasChildren ? 0 : (d.rawValue ?? 0)`):
      native's `hierarchy.root.sum()` ADDS an internal node's own value on
-     top of its children's, unlike `sumValues` (sunburst-geometry.ts,
-     unchanged, still feeds `buildArcs`) which ignores a node's own value
-     whenever it has children. Getting this wrong measurably diverges
+     top of its children's, unlike the sector index's subtree totals (which
+     ignore a node's own value whenever it has children, see
+     internal/sunburst-rows.ts). Getting this wrong measurably diverges
      angles by up to ~3 rad for a tree where internal nodes carry values.
   2. NO `sort` is passed to `sunburst()` — native only sorts siblings if
      explicitly told to; omitted, it preserves `data`'s own child order,
-     matching `buildArcs`'s own pre-order traversal.
+     matching the sector index's own pre-order traversal. The reveal
+     stagger relies on the same fact: pre-order filtered by depth IS the
+     clockwise order, so no angle is measured for it either.
   3. The polar CONTAINER (not the mark) sets `startAngle: -Math.PI/2,
      endAngle: -Math.PI/2 + 2*Math.PI` — native's own polar default is
      0→2π starting at 3 o'clock (`dist/polar.d.ts`), not bklit's
-     12-o'clock-clockwise origin every other geometry helper in this file
-     assumes (`sunburst-geometry.ts`'s `TOP = -Math.PI/2`).
+     12-o'clock-clockwise origin.
   A 4th, self-discovered parity requirement beyond those three: native's
   automatic `visibleDepth` default is the LOCAL subtree height under the
-  active `rootId`, which can silently diverge from `ringOptions`'s
-  `visibleRings = Math.max(1, maxDepth - focus.depth)` (keyed off the
-  GLOBAL `maxDepth`) for a tree with irregular branch depths — so
-  `visibleDepth` is passed explicitly to force exact ring-count parity
-  against the still-`ringOptions`-driven hit-layer/labels/center overlay.
+  active `rootId`, which can silently diverge from the chart-level ring
+  count `Math.max(1, maxDepth - focus.depth)` (keyed off the GLOBAL
+  `maxDepth`) for a tree with irregular branch depths — so
+  `visibleDepth` is passed explicitly to force exact ring-count parity.
+  (`maxDepth` itself is a plain tree-height walk in internal/sunburst-rows.ts,
+  alongside the center-hole and grow-padding inputs — chart-level package
+  inputs, not per-sector geometry.)
 
-  Focus/drill/hover/dim STILL read exclusively from `buildArcs`/`arcs`/
-  `arcsById` (never from native mark data) — REQUIRED because native
-  filters `node.x1 > node.x0`, so a zero-value branch produces no arc at
-  all (vs. the pre-C5d code's zero-span arc that painted nothing but was
-  still a real row). Keeping drill on `arcsById`/`zoomTo(id)` keeps a
-  zero-value branch reachable via keyboard/hit-layer/programmatic drill
-  even though native never paints a path for it.
+  Focus/drill/hover/dim read exclusively from package scene data plus the
+  pre-order sector index (ids, trails, branch colors — never angles):
+  `createSunburstFocus` (internal/sunburst-focus.ts) tests the pointer
+  against the painted sector polygons of the current scene (read through
+  the focus injection's sceneRef), groups by node lineage
+  (parentId/ancestorIds) and orders keyboard navigation by centroid angle
+  (`ChartPoint.xValue`). This fixes the G12 hover regression (QA
+  sunburst/27, sunburst/33, sunchrome/27 hover-30): the old hand ring
+  radii could disagree with the package's ring division (legacy resolved
+  `Leaf 1.1`, the hand strategy `Branch 1` at the same point); testing the
+  painted polygons agrees with the paint by construction.
 
   Zoom morph (native "update"): `rootId: focus.id` + the explicit
-  `visibleDepth` above reproduce `geometryFor`'s focus-relative angle
-  remap — d3-hierarchy's `.copy()` resets a re-rooted subtree's depth to
-  0, so `partition()` re-normalizes it to fill the full sweep exactly
-  like the old `mapAngle` did. Persisting arcs keep their native scene key
+  `visibleDepth` above reproduce the old focus-relative angle remap —
+  d3-hierarchy's `.copy()` resets a re-rooted subtree's depth to 0, so
+  `partition()` re-normalizes it to fill the full sweep. Persisting arcs
+  keep their native scene key
   (`${markId}:node:${valueKey(node.id)}`, id-derived, focus-independent)
   across a `zoomTo` commit, so they hit the mark's "update" phase — a
-  REAL semantic `d`-morph, not a numeric-token diff — while
-  newly-(in)visible descendants unfold from / collapse into their nearest
-  surviving ancestor sector (native `hierarchyRelatedGeometry`, confirmed
-  in `dist/motion.js`; this is a strict upgrade over the pre-C5d design's
-  `buildZoomKeyframes` 30-sample generator, DELETED outright).
+  REAL semantic `d`-morph. The chart commits the new root and rebuilds
+  the definition; no hand radius/angle morph runs alongside. Labels and
+  the center overlay position from the settled scene of the target root:
+  the labels overlay remounts per root and replays its reveal over the
+  motion duration instead of morphing mid-zoom (deliberate, disclosed
+  deviation — the legacy mid-zoom label morph has no public-scene
+  equivalent), and the hub radius is the package `innerRadius` input so
+  the overlay sits on the painted hole.
   Reveal (native "enter"): per-arc ring-staggered delay (unchanged
   `buildRevealTiming` math, internal/sunburst-reveal.ts) + the resolved
   sweep tween (`sweepDurationMs`/`sweepEasingCss`, SB2 below), read off
@@ -90,7 +107,7 @@ verified against real d3-hierarchy 3.1.2 -------------------------------
   (skipped straight to "ready" — see the consolidated reveal-phase effect
   below) — none of those have a native-motion equivalent to fall back on.
 
-  Hover chrome, DELIBERATE deviation (D-TBD, disclose to orchestrator):
+  Hover chrome, DELIBERATE deviation (D450):
   native `sunburst()` has NO per-datum radius/size VisualChannel — only
   `fill`/`stroke` are per-node (`hierarchy-sunburst.d.ts`'s
   `SunburstSharedOptions`); `innerRadius`/`outerRadius`/`ringPadding` are

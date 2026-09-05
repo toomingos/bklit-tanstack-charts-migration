@@ -14,23 +14,21 @@ import {
 } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { ChartHost } from "./internal/chart-host";
+import { createChartScene } from "@tanstack/charts";
 import type { ChartRendererRenderContext } from "@tanstack/charts";
 import { useFocusInjection } from "./internal/focus-injection";
 import type { SunburstNode as TSSunburstNode } from "@tanstack/charts/hierarchy/sunburst";
 import {
-  buildArcs,
-  geometryFor,
-  ringOptions,
-  geomCentroidAngle,
-  geomCentroidRadius,
-  defaultSunburstGrowPadding,
-  transitionGeometry,
-} from "./internal/sunburst-geometry";
-import type { ArcDatum, ArcGeometry, Focus, SunburstFlatRow } from "./internal/sunburst-geometry";
+  buildSunburstFlatRows,
+  buildSunburstSectors,
+  sunburstCenterHole,
+  sunburstGrowPadding,
+} from "./internal/sunburst-rows";
+import type { SunburstFlatRow, SunburstModel } from "./internal/sunburst-rows";
+import type { ArcDatum, Focus, SunburstNode } from "./internal/sunburst-types";
 import {
   defaultSunburstColors,
 } from "./internal/sunburst-colors";
-import type { SunburstNode } from "./internal/sunburst-types";
 import { maxRevealDelayMs } from "./internal/sunburst-reveal";
 import { setRevealDeadline } from "./internal/deferred-reveal";
 import {
@@ -41,7 +39,11 @@ import {
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { displayNameOf } from "./internal/children-extract";
 import { SunburstCenterOverlay } from "./internal/sunburst-center-overlay";
-import { SunburstLabelsOverlay } from "./internal/sunburst-labels-overlay";
+import {
+  SunburstLabelsOverlay,
+  buildSunburstLabelItems,
+  extractSunburstLabelSnap,
+} from "./internal/sunburst-labels-overlay";
 import type { SunburstSegmentProps } from "./internal/sunburst-segment";
 import { resolveSunburstHintContent } from "./internal/sunburst-hint-content";
 import { SunburstHintDisplay } from "./internal/sunburst-hint";
@@ -60,9 +62,6 @@ const SUNBURST_SWEEP_EASE = "cubic-bezier(0.85,0,0.15,1)";
 // Legacy zoom timing, now the arc mark's native update transition.
 const SUNBURST_ZOOM_MS = 750;
 const SUNBURST_ZOOM_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
-// Label legibility floors: minimum arc length and ring thickness in pixels for a label to render.
-const LABEL_MIN_ARC_LENGTH_PX = 26;
-const LABEL_MIN_RING_WIDTH_PX = 16;
 // SB15 whole-stage fade-in duration, matching legacy motion.svg opacity 0 to 1.
 const STAGE_FADE_IN_MS = 350;
 // Slack added to sweep plus stagger when scheduling the reveal-phase deadline timer.
@@ -74,12 +73,18 @@ const MIN_SUNBURST_RADIUS_PX = 8;
 // Default chart size and hover pop-out, matching bklit's SunburstChart defaults.
 const DEFAULT_SUNBURST_SIZE = 520;
 const DEFAULT_HOVER_POP = 8;
-// Degree geometry for label rotation: radians-to-degrees half-circle and the flip threshold.
-const DEGREES_PER_HALF_CIRCLE = 180;
-const LABEL_FLIP_THRESHOLD_DEGREES = 90;
 
-const isRelatedArc = (arc: ReadonlySunburstArc, hovered: ReadonlySunburstArc): boolean =>
-  arc.id === hovered.id || arc.id.startsWith(`${hovered.id} / `) || hovered.id.startsWith(`${arc.id} / `);
+// Branch palette index of a focus: the depth-1 ancestor's category.
+const focusBranchIndex = (focusId: string, sectorById: ReadonlyMap<string, ArcDatum>): number => {
+  let current = sectorById.get(focusId);
+  while (current !== undefined && current.depth > 1) {
+    const next = current.parentId === null ? undefined : sectorById.get(current.parentId);
+    if (next === undefined) {return current.categoryIndex;}
+    current = next;
+  }
+  if (current === undefined) {return 0;}
+  return current.categoryIndex;
+};
 
 const resolveSunburstHintText = (hoveredTrail: readonly string[] | undefined, focusDepth: number): string => {
   if (hoveredTrail !== undefined) {
@@ -89,46 +94,6 @@ const resolveSunburstHintText = (hoveredTrail: readonly string[] | undefined, fo
     return "Click a segment to zoom in · hover to inspect";
   }
   return "Click the center to zoom out";
-};
-
-/*
- * Deep-readonly arc view: `Readonly<ArcDatum>` leaves `trail` mutable; mirrors the unexported helper in sunburst-geometry.ts.
- */
-type ReadonlySunburstArc = Readonly<Omit<ArcDatum, "trail">> & {
-  readonly trail: readonly string[];
-};
-
-// Single label overlay entry, resolved from an arc's zoom-morphed geometry.
-interface SunburstLabelEntry {
-  readonly deg: number;
-  readonly id: string;
-  readonly label: string;
-  readonly x: number;
-  readonly y: number;
-}
-
-// Normalizes a centroid angle into a readable label rotation in degrees.
-const normalizeLabelRotation = (midAngle: number): number => {
-  const rawDegrees = (midAngle * DEGREES_PER_HALF_CIRCLE) / Math.PI - LABEL_FLIP_THRESHOLD_DEGREES;
-  if (rawDegrees > LABEL_FLIP_THRESHOLD_DEGREES) {return rawDegrees - DEGREES_PER_HALF_CIRCLE;}
-  if (rawDegrees < -LABEL_FLIP_THRESHOLD_DEGREES) {return rawDegrees + DEGREES_PER_HALF_CIRCLE;}
-  return rawDegrees;
-};
-
-// Builds the zero-or-one label entries for one arc's resolved geometry,
-// Applying the hover-cull and minimum-size rules.
-const buildLabelEntry = (
-  arc: ReadonlySunburstArc,
-  base: Readonly<ArcGeometry>,
-  hoveredArc: ReadonlySunburstArc | null,
-): SunburstLabelEntry[] => {
-  if (hoveredArc && !isRelatedArc(arc, hoveredArc)) {return [];}
-  const centroidRadius = geomCentroidRadius(base);
-  if ((base.a1 - base.a0) * centroidRadius < LABEL_MIN_ARC_LENGTH_PX || base.outerR - base.innerR < LABEL_MIN_RING_WIDTH_PX) {return [];}
-  const midAngle = geomCentroidAngle(base);
-  const itemX = Math.sin(midAngle) * centroidRadius;
-  const itemY = -Math.cos(midAngle) * centroidRadius;
-  return [{ deg: normalizeLabelRotation(midAngle), id: arc.id, label: arc.name, x: itemX, y: itemY }];
 };
 
 // Fades the chart stage in on mount, returning its teardown, or undefined when
@@ -257,6 +222,10 @@ const classifyChildren = (children: ReactNode): ClassifiedChildren => {
   };
 }
 
+interface SunburstChartModel extends SunburstModel {
+  readonly flatRows: SunburstFlatRow[];
+}
+
 interface SunburstChartInnerProps {
   readonly ariaDescription?: string;
   readonly ariaLabel?: string;
@@ -264,12 +233,7 @@ interface SunburstChartInnerProps {
   readonly size: number;
   readonly rootClassName?: string;
   readonly focus: Focus;
-  readonly layout: {
-    arcs: ArcDatum[];
-    maxDepth: number;
-    focusById: Map<string, Focus>;
-    rootId: string;
-  };
+  readonly model: SunburstChartModel;
   readonly focusId: string;
   readonly isFocusControlled: boolean;
   readonly setInternalFocusId: (id: string) => void;
@@ -295,7 +259,7 @@ const SunburstChartInner = ({
   size,
   rootClassName,
   focus,
-  layout,
+  model,
   focusId,
   isFocusControlled,
   setInternalFocusId,
@@ -314,19 +278,21 @@ const SunburstChartInner = ({
 }: SunburstChartInnerProps): ReactElement => {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // --- Layout (verbatim bklit math) ---
-  const { arcs, maxDepth, focusById, rootId } = layout;
+  // --- Pre-package inputs: sector index plus the chart-level package inputs.
+  const { sectors, sectorById, maxDepth, flatRows } = model;
 
   const fullRadius = size / 2;
-  const growPadding = paddingProp ?? defaultSunburstGrowPadding(maxDepth, size, hoverPop);
+  const growPadding = paddingProp ?? sunburstGrowPadding(maxDepth, size, hoverPop);
   const radius = Math.max(MIN_SUNBURST_RADIUS_PX, fullRadius - growPadding);
+  const visibleDepth = Math.max(1, maxDepth - focus.depth);
+  const holeR = sunburstCenterHole(focus.depth, maxDepth, radius);
 
   // --- Hover state (direct React state, no coordinator mediator) ---
   const isHoverControlled = hoveredIndexProp !== undefined;
   const [internalHoveredIndex, setInternalHoveredIndex] = useState<number | null>(null);
-  const hoveredArcIndex = hoveredIndexProp ?? internalHoveredIndex;
+  const hoveredIndex = hoveredIndexProp ?? internalHoveredIndex;
 
-  const setHoveredArcIndex = useCallback(
+  const setHoveredIndex = useCallback(
     (index: number | null) => {
       if (isHoverControlled) {
         onHoverChange?.(index);
@@ -337,21 +303,25 @@ const SunburstChartInner = ({
     [isHoverControlled, onHoverChange],
   );
 
-  const hoveredArc = useMemo(() => {
-    if (hoveredArcIndex === null) {return null;}
-    return arcs[hoveredArcIndex] ?? null;
-  }, [arcs, hoveredArcIndex]);
+  const hoveredSector = useMemo(() => {
+    if (hoveredIndex === null) {return null;}
+    return sectors[hoveredIndex] ?? null;
+  }, [sectors, hoveredIndex]);
 
-  const { captureRenderContext, clearFocus, focusPoint } = useFocusInjection<TSSunburstNode<SunburstFlatRow>, number, number>();
+  const { captureRenderContext, clearFocus, focusPoint, sceneRef } = useFocusInjection<TSSunburstNode<SunburstFlatRow>, number, number>();
+
+  // Stable scene getter for the focus strategy's settled-paint tests.
+  const getScene = useCallback(() => sceneRef.current, [sceneRef]);
 
   // Controlled hover paints through package focus, never a definition rebuild.
   // (Zoom-by-click/keyboard stays on definition selection in the hook below.)
   useEffect(() => {
     if (!isHoverControlled) {return;}
-    if (hoveredIndexProp === null || hoveredIndexProp < 0 || hoveredIndexProp >= arcs.length) { clearFocus(); return; }
-    const targetId = arcs[hoveredIndexProp].id;
+    if (hoveredIndexProp === null || hoveredIndexProp < 0 || hoveredIndexProp >= sectors.length) { clearFocus(); return; }
+    const targetId = sectors[hoveredIndexProp]?.id ?? "";
+    if (targetId === "") { clearFocus(); return; }
     focusPoint((point) => point.datum.id === targetId);
-  }, [isHoverControlled, hoveredIndexProp, arcs, focusPoint, clearFocus]);
+  }, [isHoverControlled, hoveredIndexProp, sectors, focusPoint, clearFocus]);
 
   const handleHostRender = useCallback((context: Readonly<ChartRendererRenderContext<TSSunburstNode<SunburstFlatRow>, number, number>>): void => {
     captureRenderContext(context);
@@ -379,32 +349,18 @@ const SunburstChartInner = ({
     [],
   );
 
-  const getFill = useCallback(
-    (arcIndex: number, fillOverride?: string, colorOverride?: string) => {
-      if (fillOverride !== undefined && fillOverride !== "") {return fillOverride;}
-      if (!Number.isInteger(arcIndex) || arcIndex < 0 || arcIndex >= arcs.length) {return defaultSunburstColors[0];}
-      const arc = arcs[arcIndex];
-      return colorOverride ?? arc.fill ?? arc.color ?? getColor(arc.categoryIndex);
-    },
-    [arcs, getColor],
-  );
-
-  // Zoom tween plus committed-focus state; hook owns the contiguous group above.
-  const { playCycleRef, prevFocus, revealDeadlineTimerRef, zoomT, zoomTo } = useSunburstZoom({
-    focus,
-    focusById,
+  // Drill-down commits the new root; the package owns the zoom morph.
+  const { playCycleRef, revealDeadlineTimerRef, zoomTo } = useSunburstZoom({
     focusId,
     isFocusControlled,
     onFocusChange,
     playKey,
-    prefersReducedMotion,
-    rootId,
-    setHoveredArcIndex,
+    sectorById,
+    setHoveredIndex,
     setInternalFocusId,
-    zoomMs: SUNBURST_ZOOM_MS,
   });
 
-  // TanStack definition plus the native key bridges; hook owns the memos.
+  // TanStack definition from pre-package inputs; hook owns the memos.
   // Activation zooms through the definition selection (stable: see below).
   const zoomToRef = useRef(zoomTo);
   useEffect(() => {
@@ -413,26 +369,27 @@ const SunburstChartInner = ({
   const selectToZoom = useCallback((zoomId: string): void => {
     zoomToRef.current(zoomId);
   }, []);
-  const { arcsById, definition } = useSunburstDefinition({
-    arcs,
-    data,
+  const { definition } = useSunburstDefinition({
     enterStaggerScale,
+    flatRows,
     focus,
-    getFill,
-    maxDepth,
+    getScene,
+    holeR,
     onActivateId: selectToZoom,
     playKey,
     radius,
+    sectorById,
+    sectors,
     segmentConfigMap,
-    size,
     sweepDurationMs,
     sweepEasingCss,
+    visibleDepth,
     zoomEasingCss: SUNBURST_ZOOM_EASE,
     zoomMs: SUNBURST_ZOOM_MS,
   });
 
   /*
-   * Phase reporting only, never animation; deps on `[arcs, playKey, ...]` keep hover/zoom recomputes from restarting the timer.
+   * Phase reporting only, never animation; deps on `[sectors, playKey, ...]` keep hover/zoom recomputes from restarting the timer.
    */
   useEffect((): (() => void) | undefined => {
     if (prefersReducedMotion) {
@@ -440,7 +397,7 @@ const SunburstChartInner = ({
       return undefined;
     }
     setPhase("revealing");
-    const maxDelay = maxRevealDelayMs(arcs, enterStaggerScale);
+    const maxDelay = maxRevealDelayMs(sectors, enterStaggerScale);
     revealDeadlineTimerRef.current = setRevealDeadline(sweepDurationMs + maxDelay + REVEAL_DEADLINE_SLACK_MS, {
       onDeadline: () => { setPhase("ready"); },
     });
@@ -450,17 +407,23 @@ const SunburstChartInner = ({
         revealDeadlineTimerRef.current = null;
       }
     };
-  }, [arcs, playKey, enterStaggerScale, sweepDurationMs, prefersReducedMotion, setPhase, revealDeadlineTimerRef]);
+  }, [sectors, playKey, enterStaggerScale, sweepDurationMs, prefersReducedMotion, setPhase, revealDeadlineTimerRef]);
 
   // Package owns pointer and focus. Hover resolves through native focus;
   // Click/keyboard activation zooms through the definition selection.
   const handleSunburstFocusChange = useCallback(
     (point: { datum: TSSunburstNode<SunburstFlatRow> } | null) => {
-      const arc = point ? arcsById.get(point.datum.id) : undefined;
-      setHoveredArcIndex(arc ? arc.arcIndex : null);
+      const sector = point ? sectorById.get(point.datum.id) : undefined;
+      setHoveredIndex(sector ? sector.arcIndex : null);
     },
-    [setHoveredArcIndex, arcsById],
+    [setHoveredIndex, sectorById],
   );
+
+  // Label geometry reads the package scene so SSR and first paint agree.
+  const labelSnap = useMemo(() => {
+    if (labelsCount === 0) {return null;}
+    return extractSunburstLabelSnap(createChartScene(definition, { height: size, width: size }), focus.id);
+  }, [definition, focus.id, labelsCount, size]);
 
   // --- SB15: 350ms fade-in of the whole chart stage on mount ---
   // Legacy: motion.svg opacity 0→1, duration 0.35, ease [0.22,1,0.36,1].
@@ -472,34 +435,18 @@ const SunburstChartInner = ({
   }, [prefersReducedMotion]);
 
   // --- Center circle geometry ---
-  // Hub radius blends with the in-flight d-morph instead of snapping at commit.
-  const liveCenterR = useMemo(() => {
-    const toR = ringOptions(focus.depth, maxDepth, radius).centerR;
-    const fromR = ringOptions(prevFocus.depth, maxDepth, radius).centerR;
-    return toR * zoomT + fromR * (1 - zoomT);
-  }, [focus.depth, prevFocus.depth, maxDepth, radius, zoomT]);
-
+  // Hub radius is the package `innerRadius` input, matching the hole.
   const centerColor = focus.depth === 0
     ? "var(--chart-background)"
-    : getColor(focus.categoryIndex);
+    : getColor(focusBranchIndex(focus.id, sectorById));
 
-  // --- Labels: zoom-morphed via transitionGeometry(prevFocus→focus, zoomT);
-  // SB12 (legacy parity): unrelated arcs' labels are CULLED on hover (not dimmed).
+  // Labels use the settled scene; the overlay remounts per root.
   const labelItems = useMemo(() => {
-    if (labelsCount === 0) {return [];}
-    const inZoom = zoomT < 1;
-    const fromF = inZoom ? prevFocus : focus;
-    return arcs
-      .flatMap((arc: ReadonlySunburstArc): SunburstLabelEntry[] => {
-        const base = inZoom
-          ? transitionGeometry({ arc, fromFocus: fromF, maxDepth, progress: zoomT, radius, toFocus: focus })
-          : geometryFor(arc, focus, maxDepth, radius);
-        if (!base) {return [];}
-        return buildLabelEntry(arc, base, hoveredArc);
-      });
-  }, [labelsCount, arcs, focus, prevFocus, maxDepth, radius, hoveredArc, zoomT]);
+    if (labelsCount === 0 || !labelSnap) {return [];}
+    return buildSunburstLabelItems(labelSnap, sectorById, hoveredSector?.id ?? null, size);
+  }, [labelsCount, labelSnap, sectorById, hoveredSector, size]);
 
-  const maxRevealDelay = useMemo(() => maxRevealDelayMs(arcs, enterStaggerScale), [arcs, enterStaggerScale]);
+  const maxRevealDelay = useMemo(() => maxRevealDelayMs(sectors, enterStaggerScale), [sectors, enterStaggerScale]);
 
   const labelsRevealDelayMs = maxRevealDelay + SUNBURST_SWEEP_MS * LABELS_REVEAL_DELAY_FRACTION;
 
@@ -556,7 +503,7 @@ const SunburstChartInner = ({
   );
 
   // --- Hint text ---
-  const hintText = resolveSunburstHintText(hoveredArc?.trail, focus.depth);
+  const hintText = resolveSunburstHintText(hoveredSector?.trail, focus.depth);
   // Hoisted so the zoom-to-parent closure below captures a narrowed string.
   const zoomParentId = focus.parentId;
   const handleZoomToParent = useCallback(() => {
@@ -588,13 +535,13 @@ const SunburstChartInner = ({
           onFocusChange={handleSunburstFocusChange}
         />
         <SunburstCenterOverlay
-          visible={centerCount > 0 && liveCenterR > 1}
-          liveCenterR={liveCenterR}
+          visible={centerCount > 0 && holeR > 1}
+          liveCenterR={holeR}
           centerColor={centerColor}
           onZoomToParent={zoomParentId !== null && zoomParentId !== "" ? handleZoomToParent : undefined}
         />
         {labelsCount > 0 && (
-          <SunburstLabelsOverlay items={labelItems} fullRadius={fullRadius} size={size} />
+          <SunburstLabelsOverlay key={`${focusId}:${playKey}`} items={labelItems} fullRadius={fullRadius} size={size} />
         )}
       </div>
       {hintCount > 0 && (
@@ -602,7 +549,7 @@ const SunburstChartInner = ({
           {resolveSunburstHintContent(hintProps?.children, {
             focus,
             hintText,
-            hoveredArc,
+            hoveredArc: hoveredSector,
           })}
         </SunburstHintDisplay>
       )}
@@ -634,26 +581,11 @@ const useSunburstPhase = (
   }, [onPhaseChange]);
 };
 
-interface SunburstLayoutState {
-  readonly arcs: ArcDatum[];
-  readonly focusById: Map<string, Focus>;
-  maxDepth: number;
-  readonly rootId: string;
-}
-
-// Layout derivation (verbatim bklit math), shared by the outer component.
-const useSunburstLayout = (data: SunburstNode): SunburstLayoutState => {
-  const { arcs, maxDepth, focusById, rootId } = useMemo(
-    () => buildArcs(data),
-    [data],
-  );
-  return useMemo(() => ({ arcs, focusById, maxDepth, rootId }), [
-    arcs,
-    focusById,
-    maxDepth,
-    rootId,
-  ]);
-};
+// Pre-package sector index plus flat rows, shared by the outer component.
+const useSunburstModel = (data: SunburstNode): SunburstChartModel => useMemo(() => {
+  const { maxDepth, rootId, sectorById, sectors } = buildSunburstSectors(data);
+  return { flatRows: buildSunburstFlatRows(data), maxDepth, rootId, sectorById, sectors };
+}, [data]);
 
 interface SunburstFocusControl {
   readonly focusId: string;
@@ -682,24 +614,27 @@ const useSunburstFocusControl = (
 
 interface SunburstResolvedFocus {
   readonly focus: Focus | undefined;
-  readonly layout: SunburstLayoutState;
+  readonly model: SunburstChartModel;
   readonly rootFocus: Focus | undefined;
 }
 
-// Resolves the active focus against the layout and memoizes the inner layout.
+// Resolves the active focus against the sector index.
 const useSunburstResolvedFocus = (
-  baseLayout: Readonly<SunburstLayoutState>,
+  baseModel: SunburstChartModel,
+  data: SunburstNode,
   focusId: string,
 ): SunburstResolvedFocus => {
-  const rootFocus = baseLayout.focusById.get(baseLayout.rootId);
-  const focus = baseLayout.focusById.get(focusId) ?? rootFocus;
-  const layout = useMemo(() => ({
-    arcs: baseLayout.arcs,
-    focusById: baseLayout.focusById,
-    maxDepth: baseLayout.maxDepth,
-    rootId: baseLayout.rootId,
-  }), [baseLayout]);
-  return { focus, layout, rootFocus };
+  const rootFocus: Focus = {
+    a0: 0,
+    a1: 0,
+    categoryIndex: 0,
+    depth: 0,
+    id: baseModel.rootId,
+    name: data.name,
+    parentId: null,
+  };
+  const focus = baseModel.sectorById.get(focusId) ?? rootFocus;
+  return { focus, model: baseModel, rootFocus };
 };
 
 interface SunburstInnerRenderProps {
@@ -714,7 +649,7 @@ interface SunburstInnerRenderProps {
   readonly hoverPop: number;
   readonly hoveredIndexProp?: number | null;
   readonly isFocusControlled: boolean;
-  readonly layout: SunburstLayoutState;
+  readonly model: SunburstChartModel;
   readonly onFocusChange?: (focusId: string) => void;
   readonly onHoverChange?: (index: number | null) => void;
   readonly paddingProp?: number;
@@ -742,7 +677,7 @@ const renderSunburstInner = (props: Readonly<SunburstInnerRenderProps>): ReactEl
     hoverPop,
     hoveredIndexProp,
     isFocusControlled,
-    layout,
+    model,
     onFocusChange,
     onHoverChange,
     paddingProp,
@@ -762,7 +697,7 @@ const renderSunburstInner = (props: Readonly<SunburstInnerRenderProps>): ReactEl
       size={size}
       rootClassName={className}
       focus={focus}
-      layout={layout}
+      model={model}
       focusId={focusId}
       isFocusControlled={isFocusControlled}
       setInternalFocusId={setInternalFocusId}
@@ -804,10 +739,10 @@ const SunburstChart = ({
   const { durationMs: sweepDurationMs, easingCss: sweepEasingCss } =
     useSunburstSweepTiming(enterTransition);
   const setPhase = useSunburstPhase(onPhaseChange);
-  const baseLayout = useSunburstLayout(data);
-  const { focusId, isFocusControlled, setInternalFocusId } = useSunburstFocusControl(baseLayout.rootId, focusIdProp);
+  const baseModel = useSunburstModel(data);
+  const { focusId, isFocusControlled, setInternalFocusId } = useSunburstFocusControl(baseModel.rootId, focusIdProp);
   const prefersReducedMotion = usePrefersReducedMotion();
-  const { focus, layout, rootFocus } = useSunburstResolvedFocus(baseLayout, focusId);
+  const { focus, model, rootFocus } = useSunburstResolvedFocus(baseModel, data, focusId);
   if (!(focus && rootFocus)) {return null;}
 
   // The subtree below needs non-null focus/rootFocus; render it through an inner
@@ -824,7 +759,7 @@ const SunburstChart = ({
     hoverPop,
     hoveredIndexProp,
     isFocusControlled,
-    layout,
+    model,
     onFocusChange,
     onHoverChange,
     paddingProp,
@@ -853,8 +788,7 @@ export type {
   SunburstBreadcrumbProps,
 } from "./internal/sunburst-breadcrumb";
 export type { SunburstBreadcrumbItem } from "./internal/sunburst-breadcrumb-items";
-export type { ArcDatum, Focus } from "./internal/sunburst-geometry";
-export type { SunburstNode } from "./internal/sunburst-types";
+export type { ArcDatum, Focus, SunburstNode } from "./internal/sunburst-types";
 export { SunburstChart };
 export { SunburstSegment } from "./internal/sunburst-segment";
 export type { SunburstChartProps };

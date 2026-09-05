@@ -1,83 +1,119 @@
-import type { ChartFocusStrategy, ChartPoint } from "@tanstack/charts";
-import type { SunburstNode as TSSunburstNode } from "@tanstack/charts/hierarchy/sunburst";
-import { ID_SEP, TWO_PI } from "./sunburst-layout";
-import { geometryFor } from "./sunburst-geometry";
-import type { ArcDatum, ArcGeometry, Focus, SunburstFlatRow } from "./sunburst-geometry";
+// Hover resolves against painted sector polygons, never re-derived layout.
 
+import type {
+  ChartFocusStrategy,
+  ChartPoint,
+  ChartScene,
+  SceneArea,
+  SceneNode,
+} from "@tanstack/charts";
+import type { SunburstNode as TSSunburstNode } from "@tanstack/charts/hierarchy/sunburst";
+import type { SunburstFlatRow } from "./sunburst-rows";
+
+type SunburstScene = ChartScene<TSSunburstNode<SunburstFlatRow>, number, number>;
 type SunburstStrategyPoint = ChartPoint<TSSunburstNode<SunburstFlatRow>, number, number>;
 
 interface CreateSunburstFocusOptions {
-  readonly arcsById: ReadonlyMap<string, ArcDatum>;
-  readonly focus: Readonly<Focus>;
-  readonly maxDepth: number;
-  readonly radius: number;
-  readonly size: number;
+  readonly getScene: () => SunburstScene | null;
 }
 
-// Sub-pixel radius: the shared centre vertex has no defined angle.
-// Enter-only parity needs the hole, so containment starts outside it.
+// Shared centre vertex has no defined angle (keep the last hit).
 const CENTER_VERTEX_EPSILON_PX = 0.5;
 
-const isRelatedSunburstId = (arcId: string, hoveredId: string): boolean =>
-  arcId === hoveredId || arcId.startsWith(`${hoveredId}${ID_SEP}`) || hoveredId.startsWith(`${arcId}${ID_SEP}`);
+// Ray-cast containment of a scene-space pointer in a sampled sector polygon.
+const pointInSectorPolygon = (
+  x: number,
+  y: number,
+  polygon: readonly (readonly [number, number])[],
+): boolean => {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const xi = polygon[i]?.[0] ?? 0;
+    const yi = polygon[i]?.[1] ?? 0;
+    const xj = polygon[j]?.[0] ?? 0;
+    const yj = polygon[j]?.[1] ?? 0;
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+};
 
-// App-owned angular focus for arcs no package preset can resolve by pointer.
-// The sunburst mark carries geometry affinity but no polar focus geometry.
+// Paint-order sector areas with group offsets (tested back-to-front).
+interface OffsetSectorArea {
+  readonly area: SceneArea;
+  readonly offsetX: number;
+  readonly offsetY: number;
+}
+
+const collectSectorAreas = (
+  nodes: readonly SceneNode[],
+  offsetX: number,
+  offsetY: number,
+  into: OffsetSectorArea[],
+): void => {
+  for (const node of nodes) {
+    if (node.kind === "group") {
+      collectSectorAreas(
+        node.children,
+        offsetX + (node.translateX ?? 0),
+        offsetY + (node.translateY ?? 0),
+        into,
+      );
+    } else if (node.kind === "area" && node.interaction && "point" in node.interaction) {
+      into.push({ area: node, offsetX, offsetY });
+    } else {
+      // Decorative primitives own no focus point.
+    }
+  }
+};
+
+const isRelatedSunburstNode = (
+  candidate: TSSunburstNode<SunburstFlatRow>,
+  hovered: TSSunburstNode<SunburstFlatRow>,
+): boolean =>
+  candidate.id === hovered.id ||
+  candidate.ancestorIds.includes(hovered.id) ||
+  hovered.ancestorIds.includes(candidate.id);
+
+// Package-owned pointer focus over painted polygons and node lineage.
 const createSunburstFocus = (
   options: Readonly<CreateSunburstFocusOptions>,
 ): ChartFocusStrategy<TSSunburstNode<SunburstFlatRow>, number, number> => {
-  const { arcsById, focus, maxDepth, radius, size } = options;
-  const center = size / 2;
-  // Rendered geometry per arc id, computed once from the definition's numbers.
-  const geometryById = new Map<string, ArcGeometry>();
-  for (const [id, arc] of arcsById) {
-    const geometry = geometryFor(arc, focus, maxDepth, radius);
-    if (geometry) {
-      geometryById.set(id, geometry);
-    }
-  }
-  // Enter-only parity: legacy keeps the last entered arc until svg pointerleave.
+  const { getScene } = options;
+  // Enter-only parity: keep the last hit until pointerleave.
   let lastHit: SunburstStrategyPoint | null = null;
   return {
     group: (points, { point }) => {
-      const hoveredId = point.datum.id;
-      const related = points.filter((candidate) => {
-        const arc = arcsById.get(candidate.datum.id);
-        return arc ? isRelatedSunburstId(arc.id, hoveredId) : false;
-      });
+      const hovered = point.datum;
+      const related = points.filter((candidate) => isRelatedSunburstNode(candidate.datum, hovered));
       return [point, ...related.filter((candidate) => candidate !== point)];
     },
-    navigation: (points) => points.toSorted((left, right) => {
-      const leftAngle = geometryById.get(left.datum.id)?.a0 ?? Number.POSITIVE_INFINITY;
-      const rightAngle = geometryById.get(right.datum.id)?.a0 ?? Number.POSITIVE_INFINITY;
-      return leftAngle - rightAngle;
-    }),
+    navigation: (points) => points.toSorted((left, right) => left.xValue - right.xValue),
     resolve: (points, { x, y }) => {
-      const dx = x - center;
-      const dy = y - center;
-      const pointerR = Math.hypot(dx, dy);
-      if (pointerR > radius) {
-        lastHit = null;
-        return [];
-      }
-      // Degenerate centre vertex: no arc contains it, so keep the last hit.
-      if (pointerR < CENTER_VERTEX_EPSILON_PX) {
+      const scene = getScene();
+      if (!scene) {
         return lastHit ? [lastHit] : [];
       }
-      const theta = Math.atan2(dx, -dy);
-      // Reverse paint order: a boundary pixel hits the arc painted last.
+      const areas: OffsetSectorArea[] = [];
+      collectSectorAreas(scene.nodes, 0, 0, areas);
+      const byPoint = new Map<ChartPoint, OffsetSectorArea>();
+      for (const target of areas) {
+        const owner = target.area.interaction && "point" in target.area.interaction ? target.area.interaction.point : undefined;
+        if (owner) {
+          byPoint.set(owner, target);
+        }
+      }
+      // Reverse paint order; shared-edge misses keep the last hit.
       for (let index = points.length - 1; index >= 0; index -= 1) {
-        const point = points[index];
-        const geometry = geometryById.get(point.datum.id);
-        if (geometry !== undefined) {
-          let angle = theta;
-          while (angle < geometry.a0) {
-            angle += TWO_PI;
-          }
-          if (angle < geometry.a1 && pointerR >= geometry.innerR && pointerR <= geometry.outerR) {
-            lastHit = point;
-            return [point];
-          }
+        const point: SunburstStrategyPoint = points[index];
+        const target = byPoint.get(point);
+        const isCenterVertex = target !== undefined
+          && Math.hypot(x - target.offsetX, y - target.offsetY) < CENTER_VERTEX_EPSILON_PX;
+        if (target !== undefined && !isCenterVertex
+          && pointInSectorPolygon(x - target.offsetX, y - target.offsetY, target.area.points)) {
+          lastHit = point;
+          return [point];
         }
       }
       return lastHit ? [lastHit] : [];
@@ -85,5 +121,5 @@ const createSunburstFocus = (
   };
 };
 
-export { createSunburstFocus };
+export { createSunburstFocus, pointInSectorPolygon };
 export type { CreateSunburstFocusOptions };

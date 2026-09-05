@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { buildArcs } from "./sunburst-geometry";
-import type { Focus, SunburstNode } from "./sunburst-types";
+import { nodeId } from "./sunburst-rows";
+import type { SunburstNode } from "./sunburst-types";
 
 interface SunburstBreadcrumbItem {
   readonly id: string;
@@ -12,31 +12,44 @@ type ReadonlySunburstBreadcrumbNode = Readonly<Omit<SunburstNode, "children">> &
   readonly children?: readonly ReadonlySunburstBreadcrumbNode[];
 };
 
-/*
- * Breadcrumb helpers only read the tree, but SunburstNode keeps mutable children for imperative builders.
- * So this file composes its readonly view locally like sunburst-geometry.ts does.
- */
-const collectSunburstCrumbTrail = (focus: Readonly<Focus>, focusById: Readonly<ReadonlyMap<string, Readonly<Focus>>>): Focus[] => {
-  const crumbs: Focus[] = [];
-  let cur: Focus | undefined = focus;
-  while (cur) {
-    crumbs.unshift(cur);
-    cur = cur.parentId !== null && cur.parentId !== "" ? focusById.get(cur.parentId) : undefined;
-  }
-  return crumbs;
+interface SunburstCrumb {
+  readonly id: string;
+  readonly label: string;
 }
 
-// Root crumb labels from data.name; the trail walks focus->root, then reverses.
+// Depth-first crumb trail; separator-containing names keep stable ids.
+const findSunburstCrumbTrail = (
+  data: ReadonlySunburstBreadcrumbNode,
+  focusId: string,
+): SunburstCrumb[] | null => {
+  const rootId = data.name;
+  const trail: SunburstCrumb[] = [{ id: rootId, label: data.name }];
+  if (focusId === rootId) {
+    return trail;
+  }
+  const walk = (node: ReadonlySunburstBreadcrumbNode, id: string): boolean => {
+    for (const child of node.children ?? []) {
+      const childId = nodeId(id, child.name);
+      trail.push({ id: childId, label: child.name });
+      if (childId === focusId || walk(child, childId)) {
+        return true;
+      }
+      trail.pop();
+    }
+    return false;
+  };
+  return walk(data, rootId) ? trail : null;
+}
+
+// Root crumb labels from data.name; unknown focus ids fall back to root alone.
 const buildSunburstBreadcrumbItems = (data: ReadonlySunburstBreadcrumbNode, focusId?: string): SunburstBreadcrumbItem[] => {
-  const { focusById, rootId } = buildArcs(data);
-  const rootFocus = focusById.get(rootId);
-  const focus = (focusId !== undefined && focusId !== "" ? focusById.get(focusId) : undefined) ?? rootFocus;
-  if (!focus) {return [];}
-  const crumbs = collectSunburstCrumbTrail(focus, focusById);
-  return crumbs.map((crumb: Readonly<Focus>, index) => ({
+  const rootId = data.name;
+  const resolvedId = focusId !== undefined && focusId !== "" ? focusId : rootId;
+  const trail = findSunburstCrumbTrail(data, resolvedId) ?? [{ id: rootId, label: data.name }];
+  return trail.map((crumb, index) => ({
     id: crumb.id,
-    isCurrent: index === crumbs.length - 1,
-    label: crumb.id === rootId ? data.name : crumb.name,
+    isCurrent: index === trail.length - 1,
+    label: crumb.id === rootId ? data.name : crumb.label,
   }));
 }
 

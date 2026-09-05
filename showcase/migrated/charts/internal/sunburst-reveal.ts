@@ -1,13 +1,13 @@
-import { clockwiseFraction } from './sunburst-geometry';
-import type { ArcDatum } from './sunburst-geometry';
+// Pre-order reveal stagger; delay numbers match the legacy stagger.
 
+import type { ArcDatum } from "./sunburst-types";
 
 interface ArcRevealTiming {
   readonly arcId: string;
   readonly delayMs: number;
 }
 
-// Mirrors ReadonlyArcDatum in ./sunburst-geometry (same Omit + readonly trail shape):
+// Mirrors ReadonlyArcDatum in sunburst-types.ts (same Omit + readonly trail shape):
 // ArcDatum trail is a mutable string array, so neither readonly array form is deeply readonly on its own.
 type ReadonlyRevealArc = Readonly<Omit<ArcDatum, "trail">> & { readonly trail: readonly string[] };
 
@@ -30,12 +30,10 @@ const groupArcsByDepth = (arcs: readonly ReadonlyRevealArc[]): Map<number, Reado
 };
 
 const timeRingArcs = (ringArcs: readonly ReadonlyRevealArc[], scale: number): ArcRevealTiming[] => {
-  const sorted = [...ringArcs].toSorted(
-    (arcA, arcB) => clockwiseFraction(arcA.a0) - clockwiseFraction(arcB.a0),
-  );
-  const ringIndex = (sorted[0]?.depth ?? 1) - 1;
+  // Pre-order within the ring already is the partition's angular order.
+  const ringIndex = (ringArcs[0]?.depth ?? 1) - 1;
 
-  return sorted.map((arc, index): ArcRevealTiming => {
+  return ringArcs.map((arc, index): ArcRevealTiming => {
     const delayMs = (ringIndex * RING_STAGGER_SECONDS + index * ARC_STAGGER_SECONDS) * scale * MS_PER_SECOND;
     return { arcId: arc.id, delayMs };
   });
