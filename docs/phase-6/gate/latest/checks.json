@@ -1,0 +1,119 @@
+{
+  "generatedAt": "2026-09-04T18:35:11.810Z",
+  "runDir": "docs/phase-6/gate/runs/2026-09-04T18-34-58-927Z",
+  "checks": [
+    {
+      "name": "tsc",
+      "cmd": "npx tsc --noEmit",
+      "cwd": "showcase",
+      "exit": 0,
+      "durationMs": 2124,
+      "summary": {
+        "errors": 0
+      },
+      "lastLine": "npm warn Unknown env config \"node-linker\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
+      "log": "docs/phase-6/gate/runs/2026-09-04T18-34-58-927Z/logs/checks/tsc.log"
+    },
+    {
+      "name": "build",
+      "cmd": "npm run build",
+      "cwd": "bench/app",
+      "exit": 0,
+      "durationMs": 3586,
+      "summary": {
+        "ok": true
+      },
+      "lastLine": "✓ built in 3.23s",
+      "log": "docs/phase-6/gate/runs/2026-09-04T18-34-58-927Z/logs/checks/build.log"
+    },
+    {
+      "name": "lint",
+      "cmd": "npx oxlint --type-aware --format=json migrated packages/migrated-charts",
+      "cwd": "showcase",
+      "exit": 1,
+      "durationMs": 6966,
+      "summary": {
+        "problems": 49,
+        "errors": 49,
+        "warnings": 0,
+        "topRules": [
+          [
+            "eslint(max-statements)",
+            10
+          ],
+          [
+            "eslint(max-lines-per-function)",
+            7
+          ],
+          [
+            "eslint(max-lines)",
+            7
+          ],
+          [
+            "import(max-dependencies)",
+            5
+          ],
+          [
+            "eslint(max-params)",
+            3
+          ],
+          [
+            "eslint(complexity)",
+            3
+          ],
+          [
+            "typescript(no-unsafe-type-assertion)",
+            3
+          ],
+          [
+            "sonarjs(cognitive-complexity)",
+            2
+          ],
+          [
+            "typescript(no-deprecated)",
+            2
+          ],
+          [
+            "react(jsx-no-constructed-context-values)",
+            1
+          ]
+        ]
+      },
+      "lastLine": "            }",
+      "log": "docs/phase-6/gate/runs/2026-09-04T18-34-58-927Z/logs/checks/lint.log"
+    },
+    {
+      "name": "census",
+      "cmd": "node scripts/reach-in-guard.mjs --json",
+      "cwd": "",
+      "exit": 1,
+      "durationMs": 137,
+      "summary": {
+        "total": 66,
+        "files": 20,
+        "failures": 12
+      },
+      "lastLine": "}",
+      "log": "docs/phase-6/gate/runs/2026-09-04T18-34-58-927Z/logs/checks/census.log"
+    },
+    {
+      "name": "bundle-gate",
+      "cmd": "node scripts/bundle-gate.mjs",
+      "cwd": "",
+      "exit": 0,
+      "durationMs": 68,
+      "summary": {
+        "ok": 0,
+        "fail": 0
+      },
+      "lastLine": "[bundle-gate] OK",
+      "log": "docs/phase-6/gate/runs/2026-09-04T18-34-58-927Z/logs/checks/bundle-gate.log"
+    }
+  ],
+  "summary": {
+    "failed": [
+      "lint",
+      "census"
+    ]
+  }
+}
