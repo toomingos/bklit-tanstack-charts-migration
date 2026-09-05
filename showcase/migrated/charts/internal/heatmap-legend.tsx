@@ -2,6 +2,7 @@ import { useId, useMemo, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactElement } from 'react';
 import { HEATMAP_INACTIVE_OPACITY, HEATMAP_INACTIVE_TRANSITION_CSS, useHeatmapCoordinatorOptional } from "./heatmap-context";
 import type { HeatmapHoverCoordinator, HeatmapHoverStyleParams } from "./heatmap-context";
+import { focusHeatmapLevel } from "./heatmap-focus-bridge";
 import { renderPatternPreset } from "./pattern-preset-render";
 import {
   defaultHeatmapColorScale,
@@ -516,17 +517,20 @@ interface LegendHandlersArgs {
   readonly isInteractive: boolean;
 }
 
-// Legend pointer handlers; hoisted so the legend model stays short.
+// Legend hover drives package focus (source programmatic) for cell dim.
+// Legacy has no click toggle, so no aria-pressed here.
 const buildLegendHandlers = (handlerArgs: Readonly<LegendHandlersArgs>): LegendHandlers => {
   const handleLegendEnter = (level: number): void => {
     if (!handlerArgs.isInteractive || !handlerArgs.coordinator) {return;}
     handlerArgs.coordinator.setHoveredLegendLevel(level);
     handlerArgs.coordinator.setHoveredCell(null);
     handlerArgs.coordinator.setTooltipData(null);
+    focusHeatmapLevel(handlerArgs.coordinator, level);
   };
   const handleLegendLeave = (): void => {
     if (!handlerArgs.isInteractive || !handlerArgs.coordinator) {return;}
     handlerArgs.coordinator.setHoveredLegendLevel(null);
+    focusHeatmapLevel(handlerArgs.coordinator, null);
   };
   return { onEnter: handleLegendEnter, onLeave: handleLegendLeave };
 };

@@ -19,7 +19,7 @@ import type { HeatmapYAxisLabelFormat, HeatmapYAxisTickFilter } from "./heatmap-
 // Static element styles hoisted so `HeatmapCells` passes stable identities.
 const HEATMAP_CELLS_CONTAINER_STYLE = { position: "relative", zIndex: 1 } as const;
 const HEATMAP_CELLS_INNER_STYLE = { position: "relative" } as const;
-const HEATMAP_HOVER_SVG_STYLE = { inset: 0, position: "absolute" } as const;
+const HEATMAP_HOVER_SVG_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
 const HEATMAP_RENDERER_STYLE = { overflow: "visible" } as const;
 
 /*
@@ -192,8 +192,7 @@ const HeatmapCells = ({
     yRowOpacity: ctx.yRowOpacity,
     yTickFilter: ctx.yTickFilter,
   });
-  const { containerRef, handleRender } = useHeatmapPointerBridge({
-    cellData,
+  const { containerRef, handleFocusChange, handleRender } = useHeatmapPointerBridge({
     coordinator,
     ctx,
     interactive,
@@ -216,6 +215,7 @@ const HeatmapCells = ({
           initialWidth={HOST_INITIAL_WIDTH}
           height={ctx.height}
           style={HEATMAP_RENDERER_STYLE}
+          onFocusChange={handleFocusChange}
           onRender={handleRenderWithWidth}
           renderTooltipBody={renderTooltipBody}
         />

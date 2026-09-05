@@ -4,6 +4,7 @@ import { defineChart } from "@tanstack/charts/scene";
 import { scaleBand } from "@tanstack/charts/scales/band";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { cell } from "@tanstack/charts/rect";
+import { withStates } from "./with-states";
 import {
   computeHeatmapEnterFadeDelayMs,
   HEATMAP_DEFAULT_ENTER_EASE,
@@ -116,6 +117,52 @@ const heatmapHoverStates = ({
       transition: HEATMAP_HOVER_TRANSITION,
       when: (context: Readonly<{ datum: Readonly<CellDatum>; focus: Readonly<{ source: string }>; matches: (match: ChartFocusMatch) => boolean }>) =>
         context.focus.source === "pointer" && !context.datum.isGhost && !context.matches("primary"),
+    });
+  }
+  return states.length === 0 ? undefined : states;
+};
+
+interface HeatmapLegendDimStatesParams {
+  readonly bandwidth: number;
+  readonly baseInset: number;
+  readonly inactiveOpacity: number;
+  readonly inactiveScale: number;
+  readonly activeScale: number;
+}
+
+interface HeatmapLegendDimContext {
+  readonly datum: Readonly<CellDatum>;
+  readonly focus: Readonly<{ source: string; primary: Readonly<{ datum: Readonly<CellDatum> }> }>;
+}
+
+// Legend dim resolves against the programmatic primary (legacy level parity).
+// Same-level cells stay bright while the rest dim.
+const heatmapLegendDimStates = ({
+  bandwidth,
+  baseInset,
+  inactiveOpacity,
+  inactiveScale,
+  activeScale,
+}: Readonly<HeatmapLegendDimStatesParams>): ChartMarkState<CellDatum, ChartRectStateStyle<CellDatum>>[] | undefined => {
+  const states: ChartMarkState<CellDatum, ChartRectStateStyle<CellDatum>>[] = [];
+  if (activeScale !== 1) {
+    states.push({
+      style: { inset: heatmapHoverInset(bandwidth, activeScale, baseInset) },
+      transition: HEATMAP_HOVER_TRANSITION,
+      when: (context: Readonly<HeatmapLegendDimContext>) =>
+        context.focus.source === "programmatic" && !context.datum.isGhost && context.datum.level === context.focus.primary.datum.level,
+    });
+  }
+  if (inactiveOpacity !== 1 || inactiveScale !== 1) {
+    const dimInset = inactiveScale === 1 ? undefined : { inset: heatmapHoverInset(bandwidth, inactiveScale, baseInset) };
+    states.push({
+      style: {
+        opacity: inactiveOpacity,
+        ...dimInset,
+      },
+      transition: HEATMAP_HOVER_TRANSITION,
+      when: (context: Readonly<HeatmapLegendDimContext>) =>
+        context.focus.source === "programmatic" && !context.datum.isGhost && context.datum.level !== context.focus.primary.datum.level,
     });
   }
   return states.length === 0 ? undefined : states;
@@ -240,7 +287,7 @@ interface HeatmapCellMarkParams {
   readonly resolvedLevelStyles: HeatmapLevelStyles;
   readonly rowOpacity: HeatmapRowOpacity;
   readonly cornerRadius: number;
-  readonly hoverStates: ChartMarkState<CellDatum, ChartRectStateStyle<CellDatum>>[] | undefined;
+  readonly focusStates: ChartMarkState<CellDatum, ChartRectStateStyle<CellDatum>>[] | undefined;
   readonly cellMotion: ChartMotionDefinition<CellDatum> | false;
   readonly revealEpoch: number;
   readonly patternIdPrefix: string | undefined;
@@ -270,7 +317,7 @@ const useHeatmapCellMarks = ({
   resolvedLevelStyles,
   rowOpacity,
   cornerRadius,
-  hoverStates,
+  focusStates,
   cellMotion,
   revealEpoch,
   patternIdPrefix,
@@ -289,8 +336,8 @@ const useHeatmapCellMarks = ({
     }
     bucket.data.push(datum);
   }
-  return [...buckets.values()].map((bucket) =>
-    cell(bucket.data, {
+  return [...buckets.values()].map((bucket) => {
+    const mark = cell(bucket.data, {
       fill: heatmapCellFill(bucket.level, resolvedLevelStyles, patternIdPrefix),
       fillOpacity: bucket.fillOpacity,
       id: `heatmap-cell-l${bucket.level}-fo-${bucket.fillOpacity}`,
@@ -298,13 +345,15 @@ const useHeatmapCellMarks = ({
       key: (datum: Readonly<CellDatum>) => `${datum.column}-${datum.row}:${revealEpoch}`,
       motion: cellMotion,
       radius: cornerRadius,
-      states: hoverStates,
       x: (datum: Readonly<CellDatum>) => datum.colKey,
       y: (datum: Readonly<CellDatum>) => datum.rowKey,
       z: (datum: Readonly<CellDatum>) => datum.level,
-    }),
-  );
-}, [cellData, resolvedLevelStyles, rowOpacity, cornerRadius, hoverStates, cellMotion, revealEpoch, patternIdPrefix]);
+    });
+    // I1 wrapper (D528 pattern): package resolves hover plus legend dim.
+    // Empty definitions leave the mark untouched.
+    return withStates(mark, bucket.data, focusStates ?? []);
+  });
+}, [cellData, resolvedLevelStyles, rowOpacity, cornerRadius, focusStates, cellMotion, revealEpoch, patternIdPrefix]);
 
 interface HeatmapChartDefinitionParams {
   readonly cellData: readonly Readonly<CellDatum>[];
@@ -366,12 +415,27 @@ const useHeatmapChartDefinition = ({
       }),
     [bandwidthHint, inactiveOpacity, inactiveScale, activeScale],
   );
+  const legendStates = useMemo(
+    () =>
+      heatmapLegendDimStates({
+        activeScale,
+        bandwidth: bandwidthHint,
+        baseInset: HEATMAP_CELL_INSET,
+        inactiveOpacity,
+        inactiveScale,
+      }),
+    [bandwidthHint, inactiveOpacity, inactiveScale, activeScale],
+  );
+  const focusStates = useMemo(
+    () => [...(hoverStates ?? []), ...(legendStates ?? [])],
+    [hoverStates, legendStates],
+  );
   const cellMotion = useHeatmapCellMotion({ animateCells, animationDuration, enterStaggerScale, enterTransition, revealEpoch });
   const cellMarks = useHeatmapCellMarks({
     cellData,
     cellMotion,
     cornerRadius,
-    hoverStates,
+    focusStates,
     patternIdPrefix,
     resolvedLevelStyles,
     revealEpoch,
@@ -417,6 +481,8 @@ const useHeatmapChartDefinition = ({
         svgAnimation: false,
       });
     }
+    // V2.2 pointer: package resolves the hovered cell (finite default distance).
+    // Band rects need no spatial index; pointer stays enabled.
     return defineChart({
       focusRing: false,
       margin,
@@ -462,6 +528,7 @@ export {
   createHeatmapCellMotionFn,
   hasPatternLevelStyles,
   heatmapHoverStates,
+  heatmapLegendDimStates,
   solveCubicBezierEasing,
   useHeatmapCellMarks,
   useHeatmapCellMotion,

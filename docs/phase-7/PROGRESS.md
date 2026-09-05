@@ -40,7 +40,8 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 3 | V2.2 | package pointer and focus — pie · ring · sunburst · gauge · radar · composed (one row per family when dispatched) | todo | | | G7 closed (D531); polar row dispatched below; composed waits for V1.2 |
 | 3 | V2.2 choropleth | package pointer on `geoShape`, delete `choropleth-hover-chrome.ts` | dispatched | `ses_f8df31363ffemCraJgg3s2V47c` | | |
 | 3 | V2.2 sankey | package pointer on sankey marks, delete listener `:645` | dispatched | `ses_f8df309c7ffey1M4upskkD33FU` | | no `states` on sankey (D528) |
-| 3 | V2.2 heatmap (+V2.3) | package pointer on cells, legend → controlled focus | dispatched | `ses_f8df3022fffem7UGkplAShFIJN` | | |
+| 3 | V2.2 polar | pie · ring · sunburst · radar · gauge: package pointer/focus, `focusGroupAngle`, delete `polar-hit.ts`, `pie-hover-chrome.ts`, `sunburst-hit*.tsx`, `focusDisabled`, radar listeners, `styles.css:193` | dispatched | `ses_f8ddef63dffeMt5UkBJN58J5Ik` | | after G7 (`d321313`); owns polar entries + internals + new `internal/hover-motion.ts` |
+| 3 | V2.2 heatmap (+V2.3) | package pointer on cells, legend → controlled focus | merged | `ses_f8df3022fffem7UGkplAShFIJN` | `25e772e` | D532 · listener/`pointer: false` = 0 · bridge 479 → 75 lines · QA heatmap/52 = baseline · probe unflagged |
 | 3 | V2.3 | legend → controlled focus / selection | todo | | | |
 | 3 | V2.4 | decorative tooltip springs | todo | | | |
 | 3 | V2.5 | `spatialIndex`, D472 decision | todo | | | |
