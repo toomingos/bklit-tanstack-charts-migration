@@ -3,11 +3,10 @@ import type { ReactNode, RefObject } from "react";
 import type { ChartMark, ChartPositionScaleOptions, ChartScale } from "@tanstack/charts";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import type { ScaleLinear, ScaleTime } from "d3-scale";
-import type { CurveFactory } from "d3-shape";
 import { buildPrecomputedXAxisOptions, hiddenAxisOptions } from "./axis-ticks";
 import { resolveGridGuide } from "./grid";
 import { buildComposedMarks } from "./composed-marks";
-import { buildComposedMotion, buildComposedXScale, buildComposedYScale, buildXTickLabelOpacity } from "./composed-scales";
+import { buildComposedMotion, buildComposedXScale, buildComposedYScale } from "./composed-scales";
 import type { ComposedMotion } from "./composed-scales";
 import type {
   ComposedScalesContext,
@@ -39,7 +38,6 @@ import type {
 } from "./types";
 import { useSanitizedId } from "./use-sanitized-id";
 import type { ChartMargin } from "./use-chart-margin";
-import type { ComposedLabelFade } from "./use-composed-hover";
 
 const DEFAULT_TICK_COUNT = 5;
 
@@ -153,7 +151,6 @@ interface UseComposedChartMarksParams {
   readonly gradientIdBySeries: ReadonlyMap<string, string>;
   readonly grid: GridConfig | null;
   readonly heightPx: number;
-  readonly hoveredIndex: number | null;
   readonly isDiscrete: boolean;
   readonly margin: Readonly<ChartMargin>;
   readonly maxBarSize: number | undefined;
@@ -186,19 +183,12 @@ interface UseComposedChartMarksResult {
 const useComposedChartMarks = (params: Readonly<UseComposedChartMarksParams>): UseComposedChartMarksResult => {
   const {
     barGap, barSize, composedSeries, composedStackOffsets, crosshairGradientId, data,
-    gradientIdBySeries, grid, heightPx, hoveredIndex, isDiscrete, margin, maxBarSize,
+    gradientIdBySeries, grid, heightPx, isDiscrete, margin, maxBarSize,
     projectValue, projectionConfigs, projectionGradientBaseId, projectionLines, renderData,
     resolvedAreas, resolvedBars, resolvedLines, stackGap, stacked, timeExtent, timeExtentRaw,
     tooltip, tooltipEnabled, width, xAxis, xDataKey, xScaleRef, yDomain, yScaleRef,
   } = params;
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
-  // Highlight band sources the deduped series list: shared dataKeys must not double-push a mark.
-  const highlightCurveByKey = useMemo(() => {
-    const byKey = new Map<string, CurveFactory>();
-    for (const area of resolvedAreas) {byKey.set(area.dataKey, area.curve);}
-    for (const lineCfg of resolvedLines) {byKey.set(lineCfg.dataKey, lineCfg.curve);}
-    return byKey;
-  }, [resolvedAreas, resolvedLines]);
 
   const marks = useMemo(() => {
     if (width <= 0) {return NOTHING;}
@@ -215,8 +205,6 @@ const useComposedChartMarks = (params: Readonly<UseComposedChartMarksParams>): U
       data,
       gradientIdBySeries,
       heightPx,
-      highlightCurveByKey,
-      hoveredIndex,
       isDiscrete,
       legendHoveredKey,
       lineDimFallback: DEFAULT_LINE_DIM_OPACITY,
@@ -253,8 +241,6 @@ const useComposedChartMarks = (params: Readonly<UseComposedChartMarksParams>): U
     data,
     gradientIdBySeries,
     heightPx,
-    highlightCurveByKey,
-    hoveredIndex,
     isDiscrete,
     margin,
     maxBarSize,
@@ -313,7 +299,6 @@ const useComposedChartMarks = (params: Readonly<UseComposedChartMarksParams>): U
 interface BuildComposedScaleOptionsParams {
   readonly gateActive: boolean;
   readonly grid: GridConfig | null;
-  readonly labelFade: Readonly<ComposedLabelFade> | undefined;
   readonly marginBottom: number;
   readonly scales: { xScale: ChartScale; yScale: ChartScale };
   readonly xAxis: XAxisConfig | undefined;
@@ -330,7 +315,7 @@ const buildComposedScaleOptions = (
   params: Readonly<BuildComposedScaleOptionsParams>,
 ): BuildComposedScaleOptionsResult => {
   const gridGuide = resolveGridGuide(params.grid);
-  const xTickLabelOpacity = buildXTickLabelOpacity({ labelFade: params.labelFade, xAxis: params.xAxis });
+  // Hover-invariant: x tick labels never fade on hover (the package has no per-tick focus opacity).
   const { motion, tickLabelMotion } = buildComposedMotion(params.gateActive);
   const xScaleOptions: ChartPositionScaleOptions<Date> = {
     axis: buildPrecomputedXAxisOptions({
@@ -338,7 +323,7 @@ const buildComposedScaleOptions = (
       marginBottom: params.marginBottom,
       tickLabelMotion,
       xAxis: params.xAxis,
-      xTickLabelOpacity,
+      xTickLabelOpacity: 1,
     }),
     grid: gridGuide.vertical,
     scale: params.scales.xScale,

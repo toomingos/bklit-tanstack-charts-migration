@@ -55,8 +55,6 @@ interface ComposedMarksContext {
   readonly data: readonly Readonly<ChartDatum>[];
   readonly gradientIdBySeries: ReadonlyMap<string, string>;
   readonly heightPx: number;
-  readonly highlightCurveByKey: ReadonlyMap<string, CurveFactory>;
-  readonly hoveredIndex: number | null;
   readonly isDiscrete: boolean;
   readonly legendHoveredKey: string | undefined;
   readonly lineDimFallback: number;

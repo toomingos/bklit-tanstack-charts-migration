@@ -1,5 +1,3 @@
-import { curveNatural } from "d3-shape";
-import { d3Curve } from "@tanstack/charts/d3/shape";
 import type {
   ChartMark,
 } from "@tanstack/charts";
@@ -10,8 +8,6 @@ import {
   buildIndicatorMark,
   resolveHoverDotFill,
 } from "./hover-geometry";
-import { buildHighlightBandMarks } from "./highlight-band";
-import type { HighlightBandSeries } from "./highlight-band";
 import type { ChartDatum } from "./types";
 import type {
   ComposedMarksContext,
@@ -39,28 +35,12 @@ const appendHoverDotMarks = (
   }
 };
 
-// Highlight-band inputs for the series with showHighlight; hoisted so appendHoverChromeMarks stays short.
-const collectHighlightBandSeries = (ctx: Readonly<ComposedMarksContext>): HighlightBandSeries[] => {
-  const highlightSeries: HighlightBandSeries[] = [];
-  for (const series of ctx.composedSeries) {
-    if (series.showHighlight) {
-      highlightSeries.push({
-        color: series.stroke,
-        curve: d3Curve(ctx.highlightCurveByKey.get(series.dataKey) ?? curveNatural),
-        dataKey: series.dataKey,
-        showHighlight: series.showHighlight,
-        strokeWidth: series.strokeWidth,
-      });
-    }
-  }
-  return highlightSeries;
-};
-
 const appendHoverChromeMarks = (
   marks: ChartMark<ChartDatum, Date, number>[],
   ctx: Readonly<ComposedMarksContext>,
 ): void => {
-  // Hover dots/bands read raw d[dataKey] with no per-axis projection (legacy limitation, kept).
+  // Hover dots read raw d[dataKey] with no per-axis projection (legacy limitation, kept).
+  // Band highlight dropped: dim rides mark states so hover never rebuilds the definition.
   const indicatorColor = ctx.tooltip?.indicatorColor;
   if (ctx.tooltipEnabled && (ctx.tooltip?.showCrosshair ?? true)) {
     marks.push(
@@ -77,19 +57,6 @@ const appendHoverChromeMarks = (
   }
   if (ctx.tooltipEnabled && (ctx.tooltip?.showDots ?? true)) {
     appendHoverDotMarks(marks, ctx);
-  }
-  if (ctx.tooltipEnabled) {
-    marks.push(
-      ...buildHighlightBandMarks(
-        {
-          hoveredIndex: ctx.hoveredIndex,
-          options: { discrete: ctx.isDiscrete },
-          renderData: ctx.renderData,
-          series: collectHighlightBandSeries(ctx),
-          xDataKey: ctx.xDataKey,
-        },
-      ),
-    );
   }
 };
 

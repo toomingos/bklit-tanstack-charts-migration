@@ -4,7 +4,7 @@ import type {
   ChartMotionTiming,
   ChartScale,
 } from "@tanstack/charts";
-import { buildXAxisTickValues, tickLabelFadeOpacity } from "./axis-ticks";
+import { buildXAxisTickValues } from "./axis-ticks";
 import { bezierEasing } from "./bezier-easing";
 import { DEFAULT_Y_DOMAIN_TWEEN_MS } from "./chart-phase";
 import { toDate } from "./coerce-date";
@@ -19,20 +19,8 @@ import type {
 } from "./composed-data-math";
 import type { ProjectionGradientDef } from "./projection-line-mark";
 import type { ProjectionLineConfig } from "./projection-config";
-import { shortDateFmt } from "./formatters";
 import { resolveGridGuide } from "./grid";
-import { TICKER_HALF_WIDTH, FADE_BUFFER } from "./design-tokens";
-import type { ChartDatum, XAxisConfig } from "./types";
-
-interface TickFadeContext {
-  readonly position: number;
-  readonly value: unknown;
-}
-
-interface BuildXTickOpacityParams {
-  readonly labelFade: Readonly<{ hoveredLabel: string | null; primaryX: number }> | undefined;
-  readonly xAxis: XAxisConfig | undefined;
-}
+import type { ChartDatum } from "./types";
 
 type MotionResult = false | ChartMotionTiming | undefined;
 
@@ -147,23 +135,6 @@ const buildComposedMotion = (gateActive: boolean): ComposedMotion => {
   return { motion, tickLabelMotion };
 };
 
-const buildXTickLabelOpacity = (
-  params: Readonly<BuildXTickOpacityParams>,
-): number | ((ctx: Readonly<TickFadeContext>) => number) => {
-  const { labelFade } = params;
-  if (!labelFade) {return 1;}
-  const formatValue = params.xAxis?.formatValue ?? ((date: Date): string => shortDateFmt.format(date));
-  return (ctx: Readonly<TickFadeContext>): number =>
-    tickLabelFadeOpacity({
-      fadeBuffer: FADE_BUFFER,
-      hoveredLabel: labelFade.hoveredLabel,
-      labelText: formatValue(toDate(ctx.value) ?? new Date(Number.NaN)),
-      labelX: ctx.position,
-      primaryX: labelFade.primaryX,
-      tickerHalfWidth: params.xAxis?.tickerHalfWidth ?? TICKER_HALF_WIDTH,
-    });
-};
-
 const collectProjectionGradients = (params: Readonly<CollectProjectionGradientsParams>): ProjectionGradientDef[] => {
   const defs: ProjectionGradientDef[] = [];
   for (let projIndex = 0; projIndex < params.lines.length; projIndex += 1) {
@@ -188,7 +159,6 @@ export {
   buildComposedMotion,
   buildComposedXScale,
   buildComposedYScale,
-  buildXTickLabelOpacity,
   collectProjectionGradients,
 };
 export type { CollectProjectionGradientsParams, ComposedMotion };

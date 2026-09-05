@@ -42,7 +42,7 @@ import type { EnterTransition } from './internal/enter-transition';
 import type { ChartMargin } from './internal/use-chart-margin';
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { useComposedChildren } from "./internal/composed-children";
-import { useComposedPointerHandlers } from "./internal/use-composed-hover";
+import { useComposedFocusChrome } from "./internal/use-composed-focus";
 import {
   useComposedAreaGradients,
   buildComposedScaleOptions,
@@ -127,7 +127,7 @@ const ComposedChart = ({
   } = useComposedChildren(children, registryEntries);
   const prefersReducedMotion = usePrefersReducedMotion();
 
-  const { captureRenderContext, sceneRef, interactionRef, clientToScene } =
+  const { captureRenderContext, clearFocus, clientToScene, sceneRef } =
     useFocusInjection<ChartDatum, Date, number>();
 
   const { resolvedAreas, resolvedBars, resolvedLines } = useComposedResolved({
@@ -166,15 +166,16 @@ const ComposedChart = ({
   });
 
   const dragSelectionActiveRef = useRef(false);
+  // Package-owned pointer: focus lands through onFocusChange below; the pill mirrors
+  // The focused datum while dim rides mark states, never a definition rebuild.
   const {
-    clearFocusChrome, crosshairGradientDef, crosshairGradientId, datePill, handleFocusGroupChange,
-    hoveredIndex, isDiscrete, labelFade, tooltipEnabled,
-  } = useComposedPointerHandlers({
+    clearFocusChrome, crosshairGradientDef, crosshairGradientId, datePill, handleFocusChange,
+    isDiscrete, tooltipEnabled,
+  } = useComposedFocusChrome({
     chartPhase: phaseAndReveal.chartPhase,
-    containerRef: phaseAndReveal.containerRef,
+    clearFocus,
     data,
     dragSelectionActiveRef,
-    interactionRef,
     isLoaded: phaseAndReveal.isLoaded,
     renderData,
     tooltip,
@@ -192,7 +193,6 @@ const ComposedChart = ({
     gradientIdBySeries,
     grid,
     heightPx: heightPxComp,
-    hoveredIndex,
     isDiscrete,
     margin: phaseAndReveal.margin,
     maxBarSize,
@@ -227,7 +227,6 @@ const ComposedChart = ({
     const { motion, xScaleOptions, yScaleOptions } = buildComposedScaleOptions({
       gateActive: yDomainTweenGateActive,
       grid,
-      labelFade,
       marginBottom: phaseAndReveal.margin.bottom,
       scales,
       xAxis,
@@ -259,7 +258,6 @@ const ComposedChart = ({
     scales,
     phaseAndReveal.margin,
     grid,
-    labelFade,
     xAxis,
     yDomainTweenGateActive,
     nativeComposedGradients,
@@ -371,7 +369,7 @@ const ComposedChart = ({
         height={heightPxComp}
         initialWidth={HOST_INITIAL_WIDTH}
         definition={definition}
-        onFocusGroupChange={handleFocusGroupChange}
+        onFocusChange={handleFocusChange}
         onRender={handleRender}
         renderTooltipBody={tooltipEnabled ? renderTooltipBody : NOTHING}
       >

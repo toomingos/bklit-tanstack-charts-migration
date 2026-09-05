@@ -87,10 +87,8 @@ const appendAreaMarks = (
       areaFill(ctx.renderData, {
         curve,
         fill: (gradientId ?? "") === "" ? area.fill : `url(#${gradientId})`,
-        fillOpacity:
-          (ctx.tooltipEnabled && ctx.hoveredIndex !== null) || isLegendDimmed
-            ? areaDimOpacity
-            : 1,
+        // States cannot dim areaFill (no ChartPoints): hover dim dropped, legend dim stays.
+        fillOpacity: isLegendDimmed ? areaDimOpacity : 1,
         id: `${area.dataKey}__fill`,
         x: (row: Readonly<ChartDatum>) => toDate(row[ctx.xDataKey]) ?? new Date(Number.NaN),
         y: (row: Readonly<ChartDatum>): number => {
