@@ -1,7 +1,7 @@
 import type { RefObject } from "react";
 import { createMark } from "@tanstack/charts";
 import { link } from "@tanstack/charts/link";
-import type { ChartBounds, ChartMark, ChartPoint, MarkInitialization, MarkScene, SceneNode } from "@tanstack/charts";
+import type { ChartBounds, ChartMark, ChartPoint, ChartSpatialIndex, ChartValue, MarkInitialization, MarkScene, SceneNode } from "@tanstack/charts";
 import { sankeyDiagram } from '@tanstack/charts/network/sankey';
 import { d3Curve } from "@tanstack/charts/d3/shape";
 import { curveBumpX } from "d3-shape";
@@ -10,7 +10,7 @@ import { buildSankeyLabelNodes, toLaidOutNode } from "./sankey-label-nodes";
 import { resolveSankeyFlowStroke, resolveSankeyFlowOpacity } from "./sankey-flow-style";
 import type { LaidOutLink, LinkRow, NodeRow, SankeyLinkData, SankeyNodeData } from "./sankey-label-nodes";
 import type { SankeyLabelOrientation } from "./sankey-node";
-import { computeNodeHoverConnected, computeLinkHoverConnected } from "./sankey-hover-chrome";
+import { computeNodeHoverConnected, computeLinkHoverConnected, findHoveredSankeyTarget } from "./sankey-hover-chrome";
 
 // Scene keys sankey:node/rect/nlabel/vlabel:i are the WAAPI reveal's DOM contract.
 const SANKEY_MARK_ID = "sankey";
@@ -234,6 +234,20 @@ const snapshotSankeyLayout = (params: Readonly<{ nodes: readonly Readonly<NodeRo
   return laidOutNodes;
 };
 
+// Legacy pick order as a ChartSpatialIndex (focus-and-interaction.md: spatial indexes).
+const createSankeySpatialIndex = <TDatum, TXValue extends ChartValue, TYValue extends ChartValue>(
+  points: readonly ChartPoint<TDatum, TXValue, TYValue>[],
+  nodes: readonly LaidOutNode[],
+  links: readonly LaidOutLink[],
+): ChartSpatialIndex<TDatum, TXValue, TYValue> => ({
+  findNearest: (x, y) => {
+    const hit = findHoveredSankeyTarget({ x, y }, nodes, links);
+    if (!hit) {return null;}
+    const markId = hit.type === "node" ? SANKEY_NODE_POINT_MARK_ID : SANKEY_LINK_MARK_ID;
+    return points.find((point) => point.markId === markId && point.datumIndex === hit.index) ?? null;
+  },
+});
+
 const createSankeyMark = (params: Readonly<CreateSankeyMarkParams>): ReturnType<typeof sankeyDiagram> => {
   const { config } = params;
   const shouldUseGradient = config.useGradient && (config.strokeOverride ?? "") === "";
@@ -280,6 +294,6 @@ const createSankeyMark = (params: Readonly<CreateSankeyMarkParams>): ReturnType<
   });
 }
 
-export { createSankeyMark, SANKEY_LINK_MARK_ID, SANKEY_MARK_ID, SANKEY_NODE_MARK_ID, SANKEY_NODE_POINT_MARK_ID };
+export { createSankeyMark, createSankeySpatialIndex, SANKEY_LINK_MARK_ID, SANKEY_MARK_ID, SANKEY_NODE_MARK_ID, SANKEY_NODE_POINT_MARK_ID };
 export type { SankeyGradientDatum, SankeyMarkConfig };
 export type { LaidOutLink } from "./sankey-label-nodes";

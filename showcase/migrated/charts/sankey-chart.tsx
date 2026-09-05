@@ -14,13 +14,11 @@ import type { SankeyLink as NativeSankeyLink } from "@tanstack/charts/network/sa
 import type {
   LaidOutNode,
 } from "./internal/sankey-layout";
-import { createSankeyMark, SANKEY_LINK_MARK_ID, SANKEY_NODE_POINT_MARK_ID } from './internal/sankey-mark';
+import { createSankeyMark, createSankeySpatialIndex, SANKEY_LINK_MARK_ID, SANKEY_NODE_POINT_MARK_ID } from './internal/sankey-mark';
 import type { LaidOutLink, SankeyGradientDatum } from './internal/sankey-mark';
 import { injectGradientDefs, runSankeyReveal, stampSankeyLinkPathLength } from './internal/sankey-animation';
 import type { SankeyEnterTransition, SankeyRevealHandle } from './internal/sankey-animation';
 import "./styles.css";
-import { findHoveredSankeyTarget } from "./internal/sankey-hover-chrome";
-import type { SankeyHitTarget } from "./internal/sankey-hover-chrome";
 import { intFmt } from "./internal/formatters";
 import { CHART_CATEGORY_PALETTE_WITH_FALLBACK } from "./internal/design-tokens";
 import type { SankeyLinkProps } from "./internal/sankey-link";
@@ -169,13 +167,6 @@ interface SankeyLinkEnd {
   readonly data?: SankeyLinkEndName;
 }
 
-interface SankeyHoverHandlers {
-  readonly onLinkEnter: (index: number) => void;
-  readonly onLinkLeave: () => void;
-  readonly onNodeEnter: (index: number) => void;
-  readonly onNodeLeave: () => void;
-}
-
 const hasDisplayName = (type: ReactElement["type"], name: string): boolean => {
   if (isString(type)) {return false;}
   if (!isFunctionValue(type) && !isObjectValue(type)) {return false;}
@@ -294,27 +285,6 @@ const renderSankeyTooltipBody = (point: ChartPoint | undefined, formatValue: (va
   );
 }
 
-const createHoverHandlers = (hoveredNodeIndexRef: RefObject<number | null>, hoveredLinkIndexRef: RefObject<number | null>, focusPointerPoint: (predicate?: (point: ChartPoint) => boolean) => void): SankeyHoverHandlers => ({
-    onLinkEnter: (linkIndex: number): void => {
-      hoveredLinkIndexRef.current = linkIndex;
-      hoveredNodeIndexRef.current = null;
-      focusPointerPoint((point) => point.markId === SANKEY_LINK_MARK_ID && point.datumIndex === linkIndex);
-    },
-    onLinkLeave: (): void => {
-      hoveredLinkIndexRef.current = null;
-      focusPointerPoint();
-    },
-    onNodeEnter: (nodeIndex: number): void => {
-      hoveredNodeIndexRef.current = nodeIndex;
-      hoveredLinkIndexRef.current = null;
-      focusPointerPoint((point) => point.markId === SANKEY_NODE_POINT_MARK_ID && point.datumIndex === nodeIndex);
-    },
-    onNodeLeave: (): void => {
-      hoveredNodeIndexRef.current = null;
-      focusPointerPoint();
-    },
-  })
-
 interface SankeyRevealReset {
   readonly revealHandleRef: RefObject<SankeyRevealHandle | null>;
   readonly seenRef: RefObject<RevealKey | null>;
@@ -367,45 +337,31 @@ const updateSankeyReveal = (svg: SVGSVGElement, params: Readonly<SankeyRevealUpd
   startSankeyReveal({ animationDuration, duration: animationDuration, enterTransition, revealHandleRef, seenRef, signature: revealSignature, svg });
 }
 
-interface SankeyHoverHitParams {
-  readonly clientX: number;
-  readonly clientY: number;
-  readonly laidOutLinks: readonly LaidOutLink[];
-  readonly laidOutNodes: readonly LaidOutNode[];
-}
-
-const findSankeyHoverHit = (
-  interaction: ChartInteractionController<SankeyRenderDatum>,
-  params: Readonly<SankeyHoverHitParams>,
-): SankeyHitTarget | undefined => {
-  const { clientX, clientY, laidOutLinks, laidOutNodes } = params;
-  const point = interaction.clientToScene(clientX, clientY);
-  if (!point) { return undefined; }
-  const hit = findHoveredSankeyTarget(point, laidOutNodes, laidOutLinks);
-  if (!hit) { return undefined; }
-  return hit;
-}
-
 interface SankeyHoverRefs {
   current: number | null;
 }
 
-const buildSankeyClearHover = (
+// Package focus feeds the reactive dim; module scope keeps focus callbacks stable.
+const applySankeyFocusPoint = (
+  point: ChartPoint | null,
   hoveredNodeIndexRef: SankeyHoverRefs,
-  hoveredLinkIndexRef: SankeyHoverRefs,
-  focusPointerPoint: (predicate?: (point: ChartPoint) => boolean) => void,
-): (() => void) => (): void => {
-  let cleared = false;
-  if (hoveredNodeIndexRef.current !== null) {
+  setHoveredLinkIndex: (index: number | null) => void,
+): void => {
+  if (!point) {
     hoveredNodeIndexRef.current = null;
-    cleared = true;
+    setHoveredLinkIndex(null);
+    return;
   }
-  if (hoveredLinkIndexRef.current !== null) {
-    hoveredLinkIndexRef.current = null;
-    cleared = true;
+  if (point.markId === SANKEY_NODE_POINT_MARK_ID) {
+    hoveredNodeIndexRef.current = point.datumIndex;
+    setHoveredLinkIndex(null);
+    return;
   }
-  if (cleared) {focusPointerPoint();}
-}
+  if (point.markId === SANKEY_LINK_MARK_ID) {
+    setHoveredLinkIndex(point.datumIndex);
+    hoveredNodeIndexRef.current = null;
+  }
+};
 
 // The reveal's replay key: a new reveal runs when any of these change.
 interface RevealKey {
@@ -463,21 +419,6 @@ const SankeyChart = ({
 
   // Hover lives in React state (dim rebuilds the definition); a ref mirror serves synchronous readers.
   const [hoveredLinkIndex, setHoveredLinkIndex] = useState<number | null>(null);
-  const hoveredLinkIndexLiveRef = useRef<number | null>(null);
-  useEffect(() => {
-    hoveredLinkIndexLiveRef.current = hoveredLinkIndex;
-  }, [hoveredLinkIndex]);
-  const hoveredLinkIndexRef = useMemo(
-    (): SankeyHoverRefs => ({
-      get current(): number | null {
-        return hoveredLinkIndexLiveRef.current;
-      },
-      set current(next: number | null) {
-        setHoveredLinkIndex(next);
-      },
-    }),
-    [],
-  );
   // Inject source:'pointer' — programmatic would wrongly satisfy the legend-dim predicate.
   const sceneRef = useRef<ChartScene<SankeyRenderDatum> | null>(null);
   const interactionRef = useRef<ChartInteractionController<SankeyRenderDatum> | null>(null);
@@ -570,14 +511,17 @@ const SankeyChart = ({
         guides: false,
         margin,
         marks: [createSankeyMark({ config: markConfig, data, gradientDataRef, laidOutLinksRef, laidOutNodesRef })],
-        // App-owned hit-testing stays the sole hover source; native mousemove must not clear bridged focus.
-        pointer: false,
         scales: { x: null, y: null },
+        // Package hover order: nodes first, links in reverse paint order.
+        spatialIndex: (points) => createSankeySpatialIndex(points, laidOutNodesRef.current ?? [], laidOutLinksRef.current ?? []),
         // Palette override has no pixel effect (colors resolve JS-side); keeps native surfaces agreeing.
         theme: { palette: CHART_CATEGORY_PALETTE_WITH_FALLBACK },
         tooltip: {
-          anchor: "point",
+          // Legacy anchors the sankey tooltip at the mouse position and places it immediately
+          // (TooltipBox: left = x + 16, top = y - h / 2, no enter fade), so no tooltip motion.
+          anchor: "pointer",
           className: "bkm-native-tooltip",
+          motion: false,
           offset: 16,
           placement: ["right", "left"],
           sticky: false,
@@ -611,58 +555,26 @@ const SankeyChart = ({
     });
   }, [animationDuration, enterTransition, gradientDataRef, prefersReducedMotion, revealSignature]);
 
-  // Layout coords are margin-inclusive already, so no margin subtraction before hit-test.
-  useEffect((): (() => void) | undefined => {
-    const svg = containerRef.current?.querySelector<SVGSVGElement>("svg");
-    if (!svg) {return undefined;}
+  // Package-owned pointer: focus changes drive the reactive dim; no DOM listener.
+  const handleFocusChange = useCallback((point: ChartPoint | null) => {
+    applySankeyFocusPoint(point, hoveredNodeIndexRef, setHoveredLinkIndex);
+  }, [hoveredNodeIndexRef]);
 
-    const handlers = createHoverHandlers(
-      hoveredNodeIndexRef,
-      hoveredLinkIndexRef,
-      focusPointerPoint,
-    );
-
-    const clearHover = buildSankeyClearHover(hoveredNodeIndexRef, hoveredLinkIndexRef, focusPointerPoint);
-
-    const handlePointerMove = (event: PointerEvent): void => {
-      const interaction = interactionRef.current;
-      if (!interaction) {return;}
-      const hit = findSankeyHoverHit(interaction, {
-        clientX: event.clientX,
-        clientY: event.clientY,
-        laidOutLinks: laidOutLinksRef.current ?? [],
-        laidOutNodes: laidOutNodesRef.current ?? [],
-      });
-      if (!hit) {
-        clearHover();
-        return;
-      }
-      if (hit.type === "node") {
-        handlers.onNodeEnter(hit.index);
-      } else {
-        handlers.onLinkEnter(hit.index);
-      }
-    };
-
-    const handlePointerLeave = (): void =>{  clearHover(); };
-
-    svg.addEventListener("pointermove", handlePointerMove);
-    svg.addEventListener("pointerleave", handlePointerLeave);
-    return (): void => {
-      svg.removeEventListener("pointermove", handlePointerMove);
-      svg.removeEventListener("pointerleave", handlePointerLeave);
-    };
-  }, [focusPointerPoint, hoveredLinkIndexRef, hoveredNodeIndexRef]);
-
-  // When the parent seizes node-hover control, link hover is cleared here.
-  // Render-time previous-prop comparison commits no stale highlight frame.
-  const [prevHoveredNodeIndexProp, setPrevHoveredNodeIndexProp] = useState(hoveredNodeIndexProp);
-  if (prevHoveredNodeIndexProp !== hoveredNodeIndexProp) {
-    setPrevHoveredNodeIndexProp(hoveredNodeIndexProp);
-    if (hoveredNodeIndexProp !== undefined) {
-      setHoveredLinkIndex(null);
+  // Parent-controlled node hover paints through package focus, not the DOM.
+  // Link state clears through the onFocusChange round-trip, not here.
+  useEffect(() => {
+    if (hoveredNodeIndexProp === undefined) {return;}
+    const interaction = interactionRef.current;
+    if (!interaction) {return;}
+    if (hoveredNodeIndexProp === null) {
+      interaction.setControlledFocus(null, { source: "programmatic" });
+      return;
     }
-  }
+    const point = sceneRef.current?.points.find(
+      (scenePoint) => scenePoint.markId === SANKEY_NODE_POINT_MARK_ID && scenePoint.datumIndex === hoveredNodeIndexProp,
+    ) ?? null;
+    interaction.setControlledFocus(point, { source: "programmatic" });
+  }, [hoveredNodeIndexProp]);
 
   const handleMouseLeave = useCallback(() => {
     if (isNodeHoverControlledRef.current) {
@@ -718,6 +630,7 @@ const SankeyChart = ({
         className={className}
         initialWidth={HOST_INITIAL_WIDTH}
         definition={definition}
+        onFocusChange={handleFocusChange}
         onRender={handleRender}
         renderTooltipBody={renderTooltipBody}
         style={containerStyle}
