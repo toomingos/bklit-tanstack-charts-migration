@@ -48,7 +48,7 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 3 | V3.2 | package layouts (geo, sankey, sunburst) | todo | | | |
 | 3 | V3.4 | declared resources + R10 seam | todo | | | |
 | 3 | V3.7 | config parity | todo | | | |
-| 3 | V4.6 | 23 legacy tests ported | dispatched | `ses_f8df2fa43ffe2dgjjTlywgbbxC` | | |
+| 3 | V4.6 | 23 legacy tests ported | merged | `ses_f8df2fa43ffe2dgjjTlywgbbxC` | (next commit) | D530 · 23 files, imports only · 38 pass / 87 named todos (V3.7 backlog) / 1 signature gap (`buildHorizontalTangentBezierPath`, V3.7) · `pnpm test` 230 / 123 / 0 / 107 |
 | 4 | V3.1 | funnel on marks (D364 reversal) | todo | | | |
 | 4 | V3.5 | one animation owner | todo | | | |
 | 4 | V3.6 | stylesheet audit, `data-slot` | todo | | | |
