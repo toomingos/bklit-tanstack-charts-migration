@@ -23,19 +23,19 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | Wave | Item | Title | State | Session | Commit | D-entries |
 |---|---|---|---|---|---|---|
 | 1 | V1.1 | host module + legacy hooks | merged | `ses_f8eaea0aeffephB8JH5HsfyVlr` | `341f0e6` | D520 · fixture renders `<svg`, 12 `Eq<>` · library-cannot: `ResolvedScale` carries no scale (0.16.0) · resumed once |
-| 1 | V1.2 | scales and bounds from the store | blocked (G5) | `ses_f8e5d909effe6PGyPKJO5rnNpP` | | D521 · classification done (13 FACTORY / 7 STORE / 26 LOCAL / 2 rulings) · re-dispatch after V1.7 |
+| 1 | V1.2 | scales and bounds from the store | dispatched (re-run) | `ses_f8e278ecaffe1v21g6xwaZOzjf` (first: `ses_f8e5d909effe6PGyPKJO5rnNpP`) | | D521 · classification 13 FACTORY / 7 STORE / 26 LOCAL / 2 rulings · heatmap sites handed to V3.3 · sankey/choropleth/radar margins deferred behind V2.1 |
 | 1 | V1.6 | export parity | merged | `ses_f8e5d9e25ffeJtbjO7zCE0Xdv3` | `171e3c7` | D523 · red lines 478 → 384 (re-read at V3.7, must be 0) · 84 leaked internals un-exported · `internal/parity/` 10 modules · kept: `BrushLayout`, `ChartSelectionContext` (demos) |
 | 1 | V1.8 | aria forwarding | merged | `ses_f8eae9829ffegZk4H0yURVPpUM` | `e50babd` | D516 · `ariaLabel="` literals 16 → 0 · funnel props only until V3.1 (R2) · heatmap via context |
 | 1 | V1.9 | package contract | merged | `ses_f8eae8f80ffemH1q37JpHnKBRr` | `e29b694` | D517 · pack 450 files, fresh Next app builds + renders · +10 deps declared, removals owned by later items · G4 |
 | 1 | V4.1 | `qa/unit` scaffold (scene tests, probes) | merged | `ses_f8eae88aeffeCW2EwgcvXZY2hd` | `0c25747` | D515 · `pnpm test` 84 tests / 46 pass / 38 todo / 0.4 s · probes pinned per family |
 | 1 | V4.2 | generated type fixture | merged | `ses_f8eae74d6ffevmKWqC0OMWAzCO` | `04ad318` | D514 · 292 value + 211 type `Eq` lines · 478 red / 420 exports = V1.6 backlog · 81 migrated-only exports · G3 folded |
 | 1 | V4.4 | gate integrity | merged | `ses_f8e7dd459ffeYm5llQgxkw0yTz` | `1ae5f10` | D519 · tree-hash + refusal · checks order tsc→lint(floor 7)→bench tsc→build→unit→census→bundle · 11 rulings in `qa/gate/rulings.json` (baseline: gate FAIL 0 / ruled 6) · ledger re-keyed, guard 17 → 0 |
-| 2 | V1.3 | registering children | todo | | | |
+| 2 | V1.3 | registering children | dispatched | `ses_f8e2786caffe0MKE485qxGYfHD` | | registry in new `chart-child-registry.ts` + `chart-host.tsx` (V1.2 owns the store) |
 | 2 | V1.4 | optional layers own imports | todo | | | |
 | 2 | V1.5 | `cursorHost`, x-domain padding | todo | | | |
-| 2 | V1.7 | host-owned sizing and SSR | merged | `ses_f8e4ede21ffelVsLjas4cNJSPd` | (next commit) | D521 D524 · 18 `initialWidth` mounts · SSR svg 16/16 · `use-container-size` only in funnel (V3.1) · heatmap local observer until V3.3 · 10 probe pins moved |
-| 2 | V2.1 | `withStates` on polar/geo | todo | | | |
-| 2 | V3.3 | heatmap on band scales | todo | | | |
+| 2 | V1.7 | host-owned sizing and SSR | merged | `ses_f8e4ede21ffelVsLjas4cNJSPd` | `0012eca` | D521 D524 · 18 `initialWidth` mounts · SSR svg 16/16 · `use-container-size` only in funnel (V3.1) · heatmap local observer until V3.3 · 10 probe pins moved |
+| 2 | V2.1 | `withStates` on polar/geo | dispatched | `ses_f8e277e8fffeFjKx9XQ1oKJ1yO` | | |
+| 2 | V3.3 | heatmap on band scales | dispatched | `ses_f8e27770effe1nrPt7XO6YzT69` | | also owns heatmap `.range(` sites, `heatmap-cells-hooks` margin, V1.7's interim observer |
 | 2 | V4.3 | curve parity in Node | merged | `ses_f8e4ea68affeIAxEMFrhK6abJf` | `3917d3d` | D522 · 10 curves, 9 PASS ≤ 0.02, line-pulse = exception 1 · `pnpm curve-parity` · k4 probe → smoke |
 | 3 | V2.2 | package pointer and focus — pie · ring · sunburst · gauge · radar · composed · sankey · heatmap · choropleth (one row per family when dispatched) | todo | | | |
 | 3 | V2.3 | legend → controlled focus / selection | todo | | | |
