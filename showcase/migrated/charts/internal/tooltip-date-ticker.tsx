@@ -1,19 +1,12 @@
-import { useEffect, useMemo, useRef } from 'react';
-import type { ReactNode, RefObject } from 'react';
-import { createSpring } from './spring';
-import type { Spring } from './spring';
+import { useMemo } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { TICKER_ITEM_HEIGHT } from "./design-tokens";
 
-// Ticker digit-roll spring params (stiffness, damping).
-const TICKER_SPRING_STIFFNESS = 400;
-const TICKER_SPRING_DAMPING = 35;
 // Token positions inside a "Month Day" ticker label.
 const MONTH_PART_INDEX = 0;
 const DAY_PART_INDEX = 1;
 // Offset of the last element when indexing from the end.
 const LAST_ELEMENT_OFFSET = -1;
-// Sentinel for "no month selected yet" in the ticker month tracker.
-const UNSET_MONTH_INDEX = -1;
 // Index of the first element in a zero-based list.
 const FIRST_INDEX = 0;
 // Offset from length to the last valid index.
@@ -81,53 +74,6 @@ const resolveCurrentMonthIndex = (
   return FIRST_INDEX;
 };
 
-interface DateTickerSprings {
-  readonly daySpringRef: RefObject<Spring | undefined>;
-  readonly dayStackRef: RefObject<HTMLDivElement | null>;
-  readonly monthSpringRef: RefObject<Spring | undefined>;
-  readonly monthStackRef: RefObject<HTMLDivElement | null>;
-  readonly prevMonthRef: RefObject<number>;
-}
-
-interface DateTickerAnimationOptions {
-  readonly compact: boolean;
-  readonly currentIndex: number;
-  readonly currentMonthIndex: number;
-}
-
-// Date-ticker rolling animation: digit/month stacks are translated imperatively by
-// Springs; compact mode skips springs entirely and renders the current label.
-const useDateTickerAnimation = (options: Readonly<DateTickerAnimationOptions>): DateTickerSprings => {
-  const { compact, currentIndex, currentMonthIndex } = options;
-  const dayStackRef = useRef<HTMLDivElement | null>(null);
-  const monthStackRef = useRef<HTMLDivElement | null>(null);
-  const daySpringRef = useRef<Spring | undefined>(undefined);
-  const monthSpringRef = useRef<Spring | undefined>(undefined);
-  const prevMonthRef = useRef(UNSET_MONTH_INDEX);
-  useEffect((): (() => void) | undefined => {
-    if (compact) {return undefined;}
-    daySpringRef.current ??= createSpring({ damping: TICKER_SPRING_DAMPING, initial: 0, onUpdate: (offsetY) => { if (dayStackRef.current) {dayStackRef.current.style.transform = `translateY(${offsetY}px)`;} }, stiffness: TICKER_SPRING_STIFFNESS });
-    monthSpringRef.current ??= createSpring({ damping: TICKER_SPRING_DAMPING, initial: 0, onUpdate: (offsetY) => { if (monthStackRef.current) {monthStackRef.current.style.transform = `translateY(${offsetY}px)`;} }, stiffness: TICKER_SPRING_STIFFNESS });
-    return (): void => {
-      daySpringRef.current?.stop();
-      monthSpringRef.current?.stop();
-      daySpringRef.current = undefined;
-      monthSpringRef.current = undefined;
-    };
-  }, [compact]);
-  useEffect(() => {
-    if (compact) {return;}
-    const targetDayY = -currentIndex * TICKER_ITEM_HEIGHT;
-    const targetMonthY = -currentMonthIndex * TICKER_ITEM_HEIGHT;
-    daySpringRef.current?.set(targetDayY);
-    if (prevMonthRef.current === UNSET_MONTH_INDEX || prevMonthRef.current !== currentMonthIndex) {
-      prevMonthRef.current = currentMonthIndex;
-      monthSpringRef.current?.set(targetMonthY);
-    }
-  }, [compact, currentIndex, currentMonthIndex]);
-  return { daySpringRef, dayStackRef, monthSpringRef, monthStackRef, prevMonthRef };
-};
-
 const renderCompactTicker = (pillClassName: string, label: string): ReactNode => (
   <div className={pillClassName}>
     <div className="flex h-6 items-center justify-center">
@@ -136,22 +82,17 @@ const renderCompactTicker = (pillClassName: string, label: string): ReactNode =>
   </div>
 );
 
-interface FullTickerOptions {
-  readonly monthSegments: readonly MonthSegment[];
-  readonly parsedLabels: readonly ParsedLabel[];
-  readonly pillClassName: string;
-  readonly springs: Readonly<DateTickerSprings>;
-  readonly visible: boolean;
-}
-
 interface TickerStacksOptions {
   readonly monthSegments: readonly MonthSegment[];
   readonly parsedLabels: readonly ParsedLabel[];
-  readonly springs: Readonly<DateTickerSprings>;
+  readonly dayStyle: Readonly<CSSProperties>;
+  readonly monthStyle: Readonly<CSSProperties>;
 }
 
+// The package owns motion (V2.4): stacks render at the focus-point offset.
+// Travel timing lives in the native tooltip extension, not a hand spring.
 const renderTickerStacks = (options: Readonly<TickerStacksOptions>): ReactNode => {
-  const { monthSegments, parsedLabels, springs } = options;
+  const { monthSegments, parsedLabels, dayStyle, monthStyle } = options;
   const monthItems = monthSegments.map((segment) => (
     <div
       className="flex h-6 shrink-0 items-center justify-center"
@@ -174,14 +115,14 @@ const renderTickerStacks = (options: Readonly<TickerStacksOptions>): ReactNode =
   ));
   const monthStack = (
     <div className="relative h-6 overflow-hidden">
-      <div className="flex flex-col" ref={springs.monthStackRef}>
+      <div className="flex flex-col" style={monthStyle}>
         {monthItems}
       </div>
     </div>
   );
   const dayStack = (
     <div className="relative h-6 overflow-hidden">
-      <div className="flex flex-col" ref={springs.dayStackRef}>
+      <div className="flex flex-col" style={dayStyle}>
         {dayItems}
       </div>
     </div>
@@ -194,10 +135,19 @@ const renderTickerStacks = (options: Readonly<TickerStacksOptions>): ReactNode =
   );
 };
 
+interface FullTickerOptions {
+  readonly monthSegments: readonly MonthSegment[];
+  readonly parsedLabels: readonly ParsedLabel[];
+  readonly pillClassName: string;
+  readonly dayStyle: Readonly<CSSProperties>;
+  readonly monthStyle: Readonly<CSSProperties>;
+  readonly visible: boolean;
+}
+
 const renderFullTicker = (options: Readonly<FullTickerOptions>): ReactNode => {
-  const { monthSegments, parsedLabels, pillClassName, springs, visible } = options;
+  const { monthSegments, parsedLabels, pillClassName, dayStyle, monthStyle, visible } = options;
   if (!visible || parsedLabels.length === EMPTY_COUNT) {return undefined;}
-  const stacks = renderTickerStacks({ monthSegments, parsedLabels, springs });
+  const stacks = renderTickerStacks({ dayStyle, monthSegments, monthStyle, parsedLabels });
   return (
     <div className={pillClassName}>
       <div className="relative h-6 overflow-hidden">
@@ -219,7 +169,8 @@ const DateTicker = ({ currentIndex, labels, visible }: Readonly<DateTickerProps>
 
   const currentMonthIndex = useMemo(() => resolveCurrentMonthIndex(currentIndex, parsedLabels, monthSegments), [currentIndex, parsedLabels, monthSegments]);
 
-  const springs = useDateTickerAnimation({ compact, currentIndex, currentMonthIndex });
+  const dayStyle = useMemo((): CSSProperties => ({ transform: `translateY(${-currentIndex * TICKER_ITEM_HEIGHT}px)` }), [currentIndex]);
+  const monthStyle = useMemo((): CSSProperties => ({ transform: `translateY(${-currentMonthIndex * TICKER_ITEM_HEIGHT}px)` }), [currentMonthIndex]);
 
   const pillClassName =
     "overflow-hidden rounded-full bg-zinc-900 px-4 py-1 text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900";
@@ -228,7 +179,7 @@ const DateTicker = ({ currentIndex, labels, visible }: Readonly<DateTickerProps>
     return renderCompactTicker(pillClassName, labels.at(currentIndex) ?? labels.at(FIRST_INDEX) ?? "");
   }
 
-  return renderFullTicker({ monthSegments, parsedLabels, pillClassName, springs, visible });
+  return renderFullTicker({ dayStyle, monthSegments, monthStyle, parsedLabels, pillClassName, visible });
 }
 
 export { DateTicker };

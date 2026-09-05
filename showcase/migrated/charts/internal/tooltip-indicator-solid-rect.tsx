@@ -1,8 +1,9 @@
-import type { ReactElement, RefObject } from 'react';
+import type { ReactElement } from 'react';
 
+// The package owns motion (V2.4): x comes from the focus point.
+// Timing comes from resolveTooltipSpringTransition; `animate` stays for props.
 interface IndicatorSolidRectProps {
   readonly animate: boolean;
-  readonly rectRef: RefObject<SVGRectElement | null>;
   readonly indicatorFill: string;
   readonly pixelWidth: number;
   readonly rectX: number;
@@ -10,33 +11,18 @@ interface IndicatorSolidRectProps {
 }
 
 const IndicatorSolidRect = ({
-  animate,
-  rectRef,
   indicatorFill,
   pixelWidth,
   rectX,
   height,
-}: Readonly<IndicatorSolidRectProps>): ReactElement => {
-  if (animate) {
-    return (
-      <rect
-        ref={rectRef}
-        fill={indicatorFill}
-        height={height}
-        width={pixelWidth}
-        y={0}
-      />
-    );
-  }
-  return (
-    <rect
-      fill={indicatorFill}
-      height={height}
-      width={pixelWidth}
-      x={rectX}
-      y={0}
-    />
-  );
-};
+}: Readonly<IndicatorSolidRectProps>): ReactElement => (
+  <rect
+    fill={indicatorFill}
+    height={height}
+    width={pixelWidth}
+    x={rectX}
+    y={0}
+  />
+);
 
 export { IndicatorSolidRect };

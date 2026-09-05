@@ -1,27 +1,18 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
-import { useEffectEvent } from './use-effect-event';
 import { createPortal } from "react-dom";
-import { createSpring } from './spring';
-import type { Spring } from './spring';
-import { ENTRANCE_SPRING } from "./design-tokens";
-import { useChartConfig } from './use-chart-config';
-import type { SpringConfig } from './chart-config-context';
 import { indicatorFadeGradientStops, resolveVerticalFadeSides } from './fade-mask';
 import type { IndicatorFadeEdges, IndicatorFadeGradientStop, VerticalFadeSides } from './fade-mask';
 import { resolveIndicatorPixelWidth } from "./tooltip-mappers";
 import { TooltipContentRow } from "./tooltip-content-row";
 import { TooltipGradientStop } from "./tooltip-gradient-stop";
+import type { SpringConfig } from './chart-config-context';
 import type { IndicatorWidth, TooltipRow } from "./types";
 
 // Corner radius is clamped to this fraction of the side so a ring never over-rounds past a capsule.
 const MAX_CORNER_RADIUS_FRACTION = 0.5;
 // Ring-variant dot stroke width in px when the caller omits strokeWidth.
 const RING_STROKE_WIDTH_PX = 1.5;
-// Entrance slide distance in px (sign flips with the tooltip side).
-const ENTRANCE_SLIDE_OFFSET_PX = 20;
-// Entrance starts at this scale and grows to 1 with progress.
-const ENTRANCE_START_SCALE = 0.85;
 // Full extent derived from a half extent (dot diameter and ring side from radius).
 const FULL_EXTENT_FACTOR = 2;
 // Divisor that converts a full width into a half-width centering offset.
@@ -40,10 +31,6 @@ const MIN_INDICATOR_STROKE_WIDTH_PX = 1;
 const DEFAULT_FADE_LENGTH_PX = 10;
 // Default tooltip offset in px from the cursor when the caller omits it.
 const DEFAULT_TOOLTIP_OFFSET_PX = 16;
-// Entrance animation progress runs from empty to full.
-const FULL_PROGRESS = 1;
-// Entrance animation starts from zero progress.
-const ENTRANCE_START_PROGRESS = 0;
 // Non-positive measured sizes are ignored so the cached box never collapses.
 const MIN_MEASURED_PX = 0;
 
@@ -80,142 +67,8 @@ const resolveDotPaint = (variant: "dot" | "ring", color: string, strokeColor: st
 const resolveDotStrokeWidth = (strokeWidth: number | undefined, isRing: boolean): number =>
   strokeWidth ?? (isRing ? RING_STROKE_WIDTH_PX : DEFAULT_DOT_STROKE_WIDTH_PX);
 
-interface DotSpringRefs {
-  readonly circleRef: RefObject<SVGCircleElement | null>;
-  readonly rectRef: RefObject<SVGRectElement | null>;
-}
-
-interface EnsureDotSpringsOptions {
-  readonly animate: boolean;
-  readonly circleRef: RefObject<SVGCircleElement | null>;
-  readonly rectRef: RefObject<SVGRectElement | null>;
-  readonly size: number;
-  readonly spring: Readonly<SpringConfig>;
-  readonly springXRef: RefObject<Spring | undefined>;
-  readonly springYRef: RefObject<Spring | undefined>;
-  readonly x: number;
-  readonly y: number;
-}
-
-const ensureDotSprings = (options: Readonly<EnsureDotSpringsOptions>): void => {
-  const { animate, circleRef, rectRef, size, spring, springXRef, springYRef, x, y } = options;
-  if (!animate) {return;}
-  springXRef.current ??= createSpring({ damping: spring.damping, initial: x, onUpdate: (nx) => { if (circleRef.current) {circleRef.current.setAttribute("cx", String(nx));} if (rectRef.current) {rectRef.current.setAttribute("x", String(nx - size));} }, stiffness: spring.stiffness });
-  springYRef.current ??= createSpring({ damping: spring.damping, initial: y, onUpdate: (ny) => { if (circleRef.current) {circleRef.current.setAttribute("cy", String(ny));} if (rectRef.current) {rectRef.current.setAttribute("y", String(ny - size));} }, stiffness: spring.stiffness });
-};
-
-interface DotSpringTargets {
-  readonly springXRef: RefObject<Spring | undefined>;
-  readonly springYRef: RefObject<Spring | undefined>;
-  readonly x: number;
-  readonly y: number;
-}
-
-const setDotSpringTargets = (options: Readonly<DotSpringTargets>): void => {
-  const { springXRef, springYRef, x, y } = options;
-  springXRef.current?.set(x);
-  springYRef.current?.set(y);
-};
-
-interface DotSpringsOptions {
-  readonly animate: boolean;
-  readonly effectiveSpring: Readonly<SpringConfig>;
-  readonly size: number;
-  readonly visible: boolean;
-  readonly x: number;
-  readonly y: number;
-}
-
-// Hover-dot spring tracking: springs own animated attrs exclusively and are driven
-// Imperatively (jump on mount/visible, set in a layout effect), so React never sets them via JSX.
-const useTooltipDotSprings = (options: Readonly<DotSpringsOptions>): DotSpringRefs => {
-  const { animate, effectiveSpring, size, visible, x, y } = options;
-  const circleRef = useRef<SVGCircleElement | null>(null);
-  const rectRef = useRef<SVGRectElement | null>(null);
-  const springXRef = useRef<Spring | undefined>(undefined);
-  const springYRef = useRef<Spring | undefined>(undefined);
-  const ensureSprings = useCallback(() => {
-    ensureDotSprings({ animate, circleRef, rectRef, size, spring: effectiveSpring, springXRef, springYRef, x, y });
-  }, [animate, effectiveSpring, size, x, y]);
-  // Spring drivers read the latest targets without re-triggering each other.
-  const syncDotSprings = useEffectEvent((shouldJump: boolean): void => {
-    if (shouldJump) {
-      ensureSprings();
-      springXRef.current?.jump(x);
-      springYRef.current?.jump(y);
-      return;
-    }
-    if (!animate || !visible) {return;}
-    setDotSpringTargets({ springXRef, springYRef, x, y });
-  });
-  // Springs own animated attrs exclusively; React must not set them via JSX.
-  useLayoutEffect(() => {
-    syncDotSprings(false);
-  });
-  useLayoutEffect((): (() => void) | undefined => {
-    if (!visible) {return undefined;}
-    syncDotSprings(true);
-    return (): void => {
-      springXRef.current?.stop();
-      springYRef.current?.stop();
-      springXRef.current = undefined;
-      springYRef.current = undefined;
-    };
-  }, [visible]);
-  return { circleRef, rectRef };
-};
-
-interface DotBodyOptions {
-  readonly animate: boolean;
-  readonly circleRef: RefObject<SVGCircleElement | null>;
-  readonly color: string;
-  readonly cornerRadiusFraction: number;
-  readonly fill: string;
-  readonly isRing: boolean;
-  readonly rectRef: RefObject<SVGRectElement | null>;
-  readonly size: number;
-  readonly stroke: string;
-  readonly strokeWidth: number;
-  readonly x: number;
-  readonly y: number;
-}
-
-const renderDotBody = (options: Readonly<DotBodyOptions>): ReactNode => {
-  const { animate, circleRef, cornerRadiusFraction, fill, isRing, rectRef, size, stroke, strokeWidth, x, y } = options;
-  const side = size * FULL_EXTENT_FACTOR;
-  const rx = ringCornerRadius(size, cornerRadiusFraction);
-  if (isRing) {
-    if (animate) {
-      return (
-        <rect
-          ref={rectRef}
-          height={side}
-          rx={rx}
-          ry={rx}
-          width={side}
-        />
-      );
-    }
-    return (
-      <rect
-        height={side}
-        rx={rx}
-        ry={rx}
-        width={side}
-        x={x - size}
-        y={y - size}
-        fill={fill}
-        stroke={stroke}
-        strokeWidth={strokeWidth}
-      />
-    );
-  }
-  if (animate) {
-    return <circle ref={circleRef} fill={fill} r={size} stroke={stroke} strokeWidth={strokeWidth} />;
-  }
-  return <circle cx={x} cy={y} fill={fill} r={size} stroke={stroke} strokeWidth={strokeWidth} />;
-};
-
+// The package owns motion (V2.4): x/y arrive from the focus point.
+// Legacy spring numbers map onto the package transition in hover-geometry.ts.
 const TooltipDot = ({
   x,
   y,
@@ -226,34 +79,33 @@ const TooltipDot = ({
   strokeWidth = DEFAULT_DOT_STROKE_WIDTH_PX,
   variant = "dot",
   cornerRadiusFraction = DEFAULT_CORNER_RADIUS_FRACTION,
-  springConfig,
-  animate = true,
 }: Readonly<TooltipDotProps>): ReactNode => {
-  const { tooltipSpring } = useChartConfig();
-  const effectiveSpring = springConfig ?? tooltipSpring;
   const isRing = variant === "ring";
   const { fill, stroke } = resolveDotPaint(variant, color, strokeColor);
   const effectiveStrokeWidth = resolveDotStrokeWidth(strokeWidth, isRing);
-  const { circleRef, rectRef } = useTooltipDotSprings({ animate, effectiveSpring, size, visible, x, y });
 
   if (!visible) {
     return undefined;
   }
 
-  return renderDotBody({
-    animate,
-    circleRef,
-    color,
-    cornerRadiusFraction,
-    fill,
-    isRing,
-    rectRef,
-    size,
-    stroke,
-    strokeWidth: effectiveStrokeWidth,
-    x,
-    y,
-  });
+  if (isRing) {
+    const side = size * FULL_EXTENT_FACTOR;
+    const rx = ringCornerRadius(size, cornerRadiusFraction);
+    return (
+      <rect
+        height={side}
+        rx={rx}
+        ry={rx}
+        width={side}
+        x={x - size}
+        y={y - size}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={effectiveStrokeWidth}
+      />
+    );
+  }
+  return <circle cx={x} cy={y} fill={fill} r={size} stroke={stroke} strokeWidth={effectiveStrokeWidth} />;
 }
 
 
@@ -309,101 +161,16 @@ const resolveIndicatorStyle = (options: Readonly<ResolveIndicatorStyleOptions>):
   };
 };
 
-interface IndicatorSpringRefs {
-  readonly lineRef: RefObject<SVGLineElement | null>;
-  readonly rectRef: RefObject<SVGRectElement | null>;
-}
-
-interface EnsureIndicatorSpringsOptions {
-  readonly animate: boolean;
-  readonly lineRef: RefObject<SVGLineElement | null>;
-  readonly lineX: number;
-  readonly lineSpringRef: RefObject<Spring | null>;
-  readonly rectRef: RefObject<SVGRectElement | null>;
-  readonly rectSpringRef: RefObject<Spring | null>;
-  readonly rectX: number;
-  readonly spring: Readonly<SpringConfig>;
-}
-
-const ensureIndicatorSprings = (options: Readonly<EnsureIndicatorSpringsOptions>): void => {
-  const { animate, lineRef, lineX, lineSpringRef, rectRef, rectSpringRef, rectX, spring } = options;
-  if (!animate) {return;}
-  rectSpringRef.current ??= createSpring({ damping: spring.damping, initial: rectX, onUpdate: (nx) => { rectRef.current?.setAttribute("x", String(nx)); }, stiffness: spring.stiffness });
-  lineSpringRef.current ??= createSpring({ damping: spring.damping, initial: lineX, onUpdate: (nx) => { lineRef.current?.setAttribute("x1", String(nx)); lineRef.current?.setAttribute("x2", String(nx)); }, stiffness: spring.stiffness });
-};
-
-interface IndicatorSpringTargets {
-  readonly lineSpringRef: RefObject<Spring | null>;
-  readonly lineX: number;
-  readonly rectSpringRef: RefObject<Spring | null>;
-  readonly rectX: number;
-}
-
-const setIndicatorSpringTargets = (options: Readonly<IndicatorSpringTargets>): void => {
-  const { lineSpringRef, lineX, rectSpringRef, rectX } = options;
-  rectSpringRef.current?.set(rectX);
-  lineSpringRef.current?.set(lineX);
-};
-
-interface IndicatorSpringsOptions {
-  readonly animate: boolean;
-  readonly effectiveSpring: Readonly<SpringConfig>;
-  readonly lineX: number;
-  readonly rectX: number;
-}
-
-// Crosshair spring tracking: springs own the animated x attrs exclusively and are
-// Driven imperatively, so React never sets them via JSX on the animated path.
-const useTooltipIndicatorSprings = (options: Readonly<IndicatorSpringsOptions>): IndicatorSpringRefs => {
-  const { animate, effectiveSpring, lineX, rectX } = options;
-  const rectRef = useRef<SVGRectElement | null>(null);
-  const lineRef = useRef<SVGLineElement | null>(null);
-  const rectSpringRef = useRef<Spring | null>(null);
-  const lineSpringRef = useRef<Spring | null>(null);
-  const ensureSprings = useCallback(() => {
-    ensureIndicatorSprings({ animate, lineRef, lineSpringRef, lineX, rectRef, rectSpringRef, rectX, spring: effectiveSpring });
-  }, [animate, effectiveSpring, lineX, rectX]);
-  // Cursor follow reads the latest targets without re-triggering the snap below.
-  const followIndicatorTargets = useEffectEvent((): void => {
-    if (!animate) {return;}
-    setIndicatorSpringTargets({ lineSpringRef, lineX, rectSpringRef, rectX });
-  });
-  useLayoutEffect(() => {
-    followIndicatorTargets();
-  });
-  useLayoutEffect(() => {
-    if (!animate) {return;}
-    ensureSprings();
-    rectSpringRef.current?.jump(rectX);
-    lineSpringRef.current?.jump(lineX);
-  });
-  return { lineRef, rectRef };
-};
-
 interface DashedIndicatorOptions {
-  readonly animate: boolean;
   readonly height: number;
   readonly indicatorFill: string;
-  readonly lineRef: RefObject<SVGLineElement | null>;
   readonly lineX: number;
   readonly strokeDasharray?: string;
   readonly strokeWidth: number;
 }
 
 const renderDashedIndicator = (options: Readonly<DashedIndicatorOptions>): ReactElement => {
-  const { animate, height, indicatorFill, lineRef, lineX, strokeDasharray, strokeWidth } = options;
-  if (animate) {
-    return (
-      <line
-        ref={lineRef}
-        stroke={indicatorFill}
-        strokeDasharray={strokeDasharray}
-        strokeWidth={strokeWidth}
-        y1={0}
-        y2={height}
-      />
-    );
-  }
+  const { height, indicatorFill, lineX, strokeDasharray, strokeWidth } = options;
   return (
     <line
       stroke={indicatorFill}
@@ -418,27 +185,14 @@ const renderDashedIndicator = (options: Readonly<DashedIndicatorOptions>): React
 };
 
 interface SolidIndicatorOptions {
-  readonly animate: boolean;
   readonly height: number;
   readonly indicatorFill: string;
   readonly pixelWidth: number;
-  readonly rectRef: RefObject<SVGRectElement | null>;
   readonly rectX: number;
 }
 
 const renderSolidIndicator = (options: Readonly<SolidIndicatorOptions>): ReactElement => {
-  const { animate, height, indicatorFill, pixelWidth, rectRef, rectX } = options;
-  if (animate) {
-    return (
-      <rect
-        ref={rectRef}
-        fill={indicatorFill}
-        height={height}
-        width={pixelWidth}
-        y={0}
-      />
-    );
-  }
+  const { height, indicatorFill, pixelWidth, rectX } = options;
   return (
     <rect
       fill={indicatorFill}
@@ -451,19 +205,17 @@ const renderSolidIndicator = (options: Readonly<SolidIndicatorOptions>): ReactEl
 };
 
 interface FadedIndicatorOptions {
-  readonly animate: boolean;
   readonly fadeLength: number;
   readonly fadeSides: VerticalFadeSides;
   readonly gradientId: string;
   readonly height: number;
   readonly indicatorFill: string;
   readonly pixelWidth: number;
-  readonly rectRef: RefObject<SVGRectElement | null>;
   readonly rectX: number;
 }
 
 const renderFadedIndicator = (options: Readonly<FadedIndicatorOptions>): ReactElement => {
-  const { animate, fadeLength, fadeSides, gradientId, height, indicatorFill, pixelWidth, rectRef, rectX } = options;
+  const { fadeLength, fadeSides, gradientId, height, indicatorFill, pixelWidth, rectX } = options;
   const fadeStops = indicatorFadeGradientStops(fadeSides, fadeLength);
   const stopNodes = fadeStops.map((stop: Readonly<IndicatorFadeGradientStop>) => (
     <TooltipGradientStop
@@ -481,11 +233,10 @@ const renderFadedIndicator = (options: Readonly<FadedIndicatorOptions>): ReactEl
         </linearGradient>
       </defs>
       <rect
-        ref={animate ? rectRef : undefined}
         fill={`url(#${gradientId})`}
         height={height}
         width={pixelWidth}
-        x={animate ? undefined : rectX}
+        x={rectX}
         y={0}
       />
     </g>
@@ -493,24 +244,22 @@ const renderFadedIndicator = (options: Readonly<FadedIndicatorOptions>): ReactEl
 };
 
 interface IndicatorBodyOptions {
-  readonly animate: boolean;
+  readonly animate?: boolean;
   readonly fadeLength: number;
   readonly gradientId: string;
   readonly height: number;
-  readonly lineRef: RefObject<SVGLineElement | null>;
-  readonly rectRef: RefObject<SVGRectElement | null>;
   readonly strokeDasharray?: string;
   readonly style: Readonly<IndicatorStyle>;
 }
 
+// The package owns motion (V2.4): x arrives from the focus point.
+// Legacy spring numbers map onto the package transition in hover-geometry.ts.
 const renderIndicatorBody = (options: Readonly<IndicatorBodyOptions>): ReactElement => {
-  const { animate, fadeLength, gradientId, height, lineRef, rectRef, strokeDasharray, style } = options;
+  const { fadeLength, gradientId, height, strokeDasharray, style } = options;
   if (style.dashed) {
     return renderDashedIndicator({
-      animate,
       height,
       indicatorFill: style.fill,
-      lineRef,
       lineX: style.lineX,
       strokeDasharray,
       strokeWidth: style.strokeWidth,
@@ -518,23 +267,19 @@ const renderIndicatorBody = (options: Readonly<IndicatorBodyOptions>): ReactElem
   }
   if (!style.fadeSides.any) {
     return renderSolidIndicator({
-      animate,
       height,
       indicatorFill: style.fill,
       pixelWidth: style.pixelWidth,
-      rectRef,
       rectX: style.rectX,
     });
   }
   return renderFadedIndicator({
-    animate,
     fadeLength,
     fadeSides: style.fadeSides,
     gradientId,
     height,
     indicatorFill: style.fill,
     pixelWidth: style.pixelWidth,
-    rectRef,
     rectX: style.rectX,
   });
 };
@@ -551,21 +296,15 @@ const TooltipIndicatorInner = ({
   fadeLength = DEFAULT_FADE_LENGTH_PX,
   animate = true,
   gradientId = "tooltip-indicator-gradient",
-  springConfig,
   strokeDasharray,
 }: Readonly<Omit<TooltipIndicatorProps, "visible">>): ReactElement => {
-  const { tooltipSpring } = useChartConfig();
-  const effectiveSpring = springConfig ?? tooltipSpring;
   const style = resolveIndicatorStyle({ colorEdge, colorMid, columnWidth, fadeEdges, span, strokeDasharray, width, x });
-  const { lineRef, rectRef } = useTooltipIndicatorSprings({ animate, effectiveSpring, lineX: style.lineX, rectX: style.rectX });
 
   return renderIndicatorBody({
     animate,
     fadeLength,
     gradientId,
     height,
-    lineRef,
-    rectRef,
     strokeDasharray,
     style,
   });
@@ -701,81 +440,6 @@ const measureTooltipBoxPanel = (
   return { height: sizeRef.current.height, width: sizeRef.current.width };
 };
 
-interface MaybeRunEntranceOptions {
-  readonly entrance: boolean;
-  readonly flip: boolean;
-  readonly prevFlipRef: RefObject<boolean | null>;
-  readonly runEntrance: (flipped: boolean) => void;
-}
-
-const maybeRunTooltipEntrance = (options: Readonly<MaybeRunEntranceOptions>): void => {
-  const { entrance, flip, prevFlipRef, runEntrance } = options;
-  const prevFlip = prevFlipRef.current;
-  prevFlipRef.current = flip;
-  if (entrance && (prevFlip === null || flip !== prevFlip)) {
-    runEntrance(flip);
-  }
-};
-
-interface TooltipBoxMotionOptions {
-  readonly animate: boolean;
-  readonly effectiveSpring: Readonly<SpringConfig>;
-  readonly entrance: boolean;
-  readonly targetX: number;
-  readonly targetY: number;
-}
-
-interface TooltipBoxMotion {
-  readonly ensurePositionSprings: () => void;
-  readonly layerRef: RefObject<HTMLDivElement | null>;
-  readonly leftSpringRef: RefObject<Spring | null>;
-  readonly panelRef: RefObject<HTMLDivElement | null>;
-  readonly prevFlipRef: RefObject<boolean | null>;
-  readonly runEntrance: (flipped: boolean) => void;
-  readonly topSpringRef: RefObject<Spring | null>;
-}
-
-// Tooltip-box motion: position springs plus the entrance spring, all driven imperatively
-// Off render-time targets; React only paints the static fallback position.
-const useTooltipBoxMotion = (options: Readonly<TooltipBoxMotionOptions>): TooltipBoxMotion => {
-  const { animate, effectiveSpring, entrance, targetX, targetY } = options;
-  const layerRef = useRef<HTMLDivElement | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const leftSpringRef = useRef<Spring | null>(null);
-  const topSpringRef = useRef<Spring | null>(null);
-  const entranceSpringRef = useRef<Spring | null>(null);
-  const prevFlipRef = useRef<boolean | null>(null);
-  // Latest position/spring targets for the lazy springs below, read here so the
-  // Ensure callback stays stable while still seeding from current values.
-  const latestTargetsRef = useRef({ effectiveSpring, targetX, targetY });
-  latestTargetsRef.current = { effectiveSpring, targetX, targetY };
-  const runEntrance = useCallback((flipped: boolean) => {
-    const panel = panelRef.current;
-    if (!panel || !entrance) {return;}
-    entranceSpringRef.current ??= createSpring({
-      damping: ENTRANCE_SPRING.damping,
-      initial: 0,
-      onUpdate: (progress) => {
-        if (!panelRef.current) {return;}
-        const from = flipped ? ENTRANCE_SLIDE_OFFSET_PX : -ENTRANCE_SLIDE_OFFSET_PX;
-        panelRef.current.style.transformOrigin = flipped ? "right top" : "left top";
-        panelRef.current.style.transform = `translateX(${from * (FULL_PROGRESS - progress)}px) scale(${ENTRANCE_START_SCALE + (FULL_PROGRESS - ENTRANCE_START_SCALE) * progress})`;
-        panelRef.current.style.opacity = String(progress);
-      },
-      stiffness: ENTRANCE_SPRING.stiffness,
-    });
-    entranceSpringRef.current.jump(ENTRANCE_START_PROGRESS);
-    entranceSpringRef.current.set(FULL_PROGRESS);
-  }, [entrance]);
-  const ensurePositionSprings = useCallback(() => {
-    if (!animate) {return;}
-    const latest = latestTargetsRef.current;
-    leftSpringRef.current ??= createSpring({ damping: latest.effectiveSpring.damping, initial: latest.targetX, onUpdate: (leftPx) => { if (layerRef.current) {layerRef.current.style.left = `${leftPx}px`;} }, stiffness: latest.effectiveSpring.stiffness });
-    topSpringRef.current ??= createSpring({ damping: latest.effectiveSpring.damping, initial: latest.targetY, onUpdate: (topPx) => { if (layerRef.current) {layerRef.current.style.top = `${topPx}px`;} }, stiffness: latest.effectiveSpring.stiffness });
-  }, [animate]);
-  return { ensurePositionSprings, layerRef, leftSpringRef, panelRef, prevFlipRef, runEntrance, topSpringRef };
-};
-
 interface TooltipPortalOptions {
   readonly children: ReactNode;
   readonly container: HTMLElement;
@@ -803,48 +467,6 @@ const renderTooltipPortal = (options: Readonly<TooltipPortalOptions>): ReactNode
   );
 };
 
-interface SyncBoxLayoutOptions {
-  readonly animate: boolean;
-  readonly boxSizeRef: RefObject<TooltipBoxSize>;
-  readonly children: ReactNode;
-  readonly containerHeight: number;
-  readonly containerWidth: number;
-  readonly entrance: boolean;
-  readonly flippedOverride?: boolean;
-  readonly leftOverride?: number;
-  readonly motion: Readonly<TooltipBoxMotion>;
-  readonly offset: number;
-  readonly setStaticPosition: (position: Readonly<{ left: number; top: number }>) => void;
-  readonly topOverride?: number;
-  readonly x: number;
-  readonly y: number;
-}
-
-const syncTooltipBoxLayout = (options: Readonly<SyncBoxLayoutOptions>): void => {
-  const { animate, boxSizeRef, containerHeight, containerWidth, entrance, flippedOverride, leftOverride, motion, offset, setStaticPosition, topOverride, x, y } = options;
-  const cached = measureTooltipBoxPanel(motion.panelRef, boxSizeRef);
-  const synced = resolveTooltipPlacement({
-    containerHeight,
-    containerWidth,
-    flip: leftOverride === undefined ? x + cached.width + offset > containerWidth : (flippedOverride ?? false),
-    leftOverride,
-    offset,
-    tooltipHeight: cached.height,
-    tooltipWidth: cached.width,
-    topOverride,
-    x,
-    y,
-  });
-  maybeRunTooltipEntrance({ entrance, flip: synced.flip, prevFlipRef: motion.prevFlipRef, runEntrance: motion.runEntrance });
-  if (!animate) {
-    setStaticPosition({ left: synced.tx, top: synced.ty });
-    return;
-  }
-  motion.ensurePositionSprings();
-  motion.leftSpringRef.current?.jump(synced.tx);
-  motion.topSpringRef.current?.jump(synced.ty);
-};
-
 const useTooltipLayerFade = (layerRef: RefObject<HTMLDivElement | null>, entrance: boolean): void => {
   useEffect((): (() => void) | undefined => {
     const layer = layerRef.current;
@@ -855,25 +477,8 @@ const useTooltipLayerFade = (layerRef: RefObject<HTMLDivElement | null>, entranc
   }, [entrance, layerRef]);
 };
 
-interface BoxFollowOptions {
-  readonly animate: boolean;
-  readonly ensurePositionSprings: () => void;
-  readonly leftSpringRef: RefObject<Spring | null>;
-  readonly targetX: number;
-  readonly targetY: number;
-  readonly topSpringRef: RefObject<Spring | null>;
-}
-
-const useTooltipBoxFollow = (options: Readonly<BoxFollowOptions>): void => {
-  const { animate, ensurePositionSprings, leftSpringRef, targetX, targetY, topSpringRef } = options;
-  useEffect(() => {
-    if (!animate) {return;}
-    ensurePositionSprings();
-    leftSpringRef.current?.set(targetX);
-    topSpringRef.current?.set(targetY);
-  });
-};
-
+// The package owns motion (V2.4): the layer renders at the resolved focus point.
+// Follow timing lives in the native tooltip extension.
 const TooltipBoxInner = ({
   x,
   y,
@@ -885,8 +490,6 @@ const TooltipBoxInner = ({
   left: leftOverride,
   top: topOverride,
   flipped: flippedOverride,
-  springConfig,
-  animate = true,
   entrance = true,
   panelStyle,
   backgroundColor = "var(--chart-tooltip-background)",
@@ -895,8 +498,8 @@ const TooltipBoxInner = ({
   container: HTMLElement;
   layerClassName?: string;
 }>): ReactNode => {
-  const { tooltipBoxSpring } = useChartConfig();
-  const effectiveSpring = springConfig ?? tooltipBoxSpring;
+  const layerRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const boxSizeRef = useRef({ height: BOX_FALLBACK_HEIGHT, width: BOX_FALLBACK_WIDTH });
   const [staticPosition, setStaticPosition] = useState({ left: x, top: y });
   const placement = resolveTooltipRenderPlacement({
@@ -910,40 +513,22 @@ const TooltipBoxInner = ({
     x,
     y,
   });
-  const motion = useTooltipBoxMotion({
-    animate,
-    effectiveSpring,
-    entrance,
-    targetX: placement.tx,
-    targetY: placement.ty,
-  });
 
-  // Motion members stay listed so the sync only re-runs on real motion changes.
   useLayoutEffect(() => {
-    syncTooltipBoxLayout({
-      animate,
-      boxSizeRef,
-      children,
+    const cached = measureTooltipBoxPanel(panelRef, boxSizeRef);
+    const synced = resolveTooltipPlacement({
       containerHeight,
       containerWidth,
-      entrance,
-      flippedOverride,
+      flip: leftOverride === undefined ? x + cached.width + offset > containerWidth : (flippedOverride ?? false),
       leftOverride,
-      motion: {
-        ensurePositionSprings: motion.ensurePositionSprings,
-        layerRef: motion.layerRef,
-        leftSpringRef: motion.leftSpringRef,
-        panelRef: motion.panelRef,
-        prevFlipRef: motion.prevFlipRef,
-        runEntrance: motion.runEntrance,
-        topSpringRef: motion.topSpringRef,
-      },
       offset,
-      setStaticPosition,
+      tooltipHeight: cached.height,
+      tooltipWidth: cached.width,
       topOverride,
       x,
       y,
     });
+    setStaticPosition({ left: synced.tx, top: synced.ty });
   }, [
     x,
     y,
@@ -953,37 +538,18 @@ const TooltipBoxInner = ({
     leftOverride,
     topOverride,
     flippedOverride,
-    animate,
-    entrance,
     children,
-    boxSizeRef,
-    motion.ensurePositionSprings,
-    motion.layerRef,
-    motion.leftSpringRef,
-    motion.panelRef,
-    motion.prevFlipRef,
-    motion.runEntrance,
-    motion.topSpringRef,
   ]);
 
-  useTooltipLayerFade(motion.layerRef, entrance);
-
-  useTooltipBoxFollow({
-    animate,
-    ensurePositionSprings: motion.ensurePositionSprings,
-    leftSpringRef: motion.leftSpringRef,
-    targetX: placement.tx,
-    targetY: placement.ty,
-    topSpringRef: motion.topSpringRef,
-  });
+  useTooltipLayerFade(layerRef, entrance);
 
   return renderTooltipPortal({
     children,
     container,
     layerClassName,
-    layerRef: motion.layerRef,
+    layerRef,
     layerStyle: { left: staticPosition.left, top: staticPosition.top },
-    panelRef: motion.panelRef,
+    panelRef,
     panelStyleResolved: {
       transformOrigin: placement.isFlipped ? "right top" : "left top",
       ...(backgroundColor ? { backgroundColor } : undefined),

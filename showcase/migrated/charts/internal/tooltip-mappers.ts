@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import type { ChartMotionTransition } from "@tanstack/charts";
 import type { IndicatorFadeEdges } from "./fade-mask";
 import type { SpringConfig } from "./chart-config-context";
 import type { ChartDatum, ChartTooltipConfig, ChartTooltipPoint, IndicatorWidth, TooltipRow } from "./types";
@@ -30,6 +31,17 @@ const resolveIndicatorPixelWidth = (cfg: Readonly<{ width?: IndicatorWidth; span
   if (cfg.span !== undefined && cfg.columnWidth !== undefined) {return cfg.span * cfg.columnWidth;}
   return resolveIndicatorWidth(cfg.width ?? "line");
 };
+
+/**
+ * Maps legacy tooltip spring numbers onto the package transition.
+ * @param {Readonly<SpringConfig>} spring - Legacy damping/stiffness pair.
+ * @returns {ChartMotionTransition} Package spring transition with identical timing.
+ */
+const resolveTooltipSpringTransition = (spring: Readonly<SpringConfig>): ChartMotionTransition => ({
+  damping: spring.damping,
+  stiffness: spring.stiffness,
+  type: "spring",
+});
 
 interface IndicatorConfig {
   width?: IndicatorWidth;
@@ -121,5 +133,5 @@ const toIndicatorConfig = (cfg?: Readonly<IndicatorMapperSource> | null): Indica
   };
 };
 
-export { resolveIndicatorWidth, resolveIndicatorPixelWidth, toDotConfig, toIndicatorConfig };
+export { resolveIndicatorWidth, resolveIndicatorPixelWidth, resolveTooltipSpringTransition, toDotConfig, toIndicatorConfig };
 export type { DotVariant, IndicatorConfig, DotConfig, BoxConfig, TooltipMapperSource };

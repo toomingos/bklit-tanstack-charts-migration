@@ -1,8 +1,9 @@
-import type { ReactElement, RefObject } from 'react';
+import type { ReactElement } from 'react';
 
+// The package owns motion (V2.4): x comes from the focus point.
+// Timing comes from resolveTooltipSpringTransition; `animate` stays for props.
 interface IndicatorDashedLineProps {
   readonly animate: boolean;
-  readonly lineRef: RefObject<SVGLineElement | null>;
   readonly indicatorFill: string;
   readonly strokeDasharray: string;
   readonly pixelWidth: number;
@@ -11,8 +12,6 @@ interface IndicatorDashedLineProps {
 }
 
 const IndicatorDashedLine = ({
-  animate,
-  lineRef,
   indicatorFill,
   strokeDasharray,
   pixelWidth,
@@ -20,18 +19,6 @@ const IndicatorDashedLine = ({
   height,
 }: Readonly<IndicatorDashedLineProps>): ReactElement => {
   const strokeWidth = Math.max(1, pixelWidth);
-  if (animate) {
-    return (
-      <line
-        ref={lineRef}
-        stroke={indicatorFill}
-        strokeDasharray={strokeDasharray}
-        strokeWidth={strokeWidth}
-        y1={0}
-        y2={height}
-      />
-    );
-  }
   return (
     <line
       stroke={indicatorFill}
