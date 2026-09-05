@@ -8,6 +8,7 @@
     "bench": "node bench/run.mjs",
     "bench:bundles": "node bench/measure-bundle.mjs",
     "bench:report": "node bench/report.mjs",
+    "curve-parity": "node qa/curve-parity.mjs",
     "qa": "node qa/screenshot.mjs",
     "test": "node --test \"qa/unit/*.test.mjs\"",
     "dev:app": "pnpm --dir bench/app dev",

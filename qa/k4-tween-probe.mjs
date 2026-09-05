@@ -1,10 +1,12 @@
 // K4 gate: pixel diff can't see the tween (capture lands post-reveal; mid-reveal diffs measure scheduler skew, not curve fidelity).
-// Direct WAAPI readback vs the analytic curve instead; default spring reveal is gated separately via --chart candlestick.
-// PASS: ~200 anims, dur 1800, cubic-bezier(0.85,0,0.15,1), 64 frames, 10.8ms delay steps; bklit reads 0 (framer-motion invisible to WAAPI).
-// Usage: node qa/k4-tween-probe.mjs (bench preview serving on :5198 or QA_PORT).
+// V4.3 demoted this probe to smoke: presence/no-throw only (paint + settled +
+// non-empty scene for both impls). Curve fidelity moved to qa/curve-parity.mjs.
+// Full WAAPI readback remains behind --full for manual debugging.
+// Usage: node qa/k4-tween-probe.mjs [--full] (bench preview serving on :5198 or QA_PORT).
 import { chromium } from "playwright";
 
 const PORT = process.env.QA_PORT ?? 5198;
+const SMOKE = !process.argv.includes("--full");
 const base = `http://localhost:${PORT}`;
 const n = 100;
 
@@ -54,6 +56,12 @@ const probe = async (browser, impl) => {
 const browser = await chromium.launch();
 for (const impl of ["bklit", "migrated"]) {
   const r = await probe(browser, impl);
-  console.log(impl, JSON.stringify(r, null, 1));
+  if (SMOKE) {
+    const ok = r.rectCount > 0;
+    console.log(impl, ok ? "smoke PASS" : "smoke FAIL", `rects=${r.rectCount}`);
+    if (!ok) process.exitCode = 1;
+  } else {
+    console.log(impl, JSON.stringify(r, null, 1));
+  }
 }
 await browser.close();

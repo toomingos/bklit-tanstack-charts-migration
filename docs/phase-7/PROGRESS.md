@@ -22,8 +22,8 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 
 | Wave | Item | Title | State | Session | Commit | D-entries |
 |---|---|---|---|---|---|---|
-| 1 | V1.1 | host module + legacy hooks | merged | `ses_f8eaea0aeffephB8JH5HsfyVlr` | (next commit) | D520 · fixture renders `<svg`, 12 `Eq<>` · library-cannot: `ResolvedScale` carries no scale (0.16.0) · resumed once |
-| 1 | V1.2 | scales and bounds from the store | todo | | | |
+| 1 | V1.1 | host module + legacy hooks | merged | `ses_f8eaea0aeffephB8JH5HsfyVlr` | `341f0e6` | D520 · fixture renders `<svg`, 12 `Eq<>` · library-cannot: `ResolvedScale` carries no scale (0.16.0) · resumed once |
+| 1 | V1.2 | scales and bounds from the store | blocked (G5) | `ses_f8e5d909effe6PGyPKJO5rnNpP` | | D521 · classification done (13 FACTORY / 7 STORE / 26 LOCAL / 2 rulings) · re-dispatch after V1.7 |
 | 1 | V1.6 | export parity | todo | | | |
 | 1 | V1.8 | aria forwarding | merged | `ses_f8eae9829ffegZk4H0yURVPpUM` | `e50babd` | D516 · `ariaLabel="` literals 16 → 0 · funnel props only until V3.1 (R2) · heatmap via context |
 | 1 | V1.9 | package contract | merged | `ses_f8eae8f80ffemH1q37JpHnKBRr` | `e29b694` | D517 · pack 450 files, fresh Next app builds + renders · +10 deps declared, removals owned by later items · G4 |
@@ -33,10 +33,10 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 2 | V1.3 | registering children | todo | | | |
 | 2 | V1.4 | optional layers own imports | todo | | | |
 | 2 | V1.5 | `cursorHost`, x-domain padding | todo | | | |
-| 2 | V1.7 | host-owned sizing and SSR | todo | | | |
+| 2 | V1.7 | host-owned sizing and SSR | dispatched | (see next tick) | | D521 · pulled ahead of V1.2 |
 | 2 | V2.1 | `withStates` on polar/geo | todo | | | |
 | 2 | V3.3 | heatmap on band scales | todo | | | |
-| 2 | V4.3 | curve parity in Node | todo | | | |
+| 2 | V4.3 | curve parity in Node | merged | `ses_f8e4ea68affeIAxEMFrhK6abJf` | (next commit) | D522 · 10 curves, 9 PASS ≤ 0.02, line-pulse = exception 1 · `pnpm curve-parity` · k4 probe → smoke |
 | 3 | V2.2 | package pointer and focus — pie · ring · sunburst · gauge · radar · composed · sankey · heatmap · choropleth (one row per family when dispatched) | todo | | | |
 | 3 | V2.3 | legend → controlled focus / selection | todo | | | |
 | 3 | V2.4 | decorative tooltip springs | todo | | | |
@@ -80,6 +80,7 @@ stamp), UPSTREAM (I-number in `07`). No vector = synthesis defect: amend `08` §
 | G2 | V0.3 gate (lead) | `gate:checks` census fails: 17 reach-in ledger failures (15 internal modules not in ledger, radar 20>19, sunburst 8>7); total 67 sites ≤ phase-6's 79; ledger predates the module split in `f5928ab` (guard already failing at `325a065`, before 7.0) | V4 (gate integrity) | FOLD into V4.4 (re-key ledger to split modules, pins = today's counts, total ≤ 79) — done, guard 0 failures | D512 (V0.3), D519 |
 | G3 | V4.2 executor (`ses_f8eae74d6ffevmKWqC0OMWAzCO`) | `cd bench/app && npx tsc --noEmit` had 22 pre-existing errors (`toSorted` needs lib ES2023; implicit-any comparators in 5 migrated internals) invisible to the gate because `gate:checks` only runs `vite build` | V4 (gate integrity) | FOLD: lib `ES2022` → `ES2023` in `bench/app/tsconfig.json` by the lead in the V4.2 commit (bench tsc 0); V4.4 adds bench tsc to `gate:checks` — done | D514, D519 |
 
+| G5 | V1.2 executor (`ses_f8e5d909effe6PGyPKJO5rnNpP`) | No entry mounts `ChartHost` (V1.1 built the host, nothing uses it), so the 26 LOCAL `.range(` sites have no store above them; mounting is V1.7's owned work | V1 (one chart host) | FOLD: reorder V1.7 before V1.2 (D521 rulings a–d), V1.2 re-dispatched after V1.7 merges | D521 |
 | G4 | V1.9 executor (`ses_f8eae8f80ffemH1q37JpHnKBRr`) + lead | `showcase/package.json` cannot drop `@tanstack/charts`/`@tanstack/react-charts` yet: the showcase resolves `@showcase/migrated-charts` to `migrated/charts/index.ts` through tsconfig `paths` (source, not an installed package), `showcase/migrated` is no workspace member, and `qa/unit/lib/render.mjs` + `next.config.mjs` read `showcase/node_modules/@tanstack/charts`; a fresh `pnpm install` after the drop would lose the package | V5 (package shape) | FOLD into V5.3: make `showcase/migrated` a workspace package consumed as `@showcase/migrated-src` (showcase, qa/unit, next.config point at it), then drop the deps from the showcase root | D517 |
 
 ## Idiom checklist (V0.6 / V3.8)
