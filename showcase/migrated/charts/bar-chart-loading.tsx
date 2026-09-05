@@ -9,7 +9,7 @@ import { BarLoadingSweep } from "./internal/bar-loading-sweep";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { DEFAULT_CHART_MARGIN, useChartMargin } from "./internal/use-chart-margin";
 import type { ChartMargin } from "./internal/use-chart-margin";
-import { useContainerWidth } from "./internal/use-container-size";
+import { HOST_INITIAL_WIDTH } from "./internal/chart-host";
 
 interface BarChartLoadingProps {
   /** Chart margins. */
@@ -36,7 +36,8 @@ const BarChartLoading = ({
 }: Readonly<BarChartLoadingProps>): ReactElement => {
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const width = useContainerWidth(containerRef);
+  // Host-owned sizing: the skeleton renders at the host initial width (also on the server).
+  const width = HOST_INITIAL_WIDTH;
   const rootStyle = useMemo(
     (): CSSProperties => ({
       aspectRatio,
@@ -45,9 +46,6 @@ const BarChartLoading = ({
     }),
     [aspectRatio],
   );
-  if (width <= 0) {
-    return <div ref={containerRef} className={className} style={rootStyle} />;
-  }
   const heightPx = width / parseAspectRatio(aspectRatio);
   const innerWidth = Math.max(0, width - margin.left - margin.right);
   const innerHeight = Math.max(0, heightPx - margin.top - margin.bottom);

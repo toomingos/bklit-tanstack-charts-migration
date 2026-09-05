@@ -1,5 +1,5 @@
 import type { ReactElement, RefObject } from "react";
-import { RendererChart } from "@tanstack/react-charts/tooltip";
+import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
 import type { ChartRendererRenderContext } from "@tanstack/charts";
 import type { useHeatmap } from "./heatmap-context";
 import { chartMotionRenderer } from "./motion-renderer";
@@ -48,13 +48,13 @@ const buildHeatmapCellsTree = ({
 }: Readonly<BuildHeatmapCellsTreeParams>): ReactElement => (
   <div ref={containerRef} style={HEATMAP_CELLS_CONTAINER_STYLE}>
     <div style={HEATMAP_CELLS_INNER_STYLE}>
-      <RendererChart
+      <ChartHost
         renderer={chartMotionRenderer<CellDatum, string, string>()}
         className="ts-bkm-heatmap-svg"
         ariaLabel={ariaLabel}
         ariaDescription={ariaDescription}
         definition={definition}
-        width={ctx.width}
+        initialWidth={HOST_INITIAL_WIDTH}
         height={ctx.height}
         style={HEATMAP_RENDERER_STYLE}
         onRender={handleRender}

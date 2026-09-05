@@ -8,8 +8,8 @@ import type { GeoPermissibleObjects, GeoProjection } from 'd3-geo';
 import type { TransformMatrix, ProvidedZoom } from "./internal/zoom-engine";
 import { Zoom } from "./internal/zoom-engine";
 import { identityMatrix } from "./internal/zoom-math";
-import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
+import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import type {
   ChartPoint,
   ChartRendererRenderContext,
@@ -34,7 +34,6 @@ import { ChoroplethGraticuleOverlay } from "./internal/choropleth-graticule";
 import type { ChoroplethGraticuleProps } from "./internal/choropleth-graticule-props";
 import { findRevealRoot, isRevealed } from "./internal/deferred-reveal";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
-import { useContainerWidth } from "./internal/use-container-size";
 import type { EnterTransition } from './internal/enter-transition';
 import "./styles.css";
 
@@ -309,8 +308,9 @@ interface ChoroplethDefinitionOptions {
 const buildChoroplethDefinition = (
   options: Readonly<ChoroplethDefinitionOptions>,
 ): StaticChartDefinition<ChoroplethFeature, ChartValue, ChartValue, "dom"> | undefined => {
-  const { data, width, height, projection, featureConfig, hoveredKey, baseOpacity, dimOpacity, hasTooltipChild } = options;
-  if (width <= 0 || height <= 0 || !projection) {return undefined;}
+  const { data, projection, featureConfig, hoveredKey, baseOpacity, dimOpacity, hasTooltipChild } = options;
+  // Width/height always arrive positive from host-owned sizing; only a missing projection blocks the definition.
+  if (!projection) {return undefined;}
   const projForMark = projection;
   const painters = makeFeaturePainters({ baseOpacity, dimOpacity, featureConfig, hoveredKey });
   const chartDefinition = defineChart({
@@ -529,6 +529,43 @@ interface ChoroplethRevealInputs {
   readonly revealSignature: string;
 }
 
+// Zoom ticks schedule animation frames; false until the client commits (SSR has no rAF).
+const useMountedRef = (): RefObject<boolean> => {
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return (): void => {
+      mountedRef.current = false;
+    };
+  }, []);
+  return mountedRef;
+};
+
+// Tooltip card config from the tooltip child (extracted to keep the body under max-statements).
+const useChoroplethTooltipCard = (
+  tooltipConfig: ChoroplethTooltipProps | undefined,
+  hasTooltipChild: boolean,
+): (() => ChoroplethTooltipCardConfig | undefined) => {
+  const formatValue = tooltipConfig?.formatValue ?? intFmt;
+  const tooltipContent = tooltipConfig?.content;
+  const getFeatureName = tooltipConfig?.getFeatureName;
+  const getFeatureValue = tooltipConfig?.getFeatureValue;
+  const valueLabel = tooltipConfig?.valueLabel ?? "Value";
+  return useCallback((): ChoroplethTooltipCardConfig | undefined => {
+    if (!hasTooltipChild) {return undefined;}
+    return {
+      backgroundColor: tooltipConfig?.backgroundColor,
+      className: tooltipConfig?.className,
+      content: tooltipContent,
+      formatValue,
+      getFeatureName,
+      getFeatureValue,
+      panelStyle: tooltipConfig?.panelStyle,
+      valueLabel,
+    };
+  }, [hasTooltipChild, tooltipContent, formatValue, getFeatureName, getFeatureValue, valueLabel, tooltipConfig]);
+};
+
 
 const ChoroplethChartBody = ({
   data,
@@ -547,9 +584,10 @@ const ChoroplethChartBody = ({
   children,
   width,
   height,
+  adoptWidth,
   ariaLabel = "Choropleth chart",
   ariaDescription,
-}: ChoroplethChartProps & { width: number; height: number }): ReactElement => {
+}: ChoroplethChartProps & { width: number; height: number; adoptWidth: (sceneWidth: number | undefined) => void }): ReactElement => {
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
   const ratio = useMemo(() => parseAspectRatio(aspectRatio), [aspectRatio]);
 
@@ -563,13 +601,14 @@ const ChoroplethChartBody = ({
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   const zoomRefForChrome = useRef<ProvidedZoom<HTMLElement> | null>(null);
+  // Zoom ticks schedule animation frames; skip them until the client commits (SSR has no rAF).
+  const mountedRef = useMountedRef();
 
   // Zoom-motion state plus the per-frame tick; hook owns the contiguous group below.
   const { displayMatrix, getIsDragging, onZoomTick, setRefreshTooltipAnchor } =
     useChoroplethZoomMotion({ initialZoom });
 
-  const projection = useMemo((): GeoProjection | undefined => {
-    if (width <= 0 || height <= 0) {return undefined;}
+  const projection = useMemo((): GeoProjection => {
     const innerW = width - margin.left - margin.right;
     const innerH = height - margin.top - margin.bottom;
     const baseScale = scaleProp ?? (innerW > 0 ? (innerW / CHOROPLETH_REFERENCE_WIDTH) * CHOROPLETH_BASE_SCALE : CHOROPLETH_BASE_SCALE);
@@ -630,26 +669,9 @@ const ChoroplethChartBody = ({
   > | null>(null);
   const hoveredKeyRef = useRef<string | null>(null);
 
-  const formatValue = tooltipConfig?.formatValue ?? intFmt;
-  const tooltipContent = tooltipConfig?.content;
-  const getFeatureName = tooltipConfig?.getFeatureName;
-  const getFeatureValue = tooltipConfig?.getFeatureValue;
-  const valueLabel = tooltipConfig?.valueLabel ?? "Value";
-  const getTooltipConfig = useCallback((): ChoroplethTooltipCardConfig | undefined => {
-    if (!hasTooltipChild) {return undefined;}
-    return {
-      backgroundColor: tooltipConfig?.backgroundColor,
-      className: tooltipConfig?.className,
-      content: tooltipContent,
-      formatValue,
-      getFeatureName,
-      getFeatureValue,
-      panelStyle: tooltipConfig?.panelStyle,
-      valueLabel,
-    };
-  }, [hasTooltipChild, tooltipContent, formatValue, getFeatureName, getFeatureValue, valueLabel, tooltipConfig]);
+  const getTooltipConfig = useChoroplethTooltipCard(tooltipConfig, hasTooltipChild);
 
-  // Focus bridge uses source 'pointer': programmatic would trigger legend-dim states.
+// Focus bridge uses source 'pointer': programmatic would trigger legend-dim states.
   const onFocusChange = useCallback((key: string | null) => {
     hoveredKeyRef.current = key;
     const ctx = renderContextRef.current;
@@ -688,6 +710,7 @@ const ChoroplethChartBody = ({
       Pick<ChartRendererRenderContext<ChoroplethFeature>, "scene" | "interaction" | "surface">
     >,
   ) => {
+    adoptWidth(context.scene?.width);
     const { container, scene, interaction, surface } = context;
     if (scene && interaction) {renderContextRef.current = { interaction, scene };}
     const chartContainer = container;
@@ -695,7 +718,7 @@ const ChoroplethChartBody = ({
     syncZoomContainer(chartContainer, zoomRefForChrome.current, getIsDragging());
     ensureHoverChrome().reconnect(chartContainer, collectGeoElements(svg));
     startReveal(chartContainer, svg);
-  }, [ensureHoverChrome, startReveal, getIsDragging]);
+  }, [adoptWidth, ensureHoverChrome, startReveal, getIsDragging]);
 
   useEffect(() =>
     (): void => {
@@ -755,17 +778,18 @@ const ChoroplethChartBody = ({
         </svg>
       ) : undefined}
       {definition ? (
-        <RendererChart
+        <ChartHost
           renderer={chartMotionRenderer<ChoroplethFeature>()}
           ariaLabel={ariaLabel}
           ariaDescription={ariaDescription}
           aspectRatio={ratio}
+          initialWidth={HOST_INITIAL_WIDTH}
           definition={definition}
           onRender={handleRender}
           renderTooltipBody={handleTooltipBody}
         />
       ) : undefined}
-      {graticuleConfig && projection ? renderGraticuleLayer({ graticuleConfig, height, projection, width }) : undefined}
+      {graticuleConfig ? renderGraticuleLayer({ graticuleConfig, height, projection, width }) : undefined}
     </>
   );
 
@@ -827,7 +851,9 @@ const ChoroplethChartBody = ({
       {(zoom) => {
         zoomRefForChrome.current = zoom;
         const activeZoom = zoom;
-        onZoomTick(activeZoom);
+        if (mountedRef.current) {
+          onZoomTick(activeZoom);
+        }
         return (
           <ChoroplethZoomValue zoom={activeZoom}>
             <ChoroplethContext.Provider value={choroplethContextValue}>
@@ -842,6 +868,7 @@ const ChoroplethChartBody = ({
 
 
 interface SizedBodyOptions {
+  readonly adoptWidth: (sceneWidth: number | undefined) => void;
   readonly data: ChoroplethChartProps["data"];
   readonly margin: Margin;
   readonly animationDuration: number;
@@ -862,12 +889,13 @@ interface SizedBodyOptions {
   readonly ariaDescription?: string;
 }
 
-const renderSizedBody = (options: Readonly<SizedBodyOptions>): ReactElement | undefined => {
+const renderSizedBody = (options: Readonly<SizedBodyOptions>): ReactElement => {
   const { width } = options;
+  // Width always arrives positive from host-owned sizing.
   const height = Math.max(0, width / options.ratio);
-  if (width <= 0 || height <= 0) {return undefined;}
   return (
     <ChoroplethChartBody
+      adoptWidth={options.adoptWidth}
       data={options.data}
       margin={options.margin}
       animationDuration={options.animationDuration}
@@ -892,16 +920,21 @@ const renderSizedBody = (options: Readonly<SizedBodyOptions>): ReactElement | un
 };
 
 
-// Container sizing (width probe plus the aspect-locked wrapper style) as one unit.
+// Container sizing (host-owned width probe plus the aspect-locked wrapper style) as one unit.
 interface ChoroplethContainerSizing {
+  readonly adoptWidth: (sceneWidth: number | undefined) => void;
   readonly containerStyle: React.CSSProperties;
   readonly width: number;
 }
 
-const useChoroplethContainerSizing = (containerRef: RefObject<HTMLDivElement | null>, ratio: number): ChoroplethContainerSizing => {
-  const width = useContainerWidth(containerRef);
+const useChoroplethContainerSizing = (ratio: number): ChoroplethContainerSizing => {
+  // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
+  const adoptWidth = useCallback((sceneWidth: number | undefined): void => {
+    adoptHostWidth(setLiveWidth, sceneWidth);
+  }, []);
   const containerStyle = useMemo(() => ({ aspectRatio: String(ratio), overflow: "hidden", position: "relative", width: "100%" }) as const, [ratio]);
-  return { containerStyle, width };
+  return { adoptWidth, containerStyle, width: liveWidth };
 };
 
 const ChoroplethChart = ({
@@ -926,7 +959,7 @@ const ChoroplethChart = ({
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
   const ratio = useMemo(() => parseAspectRatio(aspectRatio), [aspectRatio]);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { containerStyle, width } = useChoroplethContainerSizing(containerRef, ratio);
+  const { adoptWidth, containerStyle, width } = useChoroplethContainerSizing(ratio);
 
   return (
     <div
@@ -936,6 +969,7 @@ const ChoroplethChart = ({
       data-bkm-chart="choropleth"
     >
       {renderSizedBody({
+        adoptWidth,
         animationDuration,
         ariaDescription,
         ariaLabel,

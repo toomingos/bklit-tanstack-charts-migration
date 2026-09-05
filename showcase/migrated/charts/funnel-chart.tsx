@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { intFmt } from "./internal/formatters";
 import { usePositiveChartSize } from "./internal/use-container-size";
+import { HOST_INITIAL_WIDTH } from "./internal/chart-host";
 import { funnelSegBox, resolveFunnelGrid } from './internal/funnel-geometry';
 import { createFunnelHoverCoordinator } from './internal/funnel-hover-chrome';
 import type { FunnelHoverCoordinator } from './internal/funnel-hover-chrome';
@@ -18,6 +19,9 @@ const FUNNEL_DEFAULT_LAYERS = 3;
 const FUNNEL_DEFAULT_STAGGER_DELAY_S = 0.12;
 // Default gap between stages in pixels (bklit parity).
 const FUNNEL_DEFAULT_GAP = 4;
+// SSR fallback height ratios (match the frame aspect ratios: horizontal 2.2/1, vertical 1/1.8).
+const FUNNEL_SSR_HORIZONTAL_WIDTH_DIVISOR = 2.2;
+const FUNNEL_SSR_VERTICAL_HEIGHT_FACTOR = 1.8;
 // Fraction-to-percent scale for stage share labels.
 const FUNNEL_PERCENT_SCALE = 100;
 
@@ -401,8 +405,16 @@ const FunnelChart = ({
 }: Readonly<FunnelChartProps>): ReactElement | null => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sz = usePositiveChartSize(containerRef);
+  // SSR fallback at the host initial width (funnel has no defineChart until V3.1/R2).
+  // The hook keeps driving the hand-svg layout in the browser.
+  const isHorizontal = orientation === "horizontal";
+  const ssrHeightPerWidth = isHorizontal
+    ? 1 / FUNNEL_SSR_HORIZONTAL_WIDTH_DIVISOR
+    : FUNNEL_SSR_VERTICAL_HEIGHT_FACTOR;
+  const chartW = sz.width > 0 ? sz.width : HOST_INITIAL_WIDTH;
+  const chartH = sz.height > 0 ? sz.height : HOST_INITIAL_WIDTH * ssrHeightPerWidth;
   const coordinator = useFunnelHoverCoordinator(hoveredIndexProp, onHoverChange);
-  const resolved = resolveFunnelChartFrame({ chartH: sz.height, chartW: sz.width, data, gap, gridProp, isHorizontal: orientation === "horizontal" });
+  const resolved = resolveFunnelChartFrame({ chartH, chartW, data, gap, gridProp, isHorizontal });
   if (resolved === undefined) {
     return null;
   }
@@ -415,7 +427,7 @@ const FunnelChart = ({
       ref={containerRef}
       style={buildFunnelContainerStyle(frame.aspectRatio, style)}
     >
-      {frame.hasChartArea && renderFunnelChartBody({ baseValue, chartH: sz.height, chartW: sz.width, color, coordinator, data, edges, enterTransition, formatPercentage, formatValue, frame, gap, labelAlign, labelLayout, labelOrientation, layers, renderPattern, showLabels, showPercentage, showValues, staggerDelay })}
+      {frame.hasChartArea && renderFunnelChartBody({ baseValue, chartH, chartW, color, coordinator, data, edges, enterTransition, formatPercentage, formatValue, frame, gap, labelAlign, labelLayout, labelOrientation, layers, renderPattern, showLabels, showPercentage, showValues, staggerDelay })}
     </div>
   );
 };

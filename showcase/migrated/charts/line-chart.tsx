@@ -9,8 +9,8 @@ import {
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useEffectEvent } from "./internal/use-effect-event";
 import type { ScaleTime } from "d3-scale";
-import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
+import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import { useChartRenderer } from "./internal/motion-renderer";
 import {
   decimateTimeSeries,
@@ -38,7 +38,6 @@ import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { useChartLegendHover } from "./internal/chart-legend-hover-context";
 import { useChartMargin, DEFAULT_CHART_MARGIN } from "./internal/use-chart-margin";
 import type { ChartMargin } from "./internal/use-chart-margin";
-import { useDebouncedContainerSize } from "./internal/use-container-size";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { useChartPhaseOrchestrator } from "./internal/use-chart-phase-orchestrator";
@@ -122,7 +121,10 @@ export const LineChart = ({
 }: Readonly<LineChartProps>): ReactElement => {
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { width, height: measuredHeight } = useDebouncedContainerSize(containerRef);
+  // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
+  const width = liveWidth;
+  const measuredHeight = 0;
   const heightPx = resolveChartHeightPx(width, measuredHeight, aspectRatio);
   const xScaleD3Ref = useRef<ScaleTime<number, number> | null>(null);
   const onPhaseChangeEvent = useEffectEvent((phase: ChartPhase): void => {
@@ -302,7 +304,7 @@ export const LineChart = ({
     xDomain,
   });
 
-  const { handleRender } = useLineReveal({
+  const { handleRender: revealHandleRender } = useLineReveal({
     animationDuration,
     animationEasing,
     captureRenderContext,
@@ -317,6 +319,11 @@ export const LineChart = ({
     revealEpoch,
     width,
   });
+  // Host-owned sizing: the host adopts the measured width through this render callback.
+  const handleRender = useCallback((context: Parameters<typeof revealHandleRender>[0]): void => {
+    revealHandleRender(context);
+    adoptHostWidth(setLiveWidth, context.scene.width);
+  }, [revealHandleRender]);
 
   const {
     backgroundNode,
@@ -388,16 +395,19 @@ export const LineChart = ({
   );
   const rendererNode = definition && (
     <div style={rendererClipStyle}>
-      <RendererChart
+      <ChartHost
         renderer={lineChartRenderer}
         ariaLabel={ariaLabel}
         ariaDescription={ariaDescription}
         aspectRatio={parseAspectRatio(aspectRatio)}
+        className={className}
         height={heightPx > 0 ? heightPx : undefined}
+        initialWidth={HOST_INITIAL_WIDTH}
         definition={definition}
         onFocusGroupChange={handleFocusChange}
         onRender={handleRender}
         renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
+        style={style}
       />
     </div>
   );

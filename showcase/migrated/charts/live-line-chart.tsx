@@ -9,6 +9,7 @@ import {
   useId,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { bisector } from "d3-array";
@@ -16,6 +17,7 @@ import { scaleLinear, scaleUtc } from "d3-scale";
 import { curveMonotoneX } from 'd3-shape';
 import type { CurveFactory } from 'd3-shape';
 import type { ChartTooltipBodyRenderContext } from '@tanstack/react-charts/tooltip';
+import { HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import { d3Curve } from "@tanstack/charts/d3/shape";
 import { defineChart } from "@tanstack/charts/scene";
 import type {
@@ -23,6 +25,7 @@ import type {
   ChartMark,
   ChartMotionDefinition,
   ChartPositionScaleOptions,
+  ChartRendererRenderContext,
 } from "@tanstack/charts";
 import { roleOf } from "./internal/children-extract";
 import { referenceAreaPushProps } from "./internal/reference-area-config";
@@ -32,7 +35,6 @@ import { detectMomentum } from "./internal/live-momentum";
 import type { Momentum } from "./internal/live-momentum";
 import { liveLineMark } from "./internal/live-line-mark";
 import { useChartMargin } from "./internal/use-chart-margin";
-import { useMeasuredRect } from "./internal/use-container-size";
 import {
   buildIndicatorMark,
   buildHoverDotMark,
@@ -75,6 +77,29 @@ interface Margin {
 }
 
 const LERP_SPEED = 0.08;
+const LIVE_LINE_DEFAULT_HEIGHT = 300;
+
+// Height follows the sized container (consumer style wins, else the previous measured default).
+const resolveLiveLineHeight = (style: CSSProperties | undefined): number => {
+  const parsed = Number(style?.height ?? LIVE_LINE_DEFAULT_HEIGHT);
+  return Number.isNaN(parsed) ? LIVE_LINE_DEFAULT_HEIGHT : parsed;
+};
+
+// Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+interface LiveLineHostSize {
+  readonly adoptWidth: (sceneWidth: number | undefined) => void;
+  readonly height: number;
+  readonly width: number;
+}
+
+const useLiveLineHostSize = (style: CSSProperties | undefined): LiveLineHostSize => {
+  const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
+  const adoptWidth = useCallback((sceneWidth: number | undefined): void => {
+    adoptHostWidth(setLiveWidth, sceneWidth);
+  }, []);
+  const height = useMemo(() => resolveLiveLineHeight(style), [style]);
+  return { adoptWidth, height, width: liveWidth };
+};
 const DEFAULT_MARGIN: Margin = { bottom: 32, left: 16, right: 16, top: 24 };
 
 interface LiveLineChartProps {
@@ -221,7 +246,7 @@ const LiveLineChart = ({
   const margin = useChartMargin(marginProp, DEFAULT_MARGIN);
   const uid = useId();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { width, height } = useMeasuredRect(containerRef);
+  const { adoptWidth, height, width } = useLiveLineHostSize(style);
 
   const { liveLines, liveXAxis, liveYAxis, tooltip, referenceAreas: liveRefAreas } = useMemo(
     () => extractLiveLineChildren(children),
@@ -349,7 +374,12 @@ const LiveLineChart = ({
 
   const handleFocusChange = useLiveFocusChange({ datePill, liveGroupElsRef, liveXAxisRef, tooltipOn, wasVisibleRef });
 
-  const { getLiveGroups, handleRender } = useLiveRenderRegistry({ liveGroupElsRef });
+  const { getLiveGroups, handleRender: registryHandleRender } = useLiveRenderRegistry({ liveGroupElsRef });
+  // Host-owned sizing: the host adopts the measured width through this render callback.
+  const handleRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>): void => {
+    registryHandleRender(context);
+    adoptWidth(context.scene.width);
+  }, [registryHandleRender, adoptWidth]);
 
   const { crosshairGradientId, crosshairView } = useLiveCrosshair({ tooltip, tooltipOn, uid });
 

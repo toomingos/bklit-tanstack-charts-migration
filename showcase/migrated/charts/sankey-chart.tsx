@@ -1,7 +1,7 @@
 // Bklit SankeyChart on TanStack Charts (native sankeyDiagram + WAAPI reveal, reactive hover dim).
 import { isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
-import { RendererChart } from "@tanstack/react-charts/tooltip";
+import { ChartHost, HOST_INITIAL_WIDTH } from "./internal/chart-host";
 import { defineChart } from "@tanstack/charts/scene";
 import { tooltip } from "@tanstack/charts/tooltip";
 import type {
@@ -710,14 +710,17 @@ const SankeyChart = ({
       style={containerStyle}
       onMouseLeave={handleMouseLeave}
     >
-      <RendererChart
+      <ChartHost
         renderer={chartMotionRenderer<LaidOutNode | NativeSankeyLink<SankeyNodeDatum, SankeyLinkDatum, number>>()}
         ariaLabel={ariaLabel}
         ariaDescription={ariaDescription}
         aspectRatio={parsedAspectRatio}
+        className={className}
+        initialWidth={HOST_INITIAL_WIDTH}
         definition={definition}
         onRender={handleRender}
         renderTooltipBody={renderTooltipBody}
+        style={containerStyle}
       />
     </div>
   );

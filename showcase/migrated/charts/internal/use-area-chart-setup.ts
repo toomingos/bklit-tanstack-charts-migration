@@ -1,10 +1,10 @@
 // Area setup hook: top contiguous group from area-chart.tsx (margin through focus injection).
 // Hook call order is unchanged; logic moved verbatim.
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { useEffectEvent } from "./use-effect-event";
 import { useChartMargin, DEFAULT_CHART_MARGIN } from "./use-chart-margin";
-import { useMeasuredRect } from "./use-container-size";
+import { HOST_INITIAL_WIDTH, adoptHostWidth } from "./chart-host";
 import { useChartPhaseOrchestrator } from "./use-chart-phase-orchestrator";
 import { clipRevealTiming } from "./enter-transition";
 import type { EnterTransition } from "./enter-transition";
@@ -44,6 +44,7 @@ type AreaFocusInjection = Pick<
 >;
 
 interface AreaChartSetup extends AreaFocusInjection {
+  readonly adoptWidth: (sceneWidth: number | undefined) => void;
   readonly areas: ExtractedChildren["areas"];
   readonly background: ExtractedChildren["background"];
   readonly brushes: ExtractedChildren["brushes"];
@@ -80,7 +81,13 @@ interface AreaChartSetup extends AreaFocusInjection {
 const useAreaChartSetup = (params: Readonly<AreaChartSetupParams>): AreaChartSetup => {
   const margin = useChartMargin(params.marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { width, height: measuredHeight } = useMeasuredRect(containerRef);
+  // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
+  const adoptWidth = useCallback((sceneWidth: number | undefined): void => {
+    adoptHostWidth(setLiveWidth, sceneWidth);
+  }, []);
+  const width = liveWidth;
+  const measuredHeight = 0;
   const onPhaseChangeEvent = useEffectEvent((phase: ChartPhase): void => {
     params.onPhaseChange?.(phase);
   });
@@ -141,6 +148,7 @@ const useAreaChartSetup = (params: Readonly<AreaChartSetupParams>): AreaChartSet
   const heightPx = resolveHeightPx(width, measuredHeight, params.aspectRatio);
 
   return {
+    adoptWidth,
     areas,
     background,
     brushes,

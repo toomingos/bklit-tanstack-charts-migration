@@ -24,7 +24,7 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 |---|---|---|---|---|---|---|
 | 1 | V1.1 | host module + legacy hooks | merged | `ses_f8eaea0aeffephB8JH5HsfyVlr` | `341f0e6` | D520 · fixture renders `<svg`, 12 `Eq<>` · library-cannot: `ResolvedScale` carries no scale (0.16.0) · resumed once |
 | 1 | V1.2 | scales and bounds from the store | blocked (G5) | `ses_f8e5d909effe6PGyPKJO5rnNpP` | | D521 · classification done (13 FACTORY / 7 STORE / 26 LOCAL / 2 rulings) · re-dispatch after V1.7 |
-| 1 | V1.6 | export parity | merged | `ses_f8e5d9e25ffeJtbjO7zCE0Xdv3` | (next commit) | D523 · red lines 478 → 384 (re-read at V3.7, must be 0) · 84 leaked internals un-exported · `internal/parity/` 10 modules · kept: `BrushLayout`, `ChartSelectionContext` (demos) |
+| 1 | V1.6 | export parity | merged | `ses_f8e5d9e25ffeJtbjO7zCE0Xdv3` | `171e3c7` | D523 · red lines 478 → 384 (re-read at V3.7, must be 0) · 84 leaked internals un-exported · `internal/parity/` 10 modules · kept: `BrushLayout`, `ChartSelectionContext` (demos) |
 | 1 | V1.8 | aria forwarding | merged | `ses_f8eae9829ffegZk4H0yURVPpUM` | `e50babd` | D516 · `ariaLabel="` literals 16 → 0 · funnel props only until V3.1 (R2) · heatmap via context |
 | 1 | V1.9 | package contract | merged | `ses_f8eae8f80ffemH1q37JpHnKBRr` | `e29b694` | D517 · pack 450 files, fresh Next app builds + renders · +10 deps declared, removals owned by later items · G4 |
 | 1 | V4.1 | `qa/unit` scaffold (scene tests, probes) | merged | `ses_f8eae88aeffeCW2EwgcvXZY2hd` | `0c25747` | D515 · `pnpm test` 84 tests / 46 pass / 38 todo / 0.4 s · probes pinned per family |
@@ -33,7 +33,7 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 2 | V1.3 | registering children | todo | | | |
 | 2 | V1.4 | optional layers own imports | todo | | | |
 | 2 | V1.5 | `cursorHost`, x-domain padding | todo | | | |
-| 2 | V1.7 | host-owned sizing and SSR | dispatched | (see next tick) | | D521 · pulled ahead of V1.2 |
+| 2 | V1.7 | host-owned sizing and SSR | merged | `ses_f8e4ede21ffelVsLjas4cNJSPd` | (next commit) | D521 D524 · 18 `initialWidth` mounts · SSR svg 16/16 · `use-container-size` only in funnel (V3.1) · heatmap local observer until V3.3 · 10 probe pins moved |
 | 2 | V2.1 | `withStates` on polar/geo | todo | | | |
 | 2 | V3.3 | heatmap on band scales | todo | | | |
 | 2 | V4.3 | curve parity in Node | merged | `ses_f8e4ea68affeIAxEMFrhK6abJf` | `3917d3d` | D522 · 10 curves, 9 PASS ≤ 0.02, line-pulse = exception 1 · `pnpm curve-parity` · k4 probe → smoke |

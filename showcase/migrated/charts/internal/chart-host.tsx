@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { Chart } from "@tanstack/react-charts/tooltip";
-import { Chart as CoreChart } from "@tanstack/react-charts/core";
+import type { CSSProperties, Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
+import { Chart, RendererChart as TooltipRendererChart } from "@tanstack/react-charts/tooltip";
 import type {
   ChartTooltipBodyRenderContext,
 } from "@tanstack/react-charts/tooltip";
@@ -12,6 +11,7 @@ import type {
   ChartRenderContext,
   ChartRenderer,
   ChartRendererRenderContext,
+  ChartBounds,
   ChartValue,
   DomChartDefinition,
 } from "@tanstack/charts";
@@ -35,6 +35,15 @@ import type { YDomain } from "./y-domain";
 // Server/initial scene size before the host reports its first render.
 const DEFAULT_INITIAL_WIDTH = 640;
 const DEFAULT_FALLBACK_HEIGHT = 320;
+// Resize noise below this never rebuilds an entry definition.
+const HOST_WIDTH_EPSILON_PX = 0.5;
+
+// Adopts the host-measured width into entry state; no-ops on missing or non-finite widths.
+const adoptHostWidth = (setWidth: Dispatch<SetStateAction<number>>, sceneWidth: number | undefined): void => {
+  if (sceneWidth === undefined || !Number.isFinite(sceneWidth)) {return;}
+  const next: number = sceneWidth;
+  setWidth((prev) => (Math.abs(prev - next) > HOST_WIDTH_EPSILON_PX ? next : prev));
+};
 
 // Stable empty slots: shared refs keep the stable slice identical on hover.
 const EMPTY_DATA: Record<string, unknown>[] = [];
@@ -60,6 +69,11 @@ interface ChartHostProps<
   definition: DomChartDefinition<Datum, XValue, YValue>;
   height?: number;
   initialWidth?: number;
+  /** Fixed scene width. Supplying it disables resize observation (fixed-size families only). */
+  width?: number;
+  onFocusChange?: (
+    point: ChartPoint<Datum, XValue, YValue> | null,
+  ) => void;
   onFocusGroupChange?: (
     points: readonly ChartPoint<Datum, XValue, YValue>[],
   ) => void;
@@ -95,6 +109,8 @@ const ChartHost = <
     definition,
     height,
     initialWidth = DEFAULT_INITIAL_WIDTH,
+    width: widthProp,
+    onFocusChange,
     onFocusGroupChange,
     onRender,
     renderTooltipBody,
@@ -148,7 +164,7 @@ const ChartHost = <
     const [firstScale, secondScale] = resolved;
     const xResolved = scales?.x ?? firstScale;
     const yResolved = scales?.y ?? secondScale;
-    const width = scene?.width ?? initialWidth;
+    const width = widthProp ?? scene?.width ?? initialWidth;
     const plotHeight = scene?.height ?? fallbackHeight;
     const margin: Margin = scene?.margin ?? {
       bottom: 0,
@@ -158,6 +174,13 @@ const ChartHost = <
     };
     const innerWidth = Math.max(0, width - margin.left - margin.right);
     const innerHeight = Math.max(0, plotHeight - margin.top - margin.bottom);
+    // Plot rect from the live scene; chrome reads it instead of measuring (V1.7).
+    const chart: ChartBounds = scene?.chart ?? {
+      height: innerHeight,
+      width: innerWidth,
+      x: margin.left,
+      y: margin.top,
+    };
     const xScale = buildTimeScale(xResolved, [0, innerWidth]);
     const yScale = buildLinearScale(yResolved, [innerHeight, 0]);
     const yScales: Record<string, ReturnType<typeof buildLinearScale>> = {};
@@ -171,6 +194,7 @@ const ChartHost = <
       bandWidth: undefined,
       barScale: undefined,
       barXAccessor: undefined,
+      chart,
       chartPhase: "ready",
       chartStatus: "ready",
       clearSelection: store.clearSelection,
@@ -226,9 +250,10 @@ const ChartHost = <
     initialWidth,
     stableSnapshot,
     store,
+    widthProp,
   ]);
 
-  // Custom renderer mounts through `/core`, which has no tooltip bridge.
+  // Custom renderer mounts through the tooltip entry so renderTooltipBody keeps working.
   const chartNode =
     renderer === undefined ? (
       <Chart
@@ -239,13 +264,15 @@ const ChartHost = <
         definition={definition}
         height={height}
         initialWidth={initialWidth}
+        width={widthProp}
+        onFocusChange={onFocusChange}
         onFocusGroupChange={handleFocusGroupChange}
         onRender={handleRender}
         renderTooltipBody={renderTooltipBody}
         style={style}
       />
     ) : (
-      <CoreChart
+      <TooltipRendererChart
         ariaDescription={ariaDescription}
         ariaLabel={ariaLabel}
         aspectRatio={aspectRatio}
@@ -253,8 +280,11 @@ const ChartHost = <
         definition={definition}
         height={height}
         initialWidth={initialWidth}
+        width={widthProp}
+        onFocusChange={onFocusChange}
         onFocusGroupChange={handleFocusGroupChange}
         onRender={handleRender}
+        renderTooltipBody={renderTooltipBody}
         renderer={renderer}
         style={style}
       />
@@ -270,5 +300,5 @@ const ChartHost = <
   );
 };
 
-export { ChartHost };
+export { ChartHost, adoptHostWidth, DEFAULT_INITIAL_WIDTH as HOST_INITIAL_WIDTH };
 export type { ChartHostProps };

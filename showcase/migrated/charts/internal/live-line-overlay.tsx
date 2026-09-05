@@ -2,8 +2,8 @@
 // State, and the chart body subtree rendered as a plain helper (same tree).
 import { useCallback, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefCallback, RefObject } from "react";
-import { RendererChart } from '@tanstack/react-charts/tooltip';
 import type { ChartTooltipBodyRenderContext } from '@tanstack/react-charts/tooltip';
+import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
 import type {
   ChartInteractionController,
   ChartPoint,
@@ -377,12 +377,12 @@ const renderLiveLineBody = (options: Readonly<RenderLiveLineBodyOptions>): React
           <div
             style={fadeMaskStyle}
           >
-            <RendererChart
+            <ChartHost
               ariaLabel={ariaLabel}
               ariaDescription={ariaDescription}
               renderer={chartMotionRenderer<ChartDatum, Date, number>()}
               definition={definition}
-              width={width}
+              initialWidth={HOST_INITIAL_WIDTH}
               height={height}
               onFocusGroupChange={handleFocusChange}
               onRender={handleRender}

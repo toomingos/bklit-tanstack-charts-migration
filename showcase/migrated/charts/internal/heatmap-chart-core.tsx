@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import type { HeatmapMargin, HeatmapLayout } from "./heatmap-context";
 import { HeatmapChartBody } from "./heatmap-chart-body";
@@ -10,7 +10,7 @@ import { HEATMAP_DEFAULT_ENTER_DURATION_MS, HEATMAP_DEFAULT_ENTER_TRANSITION, HE
 import type { HeatmapEnterTransition } from "./heatmap-animation";
 import type { HeatmapColumn, HeatmapColumnSeparatorsConfig, HeatmapWeekStartDay } from "./heatmap-utils";
 import type { HeatmapLevelColors, HeatmapLevelStyles } from "./heatmap-colors";
-import { usePositiveChartSize } from "./use-container-size";
+import { HOST_INITIAL_WIDTH } from "./chart-host";
 
 /*
  * Extracted from heatmap-chart.tsx into internal/ so heatmap-chart-loading stays cycle-free; public API unchanged.
@@ -18,6 +18,36 @@ import { usePositiveChartSize } from "./use-container-size";
 
 const DEFAULT_CHART_STATUS: HeatmapChartInnerProps["status"] = "ready";
 const DEFAULT_HEATMAP_MIN_HEIGHT_PX = 160;
+// Server height before the container reports (matches the min-height style fallback).
+const HEATMAP_HOST_INITIAL_HEIGHT = DEFAULT_HEATMAP_MIN_HEIGHT_PX;
+// Resize noise below this never relays out the bins.
+const HEATMAP_RESIZE_EPSILON_PX = 0.5;
+
+// SSR/first paint uses the host initial size; the browser adopts the measured size.
+// Host onRender threading needs the body/context files (V1.2).
+const useHeatmapLiveSize = (
+  containerRef: RefObject<HTMLDivElement | null>,
+): { height: number; width: number } => {
+  const [liveSize, setLiveSize] = useState({ height: HEATMAP_HOST_INITIAL_HEIGHT, width: HOST_INITIAL_WIDTH });
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) {return undefined;}
+    const adopt = (next: { height: number; width: number }): void => {
+      if (!(next.width > 0 && next.height > 0)) {return;}
+      setLiveSize((prev) => (Math.abs(prev.width - next.width) > HEATMAP_RESIZE_EPSILON_PX || Math.abs(prev.height - next.height) > HEATMAP_RESIZE_EPSILON_PX ? next : prev));
+    };
+    const rect = el.getBoundingClientRect();
+    adopt({ height: rect.height, width: rect.width });
+    const observer = new ResizeObserver((entries) => {
+      const entryRect = entries.at(0)?.contentRect;
+      if (!entryRect) {return;}
+      adopt({ height: entryRect.height, width: entryRect.width });
+    });
+    observer.observe(el);
+    return (): void => {observer.disconnect();};
+  }, [containerRef]);
+  return liveSize;
+};
 
 interface HeatmapChartProps {
   readonly data: HeatmapColumn[];
@@ -92,7 +122,7 @@ const useHeatmapChartRoot = (
   containerRef: RefObject<HTMLDivElement | null>,
   inputs: Readonly<HeatmapChartRootInputs>,
 ): HeatmapChartRoot => {
-  const sz = usePositiveChartSize(containerRef);
+  const sz = useHeatmapLiveSize(containerRef);
 
   /*
    * Stable coordinator without render-time ref access; an effect would leave the first render unwired.

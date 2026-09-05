@@ -2,7 +2,7 @@
 // Track entrance stays a WAAPI scale-pop (no native arc primitive); hover scale is reactive geometry.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
-import { Chart as RendererChart } from "@tanstack/react-charts/core";
+import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import { defineChart } from "@tanstack/charts/scene";
 import { polar, radialArc } from "@tanstack/charts/polar";
 import { pieArcPath } from "./internal/pie-geometry";
@@ -14,7 +14,6 @@ import { RING_TWEEN_FALLBACK, resolveEnterTransition } from './internal/enter-tr
 import type { ResolvedTiming, RingEnterTransition } from './internal/enter-transition';
 import { nativeStaggerDelayMs } from "./internal/native-stagger";
 import { chartMotionRenderer } from "./internal/motion-renderer";
-import { useDebouncedContainerSize } from "./internal/use-container-size";
 import { MARKS_GROUP_SELECTOR, classifyChildren, useRingHoverState, useRingPointer, useRingReveal } from "./internal/ring-chart-model";
 import type { RingChildConfig, RingProps } from "./internal/ring-chart-model";
 import "./styles.css";
@@ -217,8 +216,10 @@ const RingChart = ({
   ariaDescription,
 }: Readonly<RingChartProps>): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { width, height } = useDebouncedContainerSize(containerRef);
-  const size = fixedSize ?? Math.min(width, height);
+  // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
+  const size = fixedSize ?? liveWidth;
+  const isFixedSize = fixedSize !== undefined && fixedSize !== 0;
 
   const { coordinator, liveHoveredIndex } = useRingHoverState({ hoveredIndex, onHoverChange });
 
@@ -381,7 +382,12 @@ const RingChart = ({
     });
   }, [data, ringConfigMap, getRingRadii, getColor, availableRadius, padding, startAngle, endAngle, arcRange, geometryScrubbing, liveHoveredIndex, enterTransition, enterStaggerScale]);
 
-  const { handleRender, hasRevealedRings } = useRingReveal({ data, enterStaggerScale, enterTransition, geometryScrubbing, ringConfigMap });
+  const { handleRender: revealHandleRender, hasRevealedRings } = useRingReveal({ data, enterStaggerScale, enterTransition, geometryScrubbing, ringConfigMap });
+  // Host-owned sizing: the host adopts the measured width through this render callback.
+  const handleRender = useCallback((context: { container: HTMLElement; scene?: { width?: number } }): void => {
+    revealHandleRender(context);
+    adoptHostWidth(setLiveWidth, context.scene?.width);
+  }, [revealHandleRender]);
 
   const { handlePointerLeave, handlePointerOut, handlePointerOver } = useRingPointer({ coordinator, data, geometryScrubbing });
 
@@ -441,11 +447,13 @@ const RingChart = ({
     </svg>
   );
   const chartNode = geometryScrubbing ? scrubSvgNode : (
-    <RendererChart
+    <ChartHost
       ariaLabel={ariaLabel}
       ariaDescription={ariaDescription}
-      width={size}
-      height={size}
+      width={isFixedSize ? size : undefined}
+      height={isFixedSize ? size : undefined}
+      aspectRatio={isFixedSize ? undefined : 1}
+      initialWidth={isFixedSize ? size : HOST_INITIAL_WIDTH}
       definition={definition}
       onRender={handleRender}
       renderer={chartMotionRenderer<RingArcDatum, number, number>()}

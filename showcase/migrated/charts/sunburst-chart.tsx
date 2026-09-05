@@ -14,7 +14,7 @@ import {
 } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { useEffectEvent } from "./internal/use-effect-event";
-import { Chart as RendererChart } from "@tanstack/react-charts/core";
+import { ChartHost } from "./internal/chart-host";
 import type { SunburstNode as TSSunburstNode } from "@tanstack/charts/hierarchy/sunburst";
 import {
   arcPath,
@@ -677,11 +677,12 @@ const SunburstChartInner = ({
     >
       {breadcrumbChildren}
       <div style={boxStyle}>
-        <RendererChart
+        <ChartHost
           ariaLabel={ariaLabel ?? `Sunburst chart of ${data.name}`}
           ariaDescription={ariaDescription}
           width={size}
           height={size}
+          initialWidth={size}
           definition={definition}
           renderer={chartMotionRenderer<TSSunburstNode<SunburstFlatRow>, number, number>()}
           onFocusChange={handleSunburstFocusChange}

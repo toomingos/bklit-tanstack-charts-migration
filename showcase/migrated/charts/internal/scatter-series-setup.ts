@@ -1,7 +1,7 @@
-import { useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { extractChildren } from "./children-extract";
-import { useContainerWidth } from "./use-container-size";
+import { HOST_INITIAL_WIDTH, adoptHostWidth } from "./chart-host";
 import { useSanitizedId } from "./use-sanitized-id";
 import { isYGradientConfig } from "./scatter-datum-utils";
 import type { ResolvedSeries } from "./scatter-marks";
@@ -61,6 +61,7 @@ interface UseScatterSeriesSetupParams {
 }
 
 interface ScatterSeriesSetup {
+  readonly adoptWidth: (sceneWidth: number | undefined) => void;
   readonly background: ExtractedChildren["background"];
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly crosshairGradientId: string;
@@ -81,7 +82,12 @@ const useScatterSeriesSetup = ({
   );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const width = useContainerWidth(containerRef);
+  // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
+  const adoptWidth = useCallback((sceneWidth: number | undefined): void => {
+    adoptHostWidth(setLiveWidth, sceneWidth);
+  }, []);
+  const width = liveWidth;
 
   const gradientBaseId = useSanitizedId();
   const crosshairGradientId = `${gradientBaseId}-crosshair-fade`;
@@ -98,6 +104,7 @@ const useScatterSeriesSetup = ({
   }, [resolvedSeries]);
 
   return {
+    adoptWidth,
     background,
     containerRef,
     crosshairGradientId,

@@ -1,6 +1,7 @@
 "use client";
 
 import type { scaleBand, scaleLinear, scaleTime } from "@visx/scale";
+import type { ChartBounds } from "@tanstack/charts";
 import type { Transition } from "motion/react";
 import { createContext, useContext, useMemo } from "react";
 import type {
@@ -132,6 +133,8 @@ interface ChartContextValue extends ChartHoverContextValue {
   innerHeight: number;
   innerWidth: number;
   margin: Margin;
+  /** Plot rect from the live scene (`scene.chart`); chrome reads this, never a measured width. */
+  chart?: ChartBounds;
   width: number;
 
   // Column width for spacing calculations
@@ -256,6 +259,7 @@ const ChartProvider = (properties: {
       bandWidth: value.bandWidth,
       barScale: value.barScale,
       barXAccessor: value.barXAccessor,
+      chart: value.chart,
       chartPhase: value.chartPhase,
       chartStatus: value.chartStatus,
       columnWidth: value.columnWidth,
@@ -302,6 +306,7 @@ const ChartProvider = (properties: {
       value.bandWidth,
       value.barScale,
       value.barXAccessor,
+      value.chart,
       value.chartPhase,
       value.chartStatus,
       value.columnWidth,

@@ -6,12 +6,13 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { scaleBand } from "d3-scale";
 import type { ScaleBand } from "d3-scale";
-import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartPoint, ChartRendererRenderContext } from "@tanstack/charts";
+import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import { extractChildren } from "./internal/children-extract";
 import { buildPill } from "./internal/date-pill";
 import type { PillBuild } from "./internal/date-pill";
@@ -28,7 +29,6 @@ import { useChartRenderer } from "./internal/motion-renderer";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { useChartMargin, DEFAULT_CHART_MARGIN } from "./internal/use-chart-margin";
 import type { ChartMargin } from "./internal/use-chart-margin";
-import { useContainerWidth } from "./internal/use-container-size";
 import { shortDateFmt } from "./internal/formatters";
 import {
   DEFAULT_ANIMATION_DURATION_MS,
@@ -104,7 +104,9 @@ const BarChart = ({
 }: Readonly<BarChartProps>): ReactElement => {
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const width = useContainerWidth(containerRef);
+  // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
+  const width = liveWidth;
   // Bklit parity: the first phase is always "revealing"; bypass the ref guard once.
   const phaseRef = useRef<ChartPhase>("revealing");
   const revealDeadlineTimerRef = useRef<number | null>(null);
@@ -173,7 +175,7 @@ const BarChart = ({
     resolvedBarSquares,
     totalSeriesCount,
   } = scales;
-  const heightPxBar = width > 0 ? width / parseAspectRatio(aspectRatio) : 0;
+  const heightPxBar = width / parseAspectRatio(aspectRatio);
   const definitionState = useBarDefinition({
     allSeriesKeys: scales.allSeriesKeys,
     animationDuration,
@@ -298,6 +300,7 @@ const BarChart = ({
 // Reveal end is timer-approximated: native motion exposes no per-mark completion hook.
   const handleRender = useCallback((context: Readonly<ChartRendererRenderContext<ChartDatum, string, number>>): void => {
     captureRenderContext(context);
+    adoptHostWidth(setLiveWidth, context.scene.width);
     const surfaceElement = context.surface.element;
     if (!(surfaceElement instanceof SVGSVGElement)) {
       setPhase("ready");
@@ -408,10 +411,13 @@ const BarChart = ({
       )}
       {definition && (
         <>
-          <RendererChart
+          <ChartHost
             ariaLabel={ariaLabel}
             ariaDescription={ariaDescription}
             aspectRatio={parseAspectRatio(aspectRatio)}
+            className={className}
+            height={heightPxBar}
+            initialWidth={HOST_INITIAL_WIDTH}
             definition={definition}
             renderer={barChartRenderer}
             onFocusGroupChange={handleFocusGroupChange}

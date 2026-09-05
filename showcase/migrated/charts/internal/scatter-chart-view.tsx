@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { RendererChart } from "@tanstack/react-charts/tooltip";
+import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
 import { ChartSelectionContext } from "./chart-selection";
 import { BackgroundLayer } from "./background-layer";
 import { ReferenceAreaLayers } from "./reference-area-layer";
@@ -138,10 +138,11 @@ const buildScatterRendererNode = ({
 }: Readonly<BuildScatterRendererNodeParams>): ReactNode => {
   if (definition === undefined) {return undefined;}
   return (
-    <RendererChart
+    <ChartHost
       ariaLabel={ariaLabel}
       ariaDescription={ariaDescription}
       aspectRatio={parsedAspectRatio}
+      initialWidth={HOST_INITIAL_WIDTH}
       definition={definition}
       renderer={renderer}
       onFocusGroupChange={handleFocusGroupChange}

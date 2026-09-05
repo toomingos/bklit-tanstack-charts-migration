@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { ChartRendererRenderContext } from "@tanstack/charts";
 import type { ScaleLinear, ScaleTime } from "d3-scale";
@@ -14,7 +14,7 @@ import { runRevealWipe, snapRevealWipe } from "./reveal-wipe";
 import { startBarReveal } from "./composed-reveal";
 import { DEFAULT_CHART_MARGIN, useChartMargin } from "./use-chart-margin";
 import type { ChartMargin } from "./use-chart-margin";
-import { useDebouncedContainerWidth } from "./use-container-size";
+import { HOST_INITIAL_WIDTH, adoptHostWidth } from "./chart-host";
 import { useChartPhaseOrchestrator } from "./use-chart-phase-orchestrator";
 
 interface UseComposedPhaseAndRevealParams {
@@ -28,6 +28,7 @@ interface UseComposedPhaseAndRevealParams {
 }
 
 interface UseComposedPhaseAndRevealResult {
+  readonly adoptWidth: (sceneWidth: number | undefined) => void;
   readonly chartPhase: ChartPhase;
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly isLoaded: boolean;
@@ -58,7 +59,12 @@ const useComposedPhaseAndReveal = (
   } = params;
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const width = useDebouncedContainerWidth(containerRef);
+  // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
+  const adoptWidth = useCallback((sceneWidth: number | undefined): void => {
+    adoptHostWidth(setLiveWidth, sceneWidth);
+  }, []);
+  const width = liveWidth;
   const onPhaseChangeRef = useRef(onPhaseChange);
   useEffect(() => {
     onPhaseChangeRef.current = onPhaseChange;
@@ -139,6 +145,7 @@ const useComposedPhaseAndReveal = (
   }, []);
 
   return {
+    adoptWidth,
     chartPhase,
     containerRef,
     isLoaded,
@@ -163,6 +170,7 @@ const useComposedPhaseAndReveal = (
 };
 
 interface UseComposedRenderCallbackParams {
+  readonly adoptWidth: (sceneWidth: number | undefined) => void;
   readonly animationDuration: number;
   readonly captureRenderContext: (context: ChartRendererRenderContext<ChartDatum, Date, number>) => void;
   readonly chartPhase: ChartPhase;
@@ -188,13 +196,14 @@ const useComposedRenderCallback = (
   params: Readonly<UseComposedRenderCallbackParams>,
 ): ((context: ChartRendererRenderContext<ChartDatum, Date, number>) => void) => {
   const {
-    animationDuration, captureRenderContext, chartPhase, containerRef, data, mountedRef,
+    animationDuration, adoptWidth, captureRenderContext, chartPhase, containerRef, data, mountedRef,
     onPhaseChangeRef, pendingBarsRevealRef, phaseRef, prefersReducedMotion, resolvedBars,
     revealAnimationsRef, revealDeadlineRef, revealDurationMs, revealEasingCss, revealEpoch,
     revealPostPaintCancelRef, revealedEpochRef, yScaleD3Ref,
   } = params;
   const handleRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     captureRenderContext(context);
+    adoptWidth(context.scene.width);
     const marksRoot = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marksRoot) {return;}
     // Gate reveal on phase "revealing": onRender fires every commit, not just on content change.
@@ -225,7 +234,7 @@ const useComposedRenderCallback = (
       resolvedBars,
       revealDurationMs,
     }, marksRoot);
-  }, [animationDuration, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, resolvedBars, data.length, captureRenderContext, prefersReducedMotion, yScaleD3Ref, containerRef, mountedRef, onPhaseChangeRef, pendingBarsRevealRef, phaseRef, revealAnimationsRef, revealDeadlineRef, revealPostPaintCancelRef, revealedEpochRef]);
+  }, [animationDuration, adoptWidth, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, resolvedBars, data.length, captureRenderContext, prefersReducedMotion, yScaleD3Ref, containerRef, mountedRef, onPhaseChangeRef, pendingBarsRevealRef, phaseRef, revealAnimationsRef, revealDeadlineRef, revealPostPaintCancelRef, revealedEpochRef]);
 
   useEffect(() => {
     if (chartPhase !== "revealing") {return;}

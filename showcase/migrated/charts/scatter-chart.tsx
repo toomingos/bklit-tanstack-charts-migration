@@ -1,4 +1,5 @@
 // Bklit ScatterChart on TanStack Charts. One disc+ring dot mark per series; no decimation.
+import { useCallback } from "react";
 import type { ReactElement } from "react";
 import { useScatterSeriesSetup } from "./internal/scatter-series-setup";
 import { useScatterDomains } from "./internal/scatter-domains-setup";
@@ -50,11 +51,18 @@ const ScatterChart = ({
     aspectRatio, children, data, domains, marks,
     pill, scales, series, timing, xDataKey,
   });
+  // Host-owned sizing: the host adopts the measured width through this render callback.
+  const { handleRender: timingHandleRender } = timing;
+  const { adoptWidth: adoptSeriesWidth } = series;
+  const handleHostRender = useCallback((context: Parameters<typeof timingHandleRender>[0]): void => {
+    timingHandleRender(context);
+    adoptSeriesWidth(context.scene.width);
+  }, [timingHandleRender, adoptSeriesWidth]);
   return (
     <>
       {buildScatterChartTree({
         ariaDescription, ariaLabel, className, marks, pill, refAreas: selection,
-        selection, series, timing,
+        selection, series, timing: { handleRender: handleHostRender },
       })}
     </>
   );

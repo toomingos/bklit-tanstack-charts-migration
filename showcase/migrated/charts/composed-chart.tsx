@@ -1,7 +1,7 @@
 // Bklit ComposedChart on TanStack Charts. SeriesBar (raw) + Area/Line (decimated); one entry per dataKey.
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { RendererChart } from "@tanstack/react-charts/tooltip";
+import { ChartHost, HOST_INITIAL_WIDTH } from "./internal/chart-host";
 import { defineChart } from "@tanstack/charts/scene";
 import { useChartRenderer } from "./internal/motion-renderer";
 import { useFocusInjection } from "./internal/focus-injection";
@@ -157,7 +157,7 @@ const ComposedChart = ({
 
   const { gradientIdBySeries, nativeComposedGradients } = useComposedAreaGradients(resolvedAreas);
 
-  const heightPxComp = phaseAndReveal.width > 0 ? phaseAndReveal.width / parseAspectRatio(aspectRatio) : 0;
+  const heightPxComp = phaseAndReveal.width / parseAspectRatio(aspectRatio);
   const {
     composedEndAnchors, composedTerminalAnchors, projectionGradientDefs: projectionGradientDefsComposed,
     timeExtent: timeExtentComp, timeExtentRaw: timeExtentCompRaw,
@@ -231,7 +231,8 @@ const ComposedChart = ({
   // Only when the gate flips, so phase transitions never rebuild marks mid-reveal.
   const yDomainTweenGateActive = isChartInteractionPhase(phaseAndReveal.chartPhase) && phaseAndReveal.isLoaded && yDomainChanged;
   const definition = useMemo(() => {
-    if (phaseAndReveal.width <= 0 || !marks || !scales) {return NOTHING;}
+    // Width always arrives positive from host-owned sizing.
+    if (!marks || !scales) {return NOTHING;}
 
     const { motion, xScaleOptions, yScaleOptions } = buildComposedScaleOptions({
       gateActive: yDomainTweenGateActive,
@@ -266,7 +267,6 @@ const ComposedChart = ({
   }, [
     marks,
     scales,
-    phaseAndReveal.width,
     phaseAndReveal.margin,
     grid,
     labelFade,
@@ -280,6 +280,7 @@ const ComposedChart = ({
   const renderTooltipBody = useComposedTooltipBody({ composedSeries, tooltip, xDataKey });
 
   const handleRender = useComposedRenderCallback({
+    adoptWidth: phaseAndReveal.adoptWidth,
     animationDuration,
     captureRenderContext,
     chartPhase: phaseAndReveal.chartPhase,
@@ -385,11 +386,13 @@ const ComposedChart = ({
   // Changes nothing at runtime; it only flattens source nesting for jsx-max-depth.
   const definitionNode = definition ? (
     <>
-      <RendererChart
+      <ChartHost
         renderer={composedChartRenderer}
         ariaLabel={ariaLabel}
         ariaDescription={ariaDescription}
         aspectRatio={parseAspectRatio(aspectRatio)}
+        height={heightPxComp}
+        initialWidth={HOST_INITIAL_WIDTH}
         definition={definition}
         onFocusGroupChange={handleFocusGroupChange}
         onRender={handleRender}

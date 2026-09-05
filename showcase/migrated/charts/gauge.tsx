@@ -1,8 +1,8 @@
 // Bklit Gauge (arc + linear) on TanStack polar marks; linear notches bypass scales (no data domain).
 // UniformWidth notches use custom quads: pie slices can't express the perpendicular inner edge.
-import { useCallback, useId, useMemo, useRef } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { Chart as RendererChart } from "@tanstack/react-charts/core";
+import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import { createMark } from '@tanstack/charts';
 import type { ChartMark, SceneNode, DomChartDefinition, MarkScene } from '@tanstack/charts';
 import { defineChart } from "@tanstack/charts/scene";
@@ -38,10 +38,6 @@ import type { GaugeLabelAlign, GaugeLabelPlacement } from './internal/gauge-cent
 import { defaultCenterStatFormat } from './internal/center-stat';
 import type { CenterStatFormat } from './internal/center-stat';
 import { chartMotionRenderer } from "./internal/motion-renderer";
-import {
-  useDebouncedContainerSize,
-  useDebouncedContainerWidth,
-} from "./internal/use-container-size";
 import "./styles.css";
 
 const ARC_ASPECT_WIDTH = 21;
@@ -257,8 +253,7 @@ const computeArcRows = (options: Readonly<ComputeArcRowsOptions>): ArcRowsResult
 
 interface GaugeArcLayoutOptions {
   readonly heightProp?: number;
-  readonly measuredH: number;
-  readonly measuredW: number;
+  readonly liveWidth: number;
   readonly minWidth?: number;
   readonly widthProp?: number;
 }
@@ -272,9 +267,10 @@ interface GaugeArcLayout {
 }
 
 const resolveGaugeArcLayout = (options: Readonly<GaugeArcLayoutOptions>): GaugeArcLayout => {
-  const { heightProp, measuredH, measuredW, minWidth, widthProp } = options;
-  const width = widthProp ?? measuredW;
-  const height = heightProp ?? measuredH;
+  const { heightProp, liveWidth, minWidth, widthProp } = options;
+  const width = widthProp ?? liveWidth;
+  // Host-owned sizing: the sizer locks aspect 21/16, so height follows width until props fix it.
+  const height = heightProp ?? (width * ARC_ASPECT_HEIGHT) / ARC_ASPECT_WIDTH;
   return {
     fixedSize: widthProp !== undefined && heightProp !== undefined,
     height,
@@ -495,21 +491,25 @@ interface RenderGaugeArcInnerOptions {
   readonly formatOptions: CenterStatFormat;
   readonly innerWrapStyle: CSSProperties;
   readonly layout: Readonly<GaugeArcLayout>;
+  readonly onRender: (context: { readonly scene?: { readonly width?: number } }) => void;
   readonly prefix?: string;
   readonly suffix?: string;
 }
 
 const renderGaugeArcInner = (options: Readonly<RenderGaugeArcInnerOptions>): ReactNode => {
-  const { ariaDescription, ariaLabel = "Gauge chart", centerOverlayStyle, centerValue, defaultLabel, definition, fillState, formatOptions, innerWrapStyle, layout, prefix, suffix } = options;
+  const { ariaDescription, ariaLabel = "Gauge chart", centerOverlayStyle, centerValue, defaultLabel, definition, fillState, formatOptions, innerWrapStyle, layout, onRender, prefix, suffix } = options;
   return definition && layout.size > 0 ? (
     <div style={innerWrapStyle}>
-      <RendererChart
+      <ChartHost
         ariaLabel={ariaLabel}
         ariaDescription={ariaDescription}
+        aspectRatio={ARC_ASPECT_WIDTH / ARC_ASPECT_HEIGHT}
+        initialWidth={layout.fixedSize ? layout.width : HOST_INITIAL_WIDTH}
         definition={definition}
         height={layout.height}
         renderer={chartMotionRenderer()}
-        width={layout.width}
+        width={layout.fixedSize ? layout.width : undefined}
+        onRender={onRender}
       />
       {fillState.defsChildren.length > 0 ? (
         // Overlay svg mounts after the chart: url(#id) resolves document-wide; chart svg stays first in DOM.
@@ -575,11 +575,10 @@ interface GaugeArcSizeProps {
   readonly width?: number;
 }
 
-// Merges the measured container size with the size props into the arc layout options.
-const collectGaugeArcLayoutOptions = (props: Readonly<GaugeArcSizeProps>, measuredW: number, measuredH: number): GaugeArcLayoutOptions => ({
+// Merges the host-owned width with the size props into the arc layout options.
+const collectGaugeArcLayoutOptions = (props: Readonly<GaugeArcSizeProps>, liveWidth: number): GaugeArcLayoutOptions => ({
   heightProp: props.height,
-  measuredH,
-  measuredW,
+  liveWidth,
   minWidth: props.minWidth,
   widthProp: props.width,
 });
@@ -620,9 +619,13 @@ const GaugeArc = (props: Readonly<GaugeArcProps>): ReactElement => {
   const fillState = useGaugeFillState(collectGaugeFillStateInput(props));
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { width: measuredW, height: measuredH } = useDebouncedContainerSize(containerRef);
+  // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
+  const handleHostRender = useCallback((context: { readonly scene?: { readonly width?: number } }): void => {
+    adoptHostWidth(setLiveWidth, context.scene?.width);
+  }, []);
 
-  const layout = resolveGaugeArcLayout(collectGaugeArcLayoutOptions(props, measuredW, measuredH));
+  const layout = resolveGaugeArcLayout(collectGaugeArcLayoutOptions(props, liveWidth));
   const arcRows = useArcRows(props, fillState, layout);
   const uniformRows = useUniformArcRows(props, fillState, layout);
   const definition = useArcDefinition(resolveArcDefinitionOptions({ arcRows, fillState, props, uniformRows }));
@@ -640,6 +643,7 @@ const GaugeArc = (props: Readonly<GaugeArcProps>): ReactElement => {
     formatOptions: props.formatOptions ?? defaultCenterStatFormat,
     innerWrapStyle: arcStyles.innerWrapStyle,
     layout,
+    onRender: handleHostRender,
     prefix: props.prefix,
     suffix: props.suffix,
   });
@@ -666,7 +670,7 @@ const GaugeArc = (props: Readonly<GaugeArcProps>): ReactElement => {
 interface LinearGaugeLayoutOptions {
   readonly heightProp?: number;
   readonly linearHeight?: number;
-  readonly measuredWidth: number;
+  readonly liveWidth: number;
   readonly minWidth?: number;
   readonly widthProp?: number;
 }
@@ -679,13 +683,13 @@ interface LinearGaugeLayout {
 }
 
 const resolveLinearGaugeLayout = (options: Readonly<LinearGaugeLayoutOptions>): LinearGaugeLayout => {
-  const { heightProp, linearHeight, measuredWidth, minWidth, widthProp } = options;
+  const { heightProp, linearHeight, liveWidth, minWidth, widthProp } = options;
   const resolvedLinearHeight = linearHeight ?? DEFAULT_LINEAR_GAUGE_HEIGHT;
   return {
     fixedWidth: widthProp !== undefined,
     height: heightProp ?? resolvedLinearHeight,
     resolvedMinWidth: minWidth ?? GAUGE_LINEAR_MIN_WIDTH_PX,
-    width: widthProp ?? measuredWidth,
+    width: widthProp ?? liveWidth,
   };
 };
 
@@ -971,26 +975,30 @@ interface RenderLinearGaugeBodyOptions {
   readonly chartWrapStyle: CSSProperties;
   readonly definition: DomChartDefinition | undefined;
   readonly defsChildren: readonly Readonly<ReactElement>[];
+  readonly fixedWidth: boolean;
   readonly height: number;
   readonly label: ReactNode;
   readonly labelAlign: GaugeLabelAlign;
   readonly labelPlacement: GaugeLabelPlacement;
+  readonly onRender: (context: { readonly scene?: { readonly width?: number } }) => void;
   readonly trackStyle: CSSProperties;
   readonly width: number;
 }
 
 const renderLinearGaugeBody = (options: Readonly<RenderLinearGaugeBodyOptions>): ReactElement => {
-  const { ariaDescription, ariaLabel = "Gauge chart", chartWrapStyle, definition, defsChildren, height, label, labelAlign, labelPlacement, trackStyle, width } = options;
+  const { ariaDescription, ariaLabel = "Gauge chart", chartWrapStyle, definition, defsChildren, fixedWidth, height, label, labelAlign, labelPlacement, onRender, trackStyle, width } = options;
   const svg =
     definition && width > 0 ? (
       <div style={chartWrapStyle}>
-        <RendererChart
+        <ChartHost
           ariaLabel={ariaLabel}
           ariaDescription={ariaDescription}
           definition={definition}
           height={height}
+          initialWidth={fixedWidth ? width : HOST_INITIAL_WIDTH}
           renderer={chartMotionRenderer()}
-          width={width}
+          width={fixedWidth ? width : undefined}
+          onRender={onRender}
         />
         {defsChildren.length > 0 ? (
           <svg width={0} height={0} style={GAUGE_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
@@ -1015,12 +1023,16 @@ const GaugeLinear = (props: Readonly<GaugeLinearProps>): ReactElement => {
   const fillState = useGaugeFillState(collectGaugeFillStateInput(props));
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const measuredWidth = useDebouncedContainerWidth(containerRef);
+  // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
+  const handleHostRender = useCallback((context: { readonly scene?: { readonly width?: number } }): void => {
+    adoptHostWidth(setLiveWidth, context.scene?.width);
+  }, []);
 
   const layout = resolveLinearGaugeLayout({
     heightProp: props.height,
     linearHeight: props.linearHeight,
-    measuredWidth,
+    liveWidth,
     minWidth: props.minWidth,
     widthProp: props.width,
   });
@@ -1037,10 +1049,12 @@ const GaugeLinear = (props: Readonly<GaugeLinearProps>): ReactElement => {
     chartWrapStyle: linearStyles.chartWrapStyle,
     definition,
     defsChildren: fillState.defsChildren,
+    fixedWidth: layout.fixedWidth,
     height: layout.height,
     label: linearStyles.label,
     labelAlign: props.labelAlign ?? "start",
     labelPlacement: props.labelPlacement ?? "top",
+    onRender: handleHostRender,
     trackStyle: linearStyles.trackStyle,
     width: layout.width,
   });

@@ -14,7 +14,7 @@ import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import { useEffectEvent } from "./internal/use-effect-event";
 import { scaleLinear, scalePoint } from "d3-scale";
 import { curveLinearClosed } from "d3-shape";
-import { Chart as RendererChart } from "@tanstack/react-charts/core";
+import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import type { ChartMotionContext, ChartValue, DomChartDefinition, MarkScene, SceneNode } from "@tanstack/charts";
 import { defineChart } from "@tanstack/charts/scene";
 import { focusDisabled } from "@tanstack/charts/focus/disabled";
@@ -36,7 +36,6 @@ import {
   sampleSpringProgress,
 } from "./internal/radar-spring";
 import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
-import { useDebouncedContainerSize } from "./internal/use-container-size";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import "./styles.css";
 
@@ -807,8 +806,9 @@ const RadarChart = ({
   ariaDescription,
 }: Readonly<RadarChartProps>): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { width, height } = useDebouncedContainerSize(containerRef);
-  const chartSize = fixedSize ?? Math.min(width, height);
+  // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
+  const chartSize = fixedSize ?? liveWidth;
 
   const { grid, axis, labels, areas } = useMemo(
     () => extractRadarChildren(children),
@@ -943,7 +943,8 @@ const RadarChart = ({
   ]);
 
   const handleRender = useCallback(
-    ({ container }: { container: HTMLElement }): void => {
+    ({ container, scene }: { container: HTMLElement; scene?: { width?: number } }): void => {
+      adoptHostWidth(setLiveWidth, scene?.width);
       if (!beginRadarReveal(container, animate, gridRevealedRef)) {return;}
       // DurationFactor scales stagger delays only, not transition timing.
       // Label springs ignore durationFactor: the deadline must cover the longest live animation.
@@ -1055,15 +1056,28 @@ const RadarChart = ({
       data-bkm-chart="radar"
     >
       {definition && (
-        <RendererChart
-          ariaLabel={ariaLabel}
-          ariaDescription={ariaDescription}
-          width={chartSize}
-          height={chartSize}
-          definition={definition}
-          renderer={chartMotionRenderer<RadarRow, string, number>()}
-          onRender={handleRender}
-        />
+        fixedSize !== undefined && fixedSize !== 0 ? (
+          <ChartHost
+            ariaLabel={ariaLabel}
+            ariaDescription={ariaDescription}
+            width={chartSize}
+            height={chartSize}
+            initialWidth={chartSize}
+            definition={definition}
+            renderer={chartMotionRenderer<RadarRow, string, number>()}
+            onRender={handleRender}
+          />
+        ) : (
+          <ChartHost
+            ariaLabel={ariaLabel}
+            ariaDescription={ariaDescription}
+            aspectRatio={1}
+            initialWidth={HOST_INITIAL_WIDTH}
+            definition={definition}
+            renderer={chartMotionRenderer<RadarRow, string, number>()}
+            onRender={handleRender}
+          />
+        )
       )}
     </div>
   );

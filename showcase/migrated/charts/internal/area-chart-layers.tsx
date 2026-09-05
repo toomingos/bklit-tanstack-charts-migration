@@ -8,8 +8,8 @@ import type {
   ChartRendererRenderContext,
   DomChartDefinition,
 } from "@tanstack/charts";
-import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
+import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
 import { ReferenceAreaLayers } from "./reference-area-layer";
 import type { ReferenceAreaLayersGeom } from "./reference-area-layer";
 import { BackgroundLayer } from "./background-layer";
@@ -90,12 +90,13 @@ interface AreaChartBodyProps {
 const AreaChartBody = (props: Readonly<AreaChartBodyProps>): ReactNode => {
   const chartBodyNode = props.definition ? (
     <div style={props.chartBodyClipStyle}>
-      <RendererChart
+      <ChartHost
         renderer={props.areaChartRenderer}
         ariaLabel={props.ariaLabel ?? "Area chart"}
         ariaDescription={props.ariaDescription}
         aspectRatio={parseAspectRatio(props.aspectRatio)}
         height={props.heightPx > 0 ? props.heightPx : undefined}
+        initialWidth={HOST_INITIAL_WIDTH}
         definition={props.definition}
         onFocusGroupChange={props.onFocusChange}
         onRender={props.onRender}

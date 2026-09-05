@@ -2,7 +2,7 @@
 import { pie as d3Pie } from "d3-shape";
 import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
-import { Chart as RendererChart } from "@tanstack/react-charts/core";
+import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import { defineChart } from "@tanstack/charts/scene";
 import { polar, radialArc } from "@tanstack/charts/polar";
 import type { PolarMark } from "@tanstack/charts/polar";
@@ -15,7 +15,6 @@ import { chartMotionRenderer } from "./internal/motion-renderer";
 import { hitTestPolarBands, pointerToCenterOffset } from "./internal/polar-hit";
 import { resolveEnterTransition } from './internal/enter-transition';
 import type { PieEnterTransition, ResolvedTiming } from './internal/enter-transition';
-import { useDebouncedContainerSize } from "./internal/use-container-size";
 import { PieStableContext, PieHoverCoordinatorContext } from './internal/pie-center-context';
 import type { PieStableValue, PieData, PieArcData } from './internal/pie-center';
 import { defaultPieColors } from "./internal/pie-default-colors";
@@ -368,9 +367,13 @@ const PieChart = ({
   ariaDescription,
 }: Readonly<PieChartProps>): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  // ResizeObserver mounts unconditionally; fixed-size mode never reads the measurement.
-  const { width, height } = useDebouncedContainerSize(containerRef);
-  const size = fixedSize ?? Math.min(width, height);
+  // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  // Fixed-size mode never reads the measurement.
+  const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
+  const handleHostRender = useCallback((context: { readonly scene?: { readonly width?: number } }): void => {
+    adoptHostWidth(setLiveWidth, context.scene?.width);
+  }, []);
+  const size = fixedSize ?? liveWidth;
 
   // Latest-value refs: the coordinator persists across renders, so its callbacks read props
   // Through refs refreshed post-commit instead of closing over a single render.
@@ -582,14 +585,27 @@ const PieChart = ({
  * Element factory, not a component: the same element renders in the same slot, so reconciliation is unchanged.
  */
   const renderChart = (): ReactElement => (
-    <RendererChart
-      ariaLabel={ariaLabel}
-      ariaDescription={ariaDescription}
-      width={size}
-      height={size}
-      definition={definition}
-      renderer={chartMotionRenderer<PieRowDatum, number, number>()}
-    />
+    fixedSize !== undefined && fixedSize !== 0 ? (
+      <ChartHost
+        ariaLabel={ariaLabel}
+        ariaDescription={ariaDescription}
+        width={size}
+        height={size}
+        initialWidth={size}
+        definition={definition}
+        renderer={chartMotionRenderer<PieRowDatum, number, number>()}
+      />
+    ) : (
+      <ChartHost
+        ariaLabel={ariaLabel}
+        ariaDescription={ariaDescription}
+        aspectRatio={1}
+        initialWidth={HOST_INITIAL_WIDTH}
+        definition={definition}
+        renderer={chartMotionRenderer<PieRowDatum, number, number>()}
+        onRender={handleHostRender}
+      />
+    )
   );
 
   return (

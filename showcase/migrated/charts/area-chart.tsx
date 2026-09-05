@@ -1,6 +1,7 @@
 // Bklit AreaChart on TanStack Charts. Two marks per series (areaFill + lineY); hover dim 0.6.
-import { useLayoutEffect, useMemo } from "react";
+import { useCallback, useLayoutEffect, useMemo } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
+import type { ChartRendererRenderContext } from "@tanstack/charts";
 import { useEffectEvent } from "./internal/use-effect-event";
 import { ChartSelectionContext } from "./internal/chart-selection";
 import {
@@ -222,6 +223,14 @@ const AreaChart = ({
     pushPhaseToProjectionPort();
   }, [overlayRenderedArea]);
 
+  // Host-owned sizing: the host adopts the measured width through this render callback.
+  const { handleRender: revealHandleRender } = reveal;
+  const { adoptWidth: adoptAreaWidth } = setup;
+  const handleHostRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>): void => {
+    revealHandleRender(context);
+    adoptAreaWidth(context.scene.width);
+  }, [revealHandleRender, adoptAreaWidth]);
+
   const selection = useAreaSelection({
     children,
     clientToScene: setup.clientToScene,
@@ -286,7 +295,7 @@ const AreaChart = ({
         chartBodyClipStyle={layerProps.chartBodyClipStyle}
         definition={definition}
         onFocusChange={focus.handleFocusChange}
-        onRender={reveal.handleRender}
+        onRender={handleHostRender}
         heightPx={setup.heightPx}
         renderTooltipBody={focus.renderTooltipBody}
         tooltipEnabled={setup.tooltipEnabled}

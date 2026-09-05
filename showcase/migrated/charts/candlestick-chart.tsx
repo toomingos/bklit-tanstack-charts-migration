@@ -6,8 +6,8 @@ import {
   useState,
 } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { RendererChart } from "@tanstack/react-charts/tooltip";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
+import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import { defineChart } from "@tanstack/charts";
 import type {
   ChartMotionContext,
@@ -39,7 +39,6 @@ import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { createCandlestickFocusStrategy } from "./internal/candlestick-focus-strategy";
 import { useChartMargin, DEFAULT_CHART_MARGIN } from "./internal/use-chart-margin";
 import type { ChartMargin } from "./internal/use-chart-margin";
-import { useContainerWidth } from "./internal/use-container-size";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
 import { useChartLegendHover } from "./internal/chart-legend-hover-context";
 import { useFocusInjection } from "./internal/focus-injection";
@@ -128,7 +127,9 @@ const CandlestickChart = ({
 }: CandlestickChartProps): ReactElement => {
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const width = useContainerWidth(containerRef);
+  // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
+  const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
+  const width = liveWidth;
 
   const { candlestick, grid, xAxis, yAxis, background, tooltip } = useMemo(
     () => extractChildren(children),
@@ -328,6 +329,7 @@ const CandlestickChart = ({
 
   const handleRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     captureRenderContext(context);
+    adoptHostWidth(setLiveWidth, context.scene.width);
   }, [captureRenderContext]);
 
   const { candleSelection, heightPxCandle, segChildrenCandle } = useCandleSelection({
@@ -400,15 +402,18 @@ const CandlestickChart = ({
     <>
       {positivePatternLayer}
       {negativePatternLayer}
-      <RendererChart
+      <ChartHost
         ariaLabel={ariaLabel}
         ariaDescription={ariaDescription}
         aspectRatio={parseAspectRatio(aspectRatio)}
+        className={className}
         definition={definition}
+        initialWidth={HOST_INITIAL_WIDTH}
         renderer={candlestickChartRenderer}
         onFocusGroupChange={handleFocusGroupChange}
         onRender={handleRender}
         renderTooltipBody={enabledRenderTooltipBody}
+        style={style}
       />
       {referenceAreaLayer}
       <SegmentOverlay
