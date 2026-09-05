@@ -24,10 +24,9 @@ import { withStates } from "./internal/with-states";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import { CHART_ROLE } from "./children";
 import { roleOf } from "./internal/children-extract";
-import { createChoroplethHoverChrome } from './internal/choropleth-hover-chrome';
-import type { ChoroplethHoverChrome } from './internal/choropleth-hover-chrome';
 import { ChoroplethZoomValue } from "./internal/choropleth-zoom-context";
 import { TS_CHART_SVG_SELECTOR, useChoroplethReveal } from "./internal/choropleth-reveal";
+import { createChoroplethFocus } from "./internal/choropleth-focus";
 import { resolveWheelZoomDelta } from "./internal/choropleth-zoom-motion";
 import { useChoroplethZoomMotion } from "./internal/use-choropleth-zoom-motion";
 import { useChoroplethPaths } from "./internal/use-choropleth-paths";
@@ -188,32 +187,14 @@ const resolveFeatureFill = (feature: ChoroplethFeature, index: number, featureCo
 
 const choroplethFeatureKey = (feature: Readonly<Pick<ChoroplethFeature, "properties" | "id">>): string => feature.properties.name ?? String(feature.id ?? "")
 
-// Feature keys carry valueKey's string:<length>: wrapper; match the wrapped form, not the raw name.
-const geoValueKey = (value: string): string => `string:${value.length}:${value}`
-
-const choroplethSceneKey = (feature: Readonly<Pick<ChoroplethFeature, "properties" | "id">>): string => `choropleth:${geoValueKey(choroplethFeatureKey(feature))}`
-
 // Fraction (0-1) to color-mix percent scale for withAlpha.
 const ALPHA_TO_PERCENT = 100;
 
-// FillOpacity is per-call, not per-datum: hover dim bakes into fill/stroke alpha via color-mix.
+// FillOpacity is per-call, not per-datum: base alpha bakes into fill/stroke via color-mix.
 const withAlpha = (color: string, alphaPercent: number): string => {
   const pct = Math.max(0, Math.min(ALPHA_TO_PERCENT, alphaPercent));
   return `color-mix(in oklab, ${color} ${pct}%, transparent)`;
 }
-
-// Base 0.85, hovered 1, dimmed 0.4 (bklit hover-chrome values).
-interface FeatureAlphaLevels {
-  readonly base: number;
-  readonly dim: number;
-}
-
-const resolveFeatureAlpha = (key: string, hoveredKey: string | null, levels: Readonly<FeatureAlphaLevels>): number => {
-  if (hoveredKey === null) {return levels.base;}
-  if (hoveredKey === key) {return 1;}
-  return levels.dim;
-}
-
 
 // Default map center latitude (longitude 0 needs no name: it is exempt).
 const DEFAULT_CENTER_LATITUDE = 20;
@@ -245,9 +226,7 @@ interface ExtractedConfig {
 
 interface FeaturePaintOptions {
   readonly featureConfig: ChoroplethFeatureProps | undefined;
-  readonly hoveredKey: string | null;
   readonly baseOpacity: number;
-  readonly dimOpacity: number;
 }
 
 interface FeaturePainters {
@@ -255,22 +234,20 @@ interface FeaturePainters {
   readonly stroke: (feature: Readonly<Pick<ChoroplethFeature, "properties" | "id">>) => string;
 }
 
+const resolveChoroplethStroke = (featureConfig: Readonly<ChoroplethFeatureProps> | undefined): string =>
+  featureConfig?.stroke ?? "var(--background)";
+
 const makeFeaturePainters = (options: Readonly<FeaturePaintOptions>): FeaturePainters => {
-  const { featureConfig, hoveredKey, baseOpacity, dimOpacity } = options;
-  // Opacity pair is built once per painter (per memo recompute), so per-datum alpha reads share it.
-  const levels: FeatureAlphaLevels = { base: baseOpacity, dim: dimOpacity };
+  const { featureConfig, baseOpacity } = options;
+  const baseAlpha = baseOpacity * ALPHA_TO_PERCENT;
   return {
-    // Pattern fills can't alpha-blend: pattern-filled features skip hover dim (fidelity gap).
+    // Pattern fills can't alpha-blend: pattern-filled features keep the base paint (fidelity gap).
     fill: (feature: ChoroplethFeature, { index }: { readonly index: number }): string => {
       const resolved = resolveFeatureFill(feature, index, featureConfig);
       if ((featureConfig?.getFeaturePattern?.(feature, index) ?? "").length > 0) {return resolved;}
-      const alpha = resolveFeatureAlpha(choroplethSceneKey(feature), hoveredKey, levels);
-      return withAlpha(resolved, alpha * ALPHA_TO_PERCENT);
+      return withAlpha(resolved, baseAlpha);
     },
-    stroke: (feature: Readonly<Pick<ChoroplethFeature, "properties" | "id">>): string => {
-      const alpha = resolveFeatureAlpha(choroplethSceneKey(feature), hoveredKey, levels);
-      return withAlpha(featureConfig?.stroke ?? "var(--background)", alpha * ALPHA_TO_PERCENT);
-    },
+    stroke: (): string => withAlpha(resolveChoroplethStroke(featureConfig), baseAlpha),
   };
 };
 
@@ -279,7 +256,7 @@ interface ChoroplethFocusStatesOptions {
   readonly dimOpacity: number;
 }
 
-// Feature focus dim (I1 wrapper); pattern fills dim via opacity (D424 restore).
+// Feature focus dim + focused highlight (I1 wrapper); pattern fills dim via opacity (D424 restore).
 // Transition matches the geo term in styles.css (choropleth: 0.18s ease-out).
 const choroplethFocusStates = (options: Readonly<ChoroplethFocusStatesOptions>): ChartMarkState<ChoroplethFeature>[] => {
   const { dimOpacity, featureConfig } = options;
@@ -296,10 +273,24 @@ const choroplethFocusStates = (options: Readonly<ChoroplethFocusStatesOptions>):
           return withAlpha(resolveFeatureFill(context.datum, context.index, featureConfig), dimOpacity * ALPHA_TO_PERCENT);
         },
         opacity: (context): number => (isPatternFeature(context.datum, context.index) ? dimOpacity : 1),
-        stroke: (): string => withAlpha(featureConfig?.stroke ?? "var(--background)", dimOpacity * ALPHA_TO_PERCENT),
+        stroke: (): string => withAlpha(resolveChoroplethStroke(featureConfig), dimOpacity * ALPHA_TO_PERCENT),
       },
       transition: { duration: 180, easing: "ease-out", type: "tween" },
       when: { focus: "unmatched" },
+    },
+    {
+      style: {
+        // Focused feature returns to full alpha (bklit hover-chrome hovered value).
+        fill: (context): string => {
+          if (isPatternFeature(context.datum, context.index)) {
+            return resolveFeatureFill(context.datum, context.index, featureConfig);
+          }
+          return withAlpha(resolveFeatureFill(context.datum, context.index, featureConfig), ALPHA_TO_PERCENT);
+        },
+        stroke: (): string => withAlpha(resolveChoroplethStroke(featureConfig), ALPHA_TO_PERCENT),
+      },
+      transition: { duration: 180, easing: "ease-out", type: "tween" },
+      when: { focus: "primary" },
     },
   ];
 };
@@ -327,7 +318,6 @@ interface ChoroplethDefinitionOptions {
   readonly height: number;
   readonly projection: GeoProjection | undefined;
   readonly featureConfig: ChoroplethFeatureProps | undefined;
-  readonly hoveredKey: string | null;
   readonly baseOpacity: number;
   readonly dimOpacity: number;
   readonly hasTooltipChild: boolean;
@@ -340,12 +330,15 @@ interface ChoroplethDefinitionOptions {
 const buildChoroplethDefinition = (
   options: Readonly<ChoroplethDefinitionOptions>,
 ): StaticChartDefinition<ChoroplethFeature, ChartValue, ChartValue, "dom"> | undefined => {
-  const { data, projection, featureConfig, hoveredKey, baseOpacity, dimOpacity, hasTooltipChild } = options;
+  const { data, projection, featureConfig, baseOpacity, dimOpacity, hasTooltipChild } = options;
   // Width/height always arrive positive from host-owned sizing; only a missing projection blocks the definition.
   if (!projection) {return undefined;}
   const projForMark = projection;
-  const painters = makeFeaturePainters({ baseOpacity, dimOpacity, featureConfig, hoveredKey });
+  const painters = makeFeaturePainters({ baseOpacity, featureConfig });
   const chartDefinition = defineChart({
+    // Package owns the pointer: the focus strategy resolves exact containment first.
+    // Strategy-first resolution survives state repaints and motion presentation points.
+    focus: createChoroplethFocus({ features: data.features, projection: projForMark }),
     focusRing: false,
     guides: false,
     margin: 0,
@@ -362,8 +355,6 @@ const buildChoroplethDefinition = (
         strokeWidth: featureConfig?.strokeWidth ?? DEFAULT_STROKE_WIDTH,
       }), data.features, choroplethFocusStates({ dimOpacity, featureConfig })),
     ],
-    // Library pointer handling stays off: app-owned detection is the single hover source of truth.
-    pointer: false,
     scales: { x: null, y: null },
     // Tooltip is instant-mount/instant-unmount (sticky/motion false), matching the retired box.
     tooltip: hasTooltipChild
@@ -484,18 +475,6 @@ const syncZoomContainer = (
   chartContainer.style.touchAction = "none";
   chartContainer.style.cursor = isDragging ? "grabbing" : "grab";
   chartContainer.style.contain = "layout style paint";
-};
-
-const collectGeoElements = (svg: SVGSVGElement | null | undefined): Map<string, SVGPathElement> => {
-  const elements = new Map<string, SVGPathElement>();
-  const paths = svg?.querySelectorAll<SVGPathElement>(".ts-chart__geo path[data-ts-key]");
-  if (paths) {
-    for (const path of paths) {
-      const pathKey = path.dataset.tsKey ?? "";
-      elements.set(pathKey, path);
-    }
-  }
-  return elements;
 };
 
 const resolveSurfaceSvg = (chartContainer: HTMLElement, surfaceElement: Element | undefined): SVGSVGElement | undefined => {
@@ -630,8 +609,6 @@ const ChoroplethChartBody = ({
   const baseOpacity = 0.85;
   const hasTooltipChild = Boolean(tooltipConfig);
 
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
-
   const zoomRefForChrome = useRef<ProvidedZoom<HTMLElement> | null>(null);
   // Zoom ticks schedule animation frames; skip them until the client commits (SSR has no rAF).
   const mountedRef = useMountedRef();
@@ -687,49 +664,35 @@ const ChoroplethChartBody = ({
     featureConfig,
     hasTooltipChild,
     height,
-    hoveredKey,
     projection,
     width,
   }), [
-    baseOpacity, data, dimOpacity, featureConfig, hasTooltipChild, height, hoveredKey, projection, width,
+    baseOpacity, data, dimOpacity, featureConfig, hasTooltipChild, height, projection, width,
   ]);
 
-  const hoverChromeRef = useRef<ChoroplethHoverChrome | undefined>(undefined);
   const renderContextRef = useRef<Pick<
     ChartRendererRenderContext<ChoroplethFeature>,
     "scene" | "interaction"
   > | null>(null);
-  const hoveredKeyRef = useRef<string | null>(null);
+  // Package-owned focus key mirror for the zoom anchor refresh; written from the host callback below.
+  const focusedKeyRef = useRef<string | null>(null);
 
   const getTooltipConfig = useChoroplethTooltipCard(tooltipConfig, hasTooltipChild);
 
-// Focus bridge uses source 'pointer': programmatic would trigger legend-dim states.
-  const onFocusChange = useCallback((key: string | null) => {
-    hoveredKeyRef.current = key;
-    const ctx = renderContextRef.current;
-    if (!ctx) {return;}
-    const candidate = key === null ? null : (ctx.scene.points.find((point: Readonly<Pick<ChartPoint<ChoroplethFeature>, "key">>) => point.key === key) ?? null);
-    ctx.interaction.setControlledFocus(candidate, { source: "pointer" });
+// Package owns hover; the host callback only mirrors the focused key for the zoom anchor refresh.
+  const handleFocusChange = useCallback((point: ChartPoint<ChoroplethFeature> | null) => {
+    focusedKeyRef.current = point?.key ?? null;
   }, []);
 
   const reveal = useChoroplethReveal({ animationDuration, enterTransition, revealSignature });
 
-  const ensureHoverChrome = useCallback(() => {
-    if (hoverChromeRef.current) {return hoverChromeRef.current;}
-    hoverChromeRef.current = createChoroplethHoverChrome({
-      onFocusChange,
-      onHoverChange: setHoveredKey,
-    });
-    return hoverChromeRef.current;
-  }, [onFocusChange]);
-
   const refreshTooltipAnchor = useCallback(() => {
     const ctx = renderContextRef.current;
-    const key = hoveredKeyRef.current;
+    const key = focusedKeyRef.current;
     if (!ctx || key === null) {return;}
     const candidate = ctx.scene.points.find((point: Readonly<Pick<ChartPoint<ChoroplethFeature>, "key">>) => point.key === key);
     if (!candidate) {return;}
-    ctx.interaction.setControlledFocus(candidate, { source: "pointer" });
+    ctx.interaction.setControlledFocus(candidate, { source: "programmatic" });
   }, []);
   // Latest-callback sync runs post-commit so the render body stays pure.
   useEffect(() => {
@@ -748,16 +711,8 @@ const ChoroplethChartBody = ({
     const chartContainer = container;
     const svg = resolveSurfaceSvg(chartContainer, surface?.element);
     syncZoomContainer(chartContainer, zoomRefForChrome.current, getIsDragging());
-    ensureHoverChrome().reconnect(chartContainer, collectGeoElements(svg));
     startReveal(chartContainer, svg);
-  }, [adoptWidth, ensureHoverChrome, startReveal, getIsDragging]);
-
-  useEffect(() =>
-    (): void => {
-      hoverChromeRef.current?.detach();
-      hoverChromeRef.current = undefined;
-    }
-  , []);
+  }, [adoptWidth, startReveal, getIsDragging]);
 
   const containerRefForFallback = useRef<HTMLDivElement | null>(null);
   const handleFallbackRef = useCallback((el: HTMLDivElement | null): void => {
@@ -771,7 +726,7 @@ const ChoroplethChartBody = ({
   const revealHasRevealed = reveal.hasRevealed;
   /*
    * Fallback replay reads through an effect event so the layout subscription stays stable
-   * across render identity changes (latest chrome/reveal still observed at replay time).
+   * across render identity changes (latest reveal still observed at replay time).
    */
   const replayRenderEvent = useEffectEvent((fallbackContainer: HTMLDivElement): void => {
     handleRender({ container: fallbackContainer });
@@ -817,6 +772,7 @@ const ChoroplethChartBody = ({
           aspectRatio={ratio}
           initialWidth={HOST_INITIAL_WIDTH}
           definition={definition}
+          onFocusChange={handleFocusChange}
           onRender={handleRender}
           renderTooltipBody={handleTooltipBody}
         />

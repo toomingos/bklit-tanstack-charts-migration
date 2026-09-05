@@ -22,9 +22,11 @@ const settleGeoReveal = (anim: Animation): void => {
   anim.onfinish = (): void => { try { anim.cancel(); } catch {
     // Cancelling a finished tween throws: the reveal is already settled.
   } };
-  anim.addEventListener("cancel", (): void => { try { anim.cancel(); } catch {
+  // Single settle handler: oncancel suffices, no options or second subscriber needed.
+  // eslint-disable-next-line unicorn/prefer-add-event-listener
+  anim.oncancel = (): void => { try { anim.cancel(); } catch {
     // Cancelling a cancelled tween throws: the settle is already done.
-  } });
+  } };
 };
 
 const playGeoReveal = (options: Readonly<RevealPlaybackOptions>): void => {
