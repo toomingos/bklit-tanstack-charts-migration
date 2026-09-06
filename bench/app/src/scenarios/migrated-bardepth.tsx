@@ -49,10 +49,11 @@ export default function MigratedBarDepth({ n }: { n: number }) {
     ) => setPulsePaused(paused);
   }, [n]);
 
-  // BarDepthProvider renders null; it must be a child, not a wrapper.
+  // BarDepthProvider is a config carrier, so it sits among the children, not around them.
+  // Legacy requires `children`, so it takes an explicit empty child rather than self-closing.
   const depthTree = (
     <BarChart data={data} xDataKey="date" onPhaseChange={onPhaseChange}>
-      {depthEnabled && <BarDepthProvider groundShadow={0.26} />}
+      {depthEnabled && <BarDepthProvider groundShadow={0.26}>{null}</BarDepthProvider>}
       <Grid horizontal />
       {depthEnabled && <BarDepthBack dataKey="seriesA" color="var(--chart-1)" />}
       <Bar dataKey="seriesA" fill="var(--chart-1)" />
