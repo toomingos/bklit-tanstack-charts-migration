@@ -11,10 +11,10 @@ const { families, renderToString } = await loadFresh(bundleEntry('families.tsx')
 
 // Minimum svg markup per family, measured 2026-09-05 at V1.7 (0012eca) and
 // rounded down to a floor: an item that shrinks one below its floor must
-// say why in its D-entry and move the floor in the same commit.
+// say why in its D-entry and move the floor in the same commit (funnel 6000 → 5800 at V3.1, D545).
 const SVG_FLOOR = {
   area: 8000, bar: 4000, candlestick: 8000, choropleth: 100000, composed: 8000,
-  funnel: 6000, gauge: 17000, heatmap: 25000, line: 4000, 'live-line': 8000,
+  funnel: 5800, gauge: 17000, heatmap: 25000, line: 4000, 'live-line': 8000,
   pie: 1000, radar: 10000, ring: 4000, sankey: 12000, scatter: 10000, sunburst: 20000,
 };
 

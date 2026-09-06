@@ -29,7 +29,7 @@ const SSR_NO_SNAPSHOT =
   'Missing getServerSnapshot, which is required for server-rendered content. Will revert to client rendering.';
 
 // Measured 2026-09-05 (node --test, deterministic docs-data seeds); V1.7 mounts every
-// family but funnel through ChartHost, so the package svg (role="img", one tab stop,
+// family through ChartHost (funnel since V3.1, D545), so the package svg (role="img", one tab stop,
 // aria-label) renders on the server for those ten too. V1.9 gave
 // `usePrefersReducedMotion` a server snapshot, so no family throws now. The real
 // test per family pins this object; the todos below pin the P-22/P-23 targets.
@@ -39,7 +39,7 @@ const TODAY = {
   candlestick: { roleImg: 1, tabStops: 1, ariaLabel: true },
   choropleth: { roleImg: 1, tabStops: 1, ariaLabel: true },
   composed: { roleImg: 1, tabStops: 1, ariaLabel: true },
-  funnel: { roleImg: 0, tabStops: 0, ariaLabel: false },
+  funnel: { roleImg: 1, tabStops: 1, ariaLabel: true },
   gauge: { roleImg: 1, tabStops: 1, ariaLabel: true },
   heatmap: { roleImg: 1, tabStops: 1, ariaLabel: true },
   line: { roleImg: 1, tabStops: 1, ariaLabel: true },

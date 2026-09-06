@@ -1,20 +1,9 @@
-import { useCallback, useEffect, useRef } from 'react';
-import type { CSSProperties, ReactElement, ReactNode, Ref, RefObject } from 'react';
-import { useEffectEvent } from './use-effect-event';
-import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
-import { computeFunnelRings, hSegmentPath, vSegmentPath } from './funnel-geometry';
-import type { FunnelRingGeometry, FunnelSegBox } from './funnel-geometry';
-import { createFunnelSegmentHoverRuntime } from './funnel-hover-chrome';
-import type { FunnelHoverCoordinator } from './funnel-hover-chrome';
-import { buildProgressKeyframes, FUNNEL_TWEEN_FALLBACK, resolveEnterTransition, revealTiming } from './enter-transition';
-import type { FunnelEnterTransition } from './enter-transition';
+// Funnel stage label overlay: HTML value/pct/label slots over the package surface.
+// Graphic, hover and reveal motion live in the funnel mark module.
+import type { CSSProperties, ReactElement, ReactNode } from 'react';
+import { FADE_OPACITY } from './hover-motion';
+import type { FunnelSegBox } from './funnel-geometry';
 
-// Seconds-to-milliseconds scale for WAAPI reveal/label delays (staggerDelay is in seconds).
-const MS_PER_SECOND = 1000;
-// Extra label-fade lag after the segment reveal starts (seconds, bklit fixed tween).
-const FUNNEL_LABEL_FADE_DELAY_OFFSET_S = 0.25;
-// Fraction-to-percent scale for gradient offsets.
-const FUNNEL_PERCENT_SCALE = 100;
 // Edge-block share of a spread label cell (value/label bands vs the center pct band).
 const FUNNEL_SPREAD_EDGE_SIZE = "16%";
 // Shared flex-alignment keywords reused across spread/grouped label styles.
@@ -34,9 +23,6 @@ const SPREAD_PCT_STYLE: CSSProperties = { alignItems: "center", display: "flex",
 const SPREAD_HORIZONTAL_LABEL_STYLE: CSSProperties = { alignItems: FLEX_START, display: "flex", height: FUNNEL_SPREAD_EDGE_SIZE, justifyContent: "center", paddingTop: 4 };
 const SPREAD_VERTICAL_VALUE_STYLE: CSSProperties = { alignItems: "center", display: "flex", justifyContent: FLEX_END, paddingRight: 8, width: FUNNEL_SPREAD_EDGE_SIZE };
 const SPREAD_VERTICAL_LABEL_STYLE: CSSProperties = { alignItems: "center", display: "flex", justifyContent: FLEX_START, paddingLeft: 8, width: FUNNEL_SPREAD_EDGE_SIZE };
-// Static svg/ring styles shared by every segment.
-const FUNNEL_SEGMENT_SVG_STYLE: CSSProperties = { height: "100%", inset: 0, overflow: "visible", position: "absolute", width: "100%" };
-const FUNNEL_RING_STYLE: CSSProperties = { transformOrigin: "50% 50%" };
 
 // Grouped-label container style as a function of its two computed inputs.
 const buildGroupedLabelStyle = (groupedVertical: boolean, groupedAlign: FunnelLabelAlign): CSSProperties => ({
@@ -46,17 +32,7 @@ const buildGroupedLabelStyle = (groupedVertical: boolean, groupedAlign: FunnelLa
   gap: 6,
 });
 
-// Segment graphic/overlay frame styles as a function of the segment box.
-const buildSegmentGraphicStyle = (box: Readonly<FunnelSegBox>): CSSProperties => ({
-  height: box.height,
-  left: box.left,
-  overflow: "visible",
-  pointerEvents: "none",
-  position: "absolute",
-  top: box.top,
-  width: box.width,
-  zIndex: 1,
-});
+// Overlay frame style as a function of the segment box.
 const buildSegmentOverlayStyle = (box: Readonly<FunnelSegBox>): CSSProperties => ({
   cursor: "pointer",
   height: box.height,
@@ -67,13 +43,11 @@ const buildSegmentOverlayStyle = (box: Readonly<FunnelSegBox>): CSSProperties =>
   zIndex: 20,
 });
 
-// Ring ref handler factory so the JSX prop is a call result, not an inline closure.
-const createFunnelRingRefHandler = (
-  onRingRef: (ringIndex: number, el: SVGPathElement | null) => void,
-  ringIndex: number,
-): Ref<SVGPathElement> => (el) => {
-  onRingRef(ringIndex, el);
-};
+// Overlay frame plus hover dim as a function of the segment box.
+const buildStageLabelOverlayStyle = (box: Readonly<FunnelSegBox>, dimmed: boolean): CSSProperties => ({
+  ...buildSegmentOverlayStyle(box),
+  opacity: dimmed ? FADE_OPACITY : 1,
+});
 
 interface FunnelLabelSlots {
   readonly valueEl: ReactNode;
@@ -197,301 +171,6 @@ interface FunnelStage {
   readonly gradient?: readonly FunnelGradientStop[];
 }
 
-interface FunnelSegmentProps {
-  readonly index: number;
-  readonly stage: FunnelStage;
-  readonly box: Readonly<FunnelSegBox>;
-  readonly normStart: number;
-  readonly normEnd: number;
-  readonly segDim: number;
-  readonly crossDim: number;
-  readonly color: string;
-  readonly layers: number;
-  readonly staggerDelay: number;
-  readonly enterTransition?: FunnelEnterTransition;
-  readonly renderPattern?: (id: string, color: string) => ReactNode;
-  readonly straight: boolean;
-  readonly isHorizontal: boolean;
-  readonly gradientStops?: readonly FunnelGradientStop[];
-  readonly coordinator: Readonly<FunnelHoverCoordinator>;
-  readonly pct: number;
-  readonly showValues: boolean;
-  readonly showPercentage: boolean;
-  readonly showLabels: boolean;
-  readonly formatPercentage: (pctValue: number) => string;
-  readonly formatValue: (stageValue: number) => string;
-  readonly labelLayout: "spread" | "grouped";
-  readonly labelOrientation?: FunnelLabelOrientation;
-  readonly labelAlign: FunnelLabelAlign;
-}
-
-// Innermost-ring fill precedence: pattern url, then gradient url, then the stage color.
-interface ResolveRingFillOptions {
-  readonly isInnermost: boolean;
-  readonly hasPattern: boolean;
-  readonly hasGradient: boolean;
-  readonly patternId: string;
-  readonly gradientId: string;
-  readonly fallback: string;
-}
-
-const resolveRingFill = (options: Readonly<ResolveRingFillOptions>): string => {
-  const { isInnermost, hasPattern, hasGradient, patternId, gradientId, fallback } = options;
-  if (isInnermost && hasPattern) {return `url(#${patternId})`;}
-  if (isInnermost && hasGradient) {return `url(#${gradientId})`;}
-  return fallback;
-};
-
-// Segment DOM handles shared by the hover-sync and motion hooks below.
-interface FunnelSegmentRefs {
-  readonly graphicRef: RefObject<HTMLDivElement | null>;
-  readonly labelRef: RefObject<HTMLDivElement | null>;
-  readonly labelInnerRef: RefObject<HTMLDivElement | null>;
-  readonly ringRefs: RefObject<(SVGPathElement | null)[]>;
-  readonly setRingRef: (ringIndex: number, el: SVGPathElement | null) => void;
-}
-
-const useFunnelSegmentRefs = (): FunnelSegmentRefs => {
-  const graphicRef = useRef<HTMLDivElement | null>(null);
-  const labelRef = useRef<HTMLDivElement | null>(null);
-  const labelInnerRef = useRef<HTMLDivElement | null>(null);
-  const ringRefs = useRef<(SVGPathElement | null)[]>([]);
-  // Ring-attach writer owned by the hook that constructs ringRefs.
-  const setRingRef = useCallback((ringIndex: number, el: SVGPathElement | null): void => {
-    ringRefs.current[ringIndex] = el;
-  }, [ringRefs]);
-  return { graphicRef, labelInnerRef, labelRef, ringRefs, setRingRef };
-};
-
-interface FunnelSegmentHoverOptions {
-  readonly graphicRef: RefObject<HTMLDivElement | null>;
-  readonly labelRef: RefObject<HTMLDivElement | null>;
-  readonly ringRefs: RefObject<(SVGPathElement | null)[]>;
-  readonly index: number;
-  readonly isHorizontal: boolean;
-  readonly coordinator: Readonly<FunnelHoverCoordinator>;
-  readonly ringCount: number;
-}
-
-const useFunnelSegmentHover = (options: Readonly<FunnelSegmentHoverOptions>): void => {
-  const { graphicRef, labelRef, ringRefs, index, isHorizontal, coordinator, ringCount } = options;
-  const runtimeRef = useRef<ReturnType<typeof createFunnelSegmentHoverRuntime> | null>(null);
-  runtimeRef.current ??= createFunnelSegmentHoverRuntime();
-  useEffect(() => {
-    const runtime = runtimeRef.current;
-    if (!runtime) {
-      return (): void => {
-        // Runtime absent: no hover subscription to clean up.
-      };
-    }
-    // Cap the ring list at the current generation so ringCount stays a genuine dependency.
-    const ringEls = ringRefs.current.filter((el): el is SVGPathElement => el !== null).slice(0, ringCount);
-    runtime.update({
-      graphicEl: graphicRef.current,
-      index,
-      isHorizontal,
-      labelEl: labelRef.current,
-      ringEls,
-    });
-    runtime.paint(coordinator.getHovered());
-    return coordinator.subscribe(() =>{  runtime.paint(coordinator.getHovered()); });
-  }, [coordinator, graphicRef, index, isHorizontal, labelRef, ringCount, ringRefs, ringRefs.current]);
-  useEffect(() =>
-    (): void => {
-      runtimeRef.current?.stop();
-    }
-  , []);
-};
-
-interface GraphicEnterOptions {
-  readonly el: HTMLDivElement;
-  readonly index: number;
-  readonly staggerDelay: number;
-  readonly isHorizontal: boolean;
-  readonly enterTransition: FunnelEnterTransition | undefined;
-  readonly prefersReducedMotion: boolean;
-}
-
-const startGraphicEnterAnimation = (options: Readonly<GraphicEnterOptions>): (() => void) | undefined => {
-  const { el, index, staggerDelay, isHorizontal, enterTransition, prefersReducedMotion } = options;
-  if (prefersReducedMotion) {
-    el.style.transform = "scale(1)";
-    return undefined;
-  }
-  const timing = revealTiming(resolveEnterTransition(enterTransition, FUNNEL_TWEEN_FALLBACK));
-  el.style.transformOrigin = isHorizontal ? "left center" : "center top";
-  const keyframes = buildProgressKeyframes(timing, (progress) => ({ transform: `scale(${progress})` }));
-  const anim = el.animate(keyframes, {
-    delay: index * staggerDelay * MS_PER_SECOND,
-    duration: timing.durationMs,
-    easing: timing.easing,
-    fill: "backwards",
-  });
-  anim.onfinish = (): void => {
-    anim.cancel();
-    el.style.transform = "scale(1)";
-  };
-  return (): void =>{  anim.cancel(); };
-};
-
-interface LabelFadeOptions {
-  readonly el: HTMLDivElement;
-  readonly index: number;
-  readonly staggerDelay: number;
-  readonly prefersReducedMotion: boolean;
-}
-
-const startLabelFadeAnimation = (options: Readonly<LabelFadeOptions>): (() => void) | undefined => {
-  const { el, index, staggerDelay, prefersReducedMotion } = options;
-  if (prefersReducedMotion) {
-    el.style.opacity = "1";
-    return undefined;
-  }
-  // Label fade uses bklit's fixed tween (delay index*staggerDelay+0.25, 0.35s easeOut), not enterTransition.
-  const delayMs = (index * staggerDelay + FUNNEL_LABEL_FADE_DELAY_OFFSET_S) * MS_PER_SECOND;
-  const anim = el.animate([{ opacity: 0 }, { opacity: 1 }], {
-    delay: delayMs,
-    duration: 350,
-    easing: "ease-out",
-    fill: "backwards",
-  });
-  anim.onfinish = (): void => {
-    anim.cancel();
-    el.style.opacity = "1";
-  };
-  return (): void =>{  anim.cancel(); };
-};
-
-interface FunnelSegmentMotionOptions {
-  readonly graphicRef: RefObject<HTMLDivElement | null>;
-  readonly labelInnerRef: RefObject<HTMLDivElement | null>;
-  readonly index: number;
-  readonly staggerDelay: number;
-  readonly isHorizontal: boolean;
-  readonly enterTransition: FunnelEnterTransition | undefined;
-}
-
-const useFunnelSegmentMotion = (options: Readonly<FunnelSegmentMotionOptions>): void => {
-  const { graphicRef, labelInnerRef, index, staggerDelay, isHorizontal, enterTransition } = options;
-  const prefersReducedMotion = usePrefersReducedMotion();
-  // Latest enterTransition for the enter animation without retriggering it.
-  const readEnterTransition = useEffectEvent((): FunnelEnterTransition | undefined => enterTransition);
-  useEffect(() => {
-    const el = graphicRef.current;
-    if (!el) {
-      return (): void => {
-        // Element absent: no enter animation to cancel.
-      };
-    }
-    return startGraphicEnterAnimation({ el, enterTransition: readEnterTransition(), index, isHorizontal, prefersReducedMotion, staggerDelay });
-  }, [graphicRef, index, staggerDelay, isHorizontal, prefersReducedMotion]);
-  useEffect(() => {
-    const el = labelInnerRef.current;
-    if (!el) {
-      return (): void => {
-        // Label element absent: no fade animation to cancel.
-      };
-    }
-    return startLabelFadeAnimation({ el, index, prefersReducedMotion, staggerDelay });
-  }, [index, labelInnerRef, staggerDelay, prefersReducedMotion]);
-};
-
-interface SegmentFrameOptions {
-  readonly index: number;
-  readonly normStart: number;
-  readonly normEnd: number;
-  readonly segDim: number;
-  readonly crossDim: number;
-  readonly layers: number;
-  readonly isHorizontal: boolean;
-  readonly straight: boolean;
-}
-
-interface SegmentFrame {
-  readonly patternId: string;
-  readonly gradientId: string;
-  readonly viewBoxW: number;
-  readonly viewBoxH: number;
-  readonly rings: readonly Readonly<FunnelRingGeometry>[];
-}
-
-const resolveSegmentFrame = (options: Readonly<SegmentFrameOptions>): SegmentFrame => {
-  const { index, normStart, normEnd, segDim, crossDim, layers, isHorizontal, straight } = options;
-  const patternId = `funnel-${isHorizontal ? "h" : "v"}-pattern-${index}`;
-  const gradientId = `funnel-${isHorizontal ? "h" : "v"}-grad-${index}`;
-  const rings = computeFunnelRings(layers, (layerScale) =>
-    isHorizontal
-      ? hSegmentPath({ height: crossDim, layerScale, normEnd, normStart, segW: segDim, straight })
-      : vSegmentPath({ layerScale, normEnd, normStart, segH: segDim, straight, width: crossDim }),
-  );
-  return { gradientId, patternId, rings, viewBoxH: isHorizontal ? crossDim : segDim, viewBoxW: isHorizontal ? segDim : crossDim };
-};
-
-interface FunnelDefsOptions {
-  readonly gradientStops?: readonly FunnelGradientStop[];
-  readonly gradientId: string;
-  readonly patternId: string;
-  readonly renderPattern?: (id: string, color: string) => ReactNode;
-  readonly isHorizontal: boolean;
-  readonly color: string;
-}
-
-const isNumber = <Subject,>(value: Subject): value is Subject & number => typeof value === "number";
-
-const renderFunnelDefs = (options: Readonly<FunnelDefsOptions>): ReactElement => {
-  const { gradientStops, gradientId, patternId, renderPattern, isHorizontal, color } = options;
-  return (
-    <defs>
-      {gradientStops && (
-        <linearGradient
-          id={gradientId}
-          x1="0"
-          x2={isHorizontal ? "1" : "0"}
-          y1="0"
-          y2={isHorizontal ? "0" : "1"}
-        >
-          {gradientStops.map((stop) => (
-            <stop
-              key={`${stop.offset}-${stop.color}`}
-              offset={isNumber(stop.offset) ? `${stop.offset * FUNNEL_PERCENT_SCALE}%` : stop.offset}
-              stopColor={stop.color}
-            />
-          ))}
-        </linearGradient>
-      )}
-      {renderPattern?.(patternId, color)}
-    </defs>
-  );
-};
-
-interface FunnelRingsOptions {
-  readonly rings: readonly Readonly<FunnelRingGeometry>[];
-  readonly patternId: string;
-  readonly gradientId: string;
-  readonly hasPattern: boolean;
-  readonly hasGradient: boolean;
-  readonly color: string;
-  readonly onRingRef: (ringIndex: number, el: SVGPathElement | null) => void;
-}
-
-const renderFunnelRings = (options: Readonly<FunnelRingsOptions>): ReactNode => {
-  const { rings, patternId, gradientId, hasPattern, hasGradient, color, onRingRef } = options;
-  return rings.map((ring: Readonly<FunnelRingGeometry>) => {
-    const isInnermost = ring.ringIndex === rings.length - 1;
-    const ringFill: string = resolveRingFill({ fallback: color, gradientId, hasGradient, hasPattern, isInnermost, patternId });
-    return (
-      <path
-        d={ring.path}
-        fill={ringFill}
-        key={`ring-${ring.ringIndex}`}
-        opacity={ring.opacity}
-        ref={createFunnelRingRefHandler(onRingRef, ring.ringIndex)}
-        style={FUNNEL_RING_STYLE}
-      />
-    );
-  });
-};
-
 interface SegmentLabelOptions {
   readonly stage: FunnelStage;
   readonly pct: number;
@@ -515,107 +194,30 @@ const resolveSegmentLabels = (options: Readonly<SegmentLabelOptions>): FunnelLab
   return computeFunnelLabelLayout({ isHorizontal, labelAlign, labelEl, labelLayout, labelOrientation, pctEl, valueEl });
 };
 
-interface SegmentGraphicOptions {
-  readonly graphicRef: RefObject<HTMLDivElement | null>;
+interface FunnelStageLabelProps extends SegmentLabelOptions {
   readonly box: Readonly<FunnelSegBox>;
-  readonly frame: Readonly<SegmentFrame>;
-  readonly color: string;
-  readonly gradientStops?: readonly FunnelGradientStop[];
-  readonly renderPattern?: (id: string, color: string) => ReactNode;
-  readonly isHorizontal: boolean;
-  readonly onRingRef: (ringIndex: number, el: SVGPathElement | null) => void;
-}
-
-const renderSegmentGraphic = (options: Readonly<SegmentGraphicOptions>): ReactElement => {
-  const { graphicRef, box, frame, color, gradientStops, renderPattern, isHorizontal, onRingRef } = options;
-  return (
-    <div
-      ref={graphicRef}
-      style={buildSegmentGraphicStyle(box)}
-    >
-      <svg
-        aria-hidden="true"
-        preserveAspectRatio="none"
-        role="presentation"
-        style={FUNNEL_SEGMENT_SVG_STYLE}
-        viewBox={`0 0 ${frame.viewBoxW} ${frame.viewBoxH}`}
-      >
-        {renderFunnelDefs({ color, gradientId: frame.gradientId, gradientStops, isHorizontal, patternId: frame.patternId, renderPattern })}
-        {renderFunnelRings({ color, gradientId: frame.gradientId, hasGradient: Boolean(gradientStops), hasPattern: Boolean(renderPattern), onRingRef, patternId: frame.patternId, rings: frame.rings })}
-      </svg>
-    </div>
-  );
-};
-
-interface SegmentOverlayOptions {
-  readonly labelRef: RefObject<HTMLDivElement | null>;
-  readonly labelInnerRef: RefObject<HTMLDivElement | null>;
-  readonly box: Readonly<FunnelSegBox>;
+  readonly dimmed: boolean;
   readonly onPointerEnter: () => void;
   readonly onPointerLeave: () => void;
-  readonly outerLabelStyle: CSSProperties;
-  readonly labelContent: ReactNode;
 }
 
 // Keep cursor-pointer: the QA harness discovers hover cells via #chart-root .cursor-pointer.
-const renderSegmentOverlay = (options: Readonly<SegmentOverlayOptions>): ReactElement => {
-  const { labelRef, labelInnerRef, box, onPointerEnter, onPointerLeave, outerLabelStyle, labelContent } = options;
+const FunnelStageLabel = (props: Readonly<FunnelStageLabelProps>): ReactElement => {
+  const { box, dimmed, onPointerEnter, onPointerLeave } = props;
+  const { labelContent, outerLabelStyle } = resolveSegmentLabels(props);
   return (
     <div
       className="cursor-pointer"
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
-      ref={labelRef}
-      style={buildSegmentOverlayStyle(box)}
+      style={buildStageLabelOverlayStyle(box, dimmed)}
     >
-      <div ref={labelInnerRef} style={outerLabelStyle}>
+      <div style={outerLabelStyle}>
         {labelContent}
       </div>
     </div>
   );
 };
 
-interface FunnelPointerHandlers {
-  readonly handlePointerEnter: () => void;
-  readonly handlePointerLeave: () => void;
-}
-
-// Hover request callbacks shared by the segment overlay; split so the model hook stays small.
-const useFunnelPointerHandlers = (coordinator: Readonly<FunnelHoverCoordinator>, index: number): FunnelPointerHandlers => {
-  const handlePointerEnter = useCallback(() =>{  coordinator.requestHover(index); }, [coordinator, index]);
-  const handlePointerLeave = useCallback(() =>{  coordinator.requestUnhover(); }, [coordinator]);
-  return { handlePointerEnter, handlePointerLeave };
-};
-
-interface FunnelSegmentContent {
-  readonly handlePointerEnter: () => void;
-  readonly handlePointerLeave: () => void;
-  readonly segmentLabels: FunnelLabelFrame;
-}
-
-// Segment content: hover callbacks and label layout for one funnel stage.
-// Refs, frame geometry, and motion wiring stay in FunnelSegment.
-const useFunnelSegmentContent = (props: Readonly<FunnelSegmentProps>, isHorizontal: boolean): FunnelSegmentContent => {
-  const { coordinator, index, stage, pct, showValues, showPercentage, showLabels, formatPercentage, formatValue, labelLayout, labelOrientation, labelAlign } = props;
-  const { handlePointerEnter, handlePointerLeave } = useFunnelPointerHandlers(coordinator, index);
-  const segmentLabels = resolveSegmentLabels({ formatPercentage, formatValue, isHorizontal, labelAlign, labelLayout, labelOrientation, pct, showLabels, showPercentage, showValues, stage });
-  return { handlePointerEnter, handlePointerLeave, segmentLabels };
-};
-
-const FunnelSegment = (props: Readonly<FunnelSegmentProps>): ReactElement => {
-  const { box, color, gradientStops, isHorizontal, renderPattern } = props;
-  const { graphicRef, labelRef, labelInnerRef, ringRefs, setRingRef } = useFunnelSegmentRefs();
-  const frame = resolveSegmentFrame({ crossDim: props.crossDim, index: props.index, isHorizontal, layers: props.layers, normEnd: props.normEnd, normStart: props.normStart, segDim: props.segDim, straight: props.straight });
-  useFunnelSegmentHover({ coordinator: props.coordinator, graphicRef, index: props.index, isHorizontal, labelRef, ringCount: frame.rings.length, ringRefs });
-  useFunnelSegmentMotion({ enterTransition: props.enterTransition, graphicRef, index: props.index, isHorizontal, labelInnerRef, staggerDelay: props.staggerDelay });
-  const content = useFunnelSegmentContent(props, isHorizontal);
-  return (
-    <>
-      {renderSegmentGraphic({ box, color, frame, gradientStops, graphicRef, isHorizontal, onRingRef: setRingRef, renderPattern })}
-      {renderSegmentOverlay({ box, labelContent: content.segmentLabels.labelContent, labelInnerRef, labelRef, onPointerEnter: content.handlePointerEnter, onPointerLeave: content.handlePointerLeave, outerLabelStyle: content.segmentLabels.outerLabelStyle })}
-    </>
-  );
-};
-
-export { FunnelSegment };
-export type { FunnelGradientStop, FunnelLabelAlign, FunnelLabelOrientation, FunnelSegmentProps, FunnelStage };
+export { FunnelStageLabel };
+export type { FunnelGradientStop, FunnelLabelAlign, FunnelLabelOrientation, FunnelStage, FunnelStageLabelProps };

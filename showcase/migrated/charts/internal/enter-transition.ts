@@ -157,20 +157,17 @@ const buildProgressKeyframes = (timing: Readonly<RevealTiming>, toKeyframe: (pro
 // Former per-family reveal shims collapsed here; gauge-reveal keeps its own reconciler.
 type PieEnterTransition = EnterTransition;
 type RingEnterTransition = EnterTransition;
-type FunnelEnterTransition = EnterTransition;
 type RadarEnterTransition = EnterTransition;
 type GaugeEnterTransition = EnterTransition;
 // Candlestick aliased too so the tween branch stays reachable.
 type CandlestickEnterTransition = EnterTransition;
 
 const RING_TWEEN_FALLBACK: ResolvedTiming = TWEEN_FALLBACK;
-const FUNNEL_TWEEN_FALLBACK: ResolvedTiming = TWEEN_FALLBACK;
 const RADAR_TWEEN_FALLBACK: ResolvedTiming = TWEEN_FALLBACK;
 
 export type {
   CandlestickEnterTransition,
   EnterTransition,
-  FunnelEnterTransition,
   GaugeEnterTransition,
   PieEnterTransition,
   RadarEnterTransition,
@@ -181,7 +178,6 @@ export type {
 export {
   buildProgressKeyframes,
   clipRevealTiming,
-  FUNNEL_TWEEN_FALLBACK,
   RADAR_TWEEN_FALLBACK,
   resolveEnterTransition,
   revealTiming,

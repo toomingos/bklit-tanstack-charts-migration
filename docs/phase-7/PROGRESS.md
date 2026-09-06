@@ -44,7 +44,7 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 3 | V2.2 heatmap (+V2.3) | package pointer on cells, legend → controlled focus | merged | `ses_f8df3022fffem7UGkplAShFIJN` | `cba58f8` | D532 · listener/`pointer: false` = 0 · bridge 479 → 75 lines · QA heatmap/52 = baseline · probe unflagged |
 | 3 | V2.3 | legend → controlled focus / selection | todo | | | |
 | 3 | V2.4 | decorative tooltip springs | merged | `ses_f8c458e10ffe1gQA90dmS1bisd` | `5c5b621` | D542 · 7 files +107/−701 · `setAttribute\|createSpring` in tooltip-* = 0 · QA line/area/bar/candlestick/scatter equal to the V1.2 run, all PASS |
-| 3 | V2.5 | `spatialIndex`, D472 decision | merged | `ses_f8c35704effe6Ps7uOfUTu1Abv` | __V25C__ | D544 · 8 files · `maxFocusDistance: POSITIVE_INFINITY` = 0 · `d3-delaunay` in charts = 0 (index unreachable under a focus strategy, 0.16.0) · D472 gate → V3.5 · QA __V25QA__ |
+| 3 | V2.5 | `spatialIndex`, D472 decision | merged | `ses_f8c35704effe6Ps7uOfUTu1Abv` | fba4d97 | D544 · 8 files · `maxFocusDistance: POSITIVE_INFINITY` = 0 · `d3-delaunay` in charts = 0 (index unreachable under a focus strategy, 0.16.0) · D472 gate → V3.5 · QA __V25QA__ |
 | 3 | V2.6 | crosshair + package tooltip | todo | | | |
 | 3 | V3.2 | package layouts (geo, sankey, sunburst) | split per family below | | | |
 | 3 | V3.2 sankey | `sankeyDiagram` with package `rect`/`text` marks, declared gradients, `d3-sankey`/`createElementNS` = 0 | merged | `ses_f8d1639a1ffe2MAuWkNXCijbi3` | `7e183af` | D536 · `d3-sankey` imports 0 · sankey `createElementNS` 0 · `sankey-gradients.ts` deleted · `withStates` on link/rect (D528(a) no longer reproduces) · label baseline residual 0.0844 em (G13) · QA settled 1028 / ruled / 2953 / 4519 · probe 120/208 ms |
@@ -56,7 +56,7 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 3 | V3.4 | declared resources + R10 seam | todo | | | |
 | 3 | V3.7 | config parity | todo | | | |
 | 3 | V4.6 | 23 legacy tests ported | merged | `ses_f8df2fa43ffe2dgjjTlywgbbxC` | `5cabf0b` | D530 · 23 files, imports only · 38 pass / 87 named todos (V3.7 backlog) / 1 signature gap (`buildHorizontalTangentBezierPath`, V3.7) · `pnpm test` 230 / 123 / 0 / 107 |
-| 4 | V3.1 | funnel on marks (D364 reversal) | todo | | | |
+| 4 | V3.1 | funnel on marks (D364 reversal) | merged | `ses_f8c383244ffe8txsjclmGtDUuw` | __V31C__ | D545 · 6 files +592/−723 + 2 records · `defineChart` in funnel-chart = 2 · WAAPI/`createElementNS` in funnel = 0 · QA funnel 3/0 px, funnelvertical 0/0 (baseline 99/0) |
 | 4 | V3.5 | one animation owner | todo | | | |
 | 4 | V3.6 | stylesheet audit, `data-slot` | todo | | | |
 | 4 | V3.9 | skeleton as a chart | todo | | | |
