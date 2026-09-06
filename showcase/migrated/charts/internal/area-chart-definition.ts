@@ -24,6 +24,7 @@ import {
   tickLabelFadeOpacity,
 } from "./axis-ticks";
 import { buildNativeTooltipExtension } from "./native-tooltip";
+import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./cartesian-focus-distance";
 import { bezierEasing } from "./bezier-easing";
 import { resolveGridGuide } from "./grid";
 import { shortDateFmt } from "./formatters";
@@ -129,7 +130,7 @@ const buildAreaLoadingDefinition = (params: Readonly<AreaLoadingDefinitionParams
     focusRing: false,
     margin: params.margin,
     marks: emptyMarks,
-    maxFocusDistance: Number.POSITIVE_INFINITY,
+    maxFocusDistance: CARTESIAN_MAX_FOCUS_DISTANCE_PX,
     scales: {
       x: {
         axis: { line: false, tickLabels: false, ticks: { count: gridGuide.columnTicks, size: 0 } },
@@ -540,7 +541,7 @@ const buildAreaChartDefinition = (params: Readonly<AreaChartDefinitionParams>): 
     margin: params.margin,
     marks,
     // Hover works anywhere over the plot; TanStack defaults to 48px.
-    maxFocusDistance: Number.POSITIVE_INFINITY,
+    maxFocusDistance: CARTESIAN_MAX_FOCUS_DISTANCE_PX,
     motion: buildAreaMotionFn({ effectiveYDomainTweenDuration: params.effectiveYDomainTweenDuration, yDomainTweenGateActive }),
     // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.
     scales: {

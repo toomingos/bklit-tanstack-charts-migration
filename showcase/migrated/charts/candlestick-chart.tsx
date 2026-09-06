@@ -37,6 +37,7 @@ import { renderPatternPreset } from "./internal/pattern-preset-render";
 import type { ChartDatum, TooltipRow } from "./internal/types";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { createCandlestickFocusStrategy } from "./internal/candlestick-focus-strategy";
+import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./internal/cartesian-focus-distance";
 import { useChartMargin, DEFAULT_CHART_MARGIN } from "./internal/use-chart-margin";
 import type { ChartMargin } from "./internal/use-chart-margin";
 import { shortDateFmt, weekdayDateFmt } from "./internal/formatters";
@@ -208,7 +209,7 @@ const CandlestickChart = ({
       focusRing: false,
       margin,
       marks,
-      maxFocusDistance: Number.POSITIVE_INFINITY,
+      maxFocusDistance: CARTESIAN_MAX_FOCUS_DISTANCE_PX,
       // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.
       scales: {
         x: {

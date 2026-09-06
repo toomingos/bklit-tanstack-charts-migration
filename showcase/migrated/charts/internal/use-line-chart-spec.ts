@@ -8,6 +8,7 @@ import { resolveGridGuide } from "./grid";
 import { bezierEasing } from "./bezier-easing";
 import { DISCRETE_INTERACTION_THRESHOLD, TOOLTIP_BOX_SPRING } from "./design-tokens";
 import { buildNativeTooltipExtension } from "./native-tooltip";
+import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./cartesian-focus-distance";
 import { isChartInteractionPhase } from "./chart-phase";
 import type { ChartPhase } from "./chart-phase";
 import {
@@ -120,7 +121,7 @@ const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec 
       focusRing: false,
       margin,
       marks,
-      maxFocusDistance: Number.POSITIVE_INFINITY,
+      maxFocusDistance: CARTESIAN_MAX_FOCUS_DISTANCE_PX,
       motion,
       // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.
       scales: {

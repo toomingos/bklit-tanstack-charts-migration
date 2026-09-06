@@ -25,6 +25,7 @@ import {
   TOOLTIP_BOX_SPRING,
 } from "./internal/design-tokens";
 import { buildNativeTooltipExtension } from "./internal/native-tooltip";
+import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./internal/cartesian-focus-distance";
 import { BackgroundLayer } from "./internal/background-layer";
 import { NOTHING, useComposedResolved, useComposedYDomains } from "./internal/composed-series";
 import type {
@@ -237,7 +238,7 @@ const ComposedChart = ({
       gradients: nativeComposedGradients,
       margin: phaseAndReveal.margin,
       marks,
-      maxFocusDistance: Number.POSITIVE_INFINITY,
+      maxFocusDistance: CARTESIAN_MAX_FOCUS_DISTANCE_PX,
       motion,
       // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.
       scales: { x: xScaleOptions, y: yScaleOptions },

@@ -17,6 +17,7 @@ import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, TOOLTIP_BOX_SPRING } from "
 import type { resolveGridGuide } from "./grid";
 import type { buildBarAxisSection, BuiltDepthGradient } from "./bar-chart-overlays";
 import { buildNativeTooltipExtension } from "./native-tooltip";
+import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./cartesian-focus-distance";
 import type { createNicedYScale } from "./y-domain";
 import type { PatternPresetId } from "./pattern-preset";
 import type { BarConfig, BarDepthBackConfig, BarDepthFrontConfig, BarPulseConfig, BarSquaresConfig, ChartDatum } from "./types";
@@ -625,7 +626,7 @@ const buildPlainBarDefinition = ({
     svgAnimation: false as const,
     theme: { muted: "var(--color-chart-label, var(--chart-label))" },
   } as const;
-  return defineChart({ ...spec, focus: barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY, tooltip: tooltipOption });
+  return defineChart({ ...spec, focus: barFocusStrategy, focusRing: false, maxFocusDistance: CARTESIAN_MAX_FOCUS_DISTANCE_PX, tooltip: tooltipOption });
 };
 
 interface BarFullMarksParams {
@@ -710,7 +711,7 @@ const buildFullBarDefinition = (params: Readonly<BarFullDefinitionParams>): DomC
     svgAnimation: false as const,
     theme: { muted: "var(--color-chart-label, var(--chart-label))" },
   } as const;
-  return defineChart({ ...spec, focus: params.barFocusStrategy, focusRing: false, maxFocusDistance: Number.POSITIVE_INFINITY, tooltip: tooltipOption });
+  return defineChart({ ...spec, focus: params.barFocusStrategy, focusRing: false, maxFocusDistance: CARTESIAN_MAX_FOCUS_DISTANCE_PX, tooltip: tooltipOption });
 };
 
 // Plain-vs-full dispatch: bare bars take the short path; tracks/squares/depth use the full spec.

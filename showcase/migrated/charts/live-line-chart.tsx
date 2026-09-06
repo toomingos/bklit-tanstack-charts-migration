@@ -43,6 +43,7 @@ import {
 import { TOOLTIP_SPRING } from "./internal/design-tokens";
 import { useChartConfig } from "./internal/use-chart-config";
 import { buildNativeTooltipExtension, renderSeriesTooltipBody } from "./internal/native-tooltip";
+import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./internal/cartesian-focus-distance";
 import type {
   ChartDatum,
   ChartTooltipConfig,
@@ -512,7 +513,7 @@ const LiveLineChart = ({
       gradients: nativeLineGradients,
       margin,
       marks,
-      maxFocusDistance: Number.POSITIVE_INFINITY,
+      maxFocusDistance: CARTESIAN_MAX_FOCUS_DISTANCE_PX,
       motion: rollingMotion,
       scales: {
         x: xScaleOptions,
