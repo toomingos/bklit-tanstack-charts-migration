@@ -370,6 +370,8 @@ interface CandleGeometryParams {
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly width: number;
   readonly xDataKey: string;
+  readonly xDomain: [Date, Date] | undefined;
+  readonly xDomainSlotCount: number | undefined;
 }
 
 interface CandleGeometry {
@@ -387,14 +389,18 @@ interface CandleGeometry {
  * @returns {CandleGeometry} Time extent, widths, and y domain.
  */
 const useCandleGeometry = (params: Readonly<CandleGeometryParams>): CandleGeometry => {
-  const { candleGap, candleWidthProp, margin, renderData, width, xDataKey } = params;
+  const { candleGap, candleWidthProp, margin, renderData, width, xDataKey, xDomain, xDomainSlotCount } = params;
   const timeExtent = useMemo(() => findCandleTimeExtent(renderData, xDataKey) ?? { maxTime: EMPTY_TIME_BOUND_MS, minTime: EMPTY_TIME_BOUND_MS }, [renderData, xDataKey]);
 
   const innerWidth = Math.max(MIN_GEOMETRY_EXTENT_PX, width - margin.left - margin.right);
 
+  // Legacy parity: slot count is xDomainSlotCount only when xDomain is set, else the data length.
   const slotWidth = useMemo(
-    () => innerWidth / Math.max(renderData.length, MIN_ROW_COUNT),
-    [innerWidth, renderData.length],
+    () => {
+      const slotCount = xDomain !== undefined && xDomainSlotCount !== undefined ? xDomainSlotCount : renderData.length;
+      return innerWidth / Math.max(slotCount, MIN_ROW_COUNT);
+    },
+    [innerWidth, renderData.length, xDomain, xDomainSlotCount],
   );
 
   // Bklit parity: candleWidth = min(override ?? slotWidth*(1-candleGap), slotWidth).

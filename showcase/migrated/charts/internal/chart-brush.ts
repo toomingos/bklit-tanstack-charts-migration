@@ -10,15 +10,15 @@ type BrushSelectionPattern = BrushChromePattern;
 type ChartBrushSelectedBoxStyle = BrushSelectedBoxStyle;
 
 interface ChartBrushProps {
-  /** Vestigial — kept only so callers that still pass `host` type-check; the value is ignored. */
+  /** Vestigial (D578): legacy has no `host` prop at all, so nothing reads this; kept so old callers type-check. */
   readonly host?: BrushHost | null;
   readonly onSelectionChange?: (selection: { readonly start: Readonly<Date>; readonly end: Readonly<Date> } | null) => void;
-  /** Brush direction. Default: "horizontal" for time range selection. */
+  /** Vestigial (D578): package `brushX` is X-only (no direction key), so "vertical"/"both" cannot be expressed. Default: "horizontal". */
   readonly brushDirection?: "horizontal" | "vertical" | "both";
   readonly initialSelection?: BrushSelection | null;
-  /** Current selection (e.g. from parent state). Accepted for parity; the host owns the visible selection. */
+  /** Vestigial (D578): legacy destructures this and never reads it either (`selection: _selection`), so ignoring it IS the parity behaviour. */
   readonly selection?: ChartBrushSelection | null;
-  /** Accepted for parity; the host owns pointer events. Default: true for brush-in-strip. */
+  /** Accepted divergence (D578): no package surface; legacy re-anchors coordinates in a transformed container, the host owns pointer events here. Default: true. */
   readonly useWindowMoveEvents?: boolean;
   readonly blurPx?: number;
   readonly fadeOuterEdges?: boolean;

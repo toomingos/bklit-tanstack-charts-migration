@@ -130,6 +130,8 @@ const CandlestickChart = ({
   style,
   candleGap = DEFAULT_CANDLE_GAP_RATIO,
   candleWidth: candleWidthProp,
+  xDomain,
+  xDomainSlotCount,
   children,
   ariaLabel = "Candlestick chart",
   ariaDescription,
@@ -173,12 +175,14 @@ const CandlestickChart = ({
     renderData,
     width,
     xDataKey,
+    xDomain,
+    xDomainSlotCount,
   });
 
   // Custom resolve() owns the slotWidth/2 range inset; a plain instance would lose it to re-ranging.
   const xScale = useMemo<ChartScale>(
-    () => buildCandleXScale({ renderData, timeExtent, xAxis, xDataKey }),
-    [renderData, xDataKey, timeExtent, xAxis],
+    () => buildCandleXScale({ renderData, timeExtent, xAxis, xDataKey, xDomain, xDomainSlotCount }),
+    [renderData, xDataKey, timeExtent, xAxis, xDomain, xDomainSlotCount],
   );
 
   const candlestickFocusStrategy = useMemo(

@@ -143,6 +143,8 @@ interface CandleXScaleParams {
   readonly timeExtent: CandleTimeExtent;
   readonly xAxis: ExtractedChildren["xAxis"];
   readonly xDataKey: string;
+  readonly xDomain: [Date, Date] | undefined;
+  readonly xDomainSlotCount: number | undefined;
 }
 
 /**
@@ -152,9 +154,12 @@ interface CandleXScaleParams {
  * @returns {ChartScale} Time x scale with legacy tick values.
  */
 const buildCandleXScale = (params: Readonly<CandleXScaleParams>): ChartScale => {
-  const { renderData, timeExtent, xAxis, xDataKey } = params;
-  const { minTime, maxTime } = timeExtent;
-  const count = Math.max(renderData.length, MIN_ROW_COUNT);
+  const { renderData, timeExtent, xAxis, xDataKey, xDomain, xDomainSlotCount } = params;
+  // Legacy parity: xDomain clamps the domain; slot count is xDomainSlotCount only when xDomain is set.
+  const minTime = xDomain ? xDomain[0].getTime() : timeExtent.minTime;
+  const maxTime = xDomain ? xDomain[1].getTime() : timeExtent.maxTime;
+  const slotCount = xDomain !== undefined && xDomainSlotCount !== undefined ? xDomainSlotCount : renderData.length;
+  const count = Math.max(slotCount, MIN_ROW_COUNT);
   return {
     id: "x",
     resolve(context): ResolvedScale {

@@ -257,6 +257,66 @@ all of them.
 
 Landed `c58df20`. V5.1 is merged; V5.2 stays open on the re-measure.
 
+## D578 — G24: four brush props ruled, four props wired, two were never broken
+
+G24 said "legacy props restored as types only, behaviour not wired; the
+parity harness reads them green because `Eq` is type-level". An audit
+(`ses_f895ac099ffeTlqBQstDXMrhCd`) traced every named prop from its
+declaration to a real read, against legacy and against the 0.16.0 `.d.ts`.
+The gap was right in kind and wrong in detail: two of the props it named
+are in fact wired, and the rest split three ways.
+
+**Already wired — G24 was stale.** `initialSelection` reaches the
+definition (`brush-layer.ts:59` → `use-line-brush-range.ts:24` →
+`brushX({range: controlledSignal(...)})` → `controls:` in
+`use-line-chart-spec.ts:152` and `area-chart-definition.ts:590`).
+`BarDepthProvider.groundShadow` reaches the gradient stops
+(`use-bar-definition.ts:158` → `buildPosBarStops`/`buildNegBarStops` →
+`buildNativeDepthGradients`). No ruling needed for either.
+
+**Ruled vestigial — the prop exists so callers type-check, and ignoring
+it is the correct behaviour.** Each now says so at its declaration in
+`internal/chart-brush.ts`:
+- `host`: legacy has **no `host` prop at all** (`grep "host?:" ` across
+  the legacy chart tree is empty). There is nothing to be unfaithful to.
+- `selection`: legacy destructures it as `selection: _selection`
+  (`chart-brush.tsx:262`) and never references it again. Ignoring it *is*
+  parity; wiring it would be the divergence.
+- `brushDirection`: the package `brushX` is X-only —
+  `BrushXBaseOptions` (`dist/interaction-brush.d.ts:17-36`) has no
+  direction key. Legacy forwards it to visx to control the drag axes, so
+  `"vertical"`/`"both"` are genuinely unavailable at 0.16.0.
+
+**Ruled accepted divergence.** `useWindowMoveEvents`: legacy forwards it
+to visx and zeroes the margin when false (`chart-brush.tsx:239-248`),
+which re-anchors coordinates inside a transformed container. No package
+surface exists; the host owns pointer events. No visible difference in
+normal layouts. Accepted rather than reimplemented, per principle 2.
+
+**Wired — real divergences with a real surface, so no ruling was
+available.** These were the honest half of G24:
+- candlestick `xDomain` / `xDomainSlotCount`: declared at `:98`/`:100`
+  and never even destructured. Legacy clamps the x scale to the passed
+  range (`:141-145`) and pads by `slotWidth/2` off a slot count of
+  `xDomain && xDomainSlotCount != null ? xDomainSlotCount : data.length`
+  (`:138`, `:152`); migrated auto-fit the data extent and always used
+  `renderData.length`. The package can carry it — migrated already builds
+  a custom scale (`candlestick-chart-scales.ts:154`) and `ChartScale`
+  takes any domain. → G24a.
+- `BarDepthProvider.segmentsAccessor` / `minBarHeight`: declared in
+  `series-config-types.ts:183,185` and read nowhere. Legacy splits the 3D
+  side faces per segment (`bar-depth.tsx:417,557,633`) and floors short
+  bars with `Math.max(rawHeight, minBarHeight)` (`:395,:438`), so short
+  bars stay visible; migrated rendered single-face sides and let them
+  collapse. No native surface (`dist/bar.d.ts` has no depth keys), but
+  both are expressible through the custom depth marks already in use.
+  → G24b.
+
+The lesson for the board: a type-level parity harness cannot tell a wired
+prop from an unwired one, so `Eq` green is not evidence that a prop
+works. Where a prop is deliberately inert, the declaration now carries the
+ruling, so the next reader does not re-derive this.
+
 ## D579 — heatmap six-month display range is host-timezone-sensitive in legacy (G29 follow-up)
 
 `getHeatmapWeekCount(startSunday, endDate)` divides an absolute ms difference by a
