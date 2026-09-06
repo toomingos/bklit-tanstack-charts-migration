@@ -272,6 +272,5 @@ export {
   PULSE_WAVE_HEIGHT_RATIO,
 };
 export { buildPulseWaveStops, PULSE_WAVE_DURATION_S, PULSE_WAVE_PEAK_OPACITY } from "./bar-pulse-clip";
-export { syncBarPulseGroups } from "./bar-pulse-sync";
 export type { BarPulseMarkOptions };
 export type { PulseWaveGradientStop } from "./bar-pulse-clip";

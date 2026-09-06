@@ -256,7 +256,6 @@ const BarChart = ({
     handleBarSvgRender({
       animationDuration,
       latestRenderDataRef,
-      phaseRef,
       renderDataLength: renderData.length,
       revealDeadlineTimerRef,
       revealDurationMs,

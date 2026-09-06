@@ -277,3 +277,6 @@ export type { LineChartLoadingProps } from "./line-chart-loading";
 export { ChartBrushSelectionOverlay, ChartBrushTrackOverlay } from "./internal/brush-overlays";
 // V3.5 (one animation owner): useAnimatedYDomains rides the merged export.
 // Implementation lives in internal/parity/animation.
+
+// V3.9 (skeleton as a chart): placeholder definitions and sweep paint stay internal.
+// Nothing outside the package consumes them, and legacy exports none of them.

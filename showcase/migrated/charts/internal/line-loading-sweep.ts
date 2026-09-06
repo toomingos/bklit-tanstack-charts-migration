@@ -1,170 +1,68 @@
-import type { Dispatch, RefObject, SetStateAction } from "react";
-import {
-  LINE_LOADING_PULSE_CYCLE_S,
-  LINE_LOADING_LOOP_PAUSE_MS,
-} from "./design-tokens";
-import type { LineLoadingPulseMode } from "./line-loading-pulse";
+// Pure placeholder-line geometry (percentages to plot-space points).
+// No motion here; the traveling pulse is deleted (V3.9).
 
-// Seconds-to-milliseconds factor for the rAF progress tween.
-const MS_PER_SECOND = 1000;
-// Mid-cycle progress: the pulse reveal peaks halfway, then exits.
+import { area, curveNatural, line } from "d3-shape";
+import type { CurveFactory } from "d3-shape";
+
+const PERCENT_SCALE = 100;
+// Mid-cycle progress: the legacy pulse reveal peaked halfway, then exited.
 const LINE_LOADING_PULSE_MIDPOINT = 0.5;
+// Default skeleton point count (legacy sweep DEFAULT_POINT_COUNT).
+const DEFAULT_LINE_SKELETON_POINT_COUNT = 14;
 
-interface PulseTweenParams {
-  readonly done?: () => void;
-  readonly dur: number;
-  readonly from: number;
-  readonly to: number;
+interface LoadingPlotRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 }
 
-type PulseTween = (params: Readonly<PulseTweenParams>) => void;
-
-interface PulseCompletionParams {
-  readonly isCancelled: () => boolean;
-  readonly onCycleComplete?: () => void;
+interface LoadingPlotPoint {
+  readonly x: number;
+  readonly y: number;
 }
 
-interface ExitPulseSecondHalfParams extends PulseCompletionParams {
-  readonly half: number;
-  readonly run: PulseTween;
-}
-
-interface LoopPulseParams extends PulseCompletionParams {
-  readonly notifyCycleComplete: () => void;
-  readonly run: PulseTween;
-}
-
-interface EnterPulseParams extends PulseCompletionParams {
-  readonly half: number;
-  readonly notifyCycleComplete: () => void;
-  readonly run: PulseTween;
-}
-
-interface ExitPulseParams extends PulseCompletionParams {
-  readonly half: number;
-  readonly notifyCycleComplete: () => void;
-  readonly readProgress: () => number;
-  readonly run: PulseTween;
-}
-
-interface StartPulseModeParams extends PulseCompletionParams {
-  readonly half: number;
-  readonly mode: LineLoadingPulseMode;
-  readonly notifyCycleComplete: () => void;
-  readonly readProgress: () => number;
-  readonly run: PulseTween;
-}
-
-interface PulseTweenFactoryParams {
-  readonly animRef: RefObject<Animation | null>;
-  readonly isCancelled: () => boolean;
-  readonly setProgress: Dispatch<SetStateAction<number>>;
-}
-
-// Guarded cycle completion; hoisted so the exit-mode chain stays shallow.
-const completePulseCycle = ({ isCancelled, onCycleComplete }: Readonly<PulseCompletionParams>): void => {
-  if (isCancelled()) {return;}
-  onCycleComplete?.();
-};
-
-// Second half of the exit sweep; hoisted so the exit branch nests no deeper than the other modes.
-const startExitPulseSecondHalf = ({ half, isCancelled, onCycleComplete, run }: Readonly<ExitPulseSecondHalfParams>): void => {
-  if (isCancelled()) {return;}
-  run({
-    done: (): void => { completePulseCycle({ isCancelled, onCycleComplete }); },
-    dur: half,
-    from: LINE_LOADING_PULSE_MIDPOINT,
-    to: 1,
-  });
-};
-
-// Loop sweep: full reveal then pause before the completion callback fires.
-const startLoopPulse = ({ isCancelled, notifyCycleComplete, run }: Readonly<LoopPulseParams>): void => {
-  run({
-    done: (): void => {
-      if (!isCancelled()) {
-        globalThis.setTimeout(() => { notifyCycleComplete(); }, LINE_LOADING_LOOP_PAUSE_MS);
-      }
-    },
-    dur: LINE_LOADING_PULSE_CYCLE_S,
-    from: 0,
-    to: 1,
-  });
-};
-
-// Enter sweep: partial reveal up to the midpoint, then hold for the exit.
-const startEnterPulse = ({ half, isCancelled, notifyCycleComplete, run }: Readonly<EnterPulseParams>): void => {
-  run({
-    done: (): void => { if (!isCancelled()) {notifyCycleComplete();} },
-    dur: half,
-    from: 0,
-    to: LINE_LOADING_PULSE_MIDPOINT,
-  });
-};
-
-// Exit sweep: finish from the in-flight progress, scaling duration to the distance left.
-const startExitPulse = ({ half, isCancelled, notifyCycleComplete, readProgress, run }: Readonly<ExitPulseParams>): void => {
-  const current = readProgress();
-  if (current < LINE_LOADING_PULSE_MIDPOINT) {
-    run({
-      done: (): void => { startExitPulseSecondHalf({ half, isCancelled, onCycleComplete: notifyCycleComplete, run }); },
-      dur: half * ((LINE_LOADING_PULSE_MIDPOINT - current) / LINE_LOADING_PULSE_MIDPOINT),
-      from: current,
-      to: LINE_LOADING_PULSE_MIDPOINT,
-    });
-  } else {
-    run({
-      done: (): void => { completePulseCycle({ isCancelled, onCycleComplete: notifyCycleComplete }); },
-      dur: half * ((1 - current) / LINE_LOADING_PULSE_MIDPOINT),
-      from: current,
-      to: 1,
-    });
+// Plot-space polyline for skeleton values; straight across the plot rect.
+const projectLoadingLinePoints = (
+  values: readonly number[],
+  rect: Readonly<LoadingPlotRect>,
+): LoadingPlotPoint[] => {
+  if (values.length < 2 || rect.width <= 0 || rect.height <= 0) {
+    return [];
   }
+  return values.map((value, index) => ({
+    x: rect.x + (index / (values.length - 1)) * rect.width,
+    y: rect.y + rect.height - (value / PERCENT_SCALE) * rect.height,
+  }));
 };
 
-// Mode dispatch; each mode starter owns its own tween so no branch nests deeper than the others.
-const startPulseMode = ({ half, isCancelled, mode, notifyCycleComplete, readProgress, run }: Readonly<StartPulseModeParams>): void => {
-  if (mode === "loop") {
-    startLoopPulse({ isCancelled, notifyCycleComplete, run });
-  } else if (mode === "enter") {
-    startEnterPulse({ half, isCancelled, notifyCycleComplete, run });
-  } else {
-    // Only the exit mode remains — every LineLoadingPulseMode is handled above.
-    startExitPulse({ half, isCancelled, notifyCycleComplete, readProgress, run });
-  }
-};
+// Curved silhouette through the points (legacy interpolation, default natural).
+const buildLoadingLinePath = (
+  points: readonly LoadingPlotPoint[],
+  curve: CurveFactory = curveNatural,
+): string =>
+  line<LoadingPlotPoint>()
+    .x((point) => point.x)
+    .y((point) => point.y)
+    .curve(curve)(points) ?? "";
 
-// One rAF progress tween; cancelling the previous animation keeps sweeps from overlapping.
-const createPulseTween = ({ animRef, isCancelled, setProgress }: Readonly<PulseTweenFactoryParams>): PulseTween => {
-  const run = ({ done, dur, from, to }: Readonly<PulseTweenParams>): void => {
-    try { animRef.current?.cancel(); } catch {
-      // Superseded pulse already settled — nothing to cancel.
-    }
-    let start: number | undefined = undefined;
-    const step = (now: number): void => {
-      if (isCancelled()) {return;}
-      start ??= now;
-      const ratio = Math.min(1, (now - start) / (dur * MS_PER_SECOND));
-      const current = from + (to - from) * ratio;
-      setProgress(current);
-      if (ratio < 1) {requestAnimationFrame(step);}
-      else {done?.();}
-    };
-    requestAnimationFrame(step);
-  };
-  return run;
-};
+// Area wash closing the silhouette at the plot floor.
+const buildLoadingAreaPath = (
+  points: readonly LoadingPlotPoint[],
+  rect: Readonly<LoadingPlotRect>,
+  curve: CurveFactory = curveNatural,
+): string =>
+  area<LoadingPlotPoint>()
+    .x((point) => point.x)
+    .y0(rect.y + rect.height)
+    .y1((point) => point.y)
+    .curve(curve)(points) ?? "";
 
 export {
+  DEFAULT_LINE_SKELETON_POINT_COUNT,
   LINE_LOADING_PULSE_MIDPOINT,
-  MS_PER_SECOND,
-  createPulseTween,
-  startPulseMode,
+  buildLoadingAreaPath,
+  buildLoadingLinePath,
+  projectLoadingLinePoints,
 };
-export type {
-  PulseCompletionParams,
-  PulseTween,
-  PulseTweenFactoryParams,
-  PulseTweenParams,
-  StartPulseModeParams,
-};
+export type { LoadingPlotPoint, LoadingPlotRect };

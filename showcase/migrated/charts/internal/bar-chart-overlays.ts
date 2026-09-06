@@ -10,7 +10,6 @@ import { isRevealed, markRevealed } from "./reveal-root";
 import { FADE_BUFFER, TICKER_HALF_WIDTH } from "./design-tokens";
 import type { resolveGridGuide } from "./grid";
 import { buildIndicatorMark, formatShortDateLabel } from "./focus-marks";
-import { syncBarPulseGroups } from "./bar-pulse-mark";
 import type { PulseWaveGradientStop } from "./bar-pulse-mark";
 import { toDotConfig, toIndicatorConfig } from "./tooltip-mappers";
 import type { BarDepthGradientIds, GlassGradientStop } from "./bar-depth-marks";
@@ -36,28 +35,7 @@ interface BarChromeState {
   readonly tooltip: ChartTooltipConfig | undefined;
 }
 
-interface BarRevealSyncParams {
-  readonly svgRoot: SVGSVGElement;
-  readonly marksGroup: SVGGElement;
-  readonly revealKeyChanged: boolean;
-  readonly isReadyPhase: boolean;
-}
-
-const syncBarPulseIfRevealed = ({
-  svgRoot,
-  marksGroup,
-  revealKeyChanged,
-  isReadyPhase,
-}: Readonly<BarRevealSyncParams>): boolean => {
-  if (isRevealed(marksGroup) && !revealKeyChanged) {
-    syncBarPulseGroups(svgRoot, isReadyPhase);
-    return true;
-  }
-  return false;
-};
-
 interface BeginBarRevealParams {
-  readonly svgRoot: SVGSVGElement;
   readonly marksGroup: SVGGElement;
   readonly renderDataLength: number;
   readonly revealDurationMs: number;
@@ -93,7 +71,6 @@ const markBarRevealed = ({
 };
 
 interface ArmBarRevealDeadlineParams {
-  readonly svgRoot: SVGSVGElement;
   readonly renderDataLength: number;
   readonly revealDurationMs: number;
   readonly revealDeadlineTimerRef: RefObject<number | null>;
@@ -101,7 +78,6 @@ interface ArmBarRevealDeadlineParams {
 }
 
 const armBarRevealDeadline = ({
-  svgRoot,
   renderDataLength,
   revealDurationMs,
   revealDeadlineTimerRef,
@@ -112,12 +88,10 @@ const armBarRevealDeadline = ({
   const deadlineMs = revealDurationMs + staggerMs;
   revealDeadlineTimerRef.current = window.setTimeout(() => {
     setPhase("ready");
-    syncBarPulseGroups(svgRoot, true);
   }, deadlineMs);
 };
 
 const beginBarReveal = ({
-  svgRoot,
   marksGroup,
   renderDataLength,
   revealDurationMs,
@@ -129,7 +103,7 @@ const beginBarReveal = ({
   setPhase,
 }: Readonly<BeginBarRevealParams>): void => {
   markBarRevealed({ currentRevealKey, latestRenderData, marksGroup, revealedForDataRef, revealedKeyRef, setPhase });
-  armBarRevealDeadline({ renderDataLength, revealDeadlineTimerRef, revealDurationMs, setPhase, svgRoot });
+  armBarRevealDeadline({ renderDataLength, revealDeadlineTimerRef, revealDurationMs, setPhase });
 };
 
 interface NativeDepthGradientParams {
@@ -508,9 +482,7 @@ const buildBarHoverMarks = ({
 };
 
 interface SettleBarRevealParams {
-  readonly svgRoot: SVGSVGElement;
   readonly marksGroup: SVGGElement;
-  readonly phaseRef: RefObject<ChartPhase>;
   readonly revealedKeyRef: RefObject<string | null>;
   readonly revealKeyRef: RefObject<string>;
   readonly revealedForDataRef: RefObject<unknown>;
@@ -520,22 +492,18 @@ interface SettleBarRevealParams {
 // Settles already-revealed state: replay keys and latched DOM stamps need no new reveal.
 // Returns true when settled, false when the caller must begin a fresh reveal.
 const settleBarRevealState = ({
-  svgRoot,
   marksGroup,
-  phaseRef,
   revealedKeyRef,
   revealKeyRef,
   revealedForDataRef,
   latestRenderDataRef,
 }: Readonly<SettleBarRevealParams>): boolean => {
   // Test the replay key before the DOM stamp (a latched stamp would swallow signature bumps).
-  if (syncBarPulseIfRevealed({ isReadyPhase: phaseRef.current === "ready", marksGroup, revealKeyChanged: revealedKeyRef.current !== revealKeyRef.current, svgRoot })) {
+  if (isRevealed(marksGroup) && revealedKeyRef.current === revealKeyRef.current) {
     return true;
   }
-  syncBarPulseGroups(svgRoot, false);
   if (revealedForDataRef.current === latestRenderDataRef.current && revealedKeyRef.current === revealKeyRef.current) {
     markRevealed(marksGroup);
-    syncBarPulseGroups(svgRoot, phaseRef.current === "ready");
     return true;
   }
   return false;
@@ -544,7 +512,6 @@ const settleBarRevealState = ({
 interface BarSvgRenderParams {
   readonly svgRoot: SVGSVGElement;
   readonly animationDuration: number;
-  readonly phaseRef: RefObject<ChartPhase>;
   readonly revealedKeyRef: RefObject<string | null>;
   readonly revealKeyRef: RefObject<string>;
   readonly revealedForDataRef: RefObject<unknown>;
@@ -560,7 +527,6 @@ interface BarSvgRenderParams {
 const handleBarSvgRender = ({
   svgRoot,
   animationDuration,
-  phaseRef,
   revealedKeyRef,
   revealKeyRef,
   revealedForDataRef,
@@ -573,10 +539,9 @@ const handleBarSvgRender = ({
   const marksGroup = svgRoot.querySelector<SVGGElement>(".ts-chart__marks");
   if (!marksGroup || animationDuration <= 0) {
     setPhase("ready");
-    syncBarPulseGroups(svgRoot, true);
     return;
   }
-  if (settleBarRevealState({ latestRenderDataRef, marksGroup, phaseRef, revealKeyRef, revealedForDataRef, revealedKeyRef, svgRoot })) {
+  if (settleBarRevealState({ latestRenderDataRef, marksGroup, revealKeyRef, revealedForDataRef, revealedKeyRef })) {
     return;
   }
   beginBarReveal({
@@ -589,7 +554,6 @@ const handleBarSvgRender = ({
     revealedForDataRef,
     revealedKeyRef,
     setPhase,
-    svgRoot,
   });
 };
 

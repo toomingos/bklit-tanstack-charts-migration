@@ -1,121 +1,54 @@
-// V3.4b parity: legacy loading names over declared dependencies only.
+// Legacy loading names over placeholder definitions (V3.9).
+// Placeholders mount through the shared host; only the root pulse animates.
+
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { CSSProperties, ReactElement } from "react";
-import { scaleLinear } from "d3-scale";
-import { area, line } from "d3-shape";
+import { useEffect, useMemo } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import type { CurveFactory } from "d3-shape";
-import { ResourceHost, scopeResourceIds } from "./resource-host";
-import { chartCssVars, useChartStable } from "./chart-context";
-import { fadeGradientStops, resolveFadeSides, viewportFadeGradientAttrs } from "./fade-mask";
+import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
+import { chartCssVars } from "./chart-context";
+import { chartMotionRenderer } from "./motion-renderer";
+import { LoadingSweepGradient, loadingSweepPaint } from "./resource-host";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
-import { cn } from "./cn";
+import { useSanitizedId } from "./use-sanitized-id";
 import {
-  PERCENT_SCALE,
-  generateEasedGradientStops,
-  getSkeletonHeights,
-  getSkeletonSigns,
-} from "./skeleton-data";
+  buildAreaLoadingDefinition,
+  buildBarLoadingDefinition,
+  buildLineLoadingDefinition,
+} from "./loading-definitions";
+import type {
+  BarPlaceholderDatum,
+  LinePlaceholderDatum,
+} from "./loading-definitions";
+import { cn } from "./cn";
 
-// Timing mirrors legacy `line-loading-timing.ts`.
-const LINE_LOADING_PULSE_CYCLE_S = 2.2;
-const LOADING_LABEL_EXIT_S = 0.45;
-const LOADING_LABEL_EXIT_Y_PX = 30;
-const LOADING_LABEL_EXIT_EASE = "cubic-bezier(0.85, 0, 0.15, 1)";
+// Handoff delay for one-shot exit/enter modes (legacy label-exit duration).
+const LOADING_HANDOFF_S = 0.45;
 const MS_PER_SECOND = 1000;
-
-// Sweep geometry mirrors legacy `loading-sweep.tsx`.
 const DEFAULT_SWEEP_DURATION_S = 2;
-const SWEEP_START_X = -1;
-const SWEEP_END_X = 2;
-const SWEEP_ANGLE_DEG = 25;
-const SWEEP_PATTERN_TILE_WIDTH = 3;
 const DEFAULT_POINT_COUNT = 14;
-const BAR_CORNER_RADIUS = 2;
 const DEFAULT_BAR_COUNT = 12;
 const DEFAULT_BAR_FILL = "var(--foreground)";
 const DEFAULT_BAR_FILL_OPACITY = 0.45;
 const LINE_STROKE_OPACITY = 0.55;
-const AREA_FILL_TOP_OPACITY = 0.18;
-const AREA_FILL_BOTTOM_OPACITY = 0.02;
 const DEFAULT_BAR_FRACTION = 0.7;
-const Y_DOMAIN_MAX = 100;
+const LOADING_ASPECT_RATIO = 2;
 
-interface SweepMaskDefsProps {
-  readonly chartId: string;
-  readonly width: number;
-  readonly height: number;
-  readonly durationSeconds: number;
-  readonly onSweepComplete: () => void;
-}
+const PLACEHOLDER_ROOT_STYLE: CSSProperties = { position: "relative", width: "100%" };
 
-// Shimmer sweep defs with a `requestAnimationFrame` band position.
-// Ramp, re-roll gate and def ids match the legacy motion version.
-const SweepMaskDefs = ({
-  chartId,
-  width,
-  height,
-  durationSeconds,
-  onSweepComplete,
-}: SweepMaskDefsProps): ReactElement => {
-  const gradientStops = useMemo(() => generateEasedGradientStops(), []);
-  const completeRef = useRef(onSweepComplete);
-  completeRef.current = onSweepComplete;
-  const lastXRef = useRef(SWEEP_START_X);
-  const [sweepX, setSweepX] = useState(SWEEP_START_X);
-  useEffect(() => {
-    const travel = SWEEP_END_X - SWEEP_START_X;
-    const start = performance.now();
-    let frame = 0;
-    const step = (now: number): void => {
-      const elapsed = (now - start) / MS_PER_SECOND;
-      const next = SWEEP_START_X + ((elapsed % durationSeconds) / durationSeconds) * travel;
-      // Re-roll once the band clears the visible area (crossed past 1).
-      // Steady silhouettes never change shape under the user's eye.
-      if (next >= 1 && lastXRef.current < 1) {
-        completeRef.current();
-      }
-      lastXRef.current = next;
-      setSweepX(next);
-      frame = requestAnimationFrame(step);
-    };
-    frame = requestAnimationFrame(step);
+// One-shot exit and enter handoff without motion.
+const useLoadingHandoff = (isLoop: boolean, onTransitionComplete?: () => void): void => {
+  useEffect((): (() => void) | undefined => {
+    if (isLoop || onTransitionComplete === undefined) {
+      return undefined;
+    }
+    const timer = setTimeout(onTransitionComplete, LOADING_HANDOFF_S * MS_PER_SECOND);
     return (): void => {
-      cancelAnimationFrame(frame);
+      clearTimeout(timer);
     };
-  }, [durationSeconds]);
-  return (
-    <>
-      <linearGradient id={`${chartId}-grad`} x1="0" x2="1" y1="0" y2="0">
-        {gradientStops.map(({ offset, opacity }) => (
-          <stop key={offset} offset={offset} stopColor="white" stopOpacity={opacity} />
-        ))}
-      </linearGradient>
-      <pattern
-        height="1"
-        id={`${chartId}-pattern`}
-        patternContentUnits="objectBoundingBox"
-        patternTransform={`rotate(${SWEEP_ANGLE_DEG})`}
-        patternUnits="objectBoundingBox"
-        width={SWEEP_PATTERN_TILE_WIDTH}
-        x="0"
-        y="0"
-      >
-        <rect fill={`url(#${chartId}-grad)`} height="1" width="1" x={sweepX} y="0" />
-      </pattern>
-      {/* Explicit region: the seam host is 0×0, so the userSpaceOnUse default region would be empty (D559). */}
-      <mask height={height} id={`${chartId}-mask`} maskUnits="userSpaceOnUse" width={width} x={0} y={0}>
-        <rect fill={`url(#${chartId}-pattern)`} height={height} width={width} />
-      </mask>
-    </>
-  );
+  }, [isLoop, onTransitionComplete]);
 };
-
-interface SweepPoint {
-  readonly index: number;
-  readonly value: number;
-}
 
 interface LineLoadingSweepProps {
   /** Curve factory from the host `<Line>` / `<Area>`, so the silhouette matches the chart's interpolation. */
@@ -133,9 +66,9 @@ interface LineLoadingSweepProps {
   durationSeconds?: number;
 }
 
-// Placeholder line/area silhouette with the shimmer sweeping across it.
-// Silhouette re-randomizes between passes; reads dimensions from context.
-const LineLoadingSweep = ({  curve,
+// Placeholder line/area silhouette; the sweep rides the stroke as R10 paint.
+const LineLoadingSweep = ({
+  curve,
   withArea = false,
   mode = "loop",
   onTransitionComplete,
@@ -145,185 +78,58 @@ const LineLoadingSweep = ({  curve,
   pointCount = DEFAULT_POINT_COUNT,
   durationSeconds = DEFAULT_SWEEP_DURATION_S,
 }: LineLoadingSweepProps): ReactElement | null => {
-  const { innerWidth, innerHeight } = useChartStable();
+  void durationSeconds;
   const reduceMotion = usePrefersReducedMotion();
-  const reactId = useId();
-  const chartId = `line-sweep-${reactId.replaceAll(":", "")}`;
+  const idPrefix = useSanitizedId();
   const isLoop = mode === "loop";
-  const [tick, setTick] = useState(0);
-  // Re-randomize only while looping; the transition holds one steady shape.
-  const handleSweepComplete = useMemo(
+  useLoadingHandoff(isLoop, onTransitionComplete);
+  const paint = reduceMotion ? stroke : loadingSweepPaint(idPrefix);
+  const definition = useMemo(
     () =>
-      (): void => {
-        if (isLoop) {
-          setTick((previous) => previous + 1);
-        }
-      },
-    [isLoop],
+      withArea
+        ? buildAreaLoadingDefinition({
+            curve,
+            pointCount,
+            stroke: paint,
+            strokeOpacity,
+            strokeWidth,
+            washColor: stroke,
+          })
+        : buildLineLoadingDefinition({
+            curve,
+            pointCount,
+            stroke: paint,
+            strokeOpacity,
+            strokeWidth,
+          }),
+    [curve, paint, pointCount, stroke, strokeOpacity, strokeWidth, withArea],
   );
-  const heights = useMemo(() => getSkeletonHeights(pointCount, tick), [pointCount, tick]);
-  // Exit/enter handoff without motion; the silhouette holds steady.
-  // Phase machine advances after the legacy exit duration.
-  const completeRef = useRef(onTransitionComplete);
-  completeRef.current = onTransitionComplete;
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!isLoop) {
-        completeRef.current?.();
-      }
-    }, LOADING_LABEL_EXIT_S * MS_PER_SECOND);
-    return (): void => {
-      clearTimeout(timer);
-    };
-  }, [isLoop]);
-  // With reduced motion there is no fade to await; the handoff signals at once.
-  useEffect((): void => {
-    if (reduceMotion && !isLoop) {
-      completeRef.current?.();
+  const renderer = useMemo(
+    () => chartMotionRenderer<LinePlaceholderDatum, number, number>(),
+    [],
+  );
+  const resources = useMemo((): ReactNode => {
+    if (reduceMotion) {
+      return undefined;
     }
-  }, [reduceMotion, isLoop]);
-
-  if (innerWidth <= 0 || innerHeight <= 0 || heights.length < 2) {
-    return null;
-  }
-
-  const xScale = scaleLinear()
-    .domain([0, heights.length - 1])
-    .range([0, innerWidth]);
-  const yScale = scaleLinear().domain([0, Y_DOMAIN_MAX]).range([innerHeight, 0]);
-  const points: SweepPoint[] = heights.map((value, index) => ({ index, value }));
-  const getX = (point: SweepPoint): number => xScale(point.index);
-  const getY = (point: SweepPoint): number => yScale(point.value);
-  const linePath = line<SweepPoint>().x(getX).y(getY).curve(curve)(points) ?? "";
-  const areaPath = area<SweepPoint>().x(getX).y0(innerHeight).y1(getY).curve(curve)(points) ?? "";
-
-  // Seam-bound paints ride a call (the funnel precedent); the prop never holds a literal.
-  const areaGradient = withArea ? scopeResourceIds(
-    <linearGradient id={`${chartId}-area`} x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stopColor={stroke} stopOpacity={AREA_FILL_TOP_OPACITY} />
-      <stop offset="100%" stopColor={stroke} stopOpacity={AREA_FILL_BOTTOM_OPACITY} />
-    </linearGradient>,
-    chartId,
-  ) : undefined;
-
-  const silhouette = (
-    <>
-      {withArea ? <path d={areaPath} fill={`url(#${chartId}-area)`} /> : undefined}
-      <path
-        d={linePath}
-        fill="none"
-        stroke={stroke}
-        strokeLinecap="round"
-        strokeOpacity={strokeOpacity}
-        strokeWidth={strokeWidth}
-      />
-    </>
-  );
-
-  if (reduceMotion) {
-    return (
-      <>
-        {areaGradient === undefined ? undefined : (
-          <ResourceHost idPrefix={chartId} resources={areaGradient} />
-        )}
-        {silhouette}
-      </>
-    );
-  }
-
-  const maskUrl = `url(#${chartId}-mask)`;
-  const sweepResources = (
-    <>
-      {areaGradient}
-      <SweepMaskDefs
-        chartId={chartId}
-        durationSeconds={durationSeconds}
-        height={innerHeight}
-        onSweepComplete={handleSweepComplete}
-        width={innerWidth}
-      />
-    </>
-  );
-  const defs = (
-    <ResourceHost
-      idPrefix={chartId}
-      resources={sweepResources}
-    />
-  );
-
-  if (isLoop) {
-    return (
-      <>
-        {defs}
-        <g mask={maskUrl}>{silhouette}</g>
-      </>
-    );
-  }
-
-  // Transition holds the resting opacity, then hands off to the chart.
-  const restingOpacity = mode === "exit" ? 0 : 1;
+    return <LoadingSweepGradient color={stroke} idPrefix={idPrefix} />;
+  }, [idPrefix, reduceMotion, stroke]);
   return (
-    <>
-      {defs}
-      <g mask={maskUrl} opacity={restingOpacity}>
-        {silhouette}
-      </g>
-    </>
+    <div className="ts-bkm-loading-root" data-slot="chart" style={PLACEHOLDER_ROOT_STYLE}>
+      <ChartHost
+        ariaLabel="Loading chart"
+        aspectRatio={LOADING_ASPECT_RATIO}
+        definition={definition}
+        idPrefix={idPrefix}
+        initialWidth={HOST_INITIAL_WIDTH}
+        renderer={renderer}
+        resources={resources}
+      />
+    </div>
   );
 };
 
 LineLoadingSweep.displayName = "LineLoadingSweep";
-
-interface SkeletonBarsProps {
-  readonly heights: number[];
-  readonly signs: number[];
-  readonly innerWidth: number;
-  readonly innerHeight: number;
-  readonly baseline: "bottom" | "center";
-  readonly barFraction: number;
-  readonly fill: string;
-  readonly fillOpacity: number;
-}
-
-const SkeletonBars = ({
-  heights,
-  signs,
-  innerWidth,
-  innerHeight,
-  baseline,
-  barFraction,
-  fill,
-  fillOpacity,
-}: SkeletonBarsProps): ReactElement => {
-  const bandWidth = innerWidth / heights.length;
-  const barWidth = bandWidth * barFraction;
-  const xOffset = (bandWidth * (1 - barFraction)) / 2;
-  const isCenter = baseline === "center";
-  const baselineY = isCenter ? innerHeight / 2 : innerHeight;
-  const halfBarHeight = isCenter ? innerHeight / 2 : innerHeight;
-  return (
-    <>
-      {heights.map((value, index) => {
-        const sign = isCenter ? (signs[index] ?? 1) : 1;
-        const barHeight = Math.max(1, (halfBarHeight * value) / PERCENT_SCALE);
-        const barX = index * bandWidth + xOffset;
-        const barY = sign === 1 ? baselineY - barHeight : baselineY;
-        return (
-          <rect
-            fill={fill}
-            fillOpacity={fillOpacity}
-            height={barHeight}
-            key={`${barX.toFixed(2)}-${value}`}
-            rx={BAR_CORNER_RADIUS}
-            width={barWidth}
-            x={barX}
-            y={barY}
-          />
-        );
-      })}
-    </>
-  );
-};
 
 interface BarLoadingSkeletonProps {
   innerWidth: number;
@@ -342,8 +148,7 @@ interface BarLoadingSkeletonProps {
   durationSeconds?: number;
 }
 
-// Skeleton bars masked by the shimmer sweep in inner coordinates, so a
-// `BarChart` drops the silhouette inside its margin-translated group.
+// Skeleton bars from the deterministic heights; the sweep rides `fill`.
 const BarLoadingSkeleton = ({
   innerWidth,
   innerHeight,
@@ -354,67 +159,45 @@ const BarLoadingSkeleton = ({
   barFraction = DEFAULT_BAR_FRACTION,
   durationSeconds = DEFAULT_SWEEP_DURATION_S,
 }: BarLoadingSkeletonProps): ReactElement | null => {
+  void durationSeconds;
   const reduceMotion = usePrefersReducedMotion();
-  const reactId = useId();
-  const chartId = `bar-sweep-${reactId.replaceAll(":", "")}`;
-  const [tick, setTick] = useState(0);
-  const handleSweepComplete = useMemo(
+  const idPrefix = useSanitizedId();
+  const paint = reduceMotion ? fill : loadingSweepPaint(idPrefix);
+  const definition = useMemo(
     () =>
-      (): void => {
-        setTick((previous) => previous + 1);
-      },
-    [],
+      buildBarLoadingDefinition({
+        barCount,
+        barFraction,
+        baseline,
+        fill: paint,
+        fillOpacity,
+      }),
+    [barCount, barFraction, baseline, fillOpacity, paint],
   );
-  const heights = useMemo(() => getSkeletonHeights(barCount, tick), [barCount, tick]);
-  const signs = useMemo(() => getSkeletonSigns(barCount, tick), [barCount, tick]);
-
-  if (innerWidth <= 0 || innerHeight <= 0) {
-    return null;
-  }
-
-  const bars = (
-    <SkeletonBars
-      barFraction={barFraction}
-      baseline={baseline}
-      fill={fill}
-      fillOpacity={fillOpacity}
-      heights={heights}
-      innerHeight={innerHeight}
-      innerWidth={innerWidth}
-      signs={signs}
-    />
-  );
-
-  if (reduceMotion) {
-    return bars;
-  }
-
-  // Seam-bound paints ride a call (the funnel precedent); the prop never holds a literal.
-  const sweepResources = scopeResourceIds(
-    <SweepMaskDefs
-      chartId={chartId}
-      durationSeconds={durationSeconds}
-      height={innerHeight}
-      onSweepComplete={handleSweepComplete}
-      width={innerWidth}
-    />,
-    chartId,
-  );
+  const renderer = useMemo(() => chartMotionRenderer<BarPlaceholderDatum, number, number>(), []);
+  const resources = useMemo((): ReactNode => {
+    if (reduceMotion) {
+      return undefined;
+    }
+    return <LoadingSweepGradient color={fill} idPrefix={idPrefix} />;
+  }, [fill, idPrefix, reduceMotion]);
   return (
-    <>
-      <ResourceHost
-        idPrefix={chartId}
-        resources={sweepResources}
+    <div className="ts-bkm-loading-root" data-slot="chart" style={PLACEHOLDER_ROOT_STYLE}>
+      <ChartHost
+        ariaLabel="Loading chart"
+        definition={definition}
+        height={Math.max(0, innerHeight)}
+        idPrefix={idPrefix}
+        initialWidth={HOST_INITIAL_WIDTH}
+        renderer={renderer}
+        resources={resources}
+        width={Math.max(0, innerWidth)}
       />
-      <g mask={`url(#${chartId}-mask)`}>{bars}</g>
-    </>
+    </div>
   );
 };
 
 BarLoadingSkeleton.displayName = "BarLoadingSkeleton";
-
-const PULSE_CLIP_PADDING = 10;
-const PULSE_MIDPOINT = 0.5;
 
 type LineLoadingPulseMode = "loop" | "exit" | "enter";
 
@@ -430,52 +213,7 @@ interface LineLoadingPulseStrokeProps {
   onCycleComplete?: () => void;
 }
 
-// Grow-then-shrink clip window over the legacy pulse cycle.
-// Progress runs on `requestAnimationFrame`; window math is unchanged.
-const usePulseProgress = (
-  innerWidth: number,
-  mode: LineLoadingPulseMode,
-  loopEpoch: number,
-  onComplete?: () => void,
-): number => {
-  const [progress, setProgress] = useState(0);
-  const progressRef = useRef(0);
-  const completeRef = useRef(onComplete);
-  completeRef.current = onComplete;
-  useEffect(() => {
-    let frame = 0;
-    const halfCycleMs = (LINE_LOADING_PULSE_CYCLE_S / 2) * MS_PER_SECOND;
-    const start = performance.now();
-    const target = mode === "enter" ? PULSE_MIDPOINT : 1;
-    if (mode === "loop") {
-      progressRef.current = 0;
-    }
-    const from = mode === "exit" ? progressRef.current : 0;
-    const step = (now: number): void => {
-      const total = mode === "enter" ? halfCycleMs : LINE_LOADING_PULSE_CYCLE_S * MS_PER_SECOND;
-      const span = target - from;
-      const ratio = span <= 0 ? 1 : Math.min(1, (now - start) / (total * (span / target)));
-      const next = from + span * ratio;
-      progressRef.current = next;
-      // Loop restarts from the next epoch; exit and enter hand off at target.
-      if (ratio >= 1) {
-        completeRef.current?.();
-        return;
-      }
-      setProgress(next);
-      frame = requestAnimationFrame(step);
-    };
-    if (innerWidth > 0) {
-      frame = requestAnimationFrame(step);
-    }
-    return (): void => {
-      cancelAnimationFrame(frame);
-    };
-    // LoopEpoch restarts the pulse when the orchestrator advances.
-  }, [innerWidth, loopEpoch, mode]);
-  return progress;
-};
-
+// Traveling pulse replaced by the whole-chart pulse (skeleton keeps the contract).
 const LineLoadingPulseStroke = ({
   pathD,
   mode = "loop",
@@ -485,54 +223,43 @@ const LineLoadingPulseStroke = ({
   strokeWidth = 2.5,
   onCycleComplete,
 }: LineLoadingPulseStrokeProps): ReactElement | null => {
-  const { innerWidth, innerHeight } = useChartStable();
-  const reactId = useId();
-  const clipPathId = `line-loading-clip-${reactId}`;
-  const gradientId = `line-loading-gradient-${reactId}`;
-  const fadeStops = fadeGradientStops(resolveFadeSides(true));
-  const clipHeight = innerHeight + PULSE_CLIP_PADDING * 2;
-  const progress = usePulseProgress(innerWidth, mode, loopEpoch, onCycleComplete);
-  const paddedFullWidth = innerWidth + PULSE_CLIP_PADDING * 2;
-  const rightEdge = innerWidth + PULSE_CLIP_PADDING;
-  const shrink = progress <= PULSE_MIDPOINT ? 0 : (progress - PULSE_MIDPOINT) / PULSE_MIDPOINT;
-  const clipWidth =
-    progress <= PULSE_MIDPOINT
-      ? (progress / PULSE_MIDPOINT) * paddedFullWidth
-      : (1 - shrink) * paddedFullWidth;
-  const clipX = progress <= PULSE_MIDPOINT ? -PULSE_CLIP_PADDING : rightEdge - (1 - shrink) * paddedFullWidth;
-
-  if (innerWidth <= 0) {
-    return null;
-  }
-
-  const pulseResources = (
-    <>
-      <clipPath id={clipPathId}>
-        <rect height={clipHeight} width={clipWidth} x={clipX} y={-PULSE_CLIP_PADDING} />
-      </clipPath>
-      <linearGradient id={gradientId} {...viewportFadeGradientAttrs(innerWidth)}>
-        {fadeStops.map((stop) => (
-          <stop key={stop.offset} offset={stop.offset} stopColor={stroke} stopOpacity={stop.opacity} />
-        ))}
-      </linearGradient>
-    </>
+  void pathD;
+  void loopEpoch;
+  const reduceMotion = usePrefersReducedMotion();
+  const idPrefix = useSanitizedId();
+  useLoadingHandoff(mode === "loop", onCycleComplete);
+  const paint = reduceMotion ? stroke : loadingSweepPaint(idPrefix);
+  const definition = useMemo(
+    () =>
+      buildLineLoadingDefinition({
+        stroke: paint,
+        strokeOpacity,
+        strokeWidth,
+      }),
+    [paint, strokeOpacity, strokeWidth],
   );
+  const renderer = useMemo(
+    () => chartMotionRenderer<LinePlaceholderDatum, number, number>(),
+    [],
+  );
+  const resources = useMemo((): ReactNode => {
+    if (reduceMotion) {
+      return undefined;
+    }
+    return <LoadingSweepGradient color={stroke} idPrefix={idPrefix} />;
+  }, [idPrefix, reduceMotion, stroke]);
   return (
-    <>
-      <ResourceHost
-        idPrefix={reactId}
-        resources={pulseResources}
+    <div className="ts-bkm-loading-root" data-slot="chart" style={PLACEHOLDER_ROOT_STYLE}>
+      <ChartHost
+        ariaLabel="Loading chart"
+        aspectRatio={LOADING_ASPECT_RATIO}
+        definition={definition}
+        idPrefix={idPrefix}
+        initialWidth={HOST_INITIAL_WIDTH}
+        renderer={renderer}
+        resources={resources}
       />
-      <path
-        clipPath={`url(#${clipPathId})`}
-        d={pathD}
-        fill="none"
-        opacity={strokeOpacity}
-        stroke={`url(#${gradientId})`}
-        strokeLinecap="round"
-        strokeWidth={strokeWidth}
-      />
-    </>
+    </div>
   );
 };
 
@@ -546,9 +273,17 @@ interface ChartLoadingLabelProps {
   exiting?: boolean;
 }
 
+const LOADING_LABEL_EXIT_S = 0.45;
+const LOADING_LABEL_EXIT_Y_PX = 30;
+const LOADING_LABEL_EXIT_EASE = "cubic-bezier(0.85, 0, 0.15, 1)";
+
 const SPAN_MUTED_STYLE: CSSProperties = { color: "var(--muted-foreground)" };
 
-const ChartLoadingLabel = ({ text = "Loading", className, exiting = false }: ChartLoadingLabelProps): ReactElement | null => {
+const ChartLoadingLabel = ({
+  text = "Loading",
+  className,
+  exiting = false,
+}: ChartLoadingLabelProps): ReactElement | null => {
   const labelStyle = useMemo(
     (): CSSProperties => ({
       filter: exiting ? "blur(2px)" : "blur(0px)",
@@ -561,12 +296,11 @@ const ChartLoadingLabel = ({ text = "Loading", className, exiting = false }: Cha
   if (text.trim() === "") {
     return null;
   }
-  // ShimmeringText substitute with a plain centered span.
-  // Host owns that component; exit motion matches the legacy duration.
   return (
     <output
       aria-live="polite"
       className={cn("pointer-events-none absolute inset-0 flex items-center justify-center", className)}
+      data-slot="loading-label"
       style={labelStyle}
     >
       <span className="font-medium text-sm tracking-wide" style={SPAN_MUTED_STYLE}>

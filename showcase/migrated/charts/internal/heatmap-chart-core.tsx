@@ -25,6 +25,7 @@ import {
   resolveHeatmapLevelStyles,
 } from "./heatmap-colors";
 import { HOST_INITIAL_WIDTH, adoptHostWidth } from "./chart-host";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { HeatmapCells, HeatmapXAxis, HeatmapYAxis } from "./heatmap-components";
 import { flattenChartChildren, hasChildrenProp, isHeatmapSeparatorChild } from "./heatmap-children";
 import type { ChartStatus } from "./types";
@@ -163,6 +164,11 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
   void HEATMAP_RESIZE_EPSILON_PX;
 
   const coordinator = useMemo(() => createHeatmapHoverCoordinator(), []);
+  // Loading placeholder pulses as a whole chart (V3.9).
+  // Skeleton cells stay solid; sweep paint covers bars, line and area.
+  const reduceMotion = usePrefersReducedMotion();
+  const surfacePulseClassName =
+    status === "loading" && !reduceMotion ? "ts-bkm-loading-root" : undefined;
 
   const margin: HeatmapMargin = useMemo(() => ({
     bottom: marginProp?.bottom ?? DEFAULT_MARGIN.bottom,
@@ -307,7 +313,7 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
       <HeatmapInteractionProvider coordinator={coordinator}>
         {isRenderable ? (
           <HeatmapContext.Provider value={contextValue}>
-            <div style={SURFACE_ROOT_STYLE}>
+            <div className={surfacePulseClassName} style={SURFACE_ROOT_STYLE}>
               {otherElements}
               <svg
                 width={chartWidth}

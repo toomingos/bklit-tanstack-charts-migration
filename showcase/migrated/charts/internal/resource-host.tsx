@@ -1,6 +1,7 @@
 // R10 seam: remove when TanStack/charts I4/I5 ship
 import { Children, createElement, isValidElement } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
+import { generateEasedGradientStops } from "./skeleton-data";
 
 // Hidden defs host beside the chart svg; url(#id) paints resolve document-wide.
 const RESOURCE_HOST_STYLE: CSSProperties = { height: 0, overflow: "hidden", position: "absolute", width: 0 };
@@ -80,5 +81,50 @@ const scopeResourceIds = (nodes: ReactNode, idPrefix: string): ReactNode =>
 const scopePaintUrl = (paint: string, idPrefix: string): string =>
   paint.replaceAll(/url\(#([^)]+)\)/gu, (_match: string, id: string) => `url(#${scopedResourceId(idPrefix, id)})`);
 
-export { ResourceHost, scopedResourceId, scopeResourceIds, scopePaintUrl };
-export type { ResourceHostProps };
+// Sweep paint for loading placeholders (R10 seam, static diagonal sheen).
+// Marks reference it as paint; travel is deleted, the root pulse moves.
+const LOADING_SWEEP_ID_SUFFIX = "loading-sweep";
+const LOADING_SWEEP_ANGLE_DEG = 25;
+const DEFAULT_LOADING_SWEEP_COLOR = "var(--foreground)";
+
+// Scoped sweep gradient id for one mount; marks reference it via loadingSweepPaint.
+const loadingSweepGradientId = (idPrefix: string): string =>
+  idPrefix.endsWith(`-${LOADING_SWEEP_ID_SUFFIX}`) ? idPrefix : `${idPrefix}-${LOADING_SWEEP_ID_SUFFIX}`;
+
+// Paint string for placeholder marks (`fill` on bars/areas, `stroke` on lines).
+const loadingSweepPaint = (idPrefix: string): string => `url(#${loadingSweepGradientId(idPrefix)})`;
+
+interface LoadingSweepGradientProps {
+  readonly idPrefix: string;
+  readonly color?: string;
+}
+
+// Eased-stop diagonal gradient; bare node for the seam, ResourceHost owns the defs.
+const LoadingSweepGradient = ({
+  idPrefix,
+  color = DEFAULT_LOADING_SWEEP_COLOR,
+}: Readonly<LoadingSweepGradientProps>): ReactElement => (
+  <linearGradient
+    gradientTransform={`rotate(${LOADING_SWEEP_ANGLE_DEG})`}
+    id={loadingSweepGradientId(idPrefix)}
+    x1="0"
+    x2="1"
+    y1="0"
+    y2="0"
+  >
+    {generateEasedGradientStops().map((stop) => (
+      <stop key={stop.offset} offset={stop.offset} stopColor={color} stopOpacity={stop.opacity} />
+    ))}
+  </linearGradient>
+);
+
+export {
+  ResourceHost,
+  LoadingSweepGradient,
+  loadingSweepGradientId,
+  loadingSweepPaint,
+  scopedResourceId,
+  scopeResourceIds,
+  scopePaintUrl,
+};
+export type { LoadingSweepGradientProps, ResourceHostProps };

@@ -1,21 +1,27 @@
-// V3.4b parity: legacy `LineChartLoading` turnkey placeholder.
-// Sweep style stays inert until V3.9; the pulse path renders through entry.
+// Turnkey line loading placeholder (V3.9, definition-based).
+// Grid shimmer props stay accepted while the grid is gone with the axes.
+
 "use client";
 
 import { useMemo } from "react";
-import type { ReactElement } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { curveNatural } from "d3-shape";
 import "./styles.css";
-import { LineChart } from "./line-chart";
-import { Grid, Line } from "./children";
-import { generateChartSkeletonData } from "./internal/skeleton-data";
+import { ChartHost, HOST_INITIAL_WIDTH } from "./internal/chart-host";
+import { chartMotionRenderer } from "./internal/motion-renderer";
+import { LoadingSweepGradient, loadingSweepPaint } from "./internal/resource-host";
+import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
+import { useSanitizedId } from "./internal/use-sanitized-id";
+import { buildLineLoadingDefinition } from "./internal/loading-definitions";
+import type { LinePlaceholderDatum } from "./internal/loading-definitions";
+import { getSkeletonHeights } from "./internal/skeleton-data";
+import { LoadingLabel } from "./internal/loading-label";
 import type { LoadingStyle } from "./internal/chart-phase";
 import type { Margin } from "./internal/chart-context";
+import { parseAspectRatio } from "./internal/parse-aspect-ratio";
+import { cn } from "./internal/cn";
 
-const LOADING_DATA_KEY = "value";
 const DEFAULT_LOADING_STROKE = "var(--foreground)";
-const DEFAULT_LOADING_GRID_STROKE = "color-mix(in oklch, var(--chart-grid) 50%, transparent)";
-const DEFAULT_LOADING_GRID_SHIMMER_STROKE = "color-mix(in oklch, var(--foreground) 68%, transparent)";
 const DEFAULT_LOADING_STROKE_OPACITY = 0.5;
 const SKELETON_POINT_COUNT = 7;
 
@@ -26,21 +32,21 @@ interface LineChartLoadingProps {
   stroke?: string;
   /** Stroke opacity for the animated loading segment. Default: 0.5 */
   strokeOpacity?: number;
-  /** Grid line stroke (color and opacity via color-mix or oklch alpha). */
+  /** Accepted-but-inert: the grid is gone with the axes (V3.9). */
   gridStroke?: string;
-  /** Shimmer band stroke (color and opacity via color-mix or oklch alpha). */
+  /** Accepted-but-inert: see `gridStroke`. */
   gridShimmerStroke?: string;
-  /** Animate a shimmer band across grid lines. Default: true */
+  /** Accepted-but-inert: see `gridStroke`. Default: true */
   gridShimmer?: boolean;
-  /** Shimmer band width in pixels. Default: 140 */
+  /** Accepted-but-inert: see `gridStroke`. */
   gridShimmerLength?: number;
-  /** Shimmer speed multiplier (higher = faster). Default: 1 */
+  /** Accepted-but-inert: see `gridStroke`. */
   gridShimmerSpeed?: number;
-  /** Match shimmer loop to the loading line pulse (cycle + inter-loop pause). */
+  /** Accepted-but-inert: see `gridStroke`. */
   gridShimmerSync?: boolean;
-  /** Loading animation: `"pulse"` (traveling pulse) or `"sweep"` (diagonal shimmer). Default: `"pulse"`. */
+  /** Accepted: `"pulse"` and `"sweep"` render the same R10 sweep paint. Default: `"pulse"`. */
   loadingStyle?: LoadingStyle;
-  /** Centered shimmer label text. Default: "Loading" */
+  /** Centered label text. Default: "Loading" */
   label?: string;
   /** Aspect ratio as "width / height". Default: "2 / 1" */
   aspectRatio?: string;
@@ -52,8 +58,8 @@ const LineChartLoading = ({
   margin,
   stroke = DEFAULT_LOADING_STROKE,
   strokeOpacity = DEFAULT_LOADING_STROKE_OPACITY,
-  gridStroke = DEFAULT_LOADING_GRID_STROKE,
-  gridShimmerStroke = DEFAULT_LOADING_GRID_SHIMMER_STROKE,
+  gridStroke,
+  gridShimmerStroke,
   gridShimmer = true,
   gridShimmerLength,
   gridShimmerSpeed,
@@ -63,45 +69,61 @@ const LineChartLoading = ({
   aspectRatio = "2 / 1",
   className = "",
 }: LineChartLoadingProps): ReactElement => {
-  const data = useMemo(
+  void gridStroke;
+  void gridShimmerStroke;
+  void gridShimmer;
+  void gridShimmerLength;
+  void gridShimmerSpeed;
+  void gridShimmerSync;
+  void loadingStyle;
+  const reduceMotion = usePrefersReducedMotion();
+  const idPrefix = useSanitizedId();
+  const values = useMemo(() => getSkeletonHeights(SKELETON_POINT_COUNT, 0), []);
+  const paint = reduceMotion ? stroke : loadingSweepPaint(idPrefix);
+  const definition = useMemo(
     () =>
-      generateChartSkeletonData({
-        dataKey: LOADING_DATA_KEY,
-        pointCount: SKELETON_POINT_COUNT,
+      buildLineLoadingDefinition({
+        curve: curveNatural,
+        margin,
+        stroke: paint,
+        strokeOpacity,
+        strokeWidth: 2.5,
+        values,
       }),
+    [margin, paint, strokeOpacity, values],
+  );
+  const renderer = useMemo(
+    () => chartMotionRenderer<LinePlaceholderDatum, number, number>(),
     [],
   );
-
+  const resources = useMemo((): ReactNode => {
+    if (reduceMotion) {
+      return undefined;
+    }
+    return <LoadingSweepGradient color={stroke} idPrefix={idPrefix} />;
+  }, [idPrefix, reduceMotion, stroke]);
+  const rootStyle = useMemo(
+    (): CSSProperties => ({ aspectRatio, position: "relative", width: "100%" }),
+    [aspectRatio],
+  );
   return (
-    <LineChart
-      animationDuration={0}
-      aspectRatio={aspectRatio}
-      className={className}
-      data={data}
-      loadingLabel={label}
-      margin={margin}
-      status="loading"
+    <div
+      className={cn(className, reduceMotion ? undefined : "ts-bkm-loading-root")}
+      data-bkm-chart="line"
+      data-slot="chart"
+      style={rootStyle}
     >
-      <Grid
-        horizontal
-        shimmer={loadingStyle === "sweep" ? false : gridShimmer}
-        shimmerLength={gridShimmerLength}
-        shimmerSpeed={gridShimmerSpeed}
-        shimmerStroke={gridShimmerStroke}
-        shimmerSync={gridShimmerSync}
-        stroke={gridStroke}
+      <ChartHost
+        ariaLabel="Line chart"
+        aspectRatio={parseAspectRatio(aspectRatio)}
+        definition={definition}
+        idPrefix={idPrefix}
+        initialWidth={HOST_INITIAL_WIDTH}
+        renderer={renderer}
+        resources={resources}
       />
-      <Line
-        curve={curveNatural}
-        dataKey={LOADING_DATA_KEY}
-        fadeEdges={false}
-        loadingStroke={stroke}
-        loadingStrokeOpacity={strokeOpacity}
-        showHighlight={false}
-        stroke="transparent"
-        strokeWidth={2.5}
-      />
-    </LineChart>
+      <LoadingLabel text={label} />
+    </div>
   );
 };
 
