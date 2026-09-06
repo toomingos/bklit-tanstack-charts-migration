@@ -168,7 +168,7 @@ interface FunnelStage {
   readonly displayValue?: string;
   readonly color?: string;
   /** Linear gradient stops for this segment (priority over color); halos use the first stop. */
-  readonly gradient?: readonly FunnelGradientStop[];
+  readonly gradient?: FunnelGradientStop[];
 }
 
 interface SegmentLabelOptions {

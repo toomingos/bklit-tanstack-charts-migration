@@ -7,7 +7,7 @@ import type { ProjectionLineConfig } from "./projection-config";
 import type { ChartDatum } from "./types";
 
 interface UseComposedOverlayAnchorsParams {
-  readonly projectionConfigs: readonly Readonly<ProjectionLineConfig>[];
+  readonly projectionConfigs: ProjectionLineConfig[];
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly xDataKey: string;
 }

@@ -36,6 +36,7 @@ import { SegmentOverlay } from "./internal/segment-visuals";
 import { useChartConfig } from "./internal/use-chart-config";
 import { renderPatternPreset } from "./internal/pattern-preset-render";
 import type { ChartDatum, TooltipRow } from "./internal/types";
+import type { OHLCDataPoint } from "./internal/parity/candlestick";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { createCandlestickFocusStrategy } from "./internal/candlestick-focus-strategy";
 import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./internal/cartesian-focus-distance";
@@ -80,20 +81,24 @@ const STOP_PERCENT_SCALE = 100;
 const DEFAULT_CANDLE_GAP_RATIO = 0.2;
 
 interface CandlestickChartProps {
-  readonly data: ChartDatum[];
+  readonly data: OHLCDataPoint[];
   readonly xDataKey?: string;
   readonly margin?: Partial<ChartMargin>;
   readonly animationDuration?: number;
   readonly enterTransition?: CandlestickEnterTransition;
   /** Changing it re-arms the reveal (bklit [animationDuration, revealSignature] deps). */
-  readonly revealSignature?: unknown;
+  readonly revealSignature?: string;
   readonly aspectRatio?: string;
   readonly className?: string;
   readonly style?: CSSProperties;
   readonly candleGap?: number;
   /** Explicit constant body width in px (overrides the computed width). */
   readonly candleWidth?: number;
-  readonly children?: ReactNode;
+  /** When set, xScale uses this domain instead of deriving from data. Use with brush so main chart and strip share the same scale. */
+  readonly xDomain?: [Date, Date];
+  /** When xDomain is set, use this as the number of slots for scale padding (e.g. full data length). */
+  readonly xDomainSlotCount?: number;
+  readonly children: ReactNode;
   readonly ariaLabel?: string;
   readonly ariaDescription?: string;
 }
@@ -145,8 +150,9 @@ const CandlestickChart = ({
   );
   const tooltipEnabled = tooltip?.enabled ?? false;
 
-  // Bklit parity: no decimation — every raw candle renders.
-  const renderData = data;
+  // SAFETY: legacy-verbatim OHLC bridge; rows read-only downstream.
+  // eslint-disable-next-line anti-slop/no-chained-type-assertions, typescript/no-unsafe-type-assertion -- see SAFETY above
+  const renderData = data as unknown as ChartDatum[];
 
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const { captureRenderContext, sceneRef, clientToScene } = useFocusInjection<ChartDatum, Date, number>();
@@ -438,6 +444,7 @@ const CandlestickChart = ({
   );
 };
 
+CandlestickChart.displayName = "CandlestickChart";
 export { CandlestickChart };
 export type { CandlestickEnterTransition } from './internal/enter-transition';
 export type { CandlestickChartProps };

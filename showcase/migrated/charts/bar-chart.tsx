@@ -375,5 +375,6 @@ const BarChart = ({
   );
 };
 
+BarChart.displayName = "BarChart";
 export type { BarChartProps, BarOrientation };
 export { BarChart };

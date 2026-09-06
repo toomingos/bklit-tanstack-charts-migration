@@ -1,6 +1,9 @@
 
 type ChartStatus = "loading" | "ready";
 
+// Loading animation style (legacy chart-phase.ts:6): the travelling pulse or the diagonal sweep.
+type LoadingStyle = "pulse" | "sweep";
+
 type ChartPhase =
   | "loading"
   | "exiting"
@@ -48,4 +51,4 @@ const DEFAULT_CHART_LIFECYCLE = {
 };
 
 export { DEFAULT_CHART_STATUS, DEFAULT_Y_DOMAIN_TWEEN_MS, Y_DOMAIN_TWEEN_SKIP_THRESHOLD, resolveRestingChartPhase, isChartInteractionPhase, DEFAULT_CHART_LIFECYCLE };
-export type { ChartStatus, ChartPhase };
+export type { ChartStatus, ChartPhase, LoadingStyle };

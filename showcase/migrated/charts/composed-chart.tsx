@@ -107,7 +107,7 @@ interface ComposedChartProps {
   readonly enterTransition?: EnterTransition;
   /** Replay epoch input: changing it replays the reveal. */
   readonly revealSignature?: string;
-  readonly children?: ReactNode;
+  readonly children: ReactNode;
   readonly ariaLabel?: string;
   readonly ariaDescription?: string;
 }
@@ -422,5 +422,6 @@ const ComposedChart = ({
   );
 };
 
+ComposedChart.displayName = "ComposedChart";
 export { ComposedChart };
 export type { ComposedChartProps };

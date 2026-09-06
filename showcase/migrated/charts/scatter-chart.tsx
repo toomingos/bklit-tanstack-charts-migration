@@ -68,6 +68,8 @@ const ScatterChart = ({
   );
 };
 
+ScatterChart.displayName = "ScatterChart";
+
 export { DEFAULT_SCATTER_COLORS } from "./internal/scatter-series-setup";
 export type { ScatterChartProps } from "./internal/scatter-chart-props";
 export { ScatterChart };

@@ -90,7 +90,7 @@ type ReadonlyProjectionLineEndMarkerProps = Readonly<Omit<ProjectionLineEndMarke
 };
 
 interface ProjectionLineProps {
-  readonly data: readonly ProjectionPoint[];
+  data: ProjectionPoint[];
   yAxisId?: string | number;
   stroke?: string;
   readonly strokeStyle?: "solid" | "gradient";
@@ -109,7 +109,7 @@ interface ProjectionLineProps {
 }
 
 interface ProjectionLineEndMarkerProps {
-  readonly data: readonly ProjectionPoint[];
+  data: ProjectionPoint[];
   yAxisId?: string | number;
   stroke?: string;
   readonly strokeOpacity?: number;

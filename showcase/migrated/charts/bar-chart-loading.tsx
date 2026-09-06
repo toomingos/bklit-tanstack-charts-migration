@@ -73,7 +73,5 @@ const BarChartLoading = ({
   );
 };
 
-BarChartLoading.displayName = "BarChartLoading";
-
 export { BarChartLoading };
 export type { BarChartLoadingProps };

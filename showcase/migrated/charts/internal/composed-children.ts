@@ -301,7 +301,7 @@ interface UseComposedChildrenResult {
   readonly composedTerminalMarkers: ChartDatum[];
   readonly grid: GridConfig | null;
   readonly lineConfigs: LineConfig[];
-  readonly projectionConfigs: Readonly<ProjectionLineConfig>[];
+  readonly projectionConfigs: ProjectionLineConfig[];
   readonly projectionGradientBaseId: string;
   readonly tooltip: ChartTooltipConfig | undefined;
   readonly xAxis: XAxisConfig | undefined;

@@ -127,7 +127,7 @@ export { DEFAULT_Y_AXIS_ID } from "./internal/y-axis-id";
 export type { YAxisOrientation } from "./internal/y-axis-id";
 export { getMarkerVisualExtent as getSeriesMarkerVisualExtent } from "./internal/series-marker-mark";
 export { DateTicker, TooltipBox, TooltipContent, TooltipDot, TooltipIndicator } from "./internal/tooltip-components";
-export type { DateTickerProps, TooltipBoxProps, TooltipContentProps, TooltipDotProps, TooltipIndicatorProps } from "./internal/tooltip-components";
+export type { ChartTooltipProps, DateTickerProps, TooltipBoxProps, TooltipContentProps, TooltipDotProps, TooltipIndicatorProps } from "./internal/tooltip-components";
 export { ChartHost } from "./internal/chart-host";
 export type { ChartHostProps } from "./internal/chart-host";
 export {
@@ -229,3 +229,11 @@ export type {
   SunburstRevealSchedule,
   SunburstSegmentEnterDelays,
 } from "./internal/parity/sunburst";
+// V3.7-B
+export type { LoadingStyle } from "./internal/chart-phase";
+export type { BarLineCap } from "./internal/bar-child";
+export { BarYAxis } from "./internal/bar-y-axis-child";
+export { useBarDepthEntries } from "./internal/use-bar-depth-entries";
+export { MarkerGroup, type MarkerGroupProps } from "./internal/marker-group";
+export { SeriesMarkers, type SeriesMarkersProps } from "./internal/series-markers";
+export { SeriesPointMarker, type SeriesPointMarkerProps } from "./internal/series-point-marker";

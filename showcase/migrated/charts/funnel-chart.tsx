@@ -23,9 +23,10 @@ import {
   funnelGradientId,
   funnelPatternId,
 } from "./internal/funnel-mark";
-import type { FunnelEnterTransition, FunnelStageRow } from "./internal/funnel-mark";
+import type { FunnelStageRow } from "./internal/funnel-mark";
 import { FunnelStageLabel } from './internal/funnel-segment';
 import type { FunnelLabelAlign, FunnelLabelOrientation, FunnelStage } from './internal/funnel-segment';
+import type { ChartEnterTransition } from "./internal/parity/animation";
 import "./styles.css";
 
 // Default ring-layer count when the layers prop is omitted (bklit parity).
@@ -56,7 +57,7 @@ const buildFunnelContainerStyle = (aspectRatio: string, style?: Readonly<CSSProp
 });
 
 interface FunnelChartProps {
-  readonly data: readonly FunnelStage[];
+  readonly data: FunnelStage[];
   readonly orientation?: "horizontal" | "vertical";
   readonly color?: string;
   readonly layers?: number;
@@ -70,7 +71,7 @@ interface FunnelChartProps {
   readonly formatPercentage?: (pct: number) => string;
   readonly formatValue?: (value: number) => string;
   readonly staggerDelay?: number;
-  readonly enterTransition?: FunnelEnterTransition;
+  readonly enterTransition?: ChartEnterTransition;
   readonly gap?: number;
   /** Render-prop for visx pattern defs; innermost ring takes fill="url(#id)", halos stay solid. */
   readonly renderPattern?: (id: string, color: string) => ReactNode;
@@ -262,7 +263,7 @@ interface BuildFunnelDefinitionOptions {
   readonly rows: readonly FunnelStageRow[];
   readonly gradients: readonly ChartLinearGradient[];
   readonly isHorizontal: boolean;
-  readonly enterTransition: FunnelEnterTransition | undefined;
+  readonly enterTransition: ChartEnterTransition | undefined;
   readonly staggerDelayMs: number;
 }
 

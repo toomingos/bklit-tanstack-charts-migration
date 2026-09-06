@@ -19,7 +19,7 @@ import type { ReadonlyResolvedArea } from "./area-chart-model";
 
 interface AreaYDomainParams {
   readonly data: ChartDatum[];
-  readonly projectionConfigs: readonly Readonly<ProjectionLineConfig>[];
+  readonly projectionConfigs: ProjectionLineConfig[];
   readonly resolvedAreas: readonly ReadonlyResolvedArea[];
   readonly status: ChartStatus;
   readonly xDataKey: string;

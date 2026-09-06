@@ -24,7 +24,7 @@ interface ProjectionPoint {
 }
 
 interface BuildProjectionPathOptions {
-  readonly sourceData: readonly Readonly<ChartDatum>[];
+  readonly sourceData: ChartDatum[];
   readonly seriesKey: string;
   readonly xDataKey?: string;
   readonly mode: ProjectionMode;
@@ -33,7 +33,7 @@ interface BuildProjectionPathOptions {
   readonly startIndex?: number;
   readonly horizonPoints?: number;
   readonly endValue?: number;
-  readonly points?: readonly Readonly<ProjectionPoint>[];
+  readonly points?: ProjectionPoint[];
 }
 
 const readDate = (row: Readonly<ChartDatum>, xDataKey: string): Date | undefined => {
@@ -122,15 +122,12 @@ const collectHistoryPoints = (options: Readonly<CollectHistoryPointsOptions>): H
   return historyPoints;
 }
 
-interface ComputeProjectionAnchorTangentSlopeOptions {
-  readonly sourceData: readonly Readonly<ChartDatum>[];
-  readonly seriesKey: string;
-  readonly xDataKey?: string;
-  readonly startIndexProp?: number;
-}
-
-const computeProjectionAnchorTangentSlope = (options: Readonly<ComputeProjectionAnchorTangentSlopeOptions>): number => {
-  const { sourceData, seriesKey, xDataKey = "date", startIndexProp } = options;
+const computeProjectionAnchorTangentSlope = (
+  sourceData: ChartDatum[],
+  seriesKey: string,
+  xDataKey = "date",
+  startIndexProp?: number,
+): number => {
   if (sourceData.length < 2) {return 0;}
   const startIndex = resolveStartIndex(sourceData, startIndexProp);
   return slopeFromLastSegment(collectHistoryPoints({ seriesKey, sourceData, startIndex, xDataKey }));
@@ -144,8 +141,13 @@ interface HorizontalTangentBezierPathOptions {
   readonly y1: number;
 }
 
-const buildHorizontalTangentBezierPath = (options: Readonly<HorizontalTangentBezierPathOptions>): string => {
-  const { x0, y0, x1, y1, tension = 0.45 } = options;
+const buildHorizontalTangentBezierPath = (
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  tension = 0.45,
+): string => {
   const dx = x1 - x0;
   if (Math.abs(dx) < DEGENERATE_DX_THRESHOLD) {
     return `M ${x0},${y0} L ${x1},${y1}`;

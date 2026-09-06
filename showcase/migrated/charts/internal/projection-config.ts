@@ -7,7 +7,7 @@ import { normalizeYAxisId } from "./y-axis-id";
 
 interface ProjectionLineConfig {
   readonly yAxisId: string;
-  readonly data: readonly Readonly<ProjectionPoint>[];
+  readonly data: ProjectionPoint[];
 }
 
 interface ProjectionLineConfigProps {
@@ -103,8 +103,8 @@ const foldProjectionExtents = (min: number, max: number, extents: Readonly<Proje
   return [nextMin - padding, nextMax + padding];
 };
 
-const mergeProjectionYDomain = (domain: [number, number], configs: readonly ProjectionLineConfig[], yAxisId: string): [number, number] => {
-  const paths: (readonly Readonly<ProjectionPoint>[])[] = [];
+const mergeProjectionYDomain = (domain: [number, number], configs: ProjectionLineConfig[], yAxisId: string): [number, number] => {
+  const paths: ProjectionPoint[][] = [];
   for (const config of configs) {
     if (config.yAxisId === yAxisId) {paths.push(config.data);}
   }
@@ -116,7 +116,7 @@ const mergeProjectionYDomain = (domain: [number, number], configs: readonly Proj
   return foldProjectionExtents(min, max, extents);
 }
 
-const mergeProjectionXDomainMax = (maxTime: number, configs: readonly ProjectionLineConfig[]): number => {
+const mergeProjectionXDomainMax = (maxTime: number, configs: ProjectionLineConfig[]): number => {
   const paths = configs.map((config: ProjectionLineConfig) => config.data);
   const extents = projectionDateExtents(paths);
   if (!extents) {

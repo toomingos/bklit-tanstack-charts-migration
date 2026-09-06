@@ -57,7 +57,7 @@ const useActiveMarkerDate = (): Date | null => {
   );
 };
 
-const useActiveMarkers = (items: readonly Readonly<ChartMarker>[]): ChartMarker[] => {
+const useActiveMarkers = (items: ChartMarker[]): ChartMarker[] => {
   const store = useContext(MarkerActiveContext);
   const activeDate = useSyncExternalStore(
     store ? store.subscribe : subscribeNoop,

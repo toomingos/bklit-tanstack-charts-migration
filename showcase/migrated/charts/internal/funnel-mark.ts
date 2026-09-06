@@ -18,6 +18,7 @@ import {
 import type { FunnelStage } from "./funnel-segment";
 import { FADE_OPACITY, motionEasingFromCss } from "./hover-motion";
 import { resolveEnterTransition } from "./enter-transition";
+import type { ChartEnterTransition } from "./parity/animation";
 
 // Halo stack math moved here with the ring loop (funnel-geometry keeps the path builders).
 const FUNNEL_RING_SCALE_SHRINK = 0.35;
@@ -186,7 +187,7 @@ const buildFunnelStageRows = (options: Readonly<BuildFunnelStageRowsOptions>): F
 
 interface CreateFunnelStageMarkOptions {
   readonly isHorizontal: boolean;
-  readonly enterTransition: FunnelEnterTransition | undefined;
+  readonly enterTransition: ChartEnterTransition | undefined;
   readonly staggerDelayMs: number;
 }
 

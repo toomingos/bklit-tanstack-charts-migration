@@ -5,7 +5,7 @@ const PROFIT_LOSS_POSITIVE_COLOR = "var(--color-emerald-500)";
 const PROFIT_LOSS_NEGATIVE_COLOR = "var(--color-red-500)";
 const PROFIT_LOSS_DEFAULT_STROKE_WIDTH = 2.5;
 
-const profitLossColor = (value: number): string => value >= 0 ? PROFIT_LOSS_POSITIVE_COLOR : PROFIT_LOSS_NEGATIVE_COLOR;
+const profitLossColor = (value: number): typeof PROFIT_LOSS_POSITIVE_COLOR | typeof PROFIT_LOSS_NEGATIVE_COLOR => value >= 0 ? PROFIT_LOSS_POSITIVE_COLOR : PROFIT_LOSS_NEGATIVE_COLOR;
 
 
 const PROFIT_LOSS_TOOLTIP_LABEL_FALLBACK = "Profit/Loss";

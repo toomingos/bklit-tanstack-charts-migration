@@ -19,7 +19,7 @@ import type {
 } from "./area-chart-model";
 
 interface AreaFillsParams {
-  readonly projectionConfigs: readonly Readonly<ProjectionLineConfig>[];
+  readonly projectionConfigs: ProjectionLineConfig[];
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly resolvedAreas: readonly ReadonlyResolvedArea[];
   readonly xDataKey: string;

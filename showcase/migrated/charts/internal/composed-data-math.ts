@@ -98,7 +98,7 @@ const computeComposedYScaleDomainMax = (
 
 const applyProjectionYDomain = (
   base: readonly [number, number],
-  projectionConfigs: readonly ProjectionLineConfig[],
+  projectionConfigs: ProjectionLineConfig[],
   fallbackMax: number,
 ): [number, number] => {
   const leftConfigs = projectionConfigs.filter((proj) => proj.yAxisId === "left");
@@ -156,7 +156,7 @@ const findTimeBounds = (
 const resolveComposedXDomain = (
   data: readonly Readonly<ChartDatum>[],
   xDataKey: string,
-  projectionConfigs: readonly ProjectionLineConfig[],
+  projectionConfigs: ProjectionLineConfig[],
 ): [number, number] => {
   const bounds = findTimeBounds(data, xDataKey);
   const minTime = bounds?.minTime ?? 0;

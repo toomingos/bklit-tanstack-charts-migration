@@ -3,14 +3,13 @@
 // Bklit brush layout half, ported 1:1.
 
 import { memo, useMemo } from "react";
-import type { CSSProperties, ReactElement, ReactNode } from "react";
+import type { CSSProperties, NamedExoticComponent, ReactElement, ReactNode } from "react";
 import { cn } from "./cn";
 import { useBrushSelection } from './brush-selection';
 import type { BrushLayoutState } from './brush-selection';
-import type { ChartDatum } from "./types";
 
 interface BrushLayoutProps {
-  readonly data: readonly Readonly<ChartDatum>[];
+  readonly data: Record<string, unknown>[];
   readonly xDataKey?: string;
   readonly xExtentMax?: Date;
   readonly enabled: boolean;
@@ -84,7 +83,7 @@ const BrushLayoutContent = ({
   );
 };
 
-const BrushLayout = memo(BrushLayoutContent);
+const BrushLayout: NamedExoticComponent<BrushLayoutProps> = memo(BrushLayoutContent);
 
 BrushLayout.displayName = "BrushLayout";
 

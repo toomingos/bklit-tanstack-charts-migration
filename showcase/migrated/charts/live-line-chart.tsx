@@ -105,7 +105,7 @@ const useLiveLineHostSize = (style: CSSProperties | undefined): LiveLineHostSize
 const DEFAULT_MARGIN: Margin = { bottom: 32, left: 16, right: 16, top: 24 };
 
 interface LiveLineChartProps {
-  readonly data: readonly LiveLinePoint[];
+  readonly data: LiveLinePoint[];
   readonly value: number;
   readonly dataKey?: string;
   readonly window?: number;
@@ -115,7 +115,7 @@ interface LiveLineChartProps {
   readonly lerpSpeed?: number;
   readonly margin?: Partial<Margin>;
   readonly paused?: boolean;
-  readonly children?: ReactNode;
+  readonly children: ReactNode;
   readonly className?: string;
   readonly style?: CSSProperties;
   readonly ariaLabel?: string;

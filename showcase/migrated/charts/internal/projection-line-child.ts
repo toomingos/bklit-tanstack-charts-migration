@@ -1,14 +1,18 @@
 // ProjectionLine config-carrier child: never rendered, compiled once into a TanStack defineChart spec.
+import type { ReactElement } from "react";
 import { CHART_ROLE } from "./chart-child-carrier";
 import { useChartChild } from "./use-chart-child";
-import type { ChartChildComponent, ProjectionLineProps, ReadonlyProjectionLineProps } from "./chart-child-carrier";
+import type { ProjectionLineProps } from "./chart-child-carrier";
 
-const ProjectionLine: ChartChildComponent<ProjectionLineProps> = (props: ReadonlyProjectionLineProps): null => {
-  useChartChild("projectionLine", props);
-  return null;
-};
-
-ProjectionLine[CHART_ROLE] = "projectionLine";
-ProjectionLine.displayName = "ProjectionLine";
+const ProjectionLine: ((props: ProjectionLineProps) => ReactElement | null) & {
+  [CHART_ROLE]?: string;
+  displayName: string;
+} = Object.assign(
+  (props: ProjectionLineProps): ReactElement | null => {
+    useChartChild("projectionLine", props);
+    return null;
+  },
+  { [CHART_ROLE]: "projectionLine", displayName: "ProjectionLine" },
+);
 
 export { ProjectionLine };

@@ -60,7 +60,7 @@ interface ComposedMarksContext {
   readonly lineDimFallback: number;
   readonly margin: Readonly<ChartMargin>;
   readonly maxBarSize: number | undefined;
-  readonly projectionConfigs: readonly Readonly<ProjectionLineConfig>[];
+  readonly projectionConfigs: ProjectionLineConfig[];
   readonly projectionGradientBaseId: string;
   readonly projectionLines: readonly Readonly<ChartDatum>[];
   readonly projectionMarkerFallbacks: Readonly<ProjectionMarkerFallbacks>;
@@ -84,7 +84,7 @@ interface ComposedMarksContext {
 interface ComposedScalesContext {
   readonly data: readonly Readonly<ChartDatum>[];
   readonly grid: GridConfig | null;
-  readonly projectionConfigs: readonly Readonly<ProjectionLineConfig>[];
+  readonly projectionConfigs: ProjectionLineConfig[];
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly tickCountFallback: number;
   readonly timeExtent: Readonly<TimeBounds> | undefined;

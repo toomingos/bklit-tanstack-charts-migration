@@ -18,10 +18,15 @@ const MARKER_STAGGER_EACH_MS = 100;
 const MARKERS_OVERLAY_STYLE = { inset: 0, overflow: "visible", pointerEvents: "none", position: "absolute" } as const;
 
 interface ChartMarkersProps {
-  readonly items: readonly Readonly<ChartMarker>[];
+  readonly items: ChartMarker[];
   readonly size?: number;
   readonly showLines?: boolean;
   readonly animate?: boolean;
+}
+
+// Host-supplied plumbing the legacy context provided; never part of the public props.
+interface ChartMarkersOverlayProps extends Omit<ChartMarkersProps, "items"> {
+  readonly items: readonly Readonly<ChartMarker>[];
   readonly maxFanned?: number;
   readonly xScaleD3Ref: RefObject<ScaleTime<number, number> | null>;
   readonly containerRef: RefObject<HTMLElement | null>;
@@ -76,7 +81,7 @@ const renderMarkerBucket = (options: Readonly<RenderMarkerBucketOptions>): React
   ];
 }
 
-const ChartMarkersOverlay = (props: ChartMarkersProps): ReactElement | null => {
+const ChartMarkersOverlay = (props: ChartMarkersOverlayProps): ReactElement | null => {
   const { items, size = 28, showLines = true, animate = true, maxFanned, xScaleD3Ref, animationDuration, onMarkerHoverChange } = props;
   // Host bounds with the resolver-stash x reader offset into the overlay.
   const { chart, margin } = useChartStable();

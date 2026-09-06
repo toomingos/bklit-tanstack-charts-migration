@@ -75,7 +75,7 @@ export interface LineChartProps {
   readonly aspectRatio?: string;
   readonly className?: string;
   readonly onPhaseChange?: (phase: ChartPhase) => void;
-  readonly children?: ReactNode;
+  readonly children: ReactNode;
   readonly loadingLabel?: string;
   readonly style?: CSSProperties;
   readonly animationEasing?: string;

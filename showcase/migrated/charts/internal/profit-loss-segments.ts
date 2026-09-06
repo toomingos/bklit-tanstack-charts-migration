@@ -3,7 +3,7 @@ import type { ChartDatum } from "./types";
 type SegmentSign = "positive" | "negative";
 
 interface ProfitLossSegment {
-  readonly data: readonly Readonly<ChartDatum>[];
+  readonly data: ChartDatum[];
   readonly isPositive: boolean;
 }
 
@@ -152,10 +152,10 @@ const splitProfitLossSegments = ({
   xDataKey = "date",
   xAccessor,
 }: {
-  readonly data: readonly Readonly<ChartDatum>[];
+  readonly data: ChartDatum[];
   readonly dataKey: string;
   readonly xDataKey?: string;
-  readonly xAccessor: (row: Readonly<ChartDatum>) => Date;
+  readonly xAccessor: (row: ChartDatum) => Date;
 }): ProfitLossSegment[] => {
   if (data.length === 0) {
     return [];

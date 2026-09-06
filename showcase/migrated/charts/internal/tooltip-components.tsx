@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
 import { createPortal } from "react-dom";
+import type { MotionValue } from "motion/react";
 import type { ChartPoint, ChartValue } from "@tanstack/charts";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { indicatorFadeGradientStops, resolveVerticalFadeSides } from './fade-mask';
@@ -9,6 +10,7 @@ import { resolveIndicatorPixelWidth } from "./tooltip-mappers";
 import { TooltipContentRow } from "./tooltip-content-row";
 import { TooltipGradientStop } from "./tooltip-gradient-stop";
 import type { SpringConfig } from './chart-config-context';
+import type { LineConfig } from './chart-context';
 import type { ChartDatum, ChartTooltipConfig, ChartTooltipPoint, IndicatorWidth, TooltipRow } from "./types";
 import { TICKER_ITEM_HEIGHT } from "./design-tokens";
 
@@ -72,23 +74,24 @@ const resolveDotStrokeWidth = (strokeWidth: number | undefined, isRing: boolean)
 
 // The package owns motion (V2.4): x/y arrive from the focus point.
 // Legacy spring numbers map onto the package transition in focus-marks.ts.
-const TooltipDot = ({
-  x,
-  y,
-  visible,
-  color,
-  size = DEFAULT_DOT_SIZE,
-  strokeColor = "var(--chart-background)",
-  strokeWidth = DEFAULT_DOT_STROKE_WIDTH_PX,
-  variant = "dot",
-  cornerRadiusFraction = DEFAULT_CORNER_RADIUS_FRACTION,
-}: Readonly<TooltipDotProps>): ReactNode => {
+const TooltipDot = Object.assign(
+  ({
+    x,
+    y,
+    visible,
+    color,
+    size = DEFAULT_DOT_SIZE,
+    strokeColor = "var(--chart-background)",
+    strokeWidth = DEFAULT_DOT_STROKE_WIDTH_PX,
+    variant = "dot",
+    cornerRadiusFraction = DEFAULT_CORNER_RADIUS_FRACTION,
+  }: Readonly<TooltipDotProps>): ReactElement | null => {
   const isRing = variant === "ring";
   const { fill, stroke } = resolveDotPaint(variant, color, strokeColor);
   const effectiveStrokeWidth = resolveDotStrokeWidth(strokeWidth, isRing);
 
   if (!visible) {
-    return undefined;
+    return null;
   }
 
   if (isRing) {
@@ -109,7 +112,9 @@ const TooltipDot = ({
     );
   }
   return <circle cx={x} cy={y} fill={fill} r={size} stroke={stroke} strokeWidth={effectiveStrokeWidth} />;
-}
+},
+  { displayName: "TooltipDot" },
+);
 
 
 interface TooltipIndicatorProps {
@@ -313,9 +318,10 @@ const TooltipIndicatorInner = ({
   });
 }
 
-const TooltipIndicator = (props: Readonly<TooltipIndicatorProps>): ReactNode => {
+const TooltipIndicator = Object.assign(
+  (props: Readonly<TooltipIndicatorProps>): ReactElement | null => {
   if (!props.visible) {
-    return undefined;
+    return null;
   }
   return (
     <TooltipIndicatorInner
@@ -334,7 +340,9 @@ const TooltipIndicator = (props: Readonly<TooltipIndicatorProps>): ReactNode => 
       x={props.x}
     />
   );
-}
+},
+  { displayName: "TooltipIndicator" },
+);
 
 
 interface TooltipBoxProps {
@@ -347,8 +355,8 @@ interface TooltipBoxProps {
   readonly offset?: number;
   readonly className?: string;
   readonly children: ReactNode;
-  readonly left?: number;
-  readonly top?: number;
+  readonly left?: number | MotionValue<number>;
+  readonly top?: number | MotionValue<number>;
   readonly flipped?: boolean;
   readonly springConfig?: SpringConfig;
   readonly animate?: boolean;
@@ -497,9 +505,11 @@ const TooltipBoxInner = ({
   panelStyle,
   backgroundColor = "var(--chart-tooltip-background)",
   container,
-}: Readonly<Omit<TooltipBoxProps, "visible" | "containerRef" | "className"> & {
+}: Readonly<Omit<TooltipBoxProps, "visible" | "containerRef" | "className" | "left" | "top"> & {
   container: HTMLElement;
   layerClassName?: string;
+  left?: number;
+  top?: number;
 }>): ReactNode => {
   const layerRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -570,16 +580,21 @@ const getMountedSnapshot = (): boolean => true;
 const getMountedServerSnapshot = (): boolean => false;
 
 // Inner-only-on-visible: springs init at the cursor, not (0,0).
-const TooltipBox = (props: Readonly<TooltipBoxProps>): ReactNode => {
+const isPx = (value: number | MotionValue<number> | undefined): value is number => Number.isFinite(value);
+const TooltipBox = Object.assign(
+  (props: Readonly<TooltipBoxProps>): ReactElement | null => {
   const mounted = useSyncExternalStore(subscribeMounted, getMountedSnapshot, getMountedServerSnapshot);
 
   const container = props.containerRef.current;
   if (!(mounted && container)) {
-    return undefined;
+    return null;
   }
   if (!props.visible) {
-    return undefined;
+    return null;
   }
+  // Animated overrides resolve through the package motion path; static placement consumes numbers only.
+  const leftOverride = isPx(props.left) ? props.left : undefined;
+  const topOverride = isPx(props.top) ? props.top : undefined;
   return (
     <TooltipBoxInner
       animate={props.animate}
@@ -590,23 +605,25 @@ const TooltipBox = (props: Readonly<TooltipBoxProps>): ReactNode => {
       entrance={props.entrance}
       flipped={props.flipped}
       layerClassName={props.className}
-      left={props.left}
+      left={leftOverride}
       offset={props.offset}
       panelStyle={props.panelStyle}
       springConfig={props.springConfig}
-      top={props.top}
+      top={topOverride}
       x={props.x}
       y={props.y}
     >
       {props.children}
     </TooltipBoxInner>
   );
-}
+},
+  { displayName: "TooltipBox" },
+);
 
 
 interface TooltipContentProps {
   readonly title?: string;
-  readonly rows: readonly Readonly<TooltipRow>[];
+  readonly rows: TooltipRow[];
   readonly children?: ReactNode;
 }
 
@@ -617,7 +634,8 @@ const renderTooltipContentRow = (row: Readonly<TooltipRow>): ReactElement => (
   />
 );
 
-const TooltipContent = ({ title, rows, children }: Readonly<TooltipContentProps>): ReactElement => (
+const TooltipContent = Object.assign(
+  ({ title, rows, children }: Readonly<TooltipContentProps>): ReactElement => (
     <div className="overflow-hidden">
       <div className="px-3 py-2.5">
         {title !== undefined && title !== "" && (
@@ -636,7 +654,9 @@ const TooltipContent = ({ title, rows, children }: Readonly<TooltipContentProps>
         )}
       </div>
     </div>
-  );
+  ),
+  { displayName: "TooltipContent" },
+);
 
 // Token positions inside a "Month Day" ticker label.
 const MONTH_PART_INDEX = 0;
@@ -654,7 +674,7 @@ const EMPTY_COUNT = 0;
 
 interface DateTickerProps {
   readonly currentIndex: number;
-  readonly labels: readonly string[];
+  readonly labels: string[];
   readonly visible: boolean;
 }
 
@@ -710,7 +730,7 @@ const resolveCurrentMonthIndex = (
   return FIRST_INDEX;
 };
 
-const renderCompactTicker = (pillClassName: string, label: string): ReactNode => (
+const renderCompactTicker = (pillClassName: string, label: string): ReactElement => (
   <div className={pillClassName}>
     <div className="flex h-6 items-center justify-center">
       <span className="whitespace-nowrap font-medium text-sm">{label}</span>
@@ -779,9 +799,9 @@ interface FullTickerOptions {
   readonly visible: boolean;
 }
 
-const renderFullTicker = (options: Readonly<FullTickerOptions>): ReactNode => {
+const renderFullTicker = (options: Readonly<FullTickerOptions>): ReactElement | null => {
   const { monthSegments, parsedLabels, pillClassName, dayStyle, monthStyle, visible } = options;
-  if (!visible || parsedLabels.length === EMPTY_COUNT) {return undefined;}
+  if (!visible || parsedLabels.length === EMPTY_COUNT) {return null;}
   const stacks = renderTickerStacks({ dayStyle, monthSegments, monthStyle, parsedLabels });
   return (
     <div className={pillClassName}>
@@ -792,7 +812,8 @@ const renderFullTicker = (options: Readonly<FullTickerOptions>): ReactNode => {
   );
 };
 
-const DateTicker = ({ currentIndex, labels, visible }: Readonly<DateTickerProps>): ReactNode => {
+const DateTicker = Object.assign(
+  ({ currentIndex, labels, visible }: Readonly<DateTickerProps>): ReactElement | null => {
   const compact = useMemo(
     () => visible && labels.length > COMPACT_TICKER_THRESHOLD,
     [visible, labels.length],
@@ -815,7 +836,41 @@ const DateTicker = ({ currentIndex, labels, visible }: Readonly<DateTickerProps>
   }
 
   return renderFullTicker({ dayStyle, monthSegments, monthStyle, parsedLabels, pillClassName, visible });
-};
+},
+  { displayName: "DateTicker" },
+);
+
+// Legacy `<ChartTooltip>` props (config-carrier surface); the package owns the paint.
+interface ChartTooltipProps {
+  readonly showDatePill?: boolean;
+  readonly showCrosshair?: boolean;
+  readonly showDots?: boolean;
+  readonly dotVariant?: "dot" | "ring";
+  readonly dotSize?: number;
+  readonly dotRadiusFraction?: number;
+  readonly dotScale?: number;
+  readonly dotStrokeWidth?: number;
+  readonly indicatorColor?: string | ((point: Record<string, unknown>) => string);
+  readonly content?: (props: {
+    point: Record<string, unknown>;
+    index: number;
+  }) => ReactNode;
+  readonly rows?: (point: Record<string, unknown>) => TooltipRow[];
+  readonly dotColor?:
+    | string
+    | ((point: Record<string, unknown>, line: LineConfig) => string);
+  readonly children?: ReactNode;
+  readonly className?: string;
+  readonly springConfig?: SpringConfig;
+  readonly matchCrosshair?: boolean;
+  readonly damping?: number;
+  readonly indicatorDasharray?: string;
+  readonly indicatorFadeEdges?: IndicatorFadeEdges;
+  readonly indicatorFadeLength?: number;
+  readonly boxSpringConfig?: SpringConfig;
+  readonly panelStyle?: CSSProperties;
+  readonly backgroundColor?: string;
+}
 
 // Panel chrome shared by both body-render paths below.
 interface TooltipPanelParams {
@@ -905,6 +960,7 @@ const renderSeriesTooltipBody = <TXValue extends ChartValue = ChartValue, TYValu
 
 export { DateTicker, TooltipBox, TooltipContent, TooltipDot, TooltipIndicator, renderSeriesTooltipBody };
 export type {
+  ChartTooltipProps,
   DateTickerProps,
   RenderSeriesTooltipBodyOptions,
   TooltipBoxProps,

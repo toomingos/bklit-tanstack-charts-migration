@@ -1,15 +1,18 @@
 // LiveXAxis config-carrier child: never rendered, compiled once into a TanStack defineChart spec.
+import type { ReactElement } from "react";
 import { CHART_ROLE } from "./chart-child-carrier";
 import { useChartChild } from "./use-chart-child";
-import type { ChartChildComponent } from "./chart-child-carrier";
 import type { LiveXAxisConfig } from "./types";
 
-const LiveXAxis: ChartChildComponent<LiveXAxisConfig> = (props: Readonly<LiveXAxisConfig>): null => {
-  useChartChild("liveXAxis", props);
-  return null;
-};
-
-LiveXAxis[CHART_ROLE] = "liveXAxis";
-LiveXAxis.displayName = "LiveXAxis";
+const LiveXAxis: ((props: Readonly<LiveXAxisConfig>) => ReactElement | null) & {
+  [CHART_ROLE]?: string;
+  displayName: string;
+} = Object.assign(
+  (props: Readonly<LiveXAxisConfig>): ReactElement | null => {
+    useChartChild("liveXAxis", props);
+    return null;
+  },
+  { [CHART_ROLE]: "liveXAxis", displayName: "LiveXAxis" },
+);
 
 export { LiveXAxis };

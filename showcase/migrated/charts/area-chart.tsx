@@ -55,7 +55,7 @@ interface AreaChartProps {
   readonly className?: string;
   readonly onPhaseChange?: (phase: ChartPhase) => void;
   readonly loadingLabel?: string;
-  readonly children?: ReactNode;
+  readonly children: ReactNode;
   readonly style?: CSSProperties;
   readonly animationEasing?: string;
   readonly yDomainTween?: boolean;

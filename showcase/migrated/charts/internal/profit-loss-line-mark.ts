@@ -199,8 +199,9 @@ const profitLossLineMarks = (options: Readonly<ProfitLossLineMarkOptions>): Char
   const { config, data, xDataKey, focusedIndex, id } = options;
   if (data.length === 0) {return [];}
   const xAccessor = createProfitLossXAccessor(xDataKey);
+  // Legacy takes a mutable array; the spread is a shallow copy (segments own their rows).
   const segments = splitProfitLossSegments({
-    data,
+    data: [...data],
     dataKey: config.dataKey,
     xAccessor,
     xDataKey: config.xDataKey,

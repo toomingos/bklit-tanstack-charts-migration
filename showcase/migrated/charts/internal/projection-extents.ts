@@ -10,14 +10,14 @@ const trackProjectionValue = (bounds: ProjectionValueBounds, value: number): voi
   if (value > bounds.maxValue) {bounds.maxValue = value;}
 }
 
-const projectionValueExtents = (paths: readonly (readonly Readonly<ProjectionPoint>[])[]): { minValue: number; maxValue: number } | undefined => {
+const projectionValueExtents = (paths: ProjectionPoint[][]): { minValue: number; maxValue: number } | null => {
   const bounds: ProjectionValueBounds = { maxValue: Number.NEGATIVE_INFINITY, minValue: Number.POSITIVE_INFINITY };
   for (const path of paths) {
     for (const point of path) {
       trackProjectionValue(bounds, point.value);
     }
   }
-  if (bounds.minValue === Number.POSITIVE_INFINITY) {return undefined;}
+  if (bounds.minValue === Number.POSITIVE_INFINITY) {return null;}
   return { maxValue: bounds.maxValue, minValue: bounds.minValue };
 }
 
@@ -31,14 +31,14 @@ const trackProjectionTime = (bounds: ProjectionTimeBounds, time: number): void =
   if (time > bounds.maxTime) {bounds.maxTime = time;}
 }
 
-const projectionDateExtents = (paths: readonly (readonly Readonly<ProjectionPoint>[])[]): { minTime: number; maxTime: number } | undefined => {
+const projectionDateExtents = (paths: ProjectionPoint[][]): { minTime: number; maxTime: number } | null => {
   const bounds: ProjectionTimeBounds = { maxTime: Number.NEGATIVE_INFINITY, minTime: Number.POSITIVE_INFINITY };
   for (const path of paths) {
     for (const point of path) {
       trackProjectionTime(bounds, point.date.getTime());
     }
   }
-  if (bounds.minTime === Number.POSITIVE_INFINITY) {return undefined;}
+  if (bounds.minTime === Number.POSITIVE_INFINITY) {return null;}
   return { maxTime: bounds.maxTime, minTime: bounds.minTime };
 }
 

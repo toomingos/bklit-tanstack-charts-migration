@@ -53,7 +53,7 @@ const classifyMomentum = (delta: number, threshold: number): Momentum => {
 /** Default lookback window for momentum detection, in samples. */
 const MOMENTUM_DEFAULT_LOOKBACK = 20;
 
-const detectMomentum = (data: readonly Readonly<ChartDatum>[], dataKey: string, lookback = MOMENTUM_DEFAULT_LOOKBACK): Momentum => {
+const detectMomentum = (data: ChartDatum[], dataKey: string, lookback = MOMENTUM_DEFAULT_LOOKBACK): Momentum => {
   if (data.length < MOMENTUM_MIN_SAMPLES) {return "flat";}
   const start = Math.max(0, data.length - lookback);
   const range = scanDatumRange({ dataKey, end: data.length, source: data, start });

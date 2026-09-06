@@ -155,7 +155,7 @@ interface UseComposedChartMarksParams {
   readonly margin: Readonly<ChartMargin>;
   readonly maxBarSize: number | undefined;
   readonly projectValue: (dataKey: string, value: number) => number;
-  readonly projectionConfigs: readonly Readonly<ProjectionLineConfig>[];
+  readonly projectionConfigs: ProjectionLineConfig[];
   readonly projectionGradientBaseId: string;
   readonly projectionLines: readonly Readonly<ChartDatum>[];
   readonly renderData: readonly Readonly<ChartDatum>[];  readonly resolvedAreas: readonly Readonly<ResolvedArea>[];

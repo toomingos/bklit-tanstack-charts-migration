@@ -91,7 +91,7 @@ const projectionLineMark = (options: Readonly<ProjectionLineMarkOptions>): Chart
       if (!endpoints) {return { nodes: [] };}
       const { startX, startY, endY, visibleEndX } = endpoints;
       const path = curveKind === "bezier"
-        ? buildHorizontalTangentBezierPath({ x0: startX, x1: visibleEndX, y0: startY, y1: endY })
+        ? buildHorizontalTangentBezierPath(startX, startY, visibleEndX, endY)
         : `M ${startX},${startY} L ${visibleEndX},${endY}`;
       return {
         nodes: [

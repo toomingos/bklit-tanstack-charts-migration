@@ -129,7 +129,7 @@ interface UseComposedYDomainsParams {
   readonly barDataKeys: readonly string[];
   readonly composedSeries: readonly Readonly<ComposedSeriesEntry>[];
   readonly data: readonly Readonly<ChartDatum>[];
-  readonly projectionConfigs: readonly Readonly<ProjectionLineConfig>[];
+  readonly projectionConfigs: ProjectionLineConfig[];
   readonly stacked: boolean;
 }
 

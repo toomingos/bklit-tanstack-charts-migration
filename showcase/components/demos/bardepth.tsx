@@ -30,12 +30,13 @@ export default function BarDepthDemo({ impl, n: _n }: BarDepthDemoProps) {
 
   return (
     <MigratedCharts.BarChart data={barChartDocsData} xDataKey="month" aspectRatio="2/1">
-      <MigratedCharts.BarDepthProvider groundShadow={0.26} />
       <MigratedCharts.Grid horizontal />
-      <MigratedCharts.BarDepthBack dataKey="revenue" color="var(--chart-1)" />
-      <MigratedCharts.Bar dataKey="revenue" fill="var(--chart-1)" />
-      <MigratedCharts.BarDepthFront dataKey="revenue" />
-      <MigratedCharts.BarPulse dataKey="revenue" activeIndex={barChartDocsData.length - 1} pulsePaused />
+      <MigratedCharts.BarDepthProvider groundShadow={0.26}>
+        <MigratedCharts.BarDepthBack dataKey="revenue" color="var(--chart-1)" />
+        <MigratedCharts.Bar dataKey="revenue" fill="var(--chart-1)" />
+        <MigratedCharts.BarDepthFront dataKey="revenue" />
+        <MigratedCharts.BarPulse dataKey="revenue" activeIndex={barChartDocsData.length - 1} pulsePaused />
+      </MigratedCharts.BarDepthProvider>
       <MigratedCharts.BarXAxis />
       <MigratedCharts.ChartTooltip />
     </MigratedCharts.BarChart>

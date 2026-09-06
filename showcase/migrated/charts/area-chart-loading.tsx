@@ -77,7 +77,5 @@ const AreaChartLoading = ({
   );
 };
 
-AreaChartLoading.displayName = "AreaChartLoading";
-
 export { AreaChartLoading };
 export type { AreaChartLoadingProps };

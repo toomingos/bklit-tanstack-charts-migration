@@ -100,12 +100,12 @@ const applyBarRowRoles = (child: Readonly<ReactElement>, role: string | undefine
   return true;
 };
 
-// Bar-depth carriers: variants push, the provider assigns the singleton slot.
-const applyBarDepthRoles = (child: Readonly<ReactElement>, role: string | undefined, out: ExtractedChildren): boolean => {
+// Bar-depth carriers: variants push; the provider assigns its slot and wraps its children (legacy composition).
+const applyBarDepthRoles = (child: Readonly<ReactElement>, role: string | undefined, out: ExtractedChildren, recurse: (node: ReactNode) => void): boolean => {
   if (role === "barDepthBack" && isValidElement<BarDepthBackConfig>(child)) { out.barDepthBacks.push(child.props); }
   else if (role === "barDepthFront" && isValidElement<BarDepthFrontConfig>(child)) { out.barDepthFronts.push(child.props); }
   else if (role === "barPulse" && isValidElement<BarPulseConfig>(child)) { out.barPulses.push(child.props); }
-  else if (role === "barDepthProvider" && isValidElement<BarDepthProviderConfig & { children?: ReactNode }>(child)) { out.barDepthProvider = child.props; }
+  else if (role === "barDepthProvider" && isValidElement<BarDepthProviderConfig & { children?: ReactNode }>(child)) { out.barDepthProvider = child.props; recurse(child.props.children); }
   else { return false; }
   return true;
 };
@@ -145,8 +145,8 @@ const applyMarkerRoles = (child: Readonly<ReactElement>, role: string | undefine
 };
 
 // Series-family fan-out: line, bar-row, and bar-depth carriers in the original chain order.
-const applySeriesConfigRole = (child: Readonly<ReactElement>, role: string | undefined, out: ExtractedChildren): boolean =>
-  applyLineAreaRoles(child, role, out) || applyBarRowRoles(child, role, out) || applyBarDepthRoles(child, role, out);
+const applySeriesConfigRole = (child: Readonly<ReactElement>, role: string | undefined, out: ExtractedChildren, recurse: (node: ReactNode) => void): boolean =>
+  applyLineAreaRoles(child, role, out) || applyBarRowRoles(child, role, out) || applyBarDepthRoles(child, role, out, recurse);
 
 // Frame-and-overlay fan-out: axes, surfaces, projections, and markers in the original chain order.
 const applyFrameOverlayRole = (child: Readonly<ReactElement>, role: string | undefined, out: ExtractedChildren): boolean =>
@@ -233,7 +233,7 @@ const visit = (node: ReactNode, out: ExtractedChildren, seen: Set<unknown>, scan
       const role = roleOf(child.type);
       scanned.push({ props: child.props, role });
       // Unknown roles carry no chart config: only known carriers populate the spec.
-      applySeriesConfigRole(child, role, out);
+      applySeriesConfigRole(child, role, out, recurse);
       applyFrameOverlayRole(child, role, out);
     }
   }

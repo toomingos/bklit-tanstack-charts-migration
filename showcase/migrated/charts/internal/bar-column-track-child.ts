@@ -1,15 +1,18 @@
 // BarColumnTrack config-carrier child: never rendered, compiled once into a TanStack defineChart spec.
+import type { ReactElement } from "react";
 import { CHART_ROLE } from "./chart-child-carrier";
 import { useChartChild } from "./use-chart-child";
-import type { ChartChildComponent } from "./chart-child-carrier";
 import type { BarColumnTrackConfig } from "./types";
 
-const BarColumnTrack: ChartChildComponent<BarColumnTrackConfig> = (props: Readonly<BarColumnTrackConfig>): null => {
-  useChartChild("barColumnTrack", props);
-  return null;
-};
-
-BarColumnTrack[CHART_ROLE] = "barColumnTrack";
-BarColumnTrack.displayName = "BarColumnTrack";
+const BarColumnTrack: ((props: Readonly<BarColumnTrackConfig>) => ReactElement | null) & {
+  [CHART_ROLE]?: string;
+  displayName: string;
+} = Object.assign(
+  (props: Readonly<BarColumnTrackConfig>): ReactElement | null => {
+    useChartChild("barColumnTrack", props);
+    return null;
+  },
+  { [CHART_ROLE]: "barColumnTrack", displayName: "BarColumnTrack" },
+);
 
 export { BarColumnTrack };

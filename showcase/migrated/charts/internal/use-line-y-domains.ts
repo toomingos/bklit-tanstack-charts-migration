@@ -18,7 +18,7 @@ import type { ChartDatum, ChartStatus, LineConfig } from "./types";
 interface LineYDomainsParams {
   readonly data: readonly Readonly<ChartDatum>[];
   readonly lines: readonly Readonly<LineConfig>[];
-  readonly projectionConfigs: readonly ProjectionLineConfig[];
+  readonly projectionConfigs: ProjectionLineConfig[];
   readonly status: ChartStatus;
   readonly xDataKey: string;
   readonly xDomain: [Date, Date] | undefined;
