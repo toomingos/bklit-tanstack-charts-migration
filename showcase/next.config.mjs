@@ -11,10 +11,10 @@ const showcaseRoot = import.meta.dirname;
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  transpilePackages: ["@showcase/migrated-charts"],
   turbopack: {
     resolveAlias: {
       "@showcase/bklit-charts": "./packages/bklit-charts/index.ts",
-      "@showcase/migrated-charts": "./migrated/charts/index.ts",
     },
   },
   webpack: (config) => {
@@ -23,10 +23,6 @@ const nextConfig = {
       "@showcase/bklit-charts": path.resolve(
         showcaseRoot,
         "./packages/bklit-charts/index.ts"
-      ),
-      "@showcase/migrated-charts": path.resolve(
-        showcaseRoot,
-        "./migrated/charts/index.ts"
       ),
     };
     // When webpack resolves imports from within repos/bklit-ui/, we need it to

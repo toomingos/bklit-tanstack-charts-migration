@@ -12,6 +12,7 @@ import { scaleLinear as d3Linear, scalePoint } from 'd3-scale';
 import { geoIdentity } from 'd3-geo';
 import {
   INITIAL_WIDTH,
+  chartsDistUrl,
   createChartScene,
   defineChart,
   linearScale,
@@ -20,7 +21,7 @@ import {
   unitDir,
 } from './lib/render.mjs';
 
-const dist = (f) => import(`../../showcase/node_modules/@tanstack/charts/dist/${f}.js`);
+const dist = (f) => import(chartsDistUrl(f));
 const [{ lineY }, { areaY }, { barY, barX }, { dot }, { rect, cell }, { ruleY }, { link }] =
   await Promise.all(
     ['line', 'area', 'bar', 'dot', 'rect', 'rule', 'link'].map(dist),
@@ -28,7 +29,7 @@ const [{ lineY }, { areaY }, { barY, barX }, { dot }, { rect, cell }, { ruleY },
 const { polar, radialArc, radialLine } = await dist('polar');
 const { sunburst } = await dist('hierarchy-sunburst');
 const { sankeyDiagram } = await dist('network-sankey');
-const { geoShape } = await import('../../showcase/node_modules/@tanstack/charts/dist/geo.js');
+const { geoShape } = await import(chartsDistUrl('geo'));
 
 const XY = { x: { scale: linearScale('x', [0, 3]) }, y: { scale: linearScale('y', [0, 30]) } };
 const NULL_XY = { x: null, y: null };

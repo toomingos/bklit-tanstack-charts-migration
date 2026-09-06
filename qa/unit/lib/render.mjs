@@ -13,13 +13,15 @@ const qaDir = dirname(unitDir); // qa
 export const repoRoot = dirname(qaDir); // repo root
 export const showcaseDir = join(repoRoot, 'showcase');
 
-// Headless scene API (pinned package lives in showcase/node_modules).
-export {
-  createChartRuntime,
-  createChartScene,
-  defineChart,
-  renderChartSvg,
-} from '../../../showcase/node_modules/@tanstack/charts/dist/index.js';
+// Headless scene API: the pinned 0.16.0 dist the showcase renders, resolved
+// through the migrated package's own node_modules (workspace link into the
+// store). dist/ is outside the package exports map, so join the file path
+// instead of resolving a specifier.
+const chartsDistDir = join(showcaseDir, 'migrated', 'node_modules', '@tanstack', 'charts', 'dist');
+export const chartsDistUrl = (f) => pathToFileURL(join(chartsDistDir, `${f}.js`)).href;
+export const { createChartRuntime, createChartScene, defineChart, renderChartSvg } =
+  await import(chartsDistUrl('index'));
+export const { resolveMarkStateScene, sceneHasMarkStates } = await import(chartsDistUrl('mark-state'));
 
 // Initial width every SSR probe renders at (matches the scene size).
 export const INITIAL_WIDTH = 640;

@@ -18,9 +18,6 @@
     "jsx": "preserve",
     "incremental": true,
     "paths": {
-      "@showcase/migrated-charts": [
-        "./migrated/charts/index.ts"
-      ],
       "@showcase/bklit-charts": [
         "./repos/bklit-ui/packages/ui/src/charts/index.ts"
       ],

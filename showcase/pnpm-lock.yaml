@@ -16,16 +16,10 @@ importers:
         version: 0.5.14(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@showcase/bklit-charts':
         specifier: file:./packages/bklit-charts
-        version: file:packages/bklit-charts(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: link:packages/bklit-charts
       '@showcase/migrated-charts':
-        specifier: file:./packages/migrated-charts
-        version: file:packages/migrated-charts(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@tanstack/charts':
-        specifier: 0.16.0
-        version: 0.16.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@tanstack/react-charts':
-        specifier: 0.16.0
-        version: 0.16.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: workspace:*
+        version: link:migrated
       '@use-gesture/react':
         specifier: 10.3.1
         version: 10.3.1(react@19.2.8)
@@ -207,6 +201,75 @@ importers:
       ultracite:
         specifier: ^7.10.7
         version: 7.10.7(oxfmt@0.66.0)(oxlint@1.81.0(oxlint-tsgolint@7.0.2001))
+
+  migrated:
+    dependencies:
+      '@base-ui/react':
+        specifier: ^1.0.0-alpha.8
+        version: 1.7.0(@types/react@19.2.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@number-flow/react':
+        specifier: ^0.5.4
+        version: 0.5.14(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@tanstack/charts':
+        specifier: 0.16.0
+        version: 0.16.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@tanstack/react-charts':
+        specifier: 0.16.0
+        version: 0.16.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/geojson':
+        specifier: ^7946.0.16
+        version: 7946.0.16
+      '@use-gesture/react':
+        specifier: 10.3.1
+        version: 10.3.1(react@19.2.8)
+      '@visx/gradient':
+        specifier: 4.0.1-alpha.0
+        version: 4.0.1-alpha.0(react@19.2.8)
+      '@visx/scale':
+        specifier: 4.0.1-alpha.0
+        version: 4.0.1-alpha.0
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      d3-array:
+        specifier: 3.2.4
+        version: 3.2.4
+      d3-geo:
+        specifier: 3.1.0
+        version: 3.1.0
+      d3-scale:
+        specifier: 4.0.2
+        version: 4.0.2
+      d3-selection:
+        specifier: 3.0.0
+        version: 3.0.0
+      d3-shape:
+        specifier: ^3.2.0
+        version: 3.2.0
+      d3-zoom:
+        specifier: 3.0.0
+        version: 3.0.0
+      motion:
+        specifier: ^12.27.0
+        version: 12.43.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      tailwind-merge:
+        specifier: ^2.6.0
+        version: 2.6.1
+
+  packages/bklit-charts:
+    dependencies:
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
 
 packages:
 
@@ -975,18 +1038,6 @@ packages:
   '@shaderfrog/glsl-parser@7.0.1':
     resolution: {integrity: sha512-8mpfsoPeRhesY3pOrzNZBL8uG6N5GVX1EHLBYbd4gzKs+c7vaEIqpTNK5VrffU33qQN4cwpP2v3u4aPPBU32sw==}
     engines: {node: '>=16'}
-
-  '@showcase/bklit-charts@file:packages/bklit-charts':
-    resolution: {directory: packages/bklit-charts, type: directory}
-    peerDependencies:
-      react: ^19.0.0
-      react-dom: ^19.0.0
-
-  '@showcase/migrated-charts@file:packages/migrated-charts':
-    resolution: {directory: packages/migrated-charts, type: directory}
-    peerDependencies:
-      react: ^19.0.0
-      react-dom: ^19.0.0
 
   '@sindresorhus/merge-streams@4.0.0':
     resolution: {integrity: sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ==}
@@ -3744,16 +3795,6 @@ snapshots:
   '@sec-ant/readable-stream@0.4.1': {}
 
   '@shaderfrog/glsl-parser@7.0.1': {}
-
-  '@showcase/bklit-charts@file:packages/bklit-charts(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-
-  '@showcase/migrated-charts@file:packages/migrated-charts(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
 
   '@sindresorhus/merge-streams@4.0.0': {}
 

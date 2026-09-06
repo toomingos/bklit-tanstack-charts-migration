@@ -4,11 +4,7 @@
 // (Crosshair/nearest-point resolution is V2.5/V2.6's todo below.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bundleEntry, loadFresh } from './lib/render.mjs';
-import {
-  resolveMarkStateScene,
-  sceneHasMarkStates,
-} from '../../showcase/node_modules/@tanstack/charts/dist/mark-state.js';
+import { bundleEntry, loadFresh, resolveMarkStateScene, sceneHasMarkStates } from './lib/render.mjs';
 
 const { runStatesCheckWith, buildStatesCheckInput } = await loadFresh(bundleEntry('states.tsx'));
 const resolver = {

@@ -16,9 +16,11 @@ function summarizeOxlint(stdout) {
   // slicing from the first "[" lands inside the array and leaves the object's trailing
   // fields as garbage after the close bracket. Always slice from the first "{".
   let diagnostics;
+  let files = null;
   try {
     const parsed = JSON.parse(stdout.slice(stdout.indexOf("{")));
     diagnostics = Array.isArray(parsed) ? parsed : (parsed.diagnostics ?? []);
+    files = Array.isArray(parsed) ? null : (parsed.number_of_files ?? null);
   } catch {
     return { parseError: true };
   }
@@ -28,7 +30,11 @@ function summarizeOxlint(stdout) {
   const byRule = {};
   for (const d of diagnostics) byRule[d.code] = (byRule[d.code] ?? 0) + 1;
   const topRules = Object.entries(byRule).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  return { problems: diagnostics.length, errors, warnings, topRules };
+  // A lint target that no longer exists is not a clean tree. oxlint prints
+  // "No files found to lint" and exits 0 with number_of_files 0, so a stale or
+  // misspelled path would otherwise be reported as 0 errors, 0 warnings, ok —
+  // the D585 failure mode, an instrument reading green for the wrong reason.
+  return { problems: diagnostics.length, errors, warnings, files, topRules };
 }
 
 export async function runChecks(opts = {}) {
@@ -64,17 +70,23 @@ export async function runChecks(opts = {}) {
     log(TAG, "tsc failed — stopping the checks pipeline here");
     return finish();
   }
-  const lint = await add("lint", "npx", ["oxlint", "--type-aware", "--deny-warnings", "--format=json", "migrated", "packages/migrated-charts"], path.join(ROOT, "showcase"), summarizeOxlint);
+  const lint = await add("lint", "npx", ["oxlint", "--type-aware", "--deny-warnings", "--format=json", "migrated"], path.join(ROOT, "showcase"), summarizeOxlint);
   if (lint) {
     const rec = checks[checks.length - 1];
     const errs = rec.summary && !rec.summary.parseError ? rec.summary.errors : null;
     const warns = rec.summary && !rec.summary.parseError ? rec.summary.warnings : null;
+    const files = rec.summary && !rec.summary.parseError ? rec.summary.files : null;
     rec.floor = LINT_FLOOR;
     if (errs !== null && warns !== null && errs <= LINT_FLOOR && warns === 0) {
       rec.exit = 0; // at/below the pinned floor: report the count, pass
       rec.floored = true;
     }
-    log(TAG, `lint: ${errs ?? "?"} error(s), ${warns ?? "?"} warning(s) vs floor ${LINT_FLOOR} -> ${rec.exit === 0 ? "ok" : "FAIL"}`);
+    if (files === 0) {
+      rec.exit = 1; // linted nothing: the target path is stale, not the tree clean
+      rec.floored = false;
+      rec.emptyTarget = true;
+    }
+    log(TAG, `lint: ${errs ?? "?"} error(s), ${warns ?? "?"} warning(s) over ${files ?? "?"} file(s) vs floor ${LINT_FLOOR} -> ${rec.exit === 0 ? "ok" : rec.emptyTarget ? "FAIL (no files linted)" : "FAIL"}`);
   }
   await add("bench-tsc", "npx", ["tsc", "--noEmit", "-p", "tsconfig.json"], APP_DIR, (s) => ({ errors: (s.match(/error TS\d+/g) ?? []).length }));
   const build = await add("build", "npm", ["run", "build"], APP_DIR, (s) => ({ ok: /built in/.test(s) }));

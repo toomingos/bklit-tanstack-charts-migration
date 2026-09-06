@@ -12,7 +12,8 @@ import { createRequire } from 'node:module';
 import { realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createChartSpring } from '../showcase/node_modules/@tanstack/charts/dist/spring.js';
+import { chartsDistUrl } from './unit/lib/render.mjs';
+const { createChartSpring } = await import(chartsDistUrl('spring'));
 import { findSpringStiffnessDamping } from '../showcase/migrated/charts/internal/candle-spring.ts';
 import { resolveMotionEasing } from '../showcase/migrated/charts/internal/reveal-easing.ts';
 
