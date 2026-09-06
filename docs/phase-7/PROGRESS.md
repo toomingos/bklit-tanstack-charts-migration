@@ -59,7 +59,7 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 4 | V3.1 | funnel on marks (D364 reversal) | merged | `ses_f8c383244ffe8txsjclmGtDUuw` | 7ba656f | D545 · 6 files +592/−723 + 2 records · `defineChart` in funnel-chart = 2 · WAAPI/`createElementNS` in funnel = 0 · QA funnel 3/0 px, funnelvertical 0/0 (baseline 99/0) |
 | 4 | V3.5 | one animation owner | merged (+ follow-up) · QA 43/43, 190 cells, 3 ruled FAIL, 0 unruled | `20260906-0119` | `5dafad4` · `029cbd8` (follow-up) | D561 D562 D563 D567 D568 · one `motion()` factory, 20 mounts, `svgAnimation` non-false 0 · 5 hand-motion modules + G11 + G20 deleted, legacy `enterTransition` moved to `parity/animation.ts` · follow-up restores `NATIVE_MOTION_MAX_POINTS` and the y-domain tween gate after 20 unruled hover FAILs at `5dafad4`; cause measured (whole-scene `animateSvg` per pointer move, 8,544 timing contexts over 2,073 elements on bardepth) · I3 unfiled, control repros do not separate the renderers (D568) |
 | 4 | V3.6 | stylesheet audit, `data-slot` | merged · QA 43/43, 190 cells, 3 ruled FAIL, 0 unruled | `20260906-0631` | `7b31a15` | D564 D565 D566 · `styles.css` 1057 → 769, one file · `transition:` 3, `animation:` 1, `@keyframes` 1, `transform-origin`/`transform-box` 0, literal `opacity: 0` 0 · `data-slot` 21 hosts + 13 parts · six CSS-var maps derive from `chartCssVars` · `.bkm-dash-tail` restored by lead (D565), `.ts-bkm-loading-root` authored for V3.9 (D566) |
-| 4 | V3.9 | skeleton as a chart | merged · QA pending | `ses_f89f39404ffe5vwd4pROUkd1Cb` | `1c2d276` | D569 · loading placeholders are `defineChart` definitions (`internal/loading-definitions.ts`), sweep is R10 seam paint · hand SVG, rAF and WAAPI 0 in the loading modules · `createElementNS` 0 tree-wide, **G14 closed** · sweep silhouette accept (`08` §7) · lead fold: stale api-compat report regenerated (9), 15 migrated-only barrel exports removed, `bar-pulse-sync.ts` no-op deleted with its five call sites, duplicate `generate-chart-skeleton-data.ts` collapsed into `skeleton-data.ts` |
+| 4 | V3.9 | skeleton as a chart | merged · **QA FAIL, follow-up in flight** (43/43 runs, 190 cells, 5 unruled FAIL: barloading settled/hover-50/hover-70, arealoading settled/hover-70 — the travelling sweep was deleted, D570) | `ses_f89f39404ffe5vwd4pROUkd1Cb` | `1c2d276` | D569 · loading placeholders are `defineChart` definitions (`internal/loading-definitions.ts`), sweep is R10 seam paint · hand SVG, rAF and WAAPI 0 in the loading modules · `createElementNS` 0 tree-wide, **G14 closed** · sweep silhouette accept (`08` §7) · lead fold: stale api-compat report regenerated (9), 15 migrated-only barrel exports removed, `bar-pulse-sync.ts` no-op deleted with its five call sites, duplicate `generate-chart-skeleton-data.ts` collapsed into `skeleton-data.ts` |
 | 4 | V3.8 | census and idiom rows (last) | todo | | | |
 
 Batch-end audits (`--agent audit`, `08` §6 counts + idiom rows for touched families): after wave 1 ☑ · wave 2 ☑ · wave 3 ☑ (D556, HEAD `73cc44e`; V3.4b closed at `b350286`, D559) · wave 4 ☐.
@@ -112,7 +112,7 @@ stamp), UPSTREAM (I-number in `07`). No vector = synthesis defect: amend `08` §
 | G23 | lead (V2.6 iso QA) | scatter tooltip body bypassed `renderSeriesTooltipBody`; the box came from the package shell chrome (no `bkm-native-tooltip`): 173×103 px vs legacy 151×90, scatter hover 4190–4690 pre-item, 5047 with the halo pill | V2 (V2.6 tooltip parity) | fixed in the V2.6 commit (`a20c7fd`): `scatter-tooltip-body.ts` calls the shared renderer, extension passes the shell class; scatter hover 1531/1691/1692, box 153×90 | D551 |
 | G24 | lead (V3.7-B review) | legacy props restored as types only, behaviour not wired: candlestick `xDomain`/`xDomainSlotCount`, brush `direction`/`selection`/`useWindowMoveEvents`, `BarDepthProvider` context value; the parity harness reads them green because `Eq` is type-level | V3 (V3.7 config parity) · V4 (V4.2 fixtures should mount them) | open: wire each through the package config or stamp a ruling per prop before the 7.5 gate | D553 |
 | G25 | audit (D556) | `08` §6 probes `spatialIndex ≥ 5` by grep; V2.5's cartesian indexes are passed through the package `focus` option and read 1 (`sankey-chart.tsx:473`) | V3 (V3.8 census) · V4 (gate integrity) | FOLD into V3.8: rewrite the probe to count `focus:` spatial factories, or add the literal key; not a code change | D556 |
-| G26 | audit (D556) | `initialWidth` on 12/16 entry files; area, heatmap, scatter, live-line mount it in their internal view, so the §6 "= 15" count depends on which file is grepped | V3 (V3.8 census) | FOLD into V3.8: count mounts (`grep -c initialWidth` over `showcase/migrated/charts`), stamp the number | D556 |
+| G26 | audit (D556) | `initialWidth` on 12/16 entry files, the other four (area, heatmap, scatter, live-line) mount it in their internal view — count is by mount, not by entry file (G26 notes it for V3.8's probe) | V3 (V3.8 census) | FOLD into V3.8: count mounts (`grep -c initialWidth` over `showcase/migrated/charts`), stamp the number — ✅ closed by V3.8 (D<n>): 28 `initialWidth=` sites, §6 means mounts (12-census.md §1/§3) | D556 |
 | G27 | audit (D556) | ✅ closed by V3.4b-ii (D558) · `idPrefix` on 5 entry files (candlestick, choropleth, funnel, gauge, pie); V3.4a scoped the 8 mounts it owned, area/bar/composed/heatmap/line/live-line/radar/ring/sankey/scatter/sunburst have none | V3 (V3.4b seam) | FOLD into V3.4b (cartesian) and V3.8 (polar/sankey/heatmap sweep): every mount that registers into the seam passes `idPrefix` | D556 |
 | G28 | audit (D556) | `role="img"` 0 across families; one hand tab stop stays at `sunburst-center-overlay.tsx:68` | V4 (V4.1 a11y) | FOLD into V4.1: host `role="img"` + label on every mount, tab stop deleted with V3.2 sunburst centre → package `radialText` | D556 |
 | G29 | lead (V4.6 follow-up) | ported legacy heatmap cases fail against the migrated helpers: `resolveHeatmapDisplayRange` returns undefined bounds where legacy infers GitHub-style Date bounds (year and six-month grids) or `null` (custom grids), so `hideGhostCells` never ghosts the lead cells; `findHeatmapColumnIndexForDate` and the quarter lead-week cases are stale/date-sensitive legacy tests (ACCEPT) | V3 (heatmap, V3.3 follow-up) | open: fix `resolveHeatmapDisplayRange` in the V3.8 heatmap sweep or stamp a ruling; the three `fails:` todos are the count | D555 |
@@ -127,21 +127,21 @@ family; write `n/a` where it does not.
 
 | Family | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| area | | | | | | | | | | | | |
-| bar | | | | | | | | | | | | |
-| candlestick | | | | | | | | | | | | |
-| choropleth | | | | | | | | | | | | |
-| composed | | | | | | | | | | | | |
-| funnel | | | | | | | | | | | | |
-| gauge | | | | | | | | | | | | |
-| heatmap | | | | | | | | | | | | |
-| line | | | | | | | | | | | | |
-| live-line | | | | | | | | | | | | |
-| pie | | | | | | | | | | | | |
-| radar | | | | | | | | | | | | |
-| ring | | | | | | | | | | | | |
-| sankey | | | | | | | | | | | | |
-| scatter | | | | | | | | | | | | |
-| sunburst | | | | | | | | | | | | |
+| area | ✓ | ✓ | ✗ no `decorative(` use | ✗ HTML stat | ✓ rule crosshair | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✓ muted+scale vars |
+| bar | ✓ | ✓ | ✗ no `decorative(` use | ✗ HTML stat | ✓ band crosshair | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✓ muted+scale vars |
+| candlestick | ✓ regime | ✓ | ✗ no `decorative(` use | ✗ HTML stat | ✓ rule crosshair | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✓ muted+scale vars |
+| choropleth | ✓ | ✓ | ✗ no `decorative(` use | ✗ HTML stat | n/a | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✗ no `theme:` |
+| composed | ✓ regime | ✓ | ✗ no `decorative(` use | ✗ HTML stat | ✓ rule crosshair | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✓ muted+scale vars |
+| funnel | ✓ | ✓ | ✗ no `decorative(` use | ✗ HTML stat | n/a | ✗ custom mark+HTML labels | n/a no spark mode | ✗ no `aria-pressed` | ✗ measured `chartW` | ✓ | ✗ `renderTooltipBody` | ✗ no `theme:` |
+| gauge | ✓ | ✗ no `states` | ✗ no `decorative(` use | ✗ no `radialText` | ✗ single polar | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✗ no `theme:` |
+| heatmap | ✓ | ✓ | ✗ no `decorative(` use | ✗ HTML stat | ✗ no crosshair | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✗ no `theme:` |
+| line | ✓ regime | ✓ | ✗ no `decorative(` use | ✗ HTML stat | ✓ rule crosshair | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✓ muted+scale vars |
+| live-line | ✓ | ✗ no `states` | ✗ no `decorative(` use | ✗ HTML stat | ✓ spec-gradient crosshair | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✓ muted+scale vars |
+| pie | ✓ | ✓ | ✗ no `decorative(` use | ✗ no `radialText` | ✗ single polar | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✓ palette |
+| radar | ✓ | ✓ | ✗ no `decorative(` use | ✗ HTML stat | ✓ two polars | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✗ no `theme:` |
+| ring | ✓ | ✗ no `states` | ✗ no `decorative(` use | ✗ no `radialText` | ✗ single polar | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✗ no `theme:` |
+| sankey | ✓ | ✓ | ✗ no `decorative(` use | ✗ HTML stat | n/a | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✗ no `theme:` |
+| scatter | ✓ regime | ✓ | ✗ no `decorative(` use | ✗ HTML stat | ✓ spec-gradient crosshair | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✓ palette |
+| sunburst | ✓ | ✓ | ✗ no `decorative(` use | ✗ no `radialText` | ✗ single polar | n/a funnel-only | n/a no spark mode | ✗ no `aria-pressed` | ✓ | ✓ | ✗ `renderTooltipBody` | ✓ palette |
 
 Idioms: 1 `svgAnimation:false` + `motion()` · 2 `states` with `when:{focus}` and `transition` · 3 `decorative()` chrome · 4 `radialText` centre · 5 second decorative polar layer / `crosshair` band · 6 funnel as `areaX` + `text` · 7 sparkline silence · 8 HTML legend buttons with `aria-pressed` · 9 preview via `initialWidth` + `aspectRatio` · 10 `idPrefix` per instance · 11 `tooltip.content(points)` · 12 `--ts-chart-tooltip-*` + `theme.palette`.
