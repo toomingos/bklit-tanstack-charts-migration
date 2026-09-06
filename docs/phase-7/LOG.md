@@ -391,3 +391,34 @@ than as pending migration work. Comment corrected; no pin loosened.
 
 Net: `qa/unit/probes.test.mjs` 64 tests, 48 pass, 0 fail, 16 todo (was 46 pass with
 the role change in the tree).
+
+## D581 — 7.5: §6 counts re-run from a fresh clone, three deltas, no new violation
+
+Re-derived every `08` §6 count in a throwaway `git clone --no-hardlinks` at HEAD
+`eb7c3f8`, so no untracked or ignored file could influence a number, and every
+command reads `HEAD` so only committed content is counted. Written up as
+`research/phase-7/12-census.md` §1.0.
+
+Unchanged: `setAttribute` 3, `createElementNS` 0, `spatialIndex` 1, `focusDisabled`
+0 in code, `use-container-size` 3, `renderer={` 28, `svgAnimation` 23 literals with
+0 non-false, `initialWidth=` 28, `idPrefix=` 53, `createPortal` 13/6, and every d3
+import count. Census table 1a is unchanged file-for-file and count-for-count.
+
+Three moved:
+- raw svg 89 in 36 files → 93 in 37. Entirely `internal/resource-host.tsx` 1 → 4,
+  from V3.9's `LoadingSweepMask` (`<pattern>` + two `<rect>`). That file is the R10
+  seam host and is the one the headline already subtracts, so raw SVG outside the
+  seam did not move.
+- `styles.css` `animation:` and `@keyframes` 1 → 2: V3.9's travelling loading sweep
+  beside the loading pulse, under the D566 sanction. Loading chrome, not marks.
+- `styles.css` transforms 0 → 2 (`:707`, `:710`): the sweep keyframes translate
+  `.ts-bkm-loading-sweep-band`, a `<rect>` inside a `patternContentUnits="objectBoundingBox"`
+  pattern in the seam host. Checked rather than assumed — the comment says
+  objectBoundingBox units while the CSS says `px`, which reads like a unit bug; in SVG
+  a transform `px` is one local user unit, so `-1 → +2` travels three tile widths,
+  matching legacy `loading-sweep.tsx`. §6's target is transforms on *package nodes*,
+  and the band is neither a package node nor a mark, so the target holds.
+
+Also noted for the next re-run: `styles.css` and `sunburst-architecture.md` match the
+raw-svg proxy (2 hits each) without being chart code, since the grep matches any
+`<g `/`<path` text.

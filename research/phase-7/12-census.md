@@ -7,6 +7,32 @@ Every count below comes from `git grep … HEAD -- showcase/migrated/charts`
 
 ## 1. §6 claim-1 counts
 
+### 1.0 Fresh-clone re-run (7.5 gate, 2026-09-06, HEAD `eb7c3f8`)
+
+Every count below re-derived in a throwaway `git clone --no-hardlinks` of this repo,
+so no untracked or ignored file can influence a number. All commands read `HEAD`, so
+the clone also proves the counts come from committed content only.
+
+**Unchanged from the recorded values:** `setAttribute` 3, `createElementNS` 0,
+`spatialIndex` 1 (line moved to `sankey-chart.tsx:609`), `focusDisabled` 0 in code,
+`use-container-size` 3, `renderer={` 28, `svgAnimation` 23 literals / 0 non-false,
+`initialWidth=` 28, `idPrefix=` 53, `createPortal` 13/6, and every d3 import count
+(shape 26/21, selection 2/1, array 1/1, scale 29/24, geo 8/4, zoom 2/1, path 0,
+delaunay 0, sankey 0). Table 1a is unchanged file-for-file and count-for-count.
+
+**Three moved, all explained, none a new violation:**
+
+| # | Recorded | Now | Why |
+|---|---|---|---|
+| raw svg | 89 in 36 files | **93 in 37 files** | entirely `internal/resource-host.tsx` 1 → 4 (V3.9's `LoadingSweepMask` adds a `<pattern>` and two `<rect>`). That file is the R10 seam host and is the one the count already subtracts, so raw SVG *outside* the seam did not move. |
+| styles.css `animation:` / `@keyframes` | 1 / 1 | **2 / 2** | V3.9's travelling loading sweep (`ts-bkm-loading-sweep`, D566 sanction) alongside the existing loading pulse. Both are loading chrome on the placeholder, not marks. |
+| styles.css transforms | 0 | **2** (`:707`, `:710`) | the sweep keyframes translate `.ts-bkm-loading-sweep-band`, a `<rect>` inside a `patternContentUnits="objectBoundingBox"` pattern in the seam host. In SVG a transform `px` is one local user unit, so `-1 → +2` travels three tile widths as legacy's `loading-sweep.tsx` does. §6's target is transforms on *package nodes*; the band is neither a package node nor a mark, so the target holds and the grep is a proxy that now over-triggers. |
+
+`styles.css` and `sunburst-architecture.md` also match the raw-svg grep (2 hits each)
+without being chart code — the proxy counts any `<g `/`<path` text. Noted so the next
+re-run does not read them as a regression.
+
+
 > Lead correction (wave-4 audit, D573): the raw-svg line-hit total in this
 > section reads 89, and re-running the same command at the same commit
 > (`6b2d014`) reads 90 — the table undercounts by one. At HEAD (`d724449`) it
