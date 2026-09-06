@@ -104,7 +104,8 @@ const SweepMaskDefs = ({
       >
         <rect fill={`url(#${chartId}-grad)`} height="1" width="1" x={sweepX} y="0" />
       </pattern>
-      <mask id={`${chartId}-mask`} maskUnits="userSpaceOnUse">
+      {/* Explicit region: the seam host is 0×0, so the userSpaceOnUse default region would be empty (D559). */}
+      <mask height={height} id={`${chartId}-mask`} maskUnits="userSpaceOnUse" width={width} x={0} y={0}>
         <rect fill={`url(#${chartId}-pattern)`} height={height} width={width} />
       </mask>
     </>

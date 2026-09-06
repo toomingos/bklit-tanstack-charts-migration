@@ -157,7 +157,8 @@ interface FadeMaskOptions {
 // Mask covers the whole container (not just the plot): per-mark mask/clipPath has no native channel.
 const renderFadeMask = (options: Readonly<FadeMaskOptions>): ReactNode =>
   hasText(options.fadeMaskId) && options.isFirst && (
-    <mask key={`${options.visual.cfg.dataKey}-mask`} id={options.fadeMaskId} maskUnits="userSpaceOnUse">
+    // Explicit region: the seam host is 0×0, so the userSpaceOnUse default region would be empty (D559).
+    <mask key={`${options.visual.cfg.dataKey}-mask`} id={options.fadeMaskId} maskUnits="userSpaceOnUse" x={0} y={0} width={options.width} height={options.height}>
       <rect
         fill={`url(#bkm-live-fade-${options.uid}-${options.visual.cfg.dataKey})`}
         x={options.marginLeft}

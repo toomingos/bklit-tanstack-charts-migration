@@ -11,6 +11,7 @@ interface ResourceHostProps {
 }
 
 // Sole renderer of pattern, radialGradient, mask and sweep defs; linear gradients stay in spec.gradients.
+// Masks need explicit x/y/width/height: the 0×0 viewport makes the userSpaceOnUse default region empty (D559).
 const ResourceHost = ({ idPrefix, resources }: Readonly<ResourceHostProps>): ReactElement | null => {
   if (Children.toArray(resources).length === 0) {
     return null;

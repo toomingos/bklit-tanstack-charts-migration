@@ -146,7 +146,8 @@ const renderSweepDefs = ({
     >
       <rect fill={`url(#${gradientId})`} height="1" width="1" x={sweepX} y="0" />
     </pattern>
-    <mask id={maskId} maskUnits="userSpaceOnUse">
+    {/* Explicit region: the seam host is 0×0, so the userSpaceOnUse default region would be empty (D559). */}
+    <mask height={innerHeight} id={maskId} maskUnits="userSpaceOnUse" width={innerWidth} x={0} y={0}>
       <rect
         fill={`url(#${patternId})`}
         height={innerHeight}
