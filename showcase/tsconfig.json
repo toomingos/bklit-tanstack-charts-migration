@@ -28,9 +28,6 @@
       "@/*": [
         "./*",
         "./repos/bklit-ui/packages/ui/src/*"
-      ],
-      "geojson": [
-        "./node_modules/@types/geojson/index.d.ts"
       ]
     },
     "plugins": [

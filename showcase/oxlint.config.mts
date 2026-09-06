@@ -39,19 +39,6 @@ export default defineConfig({
       },
     },
     {
-      // packages/migrated-charts/index.ts is the wrapper package the showcase imports the
-      // migrated surface through (tsconfig paths). Re-exporting the whole surface from one
-      // file across a package boundary is its entire purpose, so the barrel/wildcard/parent
-      // rules cannot be satisfied without deleting the pattern. Its sibling
-      // packages/bklit-charts is exempt the blunter way, via ignorePatterns.
-      files: ["packages/migrated-charts/index.ts"],
-      rules: {
-        "import/no-relative-parent-imports": "off",
-        "oxc/no-barrel-file": "off",
-        "sonarjs/no-wildcard-import": "off",
-      },
-    },
-    {
       // pie-hover-chrome.ts builds an offset proxy that IMPLEMENTS d3-path's `Path` interface.
       // `Path.arc(x, y, radius, startAngle, endAngle, anticlockwise?)` is six parameters by
       // d3's definition, so the arity is fixed by the library, not by us: grouping them into

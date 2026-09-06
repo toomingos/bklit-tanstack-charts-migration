@@ -28,7 +28,7 @@ const { spring: legacySpring } = motionReq('motion-dom');
 const { cubicBezier: legacyCubicBezier, easingDefinitionToFunction: legacyEasingFn } =
   motionReq('motion');
 
-// Package easing, verbatim from showcase/node_modules/@tanstack/charts/dist/motion.js
+// Package easing, verbatim from showcase/migrated/node_modules/@tanstack/charts/dist/motion.js
 // (resolveEasing ~:2778 + cubicBezier :2795; unexported, so copied, not reimplemented).
 const pkgDefaultEasing = pkgCubicBezier(0.85, 0, 0.15, 1);
 function pkgResolveEasing(easing) {

@@ -20,9 +20,6 @@ importers:
       '@showcase/migrated-charts':
         specifier: workspace:*
         version: link:migrated
-      '@use-gesture/react':
-        specifier: 10.3.1
-        version: 10.3.1(react@19.2.8)
       '@visx/brush':
         specifier: 3.12.0
         version: 3.12.0(react@19.2.8)
@@ -80,15 +77,9 @@ importers:
       d3-scale:
         specifier: 4.0.2
         version: 4.0.2
-      d3-selection:
-        specifier: 3.0.0
-        version: 3.0.0
       d3-shape:
         specifier: ^3.2.0
         version: 3.2.0
-      d3-zoom:
-        specifier: 3.0.0
-        version: 3.0.0
       geist:
         specifier: ^1.7.2
         version: 1.7.2(next@15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8))
@@ -138,15 +129,9 @@ importers:
       '@types/d3-scale':
         specifier: ^4.0.9
         version: 4.0.9
-      '@types/d3-selection':
-        specifier: ^3.0.11
-        version: 3.0.11
       '@types/d3-shape':
         specifier: ^3.1.6
         version: 3.1.8
-      '@types/d3-zoom':
-        specifier: ^3.0.8
-        version: 3.0.8
       '@types/geojson':
         specifier: ^7946.0.16
         version: 7946.0.16
@@ -216,6 +201,12 @@ importers:
       '@tanstack/react-charts':
         specifier: 0.16.0
         version: 0.16.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/d3-selection':
+        specifier: ^3.0.11
+        version: 3.0.11
+      '@types/d3-zoom':
+        specifier: ^3.0.8
+        version: 3.0.8
       '@types/geojson':
         specifier: ^7946.0.16
         version: 7946.0.16

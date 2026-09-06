@@ -6,7 +6,7 @@ const bundleUrl = new URL("../../../qa/unit/.tmp/states-check.cjs", import.meta.
 // Package resolver entry without a public subpath export.
 // Runtime dynamic import keeps the static graph on public APIs.
 const resolverUrl = new URL(
-  "../../node_modules/@tanstack/charts/dist/mark-state.js",
+  "../node_modules/@tanstack/charts/dist/mark-state.js",
   import.meta.url,
 );
 
