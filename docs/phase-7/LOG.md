@@ -477,3 +477,70 @@ reproduce). §6's number was always a floor, not a per-family requirement.
 
 G25 closed. G26 (D571) and G28 (D580) closed the same way — the census's job was
 to find which §6 numbers measured the wrong thing.
+
+## D583 — G32: the migrated-side reduction is the D567 cardinality gate, already landed; the residual is one boundary cell
+
+**Ruling.** G32's disposition was "reduce the reconciles per pointer move on the
+migrated side; not upstream-filable (D568)." Measured at HEAD `f9580df`, that
+reduction is already in the tree and is what the counts read. G32 closes as a
+ruling, no code change.
+
+**What the migrated side actually owns here.** Two levers, and only two: which
+package renderer a mount takes, and how many primitives the scene emits. The
+four whole-scene `applyStateFocus` → `animateSvg` passes per pointer move are
+reached through package-internal `paintFocus`, which no migrated module calls
+(D568), and D568 already proved the cost does not reproduce on a package-only
+control, so there is nothing to file and nothing to patch inside the package.
+
+**Lever 1 — renderer selection (D567), live at HEAD.**
+`NATIVE_MOTION_MAX_POINTS = 200` (`internal/design-tokens.ts:22`);
+`chartRendererFor` in `internal/motion-renderer.ts` returns the package *static*
+renderer above the token and `chartMotionRenderer()` at or below it, latched once
+per mount through `useChartRenderer`. Six mounts ride it: `bar-chart.tsx:286`,
+`candlestick-chart.tsx:374`, `composed-chart.tsx:384`,
+`internal/scatter-selection-setup.ts:105`, `internal/use-area-layer-props.ts:42`,
+`line-chart.tsx:389`. There is still exactly one `motion()` factory and no second
+renderer implementation — `motion(` call sites = 2 at HEAD (`stillInstance`,
+`resizeInstance`), re-run by the lead.
+
+**Lever 2 — the estimate counts emitted primitives, not rows.**
+`bar-chart.tsx:273-286` (`motionPrimitiveEstimate`) adds square primitives and
+depth back/front nodes to `rows × series`, so bardepth's 2,073 elements clear the
+200 token and take the static renderer. That is why the ~1.2 s / 8,544-timing-
+context profile in D567 no longer appears anywhere in the gate.
+
+**Evidence at HEAD `f9580df` (gate run `2026-09-06T13-02-53-709Z`).**
+
+| probe | reading |
+|---|---|
+| bardepth-toggle | **0 flags**; migrated 100/476 elements off/on vs bklit 103/525; settle 56/0/53 ms |
+| no-rereveal | **0 flagged rows** over 8 rows |
+| hover-lag | **4 flags, down from 5** at the previous full gate |
+| QA matrix | 189 gated cells, **gateFail 0** — no hover cell diverges in pixels |
+
+Three hover-lag flags closed since the previous full gate and one opened:
+sankey/33 lost `settles-after-700ms-capture` (migrated last change 1298 → 204 ms),
+scatter/1000 lost `dim-lag>200ms` (571 → 235 ms), candlestick/1000 lost
+`tooltip-lag>200ms`; liveline/100 gained `dim-presence-mismatch`, which is a
+dim-timestamp capture artifact — its dimmed counts (bklit 4, migrated 0) are
+unchanged from the previous run, where the same row carried no flag.
+
+**The one residual, named exactly.** `bar/100` still reads
+`settles-after-700ms-capture`: migrated last change 1131 ms against bklit 234 ms.
+The scenario is 100 rows × 2 series (`bench/app/src/scenarios/migrated-bar.tsx:36-37`)
+= 200 primitives, and the gate is `pointCount > NATIVE_MOTION_MAX_POINTS`, so 200
+is *not* greater than 200 and this cell sits exactly on the boundary — it is the
+one cartesian cell still on the motion renderer at hover.
+
+**Why the token stays at 200.** Lowering it to catch this cell would move every
+bar mount to the static renderer and drop the enter/exit and stagger motion the
+seamless-swap claim requires bar to keep. That trades a claim for a settle-time
+tail the pixel gate does not see (gateFail 0 on every bar cell). Under principle 1
+that moves one claim away without moving the other closer, so the token holds and
+the residual is stamped, not chased.
+
+**What this does not claim.** It does not claim the four reconciles are gone —
+they are package-internal and still run for any mount at or below the token. It
+claims the migrated side has no remaining lever it is not already pulling, and
+that the measured blast radius is now one boundary cell whose only symptom is a
+settle past the harness's 700 ms capture.
