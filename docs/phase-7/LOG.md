@@ -75,3 +75,107 @@ Numbering continues from Phase 6 (last: D502). Append, newest last.
 | D571 | **V3.8 census (executor `ses_f89c55f82ffeokQv7D4LPfMM1J`, measured at `6b2d014` with `git grep HEAD`, lead re-run independently): the §6 scoreboard is stamped, the reach-in ledger drops from 19 files to 12, and the `<defs>` question is closed.** Evidence in `research/phase-7/12-census.md`. PASS: `createElementNS` 0, `setAttribute` 3 (target ≤ 4), `svgAnimation` non-false 0 of 23 literals across 16/16 families, `focusDisabled` 0, `styles.css` `animation:` 1 / `@keyframes` 1 / literal `opacity: 0` 0 / transform rules 0, `idPrefix` on every mount, d3-path and d3-sankey imports 0. Stamped rather than failed: `renderer={` reads 28 sites = 20 mounts against §6's "15, all `motion(`" — the number is 20 because mounts, not families, are the unit, and six ride the D567 cardinality regime, so §6's 15 is superseded; `initialWidth=` reads 28 sites and §6's 15 means mounts, which **closes G26**; `use-container-size` 3 files is the G16/D541 height ruling plus funnel. Still red with an owner: raw `<svg|<rect|…` 89 line-hits over 36 files, every one classified in census §1 as overlay svg, seam input builder or legend chrome, with the in-chart remainder being the ring hand paths and the neutralised reveal shell (G31, 7.4); `createPortal` 13 sites = 1 tooltip + 5 brush overlay portals; d3-shape 21 files, d3-selection 2 lines in `choropleth-zoom.ts` riding the admitted d3-zoom, d3-array 1 (`bisector` in `live-line-chart.tsx:15`) — each needs a delete or a ruling from its vector, not from the census; `spatialIndex` 1 keeps **G25 open** because the probe itself is wrong (D544: cartesian indexes go through the package `focus` option), and rewriting it needs `qa/` which V3.8 does not own; **G30 stays open and still reproduces** (`heatmap-legend.tsx:363` fills `url(#id)` while `:348` defines `#id-base`, visible whenever a pattern level renders). `createMark` gate: 43 line-hits over 19 files (the 19th is V3.9's `loading-definitions.ts`), each row in census §3 naming the package gap — strongest are no candle/OHLC mark in dist, no funnel primitive, and the F-259 pattern channel. Ledger: seven zero-site entries removed (`bar-pulse-sync`, `choropleth-reveal`, `composed-reveal`, `deferred-reveal`, `line-loading-pulse`, `line-marker-reveal`, `sankey-animation`) and three pins lowered (`radar-chart.tsx` 18 → 3, `ring-chart-model.ts` 4 → 2, `ring-chart.tsx` 2 → 1); guard total 67 → 21, failures [], notes []. **`<defs>` ruling, stamped: every remaining `<defs>` outside the R10 seam is app-owned overlay chrome and stays** — `background.tsx:147,223`, `brush-overlays.tsx:105`, `brush-selection-pattern-chrome.tsx:42`, `reference-area-figure.tsx:143,206`, `segment-visuals.tsx:86`, `terminal-marker.tsx:81`, `tooltip-components.tsx:239`, `tooltip-indicator-faded-rect.tsx:26`; none sits inside a chart `<svg>` and none references a definition's `url(#id)`, so moving them into the seam would buy nothing and cost a hop. Idiom checklist filled in PROGRESS (it landed a commit early, inside `665291e`): idioms 3 (`decorative(`) and 4 (`radialText`) are blank tree-wide with 0 hits although the package exports both, 8 is blank because legend buttons exist without `aria-pressed` and legacy has no toggle to mirror (D549), 11 is blank because families take the host `renderTooltipBody` escape instead of `content(points)`, and 7 is `n/a` everywhere because no family ships a sparkline mode. Lead re-ran the counts: guard 21/[]/[], `createElementNS` 0, `setAttribute` 3, `createPortal` 13, `createMark` 43 over 19 files, `initialWidth=` 28, `spatialIndex` 1. | `research/phase-7/12-census.md`; D556. |
 | D572 | **V3.9 follow-up merged (`d724449`): the shimmer band is back, as seam CSS, and the roster board is clean.** `internal/resource-host.tsx` gains `LoadingSweepMask` and `LoadingSweepResources` — the eased white stops, tile width 3 and `rotate(25)` of bklit `loading-sweep.tsx`, `maskUnits="userSpaceOnUse"` with the plot region declared per D559 — and `@keyframes ts-bkm-loading-sweep` in `styles.css` travels the band from −1 to 2 over 2 s linear, with the per-pass re-roll of `getSkeletonHeights`/`getSkeletonSigns` listening to `animationiteration` on that node. The static-fill replacement (`LoadingSweepGradient`, `loadingSweepPaint`) is deleted and the root pulse is dropped from every module, because bklit never pulses the root: bar sweeps the mask, area and line sweep or travel a pulse-clip, heatmap shimmers per cell. Bklit constants matched with file:line in the executor report (duration :35, travel :37-38, tilt :40, tile :153, bar fraction :52, radius :44, fill :46, fill-opacity :47, tick-seeded heights :67-85). V3.9's win survives intact: the placeholders stay `defineChart` definitions and `createElementNS`, `requestAnimationFrame` and `.animate(` all read 0 in the loading modules. Isolated full-roster QA at `d724449`: **43/43 runs, 190 cells, gateFail 0, 2 ruled FAIL (radar/6 hover-50 6,458 D535; sankey/33 hover-30 10,053 D498), 0 unruled** — the cleanest board of the phase; barloading reads 0 px on settled, hover-30 and hover-70 and passes hover-50 outright, arealoading passes every cell. Counts: tsc 0, lint 3, tests 240/180/0/60, orphans 0, reach-in [], fixtures 3/3, api-compat 9 waived. Two deferrals the executor named and the lead accepts: the pulse-versus-sweep split for the area and line turnkey defaults is unnecessary while every arealoading cell passes, and heatmap per-cell shimmer parity belongs to the heatmap vector, not here. | V3.9 follow-up commit body; QA run `qa-v39c`. |
 | D573 | **Wave-4 batch-end audit (audit `ses_f89a73947ffeNSIgRgQYL3JRU4`, committed tree `d724449`, lead re-verified): wave 4 ticks, with three corrections and no new vector.** Every wave-4 done-when still reads on HEAD. V3.1 funnel: `defineChart` 2, WAAPI and `createElementNS` 0. V3.5 as amended: `NATIVE_MOTION_MAX_POINTS` defined once at `internal/design-tokens.ts:22`, exactly six mounts consult `useChartRenderer` (bar `:286`, candlestick `:370`, composed `:384`, scatter `scatter-selection-setup.ts:105`, area `use-area-layer-props.ts:42`, line `:389`), `svgAnimation` non-false 0 of 23 literals, and `qa/gate/summarize.mjs:14` still describes the regime that exists. V3.9 as amended: the sweep is a seam `<mask>` with `maskUnits="userSpaceOnUse"` and an explicit region (`resource-host.tsx:137`), its travel is `@keyframes ts-bkm-loading-sweep` (`styles.css:705`), the re-roll is `onAnimationIteration` (`resource-host.tsx:131`), and rAF, `.animate(` and hand SVG writers are 0 across the eight loading modules. Claim 2 re-derived from the generated report: migrated 295 value / 214 type against legacy 292 / 211, api-compat 9 errors that are exactly the seven D554 waivers plus the two D557 `PatternArea` rows, no new mismatch hiding inside the count. Corrections applied by the lead: (1) `styles.css` `animation:` and `@keyframes` each read 2, not the 1 the V3.6 row claims — the second of each is the D570 sweep, sanctioned, and the V3.6 row now says so rather than reading stale; (2) `12-census.md` undercounts the raw-svg line hits by one at its own commit (89 written, 90 measured at `6b2d014`) and HEAD reads 93, the three extra lines being the seam's shimmer mask, gradient and band rect — the correction is stamped at the top of census §1; (3) the audit proposed `internal/radar-reveal.ts` as an eighth G31 shell and that is **rejected on measurement**: it has three live consumers (`radar-chart.tsx:39,40`, `radar-focus.ts:6`), so 7.4 prunes its four dead re-exports (`buildRadarProgressKeyframes`, `radarRevealTiming`, `RadarResolvedTiming`, `BklitRadarGridOptions`) instead of deleting the file. G31 is otherwise confirmed at eight modules and 905 lines, all still on disk with no live caller. Closed and agreed by the tree: G11 (no `createOffsetArc`), G14 (`createElementNS` 0), G20 (module gone), G26 (28 `initialWidth=` mounts). Open with the right owner: G17, G18, G19, G24 (V3.7), G25 (the probe, not the code), G28 (V4.1), G29, G30, G31 and G32. Counts re-run by the lead: tsc 0, lint 3, tests 240/180/0/60, orphans 0, reach-in total 21 failures [], fixtures 3/3, api-compat 9. Wave 4 is ticked; what remains before 7.5 is the 7.4 refactor commit and the gate rows themselves. | This session. |
+
+## D574 — 7.4 refactor triage: the G31 shells are not free deletes
+
+The 7.4 inventory audit ran read-only over `showcase/migrated/charts/**` at HEAD
+`665a9ad` and reported dead code, duplicated logic, leftover scaffolding and import
+hygiene. I re-measured every row before triaging it into
+`research/phase-7/11-refactor.md`. Three of its claims were wrong and two more rows
+were rejected on measurement.
+
+**Correction 1.** `chart-reveal-clip.tsx` cannot be deleted. It is barrel-exported at
+`showcase/migrated/charts/index.ts:118-119`, it exists in legacy at
+`repos/bklit-ui/packages/ui/src/charts/chart-reveal-clip.tsx:30`, and
+`qa/api-compat/all.ts:75,356` asserts both the component and its props type against
+legacy. Deleting it would break claim 2. G31's count is therefore 7 modules and 773
+lines, not 8 and 905.
+
+**Correction 2.** `sankey-animation.ts` is not caller-free. `sankey-chart.tsx:20,21,323,502`
+imports `runSankeyReveal` and `stampSankeyLinkPathLength`. The audit's importer probe
+matched only the `./sankey-animation` form and missed the `./internal/` form.
+
+**Correction 3.** The remaining shells are neutralised, not inert, and every one has
+live importers. `reveal-wipe.ts:10` stamps `data-bkm-revealed` and clears inline
+`clipPath`, and `use-line-reveal.ts:41` latches replay on that stamp.
+`sunburst-label-reveal.ts:30` stamps `data-bkm-labels-revealed` and clears inline label
+opacity. `composed-reveal.ts:27-45` schedules the reveal-deadline timeout that drives
+`onPhaseChange("ready")`. Deleting these modules without re-homing that work is a
+behaviour change, which is exactly what 7.4 is not allowed to be.
+
+**Rejected rows.** `internal/index.ts` is not unimported: `area-chart-loading.tsx:19`
+reads `ChartMargin` from it. The "child-flatten duplicated four times" row is not
+duplicated logic — the shared part is the one-line idiom `[node].flat(Infinity)` and
+the four loop bodies differ entirely, so extracting it saves no lines and adds a hop.
+The `MS_PER_SECOND` dedupe across 22 files is deferred as churn. The comment sweep is
+cut down to one line, `chart-host.tsx:106` ("mounts the `/core` entry until V3.5", a
+regime D567 closed); the `V1.2/G6` and `D521b` tags are provenance on live code and stay.
+
+**Ruling.** 7.4 lands as two commits, not one. The PLAN's "one refactor commit" is a
+default, and principle 6 (always shippable) beats it here because the two halves carry
+different risk. **7.4a** is dead code and one duplicate collapse with no call-site
+change, no DOM change and no barrel change: ten rows, about 165 lines and 2 files. The
+confirmed-dead symbols are `createPieHoverCoordinator` with its `PieHoverCoordinator`
+interface, `clearRevealed`, `buildLoadingSkeletonSeries`, `loadingSkeletonBarHeights`,
+the two `line-loading-sweep.ts` constants, radar's four re-exports, `LoadingLabel`'s
+`exiting`, and the `animate` prop threaded into three leaf indicators that never read
+it. The duplicate collapse is real: `loading-chrome.ts:31-58` re-implements
+`skeleton-data.ts:5-13,42-56` with identical constants (110/36/1.15/9, 95/28/1.05/7,
+hash 43758.5453, salt 12.9898, heights 20..80); `skeleton-data.ts` survives as the
+V3.4b verbatim parity source and `buildLoadingSkeletonRows` repoints at it.
+**7.4b** is the G31 unwind, ordered `reveal-wipe` and `composed-reveal` first (shared
+consumer), then sunburst, scatter, choropleth, sankey, then the ring track block, with
+the reach-in ledger entries dropping in the same commit and a QA run before it lands,
+because the stamps are read on the replay path.
+
+**V5.3 answered: against.** `internal/` holds 407 files; about 180 are single-family
+and about 227 are cross-cutting (`use-` 34, `chart-` 23, `pattern-` 18, `marker-` 13,
+`tooltip-` 12, `legend-` 10, `brush-` 10, plus `parity/`). Family directories would
+home under half the tree while the entangled half still needs a shared home, and it
+moves neither claim. Recommend dropping V5.3 or reducing it to `parity/`, already a
+directory.
+
+## D575 — 7.4b merged: the G31 reveal shells are gone
+
+`7b113a9` deletes the seven V3.5-neutralised reveal writers and re-homes what each
+still did. Removed: `reveal-wipe.ts` 57, `composed-reveal.ts` 48,
+`sunburst-label-reveal.ts` 52, `scatter-reveal.ts` 108, `choropleth-reveal.ts` 109,
+`sankey-animation.ts` 134, and the ring track expand block in `ring-chart-model.ts` 46.
+The commit reads 333 insertions against 700 deletions over 15 files.
+
+**Lead correction on review.** The executor revived the composed bar-stagger deadline,
+on the strength of my own prompt telling it to preserve that timer. Tracing the old
+code showed the timer was unreachable: `runRevealWipe` ended in `applyStillReveal`,
+which always returned `false`, so `if (!runRevealWipe(...)) {return;}` returned before
+`startBarReveal` on every commit. Arming it would have introduced an
+`onPhaseChange("ready")` firing that never happened before, which is exactly the
+behaviour change 7.4 forbids. I deleted the deadline with the shell, matching how the
+same executor correctly handled the two other cases: the line marker stagger and the
+composed wipe gate were both dead behind the same always-false return, and both went.
+My prompt was wrong, not the code; the fix is recorded here rather than re-dispatched.
+
+**Kept deliberately.** `chart-reveal-clip.tsx` stays under correction 1 of D574.
+`sankey-reveal-specs.ts` (211 lines) stays whole: the re-homed reveal frame reads every
+one of its exports, so trimming it to `stampSankeyLinkPathLength` would drop the
+`transformOrigin` write and the deadline window, which is a behaviour change.
+`pendingBarsRevealRef` stays as an always-false guard, exactly as it behaved before.
+
+**Ledger.** The `scatter-reveal.ts` entry moves to `scatter-reveal-setup.ts` (same
+reach-in, same max of 1, D433); the choropleth and sankey notes re-point off the deleted
+files. Total stays 21 over 12 files, `failures: []`.
+
+**Gates.** Both 7.4 commits were gated in frozen worktrees while work continued.
+
+| Commit | runs | cells | gateFail | ruled FAIL | unruled |
+|---|---|---|---|---|---|
+| `3efc9f1` (7.4a) | 43 | 190 | 0 | 2 | 0 |
+| `7b113a9` (7.4b) | 43 | 190 | 0 | 2 | 0 |
+
+The two ruled cells are the standing ones: radar/6 hover-50 at 6452 px against the 7000
+bound (D535) and sankey/33 hover-30 at 10040 px against the 11017 bound (D498). Every
+chart 7.4b touched — area, line, composed, scatter, choropleth, sankey, sunburst, ring —
+passes on all four states, and the pixel counts move by single digits against the 7.4a
+run, which is run-to-run noise, not a change in what is drawn. Floor at `7b113a9`: tsc 0,
+oxlint 3, tests 240/180/0/60, orphans 0, reach-in 21 with no failures.
+
+7.4 is complete. What remains before the phase closes is the 7.5 gate itself.

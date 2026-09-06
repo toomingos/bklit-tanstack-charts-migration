@@ -68,12 +68,14 @@ Batch-end audits (`--agent audit`, `08` §6 counts + idiom rows for touched fami
 
 | Item | Title | State | Commit | D-entries |
 |---|---|---|---|---|
-| 7.4 | `research/phase-7/11-refactor.md` triage, one `refactor` commit | todo | | |
+| 7.4 | `research/phase-7/11-refactor.md` triage; two commits, not one (D574) | **done** | `3efc9f1` + `7b113a9` | D574, D575 |
+| 7.4a | dead code and the loading-chrome/skeleton-data duplicate collapse; no call-site, DOM or barrel change | merged · QA 43/43, 190 cells, gateFail 0, 2 ruled FAIL, 0 unruled | `3efc9f1` (24+/147-, 2 files) | D574, D575 |
+| 7.4b | G31 reveal-shell unwind, QA-gated | merged · QA 43/43, 190 cells, gateFail 0, 2 ruled FAIL, 0 unruled | `7b113a9` (333+/700-, 7 modules) | D563, D574, D575 |
 | 7.5 | QA matrix vs V0.3 baseline | todo | | |
 | 7.5 | bench, no regression; V4.5 explained columns | todo | | |
 | V5.1 | bundle column ≤ 1.10, CSS column | todo | | |
 | V5.2 | bundle measured after V1.4/V3 | todo | | |
-| V5.3 | `internal/` shape (after 7.4) | todo | | |
+| V5.3 | `internal/` shape (after 7.4) | ruled against (D574): 407 files, ~180 single-family vs ~227 cross-cutting, so family dirs home under half the tree and move neither claim | — | D574 |
 | V5.4 | lint 0, D472 threshold work if kept | todo | | |
 | 7.5 | census 0, `08` §6 grep counts re-run from a fresh clone | todo | | |
 | 7.5 | upstream re-check of I1–I6 and F-260 against the pin | done (2026-09-06; re-run `gh issue view 126…132` at the gate) | — | D560 |
@@ -117,7 +119,7 @@ stamp), UPSTREAM (I-number in `07`). No vector = synthesis defect: amend `08` §
 | G28 | audit (D556) | `role="img"` 0 across families; one hand tab stop stays at `sunburst-center-overlay.tsx:68` | V4 (V4.1 a11y) | FOLD into V4.1: host `role="img"` + label on every mount, tab stop deleted with V3.2 sunburst centre → package `radialText` | D556 |
 | G29 | lead (V4.6 follow-up) | ported legacy heatmap cases fail against the migrated helpers: `resolveHeatmapDisplayRange` returns undefined bounds where legacy infers GitHub-style Date bounds (year and six-month grids) or `null` (custom grids), so `hideGhostCells` never ghosts the lead cells; `findHeatmapColumnIndexForDate` and the quarter lead-week cases are stale/date-sensitive legacy tests (ACCEPT) | V3 (heatmap, V3.3 follow-up) | open: fix `resolveHeatmapDisplayRange` in the V3.8 heatmap sweep or stamp a ruling; the three `fails:` todos are the count | D555 |
 | G30 | lead (V3.4b-ii review) | heatmap legend swatch fills `url(#id)` while only `#id-base` is defined (`heatmap-legend.tsx:360`), pre-existing and unchanged by the seam work; the swatch paints the fallback colour | V3 (heatmap, V3.8 sweep) | open: fix the id in the V3.8 heatmap sweep (pixel change expected on the legend swatch; compare against legacy) | D558 |
-| G31 | lead (V3.5 review) | the hand WAAPI reveal writers neutralised by V3.5 are still on disk as shells with no live caller: `reveal-wipe.ts`, `chart-reveal-clip.ts`, `composed-reveal.ts`, `scatter-reveal.ts`, the ring track expand, `sunburst-label-reveal.ts`, `sankey-animation.ts` — 8 modules, 905 lines with the ring track expand; `radar-reveal.ts` is NOT one of them (three live consumers) but carries 4 dead re-exports (`buildRadarProgressKeyframes`, `radarRevealTiming`, `RadarResolvedTiming`, `BklitRadarGridOptions`) for the same commit | 7.4 (refactor) | FOLD into the 7.4 refactor commit: delete all seven and drop their reach-in ledger entries | D563 |
+| G31 ✅ closed by 7.4b (D575) | lead (V3.5 review) | **amended by the lead at 7.4 triage (11-refactor.md):** the V3.5-neutralised reveal writers are *not* caller-free shells. `chart-reveal-clip.tsx` (132 lines) is barrel-exported at `index.ts:118-119`, exists in legacy and is asserted by `qa/api-compat/all.ts:75,356` — it stays, so the count is 7 modules, not 8, and 773 lines, not 905. `sankey-animation.ts` is live from `sankey-chart.tsx:20,21,323,502`. The remaining shells each have live importers and carry observable work (`data-bkm-revealed` and `data-bkm-labels-revealed` stamps, inline-style clears, the composed reveal-deadline timer), so deleting them is a call-site unwind, not a free delete. `radar-reveal.ts` is NOT one of them (three live consumers) but carries 4 dead re-exports | 7.4b (refactor, QA-gated) | the radar re-exports ride in 7.4a; the shell unwind is its own commit with a QA run, per 11-refactor.md §7.4b | D563, D574, D575 |
 | G32 | lead (V3.5 follow-up) | under the motion renderer each pointer move runs a whole-scene `applyStateFocus` → `animateSvg`, four times per hover, and the package resolves a per-element timing context with a full-SVG `querySelectorAll`; bardepth pays 8,544 resolutions over 2,073 elements (~1.2 s) where the static renderer pays 99 ms. `NATIVE_MOTION_MAX_POINTS` caps the blast radius but does not remove the four reconciles | V3 (motion) · 7.5 | ROUTE to its vector before any code: reduce the reconciles per pointer move on the migrated side; not upstream-filable (D568) | D567 D568 |
 
 ## Idiom checklist (V0.6 / V3.8)
