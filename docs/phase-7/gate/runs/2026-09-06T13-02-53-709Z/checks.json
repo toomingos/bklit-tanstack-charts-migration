@@ -1,0 +1,102 @@
+{
+  "generatedAt": "2026-09-06T13:03:17.586Z",
+  "runDir": "docs/phase-7/gate/runs/2026-09-06T13-02-53-709Z",
+  "checks": [
+    {
+      "name": "tsc",
+      "cmd": "npx tsc --noEmit",
+      "cwd": "showcase",
+      "exit": 0,
+      "durationMs": 5387,
+      "summary": {
+        "errors": 0
+      },
+      "lastLine": "",
+      "log": "docs/phase-7/gate/runs/2026-09-06T13-02-53-709Z/logs/checks/tsc.log"
+    },
+    {
+      "name": "lint",
+      "cmd": "npx oxlint --type-aware --deny-warnings --format=json migrated packages/migrated-charts",
+      "cwd": "showcase",
+      "exit": 0,
+      "durationMs": 7103,
+      "summary": {
+        "problems": 0,
+        "errors": 0,
+        "warnings": 0,
+        "topRules": []
+      },
+      "lastLine": "            }",
+      "log": "docs/phase-7/gate/runs/2026-09-06T13-02-53-709Z/logs/checks/lint.log",
+      "floor": 0,
+      "floored": true
+    },
+    {
+      "name": "bench-tsc",
+      "cmd": "npx tsc --noEmit -p tsconfig.json",
+      "cwd": "bench/app",
+      "exit": 0,
+      "durationMs": 4521,
+      "summary": {
+        "errors": 0
+      },
+      "lastLine": "",
+      "log": "docs/phase-7/gate/runs/2026-09-06T13-02-53-709Z/logs/checks/bench-tsc.log"
+    },
+    {
+      "name": "build",
+      "cmd": "npm run build",
+      "cwd": "bench/app",
+      "exit": 0,
+      "durationMs": 4014,
+      "summary": {
+        "ok": true
+      },
+      "lastLine": "✓ built in 3.51s",
+      "log": "docs/phase-7/gate/runs/2026-09-06T13-02-53-709Z/logs/checks/build.log"
+    },
+    {
+      "name": "unit",
+      "cmd": "pnpm test",
+      "cwd": "",
+      "exit": 0,
+      "durationMs": 2510,
+      "summary": {
+        "pass": 182,
+        "fail": 0
+      },
+      "lastLine": "  }",
+      "log": "docs/phase-7/gate/runs/2026-09-06T13-02-53-709Z/logs/checks/unit.log"
+    },
+    {
+      "name": "census",
+      "cmd": "node scripts/reach-in-guard.mjs --json",
+      "cwd": "",
+      "exit": 0,
+      "durationMs": 139,
+      "summary": {
+        "total": 21,
+        "files": 12,
+        "failures": 0
+      },
+      "lastLine": "}",
+      "log": "docs/phase-7/gate/runs/2026-09-06T13-02-53-709Z/logs/checks/census.log"
+    },
+    {
+      "name": "bundle-gate",
+      "cmd": "node scripts/bundle-gate.mjs",
+      "cwd": "",
+      "exit": 0,
+      "durationMs": 74,
+      "summary": {
+        "ok": 43,
+        "fail": 0
+      },
+      "lastLine": "[bundle-gate] OK",
+      "log": "docs/phase-7/gate/runs/2026-09-06T13-02-53-709Z/logs/checks/bundle-gate.log"
+    }
+  ],
+  "summary": {
+    "failed": []
+  }
+}

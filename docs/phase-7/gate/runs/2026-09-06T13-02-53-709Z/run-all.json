@@ -1,0 +1,38 @@
+{
+  "label": "7.5 final gate f9580df",
+  "runDir": "docs/phase-7/gate/runs/2026-09-06T13-02-53-709Z",
+  "wallClockMs": 4200651,
+  "stages": [
+    {
+      "name": "checks",
+      "ok": true,
+      "durationMs": 23805
+    },
+    {
+      "name": "qa",
+      "ok": true,
+      "durationMs": 326314
+    },
+    {
+      "name": "probes",
+      "ok": true,
+      "durationMs": 1179185
+    },
+    {
+      "name": "bench",
+      "ok": true,
+      "durationMs": 2659042
+    },
+    {
+      "name": "bundle",
+      "ok": true,
+      "durationMs": 12266
+    },
+    {
+      "name": "summary",
+      "ok": true,
+      "durationMs": 37
+    }
+  ],
+  "issues": 66
+}

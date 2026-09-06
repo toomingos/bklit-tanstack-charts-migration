@@ -544,3 +544,141 @@ they are package-internal and still run for any mount at or below the token. It
 claims the migrated side has no remaining lever it is not already pulling, and
 that the measured blast radius is now one boundary cell whose only symptom is a
 settle past the harness's 700 ms capture.
+
+## D584 — 7.5 bench: 29 cells, 9 flags, none of them a regression this phase caused
+
+Run `docs/phase-7/gate/runs/2026-09-06T13-02-53-709Z/bench.{json,md}`, cells
+`--all` plus the five paired migrated cells, 7 measured runs each after a
+warm-up, wall-clock 44m19s. Summary
+`{"cells":29,"skipped":0,"flags":9,"consoleErrors":0,"tooltipMissing":0,"failedInvocations":0}`.
+Console errors 0 and tooltip-missing 0 mean the two D500 inherited-behaviour
+channels stayed at their baselines. The `bench baseline predates tree-hash
+(pre-V4.4) — continuing` line in the log is sanctioned by the comment at
+`qa/gate/run-bench.mjs:143`: `bench-baseline.json` is deliberately kept at the
+phase-5 medians without a tree hash, and the runner warns rather than refuses.
+
+D273's rule is symmetric ±20%, so a flag means "moved", not "got worse". The
+nine columns, explained (V4.5):
+
+**Three are improvements.** `bklit/line/10000 m1c` 99.56 vs 126.71 (−21.4%),
+`tanstack/line/1000 m1b` 53.6 vs 70.6 (−24.1%), `migrated/composed/1000 m1b`
+1194.8 vs 1664.8 (−28.2%). The composed one is ours: the settle that D551's
+crosshair and D564's stylesheet work were expected to shorten, measured.
+
+**One is a void metric, not a regression.** `migrated/scatter/1000 m1b` reads
+2504.6 ms against a 1258.6 ms baseline (+99%), and the seven raw values are
+2504.1 / 2504.5 / 2504.6 / 2504.6 / 2504.9 / 2505.0 / 2505.4 — zero spread
+around `FALLBACK_MS = 2500` in `bench/app/src/bench/settle.ts:26`. That arm
+resolves on "saw a non-ready phase, then ready again"; migrated scatter at
+n=1000 carries 2 series × 1000 points, clears `NATIVE_MOTION_MAX_POINTS = 200`,
+takes the package static renderer under D567 and therefore never emits a
+non-ready phase at all. The promise falls through to the safety net, so the
+number measures the timer, not the chart. What the same run does measure is
+`m1a` mount-to-paint 124.8 ms (p95 137) against `bklit/scatter/1000` settle
+1269.7 ms: the reveal is gone because D567 removed it, which is the regime
+working, not a slowdown. The paired `m3a` flag on the same cell is 35.8 vs 28.8
+ms — a 7 ms move on a metric whose vsync floor is 32.6 ms, sitting one
+millisecond off the `tanstack/scatter/1000` control at 34.8 ms.
+
+**Four are migrated mount scripting, +24.5% to +47.1%, against a baseline from
+a different machine-day.** `migrated/line/1000 m1c` 112.81 (base 76.7),
+`migrated/area/1000` 123.8 (88), `migrated/composed/1000` 154.14 (123.8),
+`migrated/bar/100` 92.62 (72). Two facts bound them. First, m1c drifted upward
+tree-wide in this run: every non-migrated cell at small n moved the same way —
+`bklit/line/100` +12.0%, `bklit/area/100` +12.4%, `tanstack/area/100` +12.4%,
+`tanstack/scatter/100` +10.8%, `tanstack/bar/100` +9.1%, `bklit/scatter/100`
++6.9% — so roughly half of each migrated percentage is the machine, amplified
+because the migrated baselines (72–124 ms, `docs/phase-5/BASELINE.md` §3b,
+P6.4 2026-08-26) are smaller numbers than the controls'. Second, in absolute
+terms migrated mount scripting sits about 30 ms above the pure-package control
+on every cell and below legacy where legacy is expensive: line 112.81 vs
+tanstack 82.53 vs bklit 85.63; area 123.8 vs 93.66 vs 87.2; bar/100 92.62 vs
+73.72 vs **202.91**. That ~30 ms is the compat layer's mount cost and it moves
+neither claim.
+
+**Ruling.** No cell is refused. The scatter settle column is marked void for
+this metric under D567 rather than chased, in the same way `m1a` is a void
+channel on this machine per BASELINE §3b; the m1c flags are recorded as a
+watch, not a fault, because the baseline they move against predates the
+machine-day and the absolute numbers are between the package and legacy. The
+baseline is not regenerated — that needs its own D-entry per the runner's own
+note.
+
+## D585 — V5.2: the bundle is measured, the ≤ 1.10 column fails 41/43, and the whole overshoot is the barrel import, not the charts
+
+D577 left V5.2 open with "V5.2 may not be judged until the table is re-measured
+at the final HEAD". The final gate re-measured it: `bundle.{json,md}` in run
+`2026-09-06T13-02-53-709Z`, `measured: true`, `measureExit 0`, 12.2 s, 104
+bundles. Both columns moved, and the second one inverts D577's reading.
+
+**Column 1 — drift against our own pins: 30 FAIL of 43.** Σgzip 6,589,104 vs
+Σpin 5,605,143 (+17.55%), tolerance 3%, pins stamped 2026-09-05 at `61d6179`.
+The largest delta is `migrated/barloading` +3323% (83,837 vs a 2,449 B pin) and
+the second is `migrated/arealoading` **−32.63%** — the two loading cells D577
+already named as impossible numbers from the stale Sep-5 `bundle-sizes.json`.
+The pins are pre-V3.9 and are what is wrong here; re-pinning is a formal
+adoption and belongs to its own D-entry, not to this one.
+
+**Column 2 — parity against `bklit/<cell>`: 41 over 1.10 of 43.** `ratioCells`
+43, `ratioOver` 41, `ratioNoControl` 0, worst `migrated/sunburst` 1.608, then
+sunchrome 1.606, gauge 1.439, sankey 1.424, funnel 1.411, ring 1.362; only
+`migrated/legend` 1.08 and `migrated/arealoading` 0.949 pass. D577's claim that
+the overshoot was one cartesian import chain and that non-cartesian was already
+≤ 1.03 was an artefact of the stale table: measured, the polar and hierarchy
+families are the **worst**, not the best.
+
+**The overshoot is a constant, not a slope.** Per-cell `migrated − bklit` gzip
+runs 27–53 kB with a median of 36.5 kB across families that differ by 5× in
+chart complexity: sunburst +53.2 kB, line +36.5 kB, scatter +29.0 kB, heatmap
++18.2 kB, and `migrated/legend` — the one cell that mounts no chart — +0.9 kB.
+A constant offset that appears the moment a chart is mounted is a shared import,
+not per-chart code.
+
+**It is not the package.** The gate measures a third column the parity gate
+ignores: `tanstack/<cell>`, the same chart written straight against
+`@tanstack/charts`. Every one of those is *smaller* than legacy — line 0.636 of
+bklit, heatmap 0.605, sunburst 0.842, funnel 0.913 — so the package core is a
+saving, not a cost. The ratio that matters is migrated ÷ tanstack: 1.80–2.00
+everywhere.
+
+**It is the barrel.** esbuild metafiles for the same scenarios, built through
+`bench/measure-bundle.mjs`'s own alias plugin, attribute `migrated/line`'s 492.8
+kB minified as `@tanstack/charts` 163.2 / `migrated/charts` 137.0 / scenario
+105.8 / d3 86.8, against `tanstack/line`'s 235.6 kB as scenario 105.8 /
+`@tanstack/charts` 90.3 / d3 39.5. The extra `migrated/charts` bytes are not
+line-chart code: the import graph shows `migrated-line.tsx → @migrated/charts
+(index.ts) → sankey-chart.tsx / pie-chart.tsx / choropleth-chart.tsx`, and 33
+of the retained modules import d3 directly — d3-geo through choropleth, d3-zoom
+and d3-selection through `choropleth-zoom.ts`, d3-shape through sankey, pie,
+radar and profit-loss. That is why every migrated bundle carries d3-color,
+d3-selection, d3-transition, d3-brush and d3-time-format (91.0 kB minified in
+`migrated/sunburst`) while `tanstack/sunburst` carries d3-shape and d3-path only
+(5.8 kB). Legacy does not pay this: `bklit/sunburst` retains 14.5 kB of
+`bklit-ui/charts` in total, because its barrel shakes.
+
+**Measured directly.** A probe scenario identical to `migrated-line.tsx` but
+importing `LineChart` from `@migrated/charts/line-chart` and the four children
+from their `internal/*-child` modules, built by the same script: **129.2 kB
+gzip against the barrel version's 168.8 kB**. The barrel costs 39.6 kB gzip and
+retains 272 extra `migrated/charts` modules. At 129.2 kB against `bklit/line`'s
+136.3 kB the deep-import shape reads **0.95** — under the 1.10 limit. The
+charts are not bigger than legacy; the import shape is.
+
+**Two hypotheses tested and falsified**, so the cause is stated no further than
+the evidence goes: (1) the per-family `import "./styles.css"` — stubbing CSS to
+a side-effect-free JS module changed the size by 0 bytes; (2) the
+`sideEffects: ["**/*.css"]` field of D517 — flipping it to `false` changed the
+size by 0 bytes, alone and combined with (1). Whatever defeats the shake is
+module-level code in the family entries, and naming it is not this item's work.
+
+**Ruling.** V5.2 closes as measured-and-stamped, not fixed. Under R7 bundle
+size ranks after both claims, and the two shapes that would close the column
+both cost a claim: changing the bench scenarios to deep imports would move the
+measurement rather than the tree, and deleting the root barrel would break the
+seamless-swap contract, which is a legacy-shaped `@bklitui/ui/charts` barrel
+import (D517's export map already ships the 18 family subpaths beside it, so
+the escape hatch exists for a consumer who wants it). The `08` §6 note that
+"the stylesheet is not split per family, so every chart pays for all of them"
+now has a JS twin, recorded here for the phase-8 vector: **the barrel is not
+tree-shakeable, it costs ~40 kB gzip per mount, and with it removed the parity
+column passes**. Nothing in the phase-7 tree is changed on account of it.
