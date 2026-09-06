@@ -1,5 +1,4 @@
 // Turnkey bar loading skeleton (V3.9, definition-based).
-// The host owns sizing from the aspect ratio.
 
 "use client";
 
@@ -7,10 +6,8 @@ import { useMemo } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import "./styles.css";
 import { BarLoadingSweep } from "./internal/bar-loading-sweep";
-import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { DEFAULT_CHART_MARGIN, useChartMargin } from "./internal/use-chart-margin";
 import type { ChartMargin } from "./internal/use-chart-margin";
-import { cn } from "./internal/cn";
 
 interface BarChartLoadingProps {
   /** Chart margins. */
@@ -36,8 +33,6 @@ const BarChartLoading = ({
   pulsePaused = false,
 }: Readonly<BarChartLoadingProps>): ReactElement => {
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
-  const reduceMotion = usePrefersReducedMotion();
-  const pulse = !reduceMotion && !pulsePaused;
   const rootStyle = useMemo(
     (): CSSProperties => ({
       aspectRatio,
@@ -48,7 +43,7 @@ const BarChartLoading = ({
   );
   return (
     <div
-      className={cn(className, pulse ? "ts-bkm-loading-root" : undefined)}
+      className={className}
       data-bkm-chart="bar"
       data-slot="chart"
       style={rootStyle}

@@ -1,6 +1,7 @@
 // R10 seam: remove when TanStack/charts I4/I5 ship
 import { Children, createElement, isValidElement } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
+import { useChartStable } from "./chart-context";
 import { generateEasedGradientStops } from "./skeleton-data";
 
 // Hidden defs host beside the chart svg; url(#id) paints resolve document-wide.
@@ -81,50 +82,104 @@ const scopeResourceIds = (nodes: ReactNode, idPrefix: string): ReactNode =>
 const scopePaintUrl = (paint: string, idPrefix: string): string =>
   paint.replaceAll(/url\(#([^)]+)\)/gu, (_match: string, id: string) => `url(#${scopedResourceId(idPrefix, id)})`);
 
-// Sweep paint for loading placeholders (R10 seam, static diagonal sheen).
-// Marks reference it as paint; travel is deleted, the root pulse moves.
-const LOADING_SWEEP_ID_SUFFIX = "loading-sweep";
+// Sweep mask for loading placeholders (R10 seam; bklit loading-sweep.tsx).
+// Explicit region per D559; travel is CSS, re-roll is animationiteration.
+const LOADING_SWEEP_TILE_WIDTH = 3;
 const LOADING_SWEEP_ANGLE_DEG = 25;
-const DEFAULT_LOADING_SWEEP_COLOR = "var(--foreground)";
 
-// Scoped sweep gradient id for one mount; marks reference it via loadingSweepPaint.
-const loadingSweepGradientId = (idPrefix: string): string =>
-  idPrefix.endsWith(`-${LOADING_SWEEP_ID_SUFFIX}`) ? idPrefix : `${idPrefix}-${LOADING_SWEEP_ID_SUFFIX}`;
+const loadingSweepMaskId = (idPrefix: string): string => `${idPrefix}-loading-sweep-mask`;
+const loadingSweepPatternId = (idPrefix: string): string => `${idPrefix}-loading-sweep-pattern`;
+const loadingSweepGradientId = (idPrefix: string): string => `${idPrefix}-loading-sweep-gradient`;
 
-// Paint string for placeholder marks (`fill` on bars/areas, `stroke` on lines).
-const loadingSweepPaint = (idPrefix: string): string => `url(#${loadingSweepGradientId(idPrefix)})`;
-
-interface LoadingSweepGradientProps {
+// Bare nodes for the seam; ResourceHost owns the defs.
+// Region is the plot rect in the masked element's local px.
+const LoadingSweepMask = ({
+  idPrefix,
+  x,
+  y,
+  width,
+  height,
+  onSweepIteration,
+}: Readonly<{
   readonly idPrefix: string;
-  readonly color?: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly onSweepIteration?: () => void;
+}>): ReactElement => (
+  <>
+    <linearGradient id={loadingSweepGradientId(idPrefix)} x1="0" x2="1" y1="0" y2="0">
+      {generateEasedGradientStops().map((stop) => (
+        <stop key={stop.offset} offset={stop.offset} stopColor="white" stopOpacity={stop.opacity} />
+      ))}
+    </linearGradient>
+    <pattern
+      height="1"
+      id={loadingSweepPatternId(idPrefix)}
+      patternContentUnits="objectBoundingBox"
+      patternTransform={`rotate(${LOADING_SWEEP_ANGLE_DEG})`}
+      patternUnits="objectBoundingBox"
+      width={LOADING_SWEEP_TILE_WIDTH}
+      x="0"
+      y="0"
+    >
+      <rect
+        className="ts-bkm-loading-sweep-band"
+        fill={`url(#${loadingSweepGradientId(idPrefix)})`}
+        height="1"
+        onAnimationIteration={onSweepIteration}
+        width="1"
+        x="0"
+        y="0"
+      />
+    </pattern>
+    <mask height={height} id={loadingSweepMaskId(idPrefix)} maskUnits="userSpaceOnUse" width={width} x={x} y={y}>
+      <rect fill={`url(#${loadingSweepPatternId(idPrefix)})`} height={height} width={width} x={x} y={y} />
+    </mask>
+  </>
+);
+
+// Mask style for the div wrapping the placeholder chart.
+// Per-mark mask has no native channel, so the seam mask applies here.
+const loadingSweepMaskStyle = (idPrefix: string): CSSProperties => {
+  const ref = `url(#${loadingSweepMaskId(idPrefix)})`;
+  return { WebkitMaskImage: ref, maskImage: ref };
+};
+
+interface LoadingSweepResourcesProps {
+  readonly idPrefix: string;
+  readonly onSweepIteration?: () => void;
 }
 
-// Eased-stop diagonal gradient; bare node for the seam, ResourceHost owns the defs.
-const LoadingSweepGradient = ({
-  idPrefix,
-  color = DEFAULT_LOADING_SWEEP_COLOR,
-}: Readonly<LoadingSweepGradientProps>): ReactElement => (
-  <linearGradient
-    gradientTransform={`rotate(${LOADING_SWEEP_ANGLE_DEG})`}
-    id={loadingSweepGradientId(idPrefix)}
-    x1="0"
-    x2="1"
-    y1="0"
-    y2="0"
-  >
-    {generateEasedGradientStops().map((stop) => (
-      <stop key={stop.offset} offset={stop.offset} stopColor={color} stopOpacity={stop.opacity} />
-    ))}
-  </linearGradient>
-);
+// Seam resources from the live plot rect; empty plots render no mask.
+// An empty region would mask everything out.
+const LoadingSweepResources = ({ idPrefix, onSweepIteration }: Readonly<LoadingSweepResourcesProps>): ReactElement | null => {
+  const { chart } = useChartStable();
+  if (chart === undefined || chart.width <= 0 || chart.height <= 0) {
+    return null;
+  }
+  return (
+    <LoadingSweepMask
+      height={chart.height}
+      idPrefix={idPrefix}
+      onSweepIteration={onSweepIteration}
+      width={chart.width}
+      x={chart.x}
+      y={chart.y}
+    />
+  );
+};
 
 export {
   ResourceHost,
-  LoadingSweepGradient,
+  LoadingSweepMask,
+  LoadingSweepResources,
   loadingSweepGradientId,
-  loadingSweepPaint,
+  loadingSweepMaskId,
+  loadingSweepMaskStyle,
   scopedResourceId,
   scopeResourceIds,
   scopePaintUrl,
 };
-export type { LoadingSweepGradientProps, ResourceHostProps };
+export type { LoadingSweepResourcesProps, ResourceHostProps };

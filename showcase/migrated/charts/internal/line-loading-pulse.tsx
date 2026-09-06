@@ -1,13 +1,13 @@
-// Traveling line pulse as a placeholder definition (V3.9).
-// Motion is the whole-chart pulse; series-path travel is deleted.
+// Traveling line pulse as a placeholder definition (V3.9, sweep restored).
+// The band rides a seam mask driven by CSS keyframes, re-rolled per pass.
 
 "use client";
 
-import { useEffect, useMemo } from "react";
-import type { ReactElement, ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
 import { chartMotionRenderer } from "./motion-renderer";
-import { LoadingSweepGradient, loadingSweepPaint } from "./resource-host";
+import { LoadingSweepResources, loadingSweepMaskStyle } from "./resource-host";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useSanitizedId } from "./use-sanitized-id";
 import { buildLineLoadingDefinition } from "./loading-definitions";
@@ -60,15 +60,19 @@ const LineLoadingPulse = ({
       clearTimeout(timer);
     };
   }, [isLoop, onCycleComplete]);
-  const paint = reduceMotion ? stroke : loadingSweepPaint(idPrefix);
+  const [tick, setTick] = useState(0);
+  const handleSweepIteration = useCallback((): void => {
+    setTick((prev) => prev + 1);
+  }, []);
   const definition = useMemo(
     () =>
       buildLineLoadingDefinition({
-        stroke: paint,
+        seed: tick,
+        stroke,
         strokeOpacity,
         strokeWidth,
       }),
-    [paint, strokeOpacity, strokeWidth],
+    [stroke, strokeOpacity, strokeWidth, tick],
   );
   const renderer = useMemo(
     () => chartMotionRenderer<LinePlaceholderDatum, number, number>(),
@@ -78,22 +82,30 @@ const LineLoadingPulse = ({
     if (reduceMotion) {
       return undefined;
     }
-    return <LoadingSweepGradient color={stroke} idPrefix={idPrefix} />;
-  }, [idPrefix, reduceMotion, stroke]);
+    return <LoadingSweepResources idPrefix={idPrefix} onSweepIteration={handleSweepIteration} />;
+  }, [handleSweepIteration, idPrefix, reduceMotion]);
+  const maskStyle = useMemo((): CSSProperties | undefined => {
+    if (reduceMotion) {
+      return undefined;
+    }
+    return loadingSweepMaskStyle(idPrefix);
+  }, [idPrefix, reduceMotion]);
   const fixedWidth = width > 0 ? width : undefined;
   const fixedHeight = height > 0 ? height : undefined;
   return (
-    <ChartHost
-      ariaLabel="Loading chart"
-      aspectRatio={fixedWidth === undefined ? PULSE_ASPECT_RATIO : undefined}
-      definition={definition}
-      height={fixedHeight}
-      idPrefix={idPrefix}
-      initialWidth={HOST_INITIAL_WIDTH}
-      renderer={renderer}
-      resources={resources}
-      width={fixedWidth}
-    />
+    <div style={maskStyle}>
+      <ChartHost
+        ariaLabel="Loading chart"
+        aspectRatio={fixedWidth === undefined ? PULSE_ASPECT_RATIO : undefined}
+        definition={definition}
+        height={fixedHeight}
+        idPrefix={idPrefix}
+        initialWidth={HOST_INITIAL_WIDTH}
+        renderer={renderer}
+        resources={resources}
+        width={fixedWidth}
+      />
+    </div>
   );
 };
 

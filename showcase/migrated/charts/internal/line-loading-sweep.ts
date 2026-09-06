@@ -1,5 +1,5 @@
 // Pure placeholder-line geometry (percentages to plot-space points).
-// No motion here; the traveling pulse is deleted (V3.9).
+// The traveling band rides a seam mask over these paths (CSS keyframes).
 
 import { area, curveNatural, line } from "d3-shape";
 import type { CurveFactory } from "d3-shape";

@@ -1,15 +1,14 @@
-// Legacy loading names over placeholder definitions (V3.9).
-// Placeholders mount through the shared host; only the root pulse animates.
+// Legacy loading names over placeholder definitions (V3.9, sweep restored).
 
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import type { CurveFactory } from "d3-shape";
 import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
 import { chartCssVars } from "./chart-context";
 import { chartMotionRenderer } from "./motion-renderer";
-import { LoadingSweepGradient, loadingSweepPaint } from "./resource-host";
+import { LoadingSweepResources, loadingSweepMaskStyle } from "./resource-host";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useSanitizedId } from "./use-sanitized-id";
 import {
@@ -66,7 +65,7 @@ interface LineLoadingSweepProps {
   durationSeconds?: number;
 }
 
-// Placeholder line/area silhouette; the sweep rides the stroke as R10 paint.
+// Placeholder line/area silhouette under the traveling sweep mask.
 const LineLoadingSweep = ({
   curve,
   withArea = false,
@@ -83,14 +82,18 @@ const LineLoadingSweep = ({
   const idPrefix = useSanitizedId();
   const isLoop = mode === "loop";
   useLoadingHandoff(isLoop, onTransitionComplete);
-  const paint = reduceMotion ? stroke : loadingSweepPaint(idPrefix);
+  const [tick, setTick] = useState(0);
+  const handleSweepIteration = useCallback((): void => {
+    setTick((prev) => prev + 1);
+  }, []);
   const definition = useMemo(
     () =>
       withArea
         ? buildAreaLoadingDefinition({
             curve,
             pointCount,
-            stroke: paint,
+            seed: tick,
+            stroke,
             strokeOpacity,
             strokeWidth,
             washColor: stroke,
@@ -98,11 +101,12 @@ const LineLoadingSweep = ({
         : buildLineLoadingDefinition({
             curve,
             pointCount,
-            stroke: paint,
+            seed: tick,
+            stroke,
             strokeOpacity,
             strokeWidth,
           }),
-    [curve, paint, pointCount, stroke, strokeOpacity, strokeWidth, withArea],
+    [curve, pointCount, stroke, strokeOpacity, strokeWidth, tick, withArea],
   );
   const renderer = useMemo(
     () => chartMotionRenderer<LinePlaceholderDatum, number, number>(),
@@ -112,19 +116,27 @@ const LineLoadingSweep = ({
     if (reduceMotion) {
       return undefined;
     }
-    return <LoadingSweepGradient color={stroke} idPrefix={idPrefix} />;
-  }, [idPrefix, reduceMotion, stroke]);
+    return <LoadingSweepResources idPrefix={idPrefix} onSweepIteration={handleSweepIteration} />;
+  }, [handleSweepIteration, idPrefix, reduceMotion]);
+  const maskStyle = useMemo((): CSSProperties | undefined => {
+    if (reduceMotion) {
+      return undefined;
+    }
+    return loadingSweepMaskStyle(idPrefix);
+  }, [idPrefix, reduceMotion]);
   return (
-    <div className="ts-bkm-loading-root" data-slot="chart" style={PLACEHOLDER_ROOT_STYLE}>
-      <ChartHost
-        ariaLabel="Loading chart"
-        aspectRatio={LOADING_ASPECT_RATIO}
-        definition={definition}
-        idPrefix={idPrefix}
-        initialWidth={HOST_INITIAL_WIDTH}
-        renderer={renderer}
-        resources={resources}
-      />
+    <div data-slot="chart" style={PLACEHOLDER_ROOT_STYLE}>
+      <div style={maskStyle}>
+        <ChartHost
+          ariaLabel="Loading chart"
+          aspectRatio={LOADING_ASPECT_RATIO}
+          definition={definition}
+          idPrefix={idPrefix}
+          initialWidth={HOST_INITIAL_WIDTH}
+          renderer={renderer}
+          resources={resources}
+        />
+      </div>
     </div>
   );
 };
@@ -148,7 +160,7 @@ interface BarLoadingSkeletonProps {
   durationSeconds?: number;
 }
 
-// Skeleton bars from the deterministic heights; the sweep rides `fill`.
+// Skeleton bars from the deterministic heights under the sweep mask.
 const BarLoadingSkeleton = ({
   innerWidth,
   innerHeight,
@@ -162,37 +174,49 @@ const BarLoadingSkeleton = ({
   void durationSeconds;
   const reduceMotion = usePrefersReducedMotion();
   const idPrefix = useSanitizedId();
-  const paint = reduceMotion ? fill : loadingSweepPaint(idPrefix);
+  const [tick, setTick] = useState(0);
+  const handleSweepIteration = useCallback((): void => {
+    setTick((prev) => prev + 1);
+  }, []);
   const definition = useMemo(
     () =>
       buildBarLoadingDefinition({
         barCount,
         barFraction,
         baseline,
-        fill: paint,
+        fill,
         fillOpacity,
+        seed: tick,
       }),
-    [barCount, barFraction, baseline, fillOpacity, paint],
+    [barCount, barFraction, baseline, fill, fillOpacity, tick],
   );
   const renderer = useMemo(() => chartMotionRenderer<BarPlaceholderDatum, number, number>(), []);
   const resources = useMemo((): ReactNode => {
     if (reduceMotion) {
       return undefined;
     }
-    return <LoadingSweepGradient color={fill} idPrefix={idPrefix} />;
-  }, [fill, idPrefix, reduceMotion]);
+    return <LoadingSweepResources idPrefix={idPrefix} onSweepIteration={handleSweepIteration} />;
+  }, [handleSweepIteration, idPrefix, reduceMotion]);
+  const maskStyle = useMemo((): CSSProperties | undefined => {
+    if (reduceMotion) {
+      return undefined;
+    }
+    return loadingSweepMaskStyle(idPrefix);
+  }, [idPrefix, reduceMotion]);
   return (
-    <div className="ts-bkm-loading-root" data-slot="chart" style={PLACEHOLDER_ROOT_STYLE}>
-      <ChartHost
-        ariaLabel="Loading chart"
-        definition={definition}
-        height={Math.max(0, innerHeight)}
-        idPrefix={idPrefix}
-        initialWidth={HOST_INITIAL_WIDTH}
-        renderer={renderer}
-        resources={resources}
-        width={Math.max(0, innerWidth)}
-      />
+    <div data-slot="chart" style={PLACEHOLDER_ROOT_STYLE}>
+      <div style={maskStyle}>
+        <ChartHost
+          ariaLabel="Loading chart"
+          definition={definition}
+          height={Math.max(0, innerHeight)}
+          idPrefix={idPrefix}
+          initialWidth={HOST_INITIAL_WIDTH}
+          renderer={renderer}
+          resources={resources}
+          width={Math.max(0, innerWidth)}
+        />
+      </div>
     </div>
   );
 };
@@ -213,7 +237,7 @@ interface LineLoadingPulseStrokeProps {
   onCycleComplete?: () => void;
 }
 
-// Traveling pulse replaced by the whole-chart pulse (skeleton keeps the contract).
+// Traveling pulse contract over the skeleton line, swept like the rest.
 const LineLoadingPulseStroke = ({
   pathD,
   mode = "loop",
@@ -228,15 +252,19 @@ const LineLoadingPulseStroke = ({
   const reduceMotion = usePrefersReducedMotion();
   const idPrefix = useSanitizedId();
   useLoadingHandoff(mode === "loop", onCycleComplete);
-  const paint = reduceMotion ? stroke : loadingSweepPaint(idPrefix);
+  const [tick, setTick] = useState(0);
+  const handleSweepIteration = useCallback((): void => {
+    setTick((prev) => prev + 1);
+  }, []);
   const definition = useMemo(
     () =>
       buildLineLoadingDefinition({
-        stroke: paint,
+        seed: tick,
+        stroke,
         strokeOpacity,
         strokeWidth,
       }),
-    [paint, strokeOpacity, strokeWidth],
+    [stroke, strokeOpacity, strokeWidth, tick],
   );
   const renderer = useMemo(
     () => chartMotionRenderer<LinePlaceholderDatum, number, number>(),
@@ -246,19 +274,27 @@ const LineLoadingPulseStroke = ({
     if (reduceMotion) {
       return undefined;
     }
-    return <LoadingSweepGradient color={stroke} idPrefix={idPrefix} />;
-  }, [idPrefix, reduceMotion, stroke]);
+    return <LoadingSweepResources idPrefix={idPrefix} onSweepIteration={handleSweepIteration} />;
+  }, [handleSweepIteration, idPrefix, reduceMotion]);
+  const maskStyle = useMemo((): CSSProperties | undefined => {
+    if (reduceMotion) {
+      return undefined;
+    }
+    return loadingSweepMaskStyle(idPrefix);
+  }, [idPrefix, reduceMotion]);
   return (
-    <div className="ts-bkm-loading-root" data-slot="chart" style={PLACEHOLDER_ROOT_STYLE}>
-      <ChartHost
-        ariaLabel="Loading chart"
-        aspectRatio={LOADING_ASPECT_RATIO}
-        definition={definition}
-        idPrefix={idPrefix}
-        initialWidth={HOST_INITIAL_WIDTH}
-        renderer={renderer}
-        resources={resources}
-      />
+    <div data-slot="chart" style={PLACEHOLDER_ROOT_STYLE}>
+      <div style={maskStyle}>
+        <ChartHost
+          ariaLabel="Loading chart"
+          aspectRatio={LOADING_ASPECT_RATIO}
+          definition={definition}
+          idPrefix={idPrefix}
+          initialWidth={HOST_INITIAL_WIDTH}
+          renderer={renderer}
+          resources={resources}
+        />
+      </div>
     </div>
   );
 };

@@ -3,13 +3,13 @@
 
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { curveNatural } from "d3-shape";
 import "./styles.css";
 import { ChartHost, HOST_INITIAL_WIDTH } from "./internal/chart-host";
 import { chartMotionRenderer } from "./internal/motion-renderer";
-import { LoadingSweepGradient, loadingSweepPaint } from "./internal/resource-host";
+import { LoadingSweepResources, loadingSweepMaskStyle } from "./internal/resource-host";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { buildAreaLoadingDefinition } from "./internal/loading-definitions";
@@ -18,7 +18,6 @@ import { getSkeletonHeights } from "./internal/skeleton-data";
 import { LoadingLabel } from "./internal/loading-label";
 import type { ChartMargin } from "./internal";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
-import { cn } from "./internal/cn";
 
 const DEFAULT_LOADING_STROKE = "var(--foreground)";
 const DEFAULT_LOADING_STROKE_OPACITY = 0.5;
@@ -72,20 +71,23 @@ const AreaChartLoading = ({
   void loadingStyle;
   const reduceMotion = usePrefersReducedMotion();
   const idPrefix = useSanitizedId();
-  const values = useMemo(() => getSkeletonHeights(SKELETON_POINT_COUNT, 0), []);
-  const paint = reduceMotion ? stroke : loadingSweepPaint(idPrefix);
+  const [tick, setTick] = useState(0);
+  const handleSweepIteration = useCallback((): void => {
+    setTick((prev) => prev + 1);
+  }, []);
+  const values = useMemo(() => getSkeletonHeights(SKELETON_POINT_COUNT, tick), [tick]);
   const definition = useMemo(
     () =>
       buildAreaLoadingDefinition({
         curve: curveNatural,
         margin,
-        stroke: paint,
+        stroke,
         strokeOpacity,
         strokeWidth: 2,
         values,
         washColor: stroke,
       }),
-    [margin, paint, stroke, strokeOpacity, values],
+    [margin, stroke, strokeOpacity, values],
   );
   const renderer = useMemo(
     () => chartMotionRenderer<LinePlaceholderDatum, number, number>(),
@@ -95,28 +97,36 @@ const AreaChartLoading = ({
     if (reduceMotion) {
       return undefined;
     }
-    return <LoadingSweepGradient color={stroke} idPrefix={idPrefix} />;
-  }, [idPrefix, reduceMotion, stroke]);
+    return <LoadingSweepResources idPrefix={idPrefix} onSweepIteration={handleSweepIteration} />;
+  }, [handleSweepIteration, idPrefix, reduceMotion]);
+  const maskStyle = useMemo((): CSSProperties | undefined => {
+    if (reduceMotion) {
+      return undefined;
+    }
+    return loadingSweepMaskStyle(idPrefix);
+  }, [idPrefix, reduceMotion]);
   const rootStyle = useMemo(
     (): CSSProperties => ({ aspectRatio, position: "relative", width: "100%" }),
     [aspectRatio],
   );
   return (
     <div
-      className={cn(className, reduceMotion ? undefined : "ts-bkm-loading-root")}
+      className={className}
       data-bkm-chart="area"
       data-slot="chart"
       style={rootStyle}
     >
-      <ChartHost
-        ariaLabel="Area chart"
-        aspectRatio={parseAspectRatio(aspectRatio)}
-        definition={definition}
-        idPrefix={idPrefix}
-        initialWidth={HOST_INITIAL_WIDTH}
-        renderer={renderer}
-        resources={resources}
-      />
+      <div style={maskStyle}>
+        <ChartHost
+          ariaLabel="Area chart"
+          aspectRatio={parseAspectRatio(aspectRatio)}
+          definition={definition}
+          idPrefix={idPrefix}
+          initialWidth={HOST_INITIAL_WIDTH}
+          renderer={renderer}
+          resources={resources}
+        />
+      </div>
       <LoadingLabel text={label} />
     </div>
   );

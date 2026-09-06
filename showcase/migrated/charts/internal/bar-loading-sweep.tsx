@@ -1,13 +1,12 @@
-// Bar skeleton as a placeholder definition (V3.9).
-// Geometry mirrors legacy counts; the traveling band is deleted.
+// Bar skeleton as a placeholder definition (V3.9, sweep restored).
 
 "use client";
 
-import { useMemo } from "react";
-import type { ReactElement, ReactNode } from "react";
+import { useCallback, useMemo, useState } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
 import { chartMotionRenderer } from "./motion-renderer";
-import { LoadingSweepGradient, loadingSweepPaint } from "./resource-host";
+import { LoadingSweepResources, loadingSweepMaskStyle } from "./resource-host";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useSanitizedId } from "./use-sanitized-id";
 import { buildBarLoadingDefinition } from "./loading-definitions";
@@ -52,39 +51,52 @@ const BarLoadingSweep = ({
   const idPrefix = useSanitizedId();
   // Frozen frame covers reduced motion and the pause input.
   const staticFrame = reduceMotion || pulsePaused;
-  const paint = staticFrame ? fill : loadingSweepPaint(idPrefix);
+  // Per-pass re-roll (legacy tick); swaps land while the plot is blank.
+  const [tick, setTick] = useState(0);
+  const handleSweepIteration = useCallback((): void => {
+    setTick((prev) => prev + 1);
+  }, []);
   const definition = useMemo(
     () =>
       buildBarLoadingDefinition({
         barCount,
         barFraction: DEFAULT_BAR_SKELETON_FRACTION,
-        fill: paint,
+        fill,
         fillOpacity,
         margin,
+        seed: tick,
       }),
-    [barCount, fillOpacity, margin, paint],
+    [barCount, fill, fillOpacity, margin, tick],
   );
   const renderer = useMemo(() => chartMotionRenderer<BarPlaceholderDatum, number, number>(), []);
   const resources = useMemo((): ReactNode => {
     if (staticFrame) {
       return undefined;
     }
-    return <LoadingSweepGradient color={fill} idPrefix={idPrefix} />;
-  }, [fill, idPrefix, staticFrame]);
+    return <LoadingSweepResources idPrefix={idPrefix} onSweepIteration={handleSweepIteration} />;
+  }, [handleSweepIteration, idPrefix, staticFrame]);
+  const maskStyle = useMemo((): CSSProperties | undefined => {
+    if (staticFrame) {
+      return undefined;
+    }
+    return loadingSweepMaskStyle(idPrefix);
+  }, [idPrefix, staticFrame]);
   const fixedWidth = innerWidth > 0 ? innerWidth : undefined;
   const fixedHeight = innerHeight > 0 ? innerHeight : undefined;
   return (
-    <ChartHost
-      ariaLabel="Loading chart"
-      aspectRatio={fixedWidth === undefined ? BAR_SKELETON_ASPECT_RATIO : undefined}
-      definition={definition}
-      height={fixedHeight}
-      idPrefix={idPrefix}
-      initialWidth={HOST_INITIAL_WIDTH}
-      renderer={renderer}
-      resources={resources}
-      width={fixedWidth}
-    />
+    <div style={maskStyle}>
+      <ChartHost
+        ariaLabel="Loading chart"
+        aspectRatio={fixedWidth === undefined ? BAR_SKELETON_ASPECT_RATIO : undefined}
+        definition={definition}
+        height={fixedHeight}
+        idPrefix={idPrefix}
+        initialWidth={HOST_INITIAL_WIDTH}
+        renderer={renderer}
+        resources={resources}
+        width={fixedWidth}
+      />
+    </div>
   );
 };
 

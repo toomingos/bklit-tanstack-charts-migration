@@ -695,6 +695,25 @@
   animation: ts-bkm-loading-pulse 1.6s ease-in-out infinite;
 }
 
+/* --- Loading sweep band (V3.9 follow-up; loading chrome, D566 sanction) --
+   The shimmer band travels across the skeleton plot on the seam-hosted
+   pattern rect (resource-host.tsx LoadingSweepMask). Travel -1 → +2 in
+   objectBoundingBox units over 2s linear matches legacy loading-sweep.tsx
+   (DEFAULT_SWEEP_DURATION_S, SWEEP_START_X/END_X with `ease: "linear"`);
+   per-pass silhouette re-roll listens to `animationiteration` on the band.
+   No rAF, no WAAPI, no second renderer. */
+@keyframes ts-bkm-loading-sweep {
+  from {
+    transform: translateX(-1px);
+  }
+  to {
+    transform: translateX(2px);
+  }
+}
+.ts-bkm-loading-sweep-band {
+  animation: ts-bkm-loading-sweep 2s linear infinite;
+}
+
 /* --- Legend hover dim (bklit globals.css:126-132) — UNSCOPED, must match
       exactly; Legend/ChartLegend/ProfitLossLegend render outside [data-bkm-chart] --- */
 .legend-container:has([data-hovered]) > *:not([data-hovered]) {
