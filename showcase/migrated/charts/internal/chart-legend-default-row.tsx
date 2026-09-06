@@ -1,7 +1,7 @@
 // Default legend row: stable hover handlers per row so the parent map never
 // Allocates inline closures during render.
 import { useCallback } from "react";
-import type { ReactElement } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import { cn } from "./cn";
 import { ProgressItem } from "./chart-legend-progress-item";
 import { SimpleItem } from "./chart-legend-simple-item";
@@ -9,6 +9,18 @@ import type { ChartLegendProps, LegendItem } from "./chart-legend";
 
 // A missing or zero maximum means the item has no progress scale to draw.
 const EMPTY_PROGRESS_MAXIMUM = 0;
+
+// Button reset (inline): only the UA chrome the div never had; padding/cursor come from classes.
+const LEGEND_BUTTON_RESET: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "inherit",
+  display: "block",
+  font: "inherit",
+  margin: 0,
+  textAlign: "left",
+  width: "100%",
+};
 
 interface DefaultLegendRowProps {
   readonly displayPercentage: boolean;
@@ -85,8 +97,14 @@ const DefaultLegendRow = ({
   const handleMouseLeave = useCallback((): void => {
     onHover?.(null);
   }, [onHover]);
+  const handleFocus = useCallback((): void => {
+    onHover?.(index);
+  }, [index, onHover]);
+  const handleBlur = useCallback((): void => {
+    onHover?.(null);
+  }, [onHover]);
   return (
-    <div
+    <button
       className={cn(
         "cursor-pointer rounded-lg px-2 py-1.5 transition-all duration-150 ease-out",
         isHovered && "bg-legend-muted",
@@ -94,8 +112,12 @@ const DefaultLegendRow = ({
         itemClassName
       )}
       data-hovered={isHovered ? "" : undefined}
+      onBlur={handleBlur}
+      onFocus={handleFocus}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      style={LEGEND_BUTTON_RESET}
+      type="button"
     >
       {renderDefaultLegendBody({
         displayPercentage,
@@ -107,7 +129,7 @@ const DefaultLegendRow = ({
         showValue,
         valueClassName,
       })}
-    </div>
+    </button>
   );
 };
 
