@@ -7,7 +7,7 @@ import { defineChart } from "@tanstack/charts/scene";
 import { tooltip as packageTooltip } from "@tanstack/charts/tooltip";
 import { portal } from "@tanstack/charts/tooltip/portal";
 import type { ChartTooltipInput } from "@tanstack/charts";
-import { chartMotionRenderer } from "./internal/motion-renderer";
+import { useChartRenderer } from "./internal/motion-renderer";
 import { useFocusInjection } from "./internal/focus-injection";
 import {
   decimateTimeSeries,
@@ -35,6 +35,7 @@ import { NOTHING, useComposedResolved, useComposedYDomains } from "./internal/co
 import type {
   ChartDatum,
 } from "./internal/types";
+import { isChartInteractionPhase } from './internal/chart-phase';
 import type { ChartPhase } from './internal/chart-phase';
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import {
@@ -179,8 +180,12 @@ const ComposedChart = ({
     () => resolvedBars.map((bar) => bar.dataKey),
     [resolvedBars],
   );
-  const { composedStackOffsets, nicedDomainsByAxis, projectValue, yDomainFinal } =
+  const { composedStackOffsets, nicedDomainsByAxis, projectValue, yDomainChanged, yDomainFinal } =
     useComposedYDomains({ barDataKeys, composedSeries, data, projectionConfigs, stacked });
+
+  // Tween gate reads live phase/loaded state during render; the memo below rebuilds
+  // Only when the gate flips, so phase transitions never rebuild marks mid-reveal.
+  const yDomainTweenGateActive = isChartInteractionPhase(phaseAndReveal.chartPhase) && phaseAndReveal.isLoaded && yDomainChanged;
 
   const { gradientIdBySeries, nativeComposedGradients } = useComposedAreaGradients(resolvedAreas);
 
@@ -251,6 +256,7 @@ const ComposedChart = ({
     if (!marks || !scales) {return NOTHING;}
 
     const { motion, xScaleOptions, yScaleOptions } = buildComposedScaleOptions({
+      gateActive: yDomainTweenGateActive,
       grid,
       marginBottom: phaseAndReveal.margin.bottom,
       scales,
@@ -286,6 +292,7 @@ const ComposedChart = ({
     nativeComposedGradients,
     renderData,
     tooltip,
+    yDomainTweenGateActive,
   ]);
 
   const renderTooltipBody = useComposedTooltipBody({ composedSeries, tooltip, xDataKey });
@@ -374,7 +381,7 @@ const ComposedChart = ({
       yDomain={yDomainFinal}
     />
   );
-  const composedChartRenderer = chartMotionRenderer<ChartDatum, Date, number>();
+  const composedChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
   // Inlined into the same element tree (a variable, not a component), so this
   // Changes nothing at runtime; it only flattens source nesting for jsx-max-depth.

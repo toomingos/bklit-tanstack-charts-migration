@@ -19,7 +19,7 @@ import type { ReferenceAreaLayersGeom } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import { useChartLegendHover } from "./internal/chart-legend-hover-context";
-import { chartMotionRenderer } from "./internal/motion-renderer";
+import { useChartRenderer } from "./internal/motion-renderer";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { useChartMargin, DEFAULT_CHART_MARGIN } from "./internal/use-chart-margin";
 import type { ChartMargin } from "./internal/use-chart-margin";
@@ -28,6 +28,7 @@ import {
   DEFAULT_ANIMATION_EASING,
 } from "./internal/animation-defaults";
 import type { EnterTransition } from "./internal/parity/animation";
+import { BAR_DEPTH_BACK_NODES_PER_ROW, countSquarePrimitives } from "./internal/bar-chart-series-marks";
 import { handleBarSvgRender } from "./internal/bar-chart-overlays";
 import { useBarTooltipBody } from "./internal/bar-tooltip-body";
 import { useBarScales } from "./internal/use-bar-scales";
@@ -156,6 +157,7 @@ const BarChart = ({
     xDataKey,
   });
   const {
+    bandWidth,
     categoryOrder,
     dotSeriesList,
     nicedDomainsByAxis,
@@ -200,6 +202,8 @@ const BarChart = ({
   });
   const {
     definition,
+    hasBarDepth,
+    hasBarSquares,
     revealDurationMs,
     setLabelFade,
     squaresDefs,
@@ -265,7 +269,22 @@ const BarChart = ({
   }, [animationDuration, revealDurationMs, setPhase, renderData.length, captureRenderContext]);
 
   const refAreaChildrenBar = useMemo(() => extractReferenceAreaProps(children), [children]);
-  const barChartRenderer = chartMotionRenderer<ChartDatum, string, number>();
+  // Count emitted primitives (not data rows) for the renderer gate.
+  // Gate on declared depth marks, not applicable ones: the choice latches at first render.
+  const motionPrimitiveEstimate = useMemo(() => {
+    const rows = renderData.length;
+    const squaresN = hasBarSquares ? resolvedBarSquares.length : 0;
+    let total = rows * Math.max(0, totalSeriesCount - squaresN);
+    if (squaresN > 0) {
+      const barLengthPx = Math.max(0, heightPxBar - margin.top - margin.bottom);
+      total += countSquarePrimitives({ bandWidth, barLengthPx, rows, squares: resolvedBarSquares, totalSeriesCount });
+    }
+    if (hasBarDepth) {
+      total += rows * (barDepthBacksRaw.length * BAR_DEPTH_BACK_NODES_PER_ROW + barDepthFrontsRaw.length);
+    }
+    return total;
+  }, [hasBarSquares, resolvedBarSquares, renderData.length, heightPxBar, margin.top, margin.bottom, totalSeriesCount, bandWidth, hasBarDepth, barDepthBacksRaw, barDepthFrontsRaw]);
+  const barChartRenderer = useChartRenderer<ChartDatum, string, number>(motionPrimitiveEstimate);
 
   const barRootStyle = useMemo((): CSSProperties => ({ aspectRatio, isolation: "isolate", position: "relative", width: "100%" }), [aspectRatio]);
 

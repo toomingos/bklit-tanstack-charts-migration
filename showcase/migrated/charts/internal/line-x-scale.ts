@@ -161,9 +161,9 @@ const buildLineXScaleOptions = (params: Readonly<LineXScaleOptionsParams>): Char
 });
 
 // Line mark motion: enter rides the renderer default (dot stagger G20).
-// Y-domain updates reproject through the rolling path.
+// Y-domain updates reproject through the rolling path; other updates snap.
 type LineMotionFn = (context: Readonly<Pick<ChartMotionContext, "phase" | "role">>) => false | ChartMotionTiming | undefined;
-const resolveLineMarkMotion = (tweenDurationMs: number): LineMotionFn =>
+const resolveLineMarkMotion = (gateActive: boolean, tweenDurationMs: number): LineMotionFn =>
   (context: Readonly<Pick<ChartMotionContext, "phase" | "role">>): false | ChartMotionTiming | undefined => {
     if (context.role === "dot") {
       if (context.phase !== "enter") {return undefined;}
@@ -179,6 +179,8 @@ const resolveLineMarkMotion = (tweenDurationMs: number): LineMotionFn =>
     if (context.role === "line" || context.role === "area") {
       if (context.phase === "enter") {return undefined;}
       if (context.phase === "update") {
+        // Legacy tweens the path only when the y domain moved; every other update snaps.
+        if (!gateActive) {return false as const;}
         return {
           path: { fallback: "snap" as const, update: "rolling" as const, x: "shift" as const, y: "reproject" as const },
           transition: {
@@ -210,8 +212,8 @@ interface LineMotions {
   readonly tickLabelMotion: LineMotionFn;
 }
 
-const resolveLineMotions = (tweenDurationMs: number): LineMotions => ({
-  motion: resolveLineMarkMotion(tweenDurationMs),
+const resolveLineMotions = (gateActive: boolean, tweenDurationMs: number): LineMotions => ({
+  motion: resolveLineMarkMotion(gateActive, tweenDurationMs),
   tickLabelMotion: resolveTickLabelMotion(),
 });
 

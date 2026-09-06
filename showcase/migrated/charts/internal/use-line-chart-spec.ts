@@ -11,6 +11,7 @@ import { toSpecCrosshairGradient } from "./fade-mask";
 import { buildCrosshairGradientDef } from "./focus-marks";
 import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, TOOLTIP_BOX_SPRING } from "./design-tokens";
 import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./cartesian-focus-distance";
+import { isChartInteractionPhase } from "./chart-phase";
 import type { ChartPhase } from "./chart-phase";
 import {
   LEGEND_DIM_OPACITY,
@@ -108,7 +109,7 @@ const buildLineTooltipOption = ({ discrete, enabled }: Readonly<LineTooltipOptio
 };
 
 const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec => {
-  const { brushControls, crosshairGradientId, effectiveYDomainTweenDuration, grid, hoveredIndex, hoveredIndexForPL, isDiscrete, isLoading, labelFade, legendHoveredIndex, lines, margin, markerGradientIdByKey, markerSeriesConfigs, plTooltipSignIndex, profitLossLines, projectionConfigs, projectionGradientBaseId, projectionLines, projectorFor, renderData, timeExtent, timeExtentRaw, tooltip, tooltipEnabled, visibleData, width, xAxis, xDataKey, xDomain, xScaleD3Ref, yAxis, yDomainFinal } = params;
+  const { brushControls, chartPhase, crosshairGradientId, effectiveYDomainTweenDuration, grid, hoveredIndex, hoveredIndexForPL, isDiscrete, isLoading, isLoaded, labelFade, legendHoveredIndex, lines, margin, markerGradientIdByKey, markerSeriesConfigs, plTooltipSignIndex, profitLossLines, projectionConfigs, projectionGradientBaseId, projectionLines, projectorFor, renderData, timeExtent, timeExtentRaw, tooltip, tooltipEnabled, visibleData, width, xAxis, xDataKey, xDomain, xScaleD3Ref, yAxis, yDomainChangedForTween, yDomainFinal } = params;
   const marks = useMemo<ChartMark<ChartDatum, Date, number>[]>(
     () => {
       if (isLoading) {return [];}
@@ -136,7 +137,8 @@ const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec 
     const gridGuide = resolveGridGuide(grid);
     const xTickLabelOpacity = resolveXTickLabelOpacity(labelFade, xAxis);
     // Enter and y-domain updates ride package motion; the renderer owns the paint.
-    const { motion, tickLabelMotion } = resolveLineMotions(effectiveYDomainTweenDuration);
+    const yDomainTweenGateActive = isChartInteractionPhase(chartPhase) && isLoaded && yDomainChangedForTween;
+    const { motion, tickLabelMotion } = resolveLineMotions(yDomainTweenGateActive, effectiveYDomainTweenDuration);
     const xScaleOptions = buildLineXScaleOptions({ gridGuide, marginBottom: margin.bottom, tickLabelMotion, xAxis, xScale, xTickLabelOpacity });
     const yScaleOptions = buildLineYScaleOptions({ gridGuide, niced: yDomainFinal, tickLabelMotion, yAxis });
     // Crosshair fade spans the plot vertically, so the bbox spec form paints identically.
@@ -168,7 +170,7 @@ const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec 
         enabled: tooltip?.enabled ?? false,
       }),
     };
-  }, [marks, renderData, xDataKey, grid, yDomainFinal, margin, effectiveYDomainTweenDuration, xDomain, timeExtent, tooltip, tooltipEnabled, crosshairGradientId, xAxis, yAxis, visibleData, labelFade, brushControls, xScaleD3Ref]);
+  }, [marks, renderData, xDataKey, grid, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, xDomain, timeExtent, tooltip, tooltipEnabled, crosshairGradientId, xAxis, yAxis, visibleData, labelFade, brushControls, xScaleD3Ref]);
 
   const definition = useMemo((): DomChartDefinition<ChartDatum, Date, number> => defineChart(spec), [spec]);
   return { definition };

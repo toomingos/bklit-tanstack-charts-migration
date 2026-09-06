@@ -17,6 +17,10 @@ const HIGHLIGHT_SPRING = { damping: 28, stiffness: 180 };
 
 const BOX_OFFSET = 16;
 
+// Above this primitive count a chart renders through the package's static SVG renderer:
+// The motion renderer's update reconcile is O(elements x points) (upstream I3).
+const NATIVE_MOTION_MAX_POINTS = 200;
+
 const ENTRANCE_SPRING = { damping: 25, stiffness: 300 };
 const DISCRETE_INTERACTION_THRESHOLD = 60;
 const BOX_FALLBACK_WIDTH = 180;
@@ -66,6 +70,7 @@ export {
   HIGHLIGHT_SPRING,
   LINE_LOADING_LOOP_PAUSE_MS,
   LINE_LOADING_PULSE_CYCLE_S,
+  NATIVE_MOTION_MAX_POINTS,
   REVEAL_DURATION_MS,
   REVEAL_EASE_CSS,
   REVEAL_EASE_POINTS,

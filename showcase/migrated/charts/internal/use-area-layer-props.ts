@@ -2,7 +2,7 @@
 import { useCallback, useMemo } from "react";
 import type { CSSProperties } from "react";
 import type { ChartRenderer } from "@tanstack/charts";
-import { chartMotionRenderer } from "./motion-renderer";
+import { useChartRenderer } from "./motion-renderer";
 import type { ReferenceAreaLayersGeom } from "./reference-area-layer";
 import type { ChartPhase } from "./chart-phase";
 import type { ChartDatum, ChartMarker } from "./types";
@@ -34,11 +34,12 @@ const useAreaLayerProps = (params: Readonly<AreaLayerPropsParams>): AreaLayerPro
     clearFocusChrome,
     isLoaded,
     nicedDomainsByAxis,
+    renderDataLength,
     style,
     timeExtent,
     yDomainFinal,
   } = params;
-  const areaChartRenderer = chartMotionRenderer<ChartDatum, Date, number>();
+  const areaChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderDataLength);
 
   // Stable identities for layer props that would otherwise allocate per render.
   // Reference-area geometry reads bounds from the host; only data domains travel by prop.

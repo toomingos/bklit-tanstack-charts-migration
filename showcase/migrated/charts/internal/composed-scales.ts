@@ -122,7 +122,7 @@ const tickLabelMotion = (context: ChartMotionContext): MotionResult =>
     ? (false as const)
     : { transition: { duration: DEFAULT_Y_DOMAIN_TWEEN_MS, easing: bezierEasing, type: "tween" as const } };
 
-const composedMarkMotion = (context: ChartMotionContext): MotionResult => {
+const composedMarkMotion = (gateActive: boolean) => (context: ChartMotionContext): MotionResult => {
   if (context.role === "dot") {
     if (context.phase !== "enter") {return undefined;}
     return {
@@ -133,13 +133,15 @@ const composedMarkMotion = (context: ChartMotionContext): MotionResult => {
   if (context.role === "line" || context.role === "area" || context.role === "bar") {
     if (context.phase === "enter") {return undefined;}
     if (context.phase === "update") {
+      // Legacy tweens the path only when the y domain moved; every other update snaps.
+      if (!gateActive) {return false as const;}
       return { path: { fallback: "snap" as const, update: "rolling" as const, x: "shift" as const, y: "reproject" as const }, transition: { duration: DEFAULT_Y_DOMAIN_TWEEN_MS, easing: bezierEasing, type: "tween" as const } };
     }
   }
   return undefined;
 };
 
-const buildComposedMotion = (): ComposedMotion => ({ motion: composedMarkMotion, tickLabelMotion });
+const buildComposedMotion = (gateActive: boolean): ComposedMotion => ({ motion: composedMarkMotion(gateActive), tickLabelMotion });
 
 const collectProjectionGradients = (params: Readonly<CollectProjectionGradientsParams>): ProjectionGradientDef[] => {
   const defs: ProjectionGradientDef[] = [];

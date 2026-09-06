@@ -42,7 +42,7 @@ import {
   TOOLTIP_BOX_SPRING,
 } from "./design-tokens";
 import { markerEnterDelay } from "./parity/animation";
-import { DEFAULT_Y_DOMAIN_TWEEN_MS } from "./chart-phase";
+import { DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./chart-phase";
 import type { ChartPhase } from "./chart-phase";
 import type { MarkerSeriesConfig } from "./series-marker-mark";
 import { projectionLineMark } from "./projection-line-mark";
@@ -357,12 +357,13 @@ const resolveAreaXTickLabelOpacity = (params: Readonly<AreaTickLabelOpacityParam
 
 interface AreaMotionParams {
   readonly effectiveYDomainTweenDuration: number;
+  readonly yDomainTweenGateActive: boolean;
 }
 
 type AreaMotionFn = (context: ChartMotionContext) => false | ChartMotionTiming | undefined;
 
 // Enter rides the renderer default; dots stagger by datum index (G20).
-// Y-domain updates reproject through the package rolling path, ungated.
+// Y-domain updates reproject through the package rolling path; other updates snap.
 const buildAreaMotionFn = (params: Readonly<AreaMotionParams>): AreaMotionFn =>
   (context: ChartMotionContext): false | ChartMotionTiming | undefined => {
     if (context.role === "dot") {
@@ -379,6 +380,8 @@ const buildAreaMotionFn = (params: Readonly<AreaMotionParams>): AreaMotionFn =>
     if (context.role === "line" || context.role === "area") {
       if (context.phase === "enter") {return undefined;}
       if (context.phase === "update") {
+        // Legacy tweens the path only when the y domain moved; every other update snaps.
+        if (!params.yDomainTweenGateActive) {return false as const;}
         return {
           path: { fallback: "snap" as const, update: "rolling" as const, x: "shift" as const, y: "reproject" as const },
           transition: {
@@ -592,7 +595,7 @@ const buildAreaChartDefinition = (params: Readonly<AreaChartDefinitionParams>): 
     marks,
     // Hover works anywhere over the plot; TanStack defaults to 48px.
     maxFocusDistance: CARTESIAN_MAX_FOCUS_DISTANCE_PX,
-    motion: buildAreaMotionFn({ effectiveYDomainTweenDuration: params.effectiveYDomainTweenDuration }),
+    motion: buildAreaMotionFn({ effectiveYDomainTweenDuration: params.effectiveYDomainTweenDuration, yDomainTweenGateActive: isChartInteractionPhase(params.chartPhase) && params.isLoaded && params.yDomainChanged }),
     // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.
     scales: {
       x: xScaleOptions,

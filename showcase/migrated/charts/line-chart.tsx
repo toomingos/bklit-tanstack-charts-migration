@@ -11,7 +11,7 @@ import { useEffectEvent } from "./internal/use-effect-event";
 import type { ScaleTime } from "d3-scale";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, adoptHostWidth, useRegistryEntriesState } from "./internal/chart-host";
-import { chartMotionRenderer } from "./internal/motion-renderer";
+import { useChartRenderer } from "./internal/motion-renderer";
 import {
   decimateTimeSeries,
   maxRenderPointsForWidth,
@@ -386,7 +386,7 @@ export const LineChart = ({
     xScaleD3Ref,
     yDomainFinal,
   });
-  const lineChartRenderer = chartMotionRenderer<ChartDatum, Date, number>();
+  const lineChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
   // Seam resources carry the mount prefix; marks reference them as url(#id).
   const profitLossDefs = useMemo(
