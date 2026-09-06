@@ -360,7 +360,7 @@ const renderPatternSwatch = (swatch: Readonly<PatternSwatchArgs>): ReactElement 
       <svg aria-hidden="true" viewBox={`0 0 ${swatch.cellSize} ${swatch.cellSize}`} style={SWATCH_SVG_STYLE}>
         {patternNode}
         <rect
-          fill={patternNode !== undefined && patternNode !== null ? `url(#${patternId})` : swatch.style.color}
+          fill={patternNode !== undefined && patternNode !== null ? `url(#${patternId}-base)` : swatch.style.color}
           height={swatch.cellSize}
           rx={swatch.cornerRadius}
           ry={swatch.cornerRadius}

@@ -375,8 +375,8 @@ const filterHeatmapColumns = (columns: HeatmapColumn[], xDomain?: [Date, Date]):
 }
 
 interface HeatmapDisplayRange {
-  readonly start: Readonly<Date> | undefined;
-  readonly end: Readonly<Date> | undefined;
+  readonly start: Readonly<Date> | null;
+  readonly end: Readonly<Date> | null;
 }
 
 /**
@@ -450,14 +450,14 @@ const resolveInferredHeatmapDisplayRange = (inferredStart: Readonly<Date> | unde
   if (inferredStart && extentEnd.getTime() >= today.getTime()) {
     return { end: today, start: inferredStart };
   }
-  return { end: undefined, start: undefined };
+  return { end: null, start: null };
 }
 
 const resolveHeatmapDisplayRange = (columns: HeatmapColumn[]): HeatmapDisplayRange => {
-  if (columns.length === 0) {return { end: undefined, start: undefined };}
+  if (columns.length === 0) {return { end: null, start: null };}
 
   const base = readHeatmapDisplayGridBase(columns);
-  if (!base) {return { end: undefined, start: undefined };}
+  if (!base) {return { end: null, start: null };}
 
   const inferredStart = inferHeatmapCalendarRangeStart(columns);
   return resolveInferredHeatmapDisplayRange(inferredStart ?? undefined, base.extent[1], base.today);

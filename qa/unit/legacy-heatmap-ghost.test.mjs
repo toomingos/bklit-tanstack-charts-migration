@@ -39,15 +39,67 @@ describe('heatmap ghost cells', () => {
     assert.equal(isHeatmapGhostBin({ bin: 0, count: 0, date: new Date(2026, 0, 10) }, range), false);
   });
 
-  test.todo(
-    'legacy/heatmap-ghost: infers GitHub-style display range for default year grids (missing export: resolveHeatmapDisplayRange) — fails: migrated returns {start:undefined,end:undefined}, expected Date bounds Fri Aug 01 2025/today',
-  );
-  test.todo(
-    'legacy/heatmap-ghost: infers GitHub-style display range for six-month grids (missing export: resolveHeatmapDisplayRange) — fails: migrated returns {start:undefined,end:undefined}, expected Date bounds rangeStart/today',
-  );
-  test.todo(
-    'legacy/heatmap-ghost: returns null bounds for non-year custom grids (missing export: resolveHeatmapDisplayRange) — fails: migrated returns {start:undefined,end:undefined}, expected {start:null,end:null}',
-  );
+  it('legacy/heatmap-ghost: infers GitHub-style display range for default year grids', () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const { startDate, weekCount, rangeStart } = resolveHeatmapWeekRange(today);
+    const columns = buildYearGridColumns(
+      startDate,
+      weekCount,
+      today,
+      rangeStart,
+    );
+    const displayRange = resolveHeatmapDisplayRange(columns);
+
+    assert.equal(displayRange.start?.toDateString(), rangeStart.toDateString());
+    assert.equal(displayRange.end?.toDateString(), today.toDateString());
+  });
+
+  // D555 ACCEPT (D579): host-timezone-sensitive legacy test, kept verbatim and
+  // left todo. `getHeatmapWeekCount` divides by a fixed MS_PER_WEEK, so a span
+  // crossing a spring-forward transition is an hour short and `Math.floor` drops
+  // a whole week: the six-month grid then ends the Saturday before today's week
+  // and the extent gate in `resolveInferredHeatmapDisplayRange` correctly returns
+  // null bounds. Verified identical in legacy (heatmap/heatmap-utils.ts:41-46), so
+  // legacy's own test fails in the same timezones (Europe/Lisbon, America/New_York
+  // give weekCount 27; UTC and Asia/Tokyo give 28 and pass). Parity is preserved by
+  // reproducing the arithmetic, not by reshaping the grid the test feeds in.
+  test.todo('legacy/heatmap-ghost: infers GitHub-style display range for six-month grids', () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const rangeStart = getHeatmapCalendarRangeStart(today, HEATMAP_MONTHS_SIX);
+    const startDate = getHeatmapWeekStartAlignedToRange(rangeStart);
+    const weekCount = getHeatmapWeekCount(startDate, today);
+    const columns = buildYearGridColumns(
+      startDate,
+      weekCount,
+      today,
+      rangeStart,
+    );
+    const displayRange = resolveHeatmapDisplayRange(columns);
+
+    assert.equal(displayRange.start?.toDateString(), rangeStart.toDateString());
+    assert.equal(displayRange.end?.toDateString(), today.toDateString());
+  });
+
+  it('legacy/heatmap-ghost: returns null bounds for non-year custom grids', () => {
+    const columns = [
+      {
+        bin: 0,
+        bins: [
+          { bin: 0, count: 1, date: new Date(2024, 0, 1) },
+          { bin: 1, count: 2, date: new Date(2024, 0, 2) },
+        ],
+      },
+    ];
+
+    assert.deepEqual(resolveHeatmapDisplayRange(columns), {
+      start: null,
+      end: null,
+    });
+  });
 });
 
 function buildYearGridColumns(startDate, weekCount, today, rangeStart) {

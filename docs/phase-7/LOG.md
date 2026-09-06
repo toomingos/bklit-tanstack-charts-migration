@@ -256,3 +256,39 @@ finding: the stylesheet is not split per family, so every chart pays for
 all of them.
 
 Landed `c58df20`. V5.1 is merged; V5.2 stays open on the re-measure.
+
+## D579 — heatmap six-month display range is host-timezone-sensitive in legacy (G29 follow-up)
+
+`getHeatmapWeekCount(startSunday, endDate)` divides an absolute ms difference by a
+fixed `MS_PER_WEEK`. Any span crossing a spring-forward transition is one hour
+short, so `Math.floor` drops a whole week. For the six-month grid the effect is
+year-round in a DST timezone: the grid ends the Saturday *before* today's week,
+`resolveInferredHeatmapDisplayRange`'s `extentEnd >= today` gate does not hold and
+the range correctly resolves to `{start: null, end: null}`.
+
+Measured 2026-09-06 for `today = Sun Sep 06 2026`, six-month window from
+`Sun Mar 01 2026`:
+
+| TZ | weekCount | gridEnd | reaches today |
+|---|---|---|---|
+| UTC | 28 | Sat Sep 12 2026 | yes |
+| Asia/Tokyo | 28 | Sat Sep 12 2026 | yes |
+| Europe/Lisbon | 27 | Sat Sep 05 2026 | no |
+| America/New_York | 27 | Sat Sep 05 2026 | no |
+
+Verified identical in legacy `repos/bklit-ui/packages/ui/src/charts/heatmap/heatmap-utils.ts:41-46`
+(`endSunday = getHeatmapWeekStartSunday(endDate); Math.floor((endSunday - startSunday) / MS_PER_WEEK) + 1`),
+so legacy's own `heatmap-ghost.test.ts:90` fails in the same timezones. **Parity is
+preserved by reproducing the arithmetic**, so under principle 1 this is not a
+migration defect and under principle 2 it is not fixed here — a divergent (correct)
+week count would render a column legacy does not render.
+
+Ruling: **ACCEPT** under D555 (stale/date-sensitive legacy tests). The six-month
+case in `qa/unit/legacy-heatmap-ghost.test.mjs` stays `test.todo` with the legacy
+body verbatim. The executor's first pass added a top-up loop that grew `weekCount`
+until the grid reached today; that made the suite green by reshaping the input
+rather than by matching legacy, and was removed. The year-grid case is unaffected —
+`resolveHeatmapWeekRange` takes the weeks-based branch (`heatmap-utils.ts:135-137`)
+which never calls the DST-sensitive count — and stays enabled.
+
+Net: `pnpm test` 240 tests, pass 182, fail 0, todo 58 (baseline 240/180/0/60).
