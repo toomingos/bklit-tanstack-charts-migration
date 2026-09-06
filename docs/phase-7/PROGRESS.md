@@ -73,8 +73,8 @@ Batch-end audits (`--agent audit`, `08` §6 counts + idiom rows for touched fami
 | 7.4b | G31 reveal-shell unwind, QA-gated | merged · QA 43/43, 190 cells, gateFail 0, 2 ruled FAIL, 0 unruled | `7b113a9` (333+/700-, 7 modules) | D563, D574, D575 |
 | 7.5 | QA matrix vs V0.3 baseline | todo | | |
 | 7.5 | bench, no regression; V4.5 explained columns | todo | | |
-| V5.1 | bundle column ≤ 1.10, CSS column | todo | | |
-| V5.2 | bundle measured after V1.4/V3 | todo | | |
+| V5.1 | bundle column ≤ 1.10, CSS column | merged | `c58df20` | D577 · parity column + CSS column + checks-stage regex fix; reads 21/43 over, worst `arealoading` 1.408; CSS report-only (migrated 2087 B vs bklit 0, not comparable) |
+| V5.2 | bundle measured after V1.4/V3 | todo | | D577 · blocked on a re-measure: `bundle-sizes.json` is from Sep 5, pre-V3.9, so `barloading` reads an impossible 2.4 kB. Overshoot is one cartesian import chain (1.23–1.29, ~31–39 kB), non-cartesian already ≤ 1.03 |
 | V5.3 | `internal/` shape (after 7.4) | ruled against (D574): 407 files, ~180 single-family vs ~227 cross-cutting, so family dirs home under half the tree and move neither claim | — | D574 |
 | V5.4 | lint 0, D472 threshold work if kept | merged | `b2d6f3b` | D576 · oxlint 0/0; `LINT_FLOOR` 4 -> 0; D472 threshold work not needed (the gate went with V3.5) |
 | 7.5 | census 0, `08` §6 grep counts re-run from a fresh clone | todo | | |

@@ -208,3 +208,51 @@ more than it buys: `typeof window !== "undefined"` trips `anti-slop/no-runtime-t
 
 Floor at this commit: tsc 0, oxlint **0**, tests 240/180/0/60, orphans 0, reach-in 21 over 12
 files with no failures. `research/phase-7/12-census.md` §lint updated to read 0.
+
+## D577 — V5.1: the bundle gate gets its second column, and it reads red
+
+The bundle stage only ever compared `migrated/<cell>` against a *pin* of
+itself (`bench/results/bundle-gate.json`, 3% tolerance), so it could only
+catch self-regression. `08-synthesis.md:130` asks for a second, independent
+column: `migrated/<cell>` against the `bklit/<cell>` control at a hard
+ratio of ≤ 1.10, no allowances. That column now exists and the stage exits
+non-zero when any cell is over.
+
+**It reads 21 of 43 cells over, worst `arealoading` 1.408.** That is the
+honest first measurement, not a regression: the column had never been
+computed before. The failures are not 21 independent problems — they are
+one shape. Every cartesian cell sits at 1.23–1.29 with a near-constant
+31–39 kB absolute delta (`line` 166.4 vs 133.1, `area` 164.1 vs 133.3,
+`projection` 169.4 vs 135.4, `markers` 177.6 vs 141.9). The non-cartesian
+families are already under: `sankey` 1.033, `choropleth` 0.996,
+`radar` 0.969, `pie` 0.952, `heatmap` 0.854. So one shared cartesian import
+chain carries the whole overshoot, which is what V5.2 has to find.
+
+For scale: `tanstack/line` is 84.6 kB against `migrated/line` 166.4 kB, so
+the ~82 kB above the raw package is the parity layer, not the package.
+
+**Two defects found in the gate itself while doing this.**
+
+1. `run-checks.mjs:110` summarised `scripts/bundle-gate.mjs` with
+   `/^ok /gm` and `/^FAIL /gm`, but that script indents its lines
+   (`"  ok    migrated/line ..."`). The checks stage has therefore been
+   reporting `{"ok":0,"fail":0}` — reading as "nothing measured" — while
+   all 43 pins were in fact passing. Now reads 43/0.
+2. `bench/results/bundle-sizes.json` is stale: measured Sep 5 13:15,
+   before V3.9's loading sweep landed on Sep 6. It is why
+   `migrated/barloading` reads 2.4 kB gzip against bklit's 68.4 kB — a
+   number that cannot contain a chart host, and which flatters us rather
+   than warning us. The ratios above are directionally right but **V5.2
+   may not be judged until the table is re-measured at the final HEAD.**
+
+**CSS column** (`bench/measure-css.mjs` → `bench/results/css-sizes.json`):
+report-only, and it must stay that way. Every migrated cell ships exactly
+2087 B gzip and every bklit and tanstack cell ships 0, because legacy
+styles its charts with Tailwind utility classes resolved in the host
+application's global stylesheet while the migrated tree imports its own
+`styles.css`. The two sides are not measuring the same thing, so a ratio
+would be meaningless. The constant 2087 across all 43 cells is itself a
+finding: the stylesheet is not split per family, so every chart pays for
+all of them.
+
+Landed `c58df20`. V5.1 is merged; V5.2 stays open on the re-measure.
