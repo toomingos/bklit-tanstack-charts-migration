@@ -60,6 +60,7 @@ import {
 import { useLineLayerInputs } from "./internal/use-line-layer-inputs";
 import { useLineYDomains } from "./internal/use-line-y-domains";
 import { useLineChartSpec } from "./internal/use-line-chart-spec";
+import { resolveColumnWidth } from "./internal/column-width";
 import { useLineFocusChrome } from "./internal/use-line-focus-chrome";
 import { useLineReveal } from "./internal/use-line-reveal";
 import { useLineOverlays } from "./internal/use-line-overlays";
@@ -81,7 +82,6 @@ export interface LineChartProps {
   readonly yDomainTween?: boolean;
   readonly yDomainTweenDuration?: number;
   readonly xDomain?: [Date, Date];
-  /** Accepted but inert (no columnWidth consumer here); kept for bklit API parity. */
   readonly xDomainSlotCount?: number;
   readonly tweenYDomainOnXDomainChange?: boolean;
   /** Overrides the clip-reveal timing; springs coerce to tweens (bklit animation.ts:18). */
@@ -108,7 +108,7 @@ export const LineChart = ({
   yDomainTween = true,
   yDomainTweenDuration: _yDomainTweenDuration = DEFAULT_Y_DOMAIN_TWEEN_MS,
   xDomain,
-  xDomainSlotCount: _xDomainSlotCount,
+  xDomainSlotCount,
   tweenYDomainOnXDomainChange = false,
   enterTransition,
   revealSignature = "",
@@ -223,6 +223,10 @@ export const LineChart = ({
     yDomainFinal,
   } = useLineYDomains({ data, lines, projectionConfigs, status, xDataKey, xDomain });
 
+  // Indicator slot width follows the shell formula; brush selections keep full-dataset slots.
+  const columnWidth = resolveColumnWidth({ dataLength: visibleData.length, plotWidth: innerWidth, xDomain, xDomainSlotCount });
+  const tooltipWithColumnWidth = useMemo(() => (tooltip ? { ...tooltip, columnWidth } : tooltip), [tooltip, columnWidth]);
+
   const isLoading = status === "loading";
   const { definition } = useLineChartSpec({
     brushControls,
@@ -250,7 +254,7 @@ export const LineChart = ({
     renderData,
     timeExtent,
     timeExtentRaw,
-    tooltip,
+    tooltip: tooltipWithColumnWidth,
     tooltipEnabled,
     visibleData,
     width,

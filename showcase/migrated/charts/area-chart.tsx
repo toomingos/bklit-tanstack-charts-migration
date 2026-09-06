@@ -23,6 +23,7 @@ import { runRevealWipe, snapRevealWipe } from "./internal/reveal-wipe";
 import type { RevealWipeEpochRef } from "./internal/reveal-wipe";
 import { useAreaOverlays } from "./internal/use-area-overlays";
 import { buildAreaChartDefinition } from "./internal/area-chart-definition";
+import { resolveColumnWidth } from "./internal/column-width";
 import { useAreaFocus } from "./internal/use-area-focus";
 import { useAreaSelection } from "./internal/use-area-selection";
 import { useAreaLayerProps } from "./internal/use-area-layer-props";
@@ -60,7 +61,6 @@ interface AreaChartProps {
   readonly yDomainTween?: boolean;
   readonly yDomainTweenDuration?: number;
   readonly xDomain?: [Date, Date];
-  /** Accepted but inert (no columnWidth consumer here); kept for bklit API parity. */
   readonly xDomainSlotCount?: number;
   readonly tweenYDomainOnXDomainChange?: boolean;
   /** Overrides the clip-reveal timing; springs coerce to tweens. */
@@ -87,7 +87,7 @@ const AreaChart = ({
   yDomainTween = true,
   yDomainTweenDuration: _yDomainTweenDuration = DEFAULT_Y_DOMAIN_TWEEN_MS,
   xDomain,
-  xDomainSlotCount: _xDomainSlotCount,
+  xDomainSlotCount,
   tweenYDomainOnXDomainChange = false,
   enterTransition,
   revealSignature = "",
@@ -134,6 +134,9 @@ const AreaChart = ({
     xDataKey,
     xDomain,
   });
+  // Indicator slot width follows the shell formula; brush selections keep full-dataset slots.
+  const columnWidth = resolveColumnWidth({ dataLength: yDomain.visibleData.length, plotWidth: setup.innerWidth, xDomain, xDomainSlotCount });
+  const tooltipWithColumnWidth = useMemo(() => (setup.tooltip ? { ...setup.tooltip, columnWidth } : setup.tooltip), [setup.tooltip, columnWidth]);
   const brushContribution = registryEntries.find((entry) => entry.role === "layer:brush")?.contribution?.brush;
   const brushConfig = brushContribution?.config;
   const brushControls = brushContribution?.controls ?? NO_BRUSH_CONTROLS;
@@ -191,7 +194,7 @@ const AreaChart = ({
     resolvedPatternAreas: series.resolvedPatternAreas,
     timeExtent: fills.timeExtent,
     timeExtentRaw: fills.timeExtentRaw,
-    tooltip: setup.tooltip,
+    tooltip: tooltipWithColumnWidth,
     tooltipEnabled: setup.tooltipEnabled,
     visibleData: yDomain.visibleData,
     width: setup.width,
@@ -203,7 +206,7 @@ const AreaChart = ({
     yAxis: setup.yAxis,
     yDomainChanged: yDomain.yDomainChanged,
     yDomainFinal: yDomain.yDomainFinal,
-  }), [series.renderData, xDataKey, yDomain.xAccessorForBrush, series.resolvedAreas, series.resolvedPatternAreas, series.patternIdByKey, fills.gradientIdBySeries, setup.grid, setup.width, yDomain.yDomainFinal, yDomain.yDomainChanged, yDomain.projectorFor, setup.margin, isLoading, setup.chartPhase, setup.isLoaded, setup.projectionConfigs, setup.projectionLines, setup.projectionGradientBaseId, setup.heightPx, fills.timeExtent, fills.timeExtentRaw, setup.effectiveYDomainTweenDuration, series.areaMarkerConfigs, series.areaMarkerGradientIdByKey, fills.nativeAreaGradients, setup.legendHoveredIndex, setup.areas, setup.tooltip, setup.tooltipEnabled, series.crosshairGradientId, series.isDiscrete, series.hoveredIndex, setup.xAxis, setup.yAxis, yDomain.visibleData, xDomain, series.labelFade, brush.brushControls, xScaleD3Ref]);
+  }), [series.renderData, xDataKey, yDomain.xAccessorForBrush, series.resolvedAreas, series.resolvedPatternAreas, series.patternIdByKey, fills.gradientIdBySeries, setup.grid, setup.width, yDomain.yDomainFinal, yDomain.yDomainChanged, yDomain.projectorFor, setup.margin, isLoading, setup.chartPhase, setup.isLoaded, setup.projectionConfigs, setup.projectionLines, setup.projectionGradientBaseId, setup.heightPx, fills.timeExtent, fills.timeExtentRaw, setup.effectiveYDomainTweenDuration, series.areaMarkerConfigs, series.areaMarkerGradientIdByKey, fills.nativeAreaGradients, setup.legendHoveredIndex, setup.areas, tooltipWithColumnWidth, setup.tooltipEnabled, series.crosshairGradientId, series.isDiscrete, series.hoveredIndex, setup.xAxis, setup.yAxis, yDomain.visibleData, xDomain, series.labelFade, brush.brushControls, xScaleD3Ref]);
   const focus = useAreaFocus({
     chartPhase: setup.chartPhase,
     interactionRef: setup.interactionRef,
