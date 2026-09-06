@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Bundle-size gate: pinned gzip in bundle-gate.json vs bench/results/bundle-sizes.json; fails past pin * (1 + tolerancePct/100).
 // Lower pins freely; raising one needs a D-entry. Usage: node scripts/bundle-gate.mjs [--sizes <path>] [--gate <path>]
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +28,7 @@ for (const [scenario, pin] of Object.entries(gate.scenarios ?? {})) {
   rows.push(`  ${ok ? "ok  " : "FAIL"}  ${scenario.padEnd(24)} gzip ${kb(cur.gzip)}  pin ${kb(pin.gzip)}  limit ${kb(limit)}  ${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%`);
 }
 console.log(`[bundle-gate] ${Object.keys(gate.scenarios ?? {}).length} pinned scenario(s), tolerance +${gate.tolerancePct ?? 0}%`);
+console.log(`[bundle-gate] sizes ${path.relative(ROOT, sizesPath)} mtime ${statSync(sizesPath).mtime.toISOString()} (working file rewritten by the bundle stage — a standalone read may be stale; the gate's authoritative verdict is the bundle stage)`);
 for (const r of rows) console.log(r);
 console.log(failed ? `[bundle-gate] FAILED (${failed})` : "[bundle-gate] OK");
 process.exit(failed ? 1 : 0);

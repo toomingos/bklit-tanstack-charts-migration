@@ -35,7 +35,11 @@ export async function runAll(opts = {}) {
   // Hold the shared QA lock from the checks build through QA + probes so no concurrent run rebuilds dist underneath.
   const releaseLock = await acquireQaLock(TAG);
   // Checks first: its build step produces bench/app/dist, so later stages skip their rebuild (built once).
-  if (!opts.skipChecks) await stage("checks", () => runChecks({ runDir }));
+  // D585: the checks stage must not report a bundle verdict inside run-all — bundle-sizes.json is a
+  // working file the bundle stage rewrites later, so any checks-time read is the previous run's
+  // leftovers. Skip it here; the bundle stage's bundle.json is the single authoritative verdict.
+  // Standalone `pnpm gate:checks` still runs it (labelled possibly-stale by bundle-gate.mjs).
+  if (!opts.skipChecks) await stage("checks", () => runChecks({ runDir, skip: "bundle-gate" }));
   const benchCells = opts.bench ?? "paired";
   const benchFn = () => runBenchGate({ cells: benchCells, runDir, noBuild: true });
   let benchPromise = null;

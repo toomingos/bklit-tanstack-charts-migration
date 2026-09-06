@@ -107,6 +107,9 @@ export async function runChecks(opts = {}) {
     }
     writeJson(path.join(runDir, "census.json"), { generatedAt: new Date().toISOString(), exit: census.code, ledger: "scripts/reach-in-ledger.json", ...json });
   }
+  // D585: standalone `pnpm gate:checks` keeps this step (bundle-gate.mjs labels the sizes
+  // file's mtime as possibly stale); run-all skips it via skip:"bundle-gate" so the gate
+  // reports exactly one bundle verdict — the bundle stage's, against fresh measurements.
   await add("bundle-gate", "node", ["scripts/bundle-gate.mjs"], ROOT, (s) => ({ ok: (s.match(/^\s*ok /gm) ?? []).length, fail: (s.match(/^\s*FAIL /gm) ?? []).length }));
   return finish();
 }
