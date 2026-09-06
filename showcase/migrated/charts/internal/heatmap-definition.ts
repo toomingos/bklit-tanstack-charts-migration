@@ -210,6 +210,11 @@ interface HeatmapCellMotionParams {
   readonly revealEpoch: number;
 }
 
+const BEZIER_EASE_POINT_COUNT = 4;
+
+const isBezierEaseTuple = (ease: unknown): ease is readonly [number, number, number, number] =>
+  Array.isArray(ease) && ease.length === BEZIER_EASE_POINT_COUNT && ease.every((point) => Number.isFinite(point));
+
 const useHeatmapCellMotion = ({
   animateCells,
   animationDuration,
@@ -221,7 +226,8 @@ const useHeatmapCellMotion = ({
     if (!animateCells || animationDuration <= 0) {return false;}
     const fadeDurationSec = resolveHeatmapEnterFadeDurationSec(enterTransition, animationDuration);
     const durMs = fadeDurationSec * MS_PER_SECOND;
-    const easingFn = solveCubicBezierEasing(enterTransition?.ease ?? HEATMAP_DEFAULT_ENTER_EASE);
+    const { ease } = enterTransition ?? {};
+    const easingFn = solveCubicBezierEasing(isBezierEaseTuple(ease) ? ease : HEATMAP_DEFAULT_ENTER_EASE);
     return createHeatmapCellMotionFn({ animationDuration, durMs, easingFn, enterStaggerScale, fadeDurationSec, revealEpoch });
   }, [animateCells, animationDuration, enterTransition, enterStaggerScale, revealEpoch]);
 
@@ -253,7 +259,7 @@ const buildHeatmapXTickValues = (columns: readonly HeatmapColumn[]): string[] =>
   let lastMonthKey = "";
   for (const [columnIndex, column] of columns.entries()) {
     const anchor = getHeatmapColumnMonthAnchor(column);
-    if (anchor !== undefined) {
+    if (anchor !== null) {
       const monthKey = `${anchor.getFullYear()}-${anchor.getMonth()}`;
       if (monthKey !== lastMonthKey) {
         lastMonthKey = monthKey;
@@ -269,7 +275,7 @@ const buildHeatmapXTickFormat = (columns: readonly HeatmapColumn[]): ((value: st
   let lastMonthKey = "";
   for (const [columnIndex, column] of columns.entries()) {
     const anchor = getHeatmapColumnMonthAnchor(column);
-    if (anchor !== undefined) {
+    if (anchor !== null) {
       const monthKey = `${anchor.getFullYear()}-${anchor.getMonth()}`;
       if (monthKey !== lastMonthKey) {
         lastMonthKey = monthKey;

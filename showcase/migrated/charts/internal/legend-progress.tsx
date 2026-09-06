@@ -16,13 +16,13 @@ const LegendProgress = ({
   trackClassName = "",
   indicatorClassName = "",
   height = "h-1.5",
-}: Readonly<LegendProgressProps>): ReactElement | undefined => {
+}: Readonly<LegendProgressProps>): ReactElement | null => {
   const { item } = useLegendItem();
 
   const indicatorStyle = useMemo((): CSSProperties => ({ backgroundColor: item.color }), [item.color]);
 
   if ((item.maxValue ?? 0) === 0) {
-    return undefined;
+    return null;
   }
 
   return (

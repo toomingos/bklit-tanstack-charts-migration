@@ -1,5 +1,5 @@
-import { useLayoutEffect } from "react";
-import type { CSSProperties, ReactElement } from "react";
+import { memo, useLayoutEffect } from "react";
+import type { CSSProperties, NamedExoticComponent, ReactElement } from "react";
 import type { HeatmapHoverCoordinator } from "./heatmap-context";
 import { useHeatmapCoordinatorOptional } from "./heatmap-context";
 import { formatHeatmapContributionLabel } from "./heatmap-utils";
@@ -72,7 +72,7 @@ interface HeatmapTooltipProps {
 }
 
 // Publishes config for HeatmapCells' native tooltip; no sibling keeps it disabled (opt-in preserved).
-const HeatmapTooltip = ({
+const RenderHeatmapTooltip = ({
   formatLabel = formatHeatmapContributionLabel,
   className = "",
   panelStyle,
@@ -80,7 +80,7 @@ const HeatmapTooltip = ({
   // The deprecated `instant` prop is deliberately not destructured: it is a no-op kept for call-site compatibility.
   showDelay = DEFAULT_TOOLTIP_SHOW_DELAY_MS,
   hideDelay = DEFAULT_TOOLTIP_HIDE_DELAY_MS,
-}: Readonly<HeatmapTooltipProps>): ReactElement | undefined => {
+}: Readonly<HeatmapTooltipProps>): ReactElement | null => {
   const coordinator = useHeatmapCoordinatorOptional();
 
   useLayoutEffect(() => {
@@ -102,8 +102,12 @@ const HeatmapTooltip = ({
     };
   }, [coordinator, formatLabel, className, panelStyle, backgroundColor, showDelay, hideDelay]);
 
-  return undefined;
+  return null;
 };
+
+const HeatmapTooltip: NamedExoticComponent<Readonly<HeatmapTooltipProps>> = memo(RenderHeatmapTooltip);
+
+HeatmapTooltip.displayName = "HeatmapTooltip";
 
 export { getHeatmapTooltipConfig, HeatmapTooltip, setHeatmapTooltipConfig, subscribeHeatmapTooltipConfig };
 export type { HeatmapTooltipConfig, HeatmapTooltipProps };

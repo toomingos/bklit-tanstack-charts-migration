@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useSunburstStable } from "./sunburst-context";
 import { nodeId } from "./sunburst-rows";
 import type { SunburstNode } from "./sunburst-types";
 
@@ -53,7 +54,17 @@ const buildSunburstBreadcrumbItems = (data: ReadonlySunburstBreadcrumbNode, focu
   }));
 }
 
-const useSunburstBreadcrumbItems = (data: ReadonlySunburstBreadcrumbNode, focusId?: string): SunburstBreadcrumbItem[] => useMemo(() => buildSunburstBreadcrumbItems(data, focusId), [data, focusId]);
+interface SunburstBreadcrumbItems {
+  readonly items: SunburstBreadcrumbItem[];
+  readonly zoomTo: (nextId: string) => void;
+}
+
+// Legacy hook (sunburst-breadcrumb.tsx:13): context-fed, returns the trail plus the chart's zoomTo.
+const useSunburstBreadcrumbItems = (): SunburstBreadcrumbItems => {
+  const { data, focus, zoomTo } = useSunburstStable();
+  const items = useMemo(() => buildSunburstBreadcrumbItems(data, focus.id), [data, focus.id]);
+  return { items, zoomTo };
+};
 
 export { buildSunburstBreadcrumbItems, useSunburstBreadcrumbItems };
 export type { SunburstBreadcrumbItem };

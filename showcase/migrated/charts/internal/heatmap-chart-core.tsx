@@ -11,7 +11,7 @@ import {
   useHeatmapChartLifecycle,
 } from "./heatmap-lifecycle";
 import type { HeatmapEnterTransition } from "./heatmap-lifecycle";
-import type { HeatmapColumn, HeatmapColumnSeparatorsConfig, HeatmapWeekStartDay, HeatmapYAxisLabelFormat, HeatmapYAxisTickFilter } from "./heatmap-utils";
+import type { HeatmapColumn, HeatmapColumnSeparatorsConfig, HeatmapSeparatorParsedConfig, HeatmapWeekStartDay, HeatmapYAxisLabelFormat, HeatmapYAxisTickFilter } from "./heatmap-utils";
 import {
   filterHeatmapColumns,
   normalizeHeatmapSeparatorConfig,
@@ -50,7 +50,7 @@ interface HeatmapChartProps {
   readonly margin?: Readonly<Partial<HeatmapMargin>>;
   readonly binSize?: number;
   readonly gap?: number;
-  readonly colorScale?: (count: number) => string;
+  readonly colorScale?: (count: number | null | undefined) => string;
   readonly levelColors?: HeatmapLevelColors;
   readonly levelStyles?: HeatmapLevelStyles;
   readonly aspectRatio?: string;
@@ -66,7 +66,7 @@ interface HeatmapChartProps {
   readonly showLoadingCells?: boolean;
   readonly loadingCellMaxOpacity?: number;
   readonly loadingCellRandomness?: number;
-  readonly columnSeparators?: Readonly<HeatmapColumnSeparatorsConfig>;
+  readonly columnSeparators?: HeatmapSeparatorParsedConfig;
   readonly weekStartDay?: HeatmapWeekStartDay;
   readonly children: ReactNode;
   readonly ariaLabel?: string;
@@ -172,7 +172,7 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
   }), [marginProp]);
 
   const separatorConfig = useMemo(
-    () => columnSeparators ?? resolveHeatmapSeparatorConfigFromChildren(children),
+    () => columnSeparators ?? normalizeHeatmapSeparatorConfig(resolveHeatmapSeparatorConfigFromChildren(children)) ?? undefined,
     [columnSeparators, children],
   );
   const yAxisConfig = useMemo(() => resolveHeatmapYAxisConfigFromChildren(children), [children]);
@@ -335,6 +335,8 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
   );
 };
 
+HeatmapChart.displayName = "HeatmapChart";
+
 // Skeleton rows mirror the target columns with zeroed counts.
 const generateHeatmapSkeletonFromTarget = (target: readonly Readonly<HeatmapColumn>[]): HeatmapColumn[] =>
   target.map((column: Readonly<HeatmapColumn>) => ({
@@ -343,8 +345,8 @@ const generateHeatmapSkeletonFromTarget = (target: readonly Readonly<HeatmapColu
   }));
 
 interface HeatmapChartLoadingProps {
-  readonly data: readonly Readonly<HeatmapColumn>[];
-  readonly xDomain?: readonly [Readonly<Date>, Readonly<Date>];
+  readonly data: HeatmapColumn[];
+  readonly xDomain?: [Date, Date];
   readonly margin?: Readonly<Partial<HeatmapMargin>>;
   readonly gap?: number;
   readonly cornerRadius?: number;

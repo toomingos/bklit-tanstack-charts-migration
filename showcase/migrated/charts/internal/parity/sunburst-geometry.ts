@@ -5,7 +5,7 @@ interface SunburstNode {
   readonly value?: number;
   readonly color?: string;
   readonly fill?: string;
-  readonly children?: readonly SunburstNode[];
+  children?: SunburstNode[];
 }
 
 interface ArcDatum {
@@ -45,15 +45,10 @@ const TOP = -Math.PI / 2;
 const TWO_PI = 2 * Math.PI;
 const ID_SEP = " / ";
 
-// Deep-readonly mirror of SunburstNode: readers only, but upstream keeps mutable `children`.
-type ReadonlySunburstNode = Readonly<Omit<SunburstNode, "children">> & {
-  readonly children?: readonly ReadonlySunburstNode[];
-};
-
 const nodeId = (parentId: string | null, name: string): string =>
   parentId !== null && parentId.length > 0 ? `${parentId}${ID_SEP}${name}` : name;
 
-const sumValues = (node: ReadonlySunburstNode): number => {
+const sumValues = (node: SunburstNode): number => {
   if ((node.children?.length ?? 0) > 0) {
     return (node.children ?? []).reduce((sum, child) => sum + sumValues(child), 0);
   }
@@ -71,7 +66,7 @@ interface BuildContext {
 const toRadians = (normalized: number): number => TOP + normalized * TWO_PI;
 
 interface LayoutFrame {
-  readonly node: ReadonlySunburstNode;
+  readonly node: SunburstNode;
   readonly id: string;
   readonly depth: number;
   readonly a0: number;
@@ -163,7 +158,7 @@ interface SunburstLayout {
   readonly total: number;
 }
 
-const buildArcs = (data: ReadonlySunburstNode): SunburstLayout => {
+const buildArcs = (data: SunburstNode): SunburstLayout => {
   const rootId = data.name;
   const ctx: BuildContext = { arcIndex: 0, arcs: [], focusById: new Map(), maxDepth: 0, rootId };
 
@@ -314,7 +309,6 @@ const RING_INDEX_BASE = 1;
 const CENTROID_DIVISOR = 2;
 const CLOCKWISE_ORIGIN = 0;
 
-type ReadonlyArcDatum = Readonly<Omit<ArcDatum, "trail">> & { readonly trail: readonly string[] };
 
 interface RingOptions {
   readonly centerR: number;
@@ -338,8 +332,8 @@ const ringOptions = (focusDepth: number, maxDepth: number, radius: number): Ring
 };
 
 const geometryFor = (
-  arc: ReadonlyArcDatum,
-  focus: Readonly<Focus>,
+  arc: ArcDatum,
+  focus: Focus,
   maxDepth: number,
   radius: number,
 ): ArcGeometry | null => {
@@ -380,19 +374,16 @@ const clockwiseFraction = (angle: number): number => {
   return normalized / TWO_PI;
 };
 
-interface TransitionGeometryOptions {
-  readonly arc: ReadonlyArcDatum;
-  readonly fromFocus: Readonly<Focus>;
-  readonly toFocus: Readonly<Focus>;
-  readonly maxDepth: number;
-  readonly radius: number;
-  readonly progress: number;
-}
-
+// Legacy positional signature (sunburst.ts:267): six parameters is the legacy call shape.
+// eslint-disable-next-line max-params
 const transitionGeometry = (
-  options: Readonly<TransitionGeometryOptions>,
+  arc: ArcDatum,
+  fromFocus: Focus,
+  toFocus: Focus,
+  maxDepth: number,
+  radius: number,
+  progress: number,
 ): ArcGeometry | null => {
-  const { arc, fromFocus, maxDepth, progress, radius, toFocus } = options;
   const from = geometryFor(arc, fromFocus, maxDepth, radius);
   const to = geometryFor(arc, toFocus, maxDepth, radius);
 
@@ -424,4 +415,4 @@ export {
   toRadians,
   transitionGeometry,
 };
-export type { ArcDatum, ArcGeometry, Focus, SunburstLayout, SunburstNode, TransitionGeometryOptions };
+export type { ArcDatum, ArcGeometry, Focus, SunburstLayout, SunburstNode };

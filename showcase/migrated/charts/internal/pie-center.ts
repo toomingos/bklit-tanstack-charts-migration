@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import type { PieEnterTransition } from "./enter-transition";
 import type { CenterStatFormat } from './center-stat';
 
@@ -20,7 +20,7 @@ interface PieArcData {
 
 interface PieStableValue {
   readonly data: PieData[];
-  readonly arcs: readonly PieArcData[];
+  readonly arcs: PieArcData[];
   readonly size: number;
   readonly center: number;
   readonly outerRadius: number;
@@ -28,8 +28,11 @@ interface PieStableValue {
   readonly padAngle: number;
   readonly cornerRadius: number;
   readonly hoverOffset: number;
+  readonly animationKey: number;
+  readonly isLoaded: boolean;
   readonly enterTransition?: PieEnterTransition;
   readonly enterStaggerScale: number;
+  readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly totalValue: number;
   readonly getColor: (index: number) => string;
   readonly getFill: (index: number) => string;

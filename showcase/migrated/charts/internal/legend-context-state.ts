@@ -18,7 +18,7 @@ interface LegendItemData {
 }
 
 interface LegendContextValue {
-  readonly items: readonly LegendItemData[];
+  readonly items: LegendItemData[];
   readonly hoveredIndex: number | null;
   readonly setHoveredIndex: (index: number | null) => void;
 }

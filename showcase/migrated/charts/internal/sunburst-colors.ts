@@ -6,9 +6,14 @@ const sunburstCssVars = {
   foregroundMuted: "var(--chart-foreground-muted)",
   label: "var(--chart-label)",
   ring: "var(--chart-background)",
+  slice1: "var(--chart-1)",
+  slice2: "var(--chart-2)",
+  slice3: "var(--chart-3)",
+  slice4: "var(--chart-4)",
+  slice5: "var(--chart-5)",
 };
 
-const defaultSunburstColors: readonly string[] = CHART_CATEGORY_PALETTE;
+const defaultSunburstColors: string[] = [...CHART_CATEGORY_PALETTE];
 
 const OPACITY_STEP = 0.15;
 const OPACITY_FLOOR = 0.45;

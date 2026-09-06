@@ -8,7 +8,7 @@ import type { LegendItemData } from './legend-context';
 import { LegendRow } from "./legend-row";
 
 interface LegendProps {
-  readonly items: readonly LegendItemData[];
+  readonly items: LegendItemData[];
   hoveredIndex?: number | null;
   readonly onHoverChange?: (index: number | null) => void;
   readonly title?: string;

@@ -40,7 +40,7 @@ type PieCenterShellProps = Omit<PieCenterProps, "children"> & {
 
 // PieCenter with a minimal pie context, sans slices or full PieChart.
 interface ShellPieModel {
-  readonly arcs: readonly PieArcData[];
+  readonly arcs: PieArcData[];
   readonly data: PieData[];
 }
 
@@ -92,7 +92,9 @@ const buildShellContextBase = (params: Readonly<ShellContextBaseParams>): Omit<P
   const center = contextSize / 2;
   const outerRadius = center - SHELL_HOVER_OFFSET;
   return {
+    animationKey: 0,
     center,
+    containerRef: { current: null },
     cornerRadius: 0,
     enterStaggerScale: 1,
     geometryScrubbing: false,
@@ -100,6 +102,7 @@ const buildShellContextBase = (params: Readonly<ShellContextBaseParams>): Omit<P
     getFill,
     hoverOffset: SHELL_HOVER_OFFSET,
     innerRadius: innerRadiusPx,
+    isLoaded: true,
     outerRadius,
     padAngle: 0,
     scrubSlicePaths: null,

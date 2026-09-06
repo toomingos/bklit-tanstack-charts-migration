@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+import type { Transition } from "motion/react";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { getHeatmapContributionLevel } from "./heatmap-utils";
 import type { ChartStatus } from "./types";
@@ -211,20 +212,11 @@ const HEATMAP_ENTER_EASE_X2 = 0.916;
 const HEATMAP_ENTER_EASE_Y2 = 0.282;
 const HEATMAP_DEFAULT_ENTER_EASE = [HEATMAP_ENTER_EASE_X1, 0, HEATMAP_ENTER_EASE_X2, HEATMAP_ENTER_EASE_Y2] as const;
 
-interface HeatmapEnterTransition {
-  readonly type?: "tween" | "spring";
-  readonly duration?: number;
-  readonly ease?: readonly [number, number, number, number];
-  readonly bounce?: number;
-  readonly stiffness?: number;
-  readonly damping?: number;
-  readonly mass?: number;
-  readonly delay?: number;
-}
+type HeatmapEnterTransition = Transition;
 
 const HEATMAP_DEFAULT_ENTER_TRANSITION: HeatmapEnterTransition = {
   duration: 1.6,
-  ease: HEATMAP_DEFAULT_ENTER_EASE,
+  ease: [HEATMAP_ENTER_EASE_X1, 0, HEATMAP_ENTER_EASE_X2, HEATMAP_ENTER_EASE_Y2],
   type: "tween",
 };
 

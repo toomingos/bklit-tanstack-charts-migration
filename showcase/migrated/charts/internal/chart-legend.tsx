@@ -15,7 +15,7 @@ interface LegendItem {
 }
 
 interface ChartLegendProps {
-  readonly items: readonly LegendItem[];
+  readonly items: LegendItem[];
   readonly hoveredIndex?: number | null;
   readonly onHover?: (index: number | null) => void;
   readonly showProgress?: boolean;

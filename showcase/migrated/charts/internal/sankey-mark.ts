@@ -248,6 +248,7 @@ const createSankeyMark = (params: Readonly<CreateSankeyMarkParams>): ReturnType<
   const { config } = params;
   const shouldUseGradient = config.useGradient && (config.strokeOverride ?? "") === "";
 
+  /* eslint-disable eslint/sort-keys -- accessor order resolves mark generics; see below. */
   return sankeyDiagram({
     id: "sankey",
     /*
@@ -294,6 +295,7 @@ const createSankeyMark = (params: Readonly<CreateSankeyMarkParams>): ReturnType<
         transition: { duration: 150, easing: "ease-out", type: "tween" },
         when: (context): boolean => isSankeyLinkConnected(linkPairs, sankeyFocusPrimaryOf(context.focus), context.index),
       }]);
+      /* eslint-enable eslint/sort-keys */
 
       const nodeMark = withStates(rect(nodes, {
         color: (_row, { index }: Readonly<{ index: number }>) => nodeFill(index),

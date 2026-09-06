@@ -36,6 +36,8 @@ const PIE_STAGGER_EACH_MS = 80;
 const PIE_STAGGER_OFFSET_MS = 100;
 // Charts smaller than this render the empty placeholder (no room for arcs).
 const MIN_PIE_SIZE_PX = 10;
+// Legacy reveal settle delay before context flips isLoaded (mirrors bklit).
+const PIE_IS_LOADED_SETTLE_MS = 100;
 
 // RadialArc has no per-datum opacity; fade rides fill alpha via color-mix (same as sunburst).
 const applyAlphaToColor = (color: string, alpha: number): string => {
@@ -398,6 +400,22 @@ const PieChart = ({
   // Center components subscribe to the same source (controlled: notify only).
   const [hoverSource] = useState<HoverSource>(() => createHoverSource());
 
+  // Legacy reveal state (mirrors bklit): feeds the legacy pie context only.
+  const [animationKey] = useState(0);
+  const [isLoaded, setIsLoaded] = useState(false);
+  useEffect((): (() => void) | undefined => {
+    if (geometryScrubbing) {return undefined;}
+    // eslint-disable-next-line react/set-state-in-effect -- mirrors legacy mount timer feeding context isLoaded.
+    setIsLoaded(false);
+    const timer = setTimeout((): void => {
+      setIsLoaded(true);
+    }, PIE_IS_LOADED_SETTLE_MS);
+    return (): void => {
+      clearTimeout(timer);
+    };
+  }, [enterTransition, enterStaggerScale, geometryScrubbing]);
+  const effectiveIsLoaded = geometryScrubbing || isLoaded;
+
   useEffect(() => {
     if (hoveredIndex !== undefined) {
       hoverSource.setHovered(hoveredIndex);
@@ -485,8 +503,10 @@ const PieChart = ({
 
   const stable: PieStableValue = useMemo(
     () => ({
+      animationKey,
       arcs,
       center,
+      containerRef,
       cornerRadius,
       data,
       enterStaggerScale,
@@ -496,6 +516,7 @@ const PieChart = ({
       getFill,
       hoverOffset,
       innerRadius,
+      isLoaded: effectiveIsLoaded,
       outerRadius,
       padAngle,
       scrubSlicePaths,
@@ -503,9 +524,10 @@ const PieChart = ({
       totalValue,
     }),
     [
-      data, arcs, size, center, outerRadius, innerRadius, padAngle,
+      animationKey, data, arcs, size, center, outerRadius, innerRadius, padAngle,
       cornerRadius, hoverOffset, enterTransition, enterStaggerScale,
       totalValue, getColor, getFill, geometryScrubbing, scrubSlicePaths,
+      containerRef, effectiveIsLoaded,
     ],
   );
 

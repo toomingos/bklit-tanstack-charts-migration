@@ -1,6 +1,6 @@
 // Bklit ChoroplethChart on TanStack geoShape; zoom rides projection params, not group transforms.
-import React, { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ReactElement, ReactNode, RefObject } from 'react';
+import React, { Children, createContext, createElement, isValidElement, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { NamedExoticComponent, ReactElement, ReactNode, RefObject } from 'react';
 import { useEffectEvent } from './internal/use-effect-event';
 import type { FeatureCollection,Feature,Geometry} from "geojson";
 import { geoCentroid, geoMercator } from 'd3-geo';
@@ -37,13 +37,11 @@ import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import type { EnterTransition } from './internal/enter-transition';
 import "./styles.css";
 
-// Open-ended GeoJSON property bag; the chart only reads `name`/`id`, values stay JSON scalars.
-type ChoroplethPropertyValue = string | number | boolean | null | undefined;
-
+// Open-ended GeoJSON property bag (legacy shape: unknown values; only `name`/`id` read).
 interface ChoroplethFeatureProperties {
   readonly name?: string;
   readonly id?: string | number;
-  readonly [key: string]: ChoroplethPropertyValue;
+  readonly [key: string]: unknown;
 }
 
 type ChoroplethFeature = Feature<Geometry, ChoroplethFeatureProperties>;
@@ -98,12 +96,14 @@ interface ChoroplethTooltipProps {
 
 // No featurePaths array: geoShape marks own the paths; pathGenerator serves callers that want them.
 interface ChoroplethContextValue {
-  readonly features: readonly ChoroplethFeature[];
+  readonly features: ChoroplethFeature[];
   readonly featureCollection: FeatureCollection<Geometry, ChoroplethFeatureProperties>;
+  /** Precomputed SVG path strings — one per feature index. */
+  readonly featurePaths: readonly (string | null)[];
   readonly pathGenerator: (feature: ChoroplethFeature) => string | undefined;
   readonly rawPathGenerator: (geo: GeoPermissibleObjects) => string | null;
   readonly projectPoint: (coords: [number, number]) => [number, number] | null;
-  readonly unprojectPoint: (point: [number, number]) => [number, number] | null;
+  readonly unprojectPoint?: (point: [number, number]) => [number, number] | null;
   width: number;
   height: number;
   readonly innerWidth: number;
@@ -114,6 +114,17 @@ interface ChoroplethContextValue {
   readonly animationDuration: number;
   readonly enterTransition?: EnterTransition;
   readonly revealEpoch: number;
+  readonly hoveredFeatureIndex: number | null;
+  readonly setHoveredFeatureIndex: (index: number | null) => void;
+  readonly tooltipData: ChoroplethTooltipData | null;
+  readonly setTooltipData: React.Dispatch<React.SetStateAction<ChoroplethTooltipData | null>>;
+}
+
+interface ChoroplethTooltipData {
+  readonly featureIndex: number;
+  readonly x: number;
+  readonly y: number;
+  readonly feature: ChoroplethFeature;
 }
 
 const EMPTY_FEATURE_COLLECTION: FeatureCollection<Geometry, ChoroplethFeatureProperties> = {
@@ -125,8 +136,10 @@ const CHOROPLETH_CONTEXT_DEFAULT: ChoroplethContextValue = {
   animationDuration: 0,
   containerRef: { current: null },
   featureCollection: EMPTY_FEATURE_COLLECTION,
+  featurePaths: [],
   features: [],
   height: 0,
+  hoveredFeatureIndex: null,
   innerHeight: 0,
   innerWidth: 0,
   isLoaded: false,
@@ -136,11 +149,18 @@ const CHOROPLETH_CONTEXT_DEFAULT: ChoroplethContextValue = {
   projectPoint: () => null,
   rawPathGenerator: () => null,
   revealEpoch: 0,
+  setHoveredFeatureIndex: (): void => undefined,
+  setTooltipData: (): void => undefined,
+  tooltipData: null,
   unprojectPoint: () => null,
   width: 0,
 };
 
 const ChoroplethContext = createContext<ChoroplethContextValue>(CHOROPLETH_CONTEXT_DEFAULT);
+
+const ChoroplethProvider = ({ children, value }: { readonly children: ReactNode; readonly value: ChoroplethContextValue }): ReactElement => (
+  <ChoroplethContext.Provider value={value}>{children}</ChoroplethContext.Provider>
+);
 
 const useChoropleth = (): ChoroplethContextValue => useContext(ChoroplethContext)
 
@@ -159,21 +179,36 @@ const DEFAULT_INITIAL_ZOOM: TransformMatrix = identityMatrix();
 const ANIMATION_DURATION_MS = 800;
 const CHOROPLETH_TOOLTIP_OFFSET = 16;
 
-// Config-carrier marker declared on the component type (children.tsx ChartChildComponent
-// Pattern), so attaching the role needs no assertion; the runtime shape is unchanged.
-interface ChoroplethChildComponent<ComponentProps> {
-  (props: ComponentProps): undefined;
-  [CHART_ROLE]?: string;
-}
+const RenderChoroplethFeature = (_props: Readonly<ChoroplethFeatureProps>): ReactElement => createElement("g");
 
-const ChoroplethFeatureComponent: ChoroplethChildComponent<ChoroplethFeatureProps> = (_props: Readonly<ChoroplethFeatureProps>): undefined => undefined;
-ChoroplethFeatureComponent[CHART_ROLE] = "choroplethFeature";
+const ChoroplethFeatureComponent: NamedExoticComponent<Readonly<ChoroplethFeatureProps>> = memo(RenderChoroplethFeature);
+ChoroplethFeatureComponent.displayName = "ChoroplethFeature";
+Object.defineProperty(ChoroplethFeatureComponent, CHART_ROLE, {
+  configurable: true,
+  enumerable: true,
+  value: "choroplethFeature",
+  writable: true,
+});
 
-const ChoroplethTooltip: ChoroplethChildComponent<ChoroplethTooltipProps> = (_props: Readonly<ChoroplethTooltipProps>): undefined => undefined;
-ChoroplethTooltip[CHART_ROLE] = "choroplethTooltip";
+const ChoroplethTooltip = (_props: Readonly<ChoroplethTooltipProps>): ReactElement | null => null;
+Object.defineProperty(ChoroplethTooltip, CHART_ROLE, {
+  configurable: true,
+  enumerable: true,
+  value: "choroplethTooltip",
+  writable: true,
+});
+ChoroplethTooltip.displayName = "ChoroplethTooltip";
 
-const ChoroplethGraticule: ChoroplethChildComponent<ChoroplethGraticuleProps> = (_props: Readonly<ChoroplethGraticuleProps>): undefined => undefined;
-ChoroplethGraticule[CHART_ROLE] = "choroplethGraticule";
+const RenderChoroplethGraticule = (_props: Readonly<ChoroplethGraticuleProps>): ReactElement => createElement("g");
+
+const ChoroplethGraticule: NamedExoticComponent<Readonly<ChoroplethGraticuleProps>> = memo(RenderChoroplethGraticule);
+ChoroplethGraticule.displayName = "ChoroplethGraticule";
+Object.defineProperty(ChoroplethGraticule, CHART_ROLE, {
+  configurable: true,
+  enumerable: true,
+  value: "choroplethGraticule",
+  writable: true,
+});
 
 const resolveFeatureFill = (feature: ChoroplethFeature, index: number, featureConfig: Readonly<ChoroplethFeatureProps> | undefined): string => {
   const patternId = featureConfig?.getFeaturePattern?.(feature, index);
@@ -663,8 +698,25 @@ const ChoroplethChartBody = ({
   const getTooltipConfig = useChoroplethTooltipCard(tooltipConfig, hasTooltipChild);
 
 // Package owns hover; the host callback only mirrors the focused key for the zoom anchor refresh.
+  const [hoveredFeatureIndex, setHoveredFeatureIndexState] = useState<number | null>(null);
+  const [tooltipData, setTooltipData] = useState<ChoroplethTooltipData | null>(null);
   const handleFocusChange = useCallback((point: ChartPoint<ChoroplethFeature> | null) => {
     focusedKeyRef.current = point?.key ?? null;
+    if (point === null) {
+      setHoveredFeatureIndexState(null);
+      setTooltipData(null);
+      return;
+    }
+    setHoveredFeatureIndexState(point.datumIndex);
+    setTooltipData({ feature: point.datum, featureIndex: point.datumIndex, x: point.x, y: point.y });
+  }, []);
+
+  const setHoveredFeatureIndex = useCallback((index: number | null): void => {
+    setHoveredFeatureIndexState(index);
+    if (index === null) {return;}
+    const ctx = renderContextRef.current;
+    const candidate = ctx?.scene.points.find((point) => point.datumIndex === index);
+    if (candidate && ctx) {ctx.interaction.setControlledFocus(candidate, { source: "programmatic" });}
   }, []);
 
   const reveal = useChoroplethReveal({ animationDuration, enterTransition, revealSignature });
@@ -762,8 +814,10 @@ const ChoroplethChartBody = ({
       containerRef: containerRefForFallback,
       enterTransition,
       featureCollection: data,
+      featurePaths: data.features.map((feature) => rawPathGenerator(feature)),
       features: data.features,
       height,
+      hoveredFeatureIndex,
       innerHeight: Math.max(0, height - margin.top - margin.bottom),
       innerWidth: Math.max(0, width - margin.left - margin.right),
       isLoaded,
@@ -772,13 +826,16 @@ const ChoroplethChartBody = ({
       projectPoint,
       rawPathGenerator,
       revealEpoch,
+      setHoveredFeatureIndex,
+      setTooltipData,
+      tooltipData,
       unprojectPoint,
       width,
     }),
     [
       data, pathGenerator, rawPathGenerator, projectPoint, unprojectPoint,
       width, height, margin, isLoaded, animationDuration,
-      enterTransition, revealEpoch,
+      enterTransition, revealEpoch, hoveredFeatureIndex, setHoveredFeatureIndex, tooltipData,
     ],
   );
 
@@ -959,6 +1016,7 @@ export {
   ChoroplethChart,
   ChoroplethFeatureComponent,
   ChoroplethGraticule,
+  ChoroplethProvider,
   ChoroplethTooltip,
   useChoropleth,
 };
@@ -968,6 +1026,7 @@ export type {
   ChoroplethFeature,
   ChoroplethFeatureProperties,
   ChoroplethFeatureProps,
+  ChoroplethTooltipData,
   ChoroplethTooltipProps,
   Margin,
 };

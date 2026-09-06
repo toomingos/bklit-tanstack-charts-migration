@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import type { ReactElement, ReactNode } from 'react';
+import type { NamedExoticComponent, ReactElement, ReactNode } from 'react';
 
 interface SunburstBreadcrumbProps {
   readonly className?: string;
@@ -8,7 +8,7 @@ interface SunburstBreadcrumbProps {
 
 const BREADCRUMB_DEFAULT_STYLE = { marginBottom: 16 } as const;
 
-const renderSunburstBreadcrumb = ({ className, children }: Readonly<SunburstBreadcrumbProps>): ReactElement => (
+const renderSunburstBreadcrumb = ({ className, children }: SunburstBreadcrumbProps): ReactElement => (
     <nav
       aria-label="Drill-down path"
       className={className}
@@ -18,7 +18,9 @@ const renderSunburstBreadcrumb = ({ className, children }: Readonly<SunburstBrea
     </nav>
   );
 
-const SunburstBreadcrumb = memo(renderSunburstBreadcrumb);
+const RenderSunburstBreadcrumb = ({ className, children }: SunburstBreadcrumbProps): ReactElement => renderSunburstBreadcrumb({ children, className });
+
+const SunburstBreadcrumb: NamedExoticComponent<SunburstBreadcrumbProps> = memo(RenderSunburstBreadcrumb);
 
 SunburstBreadcrumb.displayName = "SunburstBreadcrumb";
 

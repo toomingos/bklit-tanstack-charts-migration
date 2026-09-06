@@ -1,5 +1,7 @@
 // Config carrier for SankeyChart node styling; read via displayName, never rendered.
-import type { LaidOutNode } from "./sankey-layout";
+import { createElement } from "react";
+import type { ReactElement } from "react";
+import type { SankeyPropNode } from "./sankey-layout";
 
 type SankeyLabelOrientation = "horizontal" | "vertical";
 
@@ -10,10 +12,10 @@ interface SankeyNodeProps {
   readonly showLabels?: boolean;
   readonly showValueLabels?: boolean;
   readonly labelOrientation?: SankeyLabelOrientation;
-  readonly getNodeColor?: (node: LaidOutNode, index: number) => string;
+  readonly getNodeColor?: (node: SankeyPropNode, index: number) => string;
 }
 
-const SankeyNode = (_props: Readonly<SankeyNodeProps>): undefined => undefined;
+const SankeyNode = (_props: Readonly<SankeyNodeProps>): ReactElement => createElement("g");
 
 SankeyNode.displayName = "SankeyNode";
 

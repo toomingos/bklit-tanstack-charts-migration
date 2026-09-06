@@ -20,6 +20,8 @@ import { defineChart } from "@tanstack/charts/scene";
 import { angleGrid, polar, radialArea, radialDot } from "@tanstack/charts/polar";
 import type { PolarGuide, PolarMark } from "@tanstack/charts/polar";
 import { withStates } from "./internal/with-states";
+import { RadarProvider } from "./internal/radar-context";
+import type { RadarContextValue, RadarData, RadarMetric } from "./internal/radar-context";
 import { createRadarFocus } from "./internal/radar-focus";
 import { useFocusInjection } from "./internal/focus-injection";
 import { roleOf } from "./internal/children-extract";
@@ -32,6 +34,7 @@ import {
   revealTiming as radarRevealTiming,
   resolveEnterTransition as resolveRadarEnterTransition,
 } from "./internal/enter-transition";
+import type { RadarEnterTransition } from "./internal/enter-transition";
 import { bklitRadarGrid, radarMotionTransition } from "./internal/radar-reveal";
 import type { RadarRow } from "./internal/radar-reveal";
 import {
@@ -125,36 +128,17 @@ const ANGLE_LABEL_STAGGER_MS = 80;
 const LABEL_SPRING_SAMPLE_STEP_MS = 40;
 // Radius scale domain max (radar values are percentages).
 const RADAR_RADIUS_DOMAIN_MAX = 100;
+// Legacy value domain max for the context yScale (values are percentages).
+const RADAR_VALUE_DOMAIN_MAX = 100;
 
 const withAlpha = (color: string, alphaPercent: number): string => {
   const pct = Math.max(0, Math.min(ALPHA_PERCENT_MAX, alphaPercent));
   return `color-mix(in oklab, ${color} ${pct}%, transparent)`;
 }
 
-interface RadarMetric {
-  readonly key: string;
-  readonly label: string;
-}
-
-interface RadarData {
-  readonly label: string;
-  readonly color?: string;
-  readonly values: Readonly<Record<string, number>>;
-}
-
-interface RadarEnterTransition {
-  readonly type?: "spring" | "tween";
-  readonly duration?: number;
-  readonly ease?: readonly [number, number, number, number];
-  readonly bounce?: number;
-  readonly stiffness?: number;
-  readonly damping?: number;
-  readonly mass?: number;
-}
-
 interface RadarChartProps {
-  readonly data: readonly RadarData[];
-  readonly metrics: readonly RadarMetric[];
+  readonly data: RadarData[];
+  readonly metrics: RadarMetric[];
   readonly size?: number;
   readonly levels?: number;
   readonly margin?: number;
@@ -167,7 +151,7 @@ interface RadarChartProps {
   readonly onHoverChange?: (index: number | null) => void;
   readonly className?: string;
   readonly style?: CSSProperties;
-  readonly children?: ReactNode;
+  readonly children: ReactNode;
   readonly ariaLabel?: string;
   readonly ariaDescription?: string;
 }
@@ -802,11 +786,28 @@ const RadarChart = ({
   }, [isControlled, controlledIndex, focusPoint, clearFocus]);
 
   // Controlled mode notifies only; uncontrolled hover is fully package-internal.
+  const [internalHoveredIndex, setInternalHoveredIndex] = useState<number | null>(null);
+  const hoveredIndex = isControlled ? controlledIndex : internalHoveredIndex;
   const handleFocusChange = useCallback((point: { readonly datum: Readonly<RadarRow> } | null): void => {
-    if (!isControlled) {return;}
     const candidate = point ? Number(point.datum.series) : Number.NaN;
-    onHoverChange?.(Number.isInteger(candidate) ? candidate : null);
+    const next = Number.isInteger(candidate) ? candidate : null;
+    if (isControlled) {
+      onHoverChange?.(next);
+      return;
+    }
+    setInternalHoveredIndex(next);
   }, [isControlled, onHoverChange]);
+
+  const setHoveredIndex = useCallback((index: number | null): void => {
+    if (isControlled) {
+      onHoverChange?.(index);
+      return;
+    }
+    setInternalHoveredIndex(index);
+    if (index === null) { clearFocus(); return; }
+    const target = index;
+    focusPoint((point) => Number(point.datum.series) === target);
+  }, [isControlled, onHoverChange, clearFocus, focusPoint]);
 
   const gridRevealedRef = useRef(false);
   const revealAnimsRef = useRef<Animation[]>([]);
@@ -822,6 +823,54 @@ const RadarChart = ({
       return DEFAULT_RADAR_COLORS[index % DEFAULT_RADAR_COLORS.length];
     },
     [data],
+  );
+
+  // Legacy context helpers (verbatim bklit formulas): consumers use these for
+  // Custom overlays; the package owns the painted geometry.
+  const radius = (chartSize - margin * 2) / 2;
+  const yScale = useCallback(
+    (value: number): number => scaleLinear().domain([0, RADAR_VALUE_DOMAIN_MAX]).range([0, radius])(value),
+    [radius],
+  );
+  const getAngle = useCallback(
+    (metricIndex: number): number => {
+      const step = (Math.PI * 2) / metrics.length;
+      return metricIndex * step - Math.PI / 2;
+    },
+    [metrics.length],
+  );
+  const getPointPosition = useCallback(
+    (metricIndex: number, value: number) => {
+      const angle = getAngle(metricIndex);
+      const r = yScale(value);
+      return { x: r * Math.cos(angle), y: r * Math.sin(angle) };
+    },
+    [getAngle, yScale],
+  );
+  const radarContextValue = useMemo(
+    () => ({
+      animate,
+      data,
+      enterDurationMs,
+      enterTransition,
+      getAngle,
+      getColor: colorForIndex,
+      getPointPosition,
+      hoveredIndex,
+      levels,
+      metrics,
+      motionReplayKey,
+      radius,
+      setHoveredIndex,
+      size: chartSize,
+      staggerScale,
+      yScale,
+    } satisfies RadarContextValue),
+    [
+      animate, data, enterDurationMs, enterTransition, getAngle, colorForIndex,
+      getPointPosition, hoveredIndex, levels, metrics, motionReplayKey, radius,
+      setHoveredIndex, chartSize, staggerScale, yScale,
+    ],
   );
 
   const resolvedAreas = useMemo<ResolvedRadarArea[]>(() => {
@@ -998,6 +1047,7 @@ const RadarChart = ({
   }), [fixedSize, style]);
 
   return (
+    <RadarProvider value={radarContextValue}>
     <div
       ref={containerRef}
       className={className}
@@ -1031,6 +1081,7 @@ const RadarChart = ({
         )
       )}
     </div>
+    </RadarProvider>
   );
 }
 
@@ -1043,4 +1094,6 @@ export type { RadarAxisProps } from "./internal/radar-axis-child";
 export type { RadarGridProps } from "./internal/radar-grid-child";
 export type { RadarLabelsProps } from "./internal/radar-labels-child";
 export { DEFAULT_RADAR_COLORS, RadarChart, buildRadarAreaMark, buildRadarDefinition, buildRadarDotMark };
-export type { RadarChartProps, RadarData, RadarEnterTransition, RadarMetric };
+export type { RadarChartProps };
+export type { RadarData, RadarMetric } from "./internal/radar-context";
+export type { RadarEnterTransition } from "./internal/enter-transition";

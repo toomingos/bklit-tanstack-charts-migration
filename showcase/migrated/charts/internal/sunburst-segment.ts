@@ -1,3 +1,6 @@
+import { memo } from "react";
+import type { NamedExoticComponent, ReactElement } from "react";
+
 interface SunburstSegmentProps {
   readonly index: number;
   readonly color?: string;
@@ -5,7 +8,9 @@ interface SunburstSegmentProps {
   readonly fillOpacity?: number;
 }
 
-const SunburstSegment = (_props: SunburstSegmentProps): null => null;
+const RenderSunburstSegment = (_props: SunburstSegmentProps): ReactElement | null => null;
+
+const SunburstSegment: NamedExoticComponent<SunburstSegmentProps> = memo(RenderSunburstSegment);
 
 SunburstSegment.displayName = "SunburstSegment";
 

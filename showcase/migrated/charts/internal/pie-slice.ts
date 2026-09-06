@@ -1,3 +1,5 @@
+import { memo } from "react";
+import type { NamedExoticComponent, ReactElement } from "react";
 import type { PieSliceHoverEffect } from "./hover-motion";
 
 // Config element for one pie slice; read by PieChart, renders nothing itself.
@@ -12,7 +14,9 @@ interface PieSliceProps {
   readonly className?: string;
 }
 
-const PieSlice = (_props: Readonly<PieSliceProps>): null => null;
+const RenderPieSlice = (_props: Readonly<PieSliceProps>): ReactElement | null => null;
+
+const PieSlice: NamedExoticComponent<Readonly<PieSliceProps>> = memo(RenderPieSlice);
 
 PieSlice.displayName = "PieSlice";
 

@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
 import { ChartHost } from "./internal/chart-host";
 import { createChartScene } from "@tanstack/charts";
 import type { ChartRendererRenderContext } from "@tanstack/charts";
@@ -28,7 +28,13 @@ import type { SunburstFlatRow, SunburstModel } from "./internal/sunburst-rows";
 import type { ArcDatum, Focus, SunburstNode } from "./internal/sunburst-types";
 import {
   defaultSunburstColors,
+  opacityForRelativeDepth,
 } from "./internal/sunburst-colors";
+import { buildSunburstEnterTiming } from "./internal/parity/sunburst";
+import type { SunburstEnterTiming } from "./internal/parity/sunburst";
+import { hoverGrowForPathSegment, ringOptions } from "./internal/parity/sunburst-geometry";
+import { SunburstProvider } from "./internal/sunburst-context";
+import type { SunburstContextValue } from "./internal/sunburst-context";
 import { maxRevealDelayMs } from "./internal/sunburst-reveal";
 import { setRevealDeadline } from "./internal/deferred-reveal";
 import {
@@ -249,8 +255,141 @@ interface SunburstChartInnerProps {
   readonly sweepDurationMs: number;
   readonly sweepEasingCss: string;
   readonly enterStaggerScale: number;
+  readonly enterTransition?: EnterTransition;
   readonly children: ReactNode;
 }
+
+interface SunburstLegacyContextInputs {
+  readonly containerRef: RefObject<HTMLDivElement | null>;
+  readonly data: SunburstNode;
+  readonly enterStaggerScale: number;
+  readonly enterTransition?: EnterTransition;
+  readonly focus: Focus;
+  readonly focusId: string;
+  readonly getColor: (categoryIndex: number, nodeColor?: string) => string;
+  readonly hoveredIndex: number | null;
+  readonly hoveredSector: ArcDatum | null;
+  readonly hoverPop: number;
+  readonly maxDepth: number;
+  readonly playKey: number;
+  readonly prefersReducedMotion: boolean;
+  readonly radius: number;
+  readonly sectorById: ReadonlyMap<string, ArcDatum>;
+  readonly sectors: ArcDatum[];
+  readonly setHoveredIndex: (index: number | null) => void;
+  readonly size: number;
+  readonly zoomTo: (nextId: string) => void;
+}
+
+// Legacy context value over held chart state (verbatim bklit shapes).
+const useSunburstLegacyContextValue = (
+  inputs: Readonly<SunburstLegacyContextInputs>
+): SunburstContextValue => {
+  const {
+    containerRef, data, enterStaggerScale, enterTransition, focus, focusId,
+    getColor, hoveredIndex, hoveredSector, hoverPop, maxDepth, playKey,
+    prefersReducedMotion, radius, sectorById, sectors, setHoveredIndex, size, zoomTo,
+  } = inputs;
+  // eslint-disable-next-line react-doctor/no-derived-state -- tracks the pre-zoom focus across commits; render-time adjustment like useSunburstFocusControl.
+  const lastFocusIdRef = useRef(focusId);
+  const [prevFocusId, setPrevFocusId] = useState(focusId);
+  if (lastFocusIdRef.current !== focusId) {
+    setPrevFocusId(lastFocusIdRef.current);
+    lastFocusIdRef.current = focusId;
+  }
+  const prevFocus = sectorById.get(prevFocusId) ?? focus;
+  const enterTiming = useMemo<SunburstEnterTiming>(
+    () => buildSunburstEnterTiming(sectors, enterStaggerScale),
+    [sectors, enterStaggerScale],
+  );
+  const getFill = useCallback(
+    (arcIndex: number, fillOverride?: string, colorOverride?: string): string => {
+      if (fillOverride !== undefined && fillOverride !== "") {return fillOverride;}
+      const arc = sectors.at(arcIndex);
+      if (!arc) {return defaultSunburstColors[0];}
+      return colorOverride ?? arc.fill ?? arc.color ?? getColor(arc.categoryIndex);
+    },
+    [sectors, getColor],
+  );
+  const getFillOpacity = useCallback(
+    (relativeDepth: number, override?: number): number => override ?? opacityForRelativeDepth(relativeDepth),
+    [],
+  );
+  const isDescendant = useCallback(
+    (arc: Readonly<ArcDatum>, ancestorId: string): boolean =>
+      arc.id === ancestorId || arc.id.startsWith(`${ancestorId} / `),
+    [],
+  );
+  const isRelated = useCallback(
+    (arc: Readonly<ArcDatum>): boolean => {
+      if (!hoveredSector) {return true;}
+      return isDescendant(arc, hoveredSector.id) || hoveredSector.id.startsWith(`${arc.id} / `);
+    },
+    [hoveredSector, isDescendant],
+  );
+  const focusById = useMemo(() => new Map(sectorById), [sectorById]);
+  // Commit-only zoom stays settled; hover grow was dropped, so amounts are 0.
+  const [zoomT] = useState(1);
+  const growAmountForArc = useCallback((_arcId: string): number => 0, []);
+  const maxExpandedThickness = useMemo(() => {
+    const { ringWidth } = ringOptions(1, maxDepth, radius);
+    return ringWidth + hoverGrowForPathSegment(hoverPop, ringWidth, 1);
+  }, [maxDepth, radius, hoverPop]);
+  const skipEnterAnimation = prefersReducedMotion;
+  const setHoveredArcIndex = useCallback(
+    (index: number | null): void => {
+      setHoveredIndex(index);
+    },
+    [setHoveredIndex],
+  );
+  const setHoveredArc = useCallback(
+    (arc: Readonly<ArcDatum> | null): void => {
+      setHoveredArcIndex(arc ? arc.arcIndex : null);
+    },
+    [setHoveredArcIndex],
+  );
+  return useMemo<SunburstContextValue>(
+    () => ({
+      arcs: sectors,
+      containerRef,
+      data,
+      enterStaggerScale,
+      enterTiming,
+      enterTransition,
+      focus,
+      focusById,
+      focusId,
+      getColor,
+      getFill,
+      getFillOpacity,
+      growAmountForArc,
+      hoverPop,
+      hoveredArc: hoveredSector,
+      hoveredArcIndex: hoveredIndex,
+      isDescendant,
+      isRelated,
+      maxDepth,
+      maxExpandedThickness,
+      playKey,
+      prevFocus,
+      radius,
+      rootId: data.name,
+      setHoveredArc,
+      setHoveredArcIndex,
+      size,
+      skipEnterAnimation,
+      zoomT,
+      zoomTo,
+    }),
+    [
+      sectors, containerRef, data, enterStaggerScale, enterTiming, enterTransition,
+      focus, focusById, focusId, getColor, getFill, getFillOpacity, growAmountForArc,
+      hoveredSector, hoveredIndex, hoverPop, isDescendant, isRelated, maxDepth,
+      maxExpandedThickness, playKey, prevFocus, radius, setHoveredArc,
+      setHoveredArcIndex, size, skipEnterAnimation, zoomT, zoomTo,
+    ],
+  );
+};
 
 const SunburstChartInner = ({
   ariaDescription,
@@ -274,6 +413,7 @@ const SunburstChartInner = ({
   sweepDurationMs,
   sweepEasingCss,
   enterStaggerScale,
+  enterTransition,
   children,
 }: SunburstChartInnerProps): ReactElement => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -366,9 +506,32 @@ const SunburstChartInner = ({
   useEffect(() => {
     zoomToRef.current = zoomTo;
   });
+
+
   const selectToZoom = useCallback((zoomId: string): void => {
     zoomToRef.current(zoomId);
   }, []);
+  const sunburstContextValue = useSunburstLegacyContextValue({
+    containerRef,
+    data,
+    enterStaggerScale,
+    enterTransition,
+    focus,
+    focusId,
+    getColor,
+    hoverPop,
+    hoveredIndex,
+    hoveredSector,
+    maxDepth,
+    playKey,
+    prefersReducedMotion,
+    radius,
+    sectorById,
+    sectors,
+    setHoveredIndex,
+    size,
+    zoomTo,
+  });
   const { definition } = useSunburstDefinition({
     enterStaggerScale,
     flatRows,
@@ -515,6 +678,7 @@ const SunburstChartInner = ({
   }), [size]);
 
   return (
+    <SunburstProvider value={sunburstContextValue}>
     <div
       className={rootClassName}
       data-bkm-chart="sunburst"
@@ -554,6 +718,7 @@ const SunburstChartInner = ({
         </SunburstHintDisplay>
       )}
     </div>
+    </SunburstProvider>
   );
 };
 
@@ -660,6 +825,7 @@ interface SunburstInnerRenderProps {
   readonly size: number;
   readonly sweepDurationMs: number;
   readonly sweepEasingCss: string;
+  readonly enterTransition?: EnterTransition;
 }
 
 // Renders the inner chart as a plain function call (not a component), so the
@@ -688,6 +854,7 @@ const renderSunburstInner = (props: Readonly<SunburstInnerRenderProps>): ReactEl
     size,
     sweepDurationMs,
     sweepEasingCss,
+    enterTransition,
   } = props;
   return (
     <SunburstChartInner
@@ -712,13 +879,14 @@ const renderSunburstInner = (props: Readonly<SunburstInnerRenderProps>): ReactEl
       sweepDurationMs={sweepDurationMs}
       sweepEasingCss={sweepEasingCss}
       enterStaggerScale={enterStaggerScale}
+      enterTransition={enterTransition}
     >
       {children}
     </SunburstChartInner>
   );
 };
 
-const SunburstChart = ({
+const SunburstChartBody = ({
   data,
   size = DEFAULT_SUNBURST_SIZE,
   playKey = 0,
@@ -754,6 +922,7 @@ const SunburstChart = ({
     className,
     data,
     enterStaggerScale,
+    enterTransition,
     focus,
     focusId,
     hoverPop,
@@ -772,6 +941,47 @@ const SunburstChart = ({
     sweepEasingCss,
   });
 };
+
+SunburstChartBody.displayName = "SunburstChartBody";
+
+const SunburstChart = ({
+  ariaDescription,
+  ariaLabel,
+  children,
+  className,
+  data,
+  enterStaggerScale,
+  enterTransition,
+  focusId,
+  hoverPop,
+  hoveredIndex,
+  onFocusChange,
+  onHoverChange,
+  onPhaseChange,
+  padding,
+  playKey,
+  size,
+}: SunburstChartProps): ReactElement => (
+  <SunburstChartBody
+    ariaDescription={ariaDescription}
+    ariaLabel={ariaLabel}
+    className={className}
+    data={data}
+    enterStaggerScale={enterStaggerScale}
+    enterTransition={enterTransition}
+    focusId={focusId}
+    hoverPop={hoverPop}
+    hoveredIndex={hoveredIndex}
+    onFocusChange={onFocusChange}
+    onHoverChange={onHoverChange}
+    onPhaseChange={onPhaseChange}
+    padding={padding}
+    playKey={playKey}
+    size={size}
+  >
+    {children}
+  </SunburstChartBody>
+);
 
 SunburstChart.displayName = "SunburstChart";
 

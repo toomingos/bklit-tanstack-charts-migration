@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { createBroadcastStore } from "./broadcast-store";
-import type { HeatmapChartPhase, HeatmapEnterTransition, HeatmapRevealMode } from "./heatmap-lifecycle";
+import type { HeatmapEnterTransition, HeatmapRevealMode } from "./heatmap-lifecycle";
+import type { ChartPhase } from "./chart-phase";
 import type {
   HeatmapColumn,
   HeatmapWeekStartDay,
@@ -35,20 +36,20 @@ interface HeatmapContextValue {
   readonly height: number;
   readonly innerWidth: number;
   readonly innerHeight: number;
-  readonly columnCount: number;
-  readonly rowCount: number;
+  readonly columnCount?: number;
+  readonly rowCount?: number;
   readonly separatorLayout: HeatmapSeparatorLayout | null;
   readonly isReady: boolean;
   readonly levelStyles: HeatmapLevelStyles;
-  readonly colorScale: (count: number) => string;
-  readonly fillScale: (count: number) => string;
+  readonly colorScale: (count: number | null | undefined) => string;
+  readonly fillScale: (count: number | null | undefined) => string;
   readonly weekStartDay: HeatmapWeekStartDay;
   readonly chartStatus: ChartStatus;
-  readonly chartPhase: HeatmapChartPhase;
+  readonly chartPhase: ChartPhase;
   readonly isLoaded: boolean;
   readonly revealEpoch: number;
   readonly animationDuration: number;
-  readonly enterTransition: HeatmapEnterTransition | undefined;
+  readonly enterTransition?: HeatmapEnterTransition;
   readonly enterStaggerScale: number;
   readonly animateCells: boolean;
   readonly loadingOpacity: number;
@@ -58,12 +59,12 @@ interface HeatmapContextValue {
   readonly revealMode: HeatmapRevealMode;
   readonly loadingLabel: string | undefined;
   readonly showLoadingLabel: boolean;
-  readonly ariaDescription: string | undefined;
-  readonly ariaLabel: string | undefined;
-  readonly yTickFilter: HeatmapYAxisTickFilter;
-  readonly yLabelFormat: HeatmapYAxisLabelFormat;
-  readonly yRowOpacity: number | readonly number[] | undefined;
-  readonly reportWidth: ((width: number) => void) | undefined;
+  readonly ariaDescription?: string | undefined;
+  readonly ariaLabel?: string | undefined;
+  readonly yTickFilter?: HeatmapYAxisTickFilter;
+  readonly yLabelFormat?: HeatmapYAxisLabelFormat;
+  readonly yRowOpacity?: number | readonly number[] | undefined;
+  readonly reportWidth?: ((width: number) => void) | undefined;
 }
 
 const HeatmapContext = createContext<HeatmapContextValue | undefined>(undefined);
@@ -243,7 +244,7 @@ const useHeatmapInteraction = (): HeatmapInteractionContextValue => {
 }
 
 interface HeatmapInteractionProviderProps {
-  readonly children?: ReactNode;
+  readonly children: ReactNode;
   readonly coordinator?: HeatmapHoverCoordinator;
 }
 
@@ -255,7 +256,7 @@ const HeatmapInteractionProvider = ({ children, coordinator }: Readonly<HeatmapI
 };
 
 interface HeatmapInteractionBoundaryProps {
-  readonly children?: ReactNode;
+  readonly children: ReactNode;
   readonly className?: string;
   readonly style?: React.CSSProperties;
 }
@@ -289,6 +290,10 @@ const HeatmapInteractionRoot = ({ children, className, style, coordinator }: Rea
     </HeatmapInteractionProvider>
 );
 
+const HeatmapProvider = ({ children, value }: { readonly children: ReactNode; readonly value: HeatmapContextValue }): ReactElement => (
+  <HeatmapContext.Provider value={value}>{children}</HeatmapContext.Provider>
+);
+
 export {
   DEFAULT_MARGIN,
   HEATMAP_INACTIVE_OPACITY,
@@ -298,6 +303,7 @@ export {
   HeatmapInteractionContext,
   HeatmapInteractionProvider,
   HeatmapInteractionRoot,
+  HeatmapProvider,
   createHeatmapHoverCoordinator,
   useHeatmap,
   useHeatmapCoordinator,

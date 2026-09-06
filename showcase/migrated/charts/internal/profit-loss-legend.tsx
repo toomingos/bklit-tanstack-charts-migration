@@ -3,6 +3,7 @@
 import type { ReactElement } from "react";
 import { cn } from "./cn";
 import { Legend } from "./legend";
+import type { LegendItemData } from "./legend-context";
 import { ProfitLossLegendTemplate } from "./profit-loss-legend-template";
 import {
   PROFIT_LOSS_NEGATIVE_COLOR,
@@ -13,6 +14,9 @@ const PROFIT_LOSS_LEGEND_ITEMS = [
   { color: PROFIT_LOSS_POSITIVE_COLOR, label: "Profit", value: 0 },
   { color: PROFIT_LOSS_NEGATIVE_COLOR, label: "Loss", value: 0 },
 ] as const;
+
+// Legacy spreads the tuple at the call site; one module-level copy keeps the prop identity stable.
+const PROFIT_LOSS_LEGEND_LIST: LegendItemData[] = [...PROFIT_LOSS_LEGEND_ITEMS];
 
 interface ProfitLossLegendProps {
   hoveredIndex?: number | null;
@@ -46,7 +50,7 @@ const ProfitLossLegend = ({
       <Legend
         className="flex-row flex-wrap gap-4"
         hoveredIndex={hoveredIndex}
-        items={PROFIT_LOSS_LEGEND_ITEMS}
+        items={PROFIT_LOSS_LEGEND_LIST}
         onHoverChange={onHoverChange}
       >
         <ProfitLossLegendTemplate />

@@ -98,7 +98,7 @@ const heatmapCssVars = {
   level4: HEATMAP_DEFAULT_LEVEL_COLORS[4],
 } as const;
 
-const defaultChoroplethColors: string[] = [...CHART_SCALE_VARS];
+const defaultChoroplethColors = [...CHART_SCALE_VARS];
 
 export { CHART_SCALE_VARS, chartScaleCssVars, pieCssVars, ringCssVars, radarCssVars, sankeyCssVars, choroplethCssVars, heatmapCssVars, defaultChoroplethColors };
 export type { ChartScaleVars };

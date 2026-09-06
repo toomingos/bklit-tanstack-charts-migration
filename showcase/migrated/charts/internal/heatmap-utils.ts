@@ -1,4 +1,6 @@
 
+import type { HeatmapLevelStyles } from "./heatmap-colors";
+
 interface HeatmapBin {
   readonly count: number;
   readonly bin: number;
@@ -7,7 +9,7 @@ interface HeatmapBin {
 
 interface HeatmapColumn {
   readonly bin: number;
-  readonly bins: readonly HeatmapBin[];
+  readonly bins: HeatmapBin[];
 }
 
 /** Calendar months shown in default one-year contribution grids. */
@@ -97,7 +99,7 @@ interface HeatmapWeekRange {
   readonly startDate: Date;
   readonly weekCount: number;
   /** First in-range calendar day; bins before this are empty in default year grids. */
-  readonly rangeStart?: Date;
+  readonly rangeStart: Date | null;
 }
 
 /**
@@ -112,7 +114,7 @@ const resolveRollingHeatmapWeekRange = (endDate: Readonly<Date>, weeks: number):
   startDate.setDate(startDate.getDate() - (weeks - 1) * DAYS_PER_WEEK);
   startDate.setDate(startDate.getDate() - startDate.getDay());
   startDate.setHours(0, 0, 0, 0);
-  return { startDate, weekCount: weeks };
+  return { rangeStart: null, startDate, weekCount: weeks };
 }
 
 const resolveHeatmapWeekRange = (today: Readonly<Date>, weeks: number = HEATMAP_WEEKS_ONE_YEAR): HeatmapWeekRange => {
@@ -229,13 +231,13 @@ const rotateHeatmapColumnBins = (columns: HeatmapColumn[], weekStartDay: Heatmap
  * @param {Readonly<HeatmapColumn>} column - Week column whose bins are scanned for a month anchor.
  * @returns {Date | undefined} The 1st of the anchor month, or `undefined` when `column.bins` is empty.
   */
-const getHeatmapColumnMonthAnchor = (column: Readonly<HeatmapColumn>): Date | undefined => {
+const getHeatmapColumnMonthAnchor = (column: HeatmapColumn): Date | null => {
   for (const bin of column.bins) {
     if (bin.date.getDate() === 1) {return bin.date;}
   }
   // First bin via array destructuring; the empty-bins guard below stays load-bearing.
   // Empty bins arrays are a real runtime case this function must handle.
-  if (column.bins.length === 0) {return undefined;}
+  if (column.bins.length === 0) {return null;}
   const [firstBin] = column.bins;
   const firstDate = firstBin.date;
   return new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
@@ -332,13 +334,13 @@ const readHeatmapLastColumnEnd = (columns: readonly HeatmapColumn[]): Date | und
   return getHeatmapColumnEndDate(lastColumn);
 }
 
-const getHeatmapTimeExtent = (columns: readonly HeatmapColumn[]): [Date, Date] | undefined => {
-  if (columns.length === 0) {return undefined;}
+const getHeatmapTimeExtent = (columns: HeatmapColumn[]): [Date, Date] | null => {
+  if (columns.length === 0) {return null;}
   // Non-empty per the length check above, so destructuring always yields a column.
   const [firstColumn] = columns;
   const start = getHeatmapColumnStartDate(firstColumn);
   const end = readHeatmapLastColumnEnd(columns);
-  if (!(start && end)) {return undefined;}
+  if (!(start && end)) {return null;}
   return [start, end];
 }
 
@@ -358,7 +360,7 @@ const getHeatmapTimeExtent = (columns: readonly HeatmapColumn[]): [Date, Date] |
  * @param {readonly [Readonly<Date>, Readonly<Date>]} [xDomain] - Inclusive `[start, end]` date domain; when omitted, all columns are returned.
  * @returns {HeatmapColumn[]} The columns overlapping `xDomain`, or all `columns` when `xDomain` is omitted.
  */
-const filterHeatmapColumns = (columns: HeatmapColumn[], xDomain?: readonly [Readonly<Date>, Readonly<Date>]): HeatmapColumn[] => {
+const filterHeatmapColumns = (columns: HeatmapColumn[], xDomain?: [Date, Date]): HeatmapColumn[] => {
   if (!xDomain) {return columns;}
   const start = Math.min(xDomain[0].getTime(), xDomain[1].getTime());
   const end = Math.max(xDomain[0].getTime(), xDomain[1].getTime());
@@ -408,17 +410,17 @@ const matchHeatmapCalendarRangeStart = (gridStart: Readonly<Date>, today: Readon
 
 // Destructuring types `firstColumn` as always-defined without `noUncheckedIndexedAccess`.
 // Exported callers give no guarantee `columns` is non-empty, so the guard stays.
-const inferHeatmapCalendarRangeStart = (columns: readonly HeatmapColumn[]): Date | undefined => {
-  if (columns.length === 0) {return undefined;}
+const inferHeatmapCalendarRangeStart = (columns: HeatmapColumn[]): Date | null => {
+  if (columns.length === 0) {return null;}
   const [firstColumn] = columns;
 
   const gridStart = getHeatmapColumnStartDate(firstColumn);
-  if (!gridStart) {return undefined;}
+  if (!gridStart) {return null;}
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  return matchHeatmapCalendarRangeStart(gridStart, today);
+  return matchHeatmapCalendarRangeStart(gridStart, today) ?? null;
 }
 
 /**
@@ -427,7 +429,7 @@ const inferHeatmapCalendarRangeStart = (columns: readonly HeatmapColumn[]): Date
  * @returns {{ extent: [Date, Date]; today: Date; gridStart: Date } | undefined} The grid base values, or `undefined` when the grid has no usable dates.
  */
 // Grid base values shared by display-range resolution; undefined when the grid has no usable dates.
-const readHeatmapDisplayGridBase = (columns: readonly HeatmapColumn[]): { extent: [Date, Date]; today: Date; gridStart: Date } | undefined => {
+const readHeatmapDisplayGridBase = (columns: HeatmapColumn[]): { extent: [Date, Date]; today: Date; gridStart: Date } | undefined => {
   const extent = getHeatmapTimeExtent(columns);
   if (!extent) {return undefined;}
 
@@ -451,14 +453,14 @@ const resolveInferredHeatmapDisplayRange = (inferredStart: Readonly<Date> | unde
   return { end: undefined, start: undefined };
 }
 
-const resolveHeatmapDisplayRange = (columns: readonly HeatmapColumn[]): HeatmapDisplayRange => {
+const resolveHeatmapDisplayRange = (columns: HeatmapColumn[]): HeatmapDisplayRange => {
   if (columns.length === 0) {return { end: undefined, start: undefined };}
 
   const base = readHeatmapDisplayGridBase(columns);
   if (!base) {return { end: undefined, start: undefined };}
 
   const inferredStart = inferHeatmapCalendarRangeStart(columns);
-  return resolveInferredHeatmapDisplayRange(inferredStart, base.extent[1], base.today);
+  return resolveInferredHeatmapDisplayRange(inferredStart ?? undefined, base.extent[1], base.today);
 }
 
 type HeatmapSeparatorGroupBy = "every" | "quarter";
@@ -593,7 +595,7 @@ const findHeatmapColumnIndexForDate = (columns: readonly HeatmapColumn[], date: 
  * @returns {Readonly<Date>} The resolved quarter range start.
  */
 // Display/inferred/extent fallback chain for the quarter-separator range start.
-const resolveQuarterRangeStart = (columns: readonly HeatmapColumn[], extentStart: Readonly<Date>): Readonly<Date> => {
+const resolveQuarterRangeStart = (columns: HeatmapColumn[], extentStart: Readonly<Date>): Readonly<Date> => {
   const displayRange = resolveHeatmapDisplayRange(columns);
   return displayRange.start ?? inferHeatmapCalendarRangeStart(columns) ?? extentStart;
 }
@@ -658,7 +660,7 @@ const appendQuarterSeparatorGroups = (params: Readonly<AppendQuarterSeparatorGro
   }
 }
 
-const buildHeatmapQuarterSeparatorGroups = (columns: readonly HeatmapColumn[]): HeatmapSeparatorGroup[] => {
+const buildHeatmapQuarterSeparatorGroups = (columns: HeatmapColumn[]): HeatmapSeparatorGroup[] => {
   if (columns.length === 0) {return [];}
 
   const extent = getHeatmapTimeExtent(columns);
@@ -678,7 +680,7 @@ const buildHeatmapQuarterSeparatorGroups = (columns: readonly HeatmapColumn[]): 
  * @returns {HeatmapSeparatorLayout | null} The resolved separator layout, or `null` when separators are disabled or have no effect.
  */
 // Quarter-grouped separators; null when separators are disabled or have no effect.
-const resolveQuarterSeparatorLayout = (config: Readonly<HeatmapSeparatorParsedConfig>, columns: readonly HeatmapColumn[]): HeatmapSeparatorLayout | null => {
+const resolveQuarterSeparatorLayout = (config: Readonly<HeatmapSeparatorParsedConfig>, columns: HeatmapColumn[]): HeatmapSeparatorLayout | null => {
   const groups = buildHeatmapQuarterSeparatorGroups(columns);
   if (groups.length === 0) {return null;}
 
@@ -690,7 +692,7 @@ const resolveQuarterSeparatorLayout = (config: Readonly<HeatmapSeparatorParsedCo
   return { atColumns, groups, spacing: config.spacing };
 }
 
-const resolveHeatmapSeparatorLayout = (config: Readonly<HeatmapSeparatorParsedConfig> | null, columns: readonly HeatmapColumn[]): HeatmapSeparatorLayout | null => {
+const resolveHeatmapSeparatorLayout = (config: Readonly<HeatmapSeparatorParsedConfig> | null, columns: HeatmapColumn[]): HeatmapSeparatorLayout | null => {
   if (!config) {return null;}
 
   if (config.groupBy === "quarter") {
@@ -858,18 +860,14 @@ const buildHeatmapRowOpacity = (match: readonly number[] | ((row: number) => boo
   return Array.from({ length: rowCount }, (_unused, row) => (match(row) ? fadedOpacity : activeOpacity));
 }
 
-interface HeatmapLegendGradientLevelStyle {
-  readonly color: string;
-}
-
 const LEGEND_GRADIENT_MAX_PERCENT = 100;
 
 /**
  * CSS `linear-gradient` for a continuous legend bar from level styles.
- * @param {readonly HeatmapLegendGradientLevelStyle[]} levelStyles - Ordered level colors.
+ * @param {HeatmapLevelStyles} levelStyles - Ordered level colors.
  * @returns {string} The `linear-gradient(...)` CSS value.
  */
-const buildHeatmapLegendGradient = (levelStyles: readonly HeatmapLegendGradientLevelStyle[]): string => {
+const buildHeatmapLegendGradient = (levelStyles: HeatmapLevelStyles): string => {
   const lastIndex = levelStyles.length - 1;
   const stops = levelStyles.map((style, index) => {
     const offset = lastIndex === 0 ? 0 : (index / lastIndex) * LEGEND_GRADIENT_MAX_PERCENT;
@@ -946,5 +944,4 @@ export type {
   HeatmapSeparatorGradientStop,
   HeatmapHoverStyleParams,
   HeatmapHoverStyle,
-  HeatmapLegendGradientLevelStyle,
 };

@@ -15,7 +15,7 @@ const PieCenter = ({
   labelClassName = centerStatLabelClassName,
   prefix,
   suffix,
-}: Readonly<PieCenterProps>): ReactElement | undefined => {
+}: Readonly<PieCenterProps>): ReactElement | null => {
   const stable = usePieStable();
   const coordinator = usePieHoverCoordinator();
   const hoveredIndex = useCenterStatHover(coordinator);
@@ -25,7 +25,7 @@ const PieCenter = ({
   const containerClassName = resolvePieCenterClassName(className);
 
   // Per-part guard kept local: no inner radius ⇒ nothing to size the box to.
-  if (stable.innerRadius <= 0) {return undefined;}
+  if (stable.innerRadius <= 0) {return null;}
 
   return (
     <CenterShell

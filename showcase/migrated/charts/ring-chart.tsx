@@ -1,7 +1,7 @@
 // Bklit RingChart on TanStack Charts (radialArc track+progress per ring; children are carriers).
 // Track entrance stays a WAAPI scale-pop (no native arc primitive); hover scale is reactive geometry.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, ReactElement, ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, NamedExoticComponent, ReactElement, ReactNode } from 'react';
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
 import { defineChart } from "@tanstack/charts/scene";
 import type { ChartRendererRenderContext, DomChartDefinition } from "@tanstack/charts";
@@ -166,7 +166,7 @@ const appendRingArcMarks = (params: Readonly<RingMarkPairInput>): void => {
 };
 
 interface RingChartProps {
-  readonly data: readonly RingData[];
+  readonly data: RingData[];
   readonly size?: number;
   strokeWidth?: number;
   readonly ringGap?: number;
@@ -539,10 +539,9 @@ const RingChart = ({
   );
 }
 
-RingChart.displayName = "RingChart";
+const RenderRing = (_props: Readonly<RingProps>): ReactElement | null => null;
 
-
-const Ring = (_props: Readonly<RingProps>): undefined => undefined;
+const Ring: NamedExoticComponent<Readonly<RingProps>> = memo(RenderRing);
 
 Ring.displayName = "Ring";
 

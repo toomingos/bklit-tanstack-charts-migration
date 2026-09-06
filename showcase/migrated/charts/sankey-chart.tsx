@@ -42,8 +42,8 @@ interface SankeyLinkDatum {
 }
 
 interface SankeyData {
-  readonly nodes: readonly SankeyNodeDatum[];
-  readonly links: readonly SankeyLinkDatum[];
+  readonly nodes: SankeyNodeDatum[];
+  readonly links: SankeyLinkDatum[];
 }
 
 interface Margin {
@@ -394,7 +394,7 @@ const SankeyChart = ({
   const getNodeColorFn = useCallback(
     (node: LaidOutNode, index: number) => {
       if (nodeConfig.fill !== undefined && nodeConfig.fill !== "") {return nodeConfig.fill;}
-      if (nodeConfig.getNodeColor) {return nodeConfig.getNodeColor(node, index);}
+      if (nodeConfig.getNodeColor) {return nodeConfig.getNodeColor({ ...node, name: sankeyNodeName(node, index) }, index);}
       return defaultNodeColor(index);
     },
     [nodeConfig],

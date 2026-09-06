@@ -3,7 +3,7 @@ interface SunburstNode {
   readonly value?: number;
   readonly color?: string;
   readonly fill?: string;
-  readonly children?: readonly SunburstNode[];
+  readonly children?: SunburstNode[];
 }
 
 interface ArcDatum {

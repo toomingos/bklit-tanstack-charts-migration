@@ -1,8 +1,9 @@
 // Ring shared context: stable spec, scrub layers, hover coordinator, and hooks for carriers.
 // Split from ring-chart so ring-center imports without a chart-level cycle.
-import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
-import type { RefObject } from "react";
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
 import type { RingEnterTransition } from "./enter-transition";
+import { createHoverSource } from "./hover-motion";
 import type { HoverSource } from "./hover-motion";
 
 interface RingData {
@@ -19,7 +20,7 @@ interface ScrubRingLayer {
 }
 
 interface RingStableValue {
-  readonly data: readonly RingData[];
+  readonly data: RingData[];
   readonly size: number;
   readonly center: number;
   strokeWidth: number;
@@ -37,7 +38,7 @@ interface RingStableValue {
   readonly startAngle: number;
   readonly endAngle: number;
   readonly geometryScrubbing: boolean;
-  readonly scrubRingLayers: readonly ScrubRingLayer[] | null;
+  readonly scrubRingLayers?: readonly ScrubRingLayer[] | null;
 }
 
 /** Legacy RingHoverContextValue shape (ring-context.tsx:47-50). */
@@ -107,8 +108,59 @@ const useRingHover = (): RingHoverValue => {
  */
 const useRing = (): RingContextValue => ({ ...useRingStable(), ...useRingHover() })
 
+const RingProvider = ({ children, value }: { readonly children: ReactNode; readonly value: RingContextValue }): ReactElement => {
+  const stable = useMemo<RingStableValue>(() => ({
+    animationKey: value.animationKey,
+    baseInnerRadius: value.baseInnerRadius,
+    center: value.center,
+    containerRef: value.containerRef,
+    data: value.data,
+    endAngle: value.endAngle,
+    enterStaggerScale: value.enterStaggerScale,
+    enterTransition: value.enterTransition,
+    geometryScrubbing: value.geometryScrubbing,
+    getColor: value.getColor,
+    getRingRadii: value.getRingRadii,
+    isLoaded: value.isLoaded,
+    ringGap: value.ringGap,
+    scrubRingLayers: undefined,
+    size: value.size,
+    startAngle: value.startAngle,
+    strokeWidth: value.strokeWidth,
+    totalValue: value.totalValue,
+  }), [
+    value.animationKey, value.baseInnerRadius, value.center, value.containerRef,
+    value.data, value.endAngle, value.enterStaggerScale, value.enterTransition,
+    value.geometryScrubbing, value.getColor, value.getRingRadii, value.isLoaded,
+    value.ringGap, value.size, value.startAngle, value.strokeWidth, value.totalValue,
+  ]);
+  // Bridge the legacy hover pair onto a hover source (seed + forward + resync;
+  // The broadcast store dedupes identical values, so no update loop forms).
+  const [coordinator] = useState<HoverSource>(() => {
+    const source = createHoverSource();
+    source.setHovered(value.hoveredIndex);
+    return source;
+  });
+  useEffect(() => {
+    coordinator.setHovered(value.hoveredIndex);
+  }, [coordinator, value.hoveredIndex]);
+  useEffect(
+    () =>
+      coordinator.subscribe(() => {
+        value.setHoveredIndex(coordinator.getHovered());
+      }),
+    [coordinator, value]
+  );
+  return createElement(
+    RingStableContext.Provider,
+    { value: stable },
+    createElement(RingHoverCoordinatorContext.Provider, { value: coordinator }, children)
+  );
+};
+
 export {
   RingHoverCoordinatorContext,
+  RingProvider,
   RingStableContext,
   defaultRingColors,
   useRing,

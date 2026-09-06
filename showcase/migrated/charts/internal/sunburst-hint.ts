@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { memo } from "react";
+import type { NamedExoticComponent, ReactElement, ReactNode } from "react";
 import type { ArcDatum, Focus } from "./sunburst-types";
 
 
@@ -13,7 +14,9 @@ interface SunburstHintProps {
   readonly children?: ReactNode | ((context: SunburstHintContext) => ReactNode);
 }
 
-const SunburstHint = (_props: SunburstHintProps): null => null;
+const RenderSunburstHint = (_props: SunburstHintProps): ReactElement | null => null;
+
+const SunburstHint: NamedExoticComponent<SunburstHintProps> = memo(RenderSunburstHint);
 
 
 SunburstHint.displayName = "SunburstHint";

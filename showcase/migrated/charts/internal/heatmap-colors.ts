@@ -12,7 +12,7 @@ const HEATMAP_LEVEL_CSS_VARS = [
 
 type HeatmapLevelColors = readonly [string, string, string, string, string];
 
-const HEATMAP_DEFAULT_LEVEL_COLORS: HeatmapLevelColors = HEATMAP_LEVEL_CSS_VARS;
+const HEATMAP_DEFAULT_LEVEL_COLORS = HEATMAP_LEVEL_CSS_VARS;
 
 type HeatmapLevelFillMode = "solid" | "pattern";
 
@@ -39,13 +39,13 @@ type HeatmapLevelStyles = readonly [
   HeatmapLevelStyle,
 ];
 
-const HEATMAP_DEFAULT_LEVEL_STYLES: HeatmapLevelStyles = [
+const HEATMAP_DEFAULT_LEVEL_STYLES = [
   { color: HEATMAP_DEFAULT_LEVEL_COLORS[0], fillMode: "solid", pattern: "none" },
   { color: HEATMAP_DEFAULT_LEVEL_COLORS[1], fillMode: "solid", pattern: "none" },
   { color: HEATMAP_DEFAULT_LEVEL_COLORS[2], fillMode: "solid", pattern: "none" },
   { color: HEATMAP_DEFAULT_LEVEL_COLORS[3], fillMode: "solid", pattern: "none" },
   { color: HEATMAP_DEFAULT_LEVEL_COLORS[4], fillMode: "solid", pattern: "none" },
-];
+] as const satisfies HeatmapLevelStyles;
 
 const heatmapLevelPatternId = (level: number): string => `heatmap-level-${level}`;
 

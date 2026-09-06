@@ -1,17 +1,10 @@
 // Sanctioned WAAPI reach-in: dash draw-on + per-role stagger have no native motion expression.
+import type { Transition } from "motion/react";
 import { onPostPaint } from "./deferred-reveal";
 import { REVEAL_EASE_CSS } from "./design-tokens";
 import { buildSankeyLinkAnimationSpecs, buildSankeyNodeAnimationSpecs, collectSankeyLabels, playSankeyAnimationSpecs, queryLinkPaths, queryNodeRects } from "./sankey-reveal-specs";
 
-interface SankeyEnterTransition {
-  readonly type?: "spring" | "tween";
-  readonly duration?: number;
-  readonly ease?: readonly [number, number, number, number];
-  readonly bounce?: number;
-  readonly stiffness?: number;
-  readonly damping?: number;
-  readonly mass?: number;
-}
+type SankeyEnterTransition = Transition;
 
 const REVEALING_CLASS = "ts-chart__marks--revealing";
 const DEADLINE_SLACK_MS = 150;
@@ -26,9 +19,10 @@ interface SankeyRevealTiming {
 
 const resolveTiming = (transition: Readonly<SankeyEnterTransition> | undefined, animationDuration: number): SankeyRevealTiming => {
   const durationMs = transition?.duration === undefined ? animationDuration : transition.duration * MS_PER_SECOND;
+  const { ease } = transition ?? {};
   const easingCss =
-    transition?.type !== "spring" && transition?.ease
-      ? `cubic-bezier(${transition.ease.join(",")})`
+    transition?.type !== "spring" && Array.isArray(ease)
+      ? `cubic-bezier(${ease.join(",")})`
       : REVEAL_EASE_CSS;
   return { durationMs, easingCss };
 }

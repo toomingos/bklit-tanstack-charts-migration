@@ -1,5 +1,5 @@
-import { useId, useMemo, useSyncExternalStore } from 'react';
-import type { CSSProperties, ReactElement } from 'react';
+import { memo, useId, useMemo, useSyncExternalStore } from 'react';
+import type { CSSProperties, NamedExoticComponent, ReactElement } from 'react';
 import { HEATMAP_INACTIVE_OPACITY, HEATMAP_INACTIVE_TRANSITION_CSS, useHeatmapCoordinatorOptional } from "./heatmap-context";
 import type { HeatmapHoverCoordinator, HeatmapHoverStyleParams } from "./heatmap-context";
 import { focusHeatmapLevel } from "./heatmap-focus-bridge";
@@ -565,7 +565,7 @@ const useLegendModel = (model: Readonly<LegendModelArgs>): LegendModel => {
   return { highlightedLevel, hoverParams, isDimming, isInteractive, levelStyles, onEnter, onLeave };
 };
 
-const HeatmapLegend = ({
+const RenderHeatmapLegend = ({
   lessLabel = "Less",
   moreLabel = "More",
   cellSize = 11,
@@ -612,7 +612,11 @@ const HeatmapLegend = ({
       <span className={labelClass}>{moreLabel}</span>
     </div>
   );
-}
+};
+
+const HeatmapLegend: NamedExoticComponent<Readonly<HeatmapLegendProps>> = memo(RenderHeatmapLegend);
+
+HeatmapLegend.displayName = "HeatmapLegend";
 
 
 export type {

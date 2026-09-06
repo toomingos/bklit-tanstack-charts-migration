@@ -129,17 +129,10 @@ function CrumbList({
   );
 }
 
-function MigratedCrumbs({
-  data,
-  focusId,
-  onNavigate,
-}: {
-  data: SeededSunburstNode;
-  focusId: string;
-  onNavigate: (id: string) => void;
-}) {
-  const items = useSunburstBreadcrumbItems(data, focusId);
-  return <CrumbList items={items} onNavigate={onNavigate} />;
+/** Context-fed like bklit: the hook reads data/focus/zoomTo itself. */
+function MigratedCrumbs() {
+  const { items, zoomTo } = useSunburstBreadcrumbItems();
+  return <CrumbList items={items} onNavigate={zoomTo} />;
 }
 
 export default function MigratedSunChrome({ n }: { n: number }) {
@@ -194,7 +187,7 @@ export default function MigratedSunChrome({ n }: { n: number }) {
         size={SUNBURST_SIZE}
       >
         <SunburstBreadcrumb>
-          <MigratedCrumbs data={data} focusId={focusId} onNavigate={setFocusId} />
+          <MigratedCrumbs />
         </SunburstBreadcrumb>
         {arcs.map((arc) => (
           <SunburstSegment index={arc.arcIndex} key={arc.id} />

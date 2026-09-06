@@ -29,7 +29,7 @@ export type { PieCenterProps, PieData, PieArcData } from "./internal/pie-center"
 export { PieCenterShell } from "./internal/pie-center-shell";
 export type { PieCenterShellProps } from "./internal/pie-center-shell";
 export { RingChart, Ring } from "./ring-chart";
-export { defaultRingColors, useRingStable, useRing, useRingHover } from "./internal/ring-context";
+export { defaultRingColors, useRingStable, useRing, useRingHover, RingProvider } from "./internal/ring-context";
 export type { RingChartProps, RingProps, RingData, RingLineCap, RingContextValue } from "./ring-chart";
 export { RingCenter } from "./internal/ring-center";
 export type { RingCenterProps } from "./internal/ring-center";
@@ -50,7 +50,7 @@ export type { SunburstChartProps, SunburstSegmentProps, SunburstLabelsProps, Sun
 export { sumValues, buildArcs, ringOptions, geometryFor, geomCentroidAngle, geomCentroidRadius, clockwiseFraction, arcPath, transitionGeometry, defaultSunburstGrowPadding, lerpGeometry } from "./internal/parity/sunburst-geometry";
 export { useSunburstBreadcrumbItems } from "./internal/sunburst-breadcrumb-items";
 export type { SunburstNode, ArcDatum, ArcGeometry, Focus } from "./internal/parity/sunburst-geometry";
-export { ChoroplethChart, ChoroplethFeatureComponent, ChoroplethTooltip, ChoroplethGraticule, useChoroplethZoom, useChoropleth } from "./choropleth-chart";
+export { ChoroplethChart, ChoroplethFeatureComponent, ChoroplethTooltip, ChoroplethGraticule, useChoroplethZoom, useChoropleth, ChoroplethProvider } from "./choropleth-chart";
 export type { ChoroplethChartProps, ChoroplethFeatureProps, ChoroplethTooltipProps, ChoroplethGraticuleProps, ChoroplethContextValue, ChoroplethFeature, ChoroplethFeatureProperties } from "./choropleth-chart";
 export type { TransformMatrix } from "./internal/choropleth-zoom-types";
 export { ChartConfigProvider } from "./internal/chart-config-provider";
@@ -237,3 +237,10 @@ export { useBarDepthEntries } from "./internal/use-bar-depth-entries";
 export { MarkerGroup, type MarkerGroupProps } from "./internal/marker-group";
 export { SeriesMarkers, type SeriesMarkersProps } from "./internal/series-markers";
 export { SeriesPointMarker, type SeriesPointMarkerProps } from "./internal/series-point-marker";
+// V3.7-C
+export { HeatmapProvider } from "./internal/heatmap-context";
+export { PieProvider, usePie, usePieHover } from "./internal/pie-context";
+export type { PieContextValue } from "./internal/pie-context";
+export { RadarProvider, useRadar, useRadarHover, useRadarStable } from "./internal/radar-context";
+export type { RadarContextValue } from "./internal/radar-context";
+export { useSunburstHover, useSunburstStable } from "./internal/sunburst-context";

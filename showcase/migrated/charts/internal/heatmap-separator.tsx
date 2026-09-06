@@ -1,5 +1,5 @@
-import { useId, useMemo } from "react";
-import type { CSSProperties, ReactElement } from "react";
+import { memo, useId, useMemo } from "react";
+import type { CSSProperties, NamedExoticComponent, ReactElement } from "react";
 import { useHeatmap } from "./heatmap-context";
 import {
   buildHeatmapSeparatorGradientStops,
@@ -194,7 +194,7 @@ const renderSeparatorLines = ({
 const LABEL_TEXT_STYLE: CSSProperties = { fontSize: 12 };
 const LABEL_ABOVE_PLOT_DY = -8;
 
-const HeatmapSeparator = ({
+const RenderHeatmapSeparator = ({
   className,
   paddingX = 0,
   paddingY = 0,
@@ -209,7 +209,7 @@ const HeatmapSeparator = ({
   gradient,
   strokeWidth = 1,
   strokeOpacity = 1,
-}: Readonly<HeatmapSeparatorProps>): ReactElement | undefined => {
+}: Readonly<HeatmapSeparatorProps>): ReactElement | null => {
   void _startOffset;
   const ctx = useHeatmap();
   const layout = ctx.separatorLayout;
@@ -223,7 +223,7 @@ const HeatmapSeparator = ({
   const y1 = paddingY;
   const y2 = Math.max(ctx.innerHeight - paddingY, y1);
   if (!layout || layout.atColumns.length === 0) {
-    if (!showLabels || presentation.labelGroups.length === 0) {return undefined;}
+    if (!showLabels || presentation.labelGroups.length === 0) {return null;}
     return (
       <g className="ts-bkm-heatmap-separator-labels">
         {presentation.labelGroups.map((group, groupIndex) => (
@@ -262,6 +262,10 @@ const HeatmapSeparator = ({
     </>
   );
 };
+
+const HeatmapSeparator: NamedExoticComponent<Readonly<HeatmapSeparatorProps>> = memo(RenderHeatmapSeparator);
+
+HeatmapSeparator.displayName = "HeatmapSeparator";
 
 export { HEATMAP_AXIS_LAYER_CLASS, HeatmapSeparator };
 export type { HeatmapSeparatorProps };

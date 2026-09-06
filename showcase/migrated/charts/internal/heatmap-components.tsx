@@ -1,5 +1,5 @@
 import { Fragment, memo, useCallback, useId, useMemo, useSyncExternalStore } from "react";
-import type { CSSProperties, ReactElement } from "react";
+import type { CSSProperties, NamedExoticComponent, ReactElement } from "react";
 import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
 import type { ChartRendererRenderContext } from "@tanstack/charts";
 import { chartMotionRenderer } from "./motion-renderer";
@@ -127,7 +127,7 @@ const useHeatmapCellsTooltipBody = ({
 
 interface HeatmapCellsProps {
   readonly cornerRadius?: number;
-  readonly colorScale?: (count: number) => string;
+  readonly colorScale?: (count: number | null | undefined) => string;
   readonly inactiveOpacity?: number;
   readonly inactiveScale?: number;
   readonly activeScale?: number;
@@ -138,7 +138,7 @@ interface HeatmapCellsProps {
   readonly ariaDescription?: string;
 }
 
-const HeatmapCells = ({
+const RenderHeatmapCells = ({
   cornerRadius = 2,
   colorScale: _colorScaleProp,
   inactiveOpacity = HEATMAP_INACTIVE_OPACITY,
@@ -188,9 +188,9 @@ const HeatmapCells = ({
     rowOpacity,
     tooltipEnabled: tooltipConfig !== null,
     weekStartDay: ctx.weekStartDay,
-    yLabelFormat: ctx.yLabelFormat,
+    yLabelFormat: ctx.yLabelFormat ?? "full",
     yRowOpacity: ctx.yRowOpacity,
-    yTickFilter: ctx.yTickFilter,
+    yTickFilter: ctx.yTickFilter ?? "odd",
   });
   const { containerRef, handleFocusChange, handleRender } = useHeatmapPointerBridge({
     coordinator,
@@ -238,13 +238,19 @@ const HeatmapCells = ({
   );
 };
 
+const HeatmapCells: NamedExoticComponent<Readonly<HeatmapCellsProps>> = memo(RenderHeatmapCells);
+
+HeatmapCells.displayName = "HeatmapCells";
+
 interface HeatmapXAxisProps {
   readonly className?: string;
 }
 
 // Package axes render the month labels from the band scales; this carrier
 // Keeps the legacy slot working while rendering nothing itself.
-const HeatmapXAxis = (_props: Readonly<HeatmapXAxisProps>): undefined => undefined;
+const RenderHeatmapXAxis = (_props: Readonly<HeatmapXAxisProps>): ReactElement | null => null;
+
+const HeatmapXAxis: NamedExoticComponent<Readonly<HeatmapXAxisProps>> = memo(RenderHeatmapXAxis);
 
 HeatmapXAxis.displayName = "HeatmapXAxis";
 
@@ -257,7 +263,9 @@ interface HeatmapYAxisProps {
 
 // Package y axis renders day labels from `ticks.values`/`ticks.format`; the
 // Parent reads these props when building the definition.
-const HeatmapYAxis = (_props: Readonly<HeatmapYAxisProps>): undefined => undefined;
+const RenderHeatmapYAxis = (_props: Readonly<HeatmapYAxisProps>): ReactElement | null => null;
+
+const HeatmapYAxis: NamedExoticComponent<Readonly<HeatmapYAxisProps>> = memo(RenderHeatmapYAxis);
 
 HeatmapYAxis.displayName = "HeatmapYAxis";
 
