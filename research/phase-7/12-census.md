@@ -335,7 +335,7 @@ non-seam `<defs>`: **app-owned overlay — keep**, stamped per row above.
 ## 7. Verification
 
 - `cd showcase && npx tsc --noEmit` → exit 0, no output.
-- `cd showcase && npx oxlint --type-aware migrated packages/migrated-charts` → 3 errors (floor): `marker-group-content.tsx:34` `__qaSetMarkerFan` naming, `css-var-maps.ts:100` + `index.ts:114` `heatmapCssVars` deprecated.
+- `cd showcase && npx oxlint --type-aware migrated packages/migrated-charts` → 0 errors (V5.4, D576; floor lowered to 0). The three former residuals carry scoped `oxlint-disable-line` directives: `marker-group-content.tsx:34` (harness-contract name), `css-var-maps.ts:100` + `index.ts:114` (bklit deprecates `heatmapCssVars` and still exports it).
 - `pnpm test` (root) → pass 180 / fail 0 / todo 60.
 - `node scripts/orphans.mjs` → 0.
 - `node scripts/reach-in-guard.mjs --json` → failures 0 (paste §2).

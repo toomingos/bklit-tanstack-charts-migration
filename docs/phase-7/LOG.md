@@ -179,3 +179,32 @@ run, which is run-to-run noise, not a change in what is drawn. Floor at `7b113a9
 oxlint 3, tests 240/180/0/60, orphans 0, reach-in 21 with no failures.
 
 7.4 is complete. What remains before the phase closes is the 7.5 gate itself.
+
+## D576 — V5.4: the migrated tree lints clean; the floor drops to 0
+
+The three residual oxlint errors are gone and `LINT_FLOOR` in `qa/gate/run-checks.mjs` is 0,
+so any new error now fails the gate instead of hiding under a pinned count.
+
+Two of the three could not be fixed by deletion. `heatmapCssVars` carries `@deprecated` in
+bklit (`repos/bklit-ui/packages/ui/src/charts/heatmap/heatmap-context.tsx:211`) and is still
+publicly exported there, so parity requires the migrated re-export *with the tag*, and every
+spelling of that re-export is a use of a deprecated symbol. Four restructurings were tried and
+each traded the error for another: `export const` at the declaration site breaks
+`import/group-exports` and `import/exports-last`; `export *` in the barrel breaks
+`oxc/no-barrel-file` and `sonarjs/no-wildcard-import`; a leading-line `oxlint-disable-next-line`
+breaks `capitalized-comments` (the directive itself is prose to that rule) and, with a parity
+note above it, `comments/max-lines`. What works is the trailing form, which
+`capitalized-comments` treats as an inline comment: `// oxlint-disable-line typescript/no-deprecated
+-- parity: bklit deprecates and still exports it`, on `css-var-maps.ts:100` and `index.ts:114`.
+This is the first inline disable in `showcase/migrated/charts`; both are single-rule,
+single-line, and carry the parity reason on the same line.
+
+The third, `sonarjs(variable-name)` on the `declare global var __qaSetMarkerFan`, takes the same
+trailing directive. The alternative — dropping the `var` and reading through `window` — costs
+more than it buys: `typeof window !== "undefined"` trips `anti-slop/no-runtime-typeof` and
+`typescript/prefer-optional-chain`, and `globalThis.window?.` trips
+`typescript/no-unnecessary-condition` because the DOM lib types `window` as non-nullish. The
+`globalThis` read stays exactly as it was, so SSR behaviour is unchanged.
+
+Floor at this commit: tsc 0, oxlint **0**, tests 240/180/0/60, orphans 0, reach-in 21 over 12
+files with no failures. `research/phase-7/12-census.md` §lint updated to read 0.

@@ -31,7 +31,7 @@ declare global {
   interface Window {
     readonly __qaSetMarkerFan?: boolean;
   }
-  var __qaSetMarkerFan: boolean | undefined;
+  var __qaSetMarkerFan: boolean | undefined; // oxlint-disable-line sonarjs/variable-name -- the harness sets this exact name
 }
 
 // QA hook: only armed if the flag was already true when this module first evaluated (set pre-boot); later toggles are ignored.

@@ -111,7 +111,7 @@ export { computeReferenceAreaRect } from "./internal/reference-area-geometry";
 export type { ReferenceAreaRect } from "./internal/reference-area-geometry";
 export { DEFAULT_CHART_LIFECYCLE, DEFAULT_CHART_STATUS, DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase, resolveRestingChartPhase } from "./internal/chart-phase";
 export { sunburstCssVars, defaultSunburstColors, opacityForRelativeDepth } from "./internal/sunburst-colors";
-export { CHART_SCALE_VARS, chartScaleCssVars, choroplethCssVars, defaultChoroplethColors, heatmapCssVars, pieCssVars, radarCssVars, ringCssVars, sankeyCssVars } from "./internal/css-var-maps";
+export { CHART_SCALE_VARS, chartScaleCssVars, choroplethCssVars, defaultChoroplethColors, heatmapCssVars, pieCssVars, radarCssVars, ringCssVars, sankeyCssVars } from "./internal/css-var-maps"; // oxlint-disable-line typescript/no-deprecated -- parity: bklit deprecates and still exports it
 export type { ChartScaleVars } from "./internal/css-var-maps";
 export { Y_AXIS_DEFAULT_TICK_COUNT, Y_AXIS_MAX_TICK_COUNT, Y_AXIS_MIN_TICK_COUNT, resolveYAxisTickCount } from "./internal/y-axis-ticks";
 export { buildHeatmapColorScale, buildHeatmapColorScaleFromStyles, buildHeatmapFillScale, defaultHeatmapColorScale, defaultHeatmapFillScale, heatmapLevelPatternId, isHeatmapLevelPattern, levelStylesFromColors, resolveHeatmapLevelStyles } from "./internal/heatmap-colors";

@@ -97,5 +97,5 @@ const heatmapCssVars = {
 
 const defaultChoroplethColors = [...CHART_SCALE_VARS];
 
-export { CHART_SCALE_VARS, chartScaleCssVars, pieCssVars, ringCssVars, radarCssVars, sankeyCssVars, choroplethCssVars, heatmapCssVars, defaultChoroplethColors };
+export { CHART_SCALE_VARS, chartScaleCssVars, pieCssVars, ringCssVars, radarCssVars, sankeyCssVars, choroplethCssVars, heatmapCssVars, defaultChoroplethColors }; // oxlint-disable-line typescript/no-deprecated -- parity: bklit deprecates and still exports it
 export type { ChartScaleVars };
