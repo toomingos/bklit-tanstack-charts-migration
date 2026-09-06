@@ -62,7 +62,7 @@ Tick a row only after the lead re-ran its "done when" count and committed.
 | 4 | V3.9 | skeleton as a chart | todo | | | |
 | 4 | V3.8 | census and idiom rows (last) | todo | | | |
 
-Batch-end audits (`--agent audit`, `08` §6 counts + idiom rows for touched families): after wave 1 ☐ · wave 2 ☐ · wave 3 ☐ · wave 4 ☐.
+Batch-end audits (`--agent audit`, `08` §6 counts + idiom rows for touched families): after wave 1 ☑ · wave 2 ☑ · wave 3 ☑ (D556, HEAD `73cc44e`, V3.4b still open) · wave 4 ☐.
 
 ## 7.4 Refactor and 7.5 Gate
 
@@ -111,6 +111,10 @@ stamp), UPSTREAM (I-number in `07`). No vector = synthesis defect: amend `08` §
 | G22 | lead (V2.3 iso QA) | V2.3 legend `<button>` reset sets inline `display: block; width: 100%`, beating item classNames (`flex items-center gap-2` in the profit-loss legend template): profitloss legend wraps to two rows, plot shifts 80px; isolated QA profitloss settled 1.77% (baseline 0.0003%) | V2 (V2.3 defect) | fix in `legend-item.tsx`, `chart-legend-default-row.tsx`, `chart-legend-custom-row.tsx`: the reset never sets display/width, layout stays with the className as on the pre-V2.3 div; done when isolated `run-qa` profitloss,legend,legendhover,candlelegend,markers reads as the baseline — fixed in the V2.6 commit (`a20c7fd`): reset drops display/width; iso profitloss settled 3 = baseline, legend/legendhover/candlelegend as baseline, markers = D498 | D549, D551 |
 | G23 | lead (V2.6 iso QA) | scatter tooltip body bypassed `renderSeriesTooltipBody`; the box came from the package shell chrome (no `bkm-native-tooltip`): 173×103 px vs legacy 151×90, scatter hover 4190–4690 pre-item, 5047 with the halo pill | V2 (V2.6 tooltip parity) | fixed in the V2.6 commit (`a20c7fd`): `scatter-tooltip-body.ts` calls the shared renderer, extension passes the shell class; scatter hover 1531/1691/1692, box 153×90 | D551 |
 | G24 | lead (V3.7-B review) | legacy props restored as types only, behaviour not wired: candlestick `xDomain`/`xDomainSlotCount`, brush `direction`/`selection`/`useWindowMoveEvents`, `BarDepthProvider` context value; the parity harness reads them green because `Eq` is type-level | V3 (V3.7 config parity) · V4 (V4.2 fixtures should mount them) | open: wire each through the package config or stamp a ruling per prop before the 7.5 gate | D553 |
+| G25 | audit (D556) | `08` §6 probes `spatialIndex ≥ 5` by grep; V2.5's cartesian indexes are passed through the package `focus` option and read 1 (`sankey-chart.tsx:473`) | V3 (V3.8 census) · V4 (gate integrity) | FOLD into V3.8: rewrite the probe to count `focus:` spatial factories, or add the literal key; not a code change | D556 |
+| G26 | audit (D556) | `initialWidth` on 12/16 entry files; area, heatmap, scatter, live-line mount it in their internal view, so the §6 "= 15" count depends on which file is grepped | V3 (V3.8 census) | FOLD into V3.8: count mounts (`grep -c initialWidth` over `showcase/migrated/charts`), stamp the number | D556 |
+| G27 | audit (D556) | `idPrefix` on 5 entry files (candlestick, choropleth, funnel, gauge, pie); V3.4a scoped the 8 mounts it owned, area/bar/composed/heatmap/line/live-line/radar/ring/sankey/scatter/sunburst have none | V3 (V3.4b seam) | FOLD into V3.4b (cartesian) and V3.8 (polar/sankey/heatmap sweep): every mount that registers into the seam passes `idPrefix` | D556 |
+| G28 | audit (D556) | `role="img"` 0 across families; one hand tab stop stays at `sunburst-center-overlay.tsx:68` | V4 (V4.1 a11y) | FOLD into V4.1: host `role="img"` + label on every mount, tab stop deleted with V3.2 sunburst centre → package `radialText` | D556 |
 
 ## Idiom checklist (V0.6 / V3.8)
 
