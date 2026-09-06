@@ -76,7 +76,7 @@ Batch-end audits (`--agent audit`, `08` §6 counts + idiom rows for touched fami
 | V5.1 | bundle column ≤ 1.10, CSS column | todo | | |
 | V5.2 | bundle measured after V1.4/V3 | todo | | |
 | V5.3 | `internal/` shape (after 7.4) | ruled against (D574): 407 files, ~180 single-family vs ~227 cross-cutting, so family dirs home under half the tree and move neither claim | — | D574 |
-| V5.4 | lint 0, D472 threshold work if kept | merged | `PENDING` | D576 · oxlint 0/0; `LINT_FLOOR` 4 -> 0; D472 threshold work not needed (the gate went with V3.5) |
+| V5.4 | lint 0, D472 threshold work if kept | merged | `b2d6f3b` | D576 · oxlint 0/0; `LINT_FLOOR` 4 -> 0; D472 threshold work not needed (the gate went with V3.5) |
 | 7.5 | census 0, `08` §6 grep counts re-run from a fresh clone | todo | | |
 | 7.5 | upstream re-check of I1–I6 and F-260 against the pin | done (2026-09-06; re-run `gh issue view 126…132` at the gate) | — | D560 |
 
