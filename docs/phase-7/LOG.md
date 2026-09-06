@@ -907,3 +907,52 @@ re-pinning is the adoption D585 deferred.
 cell in it is a stamped condition (D498, D535, D585) or a demonstrated harness flake.
 No new parity defect, in any of the 190 QA cells, 4 probe suites, 29 bench cells or the
 census, is attributable to the code that changed since the recorded gate.
+
+## D589 — The virtual-clock probe rewrite: the pie stall was arithmetic, the "lost latency" was harness noise, and a stable flag count hid a changed finding
+
+**The stall.** The virtual-clock probe rewrite left one hard error: `openScene …chart=pie&n=1000
+never settled after 20000 virtual ms (armed=true settled=false paint=true)`. The cause is
+arithmetic, not the fake clock. Pie has no `onPhaseChange`, so `bench/app/src/scenarios/bklit-pie.tsx:31-36`
+arms a *manual* settle timer sized from the source stagger: `pieSettleMs(1000) = 100 + 999*80 + 1100
+= 81120`, plus a 250ms reveal margin = **81370ms**, and `armManualSettle(settleMs + 3000)` = **84370ms**.
+`settle.ts:150-161` takes the caller's fallback — the shared `FALLBACK_MS = 2500` at `settle.ts:25`
+applies only to the `armBklitSettle`/`armTanstackSettle` cartesian arms and never to pie. Against a
+20000ms cap neither the real timer nor its fallback can fire. `paint=true` was honest (double-rAF,
+driven by the fake clock); only the settle signal was out of reach. The fix is a per-chart cap
+override in `qa/gate/probes/lib-probe.mjs` (`SETTLE_CAP_OVERRIDE`), not a shorter reveal: shortening
+it would hover mid-stagger and measure a chart that is still animating.
+
+**Two corrections to the record, both mine.** First, `stepVirtual` does not "seek animations to
+completion" — it advances `clock.runFor(ms)` and adds exactly `ms` to each paused player
+(`lib-probe.mjs:107-119`). Second, the failing run produced **no hover-lag rows at all** (the probe
+threw), so the comparison of "27–371ms collapsing to exactly 16" was drawn from legend-hover-dim
+alone and did not describe hover-lag.
+
+**The latency reading was wrong, and the evidence overturned it.** The hypothesis was that virtual
+time destroys latency assertions. It does not. With the cap fixed, hover-lag reproduces the
+wall-clock baseline (`…15-28-46-624Z`) row for row: the same 4 flags on the same cells
+(bar `settles-after-700ms-capture`; pie, sankey, liveline `dim-presence-mismatch`), the same dimmed
+counts on 12 of 13 rows, and first-dim latencies in the same 54–203ms band with no quantization —
+because hover-lag times *inside the page* on rAF against a faked `performance.now()`
+(`installSampler`, `lib-probe.mjs:132`). legend-hover-dim's `16`s come from its Node-side poll, and
+under a fake clock rAF is 16ms-quantized by construction. The old 41/92/114/253/371 were frame
+boundaries dithered by evaluate round-trip and compositor lag — they measured the harness, not the
+chart. No sampler port is owed: the `>300ms` band still fires where a real difference exists
+(markers 288 vs 112) and stops firing on noise (barsquares 371-vs-119 became 16-vs-16). The
+`bklit does not fully undim` entries that vanished on legendhover and barsquares were false
+positives from sampling an unfinished undim, and legend-hover-dim is now byte-identical across runs.
+
+**Residual, recorded not fixed.** hover-lag is not fully deterministic: candlestick bklit `finalDim`
+read 0 in `…23-24-39-356Z` and 999 in `…23-26-15-000Z` (baseline 999), across `repeats: 3` medians.
+This is the wall leak `stepVirtual` documents at `lib-probe.mjs:101-106` — the real ms between an
+animation's start and the next sweep. It moved no flag in either run.
+
+**Cost.** 61.6s against 19m38s, errors 1 → 0. hover-lag alone 38.6s against 1049s.
+
+**The near-miss, and the fix it earned.** Across the two broken runs the printed flag *counts* were
+`legend-hover-dim: 4` and `4` while the flags underneath changed materially. The gate summary reports
+counts, and `mergeLedger` in `qa/gate/summarize.mjs` did `cur.cells = esc(...)` — silently
+overwriting the previous content and stamping `open (last seen <run>)`. An issue id could survive
+every run while every finding under it changed, and the ledger diff showed nothing. Only a manual
+diff of the two probe tables caught it. `mergeLedger` now emits
+`open, CONTENT CHANGED in <run> (was: …)` when an open row's content moves. A count is not a finding.

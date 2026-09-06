@@ -1,7 +1,16 @@
-// Post-settle hover lag: after settle (+3s), move to the 0.5 fraction of the largest svg; per impl, time from
-// first pointermove to first dim, first tooltip, and last DOM change (1.5s frame sample, medians of repeats).
+// Post-settle hover lag: after quiescent settle, move to the 0.5 fraction of the largest svg; per impl, time from
+// first pointermove to first dim, first tooltip, and last DOM change (1.5s virtual frame sample, medians of repeats).
 // GUARD: the pixel gate captures 700ms after the move, so lastChangeMs > 700 means a mid-transition capture.
-import { installSampler, largestSvgBox, median, openScene, readSampler } from "./lib-probe.mjs";
+// B4 verdict: MIXED drivers -> virtual via clock + getAnimations lockstep. SeriesHoverDim motion.g (SVG -> motion
+// JS frameloop, virtual) + SeriesMarkersDimWrapper CSS transition 0.15s (lockstep) + tooltip motion springs (JS,
+// virtual) + tooltip-content CSS transition-opacity 200ms (lockstep) + HTML tooltip WAAPI players (lockstep).
+// All reported ms are now VIRTUAL (animation-design time); thresholds below keep their numeric values because
+// virtual ms are the same unit the durations (400/150/200/160ms) and the gate's +700ms capture are written in.
+// B5: the 150ms pre-move pause is dropped (fresh scene has no prior hover state; one 32ms virtual pump flushes
+// initial styles) and the 1700ms observation wait is replaced by exact virtual stepping (30x50ms = sampler maxMs).
+// Parallel: cells x impls x reps as runPool jobs (PROBE_WIDTH); separate contexts, seeded data -> no shared state.
+import { runPool } from "../lib.mjs";
+import { installSampler, largestSvgBox, median, openScene, PROBE_WIDTH, readSampler, stepVirtual } from "./lib-probe.mjs";
 
 export const DEFAULT_CELLS = [
   ["line", 1000], ["area", 1000], ["bar", 100], ["scatter", 1000], ["composed", 1000], ["candlestick", 1000],
@@ -10,30 +19,34 @@ export const DEFAULT_CELLS = [
 const HOVER_WAIT_MS = 700;
 
 export async function hoverLagProbe(browser, baseUrl, { cells = DEFAULT_CELLS, repeats = 3, impls = ["bklit", "migrated"] } = {}) {
+  const jobs = [];
+  for (const [chart, n] of cells) for (const impl of impls) for (let i = 0; i < repeats; i++) jobs.push({ chart, n, impl });
+  const repResults = await runPool(jobs, PROBE_WIDTH, async (job) => {
+    const s = await openScene(browser, baseUrl, { impl: job.impl, chart: job.chart, n: job.n });
+    try {
+      const box = await largestSvgBox(s.page);
+      if (!box) return { rep: { error: "no svg" }, errors: [] };
+      await s.page.mouse.move(2, 2);
+      await stepVirtual(s.page, 32);
+      await installSampler(s.page, { maxMs: 1500 });
+      await s.page.mouse.move(box.x + box.w * 0.5, box.y + box.h * 0.5, { steps: 10 });
+      for (let v = 0; v < 1500; v += 50) await stepVirtual(s.page, 50);
+      return { rep: await readSampler(s.page), errors: [...new Set(s.errors)].slice(0, 3) };
+    } finally {
+      await s.close();
+    }
+  });
   const rows = [];
   for (const [chart, n] of cells) {
     for (const impl of impls) {
       const reps = [];
       let errors = [];
-      for (let i = 0; i < repeats; i++) {
-        const s = await openScene(browser, baseUrl, { impl, chart, n });
-        try {
-          const box = await largestSvgBox(s.page);
-          if (!box) {
-            reps.push({ error: "no svg" });
-            continue;
-          }
-          await s.page.mouse.move(2, 2);
-          await s.page.waitForTimeout(150);
-          await installSampler(s.page, { maxMs: 1500 });
-          await s.page.mouse.move(box.x + box.w * 0.5, box.y + box.h * 0.5, { steps: 10 });
-          await s.page.waitForTimeout(1700);
-          reps.push(await readSampler(s.page));
-          errors = errors.concat(s.errors);
-        } finally {
-          await s.close();
+      jobs.forEach((j, k) => {
+        if (j.chart === chart && j.n === n && j.impl === impl) {
+          reps.push(repResults[k].rep);
+          errors = errors.concat(repResults[k].errors);
         }
-      }
+      });
       const ok = reps.filter((r) => r && !r.error && r.started);
       rows.push({
         chart,

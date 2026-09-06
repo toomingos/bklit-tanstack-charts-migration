@@ -163,9 +163,17 @@ export function mergeLedger(existingText, issues, runLabel, scope = null) {
     seen.add(i.id);
     const cur = rows.get(i.id);
     if (cur) {
-      cur.cells = esc(i.cells.join("<br>"));
+      // A stable flag COUNT is not evidence of a stable finding: an id can
+      // persist across runs while every flag under it changes (2026-09-06
+      // 15-28-46 vs 23-11-41 both reported legend-hover-dim 4, with three
+      // "does not fully undim" entries silently gone). The old merge just
+      // overwrote `cells`, so the ledger diff showed nothing. Say it instead.
+      const next = esc(i.cells.join("<br>"));
+      const changed = /^open/.test(cur.status) && cur.cells !== next;
+      const was = changed ? cur.cells.replace(/<br>/g, "; ").slice(0, 120) : null;
+      cur.cells = next;
       cur.charts = i.charts.join(", ");
-      cur.status = `open (last seen ${runLabel})`;
+      cur.status = changed ? `open, CONTENT CHANGED in ${runLabel} (was: ${was})` : `open (last seen ${runLabel})`;
     } else rows.set(i.id, { id: i.id, category: i.category, charts: i.charts.join(", "), cells: esc(i.cells.join("<br>")), firstSeen: runLabel, status: `open (last seen ${runLabel})`, note: "" });
   }
   for (const [id, r] of rows) if (!seen.has(id) && inScope(r) && /^open/.test(r.status)) r.status = `not reproduced in ${runLabel} (was: ${r.status.replace(/^open \(last seen |\)$/g, "")})`;

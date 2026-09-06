@@ -1,17 +1,23 @@
 // Bardepth depth-toggle probe (window.__qaSetBarDepthEnabled, mirroring the gate's depth cells): per-impl counts,
 // geometry per state, settle time per toggle, and whether toggling back restores exact geometry.
-import { diffMarks, openScene, sampleMarks } from "./lib-probe.mjs";
+// B4 verdict: JS-driven. The toggle mounts/unmounts depth layers whose enter grow is motion-on-SVG (JS frameloop,
+// virtual); geometry/opacity reads are synchronous commits. Reported settleMs are VIRTUAL ms; the >400ms diff and
+// >700ms capture-window flags keep their numeric values (same unit both sides).
+// The 33ms poll loop was already condition-based — kept, with waitForTimeout(33) swapped for stepVirtual(33)
+// and Date.now() swapped for accumulated virtual ms. Parallel: impls as runPool jobs (PROBE_WIDTH).
+import { runPool } from "../lib.mjs";
+import { diffMarks, openScene, PROBE_WIDTH, sampleMarks, stepVirtual } from "./lib-probe.mjs";
 
 async function settleMarks(page, { maxMs = 1500, stableMs = 250 } = {}) {
-  const t0 = Date.now();
+  let t = 0;
   let last = await sampleMarks(page, { limit: 40 });
   let lastChange = 0;
   let firstChange = null;
   for (;;) {
-    await page.waitForTimeout(33);
+    await stepVirtual(page, 33);
+    t += 33;
     const cur = await sampleMarks(page, { limit: 40 });
     const d = diffMarks(last, cur);
-    const t = Date.now() - t0;
     if (d.moved || d.opacityChanged || d.countA !== d.countB) {
       lastChange = t;
       if (firstChange == null) firstChange = t;
@@ -23,8 +29,7 @@ async function settleMarks(page, { maxMs = 1500, stableMs = 250 } = {}) {
 }
 
 export async function barDepthToggleProbe(browser, baseUrl, { chart = "bardepth", n = 100, impls = ["bklit", "migrated"] } = {}) {
-  const rows = [];
-  for (const impl of impls) {
+  const rows = await runPool(impls, PROBE_WIDTH, async (impl) => {
     const s = await openScene(browser, baseUrl, { impl, chart, n });
     try {
       const hooks = await s.page.evaluate(() => ({ depth: typeof window.__qaSetBarDepthEnabled === "function", pulsePaused: typeof window.__qaSetBarPulsePaused === "function", pulsePhase: typeof window.__qaSetBarPulsePhase === "function" }));
@@ -35,7 +40,7 @@ export async function barDepthToggleProbe(browser, baseUrl, { chart = "bardepth"
       const on = await settleMarks(s.page);
       await s.page.evaluate(() => window.__qaSetBarDepthEnabled?.(false));
       const off2 = await settleMarks(s.page);
-      rows.push({
+      return {
         impl,
         hooks,
         initialCount: initial.count,
@@ -47,11 +52,11 @@ export async function barDepthToggleProbe(browser, baseUrl, { chart = "bardepth"
         offVsOn: diffMarks(off.marks, on.marks),
         offVsOffAgain: diffMarks(off.marks, off2.marks),
         errors: [...new Set(s.errors)].slice(0, 3),
-      });
+      };
     } finally {
       await s.close();
     }
-  }
+  });
   const a = rows.find((r) => r.impl === "bklit");
   const b = rows.find((r) => r.impl === "migrated");
   const flags = [];

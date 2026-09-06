@@ -1,19 +1,25 @@
 // Legend-hover dim probe (window.__qaSetLegendHover, same driver as the pixel gate): per-frame dimmed count to
 // time-to-dim, final count, and time-to-undim. Flags fire on dim-presence mismatch or count differing >25%.
-import { dimmedCount, openScene } from "./lib-probe.mjs";
+// B4 verdict: same MIXED drivers as hover-lag (motion-on-SVG JS + CSS transitions), virtual via clock + lockstep.
+// Reported dimMs/undimMs are VIRTUAL ms; the >300ms settle-diff band is unchanged (both sides same unit).
+// The 16ms poll loop was already condition-based — kept, with waitForTimeout(16) swapped for stepVirtual(16)
+// and Date.now() deltas swapped for accumulated virtual ms (wall Date would mix timebases under a fake clock).
+// Parallel: cells x impls as runPool jobs (PROBE_WIDTH); per-item dim/undim stays serial on its own page.
+import { runPool } from "../lib.mjs";
+import { dimmedCount, openScene, PROBE_WIDTH, stepVirtual } from "./lib-probe.mjs";
 
 export const DEFAULT_CELLS = [["legendhover", 1000], ["candlelegend", 1000], ["markers", 100], ["barsquares", 100], ["profitloss", 1000]];
 
 async function settleDimmed(page, { maxMs = 1500, stableMs = 250 } = {}) {
-  const t0 = Date.now();
+  let t = 0;
   let last = await dimmedCount(page);
   let firstChangeMs = null;
   let lastChangeMs = 0;
   const base = last.dimmed;
   for (;;) {
-    await page.waitForTimeout(16);
+    await stepVirtual(page, 16);
+    t += 16;
     const cur = await dimmedCount(page);
-    const t = Date.now() - t0;
     if (cur.dimmed !== last.dimmed) {
       if (firstChangeMs == null) firstChangeMs = t;
       lastChangeMs = t;
@@ -25,26 +31,26 @@ async function settleDimmed(page, { maxMs = 1500, stableMs = 250 } = {}) {
 }
 
 export async function legendHoverDimProbe(browser, baseUrl, { cells = DEFAULT_CELLS, impls = ["bklit", "migrated"], items = [0, 1] } = {}) {
-  const rows = [];
-  for (const [chart, n] of cells) {
-    for (const impl of impls) {
-      const s = await openScene(browser, baseUrl, { impl, chart, n });
-      try {
-        const hasHook = await s.page.evaluate(() => typeof window.__qaSetLegendHover === "function");
-        const perItem = [];
-        for (const i of items) {
-          await s.page.evaluate((i) => window.__qaSetLegendHover?.(i), i);
-          const dim = await settleDimmed(s.page);
-          await s.page.evaluate(() => window.__qaSetLegendHover?.(null));
-          const undim = await settleDimmed(s.page);
-          perItem.push({ item: i, dimmedBefore: dim.base, dimmedAfter: dim.final, dimMs: dim.lastChangeMs, undimmedTo: undim.final, undimMs: undim.lastChangeMs, elements: dim.total });
-        }
-        rows.push({ chart, n, impl, hasHook, perItem, errors: [...new Set(s.errors)].slice(0, 3) });
-      } finally {
-        await s.close();
+  const jobs = [];
+  for (const [chart, n] of cells) for (const impl of impls) jobs.push({ chart, n, impl });
+  const rows = await runPool(jobs, PROBE_WIDTH, async (job) => {
+    const { chart, n, impl } = job;
+    const s = await openScene(browser, baseUrl, { impl, chart, n });
+    try {
+      const hasHook = await s.page.evaluate(() => typeof window.__qaSetLegendHover === "function");
+      const perItem = [];
+      for (const i of items) {
+        await s.page.evaluate((i) => window.__qaSetLegendHover?.(i), i);
+        const dim = await settleDimmed(s.page);
+        await s.page.evaluate(() => window.__qaSetLegendHover?.(null));
+        const undim = await settleDimmed(s.page);
+        perItem.push({ item: i, dimmedBefore: dim.base, dimmedAfter: dim.final, dimMs: dim.lastChangeMs, undimmedTo: undim.final, undimMs: undim.lastChangeMs, elements: dim.total });
       }
+      return { chart, n, impl, hasHook, perItem, errors: [...new Set(s.errors)].slice(0, 3) };
+    } finally {
+      await s.close();
     }
-  }
+  });
   const pairs = [];
   for (const [chart, n] of cells) {
     const a = rows.find((r) => r.chart === chart && r.n === n && r.impl === "bklit");
