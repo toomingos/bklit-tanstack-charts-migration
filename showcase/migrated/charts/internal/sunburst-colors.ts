@@ -1,11 +1,12 @@
+import { chartCssVars } from "./chart-context";
 import { CHART_CATEGORY_PALETTE } from "./design-tokens";
 
 const sunburstCssVars = {
-  background: "var(--chart-background)",
-  foreground: "var(--chart-foreground)",
-  foregroundMuted: "var(--chart-foreground-muted)",
-  label: "var(--chart-label)",
-  ring: "var(--chart-background)",
+  background: chartCssVars.background,
+  foreground: chartCssVars.foreground,
+  foregroundMuted: chartCssVars.foregroundMuted,
+  label: chartCssVars.label,
+  ring: chartCssVars.background,
   slice1: "var(--chart-1)",
   slice2: "var(--chart-2)",
   slice3: "var(--chart-3)",

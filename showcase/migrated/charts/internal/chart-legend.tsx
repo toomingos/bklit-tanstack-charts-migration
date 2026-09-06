@@ -116,7 +116,7 @@ const ChartLegend = ({
   const displayPercentage = showPercentage ?? showProgress;
 
   return (
-    <div className={cn("legend-container flex flex-col gap-2", className)}>
+    <div className={cn("legend-container flex flex-col gap-2", className)} data-slot="legend">
       {(title ?? "").length > 0 && (
         <h3 className={cn("mb-1 text-legend-foreground", titleClassName)}>
           {title}

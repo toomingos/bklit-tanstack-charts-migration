@@ -171,7 +171,7 @@ const buildProfitLossSegmentMark = (segment: ProfitLossSegments[number], segInde
                 },
               } satisfies SceneNode,
             ],
-            // RenderStyle drops a top-level opacity field, so dimming must go through style.opacity; the transition lives in styles.css via className
+            // RenderStyle drops a top-level opacity field, so dimming goes through style.opacity; the renderer owns the timing.
             className: "chart-profit-loss-segment",
             key: segmentKey,
             kind: "group",

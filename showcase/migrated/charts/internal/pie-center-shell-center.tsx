@@ -22,7 +22,7 @@ const PieCenterShellCenter = ({
   suffix,
   valueClassName,
 }: Readonly<PieCenterShellCenterProps>): ReactElement => (
-  <div data-bkm-chart="pie" style={SHELL_WRAPPER_STYLE}>
+  <div data-bkm-chart="pie" data-slot="chart" style={SHELL_WRAPPER_STYLE}>
     <PieCenter
       className={className}
       defaultLabel={defaultLabel}

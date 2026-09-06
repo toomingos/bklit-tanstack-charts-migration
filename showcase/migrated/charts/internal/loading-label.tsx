@@ -6,6 +6,7 @@ const LoadingLabel = ({ text, exiting }: Readonly<{ text: string; exiting?: bool
   return (
     <output
       className="ts-bkm-loading-label-wrap"
+      data-slot="loading-label"
       data-bkm-loading-exiting={exiting === true ? "" : undefined}
       aria-live="polite"
     >

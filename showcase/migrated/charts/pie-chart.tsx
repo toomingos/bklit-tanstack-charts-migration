@@ -570,6 +570,7 @@ const PieChart = ({
       <div
         className={className}
         data-bkm-chart="pie"
+        data-slot="chart"
         ref={containerRef}
         style={placeholderStyle}
       />
@@ -616,6 +617,7 @@ const PieChart = ({
     <div
       className={className}
       data-bkm-chart="pie"
+      data-slot="chart"
       ref={containerRef}
       style={containerStyle}
     >

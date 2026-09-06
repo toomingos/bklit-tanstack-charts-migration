@@ -501,6 +501,7 @@ const FunnelChart = ({
     <div
       className={className}
       data-bkm-chart="funnel"
+      data-slot="chart"
       ref={containerRef}
       style={buildFunnelContainerStyle(frame.aspectRatio, style)}
     >

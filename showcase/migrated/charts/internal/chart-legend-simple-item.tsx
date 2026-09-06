@@ -25,7 +25,7 @@ const SimpleItem = ({
 }: Readonly<SimpleItemProps>): ReactElement => {
   const markerStyle = useMemo((): CSSProperties => ({ backgroundColor: item.color }), [item.color]);
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3" data-slot="legend-item">
       {showMarker && (
         <div
           className="h-2.5 w-2.5 shrink-0 rounded-full"

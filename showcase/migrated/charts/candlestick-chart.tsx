@@ -437,6 +437,7 @@ const CandlestickChart = ({
       className={className}
       style={containerStyle}
       data-bkm-chart="candlestick"
+      data-slot="chart"
     >
       {definitionContentNode}
     </div>

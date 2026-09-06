@@ -670,6 +670,7 @@ const SunburstChartInner = ({
     <div
       className={rootClassName}
       data-bkm-chart="sunburst"
+      data-slot="chart"
       ref={containerRef}
       style={outerStyle}
     >

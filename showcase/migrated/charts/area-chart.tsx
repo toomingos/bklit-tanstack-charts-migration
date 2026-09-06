@@ -328,6 +328,7 @@ const AreaChart = ({
       // Touch-action none: vertical page scroll must not hijack touch drag-selection.
       style={layerProps.containerStyle}
       data-bkm-chart="area"
+      data-slot="chart"
       data-bkm-fade-edges={overlays.fadeEdgesMask["data-bkm-fade-edges"]}
       data-bkm-fade-edges-left={overlays.fadeEdgesMask["data-bkm-fade-edges-left"]}
       data-bkm-fade-edges-right={overlays.fadeEdgesMask["data-bkm-fade-edges-right"]}

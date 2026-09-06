@@ -37,7 +37,7 @@ const BrushTrackChrome = ({
   if (leftWidth <= 0 && rightWidth <= 0) {return undefined;}
 
   return createPortal(
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1]">
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1]" data-slot="brush-track">
       {renderTrackSide({ clampedBlur, height: innerHeight, left: host.margin.left, mask: leftMask, top: host.margin.top, width: leftWidth })}
       {renderTrackSide({ clampedBlur, height: innerHeight, left: host.margin.left + Math.max(x0, x1), mask: rightMask, top: host.margin.top, width: rightWidth })}
     </div>,

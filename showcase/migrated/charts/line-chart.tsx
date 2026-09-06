@@ -436,6 +436,7 @@ export const LineChart = ({
       className={className}
       style={containerStyle}
       data-bkm-chart="line"
+      data-slot="chart"
       data-bkm-fade-edges={fadeEdgesMask["data-bkm-fade-edges"]}
       data-bkm-fade-edges-left={fadeEdgesMask["data-bkm-fade-edges-left"]}
       data-bkm-fade-edges-right={fadeEdgesMask["data-bkm-fade-edges-right"]}

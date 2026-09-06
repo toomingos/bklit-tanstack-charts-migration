@@ -133,27 +133,6 @@
   mask-image: linear-gradient(to right, #000 0%, #000 85%, transparent 100%);
 }
 
-/* --- Candlestick reveal opacity: bklit's per-candle opacity fade is
-       IDENTICAL and undelayed (fixed 150ms ease-in-out) across every single
-       candle regardless of its own scaleY stagger delay (docs/LOG.md;
-       candlestick.tsx `transition={{...t, opacity:{duration:0.15}}}`
-       replaces, not extends, the spread spring transition for that one
-       value) — so it's driven by ONE shared CSS transition rule plus a
-       plain two-phase opacity toggle (0 then 1 next frame) instead of a
-       per-element `.animate()` call. At n=10000 that removes 20,000 WAAPI
-       Animation object instantiations (one per wick line + one per body
-       line across all three link marks) that were otherwise enough
-       concurrent animation-timeline overhead to blow QA screenshot.mjs's
-       30s capture timeout when the bklit and migrated scenarios render
-       side by side in the same browser process.
-
-       D85.1 (D82.1 revert): targets `.bkm-chart__candle rect` (custom
-       `createMark` marks with `kind:'rect'` nodes) instead of the reverted
-       `.ts-chart__link line` (stock `link()` marks). --- */
-[data-bkm-chart="candlestick"] .bkm-chart__candle rect {
-  transition: opacity 150ms ease-in-out;
-}
-
 /* --- Axes (C4): the blanket `[data-bkm-chart] .ts-chart__axes
        { display: none }` suppression that lived here since P3.3/T-D2 is
        REMOVED — axis tick labels are native now. The six cartesian charts
@@ -300,74 +279,6 @@
   color: var(--chart-tooltip-foreground);
 }
 
-/* DateTicker compact pill (DatePillTracker: bottom-4px, centered on x) */
-[data-bkm-chart] .bkm-date-pill-layer {
-  position: absolute;
-  z-index: 50;
-  bottom: 4px;
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
-[data-bkm-chart] .bkm-date-pill {
-  /* overflow-hidden rounded-full bg-zinc-900 px-4 py-1 text-white shadow-lg */
-  overflow: hidden;
-  border-radius: 9999px;
-  background-color: oklch(0.21 0.006 285.885); /* zinc-900 */
-  padding: 0.25rem 1rem;
-  color: #fff;
-  box-shadow:
-    0 10px 15px -3px rgb(0 0 0 / 0.1),
-    0 4px 6px -4px rgb(0 0 0 / 0.1);
-}
-
-.dark [data-bkm-chart] .bkm-date-pill {
-  /* dark:bg-zinc-100 dark:text-zinc-900 */
-  background-color: oklch(0.967 0.001 286.375); /* zinc-100 */
-  color: oklch(0.21 0.006 285.885);
-}
-
-[data-bkm-chart] .bkm-date-pill-inner {
-  /* flex h-6 items-center justify-center */
-  display: flex;
-  height: 1.5rem;
-  align-items: center;
-  justify-content: center;
-}
-
-[data-bkm-chart] .bkm-date-pill-inner span {
-  /* whitespace-nowrap font-medium text-sm */
-  white-space: nowrap;
-  font-weight: 500;
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-}
-
-/* --- Sunburst: dimming transition (160ms ease-out, matches bklit).
-       C1 (P6): dim moved into the reactive definition as per-datum FILL
-       alpha (polar marks have no `states`), so the transition rides `fill`
-       now, not `opacity`. --- */
-[data-bkm-chart="sunburst"] .ts-chart__marks path {
-  transition: fill 160ms ease-out;
-}
-
-/* --- Area legend-hover fill dim (C1, P6): the areaFill custom mark emits no
-       ChartPoints, so mark `states` can't style it — the definition sets
-       fill-opacity reactively (1 -> 0.6) and this transition supplies the
-       400ms ease-in-out term, matching the boundary lineY's state
-       transition. Only fires on legend hover (nothing else writes
-       fill-opacity on these paths). --- */
-.ts-chart__area path {
-  transition: fill-opacity 400ms ease-in-out;
-}
-
-/* --- Pie hover fade (C1, P6): non-hovered slices fade to alpha 0.4 via the
-       reactive per-datum `fill` channel (radialArc has no per-datum opacity);
-       this supplies bklit's 0.15s tween term. --- */
-[data-bkm-chart="pie"] .ts-chart__marks path {
-  transition: fill 0.15s ease-in-out;
-}
-
 /* --- Pie/ring hitbox cursor (C5c): replaces the deleted imperative
        `groupEl.style.cursor` / `hitboxGroup.style.cursor` writes. The hitbox
        twin is declared last, so it is the topmost-painted target under the
@@ -379,17 +290,11 @@
   cursor: pointer;
 }
 
-/* --- Choropleth hover dim (C1, P6): reactive per-datum fill/stroke alpha
-       (geo marks have no `states`); bklit's 0.18s ease-out term. --- */
-[data-bkm-chart="choropleth"] .ts-chart__geo path {
-  transition: fill 0.18s ease-out, stroke 0.18s ease-out;
-}
-
 /* ---------------------------------------------------------------------- */
 /* RadarChart metric labels (radar-labels.tsx). bklit sets fontWeight 500  */
 /* on every metric label; interactive labels rest at opacity .8 and        */
 /* brighten to 1 on hover via `opacity={interactive ? 0.8 : 1}` +          */
-/* `hover:opacity-100 transition-opacity duration-150` — CSS :hover keeps  */
+/* `hover:opacity-100` — CSS :hover keeps  */
 /* the hovered state across re-renders exactly like Tailwind's does, so no */
 /* JS pointer handlers are needed on the labels at all.                    */
 /* ---------------------------------------------------------------------- */
@@ -401,29 +306,10 @@
 [data-bkm-chart="radar"] .ts-bkm-radar-axis-labels--interactive text {
   cursor: pointer;
   opacity: 0.8;
-  transition: opacity 150ms ease-in-out;
 }
 
 [data-bkm-chart="radar"] .ts-bkm-radar-axis-labels--interactive text:hover {
   opacity: 1;
-}
-
-/* ---------------------------------------------------------------------- */
-/* RadarChart area path + dot transitions for hover effects.              */
-/* Inline styles are applied by a useLayoutEffect on hover change, but    */
-/* CSS transitions give smooth animation between states.                  */
-/* Matching bklit's own tween specs (radar-area.tsx):                     */
-/*   - opacity 0.15s ease-in-out, fillOpacity/strokeWidth 0.2s            */
-/*   - transform 0.35s cubic-bezier (scale spring→ease-out surrogate)     */
-/*   - filter instant (drop-shadow doesn't transition cleanly)            */
-/* ---------------------------------------------------------------------- */
-
-[data-bkm-chart="radar"] .ts-chart__radial-area path {
-  transition: opacity 0.15s ease-in-out, transform 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-[data-bkm-chart="radar"] .ts-chart__radial-dot circle {
-  transition: opacity 0.15s ease-in-out;
 }
 
 /* --- CenterStat typography (internal/center-stat.tsx — consumed by
@@ -530,64 +416,6 @@
   background-color: color-mix(in oklab, var(--color-muted, var(--muted)) 50%, transparent);
 }
 
-/* --- Gauge (arc) notch WAAPI pop-in transform-origin ---------------------
-   gauge.tsx renders every arc notch's path coordinates relative to the
-   arc's own center (`computeArcNotches`'s absolute-pixel points are
-   shifted by -(layout.centerX, layout.centerY) at mark-render time, since
-   TanStack translates the polar container there — see gauge.tsx's
-   definition useMemo) — every arc notch's real bklit `transformOrigin` IS
-   that shared center point
-   (repos/bklit-ui/packages/ui/src/charts/gauge.tsx's `GaugeNotchSvg`:
-   `style={{transformOrigin: `${notch.xCenter}px ${notch.yCenter}px`}}`,
-   and `computeArcNotches` sets `xCenter:centerX, yCenter:centerY` for
-   EVERY notch — internal/gauge-notch.ts), so one uniform CSS rule
-   reproduces it exactly with no per-element JS needed (unlike linear,
-   whose notches each have a DIFFERENT center and set
-   `el.style.transformOrigin` per element in gauge.tsx's reveal effect
-   instead). */
-[data-bkm-chart="gauge"] [data-ts-key^="gauge-"] {
-  transform-origin: 0px 0px;
-}
-
-/* --- Radar: NO pre-hide. Bklit dots sit visibly at the grid center at t=0
-   (cx/cy * t with t=0 → 0,0, then they ride out). If we force .ts-chart__marks
-   to opacity:0 pre-paint, nothing is centered-visible to draw the eye. Instead,
-   WAAPI fill:backwards does the work: each path/circle/ring/spoke has its
-   scale/opacity keyframes with fill backwards, so between handleRender (adds the
-   Animation) and the actual start delay, the element computes at scale(0)/opacity 0.
-   The only gap is the 1-frame window between TanStack's SVG commit and our JS
-   handleRender (2 rAF + setTimeout 0). That window is <16ms and is masked by
-   immediately clearing stale inline transforms in handleRender before onPostPaint. */
-
-/* --- Radar: transform-origin for scale reveal + hover scale.
-   Polar group is at translate(200 200) (viewBox 400x400 / translate(center)).
-   TanStack polar renders via <g transform="translate(cx,cy)">; child paths
-   use local coordinates with center at (0,0) — scale must pivot there.
-   Matches bklit radar-area's `style={{transformOrigin:"0px 0px"}}`. */
-[data-bkm-chart="radar"] [data-ts-key^="polar-"],
-[data-bkm-chart="radar"] [data-ts-key^="radar:"] {
-  transform-origin: 0px 0px;
-}
-[data-bkm-chart="radar"] .ts-chart__radial-area path,
-[data-bkm-chart="radar"] [data-ts-key^="radar-ring:"],
-[data-bkm-chart="radar"] [data-ts-key^="spoke:"] {
-  transform-box: view-box;
-}
-[data-bkm-chart="radar"] .ts-chart__radial-dot circle {
-  transform-box: view-box;
-}
-/* view-box (not fill-box) keeps area scale about the polar center (0,0) — same
-   as bklit targetPositions * t. Circles with view-box cluster at center at
-   scale 0, matching bklit's t=0 visible center dots. */
-
-/* --- Ring: unified transform-origin for both track+progress sibling marks ---
-   The hover spring writes `scale()` to both groups' `style.transform`; the
-   WAAPI expand reveal also animates `transform` on the track group. A CSS
-   rule guarantees the origin is correct before JS runs / on first paint. */
-[data-bkm-chart="ring"] [data-ts-key^="ring-"] {
-  transform-origin: 0px 0px;
-}
-
 /* --- Linear gauge label stat (GaugeLabelShell's OBSERVED typography) ------
    bklit's GaugeLabelShell (gauge-label-layout.tsx lines 53-67) does NOT
    render the chart-center clamp() typography: it appends
@@ -676,27 +504,10 @@
   z-index: 2;
 }
 
-[data-bkm-chart="heatmap"] .ts-bkm-heatmap-hover-svg {
-  z-index: 10;
-}
-
-[data-bkm-chart="heatmap"] .ts-bkm-heatmap-html-layer {
-  z-index: 5;
-}
-
 [data-bkm-chart="heatmap"] .ts-bkm-heatmap-axis-layer {
   font-size: 0.6875rem;
   line-height: 1rem;
   color: var(--color-chart-label, var(--chart-label));
-}
-
-[data-bkm-chart="heatmap"] .ts-bkm-heatmap-axis-label {
-  position: absolute;
-  white-space: nowrap;
-}
-
-[data-bkm-chart="heatmap"] .ts-bkm-heatmap-axis-label--y {
-  transform: translateY(-50%);
 }
 
 [data-bkm-chart="heatmap"] .ts-bkm-heatmap-separator-label {
@@ -802,7 +613,6 @@
 .ts-bkm-heatmap-legend-gradient-segment {
   position: absolute;
   top: 0;
-  transform-origin: center center;
 }
 
 /* Heatmap loading label (shimmer retired with the V3.5 keyframes; V3.9 owns the pulse). */
@@ -822,10 +632,6 @@
   color: transparent;
   transition: opacity 0.3s ease-in-out;
   pointer-events: none;
-}
-
-[data-bkm-chart="heatmap"] .ts-bkm-heatmap-loading-label--exiting {
-  opacity: 0;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -872,21 +678,21 @@
   color: transparent;
 }
 
-.ts-bkm-loading-label-wrap[data-bkm-loading-exiting] .ts-bkm-loading-label-text {
-  opacity: 0;
+/* --- V3.9 loading pulse (V3.6 authors the rule; V3.9 adds the class) -----
+   Whole-chart opacity pulse on the loading placeholder root. The label is
+   inside the root and pulses with it; no shimmer/exit keyframes (the
+   loading → data swap is the renderer's exit motion). Period 1.6s and
+   opacity range 1 → 0.55 → 1 match the legacy sweep. */
+@keyframes ts-bkm-loading-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  [data-bkm-chart] .ts-bkm-loading-label,
-  [data-bkm-chart="heatmap"] .ts-bkm-heatmap-loading-label,
-  .ts-bkm-loading-label-text {
-    animation: none !important;
-  }
-  .ts-bkm-loading-label-wrap[data-bkm-loading-exiting] .ts-bkm-loading-label-text {
-    opacity: 0;
-    transform: none;
-    filter: none;
-  }
+.ts-bkm-loading-root {
+  animation: ts-bkm-loading-pulse 1.6s ease-in-out infinite;
 }
 
 /* --- Legend hover dim (bklit globals.css:126-132) — UNSCOPED, must match
@@ -898,23 +704,6 @@
   transition: opacity 150ms ease-out;
 }
 
-/* ProfitLossLine segment dim transition (bklit profit-loss-line.tsx:171
-   inline style) — the TanStack svg renderer emits no `transition`
-   attribute, so the class carries it; the dim value itself is the
-   style.opacity the mark sets. */
-.chart-profit-loss-segment {
-  transition: opacity 0.2s ease-in-out;
-}
-
-/* Candlestick per-candle legend dim (bklit candlestick.tsx:217
-   `style={{ transition: "opacity 0.15s ease-in-out" }}` on each
-   CandlestickBodies <g>) — TanStack svg renderer drops top-level opacity
-   and has no `transition` attribute (D224), so the transition rides this
-   className rule while the value rides `style: { opacity }` on each rect. */
-.chart-candle-cell {
-  transition: opacity 0.15s ease-in-out;
-}
-
 /* Sankey links: the renderer hardcodes vector-effect="non-scaling-stroke"
    on area/polyline paths. With pathLength-normalized dash reveals on hiDPI,
    Chromium then computes dash + stroke width in device px — the reveal dash
@@ -924,38 +713,8 @@
    T-D13: links now render through TanStack's native link() mark, whose
    layer group carries the stable key sankey:flow (class ts-chart__link) —
    key off that group instead of the old .bkm-sankey__link class. */
-.bkm-sankey__link,
 [data-ts-key="sankey:flow"] > path {
   vector-effect: none;
-}
-
-/* --- C5/D3: the four rules below were, until C5, injected at runtime by
-       `injectLabelCssTransitions` (internal/sankey-animation.ts) as an
-       unconditional `<style class="ts-sankey__transitions">` element written
-       into the renderer's own SVG — a DOM reach-in with no sanctioned
-       equivalent. They are pure static CSS with no dynamic values, so they
-       move here verbatim. Only the first selector needed the
-       `ts-sankey__` -> `bkm-sankey__` rename; the three `data-ts-key`
-       selectors are native scene-graph keys emitted by the renderer itself
-       (sanctioned per D418), not app classes. --- */
-/* D2 (D-pending): legacy dims nodes/labels with the enter tween
-   (1.1s cubic-bezier(0.85,0,0.15,1) — bklit REVEAL_DURATION_MS/REVEAL_EASE_CSS),
-   while links dim with a quick 0.18s ease-out. Per-node stagger stays absent
-   (ACCEPT-WITH-LOG). */
-.bkm-sankey__node rect {
-  transition: opacity 1.1s cubic-bezier(0.85, 0, 0.15, 1);
-}
-
-[data-ts-key="sankey:flow"] > path {
-  transition: stroke-opacity 0.18s ease-out;
-}
-
-[data-ts-key^="sankey:nlabel:"] {
-  transition: opacity 1.1s cubic-bezier(0.85, 0, 0.15, 1);
-}
-
-[data-ts-key^="sankey:vlabel:"] {
-  transition: opacity 1.1s cubic-bezier(0.85, 0, 0.15, 1), fill-opacity 1.1s cubic-bezier(0.85, 0, 0.15, 1);
 }
 
 /* Projection line: same renderer hazard as sankey above, on the dashed
@@ -970,43 +729,12 @@
   vector-effect: none;
 }
 
-/* --- C3: hover-chrome.ts deletion — pointer-hover-dim + marker active/dim
-       transitions. Native mark `states` (internal/hover-geometry.ts's
-       `pointerHoverDimState`/`pointerRowDimState`, and the marker `states`
-       inlined in internal/series-marker-mark.ts) set the opacity/r VALUE
-       reactively with no `transition` field on the state itself — per D425,
-       explicitly directed for pointer-hover-dim: the TIME term rides a CSS
-       class here instead, exactly like the pre-existing legend/pie/choropleth
-       dim rules above. TanStack's svg renderer drops any top-level
-       `transition` attribute (D224), so this is the only place the timing
-       can live. */
-
-/* Line/area series-stroke pointer-hover dim (hover-chrome.ts DIM_TRANSITION,
-   0.4s ease-in-out) — the `lineY` mark renders each series as one or more
-   <path> segments inside a `.ts-chart__line` group (confirmed via
-   dist/line.js); `states[].style.opacity` lands on the segment <path>
-   itself, matching hover-chrome.ts's own `findSeriesPath` query
-   (`.ts-chart__line[...] path`). Also covers composed-chart.tsx's own line
-   series (bklit's imperative writer used this same constant for every lineY
-   path regardless of chart type — only bar RECTS got the faster timing
-   below). */
-.ts-chart__line path {
-  transition: opacity 0.4s ease-in-out;
-}
-
-/* Dash-tail overlay dim (bklit line.tsx SeriesHoverDim, same 0.4s
-   ease-in-out): the overlay <g> carries the dim opacity attribute, the
-   timing rides this class exactly like the lineY rule above. */
+/* Dash-tail overlay dim (bklit line.tsx SeriesHoverDim, 0.4s ease-in-out).
+   DashTailOverlay is an app-owned React overlay outside the chart scene
+   (internal/dash-tail.ts), so the renderer never animates its opacity and
+   no mark state can carry the timing; the class is the only home. */
 .bkm-dash-tail {
   transition: opacity 0.4s ease-in-out;
-}
-
-/* Composed-chart bar-row pointer-hover dim (hover-chrome.ts
-   BAR_DIM_TRANSITION, 0.12s ease-in-out) — scoped to composed only so it
-   never collides with bar-chart.tsx's own [data-bkm-chart="bar"] hover-dim
-   rule (owned by a parallel C3 task on that file). */
-[data-bkm-chart="composed"] .ts-chart__bar-y rect {
-  transition: opacity 0.12s ease-in-out;
 }
 
 /* SeriesMarker base-layer dim/blur (hover-chrome.ts MARKER_DIM_TRANSITION,
@@ -1016,9 +744,6 @@
    `.ts-chart__*` reach-in. The crisp/bright active point is a separate,
    never-dimmed `dot()` mark (see that file), so this rule only ever needs
    to express the base layer's own two states. */
-.bkm-marker-base {
-  transition: opacity 0.15s ease-in-out, filter 0.15s ease-in-out;
-}
 .bkm-marker-base--dim {
   opacity: 0.5;
   filter: blur(2px);
@@ -1027,17 +752,7 @@
 /* ── C4 (phase 6): native axis tick labels ──────────────────────────────
    The HTML axis overlays are deleted; the six cartesian charts render tick
    labels through TanStack's `.ts-chart__axes` group with `tickLabels`
-   presentation. Sanctioned `ts-chart__*` surface (D418), same pattern as
-   the hover-dim rules above. */
-
-/* Legacy XAxisLabel/YAxisLabel span carried
-   `transition: opacity 0.4s ease-in-out` — the proximity fade near the date
-   pill and any tick-set opacity change tween through it. Native labels are
-   stable-keyed per tick value (scene.js `-tick-label:` keys), so the SVG
-   nodes persist across definition rebuilds and CSS transitions apply. */
-[data-bkm-chart] .ts-chart__axes text {
-  transition: opacity 0.4s ease-in-out;
-}
+   presentation. Sanctioned `ts-chart__*` surface (D418). */
 
 /* F1-1e (P6 QA fix): legacy LiveYAxis rendered its tick labels as
    `<span className="whitespace-nowrap font-mono text-chart-label text-xs">`

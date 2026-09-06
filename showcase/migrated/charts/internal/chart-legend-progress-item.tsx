@@ -39,6 +39,7 @@ const ProgressItem = ({
   return (
     <Progress.Root
       className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1"
+      data-slot="legend-item"
       max={item.maxValue}
       value={item.value}
     >

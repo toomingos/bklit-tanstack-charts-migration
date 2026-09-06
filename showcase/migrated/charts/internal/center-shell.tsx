@@ -65,6 +65,7 @@ const CenterShell = <Data,>({
     return (
       <div
         className={className}
+        data-slot="center-stat"
         style={centerShellStyle(centerSize, true)}
       >
         {children({ data: hoveredData, isHovered: true, label, value })}
@@ -75,6 +76,7 @@ const CenterShell = <Data,>({
   return (
     <div
       className={className}
+      data-slot="center-stat"
       style={centerShellStyle(centerSize, false)}
     >
       <CenterStat

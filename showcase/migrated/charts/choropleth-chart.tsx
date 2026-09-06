@@ -988,6 +988,7 @@ const ChoroplethChart = ({
       className={className}
       style={containerStyle}
       data-bkm-chart="choropleth"
+      data-slot="chart"
     >
       {renderSizedBody({
         adoptWidth,

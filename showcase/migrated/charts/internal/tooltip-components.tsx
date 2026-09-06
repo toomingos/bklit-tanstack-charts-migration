@@ -471,10 +471,11 @@ const renderTooltipPortal = (options: Readonly<TooltipPortalOptions>): ReactNode
   return createPortal(
     <div
       className={`bkm-tooltip-layer${extraClassName}`}
+      data-slot="tooltip"
       ref={layerRef}
       style={layerStyle}
     >
-      <div className="bkm-tooltip-panel" ref={panelRef} style={panelStyleResolved}>
+      <div className="bkm-tooltip-panel" data-slot="tooltip-panel" ref={panelRef} style={panelStyleResolved}>
         {children}
       </div>
     </div>,
@@ -729,7 +730,7 @@ const resolveCurrentMonthIndex = (
 };
 
 const renderCompactTicker = (pillClassName: string, label: string): ReactElement => (
-  <div className={pillClassName}>
+  <div className={pillClassName} data-slot="date-pill">
     <div className="flex h-6 items-center justify-center">
       <span className="whitespace-nowrap font-medium text-sm">{label}</span>
     </div>
@@ -802,7 +803,7 @@ const renderFullTicker = (options: Readonly<FullTickerOptions>): ReactElement | 
   if (!visible || parsedLabels.length === EMPTY_COUNT) {return null;}
   const stacks = renderTickerStacks({ dayStyle, monthSegments, monthStyle, parsedLabels });
   return (
-    <div className={pillClassName}>
+    <div className={pillClassName} data-slot="date-pill">
       <div className="relative h-6 overflow-hidden">
         {stacks}
       </div>

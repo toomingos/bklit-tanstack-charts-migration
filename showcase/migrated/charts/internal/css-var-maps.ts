@@ -1,3 +1,4 @@
+import { chartCssVars } from "./chart-context";
 import { HEATMAP_DEFAULT_LEVEL_COLORS } from "./heatmap-colors";
 
 /** Sequential scale CSS variables (01 = lowest, 05 = highest). */
@@ -11,11 +12,7 @@ const CHART_SCALE_VARS = [
 
 type ChartScaleVars = typeof CHART_SCALE_VARS;
 
-// Shared series/background/foreground variable names (single source for the per-chart maps below).
-const CHART_BACKGROUND_VAR = "var(--chart-background)";
-const CHART_FOREGROUND_VAR = "var(--chart-foreground)";
-const CHART_FOREGROUND_MUTED_VAR = "var(--chart-foreground-muted)";
-const CHART_LABEL_VAR = "var(--chart-label)";
+// Series palette slots have no root entry in chartCssVars, so they stay literals here.
 const CHART_SERIES_1_VAR = "var(--chart-1)";
 const CHART_SERIES_2_VAR = "var(--chart-2)";
 const CHART_SERIES_3_VAR = "var(--chart-3)";
@@ -32,10 +29,10 @@ const chartScaleCssVars = {
 } as const;
 
 const pieCssVars = {
-  background: CHART_BACKGROUND_VAR,
-  foreground: CHART_FOREGROUND_VAR,
-  foregroundMuted: CHART_FOREGROUND_MUTED_VAR,
-  label: CHART_LABEL_VAR,
+  background: chartCssVars.background,
+  foreground: chartCssVars.foreground,
+  foregroundMuted: chartCssVars.foregroundMuted,
+  label: chartCssVars.label,
   slice1: CHART_SERIES_1_VAR,
   slice2: CHART_SERIES_2_VAR,
   slice3: CHART_SERIES_3_VAR,
@@ -44,10 +41,10 @@ const pieCssVars = {
 };
 
 const ringCssVars = {
-  background: CHART_BACKGROUND_VAR,
-  foreground: CHART_FOREGROUND_VAR,
-  foregroundMuted: CHART_FOREGROUND_MUTED_VAR,
-  label: CHART_LABEL_VAR,
+  background: chartCssVars.background,
+  foreground: chartCssVars.foreground,
+  foregroundMuted: chartCssVars.foregroundMuted,
+  label: chartCssVars.label,
   ring1: CHART_SERIES_1_VAR,
   ring2: CHART_SERIES_2_VAR,
   ring3: CHART_SERIES_3_VAR,
@@ -62,20 +59,20 @@ const radarCssVars = {
   area3: CHART_SERIES_3_VAR,
   area4: CHART_SERIES_4_VAR,
   area5: CHART_SERIES_5_VAR,
-  background: CHART_BACKGROUND_VAR,
+  background: chartCssVars.background,
   border: "var(--border)",
-  foreground: CHART_FOREGROUND_VAR,
-  foregroundMuted: CHART_FOREGROUND_MUTED_VAR,
-  grid: "var(--chart-grid)",
+  foreground: chartCssVars.foreground,
+  foregroundMuted: chartCssVars.foregroundMuted,
+  grid: chartCssVars.grid,
   label: "var(--chart-label, oklch(0.65 0.01 260))",
 };
 
 const sankeyCssVars = {
-  background: CHART_BACKGROUND_VAR,
-  foreground: CHART_FOREGROUND_VAR,
+  background: chartCssVars.background,
+  foreground: chartCssVars.foreground,
   linkColor: "var(--chart-foreground-muted, hsl(0, 0%, 50%))",
-  nodePrimary: "var(--chart-line-primary)",
-  nodeSecondary: "var(--chart-line-secondary)",
+  nodePrimary: chartCssVars.linePrimary,
+  nodeSecondary: chartCssVars.lineSecondary,
 };
 
 const choroplethCssVars = {
@@ -86,7 +83,7 @@ const choroplethCssVars = {
   scale03: chartScaleCssVars.scale03,
   scale04: chartScaleCssVars.scale04,
   scale05: chartScaleCssVars.scale05,
-  stroke: "var(--chart-grid)",
+  stroke: chartCssVars.grid,
 };
 
 /** @deprecated Use HEATMAP_DEFAULT_LEVEL_COLORS */

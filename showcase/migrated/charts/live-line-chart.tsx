@@ -627,6 +627,7 @@ const LiveLineChart = ({
       ref={containerRef}
       className={className}
       data-bkm-chart="liveline"
+      data-slot="chart"
       style={containerStyle}
     >
       {body}

@@ -656,13 +656,14 @@ const GaugeArc = (props: Readonly<GaugeArcProps>): ReactElement => {
     suffix: props.suffix,
   });
   return layout.fixedSize ? (
-    <div className={props.className} data-bkm-chart="gauge" style={arcStyles.rootStyle}>
+    <div className={props.className} data-bkm-chart="gauge" data-slot="chart" style={arcStyles.rootStyle}>
       {arcInner}
     </div>
   ) : (
     <div
       className={props.className}
       data-bkm-chart="gauge"
+      data-slot="chart"
       style={arcStyles.rootStyle}
     >
       <div
@@ -1074,13 +1075,14 @@ const GaugeLinear = (props: Readonly<GaugeLinearProps>): ReactElement => {
     width: layout.width,
   });
   return layout.fixedWidth ? (
-    <div className={props.className} data-bkm-chart="gauge" style={linearStyles.rootStyle}>
+    <div className={props.className} data-bkm-chart="gauge" data-slot="chart" style={linearStyles.rootStyle}>
       <div style={linearStyles.innerWidthStyle}>{linearBody}</div>
     </div>
   ) : (
     <div
       className={props.className}
       data-bkm-chart="gauge"
+      data-slot="chart"
       style={linearStyles.rootStyle}
     >
       <div ref={containerRef} style={linearStyles.containerStyle}>

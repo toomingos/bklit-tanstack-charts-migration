@@ -300,6 +300,7 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
     <div
       className={className}
       data-bkm-chart="heatmap"
+      data-slot="chart"
       style={containerStyle}
       onPointerLeave={handlePointerLeave}
     >
@@ -322,6 +323,7 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
               {showLoadingLabel && (
                 <div
                   className={`ts-bkm-heatmap-loading-label${lifecycle.chartPhase === "exitingReady" ? " ts-bkm-heatmap-loading-label--exiting" : ""}`}
+                  data-slot="loading-label"
                   style={LOADING_LABEL_STYLE}
                 >
                   {loadingLabel}

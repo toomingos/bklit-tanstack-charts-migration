@@ -157,6 +157,7 @@ const buildScatterChartTree = ({
       className={className}
       style={refAreas.containerStyle}
       data-bkm-chart="scatter"
+      data-slot="chart"
     >
       {marks.definition && (
         <>

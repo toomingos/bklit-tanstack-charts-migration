@@ -417,6 +417,7 @@ const ComposedChart = ({
       className={className}
       style={containerStyle}
       data-bkm-chart="composed"
+      data-slot="chart"
     >
       {definitionNode}
     </div>

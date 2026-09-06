@@ -565,6 +565,7 @@ const SankeyChart = ({
     <div
       className={className}
       data-bkm-chart="sankey"
+      data-slot="chart"
       ref={containerRef}
       style={containerStyle}
       onMouseLeave={handleMouseLeave}

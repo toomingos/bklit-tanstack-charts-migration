@@ -517,6 +517,7 @@ const RingChart = ({
     <div
       className={className}
       data-bkm-chart="ring"
+      data-slot="chart"
       ref={containerRef}
       style={containerStyle}
     >

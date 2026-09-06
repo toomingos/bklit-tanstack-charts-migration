@@ -310,6 +310,7 @@ const BarChart = ({
       className={className}
       style={barRootStyle}
       data-bkm-chart="bar"
+      data-slot="chart"
     >
       {definition && (
           <ChartHost

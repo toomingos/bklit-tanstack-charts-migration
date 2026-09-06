@@ -818,6 +818,7 @@ const RadarChart = ({
       className={className}
       style={containerStyle}
       data-bkm-chart="radar"
+      data-slot="chart"
     >
       {definition && (
         fixedSize !== undefined && fixedSize !== 0 ? (
