@@ -330,7 +330,7 @@ export default defineConfig({
 
     // react/refs (18 hits) fires on any ref that *may* be read during render. In this codebase
     // refs are handed to TanStack mark/strategy factories (createBarFocusStrategy,
-    // createSankeyMark, createPieHoverCoordinator, ChartScale.resolve) which only store them and
+    // createSankeyMark, createHoverSource, ChartScale.resolve) which only store them and
     // read `.current` at event/render-callback time, outside React's render. Agents verified the
     // rule cannot distinguish store-for-later from read-now, and that it cascades: adding one
     // reference flagged three untouched lines. Every sanctioned alternative was tested and traded

@@ -103,7 +103,7 @@ interface ChartHostProps<
   renderTooltipBody?: (
     context: ChartTooltipBodyRenderContext<Datum, XValue, YValue>,
   ) => ReactNode;
-  /** Custom surface renderer; mounts the `/core` entry until V3.5. */
+  /** Custom surface renderer. */
   renderer?: ChartRenderer<Datum, XValue, YValue>;
   /** R10 seam resources (patterns, radial gradients) rendered beside the chart svg. */
   resources?: ReactNode;

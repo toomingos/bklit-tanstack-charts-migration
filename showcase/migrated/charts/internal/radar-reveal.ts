@@ -148,11 +148,9 @@ const radarMotionTransition = (resolved: RadarResolvedTiming): ChartMotionTransi
     ? { damping: resolved.damping, mass: resolved.mass, stiffness: resolved.stiffness, type: "spring" }
     : { duration: resolved.durationMs, easing: motionEasingFromCss(resolved.easingCss), type: "tween" };
 
-export type { BklitRadarGridOptions, RadarEnterTransition, RadarResolvedTiming, RadarRow };
+export type { RadarEnterTransition, RadarRow };
 export { bklitRadarGrid, RADAR_TWEEN_FALLBACK, radarMotionTransition };
 export {
-  buildProgressKeyframes as buildRadarProgressKeyframes,
   resolveEnterTransition as resolveRadarEnterTransition,
-  revealTiming as radarRevealTiming,
 } from "./parity/animation";
 

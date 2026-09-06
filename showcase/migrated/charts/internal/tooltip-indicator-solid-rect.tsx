@@ -3,7 +3,6 @@ import type { ReactElement } from 'react';
 // The package owns motion (V2.4): x comes from the focus point.
 // Timing comes from resolveTooltipSpringTransition; `animate` stays for props.
 interface IndicatorSolidRectProps {
-  readonly animate: boolean;
   readonly indicatorFill: string;
   readonly pixelWidth: number;
   readonly rectX: number;

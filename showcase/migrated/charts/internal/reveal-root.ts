@@ -25,15 +25,6 @@ const markRevealed = (element: RevealRoot | null | undefined): void => {
 }
 
 /**
- * Removes the stamp so the next pass can animate again (re-armed reveal contract).
- *
- * @param {RevealRoot | null | undefined} element - Stamped reveal root to re-arm; `null`/`undefined` is ignored.
- */
-const clearRevealed = (element: RevealRoot | null | undefined): void => {
-  if (element) {delete element.dataset.bkmRevealed;}
-}
-
-/**
  * Resolves the stamped element. Defaults to the marks group; svg-root selector for sunburst/choropleth/ring.
  *
  * @param {HTMLElement} container - Chart container to search within; never the element returned.
@@ -42,5 +33,5 @@ const clearRevealed = (element: RevealRoot | null | undefined): void => {
  */
 const findRevealRoot = (container: HTMLElement, selector = ".ts-chart__marks"): RevealRoot | null => container.querySelector<RevealRoot>(selector);
 
-export { clearRevealed, findRevealRoot, isRevealed, markRevealed };
+export { findRevealRoot, isRevealed, markRevealed };
 export type { RevealRoot };

@@ -1,8 +1,7 @@
 import type { ReactElement } from "react";
 
 // Shared loading label overlay for line and area placeholders.
-const LoadingLabel = ({ text, exiting: _exiting }: Readonly<{ text: string; exiting?: boolean }>): ReactElement | null => {
-  void _exiting;
+const LoadingLabel = ({ text }: Readonly<{ text: string }>): ReactElement | null => {
   if (!text.trim()) {return null;}
   return (
     <output

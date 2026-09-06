@@ -5,10 +5,6 @@ import { area, curveNatural, line } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
 
 const PERCENT_SCALE = 100;
-// Mid-cycle progress: the legacy pulse reveal peaked halfway, then exited.
-const LINE_LOADING_PULSE_MIDPOINT = 0.5;
-// Default skeleton point count (legacy sweep DEFAULT_POINT_COUNT).
-const DEFAULT_LINE_SKELETON_POINT_COUNT = 14;
 
 interface LoadingPlotRect {
   readonly x: number;
@@ -59,8 +55,6 @@ const buildLoadingAreaPath = (
     .curve(curve)(points) ?? "";
 
 export {
-  DEFAULT_LINE_SKELETON_POINT_COUNT,
-  LINE_LOADING_PULSE_MIDPOINT,
   buildLoadingAreaPath,
   buildLoadingLinePath,
   projectLoadingLinePoints,

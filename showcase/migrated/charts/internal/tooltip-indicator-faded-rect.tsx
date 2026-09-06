@@ -5,7 +5,6 @@ import type { IndicatorFadeGradientStop } from './fade-mask';
 // The package owns motion (V2.4): x comes from the focus point.
 // Timing comes from resolveTooltipSpringTransition; `animate` stays for props.
 interface IndicatorFadedRectProps {
-  readonly animate: boolean;
   readonly gradientId: string;
   readonly fadeStops: readonly IndicatorFadeGradientStop[];
   readonly indicatorFill: string;

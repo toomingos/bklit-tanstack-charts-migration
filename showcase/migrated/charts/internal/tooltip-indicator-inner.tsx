@@ -10,7 +10,6 @@ import type { TooltipIndicatorProps } from './tooltip-indicator';
 type TooltipIndicatorInnerProps = Omit<TooltipIndicatorProps, "visible">;
 
 interface IndicatorElementParams {
-  readonly animate: boolean;
   readonly fadeLength: number;
   readonly gradientId: string;
   readonly height: number;
@@ -24,12 +23,11 @@ interface IndicatorElementParams {
 // The package owns motion (V2.4): x arrives from the focus point.
 // Legacy spring numbers map onto the package transition in focus-marks.ts.
 const renderIndicatorElement = (params: Readonly<IndicatorElementParams>): ReactElement => {
-  const { animate, fadeLength, gradientId, height, indicatorFill, lineX, pixelWidth, rectX, renderMode } = params;
+  const { fadeLength, gradientId, height, indicatorFill, lineX, pixelWidth, rectX, renderMode } = params;
   const { fadeSides, resolvedDasharray } = renderMode;
   if (resolvedDasharray !== undefined) {
     return (
       <IndicatorDashedLine
-        animate={animate}
         height={height}
         indicatorFill={indicatorFill}
         lineX={lineX}
@@ -41,7 +39,6 @@ const renderIndicatorElement = (params: Readonly<IndicatorElementParams>): React
   if (!fadeSides.any) {
     return (
       <IndicatorSolidRect
-        animate={animate}
         height={height}
         indicatorFill={indicatorFill}
         pixelWidth={pixelWidth}
@@ -52,7 +49,6 @@ const renderIndicatorElement = (params: Readonly<IndicatorElementParams>): React
   const fadeStops = indicatorFadeGradientStops(fadeSides, fadeLength);
   return (
     <IndicatorFadedRect
-      animate={animate}
       fadeStops={fadeStops}
       gradientId={gradientId}
       height={height}
@@ -73,7 +69,6 @@ const TooltipIndicatorInner = ({
   colorMid = "var(--chart-crosshair)",
   fadeEdges = "both",
   fadeLength = 10,
-  animate = true,
   gradientId = "tooltip-indicator-gradient",
   strokeDasharray,
 }: Readonly<TooltipIndicatorInnerProps>): ReactElement => {
@@ -82,7 +77,7 @@ const TooltipIndicatorInner = ({
   const indicatorFill = colorMid || colorEdge;
   const renderMode = computeIndicatorRenderMode(strokeDasharray, fadeEdges);
 
-  return renderIndicatorElement({ animate, fadeLength, gradientId, height, indicatorFill, lineX, pixelWidth, rectX, renderMode });
+  return renderIndicatorElement({ fadeLength, gradientId, height, indicatorFill, lineX, pixelWidth, rectX, renderMode });
 };
 
 export { TooltipIndicatorInner };

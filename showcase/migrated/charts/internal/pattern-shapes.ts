@@ -4,12 +4,10 @@
 // Sibling shape patterns live in one-component-per-file modules.
 // Re-exported here unchanged so existing importers keep working.
 export { PathImpl } from "./pattern-path";
-export { CirclesImpl } from "./pattern-circles";
+export { CirclesImpl, CirclesImpl as PatternCircles } from "./pattern-circles";
 export { HexagonsImpl } from "./pattern-hexagons";
-export { WavesImpl } from "./pattern-waves";
-export { PatternCircles } from "./pattern-public-circles";
+export { WavesImpl, WavesImpl as PatternWaves } from "./pattern-waves";
 export { PatternHexagons } from "./pattern-public-hexagons";
-export { PatternWaves } from "./pattern-public-waves";
 export type { PatternPathProps } from "./pattern-path";
 export type { PatternCirclesProps } from "./pattern-circles";
 export type { PatternHexagonsProps } from "./pattern-hexagons";

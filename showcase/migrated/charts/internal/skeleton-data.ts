@@ -55,6 +55,16 @@ const generateChartSkeletonFromTarget = (
     ),
   }));
 
+// Point value for the loading y-domain silhouette (shared with loading-chrome).
+const getSkeletonValue = (index: number): number => Math.round(
+  SKELETON_BASE_VALUE + Math.sin(index * SKELETON_SINE_FREQUENCY) * SKELETON_SINE_SCALE + index * SKELETON_INDEX_STEP,
+);
+
+// Lower-magnitude mirror when real data exists, so the y-domain has somewhere to tween from.
+const getSkeletonTargetValue = (index: number): number => Math.round(
+  SKELETON_TARGET_BASE_VALUE + Math.sin(index * SKELETON_TARGET_SINE_FREQUENCY) * SKELETON_TARGET_SINE_SCALE + index * SKELETON_TARGET_INDEX_STEP,
+);
+
 // Heights come from a deterministic hash of (index, seed), never
 // `Math.random()`, so the first server render and first client render agree.
 const HEIGHT_MIN_PCT = 20;
@@ -125,6 +135,8 @@ export {
   generateChartSkeletonFromTarget,
   getSkeletonHeights,
   getSkeletonSigns,
+  getSkeletonTargetValue,
+  getSkeletonValue,
   generateEasedGradientStops,
   PERCENT_SCALE,
 };
