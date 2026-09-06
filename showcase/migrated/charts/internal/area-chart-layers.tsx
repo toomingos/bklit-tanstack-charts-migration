@@ -180,6 +180,9 @@ interface AreaChartBodyProps {
   readonly ariaLabel?: string;
   readonly aspectRatio: string;
   readonly chartBodyClipStyle: CSSProperties | undefined;
+  readonly chartData: ChartDatum[];
+  readonly chartXDataKey: string;
+  readonly chartXDomain: [Date, Date] | undefined;
   readonly children: ReactNode;
   readonly definition: DomChartDefinition<ChartDatum, Date, number> | undefined;
   readonly hostChildren: ReactNode;
@@ -199,6 +202,9 @@ const AreaChartBody = (props: Readonly<AreaChartBodyProps>): ReactNode => {
         ariaLabel={props.ariaLabel ?? "Area chart"}
         ariaDescription={props.ariaDescription}
         aspectRatio={parseAspectRatio(props.aspectRatio)}
+        chartData={props.chartData}
+        chartXDataKey={props.chartXDataKey}
+        chartXDomain={props.chartXDomain}
         height={props.heightPx > 0 ? props.heightPx : undefined}
         initialWidth={HOST_INITIAL_WIDTH}
         definition={props.definition}

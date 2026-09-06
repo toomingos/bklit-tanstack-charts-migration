@@ -2,17 +2,43 @@
 
 import { createContext, createElement, useCallback, useContext, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import type { ChartControl } from "@tanstack/charts";
+import type { BrushRange } from "@tanstack/charts/interaction/brush";
 import type { AnyChildProps } from "./chart-child-carrier";
+import type { BrushChildConfig } from "./types";
+import type { MarkerGradientDef } from "./series-marker-mark";
 
 // Legacy throw contract: standalone carriers throw like `useChartStable`.
 const OUTSIDE_CHART_MESSAGE =
   "useChartStable must be used within a ChartProvider. " +
   "Make sure your component is wrapped in <LineChart>, <AreaChart>, <BarChart>, or <ComposedChart>.";
 
+// Optional-layer state, computed by the layer itself and merged by the entry.
+// Only mounted layers register one: absence costs the entry nothing.
+interface BrushLayerContribution {
+  readonly config: BrushChildConfig | undefined;
+  readonly controls: readonly ChartControl<Date, number>[];
+  readonly range: BrushRange<Date> | undefined;
+  readonly trackExtent: [Date, Date] | undefined;
+  readonly hasBrush: boolean;
+}
+
+interface MarkerLayerContribution {
+  readonly gradientIdByKey: Readonly<Map<string, string>>;
+  readonly gradientDefs: readonly MarkerGradientDef[];
+}
+
+interface ChartLayerContribution {
+  readonly brush?: BrushLayerContribution;
+  readonly markerGradients?: MarkerLayerContribution;
+  readonly profitLossHoveredIndex?: number | null;
+}
+
 interface ChartChildRegistration {
   readonly role: string;
   readonly props: AnyChildProps;
   readonly key: string | null;
+  readonly contribution?: ChartLayerContribution;
 }
 
 // Shallow prop equality for registry dedup (V1.2 regression fix).
@@ -57,11 +83,11 @@ const ChartChildRegistryProvider = (properties: {
     setVersion((current) => current + 1);
     return id;
   }, []);
-  // Fresh-but-equal props (every consumer render) store silently; the version
-  // — and every downstream definition memo — stays put.
+  // Fresh-but-equal props store silently; contributions compare by identity.
+  // Producers must memoize them or every render bumps the version.
   const update = useCallback((id: number, entry: ChartChildRegistration): void => {
     const prev = entriesRef.current.get(id);
-    if (prev !== undefined && prev.role === entry.role && shallowEqualChildProps(prev.props, entry.props)) {return;}
+    if (prev !== undefined && prev.role === entry.role && shallowEqualChildProps(prev.props, entry.props) && prev.contribution === entry.contribution) {return;}
     entriesRef.current.set(id, entry);
     setVersion((current) => current + 1);
   }, []);
@@ -99,4 +125,4 @@ export {
   useChartChildEntries,
   useChartChildRegistry,
 };
-export type { ChartChildRegistration, ChartChildRegistryValue };
+export type { BrushLayerContribution, ChartChildRegistration, ChartChildRegistryValue, ChartLayerContribution, MarkerLayerContribution };

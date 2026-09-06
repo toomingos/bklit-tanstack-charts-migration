@@ -3,12 +3,13 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { OUTSIDE_CHART_MESSAGE, useChartChildRegistry } from "./chart-child-registry";
 import type { AnyChildProps } from "./chart-child-carrier";
+import type { ChartLayerContribution } from "./chart-child-registry";
 
 // Client-only registration; the prop scan stays the SSR first-render path.
 // Register once per mount, then update stored props in place below.
-const useChartChild = (role: string, props: AnyChildProps): void => {
+const useChartChild = (role: string, props: AnyChildProps, contribution?: ChartLayerContribution): void => {
   const registry = useChartChildRegistry();
-  const entry = useMemo(() => ({ key: null, props, role }), [props, role]);
+  const entry = useMemo(() => ({ contribution, key: null, props, role }), [props, role, contribution]);
   const entryRef = useRef(entry);
   entryRef.current = entry;
   const idRef = useRef<number | null>(null);

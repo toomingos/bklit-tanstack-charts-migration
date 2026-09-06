@@ -21,11 +21,7 @@ import { useFocusInjection } from "./internal/focus-injection";
 import {
   ChartSelectionContext,
 } from "./internal/chart-selection";
-import {
-  extractProjectionLineConfigs,
-} from "./internal/projection-config";
-import type { ProjectionPhaseHandle } from './internal/terminal-marker';
-import { extractProfitLossHoveredIndex } from "./internal/profit-loss-config";
+import type { ProjectionPhaseHandle } from "./internal/line-chart-support";
 import {
   DISCRETE_INTERACTION_THRESHOLD,
 } from "./internal/design-tokens";
@@ -55,13 +51,13 @@ import {
   firstNonEmptyString,
   isNumber,
   isString,
+  normalizeProjectionLineConfigs,
   resolveChartHeightPx,
   resolveEffectiveYDomainTweenBase,
   stringifyDatumValue,
   useDebouncedContainerSize,
 } from "./internal/line-chart-support";
-import { useLineMarkerGradients } from "./internal/use-line-marker-gradients";
-import { useLineBrushControls } from "./internal/use-line-brush-controls";
+import { useLineLayerInputs } from "./internal/use-line-layer-inputs";
 import { useLineYDomains } from "./internal/use-line-y-domains";
 import { useLineChartSpec } from "./internal/use-line-chart-spec";
 import { useLineFocusChrome } from "./internal/use-line-focus-chrome";
@@ -175,16 +171,14 @@ export const LineChart = ({
     }
   }, [chartPhase, notifyYDomainTweenComplete]);
 
-  const { lines, grid, xAxis, yAxis, background, tooltip, projectionLines, projectionEndMarkers, terminalMarkers, profitLossLines, chartMarkers, brushes } = useMemo(
+  const { lines, grid, xAxis, yAxis, background, tooltip, projectionLines, projectionEndMarkers, terminalMarkers, profitLossLines, chartMarkers } = useMemo(
     () => extractChildren(children, registryEntries),
     [children, registryEntries],
   );
 
   const tooltipEnabled = tooltip?.enabled ?? false;
-  const projectionConfigs = useMemo(() => extractProjectionLineConfigs(children), [children]);
+  const projectionConfigs = useMemo(() => normalizeProjectionLineConfigs(projectionLines), [projectionLines]);
   const projectionGradientBaseId = useSanitizedId();
-  const profitLossHoveredIndex = extractProfitLossHoveredIndex(children);
-  const hoveredIndexForPL = profitLossHoveredIndex;
   const [plTooltipSignIndex, setPlTooltipSignIndex] = useState<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [labelFade, setLabelFade] = useState<LabelFadeState>();
@@ -205,25 +199,29 @@ export const LineChart = ({
   // Dense data snaps instead of springing (bklit pointCount gate).
   const isDiscrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
 
-  const { crosshairGradientId, markerGradientDefs, markerGradientIdByKey, markerSeriesConfigs } = useLineMarkerGradients({ defaultStroke: DEFAULT_LINE_STROKE, lines });
-
   const {
     brushConfig,
     brushControls,
     brushRangeValue,
     brushTrackExtent,
+    crosshairGradientId,
     hasBrush,
+    markerGradientDefs,
+    markerGradientIdByKey,
+    markerSeriesConfigs,
+    profitLossHoveredIndex,
     timeExtent,
     timeExtentRaw,
-    visibleData,
-  } = useLineBrushControls({ brushes, data, projectionConfigs, renderData, xDataKey, xDomain });
+  } = useLineLayerInputs({ lines, projectionConfigs, registryEntries, renderData, xDataKey, xDomain });
+  const hoveredIndexForPL = profitLossHoveredIndex;
 
   const {
     nicedDomainsByAxis,
     projectorFor,
+    visibleData,
     yDomainChangedForTween,
     yDomainFinal,
-  } = useLineYDomains({ data, lines, projectionConfigs, status, visibleData });
+  } = useLineYDomains({ data, lines, projectionConfigs, status, xDataKey, xDomain });
 
   const isLoading = status === "loading";
   const { definition } = useLineChartSpec({
@@ -399,6 +397,9 @@ export const LineChart = ({
         ariaLabel={ariaLabel}
         ariaDescription={ariaDescription}
         aspectRatio={parseAspectRatio(aspectRatio)}
+        chartData={data}
+        chartXDataKey={xDataKey}
+        chartXDomain={xDomain}
         className={className}
         height={heightPx > 0 ? heightPx : undefined}
         initialWidth={HOST_INITIAL_WIDTH}

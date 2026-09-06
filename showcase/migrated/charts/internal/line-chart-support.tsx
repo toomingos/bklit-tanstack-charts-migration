@@ -12,6 +12,9 @@ import { useDebouncedContainerSize } from "./use-container-size";
 import type { MarkerGradientDef } from "./series-marker-mark";
 import type { ChartDatum, ChartTooltipConfig } from "./types";
 import type { LabelFadeState } from "./line-x-scale";
+import { normalizeYAxisId } from "./y-axis-id";
+import type { ProjectionLineConfig } from "./projection-config";
+import type { ProjectionPoint } from "./projection-utils";
 
 const BRUSH_NATIVE_HIDDEN_STYLE: SceneStyle = {
   fill: "transparent",
@@ -93,6 +96,33 @@ const scanRenderTimeExtent = (rows: readonly Readonly<ChartDatum>[], xKey: strin
   }
   if (!Number.isFinite(minTime)) {return undefined;}
   return { maxTime, minTime };
+};
+
+// Latest projection-tail timestamp above the data extent.
+// Merge stays a no-op (same ref out) without a projecting tail.
+const maxProjectionTailTime = (configs: readonly ProjectionLineConfig[], floor: number): number => {
+  let maxTime = floor;
+  for (const config of configs) {
+    for (const point of config.data) {
+      const time = point.date.getTime();
+      if (time > maxTime) {maxTime = time;}
+    }
+  }
+  return maxTime;
+};
+
+// Projection configs from merged line props; mirrors the children scan.
+// Coerced dates, normalized axis id, two-point minimum.
+const normalizeProjectionLineConfigs = (lines: readonly { readonly data?: readonly Readonly<ProjectionPoint>[]; readonly yAxisId?: string | number }[]): ProjectionLineConfig[] => {
+  const configs: ProjectionLineConfig[] = [];
+  for (const line of lines) {
+    const data: ProjectionPoint[] = [];
+    for (const point of line.data ?? []) {
+      data.push({ date: point.date instanceof Date ? point.date : new Date(point.date), value: point.value });
+    }
+    if (data.length >= 2) {configs.push({ data, yAxisId: normalizeYAxisId(line.yAxisId) });}
+  }
+  return configs;
 };
 
 // Per-role motion for line marks: enter is false (RevealWipe owns it).
@@ -262,6 +292,8 @@ export {
   isBoolean,
   isNumber,
   isString,
+  maxProjectionTailTime,
+  normalizeProjectionLineConfigs,
   referenceXDomainForExtent,
   renderBrushClipDefs,
   renderCrosshairGradient,
@@ -277,3 +309,4 @@ export {
   useDebouncedContainerSize,
 };
 export type { BrushClipParams, CrosshairGradientParams, DatePillSyncParams, FocusClearRef, FocusGate, FocusPoint, GateFocusPrimaryParams, StringifyDatumValueParams };
+export type { ProjectionPhaseHandle } from "./terminal-marker-phase";

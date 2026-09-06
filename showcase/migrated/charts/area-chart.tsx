@@ -1,8 +1,8 @@
 // Bklit AreaChart on TanStack Charts. Two marks per series (areaFill + lineY); hover dim 0.6.
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import type { ScaleTime } from "d3-scale";
-import type { ChartRendererRenderContext } from "@tanstack/charts";
+import type { ChartControl, ChartRendererRenderContext } from "@tanstack/charts";
 import { useRegistryEntriesState } from "./internal/chart-host";
 import { ChartSelectionContext } from "./internal/chart-selection";
 import {
@@ -18,11 +18,12 @@ import { useAreaChartSetup } from "./internal/use-area-chart-setup";
 import { useAreaSeries } from "./internal/use-area-series";
 import { useAreaYDomain } from "./internal/use-area-y-domain";
 import { useAreaFills } from "./internal/use-area-fills";
-import { useAreaBrush } from "./internal/use-area-brush";
+import { findRevealRoot } from "./internal/reveal-root";
+import { runRevealWipe, snapRevealWipe } from "./internal/reveal-wipe";
+import type { RevealWipeEpochRef } from "./internal/reveal-wipe";
 import { useAreaOverlays } from "./internal/use-area-overlays";
 import { buildAreaChartDefinition } from "./internal/area-chart-definition";
 import { useAreaFocus } from "./internal/use-area-focus";
-import { useAreaReveal } from "./internal/area-marker-reveal";
 import { useAreaSelection } from "./internal/use-area-selection";
 import { useAreaLayerProps } from "./internal/use-area-layer-props";
 import {
@@ -32,6 +33,16 @@ import {
   AreaChartOverlays,
 } from "./internal/area-chart-layers";
 import "./styles.css";
+
+// Shared empty brush controls: keeps the definition memo identical with no brush.
+const NO_BRUSH_CONTROLS: readonly ChartControl<Date, number>[] = [];
+
+// Reveal-root resolution for the wipe, owned by reveal-root.ts.
+// Package renders the marks group; nothing here queries renderer DOM.
+const resolveWipeMarks = (container: HTMLDivElement | null): SVGGElement | null => {
+  const root = container ? findRevealRoot(container) : null;
+  return root instanceof SVGGElement ? root : null;
+};
 
 interface AreaChartProps {
   readonly data: ChartDatum[];
@@ -123,12 +134,13 @@ const AreaChart = ({
     xDataKey,
     xDomain,
   });
-  const brush = useAreaBrush({
-    brushes: setup.brushes,
-    data,
-    timeExtent: fills.timeExtent,
-    xAccessorForBrush: yDomain.xAccessorForBrush,
-  });
+  const brushContribution = registryEntries.find((entry) => entry.role === "layer:brush")?.contribution?.brush;
+  const brushConfig = brushContribution?.config;
+  const brushControls = brushContribution?.controls ?? NO_BRUSH_CONTROLS;
+  const brushRangeValue = brushContribution?.range;
+  const brushTrackExtent = brushContribution?.trackExtent;
+  const hasBrush = brushContribution !== undefined;
+  const brush = { brushConfig, brushControls, brushRangeValue, brushTrackExtent, hasBrush };
   const isLoading = status === "loading";
   const overlays = useAreaOverlays({
     chartPhase: setup.chartPhase,
@@ -206,22 +218,44 @@ const AreaChart = ({
     xDataKey,
     xDomain,
   });
-  const reveal = useAreaReveal({
-    animationDuration,
-    animationEasing,
-    areaMarkerConfigs: series.areaMarkerConfigs,
-    captureRenderContext: setup.captureRenderContext,
-    chartPhase: setup.chartPhase,
-    containerRef: setup.containerRef,
-    innerWidth: setup.innerWidth,
-    prefersReducedMotion: setup.prefersReducedMotion,
-    revealDurationMs: setup.revealDurationMs,
-    revealEasingCss: setup.revealEasingCss,
-    revealEpoch: setup.revealEpoch,
-  });
+  // Reveal wipe runs every render as core mount behavior.
+  // Marker stagger left with the marker layer; package motion owns enters.
+  const {
+    captureRenderContext,
+    chartPhase: revealPhase,
+    containerRef: revealContainerRef,
+    prefersReducedMotion: revealPrefersReducedMotion,
+    revealDurationMs,
+    revealEasingCss,
+    revealEpoch,
+  } = setup;
+  const revealedEpochRef = useRef<RevealWipeEpochRef["current"]>(null);
+  const revealHandleRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
+    captureRenderContext(context);
+    const marks = resolveWipeMarks(revealContainerRef.current);
+    runRevealWipe({
+      active: revealPhase === "revealing",
+      animationDuration,
+      durationMs: revealDurationMs,
+      easingCss: revealEasingCss,
+      epoch: revealEpoch,
+      epochRef: revealedEpochRef,
+      marks,
+      prefersReducedMotion: revealPrefersReducedMotion,
+    });
+  }, [animationDuration, captureRenderContext, revealPhase, revealContainerRef, revealPrefersReducedMotion, revealDurationMs, revealEasingCss, revealEpoch]);
+
+  useEffect(() => {
+    if (revealPhase !== "revealing") {return;}
+    snapRevealWipe({
+      active: true,
+      animationDuration,
+      marks: resolveWipeMarks(revealContainerRef.current),
+      prefersReducedMotion: revealPrefersReducedMotion,
+    });
+  }, [revealPhase, animationDuration, revealPrefersReducedMotion, revealContainerRef]);
 
   // Host-owned sizing: the host adopts the measured width through this render callback.
-  const { handleRender: revealHandleRender } = reveal;
   const { adoptWidth: adoptAreaWidth } = setup;
   const handleHostRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>): void => {
     revealHandleRender(context);
@@ -274,6 +308,9 @@ const AreaChart = ({
         ariaLabel={ariaLabel}
         aspectRatio={aspectRatio}
         chartBodyClipStyle={layerProps.chartBodyClipStyle}
+        chartData={data}
+        chartXDataKey={xDataKey}
+        chartXDomain={xDomain}
         definition={definition}
         onFocusChange={focus.handleFocusChange}
         onRender={handleHostRender}

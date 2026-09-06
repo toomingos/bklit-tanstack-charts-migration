@@ -4,7 +4,6 @@
     "showcase/migrated/charts/choropleth-chart.tsx": { "max": 1, "ruling": "D433/D457/D534", "note": "geo group reveal; structural svg fallback removed with the hover chrome (V2.2); rest split to choropleth-reveal.ts" },
     "showcase/migrated/charts/radar-chart.tsx": { "max": 18, "ruling": "D433/D445", "note": "radar reveal subsystem (grid rings, spokes, labels, area/dot WAAPI)" },
     "showcase/migrated/charts/ring-chart.tsx": { "max": 2, "ruling": "D433", "note": "ring track reveal; model split to ring-chart-model.ts" },
-    "showcase/migrated/charts/internal/area-marker-reveal.ts": { "max": 3, "ruling": "D420/D433", "note": "ex-area-chart.tsx marker-reveal WAAPI + wipe clip" },
     "showcase/migrated/charts/internal/bar-chart-overlays.ts": { "max": 1, "ruling": "D433", "note": "ex-bar-chart.tsx reveal stamp" },
     "showcase/migrated/charts/internal/bar-pulse-sync.ts": { "max": 2, "ruling": "D432/D433", "note": "ex-bar-pulse-mark.ts silhouette/wave readback for the clipPath sync" },
     "showcase/migrated/charts/internal/choropleth-reveal.ts": { "max": 4, "ruling": "D433/D457", "note": "ex-choropleth-chart.tsx geo group reveal" },

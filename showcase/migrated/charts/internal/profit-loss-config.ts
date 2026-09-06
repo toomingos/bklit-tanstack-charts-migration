@@ -1,8 +1,5 @@
 import { curveLinear } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
-import { Fragment, isValidElement } from "react";
-import type { ReactNode } from "react";
-import { isChartClipPassthrough } from "./children-extract";
 
 const PROFIT_LOSS_POSITIVE_COLOR = "var(--color-emerald-500)";
 const PROFIT_LOSS_NEGATIVE_COLOR = "var(--color-red-500)";
@@ -57,47 +54,10 @@ const normalizeProfitLossConfig = (props: Readonly<ProfitLossConfigSource> | und
   };
 }
 
-const appendFlattenedNode = (node: ReactNode, out: ReactNode[]): void => {
-  const flat = [node].flat(Number.POSITIVE_INFINITY);
-  for (const child of flat) {out.push(child);}
-};
-
-interface ProfitLossHoverState {
-  hoveredIndex: number | null;
-}
-
-type VisitProfitLossNode = (node: ReactNode) => void;
-
-const visitProfitLossChild = (child: ReactNode, state: ProfitLossHoverState, visit: VisitProfitLossNode): void => {
-  if (!isValidElement(child)) {return;}
-  // Shared predicate so the legacy string key is honoured here too, not just in children.tsx
-  if (isChartClipPassthrough(child.type) && isValidElement<{ hoveredIndex?: number | null; children?: ReactNode }>(child)) {
-    state.hoveredIndex = child.props.hoveredIndex ?? null;
-    const nested = child.props.children;
-    if (nested !== undefined && nested !== null) {visit(nested);}
-    return;
-  }
-  if (child.type === Fragment && isValidElement<{ children?: ReactNode }>(child)) {
-    visit(child.props.children);
-  }
-}
-
-const extractProfitLossHoveredIndex = (children: ReactNode): number | null => {
-  const state: ProfitLossHoverState = { hoveredIndex: null };
-  const visit: VisitProfitLossNode = (node: ReactNode): void => {
-    const flat: ReactNode[] = [];
-    appendFlattenedNode(node, flat);
-    for (const child of flat) {visitProfitLossChild(child, state, visit);}
-  };
-  visit(children);
-  return state.hoveredIndex;
-}
-
 export {
   PROFIT_LOSS_NEGATIVE_COLOR,
   PROFIT_LOSS_POSITIVE_COLOR,
   PROFIT_LOSS_TOOLTIP_LABEL_FALLBACK,
-  extractProfitLossHoveredIndex,
   normalizeProfitLossConfig,
   profitLossColor,
   resolveProfitLossTooltipLabel,

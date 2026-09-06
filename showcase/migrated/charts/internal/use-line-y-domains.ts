@@ -9,6 +9,7 @@ import {
   useNicedYDomainChanged,
 } from "./y-domain";
 import { DEFAULT_Y_AXIS_ID } from "./y-axis-id";
+import { createXAccessor, filterDataByXDomain } from "./brush-selection";
 import { mergeProjectionYDomain } from "./projection-config";
 import type { ProjectionLineConfig } from "./projection-config";
 import { buildLoadingSkeletonRows } from "./loading-chrome";
@@ -19,7 +20,8 @@ interface LineYDomainsParams {
   readonly lines: readonly Readonly<LineConfig>[];
   readonly projectionConfigs: readonly ProjectionLineConfig[];
   readonly status: ChartStatus;
-  readonly visibleData: readonly Readonly<ChartDatum>[];
+  readonly xDataKey: string;
+  readonly xDomain: [Date, Date] | undefined;
 }
 
 interface LineYDomains {
@@ -27,6 +29,7 @@ interface LineYDomains {
   readonly nicedYDomain: [number, number];
   readonly nicedYDomainChanged: boolean;
   readonly projectorFor: (axisId?: string | number) => (value: number) => number;
+  readonly visibleData: readonly Readonly<ChartDatum>[];
   readonly yDomain: [number, number];
   readonly yDomainChangedForTween: boolean;
   readonly yDomainFinal: [number, number];
@@ -34,7 +37,13 @@ interface LineYDomains {
 }
 
 const useLineYDomains = (params: Readonly<LineYDomainsParams>): LineYDomains => {
-  const { data, lines, projectionConfigs, status, visibleData } = params;
+  const { data, lines, projectionConfigs, status, xDataKey, xDomain } = params;
+  // YDomain scans visibleData when brushing; marks stay on full data (domain-clamp).
+  const xAccessor = useMemo(() => createXAccessor(xDataKey), [xDataKey]);
+  const visibleData = useMemo(() => {
+    if (!xDomain) {return data;}
+    return filterDataByXDomain(data, xDomain, xAccessor);
+  }, [data, xDomain, xAccessor]);
   // Bklit parity: all>=0 -> [0, max*1.1]; mixed-sign -> [min,max] +/-5%; empty -> [0,100].
   const skeletonRows = useMemo(
     () => buildLoadingSkeletonRows(data.length, lines[0]?.dataKey ?? "value"),
@@ -85,7 +94,7 @@ const useLineYDomains = (params: Readonly<LineYDomainsParams>): LineYDomains => 
       ? nicedYDomainChanged
       : prevYDomainFinal[0] !== yDomainFinal[0] ||
         prevYDomainFinal[1] !== yDomainFinal[1];
-  return { nicedDomainsByAxis, nicedYDomain, nicedYDomainChanged, projectorFor, yDomain, yDomainChangedForTween, yDomainFinal, yDomainsByAxis };
+  return { nicedDomainsByAxis, nicedYDomain, nicedYDomainChanged, projectorFor, visibleData, yDomain, yDomainChangedForTween, yDomainFinal, yDomainsByAxis };
 };
 
 export { useLineYDomains };

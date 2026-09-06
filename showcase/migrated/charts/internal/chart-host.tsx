@@ -25,6 +25,10 @@ import {
 import { DEFAULT_Y_AXIS_ID } from "./y-axis-id";
 import { ChartChildRegistryProvider, shallowEqualChildProps, useChartChildEntries } from "./chart-child-registry";
 import type { ChartChildRegistration } from "./chart-child-registry";
+import { extractChildren } from "./children-extract";
+import { BrushLayer } from "./brush-layer";
+import { MarkerLayer } from "./marker-layer";
+import type { ChartDatum } from "./types";
 import { ChartProvider } from "./chart-context";
 import type {
   ChartContextValue,
@@ -67,6 +71,10 @@ interface ChartHostProps<
   ariaLabel: string;
   aspectRatio?: number;
   children?: ReactNode;
+  /** Core chart inputs for optional layers; the host never reads them itself. */
+  chartData?: readonly ChartDatum[];
+  chartXDataKey?: string;
+  chartXDomain?: readonly [Date, Date];
   className?: string;
   /** Raw TanStack escape hatch: the full definition reaches the host untouched. */
   definition: DomChartDefinition<Datum, XValue, YValue>;
@@ -95,6 +103,48 @@ interface ChartHostProps<
   style?: CSSProperties;
 }
 
+// Optional layers (V1.4): computers mount only for composed layers.
+// Tree scan covers plain children; registry entries cover HOCs.
+const sameElements = <Item,>(left: readonly Item[], right: readonly Item[]): boolean =>
+  left.length === right.length && left.every((item, index) => item === right[index]);
+
+// Returns the previous list while its elements are identical; registry props keep identity across no-op updates, so the wrapper array is the only churn.
+const useStableList = <List extends readonly unknown[]>(list: List): List => {
+  const [stable, setStable] = useState(list);
+  if (stable !== list && !sameElements(stable, list)) {
+    setStable(list);
+    return list;
+  }
+  return stable;
+};
+
+const LayerContributions = (properties: Readonly<{
+  readonly tree: ReactNode;
+  readonly chartData: readonly ChartDatum[] | undefined;
+  readonly chartXDataKey: string | undefined;
+  readonly chartXDomain: readonly [Date, Date] | undefined;
+}>): ReactNode => {
+  const { tree, chartData, chartXDataKey, chartXDomain } = properties;
+  const entries = useChartChildEntries();
+  const extracted = useMemo(() => extractChildren(tree, entries), [tree, entries]);
+  // Every registry bump re-extracts the tree; element-stable lists keep each layer's contribution memoized, so its own registration cannot re-trigger it.
+  const lines = useStableList(extracted.lines);
+  const brushes = useStableList(extracted.brushes);
+  const projectionLines = useStableList(extracted.projectionLines);
+  const inputs = useMemo(() => ({ data: chartData, xDataKey: chartXDataKey, xDomain: chartXDomain }), [chartData, chartXDataKey, chartXDomain]);
+  const hasBrush = brushes.length > 0;
+  const hasMarkers = lines.some((line) => line.showMarkers ?? false);
+  if (!hasBrush && !hasMarkers) {return null;}
+  return (
+    <>
+      {hasBrush && (
+        <BrushLayer brushes={brushes} projectionLines={projectionLines} inputs={inputs} />
+      )}
+      {hasMarkers && <MarkerLayer lines={lines} />}
+    </>
+  );
+};
+
 // Host mount: measures, reconciles and interacts; overlays read the store.
 const ChartHost = <
   Datum = unknown,
@@ -108,6 +158,9 @@ const ChartHost = <
     ariaLabel,
     aspectRatio,
     children,
+    chartData,
+    chartXDataKey,
+    chartXDomain,
     className,
     definition,
     height,
@@ -301,7 +354,10 @@ const ChartHost = <
     <ChartProvider value={value}>
       <div ref={containerRef}>
         {chartNode}
-        <ChartChildRegistryProvider>{children}</ChartChildRegistryProvider>
+        <ChartChildRegistryProvider>
+          {children}
+          <LayerContributions tree={children} chartData={chartData} chartXDataKey={chartXDataKey} chartXDomain={chartXDomain} />
+        </ChartChildRegistryProvider>
       </div>
     </ChartProvider>
   );
@@ -328,7 +384,7 @@ const useRegistryEntriesState = (): readonly [
   const report = useCallback((next: readonly ChartChildRegistration[]): void => {
     setEntries((previous) => {
       if (previous.length !== next.length) {return next;}
-      const same = previous.every((entry, index) => entry.role === next[index].role && shallowEqualChildProps(entry.props, next[index].props));
+      const same = previous.every((entry, index) => entry.role === next[index].role && shallowEqualChildProps(entry.props, next[index].props) && entry.contribution === next[index].contribution);
       return same ? previous : next;
     });
   }, []);
