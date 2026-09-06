@@ -30,6 +30,8 @@ interface BackgroundProps extends PatternPresetOptions {
   readonly fadeVerticalLength?: number;
   /** Forced loaded flag; defaults to the chart context `isLoaded`. */
   readonly isLoaded?: boolean;
+  /** Mount prefix scoping mask and pattern ids; defaults to a per-mount id. */
+  readonly idPrefix?: string;
 }
 
 
@@ -196,10 +198,13 @@ const Background: ((props: BackgroundProps) => ReactElement | null) & {
     fadeHorizontalLength = 10,
     fadeVerticalLength = 10,
     isLoaded: isLoadedProp,
+    idPrefix,
   }: BackgroundProps): ReactElement | null => {
     const { innerWidth, innerHeight, isLoaded: isLoadedContext } = useChartStable();
     const isLoaded = isLoadedProp ?? isLoadedContext;
-    const uniqueId = useSanitizedId();
+    // Mount-scoped ids keep two charts from sharing one mask or pattern.
+    const fallbackId = useSanitizedId();
+    const uniqueId = idPrefix ?? fallbackId;
     const patternId = `chart-background-${uniqueId}`;
     const [hStops, vStops] = useFadeMaskStops(fadeHorizontalLength, fadeVerticalLength);
 

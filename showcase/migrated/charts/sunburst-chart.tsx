@@ -14,6 +14,7 @@ import {
 } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { ChartHost } from "./internal/chart-host";
+import { useSanitizedId } from "./internal/use-sanitized-id";
 import { createChartScene } from "@tanstack/charts";
 import type { ChartRendererRenderContext } from "@tanstack/charts";
 import { useFocusInjection } from "./internal/focus-injection";
@@ -417,6 +418,8 @@ const SunburstChartInner = ({
   children,
 }: SunburstChartInnerProps): ReactElement => {
   const containerRef = useRef<HTMLDivElement>(null);
+  // One prefix per mount scopes renderer ids; two mounts resolve distinct ids.
+  const idPrefix = useSanitizedId();
 
   // --- Pre-package inputs: sector index plus the chart-level package inputs.
   const { sectors, sectorById, maxDepth, flatRows } = model;
@@ -690,6 +693,7 @@ const SunburstChartInner = ({
         <ChartHost
           ariaLabel={ariaLabel ?? `Sunburst chart of ${data.name}`}
           ariaDescription={ariaDescription}
+          idPrefix={idPrefix}
           width={size}
           height={size}
           initialWidth={size}

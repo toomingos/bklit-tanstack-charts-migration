@@ -19,6 +19,7 @@ import type {
 } from "./area-chart-model";
 
 interface AreaFillsParams {
+  readonly idPrefix?: string;
   readonly projectionConfigs: ProjectionLineConfig[];
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly resolvedAreas: readonly ReadonlyResolvedArea[];
@@ -36,7 +37,9 @@ interface AreaFills {
 
 const useAreaFills = (params: Readonly<AreaFillsParams>): AreaFills => {
   // Gradient stops carry fillOpacity (never double-applied); span clamps to [0.01, 1].
-  const gradientBaseId = useSanitizedId();
+  // Gradient ids derive from the mount prefix when the entry provides one.
+  const gradientFallbackId = useSanitizedId();
+  const gradientBaseId = params.idPrefix === undefined ? gradientFallbackId : `${params.idPrefix}-fill`;
   const gradientDefs = useMemo(
     () => buildAreaGradientDefs(params.resolvedAreas, gradientBaseId),
     [gradientBaseId, params.resolvedAreas],

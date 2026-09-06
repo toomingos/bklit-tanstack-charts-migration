@@ -2,6 +2,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, useRegistryEntriesState } from "./internal/chart-host";
+import { useSanitizedId } from "./internal/use-sanitized-id";
 import { defineChart } from "@tanstack/charts/scene";
 import { tooltip as packageTooltip } from "@tanstack/charts/tooltip";
 import { portal } from "@tanstack/charts/tooltip/portal";
@@ -54,7 +55,8 @@ import {
   useComposedTooltipBody,
 } from "./internal/composed-definition";
 import { useComposedOverlayAnchors } from "./internal/use-composed-overlays";
-import { ComposedCrosshairDef, ComposedProjectionChrome } from "./internal/composed-overlay-chrome";
+import { ComposedProjectionChrome } from "./internal/composed-overlay-chrome";
+import { toSpecCrosshairGradient } from "./internal/fade-mask";
 import {
   useComposedPhaseAndReveal,
   useComposedRenderCallback,
@@ -146,11 +148,13 @@ const ComposedChart = ({
   });
   // Registry union (V1.3 carriers): entries report up from inside the host.
   const [registryEntries, handleRegistryEntries] = useRegistryEntriesState();
+  // One prefix per mount scopes renderer ids and seam ids alike.
+  const idPrefix = useSanitizedId();
   const {
     barConfigs, areaConfigs, lineConfigs, composedSeries, grid, xAxis, background, tooltip,
     projectionConfigs, composedProjectionLines, composedProjectionEndMarkers, composedTerminalMarkers,
     projectionGradientBaseId: projectionGradientBaseIdComposed,
-  } = useComposedChildren(children, registryEntries);
+  } = useComposedChildren(children, registryEntries, idPrefix);
   const prefersReducedMotion = usePrefersReducedMotion();
 
   const { captureRenderContext, clearFocus, clientToScene, sceneRef } =
@@ -202,6 +206,7 @@ const ComposedChart = ({
     clearFocus,
     data,
     dragSelectionActiveRef,
+    idPrefix,
     isLoaded: phaseAndReveal.isLoaded,
     renderData,
     tooltip,
@@ -260,7 +265,10 @@ const ComposedChart = ({
     return defineChart({
       focus: "group-x",
       focusRing: false,
-      gradients: nativeComposedGradients,
+      // Crosshair fade spans the plot, so the bbox spec form paints identically.
+      gradients: crosshairGradientDef === undefined
+        ? nativeComposedGradients
+        : [...nativeComposedGradients, toSpecCrosshairGradient(crosshairGradientDef)],
       margin: phaseAndReveal.margin,
       marks,
       maxFocusDistance: CARTESIAN_MAX_FOCUS_DISTANCE_PX,
@@ -280,6 +288,7 @@ const ComposedChart = ({
     marks,
     scales,
     phaseAndReveal.margin,
+    crosshairGradientDef,
     grid,
     xAxis,
     yDomainTweenGateActive,
@@ -353,6 +362,7 @@ const ComposedChart = ({
   const backgroundLayer = background ? (
     <BackgroundLayer
       config={background}
+      idPrefix={idPrefix}
     />
   ) : NOTHING;
   const projectionChromeNode = (
@@ -384,6 +394,7 @@ const ComposedChart = ({
         ariaDescription={ariaDescription}
         aspectRatio={parseAspectRatio(aspectRatio)}
         height={heightPxComp}
+        idPrefix={idPrefix}
         initialWidth={HOST_INITIAL_WIDTH}
         definition={definition}
         onFocusChange={handleFocusChange}
@@ -402,9 +413,9 @@ const ComposedChart = ({
         <SegmentOverlay
           selection={compSelection}
           components={segChildrenComp}
+          idPrefix={idPrefix}
         />
         {projectionChromeNode}
-        <ComposedCrosshairDef gradientDef={crosshairGradientDef} />
       </ChartHost>
   ) : NOTHING;
 

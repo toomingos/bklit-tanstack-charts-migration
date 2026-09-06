@@ -35,8 +35,6 @@ const DEFAULT_PROJECTION_ENDPOINT_RADIUS_PX = 5;
 const PROJECTION_FALLBACK_STROKE = "var(--chart-3)";
 const MS_PER_SECOND = 1000;
 const DEFAULT_TERMINAL_MARKER_STROKE_WIDTH = 1.5;
-// Zero-size gradient-defs svg: stacked out of layout without display:none (keeps defs resolvable).
-const HIDDEN_DEFS_SVG_STYLE: CSSProperties = { position: "absolute" };
 // Full-cover overlay host: stacked above the chart without intercepting pointer input.
 const OVERLAY_HOST_STYLE: CSSProperties = { inset: 0, pointerEvents: "none", position: "absolute" };
 
@@ -216,22 +214,6 @@ const renderProfitLossGradientDef = (
   </linearGradient>
 );
 
-interface CrosshairGradientParams {
-  readonly bottom: number;
-  readonly color: string;
-  readonly id: string;
-  readonly stops: readonly Readonly<{ offset: string; opacity: number }>[];
-  readonly top: number;
-}
-
-const renderCrosshairGradient = (params: Readonly<CrosshairGradientParams>): ReactElement => (
-  <linearGradient id={params.id} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={params.top} y2={params.bottom}>
-    {params.stops.map((stop) => (
-      <stop key={stop.offset} offset={stop.offset} stopColor={params.color} stopOpacity={stop.opacity} />
-    ))}
-  </linearGradient>
-);
-
 const renderMarkerGradientDef = (def: Readonly<MarkerGradientDef>): ReactElement => (
   <radialGradient key={def.id} id={def.id}>
     <stop offset="0%" stopColor={def.fill} stopOpacity={1} />
@@ -241,22 +223,6 @@ const renderMarkerGradientDef = (def: Readonly<MarkerGradientDef>): ReactElement
     <stop offset={`${def.gapFadeEnd}%`} stopColor={def.stroke} stopOpacity={1} />
     <stop offset="100%" stopColor={def.stroke} stopOpacity={1} />
   </radialGradient>
-);
-
-interface BrushClipParams {
-  readonly clipId: string;
-  readonly height: number;
-  readonly left: number;
-  readonly top: number;
-  readonly width: number;
-}
-
-const renderBrushClipDefs = (params: Readonly<BrushClipParams>): ReactElement => (
-  <defs>
-    <clipPath id={params.clipId}>
-      <rect x={params.left} y={params.top} width={params.width} height={params.height} />
-    </clipPath>
-  </defs>
 );
 
 // First-match native point color for a series key; keeps the tooltip row map shallow.
@@ -273,7 +239,6 @@ export {
   DEFAULT_PROJECTION_LINE_CLASS_NAME,
   DEFAULT_TERMINAL_MARKER_STROKE_WIDTH,
   EMPTY_BRUSH_CONTROLS,
-  HIDDEN_DEFS_SVG_STYLE,
   MS_PER_SECOND,
   OVERLAY_HOST_STYLE,
   PROJECTION_FALLBACK_STROKE,
@@ -286,8 +251,6 @@ export {
   maxProjectionTailTime,
   normalizeProjectionLineConfigs,
   referenceXDomainForExtent,
-  renderBrushClipDefs,
-  renderCrosshairGradient,
   renderMarkerGradientDef,
   renderProfitLossGradientDef,
   renderProjectionGradientDef,
@@ -299,5 +262,5 @@ export {
   syncDateLabelFade,
   useDebouncedContainerSize,
 };
-export type { BrushClipParams, CrosshairGradientParams, DateLabelFadeParams, FocusClearRef, FocusGate, FocusPoint, GateFocusPrimaryParams, StringifyDatumValueParams };
+export type { DateLabelFadeParams, FocusClearRef, FocusGate, FocusPoint, GateFocusPrimaryParams, StringifyDatumValueParams };
 export type { ProjectionPhaseHandle } from "./terminal-marker-phase";

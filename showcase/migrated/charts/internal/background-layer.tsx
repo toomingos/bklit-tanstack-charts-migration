@@ -7,11 +7,13 @@ import { useChartStable } from "./chart-context";
 
 export interface BackgroundLayerProps {
   readonly config: Readonly<BackgroundConfig> | null;
+  readonly idPrefix?: string;
   readonly isLoaded?: boolean;
 }
 
 export const BackgroundLayer = ({
   config,
+  idPrefix,
   isLoaded = true,
 }: Readonly<BackgroundLayerProps>): ReactElement | undefined => {
   // Plot bounds come from the host scene, never from margin props (V1.2/G6).
@@ -46,6 +48,7 @@ export const BackgroundLayer = ({
         fadeVerticalLength={config.fadeVerticalLength}
         fill={config.fill}
         isLoaded={isLoaded}
+        idPrefix={idPrefix}
         opacity={config.opacity}
         pattern={config.pattern}
         radius={config.radius}

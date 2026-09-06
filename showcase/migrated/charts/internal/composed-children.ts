@@ -310,6 +310,7 @@ interface UseComposedChildrenResult {
 const useComposedChildren = (
   children: ReactNode,
   registryEntries: readonly ChartChildRegistration[] = NO_REGISTRY_ENTRIES,
+  idPrefix?: string,
 ): UseComposedChildrenResult => {
   const { barConfigs, areaConfigs, lineConfigs, composedSeries, grid, xAxis, background, tooltip } =
     useMemo(() => extractComposed(children, registryEntries), [children, registryEntries]);
@@ -344,7 +345,9 @@ const useComposedChildren = (
     }
     return out;
   }, [children]);
-  const projectionGradientBaseId = useSanitizedId();
+  // Scoped to the mount prefix so two ComposedCharts never share a gradient id.
+  const projectionFallbackId = useSanitizedId();
+  const projectionGradientBaseId = idPrefix === undefined ? projectionFallbackId : `${idPrefix}-proj`;
   return {
     areaConfigs,
     background,

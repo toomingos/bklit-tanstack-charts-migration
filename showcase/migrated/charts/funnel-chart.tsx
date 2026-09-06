@@ -7,6 +7,7 @@ import type { ChartLinearGradient, ChartPoint, ChartRendererRenderContext, DomCh
 import { intFmt } from "./internal/formatters";
 import { usePositiveChartSize } from "./internal/use-container-size";
 import { ChartHost, HOST_INITIAL_WIDTH } from "./internal/chart-host";
+import { scopeResourceIds } from "./internal/resource-host";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { useFocusInjection } from "./internal/focus-injection";
 import type { ChartFocusInjectionSource } from "./internal/focus-injection";
@@ -482,7 +483,8 @@ const FunnelChart = ({
   }
   const { baseValue, frame } = scene;
   // Seam resources carry the mount prefix; marks reference them as url(#id).
-  const funnelSeamResources = renderPattern ? (
+  // Consumer renderPattern nodes pass through scopeResourceIds (D548 ruling 2).
+  const funnelSeamResources = renderPattern ? scopeResourceIds(
     <>
       {data.map((stage, index) => {
         const firstStop = stage.gradient?.[0];
@@ -490,7 +492,8 @@ const FunnelChart = ({
         const patternId = funnelPatternId(idPrefix, frame.isHorizontal, index);
         return <Fragment key={patternId}>{renderPattern(patternId, segColor)}</Fragment>;
       })}
-    </>
+    </>,
+    idPrefix,
   ) : undefined;
 
   return (

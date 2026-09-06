@@ -9,6 +9,7 @@ import type { TransformMatrix, ProvidedZoom } from "./internal/choropleth-zoom-t
 import { ChoroplethZoom, identityMatrix } from "./internal/choropleth-zoom";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
+import { scopeResourceIds, scopedResourceId } from "./internal/resource-host";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import type {
   ChartMarkState,
@@ -624,6 +625,20 @@ const ChoroplethChartBody = ({
 
   const { featureConfig, tooltipConfig, graticuleConfig, overlayChildren } =
     useMemo(() => extractChoroplethChildren(children), [children]);
+  // One prefix per mount scopes renderer ids and seam ids alike.
+  const idPrefix = useSanitizedId();
+  // Consumer pattern ids resolve against the seam-scoped def id (D548 ruling 2).
+  const scopedFeatureConfig = useMemo((): ChoroplethFeatureProps | undefined => {
+    const getFeaturePattern = featureConfig?.getFeaturePattern;
+    if (featureConfig === undefined || getFeaturePattern === undefined) {return featureConfig;}
+    return {
+      ...featureConfig,
+      getFeaturePattern: (feature: ChoroplethFeature, index: number): string | null | undefined => {
+        const patternId = getFeaturePattern(feature, index);
+        return patternId === null || patternId === undefined || patternId === "" ? patternId : scopedResourceId(idPrefix, patternId);
+      },
+    };
+  }, [featureConfig, idPrefix]);
 
   const dimOpacity = featureConfig?.fadedOpacity ?? DEFAULT_FADED_OPACITY;
   const baseOpacity = 0.85;
@@ -679,13 +694,13 @@ const ChoroplethChartBody = ({
     baseOpacity,
     data,
     dimOpacity,
-    featureConfig,
+    featureConfig: scopedFeatureConfig,
     hasTooltipChild,
     height,
     projection,
     width,
   }), [
-    baseOpacity, data, dimOpacity, featureConfig, hasTooltipChild, height, projection, width,
+    baseOpacity, data, dimOpacity, scopedFeatureConfig, hasTooltipChild, height, projection, width,
   ]);
 
   const renderContextRef = useRef<Pick<
@@ -784,9 +799,8 @@ const ChoroplethChartBody = ({
   }, [animationDuration, revealHasRevealed]);
 
   // Patterns arrive as conditional JSX, so false and null mean absent just like undefined.
-  const choroplethPatterns = featureConfig?.patterns;
-  // One prefix per mount scopes renderer ids and seam ids alike.
-  const idPrefix = useSanitizedId();
+  // Consumer ids enter the seam mount-scoped (D548 ruling 2).
+  const choroplethPatterns = scopeResourceIds(featureConfig?.patterns, idPrefix);
   const chartNode = (
     <>
       {definition ? (

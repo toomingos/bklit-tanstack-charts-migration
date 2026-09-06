@@ -66,6 +66,7 @@ interface ScatterSeriesSetup {
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly crosshairGradientId: string;
   readonly grid: ExtractedChildren["grid"];
+  readonly idPrefix: string;
   readonly resolvedSeries: readonly ResolvedSeries[];
   readonly tooltip: ExtractedChildren["tooltip"];
   readonly width: number;
@@ -90,6 +91,8 @@ const useScatterSeriesSetup = ({
   const width = liveWidth;
 
   const gradientBaseId = useSanitizedId();
+  // Mount prefix; every scatter gradient id derives from it.
+  const idPrefix = gradientBaseId;
   const crosshairGradientId = `${gradientBaseId}-crosshair-fade`;
 
   const resolvedSeries = useMemo<ResolvedSeries[]>(
@@ -109,6 +112,7 @@ const useScatterSeriesSetup = ({
     containerRef,
     crosshairGradientId,
     grid,
+    idPrefix,
     resolvedSeries,
     tooltip,
     width,

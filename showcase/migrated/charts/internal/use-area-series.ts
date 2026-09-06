@@ -27,6 +27,7 @@ import type { AreaLabelFade } from "./area-chart-definition";
 interface AreaSeriesParams {
   readonly areas: ExtractedChildren["areas"];
   readonly data: ChartDatum[];
+  readonly idPrefix?: string;
   readonly innerWidth: number;
   readonly patternAreas: ExtractedChildren["patternAreas"];
 }
@@ -49,7 +50,7 @@ interface AreaSeries {
 }
 
 const useAreaSeries = (params: Readonly<AreaSeriesParams>): AreaSeries => {
-  const { areas, data, innerWidth, patternAreas } = params;
+  const { areas, data, idPrefix, innerWidth, patternAreas } = params;
   const resolvedAreas = useMemo<ResolvedArea[]>(
     () => resolveResolvedAreas(areas),
     [areas],
@@ -59,7 +60,10 @@ const useAreaSeries = (params: Readonly<AreaSeriesParams>): AreaSeries => {
     () => resolvePatternAreas(patternAreas),
     [patternAreas],
   );
-  const patternBaseId = useSanitizedId();
+  // All consumer-visible ids derive from the mount prefix when the entry provides one.
+  const seriesFallbackId = useSanitizedId();
+  const seriesBaseId = idPrefix ?? seriesFallbackId;
+  const patternBaseId = `${seriesBaseId}-pattern`;
   const patternDefs = useMemo(
     () => buildPatternAreaDefs(resolvedPatternAreas, patternBaseId),
     [resolvedPatternAreas, patternBaseId],
@@ -78,9 +82,9 @@ const useAreaSeries = (params: Readonly<AreaSeriesParams>): AreaSeries => {
   const isDiscrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
   const [hoveredIndex, setHoveredIndex] = useState<number | undefined>();
   const [labelFade, setLabelFade] = useState<AreaLabelFade | undefined>();
-  const crosshairGradientId = useSanitizedId();
+  const crosshairGradientId = `${seriesBaseId}-crosshair`;
 
-  const areaMarkerBaseId = useSanitizedId();
+  const areaMarkerBaseId = `${seriesBaseId}-marker`;
   const areaMarkerConfigs = useMemo<MarkerSeriesConfig[]>(() => resolvedAreas.map((area: Readonly<ResolvedArea>) => ({ dataKey: area.dataKey, markers: area.markers, showMarkers: area.showMarkers, stroke: area.stroke })), [resolvedAreas]);
   const areaMarkerGradientDefs = useMemo(() => buildMarkerGradientDefs(areaMarkerConfigs, areaMarkerBaseId), [areaMarkerConfigs, areaMarkerBaseId]);
   const areaMarkerGradientIdByKey = useMemo(() => {

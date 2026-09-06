@@ -20,6 +20,7 @@ import type { ProjectionLineConfig } from "./projection-config";
 const NO_MARKER_GRADIENTS: Readonly<Map<string, string>> = new Map<string, string>();
 
 interface LineLayerInputsParams {
+  readonly idPrefix?: string;
   readonly lines: ExtractedChildren["lines"];
   readonly projectionConfigs: readonly ProjectionLineConfig[];
   readonly registryEntries: readonly ChartChildRegistration[];
@@ -48,10 +49,12 @@ const contributionFor = (entries: readonly ChartChildRegistration[], role: strin
   entries.find((entry) => entry.role === role)?.contribution;
 
 const useLineLayerInputs = (params: Readonly<LineLayerInputsParams>): LineLayerInputs => {
-  const { lines, projectionConfigs, registryEntries, renderData, xDataKey, xDomain } = params;
+  const { idPrefix, lines, projectionConfigs, registryEntries, renderData, xDataKey, xDomain } = params;
   const brushContribution = contributionFor(registryEntries, "layer:brush")?.brush;
   const markerContribution = contributionFor(registryEntries, "layer:markers")?.markerGradients;
-  const crosshairGradientId = useSanitizedId();
+  // Scoped to the mount prefix so two LineCharts never share a gradient id.
+  const crosshairFallbackId = useSanitizedId();
+  const crosshairGradientId = idPrefix === undefined ? crosshairFallbackId : `${idPrefix}-crosshair`;
   const markerSeriesConfigs = useMemo(() => lines.map((line) => ({ dataKey: line.dataKey, markers: line.markers, showMarkers: line.showMarkers, stroke: line.stroke ?? DEFAULT_LINE_STROKE })), [lines]);
   const brushConfig = brushContribution?.config;
   const brushControls = brushContribution?.controls ?? EMPTY_BRUSH_CONTROLS;

@@ -32,6 +32,7 @@ interface AreaChartSetupParams {
   readonly data: ChartDatum[];
   readonly registryEntries: readonly ChartChildRegistration[];
   readonly enterTransition: Readonly<EnterTransition> | undefined;
+  readonly idPrefix?: string;
   readonly marginProp: Partial<ChartMargin> | undefined;
   readonly onPhaseChange: ((phase: ChartPhase) => void) | undefined;
   readonly revealSignature: string;
@@ -146,7 +147,9 @@ const useAreaChartSetup = (params: Readonly<AreaChartSetupParams>): AreaChartSet
   const { captureRenderContext, sceneRef, interactionRef, clientToScene } =
     useFocusInjection<ChartDatum, Date, number>();
   const projectionConfigs = useMemo(() => extractProjectionLineConfigs(params.children), [params.children]);
-  const projectionGradientBaseId = useSanitizedId();
+  // Scoped to the mount prefix so two AreaCharts never share a gradient id.
+  const projectionFallbackId = useSanitizedId();
+  const projectionGradientBaseId = params.idPrefix === undefined ? projectionFallbackId : `${params.idPrefix}-proj`;
 
   const innerWidth = Math.max(0, width - margin.left - margin.right);
   const heightPx = resolveHeightPx(width, measuredHeight, params.aspectRatio);

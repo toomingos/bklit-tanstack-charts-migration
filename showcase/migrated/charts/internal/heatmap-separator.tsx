@@ -84,13 +84,13 @@ const renderSeparatorGradientDef = ({
   y2,
   gradientStops,
 }: Readonly<SeparatorGradientDefParams>): ReactElement => (
-  <defs>
-    <linearGradient id={gradientId} x1="0" y1={y1} x2="0" y2={y2} gradientUnits="userSpaceOnUse">
-      {gradientStops.map((stop) => (
-        <stop key={stop.offset} offset={stop.offset} stopColor={stop.color} stopOpacity={stop.opacity} />
-      ))}
-    </linearGradient>
-  </defs>
+  // Bare element (no <defs>): the R10 seam owns the one <defs>; this gradient spans
+  // The plot in pixel space, so it stays co-located with the separator lines it paints.
+  <linearGradient id={gradientId} x1="0" y1={y1} x2="0" y2={y2} gradientUnits="userSpaceOnUse">
+    {gradientStops.map((stop) => (
+      <stop key={stop.offset} offset={stop.offset} stopColor={stop.color} stopOpacity={stop.opacity} />
+    ))}
+  </linearGradient>
 );
 
 interface SeparatorColumnParams {

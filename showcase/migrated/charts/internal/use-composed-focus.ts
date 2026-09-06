@@ -17,6 +17,7 @@ interface UseComposedFocusChromeParams {
   readonly clearFocus: (source: "pointer") => void;
   readonly data: readonly Readonly<ChartDatum>[];
   readonly dragSelectionActiveRef: RefObject<boolean>;
+  readonly idPrefix?: string;
   readonly isLoaded: boolean;
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly tooltip: ChartTooltipConfig | undefined;
@@ -39,12 +40,14 @@ const useComposedFocusChrome = (
   params: Readonly<UseComposedFocusChromeParams>,
 ): UseComposedFocusChromeResult => {
   const {
-    chartPhase, clearFocus, dragSelectionActiveRef, isLoaded, renderData, tooltip,
+    chartPhase, clearFocus, dragSelectionActiveRef, idPrefix, isLoaded, renderData, tooltip,
   } = params;
   const tooltipEnabled = tooltip?.enabled ?? false;
   // Dense data snaps instead of springing (same threshold as every other chart).
   const isDiscrete = renderData.length > DISCRETE_INTERACTION_THRESHOLD;
-  const crosshairGradientId = useSanitizedId();
+  // Scoped to the mount prefix so two ComposedCharts never share a gradient id.
+  const crosshairFallbackId = useSanitizedId();
+  const crosshairGradientId = idPrefix === undefined ? crosshairFallbackId : `${idPrefix}-crosshair`;
   const crosshairGradientDef = useMemo(() => {
     if (!(tooltipEnabled && (tooltip?.showCrosshair ?? true))) {return NOTHING;}
     const color = isStringValue(tooltip?.indicatorColor) ? tooltip.indicatorColor : "var(--chart-crosshair)";

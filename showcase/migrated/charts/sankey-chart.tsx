@@ -2,6 +2,7 @@
 import { isValidElement, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
 import { ChartHost, HOST_INITIAL_WIDTH } from "./internal/chart-host";
+import { useSanitizedId } from "./internal/use-sanitized-id";
 import { defineChart } from "@tanstack/charts/scene";
 import { tooltip } from "@tanstack/charts/tooltip";
 import type {
@@ -370,6 +371,8 @@ const SankeyChart = ({
   ariaDescription,
 }: SankeyChartProps): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // One prefix per mount scopes renderer ids; two mounts resolve distinct ids.
+  const idPrefix = useSanitizedId();
   const prefersReducedMotion = usePrefersReducedMotion();
 
   // Replay triggers are signature+duration only; same-signature new data must not replay.
@@ -571,6 +574,7 @@ const SankeyChart = ({
         ariaDescription={ariaDescription}
         aspectRatio={parsedAspectRatio}
         className={className}
+        idPrefix={idPrefix}
         initialWidth={HOST_INITIAL_WIDTH}
         definition={definition}
         onFocusChange={handleFocusChange}

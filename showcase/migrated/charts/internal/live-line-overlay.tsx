@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import type { ChartTooltipBodyRenderContext } from '@tanstack/react-charts/tooltip';
 import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH } from "./chart-host";
+import { ResourceHost } from "./resource-host";
 import type { ChartChildRegistration } from "./chart-child-registry";
 import { useChartStable } from "./chart-context";
 import type {
@@ -182,7 +183,6 @@ interface CrosshairDefView {
 }
 
 interface FadeDefsOptions {
-  readonly crosshair: Readonly<CrosshairDefView> | undefined;
   readonly fadeMaskId: string | undefined;
   readonly height: number;
   readonly innerHeight: number;
@@ -195,7 +195,8 @@ interface FadeDefsOptions {
   readonly width: number;
 }
 
-// Edge-fade gradients plus the plot mask and crosshair gradient for the overlay svg.
+// Edge-fade gradients plus the plot mask for the seam (D548 ruling 1).
+// The crosshair gradient rides spec.gradients instead (bbox reproduces the span).
 const renderFadeDefs = (options: Readonly<FadeDefsOptions>): ReactNode => (
   <>
     {options.visuals.map((visual: Readonly<LiveDotSnapshot>): ReactNode =>
@@ -216,20 +217,6 @@ const renderFadeDefs = (options: Readonly<FadeDefsOptions>): ReactNode => (
         width: options.width,
       }),
     )}
-    {options.crosshair ? (
-      <linearGradient
-        id={options.crosshair.id}
-        gradientUnits="userSpaceOnUse"
-        x1={0}
-        x2={0}
-        y1={options.marginTop}
-        y2={options.marginTop + options.innerHeight}
-      >
-        {options.crosshair.stops.map((stop: Readonly<{ offset: string; opacity: number }>) => (
-          <stop key={stop.offset} offset={stop.offset} stopColor={options.crosshair?.color} stopOpacity={stop.opacity} />
-        ))}
-      </linearGradient>
-    ) : undefined}
   </>
 );
 
@@ -308,7 +295,6 @@ interface RenderLiveLineBodyOptions {
   readonly ariaDescription?: string;
   readonly ariaLabel?: string;
   readonly children: ReactNode;
-  readonly crosshairView: Readonly<CrosshairDefView> | undefined;
   readonly definition: DomChartDefinition<ChartDatum, Date, number> | undefined;
   readonly fadeMaskId: string | undefined;
   readonly fadeMaskStyle: CSSProperties | undefined;
@@ -327,7 +313,6 @@ interface RenderLiveLineBodyOptions {
 
 // Tip dots and fade chrome resolve through host scales (V1.2/G6).
 const LiveOverlayChrome = (properties: Readonly<{
-  readonly crosshairView: Readonly<CrosshairDefView> | undefined;
   readonly fadeMaskId: string | undefined;
   readonly getLiveGroups: () => Map<string, SVGGElement>;
   readonly uid: string;
@@ -335,7 +320,7 @@ const LiveOverlayChrome = (properties: Readonly<{
 }>): ReactNode => {
   const { chart, margin, xScale, yScale } = useChartStable();
   const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
-  const { crosshairView, fadeMaskId, getLiveGroups, uid, visuals } = properties;
+  const { fadeMaskId, getLiveGroups, uid, visuals } = properties;
   const dots: readonly LiveDotSnapshot[] = useMemo(
     () => visuals.map((visual) => ({
       cfg: visual.cfg,
@@ -350,16 +335,12 @@ const LiveOverlayChrome = (properties: Readonly<{
   );
   const fullWidth = margin.left + plot.width + margin.right;
   const fullHeight = margin.top + plot.height + margin.bottom;
+  // Fade gradients and mask ride the R10 seam (D548 ruling 1); the overlay svg keeps only tip dots.
   return (
-    <svg
-      aria-hidden="true"
-      width={fullWidth}
-      height={fullHeight}
-      style={LIVE_SVG_OVERLAY_STYLE}
-    >
-      <defs>
-        {renderFadeDefs({
-          crosshair: crosshairView,
+    <>
+      <ResourceHost
+        idPrefix={uid}
+        resources={renderFadeDefs({
           fadeMaskId,
           height: fullHeight,
           innerHeight: plot.height,
@@ -371,29 +352,36 @@ const LiveOverlayChrome = (properties: Readonly<{
           visuals: dots,
           width: fullWidth,
         })}
-      </defs>
-      {dots.map((dot: Readonly<LiveDotSnapshot>) => (
-        <LiveTipChrome
-          key={dot.cfg.dataKey}
-          cfg={dot.cfg}
-          dotColor={dot.dotColor}
-          getLiveGroups={getLiveGroups}
-          groupKey={dot.cfg.dataKey}
-          liveValue={dot.liveValue}
-          liveDotX={dot.dotX}
-          liveDotY={dot.dotY}
-          resolvedStroke={dot.resolvedStroke}
-          innerWidth={plot.width}
-        />
-      ))}
-    </svg>
+      />
+      <svg
+        aria-hidden="true"
+        width={fullWidth}
+        height={fullHeight}
+        style={LIVE_SVG_OVERLAY_STYLE}
+      >
+        {dots.map((dot: Readonly<LiveDotSnapshot>) => (
+          <LiveTipChrome
+            key={dot.cfg.dataKey}
+            cfg={dot.cfg}
+            dotColor={dot.dotColor}
+            getLiveGroups={getLiveGroups}
+            groupKey={dot.cfg.dataKey}
+            liveValue={dot.liveValue}
+            liveDotX={dot.dotX}
+            liveDotY={dot.dotY}
+            resolvedStroke={dot.resolvedStroke}
+            innerWidth={plot.width}
+          />
+        ))}
+      </svg>
+    </>
   );
 };
 
 // Chart body subtree as a plain render helper (not a component): inlined into
 // The same element tree, so reconciliation and animations are unchanged.
 const renderLiveLineBody = (options: Readonly<RenderLiveLineBodyOptions>): ReactNode => {
-  const { ariaDescription, ariaLabel = "Live line chart", children, crosshairView, definition, fadeMaskId, fadeMaskStyle, getLiveGroups, handleFocusChange, handleRegistryEntries, handleRender, height, lineVisuals, liveRefAreas, referenceAreaGeom, renderTooltipBody, tooltipOn, uid } = options;
+  const { ariaDescription, ariaLabel = "Live line chart", children, definition, fadeMaskId, fadeMaskStyle, getLiveGroups, handleFocusChange, handleRegistryEntries, handleRender, height, lineVisuals, liveRefAreas, referenceAreaGeom, renderTooltipBody, tooltipOn, uid } = options;
   return definition ? (
           <div
             style={fadeMaskStyle}
@@ -419,7 +407,6 @@ const renderLiveLineBody = (options: Readonly<RenderLiveLineBodyOptions>): React
                 />
               )}
               <LiveOverlayChrome
-                crosshairView={crosshairView}
                 fadeMaskId={fadeMaskId}
                 getLiveGroups={getLiveGroups}
                 uid={uid}

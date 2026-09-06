@@ -358,7 +358,7 @@ const renderPatternSwatch = (swatch: Readonly<PatternSwatchArgs>): ReactElement 
       style={buildPatternShellStyle(swatch)}
     >
       <svg aria-hidden="true" viewBox={`0 0 ${swatch.cellSize} ${swatch.cellSize}`} style={SWATCH_SVG_STYLE}>
-        {patternNode !== undefined && patternNode !== null ? <defs>{patternNode}</defs> : undefined}
+        {patternNode}
         <rect
           fill={patternNode !== undefined && patternNode !== null ? `url(#${patternId})` : swatch.style.color}
           height={swatch.cellSize}

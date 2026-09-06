@@ -28,6 +28,8 @@ import {
 } from "./axis-ticks";
 import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./cartesian-focus-distance";
 import { bezierEasing } from "./bezier-easing";
+import { toSpecCrosshairGradient } from "./fade-mask";
+import { buildCrosshairGradientDef } from "./focus-marks";
 import { resolveGridGuide } from "./grid";
 import { shortDateFmt } from "./formatters";
 import {
@@ -54,6 +56,7 @@ import {
   DEFAULT_TERMINAL_MARKER_RADIUS_PX,
   DEFAULT_TICK_COUNT,
   PROJECTION_FALLBACK_STROKE,
+  isString,
 } from "./area-chart-model";
 import type {
   NativeAreaGradient,
@@ -561,11 +564,18 @@ const buildAreaChartDefinition = (params: Readonly<AreaChartDefinitionParams>): 
     yAxis: params.yAxis,
     yDomainFinal: params.yDomainFinal,
   });
+  // Crosshair fade spans the plot vertically, so the bbox spec form paints identically.
+  const crosshairColor = isString(params.tooltip?.indicatorColor) ? params.tooltip.indicatorColor : "var(--chart-crosshair)";
+  const crosshairDef = params.tooltipEnabled && (params.tooltip?.showCrosshair ?? true)
+    ? buildCrosshairGradientDef(params.crosshairGradientId, crosshairColor)
+    : undefined;
   return defineChart({
+    // Brushed x-domains clip marks to the plot; overlays stay unclipped (G21).
+    clip: params.xDomain !== undefined,
     controls: params.brushControls,
     focus: "group-x",
     focusRing: false,
-    gradients: params.nativeAreaGradients,
+    gradients: crosshairDef === undefined ? params.nativeAreaGradients : [...params.nativeAreaGradients, toSpecCrosshairGradient(crosshairDef)],
     margin: params.margin,
     marks,
     // Hover works anywhere over the plot; TanStack defaults to 48px.

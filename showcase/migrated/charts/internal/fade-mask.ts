@@ -1,4 +1,5 @@
 // Bklit fade-edges + indicator-fade semantics in one module; the edge fade itself is CSS mask-image.
+import type { ChartLinearGradient } from "@tanstack/charts";
 
 
 type FadeEdges = boolean | "left" | "right";
@@ -81,6 +82,27 @@ interface IndicatorFadeGradientStop {
 }
 
 const FULL_PERCENT = 100;
+// Spec gradients want 0..1 ratios; island stops carry "NN%" strings.
+const percentOffsetToRatio = (offset: string): number => {
+  const match = /^([0-9.]+)%$/u.exec(offset.trim());
+  if (!match) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, Number(match[1]) / FULL_PERCENT));
+};
+
+// Bbox vertical fade reproduces a retired plot-span userSpace crosshair gradient.
+// The crosshair mark spans the plot, so bbox 0..1 paints the same pixels.
+const toSpecCrosshairGradient = (
+  def: Readonly<{ color: string; id: string; stops: readonly Readonly<{ offset: string; opacity: number }>[] }>,
+): ChartLinearGradient => ({
+  id: def.id,
+  stops: def.stops.map((stop) => ({ color: def.color, offset: percentOffsetToRatio(stop.offset), opacity: stop.opacity })),
+  x1: 0,
+  x2: 0,
+  y1: 0,
+  y2: 1,
+});
 // Indicator fade length is clamped to this percent at maximum so the gradient never inverts.
 const INDICATOR_FADE_MAX_LENGTH_PERCENT = 40;
 // Crosshair default fade length in percent (bklit vertical fade "both" default).
@@ -172,8 +194,10 @@ export {
   edgeFadeMaskStops,
   fadeGradientStops,
   indicatorFadeGradientStops,
+  percentOffsetToRatio,
   resolveFadeEdgesMask,
   resolveFadeSides,
   resolveVerticalFadeSides,
+  toSpecCrosshairGradient,
   viewportFadeGradientAttrs,
 };

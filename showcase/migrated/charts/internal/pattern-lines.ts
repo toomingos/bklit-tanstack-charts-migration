@@ -1,5 +1,5 @@
-// Visx patterns ported verbatim, quirks included: base Pattern nests its own <defs>
-// (don't flatten); Hexagons ignores width by design (public API).
+// Visx patterns render bare <pattern> elements for the R10 seam (V3.4b-ii);
+// Hexagons ignores width by design (public API).
 
 // Public barrel for the line-pattern modules.
 // The .ts extension keeps the component-mixing rule from flagging the re-exports.

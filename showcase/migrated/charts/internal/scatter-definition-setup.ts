@@ -7,6 +7,8 @@ import type { createScatterFocusStrategy } from "./scatter-focus-strategy";
 import { resolveMotionEasing } from "./reveal-easing";
 import { buildAllSeriesMarks } from "./scatter-series-marks";
 import { buildTooltipMarks } from "./scatter-tooltip-marks";
+import { buildCrosshairFadeGradient } from "./scatter-selection-setup";
+import { toSpecCrosshairGradient } from "./fade-mask";
 import { assembleScatterDefinition } from "./scatter-definition-assemble";
 import type { ScatterLabelFade } from "./scatter-label-fade";
 import type { ResolvedSeries } from "./scatter-marks";
@@ -139,7 +141,10 @@ const buildScatterDefinitionState = ({
     tooltipSpring: config.tooltipSpring,
     xDataKey,
   });
+  // Same fade the selection model builds; the bbox spec form paints identically.
+  const crosshairFade = buildCrosshairFadeGradient(tooltip, crosshairGradientId);
   return assembleScatterDefinition({
+    crosshairSpecGradient: crosshairFade === undefined ? undefined : toSpecCrosshairGradient(crosshairFade),
     discrete: marks.discrete,
     grid,
     labelFade,

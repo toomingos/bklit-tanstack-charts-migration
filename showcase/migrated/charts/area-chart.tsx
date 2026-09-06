@@ -1,9 +1,10 @@
 // Bklit AreaChart on TanStack Charts. Two marks per series (areaFill + lineY); hover dim 0.6.
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import type { ScaleTime } from "d3-scale";
 import type { ChartControl, ChartRendererRenderContext } from "@tanstack/charts";
 import { useRegistryEntriesState } from "./internal/chart-host";
+import { useSanitizedId } from "./internal/use-sanitized-id";
 import { ChartSelectionContext } from "./internal/chart-selection";
 import {
   DEFAULT_ANIMATION_DURATION_MS,
@@ -27,6 +28,9 @@ import { resolveColumnWidth } from "./internal/column-width";
 import { useAreaFocus } from "./internal/use-area-focus";
 import { useAreaSelection } from "./internal/use-area-selection";
 import { useAreaLayerProps } from "./internal/use-area-layer-props";
+import { renderMarkerGradientDef } from "./internal/line-chart-support";
+import { renderPatternPreset } from "./internal/pattern-preset-render";
+import { buildSelectionPatternOptions } from "./internal/brush-chrome-helpers";
 import {
   AreaChartBackdrop,
   AreaChartBody,
@@ -96,6 +100,8 @@ const AreaChart = ({
 }: Readonly<AreaChartProps>): ReactElement => {
   // Registry union (V1.3 carriers): entries report up from inside the host.
   const [registryEntries, handleRegistryEntries] = useRegistryEntriesState();
+  // One prefix per mount scopes renderer ids and seam ids alike.
+  const idPrefix = useSanitizedId();
   const xScaleD3Ref = useRef<ScaleTime<number, number> | null>(null);
   const setup = useAreaChartSetup({
     animationDuration,
@@ -104,6 +110,7 @@ const AreaChart = ({
     children,
     data,
     enterTransition,
+    idPrefix,
     marginProp,
     onPhaseChange,
     registryEntries,
@@ -116,6 +123,7 @@ const AreaChart = ({
   const series = useAreaSeries({
     areas: setup.areas,
     data,
+    idPrefix,
     innerWidth: setup.innerWidth,
     patternAreas: setup.patternAreas,
   });
@@ -128,6 +136,7 @@ const AreaChart = ({
     xDomain,
   });
   const fills = useAreaFills({
+    idPrefix,
     projectionConfigs: setup.projectionConfigs,
     renderData: series.renderData,
     resolvedAreas: series.resolvedAreas,
@@ -281,17 +290,35 @@ const AreaChart = ({
     aspectRatio,
     chartPhase: setup.chartPhase,
     clearFocusChrome: focus.clearFocusChrome,
-    heightPx: setup.heightPx,
     isLoaded: setup.isLoaded,
-    margin: setup.margin,
     nicedDomainsByAxis: yDomain.nicedDomainsByAxis,
     renderDataLength: series.renderData.length,
     style,
     timeExtent: fills.timeExtent,
-    width: setup.width,
-    xDomain,
     yDomainFinal: yDomain.yDomainFinal,
   });
+
+  // Seam resources carry the mount prefix; marks reference them as url(#id).
+  const areaSeamResources = (
+    <>
+      {series.areaMarkerGradientDefs.map((grad) => renderMarkerGradientDef(grad))}
+      {series.patternDefs.map((patternDef) => (
+        <Fragment key={patternDef.id}>
+          {patternDef.node}
+          {/* Tile grid shifts by margin: bklit anchors tiles at (margin.left, margin.top). */}
+          <pattern
+            id={patternDef.id}
+            href={`#${patternDef.id}-base`}
+            xlinkHref={`#${patternDef.id}-base`}
+            patternTransform={`translate(${setup.margin.left} ${setup.margin.top})`}
+          />
+        </Fragment>
+      ))}
+      {brush.brushConfig?.selectionPattern && brush.brushConfig.selectionPattern.preset !== "none"
+        ? renderPatternPreset(brush.brushConfig.selectionPattern.preset, `${idPrefix}-brush-selection-pattern`, buildSelectionPatternOptions(brush.brushConfig.selectionPattern))
+        : undefined}
+    </>
+  );
 
   return (
     <ChartSelectionContext.Provider value={selection.chartSelection}>
@@ -310,7 +337,6 @@ const AreaChart = ({
         ariaDescription={ariaDescription}
         ariaLabel={ariaLabel}
         aspectRatio={aspectRatio}
-        chartBodyClipStyle={layerProps.chartBodyClipStyle}
         chartData={data}
         chartXDataKey={xDataKey}
         chartXDomain={xDomain}
@@ -318,13 +344,16 @@ const AreaChart = ({
         onFocusChange={focus.handleFocusChange}
         onRender={handleHostRender}
         heightPx={setup.heightPx}
+        idPrefix={idPrefix}
         renderTooltipBody={focus.renderTooltipBody}
+        resources={areaSeamResources}
         tooltipEnabled={setup.tooltipEnabled}
         handleRegistryEntries={handleRegistryEntries}
         hostChildren={
           <>
             <AreaChartBackdrop
               background={setup.background}
+              idPrefix={idPrefix}
               isLoaded={setup.isLoaded}
               isLoading={isLoading}
               loadingLabel={loadingLabel}
@@ -337,6 +366,7 @@ const AreaChart = ({
               definition={definition}
               onMarkerHoverChange={layerProps.handleMarkerHoverChange}
               heightPx={setup.heightPx}
+              idPrefix={idPrefix}
               markerActiveStore={focus.markerActiveStore}
               projectionChromeProps={overlays.projectionChromeProps}
               projectionPhasePortRef={setup.projectionPhasePortRef}
@@ -351,17 +381,12 @@ const AreaChart = ({
               xScaleD3Ref={xScaleD3Ref}
             />
             <AreaChartDefSvgs
-              areaBrushClipId={layerProps.areaBrushClipId}
-              areaMarkerGradientDefs={series.areaMarkerGradientDefs}
               brushConfig={brush.brushConfig}
               brushRangeValue={brush.brushRangeValue}
               brushTrackExtent={brush.brushTrackExtent}
               containerRef={setup.containerRef}
-              crosshairGradientDef={overlays.crosshairGradientDef}
               hasBrush={brush.hasBrush}
-              margin={setup.margin}
-              needsAreaBrushClip={layerProps.needsAreaBrushClip}
-              patternDefs={series.patternDefs}
+              idPrefix={idPrefix}
             />
           </>
         }

@@ -15,6 +15,7 @@ import { useEffectEvent } from "./internal/use-effect-event";
 import { scaleLinear, scalePoint } from "d3-scale";
 import { curveLinearClosed } from "d3-shape";
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
+import { useSanitizedId } from "./internal/use-sanitized-id";
 import type { ChartMarkState, ChartMarkStateTransition, ChartMotionContext, ChartMotionDefinition, ChartRendererRenderContext, ChartValue, DomChartDefinition } from "@tanstack/charts";
 import { defineChart } from "@tanstack/charts/scene";
 import { angleGrid, polar, radialArea, radialDot } from "@tanstack/charts/polar";
@@ -763,6 +764,8 @@ const RadarChart = ({
   ariaDescription,
 }: Readonly<RadarChartProps>): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // One prefix per mount scopes renderer ids; two mounts resolve distinct ids.
+  const idPrefix = useSanitizedId();
   // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
   const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
   const chartSize = fixedSize ?? liveWidth;
@@ -1059,6 +1062,7 @@ const RadarChart = ({
           <ChartHost
             ariaLabel={ariaLabel}
             ariaDescription={ariaDescription}
+            idPrefix={idPrefix}
             width={chartSize}
             height={chartSize}
             initialWidth={chartSize}
@@ -1072,6 +1076,7 @@ const RadarChart = ({
             ariaLabel={ariaLabel}
             ariaDescription={ariaDescription}
             aspectRatio={1}
+            idPrefix={idPrefix}
             initialWidth={HOST_INITIAL_WIDTH}
             definition={definition}
             renderer={chartMotionRenderer<RadarRow, string, number>()}

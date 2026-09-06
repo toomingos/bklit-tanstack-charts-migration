@@ -8,6 +8,8 @@ import { portal } from "@tanstack/charts/tooltip/portal";
 import type { ChartControl, ChartMark, ChartTooltipInput, DomChartDefinition } from "@tanstack/charts";
 import { resolveGridGuide } from "./grid";
 import { bezierEasing } from "./bezier-easing";
+import { toSpecCrosshairGradient } from "./fade-mask";
+import { buildCrosshairGradientDef } from "./focus-marks";
 import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, TOOLTIP_BOX_SPRING } from "./design-tokens";
 import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./cartesian-focus-distance";
 import { isChartInteractionPhase } from "./chart-phase";
@@ -37,7 +39,7 @@ import type { MarkerRevealSeriesConfig } from "./line-marker-reveal";
 import type { ChartMargin } from "./use-chart-margin";
 import type { ChartDatum, ExtractedChildren } from "./types";
 import type { ProjectionLineConfig } from "./projection-config";
-import { DEFAULT_LINE_STROKE, DEFAULT_LINE_STROKE_WIDTH, DEFAULT_PROJECTION_ENDPOINT_RADIUS_PX, DEFAULT_PROJECTION_LINE_CLASS_NAME, PROJECTION_FALLBACK_STROKE } from "./line-chart-support";
+import { DEFAULT_LINE_STROKE, DEFAULT_LINE_STROKE_WIDTH, DEFAULT_PROJECTION_ENDPOINT_RADIUS_PX, DEFAULT_PROJECTION_LINE_CLASS_NAME, PROJECTION_FALLBACK_STROKE, isString } from "./line-chart-support";
 
 interface LineChartSpecParams {
   readonly brushControls: readonly ChartControl<Date, number>[];
@@ -140,11 +142,19 @@ const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec 
     const { motion, tickLabelMotion } = resolveLineMotions(yDomainTweenGateActive, effectiveYDomainTweenDuration);
     const xScaleOptions = buildLineXScaleOptions({ gridGuide, marginBottom: margin.bottom, tickLabelMotion, xAxis, xScale, xTickLabelOpacity });
     const yScaleOptions = buildLineYScaleOptions({ gridGuide, niced: yDomainFinal, tickLabelMotion, yAxis });
+    // Crosshair fade spans the plot vertically, so the bbox spec form paints identically.
+    const crosshairColor = isString(tooltip?.indicatorColor) ? tooltip.indicatorColor : "var(--chart-crosshair)";
+    const crosshairDef = tooltipEnabled && (tooltip?.showCrosshair ?? true)
+      ? buildCrosshairGradientDef(crosshairGradientId, crosshairColor)
+      : undefined;
     return {
+      // Brushed x-domains clip marks to the plot; overlays stay unclipped (G21).
+      clip: xDomain !== undefined,
       controls: brushControls,
       focus: "group-x" as const,
       // Bklit has no focus ring; the hover dot is the indicator.
       focusRing: false,
+      gradients: crosshairDef === undefined ? [] : [toSpecCrosshairGradient(crosshairDef)],
       margin,
       marks,
       maxFocusDistance: CARTESIAN_MAX_FOCUS_DISTANCE_PX,
@@ -163,7 +173,7 @@ const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec 
         enabled: tooltip?.enabled ?? false,
       }),
     };
-  }, [marks, renderData, xDataKey, grid, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, xDomain, timeExtent, tooltip, xAxis, yAxis, visibleData, labelFade, brushControls, xScaleD3Ref]);
+  }, [marks, renderData, xDataKey, grid, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, xDomain, timeExtent, tooltip, tooltipEnabled, crosshairGradientId, xAxis, yAxis, visibleData, labelFade, brushControls, xScaleD3Ref]);
 
   const definition = useMemo((): DomChartDefinition<ChartDatum, Date, number> => defineChart(spec), [spec]);
   return { definition };

@@ -15,6 +15,7 @@ const BrushSelectionPatternChrome = ({
   innerWidth: _innerWidth,
   innerHeight,
   selectionPattern,
+  selectionPatternId,
   mounted,
 }: Readonly<{
   host: BrushHost;
@@ -23,17 +24,22 @@ const BrushSelectionPatternChrome = ({
   innerWidth: number;
   innerHeight: number;
   selectionPattern?: BrushChromePattern;
+  selectionPatternId?: string;
   mounted: boolean;
 }>): ReactNode => {
   const container = host.containerRef.current;
-  const patternId = useId().replaceAll(':', "");
+  // Seam-owned id wins; the entry renders the defs and this keeps only the painted rect.
+  const fallbackPatternId = useId().replaceAll(':', "");
+  const patternId = selectionPatternId ?? fallbackPatternId;
   const active = resolveActivePatternBounds({ container, mounted, selectionPattern, x0, x1 });
   if (active === undefined) {return undefined;}
-  const patternNode = renderPatternPreset(active.pattern.preset, patternId, buildSelectionPatternOptions(active.pattern));
-  if (patternNode === null || patternNode === undefined) {return undefined;}
+  const inlinePatternNode = selectionPatternId === undefined
+    ? renderPatternPreset(active.pattern.preset, patternId, buildSelectionPatternOptions(active.pattern))
+    : undefined;
+  if (selectionPatternId === undefined && (inlinePatternNode === null || inlinePatternNode === undefined)) {return undefined;}
   return createPortal(
     <svg aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1]" width="100%" height="100%">
-      <defs>{patternNode}</defs>
+      {inlinePatternNode === undefined ? undefined : <defs>{inlinePatternNode}</defs>}
       <rect
         fill={`url(#${patternId})`}
         fillOpacity={active.pattern.opacity ?? 1}

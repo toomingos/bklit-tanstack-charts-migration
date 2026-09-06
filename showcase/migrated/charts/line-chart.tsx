@@ -52,11 +52,16 @@ import {
   isNumber,
   isString,
   normalizeProjectionLineConfigs,
+  renderMarkerGradientDef,
+  renderProfitLossGradientDef,
   resolveChartHeightPx,
   resolveEffectiveYDomainTweenBase,
   stringifyDatumValue,
   useDebouncedContainerSize,
 } from "./internal/line-chart-support";
+import { buildProfitLossGradientDefs } from "./internal/line-gradient-defs";
+import { renderPatternPreset } from "./internal/pattern-preset-render";
+import { buildSelectionPatternOptions } from "./internal/brush-chrome-helpers";
 import { useLineLayerInputs } from "./internal/use-line-layer-inputs";
 import { useLineYDomains } from "./internal/use-line-y-domains";
 import { useLineChartSpec } from "./internal/use-line-chart-spec";
@@ -178,7 +183,9 @@ export const LineChart = ({
 
   const tooltipEnabled = tooltip?.enabled ?? false;
   const projectionConfigs = useMemo(() => normalizeProjectionLineConfigs(projectionLines), [projectionLines]);
-  const projectionGradientBaseId = useSanitizedId();
+  // One prefix per mount scopes renderer ids and seam ids alike.
+  const idPrefix = useSanitizedId();
+  const projectionGradientBaseId = `${idPrefix}-proj`;
   const [plTooltipSignIndex, setPlTooltipSignIndex] = useState<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [labelFade, setLabelFade] = useState<LabelFadeState>();
@@ -212,7 +219,7 @@ export const LineChart = ({
     profitLossHoveredIndex,
     timeExtent,
     timeExtentRaw,
-  } = useLineLayerInputs({ lines, projectionConfigs, registryEntries, renderData, xDataKey, xDomain });
+  } = useLineLayerInputs({ idPrefix, lines, projectionConfigs, registryEntries, renderData, xDataKey, xDomain });
   const hoveredIndexForPL = profitLossHoveredIndex;
 
   const {
@@ -334,8 +341,6 @@ export const LineChart = ({
     fadeEdgesMask,
     hostChildren,
     loadingLabelNode,
-    brushClipId,
-    needsBrushClip,
   } = useLineOverlays({
     animationDuration,
     background,
@@ -348,7 +353,6 @@ export const LineChart = ({
     clearFocusChrome,
     clientToScene,
     containerRef,
-    crosshairGradientId,
     data,
     defaultLineStroke: DEFAULT_LINE_STROKE,
     defaultLineStrokeWidth: DEFAULT_LINE_STROKE_WIDTH,
@@ -357,6 +361,7 @@ export const LineChart = ({
     hasBrush,
     hasHover: hoveredIndex !== null,
     heightPx,
+    idPrefix,
     innerWidth,
     isLoaded,
     isLoading,
@@ -365,9 +370,7 @@ export const LineChart = ({
     loadingLabel,
     margin,
     markerActiveStore,
-    markerGradientDefs,
     nicedDomainsByAxis,
-    profitLossLines,
     projectionConfigs,
     projectionEndMarkers,
     projectionGradientBaseId,
@@ -378,44 +381,52 @@ export const LineChart = ({
     terminalMarkers,
     timeExtent,
     timeExtentRaw,
-    tooltip,
-    tooltipEnabled,
     width,
     xDataKey,
-    xDomain,
     xScaleD3Ref,
     yDomainFinal,
   });
   const lineChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
-  const rendererClipStyle = useMemo(
-    () => (needsBrushClip ? { clipPath: `url(#${brushClipId})` } : undefined),
-    [brushClipId, needsBrushClip],
+  // Seam resources carry the mount prefix; marks reference them as url(#id).
+  const profitLossDefs = useMemo(
+    () => buildProfitLossGradientDefs({ gradientBaseId: projectionGradientBaseId, innerWidth, profitLossLines }),
+    [projectionGradientBaseId, innerWidth, profitLossLines],
+  );
+  const brushPatternNode = brushConfig?.selectionPattern && brushConfig.selectionPattern.preset !== "none"
+    ? renderPatternPreset(brushConfig.selectionPattern.preset, `${idPrefix}-brush-selection-pattern`, buildSelectionPatternOptions(brushConfig.selectionPattern))
+    : undefined;
+  const lineSeamResources = (
+    <>
+      {profitLossDefs.map((def) => renderProfitLossGradientDef(def))}
+      {markerGradientDefs.map((def) => renderMarkerGradientDef(def))}
+      {brushPatternNode}
+    </>
   );
   const rendererNode = definition && (
-    <div style={rendererClipStyle}>
-      <ChartHost
-        renderer={lineChartRenderer}
-        ariaLabel={ariaLabel}
-        ariaDescription={ariaDescription}
-        aspectRatio={parseAspectRatio(aspectRatio)}
-        chartData={data}
-        chartXDataKey={xDataKey}
-        chartXDomain={xDomain}
-        className={className}
-        height={heightPx > 0 ? heightPx : undefined}
-        initialWidth={HOST_INITIAL_WIDTH}
-        definition={definition}
-        onFocusGroupChange={handleFocusChange}
-        onRender={handleRender}
-        renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
-        style={style}
-      >
-        {children}
-        <ChartRegistryBridge onEntries={handleRegistryEntries} />
-        {hostChildren}
-      </ChartHost>
-    </div>
+    <ChartHost
+      renderer={lineChartRenderer}
+      ariaLabel={ariaLabel}
+      ariaDescription={ariaDescription}
+      aspectRatio={parseAspectRatio(aspectRatio)}
+      chartData={data}
+      chartXDataKey={xDataKey}
+      chartXDomain={xDomain}
+      className={className}
+      height={heightPx > 0 ? heightPx : undefined}
+      idPrefix={idPrefix}
+      initialWidth={HOST_INITIAL_WIDTH}
+      definition={definition}
+      resources={lineSeamResources}
+      onFocusGroupChange={handleFocusChange}
+      onRender={handleRender}
+      renderTooltipBody={tooltipEnabled ? renderTooltipBody : undefined}
+      style={style}
+    >
+      {children}
+      <ChartRegistryBridge onEntries={handleRegistryEntries} />
+      {hostChildren}
+    </ChartHost>
   );
   const containerStyle = useMemo((): CSSProperties => ({ aspectRatio, isolation: "isolate", position: "relative", width: "100%", ...style }), [aspectRatio, style]);
   return (

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { Dispatch, ReactElement, RefObject, SetStateAction } from "react";
+import type { Dispatch, ReactElement, ReactNode, RefObject, SetStateAction } from "react";
+import { ResourceHost } from "./resource-host";
 import { useEffectEvent } from "./use-effect-event";
 import { LINE_LOADING_PULSE_CYCLE_S } from "./design-tokens";
 import { fadeGradientStops, resolveFadeSides, viewportFadeGradientAttrs } from "./fade-mask";
@@ -118,23 +119,23 @@ const resolvePulseGradient = ({ width }: Readonly<PulseGradientParams>): PulseGr
 };
 
 // Defs subtree rendered through a plain function call so the clip rect updates in place.
-// A separate component type would remount the subtree instead of updating it.
+// Bare nodes for the R10 seam; ResourceHost owns the one <defs>.
 const renderPulseDefs = ({
   clipHeight, clipId, fadeStops, gradId, gradientUnits, progress, stroke, width, x1, x2, y1, y2,
-}: Readonly<PulseDefsParams>): ReactElement => {
+}: Readonly<PulseDefsParams>): ReactNode => {
   const { clipWidth, clipX } = resolvePulseClipGeometry({ progress, width });
   const stopNodes = fadeStops.map((stop: Readonly<FadeGradientStop>) => (
     <stop key={stop.offset} offset={stop.offset} stopColor={stroke} stopOpacity={stop.opacity} />
   ));
   return (
-    <defs>
+    <>
       <clipPath id={clipId}>
         <rect id={`${clipId}-rect`} height={clipHeight} width={clipWidth} x={clipX} y={-CLIP_PADDING} />
       </clipPath>
       <linearGradient id={gradId} gradientUnits={gradientUnits} x1={x1} x2={x2} y1={y1} y2={y2}>
         {stopNodes}
       </linearGradient>
-    </defs>
+    </>
   );
 };
 
@@ -195,20 +196,23 @@ const LineLoadingPulse = ({
   if (width <= 0 || !pathD) {return undefined;}
   return (
     <>
-      {renderPulseDefs({
-        clipHeight: frame.clipHeight,
-        clipId: frame.clipId,
-        fadeStops: gradient.fadeStops,
-        gradId: frame.gradId,
-        gradientUnits: gradient.gradientUnits,
-        progress,
-        stroke,
-        width,
-        x1: gradient.x1,
-        x2: gradient.x2,
-        y1: gradient.y1,
-        y2: gradient.y2,
-      })}
+      <ResourceHost
+        idPrefix={id}
+        resources={renderPulseDefs({
+          clipHeight: frame.clipHeight,
+          clipId: frame.clipId,
+          fadeStops: gradient.fadeStops,
+          gradId: frame.gradId,
+          gradientUnits: gradient.gradientUnits,
+          progress,
+          stroke,
+          width,
+          x1: gradient.x1,
+          x2: gradient.x2,
+          y1: gradient.y1,
+          y2: gradient.y2,
+        })}
+      />
       <path
         d={pathD}
         fill="none"

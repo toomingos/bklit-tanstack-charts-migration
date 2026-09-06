@@ -3,10 +3,7 @@ import { useCallback, useLayoutEffect, useMemo } from "react";
 import type { ReactNode, RefObject } from "react";
 import type { ScaleTime } from "d3-scale";
 import { useEffectEvent } from "./use-effect-event";
-import { buildCrosshairGradientDef } from "./focus-marks";
 import { LEGEND_DIM_OPACITY } from "./line-series-marks";
-import { useSanitizedId } from "./use-sanitized-id";
-import { useChartStable } from "./chart-context";
 import { resolveFadeEdgesMask } from "./fade-mask";
 import type { FadeEdgesMaskAttrs } from "./fade-mask";
 import { extractReferenceAreaProps } from "./reference-area-config";
@@ -27,7 +24,6 @@ import type { BrushRange } from "@tanstack/charts/interaction/brush";
 import type { FocusInjection } from "./focus-injection";
 import {
   buildProjectionGradientDefs,
-  buildProfitLossGradientDefs,
 } from "./line-gradient-defs";
 import {
   buildProjectionEndAnchors,
@@ -35,7 +31,6 @@ import {
   useOverlayMappers,
 } from "./line-marker-anchors";
 import { DEFAULT_MARKER_RADIUS_PX } from "./line-marker-reveal";
-import type { MarkerGradientDef } from "./series-marker-mark";
 import type { BrushChildConfig, ChartDatum, ChartMarker, ExtractedChildren } from "./types";
 import type { ChartPhase } from "./chart-phase";
 import type { ChartMargin } from "./use-chart-margin";
@@ -44,15 +39,8 @@ import type { LineChartSpec } from "./use-line-chart-spec";
 import {
   DEFAULT_PROJECTION_ENDPOINT_RADIUS_PX,
   DEFAULT_TERMINAL_MARKER_STROKE_WIDTH,
-  HIDDEN_DEFS_SVG_STYLE,
   PROJECTION_FALLBACK_STROKE,
-  isString,
   referenceXDomainForExtent,
-  renderBrushClipDefs,
-  renderCrosshairGradient,
-  renderMarkerGradientDef,
-  renderProfitLossGradientDef,
-  renderProjectionGradientDef,
 } from "./line-chart-support";
 
 interface LineOverlaysParams {
@@ -67,7 +55,6 @@ interface LineOverlaysParams {
   readonly clearFocusChrome: LineFocusChrome["clearFocusChrome"];
   readonly clientToScene: FocusInjection<ChartDatum, Date, number>["clientToScene"];
   readonly containerRef: RefObject<HTMLDivElement | null>;
-  readonly crosshairGradientId: string;
   readonly data: ChartDatum[];
   readonly defaultLineStroke: string;
   readonly defaultLineStrokeWidth: number;
@@ -76,6 +63,7 @@ interface LineOverlaysParams {
   readonly hasBrush: boolean;
   readonly hasHover: boolean;
   readonly heightPx: number;
+  readonly idPrefix: string;
   readonly innerWidth: number;
   readonly isLoaded: boolean;
   readonly isLoading: boolean;
@@ -84,35 +72,28 @@ interface LineOverlaysParams {
   readonly loadingLabel: string | undefined;
   readonly margin: Readonly<ChartMargin>;
   readonly markerActiveStore: LineFocusChrome["markerActiveStore"];
-  readonly markerGradientDefs: readonly MarkerGradientDef[];
   readonly nicedDomainsByAxis: Record<string, [number, number]>;
   readonly projectionConfigs: readonly ProjectionLineConfig[];
   readonly projectionEndMarkers: ExtractedChildren["projectionEndMarkers"];
   readonly projectionGradientBaseId: string;
   readonly projectionLines: ExtractedChildren["projectionLines"];
   readonly projectionPhasePortRef: RefObject<ProjectionPhaseHandle | null>;
-  readonly profitLossLines: ExtractedChildren["profitLossLines"];
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly sceneRef: FocusInjection<ChartDatum, Date, number>["sceneRef"];
   readonly terminalMarkers: ExtractedChildren["terminalMarkers"];
   readonly timeExtent: Readonly<{ maxTime: number; minTime: number }> | undefined;
   readonly timeExtentRaw: Readonly<{ maxTime: number; minTime: number }> | undefined;
-  readonly tooltip: ExtractedChildren["tooltip"];
-  readonly tooltipEnabled: boolean;
   readonly width: number;
   readonly xDataKey: string;
-  readonly xDomain: [Date, Date] | undefined;
   readonly xScaleD3Ref: RefObject<ScaleTime<number, number> | null>;
   readonly yDomainFinal: [number, number];
 }
 
 interface LineOverlays {
-  readonly brushClipId: string;
   readonly chartSelection: ChartSelection | null;
   readonly fadeEdgesMask: FadeEdgesMaskAttrs;
   readonly hostChildren: ReactNode;
   readonly loadingLabelNode: ReactNode;
-  readonly needsBrushClip: boolean;
 }
 
 // Anchors and projection gradients resolve through host scales (V1.2/G6).
@@ -172,91 +153,20 @@ const LineProjectionChrome = (properties: Readonly<{
     if (!overlayRendered) {return;}
     pushPhaseToProjectionPort();
   }, [overlayRendered]);
+  // Gradient defs ride the visible marker overlay; no hidden island remains.
+  if (!overlayRendered && gradientDefs.length === 0) {return undefined;}
   return (
-    <>
-      {gradientDefs.length > 0 && (
-        <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
-          <defs>
-            {gradientDefs.map((def: Parameters<typeof renderProjectionGradientDef>[0]) => renderProjectionGradientDef(def))}
-          </defs>
-        </svg>
-      )}
-      {overlayRendered && (
-        <ProjectionMarkerOverlay
-          terminalMarkers={terminalAnchors}
-          projectionEndMarkers={endAnchors}
-          phasePort={phasePort}
-        />
-      )}
-    </>
-  );
-};
-
-// Profit-loss fade gradients need only the plot width, from the host (V1.2/G6).
-const LineProfitLossGradients = (properties: Readonly<{
-  readonly gradientBaseId: string;
-  readonly profitLossLines: ExtractedChildren["profitLossLines"];
-}>): ReactNode => {
-  const { chart } = useChartStable();
-  const defs = useMemo(
-    () => buildProfitLossGradientDefs({ gradientBaseId: properties.gradientBaseId, innerWidth: chart?.width ?? 0, profitLossLines: properties.profitLossLines }),
-    [properties.gradientBaseId, properties.profitLossLines, chart],
-  );
-  if (defs.length === 0) {return undefined;}
-  return (
-    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
-      <defs>
-        {defs.map((def: Parameters<typeof renderProfitLossGradientDef>[0]) => renderProfitLossGradientDef(def))}
-      </defs>
-    </svg>
-  );
-};
-
-// Crosshair gradient geometry follows the host plot rect (V1.2/G6).
-const LineCrosshairDef = (properties: Readonly<{
-  readonly crosshairGradientId: string;
-  readonly tooltip: ExtractedChildren["tooltip"];
-  readonly tooltipEnabled: boolean;
-}>): ReactNode => {
-  const { chart, margin } = useChartStable();
-  const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
-  const color = isString(properties.tooltip?.indicatorColor) ? properties.tooltip.indicatorColor : "var(--chart-crosshair)";
-  const def = properties.tooltipEnabled && (properties.tooltip?.showCrosshair ?? true)
-    ? buildCrosshairGradientDef(properties.crosshairGradientId, color)
-    : undefined;
-  if (!def) {return undefined;}
-  return (
-    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
-      <defs>
-        {renderCrosshairGradient({
-          bottom: margin.top + plot.height,
-          color: def.color,
-          id: def.id,
-          stops: def.stops,
-          top: margin.top,
-        })}
-      </defs>
-    </svg>
-  );
-};
-
-// Brush clip defs follow the host plot rect (V1.2/G6).
-const LineBrushClip = (properties: Readonly<{
-  readonly brushClipId: string;
-  readonly xDomain: [Date, Date] | undefined;
-}>): ReactNode => {
-  const { chart, margin } = useChartStable();
-  const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
-  if (!properties.xDomain || plot.width <= 0 || plot.height <= 0) {return undefined;}
-  return (
-    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
-      {renderBrushClipDefs({ clipId: properties.brushClipId, height: plot.height, left: margin.left, top: margin.top, width: plot.width })}
-    </svg>
+    <ProjectionMarkerOverlay
+      projectionDefs={gradientDefs}
+      terminalMarkers={terminalAnchors}
+      projectionEndMarkers={endAnchors}
+      phasePort={phasePort}
+    />
   );
 };
 
 const useLineOverlays = (params: Readonly<LineOverlaysParams>): LineOverlays => {
-  const { animationDuration, background, brushConfig, brushRangeValue, brushTrackExtent, chartMarkers, chartPhase, children, clearFocusChrome, clientToScene, containerRef, crosshairGradientId, data, defaultLineStroke, defaultLineStrokeWidth, definition, dragSelectionActiveRef, hasBrush, hasHover, heightPx, innerWidth, isLoaded, isLoading, legendHoveredIndex, lines, loadingLabel, margin, markerActiveStore, markerGradientDefs, nicedDomainsByAxis, projectionConfigs, projectionEndMarkers, projectionGradientBaseId, projectionLines, projectionPhasePortRef, profitLossLines, renderData, sceneRef, terminalMarkers, timeExtent, timeExtentRaw, tooltip, tooltipEnabled, width, xDataKey, xDomain, xScaleD3Ref, yDomainFinal } = params;
+  const { animationDuration, background, brushConfig, brushRangeValue, brushTrackExtent, chartMarkers, chartPhase, children, clearFocusChrome, clientToScene, containerRef, data, defaultLineStroke, defaultLineStrokeWidth, definition, dragSelectionActiveRef, hasBrush, hasHover, heightPx, idPrefix, innerWidth, isLoaded, isLoading, legendHoveredIndex, lines, loadingLabel, margin, markerActiveStore, nicedDomainsByAxis, projectionConfigs, projectionEndMarkers, projectionGradientBaseId, projectionLines, projectionPhasePortRef, renderData, sceneRef, terminalMarkers, timeExtent, timeExtentRaw, width, xDataKey, xScaleD3Ref, yDomainFinal } = params;
   const fadeEdgesMask = resolveFadeEdgesMask(lines.map((line) => line.fadeEdges ?? true));
 
   // Selection resolves through the host's live interaction/scene refs, not a duplicate scale.
@@ -286,12 +196,6 @@ const useLineOverlays = (params: Readonly<LineOverlaysParams>): LineOverlays => 
 
   const segmentComponents = useMemo(() => extractSegmentComponents(children), [children]);
   const refAreaChildren = useMemo(() => extractReferenceAreaProps(children), [children]);
-
-  // With narrowed xDomain, full-data paths map outside the plot; clip them to the plot rect.
-  const innerWidthForBrush = Math.max(0, width - margin.left - margin.right);
-  const innerHeightForBrush = Math.max(0, heightPx - margin.top - margin.bottom);
-  const brushClipId = useSanitizedId();
-  const needsBrushClip = Boolean(xDomain) && innerWidthForBrush > 0 && innerHeightForBrush > 0;
 
   // Reference-area geometry reads bounds from the host; only data domains travel by prop.
   const referenceAreaGeom = useMemo(() => ({
@@ -346,13 +250,6 @@ const useLineOverlays = (params: Readonly<LineOverlaysParams>): LineOverlays => 
       yDomainFinal={yDomainFinal}
     />
   );
-  const markerGradientDefsNode = markerGradientDefs.length > 0 && (
-    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
-      <defs>
-        {markerGradientDefs.map((def: Parameters<typeof renderMarkerGradientDef>[0]) => renderMarkerGradientDef(def))}
-      </defs>
-    </svg>
-  );
   const chartMarkersOverlayNode = chartMarkers && (
     <MarkerActiveTooltipProvider store={markerActiveStore}>
       <ChartMarkersOverlay
@@ -376,12 +273,14 @@ const useLineOverlays = (params: Readonly<LineOverlaysParams>): LineOverlays => 
       blurPx={brushConfig?.blurPx}
       fadeOuterEdges={brushConfig?.fadeOuterEdges}
       selectionPattern={brushConfig?.selectionPattern}
+      selectionPatternId={`${idPrefix}-brush-selection-pattern`}
       selectedBoxStyle={brushConfig?.selectedBoxStyle}
     />
   );
   const backgroundNode = background && (
     <BackgroundLayer
       config={background}
+      idPrefix={idPrefix}
       isLoaded={isLoaded}
     />
   );
@@ -391,20 +290,12 @@ const useLineOverlays = (params: Readonly<LineOverlaysParams>): LineOverlays => 
       <SegmentOverlay
         selection={chartSelection}
         components={segmentComponents}
+        idPrefix={idPrefix}
       />
       {projectionChromeNode}
-      <LineProfitLossGradients
-        gradientBaseId={projectionGradientBaseId}
-        profitLossLines={profitLossLines}
-      />
-      <LineCrosshairDef
-        crosshairGradientId={crosshairGradientId}
-        tooltip={tooltip}
-        tooltipEnabled={tooltipEnabled}
-      />
-      {markerGradientDefsNode}
       <DashTailOverlay
         containerRef={containerRef}
+        idPrefix={idPrefix}
         renderData={renderData}
         xDataKey={xDataKey}
         series={dashTailSeries}
@@ -414,17 +305,13 @@ const useLineOverlays = (params: Readonly<LineOverlaysParams>): LineOverlays => 
       />
       {chartMarkersOverlayNode}
       {brushChromeNode}
-      <LineBrushClip
-        brushClipId={brushClipId}
-        xDomain={xDomain}
-      />
       {backgroundNode}
     </>
   );
   const loadingLabelNode = isLoading && loadingLabel !== undefined && loadingLabel !== "" && (
     <LoadingLabel text={loadingLabel} />
   );
-  return { brushClipId, chartSelection, fadeEdgesMask, hostChildren, loadingLabelNode, needsBrushClip };
+  return { chartSelection, fadeEdgesMask, hostChildren, loadingLabelNode };
 };
 
 export { useLineOverlays };

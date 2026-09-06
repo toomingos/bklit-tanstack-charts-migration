@@ -1,4 +1,4 @@
-// FillMode "pattern" levels resolve to `url(#heatmap-level-N)`, rendered by the shared pattern-preset renderer.
+// FillMode "pattern" levels resolve to scoped `url(#…)` fills, backed by the seam resources.
 import { getHeatmapContributionLevel } from "./heatmap-utils";
 import type { PatternPresetId, PatternPresetOptions } from "./pattern-preset";
 

@@ -1,4 +1,4 @@
-// Composed overlay chrome: host-child anchors, gradients and crosshair defs (V1.2/G6).
+// Composed overlay chrome: host-child anchors and projection gradients (V1.2/G6).
 "use client";
 
 import { useLayoutEffect, useMemo } from "react";
@@ -19,8 +19,6 @@ import type { ProjectionPhaseHandle } from "./terminal-marker";
 import type { ProjectionLineConfig } from "./projection-config";
 import type { TimeBounds } from "./composed-data-math";
 import type { ChartPhase } from "./chart-phase";
-import type { CrosshairGradientDef } from "./focus-marks";
-import { renderCrosshairNode, renderProjectionGradientsNode } from "./composed-gradient-nodes";
 import type { ChartDatum } from "./types";
 
 // Anchors and projection gradients resolve through host scales (V1.2/G6).
@@ -95,7 +93,8 @@ const ComposedProjectionChrome = (properties: Readonly<{
       yMap: (value: number): number => frame.yForValue(value),
     });
   }, [projectionConfigs, composedProjectionLines, frame, projectionGradientBaseId]);
-  const overlayRendered = (terminalAnchors.length > 0 || endAnchors.length > 0) && width > 0 && heightPx > 0;
+  const hasOverlayContent = terminalAnchors.length > 0 || endAnchors.length > 0 || gradientDefs.length > 0;
+  const overlayRendered = hasOverlayContent && width > 0 && heightPx > 0;
   const pushPhaseToProjectionPort = useEffectEvent((): void => {
     phasePort.current?.setPhase(phaseRef.current);
   });
@@ -103,33 +102,16 @@ const ComposedProjectionChrome = (properties: Readonly<{
     if (!overlayRendered) {return;}
     pushPhaseToProjectionPort();
   }, [overlayRendered]);
-  return (
-    <>
-      {renderProjectionGradientsNode(gradientDefs)}
-      {overlayRendered && (
-        <ProjectionMarkerOverlay
-          terminalMarkers={terminalAnchors}
-          projectionEndMarkers={endAnchors}
-          phasePort={phasePort}
-        />
-      )}
-    </>
-  );
+  // Projection gradients ride the visible marker overlay svg (R10): no hidden defs island.
+  return overlayRendered ? (
+    <ProjectionMarkerOverlay
+      terminalMarkers={terminalAnchors}
+      projectionEndMarkers={endAnchors}
+      projectionDefs={gradientDefs}
+      phasePort={phasePort}
+    />
+  ) : NOTHING;
 };
 
 
-// Crosshair gradient geometry follows the host plot rect (V1.2/G6).
-const ComposedCrosshairDef = (properties: Readonly<{
-  readonly gradientDef: CrosshairGradientDef | undefined;
-}>): ReactNode => {
-  const { chart, margin } = useChartStable();
-  const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
-  if (!properties.gradientDef || plot.width <= 0 || plot.height <= 0) {return NOTHING;}
-  return renderCrosshairNode({
-    def: properties.gradientDef,
-    heightPx: margin.top + plot.height + margin.bottom,
-    margin,
-  });
-};
-
-export { ComposedCrosshairDef, ComposedProjectionChrome };
+export { ComposedProjectionChrome };

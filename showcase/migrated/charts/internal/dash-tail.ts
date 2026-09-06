@@ -21,6 +21,7 @@ const resolveDashTailBounds = (dashFromIndex: number | undefined, dataLength: nu
 
 interface DashTailOverlayProps {
   readonly containerRef: RefObject<HTMLElement | null>;
+  readonly idPrefix?: string;
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly xDataKey: string;
   readonly series: readonly DashTailSeries[];
@@ -75,14 +76,16 @@ const renderDashTailEntry = (options: Readonly<DashTailEntryOptions>): ReactElem
 }
 
 const DashTailOverlay = (props: Readonly<DashTailOverlayProps>): ReactNode => {
-  const { containerRef, dimOpacity, hasHover = false, legendHoveredKey, renderData, series, xDataKey } = props;
+  const { containerRef, dimOpacity, hasHover = false, idPrefix, legendHoveredKey, renderData, series, xDataKey } = props;
   // Plot bounds come from the host scene, never from margin props (V1.2/G6).
   const { chart, margin } = useChartStable();
   const plot = chart ?? { height: 0, width: 0, x: 0, y: 0 };
   const { height, width } = { height: margin.top + plot.height + margin.bottom, width: margin.left + plot.width + margin.right };
   const innerWidth = plot.width;
   const innerHeight = plot.height;
-  const baseId = useSanitizedId();
+  // Mount-scoped clip ids keep two charts from sharing one dash clip.
+  const fallbackBaseId = useSanitizedId();
+  const baseId = idPrefix ?? fallbackBaseId;
   const [measured, setMeasured] = useState<Map<string, Measured>>(new Map());
 
   const activeSeries = useMemo(

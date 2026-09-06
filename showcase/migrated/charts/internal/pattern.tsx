@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
 
-// Base Pattern nests its own <defs> by design (ported verbatim with the quirk).
-// Pattern lives here so pattern-lines holds only the public component.
+// Base Pattern renders the bare <pattern> element (V3.4b-ii: the R10 seam
+// Owns the one <defs>; the nested-defs quirk goes away with it).
 interface PatternProps {
   readonly id: string;
   readonly width: number;
@@ -10,17 +10,15 @@ interface PatternProps {
 }
 
 const Pattern = ({ id, width, height, children }: Readonly<PatternProps>): ReactElement => (
-    <defs>
-      <pattern
-        id={id}
-        width={width}
-        height={height}
-        patternUnits="userSpaceOnUse"
-      >
-        {children}
-      </pattern>
-    </defs>
-  );
+  <pattern
+    id={id}
+    width={width}
+    height={height}
+    patternUnits="userSpaceOnUse"
+  >
+    {children}
+  </pattern>
+);
 
 export { Pattern };
 export type { PatternProps };

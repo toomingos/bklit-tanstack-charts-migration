@@ -3,6 +3,7 @@ import { pie as d3Pie } from "d3-shape";
 import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
+import { scopePaintUrl, scopeResourceIds } from "./internal/resource-host";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { defineChart } from "@tanstack/charts/scene";
 import type { ChartMarkState, ChartRendererRenderContext, DomChartDefinition } from "@tanstack/charts";
@@ -53,9 +54,17 @@ const isObjectOrFunction = <Value,>(value: Value): value is Value & object => va
 
 const displayNameOfType = (componentType: ReactElement["type"]): string | undefined => {
   if (!isObjectOrFunction(componentType)) {return undefined;}
-  if (!("displayName" in componentType)) {return undefined;}
-  const displayName: unknown = componentType.displayName;
-  return isString(displayName) ? displayName : undefined;
+  if ("displayName" in componentType) {
+    const displayName: unknown = componentType.displayName;
+    if (isString(displayName)) {return displayName;}
+  }
+  // Consumer gradient components carry no displayName (parity with the legacy
+  // Visx types); the function name identifies them the way the gauge does.
+  if ("name" in componentType) {
+    const typeName: unknown = componentType.name;
+    return isString(typeName) ? typeName : undefined;
+  }
+  return undefined;
 }
 
 /*
@@ -94,7 +103,7 @@ interface ClassifiedChildren {
   readonly sliceConfigs: readonly PieSliceConfig[];
 }
 
-const classifyChildren = (children: Readonly<ReactNode>, geometryScrubbing: boolean): ClassifiedChildren => {
+const classifyChildren = (children: Readonly<ReactNode>, geometryScrubbing: boolean, idPrefix: string): ClassifiedChildren => {
   const centerChildren: ReactNode[] = [];
   const defsChildren: ReactElement[] = [];
   const sliceConfigs: PieSliceConfig[] = [];
@@ -110,7 +119,8 @@ const classifyChildren = (children: Readonly<ReactNode>, geometryScrubbing: bool
       sliceConfigs.push({
         animate: props.animate !== false,
         color: props.color,
-        fill: props.fill,
+        // Consumer url(#id) fills resolve against the seam-scoped def id.
+        fill: isString(props.fill) ? scopePaintUrl(props.fill, idPrefix) : props.fill,
         hoverEffect: props.hoverEffect ?? "translate",
         hoverOffset: props.hoverOffset,
         index: props.index,
@@ -492,8 +502,8 @@ const PieChart = ({
   }, [geometryScrubbing, arcs, innerRadius, outerRadius, cornerRadius]);
 
   const { centerChildren, defsChildren, sliceConfigs } = useMemo(
-    () => classifyChildren(children, geometryScrubbing),
-    [children, geometryScrubbing],
+    () => classifyChildren(children, geometryScrubbing, idPrefix),
+    [children, geometryScrubbing, idPrefix],
   );
 
   const sliceConfigMap = useMemo(
@@ -576,6 +586,8 @@ const PieChart = ({
 /*
  * Element factory, not a component: the same element renders in the same slot, so reconciliation is unchanged.
  */
+  // Consumer defs enter the seam mount-scoped (D548 ruling 2); slice fills
+  // Above already reference the scoped ids, so two mounts never collide.
   const renderChart = (): ReactElement => (
     fixedSize !== undefined && fixedSize !== 0 ? (
       <ChartHost
@@ -587,7 +599,7 @@ const PieChart = ({
         initialWidth={size}
         definition={definition}
         renderer={chartMotionRenderer<PieRowDatum, number, number>()}
-        resources={defsChildren}
+        resources={scopeResourceIds(defsChildren, idPrefix)}
         onRender={handleHostRender}
         onFocusChange={handleFocusChange}
       />
@@ -600,7 +612,7 @@ const PieChart = ({
         initialWidth={HOST_INITIAL_WIDTH}
         definition={definition}
         renderer={chartMotionRenderer<PieRowDatum, number, number>()}
-        resources={defsChildren}
+        resources={scopeResourceIds(defsChildren, idPrefix)}
         onRender={handleHostRender}
         onFocusChange={handleFocusChange}
       />

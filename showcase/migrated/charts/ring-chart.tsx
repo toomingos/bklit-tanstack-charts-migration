@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, NamedExoticComponent, ReactElement, ReactNode } from 'react';
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
+import { useSanitizedId } from "./internal/use-sanitized-id";
 import { defineChart } from "@tanstack/charts/scene";
 import type { ChartRendererRenderContext, DomChartDefinition } from "@tanstack/charts";
 import { useFocusInjection } from "./internal/focus-injection";
@@ -264,6 +265,8 @@ const RingChart = ({
   ariaDescription,
 }: Readonly<RingChartProps>): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // One prefix per mount scopes renderer ids; two mounts resolve distinct ids.
+  const idPrefix = useSanitizedId();
   // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
   const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
   const size = fixedSize ?? liveWidth;
@@ -501,6 +504,7 @@ const RingChart = ({
     <ChartHost
       ariaLabel={ariaLabel}
       ariaDescription={ariaDescription}
+      idPrefix={idPrefix}
       width={isFixedSize ? size : undefined}
       height={isFixedSize ? size : undefined}
       aspectRatio={isFixedSize ? undefined : 1}

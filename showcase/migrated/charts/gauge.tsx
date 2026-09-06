@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
+import { scopePaintUrl, scopeResourceIds } from "./internal/resource-host";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { createMark } from '@tanstack/charts';
 import type { ChartMark, SceneNode, DomChartDefinition, MarkScene } from '@tanstack/charts';
@@ -127,6 +128,8 @@ interface GaugeFillState {
   readonly inactiveGrad1: string;
   readonly resolvedActiveFillOpacity: number;
   readonly resolvedInactiveFillOpacity: number;
+  readonly scopedActiveFill: string | undefined;
+  readonly scopedInactiveFill: string | undefined;
   readonly themeActiveGradientId: string;
   readonly totalNotches: number;
   readonly useThemePaletteGradient: boolean;
@@ -159,7 +162,7 @@ const resolveGaugeGradients = (inputs: Readonly<GaugeGradientInputs>): ResolvedG
   };
 };
 
-const useGaugeFillState = (props: Readonly<GaugeFillStateInput>): GaugeFillState => {
+const useGaugeFillState = (props: Readonly<GaugeFillStateInput>, idPrefix: string): GaugeFillState => {
   const {
     useGradient = false,
     activeGradient,
@@ -190,6 +193,9 @@ const useGaugeFillState = (props: Readonly<GaugeFillStateInput>): GaugeFillState
     inactiveGrad1,
     resolvedActiveFillOpacity: activeFillOpacity ?? DEFAULT_ACTIVE_FILL_OPACITY,
     resolvedInactiveFillOpacity: inactiveFillOpacity ?? DEFAULT_INACTIVE_FILL_OPACITY,
+    // Consumer url(#id) fills resolve against the seam-scoped def id (D548 ruling 2).
+    scopedActiveFill: activeFill === undefined ? undefined : scopePaintUrl(activeFill, idPrefix),
+    scopedInactiveFill: inactiveFill === undefined ? undefined : scopePaintUrl(inactiveFill, idPrefix),
     themeActiveGradientId,
     totalNotches,
     useThemePaletteGradient,
@@ -285,7 +291,8 @@ const useArcRows = (
   fillState: Readonly<GaugeFillState>,
   layout: Readonly<GaugeArcLayout>,
 ): ArcRowsResult | undefined => {
-  const { activeFill, endAngle, inactiveFill, notchLengthPercent, spacing, startAngle, totalNotches, useGradient, value } = props;
+  const { endAngle, notchLengthPercent, spacing, startAngle, totalNotches, useGradient, value } = props;
+  const { scopedActiveFill: activeFill, scopedInactiveFill: inactiveFill } = fillState;
   const { height, width } = layout;
   return useMemo(() => computeArcRows({
     activeFill,
@@ -341,11 +348,11 @@ const computeUniformArcRows = (
   });
   if (geometry === undefined) {return undefined;}
   const rows = collectUniformArcRows({
-    activeFill: props.activeFill,
+    activeFill: fillState.scopedActiveFill,
     geometry,
     hasCustomActive: fillState.hasCustomActive,
     hasCustomInactive: fillState.hasCustomInactive,
-    inactiveFill: props.inactiveFill,
+    inactiveFill: fillState.scopedInactiveFill,
     inactiveGrad0: fillState.inactiveGrad0,
     inactiveGrad1: fillState.inactiveGrad1,
     themeActiveGradientId: fillState.themeActiveGradientId,
@@ -513,7 +520,7 @@ const renderGaugeArcInner = (options: Readonly<RenderGaugeArcInnerOptions>): Rea
         definition={definition}
         height={layout.height}
         renderer={chartMotionRenderer()}
-        resources={fillState.defsChildren}
+        resources={scopeResourceIds(fillState.defsChildren, idPrefix)}
         width={layout.fixedSize ? layout.width : undefined}
         onRender={onRender}
       />
@@ -613,9 +620,9 @@ const resolveArcDefinitionOptions = (options: Readonly<GaugeArcDefinitionInput>)
 };
 
 const GaugeArc = (props: Readonly<GaugeArcProps>): ReactElement => {
-  const fillState = useGaugeFillState(collectGaugeFillStateInput(props));
   // One prefix per mount scopes renderer ids and seam ids alike.
   const idPrefix = useSanitizedId();
+  const fillState = useGaugeFillState(collectGaugeFillStateInput(props), idPrefix);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
@@ -743,7 +750,7 @@ const useLinearGaugeFills = (
       resolveGaugeBgFill({
         arcTrackFill: GAUGE_ARC_TRACK_FILL,
         hasCustomInactive: fillState.hasCustomInactive,
-        inactiveFill: props.inactiveFill,
+        inactiveFill: fillState.scopedInactiveFill,
         inactiveGrad0: fillState.inactiveGrad0,
         inactiveGrad1: fillState.inactiveGrad1,
         linearMode: true,
@@ -756,7 +763,7 @@ const useLinearGaugeFills = (
     [
       props.totalNotches,
       fillState.hasCustomInactive,
-      props.inactiveFill,
+      fillState.scopedInactiveFill,
       fillState.useThemePaletteGradient,
       props.useGradient,
       fillState.inactiveGrad0,
@@ -766,7 +773,7 @@ const useLinearGaugeFills = (
   const resolveActiveFill = useCallback(
     (notch: ComputedNotch) =>
       resolveGaugeActiveFill({
-        activeFill: props.activeFill,
+        activeFill: fillState.scopedActiveFill,
         activeFillSolid: GAUGE_ACTIVE_SOLID_FILL,
         hasCustomActive: fillState.hasCustomActive,
         notch,
@@ -776,7 +783,7 @@ const useLinearGaugeFills = (
       }),
     [
       fillState.hasCustomActive,
-      props.activeFill,
+      fillState.scopedActiveFill,
       fillState.useThemePaletteGradient,
       fillState.themeActiveGradientId,
       props.useGradient,
@@ -1004,7 +1011,7 @@ const renderLinearGaugeBody = (options: Readonly<RenderLinearGaugeBodyOptions>):
           idPrefix={idPrefix}
           initialWidth={fixedWidth ? width : HOST_INITIAL_WIDTH}
           renderer={chartMotionRenderer()}
-          resources={defsChildren}
+          resources={scopeResourceIds(defsChildren, idPrefix)}
           width={fixedWidth ? width : undefined}
           onRender={onRender}
         />
@@ -1023,9 +1030,9 @@ const renderLinearGaugeBody = (options: Readonly<RenderLinearGaugeBodyOptions>):
 type GaugeLinearProps = Omit<GaugeProps, "orientation" | "startAngle" | "endAngle">;
 
 const GaugeLinear = (props: Readonly<GaugeLinearProps>): ReactElement => {
-  const fillState = useGaugeFillState(collectGaugeFillStateInput(props));
   // One prefix per mount scopes renderer ids and seam ids alike.
   const idPrefix = useSanitizedId();
+  const fillState = useGaugeFillState(collectGaugeFillStateInput(props), idPrefix);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.

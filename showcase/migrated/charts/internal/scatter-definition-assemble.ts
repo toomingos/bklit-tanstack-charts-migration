@@ -1,4 +1,4 @@
-import type { ChartMark, ChartScale, DomChartDefinition } from "@tanstack/charts";
+import type { ChartLinearGradient, ChartMark, ChartScale, DomChartDefinition } from "@tanstack/charts";
 import { defineChart } from "@tanstack/charts/scene";
 import { buildFadeXAxisOptions, hiddenAxisOptions } from "./axis-ticks";
 import { resolveGridGuide } from "./grid";
@@ -12,6 +12,7 @@ import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./cartesian-focus-distance";
 import { buildScatterTooltipExtension } from "./scatter-tooltip-extension";
 
 interface AssembleScatterDefinitionParams {
+  readonly crosshairSpecGradient: ChartLinearGradient | undefined;
   readonly discrete: boolean;
   readonly grid: ExtractedChildren["grid"];
   readonly labelFade: ScatterLabelFade | null;
@@ -27,6 +28,7 @@ interface AssembleScatterDefinitionParams {
 }
 
 const assembleScatterDefinition = ({
+  crosshairSpecGradient,
   discrete,
   grid,
   labelFade,
@@ -43,6 +45,8 @@ const assembleScatterDefinition = ({
   const marks = [...seriesMarks, ...tooltipMarks];
   const gridGuide = resolveGridGuide(grid);
   const spec = {
+    // Crosshair fade spans the plot, so the bbox spec form paints identically.
+    gradients: crosshairSpecGradient === undefined ? [] : [crosshairSpecGradient],
     margin,
     marks,
     // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.

@@ -7,6 +7,7 @@ import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/toolt
 import { indicatorFadeGradientStops, resolveVerticalFadeSides } from './fade-mask';
 import type { IndicatorFadeEdges, IndicatorFadeGradientStop, VerticalFadeSides } from './fade-mask';
 import { resolveIndicatorPixelWidth } from "./tooltip-mappers";
+import { useSanitizedId } from "./use-sanitized-id";
 import { TooltipContentRow } from "./tooltip-content-row";
 import { TooltipGradientStop } from "./tooltip-gradient-stop";
 import type { SpringConfig } from './chart-config-context';
@@ -303,9 +304,12 @@ const TooltipIndicatorInner = ({
   fadeEdges = "both",
   fadeLength = DEFAULT_FADE_LENGTH_PX,
   animate = true,
-  gradientId = "tooltip-indicator-gradient",
+  gradientId: gradientIdProp,
   strokeDasharray,
 }: Readonly<Omit<TooltipIndicatorProps, "visible">>): ReactElement => {
+  // Caller ids win; the default is per-mount so two indicators never share one gradient.
+  const fallbackGradientId = useSanitizedId();
+  const gradientId = gradientIdProp ?? fallbackGradientId;
   const style = resolveIndicatorStyle({ colorEdge, colorMid, columnWidth, fadeEdges, span, strokeDasharray, width, x });
 
   return renderIndicatorBody({

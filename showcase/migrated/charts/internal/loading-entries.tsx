@@ -6,6 +6,7 @@ import type { CSSProperties, ReactElement } from "react";
 import { scaleLinear } from "d3-scale";
 import { area, line } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
+import { ResourceHost, scopeResourceIds } from "./resource-host";
 import { chartCssVars, useChartStable } from "./chart-context";
 import { fadeGradientStops, resolveFadeSides, viewportFadeGradientAttrs } from "./fade-mask";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
@@ -195,6 +196,15 @@ const LineLoadingSweep = ({  curve,
   const linePath = line<SweepPoint>().x(getX).y(getY).curve(curve)(points) ?? "";
   const areaPath = area<SweepPoint>().x(getX).y0(innerHeight).y1(getY).curve(curve)(points) ?? "";
 
+  // Seam-bound paints ride a call (the funnel precedent); the prop never holds a literal.
+  const areaGradient = withArea ? scopeResourceIds(
+    <linearGradient id={`${chartId}-area`} x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stopColor={stroke} stopOpacity={AREA_FILL_TOP_OPACITY} />
+      <stop offset="100%" stopColor={stroke} stopOpacity={AREA_FILL_BOTTOM_OPACITY} />
+    </linearGradient>,
+    chartId,
+  ) : undefined;
+
   const silhouette = (
     <>
       {withArea ? <path d={areaPath} fill={`url(#${chartId}-area)`} /> : undefined}
@@ -209,25 +219,20 @@ const LineLoadingSweep = ({  curve,
     </>
   );
 
-  const areaGradient = withArea ? (
-    <linearGradient id={`${chartId}-area`} x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stopColor={stroke} stopOpacity={AREA_FILL_TOP_OPACITY} />
-      <stop offset="100%" stopColor={stroke} stopOpacity={AREA_FILL_BOTTOM_OPACITY} />
-    </linearGradient>
-  ) : undefined;
-
   if (reduceMotion) {
     return (
       <>
-        {areaGradient === undefined ? undefined : <defs>{areaGradient}</defs>}
+        {areaGradient === undefined ? undefined : (
+          <ResourceHost idPrefix={chartId} resources={areaGradient} />
+        )}
         {silhouette}
       </>
     );
   }
 
   const maskUrl = `url(#${chartId}-mask)`;
-  const defs = (
-    <defs>
+  const sweepResources = (
+    <>
       {areaGradient}
       <SweepMaskDefs
         chartId={chartId}
@@ -236,7 +241,13 @@ const LineLoadingSweep = ({  curve,
         onSweepComplete={handleSweepComplete}
         width={innerWidth}
       />
-    </defs>
+    </>
+  );
+  const defs = (
+    <ResourceHost
+      idPrefix={chartId}
+      resources={sweepResources}
+    />
   );
 
   if (isLoop) {
@@ -377,17 +388,23 @@ const BarLoadingSkeleton = ({
     return bars;
   }
 
+  // Seam-bound paints ride a call (the funnel precedent); the prop never holds a literal.
+  const sweepResources = scopeResourceIds(
+    <SweepMaskDefs
+      chartId={chartId}
+      durationSeconds={durationSeconds}
+      height={innerHeight}
+      onSweepComplete={handleSweepComplete}
+      width={innerWidth}
+    />,
+    chartId,
+  );
   return (
     <>
-      <defs>
-        <SweepMaskDefs
-          chartId={chartId}
-          durationSeconds={durationSeconds}
-          height={innerHeight}
-          onSweepComplete={handleSweepComplete}
-          width={innerWidth}
-        />
-      </defs>
+      <ResourceHost
+        idPrefix={chartId}
+        resources={sweepResources}
+      />
       <g mask={`url(#${chartId}-mask)`}>{bars}</g>
     </>
   );
@@ -487,18 +504,24 @@ const LineLoadingPulseStroke = ({
     return null;
   }
 
+  const pulseResources = (
+    <>
+      <clipPath id={clipPathId}>
+        <rect height={clipHeight} width={clipWidth} x={clipX} y={-PULSE_CLIP_PADDING} />
+      </clipPath>
+      <linearGradient id={gradientId} {...viewportFadeGradientAttrs(innerWidth)}>
+        {fadeStops.map((stop) => (
+          <stop key={stop.offset} offset={stop.offset} stopColor={stroke} stopOpacity={stop.opacity} />
+        ))}
+      </linearGradient>
+    </>
+  );
   return (
     <>
-      <defs>
-        <clipPath id={clipPathId}>
-          <rect height={clipHeight} width={clipWidth} x={clipX} y={-PULSE_CLIP_PADDING} />
-        </clipPath>
-        <linearGradient id={gradientId} {...viewportFadeGradientAttrs(innerWidth)}>
-          {fadeStops.map((stop) => (
-            <stop key={stop.offset} offset={stop.offset} stopColor={stroke} stopOpacity={stop.opacity} />
-          ))}
-        </linearGradient>
-      </defs>
+      <ResourceHost
+        idPrefix={reactId}
+        resources={pulseResources}
+      />
       <path
         clipPath={`url(#${clipPathId})`}
         d={pathD}

@@ -36,6 +36,7 @@ import type { Momentum } from "./internal/live-momentum";
 import { liveLineMark } from "./internal/live-line-mark";
 import { useChartMargin } from "./internal/use-chart-margin";
 import {
+  buildCrosshairGradientDef,
   buildHoverDotMark,
   buildIndicatorMark,
   resolveHoverDotFill,
@@ -125,6 +126,8 @@ interface LiveLineChartProps {
 const timeBisector = bisector<LiveLinePoint, number>((point: Readonly<LiveLinePoint>) => point.time);
 
 const EDGE_FADE_PX = 28;
+// Percent-stop to bbox-ratio scale for the crosshair spec gradient.
+const GRADIENT_PERCENT_SCALE = 100;
 
 const edgeOpacity = (yPos: number, chartHeight: number): number => {
   const fromEdge = Math.min(yPos, chartHeight - yPos);
@@ -333,37 +336,56 @@ const LiveLineChart = ({
     })
   , [liveLines, contextData, xAccessor]);
 
+  const tooltipOn = tooltip !== undefined && tooltip.enabled !== false;
   // Explicit y1:0/y2:1 required: the library default gradient direction is the opposite.
-  const nativeLineGradients = useMemo(
-    () =>
-      lineVisuals.flatMap((visual: Readonly<(typeof lineVisuals)[number]>) => [
-        {
-          id: `bkm-live-stroke-${uid}-${visual.cfg.dataKey}`,
-          stops: [
-            { color: visual.resolvedStroke, offset: 0, opacity: 1 },
-            { color: visual.resolvedStroke, offset: 1, opacity: 0.6 },
-          ],
-          x1: 0,
-          x2: 0,
-          y1: 0,
-          y2: 1,
-        },
-        {
-          id: `bkm-live-area-${uid}-${visual.cfg.dataKey}`,
-          stops: [
-            { color: visual.resolvedStroke, offset: 0, opacity: 0.1 },
-            { color: visual.resolvedStroke, offset: 1, opacity: 0 },
-          ],
-          x1: 0,
-          x2: 0,
-          y1: 0,
-          y2: 1,
-        },
-      ]),
-    [lineVisuals, uid],
+  // The crosshair fade rides spec.gradients too (bbox 0→1 reproduces the plot span).
+  const nativeLineGradients = useMemo(() => {
+    const entries = lineVisuals.flatMap((visual: Readonly<(typeof lineVisuals)[number]>) => [
+      {
+        id: `bkm-live-stroke-${uid}-${visual.cfg.dataKey}`,
+        stops: [
+          { color: visual.resolvedStroke, offset: 0, opacity: 1 },
+          { color: visual.resolvedStroke, offset: 1, opacity: 0.6 },
+        ],
+        x1: 0,
+        x2: 0,
+        y1: 0,
+        y2: 1,
+      },
+      {
+        id: `bkm-live-area-${uid}-${visual.cfg.dataKey}`,
+        stops: [
+          { color: visual.resolvedStroke, offset: 0, opacity: 0.1 },
+          { color: visual.resolvedStroke, offset: 1, opacity: 0 },
+        ],
+        x1: 0,
+        x2: 0,
+        y1: 0,
+        y2: 1,
+      },
+    ]);
+    if (tooltip !== undefined && tooltipOn && (tooltip.showCrosshair ?? true)) {
+      const crosshairColor = isString(tooltip.indicatorColor) ? tooltip.indicatorColor : "var(--chart-crosshair)";
+      const crosshairDef = buildCrosshairGradientDef(`bkm-live-crosshair-${uid}`, crosshairColor);
+      entries.push({
+        id: crosshairDef.id,
+        stops: crosshairDef.stops.map((stop) => ({
+          color: crosshairDef.color,
+          // eslint-disable-next-line unicorn/prefer-number-coercion -- stops are percent strings ("10%"), Number() reads NaN.
+          offset: Number.parseFloat(stop.offset) / GRADIENT_PERCENT_SCALE,
+          opacity: stop.opacity,
+        })),
+        x1: 0,
+        x2: 0,
+        y1: 0,
+        y2: 1,
+      });
+    }
+    return entries;
+  },
+    [lineVisuals, uid, tooltip, tooltipOn],
   );
 
-  const tooltipOn = tooltip !== undefined && tooltip.enabled !== false;
   const liveGroupElsRef = useRef<Map<string, SVGGElement>>(new Map());
   const liveXAxisRef = useRef(liveXAxis);
   // Sync the latest axis config for tooltip callbacks without changing their identity.
@@ -380,7 +402,7 @@ const LiveLineChart = ({
     adoptWidth(context.scene.width);
   }, [registryHandleRender, adoptWidth]);
 
-  const { crosshairGradientId, crosshairView } = useLiveCrosshair({ tooltip, tooltipOn, uid });
+  const { crosshairGradientId } = useLiveCrosshair({ tooltip, tooltipOn, uid });
 
   const renderTooltipBody = useCallback(
     (ctx: Readonly<ChartTooltipBodyRenderContext<ChartDatum, Date, number>>): ReactNode =>
@@ -583,7 +605,6 @@ const LiveLineChart = ({
     ariaDescription,
     ariaLabel,
     children,
-    crosshairView,
     definition,
     fadeMaskId,
     fadeMaskStyle,

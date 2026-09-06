@@ -14,6 +14,8 @@ import {
 } from "./terminal-marker-phase";
 import type { ProjectionPhaseHandle, TerminalMarkerAnchor, TerminalMarkerClock } from "./terminal-marker-phase";
 import { TerminalMarkerNode } from "./terminal-marker-node";
+import { renderProjectionGradientDef } from "./line-chart-support";
+import type { ProjectionGradientDef } from "./projection-line-mark";
 
 // Projection end dots render slightly smaller than their anchor radius.
 const PROJECTION_END_MARKER_RADIUS_SCALE = 0.85;
@@ -44,6 +46,7 @@ interface ProjectionEndMarkerAnchor {
 }
 
 interface ProjectionMarkerOverlayProps {
+  readonly projectionDefs?: readonly ProjectionGradientDef[];
   readonly terminalMarkers: readonly TerminalMarkerAnchor[];
   readonly projectionEndMarkers: readonly ProjectionEndMarkerAnchor[];
   readonly phasePort: RefObject<ProjectionPhaseHandle | null>;
@@ -56,7 +59,7 @@ const renderProjectionEndMarkers = (markers: readonly ProjectionEndMarkerAnchor[
   ));
 
 const ProjectionMarkerOverlay = (props: Readonly<ProjectionMarkerOverlayProps>): ReactNode => {
-  const { terminalMarkers, projectionEndMarkers, phasePort, enterTransition } = props;
+  const { projectionDefs, terminalMarkers, projectionEndMarkers, phasePort, enterTransition } = props;
   // Plot bounds come from the host scene, never from margin props (V1.2/G6).
   // Anchors arrive in full-container pixels, so the svg covers the container.
   const { chart, margin } = useChartStable();
@@ -70,10 +73,15 @@ const ProjectionMarkerOverlay = (props: Readonly<ProjectionMarkerOverlayProps>):
   const fullWidth = margin.left + plot.width + margin.right;
   const fullHeight = margin.top + plot.height + margin.bottom;
 
-  if (terminalMarkers.length === 0 && projectionEndMarkers.length === 0) {return undefined;}
+  if (terminalMarkers.length === 0 && projectionEndMarkers.length === 0 && (projectionDefs === undefined || projectionDefs.length === 0)) {return undefined;}
 
   return (
     <svg width={fullWidth} height={fullHeight} style={PROJECTION_OVERLAY_STYLE} aria-hidden="true">
+      {projectionDefs === undefined || projectionDefs.length === 0 ? undefined : (
+        <defs>
+          {projectionDefs.map((def) => renderProjectionGradientDef(def))}
+        </defs>
+      )}
       <g ref={refs.endGroupRef} style={PROJECTION_END_GROUP_STYLE}>
         {renderProjectionEndMarkers(projectionEndMarkers)}
       </g>

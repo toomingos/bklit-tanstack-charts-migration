@@ -1,7 +1,8 @@
 // Bar loading skeleton: bklit BarLoadingSkeleton as a plain React SVG overlay.
 // Geometry, stops, timing, and the re-roll rule port loading-sweep.tsx verbatim.
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
+import { ResourceHost } from "./resource-host";
 import { loadingSkeletonBarHeights } from "./loading-chrome";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useSanitizedId } from "./use-sanitized-id";
@@ -112,6 +113,7 @@ interface SweepDefsParams {
 }
 
 // Mask defs subtree (bklit LoadingSweepMask; rect x is the rAF loop state).
+// Bare nodes for the R10 seam; ResourceHost owns the one <defs>.
 const renderSweepDefs = ({
   gradientId,
   patternId,
@@ -120,8 +122,8 @@ const renderSweepDefs = ({
   sweepX,
   innerWidth,
   innerHeight,
-}: Readonly<SweepDefsParams>): ReactElement => (
-  <defs>
+}: Readonly<SweepDefsParams>): ReactNode => (
+  <>
     <linearGradient id={gradientId} x1="0" x2="1" y1="0" y2="0">
       {stops.map((stop) => (
         <stop
@@ -151,7 +153,7 @@ const renderSweepDefs = ({
         width={innerWidth}
       />
     </mask>
-  </defs>
+  </>
 );
 
 interface SkeletonBarsParams {
@@ -263,15 +265,18 @@ const BarLoadingSweep = ({
   const maskId = `${chartId}-mask`;
   return (
     <>
-      {renderSweepDefs({
-        gradientId,
-        innerHeight,
-        innerWidth,
-        maskId,
-        patternId,
-        stops,
-        sweepX,
-      })}
+      <ResourceHost
+        idPrefix={chartId}
+        resources={renderSweepDefs({
+          gradientId,
+          innerHeight,
+          innerWidth,
+          maskId,
+          patternId,
+          stops,
+          sweepX,
+        })}
+      />
       <g mask={`url(#${maskId})`}>{barNodes}</g>
     </>
   );

@@ -1,6 +1,7 @@
-import { Fragment, memo, useCallback, useId, useMemo, useSyncExternalStore } from "react";
-import type { CSSProperties, NamedExoticComponent, ReactElement } from "react";
+import { Fragment, memo, useCallback, useMemo, useSyncExternalStore } from "react";
+import type { CSSProperties, NamedExoticComponent, ReactElement, ReactNode } from "react";
 import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
+import { useSanitizedId } from "./use-sanitized-id";
 import type { ChartRendererRenderContext } from "@tanstack/charts";
 import { chartMotionRenderer } from "./motion-renderer";
 import { HEATMAP_INACTIVE_OPACITY, useHeatmap, useHeatmapCoordinatorOptional } from "./heatmap-context";
@@ -19,14 +20,11 @@ import type { HeatmapYAxisLabelFormat, HeatmapYAxisTickFilter } from "./heatmap-
 // Static element styles hoisted so `HeatmapCells` passes stable identities.
 const HEATMAP_CELLS_CONTAINER_STYLE = { position: "relative", zIndex: 1 } as const;
 const HEATMAP_CELLS_INNER_STYLE = { position: "relative" } as const;
-const HEATMAP_HOVER_SVG_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
 const HEATMAP_RENDERER_STYLE = { overflow: "visible" } as const;
 
-/*
- * TanStack bakes margins into rect coordinates while bklit translates a group, so each base
- * pattern is wrapped in a phase-shifting pattern to land the tile grid on the same phase.
- */
-const renderHeatmapCellPatternDefs = ({
+// TanStack bakes margins into rect coordinates while bklit translates a group.
+// Each base pattern wraps in a phase-shifting pattern to land the tile grid on phase.
+const renderHeatmapCellPatternNodes = ({
   levelStyles,
   patternIdPrefix,
   phaseX,
@@ -36,7 +34,7 @@ const renderHeatmapCellPatternDefs = ({
   patternIdPrefix: string | undefined;
   phaseX: number;
   phaseY: number;
-}>) : ReactElement | undefined => {
+}>): ReactNode => {
   const nodes = levelStyles.flatMap((style: Readonly<HeatmapLevelStyle>, level) => {
     if (!isHeatmapLevelPattern(style) || !style.pattern) {
       return [];
@@ -61,13 +59,8 @@ const renderHeatmapCellPatternDefs = ({
       </Fragment>,
     ];
   });
-  if (nodes.length === 0) {return undefined;}
-  return <defs>{nodes}</defs>;
+  return nodes;
 };
-
-const HeatmapPatternDefs = memo(renderHeatmapCellPatternDefs);
-
-HeatmapPatternDefs.displayName = "HeatmapPatternDefs";
 
 const renderHeatmapTooltipContent = (datum: Readonly<CellDatum>, config: Readonly<HeatmapTooltipConfig>): ReactElement => (
   <div className="bkm-tooltip-content">
@@ -162,10 +155,11 @@ const RenderHeatmapCells = ({
     () => buildCellData({ columns: ctx.data, dayLabels, displayRange, hideGhost: hideGhostCells }),
     [ctx.data, dayLabels, displayRange, hideGhostCells],
   );
-  const patternIdRaw = useId().replaceAll(":", "");
+  // One prefix per mount scopes renderer ids and seam ids alike.
+  const idPrefix = useSanitizedId();
   const patternIdPrefix = useMemo(
-    () => (hasPatternLevelStyles(ctx.levelStyles) ? `hm-${patternIdRaw}` : undefined),
-    [patternIdRaw, ctx.levelStyles],
+    () => (hasPatternLevelStyles(ctx.levelStyles) ? `${idPrefix}-hm` : undefined),
+    [idPrefix, ctx.levelStyles],
   );
   const bandwidthHint = Math.max(ctx.binWidth, 1);
   const definition = useHeatmapChartDefinition({
@@ -199,6 +193,13 @@ const RenderHeatmapCells = ({
     tooltipConfig,
   });
   const renderTooltipBody = useHeatmapCellsTooltipBody({ tooltipConfig, tooltipPanelStyle });
+  // Seam resources carry the mount prefix; the definition references the scoped ids.
+  const patternResources = renderHeatmapCellPatternNodes({
+    levelStyles: ctx.levelStyles,
+    patternIdPrefix,
+    phaseX: ctx.margin.left,
+    phaseY: ctx.margin.top,
+  });
   const handleRenderWithWidth = useCallback((renderCtx: ChartRendererRenderContext<CellDatum, string, string>): void => {
     handleRender(renderCtx);
     ctx.reportWidth?.(renderCtx.scene.width);
@@ -212,28 +213,16 @@ const RenderHeatmapCells = ({
           ariaLabel={ariaLabel ?? ctx.ariaLabel ?? "Heatmap chart"}
           ariaDescription={ariaDescription ?? ctx.ariaDescription}
           definition={definition}
+          idPrefix={idPrefix}
           initialWidth={HOST_INITIAL_WIDTH}
           height={ctx.height}
+          resources={patternResources}
           style={HEATMAP_RENDERER_STYLE}
           onFocusChange={handleFocusChange}
           onRender={handleRenderWithWidth}
           renderTooltipBody={renderTooltipBody}
         />
       </div>
-      <svg
-        width={ctx.width}
-        height={ctx.height}
-        aria-hidden="true"
-        className="ts-bkm-heatmap-hover-svg"
-        style={HEATMAP_HOVER_SVG_STYLE}
-      >
-        <HeatmapPatternDefs
-          levelStyles={ctx.levelStyles}
-          patternIdPrefix={patternIdPrefix}
-          phaseX={ctx.margin.left}
-          phaseY={ctx.margin.top}
-        />
-      </svg>
     </div>
   );
 };

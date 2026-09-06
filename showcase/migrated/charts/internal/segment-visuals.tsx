@@ -48,6 +48,7 @@ interface SegmentLineStyle {
 
 interface SegmentRenderParams {
   readonly component: Readonly<SegmentComponent>;
+  readonly idPrefix?: string;
   readonly selection: Readonly<ChartSelection>;
   readonly innerHeight: number;
   readonly vis: boolean;
@@ -140,7 +141,7 @@ const renderSegmentEdgeLine = (params: Readonly<SegmentEdgeLineParams>): ReactEl
 };
 
 const renderSegmentComponent = (params: Readonly<SegmentRenderParams>): ReactElement | undefined => {
-  const { component, selection, vis } = params;
+  const { component, idPrefix, selection, vis } = params;
   if (component.type === "segmentBackground") {
     return renderSegmentBackground(params);
   }
@@ -149,8 +150,13 @@ const renderSegmentComponent = (params: Readonly<SegmentRenderParams>): ReactEle
     return undefined;
   }
   const isFrom = component.type === "segmentLineFrom";
+  // Mount-scoped gradient ids keep two charts from sharing one fade.
+  const edge = isFrom ? "from" : "to";
+  const gradientId = idPrefix === undefined
+    ? `bkm-seg-${edge}-${component.key}`
+    : `${idPrefix}-seg-${edge}-${component.key}`;
   return renderSegmentEdgeLine({
-    gradientId: `bkm-seg-${isFrom ? "from" : "to"}-${component.key}`,
+    gradientId,
     innerHeight: params.innerHeight,
     lineKey: component.key,
     style: resolveSegmentLineStyle(component.props),
@@ -161,9 +167,11 @@ const renderSegmentComponent = (params: Readonly<SegmentRenderParams>): ReactEle
 const SegmentOverlay = ({
   selection,
   components,
+  idPrefix,
 }: Readonly<{
   selection: Readonly<ChartSelection> | null;
   components: readonly Readonly<SegmentComponent>[];
+  idPrefix?: string;
 }>): ReactElement | null => {
   const prefersReducedMotion = usePrefersReducedMotion();
   // Plot bounds come from the host scene, never from margin props (V1.2/G6).
@@ -182,6 +190,7 @@ const SegmentOverlay = ({
   if (!selection || components.length === 0) {return null;}
   const vis = selection.active && Math.abs(selection.endX - selection.startX) > SEGMENT_SELECTION_MIN_WIDTH_PX;
   const shared: Readonly<Omit<SegmentRenderParams, "component">> = {
+    idPrefix,
     innerHeight,
     reducedMotion: prefersReducedMotion,
     selection,

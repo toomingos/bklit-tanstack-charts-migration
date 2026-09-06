@@ -37,6 +37,7 @@ interface BrushChromeProps {
   readonly blurPx?: number;
   readonly fadeOuterEdges?: boolean;
   readonly selectionPattern?: BrushChromePattern;
+  readonly selectionPatternId?: string;
   readonly selectedBoxStyle?: BrushSelectedBoxStyle;
 }
 
@@ -47,6 +48,7 @@ const BrushChrome = ({
   blurPx = 1.5,
   fadeOuterEdges = true,
   selectionPattern,
+  selectionPatternId,
   selectedBoxStyle,
 }: Readonly<BrushChromeProps>): ReactNode => {
   const mounted = useSyncExternalStore(subscribeBrushMount, getBrushMountSnapshot, getBrushMountServerSnapshot);
@@ -72,7 +74,7 @@ const BrushChrome = ({
   return (
     <>
       <BrushTrackChrome host={host} x0={clampedX0} x1={clampedX1} innerWidth={innerWidth} innerHeight={innerHeight} blurPx={blurPx} fadeOuterEdges={fadeOuterEdges} mounted={mounted} />
-      <BrushSelectionPatternChrome host={host} x0={clampedX0} x1={clampedX1} innerWidth={innerWidth} innerHeight={innerHeight} selectionPattern={selectionPattern} mounted={mounted} />
+      <BrushSelectionPatternChrome host={host} x0={clampedX0} x1={clampedX1} innerWidth={innerWidth} innerHeight={innerHeight} selectionPattern={selectionPattern} selectionPatternId={selectionPatternId} mounted={mounted} />
       <BrushBorderChrome host={host} x0={clampedX0} x1={clampedX1} innerWidth={innerWidth} innerHeight={innerHeight} selectedBoxStyle={selectedBoxStyle} mounted={mounted} />
       <BrushHandleChrome host={host} x0={clampedX0} x1={clampedX1} innerWidth={innerWidth} innerHeight={innerHeight} mounted={mounted} />
     </>

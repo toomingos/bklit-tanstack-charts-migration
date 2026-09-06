@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { ScaleBand } from "d3-scale";
 import type { ChartFocusStrategy, ChartMotionDefinition, ChartMotionPhase, ChartMotionTiming, DomChartDefinition } from "@tanstack/charts";
-import { isString } from "./bar-chart-hover-dots";
 import { BAR_ENTER_STAGGER_SPREAD_FRACTION, buildBarAxisSection, buildBarHoverMarks, buildNativeDepthGradients } from "./bar-chart-overlays";
 import { buildBarDefinition, buildSquareGradientDef } from "./bar-chart-series-marks";
 import { GROUP_GAP } from "./use-bar-scales";
@@ -15,9 +14,6 @@ import { buildPulseWaveStops } from "./bar-pulse-mark";
 import { useChartConfig } from "./use-chart-config";
 import { useSanitizedId } from "./use-sanitized-id";
 import { DISCRETE_INTERACTION_THRESHOLD } from "./design-tokens";
-import { resolveVerticalFadeSides, indicatorFadeGradientStops } from "./fade-mask";
-import type { IndicatorFadeGradientStop } from "./fade-mask";
-import { toIndicatorConfig } from "./tooltip-mappers";
 import { resolveGridGuide } from "./grid";
 import { resolveMotionEasing } from "./reveal-easing";
 import { clipRevealTiming } from "./enter-transition";
@@ -25,9 +21,6 @@ import type { EnterTransition } from "./enter-transition";
 import type { BarDepthBackConfig, BarDepthFrontConfig, BarDepthProviderConfig, BarPulseConfig, ChartDatum, ExtractedChildren } from "./types";
 import type { ChartMargin } from "./use-chart-margin";
 import type { createNicedYScale } from "./y-domain";
-
-// Default crosshair fade length (pixels).
-const DEFAULT_INDICATOR_FADE_LENGTH = 10;
 
 interface UseBarDefinitionOptions {
   readonly allSeriesKeys: readonly string[];
@@ -48,6 +41,7 @@ interface UseBarDefinitionOptions {
   readonly groupScale: ScaleBand<string>;
   readonly hasBarColumnTrack: boolean;
   readonly hasBarSquares: boolean;
+  readonly idPrefix?: string;
   readonly legendHoveredIndex: number | null;
   readonly margin: ChartMargin;
   readonly projectValue: (dataKey: string, value: number) => number;
@@ -65,7 +59,6 @@ interface UseBarDefinitionOptions {
 
 interface UseBarDefinitionResult {
   readonly chartConfig: ReturnType<typeof useChartConfig>;
-  readonly crosshairFadeGradient: { readonly color: string; readonly id: string; readonly stops: IndicatorFadeGradientStop[] } | undefined;
   readonly definition: DomChartDefinition<ChartDatum, string, number> | undefined;
   readonly hasBarDepth: boolean;
   readonly hasBarSquares: boolean;
@@ -94,6 +87,7 @@ const useBarDefinition = (options: Readonly<UseBarDefinitionOptions>): UseBarDef
     groupScale,
     hasBarColumnTrack,
     hasBarSquares,
+    idPrefix,
     legendHoveredIndex,
     margin,
     projectValue,
@@ -135,9 +129,13 @@ const useBarDefinition = (options: Readonly<UseBarDefinitionOptions>): UseBarDef
   const hasBarDepth = barDepthBacksRaw.length > 0 || barDepthFrontsRaw.length > 0 || barPulsesRaw.length > 0;
   const barDepthEnabled = hasBarDepth && !isHorizontalOrStacked;
 
-  // UserSpaceOnUse required: the crosshair is a zero-bbox line with nothing to map onto.
-  const indicatorGradientId = useSanitizedId();
-  const squaresBaseId = useSanitizedId();
+  // Squares paint through a fixed 100px userSpace slice; ids stay mount-scoped.
+  // Mount-scoped bases keep two BarCharts from sharing one gradient or pattern id.
+  const indicatorFallbackId = useSanitizedId();
+  const squaresFallbackId = useSanitizedId();
+  const depthFallbackId = useSanitizedId();
+  const indicatorGradientId = idPrefix === undefined ? indicatorFallbackId : `${idPrefix}-crosshair`;
+  const squaresBaseId = idPrefix === undefined ? squaresFallbackId : `${idPrefix}-squares`;
   const squaresDefs = useMemo<readonly ResolvedSquareDef[]>(() => {
     if (!barSquaresEnabled) {return [];}
     const out: SquareGradientDef[] = [];
@@ -156,7 +154,7 @@ const useBarDefinition = (options: Readonly<UseBarDefinitionOptions>): UseBarDef
   }, [squaresDefs]);
 
   // One shared def: objectBoundingBox makes a single gradient correct for every bar height.
-  const depthBaseId = useSanitizedId();
+  const depthBaseId = idPrefix === undefined ? depthFallbackId : `${idPrefix}-depth`;
   const depthGroundShadow = barDepthProvider?.groundShadow ?? DEFAULT_BAR_DEPTH_GROUND_SHADOW;
   const depthGradientIds = useMemo<BarDepthGradientIds>(
     () => ({
@@ -289,23 +287,8 @@ const useBarDefinition = (options: Readonly<UseBarDefinitionOptions>): UseBarDef
     barPulsesRaw,
   ]);
 
-  const crosshairFadeGradient = useMemo((): { readonly color: string; readonly id: string; readonly stops: IndicatorFadeGradientStop[] } | undefined => {
-    if (!tooltipEnabled || !(tooltip?.showCrosshair ?? true)) {return undefined;}
-    const indicatorCfg = toIndicatorConfig(tooltip);
-    if (indicatorCfg.dasharray !== undefined && indicatorCfg.dasharray !== "") {return undefined;}
-    const fadeSides = resolveVerticalFadeSides(indicatorCfg.fadeEdges ?? "both");
-    if (!fadeSides.any) {return undefined;}
-    const colorValue = isString(indicatorCfg.color) ? indicatorCfg.color : "var(--chart-crosshair)";
-    return {
-      color: colorValue,
-      id: indicatorGradientId,
-      stops: indicatorFadeGradientStops(fadeSides, indicatorCfg.fadeLength ?? DEFAULT_INDICATOR_FADE_LENGTH),
-    };
-  }, [tooltipEnabled, tooltip, indicatorGradientId]);
-
   return {
     chartConfig,
-    crosshairFadeGradient,
     definition,
     hasBarDepth,
     hasBarSquares,

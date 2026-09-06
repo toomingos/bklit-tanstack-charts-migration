@@ -10,6 +10,7 @@ import {
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import type { ChartPoint, ChartRendererRenderContext } from "@tanstack/charts";
 import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, adoptHostWidth, useRegistryEntriesState } from "./internal/chart-host";
+import { useSanitizedId } from "./internal/use-sanitized-id";
 import { extractChildren } from "./internal/children-extract";
 import { useFocusInjection } from "./internal/focus-injection";
 import { renderPatternPreset } from "./internal/pattern-preset-render";
@@ -18,7 +19,6 @@ import type { ReferenceAreaLayersGeom } from "./internal/reference-area-layer";
 import { BackgroundLayer } from "./internal/background-layer";
 import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import { useChartLegendHover } from "./internal/chart-legend-hover-context";
-import type { IndicatorFadeGradientStop } from "./internal/fade-mask";
 import { useChartRenderer } from "./internal/motion-renderer";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { useChartMargin, DEFAULT_CHART_MARGIN } from "./internal/use-chart-margin";
@@ -36,8 +36,6 @@ import { useBarDefinition } from "./internal/use-bar-definition";
 import type { ChartDatum, ChartPhase } from "./internal/types";
 import "./styles.css";
 
-// Hidden gradient-defs SVG takes no space in layout.
-const BAR_HIDDEN_DEFS_STYLE = { position: "absolute" } as const;
 // Default gap between bar groups (d3 scaleBand padding fraction).
 const DEFAULT_BAR_GAP = 0.2;
 
@@ -91,6 +89,8 @@ const BarChart = ({
 }: Readonly<BarChartProps>): ReactElement => {
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // One prefix per mount scopes renderer ids and seam ids alike.
+  const idPrefix = useSanitizedId();
   // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
   const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
   const width = liveWidth;
@@ -185,6 +185,7 @@ const BarChart = ({
     groupScale: scales.groupScale,
     hasBarColumnTrack: scales.hasBarColumnTrack,
     hasBarSquares: scales.hasBarSquares,
+    idPrefix,
     legendHoveredIndex,
     margin,
     projectValue: scales.projectValue,
@@ -200,7 +201,6 @@ const BarChart = ({
     yScale: scales.yScale,
   });
   const {
-    crosshairFadeGradient,
     definition,
     hasBarDepth,
     hasBarSquares,
@@ -300,30 +300,21 @@ const BarChart = ({
   }, [heightPxBar, categoryOrder, nicedDomainsByAxis, nicedPrimaryDomain]);
 
   const tooltipBody = tooltipEnabled ? renderTooltipBody : undefined;
-  const squaresGradientDefs = squaresDefs.map((def) => (
-    <Fragment key={def.gradientId}>
-      <linearGradient id={def.gradientId} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={0} y2={100}>
-        {def.gradientStops.map((stop) => (
-          <stop key={`${stop.offset}-${stop.color}`} offset={`${stop.offset}%`} stopColor={stop.color} />
-        ))}
-      </linearGradient>
-      {def.patternId !== undefined && def.patternId !== "" && def.patternPreset !== undefined && renderPatternPreset(def.patternPreset, def.patternId, { color: `url(#${def.gradientId})` })}
-    </Fragment>
-  ));
-  const crosshairGradientDef = crosshairFadeGradient && (
-    <linearGradient
-      key={crosshairFadeGradient.id}
-      id={crosshairFadeGradient.id}
-      gradientUnits="userSpaceOnUse"
-      x1={0}
-      x2={0}
-      y1={margin.top}
-      y2={margin.top + Math.max(0, heightPxBar - margin.top - margin.bottom)}
-    >
-      {crosshairFadeGradient.stops.map((stop: Readonly<IndicatorFadeGradientStop>) => (
-        <stop key={`${stop.offset}-${stop.opacity}`} offset={stop.offset} stopColor={crosshairFadeGradient.color} stopOpacity={stop.opacity} />
+  // Seam resources carry the mount prefix; squares reference them as url(#id).
+  // Squares gradients stay userSpace slices; the band crosshair needs no def (band form).
+  const barSeamResources = (
+    <>
+      {squaresDefs.map((def) => (
+        <Fragment key={def.gradientId}>
+          <linearGradient id={def.gradientId} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={0} y2={100}>
+            {def.gradientStops.map((stop) => (
+              <stop key={`${stop.offset}-${stop.color}`} offset={`${stop.offset}%`} stopColor={stop.color} />
+            ))}
+          </linearGradient>
+          {def.patternId !== undefined && def.patternId !== "" && def.patternPreset !== undefined && renderPatternPreset(def.patternPreset, def.patternId, { color: `url(#${def.gradientId})` })}
+        </Fragment>
       ))}
-    </linearGradient>
+    </>
   );
   const referenceAreaLayer = referenceAreaGeom === undefined ? undefined : (
     <ReferenceAreaLayers
@@ -346,8 +337,10 @@ const BarChart = ({
             aspectRatio={parseAspectRatio(aspectRatio)}
             className={className}
             height={heightPxBar}
+            idPrefix={idPrefix}
             initialWidth={HOST_INITIAL_WIDTH}
             definition={definition}
+            resources={barSeamResources}
             renderer={barChartRenderer}
             onFocusGroupChange={handleFocusGroupChange}
             onRender={handleRender}
@@ -358,18 +351,11 @@ const BarChart = ({
             {background && (
               <BackgroundLayer
                 config={background}
+                idPrefix={idPrefix}
               />
             )}
             {referenceAreaLayer}
           </ChartHost>
-      )}
-      {(squaresDefs.length > 0 || crosshairFadeGradient) && (
-        <svg width={0} height={0} style={BAR_HIDDEN_DEFS_STYLE} aria-hidden="true" focusable="false">
-          <defs>
-            {squaresGradientDefs}
-            {crosshairGradientDef}
-          </defs>
-        </svg>
       )}
     </div>
   );
