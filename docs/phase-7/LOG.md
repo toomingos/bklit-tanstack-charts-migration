@@ -1033,3 +1033,62 @@ per-impl hook (the `__qaSetBarPulsePhase` precedent, and note D590 — the migra
 to hook) or a clock the rAF driver itself honours (`page.clock` + manual timing, as the probes now do).
 The self-tests pass on a quiet machine either way, so a green self-test must not be read as evidence
 the flake is gone.
+
+## D592 — The line loading pulse lands; three corrections to the first cut
+
+`loadingStyle` on `LineChartLoading` / `AreaChartLoading` was accepted-but-inert:
+both values rendered the R10 sweep paint. It now routes as bklit does — `"pulse"` (default)
+draws the traveling pulse over a transparent anchor series, `"sweep"` keeps the shimmer. The
+pulse clip window is driven by `reconcileChartSvgFragment` on a keyed rect inside a `clipPath`,
+with React owning only the cycle boundary; the geometry is a pure port in
+`internal/line-loading-pulse-window.ts` so `qa/unit` can assert it headlessly.
+
+Three divergences from bklit were found while verifying the first cut and are fixed here.
+
+**1. The easing was applied over the wrong domain — the pulse was ~7x too wide a quarter into
+the cycle.** Bklit runs ONE `animate(progress, 1, { duration: CYCLE, ease })` across the whole
+loop and derives a piecewise-linear geometry from that single value
+(`line-loading-pulse.tsx:54-72,99-105`). The port split the cycle into two reconciler segments
+and gave each the plain `bezierEasing` — restarting the curve at the midpoint. At t = cycle/4
+bklit's clip is at `e(0.25)/0.5 ≈ 0.07` of full width; the first cut sat at `e(0.5) = 0.5`. The
+endpoints agreed, so nothing downstream noticed. Fixed with composed per-segment eases
+(`u => e(u/2)/0.5` and `u => (e(0.5 + u/2) - 0.5)/0.5`), which reproduce bklit exactly because
+cubic-bezier(.85,0,.15,1) is symmetric and eased progress therefore crosses 0.5 at the midpoint.
+`enter` and `exit` keep the plain ease — bklit issues a fresh `animate` for each, so those legs
+genuinely do restart the curve. The distinction is per-mode, not global.
+
+**2. `mode="exit"` restarted the pass at zero width.** Bklit reads the live `progress.get()` and
+finishes from there, shortening the remaining legs in proportion (`:112-134`). The first cut
+returned the loop segments from 0, so an exit re-opened a clip the viewer had just watched close.
+`LineLoadingPulseStroke` is a public export (`index.ts:266`) with `mode` in its props, so "no
+in-repo caller switches mid-flight" does not cover it. Now tracked via the running leg's start
+timestamp, resolved inside the effect — `performance.now()` in a `useMemo` is a render-purity
+violation and oxlint says so.
+
+**3. The fade gradient stroke was dropped.** Bklit strokes the pulse path with
+`url(#gradient)` — a viewport fade with 0/15/85/100 stops — so the pass dissolves at the plot
+edges (`:189-208`). The port stroked a flat colour. Restored using the already-ported
+`fade-mask.ts` helpers, offset by the plot origin because this overlay draws in scene coordinates
+rather than bklit's plot-local group.
+
+**The spike test asserted the defect.** `qa/unit/line-loading-pulse-reconcile.test.mjs` compared
+each frame against `pulseClipWindow(eased/2)` — the per-half reading, i.e. the bug restated as the
+expectation. It now checks every reconciled frame against
+`pulseClipWindow(bezierEasing(t / PULSE_CYCLE_MS))`, the only reference bklit's own code supports,
+plus a guard that the per-half ease diverges by more than 3x and an exit-resumption case. A test
+derived from the implementation cannot falsify it; this one now comes from the legacy source.
+
+**Not changed, deliberately.** `internal/line-loading-pulse.tsx` had its reduced-motion guard
+stripped in the first cut. That component is dead — nothing imports it, only the
+`LineLoadingPulseMode` type travels through `loading-chrome.ts`, and it is absent from `index.ts`
+— and its bklit analogue is the sweep (`loading-sweep.tsx:218,437`), which *does* honour
+`useReducedMotion`. Reverted rather than argued. Its deletion is a separate vector; see item 10.
+
+The pulse itself ignores `prefers-reduced-motion`, matching bklit, whose
+`LineLoadingPulseStroke` is the one component in that family without the guard. That asymmetry is
+the drafted upstream issue and stays a legacy-fidelity match here, not a local fix.
+
+Verification: tsc clean; oxlint back to the HEAD baseline of 137 (all pre-existing, all in
+`oxlint-plugins/comments.js`), `migrated/charts` clean; `pnpm test` 246 tests / 48 suites /
+188 pass / 0 fail / 58 todo (was 244/186 — the two new cases). No gate cell guards the new pulse
+pixels yet; that gap is unchanged and still open.

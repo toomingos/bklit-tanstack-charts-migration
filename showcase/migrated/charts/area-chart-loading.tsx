@@ -12,6 +12,7 @@ import { chartMotionRenderer } from "./internal/motion-renderer";
 import { LoadingSweepResources, loadingSweepMaskStyle } from "./internal/resource-host";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { useSanitizedId } from "./internal/use-sanitized-id";
+import { SkeletonLoadingPulse } from "./internal/loading-entries";
 import { buildAreaLoadingDefinition } from "./internal/loading-definitions";
 import type { LinePlaceholderDatum } from "./internal/loading-definitions";
 import { getSkeletonHeights } from "./internal/skeleton-data";
@@ -40,7 +41,8 @@ interface AreaChartLoadingProps {
   readonly gridShimmerSpeed?: number;
   /** Accepted-but-inert: see `gridStroke`. */
   readonly gridShimmerSync?: boolean;
-  /** Accepted: `"pulse"` and `"sweep"` render the same R10 sweep paint. */
+  /** Loading animation: `"pulse"` (default traveling pulse) or `"sweep"` (a
+   * diagonal shimmer across the skeleton area). Default: `"pulse"`. */
   readonly loadingStyle?: "pulse" | "sweep";
   readonly label?: string;
   readonly aspectRatio?: string;
@@ -68,43 +70,59 @@ const AreaChartLoading = ({
   void gridShimmerLength;
   void gridShimmerSpeed;
   void gridShimmerSync;
-  void loadingStyle;
+  // Bklit routing on `loadingStyle` (pulse default, sweep shimmer).
+  const isSweep = loadingStyle === "sweep";
   const reduceMotion = usePrefersReducedMotion();
   const idPrefix = useSanitizedId();
   const [tick, setTick] = useState(0);
   const handleSweepIteration = useCallback((): void => {
     setTick((prev) => prev + 1);
   }, []);
-  const values = useMemo(() => getSkeletonHeights(SKELETON_POINT_COUNT, tick), [tick]);
+  // Sweep re-rolls its silhouette per pass; pulse holds one steady path.
+  const sweepValues = useMemo(() => getSkeletonHeights(SKELETON_POINT_COUNT, tick), [tick]);
+  const pulseValues = useMemo(() => getSkeletonHeights(SKELETON_POINT_COUNT, 0), []);
   const definition = useMemo(
     () =>
-      buildAreaLoadingDefinition({
-        curve: curveNatural,
-        margin,
-        stroke,
-        strokeOpacity,
-        strokeWidth: 2,
-        values,
-        washColor: stroke,
-      }),
-    [margin, stroke, strokeOpacity, values],
+      buildAreaLoadingDefinition(
+        isSweep
+          ? {
+              curve: curveNatural,
+              margin,
+              stroke,
+              strokeOpacity,
+              strokeWidth: 2,
+              values: sweepValues,
+              washColor: stroke,
+            }
+          : {
+              curve: curveNatural,
+              margin,
+              // Invisible line anchor over the steady wash (bklit parity).
+              stroke: "transparent",
+              strokeOpacity,
+              strokeWidth: 2,
+              values: pulseValues,
+              washColor: stroke,
+            },
+      ),
+    [isSweep, margin, pulseValues, stroke, strokeOpacity, sweepValues],
   );
   const renderer = useMemo(
     () => chartMotionRenderer<LinePlaceholderDatum, number, number>(),
     [],
   );
   const resources = useMemo((): ReactNode => {
-    if (reduceMotion) {
+    if (!isSweep || reduceMotion) {
       return undefined;
     }
     return <LoadingSweepResources idPrefix={idPrefix} onSweepIteration={handleSweepIteration} />;
-  }, [handleSweepIteration, idPrefix, reduceMotion]);
+  }, [handleSweepIteration, idPrefix, isSweep, reduceMotion]);
   const maskStyle = useMemo((): CSSProperties | undefined => {
-    if (reduceMotion) {
+    if (!isSweep || reduceMotion) {
       return undefined;
     }
     return loadingSweepMaskStyle(idPrefix);
-  }, [idPrefix, reduceMotion]);
+  }, [idPrefix, isSweep, reduceMotion]);
   const rootStyle = useMemo(
     (): CSSProperties => ({ aspectRatio, position: "relative", width: "100%" }),
     [aspectRatio],
@@ -125,7 +143,17 @@ const AreaChartLoading = ({
           initialWidth={HOST_INITIAL_WIDTH}
           renderer={renderer}
           resources={resources}
-        />
+        >
+          {isSweep ? undefined : (
+            <SkeletonLoadingPulse
+              curve={curveNatural}
+              stroke={stroke}
+              strokeOpacity={strokeOpacity}
+              strokeWidth={2}
+              values={pulseValues}
+            />
+          )}
+        </ChartHost>
       </div>
       <LoadingLabel text={label} />
     </div>

@@ -678,23 +678,6 @@
   color: transparent;
 }
 
-/* --- V3.9 loading pulse (V3.6 authors the rule; V3.9 adds the class) -----
-   Whole-chart opacity pulse on the loading placeholder root. The label is
-   inside the root and pulses with it; no shimmer/exit keyframes (the
-   loading → data swap is the renderer's exit motion). Period 1.6s and
-   opacity range 1 → 0.55 → 1 match the legacy sweep. */
-@keyframes ts-bkm-loading-pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
-}
-.ts-bkm-loading-root {
-  animation: ts-bkm-loading-pulse 1.6s ease-in-out infinite;
-}
-
 /* --- Loading sweep band (V3.9 follow-up; loading chrome, D566 sanction) --
    The shimmer band travels across the skeleton plot on the seam-hosted
    pattern rect (resource-host.tsx LoadingSweepMask). Travel -1 → +2 in
