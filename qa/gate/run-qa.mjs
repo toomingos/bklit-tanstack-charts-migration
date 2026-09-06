@@ -14,6 +14,7 @@ import {
   distFingerprint,
   ensureDir,
   fmtMs,
+  isExclusiveJob,
   jobKey,
   log,
   nowStamp,
@@ -56,6 +57,9 @@ export async function runQaSweep(opts = {}) {
   const est = (j) => (prevTimings[jobKey(j)] ?? (DURATION_HINT[j.chart] ?? 8) * 1000);
   const jobs = [...roster].sort((a, b) => est(b) - est(a));
   log(TAG, `${jobs.length} runs, ${workers} workers, run dir ${relPath(runDir)}`);
+  // D588: name the loading-pulse cells up front; runPool runs each alone.
+  const exclusive = workers > 1 ? jobs.filter(isExclusiveJob).map(jobKey) : [];
+  if (exclusive.length) log(TAG, `exclusive serial: ${exclusive.join(", ")}`);
 
   const preview = await startPreview(TAG, opts.port ?? QA_PORT, { logFile: path.join(logDir, "preview.log"), reuse: !!opts.reuseServer });
   const repeat = Math.max(1, opts.repeat ?? 1);
@@ -99,6 +103,7 @@ async function runOnePass({ jobs, workers, preview, logDir, runDir, started, bui
         done++;
         log(TAG, `${String(done).padStart(2)}/${jobs.length} ${res.key.padEnd(20)} exit=${res.exit} ${fmtMs(res.durationMs)}${res.reportDir ? "" : "  NO REPORT"}`);
       },
+      { isExclusive: isExclusiveJob },
     );
   }
   const wallMs = Date.now() - t0;

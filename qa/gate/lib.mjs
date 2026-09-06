@@ -281,18 +281,43 @@ export function jobKey(j) {
   return `${j.chart}/${j.n}${j.state ? `/${j.state}` : ""}`;
 }
 
-export async function runPool(jobs, workers, fn, onDone) {
+// D588: charts whose visual is a loading pulse are animation-phase sensitive — beside
+// sibling workers the screenshot lands at a different pulse phase than it does alone.
+// The roster marks these as `*loading` chart names (same /loading$/ test as
+// qa/gate/summarize.mjs) or a `loading` state column; either marker runs exclusively.
+export function isExclusiveJob(j) {
+  return j.state === "loading" || /loading$/.test(j.chart);
+}
+
+export async function runPool(jobs, workers, fn, onDone, { isExclusive } = {}) {
   const results = new Array(jobs.length);
-  let next = 0;
-  async function worker(id) {
-    for (;;) {
-      const i = next++;
-      if (i >= jobs.length) return;
-      results[i] = await fn(jobs[i], id, i);
-      if (onDone) onDone(results[i], i);
+  async function runPhase(idxs, phaseWorkers) {
+    let next = 0;
+    async function worker(id) {
+      for (;;) {
+        const k = next++;
+        if (k >= idxs.length) return;
+        const i = idxs[k];
+        results[i] = await fn(jobs[i], id, i);
+        if (onDone) onDone(results[i], i);
+      }
     }
+    await Promise.all(Array.from({ length: Math.max(1, phaseWorkers) }, (_, id) => worker(id)));
   }
-  await Promise.all(Array.from({ length: Math.max(1, workers) }, (_, id) => worker(id)));
+  // Exclusive jobs run alone: shared cells first at full width, then each exclusive
+  // cell serially — same call, same result order. One worker (or nothing exclusive)
+  // is a single in-order pass, exactly as before.
+  const serial = workers > 1 && isExclusive ? jobs.map((j, i) => (isExclusive(j) ? i : -1)).filter((i) => i >= 0) : [];
+  if (!serial.length) {
+    await runPhase(jobs.map((_, i) => i), workers);
+    return results;
+  }
+  const held = new Set(serial);
+  await runPhase(
+    jobs.map((_, i) => i).filter((i) => !held.has(i)),
+    workers,
+  );
+  await runPhase(serial, 1);
   return results;
 }
 
