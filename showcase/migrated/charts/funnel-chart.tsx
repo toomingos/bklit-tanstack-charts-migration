@@ -3,10 +3,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { defineChart } from "@tanstack/charts/scene";
-import type { ChartPoint, ChartRendererRenderContext, DomChartDefinition } from "@tanstack/charts";
+import type { ChartLinearGradient, ChartPoint, ChartRendererRenderContext, DomChartDefinition } from "@tanstack/charts";
 import { intFmt } from "./internal/formatters";
 import { usePositiveChartSize } from "./internal/use-container-size";
 import { ChartHost, HOST_INITIAL_WIDTH } from "./internal/chart-host";
+import { useSanitizedId } from "./internal/use-sanitized-id";
 import { useFocusInjection } from "./internal/focus-injection";
 import type { ChartFocusInjectionSource } from "./internal/focus-injection";
 import { createHoverSource } from "./internal/hover-motion";
@@ -43,8 +44,6 @@ const MS_PER_SECOND = 1000;
 
 // Static grid svg style shared by every grid layer.
 const FUNNEL_GRID_SVG_STYLE: CSSProperties = { height: "100%", inset: 0, pointerEvents: "none", position: "absolute", width: "100%" };
-// Hidden defs svg floats over the chart corner without intercepting pointer input.
-const FUNNEL_DEFS_SVG_STYLE: CSSProperties = { left: 0, pointerEvents: "none", position: "absolute", top: 0 };
 
 // Chart container style as a function of the computed aspect ratio plus the style prop.
 const buildFunnelContainerStyle = (aspectRatio: string, style?: Readonly<CSSProperties>): CSSProperties => ({
@@ -261,6 +260,7 @@ const resolveFunnelChartFrame = (input: Readonly<FunnelFrameInput>): ResolvedFun
 
 interface BuildFunnelDefinitionOptions {
   readonly rows: readonly FunnelStageRow[];
+  readonly gradients: readonly ChartLinearGradient[];
   readonly isHorizontal: boolean;
   readonly enterTransition: FunnelEnterTransition | undefined;
   readonly staggerDelayMs: number;
@@ -269,10 +269,11 @@ interface BuildFunnelDefinitionOptions {
 // Hover scale-up re-emits geometry (the definition rebuilds on hoveredIndex).
 // Dim rides focus states over the base fill colours.
 const buildFunnelDefinition = (options: Readonly<BuildFunnelDefinitionOptions>): DomChartDefinition<FunnelStageRow, number, number> => {
-  const { rows, isHorizontal, enterTransition, staggerDelayMs } = options;
+  const { rows, gradients, isHorizontal, enterTransition, staggerDelayMs } = options;
   const stageMark = createFunnelStageMark(rows, { enterTransition, isHorizontal, staggerDelayMs });
   return defineChart({
     focusRing: false,
+    gradients,
     guides: false,
     marks: [withStates(stageMark, rows, funnelDimStates())],
     scales: { x: null, y: null },
@@ -282,53 +283,43 @@ const buildFunnelDefinition = (options: Readonly<BuildFunnelDefinitionOptions>):
 
 const isNumber = <Subject,>(value: Subject): value is Subject & number => typeof value === "number";
 
-interface FunnelChartDefsOptions {
+// Spec gradients want 0..1 ratios; stage stops carry ratios or "NN%" strings.
+const funnelStopOffsetToRatio = (offset: string | number): number => {
+  if (isNumber(offset)) {
+    return Math.max(0, Math.min(1, offset));
+  }
+  const match = /^([0-9.]+)%$/u.exec(offset.trim());
+  if (!match) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, Number(match[1]) / FUNNEL_PERCENT_SCALE));
+};
+
+interface FunnelSpecGradientOptions {
   readonly data: readonly FunnelStage[];
   readonly isHorizontal: boolean;
-  readonly baseColor: string;
-  readonly renderPattern?: (id: string, color: string) => ReactNode;
 }
 
-// Declared paints the mark references by url(#id); ids match the pre-marks scheme (V3.4 owns them).
-const renderFunnelDefs = (options: Readonly<FunnelChartDefsOptions>): ReactElement | undefined => {
-  const { data, isHorizontal, baseColor, renderPattern } = options;
-  const hasGradient = data.some((stage) => stage.gradient !== undefined);
-  if (!hasGradient && renderPattern === undefined) {return undefined;}
-  return (
-    <svg width={0} height={0} aria-hidden="true" style={FUNNEL_DEFS_SVG_STYLE}>
-      <defs>
-        {data.map((stage, index) => {
-          if (stage.gradient === undefined) {return undefined;}
-          const gradientId = funnelGradientId(isHorizontal, index);
-          return (
-            <linearGradient
-              id={gradientId}
-              key={gradientId}
-              x1="0"
-              x2={isHorizontal ? "1" : "0"}
-              y1="0"
-              y2={isHorizontal ? "0" : "1"}
-            >
-              {stage.gradient.map((stop) => (
-                <stop
-                  key={`${stop.offset}-${stop.color}`}
-                  offset={isNumber(stop.offset) ? `${stop.offset * FUNNEL_PERCENT_SCALE}%` : stop.offset}
-                  stopColor={stop.color}
-                />
-              ))}
-            </linearGradient>
-          );
-        })}
-        {renderPattern && data.map((stage, index) => {
-          const firstStop = stage.gradient?.[0];
-          const segColor = firstStop ? firstStop.color : (stage.color ?? baseColor);
-          const patternId = funnelPatternId(isHorizontal, index);
-          return <Fragment key={patternId}>{renderPattern(patternId, segColor)}</Fragment>;
-        })}
-      </defs>
-    </svg>
-  );
-};
+// Bbox gradients reproduce the retired island pixel-for-pixel (whole-mark horizontal/vertical fades).
+const buildFunnelSpecGradients = (options: Readonly<FunnelSpecGradientOptions>): ChartLinearGradient[] =>
+  options.data.flatMap((stage, index) => {
+    if (stage.gradient === undefined) {
+      return [];
+    }
+    return [
+      {
+        id: funnelGradientId(options.isHorizontal, index),
+        stops: stage.gradient.map((stop) => ({
+          color: stop.color,
+          offset: funnelStopOffsetToRatio(stop.offset),
+        })),
+        x1: 0,
+        x2: options.isHorizontal ? 1 : 0,
+        y1: 0,
+        y2: options.isHorizontal ? 0 : 1,
+      },
+    ];
+  });
 
 type FunnelFocusPoint = (
   predicate: (point: ChartPoint<FunnelStageRow, number, number>) => boolean,
@@ -428,6 +419,8 @@ const FunnelChart = ({
 
   // Package-owned hover: host focus lands in the source below; labels subscribe to it.
   const [hoverSource] = useState<HoverSource>(() => createHoverSource());
+  // One prefix per mount scopes renderer ids and seam ids alike.
+  const idPrefix = useSanitizedId();
   const { captureRenderContext, clearFocus, focusPoint } = useFocusInjection<FunnelStageRow, number, number>();
   const [internalHoveredIndex, setInternalHoveredIndex] = useState<number | null>(null);
   const hoveredIndex = hoveredIndexProp ?? internalHoveredIndex;
@@ -469,6 +462,7 @@ const FunnelChart = ({
       gap,
       hasPattern: renderPattern !== undefined,
       hoveredIndex,
+      idPrefix,
       isHorizontal,
       layers,
       norms: resolved.frame.norms,
@@ -478,14 +472,25 @@ const FunnelChart = ({
     });
     return {
       baseValue: resolved.baseValue,
-      definition: buildFunnelDefinition({ enterTransition, isHorizontal, rows, staggerDelayMs: staggerDelay * MS_PER_SECOND }),
+      definition: buildFunnelDefinition({ enterTransition, gradients: buildFunnelSpecGradients({ data, isHorizontal }), isHorizontal, rows, staggerDelayMs: staggerDelay * MS_PER_SECOND }),
       frame: resolved.frame,
     };
-  }, [chartH, chartW, color, data, edges, enterTransition, gap, gridProp, hoveredIndex, isHorizontal, layers, renderPattern, staggerDelay]);
+  }, [chartH, chartW, color, data, edges, enterTransition, gap, gridProp, hoveredIndex, idPrefix, isHorizontal, layers, renderPattern, staggerDelay]);
   if (scene === undefined) {
     return null;
   }
   const { baseValue, frame } = scene;
+  // Seam resources carry the mount prefix; marks reference them as url(#id).
+  const funnelSeamResources = renderPattern ? (
+    <>
+      {data.map((stage, index) => {
+        const firstStop = stage.gradient?.[0];
+        const segColor = firstStop ? firstStop.color : (stage.color ?? color);
+        const patternId = funnelPatternId(idPrefix, frame.isHorizontal, index);
+        return <Fragment key={patternId}>{renderPattern(patternId, segColor)}</Fragment>;
+      })}
+    </>
+  ) : undefined;
 
   return (
     <div
@@ -502,13 +507,14 @@ const FunnelChart = ({
             ariaDescription={ariaDescription}
             width={chartW}
             height={chartH}
+            idPrefix={idPrefix}
             initialWidth={chartW}
             definition={scene.definition}
             renderer={chartMotionRenderer<FunnelStageRow, number, number>()}
+            resources={funnelSeamResources}
             onRender={handleHostRender}
             onFocusChange={handleFocusChange}
           />
-          {renderFunnelDefs({ baseColor: color, data, isHorizontal: frame.isHorizontal, renderPattern })}
           {frame.showLineGrid && renderLineGrid({ chartH, chartW, gap, grid: frame.grid, isHorizontal: frame.isHorizontal, segH: frame.segH, segW: frame.segW, stageCount: frame.stageCount })}
           {data.map((stage, index) => {
             const box = funnelSegBox({ boxHeight: chartH, boxWidth: chartW, gap, horiz: isHorizontal, segH: frame.segH, segIndex: index, segW: frame.segW });

@@ -447,6 +447,7 @@ const renderLiveLineBody = (options: Readonly<RenderLiveLineBodyOptions>): React
               ariaDescription={ariaDescription}
               renderer={chartMotionRenderer<ChartDatum, Date, number>()}
               definition={definition}
+              idPrefix={uid}
               initialWidth={HOST_INITIAL_WIDTH}
               height={height}
               onFocusGroupChange={handleFocusChange}

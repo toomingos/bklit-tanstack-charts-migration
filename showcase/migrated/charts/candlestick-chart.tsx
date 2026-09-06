@@ -14,6 +14,7 @@ import type {
   ChartMotionDefinition,
   ChartMotionTiming,
   ChartMotionTransition,
+  ChartLinearGradient,
   ChartPoint,
   ChartRendererRenderContext,
   ChartScale,
@@ -45,7 +46,7 @@ import { useChartLegendHover } from "./internal/chart-legend-hover-context";
 import { useFocusInjection } from "./internal/focus-injection";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { DEFAULT_ANIMATION_DURATION_MS } from "./internal/animation-defaults";
-import { EMPTY_CONTAINER_PX, EMPTY_COUNT, MIN_GEOMETRY_EXTENT_PX } from "./internal/candlestick-chart-shared";
+import { EMPTY_CONTAINER_PX, EMPTY_COUNT } from "./internal/candlestick-chart-shared";
 import {
   buildCandleCrosshairFadeGradient,
   buildCandleDefinitionMarks,
@@ -73,8 +74,10 @@ import {
 } from "./internal/candlestick-chart-chrome";
 import "./styles.css";
 
-// Zero-size defs layers sit outside layout; the style never varies.
-const HIDDEN_DEFS_SVG_STYLE = { position: "absolute" } as const;
+// Crosshair fade-gradient bare id; the mount idPrefix scopes it per instance.
+const CANDLE_CROSSHAIR_GRADIENT_ID = "candle-crosshair";
+// Percent-stop scale for the spec-gradient offset mapping below.
+const STOP_PERCENT_SCALE = 100;
 // Pill host covers the plot without intercepting pointer events.
 const PILL_OVERLAY_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
 const DEFAULT_CANDLE_GAP_RATIO = 0.2;
@@ -100,15 +103,18 @@ interface CandlestickChartProps {
 
 
 /**
- * Renders one crosshair fade-gradient stop (keeps the layer tree shallow).
+ * Parses a "NN%" gradient stop offset into the 0..1 ratio the spec gradient field wants.
  *
- * @param {Readonly<{ offset: string; opacity: number }>} stop - Stop offset and opacity.
- * @param {string} color - Gradient color shared by every stop.
- * @returns {ReactElement} The gradient stop element.
+ * @param {string} offset - Percent stop offset from the fade-stop builders.
+ * @returns {number} The clamped 0..1 ratio (0 when the offset never parses).
  */
-const renderCandleCrosshairStop = (stop: Readonly<{ offset: string; opacity: number }>, color: string): ReactElement => (
-  <stop key={stop.offset} offset={stop.offset} stopColor={color} stopOpacity={stop.opacity} />
-);
+const percentOffsetToRatio = (offset: string): number => {
+  const match = /^([0-9.]+)%$/u.exec(offset.trim());
+  if (!match) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, Number(match[1]) / STOP_PERCENT_SCALE));
+};
 
 const CandlestickChart = ({
   data,
@@ -128,6 +134,8 @@ const CandlestickChart = ({
 }: CandlestickChartProps): ReactElement => {
   const margin = useChartMargin(marginProp, DEFAULT_CHART_MARGIN);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // One prefix per mount scopes renderer ids and seam ids alike.
+  const idPrefix = useSanitizedId();
   // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
   const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
   const width = liveWidth;
@@ -146,7 +154,7 @@ const CandlestickChart = ({
   const { hoveredIndex: legendHoveredIndex } = useChartLegendHover();
   const { captureRenderContext, sceneRef, clientToScene } = useFocusInjection<ChartDatum, Date, number>();
 
-  const { candlePatternDefsId, negativePattern, positivePattern, resolvedCandlestick, solidFillFor } = useCandlePatterns({ candlestick });
+  const { negativePattern, positivePattern, resolvedCandlestick, solidFillFor } = useCandlePatterns({ candlestick, defsId: idPrefix });
 
   const { canInteractRef, revealed, revealSettledRef } = useCandleReveal({
     animate: resolvedCandlestick.animate,
@@ -176,7 +184,28 @@ const CandlestickChart = ({
   );
 
   const chartConfig = useChartConfig();
-  const indicatorGradientId = useSanitizedId();
+
+  // Bbox vertical fade reproduces the retired userSpaceOnUse crosshair gradient pixel-for-pixel.
+  const candleSpecGradients = useMemo<readonly ChartLinearGradient[]>(() => {
+    const fade = buildCandleCrosshairFadeGradient({ indicatorGradientId: CANDLE_CROSSHAIR_GRADIENT_ID, tooltip, tooltipEnabled });
+    if (!fade) {
+      return [];
+    }
+    return [
+      {
+        id: fade.id,
+        stops: fade.stops.map((stop) => ({
+          color: fade.color,
+          offset: percentOffsetToRatio(stop.offset),
+          opacity: stop.opacity,
+        })),
+        x1: 0,
+        x2: 0,
+        y1: 0,
+        y2: 1,
+      },
+    ];
+  }, [tooltip, tooltipEnabled]);
 
   const [labelFade, setLabelFade] = useState<{ primaryX: number; hoveredLabel: string | null } | null>(null);
 
@@ -199,7 +228,7 @@ const CandlestickChart = ({
     const [yDomainMin, yDomainMax] = yDomain;
     const yScale = buildCandleYScale({ formatLargeNumbers: yAxis?.formatLargeNumbers, formatValue: yAxis?.formatValue, gridNumTicks: grid?.numTicks, hasYAxis: yAxis !== null, yMax: yDomainMax, yMin: yDomainMin, yNumTicks: yAxis?.numTicks });
 
-    const marks = buildCandleDefinitionMarks({ bodyWidthPx, candleMotion, discrete, fadedOpacity: resolvedCandlestick.fadedOpacity, indicatorGradientId, insideStrokeW: resolvedCandlestick.insideStrokeWidth, legendHoveredIndex, negativePattern, positivePattern, showHoverFade: resolvedCandlestick.showHoverFade, showTargetGeometry, solidFillFor, source: renderData, tooltip, tooltipSpring: chartConfig.tooltipSpring, xDataKey });
+    const marks = buildCandleDefinitionMarks({ bodyWidthPx, candleMotion, discrete, fadedOpacity: resolvedCandlestick.fadedOpacity, indicatorGradientId: CANDLE_CROSSHAIR_GRADIENT_ID, insideStrokeW: resolvedCandlestick.insideStrokeWidth, legendHoveredIndex, negativePattern, positivePattern, showHoverFade: resolvedCandlestick.showHoverFade, showTargetGeometry, solidFillFor, source: renderData, tooltip, tooltipSpring: chartConfig.tooltipSpring, xDataKey });
     const gridGuide = resolveGridGuide(grid);
 
     const tooltipOption = buildCandleTooltipOption({ discrete, tooltipEnabled });
@@ -207,6 +236,7 @@ const CandlestickChart = ({
     return defineChart({
       focus: candlestickFocusStrategy,
       focusRing: false,
+      gradients: candleSpecGradients,
       margin,
       marks,
       maxFocusDistance: CARTESIAN_MAX_FOCUS_DISTANCE_PX,
@@ -254,10 +284,10 @@ const CandlestickChart = ({
     grid,
     width,
     margin,
+    candleSpecGradients,
     candlestickFocusStrategy,
     tooltip,
     chartConfig,
-    indicatorGradientId,
     xAxis,
     yAxis,
     labelFade,
@@ -350,11 +380,6 @@ const CandlestickChart = ({
     xDataKey,
   });
 
-  // UserSpaceOnUse required: the crosshair is a zero-bbox line with nothing to map onto.
-  const crosshairFadeGradient = useMemo(
-    () => buildCandleCrosshairFadeGradient({ indicatorGradientId, tooltip, tooltipEnabled }),
-    [tooltipEnabled, tooltip, indicatorGradientId],
-  );
   const candlestickChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
 
   // Hoisted out of the definition JSX below so no single expression stacks conditionals.
@@ -365,16 +390,13 @@ const CandlestickChart = ({
     width: "100%",
     ...style,
   }), [aspectRatio, style]);
-  const positivePatternLayer = positivePattern.preset ? (
-    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
-      <defs>{renderPatternPreset(positivePattern.preset, `${candlePatternDefsId}-candle-pattern-pos`, {})}</defs>
-    </svg>
-  ) : undefined;
-  const negativePatternLayer = negativePattern.preset ? (
-    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
-      <defs>{renderPatternPreset(negativePattern.preset, `${candlePatternDefsId}-candle-pattern-neg`, {})}</defs>
-    </svg>
-  ) : undefined;
+  // Seam resources carry the mount prefix; marks reference them as url(#id).
+  const candleSeamResources = (
+    <>
+      {positivePattern.preset ? renderPatternPreset(positivePattern.preset, `${idPrefix}-candle-pattern-pos`, {}) : undefined}
+      {negativePattern.preset ? renderPatternPreset(negativePattern.preset, `${idPrefix}-candle-pattern-neg`, {}) : undefined}
+    </>
+  );
   const enabledRenderTooltipBody = tooltipEnabled ? renderTooltipBody : undefined;
   const refAreaChildrenCandle = useMemo(() => extractReferenceAreaProps(children), [children]);
   const timeExtentCandle = useMemo(() => findCandleTimeExtent(renderData, xDataKey), [renderData, xDataKey]);
@@ -397,53 +419,35 @@ const CandlestickChart = ({
 
   // Hoisted so the returned tree stays shallow (variables inline into the same element tree).
   const definitionContentNode = definition ? (
-    <>
-      {positivePatternLayer}
-      {negativePatternLayer}
-      <ChartHost
-        ariaLabel={ariaLabel}
-        ariaDescription={ariaDescription}
-        aspectRatio={parseAspectRatio(aspectRatio)}
-        className={className}
-        definition={definition}
-        initialWidth={HOST_INITIAL_WIDTH}
-        renderer={candlestickChartRenderer}
-        onFocusGroupChange={handleFocusGroupChange}
-        onRender={handleRender}
-        renderTooltipBody={enabledRenderTooltipBody}
-        style={style}
-      >
-        {children}
-        <ChartRegistryBridge onEntries={handleRegistryEntries} />
-        {background ? (
-          <BackgroundLayer
-            config={background}
-          />
-        ) : undefined}
-        {referenceAreaLayer}
-        <SegmentOverlay
-          selection={candleSelection}
-          components={segChildrenCandle}
+    <ChartHost
+      ariaLabel={ariaLabel}
+      ariaDescription={ariaDescription}
+      aspectRatio={parseAspectRatio(aspectRatio)}
+      className={className}
+      definition={definition}
+      idPrefix={idPrefix}
+      initialWidth={HOST_INITIAL_WIDTH}
+      renderer={candlestickChartRenderer}
+      resources={candleSeamResources}
+      onFocusGroupChange={handleFocusGroupChange}
+      onRender={handleRender}
+      renderTooltipBody={enabledRenderTooltipBody}
+      style={style}
+    >
+      {children}
+      <ChartRegistryBridge onEntries={handleRegistryEntries} />
+      {background ? (
+        <BackgroundLayer
+          config={background}
         />
-        {pillOverlayLayer}
-      </ChartHost>
-    </>
-  ) : undefined;
-  const crosshairLayerNode = crosshairFadeGradient ? (
-    <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
-      <defs>
-        <linearGradient
-          id={crosshairFadeGradient.id}
-          gradientUnits="userSpaceOnUse"
-          x1={0}
-          x2={0}
-          y1={margin.top}
-          y2={margin.top + Math.max(MIN_GEOMETRY_EXTENT_PX, heightPxCandle - margin.top - margin.bottom)}
-        >
-          {crosshairFadeGradient.stops.map((stop: { readonly offset: string; readonly opacity: number }) => renderCandleCrosshairStop(stop, crosshairFadeGradient.color))}
-        </linearGradient>
-      </defs>
-    </svg>
+      ) : undefined}
+      {referenceAreaLayer}
+      <SegmentOverlay
+        selection={candleSelection}
+        components={segChildrenCandle}
+      />
+      {pillOverlayLayer}
+    </ChartHost>
   ) : undefined;
 
   return (
@@ -455,7 +459,6 @@ const CandlestickChart = ({
       data-bkm-chart="candlestick"
     >
       {definitionContentNode}
-      {crosshairLayerNode}
     </div>
     </ChartSelectionContext.Provider>
   );

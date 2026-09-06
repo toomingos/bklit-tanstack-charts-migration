@@ -1,8 +1,9 @@
 // Bklit Gauge (arc + linear) on TanStack polar marks; linear notches bypass scales (no data domain).
 // UniformWidth notches use custom quads: pie slices can't express the perpendicular inner edge.
-import { useCallback, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
+import { useSanitizedId } from "./internal/use-sanitized-id";
 import { createMark } from '@tanstack/charts';
 import type { ChartMark, SceneNode, DomChartDefinition, MarkScene } from '@tanstack/charts';
 import { defineChart } from "@tanstack/charts/scene";
@@ -55,8 +56,8 @@ const GAUGE_DEFAULT_SPACING = 25;
 const GAUGE_DEFAULT_TOTAL_NOTCHES = 40;
 // Fraction of the gauge size used as top padding for the center overlay label.
 const GAUGE_CENTER_TOP_PADDING_FRACTION = 0.08;
-// Zero-size overlay svg for custom defs: absolutely positioned so it never affects layout.
-const GAUGE_DEFS_SVG_STYLE = { position: "absolute" } as const;
+// Theme-gradient bare id; the mount idPrefix scopes it per instance.
+const GAUGE_THEME_GRADIENT_ID = "gauge-theme-active";
 // Responsive arc sizer: fixed aspect-ratio box centered at a capped width.
 const GAUGE_ARC_SIZER_STYLE = { aspectRatio: String(ARC_ASPECT_RATIO), margin: "0 auto", maxWidth: ARC_MAX_WIDTH, width: "100%" } as const;
 
@@ -171,7 +172,7 @@ const useGaugeFillState = (props: Readonly<GaugeFillStateInput>): GaugeFillState
     totalNotches = 40,
   } = props;
 
-  const themeActiveGradientId = `gauge-theme-active-${useId().replaceAll(':', "")}`;
+  const themeActiveGradientId = GAUGE_THEME_GRADIENT_ID;
   const defsChildren = useMemo(() => collectGaugeDefsElements(children), [children]);
 
   const hasCustomInactive = inactiveFill !== undefined && inactiveFill.length > 0;
@@ -491,6 +492,7 @@ interface RenderGaugeArcInnerOptions {
   readonly definition: DomChartDefinition | undefined;
   readonly fillState: Readonly<GaugeFillState>;
   readonly formatOptions: CenterStatFormat;
+  readonly idPrefix: string;
   readonly innerWrapStyle: CSSProperties;
   readonly layout: Readonly<GaugeArcLayout>;
   readonly onRender: (context: { readonly scene?: { readonly width?: number } }) => void;
@@ -499,32 +501,22 @@ interface RenderGaugeArcInnerOptions {
 }
 
 const renderGaugeArcInner = (options: Readonly<RenderGaugeArcInnerOptions>): ReactNode => {
-  const { ariaDescription, ariaLabel = "Gauge chart", centerOverlayStyle, centerValue, defaultLabel, definition, fillState, formatOptions, innerWrapStyle, layout, onRender, prefix, suffix } = options;
+  const { ariaDescription, ariaLabel = "Gauge chart", centerOverlayStyle, centerValue, defaultLabel, definition, fillState, formatOptions, idPrefix, innerWrapStyle, layout, onRender, prefix, suffix } = options;
   return definition && layout.size > 0 ? (
     <div style={innerWrapStyle}>
       <ChartHost
         ariaLabel={ariaLabel}
         ariaDescription={ariaDescription}
         aspectRatio={ARC_ASPECT_WIDTH / ARC_ASPECT_HEIGHT}
+        idPrefix={idPrefix}
         initialWidth={layout.fixedSize ? layout.width : HOST_INITIAL_WIDTH}
         definition={definition}
         height={layout.height}
         renderer={chartMotionRenderer()}
+        resources={fillState.defsChildren}
         width={layout.fixedSize ? layout.width : undefined}
         onRender={onRender}
       />
-      {fillState.defsChildren.length > 0 ? (
-        // Overlay svg mounts after the chart: url(#id) resolves document-wide; chart svg stays first in DOM.
-        <svg
-          width={0}
-          height={0}
-          style={GAUGE_DEFS_SVG_STYLE}
-          aria-hidden="true"
-          focusable="false"
-        >
-          <defs>{fillState.defsChildren}</defs>
-        </svg>
-      ) : undefined}
       {centerValue === undefined ? undefined : (
         <div
           style={centerOverlayStyle}
@@ -622,6 +614,8 @@ const resolveArcDefinitionOptions = (options: Readonly<GaugeArcDefinitionInput>)
 
 const GaugeArc = (props: Readonly<GaugeArcProps>): ReactElement => {
   const fillState = useGaugeFillState(collectGaugeFillStateInput(props));
+  // One prefix per mount scopes renderer ids and seam ids alike.
+  const idPrefix = useSanitizedId();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
@@ -646,6 +640,7 @@ const GaugeArc = (props: Readonly<GaugeArcProps>): ReactElement => {
     definition,
     fillState,
     formatOptions: props.formatOptions ?? defaultCenterStatFormat,
+    idPrefix,
     innerWrapStyle: arcStyles.innerWrapStyle,
     layout,
     onRender: handleHostRender,
@@ -987,6 +982,7 @@ interface RenderLinearGaugeBodyOptions {
   readonly defsChildren: readonly Readonly<ReactElement>[];
   readonly fixedWidth: boolean;
   readonly height: number;
+  readonly idPrefix: string;
   readonly label: ReactNode;
   readonly labelAlign: GaugeLabelAlign;
   readonly labelPlacement: GaugeLabelPlacement;
@@ -996,7 +992,7 @@ interface RenderLinearGaugeBodyOptions {
 }
 
 const renderLinearGaugeBody = (options: Readonly<RenderLinearGaugeBodyOptions>): ReactElement => {
-  const { ariaDescription, ariaLabel = "Gauge chart", chartWrapStyle, definition, defsChildren, fixedWidth, height, label, labelAlign, labelPlacement, onRender, trackStyle, width } = options;
+  const { ariaDescription, ariaLabel = "Gauge chart", chartWrapStyle, definition, defsChildren, fixedWidth, height, idPrefix, label, labelAlign, labelPlacement, onRender, trackStyle, width } = options;
   const svg =
     definition && width > 0 ? (
       <div style={chartWrapStyle}>
@@ -1005,16 +1001,13 @@ const renderLinearGaugeBody = (options: Readonly<RenderLinearGaugeBodyOptions>):
           ariaDescription={ariaDescription}
           definition={definition}
           height={height}
+          idPrefix={idPrefix}
           initialWidth={fixedWidth ? width : HOST_INITIAL_WIDTH}
           renderer={chartMotionRenderer()}
+          resources={defsChildren}
           width={fixedWidth ? width : undefined}
           onRender={onRender}
         />
-        {defsChildren.length > 0 ? (
-          <svg width={0} height={0} style={GAUGE_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
-            <defs>{defsChildren}</defs>
-          </svg>
-        ) : undefined}
       </div>
     ) : undefined;
   const track = (
@@ -1031,6 +1024,8 @@ type GaugeLinearProps = Omit<GaugeProps, "orientation" | "startAngle" | "endAngl
 
 const GaugeLinear = (props: Readonly<GaugeLinearProps>): ReactElement => {
   const fillState = useGaugeFillState(collectGaugeFillStateInput(props));
+  // One prefix per mount scopes renderer ids and seam ids alike.
+  const idPrefix = useSanitizedId();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
@@ -1061,6 +1056,7 @@ const GaugeLinear = (props: Readonly<GaugeLinearProps>): ReactElement => {
     defsChildren: fillState.defsChildren,
     fixedWidth: layout.fixedWidth,
     height: layout.height,
+    idPrefix,
     label: linearStyles.label,
     labelAlign: props.labelAlign ?? "start",
     labelPlacement: props.labelPlacement ?? "top",

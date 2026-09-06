@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useSanitizedId } from "./use-sanitized-id";
+import { ResourceHost } from "./resource-host";
 import type { CSSProperties, Dispatch, ReactElement, ReactNode, SetStateAction } from "react";
 import { Chart, RendererChart as TooltipRendererChart } from "@tanstack/react-charts/tooltip";
 import type {
@@ -79,6 +81,8 @@ interface ChartHostProps<
   /** Raw TanStack escape hatch: the full definition reaches the host untouched. */
   definition: DomChartDefinition<Datum, XValue, YValue>;
   height?: number;
+  /** Prefix scoping renderer-owned ids (gradients, clips) to this mount. */
+  idPrefix?: string;
   initialWidth?: number;
   /** Fixed scene width. Supplying it disables resize observation (fixed-size families only). */
   width?: number;
@@ -100,6 +104,8 @@ interface ChartHostProps<
   ) => ReactNode;
   /** Custom surface renderer; mounts the `/core` entry until V3.5. */
   renderer?: ChartRenderer<Datum, XValue, YValue>;
+  /** R10 seam resources (patterns, radial gradients) rendered beside the chart svg. */
+  resources?: ReactNode;
   style?: CSSProperties;
 }
 
@@ -166,6 +172,8 @@ const ChartHost = <
     height,
     initialWidth = DEFAULT_INITIAL_WIDTH,
     width: widthProp,
+    idPrefix: idPrefixProp,
+    resources,
     onFocusChange,
     onFocusGroupChange,
     onRender,
@@ -176,6 +184,10 @@ const ChartHost = <
 
   const [store] = useState(createChartHostStore<Datum, XValue, YValue>);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // One prefix per mount scopes renderer ids and seam ids alike.
+  const fallbackPrefix = useSanitizedId();
+  const idPrefix = idPrefixProp ?? fallbackPrefix;
 
   const handleRender = useCallback(
     (
@@ -322,6 +334,7 @@ const ChartHost = <
         className={className}
         definition={definition}
         height={height}
+        idPrefix={idPrefix}
         initialWidth={initialWidth}
         width={widthProp}
         onFocusChange={onFocusChange}
@@ -338,6 +351,7 @@ const ChartHost = <
         className={className}
         definition={definition}
         height={height}
+        idPrefix={idPrefix}
         initialWidth={initialWidth}
         width={widthProp}
         onFocusChange={onFocusChange}
@@ -354,6 +368,7 @@ const ChartHost = <
     <ChartProvider value={value}>
       <div ref={containerRef}>
         {chartNode}
+        <ResourceHost idPrefix={idPrefix} resources={resources} />
         <ChartChildRegistryProvider>
           {children}
           <LayerContributions tree={children} chartData={chartData} chartXDataKey={chartXDataKey} chartXDomain={chartXDomain} />

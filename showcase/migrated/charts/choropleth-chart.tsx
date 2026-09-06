@@ -9,6 +9,7 @@ import type { TransformMatrix, ProvidedZoom } from "./internal/choropleth-zoom-t
 import { ChoroplethZoom, identityMatrix } from "./internal/choropleth-zoom";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
+import { useSanitizedId } from "./internal/use-sanitized-id";
 import type {
   ChartMarkState,
   ChartPoint,
@@ -210,8 +211,6 @@ const DEFAULT_STROKE_WIDTH = 0.5;
 const TOOLTIP_SWATCH_STYLE = { backgroundColor: "var(--chart-1)" } as const;
 // Graticule overlay svg floats above the map without intercepting pointer events.
 const GRATICULE_LAYER_STYLE = { left: 0, pointerEvents: "none", position: "absolute", top: 0 } as const;
-// Zero-size svg hosting pattern defs; url(#id) paint servers resolve document-wide.
-const PATTERN_DEFS_STYLE = { height: 0, overflow: "hidden", position: "absolute", width: 0 } as const;
 // Inner overlay container fills the sized body.
 const CHOROPLETH_INNER_STYLE = { inset: 0, position: "absolute" } as const;
 
@@ -734,28 +733,20 @@ const ChoroplethChartBody = ({
 
   // Patterns arrive as conditional JSX, so false and null mean absent just like undefined.
   const choroplethPatterns = featureConfig?.patterns;
+  // One prefix per mount scopes renderer ids and seam ids alike.
+  const idPrefix = useSanitizedId();
   const chartNode = (
     <>
-      {/* Defs live in a zero-size sibling svg; url(#id) paint servers resolve document-wide. */}
-      {choroplethPatterns !== undefined && choroplethPatterns !== null && choroplethPatterns !== false ? (
-        <svg
-          aria-hidden="true"
-          focusable="false"
-          width={0}
-          height={0}
-          style={PATTERN_DEFS_STYLE}
-        >
-          <defs>{choroplethPatterns}</defs>
-        </svg>
-      ) : undefined}
       {definition ? (
         <ChartHost
           renderer={chartMotionRenderer<ChoroplethFeature>()}
           ariaLabel={ariaLabel}
           ariaDescription={ariaDescription}
           aspectRatio={ratio}
+          idPrefix={idPrefix}
           initialWidth={HOST_INITIAL_WIDTH}
           definition={definition}
+          resources={choroplethPatterns}
           onFocusChange={handleFocusChange}
           onRender={handleRender}
           renderTooltipBody={handleTooltipBody}

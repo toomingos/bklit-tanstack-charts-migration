@@ -59,8 +59,8 @@ interface FunnelStageRow {
 
 const funnelMarkId = (isHorizontal: boolean): string => isHorizontal ? "funnel-h" : "funnel-v";
 
-const funnelPatternId = (isHorizontal: boolean, index: number): string =>
-  `funnel-${isHorizontal ? "h" : "v"}-pattern-${index}`;
+const funnelPatternId = (idPrefix: string, isHorizontal: boolean, index: number): string =>
+  `${idPrefix}-funnel-${isHorizontal ? "h" : "v"}-pattern-${index}`;
 
 const funnelGradientId = (isHorizontal: boolean, index: number): string =>
   `funnel-${isHorizontal ? "h" : "v"}-grad-${index}`;
@@ -74,6 +74,7 @@ interface BuildFunnelStageRowsOptions {
   readonly segW: number;
   readonly segH: number;
   readonly gap: number;
+  readonly idPrefix: string;
   readonly isHorizontal: boolean;
   readonly layers: number;
   readonly straight: boolean;
@@ -144,7 +145,7 @@ const buildFunnelStageRings = (options: Readonly<FunnelStageRingsOptions>): Funn
 };
 
 const buildFunnelStageRows = (options: Readonly<BuildFunnelStageRowsOptions>): FunnelStageRow[] => {
-  const { data, norms, baseColor, chartW, chartH, segW, segH, gap, isHorizontal, layers, straight, hoveredIndex, hasPattern } = options;
+  const { data, norms, baseColor, chartW, chartH, segW, segH, gap, idPrefix, isHorizontal, layers, straight, hoveredIndex, hasPattern } = options;
   const markId = funnelMarkId(isHorizontal);
   return data.map((stage, index) => {
     const normStart = norms[index] ?? 0;
@@ -172,7 +173,7 @@ const buildFunnelStageRows = (options: Readonly<BuildFunnelStageRowsOptions>): F
         normStart,
         originX,
         originY,
-        patternId: funnelPatternId(isHorizontal, index),
+        patternId: funnelPatternId(idPrefix, isHorizontal, index),
         segLen: isHorizontal ? segW : segH,
         stageIndex: index,
         straight,

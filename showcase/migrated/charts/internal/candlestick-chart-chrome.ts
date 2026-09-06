@@ -7,7 +7,6 @@ import type { CandlestickEnterTransition } from "./enter-transition";
 import { buildPill } from "./date-pill";
 import type { PillBuild } from "./date-pill";
 import { DISCRETE_INTERACTION_THRESHOLD } from "./design-tokens";
-import { useSanitizedId } from "./use-sanitized-id";
 import { shortDateFmt } from "./formatters";
 import { extractSegmentComponents, useChartSelection } from "./chart-selection";
 import type { ChartSelection, SegmentComponent } from "./chart-selection";
@@ -307,7 +306,6 @@ interface CandleResolvedCandlestick {
 }
 
 interface CandlePatternSelection {
-  readonly candlePatternDefsId: string;
   readonly negativePattern: CandlePatternRef;
   readonly positivePattern: CandlePatternRef;
   readonly resolvedCandlestick: CandleResolvedCandlestick;
@@ -316,6 +314,7 @@ interface CandlePatternSelection {
 
 interface CandlePatternsParams {
   readonly candlestick: CandlestickConfig | null;
+  readonly defsId: string;
 }
 
 /**
@@ -325,7 +324,7 @@ interface CandlePatternsParams {
  * @returns {CandlePatternSelection} Resolved config, pattern refs, and the solid-fill rule.
  */
 const useCandlePatterns = (params: Readonly<CandlePatternsParams>): CandlePatternSelection => {
-  const { candlestick } = params;
+  const { candlestick, defsId } = params;
   const resolvedPositiveFill = candlestick?.positiveFill ?? SOLID_POSITIVE;
   const resolvedNegativeFill = candlestick?.negativeFill ?? SOLID_NEGATIVE;
 
@@ -339,14 +338,13 @@ const useCandlePatterns = (params: Readonly<CandlePatternsParams>): CandlePatter
   }), [candlestick]);
 
   // Legacy url(#id) strings pass through; other names render as pattern presets in this chart's defs.
-  const candlePatternDefsId = useSanitizedId();
   const resolveCandlePattern = useCallback(
-    (value: string | undefined, defsId: string): CandlePatternRef => {
+    (value: string | undefined, scopeId: string): CandlePatternRef => {
       if (value === undefined || value === "" || value === "none") {return { href: "", preset: undefined };}
       const trimmed = value.trim();
       const urlMatch = /^url\(#[^)]+\)$/u.exec(trimmed);
       if (urlMatch) {return { href: trimmed, preset: undefined };}
-      if (isCandlePatternPreset(trimmed)) {return { href: `url(#${defsId})`, preset: trimmed };}
+      if (isCandlePatternPreset(trimmed)) {return { href: `url(#${scopeId})`, preset: trimmed };}
       return { href: "", preset: undefined };
     },
     [],
@@ -354,23 +352,23 @@ const useCandlePatterns = (params: Readonly<CandlePatternsParams>): CandlePatter
   const positivePattern = useMemo(
     () => resolveCandlePattern(
       resolvedCandlestick.bodyPatternPositive,
-      `${candlePatternDefsId}-candle-pattern-pos`,
+      `${defsId}-candle-pattern-pos`,
     ),
-    [resolvedCandlestick.bodyPatternPositive, candlePatternDefsId, resolveCandlePattern],
+    [resolvedCandlestick.bodyPatternPositive, defsId, resolveCandlePattern],
   );
   const negativePattern = useMemo(
     () => resolveCandlePattern(
       resolvedCandlestick.bodyPatternNegative,
-      `${candlePatternDefsId}-candle-pattern-neg`,
+      `${defsId}-candle-pattern-neg`,
     ),
-    [resolvedCandlestick.bodyPatternNegative, candlePatternDefsId, resolveCandlePattern],
+    [resolvedCandlestick.bodyPatternNegative, defsId, resolveCandlePattern],
   );
   // Pattern-overlay candles render wick+body in solid tokens, ignoring caller fill (bklit).
   const solidFillFor = useCallback((isPositive: boolean, hasOwnPattern: boolean) => {
     if (hasOwnPattern) {return isPositive ? PATTERN_FALLBACK_POSITIVE : PATTERN_FALLBACK_NEGATIVE;}
     return isPositive ? resolvedPositiveFill : resolvedNegativeFill;
   }, [resolvedPositiveFill, resolvedNegativeFill]);
-  return { candlePatternDefsId, negativePattern, positivePattern, resolvedCandlestick, solidFillFor };
+  return { negativePattern, positivePattern, resolvedCandlestick, solidFillFor };
 };
 
 interface CandleRevealParams {

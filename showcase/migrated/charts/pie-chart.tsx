@@ -3,6 +3,7 @@ import { pie as d3Pie } from "d3-shape";
 import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
+import { useSanitizedId } from "./internal/use-sanitized-id";
 import { defineChart } from "@tanstack/charts/scene";
 import type { ChartMarkState, ChartRendererRenderContext, DomChartDefinition } from "@tanstack/charts";
 import { useFocusInjection } from "./internal/focus-injection";
@@ -269,10 +270,6 @@ const createPieSliceMark = (pieRows: readonly PieRowDatum[], params: Readonly<Cr
   });
 }
 
-// Hidden defs svg floats over the chart corner without intercepting pointer input.
-const PIE_DEFS_SVG_STYLE: CSSProperties = { left: 0, pointerEvents: "none", position: "absolute", top: 0 };
-// Scrub svg isolates paint so geometry probing never disturbs the live chart.
-const PIE_SCRUB_SVG_STYLE: CSSProperties = { contain: "layout style paint" };
 // Center overlay stacks PieCenter children while letting pointer input fall through.
 const PIE_CENTER_OVERLAY_STYLE: CSSProperties = {
   alignItems: "center",
@@ -282,50 +279,6 @@ const PIE_CENTER_OVERLAY_STYLE: CSSProperties = {
   pointerEvents: "none",
   position: "absolute",
 };
-
-const renderPieDefsSvg = (defsChildren: readonly ReactElement[]): ReactElement | undefined => {
-  if (defsChildren.length === 0) { return undefined; }
-  return (
-    <svg width={0} height={0} aria-hidden="true" style={PIE_DEFS_SVG_STYLE}>
-      <defs>{defsChildren}</defs>
-    </svg>
-  );
-}
-
-interface PieScrubSvgParams {
-  readonly center: number;
-  readonly data: readonly PieData[];
-  readonly defsChildren: readonly ReactElement[];
-  readonly getFill: (index: number) => string;
-  readonly scrubSlicePaths: readonly string[] | null;
-  readonly size: number;
-}
-
-const renderPieScrubSvg = (params: Readonly<PieScrubSvgParams>): ReactElement => {
-  const { center, data, defsChildren, getFill, scrubSlicePaths, size } = params;
-  return (
-    <svg
-      aria-hidden="true"
-      height={size}
-      style={PIE_SCRUB_SVG_STYLE}
-      width={size}
-    >
-      {defsChildren.length > 0 && <defs>{defsChildren}</defs>}
-      <g transform={`translate(${center}, ${center})`}>
-        {scrubSlicePaths?.map((slicePath, index) =>
-          slicePath ? (
-            <path
-              d={slicePath}
-              fill={getFill(index)}
-              key={data[index]?.label ?? index}
-              pointerEvents="none"
-            />
-          ) : undefined,
-        )}
-      </g>
-    </svg>
-  );
-}
 
 const renderPieCenterOverlay = (centerChildren: readonly ReactNode[]): ReactElement | undefined => {
   if (centerChildren.length === 0) { return undefined; }
@@ -339,26 +292,15 @@ const renderPieCenterOverlay = (centerChildren: readonly ReactNode[]): ReactElem
 }
 
 interface PieInnerContentParams {
-  readonly center: number;
   readonly centerChildren: readonly ReactNode[];
-  readonly data: readonly PieData[];
-  readonly defsChildren: readonly ReactElement[];
-  readonly geometryScrubbing: boolean;
-  readonly getFill: (index: number) => string;
   readonly renderChart: () => ReactElement;
-  readonly scrubSlicePaths: readonly string[] | null;
-  readonly size: number;
 }
 
 const renderPieInnerContent = (params: Readonly<PieInnerContentParams>): ReactElement => {
-  const { center, centerChildren, data, defsChildren, geometryScrubbing, getFill, renderChart, scrubSlicePaths, size } = params;
+  const { centerChildren, renderChart } = params;
   return (
     <>
-      {/* Hidden defs svg: url(#id) refs resolve document-wide. */}
-      {renderPieDefsSvg(defsChildren)}
-      {geometryScrubbing
-        ? renderPieScrubSvg({ center, data, defsChildren, getFill, scrubSlicePaths, size })
-        : renderChart()}
+      {renderChart()}
       {renderPieCenterOverlay(centerChildren)}
     </>
   );
@@ -440,6 +382,8 @@ const PieChart = ({
   ariaDescription,
 }: Readonly<PieChartProps>): ReactElement => {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // One prefix per mount scopes renderer ids and seam ids alike.
+  const idPrefix = useSanitizedId();
   // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
   // Fixed-size mode never reads the measurement.
   const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
@@ -617,9 +561,11 @@ const PieChart = ({
         ariaDescription={ariaDescription}
         width={size}
         height={size}
+        idPrefix={idPrefix}
         initialWidth={size}
         definition={definition}
         renderer={chartMotionRenderer<PieRowDatum, number, number>()}
+        resources={defsChildren}
         onRender={handleHostRender}
         onFocusChange={handleFocusChange}
       />
@@ -628,9 +574,11 @@ const PieChart = ({
         ariaLabel={ariaLabel}
         ariaDescription={ariaDescription}
         aspectRatio={1}
+        idPrefix={idPrefix}
         initialWidth={HOST_INITIAL_WIDTH}
         definition={definition}
         renderer={chartMotionRenderer<PieRowDatum, number, number>()}
+        resources={defsChildren}
         onRender={handleHostRender}
         onFocusChange={handleFocusChange}
       />
@@ -647,15 +595,8 @@ const PieChart = ({
       <PieStableContext.Provider value={stable}>
         <PieHoverCoordinatorContext.Provider value={hoverSource}>
           {renderPieInnerContent({
-            center,
             centerChildren,
-            data,
-            defsChildren,
-            geometryScrubbing,
-            getFill,
             renderChart,
-            scrubSlicePaths,
-            size,
           })}
         </PieHoverCoordinatorContext.Provider>
       </PieStableContext.Provider>
