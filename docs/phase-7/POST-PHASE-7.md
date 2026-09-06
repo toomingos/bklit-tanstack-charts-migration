@@ -27,19 +27,19 @@ code commit.
 
 ## 1. The open items
 
-| # | Item | Why it is not phase-7 work | Reference | Gate |
-|---|---|---|---|---|
-| 1 | `main` has never been pushed — 137 commits ahead of `origin/main` (`7d60a7f`) | outward-facing | — | repository owner |
-| 2 | File I7 — height-aware resize: `createChartScene` derives `height` from `width / aspectRatio` (`renderer.js:720`) and its ResizeObserver re-renders on width only (`:187-191`), so a container sized by CSS height never updates the scene | the research doc gates it on "after the phase-7 host lands", which has now happened | `research/phase-7/07-upstream-issues.md` I7; evidence D541 | owner's GitHub account |
-| 3 | File I8 — focus-aware axis tick-label opacity, and mark states for point-less area marks | "same gate as I7" | `07-upstream-issues.md` I8; evidence D587 | owner's GitHub account |
-| 4 | Bundle-gate ordering defect: `scripts/bundle-gate.mjs` reads `bench/results/bundle-sizes.json`, which the bundle stage rewrites, while the checks stage runs first — checks therefore always read the previous run's leftovers | diagnosed and stamped, no owner assigned in phase 7 | D585 | phase 8 |
-| 5 | QA loading-cell scheduling: loading cells run against three siblings, which is what made `arealoading/1000 hover-50` read 24,407 px in the gate and 427 px isolated | deliberately left unruled so the band cannot blind the gate | D588 | phase 8 |
-| 6 | G4 — make `showcase/migrated` a workspace package consumed as a package, then drop `@tanstack/charts` / `@tanstack/react-charts` from the showcase root | folded into V5.3, deferred under R7 | PROGRESS G4, D517 | phase 8 |
-| 7 | Adopt a fresh bench baseline — `qa/gate/bench-baseline.json` still holds the phase-5 close medians of 2026-08-27 | regeneration is a formal D-entry by the file's own note | BASELINE.md, D584 | phase 8 |
-| 8 | Re-pin the 30 stale bundle pins in `bench/results/bundle-gate.json` (stamped 2026-09-05 at `61d6179`, pre-V3.9) | same: a pin change is a D-entry | D585 | phase 8 |
-| 9 | Bundle ≤1.10 parity: 41 of 43 cells over | routed to phase 8 under R7 | V5.2 row | phase 8 |
-| 10 | G8, G9, G10, G13 — spatialIndex bypassed after mark-state paint; arc state geometry; sunburst focus geometry; `text()` baseline option | stamped UPSTREAM; the package cannot express them at 0.16.0 | D534, D535, D536 | upstream |
-| 11 | 58 `todo` tests | their subject exports were deleted because the package took ownership; the todos are the record, not a gap | — | correct as-is |
+| # | Item | Why it is not phase-7 work | Reference | Gate | State |
+|---|---|---|---|---|---|
+| 1 | `main` has never been pushed — 137 commits ahead of `origin/main` (`7d60a7f`) | outward-facing | — | repository owner | open |
+| 2 | File I7 — height-aware resize: `createChartScene` derives `height` from `width / aspectRatio` (`renderer.js:720`) and its ResizeObserver re-renders on width only (`:187-191`), so a container sized by CSS height never updates the scene | the research doc gates it on "after the phase-7 host lands", which has now happened | `research/phase-7/07-upstream-issues.md` I7; evidence D541 | owner's GitHub account | open |
+| 3 | File I8 — focus-aware axis tick-label opacity, and mark states for point-less area marks | "same gate as I7" | `07-upstream-issues.md` I8; evidence D587 | owner's GitHub account | open |
+| 4 | Bundle-gate ordering defect: `scripts/bundle-gate.mjs` reads `bench/results/bundle-sizes.json`, which the bundle stage rewrites, while the checks stage runs first — checks therefore always read the previous run's leftovers | diagnosed and stamped, no owner assigned in phase 7 | D585 | phase 8 | **done `bfb072b`** |
+| 5 | QA loading-cell scheduling: loading cells run against three siblings, which is what made `arealoading/1000 hover-50` read 24,407 px in the gate and 427 px isolated | deliberately left unruled so the band cannot blind the gate | D588 | phase 8 | **done `c252229`** |
+| 6 | G4 — make `showcase/migrated` a workspace package consumed as a package, then drop `@tanstack/charts` / `@tanstack/react-charts` from the showcase root | folded into V5.3, deferred under R7 | PROGRESS G4, D517 | phase 8 | **done `8d615fa`** |
+| 7 | Adopt a fresh bench baseline — `qa/gate/bench-baseline.json` still holds the phase-5 close medians of 2026-08-27 | regeneration is a formal D-entry by the file's own note | BASELINE.md, D584 | phase 8 | open |
+| 8 | Re-pin the 30 stale bundle pins in `bench/results/bundle-gate.json` (stamped 2026-09-05 at `61d6179`, pre-V3.9) | same: a pin change is a D-entry | D585 | phase 8 | open |
+| 9 | Bundle ≤1.10 parity: 41 of 43 cells over | routed to phase 8 under R7 | V5.2 row | phase 8 | open |
+| 10 | G8, G9, G10, G13 — spatialIndex bypassed after mark-state paint; arc state geometry; sunburst focus geometry; `text()` baseline option | stamped UPSTREAM; the package cannot express them at 0.16.0 | D534, D535, D536 | upstream | open |
+| 11 | 58 `todo` tests | their subject exports were deleted because the package took ownership; the todos are the record, not a gap | — | correct as-is | open |
 
 ## 2. Serial order, and why
 
@@ -89,9 +89,9 @@ concurrently with this.
 
 | Agent | Owned files | Task |
 |---|---|---|
-| `A3 g4-workspace-pkg` | `showcase/package.json`, `showcase/tsconfig.json`, `showcase/next.config.mjs`, `qa/unit/lib/render.mjs`, new package manifest | item 6 |
-| `A1 bundle-gate-order` | `scripts/bundle-gate.mjs`, `qa/gate/run-all.mjs` | item 4 |
-| `A2 qa-loading-schedule` | `qa/screenshot.mjs` | item 5 |
+| `A3 g4-workspace-pkg` | `showcase/package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `tsconfig.json`, `next.config.mjs`, `showcase/migrated/package.json`, deletes `showcase/packages/migrated-charts/`, plus `qa/unit/lib/render.mjs`, `qa/unit/resolver.test.mjs`, `qa/unit/scene.test.mjs`, `qa/curve-parity.mjs`, `qa/gate/run-checks.mjs` line 67 | item 6 |
+| `A1 bundle-gate-order` | `scripts/bundle-gate.mjs`, `qa/gate/run-all.mjs`, `run-checks.mjs`, `summarize.mjs` | item 4 |
+| `A2 qa-loading-schedule` | `qa/gate/run-qa.mjs`, `qa/gate/lib.mjs` | item 5 |
 
 No shared path between the three. A3 is the long pole and the riskiest; launch it first within
 the batch so it takes the head start. A1 and A2 are small.
@@ -147,3 +147,63 @@ do not compress, and compressing them is the whole content of D588.
 - Items 7–8: both baseline files regenerated, each with a D-entry naming the run.
 - Item 9: the bundle stage reports the surviving over-1.10 count, whatever it is, against
   re-pinned values — a measured number, not a target.
+
+## 6. Execution record — Wave A
+
+Updated 2026-09-06. Wave A is complete. Items 4, 5 and 6 are landed and the tree is green at
+`8d615fa`: tsc exit 0, `next build` exit 0 across 28 routes, `pnpm test` 240 / 182 / 0 / 58,
+oxlint 0 problems over 428 files.
+
+| Item | Commit | Result |
+|---|---|---|
+| 4 | `bfb072b` | `run-all` passes `skip:"bundle-gate"` to the checks stage; the bundle stage's fresh measurement is the single verdict. `summarize.mjs` needed no change — `checksIssues` already continued on skipped entries. Standalone `gate:checks` keeps the step and now prints the sizes file's mtime, so a stale read is visible rather than silent. No pin touched. |
+| 5 | `c252229` | `runPool` gained an optional exclusivity barrier; loading cells drain alone after the shared phase, roster order preserved, `workers <= 1` byte-identical to before. Measured cost: 2 of 43 jobs, ~13 s on a 174 s stage. |
+| 6 | `8d615fa` | `showcase/migrated` is the package, `showcase` is a pnpm workspace, both TanStack deps are gone from the app manifest. Route table unmoved, shared chunk hashes byte-identical. |
+
+### Three premises in this document were wrong, and the corrections matter more than the items
+
+**§3's Wave A file table was wrong twice.** Item 5's defect is scheduling, and the scheduler is `runPool`
+in `qa/gate/lib.mjs` called from `run-qa.mjs` — `qa/screenshot.mjs` is the per-cell worker and is innocent.
+Item 4 needed `run-checks.mjs`, where the stale read actually happens, not just `run-all.mjs`. The table
+above is corrected to what was dispatched.
+
+**Item 6 was one instance of a defect that had three.** G4 was described as "the showcase declares
+dependencies only the migrated charts use". Two more of the same shape surfaced while landing it:
+
+- Four QA files — `qa/unit/lib/render.mjs`, `resolver.test.mjs`, `scene.test.mjs`, `qa/curve-parity.mjs` —
+  reached into `showcase/node_modules/@tanstack/charts/dist/*.js` by relative path, silently relying on the
+  app declaring a dependency only the package uses. They now share one `chartsDistUrl` helper.
+- `qa/gate/run-checks.mjs` linted `packages/migrated-charts`, the directory G4 deletes. Fixing that exposed
+  a worse one: **oxlint given a path that does not exist prints "No files found to lint" and exits 0 with
+  `number_of_files` 0**, and `summarizeOxlint` read only the diagnostics array — so a stale target reported
+  `0 errors, 0 warnings, ok`. The step now records the file count and fails at zero. This is D585's failure
+  mode one seam over: an instrument reading green for the wrong reason. It catches an all-targets-missing
+  case only; a surviving target still masks a stale sibling, which is why the dead argument was removed
+  rather than left in place.
+
+**`file:./migrated` cannot work, and hoisting must not be used to make it.** pnpm puts a `file:` package's
+dependencies only in the hashed virtual store, while tsc and webpack resolve from the source files'
+realpath — 399 `TS2307`s. A real `pnpm-workspace.yaml` with `workspace:*` gives the package its own
+`node_modules` and resolution succeeds. `.npmrc` hoisting would also have silenced the errors, and was
+refused: it lets a package resolve dependencies it does not declare, which is the defect G4 exists to
+remove.
+
+### Process notes
+
+The first G4 attempt was reverted, not committed. It did the work correctly and stopped at the two
+blockers it had been fenced out of, which is the right outcome, but it left tsc at 399 errors and the
+tests at 43 / 0 / 27 / 16. Half a vector is not shippable (principle 6), so its diff was saved, `showcase/`
+was restored, `pnpm install` put the deps back, the baseline was re-verified, and items 4 and 5 were
+committed against a green tree before G4 was re-dispatched with the blockers named and ownership widened.
+
+Executor verification was treated as input, not proof (principle 5): tsc, `next build`, `pnpm test`, the
+lint file count and the empty-target guard were all re-run by the lead before each commit. Three partial
+gate run-dirs and an overwritten `qa/gate/latest/` produced by executor verification runs were removed
+before committing — a checks-only run must not be committed as if it were a gate.
+
+### Still open
+
+Wave 0 (items 1–3) remains with the repository owner: the unpushed `main`, and filing I7 and I8. A
+post-G4 residue sweep is dispatched — duplicated dependency declarations now that the package owns its
+own, D517's `__pack-smoke` leftover, and dead path references to the deleted shim. Gate 1 follows that,
+then Wave B and Wave C as written above.
