@@ -7,6 +7,14 @@ Every count below comes from `git grep … HEAD -- showcase/migrated/charts`
 
 ## 1. §6 claim-1 counts
 
+> Lead correction (wave-4 audit, D573): the raw-svg line-hit total in this
+> section reads 89, and re-running the same command at the same commit
+> (`6b2d014`) reads 90 — the table undercounts by one. At HEAD (`d724449`) it
+> reads 93: the three extra lines are the D572 shimmer mask, gradient and band
+> rect, all inside the R10 seam (`internal/resource-host.tsx:119,128,138`).
+> Every other count in this file still reads as written.
+
+
 Command stem (run from the repo root; `HEAD` = `6b2d014`):
 
 ```
