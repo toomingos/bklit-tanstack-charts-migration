@@ -152,7 +152,7 @@ Worktrees `wt/v1-host`, `wt/v2-pointer`, `wt/v3-surface`, `wt/v4-evidence`; one 
 - `<svg|<rect|<path|<circle|<g |<pattern|<radialGradient` in `showcase/migrated/charts` = 0 outside `internal/resource-host.tsx`; `createPortal` only for tooltips; `setAttribute` ≤ 4; `createElementNS` = 0.
 - Direct d3 imports limited to the R4 set; no sankey/shape/layout imports.
 - `styles.css`: one `animation` (loading pulse), no pre-hide, no transform rules on package nodes.
-- Nothing owned twice: `renderer={` = 15 (all `motion(`), `initialWidth` = 15, `svgAnimation: false` = 15, `spatialIndex` ≥ 5, `focusDisabled` = 0, `use-container-size` in chart files = 0, `idPrefix` = 15; reach-in ledger = 0; `createMark` count gated.
+- Nothing owned twice: `renderer={` = 15 (all `motion(`), `initialWidth` = 15, `svgAnimation: false` = 15, chart-owned pointer resolution ≥ 5 (D582: count definition `focus` strategies/factories + built-in `"group-x"` + `spatialIndex`; the bare `spatialIndex` grep is the wrong probe — the package resolves `focus` first, D544), `focusDisabled` = 0, `use-container-size` in chart files = 0, `idPrefix` = 15; reach-in ledger = 0; `createMark` count gated.
 
 **Claim 2, seamless swap**
 - Generated fixture green for every legacy value and type export; exceptions ≤ 3 lines (framer keyframe arrays exact but two-transition for pulses; R10 resources absent from export; none adding a dependency).

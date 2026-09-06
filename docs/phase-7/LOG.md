@@ -422,3 +422,58 @@ Three moved:
 Also noted for the next re-run: `styles.css` and `sunburst-architecture.md` match the
 raw-svg proxy (2 hits each) without being chart code, since the grep matches any
 `<g `/`<path` text.
+
+## D582 — G25: the `spatialIndex` grep was the wrong probe; §6 counts chart-owned pointer resolution instead
+
+**Ruling.** `08` §6's "`spatialIndex` ≥ 5" cannot be satisfied and never described
+the claim it was written for. `docs/reference/focus-and-interaction.md:963` and
+`dist/interaction.js:3-11` resolve a definition `focus` strategy *before*
+`spatialIndex.findNearest`, so a cartesian family that supplies a strategy would
+carry an index that is never consulted — exactly why V2.5 deleted its
+`d3-delaunay` factory as consultation-dead (D544) and why D534 stamped the focus
+strategy as the honoured seam for choropleth after `renderer.js:350` proved the
+index unreachable under mark states. Adding the literal key back to reach ≥ 5
+would be a second implementation kept for a probe (principle 2), so the probe is
+what changes, not the code. **G25 is not a code change and lands as one.**
+
+**Corrected probe** (`research/phase-7/12-census.md` §6 row, §5 reading, and
+`08-synthesis.md:155`): count what the definition actually owns for pointer
+resolution — a focus strategy, a focus factory, a built-in named strategy, or a
+spatial index. Measured at HEAD from `git grep HEAD` (committed content only):
+
+| kind | probe | sites |
+|---|---|---|
+| strategy / factory | `git grep -nE 'focus: (create[A-Z][A-Za-z]*Focus\|[a-zA-Z.]*[fF]ocusStrategy\|focusGroupAngle)' HEAD -- showcase/migrated/charts` | **9** over 8 files |
+| built-in named | `git grep -nE 'focus: "(group-x\|nearest-x)"' HEAD -- showcase/migrated/charts` | **5** |
+| spatial index | `git grep -n 'spatialIndex' HEAD -- showcase/migrated/charts` | **1** |
+| | | **15 ≥ 5 → PASS** |
+
+The 9: `candlestick-chart.tsx:244` (`candlestickFocusStrategy`),
+`choropleth-chart.tsx:377` (`createChoroplethFocus`, D534),
+`internal/bar-chart-series-marks.ts:666,755` (`barFocusStrategy`,
+`params.barFocusStrategy`), `internal/scatter-definition-assemble.ts:72`
+(`scatterFocusStrategy`), `internal/use-sunburst-definition.ts:229`
+(`createSunburstFocus`), `pie-chart.tsx:356` and `ring-chart.tsx:240`
+(`focusGroupAngle`), `radar-chart.tsx:371` (`createRadarFocus`). The 5:
+`composed-chart.tsx:266`, `internal/area-chart-definition.ts:137,591`,
+`internal/use-line-chart-spec.ts:153`, `live-line-chart.tsx:533`. The 1:
+`sankey-chart.tsx:609` (D533's pick-order index, which survives because sankey
+supplies no focus strategy).
+
+**Excluded, deliberately.** `when: { focus: "unmatched" | "primary" | "group" }`
+mark-state predicates (choropleth, funnel, bar, scatter, pie, sunburst,
+heatmap's `when` callbacks) — those are paint conditions, not resolution;
+`readonly focus:` type declarations and destructured parameters
+(`sunburst-context.tsx`, `sunburst-hint.ts`, `scatter-chart-view.tsx`,
+`sankey-mark.ts`, `parity/sunburst-geometry.ts`); and
+`internal/loading-definitions.ts:18` (`focus: false`) — the loading shell has no
+data to resolve, and it is the one deliberate opt-out. `styles.css` and
+`sunburst-architecture.md` are prose and never counted.
+
+**What this does not claim.** 15 is a count of sites, not of families: heatmap,
+funnel and gauge supply no focus option at all and resolve through the package
+default, which is parity-correct for all three (no legacy hover pick order to
+reproduce). §6's number was always a floor, not a per-family requirement.
+
+G25 closed. G26 (D571) and G28 (D580) closed the same way — the census's job was
+to find which §6 numbers measured the wrong thing.

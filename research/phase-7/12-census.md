@@ -14,7 +14,7 @@ so no untracked or ignored file can influence a number. All commands read `HEAD`
 the clone also proves the counts come from committed content only.
 
 **Unchanged from the recorded values:** `setAttribute` 3, `createElementNS` 0,
-`spatialIndex` 1 (line moved to `sankey-chart.tsx:609`), `focusDisabled` 0 in code,
+`spatialIndex` 1 (line moved to `sankey-chart.tsx:609`; superseded as a probe by D582), `focusDisabled` 0 in code,
 `use-container-size` 3, `renderer={` 28, `svgAnimation` 23 literals / 0 non-false,
 `initialWidth=` 28, `idPrefix=` 53, `createPortal` 13/6, and every d3 import count
 (shape 26/21, selection 2/1, array 1/1, scale 29/24, geo 8/4, zoom 2/1, path 0,
@@ -67,7 +67,7 @@ git grep -E -c '<svg|<rect|<path|<circle|<g |<pattern|<radialGradient' HEAD -- s
 | styles.css `transition:` | `… \| grep -n 'transition:'` | **3** (`:633`, `:704`, `:737`) | (V3.6 landed 3) | **PASS** (unchanged from D564) |
 | `renderer={` | `git grep -n 'renderer={' HEAD -- showcase/migrated/charts` | **28 sites**: 20 chart mounts + host pass-throughs + loading entries (list §3) | 15 mounts, all `motion(` | **STAMP** — 20 mounts (D561), 6 on the `useChartRenderer` cardinality regime (D567), all through the one `motion()` factory; §6 "15" predates the loading definitions + gauge/radar second mounts |
 | `svgAnimation` non-false | `git grep -n 'svgAnimation' HEAD -- showcase/migrated/charts \| grep -v false` | **0 non-false of 23 literals** | `svgAnimation: false` = 15 | **PASS** (23 literals cover all 16 families; §3) |
-| `spatialIndex` | `git grep -n 'spatialIndex' HEAD -- showcase/migrated/charts` | **1** (`sankey-chart.tsx:476`) | ≥ 5 | **FAIL** — G25: cartesian indexes pass through the package `focus` option, the grep is the wrong probe (D544, D556) |
+| chart-owned pointer resolution (was `spatialIndex`) | `git grep -nE 'focus: (create[A-Z][A-Za-z]*Focus\|[a-zA-Z.]*[fF]ocusStrategy\|focusGroupAngle)' HEAD -- showcase/migrated/charts` + `git grep -nE 'focus: "(group-x\|nearest-x)"' HEAD -- showcase/migrated/charts` + `git grep -n 'spatialIndex' HEAD -- showcase/migrated/charts` | **15**: 9 strategy/factory sites over 8 files + 5 built-in `"group-x"` sites + 1 `spatialIndex` | ≥ 5 | **PASS** — D582 replaces the `spatialIndex` grep: the package resolves a definition `focus` strategy *before* `spatialIndex` (D544), so the literal key was never the probe |
 | `focusDisabled` | `git grep -n 'focusDisabled' HEAD -- showcase/migrated/charts` | **0 in code** (2 comment mentions: `styles.css:148`, `sunburst-architecture.md:144`) | 0 | **PASS** |
 | `use-container-size` | `git grep -n 'use-container-size' HEAD -- showcase/migrated/charts` | **3 files**: `funnel-chart.tsx:8` (`usePositiveChartSize`), `line-chart-support.tsx:10` (`useDebouncedContainerSize`), `use-area-chart-setup.ts:7` (`useMeasuredRect`) | 0 in chart files | **FAIL (stamped)** — line/area read container *height* under the G16/D541 ruling; funnel keeps its hook (V3.1 did not remove the file) |
 | `initialWidth` | `git grep -n 'initialWidth=' HEAD -- showcase/migrated/charts` | **28 `initialWidth=` sites**; 14/16 entry files + 4 internal views (table §3) | 15 | **PASS by mount** — G26: §6 means mounts, not entry files |
@@ -317,12 +317,28 @@ radar/ring/sankey (no `theme:` in definition).
 
 ## 5. G25 / G26 / G30 readings
 
-- **G25** (`spatialIndex` grep reads 1, target ≥ 5): tree reads
-  `sankey-chart.tsx:476` only; V2.5 cartesian indexes pass through the package
-  `focus` option instead of the literal key (D544), so the §6 probe cannot
-  pass by grep. **Not closed by the census**: the disposition needs a probe
-  rewrite (qa/, not owned) or the literal key (chart code, not owned).
-  Row stays open with this measurement.
+- **G25 — closed by D582 (probe rewritten, no code change).** The old probe
+  grepped `spatialIndex`, which reads **1** (`sankey-chart.tsx:609`). That key
+  is not where chart-owned pointer resolution lives: `focus-and-interaction.md:963`
+  and `dist/interaction.js:3-11` resolve a definition `focus` strategy *before*
+  `spatialIndex.findNearest`, so V2.5 deleted its `d3-delaunay` factory as
+  consultation-dead (D544) and D534 stamped the same seam for choropleth. The
+  corrected probe counts what the definition actually owns — **15 sites**:
+  - 9 strategy/factory sites over 8 files: `candlestick-chart.tsx:244`
+    (`candlestickFocusStrategy`), `choropleth-chart.tsx:377`
+    (`createChoroplethFocus`), `internal/bar-chart-series-marks.ts:666,755`
+    (`barFocusStrategy`, `params.barFocusStrategy`),
+    `internal/scatter-definition-assemble.ts:72` (`scatterFocusStrategy`),
+    `internal/use-sunburst-definition.ts:229` (`createSunburstFocus`),
+    `pie-chart.tsx:356` and `ring-chart.tsx:240` (`focusGroupAngle`),
+    `radar-chart.tsx:371` (`createRadarFocus`);
+  - 5 built-in `focus: "group-x"` sites: `composed-chart.tsx:266`,
+    `internal/area-chart-definition.ts:137,591`,
+    `internal/use-line-chart-spec.ts:153`, `live-line-chart.tsx:533`;
+  - 1 `spatialIndex`: `sankey-chart.tsx:609`.
+  Excluded deliberately: `when: { focus: ... }` mark-state predicates, `readonly
+  focus:` type declarations, and `internal/loading-definitions.ts:18`
+  (`focus: false`, the loading shell has no data to resolve). 15 ≥ 5: **PASS**.
 - **G26** (`initialWidth` 12/16 entry files): tree reads **28 `initialWidth=`**
   sites (§1/§3 table): 14 entry files + area/heatmap/scatter/live-line
   internal views + loading entries + host pass-throughs. §6 "= 15" means
