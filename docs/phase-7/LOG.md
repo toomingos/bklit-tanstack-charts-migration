@@ -994,3 +994,42 @@ ownership question D589's sibling settled for the line-loading pulse: whether th
 renderer-owned or needs a React-owned exception. P2's bklit-side hook lands as-is — it is correct work
 and it is the instrument that exposed this — but the phase-freeze capture stays one-sided and must not
 be read as parity evidence until the migrated wave moves.
+
+## D591 — The loading-phase vector does not fix D588: neither half reaches the animation it targets
+
+Two mechanisms were written to make the `arealoading`/`barloading` captures deterministic and kill the
+D588 flake (arealoading/1000 hover-50: 427px isolated vs 24,407px in-gate, same code, same build).
+Run at runtime for the first time, **both fail on their own terms.**
+
+**The virtual-time budget wedges.** `Emulation.setVirtualTimePolicy` with
+`PRESET_VIRTUAL_BUDGET_MS = 30000` is installed before `goto` so both engines share one timeline. But
+once a virtual budget expires, rAF halts permanently — so if paint has not landed by then, it never
+will, `__benchPaintDone` is never set, and the wait at `qa/screenshot.mjs:397` burns its full 30s
+timeout. `arealoading --self-test` reproduces it every run:
+`page.waitForFunction: Timeout 30000ms exceeded`. The code's own comment predicted this exact wedge
+("a pre-paint expiry would wedge the paint wait below into its 30s timeout — loud, not silent"); the
+budget is simply mis-sized, and sizing it correctly is guesswork against module-load virtual burn.
+
+**The phase pin has nothing to pin.** `pinAnimationPhase` seeks every infinite-iteration player from
+`document.getAnimations()`. Self-test reports `pinned 0/0` for **both** impls on both loading presets —
+bklit *and* migrated, settled and all three hover captures. The reason is structural: bklit drives its
+loading loop through motion's JS rAF frameloop on SVG, and migrated now drives its own through the
+TanStack reconciler's rAF (`reconcileChartSvgFragment`). Neither is a CSS Animation, CSS Transition or
+WAAPI player, so `getAnimations()` returns an empty set and there is nothing to seek or pause. The
+premise that the migrated side runs `ts-bkm-loading-pulse 1.6s` CSS keyframes is stale — V3.9 moved it.
+
+**Consequence for the four `pulse-phase-*` cells.** With nothing pinned they would not be four sampled
+phases; they would be four more *phase-random* captures, added to the one chart already known to flake
+under gate load. They are gated off with the rest of the vector behind
+`QA_LOADING_PHASE_VECTOR=1` rather than fed to the gate.
+
+**What stays on, deliberately.** The settled and hover `pinAnimationPhase` calls remain live for the
+two loading presets. They add no cells and no flake, they pin nothing today, and their
+`phase pin incomplete (pinned 0/0)` warning is the signal that found this — it now fires on every run
+for as long as D588 is unfixed. Loud, not silent, and not suppressed just because it is inconvenient.
+
+**Disposition.** D588 stands unfixed. A working fix has to reach a JS-rAF loop, which means either a
+per-impl hook (the `__qaSetBarPulsePhase` precedent, and note D590 — the migrated side may have no loop
+to hook) or a clock the rAF driver itself honours (`page.clock` + manual timing, as the probes now do).
+The self-tests pass on a quiet machine either way, so a green self-test must not be read as evidence
+the flake is gone.

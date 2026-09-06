@@ -92,6 +92,44 @@ const TOOLTIPLESS_CHARTS = new Set([
   "arealoading",
   "barloading",
 ]);
+// Loading-PRESET phase pin (D588): `arealoading` and `barloading` render
+// permanently-animated skeleton chrome in the READY state (the Area/Bar...
+// Loading preset components, not `?state=loading`), so they never take the
+// reduced-motion loading path below. Their pulse/sweep loops are infinite
+// (`repeat: Infinity` WAAPI tweens on the bklit side,
+// `ts-bkm-loading-pulse 1.6s` / `ts-bkm-loading-sweep 2s` CSS keyframes on
+// the migrated side), and an unpinned capture lands at a random phase --
+// the D588 flake (arealoading/1000 hover-50: 427px isolated vs 24,407px
+// in-gate, same code, same build). Settled/hover captures for these charts
+// pin to phase 0 via pinAnimationPhase; the pulse-phase sweep below then
+// samples chosen phases on purpose (bardepth precedent).
+const LOADING_PRESET_CHARTS = new Set(["arealoading", "barloading"]);
+// Fixed fractions through the pulse cycle, mirroring bardepth's
+// `pulse-phase-<t>` labels.
+const LOADING_PIN_PHASES = [0, 0.25, 0.5, 0.75];
+// D591: this whole loading-phase vector is OFF by default because neither
+// half does what it was written to do, proven by runtime self-test:
+//   - the virtual-time budget wedges (budget expires before paint, rAF then
+//     halts for good, __benchPaintDone never set, 30s timeout every run);
+//   - pinAnimationPhase finds ZERO infinite animations on BOTH impls for
+//     arealoading ("pinned 0/0"), because bklit drives its loading loop
+//     through motion's JS rAF and migrated through the TanStack reconciler's
+//     -- neither is a WAAPI/CSS player, so getAnimations() cannot see them.
+// The 4 pulse-phase cells would therefore be 4 more PHASE-RANDOM captures on
+// the very chart D588 flaked on, so they stay off rather than feeding the
+// gate new flake surface. D588 remains unfixed; see LOG.md D591.
+const LOADING_PHASE_VECTOR = process.env.QA_LOADING_PHASE_VECTOR === "1";
+// D588 follow-up (V-c): virtual-time budget for the two loading presets,
+// in VIRTUAL milliseconds from navigation. The budget always expires at the
+// same virtual instant on both loads, so the expiry IS the deterministic
+// anchor: JS rAF loops (bklit pulse/shimmer/label), CSS keyframes (migrated
+// sweep band) and the per-pass re-roll ticks on both sides all freeze with
+// identical phases. Sized so paint always lands first (paint is ~2-5s of
+// virtual time even on loaded CI; a pre-paint expiry would wedge the paint
+// wait below into its 30s timeout -- loud, not silent). Wall cost: the
+// renderer burns the budget as-fast-as-possible, roughly tens of seconds
+// per preset load; acceptable for two charts.
+const PRESET_VIRTUAL_BUDGET_MS = 30000;
 // Funnel family: hover zones are DISCRETE equal-sized cells with dead gaps
 // between them (bklit funnel-chart.tsx: per-stage `cursor-pointer` divs at
 // `(seg+gap)*i`, gap uncovered). The default probe (fraction of svg width,
@@ -226,6 +264,103 @@ async function textLen(page) {
 }
 
 // ---------------------------------------------------------------------- //
+// Animation phase pin (D588)
+// ---------------------------------------------------------------------- //
+
+/**
+ * Seeks every INFINITE animation on the page (CSS Animations, CSS
+ * Transitions and Web Animations alike via `document.getAnimations()`) to
+ * `fraction` through its own cycle and pauses it, so a screenshot taken
+ * immediately after sees a deterministic phase on both impls with no
+ * per-chart hook. Bardepth's doctrine generalised: pin the phase for parity
+ * captures, then sample chosen phases on purpose (see LOADING_PIN_PHASES).
+ *
+ * Only infinite-iteration animations are touched
+ * (`effect.getTiming().iterations === Infinity` -- the migrated CSS pulse /
+ * sweep keyframes and bklit's `repeat: Infinity` motion sweeps): one-shot
+ * entrance/tooltip/hover transitions are finite and already covered by the
+ * existing fixed waits (HOVER_WAIT_MS et al.); seeking those to phase 0
+ * would rewind them mid-flight and change what the capture means.
+ *
+ * Late arrivals (a hover starts new transitions) are handled by calling
+ * this again immediately before EACH capture, not once per load. An idle
+ * animation whose `currentTime` setter throws is left alone. The evaluate
+ * resolves only after two animation frames have run, so the seek has
+ * painted before the caller shoots -- and it carries a post-condition
+ * recount proving the pinned state committed rather than assuming it. A
+ * short warn (never silent) fires when there was nothing to pin or the
+ * recount falls short: for a loading preset that means the flake source is
+ * NOT in getAnimations' reach (e.g. a JS-rAF-driven MotionValue loop) and
+ * the capture below is still phase-random.
+ */
+async function pinAnimationPhase(page, fraction, tag) {
+  const stats = await page.evaluate((phase) => {
+    const infiniteTiming = (animation) => {
+      let timing = null;
+      try {
+        timing = animation.effect?.getTiming?.();
+      } catch {
+        timing = null;
+      }
+      return timing && timing.iterations === Infinity ? timing : null;
+    };
+    for (const animation of document.getAnimations()) {
+      const timing = infiniteTiming(animation);
+      if (!timing) continue;
+      try {
+        const duration = timing.duration;
+        if (Number.isFinite(duration) && duration > 0) {
+          animation.currentTime = phase * duration;
+        }
+        animation.pause();
+      } catch {
+        // Idle/pending animations can reject the seek -- leave them; they
+        // hold no visible phase.
+      }
+    }
+    return new Promise((resolve) => {
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          let total = 0;
+          let verified = 0;
+          for (const animation of document.getAnimations()) {
+            if (!infiniteTiming(animation)) continue;
+            total++;
+            if (animation.playState === "paused") verified++;
+          }
+          resolve({ total, verified });
+        }),
+      );
+    });
+  }, fraction);
+  if (stats.total === 0 || stats.verified < stats.total) {
+    console.warn(
+      `[qa] ${tag}: phase pin incomplete (pinned ${stats.verified}/${stats.total}) -- capture may still be phase-random`,
+    );
+  }
+  return stats;
+}
+
+// ---------------------------------------------------------------------- //
+// Virtual-time anchor (D588 follow-up, V-c)
+// ---------------------------------------------------------------------- //
+
+/**
+ * Promise that resolves when the renderer's virtual-time budget expires
+ * (`Emulation.virtualTimeBudgetExpired`). Attach BEFORE sending the policy
+ * -- an expiry that fires before the listener exists is missed, and the
+ * capture below would hang on a settled promise instead of failing loudly.
+ * CDP-session pattern mirrors bench/run.mjs's `newCDPSession` precedent;
+ * first virtual-time use in qa/ (the markers fan capture uses
+ * addInitScript instead), scoped to the two loading presets only.
+ */
+function awaitVirtualBudgetExpired(cdp) {
+  return new Promise((resolve) => {
+    cdp.on("Emulation.virtualTimeBudgetExpired", () => resolve());
+  });
+}
+
+// ---------------------------------------------------------------------- //
 // Capture: settled screenshot + 3 fixed-coordinate hover screenshots
 // ---------------------------------------------------------------------- //
 
@@ -239,6 +374,30 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
     ...(loading ? { reducedMotion: "reduce" } : {}),
   });
   const page = await context.newPage();
+  // D588 follow-up (V-c): freeze the loading presets on a SHARED virtual
+  // timeline. Installed BEFORE goto so both engines run on virtual time
+  // from navigation: motion's JS driver (bklit's pulse/shimmer/label loops)
+  // and the compositor (migrated's CSS sweep + both sides' per-pass re-roll
+  // ticks) all advance with the same budget and expire at the same virtual
+  // instant. `pauseIfNetworkFetchesPending` keeps virtual time from outrun-
+  // ning the (self-hosted Geist) font fetch, so the label glyphs land at the
+  // same virtual instant too. Every other chart keeps real time -- the blast
+  // radius is these two charts' loads only.
+  // D591: the virtual-time budget half of this vector wedges — see LOG.md.
+  // Once the budget expires rAF halts for good, so a pre-paint expiry means
+  // __benchPaintDone is never set and the wait below burns its full 30s.
+  // arealoading/1000 reproduces it every run. Off by default; the phase pin
+  // (pinAnimationPhase) is the half that works and stays on.
+  const presetVirtual = LOADING_PHASE_VECTOR && !loading && LOADING_PRESET_CHARTS.has(chart);
+  let presetBudgetExpired = null;
+  if (presetVirtual) {
+    const cdp = await context.newCDPSession(page);
+    presetBudgetExpired = awaitVirtualBudgetExpired(cdp);
+    await cdp.send("Emulation.setVirtualTimePolicy", {
+      policy: "pauseIfNetworkFetchesPending",
+      budget: PRESET_VIRTUAL_BUDGET_MS,
+    });
+  }
   await page.goto(sceneUrl(baseUrl, { impl, chart, n, state }), { waitUntil: "commit" });
   if (chart === "legend") {
     // __benchPaintDone is set by markMountPaint AFTER an <svg> commits
@@ -246,6 +405,13 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
     // renders one, so wait on the scenario's own __benchSettled (a promise
     // resolved on double-rAF after mount) instead.
     await page.waitForFunction(() => !!window.__benchSettled, { timeout: 30000 });
+  } else if (presetVirtual) {
+    // Under an exhausted virtual-time budget rAF stops, which would hang
+    // waitForFunction's default rAF polling -- poll from Node instead. (The
+    // budget is sized to expire AFTER paint, so this normally resolves while
+    // virtual time is still flowing; the interval polling only matters on
+    // the slow-CI tail where expiry wins the race.)
+    await page.waitForFunction(() => window.__benchPaintDone === true, { timeout: 30000, polling: 100 });
   } else {
     await page.waitForFunction(() => window.__benchPaintDone === true, { timeout: 30000 });
   }
@@ -264,7 +430,22 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
   // paint/compositing (fonts, subpixel AA) to land, mirroring the original
   // self-test capture helper's timing.
   await page.waitForTimeout(200);
+  if (presetVirtual) {
+    // Deterministic anchor: the budget expires at the same virtual instant
+    // from navigation on both loads, so everything below captures a frozen
+    // page with identical loop phases. The wall-clock waits above stay
+    // harmless -- virtual time no longer advances, so they settle nothing,
+    // and the pin calls below degrade to exact seeks on already-paused CSS
+    // (kept, not reverted: they remain the CSS-phase mechanism if virtual
+    // time is ever unavailable).
+    await presetBudgetExpired;
+  }
 
+  if (LOADING_PRESET_CHARTS.has(chart)) {
+    // D588: the skeleton pulse/sweep loops never settle -- pin to phase 0
+    // so the settled capture compares a deterministic frame on both impls.
+    await pinAnimationPhase(page, 0, `${impl}/${chart} n=${n} settled`);
+  }
   const settled = await page.screenshot({ fullPage: false });
 
   // Initiative-10 (D229 ruling 9) evidence probe: the migrated dash-tail
@@ -635,6 +816,12 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
     await page.waitForTimeout(HOVER_WAIT_MS);
 
     const tooltip = await detectTooltip(page, pristineTextLen);
+    if (LOADING_PRESET_CHARTS.has(chart)) {
+      // Re-pin before EACH capture: the hover approach may have started new
+      // animations since the settled pin, and an unpinned hover capture is
+      // the exact D588 flake (arealoading/1000 hover-50).
+      await pinAnimationPhase(page, 0, `${impl}/${chart} n=${n} hover-${Math.round(fraction * 100)}`);
+    }
     const buffer = await page.screenshot({ fullPage: false });
     hovers.push({
       fraction,
@@ -644,6 +831,30 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
       tooltipCheckMethod: tooltip.method,
       buffer,
     });
+  }
+
+  // Loading-preset pulse-phase sweep (D588): the bardepth-precedent half of
+  // the doctrine -- having pinned parity captures to phase 0 above, sample
+  // fixed fractions through the pulse cycle on purpose so animation coverage
+  // goes UP, not down. Each phase seeks every infinite animation to that
+  // fraction of its OWN cycle (1.6s pulse vs 2s sweep vs bklit's WAAPI loop
+  // periods) and pauses it; no per-chart hook, no `animations: "disabled"`.
+  // The pointer stays where the hover sweep left it (same for both impls);
+  // the pin's own double-rAF is the only settle these captures need.
+  if (LOADING_PHASE_VECTOR && LOADING_PRESET_CHARTS.has(chart)) {
+    for (const t of LOADING_PIN_PHASES) {
+      await pinAnimationPhase(page, t, `${impl}/${chart} n=${n} pulse-phase-${t}`);
+      const buffer = await page.screenshot({ fullPage: false });
+      hovers.push({
+        fraction: `pulse-phase-${t}`,
+        x: 0,
+        y: 0,
+        tooltipVisible: true,
+        tooltipCheckMethod: "loading-pulse-phase-skip",
+        buffer,
+        label: `pulse-phase-${t}`,
+      });
+    }
   }
 
   // Markers-specific probes (initiative 10, D229 ruling 10), appended AFTER
