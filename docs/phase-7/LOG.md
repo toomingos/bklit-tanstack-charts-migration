@@ -830,3 +830,80 @@ receipt.
 
 **Disposition.** G19 `open` → closed by this entry: half 1 UPSTREAM (I8, code kept), half 2 RULE
 (stamped, no code change). No code changed for G19.
+
+## D588 — The 7.5 gate re-run at `3e8092d`: what it says, the one unruled QA cell that is a parallelism flake, and why the checks stage's bundle verdict moved without the tree moving
+
+The recorded 7.5 gate ran at `f9580df`. `76dbbf3` then changed five source files
+(G18 + G33 + the candlestick `height` prop), so that gate no longer described the
+tree and could not be pasted as proof. This entry records the re-run.
+
+**Setup.** Detached worktree at `3e8092d`, `docs/phase-7/gate/runs/2026-09-06T15-28-46-624Z`,
+label `7.5 final gate at 3e8092d (G18+G33+G19 closed)`, invoked as
+`pnpm gate:all -- --bench all --probes --issues`. The bare `pnpm gate:all` defaults
+are `--bench paired` and no probes stage: 10 bench cells and no probe evidence.
+Those defaults do not run the 7.5 gate, and any run that used them is not the gate.
+`tree-hash` reads `3e8092d… dirty`; the dirt is the gate's own output
+(`bench/results/`, `qa/gate/latest/`, `docs/phase-7/gate/`) and nothing else —
+`git status` filtered of those three prefixes is empty, so no source file differed
+from the commit.
+
+**Result.** All six stages exit ok in 67m44s: checks 20.7s, qa 2m54s, probes 19m38s,
+bench 44m39s, bundle 11.9s, summary 40ms. 67 issues, all of them classifications of
+already-stamped conditions.
+
+- **checks** — tsc 0, oxlint `{"problems":0,"errors":0,"warnings":0}` against a floor of 0,
+  bench-tsc 0, build ok, unit `{"pass":182,"fail":0}`, census `{"total":21,"files":12,"failures":0}`,
+  bundle-gate exit 1 `{"ok":13,"fail":30}`.
+- **qa** — 43 runs / 190 cells, gateFail 1, ruled 3, harnessFail 4, outOfRange 36,
+  tooltipFailures 0, errors 0.
+- **probes** — `{"hover-lag":4,"legend-hover-dim":4,"bardepth-toggle":0,"no-rereveal":0}`,
+  errors 0. Cell for cell the same as the recorded 7.5 gate: the sizing fix moved no probe.
+- **bench** — 29 cells, 0 skipped, 8 flagged at ±20%, consoleErrors 0, tooltipMissing 0,
+  failedInvocations 0.
+- **bundle** — 43 pinned, 30 FAIL, 0 missing, Σgzip 6,594,929 vs Σpin 5,605,143 (+17.66%),
+  ratioOver 41/43, worst `migrated/sunburst` 1.608.
+
+**The one unruled QA cell is a parallelism flake, and it does not get a ruling.**
+`arealoading/1000 hover-50` read 24,407 px against history `[378, 3683]`. Re-run
+isolated in the same worktree, `node qa/screenshot.mjs --chart arealoading --n 1000`:
+settled 0.0754%, hover-30 0.0729%, **hover-50 0.0445%** (≈427 px), hover-70 0.0505%
+— overall PASS, and the hover-50 value lands inside the history it "failed". Under
+four workers the loading pulse is captured at a different animation phase; this is
+the same class as the `choropleth/100` flake re-verified earlier this window, and the
+same physics D498 stamped for `barloading`. It is *not* the same disposition. The
+`barloading` rulings in `qa/gate/rulings.json` exist because those cells fail
+*consistently*, at a stable magnitude, with no isolated-run that passes. `arealoading`
+passes isolated. Adding a bound of 24,407 to a cell that normally reads ~400 px would
+blind the gate to a two-order-of-magnitude regression on that cell forever, to buy a
+cosmetically clean verdict for one run. Under principle 5 the evidence is the isolated
+re-run, not the bound. No ruling is added; the standing defect is the harness — loading
+cells should not be scheduled against three siblings — and that belongs to the QA
+harness, not to the parity claims.
+
+So the QA verdict for this gate reads: **gateFail 1, of which 0 are parity defects
+and 0 are unexplained** — three ruled (radar/6 D535, sankey/33 D498, barloading/100
+D498) plus one demonstrated harness flake.
+
+**The checks stage's bundle verdict moved without the tree moving, and that is an
+ordering artifact.** In the recorded gate the checks stage reported bundle-gate ok;
+here it reports exit 1, 30 FAIL. Nothing regressed between the two. `scripts/bundle-gate.mjs`
+compares `bench/results/bundle-sizes.json` against the pins in `bench/results/bundle-gate.json`,
+and `bundle-sizes.json` is a *working file the bundle stage rewrites*, not an input —
+`git status` in the gate worktree lists it as modified after every run. Stage order in
+`qa/gate/run-all.mjs` is checks → qa → probes → bench → bundle → summary, so the checks
+stage always reads whatever the *previous* run left behind. In the recorded gate that
+was the git-tracked, pre-V3.9, Sep-5 file whose values match its own pins by construction,
+so checks read ok; the bundle stage then re-measured and read 30 FAIL. Here a prior run
+in the same worktree had already left real measurements, so checks read the 30 FAIL up
+front. One fact, two pipeline positions. The fact is D585's, unchanged and already
+stamped: the pins are pre-V3.9 and re-pinning is a formal adoption owed its own D-entry.
+The honest statement of this gate's checks stage is therefore "tsc, lint, bench-tsc,
+build, unit and census all clean; bundle-gate fails against stale pins per D585" — not
+"checks all ok". A gate whose verdict depends on which run went before it is a defect in
+the gate; it is recorded here rather than fixed, because fixing it means re-pinning, and
+re-pinning is the adoption D585 deferred.
+
+**Disposition.** The 7.5 gate has run at `3e8092d` with the correct flags. Every failing
+cell in it is a stamped condition (D498, D535, D585) or a demonstrated harness flake.
+No new parity defect, in any of the 190 QA cells, 4 probe suites, 29 bench cells or the
+census, is attributable to the code that changed since the recorded gate.

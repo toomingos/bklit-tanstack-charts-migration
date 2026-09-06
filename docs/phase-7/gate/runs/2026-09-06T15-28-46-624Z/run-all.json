@@ -1,0 +1,38 @@
+{
+  "label": "7.5 final gate at 3e8092d (G18+G33+G19 closed)",
+  "runDir": "docs/phase-7/gate/runs/2026-09-06T15-28-46-624Z",
+  "wallClockMs": 4064183,
+  "stages": [
+    {
+      "name": "checks",
+      "ok": true,
+      "durationMs": 20669
+    },
+    {
+      "name": "qa",
+      "ok": true,
+      "durationMs": 174499
+    },
+    {
+      "name": "probes",
+      "ok": true,
+      "durationMs": 1178416
+    },
+    {
+      "name": "bench",
+      "ok": true,
+      "durationMs": 2678630
+    },
+    {
+      "name": "bundle",
+      "ok": true,
+      "durationMs": 11927
+    },
+    {
+      "name": "summary",
+      "ok": true,
+      "durationMs": 40
+    }
+  ],
+  "issues": 67
+}

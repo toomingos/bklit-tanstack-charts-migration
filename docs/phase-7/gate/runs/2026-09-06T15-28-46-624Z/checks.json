@@ -1,0 +1,104 @@
+{
+  "generatedAt": "2026-09-06T15:29:07.392Z",
+  "runDir": "docs/phase-7/gate/runs/2026-09-06T15-28-46-624Z",
+  "checks": [
+    {
+      "name": "tsc",
+      "cmd": "npx tsc --noEmit",
+      "cwd": "showcase",
+      "exit": 0,
+      "durationMs": 1933,
+      "summary": {
+        "errors": 0
+      },
+      "lastLine": "npm warn Unknown env config \"node-linker\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
+      "log": "docs/phase-7/gate/runs/2026-09-06T15-28-46-624Z/logs/checks/tsc.log"
+    },
+    {
+      "name": "lint",
+      "cmd": "npx oxlint --type-aware --deny-warnings --format=json migrated packages/migrated-charts",
+      "cwd": "showcase",
+      "exit": 0,
+      "durationMs": 7350,
+      "summary": {
+        "problems": 0,
+        "errors": 0,
+        "warnings": 0,
+        "topRules": []
+      },
+      "lastLine": "            }",
+      "log": "docs/phase-7/gate/runs/2026-09-06T15-28-46-624Z/logs/checks/lint.log",
+      "floor": 0,
+      "floored": true
+    },
+    {
+      "name": "bench-tsc",
+      "cmd": "npx tsc --noEmit -p tsconfig.json",
+      "cwd": "bench/app",
+      "exit": 0,
+      "durationMs": 4602,
+      "summary": {
+        "errors": 0
+      },
+      "lastLine": "npm warn Unknown env config \"node-linker\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.",
+      "log": "docs/phase-7/gate/runs/2026-09-06T15-28-46-624Z/logs/checks/bench-tsc.log"
+    },
+    {
+      "name": "build",
+      "cmd": "npm run build",
+      "cwd": "bench/app",
+      "exit": 0,
+      "durationMs": 3993,
+      "summary": {
+        "ok": true
+      },
+      "lastLine": "✓ built in 3.51s",
+      "log": "docs/phase-7/gate/runs/2026-09-06T15-28-46-624Z/logs/checks/build.log"
+    },
+    {
+      "name": "unit",
+      "cmd": "pnpm test",
+      "cwd": "",
+      "exit": 0,
+      "durationMs": 2531,
+      "summary": {
+        "pass": 182,
+        "fail": 0
+      },
+      "lastLine": "  }",
+      "log": "docs/phase-7/gate/runs/2026-09-06T15-28-46-624Z/logs/checks/unit.log"
+    },
+    {
+      "name": "census",
+      "cmd": "node scripts/reach-in-guard.mjs --json",
+      "cwd": "",
+      "exit": 0,
+      "durationMs": 132,
+      "summary": {
+        "total": 21,
+        "files": 12,
+        "failures": 0
+      },
+      "lastLine": "}",
+      "log": "docs/phase-7/gate/runs/2026-09-06T15-28-46-624Z/logs/checks/census.log"
+    },
+    {
+      "name": "bundle-gate",
+      "cmd": "node scripts/bundle-gate.mjs",
+      "cwd": "",
+      "exit": 1,
+      "durationMs": 68,
+      "summary": {
+        "ok": 13,
+        "fail": 30
+      },
+      "lastLine": "[bundle-gate] FAILED (30)",
+      "log": "docs/phase-7/gate/runs/2026-09-06T15-28-46-624Z/logs/checks/bundle-gate.log"
+    }
+  ],
+  "summary": {
+    "failed": [
+      "bundle-gate"
+    ]
+  }
+}

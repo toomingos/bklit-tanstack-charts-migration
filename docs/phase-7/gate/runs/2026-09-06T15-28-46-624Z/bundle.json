@@ -1,0 +1,1538 @@
+{
+  "generatedAt": "2026-09-06T16:36:30.864Z",
+  "runDir": "docs/phase-7/gate/runs/2026-09-06T15-28-46-624Z",
+  "measured": true,
+  "measureExit": 0,
+  "measureMs": 11855,
+  "gateExit": 1,
+  "gateStdoutTail": [
+    "  FAIL  migrated/sunburst        gzip   137.3 kB  pin    97.5 kB  limit   100.4 kB  +40.8%",
+    "  FAIL  migrated/sunchrome       gzip   138.1 kB  pin    98.1 kB  limit   101.1 kB  +40.7%",
+    "[bundle-gate] FAILED (30)"
+  ],
+  "pinnedAt": "2026-09-05 HEAD 61d6179 (V0.3 baseline, @tanstack/charts 0.16.0; previous pin 2026-09-01 c1e9ced)",
+  "tolerancePct": 3,
+  "parityLimit": 1.1,
+  "cssMeasured": true,
+  "summary": {
+    "pinned": 43,
+    "fail": 30,
+    "missing": 0,
+    "measureFailed": 0,
+    "sumGzip": 6594929,
+    "sumPin": 5605143,
+    "sumDeltaPct": 17.66,
+    "maxDelta": {
+      "scenario": "migrated/barloading",
+      "deltaPct": 3323.32
+    },
+    "ratioCells": 43,
+    "ratioOver": 41,
+    "ratioNoControl": 0,
+    "maxRatio": {
+      "scenario": "migrated/sunburst",
+      "ratio": 1.608
+    }
+  },
+  "rows": [
+    {
+      "scenario": "migrated/area",
+      "gzip": 173167,
+      "raw": 509669,
+      "pin": 168043,
+      "limit": 173084,
+      "deltaPct": 3.05,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/arealoading",
+      "gzip": 86177,
+      "raw": 252954,
+      "pin": 127922,
+      "limit": 131760,
+      "deltaPct": -32.63,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/areamultiaxis",
+      "gzip": 173270,
+      "raw": 509902,
+      "pin": 168116,
+      "limit": 173159,
+      "deltaPct": 3.07,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/bar",
+      "gzip": 161041,
+      "raw": 474695,
+      "pin": 134546,
+      "limit": 138582,
+      "deltaPct": 19.69,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/bardepth",
+      "gzip": 161260,
+      "raw": 475523,
+      "pin": 134747,
+      "limit": 138789,
+      "deltaPct": 19.68,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/barloading",
+      "gzip": 83837,
+      "raw": 246103,
+      "pin": 2449,
+      "limit": 2522,
+      "deltaPct": 3323.32,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/barmultiaxis",
+      "gzip": 161103,
+      "raw": 474815,
+      "pin": 134603,
+      "limit": 138641,
+      "deltaPct": 19.69,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/barsquares",
+      "gzip": 173389,
+      "raw": 508543,
+      "pin": 146726,
+      "limit": 151128,
+      "deltaPct": 18.17,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/brush",
+      "gzip": 180795,
+      "raw": 528206,
+      "pin": 178442,
+      "limit": 183795,
+      "deltaPct": 1.32,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/candlestick",
+      "gzip": 154710,
+      "raw": 451072,
+      "pin": 127176,
+      "limit": 130991,
+      "deltaPct": 21.65,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/candlestick-legend",
+      "gzip": 165694,
+      "raw": 484614,
+      "pin": 137813,
+      "limit": 141947,
+      "deltaPct": 20.23,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/candletween",
+      "gzip": 154781,
+      "raw": 451170,
+      "pin": 127244,
+      "limit": 131061,
+      "deltaPct": 21.64,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/choropleth",
+      "gzip": 152133,
+      "raw": 432799,
+      "pin": 119026,
+      "limit": 122597,
+      "deltaPct": 27.81,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/composed",
+      "gzip": 165372,
+      "raw": 484819,
+      "pin": 140194,
+      "limit": 144400,
+      "deltaPct": 17.96,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/composedmultiaxis",
+      "gzip": 165436,
+      "raw": 484964,
+      "pin": 140253,
+      "limit": 144461,
+      "deltaPct": 17.96,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/composedstacked",
+      "gzip": 165361,
+      "raw": 484717,
+      "pin": 140180,
+      "limit": 144385,
+      "deltaPct": 17.96,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/funnel",
+      "gzip": 128336,
+      "raw": 366305,
+      "pin": 48669,
+      "limit": 50129,
+      "deltaPct": 163.69,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/funnelvertical",
+      "gzip": 128353,
+      "raw": 366344,
+      "pin": 48688,
+      "limit": 50149,
+      "deltaPct": 163.62,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/gauge",
+      "gzip": 145019,
+      "raw": 422176,
+      "pin": 104637,
+      "limit": 107776,
+      "deltaPct": 38.59,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/gaugelinear",
+      "gzip": 145121,
+      "raw": 422302,
+      "pin": 104744,
+      "limit": 107886,
+      "deltaPct": 38.55,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/griddefault",
+      "gzip": 172761,
+      "raw": 504584,
+      "pin": 170324,
+      "limit": 175434,
+      "deltaPct": 1.43,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/heatmap",
+      "gzip": 141906,
+      "raw": 408705,
+      "pin": 105621,
+      "limit": 108790,
+      "deltaPct": 34.35,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/legend",
+      "gzip": 12594,
+      "raw": 37697,
+      "pin": 12434,
+      "limit": 12807,
+      "deltaPct": 1.29,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/legendhover",
+      "gzip": 197410,
+      "raw": 586436,
+      "pin": 174096,
+      "limit": 179319,
+      "deltaPct": 13.39,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/line",
+      "gzip": 172829,
+      "raw": 504672,
+      "pin": 170390,
+      "limit": 175502,
+      "deltaPct": 1.43,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/linemultiaxis",
+      "gzip": 172882,
+      "raw": 504852,
+      "pin": 170469,
+      "limit": 175583,
+      "deltaPct": 1.42,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/liveline",
+      "gzip": 152803,
+      "raw": 439183,
+      "pin": 125519,
+      "limit": 129285,
+      "deltaPct": 21.74,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/markers",
+      "gzip": 183667,
+      "raw": 539266,
+      "pin": 181897,
+      "limit": 187354,
+      "deltaPct": 0.97,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/patternarea",
+      "gzip": 173236,
+      "raw": 509829,
+      "pin": 168100,
+      "limit": 173143,
+      "deltaPct": 3.06,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/pie",
+      "gzip": 131765,
+      "raw": 376238,
+      "pin": 92430,
+      "limit": 95203,
+      "deltaPct": 42.56,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/profitloss",
+      "gzip": 180929,
+      "raw": 529182,
+      "pin": 178434,
+      "limit": 183787,
+      "deltaPct": 1.4,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/projection",
+      "gzip": 175888,
+      "raw": 513487,
+      "pin": 173485,
+      "limit": 178690,
+      "deltaPct": 1.39,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/projectionxdomain",
+      "gzip": 175945,
+      "raw": 513572,
+      "pin": 173534,
+      "limit": 178740,
+      "deltaPct": 1.39,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/radar",
+      "gzip": 134400,
+      "raw": 386725,
+      "pin": 103613,
+      "limit": 106721,
+      "deltaPct": 29.71,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/refarea",
+      "gzip": 172876,
+      "raw": 504823,
+      "pin": 170480,
+      "limit": 175594,
+      "deltaPct": 1.41,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/refareamultiaxis",
+      "gzip": 173016,
+      "raw": 505111,
+      "pin": 170607,
+      "limit": 175725,
+      "deltaPct": 1.41,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/ring",
+      "gzip": 141569,
+      "raw": 405359,
+      "pin": 102295,
+      "limit": 105364,
+      "deltaPct": 38.39,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/sankey",
+      "gzip": 143750,
+      "raw": 411258,
+      "pin": 104293,
+      "limit": 107422,
+      "deltaPct": 37.83,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/scatter",
+      "gzip": 152744,
+      "raw": 444369,
+      "pin": 126075,
+      "limit": 129857,
+      "deltaPct": 21.15,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/scattermultiaxis",
+      "gzip": 152763,
+      "raw": 444385,
+      "pin": 126095,
+      "limit": 129878,
+      "deltaPct": 21.15,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/segment",
+      "gzip": 172877,
+      "raw": 505006,
+      "pin": 170460,
+      "limit": 175574,
+      "deltaPct": 1.42,
+      "verdict": "ok"
+    },
+    {
+      "scenario": "migrated/sunburst",
+      "gzip": 140576,
+      "raw": 398618,
+      "pin": 99807,
+      "limit": 102801,
+      "deltaPct": 40.85,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/sunchrome",
+      "gzip": 141388,
+      "raw": 400264,
+      "pin": 100467,
+      "limit": 103481,
+      "deltaPct": 40.73,
+      "verdict": "FAIL"
+    },
+    {
+      "scenario": "bklit/area",
+      "gzip": 136508,
+      "raw": 392836,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/arealoading",
+      "gzip": 90835,
+      "raw": 268332,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/areamultiaxis",
+      "gzip": 136590,
+      "raw": 393069,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/bar",
+      "gzip": 121716,
+      "raw": 350432,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/bardepth",
+      "gzip": 124441,
+      "raw": 359746,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/barloading",
+      "gzip": 70063,
+      "raw": 210225,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/barmultiaxis",
+      "gzip": 121779,
+      "raw": 350552,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/barsquares",
+      "gzip": 127321,
+      "raw": 368279,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/brush",
+      "gzip": 151525,
+      "raw": 442298,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/candlestick-legend",
+      "gzip": 128452,
+      "raw": 367827,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/candlestick",
+      "gzip": 124781,
+      "raw": 357327,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/candletween",
+      "gzip": 124853,
+      "raw": 357425,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/choropleth",
+      "gzip": 119551,
+      "raw": 340272,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/composed",
+      "gzip": 139058,
+      "raw": 399506,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/composedmultiaxis",
+      "gzip": 139146,
+      "raw": 399651,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/composedstacked",
+      "gzip": 139095,
+      "raw": 399524,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/funnel",
+      "gzip": 90965,
+      "raw": 262607,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/funnelvertical",
+      "gzip": 90982,
+      "raw": 262646,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/gauge",
+      "gzip": 100795,
+      "raw": 290188,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/gaugelinear",
+      "gzip": 100900,
+      "raw": 290314,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/griddefault",
+      "gzip": 136221,
+      "raw": 392021,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/heatmap",
+      "gzip": 123718,
+      "raw": 353706,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/legend",
+      "gzip": 11657,
+      "raw": 34545,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/legendhover",
+      "gzip": 148750,
+      "raw": 425995,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/line",
+      "gzip": 136280,
+      "raw": 392109,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/linemultiaxis",
+      "gzip": 136344,
+      "raw": 392289,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/liveline",
+      "gzip": 123209,
+      "raw": 350841,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/markers",
+      "gzip": 145356,
+      "raw": 415558,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/patternarea",
+      "gzip": 138299,
+      "raw": 398992,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/pie",
+      "gzip": 97053,
+      "raw": 276245,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/profitloss",
+      "gzip": 138423,
+      "raw": 398048,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/projection",
+      "gzip": 138627,
+      "raw": 398456,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/projectionxdomain",
+      "gzip": 138713,
+      "raw": 398541,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/radar",
+      "gzip": 106927,
+      "raw": 309965,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/refarea",
+      "gzip": 139220,
+      "raw": 401391,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/refareamultiaxis",
+      "gzip": 139326,
+      "raw": 401679,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/ring",
+      "gzip": 103908,
+      "raw": 296392,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/sankey",
+      "gzip": 100947,
+      "raw": 286160,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/scatter",
+      "gzip": 123780,
+      "raw": 354104,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/scattermultiaxis",
+      "gzip": 123798,
+      "raw": 354120,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/segment",
+      "gzip": 138331,
+      "raw": 397505,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/sunburst",
+      "gzip": 87399,
+      "raw": 247187,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "bklit/sunchrome",
+      "gzip": 88013,
+      "raw": 248449,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/area",
+      "gzip": 88781,
+      "raw": 246431,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/bar",
+      "gzip": 83286,
+      "raw": 229332,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/candlestick",
+      "gzip": 84278,
+      "raw": 234804,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/choropleth",
+      "gzip": 79101,
+      "raw": 215632,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/composed",
+      "gzip": 91486,
+      "raw": 254454,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/funnel",
+      "gzip": 83063,
+      "raw": 228504,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/funnelvertical",
+      "gzip": 83070,
+      "raw": 228517,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/gauge",
+      "gzip": 73250,
+      "raw": 200454,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/gaugelinear",
+      "gzip": 79639,
+      "raw": 217347,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/heatmap",
+      "gzip": 74788,
+      "raw": 205223,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/line",
+      "gzip": 86650,
+      "raw": 241273,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/liveline",
+      "gzip": 84495,
+      "raw": 235068,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/pie",
+      "gzip": 73394,
+      "raw": 201223,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/radar",
+      "gzip": 83038,
+      "raw": 231277,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/ring",
+      "gzip": 73389,
+      "raw": 200573,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/sankey",
+      "gzip": 72245,
+      "raw": 199141,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/scatter",
+      "gzip": 84613,
+      "raw": 235792,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    },
+    {
+      "scenario": "tanstack/sunburst",
+      "gzip": 73573,
+      "raw": 201059,
+      "pin": null,
+      "limit": null,
+      "deltaPct": null,
+      "verdict": "info"
+    }
+  ],
+  "parity": [
+    {
+      "scenario": "migrated/sunburst",
+      "migratedGzip": 140576,
+      "bklitGzip": 87399,
+      "ratio": 1.608,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/sunchrome",
+      "migratedGzip": 141388,
+      "bklitGzip": 88013,
+      "ratio": 1.606,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/gauge",
+      "migratedGzip": 145019,
+      "bklitGzip": 100795,
+      "ratio": 1.439,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/gaugelinear",
+      "migratedGzip": 145121,
+      "bklitGzip": 100900,
+      "ratio": 1.438,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/sankey",
+      "migratedGzip": 143750,
+      "bklitGzip": 100947,
+      "ratio": 1.424,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/funnel",
+      "migratedGzip": 128336,
+      "bklitGzip": 90965,
+      "ratio": 1.411,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/funnelvertical",
+      "migratedGzip": 128353,
+      "bklitGzip": 90982,
+      "ratio": 1.411,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/barsquares",
+      "migratedGzip": 173389,
+      "bklitGzip": 127321,
+      "ratio": 1.362,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/ring",
+      "migratedGzip": 141569,
+      "bklitGzip": 103908,
+      "ratio": 1.362,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/pie",
+      "migratedGzip": 131765,
+      "bklitGzip": 97053,
+      "ratio": 1.358,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/legendhover",
+      "migratedGzip": 197410,
+      "bklitGzip": 148750,
+      "ratio": 1.327,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/bar",
+      "migratedGzip": 161041,
+      "bklitGzip": 121716,
+      "ratio": 1.323,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/barmultiaxis",
+      "migratedGzip": 161103,
+      "bklitGzip": 121779,
+      "ratio": 1.323,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/profitloss",
+      "migratedGzip": 180929,
+      "bklitGzip": 138423,
+      "ratio": 1.307,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/bardepth",
+      "migratedGzip": 161260,
+      "bklitGzip": 124441,
+      "ratio": 1.296,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/candlestick-legend",
+      "migratedGzip": 165694,
+      "bklitGzip": 128452,
+      "ratio": 1.29,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/choropleth",
+      "migratedGzip": 152133,
+      "bklitGzip": 119551,
+      "ratio": 1.273,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/area",
+      "migratedGzip": 173167,
+      "bklitGzip": 136508,
+      "ratio": 1.269,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/areamultiaxis",
+      "migratedGzip": 173270,
+      "bklitGzip": 136590,
+      "ratio": 1.269,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/projection",
+      "migratedGzip": 175888,
+      "bklitGzip": 138627,
+      "ratio": 1.269,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/griddefault",
+      "migratedGzip": 172761,
+      "bklitGzip": 136221,
+      "ratio": 1.268,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/line",
+      "migratedGzip": 172829,
+      "bklitGzip": 136280,
+      "ratio": 1.268,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/linemultiaxis",
+      "migratedGzip": 172882,
+      "bklitGzip": 136344,
+      "ratio": 1.268,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/projectionxdomain",
+      "migratedGzip": 175945,
+      "bklitGzip": 138713,
+      "ratio": 1.268,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/markers",
+      "migratedGzip": 183667,
+      "bklitGzip": 145356,
+      "ratio": 1.264,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/radar",
+      "migratedGzip": 134400,
+      "bklitGzip": 106927,
+      "ratio": 1.257,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/patternarea",
+      "migratedGzip": 173236,
+      "bklitGzip": 138299,
+      "ratio": 1.253,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/segment",
+      "migratedGzip": 172877,
+      "bklitGzip": 138331,
+      "ratio": 1.25,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/refarea",
+      "migratedGzip": 172876,
+      "bklitGzip": 139220,
+      "ratio": 1.242,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/refareamultiaxis",
+      "migratedGzip": 173016,
+      "bklitGzip": 139326,
+      "ratio": 1.242,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/candlestick",
+      "migratedGzip": 154710,
+      "bklitGzip": 124781,
+      "ratio": 1.24,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/candletween",
+      "migratedGzip": 154781,
+      "bklitGzip": 124853,
+      "ratio": 1.24,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/liveline",
+      "migratedGzip": 152803,
+      "bklitGzip": 123209,
+      "ratio": 1.24,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/scatter",
+      "migratedGzip": 152744,
+      "bklitGzip": 123780,
+      "ratio": 1.234,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/scattermultiaxis",
+      "migratedGzip": 152763,
+      "bklitGzip": 123798,
+      "ratio": 1.234,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/barloading",
+      "migratedGzip": 83837,
+      "bklitGzip": 70063,
+      "ratio": 1.197,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/brush",
+      "migratedGzip": 180795,
+      "bklitGzip": 151525,
+      "ratio": 1.193,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/composed",
+      "migratedGzip": 165372,
+      "bklitGzip": 139058,
+      "ratio": 1.189,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/composedmultiaxis",
+      "migratedGzip": 165436,
+      "bklitGzip": 139146,
+      "ratio": 1.189,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/composedstacked",
+      "migratedGzip": 165361,
+      "bklitGzip": 139095,
+      "ratio": 1.189,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/heatmap",
+      "migratedGzip": 141906,
+      "bklitGzip": 123718,
+      "ratio": 1.147,
+      "ratioVerdict": "FAIL"
+    },
+    {
+      "scenario": "migrated/legend",
+      "migratedGzip": 12594,
+      "bklitGzip": 11657,
+      "ratio": 1.08,
+      "ratioVerdict": "ok"
+    },
+    {
+      "scenario": "migrated/arealoading",
+      "migratedGzip": 86177,
+      "bklitGzip": 90835,
+      "ratio": 0.949,
+      "ratioVerdict": "ok"
+    }
+  ],
+  "css": [
+    {
+      "scenario": "migrated/area",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/arealoading",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/areamultiaxis",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/bar",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/bardepth",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/barloading",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/barmultiaxis",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/barsquares",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/brush",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/candlestick-legend",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/candlestick",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/candletween",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/choropleth",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/composed",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/composedmultiaxis",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/composedstacked",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/funnel",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/funnelvertical",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/gauge",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/gaugelinear",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/griddefault",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/heatmap",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/legend",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/legendhover",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/line",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/linemultiaxis",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/liveline",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/markers",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/patternarea",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/pie",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/profitloss",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/projection",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/projectionxdomain",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/radar",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/refarea",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/refareamultiaxis",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/ring",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/sankey",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/scatter",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/scattermultiaxis",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/segment",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/sunburst",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    },
+    {
+      "scenario": "migrated/sunchrome",
+      "migratedCss": 2087,
+      "bklitCss": 0,
+      "ratio": null
+    }
+  ]
+}
