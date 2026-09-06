@@ -2,7 +2,7 @@
 // Split from ring-chart so ring-center imports without a chart-level cycle.
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
-import type { RingEnterTransition } from "./enter-transition";
+import type { RingEnterTransition } from "./parity/animation";
 import { createHoverSource } from "./hover-motion";
 import type { HoverSource } from "./hover-motion";
 

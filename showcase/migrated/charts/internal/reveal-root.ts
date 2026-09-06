@@ -1,4 +1,4 @@
-// Reveal-root resolution and stamp helpers for deferred-reveal.ts.
+// Reveal-root resolution and stamp helpers for the reveal hooks.
 // Read/stamp split is deliberate: callers stamp only on one branch; stamping on read would mis-mark charts that skip.
 
 /** Reveal-root element. `SVGElement`, not just `HTMLElement`: marks groups and svg roots fail `instanceof HTMLElement`. */

@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { resolveEnterTransition, TWEEN_FALLBACK } from "./enter-transition";
-import type { CandlestickEnterTransition } from "./enter-transition";
+import { resolveEnterTransition, TWEEN_FALLBACK } from "./parity/animation";
+import type { CandlestickEnterTransition } from "./parity/animation";
 import { extractSegmentComponents, useChartSelection } from "./chart-selection";
 import type { ChartSelection, SegmentComponent } from "./chart-selection";
 import { findCandleTimeExtent, findCandleYExtremes } from "./candlestick-chart-scales";

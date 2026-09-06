@@ -541,6 +541,7 @@ const LiveLineChart = ({
         x: xScaleOptions,
         y: yScaleOptions,
       },
+      svgAnimation: false as const,
       theme: { muted: "var(--color-chart-label, var(--chart-label))" },
       tooltip: buildLiveTooltipOption({ enabled: tooltipOn }),
     });

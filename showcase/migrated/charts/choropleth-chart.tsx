@@ -33,9 +33,9 @@ import { useChoroplethPaths } from "./internal/use-choropleth-paths";
 import { intFmt } from "./internal/formatters";
 import { ChoroplethGraticuleOverlay } from "./internal/choropleth-graticule";
 import type { ChoroplethGraticuleProps } from "./internal/choropleth-graticule-props";
-import { findRevealRoot, isRevealed } from "./internal/deferred-reveal";
+import { findRevealRoot, isRevealed } from "./internal/reveal-root";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
-import type { EnterTransition } from './internal/enter-transition';
+import type { EnterTransition } from './internal/parity/animation';
 import "./styles.css";
 
 // Open-ended GeoJSON property bag (legacy shape: unknown values; only `name`/`id` read).
@@ -380,8 +380,6 @@ const buildChoroplethDefinition = (
         fill: painters.fill,
         id: "choropleth",
         key: choroplethFeatureKey,
-        // Native motion suppressed per-mark so the default enter fade never races the app-owned group fade.
-        motion: false,
         projection: () => projForMark,
         stroke: painters.stroke,
         strokeOpacity: 1,
@@ -389,6 +387,7 @@ const buildChoroplethDefinition = (
       }), data.features, choroplethFocusStates({ dimOpacity, featureConfig })),
     ],
     scales: { x: null, y: null },
+    svgAnimation: false as const,
     // Tooltip is instant-mount/instant-unmount (sticky/motion false), matching the retired box.
     tooltip: hasTooltipChild
       ? {
@@ -786,16 +785,10 @@ const ChoroplethChartBody = ({
     if (animationDuration <= 0) {return undefined;}
     const fallbackContainer = containerRefForFallback.current;
     if (!fallbackContainer) {return undefined;}
-    const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (revealHasRevealed()) {return;}
-        if (!fallbackContainer.querySelector(".ts-chart__marks")) {return;}
-        if (isRevealed(findRevealRoot(fallbackContainer, TS_CHART_SVG_SELECTOR))) {return;}
-        if (fallbackContainer.getAnimations().length > 0) {return;}
-        replayRenderEvent(fallbackContainer);
-      });
-    });
-    return (): void =>{  cancelAnimationFrame(raf); };
+    if (!fallbackContainer.querySelector(".ts-chart__marks")) {return undefined;}
+    if (isRevealed(findRevealRoot(fallbackContainer, TS_CHART_SVG_SELECTOR))) {return undefined;}
+    replayRenderEvent(fallbackContainer);
+    return undefined;
   }, [animationDuration, revealHasRevealed]);
 
   // Patterns arrive as conditional JSX, so false and null mean absent just like undefined.

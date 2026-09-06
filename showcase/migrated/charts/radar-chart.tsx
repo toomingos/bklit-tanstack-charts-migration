@@ -1,4 +1,4 @@
-// Bklit RadarChart on TanStack polar marks; area/dot entrance is native motion, grid reveal stays WAAPI.
+// Bklit RadarChart on TanStack polar marks; area/dot/grid entrance is renderer motion.
 import {
   Children,
   Fragment,
@@ -31,18 +31,16 @@ import type { RadarAxisProps } from "./internal/radar-axis-child";
 import type { RadarGridProps } from "./internal/radar-grid-child";
 import type { RadarLabelsProps } from "./internal/radar-labels-child";
 import {
-  buildProgressKeyframes as buildRadarProgressKeyframes,
-  revealTiming as radarRevealTiming,
+  clipRevealTiming,
   resolveEnterTransition as resolveRadarEnterTransition,
-} from "./internal/enter-transition";
-import type { RadarEnterTransition } from "./internal/enter-transition";
+} from "./internal/parity/animation";
+import type { ClipReveal, RadarEnterTransition } from "./internal/parity/animation";
+import { REVEAL_DURATION_MS, REVEAL_EASE_CSS } from "./internal/design-tokens";
 import { bklitRadarGrid, radarMotionTransition } from "./internal/radar-reveal";
 import type { RadarRow } from "./internal/radar-reveal";
 import {
   estimateSpringSettleMs,
-  sampleSpringProgress,
 } from "./internal/radar-spring";
-import { onPostPaint, setRevealDeadline } from "./internal/deferred-reveal";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import "./styles.css";
 
@@ -70,18 +68,8 @@ const Z_PAD = 5;
 // Selector for the TanStack marks group rendered inside the chart container.
 const MARKS_GROUP_SELECTOR = ".ts-chart__marks";
 
-// WAAPI reveal never stomps live TanStack motions: bail while the renderer is mid-reconcile.
-const hasLiveRevealAnims = (container: HTMLElement): boolean => {
-  const els = container.querySelectorAll('[data-ts-key^="radar-area:"]');
-  for (const el of els) {
-    if (el.getAnimations().length > 0) {return true;}
-  }
-  const fallback = container.querySelectorAll(".ts-chart__radial-area path");
-  for (const el of fallback) {
-    if (el.getAnimations().length > 0) {return true;}
-  }
-  return false;
-}
+// No live WAAPI writers remain: grid, spokes, and labels enter through the renderer.
+const hasLiveRevealAnims = (_container: HTMLElement): boolean => false;
 
 const FILL_OPACITY_HOVER = 0.35;
 const FILL_OPACITY_REST = 0.15;
@@ -115,18 +103,6 @@ const RADAR_GRID_STROKE_OPACITY = 0.6;
 const LABEL_SPRING_STIFFNESS = 80;
 const LABEL_SPRING_DAMPING = 15;
 const LABEL_SPRING_MASS = 1;
-// Per-spoke reveal stagger, scaled by staggerScale * durationFactor.
-const SPOKE_STAGGER_MS = 50;
-// Label fade-in base delay: 5 grid staggers, halved.
-const LABEL_BASE_DELAY_GRID_STAGGER_FACTOR = 5;
-const LABEL_BASE_DELAY_FRACTION = 0.5;
-// Label fade-in runs at half the enter duration.
-const LABEL_FADE_DURATION_FRACTION = 0.5;
-// Per-label stagger inside each label group (grid-ring labels vs angle labels).
-const GRID_LABEL_STAGGER_MS = 60;
-const ANGLE_LABEL_STAGGER_MS = 80;
-// Spring progress sampling step for the label outward-spring keyframes.
-const LABEL_SPRING_SAMPLE_STEP_MS = 40;
 // Radius scale domain max (radar values are percentages).
 const RADAR_RADIUS_DOMAIN_MAX = 100;
 // Legacy value domain max for the context yScale (values are percentages).
@@ -462,7 +438,7 @@ const buildRadarDotMark = (options: Readonly<BuildRadarMarkOptions>): PolarMark<
   z: "replayGroup",
 });
 
-type RadarRevealTiming = ReturnType<typeof radarRevealTiming>;
+type RadarRevealTiming = ClipReveal;
 
 const flagRadarSvgRevealed = (container: HTMLElement): void => {
   const svgForBkm = container.querySelector<SVGElement>("svg.ts-chart");
@@ -475,7 +451,6 @@ const beginRadarReveal = (container: HTMLElement, animate: boolean, revealedRef:
   if (!marksGroup) {return undefined;}
   revealedRef.current = true;
   flagRadarSvgRevealed(container);
-  marksGroup.classList.add("ts-chart__marks--revealing");
   return marksGroup;
 }
 
@@ -489,202 +464,13 @@ interface RadarRevealSetup {
 }
 
 const resolveRadarRevealSetup = (snapshot: Readonly<RadarEnterSnapshot>): RadarRevealSetup => {
-  const resolved = resolveRadarEnterTransition(snapshot.enterTransition);
-  const timing = radarRevealTiming(resolved);
+  const timing = clipRevealTiming(snapshot.enterTransition, REVEAL_DURATION_MS, REVEAL_EASE_CSS);
   const renderStaggerScale = snapshot.staggerScale;
   const durationFactor = snapshot.enterDurationMs / RADAR_ENTER_DURATION_MS;
   const gridStaggerMs = RADAR_GRID_STAGGER_MS * renderStaggerScale * durationFactor;
   const labelSpringSettleMs = estimateSpringSettleMs(LABEL_SPRING_STIFFNESS, LABEL_SPRING_DAMPING, LABEL_SPRING_MASS);
   const deadlineMs = Math.max(timing.durationMs + snapshot.levels * gridStaggerMs, labelSpringSettleMs);
   return { deadlineMs, durationFactor, gridStaggerMs, labelSpringSettleMs, renderStaggerScale, timing };
-}
-
-const clearRadarLabelStyles = (liveMarksGroup: SVGGElement): void => {
-  const clearLabels = liveMarksGroup.querySelectorAll<HTMLElement>('[data-ts-key$=":labels"]');
-  for (const labelGroup of clearLabels) {for (const labelText of labelGroup.querySelectorAll<SVGTextElement>("text")) {labelText.style.opacity = "";}}
-}
-
-const clearRadarRevealStyles = (liveMarksGroup: SVGGElement): void => {
-  const gridRings = liveMarksGroup.querySelectorAll<SVGPathElement>('[data-ts-key^="radar-ring:"]');
-  const spokes = liveMarksGroup.querySelectorAll<SVGLineElement>('[data-ts-key^="spoke:"]');
-  for (const el of gridRings) { el.style.transform = ""; el.style.opacity = ""; }
-  for (const el of spokes) { el.style.transform = ""; el.style.opacity = ""; }
-  clearRadarLabelStyles(liveMarksGroup);
-}
-
-interface RadarLabelGroups {
-  readonly gridLabelsGroup: Element | null;
-  readonly angleLabelsGroup: Element | null;
-}
-
-const findRadarLabelGroups = (liveMarksGroup: SVGGElement, container: HTMLElement): RadarLabelGroups => {
-  const gridLabelsGroup = liveMarksGroup.querySelector('[data-ts-key="radar:bklit-radar-grid-0:labels"]') ??
-    liveMarksGroup.querySelector('[data-ts-key="polar-0:bklit-radar-grid-0:labels"]') ??
-    container.querySelector('[data-ts-key="radar:bklit-radar-grid-0:labels"]');
-  const angleLabelsGroup = liveMarksGroup.querySelector('[data-ts-key="radar:angle-grid-1:labels"]') ??
-    liveMarksGroup.querySelector('[data-ts-key="polar-0:angle-grid-1:labels"]') ??
-    container.querySelector('[data-ts-key="radar:angle-grid-1:labels"]');
-  return { angleLabelsGroup, gridLabelsGroup };
-}
-
-interface RadarRingRevealOptions {
-  readonly liveMarksGroup: SVGGElement;
-  readonly timing: RadarRevealTiming;
-  readonly gridStaggerMs: number;
-  readonly revealAnims: Animation[];
-}
-
-interface RadarRingOptions {
-  readonly path: SVGPathElement;
-  readonly ringIdx: number;
-  readonly timing: RadarRevealTiming;
-  readonly gridStaggerMs: number;
-  readonly revealAnims: Animation[];
-}
-
-const revealRadarRing = (options: Readonly<RadarRingOptions>): void => {
-  const { path, ringIdx, timing, gridStaggerMs, revealAnims } = options;
-  const delay = ringIdx * gridStaggerMs;
-  const kfScale = buildRadarProgressKeyframes(timing, (progress) => ({ transform: `scale(${progress})` }));
-  const kfOpacity = buildRadarProgressKeyframes(timing, (progress) => ({ opacity: String(progress) }));
-  const animScale = path.animate(kfScale, { delay, duration: timing.durationMs, easing: timing.easing, fill: "backwards" });
-  const animOpacity = path.animate(kfOpacity, { delay, duration: timing.durationMs, easing: timing.easing, fill: "backwards" });
-  revealAnims.push(animScale, animOpacity);
-  animScale.onfinish = (): void =>{  animScale.cancel(); };
-  animOpacity.onfinish = (): void =>{  animOpacity.cancel(); };
-}
-
-const revealRadarRings = (options: Readonly<RadarRingRevealOptions>): void => {
-  const { liveMarksGroup, timing, gridStaggerMs, revealAnims } = options;
-  const gridRings = liveMarksGroup.querySelectorAll<SVGPathElement>('[data-ts-key^="radar-ring:"]');
-  for (const [ringIdx, path] of gridRings.entries()) {
-    revealRadarRing({ gridStaggerMs, path, revealAnims, ringIdx, timing });
-  }
-}
-
-interface RadarSpokeRevealOptions {
-  readonly liveMarksGroup: SVGGElement;
-  readonly timing: RadarRevealTiming;
-  readonly spokeStaggerMs: number;
-  readonly revealAnims: Animation[];
-}
-
-interface RadarSpokeOptions {
-  readonly line: SVGLineElement;
-  readonly spokeIdx: number;
-  readonly timing: RadarRevealTiming;
-  readonly spokeStaggerMs: number;
-  readonly revealAnims: Animation[];
-}
-
-const revealRadarSpoke = (options: Readonly<RadarSpokeOptions>): void => {
-  const { line, spokeIdx, timing, spokeStaggerMs, revealAnims } = options;
-  const delay = spokeIdx * spokeStaggerMs;
-  const kfScale = buildRadarProgressKeyframes(timing, (progress) => ({ transform: `scale(${progress})` }));
-  const kfOpacity = buildRadarProgressKeyframes(timing, (progress) => ({ opacity: String(progress) }));
-  const animScale = line.animate(kfScale, { delay, duration: timing.durationMs, easing: timing.easing, fill: "backwards" });
-  const animOpacity = line.animate(kfOpacity, { delay, duration: timing.durationMs, easing: timing.easing, fill: "backwards" });
-  revealAnims.push(animScale, animOpacity);
-  animScale.onfinish = (): void =>{  animScale.cancel(); };
-  animOpacity.onfinish = (): void =>{  animOpacity.cancel(); };
-}
-
-const revealRadarSpokes = (options: Readonly<RadarSpokeRevealOptions>): void => {
-  const { liveMarksGroup, timing, spokeStaggerMs, revealAnims } = options;
-  const spokes = liveMarksGroup.querySelectorAll<SVGLineElement>('[data-ts-key^="spoke:"]');
-  for (const [spokeIdx, line] of spokes.entries()) {
-    revealRadarSpoke({ line, revealAnims, spokeIdx, spokeStaggerMs, timing });
-  }
-}
-
-interface RadarLabelTextRevealOptions {
-  readonly texts: NodeListOf<SVGTextElement>;
-  readonly baseDelay: number;
-  readonly staggerMs: number;
-  readonly timing: RadarRevealTiming;
-  readonly durationMs: number;
-  readonly revealAnims: Animation[];
-}
-
-const revealRadarLabelTexts = (options: Readonly<RadarLabelTextRevealOptions>): void => {
-  const { texts, baseDelay, staggerMs, timing, durationMs, revealAnims } = options;
-  for (const [textIdx, labelText] of texts.entries()) {
-    const delay = baseDelay + textIdx * staggerMs;
-    const keyframes = buildRadarProgressKeyframes(timing, (progress) => ({ opacity: String(progress) }));
-    const anim = labelText.animate(keyframes, { delay, duration: durationMs, easing: timing.easing, fill: "backwards" });
-    revealAnims.push(anim);
-    anim.onfinish = (): void =>{  anim.cancel(); };
-  }
-}
-
-interface RadarLabelRevealOptions {
-  readonly gridLabelsGroup: Element | null;
-  readonly angleLabelsGroup: Element | null;
-  readonly gridStaggerMs: number;
-  readonly renderStaggerScale: number;
-  readonly durationFactor: number;
-  readonly timing: RadarRevealTiming;
-  readonly revealAnims: Animation[];
-}
-
-const revealRadarLabels = (options: Readonly<RadarLabelRevealOptions>): void => {
-  const { gridLabelsGroup, angleLabelsGroup, gridStaggerMs, renderStaggerScale, durationFactor, timing, revealAnims } = options;
-  const labelGroups = [gridLabelsGroup, angleLabelsGroup].filter((group): group is Element => group !== null);
-  for (const [groupIdx, labelGroup] of labelGroups.entries()) {
-    const baseDelay = LABEL_BASE_DELAY_GRID_STAGGER_FACTOR * gridStaggerMs * LABEL_BASE_DELAY_FRACTION;
-    const texts = labelGroup.querySelectorAll<SVGTextElement>("text");
-    revealRadarLabelTexts({ baseDelay, durationMs: timing.durationMs * LABEL_FADE_DURATION_FRACTION, revealAnims, staggerMs: (groupIdx === 0 ? GRID_LABEL_STAGGER_MS : ANGLE_LABEL_STAGGER_MS) * renderStaggerScale * durationFactor, texts, timing });
-  }
-}
-
-interface RadarSpringRevealOptions {
-  readonly angleLabelsGroup: Element | null;
-  readonly labelSpringSettleMs: number;
-  readonly revealAnims: Animation[];
-}
-
-interface SpringRadarLabelOptions {
-  readonly labelEl: SVGTextElement;
-  readonly target: Readonly<{ x: number; y: number }>;
-  readonly springProgress: readonly number[];
-  readonly settleMs: number;
-  readonly revealAnims: Animation[];
-}
-
-const springRadarLabel = (options: Readonly<SpringRadarLabelOptions>): void => {
-  const { labelEl, target, springProgress, settleMs, revealAnims } = options;
-  const { x, y } = target;
-  if (Number.isFinite(x) && Number.isFinite(y)) {
-    const keyframes = springProgress.map((progress) =>
-      ({ transform: `translate(${-(1 - progress) * x}px, ${-(1 - progress) * y}px)` }),
-    );
-    const anim = labelEl.animate(keyframes, {
-      delay: 0,
-      duration: settleMs,
-      easing: "linear",
-      fill: "backwards",
-    });
-    revealAnims.push(anim);
-    anim.onfinish = (): void => {
-      anim.cancel();
-      labelEl.style.transform = "";
-    };
-  }
-}
-
-const revealRadarLabelSprings = (options: Readonly<RadarSpringRevealOptions>): void => {
-  const { angleLabelsGroup, labelSpringSettleMs, revealAnims } = options;
-  if (!angleLabelsGroup) {return;}
-  // Labels spring outward from center (stiffness 80/damping 15/mass 1) via the shared sampler.
-  const springProgress = sampleSpringProgress({ damping: LABEL_SPRING_DAMPING, durationMs: labelSpringSettleMs, mass: LABEL_SPRING_MASS, samples: LABEL_SPRING_SAMPLE_STEP_MS, stiffness: LABEL_SPRING_STIFFNESS });
-  const labelEls = [...angleLabelsGroup.querySelectorAll<SVGTextElement>('text')];
-  const targets = labelEls.map((labelEl) => ({
-    x: Number(labelEl.getAttribute("x") ?? "NaN"),
-    y: Number(labelEl.getAttribute("y") ?? "NaN"),
-  }));
-  for (const [labelIdx, labelEl] of labelEls.entries()) {
-    springRadarLabel({ labelEl, revealAnims, settleMs: labelSpringSettleMs, springProgress, target: targets[labelIdx] });
-  }
 }
 
 interface PushResolvedAreaOptions {
@@ -734,14 +520,10 @@ const resetRadarReplay = (motionReplayKey: string, refs: RadarReplayRefs): void 
   refs.gridRevealedRef.current = false;
 }
 
-const scheduleRadarReveal = (container: HTMLElement, shouldReveal: () => boolean, handleRender: (args: { container: HTMLElement }) => void): (() => void) => {
-  const raf = requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      if (!shouldReveal()) {return;}
-      handleRender({ container });
-    });
-  });
-  return (): void =>{  cancelAnimationFrame(raf); };
+const scheduleRadarReveal = (container: HTMLElement, shouldReveal: () => boolean, handleRender: (args: { container: HTMLElement }) => void): (() => void) | undefined => {
+  if (!shouldReveal()) {return undefined;}
+  handleRender({ container });
+  return undefined;
 }
 
 const RadarChart = ({
@@ -950,31 +732,16 @@ const RadarChart = ({
       adoptHostWidth(setLiveWidth, scene?.width);
       if (!beginRadarReveal(container, animate, gridRevealedRef)) {return;}
       // DurationFactor scales stagger delays only, not transition timing.
-      // Label springs ignore durationFactor: the deadline must cover the longest live animation.
+      // The deadline still spans the legacy reveal window so settle timing holds.
       const setup = resolveRadarRevealSetup({ enterDurationMs, enterTransition, levels, staggerScale });
 
-      revealDeadlineTimerRef.current = setRevealDeadline(
-        setup.deadlineMs,
-        {
-          animationsRef: revealAnimsRef,
-          onDeadline: () => {
-            // No deadline fallback: the animation finish handlers settle the reveal.
-          },
-        },
-      );
-
-      revealPostPaintCancelRef.current = onPostPaint(() => {
-        const liveMarksGroup = container.querySelector<SVGGElement>(MARKS_GROUP_SELECTOR);
-        if (!liveMarksGroup) {return;}
-        clearRadarRevealStyles(liveMarksGroup);
-        const { gridLabelsGroup, angleLabelsGroup } = findRadarLabelGroups(liveMarksGroup, container);
-        revealRadarRings({ gridStaggerMs: setup.gridStaggerMs, liveMarksGroup, revealAnims: revealAnimsRef.current, timing: setup.timing });
-        revealRadarSpokes({ liveMarksGroup, revealAnims: revealAnimsRef.current, spokeStaggerMs: SPOKE_STAGGER_MS * setup.renderStaggerScale * setup.durationFactor, timing: setup.timing });
-        revealRadarLabels({ angleLabelsGroup, durationFactor: setup.durationFactor, gridLabelsGroup, gridStaggerMs: setup.gridStaggerMs, renderStaggerScale: setup.renderStaggerScale, revealAnims: revealAnimsRef.current, timing: setup.timing });
-        revealRadarLabelSprings({ angleLabelsGroup, labelSpringSettleMs: setup.labelSpringSettleMs, revealAnims: revealAnimsRef.current });
-
-        liveMarksGroup.classList.remove("ts-chart__marks--revealing");
-      });
+      if (revealDeadlineTimerRef.current !== null) {
+        globalThis.clearTimeout(revealDeadlineTimerRef.current);
+      }
+      revealDeadlineTimerRef.current = window.setTimeout(() => {
+        revealDeadlineTimerRef.current = null;
+      }, setup.deadlineMs);
+      revealPostPaintCancelRef.current = null;
     },
     [animate, enterDurationMs, enterTransition, levels, staggerScale],
   );
@@ -1018,18 +785,13 @@ const RadarChart = ({
     if (!animate) {return undefined;}
     const container = containerRef.current;
     if (!container) {return undefined;}
-    const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (gridRevealedRef.current) {return;}
-        if (!container.querySelector(MARKS_GROUP_SELECTOR)) {return;}
-        if (hasLiveRevealAnims(container)) {return;}
-        handleGridRevealPaint();
-      });
-    });
-    return (): void =>{  cancelAnimationFrame(raf); };
+    if (!container.querySelector(MARKS_GROUP_SELECTOR)) {return undefined;}
+    if (hasLiveRevealAnims(container)) {return undefined;}
+    handleGridRevealPaint();
+    return undefined;
   }, [animate]);
 
-  // MotionReplayKey remounts grid/labels (WAAPI half); the area/dot half replays natively via keys.
+  // MotionReplayKey remounts grid/labels; the area/dot half replays natively via keys.
   useLayoutEffect((): (() => void) | undefined => {
     if (!animate || prevMotionReplayKeyRef.current === motionReplayKey) {return undefined;}
     resetRadarReplay(motionReplayKey, { gridRevealedRef, prevMotionReplayKeyRef, revealAnimsRef });
@@ -1101,4 +863,4 @@ export type { RadarLabelsProps } from "./internal/radar-labels-child";
 export { DEFAULT_RADAR_COLORS, RadarChart, buildRadarAreaMark, buildRadarDefinition, buildRadarDotMark };
 export type { RadarChartProps };
 export type { RadarData, RadarMetric } from "./internal/radar-context";
-export type { RadarEnterTransition } from "./internal/enter-transition";
+export type { RadarEnterTransition } from "./internal/parity/animation";

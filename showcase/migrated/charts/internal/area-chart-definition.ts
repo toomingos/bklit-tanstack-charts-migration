@@ -36,10 +36,13 @@ import {
   DISCRETE_INTERACTION_THRESHOLD,
   BOX_OFFSET,
   FADE_BUFFER,
+  REVEAL_DURATION_MS,
+  SERIES_MARKER_ENTER_MS,
   TICKER_HALF_WIDTH,
   TOOLTIP_BOX_SPRING,
 } from "./design-tokens";
-import { DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./chart-phase";
+import { markerEnterDelay } from "./parity/animation";
+import { DEFAULT_Y_DOMAIN_TWEEN_MS } from "./chart-phase";
 import type { ChartPhase } from "./chart-phase";
 import type { MarkerSeriesConfig } from "./series-marker-mark";
 import { projectionLineMark } from "./projection-line-mark";
@@ -354,26 +357,36 @@ const resolveAreaXTickLabelOpacity = (params: Readonly<AreaTickLabelOpacityParam
 
 interface AreaMotionParams {
   readonly effectiveYDomainTweenDuration: number;
-  readonly yDomainTweenGateActive: boolean;
 }
 
 type AreaMotionFn = (context: ChartMotionContext) => false | ChartMotionTiming | undefined;
 
-// Enter is false (RevealWipe owns it); update tweens only on y-domain change, else snaps.
+// Enter rides the renderer default; dots stagger by datum index (G20).
+// Y-domain updates reproject through the package rolling path, ungated.
 const buildAreaMotionFn = (params: Readonly<AreaMotionParams>): AreaMotionFn =>
   (context: ChartMotionContext): false | ChartMotionTiming | undefined => {
-    if (context.role === "line" || context.role === "area" || context.role === "dot") {
-      if (context.phase === "enter") {return false as const;}
+    if (context.role === "dot") {
+      if (context.phase !== "enter") {return undefined;}
+      return {
+        delay: markerEnterDelay(context, REVEAL_DURATION_MS),
+        transition: {
+          duration: SERIES_MARKER_ENTER_MS,
+          easing: bezierEasing,
+          type: "tween" as const,
+        },
+      };
+    }
+    if (context.role === "line" || context.role === "area") {
+      if (context.phase === "enter") {return undefined;}
       if (context.phase === "update") {
-        return params.yDomainTweenGateActive
-          ? {
-              transition: {
-                duration: params.effectiveYDomainTweenDuration,
-                easing: bezierEasing,
-                type: "tween" as const,
-              },
-            }
-          : (false as const);
+        return {
+          path: { fallback: "snap" as const, update: "rolling" as const, x: "shift" as const, y: "reproject" as const },
+          transition: {
+            duration: params.effectiveYDomainTweenDuration,
+            easing: bezierEasing,
+            type: "tween" as const,
+          },
+        };
       }
     }
     return undefined;
@@ -383,7 +396,7 @@ const buildAreaMotionFn = (params: Readonly<AreaMotionParams>): AreaMotionFn =>
 const buildAreaTickLabelMotionFn = (): AreaMotionFn =>
   (context: ChartMotionContext): false | ChartMotionTiming | undefined =>
     context.phase === "enter"
-      ? (false as const)
+      ? undefined
       : {
           transition: {
             duration: DEFAULT_Y_DOMAIN_TWEEN_MS,
@@ -545,8 +558,7 @@ const buildAreaChartDefinition = (params: Readonly<AreaChartDefinitionParams>): 
       width: params.width,
     }),
   );
-  // Enter is false (RevealWipe owns it); update tweens only on y-domain change, else snaps.
-  const yDomainTweenGateActive = isChartInteractionPhase(params.chartPhase) && params.isLoaded && params.yDomainChanged;
+  // Enter and y-domain updates ride package motion; the renderer owns the paint.
   const { xScaleOptions, yScaleOptions } = buildAreaScaleOptions({
     grid: params.grid,
     heightPx: params.heightPx,
@@ -580,15 +592,13 @@ const buildAreaChartDefinition = (params: Readonly<AreaChartDefinitionParams>): 
     marks,
     // Hover works anywhere over the plot; TanStack defaults to 48px.
     maxFocusDistance: CARTESIAN_MAX_FOCUS_DISTANCE_PX,
-    motion: buildAreaMotionFn({ effectiveYDomainTweenDuration: params.effectiveYDomainTweenDuration, yDomainTweenGateActive }),
+    motion: buildAreaMotionFn({ effectiveYDomainTweenDuration: params.effectiveYDomainTweenDuration }),
     // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.
     scales: {
       x: xScaleOptions,
       y: yScaleOptions,
     },
-    svgAnimation: yDomainTweenGateActive
-      ? { duration: params.effectiveYDomainTweenDuration, easing: bezierEasing }
-      : (false as const),
+    svgAnimation: false as const,
     theme: { muted: "var(--color-chart-label, var(--chart-label))" },
     tooltip: buildAreaTooltipOption({
       discrete: params.renderData.length > DISCRETE_INTERACTION_THRESHOLD,

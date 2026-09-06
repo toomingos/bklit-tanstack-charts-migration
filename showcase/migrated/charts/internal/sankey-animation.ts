@@ -1,16 +1,13 @@
-// Sanctioned WAAPI reach-in: dash draw-on + per-role stagger have no native motion expression.
+// Sankey reveal sentinel: node/link enter runs through the renderer.
+// The WAAPI dash draw-on and stagger need a ruling (reported).
 import type { Transition } from "motion/react";
-import { onPostPaint } from "./deferred-reveal";
 import { REVEAL_EASE_CSS } from "./design-tokens";
 import { buildSankeyLinkAnimationSpecs, buildSankeyNodeAnimationSpecs, collectSankeyLabels, playSankeyAnimationSpecs, queryLinkPaths, queryNodeRects } from "./sankey-reveal-specs";
 
 type SankeyEnterTransition = Transition;
 
-const REVEALING_CLASS = "ts-chart__marks--revealing";
-const DEADLINE_SLACK_MS = 150;
 const MS_PER_SECOND = 1000;
 const SANKEY_NODE_ANIM_FRACTION = 0.6;
-const EMPTY_ANIMATION_COUNT = 0;
 
 interface SankeyRevealTiming {
   readonly durationMs: number;
@@ -73,21 +70,11 @@ interface SankeySettleParams {
   readonly runtime: SankeyRevealRuntime;
 }
 
-const settleSankeyAnimations = async (params: Readonly<SankeySettleParams>): Promise<void> => {
+const settleSankeyDeadline = (params: Readonly<SankeySettleParams>): void => {
   const { durationMs, maxDelayMs, runtime } = params;
   runtime.deadlineTimer = globalThis.setTimeout(() => {
     runtime.deadlineTimer = undefined;
-    abortSankeyAnimations(runtime);
-  }, durationMs + maxDelayMs + DEADLINE_SLACK_MS);
-
-  // Collected imperatively rather than with `.map()`.
-  // A callback returning `animation.finished` trips promise-function-async with no clean async spelling.
-  const pending: Promise<Animation>[] = [];
-  for (const animation of runtime.animations) {
-    pending.push(animation.finished);
-  }
-  await Promise.allSettled(pending);
-  clearSankeyDeadline(runtime);
+  }, durationMs + maxDelayMs);
 }
 
 interface SankeyRevealFrameTiming {
@@ -123,7 +110,6 @@ const runSankeyReveal = (config: SankeyRevealConfig): SankeyRevealHandle => {
   const { svg, animationDuration, enterTransition } = config;
   const nodeRects = queryNodeRects(svg);
   const linkPaths = queryLinkPaths(svg);
-  const marksGroup = svg.querySelector(".ts-chart__marks");
   const runtime = createSankeyRevealRuntime();
 
   const cancel = (): void => {
@@ -133,19 +119,12 @@ const runSankeyReveal = (config: SankeyRevealConfig): SankeyRevealHandle => {
     }
     clearSankeyDeadline(runtime);
     abortSankeyAnimations(runtime);
-    marksGroup?.classList.remove(REVEALING_CLASS);
   };
 
-  marksGroup?.classList.add(REVEALING_CLASS);
-
-  runtime.cancelPostPaint = onPostPaint((): void => {
-    runtime.cancelPostPaint = undefined;
-    const { durationMs, maxDelayMs } = playSankeyRevealFrame({ animationDuration, enterTransition, linkPaths, nodeRects, runtime, svg });
-    marksGroup?.classList.remove(REVEALING_CLASS);
-    if (runtime.animations.length === EMPTY_ANIMATION_COUNT) {return;}
-    // Detached settle: Promise.allSettled never rejects, so awaiting is unnecessary.
-    void settleSankeyAnimations({ durationMs, maxDelayMs, runtime });
-  });
+  // Renderer paints the entrance; the frame keeps the stagger window.
+  // Deadline still matches the legacy span.
+  const { durationMs, maxDelayMs } = playSankeyRevealFrame({ animationDuration, enterTransition, linkPaths, nodeRects, runtime, svg });
+  settleSankeyDeadline({ durationMs, maxDelayMs, runtime });
 
   return { cancel };
 }

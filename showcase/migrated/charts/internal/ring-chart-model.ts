@@ -1,15 +1,15 @@
-// Ring child classification, WAAPI track-reveal helpers, and chart state hooks.
-// The hooks own contiguous state+effect groups; callers keep call order identical.
+// Ring child classification, renderer-owned track reveal, and chart state hooks.
 import { Children, isValidElement, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { RingCenter } from "./ring-center";
 import type { RingData } from "./ring-context";
 import { createHoverSource } from "./hover-motion";
 import type { HoverSource } from "./hover-motion";
-import { buildProgressKeyframes, RING_TWEEN_FALLBACK, resolveEnterTransition, revealTiming } from './enter-transition';
-import type { RevealTiming, RingEnterTransition } from './enter-transition';
-import { onPostPaint, setRevealDeadline } from "./deferred-reveal";
+import { clipRevealTiming } from './parity/animation';
+import type { ClipReveal, RingEnterTransition } from './parity/animation';
+import { REVEAL_DURATION_MS, REVEAL_EASE_CSS } from "./design-tokens";
 import { nativeStaggerDelayMs } from "./native-stagger";
+// The hooks own contiguous state+effect groups; callers keep call order identical.
 
 const MS_PER_SECOND = 1000;
 const RING_TRACK_STAGGER_EACH_S = 0.08;
@@ -123,12 +123,11 @@ const collectRingsToReveal = (params: Readonly<RingRevealQuery>): number[] => {
   return toReveal;
 };
 
-const markRevealStarted = (container: HTMLElement, marksGroup: SVGGElement): void => {
+const markRevealStarted = (container: HTMLElement, _marksGroup: SVGGElement): void => {
   const svgForBkm = container.querySelector<SVGElement>("svg.ts-chart");
   if (svgForBkm && (svgForBkm.dataset.bkmRevealed ?? "") === "") {
     svgForBkm.dataset.bkmRevealed = "1";
   }
-  marksGroup.classList.add("ts-chart__marks--revealing");
 };
 
 interface RingRevealRefs {
@@ -138,16 +137,13 @@ interface RingRevealRefs {
   readonly isMountedRef: RefObject<boolean>;
 }
 
-const armRingRevealDeadline = (params: Readonly<{ enterStaggerScale: number; revealAnimsRef: RefObject<Animation[]>; revealDeadlineTimerRef: RefObject<number | null>; timing: RevealTiming; toReveal: readonly number[] }>): void => {
+const armRingRevealDeadline = (params: Readonly<{ enterStaggerScale: number; revealAnimsRef: RefObject<Animation[]>; revealDeadlineTimerRef: RefObject<number | null>; timing: ClipReveal; toReveal: readonly number[] }>): void => {
   const maxDelayMs = Math.max(
     ...params.toReveal.map((i) => nativeStaggerDelayMs(RING_TRACK_STAGGER_EACH_S * params.enterStaggerScale * MS_PER_SECOND, 0, i, "arc")),
   );
-  params.revealDeadlineTimerRef.current = setRevealDeadline(params.timing.durationMs + maxDelayMs, {
-    animationsRef: params.revealAnimsRef,
-    onDeadline: () => {
-      // No deadline fallback: the animation finish handlers settle the reveal.
-    },
-  });
+  params.revealDeadlineTimerRef.current = window.setTimeout(() => {
+    // No deadline fallback: tracks enter through the renderer now.
+  }, params.timing.durationMs + maxDelayMs);
 };
 
 const resetRingTrackTransforms = (params: Readonly<{ container: HTMLElement; marksGroup: SVGGElement; toReveal: readonly number[] }>): void => {
@@ -157,16 +153,12 @@ const resetRingTrackTransforms = (params: Readonly<{ container: HTMLElement; mar
   }
 };
 
-const playRingExpandAnimation = (params: Readonly<{ trackGroup: SVGGElement; timing: RevealTiming; expandDelayMs: number; revealAnimsRef: RefObject<Animation[]> }>): void => {
-  const expandKeyframes = buildProgressKeyframes(params.timing, (progress) => ({ transform: `scale(${progress})` }));
-  const expandAnim = params.trackGroup.animate(expandKeyframes, {
-    delay: params.expandDelayMs,
-    duration: params.timing.durationMs,
-    easing: params.timing.easing,
-    fill: "backwards",
-  });
-  params.revealAnimsRef.current.push(expandAnim);
-  expandAnim.onfinish = (): void =>{  expandAnim.cancel(); };
+const playRingExpandAnimation = (params: Readonly<{ trackGroup: SVGGElement; timing: ClipReveal; expandDelayMs: number; revealAnimsRef: RefObject<Animation[]> }>): void => {
+  // Neutralized: tracks grow through the renderer; clear any stale transform.
+  params.trackGroup.style.transform = "";
+  void params.timing;
+  void params.expandDelayMs;
+  void params.revealAnimsRef;
 };
 
 interface RingExpandInput {
@@ -175,7 +167,7 @@ interface RingExpandInput {
   readonly currMap: ReadonlyMap<number, RingChildConfig>;
   readonly enterStaggerScale: number;
   readonly revealAnimsRef: RefObject<Animation[]>;
-  readonly timing: RevealTiming;
+  readonly timing: ClipReveal;
   readonly index: number;
 }
 
@@ -196,7 +188,7 @@ interface RingRevealRunInput {
   readonly currMap: ReadonlyMap<number, RingChildConfig>;
   readonly enterStaggerScale: number;
   readonly revealAnimsRef: RefObject<Animation[]>;
-  readonly timing: RevealTiming;
+  readonly timing: ClipReveal;
   readonly toReveal: readonly number[];
 }
 
@@ -204,7 +196,6 @@ const finishRingReveal = (params: Readonly<RingRevealRunInput>): void => {
   for (const i of params.toReveal) {
     expandRingTrack({ container: params.container, currData: params.currData, currMap: params.currMap, enterStaggerScale: params.enterStaggerScale, index: i, revealAnimsRef: params.revealAnimsRef, timing: params.timing });
   }
-  params.container.querySelector<SVGGElement>(MARKS_GROUP_SELECTOR)?.classList.remove("ts-chart__marks--revealing");
 };
 
 interface RingRevealStarterInput {
@@ -216,7 +207,7 @@ interface RingRevealStarterInput {
   readonly revealDeadlineTimerRef: RefObject<number | null>;
   readonly revealPostPaintCancelRef: RefObject<(() => void) | null>;
   readonly marksGroup: SVGGElement;
-  readonly timing: RevealTiming;
+  readonly timing: ClipReveal;
   readonly toReveal: readonly number[];
 }
 
@@ -224,9 +215,8 @@ const startRingRevealAnimations = (params: Readonly<RingRevealStarterInput>): vo
   markRevealStarted(params.container, params.marksGroup);
   armRingRevealDeadline({ enterStaggerScale: params.enterStaggerScale, revealAnimsRef: params.revealAnimsRef, revealDeadlineTimerRef: params.revealDeadlineTimerRef, timing: params.timing, toReveal: params.toReveal });
   resetRingTrackTransforms({ container: params.container, marksGroup: params.marksGroup, toReveal: params.toReveal });
-  params.revealPostPaintCancelRef.current = onPostPaint(() => {
-    finishRingReveal(params);
-  });
+  params.revealPostPaintCancelRef.current = null;
+  finishRingReveal(params);
 };
 
 interface RingRevealBeginInput {
@@ -244,7 +234,7 @@ interface RingRevealBeginInput {
 
 // Timing resolution plus reveal start, split out so the onRender callback stays small.
 const beginRingReveal = (params: Readonly<RingRevealBeginInput>): void => {
-  const timing = revealTiming(resolveEnterTransition(params.enterTransition, RING_TWEEN_FALLBACK));
+  const timing = clipRevealTiming(params.enterTransition, REVEAL_DURATION_MS, REVEAL_EASE_CSS);
   startRingRevealAnimations({ container: params.container, currData: params.currData, currMap: params.currMap, enterStaggerScale: params.enterStaggerScale, marksGroup: params.marksGroup, revealAnimsRef: params.revealAnimsRef, revealDeadlineTimerRef: params.revealDeadlineTimerRef, revealPostPaintCancelRef: params.revealPostPaintCancelRef, timing, toReveal: params.toReveal });
 };
 

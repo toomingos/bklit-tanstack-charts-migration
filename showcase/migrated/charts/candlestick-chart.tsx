@@ -24,8 +24,8 @@ import { extractChildren } from "./internal/children-extract";
 import { TooltipContent } from "./internal/tooltip-components";
 import { DISCRETE_INTERACTION_THRESHOLD } from "./internal/design-tokens";
 import { buildFadeXAxisOptions } from "./internal/axis-ticks";
-import { useChartRenderer } from "./internal/motion-renderer";
-import type { CandlestickEnterTransition } from './internal/enter-transition';
+import { chartMotionRenderer } from "./internal/motion-renderer";
+import type { CandlestickEnterTransition } from './internal/parity/animation';
 import { resolveGridGuide } from "./internal/grid";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
 import type { ReferenceAreaLayersGeom } from "./internal/reference-area-layer";
@@ -367,7 +367,7 @@ const CandlestickChart = ({
     xDataKey,
   });
 
-  const candlestickChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
+  const candlestickChartRenderer = chartMotionRenderer<ChartDatum, Date, number>();
 
   // Hoisted out of the definition JSX below so no single expression stacks conditionals.
   const containerStyle = useMemo((): CSSProperties => ({
@@ -446,5 +446,5 @@ const CandlestickChart = ({
 
 CandlestickChart.displayName = "CandlestickChart";
 export { CandlestickChart };
-export type { CandlestickEnterTransition } from './internal/enter-transition';
+export type { CandlestickEnterTransition } from './internal/parity/animation';
 export type { CandlestickChartProps };

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
 import { createPortal } from "react-dom";
 import type { MotionValue } from "motion/react";
@@ -482,14 +482,8 @@ const renderTooltipPortal = (options: Readonly<TooltipPortalOptions>): ReactNode
   );
 };
 
-const useTooltipLayerFade = (layerRef: RefObject<HTMLDivElement | null>, entrance: boolean): void => {
-  useEffect((): (() => void) | undefined => {
-    const layer = layerRef.current;
-    if (!layer || !entrance) {return undefined;}
-    // 100ms mount fade mirrors legacy positionBox boxFade.
-    const fade = layer.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 100, fill: "both" });
-    return (): void =>{  fade.cancel(); };
-  }, [entrance, layerRef]);
+const useTooltipLayerFade = (_layerRef: RefObject<HTMLDivElement | null>, _entrance: boolean): void => {
+  // Retired: the 100ms mount fade now rides the package tooltip motion.
 };
 
 // The package owns motion (V2.4): the layer renders at the resolved focus point.

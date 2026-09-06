@@ -18,7 +18,8 @@ import {
 } from "./axis-ticks";
 import { bezierEasing } from "./bezier-easing";
 import { DEFAULT_Y_DOMAIN_TWEEN_MS } from "./chart-phase";
-import { FADE_BUFFER, TICKER_HALF_WIDTH } from "./design-tokens";
+import { FADE_BUFFER, REVEAL_DURATION_MS, SERIES_MARKER_ENTER_MS, TICKER_HALF_WIDTH } from "./design-tokens";
+import { markerEnterDelay } from "./parity/animation";
 import { shortDateFmt } from "./formatters";
 import type { resolveGridGuide } from "./grid";
 import type { XAxisConfig } from "./series-config-types";
@@ -159,22 +160,33 @@ const buildLineXScaleOptions = (params: Readonly<LineXScaleOptionsParams>): Char
   scale: params.xScale,
 });
 
-// Per-role motion for line marks: enter is false (RevealWipe owns it); update tweens only on y-domain change, else snaps.
+// Line mark motion: enter rides the renderer default (dot stagger G20).
+// Y-domain updates reproject through the rolling path.
 type LineMotionFn = (context: Readonly<Pick<ChartMotionContext, "phase" | "role">>) => false | ChartMotionTiming | undefined;
-const resolveLineMarkMotion = (gateActive: boolean, tweenDurationMs: number): LineMotionFn =>
+const resolveLineMarkMotion = (tweenDurationMs: number): LineMotionFn =>
   (context: Readonly<Pick<ChartMotionContext, "phase" | "role">>): false | ChartMotionTiming | undefined => {
-    if (context.role === "line" || context.role === "area" || context.role === "dot") {
-      if (context.phase === "enter") {return false as const;}
+    if (context.role === "dot") {
+      if (context.phase !== "enter") {return undefined;}
+      return {
+        delay: (motionContext: Readonly<Pick<ChartMotionContext, "datumCount" | "datumIndex">>): number => markerEnterDelay(motionContext, REVEAL_DURATION_MS),
+        transition: {
+          duration: SERIES_MARKER_ENTER_MS,
+          easing: bezierEasing,
+          type: "tween" as const,
+        },
+      };
+    }
+    if (context.role === "line" || context.role === "area") {
+      if (context.phase === "enter") {return undefined;}
       if (context.phase === "update") {
-        return gateActive
-          ? {
-              transition: {
-                duration: tweenDurationMs,
-                easing: bezierEasing,
-                type: "tween" as const,
-              },
-            }
-          : (false as const);
+        return {
+          path: { fallback: "snap" as const, update: "rolling" as const, x: "shift" as const, y: "reproject" as const },
+          transition: {
+            duration: tweenDurationMs,
+            easing: bezierEasing,
+            type: "tween" as const,
+          },
+        };
       }
     }
     return undefined;
@@ -184,7 +196,7 @@ const resolveLineMarkMotion = (gateActive: boolean, tweenDurationMs: number): Li
 const resolveTickLabelMotion = (): LineMotionFn =>
   (context: Readonly<Pick<ChartMotionContext, "phase" | "role">>): false | ChartMotionTiming | undefined =>
     context.phase === "enter"
-      ? (false as const)
+      ? undefined
       : {
           transition: {
             duration: DEFAULT_Y_DOMAIN_TWEEN_MS,
@@ -198,8 +210,8 @@ interface LineMotions {
   readonly tickLabelMotion: LineMotionFn;
 }
 
-const resolveLineMotions = (gateActive: boolean, tweenDurationMs: number): LineMotions => ({
-  motion: resolveLineMarkMotion(gateActive, tweenDurationMs),
+const resolveLineMotions = (tweenDurationMs: number): LineMotions => ({
+  motion: resolveLineMarkMotion(tweenDurationMs),
   tickLabelMotion: resolveTickLabelMotion(),
 });
 

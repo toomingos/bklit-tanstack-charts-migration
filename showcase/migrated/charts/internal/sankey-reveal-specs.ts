@@ -197,18 +197,12 @@ interface SankeyPlayParams {
 }
 
 const playSankeyAnimationSpecs = (params: Readonly<SankeyPlayParams>): number => {
-  const { animations, durationMs, easingCss, specs } = params;
+  // Renderer owns the entrance (dash draw-on needs a ruling).
+  // Max delay still feeds the settle deadline.
+  const { specs } = params;
   let maxDelayMs = 0;
   for (const spec of specs) {
     if (spec.delayMs > maxDelayMs) {maxDelayMs = spec.delayMs;}
-    animations.push(
-      spec.element.animate(spec.keyframes, {
-        delay: spec.delayMs,
-        duration: durationMs,
-        easing: easingCss,
-        fill: "backwards",
-      }),
-    );
   }
   return maxDelayMs;
 }

@@ -7,7 +7,7 @@ import { defineChart } from "@tanstack/charts/scene";
 import { tooltip as packageTooltip } from "@tanstack/charts/tooltip";
 import { portal } from "@tanstack/charts/tooltip/portal";
 import type { ChartTooltipInput } from "@tanstack/charts";
-import { useChartRenderer } from "./internal/motion-renderer";
+import { chartMotionRenderer } from "./internal/motion-renderer";
 import { useFocusInjection } from "./internal/focus-injection";
 import {
   decimateTimeSeries,
@@ -35,15 +35,13 @@ import { NOTHING, useComposedResolved, useComposedYDomains } from "./internal/co
 import type {
   ChartDatum,
 } from "./internal/types";
-import { isChartInteractionPhase, DEFAULT_Y_DOMAIN_TWEEN_MS } from './internal/chart-phase';
 import type { ChartPhase } from './internal/chart-phase';
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
-import { bezierEasing } from "./internal/bezier-easing";
 import {
   DEFAULT_ANIMATION_DURATION_MS,
   DEFAULT_ANIMATION_EASING,
 } from "./internal/animation-defaults";
-import type { EnterTransition } from './internal/enter-transition';
+import type { EnterTransition } from './internal/parity/animation';
 import type { ChartMargin } from './internal/use-chart-margin';
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { useComposedChildren } from "./internal/composed-children";
@@ -181,7 +179,7 @@ const ComposedChart = ({
     () => resolvedBars.map((bar) => bar.dataKey),
     [resolvedBars],
   );
-  const { composedStackOffsets, nicedDomainsByAxis, projectValue, yDomainChanged, yDomainFinal } =
+  const { composedStackOffsets, nicedDomainsByAxis, projectValue, yDomainFinal } =
     useComposedYDomains({ barDataKeys, composedSeries, data, projectionConfigs, stacked });
 
   const { gradientIdBySeries, nativeComposedGradients } = useComposedAreaGradients(resolvedAreas);
@@ -248,15 +246,11 @@ const ComposedChart = ({
     yDomain: yDomainFinal,
     yScaleRef: phaseAndReveal.yScaleD3Ref,
   });
-  // Tween gate reads live phase/loaded state during render; the memo below rebuilds
-  // Only when the gate flips, so phase transitions never rebuild marks mid-reveal.
-  const yDomainTweenGateActive = isChartInteractionPhase(phaseAndReveal.chartPhase) && phaseAndReveal.isLoaded && yDomainChanged;
   const definition = useMemo(() => {
     // Width always arrives positive from host-owned sizing.
     if (!marks || !scales) {return NOTHING;}
 
     const { motion, xScaleOptions, yScaleOptions } = buildComposedScaleOptions({
-      gateActive: yDomainTweenGateActive,
       grid,
       marginBottom: phaseAndReveal.margin.bottom,
       scales,
@@ -275,9 +269,7 @@ const ComposedChart = ({
       motion,
       // Tick counts reach guides only via axis.ticks.count; a bare ticks: key is never read.
       scales: { x: xScaleOptions, y: yScaleOptions },
-      svgAnimation: yDomainTweenGateActive
-        ? { duration: DEFAULT_Y_DOMAIN_TWEEN_MS, easing: bezierEasing }
-        : (false as const),
+      svgAnimation: false as const,
       theme: { muted: "var(--color-chart-label, var(--chart-label))" },
       tooltip: buildComposedTooltipOption({
         discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
@@ -291,7 +283,6 @@ const ComposedChart = ({
     crosshairGradientDef,
     grid,
     xAxis,
-    yDomainTweenGateActive,
     nativeComposedGradients,
     renderData,
     tooltip,
@@ -383,7 +374,7 @@ const ComposedChart = ({
       yDomain={yDomainFinal}
     />
   );
-  const composedChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
+  const composedChartRenderer = chartMotionRenderer<ChartDatum, Date, number>();
 
   // Inlined into the same element tree (a variable, not a component), so this
   // Changes nothing at runtime; it only flattens source nesting for jsx-max-depth.

@@ -30,7 +30,7 @@ import {
   buildTerminalAnchors,
   useOverlayMappers,
 } from "./line-marker-anchors";
-import { DEFAULT_MARKER_RADIUS_PX } from "./line-marker-reveal";
+import { DEFAULT_MARKER_RADIUS_PX } from "./parity/animation";
 import type { BrushChildConfig, ChartDatum, ChartMarker, ExtractedChildren } from "./types";
 import type { ChartPhase } from "./chart-phase";
 import type { ChartMargin } from "./use-chart-margin";

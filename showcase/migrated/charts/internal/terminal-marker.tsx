@@ -2,8 +2,8 @@
 
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { useChartStable } from "./chart-context";
-import { resolveEnterTransition } from './enter-transition';
-import type { EnterTransition } from './enter-transition';
+import { resolveEnterTransition } from './parity/animation';
+import type { EnterTransition } from './parity/animation';
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import {
   useFreshRef,

@@ -1,9 +1,9 @@
-// Left-to-right clip reveal driven by the shared WAAPI reveal engine.
+// Clip reveal retired: the renderer owns the entrance.
+// Static clip paints full width (reveal) or empty (conceal).
 import { useEffect, useRef } from "react";
 import type { ReactElement } from "react";
 import type { Transition } from "motion/react";
 import { useEffectEvent } from "./use-effect-event";
-import { buildProgressKeyframes, resolveEnterTransition, revealTiming } from './enter-transition';
 
 type ChartRevealClipMode = "reveal" | "conceal";
 
@@ -33,43 +33,17 @@ interface RevealAnimationParams {
   readonly padding: number;
 }
 
-// Starts the WAAPI width-reveal on the clip rect; returns the effect cleanup.
-const startRevealAnimation = (rect: SVGRectElement, params: Readonly<RevealAnimationParams>): (() => void) => {
-  const { enterTransition, epoch, isConceal, onComplete, paddedWidth, padding } = params;
-  const timing = revealTiming(resolveEnterTransition(enterTransition));
+// Settles the final rect; retired, so no cleanup is needed.
+const startRevealAnimation = (rect: SVGRectElement, params: Readonly<RevealAnimationParams>): undefined => {
+  const { isConceal, onComplete, paddedWidth, padding } = params;
   const rightEdge = -padding + paddedWidth;
 
-  rect.setAttribute("x", String(-padding));
-  rect.setAttribute("width", isConceal ? String(paddedWidth) : "0");
-
-  const frames = buildProgressKeyframes(timing, (progress) => isConceal
-      ? {
-          width: `${Math.max(0, paddedWidth * (1 - progress))}px`,
-          x: `${rightEdge - paddedWidth * progress}px`,
-        }
-      : { width: `${Math.max(0, paddedWidth * progress)}px` },
-  );
-  const anim = rect.animate(frames, {
-    duration: timing.durationMs,
-    easing: timing.easing,
-    fill: "forwards",
-  });
-  // Tags the animation with the epoch that started it so epoch bumps are observable in devtools.
-  anim.id = `chart-reveal-${epoch}`;
-  anim.onfinish = (): void => {
-    if (isConceal) {
-      rect.setAttribute("width", "0");
-      rect.setAttribute("x", String(rightEdge));
-      onComplete?.();
-    } else {
-      rect.setAttribute("width", String(paddedWidth));
-    }
-    anim.cancel();
-  };
-  return (): void => {
-    anim.onfinish = null;
-    anim.cancel();
-  };
+  rect.setAttribute("x", isConceal ? String(rightEdge) : String(-padding));
+  rect.setAttribute("width", isConceal ? "0" : String(paddedWidth));
+  if (isConceal) {
+    onComplete?.();
+  }
+  return undefined;
 };
 
 interface StaticClipParams {
@@ -133,7 +107,8 @@ const ChartRevealClip = ({
     if (!animating) {return undefined;}
     const rect = rectRef.current;
     if (!rect) {return undefined;}
-    return startRevealAnimation(rect, { enterTransition, epoch: revealEpoch, isConceal: mode === "conceal", onComplete: onConcealComplete, paddedWidth, padding });
+    startRevealAnimation(rect, { enterTransition, epoch: revealEpoch, isConceal: mode === "conceal", onComplete: onConcealComplete, paddedWidth, padding });
+    return undefined;
   }, [animating, mode, revealEpoch, enterTransition, paddedWidth, padding]);
 
   if (!animating) {

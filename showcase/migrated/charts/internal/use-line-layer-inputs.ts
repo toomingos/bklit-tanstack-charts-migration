@@ -13,7 +13,7 @@ import { useSanitizedId } from "./use-sanitized-id";
 import type { BrushChildConfig, ChartDatum, ExtractedChildren } from "./types";
 import type { ChartChildRegistration, ChartLayerContribution } from "./chart-child-registry";
 import type { MarkerGradientDef } from "./series-marker-mark";
-import type { MarkerRevealSeriesConfig } from "./line-marker-reveal";
+import type { MarkerRevealSeriesConfig } from "./parity/animation";
 import type { ProjectionLineConfig } from "./projection-config";
 
 // Shared empty marker lookup: keeps the spec marks memo identical with no markers.

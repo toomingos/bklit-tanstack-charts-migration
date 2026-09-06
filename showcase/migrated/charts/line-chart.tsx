@@ -11,7 +11,7 @@ import { useEffectEvent } from "./internal/use-effect-event";
 import type { ScaleTime } from "d3-scale";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, adoptHostWidth, useRegistryEntriesState } from "./internal/chart-host";
-import { useChartRenderer } from "./internal/motion-renderer";
+import { chartMotionRenderer } from "./internal/motion-renderer";
 import {
   decimateTimeSeries,
   maxRenderPointsForWidth,
@@ -37,8 +37,8 @@ import type { ChartMargin } from "./internal/use-chart-margin";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { useChartPhaseOrchestrator } from "./internal/use-chart-phase-orchestrator";
-import { clipRevealTiming } from './internal/enter-transition';
-import type { EnterTransition } from './internal/enter-transition';
+import { clipRevealTiming } from './internal/parity/animation';
+import type { EnterTransition } from './internal/parity/animation';
 import type { LabelFadeState } from "./internal/line-x-scale";
 import {
   DEFAULT_ANIMATION_DURATION_MS,
@@ -386,7 +386,7 @@ export const LineChart = ({
     xScaleD3Ref,
     yDomainFinal,
   });
-  const lineChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
+  const lineChartRenderer = chartMotionRenderer<ChartDatum, Date, number>();
 
   // Seam resources carry the mount prefix; marks reference them as url(#id).
   const profitLossDefs = useMemo(

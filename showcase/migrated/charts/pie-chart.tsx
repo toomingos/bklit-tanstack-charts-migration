@@ -1,5 +1,5 @@
 // Bklit PieChart on TanStack Charts (single radialArc in polar); slices are carriers, detection app-owned.
-import { pie as d3Pie } from "d3-shape";
+import { arc as d3Arc, pie as d3Pie } from "d3-shape";
 import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { ChartHost, HOST_INITIAL_WIDTH, adoptHostWidth } from "./internal/chart-host";
@@ -14,11 +14,11 @@ import { withStates } from "./internal/with-states";
 import { stagger } from "@tanstack/charts/motion/definition";
 import { pieArcPath } from "./internal/pie-geometry";
 
-import { createHoverSource, createOffsetArc, FADE_OPACITY, HOVER_SPRING, motionEasingFromCss } from './internal/hover-motion';
+import { createHoverSource, FADE_OPACITY, HOVER_SPRING } from './internal/hover-motion';
 import type { HoverSource, PieSliceHoverEffect } from './internal/hover-motion';
 import { chartMotionRenderer } from "./internal/motion-renderer";
-import { resolveEnterTransition } from './internal/enter-transition';
-import type { PieEnterTransition, ResolvedTiming } from './internal/enter-transition';
+import { enterTransitionToMotion } from './internal/parity/animation';
+import type { PieEnterTransition } from './internal/parity/animation';
 import { PieStableContext, PieHoverCoordinatorContext } from './internal/pie-center-context';
 import type { PieStableValue, PieData, PieArcData } from './internal/pie-center';
 import { defaultPieColors } from "./internal/pie-default-colors";
@@ -244,7 +244,8 @@ const createPieSliceMark = (pieRows: readonly PieRowDatum[], params: Readonly<Cr
   return radialArc<PieRowDatum>(pieRows, {
     fill: (datum: Readonly<PieRowDatum>) => datum.fill,
     generator: () => {
-      const gen = createOffsetArc<PieRowDatum>((datum: Readonly<PieRowDatum>) => ({ dx: datum.dx, dy: datum.dy }));
+      // Offsets are always zero (hover geometry dropped, D535 ruling 2).
+      const gen = d3Arc<PieRowDatum>();
       gen
         .startAngle((datum: Readonly<PieRowDatum>) => datum.startAngle)
         .endAngle((datum: Readonly<PieRowDatum>) => datum.endAngle)
@@ -264,17 +265,7 @@ const createPieSliceMark = (pieRows: readonly PieRowDatum[], params: Readonly<Cr
       }
       if (ctx.datum && !ctx.datum.animate) {return false;}
       if (enterTransition) {
-        const resolved: ResolvedTiming = resolveEnterTransition(enterTransition);
-        return {
-          transition:
-            resolved.kind === "spring"
-              ? { damping: resolved.damping, mass: resolved.mass, stiffness: resolved.stiffness, type: "spring" }
-              : {
-                  duration: resolved.durationMs,
-                  easing: motionEasingFromCss(resolved.easingCss),
-                  type: "tween",
-                },
-        };
+        return { transition: enterTransitionToMotion(enterTransition) };
       }
       return stagger({ each: PIE_STAGGER_EACH_MS * enterStaggerScale, offset: PIE_STAGGER_OFFSET_MS * enterStaggerScale, phase: "enter" });
     },
@@ -340,6 +331,7 @@ const buildPieDefinition = (options: Readonly<BuildPieDefinitionOptions>): DomCh
       guides: false,
       marks: [polar({ inset: hoverOffset, marks: [], radiusRatio: 1, scales: { angle: null, radius: null } })],
       scales: { x: null, y: null },
+      svgAnimation: false as const,
       theme: { palette: CHART_CATEGORY_PALETTE },
       tooltip: false,
     });
@@ -367,6 +359,7 @@ const buildPieDefinition = (options: Readonly<BuildPieDefinitionOptions>): DomCh
     // Slice dim resolves through focus states (I1 wrapper), exercised by fixtures/states.
     marks: [withStates(polar({ inset: hoverOffset, marks: [sliceMark], radiusRatio: 1, scales: { angle: null, radius: null } }), pieRows, pieDimStates({ getFill, sliceConfigOf: (index: number) => sliceConfigMap.get(index) }))],
     scales: { x: null, y: null },
+    svgAnimation: false as const,
     // Palette override has no pixel effect (rows carry explicit fill); keeps native surfaces agreeing.
     theme: { palette: CHART_CATEGORY_PALETTE },
     tooltip: false,
@@ -642,7 +635,7 @@ PieChart.displayName = "PieChart";
 
 
 export type { PieSliceHoverEffect } from './internal/hover-motion';
-export type { PieEnterTransition } from './internal/enter-transition';
+export type { PieEnterTransition } from './internal/parity/animation';
 export { PieSlice } from "./internal/pie-slice";
 export type { PieSliceProps } from "./internal/pie-slice";
 export {

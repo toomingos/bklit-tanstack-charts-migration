@@ -297,7 +297,6 @@ const useComposedChartMarks = (params: Readonly<UseComposedChartMarksParams>): U
 };
 
 interface BuildComposedScaleOptionsParams {
-  readonly gateActive: boolean;
   readonly grid: GridConfig | null;
   readonly marginBottom: number;
   readonly scales: { xScale: ChartScale; yScale: ChartScale };
@@ -316,7 +315,7 @@ const buildComposedScaleOptions = (
 ): BuildComposedScaleOptionsResult => {
   const gridGuide = resolveGridGuide(params.grid);
   // Hover-invariant: x tick labels never fade on hover (the package has no per-tick focus opacity).
-  const { motion, tickLabelMotion } = buildComposedMotion(params.gateActive);
+  const { motion, tickLabelMotion } = buildComposedMotion();
   const xScaleOptions: ChartPositionScaleOptions<Date> = {
     axis: buildPrecomputedXAxisOptions({
       columnTicks: gridGuide.columnTicks,

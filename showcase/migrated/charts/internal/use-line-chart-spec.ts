@@ -7,12 +7,10 @@ import { tooltip as packageTooltip } from "@tanstack/charts/tooltip";
 import { portal } from "@tanstack/charts/tooltip/portal";
 import type { ChartControl, ChartMark, ChartTooltipInput, DomChartDefinition } from "@tanstack/charts";
 import { resolveGridGuide } from "./grid";
-import { bezierEasing } from "./bezier-easing";
 import { toSpecCrosshairGradient } from "./fade-mask";
 import { buildCrosshairGradientDef } from "./focus-marks";
 import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, TOOLTIP_BOX_SPRING } from "./design-tokens";
 import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./cartesian-focus-distance";
-import { isChartInteractionPhase } from "./chart-phase";
 import type { ChartPhase } from "./chart-phase";
 import {
   LEGEND_DIM_OPACITY,
@@ -35,7 +33,7 @@ import {
   resolveXTickLabelOpacity,
 } from "./line-x-scale";
 import type { LabelFadeState } from "./line-x-scale";
-import type { MarkerRevealSeriesConfig } from "./line-marker-reveal";
+import type { MarkerRevealSeriesConfig } from "./parity/animation";
 import type { ChartMargin } from "./use-chart-margin";
 import type { ChartDatum, ExtractedChildren } from "./types";
 import type { ProjectionLineConfig } from "./projection-config";
@@ -110,7 +108,7 @@ const buildLineTooltipOption = ({ discrete, enabled }: Readonly<LineTooltipOptio
 };
 
 const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec => {
-  const { brushControls, chartPhase, crosshairGradientId, effectiveYDomainTweenDuration, grid, hoveredIndex, hoveredIndexForPL, isDiscrete, isLoading, isLoaded, labelFade, legendHoveredIndex, lines, margin, markerGradientIdByKey, markerSeriesConfigs, plTooltipSignIndex, profitLossLines, projectionConfigs, projectionGradientBaseId, projectionLines, projectorFor, renderData, timeExtent, timeExtentRaw, tooltip, tooltipEnabled, visibleData, width, xAxis, xDataKey, xDomain, xScaleD3Ref, yAxis, yDomainChangedForTween, yDomainFinal } = params;
+  const { brushControls, crosshairGradientId, effectiveYDomainTweenDuration, grid, hoveredIndex, hoveredIndexForPL, isDiscrete, isLoading, labelFade, legendHoveredIndex, lines, margin, markerGradientIdByKey, markerSeriesConfigs, plTooltipSignIndex, profitLossLines, projectionConfigs, projectionGradientBaseId, projectionLines, projectorFor, renderData, timeExtent, timeExtentRaw, tooltip, tooltipEnabled, visibleData, width, xAxis, xDataKey, xDomain, xScaleD3Ref, yAxis, yDomainFinal } = params;
   const marks = useMemo<ChartMark<ChartDatum, Date, number>[]>(
     () => {
       if (isLoading) {return [];}
@@ -137,9 +135,8 @@ const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec 
     const xScale = createLineXScale({ renderData, scaleRef: xScaleD3Ref, timeExtent, visibleData, xAxis, xDataKey, xDomain });
     const gridGuide = resolveGridGuide(grid);
     const xTickLabelOpacity = resolveXTickLabelOpacity(labelFade, xAxis);
-    // Enter is false (RevealWipe owns it); update tweens only on y-domain change, else snaps.
-    const yDomainTweenGateActive = isChartInteractionPhase(chartPhase) && isLoaded && yDomainChangedForTween;
-    const { motion, tickLabelMotion } = resolveLineMotions(yDomainTweenGateActive, effectiveYDomainTweenDuration);
+    // Enter and y-domain updates ride package motion; the renderer owns the paint.
+    const { motion, tickLabelMotion } = resolveLineMotions(effectiveYDomainTweenDuration);
     const xScaleOptions = buildLineXScaleOptions({ gridGuide, marginBottom: margin.bottom, tickLabelMotion, xAxis, xScale, xTickLabelOpacity });
     const yScaleOptions = buildLineYScaleOptions({ gridGuide, niced: yDomainFinal, tickLabelMotion, yAxis });
     // Crosshair fade spans the plot vertically, so the bbox spec form paints identically.
@@ -164,16 +161,14 @@ const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec 
         x: xScaleOptions,
         y: yScaleOptions,
       },
-      svgAnimation: yDomainTweenGateActive
-        ? { duration: effectiveYDomainTweenDuration, easing: bezierEasing }
-        : (false as const),
+      svgAnimation: false as const,
       theme: { muted: "var(--color-chart-label, var(--chart-label))" },
       tooltip: buildLineTooltipOption({
         discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
         enabled: tooltip?.enabled ?? false,
       }),
     };
-  }, [marks, renderData, xDataKey, grid, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, xDomain, timeExtent, tooltip, tooltipEnabled, crosshairGradientId, xAxis, yAxis, visibleData, labelFade, brushControls, xScaleD3Ref]);
+  }, [marks, renderData, xDataKey, grid, yDomainFinal, margin, effectiveYDomainTweenDuration, xDomain, timeExtent, tooltip, tooltipEnabled, crosshairGradientId, xAxis, yAxis, visibleData, labelFade, brushControls, xScaleD3Ref]);
 
   const definition = useMemo((): DomChartDefinition<ChartDatum, Date, number> => defineChart(spec), [spec]);
   return { definition };

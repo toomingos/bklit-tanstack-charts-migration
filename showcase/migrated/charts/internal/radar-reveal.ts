@@ -2,8 +2,8 @@ import { curveLinearClosed, lineRadial } from "d3-shape";
 // Ring vertices sit half a step off spokes; values are flat subdivisions, not d3 nice ticks.
 import type { ChartMotionTransition, SceneNode } from "@tanstack/charts";
 import type { PolarGuide, PolarGuideScene } from "@tanstack/charts/polar";
-import { TWEEN_FALLBACK } from './enter-transition';
-import type { EnterTransition, ResolvedTiming } from './enter-transition';
+import { TWEEN_FALLBACK } from './parity/animation';
+import type { EnterTransition, ResolvedTiming } from './parity/animation';
 import { motionEasingFromCss } from "./hover-motion";
 
 interface BklitRadarGridOptions {
@@ -154,5 +154,5 @@ export {
   buildProgressKeyframes as buildRadarProgressKeyframes,
   resolveEnterTransition as resolveRadarEnterTransition,
   revealTiming as radarRevealTiming,
-} from "./enter-transition";
+} from "./parity/animation";
 

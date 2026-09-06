@@ -7,7 +7,7 @@ import { computeArcNotches, createNotchPath, interpolateGaugeHex, resolveGaugeAc
 import type { ComputedNotch, NotchPoint } from './gauge-notch';
 import { GAUGE_SPRING_FALLBACK, gaugeMotionTransition } from './gauge-reveal';
 import type { GaugeEnterTransition } from './gauge-reveal';
-import { resolveEnterTransition } from "./enter-transition";
+import { resolveEnterTransition } from "./parity/animation";
 import { nativeStaggerDelayMs } from "./native-stagger";
 
 interface GaugeArcRow {

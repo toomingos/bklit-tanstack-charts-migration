@@ -474,6 +474,7 @@ const SankeyChart = ({
         scales: { x: null, y: null },
         // Package hover order: nodes first, links in reverse paint order.
         spatialIndex: (points) => createSankeySpatialIndex(points, laidOutNodesRef.current ?? [], laidOutLinksRef.current ?? []),
+        svgAnimation: false as const,
         // Palette override has no pixel effect (colors resolve JS-side); keeps native surfaces agreeing.
         theme: { palette: CHART_CATEGORY_PALETTE_WITH_FALLBACK },
         tooltip: {

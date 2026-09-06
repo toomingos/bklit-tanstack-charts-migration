@@ -14,7 +14,7 @@ import type { ChartDatum, ChartStatus } from "./internal/types";
 import { DEFAULT_Y_DOMAIN_TWEEN_MS } from "./internal/chart-phase";
 import type { ChartPhase } from "./internal/chart-phase";
 import type { ChartMargin } from "./internal/use-chart-margin";
-import type { EnterTransition } from "./internal/enter-transition";
+import type { EnterTransition } from "./internal/parity/animation";
 import { useAreaChartSetup } from "./internal/use-area-chart-setup";
 import { useAreaSeries } from "./internal/use-area-series";
 import { useAreaYDomain } from "./internal/use-area-y-domain";

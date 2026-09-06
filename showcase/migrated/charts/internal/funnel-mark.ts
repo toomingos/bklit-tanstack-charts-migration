@@ -17,7 +17,7 @@ import {
 } from "./funnel-geometry";
 import type { FunnelStage } from "./funnel-segment";
 import { FADE_OPACITY, motionEasingFromCss } from "./hover-motion";
-import { resolveEnterTransition } from "./enter-transition";
+import { resolveEnterTransition } from "./parity/animation";
 import type { ChartEnterTransition } from "./parity/animation";
 
 // Halo stack math moved here with the ring loop (funnel-geometry keeps the path builders).

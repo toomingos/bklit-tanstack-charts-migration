@@ -12,8 +12,8 @@ import { pieArcPath } from "./internal/pie-geometry";
 import { RingHoverCoordinatorContext, RingStableContext, defaultRingColors } from "./internal/ring-context";
 import type { RingData, RingStableValue, ScrubRingLayer } from "./internal/ring-context";
 import { HOVER_SPRING, motionEasingFromCss } from "./internal/hover-motion";
-import { RING_TWEEN_FALLBACK, resolveEnterTransition } from './internal/enter-transition';
-import type { ResolvedTiming, RingEnterTransition } from './internal/enter-transition';
+import { RING_TWEEN_FALLBACK, resolveEnterTransition } from './internal/parity/animation';
+import type { ResolvedTiming, RingEnterTransition } from './internal/parity/animation';
 import { nativeStaggerDelayMs } from "./internal/native-stagger";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import { MARKS_GROUP_SELECTOR, classifyChildren, ringIndexFromMarkId, useRingHoverState, useRingReveal } from "./internal/ring-chart-model";
@@ -218,6 +218,7 @@ const buildRingDefinition = (options: Readonly<BuildRingDefinitionOptions>): Dom
       guides: false,
       marks: [polar({ inset: padding, marks: [], radiusRatio: 1, scales: { angle: null, radius: null } })],
       scales: { x: null, y: null },
+      svgAnimation: false as const,
       tooltip: false,
     });
   }
@@ -241,6 +242,7 @@ const buildRingDefinition = (options: Readonly<BuildRingDefinitionOptions>): Dom
     guides: false,
     marks: [polar({ inset: padding, marks: arcMarks, radiusRatio: 1, scales: { angle: null, radius: null } })],
     scales: { x: null, y: null },
+    svgAnimation: false as const,
     tooltip: false,
   });
 };
@@ -450,21 +452,9 @@ const RingChart = ({
     if (hasRevealedRings()) {return undefined;}
     const container = containerRef.current;
     if (!container) {return undefined;}
-    const hasAnims = (): boolean => {
-      for (let i = 0; i < data.length; i += 1) {
-        const el = container.querySelector<SVGGElement>(`[data-ts-key="ring-${i}-track"]`);
-        if (el && el.getAnimations().length > 0) {return true;}
-      }
-      return false;
-    };
-    const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (hasAnims()) {return;}
-        if (!container.querySelector(MARKS_GROUP_SELECTOR)) {return;}
-        revealHandleRender({ container });
-      });
-    });
-    return (): void =>{  cancelAnimationFrame(raf); };
+    if (!container.querySelector(MARKS_GROUP_SELECTOR)) {return undefined;}
+    revealHandleRender({ container });
+    return undefined;
   }, [data.length, geometryScrubbing, revealHandleRender, hasRevealedRings, containerRef]);
 
   const renderContent = size >= RING_MIN_RENDER_SIZE;
@@ -559,4 +549,4 @@ export type {
 };
 export type { RingLineCap, RingProps } from "./internal/ring-chart-model";
 export type { RingContextValue, RingData, RingHoverValue, RingStableValue, ScrubRingLayer } from "./internal/ring-context";
-export type { RingEnterTransition } from './internal/enter-transition';
+export type { RingEnterTransition } from './internal/parity/animation';

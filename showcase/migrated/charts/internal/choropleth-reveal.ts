@@ -1,74 +1,15 @@
-// Choropleth reveal lifecycle: WAAPI group fade plus the pending/seen reveal-key tracking.
+// Choropleth reveal keys: features enter through the renderer.
+// Hook below keeps the pending/seen tracking for replays.
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { RefObject } from "react";
-import { isRevealed, markRevealed, onPostPaint, setRevealDeadline } from "./deferred-reveal";
-import { clipRevealTiming } from "./enter-transition";
-import type { EnterTransition } from "./enter-transition";
+import { isRevealed, markRevealed } from "./reveal-root";
+import { clipRevealTiming } from "./parity/animation";
+import type { EnterTransition } from "./parity/animation";
 
 const FEATURE_ENTER_MS = 1100;
 const REVEAL_EASING = "cubic-bezier(0.85, 0, 0.15, 1)";
 // Selector for the TanStack-rendered svg element within a chart container.
 const TS_CHART_SVG_SELECTOR = "svg.ts-chart";
-
-interface RevealPlaybackOptions {
-  readonly chartContainer: HTMLElement;
-  readonly durationMs: number;
-  readonly easingCss: string;
-  readonly animationsRef: RefObject<Animation[]>;
-}
-
-// Settle a reveal tween: drop the backwards fill once finished or cancelled.
-const settleGeoReveal = (anim: Animation): void => {
-  anim.onfinish = (): void => { try { anim.cancel(); } catch {
-    // Cancelling a finished tween throws: the reveal is already settled.
-  } };
-  // Single settle handler: oncancel suffices, no options or second subscriber needed.
-  // eslint-disable-next-line unicorn/prefer-add-event-listener
-  anim.oncancel = (): void => { try { anim.cancel(); } catch {
-    // Cancelling a cancelled tween throws: the settle is already done.
-  } };
-};
-
-const playGeoReveal = (options: Readonly<RevealPlaybackOptions>): void => {
-  const { chartContainer, durationMs, easingCss, animationsRef } = options;
-  const liveSvg = chartContainer.querySelector<SVGElement>(TS_CHART_SVG_SELECTOR);
-  const liveGeo = chartContainer.querySelector<SVGGElement>(".ts-chart__geo");
-  if (!liveSvg || !liveGeo) {return;}
-  liveGeo.classList.remove("ts-chart__marks--revealing");
-  // SVGGElement carries style via ElementCSSInlineStyle, so no HTMLElement cast is needed.
-  liveGeo.style.opacity = "";
-  const anim = liveGeo.animate(
-    [{ opacity: 0 }, { opacity: 1 }],
-    { duration: durationMs, easing: easingCss, fill: "backwards" },
-  );
-  animationsRef.current.push(anim);
-  settleGeoReveal(anim);
-};
-
-interface ArmRevealOptions {
-  readonly chartContainer: HTMLElement;
-  readonly durationMs: number;
-  readonly easingCss: string;
-  readonly animationsRef: RefObject<Animation[]>;
-  readonly deadlineRef: RefObject<number | undefined>;
-  readonly cancelRef: RefObject<(() => void) | undefined>;
-}
-
-const armRevealAnimation = (options: Readonly<ArmRevealOptions>): void => {
-  const { chartContainer, durationMs, easingCss, animationsRef, deadlineRef, cancelRef } = options;
-  const geoGroup = chartContainer.querySelector<SVGGElement>(".ts-chart__geo");
-  if (!geoGroup) {return;}
-  geoGroup.classList.add("ts-chart__marks--revealing");
-  deadlineRef.current = setRevealDeadline(durationMs, {
-    animationsRef,
-    onDeadline: () => {
-      // No deadline fallback: the animation finish handlers settle the reveal.
-    },
-  });
-  cancelRef.current = onPostPaint(() => {
-    playGeoReveal({ animationsRef, chartContainer, durationMs, easingCss });
-  });
-};
 
 interface RevealKey {
   readonly signature: string;
@@ -127,8 +68,8 @@ interface ChoroplethRevealApi {
 }
 
 const useChoroplethReveal = (options: Readonly<ChoroplethRevealOptions>): ChoroplethRevealApi => {
-  const { animationDuration, revealSignature, enterTransition } = options;
-  const { revealDurationMs, revealEasingCss, revealKey, seenRevealedRef } = useRevealKeyState(enterTransition, animationDuration, revealSignature);
+  const { animationDuration, revealSignature } = options;
+  const { revealKey, seenRevealedRef } = useRevealKeyState(options.enterTransition, animationDuration, revealSignature);
   const revealAnimsRef = useRef<Animation[]>([]);
   const revealDeadlineTimerRef = useRef<number | undefined>(undefined);
   const revealPostPaintCancelRef = useRef<(() => void) | undefined>(undefined);
@@ -139,15 +80,8 @@ const useChoroplethReveal = (options: Readonly<ChoroplethRevealOptions>): Chorop
     if (!pendingKey || !svg || isRevealed(svg)) {return;}
     seenRevealedRef.current = pendingKey;
     markRevealed(svg);
-    armRevealAnimation({
-      animationsRef: revealAnimsRef,
-      cancelRef: revealPostPaintCancelRef,
-      chartContainer,
-      deadlineRef: revealDeadlineTimerRef,
-      durationMs: revealDurationMs,
-      easingCss: revealEasingCss,
-    });
-  }, [animationDuration, revealDurationMs, revealEasingCss, revealKey, seenRevealedRef]);
+    void chartContainer;
+  }, [animationDuration, revealKey, seenRevealedRef]);
 
   const cancelReveal = useCallback((): void => {
     if ((revealDeadlineTimerRef.current ?? 0) !== 0) {

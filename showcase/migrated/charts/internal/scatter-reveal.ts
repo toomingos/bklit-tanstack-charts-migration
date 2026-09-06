@@ -1,5 +1,4 @@
 import type { RefObject } from "react";
-import { isRevealed, markRevealed, setRevealDeadline } from "./deferred-reveal";
 import type { ChartPhase, ChartDatum } from "./types";
 import type { ChartRendererRenderContext } from "@tanstack/charts";
 
@@ -60,22 +59,17 @@ interface ArmScatterRevealParams {
 }
 
 const armScatterReveal = ({
-  deadlineMs,
-  marksGroup,
   revealKey,
   seenRef,
   setPhase,
   timerRef,
 }: Readonly<ArmScatterRevealParams>): void => {
   seenRef.current = { ...revealKey };
-  markRevealed(marksGroup);
-  setPhase("revealing");
-  timerRef.current = setRevealDeadline(deadlineMs, {
-    onDeadline: () => {
-      timerRef.current = null;
-      setPhase("ready");
-    },
-  });
+  if (timerRef.current !== null) {
+    globalThis.clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }
+  setPhase("ready");
 };
 
 interface HandleScatterRenderParams {
@@ -89,22 +83,17 @@ interface HandleScatterRenderParams {
   readonly timerRef: RefObject<number | null>;
 }
 
+// Neutralized: dots enter through the renderer, so every render settles ready.
 const handleScatterRender = ({
-  animationDuration,
   captureRenderContext,
   context,
-  deadlineMs,
   revealKey,
   seenRef,
   setPhase,
   timerRef,
 }: Readonly<HandleScatterRenderParams>): void => {
   const state = readScatterRevealKeys({ captureRenderContext, context, revealKey, seenRef });
-  if (
-    state.marksGroup === null ||
-    animationDuration <= 0 ||
-    (isRevealed(state.marksGroup) && !state.revealKeyChanged)
-  ) {
+  if (state.marksGroup === null) {
     setPhase("ready");
     return;
   }
@@ -112,7 +101,7 @@ const handleScatterRender = ({
     setPhase("ready");
     return;
   }
-  armScatterReveal({ deadlineMs, marksGroup: state.marksGroup, revealKey: state.revealKey, seenRef, setPhase, timerRef });
+  armScatterReveal({ deadlineMs: 0, marksGroup: state.marksGroup, revealKey: state.revealKey, seenRef, setPhase, timerRef });
 };
 
 export { armScatterReveal, handleScatterRender, readScatterRevealKeys, settleStaleRevealTimer };

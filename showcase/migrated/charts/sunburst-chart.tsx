@@ -37,7 +37,6 @@ import { hoverGrowForPathSegment, ringOptions } from "./internal/parity/sunburst
 import { SunburstProvider } from "./internal/sunburst-context";
 import type { SunburstContextValue } from "./internal/sunburst-context";
 import { maxRevealDelayMs } from "./internal/sunburst-reveal";
-import { setRevealDeadline } from "./internal/deferred-reveal";
 import {
   cancelLabelAnimations,
   resetLabelsOverlayForReplay,
@@ -55,8 +54,8 @@ import type { SunburstSegmentProps } from "./internal/sunburst-segment";
 import { resolveSunburstHintContent } from "./internal/sunburst-hint-content";
 import { SunburstHintDisplay } from "./internal/sunburst-hint";
 import type { SunburstHintProps } from "./internal/sunburst-hint";
-import { clipRevealTiming } from "./internal/enter-transition";
-import type { EnterTransition } from "./internal/enter-transition";
+import { clipRevealTiming } from "./internal/parity/animation";
+import type { EnterTransition } from "./internal/parity/animation";
 import { chartMotionRenderer } from "./internal/motion-renderer";
 import { useSunburstZoom } from "./internal/use-sunburst-zoom";
 import { useSunburstDefinition } from "./internal/use-sunburst-definition";
@@ -69,8 +68,6 @@ const SUNBURST_SWEEP_EASE = "cubic-bezier(0.85,0,0.15,1)";
 // Legacy zoom timing, now the arc mark's native update transition.
 const SUNBURST_ZOOM_MS = 750;
 const SUNBURST_ZOOM_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
-// SB15 whole-stage fade-in duration, matching legacy motion.svg opacity 0 to 1.
-const STAGE_FADE_IN_MS = 350;
 // Slack added to sweep plus stagger when scheduling the reveal-phase deadline timer.
 const REVEAL_DEADLINE_SLACK_MS = 935;
 // Fraction of the sweep duration added to the max stagger delay before labels reveal.
@@ -103,21 +100,8 @@ const resolveSunburstHintText = (hoveredTrail: readonly string[] | undefined, fo
   return "Click the center to zoom out";
 };
 
-// Fades the chart stage in on mount, returning its teardown, or undefined when
-// The stage is not rendered yet.
-const fadeInChartStage = (container: HTMLElement): (() => void) | undefined => {
-  const stage = container.querySelector<SVGSVGElement>("svg.ts-chart");
-  if (!stage) {return undefined;}
-  stage.style.opacity = "0";
-  const fadeAnimation = stage.animate(
-    [{ opacity: "0" }, { opacity: "1" }],
-    { duration: STAGE_FADE_IN_MS, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" },
-  );
-  return (): void => {
-    fadeAnimation.cancel();
-    stage.style.opacity = "";
-  };
-};
+// Fades the chart stage in on mount: retired, arcs enter through the renderer.
+const fadeInChartStage = (_container: HTMLElement): (() => void) | undefined => undefined;
 
 // Sunburst reveal phase, shared by the phase plumbing below.
 type SunburstPhase = "loading" | "revealing" | "ready";
@@ -564,9 +548,10 @@ const SunburstChartInner = ({
     }
     setPhase("revealing");
     const maxDelay = maxRevealDelayMs(sectors, enterStaggerScale);
-    revealDeadlineTimerRef.current = setRevealDeadline(sweepDurationMs + maxDelay + REVEAL_DEADLINE_SLACK_MS, {
-      onDeadline: () => { setPhase("ready"); },
-    });
+    revealDeadlineTimerRef.current = window.setTimeout(() => {
+      revealDeadlineTimerRef.current = null;
+      setPhase("ready");
+    }, sweepDurationMs + maxDelay + REVEAL_DEADLINE_SLACK_MS);
     return () => {
       if (revealDeadlineTimerRef.current !== null) {
         globalThis.clearTimeout(revealDeadlineTimerRef.current);

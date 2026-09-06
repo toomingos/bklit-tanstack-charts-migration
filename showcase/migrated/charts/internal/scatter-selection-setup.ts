@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode, RefObject } from "react";
 import type { ChartRenderer } from "@tanstack/charts";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { useChartSelection } from "./chart-selection";
-import { useChartRenderer } from "./motion-renderer";
+import { chartMotionRenderer } from "./motion-renderer";
 import { useScatterTooltipBody } from "./scatter-tooltip-body";
 import type { ScatterDomains } from "./scatter-domains-setup";
 import type { ScatterScales } from "./scatter-scale-setup";
@@ -102,7 +102,7 @@ const useScatterChartSelection = ({
     resolveScenePos: clientToScene,
     xDataKey,
   });
-  const scatterChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
+  const scatterChartRenderer = chartMotionRenderer<ChartDatum, Date, number>();
   return { scatterChartRenderer, scatterSelection };
 };
 

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { ChartDatum, ChartPhase } from "./types";
 import type { ChartMargin } from "./use-chart-margin";
-import type { EnterTransition } from "./enter-transition";
+import type { EnterTransition } from "./parity/animation";
 
 interface ScatterChartProps {
   readonly data: ChartDatum[];

@@ -397,6 +397,7 @@ const defineArcChart = (
       }),
     ],
     scales: { x: null, y: null },
+    svgAnimation: false as const,
   });
 
 interface BuildArcDefinitionOptions {
@@ -896,6 +897,7 @@ const buildLinearGaugeChart = (
     margin: { bottom: 0, left: 0, right: 0, top: 0 },
     marks: [quadMark],
     scales: { x: null, y: null },
+    svgAnimation: false as const,
   });
 
 interface UseLinearGaugeDefinitionOptions {
@@ -1099,5 +1101,5 @@ Gauge.displayName = "Gauge";
 
 export type { GaugeOrientation, GaugeProps };
 export { Gauge, buildArcDefinition };
-export type { GaugeEnterTransition } from "./internal/enter-transition";
+export type { GaugeEnterTransition } from "./internal/parity/animation";
 export type { GaugeLabelAlign, GaugeLabelPlacement } from "./internal/gauge-center";

@@ -122,12 +122,14 @@ const resolveHoverDotFill = (seriesColor: string, dotColor: string | ((point: Re
   return seriesColor;
 };
 // "Group" match dims every series uniformly while any point is pointer-focused.
+// Time term rides the state (V3.5): the 0.4s line-path CSS rule is V3.6's to delete.
 const pointerSeriesDimStates = <TDatum = unknown>(opacity: number): ChartMarkState<TDatum>[] => (
-  [{ style: { opacity }, when: { focus: "group", source: "pointer" } }]
+  [{ style: { opacity }, transition: { duration: 400, easing: "ease-in-out", type: "tween" }, when: { focus: "group", source: "pointer" } }]
 );
 // No declarative "not x" selector exists, so this is a predicate function.
+// Time term rides the state (V3.5): the 0.12s composed-bar CSS rule is V3.6's to delete.
 const pointerRowDimState = <TDatum = unknown>(opacity: number): ChartMarkState<TDatum> => (
-  { style: { opacity }, when: (ctx) => ctx.focus.source === "pointer" && !ctx.matches("x") }
+  { style: { opacity }, transition: { duration: 120, easing: "ease-in-out", type: "tween" }, when: (ctx) => ctx.focus.source === "pointer" && !ctx.matches("x") }
 );
 // Focus callbacks hand us untyped datum values, so confirm record shape before key lookup.
 const isStringKeyedRecord = <Subject>(value: Subject): value is Subject & ChartDatum =>

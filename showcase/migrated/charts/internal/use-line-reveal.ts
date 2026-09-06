@@ -8,8 +8,8 @@ import {
   collectMarkerRevealAnimations,
   hasVisibleMarkerSeries,
   scheduleMarkerReveal,
-} from "./line-marker-reveal";
-import type { MarkerRevealSeriesConfig } from "./line-marker-reveal";
+} from "./parity/animation";
+import type { MarkerRevealSeriesConfig } from "./parity/animation";
 import type { ChartPhase } from "./chart-phase";
 import type { ChartDatum } from "./types";
 import { MS_PER_SECOND } from "./line-chart-support";

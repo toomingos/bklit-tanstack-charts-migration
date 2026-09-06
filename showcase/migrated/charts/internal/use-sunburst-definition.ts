@@ -234,10 +234,6 @@ const buildSunburstDefinition = (options: Readonly<BuildSunburstDefinitionOption
       guides: false,
       marks: [withStates(containerMark, flatRows, sunburstFocusStates({ dimFill }))],
       scales: { x: null, y: null },
-      /*
-       * Click/keyboard activation zooms (selection.change runs beside
-       * onSelect; ChartHost exposes no onSelect prop).
-       */
       selection: {
         change: (point, _source): void => {
           if (point === null) {return;}
@@ -245,6 +241,7 @@ const buildSunburstDefinition = (options: Readonly<BuildSunburstDefinitionOption
         },
         type: "keyed",
       },
+      svgAnimation: false as const,
       /*
        * Explicit 5-entry palette override; every row already carries per-datum `fill`, so no pixel effect today.
        */

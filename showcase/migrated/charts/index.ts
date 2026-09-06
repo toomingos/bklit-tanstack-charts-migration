@@ -122,7 +122,6 @@ export type { CenterStatProps as ChartStatFlowProps, CenterStatFormat as ChartSt
 export { DEFAULT_ANIMATION_DURATION_MS, DEFAULT_ANIMATION_EASING } from "./internal/animation-defaults";
 export { getPrimaryYScale, isYDomainTweenPhase } from "./internal/y-domain";
 export type { YDomain } from "./internal/y-domain";
-export { useAnimatedYDomains } from "./internal/use-animated-y-domains";
 export { DEFAULT_Y_AXIS_ID } from "./internal/y-axis-id";
 export type { YAxisOrientation } from "./internal/y-axis-id";
 export { getMarkerVisualExtent as getSeriesMarkerVisualExtent } from "./internal/series-marker-mark";
@@ -155,6 +154,7 @@ export {
   DEFAULT_CHART_ENTER_TRANSITION,
   clipRevealTransition,
   transitionWithDelay,
+  useAnimatedYDomains,
 } from "./internal/parity/animation";
 export type { ChartEnterTransition } from "./internal/parity/animation";
 export {
@@ -275,3 +275,5 @@ export type {
 export { LineChartLoading } from "./line-chart-loading";
 export type { LineChartLoadingProps } from "./line-chart-loading";
 export { ChartBrushSelectionOverlay, ChartBrushTrackOverlay } from "./internal/brush-overlays";
+// V3.5 (one animation owner): useAnimatedYDomains rides the merged export.
+// Implementation lives in internal/parity/animation.

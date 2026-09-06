@@ -1,7 +1,7 @@
 // Per-notch pop-in via native keyed diff; per-datum enter animates opacity only,
-// So legacy's scale(0)->scale(1) half is dropped. Timing resolution: ./enter-transition.
+// So legacy's scale(0)->scale(1) half is dropped. Timing resolution: ./parity/animation.
 import type { ChartMotionTransition } from "@tanstack/charts";
-import type { EnterTransition, ResolvedTiming } from "./enter-transition";
+import type { EnterTransition, ResolvedTiming } from "./parity/animation";
 import { motionEasingFromCss } from "./hover-motion";
 
 type GaugeEnterTransition = EnterTransition;

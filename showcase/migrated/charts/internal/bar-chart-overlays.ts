@@ -6,7 +6,7 @@ import { selectBarLabelIndices, tickLabelFadeOpacity, hiddenAxisOptions } from "
 import { createBarHoverDotMark, resolveBarDotColor } from "./bar-chart-hover-dots";
 import { bezierEasing } from "./bezier-easing";
 import type { SpringConfig } from "./chart-config-context";
-import { isRevealed, markRevealed, setRevealDeadline } from "./deferred-reveal";
+import { isRevealed, markRevealed } from "./reveal-root";
 import { FADE_BUFFER, TICKER_HALF_WIDTH } from "./design-tokens";
 import type { resolveGridGuide } from "./grid";
 import { buildIndicatorMark, formatShortDateLabel } from "./focus-marks";
@@ -110,12 +110,10 @@ const armBarRevealDeadline = ({
   const staggerSpreadMs = revealDurationMs * BAR_ENTER_STAGGER_SPREAD_FRACTION;
   const staggerMs = renderDataLength > 1 ? staggerSpreadMs : 0;
   const deadlineMs = revealDurationMs + staggerMs;
-  revealDeadlineTimerRef.current = setRevealDeadline(deadlineMs, {
-    onDeadline: () => {
-      setPhase("ready");
-      syncBarPulseGroups(svgRoot, true);
-    },
-  });
+  revealDeadlineTimerRef.current = window.setTimeout(() => {
+    setPhase("ready");
+    syncBarPulseGroups(svgRoot, true);
+  }, deadlineMs);
 };
 
 const beginBarReveal = ({

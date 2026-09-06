@@ -133,23 +133,6 @@
   mask-image: linear-gradient(to right, #000 0%, #000 85%, transparent 100%);
 }
 
-/* --- Scatter mount reveal: the whole marks GROUP starts hidden the instant
-       it's committed (one cheap opacity toggle on a single element) so the
-       "real paint" the browser shows before the per-circle WAAPI tweens are
-       instantiated already matches their pre-animation (invisible) state —
-       see scatter-chart.tsx handleRender for why the tween setup itself is
-       deferred a couple frames past commit. This is intentionally
-       group-level `opacity` only (no per-circle rule, no `filter`): applying
-       a `filter` to tens of thousands of individual circles forces the
-       browser to rasterize each one into its own layer on first paint
-       (a "rasterization bomb" that was blocking that very paint) — the
-       per-circle `blur(2px)→blur(0px)` entrance motion is still produced by
-       each circle's own `.animate()` keyframes in handleRender, this rule
-       only needs to hide the group before that tween takes over. --- */
-[data-bkm-chart] .ts-chart__marks--revealing {
-  opacity: 0;
-}
-
 /* --- Candlestick reveal opacity: bklit's per-candle opacity fade is
        IDENTICAL and undelayed (fixed 150ms ease-in-out) across every single
        candle regardless of its own scaleY stagger delay (docs/LOG.md;
@@ -822,8 +805,7 @@
   transform-origin: center center;
 }
 
-/* Heatmap loading label shimmer — reuses the shared `@keyframes ts-bkm-shimmer`
-   defined below (identical animation; scoped under [data-bkm-chart="heatmap"]. */
+/* Heatmap loading label (shimmer retired with the V3.5 keyframes; V3.9 owns the pulse). */
 [data-bkm-chart="heatmap"] .ts-bkm-heatmap-loading-label {
   position: absolute;
   font-size: 0.75rem;
@@ -838,7 +820,6 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: ts-bkm-shimmer 1.6s linear infinite;
   transition: opacity 0.3s ease-in-out;
   pointer-events: none;
 }
@@ -848,13 +829,8 @@
 }
 
 /* ---------------------------------------------------------------------- */
-/* Generic loading-label shimmer (shared by LineChart, Heatmap).          */
+/* Generic loading-label (shared by LineChart, Heatmap).                 */
 /* ---------------------------------------------------------------------- */
-
-@keyframes ts-bkm-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
 
 [data-bkm-chart] .ts-bkm-loading-label {
   font-size: 0.75rem;
@@ -868,7 +844,6 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: ts-bkm-shimmer 1.6s linear infinite;
 }
 
 .ts-bkm-loading-label-wrap {
@@ -895,15 +870,10 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: ts-bkm-shimmer 1.6s linear infinite;
 }
 
 .ts-bkm-loading-label-wrap[data-bkm-loading-exiting] .ts-bkm-loading-label-text {
-  animation: ts-bkm-loading-exit 0.45s cubic-bezier(0.85, 0, 0.15, 1) forwards;
-}
-
-@keyframes ts-bkm-loading-exit {
-  to { opacity: 0; transform: translateY(30px); filter: blur(2px); }
+  opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

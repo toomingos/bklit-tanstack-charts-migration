@@ -7,6 +7,8 @@ import type {
 import { buildXAxisTickValues } from "./axis-ticks";
 import { bezierEasing } from "./bezier-easing";
 import { DEFAULT_Y_DOMAIN_TWEEN_MS } from "./chart-phase";
+import { REVEAL_DURATION_MS, SERIES_MARKER_ENTER_MS } from "./design-tokens";
+import { markerEnterDelay } from "./parity/animation";
 import { toDate } from "./coerce-date";
 import { resolveComposedXDomain } from "./composed-data-math";
 import type { ComposedScalesContext } from "./composed-model";
@@ -120,20 +122,24 @@ const tickLabelMotion = (context: ChartMotionContext): MotionResult =>
     ? (false as const)
     : { transition: { duration: DEFAULT_Y_DOMAIN_TWEEN_MS, easing: bezierEasing, type: "tween" as const } };
 
-const buildComposedMotion = (gateActive: boolean): ComposedMotion => {
-  const motion = (context: ChartMotionContext): MotionResult => {
-    if (context.role === "line" || context.role === "area" || context.role === "dot" || context.role === "bar") {
-      if (context.phase === "enter") {return false as const;}
-      if (context.phase === "update") {
-        return gateActive
-          ? { transition: { duration: DEFAULT_Y_DOMAIN_TWEEN_MS, easing: bezierEasing, type: "tween" as const } }
-          : (false as const);
-      }
+const composedMarkMotion = (context: ChartMotionContext): MotionResult => {
+  if (context.role === "dot") {
+    if (context.phase !== "enter") {return undefined;}
+    return {
+      delay: (motionContext: Readonly<Pick<ChartMotionContext, "datumCount" | "datumIndex">>): number => markerEnterDelay(motionContext, REVEAL_DURATION_MS),
+      transition: { duration: SERIES_MARKER_ENTER_MS, easing: bezierEasing, type: "tween" as const },
+    };
+  }
+  if (context.role === "line" || context.role === "area" || context.role === "bar") {
+    if (context.phase === "enter") {return undefined;}
+    if (context.phase === "update") {
+      return { path: { fallback: "snap" as const, update: "rolling" as const, x: "shift" as const, y: "reproject" as const }, transition: { duration: DEFAULT_Y_DOMAIN_TWEEN_MS, easing: bezierEasing, type: "tween" as const } };
     }
-    return undefined;
-  };
-  return { motion, tickLabelMotion };
+  }
+  return undefined;
 };
+
+const buildComposedMotion = (): ComposedMotion => ({ motion: composedMarkMotion, tickLabelMotion });
 
 const collectProjectionGradients = (params: Readonly<CollectProjectionGradientsParams>): ProjectionGradientDef[] => {
   const defs: ProjectionGradientDef[] = [];

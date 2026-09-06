@@ -279,6 +279,7 @@ const buildFunnelDefinition = (options: Readonly<BuildFunnelDefinitionOptions>):
     guides: false,
     marks: [withStates(stageMark, rows, funnelDimStates())],
     scales: { x: null, y: null },
+    svgAnimation: false as const,
     tooltip: false,
   });
 };

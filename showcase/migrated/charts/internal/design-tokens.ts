@@ -19,8 +19,6 @@ const BOX_OFFSET = 16;
 
 const ENTRANCE_SPRING = { damping: 25, stiffness: 300 };
 const DISCRETE_INTERACTION_THRESHOLD = 60;
-// Above this datum count charts use the static renderer (native motion reconcile is O(elements x points)).
-const NATIVE_MOTION_MAX_POINTS = 200;
 const BOX_FALLBACK_WIDTH = 180;
 const BOX_FALLBACK_HEIGHT = 80;
 const TICKER_HALF_WIDTH = 50;
@@ -68,7 +66,6 @@ export {
   HIGHLIGHT_SPRING,
   LINE_LOADING_LOOP_PAUSE_MS,
   LINE_LOADING_PULSE_CYCLE_S,
-  NATIVE_MOTION_MAX_POINTS,
   REVEAL_DURATION_MS,
   REVEAL_EASE_CSS,
   REVEAL_EASE_POINTS,

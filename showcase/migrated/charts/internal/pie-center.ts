@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from 'react';
-import type { PieEnterTransition } from "./enter-transition";
+import type { PieEnterTransition } from "./parity/animation";
 import type { CenterStatFormat } from './center-stat';
 
 interface PieData {

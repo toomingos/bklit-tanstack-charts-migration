@@ -1,29 +1,9 @@
-// Sole WAAPI clip-sweep site for line/area/composed; covered mark enters stay suppressed.
+// Sole package-motion entrypoint for line/area/composed; the clip sweep is retired.
 type RevealWipeMarks = SVGGElement;
 
 // Epoch (not the DOM stamp) keys replay; the stamp only guards fresh-node remount.
 interface RevealWipeEpochRef {
   current: number | null;
-}
-
-const isMarksRevealed = (marks: RevealWipeMarks): boolean => marks.dataset.bkmRevealed === "1";
-
-interface RevealIntentParams {
-  readonly marks: RevealWipeMarks;
-  readonly epoch: number;
-  readonly epochRef: RevealWipeEpochRef;
-  readonly active: boolean;
-  readonly animationDuration: number;
-  readonly prefersReducedMotion: boolean;
-}
-
-const canAnimateReveal = (active: boolean, animationDuration: number, prefersReducedMotion: boolean): boolean =>
-  active && animationDuration > 0 && !prefersReducedMotion;
-
-const shouldAnimateReveal = (params: Readonly<RevealIntentParams>): boolean => {
-  const epochUnseen = params.epochRef.current !== params.epoch;
-  if (!canAnimateReveal(params.active, params.animationDuration, params.prefersReducedMotion)) {return false;}
-  return epochUnseen || !isMarksRevealed(params.marks);
 }
 
 const stampRevealed = (marks: RevealWipeMarks): void => {
@@ -49,19 +29,12 @@ interface RunRevealWipeParams {
   readonly easingCss: string;
 }
 
+// Neutralized: the renderer owns the entrance, so the wipe always settles still.
 const runRevealWipe = (params: RunRevealWipeParams): boolean => {
-  const { marks, epoch, epochRef, active, animationDuration, prefersReducedMotion, durationMs, easingCss } = params;
+  const { marks, epoch, epochRef } = params;
   if (!marks) {return false;}
-  if (!shouldAnimateReveal({ active, animationDuration, epoch, epochRef, marks, prefersReducedMotion })) {
-    return applyStillReveal(marks);
-  }
-  stampRevealed(marks);
   epochRef.current = epoch;
-  marks.animate(
-    [{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }],
-    { duration: durationMs, easing: easingCss },
-  );
-  return true;
+  return applyStillReveal(marks);
 }
 
 interface SnapRevealWipeParams {
