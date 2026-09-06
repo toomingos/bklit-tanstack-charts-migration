@@ -1,4 +1,5 @@
 import type { ChartPoint, SceneNode } from "@tanstack/charts";
+import type { BarDepthSegment } from "./bar-depth-geometry";
 import type { ChartDatum } from "./types";
 
 const GLASS_TIP_OPACITY = 0.2;
@@ -124,34 +125,96 @@ interface PushBackBarNodesParams {
   readonly sideShadeId: string;
   readonly topShadeId: string;
   readonly topY: number;
+  readonly naturalHeight: number;
+  readonly topYTrim: number;
+  readonly segments?: readonly BarDepthSegment[] | null;
+}
+
+interface SidePieceGeometry {
+  readonly bandWidth: number;
+  readonly bandX: number;
+  readonly bottomY: number;
+  readonly depth: number;
+  readonly isRightOfCenter: boolean;
+  readonly perspectiveRise: number;
+}
+
+// Per-segment side faces (legacy `buildSidePieces`): scaled heights, topmost sheds `topYTrim`.
+// Undefined for null/empty/degenerate segments — caller keeps the single-face path.
+const resolveSidePieces = (
+  geometry: Readonly<SidePieceGeometry>,
+  naturalHeight: number,
+  topYTrim: number,
+  segments: readonly BarDepthSegment[] | null | undefined,
+): [number, number][][] | undefined => {
+  if (!segments || segments.length === 0) {return undefined;}
+  const total = segments.reduce((sum, segment) => sum + segment.value, 0);
+  if (total <= 0) {return undefined;}
+  const pieces: [number, number][][] = [];
+  let cursorY = geometry.bottomY;
+  for (let pieceIndex = 0; pieceIndex < segments.length; pieceIndex += 1) {
+    const segment = segments.at(pieceIndex);
+    if (segment !== undefined) {
+      const isTopmost = pieceIndex === segments.length - 1;
+      const scaledHeight = (segment.value / total) * naturalHeight;
+      const height = isTopmost ? Math.max(0, scaledHeight - topYTrim) : scaledHeight;
+      const segBottomY = cursorY;
+      const segTopY = cursorY - height;
+      cursorY = segTopY;
+      pieces.push(sideFacePoints({ ...geometry, bottomEdge: segBottomY, topEdge: segTopY }));
+    }
+  }
+  return pieces.length > 0 ? pieces : undefined;
 }
 
 const pushBackBarNodes = (params: Readonly<PushBackBarNodesParams>): void => {
-  const { bandWidth, bandX, bottomY, depth, fill, glassPosId, id, index, isRightOfCenter, nodes, opacity, perspectiveRise, sideShadeId, topShadeId, topY } = params;
-  const side = sideFacePoints({ bandWidth, bandX, bottomEdge: bottomY, depth, isRightOfCenter, perspectiveRise, topEdge: topY });
-  const lid = lidFacePoints({ bandWidth, bandX, depth, isRightOfCenter, perspectiveRise, topY });
+  const { bandWidth, bandX, bottomY, depth, fill, glassPosId, id, index, isRightOfCenter, nodes, opacity, perspectiveRise, sideShadeId, topShadeId, topY, naturalHeight, topYTrim, segments } = params;
   const sideKey = `${id}:side:${index}`;
+  const lid = lidFacePoints({ bandWidth, bandX, depth, isRightOfCenter, perspectiveRise, topY });
   const lidKey = `${id}:lid:${index}`;
+  // Per-segment solids; one full-side shade + glass keeps gradients continuous.
+  // Lid takes the topmost segment colour; without segments this is the single-face path.
+  const sidePieces = resolveSidePieces({ bandWidth, bandX, bottomY, depth, isRightOfCenter, perspectiveRise }, naturalHeight, topYTrim, segments);
+  if (sidePieces) {
+    for (let pieceIndex = 0; pieceIndex < sidePieces.length; pieceIndex += 1) {
+      const piece = sidePieces.at(pieceIndex);
+      const segment = segments?.at(pieceIndex);
+      if (piece !== undefined && segment !== undefined) {
+        nodes.push({
+          key: `${sideKey}:seg:${pieceIndex}`,
+          kind: "area",
+          points: piece,
+          style: { fill: segment.color, opacity },
+        });
+      }
+    }
+  } else {
+    const side = sideFacePoints({ bandWidth, bandX, bottomEdge: bottomY, depth, isRightOfCenter, perspectiveRise, topEdge: topY });
+    nodes.push({
+      key: sideKey,
+      kind: "area",
+      points: side,
+      style: { fill, opacity },
+    });
+  }
+  const fullSide = sideFacePoints({ bandWidth, bandX, bottomEdge: bottomY, depth, isRightOfCenter, perspectiveRise, topEdge: topY });
+  const topmost = sidePieces && segments?.at(-1);
+  const lidFill = topmost?.color ?? fill;
   nodes.push({
-    key: sideKey,
-    kind: "area",
-    points: side,
-    style: { fill, opacity },
-  }, {
     key: `${sideKey}:shade`,
     kind: "area",
-    points: side,
+    points: fullSide,
     style: { fill: `url(#${sideShadeId})`, opacity },
   }, {
     key: `${sideKey}:glass`,
     kind: "area",
-    points: side,
+    points: fullSide,
     style: { fill: `url(#${glassPosId})`, opacity },
   }, {
     key: lidKey,
     kind: "area",
     points: lid,
-    style: { fill, opacity },
+    style: { fill: lidFill, opacity },
   }, {
     key: `${lidKey}:tip`,
     kind: "area",

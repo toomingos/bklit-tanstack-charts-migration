@@ -12,6 +12,7 @@ import { bandWidthForSquares, computeSquareColumn } from "./bar-squares-layout";
 import { barColumnTrackMark } from "./bar-column-track-mark";
 import { barDepthBackMark, barDepthFrontMark, BAR_FADED_OPACITY } from "./bar-depth-marks";
 import type { BarDepthGradientIds } from "./bar-depth-marks";
+import type { BarDepthSegmentsAccessor } from "./bar-depth-geometry";
 import { barPulseMark } from "./bar-pulse-mark";
 import { barSquaresMark } from "./bar-squares-mark";
 import { barTrimmedMark } from "./bar-trimmed-mark";
@@ -229,6 +230,7 @@ interface TrimmedBarMarkParams {
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly projectValue: (dataKey: string, value: number) => number;
   readonly legendHoveredKey: string | undefined;
+  readonly minBarHeight?: number;
 }
 
 const buildTrimmedBarMark = ({
@@ -239,6 +241,7 @@ const buildTrimmedBarMark = ({
   categoryAccessor,
   projectValue,
   legendHoveredKey,
+  minBarHeight,
 }: Readonly<TrimmedBarMarkParams>): ChartMark<ChartDatum, string, number> =>
   barTrimmedMark(renderData, {
     categoryAccessor,
@@ -247,6 +250,7 @@ const buildTrimmedBarMark = ({
     groupBandwidth,
     groupScale,
     id: series.dataKey,
+    minBarHeight,
     // Bklit parity: perspective bars force cornerRadius 0 (flat-top lid meets face gap-free).
     opacity: barLegendDimOpacity(legendHoveredKey, series.dataKey, series.fadedOpacity),
     radius: 0,
@@ -394,6 +398,8 @@ interface BarDepthBackMarksParams {
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly depthGradientIds: BarDepthGradientIds;
   readonly depthLegendOpacity: number | undefined;
+  readonly depthMinBarHeight?: number;
+  readonly depthSegmentsAccessor?: BarDepthSegmentsAccessor;
 }
 
 const buildBarDepthBackMarks = ({
@@ -404,6 +410,8 @@ const buildBarDepthBackMarks = ({
   renderData,
   depthGradientIds,
   depthLegendOpacity,
+  depthMinBarHeight,
+  depthSegmentsAccessor,
 }: Readonly<BarDepthBackMarksParams>): ChartMark<ChartDatum, string, number>[] => {
   const marks: ChartMark<ChartDatum, string, number>[] = [];
   const seriesByDataKey = new Map(resolvedSeries.map((series) => [series.dataKey, series] as const));
@@ -417,7 +425,9 @@ const buildBarDepthBackMarks = ({
           fill: back.color ?? series.fill,
           gradientIds: depthGradientIds,
           id: `bar-depth-back-${back.dataKey}`,
+          minBarHeight: depthMinBarHeight,
           opacity: depthLegendOpacity,
+          segmentsAccessor: depthSegmentsAccessor,
           states: barDepthDimStates(),
           yAccessor: (datum: Readonly<ChartDatum>) => projectValue(back.dataKey, numericBarCell(datum, back.dataKey)),
         }),
@@ -438,6 +448,7 @@ interface BarSeriesMarksParams {
   readonly renderData: readonly Readonly<ChartDatum>[];
   readonly barEnterMotion: ChartMotionDefinition<ChartDatum>;
   readonly legendHoveredKey: string | undefined;
+  readonly depthMinBarHeight?: number;
 }
 
 const buildBarSeriesMarks = ({
@@ -451,6 +462,7 @@ const buildBarSeriesMarks = ({
   renderData,
   barEnterMotion,
   legendHoveredKey,
+  depthMinBarHeight,
 }: Readonly<BarSeriesMarksParams>): ChartMark<ChartDatum, string, number>[] => {
   const marks: ChartMark<ChartDatum, string, number>[] = [];
   const needsTrim = (dataKey: string): boolean => depthKeys.has(dataKey);
@@ -459,7 +471,7 @@ const buildBarSeriesMarks = ({
       // Squares-owned series render through the squares mark above; skipped here.
     } else if (needsTrim(series.dataKey)) {
       marks.push(
-        buildTrimmedBarMark({ categoryAccessor, groupBandwidth, groupScale, legendHoveredKey, projectValue, renderData, series }),
+        buildTrimmedBarMark({ categoryAccessor, groupBandwidth, groupScale, legendHoveredKey, minBarHeight: depthMinBarHeight, projectValue, renderData, series }),
       );
     } else {
       marks.push(
@@ -479,6 +491,8 @@ interface BarDepthFrontMarksParams {
   readonly depthGradientIds: BarDepthGradientIds;
   readonly depthLegendOpacity: number | undefined;
   readonly pulseWaveGradientId: string;
+  readonly depthMinBarHeight?: number;
+  readonly depthSegmentsAccessor?: BarDepthSegmentsAccessor;
 }
 
 const buildBarDepthFrontMarks = ({
@@ -490,6 +504,8 @@ const buildBarDepthFrontMarks = ({
   depthGradientIds,
   depthLegendOpacity,
   pulseWaveGradientId,
+  depthMinBarHeight,
+  depthSegmentsAccessor,
 }: Readonly<BarDepthFrontMarksParams>): ChartMark<ChartDatum, string, number>[] => {
   const marks: ChartMark<ChartDatum, string, number>[] = [];
   for (const front of fronts) {
@@ -499,7 +515,9 @@ const buildBarDepthFrontMarks = ({
         data: renderData,
         gradientIds: depthGradientIds,
         id: `bar-depth-front-${front.dataKey}`,
+        minBarHeight: depthMinBarHeight,
         opacity: depthLegendOpacity,
+        segmentsAccessor: depthSegmentsAccessor,
         states: barDepthDimStates(),
         yAccessor: (datum: Readonly<ChartDatum>) => projectValue(front.dataKey, numericBarCell(datum, front.dataKey)),
       }),
@@ -576,6 +594,8 @@ const buildBarUnderlayMarks = ({
   resolvedSeries,
   depthGradientIds,
   depthLegendOpacity,
+  depthMinBarHeight,
+  depthSegmentsAccessor,
 }: Readonly<BarUnderlayMarksParams>): ChartMark<ChartDatum, string, number>[] => {
   const marks: ChartMark<ChartDatum, string, number>[] = [];
   if (hasTrack) {
@@ -585,7 +605,7 @@ const buildBarUnderlayMarks = ({
     marks.push(...buildBarSquareMarks({ allSeriesKeys, categoryAccessor, legendHoveredKey, projectValue, renderData, seriesCount, squares, squaresBaseId, squaresDefsByKey }));
   }
   if (hasDepth) {
-    marks.push(...buildBarDepthBackMarks({ backs, categoryAccessor, depthGradientIds, depthLegendOpacity, projectValue, renderData, resolvedSeries }));
+    marks.push(...buildBarDepthBackMarks({ backs, categoryAccessor, depthGradientIds, depthLegendOpacity, depthMinBarHeight, depthSegmentsAccessor, projectValue, renderData, resolvedSeries }));
   }
   return marks;
 };
@@ -675,6 +695,8 @@ interface BarFullMarksParams {
   readonly nativeDepthGradients: readonly BuiltDepthGradient[];
   readonly pulseWaveGradientId: string;
   readonly tooltipEnabled: boolean;
+  readonly depthMinBarHeight?: number;
+  readonly depthSegmentsAccessor?: BarDepthSegmentsAccessor;
 }
 
 interface BarFullDefinitionParams extends BarFullMarksParams, Omit<BarSpecCommonParams, "tooltipOption"> {}
@@ -686,6 +708,8 @@ const buildFullBarMarks = (params: Readonly<BarFullMarksParams>): ChartMark<Char
     categoryAccessor: params.categoryAccessor,
     depthGradientIds: params.depthGradientIds,
     depthLegendOpacity: params.depthLegendOpacity,
+    depthMinBarHeight: params.depthMinBarHeight,
+    depthSegmentsAccessor: params.depthSegmentsAccessor,
     hasDepth: params.hasDepth,
     hasSquares: params.hasSquares,
     hasTrack: params.hasTrack,
@@ -701,9 +725,9 @@ const buildFullBarMarks = (params: Readonly<BarFullMarksParams>): ChartMark<Char
   });
   const squaresKeys = new Set(params.resolvedBarSquares.map((square) => square.dataKey));
   const depthKeys = params.hasDepth ? new Set([...params.barDepthBacksRaw.map((back) => back.dataKey), ...params.barDepthFrontsRaw.map((front) => front.dataKey)]) : new Set<string>();
-  marks.push(...buildBarSeriesMarks({ barEnterMotion: params.barEnterMotion, categoryAccessor: params.categoryAccessor, depthKeys, groupBandwidth: params.groupBandwidth, groupScale: params.groupScale, legendHoveredKey: params.legendHoveredKey, projectValue: params.projectValue, renderData: params.renderData, resolvedSeries: params.resolvedSeries, squaresKeys }));
+  marks.push(...buildBarSeriesMarks({ barEnterMotion: params.barEnterMotion, categoryAccessor: params.categoryAccessor, depthKeys, depthMinBarHeight: params.depthMinBarHeight, groupBandwidth: params.groupBandwidth, groupScale: params.groupScale, legendHoveredKey: params.legendHoveredKey, projectValue: params.projectValue, renderData: params.renderData, resolvedSeries: params.resolvedSeries, squaresKeys }));
   if (params.hasDepth) {
-    marks.push(...buildBarDepthFrontMarks({ categoryAccessor: params.categoryAccessor, depthGradientIds: params.depthGradientIds, depthLegendOpacity: params.depthLegendOpacity, fronts: params.barDepthFrontsRaw, projectValue: params.projectValue, pulseWaveGradientId: params.pulseWaveGradientId, pulses: params.barPulsesRaw, renderData: params.renderData }));
+    marks.push(...buildBarDepthFrontMarks({ categoryAccessor: params.categoryAccessor, depthGradientIds: params.depthGradientIds, depthLegendOpacity: params.depthLegendOpacity, depthMinBarHeight: params.depthMinBarHeight, depthSegmentsAccessor: params.depthSegmentsAccessor, fronts: params.barDepthFrontsRaw, projectValue: params.projectValue, pulseWaveGradientId: params.pulseWaveGradientId, pulses: params.barPulsesRaw, renderData: params.renderData }));
   }
   marks.push(...params.hoverMarks);
   return marks;

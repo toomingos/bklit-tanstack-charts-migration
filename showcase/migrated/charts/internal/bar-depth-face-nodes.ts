@@ -1,4 +1,5 @@
-import { barDepthAndRise, barDepthMaxDepth, barDepthTopTrim, BAR_DEPTH_MIN_PX } from "./bar-depth-geometry";
+import { barDepthAndRise, barDepthMaxDepth, BAR_DEPTH_MIN_PX, resolveVisibleBarDepthSegments, resolveBarDepthTopGeometry } from "./bar-depth-geometry";
+import type { BarDepthSegment, BarDepthSegmentsAccessor } from "./bar-depth-geometry";
 import { pushBackBarNodes, pushBackBarPoints } from "./bar-depth-back-nodes";
 import type { ChartPoint, ResolvedScale, SceneNode } from "@tanstack/charts";
 import type { ChartDatum } from "./types";
@@ -34,6 +35,7 @@ interface ReadBarDepthValuePosParams {
   readonly xValue: string | undefined;
   readonly yScale: ResolvedScale;
   readonly yValue: number;
+  readonly minBarHeight?: number;
 }
 
 /*
@@ -41,9 +43,11 @@ interface ReadBarDepthValuePosParams {
  * at runtime, so the checks stay despite the static types.
  */
 const readBarDepthValuePos = (params: Readonly<ReadBarDepthValuePosParams>): number | undefined => {
-  const { datum, xValue, yScale, yValue } = params;
+  const { datum, xValue, yScale, yValue, minBarHeight } = params;
   if (!datum || xValue === undefined) { return undefined; }
-  if (!isNumber(yValue) || !Number.isFinite(yValue) || yValue <= 0) { return undefined; }
+  if (!isNumber(yValue) || !Number.isFinite(yValue) || yValue < 0) { return undefined; }
+  // Zero-value bars render only when floored visible (legacy minBarHeight parity).
+  if (yValue === 0 && (minBarHeight ?? 0) <= 0) { return undefined; }
   const valuePos = yScale.map(yValue);
   if (!Number.isFinite(valuePos)) { return undefined; }
   return valuePos;
@@ -70,6 +74,8 @@ interface BackBarPlacement {
   readonly perspectiveRise: number;
   readonly sideShadeId: string;
   readonly topY: number;
+  readonly naturalHeight: number;
+  readonly topYTrim: number;
 }
 
 interface ResolveBackBarPlacementParams {
@@ -82,26 +88,34 @@ interface ResolveBackBarPlacementParams {
   readonly sideShadeLtrId: string;
   readonly sideShadeRtlId: string;
   readonly valuePos: number;
+  readonly minBarHeight?: number;
+  readonly visibleSegments?: readonly BarDepthSegment[] | null;
 }
 
 const resolveBackBarPlacement = (params: Readonly<ResolveBackBarPlacementParams>): BackBarPlacement | undefined => {
-  const { bandWidth, bandX, baseline, centerX, innerWidth, maxDepth, sideShadeLtrId, sideShadeRtlId, valuePos } = params;
+  const { bandWidth, bandX, baseline, centerX, innerWidth, maxDepth, sideShadeLtrId, sideShadeRtlId, valuePos, minBarHeight, visibleSegments } = params;
   const cx = bandX + bandWidth / 2;
   const offsetFromCenter = innerWidth > 0 ? (cx - centerX) / (innerWidth / 2) : 0;
   const isRightOfCenter = offsetFromCenter > 0;
   const absOffset = Math.min(1, Math.abs(offsetFromCenter));
-  const naturalHeight = baseline - valuePos;
+  const rawHeight = baseline - valuePos;
+  const topGeometry = resolveBarDepthTopGeometry({ absOffset, maxDepth, minBarHeight, rawHeight, visibleSegments });
+  if (!topGeometry) { return undefined; }
+  const { naturalHeight, topYTrim } = topGeometry;
   const measured = measureBackBarDepth({ absOffset, barLengthPx: naturalHeight, maxDepth });
   if (!measured) { return undefined; }
   // Trim the faces down so the lid back edge lands on the value position.
-  const topYTrim = barDepthTopTrim(absOffset, naturalHeight, maxDepth);
+  // Floored bars grow up from the baseline with no trim (legacy parity).
+  const topY = topGeometry.isFloored ? baseline - naturalHeight : valuePos + topYTrim;
   return {
     bottomY: baseline,
     depth: measured.depth,
     isRightOfCenter,
+    naturalHeight,
     perspectiveRise: measured.perspectiveRise,
     sideShadeId: isRightOfCenter ? sideShadeRtlId : sideShadeLtrId,
-    topY: valuePos + topYTrim,
+    topY,
+    topYTrim,
   };
 }
 
@@ -148,14 +162,17 @@ interface AppendBackBarFacesParams {
   readonly xValue: string;
   readonly yScale: ResolvedScale;
   readonly yValue: number;
+  readonly minBarHeight?: number;
+  readonly segmentsAccessor?: BarDepthSegmentsAccessor;
 }
 
 const appendBackBarFaces = (params: Readonly<AppendBackBarFacesParams>): void => {
-  const { bandPos, bandWidth, baseline, centerX, datum, fill, glassPosId, id, index, innerWidth, maxDepth, nodes, opacity, points, sideShadeLtrId, sideShadeRtlId, topShadeId, xValue, yScale, yValue } = params;
-  const valuePos = readBarDepthValuePos({ datum, xValue, yScale, yValue });
+  const { bandPos, bandWidth, baseline, centerX, datum, fill, glassPosId, id, index, innerWidth, maxDepth, nodes, opacity, points, sideShadeLtrId, sideShadeRtlId, topShadeId, xValue, yScale, yValue, minBarHeight, segmentsAccessor } = params;
+  const valuePos = readBarDepthValuePos({ datum, minBarHeight, xValue, yScale, yValue });
   if (valuePos === undefined) { return; }
   const bandX = bandPos(xValue);
-  const placement = resolveBackBarPlacement({ bandWidth, bandX, baseline, centerX, innerWidth, maxDepth, sideShadeLtrId, sideShadeRtlId, valuePos });
+  const visibleSegments = segmentsAccessor ? resolveVisibleBarDepthSegments(datum, segmentsAccessor) : null;
+  const placement = resolveBackBarPlacement({ bandWidth, bandX, baseline, centerX, innerWidth, maxDepth, minBarHeight, sideShadeLtrId, sideShadeRtlId, valuePos, visibleSegments });
   if (!placement) { return; }
   pushBackBarPoints({ bandWidth, bandX, bottomY: placement.bottomY, datum, fill, id, index, points, topY: placement.topY, xValue, yValue });
   pushBackBarNodes({
@@ -168,12 +185,15 @@ const appendBackBarFaces = (params: Readonly<AppendBackBarFacesParams>): void =>
     id,
     index,
     isRightOfCenter: placement.isRightOfCenter,
+    naturalHeight: placement.naturalHeight,
     nodes,
     opacity,
     perspectiveRise: placement.perspectiveRise,
+    segments: visibleSegments,
     sideShadeId: placement.sideShadeId,
     topShadeId,
     topY: placement.topY,
+    topYTrim: placement.topYTrim,
   });
 }
 

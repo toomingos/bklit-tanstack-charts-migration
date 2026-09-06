@@ -226,6 +226,8 @@ const useBarDefinition = (options: Readonly<UseBarDefinitionOptions>): UseBarDef
       categoryAccessor,
         depthGradientIds,
       depthLegendOpacity,
+      depthMinBarHeight: barDepthProvider?.minBarHeight,
+      depthSegmentsAccessor: barDepthProvider?.segmentsAccessor,
       gridGuide,
       groupBandwidth,
       groupScale,
@@ -285,6 +287,8 @@ const useBarDefinition = (options: Readonly<UseBarDefinitionOptions>): UseBarDef
     barDepthBacksRaw,
     barDepthFrontsRaw,
     barPulsesRaw,
+    barDepthProvider?.minBarHeight,
+    barDepthProvider?.segmentsAccessor,
   ]);
 
   return {

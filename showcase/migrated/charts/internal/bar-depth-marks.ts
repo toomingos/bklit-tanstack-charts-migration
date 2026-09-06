@@ -2,6 +2,7 @@ import { createMark } from "@tanstack/charts";
 import type { ChartMark, ChartMarkState, ChartPoint, MarkRenderContext, SceneNode } from "@tanstack/charts";
 import { appendBackBarFaces, extractBarDepthValues, groupBarDepthNodes, resolveBackBarFrame } from "./bar-depth-face-nodes";
 import { resolveBandFrame } from "./bar-depth-geometry";
+import type { BarDepthSegmentsAccessor } from "./bar-depth-geometry";
 import { GLASS_TIP_OPACITY as GLASS_TIP } from "./bar-depth-back-nodes";
 import type { BarDepthGradientIds } from "./bar-depth-face-nodes";
 import type { ChartDatum } from "./types";
@@ -43,10 +44,12 @@ interface BarDepthBackMarkOptions {
   readonly gradientIds: Readonly<BarDepthGradientIds>;
   readonly states?: readonly ChartMarkState<ChartDatum>[];
   readonly opacity?: number;
+  readonly minBarHeight?: number;
+  readonly segmentsAccessor?: BarDepthSegmentsAccessor;
 }
 
 const barDepthBackMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<BarDepthBackMarkOptions>): ChartMark<ChartDatum, string, number> => {
-  const { id, categoryAccessor, yAccessor, fill, gradientIds, states, opacity } = options;
+  const { id, categoryAccessor, yAccessor, fill, gradientIds, states, opacity, minBarHeight, segmentsAccessor } = options;
   const { glassPosId, sideShadeRtlId, sideShadeLtrId, topShadeId } = gradientIds;
   return createMark(() => {
     const { xValues, yValues } = extractBarDepthValues(data, categoryAccessor, yAccessor);
@@ -80,9 +83,11 @@ const barDepthBackMark = (data: readonly Readonly<ChartDatum>[], options: Readon
             index: i,
             innerWidth: frame.innerWidth,
             maxDepth: frame.maxDepth,
+            minBarHeight,
             nodes,
             opacity,
             points,
+            segmentsAccessor,
             sideShadeLtrId,
             sideShadeRtlId,
             topShadeId,

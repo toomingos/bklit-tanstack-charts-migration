@@ -17,6 +17,7 @@ interface BarTrimmedMarkOptions {
   readonly radius: number;
   readonly categoryAccessor: (datum: Readonly<ChartDatum>) => string;
   readonly yAccessor: (datum: Readonly<ChartDatum>) => number;
+  readonly minBarHeight?: number;
 }
 
 interface TrimmedChannelValues {
@@ -99,6 +100,7 @@ interface TrimmedBarPlacementParams {
   readonly mapX: (value: string) => number;
   readonly geometry: Readonly<TrimmedRenderGeometry>;
   readonly id: string;
+  readonly baseline: number;
 }
 
 interface TrimmedBarXParams {
@@ -140,8 +142,10 @@ const resolveTrimmedBarPlacement = (params: Readonly<TrimmedBarPlacementParams>)
   const x = resolveTrimmedBarX({ groupOffset, mapX: params.mapX, totalBandwidth: params.geometry.totalBandwidth, xValue: params.metrics.xValue });
   const bandCenter = x + params.geometry.width / 2;
   const absOffset = resolveTrimmedCenterOffset({ bandCenter, cx0: params.geometry.cx0, innerW: params.geometry.innerW });
-  const trim = resolveTrimmedTrim({ absOffset, maxD: params.geometry.maxD, naturalHeight: params.metrics.naturalHeight });
-  const y = params.metrics.valuePos + trim;
+  // Floored bars grow up from the baseline with no perspective trim.
+  // Keeps the tiny front face aligned with the depth lid (legacy parity).
+  const trim = params.metrics.isFloored ? 0 : resolveTrimmedTrim({ absOffset, maxD: params.geometry.maxD, naturalHeight: params.metrics.naturalHeight });
+  const y = params.metrics.isFloored ? params.baseline - params.metrics.naturalHeight : params.metrics.valuePos + trim;
   const height = params.metrics.naturalHeight - trim;
   if (height <= 0) {return undefined;}
   return { height, width: params.geometry.width, x, y };
@@ -199,6 +203,7 @@ interface TrimmedSceneParams {
   readonly fill: string;
   readonly radius: number;
   readonly opacity: number | undefined;
+  readonly minBarHeight?: number;
 }
 
 interface TrimmedScene {
@@ -210,9 +215,9 @@ const buildTrimmedScene = (params: Readonly<TrimmedSceneParams>): TrimmedScene =
   const nodes: SceneNode[] = [];
   const points: ChartPoint<ChartDatum, string, number>[] = [];
   for (let i = 0; i < params.data.length; i += 1) {
-    const metrics = resolveTrimmedDatumMetrics({ baseline: params.baseline, data: params.data, index: i, rawY: params.rawY, xValues: params.xValues, yScale: params.yScale });
+    const metrics = resolveTrimmedDatumMetrics({ baseline: params.baseline, data: params.data, index: i, minBarHeight: params.minBarHeight, rawY: params.rawY, xValues: params.xValues, yScale: params.yScale });
     if (metrics !== undefined) {
-      const placement = resolveTrimmedBarPlacement({ geometry: params.geometry, id: params.id, mapX: params.mapX, metrics });
+      const placement = resolveTrimmedBarPlacement({ baseline: params.baseline, geometry: params.geometry, id: params.id, mapX: params.mapX, metrics });
       if (placement !== undefined) {
         appendTrimmedBarDatum({ fill: params.fill, id: params.id, index: i, metrics, nodes, opacity: params.opacity, placement, points, radius: params.radius });
       }
@@ -232,7 +237,7 @@ const wrapTrimmedGroupNodes = (id: string, nodes: SceneNode[]): SceneNode[] => (
 ])
 
 const barTrimmedMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<BarTrimmedMarkOptions>): ChartMark<ChartDatum, string, number> => {
-  const { id, groupScale, fill, radius, categoryAccessor, yAccessor, states, opacity } = options;
+  const { id, groupScale, fill, radius, categoryAccessor, yAccessor, states, opacity, minBarHeight } = options;
   return createMark(() => {
     const { xValues, rawY } = buildTrimmedChannelValues(data, categoryAccessor, yAccessor);
     return {
@@ -243,7 +248,7 @@ const barTrimmedMark = (data: readonly Readonly<ChartDatum>[], options: Readonly
         // Band geometry resolves at scene build from the package scale (V1.2/G6).
         const { bandStep, bandWidth } = resolveBandFrame(scales.x);
         const geometry = resolveTrimmedRenderGeometry({ bandStep, bandWidth, chartWidth: chart.width, chartX: chart.x, groupScale, totalBandwidth: scales.x.bandwidth || bandWidth });
-        const scene = buildTrimmedScene({ baseline, data, fill, geometry, id, mapX: (value: string) => scales.x.map(value), opacity, radius, rawY, xValues, yScale: scales.y });
+        const scene = buildTrimmedScene({ baseline, data, fill, geometry, id, mapX: (value: string) => scales.x.map(value), minBarHeight, opacity, radius, rawY, xValues, yScale: scales.y });
         return {
           nodes: wrapTrimmedGroupNodes(id, scene.nodes),
           points: scene.points,
@@ -254,5 +259,5 @@ const barTrimmedMark = (data: readonly Readonly<ChartDatum>[], options: Readonly
   });
 }
 
-export { barTrimmedMark };
+export { barTrimmedMark, resolveTrimmedBarPlacement };
 export type { BarTrimmedMarkOptions };
