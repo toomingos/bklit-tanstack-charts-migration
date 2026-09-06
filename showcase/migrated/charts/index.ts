@@ -244,3 +244,34 @@ export type { PieContextValue } from "./internal/pie-context";
 export { RadarProvider, useRadar, useRadarHover, useRadarStable } from "./internal/radar-context";
 export type { RadarContextValue } from "./internal/radar-context";
 export { useSunburstHover, useSunburstStable } from "./internal/sunburst-context";
+// V3.4b
+export {
+  GradientDarkgreenGreen,
+  GradientLightgreenGreen,
+  GradientOrangeRed,
+  GradientPinkBlue,
+  GradientPinkRed,
+  GradientPurpleOrange,
+  GradientPurpleTeal,
+  GradientSteelPurple,
+  GradientTealBlue,
+  LinearGradient,
+  RadialGradient,
+} from "./internal/gradient-entries";
+export { generateChartSkeletonData, getSkeletonHeights } from "./internal/skeleton-data";
+export type { GenerateChartSkeletonDataOptions } from "./internal/skeleton-data";
+export {
+  BarLoadingSkeleton,
+  ChartLoadingLabel,
+  LineLoadingPulseStroke,
+  LineLoadingSweep,
+} from "./internal/loading-entries";
+export type {
+  BarLoadingSkeletonProps,
+  ChartLoadingLabelProps,
+  LineLoadingPulseStrokeProps,
+  LineLoadingSweepProps,
+} from "./internal/loading-entries";
+export { LineChartLoading } from "./line-chart-loading";
+export type { LineChartLoadingProps } from "./line-chart-loading";
+export { ChartBrushSelectionOverlay, ChartBrushTrackOverlay } from "./internal/brush-overlays";

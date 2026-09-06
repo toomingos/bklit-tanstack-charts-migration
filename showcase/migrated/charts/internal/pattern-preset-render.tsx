@@ -79,7 +79,7 @@ interface PatternLineRenderArgs {
   readonly common: Readonly<PatternTileCommon>;
   readonly stroke: string;
   readonly strokeWidth: number;
-  readonly orientation: readonly PatternOrientationType[];
+  readonly orientation: PatternOrientationType[];
 }
 
 // One oriented line pattern; hoisted so the preset switch stays short.

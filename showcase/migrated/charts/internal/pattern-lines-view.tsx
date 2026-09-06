@@ -17,7 +17,7 @@ interface PatternLinesProps {
   readonly strokeDasharray?: string | number;
   readonly strokeLinecap?: PatternLinecap;
   readonly shapeRendering?: string | number;
-  readonly orientation?: readonly PatternOrientationType[];
+  readonly orientation?: PatternOrientationType[];
 }
 
 const PatternLines = ({

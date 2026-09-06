@@ -10,7 +10,7 @@ interface ResourceHostProps {
   readonly resources: ReactNode;
 }
 
-// Sole renderer of pattern, radialGradient and sweep defs; linear gradients stay in spec.gradients.
+// Sole renderer of pattern, radialGradient, mask and sweep defs; linear gradients stay in spec.gradients.
 const ResourceHost = ({ idPrefix, resources }: Readonly<ResourceHostProps>): ReactElement | null => {
   if (Children.toArray(resources).length === 0) {
     return null;
@@ -29,5 +29,10 @@ const ResourceHost = ({ idPrefix, resources }: Readonly<ResourceHostProps>): Rea
   );
 };
 
-export { ResourceHost };
+// Scopes one consumer resource id to the mount (D548 ruling 2).
+// Definitions reference the scoped id; the seam rewrites the def id on entry.
+const scopedResourceId = (idPrefix: string, id: string): string =>
+  id.startsWith(`${idPrefix}-`) ? id : `${idPrefix}-${id}`;
+
+export { ResourceHost, scopedResourceId };
 export type { ResourceHostProps };
