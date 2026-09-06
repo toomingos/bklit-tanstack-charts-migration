@@ -3,11 +3,12 @@ import { useMemo } from "react";
 import type { RefObject } from "react";
 import type { ScaleTime } from "d3-scale";
 import { defineChart } from "@tanstack/charts/scene";
-import type { ChartControl, ChartMark, DomChartDefinition } from "@tanstack/charts";
+import { tooltip as packageTooltip } from "@tanstack/charts/tooltip";
+import { portal } from "@tanstack/charts/tooltip/portal";
+import type { ChartControl, ChartMark, ChartTooltipInput, DomChartDefinition } from "@tanstack/charts";
 import { resolveGridGuide } from "./grid";
 import { bezierEasing } from "./bezier-easing";
-import { DISCRETE_INTERACTION_THRESHOLD, TOOLTIP_BOX_SPRING } from "./design-tokens";
-import { buildNativeTooltipExtension } from "./native-tooltip";
+import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, TOOLTIP_BOX_SPRING } from "./design-tokens";
 import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./cartesian-focus-distance";
 import { isChartInteractionPhase } from "./chart-phase";
 import type { ChartPhase } from "./chart-phase";
@@ -81,6 +82,31 @@ interface LineChartSpec {
   readonly definition: DomChartDefinition<ChartDatum, Date, number> | undefined;
 }
 
+interface LineTooltipOptionParams {
+  readonly discrete: boolean;
+  readonly enabled: boolean;
+}
+
+// Panel top pins to the plot top; the x follows the primary focused point.
+const buildLineTooltipOption = ({ discrete, enabled }: Readonly<LineTooltipOptionParams>): ChartTooltipInput<ChartDatum, Date, number, "dom"> | false => {
+  if (!enabled) {return false;}
+  return {
+    anchor: (_points, context) => ({
+      x: context.focus.primary.x,
+      y: context.plot.y - BOX_OFFSET,
+    }),
+    className: "bkm-native-tooltip",
+    motion: discrete
+      ? (false as const)
+      : { damping: TOOLTIP_BOX_SPRING.damping, stiffness: TOOLTIP_BOX_SPRING.stiffness, type: "spring" as const },
+    offset: BOX_OFFSET,
+    placement: ["bottom-right", "bottom-left"] as const,
+    portal,
+    sticky: false,
+    use: packageTooltip,
+  };
+};
+
 const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec => {
   const { brushControls, chartPhase, crosshairGradientId, effectiveYDomainTweenDuration, grid, hoveredIndex, hoveredIndexForPL, isDiscrete, isLoading, isLoaded, labelFade, legendHoveredIndex, lines, margin, markerGradientIdByKey, markerSeriesConfigs, plTooltipSignIndex, profitLossLines, projectionConfigs, projectionGradientBaseId, projectionLines, projectorFor, renderData, timeExtent, timeExtentRaw, tooltip, tooltipEnabled, visibleData, width, xAxis, xDataKey, xDomain, xScaleD3Ref, yAxis, yDomainChangedForTween, yDomainFinal } = params;
   const marks = useMemo<ChartMark<ChartDatum, Date, number>[]>(
@@ -132,12 +158,9 @@ const useLineChartSpec = (params: Readonly<LineChartSpecParams>): LineChartSpec 
         ? { duration: effectiveYDomainTweenDuration, easing: bezierEasing }
         : (false as const),
       theme: { muted: "var(--color-chart-label, var(--chart-label))" },
-      tooltip: buildNativeTooltipExtension<ChartDatum, Date, number>({
-        anchorX: "point",
-        className: "bkm-native-tooltip",
+      tooltip: buildLineTooltipOption({
         discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
         enabled: tooltip?.enabled ?? false,
-        spring: TOOLTIP_BOX_SPRING,
       }),
     };
   }, [marks, renderData, xDataKey, grid, yDomainFinal, yDomainChangedForTween, margin, chartPhase, isLoaded, effectiveYDomainTweenDuration, xDomain, timeExtent, tooltip, xAxis, yAxis, visibleData, labelFade, brushControls, xScaleD3Ref]);

@@ -3,7 +3,9 @@
 import { barY } from "@tanstack/charts/bar";
 import { defineChart } from "@tanstack/charts/scene";
 import { group } from "@tanstack/charts/group";
-import type { ChartFocusStrategy, ChartMark, ChartMarkState, ChartMotionDefinition, DomChartDefinition } from "@tanstack/charts";
+import { tooltip } from "@tanstack/charts/tooltip";
+import { portal } from "@tanstack/charts/tooltip/portal";
+import type { ChartFocusStrategy, ChartMark, ChartMarkState, ChartMotionDefinition, ChartTooltipInput, DomChartDefinition } from "@tanstack/charts";
 import type { ScaleBand } from "d3-scale";
 import { isNumber, numericBarCell } from "./bar-chart-hover-dots";
 import { bandWidthForSquares, computeSquareColumn } from "./bar-squares-layout";
@@ -16,7 +18,6 @@ import { barTrimmedMark } from "./bar-trimmed-mark";
 import { BOX_OFFSET, DISCRETE_INTERACTION_THRESHOLD, TOOLTIP_BOX_SPRING } from "./design-tokens";
 import type { resolveGridGuide } from "./grid";
 import type { buildBarAxisSection, BuiltDepthGradient } from "./bar-chart-overlays";
-import { buildNativeTooltipExtension } from "./native-tooltip";
 import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./cartesian-focus-distance";
 import type { createNicedYScale } from "./y-domain";
 import type { PatternPresetId } from "./pattern-preset";
@@ -524,15 +525,31 @@ interface BarTooltipOptionParams {
   readonly tooltipEnabled: boolean;
 }
 
-const buildBarTooltipOption = ({ renderDataLength, tooltipEnabled }: Readonly<BarTooltipOptionParams>): ReturnType<typeof buildNativeTooltipExtension<ChartDatum, string, number>> =>
-  buildNativeTooltipExtension<ChartDatum, string, number>({
-    anchorX: "group-center",
+const buildBarTooltipOption = ({ renderDataLength, tooltipEnabled }: Readonly<BarTooltipOptionParams>): ChartTooltipInput<ChartDatum, string, number, "dom"> | false => {
+  if (!tooltipEnabled) {return false;}
+  const discrete = renderDataLength > DISCRETE_INTERACTION_THRESHOLD;
+  return {
+    anchor: (points, context) => {
+      const primaryX = context.focus.primary.x;
+      let left = primaryX;
+      let right = primaryX;
+      for (const candidate of points) {
+        left = Math.min(left, candidate.x);
+        right = Math.max(right, candidate.x);
+      }
+      return { x: (left + right) / 2, y: context.plot.y - BOX_OFFSET };
+    },
     className: "bkm-native-tooltip",
-    discrete: renderDataLength > DISCRETE_INTERACTION_THRESHOLD,
-    enabled: tooltipEnabled,
+    motion: discrete
+      ? (false as const)
+      : { damping: TOOLTIP_BOX_SPRING.damping, stiffness: TOOLTIP_BOX_SPRING.stiffness, type: "spring" as const },
     offset: BOX_OFFSET,
-    spring: TOOLTIP_BOX_SPRING,
-  });
+    placement: ["bottom-right", "bottom-left"] as const,
+    portal,
+    sticky: false,
+    use: tooltip,
+  };
+};
 
 interface BarUnderlayMarksParams extends BarTrackMarksParams, BarSquareMarksParams, BarDepthBackMarksParams {
   readonly hasTrack: boolean;

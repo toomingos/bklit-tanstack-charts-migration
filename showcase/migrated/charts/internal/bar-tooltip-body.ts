@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { ChartPoint } from "@tanstack/charts";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { isNumber, isString } from "./bar-chart-hover-dots";
-import { renderSeriesTooltipBody } from "./native-tooltip";
+import { renderSeriesTooltipBody } from "./tooltip-components";
 import { firstNonEmptyString } from "./scatter-datum-utils";
 import type { ChartDatum, ChartTooltipConfig, TooltipRow } from "./types";
 

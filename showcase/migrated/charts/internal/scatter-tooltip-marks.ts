@@ -4,7 +4,7 @@ import { toIndicatorConfig } from "./tooltip-mappers";
 import { resolveVerticalFadeSides } from "./fade-mask";
 import type { ChartDatum, ExtractedChildren } from "./types";
 import type { SpringConfig } from "./chart-config-context";
-import { buildIndicatorMark } from "./hover-geometry";
+import { buildIndicatorMark, formatShortDateLabel } from "./focus-marks";
 import { createHoverDotMark } from "./scatter-hover-dot-mark";
 import { isString } from "./scatter-datum-utils";
 import type { SeriesMarksProjector } from "./scatter-series-marks";
@@ -41,6 +41,7 @@ const buildCrosshairMark = ({
     strokeOpacity: 1,
     useGradient: !isDashed && fadeSides.any,
     width: indicatorCfg.width,
+    xLabelFormat: (tooltip?.showDatePill ?? true) ? formatShortDateLabel : undefined,
   });
 };
 

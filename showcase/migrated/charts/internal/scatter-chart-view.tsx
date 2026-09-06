@@ -5,15 +5,13 @@ import { useChartStable } from "./chart-context";
 import { BackgroundLayer } from "./background-layer";
 import { ReferenceAreaLayers } from "./reference-area-layer";
 import type { ScatterDefinitionModel } from "./scatter-definition-setup";
-import type { ScatterPillModel } from "./scatter-pill-setup";
+import type { ScatterFocusModel } from "./scatter-label-fade";
 import type { ScatterChartSelection, ScatterReferenceAreas, ScatterSelectionModel } from "./scatter-selection-setup";
 import type { ScatterSeriesSetup } from "./scatter-series-setup";
 import type { ScatterTimingModel } from "./scatter-reveal-setup";
 
 // Hidden defs svg sits off-layout; the host reserves no space for it.
 const SCATTER_DEFS_SVG_STYLE: CSSProperties = { position: "absolute" };
-// Selection overlay covers the plot without intercepting pointer input.
-const SCATTER_OVERLAY_HOST_STYLE: CSSProperties = { inset: 0, pointerEvents: "none", position: "absolute" };
 
 interface BuildScatterBackgroundNodeParams {
   readonly background: ScatterSeriesSetup["background"];
@@ -136,7 +134,7 @@ interface BuildScatterRendererNodeParams {
   readonly crosshairFade: ScatterReferenceAreas["crosshairFade"];
   readonly definition: ScatterDefinitionModel["definition"];
   readonly geom: ScatterReferenceAreas["refAreaGeom"];
-  readonly handleFocusGroupChange: ScatterPillModel["handleFocusGroupChange"];
+  readonly handleFocusGroupChange: ScatterFocusModel["handleFocusGroupChange"];
   readonly handleRender: ScatterTimingModel["handleRender"];
   readonly parsedAspectRatio: number;
   readonly renderTooltipBody: ScatterSelectionModel["renderTooltipBody"];
@@ -179,30 +177,12 @@ const buildScatterRendererNode = ({
   );
 };
 
-interface BuildScatterOverlayNodeParams {
-  readonly hostRef: ScatterPillModel["overlayHostRef"];
-  readonly tooltipEnabled: ScatterSelectionModel["tooltipEnabled"];
-}
-
-const buildScatterOverlayNode = ({
-  hostRef,
-  tooltipEnabled,
-}: Readonly<BuildScatterOverlayNodeParams>): ReactNode => {
-  if (!tooltipEnabled) {return undefined;}
-  return (
-    <div
-      ref={hostRef}
-      style={SCATTER_OVERLAY_HOST_STYLE}
-    />
-  );
-};
-
 interface BuildScatterChartTreeParams {
   readonly ariaDescription?: string;
   readonly ariaLabel?: string;
   readonly className: string | undefined;
   readonly marks: Pick<ScatterDefinitionModel, "definition">;
-  readonly pill: Pick<ScatterPillModel, "handleFocusGroupChange" | "overlayHostRef">;
+  readonly focus: Pick<ScatterFocusModel, "handleFocusGroupChange">;
   readonly refAreas: Pick<ScatterReferenceAreas, "containerStyle" | "crosshairFade" | "parsedAspectRatio" | "refAreaChildren" | "refAreaGeom" | "yGradientDefs">;
   readonly selection: ScatterSelectionModel;
   readonly series: Pick<ScatterSeriesSetup, "background" | "containerRef">;
@@ -214,7 +194,7 @@ const buildScatterChartTree = ({
   ariaLabel,
   className,
   marks,
-  pill,
+  focus,
   refAreas,
   selection,
   series,
@@ -237,14 +217,13 @@ const buildScatterChartTree = ({
             crosshairFade: refAreas.crosshairFade,
             definition: marks.definition,
             geom: refAreas.refAreaGeom,
-            handleFocusGroupChange: pill.handleFocusGroupChange,
+            handleFocusGroupChange: focus.handleFocusGroupChange,
             handleRender: timing.handleRender,
             parsedAspectRatio: refAreas.parsedAspectRatio,
             renderTooltipBody: selection.renderTooltipBody,
             renderer: selection.scatterChartRenderer,
             yGradientDefs: refAreas.yGradientDefs,
           })}
-          {buildScatterOverlayNode({ hostRef: pill.overlayHostRef, tooltipEnabled: selection.tooltipEnabled })}
         </>
       )}
     </div>
@@ -257,7 +236,6 @@ export {
   ScatterYGradientNodes,
   buildScatterBackgroundNode,
   buildScatterChartTree,
-  buildScatterOverlayNode,
   buildScatterRefAreaNode,
   buildScatterRendererNode,
 };
@@ -266,7 +244,6 @@ export type {
   BuildScatterChartTreeParams,
   BuildScatterCrosshairGradientNodeParams,
   BuildScatterDefsSvgParams,
-  BuildScatterOverlayNodeParams,
   BuildScatterRefAreaNodeParams,
   BuildScatterRendererNodeParams,
   BuildScatterYGradientNodesParams,

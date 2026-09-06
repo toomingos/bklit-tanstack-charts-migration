@@ -26,7 +26,7 @@ import {
   DISCRETE_INTERACTION_THRESHOLD,
 } from "./internal/design-tokens";
 import { weekdayDateFmt } from "./internal/formatters";
-import { renderSeriesTooltipBody } from "./internal/native-tooltip";
+import { renderSeriesTooltipBody } from "./internal/tooltip-components";
 import type { ChartDatum, ChartStatus } from "./internal/types";
 import { DEFAULT_Y_DOMAIN_TWEEN_MS } from './internal/chart-phase';
 import type { ChartPhase } from './internal/chart-phase';
@@ -289,7 +289,6 @@ export const LineChart = ({
   );
   const {
     clearFocusChrome,
-    datePill,
     dragSelectionActiveRef,
     handleFocusChange,
     markerActiveStore,
@@ -351,7 +350,6 @@ export const LineChart = ({
     containerRef,
     crosshairGradientId,
     data,
-    datePill,
     defaultLineStroke: DEFAULT_LINE_STROKE,
     defaultLineStrokeWidth: DEFAULT_LINE_STROKE_WIDTH,
     definition,

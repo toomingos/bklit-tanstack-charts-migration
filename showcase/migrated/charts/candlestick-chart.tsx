@@ -65,10 +65,9 @@ import {
   resolveCandleTooltipModel,
   resolveCandleTooltipPanel,
   updateCandleLabelFade,
-  updateCandlePill,
+  useCandleChrome,
   useCandleGeometry,
   useCandlePatterns,
-  useCandlePillChrome,
   useCandleReveal,
   useCandleSelection,
 } from "./internal/candlestick-chart-chrome";
@@ -78,8 +77,6 @@ import "./styles.css";
 const CANDLE_CROSSHAIR_GRADIENT_ID = "candle-crosshair";
 // Percent-stop scale for the spec-gradient offset mapping below.
 const STOP_PERCENT_SCALE = 100;
-// Pill host covers the plot without intercepting pointer events.
-const PILL_OVERLAY_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
 const DEFAULT_CANDLE_GAP_RATIO = 0.2;
 
 interface CandlestickChartProps {
@@ -295,43 +292,27 @@ const CandlestickChart = ({
     candleMotion,
   ]);
 
-  const { chromeStateRef, dragSelectionActiveRef, overlayHostRef, pillRef, pillVisibleRef } = useCandlePillChrome({
-    chartConfig,
-    renderData,
-    tooltip,
-    tooltipEnabled,
-    width,
-    xDataKey,
-  });
+  const { chromeStateRef, dragSelectionActiveRef } = useCandleChrome({ tooltip });
 
 
-  const hidePill = useCallback(() => {
-    pillVisibleRef.current = false;
-    const pillBuild = pillRef.current;
-    if (pillBuild) {
-      pillBuild.layer.style.display = "none";
-      pillBuild.spring.stop();
-      pillBuild.label.textContent = "";
-    }
+  const clearLabelFade = useCallback(() => {
     // Nullable labelFade state is read by buildFadeXAxisOptions; clearing it means null,
     // Returning prev when already cleared keeps React from scheduling a no-op render.
     setLabelFade((prev: Readonly<{ primaryX: number; hoveredLabel: string | null }> | null) => (prev === null ? prev : null));
-  }, [pillRef, pillVisibleRef]);
+  }, []);
 
   const handleFocusGroupChange = useCallback(
     (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
       if (dragSelectionActiveRef.current || points.length === EMPTY_COUNT) {
-        hidePill();
+        clearLabelFade();
         return;
       }
-      const pillBuild = pillRef.current;
       const [primary] = points;
-      updateCandlePill({ centerX: primary.x, dateLabels: chromeStateRef.current?.dateLabels, formattedDate: shortDateFmt.format(primary.xValue), pillBuild, pillVisibleRef, rowCount: renderData.length, showDatePill: tooltipEnabled && (tooltip?.showDatePill ?? true), tickerIndex: primary.datumIndex });
       // HoveredLabel uses the same formatter as the axis ticks or the fade text-match misses.
       const hoveredLabel = xAxis?.formatValue ? xAxis.formatValue(primary.xValue) : shortDateFmt.format(primary.xValue);
       updateCandleLabelFade({ centerX: primary.x, hoveredLabel, setLabelFade });
     },
-    [chromeStateRef, dragSelectionActiveRef, hidePill, pillRef, pillVisibleRef, renderData.length, tooltipEnabled, tooltip, xAxis],
+    [dragSelectionActiveRef, clearLabelFade, xAxis],
   );
 
   const renderTooltipBody = useCallback(
@@ -368,10 +349,10 @@ const CandlestickChart = ({
   const { candleSelection, heightPxCandle, segChildrenCandle } = useCandleSelection({
     aspectRatio,
     children,
+    clearLabelFade,
     clientToScene,
     containerRef,
     dragSelectionActiveRef,
-    hidePill,
     innerWidth,
     marginLeft: margin.left,
     renderData,
@@ -410,12 +391,6 @@ const CandlestickChart = ({
       geom={referenceAreaGeomCandle}
     />
   ) : undefined;
-  const pillOverlayLayer = tooltipEnabled ? (
-    <div
-      ref={overlayHostRef}
-      style={PILL_OVERLAY_STYLE}
-    />
-  ) : undefined;
 
   // Hoisted so the returned tree stays shallow (variables inline into the same element tree).
   const definitionContentNode = definition ? (
@@ -446,7 +421,6 @@ const CandlestickChart = ({
         selection={candleSelection}
         components={segChildrenCandle}
       />
-      {pillOverlayLayer}
     </ChartHost>
   ) : undefined;
 

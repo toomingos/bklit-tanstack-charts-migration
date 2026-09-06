@@ -22,7 +22,7 @@ interface IndicatorElementParams {
 }
 
 // The package owns motion (V2.4): x arrives from the focus point.
-// Legacy spring numbers map onto the package transition in hover-geometry.ts.
+// Legacy spring numbers map onto the package transition in focus-marks.ts.
 const renderIndicatorElement = (params: Readonly<IndicatorElementParams>): ReactElement => {
   const { animate, fadeLength, gradientId, height, indicatorFill, lineX, pixelWidth, rectX, renderMode } = params;
   const { fadeSides, resolvedDasharray } = renderMode;

@@ -1,22 +1,20 @@
-// Bar axis, hover chrome, tooltip body, date pill, reveal and depth gradients.
+// Bar axis, hover chrome, tooltip body, reveal and depth gradients.
 // Split from bar-chart.tsx without behaviour change.
 import type { ChartMark, ChartMotionPhase, ChartMotionTiming } from "@tanstack/charts";
 import { whenFocused } from "@tanstack/charts/focus/mark";
 import { selectBarLabelIndices, tickLabelFadeOpacity, hiddenAxisOptions } from "./axis-ticks";
-import { createBarHoverDotMark, isString, resolveBarDotColor } from "./bar-chart-hover-dots";
+import { createBarHoverDotMark, resolveBarDotColor } from "./bar-chart-hover-dots";
 import { bezierEasing } from "./bezier-easing";
 import type { SpringConfig } from "./chart-config-context";
-import type { PillBuild } from "./date-pill";
 import { isRevealed, markRevealed, setRevealDeadline } from "./deferred-reveal";
 import { FADE_BUFFER, TICKER_HALF_WIDTH } from "./design-tokens";
-import { resolveVerticalFadeSides } from "./fade-mask";
 import type { resolveGridGuide } from "./grid";
-import { buildIndicatorMark } from "./hover-geometry";
+import { buildIndicatorMark, formatShortDateLabel } from "./focus-marks";
 import { syncBarPulseGroups } from "./bar-pulse-mark";
 import type { PulseWaveGradientStop } from "./bar-pulse-mark";
 import { toDotConfig, toIndicatorConfig } from "./tooltip-mappers";
 import type { BarDepthGradientIds, GlassGradientStop } from "./bar-depth-marks";
-import type { Dispatch, RefObject, SetStateAction } from "react";
+import type { RefObject } from "react";
 import type { BarXAxisConfig, ChartDatum, ChartPhase, ChartTooltipConfig, TooltipRow } from "./types";
 
 // Enter stagger spreads 40% of the reveal duration across bars.
@@ -36,57 +34,7 @@ const DEFAULT_HOVER_DOT_RADIUS_FRACTION = 0.25;
 
 interface BarChromeState {
   readonly tooltip: ChartTooltipConfig | undefined;
-  readonly dateLabels: string[];
 }
-
-interface ClearDatePillParams {
-  readonly pillBuild: PillBuild | null;
-  readonly visibilityRef: RefObject<boolean>;
-  readonly setLabelFade: Dispatch<SetStateAction<Readonly<{ primaryX: number; hoveredLabel: string | null }> | undefined>>;
-}
-
-const clearDatePillForEmptyFocus = ({
-  pillBuild,
-  visibilityRef,
-  setLabelFade,
-}: Readonly<ClearDatePillParams>): void => {
-  visibilityRef.current = false;
-  if (pillBuild) {
-    pillBuild.layer.style.display = "none";
-    pillBuild.spring.stop();
-    pillBuild.label.textContent = "";
-  }
-  setLabelFade((prev) => (prev === undefined ? prev : undefined));
-};
-
-interface DatePillContentParams {
-  readonly pillBuild: PillBuild;
-  readonly dateLabels: readonly string[] | undefined;
-  readonly categoryIndex: number;
-  readonly categoryLabel: string;
-  readonly anchorX: number;
-  readonly discrete: boolean;
-  readonly showing: boolean;
-}
-
-const updateDatePillContent = ({
-  pillBuild,
-  dateLabels,
-  categoryIndex,
-  categoryLabel,
-  anchorX,
-  discrete,
-  showing,
-}: Readonly<DatePillContentParams>): void => {
-  pillBuild.layer.style.display = "";
-  if (pillBuild.ticker && dateLabels && dateLabels.length > 0) {
-    pillBuild.ticker.update(categoryIndex, discrete);
-  } else {
-    pillBuild.label.textContent = categoryLabel;
-  }
-  if (showing || discrete) {pillBuild.spring.jump(anchorX);}
-  else {pillBuild.spring.set(anchorX);}
-};
 
 interface BarRevealSyncParams {
   readonly svgRoot: SVGSVGElement;
@@ -443,22 +391,14 @@ const buildBarCrosshairMark = ({
   if (!tooltipEnabled || !(tooltip?.showCrosshair ?? true)) {return undefined;}
   // Bklit parity quirk: function indicatorColor is never invoked (string form only).
   const indicatorCfg = toIndicatorConfig(tooltip);
-  const isDashed = Boolean(indicatorCfg.dasharray);
-  const fadeSides = resolveVerticalFadeSides(isDashed ? "none" : (indicatorCfg.fadeEdges ?? "both"));
-  const indicatorColorValue = isString(indicatorCfg.color) ? indicatorCfg.color : "var(--chart-crosshair)";
   const indicatorSpringCfg = indicatorCfg.springConfig ?? tooltipSpring;
-  // Native crosshair defaults strokeOpacity to 0.35; override to 1.
+  // Categorical cursor band with the legacy pill text as its x label.
   return buildIndicatorMark({
-    color: indicatorColorValue,
-    columnWidth: indicatorCfg.columnWidth,
-    dasharray: indicatorCfg.dasharray,
+    band: true,
     discrete,
     gradientId: indicatorGradientId,
-    span: indicatorCfg.span,
     spring: indicatorSpringCfg,
-    strokeOpacity: 1,
-    useGradient: !isDashed && fadeSides.any,
-    width: indicatorCfg.width,
+    xLabelFormat: (tooltip?.showDatePill ?? true) ? formatShortDateLabel : undefined,
   });
 };
 
@@ -569,35 +509,6 @@ const buildBarHoverMarks = ({
   return hoverMarks;
 };
 
-interface SyncDatePillParams {
-  readonly pillBuild: PillBuild | null;
-  readonly showDatePill: boolean;
-  readonly dateLabels: readonly string[] | undefined;
-  readonly categoryIndex: number;
-  readonly categoryLabel: string;
-  readonly anchorX: number;
-  readonly discrete: boolean;
-  readonly showing: boolean;
-}
-
-const syncDatePillForCategory = ({
-  pillBuild,
-  showDatePill,
-  dateLabels,
-  categoryIndex,
-  categoryLabel,
-  anchorX,
-  discrete,
-  showing,
-}: Readonly<SyncDatePillParams>): void => {
-  if (!pillBuild) {return;}
-  if (!showDatePill) {
-    pillBuild.layer.style.display = "none";
-    return;
-  }
-  updateDatePillContent({ anchorX, categoryIndex, categoryLabel, dateLabels, discrete, pillBuild, showing });
-};
-
 interface SettleBarRevealParams {
   readonly svgRoot: SVGSVGElement;
   readonly marksGroup: SVGGElement;
@@ -685,4 +596,4 @@ const handleBarSvgRender = ({
 };
 
 export type { BarChromeState, BuiltDepthGradient };
-export { BAR_ENTER_STAGGER_SPREAD_FRACTION, buildBarAxisSection, buildBarHoverMarks, buildNativeDepthGradients, clearDatePillForEmptyFocus, handleBarSvgRender, syncDatePillForCategory };
+export { BAR_ENTER_STAGGER_SPREAD_FRACTION, buildBarAxisSection, buildBarHoverMarks, buildNativeDepthGradients, handleBarSvgRender };

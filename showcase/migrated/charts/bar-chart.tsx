@@ -3,7 +3,6 @@ import {
   Fragment,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -12,9 +11,6 @@ import type { CSSProperties, ReactElement, ReactNode } from "react";
 import type { ChartPoint, ChartRendererRenderContext } from "@tanstack/charts";
 import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, adoptHostWidth, useRegistryEntriesState } from "./internal/chart-host";
 import { extractChildren } from "./internal/children-extract";
-import { buildPill } from "./internal/date-pill";
-import type { PillBuild } from "./internal/date-pill";
-import { DISCRETE_INTERACTION_THRESHOLD } from "./internal/design-tokens";
 import { useFocusInjection } from "./internal/focus-injection";
 import { renderPatternPreset } from "./internal/pattern-preset-render";
 import { ReferenceAreaLayers } from "./internal/reference-area-layer";
@@ -27,23 +23,19 @@ import { useChartRenderer } from "./internal/motion-renderer";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
 import { useChartMargin, DEFAULT_CHART_MARGIN } from "./internal/use-chart-margin";
 import type { ChartMargin } from "./internal/use-chart-margin";
-import { shortDateFmt } from "./internal/formatters";
 import {
   DEFAULT_ANIMATION_DURATION_MS,
   DEFAULT_ANIMATION_EASING,
 } from "./internal/animation-defaults";
 import type { EnterTransition } from "./internal/enter-transition";
 import { BAR_DEPTH_BACK_NODES_PER_ROW, countSquarePrimitives } from "./internal/bar-chart-series-marks";
-import { clearDatePillForEmptyFocus, handleBarSvgRender, syncDatePillForCategory } from "./internal/bar-chart-overlays";
-import type { BarChromeState } from "./internal/bar-chart-overlays";
+import { handleBarSvgRender } from "./internal/bar-chart-overlays";
 import { useBarTooltipBody } from "./internal/bar-tooltip-body";
 import { useBarScales } from "./internal/use-bar-scales";
 import { useBarDefinition } from "./internal/use-bar-definition";
 import type { ChartDatum, ChartPhase } from "./internal/types";
 import "./styles.css";
 
-// Tooltip overlay covers the plot without intercepting pointer events.
-const BAR_TOOLTIP_OVERLAY_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
 // Hidden gradient-defs SVG takes no space in layout.
 const BAR_HIDDEN_DEFS_STYLE = { position: "absolute" } as const;
 // Default gap between bar groups (d3 scaleBand padding fraction).
@@ -81,9 +73,6 @@ interface BarChartProps {
   readonly ariaDescription?: string;
 }
 
-const isString = <Value,>(candidate: Value): candidate is Value & string => typeof candidate === "string";
-const isNumber = <Value,>(candidate: Value): candidate is Value & number => typeof candidate === "number";
-
 const BarChart = ({
   data,
   xDataKey = "name",
@@ -118,7 +107,7 @@ const BarChart = ({
   }, []);
   // Registry union (V1.3 carriers): entries report up from inside the host.
   const [registryEntries, handleRegistryEntries] = useRegistryEntriesState();
-  // Package-resolved band snapshot for the date-pill anchor (V1.2/G6); hover
+  // Package-resolved band snapshot for the label-fade anchor (V1.2/G6); hover
   // Cannot precede first paint, so the null fallback never paints.
   const bandSnapshotRef = useRef<{ map: (label: string) => number | undefined; bandwidth: number } | null>(null);
 
@@ -211,7 +200,6 @@ const BarChart = ({
     yScale: scales.yScale,
   });
   const {
-    chartConfig,
     crosshairFadeGradient,
     definition,
     hasBarDepth,
@@ -221,76 +209,23 @@ const BarChart = ({
     squaresDefs,
   } = definitionState;
 
-  const chromeStateRef = useRef<BarChromeState | null>(null);
-  const dateLabelsForPill = useMemo(() => renderData.map((datum: Readonly<ChartDatum>) => {
-    const rawValue = datum[xDataKey];
-    if (rawValue instanceof Date) {return shortDateFmt.format(rawValue);}
-    if (isString(rawValue)) {return rawValue;}
-    if (isNumber(rawValue)) {return String(rawValue);}
-    return "";
-  }), [renderData, xDataKey]);
-  // Chrome snapshot only feeds pointer and focus handlers, so syncing post-commit keeps every read fresh.
-  useLayoutEffect(() => {
-    chromeStateRef.current = {
-      dateLabels: dateLabelsForPill,
-      tooltip: tooltip ?? undefined,
-    };
-  });
-
-  const overlayHostRef = useRef<HTMLDivElement | null>(null);
-
-  const pillRef = useRef<PillBuild | null>(null);
-  // First pill show jumps the spring; later moves spring (mirrors legacy showing flag).
-  const pillVisibleRef = useRef(false);
-
-  useLayoutEffect((): (() => void) | undefined => {
-    const el = overlayHostRef.current;
-    if (!el || !tooltipEnabled) {return undefined;}
-    const doc = el.ownerDocument;
-    const pillBuild = buildPill(doc, chartConfig.tooltipSpring, () => chromeStateRef.current?.dateLabels ?? []);
-    el.append(pillBuild.layer);
-    pillRef.current = pillBuild;
-    return (): void => {
-      pillRef.current = null;
-      pillVisibleRef.current = false;
-      pillBuild.spring.stop();
-      pillBuild.ticker?.detach();
-      pillBuild.layer.remove();
-    };
-  }, [tooltipEnabled, chartConfig]);
-
   const handleFocusGroupChange = useCallback(
     (points: readonly Readonly<ChartPoint<ChartDatum, string, number>>[]) => {
-      const pillBuild = pillRef.current;
       if (points.length === 0) {
-        clearDatePillForEmptyFocus({ pillBuild, setLabelFade, visibilityRef: pillVisibleRef });
+        setLabelFade((previous) => (previous === undefined ? previous : undefined));
         return;
       }
       const categoryLabel = points[0].xValue;
-      // Bklit indexes the hovered row (tooltipData.index); a label map is wrong with duplicate labels.
-      const categoryIndex = points[0].datumIndex;
       // Anchor from the package-resolved band, not mean point.x (asymmetric under group padding).
       const band = bandSnapshotRef.current;
       const anchorX = band === null ? 0 : (band.map(categoryLabel) ?? 0) + band.bandwidth / 2;
-      syncDatePillForCategory({
-        anchorX,
-        categoryIndex,
-        categoryLabel,
-        dateLabels: chromeStateRef.current?.dateLabels,
-        discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
-        pillBuild,
-        showDatePill: tooltipEnabled && (tooltip?.showDatePill ?? true),
-        showing: !pillVisibleRef.current,
-      });
-      pillVisibleRef.current = true;
-
       setLabelFade((previous) => {
         if (previous === undefined) {return { hoveredLabel: categoryLabel, primaryX: anchorX };}
         if (previous.primaryX === anchorX && previous.hoveredLabel === categoryLabel) {return previous;}
         return { hoveredLabel: categoryLabel, primaryX: anchorX };
       });
     },
-    [renderData.length, tooltipEnabled, tooltip, setLabelFade],
+    [setLabelFade],
   );
 
   const renderTooltipBody = useBarTooltipBody({ categoryAccessor: scales.categoryAccessor, series: dotSeriesList, tooltip });
@@ -300,7 +235,7 @@ const BarChart = ({
   const handleRender = useCallback((context: Readonly<ChartRendererRenderContext<ChartDatum, string, number>>): void => {
     captureRenderContext(context);
     adoptHostWidth(setLiveWidth, context.scene.width);
-    // Snapshot the package-resolved band for the date-pill anchor (V1.2/G6).
+    // Snapshot the package-resolved band for the label-fade anchor (V1.2/G6).
     const resolved = context.scene.scales.x;
     if (resolved.bandwidth > 0) {
       const snapshot = resolved;
@@ -426,12 +361,6 @@ const BarChart = ({
               />
             )}
             {referenceAreaLayer}
-            {tooltipEnabled && (
-              <div
-                ref={overlayHostRef}
-                style={BAR_TOOLTIP_OVERLAY_STYLE}
-              />
-            )}
           </ChartHost>
       )}
       {(squaresDefs.length > 0 || crosshairFadeGradient) && (

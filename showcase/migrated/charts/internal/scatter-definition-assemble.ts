@@ -6,7 +6,7 @@ import { CHART_CATEGORY_PALETTE } from "./design-tokens";
 import type { ChartDatum, ExtractedChildren } from "./types";
 import type { SpringConfig } from "./chart-config-context";
 import type { createScatterFocusStrategy } from "./scatter-focus-strategy";
-import type { ScatterLabelFade } from "./scatter-pill-chrome";
+import type { ScatterLabelFade } from "./scatter-label-fade";
 import type { ChartMargin } from "./use-chart-margin";
 import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./cartesian-focus-distance";
 import { buildScatterTooltipExtension } from "./scatter-tooltip-extension";

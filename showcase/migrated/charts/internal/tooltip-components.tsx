@@ -1,13 +1,16 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from 'react';
 import { createPortal } from "react-dom";
+import type { ChartPoint, ChartValue } from "@tanstack/charts";
+import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { indicatorFadeGradientStops, resolveVerticalFadeSides } from './fade-mask';
 import type { IndicatorFadeEdges, IndicatorFadeGradientStop, VerticalFadeSides } from './fade-mask';
 import { resolveIndicatorPixelWidth } from "./tooltip-mappers";
 import { TooltipContentRow } from "./tooltip-content-row";
 import { TooltipGradientStop } from "./tooltip-gradient-stop";
 import type { SpringConfig } from './chart-config-context';
-import type { IndicatorWidth, TooltipRow } from "./types";
+import type { ChartDatum, ChartTooltipConfig, ChartTooltipPoint, IndicatorWidth, TooltipRow } from "./types";
+import { TICKER_ITEM_HEIGHT } from "./design-tokens";
 
 // Corner radius is clamped to this fraction of the side so a ring never over-rounds past a capsule.
 const MAX_CORNER_RADIUS_FRACTION = 0.5;
@@ -68,7 +71,7 @@ const resolveDotStrokeWidth = (strokeWidth: number | undefined, isRing: boolean)
   strokeWidth ?? (isRing ? RING_STROKE_WIDTH_PX : DEFAULT_DOT_STROKE_WIDTH_PX);
 
 // The package owns motion (V2.4): x/y arrive from the focus point.
-// Legacy spring numbers map onto the package transition in hover-geometry.ts.
+// Legacy spring numbers map onto the package transition in focus-marks.ts.
 const TooltipDot = ({
   x,
   y,
@@ -253,7 +256,7 @@ interface IndicatorBodyOptions {
 }
 
 // The package owns motion (V2.4): x arrives from the focus point.
-// Legacy spring numbers map onto the package transition in hover-geometry.ts.
+// Legacy spring numbers map onto the package transition in focus-marks.ts.
 const renderIndicatorBody = (options: Readonly<IndicatorBodyOptions>): ReactElement => {
   const { fadeLength, gradientId, height, strokeDasharray, style } = options;
   if (style.dashed) {
@@ -635,10 +638,275 @@ const TooltipContent = ({ title, rows, children }: Readonly<TooltipContentProps>
     </div>
   );
 
-export { DateTicker } from './tooltip-date-ticker';
-export { TooltipBox, TooltipContent, TooltipDot, TooltipIndicator };
-export type { DateTickerProps } from './tooltip-date-ticker';
+// Token positions inside a "Month Day" ticker label.
+const MONTH_PART_INDEX = 0;
+const DAY_PART_INDEX = 1;
+// Offset of the last element when indexing from the end.
+const LAST_ELEMENT_OFFSET = -1;
+// Index of the first element in a zero-based list.
+const FIRST_INDEX = 0;
+// Offset from length to the last valid index.
+const LAST_INDEX_OFFSET = 1;
+// Step used when scanning month segments from newest to oldest.
+const INDEX_STEP = 1;
+// Count that represents an empty label list.
+const EMPTY_COUNT = 0;
+
+interface DateTickerProps {
+  readonly currentIndex: number;
+  readonly labels: readonly string[];
+  readonly visible: boolean;
+}
+
+const COMPACT_TICKER_THRESHOLD = 60;
+
+interface ParsedLabel {
+  readonly month: string;
+  readonly day: string;
+  readonly full: string;
+  readonly key: string;
+}
+
+interface MonthSegment {
+  readonly month: string;
+  readonly key: string;
+  readonly startIndex: number;
+}
+
+const toParsedLabel = (label: string, index: number): ParsedLabel => {
+  const parts = label.split(" ");
+  return { day: parts[DAY_PART_INDEX] || "", full: label, key: `${label}::${index}`, month: parts[MONTH_PART_INDEX] || "" };
+};
+
+const buildMonthSegments = (parsedLabels: readonly ParsedLabel[]): MonthSegment[] => {
+  const segments: MonthSegment[] = [];
+  for (const [index, label] of parsedLabels.entries()) {
+    const prev = segments.at(LAST_ELEMENT_OFFSET);
+    if (!prev || prev.month !== label.month) {
+      segments.push({
+        key: `${label.month}-${index}`,
+        month: label.month,
+        startIndex: index,
+      });
+    }
+  }
+  return segments;
+};
+
+const resolveCurrentMonthIndex = (
+  currentIndex: number,
+  parsedLabels: readonly ParsedLabel[],
+  monthSegments: readonly MonthSegment[],
+): number => {
+  if (currentIndex < FIRST_INDEX || currentIndex >= parsedLabels.length) {
+    return FIRST_INDEX;
+  }
+  for (let segmentIndex = monthSegments.length - LAST_INDEX_OFFSET; segmentIndex >= FIRST_INDEX; segmentIndex -= INDEX_STEP) {
+    const segment = monthSegments.at(segmentIndex);
+    if (segment && segment.startIndex <= currentIndex) {
+      return segmentIndex;
+    }
+  }
+  return FIRST_INDEX;
+};
+
+const renderCompactTicker = (pillClassName: string, label: string): ReactNode => (
+  <div className={pillClassName}>
+    <div className="flex h-6 items-center justify-center">
+      <span className="whitespace-nowrap font-medium text-sm">{label}</span>
+    </div>
+  </div>
+);
+
+interface TickerStacksOptions {
+  readonly monthSegments: readonly MonthSegment[];
+  readonly parsedLabels: readonly ParsedLabel[];
+  readonly dayStyle: Readonly<CSSProperties>;
+  readonly monthStyle: Readonly<CSSProperties>;
+}
+
+// The package owns motion (V2.4): stacks render at the focus-point offset.
+const renderTickerStacks = (options: Readonly<TickerStacksOptions>): ReactNode => {
+  const { monthSegments, parsedLabels, dayStyle, monthStyle } = options;
+  const monthItems = monthSegments.map((segment) => (
+    <div
+      className="flex h-6 shrink-0 items-center justify-center"
+      key={segment.key}
+    >
+      <span className="whitespace-nowrap font-medium text-sm">
+        {segment.month}
+      </span>
+    </div>
+  ));
+  const dayItems = parsedLabels.map((label) => (
+    <div
+      className="flex h-6 shrink-0 items-center justify-center"
+      key={label.key}
+    >
+      <span className="whitespace-nowrap font-medium text-sm">
+        {label.day}
+      </span>
+    </div>
+  ));
+  const monthStack = (
+    <div className="relative h-6 overflow-hidden">
+      <div className="flex flex-col" style={monthStyle}>
+        {monthItems}
+      </div>
+    </div>
+  );
+  const dayStack = (
+    <div className="relative h-6 overflow-hidden">
+      <div className="flex flex-col" style={dayStyle}>
+        {dayItems}
+      </div>
+    </div>
+  );
+  return (
+    <div className="flex items-center justify-center gap-1">
+      {monthStack}
+      {dayStack}
+    </div>
+  );
+};
+
+interface FullTickerOptions {
+  readonly monthSegments: readonly MonthSegment[];
+  readonly parsedLabels: readonly ParsedLabel[];
+  readonly pillClassName: string;
+  readonly dayStyle: Readonly<CSSProperties>;
+  readonly monthStyle: Readonly<CSSProperties>;
+  readonly visible: boolean;
+}
+
+const renderFullTicker = (options: Readonly<FullTickerOptions>): ReactNode => {
+  const { monthSegments, parsedLabels, pillClassName, dayStyle, monthStyle, visible } = options;
+  if (!visible || parsedLabels.length === EMPTY_COUNT) {return undefined;}
+  const stacks = renderTickerStacks({ dayStyle, monthSegments, monthStyle, parsedLabels });
+  return (
+    <div className={pillClassName}>
+      <div className="relative h-6 overflow-hidden">
+        {stacks}
+      </div>
+    </div>
+  );
+};
+
+const DateTicker = ({ currentIndex, labels, visible }: Readonly<DateTickerProps>): ReactNode => {
+  const compact = useMemo(
+    () => visible && labels.length > COMPACT_TICKER_THRESHOLD,
+    [visible, labels.length],
+  );
+
+  const parsedLabels = useMemo<ParsedLabel[]>(() => labels.map((label, index) => toParsedLabel(label, index)), [labels]);
+
+  const monthSegments = useMemo<MonthSegment[]>(() => buildMonthSegments(parsedLabels), [parsedLabels]);
+
+  const currentMonthIndex = useMemo(() => resolveCurrentMonthIndex(currentIndex, parsedLabels, monthSegments), [currentIndex, parsedLabels, monthSegments]);
+
+  const dayStyle = useMemo((): CSSProperties => ({ transform: `translateY(${-currentIndex * TICKER_ITEM_HEIGHT}px)` }), [currentIndex]);
+  const monthStyle = useMemo((): CSSProperties => ({ transform: `translateY(${-currentMonthIndex * TICKER_ITEM_HEIGHT}px)` }), [currentMonthIndex]);
+
+  const pillClassName =
+    "overflow-hidden rounded-full bg-zinc-900 px-4 py-1 text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900";
+
+  if (compact) {
+    return renderCompactTicker(pillClassName, labels.at(currentIndex) ?? labels.at(FIRST_INDEX) ?? "");
+  }
+
+  return renderFullTicker({ dayStyle, monthSegments, monthStyle, parsedLabels, pillClassName, visible });
+};
+
+// Panel chrome shared by both body-render paths below.
+interface TooltipPanelParams {
+  readonly panelClassName: string;
+  readonly panelStyle: CSSProperties;
+}
+
+interface RenderSeriesTooltipBodyOptions<
+  TXValue extends ChartValue = ChartValue,
+  TYValue extends ChartValue = ChartValue,
+> {
+  tooltip: ChartTooltipConfig | null | undefined;
+  buildRows: (
+    datum: Readonly<ChartDatum>,
+    ctx: ChartTooltipBodyRenderContext<ChartDatum, TXValue, TYValue>
+  ) => TooltipRow[];
+  resolveTitle: (
+    datum: Readonly<ChartDatum>,
+    ctx: ChartTooltipBodyRenderContext<ChartDatum, TXValue, TYValue>
+  ) => string | undefined;
+}
+
+const buildPanelClassName = (cfg: ChartTooltipConfig | null | undefined): string => {
+  const className = cfg?.className ?? "";
+  return className.length > 0 ? `bkm-tooltip-panel ${className}` : "bkm-tooltip-panel";
+};
+
+const buildPanelStyle = (cfg: ChartTooltipConfig | null | undefined): CSSProperties => {
+  const backgroundColor = cfg?.backgroundColor ?? "";
+  const style: CSSProperties = { ...cfg?.panelStyle };
+  if (backgroundColor.length > 0) {
+    style.backgroundColor = backgroundColor;
+  }
+  return style;
+};
+
+interface CustomTooltipBodyParams<TXValue extends ChartValue = ChartValue, TYValue extends ChartValue = ChartValue> {
+  primary: ChartPoint<ChartDatum, TXValue, TYValue>;
+  datum: Readonly<ChartDatum>;
+  panel: TooltipPanelParams;
+}
+
+// Custom `tooltip.content` render path; kept out of renderDefaultTooltipBody so each stays short.
+const renderCustomTooltipBody = <TXValue extends ChartValue = ChartValue, TYValue extends ChartValue = ChartValue>(
+  content: (props: { point: ChartTooltipPoint; index: number }) => ReactNode,
+  params: CustomTooltipBodyParams<TXValue, TYValue>
+): ReactNode => (
+  <div className={params.panel.panelClassName} style={params.panel.panelStyle}>
+    {content({ index: params.primary.datumIndex, point: params.datum })}
+  </div>
+);
+
+interface DefaultTooltipBodyParams<TXValue extends ChartValue = ChartValue, TYValue extends ChartValue = ChartValue> {
+  ctx: ChartTooltipBodyRenderContext<ChartDatum, TXValue, TYValue>;
+  buildRows: (datum: Readonly<ChartDatum>, ctx: ChartTooltipBodyRenderContext<ChartDatum, TXValue, TYValue>) => TooltipRow[];
+  resolveTitle: (datum: Readonly<ChartDatum>, ctx: ChartTooltipBodyRenderContext<ChartDatum, TXValue, TYValue>) => string | undefined;
+  cfg: ChartTooltipConfig | null | undefined;
+  datum: Readonly<ChartDatum>;
+  panel: TooltipPanelParams;
+}
+
+const renderDefaultTooltipBody = <TXValue extends ChartValue = ChartValue, TYValue extends ChartValue = ChartValue>(
+  params: DefaultTooltipBodyParams<TXValue, TYValue>
+): ReactNode => {
+  const { ctx, buildRows, resolveTitle, cfg, datum, panel } = params;
+  const title = resolveTitle(datum, ctx);
+  const rows: TooltipRow[] = cfg?.rows ? cfg.rows(datum) : buildRows(datum, ctx);
+  return (
+    <div className={panel.panelClassName} style={panel.panelStyle}>
+      <TooltipContent title={title} rows={rows}>
+        {cfg?.children}
+      </TooltipContent>
+    </div>
+  );
+};
+
+const renderSeriesTooltipBody = <TXValue extends ChartValue = ChartValue, TYValue extends ChartValue = ChartValue>(ctx: ChartTooltipBodyRenderContext<ChartDatum, TXValue, TYValue>, options: RenderSeriesTooltipBodyOptions<TXValue, TYValue>): ReactNode => {
+  const primary = ctx.points.at(0);
+  if (primary === undefined) {return false;}
+  const {datum} = primary;
+  const cfg = options.tooltip;
+  const panel: TooltipPanelParams = { panelClassName: buildPanelClassName(cfg), panelStyle: buildPanelStyle(cfg) };
+  return cfg?.content
+    ? renderCustomTooltipBody(cfg.content, { datum, panel, primary })
+    : renderDefaultTooltipBody({ buildRows: options.buildRows, cfg, ctx, datum, panel, resolveTitle: options.resolveTitle });
+}
+
+export { DateTicker, TooltipBox, TooltipContent, TooltipDot, TooltipIndicator, renderSeriesTooltipBody };
 export type {
+  DateTickerProps,
+  RenderSeriesTooltipBodyOptions,
   TooltipBoxProps,
   TooltipContentProps,
   TooltipDotProps,

@@ -1,10 +1,10 @@
 // Candlestick scales and definition options: time/y extents, x/y scale builders, tooltip and reveal targets.
 import { scaleLinear, scaleUtc } from "d3-scale";
-import type { ChartScale, ResolvedScale } from "@tanstack/charts";
+import type { ChartScale, ChartTooltipInput, ResolvedScale } from "@tanstack/charts";
+import { tooltip } from "@tanstack/charts/tooltip";
+import { portal } from "@tanstack/charts/tooltip/portal";
 import { buildXAxisTickValues, formatYAxisTick } from "./axis-ticks";
 import { resolveYAxisTickCount } from "./y-axis-ticks";
-import { buildNativeTooltipExtension } from "./native-tooltip";
-import type { NativeTooltipExtension } from "./native-tooltip";
 import { BOX_OFFSET, TOOLTIP_BOX_SPRING } from "./design-tokens";
 import type { ChartDatum, ExtractedChildren } from "./types";
 import {
@@ -206,21 +206,35 @@ interface CandleTooltipOptionParams {
 }
 
 /**
- * Builds the native tooltip extension for the chart definition (definition-memo time).
+ * Builds the package tooltip extension for the chart definition (definition-memo time).
  *
  * @param {Readonly<CandleTooltipOptionParams>} params - Discrete mode and tooltip enablement.
- * @returns {NativeTooltipExtension<ChartDatum, Date, number> | false} Tooltip extension, or false when disabled.
+ * @returns {ChartTooltipInput<ChartDatum, Date, number, "dom"> | false} Tooltip extension, or false when disabled.
  */
-const buildCandleTooltipOption = (params: Readonly<CandleTooltipOptionParams>): NativeTooltipExtension<ChartDatum, Date, number> | false => {
+const buildCandleTooltipOption = (params: Readonly<CandleTooltipOptionParams>): ChartTooltipInput<ChartDatum, Date, number, "dom"> | false => {
   const { discrete, tooltipEnabled } = params;
-  return buildNativeTooltipExtension<ChartDatum, Date, number>({
-    anchorX: "value",
+  if (!tooltipEnabled) {return false;}
+  return {
+    // Viewport-aware via the live x scale, falling back to pixel x.
+    anchor: (_points, context) => {
+      const { primary } = context.focus;
+      const scale = context.scales.x;
+      const position = (scale.viewport?.map ?? scale.map)(primary.xValue);
+      return {
+        x: Number.isFinite(position) ? position : primary.x,
+        y: context.plot.y - BOX_OFFSET,
+      };
+    },
     className: "bkm-native-tooltip",
-    discrete,
-    enabled: tooltipEnabled,
+    motion: discrete
+      ? (false as const)
+      : { damping: TOOLTIP_BOX_SPRING.damping, stiffness: TOOLTIP_BOX_SPRING.stiffness, type: "spring" as const },
     offset: BOX_OFFSET,
-    spring: TOOLTIP_BOX_SPRING,
-  });
+    placement: ["bottom-right", "bottom-left"] as const,
+    portal,
+    sticky: false,
+    use: tooltip,
+  };
 };
 
 /**

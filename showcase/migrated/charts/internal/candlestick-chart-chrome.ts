@@ -1,20 +1,15 @@
-// Candlestick chrome: reveal cycle, date-pill/label-fade sync, tooltip model, and the chart-chrome hooks.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+// Candlestick chrome: reveal cycle, label-fade sync, tooltip model, and the chart-chrome hooks.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { resolveEnterTransition, TWEEN_FALLBACK } from "./enter-transition";
 import type { CandlestickEnterTransition } from "./enter-transition";
-import { buildPill } from "./date-pill";
-import type { PillBuild } from "./date-pill";
-import { DISCRETE_INTERACTION_THRESHOLD } from "./design-tokens";
-import { shortDateFmt } from "./formatters";
 import { extractSegmentComponents, useChartSelection } from "./chart-selection";
 import type { ChartSelection, SegmentComponent } from "./chart-selection";
 import { findCandleTimeExtent, findCandleYExtremes } from "./candlestick-chart-scales";
 import type { CandleTimeExtent } from "./candlestick-chart-scales";
 import { parseAspectRatio } from "./parse-aspect-ratio";
 import type { FocusInjection } from "./focus-injection";
-import type { ChartConfigValue } from "./chart-config-context";
 import type { PatternPresetId } from "./pattern-preset";
 import type { CandlestickConfig, ChartDatum, ChartTooltipConfig, ChartTooltipPoint, TooltipRow } from "./types";
 import {
@@ -57,7 +52,6 @@ const Y_DOMAIN_PAD_FRACTION = 0.05;
 
 interface CandlestickChromeState {
   tooltip: ChartTooltipConfig | undefined;
-  readonly dateLabels: string[];
 }
 
 // Legacy pattern names are an open string at the prop boundary; only known presets render.
@@ -143,66 +137,6 @@ const runCandleRevealCycle = (params: Readonly<CandleRevealCycleParams>): ((() =
     return undefined;
   }
   return armCandleRevealTimers({ animationDuration, canInteractRef, epoch, revealDeadlineTimerRef, revealEpochRef, setRevealed });
-};
-
-interface CandlePillContentParams {
-  readonly centerX: number;
-  readonly dateLabels: readonly string[] | undefined;
-  readonly discrete: boolean;
-  readonly formattedDate: string;
-  readonly showing: boolean;
-  readonly tickerIndex: number;
-}
-
-/**
- * Shows the date pill: layer visibility, ticker-or-formatted label, then jump-or-spring position.
- * First pill show jumps; later moves spring (mirrors legacy showing flag).
- *
- * @param {PillBuild} pillBuild - Live pill build (non-null when chrome is mounted).
- * @param {Readonly<CandlePillContentParams>} content - Label and positioning inputs.
- * @returns {void} Nothing.
- */
-const displayCandlePill = (pillBuild: PillBuild, content: Readonly<CandlePillContentParams>): void => {
-  const { centerX, dateLabels, discrete, formattedDate, showing, tickerIndex } = content;
-  pillBuild.layer.style.display = "";
-  if (pillBuild.ticker && dateLabels !== undefined && dateLabels.length > EMPTY_COUNT) {
-    pillBuild.ticker.update(tickerIndex, discrete);
-  } else {
-    pillBuild.label.textContent = formattedDate;
-  }
-  if (showing || discrete) {pillBuild.spring.jump(centerX);}
-  else {pillBuild.spring.set(centerX);}
-};
-
-interface CandlePillParams {
-  readonly centerX: number;
-  readonly dateLabels: readonly string[] | undefined;
-  readonly formattedDate: string;
-  readonly pillBuild: PillBuild | null;
-  readonly pillVisibleRef: RefObject<boolean>;
-  readonly rowCount: number;
-  readonly showDatePill: boolean;
-  readonly tickerIndex: number;
-}
-
-/**
- * Updates pill chrome for a focus change; hides it when the pill is disabled or unmounted.
- *
- * @param {Readonly<CandlePillParams>} params - Pill refs, visibility flags, and label inputs.
- * @returns {void} Nothing.
- */
-const updateCandlePill = (params: Readonly<CandlePillParams>): void => {
-  const { centerX, dateLabels, formattedDate, pillBuild, pillVisibleRef, rowCount, showDatePill, tickerIndex } = params;
-  // Dense data snaps instead of springing (same threshold as every other chart).
-  const discrete = rowCount > DISCRETE_INTERACTION_THRESHOLD;
-  const showing = !pillVisibleRef.current;
-  pillVisibleRef.current = true;
-  if (pillBuild === null) {return;}
-  if (!showDatePill) {
-    pillBuild.layer.style.display = "none";
-    return;
-  }
-  displayCandlePill(pillBuild, { centerX, dateLabels, discrete, formattedDate, showing, tickerIndex });
 };
 
 interface CandleLabelFadeState {
@@ -482,83 +416,43 @@ const useCandleGeometry = (params: Readonly<CandleGeometryParams>): CandleGeomet
   return { bodyWidthPx, innerWidth, slotWidth, timeExtent, yDomain };
 };
 
-interface CandlePillChromeParams {
-  readonly chartConfig: ChartConfigValue;
-  readonly renderData: readonly Readonly<ChartDatum>[];
+interface CandleChromeParams {
   readonly tooltip: ChartTooltipConfig | null | undefined;
-  readonly tooltipEnabled: boolean;
-  readonly width: number;
-  readonly xDataKey: string;
 }
 
-interface CandlePillChrome {
+interface CandleChrome {
   readonly chromeStateRef: RefObject<CandlestickChromeState | null>;
   readonly dragSelectionActiveRef: RefObject<boolean>;
-  readonly overlayHostRef: RefObject<HTMLDivElement | null>;
-  readonly pillRef: RefObject<PillBuild | null>;
-  readonly pillVisibleRef: RefObject<boolean>;
 }
 
 /**
- * Owns the chrome snapshot, drag-suppression ref, and the date-pill overlay mount.
+ * Owns the chrome snapshot and the drag-suppression ref.
  *
- * @param {Readonly<CandlePillChromeParams>} params - Rows, tooltip inputs, width, and chart config.
- * @returns {CandlePillChrome} Chrome/drag refs plus the pill overlay refs.
+ * @param {Readonly<CandleChromeParams>} params - Tooltip inputs.
+ * @returns {CandleChrome} Chrome snapshot and drag refs.
  */
-const useCandlePillChrome = (params: Readonly<CandlePillChromeParams>): CandlePillChrome => {
-  const { chartConfig, renderData, tooltip, tooltipEnabled, width, xDataKey } = params;
+const useCandleChrome = (params: Readonly<CandleChromeParams>): CandleChrome => {
+  const { tooltip } = params;
   const chromeStateRef = useRef<CandlestickChromeState | null>(null);
-  // Drag selection suppresses pill/label-fade chrome (native marks keep reacting).
+  // Drag selection suppresses label-fade chrome (native marks keep reacting).
   const dragSelectionActiveRef = useRef(false);
-  const dateLabelsForPill = useMemo(() => renderData.map((datum: Readonly<ChartDatum>) => {
-    const value = datum[xDataKey];
-    if (value instanceof Date) {return shortDateFmt.format(value);}
-    if (isString(value)) {return value;}
-    if (isNumber(value) || value === true || value === false) {return String(value);}
-    return "";
-  }), [renderData, xDataKey]);
   // Latest-chrome sync runs post-commit so the render body stays pure.
   useEffect(() => {
     chromeStateRef.current = {
-      dateLabels: dateLabelsForPill,
       tooltip: tooltip ?? undefined,
     };
-  }, [dateLabelsForPill, tooltip]);
+  }, [tooltip]);
 
-  const overlayHostRef = useRef<HTMLDivElement | null>(null);
-  const hasDefinition = width > EMPTY_CONTAINER_PX;
-
-  const pillRef = useRef<PillBuild | null>(null);
-  // First pill show jumps; later moves spring (mirrors legacy showing flag).
-  const pillVisibleRef = useRef(false);
-
-  useLayoutEffect((): (() => void) | undefined => {
-    const el = overlayHostRef.current;
-    // The overlay host mounts only under the chart definition (width > 0).
-    if (!hasDefinition || !el || !tooltipEnabled) {return undefined;}
-    const doc = el.ownerDocument;
-    const pillBuild = buildPill(doc, chartConfig.tooltipSpring, () => chromeStateRef.current?.dateLabels ?? []);
-    el.append(pillBuild.layer);
-    pillRef.current = pillBuild;
-    return (): void => {
-      pillRef.current = null;
-      pillVisibleRef.current = false;
-      pillBuild.spring.stop();
-      pillBuild.ticker?.detach();
-      pillBuild.layer.remove();
-    };
-  }, [tooltipEnabled, hasDefinition, chartConfig]);
-
-  return { chromeStateRef, dragSelectionActiveRef, overlayHostRef, pillRef, pillVisibleRef };
+  return { chromeStateRef, dragSelectionActiveRef };
 };
 
 interface CandleSelectionParams {
   readonly aspectRatio: string;
   readonly children: ReactNode;
   readonly clientToScene: FocusInjection<ChartDatum, Date, number>["clientToScene"];
+  readonly clearLabelFade: () => void;
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly dragSelectionActiveRef: RefObject<boolean>;
-  readonly hidePill: () => void;
   readonly innerWidth: number;
   readonly marginLeft: number;
   readonly renderData: ChartDatum[];
@@ -580,7 +474,7 @@ interface CandleSelectionState {
  * @returns {CandleSelectionState} Selection, plot height, and segment children.
  */
 const useCandleSelection = (params: Readonly<CandleSelectionParams>): CandleSelectionState => {
-  const { aspectRatio, children, clientToScene, containerRef, dragSelectionActiveRef, hidePill, innerWidth, marginLeft, renderData, sceneRef, width, xDataKey } = params;
+  const { aspectRatio, children, clearLabelFade, clientToScene, containerRef, dragSelectionActiveRef, innerWidth, marginLeft, renderData, sceneRef, width, xDataKey } = params;
   const segChildrenCandle = useMemo(() => extractSegmentComponents(children), [children]);
   const heightPxCandle = width > EMPTY_CONTAINER_PX ? width / parseAspectRatio(aspectRatio) : COLLAPSED_GEOMETRY_PX;
   // Selection resolves through the host's live interaction/scene refs, not a duplicate scale.
@@ -600,7 +494,7 @@ const useCandleSelection = (params: Readonly<CandleSelectionParams>): CandleSele
     },
     onDragStart: () => {
       dragSelectionActiveRef.current = true;
-      hidePill();
+      clearLabelFade();
     },
     resolveScenePos: clientToScene,
     xDataKey,
@@ -615,10 +509,9 @@ export {
   resolveCandleTooltipModel,
   resolveCandleTooltipPanel,
   updateCandleLabelFade,
-  updateCandlePill,
+  useCandleChrome,
   useCandleGeometry,
   useCandlePatterns,
-  useCandlePillChrome,
   useCandleReveal,
   useCandleSelection,
 };

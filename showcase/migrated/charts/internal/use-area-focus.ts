@@ -1,13 +1,11 @@
-// Area focus hook: tooltip body, date-pill choreography, focus handling.
+// Area focus hook: tooltip body, label-fade choreography, focus handling.
 // Hook call order is unchanged; logic moved verbatim.
 import { useCallback, useMemo, useRef } from "react";
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 import type { ChartInteractionController, ChartPoint } from "@tanstack/charts";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { renderSeriesTooltipBody } from "./native-tooltip";
-import { useChartConfig } from "./use-chart-config";
-import { isFocusOutsideXDomain, useDatePillOverlay } from "./hover-geometry";
-import type { DatePillController } from "./hover-geometry";
+import { renderSeriesTooltipBody } from "./tooltip-components";
+import { isFocusOutsideXDomain } from "./focus-marks";
 import { createActiveMarkersStore } from "./active-markers-store";
 import { isChartInteractionPhase } from "./chart-phase";
 import type { ChartPhase } from "./chart-phase";
@@ -50,33 +48,22 @@ const resolveAreaFocusPrimary = (input: Readonly<AreaFocusPrimaryInput>): AreaFo
   };
 };
 
-interface AreaDatePillRequest {
-  readonly datumIndex: number;
+interface AreaLabelFadeRequest {
   readonly primaryX: number;
 }
 
-interface AreaPillVisibilityRef {
-  current: boolean;
-}
-
-interface AreaDatePillParams {
-  readonly datePill: Readonly<DatePillController>;
-  readonly discrete: boolean;
-  readonly primary: Readonly<AreaDatePillRequest> | undefined;
+interface AreaLabelFadeParams {
+  readonly primary: Readonly<AreaLabelFadeRequest> | undefined;
   readonly setLabelFade: Dispatch<SetStateAction<AreaLabelFade | undefined>>;
   readonly showDatePill: boolean;
   readonly validDate: Date | undefined;
-  readonly wasVisibleRef: AreaPillVisibilityRef;
 }
 
-// Mirrors the hover date-pill choreography; extracted so the focus callback stays short.
-const updateAreaDatePill = (params: Readonly<AreaDatePillParams>): void => {
-  const { datePill, primary, showDatePill, validDate, wasVisibleRef } = params;
+// The crosshair x label carries the date text now; only the axis label fade stays here.
+const updateAreaLabelFade = (params: Readonly<AreaLabelFadeParams>): void => {
+  const { primary, showDatePill, validDate } = params;
   if (primary && showDatePill) {
     const label = validDate ? shortDateFmt.format(validDate) : null;
-    const jump = !wasVisibleRef.current;
-    wasVisibleRef.current = true;
-    datePill.show(primary.primaryX, { discrete: params.discrete, index: primary.datumIndex, jump, label });
     // Skip definition rebuilds when the focus point didn't change.
     params.setLabelFade((prev: Readonly<AreaLabelFade> | undefined) =>
       prev && prev.primaryX === primary.primaryX && prev.hoveredLabel === label
@@ -84,8 +71,6 @@ const updateAreaDatePill = (params: Readonly<AreaDatePillParams>): void => {
         : { hoveredLabel: label ?? undefined, primaryX: primary.primaryX },
     );
   } else {
-    wasVisibleRef.current = false;
-    datePill.hide();
     params.setLabelFade(undefined);
   }
 };
@@ -118,7 +103,6 @@ interface AreaFocusParams {
 
 interface AreaFocus {
   readonly clearFocusChrome: () => void;
-  readonly datePillOverlayHostRef: DatePillController["overlayHostRef"];
   readonly handleFocusChange: (points: readonly ChartPoint<ChartDatum, Date, number>[]) => void;
   readonly handleSelectionDragEnd: () => void;
   readonly handleSelectionDragStart: () => void;
@@ -130,14 +114,11 @@ const useAreaFocus = (params: Readonly<AreaFocusParams>): AreaFocus => {
   const {
     chartPhase,
     interactionRef,
-    isDiscrete,
     isLoaded,
-    renderData,
     resolvedAreas,
     setHoveredIndex,
     setLabelFade,
     tooltip,
-    tooltipEnabled,
     xDataKey,
     xDomain,
   } = params;
@@ -164,23 +145,6 @@ const useAreaFocus = (params: Readonly<AreaFocusParams>): AreaFocus => {
     [tooltip, xDataKey, resolvedAreas],
   );
   const dragSelectionActiveRef = useRef(false);
-  const wasVisibleRef = useRef(false);
-  const chartConfig = useChartConfig();
-  const dateLabelsForPill = useMemo(
-    () =>
-      renderData.map((datum: Readonly<ChartDatum>) => {
-        const value = datum[xDataKey];
-        if (value instanceof Date) {return shortDateFmt.format(value);}
-        return stringifyDatumField(value, "");
-      }),
-    [renderData, xDataKey],
-  );
-  const datePill = useDatePillOverlay({
-    dateLabels: dateLabelsForPill,
-    enabled: tooltipEnabled && (tooltip?.showDatePill ?? true),
-    tooltipSpring: chartConfig.tooltipSpring,
-  });
-  const { overlayHostRef: datePillOverlayHostRef } = datePill;
   // Live tooltip date store for marker-active consumers.
   const markerActiveStore = useMemo(() => createActiveMarkersStore(), []);
 
@@ -188,10 +152,8 @@ const useAreaFocus = (params: Readonly<AreaFocusParams>): AreaFocus => {
     interactionRef.current?.setControlledFocus(null, { source: "pointer" });
     setHoveredIndex(undefined);
     markerActiveStore.setActiveDate(null);
-    wasVisibleRef.current = false;
-    datePill.hide();
     setLabelFade(undefined);
-  }, [markerActiveStore, datePill, interactionRef, setHoveredIndex, setLabelFade]);
+  }, [markerActiveStore, interactionRef, setHoveredIndex, setLabelFade]);
 
   const handleFocusChange = useCallback(
     (points: readonly ChartPoint<ChartDatum, Date, number>[]) => {
@@ -210,17 +172,14 @@ const useAreaFocus = (params: Readonly<AreaFocusParams>): AreaFocus => {
       const dateValue = resolveFocusDate(primary?.datum, xDataKey);
       const validDate = dateValue && !Number.isNaN(dateValue.getTime()) ? dateValue : undefined;
       markerActiveStore.setActiveDate(validDate ?? null);
-      updateAreaDatePill({
-        datePill,
-        discrete: isDiscrete,
-        primary: primary ? { datumIndex: primary.datumIndex, primaryX: primary.x } : undefined,
+      updateAreaLabelFade({
+        primary: primary ? { primaryX: primary.x } : undefined,
         setLabelFade,
         showDatePill: tooltip?.showDatePill ?? true,
         validDate,
-        wasVisibleRef,
       });
     },
-    [xDomain, xDataKey, chartPhase, isLoaded, markerActiveStore, tooltip, isDiscrete, datePill, interactionRef, setHoveredIndex, setLabelFade],
+    [xDomain, xDataKey, chartPhase, isLoaded, markerActiveStore, tooltip, interactionRef, setHoveredIndex, setLabelFade],
   );
 
   const handleSelectionDragStart = useCallback(() => {
@@ -233,7 +192,6 @@ const useAreaFocus = (params: Readonly<AreaFocusParams>): AreaFocus => {
 
   return {
     clearFocusChrome,
-    datePillOverlayHostRef,
     handleFocusChange,
     handleSelectionDragEnd,
     handleSelectionDragStart,

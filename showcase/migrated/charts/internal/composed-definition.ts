@@ -28,7 +28,7 @@ import {
 import type { ComposedGradientDef } from "./composed-series";
 import { isNumberValue, stringifyDatumField } from "./composed-datum-text";
 import { weekdayDateFmt } from "./formatters";
-import { renderSeriesTooltipBody } from "./native-tooltip";
+import { renderSeriesTooltipBody } from "./tooltip-components";
 import type {
   ChartDatum,
   ChartTooltipConfig,

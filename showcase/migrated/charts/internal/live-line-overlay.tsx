@@ -1,7 +1,7 @@
 // Live-line overlay chrome: edge-fade defs, focus/hover callbacks, crosshair
 // State, and the chart body subtree rendered as a plain helper (same tree).
 import { useCallback, useMemo, useRef } from "react";
-import type { CSSProperties, ReactElement, ReactNode, RefCallback, RefObject } from "react";
+import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import type { ChartTooltipBodyRenderContext } from '@tanstack/react-charts/tooltip';
 import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH } from "./chart-host";
 import type { ChartChildRegistration } from "./chart-child-registry";
@@ -17,15 +17,13 @@ import { chartMotionRenderer } from "./motion-renderer";
 import { ReferenceAreaLayers } from "./reference-area-layer";
 import type { ReferenceAreaLayersGeom } from "./reference-area-layer";
 import { LiveTipChrome } from "./live-tip-chrome";
-import { buildCrosshairGradientDef } from "./hover-geometry";
-import type { DatePillController } from "./date-pill-overlay";
+import { buildCrosshairGradientDef } from "./focus-marks";
 import type { ReferenceAreaPropValue } from "./reference-area-config";
 import type { Momentum } from "./live-momentum";
 import type {
   ChartDatum,
   ChartTooltipConfig,
   LiveLineConfig,
-  LiveXAxisConfig,
   MomentumColors,
 } from "./types";
 
@@ -88,7 +86,6 @@ const FADE_MASK_TOP_OVERHANG_PX = 20;
 const FADE_MASK_VERTICAL_OVERHANG_PX = 40;
 
 // Static overlay styles hoisted so host elements reuse stable identities.
-const CHART_OVERLAY_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
 const LIVE_SVG_OVERLAY_STYLE = { inset: 0, overflow: "visible", pointerEvents: "none", position: "absolute" } as const;
 
 interface LineVisualSnapshot {
@@ -242,51 +239,18 @@ const applyFocusDim = (groups: Readonly<Map<string, SVGGElement>>, dimmed: boole
   }
 };
 
-interface FocusPillRequest {
-  readonly datum: Readonly<ChartDatum>;
-  readonly datumIndex: number;
-  readonly formatTime: (timeMs: number) => string;
-  readonly wasVisible: boolean;
-  readonly x: number;
-}
-
-const showFocusDatePill = (pill: Readonly<DatePillController>, request: Readonly<FocusPillRequest>): void => {
-  const dateVal = coerceDatumDate(request.datum.date);
-  const label = request.formatTime(dateVal.getTime());
-  pill.show(request.x, { discrete: false, index: request.datumIndex, jump: !request.wasVisible, label });
-};
-
 interface UseLiveFocusChangeOptions {
-  readonly datePill: DatePillController;
   readonly liveGroupElsRef: RefObject<Map<string, SVGGElement>>;
-  readonly liveXAxisRef: RefObject<LiveXAxisConfig | undefined>;
-  readonly tooltipOn: boolean;
-  readonly wasVisibleRef: RefObject<boolean>;
 }
 
 const useLiveFocusChange = (options: Readonly<UseLiveFocusChangeOptions>): ((points: readonly ReadonlyLivePoint[]) => void) => {
-  const { datePill, liveGroupElsRef, liveXAxisRef, tooltipOn, wasVisibleRef } = options;
+  const { liveGroupElsRef } = options;
   return useCallback(
     (points: readonly ReadonlyLivePoint[]) => {
       const primary = points.at(0);
       applyFocusDim(liveGroupElsRef.current, primary !== undefined);
-      if (!tooltipOn) {return;}
-      const axisCfg = liveXAxisRef.current;
-      if (primary && axisCfg) {
-        showFocusDatePill(datePill, {
-          datum: primary.datum,
-          datumIndex: primary.datumIndex,
-          formatTime: axisCfg.formatTime ?? defaultFormatTime,
-          wasVisible: wasVisibleRef.current,
-          x: primary.x,
-        });
-        wasVisibleRef.current = true;
-      } else {
-        wasVisibleRef.current = false;
-        datePill.hide();
-      }
     },
-    [tooltipOn, datePill, liveGroupElsRef, liveXAxisRef, wasVisibleRef],
+    [liveGroupElsRef],
   );
 };
 
@@ -345,7 +309,6 @@ interface RenderLiveLineBodyOptions {
   readonly ariaLabel?: string;
   readonly children: ReactNode;
   readonly crosshairView: Readonly<CrosshairDefView> | undefined;
-  readonly datePillOverlayHostRef: RefCallback<HTMLDivElement>;
   readonly definition: DomChartDefinition<ChartDatum, Date, number> | undefined;
   readonly fadeMaskId: string | undefined;
   readonly fadeMaskStyle: CSSProperties | undefined;
@@ -358,7 +321,6 @@ interface RenderLiveLineBodyOptions {
   readonly referenceAreaGeom: ReferenceAreaLayersGeom;
   readonly renderTooltipBody: (ctx: ChartTooltipBodyRenderContext<ChartDatum, Date, number>) => ReactNode;
   readonly handleRegistryEntries: (entries: readonly ChartChildRegistration[]) => void;
-  readonly showDatePillHost: boolean;
   readonly tooltipOn: boolean;
   readonly uid: string;
 }
@@ -431,13 +393,7 @@ const LiveOverlayChrome = (properties: Readonly<{
 // Chart body subtree as a plain render helper (not a component): inlined into
 // The same element tree, so reconciliation and animations are unchanged.
 const renderLiveLineBody = (options: Readonly<RenderLiveLineBodyOptions>): ReactNode => {
-  const { ariaDescription, ariaLabel = "Live line chart", children, crosshairView, datePillOverlayHostRef, definition, fadeMaskId, fadeMaskStyle, getLiveGroups, handleFocusChange, handleRegistryEntries, handleRender, height, lineVisuals, liveRefAreas, referenceAreaGeom, renderTooltipBody, showDatePillHost, tooltipOn, uid } = options;
-  const datePillHostNode = showDatePillHost ? (
-    <div
-      ref={datePillOverlayHostRef}
-      style={CHART_OVERLAY_STYLE}
-    />
-  ) : undefined;
+  const { ariaDescription, ariaLabel = "Live line chart", children, crosshairView, definition, fadeMaskId, fadeMaskStyle, getLiveGroups, handleFocusChange, handleRegistryEntries, handleRender, height, lineVisuals, liveRefAreas, referenceAreaGeom, renderTooltipBody, tooltipOn, uid } = options;
   return definition ? (
           <div
             style={fadeMaskStyle}
@@ -469,7 +425,6 @@ const renderLiveLineBody = (options: Readonly<RenderLiveLineBodyOptions>): React
                 uid={uid}
                 visuals={lineVisuals}
               />
-              {datePillHostNode}
             </ChartHost>
           </div>
   ) : undefined;

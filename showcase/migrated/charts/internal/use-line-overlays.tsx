@@ -3,7 +3,7 @@ import { useCallback, useLayoutEffect, useMemo } from "react";
 import type { ReactNode, RefObject } from "react";
 import type { ScaleTime } from "d3-scale";
 import { useEffectEvent } from "./use-effect-event";
-import { buildCrosshairGradientDef } from "./hover-geometry";
+import { buildCrosshairGradientDef } from "./focus-marks";
 import { LEGEND_DIM_OPACITY } from "./line-series-marks";
 import { useSanitizedId } from "./use-sanitized-id";
 import { useChartStable } from "./chart-context";
@@ -45,7 +45,6 @@ import {
   DEFAULT_PROJECTION_ENDPOINT_RADIUS_PX,
   DEFAULT_TERMINAL_MARKER_STROKE_WIDTH,
   HIDDEN_DEFS_SVG_STYLE,
-  OVERLAY_HOST_STYLE,
   PROJECTION_FALLBACK_STROKE,
   isString,
   referenceXDomainForExtent,
@@ -70,7 +69,6 @@ interface LineOverlaysParams {
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly crosshairGradientId: string;
   readonly data: ChartDatum[];
-  readonly datePill: LineFocusChrome["datePill"];
   readonly defaultLineStroke: string;
   readonly defaultLineStrokeWidth: number;
   readonly definition: LineChartSpec["definition"];
@@ -258,7 +256,7 @@ const LineBrushClip = (properties: Readonly<{
 };
 
 const useLineOverlays = (params: Readonly<LineOverlaysParams>): LineOverlays => {
-  const { animationDuration, background, brushConfig, brushRangeValue, brushTrackExtent, chartMarkers, chartPhase, children, clearFocusChrome, clientToScene, containerRef, crosshairGradientId, data, datePill, defaultLineStroke, defaultLineStrokeWidth, definition, dragSelectionActiveRef, hasBrush, hasHover, heightPx, innerWidth, isLoaded, isLoading, legendHoveredIndex, lines, loadingLabel, margin, markerActiveStore, markerGradientDefs, nicedDomainsByAxis, projectionConfigs, projectionEndMarkers, projectionGradientBaseId, projectionLines, projectionPhasePortRef, profitLossLines, renderData, sceneRef, terminalMarkers, timeExtent, timeExtentRaw, tooltip, tooltipEnabled, width, xDataKey, xDomain, xScaleD3Ref, yDomainFinal } = params;
+  const { animationDuration, background, brushConfig, brushRangeValue, brushTrackExtent, chartMarkers, chartPhase, children, clearFocusChrome, clientToScene, containerRef, crosshairGradientId, data, defaultLineStroke, defaultLineStrokeWidth, definition, dragSelectionActiveRef, hasBrush, hasHover, heightPx, innerWidth, isLoaded, isLoading, legendHoveredIndex, lines, loadingLabel, margin, markerActiveStore, markerGradientDefs, nicedDomainsByAxis, projectionConfigs, projectionEndMarkers, projectionGradientBaseId, projectionLines, projectionPhasePortRef, profitLossLines, renderData, sceneRef, terminalMarkers, timeExtent, timeExtentRaw, tooltip, tooltipEnabled, width, xDataKey, xDomain, xScaleD3Ref, yDomainFinal } = params;
   const fadeEdgesMask = resolveFadeEdgesMask(lines.map((line) => line.fadeEdges ?? true));
 
   // Selection resolves through the host's live interaction/scene refs, not a duplicate scale.
@@ -348,12 +346,6 @@ const useLineOverlays = (params: Readonly<LineOverlaysParams>): LineOverlays => 
       yDomainFinal={yDomainFinal}
     />
   );
-  const datePillHostNode = tooltipEnabled && (
-    <div
-      ref={datePill.overlayHostRef}
-      style={OVERLAY_HOST_STYLE}
-    />
-  );
   const markerGradientDefsNode = markerGradientDefs.length > 0 && (
     <svg width={0} height={0} style={HIDDEN_DEFS_SVG_STYLE} aria-hidden="true" focusable="false">
       <defs>
@@ -410,7 +402,6 @@ const useLineOverlays = (params: Readonly<LineOverlaysParams>): LineOverlays => 
         tooltip={tooltip}
         tooltipEnabled={tooltipEnabled}
       />
-      {datePillHostNode}
       {markerGradientDefsNode}
       <DashTailOverlay
         containerRef={containerRef}

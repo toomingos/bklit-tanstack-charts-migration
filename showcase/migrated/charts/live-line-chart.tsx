@@ -25,6 +25,7 @@ import type {
   ChartMotionDefinition,
   ChartPositionScaleOptions,
   ChartRendererRenderContext,
+  ChartTooltipInput,
 } from "@tanstack/charts";
 import { roleOf } from "./internal/children-extract";
 import { referenceAreaPushProps } from "./internal/reference-area-config";
@@ -35,14 +36,14 @@ import type { Momentum } from "./internal/live-momentum";
 import { liveLineMark } from "./internal/live-line-mark";
 import { useChartMargin } from "./internal/use-chart-margin";
 import {
-  buildIndicatorMark,
   buildHoverDotMark,
+  buildIndicatorMark,
   resolveHoverDotFill,
-  useDatePillOverlay,
-} from "./internal/hover-geometry";
-import { TOOLTIP_SPRING } from "./internal/design-tokens";
-import { useChartConfig } from "./internal/use-chart-config";
-import { buildNativeTooltipExtension, renderSeriesTooltipBody } from "./internal/native-tooltip";
+} from "./internal/focus-marks";
+import { BOX_OFFSET, TOOLTIP_SPRING } from "./internal/design-tokens";
+import { tooltip as packageTooltip } from "@tanstack/charts/tooltip";
+import { portal } from "@tanstack/charts/tooltip/portal";
+import { renderSeriesTooltipBody } from "./internal/tooltip-components";
 import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./internal/cartesian-focus-distance";
 import type {
   ChartDatum,
@@ -202,8 +203,27 @@ const formatTooltipCellValue = (raw: RawDatumField, formatValue: (value: number)
 const MS_PER_SECOND = 1000;
 /** Offset from the end of contextData to the live "now" point (the last entries are tip samples). */
 const NOW_POINT_OFFSET_FROM_END = -2;
-/** Pill date labels are padded up to this count so the ticker stays painted when data is sparse. */
-const DATE_PILL_LABEL_FILL_MAX = 60;
+interface LiveTooltipOptionParams {
+  readonly enabled: boolean;
+}
+
+// Panel top pins to the plot top; the x follows the primary focused point.
+const buildLiveTooltipOption = ({ enabled }: Readonly<LiveTooltipOptionParams>): ChartTooltipInput<ChartDatum, Date, number, "dom"> | false => {
+  if (!enabled) {return false;}
+  return {
+    anchor: (_points, context) => ({
+      x: context.focus.primary.x,
+      y: context.plot.y - BOX_OFFSET,
+    }),
+    className: "bkm-native-tooltip",
+    motion: { damping: TOOLTIP_SPRING.damping, stiffness: TOOLTIP_SPRING.stiffness, type: "spring" as const },
+    offset: BOX_OFFSET,
+    placement: ["bottom-right", "bottom-left"] as const,
+    portal,
+    sticky: false,
+    use: packageTooltip,
+  };
+};
 /** X tick label downward nudge below the axis line. */
 const X_TICK_LABEL_DY_OFFSET_PX = 26;
 /** Y tick label horizontal nudge away from the axis. */
@@ -344,37 +364,14 @@ const LiveLineChart = ({
   );
 
   const tooltipOn = tooltip !== undefined && tooltip.enabled !== false;
-  const chartConfig = useChartConfig();
   const liveGroupElsRef = useRef<Map<string, SVGGElement>>(new Map());
-  // Pill labels come from real per-datum formatted times; empty arrays leave the ticker unpainted.
-  const dateLabelsForPill = useMemo(() => {
-    const formatTime = liveXAxis?.formatTime ?? defaultFormatTime;
-    const labels = contextData.map((datum: Readonly<ChartDatum>) => {
-      const dateVal = coerceDatumDate(datum.date);
-      return formatTime(dateVal.getTime());
-    });
-    while (labels.length > 0 && labels.length <= DATE_PILL_LABEL_FILL_MAX) {
-      const lastLabel = labels.at(-1);
-      if (lastLabel === undefined) {break;}
-      labels.push(lastLabel);
-    }
-    return labels;
-  }, [contextData, liveXAxis]);
-  // Pill gates on axis presence + tooltipOn, not showDatePill (legacy live axis has no such flag).
-  const datePill = useDatePillOverlay({
-    dateLabels: dateLabelsForPill,
-    enabled: tooltipOn && liveXAxis !== undefined,
-    tooltipSpring: chartConfig.tooltipSpring,
-  });
-  const { overlayHostRef: datePillOverlayHostRef } = datePill;
-  const wasVisibleRef = useRef(false);
   const liveXAxisRef = useRef(liveXAxis);
   // Sync the latest axis config for tooltip callbacks without changing their identity.
   useEffect(() => {
     liveXAxisRef.current = liveXAxis;
   }, [liveXAxis]);
 
-  const handleFocusChange = useLiveFocusChange({ datePill, liveGroupElsRef, liveXAxisRef, tooltipOn, wasVisibleRef });
+  const handleFocusChange = useLiveFocusChange({ liveGroupElsRef });
 
   const { getLiveGroups, handleRender: registryHandleRender } = useLiveRenderRegistry({ liveGroupElsRef });
   // Host-owned sizing: the host adopts the measured width through this render callback.
@@ -438,12 +435,15 @@ const LiveLineChart = ({
       );
     }
     if (tooltip !== undefined && tooltipOn && (tooltip.showCrosshair ?? true)) {
+      // The package crosshair x label shows the axis time text now.
+      const formatTime = liveXAxis?.formatTime ?? defaultFormatTime;
       marks.push(
         buildIndicatorMark({
           color: isString(tooltip.indicatorColor) ? tooltip.indicatorColor : undefined,
           dasharray: tooltip.indicatorDasharray,
           gradientId: crosshairGradientId,
           width: tooltip.indicatorWidth,
+          xLabelFormat: (labelValue) => (labelValue instanceof Date ? formatTime(labelValue.getTime()) : ""),
         }),
       );
     }
@@ -520,13 +520,7 @@ const LiveLineChart = ({
         y: yScaleOptions,
       },
       theme: { muted: "var(--color-chart-label, var(--chart-label))" },
-      tooltip: buildNativeTooltipExtension<ChartDatum, Date, number>({
-        anchorX: "point",
-        className: "bkm-native-tooltip",
-        discrete: false,
-        enabled: tooltipOn,
-        spring: TOOLTIP_SPRING,
-      }),
+      tooltip: buildLiveTooltipOption({ enabled: tooltipOn }),
     });
   }, [
     width,
@@ -590,7 +584,6 @@ const LiveLineChart = ({
     ariaLabel,
     children,
     crosshairView,
-    datePillOverlayHostRef,
     definition,
     fadeMaskId,
     fadeMaskStyle,
@@ -603,7 +596,6 @@ const LiveLineChart = ({
     liveRefAreas,
     referenceAreaGeom,
     renderTooltipBody,
-    showDatePillHost: tooltipOn && liveXAxis !== undefined,
     tooltipOn,
     uid,
   });

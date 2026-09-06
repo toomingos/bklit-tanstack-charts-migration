@@ -1,8 +1,7 @@
 // Shared line-chart primitives: style constants, pure geometry helpers, and defs renderers.
-import type { CSSProperties, Dispatch, ReactElement, RefObject, SetStateAction } from "react";
+import type { CSSProperties, Dispatch, ReactElement, SetStateAction } from "react";
 import type { ChartControl, ChartInteractionController, ChartPoint, SceneStyle } from "@tanstack/charts";
-import { isFocusOutsideXDomain } from "./hover-geometry";
-import type { useDatePillOverlay } from "./hover-geometry";
+import { isFocusOutsideXDomain } from "./focus-marks";
 import { shortDateFmt } from "./formatters";
 import { DEFAULT_Y_DOMAIN_TWEEN_MS, isChartInteractionPhase } from "./chart-phase";
 import type { ChartPhase } from "./chart-phase";
@@ -178,30 +177,22 @@ const resolveProfitLossSignIndex = (
   return next;
 };
 
-interface DatePillSyncParams {
+interface DateLabelFadeParams {
   readonly activeDate: Date | null;
-  readonly datePill: Readonly<ReturnType<typeof useDatePillOverlay>>;
-  readonly discrete: boolean;
   readonly setLabelFade: Dispatch<SetStateAction<LabelFadeState | undefined>>;
   readonly tooltip: Readonly<ChartTooltipConfig> | null | undefined;
-  readonly wasVisibleRef: RefObject<boolean>;
 }
 
-// First pill/crosshair show jumps; later moves spring (mirrors legacy showing flag).
-const syncDatePillChrome = (primary: FocusPoint | undefined, params: Readonly<DatePillSyncParams>): void => {
+// The crosshair x label carries the date text now; only the axis label fade stays here.
+const syncDateLabelFade = (primary: FocusPoint | undefined, params: Readonly<DateLabelFadeParams>): void => {
   const label = params.activeDate ? shortDateFmt.format(params.activeDate) : null;
   if (primary && (params.tooltip?.showDatePill ?? true)) {
-    const jump = !params.wasVisibleRef.current;
-    params.wasVisibleRef.current = true;
-    params.datePill.show(primary.x, { discrete: params.discrete, index: primary.datumIndex, jump, label });
     params.setLabelFade((prev: Readonly<LabelFadeState> | undefined) =>
       prev && prev.primaryX === primary.x && prev.hoveredLabel === label
         ? prev
         : { hoveredLabel: label, primaryX: primary.x },
     );
   } else {
-    params.wasVisibleRef.current = false;
-    params.datePill.hide();
     params.setLabelFade(undefined);
   }
 };
@@ -305,8 +296,8 @@ export {
   resolveProfitLossSignIndex,
   scanRenderTimeExtent,
   stringifyDatumValue,
-  syncDatePillChrome,
+  syncDateLabelFade,
   useDebouncedContainerSize,
 };
-export type { BrushClipParams, CrosshairGradientParams, DatePillSyncParams, FocusClearRef, FocusGate, FocusPoint, GateFocusPrimaryParams, StringifyDatumValueParams };
+export type { BrushClipParams, CrosshairGradientParams, DateLabelFadeParams, FocusClearRef, FocusGate, FocusPoint, GateFocusPrimaryParams, StringifyDatumValueParams };
 export type { ProjectionPhaseHandle } from "./terminal-marker-phase";

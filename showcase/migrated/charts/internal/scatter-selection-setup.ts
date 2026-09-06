@@ -9,7 +9,7 @@ import type { ScatterDomains } from "./scatter-domains-setup";
 import type { ScatterScales } from "./scatter-scale-setup";
 import type { ScatterSeriesSetup } from "./scatter-series-setup";
 import type { ScatterDefinitionModel } from "./scatter-definition-setup";
-import type { ScatterPillModel } from "./scatter-pill-setup";
+import type { ScatterFocusModel, ScatterLabelFadeChrome } from "./scatter-label-fade";
 import type { ScatterTimingModel } from "./scatter-reveal-setup";
 import { extractReferenceAreaProps } from "./reference-area-config";
 import { parseAspectRatio } from "./parse-aspect-ratio";
@@ -19,7 +19,6 @@ import type { IndicatorFadeGradientStop } from "./fade-mask";
 import { isString } from "./scatter-datum-utils";
 import type { ScatterTimeExtent, ScatterYGradientDef } from "./scatter-datum-utils";
 import type { ResolvedSeries } from "./scatter-marks";
-import type { ScatterPillChrome } from "./scatter-pill-chrome";
 import type { FocusInjection } from "./focus-injection";
 import type { ChartDatum, ExtractedChildren } from "./types";
 import type { ChartMargin } from "./use-chart-margin";
@@ -56,7 +55,7 @@ interface UseScatterChartSelectionParams {
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly dragSelectionActiveRef: RefObject<boolean>;
   readonly margin: ChartMargin;
-  readonly pillChromeRef: RefObject<ScatterPillChrome | null>;
+  readonly labelFadeRef: RefObject<ScatterLabelFadeChrome | null>;
   readonly renderData: ChartDatum[];
   readonly sceneRef: FocusInjection<ChartDatum, Date, number>["sceneRef"];
   readonly width: number;
@@ -73,7 +72,7 @@ const useScatterChartSelection = ({
   containerRef,
   dragSelectionActiveRef,
   margin,
-  pillChromeRef,
+  labelFadeRef,
   renderData,
   sceneRef,
   width,
@@ -98,7 +97,7 @@ const useScatterChartSelection = ({
     },
     onDragStart: () => {
       dragSelectionActiveRef.current = true;
-      pillChromeRef.current?.update([]);
+      labelFadeRef.current?.update([]);
     },
     resolveScenePos: clientToScene,
     xDataKey,
@@ -179,7 +178,7 @@ interface UseScatterSelectionModelParams {
   readonly data: ChartDatum[];
   readonly domains: ScatterDomains;
   readonly marks: Pick<ScatterDefinitionModel, "margin">;
-  readonly pill: Pick<ScatterPillModel, "dragSelectionActiveRef" | "pillChromeRef">;
+  readonly focus: Pick<ScatterFocusModel, "dragSelectionActiveRef" | "labelFadeRef">;
   readonly scales: Pick<ScatterScales, "timeExtent">;
   readonly series: Pick<ScatterSeriesSetup, "containerRef" | "crosshairGradientId" | "resolvedSeries" | "tooltip" | "width" | "xRangePadding">;
   readonly timing: Pick<ScatterTimingModel, "clientToScene" | "sceneRef">;
@@ -197,7 +196,7 @@ const useScatterSelectionModel = ({
   data,
   domains,
   marks,
-  pill,
+  focus,
   scales,
   series,
   timing,
@@ -206,9 +205,9 @@ const useScatterSelectionModel = ({
   const chartSelection = useScatterChartSelection({
     clientToScene: timing.clientToScene,
     containerRef: series.containerRef,
-    dragSelectionActiveRef: pill.dragSelectionActiveRef,
+    dragSelectionActiveRef: focus.dragSelectionActiveRef,
+    labelFadeRef: focus.labelFadeRef,
     margin: marks.margin,
-    pillChromeRef: pill.pillChromeRef,
     renderData: data,
     sceneRef: timing.sceneRef,
     width: series.width,

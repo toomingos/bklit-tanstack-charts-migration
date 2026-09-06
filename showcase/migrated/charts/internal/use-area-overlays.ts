@@ -1,8 +1,8 @@
 // Area overlays hook: data for host-child chrome; anchors/gradients resolve inside the host.
 import { useMemo } from "react";
 import type { RefObject } from "react";
-import { buildCrosshairGradientDef } from "./hover-geometry";
-import type { CrosshairGradientDef } from "./hover-geometry";
+import { buildCrosshairGradientDef } from "./focus-marks";
+import type { CrosshairGradientDef } from "./focus-marks";
 import { resolveFadeEdgesMask } from "./fade-mask";
 import { resolveProjectionGradientDef } from "./projection-line-mark";
 import type { ProjectionGradientDef } from "./projection-line-mark";

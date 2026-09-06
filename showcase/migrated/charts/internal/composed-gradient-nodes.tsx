@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { NOTHING } from "./composed-series";
-import type { CrosshairGradientDef } from "./hover-geometry";
+import type { CrosshairGradientDef } from "./focus-marks";
 import type { ProjectionGradientDef } from "./projection-line-mark";
 import type { ChartMargin } from "./use-chart-margin";
 

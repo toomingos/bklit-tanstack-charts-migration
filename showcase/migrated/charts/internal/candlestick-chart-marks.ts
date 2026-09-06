@@ -14,7 +14,7 @@ import { findSpringStiffnessDamping } from "./candle-spring";
 import { resolveMotionEasing } from "./reveal-easing";
 import { resolveEnterTransition, TWEEN_FALLBACK } from "./enter-transition";
 import type { CandlestickEnterTransition } from "./enter-transition";
-import { buildIndicatorMark } from "./hover-geometry";
+import { buildIndicatorMark, formatShortDateLabel } from "./focus-marks";
 import { indicatorFadeGradientStops, resolveVerticalFadeSides } from "./fade-mask";
 import type { IndicatorFadeGradientStop } from "./fade-mask";
 import type { SpringConfig } from "./chart-config-context";
@@ -371,6 +371,7 @@ const buildCandleCrosshairMark = (params: Readonly<CandleCrosshairMarkParams>): 
     strokeOpacity: 1,
     useGradient: !isDashed && fadeSides.any,
     width: indicatorCfg.width,
+    xLabelFormat: (tooltip?.showDatePill ?? true) ? formatShortDateLabel : undefined,
   });
 };
 

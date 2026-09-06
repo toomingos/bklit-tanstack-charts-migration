@@ -10,7 +10,7 @@ import { toDate } from "./coerce-date";
 import {
   pointerRowDimState,
   pointerSeriesDimStates,
-} from "./hover-geometry";
+} from "./focus-marks";
 import { seriesBarMark } from "./series-bar-mark";
 import type { ChartDatum } from "./types";
 import type {

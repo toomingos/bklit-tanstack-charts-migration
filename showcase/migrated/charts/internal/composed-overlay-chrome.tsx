@@ -19,7 +19,7 @@ import type { ProjectionPhaseHandle } from "./terminal-marker";
 import type { ProjectionLineConfig } from "./projection-config";
 import type { TimeBounds } from "./composed-data-math";
 import type { ChartPhase } from "./chart-phase";
-import type { CrosshairGradientDef } from "./hover-geometry";
+import type { CrosshairGradientDef } from "./focus-marks";
 import { renderCrosshairNode, renderProjectionGradientsNode } from "./composed-gradient-nodes";
 import type { ChartDatum } from "./types";
 

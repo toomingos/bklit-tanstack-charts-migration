@@ -60,8 +60,8 @@ interface HeatmapTooltipProps {
   readonly panelStyle?: Readonly<CSSProperties>;
   readonly backgroundColor?: string;
   /**
-   * @deprecated No-op since the C2 (phase 6) native-tooltip migration: the
-   * native tooltip extension always renders with `motion: false` (matching
+   * @deprecated No-op since the C2 (phase 6) package-tooltip migration: the
+   * package tooltip extension always renders with `motion: false` (matching
    * bklit's former `instant` fast path), so there is no longer a distinct
    * spring-entrance mode to opt out of. Kept only so existing call sites
    * keep compiling; passing it has no effect.

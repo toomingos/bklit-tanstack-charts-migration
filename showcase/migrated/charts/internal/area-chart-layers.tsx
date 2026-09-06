@@ -25,7 +25,7 @@ import { LoadingLabel } from "./loading-label";
 import { parseAspectRatio } from "./parse-aspect-ratio";
 import { useChartStable } from "./chart-context";
 import { useEffectEvent } from "./use-effect-event";
-import type { CrosshairGradientDef, DatePillController } from "./hover-geometry";
+import type { CrosshairGradientDef } from "./focus-marks";
 import type { ProjectionPhaseHandle } from "./terminal-marker";
 import type { AreaOverlays, AreaProjectionChromeProps } from "./use-area-overlays";
 import { buildAreaProjectionGradientDefs } from "./use-area-overlays";
@@ -53,8 +53,6 @@ import {
 
 // Hidden svg hosts for gradient/clip defs; zero-size and removed from layout.
 const HIDDEN_DEF_SVG_STYLE: CSSProperties = { position: "absolute" };
-// Date pill overlay host; fills the plot and ignores pointer events.
-const DATE_PILL_HOST_STYLE: CSSProperties = { inset: 0, pointerEvents: "none", position: "absolute" };
 
 // Anchors and projection gradients resolve through host scales (V1.2/G6).
 const AreaProjectionChrome = (properties: Readonly<{ readonly chrome: Readonly<AreaProjectionChromeProps> }>): ReactNode => {
@@ -226,7 +224,6 @@ interface AreaChartOverlaysProps {
   readonly chartMarkers: ExtractedChildren["chartMarkers"];
   readonly chartSelection: ChartSelection | null;
   readonly containerRef: RefObject<HTMLDivElement | null>;
-  readonly datePillOverlayHostRef: DatePillController["overlayHostRef"];
   readonly definition: DomChartDefinition<ChartDatum, Date, number> | undefined;
   readonly onMarkerHoverChange: (markers: readonly Readonly<ChartMarker>[] | null) => void;
   readonly heightPx: number;
@@ -245,12 +242,6 @@ interface AreaChartOverlaysProps {
 }
 
 const AreaChartOverlays = (props: Readonly<AreaChartOverlaysProps>): ReactNode => {
-  const datePillLayer = props.tooltipEnabled ? (
-    <div
-      ref={props.datePillOverlayHostRef}
-      style={DATE_PILL_HOST_STYLE}
-    />
-  ) : undefined;
   const chartMarkerLayer = props.chartMarkers ? (
     <MarkerActiveTooltipProvider store={props.markerActiveStore}>
       <ChartMarkersOverlay
@@ -280,7 +271,6 @@ const AreaChartOverlays = (props: Readonly<AreaChartOverlaysProps>): ReactNode =
         components={props.segmentComponents}
       />
       {props.projectionChromeProps && <AreaProjectionChrome chrome={props.projectionChromeProps} />}
-      {datePillLayer}
       <DashTailOverlay
         containerRef={props.containerRef}
         renderData={props.renderData}

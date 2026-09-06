@@ -4,6 +4,8 @@ import { scaleLinear, scaleUtc } from "d3-scale";
 import type { ScaleTime } from "d3-scale";
 import type { RefObject } from "react";
 import { defineChart } from "@tanstack/charts/scene";
+import { tooltip as packageTooltip } from "@tanstack/charts/tooltip";
+import { portal } from "@tanstack/charts/tooltip/portal";
 import type {
   ChartAxisTickLabelContext,
   ChartControl,
@@ -13,6 +15,7 @@ import type {
   ChartPositionScaleOptions,
   ChartScale,
   ChartScaleResolveContext,
+  ChartTooltipInput,
   DomChartDefinition,
 } from "@tanstack/charts";
 import { toDate } from "./coerce-date";
@@ -23,13 +26,13 @@ import {
   hiddenAxisOptions,
   tickLabelFadeOpacity,
 } from "./axis-ticks";
-import { buildNativeTooltipExtension } from "./native-tooltip";
 import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./cartesian-focus-distance";
 import { bezierEasing } from "./bezier-easing";
 import { resolveGridGuide } from "./grid";
 import { shortDateFmt } from "./formatters";
 import {
   DISCRETE_INTERACTION_THRESHOLD,
+  BOX_OFFSET,
   FADE_BUFFER,
   TICKER_HALF_WIDTH,
   TOOLTIP_BOX_SPRING,
@@ -449,6 +452,31 @@ const buildAreaScaleOptions = (params: Readonly<AreaScaleOptionsParams>): AreaSc
   return { xScaleOptions, yScaleOptions };
 };
 
+interface AreaTooltipOptionParams {
+  readonly discrete: boolean;
+  readonly enabled: boolean;
+}
+
+// Panel top pins to the plot top; the x follows the primary focused point.
+const buildAreaTooltipOption = ({ discrete, enabled }: Readonly<AreaTooltipOptionParams>): ChartTooltipInput<ChartDatum, Date, number, "dom"> | false => {
+  if (!enabled) {return false;}
+  return {
+    anchor: (_points, context) => ({
+      x: context.focus.primary.x,
+      y: context.plot.y - BOX_OFFSET,
+    }),
+    className: "bkm-native-tooltip",
+    motion: discrete
+      ? (false as const)
+      : { damping: TOOLTIP_BOX_SPRING.damping, stiffness: TOOLTIP_BOX_SPRING.stiffness, type: "spring" as const },
+    offset: BOX_OFFSET,
+    placement: ["bottom-right", "bottom-left"] as const,
+    portal,
+    sticky: false,
+    use: packageTooltip,
+  };
+};
+
 const buildAreaChartDefinition = (params: Readonly<AreaChartDefinitionParams>): DomChartDefinition<ChartDatum, Date, number> | undefined => {
   if (params.isLoading) {
     return buildAreaLoadingDefinition({ grid: params.grid, margin: params.margin, yDomainFinal: params.yDomainFinal });
@@ -552,15 +580,13 @@ const buildAreaChartDefinition = (params: Readonly<AreaChartDefinitionParams>): 
       ? { duration: params.effectiveYDomainTweenDuration, easing: bezierEasing }
       : (false as const),
     theme: { muted: "var(--color-chart-label, var(--chart-label))" },
-    tooltip: buildNativeTooltipExtension<ChartDatum, Date, number>({
-      anchorX: "point",
-      className: "bkm-native-tooltip",
+    tooltip: buildAreaTooltipOption({
       discrete: params.renderData.length > DISCRETE_INTERACTION_THRESHOLD,
       enabled: params.tooltip?.enabled ?? false,
-      spring: TOOLTIP_BOX_SPRING,
     }),
   });
 };
+
 
 export { buildAreaChartDefinition };
 export type { AreaChartDefinitionParams, AreaLabelFade };

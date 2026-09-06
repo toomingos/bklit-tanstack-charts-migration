@@ -8,9 +8,10 @@ import { patternAreaMark } from "./pattern-area-mark";
 import {
   buildHoverDotMark,
   buildIndicatorMark,
+  formatShortDateLabel,
   pointerSeriesDimStates,
   resolveHoverDotFill,
-} from "./hover-geometry";
+} from "./focus-marks";
 import { buildHighlightBandMarks } from "./highlight-band";
 import { buildMarkerMarks } from "./series-marker-mark";
 import type { MarkerSeriesConfig } from "./series-marker-mark";
@@ -160,6 +161,7 @@ const buildAreaIndicatorMarks = (params: Readonly<AreaIndicatorMarksParams>): Ch
       gradientId: params.crosshairGradientId,
       span: params.tooltip?.indicatorSpan,
       width: params.tooltip?.indicatorWidth,
+      xLabelFormat: (params.tooltip?.showDatePill ?? true) ? formatShortDateLabel : undefined,
     }),
   );
   return marks;

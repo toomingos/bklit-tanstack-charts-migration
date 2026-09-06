@@ -6,7 +6,7 @@ import { useScatterDomains } from "./internal/scatter-domains-setup";
 import { useScatterScales } from "./internal/scatter-scale-setup";
 import { useScatterDefinitionModel } from "./internal/scatter-definition-setup";
 import { useScatterPhaseModel, useScatterTimingModel } from "./internal/scatter-reveal-setup";
-import { useScatterPillModel } from "./internal/scatter-pill-setup";
+import { useScatterFocusModel } from "./internal/scatter-label-fade";
 import { useScatterSelectionModel } from "./internal/scatter-selection-setup";
 import { buildScatterChartTree } from "./internal/scatter-chart-view";
 import type { ScatterChartProps } from "./internal/scatter-chart-props";
@@ -41,15 +41,15 @@ const ScatterChart = ({
     data, domains, marginProp, scales, scatterFocusStrategy: phase.scatterFocusStrategy,
     series, timing, xDataKey,
   });
-  const pill = useScatterPillModel({
-    renderData: data, setLabelFade: marks.setLabelFade,
+  const focus = useScatterFocusModel({
+    setLabelFade: marks.setLabelFade,
     setPointerFocusActive: marks.setPointerFocusActive,
-    tickerHalfWidth: series.xAxis?.tickerHalfWidth, tooltip: series.tooltip,
-    tooltipSpring: marks.tooltipSpring, width: series.width, xDataKey,
+    tooltip: series.tooltip,
+    xDataKey,
   });
   const selection = useScatterSelectionModel({
-    aspectRatio, children, data, domains, marks,
-    pill, scales, series, timing, xDataKey,
+    aspectRatio, children, data, domains, focus, marks,
+    scales, series, timing, xDataKey,
   });
   // Host-owned sizing: the host adopts the measured width through this render callback.
   const { handleRender: timingHandleRender } = timing;
@@ -61,7 +61,7 @@ const ScatterChart = ({
   return (
     <>
       {buildScatterChartTree({
-        ariaDescription, ariaLabel, className, marks, pill, refAreas: selection,
+        ariaDescription, ariaLabel, className, focus, marks, refAreas: selection,
         selection, series, timing: { handleRender: handleHostRender },
       })}
     </>

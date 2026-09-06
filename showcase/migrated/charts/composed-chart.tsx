@@ -3,6 +3,9 @@ import { useCallback, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, useRegistryEntriesState } from "./internal/chart-host";
 import { defineChart } from "@tanstack/charts/scene";
+import { tooltip as packageTooltip } from "@tanstack/charts/tooltip";
+import { portal } from "@tanstack/charts/tooltip/portal";
+import type { ChartTooltipInput } from "@tanstack/charts";
 import { useChartRenderer } from "./internal/motion-renderer";
 import { useFocusInjection } from "./internal/focus-injection";
 import {
@@ -21,10 +24,10 @@ import {
 } from "./internal/chart-selection";
 import { SegmentOverlay } from "./internal/segment-visuals";
 import {
+  BOX_OFFSET,
   DISCRETE_INTERACTION_THRESHOLD,
   TOOLTIP_BOX_SPRING,
 } from "./internal/design-tokens";
-import { buildNativeTooltipExtension } from "./internal/native-tooltip";
 import { CARTESIAN_MAX_FOCUS_DISTANCE_PX } from "./internal/cartesian-focus-distance";
 import { BackgroundLayer } from "./internal/background-layer";
 import { NOTHING, useComposedResolved, useComposedYDomains } from "./internal/composed-series";
@@ -60,8 +63,30 @@ import "./styles.css";
 
 const DEFAULT_BAR_GAP = 4;
 
-// Overlay host positioning: fully static, shared across renders.
-const DATE_PILL_HOST_STYLE = { inset: 0, pointerEvents: "none", position: "absolute" } as const;
+interface ComposedTooltipOptionParams {
+  readonly discrete: boolean;
+  readonly enabled: boolean;
+}
+
+// Panel top pins to the plot top; the x follows the primary focused point.
+const buildComposedTooltipOption = ({ discrete, enabled }: Readonly<ComposedTooltipOptionParams>): ChartTooltipInput<ChartDatum, Date, number, "dom"> | false => {
+  if (!enabled) {return false;}
+  return {
+    anchor: (_points, context) => ({
+      x: context.focus.primary.x,
+      y: context.plot.y - BOX_OFFSET,
+    }),
+    className: "bkm-native-tooltip",
+    motion: discrete
+      ? (false as const)
+      : { damping: TOOLTIP_BOX_SPRING.damping, stiffness: TOOLTIP_BOX_SPRING.stiffness, type: "spring" as const },
+    offset: BOX_OFFSET,
+    placement: ["bottom-right", "bottom-left"] as const,
+    portal,
+    sticky: false,
+    use: packageTooltip,
+  };
+};
 
 interface ComposedChartProps {
   readonly data: ChartDatum[];
@@ -167,10 +192,10 @@ const ComposedChart = ({
   });
 
   const dragSelectionActiveRef = useRef(false);
-  // Package-owned pointer: focus lands through onFocusChange below; the pill mirrors
-  // The focused datum while dim rides mark states, never a definition rebuild.
+  // Package-owned pointer: focus lands through onFocusChange below; the crosshair
+  // X label shows the focused date while dim rides mark states, never a definition rebuild.
   const {
-    clearFocusChrome, crosshairGradientDef, crosshairGradientId, datePill, handleFocusChange,
+    clearFocusChrome, crosshairGradientDef, crosshairGradientId, handleFocusChange,
     isDiscrete, tooltipEnabled,
   } = useComposedFocusChrome({
     chartPhase: phaseAndReveal.chartPhase,
@@ -246,12 +271,9 @@ const ComposedChart = ({
         ? { duration: DEFAULT_Y_DOMAIN_TWEEN_MS, easing: bezierEasing }
         : (false as const),
       theme: { muted: "var(--color-chart-label, var(--chart-label))" },
-      tooltip: buildNativeTooltipExtension<ChartDatum, Date, number>({
-        anchorX: "point",
-        className: "bkm-native-tooltip",
+      tooltip: buildComposedTooltipOption({
         discrete: renderData.length > DISCRETE_INTERACTION_THRESHOLD,
         enabled: tooltip?.enabled ?? false,
-        spring: TOOLTIP_BOX_SPRING,
       }),
     });
   }, [
@@ -352,12 +374,6 @@ const ComposedChart = ({
     />
   );
   const composedChartRenderer = useChartRenderer<ChartDatum, Date, number>(renderData.length);
-  const datePillNode = tooltipEnabled ? (
-    <div
-      ref={datePill.overlayHostRef}
-      style={DATE_PILL_HOST_STYLE}
-    />
-  ) : NOTHING;
 
   // Inlined into the same element tree (a variable, not a component), so this
   // Changes nothing at runtime; it only flattens source nesting for jsx-max-depth.
@@ -389,7 +405,6 @@ const ComposedChart = ({
         />
         {projectionChromeNode}
         <ComposedCrosshairDef gradientDef={crosshairGradientDef} />
-        {datePillNode}
       </ChartHost>
   ) : NOTHING;
 

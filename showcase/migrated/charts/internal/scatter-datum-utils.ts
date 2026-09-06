@@ -1,5 +1,5 @@
 import type { ChartDatum } from "./types";
-import type { ScatterPillChromeState } from "./scatter-pill-chrome";
+import type { ScatterLabelFadeState } from "./scatter-label-fade";
 
 // Explicit form of `first || second || fallback` for nullable strings: undefined and
 // "" both fall through (strict-boolean-expressions forbids truthiness tests on strings).
@@ -15,9 +15,7 @@ const isNumber = <Value,>(value: Value): value is Value & number => typeof value
 const isFiniteNumber = <Value,>(value: Value): value is Value & number => typeof value === "number" && Number.isFinite(value);
 
 // Pre-render placeholder: the ref below is reassigned every render before any reader runs.
-const INITIAL_SCATTER_PILL_CHROME_STATE: ScatterPillChromeState = {
-  dateLabels: [],
-  pointCount: 0,
+const INITIAL_SCATTER_LABEL_FADE_STATE: ScatterLabelFadeState = {
   showDatePill: true,
   xDataKey: "",
 };
@@ -63,7 +61,7 @@ interface ScatterYGradientDef {
 export {
   computeTimeExtent,
   firstNonEmptyString,
-  INITIAL_SCATTER_PILL_CHROME_STATE,
+  INITIAL_SCATTER_LABEL_FADE_STATE,
   isFiniteNumber,
   isNumber,
   isString,

@@ -20,12 +20,10 @@ const LEGEND_BUTTON_RESET: CSSProperties = {
   border: "none",
   color: "inherit",
   cursor: "inherit",
-  display: "block",
   font: "inherit",
   margin: 0,
   padding: 0,
   textAlign: "left",
-  width: "100%",
 };
 
 const CustomLegendRow = ({

@@ -8,7 +8,7 @@ import { resolveMotionEasing } from "./reveal-easing";
 import { buildAllSeriesMarks } from "./scatter-series-marks";
 import { buildTooltipMarks } from "./scatter-tooltip-marks";
 import { assembleScatterDefinition } from "./scatter-definition-assemble";
-import type { ScatterLabelFade } from "./scatter-pill-chrome";
+import type { ScatterLabelFade } from "./scatter-label-fade";
 import type { ResolvedSeries } from "./scatter-marks";
 import type { ChartDatum, ExtractedChildren } from "./types";
 import type { ChartMargin } from "./use-chart-margin";

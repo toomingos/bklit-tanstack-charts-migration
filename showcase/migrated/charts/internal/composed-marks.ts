@@ -6,8 +6,9 @@ import { appendAreaMarks, appendBarMarks, appendLineMarks } from "./composed-ser
 import {
   buildHoverDotMark,
   buildIndicatorMark,
+  formatShortDateLabel,
   resolveHoverDotFill,
-} from "./hover-geometry";
+} from "./focus-marks";
 import type { ChartDatum } from "./types";
 import type {
   ComposedMarksContext,
@@ -52,6 +53,7 @@ const appendHoverChromeMarks = (
         gradientId: ctx.crosshairGradientId,
         span: ctx.tooltip?.indicatorSpan,
         width: ctx.tooltip?.indicatorWidth,
+        xLabelFormat: (ctx.tooltip?.showDatePill ?? true) ? formatShortDateLabel : undefined,
       }),
     );
   }

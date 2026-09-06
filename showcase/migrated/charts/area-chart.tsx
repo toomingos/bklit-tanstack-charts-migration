@@ -334,7 +334,6 @@ const AreaChart = ({
               chartMarkers={setup.chartMarkers}
               chartSelection={selection.chartSelection}
               containerRef={setup.containerRef}
-              datePillOverlayHostRef={focus.datePillOverlayHostRef}
               definition={definition}
               onMarkerHoverChange={layerProps.handleMarkerHoverChange}
               heightPx={setup.heightPx}

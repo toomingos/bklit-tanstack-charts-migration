@@ -1,4 +1,4 @@
-// Highlight-band marks split out of hover-geometry; 2-3-point hover window at full brightness.
+// Highlight-band marks split out of the focus chrome; 2-3-point hover window at full brightness.
 import { createMark } from "@tanstack/charts";
 import type {
   ChartCurve,

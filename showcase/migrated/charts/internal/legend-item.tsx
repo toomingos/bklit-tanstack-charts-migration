@@ -10,11 +10,9 @@ const LEGEND_BUTTON_RESET: CSSProperties = {
   background: "transparent",
   border: "none",
   color: "inherit",
-  display: "block",
   font: "inherit",
   margin: 0,
   textAlign: "left",
-  width: "100%",
 };
 
 interface LegendItemProps {
