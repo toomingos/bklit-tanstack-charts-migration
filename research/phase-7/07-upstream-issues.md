@@ -17,6 +17,7 @@ Ruling (user, 2026-09-04): file issues only, no PRs, and only for features other
 | I5 ([#129](https://github.com/TanStack/charts/issues/129)) | `radialGradient` in `ChartSpec.gradients` | none. `gradients` is linear only (`objectBoundingBox` %, `types.d.ts:400-406`). | **File** | now |
 | I6 ([#130](https://github.com/TanStack/charts/issues/130)) | `@tanstack/react-charts` peer `react` `^19.0.0` although only React 18 hooks are used | none | **File** | now |
 | I7 | Height-aware resize: `createChartScene` derives `height` from `width / aspectRatio` (`renderer.js:720`) and its ResizeObserver re-renders only when the width changes (`:187-191`); a container sized by CSS height (grid rows, fixed-height cards, a brush track below the plot) never updates the scene | none found (issues grepped for "height", "ResizeObserver", "aspect") | **File** after the phase-7 host lands (evidence: D541, brush/1000 and barloading/100 cells) | later |
+| I8 | Focus-aware axis tick-label opacity (`ChartAxisTickLabelContext` has no focus member, `types.d.ts:193-202`) and mark states for point-less area marks (`mark-state.js:123,131,158`; `areaFill` emits `points: []`) | none found (issues grepped for "tick label", "opacity", "states", "area") | **File** after phase 7, with the D587 headless repro | later |
 | — ([#131](https://github.com/TanStack/charts/issues/131)) | F-260 static guide stroke treatment (dashed grid) | **F-260** (open, `API-FRICTION.md:7800`). | Do not open a new issue; **add an evidence comment** on the friction entry's tracking issue if one exists, else a short issue referencing F-260, with the bklit default `strokeDasharray="4,4"` grid | now |
 | — | F-261 per-corner bar radius | **F-261** (open). | Drop. bklit uses uniform `rx`; not our gap. | — |
 | — | Funnel mark | #81 (merged) added catalog case `125-sales-funnel` from `areaX` + `text`. | Do not file. Composition of existing marks; we migrate to it (V3.1). | — |
@@ -106,6 +107,45 @@ Ruling (user, 2026-09-04): file issues only, no PRs, and only for features other
 > `@tanstack/react-charts` declares `react: ^19.0.0` as a peer. Reading the adapter, it uses only hooks available since React 18 (`useRef`, `useMemo`, `useLayoutEffect`, `useState`, `useId`, `useCallback`, `memo`, `forwardRef`) and no React 19-only APIs (`use`, `useActionState`, `useOptimistic`, ref-as-prop). Libraries that wrap the adapter and still support React 18 consumers currently fail peer resolution.
 >
 > Would it be possible to set the peer to `^18.0.0 || ^19.0.0` (and `react-dom` likewise), with a CI matrix entry for 18, unless there is a React 19 requirement I have missed?
+
+## I8 — Focus-aware axis tick-label opacity, and mark states for point-less area marks
+
+**Evidence (G19, D587, measured at 0.16.0):** two halves of one gap.
+
+1. `ChartAxisTickLabelContext` is focus-blind — `{ value, index, position, bandwidth }`
+   (`dist/types.d.ts:193-202`), and `opacity` resolves over that context only
+   (`ChartAxisTickLabelValue`, `:204`). There is no way to say "fade the tick labels the
+   crosshair pill is covering", so five migrated families (line, area, candlestick, scatter,
+   bar) thread a pointer-driven `labelFade` state into the definition and rebuild the whole
+   `defineChart` on pointer move. Headless proof: with `labelFade` unset,
+   `scales.x.axis.tickLabels.opacity` is the number `1`; with it set it is a fresh closure
+   capturing `{primaryX, hoveredLabel}` — a new object per pointer move, so the definition
+   memo misses. This is the shape V2.2/D535 forbids; it survives only because the package
+   cannot express the effect.
+2. `applyStateStyle` switches on `dot`, `rect` and `label` only (`dist/mark-state.js:123,131,158`)
+   and state matching resolves through point lookup (`:11-16`), while `areaFill` deliberately
+   emits `points: []` (`area-fill-mark.ts:85`). So an area fill can never dim on hover through
+   `states`, which is why composed dropped the legacy `SeriesHoverDim dimOpacity={0.6}` outright.
+
+**Draft:**
+
+> **Title:** Focus-aware `tickLabels.opacity` context, and mark states for point-less area marks
+>
+> Two related gaps that both force a hover-driven rebuild of the whole chart definition.
+>
+> (a) `ChartAxisTickLabelContext` exposes `{ value, index, position, bandwidth }`. Because it
+> carries no focus/hover information, an app that wants tick labels to fade under a crosshair
+> label has to recompute `tickLabels.opacity` on every pointer move and pass a new
+> `ChartDefinition` in, defeating the definition memo. Could the context carry the current
+> focus (or a `focus` sibling of `opacity`), so the fade is a pure function of package state?
+>
+> (b) `applyStateStyle` handles `dot`, `rect` and `label`, and state matching resolves through
+> point lookup, so a mark that emits no `ChartPoint`s — an area fill, for instance — cannot
+> participate in `states` at all. Could point-less marks be matchable by series key, so
+> "dim every other series' fill while one is focused" is expressible without leaving the spec?
+
+**Status:** candidate, unfiled — same gate as I7. File after phase 7 lands, with the D587
+headless repro and the QA hover cells as evidence.
 
 ## F-260 — Evidence comment (dashed grid and axis strokes)
 

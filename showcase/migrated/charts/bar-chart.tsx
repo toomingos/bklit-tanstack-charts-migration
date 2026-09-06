@@ -21,6 +21,10 @@ import { extractReferenceAreaProps } from "./internal/reference-area-config";
 import { useChartLegendHover } from "./internal/chart-legend-hover-context";
 import { useChartRenderer } from "./internal/motion-renderer";
 import { parseAspectRatio } from "./internal/parse-aspect-ratio";
+import {
+  resolveChartHeightPx,
+  useDebouncedContainerSize,
+} from "./internal/line-chart-support";
 import { useChartMargin, DEFAULT_CHART_MARGIN } from "./internal/use-chart-margin";
 import type { ChartMargin } from "./internal/use-chart-margin";
 import {
@@ -165,7 +169,9 @@ const BarChart = ({
     resolvedBarSquares,
     totalSeriesCount,
   } = scales;
-  const heightPxBar = width / parseAspectRatio(aspectRatio);
+  // Height comes from the measured box: the package derives scene.height from width/aspect.
+  const { height: measuredHeightBar } = useDebouncedContainerSize(containerRef);
+  const heightPxBar = resolveChartHeightPx(width, measuredHeightBar, aspectRatio);
   const definitionState = useBarDefinition({
     allSeriesKeys: scales.allSeriesKeys,
     animationDuration,

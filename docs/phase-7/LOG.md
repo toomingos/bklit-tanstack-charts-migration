@@ -682,3 +682,151 @@ the escape hatch exists for a consumer who wants it). The `08` §6 note that
 now has a JS twin, recorded here for the phase-8 vector: **the barrel is not
 tree-shakeable, it costs ~40 kB gzip per mount, and with it removed the parity
 column passes**. Nothing in the phase-7 tree is changed on account of it.
+
+## D586 — G18: composed and candlestick now read the measured box, the last two width/aspect latches are gone
+
+**Executor** `ses_f88e40e8dffeb4tIjqeb6vnBmg` (G18), lead-verified.
+
+G18 was the residue of D541. That ruling said the scene height comes from the **measured
+container box** and that `width / aspectRatio` is only the fallback, because the package derives
+`height = options.height ?? width / aspectRatio ?? 320` (`dist/renderer.js:720`) and its
+ResizeObserver (`:187-191`) schedules a render only when the **width** changes — so a container
+that is CSS-sized in height alone never re-renders and the scene stays latched at the aspect
+height. D541 landed the fix on line, area and bar-loading. Composed and candlestick kept the
+latch:
+
+- `composed-chart.tsx:192` — `heightPxComp = phaseAndReveal.width / parseAspectRatio(aspectRatio)`,
+  consumed at `:229`, `:371`, `:394`, `:405`.
+- `internal/candlestick-chart-chrome.ts:485` — `heightPxCandle = width > EMPTY_CONTAINER_PX ? width / parseAspectRatio(aspectRatio) : COLLAPSED_GEOMETRY_PX`,
+  returned at `:509`.
+
+**No second implementation** (principle 2). Both families reuse a resolver that already exists and
+is already the landed D541 pattern; nothing new was authored and `internal/use-container-size.ts`
+was not touched:
+
+- composed takes the line entry pattern — `useDebouncedContainerSize(phaseAndReveal.containerRef)`
+  + `resolveChartHeightPx(width, measured, aspectRatio)`, both re-exported from
+  `internal/line-chart-support.tsx` (`:46`).
+- candlestick takes the area setup-hook pattern — `useMeasuredRect(containerRef)` +
+  `resolveHeightPx` from `internal/area-chart-model.ts` (`:111`), inside `useCandleSelection`,
+  which already held the `containerRef`. The dead `parse-aspect-ratio` import went with it.
+
+Both resolvers are byte-identical in shape: `width <= 0 → 0`; `measured > 0.5 px → measured`;
+otherwise `width / parseAspectRatio(aspectRatio)`.
+
+**One real behaviour addition beyond the two latches.** `candlestick-chart.tsx` never passed
+`height` to `ChartHost` at all, so fixing the chrome alone would have been dead code — the scene
+would have stayed width/aspect-only. `:413` now passes
+`height={heightPxCandle > EMPTY_CONTAINER_PX ? heightPxCandle : undefined}`, the same shape line
+uses: when the box is unmeasured the prop is `undefined` and the package falls back exactly as
+before, so SSR and first paint are unchanged.
+
+**Proof.** Headless old-vs-new against the real resolvers (esbuild-bundled, temp files removed):
+a zero-height container gives old 320 = new 320 on both paths — byte-identical, so nothing that
+already relied on the aspect height moves; a 640×200 CSS-sized container gives old 320 → new 200
+on both paths, which is the latch being released. Lead re-ran all three static gates rather than
+taking the report (principle 5): `cd showcase && npx tsc --noEmit` exit 0 with no output;
+`npx oxlint --type-aware` on the three files exit 0, zero findings; `pnpm test` at the floor
+exactly — `tests 240 / suites 47 / pass 182 / fail 0 / todo 58`.
+
+**A third latch, found by re-running the count instead of trusting the item (principle 5).**
+G18 named two files; the vector count says three. `grep -rn parseAspectRatio showcase/migrated/charts`
+after the two fixes still returned `bar-chart.tsx:168`, `heightPxBar = width / parseAspectRatio(aspectRatio)`,
+consumed at `:278`, `:292` and passed as `height={heightPxBar}` to `ChartHost` at `:339`, with a
+`containerRef` already in scope at `:91` — the identical shape, and legacy `bar-chart.tsx:701-711`
+takes its height from `ParentSize`, i.e. the measured box. Filed as **G33** and fixed in this same
+commit rather than left open: principle 4 says a problem is routed to its vector, and principle 6
+forbids a half-landed vector, so V1 lands whole or not at all. The fix is the same three lines as
+composed's, reusing the same resolver.
+
+The other `parseAspectRatio` sites are not latches and stay: every `aspectRatio={parseAspectRatio(…)}`
+is the package's own input; `internal/scatter-selection-setup.ts:160` passes `parsedAspectRatio`
+through to `ChartHost` as that same prop; `choropleth-chart.tsx:1055` puts `aspectRatio` on the
+container's own CSS box, so the measured height *is* width/aspect by construction and there is
+nothing to release. `internal/line-chart-support.tsx:49` and `internal/area-chart-model.ts:114` are
+the two resolvers' documented fallback.
+
+**Isolated QA, lead-run (executors are forbidden to).** Eight cells, 32 comparisons, gate 0.5%,
+all PASS, and — the point of the run — none of them moved against the 7.5 gate matrix
+(`2026-09-06T13-02-53-709Z/qa-matrix.md`), because every QA container is already width/aspect-shaped
+so the resolver returns the same number it did before:
+
+| cell | settled | hover-30 / 50 / 70 (px) | 7.5 gate hover row |
+|---|---|---|---|
+| composed/1000 | 0.0845% | 1787 / 2090 / 2572 | 1787 / 1963 / 2515 |
+| composedmultiaxis/1000 | 0.0889% | 2590 / 2458 / 3115 | 2590 / 2462 / 3117 |
+| composedstacked/100 | 0.0406% | 2150 / 2572 / 2403 | 2150 / 2572 / 2403 |
+| candlestick/1000 | 0.3399% | 1675 / 1480 / 1418 | 1675 / 1480 / 1418 |
+| bar/100 | 0.0000% | 3418 / 3311 / 3142 | 3413 / 3311 / 3142 |
+| bardepth/100 | 0.0000% | 2047 / 2094 / 1960 | — |
+| barsquares/100 | 0.0056% | 2375 / 2656 / 2632 | — |
+| barmultiaxis/100 | 0.0000% | 3048 / 3131 / 2711 | — |
+
+Three of the four G18-named cells reproduce the gate row to the pixel; composed/1000's hover-50 and
+hover-70 move by 127 and 57 px, inside the tooltip-antialias band D543 measured. bar, bardepth and
+barmultiaxis settle at **0.0000%** — exact against legacy — which is the strongest available
+evidence that G33's fix changed nothing for a container that was already aspect-shaped, and
+released the latch only for one that is not.
+
+**Disposition.** G18 `open` → closed by this commit; G33 filed and closed by the same commit.
+Vector V1 (one chart host) — the count that moves is "chart-owned scene-height derivations from
+width/aspect": composed, candlestick and bar were the last three, so the tree-wide figure now reads
+0 and V1's claim that the package owns sizing holds without exception. Verified after the third
+fix: `tsc` exit 0, oxlint exit 0 on the four files, `pnpm test` 240/47/182/0/58.
+
+## D587 — G19: the label fade *is* a hover-driven definition rebuild, 0.16.0 cannot express it, so it is stamped and filed as I8
+
+**Audit** `ses_f88e39bfeffeKsWdo6U22F2qKm` (read-only, HEAD `14c9b2c`), lead-verified against the
+installed 0.16.0 `.d.ts` and `dist/`.
+
+G19 filed two things under one row: composed lost the x-tick label fade, the area-fill hover dim
+and the highlight band; and line/area still thread `labelFade` through their definitions. They get
+one disposition each.
+
+**Half 1 — the threading is real, and it is the shape V2.2 forbids.** Five families hold a
+pointer-driven `labelFade` state and feed it into a definition memo: area
+(`use-area-series.ts:84` → `area-chart.tsx:190`, deps `:216`), line (`line-chart.tsx:191` → `:249`,
+deps `use-line-chart-spec.ts:173`), candlestick (`:217` → `buildFadeXAxisOptions` at `:253-258`,
+deps `:300`), scatter (`scatter-definition-setup.ts:195` → `:206`, deps `:221`) and bar
+(`use-bar-definition.ts:181` → `:186`), all through the shared builder
+`internal/axis-scale-options.ts:92-111`. The audit's headless proof bundles the *real* modules and
+compares an unset `labelFade` against a hovered one: the differing key path is
+`scales.x.axis.tickLabels.opacity`, which is the number `1` unset and a **fresh closure** capturing
+`{primaryX, hoveredLabel}` when hovered — a new object per pointer move, so the memo misses and
+`defineChart` runs again. D535 ruling 1 says nothing derived from hovered or focused state may be
+an input of a builder. This violates it, measurably.
+
+**But 0.16.0 offers no surface, and principle 2 forbids a second implementation "for now" without
+a ruling.** Lead-re-read, not taken on report: `ChartAxisTickLabelContext` is
+`{ value, index, position, bandwidth }` (`dist/types.d.ts:193-202`) with no focus member, and
+`opacity` resolves only over that context (`ChartAxisTickLabelValue`, `:204`). The crosshair x
+label (`crosshair.d.ts`) owns the pill text and takes a static `opacity: number` — it is not a
+tick channel. So the fade cannot move into the spec. **Disposition: UPSTREAM.** The threading is
+kept — deleting it would delete legacy behaviour the parity contract requires (legacy
+`x-axis.tsx:41-90`: `fadeBuffer = 20`, exact hovered-label text match → 0, ramp otherwise,
+`transition: opacity 0.4s`) and would move every cartesian hover cell against legacy. Filed as
+**I8** in `07-upstream-issues.md`, candidate/unfiled on the same gate as I7, with the headless
+repro as its evidence.
+
+**Half 2 — composed's three absences are deliberate and already replaced.** At HEAD composed has
+no `labelFade` anywhere: `composed-definition.ts:326` sets `xTickLabelOpacity: 1` as a constant
+(lead-verified), `composed-series-marks.ts:90-91` records the hover dim dropped with the legend dim
+kept, `composed-marks.ts:44` records the band dropped. The replacements are the package crosshair
+with its x date label (`composed-marks.ts:46-58`) and mark states on bars and the boundary `lineY`
+(`composed-series-marks.ts:69,103,129`). The area-fill dim cannot come back either:
+`applyStateStyle` handles `dot`, `rect` and `label` only (`dist/mark-state.js:123,131,158`) and
+state matching resolves through point lookup (`:11-16`) while `areaFill` emits `points: []`
+(`area-fill-mark.ts:85`). **Disposition: RULE (stamped divergence).** Composed's tick fade,
+area-fill hover dim and highlight band stay absent; its hover chrome is the package crosshair
+x-label plus mark states (D543, D551); the composed hover-cell residuals in the 7.5 matrix are
+carried, not fixed. Half 2's second gap rides the same I8.
+
+**Why not fix it now.** Both halves are the package refusing, not the migration cutting a corner.
+Wiring either would mean a second implementation of something the package is expected to own,
+which is exactly what principle 2 and R7 rule out. Composed is the family where the ruling was
+already taken and it is the one that is *more* TanStack-native, not less: it is the only cartesian
+family whose definition takes no hover input at all. The other five are the debt, and I8 is the
+receipt.
+
+**Disposition.** G19 `open` → closed by this entry: half 1 UPSTREAM (I8, code kept), half 2 RULE
+(stamped, no code change). No code changed for G19.

@@ -8,7 +8,7 @@ import { extractSegmentComponents, useChartSelection } from "./chart-selection";
 import type { ChartSelection, SegmentComponent } from "./chart-selection";
 import { findCandleTimeExtent, findCandleYExtremes } from "./candlestick-chart-scales";
 import type { CandleTimeExtent } from "./candlestick-chart-scales";
-import { parseAspectRatio } from "./parse-aspect-ratio";
+import { resolveHeightPx } from "./area-chart-model";
 import type { FocusInjection } from "./focus-injection";
 import type { PatternPresetId } from "./pattern-preset";
 import type { CandlestickConfig, ChartDatum, ChartTooltipConfig, ChartTooltipPoint, TooltipRow } from "./types";
@@ -27,6 +27,7 @@ import {
   isString,
 } from "./candlestick-chart-shared";
 import type { CandlePatternRef } from "./candlestick-chart-shared";
+import { useMeasuredRect } from "./use-container-size";
 
 const SOLID_POSITIVE = "var(--color-emerald-500)";
 const SOLID_NEGATIVE = "var(--color-red-500)";
@@ -482,7 +483,9 @@ interface CandleSelectionState {
 const useCandleSelection = (params: Readonly<CandleSelectionParams>): CandleSelectionState => {
   const { aspectRatio, children, clearLabelFade, clientToScene, containerRef, dragSelectionActiveRef, innerWidth, marginLeft, renderData, sceneRef, width, xDataKey } = params;
   const segChildrenCandle = useMemo(() => extractSegmentComponents(children), [children]);
-  const heightPxCandle = width > EMPTY_CONTAINER_PX ? width / parseAspectRatio(aspectRatio) : COLLAPSED_GEOMETRY_PX;
+  // Height comes from the measured box: the package derives scene.height from width/aspect.
+  const { height: measuredHeight } = useMeasuredRect(containerRef);
+  const heightPxCandle = width > EMPTY_CONTAINER_PX ? resolveHeightPx(width, measuredHeight, aspectRatio) : COLLAPSED_GEOMETRY_PX;
   // Selection resolves through the host's live interaction/scene refs, not a duplicate scale.
   const invertSceneXCandle = useCallback(
     (sceneX: number) => sceneRef.current?.scales.x.invert?.(sceneX) ?? undefined,

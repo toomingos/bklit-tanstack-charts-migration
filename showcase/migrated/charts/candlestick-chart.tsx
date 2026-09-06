@@ -410,6 +410,7 @@ const CandlestickChart = ({
       aspectRatio={parseAspectRatio(aspectRatio)}
       className={className}
       definition={definition}
+      height={heightPxCandle > EMPTY_CONTAINER_PX ? heightPxCandle : undefined}
       idPrefix={idPrefix}
       initialWidth={HOST_INITIAL_WIDTH}
       renderer={candlestickChartRenderer}

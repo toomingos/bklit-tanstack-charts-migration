@@ -60,6 +60,10 @@ import {
   useComposedPhaseAndReveal,
   useComposedRenderCallback,
 } from "./internal/use-composed-reveal";
+import {
+  resolveChartHeightPx,
+  useDebouncedContainerSize,
+} from "./internal/line-chart-support";
 import "./styles.css";
 
 const DEFAULT_BAR_GAP = 4;
@@ -189,7 +193,9 @@ const ComposedChart = ({
 
   const { gradientIdBySeries, nativeComposedGradients } = useComposedAreaGradients(resolvedAreas);
 
-  const heightPxComp = phaseAndReveal.width / parseAspectRatio(aspectRatio);
+  // Height comes from the measured box: the package derives scene.height from width/aspect.
+  const { height: measuredHeightComp } = useDebouncedContainerSize(phaseAndReveal.containerRef);
+  const heightPxComp = resolveChartHeightPx(phaseAndReveal.width, measuredHeightComp, aspectRatio);
   const {
     timeExtent: timeExtentComp, timeExtentRaw: timeExtentCompRaw,
   } = useComposedOverlayAnchors({
