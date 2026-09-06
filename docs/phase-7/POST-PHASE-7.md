@@ -40,6 +40,7 @@ code commit.
 | 9 | Bundle ≤1.10 parity: 41 of 43 cells over | routed to phase 8 under R7 | V5.2 row | phase 8 | open |
 | 10 | G8, G9, G10, G13 — spatialIndex bypassed after mark-state paint; arc state geometry; sunburst focus geometry; `text()` baseline option | stamped UPSTREAM; the package cannot express them at 0.16.0 | D534, D535, D536 | upstream | open |
 | 11 | 58 `todo` tests | their subject exports were deleted because the package took ownership; the todos are the record, not a gap | — | correct as-is | open |
+| 12 | Gate instrument defects — 13 findings from the 2026-09-06 read-only audit of `gate:all`, four of them verdicts that can be wrong rather than slow | items 4 and 5 were two instances; the audit found the rest of the class | §7 below | phase 8, before Gate 1 where noted | open |
 
 ## 2. Serial order, and why
 
@@ -234,3 +235,77 @@ Wave 0 (items 1–3) remains with the repository owner: the unpushed `main`, and
 Gate 1 is next — `pnpm gate:all -- --bench all --probes --issues` in a frozen worktree, the first
 measurement taken through a fixed instrument on the final module graph — then Wave B and Wave C as
 written above.
+
+## 7. Gate audit — 2026-09-06, read-only
+
+An audit agent read the ~4,000 lines of the gate surface (`qa/gate/*`, `qa/gate/probes/*`,
+`qa/screenshot.mjs`, `bench/run.mjs`, `bench/measure-*.mjs`, `bench/report.mjs`,
+`scripts/bundle-gate.mjs`) plus D585 and D588, ran no gate and started no server, and reported
+against three questions: what is redundant, what is dead time, and what is unsound. The framing
+that produced the useful half was the fourth instruction — D585 was a stage reading a file a later
+stage rewrites, so find the rest of that shape.
+
+It found three more instances of it. That is the finding: item 4 was not a defect, it was a class.
+
+### Correctness — a verdict that can be wrong
+
+The first four were re-verified by the lead against the source before this was written; they are
+not taken on the agent's word.
+
+| # | Defect | Evidence | Consequence |
+|---|---|---|---|
+| A1 | Bench M2c reads the previous run's bundle sizes | `bench/run.mjs:40-43` loads `bench/results/bundle-sizes.json` at module load; `run-all.mjs` runs bench (stage 4) before the bundle stage rewrites that file (`run-bundle.mjs:102`) | every M2c cell in `bench.json` is judged against stale bytes, silently — the D585 shape, one stage later |
+| A2 | The CSS column is never measured in-gate | nothing under `qa/gate/` invokes `bench/measure-css.mjs`; `run-bundle.mjs:110` reads `css-sizes.json` with a `null` fallback | the CSS table is whatever file happens to be on disk, or absent — a permanent stale read |
+| A3 | `pnpm gate:bundle` exits 0 with holes in the table | `run-bundle.mjs:146` fails on `gateExit`/`fail`/`ratioOver` only; `summary.missing` and `summary.measureFailed` do not reach the exit code | a bundle run that measured nothing reports green standalone |
+| A4 | `--skip-checks` gives bench and probes an unknown dist | `run-all.mjs:44,48` force `noBuild: true`; only QA honours `--no-build` and rebuilds when stale (`lib.mjs:205-217`) | with checks skipped no build ever runs, and the freshness check is skipped too |
+| A5 | `--bench-parallel` runs bench beside QA under one lock | `run-all.mjs:46,49` starts the bench stage before awaiting QA; `lib.mjs:369-373` makes the second `acquireQaLock` a re-entrant depth counter rather than an exclusion | bench claims CPU purity in the same comment that the flag violates — D588-class corruption by construction |
+| A6 | Standalone `gate:bench` takes no lock | `run-bench.mjs:164` calls `waitForQuietProcessTable` and never `acquireQaLock`, unlike `run-qa.mjs:45` and `run-probes.mjs:44`; the pgrep pattern (`lib.mjs:99`) does not match a probe run | two harness runs can overlap undetected |
+| A7 | The stale-lock breaker watches one port | `lib.mjs:384` breaks the lock when the owner is gone and nothing listens on `QA_PORT`; bench's 5199 preview is invisible to it | a live bench run can have its lock broken underneath it |
+| A8 | Dist changing mid-pass is warning-only | `run-qa.mjs:113-115` logs the fingerprint move and still builds the matrix from cells that straddle two builds | a mixed-build verdict is presented as a single-build verdict |
+| A9 | Unparsable lint output passes | `run-checks.mjs:20-26` returns `{parseError: true}`; the `files === 0` guard added this morning never fires on `null` | the same green-for-the-wrong-reason mode the guard was written to close, one branch over |
+| A10 | Failed bench cells vanish from the report | `run-bench.mjs:196` drops non-zero cells from the rows while counting them in `summary.failedInvocations` | `bench.md` reads as fewer cells rather than failed cells |
+| A11 | One ruling bound is wide enough to blind its cell | `rulings.json:10` rules `barloading/100/hover-30` under 161,310 px — 16.8% of the viewport | D588 refused a 24,407 px bound for `arealoading` for exactly this reason; this one predates it and stands |
+| A12 | A failed stage renders as "not run" | `run-all.mjs:22-34` records `ok:false` and returns `null`; `summarize.mjs:113-123` renders the missing artefact as "not run" with no issue | the exit code is right, `SUMMARY.md` alone can be misread as clean |
+| A13 | A harness that errored but wrote PNGs does not fail | `compare-qa.mjs:198-213` counts `runsNonZeroExit` and excludes it from `gateFail` | a crashed sweep can produce a passing matrix |
+
+A1–A4 and A9 are cheap and should land before Gate 1, so the first measurement through the fixed
+instrument is not itself stale. A11 needs a D-entry, not a patch.
+
+### Waste — where the 67m44s goes
+
+Stages: checks 20.7s, QA 2m54s, probes 19m38s, bench 44m39s, bundle 11.9s, summary 40ms.
+
+The redundant-build hypothesis was wrong. `buildDistOnce` holds: checks builds once, QA reuses it
+via the freshness check, bench and probes skip. There is no duplicate build inside the gate. The
+duplication that exists is latent — `measure-bundle.mjs` and `measure-css.mjs` are ~230 near-identical
+lines differing only in whether CSS is stubbed, and each standalone `gate:qa`/`gate:bench`/`gate:probes`
+rebuilds and boots its own preview.
+
+What the time actually is, is fixed constants:
+
+- Bench: `IDLE_MS = 5000` per run x 8 runs x 29 cells is ~19m20s of the 44m39s, plus ~4m of hover
+  cadence and tooltip settles. Roughly half the gate is one guessed number.
+- Probes: `POST_SETTLE_MS = 3000` per scene is ~5m of the 19m38s, plus fixed 1.7s and 1.2s waits.
+- QA: ~4-5s of fixed hover and settle waits per cell, divided by 4 workers.
+
+These are arithmetic from the constants, not measurements — an instrumented run is needed to hold
+them. None should be shortened without evidence: they are the reason the numbers are stable.
+
+### Parallelism — and where it would buy a wrong number
+
+- Checks fan out safely (tsc, lint, bench-tsc, census share nothing) and save ~10s of 4,064s.
+  Worth doing only alongside another checks edit.
+- Bundle measurement can overlap the bench tail, but only after A1 is fixed — today the overlap
+  would rewrite the file bench is reading.
+- Probes must not overlap QA or bench. They assert timing-adjacent quantities through coarse bands,
+  which makes tolerance plausible and unproven. D588 showed load moving a pixel count by two orders
+  of magnitude. The evidence that would settle it: probes 3x isolated against 3x under bench load,
+  identical flag sets and lag medians within band.
+- Bench must not be parallelised at all. The timings are the product. A5 is the existing violation.
+- QA at 4 workers is already the D588 compromise, with the loading cells serialised behind the
+  exclusivity barrier.
+
+The audit was asked to say loudly where parallelism would corrupt a measurement, and it did: the
+44m39s and the 19m38s are, correctly, not available for parallelisation. The gate is slow because
+the measurements are serial by nature, not because the pipeline is badly built. The real finding is
+not in the time column at all — it is the thirteen ways a stage can report the wrong thing.
