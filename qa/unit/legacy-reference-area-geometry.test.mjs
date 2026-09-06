@@ -82,9 +82,9 @@ describe('computeReferenceAreaRect', () => {
 
 describe('resolveReferenceDataRange', () => {
   test.todo(
-    'legacy/reference-area-geometry: returns inclusive bounds between y1 and y2 (missing export: resolveReferenceDataRange)',
+    'legacy/reference-area-geometry: returns inclusive bounds between y1 and y2 (missing export: resolveReferenceDataRange) — internal helper replaced (D555)',
   );
   test.todo(
-    'legacy/reference-area-geometry: extends to domain edges when y bounds are omitted (missing export: resolveReferenceDataRange)',
+    'legacy/reference-area-geometry: extends to domain edges when y bounds are omitted (missing export: resolveReferenceDataRange) — internal helper replaced (D555)',
   );
 });

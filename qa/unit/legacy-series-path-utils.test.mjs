@@ -6,8 +6,8 @@
 import { describe, test } from 'node:test';
 
 describe('series-path-utils', () => {
-  test.todo('legacy/series-path-utils: builds stable transition signatures from data and x-domain (missing export: seriesPathTransitionSignature)');
-  test.todo('legacy/series-path-utils: interpolates matched points toward the next layout (missing export: interpolateSeriesPathPoints)');
-  test.todo('legacy/series-path-utils: anchors new points to the previous series position (missing export: interpolateSeriesPathPoints)');
-  test.todo('legacy/series-path-utils: computes pixel positions from scales (missing export: computeSeriesPathPoints)');
+  test.todo('legacy/series-path-utils: builds stable transition signatures from data and x-domain (missing export: seriesPathTransitionSignature) — internal helper replaced (D555)');
+  test.todo('legacy/series-path-utils: interpolates matched points toward the next layout (missing export: interpolateSeriesPathPoints) — internal helper replaced (D555)');
+  test.todo('legacy/series-path-utils: anchors new points to the previous series position (missing export: interpolateSeriesPathPoints) — internal helper replaced (D555)');
+  test.todo('legacy/series-path-utils: computes pixel positions from scales (missing export: computeSeriesPathPoints) — internal helper replaced (D555)');
 });

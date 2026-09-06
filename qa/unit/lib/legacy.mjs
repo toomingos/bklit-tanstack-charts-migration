@@ -33,6 +33,38 @@ function newestMtime(dir) {
 }
 
 let cache;
+const internalCache = new Map();
+export async function legacyInternal(relPath) {
+  if (relPath.includes('..')) throw new Error(`legacyInternal: path escapes charts dir: ${relPath}`);
+  let cached = internalCache.get(relPath);
+  if (!cached) {
+    mkdirSync(join(unitDir, '.tmp'), { recursive: true });
+    const outFile = join(unitDir, '.tmp', `legacy-internal-${relPath.replace(/[/.]/g, '_')}.cjs`);
+    if (!existsSync(outFile) || statSync(outFile).mtimeMs < newestMtime(join(showcaseDir, 'migrated'))) {
+      const tmp = `${outFile}.${process.pid}.cjs`;
+      execFileSync(
+        esbuildBin(),
+        [
+          join(showcaseDir, 'migrated', 'charts', relPath),
+          '--bundle',
+          '--platform=node',
+          '--format=cjs',
+          `--alias:react=${realpathSync(join(showcaseDir, 'node_modules', 'react'))}`,
+          `--alias:react-dom=${realpathSync(join(showcaseDir, 'node_modules', 'react-dom'))}`,
+          `--outfile=${tmp}`,
+          '--jsx=automatic',
+          '--loader:.css=empty',
+          '--log-level=error',
+        ],
+        { stdio: 'pipe' },
+      );
+      renameSync(tmp, outFile);
+    }
+    cached = await loadFresh(outFile);
+    internalCache.set(relPath, cached);
+  }
+  return cached;
+}
 export async function legacyBarrel() {
   if (!cache) {
     mkdirSync(join(unitDir, '.tmp'), { recursive: true });

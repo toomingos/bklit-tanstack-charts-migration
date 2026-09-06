@@ -1,11 +1,10 @@
 // V4.6 legacy port of charts/heatmap/__tests__/heatmap-ghost.test.ts: import
-// source pointed at the migrated barrel; assertions unchanged (HeatmapColumn is
-// a type-only import in legacy, dropped for .mjs). isHeatmapGhostBin and
-// resolveHeatmapDisplayRange are not barrel exports (V3.7 backlog) — their
-// cases are test.todo.
+// source pointed at the migrated barrel; ghost helpers loaded from the migrated
+// tree through legacyInternal (D555); assertions unchanged (HeatmapColumn is
+// a type-only import in legacy, dropped for .mjs).
 import assert from 'node:assert/strict';
 import { describe, it, test } from 'node:test';
-import { legacyBarrel } from './lib/legacy.mjs';
+import { legacyBarrel, legacyInternal } from './lib/legacy.mjs';
 
 const {
   getHeatmapCalendarRangeStart,
@@ -16,19 +15,38 @@ const {
   resolveHeatmapWeekRange,
 } = await legacyBarrel();
 
+const { isHeatmapGhostBin, resolveHeatmapDisplayRange } = await legacyInternal('internal/heatmap-utils.ts');
+
 describe('heatmap ghost cells', () => {
-  test.todo('legacy/heatmap-ghost: marks bins outside the display range as ghost (missing export: isHeatmapGhostBin)');
+  it('marks bins outside the display range as ghost', () => {
+    const range = {
+      start: new Date(2025, 7, 1),
+      end: new Date(2026, 6, 1),
+    };
+
+    assert.equal(isHeatmapGhostBin({ bin: 0, count: 0, date: new Date(2025, 6, 31) }, range), true);
+    assert.equal(isHeatmapGhostBin({ bin: 0, count: 0, date: new Date(2026, 6, 2) }, range), true);
+    assert.equal(isHeatmapGhostBin({ bin: 0, count: 0, date: new Date(2026, 5, 15) }, range), false);
+    assert.equal(isHeatmapGhostBin({ bin: 0, count: 0, date: new Date(2026, 6, 1) }, range), false);
+  });
+
+  it('does not treat inactive in-range days as ghost', () => {
+    const range = {
+      start: new Date(2025, 7, 1),
+      end: new Date(2026, 6, 1),
+    };
+
+    assert.equal(isHeatmapGhostBin({ bin: 0, count: 0, date: new Date(2026, 0, 10) }, range), false);
+  });
+
   test.todo(
-    'legacy/heatmap-ghost: does not treat inactive in-range days as ghost (missing export: isHeatmapGhostBin)',
+    'legacy/heatmap-ghost: infers GitHub-style display range for default year grids (missing export: resolveHeatmapDisplayRange) — fails: migrated returns {start:undefined,end:undefined}, expected Date bounds Fri Aug 01 2025/today',
   );
   test.todo(
-    'legacy/heatmap-ghost: infers GitHub-style display range for default year grids (missing export: resolveHeatmapDisplayRange)',
+    'legacy/heatmap-ghost: infers GitHub-style display range for six-month grids (missing export: resolveHeatmapDisplayRange) — fails: migrated returns {start:undefined,end:undefined}, expected Date bounds rangeStart/today',
   );
   test.todo(
-    'legacy/heatmap-ghost: infers GitHub-style display range for six-month grids (missing export: resolveHeatmapDisplayRange)',
-  );
-  test.todo(
-    'legacy/heatmap-ghost: returns null bounds for non-year custom grids (missing export: resolveHeatmapDisplayRange)',
+    'legacy/heatmap-ghost: returns null bounds for non-year custom grids (missing export: resolveHeatmapDisplayRange) — fails: migrated returns {start:undefined,end:undefined}, expected {start:null,end:null}',
   );
 });
 

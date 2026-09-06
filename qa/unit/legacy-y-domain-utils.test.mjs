@@ -4,9 +4,12 @@
 // cases are test.todo.
 import assert from 'node:assert/strict';
 import { describe, it, test } from 'node:test';
-import { legacyBarrel } from './lib/legacy.mjs';
+import { legacyBarrel, legacyInternal } from './lib/legacy.mjs';
 
 const { mergeYDomainRecords, niceYDomain, shouldTweenYDomain } = await legacyBarrel();
+
+const { domainsEqual } = await legacyInternal('internal/y-domain.ts');
+const { isReferenceAreaVisiblePhase } = await legacyInternal('internal/reference-area-scale.ts');
 
 describe('shouldTweenYDomain', () => {
   it('skips tween when both endpoints move less than 2% of span', () => {
@@ -39,15 +42,27 @@ describe('mergeYDomainRecords', () => {
 });
 
 describe('domainsEqual', () => {
-  test.todo('legacy/y-domain-utils: returns true when axis domains match (missing export: domainsEqual)');
-  test.todo('legacy/y-domain-utils: returns false when any endpoint differs (missing export: domainsEqual)');
+  it('returns true when axis domains match', () => {
+    assert.equal(domainsEqual({ left: [0, 100] }, { left: [0, 100] }), true);
+  });
+
+  it('returns false when any endpoint differs', () => {
+    assert.equal(domainsEqual({ left: [0, 100] }, { left: [0, 110] }), false);
+  });
 });
 
 describe('isReferenceAreaVisiblePhase', () => {
-  test.todo(
-    'legacy/y-domain-utils: shows reference areas during ready reveal phases (missing export: isReferenceAreaVisiblePhase)',
-  );
-  test.todo(
-    'legacy/y-domain-utils: hides reference areas during loading and exit phases (missing export: isReferenceAreaVisiblePhase)',
-  );
+  it('shows reference areas during ready reveal phases', () => {
+    assert.equal(isReferenceAreaVisiblePhase('ready'), true);
+    assert.equal(isReferenceAreaVisiblePhase('revealing'), true);
+    assert.equal(isReferenceAreaVisiblePhase('gridTweenReady'), true);
+  });
+
+  it('hides reference areas during loading and exit phases', () => {
+    assert.equal(isReferenceAreaVisiblePhase('loading'), false);
+    assert.equal(isReferenceAreaVisiblePhase('exiting'), false);
+    assert.equal(isReferenceAreaVisiblePhase('exitingReady'), false);
+    assert.equal(isReferenceAreaVisiblePhase('gridTweenLoading'), false);
+    assert.equal(isReferenceAreaVisiblePhase('revealingLoading'), false);
+  });
 });

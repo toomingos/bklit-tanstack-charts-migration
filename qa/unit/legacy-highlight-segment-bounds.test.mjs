@@ -5,11 +5,11 @@
 import { describe, test } from 'node:test';
 
 describe('computeSegmentBounds', () => {
-  test.todo('legacy/highlight-segment-bounds: is inactive for empty data (missing export: computeSegmentBounds)');
-  test.todo('legacy/highlight-segment-bounds: is inactive with no hover and no selection (missing export: computeSegmentBounds)');
-  test.todo('legacy/highlight-segment-bounds: spans one data point either side of the hovered index (missing export: computeSegmentBounds)');
-  test.todo('legacy/highlight-segment-bounds: clamps the start at the first index (missing export: computeSegmentBounds)');
-  test.todo('legacy/highlight-segment-bounds: clamps the end at the last index (missing export: computeSegmentBounds)');
-  test.todo('legacy/highlight-segment-bounds: uses the dragged pixel range for an active selection (missing export: computeSegmentBounds)');
-  test.todo('legacy/highlight-segment-bounds: normalizes a reversed selection drag (missing export: computeSegmentBounds)');
+  test.todo('legacy/highlight-segment-bounds: is inactive for empty data (missing export: computeSegmentBounds) — internal helper replaced (D555)');
+  test.todo('legacy/highlight-segment-bounds: is inactive with no hover and no selection (missing export: computeSegmentBounds) — internal helper replaced (D555)');
+  test.todo('legacy/highlight-segment-bounds: spans one data point either side of the hovered index (missing export: computeSegmentBounds) — internal helper replaced (D555)');
+  test.todo('legacy/highlight-segment-bounds: clamps the start at the first index (missing export: computeSegmentBounds) — internal helper replaced (D555)');
+  test.todo('legacy/highlight-segment-bounds: clamps the end at the last index (missing export: computeSegmentBounds) — internal helper replaced (D555)');
+  test.todo('legacy/highlight-segment-bounds: uses the dragged pixel range for an active selection (missing export: computeSegmentBounds) — internal helper replaced (D555)');
+  test.todo('legacy/highlight-segment-bounds: normalizes a reversed selection drag (missing export: computeSegmentBounds) — internal helper replaced (D555)');
 });

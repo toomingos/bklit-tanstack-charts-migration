@@ -1,22 +1,71 @@
-// V4.6 legacy port of charts/__tests__/chart-formatters.test.ts: none of
-// hmsTimeFmt, intFmt, shortDateFmt, weekdayDateFmt is a barrel export (V3.7
-// backlog). No public-export rewrite covers them, so every case is test.todo
-// with the missing name. No assertions were weakened — nothing runs.
-import { describe, test } from 'node:test';
+// V4.6 legacy port of charts/__tests__/chart-formatters.test.ts: formatters
+// loaded from the migrated tree through legacyInternal (D555); assertions unchanged.
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { legacyInternal } from './lib/legacy.mjs';
 
-describe('chart-formatters shortDateFmt', () => {
-  test.todo('legacy/chart-formatters: shortDateFmt matches toLocaleDateString (missing export: shortDateFmt)');
-});
+const { hmsTimeFmt, intFmt, shortDateFmt, weekdayDateFmt } = await legacyInternal('internal/formatters.ts');
 
-describe('chart-formatters weekdayDateFmt', () => {
-  test.todo('legacy/chart-formatters: weekdayDateFmt matches toLocaleDateString (missing export: weekdayDateFmt)');
-});
+const sampleDates = [new Date(2025, 0, 5, 9, 8, 7), new Date(2024, 11, 31, 23, 59, 59), new Date(2026, 6, 4, 12, 0, 0)];
 
-describe('chart-formatters hmsTimeFmt', () => {
-  test.todo('legacy/chart-formatters: hmsTimeFmt matches toLocaleTimeString (missing export: hmsTimeFmt)');
-});
+const sampleNumbers = [0, 42, 1234, 1_234_567, -9876.5];
 
-describe('chart-formatters intFmt', () => {
-  test.todo('legacy/chart-formatters: intFmt matches toLocaleString (missing export: intFmt)');
-  test.todo('legacy/chart-formatters: intFmt is a reusable formatter function (missing export: intFmt)');
+describe('chart-formatters', () => {
+  describe('shortDateFmt', () => {
+    for (const date of sampleDates) {
+      it(`matches toLocaleDateString for ${date.toISOString()}`, () => {
+        assert.equal(
+          shortDateFmt.format(date),
+          date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          }),
+        );
+      });
+    }
+  });
+
+  describe('weekdayDateFmt', () => {
+    for (const date of sampleDates) {
+      it(`matches toLocaleDateString for ${date.toISOString()}`, () => {
+        assert.equal(
+          weekdayDateFmt.format(date),
+          date.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+          }),
+        );
+      });
+    }
+  });
+
+  describe('hmsTimeFmt', () => {
+    for (const date of sampleDates) {
+      it(`matches toLocaleTimeString for ${date.toISOString()}`, () => {
+        assert.equal(
+          hmsTimeFmt.format(date),
+          date.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+          }),
+        );
+      });
+    }
+  });
+
+  describe('intFmt', () => {
+    for (const value of sampleNumbers) {
+      it(`matches toLocaleString for ${value}`, () => {
+        assert.equal(intFmt(value), value.toLocaleString('en-US'));
+      });
+    }
+
+    it('is a reusable formatter function', () => {
+      const formatValue = intFmt;
+      assert.equal(formatValue(1000), (1000).toLocaleString('en-US'));
+    });
+  });
 });

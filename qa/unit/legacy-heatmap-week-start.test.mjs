@@ -5,9 +5,11 @@
 // (V3.7 backlog) — their cases are test.todo.
 import assert from 'node:assert/strict';
 import { describe, it, test } from 'node:test';
-import { legacyBarrel } from './lib/legacy.mjs';
+import { legacyBarrel, legacyInternal } from './lib/legacy.mjs';
 
 const { buildHeatmapLegendGradient, buildHeatmapRowOpacity, getHeatmapDayLabels } = await legacyBarrel();
+
+const { resolveHeatmapRowOpacity, rotateHeatmapColumnBins } = await legacyInternal('internal/heatmap-utils.ts');
 
 const GRADIENT_PREFIX = /^linear-gradient\(to right,/;
 const GRADIENT_START = /#0ea5e9 0%/;
@@ -33,18 +35,34 @@ describe('heatmap week start helpers', () => {
     assert.deepEqual(getHeatmapDayLabels(1), ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
   });
 
-  test.todo(
-    'legacy/heatmap-week-start: rotates column bins without changing counts or dates (missing export: rotateHeatmapColumnBins)',
-  );
-  test.todo(
-    'legacy/heatmap-week-start: returns columns unchanged when weekStartDay is 0 (missing export: rotateHeatmapColumnBins)',
-  );
+  it('rotates column bins without changing counts or dates', () => {
+    const rotated = rotateHeatmapColumnBins([sampleColumn()], 1)[0];
+    assert.equal(rotated?.bins[0]?.date.getDay(), 1);
+    assert.equal(rotated?.bins[0]?.count, 1);
+    assert.equal(rotated?.bins[5]?.date.getDay(), 6);
+    assert.equal(rotated?.bins[6]?.date.getDay(), 0);
+  });
+
+  it('returns columns unchanged when weekStartDay is 0', () => {
+    const column = sampleColumn();
+    assert.deepEqual(rotateHeatmapColumnBins([column], 0), [column]);
+  });
 });
 
 describe('heatmap row opacity', () => {
-  test.todo('legacy/heatmap-week-start: defaults to 1 (missing export: resolveHeatmapRowOpacity)');
-  test.todo('legacy/heatmap-week-start: supports a single multiplier (missing export: resolveHeatmapRowOpacity)');
-  test.todo('legacy/heatmap-week-start: supports per-row arrays (missing export: resolveHeatmapRowOpacity)');
+  it('defaults to 1', () => {
+    assert.equal(resolveHeatmapRowOpacity(3), 1);
+  });
+
+  it('supports a single multiplier', () => {
+    assert.equal(resolveHeatmapRowOpacity(2, 0.35), 0.35);
+  });
+
+  it('supports per-row arrays', () => {
+    const rowOpacity = [1, 1, 1, 1, 1, 0.35, 0.35];
+    assert.equal(resolveHeatmapRowOpacity(5, rowOpacity), 0.35);
+    assert.equal(resolveHeatmapRowOpacity(2, rowOpacity), 1);
+  });
 
   it('builds opacity maps from row indices', () => {
     assert.deepEqual(buildHeatmapRowOpacity([5, 6], 0.35), [1, 1, 1, 1, 1, 0.35, 0.35]);

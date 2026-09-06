@@ -35,10 +35,10 @@ describe('heatmap week range alignment', () => {
 
 describe('heatmap month label columns', () => {
   test.todo(
-    'legacy/heatmap-week-range: snaps month ticks to separator group starts (missing export: getHeatmapMonthLabelColumnIndex)',
+    'legacy/heatmap-week-range: snaps month ticks to separator group starts (missing export: getHeatmapMonthLabelColumnIndex) — internal helper replaced (D555)',
   );
   test.todo(
-    'legacy/heatmap-week-range: uses the raw column when separators are disabled (missing export: getHeatmapMonthLabelColumnIndex)',
+    'legacy/heatmap-week-range: uses the raw column when separators are disabled (missing export: getHeatmapMonthLabelColumnIndex) — internal helper replaced (D555)',
   );
 });
 

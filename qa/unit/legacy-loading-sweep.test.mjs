@@ -5,9 +5,9 @@
 import { describe, test } from 'node:test';
 
 describe('getSkeletonHeights', () => {
-  test.todo('legacy/loading-sweep: returns the requested number of heights (missing export: getSkeletonHeights)');
-  test.todo('legacy/loading-sweep: is deterministic for the same (count, seed) (missing export: getSkeletonHeights)');
-  test.todo('legacy/loading-sweep: re-rolls when the seed changes (missing export: getSkeletonHeights)');
-  test.todo('legacy/loading-sweep: stays within the default [20, 80) range (missing export: getSkeletonHeights)');
-  test.todo('legacy/loading-sweep: respects a custom range (missing export: getSkeletonHeights)');
+  test.todo('legacy/loading-sweep: returns the requested number of heights (missing export: getSkeletonHeights) — V3.4b');
+  test.todo('legacy/loading-sweep: is deterministic for the same (count, seed) (missing export: getSkeletonHeights) — V3.4b');
+  test.todo('legacy/loading-sweep: re-rolls when the seed changes (missing export: getSkeletonHeights) — V3.4b');
+  test.todo('legacy/loading-sweep: stays within the default [20, 80) range (missing export: getSkeletonHeights) — V3.4b');
+  test.todo('legacy/loading-sweep: respects a custom range (missing export: getSkeletonHeights) — V3.4b');
 });
