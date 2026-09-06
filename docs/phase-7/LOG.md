@@ -956,3 +956,41 @@ overwriting the previous content and stamping `open (last seen <run>)`. An issue
 every run while every finding under it changed, and the ledger diff showed nothing. Only a manual
 diff of the two probe tables caught it. `mergeLedger` now emits
 `open, CONTENT CHANGED in <run> (was: …)` when an open row's content moves. A count is not a finding.
+
+## D590 — The migrated BarPulse wave never animates: a parked rect where bklit sweeps a 2.4s loop
+
+**Found while landing P2's phase-freeze hook, not by the gate.** `__qaSetBarPulsePhase` was added to
+`bench/app/src/scenarios/bklit-bardepth.tsx` so `qa/screenshot.mjs` could capture the sweep at fixed
+phases. The migrated twin has no such hook, so the capture skips that side
+(`qa/screenshot.mjs:1047-1067` guard) and no comparison is ever made — the vector is one-sided as it
+stands. Tracing why the hook was never wired on migrated turned up the reason: **there is nothing to
+seek.**
+
+**Static reading.** `showcase/migrated/charts/internal/bar-pulse-mark.ts:189` emits the wave node with
+the comment "Wave parked at sweep start (bar bottom); clipped + animated imperatively post-reveal."
+No such code exists. Nothing in `showcase/migrated/charts/` references the `bkm-chart__bar-pulse`
+group class or the `${id}:wave` node key outside the file that emits them.
+
+**Runtime proof** (`bardepth`, `n=24`, both impls, pulse unpaused via `__qaSetBarPulsePaused(false)`,
+sampled 900ms apart):
+
+- bklit — group `bar-pulse` present, rect filled `url(#bar-pulse-grad-…)`, and it moves:
+  `transform: translateY(378.027px)` -> `translateY(56.1702px)`. 1 of 74 rects changed.
+- migrated — group `bkm-chart__bar-pulse` present, rect filled `url(#…-bar-pulse-wave-gr…)`,
+  **0 of 49 rects changed.** The wave is rendered and never moves.
+
+So the geometry, the gradient, the clip source and the group all port correctly; only the motion is
+missing. `bardepth-toggle` reports 0 flags because it compares element counts and toggle-driven
+geometry, never the wave's travel — the pulse's one observable behaviour is unguarded by any probe or
+QA cell.
+
+**Method note worth keeping.** bklit drives the wave through `style: transform: translateY(...)`, not
+the `y` attribute. Two diagnostic passes that sampled SVG attributes only (`y`/`height`) reported
+"no movement" for *both* impls and would have cleared the defect. An attribute-only probe cannot see
+this animation; the third pass sampled `style` and separated them immediately.
+
+**Disposition.** Recorded, not fixed. Implementing it is its own vector and re-opens exactly the
+ownership question D589's sibling settled for the line-loading pulse: whether the sweep can be
+renderer-owned or needs a React-owned exception. P2's bklit-side hook lands as-is — it is correct work
+and it is the instrument that exposed this — but the phase-freeze capture stays one-sided and must not
+be read as parity evidence until the migrated wave moves.
