@@ -159,6 +159,7 @@ oxlint 0 problems over 428 files.
 | 4 | `bfb072b` | `run-all` passes `skip:"bundle-gate"` to the checks stage; the bundle stage's fresh measurement is the single verdict. `summarize.mjs` needed no change — `checksIssues` already continued on skipped entries. Standalone `gate:checks` keeps the step and now prints the sizes file's mtime, so a stale read is visible rather than silent. No pin touched. |
 | 5 | `c252229` | `runPool` gained an optional exclusivity barrier; loading cells drain alone after the shared phase, roster order preserved, `workers <= 1` byte-identical to before. Measured cost: 2 of 43 jobs, ~13 s on a 174 s stage. |
 | 6 | `8d615fa` | `showcase/migrated` is the package, `showcase` is a pnpm workspace, both TanStack deps are gone from the app manifest. Route table unmoved, shared chunk hashes byte-identical. |
+| 6 (residue) | `0b82505` | The post-move sweep: three duplicated dependencies dropped from the app, the two d3 `@types` co-located with the runtime deps they describe, and the dead oxlint override, tsconfig pin, `__pack-smoke` directory and `showcase/node_modules/@tanstack` paths removed. |
 
 ### Three premises in this document were wrong, and the corrections matter more than the items
 
@@ -201,9 +202,35 @@ lint file count and the empty-target guard were all re-run by the lead before ea
 gate run-dirs and an overwritten `qa/gate/latest/` produced by executor verification runs were removed
 before committing — a checks-only run must not be committed as if it were a gate.
 
+### The residue sweep, and the one thing it nearly got wrong
+
+Removing a duplicated dependency is only safe against a named importer, so every entry in
+`showcase/package.json` was checked against the app, the bklit control and the migrated package
+separately. Three had no importer outside `migrated/charts/internal/choropleth-zoom*.ts` and were
+dropped: `@use-gesture/react`, `d3-selection`, `d3-zoom`. Everything else stayed with a named importer.
+
+The rule that decided most of the table: **the bklit control has no manifest of its own.** It resolves
+out of `showcase/repos/bklit-ui/` through `showcase/node_modules` and the webpack `resolve.modules` entry
+in `next.config.mjs`, so its dependencies — the `@visx/*` set, `d3-array`, `d3-scale`, `d3-shape`,
+`motion`, `react-use-measure` — must remain declared by the app even though the app itself does not
+import them. Breaking the control invalidates every parity claim in the phase, so uncertainty resolves
+toward keeping. The near-miss was `motion`: its only app-side occurrence is the string
+`"Updated motion to v12"` in `docs-data.ts`, not an import — and 87 bklit files import it for real.
+
+`@types/d3-selection` and `@types/d3-zoom` are the case worth remembering. Removing them from the root
+alone gives `TS7016` x4, and the first reading of that was "the root is their only source, leave them".
+It is not: nothing declared them beside the one file that needs them, and the package manifest already
+carried `@types/geojson` as the precedent. They moved into the package. Left at the root they would have
+kept G4 half-applied on its own axis — the package owning a runtime dependency while the app still owned
+its types.
+
+Nothing under `docs/` or `research/` was touched. A reference to `packages/migrated-charts` in a D-entry
+is correct history, not stale code. The tracked `qa/gate/latest/` files still quote the old lint command
+from the 2026-09-05 run; that is a run record, and it refreshes at Gate 1 rather than by hand.
+
 ### Still open
 
-Wave 0 (items 1–3) remains with the repository owner: the unpushed `main`, and filing I7 and I8. A
-post-G4 residue sweep is dispatched — duplicated dependency declarations now that the package owns its
-own, D517's `__pack-smoke` leftover, and dead path references to the deleted shim. Gate 1 follows that,
-then Wave B and Wave C as written above.
+Wave 0 (items 1–3) remains with the repository owner: the unpushed `main`, and filing I7 and I8.
+Gate 1 is next — `pnpm gate:all -- --bench all --probes --issues` in a frozen worktree, the first
+measurement taken through a fixed instrument on the final module graph — then Wave B and Wave C as
+written above.
