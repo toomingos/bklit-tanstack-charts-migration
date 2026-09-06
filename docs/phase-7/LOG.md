@@ -352,3 +352,42 @@ rather than by matching legacy, and was removed. The year-grid case is unaffecte
 which never calls the DST-sensitive count — and stays enabled.
 
 Net: `pnpm test` 240 tests, pass 182, fail 0, todo 58 (baseline 240/180/0/60).
+
+## D580 — G28: the sunburst role was already at parity; only the tab stop was real
+
+G28's prescription in the gap table read "FOLD into V4.1: host `role="img"` + label
+on every mount, tab stop deleted". Both halves were wrong, for opposite reasons.
+
+**`role="img"` — already correct, and adding it is a regression.** The audit read
+`role="img"` 0 across families, but that grep saw hand-written source, not rendered
+output. `qa/unit/probes.test.mjs` has measured `roleImg: 1` for all 16 families since
+2026-09-05: the package's own chart svg carries the role. Legacy carries `role="img"`
+exactly once, on the sunburst `<motion.svg>` (`sunburst-chart.tsx:455-470`) — the same
+role on the same kind of element. **Migrated sunburst already matched legacy.**
+
+The executor implemented the prescription as an opt-in `role?: string` on `ChartHost`,
+set only by sunburst, and measured the result honestly rather than loosening the pin:
+`{roleImg: 2, tabStops: 1}` against a pinned `roleImg: 1`. Two roles is a divergence
+from legacy's one and an a11y regression on its own terms — `role="img"` on a wrapping
+div hides its whole subtree from assistive technology, so the marks inside stop being
+reachable. Ruling: **reverted**, both `chart-host.tsx` and `sunburst-chart.tsx` restored.
+The label half needed nothing either; `ariaLabel ?? \`Sunburst chart of ${data.name}\``
+was already byte-identical to legacy's string.
+
+**The tab stop — real, and invisible to the probe.** `sunburst-center-overlay.tsx`
+gave the centre control `tabIndex={isClickable ? 0 : -1}` plus an `aria-label`.
+Legacy's centre is a plain non-focusable `<circle>` with an `onClick` and no
+tabIndex or label anywhere (`sunburst-center.tsx`). Kept: `tabIndex={-1}`, label
+deleted. The `<button>` element stays — with no accessible name and no tab stop it
+has legacy's failure modes, and swapping in a `<circle>` would need an SVG wrapper
+around an HTML overlay for identical visuals (principle 2: no second implementation).
+
+**Correction to the record.** The old comment in `probes.test.mjs` named
+`sunburst-center-overlay.tsx:68` as the remaining tab stop. It never was: the overlay
+renders no `tabindex` in any state, and every family reads exactly 1 — the package
+svg's own, which we do not own. P-23's "zero tab stops" target is therefore not
+reachable without an upstream change, and the todos stay todo for that reason rather
+than as pending migration work. Comment corrected; no pin loosened.
+
+Net: `qa/unit/probes.test.mjs` 64 tests, 48 pass, 0 fail, 16 todo (was 46 pass with
+the role change in the tree).

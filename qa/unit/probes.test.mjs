@@ -1,8 +1,10 @@
 // V4.1 DOM probes (P-22 roles, P-23 tab stops): renderToString every migrated
 // family at initialWidth 640 and count the a11y surface. Targets (10 §1):
 // exactly one role="img" per chart (V1.8), zero tab stops (legacy has zero
-// tabIndex; the remaining migrated stop is internal/sunburst-center-overlay.tsx:68
-// — chart-marker-circle.tsx:138 no longer exists, D513), aria-label present.
+// tabIndex), aria-label present. D580 corrects the old note here: the single
+// remaining tabindex is the package svg's own, identical across all 16 families —
+// sunburst-center-overlay.tsx renders none in any state, and
+// chart-marker-circle.tsx:138 no longer exists (D513).
 // Families that fail a target today assert it as test.todo with today's value;
 // V1.7 owns server rendering for the five useSyncExternalStore throwers, V1.8
 // owns role="img"/ariaLabel forwarding.
@@ -69,7 +71,7 @@ for (const name of Object.keys(families)) {
   );
   const noTabs = renders && today.tabStops === 0;
   (noTabs ? test : test.todo)(
-    `probes/${name}: zero tab stops (P-23; today ${renders ? today.tabStops : 'throw'}, remaining stop internal/sunburst-center-overlay.tsx:68)`,
+    `probes/${name}: zero tab stops (P-23; today ${renders ? today.tabStops : 'throw'}, remaining stop is the package svg's own — D580)`,
     () => assert.strictEqual(probe(name).tabStops, 0),
   );
   const labelled = renders && today.ariaLabel === true;

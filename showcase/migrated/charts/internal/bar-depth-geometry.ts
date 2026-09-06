@@ -75,10 +75,8 @@ interface ResolveBarDepthTopGeometryParams {
 // Floored height + lid trim in one place (legacy `Math.max` + trim skip).
 // Floored bars skip the trim so the tiny front face and lid stay aligned.
 const resolveBarDepthTopGeometry = (params: Readonly<ResolveBarDepthTopGeometryParams>): BarDepthTopGeometry | undefined => {
-  // Floor positive bars only: legacy takes `isNegative ? rawHeight : Math.max(...)`
-  // (bar-depth.tsx:436-438). Here `rawHeight` is signed (`baseline - valuePos`), so a
-  // negative bar arrives negative and must stay negative — flooring it would render a
-  // spurious upward bar that legacy never draws.
+  // Positive bars only (legacy bar-depth.tsx:436-438): `rawHeight` is signed here.
+  // An unguarded floor would turn a negative bar into a spurious upward one.
   const naturalHeight = params.rawHeight < 0 ? params.rawHeight : Math.max(params.rawHeight, params.minBarHeight ?? 0);
   if (naturalHeight <= 0) {return undefined;}
   const isFloored = naturalHeight > params.rawHeight;

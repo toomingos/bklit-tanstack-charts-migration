@@ -60,12 +60,11 @@ export const SunburstCenterOverlay = ({
     <div
       style={isClickable ? SUNBURST_OVERLAY_CLICKABLE_STYLE : SUNBURST_OVERLAY_STATIC_STYLE}
     >
-      <button
+      <button // oxlint-disable-line jsx-a11y/control-has-associated-label -- legacy parity: center zoom-out is click-only, no name or tab stop
         type="button"
         onClick={onZoomToParent}
         style={buildCenterButtonStyle(centerColor, diameter, isClickable)}
-        aria-label={isClickable ? "Click to zoom out" : undefined}
-        tabIndex={isClickable ? 0 : -1}
+        tabIndex={-1}
       />
     </div>
   );
