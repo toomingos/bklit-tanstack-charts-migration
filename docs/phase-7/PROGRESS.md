@@ -76,7 +76,7 @@ Batch-end audits (`--agent audit`, `08` §6 counts + idiom rows for touched fami
 | V5.3 | `internal/` shape (after 7.4) | todo | | |
 | V5.4 | lint 0, D472 threshold work if kept | todo | | |
 | 7.5 | census 0, `08` §6 grep counts re-run from a fresh clone | todo | | |
-| 7.5 | upstream re-check of I1–I6 and F-260 against the pin | todo | | |
+| 7.5 | upstream re-check of I1–I6 and F-260 against the pin | done (2026-09-06; re-run `gh issue view 126…132` at the gate) | — | D560 |
 
 ## Discovered work
 
