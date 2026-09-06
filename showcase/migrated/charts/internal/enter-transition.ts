@@ -1,5 +1,5 @@
-// Shared enter-transition/reveal-timing engine for every chart family.
-// Spring physics from ./radar-spring; reveal duration + easing from ./design-tokens.
+// Shared enter-transition engine (framer Transition in, tween/spring out).
+import type { Transition } from "motion/react";
 import { estimateSpringSettleMs, sampleSpringProgress } from "./radar-spring";
 import { REVEAL_DURATION_MS, REVEAL_EASE_CSS } from "./design-tokens";
 
@@ -13,18 +13,7 @@ const BOUNCE_STIFFNESS_FACTOR = 0.35;
 // Pre-sampled progress points for spring reveals (tweens reuse the 64 uniform samples).
 const SPRING_REVEAL_SAMPLES = 40;
 
-interface EnterTransition {
-  readonly type?: "spring" | "tween";
-  /** Tween duration, seconds. */
-  readonly duration?: number;
-  /** Tween cubic-bezier control points (framer's `ease` array form). */
-  readonly ease?: readonly [number, number, number, number];
-/** Spring bounce shorthand (0..1) — converted via springFromBounce below. */
-  readonly bounce?: number;
-  readonly stiffness?: number;
-  readonly damping?: number;
-  readonly mass?: number;
-}
+type EnterTransition = Transition;
 
 type ResolvedTiming =
   | { readonly kind: "tween"; readonly durationMs: number; readonly easingCss: string }
@@ -62,9 +51,10 @@ const clipRevealTiming = (transition: Readonly<EnterTransition> | undefined, fal
   }
   const durationMs =
     transition.duration === undefined ? fallbackDurationMs : transition.duration * MS_PER_SECOND;
+  const { ease } = transition;
   const easingCss =
-    transition.type !== "spring" && transition.ease
-      ? `cubic-bezier(${transition.ease.join(",")})`
+    transition.type !== "spring" && Array.isArray(ease)
+      ? `cubic-bezier(${ease.join(",")})`
       : fallbackEasingCss;
   return { durationMs, easingCss };
 }
@@ -105,7 +95,8 @@ const resolveTweenEnter = (transition: Readonly<EnterTransition>, fallback: Read
       (fallback.kind === "tween" ? fallback.durationMs / MS_PER_SECOND : REVEAL_DURATION_MS / MS_PER_SECOND)) *
     MS_PER_SECOND;
   const fallbackEasingCss = fallback.kind === "tween" ? fallback.easingCss : REVEAL_EASE_CSS;
-  const easingCss = transition.ease ? `cubic-bezier(${transition.ease.join(",")})` : fallbackEasingCss;
+  const { ease } = transition;
+  const easingCss = Array.isArray(ease) ? `cubic-bezier(${ease.join(",")})` : fallbackEasingCss;
   return { durationMs, easingCss, kind: "tween" };
 }
 
@@ -155,12 +146,12 @@ const buildProgressKeyframes = (timing: Readonly<RevealTiming>, toKeyframe: (pro
 
 
 // Former per-family reveal shims collapsed here; gauge-reveal keeps its own reconciler.
-type PieEnterTransition = EnterTransition;
-type RingEnterTransition = EnterTransition;
-type RadarEnterTransition = EnterTransition;
-type GaugeEnterTransition = EnterTransition;
+type PieEnterTransition = Transition;
+type RingEnterTransition = Transition;
+type RadarEnterTransition = Transition;
+type GaugeEnterTransition = Transition;
 // Candlestick aliased too so the tween branch stays reachable.
-type CandlestickEnterTransition = EnterTransition;
+type CandlestickEnterTransition = Transition;
 
 const RING_TWEEN_FALLBACK: ResolvedTiming = TWEEN_FALLBACK;
 const RADAR_TWEEN_FALLBACK: ResolvedTiming = TWEEN_FALLBACK;

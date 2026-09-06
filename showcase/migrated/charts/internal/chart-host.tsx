@@ -32,6 +32,7 @@ import { BrushLayer } from "./brush-layer";
 import { MarkerLayer } from "./marker-layer";
 import type { ChartDatum } from "./types";
 import { ChartProvider } from "./chart-context";
+import { useStaticChartPreview } from "./static-chart-preview";
 import type {
   ChartContextValue,
   LineConfig,
@@ -185,6 +186,10 @@ const ChartHost = <
   const [store] = useState(createChartHostStore<Datum, XValue, YValue>);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  // Static docs previews (idiom 9) mount at a fixed width with no enter resize.
+  const staticPreview = useStaticChartPreview();
+  const fixedWidth = staticPreview ? (widthProp ?? initialWidth) : widthProp;
+
   // One prefix per mount scopes renderer ids and seam ids alike.
   const fallbackPrefix = useSanitizedId();
   const idPrefix = idPrefixProp ?? fallbackPrefix;
@@ -232,7 +237,7 @@ const ChartHost = <
     const [firstScale, secondScale] = resolved;
     const xResolved = scales?.x ?? firstScale;
     const yResolved = scales?.y ?? secondScale;
-    const width = widthProp ?? scene?.width ?? initialWidth;
+    const width = fixedWidth ?? scene?.width ?? initialWidth;
     const plotHeight = scene?.height ?? fallbackHeight;
     const margin: Margin = scene?.margin ?? {
       bottom: 0,
@@ -317,11 +322,11 @@ const ChartHost = <
   }, [
     containerRef,
     fallbackHeight,
+    fixedWidth,
     hoverSnapshot,
     initialWidth,
     stableSnapshot,
     store,
-    widthProp,
   ]);
 
   // Custom renderer mounts through the tooltip entry so renderTooltipBody keeps working.
@@ -336,7 +341,7 @@ const ChartHost = <
         height={height}
         idPrefix={idPrefix}
         initialWidth={initialWidth}
-        width={widthProp}
+        width={fixedWidth}
         onFocusChange={onFocusChange}
         onFocusGroupChange={handleFocusGroupChange}
         onRender={handleRender}
@@ -353,7 +358,7 @@ const ChartHost = <
         height={height}
         idPrefix={idPrefix}
         initialWidth={initialWidth}
-        width={widthProp}
+        width={fixedWidth}
         onFocusChange={onFocusChange}
         onFocusGroupChange={handleFocusGroupChange}
         onRender={handleRender}

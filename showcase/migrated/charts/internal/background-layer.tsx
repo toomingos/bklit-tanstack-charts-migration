@@ -45,7 +45,6 @@ export const BackgroundLayer = ({
         fadeVertical={config.fadeVertical}
         fadeVerticalLength={config.fadeVerticalLength}
         fill={config.fill}
-        height={innerHeight}
         isLoaded={isLoaded}
         opacity={config.opacity}
         pattern={config.pattern}
@@ -54,7 +53,6 @@ export const BackgroundLayer = ({
         showFill={config.showFill}
         strokeWidth={config.strokeWidth}
         tileBackground={config.tileBackground}
-        width={innerWidth}
       />
     </svg>
   );

@@ -1,24 +1,34 @@
+"use client";
+
 import { useMemo } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { BACKGROUND_ENTER_FADE_MS } from "./design-tokens";
 import { edgeFadeMaskStops } from "./fade-mask";
 import { useSanitizedId } from "./use-sanitized-id";
+import { useChartStable } from "./chart-context";
 import { renderPatternPreset } from './pattern-preset-render';
 import type { PatternPresetId, PatternPresetOptions } from './pattern-preset';
 
 type BackgroundPatternPreset = PatternPresetId;
 
 interface BackgroundProps extends PatternPresetOptions {
+  /** Pattern preset. `"none"` renders nothing. */
   readonly pattern?: BackgroundPatternPreset;
+  /** Pattern stroke color. Default: `var(--chart-grid)` */
   readonly color?: string;
+  /** Apply the pattern texture to the plot area. Default: true */
   readonly showFill?: boolean;
+  /** Pattern fill opacity. Default: 1 */
   readonly opacity?: number;
+  /** Fade pattern at the left and right chart edges. Default: true */
   readonly fadeHorizontal?: boolean;
+  /** Fade pattern at the top and bottom chart edges. Default: true */
   readonly fadeVertical?: boolean;
+  /** Horizontal fade zone as % of plot width per edge. Default: 10 */
   readonly fadeHorizontalLength?: number;
+  /** Vertical fade zone as % of plot height per edge. Default: 10 */
   readonly fadeVerticalLength?: number;
-  width: number;
-  height: number;
+  /** Forced loaded flag; defaults to the chart context `isLoaded`. */
   readonly isLoaded?: boolean;
 }
 
@@ -68,7 +78,7 @@ const useFadeMaskStops = (fadeHorizontalLength: number, fadeVerticalLength: numb
 
 const resolveBackgroundPattern = (options: Readonly<{ preset: BackgroundPatternPreset; patternId: string; presetOptions: Readonly<PatternPresetOptions>; showFill: boolean; width: number; height: number }>): ReactNode => {
   const { preset, patternId, presetOptions, showFill, width, height } = options;
-  if (preset === "none" || !showFill || width <= 0 || height <= 0) {return undefined;}
+  if (preset === "none" || !showFill || width <= 0 || height <= 0) {return null;}
   return renderPatternPreset(preset, patternId, presetOptions);
 }
 
@@ -130,7 +140,7 @@ const renderCombinedFadeMask = (options: Readonly<{ combinedMaskId: string; hMas
 
 const renderFadeDefs = (options: Readonly<{ fadeHorizontal: boolean; fadeVertical: boolean; mask: Readonly<BackgroundMask>; hStops: readonly FadeStop[]; vStops: readonly FadeStop[]; width: number; height: number }>): ReactNode => {
   const { fadeHorizontal, fadeVertical, mask, hStops, vStops, width, height } = options;
-  if (!mask.fadeMask) {return undefined;}
+  if (!mask.fadeMask) {return null;}
   return (
     <defs>
       {fadeHorizontal ? renderHorizontalFade({ hGradientId: mask.hGradientId, hMaskId: mask.hMaskId, hStops, height, width }) : undefined}
@@ -161,50 +171,57 @@ const renderBackgroundRect = (options: Readonly<{ patternId: string; width: numb
 }
 
 
-const Background = ({
-  pattern = "diagonal",
-  color = "var(--chart-grid)",
-  scale = 1,
-  strokeWidth,
-  radius,
-  complement,
-  fill,
-  dotFill,
-  tileBackground,
-  showFill = true,
-  opacity = 1,
-  fadeHorizontal = true,
-  fadeVertical = true,
-  fadeHorizontalLength = 10,
-  fadeVerticalLength = 10,
-  width,
-  height,
-  isLoaded = true,
-}: Readonly<BackgroundProps>): ReactElement | undefined => {
-  const uniqueId = useSanitizedId();
-  const patternId = `chart-background-${uniqueId}`;
-  const [hStops, vStops] = useFadeMaskStops(fadeHorizontalLength, fadeVerticalLength);
+/**
+ * Plot-area pattern fill for charts without a grid. Renders behind series layers.
+ * @param {BackgroundProps} props - Pattern, fade and opacity options.
+ * @returns {ReactElement | null} The pattern layer, or null when there is nothing to paint.
+ */
+const Background: ((props: BackgroundProps) => ReactElement | null) & {
+  displayName: string;
+} = Object.assign(
+  ({
+    pattern = "diagonal",
+    color = "var(--chart-grid)",
+    scale = 1,
+    strokeWidth,
+    radius,
+    complement,
+    fill,
+    dotFill,
+    tileBackground,
+    showFill = true,
+    opacity = 1,
+    fadeHorizontal = true,
+    fadeVertical = true,
+    fadeHorizontalLength = 10,
+    fadeVerticalLength = 10,
+    isLoaded: isLoadedProp,
+  }: BackgroundProps): ReactElement | null => {
+    const { innerWidth, innerHeight, isLoaded: isLoadedContext } = useChartStable();
+    const isLoaded = isLoadedProp ?? isLoadedContext;
+    const uniqueId = useSanitizedId();
+    const patternId = `chart-background-${uniqueId}`;
+    const [hStops, vStops] = useFadeMaskStops(fadeHorizontalLength, fadeVerticalLength);
 
-  const patternNode = resolveBackgroundPattern({
-    height, patternId, preset: pattern,
-    presetOptions: { color, complement, dotFill, fill, radius, scale, strokeWidth, tileBackground },
-    showFill, width,
-  });
-  if (patternNode === null || patternNode === undefined) {return undefined;}
+    const patternNode = resolveBackgroundPattern({
+      height: innerHeight, patternId, preset: pattern,
+      presetOptions: { color, complement, dotFill, fill, radius, scale, strokeWidth, tileBackground },
+      showFill, width: innerWidth,
+    });
+    if (patternNode === null || patternNode === undefined) {return null;}
 
-  const mask = resolveBackgroundMask({ fadeHorizontal, fadeVertical, uniqueId });
+    const mask = resolveBackgroundMask({ fadeHorizontal, fadeVertical, uniqueId });
 
-  return (
-    <g aria-hidden="true" className="chart-background">
-      {renderFadeDefs({ fadeHorizontal, fadeVertical, hStops, height, mask, vStops, width })}
-      <defs>{patternNode}</defs>
-      {renderBackgroundRect({ height, isLoaded, maskRef: mask.maskRef, opacity, patternId, width })}
-    </g>
-  );
-}
+    return (
+      <g aria-hidden="true" className="chart-background">
+        {renderFadeDefs({ fadeHorizontal, fadeVertical, hStops, height: innerHeight, mask, vStops, width: innerWidth })}
+        <defs>{patternNode}</defs>
+        {renderBackgroundRect({ height: innerHeight, isLoaded, maskRef: mask.maskRef, opacity, patternId, width: innerWidth })}
+      </g>
+    );
+  },
+  { displayName: "Background" },
+);
 
-// Public alias under the legacy default-export contract.
-const ChartBackground = Background;
-
+export { Background };
 export type { BackgroundPatternPreset, BackgroundProps };
-export { Background, ChartBackground };

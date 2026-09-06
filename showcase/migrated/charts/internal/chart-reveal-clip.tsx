@@ -1,26 +1,31 @@
 // Left-to-right clip reveal driven by the shared WAAPI reveal engine.
 import { useEffect, useRef } from "react";
 import type { ReactElement } from "react";
+import type { Transition } from "motion/react";
 import { useEffectEvent } from "./use-effect-event";
 import { buildProgressKeyframes, resolveEnterTransition, revealTiming } from './enter-transition';
-import type { EnterTransition } from './enter-transition';
 
 type ChartRevealClipMode = "reveal" | "conceal";
 
 interface ChartRevealClipProps {
-  readonly clipPathId: string;
+  clipPathId: string;
   height: number;
-  readonly targetWidth: number;
-  readonly enterTransition?: EnterTransition;
-  readonly revealEpoch: number;
-  readonly padding?: number;
-  readonly animating?: boolean;
-  readonly mode?: ChartRevealClipMode;
-  readonly onComplete?: () => void;
+  targetWidth: number;
+  enterTransition?: Transition;
+  /** Bumps when motion settings change to replay the reveal. */
+  revealEpoch: number;
+  /** Extra inset around the clip rect so edge glyphs are not cut off. */
+  padding?: number;
+  /** When false, clip stays at full width (no grow animation). */
+  animating?: boolean;
+  /** Reveal grows 0 → full; conceal shrinks full → 0 (ready → loading). */
+  mode?: ChartRevealClipMode;
+  /** Called when a conceal animation finishes. */
+  onComplete?: () => void;
 }
 
 interface RevealAnimationParams {
-  readonly enterTransition: EnterTransition | undefined;
+  readonly enterTransition: Transition | undefined;
   readonly epoch: number;
   readonly isConceal: boolean;
   readonly onComplete: (() => void) | undefined;
@@ -112,7 +117,7 @@ const ChartRevealClip = ({
   animating = true,
   mode = "reveal",
   onComplete,
-}: Readonly<ChartRevealClipProps>): ReactElement => {
+}: ChartRevealClipProps): ReactElement => {
   const paddedWidth = Math.max(0, targetWidth + padding * 2);
   const paddedHeight = height + padding * 2;
 

@@ -107,7 +107,17 @@ const Probe = (): ReactElement => {
   const hover = useChartHover();
   const stable = useChartStable();
   const yScale = useYScale();
-  const interaction = useChartInteraction();
+  const interaction = useChartInteraction({
+    bisectDate: () => 0,
+    canInteract: true,
+    data: chart.data,
+    lines: stable.lines,
+    margin: stable.margin,
+    xAccessor: stable.xAccessor,
+    xScale: stable.xScale,
+    yScale: stable.yScale,
+    yScales: stable.yScales,
+  });
   const label = `${chart.data.length}:${stable.lines.length}:${
     hover.tooltipData === null ? "idle" : "hovering"
   }:${interaction.selection === null ? "free" : "selected"}:${yScale.domain().length}`;

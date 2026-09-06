@@ -58,7 +58,7 @@ export { useChartConfig } from "./internal/use-chart-config";
 export { DEFAULT_CHART_CONFIG } from "./internal/chart-config-context";
 export { resolveTooltipBoxMotion } from "./internal/tooltip-box-motion";
 export type { ChartConfigProviderProps, ChartConfigValue, SpringConfig } from "./internal/chart-config-context";
-export { Line, Area, PatternArea, Scatter, Bar, BarSquares, BarColumnTrack, BarDepthProvider, BarDepthBack, BarDepthFront, BarPulse, SeriesBar, BarXAxis, Background, Grid, XAxis, ChartTooltip, Candlestick, YAxis, LiveLine, LiveXAxis, LiveYAxis, ProjectionLine, ProjectionLineEndMarker, LineSeriesTerminalMarker, ChartMarkers, ProfitLossLine } from "./children";
+export { Line, Area, PatternArea, Scatter, Bar, BarSquares, BarColumnTrack, BarDepthProvider, BarDepthBack, BarDepthFront, BarPulse, SeriesBar, BarXAxis, Grid, XAxis, ChartTooltip, Candlestick, YAxis, LiveLine, LiveXAxis, LiveYAxis, ProjectionLine, ProjectionLineEndMarker, LineSeriesTerminalMarker, ChartMarkers, ProfitLossLine } from "./children";
 export { CHART_CLIP_PASSTHROUGH } from "./internal/children-extract";
 export type { ProjectionLineProps, ProjectionLineEndMarkerProps, LineSeriesTerminalMarkerProps, ProfitLossLineProps } from "./children";
 export type { ChartMarker, ChartPhase, ChartStatus, MomentumColors, SeriesPointMarkerStyle, GradientStop, BarYAxisProps, BarDepthProviderProps, IndicatorWidth, TooltipRow } from "./internal/types";
@@ -91,7 +91,9 @@ export { ChartSelectionContext } from "./internal/chart-selection";
 export { BrushLayout, BrushLayout as ChartBrushLayout } from "./internal/brush-layout";
 export { ChartBrush } from "./internal/chart-brush";
 export type { ChartBrushProps } from "./internal/chart-brush";
+export { Background } from "./internal/background";
 export type { BackgroundProps } from "./internal/background";
+export type { GridProps } from "./internal/grid-child";
 export { computeSquareColumn, topSquareCenterY } from "./internal/bar-squares-layout";
 export type { SquareColumnLayout } from "./internal/bar-squares-layout";
 export { HEATMAP_MONTHS_ONE_YEAR, HEATMAP_MONTHS_SIX, HEATMAP_WEEKS_ONE_YEAR, buildHeatmapLegendGradient, buildHeatmapRowOpacity, filterHeatmapColumns, formatHeatmapContributionLabel, formatHeatmapTooltipDate, formatHeatmapTooltipWeekday, formatHeatmapYAxisLabel, getHeatmapCalendarRangeStart, getHeatmapColumnMonthAnchor, getHeatmapDayLabels, getHeatmapSeparatorColumnIndices, getHeatmapTimeExtent, getHeatmapWeekCount, getHeatmapWeekStartAlignedToRange, getHeatmapWeekStartSunday, getHeatmapYearStartMonth, inferHeatmapCalendarRangeStart, resolveHeatmapWeekRange, shouldShowHeatmapYAxisTick } from "./internal/heatmap-utils";
@@ -147,6 +149,7 @@ export type {
 } from "./internal/chart-context";
 export { useChartInteraction } from "./internal/use-chart-interaction";
 export type { ChartSelection } from "./internal/use-chart-interaction";
+export { StaticChartPreviewProvider, useStaticChartPreview } from "./internal/static-chart-preview";
 export type { ChartMargin } from "./internal/use-chart-margin";
 export {
   DEFAULT_CHART_ENTER_TRANSITION,
@@ -201,7 +204,6 @@ export type {
   BarProps,
   BarXAxisProps,
   CandlestickProps,
-  GridProps,
   LineProps,
   LiveLineProps,
   LiveXAxisProps,
