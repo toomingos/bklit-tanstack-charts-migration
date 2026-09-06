@@ -1,0 +1,418 @@
+{
+  "bklit/area": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/arealoading": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/areamultiaxis": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/bar": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/bardepth": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/barloading": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/barmultiaxis": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/barsquares": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/brush": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/candlestick-legend": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/candlestick": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/candletween": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/choropleth": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/composed": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/composedmultiaxis": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/composedstacked": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/funnel": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/funnelvertical": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/gauge": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/gaugelinear": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/griddefault": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/heatmap": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/legend": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/legendhover": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/line": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/linemultiaxis": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/liveline": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/markers": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/patternarea": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/pie": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/profitloss": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/projection": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/projectionxdomain": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/radar": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/refarea": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/refareamultiaxis": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/ring": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/sankey": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/scatter": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/scattermultiaxis": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/segment": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/sunburst": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "bklit/sunchrome": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "migrated/area": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/arealoading": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/areamultiaxis": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/bar": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/bardepth": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/barloading": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/barmultiaxis": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/barsquares": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/brush": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/candlestick-legend": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/candlestick": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/candletween": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/choropleth": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/composed": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/composedmultiaxis": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/composedstacked": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/funnel": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/funnelvertical": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/gauge": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/gaugelinear": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/griddefault": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/heatmap": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/legend": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/legendhover": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/line": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/linemultiaxis": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/liveline": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/markers": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/patternarea": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/pie": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/profitloss": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/projection": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/projectionxdomain": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/radar": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/refarea": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/refareamultiaxis": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/ring": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/sankey": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/scatter": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/scattermultiaxis": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/segment": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/sunburst": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "migrated/sunchrome": {
+    "raw": 9275,
+    "gzip": 2087
+  },
+  "tanstack/area": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/bar": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/candlestick": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/choropleth": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/composed": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/funnel": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/funnelvertical": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/gauge": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/gaugelinear": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/heatmap": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/line": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/liveline": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/pie": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/radar": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/ring": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/sankey": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/scatter": {
+    "raw": 0,
+    "gzip": 0
+  },
+  "tanstack/sunburst": {
+    "raw": 0,
+    "gzip": 0
+  }
+}

@@ -1,6 +1,6 @@
 # Bundle gate
 
-Generated 2026-09-05T12:15:39.806Z. Sizes: bench/results/bundle-sizes.json (not re-measured); pins: bench/results/bundle-gate.json (pinned 2026-09-05 HEAD 61d6179 (V0.3 baseline, @tanstack/charts 0.16.0; previous pin 2026-09-01 c1e9ced), tolerance 3%); scripts/bundle-gate.mjs exit 0.
+Generated 2026-09-06T12:21:34.846Z. Sizes: bench/results/bundle-sizes.json (not re-measured); pins: bench/results/bundle-gate.json (pinned 2026-09-05 HEAD 61d6179 (V0.3 baseline, @tanstack/charts 0.16.0; previous pin 2026-09-01 c1e9ced), tolerance 3%); scripts/bundle-gate.mjs exit 0.
 
 **43 pinned scenarios: 0 FAIL, 0 missing, summed gzip 5474 kB vs pins 5474 kB (0%). Largest delta: migrated/area 0%.**
 
@@ -117,3 +117,101 @@ Generated 2026-09-05T12:15:39.806Z. Sizes: bench/results/bundle-sizes.json (not 
 | tanstack/sankey | 72245 | 199141 | info |
 | tanstack/scatter | 84613 | 235792 | info |
 | tanstack/sunburst | 73573 | 201059 | info |
+
+## Parity vs bklit (<= 1.10, no allowances)
+
+**43 migrated cells: 21 over, 0 without control. Worst: migrated/arealoading 1.408.**
+
+| scenario | migrated gzip | bklit gzip | ratio | verdict |
+| --- | --- | --- | --- | --- |
+| migrated/arealoading | 127922 | 90835 | 1.408 | **FAIL** |
+| migrated/profitloss | 178434 | 138423 | 1.289 | **FAIL** |
+| migrated/markers | 181897 | 145356 | 1.251 | **FAIL** |
+| migrated/projection | 173485 | 138627 | 1.251 | **FAIL** |
+| migrated/projectionxdomain | 173534 | 138713 | 1.251 | **FAIL** |
+| migrated/griddefault | 170324 | 136221 | 1.25 | **FAIL** |
+| migrated/line | 170390 | 136280 | 1.25 | **FAIL** |
+| migrated/linemultiaxis | 170469 | 136344 | 1.25 | **FAIL** |
+| migrated/segment | 170460 | 138331 | 1.232 | **FAIL** |
+| migrated/area | 168043 | 136508 | 1.231 | **FAIL** |
+| migrated/areamultiaxis | 168116 | 136590 | 1.231 | **FAIL** |
+| migrated/refarea | 170480 | 139220 | 1.225 | **FAIL** |
+| migrated/refareamultiaxis | 170607 | 139326 | 1.225 | **FAIL** |
+| migrated/patternarea | 168100 | 138299 | 1.215 | **FAIL** |
+| migrated/brush | 178442 | 151525 | 1.178 | **FAIL** |
+| migrated/legendhover | 174096 | 148750 | 1.17 | **FAIL** |
+| migrated/barsquares | 146726 | 127321 | 1.152 | **FAIL** |
+| migrated/sunburst | 99807 | 87399 | 1.142 | **FAIL** |
+| migrated/sunchrome | 100467 | 88013 | 1.142 | **FAIL** |
+| migrated/bar | 134546 | 121716 | 1.105 | **FAIL** |
+| migrated/barmultiaxis | 134603 | 121779 | 1.105 | **FAIL** |
+| migrated/bardepth | 134747 | 124441 | 1.083 | ok |
+| migrated/candlestick-legend | 137813 | 128452 | 1.073 | ok |
+| migrated/legend | 12434 | 11657 | 1.067 | ok |
+| migrated/gauge | 104637 | 100795 | 1.038 | ok |
+| migrated/gaugelinear | 104744 | 100900 | 1.038 | ok |
+| migrated/sankey | 104293 | 100947 | 1.033 | ok |
+| migrated/candlestick | 127176 | 124781 | 1.019 | ok |
+| migrated/candletween | 127244 | 124853 | 1.019 | ok |
+| migrated/liveline | 125519 | 123209 | 1.019 | ok |
+| migrated/scatter | 126075 | 123780 | 1.019 | ok |
+| migrated/scattermultiaxis | 126095 | 123798 | 1.019 | ok |
+| migrated/composed | 140194 | 139058 | 1.008 | ok |
+| migrated/composedmultiaxis | 140253 | 139146 | 1.008 | ok |
+| migrated/composedstacked | 140180 | 139095 | 1.008 | ok |
+| migrated/choropleth | 119026 | 119551 | 0.996 | ok |
+| migrated/ring | 102295 | 103908 | 0.984 | ok |
+| migrated/radar | 103613 | 106927 | 0.969 | ok |
+| migrated/pie | 92430 | 97053 | 0.952 | ok |
+| migrated/heatmap | 105621 | 123718 | 0.854 | ok |
+| migrated/funnel | 48669 | 90965 | 0.535 | ok |
+| migrated/funnelvertical | 48688 | 90982 | 0.535 | ok |
+| migrated/barloading | 2449 | 70063 | 0.035 | ok |
+
+## CSS
+
+| scenario | migrated CSS gzip | bklit CSS gzip | ratio |
+| --- | --- | --- | --- |
+| migrated/area | 2087 | 0 | — |
+| migrated/arealoading | 2087 | 0 | — |
+| migrated/areamultiaxis | 2087 | 0 | — |
+| migrated/bar | 2087 | 0 | — |
+| migrated/bardepth | 2087 | 0 | — |
+| migrated/barloading | 2087 | 0 | — |
+| migrated/barmultiaxis | 2087 | 0 | — |
+| migrated/barsquares | 2087 | 0 | — |
+| migrated/brush | 2087 | 0 | — |
+| migrated/candlestick-legend | 2087 | 0 | — |
+| migrated/candlestick | 2087 | 0 | — |
+| migrated/candletween | 2087 | 0 | — |
+| migrated/choropleth | 2087 | 0 | — |
+| migrated/composed | 2087 | 0 | — |
+| migrated/composedmultiaxis | 2087 | 0 | — |
+| migrated/composedstacked | 2087 | 0 | — |
+| migrated/funnel | 2087 | 0 | — |
+| migrated/funnelvertical | 2087 | 0 | — |
+| migrated/gauge | 2087 | 0 | — |
+| migrated/gaugelinear | 2087 | 0 | — |
+| migrated/griddefault | 2087 | 0 | — |
+| migrated/heatmap | 2087 | 0 | — |
+| migrated/legend | 2087 | 0 | — |
+| migrated/legendhover | 2087 | 0 | — |
+| migrated/line | 2087 | 0 | — |
+| migrated/linemultiaxis | 2087 | 0 | — |
+| migrated/liveline | 2087 | 0 | — |
+| migrated/markers | 2087 | 0 | — |
+| migrated/patternarea | 2087 | 0 | — |
+| migrated/pie | 2087 | 0 | — |
+| migrated/profitloss | 2087 | 0 | — |
+| migrated/projection | 2087 | 0 | — |
+| migrated/projectionxdomain | 2087 | 0 | — |
+| migrated/radar | 2087 | 0 | — |
+| migrated/refarea | 2087 | 0 | — |
+| migrated/refareamultiaxis | 2087 | 0 | — |
+| migrated/ring | 2087 | 0 | — |
+| migrated/sankey | 2087 | 0 | — |
+| migrated/scatter | 2087 | 0 | — |
+| migrated/scattermultiaxis | 2087 | 0 | — |
+| migrated/segment | 2087 | 0 | — |
+| migrated/sunburst | 2087 | 0 | — |
+| migrated/sunchrome | 2087 | 0 | — |

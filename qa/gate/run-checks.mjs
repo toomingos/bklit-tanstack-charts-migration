@@ -107,7 +107,7 @@ export async function runChecks(opts = {}) {
     }
     writeJson(path.join(runDir, "census.json"), { generatedAt: new Date().toISOString(), exit: census.code, ledger: "scripts/reach-in-ledger.json", ...json });
   }
-  await add("bundle-gate", "node", ["scripts/bundle-gate.mjs"], ROOT, (s) => ({ ok: (s.match(/^ok /gm) ?? []).length, fail: (s.match(/^FAIL /gm) ?? []).length }));
+  await add("bundle-gate", "node", ["scripts/bundle-gate.mjs"], ROOT, (s) => ({ ok: (s.match(/^\s*ok /gm) ?? []).length, fail: (s.match(/^\s*FAIL /gm) ?? []).length }));
   return finish();
 }
 

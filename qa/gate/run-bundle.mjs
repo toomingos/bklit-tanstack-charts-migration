@@ -24,6 +24,40 @@ export function compareBundles(sizes, gate) {
   return rows;
 }
 
+export const PARITY_LIMIT = 1.10;
+
+// Second, independent bundle column (research/phase-7/08-synthesis.md:130): migrated/<cell>
+// gzip vs the bklit/<cell> control, hard ratio <= 1.10, no allowances.
+export function compareParity(sizes) {
+  const rows = [];
+  for (const [scenario, s] of Object.entries(sizes)) {
+    if (!scenario.startsWith("migrated/")) continue;
+    const b = sizes[`bklit/${scenario.slice("migrated/".length)}`];
+    const migratedGzip = s ? s.gzip : null;
+    const bklitGzip = b ? b.gzip : null;
+    const ratio = migratedGzip != null && bklitGzip != null ? Number((migratedGzip / bklitGzip).toFixed(3)) : null;
+    rows.push({ scenario, migratedGzip, bklitGzip, ratio, ratioVerdict: bklitGzip == null ? "NO-CONTROL" : migratedGzip == null ? "MISSING" : ratio <= PARITY_LIMIT ? "ok" : "FAIL" });
+  }
+  rows.sort((a, b) => (b.ratio ?? -1) - (a.ratio ?? -1));
+  return rows;
+}
+
+// Report-only CSS column from bench/results/css-sizes.json (null when unmeasured).
+export function compareCss(sizes, cssSizes) {
+  if (!cssSizes) return null;
+  const rows = [];
+  for (const scenario of Object.keys(sizes)) {
+    if (!scenario.startsWith("migrated/")) continue;
+    const cell = scenario.slice("migrated/".length);
+    const m = cssSizes[scenario];
+    const b = cssSizes[`bklit/${cell}`];
+    const migratedCss = m ? m.gzip : null;
+    const bklitCss = b ? b.gzip : null;
+    rows.push({ scenario, migratedCss, bklitCss, ratio: migratedCss != null && bklitCss ? Number((migratedCss / bklitCss).toFixed(3)) : null });
+  }
+  rows.sort((a, b) => (b.migratedCss ?? -1) - (a.migratedCss ?? -1));
+  return rows;
+}
 export function bundleToMd(b) {
   const s = b.summary;
   const gated = b.rows.filter((r) => r.pin != null);
@@ -44,6 +78,17 @@ export function bundleToMd(b) {
     "",
     mdTable(["scenario", "gzip", "raw", "note"], info.map((r) => [r.scenario, r.gzip ?? "—", r.raw ?? "—", r.verdict])),
     "",
+    "## Parity vs bklit (<= 1.10, no allowances)",
+    "",
+    `**${s.ratioCells} migrated cells: ${s.ratioOver} over, ${s.ratioNoControl} without control. Worst: ${s.maxRatio ? `${s.maxRatio.scenario} ${s.maxRatio.ratio}` : "—"}.**`,
+    "",
+    mdTable(["scenario", "migrated gzip", "bklit gzip", "ratio", "verdict"], b.parity.map((r) => [r.scenario, r.migratedGzip ?? "—", r.bklitGzip ?? "—", r.ratio ?? "—", r.ratioVerdict === "FAIL" ? "**FAIL**" : r.ratioVerdict])),
+    "",
+    "## CSS",
+    "",
+    ...(b.css
+      ? [mdTable(["scenario", "migrated CSS gzip", "bklit CSS gzip", "ratio"], b.css.map((r) => [r.scenario, r.migratedCss ?? "—", r.bklitCss ?? "—", r.ratio ?? "—"])), ""]
+      : ["CSS sizes not measured (bench/results/css-sizes.json absent).", ""]),
   ].join("\n");
 }
 
@@ -62,11 +107,14 @@ export async function runBundleGate(opts = {}) {
   const g = await runCmd("node", ["scripts/bundle-gate.mjs"], { cwd: ROOT, logFile: path.join(logDir, "bundle-gate.log") });
   const sizes = readJson(path.join(BENCH_RESULTS_DIR, "bundle-sizes.json"));
   const gate = readJson(path.join(BENCH_RESULTS_DIR, "bundle-gate.json"));
+  const cssSizes = readJson(path.join(BENCH_RESULTS_DIR, "css-sizes.json"), null);
   const rows = compareBundles(sizes, gate);
   const gated = rows.filter((r) => r.pin != null);
   const sumG = gated.reduce((a, r) => a + (r.gzip ?? 0), 0);
   const sumP = gated.reduce((a, r) => a + r.pin, 0);
   const maxDelta = gated.filter((r) => r.deltaPct != null).sort((a, b) => Math.abs(b.deltaPct) - Math.abs(a.deltaPct))[0] ?? null;
+  const parity = compareParity(sizes);
+  const maxRatio = parity.filter((r) => r.ratio != null)[0] ?? null; // compareParity sorts ratio descending
   const bundle = {
     generatedAt: new Date().toISOString(),
     runDir: relPath(runDir),
@@ -77,8 +125,12 @@ export async function runBundleGate(opts = {}) {
     gateStdoutTail: g.stdout.trim().split("\n").slice(-3),
     pinnedAt: gate.pinnedAt,
     tolerancePct: gate.tolerancePct,
-    summary: { pinned: gated.length, fail: gated.filter((r) => r.verdict === "FAIL").length, missing: gated.filter((r) => r.verdict === "MISSING").length, measureFailed: rows.filter((r) => r.verdict === "MEASURE-FAILED").length, sumGzip: sumG, sumPin: sumP, sumDeltaPct: Number((((sumG - sumP) / sumP) * 100).toFixed(2)), maxDelta: maxDelta ? { scenario: maxDelta.scenario, deltaPct: maxDelta.deltaPct } : null },
+    parityLimit: PARITY_LIMIT,
+    cssMeasured: cssSizes != null,
+    summary: { pinned: gated.length, fail: gated.filter((r) => r.verdict === "FAIL").length, missing: gated.filter((r) => r.verdict === "MISSING").length, measureFailed: rows.filter((r) => r.verdict === "MEASURE-FAILED").length, sumGzip: sumG, sumPin: sumP, sumDeltaPct: Number((((sumG - sumP) / sumP) * 100).toFixed(2)), maxDelta: maxDelta ? { scenario: maxDelta.scenario, deltaPct: maxDelta.deltaPct } : null, ratioCells: parity.length, ratioOver: parity.filter((r) => r.ratioVerdict === "FAIL").length, ratioNoControl: parity.filter((r) => r.ratioVerdict === "NO-CONTROL").length, maxRatio: maxRatio ? { scenario: maxRatio.scenario, ratio: maxRatio.ratio } : null },
     rows,
+    parity,
+    css: compareCss(sizes, cssSizes),
   };
   writeJson(path.join(runDir, "bundle.json"), bundle);
   writeFileSync(path.join(runDir, "bundle.md"), bundleToMd(bundle));
@@ -91,7 +143,7 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve
 if (isMain) {
   const a = parseArgs(process.argv.slice(2), { "run-dir": "string", "no-measure": "bool" });
   runBundleGate({ runDir: a["run-dir"], noMeasure: a["no-measure"] })
-    .then((b) => process.exit(b.gateExit !== 0 || b.summary.fail ? 1 : 0))
+    .then((b) => process.exit(b.gateExit !== 0 || b.summary.fail || b.summary.ratioOver ? 1 : 0))
     .catch((e) => {
       console.error(e);
       process.exit(2);
