@@ -10,8 +10,7 @@ import type { ProjectionPhaseHandle } from "./terminal-marker";
 import type { ResolvedBar } from "./composed-model";
 import { clipRevealTiming } from "./parity/animation";
 import type { EnterTransition } from "./parity/animation";
-import { runRevealWipe, snapRevealWipe } from "./reveal-wipe";
-import { startBarReveal } from "./composed-reveal";
+import { markRevealed } from "./reveal-root";
 import { DEFAULT_CHART_MARGIN, useChartMargin } from "./use-chart-margin";
 import type { ChartMargin } from "./use-chart-margin";
 import { HOST_INITIAL_WIDTH, adoptHostWidth } from "./chart-host";
@@ -196,54 +195,29 @@ const useComposedRenderCallback = (
   params: Readonly<UseComposedRenderCallbackParams>,
 ): ((context: ChartRendererRenderContext<ChartDatum, Date, number>) => void) => {
   const {
-    animationDuration, adoptWidth, captureRenderContext, chartPhase, containerRef, data, mountedRef,
-    onPhaseChangeRef, pendingBarsRevealRef, phaseRef, prefersReducedMotion, resolvedBars,
-    revealAnimationsRef, revealDeadlineRef, revealDurationMs, revealEasingCss, revealEpoch,
-    revealPostPaintCancelRef, revealedEpochRef, yScaleD3Ref,
+    animationDuration, adoptWidth, captureRenderContext, chartPhase, containerRef,
+    prefersReducedMotion, revealEpoch, revealedEpochRef,
   } = params;
   const handleRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     captureRenderContext(context);
     adoptWidth(context.scene.width);
     const marksRoot = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
     if (!marksRoot) {return;}
-    // Gate reveal on phase "revealing": onRender fires every commit, not just on content change.
-    if (!runRevealWipe({
-      active: chartPhase === "revealing",
-      animationDuration,
-      durationMs: revealDurationMs,
-      easingCss: revealEasingCss,
-      epoch: revealEpoch,
-      epochRef: revealedEpochRef,
-      marks: marksRoot,
-      prefersReducedMotion,
-    })) {return;}
-
-    if (resolvedBars.length === 0) {return;}
-
-    startBarReveal({
-      animationsRef: revealAnimationsRef,
-      baselineRange: yScaleD3Ref.current?.range(),
-      dataLength: data.length,
-      deadlineRef: revealDeadlineRef,
-      easingCss: revealEasingCss,
-      mountedRef,
-      onPhaseChangeRef,
-      pendingRef: pendingBarsRevealRef,
-      phaseRef,
-      postPaintCancelRef: revealPostPaintCancelRef,
-      resolvedBars,
-      revealDurationMs,
-    }, marksRoot);
-  }, [animationDuration, adoptWidth, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, resolvedBars, data.length, captureRenderContext, prefersReducedMotion, yScaleD3Ref, containerRef, mountedRef, onPhaseChangeRef, pendingBarsRevealRef, phaseRef, revealAnimationsRef, revealDeadlineRef, revealPostPaintCancelRef, revealedEpochRef]);
+    // Renderer owns the entrance: stamp and clear still the wipe.
+    // The bar-stagger deadline went with the shell; it was unreachable behind the neutralised gate.
+    revealedEpochRef.current = revealEpoch;
+    markRevealed(marksRoot);
+    marksRoot.style.clipPath = "";
+  }, [adoptWidth, revealEpoch, captureRenderContext, containerRef, revealedEpochRef]);
 
   useEffect(() => {
     if (chartPhase !== "revealing") {return;}
-    snapRevealWipe({
-      active: true,
-      animationDuration,
-      marks: containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks"),
-      prefersReducedMotion,
-    });
+    const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
+    if (!marks) {return;}
+    if (prefersReducedMotion || animationDuration <= 0) {
+      marks.style.clipPath = "";
+      markRevealed(marks);
+    }
   }, [containerRef, chartPhase, animationDuration, prefersReducedMotion]);
 
   return handleRender;

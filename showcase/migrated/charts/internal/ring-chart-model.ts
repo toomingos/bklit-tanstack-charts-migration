@@ -153,51 +153,6 @@ const resetRingTrackTransforms = (params: Readonly<{ container: HTMLElement; mar
   }
 };
 
-const playRingExpandAnimation = (params: Readonly<{ trackGroup: SVGGElement; timing: ClipReveal; expandDelayMs: number; revealAnimsRef: RefObject<Animation[]> }>): void => {
-  // Neutralized: tracks grow through the renderer; clear any stale transform.
-  params.trackGroup.style.transform = "";
-  void params.timing;
-  void params.expandDelayMs;
-  void params.revealAnimsRef;
-};
-
-interface RingExpandInput {
-  readonly container: HTMLElement;
-  readonly currData: readonly Readonly<RingData>[];
-  readonly currMap: ReadonlyMap<number, RingChildConfig>;
-  readonly enterStaggerScale: number;
-  readonly revealAnimsRef: RefObject<Animation[]>;
-  readonly timing: ClipReveal;
-  readonly index: number;
-}
-
-const expandRingTrack = (params: Readonly<RingExpandInput>): void => {
-  const ringData = params.currData.at(params.index);
-  if (!ringData) {return;}
-  const liveMarksGroup = params.container.querySelector<SVGGElement>(MARKS_GROUP_SELECTOR);
-  const trackGroup = liveMarksGroup ? findRingTrackGroup(params.container, liveMarksGroup, params.index) : queryRingTrackGroup(params.container, params.index);
-  const config = params.currMap.get(params.index);
-  if (!config || !trackGroup) {return;}
-  const expandDelayMs = nativeStaggerDelayMs(RING_TRACK_STAGGER_EACH_S * params.enterStaggerScale * MS_PER_SECOND, 0, params.index, "arc");
-  playRingExpandAnimation({ expandDelayMs, revealAnimsRef: params.revealAnimsRef, timing: params.timing, trackGroup });
-};
-
-interface RingRevealRunInput {
-  readonly container: HTMLElement;
-  readonly currData: readonly Readonly<RingData>[];
-  readonly currMap: ReadonlyMap<number, RingChildConfig>;
-  readonly enterStaggerScale: number;
-  readonly revealAnimsRef: RefObject<Animation[]>;
-  readonly timing: ClipReveal;
-  readonly toReveal: readonly number[];
-}
-
-const finishRingReveal = (params: Readonly<RingRevealRunInput>): void => {
-  for (const i of params.toReveal) {
-    expandRingTrack({ container: params.container, currData: params.currData, currMap: params.currMap, enterStaggerScale: params.enterStaggerScale, index: i, revealAnimsRef: params.revealAnimsRef, timing: params.timing });
-  }
-};
-
 interface RingRevealStarterInput {
   readonly container: HTMLElement;
   readonly currData: readonly Readonly<RingData>[];
@@ -216,7 +171,6 @@ const startRingRevealAnimations = (params: Readonly<RingRevealStarterInput>): vo
   armRingRevealDeadline({ enterStaggerScale: params.enterStaggerScale, revealAnimsRef: params.revealAnimsRef, revealDeadlineTimerRef: params.revealDeadlineTimerRef, timing: params.timing, toReveal: params.toReveal });
   resetRingTrackTransforms({ container: params.container, marksGroup: params.marksGroup, toReveal: params.toReveal });
   params.revealPostPaintCancelRef.current = null;
-  finishRingReveal(params);
 };
 
 interface RingRevealBeginInput {

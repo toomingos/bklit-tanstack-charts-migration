@@ -37,11 +37,6 @@ import { hoverGrowForPathSegment, ringOptions } from "./internal/parity/sunburst
 import { SunburstProvider } from "./internal/sunburst-context";
 import type { SunburstContextValue } from "./internal/sunburst-context";
 import { maxRevealDelayMs } from "./internal/sunburst-reveal";
-import {
-  cancelLabelAnimations,
-  resetLabelsOverlayForReplay,
-  startLabelReveal,
-} from "./internal/sunburst-label-reveal";
 import { usePrefersReducedMotion } from "./internal/use-prefers-reduced-motion";
 import { displayNameOf } from "./internal/children-extract";
 import { SunburstCenterOverlay } from "./internal/sunburst-center-overlay";
@@ -70,8 +65,6 @@ const SUNBURST_ZOOM_MS = 750;
 const SUNBURST_ZOOM_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 // Slack added to sweep plus stagger when scheduling the reveal-phase deadline timer.
 const REVEAL_DEADLINE_SLACK_MS = 935;
-// Fraction of the sweep duration added to the max stagger delay before labels reveal.
-const LABELS_REVEAL_DELAY_FRACTION = 0.85;
 // Smallest chart radius in pixels after grow-padding is subtracted.
 const MIN_SUNBURST_RADIUS_PX = 8;
 // Default chart size and hover pop-out, matching bklit's SunburstChart defaults.
@@ -597,10 +590,6 @@ const SunburstChartInner = ({
     return buildSunburstLabelItems(labelSnap, sectorById, hoveredSector?.id ?? null, size);
   }, [labelsCount, labelSnap, sectorById, hoveredSector, size]);
 
-  const maxRevealDelay = useMemo(() => maxRevealDelayMs(sectors, enterStaggerScale), [sectors, enterStaggerScale]);
-
-  const labelsRevealDelayMs = maxRevealDelay + SUNBURST_SWEEP_MS * LABELS_REVEAL_DELAY_FRACTION;
-
   const labelRevealAnimsRef = useRef<Animation[]>([]);
 
   const runLabelsReveal = useCallback(() => {
@@ -608,13 +597,22 @@ const SunburstChartInner = ({
     if (!container) {return null;}
     const svg = container.querySelector<SVGSVGElement>("svg.ts-bkm-sunburst-labels");
     if (!svg) {return null;}
-    cancelLabelAnimations(labelRevealAnimsRef.current);
+    for (const animation of labelRevealAnimsRef.current) {
+      try {
+        animation.cancel();
+      } catch {
+        // Teardown race, already cancelled.
+      }
+    }
     labelRevealAnimsRef.current = [];
-    return startLabelReveal(svg, labelsRevealDelayMs, SUNBURST_SWEEP_MS);
-  }, [labelsRevealDelayMs]);
+    // Renderer paints labels at final opacity: stamp the settled pass and clear inline opacity.
+    svg.dataset.bkmLabelsRevealed = "1";
+    for (const text of svg.querySelectorAll<SVGTextElement>("text.ts-bkm-sunburst-label")) {
+      if (text.isConnected) {text.style.opacity = "";}
+    }
+    return (): void => undefined;
+  }, []);
 
-  // Redundant dep omitted: runLabelsReveal already changes identity exactly
-  // When labelsRevealDelayMs changes (its useCallback dep, above).
   useLayoutEffect((): (() => void) | undefined => {
     if (labelsCount === 0) {return undefined;}
     if (prefersReducedMotion) {return undefined;}
@@ -638,16 +636,27 @@ const SunburstChartInner = ({
 
     const container = containerRef.current;
     if (!container) {return;}
-    const rerunReveal = (): void => {
-      runLabelsRevealRef.current();
-    };
-    resetLabelsOverlayForReplay(container, rerunReveal);
+    // PlayKey replay reset: drop the settled stamp, clear inline opacity, re-run the reveal.
+    const labelsSvg = container.querySelector<SVGSVGElement>("svg.ts-bkm-sunburst-labels");
+    if (labelsSvg) {
+      delete labelsSvg.dataset.bkmLabelsRevealed;
+      for (const text of labelsSvg.querySelectorAll<SVGTextElement>("text.ts-bkm-sunburst-label")) {
+        text.style.opacity = "";
+      }
+    }
+    runLabelsRevealRef.current();
   }, [playKey, playCycleRef]);
 
 
   useEffect(
     () => (): void => {
-      cancelLabelAnimations(labelRevealAnimsRef.current);
+      for (const animation of labelRevealAnimsRef.current) {
+        try {
+          animation.cancel();
+        } catch {
+          // Teardown race, already cancelled.
+        }
+      }
       labelRevealAnimsRef.current = [];
     },
     [],

@@ -2,17 +2,10 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import type { ChartRendererRenderContext } from "@tanstack/charts";
-import { runRevealWipe, snapRevealWipe } from "./reveal-wipe";
-import {
-  cancelPendingMarkerReveal,
-  collectMarkerRevealAnimations,
-  hasVisibleMarkerSeries,
-  scheduleMarkerReveal,
-} from "./parity/animation";
+import { markRevealed } from "./reveal-root";
 import type { MarkerRevealSeriesConfig } from "./parity/animation";
 import type { ChartPhase } from "./chart-phase";
 import type { ChartDatum } from "./types";
-import { MS_PER_SECOND } from "./line-chart-support";
 
 interface LineRevealParams {
   readonly animationDuration: number;
@@ -35,7 +28,7 @@ interface LineReveal {
 }
 
 const useLineReveal = (params: Readonly<LineRevealParams>): LineReveal => {
-  const { animationDuration, animationEasing, captureRenderContext, chartPhase, containerRef, marginLeft, marginRight, markerSeriesConfigs, prefersReducedMotion, revealDurationMs, revealEasingCss, revealEpoch, width } = params;
+  const { animationDuration, captureRenderContext, chartPhase, containerRef, prefersReducedMotion, revealEpoch } = params;
   const markerRevealAnimsRef = useRef<Animation[]>([]);
   const markerRevealCancelRef = useRef<(() => void) | null>(null);
   // Replay key re-opens a reveal window the bkmRevealed latch closed (signature bumps replay).
@@ -43,41 +36,21 @@ const useLineReveal = (params: Readonly<LineRevealParams>): LineReveal => {
   const handleRender = useCallback((context: Readonly<ChartRendererRenderContext<ChartDatum, Date, number>>) => {
     captureRenderContext(context);
     const marksGroup = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
-    // Reveal sweep lives in internal/reveal-wipe.ts; its return gates the marker stagger.
-    const shouldAnimate = runRevealWipe({
-      active: chartPhase === "revealing",
-      animationDuration,
-      durationMs: revealDurationMs,
-      easingCss: revealEasingCss,
-      epoch: revealEpoch,
-      epochRef: revealedEpochRef,
-      marks: marksGroup,
-      prefersReducedMotion,
-    });
-    if (!marksGroup || !shouldAnimate) {return;}
-    if (!hasVisibleMarkerSeries(markerSeriesConfigs)) {return;}
-    cancelPendingMarkerReveal(markerRevealAnimsRef, markerRevealCancelRef);
-    // Marker stagger spans the clip reveal's duration (bklit series-markers.tsx:102).
-    const doMarkerReveal = (): void => {
-      markerRevealAnimsRef.current.push(...collectMarkerRevealAnimations({
-        animationEasing,
-        durationSec: revealDurationMs / MS_PER_SECOND,
-        innerWidth: Math.max(0, width - marginLeft - marginRight),
-        markerSeriesConfigs,
-        marksGroup,
-      }));
-    };
-    scheduleMarkerReveal(doMarkerReveal, markerRevealCancelRef);
-  }, [animationDuration, animationEasing, revealDurationMs, revealEasingCss, revealEpoch, chartPhase, markerSeriesConfigs, width, marginLeft, marginRight, prefersReducedMotion, captureRenderContext, containerRef]);
+    if (!marksGroup) {return;}
+    // Renderer owns the entrance: stamp + clear stills the wipe; markers enter natively.
+    revealedEpochRef.current = revealEpoch;
+    markRevealed(marksGroup);
+    marksGroup.style.clipPath = "";
+  }, [revealEpoch, captureRenderContext, containerRef]);
 
   useEffect(() => {
     if (chartPhase !== "revealing") {return;}
-    snapRevealWipe({
-      active: true,
-      animationDuration,
-      marks: containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks"),
-      prefersReducedMotion,
-    });
+    const marks = containerRef.current?.querySelector<SVGGElement>(".ts-chart__marks");
+    if (!marks) {return;}
+    if (prefersReducedMotion || animationDuration <= 0) {
+      marks.style.clipPath = "";
+      markRevealed(marks);
+    }
   }, [chartPhase, animationDuration, prefersReducedMotion, containerRef]);
   useEffect((): (() => void) => () => {
     for (const pendingAnim of markerRevealAnimsRef.current) {

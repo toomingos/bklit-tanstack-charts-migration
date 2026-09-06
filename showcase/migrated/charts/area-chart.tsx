@@ -19,9 +19,7 @@ import { useAreaChartSetup } from "./internal/use-area-chart-setup";
 import { useAreaSeries } from "./internal/use-area-series";
 import { useAreaYDomain } from "./internal/use-area-y-domain";
 import { useAreaFills } from "./internal/use-area-fills";
-import { findRevealRoot } from "./internal/reveal-root";
-import { runRevealWipe, snapRevealWipe } from "./internal/reveal-wipe";
-import type { RevealWipeEpochRef } from "./internal/reveal-wipe";
+import { findRevealRoot, markRevealed } from "./internal/reveal-root";
 import { useAreaOverlays } from "./internal/use-area-overlays";
 import { buildAreaChartDefinition } from "./internal/area-chart-definition";
 import { resolveColumnWidth } from "./internal/column-width";
@@ -237,34 +235,27 @@ const AreaChart = ({
     chartPhase: revealPhase,
     containerRef: revealContainerRef,
     prefersReducedMotion: revealPrefersReducedMotion,
-    revealDurationMs,
-    revealEasingCss,
     revealEpoch,
   } = setup;
-  const revealedEpochRef = useRef<RevealWipeEpochRef["current"]>(null);
+  const revealedEpochRef = useRef<number | null>(null);
   const revealHandleRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     captureRenderContext(context);
     const marks = resolveWipeMarks(revealContainerRef.current);
-    runRevealWipe({
-      active: revealPhase === "revealing",
-      animationDuration,
-      durationMs: revealDurationMs,
-      easingCss: revealEasingCss,
-      epoch: revealEpoch,
-      epochRef: revealedEpochRef,
-      marks,
-      prefersReducedMotion: revealPrefersReducedMotion,
-    });
-  }, [animationDuration, captureRenderContext, revealPhase, revealContainerRef, revealPrefersReducedMotion, revealDurationMs, revealEasingCss, revealEpoch]);
+    if (!marks) {return;}
+    // Renderer owns the entrance: stamp + clear stills the wipe.
+    revealedEpochRef.current = revealEpoch;
+    markRevealed(marks);
+    marks.style.clipPath = "";
+  }, [captureRenderContext, revealContainerRef, revealEpoch]);
 
   useEffect(() => {
     if (revealPhase !== "revealing") {return;}
-    snapRevealWipe({
-      active: true,
-      animationDuration,
-      marks: resolveWipeMarks(revealContainerRef.current),
-      prefersReducedMotion: revealPrefersReducedMotion,
-    });
+    const marks = resolveWipeMarks(revealContainerRef.current);
+    if (!marks) {return;}
+    if (revealPrefersReducedMotion || animationDuration <= 0) {
+      marks.style.clipPath = "";
+      markRevealed(marks);
+    }
   }, [revealPhase, animationDuration, revealPrefersReducedMotion, revealContainerRef]);
 
   // Host-owned sizing: the host adopts the measured width through this render callback.

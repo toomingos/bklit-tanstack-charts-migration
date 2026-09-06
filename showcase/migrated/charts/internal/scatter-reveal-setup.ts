@@ -5,7 +5,6 @@ import type { FocusInjection } from "./focus-injection";
 import { clipRevealTiming } from "./parity/animation";
 import type { EnterTransition } from "./parity/animation";
 import { DEFAULT_ANIMATION_DURATION_MS, DEFAULT_ANIMATION_EASING } from "./animation-defaults";
-import { handleScatterRender } from "./scatter-reveal";
 import { createScatterFocusStrategy } from "./scatter-focus-strategy";
 import type { ChartDatum, ChartPhase } from "./types";
 import type { ChartRendererRenderContext } from "@tanstack/charts";
@@ -104,17 +103,27 @@ const useScatterTimingModel = ({
   );
   // Mount reveal is native per-element enter fade (same delay formula); handleRender tracks phase only.
   const handleRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
-    handleScatterRender({
-      animationDuration: animationDuration ?? DEFAULT_ANIMATION_DURATION_MS,
-      captureRenderContext,
-      context,
-      deadlineMs: revealDurationMs,
-      revealKey,
-      seenRef: seenRevealKeyRef,
-      setPhase,
-      timerRef: revealDeadlineTimerRef,
-    });
-  }, [animationDuration, captureRenderContext, revealDeadlineTimerRef, revealDurationMs, revealKey, seenRevealKeyRef, setPhase]);
+    // Dots enter through the renderer, so every render settles ready; the key tracks replays.
+    captureRenderContext(context);
+    const marksGroup = context.surface.element.querySelector<SVGGElement>(".ts-chart__marks");
+    if (marksGroup === null) {
+      setPhase("ready");
+      return;
+    }
+    const seen = seenRevealKeyRef.current;
+    const revealKeyChanged =
+      seen === null || seen.signature !== revealKey.signature || seen.duration !== revealKey.duration;
+    if (seen !== null && revealDeadlineTimerRef.current === null && !revealKeyChanged) {
+      setPhase("ready");
+      return;
+    }
+    if (revealDeadlineTimerRef.current !== null) {
+      globalThis.clearTimeout(revealDeadlineTimerRef.current);
+      revealDeadlineTimerRef.current = null;
+    }
+    seenRevealKeyRef.current = { ...revealKey };
+    setPhase("ready");
+  }, [captureRenderContext, revealDeadlineTimerRef, revealKey, seenRevealKeyRef, setPhase]);
   return {
     animationDuration: animationDuration ?? DEFAULT_ANIMATION_DURATION_MS,
     captureRenderContext,
