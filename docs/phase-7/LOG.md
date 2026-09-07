@@ -3305,3 +3305,61 @@ contamination artefact.
 Entry criterion, so this does not become a place to hide inconvenient runs: a dir belongs here only
 when the tree that produced it was known-defective **and was never committed**. A committed tree's
 readings stay in history whatever they say.
+
+## D639 — `out-of-range` was measuring history depth, not chart health
+
+`pulse-var` (D635) asked whether mid-sweep `bardepth` cells need a variance band
+instead of a mode. Wrong frame. `judgeCell` already has a band — `in-range` is
+`px >= hist.min && px <= hist.max`. The defect is that `[min,max]` over k prior
+readings is treated as a range at every k, including k=1.
+
+For k draws from any continuous distribution the chance the next one sets a new
+extreme is 2/(k+1): 67% at k=2, 20% at k=9. So `out-of-range` on a two-sample
+history is not a signal, it is the *likely* outcome. Replayed chronologically
+over the local history with `qa/gate/history-depth-replay.mjs` (562 cells, 427
+with more than one distinct value):
+
+| prior readings k | trials | outside [min,max] | 2/(k+1) |
+|---|---|---|---|
+| 2 | 429 | **43.1%** | 66.7% |
+| 4 | 375 | 26.4% | 40.0% |
+| 9 | 285 | 11.6% | 20.0% |
+| 19 | 230 | 10.0% | 10.0% |
+
+Replaying the rule over every recorded gate run says how much of the reported
+signal was this artefact:
+
+| run | reported out-of-range | of those, n<9 |
+|---|---|---|
+| `7.5 final gate f9580df` | 39 | **39** |
+| `7.5 final gate 3e8092d` | 36 | **36** |
+| `probes vector + pulse port` | 16 | 0 |
+| `7.6 fixed instrument` | 3 | 0 |
+| `gate-4` | 3 | 1 |
+
+Seventy-five rows across the two "final gate" runs, every one of them n=1 or n=2,
+none of them evidence. The runs against real history produce out-of-range rows
+that all survive the rule — `arealoading/1000/settled` 24836 against [227,552]
+n=17 is a genuine finding and stays one. And the G4 row that cost a review cycle,
+`bardepth/100/pulse-phase-0.5` 1896 against a "[1865,1887]" built from n=2, was a
+cell whose prior odds of alarming were ~2:1 on.
+
+Added `thin-history` as a distinct status and `summary.thinHistory` as a distinct
+counter. `THIN_HISTORY_MIN = 9` comes from the 2/(k+1) bound at 20%, not from the
+table above; the table corroborates it (11.6%) rather than defining it, because a
+threshold fitted to this sample would have to move every time the sample grows.
+
+**Relabelled, not hidden.** A thin history can still contain an obvious move:
+D623's `pulse-phase-0.75` read 2175 against 1590 x3 at n=3, and under this rule
+that row is `thin-history`. So thin rows keep their place in `SUMMARY.md`'s
+changed-status table — which now carries a history-depth column — and only leave
+the issue list. What the change removes is the claim that such a row is an
+anomaly; what it must never remove is the row. (D623 was in fact caught by a
+prediction table, not by this status, which is its own comment on how much work
+the status was doing.)
+
+Effect on **pulse-var**: the item as filed is answered. `0.25` and `0.75` are
+clean after D638; `0.5` still reads out-of-range at n=11 and n=12, and that
+survives as the honest residue — a cell with ten distinct values in ten runs has
+no range at any depth. That is a real property of an antialiased mid-sweep edge,
+now correctly distinguished from the thin-history noise it was buried in.

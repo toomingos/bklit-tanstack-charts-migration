@@ -116,12 +116,25 @@ function summarizeHist(values) {
   };
 }
 
+// D639: a reading outside [min,max] of k prior readings is only news when k is
+// large enough for [min,max] to mean something. For k independent draws the
+// chance the next one sets a new extreme is 2/(k+1) -- 67% at k=2, 20% at k=9 --
+// so "out-of-range" against a two-sample history is not a signal, it is the
+// expected outcome. Replayed chronologically over the local history (562 cells,
+// 427 of them with more than one distinct value): 43.1% of readings landed
+// outside a 2-sample range, 26.4% outside a 4-sample one, 11.6% at k=9. G4 spent
+// a review cycle on bardepth/100/pulse-phase-0.5 reading 1896 against a
+// "[1865,1887]" built from n=2, where the prior odds of that alarm were ~2:1 on.
+// Threshold set from the 2/(k+1) bound at 20%, not from this sample.
+export const THIN_HISTORY_MIN = 9;
+
 export function judgeCell(px, hist) {
   if (!hist) return { status: "no-history", newValue: true };
   const seen = hist.seen.has(px);
   if (px === hist.mode) return { status: "mode", newValue: false };
   if (seen) return { status: "seen", newValue: false };
   if (px >= hist.min && px <= hist.max) return { status: "in-range", newValue: true };
+  if (hist.count < THIN_HISTORY_MIN) return { status: "thin-history", newValue: true };
   return { status: "out-of-range", newValue: true };
 }
 
@@ -231,6 +244,11 @@ export function buildMatrix(reports, { before, label } = {}) {
     ruled: rows.filter((r) => r.ruled).length,
     harnessFail: rows.filter((r) => r.harness === "FAIL" && !r.informational).length,
     outOfRange: gated.filter((r) => r.status === "out-of-range").length,
+    // D639: outside [min,max] but on fewer than THIN_HISTORY_MIN prior readings.
+    // Counted apart from outOfRange because the two carry different evidence:
+    // one is a cell departing an established range, the other is a range that
+    // does not exist yet. Neither gates -- GATE_PX does.
+    thinHistory: gated.filter((r) => r.status === "thin-history").length,
     newValues: gated.filter((r) => r.newValue).length,
     noHistory: gated.filter((r) => r.status === "no-history").length,
     tooltipFailures: rows.filter((r) => r.tooltipFailure).length,
@@ -247,9 +265,9 @@ export function matrixToMd(matrix) {
     `# QA pixel-gate matrix${s.label ? ` — ${s.label}` : ""}`,
     "",
     `Generated ${matrix.generatedAt}. Gate = ${matrix.gatePx} px of ${matrix.totalPx} (0.5%). History = qa/results/<chart>/*/report.json` +
-      ` (bklit vs migrated${matrix.historyCutoff ? `, before ${matrix.historyCutoff}` : ""}); status per D402/D403: mode / seen / in-range (new value inside [min,max]) / out-of-range / no-history.`,
+      ` (bklit vs migrated${matrix.historyCutoff ? `, before ${matrix.historyCutoff}` : ""}); status per D402/D403/D639: mode / seen / in-range (new value inside [min,max]) / thin-history (outside, but n<${THIN_HISTORY_MIN} prior readings, where 2/(n+1) makes a new extreme likely anyway) / out-of-range / no-history.`,
     "",
-    `**${s.runs} runs, ${s.cells} cells (${s.gatedCells} gated): gate FAIL ${s.gateFail}${s.ruled ? `, ruled ${s.ruled}` : ""}, harness FAIL ${s.harnessFail}, out-of-range ${s.outOfRange}, new values ${s.newValues}, no-history ${s.noHistory}, tooltip failures ${s.tooltipFailures}, errors ${s.errors}, runs with non-zero exit ${s.runsNonZeroExit}.**`,
+    `**${s.runs} runs, ${s.cells} cells (${s.gatedCells} gated): gate FAIL ${s.gateFail}${s.ruled ? `, ruled ${s.ruled}` : ""}, harness FAIL ${s.harnessFail}, out-of-range ${s.outOfRange}, thin-history ${s.thinHistory ?? 0}, new values ${s.newValues}, no-history ${s.noHistory}, tooltip failures ${s.tooltipFailures}, errors ${s.errors}, runs with non-zero exit ${s.runsNonZeroExit}.**`,
     "",
   ];
   const rows = matrix.rows.map((r) =>

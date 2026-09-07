@@ -138,7 +138,7 @@ export function summaryMd({ runDir, label, art, issues, stages = [] }) {
   const ruled = m ? m.rows.filter((r) => r.ruled).length : 0;
   const gateFail = m ? m.rows.filter((r) => r.px !== undefined && !r.informational && r.gate === "FAIL" && !r.ruled).length : 0;
   const out = [`# Gate summary — ${label ?? path.basename(runDir)}`, "", `Run dir: \`${relPath(runDir)}\`. Generated ${new Date().toISOString()}.`, "", "## Headline", ""];
-  out.push(`- QA: ${orFailed("qa", m ? `${m.summary.runs} runs / ${m.summary.cells} cells; gate FAIL ${gateFail}${ruled ? `, ruled ${ruled}` : ""}, harness FAIL ${m.summary.harnessFail}, out-of-range ${m.summary.outOfRange}, new values ${m.summary.newValues}, tooltip failures ${m.summary.tooltipFailures}, errors ${m.summary.errors}${m.run ? `; ${m.run.workers} workers, wall-clock ${fmtMs(m.run.wallClockMs)}` : ""} (gate ${GATE_PX} px)` : null)}`);
+  out.push(`- QA: ${orFailed("qa", m ? `${m.summary.runs} runs / ${m.summary.cells} cells; gate FAIL ${gateFail}${ruled ? `, ruled ${ruled}` : ""}, harness FAIL ${m.summary.harnessFail}, out-of-range ${m.summary.outOfRange}, thin-history ${m.summary.thinHistory ?? 0}, new values ${m.summary.newValues}, tooltip failures ${m.summary.tooltipFailures}, errors ${m.summary.errors}${m.run ? `; ${m.run.workers} workers, wall-clock ${fmtMs(m.run.wallClockMs)}` : ""} (gate ${GATE_PX} px)` : null)}`);
   out.push(`- Bench: ${orFailed("bench", b ? `${b.summary.cells} cells (${b.summary.skipped} skipped); ${b.summary.flags} flagged (±${b.flagPct}% D273), console-error cells ${b.summary.consoleErrors}, tooltip-missing ${b.summary.tooltipMissing}, M1b-from-fallback cells ${b.summary.m1bFallbackCells ?? 0}, failed invocations ${b.summary.failedInvocations}, wall-clock ${fmtMs(b.summary.wallClockMs)}` : null)}`);
   out.push(`- Bundle: ${orFailed("bundle", u ? `${u.summary.pinned} pinned, FAIL ${u.summary.fail}, MISSING ${u.summary.missing}, measure-failed ${u.summary.measureFailed}, Σgzip ${u.summary.sumGzip} vs Σpin ${u.summary.sumPin} (${u.summary.sumDeltaPct > 0 ? "+" : ""}${u.summary.sumDeltaPct}%)` : null)}`);
   out.push(`- Checks: ${orFailed("checks", c ? c.checks.map((x) => `${x.name}=${x.skipped ? "skipped" : x.exit === 0 ? "ok" : "FAIL(" + x.exit + ")"}`).join(", ") : null)}`);
@@ -151,8 +151,12 @@ export function summaryMd({ runDir, label, art, issues, stages = [] }) {
   out.push(mdTable(["id", "category", "chart(s)", "cell(s) / metric", "evidence", "hypothesis"], issues.map((i) => [`\`${i.id}\``, i.category, i.charts.join(", "), esc(i.cells.join("<br>")), i.evidence.map((e) => `\`${e}\``).join("<br>"), i.hypothesis || ""])));
   if (m) {
     out.push("", "## QA cells that changed status vs history (not failing)", "");
-    const moved = m.rows.filter((r) => r.gate !== "FAIL" && r.gate !== "ERROR" && r.status === "out-of-range");
-    out.push(moved.length ? mdTable(["chart", "n", "cell", "px", "hist range", "mode"], moved.map((r) => [r.chart, r.n, r.cell, r.px, r.histRange ? `[${r.histRange.join(",")}]` : "—", r.histMode ?? "—"])) : "none");
+    // D639: thin-history rows are listed HERE and dropped from the issue list above.
+    // They are relabelled, never hidden -- a thin history can still contain an
+    // obvious move (D623's pulse-phase-0.75 read 2175 against 1590 x3, n=3), and
+    // the depth column is what lets a reader tell that from a first-sample wobble.
+    const moved = m.rows.filter((r) => r.gate !== "FAIL" && r.gate !== "ERROR" && (r.status === "out-of-range" || r.status === "thin-history"));
+    out.push(moved.length ? mdTable(["chart", "n", "cell", "px", "hist range", "hist n", "mode", "status"], moved.map((r) => [r.chart, r.n, r.cell, r.px, r.histRange ? `[${r.histRange.join(",")}]` : "—", r.histCount ?? 0, r.histMode ?? "—", r.status])) : "none");
   }
   return out.join("\n") + "\n";
 }
