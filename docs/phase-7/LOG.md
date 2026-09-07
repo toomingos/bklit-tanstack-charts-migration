@@ -3437,3 +3437,129 @@ guard, and is not built: it would have to reach from `qa/gate/probes/` into
 is a real coupling to introduce for a hazard the budget split already defuses.
 Recorded here so the next person meeting a thin margin finds the audit rather
 than repeating it.
+
+### D640 verified — the arm times straddle the old threshold exactly
+
+`pnpm gate:probes -- --only hover-lag --repeats 5`, run
+`2026-09-07T23-23-41-123Z`, quiet machine, **errors 0**. That is the exact
+invocation that aborted before the fix.
+
+The instrument now says why. `armedAtMs` across all 26 rows x 5 repeats runs
+**3300–8900 ms** of virtual time spent before `window.__benchSettled` existed.
+Under the old rule pie/1000 needed `t_arm + 81370 <= 90000`, i.e. `t_arm <= 8630`:
+
+| observation | value |
+|---|---|
+| pie/1000 arm times, this run | 4600–8200 ms |
+| threshold the old rule imposed on pie's arm | 8630 ms |
+| slowest arm anywhere in the sweep | 8900 ms (liveline/100 bklit) |
+
+The distribution straddles the threshold. That is the flake, measured: at
+`--repeats 3` the arms sit low and pie clears 8630; at `--repeats 5` the
+contention pushes them into the 8000s and the scene is aborted for loading
+slowly. Nothing about the chart changed between the two.
+
+The number was previously unobservable — no artefact carried it, which is why
+three sweeps at `--repeats 3` could only establish "did not reproduce" and not
+"here is the margin". Same lesson as D636 and now recorded in the same shape.
+
+Two other readings from the same run, neither caused by this change:
+
+- **`bar/100` migrated `lastChangeMs` = `[1102,1095,1100,1105,1089]`.** A ±8 ms
+  cluster on 1100, the shared enter/reveal constant. The source trace refuted the
+  proposed *mechanism* (hover churns mark object identity, but the reconciler
+  diffs `data-ts-key` strings and no builder puts hover state in a key); it did
+  not touch the *phenomenon*, which this run makes tighter, not looser.
+- **`liveline/100` bklit newly flags** on `[118,561,1267,1056,134]`. The flag is
+  `some(r > 700)`, so more repeats mean more chances to trip it — five samples of
+  a scene that varies 10x, on the **bklit** side. A reference-implementation
+  jitter reading, not a migrated parity finding, and not evidence about anything
+  the phase claims.
+
+## D641 — the bar/100 hover tail is a group's enter fade, and the mark that owns the group cannot reach it
+
+D636 left this cell as a phenomenon without a mechanism: migrated `bar/100`
+mutates the DOM for ~1100 ms after a pointer move, against declared 150 ms
+transitions, and `quiesceIters [1,1,1]` had already refuted "reveal tail leaking
+into the hover window". D640's sweep tightened the number to
+`[1102,1095,1100,1105,1089]` — a ±8 ms cluster on 1100, which is the shared
+enter/reveal constant three times over (`internal/animation-defaults.ts:3`,
+`internal/design-tokens.ts:4`, `internal/parity/animation.ts:23`) and also the
+package's own `defaultDuration = 1100` (`motion.js:22`).
+
+**Attribution, not inference.** `qa/gate/probes/bar-hover-mutations.mjs` records
+every attribute mutation under `documentElement`, stamps it with virtual ms since
+the pointer moved, and groups by owning `data-ts-key`. The whole tail is four
+streams:
+
+| owner | attribute | n | last |
+|---|---|---|---|
+| `seriesA--hover-dot` `<g>` | `opacity` | 32 | +1088 ms |
+| `seriesB--hover-dot` `<g>` | `opacity` | 32 | +1088 ms |
+| (unkeyed) `<svg>` | `data-ts-motion-state` | 39 | +1088 ms |
+| (unkeyed) `<svg>` | `data-ts-motion-progress` | 104 | +1088 ms |
+
+2037 mutations total. The two `<svg>` streams are the motion driver's own
+bookkeeping; the payload is two group `opacity` interpolations, 32 samples each
+over 1088 ms. Not WAAPI — `document.getAnimations()` is empty throughout, so this
+is rAF attribute interpolation.
+
+**The identity-churn hypothesis is refuted by measurement, not only by source.**
+`qa/gate/probes/bar-hover-motion-role.mjs` watched `data-ts-key` and
+`data-ts-motion-role` across the same window: **0** `data-ts-key` mutations, **0**
+keys lost, 225 → 236 keyed elements. No existing bar is reclassified as entering.
+The 11 gained keys are all new focus furniture — `seriesA--hover-dot`,
+`focus:seriesA--hover-dot:selection:0:node:0:0`, the seriesB pair,
+`focus-guide-layer:over`, `crosshair-2` and its two children. bklit has **0**
+`data-ts-key` elements at all and **0** motion-role events; it does not use the
+TanStack renderer, so it has nothing to fade.
+
+So the mechanism is exactly what the key list says: hover *creates* the hover-dot
+groups, a created node enters, and an entering group gets the package default —
+1100 ms of `opacity`. Nothing replays; something new arrives slowly.
+
+**The fix the API appears to offer does not work.** `buildHoverDotMotion`
+(`internal/bar-chart-hover-dots.ts`) already declares a spring on the mark that
+owns these groups. I changed it to the in-repo phase-aware idiom
+(`bar-chart-overlays.ts:314`), `ctx.phase === "enter" ? false : {spring}`:
+typechecks clean, tail **unchanged at 1088 ms**. A mark's `motion` governs the
+mark's channels — here x and y — and does not reach the group node the same
+mark's builder emits. Reverted rather than left as a no-op carrying a comment
+claiming a fix.
+
+**And no other surface exposes it.** In `@tanstack/charts@0.16.0`'s `types.d.ts`,
+`motion?:` appears on axis tick/label options, `ChartMarkMotionOptions` (:469),
+`ChartDefinitionOptions` (:512), `ChartMark` (:637), `SceneFocusGuide` (:811) and
+`ChartTooltipOptions` (:952). `SceneNodeBase` (:822) and `SceneGroup` (:836) —
+the types of the node actually animating — have **no** motion field, and
+`ChartFocusFilter` (:1122) carries only `match` and `retarget`. The dot group is
+not a focus *guide*, so :811 does not apply either. The one lever that does reach
+it is chart-wide `motion`, which is also what animates the bar reveal: using it
+here would trade a 1100 ms fade on two dots for losing the bar grow.
+
+**This is a parity difference, not only a probe artefact.** bklit springs its
+hover dots in at the tooltip spring; migrated fades the containing group over
+1.1 s. The QA pixel gate does not see it — it shoots settled frames — which is
+why a probe found it and the gate did not.
+
+**Disposition (principle 2).** No in-app workaround is landed. One is imaginable
+— keep the dot groups mounted always and drive visibility through channels so
+nothing ever enters — but that is a second implementation of the package's focus
+mounting, and it would be built on speculation about a renderer whose only
+observed behaviour here is the one being worked around. Filed upstream instead;
+tracked below.
+
+Both probes are committed as the reproducible measurement, on the
+`history-depth-replay.mjs` precedent (D639): each carries a header saying what it
+answers and that it serves `bench/app/dist`, so a rebuild is mandatory after
+touching `showcase/migrated`. That warning is not decorative — I launched the
+post-fix measurement against a stale bundle, recognised it before reading a
+number, killed the run and discarded its output unread. It is D636's error, and
+it is one command away at all times.
+
+**Filed as I11, [TanStack/charts#136](https://github.com/TanStack/charts/issues/136)** —
+"A mark's motion does not reach the `SceneGroup` its builder emits, and
+`SceneGroup` has no motion of its own". It carries the mutation table, the
+zero-key-churn control, both refuted fix attempts and the `types.d.ts` line
+numbers for every `motion?:` surface, and proposes the smaller of the two fixes
+(`motion` on `SceneNodeBase`) as the one that changes no existing behaviour.
