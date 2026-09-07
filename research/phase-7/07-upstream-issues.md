@@ -1,6 +1,6 @@
 # Phase 7 — Upstream issues to file on TanStack/charts
 
-Date: 2026-09-04. Status: **filed 2026-09-05 (V0.5)** — I1 #126, I2 #127, I4 #128, I5 #129, I6 #130, F-260 evidence issue #131; I3 deferred (after V2.5 + V3.5). Drafted 2026-09-04. Revised the same day after the lead pass against `v0.16.0` (`repos/tanstack-charts`, 258ed39) and `API-FRICTION.md`: I4–I6 added, the pattern decision reversed, I2 demoted. Filing is V0.5 in `08`.
+Date: 2026-09-04. Status: **filed 2026-09-05 (V0.5)** — I1 #126, I2 #127, I4 #128, I5 #129, I6 #130, F-260 evidence issue #131; **I7 #133 and I8 #134 filed 2026-09-07** after `main` was pushed (POST-PHASE-7 items 2 and 3); I3 deferred (after V2.5 + V3.5). Drafted 2026-09-04. Revised the same day after the lead pass against `v0.16.0` (`repos/tanstack-charts`, 258ed39) and `API-FRICTION.md`: I4–I6 added, the pattern decision reversed, I2 demoted. Filing is V0.5 in `08`.
 
 Search basis: all 19 issues and 106 PRs on `TanStack/charts` (open + closed), grepped title+body per topic. Discussions are disabled, so issues are the only tracker. There is no issue template and `CONTRIBUTING.md` has no issue-filing section. The accepted house style (from #93, #94, #95, #117, #119, all implemented within days): one paragraph on what the option surface exposes today, the concrete missing capability, the workaround it forces, then a single "Would it be possible to expose…" ask. Bug reports add a version line and a minimal runnable repro. Separate issues land better than an omnibus.
 
@@ -16,8 +16,8 @@ Ruling (user, 2026-09-04): file issues only, no PRs, and only for features other
 | I4 ([#128](https://github.com/TanStack/charts/issues/128)) | `<pattern>` resources in `ChartSpec` (hatch, dots, animated sweep) | **F-259** (open, `API-FRICTION.md:7784`): "Chart resources cannot declare patterns"; it rejects an app-injected pattern inside the chart svg as a workaround. No issue yet. | **File**, citing F-259 with the bklit use cases | now |
 | I5 ([#129](https://github.com/TanStack/charts/issues/129)) | `radialGradient` in `ChartSpec.gradients` | none. `gradients` is linear only (`objectBoundingBox` %, `types.d.ts:400-406`). | **File** | now |
 | I6 ([#130](https://github.com/TanStack/charts/issues/130)) | `@tanstack/react-charts` peer `react` `^19.0.0` although only React 18 hooks are used | none | **File** | now |
-| I7 | Height-aware resize: `createChartScene` derives `height` from `width / aspectRatio` (`renderer.js:720`) and its ResizeObserver re-renders only when the width changes (`:187-191`); a container sized by CSS height (grid rows, fixed-height cards, a brush track below the plot) never updates the scene | none found (issues grepped for "height", "ResizeObserver", "aspect") | **File** after the phase-7 host lands (evidence: D541, brush/1000 and barloading/100 cells) | later |
-| I8 | Focus-aware axis tick-label opacity (`ChartAxisTickLabelContext` has no focus member, `types.d.ts:193-202`) and mark states for point-less area marks (`mark-state.js:123,131,158`; `areaFill` emits `points: []`) | none found (issues grepped for "tick label", "opacity", "states", "area") | **File** after phase 7, with the D587 headless repro | later |
+| I7 ([#133](https://github.com/TanStack/charts/issues/133)) | Height-aware resize: `createChartScene` derives `height` from `width / aspectRatio` (`renderer.js:720`) and its ResizeObserver re-renders only when the width changes (`:187-191`); a container sized by CSS height (grid rows, fixed-height cards, a brush track below the plot) never updates the scene | none found (issues grepped for "height", "ResizeObserver", "aspect") | **Filed 2026-09-07** (evidence: D541, brush/1000 and barloading/100 cells) | done |
+| I8 ([#134](https://github.com/TanStack/charts/issues/134)) | Focus-aware axis tick-label opacity (`ChartAxisTickLabelContext` has no focus member, `types.d.ts:193-202`) and mark states for point-less area marks (`mark-state.js:123,131,158`; `areaFill` emits `points: []`) | none found (issues grepped for "tick label", "opacity", "states", "area") | **Filed 2026-09-07**, with the D587 headless repro | done |
 | — ([#131](https://github.com/TanStack/charts/issues/131)) | F-260 static guide stroke treatment (dashed grid) | **F-260** (open, `API-FRICTION.md:7800`). | Do not open a new issue; **add an evidence comment** on the friction entry's tracking issue if one exists, else a short issue referencing F-260, with the bklit default `strokeDasharray="4,4"` grid | now |
 | — | F-261 per-corner bar radius | **F-261** (open). | Drop. bklit uses uniform `rx`; not our gap. | — |
 | — | Funnel mark | #81 (merged) added catalog case `125-sales-funnel` from `areaX` + `text`. | Do not file. Composition of existing marks; we migrate to it (V3.1). | — |
@@ -144,8 +144,8 @@ Ruling (user, 2026-09-04): file issues only, no PRs, and only for features other
 > participate in `states` at all. Could point-less marks be matchable by series key, so
 > "dim every other series' fill while one is focused" is expressible without leaving the spec?
 
-**Status:** candidate, unfiled — same gate as I7. File after phase 7 lands, with the D587
-headless repro and the QA hover cells as evidence.
+**Status:** **filed 2026-09-07 as [#134](https://github.com/TanStack/charts/issues/134)**, after
+I7 and after `main` reached `origin` at `e9286ed`, so both repros cite public commits.
 
 ## F-260 — Evidence comment (dashed grid and axis strokes)
 
@@ -154,6 +154,13 @@ Not a new issue. F-260 "Static guides cannot express stroke treatment" is open i
 ## Bookkeeping
 
 - Filed 2026-09-05 from `toomingos`, all against 0.16.0, no duplicates found (issue list re-checked: newest prior issue #119, 2026-08-27; no GitHub tracker for F-260 existed, so #131 is a short issue referencing it). Numbers: I1 #126, I2 #127, I4 #128, I5 #129, I6 #130, F-260 #131. LOG D511.
+
+- Filed 2026-09-07 from `toomingos`, both against 0.16.0, both after `main` was pushed
+  (`7d60a7f..e9286ed`) so the repros cite public commits. Numbers: I7 #133
+  ("Renderer `ResizeObserver` ignores height changes, so a CSS-sized container never resizes the
+  scene"), I8 #134 ("Focus is unreachable from tick labels, and point-less marks cannot match
+  `states`"). Citations re-verified against the 0.16.0 pin before filing; npm `latest` is still
+  0.16.0, so no ask had shipped underneath the draft (D560). POST-PHASE-7 items 2 and 3.
 
 - File from the user's GitHub account; record issue numbers here and in the Phase 7 LOG entry.
 - After filing, link I1 from the `withStates` wrapper, I2 from the legend hover hook, I4 and I5 from `internal/resource-host.tsx` (the R10 seam comment), I6 from `showcase/migrated/package.json`, and F-260 from the grid style constants, so the interim code names its upstream ask.
