@@ -2557,3 +2557,73 @@ before it.
 What a viewer actually sees when a wave sweeps through the wrong silhouette was
 not determined: that needs a live DOM read, and the audit correctly declined to
 infer it.
+
+## D624 — there is no third inversion, and that is the finding I9 should have been making
+
+D612 and D619 each found the same shape: a heavy import named unconditionally by
+our code and used conditionally, so every consumer paid for a feature few
+mounted. Two of those moved ≤1.10 from 2/43 to 18/43 and the median to 1.1157.
+The obvious next move was to look for a third. There isn't one.
+
+The three worst survivors, from `bench/results/bundle-sizes.json` (read, not
+regenerated):
+
+| scenario | bklit gzip | migrated gzip | ratio | Δ |
+|---|---|---|---|---|
+| `sunburst` | 87,399 | 114,546 | 1.3106 | +27,147 |
+| `sunchrome` | 88,013 | 115,299 | 1.3100 | +27,286 |
+| `brush` | 151,525 | 181,256 | 1.1962 | +29,731 |
+| `pie` (cheap reference) | 97,053 | 105,900 | 1.0912 | +8,847 |
+
+**`sunchrome` is `sunburst` plus chrome, and the chrome is nearly free.** Same
+chart module, same mark, same package graph; the only marker that separates the
+emitted bytes is `Drill-down path`. The measured difference is **+753 B gzip**,
+about 3% of the +27.3k delta. Two scenarios, one cost — the near-identical
+ratios are arithmetic, not coincidence.
+
+**What sunburst actually pays for is the package's own mark.**
+`use-sunburst-definition.ts:5` names `@tanstack/charts/hierarchy/sunburst`, and
+that module names `partition` from `d3-hierarchy` and `pointRadial` from
+`d3-shape` at `hierarchy-sunburst.js:1-2`. A consumer who wants the native
+sunburst layout cannot decline its layout library. That is category (b): the
+package's, not ours.
+
+The rest is ours but not arrangeable. `sunburst-rows`, `sunburst-colors`, the
+label/center/hint overlays, `use-sunburst-zoom`, `sunburst-reveal` — every one
+of them is read on the rendered path, because the scenarios mount the legacy
+features they implement. Deleting them does not rearrange a cost, it breaks
+parity. **No unconditional-but-gated import of the D612/D619 shape survives
+anywhere in the traced graph.** The one genuinely rearrangeable item is the
+scenario reaching into `@bklitui/ui/charts` for `buildArcs`
+(`migrated-sunburst.tsx:12-15`) when `sunburst-rows.ts:55-106` already has the
+logic; that is a pure-function module behind a type-only import, worth
+approximately nothing.
+
+**`brush` is irreducible from the consumer side, by construction.** The chain is
+deliberate at every link: the scenario names `<ChartBrush>`, which mounts
+`BrushLayer` (the D612 inversion), which names `brushX` from
+`@tanstack/charts/interaction/brush`, which names `d3-brush` and `d3-selection`.
+D612 already moved 41 scenarios off that graph for +446 B of carrier. The brush
+scenario is the one that is supposed to be on it. And bklit pays the same
+feature weight — its own brush baseline is ~1.56× its own pie baseline.
+
+**So the honest conclusion is negative, and it is publishable.** After two
+inversions, what remains over 1.10 is mostly the package's per-chart native
+marks carrying their d3 subgraphs into even minimal scenarios, on top of the
+shared host core that D612 and D619 already isolated. I9's original argument —
+the d3 tail — was largely our own code arranged badly, which is precisely what
+we proved by fixing it twice (D613). The rewrite cannot re-run that argument. It
+has one claim left, and it is narrower and better evidenced than the one it
+replaces.
+
+**Limit of this evidence, stated rather than papered over.** The +27.2k sunburst
+delta is attributed by *source edge*, not by *bytes*. Minification erases the
+`partition` and `stratify` identifiers, so no surviving marker isolates
+`d3-hierarchy`'s contribution from our overlays', and the 104-combo sweep was
+not run. I can say which edges exist and that the package names the layout
+library; I cannot say the package is 60% or 90% of that number, and I am not
+going to imply otherwise in an upstream issue. One further item also went
+unmeasured: whether the root barrel's `createChartScene` retains more than the
+`scene` subpath `pie-chart.tsx:8` uses. Tree-shaking looked clean — no brush or
+time markers leaked — but the differential build was not run, so it is not
+claimed.
