@@ -156,11 +156,14 @@ export function buildMatrix(reports, { before, label } = {}) {
       const j = judgeCell(px, h);
       const b = board.get(key);
       const informational = !!c.informational;
-      // A13: a non-zero harness exit means the capture crashed partway, so the PNGs are
-      // whatever it managed before dying — no cell from that run earns a pixel verdict.
-      // ERROR (never INFO/PASS/FAIL, never ruled) keeps the partial output loud.
-      const crashed = r.exit !== null && r.exit !== undefined && r.exit !== 0;
-      const gate = crashed ? "ERROR" : informational ? "INFO" : px <= GATE_PX ? "PASS" : "FAIL";
+      // A17: report.json is written only after every comparison completes (qa/screenshot.mjs:1244),
+      // so a crashed capture leaves no report and is handled by the "(no report)" row above.
+      // A non-zero exit is the harness's normal signal for "a cell exceeded the pixel gate"
+      // (screenshot.mjs:1513, same 4800 px threshold as GATE_PX), so it carries no crash
+      // information and must never override a per-cell verdict. ERROR now means exactly:
+      // no report at all, or a comparison carrying no measurement of its own.
+      const unmeasured = typeof px !== "number" || !Number.isFinite(px);
+      const gate = unmeasured ? "ERROR" : informational ? "INFO" : px <= GATE_PX ? "PASS" : "FAIL";
       const outDir = r.outDir ?? rep.outDir ?? null;
       const shot = (suffix) => (outDir ? relPath(path.join(outDir, `${c.name}${suffix}.png`)) : null);
       rows.push({
@@ -191,7 +194,7 @@ export function buildMatrix(reports, { before, label } = {}) {
         log: r.log ? relPath(r.log) : null,
         durationMs: r.durationMs ?? null,
         exit: r.exit ?? null,
-        error: crashed ? (r.error ?? `harness exit ${r.exit}`) : undefined,
+        error: unmeasured ? (r.error ?? `no diffPixels for ${c.name}`) : undefined,
       });
     }
     for (const tf of rep.tooltipFailures ?? []) {
@@ -299,7 +302,8 @@ export function reportsFromResultsWindow(roster, start, end) {
       if (rep.n !== j.n || (rep.state ?? "ready") !== (j.state ?? "ready")) continue;
       const ts = normTs(rep.timestamp ?? run);
       if (ts < normTs(start) || ts >= normTs(end)) continue;
-      best = { chart: j.chart, n: j.n, outDir: path.join(cdir, run), report: rep, exit: rep.overallPass ? 0 : 1 };
+      // A17: a rebuilt matrix must not synthesise a crash signal from a pixel verdict.
+      best = { chart: j.chart, n: j.n, outDir: path.join(cdir, run), report: rep, exit: 0 };
       break;
     }
     return best ?? { chart: j.chart, n: j.n, report: null, error: `no report in window ${start}..${end}` };

@@ -1793,3 +1793,52 @@ has never had a ruling. Ruling it now would be the exact error A11 was raised ag
 failing, and it is a real defect to find.
 
 Recorded against Gate 3 (`docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z`, exit 0, 51m40s).
+
+### D608 — A17: my own A13 fix made the gate structurally incapable of failing
+
+A13, landed in the D604 instrument wave (`23584f4`), read a non-zero harness exit as "the capture
+crashed partway, so no cell from that run earns a pixel verdict" and stamped every cell of such a
+run `ERROR`. The premise is false. `qa/screenshot.mjs:1513` exits `anyFail ? 1 : 0` where `anyFail`
+comes from `report.overallPass` (`:1506`, computed `:1225-1226`) and `pass: diffRatio <= gate`
+(`:214`) — gate 0.005 x 960,000 = **4,800 px, the same number as `GATE_PX`**. Exit 1 is the
+harness's *normal* signal for a pixel-gate failure, not a crash signal.
+
+So the rule fired on exactly the runs it should have left alone. Worse, `lib.mjs:518` skips any row
+that is not `FAIL`, so an `ERROR` cell can never be ruled either. `summary.gateFail` and
+`summary.ruled` became **identically zero by construction**: no pixel comparison could produce a
+finding, and no ruling could fire to excuse one.
+
+Measured on Gate 3's own reports, rebuilt read-only both ways:
+
+| | gateFail | ruled | errors |
+|---|---|---|---|
+| pre-A13 | 1 | 3 | 0 |
+| post-A13 (shipped) | 0 | 0 | 12 |
+| post-A17 (this) | 1 | 3 | 0 |
+
+The restored table is the correct one: `barloading/100/settled` 21,598 FAIL, plus
+`radar/6/hover-50` 6,450 (D535), `sankey/33/hover-30` 10,078 (D498) and `barloading/100/hover-70`
+14,163 ruled.
+
+**Fix.** `ERROR` now means what it says: no report at all (already handled — a crashed capture never
+writes `report.json`, which `qa/screenshot.mjs:1244` writes only after every comparison completes,
+and `run-qa.mjs:103-107` maps that to `report: null`), or a comparison carrying no measurement of
+its own (`typeof px !== "number"`). The harness exit is kept on the row as evidence and in
+`summary.runsNonZeroExit`, but it no longer overrides a per-cell verdict.
+`reportsFromResultsWindow` also stopped synthesising `exit: rep.overallPass ? 0 : 1`, which was a
+second injection site manufacturing a crash signal out of a pixel verdict.
+
+Two guards against a repeat. `run-all.mjs` inspects the qa matrix and fails the stage on
+`summary.errors > 0` only — the standalone `run-qa` CLI exits on `gateFail || errors`, but `run-all`
+calls `runQaSweep()` in-process and that signal was being dropped entirely; a pixel FAIL stays a
+finding the summary reports, not a stage error. And `run-bench.mjs:206` now carries the invariant
+A13 got wrong, stated for the file it is actually true of: `bench/run.mjs` exits non-zero only on a
+usage error (`:864`) or an uncaught throw (`:921`), with no threshold-based exit, so discarding a
+failed bench cell's measurements is sound — and if it ever gains one, this becomes A17 again.
+
+**The lesson is about the wave, not the rule.** A13 was one of nine instrument fixes landed together
+under D604 on the argument that the gate must not report a verdict it has not earned. It was
+reviewed as a hardening and it is the opposite: it silenced the gate's only failure channel. An
+instrument change that can only ever *reduce* the number of findings needs a before/after count on
+real data before it lands, not after. Gate 3 ran to exit 0 with this defect in it.
+

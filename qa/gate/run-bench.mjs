@@ -203,6 +203,10 @@ export async function runBenchGate(opts = {}) {
       invocations.push({ cell, exit: r.code, durationMs: r.durationMs, log: relPath(logFile) });
       log(TAG, `${cell} exit=${r.code} ${fmtMs(r.durationMs)}`);
       if (r.code === 0) collect(cell);
+      // A17 invariant: bench/run.mjs exits non-zero only on a usage error (:864) or an
+      // uncaught throw (:921) — it has no threshold-based exit, so discarding measurements
+      // here is sound. This is exactly the assumption A13 got wrong about screenshot.mjs;
+      // if bench/run.mjs ever gains a threshold-based exit this becomes A17 again.
       // A10: a failed cell stays in the report, marked — never a silent absence.
       else results.push({ impl, chart, n, failed: true, exit: r.code, log: relPath(logFile) });
     }

@@ -51,7 +51,14 @@ export async function runAll(opts = {}) {
   // probes would run against an unknown dist. Let them check when checks did not run.
   const distBuiltByChecks = !opts.skipChecks;
   const benchFn = () => runBenchGate({ cells: benchCells, runDir, noBuild: distBuiltByChecks });
-  await stage("qa", () => runQaSweep({ workers: opts.workers ?? 4, repeat: opts.repeat ?? 1, charts: opts.charts, runDir, label, noBuild: !!opts.noBuild }));
+  await stage("qa", async () => {
+    const r = await runQaSweep({ workers: opts.workers ?? 4, repeat: opts.repeat ?? 1, charts: opts.charts, runDir, label, noBuild: !!opts.noBuild });
+    // A17: the standalone run-qa CLI exits 1 on summary.errors, but run-all calls
+    // runQaSweep() in-process so that signal is lost. Fail here on genuine ERROR cells
+    // only — a pixel FAIL is a finding the summary reports, not a harness error.
+    if ((r?.matrix?.summary?.errors ?? 0) > 0) throw new Error(`${TAG} qa stage has ${r.matrix.summary.errors} ERROR cell(s) — see qa-matrix.json`);
+    return r;
+  });
   if (opts.probes) await stage("probes", () => runProbes({ runDir, noBuild: distBuiltByChecks }));
   // A1: bundle before bench. bench reads bench/results/bundle-sizes.json at module load
   // for its M2c column and the bundle stage is what rewrites that file, so measuring
