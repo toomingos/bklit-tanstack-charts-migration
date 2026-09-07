@@ -1556,3 +1556,57 @@ same mistake would have been caught by asking "is this node rendered?" before "i
 **No code changed.** D600's `prefers-reduced-motion` block for the BarPulse stays exactly as ruled
 there: the pulse wave *is* rendered under reduced motion (it is part of the settled scene, not a
 loading overlay), so it needs the CSS guard that the loading sweep does not.
+
+### D603 — candlestick dim fans out 3x per candle; the engine cannot state a group, so it holds
+
+**Measured.** `hover-lag` probe, candlestick n=1000 (run `2026-09-07T10-05-45-465Z`): bklit
+`finalDim` 999, migrated `finalDim` 2998 — one dimmed element per candle against three, plus one.
+Hover cost tracks it: bklit `dim` 167ms, migrated 265ms. The probe carries **no flag** for this pair,
+so nothing is failing today; this is a fidelity and efficiency gap, recorded before it is forgotten.
+
+**Why 3x.** bklit wraps each candle's wick and body in one `<g opacity>`
+(`showcase/repos/bklit-ui/.../candlestick.tsx:209-223`) — one element carries the dim. Migrated emits
+two marks, `wicks` and `bodies`, both carrying `candlestickDimStates`
+(`candlestick-chart-marks.ts:85-95,237,296`), which under the default config is three leaves per
+candle (upper wick, lower wick, body), each resolving the state and each running its own WAAPI
+opacity tween per hover. The probe counts **computed** opacity per element over `rect,path,circle,g`
+(`qa/gate/probes/lib-probe.mjs:153-160`), and computed opacity ignores ancestors — so bklit's one
+group counts once and migrated's three leaves count three times.
+
+**The obvious fix does not work, and I verified that myself rather than taking it on report.**
+Grouping each candle and putting the state on the group changes nothing, because the engine never
+resolves state for a group. `@tanstack/charts@0.16.0/dist/mark-state.js:17`, the single path used by
+the motion, SVG, canvas and native renderers:
+
+```js
+const state = node.kind === "group" ? node.states : void 0;
+...
+const resolved = node.kind !== "group" && nodeDefinitions && nodeData && candidates.length
+  ? resolveNodeState(node, candidates, nodeData, nodeDefinitions, focus, pointer)
+  : { node };
+```
+
+A group's `states` only *supply* definitions and points to its descendants; the group itself falls to
+`{ node }`, unresolved. And the descendants still each resolve, because ownership strips key
+prefixes: `sceneKeyOwnedPoints` walks `while (candidate.includes(":"))` back through the last `:`
+(`scene-point-ownership-internal.js:40-58`), so `candles:5:body` matches point `candles:5`. Regrouped
+or not, three leaves resolve three times. Count unchanged, lag unchanged.
+
+**No precedent to borrow.** Nothing in this codebase states a group, because the concept does not
+exist in the engine: bar-depth dims per leaf (`BAR_DEPTH_BACK_NODES_PER_ROW = 6`), sankey uses
+mark-level `withStates`, and `with-states.ts` only ever sets mark-level states.
+
+**Ruling (principle 2).** Hold. The only mechanism that gives 1x is bklit's own — a baked
+`style.opacity` on a per-candle `<g>` — which means deleting the mark states and plumbing hover
+through React state to re-render, plus a replacement fade for the 150ms WAAPI tween that dies with
+them. That is a **second dim implementation** with focus, markId, tooltip and reveal blast radius,
+kept "for now" for a probe count that is not currently flagged. Explicitly rejected. The item is
+parked until the engine can resolve state on a group, or the phase authorizes replacing states with
+baked group opacity as a deliberate divergence.
+
+**Upstream.** Drafted as I10 (state-on-group, or an opt-out from per-leaf ownership fallback).
+**Not filed** — filing is outward-facing and item 9 remains gated to phase 8, same as I9.
+
+**Executor note.** The executor hit the task's stop condition and made **no edit** rather than
+improvise a dim replacement, which is the right call and the reason this entry can be written as a
+ruling instead of a revert. Tree untouched: tsc 0, oxlint 0, tests 246 / 48 / 188 / 0 / 58, exit 0.
