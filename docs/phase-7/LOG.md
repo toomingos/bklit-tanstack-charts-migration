@@ -1933,3 +1933,30 @@ not the options — the third is. So every explicit `timeout` and `polling` in t
 silently ignored and defaulted to 30,000 ms. Harmless where the intent was 30,000 anyway, which is
 why it survived; it needs its own item.
 
+### D611 — barsquares' "migrated dims 0" was the probe reading before the tracks mounted
+
+The probe-fidelity research (V3/V4) closed six of seven dim issues as measurement artefacts and left
+barsquares/100 open, because static reading said migrated emits `opacity="0.15"` per track rect —
+which the old probe should already have counted — yet it read resting **0** for migrated against
+**200** for bklit. It asked for a live DOM read. Here it is, both impls, 2.5 s after load, no hover:
+
+| | first svg | elements | dimmed (computed opacity < 0.99) | rects carrying an `opacity` attribute |
+|---|---|---|---|---|
+| bklit | 800x400 | 10,936 | **200** | 10,926 |
+| migrated | 800x400 | 10,937 | **200** | 200 |
+
+Migrated dims exactly as many elements as bklit, in the first svg, at rest. So "migrated 0" was never
+a property of the DOM. It is the probe's baseline read landing before the track rects exist: the
+probe sees 0, and after one legend cycle sees the 200 that were always going to be there, which it
+reports as `item-0: migrated does not fully undim (0 -> 200)`.
+
+That puts barsquares with the other baseline artefacts (cause B) rather than in a scope or channel
+class of its own — but it is **not** fixed by moving the baseline read earlier, which is what the
+probe fix does. Reading earlier reads a scene that is even less mounted. What it needs is the dim
+count quiesced to a stable value before the first read. Left open as a probe item; no chart change,
+and no ruling.
+
+Two incidental differences worth recording, neither a defect: bklit stamps `opacity="1"` on all
+10,926 rects while migrated stamps only the 200 it actually dims, and migrated carries a second 0x0
+svg where bklit's second is 800x400.
+
