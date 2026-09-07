@@ -3405,3 +3405,35 @@ now a bound on the thing it is named after.
 and the pre-arm clock advance are both read directly off the source. That the
 `--repeats 5` abort was this and not something else is inference from the margin,
 and is not confirmed until a `--repeats 5` sweep runs clean on the fix.
+
+### D640 addendum — pie was not the only thin margin
+
+Audited every one of `hover-lag.mjs`'s 13 `DEFAULT_CELLS` for its arm and its
+slack against the cap that applies to it:
+
+| cell | arm | fallback | cap | slack | iterations |
+|---|---|---|---|---|---|
+| liveline/100 | `armManualSettle(15000)` | 15000 | 20000 | **5000** | **50** |
+| pie/1000 | `armManualSettle(84370)` | 84370 | 90000 (override) | **5630** | **56** |
+| sankey/33, heatmap/52, candlestick/1000 | `armBklitTimerSettle` | 2500 | 20000 | 17500 | 175 |
+| the other 8 | `armBklitSettle` | 2500 | 20000 | 17500 | 175 |
+
+`liveline/100` is thinner than the cell that actually broke, and it is the same
+cell that read `quiesceIters [2,2,1]` in the D636 instrument — the only cell
+besides sankey and heatmap that needed more than one quiescence step. It has not
+aborted yet; on this evidence that is margin, not immunity.
+
+Both are `armManualSettle`, and the pattern is why: `armBklitSettle` and
+`armBklitTimerSettle` fall back at the shared 2500 ms, so their slack is fixed at
+175 iterations no matter what the chart does. `armManualSettle` takes a
+caller-sized fallback derived from the scene's own reveal, and nothing ever
+checked that number against the cap it would be measured under. Two files, no
+shared constant, no assertion between them.
+
+The arm-time fix covers both, since neither now pays for its own bundle load. A
+static assertion tying each scene's fallback to its cap would be the stronger
+guard, and is not built: it would have to reach from `qa/gate/probes/` into
+`bench/app/src/scenarios/` to read numbers that are currently local consts, which
+is a real coupling to introduce for a hazard the budget split already defuses.
+Recorded here so the next person meeting a thin margin finds the audit rather
+than repeating it.
