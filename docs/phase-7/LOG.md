@@ -2132,3 +2132,60 @@ The general lesson is the one D613 also records in a different form: an option t
 without error is not an option that is applied. Both defects were invisible to every test we run,
 because both produce *plausible* behaviour — a 30-second default looks like a deliberate 30-second
 wait.
+
+### D616 — the dim veto suppressed exactly the dim it was built to find
+
+D614 left `pie/1000` as "the only dim mismatch with no explanation" and offered a `withStates` focus
+tween as a working theory. That theory was wrong, and it was wrong for the reason D611 had already
+punished one entry earlier: it was inferred from source instead of read off the DOM. Three live
+reads settle it.
+
+1. **Migrated pie does dim.** 999 elements, but expressed as fill-colour alpha —
+   `color(srgb 0.268451 0.250439 0.232351 / 0.4)` — where bklit uses computed `opacity`. Both sides
+   dim 999 at the probe's exact hover point (the largest svg's centre, `hover-lag.mjs:31`). There is
+   no parity defect here and never was.
+2. **Not the clock.** Re-run through the probe's own `openScene` + `stepVirtual` path, migrated still
+   carries 999 alpha-dimmed fills at the moment the sampler finishes, while the sampler reports
+   `finalDim: 0, firstDimMs: null`. So the tween does advance under virtual time; the counter simply
+   fails to see it.
+3. **The cause is the veto.** Migrated writes the dim as
+   `fill="color-mix(in srgb, var(--chart-1) 40%, transparent)"`. The veto exists because a literal
+   `transparent` computes to `rgba(0,0,0,0)`, which a naive alpha read would miscount as dimmed — a
+   real hazard, correctly identified. But it tested `raw.includes("transparent")`, and that substring
+   matches the `color-mix()` expression **that produces the dim**. The guard suppressed precisely
+   the signal it was added to protect.
+
+A second, independent defect sat in the same lines. Both in-page mirrors built one combined
+`fill + " " + stroke` attribute string and passed it as the hint to *both* channels, so a keyword on
+either channel vetoed the other's alpha. The exported `probeIsDimmed` never did this — `:89` passes
+`rawFill` and `rawStroke` separately. This is the sync hazard the mirrors' own comment warns about
+("module scope is not visible inside evaluate; keep in sync"), and it went wrong on the first run
+after being written. Two implementations of one predicate is the shape principle 2 exists to
+prevent; here it is in the instrument rather than the charts.
+
+Fixed: the veto now fires only when the hint **is** the keyword (`hint.trim() === "transparent"`),
+and hints are per-channel at all three sites. Pure-predicate check: 7/7, including the `color-mix`
+case and the literal-keyword case that must keep vetoing.
+
+Measured by re-running the probe gate (`runs/2026-09-07T15-16-58-209Z` against `…T15-01-57-940Z`):
+
+| | before D616 | after |
+|---|---|---|
+| `hover-lag` flags | 5 | **3** |
+| `pie/1000` dimmed (bklit / migrated) | 999 / **0** | 999 / **999** |
+| `liveline/100` | flagged | clear |
+| `legend-hover-dim` flags | 2 | 2 (unchanged) |
+
+`pie/1000` is fully resolved and `liveline/100` cleared with it. Two flags survive in `hover-lag`,
+both `settles-after-700ms-capture` (`bar/100`, `sankey/33`) — a statement about the pixel gate's
++700 ms capture point, not about dim detection — and one changed character rather than clearing:
+
+**`choropleth/100` is now inverted and is a genuinely new observation.** It reads bklit 3 dimmed
+against migrated **176**, with migrated's `firstDimMs` empty — meaning those 176 are dim *at rest*,
+before any hover, so they never register as an increase. That is a resting-state difference, not a
+hover-response one, and it is the first finding in this whole sweep that might be a chart
+difference rather than an instrument artefact. Left open deliberately; it needs its own live read
+and no ruling should be written from this table alone.
+
+Running total for the dim work: 7 flagged conditions at the start, 5 now, and every one closed so
+far has been the instrument, not the charts.

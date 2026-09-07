@@ -65,7 +65,10 @@ export function probeColorAlpha(color, raw = "") {
   const t = String(color ?? "").trim().toLowerCase();
   const hint = String(raw ?? "").toLowerCase();
   if (t === "" || t === "none" || t === "transparent" || t.startsWith("url(")) return 1;
-  if (hint.includes("transparent")) return 1;
+  // Veto only a hint that IS the keyword. A substring test also matches
+  // color-mix(in srgb, var(--chart-1) 40%, transparent), which is how a dim is
+  // written -- vetoing the very thing this predicate exists to detect (D616).
+  if (hint.trim() === "transparent") return 1;
   const slash = t.match(/\/\s*([\d.]+%?)\s*\)?\s*$/);
   if (slash) {
     const v = slash[1].endsWith("%") ? parseFloat(slash[1]) / 100 : parseFloat(slash[1]);
@@ -198,7 +201,8 @@ export async function installSampler(page, { maxMs = 2000 } = {}) {
     const colorAlpha = (color, raw) => {
       const t = String(color ?? "").trim().toLowerCase();
       if (t === "" || t === "none" || t === "transparent" || t.startsWith("url(")) return 1;
-      if (String(raw ?? "").toLowerCase().includes("transparent")) return 1;
+      // Exact keyword only; see probeColorAlpha (D616).
+      if (String(raw ?? "").trim().toLowerCase() === "transparent") return 1;
       const slash = t.match(/\/\s*([\d.]+%?)\s*\)?\s*$/);
       if (slash) {
         const v = slash[1].endsWith("%") ? parseFloat(slash[1]) / 100 : parseFloat(slash[1]);
@@ -219,8 +223,11 @@ export async function installSampler(page, { maxMs = 2000 } = {}) {
       const st = getComputedStyle(el);
       const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 1; };
       const chans = [num(st.opacity), num(st.getPropertyValue("fill-opacity")), num(st.getPropertyValue("stroke-opacity"))];
-      const raw = ((el.getAttribute("fill") ?? "") + " " + (el.getAttribute("stroke") ?? "")).toLowerCase();
-      chans.push(colorAlpha(st.fill, raw), colorAlpha(st.stroke, raw));
+      // Per-channel hints: a combined string let stroke's keyword veto fill's
+      // alpha, which probeIsDimmed never did (it takes rawFill/rawStroke).
+      const rawFill = (el.getAttribute("fill") ?? "").toLowerCase();
+      const rawStroke = (el.getAttribute("stroke") ?? "").toLowerCase();
+      chans.push(colorAlpha(st.fill, rawFill), colorAlpha(st.stroke, rawStroke));
       return Math.min(...chans) < 0.99;
     };
     const dimCount = () => {
@@ -329,7 +336,8 @@ export async function dimmedCount(page) {
     const colorAlpha = (color, raw) => {
       const t = String(color ?? "").trim().toLowerCase();
       if (t === "" || t === "none" || t === "transparent" || t.startsWith("url(")) return 1;
-      if (String(raw ?? "").toLowerCase().includes("transparent")) return 1;
+      // Exact keyword only; see probeColorAlpha (D616).
+      if (String(raw ?? "").trim().toLowerCase() === "transparent") return 1;
       const slash = t.match(/\/\s*([\d.]+%?)\s*\)?\s*$/);
       if (slash) {
         const v = slash[1].endsWith("%") ? parseFloat(slash[1]) / 100 : parseFloat(slash[1]);
@@ -350,8 +358,10 @@ export async function dimmedCount(page) {
     for (const el of els) {
       const st = getComputedStyle(el);
       const num = (v) => { const n2 = parseFloat(v); return Number.isFinite(n2) ? n2 : 1; };
-      const raw = ((el.getAttribute("fill") ?? "") + " " + (el.getAttribute("stroke") ?? "")).toLowerCase();
-      const chans = [num(st.opacity), num(st.getPropertyValue("fill-opacity")), num(st.getPropertyValue("stroke-opacity")), colorAlpha(st.fill, raw), colorAlpha(st.stroke, raw)];
+      // Per-channel hints; a combined string let one channel's keyword veto the other (D616).
+      const rawFill = (el.getAttribute("fill") ?? "").toLowerCase();
+      const rawStroke = (el.getAttribute("stroke") ?? "").toLowerCase();
+      const chans = [num(st.opacity), num(st.getPropertyValue("fill-opacity")), num(st.getPropertyValue("stroke-opacity")), colorAlpha(st.fill, rawFill), colorAlpha(st.stroke, rawStroke)];
       if (Math.min(...chans) < 0.99) n++;
     }
     return { dimmed: n, total: els.length };
