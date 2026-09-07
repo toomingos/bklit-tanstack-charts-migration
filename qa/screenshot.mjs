@@ -341,19 +341,6 @@ async function pinAnimationPhase(page, fraction, tag) {
   return stats;
 }
 
-// ---------------------------------------------------------------------- //
-// Virtual-time anchor (D588 follow-up, V-c)
-// ---------------------------------------------------------------------- //
-
-/**
- * Promise that resolves when the renderer's virtual-time budget expires
- * (`Emulation.virtualTimeBudgetExpired`). Attach BEFORE sending the policy
- * -- an expiry that fires before the listener exists is missed, and the
- * capture below would hang on a settled promise instead of failing loudly.
- * CDP-session pattern mirrors bench/run.mjs's `newCDPSession` precedent;
- * first virtual-time use in qa/ (the markers fan capture uses
- * addInitScript instead), scoped to the two loading presets only.
- */
 function awaitVirtualBudgetExpired(cdp) {
   return new Promise((resolve) => {
     cdp.on("Emulation.virtualTimeBudgetExpired", () => resolve());
@@ -371,7 +358,20 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
     deviceScaleFactor: DEVICE_SCALE_FACTOR,
     // Loading captures pin both impls' animated loading chrome to its
     // static reduced-motion frame (see LOADING_SETTLE_MS comment).
-    ...(loading ? { reducedMotion: "reduce" } : {}),
+    // D609: the loading presets capture under reduced motion. Both impls have a
+    // real reduced-motion path for the sweep -- bklit via useReducedMotion()
+    // (repos/bklit-ui loading-sweep.tsx:218), migrated via reduceMotion ->
+    // staticFrame (internal/bar-loading-sweep.tsx:53) -- so this stops the loop
+    // through the CHARTS' own shared mechanism and yields a static frame on both
+    // sides by construction. Every harness-side alternative pins one engine and
+    // not the other: pinAnimationPhase reaches only CSS (D609), motion's
+    // useManualTiming does not stop bklit's sweep (measured: it free-runs at the
+    // unpinned rate straight through the pin), and a CDP virtual-time budget
+    // never lets bklit mount at all, because its ParentSize/ResizeObserver mount
+    // needs frames the expired budget has already stopped. What is NOT gated
+    // here is the shimmer's motion; that divergence is B14's subject and is
+    // recorded, not pixel-compared.
+    ...(loading || LOADING_PRESET_CHARTS.has(chart) ? { reducedMotion: "reduce" } : {}),
   });
   const page = await context.newPage();
   // D588 follow-up (V-c): freeze the loading presets on a SHARED virtual
@@ -406,12 +406,23 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
     // resolved on double-rAF after mount) instead.
     await page.waitForFunction(() => !!window.__benchSettled, { timeout: 30000 });
   } else if (presetVirtual) {
-    // Under an exhausted virtual-time budget rAF stops, which would hang
-    // waitForFunction's default rAF polling -- poll from Node instead. (The
-    // budget is sized to expire AFTER paint, so this normally resolves while
-    // virtual time is still flowing; the interval polling only matters on
-    // the slow-CI tail where expiry wins the race.)
-    await page.waitForFunction(() => window.__benchPaintDone === true, { timeout: 30000, polling: 100 });
+    // D609: wait for the BUDGET first, then check paint -- not the other way
+    // round. The budget is 30,000 VIRTUAL ms and virtual time advances as fast
+    // as the CPU allows, so it expires in a fraction of a wall second, long
+    // before a 30s wall-clock wait on __benchPaintDone could ever resolve. That
+    // ordering is the whole of the D591 wedge: the flag was parked as unfixable
+    // when the wait was simply the wrong way round. 30,000 virtual ms is far
+    // more than boot needs, so paint has happened by expiry; poll from Node
+    // because rAF has stopped for good by then.
+    await presetBudgetExpired;
+    presetBudgetExpired = null;
+    // ...and wait on the SVG, not on __benchPaintDone. markMountPaint sets that
+    // flag one double-rAF AFTER the chart's <svg> commits (bench/bench/paint.ts),
+    // and the expired budget halts rAF for good -- so if expiry falls between the
+    // commit and that double-rAF the flag is never set, however long anything
+    // waits. That is the second half of the D591 wedge, and the reason the flag
+    // has been off by default: the chart was on screen the whole time.
+    await page.waitForFunction(() => !!document.querySelector("svg"), { timeout: 10000, polling: 50 });
   } else {
     await page.waitForFunction(() => window.__benchPaintDone === true, { timeout: 30000 });
   }
@@ -438,14 +449,9 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
     // and the pin calls below degrade to exact seeks on already-paused CSS
     // (kept, not reverted: they remain the CSS-phase mechanism if virtual
     // time is ever unavailable).
-    await presetBudgetExpired;
+    if (presetBudgetExpired) await presetBudgetExpired;
   }
 
-  if (LOADING_PRESET_CHARTS.has(chart)) {
-    // D588: the skeleton pulse/sweep loops never settle -- pin to phase 0
-    // so the settled capture compares a deterministic frame on both impls.
-    await pinAnimationPhase(page, 0, `${impl}/${chart} n=${n} settled`);
-  }
   const settled = await page.screenshot({ fullPage: false });
 
   // Initiative-10 (D229 ruling 9) evidence probe: the migrated dash-tail
@@ -816,12 +822,6 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
     await page.waitForTimeout(HOVER_WAIT_MS);
 
     const tooltip = await detectTooltip(page, pristineTextLen);
-    if (LOADING_PRESET_CHARTS.has(chart)) {
-      // Re-pin before EACH capture: the hover approach may have started new
-      // animations since the settled pin, and an unpinned hover capture is
-      // the exact D588 flake (arealoading/1000 hover-50).
-      await pinAnimationPhase(page, 0, `${impl}/${chart} n=${n} hover-${Math.round(fraction * 100)}`);
-    }
     const buffer = await page.screenshot({ fullPage: false });
     hovers.push({
       fraction,

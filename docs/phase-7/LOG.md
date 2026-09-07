@@ -1880,3 +1880,56 @@ The general point: `pinAnimationPhase` silently pins whatever it can reach and r
 one-sided pin does not make a comparison more deterministic, it makes it deterministically wrong,
 and it did so while every affected cell sat under a ruling generous enough to never ask.
 
+### D610 — the loading presets capture under reduced motion, and barloading loses all three rulings
+
+D609 said the barloading vector needed a *paired* phase pin. It does not. Every pin mechanism was
+tried and each one reaches exactly one of the two engines:
+
+- **`pinAnimationPhase` (the shipped one).** Seeks CSS animations. Migrated's band is CSS, bklit's
+  is a motion rAF loop. One-sided, and at the degenerate phase 0 — D609.
+- **A paired hook, WAAPI on migrated against `MotionGlobalConfig.useManualTiming` on bklit** (the
+  D606 bardepth precedent). The migrated half is exact: measured, the band lands on
+  `-1 + 3p` for every phase and stays there. The bklit half does nothing. Measured with the band's
+  own rendered matrix: after the pin it kept moving 0.6 units per 400 ms, which is precisely the
+  free-running rate. Manual timing never bit, and stepping the clock by hand only rode on top of a
+  live animation — motion clamps its per-frame delta, so a timestamp jump of any size advanced the
+  band by about 50 ms of travel. It is not a duplicate-`motion`-instance problem; only one copy
+  resolves. That inverted the defect rather than fixing it: bklit became the blank side (9 unique
+  colours against migrated's 119).
+- **The CDP virtual-time budget** (`LOADING_PHASE_VECTOR`, off since D591). Two separate wedges, and
+  I fixed both before finding the third: the budget was granted *before* navigation, so 30,000
+  **virtual** ms — which advance as fast as the CPU allows — expired before the document parsed
+  (`document.body` was still null); and the paint wait was ordered before the budget it depended on.
+  With a pause-then-navigate-then-budget sequence migrated renders and freezes perfectly (band
+  pinned at 1.77327, stable across every subsequent read). **bklit never mounts at all** — 0 svgs,
+  420 bytes of body. Its charts mount through `ParentSize`/`ResizeObserver`, whose notifications are
+  delivered on frames that the expired budget has already stopped. The virtual-time route cannot
+  work for bklit's charts, which is what D591 was really seeing.
+
+**What works is not a harness trick at all.** Both implementations already have a reduced-motion
+path for this exact animation — bklit through `useReducedMotion()`
+(`repos/bklit-ui/.../loading-sweep.tsx:218`), migrated through `reduceMotion` → `staticFrame`
+(`internal/bar-loading-sweep.tsx:53`). The harness was already using it for `state=loading`
+captures. Extending `reducedMotion: "reduce"` to the two preset charts stops the sweep on both sides
+through the *charts' own shared mechanism*, so the frame is static by construction and nothing needs
+seeking. The pin, the paired hooks and the four scenario hooks are all deleted.
+
+**Result.** barloading/100 reads **0.0000% on all four cells**, and the two implementations are
+byte-identical (same md5, 13 colours, 16,738 sampled non-background pixels — a real skeleton, checked
+against the blank-frame failure mode that caused D609). arealoading/1000 reads 0.1040–0.1409%, a
+real difference well inside the 0.5% gate. The three barloading rulings are therefore **retired
+outright, not resized**: `hover-30` (161,310 px), `hover-50` (53,588) and `hover-70` (33,734) covered
+cells that were never comparisons, and the cells now pass unaided.
+
+**What this deliberately stops gating: the shimmer's motion.** These captures compare the static
+skeleton, not the sweep travelling across it. That is a real reduction in coverage and it is the
+honest one — the alternative on offer was comparing a frozen frame against a random one, which is
+what produced four runs of numbers that meant nothing. B14 already holds this pair as a *mechanism
+divergence* rather than parity, and the divergence stays recorded there.
+
+**A harness bug found on the way**, not yet fixed: every `page.waitForFunction(fn, { timeout })` call
+in `qa/screenshot.mjs` passes its options as Playwright's second parameter, which is the *argument*,
+not the options — the third is. So every explicit `timeout` and `polling` in that file has been
+silently ignored and defaulted to 30,000 ms. Harmless where the intent was 30,000 anyway, which is
+why it survived; it needs its own item.
+
