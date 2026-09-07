@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-09-07T09:58:39.245Z",
-  "note": "Bench gate baseline. Adopted 2026-09-07 from the 7.6 gate run docs/phase-7/gate/runs/2026-09-07T09-01-26-415Z (D595) -- the first run through the instrument D594 fixed, which is why it supersedes the phase-5 close medians of 2026-08-27 that stood here before. Flag rule: D273 +/-20% on M1b/M1c/M3a; M1a is a VOID channel on this machine (BASELINE \u00a73b verdict) and is reported informationally. TWO CELLS ARE NOT FROM THIS RUN. bklit/composed/1000 was not in the run's cell set and keeps its docs/phase-5/BASELINE.md \u00a73b medians. migrated/scatter/1000.m1b_settleMs is HELD at the phase-5 1258.6 although this run measured 2505.3: that is 1.98x the same-run bklit control (1266.3), p95 2506 over 7 samples, reproduced at +99.0% and +99.1% across two independent runs, so it is a live regression and not baseline drift. Adopting it would pin the defect as the expectation and silence the only flag pointing at it. The hold expires when the scatter double reveal is fixed. Note when reading M1c deltas: every control cell (bklit and tanstack alike) rose 11-19% between the phase-5 run and this one, a uniform machine/browser shift, so migrated's larger rises are roughly 25-35% net of it, not the raw figure. consoleErrorCount baselines: legacy bklit/bar/1000 and /10000 emit negative-<rect>-attribute errors (rx/ry/width) in the Phase-5 close run itself (514742 / 1540000) -- inherited legacy behaviour, gated on increase only (D500). m3c_tooltipAppeared baseline: legacy bklit/line/1000 is false in every recorded run. Regenerate by hand only when a new baseline is formally adopted (D-entry).",
+  "note": "Bench gate baseline. Adopted 2026-09-07 from the 7.6 gate run docs/phase-7/gate/runs/2026-09-07T09-01-26-415Z (D595) -- the first run through the instrument D594 fixed, which is why it supersedes the phase-5 close medians of 2026-08-27 that stood here before. Flag rule: D273 +/-20% on M1b/M1c/M3a; M1a is a VOID channel on this machine (BASELINE \u00a73b verdict) and is reported informationally. TWO CELLS ARE NOT FROM THIS RUN. bklit/composed/1000 was not in the run's cell set and keeps its docs/phase-5/BASELINE.md \u00a73b medians. migrated/scatter/1000.m1b_settleMs is HELD at the phase-5 1258.6 although this run measured 2505.3: that is 1.98x the same-run bklit control (1266.3), p95 2506 over 7 samples, reproduced at +99.0% and +99.1% across two independent runs, so it is a live regression and not baseline drift. Adopting it would pin the defect as the expectation and silence the only flag pointing at it. The hold expires when the scatter double reveal is fixed. Note when reading M1c deltas: every control cell (bklit and tanstack alike) rose 11-19% between the phase-5 run and this one, a uniform machine/browser shift, so migrated's larger rises are roughly 25-35% net of it, not the raw figure. consoleErrorCount baselines: legacy bklit/bar/1000 and /10000 emit negative-<rect>-attribute errors (rx/ry/width) in the Phase-5 close run itself (514742 / 1540000) -- inherited legacy behaviour, gated on increase only (D500). m3c_tooltipAppeared baseline: legacy bklit/line/1000 is false in every recorded run. THREE VALUES ARE MEDIANS OF THREE RUNS, NOT THIS RUN. tanstack/bar/100.m1b, tanstack/scatter/1000.m1b and tanstack/scatter/1000.m1c vary between runs by more than the 20% flag band (56.6%, 26.2%, 24.2% between the 7.6 and Gate 2 runs), so a single run cannot serve as their baseline -- adopting one would guarantee a false flag on the next. They carry the median of phase-5, 7.6 and Gate 2, which in each case is the phase-5 value because that figure was itself median-derived. Regenerate by hand only when a new baseline is formally adopted (D-entry).",
   "flagPct": 20,
   "gatedMetrics": [
     "m1b_settleMs",
@@ -35,7 +35,8 @@
       "m1c_taskMs": 131.38,
       "m2b_heapUsedBytes": 5887828,
       "m3c_perMoveScriptMs": 1.59,
-      "m3c_frameTimeMs": 16.7
+      "m3c_frameTimeMs": 16.7,
+      "m3c_tooltipAppeared": false
     },
     "bklit/line/10000": {
       "source": "docs/phase-7/gate/runs/2026-09-07T09-01-26-415Z/bench.json",
@@ -167,7 +168,8 @@
       "m1c_taskMs": 2039.92,
       "m2b_heapUsedBytes": 7706096,
       "m3c_perMoveScriptMs": 6.66,
-      "m3c_frameTimeMs": 16.7
+      "m3c_frameTimeMs": 16.7,
+      "consoleErrorCount": 514742
     },
     "bklit/bar/10000": {
       "source": "docs/phase-7/gate/runs/2026-09-07T09-01-26-415Z/bench.json",
@@ -178,11 +180,12 @@
       "m1c_taskMs": 7137.43,
       "m2b_heapUsedBytes": 23019696,
       "m3c_perMoveScriptMs": 27.52,
-      "m3c_frameTimeMs": 33
+      "m3c_frameTimeMs": 33,
+      "consoleErrorCount": 1540000
     },
     "tanstack/bar/100": {
       "source": "docs/phase-7/gate/runs/2026-09-07T09-01-26-415Z/bench.json",
-      "m1b_settleMs": 52.2,
+      "m1b_settleMs": 48.8,
       "m1c_scriptMs": 75.43,
       "m3a_updateMs": 32.6,
       "m1a_mountToPaintMs": 34.4,
@@ -259,8 +262,8 @@
     },
     "tanstack/scatter/1000": {
       "source": "docs/phase-7/gate/runs/2026-09-07T09-01-26-415Z/bench.json",
-      "m1b_settleMs": 98.2,
-      "m1c_scriptMs": 101.27,
+      "m1b_settleMs": 152,
+      "m1c_scriptMs": 117.78,
       "m3a_updateMs": 35,
       "m1a_mountToPaintMs": 94.7,
       "m1c_taskMs": 156.18,

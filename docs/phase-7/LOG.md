@@ -1358,3 +1358,45 @@ upstream defect. Item 9 is therefore **done as specified** — the count is meas
 against re-pinned values — and the target itself is stamped unreachable pending upstream
 granularity. What replaces it is the parity ratio as a *recorded* number that must not silently
 grow, which is what `ratioOver` already does.
+
+---
+
+### D598 — Gate 2 caught two defects in my own item 7 adoption; both repaired
+
+Gate 2 (`docs/phase-7/gate/runs/2026-09-07T10-05-45-465Z`) was run to check the item 7/8
+adoption rather than to go green. It did its job: three of its sixteen issues were mine, and a
+fourth reading exposed a methodological error behind three more.
+
+**(a) The adoption deleted three baseline keys.** `wave-b-adopt.mjs` rebuilt each cell by walking
+`[...gatedMetrics, ...informationalMetrics]`. That is not the cell key set: `consoleErrorCount` and
+`m3c_tooltipAppeared` live in cells and in neither list. Rebuilding from METRICS alone dropped
+`bklit/bar/1000.consoleErrorCount` (514742), `bklit/bar/10000.consoleErrorCount` (1540000) and
+`bklit/line/1000.m3c_tooltipAppeared` (false) — three key-instances — which then re-flagged against
+an implicit 0/true. The `note` describing these special cases survived; the data it described did
+not. This is the failure D596 named, inverted: *"a `note` that still described the old source would
+make the artefact lie about where its numbers came from."* Restored from `c7d52d0~1`, keeping the
+**old** `consoleErrorCount` values rather than the measured 503196, because the note documents them
+as inherited-legacy ceilings gated on increase only (D500), so the higher figure is the
+intent-preserving one. `wave-b-adopt.mjs` now carries forward every key present in the old cell that
+METRICS does not cover, so the class cannot recur.
+
+**(b) Three cells were adopted from a single run when a single run cannot describe them.** Across
+the phase-5, 7.6 and Gate 2 observations, three of 87 gated cell/metric pairs move by more than the
+±20% flag band: `tanstack/scatter/1000` m1b (152 / 98.2 / 153.8, spread 56.6%), `tanstack/bar/100`
+m1b (48.8 / 52.2 / 38.5, 26.2%), `tanstack/scatter/1000` m1c (117.78 / 101.27 / 125.76, 24.2%).
+Pinning either extreme guarantees a false flag on the next run. All three now carry the **median** of
+the three observations, which in each case is the phase-5 value — phase-5 was itself median-derived.
+The `note` says so, and says which three.
+
+**Residual, deliberately not tuned away.** With medians in place each run still flags one of these
+cells (7.6: `tanstack/scatter/1000` m1b −35.4%; Gate 2: `tanstack/bar/100` m1b −21.1%). That is not
+a defect in the baseline, it is the cells reporting honestly that their spread exceeds a ±20% band.
+`flagPct` is global, so there is no per-cell widening available and inventing one is a second
+implementation. Both are `tanstack/*` harness controls, not `migrated/*`, so neither touches a
+parity claim.
+
+**Verification** is offline recomputation against both run artefacts, not a re-bench — the repair
+changes baseline values only, and both runs' `bench.json` are on disk. Gated bench issues with the
+repaired baseline: 7.6 run 2, Gate 2 run 2 (from 7). The three key-drop issues are gone from both.
+`migrated/scatter/1000` m1b still flags +99.1% / +99.0% in the two runs, which is the held cell doing
+exactly what the hold was for.
