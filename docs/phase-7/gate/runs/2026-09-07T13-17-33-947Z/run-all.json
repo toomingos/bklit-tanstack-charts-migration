@@ -1,0 +1,38 @@
+{
+  "label": "gate 3 (post-D606, workers=2)",
+  "runDir": "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z",
+  "wallClockMs": 3100113,
+  "stages": [
+    {
+      "name": "checks",
+      "ok": true,
+      "durationMs": 21896
+    },
+    {
+      "name": "qa",
+      "ok": true,
+      "durationMs": 334996
+    },
+    {
+      "name": "probes",
+      "ok": true,
+      "durationMs": 60233
+    },
+    {
+      "name": "bundle",
+      "ok": true,
+      "durationMs": 21828
+    },
+    {
+      "name": "bench",
+      "ok": true,
+      "durationMs": 2661103
+    },
+    {
+      "name": "summary",
+      "ok": true,
+      "durationMs": 56
+    }
+  ],
+  "issues": 13
+}

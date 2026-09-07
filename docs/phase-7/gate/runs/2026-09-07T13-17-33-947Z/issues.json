@@ -1,0 +1,226 @@
+{
+  "generatedAt": "2026-09-07T14:09:14.120Z",
+  "runDir": "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z",
+  "label": "gate 3 (post-D606, workers=2)",
+  "issues": [
+    {
+      "id": "qa:bardepth/100:hover-dim",
+      "category": "hover-dim",
+      "charts": [
+        "bardepth/100"
+      ],
+      "cells": [
+        "pulse-phase-0.5: 1865 px (out-of-range, mode 1887, hist [1887,1887])"
+      ],
+      "evidence": [
+        "qa/results/bardepth/2026-09-07T13-21-40-598Z/pulse-phase-0.5-diff.png",
+        "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z/logs/qa/bardepth-100.log"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:radar/6:harness-race",
+      "category": "harness-race",
+      "charts": [
+        "radar/6"
+      ],
+      "cells": [
+        "settled: harness exit 1",
+        "hover-30: harness exit 1",
+        "hover-50: harness exit 1",
+        "hover-70: harness exit 1"
+      ],
+      "evidence": [
+        "qa/results/radar/2026-09-07T13-22-07-397Z/settled-diff.png",
+        "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z/logs/qa/radar-6.log",
+        "qa/results/radar/2026-09-07T13-22-07-397Z/hover-30-diff.png",
+        "qa/results/radar/2026-09-07T13-22-07-397Z/hover-50-diff.png",
+        "qa/results/radar/2026-09-07T13-22-07-397Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:sankey/33:harness-race",
+      "category": "harness-race",
+      "charts": [
+        "sankey/33"
+      ],
+      "cells": [
+        "settled: harness exit 1",
+        "hover-30: harness exit 1",
+        "hover-50: harness exit 1",
+        "hover-70: harness exit 1"
+      ],
+      "evidence": [
+        "qa/results/sankey/2026-09-07T13-22-37-605Z/settled-diff.png",
+        "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z/logs/qa/sankey-33.log",
+        "qa/results/sankey/2026-09-07T13-22-37-605Z/hover-30-diff.png",
+        "qa/results/sankey/2026-09-07T13-22-37-605Z/hover-50-diff.png",
+        "qa/results/sankey/2026-09-07T13-22-37-605Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "qa:barloading/100:harness-race",
+      "category": "harness-race",
+      "charts": [
+        "barloading/100"
+      ],
+      "cells": [
+        "settled: harness exit 1",
+        "hover-30: harness exit 1",
+        "hover-50: harness exit 1",
+        "hover-70: harness exit 1"
+      ],
+      "evidence": [
+        "qa/results/barloading/2026-09-07T13-23-24-907Z/settled-diff.png",
+        "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z/logs/qa/barloading-100.log",
+        "qa/results/barloading/2026-09-07T13-23-24-907Z/hover-30-diff.png",
+        "qa/results/barloading/2026-09-07T13-23-24-907Z/hover-50-diff.png",
+        "qa/results/barloading/2026-09-07T13-23-24-907Z/hover-70-diff.png"
+      ],
+      "detail": [],
+      "hypothesis": ""
+    },
+    {
+      "id": "bench:tanstack/scatter/100:m1b_settleMs",
+      "category": "bench",
+      "charts": [
+        "tanstack/scatter/100"
+      ],
+      "cells": [
+        "m1b_settleMs: 53.2 vs baseline 40.5 (+31.4%)"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z/bench.json",
+        "bench/results/2026-09-07T14-01-35-567Z",
+        "bench/results/2026-09-07T14-03-03-231Z"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:hover-lag:bar/100",
+      "category": "hover-dim",
+      "charts": [
+        "bar/100"
+      ],
+      "cells": [
+        "settles-after-700ms-capture"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:hover-lag:pie/1000",
+      "category": "hover-dim",
+      "charts": [
+        "pie/1000"
+      ],
+      "cells": [
+        "dim-presence-mismatch"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:hover-lag:sankey/33",
+      "category": "hover-dim",
+      "charts": [
+        "sankey/33"
+      ],
+      "cells": [
+        "dim-presence-mismatch"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:hover-lag:liveline/100",
+      "category": "hover-dim",
+      "charts": [
+        "liveline/100"
+      ],
+      "cells": [
+        "dim-presence-mismatch"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:legend-hover-dim:legendhover/1000",
+      "category": "legend",
+      "charts": [
+        "legendhover/1000"
+      ],
+      "cells": [
+        "item-0: dim presence mismatch (bklit +2, migrated +0)",
+        "item-1: dim presence mismatch (bklit +1000, migrated +0)",
+        "item-1: migrated does not fully undim (1000 -> 0)"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:legend-hover-dim:candlelegend/1000",
+      "category": "legend",
+      "charts": [
+        "candlelegend/1000"
+      ],
+      "cells": [
+        "item-0: dim presence mismatch (bklit +511, migrated +0)",
+        "item-0: migrated does not fully undim (1533 -> 0)",
+        "item-1: dim presence mismatch (bklit +489, migrated +0)",
+        "item-1: migrated does not fully undim (1465 -> 0)"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:legend-hover-dim:markers/100",
+      "category": "legend",
+      "charts": [
+        "markers/100"
+      ],
+      "cells": [
+        "item-0: bklit does not fully undim (6 -> 4)",
+        "item-1: dim presence mismatch (bklit +1, migrated +0)",
+        "item-1: bklit does not fully undim (4 -> 3)",
+        "item-1: migrated does not fully undim (1 -> 0)"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z/probes.json"
+      ],
+      "hypothesis": ""
+    },
+    {
+      "id": "probe:legend-hover-dim:barsquares/100",
+      "category": "legend",
+      "charts": [
+        "barsquares/100"
+      ],
+      "cells": [
+        "item-0: migrated does not fully undim (0 -> 200)",
+        "item-1: migrated does not fully undim (0 -> 200)"
+      ],
+      "evidence": [
+        "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z/probes.json"
+      ],
+      "hypothesis": ""
+    }
+  ]
+}

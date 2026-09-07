@@ -45,6 +45,51 @@ export const SETTLE_CAP_OVERRIDE = { pie: 90000, radar: 90000, sunburst: 90000 }
 export const QUIESCE_STEP_MS = 50;
 export const QUIESCE_MAX_ITERS = 10;
 
+// Dim threshold: an element counts as dimmed when its dimmest channel drops below this.
+export const DIM_THRESHOLD = 0.99;
+
+const numOrOne = (v) => {
+  const n = typeof v === "number" ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 1;
+};
+
+// Alpha channel of a computed fill/stroke colour string. getComputedStyle
+// resolves colours to rgb()/rgba() (comma or space-separated `rgb(r g b / a)`
+// form, incl. color-mix() results which serialize with a `/ a` suffix); `none`,
+// `transparent` and gradient url(...) refs carry no dim signal -> 1. `raw` is
+// the element's attribute/inline hint: computed `transparent` resolves to
+// rgba(0,0,0,0), so a transparent hint vetoes that resolved zero.
+// Pure + exported for unit tests; the in-page copies in installSampler /
+// dimmedCount mirror this exactly.
+export function probeColorAlpha(color, raw = "") {
+  const t = String(color ?? "").trim().toLowerCase();
+  const hint = String(raw ?? "").toLowerCase();
+  if (t === "" || t === "none" || t === "transparent" || t.startsWith("url(")) return 1;
+  if (hint.includes("transparent")) return 1;
+  const slash = t.match(/\/\s*([\d.]+%?)\s*\)?\s*$/);
+  if (slash) {
+    const v = slash[1].endsWith("%") ? parseFloat(slash[1]) / 100 : parseFloat(slash[1]);
+    return Number.isFinite(v) ? v : 1;
+  }
+  const m = t.match(/^rgba?\(([^)]*)\)$/);
+  if (m) {
+    const parts = m[1].split(",").map((s) => s.trim());
+    if (parts.length === 4) {
+      const a = parts[3].endsWith("%") ? parseFloat(parts[3]) / 100 : parseFloat(parts[3]);
+      return Number.isFinite(a) ? a : 1;
+    }
+    return 1;
+  }
+  return 1;
+}
+
+// Dimmed when ANY channel (opacity, fill-opacity, stroke-opacity, fill alpha,
+// stroke alpha) drops below threshold — combined by MIN, not product.
+export function probeIsDimmed({ opacity, fillOpacity, strokeOpacity, fill, stroke, rawFill, rawStroke } = {}) {
+  const chans = [numOrOne(opacity), numOrOne(fillOpacity), numOrOne(strokeOpacity), probeColorAlpha(fill, rawFill), probeColorAlpha(stroke, rawStroke)];
+  return Math.min(...chans) < DIM_THRESHOLD;
+}
+
 export function sceneUrl(baseUrl, { impl, chart, n, state, scenario }) {
   let u = `${baseUrl}/?impl=${impl}&chart=${chart}&n=${n}`;
   if (state) u += `&state=${state}`;
@@ -146,16 +191,52 @@ export async function largestSvgBox(page) {
 // #chart-root text-length heuristic), and last-change time from the first pointermove. Read back with readSampler().
 export async function installSampler(page, { maxMs = 2000 } = {}) {
   await page.evaluate((maxMs) => {
-    const svgs = [...document.querySelectorAll("svg")].filter((s) => s.getBoundingClientRect().width > 100);
-    const svg = svgs.sort((a, b) => b.getBoundingClientRect().width * b.getBoundingClientRect().height - a.getBoundingClientRect().width * a.getBoundingClientRect().height)[0] ?? document.body;
     const root = document.getElementById("chart-root") ?? document.body;
     const baseText = (root.textContent ?? "").length;
-    const dimCount = () => {
-      let n = 0;
-      for (const el of svg.querySelectorAll("rect,path,circle,g")) {
-        const o = parseFloat(getComputedStyle(el).opacity);
-        if (o < 0.99) n++;
+    // In-page mirror of probeColorAlpha/probeIsDimmed (module scope is not
+    // visible inside evaluate); keep the threshold and channel logic in sync.
+    const colorAlpha = (color, raw) => {
+      const t = String(color ?? "").trim().toLowerCase();
+      if (t === "" || t === "none" || t === "transparent" || t.startsWith("url(")) return 1;
+      if (String(raw ?? "").toLowerCase().includes("transparent")) return 1;
+      const slash = t.match(/\/\s*([\d.]+%?)\s*\)?\s*$/);
+      if (slash) {
+        const v = slash[1].endsWith("%") ? parseFloat(slash[1]) / 100 : parseFloat(slash[1]);
+        return Number.isFinite(v) ? v : 1;
       }
+      const m = t.match(/^rgba?\(([^)]*)\)$/);
+      if (m) {
+        const parts = m[1].split(",").map((s) => s.trim());
+        if (parts.length === 4) {
+          const a = parts[3].endsWith("%") ? parseFloat(parts[3]) / 100 : parseFloat(parts[3]);
+          return Number.isFinite(a) ? a : 1;
+        }
+        return 1;
+      }
+      return 1;
+    };
+    const isDimmedEl = (el) => {
+      const st = getComputedStyle(el);
+      const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 1; };
+      const chans = [num(st.opacity), num(st.getPropertyValue("fill-opacity")), num(st.getPropertyValue("stroke-opacity"))];
+      const raw = ((el.getAttribute("fill") ?? "") + " " + (el.getAttribute("stroke") ?? "")).toLowerCase();
+      chans.push(colorAlpha(st.fill, raw), colorAlpha(st.stroke, raw));
+      return Math.min(...chans) < 0.99;
+    };
+    const dimCount = () => {
+      // Union scope: every svg >100px in EITHER dimension plus the chart root's
+      // own descendants (overlay svgs, HTML div chrome), each element once.
+      const root = document.getElementById("chart-root") ?? document.body;
+      const scopes = [...document.querySelectorAll("svg")].filter((s) => {
+        const r = s.getBoundingClientRect();
+        return r.width > 100 || r.height > 100;
+      });
+      scopes.push(root);
+      const seen = new Set();
+      const els = [];
+      for (const scope of scopes) for (const el of scope.querySelectorAll("rect,path,circle,g,li,div,span")) if (!seen.has(el)) { seen.add(el); els.push(el); }
+      let n = 0;
+      for (const el of els) if (isDimmedEl(el)) n++;
       return n;
     };
     const tipVisible = () => {
@@ -233,15 +314,47 @@ export function diffMarks(a, b) {
 
 export async function dimmedCount(page) {
   return page.evaluate(() => {
-    const svgs = [...document.querySelectorAll("svg")].filter((s) => s.getBoundingClientRect().width > 100);
-    const scope = svgs[0] ?? document.body;
+    // Union scope (mirror of installSampler above): every svg >100px in either
+    // dimension plus the chart root's descendants, each element counted once.
+    const root = document.getElementById("chart-root") ?? document.body;
+    const scopes = [...document.querySelectorAll("svg")].filter((s) => {
+      const r = s.getBoundingClientRect();
+      return r.width > 100 || r.height > 100;
+    });
+    scopes.push(root);
+    const seen = new Set();
+    const els = [];
+    for (const scope of scopes) for (const el of scope.querySelectorAll("rect,path,circle,g,li,div,span")) if (!seen.has(el)) { seen.add(el); els.push(el); }
+    // In-page mirror of probeColorAlpha/probeIsDimmed; keep in sync.
+    const colorAlpha = (color, raw) => {
+      const t = String(color ?? "").trim().toLowerCase();
+      if (t === "" || t === "none" || t === "transparent" || t.startsWith("url(")) return 1;
+      if (String(raw ?? "").toLowerCase().includes("transparent")) return 1;
+      const slash = t.match(/\/\s*([\d.]+%?)\s*\)?\s*$/);
+      if (slash) {
+        const v = slash[1].endsWith("%") ? parseFloat(slash[1]) / 100 : parseFloat(slash[1]);
+        return Number.isFinite(v) ? v : 1;
+      }
+      const m = t.match(/^rgba?\(([^)]*)\)$/);
+      if (m) {
+        const parts = m[1].split(",").map((s) => s.trim());
+        if (parts.length === 4) {
+          const a = parts[3].endsWith("%") ? parseFloat(parts[3]) / 100 : parseFloat(parts[3]);
+          return Number.isFinite(a) ? a : 1;
+        }
+        return 1;
+      }
+      return 1;
+    };
     let n = 0;
-    let total = 0;
-    for (const el of scope.querySelectorAll("rect,path,circle,g,li,div,span")) {
-      total++;
-      if (parseFloat(getComputedStyle(el).opacity) < 0.99) n++;
+    for (const el of els) {
+      const st = getComputedStyle(el);
+      const num = (v) => { const n2 = parseFloat(v); return Number.isFinite(n2) ? n2 : 1; };
+      const raw = ((el.getAttribute("fill") ?? "") + " " + (el.getAttribute("stroke") ?? "")).toLowerCase();
+      const chans = [num(st.opacity), num(st.getPropertyValue("fill-opacity")), num(st.getPropertyValue("stroke-opacity")), colorAlpha(st.fill, raw), colorAlpha(st.stroke, raw)];
+      if (Math.min(...chans) < 0.99) n++;
     }
-    return { dimmed: n, total };
+    return { dimmed: n, total: els.length };
   });
 }
 

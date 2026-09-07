@@ -2004,3 +2004,100 @@ Two behaviour changes, both recorded rather than hidden:
 
 Not in scope and still open: `chart-host.tsx:257` calls `buildTimeScale` unconditionally (~4.7 kB
 gzip, 15 `ChartHost` callers). Same shape of defect, its own item.
+
+### D613 — D597's ruling survives, its reasoning does not: the unconditional d3 importer was ours
+
+D597 stamped ≤1.10 unreachable at 0.16.0 and drafted I9 against the package. Its central factual
+claim was: *"The importer is the package: in `migrated-pie`, `@tanstack/charts` is what pulls
+`d3-brush/src/index.js` and `d3-selection/src/index.js`."* Its headline illustration was **"a pie
+chart ships d3-brush and d3-time-format — it has neither a brush nor a time axis."*
+
+Both halves of that illustration are ours, and both are now traced to a specific line we own:
+
+- **`d3-brush`** entered every host-mounting chart through `chart-host.tsx:31`, a static
+  `import { BrushLayer }` behind a runtime `hasBrush` gate. D612 removed that line; pie dropped
+  **21,096 bytes gzip** and 41 of 43 migrated scenarios dropped with it.
+- **`d3-time-format`** enters through `chart-host-store.ts:1`, `import { scaleTime } from "d3-scale"`,
+  used by `buildTimeScale` (`:144`), which `chart-host.tsx:229` calls **unconditionally** for every
+  chart whether or not its x-axis is temporal. That is the same defect shape, still unfixed.
+
+So the metafile reading was right about *where the bytes are* and wrong about *who put them there*.
+The mistake is worth naming precisely, because it is the same one D612's executor caught me making
+again: `metafile.inputs` lists every **parsed** file, and the barrel re-exports everything, so
+"`@tanstack/charts` pulls `d3-brush`" is true of the input graph for every scenario and says nothing
+about which import made it reachable in the *output*. Attribution needs the emitted bytes and the
+edge that carries them, not the input list.
+
+**Measured effect on the count** (`bench/measure-bundle.mjs`, full sweep, my own run):
+
+| | ≤1.10 | median ratio | max ratio |
+|---|---|---|---|
+| before D612 | 2/43 | 1.2682 | 1.6084 |
+| after D612 | **16/43** | 1.1160 | 1.3696 |
+
+**What survives.** The ruling: ≤1.10 is still not reachable at 0.16.0 — 27 of 43 remain over, and
+sunburst sits at 1.3696 with no brush edge left to cut. What does not survive is the disposition
+that got the ruling there. D597 concluded "no arrangement of the consuming code closes a gap that
+survives deleting the largest upstream defect", and used that to route the whole item upstream under
+principle 2. One arrangement of the consuming code has since moved 14 cells across the line. The
+remaining gap may still be upstream, but D597 did not demonstrate it and cannot be cited as if it had.
+
+**Disposition of I9.** Withdrawn as drafted — it was never filed, which is the only reason this
+costs nothing outward-facing. Its premise is false as written and filing it would have put an
+incorrect attribution on the package's tracker. Rewriting it requires first landing the
+`buildTimeScale` fix and then re-measuring what is genuinely left, in that order. Until then there
+is no upstream claim to make, and POST-PHASE-7 §1 item 9's "unreachable" stamp should be read as
+carrying D613's reasoning, not D597's.
+
+### D614 — probe dim fidelity: five artefacts cleared, two new true positives, one flake exposed
+
+V3/V4 changed the dim sampler in two ways: the predicate became multi-channel (dimmed when
+MIN(`opacity`, `fill-opacity`, `stroke-opacity`, fill alpha, stroke alpha) < 0.99, with a parser for
+`rgba()`, `rgb(r g b / a)` and `color(srgb …/a)`, and `none`/`transparent`/`url(#…)` read as opaque),
+and the scope became the union of every svg over 100px in either dimension plus `#chart-root`'s
+descendants, now including `li,div,span` so HTML marker chrome is sampled. `legend-hover-dim`
+additionally reads its baseline **before** issuing the hover, because migrated applies legend dim
+with no queued tween and a post-command read already equals the dimmed state.
+
+Verified by running the gate myself, before (`runs/2026-09-07T13-17-33-947Z`) against after
+(`runs/2026-09-07T15-01-57-940Z`, `…T15-06-20-490Z`):
+
+**`legend-hover-dim`: 4 flagged rows → 2.** Cleared: both `legendhover/1000` presence mismatches and
+the "migrated does not fully undim (1000 → 0)" artefact; both `candlelegend` presence mismatches;
+and both `barsquares/100` "migrated does not fully undim (0 → 200)" rows. The two survivors are the
+ones expected to survive: `candlelegend` on **magnitude** (bklit +512 vs migrated +1533 — the 3×
+leaf-vs-group fan-out of D603, untouched by design) and `markers/100`, which the research predicted
+the wider scope would fix and which it did not.
+
+**D611 was wrong about barsquares, and this run is the correction.** D611 concluded the mount-race
+reading "is **not** fixed by moving the baseline read earlier, which is what the probe fix does."
+It is: barsquares now reads 200→4212 for bklit against 201→4212 for migrated, clean on both items.
+The live DOM read in D611 was right that the DOM matches; the inference about which fix reaches it
+was not. No chart change was ever needed, and the item is closed.
+
+**`hover-lag`: 4 flags → 5, and the composition is better than the count.** Two presence mismatches
+were real detection failures and are now gone — `sankey/33` migrated 5 → 38 dimmed, `liveline/100`
+migrated 0 → 6 — exactly the cells the channel work targeted. Both converted into
+`settles-after-700ms-capture`, which is a different and more useful statement: the scene is still
+moving when the gate captures at +700 ms. Two flags are unresolved:
+
+- `pie/1000` still reads migrated **0** dimmed against bklit 999. The channel fix did not reach it,
+  so the working theory (a `withStates` focus tween the sampler cannot see) is not established.
+  This one is now the only dim mismatch with no explanation, and it is worth separating from the
+  cleared artefacts rather than carrying it in the same bucket.
+- `choropleth/100` is **newly** flagged: bklit now detects a dim at 56 ms where before neither side
+  did, and migrated still reads 0. Surfaced by the wider channels, cause unknown.
+
+**A flake, not a regression.** The first run after the change failed `hover-lag` outright with
+`openScene … never settled after 90000 virtual ms (armed=true settled=false paint=true)` on
+migrated pie. Stashing the two probe files made it pass, which looked decisive and was not: with the
+files restored it passed again (`…T15-06-20-490Z`, 42.1 s). The A/B was one sample per arm against a
+nondeterministic failure. The likely mechanism is worth an item: `openScene` installs the virtual
+clock and navigates with `waitUntil: "commit"`, so the module graph's *real-time* parse is not
+covered by the virtual budget it then pumps — on a cold first scene the budget can expire before
+`__benchSettled` exists. Cost measured while chasing this and worth recording as a negative result:
+the widened scope is not expensive — migrated pie/1000 collects 1,010 elements against the old
+scope's 1,005, and a full `dimCount()` takes 0.4 ms.
+
+Net: the instrument reports fewer artefacts and more real differences, which is the direction that
+matters. No chart code changed; every finding in this entry is probe-side.

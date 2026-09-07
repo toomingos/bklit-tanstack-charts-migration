@@ -1,0 +1,2024 @@
+{
+  "generatedAt": "2026-09-07T15:02:53.227Z",
+  "runDir": "docs/phase-7/gate/runs/2026-09-07T15-01-57-940Z",
+  "wallClockMs": 55285,
+  "ran": [
+    "hover-lag",
+    "legend-hover-dim",
+    "bardepth-toggle",
+    "no-rereveal"
+  ],
+  "errors": {
+    "hover-lag": "Error: openScene http://localhost:5198/?impl=migrated&chart=pie&n=1000 never settled after 90000 virtual ms (armed=true settled=false paint=true)\n    at openScene (file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/probes/lib-probe.mjs:137:13)\n    at async file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/probes/hover-lag.mjs:25:15\n    at async worker (file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/lib.mjs:303:22)\n    at async Promise.all (index 2)\n    at async runPhase (file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/lib.mjs:307:5)\n    at async runPool (file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/lib.mjs:314:5)\n    at async hoverLagProbe (file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/probes/hover-lag.mjs:24:22)\n    at async runProbes (file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/probes/run-probes.mjs:59:53)"
+  },
+  "summary": {
+    "legend-hover-dim": 2,
+    "bardepth-toggle": 0,
+    "no-rereveal": 0
+  },
+  "results": {
+    "legend-hover-dim": {
+      "name": "legend-hover-dim",
+      "rows": [
+        {
+          "chart": "legendhover",
+          "n": 1000,
+          "impl": "bklit",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 1003,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 112,
+              "elements": 3083
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 2001,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 16,
+              "elements": 3083
+            }
+          ],
+          "errors": [
+            "Error: <rect> attribute rx: A negative value is not valid. (\"-0.6067722555980338\")",
+            "Error: <rect> attribute ry: A negative value is not valid. (\"-0.6067722555980338\")",
+            "Error: <rect> attribute width: A negative value is not valid. (\"-1.2135445111960677px\")"
+          ]
+        },
+        {
+          "chart": "legendhover",
+          "n": 1000,
+          "impl": "migrated",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 2,
+              "dimmedAfter": 1004,
+              "dimMs": null,
+              "undimmedTo": 2,
+              "undimMs": null,
+              "elements": 3047
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 2,
+              "dimmedAfter": 2002,
+              "dimMs": null,
+              "undimmedTo": 2,
+              "undimMs": null,
+              "elements": 3047
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "candlelegend",
+          "n": 1000,
+          "impl": "bklit",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 512,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 144,
+              "elements": 3051
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 490,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 144,
+              "elements": 3051
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "candlelegend",
+          "n": 1000,
+          "impl": "migrated",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 1,
+              "dimmedAfter": 1534,
+              "dimMs": null,
+              "undimmedTo": 1,
+              "undimMs": null,
+              "elements": 5027
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1,
+              "dimmedAfter": 1466,
+              "dimMs": null,
+              "undimmedTo": 1,
+              "undimMs": null,
+              "elements": 5027
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "markers",
+          "n": 100,
+          "impl": "bklit",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 6,
+              "dimmedAfter": 5,
+              "dimMs": 224,
+              "undimmedTo": 3,
+              "undimMs": 352,
+              "elements": 387
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 3,
+              "dimmedAfter": 6,
+              "dimMs": 48,
+              "undimmedTo": 3,
+              "undimMs": 368,
+              "elements": 387
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "markers",
+          "n": 100,
+          "impl": "migrated",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 5,
+              "dimmedAfter": 6,
+              "dimMs": null,
+              "undimmedTo": 5,
+              "undimMs": null,
+              "elements": 155
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 5,
+              "dimmedAfter": 7,
+              "dimMs": 48,
+              "undimmedTo": 6,
+              "undimMs": null,
+              "elements": 155
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "barsquares",
+          "n": 100,
+          "impl": "bklit",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 200,
+              "dimmedAfter": 4212,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 32,
+              "elements": 10979
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 200,
+              "dimmedAfter": 6916,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 32,
+              "elements": 10979
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "barsquares",
+          "n": 100,
+          "impl": "migrated",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 201,
+              "dimmedAfter": 4212,
+              "dimMs": null,
+              "undimmedTo": 201,
+              "undimMs": 16,
+              "elements": 10955
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 201,
+              "dimmedAfter": 6916,
+              "dimMs": 16,
+              "undimmedTo": 201,
+              "undimMs": 16,
+              "elements": 10955
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "profitloss",
+          "n": 1000,
+          "impl": "bklit",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 9,
+              "dimMs": 32,
+              "undimmedTo": 0,
+              "undimMs": 192,
+              "elements": 68
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 9,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 192,
+              "elements": 68
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "profitloss",
+          "n": 1000,
+          "impl": "migrated",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 1,
+              "dimmedAfter": 9,
+              "dimMs": 16,
+              "undimmedTo": 1,
+              "undimMs": 16,
+              "elements": 55
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1,
+              "dimmedAfter": 9,
+              "dimMs": 16,
+              "undimmedTo": 1,
+              "undimMs": 16,
+              "elements": 55
+            }
+          ],
+          "errors": []
+        }
+      ],
+      "pairs": [
+        {
+          "chart": "legendhover",
+          "n": 1000,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 1003,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 112,
+              "elements": 3083
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 2001,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 16,
+              "elements": 3083
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 2,
+              "dimmedAfter": 1004,
+              "dimMs": null,
+              "undimmedTo": 2,
+              "undimMs": null,
+              "elements": 3047
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 2,
+              "dimmedAfter": 2002,
+              "dimMs": null,
+              "undimmedTo": 2,
+              "undimMs": null,
+              "elements": 3047
+            }
+          ],
+          "flags": []
+        },
+        {
+          "chart": "candlelegend",
+          "n": 1000,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 512,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 144,
+              "elements": 3051
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 490,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 144,
+              "elements": 3051
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 1,
+              "dimmedAfter": 1534,
+              "dimMs": null,
+              "undimmedTo": 1,
+              "undimMs": null,
+              "elements": 5027
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1,
+              "dimmedAfter": 1466,
+              "dimMs": null,
+              "undimmedTo": 1,
+              "undimMs": null,
+              "elements": 5027
+            }
+          ],
+          "flags": [
+            "item-0: dimmed count differs >25% (bklit +512, migrated +1533)",
+            "item-1: dimmed count differs >25% (bklit +490, migrated +1465)"
+          ]
+        },
+        {
+          "chart": "markers",
+          "n": 100,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 6,
+              "dimmedAfter": 5,
+              "dimMs": 224,
+              "undimmedTo": 3,
+              "undimMs": 352,
+              "elements": 387
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 3,
+              "dimmedAfter": 6,
+              "dimMs": 48,
+              "undimmedTo": 3,
+              "undimMs": 368,
+              "elements": 387
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 5,
+              "dimmedAfter": 6,
+              "dimMs": null,
+              "undimmedTo": 5,
+              "undimMs": null,
+              "elements": 155
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 5,
+              "dimmedAfter": 7,
+              "dimMs": 48,
+              "undimmedTo": 6,
+              "undimMs": null,
+              "elements": 155
+            }
+          ],
+          "flags": [
+            "item-0: dim presence mismatch (bklit +-1, migrated +1)",
+            "item-0: bklit does not fully undim (6 -> 3)",
+            "item-1: dimmed count differs >25% (bklit +3, migrated +2)",
+            "item-1: migrated does not fully undim (5 -> 6)"
+          ]
+        },
+        {
+          "chart": "barsquares",
+          "n": 100,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 200,
+              "dimmedAfter": 4212,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 32,
+              "elements": 10979
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 200,
+              "dimmedAfter": 6916,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 32,
+              "elements": 10979
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 201,
+              "dimmedAfter": 4212,
+              "dimMs": null,
+              "undimmedTo": 201,
+              "undimMs": 16,
+              "elements": 10955
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 201,
+              "dimmedAfter": 6916,
+              "dimMs": 16,
+              "undimmedTo": 201,
+              "undimMs": 16,
+              "elements": 10955
+            }
+          ],
+          "flags": []
+        },
+        {
+          "chart": "profitloss",
+          "n": 1000,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 9,
+              "dimMs": 32,
+              "undimmedTo": 0,
+              "undimMs": 192,
+              "elements": 68
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 9,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 192,
+              "elements": 68
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 1,
+              "dimmedAfter": 9,
+              "dimMs": 16,
+              "undimmedTo": 1,
+              "undimMs": 16,
+              "elements": 55
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1,
+              "dimmedAfter": 9,
+              "dimMs": 16,
+              "undimmedTo": 1,
+              "undimMs": 16,
+              "elements": 55
+            }
+          ],
+          "flags": []
+        }
+      ],
+      "flagged": [
+        {
+          "chart": "candlelegend",
+          "n": 1000,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 512,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 144,
+              "elements": 3051
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 490,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 144,
+              "elements": 3051
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 1,
+              "dimmedAfter": 1534,
+              "dimMs": null,
+              "undimmedTo": 1,
+              "undimMs": null,
+              "elements": 5027
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1,
+              "dimmedAfter": 1466,
+              "dimMs": null,
+              "undimmedTo": 1,
+              "undimMs": null,
+              "elements": 5027
+            }
+          ],
+          "flags": [
+            "item-0: dimmed count differs >25% (bklit +512, migrated +1533)",
+            "item-1: dimmed count differs >25% (bklit +490, migrated +1465)"
+          ]
+        },
+        {
+          "chart": "markers",
+          "n": 100,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 6,
+              "dimmedAfter": 5,
+              "dimMs": 224,
+              "undimmedTo": 3,
+              "undimMs": 352,
+              "elements": 387
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 3,
+              "dimmedAfter": 6,
+              "dimMs": 48,
+              "undimmedTo": 3,
+              "undimMs": 368,
+              "elements": 387
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 5,
+              "dimmedAfter": 6,
+              "dimMs": null,
+              "undimmedTo": 5,
+              "undimMs": null,
+              "elements": 155
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 5,
+              "dimmedAfter": 7,
+              "dimMs": 48,
+              "undimmedTo": 6,
+              "undimMs": null,
+              "elements": 155
+            }
+          ],
+          "flags": [
+            "item-0: dim presence mismatch (bklit +-1, migrated +1)",
+            "item-0: bklit does not fully undim (6 -> 3)",
+            "item-1: dimmed count differs >25% (bklit +3, migrated +2)",
+            "item-1: migrated does not fully undim (5 -> 6)"
+          ]
+        }
+      ],
+      "durationMs": 17936
+    },
+    "bardepth-toggle": {
+      "name": "bardepth-toggle",
+      "chart": "bardepth",
+      "n": 100,
+      "rows": [
+        {
+          "impl": "bklit",
+          "hooks": {
+            "depth": true,
+            "pulsePaused": true,
+            "pulsePhase": true
+          },
+          "initialCount": 525,
+          "offCount": 103,
+          "onCount": 525,
+          "offSettleMs": 66,
+          "onSettleMs": 0,
+          "offAgainSettleMs": 0,
+          "offVsOn": {
+            "compared": 40,
+            "moved": 38,
+            "opacityChanged": 0,
+            "maxDelta": 686.5,
+            "countA": 103,
+            "countB": 525
+          },
+          "offVsOffAgain": {
+            "compared": 40,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 103,
+            "countB": 103
+          },
+          "errors": []
+        },
+        {
+          "impl": "migrated",
+          "hooks": {
+            "depth": true,
+            "pulsePaused": true,
+            "pulsePhase": true
+          },
+          "initialCount": 476,
+          "offCount": 100,
+          "onCount": 476,
+          "offSettleMs": 33,
+          "onSettleMs": 0,
+          "offAgainSettleMs": 33,
+          "offVsOn": {
+            "compared": 40,
+            "moved": 40,
+            "opacityChanged": 0,
+            "maxDelta": 728.2,
+            "countA": 100,
+            "countB": 476
+          },
+          "offVsOffAgain": {
+            "compared": 40,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 100,
+            "countB": 100
+          },
+          "errors": []
+        }
+      ],
+      "flags": [],
+      "durationMs": 734
+    },
+    "no-rereveal": {
+      "name": "no-rereveal",
+      "sampleAtMs": [
+        100,
+        400,
+        900
+      ],
+      "rows": [
+        {
+          "chart": "bardepth",
+          "n": 100,
+          "impl": "bklit",
+          "toggle": "__qaSetBarDepthEnabled(true)",
+          "hookOk": true,
+          "before": 103,
+          "d100_400": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 249,
+            "countB": 249
+          },
+          "d400_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 249,
+            "countB": 249
+          },
+          "dBefore_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0.8,
+            "countA": 103,
+            "countB": 249
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 249,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 24,
+                  "y": 24,
+                  "w": 1052,
+                  "h": 526,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64,
+                  "y": 64,
+                  "w": 972,
+                  "h": 446,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 65.9,
+                  "y": 156.7,
+                  "w": 7.8,
+                  "h": 353.3,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 75.6,
+                  "y": 161.4,
+                  "w": 7.8,
+                  "h": 348.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 85.3,
+                  "y": 158.8,
+                  "w": 7.8,
+                  "h": 351.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 95,
+                  "y": 162.1,
+                  "w": 7.8,
+                  "h": 347.9,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 249,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 24,
+                  "y": 24,
+                  "w": 1052,
+                  "h": 526,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64,
+                  "y": 64,
+                  "w": 972,
+                  "h": 446,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 65.9,
+                  "y": 156.7,
+                  "w": 7.8,
+                  "h": 353.3,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 75.6,
+                  "y": 161.4,
+                  "w": 7.8,
+                  "h": 348.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 85.3,
+                  "y": 158.8,
+                  "w": 7.8,
+                  "h": 351.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 95,
+                  "y": 162.1,
+                  "w": 7.8,
+                  "h": 347.9,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 249,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 24,
+                  "y": 24,
+                  "w": 1052,
+                  "h": 526,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64,
+                  "y": 64,
+                  "w": 972,
+                  "h": 446,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 65.9,
+                  "y": 156.7,
+                  "w": 7.8,
+                  "h": 353.3,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 75.6,
+                  "y": 161.4,
+                  "w": 7.8,
+                  "h": 348.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 85.3,
+                  "y": 158.8,
+                  "w": 7.8,
+                  "h": 351.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 95,
+                  "y": 162.1,
+                  "w": 7.8,
+                  "h": 347.9,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "bardepth",
+          "n": 100,
+          "impl": "migrated",
+          "toggle": "__qaSetBarDepthEnabled(true)",
+          "hookOk": true,
+          "before": 100,
+          "d100_400": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 200,
+            "countB": 200
+          },
+          "d400_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 200,
+            "countB": 200
+          },
+          "dBefore_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0.8,
+            "countA": 100,
+            "countB": 200
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 200,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 1:0",
+                  "x": 65.9,
+                  "y": 156.7,
+                  "w": 7.8,
+                  "h": 353.3,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 2:1",
+                  "x": 75.6,
+                  "y": 161.4,
+                  "w": 7.8,
+                  "h": 348.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 3:2",
+                  "x": 85.3,
+                  "y": 158.8,
+                  "w": 7.8,
+                  "h": 351.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 4:3",
+                  "x": 95,
+                  "y": 162.1,
+                  "w": 7.8,
+                  "h": 347.9,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 5:4",
+                  "x": 104.7,
+                  "y": 156.8,
+                  "w": 7.8,
+                  "h": 353.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 6:5",
+                  "x": 114.4,
+                  "y": 149.7,
+                  "w": 7.8,
+                  "h": 360.3,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 200,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 1:0",
+                  "x": 65.9,
+                  "y": 156.7,
+                  "w": 7.8,
+                  "h": 353.3,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 2:1",
+                  "x": 75.6,
+                  "y": 161.4,
+                  "w": 7.8,
+                  "h": 348.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 3:2",
+                  "x": 85.3,
+                  "y": 158.8,
+                  "w": 7.8,
+                  "h": 351.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 4:3",
+                  "x": 95,
+                  "y": 162.1,
+                  "w": 7.8,
+                  "h": 347.9,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 5:4",
+                  "x": 104.7,
+                  "y": 156.8,
+                  "w": 7.8,
+                  "h": 353.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 6:5",
+                  "x": 114.4,
+                  "y": 149.7,
+                  "w": 7.8,
+                  "h": 360.3,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 200,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 1:0",
+                  "x": 65.9,
+                  "y": 156.7,
+                  "w": 7.8,
+                  "h": 353.3,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 2:1",
+                  "x": 75.6,
+                  "y": 161.4,
+                  "w": 7.8,
+                  "h": 348.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 3:2",
+                  "x": 85.3,
+                  "y": 158.8,
+                  "w": 7.8,
+                  "h": 351.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 4:3",
+                  "x": 95,
+                  "y": 162.1,
+                  "w": 7.8,
+                  "h": 347.9,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 5:4",
+                  "x": 104.7,
+                  "y": 156.8,
+                  "w": 7.8,
+                  "h": 353.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 6:5",
+                  "x": 114.4,
+                  "y": 149.7,
+                  "w": 7.8,
+                  "h": 360.3,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "patternarea",
+          "n": 1000,
+          "impl": "bklit",
+          "toggle": "__qaSetPatternPreset('dots')",
+          "hookOk": true,
+          "before": 3,
+          "d100_400": {
+            "compared": 2,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 3,
+            "countB": 3
+          },
+          "d400_900": {
+            "compared": 2,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 3,
+            "countB": 3
+          },
+          "dBefore_900": {
+            "compared": 2,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 3,
+            "countB": 3
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 3,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 210.7,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 3,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 210.7,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 3,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 210.7,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "patternarea",
+          "n": 1000,
+          "impl": "migrated",
+          "toggle": "__qaSetPatternPreset('dots')",
+          "hookOk": true,
+          "before": 3,
+          "d100_400": {
+            "compared": 3,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 3,
+            "countB": 3
+          },
+          "d400_900": {
+            "compared": 3,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 3,
+            "countB": 3
+          },
+          "dBefore_900": {
+            "compared": 3,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 3,
+            "countB": 3
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 3,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": "pattern-area-seriesA:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": "seriesA__fill:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": "seriesA:string:7:seriesA:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 210.7,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 3,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": "pattern-area-seriesA:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": "seriesA__fill:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": "seriesA:string:7:seriesA:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 210.7,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 3,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": "pattern-area-seriesA:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": "seriesA__fill:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": "seriesA:string:7:seriesA:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 210.7,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "brush",
+          "n": 1000,
+          "impl": "bklit",
+          "toggle": "__qaSetBrush(0.25,0.75)",
+          "hookOk": true,
+          "before": 1,
+          "d100_400": {
+            "compared": 1,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1,
+            "countB": 1
+          },
+          "d400_900": {
+            "compared": 1,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1,
+            "countB": 1
+          },
+          "dBefore_900": {
+            "compared": 1,
+            "moved": 1,
+            "opacityChanged": 0,
+            "maxDelta": 1458,
+            "countA": 1,
+            "countB": 1
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 1,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": -422,
+                  "y": 83.4,
+                  "w": 1944,
+                  "h": 48.8,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 1,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": -422,
+                  "y": 83.4,
+                  "w": 1944,
+                  "h": 48.8,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 1,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": -422,
+                  "y": 83.4,
+                  "w": 1944,
+                  "h": 48.8,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "brush",
+          "n": 1000,
+          "impl": "migrated",
+          "toggle": "__qaSetBrush(0.25,0.75)",
+          "hookOk": true,
+          "before": 1,
+          "d100_400": {
+            "compared": 1,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1,
+            "countB": 1
+          },
+          "d400_900": {
+            "compared": 1,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1,
+            "countB": 1
+          },
+          "dBefore_900": {
+            "compared": 1,
+            "moved": 1,
+            "opacityChanged": 0,
+            "maxDelta": 1458,
+            "countA": 1,
+            "countB": 1
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 1,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": "seriesA:string:7:seriesA:segment:0",
+                  "x": -422,
+                  "y": 83.4,
+                  "w": 1944,
+                  "h": 48.8,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 1,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": "seriesA:string:7:seriesA:segment:0",
+                  "x": -422,
+                  "y": 83.4,
+                  "w": 1944,
+                  "h": 48.8,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 1,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": "seriesA:string:7:seriesA:segment:0",
+                  "x": -422,
+                  "y": 83.4,
+                  "w": 1944,
+                  "h": 48.8,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "legendhover",
+          "n": 1000,
+          "impl": "bklit",
+          "toggle": "__qaSetLegendHover(0)",
+          "hookOk": true,
+          "before": 1007,
+          "d100_400": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1007,
+            "countB": 1007
+          },
+          "d400_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1007,
+            "countB": 1007
+          },
+          "dBefore_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1007,
+            "countB": 1007
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 1007,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 24,
+                  "y": 24,
+                  "w": 800,
+                  "h": 400,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64,
+                  "y": 64,
+                  "w": 720,
+                  "h": 320,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 63,
+                  "y": 262.3,
+                  "w": 2,
+                  "h": 121.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 63.7,
+                  "y": 259.6,
+                  "w": 2,
+                  "h": 124.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64.4,
+                  "y": 261.6,
+                  "w": 2,
+                  "h": 122.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 65.2,
+                  "y": 262.5,
+                  "w": 2,
+                  "h": 121.5,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 1007,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 24,
+                  "y": 24,
+                  "w": 800,
+                  "h": 400,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64,
+                  "y": 64,
+                  "w": 720,
+                  "h": 320,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 63,
+                  "y": 262.3,
+                  "w": 2,
+                  "h": 121.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 63.7,
+                  "y": 259.6,
+                  "w": 2,
+                  "h": 124.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64.4,
+                  "y": 261.6,
+                  "w": 2,
+                  "h": 122.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 65.2,
+                  "y": 262.5,
+                  "w": 2,
+                  "h": 121.5,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 1007,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 24,
+                  "y": 24,
+                  "w": 800,
+                  "h": 400,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64,
+                  "y": 64,
+                  "w": 720,
+                  "h": 320,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 63,
+                  "y": 262.3,
+                  "w": 2,
+                  "h": 121.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 63.7,
+                  "y": 259.6,
+                  "w": 2,
+                  "h": 124.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64.4,
+                  "y": 261.6,
+                  "w": 2,
+                  "h": 122.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 65.2,
+                  "y": 262.5,
+                  "w": 2,
+                  "h": 121.5,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": [
+            "Error: <rect> attribute rx: A negative value is not valid. (\"-0.6067722555980338\")",
+            "Error: <rect> attribute ry: A negative value is not valid. (\"-0.6067722555980338\")",
+            "Error: <rect> attribute width: A negative value is not valid. (\"-1.2135445111960677px\")"
+          ]
+        },
+        {
+          "chart": "legendhover",
+          "n": 1000,
+          "impl": "migrated",
+          "toggle": "__qaSetLegendHover(0)",
+          "hookOk": true,
+          "before": 1002,
+          "d100_400": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1002,
+            "countB": 1002
+          },
+          "d400_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1002,
+            "countB": 1002
+          },
+          "dBefore_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1002,
+            "countB": 1002
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 1002,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:0",
+                  "x": 63,
+                  "y": 262.4,
+                  "w": 2,
+                  "h": 121.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:1",
+                  "x": 63.7,
+                  "y": 259.6,
+                  "w": 2,
+                  "h": 124.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:2",
+                  "x": 64.4,
+                  "y": 261.6,
+                  "w": 2,
+                  "h": 122.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:3",
+                  "x": 65.2,
+                  "y": 262.5,
+                  "w": 2,
+                  "h": 121.5,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:4",
+                  "x": 65.9,
+                  "y": 262.9,
+                  "w": 2,
+                  "h": 121.1,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:5",
+                  "x": 66.6,
+                  "y": 262.6,
+                  "w": 2,
+                  "h": 121.4,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 1002,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:0",
+                  "x": 63,
+                  "y": 262.4,
+                  "w": 2,
+                  "h": 121.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:1",
+                  "x": 63.7,
+                  "y": 259.6,
+                  "w": 2,
+                  "h": 124.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:2",
+                  "x": 64.4,
+                  "y": 261.6,
+                  "w": 2,
+                  "h": 122.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:3",
+                  "x": 65.2,
+                  "y": 262.5,
+                  "w": 2,
+                  "h": 121.5,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:4",
+                  "x": 65.9,
+                  "y": 262.9,
+                  "w": 2,
+                  "h": 121.1,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:5",
+                  "x": 66.6,
+                  "y": 262.6,
+                  "w": 2,
+                  "h": 121.4,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 1002,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:0",
+                  "x": 63,
+                  "y": 262.4,
+                  "w": 2,
+                  "h": 121.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:1",
+                  "x": 63.7,
+                  "y": 259.6,
+                  "w": 2,
+                  "h": 124.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:2",
+                  "x": 64.4,
+                  "y": 261.6,
+                  "w": 2,
+                  "h": 122.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:3",
+                  "x": 65.2,
+                  "y": 262.5,
+                  "w": 2,
+                  "h": 121.5,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:4",
+                  "x": 65.9,
+                  "y": 262.9,
+                  "w": 2,
+                  "h": 121.1,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:5",
+                  "x": 66.6,
+                  "y": 262.6,
+                  "w": 2,
+                  "h": 121.4,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        }
+      ],
+      "flagged": [],
+      "durationMs": 6429
+    }
+  }
+}

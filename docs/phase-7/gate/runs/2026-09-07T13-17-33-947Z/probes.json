@@ -1,0 +1,3695 @@
+{
+  "generatedAt": "2026-09-07T13:24:31.131Z",
+  "runDir": "docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z",
+  "wallClockMs": 60231,
+  "ran": [
+    "hover-lag",
+    "legend-hover-dim",
+    "bardepth-toggle",
+    "no-rereveal"
+  ],
+  "errors": {},
+  "summary": {
+    "hover-lag": 4,
+    "legend-hover-dim": 4,
+    "bardepth-toggle": 0,
+    "no-rereveal": 0
+  },
+  "results": {
+    "hover-lag": {
+      "name": "hover-lag",
+      "hoverWaitMs": 700,
+      "rows": [
+        {
+          "chart": "line",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 61,
+          "firstTooltipMs": 61,
+          "lastChangeMs": 444,
+          "finalDim": 1,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 61,
+              "firstTooltipMs": 61,
+              "lastChangeMs": 444,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 93,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 105,
+              "firstTooltipMs": 105,
+              "lastChangeMs": 505,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 92,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 61,
+              "firstTooltipMs": 61,
+              "lastChangeMs": 444,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 93,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "line",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 67,
+          "firstTooltipMs": 67,
+          "lastChangeMs": 0,
+          "finalDim": 1,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 66,
+              "firstTooltipMs": 66,
+              "lastChangeMs": 0,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 82,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 67,
+              "firstTooltipMs": 67,
+              "lastChangeMs": 0,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 83,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 67,
+              "firstTooltipMs": 67,
+              "lastChangeMs": 0,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 84,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "area",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 54,
+          "firstTooltipMs": 54,
+          "lastChangeMs": 438,
+          "finalDim": 1,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 54,
+              "firstTooltipMs": 54,
+              "lastChangeMs": 438,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 61,
+              "firstTooltipMs": 61,
+              "lastChangeMs": 443,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 41,
+              "firstTooltipMs": 41,
+              "lastChangeMs": 423,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "area",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 71,
+          "firstTooltipMs": 71,
+          "lastChangeMs": 0,
+          "finalDim": 1,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 70,
+              "firstTooltipMs": 70,
+              "lastChangeMs": 0,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 75,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 71,
+              "firstTooltipMs": 71,
+              "lastChangeMs": 0,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 77,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 71,
+              "firstTooltipMs": 71,
+              "lastChangeMs": 0,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 79,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "bar",
+          "n": 100,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 76,
+          "firstTooltipMs": 60,
+          "lastChangeMs": 311,
+          "finalDim": 198,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 72,
+              "firstTooltipMs": 56,
+              "lastChangeMs": 311,
+              "finalDim": 198,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 76,
+              "firstTooltipMs": 60,
+              "lastChangeMs": 315,
+              "finalDim": 198,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 120,
+              "firstTooltipMs": 93,
+              "lastChangeMs": 279,
+              "finalDim": 198,
+              "finalTooltip": true,
+              "frames": 93,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "bar",
+          "n": 100,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 36,
+          "firstTooltipMs": 36,
+          "lastChangeMs": 1099,
+          "finalDim": 198,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": true,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 36,
+              "firstTooltipMs": 36,
+              "lastChangeMs": 1085,
+              "finalDim": 198,
+              "finalTooltip": true,
+              "frames": 93,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 34,
+              "firstTooltipMs": 34,
+              "lastChangeMs": 1099,
+              "finalDim": 198,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 66,
+              "firstTooltipMs": 66,
+              "lastChangeMs": 1114,
+              "finalDim": 198,
+              "finalTooltip": true,
+              "frames": 91,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "scatter",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 105,
+          "firstTooltipMs": 68,
+          "lastChangeMs": 105,
+          "finalDim": 2,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 96,
+              "firstTooltipMs": 74,
+              "lastChangeMs": 96,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 92,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 105,
+              "firstTooltipMs": 68,
+              "lastChangeMs": 105,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 91,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 135,
+              "firstTooltipMs": 61,
+              "lastChangeMs": 135,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 91,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "scatter",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 202,
+          "firstTooltipMs": 202,
+          "lastChangeMs": 0,
+          "finalDim": 2,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 210,
+              "firstTooltipMs": 210,
+              "lastChangeMs": 0,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 31,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 202,
+              "firstTooltipMs": 202,
+              "lastChangeMs": 0,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 31,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 202,
+              "firstTooltipMs": 202,
+              "lastChangeMs": 0,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 29,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "composed",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 92,
+          "firstTooltipMs": 92,
+          "lastChangeMs": 468,
+          "finalDim": 1001,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 92,
+              "firstTooltipMs": 92,
+              "lastChangeMs": 465,
+              "finalDim": 1001,
+              "finalTooltip": true,
+              "frames": 86,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 122,
+              "firstTooltipMs": 122,
+              "lastChangeMs": 495,
+              "finalDim": 1001,
+              "finalTooltip": true,
+              "frames": 86,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 89,
+              "firstTooltipMs": 89,
+              "lastChangeMs": 468,
+              "finalDim": 1001,
+              "finalTooltip": true,
+              "frames": 92,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "composed",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 93,
+          "firstTooltipMs": 93,
+          "lastChangeMs": 0,
+          "finalDim": 1000,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 93,
+              "firstTooltipMs": 93,
+              "lastChangeMs": 0,
+              "finalDim": 1000,
+              "finalTooltip": true,
+              "frames": 77,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 92,
+              "firstTooltipMs": 92,
+              "lastChangeMs": 0,
+              "finalDim": 1000,
+              "finalTooltip": true,
+              "frames": 77,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 98,
+              "firstTooltipMs": 98,
+              "lastChangeMs": 0,
+              "finalDim": 1000,
+              "finalTooltip": true,
+              "frames": 75,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "candlestick",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 180.5,
+          "firstTooltipMs": 99,
+          "lastChangeMs": 413,
+          "finalDim": 999,
+          "baseDim": 0,
+          "finalTooltip": false,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 202,
+              "firstTooltipMs": 129,
+              "lastChangeMs": 413,
+              "finalDim": 999,
+              "finalTooltip": true,
+              "frames": 77,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 159,
+              "firstTooltipMs": 69,
+              "lastChangeMs": 450,
+              "finalDim": 999,
+              "finalTooltip": true,
+              "frames": 83,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": null,
+              "lastChangeMs": 0,
+              "finalDim": 0,
+              "finalTooltip": false,
+              "frames": 92,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "candlestick",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 241,
+          "firstTooltipMs": 241,
+          "lastChangeMs": 0,
+          "finalDim": 2998,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 241,
+              "firstTooltipMs": 241,
+              "lastChangeMs": 0,
+              "finalDim": 2998,
+              "finalTooltip": true,
+              "frames": 9,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 241,
+              "firstTooltipMs": 241,
+              "lastChangeMs": 0,
+              "finalDim": 2998,
+              "finalTooltip": true,
+              "frames": 9,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 243,
+              "firstTooltipMs": 243,
+              "lastChangeMs": 0,
+              "finalDim": 2998,
+              "finalTooltip": true,
+              "frames": 8,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "heatmap",
+          "n": 52,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 184,
+          "firstTooltipMs": 184,
+          "lastChangeMs": 384,
+          "finalDim": 741,
+          "baseDim": 371,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 371,
+              "firstDimMs": 184,
+              "firstTooltipMs": 184,
+              "lastChangeMs": 411,
+              "finalDim": 741,
+              "finalTooltip": true,
+              "frames": 90,
+              "started": true
+            },
+            {
+              "baseDim": 371,
+              "firstDimMs": 152,
+              "firstTooltipMs": 152,
+              "lastChangeMs": 384,
+              "finalDim": 741,
+              "finalTooltip": true,
+              "frames": 91,
+              "started": true
+            },
+            {
+              "baseDim": 371,
+              "firstDimMs": 184,
+              "firstTooltipMs": 184,
+              "lastChangeMs": 361,
+              "finalDim": 741,
+              "finalTooltip": true,
+              "frames": 90,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "heatmap",
+          "n": 52,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 54,
+          "firstTooltipMs": 54,
+          "lastChangeMs": 54,
+          "finalDim": 370,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 46,
+              "firstTooltipMs": 46,
+              "lastChangeMs": 46,
+              "finalDim": 370,
+              "finalTooltip": true,
+              "frames": 91,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 54,
+              "firstTooltipMs": 54,
+              "lastChangeMs": 54,
+              "finalDim": 370,
+              "finalTooltip": true,
+              "frames": 92,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 57,
+              "firstTooltipMs": 57,
+              "lastChangeMs": 57,
+              "finalDim": 370,
+              "finalTooltip": true,
+              "frames": 91,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "pie",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 142,
+          "firstTooltipMs": null,
+          "lastChangeMs": 362,
+          "finalDim": 999,
+          "baseDim": 0,
+          "finalTooltip": false,
+          "dimNever": false,
+          "tooltipNever": true,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 115,
+              "firstTooltipMs": null,
+              "lastChangeMs": 362,
+              "finalDim": 999,
+              "finalTooltip": false,
+              "frames": 91,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 142,
+              "firstTooltipMs": null,
+              "lastChangeMs": 339,
+              "finalDim": 999,
+              "finalTooltip": false,
+              "frames": 90,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 159,
+              "firstTooltipMs": null,
+              "lastChangeMs": 386,
+              "finalDim": 999,
+              "finalTooltip": false,
+              "frames": 90,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "pie",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": null,
+          "firstTooltipMs": null,
+          "lastChangeMs": 0,
+          "finalDim": 0,
+          "baseDim": 0,
+          "finalTooltip": false,
+          "dimNever": true,
+          "tooltipNever": true,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": null,
+              "lastChangeMs": 0,
+              "finalDim": 0,
+              "finalTooltip": false,
+              "frames": 83,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": null,
+              "lastChangeMs": 0,
+              "finalDim": 0,
+              "finalTooltip": false,
+              "frames": 82,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": null,
+              "lastChangeMs": 0,
+              "finalDim": 0,
+              "finalTooltip": false,
+              "frames": 82,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "sankey",
+          "n": 33,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": null,
+          "firstTooltipMs": 62,
+          "lastChangeMs": 155,
+          "finalDim": 47,
+          "baseDim": 47,
+          "finalTooltip": false,
+          "dimNever": true,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 47,
+              "firstDimMs": null,
+              "firstTooltipMs": 63,
+              "lastChangeMs": 155,
+              "finalDim": 47,
+              "finalTooltip": false,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 47,
+              "firstDimMs": null,
+              "firstTooltipMs": 55,
+              "lastChangeMs": 160,
+              "finalDim": 47,
+              "finalTooltip": false,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 47,
+              "firstDimMs": null,
+              "firstTooltipMs": 62,
+              "lastChangeMs": 155,
+              "finalDim": 47,
+              "finalTooltip": false,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "sankey",
+          "n": 33,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 47,
+          "firstTooltipMs": 47,
+          "lastChangeMs": 143,
+          "finalDim": 5,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 47,
+              "firstTooltipMs": 47,
+              "lastChangeMs": 143,
+              "finalDim": 5,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 47,
+              "firstTooltipMs": 47,
+              "lastChangeMs": 142,
+              "finalDim": 5,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 53,
+              "firstTooltipMs": 53,
+              "lastChangeMs": 146,
+              "finalDim": 5,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "choropleth",
+          "n": 100,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": null,
+          "firstTooltipMs": 62,
+          "lastChangeMs": 159,
+          "finalDim": 1,
+          "baseDim": 1,
+          "finalTooltip": true,
+          "dimNever": true,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 1,
+              "firstDimMs": null,
+              "firstTooltipMs": 55,
+              "lastChangeMs": 152,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 1,
+              "firstDimMs": null,
+              "firstTooltipMs": 62,
+              "lastChangeMs": 168,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 92,
+              "started": true
+            },
+            {
+              "baseDim": 1,
+              "firstDimMs": null,
+              "firstTooltipMs": 63,
+              "lastChangeMs": 159,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "choropleth",
+          "n": 100,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": null,
+          "firstTooltipMs": 60,
+          "lastChangeMs": 60,
+          "finalDim": 0,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": true,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": 60,
+              "lastChangeMs": 60,
+              "finalDim": 0,
+              "finalTooltip": true,
+              "frames": 93,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": 46,
+              "lastChangeMs": 46,
+              "finalDim": 0,
+              "finalTooltip": true,
+              "frames": 92,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": 92,
+              "lastChangeMs": 92,
+              "finalDim": 0,
+              "finalTooltip": true,
+              "frames": 91,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "liveline",
+          "n": 100,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 82,
+          "firstTooltipMs": 50,
+          "lastChangeMs": 82,
+          "finalDim": 4,
+          "baseDim": 3,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 3,
+              "firstDimMs": 82,
+              "firstTooltipMs": 50,
+              "lastChangeMs": 82,
+              "finalDim": 4,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 3,
+              "firstDimMs": 97,
+              "firstTooltipMs": 65,
+              "lastChangeMs": 97,
+              "finalDim": 4,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 3,
+              "firstDimMs": 76,
+              "firstTooltipMs": 47,
+              "lastChangeMs": 76,
+              "finalDim": 4,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "liveline",
+          "n": 100,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": null,
+          "firstTooltipMs": 30,
+          "lastChangeMs": 30,
+          "finalDim": 0,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": true,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": 27,
+              "lastChangeMs": 27,
+              "finalDim": 0,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": 30,
+              "lastChangeMs": 30,
+              "finalDim": 0,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": 31,
+              "lastChangeMs": 31,
+              "finalDim": 0,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "composedstacked",
+          "n": 100,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 87,
+          "firstTooltipMs": 87,
+          "lastChangeMs": 484,
+          "finalDim": 199,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 67,
+              "firstTooltipMs": 67,
+              "lastChangeMs": 450,
+              "finalDim": 199,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 87,
+              "firstTooltipMs": 87,
+              "lastChangeMs": 486,
+              "finalDim": 199,
+              "finalTooltip": true,
+              "frames": 93,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 95,
+              "firstTooltipMs": 95,
+              "lastChangeMs": 484,
+              "finalDim": 199,
+              "finalTooltip": true,
+              "frames": 93,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "composedstacked",
+          "n": 100,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 23,
+          "firstTooltipMs": 23,
+          "lastChangeMs": 0,
+          "finalDim": 199,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 22,
+              "firstTooltipMs": 22,
+              "lastChangeMs": 0,
+              "finalDim": 199,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 23,
+              "firstTooltipMs": 23,
+              "lastChangeMs": 0,
+              "finalDim": 199,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 23,
+              "firstTooltipMs": 23,
+              "lastChangeMs": 0,
+              "finalDim": 199,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "areamultiaxis",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 52,
+          "firstTooltipMs": 52,
+          "lastChangeMs": 435,
+          "finalDim": 2,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 53,
+              "firstTooltipMs": 53,
+              "lastChangeMs": 436,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 52,
+              "firstTooltipMs": 52,
+              "lastChangeMs": 435,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 44,
+              "firstTooltipMs": 44,
+              "lastChangeMs": 427,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "areamultiaxis",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 127,
+          "firstTooltipMs": 127,
+          "lastChangeMs": 0,
+          "finalDim": 2,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 127,
+              "firstTooltipMs": 127,
+              "lastChangeMs": 0,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 67,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 128,
+              "firstTooltipMs": 128,
+              "lastChangeMs": 0,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 70,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 121,
+              "firstTooltipMs": 121,
+              "lastChangeMs": 0,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 69,
+              "started": true
+            }
+          ],
+          "errors": []
+        }
+      ],
+      "pairs": [
+        {
+          "chart": "line",
+          "n": 1000,
+          "bklit": {
+            "dim": 61,
+            "tip": 61,
+            "last": 444,
+            "finalDim": 1
+          },
+          "migrated": {
+            "dim": 67,
+            "tip": 67,
+            "last": 0,
+            "finalDim": 1
+          },
+          "flags": []
+        },
+        {
+          "chart": "area",
+          "n": 1000,
+          "bklit": {
+            "dim": 54,
+            "tip": 54,
+            "last": 438,
+            "finalDim": 1
+          },
+          "migrated": {
+            "dim": 71,
+            "tip": 71,
+            "last": 0,
+            "finalDim": 1
+          },
+          "flags": []
+        },
+        {
+          "chart": "bar",
+          "n": 100,
+          "bklit": {
+            "dim": 76,
+            "tip": 60,
+            "last": 311,
+            "finalDim": 198
+          },
+          "migrated": {
+            "dim": 36,
+            "tip": 36,
+            "last": 1099,
+            "finalDim": 198
+          },
+          "flags": [
+            "settles-after-700ms-capture"
+          ]
+        },
+        {
+          "chart": "scatter",
+          "n": 1000,
+          "bklit": {
+            "dim": 105,
+            "tip": 68,
+            "last": 105,
+            "finalDim": 2
+          },
+          "migrated": {
+            "dim": 202,
+            "tip": 202,
+            "last": 0,
+            "finalDim": 2
+          },
+          "flags": []
+        },
+        {
+          "chart": "composed",
+          "n": 1000,
+          "bklit": {
+            "dim": 92,
+            "tip": 92,
+            "last": 468,
+            "finalDim": 1001
+          },
+          "migrated": {
+            "dim": 93,
+            "tip": 93,
+            "last": 0,
+            "finalDim": 1000
+          },
+          "flags": []
+        },
+        {
+          "chart": "candlestick",
+          "n": 1000,
+          "bklit": {
+            "dim": 180.5,
+            "tip": 99,
+            "last": 413,
+            "finalDim": 999
+          },
+          "migrated": {
+            "dim": 241,
+            "tip": 241,
+            "last": 0,
+            "finalDim": 2998
+          },
+          "flags": []
+        },
+        {
+          "chart": "heatmap",
+          "n": 52,
+          "bklit": {
+            "dim": 184,
+            "tip": 184,
+            "last": 384,
+            "finalDim": 741
+          },
+          "migrated": {
+            "dim": 54,
+            "tip": 54,
+            "last": 54,
+            "finalDim": 370
+          },
+          "flags": []
+        },
+        {
+          "chart": "pie",
+          "n": 1000,
+          "bklit": {
+            "dim": 142,
+            "tip": null,
+            "last": 362,
+            "finalDim": 999
+          },
+          "migrated": {
+            "dim": null,
+            "tip": null,
+            "last": 0,
+            "finalDim": 0
+          },
+          "flags": [
+            "dim-presence-mismatch"
+          ]
+        },
+        {
+          "chart": "sankey",
+          "n": 33,
+          "bklit": {
+            "dim": null,
+            "tip": 62,
+            "last": 155,
+            "finalDim": 47
+          },
+          "migrated": {
+            "dim": 47,
+            "tip": 47,
+            "last": 143,
+            "finalDim": 5
+          },
+          "flags": [
+            "dim-presence-mismatch"
+          ]
+        },
+        {
+          "chart": "choropleth",
+          "n": 100,
+          "bklit": {
+            "dim": null,
+            "tip": 62,
+            "last": 159,
+            "finalDim": 1
+          },
+          "migrated": {
+            "dim": null,
+            "tip": 60,
+            "last": 60,
+            "finalDim": 0
+          },
+          "flags": []
+        },
+        {
+          "chart": "liveline",
+          "n": 100,
+          "bklit": {
+            "dim": 82,
+            "tip": 50,
+            "last": 82,
+            "finalDim": 4
+          },
+          "migrated": {
+            "dim": null,
+            "tip": 30,
+            "last": 30,
+            "finalDim": 0
+          },
+          "flags": [
+            "dim-presence-mismatch"
+          ]
+        },
+        {
+          "chart": "composedstacked",
+          "n": 100,
+          "bklit": {
+            "dim": 87,
+            "tip": 87,
+            "last": 484,
+            "finalDim": 199
+          },
+          "migrated": {
+            "dim": 23,
+            "tip": 23,
+            "last": 0,
+            "finalDim": 199
+          },
+          "flags": []
+        },
+        {
+          "chart": "areamultiaxis",
+          "n": 1000,
+          "bklit": {
+            "dim": 52,
+            "tip": 52,
+            "last": 435,
+            "finalDim": 2
+          },
+          "migrated": {
+            "dim": 127,
+            "tip": 127,
+            "last": 0,
+            "finalDim": 2
+          },
+          "flags": []
+        }
+      ],
+      "flagged": [
+        {
+          "chart": "bar",
+          "n": 100,
+          "bklit": {
+            "dim": 76,
+            "tip": 60,
+            "last": 311,
+            "finalDim": 198
+          },
+          "migrated": {
+            "dim": 36,
+            "tip": 36,
+            "last": 1099,
+            "finalDim": 198
+          },
+          "flags": [
+            "settles-after-700ms-capture"
+          ]
+        },
+        {
+          "chart": "pie",
+          "n": 1000,
+          "bklit": {
+            "dim": 142,
+            "tip": null,
+            "last": 362,
+            "finalDim": 999
+          },
+          "migrated": {
+            "dim": null,
+            "tip": null,
+            "last": 0,
+            "finalDim": 0
+          },
+          "flags": [
+            "dim-presence-mismatch"
+          ]
+        },
+        {
+          "chart": "sankey",
+          "n": 33,
+          "bklit": {
+            "dim": null,
+            "tip": 62,
+            "last": 155,
+            "finalDim": 47
+          },
+          "migrated": {
+            "dim": 47,
+            "tip": 47,
+            "last": 143,
+            "finalDim": 5
+          },
+          "flags": [
+            "dim-presence-mismatch"
+          ]
+        },
+        {
+          "chart": "liveline",
+          "n": 100,
+          "bklit": {
+            "dim": 82,
+            "tip": 50,
+            "last": 82,
+            "finalDim": 4
+          },
+          "migrated": {
+            "dim": null,
+            "tip": 30,
+            "last": 30,
+            "finalDim": 0
+          },
+          "flags": [
+            "dim-presence-mismatch"
+          ]
+        }
+      ],
+      "durationMs": 38211
+    },
+    "legend-hover-dim": {
+      "name": "legend-hover-dim",
+      "rows": [
+        {
+          "chart": "legendhover",
+          "n": 1000,
+          "impl": "bklit",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 2,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 64,
+              "elements": 1015
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 1000,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 16,
+              "elements": 1015
+            }
+          ],
+          "errors": [
+            "Error: <rect> attribute rx: A negative value is not valid. (\"-0.6067722555980338\")",
+            "Error: <rect> attribute ry: A negative value is not valid. (\"-0.6067722555980338\")",
+            "Error: <rect> attribute width: A negative value is not valid. (\"-1.2135445111960677px\")"
+          ]
+        },
+        {
+          "chart": "legendhover",
+          "n": 1000,
+          "impl": "migrated",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 0,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 1011
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1000,
+              "dimmedAfter": 1000,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 1011
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "candlelegend",
+          "n": 1000,
+          "impl": "bklit",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 511,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 128,
+              "elements": 3010
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 489,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 144,
+              "elements": 3010
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "candlelegend",
+          "n": 1000,
+          "impl": "migrated",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 1533,
+              "dimmedAfter": 1533,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 5008
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1465,
+              "dimmedAfter": 1465,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 5008
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "markers",
+          "n": 100,
+          "impl": "bklit",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 6,
+              "dimmedAfter": 4,
+              "dimMs": 272,
+              "undimmedTo": 4,
+              "undimMs": null,
+              "elements": 344
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 4,
+              "dimmedAfter": 5,
+              "dimMs": 112,
+              "undimmedTo": 3,
+              "undimMs": 384,
+              "elements": 344
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "markers",
+          "n": 100,
+          "impl": "migrated",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 0,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 112
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1,
+              "dimmedAfter": 1,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 112
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "barsquares",
+          "n": 100,
+          "impl": "bklit",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 200,
+              "dimmedAfter": 4211,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 32,
+              "elements": 10936
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 200,
+              "dimmedAfter": 6915,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 32,
+              "elements": 10936
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "barsquares",
+          "n": 100,
+          "impl": "migrated",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 4211,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 16,
+              "elements": 10937
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 6915,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 16,
+              "elements": 10937
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "profitloss",
+          "n": 1000,
+          "impl": "bklit",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 8,
+              "dimMs": 32,
+              "undimmedTo": 0,
+              "undimMs": 192,
+              "elements": 44
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 8,
+              "dimMs": 32,
+              "undimmedTo": 0,
+              "undimMs": 192,
+              "elements": 44
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "profitloss",
+          "n": 1000,
+          "impl": "migrated",
+          "hasHook": true,
+          "perItem": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 8,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 16,
+              "elements": 40
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 8,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 16,
+              "elements": 40
+            }
+          ],
+          "errors": []
+        }
+      ],
+      "pairs": [
+        {
+          "chart": "legendhover",
+          "n": 1000,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 2,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 64,
+              "elements": 1015
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 1000,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 16,
+              "elements": 1015
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 0,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 1011
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1000,
+              "dimmedAfter": 1000,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 1011
+            }
+          ],
+          "flags": [
+            "item-0: dim presence mismatch (bklit +2, migrated +0)",
+            "item-1: dim presence mismatch (bklit +1000, migrated +0)",
+            "item-1: migrated does not fully undim (1000 -> 0)"
+          ]
+        },
+        {
+          "chart": "candlelegend",
+          "n": 1000,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 511,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 128,
+              "elements": 3010
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 489,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 144,
+              "elements": 3010
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 1533,
+              "dimmedAfter": 1533,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 5008
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1465,
+              "dimmedAfter": 1465,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 5008
+            }
+          ],
+          "flags": [
+            "item-0: dim presence mismatch (bklit +511, migrated +0)",
+            "item-0: migrated does not fully undim (1533 -> 0)",
+            "item-1: dim presence mismatch (bklit +489, migrated +0)",
+            "item-1: migrated does not fully undim (1465 -> 0)"
+          ]
+        },
+        {
+          "chart": "markers",
+          "n": 100,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 6,
+              "dimmedAfter": 4,
+              "dimMs": 272,
+              "undimmedTo": 4,
+              "undimMs": null,
+              "elements": 344
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 4,
+              "dimmedAfter": 5,
+              "dimMs": 112,
+              "undimmedTo": 3,
+              "undimMs": 384,
+              "elements": 344
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 0,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 112
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1,
+              "dimmedAfter": 1,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 112
+            }
+          ],
+          "flags": [
+            "item-0: bklit does not fully undim (6 -> 4)",
+            "item-1: dim presence mismatch (bklit +1, migrated +0)",
+            "item-1: bklit does not fully undim (4 -> 3)",
+            "item-1: migrated does not fully undim (1 -> 0)"
+          ]
+        },
+        {
+          "chart": "barsquares",
+          "n": 100,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 200,
+              "dimmedAfter": 4211,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 32,
+              "elements": 10936
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 200,
+              "dimmedAfter": 6915,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 32,
+              "elements": 10936
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 4211,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 16,
+              "elements": 10937
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 6915,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 16,
+              "elements": 10937
+            }
+          ],
+          "flags": [
+            "item-0: migrated does not fully undim (0 -> 200)",
+            "item-1: migrated does not fully undim (0 -> 200)"
+          ]
+        },
+        {
+          "chart": "profitloss",
+          "n": 1000,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 8,
+              "dimMs": 32,
+              "undimmedTo": 0,
+              "undimMs": 192,
+              "elements": 44
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 8,
+              "dimMs": 32,
+              "undimmedTo": 0,
+              "undimMs": 192,
+              "elements": 44
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 8,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 16,
+              "elements": 40
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 8,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 16,
+              "elements": 40
+            }
+          ],
+          "flags": []
+        }
+      ],
+      "flagged": [
+        {
+          "chart": "legendhover",
+          "n": 1000,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 2,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 64,
+              "elements": 1015
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 1000,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 16,
+              "elements": 1015
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 0,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 1011
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1000,
+              "dimmedAfter": 1000,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 1011
+            }
+          ],
+          "flags": [
+            "item-0: dim presence mismatch (bklit +2, migrated +0)",
+            "item-1: dim presence mismatch (bklit +1000, migrated +0)",
+            "item-1: migrated does not fully undim (1000 -> 0)"
+          ]
+        },
+        {
+          "chart": "candlelegend",
+          "n": 1000,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 511,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 128,
+              "elements": 3010
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 489,
+              "dimMs": 16,
+              "undimmedTo": 0,
+              "undimMs": 144,
+              "elements": 3010
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 1533,
+              "dimmedAfter": 1533,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 5008
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1465,
+              "dimmedAfter": 1465,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 5008
+            }
+          ],
+          "flags": [
+            "item-0: dim presence mismatch (bklit +511, migrated +0)",
+            "item-0: migrated does not fully undim (1533 -> 0)",
+            "item-1: dim presence mismatch (bklit +489, migrated +0)",
+            "item-1: migrated does not fully undim (1465 -> 0)"
+          ]
+        },
+        {
+          "chart": "markers",
+          "n": 100,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 6,
+              "dimmedAfter": 4,
+              "dimMs": 272,
+              "undimmedTo": 4,
+              "undimMs": null,
+              "elements": 344
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 4,
+              "dimmedAfter": 5,
+              "dimMs": 112,
+              "undimmedTo": 3,
+              "undimMs": 384,
+              "elements": 344
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 0,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 112
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 1,
+              "dimmedAfter": 1,
+              "dimMs": null,
+              "undimmedTo": 0,
+              "undimMs": null,
+              "elements": 112
+            }
+          ],
+          "flags": [
+            "item-0: bklit does not fully undim (6 -> 4)",
+            "item-1: dim presence mismatch (bklit +1, migrated +0)",
+            "item-1: bklit does not fully undim (4 -> 3)",
+            "item-1: migrated does not fully undim (1 -> 0)"
+          ]
+        },
+        {
+          "chart": "barsquares",
+          "n": 100,
+          "bklit": [
+            {
+              "item": 0,
+              "dimmedBefore": 200,
+              "dimmedAfter": 4211,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 32,
+              "elements": 10936
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 200,
+              "dimmedAfter": 6915,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 32,
+              "elements": 10936
+            }
+          ],
+          "migrated": [
+            {
+              "item": 0,
+              "dimmedBefore": 0,
+              "dimmedAfter": 4211,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 16,
+              "elements": 10937
+            },
+            {
+              "item": 1,
+              "dimmedBefore": 0,
+              "dimmedAfter": 6915,
+              "dimMs": 16,
+              "undimmedTo": 200,
+              "undimMs": 16,
+              "elements": 10937
+            }
+          ],
+          "flags": [
+            "item-0: migrated does not fully undim (0 -> 200)",
+            "item-1: migrated does not fully undim (0 -> 200)"
+          ]
+        }
+      ],
+      "durationMs": 13710
+    },
+    "bardepth-toggle": {
+      "name": "bardepth-toggle",
+      "chart": "bardepth",
+      "n": 100,
+      "rows": [
+        {
+          "impl": "bklit",
+          "hooks": {
+            "depth": true,
+            "pulsePaused": true,
+            "pulsePhase": true
+          },
+          "initialCount": 525,
+          "offCount": 103,
+          "onCount": 525,
+          "offSettleMs": 0,
+          "onSettleMs": 0,
+          "offAgainSettleMs": 0,
+          "offVsOn": {
+            "compared": 40,
+            "moved": 38,
+            "opacityChanged": 0,
+            "maxDelta": 686.5,
+            "countA": 103,
+            "countB": 525
+          },
+          "offVsOffAgain": {
+            "compared": 40,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 103,
+            "countB": 103
+          },
+          "errors": []
+        },
+        {
+          "impl": "migrated",
+          "hooks": {
+            "depth": true,
+            "pulsePaused": true,
+            "pulsePhase": true
+          },
+          "initialCount": 476,
+          "offCount": 100,
+          "onCount": 476,
+          "offSettleMs": 33,
+          "onSettleMs": 0,
+          "offAgainSettleMs": 33,
+          "offVsOn": {
+            "compared": 40,
+            "moved": 40,
+            "opacityChanged": 0,
+            "maxDelta": 728.2,
+            "countA": 100,
+            "countB": 476
+          },
+          "offVsOffAgain": {
+            "compared": 40,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 100,
+            "countB": 100
+          },
+          "errors": []
+        }
+      ],
+      "flags": [],
+      "durationMs": 662
+    },
+    "no-rereveal": {
+      "name": "no-rereveal",
+      "sampleAtMs": [
+        100,
+        400,
+        900
+      ],
+      "rows": [
+        {
+          "chart": "bardepth",
+          "n": 100,
+          "impl": "bklit",
+          "toggle": "__qaSetBarDepthEnabled(true)",
+          "hookOk": true,
+          "before": 103,
+          "d100_400": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 249,
+            "countB": 249
+          },
+          "d400_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 249,
+            "countB": 249
+          },
+          "dBefore_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0.8,
+            "countA": 103,
+            "countB": 249
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 249,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 24,
+                  "y": 24,
+                  "w": 1052,
+                  "h": 526,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64,
+                  "y": 64,
+                  "w": 972,
+                  "h": 446,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 65.9,
+                  "y": 156.7,
+                  "w": 7.8,
+                  "h": 353.3,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 75.6,
+                  "y": 161.4,
+                  "w": 7.8,
+                  "h": 348.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 85.3,
+                  "y": 158.8,
+                  "w": 7.8,
+                  "h": 351.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 95,
+                  "y": 162.1,
+                  "w": 7.8,
+                  "h": 347.9,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 249,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 24,
+                  "y": 24,
+                  "w": 1052,
+                  "h": 526,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64,
+                  "y": 64,
+                  "w": 972,
+                  "h": 446,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 65.9,
+                  "y": 156.7,
+                  "w": 7.8,
+                  "h": 353.3,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 75.6,
+                  "y": 161.4,
+                  "w": 7.8,
+                  "h": 348.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 85.3,
+                  "y": 158.8,
+                  "w": 7.8,
+                  "h": 351.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 95,
+                  "y": 162.1,
+                  "w": 7.8,
+                  "h": 347.9,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 249,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 24,
+                  "y": 24,
+                  "w": 1052,
+                  "h": 526,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64,
+                  "y": 64,
+                  "w": 972,
+                  "h": 446,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 65.9,
+                  "y": 156.7,
+                  "w": 7.8,
+                  "h": 353.3,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 75.6,
+                  "y": 161.4,
+                  "w": 7.8,
+                  "h": 348.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 85.3,
+                  "y": 158.8,
+                  "w": 7.8,
+                  "h": 351.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 95,
+                  "y": 162.1,
+                  "w": 7.8,
+                  "h": 347.9,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "bardepth",
+          "n": 100,
+          "impl": "migrated",
+          "toggle": "__qaSetBarDepthEnabled(true)",
+          "hookOk": true,
+          "before": 100,
+          "d100_400": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 200,
+            "countB": 200
+          },
+          "d400_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 200,
+            "countB": 200
+          },
+          "dBefore_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0.8,
+            "countA": 100,
+            "countB": 200
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 200,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 1:0",
+                  "x": 65.9,
+                  "y": 156.7,
+                  "w": 7.8,
+                  "h": 353.3,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 2:1",
+                  "x": 75.6,
+                  "y": 161.4,
+                  "w": 7.8,
+                  "h": 348.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 3:2",
+                  "x": 85.3,
+                  "y": 158.8,
+                  "w": 7.8,
+                  "h": 351.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 4:3",
+                  "x": 95,
+                  "y": 162.1,
+                  "w": 7.8,
+                  "h": 347.9,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 5:4",
+                  "x": 104.7,
+                  "y": 156.8,
+                  "w": 7.8,
+                  "h": 353.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 6:5",
+                  "x": 114.4,
+                  "y": 149.7,
+                  "w": 7.8,
+                  "h": 360.3,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 200,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 1:0",
+                  "x": 65.9,
+                  "y": 156.7,
+                  "w": 7.8,
+                  "h": 353.3,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 2:1",
+                  "x": 75.6,
+                  "y": 161.4,
+                  "w": 7.8,
+                  "h": 348.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 3:2",
+                  "x": 85.3,
+                  "y": 158.8,
+                  "w": 7.8,
+                  "h": 351.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 4:3",
+                  "x": 95,
+                  "y": 162.1,
+                  "w": 7.8,
+                  "h": 347.9,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 5:4",
+                  "x": 104.7,
+                  "y": 156.8,
+                  "w": 7.8,
+                  "h": 353.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 6:5",
+                  "x": 114.4,
+                  "y": 149.7,
+                  "w": 7.8,
+                  "h": 360.3,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 200,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 1:0",
+                  "x": 65.9,
+                  "y": 156.7,
+                  "w": 7.8,
+                  "h": 353.3,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 2:1",
+                  "x": 75.6,
+                  "y": 161.4,
+                  "w": 7.8,
+                  "h": 348.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 3:2",
+                  "x": 85.3,
+                  "y": 158.8,
+                  "w": 7.8,
+                  "h": 351.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 4:3",
+                  "x": 95,
+                  "y": 162.1,
+                  "w": 7.8,
+                  "h": 347.9,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 5:4",
+                  "x": 104.7,
+                  "y": 156.8,
+                  "w": 7.8,
+                  "h": 353.2,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "seriesA:Jan 6:5",
+                  "x": 114.4,
+                  "y": 149.7,
+                  "w": 7.8,
+                  "h": 360.3,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "patternarea",
+          "n": 1000,
+          "impl": "bklit",
+          "toggle": "__qaSetPatternPreset('dots')",
+          "hookOk": true,
+          "before": 3,
+          "d100_400": {
+            "compared": 2,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 3,
+            "countB": 3
+          },
+          "d400_900": {
+            "compared": 2,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 3,
+            "countB": 3
+          },
+          "dBefore_900": {
+            "compared": 2,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 3,
+            "countB": 3
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 3,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 210.7,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 3,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 210.7,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 3,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 210.7,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "patternarea",
+          "n": 1000,
+          "impl": "migrated",
+          "toggle": "__qaSetPatternPreset('dots')",
+          "hookOk": true,
+          "before": 3,
+          "d100_400": {
+            "compared": 3,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 3,
+            "countB": 3
+          },
+          "d400_900": {
+            "compared": 3,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 3,
+            "countB": 3
+          },
+          "dBefore_900": {
+            "compared": 3,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 3,
+            "countB": 3
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 3,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": "pattern-area-seriesA:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": "seriesA__fill:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": "seriesA:string:7:seriesA:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 210.7,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 3,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": "pattern-area-seriesA:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": "seriesA__fill:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": "seriesA:string:7:seriesA:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 210.7,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 3,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": "pattern-area-seriesA:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": "seriesA__fill:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 396.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "path",
+                  "key": "seriesA:string:7:seriesA:segment:0",
+                  "x": 64,
+                  "y": 113.3,
+                  "w": 972,
+                  "h": 210.7,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "brush",
+          "n": 1000,
+          "impl": "bklit",
+          "toggle": "__qaSetBrush(0.25,0.75)",
+          "hookOk": true,
+          "before": 1,
+          "d100_400": {
+            "compared": 1,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1,
+            "countB": 1
+          },
+          "d400_900": {
+            "compared": 1,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1,
+            "countB": 1
+          },
+          "dBefore_900": {
+            "compared": 1,
+            "moved": 1,
+            "opacityChanged": 0,
+            "maxDelta": 1458,
+            "countA": 1,
+            "countB": 1
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 1,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": -422,
+                  "y": 83.4,
+                  "w": 1944,
+                  "h": 48.8,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 1,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": -422,
+                  "y": 83.4,
+                  "w": 1944,
+                  "h": 48.8,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 1,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": null,
+                  "x": -422,
+                  "y": 83.4,
+                  "w": 1944,
+                  "h": 48.8,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "brush",
+          "n": 1000,
+          "impl": "migrated",
+          "toggle": "__qaSetBrush(0.25,0.75)",
+          "hookOk": true,
+          "before": 1,
+          "d100_400": {
+            "compared": 1,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1,
+            "countB": 1
+          },
+          "d400_900": {
+            "compared": 1,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1,
+            "countB": 1
+          },
+          "dBefore_900": {
+            "compared": 1,
+            "moved": 1,
+            "opacityChanged": 0,
+            "maxDelta": 1458,
+            "countA": 1,
+            "countB": 1
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 1,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": "seriesA:string:7:seriesA:segment:0",
+                  "x": -422,
+                  "y": 83.4,
+                  "w": 1944,
+                  "h": 48.8,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 1,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": "seriesA:string:7:seriesA:segment:0",
+                  "x": -422,
+                  "y": 83.4,
+                  "w": 1944,
+                  "h": 48.8,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 1,
+              "first": [
+                {
+                  "tag": "path",
+                  "key": "seriesA:string:7:seriesA:segment:0",
+                  "x": -422,
+                  "y": 83.4,
+                  "w": 1944,
+                  "h": 48.8,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "legendhover",
+          "n": 1000,
+          "impl": "bklit",
+          "toggle": "__qaSetLegendHover(0)",
+          "hookOk": true,
+          "before": 1007,
+          "d100_400": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1007,
+            "countB": 1007
+          },
+          "d400_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1007,
+            "countB": 1007
+          },
+          "dBefore_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1007,
+            "countB": 1007
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 1007,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 24,
+                  "y": 24,
+                  "w": 800,
+                  "h": 400,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64,
+                  "y": 64,
+                  "w": 720,
+                  "h": 320,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 63,
+                  "y": 262.3,
+                  "w": 2,
+                  "h": 121.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 63.7,
+                  "y": 259.6,
+                  "w": 2,
+                  "h": 124.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64.4,
+                  "y": 261.6,
+                  "w": 2,
+                  "h": 122.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 65.2,
+                  "y": 262.5,
+                  "w": 2,
+                  "h": 121.5,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 1007,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 24,
+                  "y": 24,
+                  "w": 800,
+                  "h": 400,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64,
+                  "y": 64,
+                  "w": 720,
+                  "h": 320,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 63,
+                  "y": 262.3,
+                  "w": 2,
+                  "h": 121.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 63.7,
+                  "y": 259.6,
+                  "w": 2,
+                  "h": 124.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64.4,
+                  "y": 261.6,
+                  "w": 2,
+                  "h": 122.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 65.2,
+                  "y": 262.5,
+                  "w": 2,
+                  "h": 121.5,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 1007,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 24,
+                  "y": 24,
+                  "w": 800,
+                  "h": 400,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64,
+                  "y": 64,
+                  "w": 720,
+                  "h": 320,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 63,
+                  "y": 262.3,
+                  "w": 2,
+                  "h": 121.7,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 63.7,
+                  "y": 259.6,
+                  "w": 2,
+                  "h": 124.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 64.4,
+                  "y": 261.6,
+                  "w": 2,
+                  "h": 122.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": null,
+                  "x": 65.2,
+                  "y": 262.5,
+                  "w": 2,
+                  "h": 121.5,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": [
+            "Error: <rect> attribute rx: A negative value is not valid. (\"-0.6067722555980338\")",
+            "Error: <rect> attribute ry: A negative value is not valid. (\"-0.6067722555980338\")",
+            "Error: <rect> attribute width: A negative value is not valid. (\"-1.2135445111960677px\")"
+          ]
+        },
+        {
+          "chart": "legendhover",
+          "n": 1000,
+          "impl": "migrated",
+          "toggle": "__qaSetLegendHover(0)",
+          "hookOk": true,
+          "before": 1002,
+          "d100_400": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1002,
+            "countB": 1002
+          },
+          "d400_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1002,
+            "countB": 1002
+          },
+          "dBefore_900": {
+            "compared": 30,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 1002,
+            "countB": 1002
+          },
+          "lowOpacityAt100": 0,
+          "lowOpacityAt900": 0,
+          "stillMovingAfter400": false,
+          "fadeReplay": false,
+          "reRevealSuspected": false,
+          "samples": [
+            {
+              "at": 100,
+              "count": 1002,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:0",
+                  "x": 63,
+                  "y": 262.4,
+                  "w": 2,
+                  "h": 121.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:1",
+                  "x": 63.7,
+                  "y": 259.6,
+                  "w": 2,
+                  "h": 124.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:2",
+                  "x": 64.4,
+                  "y": 261.6,
+                  "w": 2,
+                  "h": 122.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:3",
+                  "x": 65.2,
+                  "y": 262.5,
+                  "w": 2,
+                  "h": 121.5,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:4",
+                  "x": 65.9,
+                  "y": 262.9,
+                  "w": 2,
+                  "h": 121.1,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:5",
+                  "x": 66.6,
+                  "y": 262.6,
+                  "w": 2,
+                  "h": 121.4,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 400,
+              "count": 1002,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:0",
+                  "x": 63,
+                  "y": 262.4,
+                  "w": 2,
+                  "h": 121.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:1",
+                  "x": 63.7,
+                  "y": 259.6,
+                  "w": 2,
+                  "h": 124.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:2",
+                  "x": 64.4,
+                  "y": 261.6,
+                  "w": 2,
+                  "h": 122.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:3",
+                  "x": 65.2,
+                  "y": 262.5,
+                  "w": 2,
+                  "h": 121.5,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:4",
+                  "x": 65.9,
+                  "y": 262.9,
+                  "w": 2,
+                  "h": 121.1,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:5",
+                  "x": 66.6,
+                  "y": 262.6,
+                  "w": 2,
+                  "h": 121.4,
+                  "opacity": 1
+                }
+              ]
+            },
+            {
+              "at": 900,
+              "count": 1002,
+              "first": [
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:0",
+                  "x": 63,
+                  "y": 262.4,
+                  "w": 2,
+                  "h": 121.6,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:1",
+                  "x": 63.7,
+                  "y": 259.6,
+                  "w": 2,
+                  "h": 124.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:2",
+                  "x": 64.4,
+                  "y": 261.6,
+                  "w": 2,
+                  "h": 122.4,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:3",
+                  "x": 65.2,
+                  "y": 262.5,
+                  "w": 2,
+                  "h": 121.5,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:4",
+                  "x": 65.9,
+                  "y": 262.9,
+                  "w": 2,
+                  "h": 121.1,
+                  "opacity": 1
+                },
+                {
+                  "tag": "rect",
+                  "key": "bars:rect:5",
+                  "x": 66.6,
+                  "y": 262.6,
+                  "w": 2,
+                  "h": 121.4,
+                  "opacity": 1
+                }
+              ]
+            }
+          ],
+          "errors": []
+        }
+      ],
+      "flagged": [],
+      "durationMs": 6670
+    }
+  }
+}

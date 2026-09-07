@@ -1,0 +1,24 @@
+{
+  "generatedAt": "2026-09-07T13:17:55.903Z",
+  "exit": 0,
+  "ledger": "scripts/reach-in-ledger.json",
+  "total": 23,
+  "files": 13,
+  "counts": {
+    "showcase/migrated/charts/choropleth-chart.tsx": 1,
+    "showcase/migrated/charts/internal/bar-chart-overlays.ts": 1,
+    "showcase/migrated/charts/internal/dash-tail-measure.ts": 3,
+    "showcase/migrated/charts/internal/gauge-geometry.ts": 1,
+    "showcase/migrated/charts/internal/loading-entries.tsx": 2,
+    "showcase/migrated/charts/internal/reveal-root.ts": 1,
+    "showcase/migrated/charts/internal/ring-chart-model.ts": 2,
+    "showcase/migrated/charts/internal/sankey-reveal-specs.ts": 3,
+    "showcase/migrated/charts/internal/scatter-reveal-setup.ts": 1,
+    "showcase/migrated/charts/internal/use-composed-reveal.ts": 2,
+    "showcase/migrated/charts/internal/use-line-reveal.ts": 2,
+    "showcase/migrated/charts/radar-chart.tsx": 3,
+    "showcase/migrated/charts/ring-chart.tsx": 1
+  },
+  "failures": [],
+  "notes": []
+}

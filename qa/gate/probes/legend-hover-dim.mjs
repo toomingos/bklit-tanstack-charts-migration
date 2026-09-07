@@ -10,12 +10,14 @@ import { dimmedCount, openScene, PROBE_WIDTH, stepVirtual } from "./lib-probe.mj
 
 export const DEFAULT_CELLS = [["legendhover", 1000], ["candlelegend", 1000], ["markers", 100], ["barsquares", 100], ["profitloss", 1000]];
 
-async function settleDimmed(page, { maxMs = 1500, stableMs = 250 } = {}) {
+async function settleDimmed(page, { maxMs = 1500, stableMs = 250, base = null } = {}) {
   let t = 0;
   let last = await dimmedCount(page);
   let firstChangeMs = null;
   let lastChangeMs = 0;
-  const base = last.dimmed;
+  // Explicit pre-hover baseline when the caller passes one; otherwise derive
+  // from the first read as before (keeps other callers working unchanged).
+  const resolvedBase = base ?? last.dimmed;
   for (;;) {
     await stepVirtual(page, 16);
     t += 16;
@@ -27,7 +29,7 @@ async function settleDimmed(page, { maxMs = 1500, stableMs = 250 } = {}) {
     }
     if (t - lastChangeMs > stableMs || t > maxMs) break;
   }
-  return { base, final: last.dimmed, total: last.total, firstChangeMs, lastChangeMs: firstChangeMs == null ? null : lastChangeMs };
+  return { base: resolvedBase, final: last.dimmed, total: last.total, firstChangeMs, lastChangeMs: firstChangeMs == null ? null : lastChangeMs };
 }
 
 export async function legendHoverDimProbe(browser, baseUrl, { cells = DEFAULT_CELLS, impls = ["bklit", "migrated"], items = [0, 1] } = {}) {
@@ -40,8 +42,13 @@ export async function legendHoverDimProbe(browser, baseUrl, { cells = DEFAULT_CE
       const hasHook = await s.page.evaluate(() => typeof window.__qaSetLegendHover === "function");
       const perItem = [];
       for (const i of items) {
+        // Baseline BEFORE issuing the hover: migrated applies legend dim with
+        // no queued tween, so a post-command first read would already equal
+        // the dimmed state and report +0. bklit's in-flight 150ms fade is what
+        // let the old ordering work for it.
+        const pre = await dimmedCount(s.page);
         await s.page.evaluate((i) => window.__qaSetLegendHover?.(i), i);
-        const dim = await settleDimmed(s.page);
+        const dim = await settleDimmed(s.page, { base: pre.dimmed });
         await s.page.evaluate(() => window.__qaSetLegendHover?.(null));
         const undim = await settleDimmed(s.page);
         perItem.push({ item: i, dimmedBefore: dim.base, dimmedAfter: dim.final, dimMs: dim.lastChangeMs, undimmedTo: undim.final, undimMs: undim.lastChangeMs, elements: dim.total });

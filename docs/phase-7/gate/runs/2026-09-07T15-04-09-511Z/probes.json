@@ -1,0 +1,1578 @@
+{
+  "generatedAt": "2026-09-07T15:04:49.779Z",
+  "runDir": "docs/phase-7/gate/runs/2026-09-07T15-04-09-511Z",
+  "wallClockMs": 40267,
+  "ran": [
+    "hover-lag"
+  ],
+  "errors": {},
+  "summary": {
+    "hover-lag": 4
+  },
+  "results": {
+    "hover-lag": {
+      "name": "hover-lag",
+      "hoverWaitMs": 700,
+      "rows": [
+        {
+          "chart": "line",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 80,
+          "firstTooltipMs": 80,
+          "lastChangeMs": 443,
+          "finalDim": 1,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 80,
+              "firstTooltipMs": 80,
+              "lastChangeMs": 435,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 104,
+              "firstTooltipMs": 104,
+              "lastChangeMs": 505,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 93,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 61,
+              "firstTooltipMs": 61,
+              "lastChangeMs": 443,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "line",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 69,
+          "firstTooltipMs": 69,
+          "lastChangeMs": 0,
+          "finalDim": 1,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 69,
+              "firstTooltipMs": 69,
+              "lastChangeMs": 0,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 84,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 69,
+              "firstTooltipMs": 69,
+              "lastChangeMs": 0,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 83,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 68,
+              "firstTooltipMs": 68,
+              "lastChangeMs": 0,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 82,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "area",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 44,
+          "firstTooltipMs": 44,
+          "lastChangeMs": 427,
+          "finalDim": 1,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 59,
+              "firstTooltipMs": 59,
+              "lastChangeMs": 442,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 43,
+              "firstTooltipMs": 43,
+              "lastChangeMs": 427,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 44,
+              "firstTooltipMs": 44,
+              "lastChangeMs": 427,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "area",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 70,
+          "firstTooltipMs": 70,
+          "lastChangeMs": 0,
+          "finalDim": 1,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 69,
+              "firstTooltipMs": 69,
+              "lastChangeMs": 0,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 78,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 70,
+              "firstTooltipMs": 70,
+              "lastChangeMs": 0,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 79,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 74,
+              "firstTooltipMs": 74,
+              "lastChangeMs": 0,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 76,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "bar",
+          "n": 100,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 88,
+          "firstTooltipMs": 55,
+          "lastChangeMs": 262,
+          "finalDim": 198,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 87,
+              "firstTooltipMs": 53,
+              "lastChangeMs": 275,
+              "finalDim": 198,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 88,
+              "firstTooltipMs": 55,
+              "lastChangeMs": 262,
+              "finalDim": 198,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 97,
+              "firstTooltipMs": 66,
+              "lastChangeMs": 260,
+              "finalDim": 198,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "bar",
+          "n": 100,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 42,
+          "firstTooltipMs": 42,
+          "lastChangeMs": 1114,
+          "finalDim": 198,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": true,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 33,
+              "firstTooltipMs": 33,
+              "lastChangeMs": 1114,
+              "finalDim": 198,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 79,
+              "firstTooltipMs": 79,
+              "lastChangeMs": 1152,
+              "finalDim": 198,
+              "finalTooltip": true,
+              "frames": 90,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 42,
+              "firstTooltipMs": 42,
+              "lastChangeMs": 1088,
+              "finalDim": 198,
+              "finalTooltip": true,
+              "frames": 92,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "scatter",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 130,
+          "firstTooltipMs": 60,
+          "lastChangeMs": 130,
+          "finalDim": 2,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 130,
+              "firstTooltipMs": 75,
+              "lastChangeMs": 130,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 90,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 92,
+              "firstTooltipMs": 60,
+              "lastChangeMs": 92,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 91,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 134,
+              "firstTooltipMs": 42,
+              "lastChangeMs": 134,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 91,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "scatter",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 231,
+          "firstTooltipMs": 231,
+          "lastChangeMs": 0,
+          "finalDim": 2,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 239,
+              "firstTooltipMs": 239,
+              "lastChangeMs": 0,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 27,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 211,
+              "firstTooltipMs": 211,
+              "lastChangeMs": 0,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 25,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 231,
+              "firstTooltipMs": 231,
+              "lastChangeMs": 0,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 27,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "composed",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 107,
+          "firstTooltipMs": 107,
+          "lastChangeMs": 495,
+          "finalDim": 1001,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 111,
+              "firstTooltipMs": 111,
+              "lastChangeMs": 495,
+              "finalDim": 1001,
+              "finalTooltip": true,
+              "frames": 86,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 107,
+              "firstTooltipMs": 107,
+              "lastChangeMs": 499,
+              "finalDim": 1001,
+              "finalTooltip": true,
+              "frames": 86,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 98,
+              "firstTooltipMs": 98,
+              "lastChangeMs": 485,
+              "finalDim": 1001,
+              "finalTooltip": true,
+              "frames": 91,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "composed",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 92,
+          "firstTooltipMs": 92,
+          "lastChangeMs": 0,
+          "finalDim": 1000,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 92,
+              "firstTooltipMs": 92,
+              "lastChangeMs": 0,
+              "finalDim": 1000,
+              "finalTooltip": true,
+              "frames": 76,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 92,
+              "firstTooltipMs": 92,
+              "lastChangeMs": 0,
+              "finalDim": 1000,
+              "finalTooltip": true,
+              "frames": 73,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 96,
+              "firstTooltipMs": 96,
+              "lastChangeMs": 0,
+              "finalDim": 1000,
+              "finalTooltip": true,
+              "frames": 75,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "candlestick",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 183,
+          "firstTooltipMs": 60,
+          "lastChangeMs": 448,
+          "finalDim": 999,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 183,
+              "firstTooltipMs": 58,
+              "lastChangeMs": 463,
+              "finalDim": 999,
+              "finalTooltip": true,
+              "frames": 81,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 188,
+              "firstTooltipMs": 60,
+              "lastChangeMs": 426,
+              "finalDim": 999,
+              "finalTooltip": true,
+              "frames": 89,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 158,
+              "firstTooltipMs": 80,
+              "lastChangeMs": 448,
+              "finalDim": 999,
+              "finalTooltip": true,
+              "frames": 86,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "candlestick",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 247,
+          "firstTooltipMs": 247,
+          "lastChangeMs": 0,
+          "finalDim": 2998,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 254,
+              "firstTooltipMs": 254,
+              "lastChangeMs": 0,
+              "finalDim": 2998,
+              "finalTooltip": true,
+              "frames": 8,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 247,
+              "firstTooltipMs": 247,
+              "lastChangeMs": 0,
+              "finalDim": 2998,
+              "finalTooltip": true,
+              "frames": 7,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 241,
+              "firstTooltipMs": 241,
+              "lastChangeMs": 0,
+              "finalDim": 2998,
+              "finalTooltip": true,
+              "frames": 7,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "heatmap",
+          "n": 52,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 190,
+          "firstTooltipMs": 190,
+          "lastChangeMs": 412,
+          "finalDim": 741,
+          "baseDim": 371,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 371,
+              "firstDimMs": 138,
+              "firstTooltipMs": 187,
+              "lastChangeMs": 385,
+              "finalDim": 741,
+              "finalTooltip": true,
+              "frames": 91,
+              "started": true
+            },
+            {
+              "baseDim": 371,
+              "firstDimMs": 190,
+              "firstTooltipMs": 190,
+              "lastChangeMs": 436,
+              "finalDim": 741,
+              "finalTooltip": true,
+              "frames": 89,
+              "started": true
+            },
+            {
+              "baseDim": 371,
+              "firstDimMs": 225,
+              "firstTooltipMs": 225,
+              "lastChangeMs": 412,
+              "finalDim": 741,
+              "finalTooltip": true,
+              "frames": 88,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "heatmap",
+          "n": 52,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 60,
+          "firstTooltipMs": 60,
+          "lastChangeMs": 60,
+          "finalDim": 370,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 60,
+              "firstTooltipMs": 60,
+              "lastChangeMs": 60,
+              "finalDim": 370,
+              "finalTooltip": true,
+              "frames": 90,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 60,
+              "firstTooltipMs": 60,
+              "lastChangeMs": 60,
+              "finalDim": 370,
+              "finalTooltip": true,
+              "frames": 90,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 131,
+              "firstTooltipMs": 131,
+              "lastChangeMs": 131,
+              "finalDim": 370,
+              "finalTooltip": true,
+              "frames": 86,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "pie",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 146,
+          "firstTooltipMs": null,
+          "lastChangeMs": 351,
+          "finalDim": 999,
+          "baseDim": 0,
+          "finalTooltip": false,
+          "dimNever": false,
+          "tooltipNever": true,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 125,
+              "firstTooltipMs": null,
+              "lastChangeMs": 349,
+              "finalDim": 999,
+              "finalTooltip": false,
+              "frames": 92,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 146,
+              "firstTooltipMs": null,
+              "lastChangeMs": 366,
+              "finalDim": 999,
+              "finalTooltip": false,
+              "frames": 91,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 152,
+              "firstTooltipMs": null,
+              "lastChangeMs": 351,
+              "finalDim": 999,
+              "finalTooltip": false,
+              "frames": 91,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "pie",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": null,
+          "firstTooltipMs": null,
+          "lastChangeMs": 0,
+          "finalDim": 0,
+          "baseDim": 0,
+          "finalTooltip": false,
+          "dimNever": true,
+          "tooltipNever": true,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": null,
+              "lastChangeMs": 0,
+              "finalDim": 0,
+              "finalTooltip": false,
+              "frames": 82,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": null,
+              "lastChangeMs": 0,
+              "finalDim": 0,
+              "finalTooltip": false,
+              "frames": 83,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": null,
+              "lastChangeMs": 0,
+              "finalDim": 0,
+              "finalTooltip": false,
+              "frames": 82,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "sankey",
+          "n": 33,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": null,
+          "firstTooltipMs": 61,
+          "lastChangeMs": 154,
+          "finalDim": 47,
+          "baseDim": 47,
+          "finalTooltip": false,
+          "dimNever": true,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 47,
+              "firstDimMs": null,
+              "firstTooltipMs": 60,
+              "lastChangeMs": 154,
+              "finalDim": 47,
+              "finalTooltip": false,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 47,
+              "firstDimMs": null,
+              "firstTooltipMs": 61,
+              "lastChangeMs": 154,
+              "finalDim": 47,
+              "finalTooltip": false,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 47,
+              "firstDimMs": null,
+              "firstTooltipMs": 63,
+              "lastChangeMs": 158,
+              "finalDim": 47,
+              "finalTooltip": false,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "sankey",
+          "n": 33,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 54,
+          "firstTooltipMs": 54,
+          "lastChangeMs": 155,
+          "finalDim": 5,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 61,
+              "firstTooltipMs": 61,
+              "lastChangeMs": 155,
+              "finalDim": 5,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 54,
+              "firstTooltipMs": 54,
+              "lastChangeMs": 156,
+              "finalDim": 5,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 51,
+              "firstTooltipMs": 51,
+              "lastChangeMs": 144,
+              "finalDim": 5,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "choropleth",
+          "n": 100,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": null,
+          "firstTooltipMs": 64,
+          "lastChangeMs": 177,
+          "finalDim": 1,
+          "baseDim": 1,
+          "finalTooltip": true,
+          "dimNever": true,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 1,
+              "firstDimMs": null,
+              "firstTooltipMs": 64,
+              "lastChangeMs": 186,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            },
+            {
+              "baseDim": 1,
+              "firstDimMs": null,
+              "firstTooltipMs": 69,
+              "lastChangeMs": 177,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            },
+            {
+              "baseDim": 1,
+              "firstDimMs": null,
+              "firstTooltipMs": 64,
+              "lastChangeMs": 159,
+              "finalDim": 1,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "choropleth",
+          "n": 100,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": null,
+          "firstTooltipMs": 58,
+          "lastChangeMs": 58,
+          "finalDim": 0,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": true,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": 57,
+              "lastChangeMs": 57,
+              "finalDim": 0,
+              "finalTooltip": true,
+              "frames": 93,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": 58,
+              "lastChangeMs": 58,
+              "finalDim": 0,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": 93,
+              "lastChangeMs": 93,
+              "finalDim": 0,
+              "finalTooltip": true,
+              "frames": 91,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "liveline",
+          "n": 100,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 85,
+          "firstTooltipMs": 52,
+          "lastChangeMs": 85,
+          "finalDim": 4,
+          "baseDim": 3,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 3,
+              "firstDimMs": 97,
+              "firstTooltipMs": 64,
+              "lastChangeMs": 97,
+              "finalDim": 4,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 3,
+              "firstDimMs": 84,
+              "firstTooltipMs": 52,
+              "lastChangeMs": 84,
+              "finalDim": 4,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 3,
+              "firstDimMs": 85,
+              "firstTooltipMs": 51,
+              "lastChangeMs": 85,
+              "finalDim": 4,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "liveline",
+          "n": 100,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": null,
+          "firstTooltipMs": 28,
+          "lastChangeMs": 28,
+          "finalDim": 0,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": true,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": 27,
+              "lastChangeMs": 27,
+              "finalDim": 0,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": 28,
+              "lastChangeMs": 28,
+              "finalDim": 0,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": null,
+              "firstTooltipMs": 29,
+              "lastChangeMs": 29,
+              "finalDim": 0,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "composedstacked",
+          "n": 100,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 64,
+          "firstTooltipMs": 64,
+          "lastChangeMs": 434,
+          "finalDim": 199,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 81,
+              "firstTooltipMs": 81,
+              "lastChangeMs": 434,
+              "finalDim": 199,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 64,
+              "firstTooltipMs": 64,
+              "lastChangeMs": 461,
+              "finalDim": 199,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 51,
+              "firstTooltipMs": 51,
+              "lastChangeMs": 434,
+              "finalDim": 199,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "composedstacked",
+          "n": 100,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 23,
+          "firstTooltipMs": 23,
+          "lastChangeMs": 0,
+          "finalDim": 199,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 22,
+              "firstTooltipMs": 22,
+              "lastChangeMs": 0,
+              "finalDim": 199,
+              "finalTooltip": true,
+              "frames": 94,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 54,
+              "firstTooltipMs": 54,
+              "lastChangeMs": 0,
+              "finalDim": 199,
+              "finalTooltip": true,
+              "frames": 91,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 23,
+              "firstTooltipMs": 23,
+              "lastChangeMs": 0,
+              "finalDim": 199,
+              "finalTooltip": true,
+              "frames": 93,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "areamultiaxis",
+          "n": 1000,
+          "impl": "bklit",
+          "repeats": 3,
+          "firstDimMs": 46,
+          "firstTooltipMs": 46,
+          "lastChangeMs": 429,
+          "finalDim": 2,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 65,
+              "firstTooltipMs": 65,
+              "lastChangeMs": 448,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 93,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 39,
+              "firstTooltipMs": 39,
+              "lastChangeMs": 421,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 46,
+              "firstTooltipMs": 46,
+              "lastChangeMs": 429,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 95,
+              "started": true
+            }
+          ],
+          "errors": []
+        },
+        {
+          "chart": "areamultiaxis",
+          "n": 1000,
+          "impl": "migrated",
+          "repeats": 3,
+          "firstDimMs": 173,
+          "firstTooltipMs": 173,
+          "lastChangeMs": 0,
+          "finalDim": 2,
+          "baseDim": 0,
+          "finalTooltip": true,
+          "dimNever": false,
+          "tooltipNever": false,
+          "settlesAfterGateCapture": false,
+          "raw": [
+            {
+              "baseDim": 0,
+              "firstDimMs": 173,
+              "firstTooltipMs": 173,
+              "lastChangeMs": 0,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 57,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 173,
+              "firstTooltipMs": 173,
+              "lastChangeMs": 0,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 57,
+              "started": true
+            },
+            {
+              "baseDim": 0,
+              "firstDimMs": 141,
+              "firstTooltipMs": 141,
+              "lastChangeMs": 0,
+              "finalDim": 2,
+              "finalTooltip": true,
+              "frames": 65,
+              "started": true
+            }
+          ],
+          "errors": []
+        }
+      ],
+      "pairs": [
+        {
+          "chart": "line",
+          "n": 1000,
+          "bklit": {
+            "dim": 80,
+            "tip": 80,
+            "last": 443,
+            "finalDim": 1
+          },
+          "migrated": {
+            "dim": 69,
+            "tip": 69,
+            "last": 0,
+            "finalDim": 1
+          },
+          "flags": []
+        },
+        {
+          "chart": "area",
+          "n": 1000,
+          "bklit": {
+            "dim": 44,
+            "tip": 44,
+            "last": 427,
+            "finalDim": 1
+          },
+          "migrated": {
+            "dim": 70,
+            "tip": 70,
+            "last": 0,
+            "finalDim": 1
+          },
+          "flags": []
+        },
+        {
+          "chart": "bar",
+          "n": 100,
+          "bklit": {
+            "dim": 88,
+            "tip": 55,
+            "last": 262,
+            "finalDim": 198
+          },
+          "migrated": {
+            "dim": 42,
+            "tip": 42,
+            "last": 1114,
+            "finalDim": 198
+          },
+          "flags": [
+            "settles-after-700ms-capture"
+          ]
+        },
+        {
+          "chart": "scatter",
+          "n": 1000,
+          "bklit": {
+            "dim": 130,
+            "tip": 60,
+            "last": 130,
+            "finalDim": 2
+          },
+          "migrated": {
+            "dim": 231,
+            "tip": 231,
+            "last": 0,
+            "finalDim": 2
+          },
+          "flags": []
+        },
+        {
+          "chart": "composed",
+          "n": 1000,
+          "bklit": {
+            "dim": 107,
+            "tip": 107,
+            "last": 495,
+            "finalDim": 1001
+          },
+          "migrated": {
+            "dim": 92,
+            "tip": 92,
+            "last": 0,
+            "finalDim": 1000
+          },
+          "flags": []
+        },
+        {
+          "chart": "candlestick",
+          "n": 1000,
+          "bklit": {
+            "dim": 183,
+            "tip": 60,
+            "last": 448,
+            "finalDim": 999
+          },
+          "migrated": {
+            "dim": 247,
+            "tip": 247,
+            "last": 0,
+            "finalDim": 2998
+          },
+          "flags": []
+        },
+        {
+          "chart": "heatmap",
+          "n": 52,
+          "bklit": {
+            "dim": 190,
+            "tip": 190,
+            "last": 412,
+            "finalDim": 741
+          },
+          "migrated": {
+            "dim": 60,
+            "tip": 60,
+            "last": 60,
+            "finalDim": 370
+          },
+          "flags": []
+        },
+        {
+          "chart": "pie",
+          "n": 1000,
+          "bklit": {
+            "dim": 146,
+            "tip": null,
+            "last": 351,
+            "finalDim": 999
+          },
+          "migrated": {
+            "dim": null,
+            "tip": null,
+            "last": 0,
+            "finalDim": 0
+          },
+          "flags": [
+            "dim-presence-mismatch"
+          ]
+        },
+        {
+          "chart": "sankey",
+          "n": 33,
+          "bklit": {
+            "dim": null,
+            "tip": 61,
+            "last": 154,
+            "finalDim": 47
+          },
+          "migrated": {
+            "dim": 54,
+            "tip": 54,
+            "last": 155,
+            "finalDim": 5
+          },
+          "flags": [
+            "dim-presence-mismatch"
+          ]
+        },
+        {
+          "chart": "choropleth",
+          "n": 100,
+          "bklit": {
+            "dim": null,
+            "tip": 64,
+            "last": 177,
+            "finalDim": 1
+          },
+          "migrated": {
+            "dim": null,
+            "tip": 58,
+            "last": 58,
+            "finalDim": 0
+          },
+          "flags": []
+        },
+        {
+          "chart": "liveline",
+          "n": 100,
+          "bklit": {
+            "dim": 85,
+            "tip": 52,
+            "last": 85,
+            "finalDim": 4
+          },
+          "migrated": {
+            "dim": null,
+            "tip": 28,
+            "last": 28,
+            "finalDim": 0
+          },
+          "flags": [
+            "dim-presence-mismatch"
+          ]
+        },
+        {
+          "chart": "composedstacked",
+          "n": 100,
+          "bklit": {
+            "dim": 64,
+            "tip": 64,
+            "last": 434,
+            "finalDim": 199
+          },
+          "migrated": {
+            "dim": 23,
+            "tip": 23,
+            "last": 0,
+            "finalDim": 199
+          },
+          "flags": []
+        },
+        {
+          "chart": "areamultiaxis",
+          "n": 1000,
+          "bklit": {
+            "dim": 46,
+            "tip": 46,
+            "last": 429,
+            "finalDim": 2
+          },
+          "migrated": {
+            "dim": 173,
+            "tip": 173,
+            "last": 0,
+            "finalDim": 2
+          },
+          "flags": []
+        }
+      ],
+      "flagged": [
+        {
+          "chart": "bar",
+          "n": 100,
+          "bklit": {
+            "dim": 88,
+            "tip": 55,
+            "last": 262,
+            "finalDim": 198
+          },
+          "migrated": {
+            "dim": 42,
+            "tip": 42,
+            "last": 1114,
+            "finalDim": 198
+          },
+          "flags": [
+            "settles-after-700ms-capture"
+          ]
+        },
+        {
+          "chart": "pie",
+          "n": 1000,
+          "bklit": {
+            "dim": 146,
+            "tip": null,
+            "last": 351,
+            "finalDim": 999
+          },
+          "migrated": {
+            "dim": null,
+            "tip": null,
+            "last": 0,
+            "finalDim": 0
+          },
+          "flags": [
+            "dim-presence-mismatch"
+          ]
+        },
+        {
+          "chart": "sankey",
+          "n": 33,
+          "bklit": {
+            "dim": null,
+            "tip": 61,
+            "last": 154,
+            "finalDim": 47
+          },
+          "migrated": {
+            "dim": 54,
+            "tip": 54,
+            "last": 155,
+            "finalDim": 5
+          },
+          "flags": [
+            "dim-presence-mismatch"
+          ]
+        },
+        {
+          "chart": "liveline",
+          "n": 100,
+          "bklit": {
+            "dim": 85,
+            "tip": 52,
+            "last": 85,
+            "finalDim": 4
+          },
+          "migrated": {
+            "dim": null,
+            "tip": 28,
+            "last": 28,
+            "finalDim": 0
+          },
+          "flags": [
+            "dim-presence-mismatch"
+          ]
+        }
+      ],
+      "durationMs": 39252
+    }
+  }
+}
