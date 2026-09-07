@@ -1,6 +1,6 @@
 # Phase 7 — open tasks and working agreements
 
-Current as of commit `3235210`, branch `main`, pushed. Gate 4 ran `2026-09-07T21-21-41-176Z`.
+Current as of commit `20528b9`, branch `main` (3 commits unpushed). Gate 4 ran `2026-09-07T21-21-41-176Z`; the G4-a re-run is `2026-09-07T21-48-15-130Z`.
 
 Two things this document exists to prevent. First, the open list living only in
 conversation, which is where V6 and V7 were until they were traced back to repo
@@ -45,8 +45,10 @@ run, so the 43 runs of per-cell history stayed comparable.
 `SUMMARY.md` classifies 9 issues: 4 hover-dim, 2 harness-race, 1 polar, 1
 renderer-regime, 1 legend. Eight are the known ruled/out-of-range set above.
 
-**The ninth is the one real gap, carried below as G4-a:** `candlestick/1000`
-produced no report, and it is what failed the QA stage.
+**The ninth was the one real gap, carried as G4-a:** `candlestick/1000` produced
+no report, and it is what failed the QA stage. **Closed (D632)** — solo re-run
+exits 0 in 10.0 s with four cells at the bottom of a 62-run history, against ≥31.2 s
+under four workers. A load-induced harness timeout, not a regression.
 
 ### Probe instrument — one file, therefore one agent
 
@@ -67,7 +69,6 @@ D617-b (`dimmedCount` counting DOM levels) is **fixed and confirmed** — see §
 |---|---|---|---|
 | **D623** | BarPulse seam is single-pulse; bklit is per-pulse. Same name, same props, different composition at N≥2 | `bar-pulse-mark.ts:294-300` first-match; bklit `bar-depth.tsx:959-966` per-entry clipPath | open, **spec'd**, in-repo reachability **0** — queued behind G4 |
 | **D626** | `markers/100` dim scope: legacy dims 311 elements, migrated 109 | pixel cost 0.4090% against a 0.5% gate, ~18% headroom; bottom of 43 runs of history | **passes** — structural convergence is a judgement, not a failure |
-| **G4-a** | `candlestick/1000` produced no QA report at G4: `page.waitForFunction(__benchPaintDone === true)` timed out at 30 s (`qa/screenshot.mjs:427`, log `logs/qa/candlestick-1000.log`) | it gated 4 cells in every prior full run; `candlestick-chart.tsx` (+2) and the shared `chart-host.tsx` (64 changed) are both inside the ten commits | **open — re-run candlestick alone before calling it a flake** |
 | **D603** | Candlestick 3× dim fan-out — **headline number retracted**, see D627 | ancestor-composed probe reads 3009 vs 2999, not 999 vs 2998 | held; the surviving claim (dim latency 76 ms vs 246 ms) is filed as [#135](https://github.com/TanStack/charts/issues/135) |
 | **D617** | Choropleth group fade vs per-feature `color-mix`, bounded 10/255 | — | sub-gate, no ruling, closed |
 
@@ -86,7 +87,6 @@ and is discharged by the filing. It is not a separate item.
 
 | id | task | state |
 |---|---|---|
-| **A15** | `settle.ts:25` `FALLBACK_MS = 2500` resolves `__benchSettled` in all four arms and nothing records that it was the fallback, so a wedged instrument and a 2.5 s chart are the same number | authorized, **next**. Fix shape known (D629): flag the fallback resolution, read it in `run.mjs` beside `m1b`, carry it into the cell. **Now has a demonstrated instance (D630)** — the fallback substituted across at least three runs and was written into an adopted baseline as "a live regression" |
 | **pins** | Every bundle pin is now stale-high: 43/43 scenarios came in under, summed −14.1% | re-pin needs a D-entry (`bundle-gate.json` note). Not urgent — a stale-high pin cannot produce a false pass on a growth |
 | **—** | dirty `bench/results/*` and `qa/gate/latest/*` | resolved: G4 overwrote them, authorized; committed with the run |
 
@@ -105,12 +105,14 @@ Listed because two of these were re-proposed as work after they were done.
 | **D620** | `settled: 0` taint **struck** — differences are real but sub-threshold (`pixelmatch` at 0.1 returns 0); D572's run is outside the affected set |
 | **D624** | Bundle vector finished on a **negative** result: no third inversion exists. Remaining >1.10 cost is the package's per-chart marks |
 | **D612, D619** | Two ownership inversions landed; ≤1.10 went 2/43 → 18/43, median → 1.1157 |
-| **G4** | Ran clean: gate FAIL 0 over 189 gated cells, bundle 0 FAIL at −14.1%, probes 4 flags all previously ruled. One gap carried as G4-a |
-| **push** | `30c0e1a..3235210` pushed; unpushed 0 |
+| **G4** | Ran clean: gate FAIL 0 over 189 gated cells, bundle 0 FAIL at −14.1%, probes 4 flags all previously ruled. Its one gap, G4-a, is now closed |
+| **G4-a** | **Closed (D632)** — not a regression. Solo `--workers 1` re-run (`2026-09-07T21-48-15-130Z`) exits 0 in **10.0 s**, four gated cells, gate FAIL 0, all low in a 62-run history; G4 aborted the same chart at ≥31.2 s on `qa/screenshot.mjs:427`'s 30 s `__benchPaintDone` wait. Better than 3× dilation under four workers. Timeout deliberately not raised; the open question is scheduling (`--workers 4` flake rate vs a ~40-min serial sweep), carried as a note, not an item |
+| **push** | `30c0e1a..3235210` pushed; **3 unpushed** (`ca1525e`, `20528b9`, G4-a) |
 | **I10 / V7** | Filed as #135 after retracting D603's element-count claim (D627) |
 | **I9** | Dropped (D628) — premise disproved by D624, residue unstatable |
 | **V6** | **Closed (D630).** The "1.98x scatter regression" was `armBklitSettle`'s 2500 ms fallback resolving because migrated ScatterChart never emitted a non-`ready` phase. `97e2967` made the reveal observable; G4 measures **1183.6**, −6.0% against the held 1258.6, inside the band. Hold lifted in `bench-baseline.json`; no adoption needed |
 | **V7** | Discharged by #135 — it was only ever I10's write-up |
+| **A15** | **Fixed (D631).** All four settle arms route their net through `armFallback`; `run.mjs` carries `m1b_fromFallback`/`m1b_fallbackRuns`, `run-bench.mjs` gates with no tolerance and throws so the stage reads FAILED. 8 tests drive the real `settle.ts`; suite 252/50/194 → **260/51/202**, fail 0. Live verification is the next full bench stage (expect `m1b_fallbackRuns: 0` on all ten cells) |
 
 ---
 

@@ -2964,3 +2964,44 @@ very constancy that gave it away.
 **A15 is closed.** Its verification in a live run is the next full bench stage; the
 expectation is `m1b_fallbackRuns: 0` on all ten paired cells, and a stage failure if
 not.
+
+## D632 — G4-a is a load-induced harness timeout, not a candlestick regression
+
+G4's QA stage recorded one ERROR cell: `candlestick/1000` produced no report because
+`page.waitForFunction(() => window.__benchPaintDone === true)` at
+`qa/screenshot.mjs:427` hit its 30 s ceiling inside `captureLoad`
+(`logs/qa/candlestick-1000.log`). Two readings were open. Either the ten landed
+commits broke candlestick's paint signal — `candlestick-chart.tsx` and the shared
+`chart-host.tsx` are both inside them — or four workers stretched a slow chart past
+a wall-clock limit that was never sized for contention.
+
+The re-run answers it. `node --run gate:qa -- --charts candlestick --repeat 1
+--workers 1 --label "g4a-candlestick"` (run dir `2026-09-07T21-48-15-130Z`) exits 0
+in **10.0 s** with four gated cells, gate FAIL 0, harness FAIL 0, out-of-range 0,
+errors 0. Every cell sits low in its 62-run history: settled 3263 px / 0.3399 %
+(range [2609, 12061]), hover-30 1675 ([1662, 7343]), hover-50 1480 ([689, 6302]),
+hover-70 1418 ([591, 6172]). A chart whose paint signal was broken does not produce
+four passing cells at the bottom of its own range.
+
+So the dilation is the finding: 10.0 s solo against ≥31.2 s under four workers
+(`qa-timings.json` records 31184 ms for the aborted run, which is the 30 s timeout
+plus overhead). That is better than 3×, and candlestick was not alone near the
+ceiling — seven of 43 charts exceeded 20 s in G4 against a median of 7147 ms, with
+`funnel/1000` and `funnelvertical/1000` at ~130 s and `pie/1000` at 87 s. Those
+three survive because their totals are the sum of many captures, none of which
+individually waits 30 s for a paint; candlestick's total is one capture that did.
+The margin that matters is per-capture, and the gate has no instrument for it.
+
+I am not raising the timeout. A 30 s wait for one frame is already generous, and
+raising it trades a visible flake for an invisible slowdown — the same bargain D588
+took and lost. The load itself is the variable under the lead's control: G4 ran at
+`--workers 4`, and the standing rule that no agent runs gates concurrently exists
+precisely because parallel machine load is D588's literal cause. G4-a is that cause
+reaching the QA sweep from inside a single gate invocation rather than from a second
+process.
+
+**G4-a is closed as a harness timeout under load.** What it leaves behind is a
+narrower question than the one it opened: whether `--workers 4` is worth its flake
+rate on a 43-chart sweep, given that the same sweep at `--workers 1` would take
+about 40 minutes rather than 20. That is a scheduling decision, not a defect, and it
+is carried as a note rather than an item.
