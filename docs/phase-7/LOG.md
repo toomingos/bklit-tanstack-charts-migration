@@ -2356,3 +2356,97 @@ routes bar charts to the `xBand` branch, and the other families never read
 
 D613 is now unblocked: I9 can be rewritten against what is actually left, or
 dropped.
+
+## D620 — the `settled: 0` reports are not tainted, and D572 was never in the set
+
+The open list carried a suspicion: four old `report.json` files claim
+`settled: 0` while their PNG pair differs by roughly 40,000 pixels, which would
+taint D572's evidence. Audited against the artefacts. Every part of the
+suspicion is wrong except the raw pixel count.
+
+The count is **five contaminated plus one true zero, all `barloading`** — not
+four, and not spread across charts. The raw byte-differing count on those pairs
+is 36,000–40,000 pixels, which is what raised the alarm. But the gate does not
+compare raw bytes: `qa/screenshot.mjs:180-200` runs
+`pixelmatch(a, b, diff, w, h, { threshold: 0.1, includeAA: false })`, and on
+these pairs pixelmatch returns **0**. Max channel delta is 6–22, mean ~10.89.
+The reports are therefore correct on the gate's own terms: the images differ,
+and every difference is below the perceptual threshold the gate is defined by.
+A `settled: 0` that sits on top of 40,000 sub-threshold pixels is the instrument
+working, not the instrument lying.
+
+None of the four hypothesised mechanisms survives. Not write-before-compare —
+`qa/screenshot.mjs:1116-1134` compares the buffers it then writes. Not the same
+PNG read twice, and not a mismatched pair: the pairs are distinct files with
+distinct content. Not D615's swallowed `waitForFunction` timeout —
+`LOADING_PHASE_VECTOR` defaults off and every affected run is `state: ready`.
+
+**D572 is outside the affected set.** Its evidence is run `d724449` / `qa-v39c`
+at n=100, with different timestamps, and those artefacts are not in
+`qa/results/` at all. Nothing about D572's conclusion is touched. Current gate
+artefacts reproduce exactly on recomputation — `barloading/100` settled 21598
+FAIL comes back identically.
+
+The open-list line is struck rather than carried forward. Recorded because the
+suspicion was mine, was stated as fact in the pending list, and was false.
+
+One method correction, from the auditor rather than to it: the brief told it to
+write a script into the session scratchpad. It declined, correctly — an absolute
+path outside the repo violates its own `external_directory: deny` — and used
+inline `node -e` within the repo instead. Future audit briefs keep scratch work
+inside the repo tree.
+
+## D621 — the two surviving dim flags are not one defect: one is the counting rule, one is unexplained
+
+`legend-hover-dim` is down to two flagged pairs, `candlelegend` and `markers`.
+Both were audited before touching the probe, on the theory that D617-b — 
+`dimmedCount` reading each element's own computed opacity and never composing
+ancestors — explained both. It explains one.
+
+**`candlelegend` is entirely the counting rule.** The two implementations
+express the legend dim at different DOM levels, and the probe counts levels.
+Legacy wraps each candle in one `<g opacity>`:
+`repos/bklit-ui/packages/ui/src/charts/candlestick.tsx:208-221`, with the leaves
+inside carrying no opacity of their own (`:149-190`). Migrated bakes the dim
+into each leaf as `style.opacity`: wick segments at
+`candlestick-chart-scenes.ts:48`, body at `:807`, via `legendDimOpacity` at
+`candlestick-chart-marks.ts:330-333`. With `DEFAULT_FADED_OPACITY = 0.3` and
+`NO_INSIDE_STROKE_PX = 0` (`candlestick-chart-chrome.ts:35,43`) a dimmed candle
+is exactly three leaves — two wick rects and one body rect. So the probe scores
+one element per legacy candle and three per migrated candle, and the flag reads
+`bklit +512, migrated +1533`. The ratio is 2.9941 and 2.9898, three and five
+leaves short of exact 3×; the likely cull is
+`candlestick-chart-scenes.ts:41`, which drops zero-height wick segments, but
+that is source reading, not a measurement.
+
+This is not a second bias on top of D603 — it is D603's counting rule re-filed
+under a new number. Composing ancestor opacity in the probe should raise the
+legacy count from 512 to about 1536 and clear the flag without either chart
+changing. That is the prediction the fix has to meet.
+
+**`markers/100` is not explained, and I am not going to guess at it.** The
+deltas are noise-scale, not magnitude-scale: item-0 `bklit −1, migrated +1`;
+item-1 `bklit +3, migrated +2`, on baselines of 3 to 6. If the migrated legend
+dim were working as written it would read about +100, because migrated dots
+carry their own `opacity: 0.5` via `bkm-marker-base--dim`
+(`series-marker-mark.ts:22-23`, `styles.css:786-789`) and the ancestor theory
+does not apply to them at all. Both sides also rest at 3–6 dimmed before any
+hover, and both fail to fully undim afterwards (`6 → 3` legacy, `5 → 6`
+migrated). No ancestor-composition account produces those residues.
+
+The DOM levels do differ here too, and more than in candlelegend: legacy uses
+two separate ancestor groups — `series-hover-dim.tsx:48-53` around the stroke
+and dash tail, `series-markers.tsx:246-253` around the dots — where migrated
+uses leaf `strokeOpacity` (`line-series-marks.ts:56,65`), a leaf CSS class for
+the dots, and a per-entry `<g opacity>` for the dash tail alone
+(`dash-tail.ts:67-71`). Event-marker icons carry no legend dim in either
+implementation. Element scope is 387 legacy against 155 migrated, which is a
+structural asymmetry in its own right.
+
+Identifying the 3–6 resting elements needs a live instrumented DOM read, which
+the audit was not permitted to do and correctly refused to infer around — the
+D611/D614/D616 pattern was three consecutive corrections of exactly that kind of
+inference. So: `candlelegend` gets a fix with a stated numeric prediction,
+`markers/100` stays open pending a lead-run DOM read, and D617-a — the virtual
+clock not advancing framer-motion mount progress — remains an unexcluded
+co-cause for it.

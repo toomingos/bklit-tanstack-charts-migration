@@ -298,9 +298,21 @@ disproof of D597's "no arrangement of the consuming code closes this gap". **I9 
 `sunchrome` 1.3100, `brush` 1.1962 — or dropped, and either way the case has to be built on what
 survived two inversions rather than on the original d3 tail.
 
-Still open: the `markers/100` legend-hover-dim and `candlelegend` magnitude flags; the two D617
-instrument defects (`openScene`'s virtual clock not driving legacy's framer-motion mount, and
-`dimmedCount` not composing ancestor opacity); V6; V7/I10; the I9 rewrite; and a full Gate 4.
+**Two open items closed on evidence, one narrowed** (D620, D621). The suspicion that four old
+`report.json` files claim `settled: 0` over ~40,000 differing pixels, tainting D572, is **struck**:
+the count is five plus one true zero and all `barloading`, the raw differences are real but sit
+below the gate's own `pixelmatch` threshold of 0.1 (which returns 0 on those pairs, max channel
+delta 6-22), and D572's run is not in the affected set at all. And the two surviving
+`legend-hover-dim` flags turn out not to be one defect: `candlelegend` is entirely D617-b's
+counting rule -- legacy dims one `<g>` per candle where migrated dims three leaves, so the probe
+reads +512 against +1533 for identical visual behaviour -- while `markers/100` is **not** explained
+by it, because its deltas are noise-scale on baselines of 3-6 and migrated's dots carry their own
+leaf opacity. Composing ancestor opacity should lift the legacy candlelegend count to ~1536 and
+clear that flag; `markers/100` needs a live DOM read the audits were not permitted to take.
+
+Still open: `markers/100` legend-hover-dim; the two D617 instrument defects (`openScene`'s virtual
+clock not driving legacy's framer-motion mount, and `dimmedCount` not composing ancestor opacity);
+D600's first-pulse-only `resolveBarPulseOverlay`; V6; V7/I10; the I9 rewrite; and a full Gate 4.
 Wave B and Wave C as written above are otherwise next.
 
 ## 7. Gate audit — 2026-09-06, read-only
