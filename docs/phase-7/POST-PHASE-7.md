@@ -279,11 +279,29 @@ Everything else it reported is pre-existing or harness noise; the attribution is
   module-graph count, not bytes — the same `metafile.inputs` error D612 warned about, one level up.
   A leaf-constant split moved raw bytes by **0** on three of five scenarios. Closed, nothing landed.
 
-Still open: the `buildTimeScale` removal — now scoped by measurement to **+14,741 raw / +4,473 gzip
-on 18 of 43 scenarios**, not all of them, because 25 already pull the identical `d3-time` graph via
-`scaleUtc` in their own definition modules (marginal saving there: 32 bytes); the `markers/100`
-legend-hover-dim and `candlelegend` magnitude flags; V6, V7/I10; and a full Gate 4. Wave B and
-Wave C as written above are otherwise next.
+- **The time scale now travels with the charts that read it** (`6b7d093`, D619). The second
+  ownership inversion, same shape as `425a1c6` one import down: `ChartHost` took an optional
+  `buildXScale`, supplied at the 7 sites that actually read the host x-scale, and everything else
+  takes a linear default. Measured over the full sweep: **18 of 43 migrated scenarios drop >1 kB
+  gzip** (−3,954 to −5,208), 24 pay +7 to +30 bytes of prop plumbing because they already pulled the
+  same graph via their own `scaleUtc`, `migrated/legend` is unchanged because it never mounts a
+  host, and **no `bklit/*` or `tanstack/*` combo moved at all** (0 of 61). Median ratio
+  1.1160 → **1.1157**; ratio ≤1.10 goes **16/43 → 18/43**, ≤1.15 goes 28 → 33, ≤1.20 goes 36 → 41.
+  The linear default is safe on measurement, not assertion: re-domained with numbers and called with
+  a Date, `ScaleTime` and `ScaleLinear` agree to **0** over 101 samples. Every figure above was
+  predicted by research before implementation, including which single scenario would not move.
+
+**Where the bundle claim now stands.** Two inversions have moved ≤1.10 from 2/43 to **18/43** and
+the median from ~1.19 to 1.1157, and both were our own code, not the package. That is the concrete
+disproof of D597's "no arrangement of the consuming code closes this gap". **I9 is now unblocked**
+(D613): it must be rewritten against the 25 scenarios still over 1.10 — worst `sunburst` 1.3106,
+`sunchrome` 1.3100, `brush` 1.1962 — or dropped, and either way the case has to be built on what
+survived two inversions rather than on the original d3 tail.
+
+Still open: the `markers/100` legend-hover-dim and `candlelegend` magnitude flags; the two D617
+instrument defects (`openScene`'s virtual clock not driving legacy's framer-motion mount, and
+`dimmedCount` not composing ancestor opacity); V6; V7/I10; the I9 rewrite; and a full Gate 4.
+Wave B and Wave C as written above are otherwise next.
 
 ## 7. Gate audit — 2026-09-06, read-only
 
