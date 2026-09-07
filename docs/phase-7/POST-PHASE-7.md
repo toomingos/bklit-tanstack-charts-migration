@@ -310,10 +310,33 @@ by it, because its deltas are noise-scale on baselines of 3-6 and migrated's dot
 leaf opacity. Composing ancestor opacity should lift the legacy candlelegend count to ~1536 and
 clear that flag; `markers/100` needs a live DOM read the audits were not permitted to take.
 
-Still open: `markers/100` legend-hover-dim; the two D617 instrument defects (`openScene`'s virtual
-clock not driving legacy's framer-motion mount, and `dimmedCount` not composing ancestor opacity);
-D600's first-pulse-only `resolveBarPulseOverlay`; V6; V7/I10; the I9 rewrite; and a full Gate 4.
-Wave B and Wave C as written above are otherwise next.
+**The bundle vector is finished, and it ends on a negative result (D624).** There is no third
+inversion. Traced against `bench/results/bundle-sizes.json`: `sunchrome` is `sunburst` plus 753 B of
+breadcrumb, ~3% of a +27.3k gzip delta, so the two worst scenarios are one cost. That cost is the
+package's own mark -- `use-sunburst-definition.ts:5` names `@tanstack/charts/hierarchy/sunburst`,
+which names `d3-hierarchy` and `d3-shape` at `hierarchy-sunburst.js:1-2` -- and every overlay of ours
+in the graph is read on the rendered path, so removing one breaks parity rather than rearranging a
+cost. `brush` at 1.1962 is irreducible by construction: the scenario names `ChartBrush`, and bklit
+pays the same feature weight (~1.56x its own pie baseline). **No unconditional-but-gated import of
+the D612/D619 shape survives anywhere in the traced graph.**
+
+So **I9's premise is dead**: it argued from the d3 tail, and the d3 tail was our own code arranged
+badly, which is exactly what we proved by fixing it twice. The rewrite has one narrower claim left --
+per-chart native marks carry their d3 subgraphs into even minimal scenarios, on top of the shared
+host core D612 and D619 isolated -- and its attribution is by source edge, not by bytes: minification
+erases the `partition` identifier, so the package's share of that +27.2k is not a number I can state.
+
+**The probe vector turned out to be about the probes (D617, D622).** Three defects in one family, all
+the same gap: the probe harness runs in a different time regime from the gate it claims to predict.
+D617-a is the virtual clock not advancing legacy's framer-motion mount; D617-b is `dimmedCount`
+counting DOM levels instead of visual dim, **now fixed** (both in-page mirrors compose ancestor
+opacity, suite 246/48/188 -> 252/50/194, 0 fail); D622 is `settles-after-700ms-capture` comparing
+virtual milliseconds against a wall-clock threshold, which no chart change can address.
+
+Still open: `markers/100` legend-hover-dim, which the audits established is **not** explained by
+D617-b and needs a live DOM read; D617-a; D622's probe redesign; D623's single-pulse BarPulse seam
+(specified, in-repo reachability 0, queued behind the gate); V6; V7/I10; the I9 rewrite on its new
+premise; and a full Gate 4.
 
 ## 7. Gate audit — 2026-09-06, read-only
 
