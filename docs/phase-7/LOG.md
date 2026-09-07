@@ -1270,3 +1270,41 @@ are unmeasured. An asymmetric capture is not a pass — the same rule A3 applied
 Standing after this run: 30 bundle pins (item 8) and 7 of 9 bench flags (item 7) are stale-instrument
 debt, not defects. The live defects are the scatter double reveal, D590, and the candlestick dim
 fan-out.
+
+## D596 — Items 7 and 8: the baseline and the pins adopted, with one cell held back
+
+POST-PHASE-7 items 7 and 8, taken together from the 7.6 run
+(`docs/phase-7/gate/runs/2026-09-07T09-01-26-415Z`) because they are one question: what does this
+tree actually cost, measured through an instrument that works. D594 established the ordering —
+adopting numbers from a stale instrument would enshrine the defect — and D595 supplied the run.
+
+**Item 8 — 43 pins, all 43 moved. Bundle gate 30 FAIL → 0**, `sumDeltaPct` 17.71 → 0. The old pins
+were stamped 2026-09-05 at `61d6179`, before V3.9; every migrated scenario had drifted past its
+3% tolerance. One pin was never valid rather than merely stale: `migrated/barloading` was pinned at
+**2449 bytes**, which is not a bundle. That scenario's measurement was broken when the pins were
+stamped, and the row read as passing only because nothing can be smaller than it. It is 83837 now.
+
+`ratioOver` stays at **41 of 43**. Re-pinning deliberately does not touch the ≤1.10 parity limit —
+that is item 9, a separate claim, and a re-pin that had quietly moved it would have been a re-pin
+that concealed it.
+
+**Item 7 — 30 cells adopted, two not from this run.** `bklit/composed/1000` was not in the run's
+cell set and keeps its phase-5 §3b medians. And `migrated/scatter/1000.m1b_settleMs` is **held** at
+1258.6 though the run measured 2505.3, for the reason D595 gives: 1.98× the same-run bklit control,
+p95 2506 over 7 samples, reproduced across two independent runs. Adopting it would pin the defect
+as the expectation and silence the only flag pointing at it. Recomputing the gate against the new
+baseline gives the intended shape:
+
+    gated flags: 9 -> 1   (the survivor is migrated/scatter/1000 m1b, +99.1%)
+
+The hold expires when the scatter double reveal is found.
+
+**One reading note recorded in the baseline's own `note`.** Every control cell — bklit and tanstack
+alike, all four families — rose 11–19% on `m1c_scriptMs` between the phase-5 run and this one. That
+is a uniform machine/browser shift, not a chart change, so migrated's +36–47% is roughly +25–35%
+net of it. The raw deltas overstate the gap and a later reader would otherwise draw the wrong
+conclusion from them.
+
+Both files carry hand-written provenance rather than generated prose: a `note` and a `pinnedAt` that
+still described the old source would make the artefact lie about where its numbers came from, which
+is the same failure mode as a stale measurement.

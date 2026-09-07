@@ -1,135 +1,135 @@
 {
-  "pinnedAt": "2026-09-05 HEAD 61d6179 (V0.3 baseline, @tanstack/charts 0.16.0; previous pin 2026-09-01 c1e9ced)",
+  "pinnedAt": "2026-09-07 HEAD 8661481 (adopted from the 7.6 gate run docs/phase-7/gate/runs/2026-09-07T09-01-26-415Z, D595; @tanstack/charts 0.16.0; previous pin 2026-09-05 61d6179, which predated V3.9 and left 30 of 43 scenarios failing on stale bytes). Note migrated/barloading: the previous pin was 2449 bytes, which is not a bundle -- that scenario's measurement was broken when the 61d6179 pins were stamped, and the row read as passing only because nothing can be smaller than it. Now 83837.",
   "tolerancePct": 3,
   "scenarios": {
     "migrated/area": {
-      "gzip": 168043
+      "gzip": 173167
     },
     "migrated/arealoading": {
-      "gzip": 127922
+      "gzip": 88786
     },
     "migrated/areamultiaxis": {
-      "gzip": 168116
+      "gzip": 173270
     },
     "migrated/bar": {
-      "gzip": 134546
+      "gzip": 161041
     },
     "migrated/bardepth": {
-      "gzip": 134747
+      "gzip": 161260
     },
     "migrated/barloading": {
-      "gzip": 2449
+      "gzip": 83837
     },
     "migrated/barmultiaxis": {
-      "gzip": 134603
+      "gzip": 161103
     },
     "migrated/barsquares": {
-      "gzip": 146726
+      "gzip": 173387
     },
     "migrated/brush": {
-      "gzip": 178442
+      "gzip": 180805
     },
     "migrated/candlestick": {
-      "gzip": 127176
+      "gzip": 154710
     },
     "migrated/candlestick-legend": {
-      "gzip": 137813
+      "gzip": 165688
     },
     "migrated/candletween": {
-      "gzip": 127244
+      "gzip": 154781
     },
     "migrated/choropleth": {
-      "gzip": 119026
+      "gzip": 152133
     },
     "migrated/composed": {
-      "gzip": 140194
+      "gzip": 165372
     },
     "migrated/composedmultiaxis": {
-      "gzip": 140253
+      "gzip": 165436
     },
     "migrated/composedstacked": {
-      "gzip": 140180
+      "gzip": 165361
     },
     "migrated/funnel": {
-      "gzip": 48669
+      "gzip": 128336
     },
     "migrated/funnelvertical": {
-      "gzip": 48688
+      "gzip": 128353
     },
     "migrated/gauge": {
-      "gzip": 104637
+      "gzip": 145019
     },
     "migrated/gaugelinear": {
-      "gzip": 104744
+      "gzip": 145121
     },
     "migrated/griddefault": {
-      "gzip": 170324
+      "gzip": 172761
     },
     "migrated/heatmap": {
-      "gzip": 105621
+      "gzip": 141906
     },
     "migrated/legend": {
-      "gzip": 12434
+      "gzip": 12581
     },
     "migrated/legendhover": {
-      "gzip": 174096
+      "gzip": 197415
     },
     "migrated/line": {
-      "gzip": 170390
+      "gzip": 172829
     },
     "migrated/linemultiaxis": {
-      "gzip": 170469
+      "gzip": 172882
     },
     "migrated/liveline": {
-      "gzip": 125519
+      "gzip": 152803
     },
     "migrated/markers": {
-      "gzip": 181897
+      "gzip": 183669
     },
     "migrated/patternarea": {
-      "gzip": 168100
+      "gzip": 173236
     },
     "migrated/pie": {
-      "gzip": 92430
+      "gzip": 131765
     },
     "migrated/profitloss": {
-      "gzip": 178434
+      "gzip": 180947
     },
     "migrated/projection": {
-      "gzip": 173485
+      "gzip": 175888
     },
     "migrated/projectionxdomain": {
-      "gzip": 173534
+      "gzip": 175945
     },
     "migrated/radar": {
-      "gzip": 103613
+      "gzip": 134400
     },
     "migrated/refarea": {
-      "gzip": 170480
+      "gzip": 172876
     },
     "migrated/refareamultiaxis": {
-      "gzip": 170607
+      "gzip": 173016
     },
     "migrated/ring": {
-      "gzip": 102295
+      "gzip": 141569
     },
     "migrated/sankey": {
-      "gzip": 104293
+      "gzip": 143750
     },
     "migrated/scatter": {
-      "gzip": 126075
+      "gzip": 152744
     },
     "migrated/scattermultiaxis": {
-      "gzip": 126095
+      "gzip": 152763
     },
     "migrated/segment": {
-      "gzip": 170460
+      "gzip": 172877
     },
     "migrated/sunburst": {
-      "gzip": 99807
+      "gzip": 140576
     },
     "migrated/sunchrome": {
-      "gzip": 100467
+      "gzip": 141388
     }
   }
 }
