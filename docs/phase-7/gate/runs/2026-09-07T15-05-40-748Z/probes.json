@@ -1,0 +1,85 @@
+{
+  "generatedAt": "2026-09-07T15:05:42.434Z",
+  "runDir": "docs/phase-7/gate/runs/2026-09-07T15-05-40-748Z",
+  "wallClockMs": 1684,
+  "ran": [
+    "bardepth-toggle"
+  ],
+  "errors": {},
+  "summary": {
+    "bardepth-toggle": 0
+  },
+  "results": {
+    "bardepth-toggle": {
+      "name": "bardepth-toggle",
+      "chart": "bardepth",
+      "n": 100,
+      "rows": [
+        {
+          "impl": "bklit",
+          "hooks": {
+            "depth": true,
+            "pulsePaused": true,
+            "pulsePhase": true
+          },
+          "initialCount": 525,
+          "offCount": 103,
+          "onCount": 525,
+          "offSettleMs": 0,
+          "onSettleMs": 0,
+          "offAgainSettleMs": 0,
+          "offVsOn": {
+            "compared": 40,
+            "moved": 38,
+            "opacityChanged": 0,
+            "maxDelta": 686.5,
+            "countA": 103,
+            "countB": 525
+          },
+          "offVsOffAgain": {
+            "compared": 40,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 103,
+            "countB": 103
+          },
+          "errors": []
+        },
+        {
+          "impl": "migrated",
+          "hooks": {
+            "depth": true,
+            "pulsePaused": true,
+            "pulsePhase": true
+          },
+          "initialCount": 476,
+          "offCount": 100,
+          "onCount": 476,
+          "offSettleMs": 33,
+          "onSettleMs": 0,
+          "offAgainSettleMs": 33,
+          "offVsOn": {
+            "compared": 40,
+            "moved": 40,
+            "opacityChanged": 0,
+            "maxDelta": 728.2,
+            "countA": 100,
+            "countB": 476
+          },
+          "offVsOffAgain": {
+            "compared": 40,
+            "moved": 0,
+            "opacityChanged": 0,
+            "maxDelta": 0,
+            "countA": 100,
+            "countB": 100
+          },
+          "errors": []
+        }
+      ],
+      "flags": [],
+      "durationMs": 702
+    }
+  }
+}
