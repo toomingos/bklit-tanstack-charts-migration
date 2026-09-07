@@ -1751,3 +1751,45 @@ has not been verified, whatever the diff looks like; the hedge in D600 was
 correct and should have blocked the commit rather than annotating it.
 
 Gate 3 stays blocked until this is in, since bardepth is one of its cells.
+
+### D607 — A11 closed: the barloading bounds were sized from a regime that no longer exists
+
+D594 let three `barloading` bounds stand — 161,310 px (16.8% of the viewport), 53,588 and 33,734 —
+on the grounds that the loading phase could not be pinned (D591) and that removing them would leave
+a cell failing every run. It attached an expiry: *"they expire when D590 lands"*. D590 landed
+broken and D606 landed it for real, so the expiry is due. Gate 3 supplies the numbers.
+
+**The bounds are relics.** Full history over 26 bklit-vs-migrated runs, in px:
+
+| cell | median (all) | max (all) | the four runs since the D588 anchor |
+|---|---|---|---|
+| hover-30 | 159,249 | 161,541 | 1,390 / 111 / 1,390 / 1,565 |
+| hover-50 | 144,883 | 167,154 | 2,673 / 13,119 / 2,950 / 2,673 |
+| hover-70 | 133,268 | 164,456 | 10,735 / 7,345 / 10,735 / 14,163 |
+| settled | 18,454 | 51,852 | 21,785 / 21,785 / 22,041 / 21,598 |
+
+The six-figure values all predate 2026-09-05. D588's virtual-time budget gave both impls the same
+virtual instant to freeze at, and the hover cells fell by two orders of magnitude. The bounds were
+never ratified against the post-anchor regime — D594 re-cited them on the *reason* they existed
+without re-reading what the cells now measure.
+
+**Disposition.** `hover-30` loses its ruling outright: it reads 111-1,565 px, under the 4,800 px
+gate, and passes on its own. `hover-50` and `hover-70` drop to **16,000 px** each, sized just above
+the post-anchor maxima. That is a 10x tightening on hover-50 and a 2.1x tightening on hover-70, and
+`barloading/100/hover-30` — the cell A11 named as unable to fail — can now fail.
+
+The new expiry is the right one: these bounds go when the loading phase is pinned on **both** sides,
+not when D590 lands. D591 called the phase unpinnable because neither loop is a WAAPI or CSS player.
+Half of that is now false — the migrated sweep band is a CSS keyframe animation `getAnimations()`
+can seek — but a one-sided pin makes the comparison *less* deterministic, not more. The paired
+mechanism exists and is proven: D606's bardepth pin is WAAPI on migrated against motion's
+`useManualTiming` on bklit. Applying that pairing to barloading is the vector that retires these two
+bounds; until then they are bounded, cited residue rather than an open licence.
+
+**What is deliberately not ruled: `settled`.** It reads 21,785 / 21,785 / 22,041 / 21,598 px —
+2.25% of the viewport, four runs, spread 443 px. That is not phase noise; a phase-random cell is
+what hover-70 looks like. It is a stable, reproducible difference that fails the gate every run and
+has never had a ruling. Ruling it now would be the exact error A11 was raised against. It stays
+failing, and it is a real defect to find.
+
+Recorded against Gate 3 (`docs/phase-7/gate/runs/2026-09-07T13-17-33-947Z`, exit 0, 51m40s).

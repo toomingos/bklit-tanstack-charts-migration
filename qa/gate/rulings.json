@@ -1,16 +1,55 @@
 {
-  "$comment": "Hand-ruled QA cells from the archived phase-6 LOG (D498, via D493/D495): the 6 standing gate-FAIL deviations accepted inside their inherited history (or as loading-animation phase), plus the 5 out-of-range acceptances below the floor (4) and above the old ceiling (barloading hover-30). A ruled cell with px <= bound reads `ruled (<D>)` instead of FAIL and is excluded from issues. Raising a bound or adding a cell needs a D-entry. D594 (A11) re-cites the three barloading bounds: they rest on an unpinnable loading phase (D591) and mask D590, so they expire when D590 lands rather than standing as accepted deviations. In-range PASS cells named in D498 (markers legend-hover-0/1/clear, scatter/scattermultiaxis hover-70) need no ruling; the D407 choropleth race was a single event on a cell that reads 0. V4.4.",
+  "$comment": "Hand-ruled QA cells from the archived phase-6 LOG (D498, via D493/D495): the 6 standing gate-FAIL deviations accepted inside their inherited history (or as loading-animation phase), plus the 5 out-of-range acceptances below the floor (4) and above the old ceiling (barloading hover-30). A ruled cell with px <= bound reads `ruled (<D>)` instead of FAIL and is excluded from issues. Raising a bound or adding a cell needs a D-entry. D607 (A11, closing) retires the three barloading bounds set from pre-anchor history: hover-30 is unruled (reads 111-1565, under the 4800 gate) and hover-50/hover-70 drop 53588/33734 to 16000 each, sized on the four runs since the D588 virtual-time budget. barloading/100/settled is deliberately NOT ruled: it reads a stable ~21600 px every run, which is a reproducible difference to find, not phase noise. In-range PASS cells named in D498 (markers legend-hover-0/1/clear, scatter/scattermultiaxis hover-70) need no ruling; the D407 choropleth race was a single event on a cell that reads 0. V4.4.",
   "cells": {
-    "markers/100/hover-30": { "bound": 6045, "ruling": "D498", "note": "inside inherited [3574,8430]" },
-    "markers/100/hover-70": { "bound": 6147, "ruling": "D498", "note": "inside inherited [3328,8004]" },
-    "sankey/33/hover-30": { "bound": 11017, "ruling": "D498", "note": "inside inherited [3506,28944]" },
-    "sankey/33/hover-70": { "bound": 7367, "ruling": "D498", "note": "V0.3 baseline reads above D498's 5021, inside inherited [1270,33134]" },
-    "barloading/100/hover-50": { "bound": 53588, "ruling": "D498/D594", "note": "loading phase is unpinnable (D591); the bound also masks D590, and expires when D590 lands" },
-    "barloading/100/hover-70": { "bound": 33734, "ruling": "D498/D594", "note": "loading phase is unpinnable (D591); the bound also masks D590, and expires when D590 lands" },
-    "barloading/100/hover-30": { "bound": 161310, "ruling": "D498/D594", "note": "A11: 161310 px is 16.8% of the viewport — the cell cannot fail. \"Not a regression\" is unproven; D590 is a live defect this bound would hide. Kept only because D591 shows the phase cannot be pinned; expires when D590 lands" },
-    "candlestick/1000/hover-30": { "bound": 1848, "ruling": "D498", "note": "below every inherited history value (D495 wick split)" },
-    "candlestick/1000/hover-50": { "bound": 689, "ruling": "D498", "note": "below every inherited history value (D495 wick split)" },
-    "candlestick/1000/hover-70": { "bound": 591, "ruling": "D498", "note": "below every inherited history value (D495 wick split)" },
-    "radar/6/hover-50": { "bound": 7000, "ruling": "D535", "note": "was D498 bound 758 (below the floor); V2.2 polar: the legacy hovered polygon scales 1.05 about the centre with a drop-shadow glow and ChartAreaStateStyle (0.16.0) has no geometry/filter channel (D535 ruling 2, G9); reads 6446" }
+    "markers/100/hover-30": {
+      "bound": 6045,
+      "ruling": "D498",
+      "note": "inside inherited [3574,8430]"
+    },
+    "markers/100/hover-70": {
+      "bound": 6147,
+      "ruling": "D498",
+      "note": "inside inherited [3328,8004]"
+    },
+    "sankey/33/hover-30": {
+      "bound": 11017,
+      "ruling": "D498",
+      "note": "inside inherited [3506,28944]"
+    },
+    "sankey/33/hover-70": {
+      "bound": 7367,
+      "ruling": "D498",
+      "note": "V0.3 baseline reads above D498's 5021, inside inherited [1270,33134]"
+    },
+    "barloading/100/hover-50": {
+      "bound": 16000,
+      "ruling": "D607",
+      "note": "post-anchor residue: 4 runs since the D588 virtual-time budget read 2673/13119/2950/2673 (was a 144883 median). Expires with the paired loading-phase pin, not with D590"
+    },
+    "barloading/100/hover-70": {
+      "bound": 16000,
+      "ruling": "D607",
+      "note": "post-anchor residue: 10735/7345/10735/14163 since the D588 anchor (was a 133268 median). Expires with the paired loading-phase pin, not with D590"
+    },
+    "candlestick/1000/hover-30": {
+      "bound": 1848,
+      "ruling": "D498",
+      "note": "below every inherited history value (D495 wick split)"
+    },
+    "candlestick/1000/hover-50": {
+      "bound": 689,
+      "ruling": "D498",
+      "note": "below every inherited history value (D495 wick split)"
+    },
+    "candlestick/1000/hover-70": {
+      "bound": 591,
+      "ruling": "D498",
+      "note": "below every inherited history value (D495 wick split)"
+    },
+    "radar/6/hover-50": {
+      "bound": 7000,
+      "ruling": "D535",
+      "note": "was D498 bound 758 (below the floor); V2.2 polar: the legacy hovered polygon scales 1.05 about the centre with a drop-shadow glow and ChartAreaStateStyle (0.16.0) has no geometry/filter channel (D535 ruling 2, G9); reads 6446"
+    }
   }
 }
