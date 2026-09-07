@@ -16,10 +16,11 @@ import type {
   ChartBounds,
   ChartValue,
   DomChartDefinition,
+  ResolvedScale,
 } from "@tanstack/charts";
+import type { ScaleTime } from "d3-scale";
 import {
   buildLinearScale,
-  buildTimeScale,
   createChartHostStore,
   focusGroupToTooltip,
   resolveBandBinding,
@@ -106,6 +107,8 @@ interface ChartHostProps<
   ) => ReactNode;
   /** Custom surface renderer. */
   renderer?: ChartRenderer<Datum, XValue, YValue>;
+  /** Time-scale builder; time-axis charts supply buildTimeScale, others take the linear default. */
+  buildXScale?: (resolved: ResolvedScale | undefined, range: readonly [number, number]) => ScaleTime<number, number>;
   /** R10 seam resources (patterns, radial gradients) rendered beside the chart svg. */
   resources?: ReactNode;
   style?: CSSProperties;
@@ -136,6 +139,7 @@ const ChartHost = <
     ariaDescription,
     ariaLabel,
     aspectRatio,
+    buildXScale,
     children,
     chartData,
     chartXDataKey,
@@ -226,7 +230,9 @@ const ChartHost = <
       x: margin.left,
       y: margin.top,
     };
-    const xScale = buildTimeScale(xResolved, [0, innerWidth]);
+    // SAFETY: Linear default keeps the declared time-scale surface; no non-time chart reads it.
+    // eslint-disable-next-line anti-slop/no-chained-type-assertions, typescript/no-unsafe-type-assertion -- see SAFETY above
+    const xScale = buildXScale === undefined ? (buildLinearScale(xResolved, [0, innerWidth]) as unknown as ScaleTime<number, number>) : buildXScale(xResolved, [0, innerWidth]);
     const yScale = buildLinearScale(yResolved, [innerHeight, 0]);
     const yScales: Record<string, ReturnType<typeof buildLinearScale>> = {};
     yScales[DEFAULT_Y_AXIS_ID] = yScale;
@@ -292,6 +298,7 @@ const ChartHost = <
       yScales,
     };
   }, [
+    buildXScale,
     containerRef,
     fallbackHeight,
     fixedWidth,
@@ -389,4 +396,6 @@ const useRegistryEntriesState = (): readonly [
 };
 
 export { ChartHost, ChartRegistryBridge, adoptHostWidth, useRegistryEntriesState, DEFAULT_INITIAL_WIDTH as HOST_INITIAL_WIDTH };
+// Time-axis charts at the dependency cap import the builder through the host module.
+export { buildTimeScale } from "./chart-host-store";
 export type { ChartHostProps };

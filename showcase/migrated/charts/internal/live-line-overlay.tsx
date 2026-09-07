@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import type { ChartTooltipBodyRenderContext } from '@tanstack/react-charts/tooltip';
 import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH } from "./chart-host";
+import { buildTimeScale } from "./chart-host-store";
 import { ResourceHost } from "./resource-host";
 import type { ChartChildRegistration } from "./chart-child-registry";
 import { useChartStable } from "./chart-context";
@@ -388,6 +389,7 @@ const renderLiveLineBody = (options: Readonly<RenderLiveLineBodyOptions>): React
             style={fadeMaskStyle}
           >
             <ChartHost
+              buildXScale={buildTimeScale}
               ariaLabel={ariaLabel}
               ariaDescription={ariaDescription}
               renderer={chartMotionRenderer<ChartDatum, Date, number>()}

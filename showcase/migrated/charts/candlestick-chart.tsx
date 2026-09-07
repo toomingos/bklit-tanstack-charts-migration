@@ -8,6 +8,7 @@ import {
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, adoptHostWidth, useRegistryEntriesState } from "./internal/chart-host";
+import { buildTimeScale } from "./internal/chart-host-store";
 import { defineChart } from "@tanstack/charts";
 import type {
   ChartMotionContext,
@@ -405,6 +406,7 @@ const CandlestickChart = ({
   // Hoisted so the returned tree stays shallow (variables inline into the same element tree).
   const definitionContentNode = definition ? (
     <ChartHost
+      buildXScale={buildTimeScale}
       ariaLabel={ariaLabel}
       ariaDescription={ariaDescription}
       aspectRatio={parseAspectRatio(aspectRatio)}

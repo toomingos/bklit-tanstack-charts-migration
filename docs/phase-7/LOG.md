@@ -2280,3 +2280,79 @@ merely wasteful; and options (a) and (d) are both disqualified — `ChartMarkers
 and `SeriesMarkers` are already taken by unrelated public API
 (`index.ts:61`, `:238`), and a lazy import would paint one frame with solid
 fills before repainting, failing the pixel gate outright.
+
+## D619 — buildXScale injection: the second ownership inversion
+
+Same defect shape as D612, one import down. `chart-host.tsx` called
+`buildTimeScale` unconditionally, and `chart-host-store.ts:1` value-imports
+`scaleTime` from `d3-scale`, so every host-mounting chart shipped the whole
+`d3-time` + `d3-time-format` graph — including pie, gauge, ring, sankey,
+choropleth, funnel, radar, sunburst and heatmap, none of which read the value.
+For band-x charts it was already garbage: `effectiveDomain` yields category
+strings and `toTimeValue` turns them into Invalid Date, so the domain was
+`[NaN, NaN]` and nothing noticed.
+
+`ChartHostProps` now takes an optional
+`buildXScale?: (resolved, range) => ScaleTime<number, number>`, passed at the 7
+sites whose charts actually read the host x-scale (area-chart-layers,
+line-chart, composed-chart, live-line-overlay, candlestick-chart,
+scatter-chart-view, legacy-hooks). Everything else takes a `buildLinearScale`
+default. `chart-host-store.ts` is unchanged and `buildTimeScale` remains the
+single implementation — esbuild shakes the unused export out of a
+side-effect-free module, so no split was needed (D618 measured that same
+mechanism from the other direction).
+
+**Why a linear default is safe, and why it still has to lie in the type.** No
+reader calls `.ticks()`, `.nice()`, `.invert()` or `.tickFormat()` on the host
+x-scale, and every reader but one re-domains with numbers before use
+(`reference-area-scale.ts`, `composed-overlay-chrome.tsx`,
+`line-marker-anchors.ts`). Re-domained with numbers and called with a Date,
+`ScaleTime` and `ScaleLinear` agree to **0** over 101 samples across a year —
+measured, not argued. The one reader that uses the host domain as built,
+`live-line-overlay.tsx`, is itself one of the 7 that pass the real builder.
+
+The type surface cannot follow: `chart-context.tsx:126` declares
+`xScale: ScaleTime<number>` and `qa/api-compat/all.ts:344` asserts an exact
+`Eq<Legacy.ChartContextValue, Migrated.ChartContextValue>`, so widening fails
+the swap claim. Hence one `as unknown as ScaleTime` on the default path, carrying
+a SAFETY comment. It is honest about what was already true — that value was
+`[NaN, NaN]` for those charts before this change.
+
+**Measured over the full 104-combo sweep**, against the committed post-brush
+baseline:
+
+- **18 of 43 migrated scenarios drop >1 kB gzip**, −3,954 to −5,208 (all
+  ~−14,930 raw). Biggest: sunchrome −5,208, sunburst −5,152, heatmap −5,146,
+  bardepth −5,078, choropleth −5,065.
+- 24 pay +7 to +30 gzip of prop plumbing — they already pulled the identical
+  graph through their own `scaleUtc` imports, so there was nothing to win.
+- `migrated/legend` is the only scenario at exactly zero: it never mounts a host.
+- **No `bklit/*` or `tanstack/*` combo moved at all** (0 of 61) — the check that
+  the change did not leak across impls.
+- Median migrated/bklit gzip ratio 1.1160 → **1.1157**; ratio ≤1.10 goes
+  **16/43 → 18/43** (`bardepth` 1.1287 → 1.0881, `pie` 1.1403 → 1.0912);
+  ≤1.15 goes 28 → 33 and ≤1.20 goes 36 → 41.
+
+Every one of those figures was predicted by the research before implementation,
+including which single scenario would not move and why. Recorded because the
+three preceding entries are corrections of unverified inference — this is what
+the same process looks like when the prediction is made from measurement.
+
+Checks re-run by the lead, not taken from the executor: tsc exit 0; oxlint exit
+0, zero findings; tests 246/48 suites, 188 pass, 0 fail, 58 todo, exit 0, zero
+`^not ok`; api-compat exit 1 with exactly the 9 pre-existing Sankey/unmigrated
+errors, none mentioning xScale, chart-host or ChartContextValue.
+
+One deviation from the brief, accepted: `line-chart.tsx` sits exactly at the
+`import/max-dependencies` cap of 35, so it reaches `buildTimeScale` through a
+re-export added to `chart-host.tsx` rather than opening a 36th edge. The
+re-export is shaken like any other — pie still loses the `January` marker.
+
+Behaviour delta searched for and refuted: a band-x chart whose categories are
+date-like strings would previously get a valid scale via `Date.parse` where the
+linear default gives `NaN`. No reader can observe it — `reference-area-scale.ts:174`
+routes bar charts to the `xBand` branch, and the other families never read
+`xScale`.
+
+D613 is now unblocked: I9 can be rewritten against what is actually left, or
+dropped.

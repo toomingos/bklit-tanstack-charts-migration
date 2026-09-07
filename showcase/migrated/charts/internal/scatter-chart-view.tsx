@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode } from "react";
 import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
+import { buildTimeScale } from "./chart-host-store";
 import { ChartSelectionContext } from "./chart-selection";
 import { useChartStable } from "./chart-context";
 import { BackgroundLayer } from "./background-layer";
@@ -110,6 +111,7 @@ const buildScatterRendererNode = ({
   if (definition === undefined) {return undefined;}
   return (
     <ChartHost
+      buildXScale={buildTimeScale}
       ariaLabel={ariaLabel}
       ariaDescription={ariaDescription}
       aspectRatio={parsedAspectRatio}

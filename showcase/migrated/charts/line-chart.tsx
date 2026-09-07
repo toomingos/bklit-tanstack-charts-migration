@@ -10,7 +10,7 @@ import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useEffectEvent } from "./internal/use-effect-event";
 import type { ScaleTime } from "d3-scale";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, adoptHostWidth, useRegistryEntriesState } from "./internal/chart-host";
+import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, adoptHostWidth, buildTimeScale, useRegistryEntriesState } from "./internal/chart-host";
 import { useChartRenderer } from "./internal/motion-renderer";
 import {
   decimateTimeSeries,
@@ -405,6 +405,7 @@ export const LineChart = ({
   );
   const rendererNode = definition && (
     <ChartHost
+      buildXScale={buildTimeScale}
       renderer={lineChartRenderer}
       ariaLabel={ariaLabel}
       ariaDescription={ariaDescription}

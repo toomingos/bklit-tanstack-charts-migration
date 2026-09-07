@@ -2,6 +2,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, useRegistryEntriesState } from "./internal/chart-host";
+import { buildTimeScale } from "./internal/chart-host-store";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { defineChart } from "@tanstack/charts/scene";
 import { tooltip as packageTooltip } from "@tanstack/charts/tooltip";
@@ -393,6 +394,7 @@ const ComposedChart = ({
   // Changes nothing at runtime; it only flattens source nesting for jsx-max-depth.
   const definitionNode = definition ? (
       <ChartHost
+        buildXScale={buildTimeScale}
         renderer={composedChartRenderer}
         ariaLabel={ariaLabel}
         ariaDescription={ariaDescription}

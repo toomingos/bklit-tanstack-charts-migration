@@ -3,6 +3,7 @@ import type { ReactElement } from "react";
 import { defineChart, lineY } from "@tanstack/charts";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { ChartHost } from "@/migrated/charts/internal/chart-host";
+import { buildTimeScale } from "@/migrated/charts/internal/chart-host-store";
 import {
   useChart,
   useChartHover,
@@ -128,6 +129,7 @@ const Probe = (): ReactElement => {
 const renderLegacyHooksHtml = (): string =>
   renderToString(
     <ChartHost
+      buildXScale={buildTimeScale}
       ariaLabel={FIXTURE_LABEL}
       definition={fixtureDefinition}
       initialWidth={FIXTURE_WIDTH}

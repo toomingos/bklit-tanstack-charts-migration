@@ -10,6 +10,7 @@ import type {
 } from "@tanstack/charts";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH } from "./chart-host";
+import { buildTimeScale } from "./chart-host-store";
 import type { ChartChildRegistration } from "./chart-child-registry";
 import { ReferenceAreaLayers } from "./reference-area-layer";
 import type { ReferenceAreaLayersGeom } from "./reference-area-layer";
@@ -136,6 +137,7 @@ interface AreaChartBodyProps {
 const AreaChartBody = (props: Readonly<AreaChartBodyProps>): ReactNode => {
   const chartBodyNode = props.definition ? (
     <ChartHost
+      buildXScale={buildTimeScale}
       renderer={props.areaChartRenderer}
       ariaLabel={props.ariaLabel ?? "Area chart"}
       ariaDescription={props.ariaDescription}
