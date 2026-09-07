@@ -1,9 +1,15 @@
 "use client";
 
+import { createElement, useMemo } from "react";
 import type { ReactElement } from "react";
 import type { BrushHost, BrushChromePattern, BrushSelectedBoxStyle } from "./brush-chrome";
 import type { BrushSelection } from "./brush-selection";
 import type { ChartBrushSelection, ChartBrushSelectionPattern } from "./parity/brush";
+import { BrushLayer } from "./brush-layer";
+import { useBrushHostInputs } from "./brush-host-inputs";
+import { extractChildren } from "./children-extract";
+import { useChartChildEntries } from "./chart-child-registry";
+import { useStableList } from "./use-stable-list";
 import { CHART_ROLE } from "./chart-child-carrier";
 
 type BrushSelectionPattern = BrushChromePattern;
@@ -34,9 +40,17 @@ interface ChartBrushCarrier {
   displayName: string;
 }
 
-// Pure config carrier (never renders): the host chart owns the native brushX control + BrushChrome portal.
+// Brush carrier mounting its own native brushX control; extraction still reads props off the element.
+// Only consumers naming ChartBrush pull the brush graph, so brush-less charts never ship it.
 const ChartBrush: ChartBrushCarrier = Object.assign(
-  (_props: Readonly<ChartBrushProps>): ReactElement | null => null,
+  (properties: Readonly<ChartBrushProps>): ReactElement | null => {
+    const host = useBrushHostInputs();
+    const entries = useChartChildEntries();
+    const extracted = useMemo(() => extractChildren(host.tree, entries), [entries, host.tree]);
+    const projectionLines = useStableList(extracted.projectionLines);
+    const inputs = useMemo(() => ({ data: host.data, xDataKey: host.xDataKey, xDomain: host.xDomain }), [host.data, host.xDataKey, host.xDomain]);
+    return createElement(BrushLayer, { brushes: [properties], inputs, projectionLines });
+  },
   { [CHART_ROLE]: "brush", displayName: "ChartBrush" },
 );
 

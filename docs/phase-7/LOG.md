@@ -1960,3 +1960,47 @@ Two incidental differences worth recording, neither a defect: bklit stamps `opac
 10,926 rects while migrated stamps only the 200 it actually dims, and migrated carries a second 0x0
 svg where bklit's second is 800x400.
 
+
+### D612 — the brush graph now follows `ChartBrush`, and 41 of 43 scenarios stop paying for it
+
+`ChartHost` mounted `BrushLayer` behind a `hasBrush` runtime gate (`chart-host.tsx:147-149`), so the
+import at `:31` was static and unconditional. A runtime gate is invisible to a bundler: every chart
+that mounted a host pulled `brush-layer.ts` and, through it, `d3-brush` plus its transitive
+`d3-transition`/`d3-selection`/`d3-drag`/`d3-dispatch`/`d3-timer`. Charts with no brush anywhere in
+their tree shipped the whole graph.
+
+The fix inverts the ownership: `ChartBrush` — the carrier the consumer actually names — renders the
+layer itself, reading host data through a new `BrushHostInputsProvider` context and its sibling
+`projectionLines` through the existing child registry. `ChartHost` no longer names `BrushLayer` at
+all, so the only path to it is a consumer writing `<ChartBrush>`. Props, carrier type and barrel
+export are untouched; `brush-layer.ts` is untouched.
+
+Measured myself (`bench/measure-bundle.mjs`, full sweep, before/after over all 104 combos):
+
+| | raw | gzip |
+|---|---|---|
+| `migrated/pie` | 376,238 → 312,751 (−63,487) | 131,765 → **110,669 (−21,096)** |
+| `migrated/brush` | 528,206 → 528,536 (+330) | 180,803 → **181,249 (+446)** |
+
+42 combos moved: 41 migrated scenarios drop ~21 kB gzip each, `migrated/brush` pays +446 bytes for
+the new carrier runtime (context read, extraction, memos), and **no `bklit/*` or `tanstack/*` combo
+moved at all**, which is the check that the change did not leak across impls. `migrated/choropleth`
+drops less (−7,763 gzip) because it never pulled the full d3 transition graph to begin with.
+
+The ratio distribution against bklit gzip moves accordingly: **≤1.10 goes 2/43 → 16/43**, median
+1.2682 → 1.1160, max 1.6084 → 1.3696. This is the count D597 predicted, and it is why D597's
+reasoning needs revising separately — the importer was ours, not the package's.
+
+Two behaviour changes, both recorded rather than hidden:
+
+1. `<ChartBrush>` outside any chart previously rendered `null` silently; it now throws
+   `OUTSIDE_CHART_MESSAGE` via `BrushLayer` → `use-chart-child.ts:32-34`. This moves *toward* legacy,
+   which throws at `repos/bklit-ui/.../chart-brush.tsx:269` via `useChartStable()`. Verified in source.
+2. `BrushLayer` destructures `const [brushConfig] = brushes`, so under the old shape a second
+   `<ChartBrush>` sibling was silently ignored; now each carrier mounts its own layer and both would
+   activate. No consumer in the tree mounts more than one per host (checked: `migrated-brush.tsx` and
+   `demos/brush.tsx` have one each), so the case is unreachable here — but it is a real divergence and
+   is not runtime-verified, only read.
+
+Not in scope and still open: `chart-host.tsx:257` calls `buildTimeScale` unconditionally (~4.7 kB
+gzip, 15 `ChartHost` callers). Same shape of defect, its own item.
