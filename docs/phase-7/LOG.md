@@ -3249,3 +3249,25 @@ quote would silently drop the mask rather than fail. Every `dataKey` in this rep
 bklit's clipPath ids have the same exposure, and the seam is R10 — removed when upstream ships — so
 hardening it now is scope the two phase claims do not ask for. Noted so it is not rediscovered as a
 mystery.
+
+## D637 — A15 verified live; and the pie flake is a different regime, not the same bug
+
+Full bench stage `2026-09-07T22-50-32-407Z` (10 paired cells, 14m15s wall):
+`{"cells":10,"skipped":0,"flags":0,"m1bFallbackCells":0,"consoleErrors":0,"tooltipMissing":0,"failedInvocations":0}`.
+A15's live verification is discharged.
+
+Checked the thing the summary line cannot show: `run-bench.mjs:105` flags on `(fbRuns ?? 0) > 0`,
+so a `null` — the harness never reporting the field — passes as silently as a real zero.
+All ten `m1b_fallbackRuns` rows carry `value: 0`, and all ten `m1b_settleMs` rows carry a value.
+These are measured zeros. `m1bFallbackCells: 0` on its own would not have established that, and
+the same shape of gap is what D634 retired a statistic over.
+
+**This does not close the pie settle flake, and it is worth being precise about why.** The bench
+harness runs on a real clock; `armFallback`'s net is a real 2500 ms `setTimeout` and ten cells show
+it never had to fire. The probe harness runs under `page.clock.install()`, where that same
+`setTimeout` is faked and only advances on `clock.runFor`. `openScene .../chart=pie&n=1000 never
+settled after 90000 virtual ms (armed=true settled=false paint=true)` is a failure of the faked
+path: 90 s of virtual time was pumped and a 2.5 s virtual timer did not resolve the promise. A15
+verified the regime the flake is not in. The two share `settle.ts` and nothing else, so the bench
+result is evidence about `armFallback`'s logic and no evidence at all about its behaviour under a
+fake clock. Narrowed, still open.
