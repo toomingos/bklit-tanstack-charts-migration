@@ -1,0 +1,47 @@
+{
+  "label": "markers-dim-check",
+  "started": "2026-09-07T21:11:21.052Z",
+  "finished": "2026-09-07T21:11:35.167Z",
+  "workers": 1,
+  "wallClockMs": 13515,
+  "sumRunMs": 13514,
+  "build": {
+    "built": false,
+    "reason": "dist fresh",
+    "code": 0,
+    "durationMs": 0
+  },
+  "dist": {
+    "indexMtime": "2026-09-07T21:08:01.818Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-BfQMU48a.js",
+      "index-ImgLMm2K.css"
+    ]
+  },
+  "distEnd": {
+    "indexMtime": "2026-09-07T21:08:01.818Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-BfQMU48a.js",
+      "index-ImgLMm2K.css"
+    ]
+  },
+  "distChangedDuringPass": false,
+  "previewUrl": "http://localhost:5198",
+  "jobs": [
+    {
+      "chart": "markers",
+      "n": 100,
+      "state": "ready",
+      "key": "markers/100",
+      "worker": 0,
+      "exit": 0,
+      "durationMs": 13514,
+      "reportDir": "qa/results/markers/2026-09-07T21-11-34-404Z",
+      "log": "docs/phase-7/gate/runs/2026-09-07T21-11-21-051Z/logs/qa/markers-100.log"
+    }
+  ]
+}
