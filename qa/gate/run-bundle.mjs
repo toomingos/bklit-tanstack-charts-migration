@@ -88,7 +88,7 @@ export function bundleToMd(b) {
     "",
     ...(b.css
       ? [mdTable(["scenario", "migrated CSS gzip", "bklit CSS gzip", "ratio"], b.css.map((r) => [r.scenario, r.migratedCss ?? "—", r.bklitCss ?? "—", r.ratio ?? "—"])), ""]
-      : ["CSS sizes not measured (bench/results/css-sizes.json absent).", ""]),
+      : [`CSS sizes not measured (bench/results/css-sizes.json absent${b.cssMeasureExit ? `; measure-css.mjs exit ${b.cssMeasureExit}` : ""}).`, ""]),
   ].join("\n");
 }
 
@@ -97,12 +97,21 @@ export async function runBundleGate(opts = {}) {
   const logDir = ensureDir(path.join(runDir, "logs"));
   let measureExit = null;
   let measureMs = 0;
+  let cssMeasureExit = null;
   if (!opts.noMeasure) {
     log(TAG, "measuring 104 bundles (bench/measure-bundle.mjs) ...");
     const r = await runCmd("node", ["bench/measure-bundle.mjs"], { cwd: ROOT, logFile: path.join(logDir, "bundle-measure.log") });
     measureExit = r.code;
     measureMs = r.durationMs;
     log(TAG, `measure exit=${r.code} ${fmtMs(r.durationMs)}`);
+    // A2: nothing under qa/gate/ ever invoked measure-css.mjs, so the CSS column was
+    // whatever css-sizes.json happened to be on disk — a permanent stale read presented
+    // as this run's number. Measure it here, with the bundles it belongs to.
+    log(TAG, "measuring CSS (bench/measure-css.mjs) ...");
+    const c = await runCmd("node", ["bench/measure-css.mjs"], { cwd: ROOT, logFile: path.join(logDir, "css-measure.log") });
+    cssMeasureExit = c.code;
+    measureMs += c.durationMs;
+    log(TAG, `css measure exit=${c.code} ${fmtMs(c.durationMs)}`);
   }
   const g = await runCmd("node", ["scripts/bundle-gate.mjs"], { cwd: ROOT, logFile: path.join(logDir, "bundle-gate.log") });
   const sizes = readJson(path.join(BENCH_RESULTS_DIR, "bundle-sizes.json"));
@@ -120,6 +129,7 @@ export async function runBundleGate(opts = {}) {
     runDir: relPath(runDir),
     measured: !opts.noMeasure,
     measureExit,
+    cssMeasureExit,
     measureMs,
     gateExit: g.code,
     gateStdoutTail: g.stdout.trim().split("\n").slice(-3),
@@ -143,7 +153,10 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve
 if (isMain) {
   const a = parseArgs(process.argv.slice(2), { "run-dir": "string", "no-measure": "bool" });
   runBundleGate({ runDir: a["run-dir"], noMeasure: a["no-measure"] })
-    .then((b) => process.exit(b.gateExit !== 0 || b.summary.fail || b.summary.ratioOver ? 1 : 0))
+    // A3: a run that measured nothing used to exit 0 standalone — `missing` and
+    // `measureFailed` never reached the exit code, so holes in the table read as green.
+    // A non-zero measure exit counts too: the sizes behind every row are then unknown.
+    .then((b) => process.exit(b.gateExit !== 0 || b.summary.fail || b.summary.ratioOver || b.summary.missing || b.summary.measureFailed || b.measureExit || b.cssMeasureExit ? 1 : 0))
     .catch((e) => {
       console.error(e);
       process.exit(2);

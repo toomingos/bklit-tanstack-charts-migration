@@ -86,7 +86,15 @@ export async function runChecks(opts = {}) {
       rec.floored = false;
       rec.emptyTarget = true;
     }
-    log(TAG, `lint: ${errs ?? "?"} error(s), ${warns ?? "?"} warning(s) over ${files ?? "?"} file(s) vs floor ${LINT_FLOOR} -> ${rec.exit === 0 ? "ok" : rec.emptyTarget ? "FAIL (no files linted)" : "FAIL"}`);
+    // A9: unparsable output leaves errs/warns/files all null, so the floor never applies
+    // and the files===0 guard never fires — the same green-for-the-wrong-reason mode that
+    // guard was written to close, one branch over. Output we cannot read is not a pass.
+    if (rec.summary?.parseError) {
+      rec.exit = 1;
+      rec.floored = false;
+      rec.unreadable = true;
+    }
+    log(TAG, `lint: ${errs ?? "?"} error(s), ${warns ?? "?"} warning(s) over ${files ?? "?"} file(s) vs floor ${LINT_FLOOR} -> ${rec.exit === 0 ? "ok" : rec.unreadable ? "FAIL (unparsable lint output)" : rec.emptyTarget ? "FAIL (no files linted)" : "FAIL"}`);
   }
   await add("bench-tsc", "npx", ["tsc", "--noEmit", "-p", "tsconfig.json"], APP_DIR, (s) => ({ errors: (s.match(/error TS\d+/g) ?? []).length }));
   const build = await add("build", "npm", ["run", "build"], APP_DIR, (s) => ({ ok: /built in/.test(s) }));

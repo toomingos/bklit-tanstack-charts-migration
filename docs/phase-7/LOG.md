@@ -1138,3 +1138,63 @@ code change indicated; noted so the next reader does not chase it.
 
 Verification after the fix: tsc clean; oxlint 137, the exact HEAD baseline, `migrated/charts`
 clean; reach-in-guard OK; `arealoading/1000` PASS on all four cells.
+
+## D594 — A1–A4, A9 and A11: the gate instrument, fixed before it is trusted again
+
+POST-PHASE-7 §7 says A1–A4 and A9 "are cheap and should land before Gate 1, so the first
+measurement through the fixed instrument is not itself stale." Gate 1 ran first, at `4ee2ef6`.
+This is that work, landing late; the run it should have preceded has to be repeated before its
+bench and bundle numbers can be adopted by items 7 and 8.
+
+**A1 — bench M2c read the previous run's bundle bytes.** `bench/run.mjs` loads
+`bench/results/bundle-sizes.json` at module load for `m2c_bundleCost`, and `run-all.mjs` ran bench
+at stage 4 while the bundle stage rewrites that file at stage 5. Every M2c cell was therefore
+judged against the last run's bytes, silently — the D585 shape one stage later. The bundle stage
+now runs before bench. Under `--bench-parallel` it cannot: bench has already started, and moving
+104 esbuild bundles onto its CPU would trade a stale number for a corrupted one, so that path
+keeps the old order (A5 owns the flag). Either way `bench/run.mjs` now records `m2cSource` — the
+path, mtime and scenario count behind the column — so the ordering can never break silently again.
+
+**A2 — the CSS column was never measured.** Nothing under `qa/gate/` invoked
+`bench/measure-css.mjs`; `run-bundle.mjs` read `css-sizes.json` with a `null` fallback, so the
+table was whatever file happened to be on disk. The bundle stage now measures CSS alongside the
+bundles. This was not theoretical: running `measure-css.mjs` by hand moved **43 of 104 rows — every
+migrated cell — by −1.8%** (Σ 89741 → 88150 gzip). The stale file predated `4ee2ef6`, whose
+`styles.css` change never reached the column. 11.8s, 0 failed.
+
+**A3 — `pnpm gate:bundle` exited 0 with holes in the table.** The exit expression covered
+`gateExit`, `fail` and `ratioOver` only; `summary.missing` and `summary.measureFailed` never
+reached it, so a run that measured nothing reported green standalone. Both now count, and so does
+a non-zero `measureExit` or the new `cssMeasureExit` — if the measurement failed, the bytes behind
+every row are unknown, which is not a pass.
+
+**A4 — `--skip-checks` gave bench and probes an unknown dist.** `noBuild: true` asserts "checks
+already built dist". With checks skipped nothing built it, and the assertion skipped the freshness
+check too. The flag is now `!opts.skipChecks`, so when checks do not run the consuming stages test
+staleness themselves. QA was already correct — it honours its own `--no-build` and rebuilds when
+stale — and is unchanged.
+
+**A9 — unparsable lint output passed.** `summarizeOxlint` returns `{parseError: true}`, leaving
+`errs`, `warns` and `files` all `null`; the floor comparison short-circuits and the `files === 0`
+guard cannot fire on `null`. That is precisely the green-for-the-wrong-reason mode that guard was
+written to close, one branch over. Output we cannot read is now a failure, logged as
+`FAIL (unparsable lint output)`.
+
+**A11 — a ruling wide enough to blind its cell.** `barloading/100/hover-30` is ruled under
+161,310 px, 16.8% of the viewport: the cell cannot fail. §7 asks for a D-entry rather than a patch,
+so this is the disposition, and it is a correction, not a ratification. The existing note claims
+"animation phase, not a regression". That is unproven and probably wrong — D590 records that the
+migrated `BarPulse` wave renders but never animates, a live defect against the phase's first claim
+that a bound this wide would hide completely. Removing the bound is not the answer either: D591
+established that neither impl's loading loop is a WAAPI or CSS player, so `pinAnimationPhase`
+reports `pinned 0/0` and the phase genuinely cannot be fixed at capture time. An unrulable cell
+failing every run teaches readers to skip it, which is the same blindness by a different route.
+
+So the three barloading bounds stand, re-cited to D591 for why they exist and to D590 for what they
+are currently masking, and **they expire when D590 lands** rather than standing as accepted
+deviations. That makes the mask temporary and names its owner, which is what D588 asked for when it
+refused a 24,407 px bound for `arealoading`.
+
+Not touched here: A5–A8, A10, A12, A13. A5 (`--bench-parallel` runs bench beside QA under a
+re-entrant lock) is the one that matters most of those, and it is a behaviour change to a flag
+rather than a cheap correction.

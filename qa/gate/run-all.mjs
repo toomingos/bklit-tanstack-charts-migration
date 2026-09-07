@@ -1,5 +1,6 @@
-// Whole gate in one run dir: checks -> QA sweep (parallel) -> probes (opt-in) -> bench (sequential; CPU-sensitive)
-// -> bundle -> SUMMARY.md, all published to qa/gate/latest (runs under docs/phase-7/gate/runs).
+// Whole gate in one run dir: checks -> QA sweep (parallel) -> probes (opt-in) -> bundle -> bench
+// (sequential; CPU-sensitive) -> SUMMARY.md, all published to qa/gate/latest (runs under docs/phase-7/gate/runs).
+// A1: bundle precedes bench because bench reads bundle-sizes.json for M2c and the bundle stage writes it.
 //   pnpm gate:all [-- --workers 4 --repeat 1 --bench paired|all|subset|none --bench-parallel --probes --skip-checks --charts a,b --label "..."]
 import path from "node:path";
 import { LATEST_DIR, RUNS_DIR, acquireQaLock, ensureDir, fmtMs, log, nowStamp, parseArgs, relPath, writeJson, writeTreeHash } from "./lib.mjs";
@@ -41,16 +42,30 @@ export async function runAll(opts = {}) {
   // Standalone `pnpm gate:checks` still runs it (labelled possibly-stale by bundle-gate.mjs).
   if (!opts.skipChecks) await stage("checks", () => runChecks({ runDir, skip: "bundle-gate" }));
   const benchCells = opts.bench ?? "paired";
-  const benchFn = () => runBenchGate({ cells: benchCells, runDir, noBuild: true });
+  // A4: `noBuild: true` asserts "checks already built dist". With --skip-checks nothing
+  // built it, and the assertion silently skips the freshness check too, so bench and
+  // probes would run against an unknown dist. Let them check when checks did not run.
+  const distBuiltByChecks = !opts.skipChecks;
+  const benchFn = () => runBenchGate({ cells: benchCells, runDir, noBuild: distBuiltByChecks });
   let benchPromise = null;
   if (benchCells !== "none" && opts.benchParallel) benchPromise = stage("bench", benchFn);
   await stage("qa", () => runQaSweep({ workers: opts.workers ?? 4, repeat: opts.repeat ?? 1, charts: opts.charts, runDir, label, noBuild: !!opts.noBuild }));
-  if (opts.probes) await stage("probes", () => runProbes({ runDir, noBuild: true }));
+  if (opts.probes) await stage("probes", () => runProbes({ runDir, noBuild: distBuiltByChecks }));
   releaseLock();
+  // A1: bundle before bench. bench reads bench/results/bundle-sizes.json at module load
+  // for its M2c column and the bundle stage is what rewrites that file, so measuring
+  // after bench judged every M2c cell against the previous run's bytes, silently.
   // Bench runs sequentially by default (timings are CPU-purity sensitive).
-  if (benchPromise) await benchPromise;
-  else if (benchCells !== "none") await stage("bench", benchFn);
-  await stage("bundle", () => runBundleGate({ runDir }));
+  if (benchPromise) {
+    // --bench-parallel already started bench, so bundle cannot precede it without putting
+    // 104 esbuild bundles on bench's CPU. Bench keeps the stale M2c read here; that flag
+    // is A5's to fix, and bench's m2cSource records which bytes it used either way.
+    await benchPromise;
+    await stage("bundle", () => runBundleGate({ runDir }));
+  } else {
+    await stage("bundle", () => runBundleGate({ runDir }));
+    if (benchCells !== "none") await stage("bench", benchFn);
+  }
   const sum = await stage("summary", async () => summarize({ runDir, label, issuesFile: opts.issues ? ISSUES_FILE : null }));
   const out = { label, runDir: relPath(runDir), wallClockMs: Date.now() - t0, stages, issues: sum?.issues?.length ?? null };
   writeJson(path.join(runDir, "run-all.json"), out);

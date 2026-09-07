@@ -36,8 +36,15 @@ const RESULTS_DIR = path.join(ROOT, "bench", "results");
 const PORT = Number(process.env.BENCH_PORT ?? 5199);
 const BASE_URL = `http://localhost:${PORT}`;
 
-// Load M2c bundle-size data (pre-computed by bench/measure-bundle.mjs)
+// Load M2c bundle-size data (pre-computed by bench/measure-bundle.mjs).
+// A1: this file is a working file the bundle stage rewrites, so a bench run
+// scheduled before that stage judges M2c against the PREVIOUS run's bytes.
+// The gate now measures bundles before bench (qa/gate/run-all.mjs); this
+// records where the bytes came from so the order can never break silently.
 const BUNDLE_SIZES_PATH = path.join(RESULTS_DIR, "bundle-sizes.json");
+const bundleSizesMtime = existsSync(BUNDLE_SIZES_PATH)
+  ? statSync(BUNDLE_SIZES_PATH).mtime.toISOString()
+  : null;
 const bundleSizes = existsSync(BUNDLE_SIZES_PATH)
   ? JSON.parse(readFileSync(BUNDLE_SIZES_PATH, "utf-8"))
   : {};
@@ -895,6 +902,8 @@ async function main() {
       updateTicks: UPDATE_TICKS,
       hoverSteps: HOVER_STEPS,
     },
+    // A1 provenance: which bundle-sizes.json every m2c_bundleCost below was read from.
+    m2cSource: { path: path.relative(ROOT, BUNDLE_SIZES_PATH), mtime: bundleSizesMtime, scenarios: Object.keys(bundleSizes).length },
     results,
     skipped,
   };
