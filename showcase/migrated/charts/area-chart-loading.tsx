@@ -97,12 +97,13 @@ const AreaChartLoading = ({
           : {
               curve: curveNatural,
               margin,
-              // Invisible line anchor over the steady wash (bklit parity).
+              // Bklit's pulse area sets fill="transparent" with fillOpacity 0 --
+              // Both the anchor series and its wash stay invisible.
               stroke: "transparent",
               strokeOpacity,
               strokeWidth: 2,
               values: pulseValues,
-              washColor: stroke,
+              washColor: "transparent",
             },
       ),
     [isSweep, margin, pulseValues, stroke, strokeOpacity, sweepValues],

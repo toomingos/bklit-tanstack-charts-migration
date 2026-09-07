@@ -16,8 +16,8 @@
     "gzip": 121716
   },
   "bklit/bardepth": {
-    "raw": 359746,
-    "gzip": 124441
+    "raw": 361579,
+    "gzip": 125221
   },
   "bklit/barloading": {
     "raw": 210225,
@@ -172,176 +172,176 @@
     "gzip": 88013
   },
   "migrated/area": {
-    "raw": 495689,
-    "gzip": 168043
+    "raw": 509669,
+    "gzip": 173167
   },
   "migrated/arealoading": {
-    "raw": 388106,
-    "gzip": 127922
+    "raw": 260724,
+    "gzip": 88784
   },
   "migrated/areamultiaxis": {
-    "raw": 495922,
-    "gzip": 168116
+    "raw": 509902,
+    "gzip": 173270
   },
   "migrated/bar": {
-    "raw": 395258,
-    "gzip": 134546
+    "raw": 474695,
+    "gzip": 161041
   },
   "migrated/bardepth": {
-    "raw": 395784,
-    "gzip": 134747
+    "raw": 475523,
+    "gzip": 161260
   },
   "migrated/barloading": {
-    "raw": 5274,
-    "gzip": 2449
+    "raw": 246103,
+    "gzip": 83837
   },
   "migrated/barmultiaxis": {
-    "raw": 395378,
-    "gzip": 134603
+    "raw": 474815,
+    "gzip": 161103
   },
   "migrated/barsquares": {
-    "raw": 428589,
-    "gzip": 146726
+    "raw": 508543,
+    "gzip": 173387
   },
   "migrated/brush": {
-    "raw": 521879,
-    "gzip": 178442
+    "raw": 528206,
+    "gzip": 180805
   },
   "migrated/candlestick-legend": {
-    "raw": 402364,
-    "gzip": 137813
+    "raw": 484614,
+    "gzip": 165688
   },
   "migrated/candlestick": {
-    "raw": 369312,
-    "gzip": 127176
+    "raw": 451072,
+    "gzip": 154710
   },
   "migrated/candletween": {
-    "raw": 369410,
-    "gzip": 127244
+    "raw": 451170,
+    "gzip": 154781
   },
   "migrated/choropleth": {
-    "raw": 337721,
-    "gzip": 119026
+    "raw": 432799,
+    "gzip": 152133
   },
   "migrated/composed": {
-    "raw": 409980,
-    "gzip": 140194
+    "raw": 484819,
+    "gzip": 165372
   },
   "migrated/composedmultiaxis": {
-    "raw": 410125,
-    "gzip": 140253
+    "raw": 484964,
+    "gzip": 165436
   },
   "migrated/composedstacked": {
-    "raw": 409969,
-    "gzip": 140180
+    "raw": 484717,
+    "gzip": 165361
   },
   "migrated/funnel": {
-    "raw": 131689,
-    "gzip": 48669
+    "raw": 366305,
+    "gzip": 128336
   },
   "migrated/funnelvertical": {
-    "raw": 131728,
-    "gzip": 48688
+    "raw": 366344,
+    "gzip": 128353
   },
   "migrated/gauge": {
-    "raw": 304293,
-    "gzip": 104637
+    "raw": 422176,
+    "gzip": 145019
   },
   "migrated/gaugelinear": {
-    "raw": 304419,
-    "gzip": 104744
+    "raw": 422302,
+    "gzip": 145121
   },
   "migrated/griddefault": {
-    "raw": 498270,
-    "gzip": 170324
+    "raw": 504584,
+    "gzip": 172761
   },
   "migrated/heatmap": {
-    "raw": 305256,
-    "gzip": 105621
+    "raw": 408705,
+    "gzip": 141906
   },
   "migrated/legend": {
-    "raw": 36988,
-    "gzip": 12434
+    "raw": 37697,
+    "gzip": 12581
   },
   "migrated/legendhover": {
-    "raw": 516674,
-    "gzip": 174096
+    "raw": 586436,
+    "gzip": 197415
   },
   "migrated/line": {
-    "raw": 498358,
-    "gzip": 170390
+    "raw": 504672,
+    "gzip": 172829
   },
   "migrated/linemultiaxis": {
-    "raw": 498538,
-    "gzip": 170469
+    "raw": 504852,
+    "gzip": 172882
   },
   "migrated/liveline": {
-    "raw": 355896,
-    "gzip": 125519
+    "raw": 439183,
+    "gzip": 152803
   },
   "migrated/markers": {
-    "raw": 532325,
-    "gzip": 181897
+    "raw": 539266,
+    "gzip": 183669
   },
   "migrated/patternarea": {
-    "raw": 495825,
-    "gzip": 168100
+    "raw": 509829,
+    "gzip": 173236
   },
   "migrated/pie": {
-    "raw": 261214,
-    "gzip": 92430
+    "raw": 376238,
+    "gzip": 131765
   },
   "migrated/profitloss": {
-    "raw": 522433,
-    "gzip": 178434
+    "raw": 529182,
+    "gzip": 180947
   },
   "migrated/projection": {
-    "raw": 507057,
-    "gzip": 173485
+    "raw": 513487,
+    "gzip": 175888
   },
   "migrated/projectionxdomain": {
-    "raw": 507142,
-    "gzip": 173534
+    "raw": 513572,
+    "gzip": 175945
   },
   "migrated/radar": {
-    "raw": 291463,
-    "gzip": 103613
+    "raw": 386725,
+    "gzip": 134400
   },
   "migrated/refarea": {
-    "raw": 498495,
-    "gzip": 170480
+    "raw": 504823,
+    "gzip": 172876
   },
   "migrated/refareamultiaxis": {
-    "raw": 498783,
-    "gzip": 170607
+    "raw": 505111,
+    "gzip": 173016
   },
   "migrated/ring": {
-    "raw": 290558,
-    "gzip": 102295
+    "raw": 405359,
+    "gzip": 141569
   },
   "migrated/sankey": {
-    "raw": 295682,
-    "gzip": 104293
+    "raw": 411258,
+    "gzip": 143750
   },
   "migrated/scatter": {
-    "raw": 365315,
-    "gzip": 126075
+    "raw": 444369,
+    "gzip": 152744
   },
   "migrated/scattermultiaxis": {
-    "raw": 365331,
-    "gzip": 126095
+    "raw": 444385,
+    "gzip": 152763
   },
   "migrated/segment": {
-    "raw": 498610,
-    "gzip": 170460
+    "raw": 505006,
+    "gzip": 172877
   },
   "migrated/sunburst": {
-    "raw": 277911,
-    "gzip": 99807
+    "raw": 398618,
+    "gzip": 140576
   },
   "migrated/sunchrome": {
-    "raw": 279315,
-    "gzip": 100467
+    "raw": 400264,
+    "gzip": 141388
   },
   "tanstack/area": {
     "raw": 246431,

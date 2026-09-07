@@ -1092,3 +1092,49 @@ Verification: tsc clean; oxlint back to the HEAD baseline of 137 (all pre-existi
 `oxlint-plugins/comments.js`), `migrated/charts` clean; `pnpm test` 246 tests / 48 suites /
 188 pass / 0 fail / 58 todo (was 244/186 — the two new cases). No gate cell guards the new pulse
 pixels yet; that gap is unchanged and still open.
+
+## D593 — The 7.5 gate on `4ee2ef6`: one real regression, everything else pre-existing
+
+The full gate ran green-exit (47m44s, run `2026-09-06T23-56-04-812Z`, all stages ok) and reported
+58 issues. Attributing them, not reading the headline:
+
+**New, and a real defect — `arealoading/1000`, all four cells.** 24836 / 25142 / 24863 / 24984 px
+against a historical mode of 228–630. A systematic shift across every cell of one chart is not the
+single-cell signature a flake leaves, and `arealoading` is exactly what the pulse vector touched.
+The diff image settled it: migrated drew the full skeleton area — silhouette, stroke and gradient
+wash — where bklit draws a near-blank placeholder. Cause: `area-chart-loading.tsx` handed
+`washColor: stroke` to *both* branches. While `loadingStyle` was inert every render was a sweep,
+and the sweep's CSS mask hid the wash down to a shimmer band; routing `"pulse"` for real removed
+the mask and left the wash painting at full opacity. Bklit's pulse area is
+`fill="transparent" fillOpacity={0}` (`area-chart-loading.tsx:99-100`) — no wash at all. Fixed by
+passing `washColor: "transparent"` on the pulse branch. Re-shot: settled 0.1040%, hover-30 0.1355%,
+hover-50 0.1068%, hover-70 0.1196% — all PASS against the 0.5% gate, and the residual diff is the
+pulse stroke at two unpinnable phases (D588/D591), not geometry. `line-chart-loading.tsx` was never
+affected: `buildLineLoadingDefinition` has no wash.
+
+**New, and mine, but not a defect — census FAIL(1).** `reach-in-guard` flagged
+`internal/loading-entries.tsx: 2 site(s) — file is not in the ledger`. Neither site is a DOM query;
+both are the `data-ts-key` attribute the package's own reconciler matches on, one on the
+React-rendered rect and one in the reconciled fragment. The guard's pattern catches `data-ts-key`
+as an addressing signal, which is right — the ledger is the place to record it, so
+`scripts/reach-in-ledger.json` gains the file at `max: 2` citing this entry. Guard back to OK,
+23 sites / 13 files, no pin exceeded.
+
+**Not attributable — the other seven QA failures.** `radar/6/hover-50` 6452 (hist 755–6547),
+`sankey/33/hover-30` 9987 (hist 3302–31888), `barloading/100/settled` 21785 and `hover-70` 10735
+(hist 0–51852 and 0–164456, bimodal). Every one lands inside its own recorded range;
+`bar-chart-loading.tsx` is not in `4ee2ef6`'s diffstat at all. These are D588/D590, unchanged.
+
+**Not attributable — 30 bundle FAILs.** Row-for-row identical to `2026-09-06T15-28-46-624Z`: same
+30 scenarios, same verdicts, same `maxDelta` (`migrated/barloading +3323.32%`). Only `sumGzip`
+moves, by 2621 bytes — the pulse module and its call sites. Σ 17.66% → 17.71%.
+
+**Not attributable — the `migrated/line/1000` 30m19s bench outlier.** Six of eight runs took
+~10.9s; runs 5 and 8 took 939102ms and 814159ms. The in-page measurements are unmoved from the
+previous gate (m1a 53.3 → 52.5, m1b 1163.1 → 1162.7, m1c script 109.6 → 109.84, m3c per-move
+23.17 → 23.2), so the stall sits outside the measured window — the harness lost the machine, not
+the chart. Eight runs at the honest ~10.9s is 87s, which is what `migrated/area/1000` cost. No
+code change indicated; noted so the next reader does not chase it.
+
+Verification after the fix: tsc clean; oxlint 137, the exact HEAD baseline, `migrated/charts`
+clean; reach-in-guard OK; `arealoading/1000` PASS on all four cells.

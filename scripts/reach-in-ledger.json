@@ -6,6 +6,7 @@
     "showcase/migrated/charts/ring-chart.tsx": { "max": 1, "ruling": "D433", "note": "ring track reveal; model split to ring-chart-model.ts" },
     "showcase/migrated/charts/internal/bar-chart-overlays.ts": { "max": 1, "ruling": "D433", "note": "ex-bar-chart.tsx reveal stamp" },
     "showcase/migrated/charts/internal/dash-tail-measure.ts": { "max": 3, "ruling": "D433 item 4", "note": "ex-dash-tail.ts dash-sweep reveal needs the rendered path element" },
+    "showcase/migrated/charts/internal/loading-entries.tsx": { "max": 2, "ruling": "D593", "note": "loading pulse clip window: one data-ts-key on the React-rendered rect and the same key in the reconciled fragment, so reconcileChartSvgFragment matches them; no DOM query" },
     "showcase/migrated/charts/internal/gauge-geometry.ts": { "max": 1, "ruling": "D433", "note": "arc-mark class const for the ring/gauge reveal (f5928ab split)" },
     "showcase/migrated/charts/internal/reveal-root.ts": { "max": 1, "ruling": "D420/D433", "note": "ex-deferred-reveal.ts reveal-root querySelector" },
     "showcase/migrated/charts/internal/ring-chart-model.ts": { "max": 2, "ruling": "D433", "note": "ex-ring-chart.tsx track reveal (per-track WAAPI, revealing class)" },

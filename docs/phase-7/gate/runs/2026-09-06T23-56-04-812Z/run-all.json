@@ -1,0 +1,38 @@
+{
+  "label": "7.5 gate: probes vector + pulse port (4ee2ef6)",
+  "runDir": "docs/phase-7/gate/runs/2026-09-06T23-56-04-812Z",
+  "wallClockMs": 2864389,
+  "stages": [
+    {
+      "name": "checks",
+      "ok": true,
+      "durationMs": 20081
+    },
+    {
+      "name": "qa",
+      "ok": true,
+      "durationMs": 178787
+    },
+    {
+      "name": "probes",
+      "ok": true,
+      "durationMs": 59667
+    },
+    {
+      "name": "bench",
+      "ok": true,
+      "durationMs": 2594150
+    },
+    {
+      "name": "bundle",
+      "ok": true,
+      "durationMs": 11663
+    },
+    {
+      "name": "summary",
+      "ok": true,
+      "durationMs": 41
+    }
+  ],
+  "issues": 58
+}
