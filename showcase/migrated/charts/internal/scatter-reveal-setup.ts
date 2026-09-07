@@ -96,12 +96,15 @@ const useScatterTimingModel = ({
     () => clipRevealTiming(enterTransition, animationDuration ?? DEFAULT_ANIMATION_DURATION_MS, animationEasing ?? DEFAULT_ANIMATION_EASING),
     [enterTransition, animationDuration, animationEasing],
   );
+  // Resolved span for the reveal-deadline timer below (bklit animation.ts:18).
+  const resolvedAnimationDuration = animationDuration ?? DEFAULT_ANIMATION_DURATION_MS;
   // Derived render value (stable unless its inputs change); the render callback closes over it.
   const revealKey = useMemo(
-    () => ({ duration: animationDuration ?? DEFAULT_ANIMATION_DURATION_MS, signature: revealSignature }),
-    [animationDuration, revealSignature],
+    () => ({ duration: resolvedAnimationDuration, signature: revealSignature }),
+    [resolvedAnimationDuration, revealSignature],
   );
-  // Mount reveal is native per-element enter fade (same delay formula); handleRender tracks phase only.
+  // Reveal end is timer-approximated (bar-chart-overlays): native motion has no per-mark hook.
+  // HandleRender arms the deadline the mount teardown cancels.
   const handleRender = useCallback((context: ChartRendererRenderContext<ChartDatum, Date, number>) => {
     // Dots enter through the renderer, so every render settles ready; the key tracks replays.
     captureRenderContext(context);
@@ -113,8 +116,8 @@ const useScatterTimingModel = ({
     const seen = seenRevealKeyRef.current;
     const revealKeyChanged =
       seen === null || seen.signature !== revealKey.signature || seen.duration !== revealKey.duration;
-    if (seen !== null && revealDeadlineTimerRef.current === null && !revealKeyChanged) {
-      setPhase("ready");
+    // Already revealed for this key: later data swaps snap (bklit StaticSeriesPointMarker).
+    if (!revealKeyChanged) {
       return;
     }
     if (revealDeadlineTimerRef.current !== null) {
@@ -122,10 +125,19 @@ const useScatterTimingModel = ({
       revealDeadlineTimerRef.current = null;
     }
     seenRevealKeyRef.current = { ...revealKey };
-    setPhase("ready");
-  }, [captureRenderContext, revealDeadlineTimerRef, revealKey, seenRevealKeyRef, setPhase]);
+    // No-op on mount (phase starts revealing); a genuine signature bump re-opens one reveal window.
+    setPhase("revealing");
+    if (resolvedAnimationDuration <= 0) {
+      setPhase("ready");
+      return;
+    }
+    revealDeadlineTimerRef.current = window.setTimeout(() => {
+      revealDeadlineTimerRef.current = null;
+      setPhase("ready");
+    }, revealDurationMs);
+  }, [captureRenderContext, revealDeadlineTimerRef, revealDurationMs, revealKey, resolvedAnimationDuration, seenRevealKeyRef, setPhase]);
   return {
-    animationDuration: animationDuration ?? DEFAULT_ANIMATION_DURATION_MS,
+    animationDuration: resolvedAnimationDuration,
     captureRenderContext,
     clientToScene,
     handleRender,

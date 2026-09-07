@@ -1400,3 +1400,50 @@ changes baseline values only, and both runs' `bench.json` are on disk. Gated ben
 repaired baseline: 7.6 run 2, Gate 2 run 2 (from 7). The three key-drop issues are gone from both.
 `migrated/scatter/1000` m1b still flags +99.1% / +99.0% in the two runs, which is the held cell doing
 exactly what the hold was for.
+
+---
+
+### D599 — the scatter +99% is a phase-ordering defect, not a slow chart; my own magnitude claim was wrong
+
+Executor `ses_f84779d9dffeOe5x6LLNA4Igbt` (one file, `internal/scatter-reveal-setup.ts`, +28/−8).
+I gave it the double-reveal hypothesis as a lead and told it to disprove it if the evidence said
+otherwise. It did.
+
+**Mechanism.** `handleRender` called `setPhase("ready")` synchronously on the first render. That
+render runs inside the package controller's *layout* effect (`react/Chart.tsx` creates the
+controller in `useLayoutEffect`; `core/controller.ts` calls `onRender` from the initial
+`performRender`), which flushes before the wrapper's *passive* mount effect that emits
+`onPhaseChange("revealing")`. The bench arm `armBklitSettle` resolves on a `ready` that follows a
+non-ready, so it saw `ready` first (ignored, `sawNonReady` false), then `revealing`, then nothing —
+and `window.__benchSettled` fell through to `FALLBACK_MS`.
+
+**`FALLBACK_MS` is 2500** (`bench/app/src/bench/settle.ts:25`), and its own comment says it "is not
+expected to fire for any of the four pilot charts". The three observations were 2505.3, 2505.0,
+2504.7 — a fixed timeout plus mount overhead. That is why they clustered within 0.6 ms, which I had
+read as proof of a reproducible 2× slowdown.
+
+**Correcting myself.** D595 corrected D593 from "the harness lost the machine" to "a real chart
+defect". That direction was right and stands: the ordering bug is in `showcase/migrated`, it is not
+machine noise, and every consumer passing `onPhaseChange` got `ready` before `revealing`. But the
+**magnitude was never real**. There was no 2× reveal and no double reveal; there was a wasted
+`ready` and a stopwatch left running into its safety net. "+99% slower" was my inference from a
+number that was measuring the fallback, not the chart. The defect is a signalling defect with no
+established performance cost.
+
+**Fix.** Converge on the bar chart's bookkeeping (`bar-chart-overlays.ts`), which was already
+correct: first sight of a reveal key records it, emits `revealing`, and arms
+`revealDeadlineTimerRef` with `window.setTimeout(→ ready, revealDurationMs)`; same-key re-renders
+early-return so later data swaps snap; a genuine signature bump re-opens exactly one window;
+`animationDuration <= 0` resolves ready at once. No mark, scale, definition or motion code touched,
+so settled pixels are unchanged by construction.
+
+**Vector check (principle 4).** Confined to scatter. Of the eight `setPhase("ready")` sites, bar and
+sunburst (`sunburst-chart.tsx:539`) already arm a deadline inside an effect; scatter was the only
+one resolving synchronously from a render callback. Across all 29 benched cells only
+`migrated/scatter/1000` sits at the fallback — `bklit/bar/10000` (7215) and `bklit/scatter/10000`
+(3127.5) are genuinely slow large-*n* cells, not 2500.
+
+**Lead-verified**: tsc 0, oxlint on `showcase/migrated` 0 findings, `npm test` 246 / 48 / 188 / 0 /
+58, exit 0, `^not ok` 0 — the exact baseline. Not re-benched here; the item 7 hold on
+`migrated/scatter/1000` m1b stays at 1258.6 until a serial gate run measures the cell, which is the
+only thing that can retire it.
