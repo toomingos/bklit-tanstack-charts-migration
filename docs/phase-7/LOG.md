@@ -2699,3 +2699,52 @@ not an element-count one, and the probe cannot answer it. That needs the QA gate
 on this pair plus a live DOM read to separate the mount tail from the dim scope.
 Both are lead-only and serial. What I will not do is infer the answer from the
 counts — that is the D611/D614/D616 mistake three times over.
+
+## D626 — markers/100: the dim-scope difference is visible, passes the gate, and has less headroom than I would like
+
+D625 left one question: is legacy dimming 311 elements against migrated's 109 a
+difference anyone can see? The probe cannot answer that. The pixel gate can, and
+it turns out to exercise exactly the state the probe flags — `markers/100` has
+`legend-hover-0`, `legend-hover-1` and `legend-hover-clear` cells driven through
+the same `__qaSetLegendHover` hook (`qa/screenshot.mjs:493-541`), so this is a
+direct read and not a proxy.
+
+Run `2026-09-07T21-11-21-051Z`, 8 cells, 7 gated, **gate FAIL 0**, exit 0.
+
+| cell | px | pct | gate | history range (n=43) |
+|---|---|---|---|---|
+| `settled` | 1215 | 0.1266% | PASS | [786, 7024] |
+| `legend-hover-0` | 3926 | 0.4090% | PASS | [3751, 18168] |
+| `legend-hover-1` | 4057 | 0.4226% | PASS | [3729, 17740] |
+| `legend-hover-clear` | 4057 | 0.4226% | PASS | [3731, 16612] |
+| `hover-30` / `hover-70` | 4184 / 4209 | 0.4358% / 0.4384% | PASS | — |
+
+**So the answer is yes, visible, and passing.** Hovering the legend roughly
+doubles the raw difference against the settled baseline — 20,730 → 38,898
+byte-differing pixels, mean channel delta 12.84 → 21.11 — and pixelmatch at the
+gate's 0.1 threshold turns that into 1215 → 3926. The dim scope has a real pixel
+cost. It is not the instrument, and D625 was right to stop calling it noise.
+
+**Two things I am not going to dress up.** First, the headroom is thin: 0.4090%
+against a 0.5% gate is about 18% of budget left, and the three legend cells are
+the pair's most expensive alongside plain hover. This passes; it is not
+comfortable. Second, `maxChannelDelta` is **255** on both the settled and the
+legend-hover captures — some pixels differ completely even before any hover. I
+have not attributed that and am not going to guess at it; it is bounded by
+`settled` passing at 0.1266%, but it is a loose end, not a cleared one.
+
+The reassuring part is historical rather than absolute. All three legend cells
+sit at the **bottom** of 43 runs of history — `legend-hover-0` lands exactly on
+the mode at 3926 against a range topping out at 18,168. Today's build is among
+the best `markers` has recorded, so the thin headroom is the pair's long-standing
+character, not a regression this work introduced.
+
+**Ruling: `markers/100`'s legend dim is closed as a pixel question and stays open
+as a structural one.** The two implementations genuinely dim different element
+sets — legacy wraps stroke, dash tail and dots in groups, migrated dims a leaf
+stroke and a CSS class — and that shows up as ~2,700 extra pixelmatch pixels.
+Whether to converge the dim scope is a parity judgement, not a gate failure, and
+it is not worth spending before Gate 4 runs.
+
+Item-0's separate mount-tail signature — legacy resting at 20 dimmed, falling to
+10 on hover, never fully undimming — is untouched by this and remains D617-a's.
