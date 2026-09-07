@@ -404,7 +404,7 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
     // (bench/app/src/bench/paint.ts) — the chart-less legend scenario never
     // renders one, so wait on the scenario's own __benchSettled (a promise
     // resolved on double-rAF after mount) instead.
-    await page.waitForFunction(() => !!window.__benchSettled, { timeout: 30000 });
+    await page.waitForFunction(() => !!window.__benchSettled, undefined, { timeout: 30000 });
   } else if (presetVirtual) {
     // D609: wait for the BUDGET first, then check paint -- not the other way
     // round. The budget is 30,000 VIRTUAL ms and virtual time advances as fast
@@ -422,9 +422,9 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
     // commit and that double-rAF the flag is never set, however long anything
     // waits. That is the second half of the D591 wedge, and the reason the flag
     // has been off by default: the chart was on screen the whole time.
-    await page.waitForFunction(() => !!document.querySelector("svg"), { timeout: 10000, polling: 50 });
+    await page.waitForFunction(() => !!document.querySelector("svg"), undefined, { timeout: 10000, polling: 50 });
   } else {
-    await page.waitForFunction(() => window.__benchPaintDone === true, { timeout: 30000 });
+    await page.waitForFunction(() => window.__benchPaintDone === true, undefined, { timeout: 30000 });
   }
   if (loading) {
     // The loading phase never resolves __benchSettled (the chart never
@@ -919,7 +919,7 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
       window.__qaSetMarkerFan = true;
     });
     await fanPage.goto(sceneUrl(baseUrl, { impl, chart, n, state }), { waitUntil: "commit" });
-    await fanPage.waitForFunction(() => window.__benchPaintDone === true, { timeout: 30000 });
+    await fanPage.waitForFunction(() => window.__benchPaintDone === true, undefined, { timeout: 30000 });
     await fanPage.evaluate(() => window.__benchSettled);
     // Fan open/close transition is 220ms (chart-markers.tsx
     // MarkerGroupView); extra margin covers the per-marker fan-entrance

@@ -237,8 +237,31 @@ I7 is [TanStack/charts#133](https://github.com/TanStack/charts/issues/133) and I
 
 Gate 1 ran at `4ee2ef6` (`docs/phase-7/gate/runs/2026-09-06T23-56-04-812Z`, exit 0, 47m44s) and
 found one real regression — the pulse area painting its wash — fixed and re-shot in `e9286ed`.
-Everything else it reported is pre-existing or harness noise; the attribution is D593. Wave B and
-Wave C as written above are next.
+Everything else it reported is pre-existing or harness noise; the attribution is D593.
+
+**Since Gate 2, three vectors have landed and one premise in §1 has been corrected.**
+
+- **Brush layer inversion** (`425a1c6`, D612). `ChartHost` imported `BrushLayer` statically behind a
+  runtime gate, so every host-mounting chart shipped `d3-brush` and its d3-transition/selection/
+  drag/dispatch/timer graph. `ChartBrush` now owns the layer. Measured over the full 104-combo
+  sweep: 41 of 43 migrated scenarios drop ~21 kB gzip, `migrated/brush` pays +446 bytes, no
+  `bklit/*` or `tanstack/*` combo moves.
+- **Probe dim fidelity** (`e627113`, D614). Multi-channel dim predicate and a union scope, plus a
+  pre-hover baseline in `legend-hover-dim`. Flagged rows 4 → 2 there; in `hover-lag` the `sankey`
+  and `liveline` presence mismatches resolve into real detection. Probe-side only, no chart change.
+- **Item 9's reasoning is withdrawn** (D613). D597 blamed the package for the unconditional d3 tail
+  and drafted I9 on that basis. Both of its named examples were **our own importers**: `d3-brush`
+  came in through `chart-host.tsx:31`, and `d3-time-format` still comes in through
+  `chart-host-store.ts:1` (`scaleTime`), called unconditionally at `chart-host.tsx:229`. The ≤1.10
+  count moved 2/43 → **16/43** on the brush fix alone, so D597's "no arrangement of the consuming
+  code closes this gap" is disproved. The **ruling** stands — 27 of 43 are still over, sunburst at
+  1.3696 — but the row above must be read with D613's reasoning, not D597's. **I9 is withdrawn as
+  drafted and was never filed**, which is the only reason this cost nothing outward-facing.
+  Rewriting it requires landing the `buildTimeScale` fix first and then re-measuring what is left.
+
+Still open: the `buildTimeScale` removal (same defect shape, `chart-host.tsx:229`, ~4.7 kB gzip
+unverified); the residual `pie/1000` and `choropleth/100` dim mismatches from D614; V6, V7/I10; and
+a full Gate 4. Wave B and Wave C as written above are otherwise next.
 
 ## 7. Gate audit — 2026-09-06, read-only
 

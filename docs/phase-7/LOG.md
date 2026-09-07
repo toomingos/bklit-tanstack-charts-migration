@@ -2101,3 +2101,34 @@ scope's 1,005, and a full `dimCount()` takes 0.4 ms.
 
 Net: the instrument reports fewer artefacts and more real differences, which is the direction that
 matters. No chart code changed; every finding in this entry is probe-side.
+
+### D615 — every `waitForFunction` timeout in the QA harness had been silently ignored
+
+Playwright's signature is `waitForFunction(expression[, arg, options])` — confirmed against the
+current API docs, which also state the defaults: `timeout` 30,000 ms and `polling` `"raf"`. All four
+call sites in `qa/screenshot.mjs` passed their options object as the **second** parameter, which is
+the *argument* handed to the page function, not the options. Every explicit `timeout` and `polling`
+in that file was therefore discarded and every wait ran on the defaults.
+
+Three of the four asked for `timeout: 30000` and silently got 30,000, so they were inert — which is
+exactly why this survived so long, and why finding it required reading the signature rather than
+watching behaviour. The fourth is not inert:
+
+`:425`, in the `presetVirtual` branch, asks for `{ timeout: 10000, polling: 50 }` while waiting on
+`!!document.querySelector("svg")`. Its own comment explains why it must poll from Node: *"the
+expired budget halts rAF for good"*. With `polling` dropped it fell back to the `"raf"` default —
+polling via `requestAnimationFrame` on a page whose rAF is permanently stopped. That wait could
+never resolve; it could only time out. So the D591 virtual-time route was carrying a second wedge
+underneath the two already fixed, and the branch has been off by default the whole time, which is
+why nothing caught it.
+
+Fixed by passing `undefined` for the argument at all four sites so the options land in the right
+position. Effective behaviour is unchanged at the three inert sites by construction. Not a claim
+that the virtual-time preset now works — that route was abandoned in D610 for an unrelated and
+fatal reason (bklit never mounts, because `ParentSize`/`ResizeObserver` needs frames the expired
+budget has already stopped). This removes a latent defect from a disabled path; it does not revive it.
+
+The general lesson is the one D613 also records in a different form: an option that is accepted
+without error is not an option that is applied. Both defects were invisible to every test we run,
+because both produce *plausible* behaviour — a 30-second default looks like a deliberate 30-second
+wait.

@@ -1,0 +1,69 @@
+{
+  "label": "waitfor-fix-check",
+  "started": "2026-09-07T15:11:13.241Z",
+  "finished": "2026-09-07T15:12:57.426Z",
+  "workers": 1,
+  "wallClockMs": 103327,
+  "sumRunMs": 103326,
+  "build": {
+    "built": false,
+    "reason": "dist fresh",
+    "code": 0,
+    "durationMs": 0
+  },
+  "dist": {
+    "indexMtime": "2026-09-07T14:49:11.407Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-ImgLMm2K.css",
+      "index-chrdux4V.js"
+    ]
+  },
+  "distEnd": {
+    "indexMtime": "2026-09-07T14:49:11.407Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-ImgLMm2K.css",
+      "index-chrdux4V.js"
+    ]
+  },
+  "distChangedDuringPass": false,
+  "previewUrl": "http://localhost:5198",
+  "jobs": [
+    {
+      "chart": "pie",
+      "n": 1000,
+      "state": "ready",
+      "key": "pie/1000",
+      "worker": 0,
+      "exit": 0,
+      "durationMs": 87589,
+      "reportDir": "qa/results/pie/2026-09-07T15-12-41-288Z",
+      "log": "docs/phase-7/gate/runs/2026-09-07T15-11-13-240Z/logs/qa/pie-1000.log"
+    },
+    {
+      "chart": "markers",
+      "n": 100,
+      "state": "ready",
+      "key": "markers/100",
+      "worker": 0,
+      "exit": 0,
+      "durationMs": 13479,
+      "reportDir": "qa/results/markers/2026-09-07T15-12-54-413Z",
+      "log": "docs/phase-7/gate/runs/2026-09-07T15-11-13-240Z/logs/qa/markers-100.log"
+    },
+    {
+      "chart": "legend",
+      "n": 1000,
+      "state": "ready",
+      "key": "legend/1000",
+      "worker": 0,
+      "exit": 0,
+      "durationMs": 2258,
+      "reportDir": "qa/results/legend/2026-09-07T15-12-57-035Z",
+      "log": "docs/phase-7/gate/runs/2026-09-07T15-11-13-240Z/logs/qa/legend-1000.log"
+    }
+  ]
+}
