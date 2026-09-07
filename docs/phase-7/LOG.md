@@ -2189,3 +2189,94 @@ and no ruling should be written from this table alone.
 
 Running total for the dim work: 7 flagged conditions at the start, 5 now, and every one closed so
 far has been the instrument, not the charts.
+
+## D617 — choropleth/100: two instrument defects, and a real sub-gate difference
+
+The last open dim flag. I read the live DOM on both impls instead of inferring,
+which is what D611/D614/D616 each had to be corrected for.
+
+**Reading 1, under the probe harness (`openScene`, virtual clock).** Both impls
+render 177 feature paths. bklit flags 1 dimmed element, migrated 177. But the
+composed opacity — ancestor `opacity` multiplied down the chain — is **0.046 on
+every bklit path**. The map is essentially undrawn at the moment the probe
+declares the scene settled. Raw pixel diff bklit-vs-migrated: 22.7% of pixels
+differ, max channel delta **109**.
+
+Legacy fades the feature layer with a group transform:
+`choropleth-feature.tsx:168` `layerOpacity = useTransform(mountProgress, (t) => t * baseOpacity)`
+onto `<g opacity>` at `:82`, with `baseOpacity: 0.85` at `:315`. Under
+`page.clock.install()` that mount progress barely advances — two samples minutes
+apart read 0.0046 and 0.0462. So the virtual clock does not drive this
+animation, and `__benchSettled` fires long before the layer is visible.
+
+**Reading 2, same scene under real time** (plain `goto` + `__benchSettled` +
+`__benchPaintDone` + 1500 ms): bklit composes to **0.850** on all 177 paths,
+migrated to 1.000 with the alpha baked into the fill. Max channel delta collapses
+**109 → 10**. So the entire magnitude of reading 1 was harness, not chart.
+
+**Two instrument defects, both general, neither specific to choropleth:**
+
+1. `openScene`'s virtual clock does not advance legacy's framer-motion mount
+   progress here. Any bklit scene whose reveal rides `useTransform` can be
+   sampled mid-mount while reporting settled. This is the same family as D614's
+   correction — the virtual budget does not cover everything the scene waits on.
+2. `dimmedCount` reads each element's own computed opacity and never composes
+   ancestors. It therefore scored 177 invisible bklit paths as undimmed, and
+   177 fully-visible migrated paths as dimmed. Both directions wrong in one
+   scene.
+
+**The residual difference is real but sub-gate.** Legacy applies 0.85 once to
+the group; migrated bakes it per feature via
+`choropleth-chart.tsx:232` `withAlpha` → `color-mix(in oklab, <color> 85%, transparent)`,
+driven by the hardcoded `baseOpacity = 0.85` at `:741`. These are not identical
+compositing: a group fades fill+stroke *after* they combine, per-path alpha
+blends the background-coloured stroke over an already-blended fill. Measured
+ceiling is 10/255 on one channel, which is why the pixel gate passes on its own
+terms rather than by luck.
+
+No ruling. Recorded as a mechanism difference with a measured bound, not a
+parity defect. The two instrument defects are the actionable part.
+
+## D618 — MarkerLayer inversion: measured, and rejected
+
+D612's inversion was expected to repeat one layer down: `chart-host.tsx`
+statically imports `MarkerLayer` and gates it at runtime on `hasMarkers`, and
+`marker-layer.ts:9` imports the constant `DEFAULT_LINE_STROKE` from
+`line-chart-support`, reportedly dragging ~14 modules into every host. A prior
+agent measured the host's reachable module count going 27 → 13 when cut, but
+never measured bytes.
+
+Measured now, upper bound (import deleted, render replaced with `null` — no
+design can beat this), against a `git archive HEAD` baseline whose BEFORE
+numbers reproduce committed `bench/results/bundle-sizes.json` byte-exactly for
+pie, choropleth and line:
+
+| scenario | Δ raw | Δ gzip |
+|---|---|---|
+| migrated/pie | −1797 | **−860** |
+| migrated/gauge | −1801 | −727 |
+| migrated/choropleth | −1797 | −805 |
+| migrated/ring | −1799 | −781 |
+| migrated/line | −993 | −512 |
+
+**~0.8 kB gzip. The premise was false.** `DEFAULT_PROJECTION_LINE_CLASS_NAME`'s
+marker string is *already absent* from pie/gauge/choropleth/ring in the BEFORE
+bundle. esbuild shakes per declaration and `migrated/package.json` declares
+`sideEffects: ["**/*.css"]`, so importing one constant does not drag the module
+body. The 27 → 13 figure was a module-graph count, not bytes emitted — the same
+`metafile.inputs` error D612 already warned about, one level up. A separate arm
+that split the constant into a leaf module moved raw bytes by **0** on three of
+five scenarios.
+
+Closed, no change landed. If the 800 bytes are ever wanted, the honest framing
+is "delete or inline `marker-layer.ts`", not an ownership inversion — there is
+no module-graph prize behind it.
+
+Also settled while reading, so it is not re-derived: registry entries are
+id-keyed with `role` as a plain label (duplicates legal); the sole reader of
+`"layer:markers"` is `use-line-layer-inputs.ts:54` via `.find` (first
+registration wins), so N registrations would be a real ordering change, not
+merely wasteful; and options (a) and (d) are both disqualified — `ChartMarkers`
+and `SeriesMarkers` are already taken by unrelated public API
+(`index.ts:61`, `:238`), and a lazy import would paint one frame with solid
+fills before repainting, failing the pixel gate outright.

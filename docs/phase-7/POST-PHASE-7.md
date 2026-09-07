@@ -259,9 +259,31 @@ Everything else it reported is pre-existing or harness noise; the attribution is
   drafted and was never filed**, which is the only reason this cost nothing outward-facing.
   Rewriting it requires landing the `buildTimeScale` fix first and then re-measuring what is left.
 
-Still open: the `buildTimeScale` removal (same defect shape, `chart-host.tsx:229`, ~4.7 kB gzip
-unverified); the residual `pie/1000` and `choropleth/100` dim mismatches from D614; V6, V7/I10; and
-a full Gate 4. Wave B and Wave C as written above are otherwise next.
+**Two further items closed since, both by measurement rather than argument.**
+
+- **`choropleth/100` is not a parity defect** (D617). It was the last open dim flag and the one
+  candidate for a genuine chart difference. A live DOM read on both impls found two *instrument*
+  defects instead: under `openScene`'s virtual clock legacy's framer-motion mount barely advances,
+  so all 177 bklit feature paths sit at composed opacity **0.046** while the probe reports settled;
+  and `dimmedCount` never composes ancestor opacity, so it scored those invisible paths as undimmed
+  and 177 fully-visible migrated paths as dimmed. Re-read under real time, bklit composes to 0.850
+  against migrated's baked-in 0.85 and the max channel delta falls **109 → 10**. The residual is a
+  real compositing difference — legacy fades the group, migrated bakes alpha per feature via
+  `withAlpha` at `choropleth-chart.tsx:232` — but bounded at 10/255, which is why the pixel gate
+  passes on its own terms. No ruling; the two instrument defects are the actionable part.
+- **The `MarkerLayer` inversion is rejected** (D618). It looked like `425a1c6` one layer down, and
+  the motivating claim was that one constant import drags ~14 modules (reachable count 27 → 13).
+  Measured upper bound — import deleted outright, which no design can beat — is **−860 gzip on pie**,
+  −727 gauge, −805 choropleth, −781 ring. The premise was false: esbuild shakes per declaration and
+  `sideEffects` is CSS-only, so the 14 modules are in the graph and emit nothing. 27 → 13 was a
+  module-graph count, not bytes — the same `metafile.inputs` error D612 warned about, one level up.
+  A leaf-constant split moved raw bytes by **0** on three of five scenarios. Closed, nothing landed.
+
+Still open: the `buildTimeScale` removal — now scoped by measurement to **+14,741 raw / +4,473 gzip
+on 18 of 43 scenarios**, not all of them, because 25 already pull the identical `d3-time` graph via
+`scaleUtc` in their own definition modules (marginal saving there: 32 bytes); the `markers/100`
+legend-hover-dim and `candlelegend` magnitude flags; V6, V7/I10; and a full Gate 4. Wave B and
+Wave C as written above are otherwise next.
 
 ## 7. Gate audit — 2026-09-06, read-only
 
