@@ -1698,3 +1698,56 @@ is empty afterwards, which also confirms summarize is deterministic over a fixed
 it as `latest`. That is pre-existing behaviour and arguably intended for re-rulings; narrowing it
 further would change how `applyRulings` re-publishing works, which is not this item's business.
 Recorded so the next person does not rediscover it as a surprise.
+
+### D606 — the D590 crop was on the moving rect, so BarPulse painted nothing
+
+D600 landed the BarPulse sweep and hedged its own claim: *"Pixel parity is not
+claimed here: an infinite sweep is not settle-stable, so only a serial gate run
+with the phase-freeze hook can verify it."* That hedge is now cashed in, and the
+answer is that the sweep was invisible.
+
+**How it surfaced.** Wiring A14's `__qaSetBarPulsePhase` into
+`bench/app/src/scenarios/migrated-bardepth.tsx` gave the migrated side the same
+phase-freeze the bklit scenario already had. Seeking migrated to four phases
+produced four *byte-identical* screenshots while the element transform moved
+exactly as intended:
+
+```
+phase 0     hash=f4c87d338c  matrix(1, 0, 0, 1, 0, 0)
+phase 0.25  hash=f4c87d338c  matrix(1, 0, 0, 1, 0, -75.2558)
+phase 0.5   hash=f4c87d338c  matrix(1, 0, 0, 1, 0, -291.323)
+phase 0.75  hash=f4c87d338c  matrix(1, 0, 0, 1, 0, -507.391)
+```
+
+Motion without pixels means something downstream of the transform eats the
+paint. Dropping `maskImage` made the four hashes differ, which named the mask.
+
+**Root cause.** The mask was declared on `.ts-bkm-bar-pulse-wave` — the element
+the keyframes translate. A CSS mask is resolved in the element's own box, so it
+travels with the element and the intersection with the silhouette is invariant
+under the animation. Geometry from `__mask-dbg.mjs`: mask region `x=40 y=40
+w=972 h=446`, silhouette path bbox `y 110-486`, wave bbox `y 486-692.6`. The
+wave parks *below* the bar floor (correct — that is bklit's root-to-tip start),
+so the invariant intersection is empty, and stays empty for every phase.
+
+bklit never had this problem because it crops the *static* parent:
+`bar-depth.tsx:1024-1075` is `<motion.g clipPath={url(#clipId)}>` wrapping an
+animated `<motion.rect>`. The scene emission already wraps the wave in a static
+`bkm-chart__bar-pulse` group, so the fix is one rule moved, not a restructure:
+the crop now sits on the group and the moving rect keeps only
+`transform-box: fill-box` and the keyframes.
+
+**Verified.** Four distinct migrated phase hashes (`f4c87d338c / f09fe359bd /
+e6c4bf1e27 / c476c20900`) against bklit's four distinct hashes, same seek
+points. `npx tsc --noEmit` exit 0; `oxlint --type-aware migrated` 0 findings;
+`node --run test` exit 0 at baseline (tests 246, suites 48, pass 188, fail 0,
+todo 58, `^not ok` 0).
+
+**What this cost, and the lesson.** D590 was committed with a crop nobody had
+ever seen crop anything. The instrument that would have caught it (the A14 hook)
+was built afterwards, for an unrelated reason — bardepth's capture asymmetry —
+and caught it on its first use. A behaviour that cannot be observed by the gate
+has not been verified, whatever the diff looks like; the hedge in D600 was
+correct and should have blocked the commit rather than annotating it.
+
+Gate 3 stays blocked until this is in, since bardepth is one of its cells.

@@ -713,13 +713,19 @@
     transform: translateY(var(--bkm-bar-pulse-travel, -100%));
   }
 }
+/* Seam silhouette crop (D590/D606): the crop rides the STATIC group, never the
+   moving rect. A mask on the animated element travels with it, so its
+   intersection with the silhouette never changes -- and since the wave parks
+   below the bar floor, that intersection is empty and nothing ever paints.
+   bklit wraps the wave the same way (<motion.g clipPath> in bar-depth.tsx). */
+[data-bkm-chart] .bkm-chart__bar-pulse {
+  mask-image: var(--bkm-bar-pulse-mask, none);
+  -webkit-mask-image: var(--bkm-bar-pulse-mask, none);
+}
+
 [data-bkm-chart] .ts-bkm-bar-pulse-wave {
   transform-box: fill-box;
   animation: ts-bkm-bar-pulse-sweep 2.4s ease-in-out infinite;
-  /* Seam silhouette crop (D590): url set as --bkm-bar-pulse-mask on the chart
-     root; none until the first scene publish parks the wave unmasked. */
-  mask-image: var(--bkm-bar-pulse-mask, none);
-  -webkit-mask-image: var(--bkm-bar-pulse-mask, none);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1138,9 +1138,10 @@ async function runComparison(browser, baseUrl, { chart, n, implA, implB, selfTes
   // loading chrome has no tooltip contract)
   //
   // A14: the two impls can capture different numbers of hover states when a
-  // capture hook exists on one side only -- bklit/bardepth wires
-  // __qaSetBarPulsePhase (4 extra pulse-phase frames) and migrated cannot,
-  // because its BarPulse never animates (D590), so there is no phase to seek.
+  // capture hook exists on one side only. This bit bardepth while migrated's
+  // BarPulse did not animate (D590) and so had no phase to seek; both sides
+  // wire __qaSetBarPulsePhase now, but the asymmetry guard stays -- it is a
+  // general contract, not a bardepth workaround.
   // Indexing capB by capA's length then threw TypeError and lost the whole
   // cell, settled comparison included. Compare the paired states and record
   // the unpaired ones as a failure: an asymmetric capture is not a pass.
