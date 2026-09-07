@@ -1487,9 +1487,11 @@ bklit's own practice even where `bar-depth.tsx` forgot it. Ruled: keep, and do n
 travel only, so a chart configuring several pulses gets one crop. No showcase chart does; recorded
 here so the next reader does not mistake it for an oversight.
 
-**New finding, separate vector.** migrated's `.ts-bkm-loading-sweep-band` has **no** reduced-motion
-guard while bklit's `loading-sweep.tsx` does — migrated currently drops an accessibility behaviour
-bklit has. Not fixed here (it is a different overlay); recorded for its own item.
+**New finding, separate vector — RETRACTED, see D602.** I wrote here that migrated's
+`.ts-bkm-loading-sweep-band` has no reduced-motion guard while bklit's `loading-sweep.tsx` does, and
+that migrated therefore drops an accessibility behaviour. **That is false.** I checked the CSS for an
+`@media (prefers-reduced-motion)` block, found none, and stopped there without checking whether the
+guarded node is rendered at all. It is not: see D602. No defect, nothing to fix.
 
 **Process.** Two executors timed out on this item (2700s watchdog, ~90 min total) leaving unverified
 edits with lint findings; I finished it as lead rather than dispatch a third time. The first
@@ -1528,3 +1530,29 @@ ledger" are historical records and stay as written.
 58, exit 0, `^not ok` 0. `npm run api-compat` gives byte-identical output before and after (9
 pre-existing errors, all Sankey/unmigrated surface, none at the `LineLoadingPulse` assertions on
 lines 157, 158, 413, 414) — the public type survived the move.
+
+### D602 — retraction: the loading sweep's reduced-motion guard exists, in JS, not CSS
+
+**Correcting my own D600 finding.** I recorded a "new finding, separate vector" in D600: that
+`.ts-bkm-loading-sweep-band` animates `2s linear infinite` (`styles.css:696`) with no
+`prefers-reduced-motion` block, while bklit's `loading-sweep.tsx` guards the same loop with
+`useReducedMotion` (:218, :437) — concluding migrated had dropped an accessibility behaviour.
+
+**Why it was wrong.** The guard is there; it is just not in the stylesheet. `LineLoadingSweep`
+(`loading-entries.tsx:88`) and `BarLoadingSkeleton` (:182) both call `usePrefersReducedMotion()`, and
+under reduced motion each returns `undefined` from **both** the `resources` memo (:122-127, :201-206)
+and the `maskStyle` memo (:128-133, :207-212). So `LoadingSweepResources` is never mounted, the
+`<rect className="ts-bkm-loading-sweep-band">` (`resource-host.tsx:128`) never exists, and the mask
+referencing it is never applied. A CSS rule for a node that is not rendered has nothing to guard.
+
+**This is stricter than bklit, not weaker.** bklit keeps the element and stops its motion; migrated
+omits the element and its mask entirely. Same user-visible outcome for the motion itself, less work.
+
+**Method note, which is the point of writing this down.** I searched the stylesheet for the guard,
+found no `@media` block, and reported a defect. Absence of the mechanism I expected is not evidence
+of absence of the behaviour — the render path decides what the stylesheet ever gets to apply to. The
+same mistake would have been caught by asking "is this node rendered?" before "is this rule guarded?"
+
+**No code changed.** D600's `prefers-reduced-motion` block for the BarPulse stays exactly as ruled
+there: the pulse wave *is* rendered under reduced motion (it is part of the settled scene, not a
+loading overlay), so it needs the CSS guard that the loading sweep does not.
