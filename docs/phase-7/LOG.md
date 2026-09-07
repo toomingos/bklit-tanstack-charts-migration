@@ -1842,3 +1842,41 @@ reviewed as a hardening and it is the opposite: it silenced the gate's only fail
 instrument change that can only ever *reduce* the number of findings needs a before/after count on
 real data before it lands, not after. Gate 3 ran to exit 0 with this defect in it.
 
+### D609 — D607 retracted: every barloading number it used was measured against a blank frame
+
+D607 tightened `barloading/100/hover-50` and `hover-70` from 53,588 / 33,734 px to 16,000 px each,
+dropped `hover-30`'s ruling, and concluded that `settled` at a stable ~21,600 px "is a real defect
+to find". All of it rests on readings that are not comparisons.
+
+**The proof.** Decoding the PNGs directly: `settled-b.png` (migrated) is 1200x800 with **one unique
+colour**, `#f5f5f5`. All four migrated barloading captures share md5 `aff019f7d1e8` — the same
+blank image. `settled-a.png` (bklit) has 110 unique colours. Every barloading px figure since the
+D588 anchor is therefore bklit's ink count against an empty canvas, not a difference between two
+implementations. A bound sized on those numbers measures nothing.
+
+**Cause: a one-sided pin at the one degenerate phase.** `qa/screenshot.mjs:444-448` calls
+`pinAnimationPhase(page, 0, ...)` before the settled capture (re-pinned at `:808-814` before each
+hover) for the charts in `LOADING_PRESET_CHARTS`. `pinAnimationPhase` seeks infinite **CSS**
+animations. Migrated's sweep band is a CSS keyframe animation, so it gets pinned; bklit's is a
+framer-motion rAF loop, so it does not. That asymmetry was already half-known (D607 itself notes
+it). What was missed is what phase 0 *is*: the band is 1 unit wide travelling `-1 -> 2` across a
+3-wide `objectBoundingBox` tile, so at phase 0 (`translateX(-1px)`) it sits entirely outside the
+tile. The mask is empty, and the whole chart disappears.
+
+Both sides' geometry is identical — `SWEEP_START_X = -1`, `SWEEP_END_X = 2`, 2 s linear,
+`patternUnits="objectBoundingBox"` in `repos/bklit-ui/.../loading-sweep.tsx:35-38,152,157-171`
+against the same values in migrated's `resource-host.tsx:120-140` — so phase maps 1:1 and phase 0
+is the single instant in the cycle that renders nothing. The pin picked it.
+
+**Disposition.** The bounds go back to their pre-D607 values (53,588 / 33,734 / 161,310) unchanged
+and uncited-by-D607; they remain what D594 called them, bounded residue on an unpinned phase. D607's
+`settled` conclusion is withdrawn: the defect it identified is in the instrument, not the chart, and
+`settled`'s stability across four runs is exactly what a constant blank frame produces. The vector
+that retires all three bounds is unchanged from D607's closing paragraph and is now the only way to
+size them — a **paired** pin, WAAPI on migrated against `useManualTiming` on bklit, at a
+non-degenerate phase, per D606's bardepth precedent.
+
+The general point: `pinAnimationPhase` silently pins whatever it can reach and reports success. A
+one-sided pin does not make a comparison more deterministic, it makes it deterministically wrong,
+and it did so while every affected cell sat under a ruling generous enough to never ask.
+
