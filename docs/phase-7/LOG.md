@@ -2450,3 +2450,58 @@ inference. So: `candlelegend` gets a fix with a stated numeric prediction,
 `markers/100` stays open pending a lead-run DOM read, and D617-a — the virtual
 clock not advancing framer-motion mount progress — remains an unexcluded
 co-cause for it.
+
+## D622 — `settles-after-700ms-capture` compares virtual milliseconds against a wall-clock threshold
+
+Two pairs carry this flag, `bar/100` and `sankey/33` (four flag strings, two
+`settlesAfterGateCapture: true` rows). It reads as a pixel-parity warning: the
+gate photographs 700 ms after the pointer move, so anything still changing after
+700 ms is captured mid-transition. On the evidence it is an instrument artefact,
+and the mechanism is a units mismatch the probe asserts away in a comment.
+
+The threshold is real and consistent — `hover-lag.mjs:19` `HOVER_WAIT_MS = 700`
+mirrors `qa/screenshot.mjs:147-149`, and the gate's hover path really is a fixed
+wait with no settle signal (`screenshot.mjs:821-822`: `mouse.move` then
+`waitForTimeout(HOVER_WAIT_MS)`, then capture). Unlike the settled capture,
+which waits on `__benchSettled` at `:439`, a hover capture waits on nothing.
+
+But the two sides are not measured in the same time. `lib-probe.mjs:120` calls
+`page.clock.install()` **before** `goto` at `:121`, and time only advances when
+`stepVirtual` pumps it (`:167-168`). The gate installs no clock at all — `clock`
+appears zero times in `qa/screenshot.mjs` outside two "wall-clock" comments. So
+the probe's `lastChangeMs` is virtual and the 700 it is compared against is
+wall. `hover-lag.mjs:7-8` states the two units are the same; that is an
+assumption, never a measurement, and `lib-probe.mjs:10-20` already documents
+that the fake clock does not govern CSS or WAAPI.
+
+Three further facts point the same way. **The flagged sides are opposite:** bar
+is migrated-slow (1115 against legacy 267), sankey is legacy-slow (1386 against
+migrated 141). A shared design cause would not flip direction. **The magnitudes
+sit at mount scale, not hover scale:** every hover transition either side is
+0.12-0.4 s (`bar-chart-series-marks.ts:29-32` at 150 ms; `bar.tsx:164` at
+0.15 s; `sankey-link.tsx:167` at 0.18 s), while 1115 and 1386 land on the 1100 ms
+reveal constant that both implementations share (`animation-defaults.ts:3`,
+`bklit .../bar-chart.tsx:66-67`). **And the numbers do not repeat:** legacy
+sankey's three repeats are 1386 / 157 / 1399 — an eight-fold spread on one cell.
+Design timing does not do that; a harness racing a mount tail does.
+
+So the flag most likely reports a reveal tail leaking into the hover window
+under virtual time, not a hover that is genuinely unsettled at the moment the
+gate shoots. Under the gate's own wall-clock timing, every hover animation
+either side has finished several times over by 700 ms.
+
+**No chart change.** Chasing this as a parity defect would be chasing the
+instrument. What the probe would have to do to stop emitting it: record *which*
+channel moved late (dim count against tooltip) rather than collapsing any late
+change into one flag, and assert the mount is actually quiesced at sampler start
+instead of trusting `__benchSettled`.
+
+Full attribution — which element moves at 1115 or at 1386, mount tail or hover,
+virtual or real — needs a live instrumented read and is not inferred here.
+
+This is the third defect in one family. D617-a is the virtual clock failing to
+advance legacy's framer-motion mount; D617-b is `dimmedCount` counting DOM
+levels instead of visual dim; this is virtual time being compared to a wall
+threshold. The vector is not "the probes found bugs in the charts" — it is that
+the probe harness runs in a different time regime from the gate it claims to
+predict, and several flags are that gap rather than the charts.
