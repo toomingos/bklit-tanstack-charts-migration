@@ -43,8 +43,26 @@ export function loadPhase5Board() {
   return out;
 }
 
+// D635: report dirs quarantined in qa/gate/history-excluded.json are readings of a
+// tree that was known-defective and never committed. They must not enter the mode
+// distribution: a broken build can be more STABLE than a working one (an unmasked
+// BarPulse wave paints a fixed shape, so pulse-phase-0.25/0.5 read a falsely
+// deterministic 1590/1897), which drags the mode toward the defect and makes the
+// correct value read as out-of-range for as long as the entries survive.
+function loadExcludedReportDirs() {
+  const f = path.join(ROOT, "qa", "gate", "history-excluded.json");
+  if (!existsSync(f)) return new Set();
+  try {
+    const j = JSON.parse(readFileSync(f, "utf8"));
+    return new Set((j.excluded ?? []).map((e) => path.resolve(ROOT, e.reportDir)));
+  } catch {
+    return new Set();
+  }
+}
+
 // GUARD: history only from bklit-vs-migrated reports with timestamp < `before`, so a run never judges itself.
 export function loadHistory({ before, minTimestamp = "2026-08-20" } = {}) {
+  const excluded = loadExcludedReportDirs();
   const hist = new Map(); // key -> { values: number[], runs: number }
   if (!existsSync(QA_RESULTS_DIR)) return hist;
   for (const chart of readdirSync(QA_RESULTS_DIR)) {
@@ -56,6 +74,7 @@ export function loadHistory({ before, minTimestamp = "2026-08-20" } = {}) {
       continue;
     }
     for (const run of runs) {
+      if (excluded.has(path.resolve(cdir, run))) continue;
       const rp = path.join(cdir, run, "report.json");
       if (!existsSync(rp)) continue;
       let rep;
@@ -296,6 +315,7 @@ export function reportsFromResultsWindow(roster, start, end) {
     const cdir = path.join(QA_RESULTS_DIR, j.chart);
     let best = null;
     for (const run of existsSync(cdir) ? readdirSync(cdir).sort() : []) {
+      if (excluded.has(path.resolve(cdir, run))) continue;
       const rp = path.join(cdir, run, "report.json");
       if (!existsSync(rp)) continue;
       const rep = readJson(rp);

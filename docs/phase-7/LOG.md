@@ -3271,3 +3271,37 @@ path: 90 s of virtual time was pumped and a 2.5 s virtual timer did not resolve 
 verified the regime the flake is not in. The two share `settle.ts` and nothing else, so the bench
 result is evidence about `armFallback`'s logic and no evidence at all about its behaviour under a
 fake clock. Narrowed, still open.
+
+## D638 — quarantining a known-bad build's readings out of gate history
+
+`compare-qa.mjs` judges every cell against the mode distribution of its own history in
+`qa/results/<chart>/*/report.json`. That history had no exclusion mechanism of any kind, and it had
+just absorbed three runs of the broken D623 build.
+
+Those three readings are worse than merely wrong. `pulse-phase-0.75` recorded 2175 where the true
+value is 1590, which is the obvious half. The damaging half is `pulse-phase-0.25` and `0.5`
+recording a perfectly stable 1590/1897 across all three, because an unmasked wave paints a fixed
+shape — so the broken build contributed the *tightest* cluster in each cell's history and dragged
+the mode toward the defect. A gate whose history contains a defect judges the fix as the deviation.
+This is D633's shape again in a different instrument: a stale-high pin can only produce a false pass
+on a growth, and a defect-derived mode can only produce a false failure on a repair.
+
+Added `qa/gate/history-excluded.json` and a `loadExcludedReportDirs()` skip in `loadHistory()`.
+Deleting the three directories would have worked equally well for the numbers and left nothing to
+audit; a list that names the run, the defect and the D-entry survives as evidence. Effect on the two
+contaminated cells:
+
+| cell | history before | history after |
+|---|---|---|
+| pulse-phase-0.75 | 1590 x7 + **2175 x3** | 1590 x10 |
+| pulse-phase-0.25 | 1610/1622/1605/1629 + **1590 x3** | 1605-1629, n=10 |
+
+`0.25` now presents as what it is — a variance band of 24 px — instead of a bimodal distribution
+with a phantom mode at the defect. That removes most of the `pulse-var` item recorded in D635
+without any change to gate policy; what remains of it is the narrower question of whether mid-sweep
+cells should be judged by band rather than mode at all, which is a real design question and not a
+contamination artefact.
+
+Entry criterion, so this does not become a place to hide inconvenient runs: a dir belongs here only
+when the tree that produced it was known-defective **and was never committed**. A committed tree's
+readings stay in history whatever they say.

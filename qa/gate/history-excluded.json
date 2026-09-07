@@ -1,0 +1,20 @@
+{
+  "_comment": "Quarantined qa/results report dirs: readings the gate must NOT judge future runs against. A dir belongs here only when the tree that produced it was known-defective and never committed. Deleting such dirs would work too, but a list with a reason is auditable and this one is not; every entry names the run, the defect, and the D-entry. loadHistory() skips these when assembling the mode distribution.",
+  "excluded": [
+    {
+      "reportDir": "qa/results/bardepth/2026-09-07T22-25-38-711Z",
+      "gateRun": "docs/phase-7/gate/runs/2026-09-07T22-25-30-107Z",
+      "reason": "D635: measured the first D623 BarPulse attempt, which set the pulse mask/travel imperatively on a renderer-owned node. reconcile.js:99-103 stripped the style attribute on the next render, so the wave painted unmasked. pulse-phase-0.75 read 2175 (true value 1590) and pulse-phase-0.25/0.5 read a falsely STABLE 1590/1897 -- an unmasked wave paints a fixed shape. That build was never committed."
+    },
+    {
+      "reportDir": "qa/results/bardepth/2026-09-07T22-26-22-470Z",
+      "gateRun": "docs/phase-7/gate/runs/2026-09-07T22-26-13-786Z",
+      "reason": "D635: repeat 2 of the same broken build."
+    },
+    {
+      "reportDir": "qa/results/bardepth/2026-09-07T22-26-32-602Z",
+      "gateRun": "docs/phase-7/gate/runs/2026-09-07T22-26-23-886Z",
+      "reason": "D635: repeat 3 of the same broken build."
+    }
+  ]
+}
