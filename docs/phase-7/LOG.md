@@ -3363,3 +3363,45 @@ clean after D638; `0.5` still reads out-of-range at n=11 and n=12, and that
 survives as the honest residue — a cell with ten distinct values in ten runs has
 no range at any depth. That is a real property of an antialiased mid-sweep edge,
 now correctly distinguished from the thin-history noise it was buried in.
+
+## D640 — the settle cap was being spent before the scene existed
+
+`pie settle flake`: at `--repeats 5`, `openScene ?impl=bklit&chart=pie&n=1000
+never settled after 90000 virtual ms (armed=true settled=false paint=true)`. It
+did not reproduce at `--repeats 3` in three sweeps, which made it look like a
+race. It is not a race, it is a budget.
+
+The arithmetic is closed-form and already written down. `bklit-pie.tsx:16-33`
+arms `armManualSettle(pieSettleMs(1000) + 250 + 3000)`, and
+`pieSettleMs(1000) = 100 + 999*80 + 1100 = 81120`, so the real timer is at 81370
+and its fallback at **84370**. `SETTLE_CAP_OVERRIDE.pie` is **90000**. The scene
+has 5630 ms of slack — 56 loop iterations at `stepVirtual(page, 100)`.
+
+Where the slack goes: `goto` uses `waitUntil: "commit"`, which returns before the
+bundle is fetched or executed, and the loop advances the page clock by 100 virtual
+ms **every iteration, including every iteration before React has mounted**. The
+page's own `setTimeout(settleMs)` is armed at whatever virtual now has already
+become. So the scene needs `t_arm + 81370` and gets 90000 flat. Under
+`--repeats 5` the contention pushes bundle load past 56 evaluate round-trips and
+the scene is killed for loading slowly, in a message that says it never settled.
+
+Two different failures, one message. That is D636 again in a second instrument —
+there it was "the scene settled" versus "the loop hit the cap"; here it is "the
+chart never settled" versus "the page never armed".
+
+Fix: `armedAtMs` records the virtual time at which `window.__benchSettled` first
+existed, `settleCapMs` is spent from that point (`waited - armedAtMs`), and a
+separate `ARM_CAP_MS = 20000` bounds arming with its own message. `openScene`
+returns `armedAtMs` and `hover-lag.mjs` emits it per repeat beside
+`quiesceIters`, so a page that is getting slower to load is visible as itself
+rather than as a chart regression.
+
+Note what was NOT done: the cap was not raised. Raising it would have made the
+symptom go away while leaving the two failures fused, and the next chart whose
+own timer approaches its cap would have re-run this entire diagnosis. The cap is
+now a bound on the thing it is named after.
+
+**Status: mechanism proven statically, reproduction pending.** The 5630 ms margin
+and the pre-arm clock advance are both read directly off the source. That the
+`--repeats 5` abort was this and not something else is inference from the margin,
+and is not confirmed until a `--repeats 5` sweep runs clean on the fix.

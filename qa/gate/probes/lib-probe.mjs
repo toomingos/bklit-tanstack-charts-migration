@@ -42,6 +42,10 @@ export const VIRTUAL_SETTLE_CAP_MS = 20000;
 // rows. Shortening the reveal instead would hover mid-stagger = dishonest.
 // Virtual ms are wall-cheap, so a wide cap costs pump iterations, not seconds.
 export const SETTLE_CAP_OVERRIDE = { pie: 90000, radar: 90000, sunburst: 90000 };
+// D640: virtual ms allowed for `window.__benchSettled` to EXIST at all. Separate
+// from settleCapMs above, which now starts counting once it does. This one is
+// bounded by bundle load and first render; it is not sized from any animation.
+export const ARM_CAP_MS = 20000;
 export const QUIESCE_STEP_MS = 50;
 // D617-a: was 10 (500 virtual ms total). Both bklit's shared enter transition
 // (charts/animation.ts:6 DEFAULT_ANIMATION_DURATION_MS = 1100) and migrated's
@@ -151,7 +155,18 @@ export async function openScene(browser, baseUrl, params, { settleCapMs = SETTLE
   // Pump virtual time until the scenario's own settle signal fires. Poll via
   // evaluate (real time) — never waitForFunction's default rAF poll or
   // waitForTimeout here: page rAF/timers only advance via runFor below.
+  // D640: the cap bounds the SCENE's settle, so it must be spent from the moment
+  // the scene arms -- not from `goto`. `waitUntil: "commit"` returns before the
+  // bundle has loaded, and every iteration before React mounts advances the page
+  // clock by 100 virtual ms, so pre-arm load time came out of the same budget the
+  // reveal needs. pie/1000 arms `armManualSettle(84370)` (bklit-pie.tsx:16-33)
+  // against a 90000 cap: 5630 ms of slack, 56 iterations. Under `--repeats 5` the
+  // load takes more than 56 evaluate round-trips and the scene is aborted for
+  // being slow to load, reported as `never settled`. Splitting the two budgets
+  // makes "the page never armed" and "the scene never settled" different
+  // failures with different messages, which is D636's lesson in a second place.
   let waited = 0;
+  let armedAtMs = null;
   let last = null;
   for (;;) {
     last = await page.evaluate(() => {
@@ -162,11 +177,16 @@ export async function openScene(browser, baseUrl, params, { settleCapMs = SETTLE
       }
       return { armed: !!window.__gateArmed, settled: !!window.__gateSettledFlag, paint: window.__benchPaintDone === true };
     }).catch(() => null);
+    if (last?.armed && armedAtMs === null) armedAtMs = waited;
     if (last && last.armed && last.settled && last.paint) break;
     waited += 100;
-    if (waited > settleCapMs) {
+    if (armedAtMs === null && waited > ARM_CAP_MS) {
       await context.close().catch(() => {});
-      throw new Error(`openScene ${sceneUrl(baseUrl, params)} never settled after ${settleCapMs} virtual ms (armed=${last?.armed} settled=${last?.settled} paint=${last?.paint})`);
+      throw new Error(`openScene ${sceneUrl(baseUrl, params)} never armed after ${ARM_CAP_MS} virtual ms (window.__benchSettled absent -- the scene module never ran, not a settle failure)`);
+    }
+    if (armedAtMs !== null && waited - armedAtMs > settleCapMs) {
+      await context.close().catch(() => {});
+      throw new Error(`openScene ${sceneUrl(baseUrl, params)} never settled after ${settleCapMs} virtual ms post-arm (armed at ${armedAtMs} ms, settled=${last?.settled} paint=${last?.paint})`);
     }
     await stepVirtual(page, 100);
   }
@@ -201,7 +221,7 @@ export async function openScene(browser, baseUrl, params, { settleCapMs = SETTLE
       throw new Error(`openScene ${sceneUrl(baseUrl, params)} never quiesced (dimmed ${prev.dimmed} -> ${cur.dimmed}, sig ${prev.sig} -> ${cur.sig})`);
     }
   }
-  return { page, context, errors, quiesceIters, close: () => context.close() };
+  return { page, context, errors, quiesceIters, armedAtMs, close: () => context.close() };
 }
 
 // Advance virtual time by exactly ms for BOTH animation drivers: fake-clock

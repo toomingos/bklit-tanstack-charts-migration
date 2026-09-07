@@ -54,7 +54,7 @@ export async function hoverLagProbe(browser, baseUrl, { cells = DEFAULT_CELLS, r
       await installSampler(s.page, { maxMs: 1500 });
       await s.page.mouse.move(box.x + box.w * 0.5, box.y + box.h * 0.5, { steps: 10 });
       for (let v = 0; v < 1500; v += 50) await stepVirtual(s.page, 50);
-      return { rep: await readSampler(s.page), quiesceIters: s.quiesceIters, errors: [...new Set(s.errors)].slice(0, 3) };
+      return { rep: await readSampler(s.page), quiesceIters: s.quiesceIters, armedAtMs: s.armedAtMs, errors: [...new Set(s.errors)].slice(0, 3) };
     } finally {
       await s.close();
     }
@@ -64,11 +64,13 @@ export async function hoverLagProbe(browser, baseUrl, { cells = DEFAULT_CELLS, r
     for (const impl of impls) {
       const reps = [];
       const iters = [];
+      const armedAt = [];
       let errors = [];
       jobs.forEach((j, k) => {
         if (j.chart === chart && j.n === n && j.impl === impl) {
           reps.push(repResults[k].rep);
           iters.push(repResults[k].quiesceIters);
+          armedAt.push(repResults[k].armedAtMs);
           errors = errors.concat(repResults[k].errors);
         }
       });
@@ -82,6 +84,11 @@ export async function hoverLagProbe(browser, baseUrl, { cells = DEFAULT_CELLS, r
         // A cell whose settle cost varies run-to-run is measuring a moving scene,
         // and that has to be visible in the artefact, not inferred from an outcome.
         quiesceIters: iters.filter((v) => v != null),
+        // D640: virtual ms spent before window.__benchSettled existed. The settle
+        // cap is now spent from this point, so a cell whose value creeps toward
+        // the cap is a page getting slower to load, not a chart getting slower to
+        // settle -- two failures that produced one message until pie/1000 hit it.
+        armedAtMs: armedAt.filter((v) => v != null),
         firstDimMs: median(ok.map((r) => r.firstDimMs)),
         firstTooltipMs: median(ok.map((r) => r.firstTooltipMs)),
         lastChangeMs: median(ok.map((r) => r.lastChangeMs)),
