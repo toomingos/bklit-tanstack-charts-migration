@@ -52,13 +52,18 @@ under four workers. A load-induced harness timeout, not a regression.
 
 ### Probe instrument — one file, therefore one agent
 
-`qa/gate/probes/lib-probe.mjs` and `hover-lag.mjs` hold both remaining probe
-defects. They cannot be parallelised against each other.
+`qa/gate/probes/lib-probe.mjs` and `hover-lag.mjs` held both original probe
+defects; both are now fixed, and the two rows below them are what the fixes
+surfaced. `openScene` returns `quiesceIters` and hover-lag emits it per repeat
+(D636) — without it, "my change broke candlestick" and "the build was bad" were
+indistinguishable, and a day went into the wrong one.
 
 | id | task | evidence | state |
 |---|---|---|---|
-| **D617-a** | `openScene`'s virtual clock does not advance legacy's framer-motion mount, so scenes are sampled mid-mount while reporting settled | `lib-probe.mjs:129` `page.clock.install()` before `goto`; choropleth composed opacity read 0.0046 then 0.0462 minutes apart | open — **fix shape unknown, research first** |
-| **D622** | `settles-after-700ms-capture` compares virtual ms against a wall-clock threshold | `hover-lag.mjs:8` asserts "virtual ms are the same unit … as the gate's +700 ms capture"; never measured. `qa/screenshot.mjs` installs no clock | open — **fix shape unknown, research first** |
+| **D617-a** | Scenes sampled mid-mount while reporting settled | The filed diagnosis was **wrong**: `page.clock.install()` before `goto` is Playwright's documented pattern and `install()` fakes `requestAnimationFrame`. The real defect was the quiescence loop breaking on `dimmed` alone — a bucket count, blind to a sub-threshold ramp | **fixed (D617-a/D636).** Break now requires `sig` (sum of per-element `min(channel)`) stable too. Sankey used 9 iterations where it used to break at 1, and its flag is gone; repeats 1386/157/1399 → stable |
+| **D622** | `settles-after-700ms-capture` compares virtual ms against a wall-clock threshold | `hover-lag.mjs:8` asserted "virtual ms are the same unit … as the gate's +700 ms capture"; never measured. `qa/screenshot.mjs` installs no clock | **fixed (D622/D636).** Renamed `VIRTUAL_TAIL_THRESHOLD_MS` / `virtual-settle-tail>700ms`; `run-probes.mjs:19` no longer prints "Gate captures at +700 ms" into every artefact. `rulings.json` is keyed by cell id, so the rename un-ruled nothing |
+| **bar/100 tail** | `virtual-settle-tail>700ms` survives the D617-a fix (migrated `lastChange` 1129) | Flags against `quiesceIters [1,1,1]` — the scene was fully quiescent before the pointer moved, so the "reveal tail leaking into the hover window" reading in `hover-lag.mjs`'s header is **refuted** for this cell | **open (D636).** Something in migrated `bar` still mutates the DOM ~1.1 s after hover, against declared 150 ms transitions (`bar-chart-series-marks.ts:29`) |
+| **pie settle flake** | At `--repeats 5`: `openScene ?impl=bklit&chart=pie&n=1000 never settled after 90000 virtual ms (armed=true settled=false paint=true)` | Pre-existing settle loop (`lib-probe.mjs:155-172`), not the quiescence loop; `armFallback`'s net is a faked `window.setTimeout` that 90 s of virtual time should have fired. Did not reproduce at `--repeats 3` in three sweeps | **open (D636).** Filed against A15/D631's `settle.ts`, whose live verification is still outstanding. No mechanism asserted |
 
 D617-b (`dimmedCount` counting DOM levels) is **fixed and confirmed** — see §2.
 
@@ -157,6 +162,18 @@ that starts jittering is.
 - Keep scratch work **inside the repo tree**. Agents run with `external_directory: deny`; an absolute path into a session scratchpad is refused, correctly.
 - Bundle assertions go on **emitted bytes and marker strings, never `metafile.inputs`** — the barrel re-exports everything, so a module appears in `inputs` for every scenario even when fully shaken.
 - Print progress; do not go silent.
+
+### 3.3a Before the lead runs any gate
+
+**Read the runner's own build line.** It prints `building bench/app (sources newer
+than dist (<src mtime> > <dist mtime>))`. If that source mtime is inside the window
+an executor was writing, the run is meaningless and must be discarded — both impls
+share one bundle, so a mid-edit build is *not* confined to the impl being edited.
+D636: I stated this rule, refused one gate run on its authority, then ran a probe
+sweep against a tree an executor was still editing and spent the next hour treating
+the resulting bklit `candlestick finalDim 0` as a regression in my own probe fix. It
+was a bad build. Check `git status` mtimes against the last executor write; do not
+rely on remembering.
 
 ### 3.4 Lead responsibilities
 

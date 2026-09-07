@@ -16,7 +16,7 @@ export function probesToMd(p) {
   const out = ["# Gate probes", "", `Generated ${p.generatedAt}. Wall-clock ${fmtMs(p.wallClockMs)}. Probes: ${p.ran.join(", ")}.`, ""];
   const h = p.results["hover-lag"];
   if (h) {
-    out.push("## hover-lag (ms from first pointermove; medians of repeats)", "", `Gate captures at +${h.hoverWaitMs} ms. Flags: ${h.flagged.length}.`, "");
+    out.push("## hover-lag (ms from first pointermove; medians of repeats)", "", `Virtual-ms tail threshold ${h.virtualTailThresholdMs} ms (animation-design time, NOT the gate's wall-clock capture -- D622). Flags: ${h.flagged.length}.`, "");
     out.push(mdTable(["chart", "n", "bklit dim/tip/last", "migrated dim/tip/last", "bklit dimmed", "migrated dimmed", "flags"], h.pairs.map((x) => [x.chart, x.n, `${x.bklit.dim ?? "—"}/${x.bklit.tip ?? "—"}/${x.bklit.last ?? "—"}`, `${x.migrated.dim ?? "—"}/${x.migrated.tip ?? "—"}/${x.migrated.last ?? "—"}`, x.bklit.finalDim ?? "—", x.migrated.finalDim ?? "—", x.flags.join("; ")])), "");
   }
   const l = p.results["legend-hover-dim"];

@@ -43,7 +43,19 @@ export const VIRTUAL_SETTLE_CAP_MS = 20000;
 // Virtual ms are wall-cheap, so a wide cap costs pump iterations, not seconds.
 export const SETTLE_CAP_OVERRIDE = { pie: 90000, radar: 90000, sunburst: 90000 };
 export const QUIESCE_STEP_MS = 50;
-export const QUIESCE_MAX_ITERS = 10;
+// D617-a: was 10 (500 virtual ms total). Both bklit's shared enter transition
+// (charts/animation.ts:6 DEFAULT_ANIMATION_DURATION_MS = 1100) and migrated's
+// mirror (internal/animation-defaults.ts:3, same 1100) are tweens — bounded,
+// deterministic completion times, not springs with an asymptotic tail — but
+// 500 virtual ms cannot span even the shorter of the two (choropleth's own
+// 800ms default, choropleth-chart.tsx:464). A scene whose reveal rides
+// opacity (useTransform(mountProgress, ...), choropleth-feature.tsx:168) sits
+// in the SAME dimmedCount() bucket (<0.99) for nearly the whole tween, so the
+// old budget let quiescence exit on iteration 0-1, mid-mount. 100 iterations
+// gives ~5x margin over the known 1100ms constant while staying wall-cheap
+// (a scene that already found its stable count/signature on step 1 still
+// exits on step 1 -- this only raises the ceiling for scenes that need it).
+export const QUIESCE_MAX_ITERS = 100;
 
 // Dim threshold: an element counts as dimmed when its dimmest channel drops below this.
 export const DIM_THRESHOLD = 0.99;
@@ -121,7 +133,15 @@ export async function openScene(browser, baseUrl, params, { settleCapMs = SETTLE
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   // Install BEFORE goto (documented pattern) so the mount reveal
   // (setTimeout animationDuration, double-rAF paint/settle arms) is virtual
-  // from the first timer. B5: __benchSettled IS the "phase reached ready"
+  // from the first timer. D617-a follow-up: this ordering itself is not the
+  // defect -- Playwright's own docs (playwright.dev/docs/clock, "Initialize
+  // Clock and Pause at Specific Time") show `install()` then `goto()` as the
+  // recommended pattern, and `install()` fakes `requestAnimationFrame`
+  // (playwright.dev/docs/api/class-clock), which is exactly what motion's
+  // `animate()` frameloop needs to advance under `runFor`. What was actually
+  // sampling scenes mid-mount was the post-settle quiescence check below,
+  // not this install/goto order -- see the D617-a note there.
+  // B5: __benchSettled IS the "phase reached ready"
   // signal the old 3s sleep was waiting for — armBklitSettle resolves on the
   // non-ready->ready transition, and the orchestrator flips isLoaded +
   // plotData=target in that same setTimeout tick — so settled + paintDone +
@@ -150,20 +170,38 @@ export async function openScene(browser, baseUrl, params, { settleCapMs = SETTLE
     }
     await stepVirtual(page, 100);
   }
-  // Post-settle quiescence: two stable dimmed reads across a virtual step.
+  // Post-settle quiescence: two stable reads across a virtual step.
   // Replaces the old POST_SETTLE_MS=3000 blind sleep (~98 scenes, ~5 min).
+  // D617-a: stability on `dimmed` (a count of elements past the 0.99
+  // threshold) alone is blind to a continuous sub-threshold ramp -- a
+  // group opacity tweening 0 -> 0.85 keeps every element in the SAME
+  // "dimmed" bucket for the whole transition, so `dimmed` never changes and
+  // the loop broke on iteration 0 while the mount was still running
+  // (choropleth composed opacity read 0.0046, reported settled). `sig`
+  // sums each scoped element's own min(channel) -- the exact continuous
+  // quantity `dimmed` was thresholding -- so it moves on every frame an
+  // opacity/alpha channel is still animating, dimmed or not, and can only
+  // read equal across a step when nothing tracked actually changed.
+  // D636: quiesceIters is returned so callers can RECORD how much virtual time
+  // a scene actually needed. Requiring `sig` stability strictly increases the
+  // steps taken, and QUIESCE_MAX_ITERS is that requirement's consequence, not an
+  // independent knob -- the loop still breaks on the first stable pair. Without
+  // this number, "the scene settled" and "the loop ran to the cap" are
+  // indistinguishable in every artefact the probes produce.
   let prev = await dimmedCount(page);
+  let quiesceIters = 0;
   for (let i = 0; i < QUIESCE_MAX_ITERS; i++) {
     await stepVirtual(page, QUIESCE_STEP_MS);
+    quiesceIters = i + 1;
     const cur = await dimmedCount(page);
-    if (cur.dimmed === prev.dimmed) break;
+    if (cur.dimmed === prev.dimmed && cur.sig === prev.sig) break;
     prev = cur;
     if (i === QUIESCE_MAX_ITERS - 1) {
       await context.close().catch(() => {});
-      throw new Error(`openScene ${sceneUrl(baseUrl, params)} never quiesced (dimmed ${prev.dimmed} -> ${cur.dimmed})`);
+      throw new Error(`openScene ${sceneUrl(baseUrl, params)} never quiesced (dimmed ${prev.dimmed} -> ${cur.dimmed}, sig ${prev.sig} -> ${cur.sig})`);
     }
   }
-  return { page, context, errors, close: () => context.close() };
+  return { page, context, errors, quiesceIters, close: () => context.close() };
 }
 
 // Advance virtual time by exactly ms for BOTH animation drivers: fake-clock
@@ -373,6 +411,16 @@ export async function dimmedCount(page) {
       return 1;
     };
     let n = 0;
+    // D617-a: `dimmed` alone is a bucketed count (each element is either
+    // above or below DIM_THRESHOLD) and cannot see a continuous ramp that
+    // stays on one side of 0.99 for its whole duration -- exactly what a
+    // framer-motion mount opacity tween does almost everywhere except its
+    // final moment. `sig` sums the same per-element min(channel) the
+    // threshold is applied to, so it is a continuous quantity: equal across
+    // a virtual step only when nothing tracked (opacity/fill-opacity/
+    // stroke-opacity/fill+stroke alpha, any ancestor) actually changed.
+    // openScene's quiescence loop requires both to be stable.
+    let sig = 0;
     for (const el of els) {
       const st = getComputedStyle(el);
       const num = (v) => { const n2 = parseFloat(v); return Number.isFinite(n2) ? n2 : 1; };
@@ -388,9 +436,11 @@ export async function dimmedCount(page) {
       const rawFill = (el.getAttribute("fill") ?? "").toLowerCase();
       const rawStroke = (el.getAttribute("stroke") ?? "").toLowerCase();
       const chans = [eff, num(st.getPropertyValue("fill-opacity")), num(st.getPropertyValue("stroke-opacity")), colorAlpha(st.fill, rawFill), colorAlpha(st.stroke, rawStroke)];
-      if (Math.min(...chans) < 0.99) n++;
+      const dimmest = Math.min(...chans);
+      sig += dimmest;
+      if (dimmest < 0.99) n++;
     }
-    return { dimmed: n, total: els.length };
+    return { dimmed: n, total: els.length, sig };
   });
 }
 

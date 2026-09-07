@@ -1,0 +1,13 @@
+{
+  "generatedAt": "2026-09-07T22:44:39.209Z",
+  "runDir": "docs/phase-7/gate/runs/2026-09-07T22-43-46-044Z",
+  "wallClockMs": 53163,
+  "ran": [
+    "hover-lag"
+  ],
+  "errors": {
+    "hover-lag": "Error: openScene http://localhost:5198/?impl=bklit&chart=pie&n=1000 never settled after 90000 virtual ms (armed=true settled=false paint=true)\n    at openScene (file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/probes/lib-probe.mjs:169:13)\n    at async file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/probes/hover-lag.mjs:48:15\n    at async worker (file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/lib.mjs:303:22)\n    at async Promise.all (index 0)\n    at async runPhase (file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/lib.mjs:307:5)\n    at async runPool (file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/lib.mjs:314:5)\n    at async hoverLagProbe (file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/probes/hover-lag.mjs:47:22)\n    at async runProbes (file:///Users/tomasdomingos/bklit-tanstack-charts-migration/qa/gate/probes/run-probes.mjs:59:53)"
+  },
+  "summary": {},
+  "results": {}
+}

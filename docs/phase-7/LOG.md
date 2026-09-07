@@ -3169,3 +3169,67 @@ GATE_PX 4800.
 
 Baseline correction: I had recorded "260 tests / 210 pass" as the post-BarPulse-file baseline. Those
 are two different trees — 260/202 without the file, 268/210 with it.
+
+## D636 — the quiescence fix is sound; the candlestick scare was my own mid-edit build
+
+D617-a (quiescence stability on `sig`, not on the `dimmed` bucket alone) and D622 (the hover-lag
+threshold renamed to `VIRTUAL_TAIL_THRESHOLD_MS`, and `run-probes.mjs:19` stopped printing "Gate
+captures at +700 ms" into every artefact) were held uncommitted on one open worry: bklit
+`candlestick` `finalDim` had read 3009 in 3/3 repeats at Gate 4 and 3009 in only 1/3 after the fix.
+That number is the basis of upstream issue #135.
+
+Settled, and not in the direction I expected. A clean `--only hover-lag --repeats 3` on the current
+tree reads **bklit candlestick 3009 in 3/3, `lastChange` 401, migrated 2999** — Gate 4's values.
+Nothing to correct upstream.
+
+The cause of the bad reading was mine. The 22:24:14 probes run rebuilt `bench/app` at 22:24:18 from
+sources last written at 22:20:59 — while the BarPulse executor was still editing
+`showcase/migrated`. Both impls share one bundle, so a mid-edit build is not confined to the impl
+being edited. I had written the rule that forbids exactly this, refused one gate run on those
+grounds an hour earlier, and then ran a probe sweep against the same moving tree. **A stated rule I
+applied once is not a rule I have.** The check has to be mechanical: compare source mtimes against
+the last executor write before trusting any run, which is what the runner already prints and I did
+not read.
+
+### The instrument this was missing
+
+I could not distinguish "my change broke candlestick" from "the build was bad" because nothing
+recorded how much settling a scene actually did. `openScene` now returns `quiesceIters` and
+hover-lag emits it per repeat (D634's rule: name the instrument beside the number). First reading:
+
+| cell | bklit iters | migrated iters |
+|---|---|---|
+| candlestick/1000 | 1, 1, 1 | 1, 1, 1 |
+| sankey/33 | **9**, 1, 1 | 1, 1, 1 |
+| heatmap/52 | 3, 3, 3 | 1, 1, 1 |
+| liveline/100 | 2, 2, 1 | 1, 1, 1 |
+| every other cell | 1, 1, 1 | 1, 1, 1 |
+
+Three things follow immediately. First, candlestick quiesces on iteration 1, so neither `sig` nor
+the raised cap can reach it — my change was never a candidate cause, and one number would have said
+so before any of the speculation. Second, sankey's 9 is D617-a's target case caught in the act: under
+the old `dimmed`-only condition it broke at 1, mid-reveal, which is why its repeats read
+1386/157/1399. Its flag is now gone. Third, `QUIESCE_MAX_ITERS` at 100 is near-inert — the observed
+maximum is 9 — so the cap raise is cheap insurance, and `sig` is the change that did the work. I had
+recorded these as two fixes; they are one fix and one guard.
+
+### bar/100's surviving flag: one hypothesis eliminated
+
+`bar/100` still flags `virtual-settle-tail>700ms` (migrated `lastChange` 1129), and it now flags
+against `quiesceIters [1,1,1]` — the scene was fully quiescent before the pointer moved. That
+refutes the explanation standing in `hover-lag.mjs`'s own header, which reads the flagged cells as
+"a reveal tail leaking into the hover window, most likely via the same premature-quiescence gap
+D617-a fixed in openScene". For sankey that was right and the fix removed the flag. For bar/100 it
+is wrong: there is no reveal tail left to leak. Something in migrated `bar` is still mutating the
+DOM ~1.1 s after the hover, on a chart whose declared hover transitions are 150 ms
+(`bar-chart-series-marks.ts:29`). Open, and now genuinely narrowed rather than merely restated.
+
+### Second flake, recorded not chased
+
+At `--repeats 5` the sweep aborted: `openScene .../?impl=bklit&chart=pie&n=1000 never settled after
+90000 virtual ms (armed=true settled=false paint=true)`. That is the pre-existing settle loop
+(`lib-probe.mjs:155-172`), not the quiescence loop, and `armFallback`'s net is a faked
+`window.setTimeout` that 90 s of virtual time should have fired. It did not reproduce at
+`--repeats 3` in three sweeps. `settle.ts` is A15/D631's file and A15's live verification is still
+outstanding, so this is filed as an open item against that vector with its exact error string, and
+no mechanism is asserted.
