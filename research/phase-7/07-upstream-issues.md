@@ -18,6 +18,7 @@ Ruling (user, 2026-09-04): file issues only, no PRs, and only for features other
 | I6 ([#130](https://github.com/TanStack/charts/issues/130)) | `@tanstack/react-charts` peer `react` `^19.0.0` although only React 18 hooks are used | none | **File** | now |
 | I7 ([#133](https://github.com/TanStack/charts/issues/133)) | Height-aware resize: `createChartScene` derives `height` from `width / aspectRatio` (`renderer.js:720`) and its ResizeObserver re-renders only when the width changes (`:187-191`); a container sized by CSS height (grid rows, fixed-height cards, a brush track below the plot) never updates the scene | none found (issues grepped for "height", "ResizeObserver", "aspect") | **Filed 2026-09-07** (evidence: D541, brush/1000 and barloading/100 cells) | done |
 | I8 ([#134](https://github.com/TanStack/charts/issues/134)) | Focus-aware axis tick-label opacity (`ChartAxisTickLabelContext` has no focus member, `types.d.ts:193-202`) and mark states for point-less area marks (`mark-state.js:123,131,158`; `areaFill` emits `points: []`) | none found (issues grepped for "tick label", "opacity", "states", "area") | **Filed 2026-09-07**, with the D587 headless repro | done |
+| I9 (**drafted, not filed — needs owner approval**) | Every chart bundle carries a fixed ~44.3kB (min) d3 tail regardless of what the chart uses: `d3-selection` 12.4kB, `d3-transition` 10.7kB, `d3-brush` 8.9kB, `d3-time-format` 8.8kB, plus `d3-dispatch`/`d3-timer`/`d3-drag`. A pie chart with no brush, no time axis and no imperative DOM ships all of it | none found | **Draft below.** Not filed: item 9's gate is "phase 8", not the owner's GitHub account that gated I7/I8 | owner decision |
 | — ([#131](https://github.com/TanStack/charts/issues/131)) | F-260 static guide stroke treatment (dashed grid) | **F-260** (open, `API-FRICTION.md:7800`). | Do not open a new issue; **add an evidence comment** on the friction entry's tracking issue if one exists, else a short issue referencing F-260, with the bklit default `strokeDasharray="4,4"` grid | now |
 | — | F-261 per-corner bar radius | **F-261** (open). | Drop. bklit uses uniform `rx`; not our gap. | — |
 | — | Funnel mark | #81 (merged) added catalog case `125-sales-funnel` from `areaX` + `text`. | Do not file. Composition of existing marks; we migrate to it (V3.1). | — |
@@ -165,3 +166,37 @@ Not a new issue. F-260 "Static guides cannot express stroke treatment" is open i
 - File from the user's GitHub account; record issue numbers here and in the Phase 7 LOG entry.
 - After filing, link I1 from the `withStates` wrapper, I2 from the legend hover hook, I4 and I5 from `internal/resource-host.tsx` (the R10 seam comment), I6 from `showcase/migrated/package.json`, and F-260 from the grid style constants, so the interim code names its upstream ask.
 - Re-check this table when the pin moves (0.16.0 → next): maintainer turnaround on scoped issues has been days, so an ask may already be shipped.
+
+
+## I9 — A fixed d3 tail in every chart bundle (drafted 2026-09-07, not filed)
+
+**Not filed.** I7 and I8 were filed because POST-PHASE-7 items 2 and 3 gate them on "the owner's
+GitHub account". Item 9 is gated "phase 8", so this draft waits for the owner rather than going out
+on that authority.
+
+Measured from esbuild metafiles over the 43 parity scenarios
+(`bench/measure-bundle.mjs`, `BUNDLE_METAFILE_DIR=`; D597). Three structurally unrelated charts —
+pie, funnel, sunburst — emit an **identical** d3 payload; only the chart-specific pieces differ
+(`d3-hierarchy` in sunburst, `d3-shape`/`d3-path` in pie):
+
+| module | bytes (min) | why it is surprising |
+|---|---|---|
+| `d3-color` | 14.2kB | |
+| `d3-selection` | 12.4kB | imperative DOM selection in a declarative renderer |
+| `d3-transition` | 10.7kB | |
+| `d3-brush` | 8.9kB | **a pie chart has no brush** |
+| `d3-time-format` | 8.8kB | **a pie chart has no time axis** |
+| `d3-interpolate` | 7.6kB | |
+| `d3-format`, `d3-time`, `d3-scale`, `d3-array`, `d3-dispatch`, `d3-timer`, `d3-drag`, `d3-ease` | 18.1kB | |
+
+The importer is the package, not the consumer: in `migrated-pie`, `@tanstack/charts` is what pulls
+`d3-brush/src/index.js` and `d3-selection/src/index.js`. The consuming app's own d3 imports are
+small, chart-specific and partly `import type` (zero runtime cost).
+
+Ask: entry points, or `sideEffects` metadata, that let a bundler drop brush, time formatting and the
+imperative selection/transition stack from charts that use none of them.
+
+Honest scope note to include if filed: fixing this does **not** bring this repo's bundles to its own
+≤1.10 parity target. Removing the whole tail moves funnel 1.411 → 1.236, pie 1.358 → 1.194,
+sunburst 1.608 → 1.427. It is worth filing because ~15.9kB gzip of unused code in every chart is
+worth fixing on its own terms, not because it closes that gap.

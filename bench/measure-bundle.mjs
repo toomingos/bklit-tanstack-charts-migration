@@ -207,6 +207,18 @@ for (const { impl, chart } of combos) {
     const raw = contents.byteLength;
     const gzip = gzipSync(Buffer.from(contents)).length;
 
+    // Opt-in, off by default: BUNDLE_METAFILE_DIR=<dir> writes each scenario's
+    // esbuild metafile so bytes can be attributed by source package. Used to
+    // answer whether the migrated/bklit ratio is per-chart cost or a shared
+    // core (item 9). Never written by a normal gate run.
+    if (process.env.BUNDLE_METAFILE_DIR) {
+      mkdirSync(process.env.BUNDLE_METAFILE_DIR, { recursive: true });
+      writeFileSync(
+        resolve(process.env.BUNDLE_METAFILE_DIR, `${impl}-${chart}.json`),
+        JSON.stringify(result.metafile),
+      );
+    }
+
     results[`${impl}/${chart}`] = { raw, gzip };
     console.log(
       `  ${impl}/${chart}: raw=${(raw / 1024).toFixed(1)} kB  gzip=${(gzip / 1024).toFixed(1)} kB`,

@@ -1308,3 +1308,53 @@ conclusion from them.
 Both files carry hand-written provenance rather than generated prose: a `note` and a `pinnedAt` that
 still described the old source would make the artefact lie about where its numbers came from, which
 is the same failure mode as a stale measurement.
+
+## D597 — Item 9: the ≤1.10 bundle target is not reachable at 0.16.0, and the reason is upstream
+
+POST-PHASE-7 §5 asks item 9 for "the surviving over-1.10 count, whatever it is, against re-pinned
+values — a measured number, not a target." Against D596's pins that number is **41 of 43**,
+unchanged from before the re-pin, which is the first thing worth stating: re-pinning moved every
+one of the 43 pins and moved the parity count by zero. The two claims are independent, and the
+gate keeps them that way.
+
+**The Wave C audit premise was wrong, and the run already disproved it.** §3 expected "the 41/43
+count drops sharply once the showcase stops pulling the package in twice", and made that the audit
+four executors would wait on. G4 landed at `8d615fa`. The count is still 41. The audit was worth
+running exactly as §3 argued; it just answers in the negative, and it did not need five agents.
+
+**Where the bytes actually are.** From esbuild metafiles over all 104 scenario bundles
+(`BUNDLE_METAFILE_DIR=`, opt-in and off by default so no gate run writes them), sunburst:
+
+| bucket | bklit | migrated |
+|---|---|---|
+| chart layer | `bklit-ui` 134.8kB | `@tanstack/charts` 143.2kB |
+| d3-* | — | **91.0kB** |
+| adapter | — | `showcase/migrated` 43.7kB |
+| shared | 106.3kB | 106.4kB |
+
+The TanStack core is not the outlier — it is within 9kB of bklit's own chart layer. The excess is
+d3, which bklit's sunburst does not pull at all.
+
+**And most of that d3 is unconditional.** Pie, funnel and sunburst — three structurally unrelated
+charts — emit an *identical* d3 payload; only the chart-specific pieces vary. The fixed part is
+44.3kB min (~15.9kB gzip): `d3-selection` 12.4, `d3-transition` 10.7, `d3-brush` 8.9,
+`d3-time-format` 8.8, plus dispatch/timer/drag. **A pie chart ships d3-brush and d3-time-format** —
+it has neither a brush nor a time axis. The importer is the package: in `migrated-pie`,
+`@tanstack/charts` is what pulls `d3-brush/src/index.js` and `d3-selection/src/index.js`. The
+consuming code's own d3 imports are small, chart-specific, and several are `import type` with no
+runtime cost.
+
+**Which settles the disposition.** Four executors partitioned by chart family, as §3 planned, would
+have been optimising `showcase/migrated` — 43.7kB of a 389kB bundle — against a cost they cannot
+reach. Under principle 2 this is a stamped ruling and an upstream issue, not a second
+implementation. Drafted as **I9** in `research/phase-7/07-upstream-issues.md`; **not filed**, because
+I7 and I8 went out under items 2 and 3, which gate them on the owner's GitHub account, and item 9
+is gated "phase 8" instead. That is the owner's call, not mine to take on their behalf.
+
+**The ruling.** ≤1.10 is unreachable at 0.16.0 and should not be carried as an open target. Removing
+the entire unconditional tail still leaves funnel 1.411 → 1.236, pie 1.358 → 1.194, sunburst
+1.608 → 1.427. No arrangement of the consuming code closes a gap that survives deleting the largest
+upstream defect. Item 9 is therefore **done as specified** — the count is measured and reported
+against re-pinned values — and the target itself is stamped unreachable pending upstream
+granularity. What replaces it is the parity ratio as a *recorded* number that must not silently
+grow, which is what `ratioOver` already does.
