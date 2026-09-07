@@ -88,8 +88,17 @@ export function probeColorAlpha(color, raw = "") {
 
 // Dimmed when ANY channel (opacity, fill-opacity, stroke-opacity, fill alpha,
 // stroke alpha) drops below threshold — combined by MIN, not product.
-export function probeIsDimmed({ opacity, fillOpacity, strokeOpacity, fill, stroke, rawFill, rawStroke } = {}) {
-  const chans = [numOrOne(opacity), numOrOne(fillOpacity), numOrOne(strokeOpacity), probeColorAlpha(fill, rawFill), probeColorAlpha(stroke, rawStroke)];
+// Only `opacity` composes down the ancestor chain (multiplicatively); the
+// fill/stroke channels stay per-element. Ancestor opacities ride on
+// `ancestorOpacities` (outermost order irrelevant — it is a product); the
+// default [] preserves the legacy own-value-only behaviour.
+export function probeEffectiveOpacity(ownOpacity, ancestorOpacities = []) {
+  let eff = numOrOne(ownOpacity);
+  for (const a of ancestorOpacities ?? []) eff *= numOrOne(a);
+  return eff;
+}
+export function probeIsDimmed({ opacity, fillOpacity, strokeOpacity, fill, stroke, rawFill, rawStroke, ancestorOpacities = [] } = {}) {
+  const chans = [probeEffectiveOpacity(opacity, ancestorOpacities), numOrOne(fillOpacity), numOrOne(strokeOpacity), probeColorAlpha(fill, rawFill), probeColorAlpha(stroke, rawStroke)];
   return Math.min(...chans) < DIM_THRESHOLD;
 }
 
@@ -222,7 +231,16 @@ export async function installSampler(page, { maxMs = 2000 } = {}) {
     const isDimmedEl = (el) => {
       const st = getComputedStyle(el);
       const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 1; };
-      const chans = [num(st.opacity), num(st.getPropertyValue("fill-opacity")), num(st.getPropertyValue("stroke-opacity"))];
+      // Ancestor-composed opacity: walk up multiplying each ancestor's OWN
+      // opacity (computed opacity is the specified value, not the visual
+      // product), stopping at the svg / chart root. Robust to "" (num->1).
+      let eff = 1;
+      for (let node = el; node && node !== document.documentElement; node = node.parentElement) {
+        try { eff *= num(getComputedStyle(node).opacity); } catch { /* treat as 1 */ }
+        const tag = node.tagName ? node.tagName.toLowerCase() : "";
+        if (tag === "svg" || node.id === "chart-root") break;
+      }
+      const chans = [eff, num(st.getPropertyValue("fill-opacity")), num(st.getPropertyValue("stroke-opacity"))];
       // Per-channel hints: a combined string let stroke's keyword veto fill's
       // alpha, which probeIsDimmed never did (it takes rawFill/rawStroke).
       const rawFill = (el.getAttribute("fill") ?? "").toLowerCase();
@@ -358,10 +376,18 @@ export async function dimmedCount(page) {
     for (const el of els) {
       const st = getComputedStyle(el);
       const num = (v) => { const n2 = parseFloat(v); return Number.isFinite(n2) ? n2 : 1; };
+      // Ancestor-composed opacity (mirror of installSampler above): only the
+      // opacity channel composes; fill/stroke channels stay per-element.
+      let eff = 1;
+      for (let node = el; node && node !== document.documentElement; node = node.parentElement) {
+        try { eff *= num(getComputedStyle(node).opacity); } catch { /* treat as 1 */ }
+        const tag = node.tagName ? node.tagName.toLowerCase() : "";
+        if (tag === "svg" || node.id === "chart-root") break;
+      }
       // Per-channel hints; a combined string let one channel's keyword veto the other (D616).
       const rawFill = (el.getAttribute("fill") ?? "").toLowerCase();
       const rawStroke = (el.getAttribute("stroke") ?? "").toLowerCase();
-      const chans = [num(st.opacity), num(st.getPropertyValue("fill-opacity")), num(st.getPropertyValue("stroke-opacity")), colorAlpha(st.fill, rawFill), colorAlpha(st.stroke, rawStroke)];
+      const chans = [eff, num(st.getPropertyValue("fill-opacity")), num(st.getPropertyValue("stroke-opacity")), colorAlpha(st.fill, rawFill), colorAlpha(st.stroke, rawStroke)];
       if (Math.min(...chans) < 0.99) n++;
     }
     return { dimmed: n, total: els.length };
