@@ -1050,10 +1050,12 @@ async function captureLoad(browser, baseUrl, { impl, chart, n, state }) {
       label: "depth-on",
     });
 
-    // (c) BarPulse phase-freeze: the requested contract
-    // (window.__qaSetBarPulsePhase(t), t a fraction through the 2.4s
-    // sweep) is NOT implemented on EITHER scenario side as of this
-    // dispatch -- bklit's real BarPulse animates via a motion.rect
+    // (c) BarPulse phase-freeze: window.__qaSetBarPulsePhase(t), t a fraction
+    // through the 2.4s sweep. NOW WIRED ON BKLIT ONLY
+    // (bench/app/src/scenarios/bklit-bardepth.tsx). The migrated side has no
+    // phase to seek while D590 stands, so this capture is asymmetric and the
+    // paired-hover guard above records the 4 extra frames as unmeasured.
+    // Historical note -- bklit's real BarPulse animates via a motion.rect
     // spring/WAAPI loop with no phase-seek entry point in its public
     // props (BarPulseProps only has dataKey/activeIndex/pulsePaused), and
     // dispatch C's internal/bar-pulse-mark.ts currently builds one static
@@ -1134,7 +1136,32 @@ async function runComparison(browser, baseUrl, { chart, n, implA, implB, selfTes
 
   // Hover states (none in loading mode: capA/capB.hovers are empty —
   // loading chrome has no tooltip contract)
-  for (let i = 0; i < capA.hovers.length; i++) {
+  //
+  // A14: the two impls can capture different numbers of hover states when a
+  // capture hook exists on one side only -- bklit/bardepth wires
+  // __qaSetBarPulsePhase (4 extra pulse-phase frames) and migrated cannot,
+  // because its BarPulse never animates (D590), so there is no phase to seek.
+  // Indexing capB by capA's length then threw TypeError and lost the whole
+  // cell, settled comparison included. Compare the paired states and record
+  // the unpaired ones as a failure: an asymmetric capture is not a pass.
+  const unpairedHovers = [];
+  const pairedHoverCount = Math.min(capA.hovers.length, capB.hovers.length);
+  if (capA.hovers.length !== capB.hovers.length) {
+    const longSide = capA.hovers.length > pairedHoverCount ? implA : implB;
+    const extra = (capA.hovers.length > pairedHoverCount ? capA.hovers : capB.hovers).slice(pairedHoverCount);
+    for (const hov of extra) {
+      unpairedHovers.push({
+        name: hov.label ?? `hover-${Math.round((hov.fraction ?? 0) * 100)}`,
+        impl: longSide,
+        reason: `captured on ${longSide} only -- the other impl produced no matching state, so this state is unmeasured`,
+      });
+    }
+    console.log(
+      `[qa] ${chart} n=${n}: hover capture asymmetry -- ${implA}=${capA.hovers.length} ${implB}=${capB.hovers.length}; ` +
+        `comparing ${pairedHoverCount} paired state(s), ${unpairedHovers.length} unpaired (${unpairedHovers.map((u) => u.name).join(", ")})`,
+    );
+  }
+  for (let i = 0; i < pairedHoverCount; i++) {
     const hA = capA.hovers[i];
     const hB = capB.hovers[i];
     const fraction = hA.fraction ?? HOVER_FRACTIONS[i];
@@ -1192,7 +1219,10 @@ async function runComparison(browser, baseUrl, { chart, n, implA, implB, selfTes
   // happens to be small. Per research/05: "record that as a failure ...
   // don't silently continue" -- it must not be masked by an otherwise-small
   // diffRatio.
-  const overallPass = comparisons.every((c) => c.pass) && tooltipFailures.length === 0;
+  // A14: unpaired hover states count against the report for the same reason a
+  // failed tooltip assertion does -- the pair isn't measuring what it claims.
+  const overallPass =
+    comparisons.every((c) => c.pass) && tooltipFailures.length === 0 && unpairedHovers.length === 0;
 
   const report = {
     chart,
@@ -1206,6 +1236,7 @@ async function runComparison(browser, baseUrl, { chart, n, implA, implB, selfTes
     viewport: { ...VIEWPORT, deviceScaleFactor: DEVICE_SCALE_FACTOR },
     comparisons,
     tooltipFailures,
+    unpairedHovers,
     overallPass,
   };
 

@@ -271,9 +271,15 @@ not taken on the agent's word.
 | A11 | One ruling bound is wide enough to blind its cell | `rulings.json:10` rules `barloading/100/hover-30` under 161,310 px — 16.8% of the viewport | D588 refused a 24,407 px bound for `arealoading` for exactly this reason; this one predates it and stands |
 | A12 | A failed stage renders as "not run" | `run-all.mjs:22-34` records `ok:false` and returns `null`; `summarize.mjs:113-123` renders the missing artefact as "not run" with no issue | the exit code is right, `SUMMARY.md` alone can be misread as clean |
 | A13 | A harness that errored but wrote PNGs does not fail | `compare-qa.mjs:198-213` counts `runsNonZeroExit` and excludes it from `gateFail` | a crashed sweep can produce a passing matrix |
+| A14 | An asymmetric hover capture destroys the whole cell | `screenshot.mjs:1137` indexes `capB.hovers` by `capA`'s length; bklit/bardepth wires `__qaSetBarPulsePhase` and migrated cannot (D590), so the loop throws | `bardepth/100` produced no report at all — settled comparison included (**fixed, D595**) |
 
 A1–A4 and A9 are cheap and should land before Gate 1, so the first measurement through the fixed
 instrument is not itself stale. A11 needs a D-entry, not a patch.
+
+A1–A4, A9 and A11 landed in D594; A14 was found by the re-run itself and fixed in D595. Gate 1 has
+been repeated through the fixed instrument (D595), which unblocks items 7 and 8 — with
+`migrated/scatter/1000` m1b held out of item 7, since it is a live 1.98× regression against the
+in-run bklit control rather than baseline drift. A5–A8, A10, A12 and A13 remain.
 
 ### Waste — where the 67m44s goes
 

@@ -1,0 +1,38 @@
+{
+  "label": "7.6 gate: fixed instrument (30c0e1a), A1-A4+A9",
+  "runDir": "docs/phase-7/gate/runs/2026-09-07T09-01-26-415Z",
+  "wallClockMs": 2982048,
+  "stages": [
+    {
+      "name": "checks",
+      "ok": true,
+      "durationMs": 29444
+    },
+    {
+      "name": "qa",
+      "ok": true,
+      "durationMs": 188109
+    },
+    {
+      "name": "probes",
+      "ok": true,
+      "durationMs": 63172
+    },
+    {
+      "name": "bundle",
+      "ok": true,
+      "durationMs": 24257
+    },
+    {
+      "name": "bench",
+      "ok": true,
+      "durationMs": 2677009
+    },
+    {
+      "name": "summary",
+      "ok": true,
+      "durationMs": 57
+    }
+  ],
+  "issues": 52
+}

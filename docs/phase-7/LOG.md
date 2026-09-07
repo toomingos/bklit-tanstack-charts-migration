@@ -1198,3 +1198,75 @@ refused a 24,407 px bound for `arealoading`.
 Not touched here: A5–A8, A10, A12, A13. A5 (`--bench-parallel` runs bench beside QA under a
 re-entrant lock) is the one that matters most of those, and it is a behaviour change to a flag
 rather than a cheap correction.
+
+## D595 — The 7.6 gate through the fixed instrument: one misattribution corrected, one cell recovered
+
+The re-run D594 said had to happen. `pnpm gate:all -- --bench all --probes --issues` at `30c0e1a`,
+49m42s, exit 0, all stages green: checks 29.4s, qa 3m08s, probes 63.2s, bundle 24.3s, bench 44m37s.
+**52 issues, against 58 at `4ee2ef6`.** Run: `docs/phase-7/gate/runs/2026-09-07T09-01-26-415Z/`.
+
+**A1 and A2 verified in flight, not just in review.** `latest.json` carries
+`m2cSource.mtime = 09:06:19.904Z` — the bundle measurement from *this* run, read by a bench that
+started at 09:06:32. The stage order is now proven by the artefact rather than by the source. The
+bundle record carries `cssMeasured: true`, `cssMeasureExit: 0`, 43 CSS rows.
+
+**Ten issues resolved.** `qa:arealoading/1000:motion/reveal` — the D593 wash fix, confirmed at gate
+level. `census` — the D593 ledger entry. And eight QA cells (sunburst ×3, scatter ×2, radar, brush,
+sankey) that D593 filed as "pre-existing, within historical range" **did not reproduce**. That
+upgrades the D593 verdict: they were not standing deviations, they were flake, and the record should
+say so.
+
+**The correction.** D593 attributed `migrated/scatter/1000` m1b to the D588 harness signature —
+"the harness lost the machine, not the chart." That was wrong. It reproduces:
+
+| | m1b settle |
+|---|---|
+| bklit/scatter/1000 (same run, same machine) | 1266.3 |
+| migrated/scatter/1000 | **2505.3** |
+
+1.98× the legacy control, with `p95` 2506 against a value of 2505.3 over 7 samples. A harness that
+has lost the machine produces spread; this is deterministic. It ran +99.0% in the 23-56 run and
++99.1% here, two independent runs agreeing to a tenth of a point. The in-run controls settle the
+question the stale baseline could not: `migrated/line/1000` is 1163.7 against bklit's 1157.7
+(+0.5%) and `migrated/area/1000` is 1173.6 against 1160.0 (+1.2%) — parity. Only scatter doubles,
+and 2505 is almost exactly twice the ~1250ms reveal every other cell shows, which reads as scatter
+revealing twice. **Item 7 must not adopt this cell's m1b**: pinning 2505 as the new baseline would
+enshrine a 2× regression, which is the precise failure the D594 sequencing argument exists to
+prevent. Held, and the flag stands until the double reveal is found.
+
+**Four new issues, none of them a chart defect.** Two are bench cells that got *faster* than the
+phase-5 baseline (`bklit/line/10000` m1c −20.1%, `tanstack/scatter/1000` m1b −35.4%) — stale-baseline
+artefacts, item 7's territory. Two are `out-of-range` **low**: `candlestick/1000` hover-30 at 1662 px
+against a 58-run floor of 1675, and `ring/4` hover-30/50 likewise just under. These are the best
+those cells have ever measured; the band check is two-sided, so a new best trips it. Worth knowing,
+not worth fixing.
+
+**Candlestick's probe flag is structural.** `probe:hover-lag:candlestick/1000` is new
+(`tooltip-lag>200ms`: bklit 67ms, migrated 270ms). The same row shows migrated dimming **2998**
+elements where bklit dims **999** — exactly 3×, migrated giving body and two wicks separate
+dimmable nodes where bklit dims one group. Dimming 3× the nodes is a sufficient explanation for a
+4× tooltip lag, and the probes ran before bench so the machine was quiet. Not noise; a composition
+difference with a measurable cost.
+
+**A14 — an asymmetric capture destroyed a whole QA cell.** `bardepth/100` produced no report at
+all: `TypeError: Cannot read properties of undefined (reading 'buffer')` at `qa/screenshot.mjs:1144`.
+The hover loop indexes `capA.hovers` and assumes `capB` matches. It no longer does —
+`bench/app/src/scenarios/bklit-bardepth.tsx:67` now wires `__qaSetBarPulsePhase`, so bklit captures
+four extra `pulse-phase-*` frames and migrated captures none, **because its BarPulse never animates
+(D590) and there is no phase to seek**. The comment at the capture site still claimed the hook was
+"NOT implemented on EITHER scenario side"; that premise went stale when bklit wired it, which is
+why no guard was ever written. D590 had quietly taken out the one QA cell able to observe it.
+
+Fixed the way the file already handles this class — collect, then fold into `overallPass`, as
+`tooltipFailures` does. The cell now yields data instead of an exception:
+
+    bklit=9 migrated=5; comparing 5 paired state(s), 4 unpaired
+      settled  PASS 0.0000%   hover-30/50/70, depth-off, depth-on  PASS 0.15-0.22%
+    overall: FAIL
+
+Six comparisons recovered, `settled` pixel-perfect, and the report still fails because four states
+are unmeasured. An asymmetric capture is not a pass — the same rule A3 applied to the bundle stage.
+
+Standing after this run: 30 bundle pins (item 8) and 7 of 9 bench flags (item 7) are stale-instrument
+debt, not defects. The live defects are the scatter double reveal, D590, and the candlestick dim
+fan-out.
