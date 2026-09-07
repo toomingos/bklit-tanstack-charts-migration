@@ -697,6 +697,37 @@
   animation: ts-bkm-loading-sweep 2s linear infinite;
 }
 
+/* --- BarPulse wave travel (D590; CSS keyframes, never WAAPI per G14) --------
+   The wave rect parks at sweep start (bar bottom, y attribute from the mark)
+   and this loop carries it toward the bar top over PULSE_WAVE_DURATION_S
+   (2.4s, ease-in-out, snap-back loop) to match bklit's translateY sweep.
+   Per-bar travel arrives via --bkm-bar-pulse-travel (px, set on an ancestor;
+   custom properties inherit into the SVG); unset it falls back to one
+   wave-height (transform-box: fill-box pins the percentage to the rect).
+   No rAF, no .animate(), no second renderer. */
+@keyframes ts-bkm-bar-pulse-sweep {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(var(--bkm-bar-pulse-travel, -100%));
+  }
+}
+[data-bkm-chart] .ts-bkm-bar-pulse-wave {
+  transform-box: fill-box;
+  animation: ts-bkm-bar-pulse-sweep 2.4s ease-in-out infinite;
+  /* Seam silhouette crop (D590): url set as --bkm-bar-pulse-mask on the chart
+     root; none until the first scene publish parks the wave unmasked. */
+  mask-image: var(--bkm-bar-pulse-mask, none);
+  -webkit-mask-image: var(--bkm-bar-pulse-mask, none);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-bkm-chart] .ts-bkm-bar-pulse-wave {
+    animation: none;
+  }
+}
+
 /* --- Legend hover dim (bklit globals.css:126-132) — UNSCOPED, must match
       exactly; Legend/ChartLegend/ProfitLossLegend render outside [data-bkm-chart] --- */
 .legend-container:has([data-hovered]) > *:not([data-hovered]) {

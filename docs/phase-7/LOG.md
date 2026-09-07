@@ -1447,3 +1447,54 @@ one resolving synchronously from a render callback. Across all 29 benched cells 
 58, exit 0, `^not ok` 0 — the exact baseline. Not re-benched here; the item 7 hold on
 `migrated/scatter/1000` m1b stays at 1258.6 until a serial gate run measures the cell, which is the
 only thing that can retire it.
+
+### D600 — BarPulse restored to bklit geometry: root-to-tip sweep, silhouette crop, negative bars
+
+**Defect (D590).** The migrated BarPulse rendered a wave that did not move and did not match
+bklit. Three separate faults, found by reading `showcase/repos/bklit-ui/.../charts/bar-depth.tsx`
+(:1024-1075) as ground truth rather than by reasoning about the port:
+
+1. **No motion.** The wave had no animation at all — the pulse-check probe measured
+   `changed over 900ms after unpause: 0` for migrated against `1` for bklit.
+2. **Amplitude ~3× short and direction wrong.** bklit sweeps root-to-tip across the full bar plus
+   the wave height; the port swept a fixed short distance in the wrong direction.
+3. **Crop missing.** bklit clips the wave to the bar silhouette (`clipPath`); the port let it paint
+   outside the bar.
+
+**Fix.** Geometry now derives exactly as bklit does:
+`waveHeight = max(barHeight * PULSE_WAVE_HEIGHT_RATIO, PULSE_WAVE_HEIGHT_MIN_PX)`,
+`yAboveLid = topY - perspectiveRise - waveHeight`, and the sweep runs floor→lid for positives,
+lid→floor for negatives. `resolvePulseBarFrame` now derives `topY = min(baseline, valuePos)` /
+`bottomY = max(...)` and carries `isNegative`. One helper (`resolveBarPulseSweep`) feeds **both**
+the mark and the seam, so scene and CSS cannot drift apart.
+
+**Motion is CSS keyframes, never WAAPI (G14).** `@keyframes ts-bkm-bar-pulse-sweep` runs
+`translateY(0)` → `translateY(var(--bkm-bar-pulse-travel))`; `bar-chart.tsx` publishes
+`--bkm-bar-pulse-travel` and `--bkm-bar-pulse-mask` on the chart root. The crop is a `<mask>` in
+`resource-host.tsx` following the D570 precedent (explicit region per D559, white = keep).
+
+**Behaviour change, stamped.** The guard `yValue <= 0` became `yValue === 0`. Negative bars
+previously did not pulse at all; in bklit they do, sweeping lid→floor. This is a parity repair, not
+a feature: the old guard was the reason the negative direction had never been exercised.
+
+**Divergence, stamped (principle 2).** The `prefers-reduced-motion: reduce` block that stops the
+sweep is a **deliberate divergence** — bklit's `bar-depth.tsx` has no reduced-motion handling. It is
+kept because an infinite loop is exactly the motion that guard exists for, and bklit itself uses
+`useReducedMotion` for the equivalent loop in `loading-sweep.tsx` (:218, :437), so this follows
+bklit's own practice even where `bar-depth.tsx` forgot it. Ruled: keep, and do not "fix" it back.
+
+**Known limit, not a defect.** `resolveBarPulseOverlay` returns the first rendering pulse's mask and
+travel only, so a chart configuring several pulses gets one crop. No showcase chart does; recorded
+here so the next reader does not mistake it for an oversight.
+
+**New finding, separate vector.** migrated's `.ts-bkm-loading-sweep-band` has **no** reduced-motion
+guard while bklit's `loading-sweep.tsx` does — migrated currently drops an accessibility behaviour
+bklit has. Not fixed here (it is a different overlay); recorded for its own item.
+
+**Process.** Two executors timed out on this item (2700s watchdog, ~90 min total) leaving unverified
+edits with lint findings; I finished it as lead rather than dispatch a third time. The first
+attempt's geometry was rejected outright after reading bklit.
+
+**Lead-verified**: tsc 0, oxlint on `showcase/migrated` 0 findings, `npm test` 246 / 48 / 188 / 0 /
+58, exit 0, `^not ok` 0 — the exact baseline. Pixel parity is **not** claimed here: an infinite
+sweep is not settle-stable, so only a serial gate run with the phase-freeze hook can verify it.
