@@ -2748,3 +2748,175 @@ it is not worth spending before Gate 4 runs.
 
 Item-0's separate mount-tail signature — legacy resting at 20 dimmed, falling to
 10 on hover, never fully undimming — is untouched by this and remains D617-a's.
+
+## D627 — I10 is filed, but on a corrected basis: my own probe fix killed its headline number
+
+**Filed as [TanStack/charts#135](https://github.com/TanStack/charts/issues/135).**
+Authorized alongside the push and the I9 decision.
+
+**What I retracted before filing.** D603's headline was "bklit `finalDim` 999 vs
+migrated 2998 — one dimmed element per candle against three". That number came from
+the pre-D617-b probe, which counted **computed** opacity per element and so could not
+see that bklit's per-candle `<g opacity>` dims its three leaves too. With the
+ancestor-composed probe (D617-b, `f6143f1`), the same scene reads:
+
+```
+| candlestick | 1000 | 75.5/75.5/348 | 243/243/0 | 3009 | 2999 |
+```
+
+**3009 against 2999.** The fan-out claim is an artefact of the instrument I have since
+fixed. Filing D603 as drafted would have put a wrong count in front of an upstream
+maintainer, sourced to a probe I had already corrected in this repo.
+
+**What survives, and is what #135 argues.** The mechanism is untouched — it is read
+from source, not measured: `mark-state.js:17` never resolves state for a group, and
+`scene-point-ownership-internal.js:40-58` strips key prefixes so the leaves resolve
+regardless of grouping. What that costs is not element count but **animation work**:
+dim latency 75.5 ms (bklit) against 243 ms (migrated), ~3.2x, ~1000 tweens against
+~3000, for the same settled picture. The issue asks for state resolution on a group,
+or an opt-out from the prefix-stripping ownership fallback — either is sufficient.
+
+The issue states the 3009/2999 convergence explicitly, as the thing that is *not*
+wrong, so the ask cannot be mistaken for a rendering complaint.
+
+**D603's ruling is unchanged.** Hold. The workaround is still a second dim
+implementation (principle 2), and it is still rejected.
+
+**Generalisable.** This is the second time in two days that a conclusion rested on an
+instrument that was later found defective (D620 was the first, struck for the same
+class of reason). An upstream filing is the one place where that error leaves the
+repo and cannot be edited later. Re-measure anything older than the last instrument
+change before it goes outward — the draft is input, not proof.
+
+## D628 — I9 is dropped, not deferred
+
+**Decision, authorized.** I9 argued that the migrated bundle's excess was a d3 tail
+the package dragged in. D624 disproved the premise: the d3 tail was **our** code, on
+two counts, and we proved it by inverting both (`D612`, `D619`) — ≤1.10 went 2/43 to
+18/43, median to 1.1157.
+
+What was left after that is real but not filable. The honest residue is "per-chart
+native marks carry their own d3 subgraphs into minimal scenarios" — `hierarchy/sunburst`
+names `d3-hierarchy`, `interaction/brush` names `d3-brush`. That is a design
+consequence of subpath-per-feature, not a defect, and there is no ask attached to it:
+we would not want the sunburst without the layout.
+
+And the number that would carry it cannot be stated. Attribution is **by source edge,
+not by bytes** — minification erases the `partition` and `stratify` identifiers, so the
+package's share of the +27.2k sunburst delta is not measurable from emitted text, and
+`metafile.inputs` is barred (the barrel re-exports everything). An issue whose only
+quantity is unmeasurable is not an issue.
+
+**Dropped.** Recorded here rather than left to lapse, so it is not re-proposed as open
+work in a later window — which is exactly what happened to the A-series.
+
+## D629 — A15 located, and it may have manufactured V6's regression
+
+**A15 was itself the defect this repo keeps making.** It existed in one line of
+`OPEN-TASKS.md` and nowhere else — not in `LOG.md`, not in the audit table in
+`POST-PHASE-7.md`, which stops at A14. I wrote that line from session context while
+writing the document whose stated purpose is to stop exactly that. Recorded here so
+the item now has a source.
+
+**The site.** `bench/app/src/bench/settle.ts:25` `const FALLBACK_MS = 2500`, installed
+by all four arms — `armBklitSettle:44`, `armTanstackSettle:75`, `armBklitTimerSettle:120`,
+`armManualSettle:155` — each as `setTimeout(resolve, FALLBACK_MS)`. When it fires,
+`window.__benchSettled` resolves and `bench/run.mjs:411-415` records
+`m1b_settleMs ≈ 2500` from `performance.now() - renderStart`. **Nothing anywhere
+records that it was the fallback that resolved.** The file says so itself four times
+("fallback only, see note above"), and the note at `:19-24` says it "is not expected
+to fire" — but no code checks whether the expectation held. A wedged instrument and a
+2.5-second chart are the same number.
+
+**The implication I did not expect.** `qa/gate/bench-baseline.json:3` holds
+`migrated/scatter/1000.m1b_settleMs` at the phase-5 1258.6 because the 7.6 run measured
+**2505.3** — "1.98x the same-run bklit control (1266.3), p95 2506 over 7 samples,
+reproduced at +99.0% and +99.1% across two independent runs, so it is a live regression
+and not baseline drift". That is V6.
+
+2505.3 against a `FALLBACK_MS` of 2500 is five milliseconds. And the evidence offered
+for the regression is the evidence *against* it: a median of 2505.3 with a p95 of 2506
+over seven samples is a **constant**, which is what a fixed `setTimeout` produces and
+not what a slow reveal produces. The bklit control at 1266.3 is a real ~1100 ms reveal
+plus overhead, and it varies. Both scatter scenarios arm identically
+(`migrated-scatter.tsx:19` and `bklit-scatter.tsx:19`, both `armBklitSettle`), which
+resolves only on a non-`ready` phase followed by `ready` (`settle.ts:47-55`). If
+migrated's ScatterChart never delivers that pair, `resolveFn` is never called and the
+fallback carries the measurement.
+
+**Prediction, before reading Gate 4's bench output** (principle 5, and §3.2 of
+`OPEN-TASKS.md` — a fix or a claim is worth what it predicts): `migrated/scatter/1000`
+`m1b_settleMs` will land in **2500-2520 ms with a p95 within ~10 ms of the median**.
+If it does, the number is the timer and V6 is not a 1.98x regression but an unrecorded
+instrument fallback — and the right fix is A15 first, then re-measure, then rule on V6.
+If it lands materially above 2520 or shows real spread, the regression is real, A15 is
+still a defect, and this entry is wrong in its second half.
+
+**Fix shape for A15** (not yet applied — bench was mid-run): have each arm set a flag
+when the fallback timer is what resolved, expose it (`window.__benchSettleFallback`),
+read it in `bench/run.mjs` beside `m1b`, and carry it into the cell so `run-bench.mjs`
+can mark or fail on it. No measurement changes; a substituted value simply stops being
+able to pass as a measured one.
+
+**Sequencing.** This inverts V6's order. V6 was carried as "fix the scatter double
+reveal, then adopt the baseline". It cannot be judged at all until the instrument can
+say whether it measured anything.
+
+## D630 — the prediction failed, the mechanism was right, and V6 is closed
+
+**Gate 4's bench stage refutes D629's prediction.** I predicted
+`migrated/scatter/1000.m1b_settleMs` would land in 2500-2520 ms with a p95 within ~10 ms
+of the median. It measured **1183.6 ms**, −6.0% against the held 1258.6 baseline, inside
+the ±20% flag band. Ten cells, **0 flagged metrics**, 0 console errors.
+
+**The mechanism in D629 was nevertheless correct, and the reason the prediction failed
+is that the cause had already been fixed — by a commit in this window, before I ran the
+gate.** `97e2967`, "fix(scatter): emit revealing before ready so the reveal is
+observable", `showcase/migrated/charts/internal/scatter-reveal-setup.ts`:
+
+```diff
+-    if (seen !== null && revealDeadlineTimerRef.current === null && !revealKeyChanged) {
+-      setPhase("ready");
++    if (!revealKeyChanged) {
+       return;
+     }
+ ...
+-    setPhase("ready");
++    setPhase("revealing");
++    revealDeadlineTimerRef.current = window.setTimeout(() => {
++      revealDeadlineTimerRef.current = null;
++      setPhase("ready");
++    }, revealDurationMs);
+```
+
+Before it, `handleRender` went straight to `"ready"` and **never emitted a non-`ready`
+phase at all**. `armBklitSettle` (`settle.ts:47-55`) resolves only on non-`ready`
+followed by `ready`, so `sawNonReady` stayed false, `resolveFn` was never called, and
+`FALLBACK_MS` resolved the promise. That is where **2505.3** came from. It was never a
+1.98x regression in the chart; it was a 2500 ms timer with ~5 ms of overhead, which is
+exactly what its own p95-of-2506-over-seven-samples said and what nobody read it as.
+
+**V6 is closed.** `qa/gate/bench-baseline.json:3` set the hold's own expiry condition —
+"the hold expires when the scatter double reveal is fixed" — and phrased the defect
+correctly even while mis-attributing the number: a reveal that was not observable is
+what `97e2967` fixed. The cell now measures a real reveal (1183.6, in line with
+line 1165.2 / area 1171.4 / composed 1192.1, all ~1100 ms reveals plus overhead).
+
+**No baseline adoption is needed.** The held value 1258.6 is a valid phase-5 baseline
+and the new measurement sits −6% from it. The hold existed to stop 2505.3 being pinned
+as the expectation; with the defect gone there is nothing to hold out. The note's hold
+paragraph is now wrong on its face and is struck; the value stays.
+
+**A15 stands as a defect, and now has a demonstrated instance.** The fallback
+substituted for a real measurement across at least three independent runs, was carried
+into a formally adopted baseline as "a live regression", and reached a written
+instrument note that argued for its own reliability from the very constancy that gave
+it away. Nothing in the harness could have said otherwise, because nothing records that
+the fallback fired. Fixing it is next.
+
+**On the failed prediction.** It was falsifiable, it was recorded before the
+measurement, and it was wrong — I predicted against a tree that no longer had the
+defect I was predicting from, having read the 7.6-run baseline note rather than the
+current sources. That is the same error as the A-series and as D627's retracted count,
+for the third time in two days: **a stale artefact read as current state.** The
+prediction did its job anyway; it is what forced the diff that found `97e2967`.

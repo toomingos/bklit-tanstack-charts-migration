@@ -1,0 +1,39 @@
+{
+  "label": "gate-4",
+  "runDir": "docs/phase-7/gate/runs/2026-09-07T21-21-41-176Z",
+  "wallClockMs": 1187466,
+  "stages": [
+    {
+      "name": "checks",
+      "ok": true,
+      "durationMs": 22278
+    },
+    {
+      "name": "qa",
+      "ok": false,
+      "durationMs": 212190,
+      "error": "[gate:all] qa stage has 1 ERROR cell(s) — see qa-matrix.json"
+    },
+    {
+      "name": "probes",
+      "ok": true,
+      "durationMs": 73960
+    },
+    {
+      "name": "bundle",
+      "ok": true,
+      "durationMs": 21957
+    },
+    {
+      "name": "bench",
+      "ok": true,
+      "durationMs": 857033
+    },
+    {
+      "name": "summary",
+      "ok": true,
+      "durationMs": 47
+    }
+  ],
+  "issues": 9
+}

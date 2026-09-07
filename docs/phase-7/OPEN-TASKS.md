@@ -1,10 +1,10 @@
 # Phase 7 — open tasks and working agreements
 
-Current as of commit `05579bc`, branch `main`, 36 commits unpushed.
+Current as of commit `3235210`, branch `main`, pushed. Gate 4 ran `2026-09-07T21-21-41-176Z`.
 
 Two things this document exists to prevent. First, the open list living only in
-conversation, where V6 and V7 currently do — they appear in exactly one line of
-`POST-PHASE-7.md` and are defined nowhere in the repo. Second, work being aimed
+conversation, which is where V6 and V7 were until they were traced back to repo
+sources (§1). Second, work being aimed
 at items that are already closed: the A1–A14 gate-audit series was presented as
 open eight days after it landed, because the audit table in `POST-PHASE-7.md`
 records what the audit *found*, not what was since fixed. **Check the source
@@ -19,16 +19,34 @@ still to do.
 
 Ordered by what blocks what, not by size.
 
-### Blocking everything
+### Blocking everything — cleared
 
-| id | task | why it blocks | owner |
-|---|---|---|---|
-| **G4** | Run the full gate (`node --run gate:all`, serial) | Ten commits of changes are unvalidated. Every remaining ruling would rest on it. Needs a quiet tree — no agents running. | lead |
+**G4 ran.** `docs/phase-7/gate/runs/2026-09-07T21-21-41-176Z`, label `gate-4`,
+serial, quiet tree.
 
-**Sequencing that matters:** G4 runs *before* any further harness change. The
-gate's verdicts are compared against 43 runs of per-cell history; changing the
-instrument first makes that history incomparable. Measure against the known
-instrument, then change it, then re-measure.
+| stage | result |
+|---|---|
+| checks | tsc 0, oxlint 0/430 files, bench-tsc 0, build ok, unit 252/50/194/0/58, census 23/0 failures; `bundle-gate` skipped |
+| QA pixel | 43 runs, 190 cells (189 gated) — **gate FAIL 0**; ruled 2, harness FAIL 2, out-of-range 3, new values 25, tooltip failures 0. **Stage recorded FAILED** on 1 ERROR cell (G4-a) — which is A13/A17's fix doing its job: a crashed sweep can no longer produce a passing matrix |
+| bundle | 43 pinned scenarios, **0 FAIL**, summed gzip 5534 kB vs pins 6443 kB (**−14.1%**) |
+| bench | 10 paired cells, **0 flagged metrics**, 0 skipped, 0 failed, 0 console errors |
+| probes | 4 flags, all previously ruled — bar/sankey `settles-after-700ms-capture` (D622), choropleth `dim-presence-mismatch` (D617-a), markers (D626) |
+
+The two harness FAILs are both **ruled** cells reading inside their history —
+`radar/6 hover-50` 6452 px (D535, range [755,6547]) and `sankey/33 hover-30`
+9940 px (D498, range [3302,31888]). Of the three out-of-range, two are new
+*lows* (`ring/4 hover-30` 2904 under a 2909 floor; `scatter/1000 hover-70` 1878
+under 1889) and one is `bardepth/100 pulse-phase-0.5` 1896 against a range of
+[1865,1887] built from **n=2**, which is not a range.
+
+Sequencing held: nothing in the harness changed between the ten commits and this
+run, so the 43 runs of per-cell history stayed comparable.
+
+`SUMMARY.md` classifies 9 issues: 4 hover-dim, 2 harness-race, 1 polar, 1
+renderer-regime, 1 legend. Eight are the known ruled/out-of-range set above.
+
+**The ninth is the one real gap, carried below as G4-a:** `candlestick/1000`
+produced no report, and it is what failed the QA stage.
 
 ### Probe instrument — one file, therefore one agent
 
@@ -49,25 +67,28 @@ D617-b (`dimmedCount` counting DOM levels) is **fixed and confirmed** — see §
 |---|---|---|---|
 | **D623** | BarPulse seam is single-pulse; bklit is per-pulse. Same name, same props, different composition at N≥2 | `bar-pulse-mark.ts:294-300` first-match; bklit `bar-depth.tsx:959-966` per-entry clipPath | open, **spec'd**, in-repo reachability **0** — queued behind G4 |
 | **D626** | `markers/100` dim scope: legacy dims 311 elements, migrated 109 | pixel cost 0.4090% against a 0.5% gate, ~18% headroom; bottom of 43 runs of history | **passes** — structural convergence is a judgement, not a failure |
-| **D603** | Candlestick 3× dim fan-out | — | held |
+| **G4-a** | `candlestick/1000` produced no QA report at G4: `page.waitForFunction(__benchPaintDone === true)` timed out at 30 s (`qa/screenshot.mjs:427`, log `logs/qa/candlestick-1000.log`) | it gated 4 cells in every prior full run; `candlestick-chart.tsx` (+2) and the shared `chart-host.tsx` (64 changed) are both inside the ten commits | **open — re-run candlestick alone before calling it a flake** |
+| **D603** | Candlestick 3× dim fan-out — **headline number retracted**, see D627 | ancestor-composed probe reads 3009 vs 2999, not 999 vs 2998 | held; the surviving claim (dim latency 76 ms vs 246 ms) is filed as [#135](https://github.com/TanStack/charts/issues/135) |
 | **D617** | Choropleth group fade vs per-feature `color-mix`, bounded 10/255 | — | sub-gate, no ruling, closed |
 
-### Write-up and outward-facing — all need authorization
+### Write-up and outward-facing
 
 | id | task | state |
 |---|---|---|
-| **I9** | Rewrite against D624's premise, or drop. The original argued from the d3 tail; the d3 tail was our code, which we proved by fixing it twice | unblocked, **not written**. New claim is narrower: per-chart native marks carry their d3 subgraphs into minimal scenarios. Attribution is by source edge, not bytes — minification erases the `partition` identifier, so the package's share of +27.2k is **not** a number we can state |
-| **I10** | Drafted, deliberately not filed | needs authorization |
-| **V7** | Needs writing up before filing | **definition exists only in session context, not the repo** |
-| **push** | 36 commits on `main` | needs authorization |
+| **I10 / V7** | State on a group is never resolved, so a datum that renders as several leaves cannot be dimmed once | **filed — [TanStack/charts#135](https://github.com/TanStack/charts/issues/135)**. Filed on a corrected basis: D603's element-count claim was retracted first (D627), because the D617-b probe fix killed it. The ask is state resolution on a group, or an opt-out from the prefix-stripping ownership fallback |
+| **I9** | Per-chart native marks carry their d3 subgraphs into minimal scenarios | **dropped (D628)**. D624 disproved its premise — the d3 tail was ours, inverted twice — and the residue has no ask attached and no statable number: attribution is by source edge, and minification erases the `partition` identifier |
+| **push** | ten commits `30c0e1a..3235210` | **done.** Unpushed 0 at G4 start |
 
-### Carried, low priority
+`V7` was only ever the write-up behind I10 (`POST-PHASE-7.md:338` reads "V7/I10")
+and is discharged by the filing. It is not a separate item.
+
+### Carried
 
 | id | task | state |
 |---|---|---|
-| **V6** | Retire the `migrated/scatter/1000` m1b hold; a held audit on `tanstack/scatter/100 m1b_settleMs +31.4%` was never launched | **definition exists only in session context, not the repo** |
-| **A15** | Bench 2500 ms fallback substitutes silently | user's call |
-| **—** | `bench/results/css-sizes.json`, `latest.json` dirty from runs predating current work; `qa/gate/latest/*` dirty from this session's gate runs | decide at G4 — commit or revert, not silently either |
+| **A15** | `settle.ts:25` `FALLBACK_MS = 2500` resolves `__benchSettled` in all four arms and nothing records that it was the fallback, so a wedged instrument and a 2.5 s chart are the same number | authorized, **next**. Fix shape known (D629): flag the fallback resolution, read it in `run.mjs` beside `m1b`, carry it into the cell. **Now has a demonstrated instance (D630)** — the fallback substituted across at least three runs and was written into an adopted baseline as "a live regression" |
+| **pins** | Every bundle pin is now stale-high: 43/43 scenarios came in under, summed −14.1% | re-pin needs a D-entry (`bundle-gate.json` note). Not urgent — a stale-high pin cannot produce a false pass on a growth |
+| **—** | dirty `bench/results/*` and `qa/gate/latest/*` | resolved: G4 overwrote them, authorized; committed with the run |
 
 ---
 
@@ -84,6 +105,12 @@ Listed because two of these were re-proposed as work after they were done.
 | **D620** | `settled: 0` taint **struck** — differences are real but sub-threshold (`pixelmatch` at 0.1 returns 0); D572's run is outside the affected set |
 | **D624** | Bundle vector finished on a **negative** result: no third inversion exists. Remaining >1.10 cost is the package's per-chart marks |
 | **D612, D619** | Two ownership inversions landed; ≤1.10 went 2/43 → 18/43, median → 1.1157 |
+| **G4** | Ran clean: gate FAIL 0 over 189 gated cells, bundle 0 FAIL at −14.1%, probes 4 flags all previously ruled. One gap carried as G4-a |
+| **push** | `30c0e1a..3235210` pushed; unpushed 0 |
+| **I10 / V7** | Filed as #135 after retracting D603's element-count claim (D627) |
+| **I9** | Dropped (D628) — premise disproved by D624, residue unstatable |
+| **V6** | **Closed (D630).** The "1.98x scatter regression" was `armBklitSettle`'s 2500 ms fallback resolving because migrated ScatterChart never emitted a non-`ready` phase. `97e2967` made the reveal observable; G4 measures **1183.6**, −6.0% against the held 1258.6, inside the band. Hold lifted in `bench-baseline.json`; no adoption needed |
+| **V7** | Discharged by #135 — it was only ever I10's write-up |
 
 ---
 
@@ -143,12 +170,14 @@ it at the gate yourself. D617-b predicted 1536 and measured 1538.
 
 ---
 
-## 4. Decisions needed
+## 4. Decisions — all answered
 
-| # | decision |
-|---|---|
-| 1 | Authorize the push of 36 commits on `main` |
-| 2 | Authorize filing I10, and I9 if the rewrite is wanted rather than a drop |
-| 3 | A15 — bench 2500 ms silent fallback |
-| 4 | At G4: commit or revert the dirty `bench/results/*` and `qa/gate/latest/*` |
-| 5 | Whether to converge the markers dim scope (D626) — a parity judgement, currently passing |
+| # | decision | answer |
+|---|---|---|
+| 1 | Push the ten commits on `main` | **yes** — pushed `30c0e1a..3235210` |
+| 2 | File I10; rewrite or drop I9 | **file I10** (#135, on the corrected basis of D627); **drop I9** (D628) |
+| 3 | A15 — bench 2500 ms silent fallback | **fix**, after G4 |
+| 4 | At G4: the dirty `bench/results/*` and `qa/gate/latest/*` | **let G4 overwrite, commit what it produces** |
+| 5 | Converge the markers dim scope (D626) | **leave it** — passing, and convergence is a judgement not a failure |
+
+Nothing is waiting on an answer.
