@@ -413,6 +413,13 @@ async function runOnce(browser, params) {
     const startEntry = performance.getEntriesByName("bench:render-start")[0];
     return startEntry ? performance.now() - startEntry.startTime : null;
   });
+  // A15 (D629/D630): did the chart settle, or did the 2500ms safety net fire?
+  // Both produce a number; only one of them is a measurement. Read it here so
+  // the distinction survives into the cell instead of dying in the page.
+  const m1bFallback = await page.evaluate(() => window.__benchSettleFallback === true);
+  if (m1bFallback) {
+    console.warn(`[bench] ${params.impl}/${params.chart}/${params.n}: M1b came from the settle FALLBACK timer, not the chart -- ${m1b} ms is not a measurement`);
+  }
 
   // M1c: main-thread scripting cost of the mount window (nav -> settle).
   const metricsAfterMount = await getMetrics(cdp);
@@ -653,6 +660,7 @@ async function runOnce(browser, params) {
   return {
     m1a_mountToPaintMs: m1a,
     m1b_settleMs: m1b,
+    m1b_fromFallback: m1bFallback,
     m1c_scriptMs: m1cScriptMs,
     m1c_taskMs: m1cTaskMs,
     m2a_idleScriptMs: m2aScriptMs,
@@ -761,6 +769,9 @@ async function benchOne(browser, baseUrl, { impl, chart, n }) {
 
   const m1a = summarize(runs.map((r) => r.m1a_mountToPaintMs).filter((v) => v != null));
   const m1b = summarize(runs.map((r) => r.m1b_settleMs).filter((v) => v != null));
+  // A15: how many of the measured runs were resolved by the safety net. Counted,
+  // not collapsed to a boolean -- an intermittent fallback is its own signal.
+  const m1bFallbackRuns = runs.filter((r) => r.m1b_fromFallback === true).length;
   const m1cScript = summarize(runs.map((r) => r.m1c_scriptMs));
   const m1cTask = summarize(runs.map((r) => r.m1c_taskMs));
   const m2aScript = summarize(runs.map((r) => r.m2a_idleScriptMs));
@@ -822,6 +833,7 @@ async function benchOne(browser, baseUrl, { impl, chart, n }) {
     metrics: {
       m1a_mountToPaintMs: m1a,
       m1b_settleMs: m1b,
+      m1b_fallbackRuns: m1bFallbackRuns, // A15: >0 means m1b_settleMs is not a measurement
       m1c_scriptMs: m1cScript,
       m1c_taskMs: m1cTask,
       m2a_idleScriptMs: m2aScript,

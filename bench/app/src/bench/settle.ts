@@ -24,6 +24,38 @@
 // sequence doesn't match this pattern.
 const FALLBACK_MS = 2500;
 
+// A15/D629/D630: the fallback above is a safety net that four arms install and
+// nothing recorded. When it fires, `__benchSettled` resolves and M1b reports
+// ~2500ms -- indistinguishable from a chart that genuinely took 2.5s. That is
+// not hypothetical: migrated/scatter/1000 read 2505.3 for three runs and was
+// adopted into qa/gate/bench-baseline.json as "a live regression" (D630),
+// because migrated ScatterChart never emitted a non-ready phase and so never
+// resolved through `armBklitSettle`'s real path.
+//
+// Every arm now routes its net through `armFallback`, which sets
+// `window.__benchSettleFallback` when the TIMER is what resolved the promise.
+// bench/run.mjs reads it beside M1b and carries it into the cell, so a
+// substituted value can no longer pass as a measured one. Measurements are
+// unchanged; only their provenance is now recorded.
+function armFallback(resolve: () => void, fallbackMs: number): () => void {
+  window.__benchSettleFallback = false;
+  let settled = false;
+  const timer = window.setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    window.__benchSettleFallback = true;
+    resolve();
+  }, fallbackMs);
+  // Returned to every arm's real path: cancels the net and marks the resolution
+  // as measured. Idempotent -- a chart that signals twice stays measured.
+  return () => {
+    if (settled) return;
+    settled = true;
+    window.clearTimeout(timer);
+    resolve();
+  };
+}
+
 export type BklitPhase = string;
 
 export interface BenchSettleHandle {
@@ -40,8 +72,7 @@ export function armBklitSettle(): BenchSettleHandle {
   let resolveFn: () => void = () => {};
 
   window.__benchSettled = new Promise<void>((resolve) => {
-    resolveFn = resolve;
-    setTimeout(resolve, FALLBACK_MS); // fallback only, see note above
+    resolveFn = armFallback(resolve, FALLBACK_MS);
   });
 
   const onPhaseChange = (phase: BklitPhase) => {
@@ -71,8 +102,7 @@ export function armTanstackSettle(): { onRender: () => void } {
   let resolveFn: () => void = () => {};
 
   window.__benchSettled = new Promise<void>((resolve) => {
-    resolveFn = resolve;
-    setTimeout(resolve, FALLBACK_MS); // fallback only, see note above
+    resolveFn = armFallback(resolve, FALLBACK_MS);
   });
 
   const onRender = () => {
@@ -114,11 +144,11 @@ export function armTanstackSettle(): { onRender: () => void } {
  */
 export function armBklitTimerSettle(animationDurationMs: number): void {
   window.__benchSettled = new Promise<void>((resolve) => {
+    const measured = armFallback(resolve, FALLBACK_MS);
     const settle = () => {
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      requestAnimationFrame(() => requestAnimationFrame(() => measured()));
     };
     setTimeout(settle, animationDurationMs);
-    setTimeout(resolve, FALLBACK_MS); // same hard safety net as the other arms
   });
 }
 
@@ -153,8 +183,7 @@ export function armManualSettle(fallbackMs: number = FALLBACK_MS): {
   let resolveFn: () => void = () => {};
 
   window.__benchSettled = new Promise<void>((resolve) => {
-    resolveFn = resolve;
-    setTimeout(resolve, fallbackMs); // fallback only, see note above
+    resolveFn = armFallback(resolve, fallbackMs);
   });
 
   return { resolve: () => resolveFn() };
@@ -163,5 +192,10 @@ export function armManualSettle(fallbackMs: number = FALLBACK_MS): {
 declare global {
   interface Window {
     __benchSettled?: Promise<void>;
+    /**
+     * True when `__benchSettled` was resolved by the fallback timer rather
+     * than by the chart's own settle signal. Read by bench/run.mjs (A15).
+     */
+    __benchSettleFallback?: boolean;
   }
 }

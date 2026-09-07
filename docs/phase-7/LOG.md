@@ -2920,3 +2920,47 @@ defect I was predicting from, having read the 7.6-run baseline note rather than 
 current sources. That is the same error as the A-series and as D627's retracted count,
 for the third time in two days: **a stale artefact read as current state.** The
 prediction did its job anyway; it is what forced the diff that found `97e2967`.
+
+## D631 — A15 fixed: a substituted M1b can no longer pass as a measured one
+
+**The fix, in one property.** Every settle arm now routes its safety net through
+`armFallback` (`bench/app/src/bench/settle.ts`), which sets
+`window.__benchSettleFallback` when the **timer** resolved `__benchSettled` and
+cancels the timer when the **chart** did. `bench/run.mjs:419` reads it beside M1b,
+`:663` carries `m1b_fromFallback` into the run record, `:771` counts
+`m1b_fallbackRuns` across the measured runs, and `qa/gate/run-bench.mjs:104-105`
+gates on it with no baseline and no tolerance — there is no acceptable rate of the
+instrument substituting for the measurement.
+
+**Not a flag — a stage failure.** `run-bench.mjs` throws after writing its artefacts,
+so `run-all` records the bench stage FAILED exactly as `run-qa` does for an ERROR
+cell. The distinction is the point: a D273 flag is a verdict about the chart; a
+fallback-resolved M1b means there was no measurement to have a verdict about.
+`summarize.mjs:142` reports the count, and `benchIssues` picks the row up as a
+`bench:` issue automatically because it carries `flag: true`.
+
+**Measurements are unchanged.** Only their provenance is now recorded. No timing
+path moved; `armBklitTimerSettle`'s cited 1100 ms arm still resolves through the
+real path with the net cancelled.
+
+**Tested against the real source** (`qa/unit/bench-settle-fallback.test.mjs`, 8
+tests). The file is bundled by esbuild and driven against a fake `window` with a
+manual timer queue, so "the net fired" and "the chart signalled" are orderings we
+choose rather than races we wait out. Nothing is reimplemented. The third test is
+D630's defect exactly — `onPhaseChange("ready")` with no preceding non-`ready`,
+which is what migrated ScatterChart did before `97e2967` — and asserts the flag
+comes back **true**. The eighth asserts a late chart signal cannot rewrite a
+fallback resolution: provenance belongs to whoever resolved first.
+
+Suite 252/50/194 -> **260/51/202**, fail 0, `not ok` 0, exit 0. tsc 0, bench-tsc 0.
+
+**Why this one got a test when comparable harness fixes did not.** A15 is an
+instrument-integrity fix, and the failure it addresses is silent by construction —
+the only symptom is a plausible number. D630 is the proof that reviewing it by
+inspection does not work: the substituted value survived three runs, a formal
+baseline adoption, and a written note that argued for its own reliability from the
+very constancy that gave it away.
+
+**A15 is closed.** Its verification in a live run is the next full bench stage; the
+expectation is `m1b_fallbackRuns: 0` on all ten paired cells, and a stage failure if
+not.

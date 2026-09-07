@@ -96,6 +96,13 @@ export function compareBench(results, baseline) {
     const errValue = failed ? null : (r.consoleErrorCount ?? r.metrics?.consoleErrorCount ?? null);
     const errBase = base?.consoleErrorCount ?? 0;
     rows.push({ cell: key, failed, exit, impl: r.impl, chart: r.chart, n: r.n, metric: "consoleErrorCount", label: "console errors", value: errValue, baseline: errBase, baselineSource: base ? base.source : null, deltaPct: null, gated: true, flag: !failed && (errBase > 0 ? (errValue ?? 0) > errBase * (1 + baseline.flagPct / 100) : (errValue ?? 0) > 0), void: false });
+    // A15 (D629/D630): a cell whose M1b came from the 2500ms settle safety net
+    // reports a number that is not a measurement. Gated unconditionally with no
+    // baseline -- there is no tolerable rate of substituting for the instrument.
+    // This is the flag that would have caught migrated/scatter/1000's 2505.3
+    // before it was written into bench-baseline.json as "a live regression".
+    const fbRuns = failed ? null : (r.metrics?.m1b_fallbackRuns ?? null);
+    rows.push({ cell: key, failed, exit, impl: r.impl, chart: r.chart, n: r.n, metric: "m1b_fallbackRuns", label: "M1b from fallback timer", value: fbRuns, baseline: 0, baselineSource: null, deltaPct: null, gated: true, flag: !failed && (fbRuns ?? 0) > 0, void: false });
     // GUARD: tooltip baseline comes from the baseline cell (legacy bklit/line/1000 never satisfied the >=3-text-nodes signal); default true.
     const tipBase = base?.m3c_tooltipAppeared ?? true;
     rows.push({ cell: key, failed, exit, impl: r.impl, chart: r.chart, n: r.n, metric: "m3c_tooltipAppeared", label: "tooltip appeared", value: failed ? null : (r.metrics?.m3c_tooltipAppeared ?? null), baseline: tipBase, baselineSource: base ? base.source : null, deltaPct: null, gated: true, flag: !failed && tipBase === true && r.metrics?.m3c_tooltipAppeared === false, void: false });
@@ -111,7 +118,7 @@ export function benchToMd(bench) {
     `Generated ${bench.generatedAt}. Cells: ${bench.cellsRequested.join(", ")}. Baseline: qa/gate/bench-baseline.json (${bench.baselineNote}).`,
     `Flag rule D273: |Δ| > ${bench.flagPct}% on M1b/M1c/M3a. M1a is a VOID channel on this machine (BASELINE §3b) — informational only.`,
     "",
-    `**${s.cells} cells measured (${s.skipped} skipped, ${s.failedInvocations ?? 0} failed), ${s.flags} flagged metric(s), ${s.consoleErrors} cell(s) with console errors, wall-clock ${fmtMs(s.wallClockMs)}.**`,
+    `**${s.cells} cells measured (${s.skipped} skipped, ${s.failedInvocations ?? 0} failed), ${s.flags} flagged metric(s), ${s.consoleErrors} cell(s) with console errors, ${s.m1bFallbackCells ?? 0} cell(s) with M1b from the fallback timer, wall-clock ${fmtMs(s.wallClockMs)}.**`,
     "",
   ];
   const byCell = new Map();
@@ -228,7 +235,8 @@ export async function runBenchGate(opts = {}) {
     summary: {
       cells: results.length,
       skipped: skipped.length,
-      flags: rows.filter((r) => r.flag && r.metric !== "consoleErrorCount" && r.metric !== "m3c_tooltipAppeared").length,
+      flags: rows.filter((r) => r.flag && r.metric !== "consoleErrorCount" && r.metric !== "m3c_tooltipAppeared" && r.metric !== "m1b_fallbackRuns").length,
+      m1bFallbackCells: rows.filter((r) => r.metric === "m1b_fallbackRuns" && r.flag).length, // A15
       consoleErrors: rows.filter((r) => r.metric === "consoleErrorCount" && r.flag).length,
       tooltipMissing: rows.filter((r) => r.metric === "m3c_tooltipAppeared" && r.flag).length,
       failedInvocations: invocations.filter((i) => i.exit !== 0).length,
@@ -240,6 +248,14 @@ export async function runBenchGate(opts = {}) {
   writeFileSync(path.join(runDir, "bench.md"), benchToMd(bench));
   publishLatest([path.join(runDir, "bench.json"), path.join(runDir, "bench.md")]);
   log(TAG, `summary ${JSON.stringify(bench.summary)} -> ${relPath(runDir)}/bench.{json,md}`);
+  // A15: throw so run-all records the stage as FAILED, mirroring how run-qa treats
+  // an ERROR cell. A metric flag is a verdict about the chart; a fallback-resolved
+  // M1b means the harness produced no measurement to have a verdict about. The
+  // artefacts are written first, so the evidence survives the throw.
+  if (bench.summary.m1bFallbackCells) {
+    const cells = rows.filter((r) => r.metric === "m1b_fallbackRuns" && r.flag).map((r) => r.cell).join(", ");
+    throw new Error(`${TAG} ${bench.summary.m1bFallbackCells} cell(s) resolved M1b from the 2500ms settle fallback, not the chart: ${cells} — see bench.json`);
+  }
   return bench;
 }
 
@@ -247,7 +263,8 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve
 if (isMain) {
   const a = parseArgs(process.argv.slice(2), { cells: "string", "run-dir": "string", "no-build": "bool", "force-build": "bool", "no-wait": "bool", "reuse-server": "bool", port: "number", "allow-hash-mismatch": "bool" });
   runBenchGate({ cells: a.cells, runDir: a["run-dir"], noBuild: a["no-build"], forceBuild: a["force-build"], noWait: a["no-wait"], reuseServer: a["reuse-server"], port: a.port, allowHashMismatch: !!a["allow-hash-mismatch"] })
-    .then((b) => process.exit(b.summary.flags || b.summary.failedInvocations ? 1 : 0))
+    // A15: a substituted M1b fails the stage exactly like a flagged metric does.
+    .then((b) => process.exit(b.summary.flags || b.summary.failedInvocations || b.summary.m1bFallbackCells ? 1 : 0))
     .catch((e) => {
       console.error(e);
       process.exit(2);
