@@ -29,9 +29,9 @@ code commit.
 
 | # | Item | Why it is not phase-7 work | Reference | Gate | State |
 |---|---|---|---|---|---|
-| 1 | `main` has never been pushed — 137 commits ahead of `origin/main` (`7d60a7f`) | outward-facing | — | repository owner | open |
-| 2 | File I7 — height-aware resize: `createChartScene` derives `height` from `width / aspectRatio` (`renderer.js:720`) and its ResizeObserver re-renders on width only (`:187-191`), so a container sized by CSS height never updates the scene | the research doc gates it on "after the phase-7 host lands", which has now happened | `research/phase-7/07-upstream-issues.md` I7; evidence D541 | owner's GitHub account | open |
-| 3 | File I8 — focus-aware axis tick-label opacity, and mark states for point-less area marks | "same gate as I7" | `07-upstream-issues.md` I8; evidence D587 | owner's GitHub account | open |
+| 1 | `main` has never been pushed — 137 commits ahead of `origin/main` (`7d60a7f`) | outward-facing | — | repository owner | **done `e9286ed`** — 150 commits pushed, `7d60a7f..e9286ed` |
+| 2 | File I7 — height-aware resize: `createChartScene` derives `height` from `width / aspectRatio` (`renderer.js:720`) and its ResizeObserver re-renders on width only (`:187-191`), so a container sized by CSS height never updates the scene | the research doc gates it on "after the phase-7 host lands", which has now happened | `research/phase-7/07-upstream-issues.md` I7; evidence D541 | owner's GitHub account | **done — [#133](https://github.com/TanStack/charts/issues/133)** |
+| 3 | File I8 — focus-aware axis tick-label opacity, and mark states for point-less area marks | "same gate as I7" | `07-upstream-issues.md` I8; evidence D587 | owner's GitHub account | **done — [#134](https://github.com/TanStack/charts/issues/134)** |
 | 4 | Bundle-gate ordering defect: `scripts/bundle-gate.mjs` reads `bench/results/bundle-sizes.json`, which the bundle stage rewrites, while the checks stage runs first — checks therefore always read the previous run's leftovers | diagnosed and stamped, no owner assigned in phase 7 | D585 | phase 8 | **done `bfb072b`** |
 | 5 | QA loading-cell scheduling: loading cells run against three siblings, which is what made `arealoading/1000 hover-50` read 24,407 px in the gate and 427 px isolated | deliberately left unruled so the band cannot blind the gate | D588 | phase 8 | **done `c252229`** |
 | 6 | G4 — make `showcase/migrated` a workspace package consumed as a package, then drop `@tanstack/charts` / `@tanstack/react-charts` from the showcase root | folded into V5.3, deferred under R7 | PROGRESS G4, D517 | phase 8 | **done `8d615fa`** |
@@ -231,10 +231,14 @@ from the 2026-09-05 run; that is a run record, and it refreshes at Gate 1 rather
 
 ### Still open
 
-Wave 0 (items 1–3) remains with the repository owner: the unpushed `main`, and filing I7 and I8.
-Gate 1 is next — `pnpm gate:all -- --bench all --probes --issues` in a frozen worktree, the first
-measurement taken through a fixed instrument on the final module graph — then Wave B and Wave C as
-written above.
+Wave 0 (items 1–3) is closed. `main` is pushed at `e9286ed` (150 commits, `7d60a7f..e9286ed`);
+I7 is [TanStack/charts#133](https://github.com/TanStack/charts/issues/133) and I8 is
+[#134](https://github.com/TanStack/charts/issues/134), both citing the now-public commits.
+
+Gate 1 ran at `4ee2ef6` (`docs/phase-7/gate/runs/2026-09-06T23-56-04-812Z`, exit 0, 47m44s) and
+found one real regression — the pulse area painting its wash — fixed and re-shot in `e9286ed`.
+Everything else it reported is pre-existing or harness noise; the attribution is D593. Wave B and
+Wave C as written above are next.
 
 ## 7. Gate audit — 2026-09-06, read-only
 
