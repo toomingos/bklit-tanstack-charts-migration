@@ -3005,3 +3005,41 @@ narrower question than the one it opened: whether `--workers 4` is worth its fla
 rate on a 43-chart sweep, given that the same sweep at `--workers 1` would take
 about 40 minutes rather than 20. That is a scheduling decision, not a defect, and it
 is carried as a note rather than an item.
+
+## D633 — the bundle pins were stale-high by exactly the inversions' saving
+
+Gate 4's bundle stage read 43 pinned, 0 FAIL, Σgzip 5,667,022 against Σpin
+6,597,552 — **−14.1%**, with a median row at −14.0%, a floor at −30.8%
+(`migrated/barloading`) and exactly one row above its pin (`migrated/brush`,
++0.25%). I wrote that up as a headline: the migration got 14% smaller. It is also,
+read the other way, a statement that the gate had stopped working.
+
+The pins were stamped at `8661481` from the 7.6 run (D595), and D612 and D619 —
+the two ownership inversions — landed afterwards. Every pin therefore sat 14% above
+the bytes the tree actually produces. With `tolerancePct: 3`, `migrated/area`'s
+limit was 178,362 against a measurement of 152,275: a regression of **+17.1%**
+would have passed green. That is more than the whole saving the inversions bought.
+A stale-high pin does not produce a false failure, which is why nothing complained;
+it produces a blind spot the exact size of the work it was supposed to protect.
+
+I had this backwards in my own notes — I had recorded the stale pins as "not
+urgent: a stale-high pin cannot produce a false pass on a growth." It can, and that
+is the only thing it can do.
+
+Re-pinned from Gate 4's measurement (`bench/results/bundle-sizes.json`, the same
+bytes `bundle.json` reports, `measureExit 0`). `scripts/bundle-gate.mjs:3` states
+the discipline — *lower pins freely; raising one needs a D-entry* — so this is 41
+lowerings and no raise. `migrated/legend` already sat exactly on its pin.
+`migrated/brush` measured 181,256 against a 180,805 pin: **+0.25% is a raise, so it
+does not happen here.** It stays pinned at 180,805 with 3% of headroom above it,
+which is the honest position — brush is the one scenario whose bytes went up, and a
+re-pin that quietly absorbed the increase would be the same mistake in miniature.
+
+Σpin is now 5,666,571. Every row reads +0.0% and the gate has its tolerance back:
+a 3% growth on any scenario now fails, where before it took 17%.
+
+**What this changes going forward:** a pin adopted before a landing vector finishes
+is a pin that will be stale by the amount the vector saves. Re-pinning is not
+bookkeeping to do when convenient — it is the step that converts a saving into a
+protected saving, and it belongs in the same commit sequence as the vector that
+earned it.

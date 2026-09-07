@@ -1,135 +1,135 @@
 {
-  "pinnedAt": "2026-09-07 HEAD 8661481 (adopted from the 7.6 gate run docs/phase-7/gate/runs/2026-09-07T09-01-26-415Z, D595; @tanstack/charts 0.16.0; previous pin 2026-09-05 61d6179, which predated V3.9 and left 30 of 43 scenarios failing on stale bytes). Note migrated/barloading: the previous pin was 2449 bytes, which is not a bundle -- that scenario's measurement was broken when the 61d6179 pins were stamped, and the row read as passing only because nothing can be smaller than it. Now 83837.",
+  "pinnedAt": "2026-09-07 HEAD d92d590 (re-pinned from Gate 4, docs/phase-7/gate/runs/2026-09-07T21-21-41-176Z, D633; @tanstack/charts 0.16.0). 41 of 43 pins lowered to the bytes the D612/D619 ownership inversions actually produce; migrated/legend already sat exactly on its pin; migrated/brush kept its 8661481 pin because the measurement is 0.25% above it and raising a pin needs its own D-entry. Previous pin 2026-09-07 HEAD 8661481 (D595, adopted from the 7.6 run 2026-09-07T09-01-26-415Z) went stale the moment D612/D619 landed: every scenario came in a median 14% under its pin, so with the 3% tolerance the gate could not have seen a 17% regression that gave the whole inversion back. Note migrated/barloading: the 61d6179 pin was 2449 bytes, which is not a bundle -- that scenario's measurement was broken when those pins were stamped, and the row read as passing only because nothing can be smaller than it. Now 83837.",
   "tolerancePct": 3,
   "scenarios": {
     "migrated/area": {
-      "gzip": 173167
+      "gzip": 152275
     },
     "migrated/arealoading": {
-      "gzip": 88786
+      "gzip": 62939
     },
     "migrated/areamultiaxis": {
-      "gzip": 173270
+      "gzip": 152387
     },
     "migrated/bar": {
-      "gzip": 161041
+      "gzip": 135839
     },
     "migrated/bardepth": {
-      "gzip": 161260
+      "gzip": 136259
     },
     "migrated/barloading": {
-      "gzip": 83837
+      "gzip": 58013
     },
     "migrated/barmultiaxis": {
-      "gzip": 161103
+      "gzip": 135930
     },
     "migrated/barsquares": {
-      "gzip": 173387
+      "gzip": 148209
     },
     "migrated/brush": {
       "gzip": 180805
     },
     "migrated/candlestick": {
-      "gzip": 154710
+      "gzip": 133046
     },
     "migrated/candlestick-legend": {
-      "gzip": 165688
+      "gzip": 145153
     },
     "migrated/candletween": {
-      "gzip": 154781
+      "gzip": 133105
     },
     "migrated/choropleth": {
-      "gzip": 152133
+      "gzip": 139305
     },
     "migrated/composed": {
-      "gzip": 165372
+      "gzip": 144830
     },
     "migrated/composedmultiaxis": {
-      "gzip": 165436
+      "gzip": 144906
     },
     "migrated/composedstacked": {
-      "gzip": 165361
+      "gzip": 144804
     },
     "migrated/funnel": {
-      "gzip": 128336
+      "gzip": 102704
     },
     "migrated/funnelvertical": {
-      "gzip": 128353
+      "gzip": 102723
     },
     "migrated/gauge": {
-      "gzip": 145019
+      "gzip": 119062
     },
     "migrated/gaugelinear": {
-      "gzip": 145121
+      "gzip": 119163
     },
     "migrated/griddefault": {
-      "gzip": 172761
+      "gzip": 152035
     },
     "migrated/heatmap": {
-      "gzip": 141906
+      "gzip": 115888
     },
     "migrated/legend": {
       "gzip": 12581
     },
     "migrated/legendhover": {
-      "gzip": 197415
+      "gzip": 177198
     },
     "migrated/line": {
-      "gzip": 172829
+      "gzip": 152103
     },
     "migrated/linemultiaxis": {
-      "gzip": 172882
+      "gzip": 152174
     },
     "migrated/liveline": {
-      "gzip": 152803
+      "gzip": 131227
     },
     "migrated/markers": {
-      "gzip": 183669
+      "gzip": 163160
     },
     "migrated/patternarea": {
-      "gzip": 173236
+      "gzip": 152345
     },
     "migrated/pie": {
-      "gzip": 131765
+      "gzip": 105900
     },
     "migrated/profitloss": {
-      "gzip": 180947
+      "gzip": 159465
     },
     "migrated/projection": {
-      "gzip": 175888
+      "gzip": 155037
     },
     "migrated/projectionxdomain": {
-      "gzip": 175945
+      "gzip": 155110
     },
     "migrated/radar": {
-      "gzip": 134400
+      "gzip": 108457
     },
     "migrated/refarea": {
-      "gzip": 172876
+      "gzip": 152175
     },
     "migrated/refareamultiaxis": {
-      "gzip": 173016
+      "gzip": 152277
     },
     "migrated/ring": {
-      "gzip": 141569
+      "gzip": 115510
     },
     "migrated/sankey": {
-      "gzip": 143750
+      "gzip": 117769
     },
     "migrated/scatter": {
-      "gzip": 152744
+      "gzip": 131357
     },
     "migrated/scattermultiaxis": {
-      "gzip": 152763
+      "gzip": 131368
     },
     "migrated/segment": {
-      "gzip": 172877
+      "gzip": 152133
     },
     "migrated/sunburst": {
-      "gzip": 140576
+      "gzip": 114546
     },
     "migrated/sunchrome": {
-      "gzip": 141388
+      "gzip": 115299
     }
   }
 }

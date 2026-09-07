@@ -1,6 +1,6 @@
 # Phase 7 — open tasks and working agreements
 
-Current as of commit `20528b9`, branch `main` (3 commits unpushed). Gate 4 ran `2026-09-07T21-21-41-176Z`; the G4-a re-run is `2026-09-07T21-48-15-130Z`.
+Current as of commit `d92d590`, branch `main` (pushed, 0 unpushed). Gate 4 ran `2026-09-07T21-21-41-176Z`; the G4-a re-run is `2026-09-07T21-48-15-130Z`.
 
 Two things this document exists to prevent. First, the open list living only in
 conversation, which is where V6 and V7 were until they were traced back to repo
@@ -87,7 +87,7 @@ and is discharged by the filing. It is not a separate item.
 
 | id | task | state |
 |---|---|---|
-| **pins** | Every bundle pin is now stale-high: 43/43 scenarios came in under, summed −14.1% | re-pin needs a D-entry (`bundle-gate.json` note). Not urgent — a stale-high pin cannot produce a false pass on a growth |
+| **pins** | Every bundle pin was stale-high: 43/43 came in under, summed −14.1% | **resolved (D633).** The "not urgent" reading recorded here was wrong — a stale-high pin produces a false pass on a growth, and is the *only* thing it produces. Re-pinned |
 | **—** | dirty `bench/results/*` and `qa/gate/latest/*` | resolved: G4 overwrote them, authorized; committed with the run |
 
 ---
@@ -105,9 +105,10 @@ Listed because two of these were re-proposed as work after they were done.
 | **D620** | `settled: 0` taint **struck** — differences are real but sub-threshold (`pixelmatch` at 0.1 returns 0); D572's run is outside the affected set |
 | **D624** | Bundle vector finished on a **negative** result: no third inversion exists. Remaining >1.10 cost is the package's per-chart marks |
 | **D612, D619** | Two ownership inversions landed; ≤1.10 went 2/43 → 18/43, median → 1.1157 |
+| **bundle pins** | **Re-pinned (D633).** They were stale-high by the inversions' own saving — with 3% tolerance, `migrated/area` could have regressed **+17.1%** green. 41 lowered to Gate 4's bytes, `migrated/legend` already exact, `migrated/brush` NOT raised (+0.25% is a raise; it keeps its 8661481 pin). Σpin 6,597,552 → 5,666,571; every row now +0.0% and `scripts/bundle-gate.mjs` exits OK |
 | **G4** | Ran clean: gate FAIL 0 over 189 gated cells, bundle 0 FAIL at −14.1%, probes 4 flags all previously ruled. Its one gap, G4-a, is now closed |
 | **G4-a** | **Closed (D632)** — not a regression. Solo `--workers 1` re-run (`2026-09-07T21-48-15-130Z`) exits 0 in **10.0 s**, four gated cells, gate FAIL 0, all low in a 62-run history; G4 aborted the same chart at ≥31.2 s on `qa/screenshot.mjs:427`'s 30 s `__benchPaintDone` wait. Better than 3× dilation under four workers. Timeout deliberately not raised; the open question is scheduling (`--workers 4` flake rate vs a ~40-min serial sweep), carried as a note, not an item |
-| **push** | `30c0e1a..3235210` pushed; **3 unpushed** (`ca1525e`, `20528b9`, G4-a) |
+| **push** | `30c0e1a..d92d590` pushed; unpushed 0 |
 | **I10 / V7** | Filed as #135 after retracting D603's element-count claim (D627) |
 | **I9** | Dropped (D628) — premise disproved by D624, residue unstatable |
 | **V6** | **Closed (D630).** The "1.98x scatter regression" was `armBklitSettle`'s 2500 ms fallback resolving because migrated ScatterChart never emitted a non-`ready` phase. `97e2967` made the reveal observable; G4 measures **1183.6**, −6.0% against the held 1258.6, inside the band. Hold lifted in `bench-baseline.json`; no adoption needed |
