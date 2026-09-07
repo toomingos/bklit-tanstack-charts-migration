@@ -256,6 +256,7 @@ const resolvePulseSceneInput = (inputArgs: Readonly<PulseSceneInputArgs>): Pulse
 };
 
 interface BarPulseOverlay {
+  readonly markId: string;
   readonly clipD: string;
   readonly travelPx: number;
 }
@@ -271,7 +272,6 @@ interface BarPulseOverlayArgs {
 }
 
 // Geometry for one pulse config; null when that pulse must not render.
-// Hoisted so the resolver below is a first-match scan with no loop jumps.
 const resolveOnePulseOverlay = (pulse: Readonly<BarPulseConfig>, overlayArgs: Readonly<BarPulseOverlayArgs>): BarPulseOverlay | null => {
   const index = resolveActivePulseIndex({ activeIndex: pulse.activeIndex, dataLength: overlayArgs.data.length, pulsePaused: pulse.pulsePaused });
   if (index === undefined) {return null;}
@@ -287,16 +287,18 @@ const resolveOnePulseOverlay = (pulse: Readonly<BarPulseConfig>, overlayArgs: Re
   });
   if (!input) {return null;}
   const sweep = resolveBarPulseSweep(input.frame, input.bandWidth);
-  return { clipD: sweep.silhouettePath, travelPx: sweep.travelPx };
+  // markId must match bar-chart-series-marks.ts's `bar-pulse-${dataKey}` scene id exactly -- it is the DOM anchor (data-ts-key) the seam uses to scope this pulse's mask/travel to its own group instead of the whole chart.
+  return { clipD: sweep.silhouettePath, markId: `bar-pulse-${pulse.dataKey}`, travelPx: sweep.travelPx };
 };
 
-// Seam inputs for the first pulse with live geometry (clip path + CSS travel); null when no pulse renders. Same helper as the mark, so the seam can never drift from the scene.
-const resolveBarPulseOverlay = (overlayArgs: Readonly<BarPulseOverlayArgs>): BarPulseOverlay | null => {
+// Seam inputs for every live pulse (clip path + CSS travel + the DOM key to scope them to); one entry per pulse with live geometry, so N pulses never collapse onto one seam. Same helper as the mark, so the seam can never drift from the scene.
+const resolveBarPulseOverlays = (overlayArgs: Readonly<BarPulseOverlayArgs>): readonly BarPulseOverlay[] => {
+  const overlays: BarPulseOverlay[] = [];
   for (const pulse of overlayArgs.pulses) {
     const overlay = resolveOnePulseOverlay(pulse, overlayArgs);
-    if (overlay !== null) {return overlay;}
+    if (overlay !== null) {overlays.push(overlay);}
   }
-  return null;
+  return overlays;
 };
 
 interface PulseSceneArgs {
@@ -365,7 +367,7 @@ const barPulseMark = (data: readonly Readonly<ChartDatum>[], options: Readonly<B
 export {
   barPulseMark,
   buildBarSilhouettePath,
-  resolveBarPulseOverlay,
+  resolveBarPulseOverlays,
   PULSE_WAVE_HEIGHT_MIN_PX,
   PULSE_WAVE_HEIGHT_RATIO,
 };

@@ -11,7 +11,7 @@ import type { CSSProperties, ReactElement, ReactNode } from "react";
 import type { ChartPoint, ChartRendererRenderContext } from "@tanstack/charts";
 import { ChartHost, ChartRegistryBridge, HOST_INITIAL_WIDTH, adoptHostWidth, useRegistryEntriesState } from "./internal/chart-host";
 import { BarPulseMask, barPulseMaskId } from "./internal/resource-host";
-import { resolveBarPulseOverlay } from "./internal/bar-pulse-mark";
+import { resolveBarPulseOverlays } from "./internal/bar-pulse-mark";
 import { useSanitizedId } from "./internal/use-sanitized-id";
 import { extractChildren } from "./internal/children-extract";
 import { useFocusInjection } from "./internal/focus-injection";
@@ -97,10 +97,9 @@ const BarChart = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   // One prefix per mount scopes renderer ids and seam ids alike.
   const idPrefix = useSanitizedId();
-  // BarPulse seam inputs (D590): clip path + CSS travel published from the live scene; null parks the wave unmasked.
-  const [pulseOverlay, setPulseOverlay] = useState<{ readonly clipD: string; readonly travelPx: number } | null>(null);
+  // BarPulse seam inputs (D590): clip path + CSS travel published from the live scene, one entry per live pulse; empty parks every wave unmasked.
+  const [pulseOverlays, setPulseOverlays] = useState<readonly { readonly markId: string; readonly clipD: string; readonly travelPx: number }[]>([]);
   const pulseOverlayKeyRef = useRef("");
-  const pulseMaskId = barPulseMaskId(idPrefix);
   // Host-owned sizing: initial width renders on the server; onRender adopts the measured width.
   const [liveWidth, setLiveWidth] = useState(HOST_INITIAL_WIDTH);
   const width = liveWidth;
@@ -266,7 +265,7 @@ const BarChart = ({
       return;
     }
     // Pulse seam follows the same scene the mark renders from, so clip and travel can never drift.
-    const overlay = resolveBarPulseOverlay({
+    const overlays = resolveBarPulseOverlays({
       categoryAccessor: scales.categoryAccessor,
       chartWidth: context.scene.chart.width,
       chartX: context.scene.chart.x,
@@ -275,10 +274,10 @@ const BarChart = ({
       pulses: barPulsesRaw,
       scales: context.scene.scales,
     });
-    const overlayKey = overlay === null ? "" : `${overlay.clipD}|${overlay.travelPx}`;
+    const overlayKey = overlays.map((overlay) => `${overlay.markId}:${overlay.clipD}|${overlay.travelPx}`).join(";");
     if (pulseOverlayKeyRef.current !== overlayKey) {
       pulseOverlayKeyRef.current = overlayKey;
-      setPulseOverlay(overlay);
+      setPulseOverlays(overlays);
     }
     handleBarSvgRender({
       animationDuration,
@@ -313,12 +312,6 @@ const BarChart = ({
   const barChartRenderer = useChartRenderer<ChartDatum, string, number>(motionPrimitiveEstimate);
 
   const barRootStyle = useMemo((): CSSProperties => ({ aspectRatio, isolation: "isolate", position: "relative", width: "100%" }), [aspectRatio]);
-  // Pulse vars inherit into the chart SVG; the keyframes loop reads travel, the wave rule reads the mask.
-  const barRootStyleWithPulse = useMemo((): CSSProperties => {
-    if (pulseOverlay === null) { return barRootStyle; }
-    const withVars = { ...barRootStyle, "--bkm-bar-pulse-mask": `url(#${pulseMaskId})`, "--bkm-bar-pulse-travel": `${pulseOverlay.travelPx}px` };
-    return withVars;
-  }, [barRootStyle, pulseOverlay, pulseMaskId]);
 
   // Reference-area geometry reads bounds from the host; only data domains travel by prop.
   const referenceAreaGeom = useMemo((): ReferenceAreaLayersGeom | undefined => {
@@ -335,18 +328,32 @@ const BarChart = ({
   // Seam resources carry the mount prefix; the pulse mask carries the live silhouette clip.
   const plotMaskWidth = width - margin.left - margin.right;
   const plotMaskHeight = heightPxBar - margin.top - margin.bottom;
+  // D623: mask/travel ride a React-owned <style> element, one rule per pulse, keyed by that
+  // pulse's own data-ts-key. A renderer-owned node cannot carry them -- reconcile.js's
+  // syncAttributes strips any attribute (including style) absent from the freshly serialized
+  // markup on every render, so an imperative style set on a scene group is deleted the next
+  // frame. The chart-id attribute scopes each rule to this mount, so two BarChart instances
+  // using the same dataKey on one page never cross-match.
+  const pulseSeamStyle = pulseOverlays.length === 0 ? null : (
+    <style>
+      {pulseOverlays.map((overlay) => `[data-bkm-chart-id="${idPrefix}"] [data-ts-key="${overlay.markId}"]{--bkm-bar-pulse-mask:url(#${barPulseMaskId(idPrefix, overlay.markId)});--bkm-bar-pulse-travel:${overlay.travelPx}px;}`).join("\n")}
+    </style>
+  );
   const barSeamResources = (
     <>
-      {pulseOverlay !== null && plotMaskWidth > 0 && plotMaskHeight > 0 && (
+      {pulseSeamStyle}
+      {plotMaskWidth > 0 && plotMaskHeight > 0 && pulseOverlays.map((overlay) => (
         <BarPulseMask
-          clipD={pulseOverlay.clipD}
+          key={overlay.markId}
+          clipD={overlay.clipD}
           height={plotMaskHeight}
           idPrefix={idPrefix}
+          pulseId={overlay.markId}
           width={plotMaskWidth}
           x={margin.left}
           y={margin.top}
         />
-      )}
+      ))}
       {squaresDefs.map((def) => (
         <Fragment key={def.gradientId}>
           <linearGradient id={def.gradientId} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={0} y2={100}>
@@ -370,8 +377,9 @@ const BarChart = ({
     <div
       ref={containerRef}
       className={className}
-      style={barRootStyleWithPulse}
+      style={barRootStyle}
       data-bkm-chart="bar"
+      data-bkm-chart-id={idPrefix}
       data-slot="chart"
     >
       {definition && (

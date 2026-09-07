@@ -173,12 +173,14 @@ const LoadingSweepResources = ({ idPrefix, onSweepIteration }: Readonly<LoadingS
 
 // Pulse mask for the BarPulse wave (D590; bklit bar-depth.tsx clipPath).
 // Explicit region per D559; the crop path is the bar silhouette, white = keep.
-const barPulseMaskId = (idPrefix: string): string => `${idPrefix}-bar-pulse-mask`;
+// Keyed by pulseId (the mark's dataKey) so N pulses on one chart get N distinct masks instead of sharing one singleton id.
+const barPulseMaskId = (idPrefix: string, pulseId: string): string => `${idPrefix}-bar-pulse-mask-${pulseId}`;
 
 // Bare nodes for the seam; ResourceHost owns the defs.
 // Region is the plot rect in the masked element's local px.
 const BarPulseMask = ({
   idPrefix,
+  pulseId,
   clipD,
   x,
   y,
@@ -186,13 +188,14 @@ const BarPulseMask = ({
   height,
 }: Readonly<{
   readonly idPrefix: string;
+  readonly pulseId: string;
   readonly clipD: string;
   readonly x: number;
   readonly y: number;
   readonly width: number;
   readonly height: number;
 }>): ReactElement => (
-  <mask height={height} id={barPulseMaskId(idPrefix)} maskUnits="userSpaceOnUse" width={width} x={x} y={y}>
+  <mask height={height} id={barPulseMaskId(idPrefix, pulseId)} maskUnits="userSpaceOnUse" width={width} x={x} y={y}>
     <path d={clipD} fill="white" />
   </mask>
 );

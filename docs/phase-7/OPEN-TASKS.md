@@ -66,7 +66,8 @@ D617-b (`dimmedCount` counting DOM levels) is **fixed and confirmed** — see §
 
 | id | task | evidence | state |
 |---|---|---|---|
-| **D623** | BarPulse seam is single-pulse; bklit is per-pulse. Same name, same props, different composition at N≥2 | `bar-pulse-mark.ts:294-300` first-match; bklit `bar-depth.tsx:959-966` per-entry clipPath | open, **spec'd**, in-repo reachability **0** — queued behind G4 |
+| **D623** | BarPulse seam is single-pulse; bklit is per-pulse. Same name, same props, different composition at N≥2 | `bar-pulse-mark.ts:294-300` first-match; bklit `bar-depth.tsx:959-966` per-entry clipPath | **fixed (D635).** `resolveBarPulseOverlays` + per-pulse `barPulseMaskId(idPrefix, pulseId)` + one mask per overlay; the two custom properties ride a React-owned `<style>` keyed on `[data-bkm-chart-id][data-ts-key]`, because `reconcile.js:99-103` strips an imperative `style` off any renderer-owned node on the next render. `pulse-phase-0.75` 2175 → 1590 |
+| **pulse-var** | `bardepth` `pulse-phase-0.25`/`0.5` are judged against a mode distribution they do not have, and their history now carries three broken-build readings | HEAD n=5 spans 1846–1916 at 0.5; the *broken* build was the only stable one (1590/1897 x3), because an unmasked wave paints a fixed shape | **open (D635).** Mid-sweep phases jitter on antialiased edges; 0 and 0.75 park the wave and read 1590 in all 12 runs. Needs a variance band, not a mode — a gate-policy change, deliberately not bundled into a chart fix |
 | **D626** | `markers/100` dim scope: legacy dims 311 elements, migrated 109 | pixel cost 0.4090% against a 0.5% gate, ~18% headroom; bottom of 43 runs of history | **passes** — structural convergence is a judgement, not a failure |
 | **D603** | Candlestick 3× dim fan-out — **headline number retracted**, see D627 | ancestor-composed probe reads 3009 vs 2999, not 999 vs 2998 | held; the surviving claim (dim latency 76 ms vs 246 ms) is filed as [#135](https://github.com/TanStack/charts/issues/135) |
 | **D617** | Choropleth group fade vs per-feature `color-mix`, bounded 10/255 | — | sub-gate, no ruling, closed |
@@ -138,6 +139,15 @@ caught both before anything was edited.
 
 Give executors a **numeric prediction** so the work is falsifiable, then verify
 it at the gate yourself. D617-b predicted 1536 and measured 1538.
+
+But predict the right *shape* of number. D635: I demanded four exact cell values
+for `bardepth`, the executor supplied them, and two of the four cells turn out to
+have no single value — they jitter 1846–1916 at HEAD. Both of us had treated two
+historical samples as a constant. Before demanding an exact value, check the
+cell's own history for spread; where there is spread, predict a band. And note the
+inverse tell: the *broken* build was the only one of three that was perfectly
+stable on those cells. A cell that stops jittering is evidence exactly as a cell
+that starts jittering is.
 
 ### 3.3 Rules that go in every brief
 

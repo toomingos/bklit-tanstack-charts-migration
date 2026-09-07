@@ -1,0 +1,47 @@
+{
+  "label": "d623-rework-check",
+  "started": "2026-09-07T22:35:37.482Z",
+  "finished": "2026-09-07T22:35:52.795Z",
+  "workers": 1,
+  "wallClockMs": 10477,
+  "sumRunMs": 10476,
+  "build": {
+    "built": true,
+    "reason": "sources newer than dist (2026-09-07T22:30:23.898Z > 2026-09-07T22:24:18.259Z)",
+    "code": 0,
+    "durationMs": 4246
+  },
+  "dist": {
+    "indexMtime": "2026-09-07T22:35:41.672Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-CVRngUmM.js",
+      "index-ImgLMm2K.css"
+    ]
+  },
+  "distEnd": {
+    "indexMtime": "2026-09-07T22:35:41.672Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-CVRngUmM.js",
+      "index-ImgLMm2K.css"
+    ]
+  },
+  "distChangedDuringPass": false,
+  "previewUrl": "http://localhost:5198",
+  "jobs": [
+    {
+      "chart": "bardepth",
+      "n": 100,
+      "state": "ready",
+      "key": "bardepth/100",
+      "worker": 0,
+      "exit": 0,
+      "durationMs": 10476,
+      "reportDir": "qa/results/bardepth/2026-09-07T22-35-50-829Z",
+      "log": "docs/phase-7/gate/runs/2026-09-07T22-35-37-481Z/logs/qa/bardepth-100.log"
+    }
+  ]
+}

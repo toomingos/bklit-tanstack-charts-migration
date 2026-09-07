@@ -701,8 +701,10 @@
    The wave rect parks at sweep start (bar bottom, y attribute from the mark)
    and this loop carries it toward the bar top over PULSE_WAVE_DURATION_S
    (2.4s, ease-in-out, snap-back loop) to match bklit's translateY sweep.
-   Per-bar travel arrives via --bkm-bar-pulse-travel (px, set on an ancestor;
-   custom properties inherit into the SVG); unset it falls back to one
+   Per-bar travel arrives via --bkm-bar-pulse-travel (px, set on each pulse's
+   own .bkm-chart__bar-pulse group -- a shared ancestor would give every
+   pulse the same one custom property; custom properties still inherit from
+   there into that pulse's own wave rect); unset it falls back to one
    wave-height (transform-box: fill-box pins the percentage to the rect).
    No rAF, no .animate(), no second renderer. */
 @keyframes ts-bkm-bar-pulse-sweep {

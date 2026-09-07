@@ -3106,3 +3106,66 @@ on: **a number entering the record needs its instrument named in the same
 sentence, or it does not enter.**
 
 D626 is closed. There is no defect and nothing to fix.
+
+## D635 — BarPulse per-pulse seam (D623) lands; the broken build's determinism was the symptom
+
+`resolveBarPulseOverlay` returned the first live pulse and `barPulseMaskId(idPrefix)` named one
+mask per mount, so a chart with N pulses masked them all with the first one's silhouette and gave
+them all the first one's travel. Fixed by `resolveBarPulseOverlays` (plural), a per-pulse
+`barPulseMaskId(idPrefix, pulseId)`, and one `<BarPulseMask>` per overlay.
+
+Delivering the two custom properties was the hard part. They cannot ride the root div any more
+(one singleton value for every pulse), and the first attempt set them imperatively on each pulse's
+scene group via `querySelector` + `style.setProperty`. That is unconditionally wrong against this
+renderer: `reconcile.js:99-103`'s `syncAttributes` removes every attribute on the live element that
+is absent from the freshly serialized markup, and `style` is not in the 20-name
+`interpolatedAttributes` set. The imperative write was deleted on the next render, every render.
+They now ride a React-owned `<style>` emitted into the seam resources, one rule per overlay keyed
+on `[data-bkm-chart-id="<idPrefix>"] [data-ts-key="<markId>"]`, with the chart-id attribute added
+to the root container so two BarCharts sharing a dataKey cannot cross-match.
+
+Correction to the executor's account of its own fix: the `<style>` is not "a sibling of
+ResourceHost's hidden svg". `resource-host.tsx:22-30` wraps resources in
+`<svg><defs>{resources}</defs></svg>`, so it is an `SVGStyleElement` inside `<defs>`. That is still
+outside `context.surface.element` — the reconciler argument holds — but whether such an element
+applies document-wide was an open question, not a given. It does: `pulse-phase-0.75` returned from
+2175 to 1590. That is the load-bearing evidence for the whole vector.
+
+### The measurement that nearly went into the record wrong
+
+I demanded the executor predict four cell values and said I would hold it to 1590 / 1610 / 1896 /
+1590. It predicted exactly that. The re-run gave 1590 / 1622 / 1912 / 1590 and flagged two cells
+`out-of-range (new)`, which looked like a residual defect. It was not. Three builds, same harness,
+`--workers 1`:
+
+| cell | HEAD (n=5) | broken (n=3) | reworked (n=4) |
+|---|---|---|---|
+| pulse-phase-0 | 1590 x5 | 1590 x3 | 1590 x4 |
+| pulse-phase-0.25 | 1610,1610,1610,1622,1622 | **1590 x3** | 1622,1629,1622,1605 |
+| pulse-phase-0.5 | 1865,1896,1846,1916,1894 | **1897 x3** | 1912,1910,1889,1900 |
+| pulse-phase-0.75 | 1590 x5 | **2175 x3** | 1590 x4 |
+
+The reworked 0.5 range [1889,1912] lies inside HEAD's [1846,1916]; 0.25 overlaps HEAD's. The two
+mid-sweep phases have never been deterministic — the wave is in flight, and its antialiased edge
+count moves with sub-millisecond seek placement. Phases 0 and 0.75 park the wave (translateY(0),
+and travelled out of the masked region) and read 1590 in all twelve runs across all three builds.
+
+So my prediction demand was malformed: I held the executor to single values for two cells that do
+not have single values, and it complied by inventing them. Both of us treated two historical
+samples as a constant. The generalisable point is sharper than that, though: **the broken build was
+the only one of the three that was perfectly stable at 0.25 and 0.5**, because an unmasked wave
+paints a fixed shape. Determinism read as health when it was the defect. A cell that stops jittering
+is evidence in exactly the way a cell that starts jittering is, and I have no habit that looks for it.
+
+This also means `pulse-phase-0.25` and `pulse-phase-0.5` will keep producing `out-of-range (new)`
+against a mode distribution they do not have, and their history is now contaminated by three
+broken-build 1590/1897 readings. Carried as an open item; not fixed here, because the fix is a
+gate-policy change (variance band vs mode) and this commit is a chart fix.
+
+Verification: `node --run test` 268 tests / 210 pass / 0 fail (the new
+`qa/unit/legacy-bar-pulse-overlays.test.mjs` contributes exactly 8, measured by removing it: 260/202).
+`npx tsc --noEmit` clean in `showcase/` and `bench/app/`. Gate: all four cells PASS, max 1912 px of
+GATE_PX 4800.
+
+Baseline correction: I had recorded "260 tests / 210 pass" as the post-BarPulse-file baseline. Those
+are two different trees — 260/202 without the file, 268/210 with it.

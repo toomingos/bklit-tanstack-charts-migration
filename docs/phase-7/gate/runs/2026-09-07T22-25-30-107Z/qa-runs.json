@@ -1,0 +1,47 @@
+{
+  "label": "d623-n1-check",
+  "started": "2026-09-07T22:25:30.108Z",
+  "finished": "2026-09-07T22:25:39.618Z",
+  "workers": 1,
+  "wallClockMs": 8914,
+  "sumRunMs": 8914,
+  "build": {
+    "built": false,
+    "reason": "dist fresh",
+    "code": 0,
+    "durationMs": 0
+  },
+  "dist": {
+    "indexMtime": "2026-09-07T22:24:18.259Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-CjhvtdDj.js",
+      "index-ImgLMm2K.css"
+    ]
+  },
+  "distEnd": {
+    "indexMtime": "2026-09-07T22:24:18.259Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-CjhvtdDj.js",
+      "index-ImgLMm2K.css"
+    ]
+  },
+  "distChangedDuringPass": false,
+  "previewUrl": "http://localhost:5198",
+  "jobs": [
+    {
+      "chart": "bardepth",
+      "n": 100,
+      "state": "ready",
+      "key": "bardepth/100",
+      "worker": 0,
+      "exit": 0,
+      "durationMs": 8914,
+      "reportDir": "qa/results/bardepth/2026-09-07T22-25-38-711Z",
+      "log": "docs/phase-7/gate/runs/2026-09-07T22-25-30-107Z/logs/qa/bardepth-100.log"
+    }
+  ]
+}

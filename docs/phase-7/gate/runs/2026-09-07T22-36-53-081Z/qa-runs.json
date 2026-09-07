@@ -1,0 +1,47 @@
+{
+  "label": "d623-determinism pass 1",
+  "started": "2026-09-07T22:36:53.082Z",
+  "finished": "2026-09-07T22:37:02.667Z",
+  "workers": 1,
+  "wallClockMs": 8989,
+  "sumRunMs": 8989,
+  "build": {
+    "built": false,
+    "reason": "dist fresh",
+    "code": 0,
+    "durationMs": 0
+  },
+  "dist": {
+    "indexMtime": "2026-09-07T22:35:41.672Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-CVRngUmM.js",
+      "index-ImgLMm2K.css"
+    ]
+  },
+  "distEnd": {
+    "indexMtime": "2026-09-07T22:35:41.672Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-CVRngUmM.js",
+      "index-ImgLMm2K.css"
+    ]
+  },
+  "distChangedDuringPass": false,
+  "previewUrl": "http://localhost:5198",
+  "jobs": [
+    {
+      "chart": "bardepth",
+      "n": 100,
+      "state": "ready",
+      "key": "bardepth/100",
+      "worker": 0,
+      "exit": 0,
+      "durationMs": 8989,
+      "reportDir": "qa/results/bardepth/2026-09-07T22-37-01-741Z",
+      "log": "docs/phase-7/gate/runs/2026-09-07T22-36-53-081Z/logs/qa/bardepth-100.log"
+    }
+  ]
+}
