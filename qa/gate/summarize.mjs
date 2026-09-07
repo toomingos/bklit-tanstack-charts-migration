@@ -4,7 +4,7 @@
 //   pnpm gate:summary [-- --run-dir <dir> --issues --label <run label>]
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { GATE_DOCS, GATE_PX, LATEST_DIR, ROOT, applyRulings, assertTreeHash, fmtMs, log, mdTable, parseArgs, publishLatest, readJson, relPath, writeJson } from "./lib.mjs";
+import { GATE_DOCS, GATE_PX, LATEST_DIR, ROOT, RUNS_DIR, applyRulings, assertTreeHash, fmtMs, log, mdTable, parseArgs, publishLatest, readJson, relPath, writeJson } from "./lib.mjs";
 
 const TAG = "[gate:summary]";
 export const ISSUES_FILE = path.join(GATE_DOCS, "ISSUES.md");
@@ -214,7 +214,12 @@ export function summarize({ runDir = LATEST_DIR, label, issuesFile, allowHashMis
   const md = summaryMd({ runDir, label: lbl, art, issues, stages });
   writeFileSync(path.join(runDir, "SUMMARY.md"), md);
   writeJson(path.join(runDir, "issues.json"), { generatedAt: new Date().toISOString(), runDir: relPath(runDir), label: lbl, issues });
-  publishLatest([path.join(runDir, "SUMMARY.md"), path.join(runDir, "issues.json")]);
+  // A16: qa/gate/latest means "the newest real gate run". Publishing unconditionally let any
+  // summarize call overwrite it, so summarizing a fixture or scratch dir silently replaced the
+  // gate's own record (it did, three times). Publish only from a run dir under RUNS_DIR.
+  const underRuns = path.resolve(runDir).startsWith(RUNS_DIR + path.sep);
+  if (underRuns || path.resolve(runDir) === path.resolve(LATEST_DIR)) publishLatest([path.join(runDir, "SUMMARY.md"), path.join(runDir, "issues.json")]);
+  else log(TAG, `not publishing to ${relPath(LATEST_DIR)}: ${relPath(runDir)} is not a gate run dir`);
   if (issuesFile) {
     const existing = existsSync(issuesFile) ? readFileSync(issuesFile, "utf8") : "# Gate issue ledger\n";
     const scope = { qaKeys: new Set((art.matrix?.rows ?? []).map((r) => `${r.chart}/${r.n}`)), bench: !!art.bench, bundle: !!art.bundle, checks: !!art.checks, probes: !!art.probes };

@@ -1671,3 +1671,30 @@ exit 0. No gate stage was run by me or by any executor — `qa/gate/latest`, `do
 **Not verified here.** None of this is proven end-to-end; it is proven function-by-function. Gate 3
 is the first run under the new locking, and it is the run that exercises A5's per-stage acquisition
 for real.
+
+### D605 — A16: any `summarize` call could overwrite `qa/gate/latest`
+
+**Found by causing it.** While verifying A12 (D604) I ran `summarize()` against a fixture run dir in
+the scratchpad. It rewrote `qa/gate/latest/SUMMARY.md` and `issues.json` — the gate's own record of
+the newest real run — from a two-stage fake. I restored both from HEAD. The A8/A13 executor did the
+same thing earlier and restored the same way. Three incidents, same cause, so it is a defect in the
+instrument and not three cases of carelessness.
+
+**Cause.** `summarize()` called `publishLatest([...])` unconditionally (`summarize.mjs:217`),
+ignoring which directory it had just summarized. `qa/gate/latest` is supposed to mean "the newest
+real gate run"; nothing enforced that. Same family as D604: an artefact claiming more authority than
+the evidence behind it.
+
+**Fix.** Publish only when the run dir is under `RUNS_DIR` (or is `LATEST_DIR` itself); otherwise log
+`not publishing to qa/gate/latest: <dir> is not a gate run dir` and skip. Real gate runs are
+unaffected — they always write under `RUNS_DIR`.
+
+**Verified.** Fixture dir: refusal logged, `qa/gate/latest/SUMMARY.md` md5 unchanged. Real run dir
+(`docs/phase-7/gate/runs/2026-09-07T10-05-45-465Z`): publishes as before, and the rewrite is
+byte-identical to the committed artefacts — `git status` on `qa/gate/latest` and `docs/phase-7/gate`
+is empty afterwards, which also confirms summarize is deterministic over a fixed run.
+
+**Remaining sharp edge, not fixed.** Re-summarizing an *older* run under `RUNS_DIR` still republishes
+it as `latest`. That is pre-existing behaviour and arguably intended for re-rulings; narrowing it
+further would change how `applyRulings` re-publishing works, which is not this item's business.
+Recorded so the next person does not rediscover it as a surprise.
