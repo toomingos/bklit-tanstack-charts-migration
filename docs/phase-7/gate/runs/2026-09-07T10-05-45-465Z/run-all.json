@@ -1,0 +1,38 @@
+{
+  "label": "Gate 2: close (items 7-9 landed)",
+  "runDir": "docs/phase-7/gate/runs/2026-09-07T10-05-45-465Z",
+  "wallClockMs": 2971961,
+  "stages": [
+    {
+      "name": "checks",
+      "ok": true,
+      "durationMs": 22202
+    },
+    {
+      "name": "qa",
+      "ok": true,
+      "durationMs": 184714
+    },
+    {
+      "name": "probes",
+      "ok": true,
+      "durationMs": 60626
+    },
+    {
+      "name": "bundle",
+      "ok": true,
+      "durationMs": 25408
+    },
+    {
+      "name": "bench",
+      "ok": true,
+      "durationMs": 2678957
+    },
+    {
+      "name": "summary",
+      "ok": true,
+      "durationMs": 53
+    }
+  ],
+  "issues": 16
+}
