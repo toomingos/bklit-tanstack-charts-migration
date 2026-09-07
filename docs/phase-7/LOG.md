@@ -2627,3 +2627,75 @@ unmeasured: whether the root barrel's `createChartScene` retains more than the
 `scene` subpath `pie-chart.tsx:8` uses. Tree-shaking looked clean — no brush or
 time markers leaked — but the differential build was not run, so it is not
 claimed.
+
+## D625 — the composition fix is confirmed, and it turned two noisy flags into one real question
+
+Probe gate, run `2026-09-07T21-07-57-576Z`, on a quiet machine with no other
+agent in the tree. `legend-hover-dim` 2 flags → **1**. `hover-lag` stays at 3 but
+with different membership, which is itself evidence. Exit 0, errors 0.
+
+**`candlelegend` cleared, and the predicted number was right.** Item-0 legacy
+goes 512 → **1538** where migrated reads **1538** — identical. Item-1 reads
+**1472** against **1470**. The prediction was 512×3 = 1536 and 490×3 = 1470.
+
+I attached a caveat to that prediction: wrapper `<g>` nodes are in the selector
+scope and were already counted, so legacy might land near 2048 and leave the
+flag marginally alive at 0.2515 against a 0.25 threshold. **That caveat was
+wrong** — the measured 1538 shows the groups are not being double-counted. I
+recorded it because it was a real risk on the evidence I had, and I am recording
+its refutation the same way.
+
+**The flag clearing is the weakest part of the result.** The strong part is that
+every pair in the table now agrees, across implementations whose DOM shapes
+genuinely differ:
+
+| pair | legacy | migrated |
+|---|---|---|
+| `legendhover` item-0 / item-1 | 1010 / 2005 | 1008 / 2006 |
+| `candlelegend` item-0 / item-1 | 1538 / 1472 | 1538 / 1470 |
+| `barsquares` item-0 / item-1 | 4216 / 6920 | 4216 / 6920 |
+| `profitloss` item-0 / item-1 | 19 / 19 | 19 / 19 |
+
+`barsquares` matches to the element on both items. A probe that counted DOM
+levels could not do that. This is what "the instrument now measures visual dim"
+looks like as a measurement rather than an argument.
+
+**Choropleth confirms D617-b's second direction.** Its `hover-lag` dimmed count
+was legacy **3** against migrated 176; it now reads **188** against 176. D617
+predicted exactly this: 177 invisible legacy paths were being scored undimmed
+because only their ancestor carried the opacity. The `dim-presence-mismatch`
+flag survives, but it is now a 188/176 difference rather than a 3/176 one.
+
+**D622 is corroborated by fresh data, and I did not go looking for it.** The
+`settles-after-700ms-capture` flag changed *membership* between runs: `sankey/33`
+dropped out and `liveline/100` appeared. Legacy sankey's `last` went 1386 → 157
+— the same 157-against-1390 spread the audit found *within* a single run's three
+repeats. A design property does not move like that between runs. An artefact
+does. Two independent observations now say the same thing.
+
+**`markers/100` is the one that got more interesting, not less.** Before the fix
+item-1 read legacy 3→6 against migrated 5→7 — deltas of +3 and +2, which I
+called noise-scale in D621 and which were exactly that. It now reads legacy
+3→**314** against migrated 5→**114**: +311 against +109. The old numbers were
+the instrument; these are the scene.
+
+So `markers/100` is no longer a probe defect. It is a real difference in *how
+much* each implementation dims, and it did not equalise the way candlelegend
+did. Candlelegend equalised because both sides dim the same underlying leaves
+and merely attach the opacity at different depths. Markers does not: legacy
+wraps the line stroke and dash tail in one group and the dots in another
+(`series-hover-dim.tsx:48-53`, `series-markers.tsx:246-253`), so composition now
+counts every leaf beneath both, while migrated dims a leaf stroke, a leaf CSS
+class and a per-entry group. Total element counts differ too, 387 against 155.
+
+Item-0 carries a second, separate problem: legacy rests at **20** dimmed before
+any hover, *falls* to 10 on hover, and never fully undims (20 → 3). A dim count
+that decreases on hover and a nonzero resting baseline are both mount-tail
+signatures — D617-a territory, and markers has a reveal tail.
+
+**Ruling: `markers/100` stays open, and is now the only genuine chart question
+the probes have left.** Whether 311-against-109 is visible is a pixel question,
+not an element-count one, and the probe cannot answer it. That needs the QA gate
+on this pair plus a live DOM read to separate the mount tail from the dim scope.
+Both are lead-only and serial. What I will not do is infer the answer from the
+counts — that is the D611/D614/D616 mistake three times over.
