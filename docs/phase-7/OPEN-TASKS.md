@@ -59,7 +59,6 @@ defects. They cannot be parallelised against each other.
 |---|---|---|---|
 | **D617-a** | `openScene`'s virtual clock does not advance legacy's framer-motion mount, so scenes are sampled mid-mount while reporting settled | `lib-probe.mjs:129` `page.clock.install()` before `goto`; choropleth composed opacity read 0.0046 then 0.0462 minutes apart | open — **fix shape unknown, research first** |
 | **D622** | `settles-after-700ms-capture` compares virtual ms against a wall-clock threshold | `hover-lag.mjs:8` asserts "virtual ms are the same unit … as the gate's +700 ms capture"; never measured. `qa/screenshot.mjs` installs no clock | open — **fix shape unknown, research first** |
-| **D626** | `maxChannelDelta` 255 on markers `settled` *and* legend-hover captures | measured; unattributed | open loose end — forensic audit |
 
 D617-b (`dimmedCount` counting DOM levels) is **fixed and confirmed** — see §2.
 
@@ -101,6 +100,7 @@ Listed because two of these were re-proposed as work after they were done.
 | **A1–A14, A17** | **All landed** — `30c0e1a`, `23584f4`, `8661481`, `5c5d1f7`. Each carries an A-numbered comment at the fix site (e.g. `run-checks.mjs:92-95` sets `exit = 1` on `parseError`; `run-all.mjs:19` refuses `--bench-parallel`) |
 | **A11** | Retired by D609/D610 — the three `barloading` bounds were dropped outright, not resized |
 | **A16** | Guarded (D605) after three incidents |
+| **D626 (`maxChannelDelta`)** | **Closed (D634) — no defect, and no instrument.** `git grep -l ChannelDelta` returns only `LOG.md` and `OPEN-TASKS.md`: the metric is computed nowhere in the repo and appears in no `qa-matrix.json`. It came from an uncommitted ad-hoc script. Reconstructed: a raw-byte global max, upstream of the pixelmatch call that gates (20,730 raw vs 1,215 gated pixels on the same pair). The 255 is ~11 pixels of the cluster-count badge — bklit SVG `<text>` (`marker-group.tsx:258-286`) vs migrated HTML `<div>` (`marker-badge.tsx:6-28`), a glyph-edge rasterisation seam; gating predicate is identical on both sides. Confirmed by `marker-fan-open`, the one markers capture without the badge, being the one that does not reach 255. Statistic retired: it saturates, so it cannot carry severity |
 | **D617-b** | Fixed and confirmed. Both in-page mirrors compose ancestor opacity; predicted legacy candlelegend 512 → ~1536, measured **1538 against migrated's 1538**. `barsquares` now matches to the element on both items |
 | **D620** | `settled: 0` taint **struck** — differences are real but sub-threshold (`pixelmatch` at 0.1 returns 0); D572's run is outside the affected set |
 | **D624** | Bundle vector finished on a **negative** result: no third inversion exists. Remaining >1.10 cost is the package's per-chart marks |

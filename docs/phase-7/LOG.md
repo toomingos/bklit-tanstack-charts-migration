@@ -3043,3 +3043,66 @@ is a pin that will be stale by the amount the vector saves. Re-pinning is not
 bookkeeping to do when convenient — it is the step that converts a saving into a
 protected saving, and it belongs in the same commit sequence as the vector that
 earned it.
+
+## D634 — `maxChannelDelta` is not an instrument; it is a number I wrote down
+
+D626 carried a loose end: `maxChannelDelta` reads 255 on markers' `settled` *and*
+legend-hover captures, "measured; unattributed". The audit's first finding is that
+the premise is wrong. **`maxChannelDelta` is computed nowhere in this repo.**
+`git grep -l ChannelDelta` returns two files: `docs/phase-7/LOG.md` and
+`docs/phase-7/OPEN-TASKS.md`. Both are mine. `git log --all -S"maxChannelDelta"`
+returns the two commits that wrote those lines and nothing else.
+
+The gate's actual comparison is `qa/screenshot.mjs:184-215`, which calls
+`pixelmatch(..., { threshold: 0.1, includeAA: false })` and returns `diffPixels`,
+`diffRatio`, `diffPng` — no per-channel magnitude of any kind. Unioning every row
+key across all twelve committed `qa-matrix.json` files yields no channel-delta
+field. So the number came from an ad-hoc script that was never committed, and the
+question "how many cells report 255" was unanswerable from the record.
+
+The audit reconstructed the methodology by recomputing from the PNGs still on disk
+and reproducing D626's figures exactly (`settled` mean-of-per-pixel-max 12.836
+against my "12.84"; `legend-hover-0` 21.114 against "21.11"). That fixes what 255
+meant: a **global max over all pixels of the raw byte difference**, computed
+upstream of and separately from the pixelmatch call that actually gates. The two
+disagree by an order of magnitude on the same image pair — 20,730 raw
+byte-differing pixels against the gate's 1,215 — because the raw comparison has no
+antialiasing tolerance at all.
+
+**Attribution, from source.** The 255 pixels cluster in one 8×8 patch, ten or
+eleven pixels, at the same coordinates in every affected capture: the cluster-count
+badge. bklit draws it as SVG — `marker-group.tsx:258-286`, a `<circle r={9}>` plus
+an SVG `<text dominantBaseline="central" fontSize={11} fontWeight={600}>`. Migrated
+draws it as HTML — `marker-badge.tsx:6-28`, a flex-centred `<div>` with
+`borderRadius: 9999` at the same nominal size and weight. Pure black against pure
+white at adjacent coordinates, with the circle's *background* pixels matching, is
+a glyph edge landing on a different sub-pixel boundary between two text
+rasterisation pipelines. The confirming case is `marker-fan-open`, the one markers
+capture that does **not** reach 255: it is the state where the badge is not
+rendered at all. I checked the gating predicate on both sides and they are
+identical — `marker-group.tsx:260` `hasMultiple && !shouldFan`, and
+`marker-group-content.tsx:151` `hasMultiple && !shouldFan`.
+
+Recomputed across 195 local cells over 41 charts, seven hit 255 and **all seven are
+markers**; every other chart tops out at 246. So markers really is distinctive, and
+D626 was right about that much.
+
+**Verdict: stop reporting it.** As a filter it fired correctly and uniquely. As a
+headline it is worthless, because it saturates: any hard-edged glyph rendered
+through two rasterisation paths produces a 0↔255 swap at *some* boundary pixel,
+whatever the severity. "255" reads as alarming; the finding is eleven pixels of a
+count badge, cosmetically bounded, and structurally orthogonal to the dim-scope
+question D625/D626 were actually chasing. If a magnitude statistic is ever wanted,
+the useful one is the **count of max-delta pixels and their bounding box**, never
+the max alone.
+
+**The generalisable error is the one worth keeping.** I put a number in the
+permanent record with no instrument behind it, then carried it as an open item for
+another agent to audit. It cost a full investigation to establish that the metric
+did not exist. This is the fourth instance in two days of a stale or unbacked
+artefact being read as current state — D627's retracted count, D629's prediction
+against a fixed tree, D633's stale pins, and now this. The rule those four converge
+on: **a number entering the record needs its instrument named in the same
+sentence, or it does not enter.**
+
+D626 is closed. There is no defect and nothing to fix.
