@@ -2505,3 +2505,55 @@ levels instead of visual dim; this is virtual time being compared to a wall
 threshold. The vector is not "the probes found bugs in the charts" — it is that
 the probe harness runs in a different time regime from the gate it claims to
 predict, and several flags are that gap rather than the charts.
+
+## D623 — the BarPulse seam is single-pulse where bklit is per-pulse: a composition gap, currently unreachable
+
+`resolveBarPulseOverlay` (`bar-pulse-mark.ts:294-300`) scans the declared pulses
+and returns on the first one with live geometry. Its own comment says so. I had
+this filed against `qa/screenshot.mjs`, which was wrong — the limitation is in
+the chart package, not the harness — and filed as "second pulse invisible",
+which is also wrong.
+
+**The marks are fine; the seam is not.** Every declared pulse does get a
+rendered scene: `bar-chart-series-marks.ts:526-537` loops `for (const pulse of
+pulses)` and pushes each mark with no early exit, and extraction accumulates all
+of them (`children-extract.ts:107,176` onto the `barPulses` array typed at
+`types.ts:164`). What is singular is the seam. `bar-chart.tsx:269-282` derives
+one `clipD` and one `travelPx` from the first pulse, publishes them as two
+root-level CSS custom properties at `:317-321`
+(`--bkm-bar-pulse-mask`, `--bkm-bar-pulse-travel`), and mounts one `<mask>` whose
+id is a per-chart singleton (`resource-host.tsx:176,180-198`). Every
+`.bkm-chart__bar-pulse` group then inherits the same mask
+(`styles.css:721-724`) and every wave animates the same travel
+(`styles.css:708-715,726-729`). So with two pulses, the second paints through
+the first's silhouette and sweeps the first's distance.
+
+**Legacy does it per instance, so this is a parity gap and not a surface bklit
+lacks.** `bar-depth.tsx:959-966` emits a `clipPath` *and* a gradient per active
+entry, `:1022-1068` paints each entry inside its own `url(#clipId)`, and ids are
+scoped by `useId()` plus the entry label (`:940,:960-962`). The chart shell
+renders every declared child rather than collapsing to one
+(`bklit bar-chart.tsx:652-665`, `chart-child-passthrough.ts:113-117`). The docs'
+phrase "over a single active bar" (`bar-chart.mdx:248`) means one bar per
+`BarPulse` instance, not one instance per chart.
+
+This bears on the seamless-swap claim directly: same name, same props, different
+composition under N≥2. That makes it a defect rather than a preference.
+
+**But nothing reaches it.** Declared `<BarPulse>` per chart across the whole
+repo: `bklit-bardepth.tsx:104` = 1, `migrated-bardepth.tsx:96` = 1,
+`showcase/components/demos/bardepth.tsx:24,38` = two occurrences in mutually
+exclusive branches, so 1 each. Every other scenario, the showcase app and the
+unit tests are zero. Reachability today is **0**.
+
+So: recorded, not fixed, and deliberately. The fix is known and bounded — return
+an array from a `resolveBarPulseOverlays`, parameterise the mask id per pulse in
+`resource-host.tsx:180-198`, and move mask/travel from root-inherited singletons
+to per-group inline values (`bar-chart.tsx:317-321`, `styles.css:721-729`) — but
+it touches four files across the seam and the stylesheet to fix a case no
+consumer can currently hit, and Gate 4 has not run. It goes after the gate, not
+before it.
+
+What a viewer actually sees when a wave sweeps through the wrong silhouette was
+not determined: that needs a live DOM read, and the audit correctly declined to
+infer it.
