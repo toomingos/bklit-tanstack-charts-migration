@@ -9,6 +9,7 @@ import { reconcileChartSvgFragment } from "@tanstack/charts/reconcile";
 import { ChartHost, HOST_INITIAL_WIDTH } from "./chart-host";
 import { chartCssVars, useChartStable } from "./chart-context";
 import { LINE_LOADING_LOOP_PAUSE_MS } from "./design-tokens";
+import type { LineLoadingPulseMode } from "./loading-chrome";
 import { buildLoadingLinePath, projectLoadingLinePoints } from "./line-loading-sweep";
 import { PULSE_CLIP_PADDING, PULSE_HALF_PROGRESS, pulseClipWindow, pulseEnterSegments, pulseExitSegments, pulseLoopProgressAt, pulseLoopSegments } from "./line-loading-pulse-window";
 import type { PulseClipSegment, PulseClipWindow } from "./line-loading-pulse-window";
@@ -228,8 +229,6 @@ const BarLoadingSkeleton = ({
 };
 
 BarLoadingSkeleton.displayName = "BarLoadingSkeleton";
-
-type LineLoadingPulseMode = "loop" | "exit" | "enter";
 
 interface LineLoadingPulseStrokeProps {
   pathD: string;

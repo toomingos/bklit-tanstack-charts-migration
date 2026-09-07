@@ -1,6 +1,8 @@
 import type { ChartPhase } from "./chart-phase";
-import type { LineLoadingPulseMode } from "./line-loading-pulse";
 import { getSkeletonTargetValue, getSkeletonValue } from "./skeleton-data";
+
+// Pulse mode is the codomain of the mapping below, so it is declared here.
+type LineLoadingPulseMode = "loop" | "exit" | "enter";
 
 // Maps lifecycle phase to pulse mode (null draws no pulse); member-for-member with legacy,
 // So the mapping ports 1:1.
@@ -44,4 +46,4 @@ export {
   resolveLineLoadingPulseMode,
   buildLoadingSkeletonRows,
 };
-export type { LineLoadingPulseMode } from "./line-loading-pulse";
+export type { LineLoadingPulseMode };

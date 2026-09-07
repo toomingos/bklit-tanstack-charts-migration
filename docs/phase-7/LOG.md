@@ -1498,3 +1498,33 @@ attempt's geometry was rejected outright after reading bklit.
 **Lead-verified**: tsc 0, oxlint on `showcase/migrated` 0 findings, `npm test` 246 / 48 / 188 / 0 /
 58, exit 0, `^not ok` 0 — the exact baseline. Pixel parity is **not** claimed here: an infinite
 sweep is not settle-stable, so only a serial gate run with the phase-freeze hook can verify it.
+
+### D601 — deleted the dead `LineLoadingPulse` component; one declaration for its mode type
+
+**What it looked like.** `internal/line-loading-pulse.tsx` (113 lines) was on my list as "dead code to
+delete". It was not dead as stated, and the correction matters: nothing imported the **component**
+`LineLoadingPulse`, but `loading-chrome.ts:2` imported its **type** `LineLoadingPulseMode`, which
+`index.ts:45` re-exports as public surface with an api-compat assertion behind it
+(`qa/api-compat/all.ts:413`). Deleting the file naively would have broken a legacy export — exactly
+the failure mode claim 2 (seamless swap) exists to prevent.
+
+**Owned twice (principle 1).** `type LineLoadingPulseMode = "loop" | "exit" | "enter"` was declared
+character-for-character in two files: the dead component (:24) and `loading-entries.tsx` (:232),
+which hosts the *live* component `LineLoadingPulseStroke`. Two declarations of one public type is
+the duplication the phase is meant to remove, not a harmless copy.
+
+**Fix.** The type now lives in `loading-chrome.ts`, the module owning `resolveLineLoadingPulseMode`
+— the function whose codomain it is — and which already re-exported it. `loading-entries.tsx`
+imports it instead of redeclaring it; the dead component file is deleted. No import cycle:
+`loading-entries.tsx` did not import `loading-chrome.ts` before this change, and `loading-chrome.ts`
+does not import `loading-entries.tsx`.
+
+**Not touched.** The comment at `qa/unit/line-loading-pulse-reconcile.test.mjs:238` cites
+`line-loading-pulse.tsx:112-134` — that is **bklit's** file ("Bklit reads the live progress"), not
+the deleted migrated one. Left alone. The phase-6/7 census entries flagging this file as "not in the
+ledger" are historical records and stay as written.
+
+**Lead-verified**: tsc 0, oxlint on `showcase/migrated` 0 findings, `npm test` 246 / 48 / 188 / 0 /
+58, exit 0, `^not ok` 0. `npm run api-compat` gives byte-identical output before and after (9
+pre-existing errors, all Sankey/unmigrated surface, none at the `LineLoadingPulse` assertions on
+lines 157, 158, 413, 414) — the public type survived the move.
