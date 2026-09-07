@@ -79,7 +79,7 @@ export async function runQaSweep(opts = {}) {
   return passes[0];
 }
 
-async function runOnePass({ jobs, workers, preview, logDir, runDir, started, build, dist, label }) {
+export async function runOnePass({ jobs, workers, preview, logDir, runDir, started, build, dist, label }) {
   const t0 = Date.now();
   let done = 0;
   let results;
@@ -109,10 +109,11 @@ async function runOnePass({ jobs, workers, preview, logDir, runDir, started, bui
   const wallMs = Date.now() - t0;
   const timings = Object.fromEntries(results.map((r) => [r.key, r.durationMs]));
   const runsFile = path.join(runDir, "qa-runs.json");
-  // GUARD: a foreign vite build mid-pass means cells straddle two dists; flag it, don't silently mix.
+  // GUARD: a foreign vite build mid-pass means cells straddle two dists. Per-cell
+  // attribution is impossible (only start/end fingerprints exist), so the pass is
+  // invalidated below: the evidence is persisted, then the stage fails with no matrix.
   const distEnd = distFingerprint();
   const distChangedDuringPass = JSON.stringify(distEnd) !== JSON.stringify(dist);
-  if (distChangedDuringPass) log(TAG, `WARNING: bench/app/dist changed during the pass (${dist.indexMtime} -> ${distEnd.indexMtime}); cells straddle two builds`);
   writeJson(runsFile, {
     label,
     started,
@@ -129,6 +130,8 @@ async function runOnePass({ jobs, workers, preview, logDir, runDir, started, bui
   });
   writeJson(path.join(runDir, "qa-timings.json"), timings);
   log(TAG, `sweep wall-clock ${fmtMs(wallMs)} (sum of runs ${fmtMs(results.reduce((a, r) => a + r.durationMs, 0))}); ${results.filter((r) => r.exit !== 0).length} non-zero exits`);
+  // A8: fail the stage — a mixed-build matrix must never present as a single-build verdict.
+  if (distChangedDuringPass) throw new Error(`${TAG} bench/app/dist changed during the pass (${dist?.indexMtime} -> ${distEnd?.indexMtime}); cells straddle two builds — pass invalidated, no matrix built`);
 
   // Compare cutoff = this run's start, so the run never judges itself against its own captures.
   const matrix = buildMatrix(reportsFromRunsFile(runsFile), { before: started, label });

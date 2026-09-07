@@ -1610,3 +1610,64 @@ baked group opacity as a deliberate divergence.
 **Executor note.** The executor hit the task's stop condition and made **no edit** rather than
 improvise a dim replacement, which is the right call and the reason this entry can be written as a
 ruling instead of a revert. Tree untouched: tsc 0, oxlint 0, tests 246 / 48 / 188 / 0 / 58, exit 0.
+
+### D604 — nine gate-instrument defects (A5-A13): the harness could report a verdict it had not earned
+
+**Vector, not items (principle 4).** Every one of these is the same shape: the gate produced a
+*confident* verdict from evidence it did not have — a lock that did not exclude, a stage that failed
+silently, a crashed cell that vanished, a mixed-build matrix presented as one build. None of them
+changes a chart; all of them change what the gate is entitled to claim. That is why they land as one
+commit: A8's throw is only safe because A12 renders the resulting failure as FAILED rather than
+"not run", and A10's failed rows are only legible because A12 shows the stage failed at all.
+
+**A5 — the QA lock did not exclude.** `acquireQaLock` had a re-entrant depth counter: a second
+acquisition in the same process silently succeeded. That is the mechanism `--bench-parallel` used to
+share the machine, which is the literal cause of D588. The counter is gone; a nested acquire now
+throws. `--bench-parallel` is refused outright (`runAll` throws before any run dir exists) rather
+than removed, so an old invocation fails loudly instead of quietly running a serial gate. run-all's
+umbrella lock is also gone — required, now that nesting throws — and each server-using stage
+(`run-qa`, `run-probes`, `run-bench`) takes the lock itself in turn.
+
+**A6 — a probe run was invisible.** `waitForQuietProcessTable`'s pgrep pattern did not match
+`run-probes.mjs`. Added. Deliberately *not* added: the gate drivers themselves — a stage would see
+its own `run-all` parent as a foreign process and stall forever.
+
+**A7 — the stale-lock breaker could break a live run.** It required only `QA_PORT` (5198) to be
+quiet before declaring a lock dead, so a bench run holding the lock behind its own preview on
+`BENCH_PORT` (5199) was invisible and could have its lock broken underneath it. Now both ports must
+be quiet.
+
+**A8 — a mixed-build matrix presented as a single-build verdict.** `bench/app/dist` changing during
+a pass was a warning; it is now a throw, and the pass builds no matrix.
+
+**A10 — crashed bench cells vanished.** A non-zero-exit cell simply did not appear in the table, so
+the report looked complete. Failed cells now keep their rows (`failed`, `exit`, values null, no
+spurious flags) and render as `**FAILED (exit N)**`, with the header counting them. The
+`bench:invocation:*` issue already existed; the row is what was missing.
+
+**A12 — a stage that threw rendered as "not run".** run-all now writes an interim `run-all.json`
+before the summary stage, and `summarize` renders a missing artefact from a failed stage as
+`FAILED — <error>` and raises `stage:<name>-failed`. Run dirs without `run-all.json` keep the old
+rendering, so old artefacts still read correctly.
+
+**A13 — a crashed capture still earned pixel verdicts.** A non-zero harness exit means the PNGs are
+whatever it managed before dying, so no cell from that run gets PASS/FAIL; the gate is `ERROR`.
+
+**Follow-on I folded in.** `summarize.mjs:50` printed `no report` for every ERROR row. After A13,
+ERROR also means "crashed with partial output", so it now prints the recorded reason
+(`r.error ?? "no report"`) and the two stay distinguishable.
+
+**Lead-verified, not taken on report (principle 5).** I re-ran the load-bearing proofs myself against
+the real functions: nested `acquireQaLock` throws and — the check the executor did not report —
+**release resets the depth**, so the second sequential stage still acquires (without that, every gate
+run would throw at stage two). `--bench-parallel` refuses before creating a run dir (latest run dir
+unchanged). `summarize` on a failed-stage fixture gives `- QA: FAILED — Error: sweep blew up on
+bardepth/100` + `stage:qa-failed`, and on a fixture without `run-all.json` gives `- QA: not run` with
+0 stage issues. `compareBench` on a failed stub carries `failed=true exit=1` with `value=null` and
+`flag=false` on every metric. `node --check` OK on all six files; `npm test` 246 / 48 / 188 / 0 / 58,
+exit 0. No gate stage was run by me or by any executor — `qa/gate/latest`, `docs/phase-7/gate` and
+`bench/results/latest.json` are all clean in `git status`.
+
+**Not verified here.** None of this is proven end-to-end; it is proven function-by-function. Gate 3
+is the first run under the new locking, and it is the run that exercises A5's per-stage acquisition
+for real.

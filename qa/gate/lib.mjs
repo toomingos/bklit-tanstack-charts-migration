@@ -96,7 +96,9 @@ export function fmtMs(ms) {
 export function foreignHarnessProcesses(ignorePids = []) {
   let out = "";
   try {
-    out = execSync('pgrep -fl "screenshot.mjs|bench/run.mjs|vite preview|measure-bundle.mjs"', {
+    // A6: matches probe runs too (node qa/gate/probes/run-probes.mjs). Never add the gate
+    // drivers (run-all/run-qa/run-bench): a stage would see its own run-all parent as foreign.
+    out = execSync('pgrep -fl "screenshot.mjs|bench/run.mjs|run-probes.mjs|vite preview|measure-bundle.mjs"', {
       encoding: "utf8",
     });
   } catch {
@@ -338,12 +340,15 @@ export function relPath(p) {
   return path.relative(ROOT, p);
 }
 
-// GUARD: shared QA lock for port 5198 + bench/app/dist, same mkdir lock other agents use; held for the whole batch.
+// GUARD: shared QA lock for port 5198 + bench/app/dist, same mkdir lock other agents use; held per stage.
+// A5: every acquisition waits on the mkdir — there is deliberately no re-entrant shortcut, so a
+// second holder (same process or foreign) can never share the machine. run-all holds no umbrella
+// lock; each stage (qa, probes, bench) takes the lock itself in turn, sequentially.
 export const QA_LOCK_DIR =
   process.env.QA_LOCK_DIR ??
   "/private/tmp/claude-501/-Users-tomasdomingos-bklit-tanstack-charts-migration/18004630-5cf2-458a-8984-0bb5f70c912c/scratchpad/qa.lock";
 
-let qaLockDepth = 0; // re-entrant within one process
+let qaLockDepth = 0; // 1 while this process holds the lock; never re-entrant (A5)
 
 function lockOwnerAlive() {
   try {
@@ -365,12 +370,13 @@ function portListening(port) {
   }
 }
 
-// GUARD: mkdir lock + pid file; a lock whose owner is gone with nothing on 5198 is stale and gets broken.
+// GUARD: mkdir lock + pid file; broken only when the owner is gone AND nothing the harness
+// could be holding is still listening. A7: both ports — bench's :5199 preview is invisible to a
+// :5198-only check, so a live bench run could have its lock broken underneath it.
 export async function acquireQaLock(tag, { maxWaitMs = 25 * 60_000 } = {}) {
-  if (qaLockDepth > 0) {
-    qaLockDepth++;
-    return () => { qaLockDepth--; };
-  }
+  // A5: no re-entrant shortcut — a second acquisition in this process is a bug (it is how
+  // --bench-parallel used to share the machine), so fail loudly instead of silently succeeding.
+  if (qaLockDepth > 0) throw new Error(`${tag} already holds the QA lock in this process — stages take it in turn, never nested`);
   const t0 = Date.now();
   let announced = false;
   for (;;) {
@@ -381,8 +387,8 @@ export async function acquireQaLock(tag, { maxWaitMs = 25 * 60_000 } = {}) {
       break;
     } catch (e) {
       if (e.code !== "EEXIST") throw e;
-      if (!lockOwnerAlive() && !portListening(QA_PORT)) {
-        log(tag, `breaking stale QA lock ${QA_LOCK_DIR} (owner gone, nothing on ${QA_PORT})`);
+      if (!lockOwnerAlive() && !portListening(QA_PORT) && !portListening(BENCH_PORT)) {
+        log(tag, `breaking stale QA lock ${QA_LOCK_DIR} (owner gone, nothing on ${QA_PORT} or ${BENCH_PORT})`);
         rmSync(QA_LOCK_DIR, { recursive: true, force: true });
         continue;
       }

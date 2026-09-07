@@ -156,7 +156,11 @@ export function buildMatrix(reports, { before, label } = {}) {
       const j = judgeCell(px, h);
       const b = board.get(key);
       const informational = !!c.informational;
-      const gate = informational ? "INFO" : px <= GATE_PX ? "PASS" : "FAIL";
+      // A13: a non-zero harness exit means the capture crashed partway, so the PNGs are
+      // whatever it managed before dying — no cell from that run earns a pixel verdict.
+      // ERROR (never INFO/PASS/FAIL, never ruled) keeps the partial output loud.
+      const crashed = r.exit !== null && r.exit !== undefined && r.exit !== 0;
+      const gate = crashed ? "ERROR" : informational ? "INFO" : px <= GATE_PX ? "PASS" : "FAIL";
       const outDir = r.outDir ?? rep.outDir ?? null;
       const shot = (suffix) => (outDir ? relPath(path.join(outDir, `${c.name}${suffix}.png`)) : null);
       rows.push({
@@ -187,6 +191,7 @@ export function buildMatrix(reports, { before, label } = {}) {
         log: r.log ? relPath(r.log) : null,
         durationMs: r.durationMs ?? null,
         exit: r.exit ?? null,
+        error: crashed ? (r.error ?? `harness exit ${r.exit}`) : undefined,
       });
     }
     for (const tf of rep.tooltipFailures ?? []) {

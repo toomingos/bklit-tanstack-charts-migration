@@ -47,7 +47,9 @@ function qaIssues(matrix) {
     const id = `qa:${r.chart}/${r.n}:${cat}`;
     if (!groups.has(id)) groups.set(id, { id, category: cat, charts: [`${r.chart}/${r.n}`], cells: [], evidence: new Set(), detail: [] });
     const g = groups.get(id);
-    const what = r.gate === "ERROR" ? "no report" : `${r.px} px (${r.status}${r.histMode != null ? `, mode ${r.histMode}` : ""}${r.histRange ? `, hist [${r.histRange.join(",")}]` : ""})`;
+    // A13 made ERROR mean either outcome: no report at all, or a harness crash that left
+    // partial PNGs. Print the recorded reason so the two stay distinguishable in the summary.
+    const what = r.gate === "ERROR" ? (r.error ?? "no report") : `${r.px} px (${r.status}${r.histMode != null ? `, mode ${r.histMode}` : ""}${r.histRange ? `, hist [${r.histRange.join(",")}]` : ""})`;
     g.cells.push(`${r.cell}: ${what}${tooltipFailure ? ` tooltip A/B ${r.tooltipA}/${r.tooltipB}` : ""}`);
     if (r.screenshots?.diff) g.evidence.add(r.screenshots.diff);
     else if (r.reportDir) g.evidence.add(r.reportDir);
@@ -104,23 +106,44 @@ export function collectIssues(runDir) {
   const rd = (f) => (existsSync(path.join(runDir, f)) ? readJson(path.join(runDir, f)) : null);
   const art = { matrix: rd("qa-matrix.json"), bench: rd("bench.json"), bundle: rd("bundle.json"), checks: rd("checks.json"), census: rd("census.json"), probes: rd("probes.json") };
   if (art.matrix) applyRulings(art.matrix.rows); // old matrices predate the ruled stamp; re-apply at read time
-  const issues = [...qaIssues(art.matrix), ...benchIssues(art.bench), ...bundleIssues(art.bundle), ...checksIssues(art.checks, art.census), ...probeIssues(art.probes)].map((i) => ({ ...i, hypothesis: "" }));
+  const stages = rd("run-all.json")?.stages ?? [];
+  const issues = [...qaIssues(art.matrix), ...benchIssues(art.bench), ...bundleIssues(art.bundle), ...checksIssues(art.checks, art.census), ...probeIssues(art.probes), ...stageIssues(stages, runDir)].map((i) => ({ ...i, hypothesis: "" }));
   return { art, issues };
+}
+
+// A12: a stage that threw renders as failed and raises an issue — never a silent "not run".
+// run-all.json carries the stages array (written interim before the summary stage); a run dir
+// without it predates the record and keeps the old rendering.
+export function stageIssues(stages, runDir) {
+  if (!Array.isArray(stages)) return [];
+  const catFor = { checks: "checks", qa: "harness-race", probes: "harness-race", bundle: "bundle", bench: "bench" };
+  return stages
+    .filter((s) => !s.ok && s.name !== "summary")
+    .map((s) => ({
+      id: `stage:${s.name}-failed`,
+      category: catFor[s.name] ?? "checks",
+      charts: ["—"],
+      cells: [`stage ${s.name} failed in ${fmtMs(s.durationMs ?? 0)}: ${String(s.error ?? "unknown").split("\n")[0].slice(0, 200)}`],
+      evidence: [`${relPath(runDir)}/run-all.json`],
+    }));
 }
 
 const esc = (s) => String(s).replace(/\|/g, "\\|");
 
-export function summaryMd({ runDir, label, art, issues }) {
+export function summaryMd({ runDir, label, art, issues, stages = [] }) {
   const m = art.matrix, b = art.bench, u = art.bundle, c = art.checks, p = art.probes;
+  const failed = Object.fromEntries(stages.filter((s) => !s.ok).map((s) => [s.name, s]));
+  // A12: missing artefact + failed stage = FAILED, not "not run".
+  const orFailed = (name, text) => text ?? (failed[name] ? `FAILED — ${String(failed[name].error ?? "unknown").split("\n")[0].slice(0, 160)}` : "not run");
   const ruled = m ? m.rows.filter((r) => r.ruled).length : 0;
   const gateFail = m ? m.rows.filter((r) => r.px !== undefined && !r.informational && r.gate === "FAIL" && !r.ruled).length : 0;
   const out = [`# Gate summary — ${label ?? path.basename(runDir)}`, "", `Run dir: \`${relPath(runDir)}\`. Generated ${new Date().toISOString()}.`, "", "## Headline", ""];
-  out.push(`- QA: ${m ? `${m.summary.runs} runs / ${m.summary.cells} cells; gate FAIL ${gateFail}${ruled ? `, ruled ${ruled}` : ""}, harness FAIL ${m.summary.harnessFail}, out-of-range ${m.summary.outOfRange}, new values ${m.summary.newValues}, tooltip failures ${m.summary.tooltipFailures}, errors ${m.summary.errors}${m.run ? `; ${m.run.workers} workers, wall-clock ${fmtMs(m.run.wallClockMs)}` : ""} (gate ${GATE_PX} px)` : "not run"}`);
-  out.push(`- Bench: ${b ? `${b.summary.cells} cells (${b.summary.skipped} skipped); ${b.summary.flags} flagged (±${b.flagPct}% D273), console-error cells ${b.summary.consoleErrors}, tooltip-missing ${b.summary.tooltipMissing}, failed invocations ${b.summary.failedInvocations}, wall-clock ${fmtMs(b.summary.wallClockMs)}` : "not run"}`);
-  out.push(`- Bundle: ${u ? `${u.summary.pinned} pinned, FAIL ${u.summary.fail}, MISSING ${u.summary.missing}, measure-failed ${u.summary.measureFailed}, Σgzip ${u.summary.sumGzip} vs Σpin ${u.summary.sumPin} (${u.summary.sumDeltaPct > 0 ? "+" : ""}${u.summary.sumDeltaPct}%)` : "not run"}`);
-  out.push(`- Checks: ${c ? c.checks.map((x) => `${x.name}=${x.skipped ? "skipped" : x.exit === 0 ? "ok" : "FAIL(" + x.exit + ")"}`).join(", ") : "not run"}`);
+  out.push(`- QA: ${orFailed("qa", m ? `${m.summary.runs} runs / ${m.summary.cells} cells; gate FAIL ${gateFail}${ruled ? `, ruled ${ruled}` : ""}, harness FAIL ${m.summary.harnessFail}, out-of-range ${m.summary.outOfRange}, new values ${m.summary.newValues}, tooltip failures ${m.summary.tooltipFailures}, errors ${m.summary.errors}${m.run ? `; ${m.run.workers} workers, wall-clock ${fmtMs(m.run.wallClockMs)}` : ""} (gate ${GATE_PX} px)` : null)}`);
+  out.push(`- Bench: ${orFailed("bench", b ? `${b.summary.cells} cells (${b.summary.skipped} skipped); ${b.summary.flags} flagged (±${b.flagPct}% D273), console-error cells ${b.summary.consoleErrors}, tooltip-missing ${b.summary.tooltipMissing}, failed invocations ${b.summary.failedInvocations}, wall-clock ${fmtMs(b.summary.wallClockMs)}` : null)}`);
+  out.push(`- Bundle: ${orFailed("bundle", u ? `${u.summary.pinned} pinned, FAIL ${u.summary.fail}, MISSING ${u.summary.missing}, measure-failed ${u.summary.measureFailed}, Σgzip ${u.summary.sumGzip} vs Σpin ${u.summary.sumPin} (${u.summary.sumDeltaPct > 0 ? "+" : ""}${u.summary.sumDeltaPct}%)` : null)}`);
+  out.push(`- Checks: ${orFailed("checks", c ? c.checks.map((x) => `${x.name}=${x.skipped ? "skipped" : x.exit === 0 ? "ok" : "FAIL(" + x.exit + ")"}`).join(", ") : null)}`);
   out.push(`- Census: ${art.census ? `reach-in-guard exit ${art.census.exit}${art.census.total != null ? `, total ${art.census.total}` : ""}${art.census.failures ? `, failures ${art.census.failures.length}` : ""}` : "not run"}`);
-  out.push(`- Probes: ${p ? `${p.ran.join(", ")} — flags ${JSON.stringify(p.summary)}, errors ${Object.keys(p.errors).length}` : "not run"}`);
+  out.push(`- Probes: ${orFailed("probes", p ? `${p.ran.join(", ")} — flags ${JSON.stringify(p.summary)}, errors ${Object.keys(p.errors).length}` : null)}`);
   out.push("", `## Issues (${issues.length})`, "", "Classification only — the hypothesis column is intentionally empty for the fix owner.", "");
   const byCat = {};
   for (const i of issues) byCat[i.category] = (byCat[i.category] ?? 0) + 1;
@@ -187,7 +210,8 @@ export function summarize({ runDir = LATEST_DIR, label, issuesFile, allowHashMis
   assertTreeHash(runDir, { allow: allowHashMismatch, tag: TAG });
   const { art, issues } = collectIssues(runDir);
   const lbl = label ?? art.matrix?.label ?? path.basename(runDir);
-  const md = summaryMd({ runDir, label: lbl, art, issues });
+  const stages = readJson(path.join(runDir, "run-all.json"), {}).stages ?? [];
+  const md = summaryMd({ runDir, label: lbl, art, issues, stages });
   writeFileSync(path.join(runDir, "SUMMARY.md"), md);
   writeJson(path.join(runDir, "issues.json"), { generatedAt: new Date().toISOString(), runDir: relPath(runDir), label: lbl, issues });
   publishLatest([path.join(runDir, "SUMMARY.md"), path.join(runDir, "issues.json")]);

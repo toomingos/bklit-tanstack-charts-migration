@@ -11,6 +11,7 @@ import {
   BENCH_RESULTS_DIR,
   ROOT,
   RUNS_DIR,
+  acquireQaLock,
   buildDistOnce,
   currentHead,
   ensureDir,
@@ -61,15 +62,19 @@ export function compareBench(results, baseline) {
   const rows = [];
   for (const r of results) {
     const key = `${r.impl}/${r.chart}/${r.n}`;
+    const failed = r.failed === true; // A10: failed cells keep their rows, marked
+    const exit = r.exit ?? null;
     const base = baseline.cells[key] ?? null;
     for (const [metric, label] of METRICS) {
-      const value = medianOf(r.metrics?.[metric]);
+      const value = failed ? null : medianOf(r.metrics?.[metric]);
       const baseValue = base ? base[metric] : null;
       const gated = baseline.gatedMetrics.includes(metric);
       const delta = value != null && baseValue ? ((value - baseValue) / baseValue) * 100 : null;
       const flag = gated && delta != null && Math.abs(delta) > baseline.flagPct;
       rows.push({
         cell: key,
+        failed,
+        exit,
         impl: r.impl,
         chart: r.chart,
         n: r.n,
@@ -88,12 +93,12 @@ export function compareBench(results, baseline) {
     }
     // GUARD: console-error baseline comes from the baseline cell (legacy bklit/bar at n>=1000 emits ~515k/1.54M
     // negative-<rect>-attribute errors since Phase-5 close); non-zero baselines flag past D273 tolerance, zero flags on any error.
-    const errValue = r.consoleErrorCount ?? r.metrics?.consoleErrorCount ?? null;
+    const errValue = failed ? null : (r.consoleErrorCount ?? r.metrics?.consoleErrorCount ?? null);
     const errBase = base?.consoleErrorCount ?? 0;
-    rows.push({ cell: key, impl: r.impl, chart: r.chart, n: r.n, metric: "consoleErrorCount", label: "console errors", value: errValue, baseline: errBase, baselineSource: base ? base.source : null, deltaPct: null, gated: true, flag: errBase > 0 ? (errValue ?? 0) > errBase * (1 + baseline.flagPct / 100) : (errValue ?? 0) > 0, void: false });
+    rows.push({ cell: key, failed, exit, impl: r.impl, chart: r.chart, n: r.n, metric: "consoleErrorCount", label: "console errors", value: errValue, baseline: errBase, baselineSource: base ? base.source : null, deltaPct: null, gated: true, flag: !failed && (errBase > 0 ? (errValue ?? 0) > errBase * (1 + baseline.flagPct / 100) : (errValue ?? 0) > 0), void: false });
     // GUARD: tooltip baseline comes from the baseline cell (legacy bklit/line/1000 never satisfied the >=3-text-nodes signal); default true.
     const tipBase = base?.m3c_tooltipAppeared ?? true;
-    rows.push({ cell: key, impl: r.impl, chart: r.chart, n: r.n, metric: "m3c_tooltipAppeared", label: "tooltip appeared", value: r.metrics?.m3c_tooltipAppeared ?? null, baseline: tipBase, baselineSource: base ? base.source : null, deltaPct: null, gated: true, flag: tipBase === true && r.metrics?.m3c_tooltipAppeared === false, void: false });
+    rows.push({ cell: key, failed, exit, impl: r.impl, chart: r.chart, n: r.n, metric: "m3c_tooltipAppeared", label: "tooltip appeared", value: failed ? null : (r.metrics?.m3c_tooltipAppeared ?? null), baseline: tipBase, baselineSource: base ? base.source : null, deltaPct: null, gated: true, flag: !failed && tipBase === true && r.metrics?.m3c_tooltipAppeared === false, void: false });
   }
   return rows;
 }
@@ -106,13 +111,15 @@ export function benchToMd(bench) {
     `Generated ${bench.generatedAt}. Cells: ${bench.cellsRequested.join(", ")}. Baseline: qa/gate/bench-baseline.json (${bench.baselineNote}).`,
     `Flag rule D273: |Δ| > ${bench.flagPct}% on M1b/M1c/M3a. M1a is a VOID channel on this machine (BASELINE §3b) — informational only.`,
     "",
-    `**${s.cells} cells measured (${s.skipped} skipped), ${s.flags} flagged metric(s), ${s.consoleErrors} cell(s) with console errors, wall-clock ${fmtMs(s.wallClockMs)}.**`,
+    `**${s.cells} cells measured (${s.skipped} skipped, ${s.failedInvocations ?? 0} failed), ${s.flags} flagged metric(s), ${s.consoleErrors} cell(s) with console errors, wall-clock ${fmtMs(s.wallClockMs)}.**`,
     "",
   ];
   const byCell = new Map();
+  const failedCells = new Map(); // A10: cell -> exit code, so failures render instead of vanishing
   for (const r of bench.rows) {
     if (!byCell.has(r.cell)) byCell.set(r.cell, {});
     byCell.get(r.cell)[r.metric] = r;
+    if (r.failed) failedCells.set(r.cell, r.exit);
   }
   const fmt = (r) => {
     if (!r || r.value == null) return "—";
@@ -122,7 +129,7 @@ export function benchToMd(bench) {
     return `${b} → ${v} (${r.deltaPct > 0 ? "+" : ""}${r.deltaPct}%)${r.flag ? " **‼**" : ""}`;
   };
   const rows = [...byCell.entries()].map(([cell, m]) => [
-    cell,
+    failedCells.has(cell) ? `${cell} **FAILED (exit ${failedCells.get(cell) ?? "?"})**` : cell,
     fmt(m.m1a_mountToPaintMs) + " (void)",
     fmt(m.m1b_settleMs),
     fmt(m.m1c_scriptMs),
@@ -161,6 +168,8 @@ export async function runBenchGate(opts = {}) {
     cells = MIGRATED;
   } else cells = String(sel).split(",");
 
+  // A6: hold the QA lock for the whole batch like run-qa/run-probes, then require a quiet table.
+  const releaseLock = await acquireQaLock(TAG);
   await waitForQuietProcessTable(TAG, { abort: !!opts.noWait });
   const build = await buildDistOnce(TAG, { force: !!opts.forceBuild, skip: !!opts.noBuild, logFile: path.join(logDir, "build.log") });
   const preview = await startPreview(TAG, opts.port ?? BENCH_PORT, { logFile: path.join(logDir, "preview.log"), reuse: !!opts.reuseServer });
@@ -194,9 +203,12 @@ export async function runBenchGate(opts = {}) {
       invocations.push({ cell, exit: r.code, durationMs: r.durationMs, log: relPath(logFile) });
       log(TAG, `${cell} exit=${r.code} ${fmtMs(r.durationMs)}`);
       if (r.code === 0) collect(cell);
+      // A10: a failed cell stays in the report, marked — never a silent absence.
+      else results.push({ impl, chart, n, failed: true, exit: r.code, log: relPath(logFile) });
     }
   } finally {
     await preview.stop();
+    releaseLock();
   }
   const rows = compareBench(results, baseline);
   const bench = {
