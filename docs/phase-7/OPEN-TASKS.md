@@ -1,6 +1,11 @@
 # Phase 7 — open tasks and working agreements
 
-Current as of commit `d92d590`, branch `main` (pushed, 0 unpushed). Gate 4 ran `2026-09-07T21-21-41-176Z`; the G4-a re-run is `2026-09-07T21-48-15-130Z`.
+Current as of commit `07c31f3`, branch `main`. Gate 4 ran `2026-09-07T21-21-41-176Z`; the G4-a re-run is `2026-09-07T21-48-15-130Z`.
+
+Correction to this line's previous claim: it read "pushed, 0 unpushed" at `d92d590`, and I twice
+recorded later commits as pushed when they were not — `origin/main` sat at `d92d590` while
+`88c8d9b` and `313cc95` were local only. Push state is not something to carry in a note; read
+`git rev-list --count origin/main..HEAD` before writing it here.
 
 Two things this document exists to prevent. First, the open list living only in
 conversation, which is where V6 and V7 were until they were traced back to repo

@@ -3233,3 +3233,19 @@ At `--repeats 5` the sweep aborted: `openScene .../?impl=bklit&chart=pie&n=1000 
 `--repeats 3` in three sweeps. `settle.ts` is A15/D631's file and A15's live verification is still
 outstanding, so this is filed as an open item against that vector with its exact error string, and
 no mechanism is asserted.
+
+### D636 addendum — post-landing verification and one latent note
+
+Bundle after D623: `pinned 43, fail 0`, Σ +0.06%, max `migrated/brush` +0.28% (its pin was
+deliberately not raised at D633 and still is not breached). Bar family beyond `bardepth`
+(`bar`, `barloading`, `barmultiaxis`, `barsquares`, `2026-09-07T22-48-52-925Z`): 19 gated cells,
+gate FAIL 0, out-of-range 0, harness FAIL 0 — D623 touches `bar-chart.tsx`'s render path for every
+bar scenario, so gating only the pulse chart would have been gating the part I already knew about.
+
+Latent, recorded not fixed: `bar-chart.tsx`'s pulse `<style>` interpolates `markId`
+(`bar-pulse-${dataKey}`, consumer-supplied) into a CSS attribute selector with no escaping, where
+the renderer's own `data-ts-key` write goes through `escapeAttribute`. A `dataKey` containing a
+quote would silently drop the mask rather than fail. Every `dataKey` in this repo is an identifier,
+bklit's clipPath ids have the same exposure, and the seam is R10 — removed when upstream ships — so
+hardening it now is scope the two phase claims do not ask for. Noted so it is not rediscovered as a
+mystery.

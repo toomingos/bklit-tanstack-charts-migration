@@ -1,0 +1,80 @@
+{
+  "label": "d623-bar-family",
+  "started": "2026-09-07T22:48:52.926Z",
+  "finished": "2026-09-07T22:49:25.377Z",
+  "workers": 1,
+  "wallClockMs": 31855,
+  "sumRunMs": 31854,
+  "build": {
+    "built": false,
+    "reason": "dist fresh",
+    "code": 0,
+    "durationMs": 0
+  },
+  "dist": {
+    "indexMtime": "2026-09-07T22:43:50.289Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-CVRngUmM.js",
+      "index-ImgLMm2K.css"
+    ]
+  },
+  "distEnd": {
+    "indexMtime": "2026-09-07T22:43:50.289Z",
+    "assets": [
+      "Geist-Variable-Bj2R_7yk.woff2",
+      "GeistMono-Variable-Dispecij.woff2",
+      "index-CVRngUmM.js",
+      "index-ImgLMm2K.css"
+    ]
+  },
+  "distChangedDuringPass": false,
+  "previewUrl": "http://localhost:5198",
+  "jobs": [
+    {
+      "chart": "bar",
+      "n": 100,
+      "state": "ready",
+      "key": "bar/100",
+      "worker": 0,
+      "exit": 0,
+      "durationMs": 5779,
+      "reportDir": "qa/results/bar/2026-09-07T22-48-58-912Z",
+      "log": "docs/phase-7/gate/runs/2026-09-07T22-48-52-925Z/logs/qa/bar-100.log"
+    },
+    {
+      "chart": "barloading",
+      "n": 100,
+      "state": "ready",
+      "key": "barloading/100",
+      "worker": 0,
+      "exit": 0,
+      "durationMs": 4028,
+      "reportDir": "qa/results/barloading/2026-09-07T22-49-02-969Z",
+      "log": "docs/phase-7/gate/runs/2026-09-07T22-48-52-925Z/logs/qa/barloading-100.log"
+    },
+    {
+      "chart": "barmultiaxis",
+      "n": 100,
+      "state": "ready",
+      "key": "barmultiaxis/100",
+      "worker": 0,
+      "exit": 0,
+      "durationMs": 5680,
+      "reportDir": "qa/results/barmultiaxis/2026-09-07T22-49-08-627Z",
+      "log": "docs/phase-7/gate/runs/2026-09-07T22-48-52-925Z/logs/qa/barmultiaxis-100.log"
+    },
+    {
+      "chart": "barsquares",
+      "n": 100,
+      "state": "ready",
+      "key": "barsquares/100",
+      "worker": 0,
+      "exit": 0,
+      "durationMs": 16367,
+      "reportDir": "qa/results/barsquares/2026-09-07T22-49-24-671Z",
+      "log": "docs/phase-7/gate/runs/2026-09-07T22-48-52-925Z/logs/qa/barsquares-100.log"
+    }
+  ]
+}
