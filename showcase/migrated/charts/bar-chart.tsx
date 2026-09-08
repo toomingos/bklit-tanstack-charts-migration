@@ -328,12 +328,8 @@ const BarChart = ({
   // Seam resources carry the mount prefix; the pulse mask carries the live silhouette clip.
   const plotMaskWidth = width - margin.left - margin.right;
   const plotMaskHeight = heightPxBar - margin.top - margin.bottom;
-  // D623: mask/travel ride a React-owned <style> element, one rule per pulse, keyed by that
-  // pulse's own data-ts-key. A renderer-owned node cannot carry them -- reconcile.js's
-  // syncAttributes strips any attribute (including style) absent from the freshly serialized
-  // markup on every render, so an imperative style set on a scene group is deleted the next
-  // frame. The chart-id attribute scopes each rule to this mount, so two BarChart instances
-  // using the same dataKey on one page never cross-match.
+  // D623: one rule per pulse, because reconcile.js strips any attribute absent from the fresh markup.
+  // An imperative style on a scene group dies next frame; the chart id scopes each rule to this mount.
   const pulseSeamStyle = pulseOverlays.length === 0 ? null : (
     <style>
       {pulseOverlays.map((overlay) => `[data-bkm-chart-id="${idPrefix}"] [data-ts-key="${overlay.markId}"]{--bkm-bar-pulse-mask:url(#${barPulseMaskId(idPrefix, overlay.markId)});--bkm-bar-pulse-travel:${overlay.travelPx}px;}`).join("\n")}

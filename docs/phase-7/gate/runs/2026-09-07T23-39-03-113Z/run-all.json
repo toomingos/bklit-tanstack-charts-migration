@@ -1,0 +1,38 @@
+{
+  "label": "gate-5 D638-D641 instrument",
+  "runDir": "docs/phase-7/gate/runs/2026-09-07T23-39-03-113Z",
+  "wallClockMs": 1162139,
+  "stages": [
+    {
+      "name": "checks",
+      "ok": true,
+      "durationMs": 21745
+    },
+    {
+      "name": "qa",
+      "ok": true,
+      "durationMs": 193643
+    },
+    {
+      "name": "probes",
+      "ok": true,
+      "durationMs": 70448
+    },
+    {
+      "name": "bundle",
+      "ok": true,
+      "durationMs": 20831
+    },
+    {
+      "name": "bench",
+      "ok": true,
+      "durationMs": 855419
+    },
+    {
+      "name": "summary",
+      "ok": true,
+      "durationMs": 53
+    }
+  ],
+  "issues": 7
+}

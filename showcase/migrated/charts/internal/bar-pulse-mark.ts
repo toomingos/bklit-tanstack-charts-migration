@@ -287,7 +287,7 @@ const resolveOnePulseOverlay = (pulse: Readonly<BarPulseConfig>, overlayArgs: Re
   });
   if (!input) {return null;}
   const sweep = resolveBarPulseSweep(input.frame, input.bandWidth);
-  // markId must match bar-chart-series-marks.ts's `bar-pulse-${dataKey}` scene id exactly -- it is the DOM anchor (data-ts-key) the seam uses to scope this pulse's mask/travel to its own group instead of the whole chart.
+  // Must match bar-chart-series-marks.ts's `bar-pulse-${dataKey}` scene id exactly: it is the data-ts-key the seam scopes this pulse's mask and travel to, instead of the whole chart.
   return { clipD: sweep.silhouettePath, markId: `bar-pulse-${pulse.dataKey}`, travelPx: sweep.travelPx };
 };
 

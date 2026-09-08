@@ -1,6 +1,6 @@
 # Phase 7 — open tasks and working agreements
 
-Current as of the D641 entry in `LOG.md`, branch `main`. (This line names the last *entry*, not a commit hash: a hash written here can never be the commit that carries the line, and the two previous attempts to keep one accurate both went stale within a day.) Gate 4 ran `2026-09-07T21-21-41-176Z`; the G4-a re-run is `2026-09-07T21-48-15-130Z`.
+Current as of the D642 entry in `LOG.md`, branch `main`. (This line names the last *entry*, not a commit hash: a hash written here can never be the commit that carries the line, and the two previous attempts to keep one accurate both went stale within a day.) Gate 5 ran `2026-09-07T23-39-03-113Z` (label `gate-5 D638-D641 instrument`): every stage `ok`, QA gate FAIL 0, bundle FAIL 0, bench 0 flagged, probe errors 0. Gate 4 was `2026-09-07T21-21-41-176Z` with the G4-a re-run at `2026-09-07T21-48-15-130Z`.
 
 Correction to this line's previous claim: it read "pushed, 0 unpushed" at `d92d590`, and I twice
 recorded later commits as pushed when they were not — `origin/main` sat at `d92d590` while
@@ -58,7 +58,7 @@ under four workers. A load-induced harness timeout, not a regression.
 ### Probe instrument — one file, therefore one agent
 
 `qa/gate/probes/lib-probe.mjs` and `hover-lag.mjs` held both original probe
-defects; both are now fixed, and the three rows below them are what the fixes
+defects; both are now fixed, and the rows below them are what the fixes
 surfaced. `openScene` returns `quiesceIters` and hover-lag emits it per repeat
 (D636) — without it, "my change broke candlestick" and "the build was bad" were
 indistinguishable, and a day went into the wrong one.
@@ -70,6 +70,7 @@ indistinguishable, and a day went into the wrong one.
 | **bar/100 tail** | `virtual-settle-tail>700ms` survives the D617-a fix; tightened at `--repeats 5` to `[1102,1095,1100,1105,1089]` ms | Attributed: the whole tail is `seriesA--hover-dot`/`seriesB--hover-dot` `<g>` **`opacity`**, 32 samples each over 1088 ms. Hover *creates* those groups, so they enter, and an entering group gets the package default `defaultDuration = 1100`. Controls: **0** `data-ts-key` mutations, **0** keys lost — the identity-churn reading is refuted by measurement, not only by source | **closed as upstream (D641, I11 = [#136](https://github.com/TanStack/charts/issues/136)).** The mark that owns the groups already declares a spring; the phase-aware `enter → false` idiom typechecks and leaves the tail at 1088 ms, and `SceneGroup`/`SceneNodeBase` carry no `motion`. Only chart-wide `motion` reaches it, which is also the bar reveal. No in-app workaround landed — mounting the groups permanently would reimplement the package's focus mounting. Probes `bar-hover-mutations.mjs` and `bar-hover-motion-role.mjs` committed |
 | **pie settle flake** | At `--repeats 5`: `openScene ?impl=bklit&chart=pie&n=1000 never settled after 90000 virtual ms (armed=true settled=false paint=true)` | Pre-existing settle loop (`lib-probe.mjs:155-172`), not the quiescence loop; `armFallback`'s net is a faked `window.setTimeout` that 90 s of virtual time should have fired. Did not reproduce at `--repeats 3` in three sweeps | **closed (D640).** Not a race — a budget. pie/1000's own fallback is at 84370 ms against a 90000 cap (5630 ms slack), and the loop spends that budget from `goto` (`waitUntil: "commit"`) rather than from the moment the scene arms, so pre-mount bundle load comes out of the reveal's allowance. `armedAtMs` now splits the two: `settleCapMs` is spent post-arm, `ARM_CAP_MS` bounds arming, each with its own message. Cap deliberately **not** raised. Verified: `pnpm gate:probes -- --only hover-lag --repeats 5`, run `2026-09-07T23-23-41-123Z`, **errors 0** — the exact invocation that aborted before. `armedAtMs` now on the artefact: 3300–8900 ms across 26 rows x 5 repeats, pie/1000 at 4600–8200 against the old rule's implicit 8630 ms ceiling on the arm. The distribution straddles it, which is the flake, measured |
 | **liveline/100 bklit tail** | `virtual-settle-tail>700ms` newly flags on the **bklit** side at `--repeats 5`, raw `[118,561,1267,1056,134]` | The flag predicate is `some(r > 700)` (`hover-lag.mjs:103`), not a median, so more repeats mean more chances to trip it on a scene whose own spread is 10x. Never seen at `--repeats 3` | **open (D640), low priority.** A reference-implementation jitter reading: it says nothing about migrated parity and nothing the phase claims turns on it. Resolve either by widening the sample or by making the predicate a median — the latter is a probe-semantics change and needs its own D-entry, not a drive-by |
+| **D623 landed unchecked** | `3e3f471` landed 20 min after G4, verified only by its own targeted measurement; G5 was the first gate to compile it | 8 oxlint errors (6-line comment vs a 2-line budget; `capitalized-comments` reads each `//` line as its own comment) and 1 census failure (`bar-chart.tsx` gained a `data-ts-key` selector, unledgered) | **fixed (D642).** Comments rewritten to budget, no code touched; the selector ledgered at `max: 1` ruling `D623` — it is exactly what `reconcile.js:99-103` forces. Re-verified: oxlint clean, reach-in-guard OK 24/14, tsc 0, unit 268/210/0/58 |
 
 D617-b (`dimmedCount` counting DOM levels) is **fixed and confirmed** — see §2.
 
@@ -184,6 +185,7 @@ rely on remembering.
 ### 3.4 Lead responsibilities
 
 - Commit between executor returns — one reviewed commit per item, no half-landed vectors.
+- **A commit touching `showcase/migrated` is not landed until `gate:checks` has seen it** (D642). D623 was verified by its own targeted measurement, landed 20 minutes after G4, and carried 8 lint errors and an unledgered reach-in site for five commits. A targeted measurement proves the fix; it does not prove the tree.
 - Re-run every count yourself. Executor reports are input, not proof.
 - Commit messages end with the session trailer. **Never in doc files.**
 - Never commit: gate `logs/`, `qa/results/`, `qa/.scratch/`, modified `.agents/skills/opencode-subagents/*`, `skills-lock.json`.
@@ -212,7 +214,7 @@ rely on remembering.
 |---|---|---|
 | 1 | Push the ten commits on `main` | **yes** — pushed `30c0e1a..3235210` |
 | 2 | File I10; rewrite or drop I9 | **file I10** (#135, on the corrected basis of D627); **drop I9** (D628) |
-| 3 | A15 — bench 2500 ms silent fallback | **fix**, after G4 |
+| 3 | A15 — bench 2500 ms silent fallback | **fix**, after G4 — **done**: fixed D631, verified live D637, row above at §Closed. Left in this table because the answer was the decision, not the work |
 | 4 | At G4: the dirty `bench/results/*` and `qa/gate/latest/*` | **let G4 overwrite, commit what it produces** |
 | 5 | Converge the markers dim scope (D626) | **leave it** — passing, and convergence is a judgement not a failure |
 

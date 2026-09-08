@@ -3563,3 +3563,50 @@ it is one command away at all times.
 zero-key-churn control, both refuted fix attempts and the `types.d.ts` line
 numbers for every `motion?:` surface, and proposes the smaller of the two fixes
 (`motion` on `SceneNodeBase`) as the one that changes no existing behaviour.
+
+## D642 — G5: the first gate to see D623's landing, and it caught two things G4 could not have
+
+`pnpm gate:all -- --probes --label "gate-5 D638-D641 instrument"`,
+`docs/phase-7/gate/runs/2026-09-07T23-39-03-113Z`, serial, 19m22s, every stage
+`ok`.
+
+| stage | result |
+|---|---|
+| QA pixel | 43 runs, 194 cells (193 gated) — **gate FAIL 0**, errors 0; ruled 2, harness FAIL 2, out-of-range **1**, **thin-history 0**, new values 25, tooltip failures 0 |
+| bundle | 43 pinned, **FAIL 0**, missing 0, Σgzip 5669877 vs Σpin 5666571 (**+0.06%**) |
+| bench | 10 paired cells, **0 flagged**, 0 skipped, 0 console errors, `m1bFallbackCells` 0 |
+| probes | 4 probes, errors 0 — flags `hover-lag 3`, `legend-hover-dim 1`, `bardepth-toggle 0`, `no-rereveal 0`, all previously ruled or filed |
+| checks | tsc 0, bench-tsc 0, build ok, unit 268/210/0/58 — **lint FAIL(8)**, **census FAIL(1)** |
+
+**D639 shows in the numbers.** G4 read three out-of-range, one of which
+(`bardepth/100 pulse-phase-0.5`, 1896 against a range built from n=2) cost a
+review cycle. G5 reads **one**, and it is not a thin cell: `ring/4 hover-50`
+2476 against `[2506,15233]` at **n=29** — a new low, 30 px under a 29-run floor.
+`thinHistory 0` in the same run means the relabelling is not simply swallowing
+rows; there were none to relabel at this depth of history. And nothing regressed
+into it: 25 new values, 0 no-history, gate FAIL 0.
+
+**The two check failures are one cause, and it is a process failure of mine.**
+`3e3f471` (per-pulse BarPulse mask and travel, D623) landed at 23:42 — *after*
+G4 ran at 21:21. It was verified by its own targeted measurement
+(`pulse-phase-0.75` 2175 → 1590) and by nothing else. G5 is the first gate to
+compile it, and it found:
+
+- **8 oxlint errors**, all in D623's own comments: a 6-line explanation in
+  `bar-chart.tsx` against a 2-line budget, a 3-line one in `resource-host.tsx`,
+  and lowercase-starting lines in both plus `bar-pulse-mark.ts`. The
+  `capitalized-comments` rule reads each `//` line as its own comment, so a
+  wrapped sentence fails it — every line has to stand up alone. Rewritten to
+  budget; no code touched.
+- **1 census failure**: `bar-chart.tsx` gained a `data-ts-key` selector and was
+  not in `scripts/reach-in-ledger.json`. The site is D623's `<style>` rule and is
+  the thing D623 exists to justify — `reconcile.js:99-103` strips any attribute
+  absent from the fresh markup, so per-pulse mask and travel cannot ride the
+  scene node. Ledgered at `max: 1`, ruling `D623`, with that reason. The guard is
+  a ratchet, and this is the entry it is asking for, not a silencing.
+
+Both were latent for 20 minutes across five commits. The rule that would have
+caught it is already written — "one reviewed commit per item, no half-landed
+vectors" — and what it needs adding is that a commit touching
+`showcase/migrated` is not landed until `gate:checks` has seen it. A targeted
+measurement proves the fix; it does not prove the tree.

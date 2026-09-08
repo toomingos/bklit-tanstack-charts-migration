@@ -171,9 +171,8 @@ const LoadingSweepResources = ({ idPrefix, onSweepIteration }: Readonly<LoadingS
   );
 };
 
-// Pulse mask for the BarPulse wave (D590; bklit bar-depth.tsx clipPath).
-// Explicit region per D559; the crop path is the bar silhouette, white = keep.
-// Keyed by pulseId (the mark's dataKey) so N pulses on one chart get N distinct masks instead of sharing one singleton id.
+// Pulse mask for the BarPulse wave (D590; explicit region per D559, crop path is the silhouette, white = keep).
+// Keyed by pulseId so N pulses get N masks rather than sharing one singleton id (D623).
 const barPulseMaskId = (idPrefix: string, pulseId: string): string => `${idPrefix}-bar-pulse-mask-${pulseId}`;
 
 // Bare nodes for the seam; ResourceHost owns the defs.
