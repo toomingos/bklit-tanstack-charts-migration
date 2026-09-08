@@ -3616,3 +3616,37 @@ none** — tsc 0, lint **0 errors over 430 files** against floor 0, bench-tsc 0,
 build ok, unit 210 pass / 0 fail, census 24 sites / 14 files / **0 failures**,
 bundle-gate 43 ok / 0 FAIL. The only stage of G5 that did not pass now passes,
 against the same commands, with the fix in the tree.
+
+## D643 — the tail flag was an any-repeat maximum on a row of medians
+
+`hover-lag.mjs` reports `firstDimMs`, `firstTooltipMs`, `lastChangeMs`,
+`finalDim` and `baseDim` as **medians** over repeats, and then decided
+`virtualTailExceedsThreshold` with `ok.some((r) => r.lastChangeMs > 700)`. One
+statistic on the row was an any-repeat maximum, and nothing said so.
+
+That is not a conservative choice, it is a scale-dependent one: the false-alarm
+rate rises with `--repeats` while the cell's behaviour does not. D640 hit it —
+`liveline/100` **bklit** flagged for the first time at `--repeats 5` having never
+flagged at `--repeats 3`, and was written up as a new finding when it was an
+artefact of asking the same question more times.
+
+**Changed to the median of the same values**, which is the number already printed
+in the row's `lastChangeMs` column. Verified at `--repeats 5`
+(`2026-09-08T00-03-31-804Z`, errors 0, flags **3 → 2**):
+
+| cell | raw `lastChangeMs` | median | flag |
+|---|---|---|---|
+| `liveline/100` bklit | `[123, 120, 123, 135, 1303]` | 123 | **no** (was yes) |
+| `liveline/100` migrated | `[318, 314, 310, 308, 310]` | 310 | no |
+| `bar/100` bklit | `[323, 281, 271, 263, 268]` | 271 | no |
+| `bar/100` migrated | `[1092, 1091, 1133, 1101, 1069]` | 1092 | **yes** |
+
+The liveline bklit row is the whole argument in one line: four readings within
+15 ms of each other and one at 1303. `some` reports that scene as having a
+1.3-second tail; it has a 123 ms tail and one slow frame. Meanwhile D641's
+finding is untouched — migrated `bar/100` has five readings all above the
+threshold and still flags, as it should.
+
+Nothing else moved: the two surviving flags are `bar/100`
+`virtual-settle-tail>700ms` (D641, filed as #136) and `choropleth/100`
+`dim-presence-mismatch` (D617-a, ruled).

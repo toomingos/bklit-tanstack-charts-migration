@@ -100,7 +100,14 @@ export async function hoverLagProbe(browser, baseUrl, { cells = DEFAULT_CELLS, r
         // D622: renamed from settlesAfterGateCapture -- this compares a
         // virtual-ms measurement against a virtual-ms anomaly band, not
         // against the gate's wall-clock capture (see the D622 note above).
-        virtualTailExceedsThreshold: ok.some((r) => r.lastChangeMs != null && r.lastChangeMs > VIRTUAL_TAIL_THRESHOLD_MS),
+        // D643: median, not `some`. Every other statistic on this row is a
+        // median; this one was an any-repeat maximum, so its false-alarm rate
+        // grew with --repeats while the cell's behaviour did not. liveline/100
+        // bklit read [118,561,1267,1056,134] and flagged at 5 repeats having
+        // never flagged at 3 -- a scene whose own spread is 10x, not a tail.
+        // The real finding survives unchanged: migrated bar/100 is
+        // [1102,1095,1100,1105,1089], median 1100 (D641).
+        virtualTailExceedsThreshold: median(ok.map((r) => r.lastChangeMs)) > VIRTUAL_TAIL_THRESHOLD_MS,
         raw: reps,
         errors: [...new Set(errors)].slice(0, 3),
       });
