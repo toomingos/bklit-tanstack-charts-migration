@@ -24,6 +24,19 @@ still to do.
 
 Ordered by what blocks what, not by size.
 
+**Nothing in this section is open.** Every row below now reads fixed, closed,
+ruled, filed or passing, and the state that says so is G5
+(`2026-09-07T23-39-03-113Z`, every stage `ok`) plus the clean `gate:checks`
+re-run (`2026-09-08T00-02-27-802Z`, failed: none) that followed its two
+failures. The rows are kept rather than deleted: each carries the evidence that
+closed it, and three of them (`pulse-var`, `bar/100 tail`, `liveline/100`) were
+closed by discovering the *instrument* was wrong, which is not a conclusion that
+survives being summarised away.
+
+Two things are outstanding but not tasks in this repo: **#136** (I11, the
+`SceneGroup` motion gap behind `bar/100`'s hover tail) and **#135** (I10) are
+upstream, and nothing here waits on them.
+
 ### Blocking everything — cleared
 
 **G4 ran.** `docs/phase-7/gate/runs/2026-09-07T21-21-41-176Z`, label `gate-4`,
