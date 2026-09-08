@@ -3610,3 +3610,9 @@ caught it is already written — "one reviewed commit per item, no half-landed
 vectors" — and what it needs adding is that a commit touching
 `showcase/migrated` is not landed until `gate:checks` has seen it. A targeted
 measurement proves the fix; it does not prove the tree.
+
+**Re-run, clean:** `pnpm gate:checks`, `2026-09-08T00-02-27-802Z`, **failed:
+none** — tsc 0, lint **0 errors over 430 files** against floor 0, bench-tsc 0,
+build ok, unit 210 pass / 0 fail, census 24 sites / 14 files / **0 failures**,
+bundle-gate 43 ok / 0 FAIL. The only stage of G5 that did not pass now passes,
+against the same commands, with the fix in the tree.
