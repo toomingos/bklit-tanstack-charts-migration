@@ -32,7 +32,7 @@ import type { AnyPoint } from "./erased-types";
 import { contextValueHook, useChartBase, useChartSelection, usePlotMeasure, useRendererTooltip, useSeriesTable } from "./cartesian-hooks";
 import type { CartesianFocus } from "./cartesian-hooks";
 import { cartesianHostStyle, cartesianStaticCss } from "./host-style";
-import { BackgroundResources } from "./background-resources";
+import { getBackgroundResources } from "./features";
 import { HighlightBandClip } from "./band-clip";
 import { useBrush } from "./use-brush";
 
@@ -219,6 +219,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
   const xSpanMs = xEnd - xStart;
   hostGeom.current = { times: built.hover.times, left: resolvedMargin.left, xStart, xSpan: xSpanMs, innerWidth, signs: built.hover.plSigns, hasBand: built.hover.highlights.length > 0 || built.hover.segmentLeft !== null, pillTicks: built.pillTicks.active ? built.pillTicks.times : undefined, pillLayout: built.pillTicks.active ? pillLayoutOf(built.pillTicks.times) : null };
   const hasBrush = brushProps !== undefined;
+  const BackgroundResources = getBackgroundResources();
   const staticCss = useMemo(() => cartesianStaticCss(uid, built, hasBrush, series), [uid, built, hasBrush, series]);
   return (
     <div
@@ -245,7 +246,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
       })}
     >
       {defs}
-      <BackgroundResources table={table} uid={uid} />
+      {BackgroundResources ? <BackgroundResources table={table} uid={uid} /> : null}
       {built.hover.highlights.length > 0 ? <HighlightBandClip id={built.hover.bandClip} /> : null}
       {staticCss ? <style>{staticCss}</style> : null}
       <LegendHostSync hostRef={containerRef} />

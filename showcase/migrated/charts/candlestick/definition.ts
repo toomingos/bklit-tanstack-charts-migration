@@ -18,7 +18,7 @@ import { scaleLinear, scaleTime, scaleUtc } from "d3-scale";
 import { propsFor } from "../kit/read-children";
 import type { ChildTable } from "../kit/read-children";
 import { erase } from "../kit/cartesian/erased-types";
-import { buildOverlays } from "../kit/cartesian/overlays";
+import { overlaysFor } from "../kit/cartesian/features";
 import { shortDateFmt } from "../kit/format";
 import { toDate } from "../kit/cartesian/series";
 import { dataTickValues } from "../kit/cartesian/x-axis";
@@ -364,7 +364,7 @@ export function buildCandlestickDefinition(input: CandlestickInput): Candlestick
   const animate = candle.animate !== false;
   const xDomain = xExtent(data, xKey, input.xDomain, input.xDomainSlotCount);
   const yDomain = yExtent(data);
-  const overlays = buildOverlays(table, data, xKey, input.uid);
+  const overlays = overlaysFor(table, data, xKey, input.uid);
 
   const stagger = data.length > 0 ? (animationDuration * 0.6) / data.length : 0;
   // Plot size, written by the `chart` callback (runs before any focus resolve) for the plot-rect hover gate.

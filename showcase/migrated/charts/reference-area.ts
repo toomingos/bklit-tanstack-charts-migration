@@ -2,6 +2,7 @@
 
 import type { ReactElement } from "react";
 import { CHART_ROLE } from "./children";
+import { enableOverlays } from "./kit/cartesian/enable-overlays";
 import type { PatternPresetId } from "./kit/pattern/pattern-preset-helpers";
 
 type ReferenceAreaIfOverflow = "hidden" | "visible" | "discard";
@@ -54,6 +55,8 @@ interface ReferenceAreaCarrier {
   [CHART_ROLE]?: string;
   displayName: string;
 }
+
+enableOverlays();
 
 const ReferenceArea: ReferenceAreaCarrier = Object.assign(
   (_props: Readonly<ReferenceAreaProps>): ReactElement | null => null,
