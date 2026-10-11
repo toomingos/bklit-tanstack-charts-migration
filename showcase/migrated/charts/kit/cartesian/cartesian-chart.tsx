@@ -112,7 +112,8 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
   // chartLoading drives the loading chrome (pulse, shimmer, label); swap / tween / concealing hold the series concealed.
   const { chartLoading, skeletonRows, gridLoading } = loadingFlags(phase);
   const fillHeight = style?.aspectRatio === "unset";
-  const { fitHeight, plotWidth, measuredHeight } = usePlotMeasure(containerRef, fillHeight, { width: props.initialWidth, height: props.initialHeight });
+  const { fitHeight, plotWidth, measuredHeight, sized } = usePlotMeasure(containerRef, fillHeight, { width: props.initialWidth, height: props.initialHeight });
+  // A fill-height chart draws once its host height is measured: a later height change is a resize, which snaps the wipe tween (`motion.resize` is off).
   // The host's height is produced by the chart itself, so observing it would re-key the definition
   // right after mount and cancel the entrance. Derive it from the width unless the host fills.
   const plotHeight = fillHeight ? measuredHeight : Math.round(plotWidth / parseAspectRatio(aspectRatio));
@@ -249,8 +250,8 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
       {built.hover.highlights.length > 0 ? <HighlightBandClip id={built.hover.bandClip} /> : null}
       {staticCss ? <style>{staticCss}</style> : null}
       <LegendHostSync hostRef={containerRef} />
-      <RevealArm hostRef={containerRef} onArm={onRevealArm} />
-      {plotWidth > 0 && childrenReady && (
+      {sized && <RevealArm hostRef={containerRef} onArm={onRevealArm} />}
+      {plotWidth > 0 && childrenReady && sized && (
       <RendererChart
         definition={erase(built.definition)}
         idPrefix={uid}

@@ -34,13 +34,15 @@ interface PlotMeasure {
   readonly fitHeight: number | undefined;
   readonly plotWidth: number;
   readonly measuredHeight: number;
+  /** A fill-height host is measured (its first observer delivery); other hosts derive their height from the width. */
+  readonly sized: boolean;
 }
 
 /** Host size from one ResizeObserver: the fill-height box, and the plot width / height seeded from the first measure. */
 export function usePlotMeasure(containerRef: RefObject<HTMLDivElement | null>, fillHeight: boolean, initial: { readonly width: number; readonly height: number }): PlotMeasure {
   const box = useResizeBox(containerRef, initial);
   const fitHeight = fillHeight && box.observed && box.height > 0 ? box.height : undefined;
-  return { fitHeight, plotWidth: box.width, measuredHeight: box.height };
+  return { fitHeight, plotWidth: box.width, measuredHeight: box.height, sized: !fillHeight || box.observed };
 }
 
 interface SeriesTable {
