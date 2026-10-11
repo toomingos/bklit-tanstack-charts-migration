@@ -37,7 +37,12 @@ export const createDefinition = (input: DefinitionInput): DomChartDefinition<Cho
   const { data, margin, center, scale, translate, holder, geometry, shown, patternPrefix, featureConfig, graticuleConfig, tooltipConfig, layerMotion } = input;
   const projectionOptions: ProjectionOptions = { center, k: 1, scale, translate, tx: 0, ty: 0 };
   const projection = (context: { chart: ChartBounds }): GeoProjection => {
+    // The same chart area and options (the shown flip rebuilds the definition) keep the projection and its per-feature geometry.
+    const { x, y, width, height } = context.chart;
+    const key = [x, y, width, height, center.join(), scale, translate?.join()].join("|");
+    if (holder.projection !== undefined && holder.projectionKey === key) {return holder.projection;}
     holder.projection = makeProjection(context.chart, projectionOptions);
+    holder.projectionKey = key;
     holder.chart = context.chart;
     // Hit-test geometry is built with the projection (load), not on the first hover moves.
     geometry.warm(data.features);
