@@ -59,6 +59,8 @@ interface CartesianChartProps {
   readonly loadingLabel?: string;
   /** Animate the y domain on the loading -> ready transition. Default: true. */
   readonly yDomainTween?: boolean;
+  /** Full dataset length while brush-zoomed: the slot count behind `columnWidth`. */
+  readonly xDomainSlotCount?: number;
 }
 
 const NONE: never[] = [];
@@ -94,6 +96,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
     className,
     style,
     xDomain,
+    xDomainSlotCount,
     children,
     extra,
     defs,
@@ -201,7 +204,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
   bindChange(built, plotWidth, resolvedMargin);
   const { renderer, renderTooltipBody } = useRendererTooltip({ built, settle: update.settle, animationDuration, table, data, series });
   const { stable, xScale, innerWidth, innerHeight, xAccessor, xStart, xEnd, setTooltipData } = useChartBase({
-    built, series, data, xDataKey, table, containerRef, ready: readyStore, dragInteraction, plotWidth, plotHeight, resolvedMargin, animationDuration, xDomain,
+    built, series, data, xDataKey, table, containerRef, ready: readyStore, dragInteraction, plotWidth, plotHeight, resolvedMargin, animationDuration, xDomain, xDomainSlotCount,
   });
   dragGeom.current = { left: resolvedMargin.left, top: resolvedMargin.top, innerWidth, innerHeight };
   const chartSelection = useChartSelection(selection, xScale, times);

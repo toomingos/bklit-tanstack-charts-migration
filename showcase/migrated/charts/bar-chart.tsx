@@ -29,7 +29,7 @@ import { useChartLegendHover } from "./kit/legend/legend";
 import { scaleBand, scaleLinear, scaleUtc } from "d3-scale";
 import type { LineConfig } from "./kit/cartesian/chart-context";
 import { useFocusRow } from "./kit/cartesian/chart-context-focus";
-import type { ChartPhase, ChartStatus } from "./kit/motion/phase";
+import type { ChartPhase, ChartStatus, Transition } from "./kit/motion/phase";
 import { BarLoadingSkeleton } from "./kit/loading/sweep";
 import { useBridgedContext, useReferenceAreas, valueScale } from "./kit/cartesian/context-bridge";
 import { useResizeBox } from "./kit/size/use-resize-box";
@@ -56,9 +56,10 @@ interface BarChartProps {
   data: Row[];
   xDataKey?: string;
   animationDuration?: number;
-  animationEasing?: unknown;
-  enterTransition?: unknown;
-  revealSignature?: unknown;
+  // Accepted divergence: typed as bklit's but not read here (the entrance is fixed; square snapping follows <BarSquares> props).
+  animationEasing?: string;
+  enterTransition?: Transition;
+  revealSignature?: string;
   margin?: Partial<ChartMargin>;
   aspectRatio?: string;
   className?: string;
@@ -68,7 +69,7 @@ interface BarChartProps {
   orientation?: BarOrientation;
   stacked?: boolean;
   stackGap?: number;
-  squareSnap?: unknown;
+  squareSnap?: { squareGap: number; groupGap?: number; fit?: boolean };
   onPhaseChange?: (phase: ChartPhase) => void;
   children?: ReactNode;
   ariaLabel?: string;
