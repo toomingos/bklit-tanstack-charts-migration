@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { RendererChart } from "../tooltip/tooltip-leaf";
 import { useHostSize } from "../size/host-size";
-import { useParentSizeMounted } from "../size/parent-size-arm";
 import { buildCartesianDefinition } from "./definition";
 import { useDataUpdateStep } from "./use-data-update-step";
 import type { CartesianInput } from "./definition";
@@ -67,13 +66,12 @@ interface CartesianChartProps {
 const NONE: never[] = [];
 
 
-// The definition is width-keyed, so it is built once at the real width (host-size.ts), and the svg mounts on bklit's ParentSize commit: line-chart.tsx:265 / area-chart.tsx:234 wrap ChartInner in `<ParentSize debounceTime={10}>`
-// (@visx/responsive useParentSize.js:37-63: ResizeObserver -> rAF -> leading debounce); useParentSizeMounted (parent-size-arm.tsx) waits on those events and <RevealArm> counts bklit's ready -> revealing commits from that mount.
+// The definition is width-keyed, so it is built once at the real width (host-size.ts) and the svg mounts in the commit of that layout-effect measure, before first paint.
+// bklit waits on ParentSize first (line-chart.tsx:265, area-chart.tsx:234: ResizeObserver -> rAF); the migrated chart does not. <RevealArm> counts from the mount.
 export function CartesianChart(props: Readonly<CartesianChartProps>): ReactElement {
   const { ref, size } = useHostSize();
-  const parentSized = useParentSizeMounted(ref, size !== null);
-  if (!size || !parentSized) {
-    // bklit's outer div carries the size from its first render (line-chart.tsx:221 default "2 / 1", :260 `aspectRatio` before `style`); only the svg waits.
+  if (!size) {
+    // bklit's outer div carries the size from its first render (line-chart.tsx:221 default "2 / 1", :260 `aspectRatio` before `style`); only the svg waits for the layout-effect measure.
     return <div ref={ref} className={props.className} style={{ width: "100%", position: "relative", aspectRatio: props.aspectRatio === undefined ? "2 / 1" : String(props.aspectRatio), ...props.style }}>{props.status === "loading" ? <LoadingLabel text={props.loadingLabel ?? ""} /> : null}</div>;
   }
   return <CartesianChartMounted {...props} initialWidth={Math.round(size.width)} initialHeight={Math.round(size.height)} />;

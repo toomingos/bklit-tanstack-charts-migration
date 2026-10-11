@@ -23,21 +23,22 @@ const observeParentSize = (host: HTMLElement, onSize: (width: number) => void): 
   return () => { cancelAnimationFrame(frame); observer.disconnect(); };
 };
 
-/** Host ref + its width on ParentSize's frame chain; `immediate` (fixed-size charts) measures in a layout effect like bklit's static path. */
-export const useParentSizeWidth = <TElement extends HTMLElement>(immediate: boolean): readonly [RefObject<TElement | null>, number | null] => {
+/** Host ref + its width, measured in a layout effect so the chart mounts at the real width before first paint (bklit waits on ParentSize's frames first). */
+export const useParentSizeWidth = <TElement extends HTMLElement>(): readonly [RefObject<TElement | null>, number | null] => {
   const ref = useRef<TElement | null>(null);
   const [width, setWidth] = useState<number | null>(null);
   useLayoutEffect(() => {
-    if (!immediate) { return; }
     const measured = ref.current?.clientWidth ?? 0;
     setWidth(measured > 0 ? measured : FALLBACK_WIDTH_PX);
-  }, [immediate]);
-  useEffect(() => {
-    const host = ref.current;
-    if (immediate || !host) { return undefined; }
-    return observeParentSize(host, (measured) => { setWidth(measured > 0 ? measured : FALLBACK_WIDTH_PX); });
-  }, [immediate]);
+  }, []);
   return [ref, width];
+};
+
+/** True from the layout effect after the first commit: the renderer mounts before first paint instead of waiting on ParentSize's frames. */
+export const useHostMounted = (): boolean => {
+  const [mounted, setMounted] = useState(false);
+  useLayoutEffect(() => { setMounted(true); }, []);
+  return mounted;
 };
 
 // Scatter is the exception: react-use-measure (scatter-chart.tsx:154, observer -> trailing 10ms setTimeout), approximated with the same observer and one frame.
