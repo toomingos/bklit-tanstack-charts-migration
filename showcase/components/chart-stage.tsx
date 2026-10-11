@@ -34,14 +34,42 @@ const migratedEntries: Record<string, () => Promise<object>> = {
   sunburst: () => import("./demos/migrated-entries/sunburst"),
 };
 
+const bklitEntries: Record<string, () => Promise<object>> = {
+  area: () => import("./demos/bklit-entries/area"),
+  bar: () => import("./demos/bklit-entries/bar"),
+  bardepth: () => import("./demos/bklit-entries/bardepth"),
+  barsquares: () => import("./demos/bklit-entries/barsquares"),
+  brush: () => import("./demos/bklit-entries/brush"),
+  candlestick: () => import("./demos/bklit-entries/candlestick"),
+  choropleth: () => import("./demos/bklit-entries/choropleth"),
+  composed: () => import("./demos/bklit-entries/composed"),
+  composition: () => import("./demos/bklit-entries/composition"),
+  funnel: () => import("./demos/bklit-entries/funnel"),
+  gauge: () => import("./demos/bklit-entries/gauge"),
+  heatmap: () => import("./demos/bklit-entries/heatmap"),
+  line: () => import("./demos/bklit-entries/line"),
+  liveline: () => import("./demos/bklit-entries/liveline"),
+  markers: () => import("./demos/bklit-entries/markers"),
+  patternarea: () => import("./demos/bklit-entries/patternarea"),
+  pie: () => import("./demos/bklit-entries/pie"),
+  projection: () => import("./demos/bklit-entries/projection"),
+  radar: () => import("./demos/bklit-entries/radar"),
+  "reference-area": () => import("./demos/bklit-entries/reference-area"),
+  ring: () => import("./demos/bklit-entries/ring"),
+  sankey: () => import("./demos/bklit-entries/sankey"),
+  scatter: () => import("./demos/bklit-entries/scatter"),
+  segment: () => import("./demos/bklit-entries/segment"),
+  sunburst: () => import("./demos/bklit-entries/sunburst"),
+};
+
 type Impl = "bklit" | "migrated";
 interface DemoProps { impl: Impl; n: number; controls?: DemoControls }
 type DemoModule = { default: ComponentType<DemoProps & { charts: ImplCharts }> };
 
-// The migrated side loads a per-chart entry (demos/migrated-entries/<chart>.ts: the exports that demo uses), so webpack drops the rest of the barrel from the card's chunks.
+// Each side loads a per-chart entry (demos/{bklit,migrated}-entries/<chart>.ts: the exports that demo uses), so webpack drops the rest of its barrel from the card's chunks.
 // Each card loads only its own implementation's chart module next to the demo chunk, so a card never waits on (or ships) the other library.
 const loadCharts: Record<Impl, (chart: string) => Promise<ImplCharts>> = {
-  bklit: () => import("@showcase/bklit-charts"),
+  bklit: (chart) => bklitEntries[chart]() as Promise<ImplCharts>,
   migrated: (chart) => migratedEntries[chart]() as Promise<ImplCharts>,
 };
 
