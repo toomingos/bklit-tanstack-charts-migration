@@ -9,8 +9,8 @@ const READY_ATTR = "data-bkm-ready";
 
 const REVEAL_ORIGINS = { "bkm-mk-in": "frame" } as const;
 
-/** Entrances that start at the reveal timer's flip (bklit isLoaded): the background fade, the terminal marker's opacity (WAAPI) and scale (JS). */
-const READY_ORIGINS = { "bkm-bg-in": "frame", "bkm-terminal-fade": "frame", "bkm-terminal-grow": "motion" } as const;
+/** Entrances that start at the reveal timer's flip (bklit isLoaded): the background fade, the terminal marker's opacity (WAAPI) and scale (JS: its last write lands ~5 ms after the WAAPI end, measured on projection, so no extra frame step). */
+const READY_ORIGINS = { "bkm-bg-in": "frame", "bkm-terminal-fade": "frame", "bkm-terminal-grow": "frame" } as const;
 
 const EVT_ORIGINS = { "bkm-evt-in": "motion", "bkm-evt-fade": "frame" } as const;
 
