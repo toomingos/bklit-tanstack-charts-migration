@@ -19,6 +19,7 @@ import { prefersReducedMotion } from "./kit/loading/reduced-motion";
 import { toNotchEnter } from "./gauge/transition";
 import type { GaugeEnterTransition } from "./gauge/transition";
 import "./styles.css";
+import "./polar.css";
 
 export type GaugeOrientation = "arc" | "linear";
 export type { GaugeLabelAlign, GaugeLabelPlacement } from "./gauge/label";
