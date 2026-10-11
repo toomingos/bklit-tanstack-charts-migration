@@ -4,8 +4,6 @@ import { useEffect } from "react";
 import type { RefObject } from "react";
 import { findNearestPoint } from "@tanstack/charts";
 import type { ChartFocusStrategy, ChartInteractionController, ChartPoint, ChartScene } from "@tanstack/charts";
-import { sectorAtPoint } from "./push";
-import type { SectorPush } from "./push";
 
 interface SunburstFocusOptions<TDatum> {
   /** Last rendered scene (read at pointer time; the strategy is built with the definition). */
@@ -14,6 +12,8 @@ interface SunburstFocusOptions<TDatum> {
   readonly orderOf: (datum: TDatum) => number | undefined;
   /** False while the point's sector has not yet swept to the pointer (entrance only): bklit's hit path is the growing arc (sunburst-segment.tsx:98-100). */
   readonly swept: (datum: TDatum, x: number, y: number) => boolean;
+  /** The point kept hovered when a pointer move lands off every sector (hub, gaps, corners): bklit's sectors only set the hover on pointerenter. Null for a click, a re-resolve or a pointer on a sector. */
+  readonly heldAt: (x: number, y: number) => ChartPoint<TDatum, number, number> | null | undefined;
 }
 
 const createSunburstFocus = <TDatum>(options: Readonly<SunburstFocusOptions<TDatum>>): ChartFocusStrategy<TDatum, number, number> => {
@@ -37,6 +37,10 @@ const createSunburstFocus = <TDatum>(options: Readonly<SunburstFocusOptions<TDat
       if (scene === null) {
         return [];
       }
+      const held = options.heldAt(x, y);
+      if (held !== undefined) {
+        return held === null ? [] : [held];
+      }
       let allowed = hittable.get(scene);
       if (allowed === undefined) {
         allowed = scene.points.filter((point) => options.orderOf(point.datum) !== undefined);
@@ -51,15 +55,14 @@ const createSunburstFocus = <TDatum>(options: Readonly<SunburstFocusOptions<TDat
 interface PointerHoldInput<TDatum> {
   readonly hostRef: RefObject<HTMLElement | null>;
   readonly interactionRef: RefObject<ChartInteractionController<TDatum, number, number> | null>;
-  /** Chart centre in scene coordinates, from the last render. */
-  readonly centerRef: RefObject<{ readonly x: number; readonly y: number } | null>;
-  readonly pushes: ReadonlyMap<string, SectorPush>;
+  /** True while a pointer move is being dispatched: the strategy holds the hover off sectors only then (a click on the hub must still resolve it). */
+  readonly movingRef: { current: boolean };
   readonly zoomableRef: RefObject<(datum: TDatum) => boolean>;
 }
 
-// bklit's only click handlers are a branch sector's zoom and the hub's zoom-out, and its sectors only set the hover on pointerenter
-// (the svg's pointerleave clears it). Both are capture listeners on the host, ahead of the renderer's own.
-const usePointerHold = <TDatum>({ hostRef, interactionRef, centerRef, pushes, zoomableRef }: Readonly<PointerHoldInput<TDatum>>): void => {
+// bklit's only click handlers are a branch sector's zoom and the hub's zoom-out. The click guard is a capture listener on the host, ahead of the renderer's;
+// the move flag lets the focus strategy tell a move from a click (gap #46) without stopping the event.
+const usePointerHold = <TDatum>({ hostRef, interactionRef, movingRef, zoomableRef }: Readonly<PointerHoldInput<TDatum>>): void => {
   useEffect(() => {
     const host = hostRef.current;
     if (host === null) {
@@ -68,30 +71,24 @@ const usePointerHold = <TDatum>({ hostRef, interactionRef, centerRef, pushes, zo
     // A click on a leaf or the gaps does nothing in bklit. The native select would still re-render the chart (a no-op motion cycle),
     // so such clicks never reach the renderer.
     const clickOnlyZoom = (event: MouseEvent): void => {
+      movingRef.current = false;
       const datum = interactionRef.current?.resolvePointer(event.clientX, event.clientY)?.point.datum;
       if (datum === undefined || ! zoomableRef.current(datum)) {
         event.stopPropagation();
       }
     };
-    // Over the hub, gaps and empty corners the last sector stays hovered; the native chart would drop focus there. A capture listener, since the focus strategy
-    // cannot tell a move from a click (gap #46), so a strategy-side hold would also hold on the hub click that must zoom out.
-    const holdOffSector = (event: PointerEvent): void => {
-      const center = centerRef.current;
-      const at = interactionRef.current?.clientToScene(event.clientX, event.clientY);
-      if (center === null || at === null || at === undefined) {
-        return;
-      }
-      if (sectorAtPoint(pushes, at.x - center.x, at.y - center.y) === null) {
-        event.stopPropagation();
-      }
+    // Cleared by a task after the dispatch, so the renderer's re-resolve after a render never sees it.
+    const markMoving = (): void => {
+      movingRef.current = true;
+      setTimeout(() => { movingRef.current = false; }, 0);
     };
-    host.addEventListener("pointermove", holdOffSector, true);
+    host.addEventListener("pointermove", markMoving, true);
     host.addEventListener("click", clickOnlyZoom, true);
     return (): void => {
-      host.removeEventListener("pointermove", holdOffSector, true);
-        host.removeEventListener("click", clickOnlyZoom, true);
+      host.removeEventListener("pointermove", markMoving, true);
+      host.removeEventListener("click", clickOnlyZoom, true);
     };
-  }, [hostRef, interactionRef, centerRef, pushes, zoomableRef]);
+  }, [hostRef, interactionRef, movingRef, zoomableRef]);
 };
 
 export { createSunburstFocus, usePointerHold };

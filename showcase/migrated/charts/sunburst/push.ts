@@ -1,8 +1,7 @@
 // Hover push: bklit's applyHoverGrow moves sectors and labels on the hovered path outward as a CSS transform on its 420ms curve; each sector publishes a `SectorPush` (bisector translate + centre scale).
-// The host gets `--sb-t<i>` / `--sb-m<i>` (sectors) and `--sb-lt<i>` (labels); fixed rules per arc index up to PUSH_CAP read them.
+// Each element gets `--sb-t<i>` / `--sb-m<i>` (sectors), `--sb-pt<i>` / `--sb-pm<i>` (overlays) or `--sb-lt<i>` (labels); fixed rules per arc index up to PUSH_CAP read them.
 import { hoverGrowForPathSegment, hubScale, ID_SEP, ringOptions } from "./arcs";
 import type { ArcDatum } from "./arcs";
-import { clearVar, writeVar } from "../kit/host-write";
 
 /** Arcs beyond this index are not pushed (rule text is fixed, one rule per index). */
 export const PUSH_CAP = 128;
@@ -196,14 +195,41 @@ const growTargets = ({ arcs, sectors, hovered, focusDepth, maxDepth, popOut }: R
   return targets;
 };
 
-const setPair = (host: HTMLElement, translateVar: string, transformVar: string, values: PushValues | null): void => {
-  if (values === null) {
-    clearVar(host, translateVar);
-    clearVar(host, transformVar);
-  } else {
-    writeVar(host, translateVar, values.translate);
-    writeVar(host, transformVar, values.transform);
+// The vars live on the elements that read them: one written on the host restyles its whole subtree (about 1 ms for 140 nodes), on an element only that element.
+const desiredVars = new WeakMap<HTMLElement, Map<string, string>>();
+const VAR_NAME = /^--sb-(t|m|pt|pm|lt)(\d+)$/;
+
+const classOfVar = (name: string): string => {
+  const [, kind = "", index = ""] = VAR_NAME.exec(name) ?? [];
+  if (kind === "lt") { return `bk-sb-l-${index}`; }
+  return kind.startsWith("p") ? `bk-sb-p${index}` : `bk-sb-a${index}`;
+};
+
+const applyVar = (host: HTMLElement, name: string, value: string | undefined): void => {
+  for (const element of host.querySelectorAll<SVGElement>(`.${classOfVar(name)}`)) {
+    if (value === undefined) { element.style.removeProperty(name); } else { element.style.setProperty(name, value); }
   }
+};
+
+/** Re-applies the wanted vars after the sector layer painted: its elements are created by the scene, not by hover. */
+export const reapplyPush = (host: HTMLElement | null): void => {
+  const desired = host === null ? undefined : desiredVars.get(host);
+  if (host !== null && desired !== undefined) {
+    for (const [name, value] of desired) { applyVar(host, name, value); }
+  }
+};
+
+const setVar = (host: HTMLElement, name: string, value: string | null): void => {
+  const desired = desiredVars.get(host) ?? new Map<string, string>();
+  desiredVars.set(host, desired);
+  if (desired.get(name) === (value ?? undefined)) { return; }
+  if (value === null) { desired.delete(name); } else { desired.set(name, value); }
+  applyVar(host, name, value ?? undefined);
+};
+
+const setPair = (host: HTMLElement, translateVar: string, transformVar: string, values: PushValues | null): void => {
+  setVar(host, translateVar, values === null ? null : values.translate);
+  setVar(host, transformVar, values === null ? null : values.transform);
 };
 
 /** Sum of the grow targets of an arc's ancestors. */
@@ -223,11 +249,7 @@ const writeArcPush = (host: HTMLElement, index: number, sector: SectorPush | und
   setPair(host, `--sb-pt${index}`, `--sb-pm${index}`, sector === undefined || own === undefined ? null : sectorPushValues(sector, push, own));
   // bklit centres the label on the pushed (and, on the hovered path, grown) sector.
   const shift = push + (own ?? 0) / 2;
-  if (sector === undefined || shift === 0) {
-    clearVar(host, `--sb-lt${index}`);
-  } else {
-    writeVar(host, `--sb-lt${index}`, `${round3(Math.sin(sector.labelAngle) * shift)}px ${round3(-Math.cos(sector.labelAngle) * shift)}px`);
-  }
+  setVar(host, `--sb-lt${index}`, sector === undefined || shift === 0 ? null : `${round3(Math.sin(sector.labelAngle) * shift)}px ${round3(-Math.cos(sector.labelAngle) * shift)}px`);
 };
 
 /** Writes (or clears) the push vars for the hovered arc on `host`. Reads only the published sector table; never touches the chart definition. */
