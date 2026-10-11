@@ -366,6 +366,15 @@ Drafts live in `docs/upstream-issues/` (local only).
 
 ---
 
+## 56. Focus follows `pointermove` only (no raw-pointer input path)
+
+- **Needed:** the lowest move-to-paint latency needs `pointerrawupdate` (0.5-2 ms after input) instead of the frame-aligned `pointermove`, which costs about 8 ms of every sample.
+- **1.1.0 behaviour:** the renderer listens to `pointermove` only (`handlePointerMove` -> `updateFocus`); no option picks the event, and `setControlledFocus` with `focusOwner="controlled"` stops pointer leave from clearing focus.
+- **Workaround:** none; the charts keep `pointermove`, so the wait is shared with bklit (draft `docs/upstream-issues/raw-pointer-input.md`).
+- **Proposal:** a `pointerEvent` interaction option, or a controller method applying a pointer sample with the renderer's own move semantics.
+
+---
+
 ## Retired numbers
 
 Not reused, so code and issue drafts keep their meaning.
