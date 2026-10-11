@@ -14,12 +14,12 @@ const READY_ORIGINS = { "bkm-bg-in": "frame", "bkm-terminal-fade": "frame", "bkm
 
 const EVT_ORIGINS = { "bkm-evt-in": "motion", "bkm-evt-fade": "frame" } as const;
 
-/** Arms the reveal (`onArm`) after two effect-driven commits, so the shell never re-renders: bklit's mount effect moves "ready" to "revealing", which mounts the ChartRevealClip
+/** Arms the reveal (`onArm`) in the commit after the mount's (the mount effect's setState), so the shell never re-renders: bklit's mount effect moves "ready" to "revealing", which mounts the ChartRevealClip
  * motion.rect whose effect starts the tween. `onArm` opens the native wipe (and starts the composed bar grow) on that trigger. */
 export const RevealArm = ({ hostRef, onArm }: { readonly hostRef: RefObject<HTMLElement | null>; readonly onArm?: () => void }): null => {
   const [stage, setStage] = useState(0);
   useEffect(() => {
-    if (stage < 2) {
+    if (stage < 1) {
       // bklit's MarkerGroup entrance is created by the mount effect (the first commit), not by the reveal.
       if (stage === 0 && hostRef.current) { alignEntranceStart(hostRef.current, EVT_ORIGINS); }
       setStage(stage + 1);

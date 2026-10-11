@@ -76,7 +76,7 @@ export const ComposedChartMounted = ({
   useEffect(() => {
     growing.current = null;
   }, [entered]);
-  // The entrance waits for <RevealArm> (bklit's reveal trigger, two commits after mount); it re-fires when the signature changes.
+  // The entrance waits for <RevealArm> (bklit's reveal trigger, the commit after mount); it re-fires when the signature changes.
   // The same trigger starts the interaction ready timer (useReadyGate): hover is inert until then.
   const { arm: armReady, store: readyStore } = useReadyGate(containerRef, duration);
   const enter = useCallback(() => {
