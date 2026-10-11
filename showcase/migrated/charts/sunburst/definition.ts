@@ -1,5 +1,5 @@
 import { defineChart } from "@tanstack/charts/scene";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import type { DomChartDefinition, ChartCursorController, ChartMotionContext, ChartMotionTransition, ChartPoint, ChartScene } from "@tanstack/charts";
 import { cursorHost } from "@tanstack/charts/cursor";
 import { polar } from "@tanstack/charts/polar";

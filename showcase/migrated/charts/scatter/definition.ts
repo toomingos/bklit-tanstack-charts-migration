@@ -9,7 +9,7 @@ import { tooltipBoxMotion } from "../kit/tooltip/box-motion";
 import type { TooltipBoxMotionProps } from "../kit/tooltip/box-motion";
 import { scaleLinear, scaleTime, scaleUtc } from "d3-scale";
 import { shortDateFmt } from "../kit/format";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { niced } from "../kit/cartesian/definition";
 import { propsFor } from "../kit/read-children";
 import { userGradients } from "../kit/gradients";

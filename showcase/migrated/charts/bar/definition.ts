@@ -9,7 +9,7 @@ import { mergeTooltipCarriers } from "../kit/tooltip/tooltip-carriers";
 import { sizedTooltipPlacement } from "../kit/tooltip/sized-tooltip-placement";
 import { scaleBand, scaleLinear } from "d3-scale";
 import type { ScaleBand } from "d3-scale";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { bklitYDomain } from "../kit/cartesian/definition";
 import { propsFor } from "../kit/read-children";
 import { isString } from "../kit/guards";

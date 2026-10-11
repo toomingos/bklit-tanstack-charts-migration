@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { intFmt, weekdayDateFmt } from "../format";
 import { TooltipContent } from "./tooltip-primitives";
 import type { TooltipRow } from "./tooltip-primitives";
-import type { AnyPoint as Point } from "../cartesian/erased-types";
+import type { AnyPoint as Point } from "../erased-types";
 
 export type { TooltipRow } from "./tooltip-primitives";
 

@@ -1,8 +1,8 @@
 // bklit `<Grid>` props the native scale `grid` cannot express (it draws one rule per axis tick, but bklit's grid ticks are independent of `YAxis`: `rowTickValues` / `numTicksRows` feed only the grid and edge lines can drop): when they differ the scale grid is off and rows are `ruleY` marks over bklit's tick set;
 // columns are always `ruleX` marks (`numTicksColumns` local-time ticks, not the axis labels'); the edge fades are static styles.css rules keyed on the host attributes from `gridHostAttrs`.
 import { ruleX, ruleY } from "@tanstack/charts/rule";
-import { erase } from "./erased-types";
-import type { AnyMark } from "./erased-types";
+import { erase } from "../erased-types";
+import type { AnyMark } from "../erased-types";
 import { DEFAULT_GRID_STROKE } from "../theme";
 
 export interface GridGuideProps {

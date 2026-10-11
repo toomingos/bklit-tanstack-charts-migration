@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { writeAttribute } from "../kit/host-write";
 import type { RefObject } from "react";
 import type { ChartPoint, ChartScene } from "@tanstack/charts";
