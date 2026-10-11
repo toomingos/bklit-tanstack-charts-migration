@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
-import type { ScaleLinear, ScaleTime } from "d3-scale";
+import type { HeatmapLinearScale, HeatmapTimeScale } from "./scales";
 import type { ChartPhase } from "../kit/motion/phase";
 import type { HeatmapEnterTransition, HeatmapRevealMode } from "./motion";
 import type { HeatmapLevelStyles } from "./colors";
@@ -76,9 +76,9 @@ interface HeatmapContextValue {
   /** Top edge of a row in plot pixels. */
   readonly yScale: (rowIndex: number) => number;
   /** Data extent (first column start to last column end) mapped onto the plot width. */
-  readonly timeXScale: ScaleTime<number, number>;
+  readonly timeXScale: HeatmapTimeScale;
   /** Unit domain mapped onto the plot height, for overlays that need a vertical scale. */
-  readonly brushYScale: ScaleLinear<number, number>;
+  readonly brushYScale: HeatmapLinearScale;
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly isReady: boolean;
   readonly levelStyles: HeatmapLevelStyles;
