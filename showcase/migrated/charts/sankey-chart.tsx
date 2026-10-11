@@ -93,12 +93,6 @@ const SankeyChart = ({
 }: SankeyChartProps): ReactElement => {
   const data = useMemo(() => sanitizeSankeyData(dataProp), [dataProp]);
   const revealKey = revealSignature ?? "";
-  const [revealedFor, setRevealedFor] = useState<string | null>(null);
-  const revealed = revealedFor === revealKey;
-  // onRender fires on every focus change; only touch state when the reveal key actually changes (a same-value
-  // setState still re-renders this component, and with it the chart wrapper, on each hover).
-  const revealedRef = useRef<string | null>(null);
-  revealedRef.current = revealedFor;
   const idPrefix = useSanitizedId();
   const linkConfig = useMemo(() => childProps(children, "SankeyLink") ?? {}, [children]);
   const nodeConfig = useMemo(() => childProps(children, "SankeyNode") ?? {}, [children]);
@@ -151,7 +145,6 @@ const SankeyChart = ({
         margin: { bottom: margin.bottom, left: 0, right: 0, top: margin.top },
         marks: [createSankeyMark({
           data: input,
-          collapsed: !revealed,
           enter: { durationMs: animationDuration, transition: toNativeTransition(enterTransition, animationDuration) },
           labelOrientation: nodeConfig.labelOrientation ?? "horizontal",
           lineCap: nodeConfig.lineCap ?? 4,
@@ -184,7 +177,7 @@ const SankeyChart = ({
         use: bklitTooltip,
       },
     });
-  }, [animationDuration, idPrefix, revealed, data, enterTransition, linkConfig, margin, nodeColor, nodeConfig, nodePadding, nodeWidth, tooltipConfig, formatValue, useGradient]);
+  }, [animationDuration, idPrefix, data, enterTransition, linkConfig, margin, nodeColor, nodeConfig, nodePadding, nodeWidth, tooltipConfig, formatValue, useGradient]);
 
   const hoverVars = useMemo(
     () => sankeyHoverVars(nodeConfig.fadedOpacity ?? 0.4, linkConfig.fadedOpacity ?? 0.1, linkConfig.strokeOpacity ?? 0.5),
@@ -217,10 +210,7 @@ const SankeyChart = ({
     interactionRef.current = context.interaction;
     sceneRef.current = context.scene;
     applyControlledHover();
-    if (revealedRef.current !== revealKey) {
-      setRevealedFor(revealKey);
-    }
-  }, [applyControlledHover, revealKey]);
+  }, [applyControlledHover]);
 
   // Hover never touches React state or the definition: the focused node / flow and everything connected to it are written into the
   // chart's own per-index stylesheet (never on renderer-owned elements) and the static rules in sankey/hover-css.ts do the dim.
@@ -279,8 +269,8 @@ const SankeyChart = ({
     <div className={className} data-bkm-chart="sankey" data-bkm-sk-hold="" data-bkm-sk-id={idPrefix} data-slot="chart" ref={hostRef} style={hostStyle}>
       <style>{sankeyHoverCss()}</style>
       <style ref={indexStyleRef}>{sankeyIndexCss(idPrefix)}</style>
-      {sized && revealed ? <HoldArm key={`arm-${revealSignature}`} attribute="data-bkm-sk-hold" hostRef={hostRef} /> : null}
-      {sized && revealed ? <EntranceAlign hostRef={hostRef} key={`align-${revealSignature}`} origins={SANKEY_ENTRANCE_ORIGINS} /> : null}
+      {sized ? <HoldArm key={`arm-${revealSignature}`} attribute="data-bkm-sk-hold" hostRef={hostRef} /> : null}
+      {sized ? <EntranceAlign hostRef={hostRef} key={`align-${revealSignature}`} origins={SANKEY_ENTRANCE_ORIGINS} /> : null}
       {sized ? <RendererChart
         key={revealSignature}
         ariaDescription={ariaDescription}
