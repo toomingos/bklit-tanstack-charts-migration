@@ -1,4 +1,3 @@
-import { linearRegressionRowsY } from "@tanstack/charts/regression";
 import type { ProjectionAutoMethod, ProjectionPathDensity, ProjectionPoint } from "./projection-utils";
 
 interface HistoryPoint {
@@ -9,36 +8,25 @@ interface HistoryPoint {
 // Offset of the second-to-last history point (the "previous" point of the last segment).
 const PENULTIMATE_OFFSET = -2;
 
-interface RegressionInputRow {
-  readonly time: number;
-  readonly y: number;
-}
-
-// Samples: 2 yields just the domain endpoints; ci: 0 skips the confidence-band cost; slope is recovered from those two points as Δy/Δx.
-const toRegressionRows = (points: readonly HistoryPoint[]): RegressionInputRow[] =>
-  points.map(({ timeMs, value }) => ({ time: timeMs, y: value }));
-
-interface RegressionSample {
-  readonly x: number | Readonly<Date>;
-  readonly y: number;
-}
-
-const slopeFromRegressionSamples = (samples: readonly RegressionSample[]): number => {
-  const first = samples.at(0);
-  const last = samples.at(-1);
-  if (first === undefined || last === undefined) {return 0;}
-  const dt = Number(last.x) - Number(first.x);
-  return dt === 0 ? 0 : (last.y - first.y) / dt;
-}
-
+// OLS slope as in bklit projection-utils.ts:114 (no @tanstack/charts/regression, ~4 KB min).
 const linearRegressionSlope = (points: readonly HistoryPoint[]): number => {
-  if (points.length < 2) {return 0;}
-  const samples = linearRegressionRowsY(
-    toRegressionRows(points),
-    { ci: 0, samples: 2, x: "time", y: "y" },
-  );
-  if (samples.length < 2) {return 0;}
-  return slopeFromRegressionSamples(samples);
+  const n = points.length;
+  if (n < 2) {return 0;}
+  let sumT = 0;
+  let sumV = 0;
+  for (const { timeMs, value } of points) {
+    sumT += timeMs;
+    sumV += value;
+  }
+  const meanT = sumT / n;
+  const meanV = sumV / n;
+  let cov = 0;
+  let variance = 0;
+  for (const { timeMs, value } of points) {
+    cov += (timeMs - meanT) * (value - meanV);
+    variance += (timeMs - meanT) ** 2;
+  }
+  return variance === 0 ? 0 : cov / variance;
 }
 
 const slopeFromLastSegment = (historyPoints: readonly HistoryPoint[]): number => {
