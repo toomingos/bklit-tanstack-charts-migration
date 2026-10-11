@@ -33,6 +33,7 @@ import { contextValueHook, useChartBase, useChartSelection, usePlotMeasure, useR
 import type { CartesianFocus } from "./cartesian-hooks";
 import { cartesianHostStyle, cartesianStaticCss } from "./host-style";
 import { BackgroundResources } from "./background-resources";
+import { HighlightBandClip } from "./band-clip";
 import { useBrush } from "./use-brush";
 
 interface CartesianChartProps {
@@ -245,6 +246,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
     >
       {defs}
       <BackgroundResources table={table} uid={uid} />
+      {built.hover.highlights.length > 0 ? <HighlightBandClip id={built.hover.bandClip} /> : null}
       {staticCss ? <style>{staticCss}</style> : null}
       <LegendHostSync hostRef={containerRef} />
       <RevealArm hostRef={containerRef} onArm={onRevealArm} />

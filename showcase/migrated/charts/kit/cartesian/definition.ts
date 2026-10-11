@@ -247,6 +247,6 @@ export function buildCartesianDefinition(input: CartesianInput): CartesianBuild 
     pillTicks: { times: x.tickTimes, reachPx: (xAxis?.tickerHalfWidth ?? 50) + 12, active: pillActive },
     gridAttrs: gridHostAttrs(grid),
     backgroundCss: (scope) => backgroundCss(scope, table),
-    hover: { dim: state.hoverDim, highlights: state.hoverHighlights, pl: state.plRules, times: rows.map(keyOf), plSigns, segmentLeft: segments ? input.margin.left : null },
+    hover: { dim: state.hoverDim, highlights: state.hoverHighlights, pl: state.plRules, times: rows.map(keyOf), plSigns, segmentLeft: segments ? input.margin.left : null, bandClip: `${uid}-hlband` },
   };
 }

@@ -11,6 +11,7 @@ import { motion } from "@tanstack/charts/motion";
 import type { ChartPoint, DomChartDefinition } from "@tanstack/charts";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { pillLayoutOf, syncPillHost } from "../kit/cartesian/date-pill";
+import { HighlightBandClip } from "../kit/cartesian/band-clip";
 import { LegendHostSync, useHoverHostSync } from "../kit/cartesian/hover-host";
 import { propsFor } from "../kit/read-children";
 import { useChildTable } from "../kit/stable-children";
@@ -180,6 +181,7 @@ export const ComposedChartMounted = ({
   return (
     <div ref={containerRef} className={className} data-bkm-chart="composed" data-slot="chart" data-bkm-kit={uid} {...built.gridAttrs} style={style}>
       {staticCss ? <style>{staticCss}</style> : null}
+      {built.hover.highlights.length > 0 ? <HighlightBandClip id={built.hover.bandClip} /> : null}
       <LegendHostSync hostRef={containerRef} />
       <RevealArm hostRef={containerRef} onArm={enter} />
       {width > 0 && childrenReady && (
