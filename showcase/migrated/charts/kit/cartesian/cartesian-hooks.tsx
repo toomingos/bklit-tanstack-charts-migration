@@ -1,5 +1,5 @@
 // Hook groups of the cartesian shell, each a contiguous run of the former CartesianChartMounted body (hook order unchanged).
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { motion } from "@tanstack/charts/motion";
@@ -34,15 +34,21 @@ interface PlotMeasure {
   readonly fitHeight: number | undefined;
   readonly plotWidth: number;
   readonly measuredHeight: number;
-  /** A fill-height host is measured (its first observer delivery); other hosts derive their height from the width. */
+  /** A fill-height host has a measured height; other hosts derive theirs from the width. */
   readonly sized: boolean;
 }
 
-/** Host size from one ResizeObserver: the fill-height box, and the plot width / height seeded from the first measure. */
+/** Host size from one ResizeObserver: the fill-height box, and the plot width / height seeded from the first measure.
+ * A fill-height host is also read in a layout effect, so the first draw already has its height (a later change would be a resize, which snaps the wipe tween). */
 export function usePlotMeasure(containerRef: RefObject<HTMLDivElement | null>, fillHeight: boolean, initial: { readonly width: number; readonly height: number }): PlotMeasure {
   const box = useResizeBox(containerRef, initial);
-  const fitHeight = fillHeight && box.observed && box.height > 0 ? box.height : undefined;
-  return { fitHeight, plotWidth: box.width, measuredHeight: box.height, sized: !fillHeight || box.observed };
+  const [laidOut, setLaidOut] = useState(0);
+  useLayoutEffect(() => {
+    if (fillHeight) { setLaidOut(Math.round(containerRef.current?.clientHeight ?? 0)); }
+  }, [containerRef, fillHeight]);
+  const height = box.observed ? box.height : laidOut || box.height;
+  const fitHeight = fillHeight && height > 0 && (box.observed || laidOut > 0) ? height : undefined;
+  return { fitHeight, plotWidth: box.width, measuredHeight: height, sized: !fillHeight || fitHeight !== undefined };
 }
 
 interface SeriesTable {
