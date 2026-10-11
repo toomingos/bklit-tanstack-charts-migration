@@ -219,6 +219,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
       {enterCss}
       <div
         className={arcHostClass(fixed)}
+       
         ref={hostRef}
         style={styles.arcHost}
       >
