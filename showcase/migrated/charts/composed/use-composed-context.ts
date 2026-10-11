@@ -1,10 +1,10 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RefObject } from "react";
 import type { ChartContextValue, LineConfig } from "../kit/cartesian/chart-context";
 import { useFocusRow } from "../kit/cartesian/chart-context-focus";
 import type { Interaction } from "../kit/cartesian/chart-context-focus";
 import { timeScale, useBridgedContext, useReferenceAreas, valueScale } from "../kit/cartesian/context-bridge";
-import { useResizeBox } from "../kit/size/use-resize-box";
+import { observeResize } from "../kit/size/use-resize-box";
 import type { ChildTable } from "../kit/read-children";
 import type { FocusedRow } from "../kit/cartesian/context-bridge";
 import type { ReadyStore } from "../kit/entrance/reveal-arm";
@@ -16,6 +16,8 @@ import type { SeriesBarSpec } from "./bars";
 import { dateValue } from "./narrow";
 
 interface ComposedContextInput {
+  /** The wrapper's measure: the first observer delivery then reports the same box and changes nothing. */
+  readonly initialSize: { readonly width: number; readonly height: number };
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly ready: ReadyStore;
   readonly data: readonly Row[];
@@ -42,8 +44,19 @@ export function useComposedContext(input: Readonly<ComposedContextInput>): {
   readonly rows: readonly Row[];
   readonly times: readonly number[];
 } {
-  const { containerRef, ready, data, xDataKey, margin, domains, series, bars, duration, barSize, maxBarSize, barGap, stacked, stackGap, table, interaction } = input;
-  const size = useResizeBox(containerRef);
+  const { initialSize, containerRef, ready, data, xDataKey, margin, domains, series, bars, duration, barSize, maxBarSize, barGap, stacked, stackGap, table, interaction } = input;
+  // The wrapper already measured this box: an observer delivery of the same size keeps the state object, so the first delivery commits nothing.
+  const [size, setSize] = useState(initialSize);
+  useEffect(() => {
+    const el = containerRef.current;
+    return el
+      ? observeResize(el, (entry) => {
+          const width = Math.round(entry?.contentRect.width ?? 0);
+          const height = Math.round(entry?.contentRect.height ?? 0);
+          setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+        })
+      : undefined;
+  }, [containerRef]);
   const innerWidth = Math.max(0, size.width - margin.left - margin.right);
   const innerHeight = Math.max(0, size.height - margin.top - margin.bottom);
   const rows = data;
