@@ -1,13 +1,9 @@
 "use client";
 
 // Choropleth pan/zoom: zoomX is x-scale-only (docs: interactions-and-selections "Zoom and pan") and geo marks have no x/y scales,
-// so d3-zoom (the docs' sanctioned escape hatch) drives the *projection* and geoShape repaints natively.
+// so this small gesture layer (mouse drag, wheel, touch) drives the *projection* and geoShape repaints natively.
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
-import { select } from "d3-selection";
-import { zoom as d3Zoom, zoomIdentity } from "d3-zoom";
-import type { D3ZoomEvent, ZoomBehavior , ZoomTransform } from "d3-zoom";
-import { erase } from "../kit/cartesian/erased-types";
 import type { ProjectionHolder } from "./focus";
 import { writeVar } from "../kit/host-write";
 
@@ -27,12 +23,20 @@ interface Point {
 
 const identityMatrix = (): TransformMatrix => ({ scaleX: 1, scaleY: 1, skewX: 0, skewY: 0, translateX: 0, translateY: 0 });
 
+/** Screen = scene * k + (x, y). */
+interface ZoomTransform {
+  readonly k: number;
+  readonly x: number;
+  readonly y: number;
+}
+
 const toMatrix = (t: ZoomTransform): TransformMatrix => ({
   scaleX: t.k, scaleY: t.k, skewX: 0, skewY: 0, translateX: t.x, translateY: t.y,
 });
 
-const fromMatrix = (m: Readonly<TransformMatrix>): ZoomTransform =>
-  zoomIdentity.translate(m.translateX, m.translateY).scale(m.scaleX);
+const fromMatrix = (m: Readonly<TransformMatrix>): ZoomTransform => ({ k: m.scaleX, x: m.translateX, y: m.translateY });
+
+const invertPoint = (t: ZoomTransform, p: Point): Point => ({ x: (p.x - t.x) / t.k, y: (p.y - t.y) / t.k });
 
 /** bklit-compatible zoom facade (subset of visx ProvidedZoom + state). */
 interface ChoroplethZoomInstance {
@@ -58,9 +62,11 @@ interface ChoroplethZoomContextValue {
 const ChoroplethZoomContext = createContext<ChoroplethZoomContextValue>({ zoom: null });
 const useChoroplethZoom = (): ChoroplethZoomContextValue => useContext(ChoroplethZoomContext);
 
-// bklit wheel step: 5% per tick (d3 scales by 2^delta).
-const WHEEL_IN = Math.log2(1.05);
-const WHEEL_OUT = Math.log2(0.95);
+// bklit wheel step: 5% per tick.
+const WHEEL_IN = 1.05;
+const WHEEL_OUT = 0.95;
+// A wheel gesture stays active this long after its last tick (d3-zoom/src/zoom.js:68, the engine the migration used before): ticks inside it are always swallowed.
+const WHEEL_IDLE_MS = 150;
 // bklit pinch (visx defaultPinchDelta): every pinch event steps the scale by 1.1 (spreading, or no change) or 0.9 (closing) about the
 // touch midpoint. use-gesture emits the pinch start event, one event per touchmove (two on the second) and one when the gesture ends.
 const PINCH_IN = 1.1;
@@ -94,18 +100,9 @@ type ZoomVars = CSSProperties & { readonly "--bkm-zk": number; readonly "--bkm-z
 /** Host custom properties carrying the transform; CSS maps them onto the marks layer (no definition rebuild, no React work per frame). */
 const zoomStyle = (m: Readonly<TransformMatrix>): ZoomVars => ({ "--bkm-zk": m.scaleX, "--bkm-zx": `${m.translateX}px`, "--bkm-zy": `${m.translateY}px` });
 
-/** The DOM event behind a d3-zoom event (typed `any` upstream); null for programmatic transforms. */
-type SourceEvent = Readonly<Pick<WheelEvent, "clientX" | "clientY" | "type" | "view">>;
-const sourceOf = (event: D3ZoomEvent<HTMLDivElement, unknown>): SourceEvent | null | undefined =>
-  // SAFETY: d3-zoom's sourceEvent is the pointer, mouse or wheel event that started the gesture, or null.
-  erase(event.sourceEvent);
-
-// A mouse event with no view (dispatched, or fired while the document tears down) would reach d3-drag's view.document and throw.
-const mouseGesture = (event: Event): boolean => {
-  if (event.type === "wheel") {
-    return true;
-  }
-  return !(event instanceof MouseEvent) || (event.view !== null && !event.ctrlKey);
+const swallow = (event: Event): void => {
+  event.preventDefault();
+  event.stopImmediatePropagation();
 };
 
 const applyTransform = (host: HTMLElement, holder: ProjectionHolder, t: ZoomTransform): void => {
@@ -115,89 +112,135 @@ const applyTransform = (host: HTMLElement, holder: ProjectionHolder, t: ZoomTran
   writeVar(host, "--bkm-zy", `${t.y}px`);
 };
 
+/** Programmatic transform ops of the bound gesture layer; deltas and points are in scene units, like d3-zoom's scaleBy / translateBy / translateTo. */
+interface ZoomControl {
+  readonly set: (t: ZoomTransform) => void;
+  readonly scaleBy: (factor: number, point?: Point) => void;
+  readonly translateBy: (dx: number, dy: number) => void;
+  readonly translateTo: (point: Point) => void;
+}
+
 const useGeoZoom = ({ enabled, min, max, initial, hostRef, holder, onWheelZoom }: Readonly<UseGeoZoomOptions>): GeoZoomState => {
   const [transform, setTransform] = useState<ZoomTransform>(() => fromMatrix(initial));
   const [isDragging, setIsDragging] = useState(false);
-  const behaviorRef = useRef<ZoomBehavior<HTMLDivElement, unknown> | null>(null);
+  const controlRef = useRef<ZoomControl | null>(null);
   const initialRef = useRef(initial);
   initialRef.current = initial;
   const wheelRef = useRef(onWheelZoom);
   wheelRef.current = onWheelZoom;
 
-  // oxlint-disable-next-line react-doctor/effect-needs-cleanup -- the cleanup below unbinds `.zoom` and the touch listeners
+  // oxlint-disable-next-line react-doctor/effect-needs-cleanup -- the cleanup below unbinds every listener and timer
   useEffect(() => {
     const host = hostRef.current;
     if (!enabled || host === null) {return undefined;}
     let dragAnchorPending = false;
-    // The window a mouse drag is running on: d3-zoom put its move/up and d3-drag's selection guards there.
-    let gestureView: Window | null = null;
-    let lastTransform: ZoomTransform = fromMatrix(initialRef.current);
-    const selection = select(host);
-    const setDragging = (on: boolean): void => {
-      setIsDragging(on);
+    let current: ZoomTransform = fromMatrix(initialRef.current);
+    let wheelTimer: ReturnType<typeof setTimeout> | undefined;
+    let releaseDrag: (() => void) | null = null;
+    const commit = (t: ZoomTransform, afterApply?: () => void): void => {
+      current = t;
+      applyTransform(host, holder, t);
+      afterApply?.();
+      setTransform(t);
     };
+    const clampK = (k: number): number => Math.max(min, Math.min(max, k));
+    const scaleAbout = (t: ZoomTransform, k: number, p: Point): ZoomTransform => {
+      const anchor = invertPoint(t, p);
+      return { k, x: p.x - anchor.x * k, y: p.y - anchor.y * k };
+    };
+    const local = (clientX: number, clientY: number): Point => {
+      const box = host.getBoundingClientRect();
+      return { x: clientX - box.left - host.clientLeft, y: clientY - box.top - host.clientTop };
+    };
+    const centre = (): Point => ({ x: host.clientWidth / 2, y: host.clientHeight / 2 });
     const isControl = (target: EventTarget | null): boolean => target instanceof Element && target.closest("button, a, input, select, textarea") !== null;
-    // d3-zoom owns the mouse (drag, wheel); touch is handled below to follow bklit's use-gesture (pan with the first move as anchor, stepped pinch).
-    const behavior = d3Zoom<HTMLDivElement, unknown>()
-      .scaleExtent([min, max])
-      .filter((event: Event) => !event.type.startsWith("touch") && !isControl(event.target) && mouseGesture(event))
-      .wheelDelta((event: WheelEvent) => (event.deltaY > 0 ? WHEEL_OUT : WHEEL_IN))
-      .on("start", (event: D3ZoomEvent<HTMLDivElement, unknown>) => {
-        const source = sourceOf(event);
-        if (source?.type === "mousedown") {
-          gestureView = source.view;
-          setDragging(true);
-          dragAnchorPending = true;
-        }
-      })
-      .on("zoom", (event: D3ZoomEvent<HTMLDivElement, unknown>) => {
-        const source = sourceOf(event);
-        // bklit's visx/use-gesture drag anchors on the first move event, so that first delta never pans: undo it once per drag.
-        if (dragAnchorPending && source?.type === "mousemove") {
+
+    // Mouse: wheel zooms about the pointer, a drag pans (touch is handled below, following bklit's use-gesture).
+    const onWheel = (event: WheelEvent): void => {
+      if (isControl(event.target)) {return;}
+      const k = clampK(current.k * (event.deltaY > 0 ? WHEEL_OUT : WHEEL_IN));
+      if (wheelTimer === undefined && k === current.k) {return;}
+      swallow(event);
+      clearTimeout(wheelTimer);
+      wheelTimer = setTimeout(() => { wheelTimer = undefined; }, WHEEL_IDLE_MS);
+      commit(scaleAbout(current, k, local(event.clientX, event.clientY)), () => { wheelRef.current?.(event.clientX, event.clientY); });
+    };
+    const onMouseDown = (event: MouseEvent): void => {
+      // A mouse event with no view (dispatched, or fired while the document tears down) has no window to track the drag on.
+      const view = event.view;
+      if (view === null || event.ctrlKey || isControl(event.target)) {return;}
+      event.stopImmediatePropagation();
+      releaseDrag?.();
+      const anchor = invertPoint(current, local(event.clientX, event.clientY));
+      let moved = false;
+      const onMove = (move: MouseEvent): void => {
+        swallow(move);
+        moved ||= move.clientX !== event.clientX || move.clientY !== event.clientY;
+        // bklit's visx/use-gesture drag anchors on the first move event, so that first delta never pans.
+        if (dragAnchorPending) {
           dragAnchorPending = false;
-          const {k} = event.transform;
-          behavior.translateBy(selection, (lastTransform.x - event.transform.x) / k, (lastTransform.y - event.transform.y) / k);
           return;
         }
-        lastTransform = event.transform;
-        applyTransform(host, holder, event.transform);
-        if (source?.type === "wheel") {
-          wheelRef.current?.(source.clientX, source.clientY);
+        const p = local(move.clientX, move.clientY);
+        commit({ k: current.k, x: p.x - anchor.x * current.k, y: p.y - anchor.y * current.k });
+      };
+      const onUp = (up: MouseEvent): void => {
+        release();
+        swallow(up);
+        if (moved) {
+          // The click that ends a drag must not reach the map; the capture guard lasts one task (d3-drag/src/nodrag.js:20).
+          view.addEventListener("click", swallow, { capture: true });
+          setTimeout(() => { view.removeEventListener("click", swallow, { capture: true }); }, 0);
         }
-        setTransform(event.transform);
-      })
-      .on("end", (event: D3ZoomEvent<HTMLDivElement, unknown>) => {
-        if (sourceOf(event)?.type === "mouseup") {
-          gestureView = null;
-          setDragging(false);
-        }
-      });
-    behaviorRef.current = behavior;
-    selection.call(behavior);
-    selection.on("dblclick.zoom", null);
-    behavior.transform(selection, fromMatrix(initialRef.current));
+        setIsDragging(false);
+      };
+      const release = (): void => {
+        view.removeEventListener("mousemove", onMove, { capture: true });
+        view.removeEventListener("mouseup", onUp, { capture: true });
+        view.removeEventListener("dragstart", swallow, { capture: true });
+        view.removeEventListener("selectstart", swallow, { capture: true });
+        releaseDrag = null;
+      };
+      releaseDrag = release;
+      view.addEventListener("mousemove", onMove, { capture: true });
+      view.addEventListener("mouseup", onUp, { capture: true });
+      view.addEventListener("dragstart", swallow, { capture: true });
+      view.addEventListener("selectstart", swallow, { capture: true });
+      setIsDragging(true);
+      dragAnchorPending = true;
+    };
+    host.addEventListener("wheel", onWheel, { passive: false });
+    host.addEventListener("mousedown", onMouseDown);
+    const control: ZoomControl = {
+      scaleBy: (factor, point = centre()) => { commit(scaleAbout(current, clampK(current.k * factor), point)); },
+      set: (t) => { commit(t); },
+      translateBy: (dx, dy) => { commit({ k: current.k, x: current.x + current.k * dx, y: current.y + current.k * dy }); },
+      translateTo: ({ x, y }) => { const c = centre(); commit({ k: current.k, x: c.x - x * current.k, y: c.y - y * current.k }); },
+    };
+    controlRef.current = control;
+    control.set(fromMatrix(initialRef.current));
 
     // Touch: one finger pans (first move anchors, like the mouse), two fingers pinch in fixed 1.1 / 0.9 steps about their midpoint.
     let panLast: Point | null = null;
     let pinchStart = 0;
     let pinchMoves = 0;
     let pinchFactor = PINCH_IN;
-    const local = (touch: Touch): Point => {
+    const touchPoint = (touch: Touch): Point => {
       const box = host.getBoundingClientRect();
       return { x: touch.clientX - box.left, y: touch.clientY - box.top };
     };
     const spread = (touches: TouchList): Spread => {
       // Both touches exist: the handler is entered only with two touches.
-      const a = local(touches[0]);
-      const b = local(touches[1]);
+      const a = touchPoint(touches[0]);
+      const b = touchPoint(touches[1]);
       return { distance: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
     };
     let pinchMid: Point = { x: 0, y: 0 };
     const pinchStep = (steps: number): void => {
       for (let i = 0; i < steps; i += 1) {
-        const k = lastTransform.k * pinchFactor;
+        const k = current.k * pinchFactor;
         if (k < min || k > max) {return;}
-        behavior.scaleBy(selection, pinchFactor, [pinchMid.x, pinchMid.y]);
+        control.scaleBy(pinchFactor, pinchMid);
       }
     };
     const pinchTo = (touches: TouchList, steps: number): void => {
@@ -209,15 +252,15 @@ const useGeoZoom = ({ enabled, min, max, initial, hostRef, holder, onWheelZoom }
     const onTouchStart = (event: TouchEvent): void => {
       if (isControl(event.target)) {return;}
       if (event.touches.length === 1) {
-        setDragging(true);
+        setIsDragging(true);
         dragAnchorPending = true;
-        panLast = local(event.touches[0]);
+        panLast = touchPoint(event.touches[0]);
         return;
       }
       if (event.touches.length === 2) {
         panLast = null;
         dragAnchorPending = false;
-        setDragging(false);
+        setIsDragging(false);
         pinchStart = spread(event.touches).distance;
         pinchMoves = 0;
         pinchTo(event.touches, 1);
@@ -231,11 +274,11 @@ const useGeoZoom = ({ enabled, min, max, initial, hostRef, holder, onWheelZoom }
         return;
       }
       if (event.touches.length === 1 && panLast !== null) {
-        const point = local(event.touches[0]);
+        const point = touchPoint(event.touches[0]);
         if (dragAnchorPending) {
           dragAnchorPending = false;
         } else {
-          behavior.translateBy(selection, (point.x - panLast.x) / lastTransform.k, (point.y - panLast.y) / lastTransform.k);
+          control.translateBy((point.x - panLast.x) / current.k, (point.y - panLast.y) / current.k);
         }
         panLast = point;
       }
@@ -247,50 +290,48 @@ const useGeoZoom = ({ enabled, min, max, initial, hostRef, holder, onWheelZoom }
       }
       panLast = null;
       dragAnchorPending = false;
-      setDragging(false);
+      setIsDragging(false);
     };
     host.addEventListener("touchstart", onTouchStart, { passive: true });
     host.addEventListener("touchmove", onTouchMove, { passive: false });
     host.addEventListener("touchend", onTouchEnd);
     host.addEventListener("touchcancel", onTouchEnd);
     return (): void => {
-      selection.on(".zoom", null);
+      host.removeEventListener("wheel", onWheel);
+      host.removeEventListener("mousedown", onMouseDown);
+      clearTimeout(wheelTimer);
       // A drag still held at unmount would leave its window listeners behind; their mouseup would run against a dead chart.
-      if (gestureView !== null) {select(gestureView).on("mousemove.zoom mouseup.zoom dragstart.drag selectstart.drag", null);}
+      releaseDrag?.();
       host.removeEventListener("touchstart", onTouchStart);
       host.removeEventListener("touchmove", onTouchMove);
       host.removeEventListener("touchend", onTouchEnd);
       host.removeEventListener("touchcancel", onTouchEnd);
-      behaviorRef.current = null;
+      controlRef.current = null;
     };
   }, [enabled, min, max, hostRef, holder]);
 
   const instance = useMemo((): ChoroplethZoomInstance | null => {
     if (!enabled) {return null;}
-    const run = (fn: (sel: ReturnType<typeof select<HTMLDivElement, unknown>>, b: ZoomBehavior<HTMLDivElement, unknown>) => void): void => {
-      const host = hostRef.current;
-      const behavior = behaviorRef.current;
-      if (host !== null && behavior !== null) {fn(select(host), behavior);}
+    const run = (fn: (control: ZoomControl) => void): void => {
+      if (controlRef.current !== null) {fn(controlRef.current);}
     };
-    const setMatrix = (m: TransformMatrix): void => { run((sel, b) => { b.transform(sel, fromMatrix(m)); }); };
+    const setMatrix = (m: TransformMatrix): void => { run((c) => { c.set(fromMatrix(m)); }); };
     return {
-      applyInverseToPoint: ({ x, y }) => { const [ix, iy] = transform.invert([x, y]); return { x: ix, y: iy }; },
-      applyToPoint: ({ x, y }) => { const [ax, ay] = transform.apply([x, y]); return { x: ax, y: ay }; },
+      applyInverseToPoint: (p) => invertPoint(transform, p),
+      applyToPoint: ({ x, y }) => ({ x: x * transform.k + transform.x, y: y * transform.k + transform.y }),
       center: () => { setMatrix(identityMatrix()); },
       clear: () => { setMatrix(identityMatrix()); },
       initialTransformMatrix: initial,
       isDragging,
       reset: () => { setMatrix(initial); },
-      scale: ({ scaleX, point }) => {
-        run((sel, b) => { if (point) {b.scaleBy(sel, scaleX, [point.x, point.y]);} else {b.scaleBy(sel, scaleX);} });
-      },
+      scale: ({ scaleX, point }) => { run((c) => { c.scaleBy(scaleX, point); }); },
       setTransformMatrix: setMatrix,
       toString: () => `matrix(${transform.k}, 0, 0, ${transform.k}, ${transform.x}, ${transform.y})`,
       transformMatrix: toMatrix(transform),
-      translate: ({ translateX, translateY }) => { run((sel, b) => { b.translateBy(sel, translateX / transform.k, translateY / transform.k); }); },
-      translateTo: ({ x, y }) => { run((sel, b) => { b.translateTo(sel, x, y); }); },
+      translate: ({ translateX, translateY }) => { run((c) => { c.translateBy(translateX / transform.k, translateY / transform.k); }); },
+      translateTo: (p) => { run((c) => { c.translateTo(p); }); },
     };
-  }, [enabled, hostRef, initial, isDragging, transform]);
+  }, [enabled, initial, isDragging, transform]);
 
   return { instance, transform };
 };
