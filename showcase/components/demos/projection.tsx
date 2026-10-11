@@ -1,11 +1,10 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { lineChartDocsData } from "@/lib/docs-data";
 
-function buildProjectionData(impl: "bklit" | "migrated") {
-  const builder = impl === "bklit" ? BklitCharts.buildProjectionPath : MigratedCharts.buildProjectionPath;
+function buildProjectionData(charts: ImplCharts) {
+  const builder = charts.buildProjectionPath;
   const targetPath = builder({
     sourceData: lineChartDocsData as unknown as Record<string, unknown>[],
     seriesKey: "users",
@@ -25,9 +24,9 @@ function buildProjectionData(impl: "bklit" | "migrated") {
   return { targetPath, autoPath };
 }
 
-function ProjectionDemo1({ impl }: { impl: "bklit" | "migrated" }) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
-  const { targetPath, autoPath } = buildProjectionData(impl);
+function ProjectionDemo1({ charts }: { charts: ImplCharts }) {
+  const Charts = charts;
+  const { targetPath, autoPath } = buildProjectionData(charts);
   return (
     <Charts.LineChart data={lineChartDocsData} aspectRatio="2/1">
       <Charts.Grid horizontal />
@@ -44,6 +43,6 @@ function ProjectionDemo1({ impl }: { impl: "bklit" | "migrated" }) {
 // Registry entry point (chart-stage.tsx / lib/chart-data.ts route
 // "projection"): ProjectionDemo1's config (target + auto projection paths),
 // dual-rendered. `n` is unused — this demo is fixed-data.
-export default function ProjectionDemo({ impl, n: _n }: { impl: "bklit" | "migrated"; n: number }) {
-  return <ProjectionDemo1 impl={impl} />;
+export default function ProjectionDemo({ charts, n: _n }: { impl: "bklit" | "migrated"; charts: ImplCharts; n: number }) {
+  return <ProjectionDemo1 charts={charts} />;
 }

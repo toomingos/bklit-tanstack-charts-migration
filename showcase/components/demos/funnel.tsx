@@ -1,16 +1,16 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { funnelDocsData } from "@/lib/docs-data";
 
 interface FunnelDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
-export default function FunnelDemo({ impl, n: _n }: FunnelDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function FunnelDemo({ impl, charts, n: _n }: FunnelDemoProps) {
+  const Charts = charts;
 
   return (
     <div className="flex w-full justify-center">

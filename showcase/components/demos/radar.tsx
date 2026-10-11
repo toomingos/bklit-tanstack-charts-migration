@@ -1,19 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { radarDocsMetrics, radarDocsData } from "@/lib/docs-data";
 
 const RADAR_SIZE = 400;
 
 interface RadarDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
-export default function RadarDemo({ impl, n: _n }: RadarDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function RadarDemo({ impl, charts, n: _n }: RadarDemoProps) {
+  const Charts = charts;
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   return (

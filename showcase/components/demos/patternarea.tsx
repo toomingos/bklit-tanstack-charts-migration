@@ -1,11 +1,11 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { BklitCharts as BklitModule, ImplCharts, MigratedCharts as MigratedModule } from "./impl-charts";
 import { areaChartDocsData } from "@/lib/docs-data";
 
 interface PatternAreaDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
@@ -18,8 +18,9 @@ interface PatternAreaDemoProps {
 // rather than forcing identical props.
 const PATTERN_ID = "showcase-patternarea-demo";
 
-export default function PatternAreaDemo({ impl, n: _n }: PatternAreaDemoProps) {
+export default function PatternAreaDemo({ impl, charts, n: _n }: PatternAreaDemoProps) {
   if (impl === "bklit") {
+    const BklitCharts = charts as typeof BklitModule;
     return (
       <BklitCharts.AreaChart data={areaChartDocsData} aspectRatio="2/1">
         <BklitCharts.PatternLines
@@ -39,6 +40,7 @@ export default function PatternAreaDemo({ impl, n: _n }: PatternAreaDemoProps) {
     );
   }
 
+  const MigratedCharts = charts as typeof MigratedModule;
   return (
     <MigratedCharts.AreaChart data={areaChartDocsData} aspectRatio="2/1">
       <MigratedCharts.Grid horizontal />

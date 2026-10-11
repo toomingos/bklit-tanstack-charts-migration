@@ -1,19 +1,19 @@
 "use client";
 
 import { useMemo } from "react";
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { defaultDemoControls, type DemoControls } from "@/components/demo-controls";
 import { generateHeatmap } from "@/lib/demo-data";
 
 interface HeatmapDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
   controls?: DemoControls;
 }
 
-export default function HeatmapDemo({ impl, n, controls = defaultDemoControls }: HeatmapDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function HeatmapDemo({ impl, charts, n, controls = defaultDemoControls }: HeatmapDemoProps) {
+  const Charts = charts;
   const columns = useMemo(() => generateHeatmap("heatmap", n), [n]);
 
   if (controls.loading === "component") {

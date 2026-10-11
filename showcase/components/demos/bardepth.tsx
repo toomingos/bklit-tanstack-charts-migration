@@ -1,12 +1,12 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { BklitCharts as BklitModule, ImplCharts, MigratedCharts as MigratedModule } from "./impl-charts";
 import { defaultDemoControls, type DemoControls } from "@/components/demo-controls";
 import { barChartDocsData } from "@/lib/docs-data";
 
 interface BarDepthDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
   controls?: DemoControls;
 }
@@ -15,8 +15,9 @@ interface BarDepthDemoProps {
 // migrated's is automatic once a <BarDepthProvider> config child is
 // present (no `perspective` prop on migrated's Bar) — a genuine API gap,
 // so the JSX branches per impl rather than forcing identical props.
-export default function BarDepthDemo({ impl, n: _n, controls = defaultDemoControls }: BarDepthDemoProps) {
+export default function BarDepthDemo({ impl, charts, n: _n, controls = defaultDemoControls }: BarDepthDemoProps) {
   if (impl === "bklit") {
+    const BklitCharts = charts as typeof BklitModule;
     return (
       <BklitCharts.BarChart data={barChartDocsData} xDataKey="month" aspectRatio="2/1">
         <BklitCharts.Grid horizontal />
@@ -30,6 +31,7 @@ export default function BarDepthDemo({ impl, n: _n, controls = defaultDemoContro
     );
   }
 
+  const MigratedCharts = charts as typeof MigratedModule;
   return (
     <MigratedCharts.BarChart data={barChartDocsData} xDataKey="month" aspectRatio="2/1">
       <MigratedCharts.Grid horizontal />
