@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { useDragSelect } from "../kit/cartesian/drag-select";
 import type { DragGeom } from "../kit/cartesian/drag-select";
-import { useKeyboardFocusHold } from "../kit/cartesian/keyboard-hold";
+import { useKeyboardFocusHold } from "../kit/keyboard-hold";
 import { RevealArm, useReadyGate } from "../kit/entrance/reveal-arm";
 import { RendererChart, sameCategoryTarget } from "../kit/tooltip/tooltip-leaf";
 import { motion } from "@tanstack/charts/motion";
@@ -146,7 +146,7 @@ export const ComposedChartMounted = ({
     },
     [onDragRender, entered],
   );
-  // Keyboard-held focus survives a pointer pass (kit/cartesian/keyboard-hold.ts, UPSTREAM-GAPS #42).
+  // Keyboard-held focus survives a pointer pass (kit/keyboard-hold.ts, UPSTREAM-GAPS #42).
   const holdFocus = useKeyboardFocusHold(containerRef, () => dragInteraction.current);
   hostGeom.current = { times: built.hover.times, left: margin.left, xStart: xStartMs, xSpan: xSpanMs, innerWidth, signs: built.hover.plSigns, pillLayout: built.pillTicks.active ? pillLayoutOf(built.pillTicks.times) : null };
   const staticCss = useMemo(() => composedStaticCss({ uid, built, bars, order, series }), [uid, built, bars, order, series]);
