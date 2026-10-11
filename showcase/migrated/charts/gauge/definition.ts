@@ -1,5 +1,5 @@
 // The native gauge definition: notches are `areaX` polygon marks (arc, tapered or rounded linear) or `rect` marks (plain linear).
-import { scaleLinear } from "d3-scale";
+import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { defineChart } from "@tanstack/charts/scene";
 import { rect } from "@tanstack/charts";
 import { areaX } from "@tanstack/charts/area-x";

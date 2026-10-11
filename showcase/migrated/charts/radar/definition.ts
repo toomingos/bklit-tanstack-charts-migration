@@ -1,6 +1,6 @@
 import { joinClasses } from "../kit/cn";
 import { curveLinearClosed } from "d3-shape";
-import { scaleLinear } from "d3-scale";
+import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { scalePoint } from "@tanstack/charts/scales/point";
 import { defineChart } from "@tanstack/charts/scene";
 import { polar, radialArea, radialDot, radialLine, radialText } from "@tanstack/charts/polar";
