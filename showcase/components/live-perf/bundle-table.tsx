@@ -1,5 +1,7 @@
-import { bundleBreakdown, bundleCssKb, bundleSizes, bundleTotal, prodPerf } from "./bundle-data";
-import { GainCell } from "./headline-cards";
+import { bundleBreakdown, bundleCssKb, bundleSizes, bundleTotal } from "./bundle-data";
+import { CompareCell, type Stat } from "./headline-cards";
+
+const stat = (v: number): Stat => [v, v, v];
 
 const th = "whitespace-nowrap px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground";
 const kb = (v: number) => `${v.toFixed(1)} KB`;
@@ -10,7 +12,7 @@ function Row({ label, gzip, strong }: { label: string; gzip: readonly [number, n
       <td className="px-3 py-2.5">{label}</td>
       <td className="px-3 py-2.5 text-right tabular-nums">{kb(gzip[0])}</td>
       <td className="px-3 py-2.5 text-right tabular-nums">{kb(gzip[1])}</td>
-      <GainCell pair={gzip} kind="less" />
+      <CompareCell b={stat(gzip[0])} m={stat(gzip[1])} tol={{ rel: 0.05, abs: 0 }} />
     </tr>
   );
 }
@@ -61,33 +63,6 @@ export function BundleTable() {
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <Breakdown title="Bklit UI, all charts, minified" items={bundleBreakdown.bklit} />
         <Breakdown title="TanStack Bklit UI, all charts, minified" items={bundleBreakdown.migrated} />
-      </div>
-      <h2 className="mt-10 text-lg font-semibold tracking-tight">Production build timings</h2>
-      <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        Same measurements on a production build with React profiling on, so numbers differ from the dev figures above. React render drops for both, but main-thread work per pointer
-        move is higher for TanStack Bklit UI on most cartesian charts: TanStack's interaction dispatch costs about 0.3 to 1.3 ms per move and does not shrink in production.
-      </p>
-      <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/50">
-              <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">Chart</th>
-              <th className={th}>Render on load</th>
-              <th className={th}>React render on hover</th>
-              <th className={th}>Compute per move</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {prodPerf.map((r) => (
-              <tr key={r.label}>
-                <td className="px-3 py-2.5">{r.label}</td>
-                <GainCell pair={r.load} kind="faster" />
-                <GainCell pair={r.hover} kind="less" />
-                <GainCell pair={r.move} kind="faster" />
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </section>
   );

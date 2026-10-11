@@ -8,7 +8,7 @@ Proof-of-concept: [bklit-ui](https://github.com/bklit/bklit-ui) chart components
 
 The migration is complete. Every chart is built from `defineChart` compositions of built-in marks, layouts, `states`, `motion()` and the native interaction controller. Custom machinery is limited to what the docs and source show 1.1 cannot express; those cases are written up in [docs/UPSTREAM-GAPS.md](docs/UPSTREAM-GAPS.md) and reported upstream.
 
-QA is done by observing the charts in Chrome (side-by-side bklit and migrated at 1440 and 390 px, light and dark, hover, keyboard focus, resize). Performance is read from the **Live Perf panel** under every chart on the showcase (load, entrance, settle, React render cost, hover and interaction latency, steady-state cost), measured live in the viewer's browser for both implementations.
+QA is done by observing the charts in Chrome (side-by-side bklit and migrated at 1440 and 390 px, light and dark, hover, keyboard focus, resize). Performance is read from the **Live Perf panel** under every chart on the showcase, measured live in the viewer's browser the same way for both implementations: first paint and settled time, whole-main-thread busy time per pointer move, move-to-paint latency, long tasks, with sample counts and spread. React render cost is shown only as an explanatory dev-build row (the migrated charts write hover state to CSS variables, so React renders little by design). The overview reports an interleaved production sweep as medians with spread, and says "parity" where the two implementations are within it. Bundle size is larger for the migrated charts (see the overview). Method and raw data are not claims of a win: on first paint and settled time the two are at parity.
 
 ## Layout
 

@@ -112,6 +112,12 @@ export function ChartDetailPage({ route }: { route: string }) {
     window.history.replaceState(null, "", query.size ? `${pathname}?${query}` : pathname);
   };
 
+  // Live Perf switches: `only` renders one side, `order=migrated` mounts the migrated chart first.
+  const only = params.get("only");
+  const impls = (params.get("order") === "migrated" ? (["migrated", "bklit"] as const) : (["bklit", "migrated"] as const)).filter(
+    (i) => only !== "bklit" && only !== "migrated" || i === only,
+  );
+
   if (!info) {
     return (
       <div>
@@ -129,8 +135,9 @@ export function ChartDetailPage({ route }: { route: string }) {
 
       <section className="mb-10">
         <div className="flex flex-col gap-4">
-          <ChartPreview impl="bklit" chart={route} n={info.defaultN} controls={controls} width={width} />
-          <ChartPreview impl="migrated" chart={route} n={info.defaultN} controls={controls} width={width} />
+          {impls.map((impl) => (
+            <ChartPreview key={impl} impl={impl} chart={route} n={info.defaultN} controls={controls} width={width} />
+          ))}
         </div>
         <DemoControlsBar
           available={available}

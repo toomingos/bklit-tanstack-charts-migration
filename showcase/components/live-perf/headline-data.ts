@@ -1,38 +1,115 @@
-import type { Headline } from "./headline-cards";
+import type { Stat } from "./headline-cards";
 
-/** Chrome sweep totals, single source for the overview cards. */
-export const sweepHeadlines: Headline[] = [
-  { label: "Render time on load", kind: "faster", bklit: 1356, migrated: 228 },
-  { label: "React render on hover", kind: "less", bklit: 2667, migrated: 172 },
-  { label: "Browser compute per pointer move", kind: "faster", bklit: 54.4, migrated: 22.6 },
-];
+/** Single source for the overview: the interleaved production sweep (raw per-run values), its derived stats, and the
+ * bundle and regression facts shown beside them. Raw data and exact method: archive/perf-sweep-v0.md. */
 
-type Pair = readonly [bklit: number, migrated: number] | null;
+/** bklit-ui commit pinned by scripts/clone-repos.sh; the sweep and the panel both run against it. */
+export const BKLIT_SHA = "f7b3bd2";
 
-/** Per-chart Chrome sweep (2026-10-11, post perf fixes), ms: median load, React render on hover, compute per move. */
-export const chartHeadlines: Record<string, { load: Pair; hover: Pair; move: Pair }> = {
-  area: { load: [35.2, 9.1], hover: [149.5, 12.2], move: [2.94, 1.53] },
-  bar: { load: [23.1, 5.3], hover: [35, 3.5], move: [0.7, 0.5] },
-  bardepth: { load: [36.7, 5.95], hover: [76.7, 3.9], move: [1.44, 0.58] },
-  barsquares: { load: [44.1, 6.9], hover: [84.4, 4.3], move: [1.71, 0.45] },
-  brush: { load: [43.5, 15], hover: [132, 10.7], move: [2.59, 1.48] },
-  candlestick: { load: [21.1, 8.9], hover: [37.8, 3.1], move: [0.77, 0.6] },
-  choropleth: { load: [199.9, 61.8], hover: [82.6, 5.5], move: [1.55, 0.79] },
-  composed: { load: [39.6, 7.95], hover: [186.9, 15.2], move: [3.59, 1.53] },
-  funnel: { load: [21.7, 3.75], hover: [34.8, 0], move: [0.62, 0.38] },
-  gauge: { load: [64.5, 7.05], hover: [0, 0], move: [0.09, 0.07] },
-  heatmap: { load: [115.9, 5.85], hover: [402.4, 22.2], move: [7.8, 1.26] },
-  line: { load: [55.7, 9.3], hover: [159.4, 12.9], move: [3.05, 1.43] },
-  liveline: { load: [104.2, 12.9], hover: [405.6, 29.8], move: [2.6, 1.72] },
-  markers: { load: [64.6, 9.2], hover: [161.5, 11.3], move: [3.11, 1.38] },
-  patternarea: { load: [24.4, 8.25], hover: [135.6, 9.1], move: [2.66, 1.4] },
-  pie: { load: [12.2, 1.45], hover: [56.2, 0], move: [1.11, 0.27] },
-  projection: { load: [35.1, 7.5], hover: [137.7, 10], move: [2.67, 1.32] },
-  radar: { load: [22.1, 2.75], hover: [40.6, 1.7], move: [0.79, 0.28] },
-  "reference-area": { load: [28.9, 9.55], hover: [173.5, 10.5], move: [3.39, 1.38] },
-  ring: { load: [21, 3.4], hover: [30.6, 4.5], move: [0.61, 0.35] },
-  sankey: { load: [51.9, 2.45], hover: [267.3, 6.8], move: [5.06, 0.85] },
-  scatter: { load: [43.7, 6.4], hover: [139.7, 13.1], move: [2.75, 1.61] },
-  segment: { load: [24.8, 12.7], hover: [143, 11.1], move: [2.82, 1.4] },
-  sunburst: { load: [222.3, 4.7], hover: null, move: null },
+export const sweepMeta = {
+  date: "2026-10-11",
+  build: "production (next build, next start)",
+  runs: 6,
+  movesPerSide: 60,
+  events: "synthetic dispatched pointer events",
+  machine: "Apple M1, 8 cores, 16 GB, macOS 26.6.2, Chrome 155, ~100 Hz",
+  viewport: "1710 x 1295",
 };
+
+export type Metric = "firstPaint" | "settled" | "busy" | "latency";
+
+/** Per-run values for one chart, same run index in both arrays: [bklit, migrated]. */
+type Runs = readonly [bklit: readonly number[], migrated: readonly number[]];
+
+/** route -> metric -> per-run values (ms). Filled from the sweep. */
+const sweepRuns: Record<string, Partial<Record<Metric, Runs>>> = {
+  area: { firstPaint: [[345.5, 343.7, 345.1, 343.7, 341.1, 342.3], [343.9, 345.4, 343.8, 345.4, 339.9, 343.8]], settled: [[1456.2, 1455.8, 1460.7, 1460.1, 1451.6, 1456.9], [1460.9, 1459.3, 1475, 1459.5, 1459.2, 1474.8]], busy: [[5.13, 4.45, 4.59, 6.47, 4.92, 4.36], [6.73, 6.44, 7.02, 8.24, 6.11, 6.83]], latency: [[9.9, 9.9, 10, 10.4, 10.1, 10.2], [12.7, 10.8, 14, 11.4, 12.3, 12.5]] },
+  bar: { firstPaint: [[337, 340.3, 338.4, 334.6, 334, 327.4], [335.5, 341.5, 336.8, 337.2, 332.5, 328.6]], settled: [[1874.8, 1883.6, 1881.8, 1871.1, 1869.2, 1866.2], [1871.2, 1882.1, 1877.6, 1870.9, 1864.5, 1863.8]], busy: [[4.37, 3.95, 4.57, 4.27, 4.34, 4.28], [4.57, 4.74, 4.67, 4.59, 4.35, 5.2]], latency: [[9.9, 9.9, 9.9, 9.9, 9.7, 9.9], [12.4, 10.9, 11.9, 11.6, 11.4, 11.1]] },
+  bardepth: { firstPaint: [[340, 335.8, 343, 341.4, 333.8, 342.8], [338.9, 337.2, 342.1, 342.5, 332.9, 343.8]], settled: [[1889.8, 1884.8, 1893, 1888, 1872, 1888.2], [1880.6, 1877.2, 1882.7, 1882.4, 1865.1, 1883.2]], busy: [[6.1, 5.7, 5.69, 6.98, 6.28, 5.78], [5.1, 5.34, 5.39, 4.99, 4.87, 5.67]], latency: [[10, 10.5, 10, 11.9, 11.2, 11.1], [12.4, 12.1, 11.4, 13.1, 11.2, 12.9]] },
+  barsquares: { firstPaint: [[340, 339.6, 344.3, 343.9, 345, 343.8], [338.2, 342.9, 342.7, 345.5, 343.5, 345.3]], settled: [[2249.2, 2267.5, 2273.6, 2270.8, 2274.2, 2270.4], [2247.3, 2260.8, 2262, 2263.4, 2261.6, 2262.5]], busy: [[11.47, 11.05, 10.72, 10.16, 10.77, 11.01], [5.73, 5.42, 5.88, 5.86, 5.6, 5.39]], latency: [[13.3, 15.7, 12.4, 14.4, 11.3, 12.5], [11.7, 11.5, 12.4, 11.8, 12, 11.3]] },
+  brush: { firstPaint: [[345.1, 351.7, 351.6, 343.2, 344.9, 358.8], [343.9, 353, 350.4, 344.9, 343.9, 360.1]], settled: [[1461.4, 1469, 1467.6, 1457.9, 1459.6, 1477.3], [1465.5, 1476.2, 1469.2, 1463.7, 1463.5, 1482.8]], busy: [[4.57, 3.63, 3.75, 3.41, 4.14, 3.65], [7.55, 6.11, 5.54, 6.68, 6.09, 7.1]], latency: [[10.2, 9.9, 10.1, 9.9, 9.9, 10], [14.9, 13.7, 10.5, 10.8, 11.1, 11.6]] },
+  candlestick: { firstPaint: [[330.8, 344.4, 338.7, 337.9, 345, 328.3], [307.6, 317.1, 312.4, 314.1, 317.2, 313]], settled: [[1433, 1432.6, 1429.1, 1425.4, 1435.1, 1422.5], [1407.3, 1410.2, 1409.1, 1410.4, 1407.9, 1410.9]], busy: [[4.87, 3.38, 4.31, 4.05, 3.88, 3.89], [4.87, 5.1, 4.75, 6.24, 5.11, 5.43]], latency: [[10.1, 10, 9.9, 9.9, 10, 9.8], [11.4, 11.2, 11.6, 12.6, 11.4, 11.6]] },
+  choropleth: { firstPaint: [[477.9, 473.7, 480.1, 479, 480.1, 475.9], [476.5, 475, 478.6, 480.4, 478.7, 477.1]], settled: [[1279.4, 1272.3, 1280.3, 1281.6, 1282.6, 1273.9], [1278, 1273.6, 1278.9, 1283, 1281.2, 1275.1]], busy: [[2.37, 2.09, 2.12, 2.07, 3.94, 2.35], [2.64, 2.35, 2.79, 2.39, 3.2, 3.01]], latency: [[10.5, 10.3, 10, 10.2, 10.9, 10], [11.9, 11.3, 11.6, 12.3, 11.7, 12.5]] },
+  composed: { firstPaint: [[343, 356.9, 344.7, 347.2, 348, 341.5], [341.1, 358.6, 343.1, 348.5, 346.4, 343]], settled: [[1460.7, 1472.7, 1462.4, 1463.2, 1467.3, 1460.4], [1469.5, 1484.2, 1471.2, 1474.4, 1466.2, 1472.6]], busy: [[6.42, 5.31, 8.31, 6.56, 6.09, 5.59], [9.68, 8.15, 10.46, 9.42, 9.66, 9.29]], latency: [[10.3, 10.1, 10.8, 10.9, 11.1, 10.1], [12.3, 10.9, 11.4, 12.4, 11.1, 11]] },
+  funnel: { firstPaint: [[335.5, 339.3, 341.2, 336.1, 328.4, 339.3], [333.8, 340.7, 339.7, 337.9, 326.5, 340.8]], settled: [[1905.2, 1904.5, 1900.9, 1902.8, 1906.3, 1905], [1888.2, 1890.4, 1889.3, 1891.1, 1888.3, 1892.2]], busy: [[1.28, 1.14, 1.48, 1.08, 1.34, 1.73], [6.18, 5.55, 5.11, 5.66, 5.16, 5.7]], latency: [[10.5, 10.7, 11.2, 10.7, 10.5, 11.1], [12.7, 12.1, 11.9, 13.7, 12, 13]] },
+  gauge: { firstPaint: [[402.4, 421.4, 394.9, 424.3, 413.5, 395.7], [401.2, 422.7, 393.2, 426, 411.7, 396.9]], settled: [[2446, 2468.1, 2444.3, 2470.1, 2454.7, 2447.3], [2317.9, 2371.8, 2312.4, 2378, 2365.4, 2321.5]], busy: [[0.02, 1.04, 0.08, 1.0, 0.11, 1.04], [0, 0, 1.04, 0.02, 0, 0]], latency: [[9.6, 9.7, 9.7, 10.3, 9.3, 9.6], [9.6, 9.3, 9.5, 9.4, 9.8, 9.8]] },
+  heatmap: { firstPaint: [[360.1, 352.5, 365.8, 361.7, 348.4, 365.8], [358.7, 354.5, 364.3, 363.3, 347.2, 367.5]], settled: [[2145, 2144.3, 2149.1, 2152.8, 2144.2, 2153.7], [2164.1, 2174.7, 2175.2, 2184.7, 2163.3, 2182.2]], busy: [[9.13, 8.17, 7.79, 7.5, 9.28, 8.21], [1.91, 1.25, 1.09, 0.99, 1.14, 1.47]], latency: [[13.7, 13.1, 10.9, 11.9, 13.7, 13.9], [10.8, 10.7, 11.2, 10.7, 10.6, 10.7]] },
+  line: { firstPaint: [[343, 348.1, 344.5, 336.3, 350.3, 351.2], [341.6, 349.4, 342.7, 337.7, 349, 352.3]], settled: [[2152.5, 2154.8, 2146.1, 2144.9, 2156.9, 2151.5], [2169.3, 2159.3, 2164.5, 2120.3, 2167.6, 2172.1]], busy: [[6.59, 4.99, 4.15, 4.87, 5.04, 5.26], [6.18, 7.32, 6.95, 7.55, 6.62, 6.89]], latency: [[10.7, 9.9, 16.7, 9.8, 9.7, 10], [10.9, 11.8, 11.5, 10.8, 10.9, 10.8]] },
+  liveline: { firstPaint: [[381.6, 373.6, 359.7, 377.6, 372, 346.9], [379.5, 375.3, 358.4, 379.3, 370.3, 349.4]], settled: [[922.3, 876.4, 872, 875.6, 874.6, 873], [866.6, 878.1, 871.1, 877.2, 873.1, 875.1]], busy: [[7.9, 9.22, 6.2, 11.53, 7.07, 12.37], [15.89, 11.91, 12.96, 12.55, 13.37, 13.63]], latency: [[11.6, 11.8, 11.4, 14.5, 13.7, 15.6], [15.6, 13.8, 13.8, 15.5, 14.1, 13.8]] },
+  markers: { firstPaint: [[343.8, 333.4, 335, 352.5, 354.5, 350.4], [342.4, 334.6, 333.9, 354.3, 353.3, 352]], settled: [[2143.9, 2134.7, 2143.9, 2153, 2160.5, 2154.4], [2165.2, 2160, 2161.2, 2167.8, 2167.8, 2165.6]], busy: [[5.74, 4.91, 4.83, 4.96, 5.3, 5.39], [8.81, 10.24, 8.44, 9.67, 8.58, 10.65]], latency: [[9.9, 9.7, 9.9, 10, 10, 10], [11.8, 14.6, 12.1, 13.6, 12.5, 12.7]] },
+  patternarea: { firstPaint: [[349.6, 337.8, 334.5, 345.8, 347.6, 337.2], [348.2, 339, 333.4, 347.5, 346.4, 338.2]], settled: [[1461.4, 1448.2, 1443.3, 1457.8, 1460.8, 1446.2], [1463.2, 1454, 1448.1, 1464.5, 1460.1, 1461]], busy: [[4.87, 4.45, 4.29, 4.29, 5.28, 4.1], [5.98, 7.4, 6.24, 6.06, 5.8, 8.52]], latency: [[9.8, 10.1, 10, 9.9, 10.1, 10], [10.7, 12.5, 10.3, 10.5, 10.6, 12.4]] },
+  pie: { firstPaint: [[315.9, 311, 319.4, 311.2, 319.8, 316.1], [314.1, 313, 317.9, 312.6, 318.1, 317.9]], settled: [[1842.4, 1839.3, 1849.1, 1845.9, 1846, 1844.6], [1830.5, 1830.7, 1827.5, 1827.1, 1824.2, 1826.2]], busy: [[0.29, 0.53, 0.5, 0.3, 0.12, 0.35], [0.47, 1.18, 0.82, 0.68, 0.41, 1.6]], latency: [[10.1, 10, 9.9, 10.1, 9.9, 10], [10.2, 10.9, 9.9, 10.1, 10.4, 10.4]] },
+  projection: { firstPaint: [[338, 330.6, 344.4, 342, 336.5, 328.4], [336.5, 331.9, 342.9, 343.5, 335, 330.1]], settled: [[1733.1, 1725.1, 1749.2, 1742.4, 1731.6, 1715.1], [1714, 1674.1, 1672.5, 1676, 1676.8, 1668.4]], busy: [[4.96, 3.91, 3.67, 4.34, 3.98, 4.13], [5.79, 7.34, 5.75, 6.51, 5.6, 6.16]], latency: [[10.4, 9.8, 10, 10.9, 10.1, 10.2], [10.9, 81.9, 10.3, 10.8, 11.1, 13.3]] },
+  radar: { firstPaint: [[333.3, 322.3, 330.7, 335.7, 336.3, 332.8], [331.6, 323.5, 329.1, 337.3, 334.8, 334.3]], settled: [[2467.9, 2469.6, 2464, 2464.8, 2467.1, 2468.8], [2466.2, 2463.8, 2474.6, 2474.3, 2474, 2464.3]], busy: [[1.75, 2.46, 2.12, 1.92, 1.17], [3.27, 2.04, 2.17, 2.31, 1.57]], latency: [[10, 10.5, 10.1, 10, 10.1], [10.4, 10.5, 10.2, 9.6, 10.6]] },
+  "reference-area": { firstPaint: [[346.8, 342.7, 355.2, 359.6, 361.7, 352.5], [345.6, 344.2, 353.6, 361.3, 360.2, 353.8]], settled: [[1447.5, 1442.6, 1457.3, 1460.7, 1462.4, 1451.9], [1451.9, 1453.8, 1471.3, 1466.1, 1466.4, 1459.4]], busy: [[4.45, 3.96, 3.94, 4.08, 4.8, 5.03], [6.43, 6.07, 5.88, 7.27, 6.24, 6.25]], latency: [[10.1, 10, 10.2, 10, 10, 10.3], [11.4, 10.5, 10.8, 11.4, 10.4, 10.4]] },
+  ring: { firstPaint: [[332.9, 320.3, 324.5, 326.1, 329.1, 318], [331.2, 322.1, 323.2, 327.4, 327.7, 319.8]], settled: [[2536.4, 2523.7, 2524.3, 2531.4, 2529.3, 2525.7], [2552.7, 2543.2, 2540.4, 2550.7, 2545.9, 2544.5]], busy: [[7.8, 6.37, 7.42, 8.17, 8.71, 9.06], [7.45, 6.82, 7.34, 8.11, 7.18, 7.13]], latency: [[12.3, 10.5, 11.4, 11.5, 13.2, 12.1], [11.2, 11.3, 13.2, 13.4, 13.4, 12.9]] },
+  sankey: { firstPaint: [[380.2, 372.6, 385.2, 356.8, 383.8, 382.6], [378.4, 374, 382.8, 358.5, 382.1, 384]], settled: [[1987.4, 1986.1, 1989, 1983.3, 1988.5, 1989.4], [1956.6, 1969.3, 1972.6, 1966.5, 1976.5, 1982.3]], busy: [[8.51, 7.68, 7.97, 7.61, 10.26, 6.84], [6.67, 7.4, 6.63, 7.2, 7.54, 7.08]], latency: [[15.7, 13.7, 12.4, 14, 21.6, 12.8], [15.1, 15, 14.1, 14.8, 15.9, 14.1]] },
+  scatter: { firstPaint: [[350.6, 336, 341.4, 351.3, 341.7, 342.1], [313.6, 314.5, 313.5, 315.2, 310.9, 316.7]], settled: [[1446.3, 1434, 1444.8, 1439.3, 1445.7, 1445.2], [1431.1, 1431.3, 1438.4, 1428.6, 1430.4, 1434.4]], busy: [[4.47, 4.28, 3.49, 3.35, 3.73, 3.96], [5.68, 5.64, 5.23, 5.73, 5.68, 5.77]], latency: [[10.2, 10.2, 10.2, 9.9, 10, 10.7], [11.3, 11.1, 10.9, 13.3, 11.1, 12.1]] },
+  segment: { firstPaint: [[339.1, 333.5, 336.1, 338.5, 340.8, 339.5], [337.8, 334.8, 334.6, 340.2, 339, 340.8]], settled: [[1455, 1445.7, 1441.2, 1452.7, 1455.7, 1451.9], [1458.8, 1448.8, 1440, 1456.1, 1455.5, 1456.7]], busy: [[4.81, 4.77, 4.01, 3.67, 3.92, 3.32], [7.12, 6.35, 5.73, 6.02, 5.92, 6.11]], latency: [[10.5, 10.4, 10.4, 9.9, 10, 10], [10.9, 10.6, 10.6, 11.3, 11, 10.3]] },
+  sunburst: { firstPaint: [[323, 319, 343.6, 338.6, 341.9, 336.6], [321.6, 320.3, 342, 340.1, 340.8, 338.1]], settled: [[3401, 3398.6, 3409.9, 3410.1, 3404.8, 3408.8], [3393.1, 3392.8, 3411.9, 3411.6, 3407, 3407]], busy: [[], []], latency: [[], []] },
+};
+
+const sorted = (v: readonly number[]) => [...v].sort((a, b) => a - b);
+const median = (v: readonly number[]) => {
+  const s = sorted(v);
+  const h = s.length >> 1;
+  return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2;
+};
+const round = (x: number) => (x >= 10 ? Math.round(x * 10) / 10 : Math.round(x * 100) / 100);
+
+const toStat = (v: readonly number[]): Stat => {
+  const s = sorted(v);
+  return [round(median(v)), round(s[0]), round(s[s.length - 1])];
+};
+
+/** Per-chart median with min-max across runs, both sides. */
+export function chartPair(route: string, metric: Metric): { b: Stat; m: Stat } | null {
+  const r = sweepRuns[route]?.[metric];
+  return r && r[0].length && r[1].length ? { b: toStat(r[0]), m: toStat(r[1]) } : null;
+}
+
+export interface Summary {
+  /** charts counted (same set for every metric) */
+  charts: number;
+  /** geometric mean over charts of per-chart median(migrated) / median(bklit); below 1 is lower for migrated */
+  geo: number;
+  /** the same geometric mean per run (min, max): the spread of the summary itself */
+  geoRange: readonly [number, number];
+  /** median over charts of the per-chart ratio */
+  medianRatio: number;
+  /** charts where the two ranges across runs do not overlap, split by direction */
+  lower: number;
+  higher: number;
+  parity: number;
+}
+
+const geomean = (v: number[]) => Math.exp(v.reduce((a, x) => a + Math.log(x), 0) / v.length);
+
+/** Summary over `routes` for one metric. Ratios are migrated / bklit, per chart, never sums. */
+export function summarise(routes: string[], metric: Metric, floor = 0): Summary | null {
+  const rows = routes.flatMap((r) => {
+    const x = sweepRuns[r]?.[metric];
+    return x && x[0].length ? [x] : [];
+  });
+  if (!rows.length) return null;
+  const f = (x: number) => Math.max(x, floor);
+  const ratios = rows.map((x) => f(median(x[1])) / f(median(x[0])));
+  const nRuns = Math.min(...rows.map((x) => Math.min(x[0].length, x[1].length)));
+  const perRun = Array.from({ length: nRuns }, (_, i) => geomean(rows.map((x) => f(x[1][i]) / f(x[0][i]))));
+  let lower = 0;
+  let higher = 0;
+  for (const x of rows) {
+    const [bl, bh, ml, mh] = [Math.min(...x[0]), Math.max(...x[0]), Math.min(...x[1]), Math.max(...x[1])];
+    if (mh < bl) lower++;
+    else if (ml > bh) higher++;
+  }
+  return {
+    charts: rows.length,
+    geo: geomean(ratios),
+    geoRange: [Math.min(...perRun), Math.max(...perRun)],
+    medianRatio: median(ratios),
+    lower,
+    higher,
+    parity: rows.length - lower - higher,
+  };
+}

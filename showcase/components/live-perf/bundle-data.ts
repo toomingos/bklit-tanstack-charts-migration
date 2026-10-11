@@ -30,18 +30,3 @@ export const bundleBreakdown = {
   bklit: [["bklit-ui source", 289], ["motion", 134], ["d3 and geo", 91], ["utility libs", 77], ["visx", 48]],
   migrated: [["@tanstack/charts", 263], ["migrated charts", 262], ["kit", 146], ["d3 and geo", 136], ["utility libs", 44]],
 } as const;
-
-type Pair = readonly [bklit: number, migrated: number] | null;
-
-/** Production build (next build --profile, port 5301, 2026-10-11, Chrome): load = median of 3 reloads, hover and move over 55 real pointer moves per side.
- * ms: render on load, React render on hover, main-thread work per move. Live line move work is not reported by the collector. */
-export const prodPerf: { label: string; load: Pair; hover: Pair; move: Pair }[] = [
-  { label: "Line", load: [11.5, 5.2], hover: [31, 2.2], move: [0.667, 1.524] },
-  { label: "Area", load: [12.2, 8.8], hover: [26.6, 2.3], move: [0.551, 1.324] },
-  { label: "Bar", load: [6.2, 2.9], hover: [5.5, 1.3], move: [0.173, 0.436] },
-  { label: "Ring", load: [8.7, 1.1], hover: [12.9, 1.7], move: [0.204, 0.342] },
-  { label: "Choropleth", load: [76.5, 41.4], hover: [7.8, 1.6], move: [0.211, 0.825] },
-  { label: "Heatmap", load: [23.9, 3.2], hover: [176.4, 4], move: [3.187, 0.856] },
-  { label: "Sankey", load: [13.1, 0.9], hover: [58.9, 2.7], move: [1.118, 0.76] },
-  { label: "Live line", load: [18.9, 7.3], hover: [94.3, 8.7], move: null },
-];

@@ -11,10 +11,12 @@ import {
   MIN_MOVES,
   perfStore,
   SLOW_INT_MS,
+  SPIN_ON,
   type PageVitals,
   type PerfSnapshot,
 } from "./collector";
-import { HeadlineCards, type Headline } from "./headline-cards";
+import { BKLIT_SHA } from "./headline-data";
+import { compare, DEFAULT_TOL, HeadlineCards, type Headline, type Stat, type Tolerance } from "./headline-cards";
 
 /** card: this card's own DOM / React subtree / event dispatches. window: page-wide data limited to the times the
  * pointer was inside this card. page: one page-wide value (both cards load together, frames are shared). */
@@ -33,18 +35,23 @@ interface Row {
   digits?: number;
   /** sample size shown next to the value */
   n?: Get;
+  /** spread text shown under the value (range over runs or slices) */
+  spread?: (s: PerfSnapshot) => string | null;
+  /** parity band for the Change column (default 10% or 0.5 ms) */
+  tol?: Tolerance;
 }
 interface Group { title: string; rows: Row[] }
+
+/** Move latency is quantised by the frame interval (~10-17 ms), so differences under about 3 ms are parity. */
+const LAT_TOL: Tolerance = { rel: 0.1, abs: 3 };
 
 const groups: Group[] = [
   {
     title: "Load",
     rows: [
-      { label: "First paint", get: (s) => s.firstPaintMs, scope: "card", unit: "ms", lower: true, hint: "probe mount → the frame showing the first svg/canvas content is presented (rAF + MessageChannel). Includes the shared demo chunk load." },
+      { label: "First paint", get: (s) => s.firstPaintMs, scope: "card", unit: "ms", lower: true, spread: (s) => runSpread(s.firstPaintRuns), hint: "probe mount → the frame showing the first svg/canvas content is presented (rAF + MessageChannel). Includes the shared demo chunk load." },
       { label: "Entrance (settled − first paint)", get: (s) => s.entranceMs, scope: "card", unit: "ms", lower: true },
-      { label: "Settled", get: (s) => s.settledMs, scope: "card", unit: "ms", lower: true, hint: "no DOM mutation / finite animation in this card for 150ms (cap 5s, shown with +)" },
-      { profiler: true, label: "React commits (load)", get: (s) => s.loadCommits, scope: "card", hint: "count only: commit cost differs per impl, compare render time" },
-      { profiler: true, label: "React render time (load)", get: (s) => s.loadRenderMs, scope: "card", unit: "ms", lower: true, hint: "Profiler actualDuration sum (render phase; effects and browser style/layout/paint not included)" },
+      { label: "Settled (entrance end)", get: (s) => s.settledMs, scope: "card", unit: "ms", lower: true, spread: (s) => runSpread(s.settledRuns), hint: "no DOM mutation / finite animation in this card for 150ms (cap 5s, shown with +)" },
       { label: "Long tasks (load)", get: (s) => s.loadLongTasks, scope: "page", lower: true, hint: "both cards load in the same window, so this is the same page data for both" },
       { label: "Long task time (load)", get: (s) => s.loadLongTaskMs, scope: "page", unit: "ms", lower: true },
       { label: "LoAF blocking (load)", get: (s) => s.loadLoafBlockMs, scope: "page", unit: "ms", lower: true, hint: "Long Animation Frames blockingDuration sum" },
@@ -54,12 +61,14 @@ const groups: Group[] = [
     ],
   },
   {
-    title: "React after settle",
+    title: "React work (dev builds only; explains where the work went, not how fast the chart feels)",
     rows: [
-      { profiler: true, label: "Render time (total)", get: (s) => s.interRenderMs, scope: "card", unit: "ms", lower: true, hint: "Profiler actualDuration since settle: hover, clicks and live ticks" },
-      { profiler: true, label: "Commits (total)", get: (s) => s.interCommits, scope: "card", hint: "count only: a migrated commit costs ~0.3ms, a bklit one ~3ms; compare render time" },
-      { profiler: true, label: "Render ms / s (rolling 2s)", get: (s) => s.steadyRenderMsPerSec, scope: "card", unit: "ms", lower: true, hint: "0 when idle proves the probe causes no re-renders" },
-      { profiler: true, label: "Render ms / commit (rolling 2s)", get: (s) => s.steadyCommitMs, scope: "card", unit: "ms", lower: true },
+      { profiler: true, label: "React commits (load)", get: (s) => s.loadCommits, scope: "card", hint: "count only: commit cost differs per impl, compare render time" },
+      { profiler: true, label: "React render time (load)", get: (s) => s.loadRenderMs, scope: "card", unit: "ms", hint: "Profiler actualDuration sum (render phase; effects and browser style/layout/paint not included)" },
+      { profiler: true, label: "Render time since settle (hover, clicks, ticks)", get: (s) => s.interRenderMs, scope: "card", unit: "ms", hint: "Profiler actualDuration since settle. The migrated charts write hover state to CSS variables, so React renders little by design; browser work is not counted here." },
+      { profiler: true, label: "Commits since settle", get: (s) => s.interCommits, scope: "card", hint: "count only" },
+      { profiler: true, label: "Render ms / s (rolling 2s)", get: (s) => s.steadyRenderMsPerSec, scope: "card", unit: "ms", hint: "0 when idle proves the probe causes no re-renders" },
+      { profiler: true, label: "Render ms / commit (rolling 2s)", get: (s) => s.steadyCommitMs, scope: "card", unit: "ms" },
     ],
   },
   {
@@ -86,14 +95,15 @@ const groups: Group[] = [
     rows: [
       { label: "Real pointermoves counted", get: (s) => s.moves, scope: "card", hint: `moves that changed the pointer position; the browser's re-dispatches at a resting pointer are not counted. Every per-move row shows "—" until ${MIN_MOVES} are counted.` },
       { label: "Hover time (active)", get: (s) => s.hoverSec, scope: "card", unit: "s", hint: "each hover window ends 400ms after its last real move, on pointerleave, pointerout to outside, window blur or tab hidden: a resting or parked pointer adds nothing" },
-      { label: "Main-thread work / move", get: (s) => s.moveWorkMs, scope: "card", unit: "ms", lower: true, digits: 2, n: (s) => s.moves, hint: `sum of the three rows below, per real move (mean). Same method for both columns, so bklit's rAF-deferred tooltip commit is included. "—" below ${MIN_MOVES} moves.` },
-      { label: "  sync dispatch only", get: (s) => s.moveDispatchMs, scope: "card", unit: "ms", lower: true, digits: 2, n: (s) => s.moves, hint: "pointermove dispatch from window capture to window bubble (React's root listener and the chart's own listeners, incl. forced style/layout); React render inside it is excluded (render row). Misses work deferred to a frame: not a like-for-like figure on its own." },
-      { label: "  rAF callbacks", get: (s) => s.moveRafMs, scope: "card", unit: "ms", lower: true, digits: 2, n: (s) => s.moves, hint: "callbacks of requestAnimationFrame requests made from inside the move dispatch (and by those callbacks), React render excluded. bklit's tooltip state commit runs here." },
-      { profiler: true, label: "  React render", get: (s) => s.moveRenderMs, scope: "card", unit: "ms", lower: true, digits: 2, n: (s) => s.moves, hint: "Profiler actualDuration of commits within 200ms of a real move inside the card (a live chart's own ticks are included)" },
-      { label: "Main-thread work p95 / painted frame", get: (s) => s.moveWorkFrameP95, scope: "card", unit: "ms", lower: true, digits: 2, n: (s) => s.moves, hint: "dispatch + rAF callbacks + render of the moves coalesced into one frame, up to its paint; p95 over frames" },
+      { label: "Whole main thread busy / move", get: (s) => s.busyPerMove, scope: "window", unit: "ms", lower: true, digits: 2, n: (s) => s.moves, spread: (s) => (s.busySlices ? `median ${s.busyMedian} (${s.busyLo}–${s.busyHi}), ${s.busySlices} slices of 10 moves` : null), hint: `all task gaps > 1 ms (script, style, layout, paint of any origin, either card) while this card is actively hovered, per real move (mean). Measured the same way for both. "—" below ${MIN_MOVES} moves, or with ?spin=0.` },
+      { label: "Attributed script work / move (partial, explanatory)", get: (s) => s.moveWorkMs, scope: "card", unit: "ms", digits: 2, n: (s) => s.moves, hint: `sum of the three rows below. Counts only where script ran (dispatch, rAF, React render); style, layout and paint are not included, so it is not a cost comparison. "—" below ${MIN_MOVES} moves.` },
+      { label: "  sync dispatch only", get: (s) => s.moveDispatchMs, scope: "card", unit: "ms", digits: 2, n: (s) => s.moves, hint: "pointermove dispatch from window capture to window bubble (React's root listener and the chart's own listeners, incl. forced style/layout); React render inside it is excluded (render row). Misses work deferred to a frame: not a like-for-like figure on its own." },
+      { label: "  rAF callbacks", get: (s) => s.moveRafMs, scope: "card", unit: "ms", digits: 2, n: (s) => s.moves, hint: "callbacks of requestAnimationFrame requests made from inside the move dispatch (and by those callbacks), React render excluded. bklit's tooltip state commit runs here." },
+      { profiler: true, label: "  React render", get: (s) => s.moveRenderMs, scope: "card", unit: "ms", digits: 2, n: (s) => s.moves, hint: "Profiler actualDuration of commits within 200ms of a real move inside the card (a live chart's own ticks are included)" },
+      { label: "Main-thread work p95 / painted frame", get: (s) => s.moveWorkFrameP95, scope: "card", unit: "ms", digits: 2, n: (s) => s.moves, hint: "dispatch + rAF callbacks + render of the moves coalesced into one frame, up to its paint; p95 over frames" },
       { profiler: true, label: "React commits / 100 moves", get: (s) => s.hoverCommitsPer100, scope: "card", n: (s) => s.moves },
-      { label: "Move → next paint p50", get: (s) => s.moveLatP50, scope: "window", unit: "ms", lower: true, n: (s) => s.moveLatCount, hint: `event.timeStamp → after the next presented frame (rAF + MessageChannel); the frame is shared by the page. "—" below ${MIN_MOVES} samples.` },
-      { label: "Move → next paint p95", get: (s) => s.moveLatP95, scope: "window", unit: "ms", lower: true, n: (s) => s.moveLatCount },
+      { label: "Move → next paint p50", get: (s) => s.moveLatP50, scope: "window", unit: "ms", lower: true, tol: LAT_TOL, n: (s) => s.moveLatCount, hint: `event.timeStamp → after the next presented frame (rAF + MessageChannel); the frame is shared by the page. "—" below ${MIN_MOVES} samples.` },
+      { label: "Move → next paint p95", get: (s) => s.moveLatP95, scope: "window", unit: "ms", lower: true, tol: LAT_TOL, n: (s) => s.moveLatCount },
       { label: "Frame gap p95 (steady)", get: (s) => s.hoverSteadyP95Ms, scope: "window", unit: "ms", lower: true, hint: "rAF gaps within 200ms of a move; excludes the first 300ms of the first hover" },
       { label: "Frame gap worst (steady)", get: (s) => s.hoverSteadyWorstMs, scope: "window", unit: "ms", lower: true },
       { label: "First hover: worst frame (300ms)", get: (s) => s.hoverFirstWorstMs, scope: "window", unit: "ms", lower: true, hint: "cold path of the first enter" },
@@ -131,15 +141,20 @@ const NO_PROFILER = "n/a (production build)";
 const fmt = (v: number | null | undefined, unit?: string, digits = 1) =>
   v === null || v === undefined ? "—" : `${Number.isInteger(v) ? v : v.toFixed(digits)}${unit ? ` ${unit}` : ""}`;
 
-function Delta({ a, b, lower }: { a: number | null; b: number | null; lower?: boolean }) {
+/** "parity" inside the tolerance band, otherwise the ratio (lower is better when `lower`). Informational rows show a dash. */
+function Delta({ a, b, lower, tol = DEFAULT_TOL }: { a: number | null; b: number | null; lower?: boolean; tol?: Tolerance }) {
   if (a === null || b === null || lower === undefined) return <span className="text-muted-foreground">—</span>;
-  const diff = b - a;
-  if (Math.abs(diff) < 1e-9) return <span className="text-muted-foreground">=</span>;
-  const better = lower ? diff < 0 : diff > 0;
-  const pct = a !== 0 ? `${diff > 0 ? "+" : "−"}${Math.abs((diff / a) * 100).toFixed(0)}%` : `${diff > 0 ? "+" : "−"}${Math.abs(diff).toFixed(1)}`;
-  return (
-    <span className={better ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>{pct}</span>
-  );
+  const c = compare([a, a, a], [b, b, b], tol);
+  if (c.tone === "parity") return <span className="text-muted-foreground">parity</span>;
+  const x = lower ? c : { text: c.text, tone: c.tone === "better" ? "worse" : "better" };
+  return <span className={x.tone === "better" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>{c.text}</span>;
+}
+
+/** median (min–max) of a list of per-run samples, with the run count; null below two runs */
+function runSpread(v: number[]): string | null {
+  if (v.length < 2) return null;
+  const so = [...v].sort((x, y) => x - y);
+  return `median ${so[Math.floor(so.length / 2)]} (${so[0]}–${so[so.length - 1]}), ${v.length} runs`;
 }
 
 const vitalRows: Array<[string, (v: PageVitals) => number | null, string?, string?]> = [
@@ -154,7 +169,7 @@ const vitalRows: Array<[string, (v: PageVitals) => number | null, string?, strin
   ["Long tasks (page)", (v) => v.longTasks, undefined, "since navigation (buffered observer)"],
   ["Long task time (page)", (v) => v.longTaskMs, "ms"],
   ["TBT since FCP", (v) => v.tbtMs, "ms", "sum of (long task − 50ms) after FCP, including tasks caused by interaction"],
-  ["JS transferred", (v) => v.jsKB, "KB", "dev server: unminified, uncompressed chunks"],
+  ["JS transferred", (v) => v.jsKB, "KB", "transferred size of this page; unminified in dev"],
   ["JS files", (v) => v.jsCount, undefined],
 ];
 
@@ -239,24 +254,116 @@ const onPanelRender = (_id: string, phase: string, actual: number) => {
   self.n++;
 };
 
-/** Live headline cards from this chart's two collectors; per-move and interaction values wait for MIN_MOVES moves. */
+const stat = (v: number | null | undefined, lo: number | null | undefined, hi: number | null | undefined): Stat | null =>
+  v === null || v === undefined ? null : [v, lo ?? v, hi ?? v];
+const runStat = (runs: number[]): Stat | null => {
+  if (!runs.length) return null;
+  const so = [...runs].sort((x, y) => x - y);
+  return [so[Math.floor(so.length / 2)], so[0], so[so.length - 1]];
+};
+
+/** Live headline cards from this chart's two collectors; per-move values wait for MIN_MOVES moves. */
 export function LiveHeadlines({ chart }: { chart: string }) {
   usePanelTick();
   const mounted = useMounted();
   const a = mounted ? window.__livePerf?.[`${chart}:bklit`] : undefined;
   const b = mounted ? window.__livePerf?.[`${chart}:migrated`] : undefined;
-  const hovered = !!a && !!b && Math.min(a.moves, b.moves) >= MIN_MOVES;
-  const pick = (get: Get, ready: boolean, profiler = false): [number | null, number | null] =>
-    a && b && ready && (HAS_PROFILER || !profiler) ? [get(a), get(b)] : [null, null];
-  const [rb, rm] = pick((s) => s.loadRenderMs, true, true);
-  const [ob, om] = pick((s) => s.interRenderMs, hovered, true);
-  const [cb, cm] = pick((s) => s.moveWorkMs, hovered);
+  const both = !!a && !!b;
+  const hovered = both && Math.min(a.moves, b.moves) >= MIN_MOVES;
+  const one = (get: (s: PerfSnapshot) => Stat | null, ready = true): [Stat | null, Stat | null] =>
+    both && ready ? [get(a), get(b)] : [null, null];
+  const runs = (r: number[], cur: number | null) => runStat(r.length ? r : cur === null ? [] : [cur]);
+  const [fb, fm] = one((s) => runs(s.firstPaintRuns, s.firstPaintMs));
+  const [sb, sm] = one((s) => runs(s.settledRuns, s.settledMs));
+  const [bb, bm] = one((s) => stat(s.busyPerMove, s.busyLo, s.busyHi), hovered);
+  const [lb, lm] = one((s) => stat(s.moveLatP95, s.moveLatP50, s.moveLatP95), hovered);
   const items: Headline[] = [
-    { label: "Render time on load", kind: "faster", bklit: rb, migrated: rm, pending: HAS_PROFILER ? "Waiting for the charts" : NO_PROFILER },
-    { label: "React render on hover", kind: "less", bklit: ob, migrated: om, pending: HAS_PROFILER ? "Hover the charts" : NO_PROFILER },
-    { label: "Browser compute per pointer move", kind: "faster", bklit: cb, migrated: cm, digits: 2, pending: `Hover the charts (${MIN_MOVES} moves)` },
+    { label: "First paint", note: "mount to first presented frame with chart content", bklit: fb, migrated: fm, pending: "Waiting for both charts" },
+    { label: "Settled (entrance end)", note: "no DOM mutation or finite animation for 150 ms", bklit: sb, migrated: sm, pending: "Waiting for both charts" },
+    { label: "Whole main thread busy per move", note: "mean per move; spread is min–max of 10-move slices", bklit: bb, migrated: bm, digits: 2, tol: { rel: 0.1, abs: 0.3 }, pending: `Hover both charts (${MIN_MOVES} moves each)` },
+    { label: "Move to paint, p95", note: "spread is p50–p95; frame-quantised, under 3 ms is parity", bklit: lb, migrated: lm, tol: LAT_TOL, pending: `Hover both charts (${MIN_MOVES} moves each)` },
   ];
   return <HeadlineCards items={items} />;
+}
+
+/** Order, one-side and probe switches are URL params (`order=migrated`, `only=bklit|migrated`, `spin=0`); a change reloads clean. */
+function setParam(k: string, v: string | null) {
+  const q = new URLSearchParams(window.location.search);
+  if (v === null) q.delete(k);
+  else q.set(k, v);
+  window.location.assign(q.size ? `${window.location.pathname}?${q}` : window.location.pathname);
+}
+
+function Switch({ label, k, options }: { label: string; k: string; options: Array<[string, string | null]> }) {
+  const cur = new URLSearchParams(window.location.search).get(k);
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="text-muted-foreground">{label}</span>
+      {options.map(([text, v]) => (
+        <button
+          key={text}
+          type="button"
+          aria-pressed={cur === v}
+          onClick={() => cur !== v && setParam(k, v)}
+          className={`rounded-md border border-border px-2 py-0.5 text-xs font-medium hover:bg-muted ${cur === v ? "bg-muted" : "bg-background"}`}
+        >
+          {text}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+/** Median frame interval over ~30 frames at mount, as a refresh-rate estimate. */
+function useRefreshHz() {
+  const [hz, setHz] = useState<number | null>(null);
+  useEffect(() => {
+    const ts: number[] = [];
+    let id = 0;
+    const f = (t: number) => {
+      ts.push(t);
+      if (ts.length < 32) id = requestAnimationFrame(f);
+      else {
+        const d = ts.slice(1).map((x, i) => x - ts[i]).sort((x, y) => x - y);
+        setHz(Math.round(1000 / d[Math.floor(d.length / 2)]));
+      }
+    };
+    id = requestAnimationFrame(f);
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return hz;
+}
+
+function EnvironmentBar() {
+  const hz = useRefreshHz();
+  const chrome = /Chrome\/(\d+)/.exec(navigator.userAgent)?.[1];
+  const q = new URLSearchParams(window.location.search);
+  const facts = [
+    HAS_PROFILER ? "dev build" : "production build",
+    HAS_PROFILER ? "StrictMode on (double render in dev)" : "StrictMode on (no double render in production)",
+    `bklit-ui ${BKLIT_SHA}`,
+    "TanStack Charts 1.1.0",
+    chrome ? `Chrome ${chrome}` : "browser",
+    `${navigator.hardwareConcurrency} cores`,
+    hz ? `~${hz} Hz display` : null,
+    `${window.innerWidth} px wide`,
+    `mount order ${q.get("order") === "migrated" ? "TanStack first" : "Bklit first"}`,
+    q.get("only") ? `${q.get("only")} only` : "both rendered",
+    SPIN_ON ? "whole-thread probe on" : "whole-thread probe off",
+  ].filter(Boolean);
+  return (
+    <div className="mb-3 rounded-lg border border-border bg-muted/30 p-3 text-xs">
+      <div className="text-muted-foreground">Environment: {facts.join(" · ")}</div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2">
+        <Switch label="Mount order" k="order" options={[["Bklit first", null], ["TanStack first", "migrated"]]} />
+        <Switch label="Render" k="only" options={[["Both", null], ["Bklit only", "bklit"], ["TanStack only", "migrated"]]} />
+        <Switch label="Whole-thread probe" k="spin" options={[["On", null], ["Off", "0"]]} />
+      </div>
+      <p className="mt-2 text-muted-foreground">
+        Both cards share one page and one main thread: Render isolates one side, Mount order checks for order effects. Sample counts (n) and spread sit next to each value; Change reads &quot;parity&quot; when the values are within the spread (or 10%).
+      </p>
+    </div>
+  );
 }
 
 export function LivePerfPanel({ chart }: { chart: string }) {
@@ -280,7 +387,7 @@ function LivePerfPanelBody({ chart }: { chart: string }) {
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          Measured live in this browser. Hover and click the charts to populate interaction metrics.
+          Measured live in this browser, the same way for both implementations. Hover the charts (50+ moves) to populate the per-move rows.
           {chunk !== null && <> Demo chunk load: {fmt(chunk, "ms")} (shared, first load only).</>}
           {HAS_PROFILER && selfSec > 1 && (
             <span title="React Profiler actualDuration of this panel's updates since mount (mount excluded). It re-renders at most 4Hz, only when a shown value changed, and not at all while a chart loads or the pointer moves in one.">
@@ -296,6 +403,7 @@ function LivePerfPanelBody({ chart }: { chart: string }) {
           Re-run
         </button>
       </div>
+      {mounted && <EnvironmentBar />}
       <PageVitalsTable v={mounted ? getPageVitals() : null} />
       <div className="overflow-x-auto">
         <table className="w-full text-xs tabular-nums">
@@ -346,6 +454,8 @@ function GroupRows({ g, a, b }: { g: Group; a?: PerfSnapshot; b?: PerfSnapshot }
           bv={b ? r.get(b) : null}
           an={a && r.n ? r.n(a) : null}
           bn={b && r.n ? r.n(b) : null}
+          asp={a && r.spread ? r.spread(a) : null}
+          bsp={b && r.spread ? r.spread(b) : null}
           aCapped={!!a?.settledCapped && r.label === "Settled"}
           bCapped={!!b?.settledCapped && r.label === "Settled"}
         />
@@ -354,10 +464,11 @@ function GroupRows({ g, a, b }: { g: Group; a?: PerfSnapshot; b?: PerfSnapshot }
   );
 }
 
+const Spread = ({ t }: { t: string }) => <span className="block text-[10px] text-muted-foreground">{t}</span>;
 const N = ({ n }: { n: number }) => <span className="ml-1.5 text-[10px] text-muted-foreground" title="sample size: real moves counted">n={n}</span>;
 
 /** Rows re-render only when their two values change (row definitions are static module objects). */
-const MetricRow = memo(function MetricRow({ row: r, av, bv, an, bn, aCapped, bCapped }: { row: Row; av: number | null; bv: number | null; an: number | null; bn: number | null; aCapped: boolean; bCapped: boolean }) {
+const MetricRow = memo(function MetricRow({ row: r, av, bv, an, bn, asp, bsp, aCapped, bCapped }: { row: Row; av: number | null; bv: number | null; an: number | null; bn: number | null; asp: string | null; bsp: string | null; aCapped: boolean; bCapped: boolean }) {
   const sm = scopeMark[r.scope];
   const na = r.profiler === true && !HAS_PROFILER;
   return (
@@ -370,10 +481,10 @@ const MetricRow = memo(function MetricRow({ row: r, av, bv, an, bn, aCapped, bCa
         <td colSpan={3} className="py-1 text-right text-muted-foreground">{NO_PROFILER}</td>
       ) : (
         <>
-          <td className="py-1 pr-3 text-right">{fmt(av, r.unit, r.digits)}{aCapped ? "+" : ""}{an !== null && <N n={an} />}</td>
-          <td className="py-1 pr-3 text-right">{fmt(bv, r.unit, r.digits)}{bCapped ? "+" : ""}{bn !== null && <N n={bn} />}</td>
+          <td className="py-1 pr-3 text-right">{fmt(av, r.unit, r.digits)}{aCapped ? "+" : ""}{an !== null && <N n={an} />}{asp && <Spread t={asp} />}</td>
+          <td className="py-1 pr-3 text-right">{fmt(bv, r.unit, r.digits)}{bCapped ? "+" : ""}{bn !== null && <N n={bn} />}{bsp && <Spread t={bsp} />}</td>
           <td className="py-1 text-right">
-            <Delta a={av} b={bv} lower={r.lower} />
+            <Delta a={av} b={bv} lower={r.lower} tol={r.tol} />
           </td>
         </>
       )}
