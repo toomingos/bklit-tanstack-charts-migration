@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { allCharts } from "@/lib/chart-data";
+import { BundleTable } from "@/components/live-perf/bundle-table";
 import { GainCell, HeadlineCards } from "@/components/live-perf/headline-cards";
 import { chartHeadlines, sweepHeadlines } from "@/components/live-perf/headline-data";
 
@@ -16,6 +17,8 @@ export default function OverviewPage() {
       <section className="mb-10">
         <HeadlineCards items={sweepHeadlines} />
       </section>
+
+      <BundleTable />
 
       <section>
         <h2 className="mb-4 text-lg font-semibold tracking-tight">All charts</h2>
