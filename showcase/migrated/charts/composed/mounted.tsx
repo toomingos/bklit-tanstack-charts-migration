@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { useDragSelect } from "../kit/cartesian/drag-select";
 import type { DragGeom } from "../kit/cartesian/drag-select";
-import { useKeyboardFocusHold } from "../kit/cartesian/keyboard-hold";
+import { useKeyboardFocusHold } from "../kit/keyboard-hold";
 import { RevealArm, useReadyGate } from "../kit/entrance/reveal-arm";
 import { RendererChart, sameCategoryTarget } from "../kit/tooltip/tooltip-leaf";
 import { motion } from "@tanstack/charts/motion";
@@ -54,7 +54,8 @@ export const ComposedChartMounted = ({
   ariaLabel = "Composed chart",
   ariaDescription,
   initialWidth,
-}: Readonly<ComposedChartProps & { initialWidth: number }>): ReactElement => {
+  initialHeight,
+}: Readonly<ComposedChartProps & { initialWidth: number; initialHeight: number }>): ReactElement => {
   useEffect(() => {
     onPhaseChange?.("ready");
   }, [onPhaseChange]);
@@ -131,7 +132,7 @@ export const ComposedChartMounted = ({
   // bklit's drag selection (kit/cartesian/drag-select.ts): the press hides the tooltip and bar fade, the drag dims the series (host attributes only).
   const dragGeom = useRef<DragGeom>({ left: 0, top: 0, innerWidth: 0, innerHeight: 0 });
   const { interaction: dragInteraction, onRender: onDragRender } = useDragSelect(containerRef, dragGeom, { drag: dragHost, press: pressHost });
-  const { useContextValue, innerWidth, innerHeight, rows, times } = useComposedContext({ containerRef, ready: readyStore, data, xDataKey, margin, domains: built.domains, series, bars, duration, barSize, maxBarSize, barGap, stacked, stackGap, table, interaction: dragInteraction });
+  const { useContextValue, innerWidth, innerHeight, rows, times } = useComposedContext({ initialSize: { width: Math.round(initialWidth), height: Math.round(initialHeight) }, containerRef, ready: readyStore, data, xDataKey, margin, domains: built.domains, series, bars, duration, barSize, maxBarSize, barGap, stacked, stackGap, table, interaction: dragInteraction });
   const xStartMs = built.domains.x[0].getTime();
   const xSpanMs = built.domains.x[1].getTime() - xStartMs;
   dragGeom.current = { left: margin.left, top: margin.top, innerWidth, innerHeight };
@@ -146,7 +147,7 @@ export const ComposedChartMounted = ({
     },
     [onDragRender, entered],
   );
-  // Keyboard-held focus survives a pointer pass (kit/cartesian/keyboard-hold.ts, UPSTREAM-GAPS #42).
+  // Keyboard-held focus survives a pointer pass (kit/keyboard-hold.ts, UPSTREAM-GAPS #42).
   const holdFocus = useKeyboardFocusHold(containerRef, () => dragInteraction.current);
   hostGeom.current = { times: built.hover.times, left: margin.left, xStart: xStartMs, xSpan: xSpanMs, innerWidth, signs: built.hover.plSigns, pillLayout: built.pillTicks.active ? pillLayoutOf(built.pillTicks.times) : null };
   const staticCss = useMemo(() => composedStaticCss({ uid, built, bars, order, series }), [uid, built, bars, order, series]);

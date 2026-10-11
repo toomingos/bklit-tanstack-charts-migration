@@ -10,7 +10,7 @@ import { useDataUpdateStep } from "./use-data-update-step";
 import type { CartesianInput } from "./definition";
 import { LegendHostSync, useHoverHostSync } from "./hover-host";
 import { type DragGeom, useDragSelect } from "./drag-select";
-import { useKeyboardFocusHold } from "./keyboard-hold";
+import { useKeyboardFocusHold } from "../keyboard-hold";
 import { toDate } from "./series";
 import type { Row } from "./series";
 import { DEFAULT_ANIMATION_MS, DEFAULT_MARGIN, parseAspectRatio } from "../theme";
@@ -120,7 +120,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
   const onFocusChangeProp = props.onFocusChange;
   // Focus lives on the host, not in React state or a regenerated <style> (see hover-host.tsx).
   const { geom: hostGeom, sync: syncHost, drag: dragHost, press: pressHost } = useHoverHostSync(containerRef);
-  // Keyboard-held focus survives a pointer pass (kit/cartesian/keyboard-hold.ts); the hook is armed below, after the interaction handle exists.
+  // Keyboard-held focus survives a pointer pass (kit/keyboard-hold.ts); the hook is armed below, after the interaction handle exists.
   const holdFocusRef = useRef<((point: AnyPoint) => void) | null>(null);
   const rowIndexRef = useRef(new Map<Row, number>());
   const onFocusChange = useCallback(
