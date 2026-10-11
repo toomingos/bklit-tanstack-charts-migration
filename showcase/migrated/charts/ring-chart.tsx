@@ -23,10 +23,10 @@ import { createProgressLayer } from "./ring/progress-layer";
 import type { ProgressLayerOptions } from "./ring/progress-layer";
 import { EntranceAlign, useRenderStart } from "./kit/entrance/entrance-align";
 import type { EntranceOrigin } from "./kit/entrance/entrance-origin";
-import { useKeyboardFocusHold } from "./kit/cartesian/keyboard-hold";
+import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { INITIAL_WIDTH_PX, useFluidWidth } from "./kit/size/use-fluid-width";
 import { useIsClient } from "./kit/size/use-is-client";
-import { useTapFocus } from "./kit/cartesian/touch-focus";
+import { useTapFocus } from "./kit/touch-focus";
 import "./styles.css";
 import "./polar.css";
 

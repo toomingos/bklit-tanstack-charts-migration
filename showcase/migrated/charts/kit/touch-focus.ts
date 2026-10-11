@@ -3,9 +3,9 @@
 import type { ChartRendererRenderContext } from "@tanstack/charts";
 import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
-import { erase } from "./erased-types";
-import type { AnyInteraction as Interaction } from "./erased-types";
-import { clearAttribute, raiseAttribute } from "../host-write";
+import { erase } from "./erase";
+import type { AnyInteraction as Interaction } from "./cartesian/erased-types";
+import { clearAttribute, raiseAttribute } from "./host-write";
 
 
 /** Native interaction handle of the mounted chart: pass `onRender` to the chart, read `interaction.current` in handlers. */

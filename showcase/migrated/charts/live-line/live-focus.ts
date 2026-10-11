@@ -3,8 +3,8 @@
 import { erase } from "../kit/cartesian/erased-types";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import type { ChartPoint, ChartRendererRenderContext, ChartScene } from "@tanstack/charts";
-import { useKeyboardFocusHold } from "../kit/cartesian/keyboard-hold";
-import { useInteractionHandle, useTouchInert } from "../kit/cartesian/touch-focus";
+import { useKeyboardFocusHold } from "../kit/keyboard-hold";
+import { useInteractionHandle, useTouchInert } from "../kit/touch-focus";
 import { liveRowOf } from "./definition";
 import type { LiveRow } from "./definition";
 import { useEdgeHold } from "./live-edge";
