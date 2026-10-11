@@ -397,7 +397,7 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Needed:** the live line (bklit's streaming chart) scrolls its ~220 smoothed rows under a 600 ms tween, back to back, with the area, line and tail all rolling; nothing reads the interpolated points unless a pointer or focus is active.
 - **1.1.0 behaviour:** each rolling transform plan gets a presentation track whose `apply` re-creates every point of the element (`{ ...point, x, y }` plus `pointIdentity(point)` for the map key) on every frame (`dist/motion.js:2531-2536`), then `publish` copies the map (`:2685`) and `handlePresentationPoints` filters it with `viewportInteractionPoints` (`renderer.js:888-896`) even with no pointer and no focus. Measured in a dev build with per-track timers: one frame's sampling is 0.26 ms, 77% of it that track (per-call 0.13 ms, 3 values); publish 0.008 ms. Production, 6 s steady: 131 ms of rAF in the motion tick on the migrated card against 14.7 ms for the whole bklit chart.
 - **Workaround:** none. Fewer points would change the curve (`SMOOTH_STEPS` 4 -> 2 deviates 3.6-5.2 px from the exact cubic on steep data), and the area cannot be `decorative` (its points feed the plan).
-- **Proposal:** present rolling points lazily (derive them from the affine transform when a listener or focus asks, `getPresentationPoints`), or skip the per-frame map rebuild while no pointer or focus exists (draft `docs/upstream-issues/28-rolling-presentation-points-per-frame.md`).
+- **Proposal:** present rolling points lazily (derive them from the affine transform when a listener or focus asks, `getPresentationPoints`), or skip the per-frame map rebuild while no pointer or focus exists (posted as [#201](https://github.com/TanStack/charts/issues/201)).
 
 ---
 
