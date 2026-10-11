@@ -191,16 +191,14 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
 
   const styles = useGaugeStyles({ enterVars, fixed, height, minWidth, trackHeight, width });
 
-  const ready = true;
   const enterAttr = animate ? "" : undefined;
-  const gated = animate && ready;
   const enterCss = animate ? <style>{buildEnterCss(notchEnter)}</style> : null;
 
   if (linear) {
     const track = (
       <div ref={hostRef} style={styles.track}>
-        <EntranceGate active={gated} hostRef={hostRef} renderStart={renderStart} />
-        {ready ? <RendererChart ariaLabel={gaugeAriaLabel(value)} definition={definition} height={trackHeight} renderer={gaugeMotion} width={width} /> : null}
+        <EntranceGate active={animate} hostRef={hostRef} renderStart={renderStart} />
+        <RendererChart ariaLabel={gaugeAriaLabel(value)} definition={definition} height={trackHeight} renderer={gaugeMotion} width={width} />
         <GaugeDefs enabled={needsThemeGradient} idPrefix={idPrefix} themeGradientId={themeGradientId} />
       </div>
     );
@@ -215,18 +213,11 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
   return (
     <div className={arcRootClass(fixed, className)} data-bkm-chart="" data-bkm-gn={enterAttr} style={styles.arcRoot}>
       {enterCss}
-      <div
-        className={arcHostClass(fixed)}
-       
-        ref={hostRef}
-        style={styles.arcHost}
-      >
-        <EntranceGate active={gated} hostRef={hostRef} renderStart={renderStart} />
-        {ready ? (
-          <RendererChart ariaLabel={gaugeAriaLabel(value)} aspectRatio={fixed ? undefined : ARC_ASPECT} definition={definition} height={fixed ? height : undefined} renderer={gaugeMotion} width={fixed ? width : undefined} />
-        ) : null}
+      <div className={arcHostClass(fixed)} ref={hostRef} style={styles.arcHost}>
+        <EntranceGate active={animate} hostRef={hostRef} renderStart={renderStart} />
+        <RendererChart ariaLabel={gaugeAriaLabel(value)} aspectRatio={fixed ? undefined : ARC_ASPECT} definition={definition} height={fixed ? height : undefined} renderer={gaugeMotion} width={fixed ? width : undefined} />
         <GaugeDefs enabled={needsThemeGradient} idPrefix={idPrefix} themeGradientId={themeGradientId} />
-        {centerValue !== undefined && ready ? <GaugeCenter format={formatOptions} label={defaultLabel} prefix={prefix} suffix={suffix} value={centerValue} /> : null}
+        {centerValue !== undefined ? <GaugeCenter format={formatOptions} label={defaultLabel} prefix={prefix} suffix={suffix} value={centerValue} /> : null}
       </div>
     </div>
   );
