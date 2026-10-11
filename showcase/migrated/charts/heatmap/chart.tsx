@@ -8,9 +8,9 @@ import type { CSSProperties, FocusEvent as ReactFocusEvent, KeyboardEvent as Rea
 import { useParentSizeMounted, useRevealClock } from "../kit/size/parent-size-arm";
 import { useFluidWidth } from "../kit/size/use-fluid-width";
 import { RendererChart } from "../kit/tooltip/tooltip-leaf";
-import { useKeyboardFocusHold } from "../kit/cartesian/keyboard-hold";
-import { useInteractionHandle, useTapFocus } from "../kit/cartesian/touch-focus";
-import type { InteractionHandle } from "../kit/cartesian/touch-focus";
+import { useKeyboardFocusHold } from "../kit/keyboard-hold";
+import { useInteractionHandle, useTapFocus } from "../kit/touch-focus";
+import type { InteractionHandle } from "../kit/touch-focus";
 import { isNumber } from "../kit/guards";
 import { LoadingLabel } from "../kit/loading-label";
 import { motion } from "@tanstack/charts/motion";

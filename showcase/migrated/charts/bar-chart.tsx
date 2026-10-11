@@ -4,9 +4,9 @@ import { erase } from "./kit/cartesian/erased-types";
 import "./styles.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { useKeyboardFocusHold } from "./kit/cartesian/keyboard-hold";
+import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { RendererChart, sameCategoryTarget } from "./kit/tooltip/tooltip-leaf";
-import { useInteractionHandle, useTouchInert } from "./kit/cartesian/touch-focus";
+import { useInteractionHandle, useTouchInert } from "./kit/touch-focus";
 import { useHostMounted } from "./kit/size/parent-size-arm";
 import { useReadyGate } from "./kit/entrance/reveal-arm";
 import { motion } from "@tanstack/charts/motion";
@@ -309,7 +309,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
     apply();
     return focusStore.subscribe(apply);
   }, [focusStore, pill, horizontal, barScale, categories, resolvedMargin.left]);
-  // Keyboard-held focus survives a pointer pass (kit/cartesian/keyboard-hold.ts).
+  // Keyboard-held focus survives a pointer pass (kit/keyboard-hold.ts).
   const holdFocus = useKeyboardFocusHold(containerRef, () => barInteraction.current);
   const onFocusChange = useCallback(
     (point: { datum: unknown } | null) => {

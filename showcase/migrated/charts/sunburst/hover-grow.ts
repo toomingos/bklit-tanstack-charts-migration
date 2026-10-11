@@ -14,7 +14,7 @@ const DIM_OPACITY = 0.25;
 
 // bklit's emphasis (dim unrelated sectors, step the hovered path aside) is CSS on the host's `data-bk-pop` and `data-bk-path`, because the renderer
 // does not paint native states during a zoom motion but never touches the host. Sector classes (`bk-sb-a<i>`, `bk-sb-u<ancestor i>`) persist.
-export const SECTOR_DIM_CSS = `[data-bk-pop] ${SECTOR}{opacity:${DIM_OPACITY}}${sectorEmphasisCss(SECTOR)}`;
+export const sectorDimCss = (count: number): string => `[data-bk-pop] ${SECTOR}{opacity:${DIM_OPACITY}}${sectorEmphasisCss(SECTOR, count)}`;
 
 interface HoverState {
   /** Hover lives in a store (not React state): the root never re-renders on hover. Leaves subscribe; label visibility is mirrored onto the DOM by useHoverGrow. */

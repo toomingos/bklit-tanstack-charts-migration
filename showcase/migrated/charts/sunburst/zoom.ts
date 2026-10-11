@@ -3,7 +3,7 @@ import { erase } from "../kit/cartesian/erased-types";
 import { writeAttribute } from "../kit/host-write";
 import type { RefObject } from "react";
 import type { ChartPoint, ChartScene } from "@tanstack/charts";
-import type { useKeyboardFocusHold } from "../kit/cartesian/keyboard-hold";
+import type { useKeyboardFocusHold } from "../kit/keyboard-hold";
 import type { ArcDatum, Focus, SunburstModel } from "./arcs";
 import { isHub } from "./hub";
 import type { SunburstDatum } from "./hub";
@@ -14,7 +14,7 @@ const snapRule = (i: number): string => `[data-bk-snap~="${i}"] ${SECTOR}.bk-sb-
 
 // The on-path overlay is the hovered arc's own group in bklit (one motion.g, opacity 1 <-> 0.25 over HOVER_DIM_TRANSITION 0.16s easeOut): it shows at once and fades with bklit's dim timing (push.ts); its opacity is a constant 0 in every scene.
 // A zoom's hover drop (zoomTo, `data-bk-snap`): overlays hide, pushes and the dropped path's step-aside snap back; the dim keeps its fade.
-export const ZOOM_SNAP_CSS = `[data-bk-snap] g.bk-sb-pops path,[data-bk-snap] .bk-sunburst-label{transition:none}[data-bk-snap] ${SECTOR}{transition:opacity ${DIM_TRANSITION_MS}ms ease-out}${Array.from({ length: PUSH_CAP }, (_, i) => snapRule(i)).join("")}`;
+export const zoomSnapCss = (count: number): string => `[data-bk-snap] g.bk-sb-pops path,[data-bk-snap] .bk-sunburst-label{transition:none}[data-bk-snap] ${SECTOR}{transition:opacity ${DIM_TRANSITION_MS}ms ease-out}${Array.from({ length: Math.min(count, PUSH_CAP) }, (_, i) => snapRule(i)).join("")}`;
 
 interface ZoomInput {
   readonly model: SunburstModel;
@@ -54,7 +54,7 @@ export const useSunburstZoom = ({ model, focus, focusId, setInternalFocusId, isF
         return;
       }
       // bklit's zoomTo drops the hover and resets the grow at once (sunburst-chart.tsx:231-234), so only the dim eases (0.16s). The host keeps the dropped path in
-      // `data-bk-snap` until the next hover (ZOOM_SNAP_CSS turns those transitions off); a hub click drops the hover (onFocusChange) earlier in the same click task.
+      // `data-bk-snap` until the next hover (zoomSnapCss turns those transitions off); a hub click drops the hover (onFocusChange) earlier in the same click task.
       if (hostRef.current) { writeAttribute(hostRef.current, "data-bk-snap", hoverPathRef.current); }
       setHoveredArcIndex(null);
       if (isFocusControlled) {

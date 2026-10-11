@@ -2,8 +2,8 @@
 // UPSTREAM-GAPS #40: brushX owns the whole plot and cannot coexist with hover focus.
 import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject, RefObject } from "react";
-import { useInteractionHandle, useTouchFocus } from "./touch-focus";
-import type { InteractionHandle } from "./touch-focus";
+import { useInteractionHandle, useTouchFocus } from "../touch-focus";
+import type { InteractionHandle } from "../touch-focus";
 
 /** Plot geometry (svg px) the drag listeners read; the owner assigns it every render. */
 export interface DragGeom {
@@ -145,7 +145,7 @@ export function useDragSelect(
       window.removeEventListener("pointercancel", stop);
     };
   }, [hostRef, geom, publish, end, pressHost, interaction]);
-  // bklit use-chart-interaction touch handling (kit/cartesian/touch-focus.ts); two fingers also drag the range.
+  // bklit use-chart-interaction touch handling (kit/touch-focus.ts); two fingers also drag the range.
   useTouchFocus(hostRef, interaction, (clientXs) => {
     const scenes = clientXs?.map((clientX) => interaction.current?.clientToScene(clientX, 0)?.x);
     const known = scenes?.filter((x): x is number => x !== undefined);
