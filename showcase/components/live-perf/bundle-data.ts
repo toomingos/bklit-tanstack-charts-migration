@@ -3,26 +3,26 @@
 export const bundleSizes: { label: string; gzip: readonly [bklit: number, migrated: number] }[] = [
   { label: "Line", gzip: [93.2, 104.8] },
   { label: "Area", gzip: [93.0, 104.8] },
-  { label: "Bar", gzip: [81.2, 93.0] },
+  { label: "Bar", gzip: [81.2, 90.6] },
   { label: "Pie", gzip: [58.1, 55.6] },
   { label: "Ring", gzip: [63.4, 65.0] },
   { label: "Gauge", gzip: [58.8, 60.5] },
   { label: "Heatmap", gzip: [78.7, 82.3] },
-  { label: "Sankey", gzip: [59.6, 70.6] },
+  { label: "Sankey", gzip: [59.6, 67.4] },
   { label: "Choropleth", gzip: [78.3, 70.9] },
   { label: "Live line", gzip: [79.0, 86.9] },
   { label: "Scatter", gzip: [81.8, 82.9] },
   { label: "Candlestick", gzip: [80.8, 87.6] },
-  { label: "Funnel", gzip: [52.4, 61.2] },
+  { label: "Funnel", gzip: [52.4, 59.3] },
   { label: "Radar", gzip: [67.5, 59.9] },
   { label: "Sunburst", gzip: [47.6, 68.6] },
   { label: "Composed", gzip: [96.9, 101.7] },
 ];
 
 /** Every chart bundled together, KB gzip. */
-export const bundleTotal: readonly [bklit: number, migrated: number] = [212.4, 293.6];
+export const bundleTotal: readonly [bklit: number, migrated: number] = [212.4, 291.9];
 
-/** Migrated stylesheets as built by Next (minified, all charts, not splittable), KB gzip; bklit ships Tailwind classes instead. */
+/** Migrated stylesheets as built by Next (minified, all charts), KB gzip; polar (1.3) and heatmap (1.0) rules load only with those charts. bklit ships Tailwind classes instead. */
 export const bundleCssKb = 8.2;
 
 /** Share of the minified all-charts bundle by dependency, KB. */

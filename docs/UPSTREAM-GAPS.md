@@ -382,6 +382,15 @@ Drafts live in `docs/upstream-issues/` (local only).
 
 ---
 
+## 58. `motion()` is one function: its whole engine is bundled for every chart that uses it
+
+- **Needed:** an entrance-only chart (pie, ring) should not carry path morph, rect-corner morph, the focus-guide layer or the spring tooltip controller.
+- **1.1.0 behaviour:** `motion` is a single function (`charts-core/src/motion.ts:757-4177`) closing over `resolveRollingPathPlan` (`:1911`), `rectCornerRadiiPath` (`:1404`), `renderFocusGuideLayer` (`:1209`) and `createChartSpring` (`:4102`); `ChartMotionOptions` (`:84-93`) selects no features. `dist/motion.js` is 45.5 KB min; stubbing it and its exclusive imports saves 22.2 KB gzip of a 57.0 KB pie (22.7 KB line, 22.8 KB sunburst).
+- **Workaround:** none; native `motion()` is the project rule, so this is part of the floor. `renderer.js` (9.6 KB gzip leave-one-out on a pie) is the interaction host, not waste.
+- **Proposal:** feature engines as separate modules chosen from `motion()` options (draft `docs/upstream-issues/26-motion-module-split.md`; the renderer.js question is closed in `27-renderer-js-is-the-interaction-host-note.md`).
+
+---
+
 ## Retired numbers
 
 Not reused, so code and issue drafts keep their meaning.
