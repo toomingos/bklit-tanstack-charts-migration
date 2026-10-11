@@ -10,7 +10,8 @@ import type { FillOptions, GaugeNotchRow } from "./notches";
 import { notchPolygonCurve } from "./notch-path";
 import { GAUGE_NOTCH_UPDATE_SPRING } from "../kit/motion/springs";
 
-export const gaugeMotion = motion({ initial: "always", respectReducedMotion: true });
+// The enter is CSS (enter-css.ts), so the native first render skips the motion enter pass (animateSvg over every notch).
+export const gaugeMotion = motion({ initial: false, respectReducedMotion: true });
 export const ARC_ASPECT = 21 / 16;
 // Linear notches are laid out in normalized x units so no pixel measurement is needed.
 const LINEAR_UNITS = 1000;
