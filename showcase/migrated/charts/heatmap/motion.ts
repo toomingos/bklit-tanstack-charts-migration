@@ -3,7 +3,7 @@ import { MS_PER_SECOND } from "../kit/theme";
 import { erase } from "../kit/cartesian/erased-types";
 import { cubicBezier } from "../kit/motion/easing";
 import type { EnterTransition } from "../kit/motion/phase";
-import { resumeEnter } from "../kit/motion/resume-enter";
+import { resumeEnter, type EnterPlan } from "../kit/motion/resume-enter";
 
 /* Heatmap entrance choreography as native per-datum `motion` timing (a `delay` + tween per cell); the renderer owns the clock, so this is pure arithmetic. */
 
@@ -26,6 +26,11 @@ const HEATMAP_DEFAULT_LOADING_CELL_RANDOMNESS = 1;
 const HEATMAP_LOADING_CONCEAL_MS = 450;
 const HEATMAP_ENTER_STAGGER_SPREAD = 0.6;
 const HEATMAP_HOVER_TRANSITION_MS = 220;
+// bklit re-runs every cell's enter `animate` at the trailing ParentSize render (debounce 300 ms, heatmap-chart.tsx:685): the tween restarts from its current value, measured ~340 ms after the cells mount.
+const HEATMAP_RESTART_MS = 340;
+// The reveal timer (heatmap-chart.tsx:607) cuts the enter at `animationDuration` into the ready tween (heatmap-cells.tsx:41-44,149).
+const SETTLED_OPACITY = 0.999;
+const HEATMAP_READY_EASE = cubicBezier(0.4, 0, 0.2, 1);
 
 // Lehmer / Park-Miller PRNG (modulus 2^31-1, multiplier 7^5).
 const PARK_MILLER_MODULUS = 2_147_483_647;
@@ -95,6 +100,22 @@ interface HeatmapEnterClock {
   readonly origin: () => number | null;
 }
 
+/** One cell's whole opacity curve (0 -> 1 over `cutMs + readyMs`): the enter tween, its restart at `HEATMAP_RESTART_MS`, then the cut into the ready tween. */
+const cellEnterCurve = (enter: (t: number) => number, delayMs: number, durationMs: number, cutMs: number): ((t: number) => number) => {
+  const total = cutMs + HEATMAP_HOVER_TRANSITION_MS;
+  const restarts = HEATMAP_RESTART_MS < cutMs;
+  const atRestart = enter(Math.max(0, HEATMAP_RESTART_MS - delayMs) / durationMs);
+  const valueAtCut = restarts ? atRestart + (1 - atRestart) * enter(Math.max(0, cutMs - HEATMAP_RESTART_MS - delayMs) / durationMs) : enter(Math.max(0, cutMs - delayMs) / durationMs);
+  const at = (t: number): number => {
+    const ms = t * total;
+    if (ms >= cutMs) { return valueAtCut + (1 - valueAtCut) * HEATMAP_READY_EASE((ms - cutMs) / HEATMAP_HOVER_TRANSITION_MS); }
+    if (!restarts || ms < HEATMAP_RESTART_MS) { return enter(Math.max(0, ms - delayMs) / durationMs); }
+    return atRestart + (1 - atRestart) * enter(Math.max(0, ms - HEATMAP_RESTART_MS - delayMs) / durationMs);
+  };
+  // The renderer writes opacity to 3 decimals: a last frame at 0.999 would hand the cells a 0.999 -> 1 CSS opacity transition (hover rule) after the tween.
+  return (t) => { const v = at(t); return v >= SETTLED_OPACITY ? 1 : v; };
+};
+
 /* Per-datum enter timing for cells. Exit fades over the conceal window so a loading skeleton dissolves instead of popping; resize/update stay instant. */
 const createHeatmapCellMotion = <Datum extends { readonly column: number; readonly row: number }>(
   params: Readonly<HeatmapCellMotionParams>,
@@ -115,18 +136,20 @@ const createHeatmapCellMotion = <Datum extends { readonly column: number; readon
       revealEpoch: params.revealEpoch,
       row: datum.row,
     });
+  const cutMs = Math.max(params.animationDuration, durationMs);
+  const planOf = (datum: Datum): EnterPlan => ({ delay: 0, duration: cutMs + HEATMAP_HOVER_TRANSITION_MS, easing: cellEnterCurve(easing, delayOf(datum), durationMs, cutMs) });
   return (context): false | ChartMotionTiming<Datum> | undefined => {
     if (context.phase === "exit") {
       return { transition: { duration: HEATMAP_LOADING_CONCEAL_MS, easing: "ease-in-out", type: "tween" } };
     }
     const { datum } = context;
     if (context.phase === "update") {
-      return datum === undefined ? false : erase(resumeEnter({ delay: delayOf(datum), duration: durationMs, easing }, clock.at));
+      return datum === undefined ? false : erase(resumeEnter(planOf(datum), clock.at));
     }
     if (datum === undefined) {return undefined;}
     // The cells join one commit after the svg (UPSTREAM-GAPS #12); the clock starts where bklit's does so the late join does not shift the tween (heatmap-chart.tsx:566-585).
     clock.at ??= clock.origin() ?? performance.now();
-    return erase(resumeEnter({ delay: delayOf(datum), duration: durationMs, easing }, clock.at));
+    return erase(resumeEnter(planOf(datum), clock.at));
   };
 };
 

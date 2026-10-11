@@ -157,7 +157,9 @@ const createProgressLayer = (options: Readonly<ProgressLayerOptions>): ChartLaye
         const elapsed = origin === null ? 0 : now - origin;
         for (const { row, path, curve } of targets) {
           const progress = curve(elapsed);
-          path.setAttribute("d", progress === 0 ? "" : options.arc({ ...row, endAngle: row.startAngle + (row.endAngle - row.startAngle) * progress }) ?? "");
+          const d = progress === 0 ? "" : options.arc({ ...row, endAngle: row.startAngle + (row.endAngle - row.startAngle) * progress }) ?? "";
+          // bklit's useTransform (ring.tsx:104) re-renders the path only on a changed value: skip a `d` the path already carries.
+          if (path.getAttribute("d") !== d) { path.setAttribute("d", d); }
         }
         if (elapsed < lastEndMs) {
           // Next sweep frame (ring.tsx:104).
