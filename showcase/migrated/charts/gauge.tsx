@@ -2,14 +2,13 @@
 
 // Native TanStack Charts gauge (notch marks in gauge/definition.ts); value changes morph natively. Only the centre/label
 // stat reuses the bklit number-flow helpers (TanStack has no number-tween text mark).
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
 import { defaultGaugeStatFormat, GaugeCenter, GaugeLabelLayout } from "./gauge/label";
 import type { GaugeLabelAlign, GaugeLabelPlacement, GaugeStatFormat } from "./gauge/label";
 import { ARC_ASPECT, buildGaugeDefinition, gaugeMotion } from "./gauge/definition";
 import { clampStagger, DEFAULT_ACTIVE_FILL_OPACITY, DEFAULT_INACTIVE_FILL_OPACITY, DEFAULT_LINEAR_HEIGHT } from "./gauge/notches";
-import { useParentSizeWidth } from "./kit/size/parent-size-arm";
 import { joinClasses } from "./kit/cn";
 import { ResourceHost } from "./kit/resource-host";
 import { useSanitizedId } from "./kit/use-sanitized-id";
@@ -168,8 +167,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
   } = resolved;
   const renderStart = useRenderStart();
   const linear = orientation === "linear";
-  // Measured before <Chart> mounts so the first render is at the real width and no resize cancels the entrance.
-  const [hostRef, hostWidth] = useParentSizeWidth<HTMLDivElement>();
+  const hostRef = useRef<HTMLDivElement>(null);
   const trackHeight = height ?? linearHeight;
 
   const animate = !prefersReducedMotion();
@@ -193,7 +191,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
 
   const styles = useGaugeStyles({ enterVars, fixed, height, minWidth, trackHeight, width });
 
-  const ready = hostWidth !== null;
+  const ready = true;
   const enterAttr = animate ? "" : undefined;
   const gated = animate && ready;
   const enterCss = animate ? <style>{buildEnterCss(notchEnter)}</style> : null;
@@ -202,7 +200,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
     const track = (
       <div ref={hostRef} style={styles.track}>
         <EntranceGate active={gated} hostRef={hostRef} renderStart={renderStart} />
-        {ready ? <RendererChart ariaLabel={gaugeAriaLabel(value)} definition={definition} height={trackHeight} initialWidth={hostWidth} renderer={gaugeMotion} width={width} /> : null}
+        {ready ? <RendererChart ariaLabel={gaugeAriaLabel(value)} definition={definition} height={trackHeight} renderer={gaugeMotion} width={width} /> : null}
         <GaugeDefs enabled={needsThemeGradient} idPrefix={idPrefix} themeGradientId={themeGradientId} />
       </div>
     );
@@ -225,7 +223,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
       >
         <EntranceGate active={gated} hostRef={hostRef} renderStart={renderStart} />
         {ready ? (
-          <RendererChart ariaLabel={gaugeAriaLabel(value)} aspectRatio={fixed ? undefined : ARC_ASPECT} definition={definition} height={fixed ? height : undefined} initialWidth={hostWidth} renderer={gaugeMotion} width={fixed ? width : undefined} />
+          <RendererChart ariaLabel={gaugeAriaLabel(value)} aspectRatio={fixed ? undefined : ARC_ASPECT} definition={definition} height={fixed ? height : undefined} renderer={gaugeMotion} width={fixed ? width : undefined} />
         ) : null}
         <GaugeDefs enabled={needsThemeGradient} idPrefix={idPrefix} themeGradientId={themeGradientId} />
         {centerValue !== undefined && ready ? <GaugeCenter format={formatOptions} label={defaultLabel} prefix={prefix} suffix={suffix} value={centerValue} /> : null}
