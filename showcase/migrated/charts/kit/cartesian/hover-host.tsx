@@ -22,7 +22,7 @@ interface HoverHostGeom {
   readonly innerWidth: number;
   /** `built.hover.plSigns` (aligned with `times`); drives `data-bkm-plf`, the focused point's profit/loss sign. */
   readonly signs?: readonly (0 | 1 | null)[];
-  /** False when nothing reads `--bkm-hl0/1` (no highlight band, no segment marks): the hover then skips those writes. Default true. */
+  /** False when there is no highlight band to spring (no highlight marks, no segment marks): the hover then skips that. Default true. */
   readonly hasBand?: boolean;
   /** Date-pill tick times (`built.pillTicks.times`) when the chart has a pill: ticks reading like the focused date hide with it. */
   readonly pillTicks?: readonly number[];
@@ -37,7 +37,7 @@ const SETTLE_ATTR = "data-bkm-settle";
 
 const EMPTY_GEOM: HoverHostGeom = { times: [], left: 0, xStart: 0, xSpan: 0, innerWidth: 0 };
 
-/** Focus -> host: sets `data-bkm-hover`, `--bkm-hx` (date pill tick fade), `--bkm-hl0/1` (highlight edges) and `data-bkm-settle` (bklit's band `jump`s on inactive -> active, springs
+/** Focus -> host: sets `data-bkm-hover`, `--bkm-hx` (date pill tick fade), the band spring and `data-bkm-settle` (bklit's band `jump`s on inactive -> active, springs
  * on later changes, use-highlight-segment.ts:48-57), written in the same task as the edges. Call `sync(focusTimeMs | null)` from `onFocusChange`; assign `geom.current` each render. */
 interface HoverHostSync {
   readonly geom: MutableRefObject<HoverHostGeom>;
@@ -109,8 +109,6 @@ export function useHoverHostSync(hostRef: RefObject<HTMLElement | null>): HoverH
       if (g.hasBand !== false && !el.hasAttribute(DRAG_ATTR)) {
         const left = px(g.times[Math.max(0, lo - 1)] ?? time);
         const right = px(g.times[Math.min(last, lo + 1)] ?? time);
-        writeVar(el, "--bkm-hl0", left.toFixed(2));
-        writeVar(el, "--bkm-hl1", right.toFixed(2));
         springBand(el, left, right, !el.hasAttribute(HOVER_ATTR));
       }
       if (!el.hasAttribute(HOVER_ATTR)) {
