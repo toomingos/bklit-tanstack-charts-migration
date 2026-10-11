@@ -12,8 +12,8 @@ import type { ChartPoint, DomChartDefinition } from "@tanstack/charts";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { pillLayoutOf, syncPillHost } from "../kit/cartesian/date-pill";
 import { LegendHostSync, useHoverHostSync } from "../kit/cartesian/hover-host";
-import { passthroughChildren, propsFor } from "../kit/read-children";
-import { useStableTable } from "../kit/stable-children";
+import { propsFor } from "../kit/read-children";
+import { useChildTable } from "../kit/stable-children";
 import { resolveSeries } from "../kit/cartesian/series";
 import type { Row } from "../kit/cartesian/series";
 import { BklitTooltipBody, bklitTooltipOptions } from "../kit/tooltip/tooltip-body";
@@ -89,7 +89,7 @@ export const ComposedChartMounted = ({
   const focusStore = useFocusStore<FocusedRow>();
 
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
-  const table = useStableTable(children);
+  const { table, custom, ready: childrenReady } = useChildTable(children);
   const series = useMemo(() => resolveSeries(table), [table]);
   const orderKey = childOrder(children).join("\u0000");
   const order = useMemo(() => orderKey.split("\u0000").filter(Boolean), [orderKey]);
@@ -126,7 +126,6 @@ export const ComposedChartMounted = ({
 
   const style = useMemo<CSSProperties & { readonly "--bkm-enter-ms": string }>(() => ({ width: "100%", position: "relative", aspectRatio, ...bklitSurfaceStyle, "--bkm-enter-ms": `${duration}ms` }), [aspectRatio, duration]);
 
-  const passthrough = useMemo(() => passthroughChildren(children), [children]);
   const { geom: hostGeom, sync: syncHost, drag: dragHost, press: pressHost } = useHoverHostSync(containerRef);
   // bklit's drag selection (kit/cartesian/drag-select.ts): the press hides the tooltip and bar fade, the drag dims the series (host attributes only).
   const dragGeom = useRef<DragGeom>({ left: 0, top: 0, innerWidth: 0, innerHeight: 0 });
@@ -183,7 +182,7 @@ export const ComposedChartMounted = ({
       {staticCss ? <style>{staticCss}</style> : null}
       <LegendHostSync hostRef={containerRef} />
       <RevealArm hostRef={containerRef} onArm={enter} />
-      {width > 0 && (
+      {width > 0 && childrenReady && (
         <RendererChart<Row, Date, number>
           key={revealSignature}
           definition={domDefinition}
@@ -199,7 +198,7 @@ export const ComposedChartMounted = ({
         />
       )}
       <FocusLayer store={focusStore} useContextValue={useContextValue}>
-        {passthrough}
+        {custom}
       </FocusLayer>
     </div>
   );

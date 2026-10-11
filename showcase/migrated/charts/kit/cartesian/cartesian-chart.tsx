@@ -138,7 +138,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
   // Latest plot geometry for the drag listeners (assigned after the x scale below).
   const dragGeom = useRef<DragGeom>({ left: 0, top: 0, innerWidth: 0, innerHeight: 0 });
   const uid = `c${useSanitizedId()}`;
-  const { table, hasMarkers, series, onPulseIteration, passthrough, times } = useSeriesTable(children, targetData, xDataKey, containerRef, chartLoading);
+  const { table, hasMarkers, series, onPulseIteration, custom, childrenReady, times } = useSeriesTable(children, targetData, xDataKey, containerRef, chartLoading);
   sweepRef.current = series.some((s) => s.loading?.style === "sweep");
   const data = useSkeletonData(skeletonRows, targetData, series);
   rowIndexRef.current = useMemo(() => new Map(data.map((row, i) => [row, i] as const)), [data]);
@@ -241,7 +241,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
       {staticCss ? <style>{staticCss}</style> : null}
       <LegendHostSync hostRef={containerRef} />
       <RevealArm hostRef={containerRef} onArm={onRevealArm} />
-      {plotWidth > 0 && (
+      {plotWidth > 0 && childrenReady && (
       <RendererChart
         definition={erase(built.definition)}
         idPrefix={uid}
@@ -261,7 +261,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
       {phase === "ready" || phase === "concealing" || phase === "tweenLoading" ? null : <LoadingLabel text={props.loadingLabel ?? ""} exiting={phase !== "loading"} />}
       {brush && plotWidth > 0 && xSpanMs > 0 ? <BrushPanes fade={brushProps?.fadeOuterEdges !== false} /> : null}
       <FocusLayer store={focusStore} useContextValue={useContextValue}>
-        {passthrough}
+        {custom}
       </FocusLayer>
     </div>
   );

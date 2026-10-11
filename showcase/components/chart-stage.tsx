@@ -25,6 +25,7 @@ const PatternAreaDemo = dynamic(timedImport("patternarea", () => import("./demos
 const PieDemo = dynamic(timedImport("pie", () => import("./demos/pie")), { ssr: false });
 const ProjectionDemo = dynamic(timedImport("projection", () => import("./demos/projection")), { ssr: false });
 const RadarDemo = dynamic(timedImport("radar", () => import("./demos/radar")), { ssr: false });
+const CompositionDemo = dynamic(timedImport("composition", () => import("./demos/composition")), { ssr: false });
 const ReferenceAreaDemo = dynamic(timedImport("reference-area", () => import("./demos/reference-area")), { ssr: false });
 const RingDemo = dynamic(timedImport("ring", () => import("./demos/ring")), { ssr: false });
 const SankeyDemo = dynamic(timedImport("sankey", () => import("./demos/sankey")), { ssr: false });
@@ -54,6 +55,7 @@ const registry: Record<string, DemoComponent> = {
   pie: PieDemo,
   projection: ProjectionDemo,
   radar: RadarDemo,
+  composition: CompositionDemo,
   "reference-area": ReferenceAreaDemo,
   ring: RingDemo,
   sankey: SankeyDemo,
@@ -89,6 +91,7 @@ const reserve: Record<string, string> = {
   pie: "280px",
   projection: ASPECT_2_1,
   radar: "400px",
+  composition: ASPECT_2_1,
   "reference-area": ASPECT_2_1,
   ring: "320px",
   sankey: "56.25%",

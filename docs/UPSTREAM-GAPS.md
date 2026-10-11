@@ -556,3 +556,10 @@ Unverified or LOG-only: items 7, 12, 14 and the perf numbers in 2 and 4. No code
 - **1.1.0 behaviour:** `ChartGuideLineStyle` is `stroke | strokeOpacity | strokeWidth | strokeDasharray | lineCap` (`charts-core/src/types.ts:419-425`), with no rendering hint. Native grid lines anti-alias across two device rows at half intensity.
 - **Workaround:** `styles.css` sets `shape-rendering: crispEdges` on `.ts-chart__grid line`, a class-keyed rule on renderer-owned DOM.
 - **Proposal:** a `shapeRendering` field on `ChartGuideLineStyle` (or a generic SVG presentation passthrough on guide lines).
+
+## 55. No slot for user SVG or React children inside the chart
+
+- **Needed:** bklit renders its children (user components, custom SVG indicators, annotations) as React inside the chart's own `<svg>`, in plot coordinates and JSX order, reading `useChart()`.
+- **1.1.0 behaviour:** the React `Chart` (`react-charts/src`) takes a `definition` and renders no children; a scene node is one of the renderer's own types (`rect`, `path`, `text`, `group`, ...), with no node that hosts React or arbitrary SVG (see also #52).
+- **Workaround:** `kit/cartesian/focus-layer.tsx` renders custom children in a second absolutely positioned `<svg>` over the host, translated by the plot margin. They paint above the chart marks and never between them, and the `<svg>` is not the renderer's. Carriers inside user components register through `kit/carrier-registry.tsx`, since only rendering reveals them.
+- **Proposal:** a `children`/`overlay` render slot on the framework `Chart` that mounts inside the renderer's svg with the plot transform, or a scene node that hosts a foreign subtree.

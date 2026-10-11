@@ -15,6 +15,7 @@ import { LoadingLabel } from "../kit/loading-label";
 import { motion } from "@tanstack/charts/motion";
 import type { ChartPoint, ChartRendererRenderContext } from "@tanstack/charts";
 import { readChildren, propsFor } from "../kit/read-children";
+import { warnUnrenderedChildren } from "../kit/stable-children";
 import { ResourceHost } from "../kit/resource-host";
 import { useSanitizedId } from "../kit/use-sanitized-id";
 import { renderPatternPreset } from "../kit/pattern/pattern-preset-render";
@@ -275,7 +276,7 @@ interface ChartConfig {
 
 /** The config carriers among the children, normalised to the chart's margin, y axis, separator and tooltip settings. */
 const useChartConfig = ({ children, columnSeparators, marginProp }: Readonly<ChartConfigInput>): ChartConfig => {
-  const table = useMemo(() => readChildren(children), [children]);
+  const table = useMemo(() => { warnUnrenderedChildren(children, "HeatmapChart"); return readChildren(children); }, [children]);
   const cellsProps = propsFor<HeatmapCellsProps>(table, "heatmapCells").at(0);
   const yAxisProps = propsFor<HeatmapYAxisProps>(table, "heatmapYAxis").at(0);
   const tooltipProps = propsFor<HeatmapTooltipProps>(table, "heatmapTooltip").at(0);
