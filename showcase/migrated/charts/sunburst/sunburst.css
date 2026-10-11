@@ -1,0 +1,33 @@
+/* Sunburst rules, all static: per-arc state is a flag or a var on the element itself (push.ts), never a rule per arc. */
+/* Dim and push curves are bklit's HOVER_DIM_TRANSITION (0.16s easeOut) and growControls (0.42s, [0.22, 1, 0.36, 1]). */
+g.bk-sb-pops path, g.bk-sb-mark path { transition: opacity 160ms ease-out, translate 420ms cubic-bezier(.22, 1, .36, 1), transform 420ms cubic-bezier(.22, 1, .36, 1); }
+.bk-sunburst-branch { cursor: pointer; pointer-events: auto; }
+.bk-sunburst-hub, .bk-sunburst-hub path { cursor: pointer; pointer-events: auto; }
+
+/* Labels: pushed by `translate` only (their `transform` is the rotation the zoom tween writes every frame). Unrelated labels drop while one sector is hovered. */
+.bk-sunburst-label { transition: translate 420ms cubic-bezier(.22, 1, .36, 1); translate: var(--sb-t, 0 0); paint-order: stroke; stroke-linejoin: round; pointer-events: none; }
+[data-bk-intro] .bk-sunburst-label { animation: bk-sb-label-in var(--bk-sb-label-dur, 1100ms) cubic-bezier(.85, 0, .15, 1) var(--bk-sb-label-delay, 0ms) backwards; }
+@keyframes bk-sb-label-in { from { opacity: 0; } }
+[data-bk-hov] .bk-sunburst-label { visibility: hidden; }
+[data-bk-hov] .bk-sunburst-label[data-bk-r] { visibility: visible; }
+
+/* Dim everything but the hovered sector's descendants (`data-bk-d`); the sectors on its path (`data-bk-p`) step aside for their overlay. */
+[data-bk-pop] g.bk-sb-mark path { opacity: .25; }
+[data-bk-pop] g.bk-sb-mark path[data-bk-d] { opacity: 1; }
+[data-bk-path] g.bk-sb-mark path[data-bk-p] { opacity: 0; transition: none; }
+
+/* Entrance grow about each sector's own box on the sweep curve; the layer sets each sector's `animation-delay` inline. */
+@keyframes bk-sb-grow { from, to { transform-box: fill-box; transform-origin: 50% 50%; } from { scale: 0; } to { scale: 1; } }
+[data-bk-intro] g.bk-sb-mark path { animation: bk-sb-grow var(--bk-sb-label-dur, 1100ms) cubic-bezier(.85, 0, .15, 1) backwards; }
+
+/* Hover push: sectors and their overlays read the vars the hover pass writes on them. */
+g.bk-sb-mark path, g.bk-sb-pops path { translate: var(--sb-t, 0 0); transform: var(--sb-m, none); }
+[data-bk-path] g.bk-sb-pops path[data-bk-p] { opacity: 1; transition: translate 420ms cubic-bezier(.22, 1, .36, 1), transform 420ms cubic-bezier(.22, 1, .36, 1); }
+
+/* A zoom drops the hover at once: only the dim eases, and the dropped path (`data-bk-s`) snaps back. */
+[data-bk-snap] g.bk-sb-pops path, [data-bk-snap] .bk-sunburst-label { transition: none; }
+[data-bk-snap] g.bk-sb-mark path { transition: opacity 160ms ease-out; }
+[data-bk-snap] g.bk-sb-mark path[data-bk-s] { transition: none; }
+
+/* A keyboard-focused hub (host `data-bk-hub` while a chart svg is `:focus-visible`) takes the chart's focus ring (--bkm-focus-ring, styles.css:219-226). */
+[data-bk-hub]:has(svg:focus-visible) .bk-sunburst-hub path { stroke: var(--bkm-focus-ring); stroke-width: 2; }

@@ -4,17 +4,13 @@ import type { ChartCursorController, ChartPoint } from "@tanstack/charts";
 import type { ArcDatum } from "./arcs";
 import { createSunburstHoverStore } from "./context";
 import type { SunburstHoverStore } from "./context";
-import { sectorEmphasisCss, writePush } from "./push";
+import { setFlag, writePush } from "./push";
 import type { SectorPush } from "./push";
-import { SECTOR } from "./selectors";
 import type { SunburstNativeNode } from "./sunburst-mark";
 import { clearAttribute, raiseAttribute, writeAttribute } from "../kit/host-write";
 
-const DIM_OPACITY = 0.25;
-
-// bklit's emphasis (dim unrelated sectors, step the hovered path aside) is CSS on the host's `data-bk-pop` and `data-bk-path`, because the renderer
-// does not paint native states during a zoom motion but never touches the host. Sector classes (`bk-sb-a<i>`, `bk-sb-u<ancestor i>`) persist.
-export const sectorDimCss = (count: number): string => `[data-bk-pop] ${SECTOR}{opacity:${DIM_OPACITY}}${sectorEmphasisCss(SECTOR, count)}`;
+// bklit's emphasis (dim unrelated sectors, step the hovered path aside) is CSS on the host's `data-bk-pop` and `data-bk-path` plus a flag on the sectors it exempts (sunburst.css),
+// because the renderer does not paint native states during a zoom motion but never touches the host. Sector classes (`bk-sb-a<i>`) persist.
 
 interface HoverState {
   /** Hover lives in a store (not React state): the root never re-renders on hover. Leaves subscribe; label visibility is mirrored onto the DOM by useHoverGrow. */
@@ -81,6 +77,8 @@ export const useControlledCursor = (
   }, [controller, hoveredArcId, isHoverControlled, registry, definition]);
 };
 
+const FLAGS = [["a", "data-bk-d"], ["a", "data-bk-p"], ["p", "data-bk-p"], ["l", "data-bk-r"]] as const;
+
 interface HoverGrowInput {
   readonly hostRef: RefObject<HTMLElement | null>;
   readonly hoverStore: SunburstHoverStore;
@@ -92,10 +90,10 @@ interface HoverGrowInput {
   /** The scene is rebuilt, so the hover is re-applied to the new sectors. */
   readonly definition: unknown;
   /** Written with the arcs on the hovered path, for the zoom's snap (zoom.ts). */
-  readonly hoverPathRef: RefObject<string>;
+  readonly hoverPathRef: RefObject<readonly number[]>;
 }
 
-/** bklit drops unrelated sectors' labels the instant one is hovered: the host carries `data-bk-hov` / `data-bk-rel` (css.ts rules are fixed),
+/** bklit drops unrelated sectors' labels the instant one is hovered: the host carries `data-bk-hov` and flags the related labels (sunburst.css rules are fixed),
  * and the same pass publishes the hover push (push.ts) as per-arc CSS vars. No render, no rebuild. */
 export const useHoverGrow = ({ hostRef, hoverStore, arcs, maxDepth, focusDepth, hoverPop, pushes, definition, hoverPathRef }: Readonly<HoverGrowInput>): void => {
   useEffect(() => {
@@ -108,29 +106,30 @@ export const useHoverGrow = ({ hostRef, hoverStore, arcs, maxDepth, focusDepth, 
       const arc = index === null ? null : (arcs[index] ?? null);
       writePush(host, { arcs, focusDepth, hovered: arc, maxDepth, popOut: hoverPop, sectors: pushes });
       if (arc === null) {
+        for (const [kind, name] of FLAGS) { setFlag(host, kind, name, []); }
         clearAttribute(host, "data-bk-pop");
         clearAttribute(host, "data-bk-path");
         clearAttribute(host, "data-bk-hov");
-        clearAttribute(host, "data-bk-rel");
         return;
       }
-      const related = new Set<number>();
-      for (const other of arcs) {
-        if (other.id === arc.id || arc.id.startsWith(`${other.id} / `) || other.id.startsWith(`${arc.id} / `)) {
-          related.add(other.arcIndex);
-        }
-      }
       const path: number[] = [];
+      const below: number[] = [];
       for (const other of arcs) {
         if (other.id === arc.id || arc.id.startsWith(`${other.id} / `)) {
           path.push(other.arcIndex);
+        } else if (other.id.startsWith(`${arc.id} / `)) {
+          below.push(other.arcIndex);
         }
       }
-      hoverPathRef.current = path.join(" ");
+      hoverPathRef.current = path;
       clearAttribute(host, "data-bk-snap");
+      setFlag(host, "a", "data-bk-s", []);
+      setFlag(host, "a", "data-bk-d", below);
+      setFlag(host, "a", "data-bk-p", path);
+      setFlag(host, "p", "data-bk-p", path);
+      setFlag(host, "l", "data-bk-r", [...path, ...below]);
       writeAttribute(host, "data-bk-pop", String(arc.arcIndex));
-      writeAttribute(host, "data-bk-path", hoverPathRef.current);
-      writeAttribute(host, "data-bk-rel", [...related].join(" "));
+      writeAttribute(host, "data-bk-path", path.join(" "));
       raiseAttribute(host, "data-bk-hov");
     };
     apply();
