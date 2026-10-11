@@ -47,7 +47,8 @@
    Node i delay = i/N * 0.24 * dur; names + 0.108 * dur; values + 60ms more; flow i draws from dur * (0.2 + i/L * 0.32). */
 @property --bkm-sk-i { syntax: "<number>"; inherits: true; initial-value: 0; }
 @keyframes bkm-sankey-label-in { from { opacity: 0; } }
-/* bklit grows each node with scaleY 0 -> 1 about its middle (sankey-node.tsx:267-270), so the rounded ends scale with it. */
+/* bklit grows each node with scaleY 0 -> 1 about its middle (sankey-node.tsx:267-270); rect marks have no native scale-about-centre
+   enter (UPSTREAM-GAPS #47), so it is CSS on the first, full-height scene. */
 @keyframes bkm-sankey-node-grow { from { scale: 1 0; } }
 /* bklit slides each label from its node's inner edge (node edge -/+ 8px) out to the label position (edge +/- 12px): 20px toward
    the node on the node's left side, away from it on the right, in screen space (also for the rotated vertical labels). */
