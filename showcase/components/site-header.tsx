@@ -6,7 +6,13 @@ import { useEffect, useState } from "react";
 import { BklitLogo } from "@/components/icons/bklit";
 import { ModeToggle } from "@/components/mode-toggle";
 
-export function SiteHeader() {
+export function SiteHeader({
+  menuOpen,
+  onMenuToggle,
+}: {
+  menuOpen: boolean;
+  onMenuToggle: () => void;
+}) {
   const [mounted, setMounted] = useState(false);
   const { resolvedTheme } = useTheme();
 
@@ -37,6 +43,26 @@ export function SiteHeader() {
         </div>
 
         <div className="flex items-center gap-1">
+          <button
+            aria-controls="mobile-nav"
+            aria-expanded={menuOpen}
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            className="inline-flex size-9 items-center justify-center rounded-md text-foreground hover:bg-muted md:hidden"
+            onClick={onMenuToggle}
+            type="button"
+          >
+            <svg
+              aria-hidden="true"
+              className="size-5"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeWidth={1.5}
+              viewBox="0 0 24 24"
+            >
+              <path d={menuOpen ? "M6 6l12 12M18 6L6 18" : "M4 7h16M4 12h16M4 17h16"} />
+            </svg>
+          </button>
           <ModeToggle />
         </div>
       </div>
