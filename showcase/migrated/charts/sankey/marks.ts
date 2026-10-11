@@ -49,8 +49,6 @@ interface SankeyMarkConfig {
   readonly showValueLabels: boolean;
   readonly labelOrientation: LabelOrientation;
   readonly enter: SankeyEnter;
-  /** First scene: nodes at zero height; the keyed update to full geometry is the entrance. */
-  readonly collapsed: boolean;
 }
 
 // The slice of a laid-out link row the mark callbacks read.
@@ -299,17 +297,11 @@ const createSankeyMark = (config: Readonly<SankeyMarkConfig>): ReturnType<typeof
       const chart = columns.area;
       const fullNodes: readonly NodeLayoutRow[] = columns.nodes;
       const fullLinks = columns.links;
-      // Collapsed first scene (see `collapsed`): rect heights tween to the laid-out geometry.
       const labels = config.showLabels ? placeLabels(fullNodes, fullLinks, chart, config.labelOrientation, config.showValueLabels) : [];
       // One computed-style read per layout (not per label): it is a style flush right after the resize invalidated it.
       const family = typeof document === "undefined" || labels.length === 0 ? "sans-serif" : getComputedStyle(document.body).fontFamily;
       const hitBoxesOf = new Map(labels.map((label) => [label.key, labelHitBoxes(label, config.showValueLabels, family)]));
-      const nodeRows: NodeRowShape[] = [];
-      for (const row of fullNodes) {
-        const middle = (row.y0 + row.y1) / 2;
-        const shaped = config.collapsed ? { ...row, y0: middle, y1: middle } : row;
-        nodeRows.push({ ...shaped, labelBoxes: hitBoxesOf.get(row.key) ?? [] });
-      }
+      const nodeRows: NodeRowShape[] = fullNodes.map((row) => ({ ...row, labelBoxes: hitBoxesOf.get(row.key) ?? [] }));
       const linkRows: SankeyInputLinkRow[] = [];
       for (const row of fullLinks) {
         linkRows.push(Math.abs(row.y1 - row.y2) < FLAT_LINK_RISE ? { ...row, y2: row.y1 + FLAT_LINK_RISE } : row);
@@ -333,13 +325,13 @@ const createSankeyMark = (config: Readonly<SankeyMarkConfig>): ReturnType<typeof
         });
 
       // One rect mark per node: rect `fill` is a constant, and a per-node color needs a per-node mark.
-      const nodeMotion = enterMotion(config.enter, { spread: 0.24, start: 0 }, clock);
       const nodeMarks = nodeRows.map((row, nodeIndex) => rect([row], {
         fill: config.nodeColor(row.key),
         id: `sankey-node-${nodeIndex}`,
         inset: 0,
         key: "key",
-        motion: (context: ChartMotionContext<NodeRowShape>) => nodeMotion({ ...context, datumCount: nodeRows.length, datumIndex: nodeIndex }),
+        // The node grow and fade are CSS (sankey.css): the scene is laid out at full height on the first build.
+        motion: false,
         radius: config.lineCap,
         x1: "x0",
         x2: "x1",

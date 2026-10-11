@@ -313,6 +313,7 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Needed:** bklit's gauge notches enter from scale 0 and opacity 0 to 1 about each notch's own centre, with a per-notch delay.
 - **1.1.0 behaviour:** the generic enter track for an element is an opacity-attribute tween only (`motion.ts:2475-2636`, tween :2621-2636); no scale or transform enter exists for area-x or rect marks, and `ChartMotionTiming` carries only `delay`, `transition` and `path` (`types.ts:872-877`). The scale sweeps apply to whole groups of other marks (bars about the baseline `motion.ts:1238-1330`, line/area :1505-1562, radial :1596) and do not apply to these marks.
 - **Workaround:** fixed scoped CSS keyframes keyed on `data-ts-key` (`gauge/enter-css.ts`, #36), with `:nth-child` delays and entrance origins aligned on motion's clock.
+- **Also:** the sankey node grow (scaleY about the node's middle, `sankey/sankey.css`) uses the same CSS route, so the first scene is laid out at full height.
 - **Proposal:** an `enter` option on `motion()` marks (`from: { scale, opacity }`, `origin: 'center'`, per-datum delay), or a documented per-element enter transform.
 
 ## 48. No documented way to change a custom circle's radius on hover
