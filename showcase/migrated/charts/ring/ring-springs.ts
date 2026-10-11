@@ -52,7 +52,7 @@ const springRings = (host: HTMLElement, previous: number | null, next: number | 
       const rest = ringTarget(index, previous);
       const target = ringTarget(index, next);
       if (rest !== target && !(isTrack && entering.has(el))) {
-        springDriver.play({ el, frame: (value) => ({ transform: `scale(${1 + value})` }), rest, spring: HOVER_SPRING, target });
+        springDriver.play({ affine: true, el, frame: (value) => ({ transform: `scale(${1 + value})` }), rest, spring: HOVER_SPRING, target });
       }
     }
   }
