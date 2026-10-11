@@ -91,6 +91,8 @@ interface HeatmapCellMotionParams {
 
 interface HeatmapEnterClock {
   at: number | null;
+  /** The render that mounted the svg, where bklit's enter clock starts (null on a replay); read once at the first enter. */
+  readonly origin: () => number | null;
 }
 
 /* Per-datum enter timing for cells. Exit fades over the conceal window so a loading skeleton dissolves instead of popping; resize/update stay instant. */
@@ -122,8 +124,9 @@ const createHeatmapCellMotion = <Datum extends { readonly column: number; readon
       return datum === undefined ? false : erase(resumeEnter({ delay: delayOf(datum), duration: durationMs, easing }, clock.at));
     }
     if (datum === undefined) {return undefined;}
-    clock.at ??= performance.now();
-    return { delay: delayOf(datum), transition: { duration: durationMs, easing, type: "tween" } };
+    // The cells join one commit after the svg (UPSTREAM-GAPS #12); the clock starts where bklit's does so the late join does not shift the tween (heatmap-chart.tsx:566-585).
+    clock.at ??= clock.origin() ?? performance.now();
+    return erase(resumeEnter({ delay: delayOf(datum), duration: durationMs, easing }, clock.at));
   };
 };
 

@@ -36,7 +36,7 @@ interface ComposedBuildInput {
   readonly stackGap: number;
   readonly entered: boolean;
   /** Read by the bar mark `motion` during the render that flips `entered`. */
-  readonly growing: RefObject<boolean>;
+  readonly growing: RefObject<number | null>;
 }
 
 type IdentifiedMark = ChartMark<unknown, ChartValue, ChartValue, ChartValue, ChartValue, string, string> & { readonly id?: string };
@@ -84,7 +84,7 @@ export function useComposedBuild(input: Readonly<ComposedBuildInput>): ComposedB
       animationDuration: duration,
       entered,
       glide: update.step === "glide",
-      isGrowing: () => growing.current,
+      growingSince: () => growing.current,
       dots:
         tooltipProps !== undefined && tooltipProps.showDots !== false
           ? {
@@ -104,7 +104,7 @@ export function useComposedBuild(input: Readonly<ComposedBuildInput>): ComposedB
       margin,
       uid,
       animationDuration: duration,
-      wipe: { p: duration > 0 && !entered ? 0 : 1, ms: duration, w: innerWidth, h: innerHeight, pad: barPad },
+      wipe: { p: duration > 0 && !entered ? 0 : 1, ms: duration, w: innerWidth, h: innerHeight, pad: barPad, armedAt: growing },
       innerWidth: Math.max(0, width - margin.left - margin.right),
       extraMarks: barMarks,
       extraXValues: NONE,

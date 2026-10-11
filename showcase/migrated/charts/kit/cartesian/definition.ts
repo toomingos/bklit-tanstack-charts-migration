@@ -93,7 +93,7 @@ function windowMotion(context: { phase: string; role?: string; axis?: string; ma
 function chartMotion(input: CartesianInput): (context: { phase: string; key?: string; role?: string; axis?: string; markId?: string }) => unknown {
   return (context) => {
     if (context.key?.startsWith(WIPE_KEY)) {
-      return wipeMotion(input.wipe?.ms ?? input.animationDuration);
+      return wipeMotion(input.wipe?.ms ?? input.animationDuration, input.wipe?.armedAt);
     }
     if (input.updateStep === "window") {
       return windowMotion(context);

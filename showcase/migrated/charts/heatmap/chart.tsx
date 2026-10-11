@@ -4,7 +4,7 @@ import { erase } from "../kit/cartesian/erased-types";
 import { clearAttribute, writeAttribute } from "../kit/host-write";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, NamedExoticComponent, ReactElement, ReactNode, RefObject } from "react";
-import { useParentSizeMounted } from "../kit/size/parent-size-arm";
+import { useParentSizeMounted, useRevealClock } from "../kit/size/parent-size-arm";
 import { useFluidWidth } from "../kit/size/use-fluid-width";
 import { RendererChart } from "../kit/tooltip/tooltip-leaf";
 import { useKeyboardFocusHold } from "../kit/cartesian/keyboard-hold";
@@ -611,7 +611,9 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
   const revealEpoch = useMemo(() => hashSignature(revealSignature), [revealSignature]);
 
   // One entrance clock per reveal: survives the definition rebuilds a layout change (font swap) causes mid-entrance.
-  const enterClock = useMemo((): HeatmapEnterClock => ({ at: null }), [revealEpoch]);
+  const revealClock = useRevealClock(sized);
+  const backdate = useRef(true);
+  const enterClock = useMemo((): HeatmapEnterClock => ({ at: null, origin: () => { const first = backdate.current; backdate.current = false; return first ? revealClock.mountedAt : null; } }), [revealEpoch, revealClock]);
   const { getScene, handleBlur, handleFocusChange, handleKeyDownCapture, handleRender, releaseGridFocus } = useGridFocus({ captureInteraction, columnCount, containerRef, coordinator, interaction, interactive, rowCount });
 
   const definition = useMemo(() => buildHeatmapDefinition({

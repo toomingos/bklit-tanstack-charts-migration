@@ -1,6 +1,7 @@
 // Native left-to-right reveal (bklit ChartRevealClip): marks wrapped in keyed `wipe-` groups that `motion()` tweens.
 import { areaY as areaYRaw, createMark, lineY as lineYRaw } from "@tanstack/charts";
 import { REVEAL_EASING } from "../motion/easing";
+import { resumeEnter } from "../motion/resume-enter";
 import type { ChartMotionContext, ChartMotionDefinition, ChartMotionTiming, ChartValue, InitializedMark, MarkRenderContext, MarkResolvedLayoutContext, MarkScene, ResolvedMarkLayout } from "@tanstack/charts";
 import { erase } from "./erased-types";
 import type { AnyMark } from "./erased-types";
@@ -11,6 +12,8 @@ export interface WipeConfig {
   readonly h: number;
   readonly pad?: number;
   readonly ms: number;
+  /** `performance.now()` of the reveal arm while its wipe render is committing (cleared after): the tween resumes from there instead of starting a commit late. */
+  readonly armedAt?: { readonly current: number | null };
 }
 
 /** Composed bar rects (`bar:<dataKey>`) sit under bklit's one shared reveal clip; their hover dot guides (`bar:<dataKey>:dot`) do not. */
@@ -18,7 +21,11 @@ export const isBarRect = (id: string | undefined): boolean => id !== undefined &
 
 /** Keys of the wipe groups; `motion()` gives them the reveal tween (bklit's duration and cubic-bezier(0.85, 0, 0.15, 1)). */
 export const WIPE_KEY = "wipe-";
-export const wipeMotion = (ms: number) => ({ transition: { type: "tween", duration: ms, easing: REVEAL_EASING } }) as const;
+export const wipeMotion = (ms: number, armedAt?: WipeConfig["armedAt"]): ChartMotionTiming => {
+  // bklit's clip tween starts in the effect that arms it (chart-reveal-clip.tsx:81-85); ours starts a commit later, so it resumes from the arm.
+  const resumed = armedAt?.current == null ? false : resumeEnter({ delay: 0, duration: ms, easing: REVEAL_EASING }, armedAt.current);
+  return resumed === false ? { transition: { type: "tween", duration: ms, easing: REVEAL_EASING } } : erase(resumed);
+};
 
 const resolveMotion = (own: ChartMotionDefinition, context: ChartMotionContext): false | ChartMotionTiming | undefined =>
   typeof own === "function" ? own(context) : own;
@@ -52,7 +59,7 @@ export function wipeWrap<M extends AnyMark>(
   const routeMotion = (own: ChartMotionDefinition | undefined): ChartMotionDefinition | undefined =>
     own === undefined
       ? undefined
-      : (context: ChartMotionContext): false | ChartMotionTiming | undefined => (context.key.startsWith(WIPE_KEY) ? wipeMotion(wipe.ms) : resolveMotion(own, context));
+      : (context: ChartMotionContext): false | ChartMotionTiming | undefined => (context.key.startsWith(WIPE_KEY) ? wipeMotion(wipe.ms, wipe.armedAt) : resolveMotion(own, context));
   const markMotion: ChartMotionDefinition | undefined = routeMotion(mark.motion);
   // Documented custom-mark factory (reference/custom-extensions.md "Custom marks"): the inner mark's public `initialize` result is re-rendered inside the groups.
   return erase(

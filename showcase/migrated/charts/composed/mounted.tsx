@@ -72,15 +72,15 @@ export const ComposedChartMounted = ({
   const entered = enteredSig === revealSignature;
   // Read by the bar mark `motion` while the renderer reconciles the entered render (layout effect),
   // cleared in the passive effect after it so later updates (hover, resize) are not staggered.
-  const growing = useRef(false);
+  const growing = useRef<number | null>(null);
   useEffect(() => {
-    growing.current = false;
+    growing.current = null;
   }, [entered]);
   // The entrance waits for <RevealArm> (bklit's reveal trigger, two commits after mount); it re-fires when the signature changes.
   // The same trigger starts the interaction ready timer (useReadyGate): hover is inert until then.
   const { arm: armReady, store: readyStore } = useReadyGate(containerRef, duration);
   const enter = useCallback(() => {
-    growing.current = true;
+    growing.current = performance.now();
     setEnteredSig(revealSignature);
     armReady();
   }, [revealSignature, armReady]);

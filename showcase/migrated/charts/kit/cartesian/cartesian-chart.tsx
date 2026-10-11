@@ -1,7 +1,7 @@
 // Shared shell for LineChart / AreaChart: children -> series -> one native
 // definition -> RendererChart with the native `motion()` entrance.
 import { RevealArm, useReadyGate } from "../entrance/reveal-arm";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { RendererChart } from "../tooltip/tooltip-leaf";
 import { useHostSize } from "../size/host-size";
@@ -161,10 +161,14 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
   // Native line / area wipe progress (definition.ts wipeWrap): seeded closed, opened by RevealArm's arm so the keyed groups tween 0 -> 1.
   const [wipeStateP, setWipeP] = useState(animationDuration > 0 ? 0 : 1);
   useRevealedFromConcealed(phase, gateArm);
+  const armedAt = useRef<number | null>(null);
   const onRevealArm = useCallback(() => {
     gateArm();
+    armedAt.current = performance.now();
     setWipeP(1);
   }, [gateArm]);
+  // The wipe render has committed (the tween resumed from the arm): later wipe renders start fresh.
+  useEffect(() => { armedAt.current = null; }, [wipeStateP]);
   const { brushProps, brush, brushCollapsed, shownRange, bindChange } = useBrush({ table, children, data, xDataKey });
   const marginKey = JSON.stringify(margin ?? null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -196,7 +200,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
         plotWidth: plotInnerWidth,
         innerWidth: plotInnerWidth,
         plotHeight: plotHeight - resolvedMargin.top - resolvedMargin.bottom,
-        wipe: { p: wipeP, ms: wipeMs, w: Math.max(0, plotWidth - resolvedMargin.left - resolvedMargin.right), h: Math.max(0, plotHeight - resolvedMargin.top - resolvedMargin.bottom) },
+        wipe: { p: wipeP, ms: wipeMs, armedAt, w: Math.max(0, plotWidth - resolvedMargin.left - resolvedMargin.right), h: Math.max(0, plotHeight - resolvedMargin.top - resolvedMargin.bottom) },
       }),
     [data, xDataKey, table, series, resolvedMargin, xDomain, uid, gridLoading, animationDuration, extra, brush, plotWidth, plotInnerWidth, plotHeight, update.step, update.from, wipeP, wipeMs],
   );
