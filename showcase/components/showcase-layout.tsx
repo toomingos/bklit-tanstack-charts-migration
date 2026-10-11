@@ -14,9 +14,10 @@ const sections = [
   },
   ...chartCategories.map((cat) => ({
     label: cat.label,
-    items: allCharts
-      .filter((c) => c.category === cat.id)
-      .map((c) => ({ label: c.name, href: `/charts/${c.route}` })),
+    items: cat.order.map((route) => {
+      const chart = allCharts.find((c) => c.route === route);
+      return { label: chart?.name ?? route, href: `/charts/${route}` };
+    }),
   })),
 ];
 
