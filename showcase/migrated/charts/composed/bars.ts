@@ -39,8 +39,8 @@ interface BarLayoutInput {
   glide?: boolean;
   /** false = paint the first scene with zero-height bar seeds; the build that follows (true) grows them as a keyed update. */
   readonly entered: boolean;
-  /** True during the render that flips `entered`: bar updates then run the staggered grow. */
-  readonly isGrowing: () => boolean;
+  /** The reveal arm's `performance.now()` during the render that flips `entered` (bar updates then run the staggered grow), else null. */
+  readonly growingSince: () => number | null;
   readonly dots: false | { readonly radius: number; readonly strokeWidth: number; readonly color?: string };
 }
 
@@ -141,9 +141,11 @@ function growMotionOf(input: BarLayoutInput, stagger: number, clock: { at: numbe
     const delay = context.datumIndex * stagger;
     const total = input.animationDuration;
     const plan = { delay: 0, duration: total, easing: (t: number): number => (t >= 1 ? 1 : barEasing((t * total - delay) / total)) };
-    if (context.phase === "enter" || (context.phase === "update" && input.isGrowing())) {
-      clock.at ??= performance.now();
-      return { delay: 0, transition: { type: "tween", duration: plan.duration, easing: plan.easing } };
+    const since = input.growingSince();
+    if (context.phase === "enter" || (context.phase === "update" && since !== null)) {
+      // bklit's grow starts in the arming effect (chart-reveal-clip.tsx:81-85); ours a commit later, so it resumes from the arm.
+      clock.at ??= since ?? performance.now();
+      return resumeEnter(plan, clock.at) || { delay: 0, transition: { type: "tween", duration: plan.duration, easing: plan.easing } };
     }
     if (context.phase !== "update") {
       return undefined;
