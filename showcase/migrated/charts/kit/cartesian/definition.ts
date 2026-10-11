@@ -2,7 +2,6 @@
 // It only orchestrates, calling each concern's module in paint order: grid guides, series marks, overlays, Segment* marks, hover guides.
 import { defineChart } from "@tanstack/charts";
 import type { ChartDefinition, ChartTooltipInput } from "@tanstack/charts";
-import { brushX } from "@tanstack/charts/interaction/brush";
 import type { BrushXChange } from "@tanstack/charts/interaction/brush";
 import { scaleLinear, scaleTime } from "d3-scale";
 import { REVEAL_EASING } from "../motion/easing";
@@ -14,6 +13,8 @@ import { shortDateFmt } from "../format";
 import { mergeTooltipCarriers } from "../tooltip/tooltip-carriers";
 import { DEFAULT_Y_AXIS_ID, toDate } from "./series";
 import type { Row } from "./series";
+import { getBrushX } from "./brush-factory";
+import type { BrushXFactory } from "./brush-factory";
 import { erase } from "./erased-types";
 import type { AnyMark } from "./erased-types";
 import { gridColumnGuides, gridHostAttrs, gridRowGuides, loadingGridProps } from "./grid-guides";
@@ -101,9 +102,10 @@ function chartMotion(input: CartesianInput): (context: { phase: string; key?: st
   };
 }
 
-function brushControls(input: CartesianInput): ReturnType<typeof brushX>[] | undefined {
+function brushControls(input: CartesianInput): ReturnType<BrushXFactory>[] | undefined {
   const { brush } = input;
-  if (!brush) {
+  const brushX = getBrushX();
+  if (!(brush && brushX)) {
     return undefined;
   }
   return [
