@@ -305,7 +305,7 @@ Drafts live in `docs/upstream-issues/` (local only).
 
 - **Needed:** bklit's sunburst keeps hover on the last sector over the hub and the gaps, but a click on the hub must still zoom out, and a click on a leaf or the gaps must do nothing.
 - **1.1.0 behaviour:** `ChartFocusStrategy.resolve` receives `{ x, y, maxDistance }` only (`types.ts:2095-2117`). `handlePointerMove` (`renderer.ts:739-753`) and `handleClick` (:823-870) both reach it through `pointsAtPointer` (:644-648) and `resolvePointerFocus` (:1169), so a hold-off inside the strategy would also hold the hub click.
-- **Workaround:** capture-phase `pointermove` and `click` listeners on the host in `sunburst/focus.ts` (click-only zoom guard and hold-off-sector rule).
+- **Workaround:** a capture `pointermove` listener on the host raises a move flag for the dispatch (never stops the event) and the strategy holds the hovered sector off every sector only while it is set; a capture `click` guard drops clicks that must do nothing (`sunburst/focus.ts`, `sunburst/definition.ts`).
 - **Proposal:** add the event kind (`'move' | 'click' | 'keyboard'`) to `ChartFocusResolveContext`, or pass the previous focus (see #26).
 
 ## 47. area-x and rect marks have no scale-about-centre enter

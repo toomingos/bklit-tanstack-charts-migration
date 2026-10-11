@@ -22,9 +22,11 @@ export interface SectorFeed {
   sweepMs: number;
   /** The chart's nominal size: bklit draws in a size-unit viewBox, so strokes and text scale by width over this. */
   readonly size: number;
+  /** Runs after each paint: the hover push vars live on the layer's own elements (push.ts). */
+  onPainted: (() => void) | null;
 }
 
-export const createSectorFeed = (size: number): SectorFeed => ({ geometry: new Map(), size, sweepMs: 1100, view: "" });
+export const createSectorFeed = (size: number): SectorFeed => ({ geometry: new Map(), onPainted: null, size, sweepMs: 1100, view: "" });
 
 interface Track {
   readonly from: ArcValues;
@@ -221,6 +223,7 @@ export const createSectorLayer = (feed: SectorFeed, renderStart: { readonly curr
           if (!seen.has(id)) { element.remove(); elements.delete(id); states.delete(id); }
         }
         seen.clear();
+        feed.onPainted?.();
         wake();
       },
     };

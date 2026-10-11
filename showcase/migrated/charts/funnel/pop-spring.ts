@@ -56,13 +56,13 @@ const createFunnelPop = (host: HTMLElement, options: Readonly<FunnelPopOptions>)
   const targetOf = (stage: number, layer: number, hovered: number | null): number => (stage === hovered ? options.popOf(layer, options.layers) : 0);
   const scaleOf = (value: number): string => (options.horizontal ? `scale(1,${1 + value})` : `scale(${1 + value},1)`);
   const play = (el: SVGElement, layer: number, rest: number, target: number, from?: number): void => {
-    driver.play({ el, frame: (value) => ({ transform: scaleOf(value) }), from, rest, spring: ringSpring(layer), target });
+    driver.play({ affine: true, el, frame: (value) => ({ transform: scaleOf(value) }), from, rest, spring: ringSpring(layer), target });
   };
 
   const playLabels = (stage: number, previous: number | null, next: number | null): void => {
     for (const [prefix, colour] of LABEL_FILLS) {
       for (const el of host.querySelectorAll<SVGElement>(`${labelKey(prefix)}${keyEnds(`:${stage}`)}`)) {
-        driver.play({ el, frame: (value) => ({ fill: dimmedFill(colour, value) }), rest: dimOf(stage, previous), spring: LABEL_SPRING, target: dimOf(stage, next) });
+        driver.play({ affine: true, el, frame: (value) => ({ fill: dimmedFill(colour, value) }), rest: dimOf(stage, previous), spring: LABEL_SPRING, target: dimOf(stage, next) });
       }
     }
   };
