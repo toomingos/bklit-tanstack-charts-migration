@@ -16,6 +16,7 @@ import { tooltipSetter, useFocusRow } from "./chart-context-focus";
 import { useGateReady } from "../entrance/reveal-arm";
 import type { ReadyStore } from "../entrance/reveal-arm";
 import { useReferenceAreas, useStructural } from "./context-bridge";
+import { strictRows } from "./domains";
 import type { CartesianBuild } from "./definition";
 import { erase } from "./erased-types";
 import type { AnyInteraction } from "./erased-types";
@@ -128,6 +129,7 @@ interface ChartBaseInput {
   readonly resolvedMargin: ChartMargin;
   readonly animationDuration: number;
   readonly xDomain: [Date, Date] | undefined;
+  readonly xDomainSlotCount: number | undefined;
 }
 
 type StableContext = Omit<ChartContextValue, "tooltipData" | "setTooltipData" | "selection" | "clearSelection">;
@@ -145,7 +147,7 @@ interface ChartBase {
 
 /** The referentially stable part of the published chart context, and the scales it is built from. */
 export function useChartBase(input: ChartBaseInput): ChartBase {
-  const { built, series, data, xDataKey, table, containerRef, ready, dragInteraction, plotWidth, plotHeight, resolvedMargin, animationDuration, xDomain } = input;
+  const { built, series, data, xDataKey, table, containerRef, ready, dragInteraction, plotWidth, plotHeight, resolvedMargin, animationDuration, xDomain, xDomainSlotCount } = input;
   const innerWidth = Math.max(0, plotWidth - resolvedMargin.left - resolvedMargin.right);
   const innerHeight = Math.max(0, plotHeight - resolvedMargin.top - resolvedMargin.bottom);
   const xAccessor = useCallback((d: Row): Date => toDate(d[xDataKey]), [xDataKey]);
@@ -169,6 +171,11 @@ export function useChartBase(input: ChartBaseInput): ChartBase {
     [yDomains],
   );
   const referenceAreas = useReferenceAreas(table);
+  // bklit time-series-chart-shell.tsx:323-332: spacing between neighbouring rows of the visible window (0 under two slots).
+  const columnWidth = useMemo(() => {
+    const slots = xDomain && xDomainSlotCount !== undefined ? xDomainSlotCount : (xDomain ? strictRows(data, xDataKey, xDomain) : data).length;
+    return slots < 2 ? 0 : innerWidth / (slots - 1);
+  }, [data, xDataKey, xDomain, xDomainSlotCount, innerWidth]);
   // Rows are focused at their data x on the plot's vertical middle: `resolvePointer` snaps to the nearest datum like a pointer move.
   const pixelOf = useCallback(
     (index: number) => {
@@ -204,9 +211,10 @@ export function useChartBase(input: ChartBaseInput): ChartBase {
       animationDuration,
       xAccessor,
       dateLabels,
+      columnWidth,
     };
-    return xDomain ? { ...base, xDomain } : base;
-  }, [containerRef, xScale, yScales, innerWidth, innerHeight, data, plotWidth, plotHeight, resolvedMargin, lines, animationDuration, xAccessor, dateLabels, xDomain, isLoaded, yDomainTargetByAxis, referenceAreas]);
+    return xDomain ? { ...base, xDomain, xDomainSlotCount } : base;
+  }, [containerRef, xScale, yScales, innerWidth, innerHeight, data, plotWidth, plotHeight, resolvedMargin, lines, animationDuration, xAccessor, dateLabels, xDomain, xDomainSlotCount, columnWidth, isLoaded, yDomainTargetByAxis, referenceAreas]);
   return { stable, xScale, innerWidth, innerHeight, xAccessor, xStart, xEnd, setTooltipData };
 }
 

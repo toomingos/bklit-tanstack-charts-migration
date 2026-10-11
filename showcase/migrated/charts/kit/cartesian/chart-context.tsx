@@ -117,6 +117,8 @@ export interface ChartStableContextValue {
   xAccessor: (d: Record<string, unknown>) => Date;
   dateLabels: string[];
   xDomain?: [Date, Date];
+  /** Full dataset length while brush-zoomed. */
+  xDomainSlotCount?: number;
   /** Slot width per data row (bar / candlestick charts). */
   columnWidth?: number;
   /** Candle body width in px (CandlestickChart). */
@@ -146,7 +148,7 @@ const HoverContext = createContext<ChartHoverContextValue | null>(null);
 const STABLE_KEYS = [
   "data", "renderData", "xScale", "yScale", "yScales", "width", "height", "innerWidth", "innerHeight", "margin", "containerRef",
   "lines", "animationDuration", "isLoaded", "chartPhase", "chartStatus", "yDomainTargetByAxis", "referenceAreas",
-  "xAccessor", "dateLabels", "xDomain", "columnWidth", "bandWidth", "barScale", "barXAccessor",
+  "xAccessor", "dateLabels", "xDomain", "xDomainSlotCount", "columnWidth", "bandWidth", "barScale", "barXAccessor",
   "orientation", "stacked", "stackOffsets", "composedBarDataKeys", "composedBarSize", "composedMaxBarSize", "composedBarGap",
   "composedStacked", "composedStackGap",
 ] as const satisfies readonly (keyof ChartStableContextValue)[];

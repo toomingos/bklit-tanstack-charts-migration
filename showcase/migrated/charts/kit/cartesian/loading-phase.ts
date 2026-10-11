@@ -5,6 +5,7 @@ import type { RefObject } from "react";
 import { REVEAL_EASING } from "../motion/easing";
 import { clearAttribute, raiseAttribute, writeVar } from "../host-write";
 import type { ChartStatus } from "../types";
+import { shouldTweenYDomain } from "./y-domain-utils";
 
 export type LoadingPhase = "loading" | "exiting" | "swap" | "tween" | "ready" | "concealing" | "tweenLoading";
 
@@ -14,8 +15,6 @@ const PULSE_CYCLE_MS = 2200;
 const SWEEP_EXIT_MS = 450;
 /** bklit chart-phase.ts DEFAULT_Y_DOMAIN_TWEEN_MS (use-animated-y-domains.ts:96-111). */
 const Y_TWEEN_MS = 500;
-/** bklit chart-phase.ts Y_DOMAIN_TWEEN_SKIP_THRESHOLD: a y domain that moves less than this share of its span snaps (y-domain-utils.ts shouldTweenYDomain). */
-const Y_SKIP_THRESHOLD = 0.02;
 /** bklit line-loading-pulse.tsx:90-93: a shrink never runs shorter than 10ms. */
 const MIN_SHRINK_MS = 10;
 
@@ -25,11 +24,7 @@ type YDomains = Readonly<Record<string, readonly [number, number]>>;
 
 /** bklit use-animated-y-domains.ts:50-79: the y domains tween only when some axis moves by at least the skip threshold (else onSettled fires at once). */
 export const yDomainsTween = (from: YDomains, to: YDomains): boolean =>
-  Object.entries(to).some(([id, b]) => {
-    const a = Object.hasOwn(from, id) ? from[id] : b;
-    const span = Math.max(Math.abs(b[1] - b[0]), Math.abs(a[1] - a[0]), 1);
-    return Math.abs(b[0] - a[0]) / span >= Y_SKIP_THRESHOLD || Math.abs(b[1] - a[1]) / span >= Y_SKIP_THRESHOLD;
-  });
+  Object.entries(to).some(([id, b]) => shouldTweenYDomain(Object.hasOwn(from, id) ? from[id] : b, b));
 
 interface LoadingPhaseOptions {
   /** Whether a series uses the sweep style (read when the exit starts). */
