@@ -31,8 +31,6 @@
 @property --bkm-pfx { syntax: "*"; inherits: false; }
 @property --bkm-hl0 { syntax: "*"; inherits: false; }
 @property --bkm-hl1 { syntax: "*"; inherits: false; }
-@property --bkm-hs0 { syntax: "*"; inherits: false; }
-@property --bkm-hs1 { syntax: "*"; inherits: false; }
 @property --bkm-rm0 { syntax: "*"; inherits: false; }
 @property --bkm-rd0 { syntax: "*"; inherits: false; }
 @property --bkm-same0 { syntax: "*"; inherits: false; }
@@ -50,7 +48,7 @@
 :is([data-bkm-chart], [data-bkm-kit]) .ts-chart__marks > g:is(.ts-chart__line, .ts-chart__rect, .ts-chart__bar, .ts-chart__rule),
 :is([data-bkm-chart], [data-bkm-kit]) .ts-chart__marks > g:is(.ts-chart__line, .ts-chart__rect, .ts-chart__bar, .ts-chart__rule) > *,
 /* Native line/area wipe (kit/cartesian/definition.ts wipeWrap): every line/area mark sits in `wipe-o > wipe-i`, two more depth levels; the
-   re-inherit chain must run through them or the highlight band (--bkm-hs0/1) resets to its initial value under the wipe groups. */
+   re-inherit chain must run through them or the pill/segment vars reset to their initial value under the wipe groups. */
 :is([data-bkm-chart], [data-bkm-kit]) .bkm-wipe-o,
 :is([data-bkm-chart], [data-bkm-kit]) .bkm-wipe-o > .bkm-wipe-i,
 :is([data-bkm-chart], [data-bkm-kit]) .bkm-wipe-o > .bkm-wipe-i > g,
@@ -58,7 +56,7 @@
 :is([data-bkm-chart], [data-bkm-kit]) .ts-chart__axes > text,
 :is([data-bkm-chart], [data-bkm-kit]) .ts-chart__focus-guide-layer > g,
 :is([data-bkm-chart], [data-bkm-kit]) :is(.bkm-pill-window, .bkm-pill-m, .bkm-pill-d) {
-  --bkm-hx: inherit; --bkm-bfx: inherit; --bkm-pfx: inherit; --bkm-hl0: inherit; --bkm-hl1: inherit; --bkm-hs0: inherit; --bkm-hs1: inherit; --bkm-rm0: inherit; --bkm-rd0: inherit;
+  --bkm-hx: inherit; --bkm-bfx: inherit; --bkm-pfx: inherit; --bkm-hl0: inherit; --bkm-hl1: inherit; --bkm-rm0: inherit; --bkm-rd0: inherit;
   --bkm-same0: inherit; --bkm-same1: inherit; --bkm-same2: inherit; --bkm-same3: inherit;
   --bkm-psame0: inherit; --bkm-psame1: inherit; --bkm-psame2: inherit; --bkm-psame3: inherit;
 }

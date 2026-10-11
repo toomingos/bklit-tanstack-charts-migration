@@ -30,6 +30,8 @@ export interface HoverVisuals {
   readonly plSigns: readonly (0 | 1 | null)[];
   /** Segment* children present: the left plot margin the drag rules are translated from (px), else null. */
   readonly segmentLeft: number | null;
+  /** Id of the owned `<clipPath>` (`HighlightBandClip`) the highlight paths are clipped by. */
+  readonly bandClip: string;
 }
 
 /** Splits a selector list on its top-level commas (commas inside `:not(...)` / `[...]` stay). */
@@ -98,12 +100,11 @@ function legendDimRules(scope: string, dim: readonly HoverDimRule[]): string[] {
 }
 
 // bklit HighlightSegment: opacity 0 -> 1 over 0.4s easeInOut; its clip band is a velocity-keeping 180/28 spring that jumps on inactive -> active (use-highlight-segment.ts:48-57),
-// driven by kit/motion/band-spring.ts through `--bkm-hs0/1` (the instantaneous edges `--bkm-hl0/1` stay for the drag Segment* marks).
-function highlightRules(scope: string, on: string, highlights: readonly HoverHighlight[]): string[] {
-  const springBand = bandOf("--bkm-hs0", "--bkm-hs1");
+// driven by kit/motion/band-spring.ts through the owned clipPath rect (no host var: a per-frame var restyles the whole re-inherit chain). `--bkm-hl0/1` stay for the drag Segment* marks.
+function highlightRules(scope: string, on: string, highlights: readonly HoverHighlight[], bandClip: string): string[] {
   // bklit unmounts the highlight on leave (no AnimatePresence): the 0.4s fade is enter-only, so the transition lives on the active state.
   return highlights.flatMap((hl) => [
-    `${scope} ${hl.select}{opacity:0;clip-path:${springBand}}`,
+    `${scope} ${hl.select}{opacity:0;clip-path:url(#${bandClip})}`,
     `${on} ${hl.select}{opacity:1}`,
     `${on} ${hl.select}${NOT_MOTION}{transition:opacity .4s ease-in-out}`,
   ]);
@@ -163,7 +164,7 @@ export function hoverStaticCss(scope: string, hover: HoverVisuals): string {
     focusHiddenRule(scope),
     ...seriesDimRules(scope, on, hover.dim),
     ...legendDimRules(scope, hover.dim),
-    ...highlightRules(scope, on, hover.highlights),
+    ...highlightRules(scope, on, hover.highlights, hover.bandClip),
     ...(hover.segmentLeft === null ? [] : segmentRules(scope, hover.segmentLeft)),
     ...profitLossRules(scope, hover.pl),
   ].join("");
