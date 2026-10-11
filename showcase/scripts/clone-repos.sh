@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOS_DIR="$SCRIPT_DIR/../repos"
 # The bklit-ui commit the migration is matched against; bump only with a parity pass in Chrome.
-BKLIT_UI_REF=c57f66bfa7c3198edb677b567ce08cbf364ae159
+BKLIT_UI_REF=f7b3bd2999a5c993863f9cc5523c9cf60b9f3bc2
 
 if [ -d "$REPOS_DIR/bklit-ui" ]; then
   echo "==> repos/bklit-ui already exists, skipping clone"
