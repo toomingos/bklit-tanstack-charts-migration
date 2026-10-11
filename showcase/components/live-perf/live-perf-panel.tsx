@@ -25,6 +25,8 @@ interface Row {
   get: Get;
   scope: Scope;
   unit?: string;
+  /** Change column shows the ms difference (a percentage misleads near zero or below it) */
+  absDelta?: true;
   lower?: boolean; // lower is better; undefined = informational (no delta colouring)
   hint?: string;
   /** Fed by React's <Profiler onRender>, which fires only in dev and profiling builds. */
@@ -41,7 +43,7 @@ const groups: Group[] = [
     title: "Load",
     rows: [
       { label: "First paint", get: (s) => s.firstPaintMs, scope: "card", unit: "ms", lower: true, hint: "probe mount → the frame showing the first svg/canvas content is presented (rAF + MessageChannel). Includes the shared demo chunk load." },
-      { label: "Entrance (settled − first paint)", get: (s) => s.entranceMs, scope: "card", unit: "ms", lower: true },
+      { label: "Settle overhead (settled − first paint − designed animation)", get: (s) => s.settleOverheadMs, scope: "card", unit: "ms", lower: true, absDelta: true, hint: "settled − first paint − the demo's designed entrance (same budget for both; see entrance-budget.ts). Negative: the animation ended before its designed end." },
       { label: "Settled", get: (s) => s.settledMs, scope: "card", unit: "ms", lower: true, hint: "no DOM mutation / finite animation in this card for 150ms (cap 5s, shown with +)" },
       { profiler: true, label: "React commits (load)", get: (s) => s.loadCommits, scope: "card", hint: "count only: commit cost differs per impl, compare render time" },
       { profiler: true, label: "React render time (load)", get: (s) => s.loadRenderMs, scope: "card", unit: "ms", lower: true, hint: "Profiler actualDuration sum (render phase; effects and browser style/layout/paint not included)" },
@@ -131,12 +133,12 @@ const NO_PROFILER = "n/a (production build)";
 const fmt = (v: number | null | undefined, unit?: string, digits = 1) =>
   v === null || v === undefined ? "—" : `${Number.isInteger(v) ? v : v.toFixed(digits)}${unit ? ` ${unit}` : ""}`;
 
-function Delta({ a, b, lower }: { a: number | null; b: number | null; lower?: boolean }) {
+function Delta({ a, b, lower, abs }: { a: number | null; b: number | null; lower?: boolean; abs?: boolean }) {
   if (a === null || b === null || lower === undefined) return <span className="text-muted-foreground">—</span>;
   const diff = b - a;
   if (Math.abs(diff) < 1e-9) return <span className="text-muted-foreground">=</span>;
   const better = lower ? diff < 0 : diff > 0;
-  const pct = a !== 0 ? `${diff > 0 ? "+" : "−"}${Math.abs((diff / a) * 100).toFixed(0)}%` : `${diff > 0 ? "+" : "−"}${Math.abs(diff).toFixed(1)}`;
+  const pct = abs ? `${diff > 0 ? "+" : "−"}${Math.abs(diff).toFixed(1)} ms` : a !== 0 ? `${diff > 0 ? "+" : "−"}${Math.abs((diff / a) * 100).toFixed(0)}%` : `${diff > 0 ? "+" : "−"}${Math.abs(diff).toFixed(1)}`;
   return (
     <span className={better ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>{pct}</span>
   );
@@ -373,7 +375,7 @@ const MetricRow = memo(function MetricRow({ row: r, av, bv, an, bn, aCapped, bCa
           <td className="py-1 pr-3 text-right">{fmt(av, r.unit, r.digits)}{aCapped ? "+" : ""}{an !== null && <N n={an} />}</td>
           <td className="py-1 pr-3 text-right">{fmt(bv, r.unit, r.digits)}{bCapped ? "+" : ""}{bn !== null && <N n={bn} />}</td>
           <td className="py-1 text-right">
-            <Delta a={av} b={bv} lower={r.lower} />
+            <Delta a={av} b={bv} lower={r.lower} abs={r.absDelta} />
           </td>
         </>
       )}

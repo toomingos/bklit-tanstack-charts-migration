@@ -18,6 +18,8 @@
  * React <Profiler> actualDuration, rAF + MessageChannel "after next paint", MutationObserver + document.getAnimations()
  * for settle. */
 
+import { entranceBudget } from "./entrance-budget";
+
 export type Impl = "bklit" | "migrated";
 
 export interface PerfSnapshot {
@@ -27,7 +29,8 @@ export interface PerfSnapshot {
   firstPaintMs: number | null;
   settledMs: number | null;
   settledCapped: boolean;
-  entranceMs: number | null;
+  /** settled − first paint − the demo's designed entrance (entrance-budget.ts); null without a budget or when capped; negative = ended before the design */
+  settleOverheadMs: number | null;
   loadCommits: number;
   loadRenderMs: number;
   loadLongTasks: number;
@@ -1040,13 +1043,14 @@ export class Collector {
     }
     const winSec = Math.min(WIN, t - this.t0) / 1000;
     if (wN > 0 && !this.inside) this.dirty = true; // keep decaying the rolling window until it empties
+    const budget = entranceBudget[this.chart];
     const snap: PerfSnapshot = {
       key: this.key,
       runAt: this.t0,
       firstPaintMs: this.firstPaint === null ? null : r1(this.firstPaint),
       settledMs: this.settled === null ? null : r1(this.settled),
       settledCapped: this.capped,
-      entranceMs: this.settled !== null && this.firstPaint !== null ? r1(Math.max(0, this.settled - this.firstPaint)) : null,
+      settleOverheadMs: this.settled !== null && this.firstPaint !== null && !this.capped && budget ? r1(this.settled - this.firstPaint - budget.ms) : null,
       loadCommits: this.loadCommits,
       loadRenderMs: r1(this.loadRender),
       loadLongTasks: lt.n,
