@@ -4,7 +4,8 @@
 // The layout is bklit's own d3-sankey run (sankey-chart.tsx:151-168), as the native mark places columns in scene space.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { Dispatch, ReactElement, ReactNode, RefObject, SetStateAction } from "react";
-import { sankey, sankeyCenter, sankeyLinkHorizontal } from "d3-sankey";
+import { sankey, sankeyCenter } from "d3-sankey";
+import { bumpPath } from "./bump";
 import type { SankeyGraph, SankeyLink, SankeyNode } from "d3-sankey";
 import type { Transition } from "../kit/motion/phase";
 import { useReadyGate } from "../kit/entrance/reveal-arm";
@@ -116,13 +117,10 @@ interface SankeyContextLayerProps {
   readonly children?: ReactNode;
 }
 
-const pathOf = sankeyLinkHorizontal<SankeyNodeDatum, SankeyLinkDatum>();
+// d3-sankey's sankeyLinkHorizontal (source.x1,y0 to target.x0,y1), without its d3-shape and d3-path imports.
 const createPath = (link: SankeyLink<SankeyNodeDatum, SankeyLinkDatum>): string => {
-  try {
-    return pathOf(link) ?? "";
-  } catch {
-    return "";
-  }
+  const { source, target } = link as { source: SankeyNode<SankeyNodeDatum, SankeyLinkDatum>; target: SankeyNode<SankeyNodeDatum, SankeyLinkDatum> };
+  return bumpPath([[source.x1 ?? Number.NaN, link.y0 ?? Number.NaN], [target.x0 ?? Number.NaN, link.y1 ?? Number.NaN]]);
 };
 const noFocus = (): null => null;
 

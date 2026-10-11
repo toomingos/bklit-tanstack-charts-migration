@@ -6,8 +6,7 @@ import { resumeEnter } from "../kit/motion/resume-enter";
 import { rect } from "@tanstack/charts/rect";
 import { text } from "@tanstack/charts/text";
 import { sankeyDiagram } from "@tanstack/charts/network/sankey";
-import { d3Curve } from "@tanstack/charts/d3/shape";
-import { curveBumpX } from "d3-shape";
+import { BUMP_CURVE } from "./bump";
 import type {
   ChartLinearGradient,
   ChartMotionContext,
@@ -73,7 +72,6 @@ interface SankeyEnter {
   readonly transition: ChartMotionTransition;
 }
 
-const SANKEY_CURVE = d3Curve(curveBumpX);
 const SANKEY_LABEL_FILL = "var(--foreground)";
 const NAME_FONT_SIZE = 13;
 const VALUE_FONT_SIZE = 11;
@@ -317,7 +315,7 @@ const createSankeyMark = (config: Readonly<SankeyMarkConfig>): ReturnType<typeof
         linkRows.push(Math.abs(row.y1 - row.y2) < FLAT_LINK_RISE ? { ...row, y2: row.y1 + FLAT_LINK_RISE } : row);
       }
       const flow = link(linkRows, {
-          curve: SANKEY_CURVE,
+          curve: BUMP_CURVE,
           id: "flow",
           lineCap: "butt",
           // Drawn in by a static clip reveal (sankey.css), not a geometry tween.
