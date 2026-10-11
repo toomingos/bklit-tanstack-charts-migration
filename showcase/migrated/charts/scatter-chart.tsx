@@ -1,9 +1,9 @@
 // bklit ScatterChart on native TanStack Charts: <Scatter> children are config
 // carriers compiled into one definition (see scatter/definition.ts).
 import { erase } from "./kit/cartesian/erased-types";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { useParentSizeMounted, useRevealClock } from "./kit/size/parent-size-arm";
+import { useRevealClock } from "./kit/size/parent-size-arm";
 import { useReadyGate } from "./kit/entrance/reveal-arm";
 import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { useInteractionHandle, usePressGuard } from "./kit/touch-focus";
@@ -84,14 +84,19 @@ const ScatterChartInner = ({
   const { interaction, onRender } = useInteractionHandle();
   usePressGuard(containerRef, interaction, true);
   const holdFocus = useKeyboardFocusHold(containerRef, () => interaction.current);
-  const size = useResizeBox(containerRef);
+  const size = useResizeBox(containerRef, undefined, true);
   // Hover lives in a ref store read only by <FocusLayer>: focus never re-renders this component
   // (no definition rebuild, no re-resolve); fixed CSS (`SCATTER_HOVER_CSS`) carries the visual emphasis.
   const focusStore = useFocusStore<FocusedRow>();
   const uid = `s${useSanitizedId()}`;
-  // Dots enter once measured; the reveal timer runs from that mount (useRevealClock). bklit measures with react-use-measure
-  // (scatter-chart.tsx:154: ResizeObserver + trailing 10ms setTimeout); useParentSizeMounted's ResizeObserver + one rAF is the kit's hop.
-  const revealed = useParentSizeMounted(containerRef, true);
+  // Dots enter from the layout-effect commit after the renderer's first (empty) mount, before first paint: bklit's react-use-measure hop
+  // (scatter-chart.tsx:154) is skipped, as the lead approved. The renderer mounts in its own layout effect, which runs first.
+  const [revealed, setRevealed] = useState(false);
+  useLayoutEffect(() => {
+    if (childrenReady) {
+      setRevealed(true);
+    }
+  }, [childrenReady]);
   const revealClock = useRevealClock(revealed);
   const built = useMemo(
     () => buildScatterDefinition({ data, xKey: xDataKey, table, margin: resolvedMargin, uid: "scatter", idPrefix: uid, animationDuration, easing, revealed, revealClock }),
