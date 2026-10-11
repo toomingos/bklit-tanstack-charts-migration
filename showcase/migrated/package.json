@@ -1,0 +1,35 @@
+{
+  "name": "@showcase/migrated-charts",
+  "version": "0.2.0",
+  "private": true,
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "dependencies": {
+    "@base-ui/react": "^1.0.0-alpha.8",
+    "@number-flow/react": "^0.5.4",
+    "@tanstack/charts": "1.1.0",
+    "@tanstack/react-charts": "1.1.0",
+    "@types/d3-selection": "^3.0.11",
+    "@types/d3-zoom": "^3.0.8",
+    "@types/geojson": "^7946.0.16",
+    "clsx": "^2.1.1",
+    "d3-geo": "3.1.0",
+    "d3-scale": "4.0.2",
+    "d3-selection": "3.0.0",
+    "d3-shape": "^3.2.0",
+    "d3-zoom": "3.0.0",
+    "tailwind-merge": "^2.6.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "exports": {
+    ".": "./charts/index.ts",
+    "./styles.css": "./charts/styles.css"
+  },
+  "files": [
+    "charts"
+  ]
+}

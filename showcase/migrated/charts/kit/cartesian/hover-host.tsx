@@ -1,0 +1,199 @@
+// Host-attribute plumbing for the fixed hover CSS: focus and legend hover live on the chart host (attributes + CSS vars), not in
+// React state or the definition. UPSTREAM-GAPS #20 (reconcile strips foreign attributes on scene nodes), #1 (`states` re-render).
+"use client";
+
+import { useCallback, useEffect, useRef } from "react";
+import type { MutableRefObject, RefObject } from "react";
+import type { PillLayout } from "./date-pill";
+import { writePillRollIn, writePillSameLabel } from "./date-pill";
+import { springBand } from "../motion/band-spring";
+import { useChartLegendHover, useProfitLossLegendHover } from "../legend/legend";
+import { clearAttribute, raiseAttribute, writeAttribute, writeVar } from "../host-write";
+
+/** Plot layout the focus x / highlight band are derived from (svg px = left + fraction of the domain * innerWidth). */
+interface HoverHostGeom {
+  /** Row x values (ms), ascending: `built.hover.times`. */
+  readonly times: readonly number[];
+  /** Left plot margin in svg px. */
+  readonly left: number;
+  /** x domain start (ms) and span (ms). */
+  readonly xStart: number;
+  readonly xSpan: number;
+  readonly innerWidth: number;
+  /** `built.hover.plSigns` (aligned with `times`); drives `data-bkm-plf`, the focused point's profit/loss sign. */
+  readonly signs?: readonly (0 | 1 | null)[];
+  /** False when nothing reads `--bkm-hl0/1` (no highlight band, no segment marks): the hover then skips those writes. Default true. */
+  readonly hasBand?: boolean;
+  /** Date-pill tick times (`built.pillTicks.times`) when the chart has a pill: ticks reading like the focused date hide with it. */
+  readonly pillTicks?: readonly number[];
+  /** The rolling ticker's rows (`pillLayoutOf(built.pillTicks.times)`): `times[i]` is label `i`. */
+  readonly pillLayout?: PillLayout | null;
+}
+
+const HOVER_ATTR = "data-bkm-hover";
+const DRAG_ATTR = "data-bkm-drag";
+const PRESS_ATTR = "data-bkm-press";
+const SETTLE_ATTR = "data-bkm-settle";
+
+const EMPTY_GEOM: HoverHostGeom = { times: [], left: 0, xStart: 0, xSpan: 0, innerWidth: 0 };
+
+/** Focus -> host: sets `data-bkm-hover`, `--bkm-hx` (date pill tick fade), `--bkm-hl0/1` (highlight edges) and `data-bkm-settle` (bklit's band `jump`s on inactive -> active, springs
+ * on later changes, use-highlight-segment.ts:48-57), written in the same task as the edges. Call `sync(focusTimeMs | null)` from `onFocusChange`; assign `geom.current` each render. */
+interface HoverHostSync {
+  readonly geom: MutableRefObject<HoverHostGeom>;
+  readonly sync: (time: number | null) => void;
+  readonly drag: (edges: readonly [number, number] | null) => void;
+  readonly press: (on: boolean) => void;
+}
+
+const isIdleHover = (el: HTMLElement): boolean => el.hasAttribute(HOVER_ATTR) && !el.hasAttribute(DRAG_ATTR) && !el.hasAttribute(PRESS_ATTR);
+
+export function useHoverHostSync(hostRef: RefObject<HTMLElement | null>): HoverHostSync {
+  const geom = useRef<HoverHostGeom>(EMPTY_GEOM);
+  const focus = useRef<number | null>(null);
+  // The focus and geometry the host already shows: a pointer move inside one point re-emits the same time, with nothing left to write.
+  const applied = useRef<{ readonly time: number; readonly geom: HoverHostGeom } | null>(null);
+  const sync = useCallback(
+    (time: number | null): void => {
+      const el = hostRef.current;
+      if (!el) {
+        return;
+      }
+      focus.current = time;
+      if (time === null) {
+        applied.current = null;
+        clearAttribute(el, HOVER_ATTR);
+        clearAttribute(el, "data-bkm-plf");
+        writePillRollIn(el, null, -1);
+        if (!el.hasAttribute(DRAG_ATTR)) {
+          clearAttribute(el, SETTLE_ATTR);
+        }
+        return;
+      }
+      const g = geom.current;
+      // Unchanged focus: a press (`data-bkm-press`) still lifts below, a drag owns the band, and the entry (`data-bkm-hover` absent) always writes.
+      const prior = applied.current;
+      if (prior?.time === time && prior.geom === g && isIdleHover(el)) {
+        return;
+      }
+      applied.current = { geom: g, time };
+      const px = (t: number): number => g.left + (g.xSpan > 0 ? ((t - g.xStart) / g.xSpan) * g.innerWidth : 0);
+      let lo = 0;
+      let hi = g.times.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if ((g.times[mid]) < time) {
+          lo = mid + 1;
+        } else {
+          hi = mid;
+        }
+      }
+      const last = g.times.length - 1;
+      const sign = g.signs?.[Math.min(lo, last)] ?? null;
+      if (sign === null) {
+        clearAttribute(el, "data-bkm-plf");
+      } else {
+        writeAttribute(el, "data-bkm-plf", String(sign));
+      }
+      clearAttribute(el, PRESS_ATTR);
+      // bklit `wasActive` (use-highlight-segment.ts:50-58): an enter jumps, a move after it springs.
+      if (el.hasAttribute(HOVER_ATTR) || el.hasAttribute(DRAG_ATTR)) {
+        raiseAttribute(el, SETTLE_ATTR);
+      }
+      // Host, not the tick group or the highlight marks: those are renderer-owned and `syncAttributes` (reconcile.ts) strips an
+      // inline `style` the next scene lacks, which every pointermove's retarget reconcile does between index changes.
+      writeVar(el, "--bkm-hx", px(time).toFixed(2));
+      if (g.pillTicks) {
+        writePillSameLabel(el, g.pillTicks, time, px);
+      }
+      if (g.hasBand !== false && !el.hasAttribute(DRAG_ATTR)) {
+        const left = px(g.times[Math.max(0, lo - 1)] ?? time);
+        const right = px(g.times[Math.min(last, lo + 1)] ?? time);
+        writeVar(el, "--bkm-hl0", left.toFixed(2));
+        writeVar(el, "--bkm-hl1", right.toFixed(2));
+        springBand(el, left, right, !el.hasAttribute(HOVER_ATTR));
+      }
+      if (!el.hasAttribute(HOVER_ATTR)) {
+        writePillRollIn(el, g.pillLayout, lo);
+        raiseAttribute(el, HOVER_ATTR);
+      }
+    },
+    [hostRef],
+  );
+  /** Drag selection -> host (bklit HighlightSegment: the selection band wins over the hover band, SeriesHoverDim runs on `selection.active`).
+   * `edges` are the selection's svg px edges, or null on release, which hands the band back to the focused point. */
+  const drag = useCallback(
+    (edges: readonly [number, number] | null): void => {
+      const el = hostRef.current;
+      if (!el) {
+        return;
+      }
+      if (edges === null) {
+        if (!el.hasAttribute(DRAG_ATTR)) {
+          return;
+        }
+        clearAttribute(el, DRAG_ATTR);
+        clearAttribute(el, "data-bkm-segon");
+        applied.current = null;
+        if (focus.current === null) {
+          clearAttribute(el, SETTLE_ATTR);
+        } else {
+          sync(focus.current);
+        }
+        return;
+      }
+      // bklit `wasActive` (use-highlight-segment.ts:50-58): a drag from a hovered chart springs to the selection, one from an
+      // idle chart (touch) jumps to it and springs from the next drag step.
+      const active = el.hasAttribute(HOVER_ATTR) || el.hasAttribute(DRAG_ATTR);
+      if (active) {
+        raiseAttribute(el, SETTLE_ATTR);
+      }
+      const lo = Math.min(edges[0], edges[1]);
+      const hi = Math.max(edges[0], edges[1]);
+      writeVar(el, "--bkm-hl0", lo.toFixed(2));
+      writeVar(el, "--bkm-hl1", hi.toFixed(2));
+      springBand(el, lo, hi, !active);
+      if (hi - lo > 5) {
+        raiseAttribute(el, "data-bkm-segon");
+      } else {
+        clearAttribute(el, "data-bkm-segon");
+      }
+      raiseAttribute(el, DRAG_ATTR);
+    },
+    [hostRef, sync],
+  );
+  /** bklit handleMouseDown clears the tooltip, crosshair and pill at once; they stay hidden until the next focus (`sync`). */
+  const press = useCallback(
+    (on: boolean): void => {
+      const el = hostRef.current;
+      if (on) {
+        if (el) { raiseAttribute(el, PRESS_ATTR); }
+      } else {
+        clearAttribute(el, PRESS_ATTR);
+      }
+    },
+    [hostRef],
+  );
+  return { geom, sync, drag, press };
+}
+
+/** Legend hover -> host: `data-bkm-legend` (series index) and `data-bkm-pl` (profit 0 / loss 1). Render inside the chart host;
+ * it is the only consumer of the legend contexts, so a legend hover never touches the definition. */
+export function LegendHostSync({ hostRef }: { readonly hostRef: RefObject<HTMLElement | null> }): null {
+  const legend = useChartLegendHover().hoveredIndex;
+  const profitLoss = useProfitLossLegendHover().hoveredIndex;
+  useEffect(() => {
+    const el = hostRef.current;
+    if (!el) {
+      return;
+    }
+    for (const [name, value] of [["data-bkm-legend", legend], ["data-bkm-pl", profitLoss]] as const) {
+      if (value === null) {
+        clearAttribute(el, name);
+      } else {
+        writeAttribute(el, name, String(value));
+      }
+    }
+  }, [hostRef, legend, profitLoss]);
+  return null;
+}

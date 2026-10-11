@@ -1,0 +1,8 @@
+# fumadocs-mdx generated source
+.source/
+
+# next.js
+.next/
+
+# TypeScript incremental build state
+*.tsbuildinfo

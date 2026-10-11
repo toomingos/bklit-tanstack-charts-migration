@@ -1,0 +1,54 @@
+import type { ReactElement } from "react";
+import { Pattern } from "./pattern";
+import { cx } from "./pattern-line-utils";
+import type { PatternLinecap } from "./pattern-lines-view";
+
+// Base path-tile pattern (visx port); hexagons and waves build on this.
+interface PatternPathProps {
+  readonly id: string;
+  readonly width: number;
+  readonly height: number;
+  readonly path?: string;
+  readonly fill?: string;
+  readonly pathClassName?: string;
+  readonly background?: string;
+  readonly stroke?: string;
+  readonly strokeWidth?: number | string;
+  readonly strokeDasharray?: string | number;
+  readonly strokeLinecap?: PatternLinecap;
+  readonly shapeRendering?: string | number;
+}
+
+const PathImpl = ({
+  id,
+  width,
+  height,
+  path,
+  fill = "transparent",
+  stroke,
+  strokeWidth,
+  strokeDasharray,
+  strokeLinecap = "square",
+  shapeRendering: edgeRendering = "auto",
+  background,
+  pathClassName,
+}: Readonly<PatternPathProps>): ReactElement => (
+  <Pattern id={id} width={width} height={height}>
+    {Boolean(background) && <rect width={width} height={height} fill={background} />}
+    <path
+      className={cx("visx-pattern-path", pathClassName)}
+      d={path}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      strokeDasharray={strokeDasharray}
+      strokeLinecap={strokeLinecap}
+      shapeRendering={edgeRendering}
+    />
+  </Pattern>
+);
+
+PathImpl.displayName = "PathImpl";
+
+;
+export { PathImpl };
