@@ -201,6 +201,17 @@ export {
   useChartStable,
   useYScale,
 } from "./kit/cartesian/chart-context";
+export {
+  computeYDomainsByAxis,
+  getPrimaryYScale,
+  isLoadingChromePhase,
+  isYDomainTweenPhase,
+  mergeYDomainRecords,
+  niceYDomain,
+  shouldTweenYDomain,
+} from "./kit/cartesian/y-domain-utils";
+export type { YDomain } from "./kit/cartesian/y-domain-utils";
+export { DEFAULT_Y_AXIS_ID } from "./kit/cartesian/series";
 export type {
   ChartContextValue,
   ChartHoverContextValue,
