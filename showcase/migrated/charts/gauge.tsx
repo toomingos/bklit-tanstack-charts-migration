@@ -9,12 +9,13 @@ import { defaultGaugeStatFormat, GaugeCenter, GaugeLabelLayout } from "./gauge/l
 import type { GaugeLabelAlign, GaugeLabelPlacement, GaugeStatFormat } from "./gauge/label";
 import { ARC_ASPECT, buildGaugeDefinition, gaugeMotion } from "./gauge/definition";
 import { clampStagger, DEFAULT_ACTIVE_FILL_OPACITY, DEFAULT_INACTIVE_FILL_OPACITY, DEFAULT_LINEAR_HEIGHT } from "./gauge/notches";
-import { HoldArm, useParentSizeWidth } from "./kit/size/parent-size-arm";
+import { useParentSizeWidth } from "./kit/size/parent-size-arm";
 import { joinClasses } from "./kit/cn";
 import { ResourceHost } from "./kit/resource-host";
 import { useSanitizedId } from "./kit/use-sanitized-id";
-import { EntranceAlign, useRenderStart } from "./kit/entrance/entrance-align";
-import { GAUGE_ENTER_CSS, GAUGE_ENTRANCE_ORIGINS } from "./gauge/enter-css";
+import { useRenderStart } from "./kit/entrance/entrance-align";
+import { buildEnterCss } from "./gauge/enter-css";
+import { EntranceLag } from "./gauge/entrance-lag";
 import { prefersReducedMotion } from "./kit/loading/reduced-motion";
 import { toNotchEnter } from "./gauge/transition";
 import type { GaugeEnterTransition } from "./gauge/transition";
@@ -69,12 +70,13 @@ const ARC_MAX_WIDTH = 560;
 const gaugeAriaLabel = (value: number): string => `Gauge: ${Math.round(value)}%`;
 
 /** The host's `--bkm-gn-*` entrance variables (gauge/enter-css.ts); absent when motion is reduced. */
-const useEnterVars = (animate: boolean, enterTransition: GaugeEnterTransition | undefined, staggerScale: number): CSSProperties | undefined => {
+const useEnterVars = (animate: boolean, enterTransition: GaugeEnterTransition | undefined, staggerScale: number): { readonly vars: CSSProperties | undefined; readonly durationMs: number } => {
   const enter = useMemo(() => toNotchEnter(enterTransition), [enterTransition]);
   const stagger = clampStagger(staggerScale);
-  return useMemo((): CSSProperties | undefined => animate
-    ? Object.fromEntries<string | number>([["--bkm-gn-dur", `${enter.durationMs}ms`], ["--bkm-gn-ease", enter.easing], ["--bkm-gn-s", stagger]])
-    : undefined, [animate, enter, stagger]);
+  return useMemo(() => ({
+    durationMs: enter.durationMs,
+    vars: animate ? Object.fromEntries<string | number>([["--bkm-gn-dur", `${enter.durationMs}ms`], ["--bkm-gn-ease", enter.easing], ["--bkm-gn-s", stagger]]) : undefined,
+  }), [animate, enter, stagger]);
 };
 
 // bklit paints each active notch with one `url(#gauge-theme-active)` gradient (objectBoundingBox, chart-1 -> chart-5) when `useGradient` has no `activeGradient`.
@@ -144,10 +146,7 @@ interface EntranceGateProps {
 }
 
 const EntranceGate = ({ active, hostRef, renderStart }: EntranceGateProps): ReactElement | null =>
-  active ? <EntranceAlign hostRef={hostRef} renderStart={renderStart} origins={GAUGE_ENTRANCE_ORIGINS} /> : null;
-
-const HoldGate = ({ active, hostRef }: Pick<EntranceGateProps, "active" | "hostRef">): ReactElement | null =>
-  active ? <HoldArm attribute="data-bkm-gn-hold" hostRef={hostRef} /> : null;
+  active ? <EntranceLag hostRef={hostRef} renderStart={renderStart} /> : null;
 
 interface GaugeDefsProps {
   readonly idPrefix: string;
@@ -174,7 +173,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
   const trackHeight = height ?? linearHeight;
 
   const animate = !prefersReducedMotion();
-  const enterVars = useEnterVars(animate, enterTransition, enterStaggerScale);
+  const { vars: enterVars, durationMs: enterDurationMs } = useEnterVars(animate, enterTransition, enterStaggerScale);
   const activePair = useGradientPair(activeGradient);
   const inactivePair = useGradientPair(inactiveGradient);
   const idPrefix = useSanitizedId();
@@ -195,21 +194,20 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
   const styles = useGaugeStyles({ enterVars, fixed, height, minWidth, trackHeight, width });
 
   const ready = hostWidth !== null;
-  const holdAttr = animate ? "" : undefined;
+  const enterAttr = animate ? "" : undefined;
   const gated = animate && ready;
-  const enterCss = animate ? <style>{GAUGE_ENTER_CSS}</style> : null;
+  const enterCss = animate ? <style>{buildEnterCss(enterDurationMs)}</style> : null;
 
   if (linear) {
     const track = (
-      <div data-bkm-gn-hold={holdAttr} ref={hostRef} style={styles.track}>
+      <div ref={hostRef} style={styles.track}>
         <EntranceGate active={gated} hostRef={hostRef} renderStart={renderStart} />
         {ready ? <RendererChart ariaLabel={gaugeAriaLabel(value)} definition={definition} height={trackHeight} initialWidth={hostWidth} renderer={gaugeMotion} width={width} /> : null}
-        <HoldGate active={gated} hostRef={hostRef} />
         <GaugeDefs enabled={needsThemeGradient} idPrefix={idPrefix} themeGradientId={themeGradientId} />
       </div>
     );
     return (
-      <div className={joinClasses("relative w-full min-w-0 max-w-full", className)} data-bkm-chart="" data-bkm-gn={holdAttr} style={enterVars}>
+      <div className={joinClasses("relative w-full min-w-0 max-w-full", className)} data-bkm-chart="" data-bkm-gn={enterAttr} style={enterVars}>
         {enterCss}
         <GaugeLabelLayout align={labelAlign} format={formatOptions} label={defaultLabel} placement={labelPlacement} prefix={prefix} suffix={suffix} value={centerValue}>{track}</GaugeLabelLayout>
       </div>
@@ -217,11 +215,10 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
   }
 
   return (
-    <div className={arcRootClass(fixed, className)} data-bkm-chart="" data-bkm-gn={holdAttr} style={styles.arcRoot}>
+    <div className={arcRootClass(fixed, className)} data-bkm-chart="" data-bkm-gn={enterAttr} style={styles.arcRoot}>
       {enterCss}
       <div
         className={arcHostClass(fixed)}
-        data-bkm-gn-hold={holdAttr}
         ref={hostRef}
         style={styles.arcHost}
       >
@@ -229,7 +226,6 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
         {ready ? (
           <RendererChart ariaLabel={gaugeAriaLabel(value)} aspectRatio={fixed ? undefined : ARC_ASPECT} definition={definition} height={fixed ? height : undefined} initialWidth={hostWidth} renderer={gaugeMotion} width={fixed ? width : undefined} />
         ) : null}
-        <HoldGate active={gated} hostRef={hostRef} />
         <GaugeDefs enabled={needsThemeGradient} idPrefix={idPrefix} themeGradientId={themeGradientId} />
         {centerValue !== undefined && ready ? <GaugeCenter format={formatOptions} label={defaultLabel} prefix={prefix} suffix={suffix} value={centerValue} /> : null}
       </div>

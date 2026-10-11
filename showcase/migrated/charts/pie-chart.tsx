@@ -22,10 +22,10 @@ import type { AnnulusTarget } from "./kit/polar/polar-hover";
 import { displayNameOf } from "./kit/read-children";
 import { toEaseFn, toMotionTransition } from "./kit/motion/enter-transition";
 import { buildPieCss, createPieHoverSprings, MAX_INDEX, pieHoverVars } from "./kit/polar/polar-dim";
-import { useKeyboardFocusHold } from "./kit/cartesian/keyboard-hold";
+import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { INITIAL_WIDTH_PX, useFluidWidth } from "./kit/size/use-fluid-width";
 import { useIsClient } from "./kit/size/use-is-client";
-import { useTapFocus } from "./kit/cartesian/touch-focus";
+import { useTapFocus } from "./kit/touch-focus";
 import "./styles.css";
 import "./polar.css";
 

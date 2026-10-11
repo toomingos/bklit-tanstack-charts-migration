@@ -21,12 +21,12 @@ import { funnelHoverCss, funnelHoverVars, MAX_STAGES } from "./funnel/hover-css"
 import { createFunnelPop } from "./funnel/pop-spring";
 import type { FunnelPop } from "./funnel/pop-spring";
 import type { FunnelDatum } from "./funnel/focus";
-import { useKeyboardFocusHold } from "./kit/cartesian/keyboard-hold";
+import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { intFmt } from "./kit/format";
 import { useFluidWidth } from "./kit/size/use-fluid-width";
 import { EntranceAlign, useRenderStart } from "./kit/entrance/entrance-align";
 import type { EntranceOrigin } from "./kit/entrance/entrance-origin";
-import { useTapFocus } from "./kit/cartesian/touch-focus";
+import { useTapFocus } from "./kit/touch-focus";
 import "./styles.css";
 import { useSanitizedId } from "./kit/use-sanitized-id";
 
