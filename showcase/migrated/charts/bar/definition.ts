@@ -348,7 +348,7 @@ export function buildBarDefinition(input: BarInput): BarDefinition {
   const round = !depthOn && barSeries.every((s) => s.bar?.lineCap !== "butt");
   const fillFor = (key: string): string => fillOf.get(key) ?? "var(--chart-line-primary)";
 
-  // UPSTREAM-GAPS 12 (addendum): a group joining on an update only fades, so the bars stay present at value 0 while loading.
+  // UPSTREAM-GAPS #12 (addendum): a group joining on an update only fades, so the bars stay present at value 0 while loading.
   // Loading keeps the bar marks collapsed to zero (grid, axes and scales stay) so the flip to ready is an update that grows them.
   const own = barSeries.length > 0 ? barSeriesMarks(input, { datums: loading ? datums.map((d) => ({ ...d, value: 0 })) : datums, categories, barSeries, fillFor, enter: barEnter(input), depthOn, round, groupGap, faded }) : { marks: [], hover: [] };
   const extra = horizontal || loading ? undefined : buildExtraMarks({ datums, series, table, categories, animationDuration: input.animationDuration, faded, uid: input.uid, seed: input.seed, clock: input.clock });

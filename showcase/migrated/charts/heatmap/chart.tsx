@@ -590,7 +590,7 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
   const sized = useParentSizeMounted(containerRef, measured);
   // bklit's svg first renders on the ParentSize commit (heatmap-chart.tsx:685); a mount effect then moves it to "revealing" (:566-585), where the cells' tween starts.
   const [cellsEntered, setCellsEntered] = useState(false);
-  // UPSTREAM-GAPS 12: first paint and group joins get no per-datum enter, so cells join on a second commit (loading -> ready re-seeds the same way).
+  // UPSTREAM-GAPS #12: first paint and group joins get no per-datum enter, so cells join on a second commit (loading -> ready re-seeds the same way).
   // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- the cells must enter on a second commit, after the cell-less seed has painted
   useEffect(() => { setCellsEntered(sized && status === "ready"); }, [sized, status]);
 
