@@ -15,7 +15,7 @@ import { parseChildren } from "./sunburst/carriers";
 import { defaultSunburstColors, opacityForRelativeDepth, sunburstCssVars, withAlpha } from "./sunburst/colors";
 import type { EnterTransition } from "./kit/motion/phase";
 import { SunburstHoverProvider, SunburstStableProvider } from "./sunburst/context";
-import { SUNBURST_CSS } from "./sunburst/css";
+import { sunburstCss } from "./sunburst/css";
 import { clearAttribute, raiseAttribute } from "./kit/host-write";
 import { buildDefinition } from "./sunburst/definition";
 import { createSectorFeed, createSectorLayer } from "./sunburst/sunburst-layer";
@@ -214,6 +214,7 @@ export const SunburstChart = ({
     },
     [arcById, holdFocus, setHoveredArcIndex],
   );
+  const css = useMemo(() => sunburstCss(model.arcs.length), [model.arcs.length]);
   const hostStyle = useMemo(() => ({ maxWidth: "100%", width: size, ...hostVars }), [size, hostVars]);
   const stageStyle = useMemo(() => ({ aspectRatio: "1 / 1", maxWidth: size }), [size]);
 
@@ -230,7 +231,7 @@ export const SunburstChart = ({
     <SunburstStableProvider value={stable}>
       <SunburstHoverProvider value={hoverStore}>
         <div ref={hostRef} className={className} data-bk-intro={settled ? undefined : ""} style={hostStyle}>
-          <style>{SUNBURST_CSS}</style>
+          <style>{css}</style>
           {definition === null || settled ? null : <EntranceAlign hostRef={hostRef} origins={SUNBURST_ENTRANCE_ORIGINS} renderStart={introAtRef} resolveOnFrame />}
           {parsed.breadcrumbs}
           <div ref={stageRef} className="mx-auto w-full" style={stageStyle}>

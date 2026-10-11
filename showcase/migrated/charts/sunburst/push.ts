@@ -1,9 +1,9 @@
 // Hover push: bklit's applyHoverGrow moves sectors and labels on the hovered path outward as a CSS transform on its 420ms curve; each sector publishes a `SectorPush` (bisector translate + centre scale).
-// Each element gets `--sb-t<i>` / `--sb-m<i>` (sectors), `--sb-pt<i>` / `--sb-pm<i>` (overlays) or `--sb-lt<i>` (labels); fixed rules per arc index up to PUSH_CAP read them.
+// Each element gets `--sb-t<i>` / `--sb-m<i>` (sectors), `--sb-pt<i>` / `--sb-pm<i>` (overlays) or `--sb-lt<i>` (labels); rules per arc index (up to PUSH_CAP) read them.
 import { hoverGrowForPathSegment, hubScale, ID_SEP, ringOptions } from "./arcs";
 import type { ArcDatum } from "./arcs";
 
-/** Arcs beyond this index are not pushed (rule text is fixed, one rule per index). */
+/** Arcs beyond this index are not pushed (rules are emitted per arc, up to this many). */
 export const PUSH_CAP = 128;
 // bklit growControls: duration 0.42, ease [0.22, 1, 0.36, 1]
 const PUSH_MS = 420;
@@ -270,14 +270,14 @@ export const PUSH_TRANSITION = `translate ${ease},transform ${ease}`;
 /** Labels are pushed by `translate` only: their `transform` is the rotation the zoom tween writes every frame, which a transition would drag behind the text. */
 export const LABEL_PUSH_TRANSITION = `translate ${ease}`;
 
-/** One fixed rule per arc index: sectors read `--sb-t/--sb-m`, path overlays `--sb-pt/--sb-pm`, labels `--sb-lt`; `data-bk-path` shows the
+/** One rule per arc index below `count`: sectors read `--sb-t/--sb-m`, path overlays `--sb-pt/--sb-pm`, labels `--sb-lt`; `data-bk-path` shows the
  * hovered arc's ancestors' overlays at once (bklit's path arcs are already opaque), even mid-zoom. */
-export const PUSH_CSS = Array.from(
-  { length: PUSH_CAP },
+export const pushCss = (count: number): string => Array.from(
+  { length: Math.min(count, PUSH_CAP) },
   (_, i) => `.bk-sb-a${i}{translate:var(--sb-t${i},0 0);transform:var(--sb-m${i},none)}.bk-sb-p${i}{translate:var(--sb-pt${i},0 0);transform:var(--sb-pm${i},none)}.bk-sb-l-${i}{translate:var(--sb-lt${i},0 0)}[data-bk-path~="${i}"] g.bk-sb-pops .bk-sb-p${i}{opacity:1;transition:${PUSH_TRANSITION}}`,
 ).join("");
 
-/** Fixed rules per arc index: the hovered arc's descendants stay opaque, the arcs on its path step aside (instantly) for the overlay. */
-export const sectorEmphasisCss = (sector: string): string =>
-  Array.from({ length: PUSH_CAP }, (_, i) => `[data-bk-pop="${i}"] ${sector}.bk-sb-u${i}{opacity:1}`).join("") +
-  Array.from({ length: PUSH_CAP }, (_, i) => `[data-bk-path~="${i}"] ${sector}.bk-sb-a${i}{opacity:0;transition:none}`).join("");
+/** Rules per arc index below `count`: the hovered arc's descendants stay opaque, the arcs on its path step aside (instantly) for the overlay. */
+export const sectorEmphasisCss = (sector: string, count: number): string =>
+  Array.from({ length: Math.min(count, PUSH_CAP) }, (_, i) => `[data-bk-pop="${i}"] ${sector}.bk-sb-u${i}{opacity:1}`).join("") +
+  Array.from({ length: Math.min(count, PUSH_CAP) }, (_, i) => `[data-bk-path~="${i}"] ${sector}.bk-sb-a${i}{opacity:0;transition:none}`).join("");
