@@ -5,10 +5,12 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, NamedExoticComponent, ReactElement, ReactNode, SVGProps } from "react";
 import { createPortal } from "react-dom";
+import { brushX } from "@tanstack/charts/interaction/brush";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { defineCarrier } from "./role";
 import { isNumber } from "./guards";
+import { registerBrushX } from "./cartesian/brush-factory";
 import { useChartStable } from "./cartesian/chart-context";
 import { renderPatternPreset } from "./pattern/pattern-preset-render";
 import type { PatternPresetOptions } from "./pattern/pattern-preset-helpers";
@@ -45,7 +47,10 @@ export interface ChartBrushProps extends ChartBrushTrackOverlayStyle {
   readonly selectedBoxStyle?: SVGProps<SVGRectElement>;
 }
 
-export const ChartBrush = defineCarrier<Readonly<ChartBrushProps>>("brush", "ChartBrush");
+// Importing ChartBrush is what loads d3-brush; the cartesian definition reads the factory from the registry.
+registerBrushX(brushX);
+
+export const ChartBrush =defineCarrier<Readonly<ChartBrushProps>>("brush", "ChartBrush");
 
 export interface ChartBrushTrackOverlayProps extends ChartBrushTrackOverlayStyle {
   innerWidth: number;
