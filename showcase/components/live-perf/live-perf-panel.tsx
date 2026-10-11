@@ -160,9 +160,9 @@ const vitalRows: Array<[string, (v: PageVitals) => number | null, string?, strin
 
 const VitalCell = memo(function VitalCell({ label, value, unit, hint }: { label: string; value: number | null; unit?: string; hint?: string }) {
   return (
-    <div className="flex justify-between border-b border-border/50 py-1" title={hint}>
-      <span>{label}</span>
-      <span>{fmt(value, unit)}</span>
+    <div className="flex justify-between gap-2 border-b border-border/50 py-1" title={hint}>
+      <span className="min-w-0 truncate">{label}</span>
+      <span className="whitespace-nowrap">{fmt(value, unit)}</span>
     </div>
   );
 });

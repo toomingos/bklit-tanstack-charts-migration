@@ -50,8 +50,8 @@ export function ShowcaseLayout({ children }: { children: ReactNode }) {
         </aside>
 
         {/* Main content */}
-        <main className="md:ml-64 flex-1">
-          <div className="mx-auto max-w-6xl p-8">{children}</div>
+        <main className="min-w-0 flex-1 md:ml-64">
+          <div className="mx-auto max-w-6xl px-4 py-8 sm:p-8">{children}</div>
         </main>
       </div>
     </div>
