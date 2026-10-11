@@ -18,7 +18,7 @@ import { buildEnterCss } from "./gauge/enter-css";
 import { EntranceLag } from "./gauge/entrance-lag";
 import { prefersReducedMotion } from "./kit/loading/reduced-motion";
 import { toNotchEnter } from "./gauge/transition";
-import type { GaugeEnterTransition } from "./gauge/transition";
+import type { GaugeEnterTransition, NotchEnter } from "./gauge/transition";
 import "./styles.css";
 import "./polar.css";
 
@@ -70,12 +70,12 @@ const ARC_MAX_WIDTH = 560;
 const gaugeAriaLabel = (value: number): string => `Gauge: ${Math.round(value)}%`;
 
 /** The host's `--bkm-gn-*` entrance variables (gauge/enter-css.ts); absent when motion is reduced. */
-const useEnterVars = (animate: boolean, enterTransition: GaugeEnterTransition | undefined, staggerScale: number): { readonly vars: CSSProperties | undefined; readonly durationMs: number } => {
+const useEnterVars = (animate: boolean, enterTransition: GaugeEnterTransition | undefined, staggerScale: number): { readonly vars: CSSProperties | undefined; readonly enter: NotchEnter } => {
   const enter = useMemo(() => toNotchEnter(enterTransition), [enterTransition]);
   const stagger = clampStagger(staggerScale);
   return useMemo(() => ({
-    durationMs: enter.durationMs,
-    vars: animate ? Object.fromEntries<string | number>([["--bkm-gn-dur", `${enter.durationMs}ms`], ["--bkm-gn-ease", enter.easing], ["--bkm-gn-s", stagger]]) : undefined,
+    enter,
+    vars: animate ? Object.fromEntries<string | number>([["--bkm-gn-dur", `${enter.durationMs}ms`], ["--bkm-gn-s", stagger]]) : undefined,
   }), [animate, enter, stagger]);
 };
 
@@ -173,7 +173,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
   const trackHeight = height ?? linearHeight;
 
   const animate = !prefersReducedMotion();
-  const { vars: enterVars, durationMs: enterDurationMs } = useEnterVars(animate, enterTransition, enterStaggerScale);
+  const { vars: enterVars, enter: notchEnter } = useEnterVars(animate, enterTransition, enterStaggerScale);
   const activePair = useGradientPair(activeGradient);
   const inactivePair = useGradientPair(inactiveGradient);
   const idPrefix = useSanitizedId();
@@ -196,7 +196,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
   const ready = hostWidth !== null;
   const enterAttr = animate ? "" : undefined;
   const gated = animate && ready;
-  const enterCss = animate ? <style>{buildEnterCss(enterDurationMs)}</style> : null;
+  const enterCss = animate ? <style>{buildEnterCss(notchEnter)}</style> : null;
 
   if (linear) {
     const track = (
