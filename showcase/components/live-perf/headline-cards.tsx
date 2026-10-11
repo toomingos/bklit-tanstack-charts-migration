@@ -1,5 +1,3 @@
-import type { DiffSummary, Summary } from "./headline-data";
-
 /** median, min, max across runs (or across 10-move slices, live) */
 export type Stat = readonly [median: number, min: number, max: number];
 
@@ -14,16 +12,14 @@ export const DEFAULT_TOL: Tolerance = { rel: 0.1, abs: 0.5 };
 
 export interface Headline {
   label: string;
-  /** one line under the value: what exactly is measured */
-  note?: string;
-  bklit: Stat | null;
-  migrated: Stat | null;
+  /** ms per side; null until measured */
+  bklit: number | null;
+  migrated: number | null;
+  /** migrated / bklit; defaults to the ratio of the two values (the overview passes the per-chart geometric mean) */
+  ratio?: number;
   digits?: number;
-  tol?: Tolerance;
   /** caption shown while either value is null */
   pending?: string;
-  /** explanatory row: never styled as a win or a loss */
-  explanatory?: boolean;
 }
 
 const fmtMs = (v: number, digits = 1) =>
@@ -37,7 +33,7 @@ function widen(s: Stat, tol: Tolerance): readonly [number, number] {
   return [s[0] - d, s[0] + d];
 }
 
-const signedMs = (v: number) => `${v < 0 ? "−" : "+"}${Math.abs(v).toFixed(1)} ms`;
+const signedMs = (v: number, digits = 1) => `${v < 0 ? "−" : "+"}${Math.abs(v).toFixed(digits)} ms`;
 
 /** Lower is better. "parity" when the two ranges overlap; a ratio only when they do not. */
 export function compare(b: Stat, m: Stat, tol: Tolerance = DEFAULT_TOL) {
@@ -77,72 +73,23 @@ export function CompareCell({ b, m, tol }: { b: Stat | null; m: Stat | null; tol
   );
 }
 
+/** Main figure: the migrated/bklit multiplier, faster or slower; below it the ms on each side and their difference. */
 function HeadlineCard({ h }: { h: Headline }) {
-  const ready = h.bklit !== null && h.migrated !== null;
-  const c = ready ? compare(h.bklit as Stat, h.migrated as Stat, h.tol) : null;
+  const { bklit: b, migrated: m } = h;
+  const ready = b !== null && m !== null;
+  const r = ready ? (h.ratio ?? (b > 0 && m > 0 ? m / b : null)) : null;
+  const faster = r !== null ? r < 1 : ready && m < b;
+  const x = r === null ? 0 : faster ? 1 / r : r;
+  const main = !ready ? "—" : r === null ? signedMs(m - b) : `${x.toFixed(2)}× ${faster ? "faster" : "slower"}`;
+  const cls = !ready || (r !== null && x < 1.05) ? "" : faster ? tone.better : tone.worse;
+  const d = h.digits ?? 1;
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="text-sm text-muted-foreground">{h.label}</div>
-      <div
-        className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums sm:text-4xl ${c && !h.explanatory ? tone[c.tone] : ""}`}
-      >
-        {c ? c.text : "—"}
-      </div>
+      <div className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums sm:text-4xl ${cls}`}>{main}</div>
       <p className="mt-2 text-sm text-muted-foreground tabular-nums">
-        {ready
-          ? `bklit ${fmtStat(h.bklit as Stat, h.digits)} · migrated ${fmtStat(h.migrated as Stat, h.digits)}`
-          : (h.pending ?? "")}
+        {ready ? `bklit ${b.toFixed(d)} ms → migrated ${m.toFixed(d)} ms (${signedMs(m - b, d)})` : (h.pending ?? "")}
       </p>
-      {h.note && <p className="mt-1 text-xs text-muted-foreground">{h.note}</p>}
-    </div>
-  );
-}
-
-/** Summary card: a ratio only when the per-run range of the geometric mean excludes 1 and the mean is 5% or more off 1. */
-export function SummaryCard({ label, note, s }: { label: string; note: string; s: Summary | null }) {
-  const outside = s !== null && (s.geoRange[1] < 1 || s.geoRange[0] > 1) && Math.abs(s.geo - 1) >= 0.05;
-  const lower = s !== null && s.geo < 1;
-  const x = s ? (lower ? 1 / s.geo : s.geo) : 1;
-  const text = !s ? "—" : outside ? `${x >= 10 ? Math.round(x) : x.toFixed(2)}× ${lower ? "less" : "more"}` : "parity";
-  const cls = !s || !outside ? "" : lower ? tone.better : tone.worse;
-  return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="text-sm text-muted-foreground">{label}</div>
-      <div className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums sm:text-4xl ${cls}`}>{text}</div>
-      {s && (
-        <>
-          <p className="mt-2 text-sm text-muted-foreground tabular-nums">
-            geometric mean of per-chart ratios {s.geo.toFixed(2)} (per run {s.geoRange[0].toFixed(2)}–{s.geoRange[1].toFixed(2)}), median {s.medianRatio.toFixed(2)}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-            {s.charts} charts: {s.lower} lower, {s.parity} parity, {s.higher} higher for migrated
-          </p>
-        </>
-      )}
-      <p className="mt-1 text-xs text-muted-foreground">{note}</p>
-    </div>
-  );
-}
-
-/** Absolute-ms summary (settle overhead is small and can be negative). Same rule as the ratio cards: a difference only when the per-run range of the mean excludes 0 and the mean is outside the tolerance. */
-export function DiffSummaryCard({ label, note, s, tol }: { label: string; note: string; s: DiffSummary | null; tol: number }) {
-  const outside = s !== null && (s.diffRange[1] < 0 || s.diffRange[0] > 0) && Math.abs(s.diff) >= tol;
-  const cls = !s || !outside ? "" : s.diff < 0 ? tone.better : tone.worse;
-  return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="text-sm text-muted-foreground">{label}</div>
-      <div className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums sm:text-4xl ${cls}`}>{!s ? "—" : outside ? signedMs(s.diff) : "parity"}</div>
-      {s && (
-        <>
-          <p className="mt-2 text-sm text-muted-foreground tabular-nums">
-            mean per chart {s.bklit.toFixed(1)} → {s.migrated.toFixed(1)} ms, difference {signedMs(s.diff)} (per run {signedMs(s.diffRange[0])} to {signedMs(s.diffRange[1])})
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-            {s.charts} charts: {s.lower} lower, {s.parity} parity, {s.higher} higher for migrated{s.negatives ? `; ${s.negatives} ended before the designed animation` : ""}
-          </p>
-        </>
-      )}
-      <p className="mt-1 text-xs text-muted-foreground">{note}</p>
     </div>
   );
 }

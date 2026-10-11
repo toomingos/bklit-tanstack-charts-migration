@@ -81,20 +81,14 @@ export function chartPair(route: string, metric: Metric): { b: Stat; m: Stat } |
 }
 
 export interface Summary {
-  /** charts counted (same set for every metric) */
-  charts: number;
-  /** geometric mean over charts of per-chart median(migrated) / median(bklit); below 1 is lower for migrated */
+  /** geometric mean over charts of per-chart median(migrated) / median(bklit); below 1 is faster for migrated */
   geo: number;
-  /** the same geometric mean per run (min, max): the spread of the summary itself */
-  geoRange: readonly [number, number];
-  /** median over charts of the per-chart ratio */
-  medianRatio: number;
-  /** charts where the two ranges across runs do not overlap, split by direction */
-  lower: number;
-  higher: number;
-  parity: number;
+  /** mean over charts of the per-chart median, ms */
+  bklitMs: number;
+  migratedMs: number;
 }
 
+const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
 const geomean = (v: number[]) => Math.exp(v.reduce((a, x) => a + Math.log(x), 0) / v.length);
 
 /** Summary over `routes` for one metric. Ratios are migrated / bklit, per chart, never sums. */
@@ -105,69 +99,11 @@ export function summarise(routes: string[], metric: Metric, floor = 0): Summary 
   });
   if (!rows.length) return null;
   const f = (x: number) => Math.max(x, floor);
-  const ratios = rows.map((x) => f(median(x[1])) / f(median(x[0])));
-  const nRuns = Math.min(...rows.map((x) => Math.min(x[0].length, x[1].length)));
-  const perRun = Array.from({ length: nRuns }, (_, i) => geomean(rows.map((x) => f(x[1][i]) / f(x[0][i]))));
-  let lower = 0;
-  let higher = 0;
-  for (const x of rows) {
-    const [bl, bh, ml, mh] = [Math.min(...x[0]), Math.max(...x[0]), Math.min(...x[1]), Math.max(...x[1])];
-    if (mh < bl) lower++;
-    else if (ml > bh) higher++;
-  }
   return {
-    charts: rows.length,
-    geo: geomean(ratios),
-    geoRange: [Math.min(...perRun), Math.max(...perRun)],
-    medianRatio: median(ratios),
-    lower,
-    higher,
-    parity: rows.length - lower - higher,
+    geo: geomean(rows.map((x) => f(median(x[1])) / f(median(x[0])))),
+    bklitMs: mean(rows.map((x) => median(x[0]))),
+    migratedMs: mean(rows.map((x) => median(x[1]))),
   };
 }
 
-export interface DiffSummary {
-  charts: number;
-  /** mean over charts of the per-chart median, ms */
-  bklit: number;
-  migrated: number;
-  /** mean per-chart difference (migrated - bklit), ms, and the same mean within each run (min, max) */
-  diff: number;
-  diffRange: readonly [number, number];
-  /** charts whose ranges (widened by the tolerance) do not overlap, by direction */
-  lower: number;
-  higher: number;
-  parity: number;
-  /** charts with a negative median on either side */
-  negatives: number;
-}
 
-const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
-
-/** Summary in absolute ms for a metric whose values are small or negative (no ratios, nothing clamped). */
-export function summariseDiff(routes: string[], metric: Metric, tol: number): DiffSummary | null {
-  const rows = routes.flatMap((r) => {
-    const x = runsOf(r, metric);
-    return x && x[0].length ? [x] : [];
-  });
-  if (!rows.length) return null;
-  const nRuns = Math.min(...rows.map((x) => Math.min(x[0].length, x[1].length)));
-  const perRun = Array.from({ length: nRuns }, (_, i) => mean(rows.map((x) => x[1][i] - x[0][i])));
-  let lower = 0;
-  let higher = 0;
-  for (const x of rows) {
-    if (Math.max(...x[1]) + tol < Math.min(...x[0])) lower++;
-    else if (Math.min(...x[1]) - tol > Math.max(...x[0])) higher++;
-  }
-  return {
-    charts: rows.length,
-    bklit: mean(rows.map((x) => median(x[0]))),
-    migrated: mean(rows.map((x) => median(x[1]))),
-    diff: mean(rows.map((x) => median(x[1]) - median(x[0]))),
-    diffRange: [Math.min(...perRun), Math.max(...perRun)],
-    lower,
-    higher,
-    parity: rows.length - lower - higher,
-    negatives: rows.filter((x) => median(x[0]) < 0 || median(x[1]) < 0).length,
-  };
-}

@@ -2,8 +2,8 @@ import Link from "next/link";
 import { allCharts } from "@/lib/chart-data";
 import { BundleTable } from "@/components/live-perf/bundle-table";
 import { bundleCssKb, bundleSizes, bundleTotal } from "@/components/live-perf/bundle-data";
-import { CompareCell, compare, DiffSummaryCard, SummaryCard, type Tolerance } from "@/components/live-perf/headline-cards";
-import { BKLIT_SHA, type Metric, chartPair, summarise, summariseDiff, sweepMeta } from "@/components/live-perf/headline-data";
+import { CompareCell, compare, type Headline, HeadlineCards, type Tolerance } from "@/components/live-perf/headline-cards";
+import { BKLIT_SHA, type Metric, chartPair, summarise, sweepMeta } from "@/components/live-perf/headline-data";
 
 const LAT_TOL: Tolerance = { rel: 0.1, abs: 3 };
 /** Settle overhead is tens of ms, so parity is an absolute band, not a ratio. */
@@ -17,6 +17,18 @@ const cols: { metric: Metric; head: string; tol?: Tolerance }[] = [
 ];
 
 const routes = allCharts.map((c) => c.route);
+
+/** Card figure: geometric mean of per-chart ratios; settle overhead can be near 0 or negative, so its ratio is of the means. */
+function card(label: string, metric: Metric, digits = 1, floor = 0, geo = true): Headline {
+  const s = summarise(routes, metric, floor);
+  return { label, bklit: s?.bklitMs ?? null, migrated: s?.migratedMs ?? null, ratio: geo ? s?.geo : undefined, digits };
+}
+const headlines = [
+  card("First paint", "firstPaint"),
+  card("Settle overhead", "settleOverhead", 1, 0, false),
+  card("Main-thread busy per pointer move", "busy", 2, 0.05),
+  card("Move to paint, p95", "latency"),
+];
 const th = "whitespace-nowrap px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground";
 
 /** Charts where the migrated range sits outside bklit's on a metric, in the direction that is worse for migrated. */
@@ -56,17 +68,7 @@ export default function OverviewPage() {
 
       <section className="mb-6">
         <h2 className="mb-3 text-lg font-semibold tracking-tight">What users feel (production, whole main thread)</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <SummaryCard label="First paint" note="mount to first presented frame with chart content" s={summarise(routes, "firstPaint")} />
-          <DiffSummaryCard
-            label="Settle overhead"
-            note="settled - first paint - designed entrance (from bklit's source, same for both): time beyond the designed animation"
-            s={summariseDiff(routes, "settleOverhead", SETTLE_TOL.abs)}
-            tol={SETTLE_TOL.abs}
-          />
-          <SummaryCard label="Main-thread busy per pointer move" note="all task gaps over 1 ms while hovered: script, style, layout, paint" s={summarise(routes, "busy", 0.05)} />
-          <SummaryCard label="Move to paint, p95" note="pointermove timestamp to the next presented frame" s={summarise(routes, "latency")} />
-        </div>
+        <HeadlineCards items={headlines} />
       </section>
 
       <section className="mb-10">

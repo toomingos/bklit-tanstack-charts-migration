@@ -282,10 +282,10 @@ export function LiveHeadlines({ chart }: { chart: string }) {
   const [bb, bm] = one((s) => stat(s.busyPerMove, s.busyLo, s.busyHi), hovered);
   const [lb, lm] = one((s) => stat(s.moveLatP95, s.moveLatP50, s.moveLatP95), hovered);
   const items: Headline[] = [
-    { label: "First paint", note: "mount to first presented frame with chart content", bklit: fb, migrated: fm, pending: "Waiting for both charts" },
-    { label: "Settle overhead", note: "settled − first paint − designed entrance; spread over runs", bklit: sb, migrated: sm, tol: { rel: 0, abs: 10, diff: true }, pending: "Waiting for both charts" },
-    { label: "Whole main thread busy per move", note: "mean per move; spread is min–max of 10-move slices", bklit: bb, migrated: bm, digits: 2, tol: { rel: 0.1, abs: 0.3 }, pending: `Hover both charts (${MIN_MOVES} moves each)` },
-    { label: "Move to paint, p95", note: "spread is p50–p95; frame-quantised, under 3 ms is parity", bklit: lb, migrated: lm, tol: LAT_TOL, pending: `Hover both charts (${MIN_MOVES} moves each)` },
+    { label: "First paint", bklit: fb?.[0] ?? null, migrated: fm?.[0] ?? null, pending: "Waiting for both charts" },
+    { label: "Settle overhead", bklit: sb?.[0] ?? null, migrated: sm?.[0] ?? null, pending: "Waiting for both charts" },
+    { label: "Whole main thread busy per move", bklit: bb?.[0] ?? null, migrated: bm?.[0] ?? null, digits: 2, pending: `Hover both charts (${MIN_MOVES} moves each)` },
+    { label: "Move to paint, p95", bklit: lb?.[0] ?? null, migrated: lm?.[0] ?? null, pending: `Hover both charts (${MIN_MOVES} moves each)` },
   ];
   return <HeadlineCards items={items} />;
 }
