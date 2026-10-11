@@ -91,7 +91,8 @@ const reserve: Record<string, string> = {
   pie: "280px",
   projection: ASPECT_2_1,
   radar: "400px",
-  composition: ASPECT_2_1,
+  // Two 2/1 charts and a 24px gap.
+  composition: "calc(100% + 24px)",
   "reference-area": ASPECT_2_1,
   ring: "320px",
   sankey: "56.25%",

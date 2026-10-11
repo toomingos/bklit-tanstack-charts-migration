@@ -213,6 +213,7 @@ interface BarTooltipProps extends TooltipBoxMotionProps {
   readonly dotStrokeWidth?: number;
   readonly dotColor?: unknown;
   readonly showCrosshair?: boolean;
+  readonly showDots?: boolean;
 }
 
 function ringOf(tip: BarTooltipProps | undefined, seriesCount: number, squareGroupGap: number | undefined): RingDots | undefined {
@@ -238,7 +239,7 @@ function tooltipGuideMarks(input: BarInput, datums: readonly BarDatum[], categor
   return [
     pillMark({ id: "bar-guide", layout: pillLayout(categories), indexOf: (value: unknown) => categories.indexOf(String(value)), offset: input.margin.bottom - 19.8, motion: GUIDE_MOTION, textDy: 0, centre: (scales: Scales) => bandCentre(scales) }),
     ...(showRule ? [crosshairRuleMark({ id: "bar-rule", paint, width: 1, motion: GUIDE_MOTION, centre: (scales: Scales) => bandCentre(scales) })] : []),
-    barDotsGuide({ id: "bar-dots", datums, series, groupGap, stacked, stackGap, squares, ring: ringOf(tip, series.length, [...squares.values()].at(0)?.groupGap), motion: GUIDE_MOTION }),
+    ...(tip?.showDots !== false ? [barDotsGuide({ id: "bar-dots", datums, series, groupGap, stacked, stackGap, squares, ring: ringOf(tip, series.length, [...squares.values()].at(0)?.groupGap), motion: GUIDE_MOTION })] : []),
   ];
 }
 

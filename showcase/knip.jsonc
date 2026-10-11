@@ -7,7 +7,7 @@
       // Imported only by bklit's sources (repos/bklit-ui via @showcase/bklit-charts, which knip does not follow);
       // they resolve from this package's node_modules, so they stay declared here.
       "ignoreDependencies": [
-        "@base-ui/react", "@number-flow/react", "@visx/*", "d3-array", "d3-geo", "d3-scale", "d3-shape", "motion", "react-use-measure", "@types/d3-array"
+        "@base-ui/react", "@number-flow/react", "@visx/*", "d3-array", "d3-geo", "d3-scale", "d3-shape", "react-use-measure", "@types/d3-array"
       ]
     },
     "migrated": {

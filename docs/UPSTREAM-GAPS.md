@@ -11,7 +11,7 @@ checked in source is marked **[LOG only]** (measured, not traced in source). All
 Index: 49 group clip is rect only, 1 states per-move cost, 2 retarget focus guides, 3 tooltip body state, 4 longest state
 transition wins, 5 no gradient motion, 6 gradient limits, 7 text motion, 8 tooltip delays,
 9 spring rest defaults, 10 no SVG filters/patterns/masks, 11 sunburst stagger, 12 enter only
-for late-joining elements, 13 no reveal/wipe entrance, 14 no number-tween text, 17 rolling presentation points static, 18 focus label opacity deferred under data motion, 19 repeated hide() restarts exit, 35 sunburst arc tweens need private geometry, 51 radialArc carries no arc geometry (ring, pie), 50 no documented mid-tween hook (`data-ts-motion-role`), 52 no HTML or foreignObject scene node (marker icons).
+for late-joining elements, 13 no reveal/wipe entrance, 14 no number-tween text, 17 rolling presentation points static, 18 focus label opacity deferred under data motion, 19 repeated hide() restarts exit, 35 sunburst arc tweens need private geometry, 51 radialArc carries no arc geometry (ring, pie), 50 no documented mid-tween hook (`data-ts-motion-role`), 52 no HTML or foreignObject scene node (marker icons), 55 no slot for user SVG or React children.
 
 
 Posted upstream on 2026-10-09 (TanStack/charts issues):
