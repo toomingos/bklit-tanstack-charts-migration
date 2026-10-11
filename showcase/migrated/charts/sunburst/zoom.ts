@@ -3,7 +3,7 @@ import { erase } from "../kit/cartesian/erased-types";
 import { writeAttribute } from "../kit/host-write";
 import type { RefObject } from "react";
 import type { ChartPoint, ChartScene } from "@tanstack/charts";
-import type { useKeyboardFocusHold } from "../kit/cartesian/keyboard-hold";
+import type { useKeyboardFocusHold } from "../kit/keyboard-hold";
 import type { ArcDatum, Focus, SunburstModel } from "./arcs";
 import { isHub } from "./hub";
 import type { SunburstDatum } from "./hub";

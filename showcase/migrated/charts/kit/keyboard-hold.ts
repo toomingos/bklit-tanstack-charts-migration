@@ -1,5 +1,5 @@
-import { erase } from "./erased-types";
-import type { AnyInteraction as Interaction, AnyPoint as Point } from "./erased-types";
+import { erase } from "./erase";
+import type { AnyInteraction as Interaction, AnyPoint as Point } from "./cartesian/erased-types";
 import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 

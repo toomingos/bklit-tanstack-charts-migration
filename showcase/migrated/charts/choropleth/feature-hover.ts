@@ -3,8 +3,8 @@ import { erase } from "../kit/cartesian/erased-types";
 import { writePresence } from "../kit/host-write";
 import type { RefObject } from "react";
 import type { ChartPoint } from "@tanstack/charts";
-import { useKeyboardFocusHold } from "../kit/cartesian/keyboard-hold";
-import { useMousePressFreeze, useTapFocus } from "../kit/cartesian/touch-focus";
+import { useKeyboardFocusHold } from "../kit/keyboard-hold";
+import { useMousePressFreeze, useTapFocus } from "../kit/touch-focus";
 import { createHoverStore } from "./context";
 import type { GeoGeometry, ProjectionHolder } from "./focus";
 import { FEATURES_ID } from "./projection";
@@ -53,7 +53,7 @@ export const useFeatureHover = (options: {
   const getInteraction = useCallback(() => erase(renderRef.current?.interaction), []);
   useMousePressFreeze(hostRef, getInteraction, zoomEnabled);
   useTapFocus(hostRef, getInteraction, { mode: "tap" });
-  // Keyboard-held focus survives a pointer pass (kit/cartesian/keyboard-hold.ts).
+  // Keyboard-held focus survives a pointer pass (kit/keyboard-hold.ts).
   const holdFocus = useKeyboardFocusHold(hostRef, getInteraction);
   const handleFocusChange = useCallback((point: ChartPoint<ChoroplethFeature> | null): void => {
     holdFocus(erase(point));
