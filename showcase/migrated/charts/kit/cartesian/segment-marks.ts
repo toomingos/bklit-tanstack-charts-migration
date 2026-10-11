@@ -6,7 +6,7 @@ import type { ChildTable } from "../read-children";
 import { pushDecorative } from "./build-state";
 import type { BuildState } from "./build-state";
 import { crosshairGradient } from "./date-pill";
-import { erase } from "./erased-types";
+import { erase } from "../erased-types";
 
 interface SegmentLineProps {
   stroke?: string;

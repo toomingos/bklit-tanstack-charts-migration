@@ -17,7 +17,7 @@ import type { TooltipBoxMotionProps } from "../kit/tooltip/box-motion";
 import { scaleLinear, scaleTime, scaleUtc } from "d3-scale";
 import { propsFor } from "../kit/read-children";
 import type { ChildTable } from "../kit/read-children";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { overlaysFor } from "../kit/cartesian/features";
 import { shortDateFmt } from "../kit/format";
 import { toDate } from "../kit/cartesian/series";

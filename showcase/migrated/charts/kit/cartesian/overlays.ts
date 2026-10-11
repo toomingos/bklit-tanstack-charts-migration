@@ -11,8 +11,8 @@ import { userGradients } from "../gradients";
 import type { ChildTable } from "../read-children";
 import { axisId, toDate } from "./series";
 import type { Row } from "./series";
-import { erase } from "./erased-types";
-import type { AnyMark } from "./erased-types";
+import { erase } from "../erased-types";
+import type { AnyMark } from "../erased-types";
 import type { ChartMarkersProps, MarkerGroupProps } from "../types";
 
 // bklit buildHorizontalTangentBezierPath (tension 0.45): horizontal tangents with control points 0.45·dx in from each end.

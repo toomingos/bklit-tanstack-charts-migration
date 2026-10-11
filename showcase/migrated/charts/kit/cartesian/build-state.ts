@@ -1,6 +1,6 @@
 import type { ChartGradient } from "@tanstack/charts";
 import { decorative } from "@tanstack/charts/mark/decorative";
-import type { AnyMark } from "./erased-types";
+import type { AnyMark } from "../erased-types";
 import type { HoverDimRule, HoverHighlight, ProfitLossRule } from "./hover-css";
 import { DEFAULT_Y_AXIS_ID, axisId } from "./series";
 import type { ResolvedSeries } from "./series";

@@ -1,7 +1,7 @@
 // Bklit HeatmapChart on TanStack Charts: `cell`/`rect` marks on band scales, chart-level `color` scale, host-attribute hover/focus dimming (gap #31), `tooltip`, per-datum `motion` delay.
 // Grid arrows: host capture keydown + `interaction.setControlledFocus` (gap #34). Custom: Less/More legend, config carriers, pattern <defs> host (ResourceHost), loading label.
 import "../heatmap.css";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { clearAttribute, writeAttribute } from "../kit/host-write";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, NamedExoticComponent, ReactElement, ReactNode, RefObject } from "react";

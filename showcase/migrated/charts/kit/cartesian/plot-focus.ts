@@ -1,7 +1,7 @@
 // Focus of the cartesian definition: group-x inside the inner plot only, bklit's tie-break and a keyboard-continuing primary.
 import type { ChartFocusResolveContext, ChartFocusStrategy, ChartPoint } from "@tanstack/charts";
 import { focusGroupX } from "@tanstack/charts/focus";
-import { erase } from "./erased-types";
+import { erase } from "../erased-types";
 import type { CartesianInput } from "./input";
 
 /** Native keyboard navigation (`focusGroupX.navigation`) walks one point per x, the first in (x, y) order; the pointer's primary is the series nearest its y, so an arrow after a hover

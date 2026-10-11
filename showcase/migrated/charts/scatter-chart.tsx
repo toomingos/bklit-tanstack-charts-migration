@@ -1,6 +1,6 @@
 // bklit ScatterChart on native TanStack Charts: <Scatter> children are config
 // carriers compiled into one definition (see scatter/definition.ts).
-import { erase } from "./kit/cartesian/erased-types";
+import { erase } from "./kit/erased-types";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useRevealClock } from "./kit/size/parent-size-arm";

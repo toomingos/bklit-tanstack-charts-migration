@@ -7,4 +7,4 @@ export type AnyInteraction = ChartInteractionController<any, any, any>;
 export type AnyPoint = ChartPoint<any, any, any>;
 /* oxlint-enable typescript/no-explicit-any */
 
-export { erase } from "../erase";
+export { erase } from "./erase";

@@ -2,7 +2,7 @@
 // The scene keeps the native sectors for hit testing; the sector layer (sunburst-layer.ts) paints them from the geometry this adapter publishes.
 import { fitSectorPush } from "./push";
 import type { SectorExtent, SectorPush } from "./push";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { joinClasses } from "../kit/cn";
 import { TAU } from "../kit/polar/tau";
 import { sunburst } from "@tanstack/charts/hierarchy/sunburst";

@@ -1,6 +1,6 @@
 // Bklit BarChart on native TanStack Charts: compound children are read into one
 // `defineChart` definition (bar); the `motion()` renderer plays the entrance.
-import { erase } from "./kit/cartesian/erased-types";
+import { erase } from "./kit/erased-types";
 import "./styles.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";

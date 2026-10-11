@@ -1,7 +1,7 @@
 import { defineChart } from "@tanstack/charts/scene";
 import { geoShape } from "@tanstack/charts/geo";
 import type { ChartBounds, DomChartDefinition } from "@tanstack/charts";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import type { FeatureCollection, Geometry } from "geojson";
 import type { GeoProjection } from "d3-geo";
 import { bklitTooltip } from "../kit/tooltip/bklit-tooltip";
