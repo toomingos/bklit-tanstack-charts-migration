@@ -1,6 +1,6 @@
 // Reads config-carrier children into a role -> props[] table (fragments flattened).
 // Anything without a chart role (e.g. legacy children owned by other charts) is ignored.
-import { Children, createElement, Fragment, isValidElement } from "react";
+import { Children, Fragment, isValidElement } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { isFunction, isRecord, isString } from "./guards";
 import { CHART_ROLE } from "./role";
@@ -18,38 +18,53 @@ const roleOfType = (type: unknown): string | undefined => {
   return isString(role) ? role : undefined;
 };
 
-// Declaration position of each carrier's props (bklit paints children in JSX order).
+// Declaration position of each carrier's props: its element's top-level position (bklit paints children in JSX order).
 const declarationIndex = new WeakMap<WeakKey, number>();
 
-export const readChildren = (children: ReactNode): ChildTable => {
-  const table = new Map<string, Record<string, unknown>[]>();
-  let index = 0;
-  const visit = (node: ReactNode): void => {
+/** Calls `visit` for each element child in JSX order (fragments flattened) with its top-level position, counted over every element. */
+const forEachTopLevel = (children: ReactNode, visit: (child: ReactElement<CarrierProps>, position: number) => void): void => {
+  let position = 0;
+  const walk = (node: ReactNode): void => {
     Children.forEach(node, (child) => {
       if (!isValidElement<CarrierProps>(child)) {
         return;
       }
       if (child.type === Fragment) {
-        visit(child.props.children);
+        walk(child.props.children);
         return;
       }
-      const role = roleOfType(child.type);
-      if (role === undefined) {
-        return;
-      }
-      declarationIndex.set(child.props, index);
-      index += 1;
-      const list = table.get(role);
-      if (list === undefined) {
-        table.set(role, [child.props]);
-      } else {
-        list.push(child.props);
-      }
+      visit(child, position);
+      position += 1;
     });
   };
-  visit(children);
+  walk(children);
+};
+
+export const readChildren = (children: ReactNode): ChildTable => {
+  const table = new Map<string, Record<string, unknown>[]>();
+  forEachTopLevel(children, (child, position) => {
+    const role = roleOfType(child.type);
+    if (role === undefined) {
+      return;
+    }
+    declarationIndex.set(child.props, position);
+    const list = table.get(role);
+    if (list === undefined) {
+      table.set(role, [child.props]);
+    } else {
+      list.push(child.props);
+    }
+  });
   return table;
 };
+
+/** Registered carriers (rendered inside user components) merged into the static table at their declaration position. */
+export const declareAt = <T extends WeakKey>(props: T, position: number): T => {
+  declarationIndex.set(props, position);
+  return props;
+};
+
+export const declarationOf = (props: WeakKey): number => declarationIndex.get(props) ?? Number.POSITIVE_INFINITY;
 
 /** A derived copy of a carrier's props keeps its declaration position. */
 export const keepDeclarationIndex = <T extends WeakKey>(from: WeakKey, to: T): T => {
@@ -71,25 +86,14 @@ export const propsFor = <Props>(table: ChildTable, role: string): readonly Props
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see SAFETY above
   (table.get(role) ?? []) as readonly Props[];
 
-/** Children that are not config carriers (no chart role), such as a `useChart()` bridge: not compiled into the definition,
- * rendered inside the chart's context provider. */
-export const passthroughChildren = (children: ReactNode): ReactNode[] => {
-  const out: ReactNode[] = [];
-  const visit = (node: ReactNode): void => {
-    Children.forEach(node, (child) => {
-      if (!isValidElement<{ children?: ReactNode }>(child)) {
-        return;
-      }
-      if (child.type === Fragment) {
-        visit(child.props.children);
-        return;
-      }
-      if (!isString(child.type) && roleOfType(child.type) === undefined) {
-        out.push(createElement(Fragment, { key: out.length }, child));
-      }
-    });
-  };
-  visit(children);
+/** Children that are not config carriers (user components, custom SVG, a `useChart()` bridge) with their top-level position: rendered in the chart's SVG slot. */
+export const customChildren = (children: ReactNode): { readonly position: number; readonly node: ReactElement }[] => {
+  const out: { readonly position: number; readonly node: ReactElement }[] = [];
+  forEachTopLevel(children, (child, position) => {
+    if (roleOfType(child.type) === undefined) {
+      out.push({ position, node: child });
+    }
+  });
   return out;
 };
 

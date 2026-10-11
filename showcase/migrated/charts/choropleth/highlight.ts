@@ -3,6 +3,7 @@
 import { erase } from "../kit/cartesian/erased-types";
 import { createMark } from "@tanstack/charts";
 import type { AnyMark } from "../kit/cartesian/erased-types";
+import { CROSSHAIR_CLASS } from "../kit/renderer-dom";
 
 interface GeoNode {
   readonly kind: string;
@@ -56,8 +57,7 @@ export function featureHighlightMark(options: { readonly id: string; readonly ma
     return {
       kind: "group",
       key: id,
-      // gap #36: our own guide group borrows core's fixed crosshair class; guide nodes have no documented className.
-      className: "ts-chart__crosshair bkm-choro-highlight",
+      className: `${CROSSHAIR_CLASS} bkm-choro-highlight`,
       ariaHidden: true,
       children: [{ ...node, key: `${id}:feature`, style: { ...node.style, opacity: 1 } }],
     };

@@ -1,10 +1,11 @@
-// Gaps #16 (states carry no transform key, so the pop cannot be a state; posted #194) and #36 (rings found by `data-ts-key`): bklit HRing's velocity-keeping spring (funnel-chart.tsx:171-202)
+// Gaps #16 (states carry no transform key, so the pop cannot be a state; posted #194) and #36 (renderer selectors, kit/renderer-dom.ts): bklit HRing's velocity-keeping spring (funnel-chart.tsx:171-202)
 // on the shared WAAPI driver (kit/motion/spring-animate.ts); the resting transform stays static CSS (hover-css.ts), the animation only draws the travel.
 import { AREA_PATH } from "./hover-css";
 import { readHoverIndex } from "../kit/host-write";
 import { springDriver as driver } from "../kit/motion/spring-animate";
 import type { Spring } from "../kit/motion/springs";
 import { range } from "../kit/range";
+import { keyEnds, keyStarts } from "../kit/renderer-dom";
 
 const MAX_LAYERS = 8;
 const MAX_STAGES = 24;
@@ -14,8 +15,7 @@ const LABEL_SPRING: Spring = { damping: 24, mass: 1, stiffness: 300 };
 const LABEL_FILLS: readonly (readonly [string, string])[] = [
   ["value", "var(--foreground)"], ["pill", "var(--foreground)"], ["name", "var(--muted-foreground)"],
 ];
-const labelKey = (prefix: string): string => `:is(text,rect)[data-ts-key^="funnel-${prefix}"]`;
-// gap #36: areaY/areaX have no className hook, so the ring paths are reached through core's fixed `g.ts-chart__area` class.
+const labelKey = (prefix: string): string => `:is(text,rect)${keyStarts(`funnel-${prefix}`)}`;
 
 /** bklit HRing: stiffness 300 - 60i, damping 24 - 3i (clamped so the outer rings of a deep funnel stay a valid spring). */
 const ringSpring = (layer: number): Spring => ({ damping: Math.max(6, 24 - layer * 3), mass: 1, stiffness: Math.max(60, 300 - layer * 60) });
@@ -36,11 +36,10 @@ interface FunnelPop {
 }
 
 
-// gap #36: the rings and labels are found by their data-ts-key (no className hook on cartesian marks); one selector per layer, so no key text is read back.
 const ringsOf = (host: HTMLElement, stage: number, layers: number): { readonly el: SVGElement; readonly layer: number }[] => {
   const rings: { el: SVGElement; layer: number }[] = [];
   for (let layer = 0; layer < Math.min(layers, MAX_LAYERS); layer += 1) {
-    for (const el of host.querySelectorAll<SVGElement>(`${AREA_PATH}[data-ts-key^="funnel-s${stage}-l${layer}:"]`)) { rings.push({ el, layer }); }
+    for (const el of host.querySelectorAll<SVGElement>(`${AREA_PATH}${keyStarts(`funnel-s${stage}-l${layer}:`)}`)) { rings.push({ el, layer }); }
   }
   return rings;
 };
@@ -60,10 +59,9 @@ const createFunnelPop = (host: HTMLElement, options: Readonly<FunnelPopOptions>)
     driver.play({ el, frame: (value) => ({ transform: scaleOf(value) }), from, rest, spring: ringSpring(layer), target });
   };
 
-  // gap #36: label nodes are found by data-ts-key suffix (the stage index); no className hook.
   const playLabels = (stage: number, previous: number | null, next: number | null): void => {
     for (const [prefix, colour] of LABEL_FILLS) {
-      for (const el of host.querySelectorAll<SVGElement>(`${labelKey(prefix)}[data-ts-key$=":${stage}"]`)) {
+      for (const el of host.querySelectorAll<SVGElement>(`${labelKey(prefix)}${keyEnds(`:${stage}`)}`)) {
         driver.play({ el, frame: (value) => ({ fill: dimmedFill(colour, value) }), rest: dimOf(stage, previous), spring: LABEL_SPRING, target: dimOf(stage, next) });
       }
     }

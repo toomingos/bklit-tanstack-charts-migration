@@ -12,7 +12,7 @@ import { useReadyGate } from "./kit/entrance/reveal-arm";
 import { motion } from "@tanstack/charts/motion";
 import { buildBarDefinition } from "./bar/definition";
 import { useDataUpdated } from "./kit/use-data-updated";
-import { useStableTable } from "./kit/stable-children";
+import { useChildTable } from "./kit/stable-children";
 import { readBarChildren } from "./bar/read-children";
 import { numberOrZero, resolveBarSeries } from "./bar/model";
 import { hasDepth } from "./bar/depth";
@@ -29,18 +29,19 @@ import { useChartLegendHover } from "./kit/legend/legend";
 import { scaleBand, scaleLinear, scaleUtc } from "d3-scale";
 import type { LineConfig } from "./kit/cartesian/chart-context";
 import { useFocusRow } from "./kit/cartesian/chart-context-focus";
-import type { ChartPhase, ChartStatus } from "./kit/motion/phase";
+import type { ChartPhase, ChartStatus, Transition } from "./kit/motion/phase";
 import { BarLoadingSkeleton } from "./kit/loading/sweep";
 import { useBridgedContext, useReferenceAreas, valueScale } from "./kit/cartesian/context-bridge";
 import { useResizeBox } from "./kit/size/use-resize-box";
 import type { FocusedRow } from "./kit/cartesian/context-bridge";
-import { passthroughChildren, propsFor } from "./kit/read-children";
+import { propsFor } from "./kit/read-children";
 import { shortDateFmt } from "./kit/format";
 import { FocusLayer, useFocusStore } from "./kit/cartesian/focus-layer";
 import { readyGateCss, focusEmptyHiddenCss } from "./kit/cartesian/gate-css";
 import { typedAttr } from "./kit/css-hooks";
 import { useSanitizedId } from "./kit/use-sanitized-id";
 import { clearAttribute, clearVar, raiseAttribute, writeHoverIndex, writeVar } from "./kit/host-write";
+import { keyStarts } from "./kit/renderer-dom";
 
 // Container-owned height: the host follows the wrapper's CSS content height (TanStack renderer.ts observesContainerHeight, responsive-charts.md).
 const HOVER_ON_ATTR = "data-bkm-on";
@@ -55,9 +56,10 @@ interface BarChartProps {
   data: Row[];
   xDataKey?: string;
   animationDuration?: number;
-  animationEasing?: unknown;
-  enterTransition?: unknown;
-  revealSignature?: unknown;
+  // Accepted divergence: typed as bklit's but not read here (the entrance is fixed; square snapping follows <BarSquares> props).
+  animationEasing?: string;
+  enterTransition?: Transition;
+  revealSignature?: string;
   margin?: Partial<ChartMargin>;
   aspectRatio?: string;
   className?: string;
@@ -67,7 +69,7 @@ interface BarChartProps {
   orientation?: BarOrientation;
   stacked?: boolean;
   stackGap?: number;
-  squareSnap?: unknown;
+  squareSnap?: { squareGap: number; groupGap?: number; fit?: boolean };
   onPhaseChange?: (phase: ChartPhase) => void;
   children?: ReactNode;
   ariaLabel?: string;
@@ -110,7 +112,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
   const clock = useRef<{ at: number | null }>({ at: null }).current;
   const uid = `b${useSanitizedId()}`;
   // Legend hover re-renders the host with fresh `children`; keep the previous table while every carrier is structurally equal.
-  const table = useStableTable(children, readBarChildren);
+  const { table, custom, ready: childrenReady } = useChildTable(children, readBarChildren);
   const series = useMemo(() => resolveBarSeries(table), [table]);
   const needsSeed = useMemo(() => series.some((s) => s.squares) || hasDepth(table), [series, table]);
   const seed = needsSeed && !entered;
@@ -155,7 +157,6 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
     () => motion({ transition: { type: "tween", duration: animationDuration } }),
     [animationDuration],
   );
-  const passthrough = useMemo(() => passthroughChildren(children), [children]);
   // Public `useChart()` context, derived from the native focus + resolved domains.
   const horizontal = orientation === "horizontal";
   const innerWidth = Math.max(0, size.width - resolvedMargin.left - resolvedMargin.right);
@@ -267,7 +268,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
     const radius = `min(calc(attr(rx type(<number>)) * 1px),calc(attr(${horizontal ? "height" : "width"} type(<number>)) * .5px))`;
     // Typed attr() is Chromium-only (133+): under `@supports`, other browsers keep the native rx (ry follows it).
     // The `bars:` key selector has no documented hook (barY takes no className): gap #36; the scalar rect radius is emitted as `rx` only: gap #25.
-    const corners = typedAttr(`${scope} rect[data-ts-key^="bars:"][rx]{rx:${radius};ry:${radius}}`);
+    const corners = typedAttr(`${scope} rect${keyStarts("bars:")}[rx]{rx:${radius};ry:${radius}}`);
     return `${scope}[data-bkm-status="loading"] .ts-chart-host{pointer-events:none}${readyGateCss(scope, true)}${focusEmptyHiddenCss(scope)}${dim}${corners}`;
   }, [scope, built.hover, tickPositions, hasSeries, horizontal, tickerHalfWidth]);
   // The effect re-runs on a status flip (bklit bar-chart.tsx:372-386): loading holds the skeleton (no reveal, no interaction, the host
@@ -339,7 +340,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
       // bklit's outer div carries `style={{ aspectRatio }}` from its first render (bar-chart.tsx:696-700); only the svg waits on ParentSize.
       style={{ width: "100%", position: "relative", aspectRatio, ...bklitSurfaceStyle, ...style }}
     >
-      {parentSized ? (
+      {parentSized && childrenReady ? (
         <RendererChart
           idPrefix={uid}
           definition={erase(built.definition)}
@@ -363,7 +364,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
       ) : null}
       {staticCss ? <style>{staticCss}</style> : null}
       <FocusLayer store={focusStore} useContextValue={useContextValue}>
-        <BarDepthConfigProvider value={depthConfig}>{passthrough}</BarDepthConfigProvider>
+        <BarDepthConfigProvider value={depthConfig}>{custom}</BarDepthConfigProvider>
       </FocusLayer>
     </div>
   );

@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { motion } from "@tanstack/charts/motion";
 import { readChildren, propsFor } from "./kit/read-children";
+import { warnUnrenderedChildren } from "./kit/stable-children";
 import { BklitTooltipBody } from "./kit/tooltip/tooltip-body";
 import { RendererChart } from "./kit/tooltip/tooltip-leaf";
 import { useParentSizeWidth } from "./kit/size/parent-size-arm";
@@ -72,7 +73,7 @@ export const LiveLineChart = ({
 }: Readonly<LiveLineChartProps>): ReactElement => {
   const uid = `l${useSanitizedId()}`;
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
-  const table = useMemo(() => readChildren(children), [children]);
+  const table = useMemo(() => { warnUnrenderedChildren(children, "LiveLineChart"); return readChildren(children); }, [children]);
   const line = propsFor<LiveLineConfig>(table, "liveLine").at(0);
   const xAxis = propsFor<LiveXAxisConfig>(table, "liveXAxis").at(0);
   const yAxis = propsFor<LiveYAxisConfig>(table, "liveYAxis").at(0);

@@ -45,7 +45,7 @@ export const createDefinition = (input: DefinitionInput): DomChartDefinition<Cho
   };
   const stroke = featureConfig?.stroke ?? "var(--background)";
   const features = geoShape(data.features, {
-    // Documented geo `className` hook (reference/marks/geo.md): the CSS selects the group by class, not data-ts-key.
+    // Documented geo `className` hook (reference/marks/geo.md): the CSS selects the group by class.
     className: "bkm-choro-features",
     fill: (feature, context) => resolveFill(feature, context.index, featureConfig, patternPrefix),
     id: FEATURES_ID,

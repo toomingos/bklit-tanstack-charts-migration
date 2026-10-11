@@ -10,7 +10,8 @@ import { shortDateFmt } from "../format";
 import type { guideMotion } from "../motion/guide-motion";
 import { fontContext } from "../text-width";
 import { X_TICK_PADDING } from "../theme";
-import { NOT_MOTION, typedAttr } from "../css-hooks";
+import { typedAttr } from "../css-hooks";
+import { CROSSHAIR_CLASS, NOT_MOTION, keyStarts } from "../renderer-dom";
 import { clearAttribute, clearVar, raiseAttribute, writeVar } from "../host-write";
 
 interface DatePillInput<TDatum> {
@@ -27,8 +28,6 @@ interface DatePillInput<TDatum> {
 
 type GuideMotion = ReturnType<typeof guideMotion>;
 type Scales = Readonly<Record<string, ResolvedScale>>;
-// Focus-guide nodes carry the core `ts-chart__*` class; no documented class hook (UPSTREAM-GAPS #36).
-const CROSSHAIR_CLASS = "ts-chart__crosshair";
 type CentreOf = (scales: Scales) => ((xValue: unknown) => number) | undefined;
 
 // Null without a document or canvas (SSR): callers keep their own fallback, so text-width.ts's length-ratio `textWidth` fallback is not used.
@@ -179,6 +178,7 @@ export function pillMark(options: {
   const stack = (prefix: string, values: readonly string[], x: number, row: number): SceneNode => ({
     kind: "group" as const,
     key: `${id}:${prefix}`,
+    className: `bkm-${prefix}`,
     translateY: -row * PILL_ROW,
     children: values.map((value, k) => label(`${id}:${prefix}:${k}`, value, x, k * PILL_ROW + textDy)),
   });
@@ -193,7 +193,7 @@ export function pillMark(options: {
         translateX: x,
         translateY: y,
         children: [
-          { kind: "rect" as const, key: `${id}:pill-box`, x: -width / 2, y: -16, width, height: 32, radius: 16, style },
+          { kind: "rect" as const, key: `${id}:pill-box`, className: "bkm-pill-box", x: -width / 2, y: -16, width, height: 32, radius: 16, style },
           label(`${id}:pill-text`, format(xValue), 0, textDy),
         ],
       };
@@ -209,10 +209,11 @@ export function pillMark(options: {
       translateX: x,
       translateY: y,
       children: [
-        { kind: "rect" as const, key: `${id}:pill-box`, x: -layout.width / 2, y: -16, width: layout.width, height: 32, radius: 16, style },
+        { kind: "rect" as const, key: `${id}:pill-box`, className: "bkm-pill-box", x: -layout.width / 2, y: -16, width: layout.width, height: 32, radius: 16, style },
         {
           kind: "group" as const,
           key: `${id}:pill-window`,
+          className: "bkm-pill-window",
           clip: { x: -layout.width / 2, y: -12, width: layout.width, height: 24 },
           children: [stack("pill-m", layout.months, layout.month ?? 0, layout.monthOf[index] ?? 0), ...(hasDay ? [stack("pill-d", layout.days, layout.day ?? 0, index)] : [])],
         },
@@ -389,18 +390,17 @@ export function pillTickStaticCss(
     return null;
   }
   // bklit x-axis.tsx: opacity ramps linearly from tickerHalfWidth to +20px from the pointer, 0.4s ease-in-out.
-  const sel = `${scope} text[data-ts-key^="${keyPrefix}"]`;
+  const sel = `${scope} text${keyStarts(keyPrefix)}`;
   const half = reachPx - 12;
   const same = Array.from({ length: PILL_SAME_MAX }, (_, i) => `calc((abs(attr(x type(<number>)) - var(${names.same}${i},-9999)) - .5) * 1000)`).join(", ");
-  // gap #36: tick text is keyed by data-ts-key.
   return [
     `${sel}${NOT_MOTION}{transition:opacity .4s ease-in-out}`,
     // The native axes paint above the pill (bklit's ticks sit under it): a tick inside the hidden zone drops to 0 at once instead of ghosting through the capsule for its 0.4s fade; typed attr() is Chromium-only (133+),
     // so both rules sit under `@supports` (unguarded, the var() keeps them past parsing and they are invalid at computed time: a 0s transition and `opacity:1!important`) and other browsers keep every tick visible.
     typedAttr([
-    `${scope}[${names.active}] text[data-ts-key^="${keyPrefix}"]${NOT_MOTION}{transition-duration:calc(clamp(0, (abs(attr(x type(<number>)) - var(${names.fx},-9999)) - ${half}) * 1000, 1) * .4s)}`,
+    `${scope}[${names.active}] text${keyStarts(keyPrefix)}${NOT_MOTION}{transition-duration:calc(clamp(0, (abs(attr(x type(<number>)) - var(${names.fx},-9999)) - ${half}) * 1000, 1) * .4s)}`,
     // A tick within 0.5px of a same-label x is hidden outright (min with a 0 step), like bklit's `label === hoveredLabel` branch.
-    `${scope}[${names.active}] text[data-ts-key^="${keyPrefix}"]{opacity:clamp(0, min(calc((abs(attr(x type(<number>)) - var(${names.fx},-9999)) - ${half}) / 20), ${same}), 1)!important}`,
+    `${scope}[${names.active}] text${keyStarts(keyPrefix)}{opacity:clamp(0, min(calc((abs(attr(x type(<number>)) - var(${names.fx},-9999)) - ${half}) / 20), ${same}), 1)!important}`,
     ].join("")),
   ].join("");
 }

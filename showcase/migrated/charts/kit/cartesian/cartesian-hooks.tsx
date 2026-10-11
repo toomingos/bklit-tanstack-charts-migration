@@ -4,10 +4,10 @@ import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { motion } from "@tanstack/charts/motion";
 import { installMarkerSprings } from "../motion/marker-springs";
-import { passthroughChildren, propsFor } from "../read-children";
+import { propsFor } from "../read-children";
 import { shortDateFmt } from "../format";
 import { useResizeBox } from "../size/use-resize-box";
-import { useStableTable } from "../stable-children";
+import { useChildTable } from "../stable-children";
 import { BklitTooltipBody, bklitTooltipOptions } from "../tooltip/tooltip-body";
 import type { ChartMargin } from "../theme";
 import type { ChartMarker, ChartSelection } from "../types";
@@ -16,6 +16,7 @@ import { tooltipSetter, useFocusRow } from "./chart-context-focus";
 import { useGateReady } from "../entrance/reveal-arm";
 import type { ReadyStore } from "../entrance/reveal-arm";
 import { useReferenceAreas, useStructural } from "./context-bridge";
+import { strictRows } from "./domains";
 import type { CartesianBuild } from "./definition";
 import { erase } from "./erased-types";
 import type { AnyInteraction } from "./erased-types";
@@ -43,17 +44,18 @@ export function usePlotMeasure(containerRef: RefObject<HTMLDivElement | null>, f
 }
 
 interface SeriesTable {
-  readonly table: ReturnType<typeof useStableTable>;
+  readonly table: ReturnType<typeof useChildTable>["table"];
   readonly hasMarkers: boolean;
   readonly series: ResolvedSeries[];
   readonly onPulseIteration: (event: { animationName: string }) => void;
-  readonly passthrough: ReactNode;
+  readonly custom: ReturnType<typeof useChildTable>["custom"];
+  readonly childrenReady: boolean;
   readonly times: number[];
 }
 
-/** The stable child table and what is read from it: marker lists, series, loop-pulse callback, passthrough children, row times. */
+/** The stable child table and what is read from it: marker lists, series, loop-pulse callback, custom children, row times. */
 export function useSeriesTable(children: ReactNode, data: readonly Row[], xDataKey: string, containerRef: RefObject<HTMLDivElement | null>, chartLoading: boolean): SeriesTable {
-  const table = useStableTable(children);
+  const { table, custom, ready: childrenReady } = useChildTable(children);
   const hasMarkers = table.has("chartMarkers") || table.has("markerGroup");
   // Latest marker items for the delegated click handler (marker-springs.ts); no listener rebuild when the items change.
   const markerLists = useRef<readonly (readonly ChartMarker[])[]>([]);
@@ -71,12 +73,11 @@ export function useSeriesTable(children: ReactNode, data: readonly Row[], xDataK
       pulseCycleRef.current?.();
     }
   }, []);
-  const passthrough = useMemo(() => passthroughChildren(children), [children]);
   const times = useMemo(
     () => data.map((row) => toDate(row[xDataKey]).getTime()),
     [data, xDataKey],
   );
-  return { table, hasMarkers, series, onPulseIteration, passthrough, times };
+  return { table, hasMarkers, series, onPulseIteration, custom, childrenReady, times };
 }
 
 interface RendererTooltipInput {
@@ -128,6 +129,7 @@ interface ChartBaseInput {
   readonly resolvedMargin: ChartMargin;
   readonly animationDuration: number;
   readonly xDomain: [Date, Date] | undefined;
+  readonly xDomainSlotCount: number | undefined;
 }
 
 type StableContext = Omit<ChartContextValue, "tooltipData" | "setTooltipData" | "selection" | "clearSelection">;
@@ -145,7 +147,7 @@ interface ChartBase {
 
 /** The referentially stable part of the published chart context, and the scales it is built from. */
 export function useChartBase(input: ChartBaseInput): ChartBase {
-  const { built, series, data, xDataKey, table, containerRef, ready, dragInteraction, plotWidth, plotHeight, resolvedMargin, animationDuration, xDomain } = input;
+  const { built, series, data, xDataKey, table, containerRef, ready, dragInteraction, plotWidth, plotHeight, resolvedMargin, animationDuration, xDomain, xDomainSlotCount } = input;
   const innerWidth = Math.max(0, plotWidth - resolvedMargin.left - resolvedMargin.right);
   const innerHeight = Math.max(0, plotHeight - resolvedMargin.top - resolvedMargin.bottom);
   const xAccessor = useCallback((d: Row): Date => toDate(d[xDataKey]), [xDataKey]);
@@ -169,6 +171,11 @@ export function useChartBase(input: ChartBaseInput): ChartBase {
     [yDomains],
   );
   const referenceAreas = useReferenceAreas(table);
+  // bklit time-series-chart-shell.tsx:323-332: spacing between neighbouring rows of the visible window (0 under two slots).
+  const columnWidth = useMemo(() => {
+    const slots = xDomain && xDomainSlotCount !== undefined ? xDomainSlotCount : (xDomain ? strictRows(data, xDataKey, xDomain) : data).length;
+    return slots < 2 ? 0 : innerWidth / (slots - 1);
+  }, [data, xDataKey, xDomain, xDomainSlotCount, innerWidth]);
   // Rows are focused at their data x on the plot's vertical middle: `resolvePointer` snaps to the nearest datum like a pointer move.
   const pixelOf = useCallback(
     (index: number) => {
@@ -204,9 +211,10 @@ export function useChartBase(input: ChartBaseInput): ChartBase {
       animationDuration,
       xAccessor,
       dateLabels,
+      columnWidth,
     };
-    return xDomain ? { ...base, xDomain } : base;
-  }, [containerRef, xScale, yScales, innerWidth, innerHeight, data, plotWidth, plotHeight, resolvedMargin, lines, animationDuration, xAccessor, dateLabels, xDomain, isLoaded, yDomainTargetByAxis, referenceAreas]);
+    return xDomain ? { ...base, xDomain, xDomainSlotCount } : base;
+  }, [containerRef, xScale, yScales, innerWidth, innerHeight, data, plotWidth, plotHeight, resolvedMargin, lines, animationDuration, xAccessor, dateLabels, xDomain, xDomainSlotCount, columnWidth, isLoaded, yDomainTargetByAxis, referenceAreas]);
   return { stable, xScale, innerWidth, innerHeight, xAccessor, xStart, xEnd, setTooltipData };
 }
 

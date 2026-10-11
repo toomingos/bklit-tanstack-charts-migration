@@ -14,6 +14,10 @@
  * its tooltip in a rAF, use-scheduled-tooltip.ts:55-67), and the React Profiler render time of commits while the card is
  * actively hovered. LoAF / Event Timing cannot do this: both only report work above 50ms / 16ms.
  *
+ * Whole-main-thread busy time per move (the fair cross-implementation number): a MessageChannel ping-pong runs only while
+ * a card is actively hovered and sums every gap > 1ms between consecutive tasks (script, style, layout, paint of any
+ * origin). Gaps are attributed to the hovered card; slices of 10 moves give a median and spread.
+ *
  * Sources: Event Timing (interactionId grouping, like INP), Long Animation Frames (blocking + script time), Long Tasks,
  * React <Profiler> actualDuration, rAF + MessageChannel "after next paint", MutationObserver + document.getAnimations()
  * for settle. */
@@ -29,8 +33,11 @@ export interface PerfSnapshot {
   firstPaintMs: number | null;
   settledMs: number | null;
   settledCapped: boolean;
-  /** settled − first paint − the demo's designed entrance (entrance-budget.ts); null without a budget or when capped; negative = ended before the design */
+  /** settled - first paint - the demo's designed entrance (entrance-budget.ts); null without a budget or when capped; negative = ended before the design */
   settleOverheadMs: number | null;
+  /** first paint / settled of every run of this card in this session (Re-run adds one) */
+  firstPaintRuns: number[];
+  settledRuns: number[];
   loadCommits: number;
   loadRenderMs: number;
   loadLongTasks: number;
@@ -74,6 +81,13 @@ export interface PerfSnapshot {
   /** React Profiler actualDuration of commits while the card is actively hovered (a live chart's own ticks included) */
   moveRenderMs: number | null;
   hoverCommitsPer100: number | null;
+  /** whole-main-thread busy ms per real move: all gaps > 1ms while hovered / moves (null below MIN_MOVES or probe off) */
+  busyPerMove: number | null;
+  /** per-slice (10 moves) busy ms per move: median and range, and the slice count */
+  busyMedian: number | null;
+  busyLo: number | null;
+  busyHi: number | null;
+  busySlices: number;
   /** pointermove event.timeStamp -> after the next paint (rAF + MessageChannel) */
   moveLatP50: number | null;
   moveLatP95: number | null;
@@ -156,6 +170,7 @@ export const INP_GOOD_MS = 200;
 /* ---------------- shared helpers ---------------- */
 
 const r1 = (x: number) => Math.round(x * 10) / 10;
+const r2 = (x: number) => Math.round(x * 100) / 100;
 function pq(arr: number[], p: number): number | null {
   if (!arr.length) return null;
   const so = [...arr].sort((a, b) => a - b);
@@ -164,6 +179,46 @@ function pq(arr: number[], p: number): number | null {
 function cap(arr: unknown[], max: number) {
   if (arr.length > max) arr.splice(0, arr.length - (max * 3) / 4);
 }
+
+/** `?spin=0` turns the whole-thread probe off so move latency can be compared with and without it. */
+export const SPIN_ON = typeof window === "undefined" || new URLSearchParams(window.location.search).get("spin") !== "0";
+/** moves per busy-time slice (each slice gives one per-move sample for the median and spread) */
+const SLICE_MOVES = 10;
+/** gaps at or below this are scheduling jitter of the ping-pong itself, not work (idle control: 2.7ms busy in 1024ms) */
+const SPIN_GAP_MS = 1;
+let spinChannel: MessageChannel | null = null;
+let spinOn = false;
+let spinLast = 0;
+function activeCard(): Collector | null {
+  for (const c of hovering) if (c.isActive()) return c;
+  return null;
+}
+function spinTick() {
+  const now = performance.now();
+  const gap = now - spinLast;
+  spinLast = now;
+  const c = activeCard();
+  if (!c) {
+    spinOn = false;
+    return;
+  }
+  if (gap > SPIN_GAP_MS) c.addBusy(gap);
+  spinChannel!.port2.postMessage(0);
+}
+/** Start the ping-pong if a card is hovered; it stops itself when no card is actively hovered. */
+function ensureSpin() {
+  if (!SPIN_ON || spinOn) return;
+  spinOn = true;
+  if (!spinChannel) {
+    spinChannel = new MessageChannel();
+    spinChannel.port1.onmessage = spinTick;
+  }
+  spinLast = performance.now();
+  spinChannel.port2.postMessage(0);
+}
+
+/** Load-time samples across Re-runs in this page session (module state survives the probe remount). */
+const loadRuns = new Map<string, { fp: number[]; st: number[] }>();
 
 /** Runs callbacks after the next frame is presented: rAF fires before style/layout/paint, the posted message runs as
  * the first task after that rendering update. One rAF + one message per frame, shared by every collector. */
@@ -572,6 +627,10 @@ export class Collector {
   private workRaf = 0;
   /** work and moves since the last presented frame; a frame with moves becomes one workFrames sample */
   private frameWork = 0;
+  private busyTotal = 0;
+  private sliceBusy = 0;
+  private sliceMoves = 0;
+  private slices: number[] = [];
   private frameMoves = 0;
   private workFrames: number[] = [];
   private commitLog: number[] = []; // [t, actual, t, actual, ...]
@@ -753,6 +812,12 @@ export class Collector {
   private finishSettle(ms: number, capped: boolean) {
     this.settled = ms;
     this.capped = capped;
+    if (this.firstPaint !== null && !capped) {
+      let h = loadRuns.get(this.key);
+      if (!h) loadRuns.set(this.key, (h = { fp: [], st: [] }));
+      h.fp.push(r1(this.firstPaint));
+      h.st.push(r1(ms));
+    }
     this.mo?.disconnect();
     if (this.settleTimer) clearInterval(this.settleTimer);
     this.settleTimer = null;
@@ -837,13 +902,18 @@ export class Collector {
   }
 
   /** the card is inside and a real move happened within ACTIVE_MS: work now is hover work */
-  private isActive() {
+  isActive() {
     return this.inside && performance.now() - this.lastRealMove < ACTIVE_MS;
   }
 
   addDispatch(dt: number) {
     this.workDispatch += dt;
     this.frameWork += dt;
+  }
+
+  addBusy(dt: number) {
+    this.busyTotal += dt;
+    this.sliceBusy += dt;
   }
 
   addRaf(dt: number) {
@@ -924,6 +994,13 @@ export class Collector {
     if (now - w.last > REST_MS) this.windows.push({ s: now, last: now, closed: null });
     else w.last = now;
     this.moves++;
+    if (++this.sliceMoves === SLICE_MOVES) {
+      this.slices.push(this.sliceBusy / SLICE_MOVES);
+      cap(this.slices, 600);
+      this.sliceBusy = 0;
+      this.sliceMoves = 0;
+    }
+    ensureSpin();
     this.dirty = true; // moves since the last snapshot: publish once the pointer rests
     recordStamp("pointermove", e.timeStamp, this);
     this.lastInput = now;
@@ -1051,6 +1128,8 @@ export class Collector {
       settledMs: this.settled === null ? null : r1(this.settled),
       settledCapped: this.capped,
       settleOverheadMs: this.settled !== null && this.firstPaint !== null && !this.capped && budget ? r1(this.settled - this.firstPaint - budget.ms) : null,
+      firstPaintRuns: [...(loadRuns.get(this.key)?.fp ?? [])],
+      settledRuns: [...(loadRuns.get(this.key)?.st ?? [])],
       loadCommits: this.loadCommits,
       loadRenderMs: r1(this.loadRender),
       loadLongTasks: lt.n,
@@ -1082,6 +1161,11 @@ export class Collector {
       moveRafMs: perMove(this.workRaf),
       moveRenderMs: perMove(this.hoverRender),
       hoverCommitsPer100: per100(this.hoverCommits),
+      busyPerMove: SPIN_ON ? perMove(this.busyTotal) : null,
+      busyMedian: this.slices.length ? r2([...this.slices].sort((a, b) => a - b)[Math.floor(this.slices.length / 2)]) : null,
+      busyLo: this.slices.length ? r2(Math.min(...this.slices)) : null,
+      busyHi: this.slices.length ? r2(Math.max(...this.slices)) : null,
+      busySlices: this.slices.length,
       moveLatP50: this.moveLat.length >= MIN_MOVES ? pq(this.moveLat, 0.5) : null,
       moveLatP95: this.moveLat.length >= MIN_MOVES ? pq(this.moveLat, 0.95) : null,
       moveLatCount: this.moveLat.length,

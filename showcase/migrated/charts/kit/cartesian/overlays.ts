@@ -323,7 +323,7 @@ interface ReferenceAreaContext {
   readonly yDomain: readonly [number, number];
 }
 
-/** bklit ReferenceArea: fill band, dashed top/bottom edges (both faded at the left/right ends, see styles.css `data-ts-key^="refarea"`), optional bracket markers at the centre, 420ms fade-in. */
+/** bklit ReferenceArea: fill band, dashed top/bottom edges (both faded at the left/right ends, see styles.css `refarea`), optional bracket markers at the centre, 420ms fade-in. */
 function referenceAreaMarks(r: ReferenceProps, { index: i, xDomain, yDomain }: ReferenceAreaContext): AnyMark[] {
   const out: AnyMark[] = [];
   const stroke = r.stroke ?? "var(--chart-foreground-muted)";

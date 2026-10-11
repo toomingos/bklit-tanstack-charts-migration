@@ -15,6 +15,7 @@ import { LoadingLabel } from "../kit/loading-label";
 import { motion } from "@tanstack/charts/motion";
 import type { ChartPoint, ChartRendererRenderContext } from "@tanstack/charts";
 import { readChildren, propsFor } from "../kit/read-children";
+import { warnUnrenderedChildren } from "../kit/stable-children";
 import { ResourceHost } from "../kit/resource-host";
 import { useSanitizedId } from "../kit/use-sanitized-id";
 import { renderPatternPreset } from "../kit/pattern/pattern-preset-render";
@@ -59,6 +60,7 @@ import { scaleLinear, scaleTime } from "d3-scale";
 import type { CellDatum } from "./definition";
 import { HeatmapCells, HeatmapXAxis, HeatmapYAxis } from "./carriers";
 import type { HeatmapCellsProps, HeatmapSeparatorProps, HeatmapTooltipProps, HeatmapYAxisProps } from "./carriers";
+import { keyHas, keyStarts } from "../kit/renderer-dom";
 
 const MIN_RENDERABLE_DIMENSION_PX = 10;
 const DEFAULT_WEEK_ROW_COUNT = 7;
@@ -188,7 +190,6 @@ const cellPointsByGrid = (points: readonly CellPoint[]): Map<string, CellPoint> 
   return byGrid;
 };
 
-// The hovered-cell rule matches the cell mark id through data-ts-key (gap #36: rect marks document no className/id hook).
 // The key `<column>-<row>:<reveal>` sits after the mark's `:` separator, so `:1-2:` never matches `:11-2:` or `:1-21:`.
 interface HoverAttrsProps {
   readonly coordinator: HeatmapHoverCoordinator;
@@ -217,13 +218,12 @@ const RenderHoverAttrs = ({ coordinator, hostRef, idPrefix }: Readonly<HoverAttr
   const hovered = useSyncExternalStore(coordinator.subscribe, coordinator.getHoveredCell, () => null);
   const level = useSyncExternalStore(coordinator.subscribe, coordinator.getHoveredLegendLevel, () => null);
   const scope = `[data-bkm-chart="heatmap"][data-hm-id="${idPrefix}"]`;
-  // gap #36: rect marks have no className/id hook, so the hovered cell and level are matched through data-ts-key.
   if (hovered !== null) {
-    return <style>{`${scope}[data-hm-hover="cell"] rect[data-ts-key^="heatmap-cells-"][data-ts-key*=":${hovered.column}-${hovered.row}:"]{opacity:1;transform:scale(var(--hm-active-s))}`}</style>;
+    return <style>{`${scope}[data-hm-hover="cell"] rect${keyStarts("heatmap-cells-")}${keyHas(`:${hovered.column}-${hovered.row}:`)}{opacity:1;transform:scale(var(--hm-active-s))}`}</style>;
   }
   if (level === null) {return null;}
   const own = `heatmap-cells-l${level}-`;
-  return <style>{`${scope}[data-hm-hover="level"] g[data-ts-key^="heatmap-cells-"]:not([data-ts-key^="${own}"]) rect{opacity:var(--hm-inactive-o);transform:scale(var(--hm-inactive-s))}${scope}[data-hm-hover="level"] g[data-ts-key^="${own}"] rect{transform:scale(var(--hm-active-s))}`}</style>;
+  return <style>{`${scope}[data-hm-hover="level"] g${keyStarts("heatmap-cells-")}:not(${keyStarts(own)}) rect{opacity:var(--hm-inactive-o);transform:scale(var(--hm-inactive-s))}${scope}[data-hm-hover="level"] g${keyStarts(own)} rect{transform:scale(var(--hm-active-s))}`}</style>;
 };
 
 const HeatmapHoverAttrs: NamedExoticComponent<Readonly<HoverAttrsProps>> = memo(RenderHoverAttrs);
@@ -275,7 +275,7 @@ interface ChartConfig {
 
 /** The config carriers among the children, normalised to the chart's margin, y axis, separator and tooltip settings. */
 const useChartConfig = ({ children, columnSeparators, marginProp }: Readonly<ChartConfigInput>): ChartConfig => {
-  const table = useMemo(() => readChildren(children), [children]);
+  const table = useMemo(() => { warnUnrenderedChildren(children, "HeatmapChart"); return readChildren(children); }, [children]);
   const cellsProps = propsFor<HeatmapCellsProps>(table, "heatmapCells").at(0);
   const yAxisProps = propsFor<HeatmapYAxisProps>(table, "heatmapYAxis").at(0);
   const tooltipProps = propsFor<HeatmapTooltipProps>(table, "heatmapTooltip").at(0);
@@ -591,7 +591,7 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
   const sized = useParentSizeMounted(containerRef, measured);
   // bklit's svg first renders on the ParentSize commit (heatmap-chart.tsx:685); a mount effect then moves it to "revealing" (:566-585), where the cells' tween starts.
   const [cellsEntered, setCellsEntered] = useState(false);
-  // UPSTREAM-GAPS 12: first paint and group joins get no per-datum enter, so cells join on a second commit (loading -> ready re-seeds the same way).
+  // UPSTREAM-GAPS #12: first paint and group joins get no per-datum enter, so cells join on a second commit (loading -> ready re-seeds the same way).
   // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- the cells must enter on a second commit, after the cell-less seed has painted
   useEffect(() => { setCellsEntered(sized && status === "ready"); }, [sized, status]);
 
