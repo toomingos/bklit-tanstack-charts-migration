@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { PolarCenter, defaultCenterStatFormat, useFlowValue } from "../kit/polar/center-shell";
 import type { CenterStatFormat } from "../kit/polar/center-shell";
-import { useHoverIndex } from "../kit/polar/polar-hover";
+import { useScheduledHoverIndex } from "../kit/polar/polar-hover";
 import type { HoverSource } from "../kit/polar/polar-hover";
 import { PieHoverCoordinatorContext, PieStableContext, defaultPieColors, usePieHoverCoordinator, usePieStable } from "./model";
 import type { PieArcData, PieData, PieStableValue } from "./model";
@@ -30,7 +30,7 @@ interface PieCenterProps {
 
 const PieCenter = ({ defaultLabel = "Total", formatOptions = defaultCenterStatFormat, children, className, valueClassName, labelClassName, prefix, suffix }: Readonly<PieCenterProps>): ReactElement | null => {
   const stable = usePieStable();
-  const hoveredIndex = useHoverIndex(usePieHoverCoordinator());
+  const hoveredIndex = useScheduledHoverIndex(usePieHoverCoordinator());
   // Scrub mode never shows hover state in the center.
   const hoveredData = stable.geometryScrubbing || hoveredIndex === null ? undefined : stable.data[hoveredIndex];
   // No inner radius: nothing to size the box to.
