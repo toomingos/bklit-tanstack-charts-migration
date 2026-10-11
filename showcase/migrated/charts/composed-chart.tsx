@@ -14,7 +14,7 @@ const ComposedChart = (props: Readonly<ComposedChartProps>): ReactElement => {
     // bklit's outer div carries `style={{ aspectRatio }}` from its first render (composed-chart.tsx:289 default "2 / 1", :306); only the svg waits for the measure.
     return <div ref={ref} className={props.className} style={{ width: "100%", position: "relative", aspectRatio: props.aspectRatio ?? "2 / 1", ...bklitSurfaceStyle }} />;
   }
-  return <ComposedChartMounted {...props} initialWidth={size.width} />;
+  return <ComposedChartMounted {...props} initialWidth={size.width} initialHeight={size.height} />;
 };
 
 ComposedChart.displayName = "ComposedChart";
