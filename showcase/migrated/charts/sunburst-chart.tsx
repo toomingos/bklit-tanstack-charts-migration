@@ -2,7 +2,7 @@
 
 // Bklit SunburstChart on TanStack Charts: native `sunburst` mark inside `polar`, `motion()` entrance and drill, native focus and `onSelect` zoom.
 // Compound children are config carriers; custom pieces are documented in sunburst/sunburst-mark.ts, the parts live in sunburst/.
-import { erase } from "./kit/cartesian/erased-types";
+import { erase } from "./kit/erased-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ChartInteractionController, ChartPoint, ChartScene } from "@tanstack/charts";

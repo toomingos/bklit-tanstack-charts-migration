@@ -1,6 +1,6 @@
 // Native definition for the streaming line: one keyed rolling window of rows,
 // `motion.path rolling` for the scroll, plain marks for everything else.
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { areaY, defineChart, lineY } from "@tanstack/charts";
 import type { ChartDefinition, ChartGradient } from "@tanstack/charts";
 import { crosshair } from "@tanstack/charts/crosshair";

@@ -1,6 +1,6 @@
 import type { ChartMotionDefinition, ChartMotionTiming } from "@tanstack/charts";
 import { MS_PER_SECOND } from "../kit/theme";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { cubicBezier } from "../kit/motion/easing";
 import type { EnterTransition } from "../kit/motion/phase";
 import { resumeEnter, type EnterPlan } from "../kit/motion/resume-enter";

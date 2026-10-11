@@ -2,7 +2,7 @@
 // the row's plot position is resolved like a pointer (`resolvePointer`) and painted with `setControlledFocus`.
 import { useCallback } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import type { AnyInteraction } from "./erased-types";
+import type { AnyInteraction } from "../erased-types";
 import type { TooltipData } from "./chart-context";
 
 export type Interaction = AnyInteraction;

@@ -4,8 +4,8 @@ import { propsFor } from "../read-children";
 import type { ChildTable } from "../read-children";
 import { scopePaintUrl } from "../resource-host";
 import type { BackgroundConfig } from "../types";
-import { erase } from "./erased-types";
-import type { AnyMark } from "./erased-types";
+import { erase } from "../erased-types";
+import type { AnyMark } from "../erased-types";
 
 const DEFAULT_FADE = 10;
 const MAX_FADE = 45;

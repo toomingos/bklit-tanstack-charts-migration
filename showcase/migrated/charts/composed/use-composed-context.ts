@@ -16,6 +16,8 @@ import type { SeriesBarSpec } from "./bars";
 import { dateValue } from "./narrow";
 
 interface ComposedContextInput {
+  /** The wrapper's measure: the first observer delivery then reports the same box and changes nothing. */
+  readonly initialSize: { readonly width: number; readonly height: number };
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly ready: ReadyStore;
   readonly data: readonly Row[];
@@ -42,8 +44,8 @@ export function useComposedContext(input: Readonly<ComposedContextInput>): {
   readonly rows: readonly Row[];
   readonly times: readonly number[];
 } {
-  const { containerRef, ready, data, xDataKey, margin, domains, series, bars, duration, barSize, maxBarSize, barGap, stacked, stackGap, table, interaction } = input;
-  const size = useResizeBox(containerRef);
+  const { initialSize, containerRef, ready, data, xDataKey, margin, domains, series, bars, duration, barSize, maxBarSize, barGap, stacked, stackGap, table, interaction } = input;
+  const size = useResizeBox(containerRef, undefined, false, initialSize);
   const innerWidth = Math.max(0, size.width - margin.left - margin.right);
   const innerHeight = Math.max(0, size.height - margin.top - margin.bottom);
   const rows = data;

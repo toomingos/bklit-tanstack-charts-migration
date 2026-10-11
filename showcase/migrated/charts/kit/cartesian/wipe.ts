@@ -3,8 +3,8 @@ import { areaY as areaYRaw, createMark, lineY as lineYRaw } from "@tanstack/char
 import { REVEAL_EASING } from "../motion/easing";
 import { resumeEnter } from "../motion/resume-enter";
 import type { ChartMotionContext, ChartMotionDefinition, ChartMotionTiming, ChartValue, InitializedMark, MarkRenderContext, MarkResolvedLayoutContext, MarkScene, ResolvedMarkLayout } from "@tanstack/charts";
-import { erase } from "./erased-types";
-import type { AnyMark } from "./erased-types";
+import { erase } from "../erased-types";
+import type { AnyMark } from "../erased-types";
 
 export interface WipeConfig {
   readonly p: number;

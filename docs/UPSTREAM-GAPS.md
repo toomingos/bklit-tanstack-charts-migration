@@ -332,9 +332,9 @@ Drafts live in `docs/upstream-issues/` (local only).
 ## 51. radialArc carries no arc geometry for the motion tween (ring progress arcs, pie)
 
 - **Needed:** bklit sweeps each ring progress arc by drawing a fresh d3 arc per frame (`cornerRadius = thickness / 2`) from the start angle to `start + range * progress`, so the leading cap stays round (bklit `ring.tsx:104`; nothing is drawn until the sweep passes 0.01 rad). Pie wedges tween the same way.
-- **1.1.0 behaviour:** the same mechanism as #35. The arc tween runs only for nodes carrying the private `sceneMotionNode` geometry (`motion.ts:2386-2399`; set only in `bar.ts:385,661` and `hierarchy-sunburst.ts:301`), and `radialArc` sets none. `path: 'morph'` moves vertices along chords, and the radialArc enter is a group wedge clip (`motion.ts:1618-1690`) that cuts the round cap flat.
+- **1.1.0 behaviour:** the same mechanism as #35. The arc tween runs only for nodes carrying the private `sceneMotionNode` geometry (`motion.ts:2386-2400`; `path` geometry is set only by `hierarchy-sunburst.ts:301-306`, bar sets only `baseline`), and `radialArc` sets none. `path: 'morph'` moves vertices along chords, and the radialArc enter is a group wedge clip (`motion.ts:1618-1700`) that cuts the round cap flat.
 - **Workaround:** `ring/progress-layer.ts` renders the progress marks through a documented custom layer renderer (`renderer` on a radial mark, `reference/marks/polar.md:139`; `ChartLayerRenderer`, `reference/rendering-and-export.md:546-577`). The layer paints its own SVG and animates `d` on nodes it owns. Composition is our own compositor (`kit/layer/compose-layers.ts`, about 1.3 KB gz) because the only exported one is the Canvas module's (`canvasChartRenderer.compose`, 5.4 KB gz more). Cost: all tracks paint under all progress arcs (layers split by mark order).
-- **Proposal:** the same as #35, plus an exported layer compositor (draft: `docs/upstream-issues/layer-compositor.md`) so a custom layer need not copy one.
+- **Proposal:** the same as #35, plus an exported layer compositor (drafts: `docs/upstream-issues/layer-compositor.md`, `radial-arc-motion-geometry.md`) so a custom layer need not copy one.
 
 ## 52. No HTML or foreignObject scene node (marker `icon` ReactNodes, `iconFill`)
 
