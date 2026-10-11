@@ -100,7 +100,7 @@ function legendDimRules(scope: string, dim: readonly HoverDimRule[]): string[] {
 }
 
 // bklit HighlightSegment: opacity 0 -> 1 over 0.4s easeInOut; its clip band is a velocity-keeping 180/28 spring that jumps on inactive -> active (use-highlight-segment.ts:48-57),
-// driven by kit/motion/band-spring.ts through the owned clipPath rect (no host var: a per-frame var restyles the whole re-inherit chain). `--bkm-hl0/1` stay for the drag Segment* marks.
+// driven by kit/motion/band-spring.ts through the owned clipPath rect (no host var: a per-frame var restyles the whole re-inherit chain). `--bkm-hl0/1` are written by the drag only, for the Segment* marks.
 function highlightRules(scope: string, on: string, highlights: readonly HoverHighlight[], bandClip: string): string[] {
   // bklit unmounts the highlight on leave (no AnimatePresence): the 0.4s fade is enter-only, so the transition lives on the active state.
   return highlights.flatMap((hl) => [
