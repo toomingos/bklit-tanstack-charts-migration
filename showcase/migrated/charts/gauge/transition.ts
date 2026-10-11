@@ -1,7 +1,7 @@
 import { REVEAL_CSS_EASE } from "../kit/motion/easing";
 import { toCssEase } from "../kit/motion/enter-transition";
 import type { EnterTransition } from "../kit/motion/phase";
-import { REST_GRANULAR, springCurve } from "../kit/motion/spring-curve";
+import { REST_GRANULAR, settleMs, springCurve, springOf } from "../kit/motion/spring-curve";
 import { GAUGE_NOTCH_ENTER_SPRING } from "../kit/motion/springs";
 
 /** Structural twin of bklit's gauge enter transition (motion-library shape, seconds). */
@@ -26,8 +26,14 @@ const EASES: ReadonlyMap<unknown, string> = new Map<unknown, string>([
   ["easeIn", "cubic-bezier(0.42,0,1,1)"], ["easeInOut", "cubic-bezier(0.42,0,0.58,1)"], ["easeOut", EASE_OUT], ["linear", "linear"],
 ]);
 
+// motion ends a spring at its settle time rounded up to 50 ms (motion-dom calc-duration.mjs:10-14, JSAnimation.mjs:213-217).
+const MOTION_DURATION_STEP_MS = 50;
+
 const springEnter = (stiffness: number, damping: number, mass: number): NotchEnter => {
-  const { durationMs, ease } = springCurve({ damping, mass, stiffness }, { decimals: 3, limitMs: SETTLE_LIMIT_MS, rest: REST_GRANULAR, samples: NOTCH_SAMPLES, stepMs: SETTLE_STEP_MS });
+  const spring = { damping, mass, stiffness };
+  const settle = settleMs(springOf(spring, REST_GRANULAR), { from: 0, to: 1, velocity: 0 }, SETTLE_STEP_MS, SETTLE_LIMIT_MS);
+  const durationMs = Math.ceil(settle / MOTION_DURATION_STEP_MS) * MOTION_DURATION_STEP_MS;
+  const { ease } = springCurve(spring, { decimals: 3, durationMs, rest: REST_GRANULAR, samples: NOTCH_SAMPLES });
   return { durationMs, easing: ease };
 };
 

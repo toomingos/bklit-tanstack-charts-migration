@@ -948,16 +948,15 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
 
 /* Projection lines, terminal markers (revealed after the sweep, ~60% of the entrance) and line series markers (bucket i of 12 at i/12) stagger as a CSS animation on the mark group, since native motion delay is not honoured for them;
    matched by mark id through data-ts-key (gap #36). */
-/* Terminal ring: bklit LineSeriesTerminalMarker (line-series-terminal-marker.tsx:51-74) animates opacity 0->1 and scale 0.55->1 when chartPhase turns ready (use-chart-phase-orchestrator.ts:154-171), 0.28s [0.22,1,0.36,1] (:52-55);
-   scale origin is the fill-box centre, and `scale` composes with any transform attribute the renderer writes. */
-@keyframes bkm-terminal-in {
-  from { opacity: 0; scale: 0.55; }
-  to { opacity: 1; scale: 1; }
-}
-.ts-chart__marks > [data-ts-key^="terminal:"] {
+/* Terminal ring: bklit tweens opacity (WAAPI) and scale (JS) 0.28s [0.22,1,0.36,1] when chartPhase turns ready (line-series-terminal-marker.tsx:51-74),
+   so it is hidden until `data-bkm-ready` and both tweens start at that flip (reveal-arm.tsx READY_ORIGINS). */
+@keyframes bkm-terminal-fade { from { opacity: 0; } }
+@keyframes bkm-terminal-grow { from { scale: 0.55; } }
+[data-bkm-kit]:not([data-bkm-ready]) .ts-chart__marks > [data-ts-key^="terminal:"] { opacity: 0; }
+[data-bkm-kit][data-bkm-ready] .ts-chart__marks > [data-ts-key^="terminal:"] {
   transform-box: fill-box;
   transform-origin: 50% 50%;
-  animation: bkm-terminal-in 280ms cubic-bezier(0.22, 1, 0.36, 1) var(--bkm-enter-ms, 1100ms) both;
+  animation: bkm-terminal-fade 280ms cubic-bezier(0.22, 1, 0.36, 1) backwards, bkm-terminal-grow 280ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 .ts-chart__marks > [data-ts-key*=":marker:"],
 .ts-chart__marks > [data-ts-key*=":marker-ring:"], .ts-chart__marks > [data-ts-key*=":marker-out:"] {
