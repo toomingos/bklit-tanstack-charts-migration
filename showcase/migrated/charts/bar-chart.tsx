@@ -7,7 +7,7 @@ import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useKeyboardFocusHold } from "./kit/cartesian/keyboard-hold";
 import { RendererChart, sameCategoryTarget } from "./kit/tooltip/tooltip-leaf";
 import { useInteractionHandle, useTouchInert } from "./kit/cartesian/touch-focus";
-import { useParentSizeMounted } from "./kit/size/parent-size-arm";
+import { useHostMounted } from "./kit/size/parent-size-arm";
 import { useReadyGate } from "./kit/entrance/reveal-arm";
 import { motion } from "@tanstack/charts/motion";
 import { buildBarDefinition } from "./bar/definition";
@@ -97,9 +97,8 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
   const legendHovered = useChartLegendHover().hoveredIndex;
   const containerRef = useRef<HTMLDivElement | null>(null);
   useTouchInert(containerRef);
-  // The svg mounts on bklit's ParentSize commit (bar-chart.tsx:701; @visx/responsive useParentSize.js:37-63: ResizeObserver -> rAF
-  // -> leading debounce) via parent-size-arm.tsx, not with the wrapper: the seed flip and isLoaded timer run from that commit.
-  const parentSized = useParentSizeMounted(containerRef, true);
+  // The svg mounts in the layout-effect commit, before first paint; bklit waits on ParentSize's RO+rAF first (bar-chart.tsx:701).
+  const parentSized = useHostMounted();
   const fillHeight = style?.aspectRatio === "unset";
   // Hover lives in a ref store read only by <FocusLayer>: no re-render / rebuild of the chart on focus.
   const focusStore = useFocusStore<FocusedRow>();
@@ -117,7 +116,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
   const needsSeed = useMemo(() => series.some((s) => s.squares) || hasDepth(table), [series, table]);
   const seed = needsSeed && !entered;
   const resolvedMargin = useMemo(() => ({ ...DEFAULT_MARGIN, ...margin }), [margin]);
-  const size = useResizeBox(containerRef);
+  const size = useResizeBox(containerRef, undefined, true);
   const skeletonStyle = useMemo(
     (): CSSProperties => ({ position: "absolute", left: resolvedMargin.left, top: resolvedMargin.top, overflow: "visible", pointerEvents: "none" }),
     [resolvedMargin],
@@ -337,7 +336,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
       data-legend={legendHovered !== null && legendHovered < MAX_INDEX ? legendHovered : undefined}
       {...built.gridAttrs}
       data-slot="chart"
-      // bklit's outer div carries `style={{ aspectRatio }}` from its first render (bar-chart.tsx:696-700); only the svg waits on ParentSize.
+      // bklit's outer div carries `style={{ aspectRatio }}` from its first render (bar-chart.tsx:696-700); only the svg waits for the layout-effect mount.
       style={{ width: "100%", position: "relative", aspectRatio, ...bklitSurfaceStyle, ...style }}
     >
       {parentSized && childrenReady ? (
