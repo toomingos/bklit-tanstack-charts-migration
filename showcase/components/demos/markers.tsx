@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { lineChartDocsData } from "@/lib/docs-data";
 import type { ChartMarker } from "@showcase/migrated-charts";
 
 interface MarkersDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
@@ -37,8 +37,8 @@ function buildMarkers(): ChartMarker[] {
   ];
 }
 
-export default function MarkersDemo({ impl, n: _n }: MarkersDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function MarkersDemo({ impl, charts, n: _n }: MarkersDemoProps) {
+  const Charts = charts;
   const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
   const markerItems = React.useMemo(buildMarkers, []);
 

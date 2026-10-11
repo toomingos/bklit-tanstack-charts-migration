@@ -1,12 +1,12 @@
 "use client";
 
 import * as React from "react";
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { barChartDocsData } from "@/lib/docs-data";
 
 interface BarSquaresDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
@@ -15,8 +15,8 @@ const LEGEND_ITEMS = [
   { label: "Profit (pattern)", value: 100, color: "var(--chart-2)" },
 ];
 
-export default function BarSquaresDemo({ impl, n: _n }: BarSquaresDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function BarSquaresDemo({ impl, charts, n: _n }: BarSquaresDemoProps) {
+  const Charts = charts;
   const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
 
   return (

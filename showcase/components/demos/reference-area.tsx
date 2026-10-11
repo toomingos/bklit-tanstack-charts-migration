@@ -1,11 +1,11 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { lineChartDocsData } from "@/lib/docs-data";
 
 interface ReferenceAreaDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
@@ -13,8 +13,8 @@ interface ReferenceAreaDemoProps {
 // "reference-area"): the ReferenceAreaBandDemo config, dual-rendered.
 // The named exports below stay migrated-only, unchanged, for any other
 // caller that imports them directly.
-export default function ReferenceAreaDemo({ impl, n: _n }: ReferenceAreaDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function ReferenceAreaDemo({ impl, charts, n: _n }: ReferenceAreaDemoProps) {
+  const Charts = charts;
   return (
     <Charts.LineChart data={lineChartDocsData} aspectRatio="2/1">
       <Charts.Grid horizontal />

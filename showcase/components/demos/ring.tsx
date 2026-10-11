@@ -1,18 +1,18 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { ringDocsData } from "@/lib/docs-data";
 
 const RING_SIZE = 320;
 
 interface RingDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
-export default function RingDemo({ impl, n: _n }: RingDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function RingDemo({ impl, charts, n: _n }: RingDemoProps) {
+  const Charts = charts;
 
   return (
     <div className="flex w-full justify-center">

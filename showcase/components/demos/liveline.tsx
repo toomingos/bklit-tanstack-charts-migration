@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import {
   getLiveLineSeed,
   liveLineCutoffSecs,
@@ -18,11 +17,12 @@ function formatUsd(v: number): string {
 
 interface LiveLineDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
-export default function LiveLineDemo({ impl, n }: LiveLineDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function LiveLineDemo({ impl, charts, n }: LiveLineDemoProps) {
+  const Charts = charts;
   const [data, setData] = useState(() => getLiveLineSeed(n));
   const [value, setValue] = useState<number>(
     () => data[data.length - 1]?.value ?? 0,

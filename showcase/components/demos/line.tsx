@@ -1,18 +1,18 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { defaultDemoControls, type DemoControls } from "@/components/demo-controls";
 import { lineChartDocsData, lineChartDocsMarkers } from "@/lib/docs-data";
 
 interface LineDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
   controls?: DemoControls;
 }
 
-export default function LineDemo({ impl, n: _n, controls = defaultDemoControls }: LineDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function LineDemo({ impl, charts, n: _n, controls = defaultDemoControls }: LineDemoProps) {
+  const Charts = charts;
   const loadingStyle = controls.sweep ? "sweep" : "pulse";
 
   if (controls.loading === "component") {

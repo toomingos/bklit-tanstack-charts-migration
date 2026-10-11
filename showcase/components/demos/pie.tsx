@@ -1,18 +1,18 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { pieDocsData } from "@/lib/docs-data";
 
 const PIE_SIZE = 280;
 
 interface PieDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
-export default function PieDemo({ impl, n: _n }: PieDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function PieDemo({ impl, charts, n: _n }: PieDemoProps) {
+  const Charts = charts;
 
   return (
     <div className="flex w-full justify-center">

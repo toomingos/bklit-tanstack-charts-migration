@@ -4,12 +4,12 @@ import { motion, useSpring } from "motion/react";
 import { useEffect, useState } from "react";
 import type { ComponentProps, RefObject } from "react";
 import { createPortal } from "react-dom";
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { barChartDocsData, lineChartDocsData } from "@/lib/docs-data";
 
 interface CompositionDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
@@ -78,8 +78,8 @@ function BarHorizontalLineIndicator({ data, dataKeys, useChart }: { data: typeof
 }
 
 // What a user writes in copied code: their own component wrapping <Line> and a fragment of series, plus custom SVG reading useChart().
-export default function CompositionDemo({ impl, n: _n }: CompositionDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function CompositionDemo({ impl, charts, n: _n }: CompositionDemoProps) {
+  const Charts = charts;
   const BrandLine = (props: ComponentProps<typeof Charts.Line>) => <Charts.Line {...props} stroke="var(--chart-line-primary)" strokeWidth={3} />;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>

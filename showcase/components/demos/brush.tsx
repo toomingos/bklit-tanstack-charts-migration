@@ -1,18 +1,20 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { BklitCharts as BklitModule, ImplCharts, MigratedCharts as MigratedModule } from "./impl-charts";
 import { lineChartDocsData } from "@/lib/docs-data";
 
 interface BrushDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
 // Fixed-height strip margin, matches bklit's own line-chart-brush-demo.tsx.
 const brushStripMargin = { top: 4, right: 40, bottom: 4, left: 40 };
 
-export default function BrushDemo({ impl, n: _n }: BrushDemoProps) {
+export default function BrushDemo({ impl, charts, n: _n }: BrushDemoProps) {
+  const BklitCharts = charts as typeof BklitModule;
+  const MigratedCharts = charts as typeof MigratedModule;
   return (
     <div style={{ height: 360, minHeight: 0 }}>
       {impl === "bklit" ? (

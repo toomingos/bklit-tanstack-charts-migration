@@ -1,18 +1,18 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { defaultDemoControls, type DemoControls } from "@/components/demo-controls";
 import { areaChartDocsData } from "@/lib/docs-data";
 
 interface AreaDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
   controls?: DemoControls;
 }
 
-export default function AreaDemo({ impl, n: _n, controls = defaultDemoControls }: AreaDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function AreaDemo({ impl, charts, n: _n, controls = defaultDemoControls }: AreaDemoProps) {
+  const Charts = charts;
   const loadingStyle = controls.sweep ? "sweep" : "pulse";
 
   if (controls.loading === "component") {

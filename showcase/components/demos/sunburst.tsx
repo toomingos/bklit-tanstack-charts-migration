@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { sunburstDocsData } from "@/lib/docs-data";
 
 const SUNBURST_SIZE = 440;
@@ -15,6 +14,7 @@ interface SunburstDocsNode {
 
 interface SunburstDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
@@ -28,8 +28,8 @@ function countArcs(node: SunburstDocsNode): number {
   return count;
 }
 
-export default function SunburstDemo({ impl, n: _n }: SunburstDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function SunburstDemo({ impl, charts, n: _n }: SunburstDemoProps) {
+  const Charts = charts;
 
   const { arcs, rootId } = useMemo(() => {
     if (impl === "bklit" && "buildArcs" in Charts) {

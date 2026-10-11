@@ -1,16 +1,16 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { sankeyDocsData } from "@/lib/docs-data";
 
 interface SankeyDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
-export default function SankeyDemo({ impl, n: _n }: SankeyDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function SankeyDemo({ impl, charts, n: _n }: SankeyDemoProps) {
+  const Charts = charts;
 
   return (
     <Charts.SankeyChart data={sankeyDocsData} aspectRatio="16 / 9" nodeWidth={16} nodePadding={24}>

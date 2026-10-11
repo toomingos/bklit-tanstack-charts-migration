@@ -1,16 +1,16 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { WORLD_COUNTRIES } from "@/lib/demo-data";
 
 interface ChoroplethDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
-export default function ChoroplethDemo({ impl, n: _n }: ChoroplethDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function ChoroplethDemo({ impl, charts, n: _n }: ChoroplethDemoProps) {
+  const Charts = charts;
 
   return (
     <Charts.ChoroplethChart aspectRatio="16 / 9" data={WORLD_COUNTRIES} zoomEnabled>

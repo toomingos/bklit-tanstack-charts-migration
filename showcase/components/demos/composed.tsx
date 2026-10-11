@@ -1,19 +1,19 @@
 "use client";
 
 import { curveCatmullRom } from "@visx/curve";
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { composedDocsData } from "@/lib/docs-data";
 
 const smoothCurve = curveCatmullRom.alpha(0.42);
 
 interface ComposedDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
-export default function ComposedDemo({ impl, n: _n }: ComposedDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function ComposedDemo({ impl, charts, n: _n }: ComposedDemoProps) {
+  const Charts = charts;
 
   return (
     <Charts.ComposedChart aspectRatio="2 / 1" barGap={0} data={composedDocsData} maxBarSize={32} xDataKey="date">

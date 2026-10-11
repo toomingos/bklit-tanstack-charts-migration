@@ -1,16 +1,16 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { scatterChartDocsData } from "@/lib/docs-data";
 
 interface ScatterDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
-export default function ScatterDemo({ impl, n: _n }: ScatterDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function ScatterDemo({ impl, charts, n: _n }: ScatterDemoProps) {
+  const Charts = charts;
 
   return (
     <Charts.ScatterChart data={scatterChartDocsData} aspectRatio="2/1">

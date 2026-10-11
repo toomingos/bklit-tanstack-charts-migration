@@ -1,16 +1,16 @@
 "use client";
 
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { candlestickChartDocsData } from "@/lib/docs-data";
 
 interface CandlestickDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
-export default function CandlestickDemo({ impl, n: _n }: CandlestickDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function CandlestickDemo({ impl, charts, n: _n }: CandlestickDemoProps) {
+  const Charts = charts;
 
   return (
     <Charts.CandlestickChart

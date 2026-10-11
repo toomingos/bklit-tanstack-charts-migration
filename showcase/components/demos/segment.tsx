@@ -1,12 +1,12 @@
 "use client";
 
 import * as React from "react";
-import * as BklitCharts from "@showcase/bklit-charts";
-import * as MigratedCharts from "@showcase/migrated-charts";
+import type { ImplCharts } from "./impl-charts";
 import { lineChartDocsData } from "@/lib/docs-data";
 
 interface SegmentDemoProps {
   impl: "bklit" | "migrated";
+  charts: ImplCharts;
   n: number;
 }
 
@@ -66,8 +66,8 @@ function SegmentBridge({
 }
 
 // Registry entry point (chart-stage.tsx / lib/chart-data.ts route "segment").
-export default function SegmentDemo({ impl, n: _n }: SegmentDemoProps) {
-  const Charts = impl === "bklit" ? BklitCharts : MigratedCharts;
+export default function SegmentDemo({ impl, charts, n: _n }: SegmentDemoProps) {
+  const Charts = charts;
   const [stats, setStats] = React.useState<SegmentStats | null>(null);
   const first = lineChartDocsData[0];
   const last = lineChartDocsData.at(-1);

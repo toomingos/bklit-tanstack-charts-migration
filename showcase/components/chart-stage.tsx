@@ -1,42 +1,79 @@
 "use client";
 
-import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
 import type { ComponentType } from "react";
 import type { DemoControls } from "@/components/demo-controls";
+import type { ImplCharts } from "@/components/demos/impl-charts";
 import { timedImport } from "@/components/live-perf/collector";
+
+type Impl = "bklit" | "migrated";
+interface DemoProps { impl: Impl; n: number; controls?: DemoControls }
+type DemoModule = { default: ComponentType<DemoProps & { charts: ImplCharts }> };
+
+// Each card loads only its own implementation's chart module next to the demo chunk, so a card never waits on (or ships) the other library.
+const loadCharts: Record<Impl, () => Promise<ImplCharts>> = {
+  bklit: () => import("@showcase/bklit-charts"),
+  migrated: () => import("@showcase/migrated-charts"),
+};
+
+// Client-only lazy component without Suspense: a revealed Suspense fallback holds the content back for 300ms (React's fallback throttle) even when the chunk is cached.
+function clientOnly(load: () => Promise<{ default: ComponentType<DemoProps> }>): ComponentType<DemoProps> {
+  let loaded: ComponentType<DemoProps> | null = null;
+  let pending: Promise<void> | null = null;
+  const start = (): Promise<void> => (pending ??= load().then((m) => { loaded = m.default; }));
+  return function ClientOnly(props: DemoProps) {
+    const [Demo, setDemo] = useState<ComponentType<DemoProps> | null>(() => loaded);
+    useEffect(() => {
+      if (loaded) { setDemo(() => loaded); return; }
+      let live = true;
+      void start().then(() => { if (live) { setDemo(() => loaded); } });
+      return () => { live = false; };
+    }, []);
+    return Demo ? <Demo {...props} /> : null;
+  };
+}
+
+function lazyDemo(chart: string, load: () => Promise<DemoModule>): Record<Impl, ComponentType<DemoProps>> {
+  const make = (impl: Impl) =>
+    clientOnly(
+      timedImport(chart, async () => {
+        const [demo, charts] = await Promise.all([load(), loadCharts[impl]()]);
+        const Demo = demo.default;
+        return { default: (props: DemoProps) => <Demo {...props} charts={charts} /> };
+      }),
+    );
+  return { bklit: make("bklit"), migrated: make("migrated") };
+}
 
 // Lazy-loaded unified demo components — one per chart, 16 total.
 // ssr: false — chart demos are client-only (DOM measurement, WAAPI, canvas).
-const AreaDemo = dynamic(timedImport("area", () => import("./demos/area")), { ssr: false });
-const BarDemo = dynamic(timedImport("bar", () => import("./demos/bar")), { ssr: false });
-const BarDepthDemo = dynamic(timedImport("bardepth", () => import("./demos/bardepth")), { ssr: false });
-const BarSquaresDemo = dynamic(timedImport("barsquares", () => import("./demos/barsquares")), { ssr: false });
-const BrushDemo = dynamic(timedImport("brush", () => import("./demos/brush")), { ssr: false });
-const CandlestickDemo = dynamic(timedImport("candlestick", () => import("./demos/candlestick")), { ssr: false });
-const ChoroplethDemo = dynamic(timedImport("choropleth", () => import("./demos/choropleth")), { ssr: false });
-const ComposedDemo = dynamic(timedImport("composed", () => import("./demos/composed")), { ssr: false });
-const FunnelDemo = dynamic(timedImport("funnel", () => import("./demos/funnel")), { ssr: false });
-const GaugeDemo = dynamic(timedImport("gauge", () => import("./demos/gauge")), { ssr: false });
-const HeatmapDemo = dynamic(timedImport("heatmap", () => import("./demos/heatmap")), { ssr: false });
-const LineDemo = dynamic(timedImport("line", () => import("./demos/line")), { ssr: false });
-const LivelineDemo = dynamic(timedImport("liveline", () => import("./demos/liveline")), { ssr: false });
-const MarkersDemo = dynamic(timedImport("markers", () => import("./demos/markers")), { ssr: false });
-const PatternAreaDemo = dynamic(timedImport("patternarea", () => import("./demos/patternarea")), { ssr: false });
-const PieDemo = dynamic(timedImport("pie", () => import("./demos/pie")), { ssr: false });
-const ProjectionDemo = dynamic(timedImport("projection", () => import("./demos/projection")), { ssr: false });
-const RadarDemo = dynamic(timedImport("radar", () => import("./demos/radar")), { ssr: false });
-const CompositionDemo = dynamic(timedImport("composition", () => import("./demos/composition")), { ssr: false });
-const ReferenceAreaDemo = dynamic(timedImport("reference-area", () => import("./demos/reference-area")), { ssr: false });
-const RingDemo = dynamic(timedImport("ring", () => import("./demos/ring")), { ssr: false });
-const SankeyDemo = dynamic(timedImport("sankey", () => import("./demos/sankey")), { ssr: false });
-const ScatterDemo = dynamic(timedImport("scatter", () => import("./demos/scatter")), { ssr: false });
-const SegmentDemo = dynamic(timedImport("segment", () => import("./demos/segment")), { ssr: false });
-const SunburstDemo = dynamic(timedImport("sunburst", () => import("./demos/sunburst")), { ssr: false });
+const AreaDemo = lazyDemo("area", () => import("./demos/area"));
+const BarDemo = lazyDemo("bar", () => import("./demos/bar"));
+const BarDepthDemo = lazyDemo("bardepth", () => import("./demos/bardepth"));
+const BarSquaresDemo = lazyDemo("barsquares", () => import("./demos/barsquares"));
+const BrushDemo = lazyDemo("brush", () => import("./demos/brush"));
+const CandlestickDemo = lazyDemo("candlestick", () => import("./demos/candlestick"));
+const ChoroplethDemo = lazyDemo("choropleth", () => import("./demos/choropleth"));
+const ComposedDemo = lazyDemo("composed", () => import("./demos/composed"));
+const FunnelDemo = lazyDemo("funnel", () => import("./demos/funnel"));
+const GaugeDemo = lazyDemo("gauge", () => import("./demos/gauge"));
+const HeatmapDemo = lazyDemo("heatmap", () => import("./demos/heatmap"));
+const LineDemo = lazyDemo("line", () => import("./demos/line"));
+const LivelineDemo = lazyDemo("liveline", () => import("./demos/liveline"));
+const MarkersDemo = lazyDemo("markers", () => import("./demos/markers"));
+const PatternAreaDemo = lazyDemo("patternarea", () => import("./demos/patternarea"));
+const PieDemo = lazyDemo("pie", () => import("./demos/pie"));
+const ProjectionDemo = lazyDemo("projection", () => import("./demos/projection"));
+const RadarDemo = lazyDemo("radar", () => import("./demos/radar"));
+const CompositionDemo = lazyDemo("composition", () => import("./demos/composition"));
+const ReferenceAreaDemo = lazyDemo("reference-area", () => import("./demos/reference-area"));
+const RingDemo = lazyDemo("ring", () => import("./demos/ring"));
+const SankeyDemo = lazyDemo("sankey", () => import("./demos/sankey"));
+const ScatterDemo = lazyDemo("scatter", () => import("./demos/scatter"));
+const SegmentDemo = lazyDemo("segment", () => import("./demos/segment"));
+const SunburstDemo = lazyDemo("sunburst", () => import("./demos/sunburst"));
 
-// `controls` is optional so demos without a loading surface need not declare it.
-type DemoComponent = ComponentType<{ impl: "bklit" | "migrated"; n: number; controls?: DemoControls }>;
-
-const registry: Record<string, DemoComponent> = {
+const registry: Record<string, Record<Impl, ComponentType<DemoProps>>> = {
   area: AreaDemo,
   bar: BarDemo,
   bardepth: BarDepthDemo,
@@ -110,7 +147,7 @@ interface ChartStageProps {
 }
 
 export function ChartStage({ impl, chart, n, controls }: ChartStageProps) {
-  const Demo = registry[chart];
+  const Demo = registry[chart]?.[impl];
   if (!Demo) return null;
   // The spacer and the demo share one grid cell, so the cell is never shorter than the reserve.
   return (
