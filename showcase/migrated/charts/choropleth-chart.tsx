@@ -83,12 +83,13 @@ const ChoroplethChart = ({
       const p = projection(coords);
       return p && Number.isFinite(p[0]) && Number.isFinite(p[1]) ? [p[0], p[1]] : null;
     };
+    let featurePaths: (string | null)[] | undefined = undefined;
     return {
       animationDuration,
       containerRef: hostRef,
       enterTransition,
       featureCollection: data,
-      featurePaths: data.features.map(raw),
+      get featurePaths() { return (featurePaths ??= data.features.map(raw)); },
       features: data.features,
       height: size.height,
       hoveredFeatureIndex: null,

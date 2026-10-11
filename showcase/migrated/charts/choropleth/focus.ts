@@ -15,6 +15,8 @@ interface ZoomTransformState {
 
 interface ProjectionHolder {
   projection: GeoProjection | undefined;
+  /** Chart area and options the projection was built for. */
+  projectionKey?: string;
   /** Chart area of the last projection build (scene px), the visible window the zoom transform maps into. */
   chart?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   transform: ZoomTransformState;
@@ -76,12 +78,30 @@ const boxContext = (boxes: [number, number, number, number][]): BoxContext => {
   };
 };
 
-// One box per projected ring, taken after d3's antimeridian clipping: a feature drawn on both map edges (Russia's Chukotka, Fiji, the
-// Aleutians) yields separate boxes per edge instead of one box spanning the whole map.
-const ringBoxes = (projection: GeoProjection, datum: GeoPermissibleObjects): Box[] => {
+// One stream pass per feature: the projected outline goes straight into a Path2D (hit tests) and one box per ring is kept, taken after d3's
+// antimeridian clipping (Russia's Chukotka, Fiji, the Aleutians yield separate boxes per map edge instead of one spanning the whole map).
+const projectOnce = (projection: GeoProjection, datum: GeoPermissibleObjects): { readonly path: Path2D | null; readonly rings: Box[] } => {
   const boxes: [number, number, number, number][] = [];
-  geoPath(projection, erase(boxContext(boxes)))(datum);
-  return boxes.filter((ring) => ring.every(Number.isFinite));
+  const path = new Path2D();
+  const rings = boxContext(boxes);
+  geoPath(projection, erase({
+    arc: (x: number, y: number, r: number, start: number, end: number): void => { path.arc(x, y, r, start, end); },
+    closePath: (): void => { path.closePath(); },
+    lineTo: (x: number, y: number): void => { path.lineTo(x, y); rings.lineTo(x, y); },
+    moveTo: (x: number, y: number): void => { path.moveTo(x, y); rings.moveTo(x, y); },
+  }))(datum);
+  return { path: boxes.length === 0 ? null : path, rings: boxes.filter((ring) => ring.every(Number.isFinite)) };
+};
+
+const boundsOf = (rings: readonly Box[]): Box => {
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const ring of rings) {
+    x0 = Math.min(x0, ring[0]);
+    y0 = Math.min(y0, ring[1]);
+    x1 = Math.max(x1, ring[2]);
+    y1 = Math.max(y1, ring[3]);
+  }
+  return [x0, y0, x1, y1];
 };
 
 // The drawn pieces inside `area`: the projected polygon clipped to the rectangle by d3's own geoClipRectangle, one box per clipped ring.
@@ -126,9 +146,8 @@ const createGeoGeometry = (holder: Readonly<ProjectionHolder>): GeoGeometry => {
     }
     let found = cache.get(datum);
     if (found === undefined) {
-      const [[x0, y0], [x1, y1]] = geoPath(projection).bounds(datum);
-      const d = geoPath(projection)(datum);
-      found = { bounds: [x0, y0, x1, y1], path: d === null ? null : new Path2D(d), rings: ringBoxes(projection, datum) };
+      const { path, rings } = projectOnce(projection, datum);
+      found = { bounds: boundsOf(rings), path, rings };
       cache.set(datum, found);
     }
     return found;
