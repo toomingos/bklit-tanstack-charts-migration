@@ -185,7 +185,6 @@ const ScatterChartInner = ({
   const emptyFocusCss = focusEmptyHiddenCss(`[data-bkm-kit="${uid}"]`);
   return (
     <div ref={containerRef} className={className} data-bkm-chart="scatter" data-bkm-kit={uid} {...built.gridAttrs} style={{ width: "100%", position: "relative", ...hoverVars, ...bklitSurfaceStyle, ...style }}>
-      {/* .ts-chart__focus-layer / __focus-guide-layer are renderer-owned, undocumented containers (gap #20, posted #196) */}
       <style>{`${SCATTER_HOVER_CSS}${pillStaticCss}${emptyFocusCss}`}</style>
       {childrenReady ? <RendererChart
         definition={erase(built.definition)}

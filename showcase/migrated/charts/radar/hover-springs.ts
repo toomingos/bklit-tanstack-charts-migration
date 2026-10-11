@@ -1,6 +1,6 @@
 // Radar series hover scale as bklit's 400/25 spring (radar-area.tsx / radar-labels.tsx: 1.05 about the bbox centre, dots included), on WAAPI so a reversal keeps velocity.
 // The static rules in hover-css.ts hold the hot value, the dim tween and the instant fill/stroke/dot-radius snaps.
-import { isMotionNode } from "../kit/css-hooks";
+import { isMotionNode } from "../kit/renderer-dom";
 import { springDriver } from "../kit/motion/spring-animate";
 import { HOVER_SPRING } from "../kit/motion/springs";
 import { HOVER_SCALE_DELTA, MAX_SERIES } from "./hover-css";

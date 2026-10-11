@@ -1,7 +1,7 @@
-// gap #36 (no className on area/rect/text): data-ts-key selectors. Hover as static CSS on host `data-hover="<stage>"` (`--h` hot, `--d` dimmed);
+// Selectors via kit/renderer-dom.ts. Hover as static CSS on host `data-hover="<stage>"` (`--h` hot, `--d` dimmed);
 // pop-spring.ts draws the springs, transitions carry `NOT_MOTION`.
 import type { CSSProperties } from "react";
-import { NOT_MOTION } from "../kit/css-hooks";
+import { CLS, NOT_MOTION, keyEnds, keyHas, keyStarts } from "../kit/renderer-dom";
 import { range } from "../kit/range";
 
 const FILL_TWEEN_MS = 150;
@@ -11,8 +11,8 @@ const MAX_LAYERS = 8;
 const DIM_PERCENT = 60;
 
 const HOST = '[data-bkm-chart="funnel"]';
-const AREA_PATH = "g.ts-chart__area path";
-const layerSel = (layer: number): string => `${AREA_PATH}[data-ts-key*="-l${layer}:"]`;
+const AREA_PATH = `g${CLS.area} path`;
+const layerSel = (layer: number): string => `${AREA_PATH}${keyHas(`-l${layer}:`)}`;
 
 const LABEL_FILLS: readonly (readonly [string, string])[] = [
   ["value", "var(--foreground)"], ["pill", "var(--foreground)"], ["name", "var(--muted-foreground)"],
@@ -22,12 +22,11 @@ const mix = (colour: string): string => `color-mix(in srgb,${colour} calc(100% -
 const shadow = (alpha: string): string => `drop-shadow(0 1px 1.5px rgb(0 0 0/${alpha})) drop-shadow(0 1px 1px rgb(0 0 0/${alpha}))`;
 const DIMMED_SHADOW_ALPHA = "calc(.1 * (1 - var(--d,1) * .6))";
 
-// gap #36: ring paths, labels and pills are reached through ts-chart__area and data-ts-key (no className hook on area/text/rect).
 const staticRules = (layerCount: number): string => {
   let css = "";
   // Hot stage: its ring paths, label text and pill.
   for (const stage of range(MAX_STAGES)) {
-    css += `${HOST}[data-hover="${stage}"] :is(${AREA_PATH}[data-ts-key^="funnel-s${stage}-"],:is(text,rect)[data-ts-key*="funnel-"][data-ts-key$=":${stage}"]){--d:0;--h:1}`;
+    css += `${HOST}[data-hover="${stage}"] :is(${AREA_PATH}${keyStarts(`funnel-s${stage}-`)},:is(text,rect)${keyHas("funnel-")}${keyEnds(`:${stage}`)}){--d:0;--h:1}`;
   }
   // bklit's per-stage label overlays carry `cursor-pointer` (funnel-chart.tsx:1012); they tile every stage cell, so the host carries it.
   css += `${HOST}{cursor:pointer}`;
@@ -40,14 +39,12 @@ const staticRules = (layerCount: number): string => {
     css += `${HOST} ${sel}${NOT_MOTION}{transition:fill-opacity ${FILL_TWEEN_MS}ms ${FILL_TWEEN_EASE}}`;
   }
   // bklit's 0.4 group opacity as a colour mix (per-node opacity would show the pill through its text); the pill's percentage text is not mixed.
-  // gap #36: labels and pills are reached through data-ts-key.
   for (const [prefix, colour] of LABEL_FILLS) {
-    css += `${HOST}[data-hover] :is(text,rect)[data-ts-key^="funnel-${prefix}"]{fill:${mix(colour)}}`;
+    css += `${HOST}[data-hover] :is(text,rect)${keyStarts(`funnel-${prefix}`)}{fill:${mix(colour)}}`;
   }
   // Label opacity springs on 300/24 (funnel-chart.tsx:1011-1017, pop-spring.ts); the pill shadow is bklit `shadow-sm`, dimmed with --d.
-  // gap #36: the pill rects are reached through data-ts-key.
-  css += `${HOST} rect[data-ts-key^="funnel-pill-"]{filter:${shadow(".1")}}`;
-  css += `${HOST}[data-hover] rect[data-ts-key^="funnel-pill-"]{filter:${shadow(DIMMED_SHADOW_ALPHA)}}`;
+  css += `${HOST} rect${keyStarts("funnel-pill-")}{filter:${shadow(".1")}}`;
+  css += `${HOST}[data-hover] rect${keyStarts("funnel-pill-")}{filter:${shadow(DIMMED_SHADOW_ALPHA)}}`;
   return css;
 };
 

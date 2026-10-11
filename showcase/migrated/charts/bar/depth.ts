@@ -267,7 +267,7 @@ export function buildDepthMarks(input: DepthMarkInput): DepthMarks {
               kind: "group",
               key: k,
               ariaHidden: true,
-              // UPSTREAM-GAPS 49: group clip is rect-only, so the wave cannot follow bklit's 3D silhouette clipPath (bar-depth.tsx:964-966).
+              // UPSTREAM-GAPS #49: group clip is rect-only, so the wave cannot follow bklit's 3D silhouette clipPath (bar-depth.tsx:964-966).
               clip: { x: e.bandX, y: e.topY, width: e.bandWidth, height: e.barHeight },
               children: [
                 // The CSS sweep moves this group by its own box height (transform-box: fill-box, translateY(-100%)); the

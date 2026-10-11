@@ -1,5 +1,5 @@
 /* LiveLineChart (native): tip pulse ring, badge font, hover dimming.
-   Scoped under [data-bkm-chart] like the shared stylesheet. */
+   Scoped under [data-bkm-chart] like the shared stylesheet. Renderer selectors repeat kit/renderer-dom.ts (UPSTREAM-GAPS #36, #50). */
 @keyframes bkm-live-pulse {
   from { r: var(--bkm-live-r0, 4px); opacity: 0.5; }
   to { r: var(--bkm-live-r1, 14px); opacity: 0; }

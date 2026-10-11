@@ -10,6 +10,7 @@ import type { ResolvedSeries } from "./series";
 import { readyGateCss } from "./gate-css";
 import { typedAttr } from "../css-hooks";
 import { MARKER_BUCKETS } from "./series-marks";
+import { CLS, keyEnds, keyHas } from "../renderer-dom";
 
 /** Scoped CSS of the host: loading, pre-ready hiding, marker blur, pill tick blanking, hover visuals and brush extent. */
 export function cartesianStaticCss(uid: string, built: CartesianBuild, hasBrush: boolean, series: readonly ResolvedSeries[]): string {
@@ -22,12 +23,12 @@ export function cartesianStaticCss(uid: string, built: CartesianBuild, hasBrush:
       `${scope} [data-chart-brush-handle=start]{x:max(calc(var(--bkm-brush-ml) - 3px),calc(attr(x type(<number>))*1px - 2px))}` +
       `${scope} [data-chart-brush-handle=end]{x:min(calc(var(--bkm-brush-ml) + var(--bkm-brush-w) - 3px),calc(attr(x type(<number>))*1px + 2px))}`)
     : "";
-  // bklit SeriesPointMarker tweens `blur(enterBlur)` -> 0 with the opacity (enterBlur 2px, `--bkm-enter-blur`): the renderer writes the in-flight fade as an opacity attribute, so a fading marker is blurred in proportion; markers are addressed by mark id through data-ts-key (gap #36: dot marks have no className option).
+  // bklit SeriesPointMarker tweens `blur(enterBlur)` -> 0 with the opacity (enterBlur 2px, `--bkm-enter-blur`): the renderer writes the in-flight fade as an opacity attribute, so a fading marker is blurred in proportion; markers are matched by mark id (kit/renderer-dom.ts).
   // Here because the stylesheet pipeline drops attr(type()); typed attr() is Chromium-only (133+), under `@supports` (unguarded, the var() invalidates at computed time: `filter:none`), other browsers enter without the blur.
-  const markerBlur = (sel: string, attr: string): string => `${scope} .ts-chart__dot[data-ts-key*="${sel}"] circle[${attr}]:not([${attr}="1"]){filter:blur(calc((1 - attr(${attr} type(<number>), 1)) * var(--bkm-enter-blur, 2) * 1px))}`;
-  const markerFade = [":marker:", ":marker-ring:", ":marker-out:"].flatMap((sel) => ["fill-opacity", "stroke-opacity", "opacity"].map((a) => markerBlur(sel, a))).concat([":marker:", ":marker-ring:", ":marker-out:"].map((sel) => `${scope} .ts-chart__dot[data-ts-key*="${sel}"][opacity]:not([opacity="1"]){filter:blur(calc((1 - attr(opacity type(<number>), 1)) * var(--bkm-enter-blur, 2) * 1px))}`)).join("");
+  const markerBlur = (sel: string, attr: string): string => `${scope} ${CLS.dot}${keyHas(sel)} circle[${attr}]:not([${attr}="1"]){filter:blur(calc((1 - attr(${attr} type(<number>), 1)) * var(--bkm-enter-blur, 2) * 1px))}`;
+  const markerFade = [":marker:", ":marker-ring:", ":marker-out:"].flatMap((sel) => ["fill-opacity", "stroke-opacity", "opacity"].map((a) => markerBlur(sel, a))).concat([":marker:", ":marker-ring:", ":marker-out:"].map((sel) => `${scope} ${CLS.dot}${keyHas(sel)}[opacity]:not([opacity="1"]){filter:blur(calc((1 - attr(opacity type(<number>), 1)) * var(--bkm-enter-blur, 2) * 1px))}`)).join("");
   // Bucket ids run 0..MARKER_BUCKETS-1 (series-marks.ts), so one generated rule per bucket covers every id the marks can carry.
-  const markerStagger = Array.from({ length: MARKER_BUCKETS }, (_, i) => `${scope} .ts-chart__marks>:is([data-ts-key$=":marker:${i}"],[data-ts-key$=":marker-ring:${i}"],[data-ts-key$=":marker-out:${i}"]){--bkm-mk:${(i / MARKER_BUCKETS).toFixed(4)}}`).join("");
+  const markerStagger = Array.from({ length: MARKER_BUCKETS }, (_, i) => `${scope} ${CLS.marks}>:is(${keyEnds(`:marker:${i}`)},${keyEnds(`:marker-ring:${i}`)},${keyEnds(`:marker-out:${i}`)}){--bkm-mk:${(i / MARKER_BUCKETS).toFixed(4)}}`).join("");
   return [loadingCss(scope, series), markerStagger, readyGateCss(scope, true), typedAttr(markerFade), pill, hoverStaticCss(scope, built.hover), brushExtent, built.backgroundCss(scope)].filter(Boolean).join("");
 }
 

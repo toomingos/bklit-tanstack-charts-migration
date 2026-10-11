@@ -217,7 +217,6 @@ export const CandlestickChart = ({
       data-bkm-legend={legendHovered ?? undefined}
       style={{ width: "100%", position: "relative", "--bkm-faded": built.fadedOpacity, ...bklitSurfaceStyle, ...style } as CSSProperties}
     >
-      {/* .ts-chart__focus-layer / __focus-guide-layer are renderer-owned, undocumented containers (gap #20, posted #196) */}
       <style>{`${CANDLE_HOVER_CSS}${pillStaticCss}${emptyFocusCss}`}</style>
       {measured && childrenReady ? (
       <RendererChart<Candle, Date, number>

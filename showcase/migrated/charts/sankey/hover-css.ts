@@ -1,5 +1,5 @@
 import { REVEAL_CSS_EASE } from "../kit/motion/easing";
-import { NOT_MOTION } from "../kit/css-hooks";
+import { NOT_MOTION, keyEnds, keyIs, keyStarts } from "../kit/renderer-dom";
 
 // Sankey hover is static scoped CSS: per-index `--d` / `--h` rules edited in place through the CSSOM, never chart state or renderer-owned DOM.
 // Transitions carry NOT_MOTION; a phase epsilon keeps CSS from reversing a transition (bklit restarts over the full duration).
@@ -8,12 +8,11 @@ const DIMMED_VALUE_SCALE = 0.8;
 const HOVER_STROKE_BOOST = 1.3;
 const FLOW_TWEEN = "180ms cubic-bezier(0,0,.58,1)";
 
-// Mark ids are matched through data-ts-key (gap #36: rect/text/link marks document no className/id hook).
 const HOST = '[data-bkm-chart="sankey"]';
-const NODE_GROUP = 'g[data-ts-key^="sankey:sankey-node-"]';
-const NAME_TEXT = 'g[data-ts-key="sankey:nlabel"] > text';
-const VALUE_TEXT = 'g[data-ts-key="sankey:vlabel"] > text';
-const FLOW_PATH = 'g[data-ts-key="sankey:flow"] > path';
+const NODE_GROUP = `g${keyStarts("sankey:sankey-node-")}`;
+const NAME_TEXT = `g${keyIs("sankey:nlabel")} > text`;
+const VALUE_TEXT = `g${keyIs("sankey:vlabel")} > text`;
+const FLOW_PATH = `g${keyIs("sankey:flow")} > path`;
 
 const staticRules = (): string => {
   let css = `${HOST} ${NODE_GROUP} > rect${NOT_MOTION}{opacity:calc(1 + var(--d,0) * (var(--bkm-sk-nf) - 1));transition:opacity var(--bkm-sankey-dur,1100ms) var(--bkm-sankey-ease,${REVEAL_CSS_EASE}) calc(var(--bkm-sk-i) / var(--bkm-sankey-n,1) * 0.24 * var(--bkm-sankey-dur,1100ms))}`;
@@ -28,15 +27,15 @@ const SANKEY_HOVER_CAP_NODES = 32;
 const SANKEY_HOVER_CAP_FLOWS = 96;
 
 /** Per-index rules scoped to one chart (`data-bkm-sk-id` on its host): node rules (index `i`), then flow rules (`SANKEY_HOVER_CAP_NODES + i`), every value at rest; rendered once, the writer edits declarations in place.
- * Keys via `data-ts-key`: no className hook on rect/text/link marks (UPSTREAM-GAPS #36). */
+ */
 const sankeyIndexCss = (id: string): string => {
   const host = `${HOST}[data-bkm-sk-id="${id}"]`;
   let css = "";
   for (let i = 0; i < SANKEY_HOVER_CAP_NODES; i += 1) {
-    css += `${host} :is(g[data-ts-key="sankey:sankey-node-${i}"],g[data-ts-key="sankey:nlabel"] > text[data-ts-key$=":number:${i}"],g[data-ts-key="sankey:vlabel"] > text[data-ts-key$=":number:${i}"]){--d:0}`;
+    css += `${host} :is(g${keyIs(`sankey:sankey-node-${i}`)},g${keyIs("sankey:nlabel")} > text${keyEnds(`:number:${i}`)},g${keyIs("sankey:vlabel")} > text${keyEnds(`:number:${i}`)}){--d:0}`;
   }
   for (let i = 0; i < SANKEY_HOVER_CAP_FLOWS; i += 1) {
-    css += `${host} g[data-ts-key="sankey:flow"] > path[data-ts-key$=":number:${i}"]{--d:0;--h:0}`;
+    css += `${host} g${keyIs("sankey:flow")} > path${keyEnds(`:number:${i}`)}{--d:0;--h:0}`;
   }
   return css;
 };

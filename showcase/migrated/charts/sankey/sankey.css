@@ -1,4 +1,4 @@
-/* The entrance/label rules below match mark ids through data-ts-key (gap #36: rect/text/link marks document no className/id hook). */
+/* Mark ids are matched through data-ts-key (UPSTREAM-GAPS #36); the TS twin of these selectors is kit/renderer-dom.ts. */
 /* Native tooltip chrome for SankeyChart (the panel surface, radius and shadow are painted once on the shared body wrapper in
    styles.css; the custom body already drops the stock card, charts-core tooltip.ts customTooltipCardStyle). */
 [data-bkm-chart="sankey"] .ts-chart-tooltip.bkm-sankey-tooltip {

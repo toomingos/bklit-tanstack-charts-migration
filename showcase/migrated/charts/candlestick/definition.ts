@@ -30,7 +30,8 @@ import { BKLIT_GUIDE_SPRING, crosshairGradient, crosshairRuleMark, datePillGuide
 import type { ChartMargin } from "../kit/theme";
 import type { CandlestickProps } from "./carrier";
 import { readyGateCss } from "../kit/cartesian/gate-css";
-import { NOT_MOTION, typedAttr } from "../kit/css-hooks";
+import { typedAttr } from "../kit/css-hooks";
+import { CROSSHAIR_CLASS, NOT_MOTION, keyHas, keyIs } from "../kit/renderer-dom";
 
 export type Candle = Record<string, unknown>;
 
@@ -329,8 +330,7 @@ function tooltipMarks({ tt, rows, xKey, uid, marginBottom }: TooltipMarkInput): 
           return {
             kind: "group" as const,
             key: "close:dot",
-            // gap #36: our own guide group borrows core's fixed crosshair class; guide nodes have no documented className.
-            className: "ts-chart__crosshair",
+            className: CROSSHAIR_CLASS,
             ariaHidden: true,
             translateX: x,
             translateY: scales.y.map(close),
@@ -467,8 +467,7 @@ export function buildCandlestickDefinition(input: CandlestickInput): Candlestick
 
 /** Fixed rules; the host carries state: `data-bkm-hover` + `--bkm-hx` (focused candle centre, svg px) dims every other candle to `--bkm-faded`;
  * `data-bkm-legend=0|1` dims the other direction and wins over hover (after the reveal, as bklit). Guarded so it never lags the entrance tweens. */
-// gap #36: barY marks take no className, so candle rects and the pos/neg legend split are selected by data-ts-key.
-const CANDLE_RECTS = ["wick", "wick-lo", "body", "body-lo"].map((id) => `g[data-ts-key="${id}"]>rect`).join(",");
+const CANDLE_RECTS = ["wick", "wick-lo", "body", "body-lo"].map((id) => `g${keyIs(id)}>rect`).join(",");
 const hostSel = '[data-bkm-chart="candlestick"]';
 const on = (state: string, tail = ""): string => CANDLE_RECTS.split(",").map((r) => `${hostSel}${state} ${r}${tail}`).join(",");
 // Typed attr() is Chromium-only (133+): under `@supports` (unguarded, the var() keeps it past parsing and it is invalid at
@@ -479,6 +478,6 @@ export const CANDLE_HOVER_CSS = [
   readyGateCss(hostSel),
   `${on("", NOT_MOTION)}{transition:opacity .15s ease-in-out}`,
   HOVER_DIM_CSS,
-  `${on('[data-bkm-ready][data-bkm-legend="0"]', '[data-ts-key*=":neg:"]')},${on('[data-bkm-ready][data-bkm-legend="1"]', '[data-ts-key*=":pos:"]')}{opacity:var(--bkm-faded)}`,
-  `${on('[data-bkm-ready][data-bkm-legend="0"]', ':not([data-ts-key*=":neg:"])')},${on('[data-bkm-ready][data-bkm-legend="1"]', ':not([data-ts-key*=":pos:"])')}{opacity:1}`,
+  `${on('[data-bkm-ready][data-bkm-legend="0"]', keyHas(':neg:'))},${on('[data-bkm-ready][data-bkm-legend="1"]', keyHas(':pos:'))}{opacity:var(--bkm-faded)}`,
+  `${on('[data-bkm-ready][data-bkm-legend="0"]', `:not(${keyHas(':neg:')})`)},${on('[data-bkm-ready][data-bkm-legend="1"]', `:not(${keyHas(':pos:')})`)}{opacity:1}`,
 ].join("");

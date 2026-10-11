@@ -39,9 +39,10 @@ export function wipeWrap<M extends AnyMark>(
       {
         kind: "group",
         key: `${WIPE_KEY}o:${tag}`,
+        className: "bkm-wipe-o",
         translateX: -shift,
         clip: { x: 0, y: 0, width: margin.left + wipe.w + pad, height: wipe.h + margin.top + margin.bottom },
-        children: [{ kind: "group", key: `${WIPE_KEY}i:${tag}`, translateX: shift, children: scene.nodes }],
+        children: [{ kind: "group", key: `${WIPE_KEY}i:${tag}`, className: "bkm-wipe-i", translateX: shift, children: scene.nodes }],
       },
     ],
   });

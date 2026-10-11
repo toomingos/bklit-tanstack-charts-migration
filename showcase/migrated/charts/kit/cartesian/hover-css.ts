@@ -1,6 +1,7 @@
 // Fixed-text CSS for the cartesian hover visuals (dim, highlight band, drag Segment* rules, ProfitLossLine emphasis).
-import { focusEmptyHiddenCss, FOCUS_LAYERS } from "./gate-css";
-import { NOT_MOTION } from "../css-hooks";
+import { focusEmptyHiddenCss } from "./gate-css";
+import { FOCUS_LAYERS, keyStarts } from "../renderer-dom";
+import { NOT_MOTION } from "../renderer-dom";
 
 /** Hover dim of every series (bklit SeriesHoverDim). */
 export interface HoverDimRule {
@@ -101,7 +102,6 @@ function legendDimRules(scope: string, dim: readonly HoverDimRule[]): string[] {
 function highlightRules(scope: string, on: string, highlights: readonly HoverHighlight[]): string[] {
   const springBand = bandOf("--bkm-hs0", "--bkm-hs1");
   // bklit unmounts the highlight on leave (no AnimatePresence): the 0.4s fade is enter-only, so the transition lives on the active state.
-  // Selector on the core `data-ts-key` encoding of our own mark ids; cartesian marks have no class hook (UPSTREAM-GAPS #36).
   return highlights.flatMap((hl) => [
     `${scope} ${hl.select}{opacity:0;clip-path:${springBand}}`,
     `${on} ${hl.select}{opacity:1}`,
@@ -109,8 +109,8 @@ function highlightRules(scope: string, on: string, highlights: readonly HoverHig
   ]);
 }
 
-const SEGMENT_EDGES = '[data-ts-key^="segment-edge-"]';
-const segmentKey = (id: string): string => `[data-ts-key^="${id}:"]`;
+const SEGMENT_EDGES = keyStarts("segment-edge-");
+const segmentKey = (id: string): string => keyStarts(`${id}:`);
 
 // Segment* (bklit SegmentBackground / SegmentLineFrom / SegmentLineTo, drawn past 5px of drag) span the plot and sit still: the drag sync clips the band to --bkm-hl0/1 and translates each rule there,
 // `data-bkm-segon` shows them; the band fades over 0.15s (motion.rect opacity), the rules mount and unmount with no transition.
@@ -139,7 +139,6 @@ function profitLossRules(scope: string, pl: readonly ProfitLossRule[]): string[]
     if (rule.kind === "dim") {
       const off = hovering(rule.sign === 0 ? 1 : 0);
       const live = `${rule.select}${NOT_MOTION}`;
-      // Selector on the core `data-ts-key` encoding of our own mark ids; cartesian marks have no class hook (UPSTREAM-GAPS #36).
       return [`${within(off, live)}{transition:opacity .2s ease-in-out}`, `${within(off, rule.select)}{opacity:.25}`];
     }
     // Mixed-sign line: one gradient (stops 1-2 positive, 3-4 negative). The renderer prefixes ids, so match the suffix.
@@ -156,7 +155,7 @@ function profitLossRules(scope: string, pl: readonly ProfitLossRule[]): string[]
 }
 
 /** Fixed-text CSS for the cartesian hover visuals, keyed on host attributes (`data-bkm-hover/-drag/-settle/-legend/-pl`) and `--bkm-hl0/1`; it changes only with the definition.
- * `data-ts-key^=` selectors address marks through the undocumented key encoding (gap #36: line / area / dot / rule / text marks have no className or id hook). Reads only. */
+ * Selectors from kit/renderer-dom.ts address marks by mark id. Reads only. */
 export function hoverStaticCss(scope: string, hover: HoverVisuals): string {
   // bklit SeriesHoverDim / HighlightSegment run on `tooltipData !== null || selection.active`: a hovered or a dragged chart.
   const on = `${scope}:is([data-bkm-hover],[data-bkm-drag])`;

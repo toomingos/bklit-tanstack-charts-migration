@@ -34,6 +34,7 @@ import type { PlotRect } from "./focus";
 import { buildDepthMarks, depthBarMark, hasDepth } from "./depth";
 import { cssAttr } from "./hover";
 import type { HoverTarget } from "./hover";
+import { keyEnds, keyStarts } from "../kit/renderer-dom";
 
 export interface BarInput {
   readonly data: readonly Row[];
@@ -125,7 +126,7 @@ export interface BarDefinition {
 }
 
 // gap #36: native barY rects take no className, so hover selects them by key.
-const barKeySelector = (index: number, key: string): string => `[data-ts-key$=":${index}:${cssAttr(key)}"]`;
+const barKeySelector = (index: number, key: string): string => keyEnds(`:${index}:${cssAttr(key)}`);
 
 type BarMarkList = ChartMark<BarDatum, string, number>[];
 type BarMode = Pick<BarInput, "horizontal" | "stacked" | "stackGap">;
@@ -141,12 +142,12 @@ function barRadius(round: boolean, { stacked, stackGap }: BarMode): number | { e
 // gap #36: native barY rects take no className or per-datum hover hook, so hover/legend select them by key (`bars:<index>:<series>`).
 function barHoverTargets(barSeries: readonly BarSeries[], faded: number): HoverTarget[] {
   const perSeries = barSeries.map(
-    (s): HoverTarget => ({ select: `[data-ts-key^="bars:"][data-ts-key$=":${cssAttr(s.key)}"]:not(g)`, keep: null, dim: faded, seriesIndex: s.index, legendOnly: true }),
+    (s): HoverTarget => ({ select: `${keyStarts("bars:")}${keyEnds(`:${cssAttr(s.key)}`)}:not(g)`, keep: null, dim: faded, seriesIndex: s.index, legendOnly: true }),
   );
   return [
     ...perSeries,
     {
-      select: '[data-ts-key^="bars:"]:not(g)',
+      select: `${keyStarts("bars:")}:not(g)`,
       keep: (index) => `:is(${barSeries.map((s) => barKeySelector(index, s.key)).join(",")})`,
       dim: faded,
     },
@@ -348,7 +349,7 @@ export function buildBarDefinition(input: BarInput): BarDefinition {
   const round = !depthOn && barSeries.every((s) => s.bar?.lineCap !== "butt");
   const fillFor = (key: string): string => fillOf.get(key) ?? "var(--chart-line-primary)";
 
-  // UPSTREAM-GAPS 12 (addendum): a group joining on an update only fades, so the bars stay present at value 0 while loading.
+  // UPSTREAM-GAPS #12 (addendum): a group joining on an update only fades, so the bars stay present at value 0 while loading.
   // Loading keeps the bar marks collapsed to zero (grid, axes and scales stay) so the flip to ready is an update that grows them.
   const own = barSeries.length > 0 ? barSeriesMarks(input, { datums: loading ? datums.map((d) => ({ ...d, value: 0 })) : datums, categories, barSeries, fillFor, enter: barEnter(input), depthOn, round, groupGap, faded }) : { marks: [], hover: [] };
   const extra = horizontal || loading ? undefined : buildExtraMarks({ datums, series, table, categories, animationDuration: input.animationDuration, faded, uid: input.uid, seed: input.seed, clock: input.clock });

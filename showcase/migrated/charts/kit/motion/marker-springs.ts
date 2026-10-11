@@ -2,7 +2,7 @@
 // hot values stay static rules in styles.css (`.bkm-evt-cluster:hover ...`), the animation only draws the travel; `isMotionNode` skips mid-tween nodes (gap #50).
 import { groupMarkerItems } from "../cartesian/overlays";
 import { leadingFloat } from "../guards";
-import { isMotionNode } from "../css-hooks";
+import { isMotionNode } from "../renderer-dom";
 import { springDriver } from "./spring-animate";
 import { MARKER_ACT_SPRING, MARKER_BADGE_SPRING, MARKER_BODY_SPRING, MARKER_ITEM_SPRING } from "./springs";
 import type { Spring } from "./springs";
