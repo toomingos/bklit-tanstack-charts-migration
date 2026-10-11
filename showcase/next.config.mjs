@@ -43,6 +43,41 @@ const nextConfig = {
       path.resolve(showcaseRoot, "node_modules"),
       ...config.resolve.modules,
     ];
+    // One async chunk for the code every migrated chart shares (TanStack, d3, kit): Next's default `shared` group splits it per module set into 11-16 requests per card.
+    const split = config.optimization?.splitChunks;
+    if (split && typeof split === "object") {
+      split.cacheGroups = {
+        ...split.cacheGroups,
+        chartsLibs: {
+          test: /[\\/]node_modules[\\/](@tanstack|d3-[^\\/]+|@number-flow)[\\/]/,
+          name: "charts-libs",
+          chunks: "async",
+          priority: 50,
+          enforce: true,
+        },
+        chartsCartesian: {
+          test: /[\\/]migrated[\\/]charts[\\/]kit[\\/]cartesian[\\/]/,
+          name: "charts-cartesian",
+          chunks: "async",
+          priority: 49,
+          enforce: true,
+        },
+        chartsPolar: {
+          test: /[\\/]migrated[\\/]charts[\\/]kit[\\/]polar[\\/]/,
+          name: "charts-polar",
+          chunks: "async",
+          priority: 49,
+          enforce: true,
+        },
+        chartsKit: {
+          test: /[\\/]migrated[\\/]charts[\\/]kit[\\/]/,
+          name: "charts-kit",
+          chunks: "async",
+          priority: 48,
+          enforce: true,
+        },
+      };
+    }
     return config;
   },
 };
