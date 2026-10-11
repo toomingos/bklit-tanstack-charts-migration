@@ -10,7 +10,7 @@ import { useInteractionHandle, usePressGuard } from "./kit/cartesian/touch-focus
 import { RendererChart } from "./kit/tooltip/tooltip-leaf";
 import { motion } from "@tanstack/charts/motion";
 import { BklitTooltipBody } from "./kit/tooltip/tooltip-body";
-import { passthroughChildren, readChildren } from "./kit/read-children";
+import { useChildTable } from "./kit/stable-children";
 import { bklitSurfaceStyle, DEFAULT_ANIMATION_MS, DEFAULT_MARGIN, parseAspectRatio } from "./kit/theme";
 import type { ChartMargin } from "./kit/theme";
 import { buildScatterDefinition, SCATTER_HOVER_CSS } from "./scatter/definition";
@@ -67,7 +67,7 @@ const ScatterChartInner = ({
   ariaLabel = "Scatter chart",
   ariaDescription,
 }: Readonly<ScatterChartProps>): ReactElement => {
-  const table = useMemo(() => readChildren(children), [children]);
+  const { table, custom, ready: childrenReady } = useChildTable(children);
   const resolvedMargin = useMemo(() => ({ ...DEFAULT_MARGIN, ...margin }), [margin]);
   // bklit: `enterTransition.duration` (seconds) replaces the reveal span; its `ease` array replaces the default easing.
   const enterSeconds = enterTransition?.duration;
@@ -115,7 +115,6 @@ const ScatterChartInner = ({
     armReady();
   }, [revealed, armReady]);
 
-  const passthrough = useMemo(() => passthroughChildren(children), [children]);
   // Public `useChart()` context, derived from the native focus + resolved domains.
   const innerWidth = Math.max(0, size.width - resolvedMargin.left - resolvedMargin.right);
   const innerHeight = Math.max(0, size.height - resolvedMargin.top - resolvedMargin.bottom);
@@ -188,7 +187,7 @@ const ScatterChartInner = ({
     <div ref={containerRef} className={className} data-bkm-chart="scatter" data-bkm-kit={uid} {...built.gridAttrs} style={{ width: "100%", position: "relative", ...hoverVars, ...bklitSurfaceStyle, ...style }}>
       {/* .ts-chart__focus-layer / __focus-guide-layer are renderer-owned, undocumented containers (gap #20, posted #196) */}
       <style>{`${SCATTER_HOVER_CSS}${pillStaticCss}${emptyFocusCss}`}</style>
-      <RendererChart
+      {childrenReady ? <RendererChart
         definition={erase(built.definition)}
         idPrefix={uid}
         renderer={renderer}
@@ -198,12 +197,12 @@ const ScatterChartInner = ({
         onFocusChange={erase(onFocusChange)}
         onRender={erase(onRender)}
         renderTooltipBody={erase(renderTooltipBody)}
-      />
+      /> : null}
       <FocusLayer
         store={focusStore}
         useContextValue={(focused: FocusedRow | null) => useBridgedContext({ ...bridge, focused })}
       >
-        {passthrough}
+        {custom}
       </FocusLayer>
     </div>
   );

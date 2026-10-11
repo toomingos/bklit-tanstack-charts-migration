@@ -4,10 +4,10 @@ import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { motion } from "@tanstack/charts/motion";
 import { installMarkerSprings } from "../motion/marker-springs";
-import { passthroughChildren, propsFor } from "../read-children";
+import { propsFor } from "../read-children";
 import { shortDateFmt } from "../format";
 import { useResizeBox } from "../size/use-resize-box";
-import { useStableTable } from "../stable-children";
+import { useChildTable } from "../stable-children";
 import { BklitTooltipBody, bklitTooltipOptions } from "../tooltip/tooltip-body";
 import type { ChartMargin } from "../theme";
 import type { ChartMarker, ChartSelection } from "../types";
@@ -44,17 +44,18 @@ export function usePlotMeasure(containerRef: RefObject<HTMLDivElement | null>, f
 }
 
 interface SeriesTable {
-  readonly table: ReturnType<typeof useStableTable>;
+  readonly table: ReturnType<typeof useChildTable>["table"];
   readonly hasMarkers: boolean;
   readonly series: ResolvedSeries[];
   readonly onPulseIteration: (event: { animationName: string }) => void;
-  readonly passthrough: ReactNode;
+  readonly custom: ReturnType<typeof useChildTable>["custom"];
+  readonly childrenReady: boolean;
   readonly times: number[];
 }
 
-/** The stable child table and what is read from it: marker lists, series, loop-pulse callback, passthrough children, row times. */
+/** The stable child table and what is read from it: marker lists, series, loop-pulse callback, custom children, row times. */
 export function useSeriesTable(children: ReactNode, data: readonly Row[], xDataKey: string, containerRef: RefObject<HTMLDivElement | null>, chartLoading: boolean): SeriesTable {
-  const table = useStableTable(children);
+  const { table, custom, ready: childrenReady } = useChildTable(children);
   const hasMarkers = table.has("chartMarkers") || table.has("markerGroup");
   // Latest marker items for the delegated click handler (marker-springs.ts); no listener rebuild when the items change.
   const markerLists = useRef<readonly (readonly ChartMarker[])[]>([]);
@@ -72,12 +73,11 @@ export function useSeriesTable(children: ReactNode, data: readonly Row[], xDataK
       pulseCycleRef.current?.();
     }
   }, []);
-  const passthrough = useMemo(() => passthroughChildren(children), [children]);
   const times = useMemo(
     () => data.map((row) => toDate(row[xDataKey]).getTime()),
     [data, xDataKey],
   );
-  return { table, hasMarkers, series, onPulseIteration, passthrough, times };
+  return { table, hasMarkers, series, onPulseIteration, custom, childrenReady, times };
 }
 
 interface RendererTooltipInput {

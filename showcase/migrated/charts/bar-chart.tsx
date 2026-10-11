@@ -12,7 +12,7 @@ import { useReadyGate } from "./kit/entrance/reveal-arm";
 import { motion } from "@tanstack/charts/motion";
 import { buildBarDefinition } from "./bar/definition";
 import { useDataUpdated } from "./kit/use-data-updated";
-import { useStableTable } from "./kit/stable-children";
+import { useChildTable } from "./kit/stable-children";
 import { readBarChildren } from "./bar/read-children";
 import { numberOrZero, resolveBarSeries } from "./bar/model";
 import { hasDepth } from "./bar/depth";
@@ -34,7 +34,7 @@ import { BarLoadingSkeleton } from "./kit/loading/sweep";
 import { useBridgedContext, useReferenceAreas, valueScale } from "./kit/cartesian/context-bridge";
 import { useResizeBox } from "./kit/size/use-resize-box";
 import type { FocusedRow } from "./kit/cartesian/context-bridge";
-import { passthroughChildren, propsFor } from "./kit/read-children";
+import { propsFor } from "./kit/read-children";
 import { shortDateFmt } from "./kit/format";
 import { FocusLayer, useFocusStore } from "./kit/cartesian/focus-layer";
 import { readyGateCss, focusEmptyHiddenCss } from "./kit/cartesian/gate-css";
@@ -111,7 +111,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
   const clock = useRef<{ at: number | null }>({ at: null }).current;
   const uid = `b${useSanitizedId()}`;
   // Legend hover re-renders the host with fresh `children`; keep the previous table while every carrier is structurally equal.
-  const table = useStableTable(children, readBarChildren);
+  const { table, custom, ready: childrenReady } = useChildTable(children, readBarChildren);
   const series = useMemo(() => resolveBarSeries(table), [table]);
   const needsSeed = useMemo(() => series.some((s) => s.squares) || hasDepth(table), [series, table]);
   const seed = needsSeed && !entered;
@@ -156,7 +156,6 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
     () => motion({ transition: { type: "tween", duration: animationDuration } }),
     [animationDuration],
   );
-  const passthrough = useMemo(() => passthroughChildren(children), [children]);
   // Public `useChart()` context, derived from the native focus + resolved domains.
   const horizontal = orientation === "horizontal";
   const innerWidth = Math.max(0, size.width - resolvedMargin.left - resolvedMargin.right);
@@ -340,7 +339,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
       // bklit's outer div carries `style={{ aspectRatio }}` from its first render (bar-chart.tsx:696-700); only the svg waits on ParentSize.
       style={{ width: "100%", position: "relative", aspectRatio, ...bklitSurfaceStyle, ...style }}
     >
-      {parentSized ? (
+      {parentSized && childrenReady ? (
         <RendererChart
           idPrefix={uid}
           definition={erase(built.definition)}
@@ -364,7 +363,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
       ) : null}
       {staticCss ? <style>{staticCss}</style> : null}
       <FocusLayer store={focusStore} useContextValue={useContextValue}>
-        <BarDepthConfigProvider value={depthConfig}>{passthrough}</BarDepthConfigProvider>
+        <BarDepthConfigProvider value={depthConfig}>{custom}</BarDepthConfigProvider>
       </FocusLayer>
     </div>
   );

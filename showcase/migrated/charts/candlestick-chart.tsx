@@ -9,8 +9,8 @@ import { useInteractionHandle, usePressGuard } from "./kit/cartesian/touch-focus
 import { RendererChart } from "./kit/tooltip/tooltip-leaf";
 import { motion } from "@tanstack/charts/motion";
 import type { ChartPoint } from "@tanstack/charts";
-import { propsFor, passthroughChildren } from "./kit/read-children";
-import { useStableTable } from "./kit/stable-children";
+import { propsFor } from "./kit/read-children";
+import { useChildTable } from "./kit/stable-children";
 import { BklitTooltipBody, bklitTooltipOptions } from "./kit/tooltip/tooltip-body";
 import type { BklitTooltipCarrier, TooltipBodyOptions } from "./kit/tooltip/tooltip-body";
 import { bklitSurfaceStyle, DEFAULT_ANIMATION_MS, DEFAULT_MARGIN, parseAspectRatio } from "./kit/theme";
@@ -118,7 +118,7 @@ export const CandlestickChart = ({
   const focusStore = useFocusStore<FocusedRow>();
   const uid = `c${useSanitizedId()}`;
   // A legend hover re-renders the host with fresh children: keep the previous carrier table so the definition is not rebuilt.
-  const table = useStableTable(children);
+  const { table, custom, ready: childrenReady } = useChildTable(children);
   const resolvedMargin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
   const built = useMemo(
     () =>
@@ -149,7 +149,6 @@ export const CandlestickChart = ({
     (): TooltipBodyOptions => bklitTooltipOptions(tooltipProps, data, { order: ["close"], colors: { close: CLOSE_COLOR } }),
     [tooltipProps, data],
   );
-  const passthrough = useMemo(() => passthroughChildren(children), [children]);
   const innerWidth = Math.max(0, size.width - resolvedMargin.left - resolvedMargin.right);
   const innerHeight = Math.max(0, size.height - resolvedMargin.top - resolvedMargin.bottom);
   const domains = useMemo(
@@ -220,7 +219,7 @@ export const CandlestickChart = ({
     >
       {/* .ts-chart__focus-layer / __focus-guide-layer are renderer-owned, undocumented containers (gap #20, posted #196) */}
       <style>{`${CANDLE_HOVER_CSS}${pillStaticCss}${emptyFocusCss}`}</style>
-      {measured ? (
+      {measured && childrenReady ? (
       <RendererChart<Candle, Date, number>
         definition={built.definition}
         idPrefix={uid}
@@ -240,7 +239,7 @@ export const CandlestickChart = ({
           useBridgedContext({ ...bridge, focused, extras: { ...extras, hoveredCandleIndex: focused?.index ?? null, setHoveredCandleIndex: focusRow } })
         }
       >
-        {passthrough}
+        {custom}
       </FocusLayer>
     </div>
   );

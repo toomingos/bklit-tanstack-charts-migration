@@ -8,7 +8,7 @@ export const chartCategories = [
     label: 'Components',
     order: ['area', 'patternarea', 'bar', 'bardepth', 'barsquares', 'candlestick', 'choropleth', 'composed', 'funnel', 'gauge', 'heatmap', 'line', 'liveline', 'pie', 'radar', 'ring', 'scatter', 'sankey', 'sunburst'],
   },
-  { id: 'utility', label: 'Utility', order: ['reference-area', 'projection', 'brush', 'segment', 'markers'] },
+  { id: 'utility', label: 'Utility', order: ['reference-area', 'projection', 'brush', 'segment', 'markers', 'composition'] },
 ] as const;
 
 export interface ChartInfo {
@@ -189,5 +189,12 @@ export const allCharts: ChartInfo[] = [
     route: 'bardepth',
     defaultN: 6,
     notes: '',
+  },
+  {
+    index: 25,
+    name: 'Composition',
+    route: 'composition',
+    defaultN: 30,
+    notes: 'Wrapped <Line>, fragments and custom SVG children (UPSTREAM-GAPS #55).',
   },
 ];
