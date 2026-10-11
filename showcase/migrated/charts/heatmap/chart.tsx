@@ -57,7 +57,7 @@ import type { HeatmapWeekStartDay } from "./day-labels";
 import type { HeatmapSeparatorParsedConfig } from "./separators";
 import type { HeatmapScene } from "./focus";
 import { buildCellData, buildHeatmapDefinition, columnStartX } from "./definition";
-import { scaleLinear, scaleTime } from "d3-scale";
+import { linearScale, timeScale } from "./scales";
 import type { CellDatum } from "./definition";
 import { HeatmapCells, HeatmapXAxis, HeatmapYAxis } from "./carriers";
 import type { HeatmapCellsProps, HeatmapSeparatorProps, HeatmapTooltipProps, HeatmapYAxisProps } from "./carriers";
@@ -418,8 +418,8 @@ const useScales = ({ cellSize, columns, innerHeight, innerWidth, separatorLayout
   const xScale = useCallback((column: number) => columnStartX(column, cellSize, separatorLayout), [cellSize, separatorLayout]);
   const yScale = useCallback((row: number) => row * cellSize, [cellSize]);
   const timeExtent = useMemo(() => getHeatmapTimeExtent(columns), [columns]);
-  const timeXScale = useMemo(() => scaleTime().domain(timeExtent ?? NO_TIME_EXTENT).range([0, innerWidth]), [timeExtent, innerWidth]);
-  const brushYScale = useMemo(() => scaleLinear().domain([0, 1]).range([innerHeight, 0]), [innerHeight]);
+  const timeXScale = useMemo(() => timeScale(timeExtent ?? NO_TIME_EXTENT, [0, innerWidth]), [timeExtent, innerWidth]);
+  const brushYScale = useMemo(() => linearScale([0, 1], [innerHeight, 0]), [innerHeight]);
   return { brushYScale, timeXScale, xScale, yScale };
 };
 
