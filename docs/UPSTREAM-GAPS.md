@@ -373,7 +373,7 @@ Drafts live in `docs/upstream-issues/` (local only).
 
 ---
 
-## 56. Focus follows `pointermove` only (no raw-pointer input path)
+## 57. Focus follows `pointermove` only (no raw-pointer input path)
 
 - **Needed:** the lowest move-to-paint latency needs `pointerrawupdate` (0.5-2 ms after input) instead of the frame-aligned `pointermove`, which costs about 8 ms of every sample.
 - **1.1.0 behaviour:** the renderer listens to `pointermove` only (`handlePointerMove` -> `updateFocus`); no option picks the event, and `setControlledFocus` with `focusOwner="controlled"` stops pointer leave from clearing focus.
