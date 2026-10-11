@@ -13,7 +13,7 @@ interface BklitPortalOptions {
   readonly animate?: boolean;
 }
 
-// gap #37 (docs/phase-8/UPSTREAM-GAPS.md): `className`/`content`/`placement` are static options, so the first-anchor "settle" glide
+// gap #37 (docs/UPSTREAM-GAPS.md): `className`/`content`/`placement` are static options, so the first-anchor "settle" glide
 // (bklit tooltip-box.tsx:94-135) is driven by toggling `data-bkm-settle` on the portal's own element and reading its style once.
 const SETTLE_ATTR = "data-bkm-settle";
 

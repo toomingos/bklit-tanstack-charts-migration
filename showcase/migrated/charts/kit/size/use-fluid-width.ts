@@ -1,4 +1,4 @@
-// Measured before the chart mounts so the definition is built at the real width (a later size change cancels the entrance, D714).
+// Measured before the chart mounts so the definition is built at the real width (a later size change cancels the entrance).
 // The width also drives the centre, hit tests and fallbacks outside the definition, so the responsive builder cannot replace it.
 import { useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";

@@ -1,12 +1,11 @@
-# Upstream gaps: TanStack Charts 1.0.0 limitations hit in phase 8
+# Upstream gaps: TanStack Charts limitations behind the custom code
 
 Re-checked against 1.1.0 (57774e14), 2026-10-09: no gap closed.
 
 Each entry is written to be lifted into an upstream issue. Source references are
 `repos/tanstack-charts/packages/*` at tag v1.0.0, all re-read while writing this file.
-Measured costs come from `docs/phase-8/LOG.md` (D-numbers cited); they are from headless
-Chrome runs on the showcase Live Perf panel unless noted. Anything not independently
-checked in source is marked **[LOG only]**. All paths below `showcase/` are under
+Measured costs come from the showcase Live Perf panel. Anything not independently
+checked in source is marked **[LOG only]** (measured, not traced in source). All paths below `showcase/` are under
 `showcase/migrated/charts/`.
 
 Index: 49 group clip is rect only, 1 states per-move cost, 2 retarget focus guides, 3 tooltip body state, 4 longest state
@@ -15,7 +14,7 @@ transition wins, 5 no gradient motion, 6 gradient limits, 7 text motion, 8 toolt
 for late-joining elements, 13 no reveal/wipe entrance, 14 no number-tween text, 17 rolling presentation points static, 18 focus label opacity deferred under data motion, 19 repeated hide() restarts exit, 35 sunburst arc tweens need private geometry, 51 radialArc carries no arc geometry (ring, pie), 50 no documented mid-tween hook (`data-ts-motion-role`), 52 no HTML or foreignObject scene node (marker icons).
 
 
-Posted upstream on 2026-10-09 (drafts and status in `docs/upstream-issues/README.md`):
+Posted upstream on 2026-10-09 (TanStack/charts issues):
 #186 mark states (1, 4, 18, 31; 53 draft 16 pending) · #187 tooltip lifecycle (3, 8, 19, 22, 37, 44) · #188 focus guides (2, 21, 23, 32, 43) ·
 #189 keyboard focus (28, 42) · #190 focus strategies (26) · #191 gradients and paint resources (5, 6, 10, 30) ·
 #192 motion timing (9, 33, 38) · #193 motion coverage (7, 12, 14) · #194 arc motion (11, 16, 35) · #195 rolling windows (27) ·
@@ -33,7 +32,7 @@ Not posted: 13 (solved natively, M3-1), 29 (solved natively, T3-1), 41 (solved n
   - `resolveMarkStateScene` (`charts-core/src/mark-state.ts:28`) always maps the node tree and builds a fresh `transitions` record. Only the early-out at :33-34 (no focus, or `sceneHasMarkStates` false) returns the same scene object. When a mark declares states but none match the focused point, the result is still a new scene, so the `presented.scene !== scene` identity check (motion.ts:~901) is true and a full re-render + reconcile happens.
   - Pointer-driven calls are also queued through `queuePendingStateFocus` (:866-886).
 - **Workaround:** focus-keyed scoped CSS emitted by the `FocusLayer` leaf (`kit/cartesian/focus-layer.tsx`, `css` prop :53, `<style>` :64; bar targets in `charts/bar/hover.ts`). Native `states` kept only where geometry changes (radar, pie/ring pop, funnel).
-- **Cost (D721/D722):** choropleth hover render 888 ms to 12 ms after moving hover out of the definition; heatmap dim/pop script time on an identical 125-sample path 8-10x the no-effect cost to parity (~290 ms vs bklit ~2900 ms).
+- **Cost:** choropleth hover render 888 ms to 12 ms after moving hover out of the definition; heatmap dim/pop script time on an identical 125-sample path 8-10x the no-effect cost to parity (~290 ms vs bklit ~2900 ms).
 - **Proposal:**
   1. Make `resolveMarkStateScene` return the input scene (same identity) and no transition when no node resolved a state, and structurally share unchanged subtrees.
   2. In `applyStateFocus`, skip `renderSvg`/`animateSvg` when `presented.scene === scene` (or compare state-keys per mark).
@@ -47,7 +46,7 @@ Not posted: 13 (solved natively, M3-1), 29 (solved natively, T3-1), 41 (solved n
   - `resolveFocusScene` (`charts-core/src/focus-layer.ts:72`) rebuilds a group with new `children`/`focus.activePoints` for each retarget layer on each focus (:~83-103) and returns `{ ...scene, nodes }` (:~112), a new scene identity every move whenever a retargeting layer matches.
   - `applyStateFocus` calls it at `motion.ts:898`; `presented.scene !== scene` then triggers the full `renderSvg` + `animateSvg` reconcile (see 1). A separate, cheaper retarget path exists for DOM-only painting (`paintMotionSvgFocus` motion.ts:~1141, `retargetFocusContext` :3116) but the scene path is still taken.
   - Downstream, `tooltip.ts:289` (`bodyScene !== paintContext?.scene`) marks the tooltip body `changed` on every scene identity change and re-invokes `bodyChange`, so item 3's cost compounds.
-- **Workaround:** none for the chart-internal guide; mitigated indirectly by keeping hover React state out of the chart (D720, `kit/cartesian/focus-layer.tsx`) and by item 3's leaf. **[LOG only for the magnitude: line hover p95 ~25-27 ms vs bklit ~17-18 ms, no cheaper update path than definition re-resolve, D715/D716.]**
+- **Workaround:** none for the chart-internal guide; mitigated indirectly by keeping hover React state out of the chart (`kit/cartesian/focus-layer.tsx`) and by item 3's leaf. **[LOG only for the magnitude: line hover p95 ~25-27 ms vs bklit ~17-18 ms, no cheaper update path than definition re-resolve.]**
 - **Proposal:** cache `resolveFocusScene` output per (scene, activePoints) and reuse the previous scene object when `selected` nodes are `===` the previous ones; or have retarget layers be DOM-patch only (no scene substitution). In `tooltip.ts`, compare the paint context's `point`/`points`, not `scene` identity, for `changed`.
 
 ## 3. react-charts tooltip body keeps its target in `useState` inside the chart wrapper
@@ -64,7 +63,7 @@ Not posted: 13 (solved natively, M3-1), 29 (solved natively, T3-1), 41 (solved n
 
 - **Needed:** a long cosmetic fade (450 ms pop) alongside a short dim (160 ms) on the same mark (sunburst).
 - **1.0 behaviour:** `mergeTransition` (`charts-core/src/mark-state.ts:311-324`) merges tween states for a mark taking `Math.max(duration)` (:320); results are stored per `markId` (:77-79), so every state change on that mark runs at the maximum duration.
-- **Workaround:** long fades moved to CSS; native state transition set to 1 ms (commit 5a99802, D721).
+- **Workaround:** long fades moved to CSS; native state transition set to 1 ms (commit 5a99802).
 - **Cost:** sunburst 160 ms dim stretched to 450 ms **[LOG only]**.
 - **Proposal:** resolve the transition per state (or per animated property) rather than merging by max; e.g. `ChartMarkState.transition` keyed by the entering state, or `transitions: { opacity, transform }`.
 
@@ -73,59 +72,59 @@ Not posted: 13 (solved natively, M3-1), 29 (solved natively, T3-1), 41 (solved n
 - **Needed:** liveline area fade whose end moves smoothly as the y domain rolls.
 - **1.0 behaviour:** `charts-core/src/motion.ts` has no gradient handling. `motionAttributes` (:2071-2085) lists only geometry/opacity attributes (cx, cy, d, fill-opacity, font-size, ..., opacity, r, stroke-opacity, stroke-width, transform, width, x, ...); no `offset`, `stop-opacity`, `stop-color`. `grep -i gradient` in motion.ts and svg-renderer.ts finds nothing, and the gradient types (`types.ts:636-673`) carry `stops` as static data.
 - **Workaround:** fixed 41-stop ramp where only stop opacity changes, eased with a scoped CSS `transition: stop-opacity` (`charts/live-line/definition.ts:~95`, `charts/live-line/liveline.css:25-28`).
-- **Cost:** without it the fade end snapped ~18 px in one frame (D722).
+- **Cost:** without it the fade end snapped ~18 px in one frame.
 - **Proposal:** treat `<stop offset|stop-opacity|stop-color>` as motion attributes when a gradient with the same `id` exists in previous and next scene, interpolated with the mark's update transition.
 
 ## 6. Gradient limits: objectBoundingBox only, no masks, none on zero-extent marks
 
 - **Needed:** bklit's grid/crosshair fade-edges, area horizontal edge fade, heatmap separators with viewport-pinned stops.
-- **1.0 behaviour:** `ChartLinearGradient` (`types.ts:647-658`) exposes only `x1/y1/x2/y2` with no `gradientUnits`; `grep gradientUnits|userSpaceOnUse|objectBoundingBox` over `charts-core/src` returns no matches, so the SVG default (objectBoundingBox) applies. Zero-width/zero-height rules have a degenerate bounding box and cannot take a bounding-box gradient (SVG spec; D715). No mask/clipPath resource in the scene model.
+- **1.0 behaviour:** `ChartLinearGradient` (`types.ts:647-658`) exposes only `x1/y1/x2/y2` with no `gradientUnits`; `grep gradientUnits|userSpaceOnUse|objectBoundingBox` over `charts-core/src` returns no matches, so the SVG default (objectBoundingBox) applies. Zero-width/zero-height rules have a degenerate bounding box and cannot take a bounding-box gradient (SVG spec). No mask/clipPath resource in the scene model.
 - **Workaround:** CSS `mask-image` on the grid group and area path (`styles.css:53, 69, 117, 129`); heatmap separators through a hand-built `<defs>` host (`kit/resource-host.tsx`, used in `charts/heatmap/chart.tsx`).
-- **Cost:** D715 first dropped these effects (solid), D718/D719 re-added via CSS.
+- **Cost:** the effects were first dropped (solid fills), then re-added via CSS.
 - **Proposal:** add `units?: 'objectBoundingBox' | 'userSpaceOnUse'` to `ChartGradient`; add a first-class `mask`/`clipPath` resource (or at least `<defs>` passthrough on the scene).
 
 ## 7. Scene text has no enter/opacity motion
 
 - **Needed:** bklit fades labels in after the sweep (sankey, sunburst, funnel labels).
-- **1.0 behaviour:** `ChartMotionRole` includes `'text'` (`types.ts:822`) but scene `label` nodes in custom marks are painted outside the motion tracks. The generic enter track (`motion.ts:2475` `addEnterMotionTrack`) only applies when `elementTimingContext` yields a context. **[LOG only (D719: "scene text bypasses motion"); not traced through every scene-label path in source.]**
-- **Workaround:** CSS late fades for sankey/sunburst/funnel labels (D719; `charts/sankey/sankey.css`, `charts/sunburst/*`).
+- **1.0 behaviour:** `ChartMotionRole` includes `'text'` (`types.ts:822`) but scene `label` nodes in custom marks are painted outside the motion tracks. The generic enter track (`motion.ts:2475` `addEnterMotionTrack`) only applies when `elementTimingContext` yields a context. **[LOG only (observed: scene text bypasses motion); not traced through every scene-label path in source.]**
+- **Workaround:** CSS late fades for sankey/sunburst/funnel labels (`charts/sankey/sankey.css`, `charts/sunburst/*`).
 - **Proposal:** run scene `label` nodes through `addEnterMotionTrack` with role `'text'` so `motion.delay`/transition apply.
 
 ## 8. Tooltip has no show/hide delay
 
 - **Needed:** bklit heatmap tooltip: 120 ms `hideDelay` and spring entrance.
 - **1.0 behaviour:** tooltip motion is a presence/position controller (`motion.ts:343` `createTooltipMotionController`); `ChartMotionTiming.delay` (`types.ts:871`) applies to marks, and `grep showDelay|hideDelay|openDelay|closeDelay` over `packages/**/*.ts(x)` returns nothing.
-- **Workaround:** none needed for hide: the heatmap passes a hold tween as `tooltip.motion` (`HEATMAP_HOLD_MOTION`, `charts/heatmap/definition.ts:47,365`, duration = `tooltipHideDelay`), which delays the hide natively. Show delay is still not expressible (native-research, D743).
+- **Workaround:** none needed for hide: the heatmap passes a hold tween as `tooltip.motion` (`HEATMAP_HOLD_MOTION`, `charts/heatmap/definition.ts:47,365`, duration = `tooltipHideDelay`), which delays the hide natively. Show delay is still not expressible (native-research).
 - **Proposal:** `tooltip: { showDelay, hideDelay }` (ms) honouring pointer re-entry.
 
 ## 9. Native spring default rest thresholds run long
 
 - **Needed:** bklit/motion springs settle when visually still.
-- **1.0 behaviour:** `defaultSpringOptions` (`charts-core/src/spring.ts:32-33`): `restSpeed: 0.01`, `restDelta: 0.005`; rest test at :67-68 and :114-115. motion's defaults are `restSpeed: 2`, `restDelta: 0.5` (per D720).
+- **1.0 behaviour:** `defaultSpringOptions` (`charts-core/src/spring.ts:32-33`): `restSpeed: 0.01`, `restDelta: 0.005`; rest test at :67-68 and :114-115. motion's defaults are `restSpeed: 2`, `restDelta: 0.5`.
 - **Workaround:** pass `restSpeed: 2, restDelta: 0.5` on every mapped spring (`kit/cartesian/definition.ts:124`, `kit/theme.ts:76`, `kit/cartesian/date-pill.ts:78`, `charts/live-line/definition.ts:227`, `charts/gauge/transition.ts:29`; commit 3a75e96).
-- **Cost:** candlestick settle inflated by ~950 ms; springs ran ~1 s after visual rest (D720).
+- **Cost:** candlestick settle inflated by ~950 ms; springs ran ~1 s after visual rest.
 - **Proposal:** scale defaults to the animated unit (pixel-space: ~0.5 px / 2 px/s), or document pixel-scaled thresholds; keep 0.01/0.005 only for normalised 0..1 tracks.
 
 ## 10. No SVG filter, `<pattern>`, or mask resources
 
 - **Needed:** glow/drop-shadow (radar, area), blur on dimmed dots/markers (scatter, line markers), hatch PatternArea and brush.
 - **1.0 behaviour:** `charts-core/src/svg-renderer.ts` emits no `filter`, `mask`, or `pattern` elements (grep `filter|mask|pattern` finds nothing relevant; no `feGaussianBlur`/`feDropShadow` anywhere in `charts-core/src`).
-- **Note (D743):** bklit's own glow and blur are CSS filters, so CSS `filter` on the scene is parity, not a workaround. Only mask and pattern resources are a real gap.
-- **Workaround:** translucent underlay stroke for glow (radar, `charts/radar/*`, D713/D722); CSS `filter: blur()` scoped by class/`data-ts-key` (`styles.css:797`); PatternArea hatch via CSS mask on the area path (D716, `kit/pattern/`); brush hatch tile mask (D719).
+- **Note:** bklit's own glow and blur are CSS filters, so CSS `filter` on the scene is parity, not a workaround. Only mask and pattern resources are a real gap.
+- **Workaround:** translucent underlay stroke for glow (radar, `charts/radar/*`); CSS `filter: blur()` scoped by class/`data-ts-key` (`styles.css:797`); PatternArea hatch via CSS mask on the area path (`kit/pattern/`); brush hatch tile mask.
 - **Proposal:** a generic `resources` slot on the scene (`<defs>` children: filter, pattern, mask, clipPath) referenced by `fill: url(#id)` / `filter` style props, shared with item 6.
 
 ## 11. Sunburst has no per-arc enter stagger
 
 - **Needed:** bklit staggers sectors on entrance.
 - **1.0 behaviour (verified):** the sunburst mark renders one `g.ts-chart__arc ts-chart__sunburst` group (`charts-core/src/hierarchy-sunburst.ts:325`). `createArcTracks` (`motion.ts:1618-1640`) creates one `enter` track per `g.ts-chart__arc` group with `datumIndex: 0`, `datumCount: 1` (:1630-1640), so `ChartMotionTiming.delay(context)` (`types.ts:871`) can never differ per sector. The per-datum delay function that now exists does not cover this.
-- **Workaround:** accepted as a gap, group clip sweep (D714); labels faded via CSS (item 7).
+- **Workaround:** accepted as a gap, group clip sweep; labels faded via CSS (item 7).
 - **Proposal:** emit one arc track per sector path with real `datumIndex`/`datumCount`, matching how bars get per-datum contexts.
 
 ## 12. Enter motion only runs for elements joining an already-painted mark group
 
 - **Needed:** entrance on first paint (heatmap, candlestick, bar/composed cascades).
-- **1.0 behaviour (as observed, D714) [LOG only; renderer path not traced in this pass]:** marks present in the first paint render at rest; a post-mount size change (host measuring) cancels an in-flight enter.
-- **Workaround:** measure host in `useLayoutEffect` before mounting, first paint with empty data for animated marks, flip `entered` in `useEffect` (`charts/heatmap/chart.tsx`, `charts/bar/marks.ts`, `charts/candlestick/definition.ts`, `charts/composed/bars.ts`); `plotHeight` derived from width/aspect so the definition is never re-resolved during entrance (D718).
+- **1.0 behaviour (as observed) [LOG only; renderer path not traced in this pass]:** marks present in the first paint render at rest; a post-mount size change (host measuring) cancels an in-flight enter.
+- **Workaround:** measure host in `useLayoutEffect` before mounting, first paint with empty data for animated marks, flip `entered` in `useEffect` (`charts/heatmap/chart.tsx`, `charts/bar/marks.ts`, `charts/candlestick/definition.ts`, `charts/composed/bars.ts`); `plotHeight` derived from width/aspect so the definition is never re-resolved during entrance.
 - **Proposal:** `motion.enter: 'mount'` (animate initial paint), and do not cancel tracks on size-only re-resolution.
 - **Addendum (1.1.0, v1.1.0 tag, re-read 2026-10-09): a whole mark group that joins later only fades.** On an update, `reconcileMotionElement` clones an unmatched child and calls `addEnterMotionTrack` on that one element (`motion.ts:2146-2160`); the clone's descendants are never visited. The bar grow branch of `addEnterMotionTrack` (`motion.ts:2505-2565`) only runs when the joining element is itself a `rect` or `path` (`isBarShapeElement`, `motion.ts:1418-1420`), i.e. a bar joining an existing `g.ts-chart__bar-y` group. A new `g.ts-chart__bar-y` group takes the final opacity branch (`motion.ts:2610-2634`), so its bars never play their enter grow; `createBarTracks` (`motion.ts:1238`) is reached only from the first-paint path (`motion.ts:273-286`). Same for any mark whose per-datum enter lives in a first-paint track (lines, areas, arcs).
 - **Addendum workaround (bar):** `showcase/migrated/charts/bar/definition.ts` keeps the bar marks present with zero-value datums while `loading`, so the flip to ready is a keyed value update of existing bars (grows), not a group join. Heatmap (`showcase/migrated/charts/heatmap/chart.tsx`, `cellsEntered`) works around the same family: a cell-less seed paint, then a second commit so the cells join as elements of an already painted chart and take the generic per-datum fade; it also depends on the first-paint limit above.
@@ -134,14 +133,14 @@ Not posted: 13 (solved natively, M3-1), 29 (solved natively, T3-1), 41 (solved n
 ## 13. No native reveal/wipe entrance for lines and areas
 
 - **Needed:** bklit 1100 ms left-to-right clip wipe.
-- **1.0 behaviour:** `clip` is a boolean plot clip; enter grows paths from the baseline; rolling paths are for streaming only (D711).
-- **Workaround:** accepted grow-from-baseline over 1100 ms tween (D711), no custom clip animation.
+- **1.0 behaviour:** `clip` is a boolean plot clip; enter grows paths from the baseline; rolling paths are for streaming only.
+- **Workaround:** accepted grow-from-baseline over 1100 ms tween, no custom clip animation.
 - **Proposal:** `motion.path.enter: 'reveal'` (x-clip sweep) for line/area.
 
 ## 14. No number-tween text
 
 - **Needed:** gauge centre value counts like NumberFlow.
-- **1.0 behaviour:** no text-content tween in `motion.ts` (`font-size`/`font-weight` only animate, :2071-2085). **[LOG only: D713.]**
+- **1.0 behaviour:** no text-content tween in `motion.ts` (`font-size`/`font-weight` only animate, :2071-2085). **[LOG only.]**
 - **Workaround:** NumberFlow HTML overlay (`charts/pie/center.tsx` / gauge).
 - **Proposal:** `text` mark option `format` + numeric tween on update.
 
@@ -151,7 +150,7 @@ Not posted: 13 (solved natively, M3-1), 29 (solved natively, T3-1), 41 (solved n
 
 - **Needed:** bklit trims each depth bar's front face by the perspective rise (top moves down by a few px).
 - **1.0 behaviour:** `barY` exposes no pixel hook, and its scene returns no `points`, so a wrapper cannot map rects back to datums except by the encoded key.
-- **Workaround (current):** the trimmed front face is drawn by a custom mark (`depthBarMark`, `charts/bar/depth.ts`, used from `charts/bar/definition.ts:166`) built with `createMark`; the old `trimBarTopsForDepth` key-suffix wrapper (665cb33) is gone (D743). The proposal still stands, so `barY` could be used directly.
+- **Workaround (current):** the trimmed front face is drawn by a custom mark (`depthBarMark`, `charts/bar/depth.ts`, used from `charts/bar/definition.ts:166`) built with `createMark`; the old `trimBarTopsForDepth` key-suffix wrapper (665cb33) is gone. The proposal still stands, so `barY` could be used directly.
 - **Proposal:** a `layout(rect, datum)` adjust option on bar marks, or `datum` on emitted rect nodes.
 
 ---
@@ -547,9 +546,9 @@ Unverified or LOG-only: items 7, 12, 14 and the perf numbers in 2 and 4. No code
 ## 53. A state-only focus change runs a full motion update and re-render
 
 - **Needed:** hover emphasis from mark `states` without re-tweening unchanged geometry.
-- **1.1.0 behaviour:** `resolveMarkStateScene` returns a fresh scene for any chart whose scene has a group with `states` (`mark-state.ts:34`, `:107`), so `applyStateFocus` takes the `presented.scene !== scene` branch and re-renders and reconciles (`motion.ts:903-932`). With animation on, that is the `'update'` phase over every node (sunburst hub `states`: about 4,400 `d` writes per hover, D775).
+- **1.1.0 behaviour:** `resolveMarkStateScene` returns a fresh scene for any chart whose scene has a group with `states` (`mark-state.ts:34`, `:107`), so `applyStateFocus` takes the `presented.scene !== scene` branch and re-renders and reconciles (`motion.ts:903-932`). With animation on, that is the `'update'` phase over every node (sunburst hub `states`: about 4,400 `d` writes per hover).
 - **Audit (fx-st, Chrome, :5265):** the only `states` left in `migrated/charts` is the radar interactive-label mark. Radar hover costs 1 to 4 attribute writes per move (label `fill` plus `data-ts-motion-*` markers; one motion cycle only when the hovered label changes), 0 on leave and on keyboard arrows. Radar's update motion is already `false`. Kept. Every other chart uses host-attribute CSS (gaps 1, 31) or no states.
-- **Proposal:** return the same scene when no state matches, or restyle only matching nodes outside the update tween. Draft: `docs/upstream-issues/16-state-scene-update-cycle.md`.
+- **Proposal:** return the same scene when no state matches, or restyle only matching nodes outside the update tween. 
 
 ## 54. Grid and guide lines have no `shape-rendering` channel
 

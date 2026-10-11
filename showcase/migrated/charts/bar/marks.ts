@@ -21,7 +21,7 @@ export interface ExtraMarkInput {
   readonly animationDuration: number;
   readonly faded: number;
   readonly uid: string;
-  /** First paint of an entrance: square columns render collapsed so the next build tweens them in (D714). */
+  /** First paint of an entrance: square columns render collapsed so the next build tweens them in. */
   readonly seed: boolean;
   /** Entrance clock shared across builds (the seed build and the one after it): later updates resume it, then snap. */
   readonly clock: { at: number | null };

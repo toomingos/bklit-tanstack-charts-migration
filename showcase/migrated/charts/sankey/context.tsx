@@ -1,6 +1,6 @@
 "use client";
 
-// bklit's `useSankey()` context over the native chart: hover lives in a ref store (D719), only <SankeyContextLayer> subscribes.
+// bklit's `useSankey()` context over the native chart: hover lives in a ref store, only <SankeyContextLayer> subscribes.
 // The layout is bklit's own d3-sankey run (sankey-chart.tsx:151-168), as the native mark places columns in scene space.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { Dispatch, ReactElement, ReactNode, RefObject, SetStateAction } from "react";

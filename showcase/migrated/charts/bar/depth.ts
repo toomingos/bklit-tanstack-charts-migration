@@ -26,7 +26,7 @@ export interface DepthMarkInput {
   readonly groupGap: number;
   readonly uid: string;
   readonly faded: number;
-  /** First paint of an entrance: every face collapsed onto the baseline so the next build tweens them up (D714). */
+  /** First paint of an entrance: every face collapsed onto the baseline so the next build tweens them up. */
   readonly seed: boolean;
   /** Entrance clock shared across builds (the seed build and the one after it): later updates resume it, then snap. */
   readonly clock: { at: number | null };
@@ -298,7 +298,7 @@ export interface DepthBarInput {
   readonly categories: readonly string[];
   readonly minBar: number;
   readonly animationDuration: number;
-  /** Seeded first paint: every front face collapsed onto the baseline so the next build tweens it up with the depth faces (D714). */
+  /** Seeded first paint: every front face collapsed onto the baseline so the next build tweens it up with the depth faces. */
   readonly seed: boolean;
   /** Entrance clock shared with the depth faces, so the front face, lid and side rise on one schedule. */
   readonly clock: { at: number | null };

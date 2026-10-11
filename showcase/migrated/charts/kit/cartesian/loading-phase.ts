@@ -87,7 +87,7 @@ const pulseExitFrom = (elapsedMs: number | undefined): PulseExit => {
 
 const EXIT_ATTR = "data-bkm-exit";
 
-/** The exit as host vars + attribute for loading-css.ts (`--bkm-x-*`); returns the undo. Host attributes and vars are allowed (FIXER-RULES 2). */
+/** The exit as host vars + attribute for loading-css.ts (`--bkm-x-*`); returns the undo. Host attributes and vars are allowed. */
 const writeExit = (host: HTMLElement, exit: PulseExit): (() => void) => {
   writeVar(host, "--bkm-x-from", String(exit.from));
   writeVar(host, "--bkm-x-mid", String(exit.mid));

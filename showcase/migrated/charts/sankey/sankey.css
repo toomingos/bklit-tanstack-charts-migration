@@ -52,7 +52,7 @@
 @keyframes bkm-sankey-label-in-left { from { translate: 20px 0; } }
 @keyframes bkm-sankey-label-in-right { from { translate: -20px 0; } }
 
-/* Browser support (FIXER-RULES rule 7): the stagger needs sibling-index() / sibling-count() (Chromium 138+); each staggered value has a stagger-free base rule and the indexed value under @supports,
+/* Browser support: the stagger needs sibling-index() / sibling-count() (Chromium 138+); each staggered value has a stagger-free base rule and the indexed value under @supports,
    so other browsers play the entrance on the first node's delay and lose no hover emphasis (the dim reads --bkm-sk-i, base 0). */
 /* marks group children: [flow, node-0 .. node-(N-1), nlabel, vlabel]; the node's index is its sibling-index minus 2. */
 [data-bkm-chart="sankey"] g[data-ts-key^="sankey:sankey-node-"] {

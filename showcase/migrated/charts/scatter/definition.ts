@@ -1,5 +1,5 @@
 // Native TanStack definition for bklit's ScatterChart: each <Scatter> is a disc `dot` plus ring/outline dots (not `decorative()`, which drops the per-datum enter delay).
-// Hover emphasis is fixed CSS (`SCATTER_HOVER_CSS`; native `states` would re-render the scene per move, D719/63fc71f); entrance delay follows x (bklit's clip-reveal stagger).
+// Hover emphasis is fixed CSS (`SCATTER_HOVER_CSS`; native `states` would re-render the scene per move); entrance delay follows x (bklit's clip-reveal stagger).
 import { defineChart, dot } from "@tanstack/charts";
 import type { ChartDefinition, ChartGradient, ChartMark, ChartMotionTiming } from "@tanstack/charts";
 import { crosshair } from "@tanstack/charts/crosshair";

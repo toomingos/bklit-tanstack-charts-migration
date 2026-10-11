@@ -6,11 +6,7 @@ Proof-of-concept: [bklit-ui](https://github.com/bklit/bklit-ui) chart components
 
 ## Status
 
-Phase 8 (native rewrite on TanStack Charts 1.1) is functionally complete. Every chart is built from `defineChart` compositions of built-in marks, layouts, `states`, `motion()` and the native interaction controller. Custom machinery is limited to what the docs and source show 1.1 cannot express; those cases are written up in [docs/phase-8/UPSTREAM-GAPS.md](docs/phase-8/UPSTREAM-GAPS.md).
-
-- Per-chart status and wave board: [docs/phase-8/PROGRESS.md](docs/phase-8/PROGRESS.md)
-- Decision log: [docs/phase-8/LOG.md](docs/phase-8/LOG.md)
-- Rules for fixers and agents: [docs/phase-8/FIXER-RULES.md](docs/phase-8/FIXER-RULES.md)
+The migration is complete. Every chart is built from `defineChart` compositions of built-in marks, layouts, `states`, `motion()` and the native interaction controller. Custom machinery is limited to what the docs and source show 1.1 cannot express; those cases are written up in [docs/UPSTREAM-GAPS.md](docs/UPSTREAM-GAPS.md) and reported upstream.
 
 QA is done by observing the charts in Chrome (side-by-side bklit and migrated at 1440 and 390 px, light and dark, hover, keyboard focus, resize). Performance is read from the **Live Perf panel** under every chart on the showcase (load, entrance, settle, React render cost, hover and interaction latency, steady-state cost), measured live in the viewer's browser for both implementations.
 
@@ -26,7 +22,7 @@ bklit-tanstack-charts-migration/
 │   │   └── kit/               # shared kit (cartesian, polar, motion, entrance, size, tooltip, legend, loading, pattern); one folder per chart family beside it
 │   ├── packages/bklit-charts/ # re-export of bklit's own charts (@showcase/bklit-charts)
 │   └── repos/                 # gitignored clones: bklit-ui (read-only reference)
-├── docs/phase-8/              # PROGRESS.md, LOG.md, UPSTREAM-GAPS.md, FIXER-RULES.md
+├── docs/UPSTREAM-GAPS.md      # TanStack Charts limits behind the custom code
 └── scripts/                   # clone-repos.sh, vercel-build.sh
 ```
 

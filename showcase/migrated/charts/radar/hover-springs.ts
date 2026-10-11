@@ -5,7 +5,7 @@ import { springDriver } from "../kit/motion/spring-animate";
 import { HOVER_SPRING } from "../kit/motion/springs";
 import { HOVER_SCALE_DELTA, MAX_SERIES } from "./hover-css";
 
-// Groups are queried by our own documented `className` (radar/definition.ts:199,216) and sprung with WAAPI (D797, gaps #20/#36: no transform
+// Groups are queried by our own documented `className` (radar/definition.ts:199,216) and sprung with WAAPI (gaps #20/#36: no transform
 // channel in `states`); a mid-tween node keeps its tween (#50).
 const targetOf = (series: number, hovered: number | null): number => (series === hovered ? HOVER_SCALE_DELTA : 0);
 

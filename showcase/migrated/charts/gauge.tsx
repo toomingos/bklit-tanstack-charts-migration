@@ -168,7 +168,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
   } = resolved;
   const renderStart = useRenderStart();
   const linear = orientation === "linear";
-  // Measured before <Chart> mounts so the first render is at the real width and no resize cancels the entrance (D714).
+  // Measured before <Chart> mounts so the first render is at the real width and no resize cancels the entrance.
   const [hostRef, hostWidth] = useParentSizeWidth<HTMLDivElement>(width !== undefined && (linear || height !== undefined));
   const trackHeight = height ?? linearHeight;
 

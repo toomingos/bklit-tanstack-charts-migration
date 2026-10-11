@@ -1,6 +1,6 @@
 import { NOT_MOTION, typedAttr } from "../kit/css-hooks";
 
-/** `--bkm-fx` (focus x) and `--bkm-pgx` / `--bkm-pgy` (crosshair spring lag, UPSTREAM-GAPS #43) change every pointer move and spring frame, on the host (FIXER-RULES 2). Inherited, each write restyled 122 elements (0.77 ms);
+/** `--bkm-fx` (focus x) and `--bkm-pgx` / `--bkm-pgy` (crosshair spring lag, UPSTREAM-GAPS #43) change every pointer move and spring frame, on the host. Inherited, each write restyled 122 elements (0.77 ms);
  * registered `inherits: false` (0.04 ms), they reach their readers (liveline.css) through an explicit `inherit` down the path of documented host/surface and part classes (gap #36) and live-xlabels.ts's class. */
 const FOCUS_VARS_CSS =
   '@property --bkm-fx{syntax:"<number>";inherits:false;initial-value:-9999}' +

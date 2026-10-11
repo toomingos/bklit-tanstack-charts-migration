@@ -2,7 +2,7 @@ import path from "node:path";
 
 const showcaseRoot = import.meta.dirname;
 
-// TanStack Charts resolves via its published exports map (see docs/phase-5/LOG.md).
+// TanStack Charts resolves via its published exports map.
 // Diffing clone archived at local_cache/tanstack-charts-a285ce7-v0.14.0.
 
 /**

@@ -440,7 +440,7 @@ body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  /* NOT 1.25: bklit's `leading-tight` is dead at runtime (tailwind-merge deletes it, the font-size utility follows it in chartCenterLabelClassName); observed 1.5 inherited (docs/LOG.md D52).
+  /* NOT 1.25: bklit's `leading-tight` is dead at runtime (tailwind-merge deletes it, the font-size utility follows it in chartCenterLabelClassName); observed 1.5 inherited.
      If bklit reorders the class string the value becomes `line-height: 1.25`. */
   line-height: 1.5;
   font-size: clamp(0.625rem, 9cqw, 0.75rem);
@@ -448,7 +448,7 @@ body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip {
 }
 
 /* --- Linear gauge label stat: bklit's GaugeLabelShell (gauge-label-layout.tsx:53-67) appends `text-[length:var(--chart-foreground)]`, an invalid oklch() font-size that tailwind-merge keeps over the clamp()/leading utilities,
-   so font-size/line-height inherit (16px/24px, docs/LOG.md D52). Port the observed pixels: inherit, keep the surviving declarations. --- */
+   so font-size/line-height inherit (16px/24px). Port the observed pixels: inherit, keep the surviving declarations. --- */
 [data-bkm-chart] .ts-bkm-gauge-linear-stat-value {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -630,7 +630,7 @@ body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip {
   .ts-bkm-loading-label-char { animation: none !important; }
 }
 
-/* --- BarPulse wave travel (D590; CSS keyframes, never WAAPI per G14): the sweep group parks at the wave start and rises by its own box height (depth.ts, bklit bar-depth.tsx:996-1011) over 2.4s ease-in-out, snap-back loop (PULSE_WAVE_DURATION_S, :98);
+/* --- BarPulse wave travel (CSS keyframes, not WAAPI): the sweep group parks at the wave start and rises by its own box height (depth.ts, bklit bar-depth.tsx:996-1011) over 2.4s ease-in-out, snap-back loop (PULSE_WAVE_DURATION_S, :98);
    the pulse group's `clip` crops it. Held paused and hidden until the host is ready (bar-depth.tsx:955-959, wave mounts on isLoaded). --- */
 @keyframes ts-bkm-bar-pulse-sweep {
   from {
@@ -674,7 +674,7 @@ body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip {
   vector-effect: none;
 }
 
-/* Native axis tick labels render through `.ts-chart__axes` with `tickLabels` presentation on the six cartesian charts (sanctioned `ts-chart__*` surface, D418). */
+/* Native axis tick labels render through `.ts-chart__axes` with `tickLabels` presentation on the six cartesian charts (sanctioned `ts-chart__*` surface). */
 
 /* bklit's LiveYAxis tick labels are `font-mono text-chart-label text-xs` spans (live-y-axis.tsx:215). Native y tick labels carry `dominant-baseline="middle"` (x labels none), so this selector reaches only y labels;
    `--font-mono` (Geist Mono) first, generic mono stack as fallback. */
@@ -847,7 +847,7 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
 /* ChartMarkers (kit/cartesian/overlays.ts `eventMarkers`, bklit MarkerGroup): --gi on `.bkm-evt` comes from sibling-index(); hover is :hover on the group (its hit rect is the only target); static rules hold the hot values,
    kit/motion/marker-springs.ts draws the hover springs (body 300/25, badge + core 400/20, items 400/22); the enter spring (300/25) is sampled once as a `<duration> linear()` property. */
 @property --gi { syntax: "<number>"; inherits: true; initial-value: 0; }
-/* Browser support (FIXER-RULES rule 7): sibling-index() is Chromium 138+. Without it --gi stays 0 (explicit base value,
+/* Browser support: sibling-index() is Chromium 138+. Without it --gi stays 0 (explicit base value,
    indexed value under @supports), so every group enters on the first group's delay; hover, fan-out and the rule lift are unchanged. */
 .bkm-evt {
   --gi: 0;

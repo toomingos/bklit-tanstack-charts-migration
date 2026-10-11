@@ -1,6 +1,6 @@
 # AGENTS.md
 
-bklit-ui → TanStack Charts 1.1 migration. Native rewrite of bklit's charts, shown side by side with the originals on the showcase. Current phase: 8 — tracking `docs/phase-8/PROGRESS.md`, decisions `docs/phase-8/LOG.md`, rules for fixer agents `docs/phase-8/FIXER-RULES.md`, upstream limitations `docs/phase-8/UPSTREAM-GAPS.md`. The lead plans, reviews and commits; delegated agents edit or audit via `.agents/skills/opencode-subagents/run.sh`.
+bklit-ui → TanStack Charts 1.1 migration. Native rewrite of bklit's charts, shown side by side with the originals on the showcase. The migration is complete; work now is fixes and polish. Library limits behind custom code are in `docs/UPSTREAM-GAPS.md`. The lead plans, reviews and commits; sub-agents edit or audit.
 
 ## Commands
 
@@ -22,18 +22,17 @@ Serve anything extra (builds, previews) on a different port (≥ 5240) and kill 
 - **`showcase/app/charts/<route>/`** and **`showcase/components/demos/`** — one page and one dual-rendered demo per chart; `components/chart-stage.tsx` mounts bklit and migrated side by side.
 - **`showcase/components/live-perf/`** — the Live Perf panel (collector, probe, panel): load, entrance, settle, React cost, hover and interaction latency per implementation.
 - **`repos/`, `showcase/repos/`** — read-only clones (bklit-ui, tanstack-charts at v1.1.0). Never modify.
-- **`docs/phase-8/`** — PROGRESS (status board), LOG (decision log, `D<num>` entries, newest last, continuous from phase 7), UPSTREAM-GAPS, FIXER-RULES. `archive/` (local, gitignored) holds earlier phases and research.
+- **`docs/UPSTREAM-GAPS.md`** — TanStack Charts limits that justify custom code, cited from code as `UPSTREAM-GAPS #NN`. `archive/` (local, gitignored) holds the phase logs, progress boards and research.
 
 ## Key conventions
 
 - **QA is Chrome only.** Observe charts in Chrome (claude-in-chrome) on the showcase: both implementations, 1440 and 390 px, light and dark, hover, keyboard focus, resize. No headless/Playwright runs for QA. Performance is read from the Live Perf panel.
-- **Native first.** Compose `defineChart` with built-in marks, layouts, `states`, `motion()` and the interaction controller. Custom code needs docs/source evidence that no native path exists (FIXER-RULES 1). Never write to or key on renderer-owned DOM, never touch private TanStack state.
+- **Native first.** Compose `defineChart` with built-in marks, layouts, `states`, `motion()` and the interaction controller. Custom code needs docs/source evidence that no native path exists (cite the gap from `docs/UPSTREAM-GAPS.md`). Never write to or key on renderer-owned DOM, never touch private TanStack state.
 - **Preserve bklit's behaviour** — design, animation timing, hover, focus and keyboard. Entrance timing is anchored on motion's clock (`kit/entrance/entrance-origin.ts`, `entrance-align.tsx`); change it only with a LOG entry.
 - **Timers and frames** carry a comment citing the bklit `file:line` they reproduce.
 - **Remove replaced code.** No dead exports, files or comments describing removed approaches.
-- **Rulings and waivers** (accepted divergences, library floors) are logged in `docs/phase-8/LOG.md` by the lead. Agents omit failures in reports; the lead re-verifies in Chrome before committing.
-- **Update `docs/phase-8/PROGRESS.md`** after every item.
-- **Upstream drafts.** New or changed TanStack limits go to `docs/upstream-issues/` as drafts (FIXER-RULES rule 10). Nothing is posted to GitHub until the user reviews them.
+- **Accepted divergences** from bklit are explained in a comment at the code site; new library limits get an `UPSTREAM-GAPS.md` entry. Agents report failures; the lead re-verifies in Chrome before committing.
+- **Upstream drafts.** New or changed TanStack limits go to `docs/upstream-issues/` as drafts. Nothing is posted to GitHub until the user reviews them.
 
 ## DO NOT
 

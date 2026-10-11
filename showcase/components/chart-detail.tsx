@@ -11,14 +11,6 @@ import { defaultDemoControls, PHONE_WIDTH, type DemoControls, type LoadingMode, 
 /*  Sub-components                                                     */
 /* ------------------------------------------------------------------ */
 
-function DocRefChip({ ref }: { ref: string }) {
-  return (
-    <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-mono text-muted-foreground">
-      {ref}
-    </span>
-  );
-}
-
 // The 390px toggle and the Notes section are dev tools, hidden unless NEXT_PUBLIC_SHOW_DEV_TOOLS=1.
 const showDevTools = process.env.NEXT_PUBLIC_SHOW_DEV_TOOLS === "1";
 
@@ -157,20 +149,13 @@ export function ChartDetailPage({ route }: { route: string }) {
         <LivePerfPanel chart={route} />
       </section>
 
-      {showDevTools && (
+      {showDevTools && info.notes && (
         <section className="mb-10">
           <h2 className="mb-3 text-lg font-semibold tracking-tight">Notes</h2>
           <div className="rounded-xl border border-border bg-muted/30 p-4">
             <p className="text-sm text-muted-foreground leading-relaxed">{info.notes}</p>
-            {info.docRefs.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1">
-                {info.docRefs.map((ref, i) => (
-                  <DocRefChip key={i} ref={ref} />
-                ))}
-              </div>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
       )}
     </div>
   );

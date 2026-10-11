@@ -1,4 +1,4 @@
-// Hover lives in a ref store (D719: no definition rebuild or re-resolve on focus): only this <FocusLayer> leaf subscribes, owning the public `useChart()` context
+// Hover lives in a ref store (no definition rebuild or re-resolve on focus): only this <FocusLayer> leaf subscribes, owning the public `useChart()` context
 // and the passthrough children, while the RendererChart never re-renders. Visual emphasis is fixed host-attribute CSS (`hoverStaticCss`).
 import { Children, useCallback, useRef, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";

@@ -47,7 +47,7 @@ export interface BarInput {
   readonly horizontal: boolean;
   readonly stacked: boolean;
   readonly stackGap: number;
-  /** First paint of an entrance: custom marks collapsed, no bars; the build after it runs the reveal (D714). */
+  /** First paint of an entrance: custom marks collapsed, no bars; the build after it runs the reveal. */
   readonly seed: boolean;
   /** Entrance clock shared by the custom marks across the seed and full builds. */
   readonly clock: { at: number | null };
@@ -180,7 +180,7 @@ function barSeriesMarks(input: BarInput, ctx: BarMarksContext): BarSeriesMarks {
     const depthBar = depthBarMark({ datums, series, categories, minBar: provider?.minBarHeight ?? 0, animationDuration, seed: input.seed, clock: input.clock, fill: fillFor });
     return { marks: [depthBar], hover: barHoverTargets(barSeries, ctx.faded) };
   }
-  // D714: the seeded first paint renders no bars so they ENTER on the next build.
+  // The seeded first paint renders no bars so they ENTER on the next build.
   const barData = input.seed ? [] : datums.filter((d) => keys.has(d.series));
   const groupLayout = barSeries.length < 2 ? group({ padding: 0 }) : group({ scale: erase(gapBand(ctx.groupGap)) });
   const stackStroke = stacked && stackGap > 0 ? { stroke: "var(--chart-background)", strokeWidth: stackGap } : undefined;

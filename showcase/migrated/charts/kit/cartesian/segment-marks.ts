@@ -29,8 +29,8 @@ export function readSegmentProps(table: ChildTable): SegmentProps {
 export const hasSegments = (props: SegmentProps): boolean => Boolean(props.background) || props.lines.some(Boolean);
 
 function pushGradientRule(state: BuildState, uid: string, line: SegmentLineProps, i: number, segDomain: readonly [Date, Date], half: number, [lo, hi]: readonly [number, number]): void {
-  // bklit fades the rule out over its top and bottom 10%. Zero-width rules cannot take a gradient
-  // (D715), so the rule is a stroke-wide rect carrying an objectBoundingBox linear gradient.
+  // bklit fades the rule out over its top and bottom 10%. Zero-width rules cannot take a
+  // bounding-box gradient, so the rule is a stroke-wide rect carrying an objectBoundingBox linear gradient.
   const color = line.stroke ?? "var(--chart-segment-line)";
   const id = `${uid}-segment-line-${i}`;
   state.gradients.push(crosshairGradient(id, color));

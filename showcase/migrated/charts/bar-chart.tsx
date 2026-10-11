@@ -99,9 +99,9 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
   // -> leading debounce) via parent-size-arm.tsx, not with the wrapper: the seed flip and isLoaded timer run from that commit.
   const parentSized = useParentSizeMounted(containerRef, true);
   const fillHeight = style?.aspectRatio === "unset";
-  // Hover lives in a ref store read only by <FocusLayer>: no re-render / rebuild of the chart on focus (D719).
+  // Hover lives in a ref store read only by <FocusLayer>: no re-render / rebuild of the chart on focus.
   const focusStore = useFocusStore<FocusedRow>();
-  // D714: custom marks (squares, depth) only animate enter when they join a painted scene, so charts that have them
+  // Custom marks (squares, depth) only animate enter when they join a painted scene, so charts that have them
   // paint a seeded first build, then one `entered` flip builds the full definition and the update tweens it in.
   const [entered, setEntered] = useState(false);
   useEffect(() => {

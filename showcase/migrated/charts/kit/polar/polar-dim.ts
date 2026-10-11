@@ -81,7 +81,7 @@ const createPieHoverSprings = <TRow extends PieHoverRow>(rows: readonly TRow[], 
   const retarget = (host: HTMLElement, index: number, hovered: number | null, previous: number | null): void => {
     const row = byIndex.get(index);
     const group = host.querySelector(`g.bkm-pie-s${index}`);
-    // Groups are found by our own `className` (D797, gaps #20/#36: no transform channel in `states`); a mid-tween node keeps its tween (#50).
+    // Groups are found by our own `className` (gaps #20/#36: no transform channel in `states`); a mid-tween node keeps its tween (#50).
     if (row === undefined || group === null || isMotionNode(group)) { return; }
     const hot = (state: number | null): boolean => state === index;
     if (row.effect === "translate") {

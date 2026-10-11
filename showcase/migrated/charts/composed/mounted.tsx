@@ -85,7 +85,7 @@ export const ComposedChartMounted = ({
     armReady();
   }, [revealSignature, armReady]);
 
-  // Hover lives in a ref store read only by <FocusLayer> (D719): no re-render / rebuild of the chart on focus.
+  // Hover lives in a ref store read only by <FocusLayer>: no re-render / rebuild of the chart on focus.
   const focusStore = useFocusStore<FocusedRow>();
 
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);

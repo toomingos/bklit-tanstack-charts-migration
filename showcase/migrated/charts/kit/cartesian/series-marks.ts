@@ -37,7 +37,7 @@ export interface SeriesContext {
 // bklit passes dimOpacity 0.3 from Line and 0.6 from Area (SeriesHoverDim default 0.5 is unused by either).
 const dimOpacityOf = (s: ResolvedSeries): number => (s.kind === "area" ? 0.6 : 0.3);
 
-/** styles.css masks `:fill:fade*` ids with bklit's 0/15/85/100% horizontal edge fade (D715 revisited). */
+/** styles.css masks `:fill:fade*` ids with bklit's 0/15/85/100% horizontal edge fade. */
 function fadeSuffix(fadeEdges: ResolvedSeries["fadeEdges"]): string {
   if (!fadeEdges) {
     return "";
