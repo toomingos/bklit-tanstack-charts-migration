@@ -610,6 +610,9 @@ export class Collector {
   // Live line: animations that start within LIVE_ENTRANCE_WINDOW_MS of first paint are its entrance; later ones are
   // per-tick roll motion. Same rule for both impls (bklit fades in by WAAPI, ours by CSS transitions).
   private liveFirstSeen: WeakMap<Animation, number> | null = null;
+  // In-card finite animations seen running, with their true end (timeline ms): a CSS/WAAPI one ends between 50ms polls,
+  // so crediting its end removes the 0-50ms early bias against the exact MutationObserver stamps of JS animations.
+  private runningEnds = new Map<Animation, number>();
   private paintPending = false;
   private settled: number | null = null;
   private capped = false;
@@ -779,9 +782,11 @@ export class Collector {
     });
   }
 
-  private busyAnimations(): boolean {
+  private busyAnimations(now: number): boolean {
     const el = this.el;
     if (!el) return false;
+    const seenNow = new Set<Animation>();
+    let busy = false;
     for (const a of sharedAnimations()) {
       if (a.playState !== "running" && !a.pending) continue;
       if (this.liveFirstSeen) {
@@ -793,15 +798,26 @@ export class Collector {
       if (!t || !el.contains(t)) continue;
       const end = a.effect?.getComputedTiming().endTime;
       if (end === Infinity) continue; // infinite loops never "settle"
-      return true;
+      busy = true;
+      const start = a.startTime;
+      if (typeof start === "number" && typeof end === "number" && a.playbackRate > 0) {
+        this.runningEnds.set(a, start + end / a.playbackRate);
+        seenNow.add(a);
+      }
     }
-    return false;
+    // gone from the list: finished by itself if its end has passed (credit the end), else cancelled (drop)
+    for (const [a, end] of this.runningEnds) {
+      if (seenNow.has(a)) continue;
+      this.runningEnds.delete(a);
+      if (end <= now && end > this.lastBusy) this.lastBusy = end;
+    }
+    return busy;
   }
 
   private pollSettle() {
     if (this.settled !== null) return;
     const now = performance.now();
-    if (this.firstPaint !== null && this.busyAnimations()) this.lastBusy = now;
+    if (this.firstPaint !== null && this.busyAnimations(now)) this.lastBusy = now;
     if (now - this.t0 >= SETTLE_CAP_MS) {
       this.finishSettle(SETTLE_CAP_MS, true);
     } else if (this.firstPaint !== null && now - this.lastBusy >= SETTLE_IDLE_MS) {

@@ -152,7 +152,7 @@ export function buildCartesianDefinition(input: CartesianInput): CartesianBuild 
   const keyOf = (d: Row): number => xAccessor(d).getTime();
 
   // bklit's ChartRevealClip also covers the projection lines (projection-line.tsx is a plain clipped child). The terminal marker is a
-  // post-overlay outside the clip (line-series-terminal-marker.tsx:91), so it is not wrapped: styles.css `bkm-terminal-in` fades it in.
+  // post-overlay outside the clip (line-series-terminal-marker.tsx:91), so it is not wrapped: styles.css `bkm-terminal-fade|grow` enter it at the ready flip.
   const { wipe } = input;
   const wipeOverlay = <M>(mark: M, tag: string): M => (wipe ? wipeWrap(erase(mark), tag, wipe, input.margin) : mark);
   const overlays = buildOverlays(table, rows, xKey, uid, wipe ? wipeOverlay : undefined);

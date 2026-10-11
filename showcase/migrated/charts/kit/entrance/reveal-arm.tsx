@@ -9,7 +9,8 @@ const READY_ATTR = "data-bkm-ready";
 
 const REVEAL_ORIGINS = { "bkm-mk-in": "frame" } as const;
 
-const BG_ORIGINS = { "bkm-bg-in": "frame" } as const;
+/** Entrances that start at the reveal timer's flip (bklit isLoaded): the background fade, the terminal marker's opacity (WAAPI) and scale (JS). */
+const READY_ORIGINS = { "bkm-bg-in": "frame", "bkm-terminal-fade": "frame", "bkm-terminal-grow": "motion" } as const;
 
 const EVT_ORIGINS = { "bkm-evt-in": "motion", "bkm-evt-fade": "frame" } as const;
 
@@ -104,8 +105,8 @@ export function useReadyGate(
     // Reproduces bklit's reveal timer, setTimeout(animationDuration): use-chart-phase-orchestrator.ts:164-169.
     timer.current = window.setTimeout(() => {
       flip();
-      // The Background fade starts with isLoaded (background.tsx:119-125,208), the same moment.
-      if (host && !viaState) { alignEntranceStart(host, BG_ORIGINS); }
+      // The Background fade (background.tsx:119-125,208) and the terminal marker start with isLoaded, the same moment.
+      if (host && !viaState) { alignEntranceStart(host, READY_ORIGINS); }
     }, animationDuration);
   }, [hostRef, animationDuration, resetKey, viaState, store]);
   const startRef = useRef(start);
