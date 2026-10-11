@@ -2,7 +2,7 @@
 // The rules hold the hot value, kit/motion/spring-animate.ts draws the 400/25 travel; one rule pair per slice the data has (capped at MAX_INDEX), geometry vars set once on the host.
 import { springDriver } from "../motion/spring-animate";
 import { HOVER_SPRING } from "../motion/springs";
-import { NOT_MOTION, isMotionNode } from "../css-hooks";
+import { NOT_MOTION, isMotionNode } from "../renderer-dom";
 import { range } from "../range";
 
 const MAX_INDEX = 32;

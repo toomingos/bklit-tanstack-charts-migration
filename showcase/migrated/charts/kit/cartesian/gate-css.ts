@@ -1,5 +1,5 @@
+import { FOCUS_LAYERS } from "../renderer-dom";
 // Visibility rules for the renderer-owned tooltip and focus layers (gap #20; no documented hook, gap #36).
-export const FOCUS_LAYERS = ".ts-chart__focus-layer,.ts-chart__focus-guide-layer";
 const GATED_LAYERS = `.ts-chart-tooltip,${FOCUS_LAYERS}`;
 
 /** Until the reveal timer sets `data-bkm-ready` (bklit `canInteract = isLoaded`) the host takes no pointer and the tooltip and focus layers are hidden; `deep` also hides their descendants. */

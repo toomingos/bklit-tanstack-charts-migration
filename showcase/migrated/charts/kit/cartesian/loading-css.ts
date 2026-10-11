@@ -1,5 +1,6 @@
 // Scoped CSS for the per-series loading pulse overlay (`Line` / `Area` `loading`); keyframes live in styles.css.
 import type { ResolvedSeries } from "./series";
+import { keyStarts } from "../renderer-dom";
 
 const FADE_MASK = "linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent)";
 const EASE = "cubic-bezier(0.85, 0, 0.15, 1)";
@@ -29,12 +30,11 @@ export const loadingCss = (scope: string, series: readonly ResolvedSeries[]): st
     // The sweep style draws its own silhouette (loading-sweep-overlays.tsx), so it has no overlay mark to style.
     .flatMap((s) => (s.loading === undefined || s.loading.style === "sweep" ? [] : [{ id: s.id, loading: s.loading }]))
     .map(({ id, loading }) => {
-      // Selector on the core `data-ts-key` encoding of our own mark id; cartesian marks have no class hook (UPSTREAM-GAPS #36).
       const key = escapeAttr(`${id}:loading`);
-      const sel = `${scope} g[data-ts-key^="${key}"]`;
+      const sel = `${scope} g${keyStarts(key)}`;
       const mask = `mask-image: ${FADE_MASK}; -webkit-mask-image: ${FADE_MASK};`;
       // The exit rule is for the loop only: an explicit enter / exit mode carries its own animation.
-      const exit = loading.mode === "loop" ? `${scope}[data-bkm-exit] g[data-ts-key^="${key}"]{animation:${EXIT_ANIMATION}}` : "";
+      const exit = loading.mode === "loop" ? `${scope}[data-bkm-exit] g${keyStarts(key)}{animation:${EXIT_ANIMATION}}` : "";
       return `${sel}{opacity:${loading.strokeOpacity};pointer-events:none;${mask}${animationOf(loading)}}${exit}@media (prefers-reduced-motion: reduce){${sel}{animation:none;clip-path:none}}`;
     })
     .join("");

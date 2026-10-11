@@ -31,6 +31,7 @@ import type { ChartMargin } from "../kit/theme";
 import { CHART_PALETTE } from "../kit/palette";
 import { readyGateCss } from "../kit/cartesian/gate-css";
 import { typedAttr } from "../kit/css-hooks";
+import { CLS, keyStarts } from "../kit/renderer-dom";
 
 interface ScatterProps {
   dataKey: string;
@@ -612,18 +613,16 @@ export function buildScatterDefinition(input: ScatterInput): ScatterBuild {
 
 /** Hover emphasis (bklit `fadeOnHover` + `showActiveHighlight`) as FIXED rules: the host carries `data-bkm-hover` while a column is focused plus `--bkm-inactive` (opacity) and `--bkm-blur` (px);
  * every dot group dims + blurs as one layer (like bklit), the focused column's active copy is a native focus mark, and series with `fadeOnHover` off carry a `nodim:` mark id. */
-// gap #36: `dot` marks take no className, so the `nodim:` opt-out is matched on the key prefix.
-// gap #36: dotted marks have no className hook; the core `ts-chart__dot` class and our own `nodim:` mark ids are the only handle.
-const GROUPS = '[data-bkm-chart="scatter"] g.ts-chart__dot:not([data-ts-key^="nodim:"])';
+const GROUPS = `[data-bkm-chart="scatter"] g${CLS.dot}:not(${keyStarts("nodim:")})`;
 const HOVERING = '[data-bkm-chart="scatter"][data-bkm-ready][data-bkm-hover]';
 export const SCATTER_HOVER_CSS = [
   // bklit's enter blur (`--bkm-enter-blur`, default 2px) follows the in-flight `opacity` attribute. Not in styles.css (the CSS pipeline drops `attr(type())`);
   // typed attr() is Chromium-only (133+), so under `@supports` other browsers enter without the blur.
-  typedAttr('[data-bkm-chart="scatter"] .ts-chart__dot circle[opacity]:not([opacity="1"]){filter:blur(calc((1 - attr(opacity type(<number>), 1)) * var(--bkm-enter-blur, 2) * 1px))}'),
+  typedAttr(`[data-bkm-chart="scatter"] ${CLS.dot} circle[opacity]:not([opacity="1"]){filter:blur(calc((1 - attr(opacity type(<number>), 1)) * var(--bkm-enter-blur, 2) * 1px))}`),
   // Hover and keyboard focus are inert until the reveal timer fires (`data-bkm-ready`).
   readyGateCss('[data-bkm-chart="scatter"]'),
   // No transition on the dots (series-point-marker.tsx:95); the 150ms fade lives on the dim wrapper group (series-markers.tsx:240-251).
   // Dim layer: one opacity + blur per series' dot group while hovered, toggled on enter / leave only; the active copy is a focus mark.
   `${GROUPS}{transition:opacity .15s ease-in-out,filter .15s ease-in-out}`,
-  `${HOVERING} g.ts-chart__dot:not([data-ts-key^="nodim:"]){opacity:var(--bkm-inactive);filter:blur(calc(var(--bkm-blur) * 1px))}`,
+  `${HOVERING} g${CLS.dot}:not(${keyStarts("nodim:")}){opacity:var(--bkm-inactive);filter:blur(calc(var(--bkm-blur) * 1px))}`,
 ].join("");

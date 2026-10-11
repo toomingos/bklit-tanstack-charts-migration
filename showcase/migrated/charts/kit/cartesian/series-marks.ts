@@ -11,6 +11,7 @@ import { toNumber } from "./domains";
 import { erase } from "./erased-types";
 import type { CartesianInput } from "./input";
 import type { AreaSeries, ResolvedSeries, Row } from "./series";
+import { keyHas, keyIs, keyStarts } from "../renderer-dom";
 
 export const MARKER_BUCKETS = 12;
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
@@ -91,8 +92,7 @@ function pushAreaFill(ctx: SeriesContext, s: ResolvedSeries, area: ResolvedSerie
     }),
   );
   if (s.kind !== "pattern") {
-    // Selector on the core `data-ts-key` encoding of our own mark ids; cartesian marks have no class hook (UPSTREAM-GAPS #36).
-    ctx.state.hoverDim.push({ select: `g[data-ts-key^="${keyAttr(s.id)}:fill"]`, opacity: dimOpacityOf(s), series: s.index, legendOpacity: dimOpacityOf(s) });
+    ctx.state.hoverDim.push({ select: `g${keyStarts(`${keyAttr(s.id)}:fill`)}`, opacity: dimOpacityOf(s), series: s.index, legendOpacity: dimOpacityOf(s) });
   }
 }
 
@@ -119,8 +119,7 @@ function profitLossStroke(ctx: SeriesContext, s: ResolvedSeries): LinePaint {
       hi = Math.max(hi, v);
     }
   }
-  // Selector on the core `data-ts-key` encoding of our own mark ids; cartesian marks have no class hook (UPSTREAM-GAPS #36).
-  const lineGroup = `g[data-ts-key^="${keyAttr(s.id)}:"]:not([data-ts-key^="${keyAttr(s.id)}:hl"]):not([data-ts-key^="${keyAttr(s.id)}:fill"]):not([data-ts-key="${keyAttr(s.id)}:dot"])`;
+  const lineGroup = `g${keyStarts(`${keyAttr(s.id)}:`)}:not(${keyStarts(`${keyAttr(s.id)}:hl`)}):not(${keyStarts(`${keyAttr(s.id)}:fill`)}):not(${keyIs(`${keyAttr(s.id)}:dot`)})`;
   if (hi <= 0) {
     state.plRules.push({ kind: "dim", select: lineGroup, sign: 1 });
     return { stroke: profitLoss.negative, plOpacity: signOpacity(1) };
@@ -276,8 +275,7 @@ function pushLine(ctx: SeriesContext, s: ResolvedSeries): number | undefined {
     strokeOpacity: plOpacity,
   };
   const lineId = `${input.uid}-line-${s.kind}-${s.index}`;
-  // Selector on the core `data-ts-key` encoding of our own mark ids; cartesian marks have no class hook (UPSTREAM-GAPS #36).
-  state.hoverDim.push({ select: `g[data-ts-key^="${keyAttr(s.id)}:"]:not([data-ts-key^="${keyAttr(s.id)}:hl"]):not([data-ts-key^="${keyAttr(s.id)}:fill"]):not([data-ts-key="${keyAttr(s.id)}:dot"]):not([data-ts-key^="${keyAttr(s.id)}:active-"]):not([data-ts-key*=":marker"])`, opacity: dimOpacityOf(s), series: s.index, legendOpacity: dimOpacityOf(s) });
+  state.hoverDim.push({ select: `g${keyStarts(`${keyAttr(s.id)}:`)}:not(${keyStarts(`${keyAttr(s.id)}:hl`)}):not(${keyStarts(`${keyAttr(s.id)}:fill`)}):not(${keyIs(`${keyAttr(s.id)}:dot`)}):not(${keyStarts(`${keyAttr(s.id)}:active-`)}):not(${keyHas(":marker")})`, opacity: dimOpacityOf(s), series: s.index, legendOpacity: dimOpacityOf(s) });
   // Decimated: the drawn line is decorative and `${id}:focus` (every row, invisible) is the focus source.
   const pushLineMark = (mark: AnyMark): void => {
     if (ctx.focusRows === undefined) {
@@ -314,10 +312,9 @@ function pushLine(ctx: SeriesContext, s: ResolvedSeries): number | undefined {
 function pushPointMarkers(ctx: SeriesContext, s: ResolvedSeries): void {
   const { markerRows: rows, state } = ctx;
   // bklit SeriesMarkersDimWrapper: a focused point or another hovered legend row dims the markers (0.15s transition in styles.css).
-  // Selector on the core `data-ts-key` encoding of our own mark ids; cartesian marks have no class hook (UPSTREAM-GAPS #36).
   const mk = s.marker;
   state.hoverDim.push({
-    select: `g[data-ts-key^="${keyAttr(s.id)}:marker"]`,
+    select: `g${keyStarts(`${keyAttr(s.id)}:marker`)}`,
     opacity: mk.fadeOnHover ? mk.inactiveOpacity : 1,
     series: s.index,
     legendOpacity: mk.fadeOnHover ? mk.inactiveOpacity : 1,
@@ -346,8 +343,7 @@ function pushPointMarkers(ctx: SeriesContext, s: ResolvedSeries): void {
 // so neither re-resolves the definition. Always present (transparent when idle) so toggling never re-mounts.
 function pushHighlight(ctx: SeriesContext, s: ResolvedSeries, dashAt: number | undefined): void {
   const hlRows = dashAt === undefined ? ctx.rows : ctx.input.data.slice(0, dashAt + 1);
-  // Selector on the core `data-ts-key` encoding of our own mark ids; cartesian marks have no class hook (UPSTREAM-GAPS #36).
-  ctx.state.hoverHighlights.push({ select: `path[data-ts-key^="${keyAttr(s.id)}:hl"]` });
+  ctx.state.hoverHighlights.push({ select: `path${keyStarts(`${keyAttr(s.id)}:hl`)}` });
   const yScale = yScaleOf(s);
   const curve = d3Curve(s.curve);
   pushDecorative(

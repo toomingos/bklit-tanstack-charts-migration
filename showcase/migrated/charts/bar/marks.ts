@@ -12,6 +12,7 @@ import type { EnterTiming } from "./enter-timing";
 import { barIndexClass } from "./hover";
 import type { HoverTarget } from "./hover";
 import type { BarDatum, BarSeries } from "./model";
+import { CROSSHAIR_CLASS } from "../kit/renderer-dom";
 
 export interface ExtraMarkInput {
   readonly datums: readonly BarDatum[];
@@ -418,8 +419,7 @@ export function barDotsGuide(options: Omit<HoverDotsOptions, "horizontal">): Cha
           children.push(ring ? ringNode({ key, ring, half, cross, end, color: ring.color ?? fill }) : { kind: "dot" as const, key, x: cross, y: end, radius, ariaHidden: true, style: { fill, stroke: "var(--chart-background)", strokeWidth: 2 } });
         }
       }
-      // gap #36: our own guide group borrows core's fixed crosshair class; guide nodes have no documented className.
-      return { kind: "group" as const, key: id, className: "ts-chart__crosshair", ariaHidden: true, translateX: x, children };
+      return { kind: "group" as const, key: id, className: CROSSHAIR_CLASS, ariaHidden: true, translateX: x, children };
     },
   });
 }

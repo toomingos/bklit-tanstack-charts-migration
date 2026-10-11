@@ -1,6 +1,6 @@
 // Ring hover pop as bklit's 400/25 motion spring (ring.tsx: the hovered ring scales 1.03, the rings outside it 1.02), drawn on the Web Animations API so a
 // hover reversal keeps the arcs' velocity (kit/motion/spring-animate.ts). The static rules in styles.css hold the hot value and the dim opacity tween.
-import { isMotionNode } from "../kit/css-hooks";
+import { isMotionNode } from "../kit/renderer-dom";
 import { springDriver } from "../kit/motion/spring-animate";
 import { HOVER_SPRING } from "../kit/motion/springs";
 import { MAX_INDEX, RING_HOVER_SCALE, RING_PUSHED_SCALE } from "../kit/polar/polar-dim";

@@ -41,6 +41,7 @@ import { readyGateCss, focusEmptyHiddenCss } from "./kit/cartesian/gate-css";
 import { typedAttr } from "./kit/css-hooks";
 import { useSanitizedId } from "./kit/use-sanitized-id";
 import { clearAttribute, clearVar, raiseAttribute, writeHoverIndex, writeVar } from "./kit/host-write";
+import { keyStarts } from "./kit/renderer-dom";
 
 // Container-owned height: the host follows the wrapper's CSS content height (TanStack renderer.ts observesContainerHeight, responsive-charts.md).
 const HOVER_ON_ATTR = "data-bkm-on";
@@ -267,7 +268,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
     const radius = `min(calc(attr(rx type(<number>)) * 1px),calc(attr(${horizontal ? "height" : "width"} type(<number>)) * .5px))`;
     // Typed attr() is Chromium-only (133+): under `@supports`, other browsers keep the native rx (ry follows it).
     // The `bars:` key selector has no documented hook (barY takes no className): gap #36; the scalar rect radius is emitted as `rx` only: gap #25.
-    const corners = typedAttr(`${scope} rect[data-ts-key^="bars:"][rx]{rx:${radius};ry:${radius}}`);
+    const corners = typedAttr(`${scope} rect${keyStarts("bars:")}[rx]{rx:${radius};ry:${radius}}`);
     return `${scope}[data-bkm-status="loading"] .ts-chart-host{pointer-events:none}${readyGateCss(scope, true)}${focusEmptyHiddenCss(scope)}${dim}${corners}`;
   }, [scope, built.hover, tickPositions, hasSeries, horizontal, tickerHalfWidth]);
   // The effect re-runs on a status flip (bklit bar-chart.tsx:372-386): loading holds the skeleton (no reveal, no interaction, the host

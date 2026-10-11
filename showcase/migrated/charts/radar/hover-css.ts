@@ -1,6 +1,6 @@
 // Radar hover as static scoped CSS keyed on host `data-hover="<series>"` (written from the hover store; see hover-springs.ts), so hover never rebuilds the definition.
 // Transitions carry `NOT_MOTION` so they never fight a native tween.
-import { NOT_MOTION } from "../kit/css-hooks";
+import { NOT_MOTION } from "../kit/renderer-dom";
 
 export const MAX_SERIES = 12;
 const HOVER_SCALE_DELTA = 0.05;
