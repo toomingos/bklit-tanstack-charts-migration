@@ -1,5 +1,5 @@
 // The one ResizeObserver wrapper of the kit: `observeResize` for effects with their own timing, `useResizeBox` for a rounded content box in state.
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import type { RefObject } from "react";
 
 /** Observes `el`; `onEntry` gets the latest entry of each delivery. Returns the disconnect. */
@@ -17,8 +17,17 @@ interface ResizeBox {
 }
 
 /** Content box of `ref`, rounded to whole pixels, `initial` until the first delivery (bklit's react-use-measure first hop). */
-export const useResizeBox = (ref: RefObject<HTMLElement | null>, initial?: { readonly width: number; readonly height: number }): ResizeBox => {
+export const useResizeBox = (ref: RefObject<HTMLElement | null>, initial?: { readonly width: number; readonly height: number }, measureBeforePaint = false): ResizeBox => {
   const [box, setBox] = useState<ResizeBox>({ width: initial?.width ?? 0, height: initial?.height ?? 0, observed: false });
+  // Opt-in: the first box lands in the layout-effect commit, before first paint, not on the first observer delivery.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!measureBeforePaint || !el) {
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    setBox({ width: Math.round(rect.width), height: Math.round(rect.height), observed: true });
+  }, [ref, measureBeforePaint]);
   useEffect(() => {
     const el = ref.current;
     if (!el) {
