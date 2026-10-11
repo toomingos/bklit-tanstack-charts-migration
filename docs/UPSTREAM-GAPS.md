@@ -111,14 +111,6 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Cost:** the depth variant re-implements bar geometry instead of using `barY`.
 - **Proposal:** a per-datum pixel `adjust(rect, datum)` option on bar marks, or a documented node-transform hook.
 
-## 17. Rolling-path presentation points are static during the roll
-
-- **Needed:** bklit's live tooltip and pill value is interpolated at the pointer every frame while the line scrolls under it.
-- **1.1.0 behaviour:** a point with a rolling `transform` outcome is published once at its end-of-roll position and gets no motion track (`motion.ts:3318-3325`). Presentation points publish at start (`motion.ts:3599`) and on track lifecycle events (:3952, :3999, :4021), so nothing fires per frame. The renderer re-resolves focus only from `handlePresentationPoints` (`renderer.ts:1217-1248`). The path element itself is animated.
-- **Workaround:** a custom `focus` strategy interpolates the value at the exact pointer x on every resolve (`liveFocus`, `live-line/definition.ts:112-135`). Accepted divergence: a still pointer updates once per roll instead of per frame.
-- **Cost:** no overlay or rebuild added; reduced tooltip update rate at a still pointer.
-- **Proposal:** publish presentation points per frame for rolling transforms, or expose a refocus/refresh hook.
-
 ## 18. Focus-state label opacity is deferred while data motion is active
 
 - **Needed:** hide x tick labels near the pointer on a chart that is always rolling.
@@ -406,6 +398,7 @@ Drafts live in `docs/upstream-issues/` (local only).
 Not reused, so code and issue drafts keep their meaning.
 
 - 2 retargeting focus guides: real, but nothing migrated uses `focusGuideX/Y` or `retarget`; the per-move cost lives in #21. 4 longest state transition wins: the workaround is gone (no native `states` on sunburst).
+- 17 wrong: 1.1.0 re-presents and publishes rolling points every frame (`dist/motion.js:2531-2536`, `renderer.js:888-896`), so a still pointer is re-resolved each frame; the interpolating `liveFocus` is the native `focus` strategy, not a workaround (its per-frame cost is #59). Checked in Chrome on the production build: the tooltip value of a still pointer changes 8-14 times in 1.5 s on both cards.
 - 10 merged into #6. 16 merged into #35 (the seed/reshape code no longer exists). 32 and 44 merged into #21. 53 merged into #1.
 - 13 no reveal/wipe entrance: resolved, `kit/cartesian/wipe.ts` builds it from public `createMark` groups and a static clip (residual rect-only clip is #49).
 - 14 no number-tween text: parity, bklit's centre value is itself an HTML NumberFlow overlay.
