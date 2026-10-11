@@ -50,8 +50,8 @@ const groups: Group[] = [
   {
     title: "Load",
     rows: [
+      { label: "Render (settled − designed animation)", get: (s) => s.renderMs, scope: "card", unit: "ms", lower: true, hint: "probe mount → entrance end, minus the demo's designed entrance (entrance-budget.ts, same for both): floored at first paint: an entrance that ends early cannot make the chart render before it paints." },
       { label: "First paint", get: (s) => s.firstPaintMs, scope: "card", unit: "ms", lower: true, spread: (s) => runSpread(s.firstPaintRuns), hint: "probe mount → the frame showing the first svg/canvas content is presented (rAF + MessageChannel). Includes the shared demo chunk load." },
-      { label: "Settle overhead (settled − first paint − designed animation)", get: (s) => s.settleOverheadMs, scope: "card", unit: "ms", lower: true, tol: { rel: 0, abs: 10, diff: true }, hint: "settled − first paint − the demo's designed entrance (entrance-budget.ts, same for both). Negative: the animation ended before its designed end." },
       { label: "Settled (entrance end)", get: (s) => s.settledMs, scope: "card", unit: "ms", lower: true, spread: (s) => runSpread(s.settledRuns), hint: "no DOM mutation / finite animation in this card for 150ms (cap 5s, shown with +)" },
       { label: "Long tasks (load)", get: (s) => s.loadLongTasks, scope: "page", lower: true, hint: "both cards load in the same window, so this is the same page data for both" },
       { label: "Long task time (load)", get: (s) => s.loadLongTaskMs, scope: "page", unit: "ms", lower: true },
@@ -274,16 +274,12 @@ export function LiveHeadlines({ chart }: { chart: string }) {
   const one = (get: (s: PerfSnapshot) => Stat | null, ready = true): [Stat | null, Stat | null] =>
     both && ready ? [get(a), get(b)] : [null, null];
   const runs = (r: number[], cur: number | null) => runStat(r.length ? r : cur === null ? [] : [cur]);
-  const [fb, fm] = one((s) => runs(s.firstPaintRuns, s.firstPaintMs));
   const budget = entranceBudget[chart]?.ms;
-  const [sb, sm] = one((s) =>
-    budget === undefined ? null : runStat(s.settledRuns.map((v, i) => Math.round((v - (s.firstPaintRuns[i] ?? 0) - budget) * 10) / 10)),
-  );
+  const [rb, rm] = one((s) => (budget === undefined ? null : runStat(s.settledRuns.map((v, i) => Math.round(Math.max(s.firstPaintRuns[i] ?? 0, v - budget) * 10) / 10))));
   const [bb, bm] = one((s) => stat(s.busyPerMove, s.busyLo, s.busyHi), hovered);
   const [lb, lm] = one((s) => stat(s.moveLatP95, s.moveLatP50, s.moveLatP95), hovered);
   const items: Headline[] = [
-    { label: "First paint", bklit: fb?.[0] ?? null, migrated: fm?.[0] ?? null, pending: "Waiting for both charts" },
-    { label: "Settle overhead", bklit: sb?.[0] ?? null, migrated: sm?.[0] ?? null, pending: "Waiting for both charts" },
+    { label: "Render (settled − designed animation)", bklit: rb?.[0] ?? null, migrated: rm?.[0] ?? null, pending: "Waiting for both charts" },
     { label: "Whole main thread busy per move", bklit: bb?.[0] ?? null, migrated: bm?.[0] ?? null, digits: 2, pending: `Hover both charts (${MIN_MOVES} moves each)` },
     { label: "Move to paint, p95", bklit: lb?.[0] ?? null, migrated: lm?.[0] ?? null, pending: `Hover both charts (${MIN_MOVES} moves each)` },
   ];

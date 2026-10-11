@@ -17,8 +17,8 @@ export const sweepMeta = {
   viewport: "1710 x 1295",
 };
 
-/** "settleOverhead" is derived: settled - first paint - the designed entrance, per run, the same budget for both sides. */
-export type Metric = "firstPaint" | "settled" | "settleOverhead" | "busy" | "latency";
+/** "render" is derived per run: max(first paint, settled - the designed entrance), the same budget for both sides. */
+export type Metric = "firstPaint" | "settled" | "render" | "busy" | "latency";
 
 /** Per-run values for one chart, same run index in both arrays: [bklit, migrated]. */
 type Runs = readonly [bklit: readonly number[], migrated: readonly number[]];
@@ -26,7 +26,7 @@ type Runs = readonly [bklit: readonly number[], migrated: readonly number[]];
 /** route -> metric -> per-run values (ms). Filled from the sweep. Not reported: brush settled (migrated reads ~80 ms in 5 of 6 runs,
  * the collector's quiet window closes before its entrance is seen), sunburst busy and latency (migrated registers 44 of 60 moves),
  * composition (second card is below the viewport, no hover). */
-const sweepRuns: Record<string, Partial<Record<Exclude<Metric, "settleOverhead">, Runs>>> = {
+const sweepRuns: Record<string, Partial<Record<Exclude<Metric, "render">, Runs>>> = {
   area: { firstPaint: [[75.3, 64.1, 63, 60.7, 58.9, 62.3], [75, 64.4, 62.7, 61, 58.6, 62.5]], settled: [[1186.3, 1173.2, 1172.3, 1170, 1168.4, 1169], [1186.1, 1170.5, 1168.7, 1167.7, 1165.2, 1171]], busy: [[5.15, 4.805, 4.833, 4.968, 5.05, 5.038], [5.687, 6.05, 5.525, 6.6, 5.647, 6.167]], latency: [[10, 10, 10.2, 10, 10.1, 9.9], [11.5, 11.7, 11.7, 13.3, 11, 11.6]] },
   bar: { firstPaint: [[79.9, 62.2, 53.9, 56.9, 58.4, 57.1], [79.6, 62.4, 53.7, 57.2, 58.2, 57.3]], settled: [[1613.8, 1598.3, 1593.8, 1596.4, 1598.7, 1595.1], [1612, 1594.1, 1592.1, 1594.8, 1596.3, 1593.6]], busy: [[5.778, 3.975, 4.187, 4.02, 4.192, 4.152], [5.237, 4.993, 4.632, 4.783, 4.608, 4.952]], latency: [[13.7, 10, 10.6, 10.1, 9.9, 9.7], [12.1, 10.9, 11, 11.1, 11, 10.7]] },
   bardepth: { firstPaint: [[83.1, 68.2, 67.3, 68.3, 66.3, 63.5], [82.9, 68.5, 67, 68.7, 66.1, 63.7]], settled: [[1614.5, 1605.6, 1604, 1601.1, 1602.1, 1598.2], [1610, 1601.5, 1599.2, 1596.7, 1597.7, 1594.7]], busy: [[5.092, 4.767, 5.48, 4.965, 5.725, 4.798], [5.025, 5.402, 5.173, 5.595, 5.185, 5.548]], latency: [[10.1, 9.8, 10.8, 10.4, 10, 10.2], [11.2, 12.4, 11.2, 11.7, 11, 11.2]] },
@@ -55,11 +55,11 @@ const sweepRuns: Record<string, Partial<Record<Exclude<Metric, "settleOverhead">
 
 function runsOf(route: string, metric: Metric): Runs | undefined {
   const r = sweepRuns[route];
-  if (metric !== "settleOverhead") return r?.[metric];
+  if (metric !== "render") return r?.[metric];
   const budget = entranceBudget[route]?.ms;
   if (!r?.settled || !r.firstPaint || budget === undefined) return undefined;
   const { settled, firstPaint } = r;
-  const side = (k: 0 | 1) => settled[k].map((v, i) => Math.round((v - firstPaint[k][i] - budget) * 10) / 10);
+  const side = (k: 0 | 1) => settled[k].map((v, i) => Math.round(Math.max(firstPaint[k][i], v - budget) * 10) / 10);
   return [side(0), side(1)];
 }
 

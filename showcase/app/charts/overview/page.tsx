@@ -6,26 +6,22 @@ import { CompareCell, compare, type Headline, HeadlineCards, type Tolerance } fr
 import { BKLIT_SHA, type Metric, chartPair, summarise, sweepMeta } from "@/components/live-perf/headline-data";
 
 const LAT_TOL: Tolerance = { rel: 0.1, abs: 3 };
-/** Settle overhead is tens of ms, so parity is an absolute band, not a ratio. */
-const SETTLE_TOL: Tolerance = { rel: 0, abs: 10, diff: true };
 const BUSY_TOL: Tolerance = { rel: 0.1, abs: 0.3 };
 const cols: { metric: Metric; head: string; tol?: Tolerance }[] = [
-  { metric: "firstPaint", head: "First paint" },
-  { metric: "settleOverhead", head: "Settle overhead", tol: SETTLE_TOL },
+  { metric: "render", head: "Render" },
   { metric: "busy", head: "Main-thread busy per move", tol: BUSY_TOL },
   { metric: "latency", head: "Move to paint p95", tol: LAT_TOL },
 ];
 
 const routes = allCharts.map((c) => c.route);
 
-/** Card figure: geometric mean of per-chart ratios; settle overhead can be near 0 or negative, so its ratio is of the means. */
-function card(label: string, metric: Metric, digits = 1, floor = 0, geo = true): Headline {
+/** Card figure: geometric mean of per-chart ratios. */
+function card(label: string, metric: Metric, digits = 1, floor = 0): Headline {
   const s = summarise(routes, metric, floor);
-  return { label, bklit: s?.bklitMs ?? null, migrated: s?.migratedMs ?? null, ratio: geo ? s?.geo : undefined, digits };
+  return { label, bklit: s?.bklitMs ?? null, migrated: s?.migratedMs ?? null, ratio: s?.geo, digits };
 }
 const headlines = [
-  card("First paint", "firstPaint"),
-  card("Settle overhead", "settleOverhead", 1, 0, false),
+  card("Render (settled − designed animation)", "render"),
   card("Main-thread busy per pointer move", "busy", 2, 0.05),
   card("Move to paint, p95", "latency"),
 ];
@@ -62,7 +58,7 @@ export default function OverviewPage() {
           Method: {sweepMeta.date}, {sweepMeta.build}, {sweepMeta.runs} interleaved runs (bklit first, then migrated first), {sweepMeta.movesPerSide} pointer
           moves per side per run ({sweepMeta.events}), bklit-ui {BKLIT_SHA}, TanStack Charts 1.1.0, {sweepMeta.machine}, {sweepMeta.viewport}. Each cell is the median
           of the runs with min–max; a ratio is shown only where the two ranges do not overlap, otherwise parity. Summaries are geometric means of per-chart ratios,
-          never sums. Settle overhead = settled − first paint − the demo's designed entrance (delay, duration and stagger from bklit's source, springs to rest), the same budget for both sides; it is in ms, parity is a 10 ms band or overlapping ranges, nothing is clamped and a negative value (⚠) means the animation ended before its designed end.
+          never sums. Render = max(first paint, settled − the demo's designed entrance) (delay, duration and stagger from bklit's source, springs to rest), the same budget for both sides: the time to first paint plus any time the entrance ran past its design. Brush has no settled reading, so no render value.
         </p>
       </section>
 
