@@ -21,7 +21,7 @@ export const SunburstBreadcrumb = ({ className, children }: Readonly<SunburstBre
 );
 SunburstBreadcrumb.displayName = "SunburstBreadcrumb";
 
-export interface SunburstBreadcrumbItems {
+interface SunburstBreadcrumbItems {
   items: SunburstBreadcrumbItem[];
   zoomTo: (id: string) => void;
 }
