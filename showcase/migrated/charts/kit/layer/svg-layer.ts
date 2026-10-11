@@ -1,6 +1,6 @@
-// The SVG layer renderer both polar layers (ring progress, sunburst sectors) share: the documented Canvas compositor over the host renderer, one owned SVG, a keyed scene walk.
-import { canvasChartRenderer } from "@tanstack/charts/canvas";
+// The SVG layer renderer both polar layers (ring progress, sunburst sectors) share: the layer compositor over the host renderer, one owned SVG, a keyed scene walk.
 import type { ChartLayerRenderer, ChartSurface, SceneGroup, SceneNode } from "@tanstack/charts";
+import { composeLayers } from "./compose-layers";
 
 export const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -53,8 +53,8 @@ export type SvgLayerParts<Row> = Pick<Surface<Row>, "destroy" | "render">;
 /** A chart-layer renderer whose child surface is one owned `<svg>`; `mount` builds the layer's state over it. */
 export const createSvgLayer = <Row>(id: string, mount: (svg: SVGSVGElement, layer: ChartLayerRenderer<Row, number, number>) => SvgLayerParts<Row>): ChartLayerRenderer<Row, number, number> => {
   const layer: ChartLayerRenderer<Row, number, number> = {
-    // Composition is the documented Canvas compositor over the host renderer; this layer only supplies the child surface.
-    compose: (defaultRenderer) => canvasChartRenderer.compose(defaultRenderer),
+    // Composition stacks the host layers with this layer (compose-layers.ts); this layer only supplies the child surface.
+    compose: composeLayers,
     id,
     kind: "chart-layer-renderer",
     mount: (container): Surface<Row> => {
