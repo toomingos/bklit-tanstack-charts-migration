@@ -3,7 +3,8 @@ import { Children, Fragment, isValidElement } from "react";
 import type { ReactNode } from "react";
 import { readChildren } from "../kit/read-children";
 import type { ChildTable } from "../kit/read-children";
-import { BarDepthProvider } from "./carriers";
+import { CHART_ROLE } from "../kit/role";
+import type { CarrierComponent } from "../kit/role";
 
 export function readBarChildren(children: ReactNode): ChildTable {
   const flat: ReactNode[] = [];
@@ -17,7 +18,7 @@ export function readBarChildren(children: ReactNode): ChildTable {
         return;
       }
       flat.push(child);
-      if (child.type === BarDepthProvider) {
+      if ((child.type as CarrierComponent<object>)[CHART_ROLE] === "barDepthProvider") {
         visit(child.props.children);
       }
     });
