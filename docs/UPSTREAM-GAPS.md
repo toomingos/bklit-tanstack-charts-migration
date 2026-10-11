@@ -364,6 +364,13 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Workaround:** `kit/cartesian/focus-layer.tsx` renders custom children in a second absolutely positioned `<svg>` over the host, translated by the plot margin. They paint above the chart marks and never between them, and the `<svg>` is not the renderer's. Carriers inside user components register through `kit/carrier-registry.tsx`, since only rendering reveals them.
 - **Proposal:** a `children`/`overlay` render slot on the framework `Chart` that mounts inside the renderer's svg with the plot transform, or a scene node that hosts a foreign subtree.
 
+## 56. `motion()` cannot start a tween from an earlier clock (no start time, negative delay clamped)
+
+- **Needed:** bklit's entrances start on the effect that arms them (`chart-reveal-clip.tsx:81-85`, `heatmap-chart.tsx:566-585`); ours join a React commit later, which would shift the tween by 10-37 ms.
+- **1.1.0 behaviour:** a timing is `{ delay, transition }` run from the moment it is scheduled, and a negative `delay` is clamped to 0 (`motion.ts:3792-3793`).
+- **Workaround:** `kit/motion/resume-enter.ts` resumes the schedule from the arm time (shorter tween, renormalised easing); used by `kit/cartesian/wipe.ts`, `composed/bars.ts` and `heatmap/motion.ts`.
+- **Proposal:** a `startTime` on the timing object, or a negative `delay` that starts the tween already advanced (draft: `docs/upstream-issues/25-motion-start-time.md`).
+
 ---
 
 ## Retired numbers
