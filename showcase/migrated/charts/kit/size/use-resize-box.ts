@@ -16,9 +16,10 @@ interface ResizeBox {
   readonly observed: boolean;
 }
 
-/** Content box of `ref`, rounded to whole pixels, `initial` until the first delivery (bklit's react-use-measure first hop). */
-export const useResizeBox = (ref: RefObject<HTMLElement | null>, initial?: { readonly width: number; readonly height: number }, measureBeforePaint = false): ResizeBox => {
-  const [box, setBox] = useState<ResizeBox>({ width: initial?.width ?? 0, height: initial?.height ?? 0, observed: false });
+/** Content box of `ref`, rounded to whole pixels, `initial` until the first delivery (bklit's react-use-measure first hop); `measured` seeds an already-measured box as observed. */
+export const useResizeBox = (ref: RefObject<HTMLElement | null>, initial?: { readonly width: number; readonly height: number }, measureBeforePaint = false, measured?: { readonly width: number; readonly height: number }): ResizeBox => {
+  // `measured` is a box the caller already measured: it seeds state as observed, so a same-size first delivery commits nothing.
+  const [box, setBox] = useState<ResizeBox>(measured ? { ...measured, observed: true } : { width: initial?.width ?? 0, height: initial?.height ?? 0, observed: false });
   // Opt-in: the first box lands in the layout-effect commit, before first paint, not on the first observer delivery.
   useLayoutEffect(() => {
     const el = ref.current;
@@ -26,7 +27,9 @@ export const useResizeBox = (ref: RefObject<HTMLElement | null>, initial?: { rea
       return;
     }
     const rect = el.getBoundingClientRect();
-    setBox({ width: Math.round(rect.width), height: Math.round(rect.height), observed: true });
+    const width = Math.round(rect.width);
+    const height = Math.round(rect.height);
+    setBox((prev) => (prev.observed && prev.width === width && prev.height === height ? prev : { width, height, observed: true }));
   }, [ref, measureBeforePaint]);
   useEffect(() => {
     const el = ref.current;

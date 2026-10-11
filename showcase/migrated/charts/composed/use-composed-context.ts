@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import type { RefObject } from "react";
 import type { ChartContextValue, LineConfig } from "../kit/cartesian/chart-context";
 import { useFocusRow } from "../kit/cartesian/chart-context-focus";
 import type { Interaction } from "../kit/cartesian/chart-context-focus";
 import { timeScale, useBridgedContext, useReferenceAreas, valueScale } from "../kit/cartesian/context-bridge";
-import { observeResize } from "../kit/size/use-resize-box";
+import { useResizeBox } from "../kit/size/use-resize-box";
 import type { ChildTable } from "../kit/read-children";
 import type { FocusedRow } from "../kit/cartesian/context-bridge";
 import type { ReadyStore } from "../kit/entrance/reveal-arm";
@@ -45,18 +45,7 @@ export function useComposedContext(input: Readonly<ComposedContextInput>): {
   readonly times: readonly number[];
 } {
   const { initialSize, containerRef, ready, data, xDataKey, margin, domains, series, bars, duration, barSize, maxBarSize, barGap, stacked, stackGap, table, interaction } = input;
-  // The wrapper already measured this box: an observer delivery of the same size keeps the state object, so the first delivery commits nothing.
-  const [size, setSize] = useState(initialSize);
-  useEffect(() => {
-    const el = containerRef.current;
-    return el
-      ? observeResize(el, (entry) => {
-          const width = Math.round(entry?.contentRect.width ?? 0);
-          const height = Math.round(entry?.contentRect.height ?? 0);
-          setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
-        })
-      : undefined;
-  }, [containerRef]);
+  const size = useResizeBox(containerRef, undefined, false, initialSize);
   const innerWidth = Math.max(0, size.width - margin.left - margin.right);
   const innerHeight = Math.max(0, size.height - margin.top - margin.bottom);
   const rows = data;
