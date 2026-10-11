@@ -31,7 +31,7 @@ import { bandCentre, barDotsGuide, barEndCentre, buildExtraMarks } from "./marks
 import type { RingDots } from "./marks";
 import { barFocusStrategy } from "./focus";
 import type { PlotRect } from "./focus";
-import { buildDepthMarks, depthBarMark, hasDepth } from "./depth";
+import { depthBarFor, depthMarksFor, hasDepth } from "./depth-feature";
 import { cssAttr } from "./hover";
 import type { HoverTarget } from "./hover";
 import { keyEnds, keyStarts } from "../kit/renderer-dom";
@@ -178,8 +178,8 @@ function barSeriesMarks(input: BarInput, ctx: BarMarksContext): BarSeriesMarks {
   // bklit trims the front face by the perspective rise whenever depth is on (the lid sits above it): a custom mark draws it.
   if (depthOn) {
     const provider = propsFor<BarDepthProviderProps>(table, "barDepthProvider").at(0);
-    const depthBar = depthBarMark({ datums, series, categories, minBar: provider?.minBarHeight ?? 0, animationDuration, seed: input.seed, clock: input.clock, fill: fillFor });
-    return { marks: [depthBar], hover: barHoverTargets(barSeries, ctx.faded) };
+    const depthBar = depthBarFor({ datums, series, categories, minBar: provider?.minBarHeight ?? 0, animationDuration, seed: input.seed, clock: input.clock, fill: fillFor });
+    return { marks: depthBar ? [depthBar] : [], hover: barHoverTargets(barSeries, ctx.faded) };
   }
   // The seeded first paint renders no bars so they ENTER on the next build.
   const barData = input.seed ? [] : datums.filter((d) => keys.has(d.series));
@@ -353,7 +353,7 @@ export function buildBarDefinition(input: BarInput): BarDefinition {
   // Loading keeps the bar marks collapsed to zero (grid, axes and scales stay) so the flip to ready is an update that grows them.
   const own = barSeries.length > 0 ? barSeriesMarks(input, { datums: loading ? datums.map((d) => ({ ...d, value: 0 })) : datums, categories, barSeries, fillFor, enter: barEnter(input), depthOn, round, groupGap, faded }) : { marks: [], hover: [] };
   const extra = horizontal || loading ? undefined : buildExtraMarks({ datums, series, table, categories, animationDuration: input.animationDuration, faded, uid: input.uid, seed: input.seed, clock: input.clock });
-  const depth = horizontal || loading ? undefined : buildDepthMarks({ table, datums, series, categories, animationDuration: input.animationDuration, groupGap, uid: input.uid, faded, seed: input.seed, clock: input.clock });
+  const depth = horizontal || loading ? undefined : depthMarksFor({ table, datums, series, categories, animationDuration: input.animationDuration, groupGap, uid: input.uid, faded, seed: input.seed, clock: input.clock });
   const marks: BarMarkList = [...own.marks, ...(extra?.marks ?? []), ...(depth?.marks ?? [])];
   // bklit dims every bar outside the hovered category (see hover.ts: scoped CSS, not native states).
   const hover: HoverTarget[] = [...own.hover, ...(extra?.hover ?? []), ...(depth?.hover ?? [])];

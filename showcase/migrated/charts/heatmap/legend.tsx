@@ -1,3 +1,4 @@
+import "../heatmap.css";
 import { memo, useMemo, useSyncExternalStore } from 'react';
 import type { CSSProperties, NamedExoticComponent, ReactElement } from 'react';
 import { HEATMAP_INACTIVE_OPACITY, HEATMAP_INACTIVE_TRANSITION_CSS, useHeatmapCoordinatorOptional } from "./context";

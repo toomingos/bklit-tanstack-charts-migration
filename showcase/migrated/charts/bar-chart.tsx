@@ -15,7 +15,7 @@ import { useDataUpdated } from "./kit/use-data-updated";
 import { useChildTable } from "./kit/stable-children";
 import { readBarChildren } from "./bar/read-children";
 import { numberOrZero, resolveBarSeries } from "./bar/model";
-import { hasDepth } from "./bar/depth";
+import { hasDepth } from "./bar/depth-feature";
 import { BarDepthConfigProvider } from "./bar/depth-entries";
 import type { BarDepthProviderProps, BarXAxisProps } from "./bar/carriers";
 import { barDimCss, FOCUS_X_VAR, MAX_INDEX } from "./bar/hover";

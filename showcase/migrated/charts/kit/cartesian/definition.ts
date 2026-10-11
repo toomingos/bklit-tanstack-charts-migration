@@ -19,8 +19,7 @@ import { erase } from "./erased-types";
 import type { AnyMark } from "./erased-types";
 import { gridColumnGuides, gridHostAttrs, gridRowGuides, loadingGridProps } from "./grid-guides";
 import type { GridGuideProps as GridProps } from "./grid-guides";
-import { backgroundCss, backgroundMarks } from "./background";
-import { buildOverlays } from "./overlays";
+import { backgroundCssFor, backgroundMarksFor, overlaysFor } from "./features";
 import { pillLayout } from "./date-pill";
 import { dataExtent, resolveYDomains } from "./domains";
 import { rowSets } from "./decimate";
@@ -155,7 +154,7 @@ export function buildCartesianDefinition(input: CartesianInput): CartesianBuild 
   // post-overlay outside the clip (line-series-terminal-marker.tsx:91), so it is not wrapped: styles.css `bkm-terminal-fade|grow` enter it at the ready flip.
   const { wipe } = input;
   const wipeOverlay = <M>(mark: M, tag: string): M => (wipe ? wipeWrap(erase(mark), tag, wipe, input.margin) : mark);
-  const overlays = buildOverlays(table, rows, xKey, uid, wipe ? wipeOverlay : undefined);
+  const overlays = overlaysFor(table, rows, xKey, uid, wipe ? wipeOverlay : undefined);
   // The data extent widened by the overlays and the extra marks, unless the chart is windowed.
   const xDomain: [Date, Date] | undefined = input.xDomain
     ? [input.xDomain[0], input.xDomain[1]]
@@ -179,7 +178,7 @@ export function buildCartesianDefinition(input: CartesianInput): CartesianBuild 
   const primaryDomain = yDomains.get(DEFAULT_Y_AXIS_ID) ?? [0, 100];
   const rowGuides = gridRowGuides(grid, scaleLinear().domain(primaryDomain), primaryAxis !== undefined, primaryAxis?.numTicks);
   const columnMarks = gridColumnGuides(grid, scaleTime().domain(input.xDomain ?? overlayExtent ?? [new Date(0), new Date(1)]));
-  state.marks.push(...backgroundMarks(table, uid),...rowGuides.marks, ...columnMarks);
+  state.marks.push(...backgroundMarksFor(table, uid), ...rowGuides.marks, ...columnMarks);
   const seriesStart = state.marks.length;
   pushSeriesMarks({ input, rows: pathRows, markerRows: drawRows, focusRows: drawRows === rows ? undefined : rows, yDomains, fadeDomain: xDomain, xAccessor, keyOf, lineY, areaY, tooltipEnabled, state });
 
@@ -246,7 +245,7 @@ export function buildCartesianDefinition(input: CartesianInput): CartesianBuild 
     targetY,
     pillTicks: { times: x.tickTimes, reachPx: (xAxis?.tickerHalfWidth ?? 50) + 12, active: pillActive },
     gridAttrs: gridHostAttrs(grid),
-    backgroundCss: (scope) => backgroundCss(scope, table),
+    backgroundCss: (scope) => backgroundCssFor(scope, table),
     hover: { dim: state.hoverDim, highlights: state.hoverHighlights, pl: state.plRules, times: rows.map(keyOf), plSigns, segmentLeft: segments ? input.margin.left : null, bandClip: `${uid}-hlband` },
   };
 }

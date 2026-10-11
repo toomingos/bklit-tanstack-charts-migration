@@ -32,11 +32,6 @@ export interface DepthMarkInput {
   readonly clock: { at: number | null };
 }
 
-/** Whether the bar for `dataKey` should have its top trimmed by the perspective rise (Provider or Back present). */
-export function hasDepth(table: ChildTable): boolean {
-  return propsFor<BarDepthBackProps>(table, "barDepthBack").length > 0 || propsFor(table, "barDepthProvider").length > 0;
-}
-
 interface EntryInput {
   readonly datum: BarDatum;
   readonly series: readonly BarSeries[];

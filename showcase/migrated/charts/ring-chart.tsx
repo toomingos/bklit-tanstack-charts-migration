@@ -28,6 +28,7 @@ import { INITIAL_WIDTH_PX, useFluidWidth } from "./kit/size/use-fluid-width";
 import { useIsClient } from "./kit/size/use-is-client";
 import { useTapFocus } from "./kit/cartesian/touch-focus";
 import "./styles.css";
+import "./polar.css";
 
 // The track scale is a CSS animation; bklit's is a JS-driven motion value, so it takes motion's `motion` origin (kit/entrance/entrance-origin.ts).
 const RING_ENTRANCE_ORIGINS = { "bkm-ring-in": "motion" } as const satisfies Readonly<Record<string, EntranceOrigin>>;

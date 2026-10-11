@@ -6,14 +6,71 @@ import type { DemoControls } from "@/components/demo-controls";
 import type { ImplCharts } from "@/components/demos/impl-charts";
 import { timedImport } from "@/components/live-perf/collector";
 
+const migratedEntries: Record<string, () => Promise<object>> = {
+  area: () => import("./demos/migrated-entries/area"),
+  bar: () => import("./demos/migrated-entries/bar"),
+  bardepth: () => import("./demos/migrated-entries/bardepth"),
+  barsquares: () => import("./demos/migrated-entries/barsquares"),
+  brush: () => import("./demos/migrated-entries/brush"),
+  candlestick: () => import("./demos/migrated-entries/candlestick"),
+  choropleth: () => import("./demos/migrated-entries/choropleth"),
+  composed: () => import("./demos/migrated-entries/composed"),
+  composition: () => import("./demos/migrated-entries/composition"),
+  funnel: () => import("./demos/migrated-entries/funnel"),
+  gauge: () => import("./demos/migrated-entries/gauge"),
+  heatmap: () => import("./demos/migrated-entries/heatmap"),
+  line: () => import("./demos/migrated-entries/line"),
+  liveline: () => import("./demos/migrated-entries/liveline"),
+  markers: () => import("./demos/migrated-entries/markers"),
+  patternarea: () => import("./demos/migrated-entries/patternarea"),
+  pie: () => import("./demos/migrated-entries/pie"),
+  projection: () => import("./demos/migrated-entries/projection"),
+  radar: () => import("./demos/migrated-entries/radar"),
+  "reference-area": () => import("./demos/migrated-entries/reference-area"),
+  ring: () => import("./demos/migrated-entries/ring"),
+  sankey: () => import("./demos/migrated-entries/sankey"),
+  scatter: () => import("./demos/migrated-entries/scatter"),
+  segment: () => import("./demos/migrated-entries/segment"),
+  sunburst: () => import("./demos/migrated-entries/sunburst"),
+};
+
+const bklitEntries: Record<string, () => Promise<object>> = {
+  area: () => import("./demos/bklit-entries/area"),
+  bar: () => import("./demos/bklit-entries/bar"),
+  bardepth: () => import("./demos/bklit-entries/bardepth"),
+  barsquares: () => import("./demos/bklit-entries/barsquares"),
+  brush: () => import("./demos/bklit-entries/brush"),
+  candlestick: () => import("./demos/bklit-entries/candlestick"),
+  choropleth: () => import("./demos/bklit-entries/choropleth"),
+  composed: () => import("./demos/bklit-entries/composed"),
+  composition: () => import("./demos/bklit-entries/composition"),
+  funnel: () => import("./demos/bklit-entries/funnel"),
+  gauge: () => import("./demos/bklit-entries/gauge"),
+  heatmap: () => import("./demos/bklit-entries/heatmap"),
+  line: () => import("./demos/bklit-entries/line"),
+  liveline: () => import("./demos/bklit-entries/liveline"),
+  markers: () => import("./demos/bklit-entries/markers"),
+  patternarea: () => import("./demos/bklit-entries/patternarea"),
+  pie: () => import("./demos/bklit-entries/pie"),
+  projection: () => import("./demos/bklit-entries/projection"),
+  radar: () => import("./demos/bklit-entries/radar"),
+  "reference-area": () => import("./demos/bklit-entries/reference-area"),
+  ring: () => import("./demos/bklit-entries/ring"),
+  sankey: () => import("./demos/bklit-entries/sankey"),
+  scatter: () => import("./demos/bklit-entries/scatter"),
+  segment: () => import("./demos/bklit-entries/segment"),
+  sunburst: () => import("./demos/bklit-entries/sunburst"),
+};
+
 type Impl = "bklit" | "migrated";
 interface DemoProps { impl: Impl; n: number; controls?: DemoControls }
 type DemoModule = { default: ComponentType<DemoProps & { charts: ImplCharts }> };
 
+// Each side loads a per-chart entry (demos/{bklit,migrated}-entries/<chart>.ts: the exports that demo uses), so webpack drops the rest of its barrel from the card's chunks.
 // Each card loads only its own implementation's chart module next to the demo chunk, so a card never waits on (or ships) the other library.
-const loadCharts: Record<Impl, () => Promise<ImplCharts>> = {
-  bklit: () => import("@showcase/bklit-charts"),
-  migrated: () => import("@showcase/migrated-charts"),
+const loadCharts: Record<Impl, (chart: string) => Promise<ImplCharts>> = {
+  bklit: (chart) => bklitEntries[chart]() as Promise<ImplCharts>,
+  migrated: (chart) => migratedEntries[chart]() as Promise<ImplCharts>,
 };
 
 // Client-only lazy component without Suspense: a revealed Suspense fallback holds the content back for 300ms (React's fallback throttle) even when the chunk is cached.
@@ -37,7 +94,7 @@ function lazyDemo(chart: string, load: () => Promise<DemoModule>): Record<Impl, 
   const make = (impl: Impl) =>
     clientOnly(
       timedImport(chart, async () => {
-        const [demo, charts] = await Promise.all([load(), loadCharts[impl]()]);
+        const [demo, charts] = await Promise.all([load(), loadCharts[impl](chart)]);
         const Demo = demo.default;
         return { default: (props: DemoProps) => <Demo {...props} charts={charts} /> };
       }),

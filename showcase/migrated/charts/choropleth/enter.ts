@@ -4,7 +4,7 @@ import type { ChartMotionTiming } from "@tanstack/charts";
 import { toMotionTransition } from "../kit/motion/enter-transition";
 import type { EnterTransition } from "../kit/motion/phase";
 import { useReadyGate } from "../kit/entrance/reveal-arm";
-import { useParentSizeMounted } from "../kit/size/parent-size-arm";
+import { useHostMounted } from "../kit/size/parent-size-arm";
 
 const ENTER_FADE_MS = 1100;
 const UPDATE_MORPH_MS = 180;
@@ -31,9 +31,9 @@ export const useEnterReveal = (
   const [shown, setShown] = useState(false);
   const fadeAtRef = useRef<number | null>(null);
 
-  // bklit's chain: choropleth-chart.tsx:482 mounts under `<ParentSize debounceTime={10}>` (@visx/responsive useParentSize.js:37-63); its mount effect (:390-397) starts
-  // isLoaded and the fade clock (choropleth-feature.tsx:162-166, use-mount-progress.ts:19-26). `parentSized` (parent-size-arm.tsx) is that commit; `shown` stamps it.
-  const parentSized = useParentSizeMounted(hostRef, true);
+  // bklit's mount effect (choropleth-chart.tsx:390-397, under ParentSize :482) starts isLoaded and the fade clock (choropleth-feature.tsx:162-166);
+  // `parentSized` is the layout-effect commit before first paint (bklit's ParentSize frames are not waited on); `shown` stamps it.
+  const parentSized = useHostMounted();
   const [revealState, setRevealState] = useState({ epoch: 1, key: `${animationDuration}|${revealSignature}` });
   const revealKey = `${animationDuration}|${revealSignature}`;
   if (revealState.key !== revealKey) {setRevealState({ epoch: revealState.epoch + 1, key: revealKey });}

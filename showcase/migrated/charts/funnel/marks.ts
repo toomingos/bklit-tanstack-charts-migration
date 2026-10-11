@@ -5,10 +5,8 @@ import { areaX } from "@tanstack/charts/area-x";
 import { rect } from "@tanstack/charts/rect";
 import { ruleX, ruleY } from "@tanstack/charts/rule";
 import { text } from "@tanstack/charts/text";
-import { d3Curve } from "@tanstack/charts/d3/shape";
-import { d3AreaXCurve } from "@tanstack/charts/d3/area-x";
-import type { CurveFactory } from "d3-shape";
-import type { ChartLinearGradient, ChartMark, ChartMotionTransition } from "@tanstack/charts";
+import type { AreaXCurve } from "@tanstack/charts/area-x";
+import type { ChartCurve, ChartLinearGradient, ChartMark, ChartMotionTransition } from "@tanstack/charts";
 import { fontContext, textWidth } from "../kit/text-width";
 import type { FunnelDatum } from "./focus";
 
@@ -75,37 +73,27 @@ interface FunnelMarkConfig {
   readonly grid: { readonly bands: boolean; readonly bandColor: string; readonly lines: boolean; readonly lineColor: string; readonly lineOpacity: number; readonly lineWidth: number } | null;
 }
 
-// bklit's segment edge: one cubic per edge with control points at 55% / 45% of the stage length along the stage axis (a d3 bump
-// puts both at 50%), so the settled outline matches. `axis` is the stage axis ("x" horizontal, "y" vertical).
+// bklit's segment edge: one cubic per edge, control points at 55% of the stage length along the stage axis (d3 bump: 50%).
+// Written as path strings, so the funnel needs neither TanStack's d3 curve adapters nor d3-shape.
 const BKLIT_CONTROL = 0.55;
-const bklitEdge = (axis: "x" | "y"): CurveFactory => (context) => {
-  let line = 0;
-  let point = 0;
-  let px = 0;
-  let py = 0;
-  return {
-    areaEnd() { line = Number.NaN; },
-    areaStart() { line = 0; },
-    lineEnd() {
-      if (line || (line !== 0 && point === 1)) { context.closePath(); }
-      line = 1 - line;
-    },
-    lineStart() { point = 0; },
-    point(x: number, y: number) {
-      if (point === 0) {
-        point = 1;
-        if (line) { context.lineTo(x, y); } else { context.moveTo(x, y); }
-      } else {
-        point = 2;
-        const dx = (x - px) * BKLIT_CONTROL;
-        const dy = (y - py) * BKLIT_CONTROL;
-        if (axis === "x") { context.bezierCurveTo(px + dx, py, x - dx, y, x, y); } else { context.bezierCurveTo(px, py + dy, x, y - dy, x, y); }
-      }
-      px = x;
-      py = y;
-    },
-  };
+type Pt = readonly [number, number];
+const edgeRun = (points: readonly Pt[], axis: "x" | "y", first: "M" | "L"): string => {
+  let d = "";
+  for (let i = 0; i < points.length; i++) {
+    const [x, y] = points[i] as Pt;
+    if (i === 0) { d = `${first}${x},${y}`; continue; }
+    const [px, py] = points[i - 1] as Pt;
+    const dx = (x - px) * BKLIT_CONTROL;
+    const dy = (y - py) * BKLIT_CONTROL;
+    d += axis === "x" ? `C${px + dx},${py},${x - dx},${y},${x},${y}` : `C${px},${py + dy},${x},${y - dy},${x},${y}`;
+  }
+  return d;
 };
+// d3's area order: the top edge forward, the bottom edge back, closed.
+const edgeArea = (top: readonly Pt[], bottom: readonly Pt[], axis: "x" | "y"): string =>
+  top.length === 0 ? "" : `${edgeRun(top, axis, "M")}${edgeRun([...bottom].reverse(), axis, "L")}Z`;
+const bklitCurve = (): ChartCurve => ({ line: (points) => edgeRun(points, "x", "M"), area: (top, bottom) => edgeArea(top, bottom, "x") });
+const bklitCurveX = (): AreaXCurve => ({ areaX: (right, left) => edgeArea(right, left.map(([x], i) => [x, right[i]?.[1] ?? 0] as Pt), "y") });
 
 // Label type (Tailwind text-sm / text-xs): the size/weight each kind is drawn and measured in.
 const LABEL_FONT = { name: { size: 12, weight: 500 }, pct: { size: 12, weight: 700 }, value: { size: 14, weight: 600 } } as const;
@@ -356,8 +344,8 @@ const lineMark = (grid: FunnelGrid, config: FunnelMarkConfig, geo: FunnelGeometr
 };
 
 interface RingCurves {
-  readonly curve: ReturnType<typeof d3Curve> | undefined;
-  readonly curveX: ReturnType<typeof d3AreaXCurve> | undefined;
+  readonly curve: ChartCurve | undefined;
+  readonly curveX: AreaXCurve | undefined;
 }
 
 interface RingContext {
@@ -464,7 +452,7 @@ interface FunnelMarks {
 const createFunnelMarks = (config: FunnelMarkConfig): FunnelMarks => {
   const { stages, horizontal, layers, grid } = config;
   const geo = funnelGeometry(config);
-  const curves: RingCurves = { curve: horizontal ? d3Curve(bklitEdge("x")) : undefined, curveX: horizontal ? undefined : d3AreaXCurve(bklitEdge("y")) };
+  const curves: RingCurves = { curve: horizontal ? bklitCurve() : undefined, curveX: horizontal ? undefined : bklitCurveX() };
 
   const ring: RingContext = { config, curves, geo };
   const marks: FunnelMark[] = [];

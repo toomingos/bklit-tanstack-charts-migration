@@ -1,7 +1,7 @@
 // Velocity-preserving hover springs on WAAPI: each change samples the running animation and replays a fresh spring from it; rest/hot stay static CSS.
 // UPSTREAM-GAPS #31 (mark `states` repaint the scene on hover) and #50 (callers skip mid-tween nodes).
 import type { ChartSpringState } from "@tanstack/charts/spring";
-import { restOf, settleMs, springOf } from "./spring-curve";
+import { restOf, springOf } from "./spring-curve";
 import type { Spring } from "./springs";
 
 const FRAME_MS = 1000 / 120;
@@ -33,6 +33,8 @@ interface SpringJob {
   readonly from?: number;
   /** The keyframe that paints `value` (the scalar the spring runs on: px, scale delta, radius ...). */
   readonly frame: (value: number) => Keyframe;
+  /** The keyframe is affine in the value (a scale, a translate, a colour mix): the animation then runs two keyframes under the spring as a `linear()` easing, not one keyframe per frame. */
+  readonly affine?: boolean;
   /** motion's `transition.delay`: the element holds its current value for this many ms, then springs. A retarget during the delay restarts it. */
   readonly delay?: number;
 }
@@ -62,7 +64,7 @@ const createSpringDriver = (): SpringDriver => {
 
   return {
     value: (el) => (states.has(el) ? live(el, 0).value : undefined),
-    play: ({ el, spring, target, rest, from, frame, delay = 0 }) => {
+    play: ({ el, spring, target, rest, from, frame, affine = false, delay = 0 }) => {
       const start = from === undefined ? live(el, rest) : { value: from, velocity: 0 };
       states.get(el)?.animation?.cancel();
       const x0 = start.value - target;
@@ -73,11 +75,17 @@ const createSpringDriver = (): SpringDriver => {
       }
       const native = springOf(spring, thresholds);
       const state: ChartSpringState = { from: x0, to: 0, velocity: start.velocity };
-      const duration = settleMs(native, state, FRAME_MS, MAX_MS);
-      const frames: Keyframe[] = [];
-      for (let ms = 0; ms < duration; ms += FRAME_MS) { frames.push(frame(target + native.sample(ms, state).value)); }
-      frames.push(frame(target));
-      const animation = el.animate(frames, { delay, duration, easing: "linear", fill: delay > 0 ? "backwards" : "none" });
+      // One pass samples the curve and finds its settle time (the first frame at rest).
+      const values: number[] = [];
+      let duration = MAX_MS;
+      for (let ms = 0; ms < MAX_MS; ms += FRAME_MS) {
+        if (ms > 0 && native.sample(ms, state).done) { duration = ms; break; }
+        values.push(native.sample(ms, state).value);
+      }
+      const motion = affine && Math.abs(x0) > thresholds.delta
+        ? { easing: `linear(${values.map((value) => Math.round((1 - value / x0) * 1e4) / 1e4).join(",")},1)`, frames: [frame(start.value), frame(target)] }
+        : { easing: "linear", frames: [...values.map((value) => frame(target + value)), frame(target)] };
+      const animation = el.animate(motion.frames, { delay, duration, easing: motion.easing, fill: delay > 0 ? "backwards" : "none" });
       // After the last keyframe the element falls back to the static CSS rule, which holds the same target.
       states.set(el, { animation, delay, spring, target, v0: start.velocity, x0 });
     },

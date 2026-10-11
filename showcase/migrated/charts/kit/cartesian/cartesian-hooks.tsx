@@ -3,7 +3,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { motion } from "@tanstack/charts/motion";
-import { installMarkerSprings } from "../motion/marker-springs";
 import { propsFor } from "../read-children";
 import { shortDateFmt } from "../format";
 import { useResizeBox } from "../size/use-resize-box";
@@ -20,7 +19,7 @@ import { strictRows } from "./domains";
 import type { CartesianBuild } from "./definition";
 import { erase } from "./erased-types";
 import type { AnyInteraction } from "./erased-types";
-import { chartMarkerProps } from "./overlays";
+import { installMarkers, markerListsFor } from "./features";
 import { DEFAULT_Y_AXIS_ID, resolveSeries, toDate } from "./series";
 import type { ResolvedSeries, Row } from "./series";
 
@@ -67,10 +66,10 @@ export function useSeriesTable(children: ReactNode, data: readonly Row[], xDataK
   const hasMarkers = table.has("chartMarkers") || table.has("markerGroup");
   // Latest marker items for the delegated click handler (marker-springs.ts); no listener rebuild when the items change.
   const markerLists = useRef<readonly (readonly ChartMarker[])[]>([]);
-  markerLists.current = hasMarkers ? chartMarkerProps(table).map((m) => m.items) : [];
+  markerLists.current = hasMarkers ? markerListsFor(table) : [];
   useEffect(() => {
     const el = containerRef.current;
-    return hasMarkers && el ? installMarkerSprings(el, () => markerLists.current) : undefined;
+    return hasMarkers && el ? installMarkers(el, () => markerLists.current) : undefined;
   }, [containerRef, hasMarkers]);
   const series = useMemo(() => resolveSeries(table, chartLoading), [table, chartLoading]);
   // Loop-pulse cycles end as CSS iteration events bubbling to the host; only the animation name is read (bklit line.tsx onLoadingPulseCycleComplete).

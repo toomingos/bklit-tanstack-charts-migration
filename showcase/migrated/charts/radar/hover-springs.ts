@@ -16,7 +16,7 @@ const springSeries = (host: HTMLElement, series: number, previous: number | null
   // The area group's entrance is a native tween on its transform (role marker present): the spring only runs once that is gone.
   const area = host.querySelector(`g.bkm-radar-area.bkm-radar-s${series}`);
   if (area !== null && !isMotionNode(area)) {
-    springDriver.play({ el: area, frame: (value) => ({ transform: `scale(${1 + value})` }), rest, spring: HOVER_SPRING, target });
+    springDriver.play({ affine: true, el: area, frame: (value) => ({ transform: `scale(${1 + value})` }), rest, spring: HOVER_SPRING, target });
   }
   // The dot group also carries its entrance progress (`--bkm-p`, 1 once settled) into the scale.
   const dots = host.querySelector(`g.bkm-radar-dot.bkm-radar-s${series}`);

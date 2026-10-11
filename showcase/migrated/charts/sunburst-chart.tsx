@@ -3,7 +3,7 @@
 // Bklit SunburstChart on TanStack Charts: native `sunburst` mark inside `polar`, `motion()` entrance and drill, native focus and `onSelect` zoom.
 // Compound children are config carriers; custom pieces are documented in sunburst/sunburst-mark.ts, the parts live in sunburst/.
 import { erase } from "./kit/cartesian/erased-types";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ChartInteractionController, ChartPoint, ChartScene } from "@tanstack/charts";
 import { createChartCursor } from "@tanstack/charts/cursor";
@@ -24,6 +24,7 @@ import { isHub } from "./sunburst/hub";
 import type { SunburstDatum } from "./sunburst/hub";
 import { useControlledCursor, useHoverGrow, useHoverState } from "./sunburst/hover-grow";
 import { SUNBURST_ENTRANCE_ORIGINS, sweepMsOf, useSunburstIntro } from "./sunburst/intro";
+import { reapplyPush } from "./sunburst/push";
 import type { SectorPush } from "./sunburst/push";
 import type { SectorTrail, SunburstNativeNode } from "./sunburst/sunburst-mark";
 import { useSunburstZoom } from "./sunburst/zoom";
@@ -128,13 +129,18 @@ export const SunburstChart = ({
     setHoveredArcIndex,
     setInternalFocusId,
   });
-  usePointerHold({ centerRef, hostRef, interactionRef, pushes, zoomableRef });
+  const movingRef = useRef(false);
+  usePointerHold({ hostRef, interactionRef, movingRef, zoomableRef });
 
   const renderer = useMemo(() => motion({ initial: "always" }), []);
   const { hostVars, introAtRef, introRef, settled } = useSunburstIntro(model.arcs, enterStaggerScale, sweepMs, playKey);
   // One feed and layer per chart: the layer's composition must be a stable object across definition rebuilds (a changed renderer remounts it).
   const feed = useMemo(() => createSectorFeed(size), [size]);
   const sectorRenderer = useMemo(() => createSectorLayer(feed, introAtRef), [feed, introAtRef]);
+  useEffect(() => {
+    feed.onPainted = (): void => { reapplyPush(hostRef.current); };
+    return (): void => { feed.onPainted = null; };
+  }, [feed]);
 
   // Segment overrides and labels are read from the latest children through their serialized keys.
   const definition = useMemo(() => {
@@ -170,12 +176,17 @@ export const SunburstChart = ({
       registry,
       scene: () => sceneRef.current,
       noteSource,
+      moving: () => movingRef.current,
+      hoveredId: () => {
+        const index = hoverStore.getIndex();
+        return index === null ? null : (hoverStore.arcs.current[index]?.id ?? null);
+      },
       trail,
       sweepMs,
     });
     // parsed is rebuilt each render; its content is captured by segmentKey/labelsKey/hasCenter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, arcById, focus, segmentKey, labelsKey, parsed.hasCenter, sweepMs, enterStaggerScale, feed, sectorRenderer, popPx, growPadding, controller, registry, pushes, trail, isHoverControlled, noteSource]);
+  }, [model, arcById, focus, segmentKey, labelsKey, parsed.hasCenter, sweepMs, enterStaggerScale, feed, sectorRenderer, popPx, growPadding, controller, registry, pushes, trail, isHoverControlled, noteSource, hoverStore]);
 
   useControlledCursor(controller, registry, hoveredArc?.id ?? null, isHoverControlled, definition);
   useHoverGrow({ arcs: model.arcs, definition, focusDepth: focus?.depth ?? 0, hostRef, hoverPathRef, hoverPop: popPx, hoverStore, maxDepth: model.maxDepth, pushes });

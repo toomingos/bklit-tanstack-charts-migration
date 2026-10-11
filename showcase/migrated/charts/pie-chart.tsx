@@ -27,6 +27,7 @@ import { INITIAL_WIDTH_PX, useFluidWidth } from "./kit/size/use-fluid-width";
 import { useIsClient } from "./kit/size/use-is-client";
 import { useTapFocus } from "./kit/cartesian/touch-focus";
 import "./styles.css";
+import "./polar.css";
 
 const DEFAULT_HOVER_OFFSET = 10;
 const FULL_SWEEP_END_ANGLE = (3 * Math.PI) / 2;

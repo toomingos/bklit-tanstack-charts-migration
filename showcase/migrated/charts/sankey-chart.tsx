@@ -2,7 +2,8 @@
 // entrance. The connected-flow hover dim is static scoped CSS driven by per-index custom properties on the host (sankey/hover-css.ts).
 "use client";
 
-import { HoldArm, useParentSizeMounted } from "./kit/size/parent-size-arm";
+import { HoldArm } from "./kit/size/parent-size-arm";
+import { useHostSize } from "./kit/size/host-size";
 import { joinClasses } from "./kit/cn";
 import { hasText } from "./kit/guards";
 import { EntranceAlign } from "./kit/entrance/entrance-align";
@@ -115,10 +116,10 @@ const SankeyChart = ({
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
   const useGradient = linkConfig.useGradient ?? true;
 
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  // bklit mounts no svg until ParentSize's first size commit (sankey-chart.tsx:246; entrance clocks start there, use-mount-progress.ts:19-26),
-  // so the renderer mounts there too; the host keeps bklit's aspect-ratio box meanwhile (sankey-chart.tsx:231,236).
-  const sized = useParentSizeMounted(hostRef, true);
+  // bklit mounts no svg until ParentSize's first size commit (sankey-chart.tsx:246); here the renderer mounts in the layout-effect measure, before first paint,
+  // at the real width; the host keeps bklit's aspect-ratio box meanwhile (sankey-chart.tsx:231,236).
+  const { ref: hostRef, size: hostSize } = useHostSize();
+  const sized = hostSize !== null;
 
   const definition = useMemo(() => {
     const input: SankeyInputData = data;
@@ -287,7 +288,7 @@ const SankeyChart = ({
         aspectRatio={parseAspectRatio(aspectRatio)}
         definition={definition}
         idPrefix={idPrefix}
-        initialWidth={640}
+        initialWidth={hostSize?.width ?? 640}
         onFocusChange={handleFocusChange}
         onRender={handleRender}
         renderer={RENDERER}

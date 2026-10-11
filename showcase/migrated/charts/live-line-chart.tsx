@@ -85,9 +85,9 @@ export const LiveLineChart = ({
   const height = parseHeight(style?.height);
   const innerHeight = Math.max(0, height - margin.top - margin.bottom);
 
-  // Host width for the plot geometry. bklit mounts under `<ParentSize debounceTime={10}>` (live-line-chart.tsx:663): the first size commits in the rAF after the first ResizeObserver delivery (kit/size/parent-size-arm.tsx),
-  // so the intro starts on bklit's frame; later widths come from the renderer's scene, `onRender({ scene })` (`ChartScene extends ChartSize`, dom-types.ts:243).
-  const [hostRef, measuredWidth] = useParentSizeWidth<HTMLDivElement>(false);
+  // Host width for the plot geometry. bklit mounts under `<ParentSize debounceTime={10}>` (live-line-chart.tsx:663); the first width is measured in a layout effect, before first paint,
+  // so the intro starts at the earliest frame; later widths come from the renderer's scene, `onRender({ scene })` (`ChartScene extends ChartSize`, dom-types.ts:243).
+  const [hostRef, measuredWidth] = useParentSizeWidth<HTMLDivElement>();
   const [sceneWidth, setSceneWidth] = useState(0);
   const width = sceneWidth || Math.round(measuredWidth ?? 0);
   const rightAxis = yAxis?.position === "right";

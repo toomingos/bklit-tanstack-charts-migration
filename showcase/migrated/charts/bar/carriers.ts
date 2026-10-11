@@ -105,7 +105,3 @@ export const BarSquares = defineCarrier<BarSquaresProps>("barSquares", "BarSquar
 export const BarColumnTrack = defineCarrier<BarColumnTrackProps>("barColumnTrack", "BarColumnTrack");
 export const BarXAxis = defineCarrier<BarXAxisProps>("barXAxis", "BarXAxis");
 export const BarYAxis = defineCarrier<BarYAxisProps>("barYAxis", "BarYAxis");
-export const BarDepthProvider = defineCarrier<BarDepthProviderProps>("barDepthProvider", "BarDepthProvider");
-export const BarDepthBack = defineCarrier<BarDepthBackProps>("barDepthBack", "BarDepthBack");
-export const BarDepthFront = defineCarrier<BarDepthFrontProps>("barDepthFront", "BarDepthFront");
-export const BarPulse = defineCarrier<BarPulseProps>("barPulse", "BarPulse");
