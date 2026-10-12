@@ -37,13 +37,13 @@ const enteringElements = (host: HTMLElement): ReadonlySet<Element | null> => {
   return running;
 };
 
-/** Retargets every ring arc of `host` from its live scale and velocity to the delta of the new hovered ring. */
-const springRings = (host: HTMLElement, previous: number | null, next: number | null): void => {
+/** Retargets the `count` ring arcs of `host` from its live scale and velocity to the delta of the new hovered ring. */
+const springRings = (count: number) => (host: HTMLElement, previous: number | null, next: number | null): void => {
   const entering = enteringElements(host);
   const arcs = new Map<number, SVGElement>();
   arcsByHost.set(host, arcs);
   // Groups are addressed by the `bkm-rg-<row index>` className we set (ring-chart.tsx:89), no class read-back; WAAPI because `states` has no transform channel (UPSTREAM-GAPS #20/#36).
-  const groups = Array.from({ length: MAX_INDEX }, (_, index) => ({ els: host.querySelectorAll<SVGElement>(`g.bkm-rg-arc.bkm-rg-${index}`), index }));
+  const groups = Array.from({ length: Math.min(count, MAX_INDEX) }, (_, index) => ({ els: host.querySelectorAll<SVGElement>(`g.bkm-rg-arc.bkm-rg-${index}`), index }));
   for (const { els, index } of groups) {
     // A renderer-owned motion node is skipped (isMotionNode, UPSTREAM-GAPS #50).
     for (const el of [...els].filter((node) => !isMotionNode(node))) {
