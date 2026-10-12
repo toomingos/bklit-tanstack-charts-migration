@@ -1,5 +1,5 @@
 import { hoverStaticCss } from "../kit/cartesian/definition";
-import type { buildCartesianDefinition } from "../kit/cartesian/definition";
+import type { CartesianBuild } from "../kit/cartesian/definition";
 import { OWN_PILL_NAMES, pillTickStaticCss } from "../kit/cartesian/date-pill";
 import type { resolveSeries } from "../kit/cartesian/series";
 import { cssAttr } from "../bar/hover";
@@ -10,7 +10,7 @@ import { NOT_MOTION, keyStarts } from "../kit/renderer-dom";
 
 interface StaticCssInput {
   readonly uid: string;
-  readonly built: Pick<ReturnType<typeof buildCartesianDefinition>, "hover" | "pillTicks">;
+  readonly built: Pick<CartesianBuild, "hover" | "pillTicks">;
   readonly bars: readonly SeriesBarSpec[];
   readonly order: readonly string[];
   readonly series: ReturnType<typeof resolveSeries>;

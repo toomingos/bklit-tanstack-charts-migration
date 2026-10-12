@@ -3,6 +3,8 @@ import { useMemo } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { LineLoadingSweep } from "../loading/sweep";
 import type { ChartMargin } from "../theme";
+import { usePlotSnapshot } from "./plot-size";
+import type { PlotStore } from "./plot-size";
 import type { ResolvedSeries } from "./series";
 
 interface LoadingSweepOverlaysProps {
@@ -10,13 +12,15 @@ interface LoadingSweepOverlaysProps {
   /** The phase is exiting: the silhouette fades out (loading-sweep.tsx:395-409). */
   readonly exiting: boolean;
   readonly margin: ChartMargin;
-  readonly innerWidth: number;
-  readonly innerHeight: number;
+  readonly store: PlotStore;
 }
 
 const OVERLAY_STYLE: CSSProperties = { position: "absolute", pointerEvents: "none", overflow: "visible", zIndex: 1 };
 
-export const LoadingSweepOverlays = ({ series, exiting, margin, innerWidth, innerHeight }: Readonly<LoadingSweepOverlaysProps>): ReactElement | null => {
+export const LoadingSweepOverlays = ({ series, exiting, margin, store }: Readonly<LoadingSweepOverlaysProps>): ReactElement | null => {
+  const size = usePlotSnapshot(store)?.size;
+  const innerWidth = size?.innerWidth ?? 0;
+  const innerHeight = size?.innerHeight ?? 0;
   const style = useMemo<CSSProperties>(() => ({ ...OVERLAY_STYLE, left: margin.left, top: margin.top }), [margin.left, margin.top]);
   const sweeping = series.filter((s) => s.loading?.style === "sweep");
   if (sweeping.length === 0 || innerWidth <= 0 || innerHeight <= 0) {

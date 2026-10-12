@@ -1,9 +1,10 @@
-import type { ChartGradient } from "@tanstack/charts";
+import type { ChartFocusStrategy, ChartGradient } from "@tanstack/charts";
 import type { ChartMargin } from "../theme";
 import type { ChildTable } from "../read-children";
 import type { AnyMark } from "../erased-types";
 import type { ResolvedSeries, Row } from "./series";
-import type { WipeConfig } from "./wipe";
+import type { PlotSize } from "./plot-size";
+import type { WipeConfig, WipeSpec } from "./wipe";
 
 export interface CartesianInput {
   readonly data: readonly Row[];
@@ -43,4 +44,14 @@ export interface CartesianInput {
   /** Native left-to-right reveal (bklit ChartRevealClip) of line / area / projection marks: progress 0..1 (seeded 0, flipped to 1 by `<RevealArm>`). Absent = not wrapped.
    * `w` / `h` are the inner plot size; `pad` extends the clip each side (composed: half a bar group, bklit `revealClipPadding`). */
   readonly wipe?: WipeConfig;
+}
+
+/** What a cartesian definition is built from: the sized fields of `CartesianInput` are resolved inside TanStack's draw (`chart({ width, height })`), from the size it measured. */
+export interface CartesianSpec extends Omit<CartesianInput, "plotWidth" | "plotHeight" | "innerWidth" | "wipe" | "extraMarks"> {
+  readonly wipe?: WipeSpec;
+  readonly extraMarks: readonly AnyMark[] | ((size: PlotSize) => readonly AnyMark[]);
+  /** Final say on the built marks (composed re-orders them to the JSX order). */
+  readonly orderMarks?: (marks: readonly AnyMark[]) => readonly AnyMark[];
+  /** Replaces the cartesian focus; reads the size lazily through `size()`. */
+  readonly focusOf?: (size: () => PlotSize) => ChartFocusStrategy;
 }

@@ -363,21 +363,26 @@ function pushHighlight(ctx: SeriesContext, s: ResolvedSeries, dashAt: number | u
 
 const isAreaLike = (s: ResolvedSeries): s is ResolvedSeries & AreaSeries => s.kind === "area" || s.kind === "pattern";
 
+/** An area-like series without a line (and every pattern area) draws no line, so no markers or highlight. */
+const drawsLine = (s: ResolvedSeries): boolean => !isAreaLike(s) || (s.kind !== "pattern" && s.showLine);
+
+/** The series gets a hover highlight path (with a tooltip). */
+export const drawsHighlight = (s: ResolvedSeries): boolean => drawsLine(s) && s.showHighlight && !s.profitLoss;
+
 /** Appends every series' marks (area fill, line, loading overlay, markers, highlight) in series order. */
 export function pushSeriesMarks(ctx: SeriesContext): void {
   for (const s of ctx.input.series) {
     if (isAreaLike(s)) {
-      const area = s;
-      pushAreaFill(ctx, s, area);
-      if (s.kind === "pattern" || !area.showLine) {
-        continue;
-      }
+      pushAreaFill(ctx, s, s);
+    }
+    if (!drawsLine(s)) {
+      continue;
     }
     const dashAt = pushLine(ctx, s);
     if (s.showMarkers) {
       pushPointMarkers(ctx, s);
     }
-    if (s.showHighlight && ctx.tooltipEnabled && !s.profitLoss) {
+    if (ctx.tooltipEnabled && drawsHighlight(s)) {
       pushHighlight(ctx, s, dashAt);
     }
   }

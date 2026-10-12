@@ -1,11 +1,10 @@
 // Hook groups of the cartesian shell, each a contiguous run of the former CartesianChartMounted body (hook order unchanged).
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 import { scaleLinear, scaleUtc } from "d3-scale";
 import { motion } from "@tanstack/charts/motion";
 import { propsFor } from "../read-children";
 import { shortDateFmt } from "../format";
-import { useResizeBox } from "../size/use-resize-box";
 import { useChildTable } from "../stable-children";
 import { BklitTooltipBody, bklitTooltipOptions } from "../tooltip/tooltip-body";
 import type { ChartMargin } from "../theme";
@@ -16,7 +15,8 @@ import { useGateReady } from "../entrance/reveal-arm";
 import type { ReadyStore } from "../entrance/reveal-arm";
 import { useReferenceAreas, useStructural } from "./context-bridge";
 import { strictRows } from "./domains";
-import type { CartesianBuild } from "./definition";
+import type { PlotStore } from "./plot-size";
+import { usePlotSnapshot, ZERO_SIZE } from "./plot-size";
 import { erase } from "../erased-types";
 import type { AnyInteraction } from "../erased-types";
 import { installMarkers, markerListsFor } from "./features";
@@ -27,27 +27,6 @@ export interface CartesianFocus {
   readonly row: Row;
   readonly index: number;
   readonly time: number;
-}
-
-interface PlotMeasure {
-  readonly fitHeight: number | undefined;
-  readonly plotWidth: number;
-  readonly measuredHeight: number;
-  /** A fill-height host has a measured height; other hosts derive theirs from the width. */
-  readonly sized: boolean;
-}
-
-/** Host size from one ResizeObserver: the fill-height box, and the plot width / height seeded from the first measure.
- * A fill-height host is also read in a layout effect, so the first draw already has its height (a later change would be a resize, which snaps the wipe tween). */
-export function usePlotMeasure(containerRef: RefObject<HTMLDivElement | null>, fillHeight: boolean, initial: { readonly width: number; readonly height: number }): PlotMeasure {
-  const box = useResizeBox(containerRef, initial);
-  const [laidOut, setLaidOut] = useState(0);
-  useLayoutEffect(() => {
-    if (fillHeight) { setLaidOut(Math.round(containerRef.current?.clientHeight ?? 0)); }
-  }, [containerRef, fillHeight]);
-  const height = box.observed ? box.height : laidOut || box.height;
-  const fitHeight = fillHeight && height > 0 && (box.observed || laidOut > 0) ? height : undefined;
-  return { fitHeight, plotWidth: box.width, measuredHeight: height, sized: !fillHeight || fitHeight !== undefined };
 }
 
 interface SeriesTable {
@@ -88,8 +67,6 @@ export function useSeriesTable(children: ReactNode, data: readonly Row[], xDataK
 }
 
 interface RendererTooltipInput {
-  readonly built: CartesianBuild;
-  readonly settle: (built: CartesianBuild) => void;
   readonly animationDuration: number;
   readonly table: SeriesTable["table"];
   readonly data: readonly Row[];
@@ -101,9 +78,8 @@ interface RendererTooltip {
   readonly renderTooltipBody: ({ points }: { points: never }) => ReactNode;
 }
 
-/** The entrance renderer and the tooltip body callback; also reports each built definition to the data-update step. */
-export function useRendererTooltip({ built, settle, animationDuration, table, data, series }: RendererTooltipInput): RendererTooltip {
-  useEffect(() => { settle(built); }, [built, settle]);
+/** The entrance renderer and the tooltip body callback. */
+export function useRendererTooltip({ animationDuration, table, data, series }: RendererTooltipInput): RendererTooltip {
   const renderer = useMemo(
     () => motion(erase({ transition: { type: "tween", duration: animationDuration } })),
     [animationDuration],
@@ -123,7 +99,7 @@ export function useRendererTooltip({ built, settle, animationDuration, table, da
 }
 
 interface ChartBaseInput {
-  readonly built: CartesianBuild;
+  readonly store: PlotStore;
   readonly series: readonly ResolvedSeries[];
   readonly data: readonly Row[];
   readonly xDataKey: string;
@@ -131,39 +107,41 @@ interface ChartBaseInput {
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly ready: ReadyStore;
   readonly dragInteraction: RefObject<AnyInteraction | null>;
-  readonly plotWidth: number;
-  readonly plotHeight: number;
   readonly resolvedMargin: ChartMargin;
   readonly animationDuration: number;
   readonly xDomain: [Date, Date] | undefined;
   readonly xDomainSlotCount: number | undefined;
 }
 
+const NO_X: readonly [Date, Date] = [new Date(0), new Date(0)];
+const NO_Y: Readonly<Record<string, readonly [number, number]>> = {};
+
 type StableContext = Omit<ChartContextValue, "tooltipData" | "setTooltipData" | "selection" | "clearSelection">;
 
 interface ChartBase {
   readonly stable: StableContext;
   readonly xScale: ReturnType<typeof scaleUtc>;
-  readonly innerWidth: number;
-  readonly innerHeight: number;
   readonly xAccessor: (d: Row) => Date;
-  readonly xStart: number;
-  readonly xEnd: number;
   readonly setTooltipData: Dispatch<SetStateAction<TooltipData | null>>;
 }
 
-/** The referentially stable part of the published chart context, and the scales it is built from. */
-export function useChartBase(input: ChartBaseInput): ChartBase {
-  const { built, series, data, xDataKey, table, containerRef, ready, dragInteraction, plotWidth, plotHeight, resolvedMargin, animationDuration, xDomain, xDomainSlotCount } = input;
-  const innerWidth = Math.max(0, plotWidth - resolvedMargin.left - resolvedMargin.right);
-  const innerHeight = Math.max(0, plotHeight - resolvedMargin.top - resolvedMargin.bottom);
+/** The referentially stable part of the published chart context, and the scales it is built from. Only custom children mount it: it follows the size the draw published. */
+function useChartBase(input: ChartBaseInput): ChartBase {
+  const { store, series, data, xDataKey, table, containerRef, ready, dragInteraction, resolvedMargin, animationDuration, xDomain, xDomainSlotCount } = input;
+  const snapshot = usePlotSnapshot(store);
+  const size = snapshot?.size ?? ZERO_SIZE;
+  const plotWidth = size.width;
+  const plotHeight = size.height;
+  const innerWidth = size.innerWidth;
+  const innerHeight = Math.max(0, size.innerHeight);
   const xAccessor = useCallback((d: Row): Date => toDate(d[xDataKey]), [xDataKey]);
   // The children (and so `table` / `built`) are new objects on every parent render; key every
   // context field on its primitive content so the published context stays referentially stable.
-  const xd = built.domains.x;
+  const xd = snapshot?.built.domains.x ?? NO_X;
   const xStart = new Date(xd[0]).getTime();
   const xEnd = new Date(xd[1]).getTime();
-  const yDomains = useStructural(built.domains.y, JSON.stringify(built.domains.y));
+  const yRaw = snapshot?.built.domains.y ?? NO_Y;
+  const yDomains = useStructural(yRaw, JSON.stringify(yRaw));
   const xScale = useMemo(() => scaleUtc().domain([new Date(xStart), new Date(xEnd)]).range([0, innerWidth]), [xStart, xEnd, innerWidth]);
   const yScales = useMemo(
     () => Object.fromEntries(Object.entries(yDomains).map(([id, domain]) => [id, scaleLinear().domain(domain).range([innerHeight, 0])])),
@@ -222,11 +200,11 @@ export function useChartBase(input: ChartBaseInput): ChartBase {
     };
     return xDomain ? { ...base, xDomain, xDomainSlotCount } : base;
   }, [containerRef, xScale, yScales, innerWidth, innerHeight, data, plotWidth, plotHeight, resolvedMargin, lines, animationDuration, xAccessor, dateLabels, xDomain, xDomainSlotCount, columnWidth, isLoaded, yDomainTargetByAxis, referenceAreas]);
-  return { stable, xScale, innerWidth, innerHeight, xAccessor, xStart, xEnd, setTooltipData };
+  return { stable, xScale, xAccessor, setTooltipData };
 }
 
 /** bklit's `ChartSelection` (px x in the inner plot + data indices) for the Segment drag. */
-export function useChartSelection(selection: { startX: number; endX: number } | null, xScale: ChartBase["xScale"], times: readonly number[]): ChartSelection | null {
+function useChartSelection(selection: { startX: number; endX: number } | null, xScale: ChartBase["xScale"], times: readonly number[]): ChartSelection | null {
   return useMemo((): ChartSelection | null => {
     if (!selection) {
       return null;
@@ -256,17 +234,17 @@ export function useChartSelection(selection: { startX: number; endX: number } | 
   }, [selection, xScale, times]);
 }
 
-interface ContextValueInput {
-  readonly stable: StableContext;
-  readonly xAccessor: (d: Row) => Date;
-  readonly setTooltipData: Dispatch<SetStateAction<TooltipData | null>>;
-  readonly chartSelection: ChartSelection | null;
+interface ContextValueInput extends ChartBaseInput {
+  readonly selection: { startX: number; endX: number } | null;
+  readonly times: readonly number[];
   readonly clearSelection: () => void;
 }
 
 /** The hook FocusLayer calls with the focused row: the stable context plus the tooltip data and selection. */
-export function contextValueHook({ stable, xAccessor, setTooltipData, chartSelection, clearSelection }: ContextValueInput): (focused: CartesianFocus | null) => ChartContextValue {
+export function contextValueHook({ selection, times, clearSelection, ...base }: ContextValueInput): (focused: CartesianFocus | null) => ChartContextValue {
   return function useContextValue(focused: CartesianFocus | null): ChartContextValue {
+    const { stable, xScale, xAccessor, setTooltipData } = useChartBase(base);
+    const chartSelection = useChartSelection(selection, xScale, times);
     const tooltipData = useMemo((): TooltipData | null => {
       if (!focused) {
         return null;
@@ -279,9 +257,7 @@ export function contextValueHook({ stable, xAccessor, setTooltipData, chartSelec
         }
       }
       return { point: focused.row, index: focused.index, x: stable.xScale(xAccessor(focused.row)), yPositions };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable and xAccessor are the factory's closure; this function is the hook, so they are its real inputs.
     }, [focused, stable, xAccessor]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- as above: the factory's values are this hook's real inputs.
     return useMemo(() => ({ ...stable, tooltipData, setTooltipData, selection: chartSelection, clearSelection }), [stable, tooltipData, setTooltipData, chartSelection, clearSelection]);
   };
 }

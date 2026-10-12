@@ -5,6 +5,7 @@ import { resumeEnter } from "../motion/resume-enter";
 import type { ChartMotionContext, ChartMotionDefinition, ChartMotionTiming, ChartValue, InitializedMark, MarkRenderContext, MarkResolvedLayoutContext, MarkScene, ResolvedMarkLayout } from "@tanstack/charts";
 import { erase } from "../erased-types";
 import type { AnyMark } from "../erased-types";
+import type { PlotSize } from "./plot-size";
 
 export interface WipeConfig {
   readonly p: number;
@@ -15,6 +16,16 @@ export interface WipeConfig {
   /** `performance.now()` of the reveal arm while its wipe render is committing (cleared after): the tween resumes from there instead of starting a commit late. */
   readonly armedAt?: { readonly current: number | null };
 }
+
+/** A wipe whose width-dependent parts are resolved inside the draw, from the size TanStack measured. */
+export interface WipeSpec {
+  readonly ms: number;
+  readonly progress: (size: PlotSize) => number;
+  readonly pad?: (size: PlotSize) => number;
+  readonly armedAt?: WipeConfig["armedAt"];
+}
+
+export const wipeAt = (spec: WipeSpec, size: PlotSize): WipeConfig => ({ p: spec.progress(size), w: size.innerWidth, h: Math.max(0, size.innerHeight), pad: spec.pad?.(size), ms: spec.ms, armedAt: spec.armedAt });
 
 /** Composed bar rects (`bar:<dataKey>`) sit under bklit's one shared reveal clip; their hover dot guides (`bar:<dataKey>:dot`) do not. */
 export const isBarRect = (id: string | undefined): boolean => id !== undefined && id.startsWith("bar:") && !id.endsWith(":dot");

@@ -2,7 +2,8 @@
 import type { ChartFocusResolveContext, ChartFocusStrategy, ChartPoint } from "@tanstack/charts";
 import { focusGroupX } from "@tanstack/charts/focus";
 import { erase } from "../erased-types";
-import type { CartesianInput } from "./input";
+import type { ChartMargin } from "../theme";
+import type { PlotSize } from "./plot-size";
 
 /** Native keyboard navigation (`focusGroupX.navigation`) walks one point per x, the first in (x, y) order; the pointer's primary is the series nearest its y, so an arrow after a hover
  * restarted at the first column. Resolving the same representative continues from the hovered column (tooltip rows are unaffected). */
@@ -20,14 +21,14 @@ export function navigationPrimary<P extends { readonly y: number }>(resolved: re
 }
 
 /** group-x, but only inside the inner plot (bklit: an inner-sized transparent hit rect), so the margins and axes show no tooltip, crosshair or pill. */
-export function cartesianFocus(input: CartesianInput): ChartFocusStrategy<never, never, never> {
+export function cartesianFocus(margin: Readonly<ChartMargin>, size: () => PlotSize): ChartFocusStrategy<never, never, never> {
   const insidePlot = ({ x, y }: ChartFocusResolveContext): boolean => {
-    const w = input.plotWidth ?? 0;
-    const h = Math.max(0, input.plotHeight ?? 0);
+    const { innerWidth: w, innerHeight } = size();
+    const h = Math.max(0, innerHeight);
     if (w <= 0 || h <= 0) {
       return true;
     }
-    return x >= input.margin.left && x <= input.margin.left + w && y >= input.margin.top && y <= input.margin.top + h;
+    return x >= margin.left && x <= margin.left + w && y >= margin.top && y <= margin.top + h;
   };
   return erase({
     ...focusGroupX,

@@ -1,8 +1,10 @@
 // The cartesian host's scoped stylesheet and inline style, as pure functions of the built definition.
 import type { CSSProperties } from "react";
 import { bklitSurfaceStyle } from "../theme";
+import { clearVar, writeVar } from "../host-write";
 import type { ChartMargin } from "../theme";
 import type { CartesianBuild } from "./definition";
+import type { PlotSnapshot } from "./plot-size";
 import { hoverStaticCss } from "./definition";
 import { pillTickStaticCss } from "./date-pill";
 import { loadingCss } from "./loading-css";
@@ -32,7 +34,7 @@ export function cartesianStaticCss(uid: string, built: CartesianBuild, hasBrush:
   return [loadingCss(scope, series), markerStagger, readyGateCss(scope, true), typedAttr(markerFade), pill, hoverStaticCss(scope, built.hover), brushExtent, built.backgroundCss(scope)].filter(Boolean).join("");
 }
 
-interface BrushVars {
+export interface BrushVars {
   readonly shownStart: number;
   readonly shownEnd: number;
   readonly blurPx: number | undefined;
@@ -41,38 +43,19 @@ interface BrushVars {
 interface HostStyleInput {
   readonly animationDuration: number;
   readonly margin: ChartMargin;
-  readonly innerWidth: number;
-  readonly innerHeight: number;
-  readonly xStart: number;
-  readonly xSpanMs: number;
-  /** Set with a Brush child (and a non-empty x span): the shown range in ms and the pane blur. */
-  readonly brush: BrushVars | undefined;
   readonly clipped: boolean;
   readonly style: CSSProperties | undefined;
 }
 
-/** The host's inline style: size, the `--bkm-*` custom properties the scoped CSS reads, and the caller's style last. */
-export function cartesianHostStyle({ animationDuration, margin, innerWidth, innerHeight, xStart, xSpanMs, brush, clipped, style }: HostStyleInput): CSSProperties {
+/** The host's inline style: the `--bkm-*` custom properties the scoped CSS reads that do not depend on the plot size, and the caller's style last. */
+export function cartesianHostStyle({ animationDuration, margin, clipped, style }: HostStyleInput): CSSProperties {
   return {
     width: "100%",
     position: "relative",
     ...({
       "--bkm-enter-ms": `${animationDuration}ms`,
-      "--bkm-wipe-w": `${innerWidth}px`,
       // bklit clips the series group (point markers included) to the plot rect plus 20px below (time-series-chart-shell.tsx:658, innerHeight + 20).
       "--bkm-plot-clip": `inset(${margin.top}px ${margin.right}px ${margin.bottom - 20}px ${margin.left}px)`,
-      ...(brush && xSpanMs > 0
-        ? {
-            "--bkm-brush-ml": `${margin.left}px`,
-            "--bkm-brush-mt": `${margin.top}px`,
-            "--bkm-brush-h": `${innerHeight}px`,
-            "--bkm-brush-w": `${innerWidth}px`,
-            // bklit's track overlay reads the same 2px-widened (SAFE_PIXEL), plot-clamped extent as the pills and hatch.
-            "--bkm-brush-x0": `${Math.max(0, Math.min(innerWidth, ((brush.shownStart - xStart) / xSpanMs) * innerWidth - 2))}px`,
-            "--bkm-brush-x1": `${Math.max(0, Math.min(innerWidth, ((brush.shownEnd - xStart) / xSpanMs) * innerWidth + 2))}px`,
-            "--bkm-brush-blur": `${Math.min(5, Math.max(0, brush.blurPx ?? 1.5))}px`,
-          }
-        : null),
     } satisfies Record<string, string>),
     ...(clipped
       ? ({
@@ -88,4 +71,27 @@ export function cartesianHostStyle({ animationDuration, margin, innerWidth, inne
     ...bklitSurfaceStyle,
     ...style,
   };
+}
+
+const BRUSH_VARS = ["--bkm-brush-ml", "--bkm-brush-mt", "--bkm-brush-h", "--bkm-brush-w", "--bkm-brush-x0", "--bkm-brush-x1", "--bkm-brush-blur"] as const;
+
+/** The host vars that follow the plot size (written from the draw, the host's React style never holds them): the wipe width and, with a Brush child and a non-empty x span, the brush extent. */
+export function writeSizeVars(host: HTMLElement, snapshot: PlotSnapshot, margin: ChartMargin, brush: BrushVars | undefined): void {
+  const { innerWidth, innerHeight } = snapshot.size;
+  writeVar(host, "--bkm-wipe-w", `${innerWidth}px`);
+  const xStart = snapshot.built.domains.x[0].getTime();
+  const xSpanMs = snapshot.built.domains.x[1].getTime() - xStart;
+  if (!brush || xSpanMs <= 0) {
+    for (const name of BRUSH_VARS) { clearVar(host, name); }
+    return;
+  }
+  const h = Math.max(0, innerHeight);
+  writeVar(host, "--bkm-brush-ml", `${margin.left}px`);
+  writeVar(host, "--bkm-brush-mt", `${margin.top}px`);
+  writeVar(host, "--bkm-brush-h", `${h}px`);
+  writeVar(host, "--bkm-brush-w", `${innerWidth}px`);
+  // bklit's track overlay reads the same 2px-widened (SAFE_PIXEL), plot-clamped extent as the pills and hatch.
+  writeVar(host, "--bkm-brush-x0", `${Math.max(0, Math.min(innerWidth, ((brush.shownStart - xStart) / xSpanMs) * innerWidth - 2))}px`);
+  writeVar(host, "--bkm-brush-x1", `${Math.max(0, Math.min(innerWidth, ((brush.shownEnd - xStart) / xSpanMs) * innerWidth + 2))}px`);
+  writeVar(host, "--bkm-brush-blur", `${Math.min(5, Math.max(0, brush.blurPx ?? 1.5))}px`);
 }

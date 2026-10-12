@@ -1,13 +1,13 @@
 // Shared shell for LineChart / AreaChart: children -> series -> one native
 // definition -> RendererChart with the native `motion()` entrance.
 import { RevealArm, useReadyGate } from "../entrance/reveal-arm";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { RendererChart } from "../tooltip/tooltip-leaf";
-import { useHostSize } from "../size/host-size";
-import { buildCartesianDefinition } from "./definition";
+import { buildCartesianDefinition, gridAttrsOf, hasHighlight } from "./definition";
 import { useDataUpdateStep } from "./use-data-update-step";
 import type { CartesianInput } from "./definition";
+import type { CartesianSpec } from "./input";
 import { LegendHostSync, useHoverHostSync } from "./hover-host";
 import { type DragGeom, useDragSelect } from "./drag-select";
 import { clearAttribute } from "../host-write";
@@ -29,9 +29,11 @@ import { pillLayoutOf } from "./date-pill";
 import { FocusLayer, useFocusStore } from "./focus-layer";
 import { erase } from "../erased-types";
 import type { AnyPoint } from "../erased-types";
-import { contextValueHook, useChartBase, useChartSelection, usePlotMeasure, useRendererTooltip, useSeriesTable } from "./cartesian-hooks";
+import { contextValueHook, useRendererTooltip, useSeriesTable } from "./cartesian-hooks";
 import type { CartesianFocus } from "./cartesian-hooks";
-import { cartesianHostStyle, cartesianStaticCss } from "./host-style";
+import { cartesianHostStyle, cartesianStaticCss, writeSizeVars } from "./host-style";
+import { createPlotStore, usePlotSnapshot } from "./plot-size";
+import type { PlotSnapshot, PlotStore } from "./plot-size";
 import { getBackgroundResources } from "./features";
 import { HighlightBandClip } from "./band-clip";
 import { useBrush } from "./use-brush";
@@ -66,28 +68,25 @@ interface CartesianChartProps {
 
 const NONE: never[] = [];
 const WIPE_IN_ATTR = "data-bkm-wipe-in";
+const FILL_HEIGHT_STYLE: CSSProperties = { height: "100%" };
 
-
-// The definition is width-keyed, so it is built once at the real width (host-size.ts) and the svg mounts in the commit of that layout-effect measure, before first paint.
-// bklit waits on ParentSize first (line-chart.tsx:265, area-chart.tsx:234: ResizeObserver -> rAF); the migrated chart does not. <RevealArm> counts from the mount.
-export function CartesianChart(props: Readonly<CartesianChartProps>): ReactElement {
-  const { ref, size } = useHostSize();
-  if (!size) {
-    // bklit's outer div carries the size from its first render (line-chart.tsx:221 default "2 / 1", :260 `aspectRatio` before `style`); only the svg waits for the layout-effect measure.
-    return <div ref={ref} className={props.className} style={{ width: "100%", position: "relative", aspectRatio: props.aspectRatio === undefined ? "2 / 1" : String(props.aspectRatio), ...props.style }}>{props.status === "loading" ? <LoadingLabel text={props.loadingLabel ?? ""} /> : null}</div>;
+/** bklit ChartBrushTrackOverlay: the strip outside the selection is blurred, faded out toward the outer ends. Static (not hover). Mounts with the size the draw published. */
+const BrushPanes = ({ fade, store }: Readonly<{ fade: boolean; store: PlotStore }>): ReactElement | null => {
+  const snapshot = usePlotSnapshot(store);
+  if (!snapshot || snapshot.size.innerWidth <= 0 || snapshot.built.domains.x[1].getTime() <= snapshot.built.domains.x[0].getTime()) {
+    return null;
   }
-  return <CartesianChartMounted {...props} initialWidth={Math.round(size.width)} initialHeight={Math.round(size.height)} />;
-}
+  return (
+    <>
+      <div aria-hidden="true" className="bkm-brush-pane" data-edge="left" data-fade={fade ? "" : undefined} />
+      <div aria-hidden="true" className="bkm-brush-pane" data-edge="right" data-fade={fade ? "" : undefined} />
+    </>
+  );
+};
 
-/** bklit ChartBrushTrackOverlay: the strip outside the selection is blurred, faded out toward the outer ends. Static (not hover). */
-const BrushPanes = ({ fade }: Readonly<{ fade: boolean }>): ReactElement => (
-  <>
-    <div aria-hidden="true" className="bkm-brush-pane" data-edge="left" data-fade={fade ? "" : undefined} />
-    <div aria-hidden="true" className="bkm-brush-pane" data-edge="right" data-fade={fade ? "" : undefined} />
-  </>
-);
-
-function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWidth: number; initialHeight: number }>): ReactElement {
+// One React commit: the definition's `chart({ width, height })` runs inside TanStack's draw (a layout effect before paint) and builds everything that depends on the size, so no measure or
+// size state sits before the first draw. bklit waits on ParentSize first (line-chart.tsx:265, area-chart.tsx:234: ResizeObserver -> rAF); the migrated chart does not. <RevealArm> counts from the mount.
+export function CartesianChart(props: Readonly<CartesianChartProps>): ReactElement {
   const {
     data: targetData,
     xDataKey = "date",
@@ -105,18 +104,14 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
   } = props;
   const animationDuration = useStaticChartPreview() ? 0 : animationDurationProp;
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const styleRef = useRef<HTMLStyleElement | null>(null);
   const sweepRef = useRef(false);
-  // Whether the latest build's y domains move enough to tween (assigned after the build below; read when a tween phase starts).
+  // Whether the latest build's y domains move enough to tween (assigned from each draw; read when a tween phase starts).
   const yTweenRef = useRef(false);
   const { phase, onAnimationEvent } = useLoadingPhase(status, { sweep: sweepRef, yTween: yTweenRef, yDomainTween: props.yDomainTween !== false, animationDuration, host: containerRef });
   // chartLoading drives the loading chrome (pulse, shimmer, label); swap / tween / concealing hold the series concealed.
   const { chartLoading, skeletonRows, gridLoading } = loadingFlags(phase);
   const fillHeight = style?.aspectRatio === "unset";
-  const { fitHeight, plotWidth, measuredHeight, sized } = usePlotMeasure(containerRef, fillHeight, { width: props.initialWidth, height: props.initialHeight });
-  // A fill-height chart draws once its host height is measured: a later height change is a resize, which snaps the wipe tween (`motion.resize` is off).
-  // The host's height is produced by the chart itself, so observing it would re-key the definition
-  // right after mount and cancel the entrance. Derive it from the width unless the host fills.
-  const plotHeight = fillHeight ? measuredHeight : Math.round(plotWidth / parseAspectRatio(aspectRatio));
   // Hover lives in a ref store read only by <FocusLayer> (no re-render / rebuild of this component on focus).
   const focusStore = useFocusStore<CartesianFocus>();
   const onFocusChangeProp = props.onFocusChange;
@@ -140,7 +135,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
   );
   // bklit's drag selection (use-chart-interaction, kit/cartesian/drag-select.ts): raw plot-space pixels, not snapped to data.
   const [selection, setSelection] = useState<{ startX: number; endX: number } | null>(null);
-  // Latest plot geometry for the drag listeners (assigned after the x scale below).
+  // Latest plot geometry for the drag listeners (assigned by each draw).
   const dragGeom = useRef<DragGeom>({ left: 0, top: 0, innerWidth: 0, innerHeight: 0 });
   const uid = `c${useSanitizedId()}`;
   const { table, hasMarkers, series, onPulseIteration, custom, childrenReady, times } = useSeriesTable(children, targetData, xDataKey, containerRef, chartLoading);
@@ -148,7 +143,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
   const data = useSkeletonData(skeletonRows, targetData, series);
   rowIndexRef.current = useMemo(() => new Map(data.map((row, i) => [row, i] as const)), [data]);
   const loadingGrid = chartLoading ? propsFor<{ shimmer?: boolean; shimmerSpeed?: number }>(table, "grid")[0] : undefined;
-  const { clear: clearSelection, interaction: dragInteraction, onRender } = useDragSelect(
+  const { clear: clearSelection, interaction: dragInteraction, onRender: onDragRender } = useDragSelect(
     containerRef,
     dragGeom,
     { drag: dragHost, press: pressHost },
@@ -171,53 +166,80 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
   const marginKey = JSON.stringify(margin ?? null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const resolvedMargin = useMemo(() => ({ ...DEFAULT_MARGIN, ...margin }), [marginKey]);
-  const plotInnerWidth = Math.max(0, plotWidth - resolvedMargin.left - resolvedMargin.right);
-  // The conceal window runs past the plot by the left margin its fixed clip carries (wipe.ts), so the last data is gone at the end.
-  const { p: wipeP, ms: wipeMs } = loadingWipe(phase, 1, animationDuration, 2 + resolvedMargin.left / Math.max(1, plotInnerWidth));
-  const update = useDataUpdateStep(data, [xDataKey, table, series, resolvedMargin, uid, animationDuration, extra, brush, plotWidth, plotHeight], xDomain);
-  const built = useMemo(
-    () =>
-      buildCartesianDefinition({
-        updateStep: update.step,
-        yDomainFrom: update.from,
-        data,
-        xKey: xDataKey,
-        table,
-        series,
-        margin: resolvedMargin,
-        xDomain,
-        uid,
-        chartLoading: gridLoading,
-        animationDuration,
-        extraMarks: extra?.extraMarks ?? NONE,
-        extraXValues: extra?.extraXValues ?? NONE,
-        extraYValues: extra?.extraYValues ?? NONE,
-        extraGradients: extra?.extraGradients ?? NONE,
-        renderTooltipEnabled: true,
-        brush,
-        plotWidth: plotInnerWidth,
-        innerWidth: plotInnerWidth,
-        plotHeight: plotHeight - resolvedMargin.top - resolvedMargin.bottom,
-        wipe: { p: wipeP, ms: wipeMs, w: Math.max(0, plotWidth - resolvedMargin.left - resolvedMargin.right), h: Math.max(0, plotHeight - resolvedMargin.top - resolvedMargin.bottom) },
-      }),
-    [data, xDataKey, table, series, resolvedMargin, xDomain, uid, gridLoading, animationDuration, extra, brush, plotWidth, plotInnerWidth, plotHeight, update.step, update.from, wipeP, wipeMs],
-  );
-  yTweenRef.current = yDomainsTween(built.domains.y, built.targetY);
-  bindChange(built, plotWidth, resolvedMargin);
-  const { renderer, renderTooltipBody } = useRendererTooltip({ built, settle: update.settle, animationDuration, table, data, series });
-  const { stable, xScale, innerWidth, innerHeight, xAccessor, xStart, xEnd, setTooltipData } = useChartBase({
-    built, series, data, xDataKey, table, containerRef, ready: readyStore, dragInteraction, plotWidth, plotHeight, resolvedMargin, animationDuration, xDomain, xDomainSlotCount,
-  });
-  dragGeom.current = { left: resolvedMargin.left, top: resolvedMargin.top, innerWidth, innerHeight };
-  const chartSelection = useChartSelection(selection, xScale, times);
-  const useContextValue = contextValueHook({ stable, xAccessor, setTooltipData, chartSelection, clearSelection });
-  // The date pill replaces the tick labels under it and the hover dim / highlight run on the same fixed text: the host
-  // attributes above carry the focus, so this string only changes with the definition.
-  const xSpanMs = xEnd - xStart;
-  hostGeom.current = { times: built.hover.times, left: resolvedMargin.left, xStart, xSpan: xSpanMs, innerWidth, signs: built.hover.plSigns, hasBand: built.hover.highlights.length > 0 || built.hover.segmentLeft !== null, pillTicks: built.pillTicks.active ? built.pillTicks.times : undefined, pillLayout: built.pillTicks.active ? pillLayoutOf(built.pillTicks.times) : null };
+  const plotRef = useRef<PlotStore | null>(null);
+  plotRef.current ??= createPlotStore();
+  const plot = plotRef.current;
+  bindChange(plot.get);
+  const { p: wipeP, ms: wipeMs, conceal: wipeConceal } = loadingWipe(phase, 1, animationDuration);
+  // The conceal window runs past the plot by the left margin its fixed clip carries (wipe.ts), so the last data is gone at the end; it depends on the plot, so the draw resolves it.
+  const wipe = useMemo(() => ({ ms: wipeMs, progress: (size: { readonly innerWidth: number }): number => (wipeConceal ? 2 + resolvedMargin.left / Math.max(1, size.innerWidth) : wipeP) }), [wipeMs, wipeP, wipeConceal, resolvedMargin.left]);
+  const update = useDataUpdateStep(data, [xDataKey, table, series, resolvedMargin, uid, animationDuration, extra, brush], xDomain);
+  const settleRef = useRef(update.settle);
+  settleRef.current = update.settle;
   const hasBrush = brushProps !== undefined;
+  const brushVars = brush ? { shownStart: shownRange.start.getTime(), shownEnd: shownRange.end.getTime(), blurPx: brushProps?.blurPx } : undefined;
+  // What a draw hands back to the host: static css, host vars and the lazy geometry hover and drag read. Latest render's inputs (assigned each render, run from `chart`).
+  const publishRef = useRef<(snapshot: PlotSnapshot) => void>(() => undefined);
+  publishRef.current = (snapshot) => {
+    const { built, size } = snapshot;
+    plot.set(snapshot);
+    yTweenRef.current = yDomainsTween(built.domains.y, built.targetY);
+    const xStart = built.domains.x[0].getTime();
+    hostGeom.current = { times: built.hover.times, left: resolvedMargin.left, xStart, xSpan: built.domains.x[1].getTime() - xStart, innerWidth: size.innerWidth, signs: built.hover.plSigns, hasBand: built.hover.highlights.length > 0 || built.hover.segmentLeft !== null, pillTicks: built.pillTicks.active ? built.pillTicks.times : undefined, pillLayout: built.pillTicks.active ? pillLayoutOf(built.pillTicks.times) : null };
+    dragGeom.current = { left: resolvedMargin.left, top: resolvedMargin.top, innerWidth: size.innerWidth, innerHeight: Math.max(0, size.innerHeight) };
+    const host = containerRef.current;
+    const sheet = styleRef.current;
+    if (host && sheet) {
+      const css = cartesianStaticCss(uid, built, hasBrush, series);
+      if (sheet.textContent !== css) { sheet.textContent = css; }
+      writeSizeVars(host, snapshot, resolvedMargin, brushVars);
+    }
+  };
+  const onBuilt = useCallback((snapshot: PlotSnapshot): void => { publishRef.current(snapshot); }, []);
+  // A brush gesture moves the shown range without a draw: re-write the brush vars from the last published plot.
+  const brushStart = brushVars?.shownStart;
+  const brushEnd = brushVars?.shownEnd;
+  const brushBlur = brushVars?.blurPx;
+  useLayoutEffect(() => {
+    const snapshot = plot.get();
+    if (snapshot && containerRef.current) { writeSizeVars(containerRef.current, snapshot, resolvedMargin, brushVars); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- brushVars is rebuilt from these three every render.
+  }, [plot, resolvedMargin, brushStart, brushEnd, brushBlur, hasBrush]);
+  const spec = useMemo<CartesianSpec>(
+    () => ({
+      updateStep: update.step,
+      yDomainFrom: update.from,
+      data,
+      xKey: xDataKey,
+      table,
+      series,
+      margin: resolvedMargin,
+      xDomain,
+      uid,
+      chartLoading: gridLoading,
+      animationDuration,
+      extraMarks: extra?.extraMarks ?? NONE,
+      extraXValues: extra?.extraXValues ?? NONE,
+      extraYValues: extra?.extraYValues ?? NONE,
+      extraGradients: extra?.extraGradients ?? NONE,
+      renderTooltipEnabled: true,
+      brush,
+      wipe,
+    }),
+    [data, xDataKey, table, series, resolvedMargin, xDomain, uid, gridLoading, animationDuration, extra, brush, update.step, update.from, wipe],
+  );
+  const definition = useMemo(() => buildCartesianDefinition(spec, onBuilt), [spec, onBuilt]);
+  const { renderer, renderTooltipBody } = useRendererTooltip({ animationDuration, table, data, series });
+  // Reported after each draw: the data-update step ends its snap / glide from the domains the draw built.
+  const onRender = useCallback((context: Parameters<typeof onDragRender>[0]): void => {
+    onDragRender(context);
+    const snapshot = plot.get();
+    if (snapshot) { settleRef.current(snapshot.built); }
+  }, [onDragRender, plot]);
+  const useContextValue = contextValueHook({
+    store: plot, series, data, xDataKey, table, containerRef, ready: readyStore, dragInteraction, resolvedMargin, animationDuration, xDomain, xDomainSlotCount, selection, times, clearSelection,
+  });
   const BackgroundResources = getBackgroundResources();
-  const staticCss = useMemo(() => cartesianStaticCss(uid, built, hasBrush, series), [uid, built, hasBrush, series]);
   return (
     <div
       ref={containerRef}
@@ -227,7 +249,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
       onAnimationEnd={onWipeEnd}
       data-bkm-wipe-in={wipeIn ? "" : undefined}
       onAnimationIteration={onAnimationIteration}
-      {...built.gridAttrs}
+      {...gridAttrsOf(table, gridLoading)}
       data-bkm-clip={xDomain === undefined ? undefined : ""}
       {...(chartLoading ? loadingHostAttrs(loadingGrid) : null)}
       data-bkm-evt={hasMarkers ? "" : undefined}
@@ -235,28 +257,23 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
       style={cartesianHostStyle({
         animationDuration,
         margin: resolvedMargin,
-        innerWidth,
-        innerHeight,
-        xStart,
-        xSpanMs,
-        brush: brush ? { shownStart: shownRange.start.getTime(), shownEnd: shownRange.end.getTime(), blurPx: brushProps?.blurPx } : undefined,
         clipped: xDomain !== undefined,
         style: phase === "ready" ? style : loadingHostStyle(style, loadingGrid),
       })}
     >
       {defs}
       {BackgroundResources ? <BackgroundResources table={table} uid={uid} /> : null}
-      {built.hover.highlights.length > 0 ? <HighlightBandClip id={built.hover.bandClip} /> : null}
-      {staticCss ? <style>{staticCss}</style> : null}
+      {hasHighlight(table, series) ? <HighlightBandClip id={`${uid}-hlband`} /> : null}
+      <style ref={styleRef} />
       <LegendHostSync hostRef={containerRef} />
-      {sized && <RevealArm hostRef={containerRef} onArm={gateArm} />}
-      {plotWidth > 0 && childrenReady && sized && (
+      <RevealArm hostRef={containerRef} onArm={gateArm} />
+      {childrenReady && (
       <RendererChart
-        definition={erase(built.definition)}
+        definition={erase(definition)}
         idPrefix={uid}
         renderer={renderer}
         aspectRatio={fillHeight ? undefined : parseAspectRatio(aspectRatio)}
-        height={fillHeight ? (fitHeight ?? 200) : undefined}
+        style={fillHeight ? FILL_HEIGHT_STYLE : undefined}
         ariaLabel={props.ariaLabel ?? (brush ? "Range selector (drag to select a range)" : props.defaultAriaLabel)}
         ariaDescription={props.ariaDescription}
         // The brush strip is pointer-only (TanStack's brush keyboard needs discrete values, which would snap the pointer range).
@@ -266,9 +283,9 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
         renderTooltipBody={erase(renderTooltipBody)}
       />
       )}
-      {chartLoading ? <LoadingSweepOverlays series={series} exiting={phase === "exiting"} margin={resolvedMargin} innerWidth={innerWidth} innerHeight={innerHeight} /> : null}
+      {chartLoading ? <LoadingSweepOverlays series={series} exiting={phase === "exiting"} margin={resolvedMargin} store={plot} /> : null}
       {phase === "ready" || phase === "concealing" || phase === "tweenLoading" ? null : <LoadingLabel text={props.loadingLabel ?? ""} exiting={phase !== "loading"} />}
-      {brush && plotWidth > 0 && xSpanMs > 0 ? <BrushPanes fade={brushProps?.fadeOuterEdges !== false} /> : null}
+      {brush ? <BrushPanes fade={brushProps?.fadeOuterEdges !== false} store={plot} /> : null}
       <FocusLayer store={focusStore} useContextValue={useContextValue}>
         {custom}
       </FocusLayer>

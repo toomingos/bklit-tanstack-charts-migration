@@ -8,10 +8,13 @@ import { useKeyboardFocusHold } from "../kit/keyboard-hold";
 import { RevealArm, useReadyGate } from "../kit/entrance/reveal-arm";
 import { RendererChart, sameCategoryTarget } from "../kit/tooltip/tooltip-leaf";
 import { motion } from "@tanstack/charts/motion";
-import type { ChartPoint, DomChartDefinition } from "@tanstack/charts";
+import type { ChartPoint } from "@tanstack/charts";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { pillLayoutOf, syncPillHost } from "../kit/cartesian/date-pill";
 import { HighlightBandClip } from "../kit/cartesian/band-clip";
+import { gridAttrsOf, hasHighlight } from "../kit/cartesian/definition";
+import { createPlotStore } from "../kit/cartesian/plot-size";
+import type { PlotSnapshot, PlotStore } from "../kit/cartesian/plot-size";
 import { LegendHostSync, useHoverHostSync } from "../kit/cartesian/hover-host";
 import { propsFor } from "../kit/read-children";
 import { useChildTable } from "../kit/stable-children";
@@ -35,7 +38,7 @@ let nextUid = 0;
 /** First non-empty colour, like `a || b || c` on optional strings. */
 const firstColor = (...colors: readonly (string | undefined)[]): string | undefined => colors.find((c) => c !== undefined && c !== "");
 
-export const ComposedChartMounted = ({
+export const ComposedChart = ({
   data,
   xDataKey = "date",
   animationDuration = DEFAULT_ANIMATION_MS,
@@ -53,9 +56,7 @@ export const ComposedChartMounted = ({
   children,
   ariaLabel = "Composed chart",
   ariaDescription,
-  initialWidth,
-  initialHeight,
-}: Readonly<ComposedChartProps & { initialWidth: number; initialHeight: number }>): ReactElement => {
+}: Readonly<ComposedChartProps>): ReactElement => {
   useEffect(() => {
     onPhaseChange?.("ready");
   }, [onPhaseChange]);
@@ -66,8 +67,10 @@ export const ComposedChartMounted = ({
     return `c${nextUid.toString(36)}`;
   });
   const containerRef = useRef<HTMLDivElement | null>(null);
-  // Measured by the wrapper before this mounts (a later width change would cancel the entrance); bar px widths derive from it.
-  const [width, setWidth] = useState(initialWidth);
+  // The plot size and domains of the latest draw: bar px widths and the wipe padding are built inside TanStack's draw (`chart({ width, height })`), so no size state exists.
+  const plotRef = useRef<PlotStore | null>(null);
+  plotRef.current ??= createPlotStore();
+  const plot = plotRef.current;
   // A rect enters natively only into a painted scene: paint once with zero-height bar seeds, then flip `entered` so the keyed
   // bars UPDATE (grow, staggered by the mark `motion`): one build, nothing re-resolves during it (the reveal-end snap is in the easing).
   const [enteredSig, setEnteredSig] = useState<string | null>(null);
@@ -114,7 +117,26 @@ export const ComposedChartMounted = ({
     [table],
   );
 
-  const built = useComposedBuild({ data, xDataKey, table, series, bars, order, margin, uid, duration, width, aspectRatio, barSize, maxBarSize, barGap, stacked, stackGap, entered, growing });
+  const styleRef = useRef<HTMLStyleElement | null>(null);
+  const { geom: hostGeom, sync: syncHost, drag: dragHost, press: pressHost } = useHoverHostSync(containerRef);
+  // bklit's drag selection (kit/cartesian/drag-select.ts): the press hides the tooltip and bar fade, the drag dims the series (host attributes only).
+  const dragGeom = useRef<DragGeom>({ left: 0, top: 0, innerWidth: 0, innerHeight: 0 });
+  // What a draw hands back to the host: static css and the lazy geometry hover and drag read (latest render's inputs, run from `chart`).
+  const publishRef = useRef<(snapshot: PlotSnapshot) => void>(() => undefined);
+  publishRef.current = (snapshot) => {
+    const { built, size } = snapshot;
+    plot.set(snapshot);
+    const xStart = built.domains.x[0].getTime();
+    hostGeom.current = { times: built.hover.times, left: margin.left, xStart, xSpan: built.domains.x[1].getTime() - xStart, innerWidth: size.innerWidth, signs: built.hover.plSigns, pillLayout: built.pillTicks.active ? pillLayoutOf(built.pillTicks.times) : null };
+    dragGeom.current = { left: margin.left, top: margin.top, innerWidth: size.innerWidth, innerHeight: Math.max(0, size.innerHeight) };
+    const sheet = styleRef.current;
+    if (sheet) {
+      const css = composedStaticCss({ uid, built, bars, order, series });
+      if (sheet.textContent !== css) { sheet.textContent = css; }
+    }
+  };
+  const onBuilt = useCallback((snapshot: PlotSnapshot): void => { publishRef.current(snapshot); }, []);
+  const { definition, settle } = useComposedBuild({ data, xDataKey, table, series, bars, order, margin, uid, duration, aspectRatio, barSize, maxBarSize, barGap, stacked, stackGap, entered, growing, onBuilt });
 
   const renderer = useMemo(() => motion({ transition: { type: "tween", duration } }), [duration]);
   const tooltipOptions = useMemo(() => {
@@ -128,29 +150,19 @@ export const ComposedChartMounted = ({
 
   const style = useMemo<CSSProperties & { readonly "--bkm-enter-ms": string }>(() => ({ width: "100%", position: "relative", aspectRatio, ...bklitSurfaceStyle, "--bkm-enter-ms": `${duration}ms` }), [aspectRatio, duration]);
 
-  const { geom: hostGeom, sync: syncHost, drag: dragHost, press: pressHost } = useHoverHostSync(containerRef);
-  // bklit's drag selection (kit/cartesian/drag-select.ts): the press hides the tooltip and bar fade, the drag dims the series (host attributes only).
-  const dragGeom = useRef<DragGeom>({ left: 0, top: 0, innerWidth: 0, innerHeight: 0 });
   const { interaction: dragInteraction, onRender: onDragRender } = useDragSelect(containerRef, dragGeom, { drag: dragHost, press: pressHost });
-  const { useContextValue, innerWidth, innerHeight, rows, times } = useComposedContext({ initialSize: { width: Math.round(initialWidth), height: Math.round(initialHeight) }, containerRef, ready: readyStore, data, xDataKey, margin, domains: built.domains, series, bars, duration, barSize, maxBarSize, barGap, stacked, stackGap, table, interaction: dragInteraction });
-  const xStartMs = built.domains.x[0].getTime();
-  const xSpanMs = built.domains.x[1].getTime() - xStartMs;
-  dragGeom.current = { left: margin.left, top: margin.top, innerWidth, innerHeight };
-  // Before the entrance a width change would cancel it, so the first measure is final; after it the bar widths follow
-  // `onRender({ scene })` (`ChartScene extends ChartSize`, dom-types.ts:243), the guard stopping the rebuild loop.
+  const { useContextValue, rows, times } = useComposedContext({ store: plot, containerRef, ready: readyStore, data, xDataKey, margin, series, bars, duration, barSize, maxBarSize, barGap, stacked, stackGap, table, interaction: dragInteraction });
+  // Reported after each draw: the data-update step ends its snap / glide from the domains the draw built.
   const onRender = useCallback(
     (context: Parameters<typeof onDragRender>[0]): void => {
       onDragRender(context);
-      if (entered) {
-        setWidth((current) => (context.scene.width > 0 && context.scene.width !== current ? context.scene.width : current));
-      }
+      const snapshot = plot.get();
+      if (snapshot) { settle(snapshot.built); }
     },
-    [onDragRender, entered],
+    [onDragRender, plot, settle],
   );
   // Keyboard-held focus survives a pointer pass (kit/keyboard-hold.ts, UPSTREAM-GAPS #42).
   const holdFocus = useKeyboardFocusHold(containerRef, () => dragInteraction.current);
-  hostGeom.current = { times: built.hover.times, left: margin.left, xStart: xStartMs, xSpan: xSpanMs, innerWidth, signs: built.hover.plSigns, pillLayout: built.pillTicks.active ? pillLayoutOf(built.pillTicks.times) : null };
-  const staticCss = useMemo(() => composedStaticCss({ uid, built, bars, order, series }), [uid, built, bars, order, series]);
   const timesRef = useRef(times);
   timesRef.current = times;
   const rowsRef = useRef(rows);
@@ -162,14 +174,16 @@ export const ComposedChartMounted = ({
       const index = time === null ? -1 : timesRef.current.indexOf(time);
       focusStore.set(index < 0 ? null : { row: rowsRef.current[index], index });
       const host = containerRef.current;
-      if (host) {
-        const pt = built.pillTicks;
-        syncPillHost(host, pt.times, xSpanMs, innerWidth, index < 0 ? null : time, index);
+      const snapshot = plot.get();
+      if (host && snapshot) {
+        const { built, size } = snapshot;
+        const xSpanMs = built.domains.x[1].getTime() - built.domains.x[0].getTime();
+        syncPillHost(host, built.pillTicks.times, xSpanMs, size.innerWidth, index < 0 ? null : time, index);
         syncHost(index < 0 ? null : time);
         writePresence(host, "data-bkm-bi", index >= 0);
       }
     },
-    [focusStore, built.pillTicks, xSpanMs, innerWidth, syncHost, holdFocus],
+    [focusStore, plot, syncHost, holdFocus],
   );
   const tooltipRef = useRef(tooltipOptions);
   tooltipRef.current = tooltipOptions;
@@ -177,18 +191,16 @@ export const ComposedChartMounted = ({
     ({ points }: ChartTooltipBodyRenderContext<Row, Date, number>) => <BklitTooltipBody points={points} options={tooltipRef.current} />,
     [],
   );
-  // SAFETY: the composed definition has no tooltip-host typed part; the host string only narrows `tooltip`, which this build never sets by host.
-  const domDefinition = built.definition as DomChartDefinition<Row, Date, number>;
   return (
-    <div ref={containerRef} className={className} data-bkm-chart="composed" data-slot="chart" data-bkm-kit={uid} {...built.gridAttrs} style={style}>
-      {staticCss ? <style>{staticCss}</style> : null}
-      {built.hover.highlights.length > 0 ? <HighlightBandClip id={built.hover.bandClip} /> : null}
+    <div ref={containerRef} className={className} data-bkm-chart="composed" data-slot="chart" data-bkm-kit={uid} {...gridAttrsOf(table, false)} style={style}>
+      <style ref={styleRef} />
+      {hasHighlight(table, series) ? <HighlightBandClip id={`${uid}-hlband`} /> : null}
       <LegendHostSync hostRef={containerRef} />
       <RevealArm hostRef={containerRef} onArm={enter} />
-      {width > 0 && childrenReady && (
+      {childrenReady && (
         <RendererChart<Row, Date, number>
           key={revealSignature}
-          definition={domDefinition}
+          definition={erase(definition)}
           idPrefix={uid}
           renderer={renderer}
           aspectRatio={parseAspectRatio(aspectRatio)}
@@ -206,3 +218,5 @@ export const ComposedChartMounted = ({
     </div>
   );
 };
+
+ComposedChart.displayName = "ComposedChart";

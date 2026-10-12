@@ -1,4 +1,4 @@
-// Builds the `defineChart` definition for LineChart / AreaChart from config-carrier children, all native features (marks, axis and grid options, gradients, focus guides, `motion`); no stores, refs or DOM access.
+// Builds the `defineChart` definition for LineChart / AreaChart from config-carrier children, all native features (marks, axis and grid options, gradients, focus guides, `motion`); the only effect is the `onBuilt` hand-off.
 // It only orchestrates, calling each concern's module in paint order: grid guides, series marks, overlays, Segment* marks, hover guides.
 import { defineChart } from "@tanstack/charts";
 import type { ChartDefinition, ChartTooltipInput } from "@tanstack/charts";
@@ -26,11 +26,14 @@ import { rowSets } from "./decimate";
 import type { HoverVisuals } from "./hover-css";
 import { pushHoverGuides } from "./hover-guides";
 import type { TooltipProps } from "./hover-guides";
-import type { CartesianInput } from "./input";
+import type { CartesianInput, CartesianSpec } from "./input";
+import { plotSizeOf, ZERO_SIZE } from "./plot-size";
+import type { PlotSize, PlotSnapshot } from "./plot-size";
 import { cartesianFocus } from "./plot-focus";
 import { pushSegmentMarks, hasSegments, readSegmentProps } from "./segment-marks";
-import { pushSeriesMarks } from "./series-marks";
-import { isBarRect, WIPE_KEY, wipedMarkFactories, wipeMotion, wipeWrap } from "./wipe";
+import { drawsHighlight, pushSeriesMarks } from "./series-marks";
+import { isBarRect, WIPE_KEY, wipeAt, wipedMarkFactories, wipeMotion, wipeWrap } from "./wipe";
+import type { WipeSpec } from "./wipe";
 import { buildXScale } from "./x-axis";
 import type { XAxisProps } from "./x-axis";
 import { buildYScales, primaryYAxis } from "./y-axis";
@@ -48,7 +51,6 @@ export const Y_DOMAIN_GLIDE = { transition: { type: "tween", duration: 500, easi
 const UPDATE_MOTION = { transition: { type: "tween", duration: 200, easing: "ease-in-out" } } as const;
 
 export interface CartesianBuild {
-  definition: ChartDefinition<Row, Date, number>;
   tooltipEnabled: boolean;
   tooltipProps: TooltipProps;
   /** Resolved data domains, for the public chart-context hooks (scales are rebuilt from these). */
@@ -89,19 +91,19 @@ function windowMotion(context: { phase: string; role?: string; axis?: string; ma
 
 /** Entrance keeps the renderer's long tween; every later update or exit is snappy. Line / area / projection (and composed bar) reveal is the native `wipe-` tween
  * (wipeWrap); the rest of a cartesian entrance paints instantly under it. Composed bars carry their own per-mark `motion`, which overrides this. */
-function chartMotion(input: CartesianInput): (context: { phase: string; key?: string; role?: string; axis?: string; markId?: string }) => unknown {
+function chartMotion(spec: CartesianSpec): (context: { phase: string; key?: string; role?: string; axis?: string; markId?: string }) => unknown {
   return (context) => {
     if (context.key?.startsWith(WIPE_KEY)) {
-      return wipeMotion(input.wipe?.ms ?? input.animationDuration, input.wipe?.armedAt);
+      return wipeMotion(spec.wipe?.ms ?? spec.animationDuration, spec.wipe?.armedAt);
     }
-    if (input.updateStep === "window") {
+    if (spec.updateStep === "window") {
       return windowMotion(context);
     }
-    return context.phase === "enter" ? ENTER_INSTANT : updateMotion(input.updateStep);
+    return context.phase === "enter" ? ENTER_INSTANT : updateMotion(spec.updateStep);
   };
 }
 
-function brushControls(input: CartesianInput): ReturnType<BrushXFactory>[] | undefined {
+function brushControls(input: Pick<CartesianSpec, "brush">): ReturnType<BrushXFactory>[] | undefined {
   const { brush } = input;
   const brushX = getBrushX();
   if (!(brush && brushX)) {
@@ -135,7 +137,26 @@ function extraMarksOf(input: CartesianInput): readonly AnyMark[] {
 const cartesianTooltip = (tooltipProps: TooltipProps): ChartTooltipInput<Row, Date, number, "dom"> =>
   erase({ use: bklitTooltip, ...BKLIT_TOOLTIP_PLACEMENT, sticky: false, motion: tooltipBoxMotion(tooltipProps) });
 
-export function buildCartesianDefinition(input: CartesianInput): CartesianBuild {
+/** The mark state of one cartesian build at one size: everything `chart()` returns, plus the metadata React reads. */
+interface SizedBuild {
+  readonly marks: AnyMark[];
+  readonly scales: unknown;
+  readonly gradients: BuildState["gradients"];
+  readonly built: CartesianBuild;
+}
+
+/** Host attributes of the static grid edge-fade rules: from the grid carrier alone, so React has them before the draw. */
+export function gridAttrsOf(table: CartesianInput["table"], chartLoading: boolean): CartesianBuild["gridAttrs"] {
+  const carrier = propsFor<GridProps>(table, "grid")[0];
+  return gridHostAttrs(chartLoading ? loadingGridProps(carrier) : carrier);
+}
+
+/** Whether the series draw a hover highlight path (the owned band clipPath is only mounted then). */
+export function hasHighlight(table: CartesianInput["table"], series: CartesianInput["series"]): boolean {
+  return mergeTooltipCarriers(propsFor<TooltipProps>(table, "tooltip")[0], table) !== undefined && series.some(drawsHighlight);
+}
+
+function buildSized(input: CartesianInput): SizedBuild {
   const { data, xKey, table, series, uid } = input;
   const { lineY, areaY } = wipedMarkFactories(input.wipe, input.margin);
   const tooltipProps = mergeTooltipCarriers(propsFor<TooltipProps>(table, "tooltip")[0], table);
@@ -204,29 +225,8 @@ export function buildCartesianDefinition(input: CartesianInput): CartesianBuild 
 
   const x = buildXScale({ input, rows, xAxis, xDomain, overlaysWidenX: overlays.xValues.length > 0, pillActive, pill });
 
-  const tooltipOption = tooltipEnabled ? cartesianTooltip(tooltipProps) : false;
-
   const yScales = buildYScales({ yDomains, yAxes, rowGuides, grid });
   const scales = erase({ x: x.scale, ...yScales });
-  const motion = chartMotion(input);
-  const focus = tooltipEnabled ? cartesianFocus(input) : undefined;
-  const controls = brushControls(input);
-  const definition: ChartDefinition<Row, Date, number> = erase(defineChart(erase({
-    marks: state.marks,
-    scales,
-    margin: input.margin,
-    motion,
-    theme: bklitTheme,
-    gradients: state.gradients,
-    // Not `clip: true`: that would also cut the date pill (it hangs below the plot). styles.css clips the series
-    // paths to the plot instead ([data-bkm-clip]).
-    clip: false,
-    focus,
-    maxFocusDistance: Number.POSITIVE_INFINITY,
-    focusRing: false,
-    controls,
-    tooltip: tooltipOption,
-  })));
 
   const plSeries = series.find((s) => s.profitLoss);
   const plSigns = rows.map((row): 0 | 1 | null => {
@@ -236,8 +236,7 @@ export function buildCartesianDefinition(input: CartesianInput): CartesianBuild 
     }
     return v >= 0 ? 0 : 1;
   });
-  return {
-    definition,
+  const built: CartesianBuild = {
     tooltipEnabled,
     tooltipProps: tooltipProps ?? {},
     domains: { x: xDomain ?? [new Date(0), new Date(1)], y: Object.fromEntries(yDomains) },
@@ -248,4 +247,49 @@ export function buildCartesianDefinition(input: CartesianInput): CartesianBuild 
     backgroundCss: (scope) => backgroundCssFor(scope, table),
     hover: { dim: state.hoverDim, highlights: state.hoverHighlights, pl: state.plRules, times: rows.map(keyOf), plSigns, segmentLeft: segments ? input.margin.left : null, bandClip: `${uid}-hlband` },
   };
+  return { marks: state.marks, scales, gradients: state.gradients, built };
+}
+
+const resolveExtraMarks = (extra: CartesianSpec["extraMarks"], size: PlotSize): readonly AnyMark[] => (typeof extra === "function" ? extra(size) : extra);
+
+/** The responsive definition: TanStack calls `chart({ width, height })` in its draw (and on every resize), which builds the size-dependent marks, scales and gradients, and hands the
+ * result to `onBuilt` (host writes and the lazy readers). No React state, measure or rebuild sits on the path to the first draw. */
+export function buildCartesianDefinition(spec: CartesianSpec, onBuilt: (snapshot: PlotSnapshot) => void): ChartDefinition<Row, Date, number> {
+  const tooltipProps = mergeTooltipCarriers(propsFor<TooltipProps>(spec.table, "tooltip")[0], spec.table);
+  const tooltipEnabled = tooltipProps !== undefined;
+  let live: PlotSize = ZERO_SIZE;
+  const size = (): PlotSize => live;
+  const focus = tooltipEnabled ? (spec.focusOf ? spec.focusOf(size) : cartesianFocus(spec.margin, size)) : undefined;
+  const wipe: WipeSpec | undefined = spec.wipe;
+  return erase(defineChart(erase({
+    chart: ({ width, height }: { width: number; height: number }) => {
+      live = plotSizeOf(width, height, spec.margin);
+      const sized: CartesianInput = {
+        ...spec,
+        plotWidth: live.innerWidth,
+        innerWidth: live.innerWidth,
+        plotHeight: live.innerHeight,
+        wipe: wipe ? wipeAt(wipe, live) : undefined,
+        extraMarks: resolveExtraMarks(spec.extraMarks, live),
+      };
+      const { marks, scales, gradients, built } = buildSized(sized);
+      onBuilt({ built, size: live });
+      return {
+        marks: spec.orderMarks ? spec.orderMarks(marks) : marks,
+        scales,
+        margin: spec.margin,
+        theme: bklitTheme,
+        gradients,
+        // Not `clip: true`: that would also cut the date pill (it hangs below the plot). styles.css clips the series
+        // paths to the plot instead ([data-bkm-clip]).
+        clip: false,
+      };
+    },
+    motion: chartMotion(spec),
+    focus,
+    maxFocusDistance: Number.POSITIVE_INFINITY,
+    focusRing: false,
+    controls: brushControls(spec),
+    tooltip: tooltipEnabled ? cartesianTooltip(tooltipProps) : false,
+  })));
 }

@@ -192,24 +192,26 @@ export function useLoadingPhase(status: ChartStatus, { sweep, yTween, yDomainTwe
 interface Wipe {
   readonly p: number;
   readonly ms: number;
+  /** The wipe runs to the conceal window past the plot (its width depends on the plot, so the draw resolves it); `p` is then unused. */
+  readonly conceal: boolean;
 }
 
 /** Wipe progress and duration per phase: loading / exiting show the pulse under an open wipe; swap / tween hold it closed until the ready reveal; concealing runs the wipe
- * past open to `concealP` (bklit's conceal clip, chart-reveal-clip.tsx:67-78), where tweenLoading holds it. */
-export const loadingWipe = (phase: LoadingPhase, readyProgress: number, animationDuration: number, concealP: number): Wipe => {
+ * past open to the conceal window (bklit's conceal clip, chart-reveal-clip.tsx:67-78), where tweenLoading holds it. */
+export const loadingWipe = (phase: LoadingPhase, readyProgress: number, animationDuration: number): Wipe => {
   if (phase === "loading" || phase === "exiting") {
-    return { p: 1, ms: 0 };
+    return { p: 1, ms: 0, conceal: false };
   }
   if (phase === "swap") {
-    return { p: 0, ms: 0 };
+    return { p: 0, ms: 0, conceal: false };
   }
   if (phase === "tween") {
-    return { p: 0, ms: animationDuration };
+    return { p: 0, ms: animationDuration, conceal: false };
   }
   if (phase === "concealing") {
-    return { p: concealP, ms: animationDuration };
+    return { p: 0, ms: animationDuration, conceal: true };
   }
-  return phase === "tweenLoading" ? { p: concealP, ms: 0 } : { p: readyProgress, ms: animationDuration };
+  return phase === "tweenLoading" ? { p: 0, ms: 0, conceal: true } : { p: readyProgress, ms: animationDuration, conceal: false };
 };
 
 /** Calls `onRevealed` once when the chart reaches ready from a concealed (swap / tween) phase (bklit isLoaded, use-chart-phase-orchestrator.ts:164-169). */

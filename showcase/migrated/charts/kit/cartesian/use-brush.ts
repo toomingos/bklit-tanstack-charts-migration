@@ -3,8 +3,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { readChildren } from "../read-children";
 import type { ChildTable } from "../read-children";
-import type { ChartMargin } from "../theme";
-import type { CartesianBuild } from "./definition";
+import type { PlotSnapshot } from "./plot-size";
 import { toDate } from "./series";
 import type { Row } from "./series";
 
@@ -33,8 +32,8 @@ interface BrushState {
   readonly brush: { range: BrushRangeValue; color: string | undefined; onChange: (range: BrushRangeValue, type: BrushChangeType) => void } | undefined;
   readonly brushCollapsed: boolean;
   readonly shownRange: BrushRangeValue;
-  /** Points the stable `onChange` at the latest build (called every render, after the definition is built). */
-  readonly bindChange: (built: CartesianBuild, plotWidth: number, margin: ChartMargin) => void;
+  /** Points the stable `onChange` at the plot snapshot the draw published (called every render); it is read when a gesture reports, so no size is known at render. */
+  readonly bindChange: (plot: () => PlotSnapshot | null) => void;
 }
 
 export function useBrush({ table, children, data, xDataKey }: BrushInput): BrushState {
@@ -74,7 +73,7 @@ export function useBrush({ table, children, data, xDataKey }: BrushInput): Brush
   // the overlays keep showing bklit's full extent.
   const brushCollapsed = liveRange.end.getTime() - liveRange.start.getTime() <= 0;
   const shownRange = brushCollapsed ? fullRange : liveRange;
-  const bindChange = (built: CartesianBuild, plotWidth: number, margin: ChartMargin): void => {
+  const bindChange = (plot: () => PlotSnapshot | null): void => {
     brushChangeRef.current = (range, type): void => {
       if (!brushProps) {
         return;
@@ -88,8 +87,9 @@ export function useBrush({ table, children, data, xDataKey }: BrushInput): Brush
       }
       setLive(range);
       // bklit boundsToSelection: start == end (a click outside the selection) is null, which resets to the full extent.
-      const spanMs = new Date(built.domains.x[1]).getTime() - new Date(built.domains.x[0]).getTime();
-      const innerPx = Math.max(0, plotWidth - margin.left - margin.right);
+      const snapshot = plot();
+      const spanMs = snapshot ? new Date(snapshot.built.domains.x[1]).getTime() - new Date(snapshot.built.domains.x[0]).getTime() : 0;
+      const innerPx = snapshot?.size.innerWidth ?? 0;
       const widthPx = spanMs > 0 ? ((range.end.getTime() - range.start.getTime()) / spanMs) * innerPx : 0;
       // The controlled range stays raw (no feedback drift); the committed selection is what visx's getDomainFromExtent
       // hands bklit: the dragged rect widened by SAFE_PIXEL (2px) per side, unclamped.
