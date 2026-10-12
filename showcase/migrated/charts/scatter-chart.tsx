@@ -7,6 +7,7 @@ import { useRevealClock } from "./kit/size/parent-size-arm";
 import { useReadyGate } from "./kit/entrance/reveal-arm";
 import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { useInteractionHandle, usePressGuard } from "./kit/touch-focus";
+import { measureNoText } from "./kit/polar/measure-no-text";
 import { RendererChart } from "./kit/tooltip/tooltip-leaf";
 import { motion } from "@tanstack/charts/motion";
 import { BklitTooltipBody } from "./kit/tooltip/tooltip-body";
@@ -204,6 +205,8 @@ const ScatterChartInner = ({
         ariaLabel={ariaLabel}
         ariaDescription={ariaDescription}
         onFocusChange={erase(onFocusChange)}
+        // Axes use fixed margins and no label thinning, so layout never reads text metrics; skipping the DOM measurer also skips its font-load re-render (renderer.ts handleFontLoad).
+        measureText={measureNoText}
         onRender={erase(onRender)}
         renderTooltipBody={erase(renderTooltipBody)}
       /> : null}
