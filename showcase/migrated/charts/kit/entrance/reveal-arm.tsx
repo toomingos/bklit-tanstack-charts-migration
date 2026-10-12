@@ -7,7 +7,7 @@ import { alignEntranceStart } from "./entrance-origin";
  * The series markers' fade (SeriesPointMarker) is WAAPI, mounted by the reveal (frame origin). */
 const READY_ATTR = "data-bkm-ready";
 
-const REVEAL_ORIGINS = { "bkm-mk-in": "frame" } as const;
+const REVEAL_ORIGINS = { "bkm-mk-in": "frame", "bkm-wipe-o": "frame", "bkm-wipe-i": "frame" } as const;
 
 /** Entrances that start at the reveal timer's flip (bklit isLoaded): the background fade, the terminal marker's opacity (WAAPI) and scale (JS: its last write lands ~5 ms after the WAAPI end, measured on projection, so no extra frame step). */
 const READY_ORIGINS = { "bkm-bg-in": "frame", "bkm-terminal-fade": "frame", "bkm-terminal-grow": "frame" } as const;
