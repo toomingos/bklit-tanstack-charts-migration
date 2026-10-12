@@ -40,7 +40,7 @@ export function BundleTable() {
       <h2 className="text-lg font-semibold tracking-tight">JS shipped per chart</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         Minified and gzipped, tree-shaken production bundle of one chart with its common parts, React excluded. The migrated charts also share a {bundleCssKb} KB gzip
-        stylesheet. The timing figures above are from the Chrome dev server; the production-build figures below are labeled.
+        stylesheet.
       </p>
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-sm">
@@ -56,7 +56,7 @@ export function BundleTable() {
             {bundleSizes.map((s) => (
               <Row key={s.label} label={s.label} gzip={s.gzip} />
             ))}
-            <Row label="All charts" gzip={bundleTotal} strong />
+            <Row label="Mean per chart" gzip={bundleTotal} strong />
           </tbody>
         </table>
       </div>
