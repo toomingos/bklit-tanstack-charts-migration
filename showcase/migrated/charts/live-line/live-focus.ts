@@ -52,6 +52,8 @@ export function useLiveFocus({ hostRef, frame, state, hoverBounds, left, top, in
     writeVar(el, "--bkm-kx", (g.left + (t - g.x0) * g.pxPerMs).toFixed(2));
     writeVar(el, "--bkm-pl", boundsRef.current.left.toFixed(2));
   }, []);
+  /** performance.now() of the commit that last restarted the roll, so a hold raised mid-roll joins the slide at its elapsed time. */
+  const tickAtRef = useRef(0);
   const { interaction: liveInteraction, onRender: onInteractionRender } = useInteractionHandle();
   const onLiveRender = useCallback(
     (context: Parameters<typeof onInteractionRender>[0]): void => {
@@ -148,6 +150,7 @@ export function useLiveFocus({ hostRef, frame, state, hoverBounds, left, top, in
       focusRef.current = { row: row.t, pointer: false };
       clearVar(el, "--bkm-fx");
       writeRowFx();
+      writeVar(el, "--bkm-fxd", `${-Math.round(performance.now() - tickAtRef.current)}ms`);
       raiseAttribute(el, "data-bkm-kfx");
       raiseAttribute(el, "data-bkm-live-scrubbing");
       holdEdge();
@@ -156,6 +159,10 @@ export function useLiveFocus({ hostRef, frame, state, hoverBounds, left, top, in
   );
   // A held row's resting x moves with every tick: re-laid out in the commit that restarts the roll's --bkm-fxr.
   useLayoutEffect(() => {
+    tickAtRef.current = performance.now();
+    if (hostRef.current && focusRef.current.row !== null) {
+      writeVar(hostRef.current, "--bkm-fxd", "0ms");
+    }
     writeRowFx();
     holdEdge();
   }, [frame, writeRowFx, holdEdge]);

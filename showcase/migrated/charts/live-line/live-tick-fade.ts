@@ -9,13 +9,13 @@ const FOCUS_VARS_CSS =
   '@property --bkm-pgy{syntax:"<number>";inherits:false;initial-value:0}' +
   `[data-bkm-chart="liveline"] :is(.ts-chart-host,.ts-chart-surface,svg.ts-chart,${CLS.guideLayer},${CLS.crosshair},${CLS.crosshairPlot},.bkm-live-rule,${CLS.crosshairLabelX},${CLS.crosshairMarker},.bkm-live-xlabels,text.bkm-live-xlabel){--bkm-fx:inherit;--bkm-pgx:inherit;--bkm-pgy:inherit}`;
 /** bklit LiveXAxis labelFadeOpacity: 0 within 50px of the crosshair, a linear ramp over the next 20px, 0.15s easeOut; one static rule on the slot's typed `x` vs `--bkm-fx`, inline (the CSS pipeline rewrites `type(<number>)`).
- * Keyboard focus rides the roll via `--bkm-kx` / `--bkm-fxr` / `--bkm-pl` / `--bkm-kslide` (`data-bkm-kedge`). Typed attr() is Chromium-only (133+): under `@supports`, else labels stay visible. */
+ * Keyboard focus rides the roll via `--bkm-kx` / `--bkm-fxr` / `--bkm-pl` / `--bkm-kslide` (`data-bkm-kedge`). The slide runs only while a key holds focus (--bkm-fxd rewinds a start mid-roll); a pointer focus never reads it. Typed attr() is Chromium-only (133+): under `@supports`, else labels stay visible. */
 export const TICK_FADE_CSS = [
   typedAttr(`[data-bkm-chart="liveline"] text.bkm-live-xlabel${NOT_MOTION}{opacity:clamp(0,calc((abs(attr(x type(<number>)) - var(--bkm-fx,-9999)) - 50) / 20),1)!important;transition:opacity 150ms ease-out}`),
   `@property --bkm-fxr{syntax:"<number>";inherits:false;initial-value:0}`,
   `@keyframes bkm-fxr0{from{--bkm-fxr:var(--bkm-live-shift,0)}to{--bkm-fxr:0}}@keyframes bkm-fxr1{from{--bkm-fxr:var(--bkm-live-shift,0)}to{--bkm-fxr:0}}`,
-  `[data-bkm-chart="liveline"][data-bkm-roll="0"]{animation:bkm-fxr0 var(--bkm-live-roll,600ms) var(--bkm-live-roll-ease,linear) both}`,
-  `[data-bkm-chart="liveline"][data-bkm-roll="1"]{animation:bkm-fxr1 var(--bkm-live-roll,600ms) var(--bkm-live-roll-ease,linear) both}`,
+  `[data-bkm-chart="liveline"][data-bkm-kfx][data-bkm-roll="0"]{animation:bkm-fxr0 var(--bkm-live-roll,600ms) var(--bkm-live-roll-ease,linear) var(--bkm-fxd,0ms) both}`,
+  `[data-bkm-chart="liveline"][data-bkm-kfx][data-bkm-roll="1"]{animation:bkm-fxr1 var(--bkm-live-roll,600ms) var(--bkm-live-roll-ease,linear) var(--bkm-fxd,0ms) both}`,
   `[data-bkm-chart="liveline"][data-bkm-kfx]{--bkm-fx:max(var(--bkm-pl,-9999), calc(var(--bkm-kx) + var(--bkm-fxr)))}`,
   `[data-bkm-chart="liveline"][data-bkm-kfx][data-bkm-jump]{--bkm-fx:calc(max(var(--bkm-pl,-9999), var(--bkm-kx)) + var(--bkm-fxr))}`,
   `[data-bkm-chart="liveline"][data-bkm-kfx][data-bkm-jump][data-bkm-kedge]{--bkm-fx:max(var(--bkm-pl,-9999), calc(var(--bkm-kx) + var(--bkm-fxr)))}`,
