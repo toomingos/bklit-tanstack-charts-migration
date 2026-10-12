@@ -332,9 +332,9 @@ Drafts live in `docs/upstream-issues/` (local only).
 ## 51. radialArc carries no arc geometry for the motion tween (ring progress arcs, pie)
 
 - **Needed:** bklit sweeps each ring progress arc by drawing a fresh d3 arc per frame (`cornerRadius = thickness / 2`) from the start angle to `start + range * progress`, so the leading cap stays round (bklit `ring.tsx:104`; nothing is drawn until the sweep passes 0.01 rad). Pie wedges tween the same way.
-- **1.1.0 behaviour:** the same mechanism as #35. The arc tween runs only for nodes carrying the private `sceneMotionNode` geometry (`motion.ts:2386-2399`; set only in `bar.ts:385,661` and `hierarchy-sunburst.ts:301`), and `radialArc` sets none. `path: 'morph'` moves vertices along chords, and the radialArc enter is a group wedge clip (`motion.ts:1618-1690`) that cuts the round cap flat.
+- **1.1.0 behaviour:** the same mechanism as #35. The arc tween runs only for nodes carrying the private `sceneMotionNode` geometry (`motion.ts:2386-2400`; `path` geometry is set only by `hierarchy-sunburst.ts:301-306`, bar sets only `baseline`), and `radialArc` sets none. `path: 'morph'` moves vertices along chords, and the radialArc enter is a group wedge clip (`motion.ts:1618-1700`) that cuts the round cap flat.
 - **Workaround:** `ring/progress-layer.ts` renders the progress marks through a documented custom layer renderer (`renderer` on a radial mark, `reference/marks/polar.md:139`; `ChartLayerRenderer`, `reference/rendering-and-export.md:546-577`). The layer paints its own SVG and animates `d` on nodes it owns. Composition is our own compositor (`kit/layer/compose-layers.ts`, about 1.3 KB gz) because the only exported one is the Canvas module's (`canvasChartRenderer.compose`, 5.4 KB gz more). Cost: all tracks paint under all progress arcs (layers split by mark order).
-- **Proposal:** the same as #35, plus an exported layer compositor (draft: `docs/upstream-issues/layer-compositor.md`) so a custom layer need not copy one.
+- **Proposal:** the same as #35, plus an exported layer compositor (drafts: `docs/upstream-issues/layer-compositor.md`, `radial-arc-motion-geometry.md`) so a custom layer need not copy one.
 
 ## 52. No HTML or foreignObject scene node (marker `icon` ReactNodes, `iconFill`)
 
@@ -390,6 +390,15 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **1.1.0 behaviour:** each rolling transform plan gets a presentation track whose `apply` re-creates every point of the element (`{ ...point, x, y }` plus `pointIdentity(point)` for the map key) on every frame (`dist/motion.js:2531-2536`), then `publish` copies the map (`:2685`) and `handlePresentationPoints` filters it with `viewportInteractionPoints` (`renderer.js:888-896`) even with no pointer and no focus. Measured in a dev build with per-track timers: one frame's sampling is 0.26 ms, 77% of it that track (per-call 0.13 ms, 3 values); publish 0.008 ms. Production, 6 s steady: 131 ms of rAF in the motion tick on the migrated card against 14.7 ms for the whole bklit chart.
 - **Workaround:** none. Fewer points would change the curve (`SMOOTH_STEPS` 4 -> 2 deviates 3.6-5.2 px from the exact cubic on steep data), and the area cannot be `decorative` (its points feed the plan).
 - **Proposal:** present rolling points lazily (derive them from the affine transform when a listener or focus asks, `getPresentationPoints`), or skip the per-frame map rebuild while no pointer or focus exists (posted as [#201](https://github.com/TanStack/charts/issues/201)).
+
+---
+
+## 60. `motion({ initial })` animates no cartesian dots: a per-datum entrance needs a second render
+
+- **Needed:** bklit's scatter dots fade and unblur in from the very first frame, each delayed by its x (`series-markers.tsx`); the first draw must already show the entrance, with the final design in one TanStack render.
+- **1.1.0 behaviour:** on the initial render `animateSvg` builds tracks only for bars, cartesian path groups, radial groups and arcs; `createPresentationTracks` sets a point with no previous presentation straight to its target and pushes no track (`motion.ts:3273-3335`, `:288-300`). A keyed dot enters (opacity, per-datum `motion` timing) only as a new element of a later `update` reconcile (`reconcileMotionSvg`, `motion.ts:1855`).
+- **Workaround:** the first draw renders grid and axes, the layout-effect commit before paint adds the dots as new data (`scatter/definition.ts`, `revealed`); two renders, no frame wait. Rendering the dots in the first draw would paint the final state with no entrance.
+- **Proposal:** make `initial` enter dot (and keyed mark) elements through the same `timingFor({ phase: 'enter' })` path bars use (draft `docs/upstream-issues/scatter-initial-dot-enter.md`).
 
 ---
 
