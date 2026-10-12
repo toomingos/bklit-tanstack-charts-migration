@@ -1,6 +1,5 @@
-import { ticks, tickIncrement } from "d3-array";
-import { timeTickInterval, timeTicks, utcTickInterval, utcTicks } from "d3-time";
 import type { ScaleLinear, ScaleTime } from "d3-scale";
+import { tickIncrement, ticks, timeTickInterval, timeTicks } from "./scale-ticks";
 
 /**
  * Two-point numeric and temporal scales with d3-scale's call, `domain`, `range`, `invert`, `ticks`, `nice`, `copy`, `clamp`,
@@ -11,11 +10,6 @@ import type { ScaleLinear, ScaleTime } from "d3-scale";
  */
 
 type Kind = "linear" | "time" | "utc";
-
-interface TemporalInterval {
-  floor: (date: Date | number) => Date;
-  ceil: (date: Date | number) => Date;
-}
 
 function create(kind: Kind, initial: [number, number], initialRange: [number, number]) {
   let [d0, d1] = initial;
@@ -72,15 +66,15 @@ function create(kind: Kind, initial: [number, number], initialRange: [number, nu
   };
   scale.ticks = (count?: number) => {
     if (kind === "linear") return ticks(d0, d1, count ?? 10);
-    return (kind === "utc" ? utcTicks : timeTicks)(new Date(d0), new Date(d1), count ?? 10);
+    return timeTicks(kind === "utc", new Date(d0), new Date(d1), count ?? 10);
   };
   scale.nice = (count?: number) => {
     if (temporal) {
-      const interval = (kind === "utc" ? utcTickInterval : timeTickInterval)(d0 as unknown as Date, d1 as unknown as Date, count ?? 10) as TemporalInterval | null;
+      const interval = timeTickInterval(kind === "utc", d0, d1, count ?? 10);
       if (!interval) return scale;
       // d3-scale `nice.js`: floor the lower end and ceil the upper end of the (possibly reversed) domain.
-      if (d1 < d0) [d0, d1] = [+interval.ceil(d0), +interval.floor(d1)];
-      else [d0, d1] = [+interval.floor(d0), +interval.ceil(d1)];
+      if (d1 < d0) [d0, d1] = [interval.ceil(d0), interval.floor(d1)];
+      else [d0, d1] = [interval.floor(d0), interval.ceil(d1)];
       return scale;
     }
     // d3-scale `linear.js` nice: iterate tickIncrement until the step stops changing.
