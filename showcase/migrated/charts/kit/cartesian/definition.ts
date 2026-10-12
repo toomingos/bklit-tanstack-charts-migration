@@ -24,7 +24,8 @@ import { pillLayout } from "./date-pill";
 import { dataExtent, resolveYDomains } from "./domains";
 import { rowSets } from "./decimate";
 import type { HoverVisuals } from "./hover-css";
-import { pushHoverGuides } from "./hover-guides";
+import { buildHoverOverlayModel } from "./hover-guides";
+import type { HoverOverlayModel } from "./hover-overlay";
 import type { TooltipProps } from "./hover-guides";
 import type { CartesianInput, CartesianSpec } from "./input";
 import { plotSizeOf, ZERO_SIZE } from "./plot-size";
@@ -60,6 +61,8 @@ export interface CartesianBuild {
   pillTicks: { readonly times: readonly number[]; readonly reachPx: number; readonly active: boolean };
   /** Hover visuals as scoped CSS inputs (see `hoverStaticCss`). */
   hover: HoverVisuals;
+  /** The hover indicator (crosshair, dots, date pill) the host's HoverOverlay draws; null without a ChartTooltip. */
+  overlay: HoverOverlayModel | null;
   /** Host attributes for the static grid edge-fade rules (styles.css). */
   gridAttrs: Record<string, string | undefined>;
   /** Mask rules for the Background child (background.ts); empty without one. */
@@ -219,9 +222,7 @@ function buildSized(input: CartesianInput): SizedBuild {
   // Hover indicator: crosshair rule + date pill, then one dot per series.
   const pillActive = tooltipEnabled && tooltipProps.showDatePill !== false;
   const pill = pillActive ? pillLayout(rows.map((row) => shortDateFmt.format(toDate(row[xKey])))) : null;
-  if (tooltipEnabled) {
-    pushHoverGuides({ input, rows, xAccessor, keyOf, tooltipProps, pill, state });
-  }
+  const overlay = tooltipEnabled ? buildHoverOverlayModel({ input, rows, keyOf, tooltipProps, pill, pillActive }) : null;
 
   const x = buildXScale({ input, rows, xAxis, xDomain, overlaysWidenX: overlays.xValues.length > 0, pillActive, pill });
 
@@ -243,6 +244,7 @@ function buildSized(input: CartesianInput): SizedBuild {
     /** The y domains the data resolves to (differs from `domains.y` only in the "snap" step). */
     targetY,
     pillTicks: { times: x.tickTimes, reachPx: (xAxis?.tickerHalfWidth ?? 50) + 12, active: pillActive },
+    overlay,
     gridAttrs: gridHostAttrs(grid),
     backgroundCss: (scope) => backgroundCssFor(scope, table),
     hover: { dim: state.hoverDim, highlights: state.hoverHighlights, pl: state.plRules, times: rows.map(keyOf), plSigns, segmentLeft: segments ? input.margin.left : null, bandClip: `${uid}-hlband` },

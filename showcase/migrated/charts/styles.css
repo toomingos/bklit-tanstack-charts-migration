@@ -72,6 +72,23 @@
   mask-clip: stroke-box;
 }
 
+/* --- Hover indicator (kit/cartesian/hover-overlay.ts): crosshair rule, dots and date pill in an element the host owns. It shows while a row is focused (data-on) and hides where the
+       renderer's focus layers hide: before the ready flip, on a press, and over a ChartMarkers disc. Springs run as Web Animations on the compositor. --- */
+.bkm-hov { position: absolute; inset: 0; pointer-events: none; visibility: hidden; font-family: inherit; }
+.bkm-hov[data-on] { visibility: visible; }
+[data-bkm-kit]:not([data-bkm-ready]) .bkm-hov, [data-bkm-press] .bkm-hov, [data-bkm-evt]:has(.bkm-evt:hover) .bkm-hov { visibility: hidden !important; }
+.bkm-hov-x, .bkm-hov-dot, .bkm-hov-pill { position: absolute; left: 0; will-change: transform; }
+.bkm-hov-dot { top: 0; }
+.bkm-hov svg { display: block; }
+.bkm-hov-bar { height: 100%; }
+/* bklit date-ticker.tsx: rounded-full px-4 py-1 bg-zinc-900 text-white shadow-lg (dark: zinc-100 / zinc-900), 24px rows, text-sm font-medium, 4px between the month and day columns. */
+.bkm-hov-pill { height: 32px; width: 0; }
+.bkm-hov-pill-box { position: absolute; left: 0; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; justify-content: center; box-sizing: border-box; height: 32px; padding: 4px 16px; border-radius: 9999px; overflow: hidden; white-space: nowrap;
+  background: var(--chart-date-pill-background); color: var(--chart-date-pill-foreground); box-shadow: 0 10px 15px -3px rgb(0 0 0 / .1), 0 4px 6px -4px rgb(0 0 0 / .1); font-size: 14px; line-height: 20px; font-weight: 500; }
+.bkm-hov-pill-col { height: 24px; overflow: hidden; }
+.bkm-hov-pill-stack { display: flex; flex-direction: column; will-change: transform; }
+.bkm-hov-pill-row { display: flex; align-items: center; justify-content: center; flex-shrink: 0; height: 24px; }
+
 /* --- Date pill: bklit's `shadow-lg` (0 10px 15px -3px / 0 4px 6px -4px, 10% black). --- */
 :is([data-bkm-chart], [data-bkm-kit]) :is(.bkm-pill-box, [data-ts-key="bar-guide:y-label:box"]) {
   filter: drop-shadow(0 10px 6px rgba(0, 0, 0, 0.07)) drop-shadow(0 3px 2px rgba(0, 0, 0, 0.06));
