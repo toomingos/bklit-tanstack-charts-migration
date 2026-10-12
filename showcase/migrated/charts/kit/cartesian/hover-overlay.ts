@@ -37,6 +37,7 @@ export interface HoverOverlayModel {
   readonly indexOf: (time: number) => number;
 }
 
+let gradientCount = 0;
 const SVG_NS = "http://www.w3.org/2000/svg";
 const PILL_ROW = 24;
 
@@ -87,10 +88,11 @@ class Ticker {
 class Glide {
   private readonly axes: Axis[];
   constructor(
-    private readonly el: HTMLElement,
+    private readonly el: HTMLElement | SVGElement,
     private readonly spring: Spring,
     count: number,
     private readonly css: (values: readonly number[]) => string,
+    private readonly prop: "transform" | "left",
     private readonly ticker: Ticker,
   ) {
     this.axes = Array.from({ length: count }, () => ({ t0: 0, target: 0, v0: 0, x0: 0 }));
@@ -100,7 +102,7 @@ class Glide {
   jump(values: readonly number[]): void {
     this.ticker.stop(this);
     this.axes.forEach((axis, i) => { axis.target = values[i] ?? 0; axis.x0 = 0; axis.v0 = 0; });
-    this.el.style.transform = this.css(values);
+    this.el.style[this.prop] = this.css(values);
   }
 
   /** Springs from wherever the element is (and however fast it moves) to `values`. */
@@ -127,13 +129,14 @@ class Glide {
       rest &&= s.done;
       return axis.target + (s.done ? 0 : s.value);
     });
-    this.el.style.transform = this.css(rest ? this.axes.map((axis) => axis.target) : at);
+    this.el.style[this.prop] = this.css(rest ? this.axes.map((axis) => axis.target) : at);
     return rest;
   }
 }
 
 const translate = (v: readonly number[]): string => `translate(${v[0] ?? 0}px,${v[1] ?? 0}px)`;
 const translateX = (v: readonly number[]): string => `translateX(${v[0] ?? 0}px)`;
+const px = (v: readonly number[]): string => `${v[0] ?? 0}px`;
 const translateY = (v: readonly number[]): string => `translateY(${v[0] ?? 0}px)`;
 
 const div = (cls: string, parent?: HTMLElement): HTMLDivElement => {
@@ -163,7 +166,6 @@ export class HoverOverlay {
   private model: HoverOverlayModel | null = null;
   private snapshot: PlotSnapshot | null = null;
   private margin: ChartMargin | null = null;
-  private rule: HTMLElement | null = null;
   private ruleGlide: Glide | null = null;
   private dots: DotView[] = [];
   private pill: PillView | null = null;
@@ -183,7 +185,6 @@ export class HoverOverlay {
     this.snapshot = snapshot;
     this.margin = margin;
     this.root.replaceChildren();
-    this.rule = null;
     this.ticker.clear();
     this.ruleGlide = null;
     this.dots = [];
@@ -271,31 +272,54 @@ export class HoverOverlay {
   }
 
   private buildRule(rule: NonNullable<HoverOverlayModel["crosshair"]>, snapshot: PlotSnapshot, margin: ChartMargin): void {
+    const height = Math.max(0, snapshot.size.innerHeight);
     const wrap = div("bkm-hov-x", this.root);
     wrap.style.top = `${margin.top}px`;
-    wrap.style.height = `${Math.max(0, snapshot.size.innerHeight)}px`;
+    wrap.style.height = `${height}px`;
+    // An svg rect like bklit's TooltipIndicator (tooltip-indicator.tsx:163-200), moved by an in-svg transform so it rasterizes at the same subpixel position
+    // (an HTML div or a composited layer antialiases the 1px edge differently).
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("width", "1");
+    svg.setAttribute("height", String(height));
+    svg.style.overflow = "visible";
+    let mark: SVGElement;
     if (rule.dash) {
-      const svg = document.createElementNS(SVG_NS, "svg");
-      svg.setAttribute("width", "1");
-      svg.setAttribute("height", String(Math.max(0, snapshot.size.innerHeight)));
-      svg.style.overflow = "visible";
       const line = document.createElementNS(SVG_NS, "line");
-      line.setAttribute("y2", String(Math.max(0, snapshot.size.innerHeight)));
+      line.setAttribute("y2", String(height));
       line.style.stroke = rule.color;
       line.style.strokeWidth = String(rule.width);
       line.style.strokeDasharray = rule.dash.replace(",", " ");
-      svg.append(line);
-      wrap.append(svg);
+      mark = line;
     } else {
-      // bklit TooltipIndicator gradient: transparent -> colour at 10% -> colour at 90% -> transparent (tooltip-indicator.tsx).
-      const bar = div("bkm-hov-bar", wrap);
-      bar.style.width = `${rule.width}px`;
-      bar.style.marginLeft = `${-rule.width / 2}px`;
-      bar.style.backgroundImage = `linear-gradient(to bottom,transparent 0%,${rule.color} 10%,${rule.color} 90%,transparent 100%)`;
+      // bklit gradient: transparent -> colour at 10% -> colour at 90% -> transparent (indicatorFadeGradientStops).
+      const id = `bkm-hov-grad-${gradientCount++}`;
+      const defs = document.createElementNS(SVG_NS, "defs");
+      const gradient = document.createElementNS(SVG_NS, "linearGradient");
+      gradient.id = id;
+      gradient.setAttribute("x1", "0%");
+      gradient.setAttribute("x2", "0%");
+      gradient.setAttribute("y1", "0%");
+      gradient.setAttribute("y2", "100%");
+      for (const [offset, opacity] of [["0%", "0"], ["10%", "1"], ["90%", "1"], ["100%", "0"]] as const) {
+        const stop = document.createElementNS(SVG_NS, "stop");
+        stop.setAttribute("offset", offset);
+        stop.style.stopColor = rule.color;
+        stop.style.stopOpacity = opacity;
+        gradient.append(stop);
+      }
+      defs.append(gradient);
+      svg.append(defs);
+      const bar = document.createElementNS(SVG_NS, "rect");
+      bar.setAttribute("x", String(-rule.width / 2));
+      bar.setAttribute("width", String(rule.width));
+      bar.setAttribute("height", String(height));
+      bar.style.fill = `url(#${id})`;
+      mark = bar;
     }
-    this.rule = wrap;
+    svg.append(mark);
+    wrap.append(svg);
     // bklit's crosshair rides the tooltipSpring (charts/chart-config-context.tsx:20).
-    this.ruleGlide = new Glide(wrap, CROSSHAIR_SPRING, 1, translateX, this.ticker);
+    this.ruleGlide = new Glide(mark, CROSSHAIR_SPRING, 1, translateX, "transform", this.ticker);
   }
 
   private buildDot(dot: OverlayDot): DotView {
@@ -315,7 +339,7 @@ export class HoverOverlay {
       svg.append(circle);
     }
     el.append(svg);
-    return { dot, el, glide: dot.glide ? new Glide(el, CROSSHAIR_SPRING, 2, translate, this.ticker) : null };
+    return { dot, el, glide: dot.glide ? new Glide(el, CROSSHAIR_SPRING, 2, translate, "transform", this.ticker) : null };
   }
 
   private buildPill(spec: NonNullable<HoverOverlayModel["pill"]>, snapshot: PlotSnapshot): PillView {
@@ -328,7 +352,7 @@ export class HoverOverlay {
       const text = document.createElement("span");
       text.className = "bkm-hov-pill-text";
       div("bkm-hov-pill-row", box).append(text);
-      return { days: null, el: wrap, glide: new Glide(wrap, CROSSHAIR_SPRING, 1, translateX, this.ticker), months: null, text };
+      return { days: null, el: wrap, glide: new Glide(wrap, CROSSHAIR_SPRING, 1, px, "left", this.ticker), months: null, text };
     }
     const column = (values: readonly string[]): Glide => {
       const col = div("bkm-hov-pill-col", box);
@@ -338,10 +362,10 @@ export class HoverOverlay {
         row.textContent = value;
       }
       // bklit's ticker springs both stacks with useSpring(0, { stiffness: 400, damping: 35 }) (tooltip/date-ticker.tsx:81-82).
-      return new Glide(stack, DATE_PILL_SPRING, 1, translateY, this.ticker);
+      return new Glide(stack, DATE_PILL_SPRING, 1, translateY, "transform", this.ticker);
     };
     const months = column(layout.months);
     const days = layout.days.some((d) => d !== "") ? column(layout.days) : null;
-    return { days, el: wrap, glide: new Glide(wrap, CROSSHAIR_SPRING, 1, translateX, this.ticker), months, text: null };
+    return { days, el: wrap, glide: new Glide(wrap, CROSSHAIR_SPRING, 1, px, "left", this.ticker), months, text: null };
   }
 }

@@ -77,10 +77,12 @@
 .bkm-hov { position: absolute; inset: 0; pointer-events: none; visibility: hidden; font-family: inherit; }
 .bkm-hov[data-on] { visibility: visible; }
 [data-bkm-kit]:not([data-bkm-ready]) .bkm-hov, [data-bkm-press] .bkm-hov, [data-bkm-evt]:has(.bkm-evt:hover) .bkm-hov { visibility: hidden !important; }
-.bkm-hov-x, .bkm-hov-dot, .bkm-hov-pill { position: absolute; left: 0; will-change: transform; }
+.bkm-hov-x { position: absolute; left: 0; }
+.bkm-hov-dot { position: absolute; left: 0; will-change: transform; }
+/* The pill places by `left` plus the box's translateX(-50%), as bklit's tooltip does (chart-tooltip.tsx:422-423), so its edges snap to device pixels the same way. */
+.bkm-hov-pill { position: absolute; left: 0; }
 .bkm-hov-dot { top: 0; }
 .bkm-hov svg { display: block; }
-.bkm-hov-bar { height: 100%; }
 /* bklit date-ticker.tsx: rounded-full px-4 py-1 bg-zinc-900 text-white shadow-lg (dark: zinc-100 / zinc-900), 24px rows, text-sm font-medium, 4px between the month and day columns. */
 .bkm-hov-pill { height: 32px; width: 0; }
 .bkm-hov-pill-box { position: absolute; left: 0; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; justify-content: center; box-sizing: border-box; height: 32px; padding: 4px 16px; border-radius: 9999px; overflow: hidden; white-space: nowrap;
