@@ -30,7 +30,7 @@ interface DefinitionInput {
   readonly layerMotion: ReturnType<typeof createLayerMotion>;
 }
 
-/** The chart definition: features geoShape, optional graticule layer, the hovered-feature guide mark and the built-in tooltip. */
+/** The chart definition: features geoShape, optional graticule layer, and the built-in tooltip (the hovered-feature highlight is an owned svg, highlight.ts). */
 export const createDefinition = (input: DefinitionInput): DomChartDefinition<ChoroplethFeature, number, number> => {
   const { data, margin, center, scale, translate, holder, geometry, patternPrefix, featureConfig, graticuleConfig, tooltipConfig, layerMotion } = input;
   const projectionOptions: ProjectionOptions = { center, k: 1, scale, translate, tx: 0, ty: 0 };

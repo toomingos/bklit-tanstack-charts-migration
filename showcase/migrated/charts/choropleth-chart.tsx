@@ -1,4 +1,4 @@
-// Bklit ChoroplethChart on native primitives: geoShape marks (countries + optional graticule), host `data-hover` CSS dim plus a focus-guide mark, built-in tooltip, `motion()`.
+// Bklit ChoroplethChart on native primitives: geoShape marks (countries + optional graticule), host `data-hover` CSS dim plus an owned highlight svg, built-in tooltip, `motion()`.
 // Parts live in choropleth/.
 import { useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";

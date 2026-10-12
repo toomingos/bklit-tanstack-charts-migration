@@ -43,7 +43,7 @@ export const useEnterReveal = (
   const [revealState, setRevealState] = useState({ epoch: 1, key: `${animationDuration}|${revealSignature}` });
   const revealKey = `${animationDuration}|${revealSignature}`;
   if (revealState.key !== revealKey) {setRevealState({ epoch: revealState.epoch + 1, key: revealKey });}
-  // bklit's entering layer ignores the hover (no dim, no highlight) until `isLoaded`; the CSS gates the dim and the guide layer on this.
+  // bklit's entering layer ignores the hover (no dim, no highlight) until `isLoaded`; the CSS gates the dim and the highlight on this.
   const { arm, store } = useReadyGate(hostRef, animationDuration, { resetKey: revealSignature });
   useEffect(() => { arm(); }, [arm]);
 

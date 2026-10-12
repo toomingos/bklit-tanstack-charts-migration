@@ -70,7 +70,7 @@ export const useFeatureHover = (options: {
     const host = hostRef.current;
     writePresence(host, "data-bkm-idle", !onFeature);
     // Presence only: the dim is one group-level rule (fades on enter, snaps on leave; a feature-to-feature move leaves it alone, so
-    // only the guide swaps, like bklit's highlighted path).
+    // only the highlight swaps, like bklit's highlighted path).
     writePresence(host, "data-hover", onFeature);
     if (!onFeature) {
       highlight.hide();
