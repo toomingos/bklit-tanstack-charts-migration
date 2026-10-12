@@ -6,8 +6,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, NamedExoticComponent, ReactElement, ReactNode, SVGProps } from "react";
 import { createPortal } from "react-dom";
 import { brushX } from "@tanstack/charts/interaction/brush";
-import { clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { cn } from "./cn";
 import { defineCarrier } from "./role";
 import { isNumber } from "./guards";
 import { registerBrushX } from "./cartesian/brush-factory";
@@ -230,8 +229,8 @@ const BrushLayoutContent = ({
   const layout = useBrushSelection(data, xDataKey, xExtentMax, enabled);
   const stripStyle = useMemo(() => ({ height }), [height]);
   return (
-    <div className={twMerge(clsx("flex size-full min-h-0 min-w-0 flex-col", fitMainContent ? "justify-start gap-1" : "gap-3", className))}>
-      <div className={twMerge(clsx("min-h-0 min-w-0", fitMainContent ? "shrink-0" : "flex-1"))}>{children(layout)}</div>
+    <div className={cn("flex size-full min-h-0 min-w-0 flex-col", fitMainContent ? "justify-start gap-1" : "gap-3", className)}>
+      <div className={fitMainContent ? "min-h-0 min-w-0 shrink-0" : "min-h-0 min-w-0 flex-1"}>{children(layout)}</div>
       {enabled && brushStrip && (
         <div className="min-h-0 shrink-0" style={stripStyle}>
           {brushStrip(layout)}
