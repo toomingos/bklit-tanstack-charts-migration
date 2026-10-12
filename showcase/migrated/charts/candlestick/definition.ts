@@ -1,12 +1,11 @@
 // bklit CandlestickChart as one native TanStack definition: per direction a `barY` wick (1.5px) and body (80% slot = bklit's 0.2 gap).
-// Hover/legend dimming is the fixed `CANDLE_HOVER_CSS`; crosshair, pill and close dot are native guides; the entrance is local `motion`.
+// Hover/legend dimming is the fixed `CANDLE_HOVER_CSS`; crosshair, pill and close dot are the host's hover overlay; the entrance is local `motion`.
 import type { EnterTransition } from "../kit/motion/phase";
 import { resumeEnter } from "../kit/motion/resume-enter";
 import { REST_GRANULAR, REST_NEVER, settleMs, springFrequency, springOf } from "../kit/motion/spring-curve";
 import type { Spring } from "../kit/motion/springs";
 import { barY, defineChart } from "@tanstack/charts";
 import type { ChartMark, ChartMotionDefinition, ChartMotionTransition, ChartPoint, DomChartDefinition } from "@tanstack/charts";
-import { crosshair } from "@tanstack/charts/crosshair";
 import { focusNearestX } from "@tanstack/charts/focus";
 import { decorative } from "@tanstack/charts/mark/decorative";
 import { bklitTooltip } from "../kit/tooltip/bklit-tooltip";
@@ -18,18 +17,19 @@ import type { ChildTable } from "../kit/read-children";
 import { erase } from "../kit/erased-types";
 import { overlaysFor } from "../kit/cartesian/features";
 import { shortDateFmt } from "../kit/format";
-import { toDate } from "../kit/cartesian/series";
+import { DEFAULT_Y_AXIS_ID, toDate } from "../kit/cartesian/series";
 import { dataTickValues } from "../kit/cartesian/x-axis";
 import { niced } from "../kit/cartesian/domains";
 import { gridColumnGuides, gridHostAttrs, gridLineStyle, gridRowGuides } from "../kit/cartesian/grid-guides";
 import type { GridGuideProps as GridProps } from "../kit/cartesian/grid-guides";
 import { BKLIT_TOOLTIP_PLACEMENT, MS_PER_SECOND, X_TICK_PADDING, bklitTheme } from "../kit/theme";
-import { BKLIT_GUIDE_SPRING, crosshairGradient, crosshairRuleMark, datePillGuides, guideMark, pillLayout, pillGuideMotion, withPillGeometry } from "../kit/cartesian/date-pill";
+import { pillLayout, withPillGeometry } from "../kit/cartesian/date-pill";
+import type { HoverOverlayModel } from "../kit/cartesian/hover-overlay";
 import type { ChartMargin } from "../kit/theme";
 import type { CandlestickProps } from "./carrier";
 import { readyGateCss } from "../kit/cartesian/gate-css";
 import { typedAttr } from "../kit/css-hooks";
-import { CROSSHAIR_CLASS, NOT_MOTION, keyHas, keyIs } from "../kit/renderer-dom";
+import { NOT_MOTION, keyHas, keyIs } from "../kit/renderer-dom";
 
 export type Candle = Record<string, unknown>;
 
@@ -74,8 +74,6 @@ const NEGATIVE = "var(--color-red-500)";
 const DEFAULT_GRADIENT_FILLS = new Set(["url(#candlestick-positive)", "url(#candlestick-negative)"]);
 const WICK_WIDTH = 1.5;
 const outsideSpan = (value: number, start: number, size: number): boolean => value < start || value > start + size;
-// bklit tooltipSpring (crosshair + dot); the panel follows tooltipBoxMotion.
-const GUIDE_SPRING = BKLIT_GUIDE_SPRING;
 
 // SAFETY: a candle x is a Date, ISO string or epoch number; any other value yields an Invalid Date, which every caller already filters.
 // null / undefined are missing (Number(null) would be 0 and drag the y domain to zero); bklit draws such a candle as garbage at the top edge, here it is a gap.
@@ -184,6 +182,9 @@ export interface CandlestickBuild {
   /** Chart-hover dim opacity (null when `showHoverFade` is off): the `--bkm-faded` host var. */
   readonly hoverFadeOpacity: number | null;
   readonly fadedOpacity: number;
+  /** The hover indicator (null without a Tooltip) and the domains it places by. */
+  readonly overlay: HoverOverlayModel | null;
+  readonly plotDomains: { readonly x: readonly [number, number]; readonly y: readonly [number, number] };
   /** Host attributes for the static grid edge-fade rules (styles.css). */
   readonly gridAttrs: Record<string, string | undefined>;
 }
@@ -267,84 +268,28 @@ function candleMarks({ rows, xKey, motion, positiveFill, negativeFill, candleWid
   ];
 }
 
-interface TooltipMarkInput {
+interface TooltipModelInput {
   readonly tt: TooltipProps;
   readonly rows: readonly Candle[];
   readonly xKey: string;
-  readonly uid: string;
-  readonly marginBottom: number;
 }
 
-interface TooltipMarks {
-  readonly marks: CandleMark[];
-  readonly gradients: ReturnType<typeof crosshairGradient>[];
-}
-
-function tooltipMarks({ tt, rows, xKey, uid, marginBottom }: TooltipMarkInput): TooltipMarks {
-  const marks: CandleMark[] = [];
-  const gradients: ReturnType<typeof crosshairGradient>[] = [];
-  const timeKey = (d: Candle): number => toDate(d[xKey]).getTime();
-  if (tt.showDatePill !== false) {
-    const labels = rows.map((row) => shortDateFmt.format(toDate(row[xKey])));
-    const pill = pillLayout(labels);
-    marks.push(...datePillGuides({ rows, x: (d: Candle) => toDate(d[xKey]), y: (d: Candle) => num(d.close), key: timeKey, offset: marginBottom - 19.8, motion: pillGuideMotion(GUIDE_SPRING) }, pill));
-  }
-  if (tt.showCrosshair !== false) {
-    const indicatorColor = colorOr(tt.indicatorColor, "var(--chart-crosshair)");
-    const dash = tt.indicatorDasharray;
-    if (dash !== undefined && dash !== "") {
-      // bklit draws a dashed indicator as a plain stroked line (no fade).
-      const ruleMotion = erase(pillGuideMotion(GUIDE_SPRING));
-      marks.push(
-        crosshair({
-          id: "crosshair",
-          x: { stroke: indicatorColor, strokeOpacity: 1, strokeWidth: 1, strokeDasharray: dash.replace(",", " "), label: false },
-          y: false,
-          motion: ruleMotion,
-        }),
-      );
-    } else {
-      gradients.push(crosshairGradient("crosshair", indicatorColor));
-      marks.push(crosshairRuleMark({ id: "crosshair", paint: `url(#${uid}-crosshair)`, width: 1, motion: pillGuideMotion(GUIDE_SPRING) }));
-    }
-  }
-  if (tt.showDots !== false) {
-    const dotFill = colorOr(tt.dotColor, "var(--chart-line-primary)");
-    const closeAt = new Map<number, number>(rows.map((row) => [timeKey(row), num(row.close)]));
-    const radius = tt.dotSize ?? 5;
-    // A guide mark placed after the crosshair rule: both live in the same over layer, so the dot paints above the rule (bklit order).
-    marks.push(
-      guideMark({
-        id: "close:dot",
-        motion: pillGuideMotion(GUIDE_SPRING),
-        node: (x, _chart, xValue, scales) => {
-          const close = closeAt.get(toDate(xValue).getTime());
-          if (close === undefined || !Number.isFinite(close)) {
-            return undefined;
-          }
-          return {
-            kind: "group" as const,
-            key: "close:dot",
-            className: CROSSHAIR_CLASS,
-            ariaHidden: true,
-            translateX: x,
-            translateY: scales.y.map(close),
-            children: [
-              {
-                kind: "dot" as const,
-                key: "close:dot:marker",
-                x: 0,
-                y: 0,
-                radius,
-                style: { fill: dotFill, fillOpacity: 1, stroke: "var(--chart-background)", strokeOpacity: 1, strokeWidth: tt.dotStrokeWidth ?? 2 },
-              },
-            ],
-          };
-        },
-      }),
-    );
-  }
-  return { marks, gradients };
+/** The hover indicator (crosshair rule, close dot, date pill) for the HoverOverlay the host owns (kit/cartesian/hover-overlay.ts). */
+function tooltipOverlay({ tt, rows, xKey }: TooltipModelInput): HoverOverlayModel {
+  const labelIndex = new Map<number, number>();
+  const labels = rows.map((row, i) => {
+    labelIndex.set(toDate(row[xKey]).getTime(), i);
+    return shortDateFmt.format(toDate(row[xKey]));
+  });
+  return {
+    crosshair: tt.showCrosshair !== false ? { color: colorOr(tt.indicatorColor, "var(--chart-crosshair)"), dash: tt.indicatorDasharray, width: 1 } : null,
+    dots:
+      tt.showDots !== false
+        ? [{ yAxis: DEFAULT_Y_AXIS_ID, valueOf: (row) => num(row.close), glide: true, shapes: [{ r: tt.dotSize ?? 5, fill: colorOr(tt.dotColor, "var(--chart-line-primary)"), stroke: "var(--chart-background)", strokeWidth: tt.dotStrokeWidth ?? 2 }] }]
+        : [],
+    indexOf: (time) => labelIndex.get(time) ?? 0,
+    pill: tt.showDatePill !== false ? { labels, layout: pillLayout(labels) } : null,
+  };
 }
 
 export function buildCandlestickDefinition(input: CandlestickInput): CandlestickBuild {
@@ -369,7 +314,7 @@ export function buildCandlestickDefinition(input: CandlestickInput): Candlestick
   // bklit's Grid ticks are independent of the axis labels' and can drop edge lines: those rows / columns are marks under the candles.
   const rowGuides = gridRowGuides(grid, scaleLinear().domain(yDomain).nice(), yAxis !== undefined, yAxis?.numTicks);
   const columnMarks = gridColumnGuides(grid, scaleTime().domain(xDomain));
-  const tooltip = tt === undefined ? null : tooltipMarks({ tt, rows: data, xKey, uid: input.uid, marginBottom: margin.bottom });
+  const overlay = tt === undefined ? null : tooltipOverlay({ tt, rows: data, xKey });
   const marks: CandleMark[] = [
     ...rowGuides.marks,
     ...columnMarks,
@@ -384,7 +329,6 @@ export function buildCandlestickDefinition(input: CandlestickInput): Candlestick
       onePx,
     }),
     ...overlays.marks(yDomain, xDomain),
-    ...(tooltip?.marks ?? []),
   ];
 
   const tickCount = xAxis?.numTicks ?? 5;
@@ -426,7 +370,7 @@ export function buildCandlestickDefinition(input: CandlestickInput): Candlestick
         },
         margin,
         theme: bklitTheme,
-        gradients: [...overlays.gradients, ...(tooltip?.gradients ?? [])],
+        gradients: overlays.gradients,
       };
     },
     focus:
@@ -444,17 +388,15 @@ export function buildCandlestickDefinition(input: CandlestickInput): Candlestick
   const pillActive = tt !== undefined && tt.showDatePill !== false;
   const tickTimes = pillActive ? (xTicks.values ?? scaleUtc().domain(xDomain).ticks(tickCount)).map((d) => d.getTime()) : [];
   if (pillActive) {
-    // The pill geometry rides on the tick array for the static CSS distance ramp (`pillLayoutOf`).
-    withPillGeometry(tickTimes, {
-      plotLeft: margin.left,
-      domainStart: xDomain[0].getTime(),
-      pill: pillLayout(data.map((row) => shortDateFmt.format(toDate(row[xKey])))),
-    });
+    // The pill geometry rides on the tick array for the static CSS distance ramp.
+    withPillGeometry(tickTimes, { plotLeft: margin.left, domainStart: xDomain[0].getTime() });
   }
   return {
     definition,
     hoverFadeOpacity: candle.showHoverFade === false ? null : fadedOpacity,
     fadedOpacity,
+    overlay,
+    plotDomains: { x: [xDomain[0].getTime(), xDomain[1].getTime()], y: [yNiceLo, yNiceHi] },
     gridAttrs: gridHostAttrs(grid),
     pillTicks: { times: tickTimes, spanMs: xDomain[1].getTime() - xDomain[0].getTime(), reachPx: 62, active: pillActive },
   };

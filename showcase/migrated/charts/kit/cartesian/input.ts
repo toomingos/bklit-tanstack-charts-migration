@@ -4,6 +4,7 @@ import type { ChildTable } from "../read-children";
 import type { AnyMark } from "../erased-types";
 import type { ResolvedSeries, Row } from "./series";
 import type { PlotSize } from "./plot-size";
+import type { OverlayDot } from "./hover-overlay";
 import type { WipeConfig, WipeSpec } from "./wipe";
 
 export interface CartesianInput {
@@ -26,6 +27,8 @@ export interface CartesianInput {
   /** ProfitLossLegend hover: 0 = Profit, 1 = Loss (dims the other sign on ProfitLossLine), or null. */
   readonly profitLossHovered?: number | null;
   readonly extraMarks: readonly AnyMark[];
+  /** Hover dots of marks the series list does not describe (composed bars), after the series dots. */
+  readonly extraDots?: readonly OverlayDot[];
   readonly extraXValues: readonly Date[];
   readonly extraYValues: readonly number[];
   readonly extraGradients: readonly ChartGradient[];
@@ -47,7 +50,8 @@ export interface CartesianInput {
 }
 
 /** What a cartesian definition is built from: the sized fields of `CartesianInput` are resolved inside TanStack's draw (`chart({ width, height })`), from the size it measured. */
-export interface CartesianSpec extends Omit<CartesianInput, "plotWidth" | "plotHeight" | "innerWidth" | "wipe" | "extraMarks"> {
+export interface CartesianSpec extends Omit<CartesianInput, "plotWidth" | "plotHeight" | "innerWidth" | "wipe" | "extraMarks" | "extraDots"> {
+  readonly extraDots?: readonly OverlayDot[] | ((size: PlotSize) => readonly OverlayDot[]);
   readonly wipe?: WipeSpec;
   readonly extraMarks: readonly AnyMark[] | ((size: PlotSize) => readonly AnyMark[]);
   /** Final say on the built marks (composed re-orders them to the JSX order). */

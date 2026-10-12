@@ -4,8 +4,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import type { MutableRefObject, RefObject } from "react";
-import type { PillLayout } from "./date-pill";
-import { writePillRollIn, writePillSameLabel } from "./date-pill";
+import { writePillSameLabel } from "./date-pill";
 import { springBand } from "../motion/band-spring";
 import { useChartLegendHover, useProfitLossLegendHover } from "../legend/legend";
 import { clearAttribute, raiseAttribute, writeAttribute, writeVar } from "../host-write";
@@ -26,8 +25,6 @@ interface HoverHostGeom {
   readonly hasBand?: boolean;
   /** Date-pill tick times (`built.pillTicks.times`) when the chart has a pill: ticks reading like the focused date hide with it. */
   readonly pillTicks?: readonly number[];
-  /** The rolling ticker's rows (`pillLayoutOf(built.pillTicks.times)`): `times[i]` is label `i`. */
-  readonly pillLayout?: PillLayout | null;
 }
 
 const HOVER_ATTR = "data-bkm-hover";
@@ -64,7 +61,6 @@ export function useHoverHostSync(hostRef: RefObject<HTMLElement | null>): HoverH
         applied.current = null;
         clearAttribute(el, HOVER_ATTR);
         clearAttribute(el, "data-bkm-plf");
-        writePillRollIn(el, null, -1);
         if (!el.hasAttribute(DRAG_ATTR)) {
           clearAttribute(el, SETTLE_ATTR);
         }
@@ -112,7 +108,6 @@ export function useHoverHostSync(hostRef: RefObject<HTMLElement | null>): HoverH
         springBand(el, left, right, !el.hasAttribute(HOVER_ATTR));
       }
       if (!el.hasAttribute(HOVER_ATTR)) {
-        writePillRollIn(el, g.pillLayout, lo);
         raiseAttribute(el, HOVER_ATTR);
       }
     },

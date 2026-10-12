@@ -1,7 +1,7 @@
 import "../styles.css";
 import { erase } from "../kit/erased-types";
 import { writePresence } from "../kit/host-write";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { useDragSelect } from "../kit/cartesian/drag-select";
 import type { DragGeom } from "../kit/cartesian/drag-select";
@@ -11,7 +11,8 @@ import { RendererChart, sameCategoryTarget } from "../kit/tooltip/tooltip-leaf";
 import { motion } from "@tanstack/charts/motion";
 import type { ChartPoint } from "@tanstack/charts";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { pillLayoutOf, syncPillHost } from "../kit/cartesian/date-pill";
+import { syncPillHost } from "../kit/cartesian/date-pill";
+import { HoverOverlay, overlayPlotOf } from "../kit/cartesian/hover-overlay";
 import { HighlightBandClip } from "../kit/cartesian/band-clip";
 import { gridAttrsOf, hasHighlight } from "../kit/cartesian/definition";
 import { createPlotStore } from "../kit/cartesian/plot-size";
@@ -119,6 +120,14 @@ export const ComposedChart = ({
   );
 
   const styleRef = useRef<HTMLStyleElement | null>(null);
+  // The hover indicator (crosshair, dots, date pill) is an element we own, appended to the host and moved imperatively (kit/cartesian/hover-overlay.ts).
+  const overlayRef = useRef<HoverOverlay | null>(null);
+  overlayRef.current ??= new HoverOverlay();
+  const overlay = overlayRef.current;
+  useLayoutEffect(() => {
+    containerRef.current?.append(overlay.root);
+    return () => { overlay.root.remove(); };
+  }, [overlay]);
   const { geom: hostGeom, sync: syncHost, drag: dragHost, press: pressHost } = useHoverHostSync(containerRef);
   // bklit's drag selection (kit/cartesian/drag-select.ts): the press hides the tooltip and bar fade, the drag dims the series (host attributes only).
   const dragGeom = useRef<DragGeom>({ left: 0, top: 0, innerWidth: 0, innerHeight: 0 });
@@ -127,8 +136,9 @@ export const ComposedChart = ({
   publishRef.current = (snapshot) => {
     const { built, size } = snapshot;
     plot.set(snapshot);
+    overlay.update(built.overlay, overlayPlotOf(snapshot), margin);
     const xStart = built.domains.x[0].getTime();
-    hostGeom.current = { times: built.hover.times, left: margin.left, xStart, xSpan: built.domains.x[1].getTime() - xStart, innerWidth: size.innerWidth, signs: built.hover.plSigns, pillLayout: built.pillTicks.active ? pillLayoutOf(built.pillTicks.times) : null };
+    hostGeom.current = { times: built.hover.times, left: margin.left, xStart, xSpan: built.domains.x[1].getTime() - xStart, innerWidth: size.innerWidth, signs: built.hover.plSigns };
     dragGeom.current = { left: margin.left, top: margin.top, innerWidth: size.innerWidth, innerHeight: Math.max(0, size.innerHeight) };
     const sheet = styleRef.current;
     if (sheet) {
@@ -174,17 +184,18 @@ export const ComposedChart = ({
       const time = point ? point.xValue.getTime() : null;
       const index = time === null ? -1 : timesRef.current.indexOf(time);
       focusStore.set(index < 0 ? null : { row: rowsRef.current[index], index });
+      overlay.focus(index < 0 ? null : time, index < 0 ? null : rowsRef.current[index]);
       const host = containerRef.current;
       const snapshot = plot.get();
       if (host && snapshot) {
         const { built, size } = snapshot;
         const xSpanMs = built.domains.x[1].getTime() - built.domains.x[0].getTime();
-        syncPillHost(host, built.pillTicks.times, xSpanMs, size.innerWidth, index < 0 ? null : time, index);
+        syncPillHost(host, built.pillTicks.times, xSpanMs, size.innerWidth, index < 0 ? null : time);
         syncHost(index < 0 ? null : time);
         writePresence(host, "data-bkm-bi", index >= 0);
       }
     },
-    [focusStore, plot, syncHost, holdFocus],
+    [focusStore, plot, syncHost, holdFocus, overlay],
   );
   const tooltipRef = useRef(tooltipOptions);
   tooltipRef.current = tooltipOptions;

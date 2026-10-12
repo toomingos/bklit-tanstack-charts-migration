@@ -25,7 +25,7 @@ import { useSkeletonData } from "./loading-data";
 import { LoadingSweepOverlays } from "./loading-sweep-overlays";
 import { useSanitizedId } from "../use-sanitized-id";
 import { useStaticChartPreview } from "./chart-config";
-import { pillLayoutOf } from "./date-pill";
+import { HoverOverlay, overlayPlotOf } from "./hover-overlay";
 import { FocusLayer, useFocusStore } from "./focus-layer";
 import { erase } from "../erased-types";
 import type { AnyPoint } from "../erased-types";
@@ -120,6 +120,10 @@ export function CartesianChart(props: Readonly<CartesianChartProps>): ReactEleme
   // Keyboard-held focus survives a pointer pass (kit/keyboard-hold.ts); the hook is armed below, after the interaction handle exists.
   const holdFocusRef = useRef<((point: AnyPoint) => void) | null>(null);
   const rowIndexRef = useRef(new Map<Row, number>());
+  // The hover indicator (crosshair, dots, date pill) is an element we own, appended to the host and moved imperatively (hover-overlay.ts).
+  const overlayRef = useRef<HoverOverlay | null>(null);
+  overlayRef.current ??= new HoverOverlay();
+  const overlay = overlayRef.current;
   const onFocusChange = useCallback(
     (point: { xValue: unknown; datum: unknown; datumIndex: number } | null) => {
       holdFocusRef.current?.(erase(point));
@@ -129,9 +133,10 @@ export function CartesianChart(props: Readonly<CartesianChartProps>): ReactEleme
       // A decimated chart's datumIndex counts the drawn rows; the context indexes `data`.
       focusStore.set(point && row && time !== null ? { row, index: rowIndexRef.current.get(row) ?? point.datumIndex, time } : null);
       syncHost(time);
+      overlay.focus(time, row ?? null);
       onFocusChangeProp?.(row ?? null);
     },
-    [focusStore, onFocusChangeProp, syncHost],
+    [focusStore, onFocusChangeProp, syncHost, overlay],
   );
   // bklit's drag selection (use-chart-interaction, kit/cartesian/drag-select.ts): raw plot-space pixels, not snapped to data.
   const [selection, setSelection] = useState<{ startX: number; endX: number } | null>(null);
@@ -183,9 +188,10 @@ export function CartesianChart(props: Readonly<CartesianChartProps>): ReactEleme
   publishRef.current = (snapshot) => {
     const { built, size } = snapshot;
     plot.set(snapshot);
+    overlay.update(built.overlay, overlayPlotOf(snapshot), resolvedMargin);
     yTweenRef.current = yDomainsTween(built.domains.y, built.targetY);
     const xStart = built.domains.x[0].getTime();
-    hostGeom.current = { times: built.hover.times, left: resolvedMargin.left, xStart, xSpan: built.domains.x[1].getTime() - xStart, innerWidth: size.innerWidth, signs: built.hover.plSigns, hasBand: built.hover.highlights.length > 0 || built.hover.segmentLeft !== null, pillTicks: built.pillTicks.active ? built.pillTicks.times : undefined, pillLayout: built.pillTicks.active ? pillLayoutOf(built.pillTicks.times) : null };
+    hostGeom.current = { times: built.hover.times, left: resolvedMargin.left, xStart, xSpan: built.domains.x[1].getTime() - xStart, innerWidth: size.innerWidth, signs: built.hover.plSigns, hasBand: built.hover.highlights.length > 0 || built.hover.segmentLeft !== null, pillTicks: built.pillTicks.active ? built.pillTicks.times : undefined };
     dragGeom.current = { left: resolvedMargin.left, top: resolvedMargin.top, innerWidth: size.innerWidth, innerHeight: Math.max(0, size.innerHeight) };
     writeHostRef.current(snapshot);
   };
@@ -204,6 +210,10 @@ export function CartesianChart(props: Readonly<CartesianChartProps>): ReactEleme
   const brushStart = brushVars?.shownStart;
   const brushEnd = brushVars?.shownEnd;
   const brushBlur = brushVars?.blurPx;
+  useLayoutEffect(() => {
+    containerRef.current?.append(overlay.root);
+    return () => { overlay.root.remove(); };
+  }, [overlay]);
   useLayoutEffect(() => {
     const snapshot = plot.get();
     if (snapshot) { writeHostRef.current(snapshot); }

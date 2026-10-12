@@ -1,32 +1,15 @@
-// bklit's dark date pill under the crosshair, fully native: one focus-guide mark whose resolver emits the capsule (box, clipped month and
-// day stacks) at the focused x, so hovering never re-resolves the definition. Shared by every time-x chart.
+// Date-pill support shared by every time-x chart: the measured pill layout, the tick-blanking CSS under the pill, host sync, and the focus-guide helpers
+// live-line and segment marks still use. The pill itself is drawn by hover-overlay.ts.
 import { createMark } from "@tanstack/charts";
-import type { ChartBounds, ChartGradient, ChartMotionContext, ChartMotionDefinition, ResolvedScale, SceneNode } from "@tanstack/charts";
+import type { ChartBounds, ChartGradient, ChartMotionDefinition, ResolvedScale, SceneNode } from "@tanstack/charts";
 import { erase } from "../erased-types";
-import { REST_PX } from "../motion/spring-curve";
-import { DATE_PILL_SPRING } from "../motion/springs";
 import type { AnyMark } from "../erased-types";
 import { shortDateFmt } from "../format";
-import type { guideMotion } from "../motion/guide-motion";
 import { fontContext } from "../text-width";
-import { X_TICK_PADDING } from "../theme";
 import { typedAttr } from "../css-hooks";
 import { CROSSHAIR_CLASS, NOT_MOTION, keyStarts } from "../renderer-dom";
 import { clearAttribute, clearVar, raiseAttribute, writeVar } from "../host-write";
 
-interface DatePillInput<TDatum> {
-  readonly rows: Iterable<TDatum>;
-  readonly id?: string;
-  readonly x: (d: TDatum) => Date;
-  readonly y: (d: TDatum) => number;
-  readonly key: (d: TDatum) => number;
-  readonly yScale?: string;
-  /** Pill centre below the plot bottom (px). bklit anchors the pill 4px above the container bottom, so charts pass `margin.bottom - 19`. */
-  readonly offset?: number;
-  readonly motion: GuideMotion;
-}
-
-type GuideMotion = ReturnType<typeof guideMotion>;
 type Scales = Readonly<Record<string, ResolvedScale>>;
 type CentreOf = (scales: Scales) => ((xValue: unknown) => number) | undefined;
 
@@ -79,10 +62,6 @@ export function pillLayout(labels: readonly string[]): PillLayout | null {
   }
   return { width: Math.round((32 + month + 4 + day) * 10) / 10, month: round2(-2 - day / 2), day: round2(2 + month / 2), months, monthOf, days };
 }
-
-const PILL_ROW = 24;
-/** bklit's date ticker rolls with useSpring (date-ticker.tsx:81-82), see DATE_PILL_SPRING. */
-const PILL_ROLL_SPRING = { type: "spring", ...DATE_PILL_SPRING, restSpeed: REST_PX.speed, restDelta: REST_PX.delta } as const;
 
 /** A focus-guide-only mark: `node` builds the guide's scene node at the focused x (`centre` swaps in a scale-derived x, e.g. a bar band's centre),
  * so hover never re-resolves the definition and the node glides with the guide motion. */
@@ -137,128 +116,6 @@ export function guideMark(options: {
   );
 }
 
-/** bklit's 32px capsule (16px side padding, 14px text) straddling the plot's bottom edge, one focus-guide mark. A measured `layout` gives the rolling ticker: static 24px rows
- * in a 24px clip window, translateY sprung by the guide motion (CSS roll-in `bkm-roll-*`); without one it shows the whole date. `offset` is the pill centre below the plot bottom + 0.2px. */
-export function pillMark(options: {
-  readonly id: string;
-  readonly layout: PillLayout | null;
-  readonly offset: number;
-  readonly motion: GuideMotion;
-  readonly yScale?: string;
-  /** Vertical text shift inside the window (px). */
-  readonly textDy?: number;
-  /** Text of the compact pill for the focused x value. */
-  readonly format?: (value: unknown) => string;
-  /** Index of the focused x value in the layout's label list (the rolling stacks travel there). Default 0. */
-  readonly indexOf?: (xValue: unknown) => number;
-  /** Pill x for a focused x value, from the chart scales (bklit centres a bar pill on the category band, not on the nearest bar). Default: the focus x. */
-  readonly centre?: CentreOf;
-}): AnyMark {
-  const { id, layout, offset, textDy = 1 } = options;
-  // The stacks roll with bklit's ticker spring (400/35); everything else in the pill glides with the chart's guide motion.
-  const motion = (context: ChartMotionContext<never>): ReturnType<GuideMotion> =>
-    context.phase !== "enter" && /:pill-[md]$/u.test(context.key) ? { transition: PILL_ROLL_SPRING } : options.motion(context);
-  const yScale = options.yScale ?? "y";
-  const format = options.format ?? ((value: unknown): string => (value instanceof Date ? shortDateFmt.format(value) : String(value)));
-  const style = { fill: "var(--chart-date-pill-background)" };
-  const text = { fill: "var(--chart-date-pill-foreground)", fillOpacity: 1 };
-  const label = (key: string, value: string, x: number, y: number): SceneNode => ({
-    kind: "label" as const,
-    key,
-    x,
-    y,
-    text: value,
-    anchor: "middle" as const,
-    baseline: "middle" as const,
-    fontSize: 14,
-    fontWeight: 500,
-    style: text,
-  });
-  // The stack's translateY is the roll: the guide motion springs it between rows (no CSS vars, no host restyle).
-  const stack = (prefix: string, values: readonly string[], x: number, row: number): SceneNode => ({
-    kind: "group" as const,
-    key: `${id}:${prefix}`,
-    className: `bkm-${prefix}`,
-    translateY: -row * PILL_ROW,
-    children: values.map((value, k) => label(`${id}:${prefix}:${k}`, value, x, k * PILL_ROW + textDy)),
-  });
-  const build = (x: number, y: number, xValue: unknown): SceneNode => {
-    if (!layout) {
-      const width = Math.round(((measurePill(format(xValue)) ?? 60) + 32) * 10) / 10;
-      return {
-        kind: "group" as const,
-        key: id,
-        className: CROSSHAIR_CLASS,
-        ariaHidden: true,
-        translateX: x,
-        translateY: y,
-        children: [
-          { kind: "rect" as const, key: `${id}:pill-box`, className: "bkm-pill-box", x: -width / 2, y: -16, width, height: 32, radius: 16, style },
-          label(`${id}:pill-text`, format(xValue), 0, textDy),
-        ],
-      };
-    }
-    const hasDay = layout.days.some((d) => d !== "");
-    const rawIndex = Math.round(options.indexOf?.(xValue) ?? 0);
-    const index = Math.max(0, Math.min(layout.days.length - 1, rawIndex));
-    return {
-      kind: "group" as const,
-      key: id,
-      className: CROSSHAIR_CLASS,
-      ariaHidden: true,
-      translateX: x,
-      translateY: y,
-      children: [
-        { kind: "rect" as const, key: `${id}:pill-box`, className: "bkm-pill-box", x: -layout.width / 2, y: -16, width: layout.width, height: 32, radius: 16, style },
-        {
-          kind: "group" as const,
-          key: `${id}:pill-window`,
-          className: "bkm-pill-window",
-          clip: { x: -layout.width / 2, y: -12, width: layout.width, height: 24 },
-          children: [stack("pill-m", layout.months, layout.month ?? 0, layout.monthOf[index] ?? 0), ...(hasDay ? [stack("pill-d", layout.days, layout.day ?? 0, index)] : [])],
-        },
-      ],
-    };
-  };
-  return guideMark({ id, motion, yScale, centre: options.centre, node: (x, chart, xValue) => build(x, chart.y + chart.height + offset - 0.2, xValue) });
-}
-
-/** A focused-point dot as a focus-guide-only mark (bklit's TooltipDot / active marker): `valueAt` gives the series value at the focused x,
- * placed with the mark's y scale, so a hover only reconciles the guide fragment. */
-export function dotGuideMark(options: {
-  readonly id: string;
-  readonly motion: ChartMotionDefinition<never>;
-  readonly yScale?: string;
-  readonly valueAt: (xValue: unknown) => number | undefined;
-  readonly marker: { readonly radius: number; readonly fill: string; readonly stroke: string; readonly strokeWidth: number };
-}): AnyMark {
-  const { id, valueAt, marker } = options;
-  const yScale = options.yScale ?? "y";
-  const style = { fill: marker.fill, fillOpacity: 1, stroke: marker.stroke, strokeOpacity: 1, strokeWidth: marker.strokeWidth };
-  return guideMark({
-    id,
-    motion: options.motion,
-    yScale,
-    node: (x, _chart, xValue, scales) => {
-      const value = valueAt(xValue);
-      const y = value === undefined ? Number.NaN : scales[yScale]?.map(value);
-      if (!Number.isFinite(y)) {
-        return undefined;
-      }
-      // The guide motion glides a group's translate (a dot's own cx/cy would snap).
-      return {
-        kind: "group" as const,
-        key: id,
-        className: CROSSHAIR_CLASS,
-        ariaHidden: true,
-        translateX: x,
-        translateY: y,
-        children: [{ kind: "dot" as const, key: `${id}:marker`, x: 0, y: 0, radius: marker.radius, style }],
-      };
-    },
-  });
-}
-
 /** bklit's TooltipIndicator for time charts: a `width`-px rect filled with the vertical fade gradient (`paint` is its scoped url; focus-guide nodes are not paint-resolved).
  * A native crosshair rule is a zero-width line, which an objectBoundingBox gradient cannot paint; a rect antialiases like bklit's. */
 export function crosshairGradient(id: string, color: string): ChartGradient {
@@ -282,34 +139,6 @@ export function crosshairRuleMark(options: { readonly id: string; readonly paint
       children: [{ kind: "rect" as const, key: `${id}:rule`, x: -width / 2, y: chart.y, width, height: chart.height, style: { fill: paint } }],
     }),
   });
-}
-
-/** Kit-facing wrapper: the pill of a time-x chart (`rows` / accessors are unused now that the mark reads the focus state). */
-export function datePillGuides<TDatum>(input: DatePillInput<TDatum>, layout: PillLayout | null): AnyMark[] {
-  const labelIndex = new Map<number, number>();
-  let n = 0;
-  for (const row of input.rows) {
-    labelIndex.set(input.key(row), n);
-    n += 1;
-  }
-  const indexOf = (value: unknown): number => labelIndex.get(value instanceof Date ? value.getTime() : Number(value)) ?? 0;
-  return [pillMark({ id: input.id ?? "date-pill", layout, offset: input.offset ?? 6 + X_TICK_PADDING, motion: input.motion, yScale: input.yScale, indexOf })];
-}
-
-/** Roll-in of bklit's per-hover ticker: the host carries the row each stack starts from (`--bkm-rm0` month run, `--bkm-rd0` label index) while a hover begins;
- * the styles.css keyframes start the stacks there and settle onto the guide translate. Written once on entry, never while moving. */
-export function writePillRollIn(host: HTMLElement, layout: PillLayout | null | undefined, index: number): void {
-  if (!layout || index < 0 || index >= layout.days.length) {
-    clearVar(host, "--bkm-rm0");
-    clearVar(host, "--bkm-rd0");
-    return;
-  }
-  const day = String(index);
-  // An unchanged label index keeps its vars: a rewrite would invalidate style for the whole host with nothing new to say.
-  if (host.style.getPropertyValue("--bkm-rd0") !== day) {
-    writeVar(host, "--bkm-rm0", String(layout.monthOf[index] ?? 0));
-    writeVar(host, "--bkm-rd0", day);
-  }
 }
 
 /** Host attribute / CSS var the static pill rule is keyed on (charts with their own hover attribute pass distinct names). */
@@ -353,12 +182,11 @@ const samePillFocus = (a: PillApplied | undefined, b: PillApplied): boolean =>
   a?.time === b.time && a.ticks === b.ticks && a.spanMs === b.spanMs && a.plotWidth === b.plotWidth;
 
 /** Writes the focus x (svg px, from the ticks' `pillGeometry`) and active attribute for `pillTickStaticCss` onto the host. */
-export function syncPillHost(host: HTMLElement, tickTimes: PillTicks, spanMs: number, plotWidth: number, time: number | null, index: number, names: PillHostNames = OWN_PILL_NAMES): void {
+export function syncPillHost(host: HTMLElement, tickTimes: PillTicks, spanMs: number, plotWidth: number, time: number | null, names: PillHostNames = OWN_PILL_NAMES): void {
   const geo = tickTimes.pillGeometry;
   if (time === null || !geo || spanMs <= 0) {
     pillApplied.delete(host);
     clearAttribute(host, names.active);
-    writePillRollIn(host, null, -1);
     return;
   }
   const next: PillApplied = { plotWidth, spanMs, ticks: tickTimes, time };
@@ -367,9 +195,6 @@ export function syncPillHost(host: HTMLElement, tickTimes: PillTicks, spanMs: nu
     return;
   }
   pillApplied.set(host, next);
-  if (!host.hasAttribute(names.active)) {
-    writePillRollIn(host, geo.pill, index);
-  }
   const px = (t: number): number => geo.plotLeft + ((t - geo.domainStart) / spanMs) * plotWidth;
   writeVar(host, names.fx, px(time).toFixed(2));
   writePillSameLabel(host, tickTimes, time, px, names);
@@ -405,15 +230,10 @@ export function pillTickStaticCss(
   ].join("");
 }
 
-/** The pill layout a definition measured from its date labels, or null (native text-sized box). */
-export const pillLayoutOf = (tickTimes: PillTicks): PillLayout | null => tickTimes.pillGeometry?.pill ?? null;
-
 /** Tick times optionally carrying the x layout (plot left in svg px, domain start ms) for the CSS distance ramp. */
-export type PillTicks = readonly number[] & { pillGeometry?: { plotLeft: number; domainStart: number; pill?: PillLayout | null } };
+export type PillTicks = readonly number[] & { pillGeometry?: { plotLeft: number; domainStart: number } };
 
-/** Attaches the x layout to the tick times (in place) so the pill's tick-opacity ramp can read it back with `pillLayoutOf`. */
+/** Attaches the x layout to the tick times (in place) so the pill's tick-opacity ramp can read it back. */
 export function withPillGeometry(times: number[], geometry: NonNullable<PillTicks["pillGeometry"]>): number[] & PillTicks {
   return Object.assign(times, { pillGeometry: geometry });
 }
-
-export { BKLIT_GUIDE_SPRING, guideMotion as pillGuideMotion } from "../motion/guide-motion";

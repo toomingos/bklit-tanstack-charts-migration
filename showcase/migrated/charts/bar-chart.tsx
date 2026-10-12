@@ -2,7 +2,7 @@
 // `defineChart` definition (bar); the `motion()` renderer plays the entrance.
 import { erase } from "./kit/erased-types";
 import "./styles.css";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { RendererChart, sameCategoryTarget } from "./kit/tooltip/tooltip-leaf";
@@ -25,7 +25,7 @@ import type { Row } from "./bar/model";
 import { BarTooltipBody } from "./bar/tooltip";
 import { bklitSurfaceStyle, DEFAULT_ANIMATION_MS, DEFAULT_MARGIN, parseAspectRatio } from "./kit/theme";
 import type { ChartMargin } from "./kit/theme";
-import { pillLayout, writePillRollIn } from "./kit/cartesian/date-pill";
+import { HoverOverlay } from "./kit/cartesian/hover-overlay";
 import { useChartLegendHover } from "./kit/legend/legend";
 import type { ChartPhase, ChartStatus, Transition } from "./kit/motion/phase";
 import type { FocusedRow } from "./kit/cartesian/context-bridge";
@@ -93,6 +93,14 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
   const fillHeight = style?.aspectRatio === "unset";
   // Hover lives in a ref store read only by <FocusLayer>: no re-render / rebuild of the chart on focus.
   const focusStore = useFocusStore<FocusedRow>();
+  // The hover indicator (rule, dots, date pill) is an element we own, appended to the host and moved imperatively (kit/cartesian/hover-overlay.ts).
+  const overlayRef = useRef<HoverOverlay | null>(null);
+  overlayRef.current ??= new HoverOverlay();
+  const overlay = overlayRef.current;
+  useLayoutEffect(() => {
+    containerRef.current?.append(overlay.root);
+    return () => { overlay.root.remove(); };
+  }, [overlay]);
   // Custom marks (squares, depth) only animate enter when they join a painted scene, so charts that have them
   // paint a seeded first build, then one `entered` flip builds the full definition and the update tweens it in.
   const [entered, setEntered] = useState(false);
@@ -141,13 +149,25 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
   const categoryOf = useCallback((d: Row): string => String(d[xDataKey]), [xDataKey]);
   const categories = useMemo(() => data.map(categoryOf), [data, categoryOf]);
   const { interaction: barInteraction, onRender: onBarRender } = useInteractionHandle();
+  // The overlay is rebuilt only when the model or the plot rect changes: a draw that moved nothing (an entrance frame) leaves it alone.
+  const placed = useRef<{ model: unknown; key: string }>({ key: "", model: null });
   const onRender = useCallback(
     (context: Parameters<typeof onBarRender>[0]): void => {
       onBarRender(context);
       const { chart } = context.scene;
       plotRef.current = { left: chart.x, top: chart.y, width: chart.width, height: chart.height };
+      const key = `${chart.x},${chart.y},${chart.width},${chart.height}`;
+      if (placed.current.model !== built.overlay || placed.current.key !== key) {
+        placed.current = { key, model: built.overlay };
+        const value = built.valueDomain;
+        overlay.update(
+          built.overlay,
+          { height: chart.y + chart.height + resolvedMargin.bottom, innerWidth: chart.width, innerHeight: chart.height, xDomain: [0, 1], yDomains: horizontal ? {} : { y: value } },
+          resolvedMargin,
+        );
+      }
     },
-    [onBarRender],
+    [onBarRender, built, overlay, resolvedMargin, horizontal],
   );
   // bklit `canInteract = isLoaded` (bar-chart.tsx:549), set by a setTimeout at animationDuration + staggerMs, staggerMs =
   // data.length > 1 ? animationDuration * 0.4 : 0 (bklit bar-chart.tsx:381-384): hover is inert until then. Armed on the ParentSize commit.
@@ -160,7 +180,6 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
   // so hovering never re-resolves the definition (a rebuild defers state paint ~150ms behind data motion).
   const hasSeries = series.length > 0;
   const scope = `[data-bkm-bar="${uid}"]`;
-  const pill = useMemo(() => (horizontal ? null : pillLayout(data.map((row) => String(row[xDataKey])))), [data, xDataKey, horizontal]);
   // Static stylesheet: depends on the definition only. The hovered category / legend series are host attributes.
   const { tickPositions } = built;
   // bklit bar-x-axis.tsx:91: the date pill hides ticks within tickerHalfWidth of the focused band centre.
@@ -184,7 +203,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
     // Typed attr() is Chromium-only (133+): under `@supports`, other browsers keep the native rx (ry follows it).
     // The `bars:` key selector has no documented hook (barY takes no className): gap #36; the scalar rect radius is emitted as `rx` only: gap #25.
     const corners = typedAttr(`${scope} rect${keyStarts("bars:")}[rx]{rx:${radius};ry:${radius}}`);
-    return `${scope}[data-bkm-status="loading"] .ts-chart-host{pointer-events:none}${readyGateCss(scope, true)}${focusEmptyHiddenCss(scope)}${dim}${corners}`;
+    return `${scope}[data-bkm-status="loading"] .ts-chart-host{pointer-events:none}${readyGateCss(scope, true)}${scope}:not([data-bkm-ready]) .bkm-hov{visibility:hidden}${focusEmptyHiddenCss(scope)}${dim}${corners}`;
   }, [scope, built.hover, tickPositions, hasSeries, horizontal, tickerHalfWidth]);
   // The effect re-runs on a status flip (bklit bar-chart.tsx:372-386): loading holds the skeleton (no reveal, no interaction, the host
   // is pointer-events:none below), the flip to ready restarts the reveal and the timer.
@@ -209,13 +228,13 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
       applied = index;
       if (f === null) {
         clearAttribute(host, HOVER_ON_ATTR);
-        writePillRollIn(host, null, -1);
+        overlay.focus(null, null);
         writeHoverIndex(host, null);
         clearVar(host, FOCUS_X_VAR);
         return;
       }
+      overlay.focus(index, f.row);
       if (!host.hasAttribute(HOVER_ON_ATTR)) {
-        writePillRollIn(host, pill, index);
         raiseAttribute(host, HOVER_ON_ATTR);
       }
       writeHoverIndex(host, index >= MAX_INDEX ? null : index);
@@ -227,7 +246,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
     };
     apply();
     return focusStore.subscribe(apply);
-  }, [focusStore, pill, horizontal, categories, barGap, resolvedMargin.left]);
+  }, [focusStore, overlay, horizontal, categories, barGap, resolvedMargin.left]);
   // Keyboard-held focus survives a pointer pass (kit/keyboard-hold.ts).
   const holdFocus = useKeyboardFocusHold(containerRef, () => barInteraction.current);
   const onFocusChange = useCallback(

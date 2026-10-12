@@ -188,7 +188,8 @@ const RingChart = ({
     });
   }, [data, configByIndex, baseInnerRadius, strokeWidth, ringGap, startAngle, endAngle, getColor]);
 
-  useHostHoverAttr(hover.source, containerRef, !geometryScrubbing, size < MIN_RING_SIZE_PX, MAX_INDEX, springRings);
+  const ringSprings = useMemo(() => springRings(data.length), [data.length]);
+  useHostHoverAttr(hover.source, containerRef, !geometryScrubbing, size < MIN_RING_SIZE_PX, MAX_INDEX, ringSprings);
   // The first definition's progress layer owns the entrance sweep; a rebuilt definition (resize, data) snaps.
   const sweepClaim = useRef<object | null>(null);
   const definition = useMemo(

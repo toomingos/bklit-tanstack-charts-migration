@@ -14,7 +14,8 @@ import { erase } from "../kit/erased-types";
 import { bklitYDomain } from "../kit/cartesian/definition";
 import { propsFor } from "../kit/read-children";
 import { isString } from "../kit/guards";
-import { BKLIT_GUIDE_SPRING, crosshairGradient, crosshairRuleMark, pillGuideMotion, pillLayout, pillMark } from "../kit/cartesian/date-pill";
+import { pillLayout } from "../kit/cartesian/date-pill";
+import type { HoverOverlayModel } from "../kit/cartesian/hover-overlay";
 import { userGradients } from "../kit/gradients";
 import type { ChildTable } from "../kit/read-children";
 import { gridHostAttrs, gridLineStyle, gridRowGuides } from "../kit/cartesian/grid-guides";
@@ -28,7 +29,7 @@ import type { EnterTiming } from "./enter-timing";
 import { buildBarData, DEFAULT_GROUP_GAP, FADED_OPACITY } from "./model";
 import type { BarDatum, BarSeries, Row } from "./model";
 import type { BarDepthProviderProps, BarXAxisProps, BarYAxisProps } from "./carriers";
-import { bandCentre, barDotsGuide, barEndCentre, buildExtraMarks } from "./marks";
+import { barEndValues, barOverlayDots, buildExtraMarks, memoBand } from "./marks";
 import type { RingDots } from "./marks";
 import { barFocusStrategy } from "./focus";
 import type { PlotRect } from "./focus";
@@ -61,9 +62,7 @@ export interface BarInput {
   readonly plot?: () => PlotRect;
 }
 
-// bklit crosshair/pill/dots spring (CROSSHAIR_SPRING); first appearance is instant.
 const GUIDE_ROLES: ReadonlySet<string> = new Set(["axis", "axis-label", "grid", "tick", "tick-label"]);
-const GUIDE_MOTION = pillGuideMotion(BKLIT_GUIDE_SPRING);
 const CROSSHAIR_COLOR = "var(--chart-crosshair)";
 
 type Scales = Readonly<Record<string, ResolvedScale>>;
@@ -116,6 +115,8 @@ function gapBand(gap: number): () => ScaleBand<string> {
 export interface BarDefinition {
   readonly definition: ChartDefinition<BarDatum, string, number>;
   readonly tooltipEnabled: boolean;
+  /** The hover indicator (null without a Tooltip), placed by the host's HoverOverlay. */
+  readonly overlay: HoverOverlayModel | null;
   /** Resolved value-axis domain (y when vertical, x when horizontal). */
   readonly valueDomain: readonly [number, number];
   /** Hover dim targets, rendered as focus-keyed CSS by `barHoverCss`. */
@@ -226,23 +227,35 @@ function ringOf(tip: BarTooltipProps | undefined, seriesCount: number, squareGro
   return { fraction: tip.dotRadiusFraction ?? 0.25, scale: tip.dotScale ?? 1, size: tip.dotSize ?? 5, slotGap: squareGroupGap ?? (seriesCount > 1 ? 4 : 0), strokeWidth: tip.dotStrokeWidth ?? 2, color };
 }
 
-function tooltipGuideMarks(input: BarInput, datums: readonly BarDatum[], categories: readonly string[], groupGap: number, tip: BarTooltipProps | undefined): BarMarkList {
-  const { horizontal, stacked, stackGap, uid, series } = input;
-  const paint = `url(#${uid}-crosshair)`;
-  const showRule = tip?.showCrosshair !== false;
+/** The hover indicator for the HoverOverlay the host owns (kit/cartesian/hover-overlay.ts): the rule, and for vertical bars the date pill and a dot on every bar end. Keys are category indexes. */
+function tooltipOverlay(input: BarInput, datums: readonly BarDatum[], categories: readonly string[], groupGap: number, domain: readonly [number, number], tip: BarTooltipProps | undefined): HoverOverlayModel {
+  const { horizontal, stacked, stackGap, series } = input;
+  const crosshair = tip?.showCrosshair !== false ? { color: CROSSHAIR_COLOR, dash: undefined, width: 1 } : null;
   if (horizontal) {
-    return showRule ? [crosshairRuleMark({ id: "bar-rule", paint, width: 1, motion: GUIDE_MOTION, by: "y", centre: barEndCentre(datums, stacked) })] : [];
+    const ends = barEndValues(datums, stacked);
+    return {
+      crosshair,
+      dots: [],
+      indexOf: (index) => index,
+      pill: null,
+      xOf: (index, plot) => (((ends.get(categories[index] ?? "") ?? Number.NaN) - domain[0]) / (domain[1] - domain[0] || 1)) * plot.innerWidth,
+    };
   }
   const squares = new Map(
     series.flatMap((s) =>
       s.squares ? [[s.key, { gap: s.squares.squareGap ?? 3, fit: s.squares.squareFit ?? false, groupGap: s.squares.groupGap ?? 4 }] as const] : [],
     ),
   );
-  return [
-    pillMark({ id: "bar-guide", layout: pillLayout(categories), indexOf: (value: unknown) => categories.indexOf(String(value)), offset: input.margin.bottom - 19.8, motion: GUIDE_MOTION, textDy: 0, centre: (scales: Scales) => bandCentre(scales) }),
-    ...(showRule ? [crosshairRuleMark({ id: "bar-rule", paint, width: 1, motion: GUIDE_MOTION, centre: (scales: Scales) => bandCentre(scales) })] : []),
-    ...(tip?.showDots !== false ? [barDotsGuide({ id: "bar-dots", datums, series, groupGap, stacked, stackGap, squares, ring: ringOf(tip, series.length, [...squares.values()].at(0)?.groupGap), motion: GUIDE_MOTION })] : []),
-  ];
+  const bandFor = memoBand(categories, input.barGap);
+  return {
+    crosshair,
+    dots: tip?.showDots !== false
+      ? barOverlayDots({ datums, series, categories, barGap: input.barGap, groupGap, stacked, stackGap, squares, ring: ringOf(tip, series.length, [...squares.values()].at(0)?.groupGap) })
+      : [],
+    indexOf: (index) => index,
+    pill: { labels: categories, layout: pillLayout(categories) },
+    xOf: (index, plot) => bandFor(plot.innerWidth).centre(categories[index] ?? ""),
+  };
 }
 
 // bklit bar-x-axis.tsx:91-93 / bar-y-axis.tsx:79-80: category labels thin to every ceil(n / maxLabels)-th unless showAllLabels.
@@ -368,21 +381,18 @@ export function buildBarDefinition(input: BarInput): BarDefinition {
   if (rowGuides) {
     marks.unshift(...rowGuides.marks);
   }
-  if (tooltipEnabled) {
-    marks.push(...tooltipGuideMarks(input, datums, categories, groupGap, tooltipProps));
-  }
+  const overlay = tooltipEnabled ? tooltipOverlay(input, datums, categories, groupGap, domain, tooltipProps) : null;
 
   const categoryAxis = horizontal ? yAxis : xAxis;
   const tickValues = thinnedLabels(categoryAxis, horizontal, categories);
 
   const categoryScale = categoryScaleSpec(input, categories, categoryAxis, tickValues);
   const valueScale = valueScaleSpec(input, domain, grid, yAxis, rowGuides);
-  const crosshair = showRule ? [crosshairGradient("crosshair", CROSSHAIR_COLOR)] : [];
   const spec = erase({
     marks,
     scales: { [horizontal ? "y" : "x"]: categoryScale, [horizontal ? "x" : "y"]: valueScale },
     margin: input.margin,
-    gradients: [...(depth?.gradients ?? []), ...crosshair, ...userGradients(table)],
+    gradients: [...(depth?.gradients ?? []), ...userGradients(table)],
     // Loading swaps instantly both ways (bklit renders the skeleton in place of the bars, no exit); the grow reveal plays on the flip back.
     motion: (context: ChartMotionContext<BarDatum>) => (loading || snapsOnUpdate(input, context) ? false : undefined),
     theme: bklitTheme,
@@ -395,5 +405,5 @@ export function buildBarDefinition(input: BarInput): BarDefinition {
   const definition: ChartDefinition<BarDatum, string, number> = erase(defineChart(spec));
 
   const tickPositions = categories.map((c, i) => (tickValues === undefined ? i : tickValues.indexOf(c)));
-  return { definition, tooltipEnabled, valueDomain: domain, hover, tickPositions, gridAttrs: gridHostAttrs(grid) };
+  return { definition, tooltipEnabled, overlay, valueDomain: domain, hover, tickPositions, gridAttrs: gridHostAttrs(grid) };
 }
