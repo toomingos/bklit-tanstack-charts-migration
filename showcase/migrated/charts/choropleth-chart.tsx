@@ -71,8 +71,8 @@ const ChoroplethChart = ({
   }), [center, data, enterMotion, featureConfig, geometry, graticuleConfig, holder, margin, patternPrefix, scaleProp, tooltipConfig, translateProp]);
 
   const renderTooltipBody = useTooltipBody(tooltipConfig);
-  const { size, hoverStore, renderRef, isHeld, handleRender, handleFocusChange, setHoveredFeatureIndex } = useFeatureHover({ geometry, holder, hostRef, transform, zoomEnabled });
-  wheel.bind({ hoverStore, isHeld, renderRef });
+  const { size, hoverStore, renderRef, handleRender, handleFocusChange, setHoveredFeatureIndex } = useFeatureHover({ geometry, holder, hostRef, transform, zoomEnabled });
+  wheel.bind({ hoverStore, renderRef });
 
   const contextValue = useMemo((): ChoroplethContextValue => {
     const bounds: ChartBounds = { height: size.height - margin.top - margin.bottom, width: size.width - margin.left - margin.right, x: margin.left, y: margin.top };

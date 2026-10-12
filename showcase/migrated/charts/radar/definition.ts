@@ -229,6 +229,7 @@ export const buildDefinition = (o: BuildOptions): DomChartDefinition<RadarRow, s
   return defineChart({
     focus: createRadarFocus(keys, shapes),
     focusRing: false,
+    keyboard: false,
     margin: o.margin,
     motion: (ctx: Readonly<ChartMotionContext<RadarRow>>) => (ctx.phase === "update" ? false : undefined),
     marks: [

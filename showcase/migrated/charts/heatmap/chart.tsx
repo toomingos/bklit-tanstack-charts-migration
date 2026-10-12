@@ -1,18 +1,16 @@
 // Bklit HeatmapChart on TanStack Charts: `cell`/`rect` marks on band scales, chart-level `color` scale, host-attribute hover/focus dimming (gap #31), `tooltip`, per-datum `motion` delay.
-// Grid arrows: host capture keydown + `interaction.setControlledFocus` (gap #34). Custom: Less/More legend, config carriers, pattern <defs> host (ResourceHost), loading label.
+// Custom: Less/More legend, config carriers, pattern <defs> host (ResourceHost), loading label.
 import "../styles.css";
 import "../heatmap.css";
 import { erase } from "../kit/erased-types";
 import { clearAttribute, writeAttribute } from "../kit/host-write";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { CSSProperties, FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, NamedExoticComponent, ReactElement, ReactNode, RefObject } from "react";
+import type { CSSProperties, NamedExoticComponent, ReactElement, ReactNode } from "react";
 import { useParentSizeMounted, useRevealClock } from "../kit/size/parent-size-arm";
 import { useFluidWidth } from "../kit/size/use-fluid-width";
 import { RendererChart } from "../kit/tooltip/tooltip-leaf";
-import { useKeyboardFocusHold } from "../kit/keyboard-hold";
 import { useInteractionHandle, useTapFocus } from "../kit/touch-focus";
 import type { InteractionHandle } from "../kit/touch-focus";
-import { isNumber } from "../kit/guards";
 import { LoadingLabel } from "../kit/loading-label";
 import { motion } from "@tanstack/charts/motion";
 import type { ChartPoint, ChartRendererRenderContext } from "@tanstack/charts";
@@ -158,39 +156,6 @@ const hoverVars = (params: Readonly<HoverCssParams>): CssVars => ({
 });
 
 type CellPoint = ChartPoint<Readonly<CellDatum>, number | string, string>;
-
-// 2-D grid steps (UPSTREAM-GAPS #34): ArrowLeft/Right move one week column on the same weekday, ArrowUp/Down one day in the column.
-const GRID_STEPS: ReadonlyMap<string, readonly [number, number]> = new Map([
-  ["ArrowDown", [0, 1]], ["ArrowLeft", [-1, 0]], ["ArrowRight", [1, 0]], ["ArrowUp", [0, -1]],
-]);
-
-/** Next focusable cell from `from` along `step`, skipping ghost/missing bins; the current cell when the edge is reached (clamp). */
-const gridTarget = (points: ReadonlyMap<string, CellPoint>, from: Readonly<CellDatum>, step: readonly [number, number], columnCount: number, rowCount: number): CellPoint | undefined => {
-  let column = from.column + step[0];
-  let row = from.row + step[1];
-  while (column >= 0 && column < columnCount && row >= 0 && row < rowCount) {
-    const point = points.get(`${column}-${row}`);
-    if (point !== undefined) {return point;}
-    column += step[0];
-    row += step[1];
-  }
-  return points.get(`${from.column}-${from.row}`);
-};
-
-const partialDatum = (point: CellPoint): Partial<CellDatum> | undefined => erase(point.datum);
-
-/** Focusable cell points of a scene by grid position (the `heatmap-cells-*` level groups; decorative and loading marks excluded). */
-const cellPointsByGrid = (points: readonly CellPoint[]): Map<string, CellPoint> => {
-  const byGrid = new Map<string, CellPoint>();
-  for (const point of points) {
-    // A point's datum is a CellDatum, partial while a cell is still being created.
-    const datum = partialDatum(point);
-    if (point.markId.startsWith("heatmap-cells-") && isNumber(datum?.column) && isNumber(datum.row)) {
-      byGrid.set(`${datum.column}-${datum.row}`, point);
-    }
-  }
-  return byGrid;
-};
 
 // The key `<column>-<row>:<reveal>` sits after the mark's `:` separator, so `:1-2:` never matches `:11-2:` or `:1-21:`.
 interface HoverAttrsProps {
@@ -441,41 +406,29 @@ interface TooltipContext {
 
 interface GridFocusInput {
   readonly captureInteraction: InteractionHandle["onRender"];
-  readonly columnCount: number;
-  readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly coordinator: HeatmapHoverCoordinator;
   readonly interaction: InteractionHandle["interaction"];
   readonly interactive: boolean;
-  readonly rowCount: number;
 }
 
 interface GridFocus {
   readonly getScene: () => HeatmapScene | null;
-  readonly handleBlur: (event: ReactFocusEvent<HTMLDivElement>) => void;
   readonly handleFocusChange: (point: CellPoint | null) => void;
-  readonly handleKeyDownCapture: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
   readonly handleRender: (context: ChartRendererRenderContext<never, never, never>) => void;
-  readonly releaseGridFocus: () => void;
 }
 
-/** Native focus plumbing: scene capture, hover/tooltip publishing, legend release, and the 2-D grid arrows. */
-const useGridFocus = ({ captureInteraction, columnCount, containerRef, coordinator, interaction, interactive, rowCount }: Readonly<GridFocusInput>): GridFocus => {
+/** Native focus plumbing: scene capture, hover/tooltip publishing and legend release. */
+const useGridFocus = ({ captureInteraction, coordinator, interaction, interactive }: Readonly<GridFocusInput>): GridFocus => {
   // The last rendered scene: grid arrows read its points, the focus strategy hit-tests it (see `focus.ts`).
   const sceneRef = useRef<HeatmapScene | null>(null);
   const getScene = useCallback((): HeatmapScene | null => sceneRef.current, []);
-  // Grid arrows run through the public controller: the scene's points come from `onRender`, the current cell from
-  // `onFocusChange` (pointer or keyboard, so hover→arrow continues from the hovered cell).
   const focusedRef = useRef<CellPoint | null>(null);
-  const gridRef = useRef<{ points: readonly CellPoint[] | null; byGrid: Map<string, CellPoint> }>({ byGrid: new Map(), points: null });
-  const gridFocusRef = useRef(false);
   const handleRender = useCallback((context: ChartRendererRenderContext<never, never, never>): void => {
     captureInteraction(context);
     sceneRef.current = context.scene;
   }, [captureInteraction]);
 
-  const holdFocus = useKeyboardFocusHold(containerRef, () => interaction.current);
   const handleFocusChange = useCallback((point: CellPoint | null): void => {
-    holdFocus(erase(point));
     focusedRef.current = point;
     if (!interactive) {return;}
     if (point === null) {
@@ -487,7 +440,7 @@ const useGridFocus = ({ captureInteraction, columnCount, containerRef, coordinat
     coordinator.setHoveredLegendLevel(null);
     coordinator.setHoveredCell({ column: datum.column, row: datum.row });
     coordinator.setTooltipData({ column: datum.column, count: datum.count, date: datum.date, row: datum.row, x: point.x, y: point.y });
-  }, [coordinator, holdFocus, interactive]);
+  }, [coordinator, interactive]);
 
   // bklit's legend enter clears the hovered cell and its tooltip (heatmap-legend.tsx handleLegendEnter). The cell is the renderer's focus (keyboard-held included), so a published
   // legend level releases it via the public controller and `handleFocusChange(null)` clears highlight and tooltip. Only the legend publishes a non-null level.
@@ -495,34 +448,7 @@ const useGridFocus = ({ captureInteraction, columnCount, containerRef, coordinat
     if (focusedRef.current !== null && coordinator.getHoveredLegendLevel() !== null) {interaction.current?.setControlledFocus(null);}
   }), [coordinator, interaction]);
 
-  // Capture phase on the host (an ancestor of the renderer's container): a grid arrow is handled here and stopped, so the
-  // renderer's 1-D keydown step never runs. Tab-in, Home/End and Enter keep the native `focus.navigation` path.
-  const handleKeyDownCapture = useCallback((event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    const step = GRID_STEPS.get(event.key);
-    const {current} = focusedRef;
-    const controller = interaction.current;
-    const scene = sceneRef.current;
-    const modified = event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
-    const blocked = modified || !interactive || step === undefined;
-    const missing = current === null || controller === null || scene === null;
-    if (blocked || missing) {return;}
-    if (gridRef.current.points !== scene.points) {gridRef.current = { byGrid: cellPointsByGrid(scene.points), points: scene.points };}
-    const target = gridTarget(gridRef.current.byGrid, current.datum, step, columnCount, rowCount);
-    if (target === undefined) {return;}
-    event.preventDefault();
-    event.stopPropagation();
-    gridFocusRef.current = true;
-    holdFocus.markKeyboard();
-    controller.setControlledFocus(erase(target));
-  }, [columnCount, holdFocus, interaction, interactive, rowCount]);
-  // Controlled focus is not keyboard-owned, so the renderer's focusout clear skips it: blur clears it here.
-  const handleBlur = useCallback((event: ReactFocusEvent<HTMLDivElement>): void => {
-    if (!gridFocusRef.current || (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) {return;}
-    gridFocusRef.current = false;
-    interaction.current?.setControlledFocus(null);
-  }, [interaction]);
-  const releaseGridFocus = useCallback((): void => { gridFocusRef.current = false; }, []);
-  return { getScene, handleBlur, handleFocusChange, handleKeyDownCapture, handleRender, releaseGridFocus };
+  return { getScene, handleFocusChange, handleRender };
 };
 
 interface ResourcesInput {
@@ -616,7 +542,7 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
   const revealClock = useRevealClock(sized);
   const backdate = useRef(true);
   const enterClock = useMemo((): HeatmapEnterClock => ({ at: null, origin: () => { const first = backdate.current; backdate.current = false; return first ? revealClock.mountedAt : null; } }), [revealEpoch, revealClock]);
-  const { getScene, handleBlur, handleFocusChange, handleKeyDownCapture, handleRender, releaseGridFocus } = useGridFocus({ captureInteraction, columnCount, containerRef, coordinator, interaction, interactive, rowCount });
+  const { getScene, handleFocusChange, handleRender } = useGridFocus({ captureInteraction, coordinator, interaction, interactive });
 
   const definition = useMemo(() => buildHeatmapDefinition({
     enterClock, getScene,
@@ -663,7 +589,7 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
   const innerStyle = useMemo((): CSSProperties => ({ ...SURFACE_STYLE, marginBottom: -gap / 2 }), [gap]);
 
   const surface = (
-    <div className={className} data-bkm-chart="heatmap" data-hm-id={idPrefix} data-slot="chart" ref={containerRef} style={surfaceStyle} onBlur={handleBlur} onKeyDownCapture={handleKeyDownCapture} onPointerMove={releaseGridFocus}>
+    <div className={className} data-bkm-chart="heatmap" data-hm-id={idPrefix} data-slot="chart" ref={containerRef} style={surfaceStyle}>
       {sized && isRenderable && cellsProps !== undefined ? (
         <HeatmapContext.Provider value={contextValue}>
           <div style={innerStyle}>
