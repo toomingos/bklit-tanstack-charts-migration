@@ -11,8 +11,6 @@ const HUB_GAP_PX = 2;
 // epsilon (d3-shape arc.js: `r1 > epsilon`, 1e-12), so a disc this small is not drawn and its radius tweens linearly like bklit's.
 const HUB_REST_RADIUS = 1e-6;
 
-/** A keyboard-focused hub (host `data-bk-hub` while a chart svg is `:focus-visible`; the hub is in its own layer svg) takes the chart's focus ring (--bkm-focus-ring, styles.css:219-226) as its outline. */
-export const HUB_FOCUS_CSS = "[data-bk-hub]:has(svg:focus-visible) .bk-sunburst-hub path{stroke:var(--bkm-focus-ring);stroke-width:2}";
 
 export interface HubDatum {
   readonly kind: "hub";
@@ -40,7 +38,7 @@ export const hubMark = (hubRadius: (radius: number) => number, fill: string): Po
     outerRadius: ({ radius }) => Math.max(hubRadius(radius) - HUB_GAP_PX, HUB_REST_RADIUS),
     startAngle: "startAngle",
     // bklit's centre has no hover or focus style (sunburst-center.tsx:36-49: cursor only). No `states` here: any mark state makes every focus
-    // change a scene update (mark-state.ts:107, motion.ts applyStateFocus); the keyboard ring is HUB_FOCUS_CSS instead.
+    // change a scene update (mark-state.ts:107, motion.ts applyStateFocus); the keyboard ring is in sunburst.css instead.
     stroke: sunburstCssVars.ring,
     strokeWidth: 1,
   });

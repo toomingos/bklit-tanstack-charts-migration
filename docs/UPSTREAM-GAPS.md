@@ -393,6 +393,15 @@ Drafts live in `docs/upstream-issues/` (local only).
 
 ---
 
+## 60. `motion({ initial })` animates no cartesian dots: a per-datum entrance needs a second render
+
+- **Needed:** bklit's scatter dots fade and unblur in from the very first frame, each delayed by its x (`series-markers.tsx`); the first draw must already show the entrance, with the final design in one TanStack render.
+- **1.1.0 behaviour:** on the initial render `animateSvg` builds tracks only for bars, cartesian path groups, radial groups and arcs; `createPresentationTracks` sets a point with no previous presentation straight to its target and pushes no track (`motion.ts:3273-3335`, `:288-300`). A keyed dot enters (opacity, per-datum `motion` timing) only as a new element of a later `update` reconcile (`reconcileMotionSvg`, `motion.ts:1855`).
+- **Workaround:** the first draw renders grid and axes, the layout-effect commit before paint adds the dots as new data (`scatter/definition.ts`, `revealed`); two renders, no frame wait. Rendering the dots in the first draw would paint the final state with no entrance.
+- **Proposal:** make `initial` enter dot (and keyed mark) elements through the same `timingFor({ phase: 'enter' })` path bars use (draft `docs/upstream-issues/scatter-initial-dot-enter.md`).
+
+---
+
 ## Retired numbers
 
 Not reused, so code and issue drafts keep their meaning.

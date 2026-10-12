@@ -125,6 +125,7 @@ export const createSectorLayer = (feed: SectorFeed, renderStart: { readonly curr
       const { arc } = geometry;
       if (state.cur === null || state.target === null) {
         const intro = introPending && state.isArea;
+        if (intro) { state.element.style.animationDelay = `${geometry.delayMs}ms`; }
         state.cur = intro ? seedArc(arc) : arc;
         state.target = arc;
         state.track = intro ? { delay: geometry.delayMs, duration: feed.sweepMs, ease: REVEAL_EASING, from: state.cur, intro: true, start: 0, to: arc } : null;
