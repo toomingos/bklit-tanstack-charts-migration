@@ -52,7 +52,11 @@ const groups: Group[] = [
     rows: [
       { label: "Render (settled − designed animation)", get: (s) => s.renderMs, scope: "card", unit: "ms", lower: true, hint: "probe mount → entrance end, minus the demo's designed entrance (entrance-budget.ts, same for both): floored at first paint: an entrance that ends early cannot make the chart render before it paints." },
       { label: "First paint", get: (s) => s.firstPaintMs, scope: "card", unit: "ms", lower: true, spread: (s) => runSpread(s.firstPaintRuns), hint: "probe mount → the frame showing the first svg/canvas content is presented (rAF + MessageChannel). Includes the shared demo chunk load." },
+      { label: "Chart paint (code ready → first paint)", get: (s) => s.chartPaintMs, scope: "card", unit: "ms", lower: true, hint: "first paint measured from this card's lazy import resolving: chart render, layout and paint without the code download. Both imports usually resolve together, so on one page the card rendered second also waits for the first; compare with ?only=." },
+      { label: "Code load (this card's import)", get: (s) => s.chunkMs, scope: "card", unit: "ms", lower: true, hint: "request → resolved for this card's lazy import (shared demo module + its own charts). Cached after the first load." },
       { label: "Settled (entrance end)", get: (s) => s.settledMs, scope: "card", unit: "ms", lower: true, spread: (s) => runSpread(s.settledRuns), hint: "no DOM mutation / finite animation in this card for 150ms (cap 5s, shown with +)" },
+      { label: "Main thread busy to first paint", get: (s) => s.paintBusyMs, scope: "window", unit: "ms", lower: true, hint: "needs ?loadbusy=1 (the load spin delays first paint ~5 ms). All task gaps > 1 ms (script, style, layout, paint of any origin) from probe mount to first paint. Production-valid, unlike the React rows. With both cards rendered the two loads overlap, so this includes the other card: compare with Render = one side (?only=)." },
+      { label: "Main thread busy to settled", get: (s) => s.loadBusyMs, scope: "window", unit: "ms", lower: true, hint: "the same, from probe mount to the end of the entrance (includes per-frame entrance animation work). Compare with ?only=." },
       { label: "Long tasks (load)", get: (s) => s.loadLongTasks, scope: "page", lower: true, hint: "both cards load in the same window, so this is the same page data for both" },
       { label: "Long task time (load)", get: (s) => s.loadLongTaskMs, scope: "page", unit: "ms", lower: true },
       { label: "LoAF blocking (load)", get: (s) => s.loadLoafBlockMs, scope: "page", unit: "ms", lower: true, hint: "Long Animation Frames blockingDuration sum" },
@@ -379,7 +383,7 @@ function LivePerfPanelBody({ chart }: { chart: string }) {
   const mounted = useMounted();
   const a = mounted ? window.__livePerf?.[`${chart}:bklit`] : undefined;
   const b = mounted ? window.__livePerf?.[`${chart}:migrated`] : undefined;
-  const ct = chunkTimes[chart];
+  const ct = chunkTimes[`${chart}:bklit`] ?? chunkTimes[`${chart}:migrated`];
   const chunk = ct?.end ? ct.end - ct.start : null;
   const selfSec = self.since ? (performance.now() - self.since) / 1000 : 0;
 

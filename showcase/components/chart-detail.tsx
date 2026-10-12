@@ -112,10 +112,11 @@ export function ChartDetailPage({ route }: { route: string }) {
     window.history.replaceState(null, "", query.size ? `${pathname}?${query}` : pathname);
   };
 
-  // Live Perf switches: `only` renders one side, `order=migrated` mounts the migrated chart first.
+  // Live Perf switches: `only` renders one side (`only=none`: no chart, the bench's control page for page and
+  // machine load), `order=migrated` mounts the migrated chart first.
   const only = params.get("only");
   const impls = (params.get("order") === "migrated" ? (["migrated", "bklit"] as const) : (["bklit", "migrated"] as const)).filter(
-    (i) => only !== "bklit" && only !== "migrated" || i === only,
+    (i) => (only !== "bklit" && only !== "migrated" && only !== "none") || i === only,
   );
 
   if (!info) {

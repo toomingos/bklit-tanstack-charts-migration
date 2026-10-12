@@ -40,6 +40,16 @@ export interface PerfSnapshot {
   settledRuns: number[];
   loadCommits: number;
   loadRenderMs: number;
+  /** whole-main-thread busy ms (task gaps > 1ms, any origin) from probe mount to first paint / to settled. Production-valid
+   * (no Profiler). Needs ?loadbusy=1. Page-wide: with both cards rendered it includes the other card's load, so compare with ?only=. */
+  paintBusyMs: number | null;
+  loadBusyMs: number | null;
+  /** this card's lazy import, request to resolved (first load only; cached imports resolve in ~0). */
+  chunkMs: number | null;
+  /** first paint measured from this card's import resolving: chart render + layout + paint, without the code download
+   * that firstPaintMs includes. On one page both imports usually resolve in the same task, so the card rendered second
+   * also waits for the first card's render (compare with ?only=). */
+  chartPaintMs: number | null;
   loadLongTasks: number;
   loadLongTaskMs: number;
   loadLoafBlockMs: number;
@@ -182,6 +192,13 @@ function cap(arr: unknown[], max: number) {
 
 /** `?spin=0` turns the whole-thread probe off so move latency can be compared with and without it. */
 export const SPIN_ON = typeof window === "undefined" || new URLSearchParams(window.location.search).get("spin") !== "0";
+/** `?probe=off` mounts the cards with no collector, observers or Profiler (only the mount mark), so the probe's own
+ * cost (MutationObserver records, getAnimations flushes, Profiler timing) can be measured from outside. */
+export const PROBE_ON = typeof window === "undefined" || new URLSearchParams(window.location.search).get("probe") !== "off";
+/** `?loadbusy=1`: spin the ping-pong during load too, for the "Main thread busy" load rows. Opt-in: measured on the prod
+ * build (bar, ?only=, 8 alternating rounds) the load spin delays the migrated card's first paint by ~5 ms (42.65 [36.6-45.8]
+ * vs 37.45 [33.4-42.2] with spin=0; bklit 42.95 vs 43.70, settled unchanged), so first paint must come from runs without it. */
+const LOAD_BUSY_ON = SPIN_ON && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("loadbusy") === "1";
 /** moves per busy-time slice (each slice gives one per-move sample for the median and spread) */
 const SLICE_MOVES = 10;
 /** gaps at or below this are scheduling jitter of the ping-pong itself, not work (idle control: 2.7ms busy in 1024ms) */
@@ -198,14 +215,16 @@ function spinTick() {
   const gap = now - spinLast;
   spinLast = now;
   const c = activeCard();
-  if (!c) {
+  let loading = false;
+  if (LOAD_BUSY_ON) for (const l of collectors) if (l.addLoadGap(now, gap)) loading = true;
+  if (!c && !loading) {
     spinOn = false;
     return;
   }
-  if (gap > SPIN_GAP_MS) c.addBusy(gap);
+  if (c && gap > SPIN_GAP_MS) c.addBusy(gap);
   spinChannel!.port2.postMessage(0);
 }
-/** Start the ping-pong if a card is hovered; it stops itself when no card is actively hovered. */
+/** Start the ping-pong if a card is loading or hovered; it stops itself when none is. */
 function ensureSpin() {
   if (!SPIN_ON || spinOn) return;
   spinOn = true;
@@ -481,7 +500,7 @@ export function getPageVitals(): PageVitals {
     heapMB: mem ? r1(mem.usedJSHeapSize / 1048576) : null,
   };
 }
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && PROBE_ON) {
   window.__pageVitals = getPageVitals;
   startObservers();
 }
@@ -502,13 +521,15 @@ function sumSpans(arr: Span[], from: number, to: number) {
   return { n, d, b, sc };
 }
 
-/* ---------------- chunk-load timing (per chart) ---------------- */
+/* ---------------- chunk-load timing (per card) ---------------- */
 
+/** Keyed `${chart}:${impl}`: each card's own lazy import (shared demo module + that side's charts), so the chart's own
+ * paint can be timed from its code being ready instead of from the probe mount. */
 export const chunkTimes: Record<string, { start: number; end: number | null }> = {};
-export function timedImport<T>(chart: string, loader: () => Promise<T>): () => Promise<T> {
+export function timedImport<T>(key: string, loader: () => Promise<T>): () => Promise<T> {
   return () => {
-    if (!chunkTimes[chart]) chunkTimes[chart] = { start: performance.now(), end: null };
-    const c = chunkTimes[chart];
+    if (!chunkTimes[key]) chunkTimes[key] = { start: performance.now(), end: null };
+    const c = chunkTimes[key];
     return loader().then((m) => {
       c.end = performance.now();
       return m;
@@ -677,8 +698,30 @@ export class Collector {
     return m ? m.usedJSHeapSize : null;
   })();
 
+  /** whole-thread gaps > SPIN_GAP_MS since mount while loading: [end, length, end, length, ...] */
+  private loadGaps: number[] = [];
+
   constructor(public chart: string, public impl: Impl) {
     this.key = `${chart}:${impl}`;
+    // mount mark at t0 for outside tools (bench2.js times load work from it, also with ?probe=off)
+    if (typeof performance !== "undefined" && performance.mark) performance.mark(`perf-probe:${this.key}`, { startTime: this.t0 });
+  }
+
+  /** Record a whole-thread gap while this card is loading; returns whether it still is. */
+  addLoadGap(now: number, gap: number) {
+    if (this.settled !== null || !this.el) return false;
+    if (gap > SPIN_GAP_MS && now > this.t0) this.loadGaps.push(now, gap);
+    return true;
+  }
+  /** busy ms of the recorded gaps overlapping [t0, end] */
+  private busyIn(end: number) {
+    let b = 0;
+    for (let i = 0; i < this.loadGaps.length; i += 2) {
+      const e = this.loadGaps[i];
+      const s = e - this.loadGaps[i + 1];
+      b += Math.max(0, Math.min(e, end) - Math.max(s, this.t0));
+    }
+    return b;
   }
 
   isSettled() {
@@ -714,6 +757,7 @@ export class Collector {
     this.el = el;
     collectors.add(this);
     installRafPatch();
+    if (LOAD_BUSY_ON) ensureSpin();
     if (window.__livePerf) delete window.__livePerf[this.key];
     // Charts that update forever (live line) never go DOM-quiet; for them only
     // finite animations already running at first paint count as "busy" afterwards.
@@ -1148,6 +1192,11 @@ export class Collector {
       settledRuns: [...(loadRuns.get(this.key)?.st ?? [])],
       loadCommits: this.loadCommits,
       loadRenderMs: r1(this.loadRender),
+      paintBusyMs: this.firstPaint === null || !LOAD_BUSY_ON ? null : r1(this.busyIn(this.t0 + this.firstPaint)),
+      loadBusyMs: this.settled === null || !LOAD_BUSY_ON ? null : r1(this.busyIn(this.t0 + this.settled)),
+      chunkMs: chunkTimes[this.key]?.end != null ? r1(chunkTimes[this.key].end! - chunkTimes[this.key].start) : null,
+      chartPaintMs:
+        this.firstPaint !== null && chunkTimes[this.key]?.end != null ? r1(Math.max(0, this.t0 + this.firstPaint - chunkTimes[this.key].end!)) : null,
       loadLongTasks: lt.n,
       loadLongTaskMs: r1(lt.d),
       loadLoafBlockMs: r1(lf.b),

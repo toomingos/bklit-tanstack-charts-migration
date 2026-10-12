@@ -93,7 +93,7 @@ function clientOnly(load: () => Promise<{ default: ComponentType<DemoProps> }>):
 function lazyDemo(chart: string, load: () => Promise<DemoModule>): Record<Impl, ComponentType<DemoProps>> {
   const make = (impl: Impl) =>
     clientOnly(
-      timedImport(chart, async () => {
+      timedImport(`${chart}:${impl}`, async () => {
         const [demo, charts] = await Promise.all([load(), loadCharts[impl](chart)]);
         const Demo = demo.default;
         return { default: (props: DemoProps) => <Demo {...props} charts={charts} /> };
