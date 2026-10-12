@@ -8,7 +8,6 @@ import type { ChoroplethFeature, ChoroplethFeatureProps } from "./types";
 
 const FEATURES_ID = "choropleth";
 const GRATICULE_ID = "choropleth-graticule";
-const HIGHLIGHT_ID = "choropleth-highlight";
 const DEFAULT_COLORS = ["var(--chart-scale-01)", "var(--chart-scale-02)", "var(--chart-scale-03)", "var(--chart-scale-04)", "var(--chart-scale-05)"];
 const REFERENCE_WIDTH = 630;
 const BASE_SCALE = 100;
@@ -65,5 +64,5 @@ const graticuleFeature = (step: [number, number] | undefined): ChoroplethFeature
   type: "Feature",
 });
 
-export { FEATURES_ID, featureKey, GRATICULE_ID, graticuleFeature, HIGHLIGHT_ID, makeProjection, resolveFill, scopePatterns };
+export { FEATURES_ID, featureKey, GRATICULE_ID, graticuleFeature, makeProjection, resolveFill, scopePatterns };
 export type { ProjectionOptions };
