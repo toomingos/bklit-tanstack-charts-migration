@@ -24,7 +24,6 @@ interface DefinitionInput {
   readonly translate: [number, number] | undefined;
   readonly holder: ProjectionHolder;
   readonly geometry: GeoGeometry;
-  readonly shown: boolean;
   readonly patternPrefix: string;
   readonly featureConfig: ChoroplethFeatureProps | undefined;
   readonly graticuleConfig: ChoroplethGraticuleProps | undefined;
@@ -34,10 +33,10 @@ interface DefinitionInput {
 
 /** The chart definition: features geoShape, optional graticule layer, the hovered-feature guide mark and the built-in tooltip. */
 export const createDefinition = (input: DefinitionInput): DomChartDefinition<ChoroplethFeature, number, number> => {
-  const { data, margin, center, scale, translate, holder, geometry, shown, patternPrefix, featureConfig, graticuleConfig, tooltipConfig, layerMotion } = input;
+  const { data, margin, center, scale, translate, holder, geometry, patternPrefix, featureConfig, graticuleConfig, tooltipConfig, layerMotion } = input;
   const projectionOptions: ProjectionOptions = { center, k: 1, scale, translate, tx: 0, ty: 0 };
   const projection = (context: { chart: ChartBounds }): GeoProjection => {
-    // The same chart area and options (the shown flip rebuilds the definition) keep the projection and its per-feature geometry.
+    // The same chart area and options keep the projection and its per-feature geometry.
     const { x, y, width, height } = context.chart;
     const key = [x, y, width, height, center.join(), scale, translate?.join()].join("|");
     if (holder.projection !== undefined && holder.projectionKey === key) {return holder.projection;}
@@ -56,13 +55,13 @@ export const createDefinition = (input: DefinitionInput): DomChartDefinition<Cho
     id: FEATURES_ID,
     key: featureKey,
     motion: layerMotion,
-    opacity: shown ? 1 : 0,
     projection,
     stroke,
     strokeWidth: featureConfig?.strokeWidth ?? 0.5,
   });
   const graticule = graticuleConfig
     ? [geoShape([graticuleFeature(graticuleConfig.step)], {
+        className: "bkm-choro-graticule",
         fill: "none",
         id: GRATICULE_ID,
         key: () => GRATICULE_ID,

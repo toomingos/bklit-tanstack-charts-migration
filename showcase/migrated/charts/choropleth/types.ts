@@ -1,4 +1,5 @@
 import type { Feature, FeatureCollection, Geometry } from "geojson";
+import type { ReadyStore } from "../kit/entrance/reveal-arm";
 import type { GeoPermissibleObjects } from "d3-geo";
 import type { CSSProperties, Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 import type { EnterTransition } from "../kit/motion/phase";
@@ -107,6 +108,8 @@ interface ChoroplethContextValue {
   readonly tooltipData: ChoroplethTooltipData | null;
   readonly setTooltipData: Dispatch<SetStateAction<ChoroplethTooltipData | null>>;
   readonly hoverStore?: HoverStore;
+  /** The isLoaded gate; `useChoropleth` subscribes so the flip re-renders its consumers only. */
+  readonly readyStore?: ReadyStore;
 }
 
 export type {
