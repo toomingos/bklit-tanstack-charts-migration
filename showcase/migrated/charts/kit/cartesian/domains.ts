@@ -1,5 +1,5 @@
 // Data windows and x / y domains of the cartesian definition (bklit's nice + 10% / 5% padding rules).
-import { scaleLinear } from "d3-scale";
+import { scaleLinear } from "../scales";
 import { DEFAULT_Y_AXIS_ID, toDate } from "./series";
 import type { ResolvedSeries, Row } from "./series";
 

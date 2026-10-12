@@ -2,7 +2,7 @@
 // the resolved domains and the native `onFocusChange` point, reading only the host's own box (ResizeObserver), like CartesianChart.
 import { useMemo, useRef } from "react";
 import type { RefObject } from "react";
-import { scaleLinear, scaleUtc } from "d3-scale";
+import { scaleLinear, scaleUtc } from "../scales";
 import type { ScaleLinear, ScaleTime } from "d3-scale";
 import type { ChartContextValue, LineConfig, Margin, ReferenceAreaConfig, TooltipData } from "./chart-context";
 import { tooltipSetter } from "./chart-context-focus";

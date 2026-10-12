@@ -1,5 +1,5 @@
 // The y scales of the cartesian definition: one per axis id, the primary one under `y`, the others under `y:<id>`.
-import { scaleLinear } from "d3-scale";
+import { scaleLinear } from "../scales";
 import type { ScaleLinear } from "d3-scale";
 import { DEFAULT_Y_AXIS_ID } from "./series";
 import { gridLineStyle } from "./grid-guides";

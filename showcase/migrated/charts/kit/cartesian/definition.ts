@@ -3,7 +3,7 @@
 import { defineChart } from "@tanstack/charts";
 import type { ChartDefinition, ChartTooltipInput } from "@tanstack/charts";
 import type { BrushXChange } from "@tanstack/charts/interaction/brush";
-import { scaleLinear, scaleTime } from "d3-scale";
+import { scaleLinear, scaleTime } from "../scales";
 import { REVEAL_EASING } from "../motion/easing";
 import { bklitTooltip } from "../tooltip/bklit-tooltip";
 import { tooltipBoxMotion } from "../tooltip/box-motion";

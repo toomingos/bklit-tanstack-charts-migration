@@ -4,7 +4,7 @@ import { erase } from "../kit/erased-types";
 import { areaY, defineChart, lineY } from "@tanstack/charts";
 import type { ChartDefinition, ChartGradient } from "@tanstack/charts";
 import { crosshair } from "@tanstack/charts/crosshair";
-import { scaleLinear, scaleUtc } from "d3-scale";
+import { scaleLinear, scaleUtc } from "../kit/scales";
 import { bklitTooltip } from "../kit/tooltip/bklit-tooltip";
 import { tooltipBoxMotion } from "../kit/tooltip/box-motion";
 import type { TooltipBoxMotionProps } from "../kit/tooltip/box-motion";

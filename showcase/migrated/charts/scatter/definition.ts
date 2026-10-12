@@ -7,7 +7,7 @@ import { focusGroupX } from "@tanstack/charts/focus";
 import { bklitTooltip } from "../kit/tooltip/bklit-tooltip";
 import { tooltipBoxMotion } from "../kit/tooltip/box-motion";
 import type { TooltipBoxMotionProps } from "../kit/tooltip/box-motion";
-import { scaleLinear, scaleTime, scaleUtc } from "d3-scale";
+import { scaleLinear, scaleTime, scaleUtc } from "../kit/scales";
 import { shortDateFmt } from "../kit/format";
 import { erase } from "../kit/erased-types";
 import { niced } from "../kit/cartesian/definition";

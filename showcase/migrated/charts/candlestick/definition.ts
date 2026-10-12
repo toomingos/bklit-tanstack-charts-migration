@@ -12,7 +12,7 @@ import { decorative } from "@tanstack/charts/mark/decorative";
 import { bklitTooltip } from "../kit/tooltip/bklit-tooltip";
 import { tooltipBoxMotion } from "../kit/tooltip/box-motion";
 import type { TooltipBoxMotionProps } from "../kit/tooltip/box-motion";
-import { scaleLinear, scaleTime, scaleUtc } from "d3-scale";
+import { scaleLinear, scaleTime, scaleUtc } from "../kit/scales";
 import { propsFor } from "../kit/read-children";
 import type { ChildTable } from "../kit/read-children";
 import { erase } from "../kit/erased-types";

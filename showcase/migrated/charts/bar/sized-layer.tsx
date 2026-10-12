@@ -2,7 +2,8 @@
 // Mounted only when one of them exists, so a plain bar never measures its host or re-renders on resize.
 import { useCallback, useMemo } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
-import { scaleBand, scaleLinear, scaleUtc } from "d3-scale";
+import { scaleBand } from "d3-scale";
+import { scaleLinear, scaleUtc } from "../kit/scales";
 import type { LineConfig } from "../kit/cartesian/chart-context";
 import { useFocusRow } from "../kit/cartesian/chart-context-focus";
 import { useBridgedContext, useReferenceAreas, valueScale } from "../kit/cartesian/context-bridge";

@@ -1,7 +1,7 @@
 // Hook groups of the cartesian shell, each a contiguous run of the former CartesianChartMounted body (hook order unchanged).
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
-import { scaleLinear, scaleUtc } from "d3-scale";
+import { scaleLinear, scaleUtc } from "../scales";
 import { motion } from "@tanstack/charts/motion";
 import { propsFor } from "../read-children";
 import { shortDateFmt } from "../format";

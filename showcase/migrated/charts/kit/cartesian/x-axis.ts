@@ -1,6 +1,6 @@
 // The x scale of the cartesian definition: tick placement (data rows or evenly over the domain), labels and the tick times the
 // date pill's tick-blanking CSS reads.
-import { scaleUtc } from "d3-scale";
+import { scaleUtc } from "../scales";
 import { shortDateFmt } from "../format";
 import { X_TICK_PADDING } from "../theme";
 import { strictRows } from "./domains";
