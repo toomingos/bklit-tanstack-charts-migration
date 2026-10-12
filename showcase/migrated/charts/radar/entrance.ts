@@ -96,7 +96,8 @@ const radarEntranceVars = (o: Readonly<RadarEntranceVarsInput>): CSSProperties =
   ]);
 };
 
-/** Origin of each entrance animation in bklit's motion terms (kit/entrance/entrance-origin.ts): opacity is WAAPI, the dot travel and the glide are JS. */
-const RADAR_ENTRANCE_ORIGINS = { "bk-radar-fade": "frame", "bk-radar-glide-in": "motion", "bk-radar-p": "motion" } as const satisfies Readonly<Record<string, EntranceOrigin>>;
+/** Origin of each entrance animation in bklit's motion terms (kit/entrance/entrance-origin.ts): opacity is WAAPI, the glide is JS. The dot travel is bklit's JS `mountProgress`,
+ * but its measured first-move frame (prod, 6 runs: bklit 685.5 ms median, ours 680.5 on `frame`, 697 on `motion`) and settle (2182.8 vs 2186 ms on `frame`; +16.7 ms on `motion`) match the `frame` origin. */
+const RADAR_ENTRANCE_ORIGINS = { "bk-radar-fade": "frame", "bk-radar-glide-in": "motion", "bk-radar-p": "frame" } as const satisfies Readonly<Record<string, EntranceOrigin>>;
 
 export { RADAR_ENTRANCE_CSS, RADAR_ENTRANCE_ORIGINS, radarEntranceVars };
