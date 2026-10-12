@@ -100,8 +100,8 @@ export interface BarPulseProps {
   readonly pulsePaused?: boolean;
 }
 
-export const Bar = defineCarrier<BarProps>("bar", "Bar");
-export const BarSquares = defineCarrier<BarSquaresProps>("barSquares", "BarSquares");
-export const BarColumnTrack = defineCarrier<BarColumnTrackProps>("barColumnTrack", "BarColumnTrack");
-export const BarXAxis = defineCarrier<BarXAxisProps>("barXAxis", "BarXAxis");
-export const BarYAxis = defineCarrier<BarYAxisProps>("barYAxis", "BarYAxis");
+export const Bar = /* @__PURE__ */ defineCarrier<BarProps>("bar", "Bar");
+export const BarSquares = /* @__PURE__ */ defineCarrier<BarSquaresProps>("barSquares", "BarSquares");
+export const BarColumnTrack = /* @__PURE__ */ defineCarrier<BarColumnTrackProps>("barColumnTrack", "BarColumnTrack");
+export const BarXAxis = /* @__PURE__ */ defineCarrier<BarXAxisProps>("barXAxis", "BarXAxis");
+export const BarYAxis = /* @__PURE__ */ defineCarrier<BarYAxisProps>("barYAxis", "BarYAxis");

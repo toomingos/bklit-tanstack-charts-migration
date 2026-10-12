@@ -50,7 +50,7 @@ export interface ChartBrushProps extends ChartBrushTrackOverlayStyle {
 // Importing ChartBrush is what loads d3-brush; the cartesian definition reads the factory from the registry.
 registerBrushX(brushX);
 
-export const ChartBrush = defineCarrier<Readonly<ChartBrushProps>>("brush", "ChartBrush");
+export const ChartBrush = /* @__PURE__ */ defineCarrier<Readonly<ChartBrushProps>>("brush", "ChartBrush");
 
 export interface ChartBrushTrackOverlayProps extends ChartBrushTrackOverlayStyle {
   innerWidth: number;

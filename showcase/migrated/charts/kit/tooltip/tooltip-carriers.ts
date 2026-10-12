@@ -37,8 +37,8 @@ export interface TooltipIndicatorProps {
   readonly strokeDasharray?: string;
 }
 
-export const TooltipDot = defineCarrier<TooltipDotProps>("tooltipDot", "TooltipDot");
-export const TooltipIndicator = defineCarrier<TooltipIndicatorProps>("tooltipIndicator", "TooltipIndicator");
+export const TooltipDot = /* @__PURE__ */ defineCarrier<TooltipDotProps>("tooltipDot", "TooltipDot");
+export const TooltipIndicator = /* @__PURE__ */ defineCarrier<TooltipIndicatorProps>("tooltipIndicator", "TooltipIndicator");
 
 const fadeEdgesOf = (fadeEdges: TooltipIndicatorProps["fadeEdges"]): IndicatorFadeEdges | "none" | undefined => {
   if (isString(fadeEdges)) {

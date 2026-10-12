@@ -53,8 +53,8 @@ interface RadialGradientOwnProps extends GradientOwnProps {
 
 export type RadialGradientProps = RadialGradientOwnProps & Omit<SVGProps<SVGRadialGradientElement>, keyof RadialGradientOwnProps | "ref">;
 
-export const LinearGradient = defineCarrier<LinearGradientProps>("linearGradient", "LinearGradient");
-export const RadialGradient = defineCarrier<RadialGradientProps>("radialGradient", "RadialGradient");
+export const LinearGradient = /* @__PURE__ */ defineCarrier<LinearGradientProps>("linearGradient", "LinearGradient");
+export const RadialGradient = /* @__PURE__ */ defineCarrier<RadialGradientProps>("radialGradient", "RadialGradient");
 
 const PRESET_PREFIX = "gradientPreset:";
 
@@ -76,15 +76,15 @@ type PresetName = keyof typeof PRESETS;
 // The visx preset components accept every LinearGradient prop; from/to are optional.
 const preset = (name: PresetName): ReturnType<typeof defineCarrier<LinearGradientProps>> => defineCarrier<LinearGradientProps>(`${PRESET_PREFIX}${name}`, name);
 
-export const GradientDarkgreenGreen = preset("GradientDarkgreenGreen");
-export const GradientLightgreenGreen = preset("GradientLightgreenGreen");
-export const GradientOrangeRed = preset("GradientOrangeRed");
-export const GradientPinkBlue = preset("GradientPinkBlue");
-export const GradientPinkRed = preset("GradientPinkRed");
-export const GradientPurpleOrange = preset("GradientPurpleOrange");
-export const GradientPurpleTeal = preset("GradientPurpleTeal");
-export const GradientSteelPurple = preset("GradientSteelPurple");
-export const GradientTealBlue = preset("GradientTealBlue");
+export const GradientDarkgreenGreen = /* @__PURE__ */ preset("GradientDarkgreenGreen");
+export const GradientLightgreenGreen = /* @__PURE__ */ preset("GradientLightgreenGreen");
+export const GradientOrangeRed = /* @__PURE__ */ preset("GradientOrangeRed");
+export const GradientPinkBlue = /* @__PURE__ */ preset("GradientPinkBlue");
+export const GradientPinkRed = /* @__PURE__ */ preset("GradientPinkRed");
+export const GradientPurpleOrange = /* @__PURE__ */ preset("GradientPurpleOrange");
+export const GradientPurpleTeal = /* @__PURE__ */ preset("GradientPurpleTeal");
+export const GradientSteelPurple = /* @__PURE__ */ preset("GradientSteelPurple");
+export const GradientTealBlue = /* @__PURE__ */ preset("GradientTealBlue");
 
 /** "50%" -> 0.5, "0.25" -> 0.25, 1 -> 1. Undefined/NaN -> fallback. */
 function unit(value: Length | undefined, fallback: number): number {

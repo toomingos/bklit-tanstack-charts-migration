@@ -5,9 +5,9 @@ import { roleOf } from "./role-of";
 import type { ChoroplethFeatureProps, ChoroplethGraticuleProps, ChoroplethTooltipProps } from "./types";
 
 // Carrier components: configuration is read from the element props by the chart (roleOf), they render nothing.
-const ChoroplethFeatureComponent = defineCarrier<Readonly<ChoroplethFeatureProps>>("choroplethFeature", "ChoroplethFeature");
-const ChoroplethGraticule = defineCarrier<Readonly<ChoroplethGraticuleProps>>("choroplethGraticule", "ChoroplethGraticule");
-const ChoroplethTooltip = defineCarrier<Readonly<ChoroplethTooltipProps>>("choroplethTooltip", "ChoroplethTooltip");
+const ChoroplethFeatureComponent = /* @__PURE__ */ defineCarrier<Readonly<ChoroplethFeatureProps>>("choroplethFeature", "ChoroplethFeature");
+const ChoroplethGraticule = /* @__PURE__ */ defineCarrier<Readonly<ChoroplethGraticuleProps>>("choroplethGraticule", "ChoroplethGraticule");
+const ChoroplethTooltip = /* @__PURE__ */ defineCarrier<Readonly<ChoroplethTooltipProps>>("choroplethTooltip", "ChoroplethTooltip");
 
 interface ExtractedConfig {
   readonly featureConfig: ChoroplethFeatureProps | undefined;

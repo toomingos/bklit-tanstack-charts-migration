@@ -7,4 +7,4 @@ import { registerBackground } from "./features";
 
 registerBackground({ marks: backgroundMarks, css: backgroundCss, Resources: BackgroundResources });
 
-export const Background = defineCarrier<Readonly<BackgroundConfig>>("background", "Background");
+export const Background = /* @__PURE__ */ defineCarrier<Readonly<BackgroundConfig>>("background", "Background");

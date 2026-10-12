@@ -5,8 +5,8 @@ import { enableOverlays } from "./enable-overlays";
 
 enableOverlays();
 
-export const ChartMarkers = defineCarrier<ChartMarkersProps>("chartMarkers", "ChartMarkers");
-export const ProjectionLine = defineCarrier<ProjectionLineProps>("projectionLine", "ProjectionLine");
-export const ProjectionLineEndMarker = defineCarrier<ProjectionLineEndMarkerProps>("projectionEndMarker", "ProjectionLineEndMarker");
-export const LineSeriesTerminalMarker = defineCarrier<LineSeriesTerminalMarkerProps>("terminalMarker", "LineSeriesTerminalMarker");
-export const MarkerGroup = defineCarrier<MarkerGroupProps>("markerGroup", "MarkerGroup");
+export const ChartMarkers = /* @__PURE__ */ defineCarrier<ChartMarkersProps>("chartMarkers", "ChartMarkers");
+export const ProjectionLine = /* @__PURE__ */ defineCarrier<ProjectionLineProps>("projectionLine", "ProjectionLine");
+export const ProjectionLineEndMarker = /* @__PURE__ */ defineCarrier<ProjectionLineEndMarkerProps>("projectionEndMarker", "ProjectionLineEndMarker");
+export const LineSeriesTerminalMarker = /* @__PURE__ */ defineCarrier<LineSeriesTerminalMarkerProps>("terminalMarker", "LineSeriesTerminalMarker");
+export const MarkerGroup = /* @__PURE__ */ defineCarrier<MarkerGroupProps>("markerGroup", "MarkerGroup");

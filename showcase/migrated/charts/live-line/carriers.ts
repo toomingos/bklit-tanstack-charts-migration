@@ -35,6 +35,6 @@ export interface LiveYAxisConfig {
   readonly allowDecimals?: boolean;
 }
 
-export const LiveLine = defineCarrier<Readonly<LiveLineConfig>>("liveLine", "LiveLine");
-export const LiveXAxis = defineCarrier<Readonly<LiveXAxisConfig>>("liveXAxis", "LiveXAxis");
-export const LiveYAxis = defineCarrier<Readonly<LiveYAxisConfig>>("liveYAxis", "LiveYAxis");
+export const LiveLine = /* @__PURE__ */ defineCarrier<Readonly<LiveLineConfig>>("liveLine", "LiveLine");
+export const LiveXAxis = /* @__PURE__ */ defineCarrier<Readonly<LiveXAxisConfig>>("liveXAxis", "LiveXAxis");
+export const LiveYAxis = /* @__PURE__ */ defineCarrier<Readonly<LiveYAxisConfig>>("liveYAxis", "LiveYAxis");

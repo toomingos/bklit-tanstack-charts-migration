@@ -18,4 +18,4 @@ export interface CandlestickProps {
   readonly showHoverFade?: boolean;
 }
 
-export const Candlestick = defineCarrier<CandlestickProps>("candlestick", "Candlestick");
+export const Candlestick = /* @__PURE__ */ defineCarrier<CandlestickProps>("candlestick", "Candlestick");

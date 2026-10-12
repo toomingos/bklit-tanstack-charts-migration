@@ -6,7 +6,7 @@ import type { BarDepthBackProps, BarDepthFrontProps, BarDepthProviderProps, BarP
 
 registerDepth({ marks: buildDepthMarks, bar: depthBarMark });
 
-export const BarDepthProvider = defineCarrier<BarDepthProviderProps>("barDepthProvider", "BarDepthProvider");
-export const BarDepthBack = defineCarrier<BarDepthBackProps>("barDepthBack", "BarDepthBack");
-export const BarDepthFront = defineCarrier<BarDepthFrontProps>("barDepthFront", "BarDepthFront");
-export const BarPulse = defineCarrier<BarPulseProps>("barPulse", "BarPulse");
+export const BarDepthProvider = /* @__PURE__ */ defineCarrier<BarDepthProviderProps>("barDepthProvider", "BarDepthProvider");
+export const BarDepthBack = /* @__PURE__ */ defineCarrier<BarDepthBackProps>("barDepthBack", "BarDepthBack");
+export const BarDepthFront = /* @__PURE__ */ defineCarrier<BarDepthFrontProps>("barDepthFront", "BarDepthFront");
+export const BarPulse = /* @__PURE__ */ defineCarrier<BarPulseProps>("barPulse", "BarPulse");

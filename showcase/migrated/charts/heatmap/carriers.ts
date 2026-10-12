@@ -62,11 +62,11 @@ interface HeatmapSeparatorProps {
   readonly strokeOpacity?: number;
 }
 
-const HeatmapCells = defineCarrier<HeatmapCellsProps>("heatmapCells", "HeatmapCells");
-const HeatmapXAxis = defineCarrier<HeatmapXAxisProps>("heatmapXAxis", "HeatmapXAxis");
-const HeatmapYAxis = defineCarrier<HeatmapYAxisProps>("heatmapYAxis", "HeatmapYAxis");
-const HeatmapTooltip = defineCarrier<HeatmapTooltipProps>("heatmapTooltip", "HeatmapTooltip");
-const HeatmapSeparator = defineCarrier<HeatmapSeparatorProps>("heatmapSeparator", "HeatmapSeparator");
+const HeatmapCells = /* @__PURE__ */ defineCarrier<HeatmapCellsProps>("heatmapCells", "HeatmapCells");
+const HeatmapXAxis = /* @__PURE__ */ defineCarrier<HeatmapXAxisProps>("heatmapXAxis", "HeatmapXAxis");
+const HeatmapYAxis = /* @__PURE__ */ defineCarrier<HeatmapYAxisProps>("heatmapYAxis", "HeatmapYAxis");
+const HeatmapTooltip = /* @__PURE__ */ defineCarrier<HeatmapTooltipProps>("heatmapTooltip", "HeatmapTooltip");
+const HeatmapSeparator = /* @__PURE__ */ defineCarrier<HeatmapSeparatorProps>("heatmapSeparator", "HeatmapSeparator");
 
 
 export { HeatmapCells, HeatmapSeparator, HeatmapTooltip, HeatmapXAxis, HeatmapYAxis };
