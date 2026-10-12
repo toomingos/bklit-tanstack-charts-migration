@@ -407,6 +407,13 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Workaround:** each mark sits in `wipe-o > wipe-i` groups; CSS keyframes slide them oppositely from the first draw (`styles.css` `bkm-wipe-*`, `cartesian-chart.tsx` `data-bkm-wipe-in`), re-stamped onto motion's clock by `reveal-arm.tsx`.
 - **Proposal:** let `motion({ initial })` accept a per-mark clip/transform enter (or a left-to-right path reveal) for cartesian path groups.
 
+## 62. No native uniform two-axis group scale on first paint (funnel stage grow)
+
+- **Needed:** bklit's funnel stages grow from the first frame as one uniform 2-D scale about the stage's left (top) centre, staggered per stage (`funnel-chart.tsx:319-327`), in the first and only scene draw.
+- **1.1.0 behaviour:** the initial `animateSvg` area track is a one-axis grow from the baseline (`motion.ts:1505-1562`, built at `:282-287`); there is no initial transform for keyed groups, and a group animates only when it joins a painted scene (#12), which costs a second draw.
+- **Workaround:** the stage rings carry a static CSS `scale` keyframe from the first draw (`funnel/funnel.css`, `bkm-funnel-grow`), re-stamped onto motion's clock by `EntranceAlign`; marks are `motion: false`.
+- **Proposal:** let `motion({ initial })` accept a per-group transform enter with an origin (draft `docs/upstream-issues/initial-group-transform-enter.md`).
+
 ---
 
 ## Retired numbers

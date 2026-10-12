@@ -4,6 +4,7 @@
 @keyframes bkm-funnel-grow { from { scale: 0; } }
 @keyframes bkm-funnel-label-in { from { opacity: 0; } }
 
+/* No native uniform group scale on first paint: UPSTREAM-GAPS #62. */
 /* Entrance (bklit funnel-chart.tsx:319-327 rings, :653-655 / :722-724 labels): a uniform grow about the stage's left (top) centre, then the label layer fades in 0.25 s later. */
 /* Fill is `backwards`, not `both`: a forwards fill holds a composited layer at scale(1) and re-rasters it at the end. */
 .bkm-fr { transform-box: fill-box; transform-origin: var(--bkm-e-origin); animation: bkm-funnel-grow var(--bkm-e-dur) var(--bkm-e-ease) calc(var(--i, 0) * var(--bkm-e-stagger)) backwards; }
