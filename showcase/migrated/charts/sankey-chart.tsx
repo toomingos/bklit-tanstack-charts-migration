@@ -3,7 +3,6 @@
 "use client";
 
 import { HoldArm } from "./kit/size/parent-size-arm";
-import { useHostSize } from "./kit/size/host-size";
 import { joinClasses } from "./kit/cn";
 import { hasText } from "./kit/guards";
 import { EntranceAlign } from "./kit/entrance/entrance-align";
@@ -110,10 +109,9 @@ const SankeyChart = ({
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
   const useGradient = linkConfig.useGradient ?? true;
 
-  // bklit mounts no svg until ParentSize's first size commit (sankey-chart.tsx:246); here the renderer mounts in the layout-effect measure, before first paint,
-  // at the real width; the host keeps bklit's aspect-ratio box meanwhile (sankey-chart.tsx:231,236).
-  const { ref: hostRef, size: hostSize } = useHostSize();
-  const sized = hostSize !== null;
+  // bklit mounts no svg until ParentSize's first size commit (sankey-chart.tsx:246); the renderer measures its own container at mount, so
+  // the chart is drawn once, in the first commit, at the real width.
+  const hostRef = useRef<HTMLDivElement | null>(null);
 
   const definition = useMemo(() => {
     const input: SankeyInputData = data;
@@ -262,29 +260,28 @@ const SankeyChart = ({
   const nodeCount = Math.max(1, data.nodes.length);
   const hostStyle = useMemo((): CSSProperties => {
     const entranceVars = { "--bkm-sankey-dur": `${dur}ms`, "--bkm-sankey-ease": ease, "--bkm-sankey-n": nodeCount };
-    return { aspectRatio: sized ? undefined : aspectRatio, ...entranceVars, ...hoverVars, position: "relative", userSelect: "none", width: "100%" };
-  }, [aspectRatio, dur, ease, hoverVars, nodeCount, sized]);
+    return { ...entranceVars, ...hoverVars, position: "relative", userSelect: "none", width: "100%" };
+  }, [dur, ease, hoverVars, nodeCount]);
 
   return (
     <div className={className} data-bkm-chart="sankey" data-bkm-sk-hold="" data-bkm-sk-id={idPrefix} data-slot="chart" ref={hostRef} style={hostStyle}>
       <style>{sankeyHoverCss()}</style>
       <style ref={indexStyleRef}>{sankeyIndexCss(idPrefix)}</style>
-      {sized ? <HoldArm key={`arm-${revealSignature}`} attribute="data-bkm-sk-hold" hostRef={hostRef} /> : null}
-      {sized ? <EntranceAlign hostRef={hostRef} key={`align-${revealSignature}`} origins={SANKEY_ENTRANCE_ORIGINS} /> : null}
-      {sized ? <RendererChart
+      <HoldArm key={`arm-${revealSignature}`} attribute="data-bkm-sk-hold" hostRef={hostRef} />
+      <EntranceAlign hostRef={hostRef} key={`align-${revealSignature}`} origins={SANKEY_ENTRANCE_ORIGINS} />
+      <RendererChart
         key={revealSignature}
         ariaDescription={ariaDescription}
         ariaLabel={ariaLabel}
         aspectRatio={parseAspectRatio(aspectRatio)}
         definition={definition}
         idPrefix={idPrefix}
-        initialWidth={hostSize?.width ?? 640}
         onFocusChange={handleFocusChange}
         onRender={handleRender}
         renderer={RENDERER}
         renderTooltipBody={renderTooltipBody}
         style={RENDERER_STYLE}
-      /> : null}
+      />
       {hasContextChildren ? (
         <SankeyContextLayer
           animationDuration={animationDuration}
