@@ -4,7 +4,7 @@ import { userGradients } from "../gradients";
 import type { installMarkerSprings } from "../motion/marker-springs";
 import type { ChildTable } from "../read-children";
 import type { ChartMarker } from "../types";
-import type { AnyMark } from "./erased-types";
+import type { AnyMark } from "../erased-types";
 import type { buildOverlays } from "./overlays";
 
 interface OverlayFeature {

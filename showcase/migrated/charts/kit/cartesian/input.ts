@@ -1,7 +1,7 @@
 import type { ChartGradient } from "@tanstack/charts";
 import type { ChartMargin } from "../theme";
 import type { ChildTable } from "../read-children";
-import type { AnyMark } from "./erased-types";
+import type { AnyMark } from "../erased-types";
 import type { ResolvedSeries, Row } from "./series";
 import type { WipeConfig } from "./wipe";
 

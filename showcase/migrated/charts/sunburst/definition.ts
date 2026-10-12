@@ -1,5 +1,5 @@
 import { defineChart } from "@tanstack/charts/scene";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import type { DomChartDefinition, ChartCursorController, ChartMotionContext, ChartMotionTransition, ChartPoint, ChartScene } from "@tanstack/charts";
 import { cursorHost } from "@tanstack/charts/cursor";
 import { polar } from "@tanstack/charts/polar";
@@ -155,7 +155,6 @@ export const buildDefinition = (input: Readonly<DefinitionInput>): DomChartDefin
     {
       arcIndexOf: (node) => arcById.get(node.id)?.arcIndex,
       depthOf: (node) => arcById.get(node.id)?.depth,
-      ancestorIndexesOf: (node) => node.ancestorIds.flatMap((id) => arcById.get(id)?.arcIndex ?? []),
       pushes,
       arcOf: (node, layout) => {
         const arc = arcById.get(node.id);

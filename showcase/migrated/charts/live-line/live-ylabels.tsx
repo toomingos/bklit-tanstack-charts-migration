@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import type { ReactElement } from "react";
 import { motion } from "@tanstack/charts/motion";
 import { RendererChart } from "../kit/tooltip/tooltip-leaf";

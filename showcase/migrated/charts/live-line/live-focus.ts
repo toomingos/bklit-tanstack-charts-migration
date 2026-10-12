@@ -1,6 +1,6 @@
 // The live chart's focus plumbing: the keyboard hold, the pointer crosshair's glide, the edge hold and the host CSS vars the
 // tick fade (live-tick-fade.ts) and liveline.css read. Everything writes the host element only.
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import type { ChartPoint, ChartRendererRenderContext, ChartScene } from "@tanstack/charts";
 import { useKeyboardFocusHold } from "../kit/keyboard-hold";

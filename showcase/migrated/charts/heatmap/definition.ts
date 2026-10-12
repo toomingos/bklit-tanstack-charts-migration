@@ -1,5 +1,5 @@
 import type { ChartMark, DomChartDefinition } from "@tanstack/charts";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { defineChart } from "@tanstack/charts/scene";
 import { decorative } from "@tanstack/charts/mark/decorative";
 import { scaleBand } from "@tanstack/charts/scales/band";

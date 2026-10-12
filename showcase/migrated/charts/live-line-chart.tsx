@@ -1,7 +1,7 @@
 "use client";
 // bklit LiveLineChart on native TanStack Charts: the streaming scroll is the native `motion.path` rolling contract (linear tween one sample interval long), not a rAF loop.
 // Config comes from LiveLine / LiveXAxis / LiveYAxis / ChartTooltip carrier children; see live-line/ for the pieces.
-import { erase } from "./kit/cartesian/erased-types";
+import { erase } from "./kit/erased-types";
 import { useMemo, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { motion } from "@tanstack/charts/motion";

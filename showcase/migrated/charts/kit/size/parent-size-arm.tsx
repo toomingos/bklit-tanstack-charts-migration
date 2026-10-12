@@ -61,16 +61,6 @@ const afterFrames = (frames: number, run: () => void): (() => void) => {
   return () => { cancelAnimationFrame(id); };
 };
 
-/** True `frames` animation frames after `active` commits: where bklit's mount effect has run and motion is about to start its clock. */
-export const useFrameArm = (active: boolean, frames = 1): boolean => {
-  const [armed, setArmed] = useState(false);
-  useEffect(() => {
-    if (!active) { return undefined; }
-    return afterFrames(frames, () => { setArmed(true); });
-  }, [active, frames]);
-  return armed;
-};
-
 /** Removes a hold attribute two frames after mount (default), releasing CSS animations paused at their first keyframe (one inserted mid-frame would start partway through its spring).
  * The host renders the attribute as a constant prop, re-asserted before paint so a remounted arm holds again. */
 export const HoldArm = ({ hostRef, attribute, frames = 2 }: { readonly hostRef: RefObject<HTMLElement | null>; readonly attribute: string; readonly frames?: number }): null => {

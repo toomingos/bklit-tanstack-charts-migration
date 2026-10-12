@@ -1,6 +1,6 @@
 // Pointer-in-feature focus for geoShape (centroid points only, docs/reference/marks/geo.md): hit-tests the projected path topmost first, as the browser does for bklit's paths.
 // Keyboard order (bklit has none): west to east by spherical centroid longitude (north first on a tie); only features spanning >= 2 screen px when zoomed are stops.
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { geoCentroid, geoClipRectangle, geoPath } from "d3-geo";
 import type { GeoPermissibleObjects, GeoProjection } from "d3-geo";
 import type { ChartFocusStrategy, ChartPoint } from "@tanstack/charts";

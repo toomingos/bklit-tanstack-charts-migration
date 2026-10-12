@@ -1,8 +1,7 @@
 // bklit CandlestickChart on native TanStack Charts: the Candlestick/Grid/XAxis/YAxis/ChartTooltip
 // children are config carriers compiled into one defineChart definition (candlestick).
-import { erase } from "./kit/cartesian/erased-types";
-import { useFrameArm, useParentSizeMounted, useRevealClock } from "./kit/size/parent-size-arm";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { erase } from "./kit/erased-types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { useInteractionHandle, usePressGuard } from "./kit/touch-focus";
@@ -95,17 +94,6 @@ export const CandlestickChart = ({
   const holdFocus = useKeyboardFocusHold(containerRef, () => interaction.current);
   // bklit: an explicit height (or aspectRatio: unset) wins over the aspect ratio.
   const fillHeight = style?.aspectRatio === "unset" || style?.height !== undefined;
-  // The entrance replays only if the first painted scene is final, so the chart mounts on the client commit (not in SSR markup)
-  // and its first scene measures the wrapper's CSS height synchronously (TanStack renderer.ts observesContainerHeight / currentSize).
-  const [measured, setMeasured] = useState(false);
-  useLayoutEffect(() => {
-    setMeasured(true);
-  }, []);
-  // The native enter waits for bklit's chain: ParentSize mounts the svg after its first ResizeObserver delivery + a frame, and the
-  // candle springs start a frame later (kit/size/parent-size-arm.tsx).
-  const sized = useParentSizeMounted(containerRef, measured);
-  const entered = useFrameArm(sized);
-  const revealClock = useRevealClock(sized);
   // bklit `canInteract = isLoaded` (candlestick-chart.tsx:225): `animationDuration` after mount hover goes live and the
   // centre-split entrance marks swap to static candles.
   const { arm: armReady, ready: loaded, store: readyStore } = useReadyGate(containerRef, animationDuration, { resetKey: revealSignature, viaState: true });
@@ -133,11 +121,9 @@ export const CandlestickChart = ({
         xDomain,
         xDomainSlotCount,
         candleWidth,
-        seedOnly: !entered,
         entrance: !loaded,
-        revealClock,
       }),
-    [data, xDataKey, table, resolvedMargin, uid, animationDuration, enterTransition, xDomain, xDomainSlotCount, candleWidth, entered, loaded, revealClock],
+    [data, xDataKey, table, resolvedMargin, uid, animationDuration, enterTransition, xDomain, xDomainSlotCount, candleWidth, loaded],
   );
   const renderer = useMemo(
     // `initial: "always"` replays the entrance on hydrated (server-rendered) SVG too.
@@ -218,7 +204,7 @@ export const CandlestickChart = ({
       style={{ width: "100%", position: "relative", "--bkm-faded": built.fadedOpacity, ...bklitSurfaceStyle, ...style } as CSSProperties}
     >
       <style>{`${CANDLE_HOVER_CSS}${pillStaticCss}${emptyFocusCss}`}</style>
-      {measured && childrenReady ? (
+      {childrenReady ? (
       <RendererChart<Candle, Date, number>
         definition={built.definition}
         idPrefix={uid}

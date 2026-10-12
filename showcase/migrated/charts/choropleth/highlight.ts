@@ -1,8 +1,8 @@
 // bklit's hovered-country highlight as a focus-guide mark: the dim is a CSS rule on the features group (styles.css), and this mark redraws the focused
 // feature's own path node at opacity 1 in the `over` layer. Guide paints are written verbatim (UPSTREAM-GAPS #30), which resolveFill's url(#...) needs.
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { createMark } from "@tanstack/charts";
-import type { AnyMark } from "../kit/cartesian/erased-types";
+import type { AnyMark } from "../kit/erased-types";
 import { CROSSHAIR_CLASS } from "../kit/renderer-dom";
 
 interface GeoNode {

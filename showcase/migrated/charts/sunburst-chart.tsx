@@ -2,7 +2,7 @@
 
 // Bklit SunburstChart on TanStack Charts: native `sunburst` mark inside `polar`, `motion()` entrance and drill, native focus and `onSelect` zoom.
 // Compound children are config carriers; custom pieces are documented in sunburst/sunburst-mark.ts, the parts live in sunburst/.
-import { erase } from "./kit/cartesian/erased-types";
+import { erase } from "./kit/erased-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ChartInteractionController, ChartPoint, ChartScene } from "@tanstack/charts";
@@ -15,7 +15,6 @@ import { parseChildren } from "./sunburst/carriers";
 import { defaultSunburstColors, opacityForRelativeDepth, sunburstCssVars, withAlpha } from "./sunburst/colors";
 import type { EnterTransition } from "./kit/motion/phase";
 import { SunburstHoverProvider, SunburstStableProvider } from "./sunburst/context";
-import { sunburstCss } from "./sunburst/css";
 import { clearAttribute, raiseAttribute } from "./kit/host-write";
 import { buildDefinition } from "./sunburst/definition";
 import { createSectorFeed, createSectorLayer } from "./sunburst/sunburst-layer";
@@ -33,6 +32,7 @@ import { useTapFocus } from "./kit/touch-focus";
 import { EntranceAlign } from "./kit/entrance/entrance-align";
 import { useResizeBox } from "./kit/size/use-resize-box";
 import "./styles.css";
+import "./sunburst/sunburst.css";
 
 const DEFAULT_SIZE = 520;
 const DEFAULT_HOVER_POP = 8;
@@ -115,7 +115,7 @@ export const SunburstChart = ({
   const holdFocus = useKeyboardFocusHold(hostRef, () => erase(interactionRef.current));
 
   // The arcs of the last hover path written to the host (`data-bk-path`), for the zoom's snap.
-  const hoverPathRef = useRef("");
+  const hoverPathRef = useRef<readonly number[]>([]);
   const { handFocusOver, noteSource, selectZoom, zoomTo, zoomableRef } = useSunburstZoom({
     arcById,
     focus,
@@ -214,7 +214,6 @@ export const SunburstChart = ({
     },
     [arcById, holdFocus, setHoveredArcIndex],
   );
-  const css = useMemo(() => sunburstCss(model.arcs.length), [model.arcs.length]);
   const hostStyle = useMemo(() => ({ maxWidth: "100%", width: size, ...hostVars }), [size, hostVars]);
   const stageStyle = useMemo(() => ({ aspectRatio: "1 / 1", maxWidth: size }), [size]);
 
@@ -231,7 +230,6 @@ export const SunburstChart = ({
     <SunburstStableProvider value={stable}>
       <SunburstHoverProvider value={hoverStore}>
         <div ref={hostRef} className={className} data-bk-intro={settled ? undefined : ""} style={hostStyle}>
-          <style>{css}</style>
           {definition === null || settled ? null : <EntranceAlign hostRef={hostRef} origins={SUNBURST_ENTRANCE_ORIGINS} renderStart={introAtRef} resolveOnFrame />}
           {parsed.breadcrumbs}
           <div ref={stageRef} className="mx-auto w-full" style={stageStyle}>

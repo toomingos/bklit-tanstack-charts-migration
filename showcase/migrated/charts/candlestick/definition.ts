@@ -2,10 +2,8 @@
 // Hover/legend dimming is the fixed `CANDLE_HOVER_CSS`; crosshair, pill and close dot are native guides; the entrance is local `motion`.
 import type { EnterTransition } from "../kit/motion/phase";
 import { resumeEnter } from "../kit/motion/resume-enter";
-import { revealEndFromEnter } from "../kit/size/parent-size-arm";
 import { REST_GRANULAR, REST_NEVER, settleMs, springFrequency, springOf } from "../kit/motion/spring-curve";
 import type { Spring } from "../kit/motion/springs";
-import type { RevealClock } from "../kit/size/parent-size-arm";
 import { barY, defineChart } from "@tanstack/charts";
 import type { ChartMark, ChartMotionDefinition, ChartMotionTransition, ChartPoint, DomChartDefinition } from "@tanstack/charts";
 import { crosshair } from "@tanstack/charts/crosshair";
@@ -17,7 +15,7 @@ import type { TooltipBoxMotionProps } from "../kit/tooltip/box-motion";
 import { scaleLinear, scaleTime, scaleUtc } from "d3-scale";
 import { propsFor } from "../kit/read-children";
 import type { ChildTable } from "../kit/read-children";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { overlaysFor } from "../kit/cartesian/features";
 import { shortDateFmt } from "../kit/format";
 import { toDate } from "../kit/cartesian/series";
@@ -46,10 +44,6 @@ export interface CandlestickInput {
   readonly xDomain?: readonly [Date, Date];
   readonly xDomainSlotCount?: number;
   readonly candleWidth?: number;
-  /** Paint the scene without candles first so they ENTER (native enter only animates marks added to a painted scene). */
-  readonly seedOnly?: boolean;
-  /** bklit's reveal timer clock: the swap to static candles lands `animationDuration` after the chart's mount effect. */
-  readonly revealClock?: RevealClock;
   /** bklit's AnimatedCandle phase (before `isLoaded`): body and wick split at the centre into two bars growing outward (native `scaleY`); `isLoaded` swaps in static candles. */
   readonly entrance?: boolean;
 }
@@ -212,7 +206,8 @@ function candleMotion(input: CandlestickInput, stagger: number): ChartMotionDefi
   const transition = resolveEnterTransition(input.enterTransition);
   // Clock of the first enter call: a render forced mid-entrance (web-font swap) is an update and resumes this schedule.
   let enterAt: number | null = null;
-  const endAt = (): number => revealEndFromEnter(input.revealClock ?? { mountedAt: null }, enterAt, input.animationDuration);
+  // bklit swaps to static candles `animationDuration` after its mount effect; the native enter starts in that same commit.
+  const endAt = (): number => input.animationDuration;
   return (ctx) => {
     const delay = ctx.datumIndex * stagger;
     if (ctx.phase === "update") {
@@ -379,7 +374,7 @@ export function buildCandlestickDefinition(input: CandlestickInput): Candlestick
     ...rowGuides.marks,
     ...columnMarks,
     ...candleMarks({
-      rows: input.seedOnly === true ? [] : data,
+      rows: data,
       xKey,
       motion: animate ? candleMotion(input, stagger) : false,
       positiveFill: solid(candle.positiveFill, POSITIVE),

@@ -2,7 +2,7 @@
 // The scene keeps the native sectors for hit testing; the sector layer (sunburst-layer.ts) paints them from the geometry this adapter publishes.
 import { fitSectorPush } from "./push";
 import type { SectorExtent, SectorPush } from "./push";
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { joinClasses } from "../kit/cn";
 import { TAU } from "../kit/polar/tau";
 import { sunburst } from "@tanstack/charts/hierarchy/sunburst";
@@ -58,8 +58,6 @@ export interface SunburstDecorations {
   /** Ring depth from the data root (bklit's `arc.depth`). The native node's `ancestorIds` restart at `rootId`, so ranking by them
    * re-orders the sectors on every zoom; see the sort below. */
   readonly depthOf?: (node: SunburstNativeNode) => number | undefined;
-  /** Arc indexes of the node's ancestors: stamped as `bk-sb-u<i>` classes so hover CSS can tell descendants of the hovered sector. */
-  readonly ancestorIndexesOf?: (node: SunburstNativeNode) => readonly number[];
   /** Label style; omit to render no labels. */
   readonly labels?: SunburstLabelStyle;
   /** Sectors of the previous render by key, so a zoom can collapse the ones that leave (owned by the chart, survives definition rebuilds). */
@@ -163,7 +161,7 @@ interface GroupBuild {
 }
 
 const sectorClassName = (point: SunburstPoint, arcIndex: number | undefined, decorations: Readonly<SunburstDecorations>): string | undefined => {
-  const arcClass = arcIndex === undefined ? undefined : [`bk-sb-a${arcIndex}`, ...(decorations.ancestorIndexesOf?.(point.datum) ?? []).map((index) => `bk-sb-u${index}`)].join(" ");
+  const arcClass = arcIndex === undefined ? undefined : `bk-sb-a${arcIndex}`;
   return joinClasses(point.datum.external ? undefined : "bk-sunburst-branch", arcClass) || undefined;
 };
 

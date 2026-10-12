@@ -1,11 +1,11 @@
 // Bklit RingChart on native radialArc marks (track + progress per ring) inside polar(); the entrance is a CSS track expand plus a progress sweep on its own layer (ring/progress-layer.ts).
+// Plain svg renderer: every mark is `motion: false` (CSS track entrance, progress layer sweep), so the motion renderer had nothing to drive.
 // Custom: a per-ring arc generator (ring/arc.ts) and the NumberFlow center island; focus is the native annulus strategy via onFocusChange.
 import { useCallback, useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
-import { Chart } from "@tanstack/react-charts/core";
+import { Chart } from "@tanstack/react-charts";
 import { defineChart } from "@tanstack/charts/scene";
 import { measureNoText } from "./kit/polar/measure-no-text";
-import { motion } from "@tanstack/charts/motion";
 import { polar, radialArc } from "@tanstack/charts/polar";
 import type { ChartRendererRenderContext, DomChartDefinition } from "@tanstack/charts";
 import { useSanitizedId } from "./kit/use-sanitized-id";
@@ -39,9 +39,6 @@ const RING_INSET_PX = 8;
 const MIN_RING_SIZE_PX = 10;
 const HIT_SLACK_PX = 0;
 const MIN_PROGRESS = 0.001;
-const ringRenderer = motion({ initial: "always", respectReducedMotion: true });
-// Mark-level `motion` (staggered entrance) is only consulted on a client mount; an SSR-adopted
-// chart replays with the renderer default. Mount the chart after hydration so the stagger applies.
 
 const CENTER_OVERLAY_STYLE: CSSProperties = {
   alignItems: "center", display: "flex", inset: 0, justifyContent: "center", pointerEvents: "none", position: "absolute",
@@ -247,7 +244,6 @@ const RingChart = ({
             measureText={measureNoText}
             onFocusChange={handleFocusChange}
             onRender={handleRender}
-            renderer={ringRenderer}
             width={size}
           /> : null}
           {centerChildren.length === 0 ? null : <div style={CENTER_OVERLAY_STYLE}>{centerChildren}</div>}

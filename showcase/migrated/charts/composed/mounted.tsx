@@ -1,4 +1,4 @@
-import { erase } from "../kit/cartesian/erased-types";
+import { erase } from "../kit/erased-types";
 import { writePresence } from "../kit/host-write";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
@@ -54,7 +54,8 @@ export const ComposedChartMounted = ({
   ariaLabel = "Composed chart",
   ariaDescription,
   initialWidth,
-}: Readonly<ComposedChartProps & { initialWidth: number }>): ReactElement => {
+  initialHeight,
+}: Readonly<ComposedChartProps & { initialWidth: number; initialHeight: number }>): ReactElement => {
   useEffect(() => {
     onPhaseChange?.("ready");
   }, [onPhaseChange]);
@@ -131,7 +132,7 @@ export const ComposedChartMounted = ({
   // bklit's drag selection (kit/cartesian/drag-select.ts): the press hides the tooltip and bar fade, the drag dims the series (host attributes only).
   const dragGeom = useRef<DragGeom>({ left: 0, top: 0, innerWidth: 0, innerHeight: 0 });
   const { interaction: dragInteraction, onRender: onDragRender } = useDragSelect(containerRef, dragGeom, { drag: dragHost, press: pressHost });
-  const { useContextValue, innerWidth, innerHeight, rows, times } = useComposedContext({ containerRef, ready: readyStore, data, xDataKey, margin, domains: built.domains, series, bars, duration, barSize, maxBarSize, barGap, stacked, stackGap, table, interaction: dragInteraction });
+  const { useContextValue, innerWidth, innerHeight, rows, times } = useComposedContext({ initialSize: { width: Math.round(initialWidth), height: Math.round(initialHeight) }, containerRef, ready: readyStore, data, xDataKey, margin, domains: built.domains, series, bars, duration, barSize, maxBarSize, barGap, stacked, stackGap, table, interaction: dragInteraction });
   const xStartMs = built.domains.x[0].getTime();
   const xSpanMs = built.domains.x[1].getTime() - xStartMs;
   dragGeom.current = { left: margin.left, top: margin.top, innerWidth, innerHeight };

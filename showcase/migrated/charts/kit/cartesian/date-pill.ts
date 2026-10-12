@@ -2,10 +2,10 @@
 // day stacks) at the focused x, so hovering never re-resolves the definition. Shared by every time-x chart.
 import { createMark } from "@tanstack/charts";
 import type { ChartBounds, ChartGradient, ChartMotionContext, ChartMotionDefinition, ResolvedScale, SceneNode } from "@tanstack/charts";
-import { erase } from "./erased-types";
+import { erase } from "../erased-types";
 import { REST_PX } from "../motion/spring-curve";
 import { DATE_PILL_SPRING } from "../motion/springs";
-import type { AnyMark } from "./erased-types";
+import type { AnyMark } from "../erased-types";
 import { shortDateFmt } from "../format";
 import type { guideMotion } from "../motion/guide-motion";
 import { fontContext } from "../text-width";
