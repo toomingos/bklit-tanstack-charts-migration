@@ -159,7 +159,7 @@ interface NodeRowShape extends NodeLayoutRow {
   readonly radius: number;
 }
 
-const intFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+const intFmt = /* @__PURE__ */ new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
 const placeLabels = (
   nodes: readonly NodeLayoutRow[],

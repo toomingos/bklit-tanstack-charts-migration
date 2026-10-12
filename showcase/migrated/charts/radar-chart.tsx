@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { motion } from "@tanstack/charts/motion";
 import type { ChartPoint, ChartRendererRenderContext } from "@tanstack/charts";
-import { RendererChart } from "@tanstack/react-charts/tooltip";
+import { Chart as RendererChart } from "@tanstack/react-charts/core";
 import type { RadarEnterTransition } from "./radar/transition";
 import { RadarProvider } from "./radar/context";
 import { RADAR_ENTRANCE_CSS, RADAR_ENTRANCE_ORIGINS, radarEntranceVars } from "./radar/entrance";
