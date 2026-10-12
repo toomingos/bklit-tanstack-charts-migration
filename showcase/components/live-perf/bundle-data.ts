@@ -1,26 +1,35 @@
-/** Minified + gzipped JS per chart (esbuild 0.28, tree-shaken, react external), re-measured 2026-10-11 after opt-in overlays and Background (same esbuild method both sides).
+/** Minified + gzipped JS per chart (archive/bench/bundle.mjs: esbuild, tree-shaken, react/next and the page-shell packages external, same method both sides), re-measured 2026-10-12 on main 6c80903c.
  * KB gzip, [bklit, migrated]; migrated also ships a shared stylesheet (bundleCssKb). */
 export const bundleSizes: { label: string; gzip: readonly [bklit: number, migrated: number] }[] = [
-  { label: "Line", gzip: [93.2, 104.8] },
-  { label: "Area", gzip: [93.0, 104.8] },
-  { label: "Bar", gzip: [81.2, 90.6] },
-  { label: "Pie", gzip: [58.1, 55.6] },
-  { label: "Ring", gzip: [63.4, 65.0] },
-  { label: "Gauge", gzip: [58.8, 60.5] },
-  { label: "Heatmap", gzip: [78.7, 82.3] },
-  { label: "Sankey", gzip: [59.6, 67.4] },
-  { label: "Choropleth", gzip: [78.3, 70.9] },
-  { label: "Live line", gzip: [79.0, 86.9] },
-  { label: "Scatter", gzip: [81.8, 82.9] },
-  { label: "Candlestick", gzip: [80.8, 87.6] },
-  { label: "Funnel", gzip: [52.4, 59.3] },
-  { label: "Radar", gzip: [67.5, 59.9] },
-  { label: "Sunburst", gzip: [47.6, 68.6] },
-  { label: "Composed", gzip: [96.9, 101.7] },
+  { label: "Area Chart", gzip: [86.9, 92.3] },
+  { label: "Bar Chart", gzip: [74.6, 78.4] },
+  { label: "Bar Depth", gzip: [77, 80.8] },
+  { label: "Bar Squares", gzip: [80, 83.9] },
+  { label: "Chart Brush", gzip: [95.9, 114.2] },
+  { label: "Candlestick Chart", gzip: [68, 74.9] },
+  { label: "Choropleth Chart", gzip: [71.8, 70.3] },
+  { label: "Composed Chart", gzip: [89, 89] },
+  { label: "Composition", gzip: [91.3, 105.2] },
+  { label: "Funnel Chart", gzip: [46.1, 52.1] },
+  { label: "Gauge", gzip: [52.3, 59.8] },
+  { label: "Heatmap Chart", gzip: [72.4, 70.3] },
+  { label: "Line Chart", gzip: [90.5, 96.6] },
+  { label: "Live Line Chart", gzip: [72.5, 75.6] },
+  { label: "Chart Markers", gzip: [94, 101.9] },
+  { label: "Pattern Area", gzip: [87.3, 92] },
+  { label: "Pie Chart", gzip: [51.6, 55.7] },
+  { label: "Projection Line", gzip: [88.3, 97.2] },
+  { label: "Radar Chart", gzip: [61.1, 59.4] },
+  { label: "Reference Area", gzip: [89.1, 96.3] },
+  { label: "Ring Chart", gzip: [56.9, 51.9] },
+  { label: "Sankey Chart", gzip: [53.1, 67.4] },
+  { label: "Scatter Chart", gzip: [74.6, 70.5] },
+  { label: "Segment", gzip: [88.5, 92.2] },
+  { label: "Sunburst Chart", gzip: [48.5, 68.5] },
 ];
 
-/** Every chart bundled together, KB gzip. */
-export const bundleTotal: readonly [bklit: number, migrated: number] = [212.4, 291.9];
+/** Mean over the charts above, KB gzip. */
+export const bundleTotal: readonly [bklit: number, migrated: number] = [74.5, 79.9];
 
 /** Migrated stylesheets as built by Next (minified, all charts), KB gzip; polar (1.3) and heatmap (1.0) rules load only with those charts. bklit ships Tailwind classes instead. */
 export const bundleCssKb = 8.2;

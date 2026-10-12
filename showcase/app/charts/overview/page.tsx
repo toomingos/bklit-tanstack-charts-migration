@@ -3,15 +3,22 @@ import { allCharts } from "@/lib/chart-data";
 import { BundleTable } from "@/components/live-perf/bundle-table";
 import { bundleCssKb, bundleSizes, bundleTotal } from "@/components/live-perf/bundle-data";
 import { CompareCell, compare, type Headline, HeadlineCards, type Tolerance } from "@/components/live-perf/headline-cards";
-import { BKLIT_SHA, type Metric, chartPair, summarise, sweepMeta } from "@/components/live-perf/headline-data";
+import { BKLIT_SHA, type Metric, chartPair, idleRuns, summarise, sweepMeta } from "@/components/live-perf/headline-data";
 
-const LAT_TOL: Tolerance = { rel: 0.1, abs: 3 };
+const MS_TOL: Tolerance = { rel: 0.1, abs: 3 };
 const BUSY_TOL: Tolerance = { rel: 0.1, abs: 0.3 };
 const cols: { metric: Metric; head: string; tol?: Tolerance }[] = [
-  { metric: "render", head: "Render" },
+  { metric: "render", head: "Render", tol: MS_TOL },
   { metric: "busy", head: "Main-thread busy per move", tol: BUSY_TOL },
-  { metric: "latency", head: "Move to paint p95", tol: LAT_TOL },
+  { metric: "firstPaint", head: "First paint", tol: MS_TOL },
+  { metric: "settled", head: "Settled", tol: MS_TOL },
 ];
+
+const median = (v: readonly number[]) => {
+  const s = [...v].sort((a, b) => a - b);
+  const h = s.length >> 1;
+  return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2;
+};
 
 const routes = allCharts.map((c) => c.route);
 
@@ -21,9 +28,10 @@ function card(label: string, metric: Metric, digits = 1, floor = 0): Headline {
   return { label, bklit: s?.bklitMs ?? null, migrated: s?.migratedMs ?? null, ratio: s?.geo, digits };
 }
 const headlines = [
-  card("Render (settled − designed animation)", "render"),
-  card("Main-thread busy per pointer move", "busy", 2, 0.05),
-  card("Move to paint, p95", "latency"),
+  card("Render on load (settled − designed animation)", "render"),
+  card("Main-thread busy per pointer move (hovered)", "busy", 2, 0.05),
+  card("First paint", "firstPaint"),
+  card("Settled (animation included)", "settled"),
 ];
 const th = "whitespace-nowrap px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground";
 
@@ -46,6 +54,8 @@ export default function OverviewPage() {
   const [allB, allM] = bundleTotal;
   const bundleRows = bundleSizes.map((r) => [r.label, r.gzip] as const);
   const bigger = bundleRows.filter(([, [b, m]]) => m > b * 1.05).length;
+  const idleB = median(idleRuns[0]);
+  const idleM = median(idleRuns[1]);
   const smaller = bundleRows.filter(([, [b, m]]) => m < b * 0.95).length;
   return (
     <div>
@@ -55,10 +65,10 @@ export default function OverviewPage() {
           {allCharts.length} charts, each rendered as Bklit UI and TanStack Bklit UI side by side with live performance measurements.
         </p>
         <p className="mt-3 rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-          Method: {sweepMeta.date}, {sweepMeta.build}, {sweepMeta.runs} interleaved runs (bklit first, then migrated first), {sweepMeta.movesPerSide} pointer
+          Method: {sweepMeta.date}, {sweepMeta.build}, {sweepMeta.runs} interleaved runs (bklit first, then migrated first; both cards on one page), {sweepMeta.movesPerSide} pointer
           moves per side per run ({sweepMeta.events}), bklit-ui {BKLIT_SHA}, TanStack Charts 1.1.0, {sweepMeta.machine}, {sweepMeta.viewport}. Each cell is the median
           of the runs with min–max; a ratio is shown only where the two ranges do not overlap, otherwise parity. Summaries are geometric means of per-chart ratios,
-          never sums. Render = max(first paint, settled − the demo's designed entrance) (delay, duration and stagger from bklit's source, springs to rest), the same budget for both sides: the time to first paint plus any time the entrance ran past its design. Brush has no settled reading, so no render value.
+          never sums. Render = settled − the demo's designed entrance (delay, duration and stagger from bklit's source, springs to rest), the same budget for both sides, with no first-paint floor: the time the entrance ran past its design. Busy = main-thread busy time per pointer move while the chart is hovered (whole page, gaps over 1 ms). Composition has no entrance budget, so no render value.
         </p>
       </section>
 
@@ -92,6 +102,18 @@ export default function OverviewPage() {
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               esbuild, minified, tree-shaken, react external, one bundle per chart.
+            </p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="text-sm text-muted-foreground">Live line at rest, main-thread busy share</div>
+            <div className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums ${idleM > idleB ? "text-red-600/90 dark:text-red-400/90" : ""}`}>
+              {idleM.toFixed(1)}% vs {idleB.toFixed(1)}%
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground tabular-nums">
+              migrated {idleM.toFixed(1)}% · bklit {idleB.toFixed(1)}% (median of {idleRuns[0].length} runs; ranges {Math.min(...idleRuns[1]).toFixed(1)}–{Math.max(...idleRuns[1]).toFixed(1)}% and {Math.min(...idleRuns[0]).toFixed(1)}–{Math.max(...idleRuns[0]).toFixed(1)}%).
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Gaps over 0.25 ms minus the empty-page control, 4 s per run, Live Perf probe off. Wide spread: another process shared the machine.
             </p>
           </div>
         </div>
