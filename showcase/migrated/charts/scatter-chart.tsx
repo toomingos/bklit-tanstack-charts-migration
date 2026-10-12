@@ -1,7 +1,7 @@
 // bklit ScatterChart on native TanStack Charts: <Scatter> children are config
 // carriers compiled into one definition (see scatter/definition.ts).
 import { erase } from "./kit/erased-types";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useRevealClock } from "./kit/size/parent-size-arm";
 import { useReadyGate } from "./kit/entrance/reveal-arm";
@@ -13,7 +13,7 @@ import { BklitTooltipBody } from "./kit/tooltip/tooltip-body";
 import { useChildTable } from "./kit/stable-children";
 import { bklitSurfaceStyle, DEFAULT_ANIMATION_MS, DEFAULT_MARGIN, parseAspectRatio } from "./kit/theme";
 import type { ChartMargin } from "./kit/theme";
-import { buildScatterDefinition, SCATTER_HOVER_CSS } from "./scatter/definition";
+import { buildScatterDefinition, createSizeStore, SCATTER_HOVER_CSS } from "./scatter/definition";
 import { parseEasing } from "./kit/motion/easing";
 import { toEaseFn } from "./kit/motion/enter-transition";
 import type { EnterTransition } from "./kit/motion/phase";
@@ -22,7 +22,6 @@ import { FocusLayer, useFocusStore } from "./kit/cartesian/focus-layer";
 import type { LineConfig } from "./kit/cartesian/chart-context";
 import { useFocusRow } from "./kit/cartesian/chart-context-focus";
 import { timeScale, useBridgedContext, useReferenceAreas, valueScale } from "./kit/cartesian/context-bridge";
-import { useResizeBox } from "./kit/size/use-resize-box";
 import type { FocusedRow } from "./kit/cartesian/context-bridge";
 import { shortDateFmt } from "./kit/format";
 import { OWN_PILL_NAMES, pillTickStaticCss, syncPillHost } from "./kit/cartesian/date-pill";
@@ -84,7 +83,8 @@ const ScatterChartInner = ({
   const { interaction, onRender } = useInteractionHandle();
   usePressGuard(containerRef, interaction, true);
   const holdFocus = useKeyboardFocusHold(containerRef, () => interaction.current);
-  const size = useResizeBox(containerRef, undefined, true);
+  // The plot size comes from TanStack's own measure (the definition's `chart` callback writes it), never from React state.
+  const sizeStore = useRef(createSizeStore()).current;
   // Hover lives in a ref store read only by <FocusLayer>: focus never re-renders this component
   // (no definition rebuild, no re-resolve); fixed CSS (`SCATTER_HOVER_CSS`) carries the visual emphasis.
   const focusStore = useFocusStore<FocusedRow>();
@@ -99,8 +99,8 @@ const ScatterChartInner = ({
   }, [childrenReady]);
   const revealClock = useRevealClock(revealed);
   const built = useMemo(
-    () => buildScatterDefinition({ data, xKey: xDataKey, table, margin: resolvedMargin, uid: "scatter", idPrefix: uid, animationDuration, easing, revealed, revealClock }),
-    [data, xDataKey, table, resolvedMargin, animationDuration, easing, revealed, revealClock, uid],
+    () => buildScatterDefinition({ data, xKey: xDataKey, table, margin: resolvedMargin, uid: "scatter", idPrefix: uid, animationDuration, easing, revealed, revealClock, sizeStore }),
+    [data, xDataKey, table, resolvedMargin, animationDuration, easing, revealed, revealClock, uid, sizeStore],
   );
   const renderer = useMemo(() => motion(erase({ transition: { type: "tween", duration: 500 } })), []);
   const colors = useMemo(() => Object.fromEntries(built.series.map((s) => [s.dataKey, s.tooltipColor])), [built.series]);
@@ -120,14 +120,7 @@ const ScatterChartInner = ({
     armReady();
   }, [revealed, armReady]);
 
-  // Public `useChart()` context, derived from the native focus + resolved domains.
-  const innerWidth = Math.max(0, size.width - resolvedMargin.left - resolvedMargin.right);
-  const innerHeight = Math.max(0, size.height - resolvedMargin.top - resolvedMargin.bottom);
-  const xScale = useMemo(() => timeScale(built.domains.x(size.width), innerWidth), [built.domains, size.width, innerWidth]);
-  const yScales = useMemo(
-    () => Object.fromEntries(Object.entries(built.domains.y).map(([id, domain]) => [id, valueScale(domain, innerHeight)])),
-    [built.domains, innerHeight],
-  );
+  // Public `useChart()` context, derived from the native focus + resolved domains; built only inside <FocusLayer> (custom children), at the size TanStack measured.
   // SAFETY: `data` is only read; the bridge and kit helpers type rows as a mutable array.
   const rows = data as Row[];
   const rowIndex = useMemo(() => new Map(rows.map((row, i) => [row, i] as const)), [rows]);
@@ -141,16 +134,23 @@ const ScatterChartInner = ({
   const referenceAreas = useReferenceAreas(table);
   // Rows are focused at their data x on the plot's middle line; group-x snaps like a pointer move.
   const pixelOf = useCallback(
-    (index: number) => (rows[index] ? { x: resolvedMargin.left + xScale(xAccessor(rows[index])), y: resolvedMargin.top + innerHeight / 2 } : null),
-    [rows, resolvedMargin, xScale, xAccessor, innerHeight],
+    (index: number) => {
+      const { width, height } = sizeStore.get();
+      const innerWidth = Math.max(0, width - resolvedMargin.left - resolvedMargin.right);
+      const innerHeight = Math.max(0, height - resolvedMargin.top - resolvedMargin.bottom);
+      return rows[index] ? { x: resolvedMargin.left + timeScale(built.domains.x(width), innerWidth)(xAccessor(rows[index])), y: resolvedMargin.top + innerHeight / 2 } : null;
+    },
+    [rows, resolvedMargin, built.domains, xAccessor, sizeStore],
   );
   const focusRow = useFocusRow(containerRef, interaction, pixelOf);
-  const bridge = useMemo(
-    () => ({ data: rows, margin: resolvedMargin, size, containerRef, ready: readyStore, xScale, yScales, lines, animationDuration, xAccessor, dateLabels, focusRow, referenceAreas }),
-    [rows, resolvedMargin, size, readyStore, xScale, yScales, lines, animationDuration, xAccessor, dateLabels, focusRow, referenceAreas],
-  );
-  const pill = built.pillTicks(size.width);
-  const pillCss = useMemo(() => (pill ? { ...pill } : null), [pill?.spanMs, pill?.plotWidth, pill?.times.join(",")]);
+  const useContextValue = (focused: FocusedRow | null): ReturnType<typeof useBridgedContext> => {
+    const size = useSyncExternalStore(sizeStore.subscribe, sizeStore.get, sizeStore.get);
+    const innerWidth = Math.max(0, size.width - resolvedMargin.left - resolvedMargin.right);
+    const innerHeight = Math.max(0, size.height - resolvedMargin.top - resolvedMargin.bottom);
+    const xScale = useMemo(() => timeScale(built.domains.x(size.width), innerWidth), [size.width, innerWidth]);
+    const yScales = useMemo(() => Object.fromEntries(Object.entries(built.domains.y).map(([id, domain]) => [id, valueScale(domain, innerHeight)])), [innerHeight]);
+    return useBridgedContext({ data: rows, margin: resolvedMargin, size, containerRef, ready: readyStore, xScale, yScales, lines, animationDuration, xAccessor, dateLabels, focusRow, referenceAreas, focused });
+  };
   // Hover emphasis is static CSS (SCATTER_HOVER_CSS) keyed on the host.
   const dimSeries = built.series.find((s) => s.dim);
   const hoverVars = useMemo(
@@ -160,8 +160,12 @@ const ScatterChartInner = ({
   );
   const dimOn = dimSeries !== undefined;
   const pillStaticCss = useMemo(
-    () => (pillCss ? (pillTickStaticCss(`[data-bkm-kit="${uid}"]`, pillCss.times, pillCss.reachPx, OWN_PILL_NAMES) ?? "") : ""),
-    [pillCss, uid],
+    // The rule text holds no width-dependent value (tick times only gate it on), so one nominal width serves.
+    () => {
+      const pill = built.pillTicks(1);
+      return pill ? (pillTickStaticCss(`[data-bkm-kit="${uid}"]`, pill.times, pill.reachPx, OWN_PILL_NAMES) ?? "") : "";
+    },
+    [built, uid],
   );
   const onFocusChange = useCallback(
     (point: { datum: unknown; x: number } | null) => {
@@ -170,6 +174,7 @@ const ScatterChartInner = ({
       const index = point ? (rowIndex.get(point.datum as Row) ?? -1) : -1;
       focusStore.set(index < 0 ? null : { row: rows[index], index });
       const host = containerRef.current;
+      const pillCss = built.pillTicks(sizeStore.get().width);
       if (host && pillCss) {
         // SAFETY: the x column holds a Date, epoch number or date string (see xAccessor).
         syncPillHost(host, pillCss.times, pillCss.spanMs, pillCss.plotWidth, index < 0 ? null : new Date(rows[index]?.[xDataKey] as string | number | Date).getTime(), index);
@@ -180,7 +185,7 @@ const ScatterChartInner = ({
         writeFocusHost(host, { focused: index >= 0, hovered: dimOn && point !== null && index >= 0, liftPress: true });
       }
     },
-    [rowIndex, rows, focusStore, dimOn, pillCss, xDataKey],
+    [rowIndex, rows, focusStore, dimOn, xDataKey, built, sizeStore],
   );
   const renderTooltipBody = useCallback(
     // SAFETY: erased datum generics, as at the other kit call sites.
@@ -204,7 +209,7 @@ const ScatterChartInner = ({
       /> : null}
       <FocusLayer
         store={focusStore}
-        useContextValue={(focused: FocusedRow | null) => useBridgedContext({ ...bridge, focused })}
+        useContextValue={useContextValue}
       >
         {custom}
       </FocusLayer>
