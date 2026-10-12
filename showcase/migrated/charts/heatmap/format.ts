@@ -21,9 +21,9 @@ const formatHeatmapOrdinalDay = (day: number): string => {
   }
 }
 
-const heatmapTooltipMonthFmt = new Intl.DateTimeFormat("en-US", { month: "long" });
-const heatmapTooltipWeekdayFmt = new Intl.DateTimeFormat("en-US", { weekday: "long" });
-const heatmapMonthShortFmt = new Intl.DateTimeFormat("en-US", { month: "short" });
+const heatmapTooltipMonthFmt = /* @__PURE__ */ new Intl.DateTimeFormat("en-US", { month: "long" });
+const heatmapTooltipWeekdayFmt = /* @__PURE__ */ new Intl.DateTimeFormat("en-US", { weekday: "long" });
+const heatmapMonthShortFmt = /* @__PURE__ */ new Intl.DateTimeFormat("en-US", { month: "short" });
 
 export const formatHeatmapMonthShort = (date: Readonly<Date>): string => heatmapMonthShortFmt.format(date);
 
