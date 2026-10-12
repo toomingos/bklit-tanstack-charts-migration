@@ -10,6 +10,7 @@ import { useDataUpdateStep } from "./use-data-update-step";
 import type { CartesianInput } from "./definition";
 import { LegendHostSync, useHoverHostSync } from "./hover-host";
 import { type DragGeom, useDragSelect } from "./drag-select";
+import { clearAttribute } from "../host-write";
 import { useKeyboardFocusHold } from "../keyboard-hold";
 import { toDate } from "./series";
 import type { Row } from "./series";
@@ -64,6 +65,7 @@ interface CartesianChartProps {
 }
 
 const NONE: never[] = [];
+const WIPE_IN_ATTR = "data-bkm-wipe-in";
 
 
 // The definition is width-keyed, so it is built once at the real width (host-size.ts) and the svg mounts in the commit of that layout-effect measure, before first paint.
@@ -158,24 +160,20 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
   }, [onAnimationEvent, onPulseIteration]);
   holdFocusRef.current = useKeyboardFocusHold(containerRef, () => dragInteraction.current);
   const { arm: gateArm, store: readyStore } = useReadyGate(containerRef, animationDuration);
-  // Native line / area wipe progress (definition.ts wipeWrap): seeded closed, opened by RevealArm's arm so the keyed groups tween 0 -> 1.
-  const [wipeStateP, setWipeP] = useState(animationDuration > 0 ? 0 : 1);
   useRevealedFromConcealed(phase, gateArm);
-  const armedAt = useRef<number | null>(null);
-  const onRevealArm = useCallback(() => {
-    gateArm();
-    armedAt.current = performance.now();
-    setWipeP(1);
-  }, [gateArm]);
-  // The wipe render has committed (the tween resumed from the arm): later wipe renders start fresh.
-  useEffect(() => { armedAt.current = null; }, [wipeStateP]);
+  // First-mount entrance (status "ready"): the wipe groups play the CSS `bkm-wipe-*` keyframes from the first draw (styles.css); a later loading -> ready reveal is the native `wipe-` tween.
+  const [wipeIn] = useState(status !== "loading" && animationDuration > 0);
+  useEffect(() => { if (phase !== "ready") { clearAttribute(containerRef.current, WIPE_IN_ATTR); } }, [phase]);
+  const onWipeEnd = useCallback((event: { animationName: string }): void => {
+    if (event.animationName === "bkm-wipe-o") { clearAttribute(containerRef.current, WIPE_IN_ATTR); }
+  }, []);
   const { brushProps, brush, brushCollapsed, shownRange, bindChange } = useBrush({ table, children, data, xDataKey });
   const marginKey = JSON.stringify(margin ?? null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const resolvedMargin = useMemo(() => ({ ...DEFAULT_MARGIN, ...margin }), [marginKey]);
   const plotInnerWidth = Math.max(0, plotWidth - resolvedMargin.left - resolvedMargin.right);
   // The conceal window runs past the plot by the left margin its fixed clip carries (wipe.ts), so the last data is gone at the end.
-  const { p: wipeP, ms: wipeMs } = loadingWipe(phase, wipeStateP, animationDuration, 2 + resolvedMargin.left / Math.max(1, plotInnerWidth));
+  const { p: wipeP, ms: wipeMs } = loadingWipe(phase, 1, animationDuration, 2 + resolvedMargin.left / Math.max(1, plotInnerWidth));
   const update = useDataUpdateStep(data, [xDataKey, table, series, resolvedMargin, uid, animationDuration, extra, brush, plotWidth, plotHeight], xDomain);
   const built = useMemo(
     () =>
@@ -200,7 +198,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
         plotWidth: plotInnerWidth,
         innerWidth: plotInnerWidth,
         plotHeight: plotHeight - resolvedMargin.top - resolvedMargin.bottom,
-        wipe: { p: wipeP, ms: wipeMs, armedAt, w: Math.max(0, plotWidth - resolvedMargin.left - resolvedMargin.right), h: Math.max(0, plotHeight - resolvedMargin.top - resolvedMargin.bottom) },
+        wipe: { p: wipeP, ms: wipeMs, w: Math.max(0, plotWidth - resolvedMargin.left - resolvedMargin.right), h: Math.max(0, plotHeight - resolvedMargin.top - resolvedMargin.bottom) },
       }),
     [data, xDataKey, table, series, resolvedMargin, xDomain, uid, gridLoading, animationDuration, extra, brush, plotWidth, plotInnerWidth, plotHeight, update.step, update.from, wipeP, wipeMs],
   );
@@ -226,6 +224,8 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
       className={className}
       data-bkm-kit={uid}
       onAnimationStart={onAnimationEvent}
+      onAnimationEnd={onWipeEnd}
+      data-bkm-wipe-in={wipeIn ? "" : undefined}
       onAnimationIteration={onAnimationIteration}
       {...built.gridAttrs}
       data-bkm-clip={xDomain === undefined ? undefined : ""}
@@ -249,7 +249,7 @@ function CartesianChartMounted(props: Readonly<CartesianChartProps & { initialWi
       {built.hover.highlights.length > 0 ? <HighlightBandClip id={built.hover.bandClip} /> : null}
       {staticCss ? <style>{staticCss}</style> : null}
       <LegendHostSync hostRef={containerRef} />
-      {sized && <RevealArm hostRef={containerRef} onArm={onRevealArm} />}
+      {sized && <RevealArm hostRef={containerRef} onArm={gateArm} />}
       {plotWidth > 0 && childrenReady && sized && (
       <RendererChart
         definition={erase(built.definition)}

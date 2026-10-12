@@ -1,16 +1,13 @@
-// Funnel marks: each stage is `layers` concentric native areas (areaY horizontal / areaX vertical) over a two-point centreline pair, plus pixel-laid-out labels.
-// No hover state: dim, pop-out and label dim are static scoped CSS keyed on a host attribute (hover-css.ts), so hover never rebuilds the definition.
-import { areaY } from "@tanstack/charts/area";
-import { areaX } from "@tanstack/charts/area-x";
-import { rect } from "@tanstack/charts/rect";
-import { ruleX, ruleY } from "@tanstack/charts/rule";
-import { text } from "@tanstack/charts/text";
-import type { AreaXCurve } from "@tanstack/charts/area-x";
-import type { ChartCurve, ChartLinearGradient, ChartMark, ChartMotionTransition } from "@tanstack/charts";
+// Funnel mark: one custom mark whose `resolveLayout` lays the whole funnel out in pixels from the final chart bounds (gaps, whole-pixel stage edges,
+// label and pill geometry), so the definition never depends on a measured width. Each stage is a group of ring areas and a label group; the
+// hover dim, pop-out and entrance are static CSS (funnel.css) on the stage groups' classes, never a rebuild.
+import { createMark } from "@tanstack/charts";
+import type { ChartBounds, ChartLayoutOptions, ChartLinearGradient, ChartMark, ChartPoint, MarkRenderContext, MarkScene, SceneArea, SceneNode } from "@tanstack/charts";
 import { fontContext, textWidth } from "../kit/text-width";
 import type { FunnelDatum } from "./focus";
 
 const SSR_WIDTH_RATIO = 0.58;
+const FALLBACK_FONT = "ui-sans-serif, system-ui, sans-serif";
 
 interface FunnelGradientStopInput {
   readonly offset: string | number;
@@ -26,27 +23,8 @@ interface FunnelStageInput {
 }
 
 type FunnelMark = ChartMark<FunnelDatum, number, number>;
+type FunnelPoint = ChartPoint<FunnelDatum, number, number>;
 type LabelAnchor = "start" | "middle" | "end";
-
-interface AreaRow extends FunnelDatum {
-  readonly layer: number;
-  readonly pos: number;
-  readonly half: number;
-}
-
-interface LabelRow extends FunnelDatum {
-  readonly x: number;
-  readonly y: number;
-  readonly text: string;
-  readonly anchor: LabelAnchor;
-}
-
-interface PillRow extends FunnelDatum {
-  readonly x1: number;
-  readonly x2: number;
-  readonly y1: number;
-  readonly y2: number;
-}
 
 interface FunnelMarkConfig {
   readonly stages: readonly FunnelStageInput[];
@@ -55,16 +33,11 @@ interface FunnelMarkConfig {
   readonly layers: number;
   readonly gapPx: number;
   readonly curved: boolean;
-  readonly transition?: ChartMotionTransition | undefined;
-  /** Computed font family of the host: label text is measured in the face it is drawn in (the pill sizes from it). */
-  readonly fontFamily: string;
   readonly showLabels: boolean;
   readonly showValues: boolean;
   readonly showPercentage: boolean;
   readonly formatValue: (value: number) => string;
   readonly formatPercentage: (pct: number) => string;
-  /** Measured plot size in px (from the rendered scene). */
-  readonly size: { readonly width: number; readonly height: number };
   readonly labelLayout: "spread" | "grouped";
   readonly labelOrientation?: "vertical" | "horizontal" | undefined;
   readonly labelAlign: "center" | "start" | "end";
@@ -89,11 +62,8 @@ const edgeRun = (points: readonly Pt[], axis: "x" | "y", first: "M" | "L"): stri
   }
   return d;
 };
-// d3's area order: the top edge forward, the bottom edge back, closed.
-const edgeArea = (top: readonly Pt[], bottom: readonly Pt[], axis: "x" | "y"): string =>
-  top.length === 0 ? "" : `${edgeRun(top, axis, "M")}${edgeRun([...bottom].reverse(), axis, "L")}Z`;
-const bklitCurve = (): ChartCurve => ({ line: (points) => edgeRun(points, "x", "M"), area: (top, bottom) => edgeArea(top, bottom, "x") });
-const bklitCurveX = (): AreaXCurve => ({ areaX: (right, left) => edgeArea(right, left.map(([x], i) => [x, right[i]?.[1] ?? 0] as Pt), "y") });
+// d3's area order: the first edge forward, the second back, closed.
+const edgeArea = (forward: readonly Pt[], back: readonly Pt[], axis: "x" | "y"): string => `${edgeRun(forward, axis, "M")}${edgeRun([...back].reverse(), axis, "L")}Z`;
 
 // Label type (Tailwind text-sm / text-xs): the size/weight each kind is drawn and measured in.
 const LABEL_FONT = { name: { size: 12, weight: 500 }, pct: { size: 12, weight: 700 }, value: { size: 14, weight: 600 } } as const;
@@ -110,6 +80,8 @@ const PILL_PAD_Y = 4;
 const GROUP_GAP = 6;
 const GROUP_PAD = 0.08;
 const SPREAD_BAND = 0.16;
+// The painted inset TanStack's rect mark gives a band (rect `inset` default).
+const BAND_INSET = 0.75;
 
 const funnelGradientId = (stage: number): string => `funnel-stage-${stage}`;
 const ringOpacity = (layer: number, layers: number): number => 0.18 + (layer / (layers - 1 || 1)) * 0.65;
@@ -128,7 +100,6 @@ const ringScale = (layer: number, layers: number): number => 1 - (layer / layers
 const popExtra = (layer: number, layers: number): number => (layer / Math.max(layers - 1, 1)) * HOVER_POP;
 
 const stageColor = (stage: FunnelStageInput, fallback: string): string => stage.gradient?.[0]?.color ?? stage.color ?? fallback;
-
 
 interface FontMetrics {
   /** Rounded font ascent / descent: what an HTML line box centres (the baseline sits (ascent - descent) / 2 below the line centre). */
@@ -199,18 +170,18 @@ const ringFill = ({ base, gradientId, index, innermost, patternPrefix }: Readonl
   return base;
 };
 
-const labelItems = (config: FunnelMarkConfig, stage: FunnelStageInput, pct: number): LabelItem[] => {
+const labelItems = (config: FunnelMarkConfig, fontFamily: string, stage: FunnelStageInput, pct: number): LabelItem[] => {
   const items: LabelItem[] = [];
   if (config.showValues) {
     const t = stage.displayValue ?? config.formatValue(stage.value);
-    items.push({ height: VALUE_LINE, kind: "value", text: t, width: textWidth(t, 14, 600, config.fontFamily, SSR_WIDTH_RATIO) });
+    items.push({ height: VALUE_LINE, kind: "value", text: t, width: textWidth(t, 14, 600, fontFamily, SSR_WIDTH_RATIO) });
   }
   if (config.showPercentage) {
     const t = config.formatPercentage(pct);
-    items.push({ height: SMALL_LINE + PILL_PAD_Y * 2, kind: "pct", text: t, width: textWidth(t, 12, 700, config.fontFamily, SSR_WIDTH_RATIO) + PILL_PAD_X * 2 });
+    items.push({ height: SMALL_LINE + PILL_PAD_Y * 2, kind: "pct", text: t, width: textWidth(t, 12, 700, fontFamily, SSR_WIDTH_RATIO) + PILL_PAD_X * 2 });
   }
   if (config.showLabels) {
-    items.push({ height: SMALL_LINE, kind: "name", text: stage.label, width: textWidth(stage.label, 12, 500, config.fontFamily, SSR_WIDTH_RATIO) });
+    items.push({ height: SMALL_LINE, kind: "name", text: stage.label, width: textWidth(stage.label, 12, 500, fontFamily, SSR_WIDTH_RATIO) });
   }
   return items;
 };
@@ -270,203 +241,200 @@ const placeGrouped = (items: readonly LabelItem[], box: LabelBox, config: Pick<F
   }
 };
 
-/** Plot geometry shared by rings, grid and labels: stage cells along the stage axis and px -> data conversions. */
+/** Plot geometry in px from the plot's top-left, shared by rings, grid and labels. */
 interface FunnelGeometry {
   readonly W: number;
   readonly H: number;
   readonly count: number;
   readonly norms: readonly number[];
-  readonly unitPx: number;
-  readonly gapData: number;
-  readonly cell: number;
+  /** Stage cell length and the gap after it, along the stage axis. */
+  readonly cellPx: number;
+  readonly gapPx: number;
   readonly cellStart: (index: number) => number;
   readonly stageStart: (index: number) => number;
-  readonly toX: (px: number) => number;
-  readonly toY: (py: number) => number;
 }
 
-const funnelGeometry = (config: FunnelMarkConfig): FunnelGeometry => {
+const funnelGeometry = (config: FunnelMarkConfig, width: number, height: number): FunnelGeometry => {
   const { stages, horizontal } = config;
-  const W = Math.max(1, config.size.width);
-  const H = Math.max(1, config.size.height);
+  const W = Math.max(1, width);
+  const H = Math.max(1, height);
   const count = stages.length;
   const first = stages[0]?.value ?? 1;
   const norms = stages.map((stage) => {
     const norm = stage.value / first;
     return Number.isFinite(norm) && norm > 0 ? norm : 0;
   });
-  // Stage axis is `count` data units across W (horizontal) or H (vertical); cross axis is 1 unit.
-  const axisPx = horizontal ? W : H;
-  const unitPx = axisPx / count;
+  const unitPx = (horizontal ? W : H) / count;
   const gapData = Math.min(0.5, config.gapPx / unitPx);
-  const cell = 1 - (gapData * (count - 1)) / count;
-  const cellStart = (index: number): number => index * (cell + gapData);
-  return {
-    W,
-    H,
-    cell,
-    cellStart,
-    count,
-    gapData,
-    norms,
-    // bklit paints each stage in its own svg, whose origin Chrome snaps to a whole pixel while the shape keeps its fractional size, so
-    // stage edges (and the 1px gap columns between them) land on pixel boundaries.
-    stageStart: (index) => Math.round(cellStart(index) * unitPx) / unitPx,
-    // px (from the plot's top-left) -> data coordinates.
-    toX: (px) => (horizontal ? (px / W) * count : px / W - 0.5),
-    toY: (py) => (horizontal ? 0.5 - py / H : (py / H) * count),
-    unitPx,
-  };
+  const cellPx = (1 - (gapData * (count - 1)) / count) * unitPx;
+  const gapPx = gapData * unitPx;
+  const cellStart = (index: number): number => index * (cellPx + gapPx);
+  // bklit paints each stage in its own svg, whose origin Chrome snaps to a whole pixel while the shape keeps its fractional size, so
+  // stage edges (and the 1px gap columns between them) land on pixel boundaries.
+  return { H, W, cellPx, cellStart, count, gapPx, norms, stageStart: (index) => Math.round(cellStart(index)) };
 };
 
-type FunnelGrid = NonNullable<FunnelMarkConfig["grid"]>;
-
-const bandMark = (grid: FunnelGrid, config: FunnelMarkConfig, geo: FunnelGeometry): FunnelMark => {
-  const { horizontal } = config;
-  const { cell, cellStart } = geo;
-  const bandRows: PillRow[] = config.stages.map((_stage, index) => ({
-    stage: index,
-    x1: horizontal ? cellStart(index) : -0.5,
-    x2: horizontal ? cellStart(index) + cell : 0.5,
-    y1: horizontal ? -0.5 : cellStart(index),
-    y2: horizontal ? 0.5 : cellStart(index) + cell,
-  }));
-  return rect(bandRows.filter((_row, index) => index % 2 === 0), {
-    fill: grid.bandColor, id: "funnel-bands", key: "stage", x1: "x1", x2: "x2", y1: "y1", y2: "y2",
-  });
-};
-
-// bklit: one line per gap between stages, at the gap centre, spanning the whole cross axis.
-const lineMark = (grid: FunnelGrid, config: FunnelMarkConfig, geo: FunnelGeometry): FunnelMark => {
-  const gapCentres = config.stages.slice(0, -1).map((_stage, index) => geo.cellStart(index) + geo.cell + geo.gapData / 2);
-  const options = { id: "funnel-lines", motion: false as const, stroke: grid.lineColor, strokeOpacity: grid.lineOpacity, strokeWidth: grid.lineWidth };
-  return config.horizontal ? ruleX(gapCentres, { ...options, x: (row: number) => row }) : ruleY(gapCentres, { ...options, y: (row: number) => row });
-};
-
-interface RingCurves {
-  readonly curve: ChartCurve | undefined;
-  readonly curveX: AreaXCurve | undefined;
+interface Frame {
+  readonly x: number;
+  readonly y: number;
 }
 
-interface RingContext {
+const group = (key: string, className: string, children: readonly SceneNode[]): SceneNode => ({ children, className, key, kind: "group" });
+
+// Spread/grouped label nodes of one stage: the pill, then value, percentage and name text, in one group that fades as a layer (bklit's label overlay).
+const labelNodes = (config: FunnelMarkConfig, geo: FunnelGeometry, frame: Frame, fonts: Readonly<Record<LabelItem["kind"], FontMetrics>>, index: number, items: readonly LabelItem[]): SceneNode[] => {
+  const { horizontal } = config;
+  const cellPxStart = horizontal ? geo.cellStart(index) : 0;
+  const cellW = horizontal ? geo.cellPx : geo.W;
+  const cellPyStart = horizontal ? 0 : geo.cellStart(index);
+  const cellH = horizontal ? geo.H : geo.cellPx;
+  const box: LabelBox = { cellH, cellPxStart, cellPyStart, cellW, cxPx: cellPxStart + cellW / 2, cyPx: cellPyStart + cellH / 2 };
+  const placed: Placed[] = [];
+  const put: Put = (item, px, py, anchor) => { placed.push({ anchor, item, px, py }); };
+  if (config.labelLayout === "spread") { placeSpread(items, box, horizontal, put); } else { placeGrouped(items, box, config, put); }
+  // HTML line boxes put the baseline (ascent - descent) / 2 below the line centre and paint it on a whole pixel; SVG text is placed by
+  // its x-height centre, so each label's y is that rounded baseline minus half the x-height.
+  const textY = (kind: LabelItem["kind"], centre: number): number => {
+    const metrics = fonts[kind];
+    return Math.round(centre + (metrics.ascent - metrics.descent) / 2) - metrics.xHeight / 2;
+  };
+  const FILL: Record<LabelItem["kind"], string> = { name: "var(--muted-foreground)", pct: "var(--background)", value: "var(--foreground)" };
+  const nodes: SceneNode[] = [];
+  const pill = placed.find((entry) => entry.item.kind === "pct");
+  if (pill) {
+    const { item, px, py } = pill;
+    nodes.push({
+      className: "bkm-pill", height: Math.round(py + item.height / 2) - Math.round(py - item.height / 2), key: `funnel-pill-${index}`, kind: "rect",
+      radius: (PILL_PAD_Y * 2 + SMALL_LINE) / 2, style: { fill: "var(--foreground)" },
+      width: Math.round(px + item.width / 2) - Math.round(px - item.width / 2),
+      x: frame.x + Math.round(px - item.width / 2), y: frame.y + Math.round(py - item.height / 2),
+    });
+  }
+  for (const kind of ["value", "pct", "name"] as const) {
+    const entry = placed.find((candidate) => candidate.item.kind === kind);
+    if (entry) {
+      nodes.push({
+        anchor: entry.anchor, baseline: "middle", fontSize: LABEL_FONT[kind].size, fontWeight: LABEL_FONT[kind].weight, key: `funnel-${kind}-${index}`, kind: "label",
+        style: { fill: FILL[kind] }, text: entry.item.text, x: frame.x + entry.px, y: frame.y + textY(kind, entry.py),
+      });
+    }
+  }
+  return nodes;
+};
+
+interface RingInput {
   readonly config: FunnelMarkConfig;
   readonly geo: FunnelGeometry;
-  readonly curves: RingCurves;
+  readonly frame: Frame;
+  readonly index: number;
+  readonly layer: number;
 }
 
-const ringMark = ({ config, geo, curves }: RingContext, stage: FunnelStageInput, index: number, layer: number): FunnelMark => {
+const ringArea = ({ config, geo, frame, index, layer }: Readonly<RingInput>): SceneArea => {
   const { horizontal, layers, curved } = config;
+  const stage = config.stages[index] as FunnelStageInput;
   const startNorm = geo.norms[index] ?? 0;
   const endNorm = index < geo.count - 1 ? (geo.norms[index + 1] ?? startNorm) : startNorm;
   const gradientId = stage.gradient && stage.gradient.length > 0 ? funnelGradientId(index) : undefined;
-  const scale = ringScale(layer, layers);
-  const rows: AreaRow[] = [
-    { half: startNorm * HALF_EXTENT * scale, layer, pos: geo.stageStart(index), stage: index },
-    { half: endNorm * HALF_EXTENT * scale, layer, pos: geo.stageStart(index) + geo.cell, stage: index },
-  ];
-  const common = {
-    fill: ringFill({ base: stageColor(stage, config.color), gradientId, index, innermost: layer === layers - 1, patternPrefix: config.patternPrefix }),
-    fillOpacity: ringOpacity(layer, layers),
-    id: `funnel-s${index}-l${layer}`,
-    key: (_row: AreaRow, meta: { readonly index: number }): string => `${index}:${layer}:${meta.index}`,
-    // Entrance is a CSS scale (host data-entering); geometry changes (resize) snap.
-    motion: false as const,
+  const scale = ringScale(layer, layers) * HALF_EXTENT * (horizontal ? geo.H : geo.W);
+  const mid = (horizontal ? geo.H : geo.W) / 2;
+  const pos0 = geo.stageStart(index);
+  const pos1 = pos0 + geo.cellPx;
+  const half0 = startNorm * scale;
+  const half1 = endNorm * scale;
+  // Two edges along the stage axis: [low side, high side] of the cross axis.
+  const at = (pos: number, cross: number): Pt => (horizontal ? [frame.x + pos, frame.y + cross] : [frame.x + cross, frame.y + pos]);
+  const first: Pt[] = [at(pos0, mid - half0), at(pos1, mid - half1)];
+  const second: Pt[] = [at(pos0, mid + half0), at(pos1, mid + half1)];
+  return {
+    className: `bkm-ring bkm-l${layer}`,
+    key: `funnel-s${index}-l${layer}`,
+    kind: "area",
+    ...(curved ? { path: edgeArea(first, second, horizontal ? "x" : "y") } : {}),
+    points: [...first, ...[...second].reverse()],
+    style: {
+      fill: ringFill({ base: stageColor(stage, config.color), gradientId, index, innermost: layer === layers - 1, patternPrefix: config.patternPrefix }),
+      fillOpacity: ringOpacity(layer, layers),
+    },
   };
-  if (horizontal) {
-    return areaY(rows, { ...common, curve: curved ? curves.curve : undefined, x: "pos", y1: (row: AreaRow) => -row.half, y2: (row: AreaRow) => row.half });
-  }
-  return areaX(rows, { ...common, curve: curved ? curves.curveX : undefined, x1: (row: AreaRow) => -row.half, x2: (row: AreaRow) => row.half, y: "pos" });
 };
 
-type PlacedByKind = Record<LabelItem["kind"], Placed[]>;
-
-// Labels laid out in pixels (bklit renders them as HTML in the cell).
-const placeLabels = (config: FunnelMarkConfig, geo: FunnelGeometry): PlacedByKind => {
-  const { horizontal } = config;
-  const placedByKind: PlacedByKind = { name: [], pct: [], value: [] };
-  const put: Put = (item, px, py, anchor) => { placedByKind[item.kind].push({ anchor, item, px, py }); };
-  for (const [index, stage] of config.stages.entries()) {
-    const items = labelItems(config, stage, (geo.norms[index] ?? 0) * 100);
-    // Cell box in px.
-    const cellPxStart = horizontal ? geo.cellStart(index) * geo.unitPx : 0;
-    const cellW = horizontal ? geo.cell * geo.unitPx : geo.W;
-    const cellPyStart = horizontal ? 0 : geo.cellStart(index) * geo.unitPx;
-    const cellH = horizontal ? geo.H : geo.cell * geo.unitPx;
-    const box: LabelBox = { cellH, cellPxStart, cellPyStart, cellW, cxPx: cellPxStart + cellW / 2, cyPx: cellPyStart + cellH / 2 };
-    if (config.labelLayout === "spread") { placeSpread(items, box, horizontal, put); } else { placeGrouped(items, box, config, put); }
-  }
-  return placedByKind;
-};
-
-const pillMarks = (placed: readonly Placed[], geo: FunnelGeometry): FunnelMark[] => {
-  const { toX, toY } = geo;
-  const pills: PillRow[] = placed.map((p, order) => ({
-    stage: order,
-    x1: toX(Math.round(p.px - p.item.width / 2)),
-    x2: toX(Math.round(p.px + p.item.width / 2)),
-    y1: toY(Math.round(p.py + p.item.height / 2)),
-    y2: toY(Math.round(p.py - p.item.height / 2)),
-  }));
-  // One rect mark per stage so each pill has its own stable key.
-  return pills.map((pill) => rect([pill], {
-    fill: "var(--foreground)", id: `funnel-pill-${pill.stage}`, inset: 0, key: "stage",
-    motion: false as const,
-    radius: (PILL_PAD_Y * 2 + SMALL_LINE) / 2,
-    x1: "x1", x2: "x2", y1: "y1", y2: "y2",
+// The focus points of a stage: its outer ring's two cell ends (focus.ts filters on `layer`).
+const stagePoints = (config: FunnelMarkConfig, geo: FunnelGeometry, frame: Frame, id: string, index: number): FunnelPoint[] => {
+  const stage = config.stages[index] as FunnelStageInput;
+  const mid = (config.horizontal ? geo.H : geo.W) / 2;
+  const pos0 = geo.stageStart(index);
+  return [pos0, pos0 + geo.cellPx].map((pos, end) => ({
+    color: stageColor(stage, config.color),
+    datum: { layer: 0, stage: index },
+    datumIndex: index * 2 + end,
+    group: null,
+    groupLabel: stage.label,
+    key: `${id}:${index}:${end}`,
+    markId: id,
+    x: config.horizontal ? frame.x + pos : frame.x + mid,
+    xValue: pos,
+    y: config.horizontal ? frame.y + mid : frame.y + pos,
+    yValue: mid,
   }));
 };
 
-// HTML line boxes put the baseline (ascent - descent) / 2 below the line centre and paint it on a whole pixel; SVG text is placed by
-// its x-height centre, so each label's y is that rounded baseline minus half the x-height.
-const textMarks = (config: FunnelMarkConfig, geo: FunnelGeometry, placedByKind: PlacedByKind): FunnelMark[] => {
-  const metricsByKind = {
-    name: fontMetrics(LABEL_FONT.name.size, LABEL_FONT.name.weight, config.fontFamily),
-    pct: fontMetrics(LABEL_FONT.pct.size, LABEL_FONT.pct.weight, config.fontFamily),
-    value: fontMetrics(LABEL_FONT.value.size, LABEL_FONT.value.weight, config.fontFamily),
-  };
-  const textY = (kind: LabelItem["kind"], centre: number): number => {
-    const metrics = metricsByKind[kind];
-    return Math.round(centre + (metrics.ascent - metrics.descent) / 2) - metrics.xHeight / 2;
-  };
-  // The entrance fade is CSS (entrance-css.ts); labels and pills snap on a rebuild (resize) like bklit's re-laid-out stages.
-  // The stage index is the placed order: each kind list holds one entry per stage.
-  const rowsFor = (kind: LabelItem["kind"]): LabelRow[] => placedByKind[kind].map((placed, order) => ({
-    anchor: placed.anchor, stage: order, text: placed.item.text, x: geo.toX(placed.px), y: geo.toY(textY(kind, placed.py)),
-  }));
-  const emitText = (kind: LabelItem["kind"], id: string, fill: string): FunnelMark[] => {
-    const rows = rowsFor(kind);
-    if (rows.length === 0) { return []; }
-    return [text(rows, {
-      anchor: (row: LabelRow) => row.anchor, fill, fontSize: LABEL_FONT[kind].size, fontWeight: LABEL_FONT[kind].weight,
-      id, key: (row: LabelRow) => row.stage, motion: false as const,
-      text: (row: LabelRow) => row.text, x: (row: LabelRow) => row.x, y: (row: LabelRow) => row.y,
-    })];
-  };
-  return [...emitText("value", "funnel-value", "var(--foreground)"), ...emitText("pct", "funnel-pct", "var(--background)"), ...emitText("name", "funnel-name", "var(--muted-foreground)")];
-};
-
-interface FunnelMarks {
-  readonly marks: readonly FunnelMark[];
-}
-
-const createFunnelMarks = (config: FunnelMarkConfig): FunnelMarks => {
-  const { stages, horizontal, layers, grid } = config;
-  const geo = funnelGeometry(config);
-  const curves: RingCurves = { curve: horizontal ? bklitCurve() : undefined, curveX: horizontal ? undefined : bklitCurveX() };
-
-  const ring: RingContext = { config, curves, geo };
-  const marks: FunnelMark[] = [];
-  if (grid?.bands === true) { marks.push(bandMark(grid, config, geo)); }
-  for (const [index, stage] of stages.entries()) {
-    for (let layer = 0; layer < layers; layer += 1) { marks.push(ringMark(ring, stage, index, layer)); }
+const gridNodes = (config: FunnelMarkConfig, geo: FunnelGeometry, frame: Frame): { readonly bands: SceneNode[]; readonly lines: SceneNode[] } => {
+  const { grid, horizontal } = config;
+  const bands: SceneNode[] = [];
+  const lines: SceneNode[] = [];
+  if (grid?.bands === true) {
+    for (let index = 0; index < geo.count; index += 2) {
+      const start = geo.cellStart(index);
+      bands.push(horizontal
+        ? { height: geo.H - BAND_INSET * 2, key: `funnel-band-${index}`, kind: "rect", style: { fill: grid.bandColor }, width: geo.cellPx - BAND_INSET * 2, x: frame.x + start + BAND_INSET, y: frame.y + BAND_INSET }
+        : { height: geo.cellPx - BAND_INSET * 2, key: `funnel-band-${index}`, kind: "rect", style: { fill: grid.bandColor }, width: geo.W - BAND_INSET * 2, x: frame.x + BAND_INSET, y: frame.y + start + BAND_INSET });
+    }
   }
-  // bklit paints the gap lines above the stages.
-  if (grid?.lines === true && geo.count > 1) { marks.push(lineMark(grid, config, geo)); }
-
-  const placedByKind = placeLabels(config, geo);
-  marks.push(...pillMarks(placedByKind.pct, geo), ...textMarks(config, geo, placedByKind));
-  return { marks };
+  // bklit: one line per gap between stages, at the gap centre, spanning the whole cross axis, above the stages.
+  if (grid?.lines === true) {
+    for (let index = 0; index < geo.count - 1; index += 1) {
+      const centre = geo.cellStart(index) + geo.cellPx + geo.gapPx / 2;
+      const style = { stroke: grid.lineColor, strokeOpacity: grid.lineOpacity, strokeWidth: grid.lineWidth };
+      lines.push(horizontal
+        ? { key: `funnel-line-${index}`, kind: "rule", style, x1: frame.x + centre, x2: frame.x + centre, y1: frame.y, y2: frame.y + geo.H }
+        : { key: `funnel-line-${index}`, kind: "rule", style, x1: frame.x, x2: frame.x + geo.W, y1: frame.y + centre, y2: frame.y + centre });
+    }
+  }
+  return { bands, lines };
 };
 
-export { buildFunnelGradients, createFunnelMarks, dimmedRingOpacity, popExtra, ringOpacity, stageColor };
-export type { FunnelGradientStopInput, FunnelStageInput };
+const funnelScene = (config: FunnelMarkConfig, id: string, chart: ChartBounds, layout: ChartLayoutOptions): MarkScene<FunnelDatum, number, number> => {
+  const geo = funnelGeometry(config, chart.width, chart.height);
+  const frame: Frame = { x: chart.x, y: chart.y };
+  // Label text is measured in the face it is drawn in: the host's computed font (the pill sizes from it).
+  const fontFamily = layout.typography?.fontFamily ?? FALLBACK_FONT;
+  const fonts = {
+    name: fontMetrics(LABEL_FONT.name.size, LABEL_FONT.name.weight, fontFamily),
+    pct: fontMetrics(LABEL_FONT.pct.size, LABEL_FONT.pct.weight, fontFamily),
+    value: fontMetrics(LABEL_FONT.value.size, LABEL_FONT.value.weight, fontFamily),
+  };
+  const points: FunnelPoint[] = [];
+  const stages: SceneNode[] = config.stages.map((_stage, index) => {
+    const rings: SceneNode[] = [];
+    for (let layer = 0; layer < config.layers; layer += 1) { rings.push(ringArea({ config, frame, geo, index, layer })); }
+    points.push(...stagePoints(config, geo, frame, id, index));
+    const labels = labelNodes(config, geo, frame, fonts, index, labelItems(config, fontFamily, config.stages[index] as FunnelStageInput, (geo.norms[index] ?? 0) * 100));
+    return group(`funnel-s${index}`, "bkm-fs", labels.length === 0 ? [group(`funnel-s${index}:rings`, "bkm-fr", rings)] : [group(`funnel-s${index}:rings`, "bkm-fr", rings), group(`funnel-s${index}:labels`, "bkm-fl", labels)]);
+  });
+  const { bands, lines } = gridNodes(config, geo, frame);
+  return { nodes: [{ ariaHidden: true, children: [...bands, group(`${id}:stages`, "bkm-stages", stages), ...lines], className: "bkm-funnel", key: id, kind: "group" }], points };
+};
+
+/** The funnel as one mark: its scene is built in `resolveLayout` from the final plot bounds, with no entrance or update motion of its own (funnel.css). */
+const createFunnelMark = (config: FunnelMarkConfig): FunnelMark => {
+  const id = "funnel";
+  return createMark<FunnelDatum, number, number>(() => ({
+    channels: {},
+    id,
+    resolveLayout: ({ chart, layout }) => ({ render: (_context: MarkRenderContext) => funnelScene(config, id, chart, layout) }),
+  }), false);
+};
+
+export { buildFunnelGradients, createFunnelMark, dimmedRingOpacity, popExtra, ringOpacity, stageColor };
+export type { FunnelGradientStopInput, FunnelMarkConfig, FunnelStageInput };

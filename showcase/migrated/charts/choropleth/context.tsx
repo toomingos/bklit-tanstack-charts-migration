@@ -65,16 +65,18 @@ const useChoropleth = (): ChoroplethContextValue => {
   const ctx = useContext(ChoroplethContext);
   const store = ctx.hoverStore;
   const version = useSyncExternalStore(store ? store.subscribe : noopSubscribe, () => store?.version ?? 0, () => 0);
+  const loaded = useSyncExternalStore(ctx.readyStore ? ctx.readyStore.subscribe : noopSubscribe, () => ctx.readyStore?.get() ?? false, () => false);
   return useMemo((): ChoroplethContextValue => {
     if (!store) {return ctx;}
     return {
       ...ctx,
       hoveredFeatureIndex: store.hovered,
+      isLoaded: loaded,
       setTooltipData: tooltipSetter(store),
       tooltipData: store.tooltip,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx, store, version]);
+  }, [ctx, store, version, loaded]);
 };
 
 export { ChoroplethContext, ChoroplethProvider, createHoverStore, tooltipSetter, useChoropleth };

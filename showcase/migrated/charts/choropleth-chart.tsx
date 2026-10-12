@@ -63,12 +63,12 @@ const ChoroplethChart = ({
   const [geometry] = useState(() => createGeoGeometry(holder));
   const wheel = useWheelFocusClear();
   const { instance: zoomInstance, transform } = useGeoZoom({ enabled: zoomEnabled, holder, hostRef, initial: initialZoom, max: zoomMax, min: zoomMin, onWheelZoom: wheel.onWheelZoom });
-  const { parentSized, shown, loaded, epoch, enterMotion, fadeAtRef } = useEnterReveal(hostRef, { animationDuration, enterTransition, revealSignature });
+  const { ready, epoch, enterMotion, fadeVars } = useEnterReveal(hostRef, { animationDuration, enterTransition, revealSignature });
 
   const definition = useMemo(() => createDefinition({
-    center, data, featureConfig, geometry, graticuleConfig, holder, margin, patternPrefix, scale: scaleProp, shown, tooltipConfig, translate: translateProp,
-    layerMotion: createLayerMotion({ animationDuration, enterMotion, fadeAtRef, fading: shown && !loaded }),
-  }), [animationDuration, center, data, enterMotion, fadeAtRef, featureConfig, geometry, graticuleConfig, holder, loaded, margin, patternPrefix, scaleProp, shown, tooltipConfig, translateProp]);
+    center, data, featureConfig, geometry, graticuleConfig, holder, margin, patternPrefix, scale: scaleProp, tooltipConfig, translate: translateProp,
+    layerMotion: createLayerMotion(enterMotion),
+  }), [center, data, enterMotion, featureConfig, geometry, graticuleConfig, holder, margin, patternPrefix, scaleProp, tooltipConfig, translateProp]);
 
   const renderTooltipBody = useTooltipBody(tooltipConfig);
   const { size, hoverStore, renderRef, isHeld, handleRender, handleFocusChange, setHoveredFeatureIndex } = useFeatureHover({ geometry, holder, hostRef, transform, zoomEnabled });
@@ -96,10 +96,11 @@ const ChoroplethChart = ({
       hoverStore,
       innerHeight: Math.max(0, bounds.height),
       innerWidth: Math.max(0, bounds.width),
-      isLoaded: loaded,
+      isLoaded: false,
       margin,
       pathGenerator: (feature) => raw(feature) ?? undefined,
       projectPoint,
+      readyStore: ready,
       rawPathGenerator: raw,
       revealEpoch: epoch,
       setHoveredFeatureIndex,
@@ -111,7 +112,7 @@ const ChoroplethChart = ({
       },
       width: size.width,
     };
-  }, [animationDuration, center, data, enterTransition, hoverStore, loaded, epoch, margin, scaleProp, setHoveredFeatureIndex, size, transform, translateProp]);
+  }, [animationDuration, center, data, enterTransition, hoverStore, ready, epoch, margin, scaleProp, setHoveredFeatureIndex, size, transform, translateProp]);
 
   const hostStyle = useMemo((): HostStyle => ({
     aspectRatio: String(ratio),
@@ -122,9 +123,10 @@ const ChoroplethChart = ({
     touchAction: zoomEnabled ? "none" : undefined,
     width: "100%",
     ...zoomStyle(initialZoom),
+    ...fadeVars,
     // bklit's hover dim of the features group (`fadedOpacity`), read by styles.css.
     "--bkm-choro-dim": dim,
-  }), [ratio, zoomEnabled, initialZoom, dim]);
+  }), [ratio, zoomEnabled, initialZoom, dim, fadeVars]);
 
   const zoomValue = useMemo(() => ({ zoom: zoomInstance }), [zoomInstance]);
 
@@ -133,9 +135,7 @@ const ChoroplethChart = ({
       <ChoroplethContext.Provider value={contextValue}>
         <ChoroplethZoomContext.Provider value={zoomValue}>
           {featureConfig?.patterns === undefined || featureConfig.patterns === null || featureConfig.patterns === false ? undefined : <svg aria-hidden="true" style={HIDDEN_DEFS_STYLE}><defs>{scopePatterns(featureConfig.patterns, patternPrefix)}</defs></svg>}
-          {/* bklit's ParentSize renders no svg until its first size commit (choropleth-chart.tsx:482-485); the host keeps its aspect-ratio box meanwhile. */}
-          {parentSized ? (
-            <RendererChart
+          <RendererChart
               ariaDescription={ariaDescription}
               ariaLabel={ariaLabel}
               aspectRatio={ratio}
@@ -145,7 +145,6 @@ const ChoroplethChart = ({
               renderer={renderer}
               renderTooltipBody={renderTooltipBody}
             />
-          ) : undefined}
           {overlayChildren}
         </ChoroplethZoomContext.Provider>
       </ChoroplethContext.Provider>

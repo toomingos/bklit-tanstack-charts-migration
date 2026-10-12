@@ -1,0 +1,82 @@
+/* Funnel rules, all static: a stage is `g.bkm-fs` (rings `g.bkm-fr`, labels `g.bkm-fl`), its index is `--i` (nth-child), the hovered stage is host `data-hover`. */
+/* The per-layer ring numbers (`--bkm-r<k>` rest alpha, `--bkm-m<k>` dimmed alpha, `--bkm-pop<k>` pop) and the entrance numbers (`--bkm-e-*`) are host vars (host-vars.ts). */
+[data-bkm-chart="funnel"] { cursor: pointer; }
+@keyframes bkm-funnel-grow { from { scale: 0; } }
+@keyframes bkm-funnel-label-in { from { opacity: 0; } }
+
+/* No native uniform group scale on first paint: UPSTREAM-GAPS #62. */
+/* Entrance (bklit funnel-chart.tsx:319-327 rings, :653-655 / :722-724 labels): a uniform grow about the stage's left (top) centre, then the label layer fades in 0.25 s later. */
+/* Fill is `backwards`, not `both`: a forwards fill holds a composited layer at scale(1) and re-rasters it at the end. */
+.bkm-fr { transform-box: fill-box; transform-origin: var(--bkm-e-origin); animation: bkm-funnel-grow var(--bkm-e-dur) var(--bkm-e-ease) calc(var(--i, 0) * var(--bkm-e-stagger)) backwards; }
+.bkm-fl { animation: bkm-funnel-label-in 350ms ease-out calc(var(--i, 0) * var(--bkm-e-stagger) + 250ms) backwards; }
+.bkm-pill { filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / .1)) drop-shadow(0 1px 1px rgb(0 0 0 / .1)); }
+
+/* Rings: the resting pop of the hot stage (the spring's target, pop-spring.ts draws the travel); origin shared with the entrance. */
+.bkm-ring { transform-box: fill-box; transform-origin: var(--bkm-e-origin); }
+.bkm-l0 { transform: scale(calc(1 + var(--h, 0) * var(--bkm-px) * var(--bkm-pop0)), calc(1 + var(--h, 0) * var(--bkm-py) * var(--bkm-pop0))); }
+.bkm-l1 { transform: scale(calc(1 + var(--h, 0) * var(--bkm-px) * var(--bkm-pop1)), calc(1 + var(--h, 0) * var(--bkm-py) * var(--bkm-pop1))); }
+.bkm-l2 { transform: scale(calc(1 + var(--h, 0) * var(--bkm-px) * var(--bkm-pop2)), calc(1 + var(--h, 0) * var(--bkm-py) * var(--bkm-pop2))); }
+.bkm-l3 { transform: scale(calc(1 + var(--h, 0) * var(--bkm-px) * var(--bkm-pop3)), calc(1 + var(--h, 0) * var(--bkm-py) * var(--bkm-pop3))); }
+.bkm-l4 { transform: scale(calc(1 + var(--h, 0) * var(--bkm-px) * var(--bkm-pop4)), calc(1 + var(--h, 0) * var(--bkm-py) * var(--bkm-pop4))); }
+.bkm-l5 { transform: scale(calc(1 + var(--h, 0) * var(--bkm-px) * var(--bkm-pop5)), calc(1 + var(--h, 0) * var(--bkm-py) * var(--bkm-pop5))); }
+.bkm-l6 { transform: scale(calc(1 + var(--h, 0) * var(--bkm-px) * var(--bkm-pop6)), calc(1 + var(--h, 0) * var(--bkm-py) * var(--bkm-pop6))); }
+.bkm-l7 { transform: scale(calc(1 + var(--h, 0) * var(--bkm-px) * var(--bkm-pop7)), calc(1 + var(--h, 0) * var(--bkm-py) * var(--bkm-pop7))); }
+/* Hover: every ring takes its dimmed alpha (bklit 0.4 group opacity) and every label layer 0.4, except the hot stage (`--d: 0`). */
+[data-bkm-chart="funnel"][data-hover] .bkm-l0 { fill-opacity: calc(var(--bkm-r0) + var(--d, 1) * (var(--bkm-m0) - var(--bkm-r0))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
+[data-bkm-chart="funnel"][data-hover] .bkm-l1 { fill-opacity: calc(var(--bkm-r1) + var(--d, 1) * (var(--bkm-m1) - var(--bkm-r1))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
+[data-bkm-chart="funnel"][data-hover] .bkm-l2 { fill-opacity: calc(var(--bkm-r2) + var(--d, 1) * (var(--bkm-m2) - var(--bkm-r2))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
+[data-bkm-chart="funnel"][data-hover] .bkm-l3 { fill-opacity: calc(var(--bkm-r3) + var(--d, 1) * (var(--bkm-m3) - var(--bkm-r3))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
+[data-bkm-chart="funnel"][data-hover] .bkm-l4 { fill-opacity: calc(var(--bkm-r4) + var(--d, 1) * (var(--bkm-m4) - var(--bkm-r4))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
+[data-bkm-chart="funnel"][data-hover] .bkm-l5 { fill-opacity: calc(var(--bkm-r5) + var(--d, 1) * (var(--bkm-m5) - var(--bkm-r5))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
+[data-bkm-chart="funnel"][data-hover] .bkm-l6 { fill-opacity: calc(var(--bkm-r6) + var(--d, 1) * (var(--bkm-m6) - var(--bkm-r6))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
+[data-bkm-chart="funnel"][data-hover] .bkm-l7 { fill-opacity: calc(var(--bkm-r7) + var(--d, 1) * (var(--bkm-m7) - var(--bkm-r7))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
+[data-bkm-chart="funnel"][data-hover] .bkm-fl { opacity: calc(1 - var(--d, 1) * .6); }
+/* Stage index and hot stage (the host carries the hovered index). */
+.bkm-fs:nth-child(1) { --i: 0; }
+.bkm-fs:nth-child(2) { --i: 1; }
+.bkm-fs:nth-child(3) { --i: 2; }
+.bkm-fs:nth-child(4) { --i: 3; }
+.bkm-fs:nth-child(5) { --i: 4; }
+.bkm-fs:nth-child(6) { --i: 5; }
+.bkm-fs:nth-child(7) { --i: 6; }
+.bkm-fs:nth-child(8) { --i: 7; }
+.bkm-fs:nth-child(9) { --i: 8; }
+.bkm-fs:nth-child(10) { --i: 9; }
+.bkm-fs:nth-child(11) { --i: 10; }
+.bkm-fs:nth-child(12) { --i: 11; }
+.bkm-fs:nth-child(13) { --i: 12; }
+.bkm-fs:nth-child(14) { --i: 13; }
+.bkm-fs:nth-child(15) { --i: 14; }
+.bkm-fs:nth-child(16) { --i: 15; }
+.bkm-fs:nth-child(17) { --i: 16; }
+.bkm-fs:nth-child(18) { --i: 17; }
+.bkm-fs:nth-child(19) { --i: 18; }
+.bkm-fs:nth-child(20) { --i: 19; }
+.bkm-fs:nth-child(21) { --i: 20; }
+.bkm-fs:nth-child(22) { --i: 21; }
+.bkm-fs:nth-child(23) { --i: 22; }
+.bkm-fs:nth-child(24) { --i: 23; }
+[data-bkm-chart="funnel"][data-hover="0"] .bkm-fs:nth-child(1) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="1"] .bkm-fs:nth-child(2) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="2"] .bkm-fs:nth-child(3) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="3"] .bkm-fs:nth-child(4) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="4"] .bkm-fs:nth-child(5) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="5"] .bkm-fs:nth-child(6) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="6"] .bkm-fs:nth-child(7) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="7"] .bkm-fs:nth-child(8) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="8"] .bkm-fs:nth-child(9) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="9"] .bkm-fs:nth-child(10) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="10"] .bkm-fs:nth-child(11) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="11"] .bkm-fs:nth-child(12) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="12"] .bkm-fs:nth-child(13) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="13"] .bkm-fs:nth-child(14) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="14"] .bkm-fs:nth-child(15) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="15"] .bkm-fs:nth-child(16) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="16"] .bkm-fs:nth-child(17) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="17"] .bkm-fs:nth-child(18) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="18"] .bkm-fs:nth-child(19) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="19"] .bkm-fs:nth-child(20) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="20"] .bkm-fs:nth-child(21) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="21"] .bkm-fs:nth-child(22) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="22"] .bkm-fs:nth-child(23) { --d: 0; --h: 1; }
+[data-bkm-chart="funnel"][data-hover="23"] .bkm-fs:nth-child(24) { --d: 0; --h: 1; }

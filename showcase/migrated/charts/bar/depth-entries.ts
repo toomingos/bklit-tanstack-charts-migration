@@ -31,7 +31,7 @@ export interface BarDepthEntry {
   isRightOfCenter: boolean;
 }
 
-type BarDepthConfig = Pick<BarDepthProviderProps, "segmentsAccessor" | "minBarHeight">;
+export type BarDepthConfig = Pick<BarDepthProviderProps, "segmentsAccessor" | "minBarHeight">;
 
 const BarDepthConfigContext = createContext<BarDepthConfig>({});
 

@@ -400,6 +400,20 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Workaround:** the first draw renders grid and axes, the layout-effect commit before paint adds the dots as new data (`scatter/definition.ts`, `revealed`); two renders, no frame wait. Rendering the dots in the first draw would paint the final state with no entrance.
 - **Proposal:** make `initial` enter dot (and keyed mark) elements through the same `timingFor({ phase: 'enter' })` path bars use (draft `docs/upstream-issues/scatter-initial-dot-enter.md`).
 
+## 61. No native left-to-right clip reveal on first paint for line and area
+
+- **Needed:** bklit reveals line and area from the first frame with a left-to-right clip wipe (`chart-reveal-clip.tsx`, `cubic-bezier(0.85, 0, 0.15, 1)`), in the first and only scene draw.
+- **1.1.0 behaviour:** the initial `animateSvg` path track for cartesian paths is a scaleY grow from the baseline (`motion.ts:1505-1562`, built at `:282-287`); there is no initial transform or clip option for keyed groups, and a group animates only when it joins a painted scene (#12), which costs a second draw.
+- **Workaround:** each mark sits in `wipe-o > wipe-i` groups; CSS keyframes slide them oppositely from the first draw (`styles.css` `bkm-wipe-*`, `cartesian-chart.tsx` `data-bkm-wipe-in`), re-stamped onto motion's clock by `reveal-arm.tsx`.
+- **Proposal:** let `motion({ initial })` accept a per-mark clip/transform enter (or a left-to-right path reveal) for cartesian path groups.
+
+## 62. No native uniform two-axis group scale on first paint (funnel stage grow)
+
+- **Needed:** bklit's funnel stages grow from the first frame as one uniform 2-D scale about the stage's left (top) centre, staggered per stage (`funnel-chart.tsx:319-327`), in the first and only scene draw.
+- **1.1.0 behaviour:** the initial `animateSvg` area track is a one-axis grow from the baseline (`motion.ts:1505-1562`, built at `:282-287`); there is no initial transform for keyed groups, and a group animates only when it joins a painted scene (#12), which costs a second draw.
+- **Workaround:** the stage rings carry a static CSS `scale` keyframe from the first draw (`funnel/funnel.css`, `bkm-funnel-grow`), re-stamped onto motion's clock by `EntranceAlign`; marks are `motion: false`.
+- **Proposal:** let `motion({ initial })` accept a per-group transform enter with an origin (draft `docs/upstream-issues/initial-group-transform-enter.md`).
+
 ---
 
 ## Retired numbers

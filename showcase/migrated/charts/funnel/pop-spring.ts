@@ -1,21 +1,15 @@
-// Gaps #16 (states carry no transform key, so the pop cannot be a state; posted #194) and #36 (renderer selectors, kit/renderer-dom.ts): bklit HRing's velocity-keeping spring (funnel-chart.tsx:171-202)
-// on the shared WAAPI driver (kit/motion/spring-animate.ts); the resting transform stays static CSS (hover-css.ts), the animation only draws the travel.
-import { AREA_PATH } from "./hover-css";
+// Gap #16 (states carry no transform key, so the pop cannot be a state; posted #194): bklit HRing's velocity-keeping spring (funnel-chart.tsx:171-202)
+// on the shared WAAPI driver (kit/motion/spring-animate.ts); the resting transform stays static CSS (funnel.css), the animation only draws the travel.
 import { readHoverIndex } from "../kit/host-write";
 import { springDriver as driver } from "../kit/motion/spring-animate";
 import type { Spring } from "../kit/motion/springs";
 import { range } from "../kit/range";
-import { keyEnds, keyStarts } from "../kit/renderer-dom";
 
 const MAX_LAYERS = 8;
 const MAX_STAGES = 24;
 const DIM_PERCENT = 60;
 /** bklit's per-stage label overlay: a motion opacity spring (funnel-chart.tsx:1011-1017) on 300/24 both ways. */
 const LABEL_SPRING: Spring = { damping: 24, mass: 1, stiffness: 300 };
-const LABEL_FILLS: readonly (readonly [string, string])[] = [
-  ["value", "var(--foreground)"], ["pill", "var(--foreground)"], ["name", "var(--muted-foreground)"],
-];
-const labelKey = (prefix: string): string => `:is(text,rect)${keyStarts(`funnel-${prefix}`)}`;
 
 /** bklit HRing: stiffness 300 - 60i, damping 24 - 3i (clamped so the outer rings of a deep funnel stay a valid spring). */
 const ringSpring = (layer: number): Spring => ({ damping: Math.max(6, 24 - layer * 3), mass: 1, stiffness: Math.max(60, 300 - layer * 60) });
@@ -35,17 +29,17 @@ interface FunnelPop {
   readonly dispose: () => void;
 }
 
+/** The stage's group in the funnel mark (marks.ts), by stage order. */
+const stageGroup = (host: HTMLElement, stage: number): Element | undefined => host.querySelector(".bkm-stages")?.children[stage];
 
 const ringsOf = (host: HTMLElement, stage: number, layers: number): { readonly el: SVGElement; readonly layer: number }[] => {
   const rings: { el: SVGElement; layer: number }[] = [];
+  const group = stageGroup(host, stage);
   for (let layer = 0; layer < Math.min(layers, MAX_LAYERS); layer += 1) {
-    for (const el of host.querySelectorAll<SVGElement>(`${AREA_PATH}${keyStarts(`funnel-s${stage}-l${layer}:`)}`)) { rings.push({ el, layer }); }
+    for (const el of group?.querySelectorAll<SVGElement>(`.bkm-l${layer}`) ?? []) { rings.push({ el, layer }); }
   }
   return rings;
 };
-
-/** The dim as a colour mix (a per-node opacity would show the pill through its text): `dim` 0 = full, 1 = bklit's 0.4 group opacity. */
-const dimmedFill = (colour: string, dim: number): string => `color-mix(in srgb,${colour} ${Math.min(100, Math.max(0, 100 - dim * DIM_PERCENT))}%,transparent)`;
 
 const dimOf = (stage: number, hovered: number | null): number => (hovered !== null && hovered !== stage ? 1 : 0);
 
@@ -59,12 +53,10 @@ const createFunnelPop = (host: HTMLElement, options: Readonly<FunnelPopOptions>)
     driver.play({ affine: true, el, frame: (value) => ({ transform: scaleOf(value) }), from, rest, spring: ringSpring(layer), target });
   };
 
+  // The label layer fades as one element, like bklit's per-stage overlay (the pill's shadow and text dim with it): `dim` 0 = full, 1 = bklit's 0.4.
   const playLabels = (stage: number, previous: number | null, next: number | null): void => {
-    for (const [prefix, colour] of LABEL_FILLS) {
-      for (const el of host.querySelectorAll<SVGElement>(`${labelKey(prefix)}${keyEnds(`:${stage}`)}`)) {
-        driver.play({ affine: true, el, frame: (value) => ({ fill: dimmedFill(colour, value) }), rest: dimOf(stage, previous), spring: LABEL_SPRING, target: dimOf(stage, next) });
-      }
-    }
+    const el = stageGroup(host, stage)?.querySelector<SVGElement>(".bkm-fl");
+    if (el) { driver.play({ affine: true, el, frame: (value) => ({ opacity: String(1 - (value * DIM_PERCENT) / 100) }), rest: dimOf(stage, previous), spring: LABEL_SPRING, target: dimOf(stage, next) }); }
   };
 
   return {

@@ -34,13 +34,6 @@ export const useParentSizeWidth = <TElement extends HTMLElement>(): readonly [Re
   return [ref, width];
 };
 
-/** True from the layout effect after the first commit: the renderer mounts before first paint instead of waiting on ParentSize's frames. */
-export const useHostMounted = (): boolean => {
-  const [mounted, setMounted] = useState(false);
-  useLayoutEffect(() => { setMounted(true); }, []);
-  return mounted;
-};
-
 // Scatter is the exception: react-use-measure (scatter-chart.tsx:154, observer -> trailing 10ms setTimeout), approximated with the same observer and one frame.
 /** True from the commit where bklit's svg first mounts (first ResizeObserver delivery plus one frame). */
 export const useParentSizeMounted = (hostRef: RefObject<HTMLElement | null>, active: boolean): boolean => {
