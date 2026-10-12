@@ -83,7 +83,10 @@ function create(kind: Kind, initial: [number, number], initialRange: [number, nu
     let prestep: number | undefined;
     for (let iteration = 0; iteration < 10; iteration++) {
       const step = tickIncrement(start, stop, count ?? 10);
-      if (step === prestep) break;
+      if (step === prestep) {
+        [d0, d1] = d1 < d0 ? [stop, start] : [start, stop];
+        return scale;
+      }
       if (step > 0) {
         start = Math.floor(start / step) * step;
         stop = Math.ceil(stop / step) * step;
@@ -93,7 +96,7 @@ function create(kind: Kind, initial: [number, number], initialRange: [number, nu
       } else return scale;
       prestep = step;
     }
-    [d0, d1] = d1 < d0 ? [stop, start] : [start, stop];
+    // d3-scale leaves the domain untouched when the step never settles (domains straddling zero at count 1 oscillate).
     return scale;
   };
   scale.copy = () => {
