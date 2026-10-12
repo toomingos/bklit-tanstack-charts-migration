@@ -409,7 +409,8 @@ export class HoverOverlay {
       return new Glide(stack, DATE_PILL_SPRING, 1, translateY, "transform", this.ticker);
     };
     const months = column(layout.months);
-    const days = layout.days.some((d) => d !== "") ? column(layout.days) : null;
+    // bklit always mounts the day stack, empty for month-only labels: its gap-1 keeps the capsule 4px wider (date-ticker.tsx:96-125).
+    const days = column(layout.days);
     return { days, el: wrap, glide: new Glide(wrap, CROSSHAIR_SPRING, 1, px, "left", this.ticker), months, text: null };
   }
 }
