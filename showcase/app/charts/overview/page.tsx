@@ -107,7 +107,7 @@ export default function OverviewPage() {
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="text-sm text-muted-foreground">Live line at rest, main-thread busy share</div>
             <div className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums ${idleM > idleB ? "text-red-600/90 dark:text-red-400/90" : ""}`}>
-              {idleM.toFixed(1)}% vs {idleB.toFixed(1)}%
+              {idleM.toFixed(1)}% migrated, {idleB.toFixed(1)}% bklit
             </div>
             <p className="mt-2 text-sm text-muted-foreground tabular-nums">
               migrated {idleM.toFixed(1)}% · bklit {idleB.toFixed(1)}% (median of {idleRuns[0].length} runs; ranges {Math.min(...idleRuns[1]).toFixed(1)}–{Math.max(...idleRuns[1]).toFixed(1)}% and {Math.min(...idleRuns[0]).toFixed(1)}–{Math.max(...idleRuns[0]).toFixed(1)}%).
