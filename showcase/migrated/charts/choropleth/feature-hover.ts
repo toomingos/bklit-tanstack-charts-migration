@@ -7,6 +7,7 @@ import { useKeyboardFocusHold } from "../kit/keyboard-hold";
 import { useMousePressFreeze, useTapFocus } from "../kit/touch-focus";
 import { createHoverStore } from "./context";
 import type { GeoGeometry, ProjectionHolder } from "./focus";
+import { FeatureHighlight } from "./highlight";
 import { FEATURES_ID } from "./projection";
 import { baseTooltipPoint } from "./tooltip";
 import type { ChoroplethFeature, HoverStore } from "./types";
@@ -41,14 +42,20 @@ export const useFeatureHover = (options: {
   const [size, setSize] = useState<Size>({ height: 0, width: 0 });
   const hoverStore = useMemo(() => createHoverStore(), []);
   const renderRef = useRef<RenderedChart | null>(null);
+  const highlight = useMemo(() => new FeatureHighlight(FEATURES_ID), []);
+  useIsomorphicLayoutEffect(() => {
+    hostRef.current?.append(highlight.root);
+    return () => { highlight.root.remove(); };
+  }, [highlight, hostRef]);
   const handleRender = useCallback((context: Partial<RenderedChart>): void => {
     const { scene, interaction } = context;
     if (!scene || !interaction) {return;}
     renderRef.current = { interaction, scene };
     // oxlint-disable-next-line react/immutability -- the holder is the focus strategy's shared mutable state, written once per render
     holder.renderedPoints = scene.points;
+    highlight.refresh(erase(scene));
     setSize((prev) => (Math.abs(prev.width - scene.width) > 0.5 || Math.abs(prev.height - scene.height) > 0.5 ? { height: scene.height, width: scene.width } : prev));
-  }, [holder]);
+  }, [holder, highlight]);
   // bklit hovers on mouseenter / mouseleave, so a tap hovers until a tap elsewhere; a zoomable map's drag (visx / use-gesture) also captures the press and pans by touch.
   const getInteraction = useCallback(() => erase(renderRef.current?.interaction), []);
   useMousePressFreeze(hostRef, getInteraction, zoomEnabled);
@@ -66,13 +73,16 @@ export const useFeatureHover = (options: {
     // only the guide swaps, like bklit's highlighted path).
     writePresence(host, "data-hover", onFeature);
     if (!onFeature) {
+      highlight.hide();
       hoverStore.set(null, null);
       return;
     }
+    const scene = renderRef.current?.scene;
+    if (scene) { highlight.show(erase(scene), point.key); }
     // bklit's tooltipData: the clamped centroid in unzoomed space (consumers apply the zoom transform, as bklit's tooltip does).
     const base = baseTooltipPoint(holder, point.datum) ?? { x: point.x, y: point.y };
     hoverStore.set(point.datumIndex, { feature: point.datum, featureIndex: point.datumIndex, ...base });
-  }, [holdFocus, holder, hoverStore, hostRef]);
+  }, [highlight, holdFocus, holder, hoverStore, hostRef]);
   // Pan/zoom re-renders without touching the definition, so the core layout effect repaints the held focus and re-runs `tooltipAnchor` (as bklit's zoom.applyToPoint);
   // a held feature the zoom carries out of view is cleared like bklit's mouseleave, and the next arrow starts from the first visible stop.
   useIsomorphicLayoutEffect(() => {

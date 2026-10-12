@@ -205,7 +205,7 @@ body .ts-chart-surface > .ts-chart-tooltip[data-bkm-settle] {
 @keyframes bkm-tt-in-l { from { transform: translateX(var(--bkm-tt-dx)) scale(0.85); opacity: 0; } }
 /* Segment charts: a press clears bklit's tooltip, crosshair, pill and dots at once (clearTooltip on mousedown), not through the
    native ~100ms fade; the next focus lifts data-bkm-press. */
-[data-bkm-press] :is(.ts-chart-tooltip, .ts-chart__focus-layer, .ts-chart__focus-guide-layer), [data-bkm-press] :is(.ts-chart__focus-layer, .ts-chart__focus-guide-layer) * { visibility: hidden !important; }
+[data-bkm-press] :is(.ts-chart-tooltip, .ts-chart__focus-layer, .ts-chart__focus-guide-layer, .bkm-choro-hl), [data-bkm-press] :is(.ts-chart__focus-layer, .ts-chart__focus-guide-layer) * { visibility: hidden !important; }
 /* "Keyboard focus" is :focus-visible, not :focus-within: the svg also takes focus on pointerdown, which held the tooltip open after a click (~270ms).
    The :focus-within pair stays as the fallback where :has() is unsupported. */
 /* .ts-chart__focus-layer / __focus-guide-layer are renderer-owned containers with no documented hook (UPSTREAM-GAPS #36); the :not([data-ts-motion-role]) guard is gap #50. */
@@ -224,15 +224,14 @@ body .ts-chart-surface > .ts-chart-tooltip[data-bkm-settle] {
   font-family: inherit !important;
 }
 [data-bkm-chart="choropleth"][data-bkm-idle] .ts-chart-tooltip.bkm-choro-tooltip { visibility: hidden !important; }
-/* Pan/zoom: the zoom layer writes --bkm-zk/-zx/-zy on the host; the marks layer and the hovered-feature guide layer (an svg-level
-   sibling of the marks) follow with bklit's 0.18s ease-out (none while dragging). */
+/* Pan/zoom: the zoom layer writes --bkm-zk/-zx/-zy on the host; the marks layer and the hovered-feature highlight (an svg we own, beside the renderer svg) follow with bklit's 0.18s ease-out (none while dragging). */
 /* Group classes .ts-chart__marks / __focus-guide-layer: UPSTREAM-GAPS #36; the :not([data-ts-motion-role]) guard: #50. */
-[data-bkm-chart="choropleth"] :is(.ts-chart__marks, .ts-chart__focus-guide-layer):not([data-ts-motion-role]) {
+[data-bkm-chart="choropleth"] :is(.ts-chart__marks, .bkm-choro-hl-layer):not([data-ts-motion-role]) {
   transform: translate(var(--bkm-zx, 0px), var(--bkm-zy, 0px)) scale(var(--bkm-zk, 1));
   transition: transform 180ms ease-out;
 }
 [data-bkm-chart="choropleth"][data-bkm-drag] { cursor: grabbing !important; }
-[data-bkm-chart="choropleth"][data-bkm-drag] :is(.ts-chart__marks, .ts-chart__focus-guide-layer):not([data-ts-motion-role]) { transition: none; }
+[data-bkm-chart="choropleth"][data-bkm-drag] :is(.ts-chart__marks, .bkm-choro-hl-layer):not([data-ts-motion-role]) { transition: none; }
 /* bklit's feature layer: one <g opacity=0.85> of opaque paths; hover (StaticFeatureLayer) dims it over 0.18s on enter and snaps back on leave (transition only under [data-hover]);
    the hovered feature is the focus guide. Both wait for the reveal (`data-bkm-ready` = bklit's isLoaded). */
 [data-bkm-chart="choropleth"] .bkm-choro-features { opacity: 0.85; --bkm-choro-rest: 0.85; }
@@ -248,7 +247,8 @@ body .ts-chart-surface > .ts-chart-tooltip[data-bkm-settle] {
   opacity: var(--bkm-choro-dim);
   transition: opacity 180ms ease-out;
 }
-[data-bkm-chart="choropleth"]:not([data-bkm-ready]) .ts-chart__focus-guide-layer { display: none; }
+.bkm-choro-hl { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+[data-bkm-chart="choropleth"]:not([data-bkm-ready]) .bkm-choro-hl { display: none !important; }
 
 /* Heatmap tooltip: same as choropleth (shared presence rules paint the panel on the body wrapper and run the
    sampled-spring enter; core's custom-body card is neutral). */

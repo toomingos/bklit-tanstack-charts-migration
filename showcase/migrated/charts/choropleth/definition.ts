@@ -10,8 +10,7 @@ import { TOOLTIP_MOTION, TOOLTIP_OFFSET } from "../kit/theme";
 import type { createLayerMotion } from "./enter";
 import { createGeoContainmentFocus } from "./focus";
 import type { GeoGeometry, ProjectionHolder } from "./focus";
-import { featureHighlightMark } from "./highlight";
-import { FEATURES_ID, featureKey, GRATICULE_ID, graticuleFeature, HIGHLIGHT_ID, makeProjection, resolveFill } from "./projection";
+import { FEATURES_ID, featureKey, GRATICULE_ID, graticuleFeature, makeProjection, resolveFill } from "./projection";
 import type { ProjectionOptions } from "./projection";
 import { tooltipAnchor } from "./tooltip";
 import type { ChoroplethFeature, ChoroplethFeatureProperties, ChoroplethFeatureProps, ChoroplethGraticuleProps, ChoroplethTooltipProps, Margin } from "./types";
@@ -76,7 +75,7 @@ export const createDefinition = (input: DefinitionInput): DomChartDefinition<Cho
     focusRing: false,
     guides: false,
     margin,
-    marks: [features, ...graticule, featureHighlightMark({ id: HIGHLIGHT_ID, markId: FEATURES_ID })],
+    marks: [features, ...graticule],
     maxFocusDistance: 0,
     scales: { x: null, y: null },
     // `portal`: the native placement without the per-paint size read (gap #21, kit/tooltip/sized-tooltip-placement.ts).
