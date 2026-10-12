@@ -2,7 +2,6 @@
 // compiled by the cartesian kit (lines, areas) and composed/ (bars as rect marks) into one defineChart.
 import { ComposedChart } from "./composed/mounted";
 import type { ComposedChartProps } from "./composed/types";
-import "./styles.css";
 
 export { ComposedChart };
 export type { ComposedChartProps };

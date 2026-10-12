@@ -1,5 +1,3 @@
-import "./styles.css";
-
 export { HeatmapChart, type HeatmapChartProps, HeatmapChartLoading, type HeatmapChartLoadingProps } from "./heatmap/chart";
 
 export { useHeatmap, type HeatmapContextValue, type HeatmapLayout, HeatmapInteractionProvider, HeatmapInteractionBoundary } from "./heatmap/context";

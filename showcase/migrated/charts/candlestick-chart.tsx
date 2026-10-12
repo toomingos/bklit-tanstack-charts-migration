@@ -1,5 +1,6 @@
 // bklit CandlestickChart on native TanStack Charts: the Candlestick/Grid/XAxis/YAxis/ChartTooltip
 // children are config carriers compiled into one defineChart definition (candlestick).
+import "./styles.css";
 import { erase } from "./kit/erased-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";

@@ -1,3 +1,4 @@
+import "../styles.css";
 import { erase } from "../kit/erased-types";
 import { writePresence } from "../kit/host-write";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
