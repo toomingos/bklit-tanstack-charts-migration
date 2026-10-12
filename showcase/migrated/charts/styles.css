@@ -73,7 +73,7 @@
 }
 
 /* --- Hover indicator (kit/cartesian/hover-overlay.ts): crosshair rule, dots and date pill in an element the host owns. It shows while a row is focused (data-on) and hides where the
-       renderer's focus layers hide: before the ready flip, on a press, and over a ChartMarkers disc. Springs run as Web Animations on the compositor. --- */
+       renderer's focus layers hide: before the ready flip, on a press, and over a ChartMarkers disc. Springs run on one rAF loop writing transforms (hover-overlay.ts). --- */
 .bkm-hov { position: absolute; inset: 0; pointer-events: none; visibility: hidden; font-family: inherit; }
 .bkm-hov[data-on] { visibility: visible; }
 [data-bkm-kit]:not([data-bkm-ready]) .bkm-hov, [data-bkm-press] .bkm-hov, [data-bkm-evt]:has(.bkm-evt:hover) .bkm-hov { visibility: hidden !important; }
