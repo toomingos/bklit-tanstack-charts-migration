@@ -421,6 +421,14 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Workaround:** none without writing renderer-owned DOM; our portals skip unchanged `left/top/data-placement` writes (`kit/tooltip/write-placement.ts`).
 - **Proposal:** compare before writing in `paint`; run the spring glide as a sampled WAAPI `translate` like the tween path (`motion.ts:460-483`) (draft `docs/upstream-issues/tooltip-paint-redundant-writes.md`).
 
+## 64. No public SVG layer compositor: animated groups repaint the one shared SVG
+
+- **Needed:** bklit paints each funnel stage in its own small `<svg>`, so a hover ring pop, label fade or dim transition repaints one stage; SVG children do not composite.
+- **1.1.0 behaviour:** layering by per-mark `renderer` is documented (`docs/concepts/marks-and-layering.md:60-93`) and distinct `createSvgChartRenderer()` instances split layers (`canvas.ts:620-628`), but `resolveChartRenderer` needs a `ChartLayerRenderer.compose` (`renderer.ts:54-62`, `:98-108`); the only public one is `canvasChartRenderer.compose` (`canvas.ts:187`, documented for canvas only) and `createLayeredChartRenderer` is unexported.
+- **Measured:** funnel production, 12 interleaved rounds, main-thread busy per hover move: one shared svg 1.79 ms median (bklit 0.43); one svg per stage via the canvas compositor 0.96 ms (bklit 0.25).
+- **Workaround:** none; reusing the canvas compositor for SVG is undocumented, so funnel stays on one svg (accepted hover cost).
+- **Proposal:** export a documented layer compositor or an `svgLayerRenderer()` factory (draft `docs/upstream-issues/svg-layer-per-group.md`).
+
 ---
 
 ## Retired numbers
