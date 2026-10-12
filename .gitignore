@@ -30,3 +30,4 @@ __*
 # QA tab tools output
 /captures/
 /tabsrv.log
+/chat.jsonl

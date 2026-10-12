@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """tabsrv.py - booking server for the visible QA browser tabs (stdlib only, port 5297).
 
-N tabs, one FIFO wait queue. A waiter at the head gets the first free tab; each holder owns exactly one tab.
+N tabs (QA_TABS="tab:win[@x,y,w,h];..."), one FIFO wait queue. A waiter at the head gets the first free tab; each holder owns exactly one tab.
   holder lease: dropped if not renewed for HOLD_TTL s (a crashed agent frees its tab)
   waiter entry: dropped if not seen for WAIT_TTL s (a dead agent leaves the queue)
 Endpoints (GET): /book?who=&note=  /wait?who=&timeout=  /renew?who=  /release?who=  /status
   admin: /addtab?tab=&win=   (add a tab, or update its CGWindowID)   /rmtab?tab=   /settab?tab= (legacy: replace tab list)
+Chat (agents working in parallel share insights, questions, findings): /say?who=&msg=  (@name tags someone, @all everyone)
+  /read?who=&all=&wait=  unread messages for `who` (tagged or @all; all=1 also untagged), advances who's cursor; wait= long-polls up to 100 s
+  /chat?n=  last n messages. Messages persist in chat.jsonl next to this file.
 Replies carry "tab": the caller's tab when it holds one, else the first tab (legacy field), and "tabs": [{tab, win, holder}].
 """
-import json, os, threading, time
+import json, os, re, threading, time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -16,12 +19,17 @@ PORT = int(os.environ.get("TABSRV_PORT", 5297))
 HOLD_TTL = 300
 WAIT_TTL = 120
 LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tabsrv.log")
+CHAT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat.jsonl")
 
 cv = threading.Condition()
 tabs = []      # [{"tab": str, "win": str}]
 holders = {}   # tab -> entry
 waiters = []   # FIFO of entries
-for spec in filter(None, os.environ.get("QA_TABS", "").split(",")):
+msgs = []     # [{"id", "t", "who", "to": [names], "msg"}]
+cursors = {}  # who -> last read id
+if os.path.exists(CHAT):
+    with open(CHAT) as f: msgs = [json.loads(l) for l in f if l.strip()]
+for spec in filter(None, os.environ.get("QA_TABS", "").split(";")):
     t, _, w = spec.partition(":"); tabs.append({"tab": t, "win": w})
 
 
@@ -71,6 +79,19 @@ def view(who=None):
     return out
 
 
+def say(who, msg, now):
+    m = {"id": len(msgs) + 1, "t": time.strftime("%H:%M:%S", time.localtime(now)), "who": who,
+         "to": sorted(set(re.findall(r"@([\w.-]+)", msg))), "msg": msg}
+    msgs.append(m)
+    with open(CHAT, "a") as f: f.write(json.dumps(m) + "\n")
+    cv.notify_all(); return m
+
+
+def unread(who, everything):
+    after = cursors.get(who, 0)
+    return [m for m in msgs[after:] if m["who"] != who and (everything or who in m["to"] or "all" in m["to"])]
+
+
 def join(who, note, now):
     e = {"who": who, "note": note, "joined": now, "seen": now, "granted": None, "tab": None}
     waiters.append(e); log(f"book {who}"); prune(now)
@@ -101,8 +122,19 @@ class H(BaseHTTPRequestHandler):
                 log(f"{u.path[1:]} {t} win={q.get('win', '')}"); prune(now); return self.reply(view())
             if u.path == "/rmtab":
                 tabs[:] = [x for x in tabs if x["tab"] != q.get("tab")]; log(f"rmtab {q.get('tab')}"); prune(now); return self.reply(view())
+            if u.path == "/chat":
+                return self.reply({"messages": msgs[-int(q.get("n", 30)):]})
             if not who:
                 return self.reply({"error": "who required"}, 400)
+            if u.path == "/say":
+                if not q.get("msg", "").strip(): return self.reply({"error": "msg required"}, 400)
+                return self.reply(say(who, q["msg"].strip(), now))
+            if u.path == "/read":
+                everything = q.get("all") == "1"; deadline = now + min(float(q.get("wait", 0)), 100)
+                while not unread(who, everything) and time.time() < deadline:
+                    cv.wait(min(deadline - time.time(), 5))
+                out = unread(who, everything); cursors[who] = len(msgs)
+                return self.reply({"messages": out})
             e = find(who)
             if u.path == "/book":
                 if not e: join(who, q.get("note", ""), now)
