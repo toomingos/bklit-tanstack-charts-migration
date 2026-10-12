@@ -7,16 +7,17 @@ import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { RendererChart, sameCategoryTarget } from "./kit/tooltip/tooltip-leaf";
 import { useInteractionHandle, useTouchInert } from "./kit/touch-focus";
-import { useHostMounted } from "./kit/size/parent-size-arm";
 import { useReadyGate } from "./kit/entrance/reveal-arm";
 import { motion } from "@tanstack/charts/motion";
 import { buildBarDefinition } from "./bar/definition";
 import { useDataUpdated } from "./kit/use-data-updated";
 import { useChildTable } from "./kit/stable-children";
 import { readBarChildren } from "./bar/read-children";
-import { numberOrZero, resolveBarSeries } from "./bar/model";
 import { hasDepth } from "./bar/depth-feature";
-import { BarDepthConfigProvider } from "./bar/depth-entries";
+import { resolveBarSeries } from "./bar/model";
+import { BarSizedLayer } from "./bar/sized-layer";
+import { useFocusStore } from "./kit/cartesian/focus-layer";
+import { scaleBand } from "d3-scale";
 import type { BarDepthProviderProps, BarXAxisProps } from "./bar/carriers";
 import { barDimCss, FOCUS_X_VAR, MAX_INDEX } from "./bar/hover";
 import type { TickFade } from "./bar/hover";
@@ -26,17 +27,9 @@ import { bklitSurfaceStyle, DEFAULT_ANIMATION_MS, DEFAULT_MARGIN, parseAspectRat
 import type { ChartMargin } from "./kit/theme";
 import { pillLayout, writePillRollIn } from "./kit/cartesian/date-pill";
 import { useChartLegendHover } from "./kit/legend/legend";
-import { scaleBand, scaleLinear, scaleUtc } from "d3-scale";
-import type { LineConfig } from "./kit/cartesian/chart-context";
-import { useFocusRow } from "./kit/cartesian/chart-context-focus";
 import type { ChartPhase, ChartStatus, Transition } from "./kit/motion/phase";
-import { BarLoadingSkeleton } from "./kit/loading/sweep";
-import { useBridgedContext, useReferenceAreas, valueScale } from "./kit/cartesian/context-bridge";
-import { useResizeBox } from "./kit/size/use-resize-box";
 import type { FocusedRow } from "./kit/cartesian/context-bridge";
 import { propsFor } from "./kit/read-children";
-import { shortDateFmt } from "./kit/format";
-import { FocusLayer, useFocusStore } from "./kit/cartesian/focus-layer";
 import { readyGateCss, focusEmptyHiddenCss } from "./kit/cartesian/gate-css";
 import { typedAttr } from "./kit/css-hooks";
 import { useSanitizedId } from "./kit/use-sanitized-id";
@@ -97,17 +90,12 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
   const legendHovered = useChartLegendHover().hoveredIndex;
   const containerRef = useRef<HTMLDivElement | null>(null);
   useTouchInert(containerRef);
-  // The svg mounts in the layout-effect commit, before first paint; bklit waits on ParentSize's RO+rAF first (bar-chart.tsx:701).
-  const parentSized = useHostMounted();
   const fillHeight = style?.aspectRatio === "unset";
   // Hover lives in a ref store read only by <FocusLayer>: no re-render / rebuild of the chart on focus.
   const focusStore = useFocusStore<FocusedRow>();
   // Custom marks (squares, depth) only animate enter when they join a painted scene, so charts that have them
   // paint a seeded first build, then one `entered` flip builds the full definition and the update tweens it in.
   const [entered, setEntered] = useState(false);
-  useEffect(() => {
-    if (parentSized) { setEntered(true); }
-  }, [parentSized]);
   const clock = useRef<{ at: number | null }>({ at: null }).current;
   const uid = `b${useSanitizedId()}`;
   // Legend hover re-renders the host with fresh `children`; keep the previous table while every carrier is structurally equal.
@@ -115,19 +103,12 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
   const series = useMemo(() => resolveBarSeries(table), [table]);
   const needsSeed = useMemo(() => series.some((s) => s.squares) || hasDepth(table), [series, table]);
   const seed = needsSeed && !entered;
+  useEffect(() => {
+    if (needsSeed) { setEntered(true); }
+  }, [needsSeed]);
   const resolvedMargin = useMemo(() => ({ ...DEFAULT_MARGIN, ...margin }), [margin]);
-  const size = useResizeBox(containerRef, undefined, true);
-  const skeletonStyle = useMemo(
-    (): CSSProperties => ({ position: "absolute", left: resolvedMargin.left, top: resolvedMargin.top, overflow: "visible", pointerEvents: "none" }),
-    [resolvedMargin],
-  );
+  // The plot rect comes from each scene render (`scene.chart`), so hover reads it without measuring the host.
   const plotRef = useRef({ left: 0, top: 0, width: 0, height: 0 });
-  plotRef.current = {
-    left: resolvedMargin.left,
-    top: resolvedMargin.top,
-    width: Math.max(0, size.width - resolvedMargin.left - resolvedMargin.right),
-    height: Math.max(0, size.height - resolvedMargin.top - resolvedMargin.bottom),
-  };
   const plot = useCallback(() => plotRef.current, []);
   const updated = useDataUpdated(data);
   const built = useMemo(
@@ -156,86 +137,21 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
     () => motion({ transition: { type: "tween", duration: animationDuration } }),
     [animationDuration],
   );
-  // Public `useChart()` context, derived from the native focus + resolved domains.
   const horizontal = orientation === "horizontal";
-  const innerWidth = Math.max(0, size.width - resolvedMargin.left - resolvedMargin.right);
-  const innerHeight = Math.max(0, size.height - resolvedMargin.top - resolvedMargin.bottom);
   const categoryOf = useCallback((d: Row): string => String(d[xDataKey]), [xDataKey]);
   const categories = useMemo(() => data.map(categoryOf), [data, categoryOf]);
-  const bandLength = horizontal ? innerHeight : innerWidth;
-  const barScale = useMemo(() => scaleBand().domain(categories).range([0, bandLength]).padding(barGap), [categories, bandLength, barGap]);
-  const valueAxis = useMemo(() => {
-    const [lo, hi] = built.valueDomain;
-    return horizontal ? scaleLinear().domain([lo, hi]).range([0, innerWidth]) : valueScale([lo, hi], innerHeight);
-  }, [built.valueDomain, horizontal, innerWidth, innerHeight]);
-  const rowIndex = useMemo(() => new Map(data.map((row, i) => [row, i] as const)), [data]);
-  // bklit exposes a Date-typed x scale for bar charts: row i maps to the centre of band i.
-  const xScale = useMemo(() => {
-    const centre = (i: number): number => (barScale(categories[i] ?? "") ?? 0) + barScale.bandwidth() / 2;
-    return scaleUtc()
-      .domain([new Date(0), new Date(Math.max(1, data.length - 1))])
-      .range(horizontal || data.length === 0 ? [0, innerWidth] : [centre(0), centre(Math.max(1, data.length - 1))]);
-  }, [barScale, categories, data.length, horizontal, innerWidth]);
-  const xAccessor = useCallback((d: Row): Date => new Date(rowIndex.get(d) ?? 0), [rowIndex]);
-  const dateLabels = useMemo(() => data.map((row) => (row[xDataKey] instanceof Date ? shortDateFmt.format(row[xDataKey]) : String(row[xDataKey]))), [data, xDataKey]);
-  const lines = useMemo<LineConfig[]>(() => series.map((sr) => ({ dataKey: sr.key, stroke: sr.fill, strokeWidth: 2 })), [series]);
-  const yScales = useMemo(() => ({ left: valueAxis }), [valueAxis]);
-  const stackOffsets = useMemo(() => {
-    if (!stacked) {
-      return undefined;
-    }
-    const offsets = new Map<number, Map<string, number>>();
-    for (const [i, row] of data.entries()) {
-      const point = new Map<string, number>();
-      let cumulative = 0;
-      for (const line of lines) {
-        point.set(line.dataKey, cumulative);
-        cumulative += numberOrZero(row[line.dataKey]);
-      }
-      offsets.set(i, point);
-    }
-    return offsets;
-  }, [data, lines, stacked]);
-  const extras = useMemo(
-    () => ({
-      barScale,
-      barXAccessor: categoryOf,
-      orientation,
-      stacked,
-      stackOffsets,
-      bandWidth: barScale.bandwidth(),
-      columnWidth: data.length > 0 ? bandLength / data.length : 0,
-    }),
-    [barScale, categoryOf, orientation, stacked, stackOffsets, data.length, bandLength],
-  );
   const { interaction: barInteraction, onRender: onBarRender } = useInteractionHandle();
-  const referenceAreas = useReferenceAreas(table);
-  // Rows are focused at their band centre on the plot's middle line; the category strategy snaps like a pointer move.
-  const pixelOf = useCallback(
-    (index: number) => {
-      if (index < 0 || index >= categories.length) {
-        return null;
-      }
-      const centre = (barScale(categories[index]) ?? 0) + barScale.bandwidth() / 2;
-      return horizontal
-        ? { x: resolvedMargin.left + innerWidth / 2, y: resolvedMargin.top + centre }
-        : { x: resolvedMargin.left + centre, y: resolvedMargin.top + innerHeight / 2 };
+  const onRender = useCallback(
+    (context: Parameters<typeof onBarRender>[0]): void => {
+      onBarRender(context);
+      const { chart } = context.scene;
+      plotRef.current = { left: chart.x, top: chart.y, width: chart.width, height: chart.height };
     },
-    [barScale, categories, horizontal, resolvedMargin, innerWidth, innerHeight],
+    [onBarRender],
   );
-  const focusRow = useFocusRow(containerRef, barInteraction, pixelOf);
-  const xAt = useCallback((f: FocusedRow): number => (barScale(categoryOf(f.row)) ?? 0) + barScale.bandwidth() / 2, [barScale, categoryOf]);
   // bklit `canInteract = isLoaded` (bar-chart.tsx:549), set by a setTimeout at animationDuration + staggerMs, staggerMs =
   // data.length > 1 ? animationDuration * 0.4 : 0 (bklit bar-chart.tsx:381-384): hover is inert until then. Armed on the ParentSize commit.
   const { arm: armReady, store: readyStore } = useReadyGate(containerRef, animationDuration + (data.length > 1 ? animationDuration * 0.4 : 0));
-  const bridge = useMemo(
-    () => ({ data, margin: resolvedMargin, size, containerRef, ready: readyStore, xScale, yScales, lines, animationDuration, xAccessor, dateLabels, xAt, extras, focusRow, referenceAreas }),
-    [data, resolvedMargin, size, readyStore, xScale, yScales, lines, animationDuration, xAccessor, dateLabels, xAt, extras, focusRow, referenceAreas],
-  );
-  const useContextValue = (focused: FocusedRow | null): ReturnType<typeof useBridgedContext> => {
-    const hoverExtras = useMemo(() => ({ ...extras, hoveredBarIndex: focused?.index ?? null, setHoveredBarIndex: focusRow }), [extras, focused]);
-    return useBridgedContext({ ...bridge, focused, extras: hoverExtras });
-  };
   const tooltipOptions = useMemo(
     () => ({ order: series.map((s) => s.key), colors: Object.fromEntries(series.map((s) => [s.key, s.fill])), horizontal: orientation === "horizontal" }),
     [series, orientation],
@@ -273,8 +189,8 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
   // The effect re-runs on a status flip (bklit bar-chart.tsx:372-386): loading holds the skeleton (no reveal, no interaction, the host
   // is pointer-events:none below), the flip to ready restarts the reveal and the timer.
   useEffect(() => {
-    if (parentSized && !loading) { armReady(); }
-  }, [parentSized, loading, armReady]);
+    if (!loading) { armReady(); }
+  }, [loading, armReady]);
   // The bars' entrance clock restarts with each reveal.
   useEffect(() => {
     if (loading) { clock.at = null; }
@@ -304,11 +220,14 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
       }
       writeHoverIndex(host, index >= MAX_INDEX ? null : index);
       if (horizontal) { clearVar(host, FOCUS_X_VAR); }
-      else { writeVar(host, FOCUS_X_VAR, ((barScale(categories[index] ?? "") ?? 0) + barScale.bandwidth() / 2 + resolvedMargin.left).toFixed(2)); }
+      else {
+        const band = scaleBand().domain(categories).range([0, plotRef.current.width]).padding(barGap);
+        writeVar(host, FOCUS_X_VAR, ((band(categories[index] ?? "") ?? 0) + band.bandwidth() / 2 + resolvedMargin.left).toFixed(2));
+      }
     };
     apply();
     return focusStore.subscribe(apply);
-  }, [focusStore, pill, horizontal, barScale, categories, resolvedMargin.left]);
+  }, [focusStore, pill, horizontal, categories, barGap, resolvedMargin.left]);
   // Keyboard-held focus survives a pointer pass (kit/keyboard-hold.ts).
   const holdFocus = useKeyboardFocusHold(containerRef, () => barInteraction.current);
   const onFocusChange = useCallback(
@@ -339,7 +258,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
       // bklit's outer div carries `style={{ aspectRatio }}` from its first render (bar-chart.tsx:696-700); only the svg waits for the layout-effect mount.
       style={{ width: "100%", position: "relative", aspectRatio, ...bklitSurfaceStyle, ...style }}
     >
-      {parentSized && childrenReady ? (
+      {childrenReady ? (
         <RendererChart
           idPrefix={uid}
           definition={erase(built.definition)}
@@ -349,22 +268,33 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
           ariaLabel={props.ariaLabel ?? "Bar chart"}
           ariaDescription={props.ariaDescription}
           onFocusChange={onFocusChange}
-          onRender={erase(onBarRender)}
+          onRender={erase(onRender)}
           renderTooltipBody={erase(renderTooltipBody)}
           tooltipEqual={sameCategoryTarget}
         />
       ) : null}
-      {parentSized && loading ? (
-        // bklit renders the skeleton inside the margin-translated group, in place of the bars (bar-chart.tsx:654-660; barCount = data.length || 12, :54-55).
-        // No native mark paints a masked shimmer, so the skeleton is bklit's own svg laid over the plot rect.
-        <svg aria-hidden="true" height={innerHeight} style={skeletonStyle} width={innerWidth}>
-          <BarLoadingSkeleton barCount={data.length > 0 ? data.length : FALLBACK_LOADING_BARS} innerHeight={innerHeight} innerWidth={innerWidth} />
-        </svg>
-      ) : null}
       {staticCss ? <style>{staticCss}</style> : null}
-      <FocusLayer store={focusStore} useContextValue={useContextValue}>
-        <BarDepthConfigProvider value={depthConfig}>{custom}</BarDepthConfigProvider>
-      </FocusLayer>
+      {loading || custom.length > 0 ? (
+        <BarSizedLayer
+          host={containerRef}
+          data={data}
+          xDataKey={xDataKey}
+          orientation={orientation}
+          stacked={stacked}
+          barGap={barGap}
+          series={series}
+          valueDomain={built.valueDomain}
+          resolvedMargin={resolvedMargin}
+          animationDuration={animationDuration}
+          table={table}
+          barInteraction={barInteraction}
+          readyStore={readyStore}
+          focusStore={focusStore}
+          depthConfig={depthConfig}
+          custom={custom}
+          loading={loading}
+        />
+      ) : null}
     </div>
   );
 };
