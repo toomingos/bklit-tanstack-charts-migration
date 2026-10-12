@@ -12,6 +12,7 @@ interface NodeBox {
   readonly y0: number;
   readonly y1: number;
   readonly labelBoxes: readonly NodeBox[];
+  readonly radius: number;
 }
 
 interface FlowBox {
@@ -27,7 +28,7 @@ const num = (value: unknown): number => (typeof value === "number" ? value : Num
 const readNode = (datum: unknown): NodeBox | null => {
   if (!isRecord(datum)) {return null;}
   const labelBoxes = Array.isArray(datum.labelBoxes) ? datum.labelBoxes.map(readNode).filter((box): box is NodeBox => box !== null) : [];
-  return { labelBoxes, x0: num(datum.x0), x1: num(datum.x1), y0: num(datum.y0), y1: num(datum.y1) };
+  return { labelBoxes, radius: Number.isFinite(num(datum.radius)) ? num(datum.radius) : 0, x0: num(datum.x0), x1: num(datum.x1), y0: num(datum.y0), y1: num(datum.y1) };
 };
 
 const readFlow = (datum: unknown): FlowBox | null => {
@@ -68,8 +69,17 @@ const distanceToCentre = (flow: FlowBox, px: number, py: number): number => {
 
 const inBox = (box: NodeBox, x: number, y: number): boolean => x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1;
 
+// bklit's node is a rounded <rect> (sankey-node.tsx:240-251): SVG hit-testing excludes the corners and the right edge, where the link starts (sankey-link.tsx).
+const inRoundedRect = (box: NodeBox, x: number, y: number): boolean => {
+  if (x < box.x0 || x >= box.x1 || y < box.y0 || y > box.y1) {return false;}
+  const r = Math.min(box.radius, (box.x1 - box.x0) / 2, (box.y1 - box.y0) / 2);
+  const dx = Math.max(box.x0 + r - x, x - (box.x1 - r), 0);
+  const dy = Math.max(box.y0 + r - y, y - (box.y1 - r), 0);
+  return dx * dx + dy * dy <= r * r;
+};
+
 const hitNode = (box: NodeBox | null, x: number, y: number): boolean =>
-  box !== null && (inBox(box, x, y) || box.labelBoxes.some((label) => inBox(label, x, y)));
+  box !== null && (inRoundedRect(box, x, y) || box.labelBoxes.some((label) => inBox(label, x, y)));
 
 const hitFlow = (flow: FlowBox | null, x: number, y: number): boolean => {
   if (flow === null || x < Math.min(flow.x1, flow.x2) || x > Math.max(flow.x1, flow.x2)) {return false;}

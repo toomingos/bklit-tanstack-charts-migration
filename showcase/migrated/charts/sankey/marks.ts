@@ -156,6 +156,7 @@ interface NodeLayoutRow {
 }
 interface NodeRowShape extends NodeLayoutRow {
   readonly labelBoxes: readonly HitBox[];
+  readonly radius: number;
 }
 
 const intFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
@@ -301,7 +302,7 @@ const createSankeyMark = (config: Readonly<SankeyMarkConfig>): ReturnType<typeof
       // One computed-style read per layout (not per label): it is a style flush right after the resize invalidated it.
       const family = typeof document === "undefined" || labels.length === 0 ? "sans-serif" : getComputedStyle(document.body).fontFamily;
       const hitBoxesOf = new Map(labels.map((label) => [label.key, labelHitBoxes(label, config.showValueLabels, family)]));
-      const nodeRows: NodeRowShape[] = fullNodes.map((row) => ({ ...row, labelBoxes: hitBoxesOf.get(row.key) ?? [] }));
+      const nodeRows: NodeRowShape[] = fullNodes.map((row) => ({ ...row, labelBoxes: hitBoxesOf.get(row.key) ?? [], radius: config.lineCap }));
       const linkRows: SankeyInputLinkRow[] = [];
       for (const row of fullLinks) {
         linkRows.push(Math.abs(row.y1 - row.y2) < FLAT_LINK_RISE ? { ...row, y2: row.y1 + FLAT_LINK_RISE } : row);
