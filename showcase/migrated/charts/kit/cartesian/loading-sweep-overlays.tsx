@@ -1,7 +1,7 @@
 // The sweep loading style (bklit line.tsx:173-186 / area.tsx:294-355): each sweep series draws its own skeleton silhouette under the shimmer band, over the plot area.
 import { useMemo } from "react";
 import type { CSSProperties, ReactElement } from "react";
-import { LineLoadingSweep } from "../loading/sweep";
+import { LineLoadingSweep } from "../loading/line-sweep";
 import type { ChartMargin } from "../theme";
 import { usePlotSnapshot } from "./plot-size";
 import type { PlotStore } from "./plot-size";

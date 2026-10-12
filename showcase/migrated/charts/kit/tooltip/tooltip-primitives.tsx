@@ -36,24 +36,26 @@ const CHILDREN_STYLE: CSSProperties = { marginTop: 8 };
 
 const dotStyle = (color: string): CSSProperties => ({ width: 10, height: 10, flexShrink: 0, borderRadius: "50%", background: color });
 
-export const TooltipContent = ({ title, rows, children, className }: Readonly<TooltipContentProps>): ReactElement => (
-  <div className={className} style={CONTENT_STYLE}>
-    {hasText(title) ? <div style={TITLE_STYLE}>{title}</div> : null}
-    <div style={ROWS_STYLE}>
-      {rows.map((row) => (
-        <div key={`${row.label}-${row.color}`} style={ROW_STYLE}>
-          <span style={ROW_LABEL_STYLE}>
-            <span style={dotStyle(row.color)} />
-            <span style={LABEL_TEXT_STYLE}>{row.label}</span>
-          </span>
-          <span style={VALUE_STYLE}>{isNumber(row.value) ? intFmt(row.value) : row.value}</span>
-        </div>
-      ))}
+export const TooltipContent = /* @__PURE__ */ Object.assign(
+  ({ title, rows, children, className }: Readonly<TooltipContentProps>): ReactElement => (
+    <div className={className} style={CONTENT_STYLE}>
+      {hasText(title) ? <div style={TITLE_STYLE}>{title}</div> : null}
+      <div style={ROWS_STYLE}>
+        {rows.map((row) => (
+          <div key={`${row.label}-${row.color}`} style={ROW_STYLE}>
+            <span style={ROW_LABEL_STYLE}>
+              <span style={dotStyle(row.color)} />
+              <span style={LABEL_TEXT_STYLE}>{row.label}</span>
+            </span>
+            <span style={VALUE_STYLE}>{isNumber(row.value) ? intFmt(row.value) : row.value}</span>
+          </div>
+        ))}
+      </div>
+      {hasNode(children) ? <div style={CHILDREN_STYLE}>{children}</div> : null}
     </div>
-    {hasNode(children) ? <div style={CHILDREN_STYLE}>{children}</div> : null}
-  </div>
+  ),
+  { displayName: "TooltipContent" },
 );
-TooltipContent.displayName = "TooltipContent";
 
 export interface TooltipBoxProps {
   /** Positioning props (x, y, containerRef, ...) are accepted for bklit compatibility; the native tooltip positions the panel. */
@@ -78,24 +80,26 @@ export interface TooltipBoxProps {
 }
 
 /** The tooltip panel. Inside `<ChartTooltip content>` the native tooltip is already the positioned, animated panel (bklit surface tokens), so this only applies per-box overrides. */
-export const TooltipBox = ({ visible = true, className, children, panelStyle, backgroundColor }: Readonly<TooltipBoxProps>): ReactElement | null => {
-  const style = useMemo<CSSProperties>(() => {
-    const base: CSSProperties = { minWidth: 140, overflow: "hidden" };
-    if (hasText(backgroundColor)) {
-      base.backgroundColor = backgroundColor;
+export const TooltipBox = /* @__PURE__ */ Object.assign(
+  ({ visible = true, className, children, panelStyle, backgroundColor }: Readonly<TooltipBoxProps>): ReactElement | null => {
+    const style = useMemo<CSSProperties>(() => {
+      const base: CSSProperties = { minWidth: 140, overflow: "hidden" };
+      if (hasText(backgroundColor)) {
+        base.backgroundColor = backgroundColor;
+      }
+      return { ...base, ...panelStyle };
+    }, [backgroundColor, panelStyle]);
+    if (!visible) {
+      return null;
     }
-    return { ...base, ...panelStyle };
-  }, [backgroundColor, panelStyle]);
-  if (!visible) {
-    return null;
-  }
-  return (
-    <div className={className} style={style}>
-      {children}
-    </div>
-  );
-};
-TooltipBox.displayName = "TooltipBox";
+    return (
+      <div className={className} style={style}>
+        {children}
+      </div>
+    );
+  },
+  { displayName: "TooltipBox" },
+);
 
 export interface DateTickerProps {
   readonly currentIndex: number;
@@ -115,14 +119,16 @@ const DATE_PILL_STYLE: CSSProperties = {
 };
 
 /** The date pill for custom tooltip content (the chart's own crosshair pill is native). */
-export const DateTicker = ({ currentIndex, labels, visible }: Readonly<DateTickerProps>): ReactElement | null => {
-  if (!visible || labels.length === 0) {
-    return null;
-  }
-  const label = labels[currentIndex] ?? labels[0];
-  return <div style={DATE_PILL_STYLE}>{label}</div>;
-};
-DateTicker.displayName = "DateTicker";
+export const DateTicker = /* @__PURE__ */ Object.assign(
+  ({ currentIndex, labels, visible }: Readonly<DateTickerProps>): ReactElement | null => {
+    if (!visible || labels.length === 0) {
+      return null;
+    }
+    const label = labels[currentIndex] ?? labels[0];
+    return <div style={DATE_PILL_STYLE}>{label}</div>;
+  },
+  { displayName: "DateTicker" },
+);
 
 interface MarkerTooltipItem {
   readonly title: string;
@@ -162,33 +168,35 @@ const markerDiscStyle = (color: string | undefined): CSSProperties => ({
   border: "1px solid var(--chart-marker-border)",
 });
 
-export const MarkerTooltipContent = ({ markers }: Readonly<MarkerTooltipContentProps>): ReactElement | null => {
-  if (markers.length === 0) {
-    return null;
-  }
-  const hidden = markers.length - MAX_TOOLTIP_MARKERS;
-  return (
-    <div style={MARKERS_STYLE}>
-      {markers.slice(0, MAX_TOOLTIP_MARKERS).map((marker) => (
-        <div key={marker.title} style={MARKER_ROW_STYLE}>
-          <div style={markerDiscStyle(marker.color)}>
-            <span style={MARKER_ICON_FOREGROUND_STYLE}>{marker.icon}</span>
+export const MarkerTooltipContent = /* @__PURE__ */ Object.assign(
+  ({ markers }: Readonly<MarkerTooltipContentProps>): ReactElement | null => {
+    if (markers.length === 0) {
+      return null;
+    }
+    const hidden = markers.length - MAX_TOOLTIP_MARKERS;
+    return (
+      <div style={MARKERS_STYLE}>
+        {markers.slice(0, MAX_TOOLTIP_MARKERS).map((marker) => (
+          <div key={marker.title} style={MARKER_ROW_STYLE}>
+            <div style={markerDiscStyle(marker.color)}>
+              <span style={MARKER_ICON_FOREGROUND_STYLE}>{marker.icon}</span>
+            </div>
+            <div style={MARKER_BODY_STYLE}>
+              {marker.content ?? (
+                <>
+                  <div style={MARKER_TITLE_STYLE}>
+                    {marker.title}
+                    {marker.onClick !== undefined || hasText(marker.href) ? <span style={MARKER_LINK_STYLE}>{LINK_ARROW}</span> : null}
+                  </div>
+                  {hasText(marker.description) ? <div style={MARKER_DESCRIPTION_STYLE}>{marker.description}</div> : null}
+                </>
+              )}
+            </div>
           </div>
-          <div style={MARKER_BODY_STYLE}>
-            {marker.content ?? (
-              <>
-                <div style={MARKER_TITLE_STYLE}>
-                  {marker.title}
-                  {marker.onClick !== undefined || hasText(marker.href) ? <span style={MARKER_LINK_STYLE}>{LINK_ARROW}</span> : null}
-                </div>
-                {hasText(marker.description) ? <div style={MARKER_DESCRIPTION_STYLE}>{marker.description}</div> : null}
-              </>
-            )}
-          </div>
-        </div>
-      ))}
-      {hidden > 0 ? <div style={MARKER_MORE_STYLE}>{`+${hidden} more...`}</div> : null}
-    </div>
-  );
-};
-MarkerTooltipContent.displayName = "MarkerTooltipContent";
+        ))}
+        {hidden > 0 ? <div style={MARKER_MORE_STYLE}>{`+${hidden} more...`}</div> : null}
+      </div>
+    );
+  },
+  { displayName: "MarkerTooltipContent" },
+);

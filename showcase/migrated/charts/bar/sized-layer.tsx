@@ -10,7 +10,7 @@ import type { FocusedRow } from "../kit/cartesian/context-bridge";
 import { FocusLayer } from "../kit/cartesian/focus-layer";
 import type { useFocusStore } from "../kit/cartesian/focus-layer";
 import { shortDateFmt } from "../kit/format";
-import { BarLoadingSkeleton } from "../kit/loading/sweep";
+import { BarLoadingSkeleton } from "../kit/loading/bar-skeleton";
 import { useResizeBox } from "../kit/size/use-resize-box";
 import type { AnyInteraction } from "../kit/erased-types";
 import type { ChartMargin } from "../kit/theme";
