@@ -108,6 +108,34 @@ export interface ScatterInput {
   readonly revealed: boolean;
   /** bklit's reveal timer clock: the swap to static dots lands `animationDuration` after the chart's mount effect. */
   readonly revealClock?: RevealClock;
+  /** Receives the size TanStack measured, from the `chart` callback inside its draw. */
+  readonly sizeStore: SizeStore;
+}
+
+export interface SizeStore {
+  readonly get: () => { readonly width: number; readonly height: number };
+  readonly subscribe: (cb: () => void) => () => void;
+  readonly set: (width: number, height: number) => void;
+}
+
+/** The plot size as TanStack measured it: written in its draw, read by hover and by <FocusLayer> only (no React state on the path to the first draw). */
+export function createSizeStore(): SizeStore {
+  let size = { width: 0, height: 0 };
+  const listeners = new Set<() => void>();
+  return {
+    get: () => size,
+    subscribe: (cb) => {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+    set: (width, height) => {
+      if (width === size.width && height === size.height) {
+        return;
+      }
+      size = { width, height };
+      listeners.forEach((l) => { l(); });
+    },
+  };
 }
 
 const GRADIENT_TO = "var(--color-emerald-500)";
@@ -556,6 +584,7 @@ export function buildScatterDefinition(input: ScatterInput): ScatterBuild {
   const boxMotion = tooltipBoxMotion(tooltipProps);
   const definition: ChartDefinition<Row, Date, number> = erase(defineChart(erase({
     chart: ({ width, height }: { width: number; height: number }): ScatterChartConfig => {
+      input.sizeStore.set(Math.round(width), Math.round(height));
       live.innerWidth = Math.max(1, width - margin.left - margin.right);
       live.innerHeight = height - margin.top - margin.bottom;
       const xDomain = xDomainAt(width);
@@ -599,7 +628,16 @@ export function buildScatterDefinition(input: ScatterInput): ScatterBuild {
       : false,
   })));
 
+  let pillCache: { width: number; info: PillTickInfo | null } | null = null;
   const pillTicks = (width: number): PillTickInfo | null => {
+    if (pillCache?.width === width) {
+      return pillCache.info;
+    }
+    const info = pillTicksAt(width);
+    pillCache = { width, info };
+    return info;
+  };
+  const pillTicksAt = (width: number): PillTickInfo | null => {
     if (!tooltipEnabled || tooltipProps.showDatePill === false || series.length === 0) {
       return null;
     }
