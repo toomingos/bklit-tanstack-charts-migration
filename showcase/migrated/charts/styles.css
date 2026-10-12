@@ -61,8 +61,8 @@
   --bkm-psame0: inherit; --bkm-psame1: inherit; --bkm-psame2: inherit; --bkm-psame3: inherit;
 }
 
-/* First-mount line / area reveal (bklit ChartRevealClip): the outer wipe group (static clip) slides in while the inner slides back, so the clip opens left to right on the entrance curve.
-   Started by the first draw; reveal-arm.tsx re-stamps it onto motion's frame clock. `--bkm-wipe-w` is the plot width (host-style.ts). */
+/* Left-to-right first-mount reveal (bklit ChartRevealClip); the native path track is a scaleY grow (motion.ts:1505-1562) and keyed groups
+   get no first-paint tween (motion.ts:282-287): UPSTREAM-GAPS #61. `--bkm-wipe-w` = plot width. */
 @keyframes bkm-wipe-o { from { transform: translateX(calc(-1 * var(--bkm-wipe-w))); } }
 @keyframes bkm-wipe-i { from { transform: translateX(var(--bkm-wipe-w)); } }
 [data-bkm-wipe-in] .bkm-wipe-o { animation: bkm-wipe-o var(--bkm-enter-ms) cubic-bezier(0.85, 0, 0.15, 1) backwards; }
