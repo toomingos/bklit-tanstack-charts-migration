@@ -27,7 +27,6 @@ import { reapplyPush } from "./sunburst/push";
 import type { SectorPush } from "./sunburst/push";
 import type { SectorTrail, SunburstNativeNode } from "./sunburst/sunburst-mark";
 import { useSunburstZoom } from "./sunburst/zoom";
-import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { useTapFocus } from "./kit/touch-focus";
 import { EntranceAlign } from "./kit/entrance/entrance-align";
 import { useResizeBox } from "./kit/size/use-resize-box";
@@ -112,15 +111,13 @@ export const SunburstChart = ({
   const centerRef = useRef<{ readonly x: number; readonly y: number } | null>(null);
   const sceneRef = useRef<ChartScene<SunburstDatum, number, number> | null>(null);
   useTapFocus(hostRef, () => erase(interactionRef.current), { mode: "press" });
-  const holdFocus = useKeyboardFocusHold(hostRef, () => erase(interactionRef.current));
 
   // The arcs of the last hover path written to the host (`data-bk-path`), for the zoom's snap.
   const hoverPathRef = useRef<readonly number[]>([]);
-  const { handFocusOver, noteSource, selectZoom, zoomTo, zoomableRef } = useSunburstZoom({
+  const { selectZoom, zoomTo, zoomableRef } = useSunburstZoom({
     arcById,
     focus,
     focusId,
-    holdFocus,
     hoverPathRef,
     hostRef,
     isFocusControlled,
@@ -175,7 +172,6 @@ export const SunburstChart = ({
       pushes,
       registry,
       scene: () => sceneRef.current,
-      noteSource,
       moving: () => movingRef.current,
       hoveredId: () => {
         const index = hoverStore.getIndex();
@@ -186,7 +182,7 @@ export const SunburstChart = ({
     });
     // parsed is rebuilt each render; its content is captured by segmentKey/labelsKey/hasCenter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, arcById, focus, segmentKey, labelsKey, parsed.hasCenter, sweepMs, enterStaggerScale, feed, sectorRenderer, popPx, growPadding, controller, registry, pushes, trail, isHoverControlled, noteSource, hoverStore]);
+  }, [model, arcById, focus, segmentKey, labelsKey, parsed.hasCenter, sweepMs, enterStaggerScale, feed, sectorRenderer, popPx, growPadding, controller, registry, pushes, trail, isHoverControlled, hoverStore]);
 
   useControlledCursor(controller, registry, hoveredArc?.id ?? null, isHoverControlled, definition);
   useHoverGrow({ arcs: model.arcs, definition, focusDepth: focus?.depth ?? 0, hostRef, hoverPathRef, hoverPop: popPx, hoverStore, maxDepth: model.maxDepth, pushes });
@@ -196,13 +192,11 @@ export const SunburstChart = ({
       interactionRef.current = erase(context.interaction);
       sceneRef.current = context.scene;
       centerRef.current = { x: context.scene.chart.x + context.scene.chart.width / 2, y: context.scene.chart.y + context.scene.chart.height / 2 };
-      handFocusOver(context.scene);
     },
-    [handFocusOver],
+    [],
   );
   const onChartFocus = useCallback(
     (point: ChartPoint<SunburstDatum, number, number> | null): void => {
-      holdFocus(erase(point));
       if (hostRef.current !== null) {
         if (isHub(point?.datum)) {
           raiseAttribute(hostRef.current, "data-bk-hub");
@@ -212,7 +206,7 @@ export const SunburstChart = ({
       }
       setHoveredArcIndex(hoveredIndexOf(point?.datum, arcById));
     },
-    [arcById, holdFocus, setHoveredArcIndex],
+    [arcById, setHoveredArcIndex],
   );
   const hostStyle = useMemo(() => ({ maxWidth: "100%", width: size, ...hostVars }), [size, hostVars]);
   const stageStyle = useMemo(() => ({ aspectRatio: "1 / 1", maxWidth: size }), [size]);

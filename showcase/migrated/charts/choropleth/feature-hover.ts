@@ -3,7 +3,6 @@ import { erase } from "../kit/erased-types";
 import { writePresence } from "../kit/host-write";
 import type { RefObject } from "react";
 import type { ChartPoint } from "@tanstack/charts";
-import { useKeyboardFocusHold } from "../kit/keyboard-hold";
 import { useMousePressFreeze, useTapFocus } from "../kit/touch-focus";
 import { createHoverStore } from "./context";
 import type { GeoGeometry, ProjectionHolder } from "./focus";
@@ -23,13 +22,12 @@ interface FeatureHover {
   readonly size: Size;
   readonly hoverStore: HoverStore;
   readonly renderRef: RefObject<RenderedChart | null>;
-  readonly isHeld: () => boolean;
   readonly handleRender: (context: Partial<RenderedChart>) => void;
   readonly handleFocusChange: (point: ChartPoint<ChoroplethFeature> | null) => void;
   readonly setHoveredFeatureIndex: (index: number | null) => void;
 }
 
-/** useChoropleth() compatibility: measured size and the focus mirror, plus the host-attribute hover state and touch/keyboard holds. */
+/** useChoropleth() compatibility: measured size and the focus mirror, plus the host-attribute hover state and touch holds. */
 export const useFeatureHover = (options: {
   readonly hostRef: RefObject<HTMLDivElement | null>;
   readonly holder: ProjectionHolder;
@@ -53,10 +51,7 @@ export const useFeatureHover = (options: {
   const getInteraction = useCallback(() => erase(renderRef.current?.interaction), []);
   useMousePressFreeze(hostRef, getInteraction, zoomEnabled);
   useTapFocus(hostRef, getInteraction, { mode: "tap" });
-  // Keyboard-held focus survives a pointer pass (kit/keyboard-hold.ts).
-  const holdFocus = useKeyboardFocusHold(hostRef, getInteraction);
   const handleFocusChange = useCallback((point: ChartPoint<ChoroplethFeature> | null): void => {
-    holdFocus(erase(point));
     // bklit removes the tooltip the instant the pointer leaves a country (no exit); the native exit spring would
     // keep it up for ~270ms, so an idle flag on the host lets CSS drop it at once (no definition/React work).
     const onFeature = point?.markId === FEATURES_ID;
@@ -72,9 +67,9 @@ export const useFeatureHover = (options: {
     // bklit's tooltipData: the clamped centroid in unzoomed space (consumers apply the zoom transform, as bklit's tooltip does).
     const base = baseTooltipPoint(holder, point.datum) ?? { x: point.x, y: point.y };
     hoverStore.set(point.datumIndex, { feature: point.datum, featureIndex: point.datumIndex, ...base });
-  }, [holdFocus, holder, hoverStore, hostRef]);
-  // Pan/zoom re-renders without touching the definition, so the core layout effect repaints the held focus and re-runs `tooltipAnchor` (as bklit's zoom.applyToPoint);
-  // a held feature the zoom carries out of view is cleared like bklit's mouseleave, and the next arrow starts from the first visible stop.
+  }, [holder, hoverStore, hostRef]);
+  // Pan/zoom re-renders without touching the definition, so the core layout effect repaints the hovered focus and re-runs `tooltipAnchor` (as bklit's zoom.applyToPoint);
+  // a hovered feature the zoom carries out of view is cleared like bklit's mouseleave.
   useIsomorphicLayoutEffect(() => {
     const held = hoverStore.tooltip?.feature;
     if (held === undefined || geometry.visible(held)) {return;}
@@ -87,5 +82,5 @@ export const useFeatureHover = (options: {
     if (candidate) {ctx.interaction.setControlledFocus(candidate, { source: "programmatic" });}
   }, [hoverStore]);
 
-  return { handleFocusChange, handleRender, hoverStore, isHeld: holdFocus.isHeld, renderRef, setHoveredFeatureIndex, size };
+  return { handleFocusChange, handleRender, hoverStore, renderRef, setHoveredFeatureIndex, size };
 };

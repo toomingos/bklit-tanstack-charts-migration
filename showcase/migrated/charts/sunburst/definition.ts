@@ -70,8 +70,6 @@ interface DefinitionInput {
   readonly pushes: Map<string, SectorPush>;
   /** Last rendered scene, for the focus strategy's pointer resolution. */
   readonly scene: () => ChartScene<SunburstDatum, number, number> | null;
-  /** Records whether the last select came from the keyboard (zoom hands focus to a node only then). */
-  readonly noteSource: (source: "pointer" | "keyboard") => void;
   /** True while a pointer move is dispatched (see usePointerHold). */
   readonly moving: () => boolean;
   /** Id of the sector the hover store holds, if any. */
@@ -79,7 +77,7 @@ interface DefinitionInput {
 }
 
 export const buildDefinition = (input: Readonly<DefinitionInput>): DomChartDefinition<SunburstDatum, number, number> => {
-  const { model, focus, fillOf, hasCenter, labels, sweepMs, enterStaggerScale, feed, sectorRenderer, isIntro, center, controlled, introAt, hoverPop, padding, controller, registry, pushes, trail, scene, noteSource, moving, hoveredId } = input;
+  const { model, focus, fillOf, hasCenter, labels, sweepMs, enterStaggerScale, feed, sectorRenderer, isIntro, center, controlled, introAt, hoverPop, padding, controller, registry, pushes, trail, scene, moving, hoveredId } = input;
   const { maxDepth, arcs } = model;
   const arcById = new Map(arcs.map((arc) => [arc.id, arc]));
   const enter = buildEnterDelays(arcs, enterStaggerScale);
@@ -201,9 +199,8 @@ export const buildDefinition = (input: Readonly<DefinitionInput>): DomChartDefin
       },
     }),
     // `change` runs before `onSelect` for both pointer and keyboard selects (renderer.ts:830,868).
-    selection: { change: (_point, source) => { noteSource(source); }, type: "keyed" },
     focusRing: false,
-    keyboard: true,
+    keyboard: false,
     margin: 0,
     marks: [
       polar({

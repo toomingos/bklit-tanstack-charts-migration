@@ -22,7 +22,6 @@ import type { AnnulusTarget } from "./kit/polar/polar-hover";
 import { displayNameOf } from "./kit/read-children";
 import { toEaseFn, toMotionTransition } from "./kit/motion/enter-transition";
 import { buildPieCss, createPieHoverSprings, MAX_INDEX, pieHoverVars } from "./kit/polar/polar-dim";
-import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { INITIAL_WIDTH_PX, useFluidWidth } from "./kit/size/use-fluid-width";
 import { useIsClient } from "./kit/size/use-is-client";
 import { useTapFocus } from "./kit/touch-focus";
@@ -137,6 +136,7 @@ const buildPieDefinition = (options: Readonly<BuildDefinitionOptions>): DomChart
       targets,
     }),
     focusRing: false,
+    keyboard: false,
     guides: false,
     marks: [polar({ id: "pie", inset: hoverOffset, marks: slices, radiusRatio: 1, scales: { angle: null, radius: null } })],
     scales: { x: null, y: null },
@@ -178,9 +178,7 @@ const PieChart = ({
     interactionRef.current = context.interaction;
   }, []);
 
-  const { source, handleFocusChange: reportFocus } = usePolarHover<PieArcRow>({ hoveredIndex, indexOf: pieIndexOf, onHoverChange });
-  const holdFocus = useKeyboardFocusHold(containerRef, () => interactionRef.current);
-  const handleFocusChange = useCallback((point: Parameters<typeof reportFocus>[0]): void => { holdFocus(point); reportFocus(point); }, [holdFocus, reportFocus]);
+  const { source, handleFocusChange } = usePolarHover<PieArcRow>({ hoveredIndex, indexOf: pieIndexOf, onHoverChange });
 
   const totalValue = useMemo(() => data.reduce((sum, datum: Readonly<PieData>) => sum + datum.value, 0), [data]);
   const getColor = useCallback((index: number): string => {
