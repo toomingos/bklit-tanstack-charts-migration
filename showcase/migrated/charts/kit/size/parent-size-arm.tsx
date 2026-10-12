@@ -1,15 +1,11 @@
-// One source for bklit's mount chain: visx ParentSize observes the parent, a rAF commits the size, so the svg mounts two frames after the wrapper.
-// Source: @visx/responsive 4.0.1-alpha.0 useParentSize.js:37-63 (observer -> rAF -> lodash debounce, `leading: true`), then motion reads keyframes a frame later.
+// Remaining models of bklit's ParentSize chain (@visx/responsive 4.0.1-alpha.0 useParentSize.js:37-63: observer -> rAF -> debounce, `leading: true`) for heatmap and the sankey hold.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { clearAttribute, raiseAttribute } from "../host-write";
 
-// Lead rulings: LOG "One kit source for bklit's start chain" (~line 633) adopts this as the one source; it waits on observer delivery and frames, no tuned ms.
-// The "Entry clock ruling" (~line 675) refuses an artificial delay, which this is not; pending lead reconciliation (fixer report).
 const FALLBACK_WIDTH_PX = 640;
 
-// bklit `<ParentSize debounceTime={10}>`: line-chart.tsx:265, area-chart.tsx:234, composed-chart.tsx:308, choropleth/choropleth-chart.tsx:482, gauge.tsx:685,
-// candlestick-chart.tsx:398, bar-chart.tsx:701; default 300ms: sankey/sankey-chart.tsx:246, heatmap/heatmap-chart.tsx:685 (same leading first call).
+// bklit heatmap mounts under `<ParentSize>` (default 300ms, same leading first call): heatmap/heatmap-chart.tsx:685.
 /** First ResizeObserver delivery for `host`, then one frame, then `onSize(width)`. Returns the cleanup. */
 const observeParentSize = (host: HTMLElement, onSize: (width: number) => void): (() => void) => {
   let frame = 0;

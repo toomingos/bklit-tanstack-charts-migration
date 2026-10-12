@@ -109,8 +109,8 @@ const SankeyChart = ({
   const margin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
   const useGradient = linkConfig.useGradient ?? true;
 
-  // bklit mounts no svg until ParentSize's first size commit (sankey-chart.tsx:246); the renderer measures its own container at mount, so
-  // the chart is drawn once, in the first commit, at the real width.
+  // Entrance starts on the first draw, without bklit's ParentSize frames (sankey-chart.tsx:246), at the user's direction (no frame waits); the curve is unchanged.
+  // The renderer measures its own container at mount, so the chart is drawn once, in the first commit.
   const hostRef = useRef<HTMLDivElement | null>(null);
 
   const definition = useMemo(() => {

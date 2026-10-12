@@ -91,8 +91,8 @@ const ScatterChartInner = ({
   // (no definition rebuild, no re-resolve); fixed CSS (`SCATTER_HOVER_CSS`) carries the visual emphasis.
   const focusStore = useFocusStore<FocusedRow>();
   const uid = `s${useSanitizedId()}`;
-  // Dots enter from the layout-effect commit after the renderer's first (empty) mount, before first paint: bklit's react-use-measure hop
-  // (scatter-chart.tsx:154) is skipped, as the lead approved. The renderer mounts in its own layout effect, which runs first.
+  // Entrance starts on the first draw, without bklit's react-use-measure hop (scatter-chart.tsx:154), at the user's direction (no frame waits); the curve is unchanged.
+  // The renderer mounts in its own layout effect, which runs first; `revealed` flips in the next one, before first paint.
   const [revealed, setRevealed] = useState(false);
   useLayoutEffect(() => {
     if (childrenReady) {

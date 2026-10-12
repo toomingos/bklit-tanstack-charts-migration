@@ -210,6 +210,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
     );
   }
 
+  // Entrance starts on the first draw, without bklit's ParentSize frames (gauge.tsx:685), at the user's direction (no frame waits); the curve is unchanged.
   return (
     <div className={arcRootClass(fixed, className)} data-bkm-chart="" data-bkm-gn={enterAttr} style={styles.arcRoot}>
       {enterCss}

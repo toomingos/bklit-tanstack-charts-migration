@@ -275,6 +275,7 @@ const FunnelChart = ({
 
   if (data.length === 0) {return null;}
 
+  // Entrance starts on the first draw, without bklit's measure-effect re-render (funnel-chart.tsx:798-803), at the user's direction (no frame waits); the curve is unchanged.
   return (
     <div className={className} data-bkm-chart="funnel" data-slot="chart" ref={hostRef} style={hostStyle}>
       <EntranceAlign hostRef={hostRef} renderStart={renderStart} origins={FUNNEL_ENTRANCE_ORIGINS} />

@@ -192,6 +192,7 @@ export const CandlestickChart = ({
     [tooltipOptions],
   );
   const emptyFocusCss = focusEmptyHiddenCss(`[data-bkm-kit="${uid}"]`);
+  // Entrance starts on the first draw, without bklit's ParentSize frames (candlestick-chart.tsx:398), at the user's direction (no frame waits); the curve is unchanged.
   return (
     <div
       key={revealSignature}

@@ -130,6 +130,7 @@ const ChoroplethChart = ({
 
   const zoomValue = useMemo(() => ({ zoom: zoomInstance }), [zoomInstance]);
 
+  // Entrance starts on the first draw, without bklit's ParentSize frames (choropleth-chart.tsx:482), at the user's direction (no frame waits); the curve is unchanged.
   return (
     <div ref={hostRef} className={className} style={hostStyle} data-bkm-chart="choropleth" data-slot="chart" data-bkm-drag={zoomInstance?.isDragging === true ? "" : undefined}>
       <ChoroplethContext.Provider value={contextValue}>

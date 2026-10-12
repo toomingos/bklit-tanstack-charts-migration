@@ -245,6 +245,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
     ({ points }: { points: never }) => <BarTooltipBody points={points} options={barTooltipRef.current} />,
     [],
   );
+  // Entrance starts on the first draw, without bklit's ParentSize frames (bar-chart.tsx:701), at the user's direction (no frame waits); the curve is unchanged.
   return (
     <div
       ref={containerRef}
