@@ -1,7 +1,9 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { erase } from "../kit/erased-types";
 import { raiseAttribute } from "../kit/host-write";
 import type { RefObject } from "react";
-import type { ChartPoint } from "@tanstack/charts";
+import type { ChartPoint, ChartScene } from "@tanstack/charts";
+import type { useKeyboardFocusHold } from "../kit/keyboard-hold";
 import type { ArcDatum, Focus, SunburstModel } from "./arcs";
 import { isHub } from "./hub";
 import type { SunburstDatum } from "./hub";
@@ -21,17 +23,23 @@ interface ZoomInput {
   /** Arcs on the last hovered path (hover-grow.ts), for the snap. */
   readonly hoverPathRef: RefObject<readonly number[]>;
   readonly arcById: ReadonlyMap<string, ArcDatum>;
+  readonly holdFocus: ReturnType<typeof useKeyboardFocusHold>;
 }
 
 type SunburstPoint = ChartPoint<SunburstDatum, number, number>;
 
 interface SunburstZoom {
+  readonly handFocusOver: (scene: ChartScene<SunburstDatum, number, number>) => void;
+  readonly noteSource: (source: "pointer" | "keyboard") => void;
   readonly selectZoom: (point: SunburstPoint | null) => void;
   readonly zoomTo: (nextId: string) => void;
   readonly zoomableRef: RefObject<(datum: SunburstDatum) => boolean>;
 }
 
-export const useSunburstZoom = ({ model, focus, focusId, setInternalFocusId, isFocusControlled, onFocusChange, setHoveredArcIndex, hostRef, hoverPathRef, arcById }: Readonly<ZoomInput>): SunburstZoom => {
+export const useSunburstZoom = ({ model, focus, focusId, setInternalFocusId, isFocusControlled, onFocusChange, setHoveredArcIndex, hostRef, hoverPathRef, arcById, holdFocus }: Readonly<ZoomInput>): SunburstZoom => {
+  // The node a keyboard zoom hands the focus to once the new view renders (null for a pointer zoom), and whether the last input was a key.
+  const pendingFocusRef = useRef<string | null>(null);
+  const keyZoomRef = useRef(false);
   const zoomableRef = useRef<(datum: SunburstDatum) => boolean>(() => false);
   zoomableRef.current = (datum): boolean => (isHub(datum) ? (focus?.parentId ?? null) !== null : arcById.get(datum.id)?.hasChildren === true);
 
@@ -56,21 +64,76 @@ export const useSunburstZoom = ({ model, focus, focusId, setInternalFocusId, isF
     [focusId, hostRef, hoverPathRef, isFocusControlled, model.focusById, onFocusChange, setHoveredArcIndex, setInternalFocusId],
   );
 
+  /** `change` runs before `onSelect` for both pointer and keyboard selects (renderer.ts:830,868). */
+  const noteSource = useCallback((source: "pointer" | "keyboard"): void => {
+    keyZoomRef.current = source === "keyboard";
+  }, []);
+
+  /** A keyboard zoom leaves the focus on the old view's point; hand it to the node chosen in `selectZoom` so it is visible at once. */
+  const handFocusOver = (scene: ChartScene<SunburstDatum, number, number>): void => {
+    const pendingId = pendingFocusRef.current;
+    if (pendingId === null) {
+      return;
+    }
+    pendingFocusRef.current = null;
+    const target = scene.points.find((point) => !isHub(point.datum) && point.datum.id === pendingId) ?? scene.points.find((point) => isHub(point.datum));
+    if (target !== undefined) {
+      // Through the hold, so a blur clears it: a controller-set focus is skipped by the renderer's keyboard blur clear (renderer.ts:738).
+      holdFocus.setKeyboardFocus(erase(target));
+    }
+  };
+
   const selectZoom = (point: SunburstPoint | null): void => {
     const datum = point?.datum;
     if (datum === undefined || focus === undefined) {
       return;
     }
+    const byKey = keyZoomRef.current;
     if (isHub(datum)) {
       if (focus.parentId !== null) {
+        // Zooming out lands on the node just left, which is drawn one level up.
+        pendingFocusRef.current = byKey ? focus.id : null;
         zoomTo(focus.parentId);
       }
       return;
     }
     if (arcById.get(datum.id)?.hasChildren === true) {
+      // Zooming in lands on the first drawn child (lowest arc index, as the keyboard order goes).
+      const first = model.arcs.find((arc) => arc.parentId === datum.id);
+      pendingFocusRef.current = byKey ? (first?.id ?? null) : null;
       zoomTo(datum.id);
     }
   };
 
-  return { selectZoom, zoomTo, zoomableRef };
+  // No native drill-out exists (TanStack's Escape handling covers pinned tooltips, cursors, brushes and the continuous zoom only), so Escape
+  // within the host takes the hub click's path, landing on the node just left. At the root it is left alone for the page.
+  const zoomOutRef = useRef<() => boolean>(() => false);
+  zoomOutRef.current = (): boolean => {
+    const parentId = focus?.parentId ?? null;
+    if (focus === undefined || parentId === null) {
+      return false;
+    }
+    pendingFocusRef.current = focus.id;
+    zoomTo(parentId);
+    return true;
+  };
+  useEffect(() => {
+    const host = hostRef.current;
+    if (host === null) {
+      return undefined;
+    }
+    const escape = (event: KeyboardEvent): void => {
+      const plain = !(event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented);
+      if (event.key === "Escape" && plain && zoomOutRef.current()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    host.addEventListener("keydown", escape);
+    return (): void => {
+      host.removeEventListener("keydown", escape);
+    };
+  }, [hostRef]);
+
+  return { handFocusOver, noteSource, selectZoom, zoomTo, zoomableRef };
 };

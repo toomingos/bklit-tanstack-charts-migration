@@ -19,6 +19,7 @@ import { funnelEntranceVars, funnelHoverVars, MAX_STAGES } from "./funnel/host-v
 import { createFunnelPop } from "./funnel/pop-spring";
 import type { FunnelPop } from "./funnel/pop-spring";
 import type { FunnelDatum } from "./funnel/focus";
+import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { intFmt } from "./kit/format";
 import { EntranceAlign, useRenderStart } from "./kit/entrance/entrance-align";
 import type { EntranceOrigin } from "./kit/entrance/entrance-origin";
@@ -196,7 +197,6 @@ const FunnelChart = ({
     return defineChart({
       focus: createFunnelFocus(horizontal),
       focusRing: false,
-      keyboard: false,
       gradients: buildFunnelGradients(data, horizontal),
       guides: false,
       margin: { bottom: 0, left: 0, right: 0, top: 0 },
@@ -254,14 +254,16 @@ const FunnelChart = ({
   const lastStageRef = useRef<number | null>(null);
   const onHoverChangeRef = useRef(onHoverChange);
   onHoverChangeRef.current = onHoverChange;
+  const holdFocus = useKeyboardFocusHold(hostRef, () => interactionRef.current);
   const handleFocusChange = useCallback((point: ChartPoint<FunnelDatum, number, number> | null) => {
+    holdFocus(point);
     // A rebuild with new datum objects re-reports the same stage (core dedupes only on identity + Object.is datum); one commit per stage.
     const stage = point ? point.datum.stage : null;
     if (stage === lastStageRef.current) {return;}
     lastStageRef.current = stage;
     applyHover(stage);
     onHoverChangeRef.current?.(stage);
-  }, [applyHover]);
+  }, [applyHover, holdFocus]);
 
   const hoverVars = useMemo(() => funnelHoverVars(Math.max(1, layers), horizontal, ringOpacity, dimmedRingOpacity, popExtra), [layers, horizontal]);
 

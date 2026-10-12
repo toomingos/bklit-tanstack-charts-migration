@@ -74,7 +74,6 @@ export const createDefinition = (input: DefinitionInput): DomChartDefinition<Cho
   return erase(defineChart({
     focus: createGeoContainmentFocus<ChoroplethFeature>(FEATURES_ID, holder, geometry),
     focusRing: false,
-    keyboard: false,
     guides: false,
     margin,
     marks: [features, ...graticule, featureHighlightMark({ id: HIGHLIGHT_ID, markId: FEATURES_ID })],

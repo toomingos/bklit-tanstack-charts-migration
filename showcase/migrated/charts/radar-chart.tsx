@@ -19,6 +19,7 @@ import { RADAR_VALUE_MAX } from "./radar/rows";
 import type { RadarData, RadarMetric, RadarRow } from "./radar/rows";
 import { DEFAULT_RADAR_COLORS, radarAreaColor } from "./radar/area";
 import type { RadarLabelsProps } from "./radar/labels";
+import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { useTapFocus } from "./kit/touch-focus";
 import "./styles.css";
 import { clearAttribute, raiseAttribute, readHoverIndex, writeHoverIndex, writeVar } from "./kit/host-write";
@@ -149,13 +150,15 @@ export const RadarChart = ({
 
   useTapFocus(hostRef, () => sceneRef.current?.interaction, { mode: "tap" });
   const onRender = useCallback((context: ChartRendererRenderContext<RadarRow, string | number, number>) => { sceneRef.current = context; }, []);
+  const holdFocus = useKeyboardFocusHold(hostRef, () => sceneRef.current?.interaction);
   const onFocusChange = useCallback((point: ChartPoint<RadarRow, string | number, number> | null) => {
+    holdFocus(point);
     const next = point && isAreaPoint(point) ? point.datum.series : null;
     if (lastReported.current === next) { return; }
     lastReported.current = next;
     if (hoveredRef.current === undefined) { source.setHovered(next); }
     onHoverRef.current?.(next);
-  }, [source]);
+  }, [holdFocus, source]);
 
   // Mirror the store onto the host (imperative: no render).
   useEffect(() => {

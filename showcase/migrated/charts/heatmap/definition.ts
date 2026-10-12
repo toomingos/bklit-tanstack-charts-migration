@@ -358,7 +358,6 @@ const buildHeatmapDefinition = (params: Readonly<BuildHeatmapDefinitionParams>):
     color: { domain: [...LEVELS], range: LEVELS.map((level) => levelFill(level, levelStyles, patternIdPrefix)) },
     focus: createHeatmapFocus(getScene),
     focusRing: false,
-    keyboard: false,
     // bklit's cells start at the plot's left edge and sit `gap` below its top; the native cell is inset by gap/2 on every side, so the plot moves gap/2 left and down
     // (right and height grow back, stride unchanged) and the axis tick padding absorbs the shift.
     margin: { bottom: margin.bottom, left: margin.left - baseInset, right: margin.right + baseInset, top: margin.top + baseInset },

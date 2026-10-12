@@ -23,6 +23,7 @@ import { createProgressLayer } from "./ring/progress-layer";
 import type { ProgressLayerOptions } from "./ring/progress-layer";
 import { EntranceAlign, useRenderStart } from "./kit/entrance/entrance-align";
 import type { EntranceOrigin } from "./kit/entrance/entrance-origin";
+import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { INITIAL_WIDTH_PX, useFluidWidth } from "./kit/size/use-fluid-width";
 import { useIsClient } from "./kit/size/use-is-client";
 import { useTapFocus } from "./kit/touch-focus";
@@ -107,7 +108,6 @@ const buildRingDefinition = (options: Readonly<BuildRingDefinitionOptions>): Dom
       targets,
     }),
     focusRing: false,
-    keyboard: false,
     guides: false,
     marks: [polar({ id: "ring", inset: RING_INSET_PX, marks: arcs, radiusRatio: 1, scales: { angle: null, radius: null } })],
     scales: { x: null, y: null },
@@ -150,6 +150,9 @@ const RingChart = ({
   }, []);
 
   const hover = usePolarHover<RingArcRow>({ hoveredIndex, indexOf: ringIndexOf, onHoverChange });
+  const holdFocus = useKeyboardFocusHold(containerRef, () => interactionRef.current);
+  const reportFocus = hover.handleFocusChange;
+  const handleFocusChange = useCallback((point: Parameters<typeof reportFocus>[0]): void => { holdFocus(point); reportFocus(point); }, [holdFocus, reportFocus]);
 
   const ringCount = data.length;
   const designOuter = baseInnerRadius + ringCount * strokeWidth + Math.max(0, ringCount - 1) * ringGap;
@@ -239,7 +242,7 @@ const RingChart = ({
             idPrefix={idPrefix}
             initialWidth={fixed ? fixedSize : size}
             measureText={measureNoText}
-            onFocusChange={hover.handleFocusChange}
+            onFocusChange={handleFocusChange}
             onRender={handleRender}
             width={size}
           /> : null}

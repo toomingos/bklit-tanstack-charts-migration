@@ -27,6 +27,7 @@ import type { SankeyFocus } from "./sankey/context";
 import { bklitTooltipPlacement } from "./kit/tooltip/bklit-tooltip-portal";
 import { ResourceHost, scopePaintUrl, scopeResourceIds } from "./kit/resource-host";
 import { parseAspectRatio, TOOLTIP_MOTION } from "./kit/theme";
+import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { useTapFocus } from "./kit/touch-focus";
 import "./styles.css";
 import { createSankeyHoverWriter, sankeyHoverSets, sankeyHoverCss, sankeyHoverVars, sankeyIndexCss } from "./sankey/hover-css";
@@ -161,7 +162,6 @@ const SankeyChart = ({
       // A builder chart takes its interaction options (focus, tooltip) as the second argument; inside the built spec they are ignored.
       focus: createSankeyFocus<SankeyDatum>(),
       focusRing: false,
-      keyboard: false,
       tooltip: {
         anchor: "pointer",
         className: joinClasses("bkm-sankey-tooltip", tooltipConfig?.className),
@@ -245,11 +245,13 @@ const SankeyChart = ({
   const hasContextChildren = !Children.toArray(children).every(isConfigCarrier);
   const onNodeHoverChangeRef = useRef(onNodeHoverChange);
   onNodeHoverChangeRef.current = onNodeHoverChange;
+  const holdFocus = useKeyboardFocusHold(hostRef, () => interactionRef.current);
   const handleFocusChange = useCallback((point: ChartPoint<SankeyDatum, number, number> | null) => {
+    holdFocus(point);
     applyHover(point);
     focusStore.set(storeFocusOf(hoverFocusOf(point, dataRef.current.links)));
     onNodeHoverChangeRef.current?.(isNodeMark(point) ? (rowOf(point ?? undefined).key ?? null) : null);
-  }, [applyHover, focusStore]);
+  }, [applyHover, focusStore, holdFocus]);
 
   // Entrance fades native motion cannot animate are the static rules in sankey.css, driven by these wrapper vars and sibling-index()
   // (stagger is Chromium-only, under `@supports`).
