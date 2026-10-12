@@ -56,7 +56,7 @@ function activeMarkers(interactive: readonly ResolvedSeries[]): OverlayDot[] {
       { r: mk.radius * k, fill: mk.fill, stroke: "none", strokeWidth: 0 },
       ...(mk.strokeWidth > 0 ? [{ r: (mk.radius + mk.ringGap + mk.strokeWidth / 2) * k, fill: "none", stroke: mk.stroke, strokeWidth: mk.strokeWidth * k }] : []),
     ];
-    out.push({ circles, glide: false, valueOf: valueOfSeries(s), yAxis: s.yAxisId });
+    out.push({ shapes: circles, glide: false, valueOf: valueOfSeries(s), yAxis: s.yAxisId });
   }
   return out;
 }
@@ -85,7 +85,7 @@ export function buildHoverOverlayModel(ctx: HoverOverlayContext): HoverOverlayMo
           ...activeMarkers(interactive),
           ...(ctx.input.extraDots ?? []),
           ...interactive.map((s): OverlayDot => ({
-            circles: [{ r: dotRadius, fill: resolveDotColor(tooltipProps, s), stroke: "var(--chart-background)", strokeWidth: tooltipProps.dotStrokeWidth ?? 2 }],
+            shapes: [{ r: dotRadius, fill: resolveDotColor(tooltipProps, s), stroke: "var(--chart-background)", strokeWidth: tooltipProps.dotStrokeWidth ?? 2 }],
             glide: true,
             valueOf: valueOfSeries(s),
             yAxis: s.yAxisId,

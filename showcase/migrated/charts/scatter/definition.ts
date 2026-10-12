@@ -2,7 +2,6 @@
 // Hover emphasis is fixed CSS (`SCATTER_HOVER_CSS`; native `states` would re-render the scene per move); entrance delay follows x (bklit's clip-reveal stagger).
 import { defineChart, dot } from "@tanstack/charts";
 import type { ChartDefinition, ChartGradient, ChartMark, ChartMotionTiming } from "@tanstack/charts";
-import { crosshair } from "@tanstack/charts/crosshair";
 import { focusGroupX } from "@tanstack/charts/focus";
 import { bklitTooltip } from "../kit/tooltip/bklit-tooltip";
 import { tooltipBoxMotion } from "../kit/tooltip/box-motion";
@@ -25,7 +24,8 @@ import type { EnterPlan } from "../kit/motion/resume-enter";
 import { gridColumnGuides, gridHostAttrs, gridLineStyle, gridRowGuides } from "../kit/cartesian/grid-guides";
 import type { GridGuideProps as GridProps } from "../kit/cartesian/grid-guides";
 import { bklitTheme, BKLIT_TOOLTIP_PLACEMENT, X_TICK_PADDING } from "../kit/theme";
-import { BKLIT_GUIDE_SPRING, crosshairGradient, crosshairRuleMark, datePillGuides, dotGuideMark, pillLayout, pillGuideMotion, withPillGeometry } from "../kit/cartesian/date-pill";
+import { pillLayout, withPillGeometry } from "../kit/cartesian/date-pill";
+import type { HoverOverlayModel, OverlayDot } from "../kit/cartesian/hover-overlay";
 import type { PillLayout } from "../kit/cartesian/date-pill";
 import type { ChartMargin } from "../kit/theme";
 import { CHART_PALETTE } from "../kit/palette";
@@ -100,8 +100,6 @@ export interface ScatterInput {
   readonly table: ChildTable;
   readonly margin: ChartMargin;
   readonly uid: string;
-  /** The chart's idPrefix (RendererChart prop): scopes the crosshair gradient reference, which guide nodes do not get resolved. */
-  readonly idPrefix: string;
   readonly animationDuration: number;
   readonly easing: (t: number) => number;
   /** false = first pass: grid + axes only, so the dots enter as new data with their per-datum delay. */
@@ -215,10 +213,6 @@ interface YScaleConfig {
   channel?: "y";
   side?: "left" | "right";
 }
-interface TooltipMarkSet {
-  marks: ScatterMark[];
-  gradients: ChartGradient[];
-}
 interface ScatterChartConfig {
   marks: ScatterMark[];
   scales: Record<string, unknown>;
@@ -279,111 +273,59 @@ function resolveYScales(
   return yScales;
 }
 
-interface TooltipMarksInput {
+interface TooltipModelInput {
   readonly tooltipProps: TooltipProps;
   readonly series: readonly ScatterSeries[];
   readonly data: readonly Row[];
   readonly xOf: (d: Row) => Date;
-  readonly margin: ChartMargin;
-  readonly idPrefix: string;
   readonly pill: PillLayout | null;
 }
 
-/** Focus guides drawn over the dots: date pill, crosshair rule, active highlight copies and tooltip dots, plus the crosshair gradient. */
-function tooltipMarks({ tooltipProps, series, data, xOf, margin, idPrefix, pill }: TooltipMarksInput): TooltipMarkSet {
-  const marks: ScatterMark[] = [];
-  const gradients: ChartGradient[] = [];
-  const showCrosshair = tooltipProps.showCrosshair !== false;
-  const showPill = tooltipProps.showDatePill !== false;
+/** The hover indicator for the HoverOverlay the host owns (kit/cartesian/hover-overlay.ts): crosshair rule, the focused point's active-highlight copies (they jump), one tooltip dot per series (they glide) and the date pill. */
+function tooltipOverlay({ tooltipProps, series, data, xOf, pill }: TooltipModelInput): HoverOverlayModel {
   const head = series.at(0);
-  const rowAtTime = new Map<number, Row>(data.map((row) => [xOf(row).getTime(), row]));
-  const valueAt = (xValue: unknown, dataKey: string): number | undefined => {
-    const row = rowAtTime.get(xValue instanceof Date ? xValue.getTime() : Number(xValue));
-    return row ? toNumber(row[dataKey]) : undefined;
+  const labelIndex = new Map<number, number>();
+  const labels = data.map((row, i) => {
+    labelIndex.set(xOf(row).getTime(), i);
+    return shortDateFmt.format(xOf(row));
+  });
+  const valueOf = (dataKey: string) => (row: Row): number | undefined => {
+    const value = toNumber(row[dataKey]);
+    return Number.isFinite(value) ? value : undefined;
   };
-  // bklit's active highlight: the focused point's markers redrawn on top at activeScale (the dimmed layer keeps its own copy
-  // beneath, like bklit). Native focus marks, so the focus retarget moves them with no per-dot DOM work; they snap, no tween.
-  const activeDots: ScatterMark[] = [];
+  // bklit's active highlight: the focused point's markers redrawn on top at activeScale (the dimmed layer keeps its own copy beneath, like bklit). They snap, no tween.
+  const dots: OverlayDot[] = [];
   for (const s of series.filter((candidate) => candidate.dim && candidate.activeScale > 1)) {
     const k = s.activeScale;
     const ringOuter = s.ringWidth > 0 ? s.radius + s.ringGap + s.ringWidth : s.radius;
-    const active = (id: string, marker: { radius: number; fill: string; stroke: string; strokeWidth: number }): void => {
-      activeDots.push(
-        dotGuideMark({
-          id: `${s.dataKey}:active:${id}`,
-          ...yScaleOption(s.yAxisId),
-          motion: false,
-          valueAt: (xValue) => valueAt(xValue, s.dataKey),
-          marker,
-        }),
-      );
-    };
-    if (s.outlineWidth > 0) {
-      active("outline", { radius: (ringOuter + s.outlineWidth / 2) * k, fill: "none", stroke: s.outlineColor, strokeWidth: s.outlineWidth * k });
-    }
-    active("disc", { radius: s.radius * k, fill: s.fill, stroke: "none", strokeWidth: 0 });
-    if (s.ringWidth > 0) {
-      active("ring", { radius: (s.radius + s.ringGap + s.ringWidth / 2) * k, fill: "none", stroke: s.stroke, strokeWidth: s.ringWidth * k });
-    }
+    dots.push({
+      yAxis: s.yAxisId,
+      valueOf: valueOf(s.dataKey),
+      glide: false,
+      shapes: [
+        ...(s.outlineWidth > 0 ? [{ r: (ringOuter + s.outlineWidth / 2) * k, fill: "none", stroke: s.outlineColor, strokeWidth: s.outlineWidth * k }] : []),
+        { r: s.radius * k, fill: s.fill, stroke: "none", strokeWidth: 0 },
+        ...(s.ringWidth > 0 ? [{ r: (s.radius + s.ringGap + s.ringWidth / 2) * k, fill: "none", stroke: s.stroke, strokeWidth: s.ringWidth * k }] : []),
+      ],
+    });
   }
-
-  // bklit TooltipDot per series: r = dotSize (5), 2px background stroke, springing to the hovered point.
-  // Painted after the crosshair (bklit draws the dots over the rule).
-  const tooltipDots: ScatterMark[] = [];
+  // bklit TooltipDot per series: r = dotSize (5), 2px background stroke, springing to the hovered point, painted over the rule.
   if (tooltipProps.showDots !== false) {
     for (const s of series) {
-      const dotMotion = erase(pillGuideMotion(BKLIT_GUIDE_SPRING));
-      tooltipDots.push(
-        dotGuideMark({
-          id: `${s.dataKey}:tooltip-dot`,
-          ...yScaleOption(s.yAxisId),
-          motion: dotMotion,
-          valueAt: (xValue) => valueAt(xValue, s.dataKey),
-          marker: {
-            radius: tooltipProps.dotSize ?? 5,
-            fill: colorOr(tooltipProps.dotColor, s.tooltipColor),
-            stroke: "var(--chart-background)",
-            strokeWidth: 2,
-          },
-        }),
-      );
+      dots.push({
+        yAxis: s.yAxisId,
+        valueOf: valueOf(s.dataKey),
+        glide: true,
+        shapes: [{ r: tooltipProps.dotSize ?? 5, fill: colorOr(tooltipProps.dotColor, s.tooltipColor), stroke: "var(--chart-background)", strokeWidth: 2 }],
+      });
     }
   }
-  if (head && showPill) {
-    const pillMotion = erase(pillGuideMotion(BKLIT_GUIDE_SPRING));
-    marks.push(
-      ...datePillGuides({
-        rows: data,
-        x: xOf,
-        y: (d: Row) => toNumber(d[head.dataKey]),
-        key: (d: Row) => xOf(d).getTime(),
-        ...yScaleOption(head.yAxisId),
-        // bklit pins the pill 4px above the container bottom, as the shared cartesian kit does.
-        offset: margin.bottom - 19.8,
-        motion: pillMotion,
-      }, pill),
-    );
-  }
-  if (head && showCrosshair) {
-    const indicatorColor = colorOr(tooltipProps.indicatorColor, "var(--chart-crosshair)");
-    const dasharray = tooltipProps.indicatorDasharray;
-    if (dasharray !== undefined && dasharray !== "") {
-      const ruleMotion = erase(pillGuideMotion(BKLIT_GUIDE_SPRING));
-      marks.push(
-        crosshair({
-          id: "crosshair",
-          x: { stroke: indicatorColor, strokeOpacity: 1, strokeWidth: 1, strokeDasharray: dasharray.replace(",", " "), label: false },
-          y: false,
-          motion: ruleMotion,
-        }),
-      );
-    } else {
-      gradients.push(crosshairGradient("crosshair", indicatorColor));
-      marks.push(crosshairRuleMark({ id: "crosshair", paint: `url(#${idPrefix}-crosshair)`, width: 1, motion: pillGuideMotion(BKLIT_GUIDE_SPRING) }));
-    }
-  }
-  marks.push(...activeDots, ...tooltipDots);
-  return { marks, gradients };
+  return {
+    crosshair: head && tooltipProps.showCrosshair !== false ? { color: colorOr(tooltipProps.indicatorColor, "var(--chart-crosshair)"), dash: tooltipProps.indicatorDasharray, width: 1 } : null,
+    dots,
+    indexOf: (time) => labelIndex.get(time) ?? 0,
+    pill: head && pill !== undefined && tooltipProps.showDatePill !== false ? { labels, layout: pill } : null,
+  };
 }
 
 interface SeriesMarksInput {
@@ -503,6 +445,8 @@ interface ScatterBuild {
   definition: ChartDefinition<Row, Date, number>;
   series: readonly ScatterSeries[];
   tooltipEnabled: boolean;
+  /** The hover indicator (null without a Tooltip), placed by the host's HoverOverlay. */
+  overlay: HoverOverlayModel | null;
   /** Resolved plot domains: x depends on the measured width (px inset), y is per axis id. */
   domains: { x: (width: number) => [Date, Date]; y: Record<string, [number, number]> };
   /** Tick values (ms) and span (ms) at a measured width, for the date pill's scoped tick-blanking CSS. */
@@ -554,12 +498,7 @@ export function buildScatterDefinition(input: ScatterInput): ScatterBuild {
   }
 
   const pill = tooltipProps === undefined || tooltipProps.showDatePill === false ? null : pillLayout(data.map((row) => shortDateFmt.format(toDate(row[xKey]))));
-  const crosshairMarks: ScatterMark[] = [];
-  if (tooltipProps !== undefined) {
-    const tooltip = tooltipMarks({ tooltipProps, series, data, xOf, margin, idPrefix: input.idPrefix, pill });
-    crosshairMarks.push(...tooltip.marks);
-    gradients.push(...tooltip.gradients);
-  }
+  const overlay = tooltipProps === undefined ? null : tooltipOverlay({ tooltipProps, series, data, xOf, pill });
 
   const yScales = resolveYScales(yDomains, yAxes, grid, rowGuides);
 
@@ -602,7 +541,7 @@ export function buildScatterDefinition(input: ScatterInput): ScatterBuild {
         scaleEntries.push(["y", { scale: scaleLinear().domain([0, 100]), axis: false }]);
       }
       const config: ScatterChartConfig = {
-        marks: [...columnMarks, ...marks, ...crosshairMarks],
+        marks: [...columnMarks, ...marks],
         scales: Object.fromEntries(scaleEntries),
         margin,
         theme: bklitTheme,
@@ -646,7 +585,7 @@ export function buildScatterDefinition(input: ScatterInput): ScatterBuild {
     const times = withPillGeometry(tickDates.map((d) => d.getTime()), { plotLeft: margin.left, domainStart: domain[0].getTime(), pill });
     return { times, spanMs: domain[1].getTime() - domain[0].getTime(), plotWidth: Math.max(1, width - margin.left - margin.right), reachPx: 62 };
   };
-  return { definition, series, tooltipEnabled, domains: { x: xDomainAt, y: Object.fromEntries(yDomains) }, pillTicks, gridAttrs: gridHostAttrs(grid) };
+  return { definition, series, tooltipEnabled, overlay, domains: { x: xDomainAt, y: Object.fromEntries(yDomains) }, pillTicks, gridAttrs: gridHostAttrs(grid) };
 }
 
 /** Hover emphasis (bklit `fadeOnHover` + `showActiveHighlight`) as FIXED rules: the host carries `data-bkm-hover` while a column is focused plus `--bkm-inactive` (opacity) and `--bkm-blur` (px);

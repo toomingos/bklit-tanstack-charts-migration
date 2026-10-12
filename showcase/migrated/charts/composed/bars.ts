@@ -226,7 +226,7 @@ export function buildBarDots(input: BarLayoutInput): OverlayDot[] {
     return {
       yAxis: DEFAULT_Y_AXIS_ID,
       valueOf: (row) => topAt.get(dateValue(row[input.xKey]).getTime()),
-      circles: [{ r: dots.radius, fill: dots.color ?? bar.dotColor, stroke: "var(--chart-background)", strokeWidth: dots.strokeWidth }],
+      shapes: [{ r: dots.radius, fill: dots.color ?? bar.dotColor, stroke: "var(--chart-background)", strokeWidth: dots.strokeWidth }],
       glide: true,
     };
   });

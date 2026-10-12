@@ -21,6 +21,7 @@ import { toEaseFn } from "./kit/motion/enter-transition";
 import type { EnterTransition } from "./kit/motion/phase";
 import type { Row } from "./kit/cartesian/series";
 import { FocusLayer, useFocusStore } from "./kit/cartesian/focus-layer";
+import { HoverOverlay } from "./kit/cartesian/hover-overlay";
 import type { LineConfig } from "./kit/cartesian/chart-context";
 import { useFocusRow } from "./kit/cartesian/chart-context-focus";
 import { timeScale, useBridgedContext, useReferenceAreas, valueScale } from "./kit/cartesian/context-bridge";
@@ -90,6 +91,14 @@ const ScatterChartInner = ({
   // Hover lives in a ref store read only by <FocusLayer>: focus never re-renders this component
   // (no definition rebuild, no re-resolve); fixed CSS (`SCATTER_HOVER_CSS`) carries the visual emphasis.
   const focusStore = useFocusStore<FocusedRow>();
+  // The hover indicator (crosshair, dots, date pill) is an element we own, appended to the host and moved imperatively (kit/cartesian/hover-overlay.ts).
+  const overlayRef = useRef<HoverOverlay | null>(null);
+  overlayRef.current ??= new HoverOverlay();
+  const overlay = overlayRef.current;
+  useLayoutEffect(() => {
+    containerRef.current?.append(overlay.root);
+    return () => { overlay.root.remove(); };
+  }, [overlay]);
   const uid = `s${useSanitizedId()}`;
   // Entrance starts on the first draw, without bklit's react-use-measure hop (scatter-chart.tsx:154), at the user's direction (no frame waits); the curve is unchanged.
   // The renderer mounts in its own layout effect, which runs first; `revealed` flips in the next one, before first paint.
@@ -101,7 +110,7 @@ const ScatterChartInner = ({
   }, [childrenReady]);
   const revealClock = useRevealClock(revealed);
   const built = useMemo(
-    () => buildScatterDefinition({ data, xKey: xDataKey, table, margin: resolvedMargin, uid: "scatter", idPrefix: uid, animationDuration, easing, revealed, revealClock, sizeStore }),
+    () => buildScatterDefinition({ data, xKey: xDataKey, table, margin: resolvedMargin, uid: "scatter", animationDuration, easing, revealed, revealClock, sizeStore }),
     [data, xDataKey, table, resolvedMargin, animationDuration, easing, revealed, revealClock, uid, sizeStore],
   );
   const renderer = useMemo(() => motion(erase({ transition: { type: "tween", duration: 500 } })), []);
@@ -144,6 +153,18 @@ const ScatterChartInner = ({
     },
     [rows, resolvedMargin, built.domains, xAccessor, sizeStore],
   );
+  useEffect(() => {
+    // The plot size is TanStack's own measure (sizeStore); the effect re-runs when the build or the measured size changes.
+    const place = (): void => {
+      const { width, height } = sizeStore.get();
+      const innerWidth = Math.max(0, width - resolvedMargin.left - resolvedMargin.right);
+      const innerHeight = Math.max(0, height - resolvedMargin.top - resolvedMargin.bottom);
+      const [x0, x1] = built.domains.x(width);
+      overlay.update(built.overlay, { height, innerWidth, innerHeight, xDomain: [x0.getTime(), x1.getTime()], yDomains: built.domains.y }, resolvedMargin);
+    };
+    place();
+    return sizeStore.subscribe(place);
+  }, [overlay, built, resolvedMargin, sizeStore]);
   const focusRow = useFocusRow(containerRef, interaction, pixelOf);
   const useContextValue = (focused: FocusedRow | null): ReturnType<typeof useBridgedContext> => {
     const size = useSyncExternalStore(sizeStore.subscribe, sizeStore.get, sizeStore.get);
@@ -175,6 +196,8 @@ const ScatterChartInner = ({
       // SAFETY: focus points carry rows from this chart's data.
       const index = point ? (rowIndex.get(point.datum as Row) ?? -1) : -1;
       focusStore.set(index < 0 ? null : { row: rows[index], index });
+      // SAFETY: the x column holds a Date, epoch number or date string (see xAccessor).
+      overlay.focus(index < 0 ? null : new Date(rows[index]?.[xDataKey] as string | number | Date).getTime(), index < 0 ? null : rows[index]);
       const host = containerRef.current;
       const pillCss = built.pillTicks(sizeStore.get().width);
       if (host && pillCss) {
@@ -187,7 +210,7 @@ const ScatterChartInner = ({
         writeFocusHost(host, { focused: index >= 0, hovered: dimOn && point !== null && index >= 0, liftPress: true });
       }
     },
-    [rowIndex, rows, focusStore, dimOn, xDataKey, built, sizeStore],
+    [rowIndex, rows, focusStore, dimOn, xDataKey, built, sizeStore, overlay],
   );
   const renderTooltipBody = useCallback(
     // SAFETY: erased datum generics, as at the other kit call sites.

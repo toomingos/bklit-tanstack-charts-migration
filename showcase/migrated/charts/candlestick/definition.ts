@@ -285,7 +285,7 @@ function tooltipOverlay({ tt, rows, xKey }: TooltipModelInput): HoverOverlayMode
     crosshair: tt.showCrosshair !== false ? { color: colorOr(tt.indicatorColor, "var(--chart-crosshair)"), dash: tt.indicatorDasharray, width: 1 } : null,
     dots:
       tt.showDots !== false
-        ? [{ yAxis: DEFAULT_Y_AXIS_ID, valueOf: (row) => num(row.close), glide: true, circles: [{ r: tt.dotSize ?? 5, fill: colorOr(tt.dotColor, "var(--chart-line-primary)"), stroke: "var(--chart-background)", strokeWidth: tt.dotStrokeWidth ?? 2 }] }]
+        ? [{ yAxis: DEFAULT_Y_AXIS_ID, valueOf: (row) => num(row.close), glide: true, shapes: [{ r: tt.dotSize ?? 5, fill: colorOr(tt.dotColor, "var(--chart-line-primary)"), stroke: "var(--chart-background)", strokeWidth: tt.dotStrokeWidth ?? 2 }] }]
         : [],
     indexOf: (time) => labelIndex.get(time) ?? 0,
     pill: tt.showDatePill !== false ? { labels, layout: pillLayout(labels) } : null,

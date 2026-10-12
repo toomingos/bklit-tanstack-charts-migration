@@ -1,4 +1,4 @@
-// The hover indicator of a time-x chart (active markers, crosshair rule, date pill, one dot per series) as an element we own, a sibling of the renderer's
+// The hover indicator of a cartesian chart (active markers, crosshair rule, date pill, one dot per series) as an element we own, a sibling of the renderer's
 // svg inside the chart host. Positions glide along bklit's springs (`springOf`, one shared rAF loop writing transforms; Web Animations keyframes cost
 // ~4 ms per move on creation). The renderer's focus-guide layer stays empty:
 // it re-serializes its whole fragment to markup and reparses it on every move (UPSTREAM-GAPS #66), which dominated the move cost.
@@ -27,9 +27,10 @@ export const overlayPlotOf = ({ built, size }: PlotSnapshot): OverlayPlot => ({
 });
 import type { Row } from "./series";
 
-/** One circle of a dot: centred on the point, SVG-style (stroke centred on the radius). */
-interface OverlayCircle {
+/** One shape of a dot, centred on the point, SVG-style (stroke centred on the edge): a circle of radius `r`, or with `corner` a rounded square of half-extent `r` (bklit's "ring" tooltip dot). */
+export interface OverlayShape {
   readonly r: number;
+  readonly corner?: number;
   readonly fill: string;
   readonly stroke: string;
   readonly strokeWidth: number;
@@ -39,7 +40,10 @@ interface OverlayCircle {
 export interface OverlayDot {
   readonly yAxis: string;
   readonly valueOf: (row: Row) => number | undefined;
-  readonly circles: readonly OverlayCircle[];
+  /** Shapes in paint order; a function when they depend on the plot size (a bar's band width). */
+  readonly shapes: readonly OverlayShape[] | ((plot: OverlayPlot) => readonly OverlayShape[]);
+  /** Where a category chart puts the dot: an x offset from the focus line and a y within the plot, or undefined to hide it. Replaces `valueOf` and the y domain. */
+  readonly at?: (row: Row, plot: OverlayPlot, key: number) => { readonly dx: number; readonly y: number } | undefined;
   readonly glide: boolean;
 }
 
@@ -52,6 +56,8 @@ export interface HoverOverlayModel {
   readonly dots: readonly OverlayDot[];
   /** Position of a focused row's time in the pill's label list. */
   readonly indexOf: (time: number) => number;
+  /** x within the plot of a focus key; time charts omit it and the x domain maps the time. */
+  readonly xOf?: (key: number, plot: OverlayPlot) => number;
 }
 
 let gradientCount = 0;
@@ -215,7 +221,7 @@ export class HoverOverlay {
       this.buildRule(model.crosshair, plot, margin);
     }
     for (const dot of model.dots) {
-      this.dots.push(this.buildDot(dot));
+      this.dots.push(this.buildDot(dot, plot));
     }
     if (model.pill) {
       this.pill = this.buildPill(model.pill, plot);
@@ -242,20 +248,32 @@ export class HoverOverlay {
     this.entered = true;
     const [xStart, xEnd] = plot.xDomain;
     const span = xEnd - xStart;
-    const x = margin.left + (span > 0 ? ((time - xStart) / span) * plot.innerWidth : 0);
+    const x = margin.left + (model.xOf ? model.xOf(time, plot) : span > 0 ? ((time - xStart) / span) * plot.innerWidth : 0);
     this.ruleGlide?.[enter ? "jump" : "glide"]([x]);
     for (const view of this.dots) {
-      const value = view.dot.valueOf(row);
-      const domain = plot.yDomains[view.dot.yAxis];
-      const y = value === undefined || !Number.isFinite(value) || !domain ? Number.NaN : margin.top + plot.innerHeight - ((value - domain[0]) / (domain[1] - domain[0] || 1)) * plot.innerHeight;
-      view.el.style.display = Number.isFinite(y) ? "" : "none";
-      if (Number.isFinite(y)) {
-        view.glide?.[enter ? "jump" : "glide"]([x, y]);
-        if (!view.glide) { view.el.style.transform = translate([x, y]); }
+      const spot = this.spotOf(view.dot, row, plot, time, margin.top);
+      view.el.style.display = spot ? "" : "none";
+      if (spot) {
+        const at = [x + spot.dx, spot.y];
+        view.glide?.[enter ? "jump" : "glide"](at);
+        if (!view.glide) { view.el.style.transform = translate(at); }
       }
     }
     this.focusPill(model, time, x, enter);
     this.root.setAttribute("data-on", "");
+  }
+
+  private spotOf(dot: OverlayDot, row: Row, plot: OverlayPlot, key: number, top: number): { readonly dx: number; readonly y: number } | undefined {
+    if (dot.at) {
+      const spot = dot.at(row, plot, key);
+      return spot && Number.isFinite(spot.y) ? { dx: spot.dx, y: top + spot.y } : undefined;
+    }
+    const value = dot.valueOf(row);
+    const domain = plot.yDomains[dot.yAxis];
+    if (value === undefined || !Number.isFinite(value) || !domain) {
+      return undefined;
+    }
+    return { dx: 0, y: top + plot.innerHeight - ((value - domain[0]) / (domain[1] - domain[0] || 1)) * plot.innerHeight };
   }
 
   private focusPill(model: HoverOverlayModel, time: number, x: number, enter: boolean): void {
@@ -338,21 +356,31 @@ export class HoverOverlay {
     this.ruleGlide = new Glide(mark, CROSSHAIR_SPRING, 1, translateX, "transform", this.ticker);
   }
 
-  private buildDot(dot: OverlayDot): DotView {
+  private buildDot(dot: OverlayDot, plot: OverlayPlot): DotView {
     const el = div("bkm-hov-dot", this.root);
     const svg = document.createElementNS(SVG_NS, "svg");
     // 1x1, not 0x0: a zero-sized svg is not rendered.
     svg.setAttribute("width", "1");
     svg.setAttribute("height", "1");
     svg.style.overflow = "visible";
-    for (const c of dot.circles) {
-      const circle = document.createElementNS(SVG_NS, "circle");
-      circle.setAttribute("r", String(c.r));
+    for (const c of typeof dot.shapes === "function" ? dot.shapes(plot) : dot.shapes) {
+      let shape: SVGElement;
+      if (c.corner === undefined) {
+        shape = document.createElementNS(SVG_NS, "circle");
+        shape.setAttribute("r", String(c.r));
+      } else {
+        shape = document.createElementNS(SVG_NS, "rect");
+        shape.setAttribute("x", String(-c.r));
+        shape.setAttribute("y", String(-c.r));
+        shape.setAttribute("width", String(c.r * 2));
+        shape.setAttribute("height", String(c.r * 2));
+        shape.setAttribute("rx", String(c.corner));
+      }
       // style, not attributes: presentation attributes do not resolve var().
-      circle.style.fill = c.fill;
-      circle.style.stroke = c.stroke;
-      circle.style.strokeWidth = String(c.strokeWidth);
-      svg.append(circle);
+      shape.style.fill = c.fill;
+      shape.style.stroke = c.stroke;
+      shape.style.strokeWidth = String(c.strokeWidth);
+      svg.append(shape);
     }
     el.append(svg);
     return { dot, el, glide: dot.glide ? new Glide(el, CROSSHAIR_SPRING, 2, translate, "transform", this.ticker) : null };
