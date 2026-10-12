@@ -2,6 +2,7 @@
 // The native resolver's fixed 8px edge cannot reproduce bklit's `offset` clamp (top pinned at `offset`, flip past containerWidth).
 import { trackPanelSize } from "./track-panel-size";
 import type { PanelSize } from "./track-panel-size";
+import { writePlacementSide, writePosition } from "./write-placement";
 import type { ChartTooltipPortalExtension, ChartTooltipPortalInput } from "@tanstack/charts/tooltip/portal";
 
 interface BklitPortalOptions {
@@ -35,10 +36,11 @@ const bklitTooltipPortal: ChartTooltipPortalExtension = {
     const panel = trackPanelSize(element);
     const place = (x: number, y: number, { width, height }: PanelSize, offset: number, scene: PanelSize): boolean => {
       const flipped = x + width + offset > scene.width;
-      element.style.left = `${flipped ? x - offset - width : x + offset}px`;
-      element.style.top = options.pinTop === true
-        ? `${y}px`
-        : `${Math.max(offset, Math.min(y - height / 2, scene.height - (options.bottomInset ?? 0) - height - offset))}px`;
+      writePosition(
+        element,
+        flipped ? x - offset - width : x + offset,
+        options.pinTop === true ? y : Math.max(offset, Math.min(y - height / 2, scene.height - (options.bottomInset ?? 0) - height - offset)),
+      );
       return flipped;
     };
     return {
@@ -72,7 +74,7 @@ const bklitTooltipPortal: ChartTooltipPortalExtension = {
           element.removeAttribute(SETTLE_ATTR);
           showFlip = place(anchor.x, anchor.y, measured, offset, scene);
         }
-        element.dataset.placement = showFlip ? "left" : "right";
+        writePlacementSide(element, showFlip ? "left" : "right");
         return true;
       },
       update: (next) => {

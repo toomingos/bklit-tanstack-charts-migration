@@ -414,6 +414,13 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Workaround:** the stage rings carry a static CSS `scale` keyframe from the first draw (`funnel/funnel.css`, `bkm-funnel-grow`), re-stamped onto motion's clock by `EntranceAlign`; marks are `motion: false`.
 - **Proposal:** let `motion({ initial })` accept a per-group transform enter with an origin (draft `docs/upstream-issues/initial-group-transform-enter.md`).
 
+## 63. The native tooltip rewrites unchanged attributes and glides on the main thread on every paint
+
+- **Needed:** a pointer move over a tooltip with unchanged content and presence should write only its position (bklit's visx tooltip writes one transform per move).
+- **1.1.0 behaviour:** every `paint` re-sets `visibility`, `className`, `role`, `aria-live`, `data-sticky` and `aria-label` even when equal (`tooltip.ts:104-152`, `:162`), and the spring glide writes `style.translate` from a rAF loop (`motion.ts:420-428`, `:484-497`) from the delta of `style.left/top` (`:523-577`), so position has to stay in `left/top`. Production sankey: about 12 mutation records per move, about 1 of them ours.
+- **Workaround:** none without writing renderer-owned DOM; our portals skip unchanged `left/top/data-placement` writes (`kit/tooltip/write-placement.ts`).
+- **Proposal:** compare before writing in `paint`; run the spring glide as a sampled WAAPI `translate` like the tween path (`motion.ts:460-483`) (draft `docs/upstream-issues/tooltip-paint-redundant-writes.md`).
+
 ---
 
 ## Retired numbers
