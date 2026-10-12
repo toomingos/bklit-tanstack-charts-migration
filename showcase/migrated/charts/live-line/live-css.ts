@@ -39,10 +39,10 @@ export function liveCss(lerp: number): string {
       `@keyframes bkm-rd${parity}{from{transform:translate(0,var(--bkm-live-ry-d,0px))}to{transform:translate(0,0)}}`,
       `@keyframes bkm-dy${parity}{from{translate:0 var(--bkm-live-dy,0px)}to{translate:0 0}}`,
       `${SCOPE} .bkm-live-tip.bkm-dp${parity}{animation:bkm-dy${parity} var(--bkm-live-settle,1380ms) ${headEase} both,bkm-rd${parity} ${roll} both}`,
-      // Window [--ds,--de): visible from its first instant to its last, hidden after (forwards); the last node holds visible from --ds (1ms, never a zero-length animation).
+      // Window [--ds,--de+1ms): the 1ms overlap biases a boundary frame to two stacked badges (the later paints over), never a blank; hidden after (forwards); the last node holds visible from --ds (1ms, never a zero-length animation).
       `@keyframes bkm-w${parity}{from{visibility:visible}to{visibility:hidden}}`,
       `@keyframes bkm-on${parity}{from{visibility:visible}to{visibility:visible}}`,
-      `${SCOPE} .bkm-lbl.bkm-w${parity}{animation:bkm-w${parity} calc(var(--de,0ms) - var(--ds,0ms)) var(--ds,0ms) forwards}`,
+      `${SCOPE} .bkm-lbl.bkm-w${parity}{animation:bkm-w${parity} calc(var(--de,0ms) - var(--ds,0ms) + 1ms) var(--ds,0ms) forwards}`,
       `${SCOPE} .bkm-lbl.bkm-on${parity}{animation:bkm-on${parity} 1ms var(--ds,0ms) forwards}`,
     );
   }

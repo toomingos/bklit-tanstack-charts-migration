@@ -15,7 +15,7 @@ export interface LiveTipOptions {
   readonly pulse: boolean;
   readonly badge: boolean;
   /** The badge text as bklit's display lerp walks it: the formatted value at each commit step with the step it first shows at (headLabels). No native text tween, so each step is a label node shown by a CSS animation (live-css.ts);
-   * the pill is one rect per run of equal text length so its width follows the text like bklit's `length * 7.5 + 16`. */
+   * each label has its own pill so its width follows the text like bklit's `length * 7.5 + 16`. */
   readonly labels: readonly HeadLabel[];
   /** Flips each tick: the nodes persist (and tween with the dot), the class change restarts their animations. */
   readonly parity: number;
@@ -29,33 +29,8 @@ const BADGE_GAP = 12;
 const CHAR_WIDTH = 7.5;
 const BADGE_PAD = 16;
 const BADGE_TEXT_DY = 4;
-/** Pill widths a tick can walk through (runs of equal text length); a longer walk folds into the last slot. */
-const PILL_POOL = 4;
-
-interface PillRun {
-  readonly length: number;
-  /** The commit step the run first shows at. */
-  readonly step: number;
-}
-
-/** Runs of equal text length along the label walk: one pill width each. */
-function pillRuns(labels: readonly HeadLabel[]): PillRun[] {
-  const runs: PillRun[] = [];
-  for (const label of labels) {
-    if (runs.at(-1)?.length !== label.text.length) {
-      runs.push({ length: label.text.length, step: label.step });
-    }
-  }
-  const final = runs.at(-1);
-  if (runs.length > PILL_POOL && final) {
-    runs.splice(PILL_POOL - 1, Number.POSITIVE_INFINITY, final);
-  }
-  return runs;
-}
-
 export function liveTip(options: LiveTipOptions): ChartMark<unknown, Date, number> {
   const { id, time, value, color, stroke, dotSize, pulse, badge, labels, parity, ease } = options;
-  const pills = pillRuns(labels);
   return createMark<unknown, Date, number>(() => ({
     id,
     // No channels: the tip never influences either domain.
@@ -106,34 +81,35 @@ export function liveTip(options: LiveTipOptions): ChartMark<unknown, Date, numbe
         },
       );
       if (badge) {
-        for (let i = 0; i < PILL_POOL; i += 1) {
-          const run = pills.at(i);
-          indicator.push({
-            kind: "rect",
-            key: `${id}:badge:${i}`,
-            className: run === undefined ? "bkm-lbl" : `bkm-lbl ${labelWindow(parity, run.step, pills.at(i + 1)?.step)}`,
-            x: lx + BADGE_GAP,
-            y: ly - BADGE_HEIGHT / 2,
-            width: (run?.length ?? 0) * CHAR_WIDTH + BADGE_PAD,
-            height: BADGE_HEIGHT,
-            radius: 6,
-            style: { fill: "var(--popover)", fillOpacity: 0.95 },
-          });
-        }
+        // Each window's pill is painted directly before its text and later windows paint later, so a one-frame overlap shows only the newer badge.
         for (let i = 0; i < LABEL_POOL; i += 1) {
           const label = labels.at(i);
-          indicator.push({
-            kind: "label",
-            key: `${id}:badge-text:${i}`,
-            className: label === undefined ? "bkm-live-badge-text bkm-lbl" : `bkm-live-badge-text bkm-lbl ${labelWindow(parity, label.step, labels.at(i + 1)?.step)}`,
-            x: lx + BADGE_GAP + 8,
-            // bklit: <text y={4}> in a 24px box centred on the dot, alphabetic baseline (not dominant-baseline middle).
-            y: ly + BADGE_TEXT_DY,
-            text: label?.text ?? "",
-            anchor: "start",
-            fontSize: 11,
-            fontWeight: 500,
-          });
+          const window = label === undefined ? "bkm-lbl" : `bkm-lbl ${labelWindow(parity, label.step, labels.at(i + 1)?.step)}`;
+          indicator.push(
+            {
+              kind: "rect",
+              key: `${id}:badge:${i}`,
+              className: window,
+              x: lx + BADGE_GAP,
+              y: ly - BADGE_HEIGHT / 2,
+              width: (label?.text.length ?? 0) * CHAR_WIDTH + BADGE_PAD,
+              height: BADGE_HEIGHT,
+              radius: 6,
+              style: { fill: "var(--popover)", fillOpacity: 0.95 },
+            },
+            {
+              kind: "label",
+              key: `${id}:badge-text:${i}`,
+              className: `bkm-live-badge-text ${window}`,
+              x: lx + BADGE_GAP + 8,
+              // bklit: <text y={4}> in a 24px box centred on the dot, alphabetic baseline (not dominant-baseline middle).
+              y: ly + BADGE_TEXT_DY,
+              text: label?.text ?? "",
+              anchor: "start",
+              fontSize: 11,
+              fontWeight: 500,
+            },
+          );
         }
       }
       children.push({ kind: "group", key: `${id}:indicator`, className: "bkm-live-indicator", ...(ease ? { translateX: x, translateY: y } : {}), children: indicator });
