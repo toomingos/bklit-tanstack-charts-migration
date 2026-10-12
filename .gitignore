@@ -26,3 +26,7 @@ __*
 /skills-lock.json
 /docs/METRICS.md
 /docs/upstream-issues/
+
+# QA tab tools output
+/captures/
+/tabsrv.log
