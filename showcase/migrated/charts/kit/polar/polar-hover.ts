@@ -139,8 +139,24 @@ const insideSector = (target: Readonly<AnnulusTarget>, radius: number, angle: nu
 const createAnnularFocus = <TDatum>(options: Readonly<AnnularFocusOptions<TDatum>>): ChartFocusStrategy<TDatum, number, number> => {
   const { center, targets, indexOf, focusable, navigable, scaleOf, hovered } = options;
   type Point = ChartPoint<TDatum, number, number>;
-  const ofIndex = (points: readonly Point[], index: number): Point[] =>
-    points.filter((point) => focusable(point) && indexOf(point.datum) === index);
+  // The engine passes the same `points` array until the scene changes: bucket once per array, so a move does not filter every point.
+  let bucketed: readonly Point[] | null = null;
+  let buckets = new Map<number, Point[]>();
+  const ofIndex = (points: readonly Point[], index: number): Point[] => {
+    if (bucketed !== points) {
+      buckets = new Map();
+      for (const point of points) {
+        if (!focusable(point)) { continue; }
+        const key = indexOf(point.datum);
+        const bucket = buckets.get(key);
+        if (bucket) { bucket.push(point); } else { buckets.set(key, [point]); }
+      }
+      bucketed = points;
+    }
+    return buckets.get(index)?.slice() ?? [];
+  };
+  // Later targets paint on top; test them first.
+  const reversed = targets.toReversed();
   return {
     group: (points, { point }) => ofIndex(points, indexOf(point.datum)),
     navigation: (points) => points.filter(navigable).toSorted((left, right) => indexOf(left.datum) - indexOf(right.datum)),
@@ -149,9 +165,8 @@ const createAnnularFocus = <TDatum>(options: Readonly<AnnularFocusOptions<TDatum
       const dy = y - center;
       const radius = Math.hypot(dx, dy);
       const angle = Math.atan2(dx, -dy);
-      // Later targets paint on top; test them first.
       const current = hovered?.() ?? null;
-      for (const target of targets.toReversed()) {
+      for (const target of reversed) {
         const scale = scaleOf ? scaleOf(target.index, current) : 1;
         const scaled = scale === 1 ? target : { ...target, innerRadius: target.innerRadius * scale, outerRadius: target.outerRadius * scale };
         if (insideSector(scaled, radius, angle)) { return ofIndex(points, target.index); }

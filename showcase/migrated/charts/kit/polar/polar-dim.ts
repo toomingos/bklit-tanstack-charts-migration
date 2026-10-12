@@ -78,9 +78,18 @@ const pieHoverVars = <TRow extends PieHoverRow>(rows: readonly TRow[], geometry:
 const createPieHoverSprings = <TRow extends PieHoverRow>(rows: readonly TRow[], geometry: Readonly<PieGrowGeometry<TRow>>): ((host: HTMLElement, previous: number | null, next: number | null) => void) => {
   const byIndex = new Map<number, TRow>();
   for (const row of rows) { if (row.offset !== 0 && row.sliceIndex < MAX_INDEX && (row.effect === "translate" || row.effect === "grow")) { byIndex.set(row.sliceIndex, row); } }
+  // Slice groups resolved by our own className once, then reused while still mounted (the renderer swaps nodes on a scene change).
+  const groups = new Map<number, Element>();
+  const groupOf = (host: HTMLElement, index: number): Element | null => {
+    const cached = groups.get(index);
+    if (cached?.isConnected === true) { return cached; }
+    const found = host.querySelector(`g.bkm-pie-s${index}`);
+    if (found === null) { groups.delete(index); } else { groups.set(index, found); }
+    return found;
+  };
   const retarget = (host: HTMLElement, index: number, hovered: number | null, previous: number | null): void => {
     const row = byIndex.get(index);
-    const group = host.querySelector(`g.bkm-pie-s${index}`);
+    const group = groupOf(host, index);
     // Groups are found by our own `className` (gaps #20/#36: no transform channel in `states`); a mid-tween node keeps its tween (#50).
     if (row === undefined || group === null || isMotionNode(group)) { return; }
     const hot = (state: number | null): boolean => state === index;
