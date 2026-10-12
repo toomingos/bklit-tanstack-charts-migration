@@ -89,7 +89,8 @@ export function niceDomain(domain: readonly [number, number]): [number, number] 
 }
 
 /** bklit's y label step: its axis re-picks the interval, with hysteresis, whenever the committed frame's nice y range changes (live-y-axis.tsx:117-132), and its loop commits every
- * LIVE_FRAME_COMMIT_MS (COMMIT_MS; live-line-chart.tsx:275-284, 400-425) from a raw domain lerped once per rAF frame from 0..100 (stepRaw), so the latched step depends on which frames a commit lands on. */
+ * LIVE_FRAME_COMMIT_MS (COMMIT_MS; live-line-chart.tsx:275-284, 400-425) from a raw domain lerped once per rAF frame from 0..100 (stepRaw), so the latched step depends on which frames a commit lands on.
+ * Accepted divergence: bklit's React commits land later and less regularly than 32 ms, so its seed roll can latch a different step (5 vs 4 at the showcase size); we keep the documented cadence. */
 export interface StepPick {
   range: number;
   interval: number;

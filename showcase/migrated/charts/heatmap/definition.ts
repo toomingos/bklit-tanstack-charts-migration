@@ -321,6 +321,7 @@ const buildHeatmapDefinition = (params: Readonly<BuildHeatmapDefinitionParams>):
   // Separator gutters make the column grid non-uniform, which a band scale cannot express:
   // that case alone uses a linear pixel x scale with `rect` (x1/x2); otherwise a band scale with `cell`.
   const linearX = layout !== null && layout.spacing > 0;
+  // Native cells inset by gap/2 on every side, so the plot shifts by it and the svg is gap/2 taller than bklit's (UPSTREAM-GAPS #65).
   const baseInset = gap / 2;
   const loading = status === "loading";
 

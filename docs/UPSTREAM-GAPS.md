@@ -431,6 +431,13 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Workaround:** none; reusing the canvas compositor for SVG is undocumented, so funnel stays on one svg (accepted hover cost).
 - **Proposal:** export a documented layer compositor or an `svgLayerRenderer()` factory (draft `docs/upstream-issues/svg-layer-per-group.md`).
 
+## 65. Heatmap cell inset applies to every side, with no between-cells-only gap
+
+- **Needed:** bklit's outer cells sit flush with the plot edge and the gap appears only between cells (heatmap-chart.tsx cell layout).
+- **1.1.0 behaviour:** the `cell` mark's `inset` shrinks each cell on all four sides, so the outer cells sit gap/2 inside the plot.
+- **Workaround:** `heatmap/definition.ts` adds gap/2 to `margin.top`, and `heatmap-chart.tsx` takes it back with a negative container margin. Page flow matches; the svg itself is gap/2 taller (306.30 vs 305.31 px), and cells and labels sit up to 1 px apart.
+- **Proposal:** an `inset` mode for band cells that gaps only between neighbours (or `inset: { inner, outer }`).
+
 ---
 
 ## Retired numbers
