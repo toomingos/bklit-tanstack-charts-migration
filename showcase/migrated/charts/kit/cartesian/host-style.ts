@@ -58,6 +58,7 @@ export function cartesianHostStyle({ animationDuration, margin, innerWidth, inne
     position: "relative",
     ...({
       "--bkm-enter-ms": `${animationDuration}ms`,
+      "--bkm-wipe-w": `${innerWidth}px`,
       // bklit clips the series group (point markers included) to the plot rect plus 20px below (time-series-chart-shell.tsx:658, innerHeight + 20).
       "--bkm-plot-clip": `inset(${margin.top}px ${margin.right}px ${margin.bottom - 20}px ${margin.left}px)`,
       ...(brush && xSpanMs > 0

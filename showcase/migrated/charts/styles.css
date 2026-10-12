@@ -61,6 +61,13 @@
   --bkm-psame0: inherit; --bkm-psame1: inherit; --bkm-psame2: inherit; --bkm-psame3: inherit;
 }
 
+/* Left-to-right first-mount reveal (bklit ChartRevealClip); the native path track is a scaleY grow (motion.ts:1505-1562) and keyed groups
+   get no first-paint tween (motion.ts:282-287): UPSTREAM-GAPS #61. `--bkm-wipe-w` = plot width. */
+@keyframes bkm-wipe-o { from { transform: translateX(calc(-1 * var(--bkm-wipe-w))); } }
+@keyframes bkm-wipe-i { from { transform: translateX(var(--bkm-wipe-w)); } }
+[data-bkm-wipe-in] .bkm-wipe-o { animation: bkm-wipe-o var(--bkm-enter-ms) cubic-bezier(0.85, 0, 0.15, 1) backwards; }
+[data-bkm-wipe-in] .bkm-wipe-o > .bkm-wipe-i { animation: bkm-wipe-i var(--bkm-enter-ms) cubic-bezier(0.85, 0, 0.15, 1) backwards; }
+
 /* Grid stroke is native (`gridGuide.lineStyle`); bklit's visx GridRows set shape-rendering=crispEdges and the native grid line has no channel for it,
    so it stays here: UPSTREAM-GAPS #54. */
 :is([data-bkm-chart], [data-bkm-kit]) .ts-chart__grid line {
