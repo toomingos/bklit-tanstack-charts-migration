@@ -1,8 +1,8 @@
-// Bklit FunnelChart on TanStack Charts 1.0: stages are native area marks (concentric rings, gradient fill), hover dim is static CSS,
-// the entrance is the `motion()` renderer with a per-stage delay, and hover/keyboard focus is a cell-containment focus strategy.
+// Bklit FunnelChart on TanStack Charts 1.1: one custom mark lays the stages out from the final plot bounds (concentric ring areas, gradient fill),
+// hover dim, pop-out and entrance are static CSS (funnel/funnel.css), and hover/keyboard focus is a cell-containment focus strategy.
 "use client";
 
-import { clearAttribute, raiseAttribute, writeHoverIndex } from "./kit/host-write";
+import { writeHoverIndex } from "./kit/host-write";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { RendererChart } from "@tanstack/react-charts/tooltip";
@@ -11,23 +11,21 @@ import { motion } from "@tanstack/charts/motion";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
 import type { ChartInteractionController, ChartPoint, ChartRendererRenderContext } from "@tanstack/charts";
 import type { Transition } from "./kit/motion/phase";
-import { toMotionTransition } from "./kit/motion/enter-transition";
-import { buildFunnelGradients, createFunnelMarks, dimmedRingOpacity, popExtra, ringOpacity, stageColor } from "./funnel/marks";
-import type { FunnelGradientStopInput, FunnelStageInput } from "./funnel/marks";
+import { buildFunnelGradients, createFunnelMark, dimmedRingOpacity, popExtra, ringOpacity, stageColor } from "./funnel/marks";
+import type { FunnelGradientStopInput, FunnelMarkConfig, FunnelStageInput } from "./funnel/marks";
 import { createFunnelFocus, FUNNEL_FOCUS_LAYER } from "./funnel/focus";
 import { ResourceHost, scopeResourceIds, translatePatterns } from "./kit/resource-host";
-import { FUNNEL_ENTRANCE_CSS, funnelEntranceVars } from "./funnel/entrance-css";
-import { funnelHoverCss, funnelHoverVars, MAX_STAGES } from "./funnel/hover-css";
+import { funnelEntranceVars, funnelHoverVars, MAX_STAGES } from "./funnel/host-vars";
 import { createFunnelPop } from "./funnel/pop-spring";
 import type { FunnelPop } from "./funnel/pop-spring";
 import type { FunnelDatum } from "./funnel/focus";
 import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { intFmt } from "./kit/format";
-import { useFluidWidth } from "./kit/size/use-fluid-width";
 import { EntranceAlign, useRenderStart } from "./kit/entrance/entrance-align";
 import type { EntranceOrigin } from "./kit/entrance/entrance-origin";
 import { useTapFocus } from "./kit/touch-focus";
 import "./styles.css";
+import "./funnel/funnel.css";
 import { useSanitizedId } from "./kit/use-sanitized-id";
 
 const FUNNEL_ENTRANCE_ORIGINS = { "bkm-funnel-grow": "motion", "bkm-funnel-label-in": "frame" } as const satisfies Readonly<Record<string, EntranceOrigin>>;
@@ -83,7 +81,7 @@ const ASPECT_VERTICAL = 1 / 1.8;
 const fmtPct = (pct: number): string => `${Math.round(pct)}%`;
 const CHART_STYLE: CSSProperties = { overflow: "visible", width: "100%" };
 
-type ResolvedGrid = NonNullable<Parameters<typeof createFunnelMarks>[0]["grid"]>;
+type ResolvedGrid = NonNullable<FunnelMarkConfig["grid"]>;
 
 const resolveGrid = (grid: FunnelChartProps["grid"]): ResolvedGrid | null => {
   if (grid === false || grid === undefined) {return null;}
@@ -151,12 +149,11 @@ const FunnelChart = ({
   const hasPattern = renderPattern !== undefined;
   const horizontal = orientation === "horizontal";
   const gridConfig = resolveGrid(grid);
-  // Measured plot size drives the px-based gap and label geometry; the hovered stage drives ring pop-out.
-  // The host is measured once before <Chart> mounts (kit/size/use-fluid-width.ts), so no post-mount resize rebuilds the definition.
+  // The hovered stage drives ring pop-out; the plot size is TanStack's own container measure (the mark lays out in `resolveLayout`).
   const hostRef = useRef<HTMLDivElement | null>(null);
   const aspect = horizontal ? ASPECT_HORIZONTAL : ASPECT_VERTICAL;
-  const { ready: measured, width } = useFluidWidth(hostRef, { epsilon: 0.01, initialWidth: 640 });
-  const size = useMemo(() => ({ height: width / aspect, width }), [width, aspect]);
+  // Only a renderPattern needs the width in React (tile origins per stage); it arrives with the first render and costs the pattern users one commit.
+  const [patternWidth, setPatternWidth] = useState(0);
   // Ring pop springs (pop-spring.ts): velocity-preserving retarget on a hover change; the resting pop is static CSS.
   const popRef = useRef<FunnelPop | null>(null);
   useEffect(() => {
@@ -166,28 +163,21 @@ const FunnelChart = ({
     popRef.current = pop;
     return (): void => { pop.dispose(); popRef.current = null; };
   }, [horizontal, layers]);
-  // Gates the entrance CSS (data-entering on the host) so definition rebuilds on hover never replay it; cleared once the stagger ends.
-  const [entering, setEntering] = useState(true);
-  // A stage's rings remount at its bklit enterComplete, stage * staggerDelay + duration (funnel-chart.tsx:241-244,268-269 vs :319-320, use-enter-complete.ts:12-27, use-mount-progress.ts:21-24);
-  // `data-g<stage>` is held until then and its removal restarts the pop spring. `data-entering` ends with the last label fade (:653-654, :722-723).
+  // A stage's rings remount at its bklit enterComplete, stage * staggerDelay + duration (funnel-chart.tsx:241-244,268-269 vs :319-320, use-enter-complete.ts:12-27, use-mount-progress.ts:21-24):
+  // a hovered stage springs up from rest again then.
   useEffect(() => {
-    const host = hostRef.current;
     const durationSec = enterTransition?.duration ?? 1.1;
     const timers: number[] = [];
     for (let stage = 0; stage < Math.min(data.length, MAX_STAGES); stage += 1) {
-      raiseAttribute(host, `data-g${stage}`);
       // Per-stage enterComplete at stage * staggerDelay + duration: use-enter-complete.ts:12-27, funnel-chart.tsx:244,268 (UPSTREAM-GAPS #38).
-      timers.push(window.setTimeout(() => { clearAttribute(host, `data-g${stage}`); popRef.current?.restart(stage); }, (stage * staggerDelay + durationSec) * 1000));
+      timers.push(window.setTimeout(() => { popRef.current?.restart(stage); }, (stage * staggerDelay + durationSec) * 1000));
     }
-    const last = Math.max(0, data.length - 1) * staggerDelay;
-    // Ends with the last label fade (0.25s delay + 0.35s): funnel-chart.tsx:653-654, :722-723; timers because there is no motion-finished signal (UPSTREAM-GAPS #38).
-    timers.push(window.setTimeout(() => { setEntering(false); }, (last + Math.max(durationSec, 0.25 + 0.35)) * 1000));
     return (): void => { for (const timer of timers) { window.clearTimeout(timer); } };
     // Replays only on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Hover never touches React state or the definition: the focused stage is written to the host as `data-hover` and the
-  // static rules in funnel/hover-css.ts do the dim, pop-out and label dim.
+  // static rules in funnel/funnel.css do the dim, pop-out and label dim.
   const applyHover = useCallback((stage: number | null): void => {
     const host = hostRef.current;
     if (!host) { return; }
@@ -199,32 +189,9 @@ const FunnelChart = ({
 
   // bklit paints each stage in its own svg, so a pattern's tile origin is the stage's top-left; here every stage shares the plot's
   // origin, so each stage's pattern is shifted by its stage offset when the resources are rendered.
-  const stagePx = ((horizontal ? size.width : size.height) + gap) / Math.max(1, data.length);
+  const stagePx = ((horizontal ? patternWidth : patternWidth / aspect) + gap) / Math.max(1, data.length);
 
   const definition = useMemo(() => {
-    // Not mounted until measured: building at the 640px placeholder would be swapped for the real size one commit later.
-    if (!measured) { return null; }
-    const { marks } = createFunnelMarks({
-      color,
-      curved: edges === "curved",
-      fontFamily: hostRef.current ? getComputedStyle(hostRef.current).fontFamily : "ui-sans-serif, system-ui, sans-serif",
-      formatPercentage,
-      formatValue,
-      gapPx: gap,
-      labelAlign,
-      labelLayout,
-      labelOrientation,
-      size,
-      grid: gridConfig,
-      horizontal,
-      layers: Math.max(1, layers),
-      patternPrefix: hasPattern ? patternPrefix : undefined,
-      showLabels,
-      showPercentage,
-      showValues,
-      stages: data,
-      transition: toMotionTransition(enterTransition),
-    });
     const stageAxis = scaleLinear().domain(horizontal ? [0, data.length] : [data.length, 0]);
     const crossAxis = scaleLinear().domain([-0.5, 0.5]);
     return defineChart({
@@ -233,12 +200,27 @@ const FunnelChart = ({
       gradients: buildFunnelGradients(data, horizontal),
       guides: false,
       margin: { bottom: 0, left: 0, right: 0, top: 0 },
-      marks,
+      marks: [createFunnelMark({
+        color,
+        curved: edges === "curved",
+        formatPercentage,
+        formatValue,
+        gapPx: gap,
+        grid: gridConfig,
+        horizontal,
+        labelAlign,
+        labelLayout,
+        labelOrientation,
+        layers: Math.max(1, layers),
+        patternPrefix: hasPattern ? patternPrefix : undefined,
+        showLabels,
+        showPercentage,
+        showValues,
+        stages: data,
+      })],
       scales: horizontal ? { x: { scale: stageAxis }, y: { scale: crossAxis } } : { x: { scale: crossAxis }, y: { scale: stageAxis } },
     });
-    // staggerDelay is not read here but stays a dependency so a stagger change still rebuilds the definition as before.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measured, color, data, edges, patternPrefix, hasPattern, enterTransition, labelAlign, labelLayout, labelOrientation, size, formatPercentage, formatValue, gap, gridConfig, horizontal, layers, showLabels, showPercentage, showValues, staggerDelay]);
+  }, [color, data, edges, patternPrefix, hasPattern, labelAlign, labelLayout, labelOrientation, formatPercentage, formatValue, gap, gridConfig, horizontal, layers, showLabels, showPercentage, showValues]);
 
   // Controlled hover: drive the same native focus the pointer would.
   const interactionRef = useRef<ChartInteractionController<FunnelDatum, number, number> | null>(null);
@@ -265,8 +247,9 @@ const FunnelChart = ({
   const handleRender = useCallback((context: ChartRendererRenderContext<FunnelDatum, number, number>): void => {
     interactionRef.current = context.interaction;
     sceneRef.current = context.scene;
+    if (hasPattern) { setPatternWidth(context.scene.width); }
     applyControlledHover();
-  }, [applyControlledHover]);
+  }, [applyControlledHover, hasPattern]);
 
   const lastStageRef = useRef<number | null>(null);
   const onHoverChangeRef = useRef(onHoverChange);
@@ -293,22 +276,19 @@ const FunnelChart = ({
   if (data.length === 0) {return null;}
 
   return (
-    <div className={className} data-bkm-chart="funnel" data-entering={entering ? "" : undefined} data-slot="chart" ref={hostRef} style={hostStyle}>
-      <style>{FUNNEL_ENTRANCE_CSS + funnelHoverCss(Math.max(1, layers))}</style>
-      {measured ? <EntranceAlign hostRef={hostRef} renderStart={renderStart} origins={FUNNEL_ENTRANCE_ORIGINS} /> : null}
-      {measured && definition !== null ? <RendererChart
+    <div className={className} data-bkm-chart="funnel" data-slot="chart" ref={hostRef} style={hostStyle}>
+      <EntranceAlign hostRef={hostRef} renderStart={renderStart} origins={FUNNEL_ENTRANCE_ORIGINS} />
+      <RendererChart
         ariaDescription={ariaDescription}
         ariaLabel={ariaLabel ?? "Funnel chart"}
+        aspectRatio={aspect}
         definition={definition}
-        height={size.height}
         idPrefix={idPrefix}
-        initialWidth={640}
         onFocusChange={handleFocusChange}
         onRender={handleRender}
         renderer={RENDERER}
         style={CHART_STYLE}
-        width={size.width}
-      /> : null}
+      />
       {renderPattern ? <ResourceHost idPrefix={patternPrefix} resources={stagePatterns(data, renderPattern, { color, horizontal, patternPrefix, stagePx })} /> : null}
     </div>
   );
