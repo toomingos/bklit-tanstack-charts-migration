@@ -8,6 +8,23 @@ import type { Spring } from "../motion/springs";
 import type { ChartMargin } from "../theme";
 import type { PillLayout } from "./date-pill";
 import type { PlotSnapshot } from "./plot-size";
+
+/** What the overlay reads of a draw: the host height, the plot size and the resolved domains (x in ms). */
+export interface OverlayPlot {
+  readonly height: number;
+  readonly innerWidth: number;
+  readonly innerHeight: number;
+  readonly xDomain: readonly [number, number];
+  readonly yDomains: Readonly<Record<string, readonly [number, number]>>;
+}
+
+export const overlayPlotOf = ({ built, size }: PlotSnapshot): OverlayPlot => ({
+  height: size.height,
+  innerWidth: size.innerWidth,
+  innerHeight: size.innerHeight,
+  xDomain: [built.domains.x[0].getTime(), built.domains.x[1].getTime()],
+  yDomains: built.domains.y,
+});
 import type { Row } from "./series";
 
 /** One circle of a dot: centred on the point, SVG-style (stroke centred on the radius). */
@@ -164,7 +181,7 @@ interface PillView {
 export class HoverOverlay {
   readonly root: HTMLDivElement;
   private model: HoverOverlayModel | null = null;
-  private snapshot: PlotSnapshot | null = null;
+  private plot: OverlayPlot | null = null;
   private margin: ChartMargin | null = null;
   private ruleGlide: Glide | null = null;
   private dots: DotView[] = [];
@@ -180,9 +197,9 @@ export class HoverOverlay {
   }
 
   /** The model and plot of the latest draw; rebuilds the elements (a draw is a resize or a data change, never a hover move) and replays the current focus without motion. */
-  update(model: HoverOverlayModel | null, snapshot: PlotSnapshot, margin: ChartMargin): void {
+  update(model: HoverOverlayModel | null, plot: OverlayPlot, margin: ChartMargin): void {
     this.model = model;
-    this.snapshot = snapshot;
+    this.plot = plot;
     this.margin = margin;
     this.root.replaceChildren();
     this.ticker.clear();
@@ -195,13 +212,13 @@ export class HoverOverlay {
       return;
     }
     if (model.crosshair) {
-      this.buildRule(model.crosshair, snapshot, margin);
+      this.buildRule(model.crosshair, plot, margin);
     }
     for (const dot of model.dots) {
       this.dots.push(this.buildDot(dot));
     }
     if (model.pill) {
-      this.pill = this.buildPill(model.pill, snapshot);
+      this.pill = this.buildPill(model.pill, plot);
     }
     const held = this.focused;
     this.focused = null;
@@ -210,8 +227,8 @@ export class HoverOverlay {
 
   /** Moves the indicator to the focused row (`null` hides it at once, like bklit unmounting the crosshair and dots). */
   focus(time: number | null, row: Row | null): void {
-    const { model, snapshot, margin } = this;
-    if (time === null || row === null || !model || !snapshot || !margin) {
+    const { model, plot, margin } = this;
+    if (time === null || row === null || !model || !plot || !margin) {
       this.focused = null;
       this.entered = false;
       this.root.removeAttribute("data-on");
@@ -223,15 +240,14 @@ export class HoverOverlay {
     this.focused = { row, time };
     const enter = !this.entered;
     this.entered = true;
-    const { built, size } = snapshot;
-    const xStart = built.domains.x[0].getTime();
-    const span = built.domains.x[1].getTime() - xStart;
-    const x = margin.left + (span > 0 ? ((time - xStart) / span) * size.innerWidth : 0);
+    const [xStart, xEnd] = plot.xDomain;
+    const span = xEnd - xStart;
+    const x = margin.left + (span > 0 ? ((time - xStart) / span) * plot.innerWidth : 0);
     this.ruleGlide?.[enter ? "jump" : "glide"]([x]);
     for (const view of this.dots) {
       const value = view.dot.valueOf(row);
-      const domain = built.domains.y[view.dot.yAxis];
-      const y = value === undefined || !Number.isFinite(value) || !domain ? Number.NaN : margin.top + size.innerHeight - ((value - domain[0]) / (domain[1] - domain[0] || 1)) * size.innerHeight;
+      const domain = plot.yDomains[view.dot.yAxis];
+      const y = value === undefined || !Number.isFinite(value) || !domain ? Number.NaN : margin.top + plot.innerHeight - ((value - domain[0]) / (domain[1] - domain[0] || 1)) * plot.innerHeight;
       view.el.style.display = Number.isFinite(y) ? "" : "none";
       if (Number.isFinite(y)) {
         view.glide?.[enter ? "jump" : "glide"]([x, y]);
@@ -271,8 +287,8 @@ export class HoverOverlay {
     }
   }
 
-  private buildRule(rule: NonNullable<HoverOverlayModel["crosshair"]>, snapshot: PlotSnapshot, margin: ChartMargin): void {
-    const height = Math.max(0, snapshot.size.innerHeight);
+  private buildRule(rule: NonNullable<HoverOverlayModel["crosshair"]>, plot: OverlayPlot, margin: ChartMargin): void {
+    const height = Math.max(0, plot.innerHeight);
     const wrap = div("bkm-hov-x", this.root);
     wrap.style.top = `${margin.top}px`;
     wrap.style.height = `${height}px`;
@@ -342,10 +358,10 @@ export class HoverOverlay {
     return { dot, el, glide: dot.glide ? new Glide(el, CROSSHAIR_SPRING, 2, translate, "transform", this.ticker) : null };
   }
 
-  private buildPill(spec: NonNullable<HoverOverlayModel["pill"]>, snapshot: PlotSnapshot): PillView {
+  private buildPill(spec: NonNullable<HoverOverlayModel["pill"]>, plot: OverlayPlot): PillView {
     const wrap = div("bkm-hov-pill", this.root);
     // The native pill sat with its 32px capsule centred 20px above the host bottom (bklit date pill: bottom 4px, z-50).
-    wrap.style.top = `${snapshot.size.height - 36}px`;
+    wrap.style.top = `${plot.height - 36}px`;
     const box = div("bkm-hov-pill-box", wrap);
     const layout = spec.layout;
     if (!layout) {

@@ -2,7 +2,7 @@
 // children are config carriers compiled into one defineChart definition (candlestick).
 import "./styles.css";
 import { erase } from "./kit/erased-types";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { useInteractionHandle, usePressGuard } from "./kit/touch-focus";
@@ -18,7 +18,8 @@ import type { ChartMargin } from "./kit/theme";
 import { OWN_PILL_NAMES, pillTickStaticCss, syncPillHost } from "./kit/cartesian/date-pill";
 import { writeFocusHost } from "./kit/host-write";
 import { buildCandlestickDefinition, CANDLE_HOVER_CSS, candlestickDomains } from "./candlestick/definition";
-import { toDate } from "./kit/cartesian/series";
+import { DEFAULT_Y_AXIS_ID, toDate } from "./kit/cartesian/series";
+import { HoverOverlay } from "./kit/cartesian/hover-overlay";
 import type { Candle } from "./candlestick/definition";
 import type { EnterTransition } from "./kit/motion/phase";
 import { useChartLegendHover } from "./kit/legend/legend";
@@ -105,6 +106,14 @@ export const CandlestickChart = ({
   const size = useResizeBox(containerRef);
   // Hover lives in a ref store read only by <FocusLayer> (no chart re-render, no definition rebuild per pointermove).
   const focusStore = useFocusStore<FocusedRow>();
+  // The hover indicator (crosshair, close dot, date pill) is an element we own, appended to the host and moved imperatively (kit/cartesian/hover-overlay.ts).
+  const overlayRef = useRef<HoverOverlay | null>(null);
+  overlayRef.current ??= new HoverOverlay();
+  const overlay = overlayRef.current;
+  useLayoutEffect(() => {
+    containerRef.current?.append(overlay.root);
+    return () => { overlay.root.remove(); };
+  }, [overlay]);
   const uid = `c${useSanitizedId()}`;
   // A legend hover re-renders the host with fresh children: keep the previous carrier table so the definition is not rebuilt.
   const { table, custom, ready: childrenReady } = useChildTable(children);
@@ -145,6 +154,9 @@ export const CandlestickChart = ({
   const xScale = useMemo(() => timeScale(domains.x, innerWidth), [domains.x, innerWidth]);
   const yScales = useMemo(() => ({ left: valueScale(domains.y, innerHeight) }), [domains.y, innerHeight]);
   const rows: readonly Candle[] = data;
+  useLayoutEffect(() => {
+    overlay.update(built.overlay, { height: size.height, innerWidth, innerHeight, xDomain: built.plotDomains.x, yDomains: { [DEFAULT_Y_AXIS_ID]: built.plotDomains.y } }, resolvedMargin);
+  }, [overlay, built, size.height, innerWidth, innerHeight, resolvedMargin]);
   const rowIndex = useMemo(() => new Map<unknown, number>(data.map((row, i) => [row, i] as const)), [data]);
   const xAccessor = useCallback((d: Candle): Date => toDate(d[xDataKey]), [xDataKey]);
   const dateLabels = useMemo(() => data.map((row) => shortDateFmt.format(xAccessor(row))), [data, xAccessor]);
@@ -176,6 +188,7 @@ export const CandlestickChart = ({
       const index = point ? (rowIndex.get(point.datum) ?? point.datumIndex ?? -1) : -1;
       const row: Candle | undefined = rows[index];
       focusStore.set(index < 0 ? null : { row, index });
+      overlay.focus(index < 0 ? null : toDate(row?.[xDataKey]).getTime(), index < 0 || row === undefined ? null : row);
       // The dim is static CSS keyed on the host: the focused candle's centre (svg px) rides in one var.
       const host = containerRef.current;
       if (host) {
@@ -185,7 +198,7 @@ export const CandlestickChart = ({
         writeFocusHost(host, { focused: index >= 0, hovered: point !== null && index >= 0 && fadeOn, hoverX: point ? String(point.x) : undefined });
       }
     },
-    [rowIndex, rows, focusStore, fadeOn, built.pillTicks, innerWidth, xDataKey],
+    [rowIndex, rows, focusStore, fadeOn, built.pillTicks, innerWidth, xDataKey, overlay],
   );
   const renderTooltipBody = useCallback(
     ({ points }: { points: readonly ChartPoint<Candle, Date, number>[] }) => <BklitTooltipBody points={points} options={tooltipOptions} />,

@@ -26,7 +26,7 @@ import { LoadingSweepOverlays } from "./loading-sweep-overlays";
 import { useSanitizedId } from "../use-sanitized-id";
 import { useStaticChartPreview } from "./chart-config";
 import { pillLayoutOf } from "./date-pill";
-import { HoverOverlay } from "./hover-overlay";
+import { HoverOverlay, overlayPlotOf } from "./hover-overlay";
 import { FocusLayer, useFocusStore } from "./focus-layer";
 import { erase } from "../erased-types";
 import type { AnyPoint } from "../erased-types";
@@ -189,7 +189,7 @@ export function CartesianChart(props: Readonly<CartesianChartProps>): ReactEleme
   publishRef.current = (snapshot) => {
     const { built, size } = snapshot;
     plot.set(snapshot);
-    overlay.update(built.overlay, snapshot, resolvedMargin);
+    overlay.update(built.overlay, overlayPlotOf(snapshot), resolvedMargin);
     yTweenRef.current = yDomainsTween(built.domains.y, built.targetY);
     const xStart = built.domains.x[0].getTime();
     hostGeom.current = { times: built.hover.times, left: resolvedMargin.left, xStart, xSpan: built.domains.x[1].getTime() - xStart, innerWidth: size.innerWidth, signs: built.hover.plSigns, hasBand: built.hover.highlights.length > 0 || built.hover.segmentLeft !== null, pillTicks: built.pillTicks.active ? built.pillTicks.times : undefined, pillLayout: built.pillTicks.active ? pillLayoutOf(built.pillTicks.times) : null };

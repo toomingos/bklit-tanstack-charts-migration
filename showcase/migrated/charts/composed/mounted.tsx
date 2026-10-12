@@ -12,7 +12,7 @@ import { motion } from "@tanstack/charts/motion";
 import type { ChartPoint } from "@tanstack/charts";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
 import { pillLayoutOf, syncPillHost } from "../kit/cartesian/date-pill";
-import { HoverOverlay } from "../kit/cartesian/hover-overlay";
+import { HoverOverlay, overlayPlotOf } from "../kit/cartesian/hover-overlay";
 import { HighlightBandClip } from "../kit/cartesian/band-clip";
 import { gridAttrsOf, hasHighlight } from "../kit/cartesian/definition";
 import { createPlotStore } from "../kit/cartesian/plot-size";
@@ -136,7 +136,7 @@ export const ComposedChart = ({
   publishRef.current = (snapshot) => {
     const { built, size } = snapshot;
     plot.set(snapshot);
-    overlay.update(built.overlay, snapshot, margin);
+    overlay.update(built.overlay, overlayPlotOf(snapshot), margin);
     const xStart = built.domains.x[0].getTime();
     hostGeom.current = { times: built.hover.times, left: margin.left, xStart, xSpan: built.domains.x[1].getTime() - xStart, innerWidth: size.innerWidth, signs: built.hover.plSigns, pillLayout: built.pillTicks.active ? pillLayoutOf(built.pillTicks.times) : null };
     dragGeom.current = { left: margin.left, top: margin.top, innerWidth: size.innerWidth, innerHeight: Math.max(0, size.innerHeight) };
