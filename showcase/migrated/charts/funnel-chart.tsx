@@ -5,7 +5,7 @@
 import { writeHoverIndex } from "./kit/host-write";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
-import { RendererChart } from "@tanstack/react-charts/tooltip";
+import { Chart as RendererChart } from "@tanstack/react-charts/core";
 import { defineChart } from "@tanstack/charts/scene";
 import { motion } from "@tanstack/charts/motion";
 import { scaleLinear } from "@tanstack/charts/scales/linear";

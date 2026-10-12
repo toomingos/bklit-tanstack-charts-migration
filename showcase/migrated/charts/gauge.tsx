@@ -4,7 +4,7 @@
 // stat reuses the bklit number-flow helpers (TanStack has no number-tween text mark).
 import { useMemo, useRef } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
-import { RendererChart } from "@tanstack/react-charts/tooltip";
+import { Chart as RendererChart } from "@tanstack/react-charts/core";
 import { defaultGaugeStatFormat, GaugeCenter, GaugeLabelLayout } from "./gauge/label";
 import type { GaugeLabelAlign, GaugeLabelPlacement, GaugeStatFormat } from "./gauge/label";
 import { ARC_ASPECT, buildGaugeDefinition, gaugeMotion } from "./gauge/definition";
