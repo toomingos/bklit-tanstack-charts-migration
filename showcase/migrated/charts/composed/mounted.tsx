@@ -11,7 +11,7 @@ import { RendererChart, sameCategoryTarget } from "../kit/tooltip/tooltip-leaf";
 import { motion } from "@tanstack/charts/motion";
 import type { ChartPoint } from "@tanstack/charts";
 import type { ChartTooltipBodyRenderContext } from "@tanstack/react-charts/tooltip";
-import { pillLayoutOf, syncPillHost } from "../kit/cartesian/date-pill";
+import { syncPillHost } from "../kit/cartesian/date-pill";
 import { HoverOverlay, overlayPlotOf } from "../kit/cartesian/hover-overlay";
 import { HighlightBandClip } from "../kit/cartesian/band-clip";
 import { gridAttrsOf, hasHighlight } from "../kit/cartesian/definition";
@@ -138,7 +138,7 @@ export const ComposedChart = ({
     plot.set(snapshot);
     overlay.update(built.overlay, overlayPlotOf(snapshot), margin);
     const xStart = built.domains.x[0].getTime();
-    hostGeom.current = { times: built.hover.times, left: margin.left, xStart, xSpan: built.domains.x[1].getTime() - xStart, innerWidth: size.innerWidth, signs: built.hover.plSigns, pillLayout: built.pillTicks.active ? pillLayoutOf(built.pillTicks.times) : null };
+    hostGeom.current = { times: built.hover.times, left: margin.left, xStart, xSpan: built.domains.x[1].getTime() - xStart, innerWidth: size.innerWidth, signs: built.hover.plSigns };
     dragGeom.current = { left: margin.left, top: margin.top, innerWidth: size.innerWidth, innerHeight: Math.max(0, size.innerHeight) };
     const sheet = styleRef.current;
     if (sheet) {
@@ -190,7 +190,7 @@ export const ComposedChart = ({
       if (host && snapshot) {
         const { built, size } = snapshot;
         const xSpanMs = built.domains.x[1].getTime() - built.domains.x[0].getTime();
-        syncPillHost(host, built.pillTicks.times, xSpanMs, size.innerWidth, index < 0 ? null : time, index);
+        syncPillHost(host, built.pillTicks.times, xSpanMs, size.innerWidth, index < 0 ? null : time);
         syncHost(index < 0 ? null : time);
         writePresence(host, "data-bkm-bi", index >= 0);
       }

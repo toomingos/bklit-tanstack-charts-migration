@@ -582,7 +582,7 @@ export function buildScatterDefinition(input: ScatterInput): ScatterBuild {
     }
     const domain = xDomainAt(width);
     const tickDates = "values" in xTicks ? xTicks.values : scaleUtc().domain(domain).ticks(xTicks.count);
-    const times = withPillGeometry(tickDates.map((d) => d.getTime()), { plotLeft: margin.left, domainStart: domain[0].getTime(), pill });
+    const times = withPillGeometry(tickDates.map((d) => d.getTime()), { plotLeft: margin.left, domainStart: domain[0].getTime() });
     return { times, spanMs: domain[1].getTime() - domain[0].getTime(), plotWidth: Math.max(1, width - margin.left - margin.right), reachPx: 62 };
   };
   return { definition, series, tooltipEnabled, overlay, domains: { x: xDomainAt, y: Object.fromEntries(yDomains) }, pillTicks, gridAttrs: gridHostAttrs(grid) };

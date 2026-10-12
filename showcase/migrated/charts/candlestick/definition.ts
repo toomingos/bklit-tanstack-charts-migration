@@ -388,12 +388,8 @@ export function buildCandlestickDefinition(input: CandlestickInput): Candlestick
   const pillActive = tt !== undefined && tt.showDatePill !== false;
   const tickTimes = pillActive ? (xTicks.values ?? scaleUtc().domain(xDomain).ticks(tickCount)).map((d) => d.getTime()) : [];
   if (pillActive) {
-    // The pill geometry rides on the tick array for the static CSS distance ramp (`pillLayoutOf`).
-    withPillGeometry(tickTimes, {
-      plotLeft: margin.left,
-      domainStart: xDomain[0].getTime(),
-      pill: pillLayout(data.map((row) => shortDateFmt.format(toDate(row[xKey])))),
-    });
+    // The pill geometry rides on the tick array for the static CSS distance ramp.
+    withPillGeometry(tickTimes, { plotLeft: margin.left, domainStart: xDomain[0].getTime() });
   }
   return {
     definition,

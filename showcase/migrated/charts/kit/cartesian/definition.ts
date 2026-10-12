@@ -224,7 +224,7 @@ function buildSized(input: CartesianInput): SizedBuild {
   const pill = pillActive ? pillLayout(rows.map((row) => shortDateFmt.format(toDate(row[xKey])))) : null;
   const overlay = tooltipEnabled ? buildHoverOverlayModel({ input, rows, keyOf, tooltipProps, pill, pillActive }) : null;
 
-  const x = buildXScale({ input, rows, xAxis, xDomain, overlaysWidenX: overlays.xValues.length > 0, pillActive, pill });
+  const x = buildXScale({ input, rows, xAxis, xDomain, overlaysWidenX: overlays.xValues.length > 0, pillActive });
 
   const yScales = buildYScales({ yDomains, yAxes, rowGuides, grid });
   const scales = erase({ x: x.scale, ...yScales });

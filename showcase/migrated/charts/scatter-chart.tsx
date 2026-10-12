@@ -202,7 +202,7 @@ const ScatterChartInner = ({
       const pillCss = built.pillTicks(sizeStore.get().width);
       if (host && pillCss) {
         // SAFETY: the x column holds a Date, epoch number or date string (see xAccessor).
-        syncPillHost(host, pillCss.times, pillCss.spanMs, pillCss.plotWidth, index < 0 ? null : new Date(rows[index]?.[xDataKey] as string | number | Date).getTime(), index);
+        syncPillHost(host, pillCss.times, pillCss.spanMs, pillCss.plotWidth, index < 0 ? null : new Date(rows[index]?.[xDataKey] as string | number | Date).getTime());
       }
       if (host) {
         // Fixed rule (below) hides the tooltip/focus layers at once when the pointer is in the chart but nothing is focused (bklit unmounts them).

@@ -8,7 +8,7 @@ import type { CartesianInput } from "./input";
 import { toDate } from "./series";
 import type { Row } from "./series";
 import { withPillGeometry } from "./date-pill";
-import type { PillLayout, PillTicks } from "./date-pill";
+import type { PillTicks } from "./date-pill";
 import { selectEvenlySpacedIndices } from "./tick-layout";
 
 export interface XAxisProps {
@@ -77,8 +77,6 @@ interface XScaleInput {
   readonly overlaysWidenX: boolean;
   /** The date pill hides the tick labels it would cover, so the tick times are needed. */
   readonly pillActive: boolean;
-  /** The measured pill layout, carried on the tick times for the pill's tick-opacity ramp. */
-  readonly pill: PillLayout | null;
 }
 
 function xTickSpec(args: XScaleInput, tickCount: number): XTicks {
@@ -115,7 +113,7 @@ export function buildXScale(args: XScaleInput): XScale {
   const formatX = xAxis?.formatValue ?? ((d: Date): string => shortDateFmt.format(d));
   const times = args.pillActive ? tickTimesOf(xTicks, xDomain) : [];
   // x layout for the pill's tick-opacity ramp (date-pill.ts pillTickStaticCss reads it off the array).
-  const tickTimes: PillTicks = args.pillActive && xDomain ? withPillGeometry(times, { plotLeft: input.margin.left, domainStart: xDomain[0].getTime(), pill: args.pill }) : times;
+  const tickTimes: PillTicks = args.pillActive && xDomain ? withPillGeometry(times, { plotLeft: input.margin.left, domainStart: xDomain[0].getTime() }) : times;
   const scale = {
     scale: scaleUtc().domain(xDomain ?? [new Date(0), new Date(1)]),
     grid: false,

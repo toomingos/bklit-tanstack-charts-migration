@@ -2,7 +2,8 @@
 import { createMark } from "@tanstack/charts";
 import type { ChartMark, ChartMotionContext, ChartPoint, ResolvedScale, SceneNode } from "@tanstack/charts";
 import { propsFor } from "../kit/read-children";
-import { guideMark } from "../kit/cartesian/date-pill";
+import { scaleBand } from "d3-scale";
+import type { OverlayDot } from "../kit/cartesian/hover-overlay";
 import { computeSquareColumn } from "./geometry";
 import type { BarColumnTrackProps } from "./carriers";
 import type { ChildTable } from "../kit/read-children";
@@ -12,7 +13,6 @@ import type { EnterTiming } from "./enter-timing";
 import { barIndexClass } from "./hover";
 import type { HoverTarget } from "./hover";
 import type { BarDatum, BarSeries } from "./model";
-import { CROSSHAIR_CLASS } from "../kit/renderer-dom";
 
 export interface ExtraMarkInput {
   readonly datums: readonly BarDatum[];
@@ -266,14 +266,8 @@ export function buildExtraMarks(input: ExtraMarkInput): ExtraMarks {
   return { marks: out, hover };
 }
 
-/** bklit's category band centre (the x of the rule, dots and date pill) for a focused category, from the chart scales. */
-export function bandCentre(scales: Scales, horizontal = false): ((category: unknown) => number) | undefined {
-  const band = scaleAt(scales, horizontal ? "y" : "x");
-  return band === undefined ? undefined : (category) => band.map(category);
-}
-
-/** Where bklit's horizontal-bar crosshair sits for a category: the end of the longest bar (cumulative end when stacked), the `centre` of a `by: "y"` guide. */
-export function barEndCentre(datums: readonly BarDatum[], stacked: boolean): (scales: Scales) => ((category: unknown) => number) | undefined {
+/** Where bklit's horizontal-bar crosshair sits for a category: the end of the longest bar (cumulative end when stacked), as a value on the value scale. */
+export function barEndValues(datums: readonly BarDatum[], stacked: boolean): ReadonlyMap<string, number> {
   const byCategory = new Map<string, number[]>();
   for (const d of datums) {
     if (Number.isFinite(d.value)) {
@@ -285,20 +279,7 @@ export function barEndCentre(datums: readonly BarDatum[], stacked: boolean): (sc
       }
     }
   }
-  return (scales) => {
-    const sx = scaleAt(scales, "x");
-    if (sx === undefined) {
-      return undefined;
-    }
-    return (category) => {
-      const values = byCategory.get(String(category));
-      if (!values) {
-        return Number.NaN;
-      }
-      const ends = stacked ? [values.reduce((a, b) => a + b, 0)] : values;
-      return Math.max(...ends.map((v) => sx.map(v)));
-    };
-  };
+  return new Map([...byCategory].map(([category, values]) => [category, stacked ? values.reduce((a, b) => a + b, 0) : Math.max(...values)] as const));
 }
 
 interface DotCross {
@@ -340,38 +321,30 @@ function ringHalfExtent(ring: RingDots, bandwidth: number, count: number): numbe
   return (Math.max(0, (bandwidth - ring.slotGap * (count - 1)) / count) / 2) * ring.scale;
 }
 
-function ringNode({ key, ring, half, cross, end, color }: { key: string; ring: RingDots; half: number; cross: number; end: number; color: string }): SceneNode {
-  return {
-    kind: "rect",
-    key,
-    x: cross - half,
-    y: end - half,
-    width: half * 2,
-    height: half * 2,
-    radius: half * 2 * Math.max(0, Math.min(0.5, ring.fraction)),
-    ariaHidden: true,
-    style: { fill: "transparent", stroke: color, strokeWidth: ring.strokeWidth },
-  };
-}
-
 export interface HoverDotsOptions {
-  readonly id: string;
   readonly datums: readonly BarDatum[];
   readonly series: readonly BarSeries[];
+  readonly categories: readonly string[];
+  readonly barGap: number;
   readonly groupGap: number;
   readonly ring?: RingDots;
   readonly radius?: number;
-  readonly motion?: unknown;
-  readonly horizontal?: boolean;
   readonly stacked?: boolean;
   readonly stackGap?: number;
   /** Series drawn as stacked squares: dots sit on the column top, not the raw value. */
   readonly squares?: ReadonlyMap<string, { readonly gap: number; readonly fit: boolean; readonly groupGap: number }>;
 }
 
-/** Vertical-bar dots as a focus-guide-only mark (bklit's per-bar TooltipDot): resolved for the focused category only, so a hover reconciles just the guide fragment. */
-export function barDotsGuide(options: Omit<HoverDotsOptions, "horizontal">): ChartMark<BarDatum, string, number> {
-  const { id, datums, series, groupGap, radius = 5, squares, stacked = false, stackGap = 0, ring } = options;
+/** The band geometry of a plot: bandwidth and the centre of each category from the left of the plot (the chart's `scaleBand` with the same padding). */
+export function bandOf(categories: readonly string[], barGap: number, innerWidth: number): { readonly bandwidth: number; readonly centre: (category: string) => number } {
+  const band = scaleBand().domain(categories).range([0, innerWidth]).padding(barGap);
+  const bandwidth = band.bandwidth();
+  return { bandwidth, centre: (category) => (band(category) ?? Number.NaN) + bandwidth / 2 };
+}
+
+/** Vertical-bar dots for the host's HoverOverlay (bklit's per-bar TooltipDot): one per series, placed on the focused category's bar end. */
+export function barOverlayDots(options: HoverDotsOptions): OverlayDot[] {
+  const { datums, series, categories, barGap, groupGap, radius = 5, squares, stacked = false, stackGap = 0, ring } = options;
   const slots = new Map(series.map((s, i) => [s.key, i] as const));
   const byCategory = new Map<string, BarDatum[]>();
   for (const d of datums) {
@@ -382,44 +355,62 @@ export function barDotsGuide(options: Omit<HoverDotsOptions, "horizontal">): Cha
       byCategory.set(d.category, [d]);
     }
   }
-  return guideMark({
-    id,
-    motion: options.motion,
-    centre: (scales: Scales) => bandCentre(scales),
-    node: (x, _chart, category, scales: Scales) => {
-      const list = byCategory.get(String(category));
-      const sx = scaleAt(scales, "x");
-      const sy = scaleAt(scales, "y");
-      if (!list || sx === undefined || sy === undefined) {
+  const count = Math.max(1, series.length);
+  const gapPx = count > 1 ? groupGap : 0;
+  const bandFor = memoBand(categories, barGap);
+  const seriesKeys = [...new Set(datums.map((d) => d.series))];
+  return seriesKeys.map((key): OverlayDot => {
+    const i = slots.get(key) ?? 0;
+    const fill = series[i]?.fill ?? "currentColor";
+    return {
+      yAxis: "y",
+      valueOf: () => undefined,
+      glide: true,
+      shapes: ring
+        ? (plot) => {
+            const half = ringHalfExtent(ring, bandFor(plot.innerWidth).bandwidth, count);
+            return [{ r: half, corner: half * 2 * Math.max(0, Math.min(0.5, ring.fraction)), fill: "transparent", stroke: ring.color ?? fill, strokeWidth: ring.strokeWidth }];
+          }
+        : [{ r: radius, fill, stroke: "var(--chart-background)", strokeWidth: 2 }],
+      at: (_row, plot, index) => {
+        const list = byCategory.get(categories[index] ?? "");
+        const sy = plot.yDomains.y;
+        if (!list || !sy) {
+          return undefined;
+        }
+        const { bandwidth } = bandFor(plot.innerWidth);
+        const slot = Math.max(0, (bandwidth - gapPx * (count - 1)) / count);
+        let cumulative = 0;
+        let seen = 0;
+        for (const d of list) {
+          let { value } = d;
+          let along = 0;
+          if (stacked) {
+            cumulative += Number.isFinite(d.value) ? d.value : 0;
+            value = cumulative;
+            along = seen * stackGap * -1;
+            seen += 1;
+          }
+          if (d.series === key) {
+            const y = plot.innerHeight - ((value - sy[0]) / (sy[1] - sy[0] || 1)) * plot.innerHeight + along;
+            return Number.isFinite(y) ? { dx: dotCross({ d, i, bandwidth, slot, gapPx, seriesCount: series.length, stacked, square: squares?.get(d.series) }), y } : undefined;
+          }
+        }
         return undefined;
-      }
-      const bandwidth = sx.bandwidth || 0;
-      const count = Math.max(1, series.length);
-      const gapPx = count > 1 ? groupGap : 0;
-      const slot = Math.max(0, (bandwidth - gapPx * (count - 1)) / count);
-      const half = ring ? ringHalfExtent(ring, bandwidth, count) : 0;
-      let cumulative = 0;
-      let seen = 0;
-      const children: unknown[] = [];
-      for (const d of list) {
-        const i = slots.get(d.series) ?? 0;
-        let { value } = d;
-        let along = 0;
-        if (stacked) {
-          cumulative += Number.isFinite(d.value) ? d.value : 0;
-          value = cumulative;
-          along = seen * stackGap * -1;
-          seen += 1;
-        }
-        const end = sy.map(value) + along;
-        if (Number.isFinite(end)) {
-          const cross = dotCross({ d, i, bandwidth, slot, gapPx, seriesCount: series.length, stacked, square: squares?.get(d.series) });
-          const fill = series[i]?.fill ?? "currentColor";
-          const key = `${id}:${d.series}:dot`;
-          children.push(ring ? ringNode({ key, ring, half, cross, end, color: ring.color ?? fill }) : { kind: "dot" as const, key, x: cross, y: end, radius, ariaHidden: true, style: { fill, stroke: "var(--chart-background)", strokeWidth: 2 } });
-        }
-      }
-      return { kind: "group" as const, key: id, className: CROSSHAIR_CLASS, ariaHidden: true, translateX: x, children };
-    },
+      },
+    };
   });
+}
+
+/** `bandOf` for the latest plot width only: a focus move reads it for every dot, the width changes on resize. */
+export function memoBand(categories: readonly string[], barGap: number): (innerWidth: number) => ReturnType<typeof bandOf> {
+  let width = Number.NaN;
+  let band: ReturnType<typeof bandOf> | null = null;
+  return (innerWidth) => {
+    if (band === null || width !== innerWidth) {
+      width = innerWidth;
+      band = bandOf(categories, barGap, innerWidth);
+    }
+    return band;
+  };
 }

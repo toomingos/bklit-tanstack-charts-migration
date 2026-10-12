@@ -193,7 +193,7 @@ export const CandlestickChart = ({
       const host = containerRef.current;
       if (host) {
         const pt = built.pillTicks;
-        syncPillHost(host, pt.times, pt.spanMs, innerWidth, index < 0 ? null : toDate(row?.[xDataKey]).getTime(), index);
+        syncPillHost(host, pt.times, pt.spanMs, innerWidth, index < 0 ? null : toDate(row?.[xDataKey]).getTime());
         // A move inside one candle re-emits the same x: the var and attributes are written only when they change.
         writeFocusHost(host, { focused: index >= 0, hovered: point !== null && index >= 0 && fadeOn, hoverX: point ? String(point.x) : undefined });
       }

@@ -21,8 +21,6 @@
 @property --bkm-pfx { syntax: "*"; inherits: false; }
 @property --bkm-hl0 { syntax: "*"; inherits: false; }
 @property --bkm-hl1 { syntax: "*"; inherits: false; }
-@property --bkm-rm0 { syntax: "*"; inherits: false; }
-@property --bkm-rd0 { syntax: "*"; inherits: false; }
 @property --bkm-same0 { syntax: "*"; inherits: false; }
 @property --bkm-same1 { syntax: "*"; inherits: false; }
 @property --bkm-same2 { syntax: "*"; inherits: false; }
@@ -44,9 +42,8 @@
 :is([data-bkm-chart], [data-bkm-kit]) .bkm-wipe-o > .bkm-wipe-i > g,
 :is([data-bkm-chart], [data-bkm-kit]) .bkm-wipe-o > .bkm-wipe-i > g > *,
 :is([data-bkm-chart], [data-bkm-kit]) .ts-chart__axes > text,
-:is([data-bkm-chart], [data-bkm-kit]) .ts-chart__focus-guide-layer > g,
-:is([data-bkm-chart], [data-bkm-kit]) :is(.bkm-pill-window, .bkm-pill-m, .bkm-pill-d) {
-  --bkm-hx: inherit; --bkm-bfx: inherit; --bkm-pfx: inherit; --bkm-hl0: inherit; --bkm-hl1: inherit; --bkm-rm0: inherit; --bkm-rd0: inherit;
+:is([data-bkm-chart], [data-bkm-kit]) .ts-chart__focus-guide-layer > g {
+  --bkm-hx: inherit; --bkm-bfx: inherit; --bkm-pfx: inherit; --bkm-hl0: inherit; --bkm-hl1: inherit;
   --bkm-same0: inherit; --bkm-same1: inherit; --bkm-same2: inherit; --bkm-same3: inherit;
   --bkm-psame0: inherit; --bkm-psame1: inherit; --bkm-psame2: inherit; --bkm-psame3: inherit;
 }
@@ -65,7 +62,7 @@
 }
 
 /* --- Live line crosshair: the native rule is a zero-width line (no objectBoundingBox gradient), so bklit's 0/10/90/100% vertical fade is a CSS mask on the stroke-box;
-       matched through data-ts-key (gap #36). Other charts paint the rule as a gradient rect (kit/cartesian/date-pill.ts crosshairRuleMark). --- */
+       matched through data-ts-key (gap #36). Other charts paint the rule as a gradient rect (kit/cartesian/hover-overlay.ts). --- */
 [data-bkm-chart="liveline"] [data-ts-key="crosshair:x-rule"] {
   mask-image: linear-gradient(to bottom, transparent 0%, #000 10%, #000 90%, transparent 100%);
   mask-origin: stroke-box;
@@ -90,18 +87,6 @@
 .bkm-hov-pill-col { height: 24px; overflow: hidden; }
 .bkm-hov-pill-stack { display: flex; flex-direction: column; will-change: transform; }
 .bkm-hov-pill-row { display: flex; align-items: center; justify-content: center; flex-shrink: 0; height: 24px; }
-
-/* --- Date pill: bklit's `shadow-lg` (0 10px 15px -3px / 0 4px 6px -4px, 10% black). --- */
-:is([data-bkm-chart], [data-bkm-kit]) :is(.bkm-pill-box, [data-ts-key="bar-guide:y-label:box"]) {
-  filter: drop-shadow(0 10px 6px rgba(0, 0, 0, 0.07)) drop-shadow(0 3px 2px rgba(0, 0, 0, 0.06));
-}
-
-/* bklit's pill is a rolling ticker (tooltip/date-ticker.tsx): month and day columns of 24px rows moved by useSpring(400/35); date-pill.ts pillMark draws the capsule, each stack's translateY is the roll.
-   The host carries each stack's start row (--bkm-rm0 / --bkm-rd0, written on entry); these keyframes add that offset to the guide's translate and ease it out along the spring. */
-@keyframes bkm-roll-m { from { translate: 0 calc(var(--bkm-rm0, 0) * 24px); } }
-@keyframes bkm-roll-d { from { translate: 0 calc(var(--bkm-rd0, 0) * 24px); } }
-:is([data-bkm-hover], [data-bkm-pill], [data-bkm-on]) .bkm-pill-m { animation: bkm-roll-m 392ms linear(0, 0.025, 0.086, 0.168, 0.26, 0.356, 0.448, 0.534, 0.613, 0.682, 0.743, 0.794, 0.838, 0.874, 0.904, 0.928, 0.947, 0.962, 0.974, 0.983, 0.989, 0.994, 0.998, 1, 1.002, 1.003, 1.003, 1.003, 1.003, 1.003, 1.003, 1.003, 1.002, 1); }
-:is([data-bkm-hover], [data-bkm-pill], [data-bkm-on]) .bkm-pill-d { animation: bkm-roll-d 392ms linear(0, 0.025, 0.086, 0.168, 0.26, 0.356, 0.448, 0.534, 0.613, 0.682, 0.743, 0.794, 0.838, 0.874, 0.904, 0.928, 0.947, 0.962, 0.974, 0.983, 0.989, 0.994, 0.998, 1, 1.002, 1.003, 1.003, 1.003, 1.003, 1.003, 1.003, 1.003, 1.002, 1); }
 
 /* --- Grid row edge fade: bklit `grid.tsx:180-201` masks the horizontal GridRows with a 0/10/90/100% left-to-right gradient; a CSS `mask-image` on the grid group (fill-box = plot width) matches it.
        `fadeHorizontal={false}` sets data-bkm-grid-nofade-h (grid-guides.ts); with native columns in the group each row carries the gradient itself and columns fade under data-bkm-grid-fade-v. --- */
