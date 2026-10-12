@@ -233,7 +233,7 @@ body .ts-chart-surface > .ts-chart-tooltip[data-bkm-settle] {
 [data-bkm-chart="choropleth"][data-bkm-drag] { cursor: grabbing !important; }
 [data-bkm-chart="choropleth"][data-bkm-drag] :is(.ts-chart__marks, .bkm-choro-hl-layer):not([data-ts-motion-role]) { transition: none; }
 /* bklit's feature layer: one <g opacity=0.85> of opaque paths; hover (StaticFeatureLayer) dims it over 0.18s on enter and snaps back on leave (transition only under [data-hover]);
-   the hovered feature is the focus guide. Both wait for the reveal (`data-bkm-ready` = bklit's isLoaded). */
+   the hovered feature is the owned highlight svg (choropleth/highlight.ts). Both wait for the reveal (`data-bkm-ready` = bklit's isLoaded). */
 [data-bkm-chart="choropleth"] .bkm-choro-features { opacity: 0.85; --bkm-choro-rest: 0.85; }
 /* The layers' first-paint fade (geoShape has no first-paint motion, UPSTREAM-GAPS #12): bklit's curve until its isLoaded cut, which the animation's end (no fill) reproduces by snapping to rest. */
 [data-bkm-chart="choropleth"] :is(.bkm-choro-features, .bkm-choro-graticule) {
