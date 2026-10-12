@@ -41,7 +41,9 @@ export function liveCss(lerp: number): string {
       `${SCOPE} .bkm-live-tip.bkm-dp${parity}{animation:bkm-dy${parity} var(--bkm-live-settle,1380ms) ${headEase} both,bkm-rd${parity} ${roll} both}`,
       `@keyframes bkm-on${parity}{to{visibility:visible}}`,
       `@keyframes bkm-off${parity}{to{visibility:hidden}}`,
-      `${SCOPE} .bkm-lbl.bkm-p${parity}{animation:bkm-on${parity} 0s var(--ds,0ms) forwards,bkm-off${parity} 0s var(--de,99999s) forwards}`,
+      `${SCOPE} .bkm-lbl.bkm-on${parity}{animation:bkm-on${parity} 0s var(--ds,0ms) forwards}`,
+      `${SCOPE} .bkm-lbl.bkm-off${parity}{animation:bkm-off${parity} 0s var(--de,0ms) forwards}`,
+      `${SCOPE} .bkm-lbl.bkm-on${parity}.bkm-off${parity}{animation:bkm-on${parity} 0s var(--ds,0ms) forwards,bkm-off${parity} 0s var(--de,0ms) forwards}`,
     );
   }
   for (let i = 0; i <= LABEL_POOL; i += 1) {

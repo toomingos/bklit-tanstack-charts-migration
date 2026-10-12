@@ -2,7 +2,7 @@
 // createMark emitting plain scene nodes from the chart's scales; the pulse is a CSS animation (liveline.css).
 import { createMark } from "@tanstack/charts";
 import type { ChartMark, SceneNode } from "@tanstack/charts";
-import { LABEL_POOL } from "./head-ease";
+import { LABEL_POOL, labelWindow } from "./head-ease";
 import type { HeadLabel } from "./head-ease";
 
 export interface LiveTipOptions {
@@ -51,11 +51,6 @@ function pillRuns(labels: readonly HeadLabel[]): PillRun[] {
     runs.splice(PILL_POOL - 1, Number.POSITIVE_INFINITY, final);
   }
   return runs;
-}
-
-/** Visibility window of a pooled node: shown from its own step until the next one's. */
-function showFrom(run: { readonly step: number }, next: { readonly step: number } | undefined): string {
-  return `bkm-s${run.step}${next ? ` bkm-e${next.step}` : ""}`;
 }
 
 export function liveTip(options: LiveTipOptions): ChartMark<unknown, Date, number> {
@@ -116,7 +111,7 @@ export function liveTip(options: LiveTipOptions): ChartMark<unknown, Date, numbe
           indicator.push({
             kind: "rect",
             key: `${id}:badge:${i}`,
-            className: run === undefined ? "bkm-lbl" : `bkm-lbl bkm-p${parity} ${showFrom(run, pills.at(i + 1))}`,
+            className: run === undefined ? "bkm-lbl" : `bkm-lbl ${labelWindow(parity, run.step, pills.at(i + 1)?.step)}`,
             x: lx + BADGE_GAP,
             y: ly - BADGE_HEIGHT / 2,
             width: (run?.length ?? 0) * CHAR_WIDTH + BADGE_PAD,
@@ -130,7 +125,7 @@ export function liveTip(options: LiveTipOptions): ChartMark<unknown, Date, numbe
           indicator.push({
             kind: "label",
             key: `${id}:badge-text:${i}`,
-            className: label === undefined ? "bkm-live-badge-text bkm-lbl" : `bkm-live-badge-text bkm-lbl bkm-p${parity} ${showFrom(label, labels.at(i + 1))}`,
+            className: label === undefined ? "bkm-live-badge-text bkm-lbl" : `bkm-live-badge-text bkm-lbl ${labelWindow(parity, label.step, labels.at(i + 1)?.step)}`,
             x: lx + BADGE_GAP + 8,
             // bklit: <text y={4}> in a 24px box centred on the dot, alphabetic baseline (not dominant-baseline middle).
             y: ly + BADGE_TEXT_DY,

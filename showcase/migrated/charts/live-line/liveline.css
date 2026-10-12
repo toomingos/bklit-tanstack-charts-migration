@@ -96,6 +96,9 @@
 [data-bkm-chart="liveline"] .bkm-lbl {
   visibility: hidden;
 }
+[data-bkm-chart="liveline"] .bkm-lbl.bkm-v {
+  visibility: visible;
+}
 /* Left-edge fade (bklit's 0%->4% white mask, live-line.tsx:173-175): an alpha ramp in view-box space from the plot's left edge
    (--bkm-live-fade-x0), since the group's own box moves with the rolling path. */
 [data-bkm-chart="liveline"] g[data-ts-key^="live:line:"] {

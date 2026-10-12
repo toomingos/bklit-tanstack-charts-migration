@@ -1,7 +1,7 @@
 // The x tick labels (`definition.controls`): a pool of nodes per slot, so a roll rewrites text. bklit re-derives them each commit (live-x-axis.tsx:64-75);
 // a mid-roll render cancels the path (charts-core motion.ts:985), so a slot's texts over the roll are a stack switched by CSS (live-css.ts).
 import type { ChartControl } from "@tanstack/charts";
-import { COMMIT_MS, LABEL_POOL } from "./head-ease";
+import { COMMIT_MS, LABEL_POOL, labelWindow } from "./head-ease";
 
 /** Nodes per slot: one second-format boundary falls in a roll (a tick is under a second), two if it runs long; a finer format holds its last text. */
 const X_POOL = 3;
@@ -42,12 +42,11 @@ export function liveXLabels(options: LiveXLabelsOptions): ChartControl<Date, num
         const shown = texts.slice(0, X_POOL);
         return Array.from({ length: X_POOL }, (_, n) => {
           const entry = shown.at(n);
-          const showFrom = entry === undefined ? "" : ` bkm-p${parity} bkm-s${entry.step}`;
-          const showTo = shown.at(n + 1) === undefined ? "" : ` bkm-e${shown.at(n + 1)?.step}`;
+          const window = entry === undefined ? "" : ` ${labelWindow(parity, entry.step, shown.at(n + 1)?.step)}`;
           return {
             kind: "label" as const,
             key: `x-tick-label:slot:${i}:${n}`,
-            className: `bkm-live-xlabel bkm-lbl${showFrom}${showTo}`,
+            className: `bkm-live-xlabel bkm-lbl${window}`,
             x: at,
             y: chart.y + chart.height + padding + fontSize * 0.8,
             text: entry?.text ?? "",
