@@ -83,6 +83,7 @@ export function buildHoverOverlayModel(ctx: HoverOverlayContext): HoverOverlayMo
     dots: showDots
       ? [
           ...activeMarkers(interactive),
+          ...(ctx.input.extraDots ?? []),
           ...interactive.map((s): OverlayDot => ({
             circles: [{ r: dotRadius, fill: resolveDotColor(tooltipProps, s), stroke: "var(--chart-background)", strokeWidth: tooltipProps.dotStrokeWidth ?? 2 }],
             glide: true,

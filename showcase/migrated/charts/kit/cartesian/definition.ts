@@ -273,6 +273,7 @@ export function buildCartesianDefinition(spec: CartesianSpec, onBuilt: (snapshot
         plotHeight: live.innerHeight,
         wipe: wipe ? wipeAt(wipe, live) : undefined,
         extraMarks: resolveExtraMarks(spec.extraMarks, live),
+        extraDots: typeof spec.extraDots === "function" ? spec.extraDots(live) : spec.extraDots,
       };
       const { marks, scales, gradients, built } = buildSized(sized);
       onBuilt({ built, size: live });

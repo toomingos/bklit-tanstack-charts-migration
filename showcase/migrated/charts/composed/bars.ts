@@ -4,7 +4,8 @@ import { rect } from "@tanstack/charts";
 import type { ChartMark, ChartMotionContext, ChartMotionTiming } from "@tanstack/charts";
 import { cubicBezier } from "../kit/motion/easing";
 import { resumeEnter } from "../kit/motion/resume-enter";
-import { BKLIT_GUIDE_SPRING, dotGuideMark } from "../kit/cartesian/date-pill";
+import { DEFAULT_Y_AXIS_ID } from "../kit/cartesian/series";
+import type { OverlayDot } from "../kit/cartesian/hover-overlay";
 import { Y_DOMAIN_GLIDE } from "../kit/cartesian/definition";
 import { dateValue, numberValue } from "./narrow";
 
@@ -20,7 +21,7 @@ export interface SeriesBarSpec {
   readonly fadedOpacity: number;
 }
 
-interface BarLayoutInput {
+export interface BarLayoutInput {
   readonly data: readonly Record<string, unknown>[];
   readonly xKey: string;
   readonly bars: readonly SeriesBarSpec[];
@@ -156,7 +157,7 @@ function growMotionOf(input: BarLayoutInput, stagger: number, clock: { at: numbe
 }
 
 export function buildBarMarks(input: BarLayoutInput): BarMark[] {
-  const { data, bars, innerWidth, innerHeight, xSpanMs, yDomain, barGap, stacked, stackGap, dots } = input;
+  const { data, bars, innerWidth, innerHeight, xSpanMs, yDomain, barGap, stacked, stackGap } = input;
   const n = bars.length;
   if (n === 0 || innerWidth <= 0 || innerHeight <= 0 || data.length === 0) {
     return [];
@@ -202,18 +203,31 @@ export function buildBarMarks(input: BarLayoutInput): BarMark[] {
         motion: bar.animate ? growMotion : false,
       }),
     );
-    if (dots !== false) {
-      const topAt = new Map<number, number>((input.entered ? rows : []).map((d: BarRow) => [d.t.getTime(), d.top]));
-      marks.push(
-        dotGuideMark({
-          id: `bar:${bar.dataKey}:dot`,
-          valueAt: (xValue) => topAt.get(xValue instanceof Date ? xValue.getTime() : Number(xValue)),
-          // Dots glide on bklit's tooltipSpring, instant on entry (same as the kit's line dots).
-          motion: (ctx: { phase?: string }) => (ctx.phase === "enter" ? { transition: { type: "tween", duration: 0 } } : { transition: BKLIT_GUIDE_SPRING }),
-          marker: { radius: dots.radius, fill: dots.color ?? bar.dotColor, stroke: "var(--chart-background)", strokeWidth: dots.strokeWidth },
-        }),
-      );
-    }
   }
   return marks;
+}
+
+/** One hover dot per bar series, at the visual top of the focused row's bar (the hover overlay's dots, kit/cartesian/hover-overlay.ts; bklit TooltipDot per series). */
+export function buildBarDots(input: BarLayoutInput): OverlayDot[] {
+  const { bars, dots, innerWidth, innerHeight, xSpanMs, yDomain, barGap, stacked, data } = input;
+  if (dots === false || bars.length === 0 || innerWidth <= 0 || innerHeight <= 0 || data.length === 0) {
+    return [];
+  }
+  const barWidth = seriesBarWidth({ innerWidth, dataLength: data.length, seriesCount: bars.length, barSize: input.barSize, maxBarSize: input.maxBarSize, gap: barGap, stacked });
+  const geo: BarGeometry = {
+    msPerPx: xSpanMs / innerWidth,
+    unitsPerPx: (yDomain[1] - yDomain[0]) / innerHeight,
+    barWidth,
+    groupWidth: bars.length * barWidth + (bars.length > 1 ? (bars.length - 1) * barGap : 0),
+    baseline: yDomain[0],
+  };
+  return bars.map((bar, seriesIndex): OverlayDot => {
+    const topAt = new Map<number, number>(barRowsOf(input, geo, bar, seriesIndex).map((d) => [d.t.getTime(), d.top]));
+    return {
+      yAxis: DEFAULT_Y_AXIS_ID,
+      valueOf: (row) => topAt.get(dateValue(row[input.xKey]).getTime()),
+      circles: [{ r: dots.radius, fill: dots.color ?? bar.dotColor, stroke: "var(--chart-background)", strokeWidth: dots.strokeWidth }],
+      glide: true,
+    };
+  });
 }

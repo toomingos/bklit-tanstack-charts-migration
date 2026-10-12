@@ -11,8 +11,8 @@ import type { PlotSize, PlotSnapshot } from "../kit/cartesian/plot-size";
 import { erase } from "../kit/erased-types";
 import type { ChartMargin } from "../kit/theme";
 import type { ChartDatum } from "../kit/types";
-import { buildBarMarks, barYValues, seriesBarWidth } from "./bars";
-import type { SeriesBarSpec } from "./bars";
+import { buildBarDots, buildBarMarks, barYValues, seriesBarWidth } from "./bars";
+import type { BarLayoutInput, SeriesBarSpec } from "./bars";
 import { dateValue, stringValue } from "./narrow";
 import { plotFocusOf } from "./plot-focus";
 import { orderSeriesMarks } from "./series-order";
@@ -73,26 +73,27 @@ export function useComposedBuild(input: Readonly<ComposedBuildInput>): ComposedB
       const barWidth = seriesBarWidth({ innerWidth, dataLength: data.length, seriesCount: bars.length, barSize, maxBarSize, gap: barGap, stacked });
       return Math.ceil((stacked || bars.length <= 1 ? barWidth : bars.length * barWidth + (bars.length - 1) * barGap) / 2);
     };
-    const barMarks = ({ innerWidth, innerHeight }: PlotSize) =>
-      buildBarMarks({
-        data,
-        xKey: xDataKey,
-        bars,
-        innerWidth,
-        innerHeight: Math.max(0, innerHeight),
-        xSpanMs: span,
-        yDomain,
-        barSize,
-        maxBarSize,
-        barGap,
-        stacked,
-        stackGap,
-        animationDuration: duration,
-        entered,
-        glide: update.step === "glide",
-        growingSince: () => growing.current,
-        dots,
+    const layoutOf = ({ innerWidth, innerHeight }: PlotSize): BarLayoutInput => ({
+      data,
+      xKey: xDataKey,
+      bars,
+      innerWidth,
+      innerHeight: Math.max(0, innerHeight),
+      xSpanMs: span,
+      yDomain,
+      barSize,
+      maxBarSize,
+      barGap,
+      stacked,
+      stackGap,
+      animationDuration: duration,
+      entered,
+      glide: update.step === "glide",
+      growingSince: () => growing.current,
+      dots,
       });
+    const barMarks = (size: PlotSize) => buildBarMarks(layoutOf(size));
+    const barDots = (size: PlotSize) => buildBarDots(layoutOf(size));
     const spec: CartesianSpec = {
       updateStep: update.step,
       yDomainFrom: update.from,
@@ -105,6 +106,7 @@ export function useComposedBuild(input: Readonly<ComposedBuildInput>): ComposedB
       animationDuration: duration,
       wipe: { ms: duration, progress: () => (duration > 0 && !entered ? 0 : 1), pad: ({ innerWidth }) => barPad(innerWidth), armedAt: growing },
       extraMarks: barMarks,
+      extraDots: barDots,
       extraXValues: NONE,
       extraYValues: barValues,
       extraGradients: NONE,
