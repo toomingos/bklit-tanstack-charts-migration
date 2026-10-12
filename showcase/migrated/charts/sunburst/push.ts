@@ -79,50 +79,53 @@ const solve3 = (a: number[][], b: number[]): number[] => {
   });
 };
 
-const accumulate = (normal: number[][], rhs: number[], basis: readonly (readonly [number, number])[], target: readonly [number, number]): void => {
-  for (let a = 0; a < NORMAL_EQUATIONS; a += 1) {
-    const ba = basis[a] ?? [0, 0];
-    (rhs)[a] = (rhs[a] ?? 0) + ba[0] * target[0] + ba[1] * target[1];
-    for (let b = 0; b < NORMAL_EQUATIONS; b += 1) {
-      const bb = basis[b] ?? [0, 0];
-      (normal[a])[b] = (normal[a]?.[b] ?? 0) + ba[0] * bb[0] + ba[1] * bb[1];
-    }
-  }
-};
-
-const fitField = (extent: SectorExtent, weightAt: (r: number) => number): FieldFit => {
+/** Least-squares fits of bklit's two radial fields over an annular sector: a whole-sector shift (weight 1) and the outer-edge grow
+ * (weight 0 inner, 1 outer). Both share the normal matrix (it depends on the sample grid only), so it is built once. Exact on the bisector; the residual grows with angular width. */
+export const fitSectorPush = (extent: SectorExtent, reference: number, labelAngle: number): SectorPush => {
+  const thickness = extent.maxR - extent.minR;
   const half = (extent.maxD - extent.minD) / 2;
-  const normal = Array.from({ length: NORMAL_EQUATIONS }, () => Array.from({ length: NORMAL_EQUATIONS }, () => 0));
-  const rhs = Array.from({ length: NORMAL_EQUATIONS }, () => 0);
+  // Basis columns (du, dv) are [1, 0], [x, 0], [0, y] for [slide, stretchU, stretchV]: the normal matrix is [[n, sx, 0], [sx, sxx, 0], [0, 0, syy]].
+  let count = 0;
+  let sx = 0;
+  let sxx = 0;
+  let syy = 0;
+  const shiftRhs = [0, 0, 0];
+  const growRhs = [0, 0, 0];
   for (let i = 0; i <= FIT_STEPS; i += 1) {
     for (let j = 0; j <= FIT_STEPS; j += 1) {
       const r = extent.minR + ((extent.maxR - extent.minR) * i) / FIT_STEPS;
       const f = -half + (2 * half * j) / FIT_STEPS;
       const x = r * Math.cos(f);
       const y = r * Math.sin(f);
-      // Basis columns (du, dv) for [slide, stretchU, stretchV]; target is the weighted radial vector in the bisector frame.
-      const basis: readonly (readonly [number, number])[] = [[1, 0], [x, 0], [0, y]];
-      const weight = weightAt(r);
-      accumulate(normal, rhs, basis, [weight * Math.cos(f), weight * Math.sin(f)]);
+      const weight = thickness > 0 ? (r - extent.minR) / thickness : 0;
+      const cos = Math.cos(f);
+      const sin = Math.sin(f);
+      count += 1;
+      sx += x;
+      sxx += x * x;
+      syy += y * y;
+      shiftRhs[0] = (shiftRhs[0] ?? 0) + cos;
+      shiftRhs[1] = (shiftRhs[1] ?? 0) + x * cos;
+      shiftRhs[2] = (shiftRhs[2] ?? 0) + y * sin;
+      growRhs[0] = (growRhs[0] ?? 0) + weight * cos;
+      growRhs[1] = (growRhs[1] ?? 0) + x * (weight * cos);
+      growRhs[2] = (growRhs[2] ?? 0) + y * (weight * sin);
     }
   }
-  const [slide = 0, stretchU = 0, stretchV = 0] = solve3(normal, rhs);
-  return { slide, stretchU, stretchV };
-};
-
-/** Least-squares fits of bklit's two radial fields over an annular sector: a whole-sector shift and the outer-edge grow
- * (weight 0 inner, 1 outer). Exact on the bisector; the residual grows with angular width. */
-export const fitSectorPush = (extent: SectorExtent, reference: number, labelAngle: number): SectorPush => {
-  const thickness = extent.maxR - extent.minR;
+  const normal = (): number[][] => [[count, sx, 0], [sx, sxx, 0], [0, 0, syy]];
+  const fit = (rhs: number[]): FieldFit => {
+    const [slide = 0, stretchU = 0, stretchV = 0] = solve3(normal(), rhs);
+    return { slide, stretchU, stretchV };
+  };
   return {
     bisector: reference + (extent.maxD + extent.minD) / 2,
     labelAngle,
     thickness,
     minR: extent.minR,
     maxR: extent.maxR,
-    halfSweep: (extent.maxD - extent.minD) / 2,
-    shift: fitField(extent, () => 1),
-    grow: fitField(extent, (r) => (thickness > 0 ? (r - extent.minR) / thickness : 0)),
+    halfSweep: half,
+    shift: fit(shiftRhs),
+    grow: fit(growRhs),
   };
 };
 
