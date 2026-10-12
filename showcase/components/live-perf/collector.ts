@@ -33,7 +33,7 @@ export interface PerfSnapshot {
   firstPaintMs: number | null;
   settledMs: number | null;
   settledCapped: boolean;
-  /** max(first paint, settled - the demo's designed entrance): first paint plus any time the entrance ran past its design; null without a budget or when capped */
+  /** settled - the demo's designed entrance: the time to render fully and settle beyond the fixed animation time (negative = the entrance ended before its design); null without a budget or when capped */
   renderMs: number | null;
   /** first paint / settled of every run of this card in this session (Re-run adds one) */
   firstPaintRuns: number[];
@@ -1187,7 +1187,7 @@ export class Collector {
       firstPaintMs: this.firstPaint === null ? null : r1(this.firstPaint),
       settledMs: this.settled === null ? null : r1(this.settled),
       settledCapped: this.capped,
-      renderMs: this.settled !== null && this.firstPaint !== null && !this.capped && budget ? r1(Math.max(this.firstPaint, this.settled - budget.ms)) : null,
+      renderMs: this.settled !== null && this.firstPaint !== null && !this.capped && budget ? r1(this.settled - budget.ms) : null,
       firstPaintRuns: [...(loadRuns.get(this.key)?.fp ?? [])],
       settledRuns: [...(loadRuns.get(this.key)?.st ?? [])],
       loadCommits: this.loadCommits,

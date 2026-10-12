@@ -50,7 +50,7 @@ const groups: Group[] = [
   {
     title: "Load",
     rows: [
-      { label: "Render (settled − designed animation)", get: (s) => s.renderMs, scope: "card", unit: "ms", lower: true, hint: "probe mount → entrance end, minus the demo's designed entrance (entrance-budget.ts, same for both): floored at first paint: an entrance that ends early cannot make the chart render before it paints." },
+      { label: "Render (settled − designed animation)", get: (s) => s.renderMs, scope: "card", unit: "ms", lower: true, hint: "probe mount → fully rendered and settled (last DOM mutation / finite animation), minus the demo's fixed designed entrance time (entrance-budget.ts, same for both). Negative means the entrance ended before its design." },
       { label: "First paint", get: (s) => s.firstPaintMs, scope: "card", unit: "ms", lower: true, spread: (s) => runSpread(s.firstPaintRuns), hint: "probe mount → the frame showing the first svg/canvas content is presented (rAF + MessageChannel). Includes the shared demo chunk load." },
       { label: "Chart paint (code ready → first paint)", get: (s) => s.chartPaintMs, scope: "card", unit: "ms", lower: true, hint: "first paint measured from this card's lazy import resolving: chart render, layout and paint without the code download. Both imports usually resolve together, so on one page the card rendered second also waits for the first; compare with ?only=." },
       { label: "Code load (this card's import)", get: (s) => s.chunkMs, scope: "card", unit: "ms", lower: true, hint: "request → resolved for this card's lazy import (shared demo module + its own charts). Cached after the first load." },
