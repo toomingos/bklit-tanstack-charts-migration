@@ -147,12 +147,13 @@
 /* Focus ring: migrated charts suppress TanStack's native ring with no CSS: `focus: focusDisabled` (gauge/pie/ring/sunburst/radar) or
    `focusRing: false` (the other charts; the ring mark is never added to the scene, scene.ts:518). */
 
-/* --- Chart focus ring: the chart svg also takes focus on pointerdown, which bklit never does, so only :focus-visible paints one ring (2px, rounded, shadcn ring colour)
+/* Accepted divergence: bklit has no tab stop, focus ring or arrow keys; TanStack's keyboard focus stays on every chart for accessibility (user decision). */
+/* --- Chart focus ring: the chart svg (or its layers div) also takes focus on pointerdown, which bklit never does, so only :focus-visible paints one ring (2px, rounded, shadcn ring colour)
        drawn inside the svg box so compact charts hug it and the overflow-hidden card does not clip it. --- */
 :root { --bkm-focus-ring: color-mix(in oklab, var(--ring) 55%, transparent); }
 .dark { --bkm-focus-ring: var(--ring); }
-svg[aria-roledescription="chart"]:focus { outline: none; }
-svg[aria-roledescription="chart"]:focus-visible {
+[aria-roledescription="chart"]:focus { outline: none; }
+[aria-roledescription="chart"]:focus-visible {
   outline: 2px solid var(--bkm-focus-ring);
   outline-offset: -2px;
   border-radius: 6px;
