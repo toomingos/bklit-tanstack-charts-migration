@@ -12,7 +12,7 @@ import type { useFocusStore } from "../kit/cartesian/focus-layer";
 import { shortDateFmt } from "../kit/format";
 import { BarLoadingSkeleton } from "../kit/loading/sweep";
 import { useResizeBox } from "../kit/size/use-resize-box";
-import type { AnyInteraction } from "../kit/cartesian/erased-types";
+import type { AnyInteraction } from "../kit/erased-types";
 import type { ChartMargin } from "../kit/theme";
 import { BarDepthConfigProvider } from "./depth-entries";
 import type { BarDepthConfig } from "./depth-entries";
