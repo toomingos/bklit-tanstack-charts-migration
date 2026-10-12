@@ -1,13 +1,8 @@
 // Hover push: bklit's applyHoverGrow moves sectors and labels on the hovered path outward as a CSS transform on its 420ms curve; each sector publishes a `SectorPush` (bisector translate + centre scale).
-// Each element gets `--sb-t<i>` / `--sb-m<i>` (sectors), `--sb-pt<i>` / `--sb-pm<i>` (overlays) or `--sb-lt<i>` (labels); rules per arc index (up to PUSH_CAP) read them.
+// Each element gets `--sb-t` / `--sb-m` (sectors, overlays) or `--sb-t` (labels) on itself; the static rules in sunburst.css read them (bklit growControls: 0.42s, [0.22, 1, 0.36, 1]).
 import { hoverGrowForPathSegment, hubScale, ID_SEP, ringOptions } from "./arcs";
 import type { ArcDatum } from "./arcs";
 
-/** Arcs beyond this index are not pushed (rules are emitted per arc, up to this many). */
-export const PUSH_CAP = 128;
-// bklit growControls: duration 0.42, ease [0.22, 1, 0.36, 1]
-const PUSH_MS = 420;
-const PUSH_EASING = "cubic-bezier(.22,1,.36,1)";
 const FIT_STEPS = 6;
 const NORMAL_EQUATIONS = 3;
 const F3 = 1000;
@@ -84,50 +79,53 @@ const solve3 = (a: number[][], b: number[]): number[] => {
   });
 };
 
-const accumulate = (normal: number[][], rhs: number[], basis: readonly (readonly [number, number])[], target: readonly [number, number]): void => {
-  for (let a = 0; a < NORMAL_EQUATIONS; a += 1) {
-    const ba = basis[a] ?? [0, 0];
-    (rhs)[a] = (rhs[a] ?? 0) + ba[0] * target[0] + ba[1] * target[1];
-    for (let b = 0; b < NORMAL_EQUATIONS; b += 1) {
-      const bb = basis[b] ?? [0, 0];
-      (normal[a])[b] = (normal[a]?.[b] ?? 0) + ba[0] * bb[0] + ba[1] * bb[1];
-    }
-  }
-};
-
-const fitField = (extent: SectorExtent, weightAt: (r: number) => number): FieldFit => {
+/** Least-squares fits of bklit's two radial fields over an annular sector: a whole-sector shift (weight 1) and the outer-edge grow
+ * (weight 0 inner, 1 outer). Both share the normal matrix (it depends on the sample grid only), so it is built once. Exact on the bisector; the residual grows with angular width. */
+export const fitSectorPush = (extent: SectorExtent, reference: number, labelAngle: number): SectorPush => {
+  const thickness = extent.maxR - extent.minR;
   const half = (extent.maxD - extent.minD) / 2;
-  const normal = Array.from({ length: NORMAL_EQUATIONS }, () => Array.from({ length: NORMAL_EQUATIONS }, () => 0));
-  const rhs = Array.from({ length: NORMAL_EQUATIONS }, () => 0);
+  // Basis columns (du, dv) are [1, 0], [x, 0], [0, y] for [slide, stretchU, stretchV]: the normal matrix is [[n, sx, 0], [sx, sxx, 0], [0, 0, syy]].
+  let count = 0;
+  let sx = 0;
+  let sxx = 0;
+  let syy = 0;
+  const shiftRhs = [0, 0, 0];
+  const growRhs = [0, 0, 0];
   for (let i = 0; i <= FIT_STEPS; i += 1) {
     for (let j = 0; j <= FIT_STEPS; j += 1) {
       const r = extent.minR + ((extent.maxR - extent.minR) * i) / FIT_STEPS;
       const f = -half + (2 * half * j) / FIT_STEPS;
       const x = r * Math.cos(f);
       const y = r * Math.sin(f);
-      // Basis columns (du, dv) for [slide, stretchU, stretchV]; target is the weighted radial vector in the bisector frame.
-      const basis: readonly (readonly [number, number])[] = [[1, 0], [x, 0], [0, y]];
-      const weight = weightAt(r);
-      accumulate(normal, rhs, basis, [weight * Math.cos(f), weight * Math.sin(f)]);
+      const weight = thickness > 0 ? (r - extent.minR) / thickness : 0;
+      const cos = Math.cos(f);
+      const sin = Math.sin(f);
+      count += 1;
+      sx += x;
+      sxx += x * x;
+      syy += y * y;
+      shiftRhs[0] = (shiftRhs[0] ?? 0) + cos;
+      shiftRhs[1] = (shiftRhs[1] ?? 0) + x * cos;
+      shiftRhs[2] = (shiftRhs[2] ?? 0) + y * sin;
+      growRhs[0] = (growRhs[0] ?? 0) + weight * cos;
+      growRhs[1] = (growRhs[1] ?? 0) + x * (weight * cos);
+      growRhs[2] = (growRhs[2] ?? 0) + y * (weight * sin);
     }
   }
-  const [slide = 0, stretchU = 0, stretchV = 0] = solve3(normal, rhs);
-  return { slide, stretchU, stretchV };
-};
-
-/** Least-squares fits of bklit's two radial fields over an annular sector: a whole-sector shift and the outer-edge grow
- * (weight 0 inner, 1 outer). Exact on the bisector; the residual grows with angular width. */
-export const fitSectorPush = (extent: SectorExtent, reference: number, labelAngle: number): SectorPush => {
-  const thickness = extent.maxR - extent.minR;
+  const normal = (): number[][] => [[count, sx, 0], [sx, sxx, 0], [0, 0, syy]];
+  const fit = (rhs: number[]): FieldFit => {
+    const [slide = 0, stretchU = 0, stretchV = 0] = solve3(normal(), rhs);
+    return { slide, stretchU, stretchV };
+  };
   return {
     bisector: reference + (extent.maxD + extent.minD) / 2,
     labelAngle,
     thickness,
     minR: extent.minR,
     maxR: extent.maxR,
-    halfSweep: (extent.maxD - extent.minD) / 2,
-    shift: fitField(extent, () => 1),
-    grow: fitField(extent, (r) => (thickness > 0 ? (r - extent.minR) / thickness : 0)),
+    halfSweep: half,
+    shift: fit(shiftRhs),
+    grow: fit(growRhs),
   };
 };
 
@@ -195,41 +193,61 @@ const growTargets = ({ arcs, sectors, hovered, focusDepth, maxDepth, popOut }: R
   return targets;
 };
 
-// The vars live on the elements that read them: one written on the host restyles its whole subtree (about 1 ms for 140 nodes), on an element only that element.
-const desiredVars = new WeakMap<HTMLElement, Map<string, string>>();
-const VAR_NAME = /^--sb-(t|m|pt|pm|lt)(\d+)$/;
+// The vars and flags live on the elements that read them: one written on the host restyles its whole subtree (about 1 ms for 140 nodes), on an element only that element.
+// An element is addressed by its arc class (`bk-sb-a<i>` sectors, `bk-sb-p<i>` overlays, `bk-sb-l-<i>` labels); the static rules in sunburst.css read the fixed names.
+export type ArcKind = "a" | "p" | "l";
+const classOf = (kind: ArcKind, index: number): string => (kind === "l" ? `bk-sb-l-${index}` : `bk-sb-${kind}${index}`);
 
-const classOfVar = (name: string): string => {
-  const [, kind = "", index = ""] = VAR_NAME.exec(name) ?? [];
-  if (kind === "lt") { return `bk-sb-l-${index}`; }
-  return kind.startsWith("p") ? `bk-sb-p${index}` : `bk-sb-a${index}`;
-};
+const desired = new WeakMap<HTMLElement, Map<string, string>>();
+const KEY_SEP = " ";
 
-const applyVar = (host: HTMLElement, name: string, value: string | undefined): void => {
-  for (const element of host.querySelectorAll<SVGElement>(`.${classOfVar(name)}`)) {
+const writeOn = (element: SVGElement, name: string, value: string | undefined): void => {
+  if (name.startsWith("--")) {
     if (value === undefined) { element.style.removeProperty(name); } else { element.style.setProperty(name, value); }
+  } else if (value === undefined) {
+    element.removeAttribute(name);
+  } else {
+    element.setAttribute(name, value);
   }
 };
 
-/** Re-applies the wanted vars after the sector layer painted: its elements are created by the scene, not by hover. */
+const applyOn = (host: HTMLElement, cls: string, name: string, value: string | undefined): void => {
+  for (const element of host.querySelectorAll<SVGElement>(`.${cls}`)) { writeOn(element, name, value); }
+};
+
+/** Re-applies the wanted vars and flags after the sector layer painted: its elements are created by the scene, not by hover. */
 export const reapplyPush = (host: HTMLElement | null): void => {
-  const desired = host === null ? undefined : desiredVars.get(host);
-  if (host !== null && desired !== undefined) {
-    for (const [name, value] of desired) { applyVar(host, name, value); }
+  const wanted = host === null ? undefined : desired.get(host);
+  if (host !== null && wanted !== undefined) {
+    for (const [key, value] of wanted) {
+      const [kind = "a", index = "0", name = ""] = key.split(KEY_SEP);
+      applyOn(host, classOf(kind as ArcKind, Number(index)), name, value);
+    }
   }
 };
 
-const setVar = (host: HTMLElement, name: string, value: string | null): void => {
-  const desired = desiredVars.get(host) ?? new Map<string, string>();
-  desiredVars.set(host, desired);
-  if (desired.get(name) === (value ?? undefined)) { return; }
-  if (value === null) { desired.delete(name); } else { desired.set(name, value); }
-  applyVar(host, name, value ?? undefined);
+const setOn = (host: HTMLElement, kind: ArcKind, index: number, name: string, value: string | null): void => {
+  const wanted = desired.get(host) ?? new Map<string, string>();
+  desired.set(host, wanted);
+  const key = [kind, index, name].join(KEY_SEP);
+  if (wanted.get(key) === (value ?? undefined)) { return; }
+  if (value === null) { wanted.delete(key); } else { wanted.set(key, value); }
+  applyOn(host, classOf(kind, index), name, value ?? undefined);
 };
 
-const setPair = (host: HTMLElement, translateVar: string, transformVar: string, values: PushValues | null): void => {
-  setVar(host, translateVar, values === null ? null : values.translate);
-  setVar(host, transformVar, values === null ? null : values.transform);
+/** Makes the elements of `indexes` (arc indexes of one kind) the only ones carrying the attribute `name`. */
+export const setFlag = (host: HTMLElement, kind: ArcKind, name: string, indexes: Iterable<number>): void => {
+  const wanted = new Set(indexes);
+  for (const key of [...(desired.get(host)?.keys() ?? [])]) {
+    const [keyKind, index = "0", keyName] = key.split(KEY_SEP);
+    if (keyKind === kind && keyName === name && !wanted.has(Number(index))) { setOn(host, kind, Number(index), name, null); }
+  }
+  for (const index of wanted) { setOn(host, kind, index, name, ""); }
+};
+
+const setPair = (host: HTMLElement, kind: ArcKind, values: PushValues | null, index: number): void => {
+  setOn(host, kind, index, "--sb-t", values === null ? null : values.translate);
+  setOn(host, kind, index, "--sb-m", values === null ? null : values.transform);
 };
 
 /** Sum of the grow targets of an arc's ancestors. */
@@ -245,11 +263,11 @@ const ancestorPush = (arc: ArcDatum, byId: ReadonlyMap<string, ArcDatum>, target
 
 const writeArcPush = (host: HTMLElement, index: number, sector: SectorPush | undefined, push: number, own: number | undefined): void => {
   // Sector: moves with its grown ancestors. Overlay (the on-path copy at full opacity): also grows its own outer edge.
-  setPair(host, `--sb-t${index}`, `--sb-m${index}`, sector === undefined || push === 0 ? null : sectorPushValues(sector, push, 0));
-  setPair(host, `--sb-pt${index}`, `--sb-pm${index}`, sector === undefined || own === undefined ? null : sectorPushValues(sector, push, own));
+  setPair(host, "a", sector === undefined || push === 0 ? null : sectorPushValues(sector, push, 0), index);
+  setPair(host, "p", sector === undefined || own === undefined ? null : sectorPushValues(sector, push, own), index);
   // bklit centres the label on the pushed (and, on the hovered path, grown) sector.
   const shift = push + (own ?? 0) / 2;
-  setVar(host, `--sb-lt${index}`, sector === undefined || shift === 0 ? null : `${round3(Math.sin(sector.labelAngle) * shift)}px ${round3(-Math.cos(sector.labelAngle) * shift)}px`);
+  setOn(host, "l", index, "--sb-t", sector === undefined || shift === 0 ? null : `${round3(Math.sin(sector.labelAngle) * shift)}px ${round3(-Math.cos(sector.labelAngle) * shift)}px`);
 };
 
 /** Writes (or clears) the push vars for the hovered arc on `host`. Reads only the published sector table; never touches the chart definition. */
@@ -258,26 +276,6 @@ export const writePush = (host: HTMLElement, input: Readonly<PushInput>): void =
   const targets = hovered === null ? new Map<string, number>() : growTargets({ ...input, hovered });
   const byId = new Map(arcs.map((arc) => [arc.id, arc]));
   for (const arc of arcs) {
-    if (arc.arcIndex < PUSH_CAP) {
-      writeArcPush(host, arc.arcIndex, sectors.get(arc.id), ancestorPush(arc, byId, targets), targets.get(arc.id));
-    }
+    writeArcPush(host, arc.arcIndex, sectors.get(arc.id), ancestorPush(arc, byId, targets), targets.get(arc.id));
   }
 };
-
-const ease = `${PUSH_MS}ms ${PUSH_EASING}`;
-/** Transition for the pushed properties (not natively tweened, so no motion-role guard). */
-export const PUSH_TRANSITION = `translate ${ease},transform ${ease}`;
-/** Labels are pushed by `translate` only: their `transform` is the rotation the zoom tween writes every frame, which a transition would drag behind the text. */
-export const LABEL_PUSH_TRANSITION = `translate ${ease}`;
-
-/** One rule per arc index below `count`: sectors read `--sb-t/--sb-m`, path overlays `--sb-pt/--sb-pm`, labels `--sb-lt`; `data-bk-path` shows the
- * hovered arc's ancestors' overlays at once (bklit's path arcs are already opaque), even mid-zoom. */
-export const pushCss = (count: number): string => Array.from(
-  { length: Math.min(count, PUSH_CAP) },
-  (_, i) => `.bk-sb-a${i}{translate:var(--sb-t${i},0 0);transform:var(--sb-m${i},none)}.bk-sb-p${i}{translate:var(--sb-pt${i},0 0);transform:var(--sb-pm${i},none)}.bk-sb-l-${i}{translate:var(--sb-lt${i},0 0)}[data-bk-path~="${i}"] g.bk-sb-pops .bk-sb-p${i}{opacity:1;transition:${PUSH_TRANSITION}}`,
-).join("");
-
-/** Rules per arc index below `count`: the hovered arc's descendants stay opaque, the arcs on its path step aside (instantly) for the overlay. */
-export const sectorEmphasisCss = (sector: string, count: number): string =>
-  Array.from({ length: Math.min(count, PUSH_CAP) }, (_, i) => `[data-bk-pop="${i}"] ${sector}.bk-sb-u${i}{opacity:1}`).join("") +
-  Array.from({ length: Math.min(count, PUSH_CAP) }, (_, i) => `[data-bk-path~="${i}"] ${sector}.bk-sb-a${i}{opacity:0;transition:none}`).join("");
