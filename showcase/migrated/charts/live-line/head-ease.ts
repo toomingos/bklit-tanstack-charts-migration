@@ -65,7 +65,10 @@ export const introEasing = (lerp: number, durationMs: number) => {
   return (p: number): number => INTRO_Y_WEIGHT * ((1 - (1 - lerp) ** (p * k)) / end) + (1 - INTRO_Y_WEIGHT) * p;
 };
 
-/** Classes of a pooled label shown from `step` until `next` (live-css.ts): a window starting at step 0 or never ending carries no animation for that side, so a resting label runs none. */
+/** Classes of a pooled label shown from `step` until `next` (live-css.ts): one animation per node covers its whole window, so the visible set has no cross-node tie; a resting label runs none. */
 export function labelWindow(parity: number, step: number, next: number | undefined): string {
-  return `${step === 0 ? "bkm-v" : `bkm-on${parity} bkm-s${step}`}${next === undefined ? "" : ` bkm-off${parity} bkm-e${next}`}`;
+  if (next === undefined) {
+    return step === 0 ? "bkm-v" : `bkm-on${parity} bkm-s${step}`;
+  }
+  return `${step === 0 ? "bkm-v " : ""}bkm-w${parity} bkm-s${step} bkm-e${next}`;
 }

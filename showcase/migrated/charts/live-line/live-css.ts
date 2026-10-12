@@ -7,7 +7,7 @@ const SCOPE = '[data-bkm-chart="liveline"]';
 export const settleMs = (lerp: number): number => Math.round(settleFrames(lerp) * FRAME_MS);
 
 /** Clip widened by `--bkm-live-ext` (tail + tip clearance); head slides from `--bkm-live-dy` along the sampled curve; tail A slides in, B and the block under it grow from the dot on bklit's head easing
- * as a `linear()`. Parity classes restart each tick (nodes persist); rolls start from the path's start transform (Frame.roll); badge label i shows from step `--ds` to `--de`. */
+ * as a `linear()`. Parity classes restart each tick (nodes persist); rolls start from the path's start transform (Frame.roll); badge label i shows from step `--ds` to `--de` (head-ease labelWindow). */
 export function liveCss(lerp: number): string {
   const headEase = sampledEasing(headEasing(lerp));
   const rules: string[] = [
@@ -39,11 +39,11 @@ export function liveCss(lerp: number): string {
       `@keyframes bkm-rd${parity}{from{transform:translate(0,var(--bkm-live-ry-d,0px))}to{transform:translate(0,0)}}`,
       `@keyframes bkm-dy${parity}{from{translate:0 var(--bkm-live-dy,0px)}to{translate:0 0}}`,
       `${SCOPE} .bkm-live-tip.bkm-dp${parity}{animation:bkm-dy${parity} var(--bkm-live-settle,1380ms) ${headEase} both,bkm-rd${parity} ${roll} both}`,
-      `@keyframes bkm-on${parity}{to{visibility:visible}}`,
-      `@keyframes bkm-off${parity}{to{visibility:hidden}}`,
-      `${SCOPE} .bkm-lbl.bkm-on${parity}{animation:bkm-on${parity} 0s var(--ds,0ms) forwards}`,
-      `${SCOPE} .bkm-lbl.bkm-off${parity}{animation:bkm-off${parity} 0s var(--de,0ms) forwards}`,
-      `${SCOPE} .bkm-lbl.bkm-on${parity}.bkm-off${parity}{animation:bkm-on${parity} 0s var(--ds,0ms) forwards,bkm-off${parity} 0s var(--de,0ms) forwards}`,
+      // Window [--ds,--de): visible from its first instant to its last, hidden after (forwards); the last node holds visible from --ds (1ms, never a zero-length animation).
+      `@keyframes bkm-w${parity}{from{visibility:visible}to{visibility:hidden}}`,
+      `@keyframes bkm-on${parity}{from{visibility:visible}to{visibility:visible}}`,
+      `${SCOPE} .bkm-lbl.bkm-w${parity}{animation:bkm-w${parity} calc(var(--de,0ms) - var(--ds,0ms)) var(--ds,0ms) forwards}`,
+      `${SCOPE} .bkm-lbl.bkm-on${parity}{animation:bkm-on${parity} 1ms var(--ds,0ms) forwards}`,
     );
   }
   for (let i = 0; i <= LABEL_POOL; i += 1) {
