@@ -393,6 +393,22 @@ Drafts live in `docs/upstream-issues/` (local only).
 
 ---
 
+## 60. `motion({ initial })` animates no cartesian dots: a per-datum entrance needs a second render
+
+- **Needed:** bklit's scatter dots fade and unblur in from the very first frame, each delayed by its x (`series-markers.tsx`); the first draw must already show the entrance, with the final design in one TanStack render.
+- **1.1.0 behaviour:** on the initial render `animateSvg` builds tracks only for bars, cartesian path groups, radial groups and arcs; `createPresentationTracks` sets a point with no previous presentation straight to its target and pushes no track (`motion.ts:3273-3335`, `:288-300`). A keyed dot enters (opacity, per-datum `motion` timing) only as a new element of a later `update` reconcile (`reconcileMotionSvg`, `motion.ts:1855`).
+- **Workaround:** the first draw renders grid and axes, the layout-effect commit before paint adds the dots as new data (`scatter/definition.ts`, `revealed`); two renders, no frame wait. Rendering the dots in the first draw would paint the final state with no entrance.
+- **Proposal:** make `initial` enter dot (and keyed mark) elements through the same `timingFor({ phase: 'enter' })` path bars use (draft `docs/upstream-issues/scatter-initial-dot-enter.md`).
+
+## 61. No native left-to-right clip reveal on first paint for line and area
+
+- **Needed:** bklit reveals line and area from the first frame with a left-to-right clip wipe (`chart-reveal-clip.tsx`, `cubic-bezier(0.85, 0, 0.15, 1)`), in the first and only scene draw.
+- **1.1.0 behaviour:** the initial `animateSvg` path track for cartesian paths is a scaleY grow from the baseline (`motion.ts:1505-1562`, built at `:282-287`); there is no initial transform or clip option for keyed groups, and a group animates only when it joins a painted scene (#12), which costs a second draw.
+- **Workaround:** each mark sits in `wipe-o > wipe-i` groups; CSS keyframes slide them oppositely from the first draw (`styles.css` `bkm-wipe-*`, `cartesian-chart.tsx` `data-bkm-wipe-in`), re-stamped onto motion's clock by `reveal-arm.tsx`.
+- **Proposal:** let `motion({ initial })` accept a per-mark clip/transform enter (or a left-to-right path reveal) for cartesian path groups.
+
+---
+
 ## Retired numbers
 
 Not reused, so code and issue drafts keep their meaning.
