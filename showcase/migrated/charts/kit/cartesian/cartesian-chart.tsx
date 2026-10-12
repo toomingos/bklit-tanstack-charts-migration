@@ -187,22 +187,26 @@ export function CartesianChart(props: Readonly<CartesianChartProps>): ReactEleme
     const xStart = built.domains.x[0].getTime();
     hostGeom.current = { times: built.hover.times, left: resolvedMargin.left, xStart, xSpan: built.domains.x[1].getTime() - xStart, innerWidth: size.innerWidth, signs: built.hover.plSigns, hasBand: built.hover.highlights.length > 0 || built.hover.segmentLeft !== null, pillTicks: built.pillTicks.active ? built.pillTicks.times : undefined, pillLayout: built.pillTicks.active ? pillLayoutOf(built.pillTicks.times) : null };
     dragGeom.current = { left: resolvedMargin.left, top: resolvedMargin.top, innerWidth: size.innerWidth, innerHeight: Math.max(0, size.innerHeight) };
+    writeHostRef.current(snapshot);
+  };
+  // The first draw can run before the host refs attach; the layout effect below re-writes once they exist.
+  const writeHostRef = useRef<(snapshot: PlotSnapshot) => void>(() => undefined);
+  writeHostRef.current = (snapshot) => {
     const host = containerRef.current;
     const sheet = styleRef.current;
-    if (host && sheet) {
-      const css = cartesianStaticCss(uid, built, hasBrush, series);
-      if (sheet.textContent !== css) { sheet.textContent = css; }
-      writeSizeVars(host, snapshot, resolvedMargin, brushVars);
-    }
+    if (!host || !sheet) { return; }
+    const css = cartesianStaticCss(uid, snapshot.built, hasBrush, series);
+    if (sheet.textContent !== css) { sheet.textContent = css; }
+    writeSizeVars(host, snapshot, resolvedMargin, brushVars);
   };
   const onBuilt = useCallback((snapshot: PlotSnapshot): void => { publishRef.current(snapshot); }, []);
-  // A brush gesture moves the shown range without a draw: re-write the brush vars from the last published plot.
+  // On mount (refs now attached) and on a brush gesture, which moves the shown range without a draw.
   const brushStart = brushVars?.shownStart;
   const brushEnd = brushVars?.shownEnd;
   const brushBlur = brushVars?.blurPx;
   useLayoutEffect(() => {
     const snapshot = plot.get();
-    if (snapshot && containerRef.current) { writeSizeVars(containerRef.current, snapshot, resolvedMargin, brushVars); }
+    if (snapshot) { writeHostRef.current(snapshot); }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- brushVars is rebuilt from these three every render.
   }, [plot, resolvedMargin, brushStart, brushEnd, brushBlur, hasBrush]);
   const spec = useMemo<CartesianSpec>(
