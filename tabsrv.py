@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """tabsrv.py - booking server for the visible QA browser tabs (stdlib only, port 5297).
 
-N tabs (QA_TABS="tab:win[@x,y,w,h];..."), one FIFO wait queue. A waiter at the head gets the first free tab; each holder owns exactly one tab.
+N tabs (QA_TABS="tab:win^top;..." with one Chrome window per tab, so a 390 px resize touches only that tab; win@x,y,w,h is the split-view form), one FIFO wait queue. A waiter at the head gets the first free tab; each holder owns exactly one tab.
   holder lease: dropped if not renewed for HOLD_TTL s (a crashed agent frees its tab)
   waiter entry: dropped if not seen for WAIT_TTL s (a dead agent leaves the queue)
 Endpoints (GET): /book?who=&note=  /wait?who=&timeout=  /renew?who=  /release?who=  /status
