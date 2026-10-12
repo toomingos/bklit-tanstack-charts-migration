@@ -12,7 +12,7 @@ export const observeResize = (el: Element, onEntry: (entry: ResizeObserverEntry 
 interface ResizeBox {
   readonly width: number;
   readonly height: number;
-  /** False until the first observer delivery. */
+  /** False until a delivery changes the box: a first delivery of the size already rendered commits nothing. */
   readonly observed: boolean;
 }
 
@@ -29,7 +29,7 @@ export const useResizeBox = (ref: RefObject<HTMLElement | null>, initial?: { rea
     const rect = el.getBoundingClientRect();
     const width = Math.round(rect.width);
     const height = Math.round(rect.height);
-    setBox((prev) => (prev.observed && prev.width === width && prev.height === height ? prev : { width, height, observed: true }));
+    setBox((prev) => (prev.width === width && prev.height === height ? prev : { width, height, observed: true }));
   }, [ref, measureBeforePaint]);
   useEffect(() => {
     const el = ref.current;
@@ -39,7 +39,7 @@ export const useResizeBox = (ref: RefObject<HTMLElement | null>, initial?: { rea
     return observeResize(el, (entry) => {
       const width = Math.round(entry?.contentRect.width ?? 0);
       const height = Math.round(entry?.contentRect.height ?? 0);
-      setBox((prev) => (prev.observed && prev.width === width && prev.height === height ? prev : { width, height, observed: true }));
+      setBox((prev) => (prev.width === width && prev.height === height ? prev : { width, height, observed: true }));
     });
   }, [ref]);
   return box;
