@@ -239,7 +239,7 @@ const PieChart = ({
     outerRadius: size / 2 - hoverOffset,
     pathAt: (row: Readonly<PieArcRow>, radius: number): string => pieArcPath({ cornerRadius, innerRadius }, radius, row),
   }), [cornerRadius, hoverOffset, innerRadius, size]);
-  // bklit's `showGlow` (pie-slice.tsx:183) is a drop-shadow in a motion.path style framer-motion never writes to the DOM, so no glow shows; the prop is accepted and ignored.
+  // bklit's `showGlow` (pie-slice.tsx:183) is a drop-shadow in a motion.path style framer-motion never writes to the DOM, so no glow shows. Measured in Chrome: a slice hovered after the entrance has style.filter none in bklit (light and dark); the filter is read once when the element mounts, so only a slice hovered exactly at the entrance's end keeps a stuck glow. The prop is accepted and ignored, which matches bklit's look.
   const dimCss = useMemo(() => buildPieCss(FADE_OPACITY, arcs.length), [arcs.length]);
   const hoverGeometry = useMemo(() => pieHoverVars(rows, growGeometry), [rows, growGeometry]);
   const hoverSprings = useMemo(() => createPieHoverSprings(rows, growGeometry), [rows, growGeometry]);

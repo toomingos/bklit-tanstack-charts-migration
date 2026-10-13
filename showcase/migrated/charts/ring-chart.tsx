@@ -213,7 +213,7 @@ const RingChart = ({
     () => ringEntranceVars({ animate: Array.from({ length: data.length }, (_unused, index) => configByIndex.get(index)?.animate ?? true), enterStaggerScale, enterTransition }),
     [data.length, configByIndex, enterStaggerScale, enterTransition],
   );
-  // bklit's `showGlow` (ring.tsx:174) is a drop-shadow in a motion.g style framer-motion never writes to the DOM, so no glow shows; the prop is accepted and ignored.
+  // bklit's `showGlow` (ring.tsx:174) is a drop-shadow in a motion.g style framer-motion never writes to the DOM, so no glow shows (the hovered ring's `g` has computed filter none in bklit's DOM); the prop is accepted and ignored, which matches bklit's look.
   const boxStyle = useMemo((): CSSProperties => ({
     ...entranceVars,
     ...(fixed ? { height: fixedSize, width: fixedSize } : { aspectRatio: "1 / 1", width: "100%" }),
