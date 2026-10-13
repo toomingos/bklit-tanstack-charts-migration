@@ -182,6 +182,11 @@ class Glide {
 
 const translate = (v: readonly number[]): string => `translate(${v[0] ?? 0}px,${v[1] ?? 0}px)`;
 const translateX = (v: readonly number[]): string => `translateX(${v[0] ?? 0}px)`;
+/** The pill's own layer sits on whole device pixels, where `left` used to snap it (bklit places its pill by `left`, chart-tooltip.tsx:422-423); a fractional layer offset would resample the text. */
+const translateXDevicePx = (v: readonly number[]): string => {
+  const dpr = window.devicePixelRatio || 1;
+  return `translateX(${Math.round((v[0] ?? 0) * dpr) / dpr}px)`;
+};
 const translateY = (v: readonly number[]): string => `translateY(${v[0] ?? 0}px)`;
 
 const div = (cls: string, parent?: HTMLElement): HTMLDivElement => {
@@ -440,9 +445,9 @@ export class HoverOverlay {
   /** The pill rides the crosshair's spring and target (both CROSSHAIR_SPRING on x), so it follows that glide; alone it springs by itself. */
   private pillGlide(wrap: HTMLElement): Glide | null {
     if (this.ruleGlide) {
-      this.ruleGlide.follow(wrap, translateX);
+      this.ruleGlide.follow(wrap, translateXDevicePx);
       return null;
     }
-    return new Glide(wrap, CROSSHAIR_SPRING, 1, translateX, this.ticker);
+    return new Glide(wrap, CROSSHAIR_SPRING, 1, translateXDevicePx, this.ticker);
   }
 }

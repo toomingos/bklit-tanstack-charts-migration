@@ -78,7 +78,7 @@
 [data-bkm-kit]:not([data-bkm-ready]) .bkm-hov, [data-bkm-press] .bkm-hov, [data-bkm-evt]:has(.bkm-evt:hover) .bkm-hov { visibility: hidden !important; }
 .bkm-hov-x { position: absolute; left: 0; }
 .bkm-hov-dot { position: absolute; left: 0; will-change: transform; }
-/* The pill places by `left` plus the box's translateX(-50%), as bklit's tooltip does (chart-tooltip.tsx:422-423), so its edges snap to device pixels the same way. */
+/* The pill moves by a transform on its own layer (hover-overlay.ts rounds it to device pixels, where bklit's `left` snaps), so a move repaints nothing; the box inside centres itself with translateX(-50%) as bklit's tooltip does (chart-tooltip.tsx:422-423). */
 .bkm-hov-pill { position: absolute; left: 0; will-change: transform; }
 .bkm-hov-dot { top: 0; }
 .bkm-hov svg { display: block; }
