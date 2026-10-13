@@ -1,13 +1,13 @@
-// Remaining models of bklit's ParentSize chain (@visx/responsive 4.0.1-alpha.0 useParentSize.js:37-63: observer -> rAF -> debounce, `leading: true`) for heatmap and the sankey hold.
+// bklit's ParentSize chain (@visx/responsive 4.0.1-alpha.0 useParentSize.js:37-63: observer -> rAF -> debounce, `leading: true`) for pie, ring, heatmap and live-line; the sankey entrance hold; the reveal clock.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { clearAttribute, raiseAttribute } from "../host-write";
 
 const FALLBACK_WIDTH_PX = 640;
 
-// bklit heatmap mounts under `<ParentSize>` (default 300ms, same leading first call): heatmap/heatmap-chart.tsx:685.
+// bklit mounts pie, ring, heatmap and live-line under `<ParentSize>` (leading first call, no debounce on it): e.g. heatmap/heatmap-chart.tsx:685.
 /** First ResizeObserver delivery for `host`, then one frame, then `onSize(width)`. Returns the cleanup. */
-const observeParentSize = (host: HTMLElement, onSize: (width: number) => void): (() => void) => {
+export const observeParentSize = (host: HTMLElement, onSize: (width: number) => void): (() => void) => {
   let frame = 0;
   const observer = new ResizeObserver((entries) => {
     const width = entries.at(-1)?.contentRect.width ?? 0;
@@ -19,27 +19,16 @@ const observeParentSize = (host: HTMLElement, onSize: (width: number) => void): 
   return () => { cancelAnimationFrame(frame); observer.disconnect(); };
 };
 
-/** Host ref + its width, measured in a layout effect so the chart mounts at the real width before first paint (bklit waits on ParentSize's frames first). */
+/** Host ref + its width on bklit's ParentSize chain (live-line: first ResizeObserver delivery, then one frame; null until then). Later widths come from the renderer's scene. */
 export const useParentSizeWidth = <TElement extends HTMLElement>(): readonly [RefObject<TElement | null>, number | null] => {
   const ref = useRef<TElement | null>(null);
   const [width, setWidth] = useState<number | null>(null);
-  useLayoutEffect(() => {
-    const measured = ref.current?.clientWidth ?? 0;
-    setWidth(measured > 0 ? measured : FALLBACK_WIDTH_PX);
+  useEffect(() => {
+    const host = ref.current;
+    if (host === null) { return undefined; }
+    return observeParentSize(host, (measured) => { setWidth(measured > 0 ? measured : FALLBACK_WIDTH_PX); });
   }, []);
   return [ref, width];
-};
-
-// Scatter is the exception: react-use-measure (scatter-chart.tsx:154, observer -> trailing 10ms setTimeout), approximated with the same observer and one frame.
-/** True from the commit where bklit's svg first mounts (first ResizeObserver delivery plus one frame). */
-export const useParentSizeMounted = (hostRef: RefObject<HTMLElement | null>, active: boolean): boolean => {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!active || !host) { return undefined; }
-    return observeParentSize(host, () => { setMounted(true); });
-  }, [hostRef, active]);
-  return mounted;
 };
 
 const afterFrames = (frames: number, run: () => void): (() => void) => {
@@ -59,7 +48,7 @@ export const HoldArm = ({ hostRef, attribute, frames = 2 }: { readonly hostRef: 
 };
 
 /** Clock of bklit's reveal timer: its `setTimeout(animationDuration)` starts in the mount effect, before the svg mounts, so the swap lands at `mountedAt + duration` on the page clock.
- * `mountedAt` is stamped in the render that mounts the svg (`useParentSizeMounted`), where bklit's mount effect runs. */
+ * `mountedAt` is stamped in the render that mounts the svg (heatmap: the ready render of `useFluidWidth`), where bklit's mount effect runs. */
 export interface RevealClock { mountedAt: number | null }
 
 export const useRevealClock = (active: boolean): RevealClock => {

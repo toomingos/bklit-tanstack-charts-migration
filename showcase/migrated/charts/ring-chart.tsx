@@ -140,7 +140,8 @@ const RingChart = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const idPrefix = useSanitizedId();
   const fixed = fixedSize !== undefined && fixedSize !== 0;
-  // Fluid mode: measured before <Chart> mounts (it starts at its real width) and followed by the host's own observer (kit/size/use-fluid-width.ts).
+  // Fluid mode: <Chart> mounts at the width ParentSize's chain delivers (observer, then one frame; bklit ring-chart.tsx:465), then the host's own observer follows (kit/size/use-fluid-width.ts).
+  // The definition's annular hit targets, centre and radii are pixel geometry, so TanStack's host cannot size this chart (TanStack-native host sizing only brings a first-layout paint).
   const { ready: hostReady, width: measuredWidth } = useFluidWidth(containerRef, { enabled: !fixed, epsilon: 0.5, initialWidth: INITIAL_WIDTH_PX, collapseBelow: MIN_RING_SIZE_PX });
   const size = fixed ? fixedSize : measuredWidth;
   const interactionRef = useRef<ChartRendererRenderContext<RingArcRow, number, number>["interaction"] | null>(null);
