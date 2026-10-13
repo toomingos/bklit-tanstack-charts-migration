@@ -29,7 +29,7 @@ Posted upstream (TanStack/charts):
 #195 rolling windows (27) · #196 renderer DOM (20, 36; 50 as a comment) · #197 bar rect geometry (24, 25) · #198 brush (40) ·
 #199 shape-rendering (54) · #200 HTML scene node (52).
 Not posted: 15 and 55 (no draft yet), 17 (draft pending), 34 (open upstream PR #164), 39 (a documented route exists, see its caveat).
-Drafts live in `docs/upstream-issues/` (local only).
+Drafts live in `docs/upstream-issues/` (local only; its README lists what is posted, to post, held and dropped).
 
 ---
 
@@ -335,7 +335,7 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Needed:** bklit sweeps each ring progress arc by drawing a fresh d3 arc per frame (`cornerRadius = thickness / 2`) from the start angle to `start + range * progress`, so the leading cap stays round (bklit `ring.tsx:104`; nothing is drawn until the sweep passes 0.01 rad). Pie wedges tween the same way.
 - **1.1.0 behaviour:** the same mechanism as #35. The arc tween runs only for nodes carrying the private `sceneMotionNode` geometry (`motion.ts:2386-2400`; `path` geometry is set only by `hierarchy-sunburst.ts:301-306`, bar sets only `baseline`), and `radialArc` sets none. `path: 'morph'` moves vertices along chords, and the radialArc enter is a group wedge clip (`motion.ts:1618-1700`) that cuts the round cap flat.
 - **Workaround:** `ring/progress-layer.ts` renders the progress marks through a documented custom layer renderer (`renderer` on a radial mark, `reference/marks/polar.md:139`; `ChartLayerRenderer`, `reference/rendering-and-export.md:546-577`). The layer paints its own SVG and animates `d` on nodes it owns. Composition is our own compositor (`kit/layer/compose-layers.ts`, about 1.3 KB gz) because the only exported one is the Canvas module's (`canvasChartRenderer.compose`, 5.4 KB gz more). Cost: all tracks paint under all progress arcs (layers split by mark order).
-- **Proposal:** the same as #35, plus an exported layer compositor (drafts: `docs/upstream-issues/layer-compositor.md`, `radial-arc-motion-geometry.md`) so a custom layer need not copy one.
+- **Proposal:** the same as #35, plus an exported layer compositor (upstream: [#204](https://github.com/TanStack/charts/issues/204), [#193](https://github.com/TanStack/charts/issues/193) C, [#194](https://github.com/TanStack/charts/issues/194)) so a custom layer need not copy one.
 
 ## 52. No HTML or foreignObject scene node (marker `icon` ReactNodes, `iconFill`)
 
@@ -363,7 +363,7 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Needed:** bklit's entrances start on the effect that arms them (`chart-reveal-clip.tsx:81-85`, `heatmap-chart.tsx:566-585`); ours join a React commit later, which would shift the tween by 10-37 ms.
 - **1.1.0 behaviour:** a timing is `{ delay, transition }` run from the moment it is scheduled, and a negative `delay` is clamped to 0 (`motion.ts:3792-3793`).
 - **Workaround:** `kit/motion/resume-enter.ts` resumes the schedule from the arm time (shorter tween, renormalised easing); used by `kit/cartesian/wipe.ts`, `composed/bars.ts` and `heatmap/motion.ts`.
-- **Proposal:** a `startTime` on the timing object, or a negative `delay` that starts the tween already advanced (draft: `docs/upstream-issues/25-motion-start-time.md`).
+- **Proposal:** a `startTime` on the timing object, or a negative `delay` that starts the tween already advanced (upstream: [#192](https://github.com/TanStack/charts/issues/192) A).
 
 ---
 
@@ -371,7 +371,7 @@ Drafts live in `docs/upstream-issues/` (local only).
 
 - **Needed:** the lowest move-to-paint latency needs `pointerrawupdate` (0.5-2 ms after input) instead of the frame-aligned `pointermove`, which costs about 8 ms of every sample.
 - **1.1.0 behaviour:** the renderer listens to `pointermove` only (`handlePointerMove` -> `updateFocus`); no option picks the event, and `setControlledFocus` with `focusOwner="controlled"` stops pointer leave from clearing focus.
-- **Workaround:** none; the charts keep `pointermove`, so the wait is shared with bklit (draft `docs/upstream-issues/raw-pointer-input.md`).
+- **Workaround:** none; the charts keep `pointermove`, so the wait is shared with bklit (upstream: [#203](https://github.com/TanStack/charts/issues/203)).
 - **Proposal:** a `pointerEvent` interaction option, or a controller method applying a pointer sample with the renderer's own move semantics.
 
 ---
@@ -381,7 +381,7 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Needed:** an entrance-only chart (pie, ring) should not carry path morph, rect-corner morph, the focus-guide layer or the spring tooltip controller.
 - **1.1.0 behaviour:** `motion` is a single function (`charts-core/src/motion.ts:757-4177`) closing over `resolveRollingPathPlan` (`:1911`), `rectCornerRadiiPath` (`:1404`), `renderFocusGuideLayer` (`:1209`) and `createChartSpring` (`:4102`); `ChartMotionOptions` (`:84-93`) selects no features. `dist/motion.js` is 45.5 KB min; stubbing it and its exclusive imports saves 22.2 KB gzip of a 57.0 KB pie (22.7 KB line, 22.8 KB sunburst).
 - **Workaround:** none; native `motion()` is the project rule, so this is part of the floor. `renderer.js` (9.6 KB gzip leave-one-out on a pie) is the interaction host, not waste.
-- **Proposal:** feature engines as separate modules chosen from `motion()` options (draft `docs/upstream-issues/26-motion-module-split.md`; the renderer.js question is closed in `27-renderer-js-is-the-interaction-host-note.md`).
+- **Proposal:** feature engines as separate modules chosen from `motion()` options (upstream: [#205](https://github.com/TanStack/charts/issues/205)).
 
 ---
 
@@ -400,7 +400,7 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Needed:** bklit's scatter dots fade and unblur in from the very first frame, each delayed by its x (`series-markers.tsx`); the first draw must already show the entrance, with the final design in one TanStack render.
 - **1.1.0 behaviour:** on the initial render `animateSvg` builds tracks only for bars, cartesian path groups, radial groups and arcs; `createPresentationTracks` sets a point with no previous presentation straight to its target and pushes no track (`motion.ts:3273-3335`, `:288-300`). A keyed dot enters (opacity, per-datum `motion` timing) only as a new element of a later `update` reconcile (`reconcileMotionSvg`, `motion.ts:1855`).
 - **Workaround:** the first draw renders grid and axes, the layout-effect commit before paint adds the dots as new data (`scatter/definition.ts`, `revealed`); two renders, no frame wait. Rendering the dots in the first draw would paint the final state with no entrance.
-- **Proposal:** make `initial` enter dot (and keyed mark) elements through the same `timingFor({ phase: 'enter' })` path bars use (draft `docs/upstream-issues/scatter-initial-dot-enter.md`).
+- **Proposal:** make `initial` enter dot (and keyed mark) elements through the same `timingFor({ phase: 'enter' })` path bars use (upstream: [#193](https://github.com/TanStack/charts/issues/193) A).
 
 ## 61. No native left-to-right clip reveal on first paint for line and area
 
@@ -414,14 +414,14 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **Needed:** bklit's funnel stages grow from the first frame as one uniform 2-D scale about the stage's left (top) centre, staggered per stage (`funnel-chart.tsx:319-327`), in the first and only scene draw.
 - **1.1.0 behaviour:** the initial `animateSvg` area track is a one-axis grow from the baseline (`motion.ts:1505-1562`, built at `:282-287`); there is no initial transform for keyed groups, and a group animates only when it joins a painted scene (#12), which costs a second draw.
 - **Workaround:** the stage rings carry a static CSS `scale` keyframe from the first draw (`funnel/funnel.css`, `bkm-funnel-grow`), re-stamped onto motion's clock by `EntranceAlign`; marks are `motion: false`.
-- **Proposal:** let `motion({ initial })` accept a per-group transform enter with an origin (draft `docs/upstream-issues/initial-group-transform-enter.md`).
+- **Proposal:** let `motion({ initial })` accept a per-group transform enter with an origin (upstream: [#193](https://github.com/TanStack/charts/issues/193)).
 
 ## 63. The native tooltip rewrites unchanged attributes and glides on the main thread on every paint
 
 - **Needed:** a pointer move over a tooltip with unchanged content and presence should write only its position (bklit's visx tooltip writes one transform per move).
 - **1.1.0 behaviour:** every `paint` re-sets `visibility`, `className`, `role`, `aria-live`, `data-sticky` and `aria-label` even when equal (`tooltip.ts:104-152`, `:162`), and the spring glide writes `style.translate` from a rAF loop (`motion.ts:420-428`, `:484-497`) from the delta of `style.left/top` (`:523-577`), so position has to stay in `left/top`. Production sankey: about 12 mutation records per move, about 1 of them ours.
 - **Workaround:** none without writing renderer-owned DOM; our portals skip unchanged `left/top/data-placement` writes (`kit/tooltip/write-placement.ts`).
-- **Proposal:** compare before writing in `paint`; run the spring glide as a sampled WAAPI `translate` like the tween path (`motion.ts:460-483`) (draft `docs/upstream-issues/tooltip-paint-redundant-writes.md`).
+- **Proposal:** compare before writing in `paint`; run the spring glide as a sampled WAAPI `translate` like the tween path (`motion.ts:460-483`) (upstream: comment on [#187](https://github.com/TanStack/charts/issues/187)).
 
 ## 64. No public SVG layer compositor: animated groups repaint the one shared SVG
 
@@ -429,7 +429,7 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **1.1.0 behaviour:** layering by per-mark `renderer` is documented (`docs/concepts/marks-and-layering.md:60-93`) and distinct `createSvgChartRenderer()` instances split layers (`canvas.ts:620-628`), but `resolveChartRenderer` needs a `ChartLayerRenderer.compose` (`renderer.ts:54-62`, `:98-108`); the only public one is `canvasChartRenderer.compose` (`canvas.ts:187`, documented for canvas only) and `createLayeredChartRenderer` is unexported.
 - **Measured:** funnel production, 12 interleaved rounds, main-thread busy per hover move: one shared svg 1.79 ms median (bklit 0.43); one svg per stage via the canvas compositor 0.96 ms (bklit 0.25).
 - **Workaround:** none; reusing the canvas compositor for SVG is undocumented, so funnel stays on one svg (accepted hover cost).
-- **Proposal:** export a documented layer compositor or an `svgLayerRenderer()` factory (draft `docs/upstream-issues/svg-layer-per-group.md`).
+- **Proposal:** export a documented layer compositor or an `svgLayerRenderer()` factory (upstream: [#204](https://github.com/TanStack/charts/issues/204)).
 
 ## 65. Heatmap cell inset applies to every side, with no between-cells-only gap
 
@@ -444,7 +444,7 @@ Drafts live in `docs/upstream-issues/` (local only).
 - **1.1.0 behaviour:** guide marks (`guides` layer, focus-driven) are rebuilt as one fragment: each focus change re-serializes the layer to markup and reparses it, including the pill's rows, so cost scales with pill rows and series, not with what moved.
 - **Measured:** line, same-page bench, busy ms per pointer move (ours, native guides): baseline 7.07 median [6.70-8.31], 8 rounds; guides removed 2.1 to 3.2 depending on host sync; everything native removed 0.88. Partial removal (pill only, or crosshair and dots only) saved nothing, the whole layer has to go.
 - **Workaround:** `kit/cartesian/hover-overlay.ts` draws crosshair, dots and pill in an element the host owns (a sibling of the renderer svg, `aria-hidden`), driven from `onFocusChange`, with bklit's springs on one rAF loop (Web Animations keyframes cost about 4 ms per move to create). Median busy per move 6.31 [5.18-7.77] (bklit 9.2). The rest is the host sync (band clip attributes about 1.7 ms, `--bkm-hx` tick-fade variable about 1 ms) and the tooltip.
-- **Proposal:** make focus guides patch in place (keyed attribute updates, no fragment reparse), or expose a persistent guide layer whose marks only update `transform` (draft `docs/upstream-issues/focus-guides-reparse.md`).
+- **Proposal:** make focus guides patch in place (keyed attribute updates, no fragment reparse), or expose a persistent guide layer whose marks only update `transform` (upstream: [#188](https://github.com/TanStack/charts/issues/188), follow-up https://github.com/TanStack/charts/issues/188#issuecomment-6143177545).
 
 ---
 
