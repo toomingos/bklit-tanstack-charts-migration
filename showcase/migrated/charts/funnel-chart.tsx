@@ -11,7 +11,7 @@ import { motion } from "@tanstack/charts/motion";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
 import type { ChartInteractionController, ChartPoint, ChartRendererRenderContext } from "@tanstack/charts";
 import type { Transition } from "./kit/motion/phase";
-import { buildFunnelGradients, createFunnelMark, dimmedRingOpacity, popExtra, ringOpacity, stageColor } from "./funnel/marks";
+import { buildFunnelGradients, createFunnelMark, popExtra, stageColor } from "./funnel/marks";
 import type { FunnelGradientStopInput, FunnelMarkConfig, FunnelStageInput } from "./funnel/marks";
 import { createFunnelFocus, FUNNEL_FOCUS_LAYER } from "./funnel/focus";
 import { ResourceHost, scopeResourceIds, translatePatterns } from "./kit/resource-host";
@@ -265,7 +265,7 @@ const FunnelChart = ({
     onHoverChangeRef.current?.(stage);
   }, [applyHover, holdFocus]);
 
-  const hoverVars = useMemo(() => funnelHoverVars(Math.max(1, layers), horizontal, ringOpacity, dimmedRingOpacity, popExtra), [layers, horizontal]);
+  const hoverVars = useMemo(() => funnelHoverVars(Math.max(1, layers), horizontal, popExtra), [layers, horizontal]);
 
   const entranceVars = useMemo(() => funnelEntranceVars({
     durationSec: enterTransition?.duration ?? 1.1, ease: Array.isArray(enterTransition?.ease) ? enterTransition.ease : undefined, horizontal, staggerDelaySec: staggerDelay,

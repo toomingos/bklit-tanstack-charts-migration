@@ -7,17 +7,15 @@ import { range } from "../kit/range";
 const MAX_STAGES = 24;
 const MAX_LAYERS = 8;
 
-/** Per-layer ring rest alpha, dimmed alpha and pop, and the pop axis (`--bkm-px` / `--bkm-py`). */
+/** Per-layer ring pop and the pop axis (`--bkm-px` / `--bkm-py`). */
 const funnelHoverVars = (
   layers: number,
   horizontal: boolean,
-  ring: (layer: number, layers: number) => number,
-  dim: (layer: number, layers: number) => number,
   pop: (layer: number, layers: number) => number,
 ): CSSProperties => {
   const vars: [string, string][] = [["--bkm-px", horizontal ? "0" : "1"], ["--bkm-py", horizontal ? "1" : "0"]];
   for (const layer of range(Math.min(layers, MAX_LAYERS))) {
-    vars.push([`--bkm-r${layer}`, String(ring(layer, layers))], [`--bkm-m${layer}`, String(dim(layer, layers))], [`--bkm-pop${layer}`, String(pop(layer, layers))]);
+    vars.push([`--bkm-pop${layer}`, String(pop(layer, layers))]);
   }
   return Object.fromEntries<string>(vars);
 };
