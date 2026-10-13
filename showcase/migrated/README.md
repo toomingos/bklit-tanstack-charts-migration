@@ -64,7 +64,10 @@ Things to know about the data:
 ## Theming
 
 Everything is styled through CSS custom properties, so the charts follow your design system with or without Tailwind. Override the
-variables in your own stylesheet; later rules win:
+variables in your own stylesheet; later rules win.
+
+The built-in palette is **greyscale** (`--chart-1` ... `--chart-5` are grey ramps in light and dark), so
+series are told apart by shade only. For colour, set `--chart-1` ... `--chart-5` for both themes:
 
 ```css
 :root {
@@ -80,6 +83,8 @@ variables in your own stylesheet; later rules win:
   --chart-background: oklch(0.145 0 0);
   --chart-foreground: oklch(0.7 0 0);
   --chart-grid: oklch(0.25 0 0);
+  --chart-1: oklch(0.65 0.18 260);
+  --chart-2: oklch(0.75 0.14 160);
 }
 ```
 

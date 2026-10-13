@@ -48,6 +48,7 @@ A pie reports values in its centre, not in a tooltip. `PieCenter` shows the tota
 
 - `PieCenter` renders only when the chart has a positive `innerRadius`, because it sits in the hole of a donut. On a solid pie (`innerRadius` 0) it renders nothing, and there is no other hover readout.
 - Change the default text with `defaultLabel`, `prefix`, `suffix` and `formatOptions` (an `Intl.NumberFormat`-style object).
+- The value's font scales with the chart's width (up to 1.875rem) but not with the hole, so a long number can touch the ring on a small donut. Give it room with a larger `innerRadius`, shorten it with `formatOptions` (for example `{ notation: "compact" }`), or set your own size through `valueClassName`.
 - Pass a `children` render function to replace the content shown while a slice is hovered. It receives `{ value, label, isHovered, data }`, where `data` is the hovered `PieData` item. The default total view is still shown when nothing is hovered.
 - To show values somewhere else, such as a legend or a side panel, use `onHoverChange` or `hoveredIndex` (see [Controlled hover](#controlled-hover-and-a-legend)).
 
