@@ -23,6 +23,24 @@ const EASE_POINTS = 24;
 export const sampledEasing = (ease: (progress: number) => number): string =>
   `linear(${Array.from({ length: EASE_POINTS + 1 }, (_, i) => Number(ease(i / EASE_POINTS).toFixed(4))).join(",")})`;
 
+/** Steps of a CSS clock quantised to bklit's commit interval. On this grid: the roll (path easing, tail, label slides), the head settle. bklit repaints those only on its COMMIT_MS commits,
+ * so a smoother clock buys style and paint passes it never does; with them all stepped the page makes fewer frames (idle share, METRICS.md). Not on it: the pulse ring, which is SMIL
+ * in bklit (live-line.tsx `<animate>`) and runs at the display rate, so it stays a continuous linear animation (liveline.css). */
+export const commitSteps = (ms: number): number => Math.max(1, Math.round(ms / COMMIT_MS));
+/** `steps()` over `ms`: a linear clock held for each commit interval. */
+export const stepEase = (ms: number): string => `steps(${commitSteps(ms)},jump-end)`;
+/** An easing held for each commit interval, as a `linear()` (plateaus are repeated positions). */
+export const stairEasing = (ease: (progress: number) => number, ms: number): string => {
+  const n = commitSteps(ms);
+  const stops: string[] = [];
+  for (let i = 0; i < n; i += 1) {
+    const v = Number(ease(i / n).toFixed(4));
+    stops.push(`${v} ${((i / n) * 100).toFixed(3)}%`, `${v} ${(((i + 1) / n) * 100).toFixed(3)}%`);
+  }
+  stops.push("1 100%");
+  return `linear(${stops.join(",")})`;
+};
+
 /** Commit steps the badge text can walk through one tick (the lerp has settled by then: 0.92 ** 84 < 1e-3). */
 const LABEL_STEPS = 44;
 /** Label nodes in the tip's stack: one per distinct text, plus the final one. */
