@@ -23,8 +23,9 @@ const EASE_POINTS = 24;
 export const sampledEasing = (ease: (progress: number) => number): string =>
   `linear(${Array.from({ length: EASE_POINTS + 1 }, (_, i) => Number(ease(i / EASE_POINTS).toFixed(4))).join(",")})`;
 
-/** Steps of a CSS clock quantised to bklit's commit interval: bklit repaints about every COMMIT_MS, so a smoother clock only buys style and paint passes it never does.
- * With every live animation stepped on that grid the page produces frames at bklit's rate instead of the display's (idle share, METRICS.md). */
+/** Steps of a CSS clock quantised to bklit's commit interval. On this grid: the roll (path easing, tail, label slides), the head settle. bklit repaints those only on its COMMIT_MS commits,
+ * so a smoother clock buys style and paint passes it never does; with them all stepped the page makes fewer frames (idle share, METRICS.md). Not on it: the pulse ring, which is SMIL
+ * in bklit (live-line.tsx `<animate>`) and runs at the display rate, so it stays a continuous linear animation (liveline.css). */
 export const commitSteps = (ms: number): number => Math.max(1, Math.round(ms / COMMIT_MS));
 /** `steps()` over `ms`: a linear clock held for each commit interval. */
 export const stepEase = (ms: number): string => `steps(${commitSteps(ms)},jump-end)`;
