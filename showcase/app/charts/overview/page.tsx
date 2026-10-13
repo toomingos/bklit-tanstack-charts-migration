@@ -113,7 +113,7 @@ export default function OverviewPage() {
               migrated {idleM.toFixed(1)}% · bklit {idleB.toFixed(1)}% (median of {idleRuns[0].length} runs; ranges {Math.min(...idleRuns[1]).toFixed(1)}–{Math.max(...idleRuns[1]).toFixed(1)}% and {Math.min(...idleRuns[0]).toFixed(1)}–{Math.max(...idleRuns[0]).toFixed(1)}%).
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Gaps over 0.25 ms minus the empty-page control, 4 s per run, Live Perf probe off. Wide spread: another process shared the machine.
+              Gaps over 0.25 ms minus the empty-page control, 4 s per run, Live Perf probe off. Measured with a MessageChannel task-gap meter, which sees compositor savings that a rAF counter hides.
             </p>
           </div>
         </div>
