@@ -1,5 +1,5 @@
-// The live tip: dashed value rule, pulse ring, halo + dot, value badge. Native has no pulsing-ring or text-pill mark, so this is one
-// createMark emitting plain scene nodes from the chart's scales; the pulse is a CSS animation (liveline.css).
+// The live tip: dashed value rule, halo + dot, value badge. Native has no pulsing-ring or text-pill mark, so this is one
+// createMark emitting plain scene nodes from the chart's scales; the pulse ring is HTML over the chart (live-pulse.tsx).
 import { createMark } from "@tanstack/charts";
 import type { ChartMark, SceneNode } from "@tanstack/charts";
 import { LABEL_POOL, labelWindow } from "./head-ease";
@@ -12,7 +12,6 @@ export interface LiveTipOptions {
   readonly color: string;
   readonly stroke: string;
   readonly dotSize: number;
-  readonly pulse: boolean;
   readonly badge: boolean;
   /** The badge text as bklit's display lerp walks it: the formatted value at each commit step with the step it first shows at (headLabels). No native text tween, so each step is a label node shown by a CSS animation (live-css.ts);
    * each label has its own pill so its width follows the text like bklit's `length * 7.5 + 16`. */
@@ -29,10 +28,8 @@ const BADGE_GAP = 12;
 const CHAR_WIDTH = 7.5;
 const BADGE_PAD = 16;
 const BADGE_TEXT_DY = 4;
-/** The pulse ring's full reach in dot radii (bklit: r 4 -> 14), scaled in from the dot by liveline.css. */
-const PULSE_REACH = 3.5;
 export function liveTip(options: LiveTipOptions): ChartMark<unknown, Date, number> {
-  const { id, time, value, color, stroke, dotSize, pulse, badge, labels, parity, ease } = options;
+  const { id, time, value, color, stroke, dotSize, badge, labels, parity, ease } = options;
   return createMark<unknown, Date, number>(() => ({
     id,
     // No channels: the tip never influences either domain.
@@ -60,17 +57,6 @@ export function liveTip(options: LiveTipOptions): ChartMark<unknown, Date, numbe
       const ly = ease ? 0 : y;
       // A slot the tick does not use drops its parity and window classes and nothing else, so it stays untouched from tick to tick.
       const indicator: SceneNode[] = [];
-      if (pulse) {
-        indicator.push({
-          kind: "dot",
-          key: `${id}:pulse`,
-          className: "bkm-live-pulse",
-          x: lx,
-          y: ly,
-          radius: dotSize * PULSE_REACH,
-          style: { fill: "none", stroke: color, strokeWidth: 1.5 },
-        });
-      }
       indicator.push(
         { kind: "dot", key: `${id}:halo`, x: lx, y: ly, radius: dotSize + 2, style: { fill: color, fillOpacity: 0.1 } },
         {

@@ -21,6 +21,7 @@ import { useLiveFrame } from "./live-line/live-frame-build";
 import { parseHeight, useLivePlot } from "./live-line/live-geometry";
 import { liveHostVars } from "./live-line/live-host-style";
 import { LivePillFilter } from "./live-line/live-pill";
+import { LivePulse } from "./live-line/live-pulse";
 import { TICK_FADE_CSS } from "./live-line/live-tick-fade";
 import { liveTooltipEqual, useLiveTooltipOptions } from "./live-line/live-tooltip";
 import { LiveYLabels, Y_LABEL_GAP } from "./live-line/live-ylabels";
@@ -156,6 +157,7 @@ export const LiveLineChart = ({
         tooltipEqual={liveTooltipEqual}
         renderTooltipBody={({ points }) => <BklitTooltipBody points={points} options={tooltipOptions} />}
       />
+      {frame && line?.pulse !== false ? <LivePulse frame={frame} color={dotColor} dotSize={line?.dotSize ?? 4} width={width} innerHeight={innerHeight} margin={plotMargin} /> : null}
       <LivePillFilter />
     </div>
   );

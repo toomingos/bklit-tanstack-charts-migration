@@ -25,7 +25,7 @@ export const sampledEasing = (ease: (progress: number) => number): string =>
 
 /** Steps of a CSS clock quantised to bklit's commit interval. On this grid: the roll (path easing, tail, label slides), the head settle. bklit repaints those only on its COMMIT_MS commits,
  * so a smoother clock buys style and paint passes it never does; with them all stepped the page makes fewer frames (idle share, METRICS.md). Not on it: the pulse ring, which is SMIL
- * in bklit (live-line.tsx `<animate>`) and runs at the display rate, so it stays a continuous linear animation (liveline.css). */
+ * in bklit (live-line.tsx `<animate>`) and runs at the display rate, so it stays a continuous linear animation (live-pulse.tsx). */
 export const commitSteps = (ms: number): number => Math.max(1, Math.round(ms / COMMIT_MS));
 /** `steps()` over `ms`: a linear clock held for each commit interval. */
 export const stepEase = (ms: number): string => `steps(${commitSteps(ms)},jump-end)`;

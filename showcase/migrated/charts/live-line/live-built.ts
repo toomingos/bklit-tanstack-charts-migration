@@ -89,7 +89,6 @@ export function useLiveBuilt({ frame, width, margin, plotMargin, innerHeight, wi
             dotColor,
             dotSize: line?.dotSize ?? 4,
             fill: line?.fill !== false,
-            pulse: line?.pulse !== false,
             badge: line?.badge !== false,
             badgeLabels: labels,
             badgeParity: frame.parity,

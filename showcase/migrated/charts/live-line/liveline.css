@@ -1,15 +1,29 @@
 /* LiveLineChart (native): tip pulse ring, badge font, hover dimming.
    Scoped under [data-bkm-chart] like the shared stylesheet. Renderer selectors repeat kit/renderer-dom.ts (UPSTREAM-GAPS #36, #50). */
-/* The ring is laid out at its full reach (3.5 dots) and scaled from the dot's radius (bklit: r 4 -> 14 over 1.5s linear), the stroke unscaled. */
-@keyframes bkm-live-pulse {
-  from { scale: calc(1 / 3.5); opacity: 0.5; }
-  to { scale: 1; opacity: 0; }
+/* The pulse ring is HTML over the chart (live-pulse.tsx): the wrapper sits on the tip and takes its motion (live-css.ts); the slices scale and fade on the compositor. */
+[data-bkm-chart] .bkm-live-pulse-ov {
+  position: absolute;
+  width: 0;
+  height: 0;
+  transition: opacity 300ms ease-in-out;
 }
-[data-bkm-chart] .bkm-live-pulse {
-  transform-box: fill-box;
-  transform-origin: center;
-  vector-effect: non-scaling-stroke;
-  animation: bkm-live-pulse 1.5s linear infinite;
+[data-bkm-chart][data-bkm-live-scrubbing] .bkm-live-pulse-ov {
+  opacity: 0.25;
+}
+[data-bkm-chart] .bkm-pr-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+[data-bkm-chart] .bkm-pr {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  box-sizing: border-box;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  opacity: 0;
+  will-change: scale, opacity;
 }
 [data-bkm-chart] .bkm-live-badge-text {
   fill: var(--popover-foreground);

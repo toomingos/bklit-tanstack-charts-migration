@@ -38,7 +38,7 @@ export function liveCss(lerp: number): string {
       `${SCOPE} .bkm-tp${parity} .bkm-live-rp :is(path,polyline){vector-effect:non-scaling-stroke}`,
       `@keyframes bkm-rd${parity}{from{transform:translate(0,var(--bkm-live-ry-d,0px))}to{transform:translate(0,0)}}`,
       `@keyframes bkm-dy${parity}{from{translate:0 var(--bkm-live-dy,0px)}to{translate:0 0}}`,
-      `${SCOPE} .bkm-live-tip.bkm-dp${parity}{animation:bkm-dy${parity} var(--bkm-live-settle,1380ms) ${headEase},bkm-rd${parity} ${roll}}`,
+      `${SCOPE} :is(.bkm-live-tip,.bkm-live-pulse-ov).bkm-dp${parity}{animation:bkm-dy${parity} var(--bkm-live-settle,1380ms) ${headEase},bkm-rd${parity} ${roll}}`,
       `@keyframes bkm-st${parity}{from{--bkm-st:0}to{--bkm-st:${LABEL_POOL}}}`,
       `${SCOPE} .bkm-sp${parity}{animation:bkm-st${parity} ${LABEL_POOL * COMMIT_MS}ms steps(${LABEL_POOL},end)}`,
     );

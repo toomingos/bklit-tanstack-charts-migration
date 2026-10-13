@@ -49,7 +49,6 @@ export interface LiveDefinitionInput {
   /** bklit ChartTooltip dotSize: the hover dot radius (tooltip/chart-tooltip.tsx:103, default 5); the line dotSize is the live-edge dot. */
   readonly hoverDotSize: number;
   readonly fill: boolean;
-  readonly pulse: boolean;
   readonly badge: boolean;
   /** The badge text as it eases: one formatted value per commit step of bklit's display lerp (see live-tip.ts). */
   readonly badgeLabels: readonly HeadLabel[];
@@ -479,7 +478,6 @@ export function buildLiveDefinition(input: Readonly<LiveDefinitionInput>): LiveD
         color: input.dotColor,
         stroke,
         dotSize: input.dotSize,
-        pulse: input.pulse,
         badge: input.badge,
         labels: input.badgeLabels,
         parity: input.badgeParity,
