@@ -18,7 +18,7 @@
        only along the paths that read them (tick labels, mark children, pill stacks), so a write does not restyle the whole subtree. --- */
 @property --bkm-hx { syntax: "*"; inherits: false; }
 @property --bkm-bfx { syntax: "*"; inherits: false; }
-/* Radar dot travel progress (radar/entrance.ts): registered here, not in the per-mount <style>. */
+/* Radar dot travel progress (radar/entrance.ts), 1 once settled. */
 @property --bkm-rp { syntax: "<number>"; inherits: true; initial-value: 1; }
 @property --bkm-pfx { syntax: "*"; inherits: false; }
 @property --bkm-hl0 { syntax: "*"; inherits: false; }

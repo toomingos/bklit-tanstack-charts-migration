@@ -40,7 +40,7 @@ const ROOT = "[data-bkm-radar][data-bkm-enter]";
 const staticCss = (): string => {
   // --bkm-rp is the dot travel progress: the group scales by max(.001,p) (hover-css.ts) and the circle by its exact reciprocal, so the dot
   // keeps its size while it travels (two separate keyframes would not cancel: .001 + .999p != p).
-  // `--bkm-rp` is registered in styles.css: an @property inside this per-mount <style> restyled the whole document (~4 ms) at every mount.
+  // `--bkm-rp` is registered once in styles.css: a registration in this per-mount <style> would restyle the whole document at every mount.
   let css = "@keyframes bk-radar-p{from{--bkm-rp:0}to{--bkm-rp:1}}";
   css += "@keyframes bk-radar-fade{from{opacity:0}}";
   // bklit RadarGrid: opacity 0 -> 1 on the enter transition, delayed levels*gridStagger*0.5 + i*0.06*df.
