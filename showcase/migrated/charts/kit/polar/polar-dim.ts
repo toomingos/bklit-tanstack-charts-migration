@@ -97,7 +97,7 @@ const createPieHoverSprings = <TRow extends PieHoverRow>(rows: readonly TRow[], 
       const mid = (row.startAngle + row.endAngle) / 2;
       const dx = Math.sin(mid);
       const dy = -Math.cos(mid);
-      springDriver.play({ affine: true, el: group, frame: (value) => ({ transform: `translate(${dx * value}px,${dy * value}px)` }), rest: hot(previous) ? row.offset : 0, spring: HOVER_SPRING, target: hot(hovered) ? row.offset : 0 });
+      springDriver.play({ affine: true, el: group, frames: true, frame: (value) => ({ transform: `translate(${dx * value}px,${dy * value}px)` }), rest: hot(previous) ? row.offset : 0, spring: HOVER_SPRING, target: hot(hovered) ? row.offset : 0 });
     } else if (geometry.isDonut) {
       const radius = geometry.outerRadius;
       for (const path of group.querySelectorAll("path")) {
@@ -105,7 +105,7 @@ const createPieHoverSprings = <TRow extends PieHoverRow>(rows: readonly TRow[], 
       }
     } else {
       const scale = (geometry.outerRadius + row.offset) / geometry.outerRadius;
-      springDriver.play({ affine: true, el: group, frame: (value) => ({ transform: `scale(${value})` }), rest: hot(previous) ? scale : 1, spring: HOVER_SPRING, target: hot(hovered) ? scale : 1 });
+      springDriver.play({ affine: true, el: group, frames: true, frame: (value) => ({ transform: `scale(${value})` }), rest: hot(previous) ? scale : 1, spring: HOVER_SPRING, target: hot(hovered) ? scale : 1 });
     }
   };
   return (host, previous, next) => {
