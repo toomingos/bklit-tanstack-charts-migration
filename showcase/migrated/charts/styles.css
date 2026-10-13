@@ -79,7 +79,9 @@
 .bkm-hov-x { position: absolute; left: 0; }
 .bkm-hov-dot { position: absolute; left: 0; will-change: transform; }
 /* The pill moves by a transform on its own layer (hover-overlay.ts rounds it to device pixels, where bklit's `left` snaps), so a move repaints nothing; the box inside centres itself with translateX(-50%) as bklit's tooltip does (chart-tooltip.tsx:422-423). */
-.bkm-hov-pill { position: absolute; left: 0; will-change: transform; }
+.bkm-hov-pill { position: absolute; left: 0; }
+/* Own layer only where every move already repaints the plot (the candlestick dim): there it takes the pill out of that repaint (busyPerMove 4.8 -> 3.1, 4 alternating prod rounds); on markers and segment a promoted pill measured slower (markers 6.3 -> 6.7, 8 rounds), so it stays unpromoted. */
+[data-bkm-chart="candlestick"] .bkm-hov-pill { will-change: transform; }
 .bkm-hov-dot { top: 0; }
 .bkm-hov svg { display: block; }
 /* bklit date-ticker.tsx: rounded-full px-4 py-1 bg-zinc-900 text-white shadow-lg (dark: zinc-100 / zinc-900), 24px rows, text-sm font-medium, 4px between the month and day columns. */
