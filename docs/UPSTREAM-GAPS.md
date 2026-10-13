@@ -444,7 +444,7 @@ Drafts live in `docs/upstream-issues/` (local only; its README lists what is pos
 - **1.1.0 behaviour:** guide marks (`guides` layer, focus-driven) are rebuilt as one fragment: each focus change re-serializes the layer to markup and reparses it, including the pill's rows, so cost scales with pill rows and series, not with what moved.
 - **Measured:** line, same-page bench, busy ms per pointer move (ours, native guides): baseline 7.07 median [6.70-8.31], 8 rounds; guides removed 2.1 to 3.2 depending on host sync; everything native removed 0.88. Partial removal (pill only, or crosshair and dots only) saved nothing, the whole layer has to go.
 - **Workaround:** `kit/cartesian/hover-overlay.ts` draws crosshair, dots and pill in an element the host owns (a sibling of the renderer svg, `aria-hidden`), driven from `onFocusChange`, with bklit's springs on one rAF loop (Web Animations keyframes cost about 4 ms per move to create). Median busy per move 6.31 [5.18-7.77] (bklit 9.2). The rest is the host sync (band clip attributes about 1.7 ms, `--bkm-hx` tick-fade variable about 1 ms) and the tooltip.
-- **Proposal:** make focus guides patch in place (keyed attribute updates, no fragment reparse), or expose a persistent guide layer whose marks only update `transform` (upstream: [#188](https://github.com/TanStack/charts/issues/188); follow-up comment drafted, not posted).
+- **Proposal:** make focus guides patch in place (keyed attribute updates, no fragment reparse), or expose a persistent guide layer whose marks only update `transform` (upstream: [#188](https://github.com/TanStack/charts/issues/188), follow-up https://github.com/TanStack/charts/issues/188#issuecomment-6143177545).
 
 ---
 
