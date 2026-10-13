@@ -8,8 +8,9 @@
 /* Heatmap hover emphasis: fixed rules keyed on the host attribute data-hm-hover=cell|level, whose hovered rules the hover leaf's scoped <style> emits; the enter tween owns opacity while data-ts-motion-role is set.
    Cell/level/loading/tick marks are matched through data-ts-key (gap #36: rect/text marks document no className/id hook). */
 [data-bkm-chart="heatmap"] rect[data-ts-key^="heatmap-cells-"] { transform-box: fill-box; transform-origin: center; }
-/* :not([data-ts-motion-role]) guard: UPSTREAM-GAPS #50. */
-[data-bkm-chart="heatmap"] rect[data-ts-key^="heatmap-cells-"]:not([data-ts-motion-role]) {
+/* :not([data-ts-motion-role]) guard: UPSTREAM-GAPS #50. The [data-hm-touched] gate (raised with the first hover) keeps the entrance end from starting this transition: the tween's last
+   written frame can sit just under the final opacity on a late frame, and the role attribute's removal would then ease the remainder over 220 ms, which the probe reads as a late settle. */
+[data-bkm-chart="heatmap"][data-hm-touched] rect[data-ts-key^="heatmap-cells-"]:not([data-ts-motion-role]) {
   transition: opacity var(--hm-hover-ms, 220ms) cubic-bezier(0.4, 0, 0.2, 1), transform var(--hm-hover-ms, 220ms) cubic-bezier(0.4, 0, 0.2, 1);
 }
 [data-bkm-chart="heatmap"][data-hm-hover="cell"] rect[data-ts-key^="heatmap-cells-"] { opacity: var(--hm-inactive-o); transform: scale(var(--hm-inactive-s)); }

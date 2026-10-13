@@ -2,7 +2,7 @@
 // Grid arrows: host capture keydown + `interaction.setControlledFocus` (gap #34). Custom: Less/More legend, config carriers, pattern <defs> host (ResourceHost), loading label.
 import "../styles.css";
 import { erase } from "../kit/erased-types";
-import { clearAttribute, writeAttribute } from "../kit/host-write";
+import { clearAttribute, raiseAttribute, writeAttribute } from "../kit/host-write";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, NamedExoticComponent, ReactElement, ReactNode, RefObject } from "react";
 import { useRevealClock } from "../kit/size/parent-size-arm";
@@ -199,6 +199,8 @@ interface HoverAttrsProps {
 }
 
 const HOVER_ATTR = "data-hm-hover";
+/** Raised with the first hover write and never cleared: the cell opacity/scale transition (heatmap.css) exists only from then on, so the entrance end cannot start one. */
+const TOUCHED_ATTR = "data-hm-touched";
 
 const RenderHoverAttrs = ({ coordinator, hostRef, idPrefix }: Readonly<HoverAttrsProps>): ReactElement | null => {
   useEffect(() => {
@@ -206,10 +208,12 @@ const RenderHoverAttrs = ({ coordinator, hostRef, idPrefix }: Readonly<HoverAttr
       const host = hostRef.current;
       if (host === null) {return;}
       if (coordinator.getHoveredCell() !== null) {
+        raiseAttribute(host, TOUCHED_ATTR);
         writeAttribute(host, HOVER_ATTR, "cell");
       } else if (coordinator.getHoveredLegendLevel() === null) {
         clearAttribute(host, HOVER_ATTR);
       } else {
+        raiseAttribute(host, TOUCHED_ATTR);
         writeAttribute(host, HOVER_ATTR, "level");
       }
     };
