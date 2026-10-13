@@ -107,25 +107,48 @@ class Ticker {
   };
 }
 
+interface Sink {
+  readonly el: HTMLElement | SVGElement;
+  readonly css: (values: readonly number[]) => string;
+  last: string;
+}
+
 /** An element whose `transform` follows a spring on each axis, velocity kept across retargets (motion's `useSpring`, as bklit's tooltip dots and date ticker do). */
 class Glide {
   private readonly axes: Axis[];
+  private readonly sinks: Sink[] = [];
   constructor(
-    private readonly el: HTMLElement | SVGElement,
+    el: HTMLElement | SVGElement,
     private readonly spring: Spring,
     count: number,
-    private readonly css: (values: readonly number[]) => string,
-    private readonly prop: "transform" | "left",
+    css: (values: readonly number[]) => string,
     private readonly ticker: Ticker,
   ) {
     this.axes = Array.from({ length: count }, () => ({ t0: 0, target: 0, v0: 0, x0: 0 }));
+    this.follow(el, css);
+  }
+
+  /** Another element that takes the same position (one spring for the crosshair and the pill, which share spring and target). */
+  follow(el: HTMLElement | SVGElement, css: (values: readonly number[]) => string): void {
+    this.sinks.push({ css, el, last: "" });
+  }
+
+  private write(values: readonly number[]): void {
+    for (const sink of this.sinks) {
+      const next = sink.css(values);
+      // A spring settling on its target repeats the last value; an identical write still dirties the element's style.
+      if (next !== sink.last) {
+        sink.last = next;
+        sink.el.style.transform = next;
+      }
+    }
   }
 
   /** Places the element at `values` with no motion. */
   jump(values: readonly number[]): void {
     this.ticker.stop(this);
     this.axes.forEach((axis, i) => { axis.target = values[i] ?? 0; axis.x0 = 0; axis.v0 = 0; });
-    this.el.style[this.prop] = this.css(values);
+    this.write(values);
   }
 
   /** Springs from wherever the element is (and however fast it moves) to `values`. */
@@ -152,14 +175,18 @@ class Glide {
       rest &&= s.done;
       return axis.target + (s.done ? 0 : s.value);
     });
-    this.el.style[this.prop] = this.css(rest ? this.axes.map((axis) => axis.target) : at);
+    this.write(rest ? this.axes.map((axis) => axis.target) : at);
     return rest;
   }
 }
 
 const translate = (v: readonly number[]): string => `translate(${v[0] ?? 0}px,${v[1] ?? 0}px)`;
 const translateX = (v: readonly number[]): string => `translateX(${v[0] ?? 0}px)`;
-const px = (v: readonly number[]): string => `${v[0] ?? 0}px`;
+/** The pill's own layer sits on whole device pixels, where `left` used to snap it (bklit places its pill by `left`, chart-tooltip.tsx:422-423); a fractional layer offset would resample the text. */
+const translateXDevicePx = (v: readonly number[]): string => {
+  const dpr = window.devicePixelRatio || 1;
+  return `translateX(${Math.round((v[0] ?? 0) * dpr) / dpr}px)`;
+};
 const translateY = (v: readonly number[]): string => `translateY(${v[0] ?? 0}px)`;
 
 const div = (cls: string, parent?: HTMLElement): HTMLDivElement => {
@@ -177,7 +204,8 @@ interface DotView {
 
 interface PillView {
   readonly el: HTMLElement;
-  readonly glide: Glide;
+  /** Null when the crosshair's glide carries the pill (same spring, same x). */
+  readonly glide: Glide | null;
   readonly months: Glide | null;
   readonly days: Glide | null;
   readonly text: HTMLElement | null;
@@ -281,7 +309,7 @@ export class HoverOverlay {
     if (!pill || !model.pill) {
       return;
     }
-    pill.glide[enter ? "jump" : "glide"]([x]);
+    pill.glide?.[enter ? "jump" : "glide"]([x]);
     const index = model.indexOf(time);
     const layout = model.pill.layout;
     if (pill.text) {
@@ -353,7 +381,7 @@ export class HoverOverlay {
     svg.append(mark);
     wrap.append(svg);
     // bklit's crosshair rides the tooltipSpring (charts/chart-config-context.tsx:20).
-    this.ruleGlide = new Glide(mark, CROSSHAIR_SPRING, 1, translateX, "transform", this.ticker);
+    this.ruleGlide = new Glide(mark, CROSSHAIR_SPRING, 1, translateX, this.ticker);
   }
 
   private buildDot(dot: OverlayDot, plot: OverlayPlot): DotView {
@@ -383,7 +411,7 @@ export class HoverOverlay {
       svg.append(shape);
     }
     el.append(svg);
-    return { dot, el, glide: dot.glide ? new Glide(el, CROSSHAIR_SPRING, 2, translate, "transform", this.ticker) : null };
+    return { dot, el, glide: dot.glide ? new Glide(el, CROSSHAIR_SPRING, 2, translate, this.ticker) : null };
   }
 
   private buildPill(spec: NonNullable<HoverOverlayModel["pill"]>, plot: OverlayPlot): PillView {
@@ -396,7 +424,7 @@ export class HoverOverlay {
       const text = document.createElement("span");
       text.className = "bkm-hov-pill-text";
       div("bkm-hov-pill-row", box).append(text);
-      return { days: null, el: wrap, glide: new Glide(wrap, CROSSHAIR_SPRING, 1, px, "left", this.ticker), months: null, text };
+      return { days: null, el: wrap, glide: this.pillGlide(wrap), months: null, text };
     }
     const column = (values: readonly string[]): Glide => {
       const col = div("bkm-hov-pill-col", box);
@@ -406,11 +434,20 @@ export class HoverOverlay {
         row.textContent = value;
       }
       // bklit's ticker springs both stacks with useSpring(0, { stiffness: 400, damping: 35 }) (tooltip/date-ticker.tsx:81-82).
-      return new Glide(stack, DATE_PILL_SPRING, 1, translateY, "transform", this.ticker);
+      return new Glide(stack, DATE_PILL_SPRING, 1, translateY, this.ticker);
     };
     const months = column(layout.months);
     // bklit always mounts the day stack, empty for month-only labels: its gap-1 keeps the capsule 4px wider (date-ticker.tsx:96-125).
     const days = column(layout.days);
-    return { days, el: wrap, glide: new Glide(wrap, CROSSHAIR_SPRING, 1, px, "left", this.ticker), months, text: null };
+    return { days, el: wrap, glide: this.pillGlide(wrap), months, text: null };
+  }
+
+  /** The pill rides the crosshair's spring and target (both CROSSHAIR_SPRING on x), so it follows that glide; alone it springs by itself. */
+  private pillGlide(wrap: HTMLElement): Glide | null {
+    if (this.ruleGlide) {
+      this.ruleGlide.follow(wrap, translateXDevicePx);
+      return null;
+    }
+    return new Glide(wrap, CROSSHAIR_SPRING, 1, translateXDevicePx, this.ticker);
   }
 }
