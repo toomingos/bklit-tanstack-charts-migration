@@ -1,7 +1,10 @@
-// Measured before the chart mounts so the definition is built at the real width (a later size change cancels the entrance).
-// The width also drives the centre, hit tests and fallbacks outside the definition, so the responsive builder cannot replace it.
-import { useLayoutEffect, useRef, useState } from "react";
+// First width on bklit's chain, then followed by the host's own observer. Pie, ring and heatmap build pixel geometry from the width before mounting
+// (annular hit targets and centre in the definition, grow outlines and the centre overlay outside it), so TanStack's host cannot size them
+// (pie-chart.tsx buildPieDefinition `targets`, ring-chart.tsx `center`, heatmap/chart.tsx computeMetrics). Rule: TanStack-native host sizing only
+// brings a first-layout paint; a measure of our own would be a generic React optimisation, so these mount on the ParentSize chain instead.
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+import { observeParentSize } from "./parent-size-arm";
 import { observeResize } from "./use-resize-box";
 
 /** Width the pie and ring charts assume until the first measure. */
@@ -35,12 +38,14 @@ export const useFluidWidth = (hostRef: RefObject<HTMLElement | null>, options: F
       setWidth(next);
     }
   };
-  useLayoutEffect(() => {
-    if (!enabled || ready) { return; }
-    // Fractional like the observer's contentRect (clientWidth rounds), so its first delivery is not a change.
-    const measured = hostRef.current?.getBoundingClientRect().width ?? 0;
-    if (measured > 0) { latest.current = measured; setWidth(measured); }
-    setReady(true);
+  // The first width is ParentSize's: the first ResizeObserver delivery, then one frame (@visx/responsive useParentSize.js:44-58; debounce 10 ms, `leading: true`).
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!enabled || ready || host === null) { return undefined; }
+    return observeParentSize(host, (measured) => {
+      if (measured > 0) { latest.current = measured; setWidth(measured); }
+      setReady(true);
+    });
   }, [enabled, ready, hostRef]);
   useLayoutEffect(() => {
     const host = hostRef.current;

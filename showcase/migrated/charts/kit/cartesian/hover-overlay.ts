@@ -1,8 +1,9 @@
 // The hover indicator of a cartesian chart (active markers, crosshair rule, date pill, one dot per series) as an element we own, a sibling of the renderer's
-// svg inside the chart host. Positions glide along bklit's springs (`springOf`, one shared rAF loop writing transforms; Web Animations keyframes cost
-// ~4 ms per move on creation). The renderer's focus-guide layer stays empty:
+// svg inside the chart host. The date pill and its day/month stacks (HTML) glide on the compositor through the shared WAAPI `springDriver`; the rule (an svg mark,
+// not composited) and the dots (two axes) follow bklit's springs on one shared rAF loop (`springOf`). The renderer's focus-guide layer stays empty:
 // it re-serializes its whole fragment to markup and reparses it on every move (UPSTREAM-GAPS #66), which dominated the move cost.
 import { REST_PX, springOf } from "../motion/spring-curve";
+import { springDriver } from "../motion/spring-animate";
 import { CROSSHAIR_SPRING, DATE_PILL_SPRING } from "../motion/springs";
 import type { Spring } from "../motion/springs";
 import type { ChartMargin } from "../theme";
@@ -125,11 +126,6 @@ class Glide {
     private readonly ticker: Ticker,
   ) {
     this.axes = Array.from({ length: count }, () => ({ t0: 0, target: 0, v0: 0, x0: 0 }));
-    this.follow(el, css);
-  }
-
-  /** Another element that takes the same position (one spring for the crosshair and the pill, which share spring and target). */
-  follow(el: HTMLElement | SVGElement, css: (values: readonly number[]) => string): void {
     this.sinks.push({ css, el, last: "" });
   }
 
@@ -180,6 +176,27 @@ class Glide {
   }
 }
 
+/** An HTML element whose `transform` follows a spring on one axis as a Web Animation on the compositor (the shared velocity-preserving `springDriver`), the static transform holding the target. */
+class Slide {
+  private target = 0;
+  constructor(private readonly el: HTMLElement, private readonly spring: Spring, private readonly css: (values: readonly number[]) => string) {
+    el.style.transform = css([0]);
+  }
+
+  jump(value: number): void {
+    this.target = value;
+    this.el.style.transform = this.css([value]);
+    springDriver.play({ affine: true, el: this.el, frame: (v) => ({ transform: this.css([v]) }), from: value, rest: value, spring: this.spring, target: value });
+  }
+
+  glide(value: number): void {
+    const rest = this.target;
+    this.target = value;
+    this.el.style.transform = this.css([value]);
+    springDriver.play({ affine: true, el: this.el, frame: (v) => ({ transform: this.css([v]) }), rest, spring: this.spring, target: value });
+  }
+}
+
 const translate = (v: readonly number[]): string => `translate(${v[0] ?? 0}px,${v[1] ?? 0}px)`;
 const translateX = (v: readonly number[]): string => `translateX(${v[0] ?? 0}px)`;
 /** The pill's own layer sits on whole device pixels, where `left` used to snap it (bklit places its pill by `left`, chart-tooltip.tsx:422-423); a fractional layer offset would resample the text. */
@@ -204,10 +221,9 @@ interface DotView {
 
 interface PillView {
   readonly el: HTMLElement;
-  /** Null when the crosshair's glide carries the pill (same spring, same x). */
-  readonly glide: Glide | null;
-  readonly months: Glide | null;
-  readonly days: Glide | null;
+  readonly glide: Slide;
+  readonly months: Slide | null;
+  readonly days: Slide | null;
   readonly text: HTMLElement | null;
 }
 
@@ -309,7 +325,7 @@ export class HoverOverlay {
     if (!pill || !model.pill) {
       return;
     }
-    pill.glide?.[enter ? "jump" : "glide"]([x]);
+    pill.glide[enter ? "jump" : "glide"](x);
     const index = model.indexOf(time);
     const layout = model.pill.layout;
     if (pill.text) {
@@ -322,13 +338,13 @@ export class HoverOverlay {
     const run = layout.monthOf[index] ?? 0;
     // bklit's stacks mount at row 0 and spring to the focused row on every hover start (date-ticker.tsx:81-92); the month stack only moves when its run changes.
     if (enter) {
-      pill.days?.jump([0]);
-      pill.months?.jump([0]);
+      pill.days?.jump(0);
+      pill.months?.jump(0);
       this.monthRun = -1;
     }
-    pill.days?.glide([-index * PILL_ROW]);
+    pill.days?.glide(-index * PILL_ROW);
     if (this.monthRun !== run) {
-      pill.months?.glide([-run * PILL_ROW]);
+      pill.months?.glide(-run * PILL_ROW);
       this.monthRun = run;
     }
   }
@@ -424,9 +440,9 @@ export class HoverOverlay {
       const text = document.createElement("span");
       text.className = "bkm-hov-pill-text";
       div("bkm-hov-pill-row", box).append(text);
-      return { days: null, el: wrap, glide: this.pillGlide(wrap), months: null, text };
+      return { days: null, el: wrap, glide: new Slide(wrap, CROSSHAIR_SPRING, translateXDevicePx), months: null, text };
     }
-    const column = (values: readonly string[]): Glide => {
+    const column = (values: readonly string[]): Slide => {
       const col = div("bkm-hov-pill-col", box);
       const stack = div("bkm-hov-pill-stack", col);
       for (const value of values) {
@@ -434,20 +450,11 @@ export class HoverOverlay {
         row.textContent = value;
       }
       // bklit's ticker springs both stacks with useSpring(0, { stiffness: 400, damping: 35 }) (tooltip/date-ticker.tsx:81-82).
-      return new Glide(stack, DATE_PILL_SPRING, 1, translateY, this.ticker);
+      return new Slide(stack, DATE_PILL_SPRING, translateY);
     };
     const months = column(layout.months);
     // bklit always mounts the day stack, empty for month-only labels: its gap-1 keeps the capsule 4px wider (date-ticker.tsx:96-125).
     const days = column(layout.days);
-    return { days, el: wrap, glide: this.pillGlide(wrap), months, text: null };
-  }
-
-  /** The pill rides the crosshair's spring and target (both CROSSHAIR_SPRING on x), so it follows that glide; alone it springs by itself. */
-  private pillGlide(wrap: HTMLElement): Glide | null {
-    if (this.ruleGlide) {
-      this.ruleGlide.follow(wrap, translateXDevicePx);
-      return null;
-    }
-    return new Glide(wrap, CROSSHAIR_SPRING, 1, translateXDevicePx, this.ticker);
+    return { days, el: wrap, glide: new Slide(wrap, CROSSHAIR_SPRING, translateXDevicePx), months, text: null };
   }
 }
