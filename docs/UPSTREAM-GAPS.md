@@ -23,11 +23,14 @@ Numbers are stable: 12 retired numbers are listed at the bottom and never reused
 | Renderer DOM (undocumented classes and attributes) | 36, 50 | 2 |
 
 Posted upstream (TanStack/charts):
-#186 states (1, 18, 31; 48 as a comment) · #187 tooltip (3, 8, 19, 22, 37) · #188 focus guides (21, 23, 43) ·
-#189 keyboard focus (42) · #190 focus strategies (26; 45 and 46 as a comment) · #191 gradients and paint (5, 6, 30; 49 as a comment) ·
-#192 motion timing (9, 33, 38) · #193 motion coverage (7, 12; 47 as a comment) · #194 arc motion (11, 35; 51 as a comment) ·
-#195 rolling windows (27) · #196 renderer DOM (20, 36; 50 as a comment) · #197 bar rect geometry (24, 25) · #198 brush (40) ·
-#199 shape-rendering (54) · #200 HTML scene node (52).
+#132 crosshair label (23) · #186 states (1, 18, 31) · #187 tooltip (3) · #188 focus guides (21) · #189 keyboard focus (42) ·
+#190 focus strategies (26, 46) · #191 gradients (5, 6) · #192 motion clock (33) · #193 motion coverage (7, 12) ·
+#194 arc motion (11, 35, 51) · #195 rolling windows (27) · #196 reconciler attributes (20) · #197 bar rect geometry (24, 25) ·
+#198 brush (40) · #199 shape-rendering (54) · #200 HTML scene node (52) · #207 focus position (45) ·
+#208 crosshair spring restart (43) · #209 tooltip exit (19, 22) · #210 tooltip show options (8, 37) · #211 guide paint idPrefix (30) ·
+#212 renderer contracts docs (9, 36, 38, 50) · #213 state geometry keys (48) · #214 enter start state (35 seeds, 47) ·
+#215 text tween (retired 14) · #216 mask and path clip (49, the mask in 6).
+The 2026-10 reorg split these out of #186-#196 (#208-#216) and closed #126, #127, #134 and #135 as done in 1.1.0.
 Not posted: 15 and 55 (no draft yet), 17 (draft pending), 34 (open upstream PR #164), 39 (a documented route exists, see its caveat).
 Drafts live in `docs/upstream-issues/` (local only; its README lists what is posted, to post, held and dropped).
 
@@ -335,7 +338,7 @@ Drafts live in `docs/upstream-issues/` (local only; its README lists what is pos
 - **Needed:** bklit sweeps each ring progress arc by drawing a fresh d3 arc per frame (`cornerRadius = thickness / 2`) from the start angle to `start + range * progress`, so the leading cap stays round (bklit `ring.tsx:104`; nothing is drawn until the sweep passes 0.01 rad). Pie wedges tween the same way.
 - **1.1.0 behaviour:** the same mechanism as #35. The arc tween runs only for nodes carrying the private `sceneMotionNode` geometry (`motion.ts:2386-2400`; `path` geometry is set only by `hierarchy-sunburst.ts:301-306`, bar sets only `baseline`), and `radialArc` sets none. `path: 'morph'` moves vertices along chords, and the radialArc enter is a group wedge clip (`motion.ts:1618-1700`) that cuts the round cap flat.
 - **Workaround:** `ring/progress-layer.ts` renders the progress marks through a documented custom layer renderer (`renderer` on a radial mark, `reference/marks/polar.md:139`; `ChartLayerRenderer`, `reference/rendering-and-export.md:546-577`). The layer paints its own SVG and animates `d` on nodes it owns. Composition is our own compositor (`kit/layer/compose-layers.ts`, about 1.3 KB gz) because the only exported one is the Canvas module's (`canvasChartRenderer.compose`, 5.4 KB gz more). Cost: all tracks paint under all progress arcs (layers split by mark order).
-- **Proposal:** the same as #35, plus an exported layer compositor (upstream: [#204](https://github.com/TanStack/charts/issues/204), [#193](https://github.com/TanStack/charts/issues/193) C, [#194](https://github.com/TanStack/charts/issues/194)) so a custom layer need not copy one.
+- **Proposal:** the same as #35, plus an exported layer compositor (upstream: [#204](https://github.com/TanStack/charts/issues/204), [#194](https://github.com/TanStack/charts/issues/194) B and F) so a custom layer need not copy one.
 
 ## 52. No HTML or foreignObject scene node (marker `icon` ReactNodes, `iconFill`)
 
@@ -414,14 +417,14 @@ Drafts live in `docs/upstream-issues/` (local only; its README lists what is pos
 - **Needed:** bklit's funnel stages grow from the first frame as one uniform 2-D scale about the stage's left (top) centre, staggered per stage (`funnel-chart.tsx:319-327`), in the first and only scene draw.
 - **1.1.0 behaviour:** the initial `animateSvg` area track is a one-axis grow from the baseline (`motion.ts:1505-1562`, built at `:282-287`); there is no initial transform for keyed groups, and a group animates only when it joins a painted scene (#12), which costs a second draw.
 - **Workaround:** the stage rings carry a static CSS `scale` keyframe from the first draw (`funnel/funnel.css`, `bkm-funnel-grow`), re-stamped onto motion's clock by `EntranceAlign`; marks are `motion: false`.
-- **Proposal:** let `motion({ initial })` accept a per-group transform enter with an origin (upstream: [#193](https://github.com/TanStack/charts/issues/193)).
+- **Proposal:** let `motion({ initial })` accept a per-group transform enter with an origin (upstream: [#214](https://github.com/TanStack/charts/issues/214)).
 
 ## 63. The native tooltip rewrites unchanged attributes and glides on the main thread on every paint
 
 - **Needed:** a pointer move over a tooltip with unchanged content and presence should write only its position (bklit's visx tooltip writes one transform per move).
 - **1.1.0 behaviour:** every `paint` re-sets `visibility`, `className`, `role`, `aria-live`, `data-sticky` and `aria-label` even when equal (`tooltip.ts:104-152`, `:162`), and the spring glide writes `style.translate` from a rAF loop (`motion.ts:420-428`, `:484-497`) from the delta of `style.left/top` (`:523-577`), so position has to stay in `left/top`. Production sankey: about 12 mutation records per move, about 1 of them ours.
 - **Workaround:** none without writing renderer-owned DOM; our portals skip unchanged `left/top/data-placement` writes (`kit/tooltip/write-placement.ts`).
-- **Proposal:** compare before writing in `paint`; run the spring glide as a sampled WAAPI `translate` like the tween path (`motion.ts:460-483`) (upstream: comment on [#187](https://github.com/TanStack/charts/issues/187)).
+- **Proposal:** compare before writing in `paint`; run the spring glide as a sampled WAAPI `translate` like the tween path (`motion.ts:460-483`) (upstream: [#187](https://github.com/TanStack/charts/issues/187) F).
 
 ## 64. No public SVG layer compositor: animated groups repaint the one shared SVG
 
@@ -445,7 +448,7 @@ Drafts live in `docs/upstream-issues/` (local only; its README lists what is pos
 - **1.1.0 behaviour:** guide marks (`guides` layer, focus-driven) are rebuilt as one fragment: each focus change re-serializes the layer to markup and reparses it, including the pill's rows, so cost scales with pill rows and series, not with what moved.
 - **Measured:** line, same-page bench, busy ms per pointer move (ours, native guides): baseline 7.07 median [6.70-8.31], 8 rounds; guides removed 2.1 to 3.2 depending on host sync; everything native removed 0.88. Partial removal (pill only, or crosshair and dots only) saved nothing, the whole layer has to go.
 - **Workaround:** `kit/cartesian/hover-overlay.ts` draws crosshair, dots and pill in an element the host owns (a sibling of the renderer svg, `aria-hidden`), driven from `onFocusChange`, with bklit's springs on one rAF loop (Web Animations keyframes cost about 4 ms per move to create). Median busy per move 6.31 [5.18-7.77] (bklit 9.2). The rest is the host sync (band clip attributes about 1.7 ms, `--bkm-hx` tick-fade variable about 1 ms) and the tooltip.
-- **Proposal:** make focus guides patch in place (keyed attribute updates, no fragment reparse), or expose a persistent guide layer whose marks only update `transform` (upstream: [#188](https://github.com/TanStack/charts/issues/188), follow-up https://github.com/TanStack/charts/issues/188#issuecomment-6143177545).
+- **Proposal:** make focus guides patch in place (keyed attribute updates, no fragment reparse), or expose a persistent guide layer whose marks only update `transform` (upstream: [#188](https://github.com/TanStack/charts/issues/188) B).
 
 ---
 
