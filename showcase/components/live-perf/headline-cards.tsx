@@ -10,23 +10,6 @@ export interface Tolerance {
 }
 export const DEFAULT_TOL: Tolerance = { rel: 0.1, abs: 0.5 };
 
-export interface Headline {
-  label: string;
-  /** ms per side; null until measured */
-  bklit: number | null;
-  migrated: number | null;
-  /** migrated / bklit; defaults to the ratio of the two values (the overview passes the per-chart geometric mean) */
-  ratio?: number;
-  digits?: number;
-  /** caption shown while either value is null */
-  pending?: string;
-}
-
-const fmtMs = (v: number, digits = 1) =>
-  `${v >= 1000 ? Math.round(v).toLocaleString("en-US") : Number.isInteger(v) ? v : v.toFixed(digits)} ms`;
-
-const fmtStat = (s: Stat, digits = 1) => `${fmtMs(s[0], digits)} (${s[1]}–${s[2]})`;
-
 function widen(s: Stat, tol: Tolerance): readonly [number, number] {
   if (s[2] > s[1]) return [s[1], s[2]];
   const d = Math.max(tol.abs, s[0] * tol.rel);
@@ -56,48 +39,69 @@ const tone = {
   worse: "text-red-600/90 dark:text-red-400/90",
 };
 
-/** Table cell for one metric of one chart; null means not measured. */
-export function CompareCell({ b, m, tol }: { b: Stat | null; m: Stat | null; tol?: Tolerance }) {
+/** TanStack Bklit UI against Bklit UI as a signed percentage of bklit's value; negative is less time, work or size. */
+export function pct(ratio: number) {
+  const p = Math.round((ratio - 1) * 100);
+  return p === 0 ? "0%" : `${p < 0 ? "−" : "+"}${Math.abs(p)}%`;
+}
+
+const fmt = (v: number, unit: string, digits = 1) => `${Number.isInteger(v) ? v : v.toFixed(digits)} ${unit}`;
+
+/** Table cell for one metric of one chart; null means not measured. Coloured only when the two run ranges do not overlap. */
+export function PctCell({ b, m, tol, unit }: { b: Stat | null; m: Stat | null; tol?: Tolerance; unit: string }) {
   if (!b || !m) return <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">n/a</td>;
   const c = compare(b, m, tol);
+  const ranged = b[2] > b[1];
   return (
     <td
       className={`px-3 py-2.5 text-right tabular-nums ${tone[c.tone]}`}
-      title={`bklit ${fmtStat(b, 2)}; migrated ${fmtStat(m, 2)}`}
+      title={ranged ? `Bklit UI ${fmt(b[0], unit, 2)} (${b[1]}–${b[2]}); TanStack Bklit UI ${fmt(m[0], unit, 2)} (${m[1]}–${m[2]})` : undefined}
     >
-      {c.text}
+      {pct(m[0] / Math.max(b[0], 1e-9))}
       <span className="block text-[11px] font-normal text-muted-foreground">
-        {b[0]} → {m[0]}{tol?.diff && (b[0] < 0 || m[0] < 0) ? " ⚠" : ""}
+        {b[0]} → {m[0]} {unit}
       </span>
     </td>
   );
 }
 
-/** Main figure: the migrated/bklit multiplier, faster or slower; below it the ms on each side and their difference. */
+export interface Headline {
+  label: string;
+  /** per side, in `unit`; null until measured */
+  bklit: number | null;
+  migrated: number | null;
+  unit: string;
+  /** migrated / bklit; defaults to the ratio of the two values (the overview passes the per-chart geometric mean) */
+  ratio?: number;
+  digits?: number;
+  /** what the figure is, under the values */
+  note?: string;
+  /** caption shown while either value is null */
+  pending?: string;
+}
+
+/** Main figure: the signed percentage change; below it the value on each side. */
 function HeadlineCard({ h }: { h: Headline }) {
   const { bklit: b, migrated: m } = h;
-  const ready = b !== null && m !== null;
-  const r = ready ? (h.ratio ?? (b > 0 && m > 0 ? m / b : null)) : null;
-  const faster = r !== null ? r < 1 : ready && m < b;
-  const x = r === null ? 0 : faster ? 1 / r : r;
-  const main = !ready ? "—" : r === null ? signedMs(m - b) : `${x.toFixed(2)}× ${faster ? "faster" : "slower"}`;
-  const cls = !ready || (r !== null && x < 1.05) ? "" : faster ? tone.better : tone.worse;
+  const ready = b !== null && m !== null && b > 0;
+  const r = ready ? (h.ratio ?? m / b) : null;
+  const cls = r === null || Math.abs(r - 1) < 0.05 ? "" : r < 1 ? tone.better : tone.worse;
   const d = h.digits ?? 1;
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="text-sm text-muted-foreground">{h.label}</div>
-      <div className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums sm:text-4xl ${cls}`}>{main}</div>
+      <div className={`mt-2 text-4xl font-semibold tracking-tight tabular-nums ${cls}`}>{r === null ? "—" : pct(r)}</div>
       <p className="mt-2 text-sm text-muted-foreground tabular-nums">
-        {ready ? `bklit ${b.toFixed(d)} ms → migrated ${m.toFixed(d)} ms (${signedMs(m - b, d)})` : (h.pending ?? "")}
+        {ready ? `Bklit UI ${fmt(b, h.unit, d)} → TanStack Bklit UI ${fmt(m, h.unit, d)}` : (h.pending ?? "")}
       </p>
+      {h.note && <p className="mt-1 text-xs text-muted-foreground">{h.note}</p>}
     </div>
   );
 }
 
-export function HeadlineCards({ items, cols = 4 }: { items: Headline[]; cols?: 2 | 3 | 4 }) {
-  const grid = { 2: "sm:grid-cols-2", 3: "sm:grid-cols-3", 4: "sm:grid-cols-2 lg:grid-cols-4" }[cols];
+export function HeadlineCards({ items }: { items: Headline[] }) {
   return (
-    <div className={`grid gap-4 ${grid}`}>
+    <div className="grid gap-4 sm:grid-cols-3">
       {items.map((h) => (
         <HeadlineCard key={h.label} h={h} />
       ))}

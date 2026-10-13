@@ -53,9 +53,6 @@ const sweepRuns: Record<string, Partial<Record<Exclude<Metric, "render">, Runs>>
   sunburst: { firstPaint: [[43.1, 44.4, 35.1, 44.7, 44.7, 43.7, 44.3, 43.6], [42.9, 44.7, 34.9, 44.9, 44.5, 43.9, 44.2, 43.6]], settled: [[3125.5, 3122.3, 3110.7, 3122, 3123.8, 3123.4, 3123.5, 3124], [3127.4, 3120.3, 3132.8, 3119.9, 3121.3, 3121.3, 3121.1, 3121.7]], busy: [[5.62, 5.63, 6.14, 9.54, 9.87, 6.8, 6.28, 7.13], [3.41, 3.76, 3.41, 3.7, 3.45, 3.76, 3.42, 3.73]] },
 };
 
-/** Liveline idle: busy share of the main thread at rest (%, 0.25 ms gap threshold, minus the empty-page control), probe off, one run per entry, [bklit, migrated]. */
-export const idleRuns: Runs = [[12.27, 13.49, 12.68, 13.19, 12.66, 13.1, 12.99, 12.94], [15.08, 14.37, 13.88, 14.42, 15.08, 13.05, 13.72, 15.9]];
-
 function runsOf(route: string, metric: Metric): Runs | undefined {
   const r = sweepRuns[route];
   if (metric !== "render") return r?.[metric];

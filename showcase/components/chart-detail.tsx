@@ -3,6 +3,7 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { allCharts } from "@/lib/chart-data";
+import { FixedHeadlines } from "@/components/live-perf/fixed-headlines";
 import { LiveHeadlines, LivePerfPanel } from "@/components/live-perf/live-perf-panel";
 import { ChartPreview } from "@/components/chart-preview";
 import { defaultDemoControls, PHONE_WIDTH, type DemoControls, type LoadingMode, type StageWidth } from "@/components/demo-controls";
@@ -115,6 +116,7 @@ export function ChartDetailPage({ route }: { route: string }) {
   // Live Perf switches: `only` renders one side (`only=none`: no chart, the bench's control page for page and
   // machine load), `order=migrated` mounts the migrated chart first.
   const only = params.get("only");
+  const live = params.get("live") === "1";
   const impls = (params.get("order") === "migrated" ? (["migrated", "bklit"] as const) : (["bklit", "migrated"] as const)).filter(
     (i) => (only !== "bklit" && only !== "migrated" && only !== "none") || i === only,
   );
@@ -150,11 +152,23 @@ export function ChartDetailPage({ route }: { route: string }) {
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-4 text-lg font-semibold tracking-tight">Live performance</h2>
-        <div className="mb-4">
-          <LiveHeadlines chart={route} />
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold tracking-tight">{live ? "Live performance" : "Performance"}</h2>
+          {/* A full load, not a client navigation: the probe is decided once per page load (collector.ts LIVE). */}
+          <a href={live ? pathname : `${pathname}?live=1`} className="text-sm text-muted-foreground hover:underline">
+            {live ? "Show the production results" : "Measure live in this browser"}
+          </a>
         </div>
-        <LivePerfPanel chart={route} />
+        {live ? (
+          <>
+            <div className="mb-4">
+              <LiveHeadlines chart={route} name={info.name} />
+            </div>
+            <LivePerfPanel chart={route} />
+          </>
+        ) : (
+          <FixedHeadlines route={route} name={info.name} />
+        )}
       </section>
 
       {showDevTools && info.notes && (

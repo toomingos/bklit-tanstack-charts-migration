@@ -192,9 +192,11 @@ function cap(arr: unknown[], max: number) {
 
 /** `?spin=0` turns the whole-thread probe off so move latency can be compared with and without it. */
 export const SPIN_ON = typeof window === "undefined" || new URLSearchParams(window.location.search).get("spin") !== "0";
-/** `?probe=off` mounts the cards with no collector, observers or Profiler (only the mount mark), so the probe's own
- * cost (MutationObserver records, getAnimations flushes, Profiler timing) can be measured from outside. */
-export const PROBE_ON = typeof window === "undefined" || new URLSearchParams(window.location.search).get("probe") !== "off";
+/** `?live=1` turns live measurement on; without it chart pages show the production sweep's fixed figures and mount no
+ * collector, observers or Profiler. `?live=1&probe=off` keeps it off on a live page (only the mount mark), so the probe's
+ * own cost (MutationObserver records, getAnimations flushes, Profiler timing) can be measured from outside. */
+export const LIVE = typeof window === "undefined" || new URLSearchParams(window.location.search).get("live") === "1";
+export const PROBE_ON = LIVE && (typeof window === "undefined" || new URLSearchParams(window.location.search).get("probe") !== "off");
 /** `?loadbusy=1`: spin the ping-pong during load too, for the "Main thread busy" load rows. Opt-in: measured on the prod
  * build (bar, ?only=, 8 alternating rounds) the load spin delays the migrated card's first paint by ~5 ms (42.65 [36.6-45.8]
  * vs 37.45 [33.4-42.2] with spin=0; bklit 42.95 vs 43.70, settled unchanged), so first paint must come from runs without it. */

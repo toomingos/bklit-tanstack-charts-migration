@@ -34,8 +34,8 @@ export const bundleTotal: readonly [bklit: number, migrated: number] = [74.5, 80
 /** Migrated stylesheets as built by Next (minified, all charts), KB gzip; polar (1.3) and heatmap (1.0) rules load only with those charts. bklit ships Tailwind classes instead. */
 export const bundleCssKb = 8.2;
 
-/** Share of the minified all-charts bundle by dependency, KB. */
-export const bundleBreakdown = {
-  bklit: [["bklit-ui source", 289], ["motion", 134], ["d3 and geo", 91], ["utility libs", 77], ["visx", 48]],
-  migrated: [["@tanstack/charts", 246], ["migrated charts", 269], ["kit", 157], ["d3 and geo", 134], ["utility libs", 46]],
-} as const;
+/** One chart's sizes by its showcase name. */
+export const bundleFor = (name: string) => bundleSizes.find((r) => r.label === name)?.gzip;
+
+/** Geometric mean over the charts of migrated / bklit. */
+export const bundleGeo = Math.exp(bundleSizes.reduce((a, r) => a + Math.log(r.gzip[1] / r.gzip[0]), 0) / bundleSizes.length);

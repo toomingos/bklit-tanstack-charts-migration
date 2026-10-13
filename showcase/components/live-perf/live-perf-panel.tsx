@@ -17,6 +17,7 @@ import {
 } from "./collector";
 import { entranceBudget } from "./entrance-budget";
 import { BKLIT_SHA } from "./headline-data";
+import { bundleFor } from "./bundle-data";
 import { compare, DEFAULT_TOL, HeadlineCards, type Headline, type Stat, type Tolerance } from "./headline-cards";
 
 /** card: this card's own DOM / React subtree / event dispatches. window: page-wide data limited to the times the
@@ -50,7 +51,7 @@ const groups: Group[] = [
   {
     title: "Load",
     rows: [
-      { label: "Render (settled − designed animation)", get: (s) => s.renderMs, scope: "card", unit: "ms", lower: true, hint: "probe mount → fully rendered and settled (last DOM mutation / finite animation), minus the demo's fixed designed entrance time (entrance-budget.ts, same for both). Negative means the entrance ended before its design." },
+      { label: "Time to Render (settled − designed animation)", get: (s) => s.renderMs, scope: "card", unit: "ms", lower: true, hint: "probe mount → fully rendered and settled (last DOM mutation / finite animation), minus the demo's fixed designed entrance time (entrance-budget.ts, same for both). Negative means the entrance ended before its design." },
       { label: "First paint", get: (s) => s.firstPaintMs, scope: "card", unit: "ms", lower: true, spread: (s) => runSpread(s.firstPaintRuns), hint: "probe mount → the frame showing the first svg/canvas content is presented (rAF + MessageChannel). Includes the shared demo chunk load." },
       { label: "Chart paint (code ready → first paint)", get: (s) => s.chartPaintMs, scope: "card", unit: "ms", lower: true, hint: "first paint measured from this card's lazy import resolving: chart render, layout and paint without the code download. Both imports usually resolve together, so on one page the card rendered second also waits for the first; compare with ?only=." },
       { label: "Code load (this card's import)", get: (s) => s.chunkMs, scope: "card", unit: "ms", lower: true, hint: "request → resolved for this card's lazy import (shared demo module + its own charts). Cached after the first load." },
@@ -100,7 +101,7 @@ const groups: Group[] = [
     rows: [
       { label: "Real pointermoves counted", get: (s) => s.moves, scope: "card", hint: `moves that changed the pointer position; the browser's re-dispatches at a resting pointer are not counted. Every per-move row shows "—" until ${MIN_MOVES} are counted.` },
       { label: "Hover time (active)", get: (s) => s.hoverSec, scope: "card", unit: "s", hint: "each hover window ends 400ms after its last real move, on pointerleave, pointerout to outside, window blur or tab hidden: a resting or parked pointer adds nothing" },
-      { label: "Whole main thread busy / move", get: (s) => s.busyPerMove, scope: "window", unit: "ms", lower: true, digits: 2, n: (s) => s.moves, spread: (s) => (s.busySlices ? `median ${s.busyMedian} (${s.busyLo}–${s.busyHi}), ${s.busySlices} slices of 10 moves` : null), hint: `all task gaps > 1 ms (script, style, layout, paint of any origin, either card) while this card is actively hovered, per real move (mean). Measured the same way for both. "—" below ${MIN_MOVES} moves, or with ?spin=0.` },
+      { label: "On hover: main-thread busy / move", get: (s) => s.busyPerMove, scope: "window", unit: "ms", lower: true, digits: 2, n: (s) => s.moves, spread: (s) => (s.busySlices ? `median ${s.busyMedian} (${s.busyLo}–${s.busyHi}), ${s.busySlices} slices of 10 moves` : null), hint: `all task gaps > 1 ms (script, style, layout, paint of any origin, either card) while this card is actively hovered, per real move (mean). Measured the same way for both. "—" below ${MIN_MOVES} moves, or with ?spin=0.` },
       { label: "Attributed script work / move (partial, explanatory)", get: (s) => s.moveWorkMs, scope: "card", unit: "ms", digits: 2, n: (s) => s.moves, hint: `sum of the three rows below. Counts only where script ran (dispatch, rAF, React render); style, layout and paint are not included, so it is not a cost comparison. "—" below ${MIN_MOVES} moves.` },
       { label: "  sync dispatch only", get: (s) => s.moveDispatchMs, scope: "card", unit: "ms", digits: 2, n: (s) => s.moves, hint: "pointermove dispatch from window capture to window bubble (React's root listener and the chart's own listeners, incl. forced style/layout); React render inside it is excluded (render row). Misses work deferred to a frame: not a like-for-like figure on its own." },
       { label: "  rAF callbacks", get: (s) => s.moveRafMs, scope: "card", unit: "ms", digits: 2, n: (s) => s.moves, hint: "callbacks of requestAnimationFrame requests made from inside the move dispatch (and by those callbacks), React render excluded. bklit's tooltip state commit runs here." },
@@ -259,33 +260,27 @@ const onPanelRender = (_id: string, phase: string, actual: number) => {
   self.n++;
 };
 
-const stat = (v: number | null | undefined, lo: number | null | undefined, hi: number | null | undefined): Stat | null =>
-  v === null || v === undefined ? null : [v, lo ?? v, hi ?? v];
 const runStat = (runs: number[]): Stat | null => {
   if (!runs.length) return null;
   const so = [...runs].sort((x, y) => x - y);
   return [so[Math.floor(so.length / 2)], so[0], so[so.length - 1]];
 };
 
-/** Live headline cards from this chart's two collectors; per-move values wait for MIN_MOVES moves. */
-export function LiveHeadlines({ chart }: { chart: string }) {
+/** Live headline cards from this chart's two collectors (per-move values wait for MIN_MOVES moves), plus the chart's measured bundle size. */
+export function LiveHeadlines({ chart, name }: { chart: string; name: string }) {
   usePanelTick();
   const mounted = useMounted();
   const a = mounted ? window.__livePerf?.[`${chart}:bklit`] : undefined;
   const b = mounted ? window.__livePerf?.[`${chart}:migrated`] : undefined;
   const both = !!a && !!b;
   const hovered = both && Math.min(a.moves, b.moves) >= MIN_MOVES;
-  const one = (get: (s: PerfSnapshot) => Stat | null, ready = true): [Stat | null, Stat | null] =>
-    both && ready ? [get(a), get(b)] : [null, null];
-  const runs = (r: number[], cur: number | null) => runStat(r.length ? r : cur === null ? [] : [cur]);
   const budget = entranceBudget[chart]?.ms;
-  const [rb, rm] = one((s) => (budget === undefined ? null : runStat(s.settledRuns.map((v, i) => Math.round(Math.max(s.firstPaintRuns[i] ?? 0, v - budget) * 10) / 10))));
-  const [bb, bm] = one((s) => stat(s.busyPerMove, s.busyLo, s.busyHi), hovered);
-  const [lb, lm] = one((s) => stat(s.moveLatP95, s.moveLatP50, s.moveLatP95), hovered);
+  const render = (s: PerfSnapshot) => (budget === undefined ? null : runStat(s.settledRuns.map((v) => Math.round((v - budget) * 10) / 10)))?.[0] ?? null;
+  const kb = bundleFor(name);
   const items: Headline[] = [
-    { label: "Render (settled − designed animation)", bklit: rb?.[0] ?? null, migrated: rm?.[0] ?? null, pending: "Waiting for both charts" },
-    { label: "Whole main thread busy per move", bklit: bb?.[0] ?? null, migrated: bm?.[0] ?? null, digits: 2, pending: `Hover both charts (${MIN_MOVES} moves each)` },
-    { label: "Move to paint, p95", bklit: lb?.[0] ?? null, migrated: lm?.[0] ?? null, pending: `Hover both charts (${MIN_MOVES} moves each)` },
+    { label: "Time to Render", bklit: both ? render(a) : null, migrated: both ? render(b) : null, unit: "ms", note: "Settled minus the designed entrance animation.", pending: budget === undefined ? "No designed entrance" : "Waiting for both charts" },
+    { label: "On hover", bklit: hovered ? a.busyPerMove : null, migrated: hovered ? b.busyPerMove : null, unit: "ms", digits: 2, note: "Main-thread busy time per pointer move.", pending: `Hover both charts (${MIN_MOVES} moves each)` },
+    { label: "Bundle Size", bklit: kb?.[0] ?? null, migrated: kb?.[1] ?? null, unit: "KB", note: "JS for this chart, minified and gzipped (production measurement).", pending: "Not measured" },
   ];
   return <HeadlineCards items={items} />;
 }
