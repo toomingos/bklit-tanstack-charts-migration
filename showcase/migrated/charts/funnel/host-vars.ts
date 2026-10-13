@@ -7,15 +7,16 @@ import { range } from "../kit/range";
 const MAX_STAGES = 24;
 const MAX_LAYERS = 8;
 
-/** Per-layer ring pop and the pop axis (`--bkm-px` / `--bkm-py`). */
+/** Per-layer resting transform of a hot ring (`--bkm-hot<layer>`): the scale on the pop axis, precomputed so no hover rule evaluates a calc. */
 const funnelHoverVars = (
   layers: number,
   horizontal: boolean,
   pop: (layer: number, layers: number) => number,
 ): CSSProperties => {
-  const vars: [string, string][] = [["--bkm-px", horizontal ? "0" : "1"], ["--bkm-py", horizontal ? "1" : "0"]];
+  const vars: [string, string][] = [];
   for (const layer of range(Math.min(layers, MAX_LAYERS))) {
-    vars.push([`--bkm-pop${layer}`, String(pop(layer, layers))]);
+    const scale = 1 + pop(layer, layers);
+    vars.push([`--bkm-hot${layer}`, horizontal ? `scale(1, ${scale})` : `scale(${scale}, 1)`]);
   }
   return Object.fromEntries<string>(vars);
 };
