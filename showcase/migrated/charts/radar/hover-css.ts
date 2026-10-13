@@ -23,10 +23,10 @@ const radarHoverCss = (): string => {
     css += `${HOST}[data-bkm-glow][data-hover="${series}"] ${area} path{filter:drop-shadow(0 0 ${GLOW_BLUR_PX}px var(--bkm-radar-glow))}`;
   }
   // Hover scale waits for the native entrance tween (role marker, no public hook: UPSTREAM-GAPS #36) and then scales about the fill-box centre.
-  // --bkm-p (entrance.ts) is the dot travel progress, 1 once settled, so only the dot groups carry it into the scale.
+  // --bkm-rp (entrance.ts) is the dot travel progress, 1 once settled, so only the dot groups carry it into the scale.
   css += `${HOST} :is(${SERIES_GROUPS})${NOT_MOTION}{transform-box:fill-box;transform-origin:50% 50%}`;
   css += `${HOST} ${AREA_GROUPS}${NOT_MOTION}{transform:scale(calc(1 + ${HOVER_SCALE_DELTA} * var(--bkm-h,0)))}`;
-  css += `${HOST} ${DOT_GROUPS}{transform:scale(calc((1 + ${HOVER_SCALE_DELTA} * var(--bkm-h,0)) * max(.001, var(--bkm-p))))}`;
+  css += `${HOST} ${DOT_GROUPS}{transform:scale(calc((1 + ${HOVER_SCALE_DELTA} * var(--bkm-h,0)) * max(.001, var(--bkm-rp))))}`;
   css += `${HOST} :is(${SERIES_GROUPS})${NOT_MOTION}{transition:opacity ${DIM_TWEEN_MS}ms ease-out}`;
   css += `${HOST}[data-hover] :is(${SERIES_GROUPS}){opacity:calc(1 - ${1 - DIM_OPACITY} * (1 - var(--bkm-h,0)))}`;
   // Interactive axis labels (bklit `transition-opacity duration-150 cursor-pointer`): rest 0.8 -> 1 on hover; the native state layer

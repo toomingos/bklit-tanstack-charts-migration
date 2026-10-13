@@ -38,9 +38,10 @@ const LABEL_GLIDE = springEase(80, 15, 1);
 const ROOT = "[data-bkm-radar][data-bkm-enter]";
 
 const staticCss = (): string => {
-  // --bkm-p is the dot travel progress: the group scales by max(.001,p) (hover-css.ts) and the circle by its exact reciprocal, so the dot
+  // --bkm-rp is the dot travel progress: the group scales by max(.001,p) (hover-css.ts) and the circle by its exact reciprocal, so the dot
   // keeps its size while it travels (two separate keyframes would not cancel: .001 + .999p != p).
-  let css = '@property --bkm-p{syntax:"<number>";inherits:true;initial-value:1}@keyframes bk-radar-p{from{--bkm-p:0}to{--bkm-p:1}}';
+  // `--bkm-rp` is registered in styles.css: an @property inside this per-mount <style> restyled the whole document (~4 ms) at every mount.
+  let css = "@keyframes bk-radar-p{from{--bkm-rp:0}to{--bkm-rp:1}}";
   css += "@keyframes bk-radar-fade{from{opacity:0}}";
   // bklit RadarGrid: opacity 0 -> 1 on the enter transition, delayed levels*gridStagger*0.5 + i*0.06*df.
   for (let i = 0; i < MAX_LEVELS; i += 1) {
@@ -58,7 +59,7 @@ const staticCss = (): string => {
     const delay = `calc(var(--bkm-r-sbase) + ${i} * var(--bkm-r-sstep))`;
     css += `${ROOT} g.bkm-radar-dot.bkm-radar-s${i}{animation:bk-radar-p var(--bkm-r-dur) var(--bkm-r-ease) ${delay} backwards,bk-radar-fade 150ms ease-out backwards}`;
   }
-  css += `${ROOT} g.bkm-radar-dot circle{transform-box:fill-box;transform-origin:center;transform:scale(calc(1 / max(.001, var(--bkm-p))))}`;
+  css += `${ROOT} g.bkm-radar-dot circle{transform-box:fill-box;transform-origin:center;transform:scale(calc(1 / max(.001, var(--bkm-rp))))}`;
   return css;
 };
 

@@ -18,10 +18,10 @@ const springSeries = (host: HTMLElement, series: number, previous: number | null
   if (area !== null && !isMotionNode(area)) {
     springDriver.play({ affine: true, el: area, frame: (value) => ({ transform: `scale(${1 + value})` }), rest, spring: HOVER_SPRING, target });
   }
-  // The dot group also carries its entrance progress (`--bkm-p`, 1 once settled) into the scale.
+  // The dot group also carries its entrance progress (`--bkm-rp`, 1 once settled) into the scale.
   const dots = host.querySelector(`g.bkm-radar-dot.bkm-radar-s${series}`);
   if (dots !== null) {
-    springDriver.play({ el: dots, frame: (value) => ({ transform: `scale(calc((1 + ${value}) * max(.001, var(--bkm-p))))` }), rest, spring: HOVER_SPRING, target });
+    springDriver.play({ el: dots, frame: (value) => ({ transform: `scale(calc((1 + ${value}) * max(.001, var(--bkm-rp))))` }), rest, spring: HOVER_SPRING, target });
   }
 };
 
