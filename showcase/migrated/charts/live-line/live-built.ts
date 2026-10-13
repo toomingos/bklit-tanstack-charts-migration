@@ -7,7 +7,7 @@ import type { ChartTooltipProps } from "../kit/types";
 import type { LiveLineConfig, LiveXAxisConfig, LiveYAxisConfig } from "./carriers";
 import { buildLiveDefinition } from "./definition";
 import type { LiveRow } from "./definition";
-import { headLabels, introEasing, sampledEasing } from "./head-ease";
+import { commitSteps, headLabels, introEasing, sampledEasing } from "./head-ease";
 import type { Frame } from "./live-frame";
 import { liveCss } from "./live-css";
 
@@ -100,7 +100,7 @@ export function useLiveBuilt({ frame, width, margin, plotMargin, innerHeight, wi
             yJump: frame.jump,
             tip: frame.tip,
             rollMs: frame.rollMs,
-            easing: frame.intro ? introEase : "linear",
+            easing: frame.intro ? introEase : (p: number) => Math.floor(p * commitSteps(frame.rollMs)) / commitSteps(frame.rollMs),
             xTickTimes,
             hoverBounds,
             formatTime,

@@ -1,6 +1,6 @@
 // The live line's JS-injected rules: the stylesheet pipeline rewrites typed `attr(... type(<number>))` into invalid syntax,
 // and these are shaped by config (lerp curve, label pool), never by data.
-import { COMMIT_MS, LABEL_POOL, headEasing, sampledEasing, settleFrames, FRAME_MS } from "./head-ease";
+import { COMMIT_MS, LABEL_POOL, headEasing, settleFrames, FRAME_MS, stairEasing } from "./head-ease";
 import { typedAttr } from "../kit/css-hooks";
 
 const SCOPE = '[data-bkm-chart="liveline"]';
@@ -9,7 +9,7 @@ export const settleMs = (lerp: number): number => Math.round(settleFrames(lerp) 
 /** Clip widened by `--bkm-live-ext` (tail + tip clearance); head slides from `--bkm-live-dy` along the sampled curve; tail A slides in, B and the block under it grow from the dot on bklit's head easing
  * as a `linear()`. Parity classes restart each tick (nodes persist); rolls start from the path's start transform (Frame.roll); pooled labels show from step `--bkm-s` to `--bkm-e` of their group's stepped `--bkm-st` (one animation per pool). */
 export function liveCss(lerp: number): string {
-  const headEase = sampledEasing(headEasing(lerp));
+  const headEase = stairEasing(headEasing(lerp), settleMs(lerp));
   const rules: string[] = [
     // Typed attr() is Chromium-only (133+); unguarded, `width:auto` overrides the rect's width and collapses the clip (the plot vanishes).
     // Under `@supports` other browsers clip at the native width.
