@@ -51,9 +51,6 @@ export const LiveYLabels = ({ frame, roll, pick, height, margin, top, innerHeigh
     [frame, follow, top, innerHeight],
   );
   useEffect(() => {
-    if (frame.seed) {
-      return;
-    }
     let last: { interval: number; domain: readonly [number, number] } = start;
     let raf = 0;
     const tick = (time: number): void => {
@@ -69,6 +66,11 @@ export const LiveYLabels = ({ frame, roll, pick, height, margin, top, innerHeigh
         const onScreen = shownDomain(frame.yDomain, rollYAt(r, time), top, innerHeight);
         const interval = pickStep(p, raw, innerHeight, minGap);
         const domain = follow ? onScreen : frame.yDomain;
+        // The seed frame only advances the latch (bklit's first tick already steps and picks, live-line-chart.tsx:383-431); its labels are the frame's own.
+        if (frame.seed) {
+          raf = requestAnimationFrame(tick);
+          return;
+        }
         if (interval !== last.interval || domain[0] !== last.domain[0] || domain[1] !== last.domain[1]) {
           last = { interval, domain };
           setShown({ frame, interval, domain });
