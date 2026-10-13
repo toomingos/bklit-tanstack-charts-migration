@@ -47,17 +47,17 @@ export function pct(ratio: number) {
 
 const fmt = (v: number, unit: string, digits = 1) => `${Number.isInteger(v) ? v : v.toFixed(digits)} ${unit}`;
 
-/** Table cell for one metric of one chart; null means not measured. Coloured only when the two run ranges do not overlap. */
-export function PctCell({ b, m, tol, unit }: { b: Stat | null; m: Stat | null; tol?: Tolerance; unit: string }) {
+/** Table cell for one metric of one chart; null means not measured. A gain (less time, work or size) is green, the rest plain text. */
+export function PctCell({ b, m, unit }: { b: Stat | null; m: Stat | null; unit: string }) {
   if (!b || !m) return <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">n/a</td>;
-  const c = compare(b, m, tol);
+  const r = m[0] / Math.max(b[0], 1e-9);
   const ranged = b[2] > b[1];
   return (
     <td
-      className={`px-3 py-2.5 text-right tabular-nums ${tone[c.tone]}`}
+      className={`px-3 py-2.5 text-right tabular-nums ${Math.round((r - 1) * 100) < 0 ? tone.better : ""}`}
       title={ranged ? `Bklit UI ${fmt(b[0], unit, 2)} (${b[1]}–${b[2]}); TanStack Bklit UI ${fmt(m[0], unit, 2)} (${m[1]}–${m[2]})` : undefined}
     >
-      {pct(m[0] / Math.max(b[0], 1e-9))}
+      {pct(r)}
       <span className="block text-[11px] font-normal text-muted-foreground">
         {b[0]} → {m[0]} {unit}
       </span>

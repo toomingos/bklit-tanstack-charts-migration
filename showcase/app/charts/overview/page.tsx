@@ -1,12 +1,9 @@
 import Link from "next/link";
 import { allCharts } from "@/lib/chart-data";
 import { bundleCssKb, bundleFor, bundleGeo, bundleTotal } from "@/components/live-perf/bundle-data";
-import { type Headline, HeadlineCards, PctCell, type Stat, type Tolerance } from "@/components/live-perf/headline-cards";
+import { type Headline, HeadlineCards, PctCell, type Stat } from "@/components/live-perf/headline-cards";
 import { BKLIT_SHA, type Metric, chartPair, summarise, sweepMeta } from "@/components/live-perf/headline-data";
 
-const MS_TOL: Tolerance = { rel: 0.1, abs: 3 };
-const BUSY_TOL: Tolerance = { rel: 0.1, abs: 0.3 };
-const SIZE_TOL: Tolerance = { rel: 0.05, abs: 0 };
 
 const routes = allCharts.map((c) => c.route);
 
@@ -61,9 +58,9 @@ export default function OverviewPage() {
                         {chart.name}
                       </Link>
                     </td>
-                    <PctCell b={render?.b ?? null} m={render?.m ?? null} tol={MS_TOL} unit="ms" />
-                    <PctCell b={busy?.b ?? null} m={busy?.m ?? null} tol={BUSY_TOL} unit="ms" />
-                    <PctCell b={kb ? size(kb[0]) : null} m={kb ? size(kb[1]) : null} tol={SIZE_TOL} unit="KB" />
+                    <PctCell b={render?.b ?? null} m={render?.m ?? null} unit="ms" />
+                    <PctCell b={busy?.b ?? null} m={busy?.m ?? null} unit="ms" />
+                    <PctCell b={kb ? size(kb[0]) : null} m={kb ? size(kb[1]) : null} unit="KB" />
                   </tr>
                 );
               })}
@@ -71,7 +68,7 @@ export default function OverviewPage() {
           </table>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Cells show the change and the median of each side. Colour marks a difference outside the run-to-run range (5% for bundle size); hover a cell for the range.
+          Cells show the change and the median of each side. Green marks a gain; hover a cell for the range across runs.
           Composition has no designed entrance, so no Time to Render.
         </p>
         <p className="mt-2 text-xs text-muted-foreground">
