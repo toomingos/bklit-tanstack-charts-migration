@@ -13,7 +13,7 @@ const RING_PUSHED_SCALE = 1.02;
 
 const baseCss = (host: string, fade: number): string =>
   `${host} g.bkm-pie-arc${NOT_MOTION}{transition:opacity ${DIM_TWEEN_MS}ms ${DIM_EASE}}`
-  + `${host}[data-hover] g.bkm-pie-arc{opacity:calc(1 - ${1 - fade} * (1 - var(--bkm-h,0)))}`;
+  + `${host}[data-hover] g.bkm-pie-arc{opacity:${fade}}`;
 
 const PIE_HOST = '[data-bkm-chart="pie"]';
 
@@ -28,7 +28,7 @@ const buildPieCss = (fade: number, count: number): string => {
   for (const index of range(Math.min(count, MAX_INDEX))) {
     // radialArc `className` (reference/marks/polar.md)
     const slice = `g.bkm-pie-s${index}`;
-    css += `${PIE_HOST}[data-hover="${index}"] ${slice}{--bkm-h:1;transform:var(--bkm-tf${index})}`;
+    css += `${PIE_HOST}[data-hover="${index}"] ${slice}{opacity:1;transform:var(--bkm-tf${index})}`;
     // Donut grow: the outer radius alone moves, so the hot slice swaps to its precomputed grown outline (CSS `d`).
     css += `${PIE_HOST}[data-hover="${index}"][data-bkm-grow~="${index}"] ${slice} path{d:var(--bkm-gd${index})}`;
   }
