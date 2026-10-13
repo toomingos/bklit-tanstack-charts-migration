@@ -71,7 +71,6 @@ const LABEL_FONT = { name: { size: 12, weight: 500 }, pct: { size: 12, weight: 7
 const HALF_EXTENT = 0.44;
 const RING_SHRINK = 0.35;
 const HOVER_POP = 0.12;
-const DIM_OPACITY = 0.4;
 // bklit label metrics (Tailwind text-sm / text-xs line heights, pill padding, grouped gap-1.5).
 const VALUE_LINE = 20;
 const SMALL_LINE = 16;
@@ -85,17 +84,6 @@ const BAND_INSET = 0.75;
 
 const funnelGradientId = (stage: number): string => `funnel-stage-${stage}`;
 const ringOpacity = (layer: number, layers: number): number => 0.18 + (layer / (layers - 1 || 1)) * 0.65;
-/** Per-layer fill alpha reproducing bklit's group dim (0.4 on the stacked segment): cumulative alpha at depth k is DIM * (1 - prod(1 - a)),
- * so layer k contributes 1 - (1 - T_k) / (1 - T_{k-1}); per-layer opacity would compound to mid-grey. */
-const dimmedRingOpacity = (layer: number, layers: number): number => {
-  const cumulative = (upTo: number): number => {
-    let keep = 1;
-    for (let k = 0; k <= upTo; k += 1) { keep *= 1 - ringOpacity(k, layers); }
-    return DIM_OPACITY * (1 - keep);
-  };
-  const previous = layer === 0 ? 0 : cumulative(layer - 1);
-  return 1 - (1 - cumulative(layer)) / (1 - previous);
-};
 const ringScale = (layer: number, layers: number): number => 1 - (layer / layers) * RING_SHRINK;
 const popExtra = (layer: number, layers: number): number => (layer / Math.max(layers - 1, 1)) * HOVER_POP;
 
@@ -436,5 +424,5 @@ const createFunnelMark = (config: FunnelMarkConfig): FunnelMark => {
   }), false);
 };
 
-export { buildFunnelGradients, createFunnelMark, dimmedRingOpacity, popExtra, ringOpacity, stageColor };
+export { buildFunnelGradients, createFunnelMark, popExtra, stageColor };
 export type { FunnelGradientStopInput, FunnelMarkConfig, FunnelStageInput };

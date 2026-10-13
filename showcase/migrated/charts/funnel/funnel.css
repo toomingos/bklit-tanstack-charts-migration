@@ -1,5 +1,5 @@
 /* Funnel rules, all static: a stage is `g.bkm-fs` (rings `g.bkm-fr`, labels `g.bkm-fl`), its index is `--i` (nth-child), the hovered stage is host `data-hover`. */
-/* The per-layer ring numbers (`--bkm-r<k>` rest alpha, `--bkm-m<k>` dimmed alpha, `--bkm-pop<k>` pop) and the entrance numbers (`--bkm-e-*`) are host vars (host-vars.ts). */
+/* The per-layer ring numbers (`--bkm-pop<k>` pop) and the entrance numbers (`--bkm-e-*`) are host vars (host-vars.ts). */
 [data-bkm-chart="funnel"] { cursor: pointer; }
 @keyframes bkm-funnel-grow { from { scale: 0; } }
 @keyframes bkm-funnel-label-in { from { opacity: 0; } }
@@ -21,15 +21,8 @@
 .bkm-l5 { transform: scale(calc(1 + var(--h, 0) * var(--bkm-px) * var(--bkm-pop5)), calc(1 + var(--h, 0) * var(--bkm-py) * var(--bkm-pop5))); }
 .bkm-l6 { transform: scale(calc(1 + var(--h, 0) * var(--bkm-px) * var(--bkm-pop6)), calc(1 + var(--h, 0) * var(--bkm-py) * var(--bkm-pop6))); }
 .bkm-l7 { transform: scale(calc(1 + var(--h, 0) * var(--bkm-px) * var(--bkm-pop7)), calc(1 + var(--h, 0) * var(--bkm-py) * var(--bkm-pop7))); }
-/* Hover: every ring takes its dimmed alpha (bklit 0.4 group opacity) and every label layer 0.4, except the hot stage (`--d: 0`). */
-[data-bkm-chart="funnel"][data-hover] .bkm-l0 { fill-opacity: calc(var(--bkm-r0) + var(--d, 1) * (var(--bkm-m0) - var(--bkm-r0))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
-[data-bkm-chart="funnel"][data-hover] .bkm-l1 { fill-opacity: calc(var(--bkm-r1) + var(--d, 1) * (var(--bkm-m1) - var(--bkm-r1))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
-[data-bkm-chart="funnel"][data-hover] .bkm-l2 { fill-opacity: calc(var(--bkm-r2) + var(--d, 1) * (var(--bkm-m2) - var(--bkm-r2))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
-[data-bkm-chart="funnel"][data-hover] .bkm-l3 { fill-opacity: calc(var(--bkm-r3) + var(--d, 1) * (var(--bkm-m3) - var(--bkm-r3))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
-[data-bkm-chart="funnel"][data-hover] .bkm-l4 { fill-opacity: calc(var(--bkm-r4) + var(--d, 1) * (var(--bkm-m4) - var(--bkm-r4))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
-[data-bkm-chart="funnel"][data-hover] .bkm-l5 { fill-opacity: calc(var(--bkm-r5) + var(--d, 1) * (var(--bkm-m5) - var(--bkm-r5))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
-[data-bkm-chart="funnel"][data-hover] .bkm-l6 { fill-opacity: calc(var(--bkm-r6) + var(--d, 1) * (var(--bkm-m6) - var(--bkm-r6))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
-[data-bkm-chart="funnel"][data-hover] .bkm-l7 { fill-opacity: calc(var(--bkm-r7) + var(--d, 1) * (var(--bkm-m7) - var(--bkm-r7))); transition: fill-opacity 150ms cubic-bezier(0, 0, .58, 1); }
+/* Hover: every stage's ring group takes bklit's 0.4 group opacity, except the hot stage (`--d: 0`); one 150 ms fade per stage group, its rings keep their own alpha (the group composites them, as bklit's motion.div does). */
+[data-bkm-chart="funnel"][data-hover] .bkm-fr { opacity: calc(1 - var(--d, 1) * .6); transition: opacity 150ms cubic-bezier(0, 0, .58, 1); }
 [data-bkm-chart="funnel"][data-hover] .bkm-fl { opacity: calc(1 - var(--d, 1) * .6); }
 /* Stage index and hot stage (the host carries the hovered index). */
 .bkm-fs:nth-child(1) { --i: 0; }
