@@ -11,14 +11,14 @@ const SIZE_TOL: Tolerance = { rel: 0.05, abs: 0 };
 const routes = allCharts.map((c) => c.route);
 
 /** Card figure: geometric mean of per-chart ratios; the values under it are means of the per-chart medians. */
-function card(label: string, metric: Metric, note: string, digits = 1, floor = 0): Headline {
+function card(label: string, metric: Metric, digits = 1, floor = 0): Headline {
   const s = summarise(routes, metric, floor);
-  return { label, bklit: s?.bklitMs ?? null, migrated: s?.migratedMs ?? null, ratio: s?.geo, unit: "ms", digits, note };
+  return { label, bklit: s?.bklitMs ?? null, migrated: s?.migratedMs ?? null, ratio: s?.geo, unit: "ms", digits };
 }
 const headlines: Headline[] = [
-  card("Time to Render", "render", "Settled minus the designed entrance animation, mean per chart."),
-  card("On hover", "busy", "Main-thread busy time per pointer move, mean per chart.", 2, 0.05),
-  { label: "Bundle Size", bklit: bundleTotal[0], migrated: bundleTotal[1], ratio: bundleGeo, unit: "KB", note: `JS per chart, minified and gzipped, mean per chart. TanStack Bklit UI also ships ${bundleCssKb} KB of shared CSS.` },
+  card("Time to Render", "render"),
+  card("On hover", "busy", 2, 0.05),
+  { label: "Bundle Size", bklit: bundleTotal[0], migrated: bundleTotal[1], ratio: bundleGeo, unit: "KB" },
 ];
 
 const th = "whitespace-nowrap px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground";
@@ -77,7 +77,7 @@ export default function OverviewPage() {
         <p className="mt-2 text-xs text-muted-foreground">
           Method: {sweepMeta.date}, {sweepMeta.build}, {sweepMeta.runs} interleaved runs with both charts on one page, {sweepMeta.movesPerSide} pointer moves per side
           per run, bklit-ui {BKLIT_SHA}, TanStack Charts 1.1.0, {sweepMeta.machine}, {sweepMeta.viewport}. Summary cards are geometric means of per-chart ratios.
-          Bundle sizes: esbuild, minified, tree-shaken, React external, one bundle per chart.
+          Bundle sizes: esbuild, minified, tree-shaken, React external, one bundle per chart; TanStack Bklit UI also ships {bundleCssKb} KB gzip of shared CSS.
         </p>
       </section>
     </div>

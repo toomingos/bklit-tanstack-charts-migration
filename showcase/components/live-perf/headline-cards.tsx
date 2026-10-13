@@ -74,13 +74,11 @@ export interface Headline {
   /** migrated / bklit; defaults to the ratio of the two values (the overview passes the per-chart geometric mean) */
   ratio?: number;
   digits?: number;
-  /** what the figure is, under the values */
-  note?: string;
   /** caption shown while either value is null */
   pending?: string;
 }
 
-/** Main figure: the signed percentage change; below it the value on each side. */
+/** Main figure: the signed percentage change; below it Bklit UI → TanStack Bklit UI. */
 function HeadlineCard({ h }: { h: Headline }) {
   const { bklit: b, migrated: m } = h;
   const ready = b !== null && m !== null && b > 0;
@@ -92,9 +90,8 @@ function HeadlineCard({ h }: { h: Headline }) {
       <div className="text-sm text-muted-foreground">{h.label}</div>
       <div className={`mt-2 text-4xl font-semibold tracking-tight tabular-nums ${cls}`}>{r === null ? "—" : pct(r)}</div>
       <p className="mt-2 text-sm text-muted-foreground tabular-nums">
-        {ready ? `Bklit UI ${fmt(b, h.unit, d)} → TanStack Bklit UI ${fmt(m, h.unit, d)}` : (h.pending ?? "")}
+        {ready ? `${fmt(b, h.unit, d)} → ${fmt(m, h.unit, d)}` : (h.pending ?? "")}
       </p>
-      {h.note && <p className="mt-1 text-xs text-muted-foreground">{h.note}</p>}
     </div>
   );
 }

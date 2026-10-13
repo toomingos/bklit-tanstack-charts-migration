@@ -278,9 +278,9 @@ export function LiveHeadlines({ chart, name }: { chart: string; name: string }) 
   const render = (s: PerfSnapshot) => (budget === undefined ? null : runStat(s.settledRuns.map((v) => Math.round((v - budget) * 10) / 10)))?.[0] ?? null;
   const kb = bundleFor(name);
   const items: Headline[] = [
-    { label: "Time to Render", bklit: both ? render(a) : null, migrated: both ? render(b) : null, unit: "ms", note: "Settled minus the designed entrance animation.", pending: budget === undefined ? "No designed entrance" : "Waiting for both charts" },
-    { label: "On hover", bklit: hovered ? a.busyPerMove : null, migrated: hovered ? b.busyPerMove : null, unit: "ms", digits: 2, note: "Main-thread busy time per pointer move.", pending: `Hover both charts (${MIN_MOVES} moves each)` },
-    { label: "Bundle Size", bklit: kb?.[0] ?? null, migrated: kb?.[1] ?? null, unit: "KB", note: "JS for this chart, minified and gzipped (production measurement).", pending: "Not measured" },
+    { label: "Time to Render", bklit: both ? render(a) : null, migrated: both ? render(b) : null, unit: "ms", pending: budget === undefined ? "No designed entrance" : "Waiting for both charts" },
+    { label: "On hover", bklit: hovered ? a.busyPerMove : null, migrated: hovered ? b.busyPerMove : null, unit: "ms", digits: 2, pending: `Hover both charts (${MIN_MOVES} moves each)` },
+    { label: "Bundle Size", bklit: kb?.[0] ?? null, migrated: kb?.[1] ?? null, unit: "KB", pending: "Not measured" },
   ];
   return <HeadlineCards items={items} />;
 }
