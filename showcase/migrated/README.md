@@ -102,7 +102,18 @@ draw your own children.
 ## Server rendering
 
 - **Next.js App Router**: the package entry is marked `"use client"`, so charts can be imported from Server Components; they run on the client boundary and are rendered to HTML on the server. Import the stylesheet in your root layout.
-- **TanStack Start** (and any Vite SSR setup): works as is; import the stylesheet in the root route. Start's CLI scaffold needs pnpm 10.
+- **TanStack Start** (and any Vite SSR setup): works as is. Link the stylesheet from the root route's `head`, the way Start links its own CSS. Start's CLI scaffold needs pnpm 10.
+
+  ```tsx skip
+  // src/routes/__root.tsx
+  import chartsCss from "bklit-tanstack-charts/styles.css?url";
+
+  export const Route = createRootRoute({
+    head: () => ({ links: [{ rel: "stylesheet", href: chartsCss }] }),
+    // ...
+  });
+  ```
+
 - Line, Area, Scatter, Bar, Candlestick, Composed, Gauge, Funnel, Sunburst, Sankey and Choropleth charts **server-render** their SVG and replay their entrance animation after hydration.
 - Pie, Ring, Radar, Heatmap and Live line charts are **client-only**: the server renders an empty shell at the right size and the chart draws after mount.
 

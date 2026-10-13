@@ -32,6 +32,16 @@ At the app root (Next.js `app/layout.tsx`, TanStack Start root route, or the cli
 import "bklit-tanstack-charts/styles.css";
 ```
 
+In TanStack Start, link it from the root route's `head` instead, as Start does with its own CSS:
+
+```tsx skip
+import chartsCss from "bklit-tanstack-charts/styles.css?url";
+
+export const Route = createRootRoute({
+  head: () => ({ links: [{ rel: "stylesheet", href: chartsCss }] }),
+});
+```
+
 Forgetting it is the most common problem: charts render, but unstyled and without hover styling.
 
 ## First chart
