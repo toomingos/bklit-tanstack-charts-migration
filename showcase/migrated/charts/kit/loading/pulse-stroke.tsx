@@ -1,7 +1,6 @@
 // Standalone bklit `LineLoadingPulseStroke`: the stroke grows in from the left, then exits to the right, as a CSS clip-path
 // keyframe on the path (styles.css `bkm-loading-*`); no rAF. Chart-attached series use the same keyframes via `loading-css.ts`.
 import type { CSSProperties, ReactElement } from "react";
-import "../../styles.css";
 import { useOptionalChartStable } from "../cartesian/chart-context";
 import { REVEAL_CSS_EASE } from "../motion/easing";
 import type { LineLoadingPulseMode } from "../motion/phase";

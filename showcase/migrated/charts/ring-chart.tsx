@@ -1,3 +1,4 @@
+"use client";
 // Bklit RingChart on native radialArc marks (track + progress per ring) inside polar(); the entrance is a CSS track expand plus a progress sweep on its own layer (ring/progress-layer.ts).
 // Plain svg renderer: every mark is `motion: false` (CSS track entrance, progress layer sweep), so the motion renderer had nothing to drive.
 // Custom: a per-ring arc generator (ring/arc.ts) and the NumberFlow center island; focus is the native annulus strategy via onFocusChange.
@@ -27,8 +28,6 @@ import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { INITIAL_WIDTH_PX, useFluidWidth } from "./kit/size/use-fluid-width";
 import { useIsClient } from "./kit/size/use-is-client";
 import { useTapFocus } from "./kit/touch-focus";
-import "./styles.css";
-import "./polar.css";
 
 // The track scale is a CSS animation; bklit's is a JS-driven motion value, so it takes motion's `motion` origin (kit/entrance/entrance-origin.ts).
 const RING_ENTRANCE_ORIGINS = { "bkm-ring-in": "motion" } as const satisfies Readonly<Record<string, EntranceOrigin>>;

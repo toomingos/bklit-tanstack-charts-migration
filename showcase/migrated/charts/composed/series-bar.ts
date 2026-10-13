@@ -1,3 +1,4 @@
+"use client";
 // SeriesBar config carrier: renders nothing. ComposedChart reads its props with
 // `readChildren` (role "seriesBar") and compiles them into native rect marks.
 import type { ReactElement } from "react";

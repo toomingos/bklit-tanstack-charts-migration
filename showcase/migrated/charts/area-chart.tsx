@@ -1,3 +1,4 @@
+"use client";
 // bklit AreaChart on native TanStack Charts (shares the cartesian kit with LineChart).
 import { useEffect } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";

@@ -1,6 +1,6 @@
 /** The only TS module that names renderer-owned DOM: core's fixed `ts-chart__*` classes, the `data-ts-key` encoding and `data-ts-motion-role`
  * (UPSTREAM-GAPS #36, #50). `data-ts-key` itself is documented (reference/rendering-and-export.md); the key format and the classes are not.
- * styles.css, sankey/sankey.css and live-line/liveline.css repeat these selectors because CSS cannot import them. */
+ * styles.css repeats these selectors because CSS cannot import them. */
 
 const attr = (op: string, key: string): string => `[data-ts-key${op}="${key}"]`;
 export const keyIs = (key: string): string => attr("", key);

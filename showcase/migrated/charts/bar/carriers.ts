@@ -1,3 +1,4 @@
+"use client";
 // Bar-family config carriers. They render nothing; BarChart reads their props
 // with `readBarChildren` and compiles them into one native definition.
 import type { ReactNode } from "react";

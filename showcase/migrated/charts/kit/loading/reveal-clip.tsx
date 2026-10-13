@@ -1,8 +1,8 @@
+"use client";
 // Standalone bklit `ChartRevealClip`: a left-to-right clip rect grown (or concealed) with CSS keyframes (styles.css
 // `bkm-clip-reveal` / `bkm-clip-conceal`); the clip rect geometry is true LTR, never scaleX (which reveals from the centre).
 import { useCallback, useMemo } from "react";
 import type { ReactElement } from "react";
-import "../../styles.css";
 import { isNumber, isString } from "../guards";
 import { REVEAL_CSS_EASE } from "../motion/easing";
 import { DEFAULT_ANIMATION_DURATION_MS } from "../motion/phase";

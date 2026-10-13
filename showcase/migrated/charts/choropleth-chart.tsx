@@ -1,6 +1,8 @@
+"use client";
 // Bklit ChoroplethChart on native primitives: geoShape marks (countries + optional graticule), host `data-hover` CSS dim plus an owned highlight svg, built-in tooltip, `motion()`.
 // Parts live in choropleth/.
 import { useMemo, useRef, useState } from "react";
+import { useHydratingAttrs } from "./kit/use-hydrating";
 import type { CSSProperties, ReactElement } from "react";
 import { geoPath } from "d3-geo";
 import type { GeoPermissibleObjects } from "d3-geo";
@@ -21,7 +23,6 @@ import type { ChoroplethChartProps, ChoroplethContextValue, Margin } from "./cho
 import { useWheelFocusClear } from "./choropleth/wheel";
 import { ChoroplethZoomContext, identityMatrix, useGeoZoom, zoomStyle } from "./choropleth/zoom";
 import type { TransformMatrix } from "./choropleth/zoom";
-import "./styles.css";
 import { useSanitizedId } from "./kit/use-sanitized-id";
 
 const DEFAULT_CENTER: [number, number] = [0, 20];
@@ -55,6 +56,7 @@ const ChoroplethChart = ({
   const ratio = useMemo(() => parseAspectRatio(aspectRatio), [aspectRatio]);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const patternPrefix = `${useSanitizedId()}-`;
+  const hydratingAttrs = useHydratingAttrs();
   const { featureConfig, tooltipConfig, graticuleConfig, overlayChildren } = useMemo(() => extractChildren(children), [children]);
   const dim = featureConfig?.fadedOpacity ?? DEFAULT_FADED_OPACITY;
   const renderer = useMemo(() => motion({ initial: "always" }), []);
@@ -132,7 +134,7 @@ const ChoroplethChart = ({
 
   // Entrance starts on the first draw, without bklit's ParentSize frames (choropleth-chart.tsx:482), at the user's direction (no frame waits); the curve is unchanged.
   return (
-    <div ref={hostRef} className={className} style={hostStyle} data-bkm-chart="choropleth" data-slot="chart" data-bkm-drag={zoomInstance?.isDragging === true ? "" : undefined}>
+    <div ref={hostRef} className={className} style={hostStyle} data-bkm-chart="choropleth" {...hydratingAttrs} data-slot="chart" data-bkm-drag={zoomInstance?.isDragging === true ? "" : undefined}>
       <ChoroplethContext.Provider value={contextValue}>
         <ChoroplethZoomContext.Provider value={zoomValue}>
           {featureConfig?.patterns === undefined || featureConfig.patterns === null || featureConfig.patterns === false ? undefined : <svg aria-hidden="true" style={HIDDEN_DEFS_STYLE}><defs>{scopePatterns(featureConfig.patterns, patternPrefix)}</defs></svg>}

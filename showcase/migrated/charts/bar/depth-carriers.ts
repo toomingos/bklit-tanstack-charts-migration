@@ -1,3 +1,4 @@
+"use client";
 // The BarDepth* children: importing one is what bundles the depth marks (depth.ts).
 import { defineCarrier } from "../kit/role";
 import { buildDepthMarks, depthBarMark } from "./depth";

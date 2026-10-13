@@ -1,3 +1,4 @@
+"use client";
 // Config-carrier children for the native LiveLineChart. They render nothing;
 // the chart reads their props with the kit's `readChildren` (kit/role.ts).
 import type { CurveFactory } from "d3-shape";

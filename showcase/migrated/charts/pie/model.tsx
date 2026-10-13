@@ -1,3 +1,4 @@
+"use client";
 // Pie public model: data types, the config carrier (PieSlice), shared contexts and hooks.
 // bklit-compatible names; PieChart provides the contexts, PieCenter and custom children read them.
 import { createContext, memo, useMemo } from "react";

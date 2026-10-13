@@ -1,3 +1,4 @@
+"use client";
 // bklit's visx gradients as config carriers: they render nothing, the charts read them from their
 // children and add them to the definition's `gradients`, so `url(#x)` resolves with no DOM <defs>.
 import { Children, isValidElement } from "react";

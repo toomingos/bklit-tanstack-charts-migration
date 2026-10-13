@@ -1,3 +1,4 @@
+"use client";
 // Candlestick config-carrier child: renders nothing, CandlestickChart reads its props.
 import { defineCarrier } from "../kit/role";
 

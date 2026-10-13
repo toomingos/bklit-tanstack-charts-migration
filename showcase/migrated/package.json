@@ -1,31 +1,65 @@
 {
-  "name": "@showcase/migrated-charts",
-  "version": "0.2.0",
-  "private": true,
-  "sideEffects": [
-    "**/*.css"
+  "name": "bklit-tanstack-charts",
+  "version": "0.1.0",
+  "description": "TanStack Bklit UI Charts: bklit-ui's chart components rebuilt natively on TanStack Charts.",
+  "keywords": [
+    "tanstack-intent",
+    "charts",
+    "react",
+    "tanstack",
+    "tanstack-charts",
+    "bklit",
+    "data-visualization"
   ],
+  "license": "MIT",
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown && cp charts/styles.css dist/styles.css"
+  },
   "dependencies": {
-    "@base-ui/react": "^1.0.0-alpha.8",
+    "@base-ui/react": "^1.7.0",
     "@number-flow/react": "^0.5.4",
-    "@tanstack/charts": "1.1.0",
-    "@tanstack/react-charts": "1.1.0",
+    "@types/d3-geo": "^3.1.0",
+    "@types/d3-sankey": "^0.12.4",
+    "@types/d3-scale": "^4.0.9",
+    "@types/d3-shape": "^3.1.8",
     "@types/geojson": "^7946.0.16",
     "clsx": "^2.1.1",
     "d3-geo": "3.1.1",
+    "d3-sankey": "0.12.3",
     "d3-scale": "4.0.2",
     "d3-shape": "^3.2.0",
     "tailwind-merge": "^2.6.0"
   },
   "peerDependencies": {
+    "@tanstack/charts": "~1.1.0",
+    "@tanstack/react-charts": "~1.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tanstack/charts": "1.1.0",
+    "@tanstack/react-charts": "1.1.0",
+    "tsdown": "0.23.1",
+    "typescript": "5.9.3"
   },
   "exports": {
     ".": "./charts/index.ts",
     "./styles.css": "./charts/styles.css"
   },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "./styles.css": "./dist/styles.css"
+    }
+  },
   "files": [
-    "charts"
+    "dist",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
   ]
 }

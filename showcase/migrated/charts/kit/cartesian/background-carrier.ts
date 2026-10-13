@@ -1,3 +1,4 @@
+"use client";
 // The Background child: importing it is what bundles the pattern rect, its mask CSS and the pattern presets.
 import { defineCarrier } from "../role";
 import type { BackgroundConfig } from "../types";

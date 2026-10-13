@@ -1,7 +1,8 @@
+"use client";
 // bklit CandlestickChart on native TanStack Charts: the Candlestick/Grid/XAxis/YAxis/ChartTooltip
 // children are config carriers compiled into one defineChart definition (candlestick).
-import "./styles.css";
 import { erase } from "./kit/erased-types";
+import { useHydratingAttrs } from "./kit/use-hydrating";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useKeyboardFocusHold } from "./kit/keyboard-hold";
@@ -115,6 +116,7 @@ export const CandlestickChart = ({
     return () => { overlay.root.remove(); };
   }, [overlay]);
   const uid = `c${useSanitizedId()}`;
+  const hydratingAttrs = useHydratingAttrs();
   // A legend hover re-renders the host with fresh children: keep the previous carrier table so the definition is not rebuilt.
   const { table, custom, ready: childrenReady } = useChildTable(children);
   const resolvedMargin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
@@ -212,6 +214,7 @@ export const CandlestickChart = ({
       ref={containerRef}
       className={className}
       data-bkm-chart="candlestick"
+      {...hydratingAttrs}
       data-slot="chart"
       data-bkm-kit={uid}
       {...built.gridAttrs}

@@ -1,7 +1,8 @@
+"use client";
 // bklit ScatterChart on native TanStack Charts: <Scatter> children are config
 // carriers compiled into one definition (see scatter/definition.ts).
-import "./styles.css";
 import { erase } from "./kit/erased-types";
+import { useHydratingAttrs } from "./kit/use-hydrating";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useRevealClock } from "./kit/size/parent-size-arm";
@@ -100,6 +101,7 @@ const ScatterChartInner = ({
     return () => { overlay.root.remove(); };
   }, [overlay]);
   const uid = `s${useSanitizedId()}`;
+  const hydratingAttrs = useHydratingAttrs();
   // Entrance starts on the first draw, without bklit's react-use-measure hop (scatter-chart.tsx:154), at the user's direction (no frame waits); the curve is unchanged.
   // The renderer mounts in its own layout effect, which runs first; `revealed` flips in the next one, before first paint.
   const [revealed, setRevealed] = useState(false);
@@ -113,7 +115,8 @@ const ScatterChartInner = ({
     () => buildScatterDefinition({ data, xKey: xDataKey, table, margin: resolvedMargin, uid: "scatter", animationDuration, easing, revealed, revealClock, sizeStore }),
     [data, xDataKey, table, resolvedMargin, animationDuration, easing, revealed, revealClock, uid, sizeStore],
   );
-  const renderer = useMemo(() => motion(erase({ transition: { type: "tween", duration: 500 } })), []);
+  // `initial: "always"` replays the entrance on hydrated (server-rendered) SVG too.
+  const renderer = useMemo(() => motion(erase({ initial: "always", transition: { type: "tween", duration: 500 } })), []);
   const colors = useMemo(() => Object.fromEntries(built.series.map((s) => [s.dataKey, s.tooltipColor])), [built.series]);
   const order = useMemo(() => built.series.map((s) => s.dataKey), [built.series]);
   const tooltipOptions = useMemo(() => ({ order, colors }), [order, colors]);
@@ -219,7 +222,7 @@ const ScatterChartInner = ({
   );
   const emptyFocusCss = focusEmptyHiddenCss(`[data-bkm-kit="${uid}"]`);
   return (
-    <div ref={containerRef} className={className} data-bkm-chart="scatter" data-bkm-kit={uid} {...built.gridAttrs} style={{ width: "100%", position: "relative", ...hoverVars, ...bklitSurfaceStyle, ...style }}>
+    <div ref={containerRef} className={className} data-bkm-chart="scatter" {...hydratingAttrs} data-bkm-kit={uid} {...built.gridAttrs} style={{ width: "100%", position: "relative", ...hoverVars, ...bklitSurfaceStyle, ...style }}>
       <style>{`${SCATTER_HOVER_CSS}${pillStaticCss}${emptyFocusCss}`}</style>
       {childrenReady ? <RendererChart
         definition={erase(built.definition)}

@@ -1,6 +1,7 @@
 // Shared shell for LineChart / AreaChart: children -> series -> one native
 // definition -> RendererChart with the native `motion()` entrance.
 import { RevealArm, useReadyGate } from "../entrance/reveal-arm";
+import { useHydratingAttrs } from "../use-hydrating";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { RendererChart } from "../tooltip/tooltip-leaf";
@@ -143,6 +144,7 @@ export function CartesianChart(props: Readonly<CartesianChartProps>): ReactEleme
   // Latest plot geometry for the drag listeners (assigned by each draw).
   const dragGeom = useRef<DragGeom>({ left: 0, top: 0, innerWidth: 0, innerHeight: 0 });
   const uid = `c${useSanitizedId()}`;
+  const hydratingAttrs = useHydratingAttrs();
   const { table, hasMarkers, series, onPulseIteration, custom, childrenReady, times } = useSeriesTable(children, targetData, xDataKey, containerRef, chartLoading);
   sweepRef.current = series.some((s) => s.loading?.style === "sweep");
   const data = useSkeletonData(skeletonRows, targetData, series);
@@ -259,6 +261,7 @@ export function CartesianChart(props: Readonly<CartesianChartProps>): ReactEleme
       ref={containerRef}
       className={className}
       data-bkm-kit={uid}
+      {...hydratingAttrs}
       onAnimationStart={onAnimationEvent}
       onAnimationEnd={onWipeEnd}
       data-bkm-wipe-in={wipeIn ? "" : undefined}

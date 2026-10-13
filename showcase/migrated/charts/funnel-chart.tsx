@@ -1,5 +1,5 @@
 // Bklit FunnelChart on TanStack Charts 1.1: one custom mark lays the stages out from the final plot bounds (concentric ring areas, gradient fill),
-// hover dim, pop-out and entrance are static CSS (funnel/funnel.css), and hover/keyboard focus is a cell-containment focus strategy.
+// hover dim, pop-out and entrance are static CSS (styles.css), and hover/keyboard focus is a cell-containment focus strategy.
 "use client";
 
 import { writeHoverIndex } from "./kit/host-write";
@@ -24,9 +24,8 @@ import { intFmt } from "./kit/format";
 import { EntranceAlign, useRenderStart } from "./kit/entrance/entrance-align";
 import type { EntranceOrigin } from "./kit/entrance/entrance-origin";
 import { useTapFocus } from "./kit/touch-focus";
-import "./styles.css";
-import "./funnel/funnel.css";
 import { useSanitizedId } from "./kit/use-sanitized-id";
+import { useHydrating, useHydratingAttrs } from "./kit/use-hydrating";
 
 const FUNNEL_ENTRANCE_ORIGINS = { "bkm-funnel-grow": "motion", "bkm-funnel-label-in": "frame" } as const satisfies Readonly<Record<string, EntranceOrigin>>;
 
@@ -177,7 +176,7 @@ const FunnelChart = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Hover never touches React state or the definition: the focused stage is written to the host as `data-hover` and the
-  // static rules in funnel/funnel.css do the dim, pop-out and label dim.
+  // static rules in styles.css do the dim, pop-out and label dim.
   const applyHover = useCallback((stage: number | null): void => {
     const host = hostRef.current;
     if (!host) { return; }
@@ -191,6 +190,10 @@ const FunnelChart = ({
   // origin, so each stage's pattern is shifted by its stage offset when the resources are rendered.
   const stagePx = ((horizontal ? patternWidth : patternWidth / aspect) + gap) / Math.max(1, data.length);
 
+  // Accepted divergence (SSR only): the hydrating render repeats the server's fallback label measurements so the markup matches;
+  // the next render measures with canvas, so pills and label baselines can shift by up to ~7px after hydration. Client-only mounts measure from the first frame.
+  const hydrating = useHydrating();
+  const hydratingAttrs = useHydratingAttrs();
   const definition = useMemo(() => {
     const stageAxis = scaleLinear().domain(horizontal ? [0, data.length] : [data.length, 0]);
     const crossAxis = scaleLinear().domain([-0.5, 0.5]);
@@ -212,6 +215,7 @@ const FunnelChart = ({
         labelLayout,
         labelOrientation,
         layers: Math.max(1, layers),
+        measureText: !hydrating,
         patternPrefix: hasPattern ? patternPrefix : undefined,
         showLabels,
         showPercentage,
@@ -220,7 +224,7 @@ const FunnelChart = ({
       })],
       scales: horizontal ? { x: { scale: stageAxis }, y: { scale: crossAxis } } : { x: { scale: crossAxis }, y: { scale: stageAxis } },
     });
-  }, [color, data, edges, patternPrefix, hasPattern, labelAlign, labelLayout, labelOrientation, formatPercentage, formatValue, gap, gridConfig, horizontal, layers, showLabels, showPercentage, showValues]);
+  }, [color, data, edges, hydrating, patternPrefix, hasPattern, labelAlign, labelLayout, labelOrientation, formatPercentage, formatValue, gap, gridConfig, horizontal, layers, showLabels, showPercentage, showValues]);
 
   // Controlled hover: drive the same native focus the pointer would.
   const interactionRef = useRef<ChartInteractionController<FunnelDatum, number, number> | null>(null);
@@ -277,7 +281,7 @@ const FunnelChart = ({
 
   // Entrance starts on the first draw, without bklit's measure-effect re-render (funnel-chart.tsx:798-803), at the user's direction (no frame waits); the curve is unchanged.
   return (
-    <div className={className} data-bkm-chart="funnel" data-slot="chart" ref={hostRef} style={hostStyle}>
+    <div className={className} data-bkm-chart="funnel" {...hydratingAttrs} data-slot="chart" ref={hostRef} style={hostStyle}>
       <EntranceAlign hostRef={hostRef} renderStart={renderStart} origins={FUNNEL_ENTRANCE_ORIGINS} />
       <RendererChart
         ariaDescription={ariaDescription}

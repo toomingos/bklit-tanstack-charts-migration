@@ -1,6 +1,7 @@
-import "../styles.css";
+"use client";
 import { erase } from "../kit/erased-types";
 import { writePresence } from "../kit/host-write";
+import { useHydratingAttrs } from "../kit/use-hydrating";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { useDragSelect } from "../kit/cartesian/drag-select";
@@ -32,10 +33,10 @@ import { composedStaticCss } from "./static-css";
 import type { ComposedChartProps } from "./types";
 import { useComposedBuild } from "./use-composed-build";
 import { useComposedContext } from "./use-composed-context";
+import { useSanitizedId } from "../kit/use-sanitized-id";
 import type { SeriesBarProps } from "./series-bar";
 
 const DEFAULT_BAR_GAP = 4;
-let nextUid = 0;
 
 /** First non-empty colour, like `a || b || c` on optional strings. */
 const firstColor = (...colors: readonly (string | undefined)[]): string | undefined => colors.find((c) => c !== undefined && c !== "");
@@ -64,10 +65,8 @@ export const ComposedChart = ({
   }, [onPhaseChange]);
 
   const duration = enterTransition?.duration === undefined ? animationDuration : enterTransition.duration * 1000;
-  const [uid] = useState(() => {
-    nextUid += 1;
-    return `c${nextUid.toString(36)}`;
-  });
+  const uid = `c${useSanitizedId()}`;
+  const hydratingAttrs = useHydratingAttrs();
   const containerRef = useRef<HTMLDivElement | null>(null);
   // The plot size and domains of the latest draw: bar px widths and the wipe padding are built inside TanStack's draw (`chart({ width, height })`), so no size state exists.
   const plotRef = useRef<PlotStore | null>(null);
@@ -149,7 +148,8 @@ export const ComposedChart = ({
   const onBuilt = useCallback((snapshot: PlotSnapshot): void => { publishRef.current(snapshot); }, []);
   const { definition, settle } = useComposedBuild({ data, xDataKey, table, series, bars, order, margin, uid, duration, aspectRatio, barSize, maxBarSize, barGap, stacked, stackGap, entered, growing, onBuilt });
 
-  const renderer = useMemo(() => motion({ transition: { type: "tween", duration } }), [duration]);
+  // `initial: "always"` replays the entrance on hydrated (server-rendered) SVG too.
+  const renderer = useMemo(() => motion({ initial: "always", transition: { type: "tween", duration } }), [duration]);
   const tooltipOptions = useMemo(() => {
     const t = propsFor<NonNullable<Parameters<typeof bklitTooltipOptions>[0]>>(table, "tooltip").at(0);
     const colors: Record<string, string> = Object.fromEntries(series.map((s) => [s.dataKey, s.stroke]));
@@ -204,7 +204,7 @@ export const ComposedChart = ({
     [],
   );
   return (
-    <div ref={containerRef} className={className} data-bkm-chart="composed" data-slot="chart" data-bkm-kit={uid} {...gridAttrsOf(table, false)} style={style}>
+    <div ref={containerRef} className={className} data-bkm-chart="composed" {...hydratingAttrs} data-slot="chart" data-bkm-kit={uid} {...gridAttrsOf(table, false)} style={style}>
       <style ref={styleRef} />
       {hasHighlight(table, series) ? <HighlightBandClip id={`${uid}-hlband`} /> : null}
       <LegendHostSync hostRef={containerRef} />

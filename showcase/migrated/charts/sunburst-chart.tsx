@@ -3,6 +3,7 @@
 // Bklit SunburstChart on TanStack Charts: native `sunburst` mark inside `polar`, `motion()` entrance and drill, native focus and `onSelect` zoom.
 // Compound children are config carriers; custom pieces are documented in sunburst/sunburst-mark.ts, the parts live in sunburst/.
 import { erase } from "./kit/erased-types";
+import { useHydratingAttrs } from "./kit/use-hydrating";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ChartInteractionController, ChartPoint, ChartScene } from "@tanstack/charts";
@@ -31,8 +32,6 @@ import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { useTapFocus } from "./kit/touch-focus";
 import { EntranceAlign } from "./kit/entrance/entrance-align";
 import { useResizeBox } from "./kit/size/use-resize-box";
-import "./styles.css";
-import "./sunburst/sunburst.css";
 
 const DEFAULT_SIZE = 520;
 const DEFAULT_HOVER_POP = 8;
@@ -99,6 +98,7 @@ export const SunburstChart = ({
 
   const stageRef = useRef<HTMLDivElement | null>(null);
   const stageBox = useResizeBox(stageRef, { height: size, width: size });
+  const hydratingAttrs = useHydratingAttrs();
   // bklit draws in a size-unit viewBox, so padding and pop distance shrink with the rendered width.
   const unit = stageBox.width > 0 ? stageBox.width / size : 1;
   const growPadding = (paddingProp ?? defaultSunburstGrowPadding(model.maxDepth, size, hoverPop)) * unit;
@@ -229,7 +229,7 @@ export const SunburstChart = ({
   return (
     <SunburstStableProvider value={stable}>
       <SunburstHoverProvider value={hoverStore}>
-        <div ref={hostRef} className={className} data-bk-intro={settled ? undefined : ""} style={hostStyle}>
+        <div ref={hostRef} className={className} {...hydratingAttrs} data-bk-intro={settled ? undefined : ""} style={hostStyle}>
           {definition === null || settled ? null : <EntranceAlign hostRef={hostRef} origins={SUNBURST_ENTRANCE_ORIGINS} renderStart={introAtRef} resolveOnFrame />}
           {parsed.breadcrumbs}
           <div ref={stageRef} className="mx-auto w-full" style={stageStyle}>

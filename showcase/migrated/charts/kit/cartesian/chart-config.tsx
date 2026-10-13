@@ -1,3 +1,4 @@
+"use client";
 // bklit's chart config + static-preview contexts: plain React contexts whose spring numbers composed children can read (bklit drove motion/react with them);
 // the native charts animate with `motion()` tweens and do not consume the springs.
 import { createContext, useContext, useMemo } from "react";

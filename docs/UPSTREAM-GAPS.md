@@ -66,7 +66,7 @@ Drafts live in `docs/upstream-issues/` (local only; its README lists what is pos
 
 - **Needed:** grid/crosshair fade-edges, area horizontal edge fade, viewport-pinned gradient stops, PatternArea/PatternLines hatch, Background pattern, SVG filter on the live pill.
 - **1.1.0 behaviour:** `ChartLinearGradient` (`types.ts:649-660`) has no `gradientUnits`; `svg.ts:30-47` emits the SVG default (objectBoundingBox), so zero-width/height rules cannot take a gradient. The renderer emits no `mask`, `pattern` or `filter` (only a group `clipPath` rect, `svg-renderer.ts:170-175`). No `<defs>` passthrough. CSS `filter` (glow, drop-shadow: `radar/hover-css.ts:23`) is bklit parity, not a gap.
-- **Workaround:** CSS `mask-image` on grid, area and crosshair (`styles.css:73, 92-130, 757-789, 827-832`, `live-line/liveline.css:99-130`); hand-built hidden `<defs>` host for gradients/patterns/filter (`kit/resource-host.tsx`, `background-resources.tsx`, `live-line/live-pill.tsx:9`).
+- **Workaround:** CSS `mask-image` on grid, area and crosshair (`styles.css:73, 92-130, 757-789, 827-832`, `styles.css`); hand-built hidden `<defs>` host for gradients/patterns/filter (`kit/resource-host.tsx`, `background-resources.tsx`, `live-line/live-pill.tsx:9`).
 - **Cost:** effects were first dropped, then re-added via CSS.
 - **Proposal:** `units?: 'objectBoundingBox' | 'userSpaceOnUse'` on gradients; first-class `mask`/`pattern`/`filter` resources or a generic scene `resources` (`<defs>`) slot referenced by `url(#id)`.
 
@@ -74,7 +74,7 @@ Drafts live in `docs/upstream-issues/` (local only; its README lists what is pos
 
 - **Needed:** bklit fades labels in after the sweep (sankey, sunburst, funnel).
 - **1.1.0 behaviour:** first paint builds tracks only for bars, paths, radial paths, arcs and points (`motion.ts:282-287`); none for text. Text joining an already-painted scene fades via `addEnterMotionTrack` (:2155-2159, :2475).
-- **Workaround:** CSS late fades (`sankey/sankey.css:46-67`, `sunburst/labels.ts:17`, `funnel/entrance-css.ts:15`).
+- **Workaround:** CSS late fades (`styles.css`, `sunburst/labels.ts:17`, `funnel/entrance-css.ts:15`).
 - **Proposal:** run `text` nodes through the first-paint track builder (same fix as #12).
 
 ## 8. Tooltip has no show/hide delay
@@ -239,7 +239,7 @@ Drafts live in `docs/upstream-issues/` (local only; its README lists what is pos
 
 - **Needed:** bklit styles chart parts with stylesheet rules (series dim, tick-label fades, pill parts, markers, reference areas, brush selection). The migration keeps hover visuals in CSS because mark `states` cost a whole-scene reconcile per move (#31).
 - **1.1.0 behaviour:** only polar, sunburst and geo marks document `className` (`marks/polar.md:42`, `sunburst.md:102`, `geo.md:52`). Other marks get a fixed core `ts-chart__*` class (`bar.ts:399`, `area.ts:271`, `line.ts:356`, `dot.ts:273`, `text.ts:224`, `rect.ts:321`, `rule.ts:156`) and a `data-ts-key` from the mark `id`. Documented: `ts-chart-host`, `ts-chart-surface`, `svg.ts-chart`, `ts-chart-tooltip` (+ variables), polar/geo classes, mark `id`, and that keys become `data-ts-key` (`rendering-and-export.md:130, :320`). Undocumented: key composition (bars `bars:<i>:<series>`, `${guide.id}-tick-label:<value>` `scene.ts:1882`, `grid-rows`/`grid-columns`) and the group, crosshair, brush and tooltip-body classes (`ts-chart__marks` scene.ts:483, `__grid` :1383, `__axes` :1476, `__focus-layer` :434, `__focus-guide-layer` svg-renderer.ts:81, `__crosshair*` crosshair-resolver.ts:200-406, `__brush-x-fallback` interaction-brush.ts:200). Core motion itself keys on `g.ts-chart__crosshair` (`motion.ts:2975-3053`), so our own guide groups must carry that class.
-- **Workaround:** selectors on `data-ts-key` and core classes are built from our own mark ids, named in one TS module (`kit/renderer-dom.ts`) and repeated in the three CSS files that cannot import it (`styles.css`, `sankey/sankey.css`, `live-line/liveline.css`); own scene nodes (wipe, date pill, choropleth geo) use documented `className` (`bkm-*`) instead.
+- **Workaround:** selectors on `data-ts-key` and core classes are built from our own mark ids, named in one TS module (`kit/renderer-dom.ts`) and repeated in styles.css, which cannot import it; own scene nodes (wipe, date pill, choropleth geo) use documented `className` (`bkm-*`) instead.
 - **Cost:** CSS is coupled to core's internal key and class composition; a core refactor silently breaks hover, tick, pill and marker styling.
 - **Proposal:** a `className` option on every mark and on axis/focus-guide parts, or a documented key format and class list.
 
@@ -309,7 +309,7 @@ Drafts live in `docs/upstream-issues/` (local only; its README lists what is pos
 - **Needed:** bklit's gauge notches enter from scale 0 and opacity 0 to 1 about each notch's own centre, with a per-notch delay.
 - **1.1.0 behaviour:** the generic enter track for an element is an opacity-attribute tween only (`motion.ts:2475-2636`, tween :2621-2636); no scale or transform enter exists for area-x or rect marks, and `ChartMotionTiming` carries only `delay`, `transition` and `path` (`types.ts:872-877`). The scale sweeps apply to whole groups of other marks (bars about the baseline `motion.ts:1238-1330`, line/area :1505-1562, radial :1596) and do not apply to these marks.
 - **Workaround:** fixed scoped CSS keyframes keyed on `data-ts-key` (`gauge/enter-css.ts`, #36), with `:nth-child` delays and entrance origins aligned on motion's clock.
-- **Also:** the sankey node grow (scaleY about the node's middle, `sankey/sankey.css`) uses the same CSS route, so the first scene is laid out at full height.
+- **Also:** the sankey node grow (scaleY about the node's middle, `styles.css`) uses the same CSS route, so the first scene is laid out at full height.
 - **Proposal:** an `enter` option on `motion()` marks (`from: { scale, opacity }`, `origin: 'center'`, per-datum delay), or a documented per-element enter transform.
 
 ## 48. No documented way to change a custom circle's radius on hover
@@ -416,7 +416,7 @@ Drafts live in `docs/upstream-issues/` (local only; its README lists what is pos
 
 - **Needed:** bklit's funnel stages grow from the first frame as one uniform 2-D scale about the stage's left (top) centre, staggered per stage (`funnel-chart.tsx:319-327`), in the first and only scene draw.
 - **1.1.0 behaviour:** the initial `animateSvg` area track is a one-axis grow from the baseline (`motion.ts:1505-1562`, built at `:282-287`); there is no initial transform for keyed groups, and a group animates only when it joins a painted scene (#12), which costs a second draw.
-- **Workaround:** the stage rings carry a static CSS `scale` keyframe from the first draw (`funnel/funnel.css`, `bkm-funnel-grow`), re-stamped onto motion's clock by `EntranceAlign`; marks are `motion: false`.
+- **Workaround:** the stage rings carry a static CSS `scale` keyframe from the first draw (`styles.css`, `bkm-funnel-grow`), re-stamped onto motion's clock by `EntranceAlign`; marks are `motion: false`.
 - **Proposal:** let `motion({ initial })` accept a per-group transform enter with an origin (upstream: [#214](https://github.com/TanStack/charts/issues/214)).
 
 ## 63. The native tooltip rewrites unchanged attributes and glides on the main thread on every paint

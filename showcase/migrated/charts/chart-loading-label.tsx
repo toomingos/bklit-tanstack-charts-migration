@@ -2,7 +2,6 @@
 "use client";
 
 import type { ReactElement } from "react";
-import "./styles.css";
 import { LoadingLabel } from "./kit/loading-label";
 
 interface ChartLoadingLabelProps {

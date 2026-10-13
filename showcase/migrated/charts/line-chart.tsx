@@ -1,3 +1,4 @@
+"use client";
 // bklit LineChart on native TanStack Charts: children are config carriers,
 // compiled by the shared cartesian kit into one defineChart definition.
 import { useEffect } from "react";

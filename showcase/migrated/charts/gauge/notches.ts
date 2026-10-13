@@ -134,8 +134,15 @@ export const linearNotches = (o: LinearInput): GaugeNotchRow[] => {
 export const clampStagger = (scale: number): number => clamp(scale, 0.25, 2.5);
 
 /** A polygon notch is the rows sharing an `index`, one per vertex in drawing order, carried as a point (x1 = x2, y1 = y2) on the notch row. */
+// Server and client trig differ in the last bits, which breaks hydration; 0.001px is sub-pixel.
+const round = (v: number): number => Math.round(v * 1000) / 1000;
+
 const vertices = (row: GaugeNotchRow, points: readonly (readonly [number, number])[]): GaugeNotchRow[] =>
-  points.map(([x, y]) => ({ ...row, x1: x, x2: x, y1: y, y2: y }));
+  points.map(([px, py]) => {
+    const x = round(px);
+    const y = round(py);
+    return { ...row, x1: x, x2: x, y1: y, y2: y };
+  });
 
 /** bklit's tapered linear notch: the bottom edge is `ratio` (28/42) of the top edge's width, both centred on the notch. */
 export const taperedLinearVertices = (rows: readonly GaugeNotchRow[], ratio: number): GaugeNotchRow[] =>

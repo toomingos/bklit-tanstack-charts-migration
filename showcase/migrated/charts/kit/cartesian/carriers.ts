@@ -1,3 +1,4 @@
+"use client";
 // Config-carrier children for the native cartesian charts: a carrier renders nothing, the chart reads its props with React.Children (`readChildren`) and compiles them into one TanStack definition,
 // so the declarative bklit API (`<LineChart><Line/><Grid/>...`) survives with no store.
 import { defineCarrier } from "../role";

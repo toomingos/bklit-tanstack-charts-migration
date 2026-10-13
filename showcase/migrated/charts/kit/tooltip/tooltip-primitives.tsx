@@ -1,3 +1,4 @@
+"use client";
 // bklit's tooltip building blocks as plain DOM for the native tooltip body; the native tooltip owns positioning, flip, portal and motion.
 // The crosshair and focus-dot primitives are config carriers (see tooltip-carriers.ts).
 import { useMemo } from "react";

@@ -1,3 +1,4 @@
+"use client";
 // Public bklit chart context (`ChartProvider`, `useChart`, ...) re-expressed over what the native chart reports: data, measured size, margin, resolved domains
 // (as d3 scales), series config and the focused row (native `onFocusChange`). Nothing is read from the DOM.
 import { createContext, useContext, useMemo } from "react";

@@ -1,3 +1,4 @@
+"use client";
 import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { FeatureCollection, Geometry } from "geojson";

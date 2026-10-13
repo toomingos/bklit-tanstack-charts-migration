@@ -82,13 +82,14 @@ const boxContext = (boxes: [number, number, number, number][]): BoxContext => {
 // antimeridian clipping (Russia's Chukotka, Fiji, the Aleutians yield separate boxes per map edge instead of one spanning the whole map).
 const projectOnce = (projection: GeoProjection, datum: GeoPermissibleObjects): { readonly path: Path2D | null; readonly rings: Box[] } => {
   const boxes: [number, number, number, number][] = [];
-  const path = new Path2D();
+  // A server render has no Path2D (hit tests only run on the client): the stream still yields the ring boxes.
+  const path = typeof Path2D === "undefined" ? null : new Path2D();
   const rings = boxContext(boxes);
   geoPath(projection, erase({
-    arc: (x: number, y: number, r: number, start: number, end: number): void => { path.arc(x, y, r, start, end); },
-    closePath: (): void => { path.closePath(); },
-    lineTo: (x: number, y: number): void => { path.lineTo(x, y); rings.lineTo(x, y); },
-    moveTo: (x: number, y: number): void => { path.moveTo(x, y); rings.moveTo(x, y); },
+    arc: (x: number, y: number, r: number, start: number, end: number): void => { path?.arc(x, y, r, start, end); },
+    closePath: (): void => { path?.closePath(); },
+    lineTo: (x: number, y: number): void => { path?.lineTo(x, y); rings.lineTo(x, y); },
+    moveTo: (x: number, y: number): void => { path?.moveTo(x, y); rings.moveTo(x, y); },
   }))(datum);
   return { path: boxes.length === 0 ? null : path, rings: boxes.filter((ring) => ring.every(Number.isFinite)) };
 };

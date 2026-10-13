@@ -81,7 +81,8 @@ interface RendererTooltip {
 /** The entrance renderer and the tooltip body callback. */
 export function useRendererTooltip({ animationDuration, table, data, series }: RendererTooltipInput): RendererTooltip {
   const renderer = useMemo(
-    () => motion(erase({ transition: { type: "tween", duration: animationDuration } })),
+    // `initial: "always"` replays the entrance on hydrated (server-rendered) SVG too.
+    () => motion(erase({ initial: "always", transition: { type: "tween", duration: animationDuration } })),
     [animationDuration],
   );
   const tooltipOptions = bklitTooltipOptions(propsFor<Parameters<typeof bklitTooltipOptions>[0] & object>(table, "tooltip")[0], data, {

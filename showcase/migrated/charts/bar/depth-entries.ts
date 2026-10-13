@@ -1,3 +1,4 @@
+"use client";
 // bklit `useBarDepthEntries` (bar-depth.tsx:380-519) on the public chart context: the same geometry the native depth marks use
 // (geometry.ts depthEntry), for consumers drawing their own layers aligned with the bars.
 import { createContext, useContext, useMemo } from "react";

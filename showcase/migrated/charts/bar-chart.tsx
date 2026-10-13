@@ -1,7 +1,8 @@
+"use client";
 // Bklit BarChart on native TanStack Charts: compound children are read into one
 // `defineChart` definition (bar); the `motion()` renderer plays the entrance.
 import { erase } from "./kit/erased-types";
-import "./styles.css";
+import { useHydratingAttrs } from "./kit/use-hydrating";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useKeyboardFocusHold } from "./kit/keyboard-hold";
@@ -106,6 +107,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
   const [entered, setEntered] = useState(false);
   const clock = useRef<{ at: number | null }>({ at: null }).current;
   const uid = `b${useSanitizedId()}`;
+  const hydratingAttrs = useHydratingAttrs();
   // Legend hover re-renders the host with fresh `children`; keep the previous table while every carrier is structurally equal.
   const { table, custom, ready: childrenReady } = useChildTable(children, readBarChildren);
   const series = useMemo(() => resolveBarSeries(table), [table]);
@@ -142,7 +144,8 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
     [loading, seed, clock, data, xDataKey, table, series, resolvedMargin, barGap, animationDuration, uid, orientation, stacked, stackGap, plot, updated],
   );
   const renderer = useMemo(
-    () => motion({ transition: { type: "tween", duration: animationDuration } }),
+    // `initial: "always"` replays the entrance on hydrated (server-rendered) SVG too.
+    () => motion({ initial: "always", transition: { type: "tween", duration: animationDuration } }),
     [animationDuration],
   );
   const horizontal = orientation === "horizontal";
@@ -270,6 +273,7 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
       ref={containerRef}
       className={className}
       data-bkm-chart="bar"
+      {...hydratingAttrs}
       data-bkm-bar={uid}
       data-bkm-status={loading ? "loading" : undefined}
       data-legend={legendHovered !== null && legendHovered < MAX_INDEX ? legendHovered : undefined}

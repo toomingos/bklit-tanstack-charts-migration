@@ -1,3 +1,4 @@
+"use client";
 // Overlay children of the cartesian charts (event markers, projection and terminal markers); the module registers the overlay builders (features.ts).
 import { defineCarrier } from "../role";
 import type { ChartMarkersProps, LineSeriesTerminalMarkerProps, MarkerGroupProps, ProjectionLineEndMarkerProps, ProjectionLineProps } from "../types";

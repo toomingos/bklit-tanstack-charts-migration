@@ -1,3 +1,4 @@
+"use client";
 // Bklit PieChart on native radialArc slices inside polar(): motion() staggered entrance, native focus via onFocusChange.
 // Custom: a painted-geometry arc generator (pie/arc.ts; states cannot move or scale an arc) and the NumberFlow center overlay.
 import { pie as d3Pie } from "d3-shape";
@@ -26,8 +27,6 @@ import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { INITIAL_WIDTH_PX, useFluidWidth } from "./kit/size/use-fluid-width";
 import { useIsClient } from "./kit/size/use-is-client";
 import { useTapFocus } from "./kit/touch-focus";
-import "./styles.css";
-import "./polar.css";
 
 const DEFAULT_HOVER_OFFSET = 10;
 const FULL_SWEEP_END_ANGLE = (3 * Math.PI) / 2;

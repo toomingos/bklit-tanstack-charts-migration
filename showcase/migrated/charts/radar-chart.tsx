@@ -1,3 +1,4 @@
+"use client";
 // Bklit RadarChart on TanStack Charts 1.0 native polar marks: radialLine rings, radialRule spokes,
 // radialText labels, radialArea + radialDot series, mark `states` for hover emphasis, `motion()` for entrances.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -21,7 +22,6 @@ import { DEFAULT_RADAR_COLORS, radarAreaColor } from "./radar/area";
 import type { RadarLabelsProps } from "./radar/labels";
 import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { useTapFocus } from "./kit/touch-focus";
-import "./styles.css";
 import { clearAttribute, raiseAttribute, readHoverIndex, writeHoverIndex, writeVar } from "./kit/host-write";
 import { joinClasses } from "./kit/cn";
 import { TAU } from "./kit/polar/tau";

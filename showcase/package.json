@@ -10,13 +10,14 @@
     "lint": "oxlint --type-aware --max-warnings 0",
     "lint:fix": "oxlint --type-aware --fix",
     "check-types": "tsc --noEmit",
-    "knip": "knip"
+    "knip": "knip",
+    "ssr-check": "node ../scripts/ssr-check/run.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0-alpha.8",
     "@number-flow/react": "^0.5.4",
     "@showcase/bklit-charts": "file:./packages/bklit-charts",
-    "@showcase/migrated-charts": "workspace:*",
+    "@showcase/migrated-charts": "workspace:bklit-tanstack-charts@*",
     "@visx/brush": "4.0.0",
     "@visx/curve": "4.0.0",
     "@visx/event": "4.0.0",

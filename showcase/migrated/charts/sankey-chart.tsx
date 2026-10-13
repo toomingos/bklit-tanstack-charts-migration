@@ -3,6 +3,7 @@
 "use client";
 
 import { HoldArm } from "./kit/size/parent-size-arm";
+import { useHydratingAttrs } from "./kit/use-hydrating";
 import { joinClasses } from "./kit/cn";
 import { hasText } from "./kit/guards";
 import { EntranceAlign } from "./kit/entrance/entrance-align";
@@ -29,10 +30,8 @@ import { ResourceHost, scopePaintUrl, scopeResourceIds } from "./kit/resource-ho
 import { parseAspectRatio, TOOLTIP_MOTION } from "./kit/theme";
 import { useKeyboardFocusHold } from "./kit/keyboard-hold";
 import { useTapFocus } from "./kit/touch-focus";
-import "./styles.css";
 import { createSankeyHoverWriter, sankeyHoverSets, sankeyHoverCss, sankeyHoverVars, sankeyIndexCss } from "./sankey/hover-css";
 import type { SankeyHoverFocus } from "./sankey/hover-css";
-import "./sankey/sankey.css";
 import { CHART_PALETTE } from "./kit/palette";
 import { useSanitizedId } from "./kit/use-sanitized-id";
 
@@ -55,7 +54,8 @@ interface SankeyChartProps {
 
 const DEFAULT_MARGIN: Margin = { bottom: 40, left: 180, right: 180, top: 40 };
 const DEFAULT_ANIMATION_MS = 1100;
-const RENDERER = motion();
+// `initial: "always"` replays the entrance on hydrated (server-rendered) SVG too.
+const RENDERER = motion({ initial: "always" });
 const RENDERER_STYLE: CSSProperties = { width: "100%" };
 const formatInt = (value: number): string => intFmt.format(value);
 
@@ -93,6 +93,7 @@ const SankeyChart = ({
   const data = useMemo(() => sanitizeSankeyData(dataProp), [dataProp]);
   const revealKey = revealSignature ?? "";
   const idPrefix = useSanitizedId();
+  const hydratingAttrs = useHydratingAttrs();
   const linkConfig = useMemo(() => childProps(children, "SankeyLink") ?? {}, [children]);
   const nodeConfig = useMemo(() => childProps(children, "SankeyNode") ?? {}, [children]);
   const tooltipConfig = useMemo(() => childProps(children, "SankeyTooltip"), [children]);
@@ -264,7 +265,7 @@ const SankeyChart = ({
   }, [dur, ease, hoverVars, nodeCount]);
 
   return (
-    <div className={className} data-bkm-chart="sankey" data-bkm-sk-hold="" data-bkm-sk-id={idPrefix} data-slot="chart" ref={hostRef} style={hostStyle}>
+    <div className={className} data-bkm-chart="sankey" {...hydratingAttrs} data-bkm-sk-hold="" data-bkm-sk-id={idPrefix} data-slot="chart" ref={hostRef} style={hostStyle}>
       <style>{sankeyHoverCss()}</style>
       <style ref={indexStyleRef}>{sankeyIndexCss(idPrefix)}</style>
       <HoldArm key={`arm-${revealSignature}`} attribute="data-bkm-sk-hold" hostRef={hostRef} />

@@ -39,20 +39,29 @@ const nodeIndex = (scene: Scene, prefix: string): Map<string, GeoNode> => {
 
 /** The highlight path of one choropleth host: `show` on a focused feature, `hide` off one, `refresh` after each render (a pan, zoom or resize moves the path). */
 export class FeatureHighlight {
-  readonly root: SVGSVGElement;
-  private readonly path: SVGPathElement;
+  private el: { readonly root: SVGSVGElement; readonly path: SVGPathElement } | null = null;
   private key: string | null = null;
 
-  constructor(private readonly markId: string) {
-    this.root = document.createElementNS(SVG_NS, "svg");
-    this.root.setAttribute("aria-hidden", "true");
-    this.root.setAttribute("class", "bkm-choro-hl");
+  constructor(private readonly markId: string) {}
+
+  /** Built on first client use: the highlight is created during render, which also runs on the server. */
+  get root(): SVGSVGElement {
+    return this.built().root;
+  }
+
+  private built(): { readonly root: SVGSVGElement; readonly path: SVGPathElement } {
+    if (this.el) {return this.el;}
+    const root = document.createElementNS(SVG_NS, "svg");
+    root.setAttribute("aria-hidden", "true");
+    root.setAttribute("class", "bkm-choro-hl");
     const layer = document.createElementNS(SVG_NS, "g");
     layer.setAttribute("class", "bkm-choro-hl-layer");
-    this.path = document.createElementNS(SVG_NS, "path");
-    layer.append(this.path);
-    this.root.append(layer);
-    this.root.style.display = "none";
+    const path = document.createElementNS(SVG_NS, "path");
+    layer.append(path);
+    root.append(layer);
+    root.style.display = "none";
+    this.el = { path, root };
+    return this.el;
   }
 
   show(scene: Scene, key: string): void {
@@ -62,7 +71,7 @@ export class FeatureHighlight {
 
   hide(): void {
     this.key = null;
-    this.root.style.display = "none";
+    if (this.el) {this.el.root.style.display = "none";}
   }
 
   refresh(scene: Scene): void {
@@ -73,11 +82,11 @@ export class FeatureHighlight {
 
   private write(scene: Scene): void {
     const node = this.key === null ? undefined : nodeIndex(scene, `${this.markId}:`).get(this.key);
+    const { path, root } = this.built();
     if (!node?.path) {
-      this.root.style.display = "none";
+      root.style.display = "none";
       return;
     }
-    const { path } = this;
     path.setAttribute("d", node.path);
     const style = node.style ?? {};
     // style, not attributes: presentation attributes do not resolve var().
@@ -85,6 +94,6 @@ export class FeatureHighlight {
     path.style.stroke = String(style.stroke ?? "none");
     path.style.strokeWidth = String(style.strokeWidth ?? 1);
     path.style.strokeLinejoin = "round";
-    this.root.style.display = "";
+    root.style.display = "";
   }
 }

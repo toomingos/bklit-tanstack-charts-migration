@@ -1,3 +1,4 @@
+"use client";
 import { useMemo } from "react";
 import { useChartHover } from "../cartesian/chart-context";
 import type { ChartMarker } from "../types";

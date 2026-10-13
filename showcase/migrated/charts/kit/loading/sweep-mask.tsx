@@ -3,7 +3,6 @@
 import { useMemo } from "react";
 import type { ReactElement } from "react";
 
-import "../../styles.css";
 
 /** One shimmer sweep, in seconds. */
 export const DEFAULT_SWEEP_DURATION_S = 2;

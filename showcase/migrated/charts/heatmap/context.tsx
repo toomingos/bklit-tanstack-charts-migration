@@ -1,3 +1,4 @@
+"use client";
 import { createContext, useCallback, useContext, useMemo } from "react";
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import type { HeatmapLinearScale, HeatmapTimeScale } from "./scales";

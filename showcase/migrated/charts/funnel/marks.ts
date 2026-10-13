@@ -43,6 +43,8 @@ interface FunnelMarkConfig {
   readonly labelAlign: "center" | "start" | "end";
   /** Resource-host id prefix: the innermost ring of stage i paints `url(#<prefix>-<i>)` (bklit renderPattern). */
   readonly patternPrefix?: string | undefined;
+  /** False while hydrating: labels use the server's fallback measurements so the first client render matches the server markup. */
+  readonly measureText: boolean;
   readonly grid: { readonly bands: boolean; readonly bandColor: string; readonly lines: boolean; readonly lineColor: string; readonly lineOpacity: number; readonly lineWidth: number } | null;
 }
 
@@ -96,8 +98,8 @@ interface FontMetrics {
   /** SVG `dominant-baseline: middle` puts the baseline half an x-height below the y attribute. */
   readonly xHeight: number;
 }
-const fontMetrics = (fontSize: number, fontWeight: number, fontFamily: string): FontMetrics => {
-  const metrics = fontContext(fontSize, fontWeight, fontFamily)?.measureText("x");
+const fontMetrics = (fontSize: number, fontWeight: number, fontFamily: string, measure: boolean): FontMetrics => {
+  const metrics = measure ? fontContext(fontSize, fontWeight, fontFamily)?.measureText("x") : undefined;
   return metrics
     ? { ascent: metrics.fontBoundingBoxAscent, descent: metrics.fontBoundingBoxDescent, xHeight: metrics.actualBoundingBoxAscent }
     : { ascent: fontSize, descent: fontSize / 3, xHeight: fontSize * 0.53 };
@@ -160,16 +162,18 @@ const ringFill = ({ base, gradientId, index, innermost, patternPrefix }: Readonl
 
 const labelItems = (config: FunnelMarkConfig, fontFamily: string, stage: FunnelStageInput, pct: number): LabelItem[] => {
   const items: LabelItem[] = [];
+  const width = (t: string, size: number, weight: number): number =>
+    config.measureText ? textWidth(t, size, weight, fontFamily, SSR_WIDTH_RATIO) : t.length * size * SSR_WIDTH_RATIO;
   if (config.showValues) {
     const t = stage.displayValue ?? config.formatValue(stage.value);
-    items.push({ height: VALUE_LINE, kind: "value", text: t, width: textWidth(t, 14, 600, fontFamily, SSR_WIDTH_RATIO) });
+    items.push({ height: VALUE_LINE, kind: "value", text: t, width: width(t, 14, 600) });
   }
   if (config.showPercentage) {
     const t = config.formatPercentage(pct);
-    items.push({ height: SMALL_LINE + PILL_PAD_Y * 2, kind: "pct", text: t, width: textWidth(t, 12, 700, fontFamily, SSR_WIDTH_RATIO) + PILL_PAD_X * 2 });
+    items.push({ height: SMALL_LINE + PILL_PAD_Y * 2, kind: "pct", text: t, width: width(t, 12, 700) + PILL_PAD_X * 2 });
   }
   if (config.showLabels) {
-    items.push({ height: SMALL_LINE, kind: "name", text: stage.label, width: textWidth(stage.label, 12, 500, fontFamily, SSR_WIDTH_RATIO) });
+    items.push({ height: SMALL_LINE, kind: "name", text: stage.label, width: width(stage.label, 12, 500) });
   }
   return items;
 };
@@ -398,9 +402,9 @@ const funnelScene = (config: FunnelMarkConfig, id: string, chart: ChartBounds, l
   // Label text is measured in the face it is drawn in: the host's computed font (the pill sizes from it).
   const fontFamily = layout.typography?.fontFamily ?? FALLBACK_FONT;
   const fonts = {
-    name: fontMetrics(LABEL_FONT.name.size, LABEL_FONT.name.weight, fontFamily),
-    pct: fontMetrics(LABEL_FONT.pct.size, LABEL_FONT.pct.weight, fontFamily),
-    value: fontMetrics(LABEL_FONT.value.size, LABEL_FONT.value.weight, fontFamily),
+    name: fontMetrics(LABEL_FONT.name.size, LABEL_FONT.name.weight, fontFamily, config.measureText),
+    pct: fontMetrics(LABEL_FONT.pct.size, LABEL_FONT.pct.weight, fontFamily, config.measureText),
+    value: fontMetrics(LABEL_FONT.value.size, LABEL_FONT.value.weight, fontFamily, config.measureText),
   };
   const points: FunnelPoint[] = [];
   const stages: SceneNode[] = config.stages.map((_stage, index) => {

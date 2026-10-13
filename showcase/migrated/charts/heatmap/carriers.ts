@@ -1,3 +1,4 @@
+"use client";
 // Config carriers for HeatmapChart. They render nothing: the chart reads their props
 // (see ../kit/read-children) and folds them into one native definition.
 import type { CSSProperties } from "react";

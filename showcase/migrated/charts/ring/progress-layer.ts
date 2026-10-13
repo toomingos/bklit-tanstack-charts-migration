@@ -154,6 +154,7 @@ const createProgressLayer = (options: Readonly<ProgressLayerOptions>): ChartLaye
       let origin: number | null = null;
       cancelOrigin = resolveEntranceOrigins(options.renderStart.current ?? start, (clocks) => { origin = clocks.motion; });
       const tick = (now: number): void => {
+        if (!sweeping) { return; }
         const elapsed = origin === null ? 0 : now - origin;
         for (const { row, path, curve } of targets) {
           const progress = curve(elapsed);
@@ -166,9 +167,8 @@ const createProgressLayer = (options: Readonly<ProgressLayerOptions>): ChartLaye
           frame = requestAnimationFrame(tick);
         } else { stop(); settle(); }
       };
+      // bklit drives the sweep per frame through a motion value (ring.tsx:104); the first tick paints frame 0 and schedules the next.
       tick(start);
-      // bklit drives the sweep per frame through a motion value (ring.tsx:104).
-      frame = requestAnimationFrame(tick);
     };
     const prune = (): void => {
       for (const [id, group] of state.groups) { if (!state.seen.has(id)) { group.remove(); state.groups.delete(id); } }

@@ -31,3 +31,6 @@ __*
 /captures/
 /tabsrv.log
 /chat.jsonl
+
+# Built package output
+showcase/migrated/dist/

@@ -3,6 +3,7 @@
 // Native TanStack Charts gauge (notch marks in gauge/definition.ts); value changes morph natively. Only the centre/label
 // stat reuses the bklit number-flow helpers (TanStack has no number-tween text mark).
 import { useMemo, useRef } from "react";
+import { useHydratingAttrs } from "./kit/use-hydrating";
 import type { CSSProperties, ReactElement, ReactNode, RefObject } from "react";
 import { Chart as RendererChart } from "@tanstack/react-charts/core";
 import { defaultGaugeStatFormat, GaugeCenter, GaugeLabelLayout } from "./gauge/label";
@@ -18,8 +19,6 @@ import { EntranceLag } from "./gauge/entrance-lag";
 import { prefersReducedMotion } from "./kit/loading/reduced-motion";
 import { toNotchEnter } from "./gauge/transition";
 import type { GaugeEnterTransition, NotchEnter } from "./gauge/transition";
-import "./styles.css";
-import "./polar.css";
 
 export type GaugeOrientation = "arc" | "linear";
 export type { GaugeLabelAlign, GaugeLabelPlacement } from "./gauge/label";
@@ -175,6 +174,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
   const activePair = useGradientPair(activeGradient);
   const inactivePair = useGradientPair(inactiveGradient);
   const idPrefix = useSanitizedId();
+  const hydratingAttrs = useHydratingAttrs();
   const themeGradientId = `${idPrefix}-gauge-theme-active`;
   const needsThemeGradient = useGradient && activeGradient === undefined && (activeFill ?? "") === "";
 
@@ -203,7 +203,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
       </div>
     );
     return (
-      <div className={joinClasses("relative w-full min-w-0 max-w-full", className)} data-bkm-chart="" data-bkm-gn={enterAttr} style={enterVars}>
+      <div className={joinClasses("relative w-full min-w-0 max-w-full", className)} data-bkm-chart="" {...hydratingAttrs} data-bkm-gn={enterAttr} style={enterVars}>
         {enterCss}
         <GaugeLabelLayout align={labelAlign} format={formatOptions} label={defaultLabel} placement={labelPlacement} prefix={prefix} suffix={suffix} value={centerValue}>{track}</GaugeLabelLayout>
       </div>
@@ -212,7 +212,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
 
   // Entrance starts on the first draw, without bklit's ParentSize frames (gauge.tsx:685), at the user's direction (no frame waits); the curve is unchanged.
   return (
-    <div className={arcRootClass(fixed, className)} data-bkm-chart="" data-bkm-gn={enterAttr} style={styles.arcRoot}>
+    <div className={arcRootClass(fixed, className)} data-bkm-chart="" {...hydratingAttrs} data-bkm-gn={enterAttr} style={styles.arcRoot}>
       {enterCss}
       <div className={arcHostClass(fixed)} ref={hostRef} style={styles.arcHost}>
         <EntranceGate active={animate} hostRef={hostRef} renderStart={renderStart} />

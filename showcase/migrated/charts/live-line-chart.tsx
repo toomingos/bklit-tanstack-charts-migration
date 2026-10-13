@@ -25,8 +25,6 @@ import { LivePulse } from "./live-line/live-pulse";
 import { TICK_FADE_CSS } from "./live-line/live-tick-fade";
 import { liveTooltipEqual, useLiveTooltipOptions } from "./live-line/live-tooltip";
 import { LiveYLabels, Y_LABEL_GAP } from "./live-line/live-ylabels";
-import "./styles.css";
-import "./live-line/liveline.css";
 import { useSanitizedId } from "./kit/use-sanitized-id";
 
 export interface LiveLinePoint {

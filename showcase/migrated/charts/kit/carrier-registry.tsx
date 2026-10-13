@@ -110,16 +110,25 @@ export const useCarrierRegistration = (role: string, displayName: string, props:
   const id = useId();
   useLayoutEffect(() => { registry?.set(id, role, slot, props); });
   useLayoutEffect(() => () => { registry?.remove(id); }, [registry, id]);
-  if (registry === null && process.env.NODE_ENV !== "production") {
+  if (registry === null && !isProduction()) {
     warnOnce(`<${displayName}> rendered outside a chart that reads wrapped children: it draws nothing. Keep it a direct child of the chart, or use a chart that supports wrapper components.`);
   }
 };
 
 const warned = new Set<string>();
 
+/** Bundlers replace `process.env.NODE_ENV` with a literal; unbundled in a browser `process` is undefined, which counts as development. */
+const isProduction = (): boolean => {
+  try {
+    return process.env.NODE_ENV === "production";
+  } catch {
+    return false;
+  }
+};
+
 /** Dev-only console warning, once per message. */
 export const warnOnce = (message: string): void => {
-  if (process.env.NODE_ENV === "production" || warned.has(message)) {
+  if (isProduction() || warned.has(message)) {
     return;
   }
   warned.add(message);

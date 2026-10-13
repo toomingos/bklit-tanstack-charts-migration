@@ -1,3 +1,4 @@
+"use client";
 import { useMemo } from "react";
 import type { ReactNode } from "react";
 import type { Focus } from "./arcs";

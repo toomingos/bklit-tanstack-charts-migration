@@ -1,3 +1,4 @@
+"use client";
 import { area as d3Area, line as d3Line } from "d3-shape";
 import type { CurveFactory } from "d3-shape";
 import { useCallback, useEffect, useMemo, useState } from "react";

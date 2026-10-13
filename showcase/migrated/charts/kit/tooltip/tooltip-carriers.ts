@@ -1,3 +1,4 @@
+"use client";
 // TooltipDot / TooltipIndicator: config carriers, since natively the hover dot and crosshair are the chart's own marks.
 // Their style props merge into the tooltip config `buildCartesianDefinition` maps onto them; x / y / visible are ignored.
 import { isNumber, isString } from "../guards";

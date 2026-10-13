@@ -229,7 +229,7 @@ interface PillView {
 
 /** Imperative hover indicator for one chart host. `mount` once, `update` after each draw, `focus` on every focus change. */
 export class HoverOverlay {
-  readonly root: HTMLDivElement;
+  private el: HTMLDivElement | null = null;
   private model: HoverOverlayModel | null = null;
   private plot: OverlayPlot | null = null;
   private margin: ChartMargin | null = null;
@@ -241,9 +241,13 @@ export class HoverOverlay {
   private monthRun = -1;
   private readonly ticker = new Ticker();
 
-  constructor() {
-    this.root = div("bkm-hov");
-    this.root.setAttribute("aria-hidden", "true");
+  /** Built on first client use: the overlay is created during render, which also runs on the server. */
+  get root(): HTMLDivElement {
+    if (!this.el) {
+      this.el = div("bkm-hov");
+      this.el.setAttribute("aria-hidden", "true");
+    }
+    return this.el;
   }
 
   /** The model and plot of the latest draw; rebuilds the elements (a draw is a resize or a data change, never a hover move) and replays the current focus without motion. */
@@ -251,6 +255,10 @@ export class HoverOverlay {
     this.model = model;
     this.plot = plot;
     this.margin = margin;
+    // A server render draws during render (onBuilt): no DOM and no frames there; the client builds on its own first draw.
+    if (typeof document === "undefined") {
+      return;
+    }
     this.root.replaceChildren();
     this.ticker.clear();
     this.ruleGlide = null;

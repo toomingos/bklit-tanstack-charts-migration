@@ -1,3 +1,4 @@
+"use client";
 // Ring public model: data types, the config carrier (Ring), shared contexts, hooks and child classification.
 // bklit-compatible names; RingChart provides the contexts, RingCenter and custom children read them.
 import { createContext, isValidElement, memo, useMemo } from "react";
