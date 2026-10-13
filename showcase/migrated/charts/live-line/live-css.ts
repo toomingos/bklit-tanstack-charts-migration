@@ -7,7 +7,7 @@ const SCOPE = '[data-bkm-chart="liveline"]';
 export const settleMs = (lerp: number): number => Math.round(settleFrames(lerp) * FRAME_MS);
 
 /** Clip widened by `--bkm-live-ext` (tail + tip clearance); head slides from `--bkm-live-dy` along the sampled curve; tail A slides in, B and the block under it grow from the dot on bklit's head easing
- * as a `linear()`. Parity classes restart each tick (nodes persist); rolls start from the path's start transform (Frame.roll); badge label i shows from step `--ds` to `--de` (head-ease labelWindow). */
+ * as a `linear()`. Parity classes restart each tick (nodes persist); rolls start from the path's start transform (Frame.roll); pooled labels show from step `--bkm-s` to `--bkm-e` of their group's stepped `--bkm-st` (one animation per pool). */
 export function liveCss(lerp: number): string {
   const headEase = sampledEasing(headEasing(lerp));
   const rules: string[] = [
@@ -26,28 +26,25 @@ export function liveCss(lerp: number): string {
       `@keyframes bkm-tail-a${parity}{from{transform:translate(var(--bkm-live-ax,0px),0) scale(var(--bkm-live-ak,1),1)}to{transform:translate(0,0) scale(1,1)}}`,
       `@keyframes bkm-tail-x${parity}{from{scale:var(--bkm-live-b0,0) 1}to{scale:1 1}}`,
       `@keyframes bkm-tail-l${parity}{from{translate:var(--bkm-live-ax,0px) 0}to{translate:0 0}}`,
-      `${SCOPE} .bkm-tp${parity} .bkm-live-tail-l:not(${still}){animation:bkm-tail-l${parity} ${roll} both}`,
+      `${SCOPE} .bkm-tp${parity} .bkm-live-tail-l:not(${still}){animation:bkm-tail-l${parity} ${roll}}`,
       `@keyframes bkm-tail-y${parity}{from{transform:scaleY(1)}to{transform:scaleY(0)}}`,
       `@keyframes bkm-tail-k${parity}{from{transform:scaleY(1)}to{transform:scaleY(var(--bkm-live-k,1))}}`,
-      `${SCOPE} .bkm-tp${parity} .bkm-live-tail-a:not(${still}){transform-box:view-box;transform-origin:var(--bkm-live-xa,0px) 0;animation:bkm-tail-a${parity} ${roll} both}`,
-      `${SCOPE} .bkm-tp${parity} .bkm-live-tail-x:not(${still}){animation:bkm-tail-x${parity} ${roll} both}`,
-      `${SCOPE} .bkm-tp${parity} .bkm-live-tail-b:not(${still}){animation:bkm-tail-x${parity} ${roll} both,bkm-tail-y${parity} ${settle} both}`,
-      `${SCOPE} .bkm-tp${parity} .bkm-live-tail-k:not(${still}){animation:bkm-tail-x${parity} ${roll} both,bkm-tail-k${parity} ${settle} both}`,
+      `${SCOPE} .bkm-tp${parity} .bkm-live-tail-a:not(${still}){transform-box:view-box;transform-origin:var(--bkm-live-xa,0px) 0;animation:bkm-tail-a${parity} ${roll}}`,
+      `${SCOPE} .bkm-tp${parity} .bkm-live-tail-x:not(${still}){animation:bkm-tail-x${parity} ${roll}}`,
+      `${SCOPE} .bkm-tp${parity} .bkm-live-tail-b:not(${still}){transform:scaleY(0);animation:bkm-tail-x${parity} ${roll},bkm-tail-y${parity} ${settle}}`,
+      `${SCOPE} .bkm-tp${parity} .bkm-live-tail-k:not(${still}){transform:scaleY(var(--bkm-live-k,1));animation:bkm-tail-x${parity} ${roll},bkm-tail-k${parity} ${settle}}`,
       `@keyframes bkm-rp${parity}{from{transform:translate(0,var(--bkm-live-ry-t,0px)) scale(1,var(--bkm-live-ry-s,1))}to{transform:translate(0,0) scale(1,1)}}`,
-      `${SCOPE} .bkm-tp${parity} .bkm-live-rp{transform-box:view-box;transform-origin:0 0;animation:bkm-rp${parity} ${roll} both}`,
+      `${SCOPE} .bkm-tp${parity} .bkm-live-rp{transform-box:view-box;transform-origin:0 0;animation:bkm-rp${parity} ${roll}}`,
       `${SCOPE} .bkm-tp${parity} .bkm-live-rp :is(path,polyline){vector-effect:non-scaling-stroke}`,
       `@keyframes bkm-rd${parity}{from{transform:translate(0,var(--bkm-live-ry-d,0px))}to{transform:translate(0,0)}}`,
       `@keyframes bkm-dy${parity}{from{translate:0 var(--bkm-live-dy,0px)}to{translate:0 0}}`,
-      `${SCOPE} .bkm-live-tip.bkm-dp${parity}{animation:bkm-dy${parity} var(--bkm-live-settle,1380ms) ${headEase} both,bkm-rd${parity} ${roll} both}`,
-      // Window [--ds,--de+1ms): the 1ms overlap biases a boundary frame to two stacked badges (the later paints over), never a blank; hidden after (forwards); the last node holds visible from --ds (1ms, never a zero-length animation).
-      `@keyframes bkm-w${parity}{from{visibility:visible}to{visibility:hidden}}`,
-      `@keyframes bkm-on${parity}{from{visibility:visible}to{visibility:visible}}`,
-      `${SCOPE} .bkm-lbl.bkm-w${parity}{animation:bkm-w${parity} calc(var(--de,0ms) - var(--ds,0ms) + 1ms) var(--ds,0ms) forwards}`,
-      `${SCOPE} .bkm-lbl.bkm-on${parity}{animation:bkm-on${parity} 1ms var(--ds,0ms) forwards}`,
+      `${SCOPE} .bkm-live-tip.bkm-dp${parity}{animation:bkm-dy${parity} var(--bkm-live-settle,1380ms) ${headEase},bkm-rd${parity} ${roll}}`,
+      `@keyframes bkm-st${parity}{from{--bkm-st:0}to{--bkm-st:${LABEL_POOL}}}`,
+      `${SCOPE} .bkm-sp${parity}{animation:bkm-st${parity} ${LABEL_POOL * COMMIT_MS}ms steps(${LABEL_POOL},end)}`,
     );
   }
   for (let i = 0; i <= LABEL_POOL; i += 1) {
-    rules.push(`${SCOPE} .bkm-s${i}{--ds:${i * COMMIT_MS}ms}`, `${SCOPE} .bkm-e${i}{--de:${i * COMMIT_MS}ms}`);
+    rules.push(`${SCOPE} .bkm-s${i}{--bkm-s:${i}}`, `${SCOPE} .bkm-e${i}{--bkm-e:${i}}`);
   }
   return rules.join("\n");
 }

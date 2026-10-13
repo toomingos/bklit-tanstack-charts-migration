@@ -29,6 +29,8 @@ const BADGE_GAP = 12;
 const CHAR_WIDTH = 7.5;
 const BADGE_PAD = 16;
 const BADGE_TEXT_DY = 4;
+/** The pulse ring's full reach in dot radii (bklit: r 4 -> 14), scaled in from the dot by liveline.css. */
+const PULSE_REACH = 3.5;
 export function liveTip(options: LiveTipOptions): ChartMark<unknown, Date, number> {
   const { id, time, value, color, stroke, dotSize, pulse, badge, labels, parity, ease } = options;
   return createMark<unknown, Date, number>(() => ({
@@ -65,7 +67,7 @@ export function liveTip(options: LiveTipOptions): ChartMark<unknown, Date, numbe
           className: "bkm-live-pulse",
           x: lx,
           y: ly,
-          radius: dotSize * 2,
+          radius: dotSize * PULSE_REACH,
           style: { fill: "none", stroke: color, strokeWidth: 1.5 },
         });
       }
@@ -81,10 +83,10 @@ export function liveTip(options: LiveTipOptions): ChartMark<unknown, Date, numbe
         },
       );
       if (badge) {
-        // Each window's pill is painted directly before its text and later windows paint later, so a one-frame overlap shows only the newer badge.
+        // Each window's pill is painted directly before its text; a step switch hides one window and shows the next in the same style update, so exactly one badge is visible.
         for (let i = 0; i < LABEL_POOL; i += 1) {
           const label = labels.at(i);
-          const window = label === undefined ? "bkm-lbl" : `bkm-lbl ${labelWindow(parity, label.step, labels.at(i + 1)?.step)}`;
+          const window = label === undefined ? "bkm-lbl" : `bkm-lbl ${labelWindow(label.step, labels.at(i + 1)?.step)}`;
           indicator.push(
             {
               kind: "rect",
@@ -114,7 +116,7 @@ export function liveTip(options: LiveTipOptions): ChartMark<unknown, Date, numbe
       }
       children.push({ kind: "group", key: `${id}:indicator`, className: "bkm-live-indicator", ...(ease ? { translateX: x, translateY: y } : {}), children: indicator });
       return {
-        nodes: [{ kind: "group", key: id, className: ease ? `bkm-live-tip bkm-dp${parity}` : "bkm-live-tip", ariaHidden: true, children }],
+        nodes: [{ kind: "group", key: id, className: ease ? `bkm-live-tip bkm-dp${parity} bkm-sp${parity}` : `bkm-live-tip bkm-sp${parity}`, ariaHidden: true, children }],
         points: [],
       };
     },

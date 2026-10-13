@@ -42,7 +42,7 @@ export function liveXLabels(options: LiveXLabelsOptions): ChartControl<Date, num
         const shown = texts.slice(0, X_POOL);
         return Array.from({ length: X_POOL }, (_, n) => {
           const entry = shown.at(n);
-          const window = entry === undefined ? "" : ` ${labelWindow(parity, entry.step, shown.at(n + 1)?.step)}`;
+          const window = entry === undefined ? "" : ` ${labelWindow(entry.step, shown.at(n + 1)?.step)}`;
           return {
             kind: "label" as const,
             key: `x-tick-label:slot:${i}:${n}`,
@@ -57,7 +57,7 @@ export function liveXLabels(options: LiveXLabelsOptions): ChartControl<Date, num
         });
       });
       // Classed so the focus x (`--bkm-fx`, not inherited) reaches the labels through this group alone (live-line-chart.tsx FOCUS_VARS_CSS).
-      return { nodes: [{ kind: "group", key: id, className: "bkm-live-xlabels", ariaHidden: true, children }] };
+      return { nodes: [{ kind: "group", key: id, className: `bkm-live-xlabels bkm-sp${parity}`, ariaHidden: true, children }] };
     },
   };
 }

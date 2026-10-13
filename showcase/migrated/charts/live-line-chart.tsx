@@ -120,7 +120,7 @@ export const LiveLineChart = ({
       data-bkm-rolling={frame?.seed === true ? undefined : ""}
       data-bkm-jump={frame?.jump === true && !frame.seed ? frame.parity : undefined}
       data-bkm-roll={frame && !frame.seed ? frame.parity : undefined}
-      style={{ width: "100%", position: "relative", ...bklitSurfaceStyle, ...style, height, ...liveHostVars({ frame, pad, bklitWidth, plotRight, plotLeft: margin.left, clipExt, lerpSpeed, introEaseCss, dotSize: line?.dotSize ?? 4, fillRamp: built.fillRamp }) }}
+      style={{ width: "100%", position: "relative", ...bklitSurfaceStyle, ...style, height, ...liveHostVars({ frame, pad, bklitWidth, plotRight, plotLeft: margin.left, clipExt, lerpSpeed, introEaseCss, fillRamp: built.fillRamp }) }}
     >
       <style>{TICK_FADE_CSS + headCss}</style>
       {/* bklit's LiveYAxis: an absolute inset-0, pointer-events-none layer over the plot (live-y-axis.tsx:188-191). It comes first
