@@ -3,20 +3,38 @@
 import { defineCarrier } from "../kit/role";
 
 export interface CandlestickProps {
-  /** Whether to animate the candlesticks. Default: true */
+  /**
+   * Animate the candles in on entrance.
+   * @default true
+   */
   readonly animate?: boolean;
-  /** Fill for positive (close >= open) candles. Default: emerald */
+  /**
+   * Fill color of candles that closed at or above their open.
+   * @default "var(--color-emerald-500, oklch(69.6% 0.17 162.48))"
+   */
   readonly positiveFill?: string;
-  /** Fill for negative candles. Default: red */
+  /**
+   * Fill color of candles that closed below their open.
+   * @default "var(--color-red-500, oklch(63.7% 0.237 25.331))"
+   */
   readonly negativeFill?: string;
+  /** Accepted for bklit-ui compatibility. It has no effect in bklit-tanstack-charts. */
   readonly bodyPatternPositive?: string;
+  /** Accepted for bklit-ui compatibility. It has no effect in bklit-tanstack-charts. */
   readonly bodyPatternNegative?: string;
-  /** Accepted for API compatibility; the native body uses a single stroke. */
+  /** Accepted for bklit-ui compatibility. It has no effect in bklit-tanstack-charts. */
   readonly insideStrokeWidth?: number;
-  /** Opacity when another candle is hovered. Default: 0.3 */
+  /**
+   * Opacity of the candles that are not hovered while another candle is hovered.
+   * @default 0.3
+   */
   readonly fadedOpacity?: number;
-  /** Dim non-hovered candles on hover. Default: true */
+  /**
+   * Dim the candles that are not hovered.
+   * @default true
+   */
   readonly showHoverFade?: boolean;
 }
 
+/** The candles of a `CandlestickChart`: a body between open and close and a wick between high and low. It renders nothing itself; place it as a child of the chart. */
 export const Candlestick = /* @__PURE__ */ defineCarrier<CandlestickProps>("candlestick", "Candlestick");

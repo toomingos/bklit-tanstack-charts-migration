@@ -11,50 +11,123 @@ import type { ChildTable } from "./read-children";
 
 type Length = string | number;
 
+/** A color stop of a gradient. */
 export interface GradientStop {
+  /** Position along the gradient from 0 to 1. */
   readonly offset: number;
+  /** Color at that position. */
   readonly color: string;
 }
 
 interface GradientOwnProps {
+  /** Id of the gradient, referenced as `url(#id)`. */
   readonly id: string;
+  /**
+   * Color at the start of the gradient.
+   * @default "currentColor"
+   */
   readonly from?: string;
+  /**
+   * Color at the end of the gradient.
+   * @default "currentColor"
+   */
   readonly to?: string;
+  /**
+   * Position of the start color, as a fraction (`0.2`) or a percentage (`"20%"`).
+   * @default 0
+   */
   readonly fromOffset?: Length;
+  /**
+   * Position of the end color, as a fraction or a percentage.
+   * @default 1
+   */
   readonly toOffset?: Length;
+  /**
+   * Opacity of the start color from 0 to 1.
+   * @default 1
+   */
   readonly fromOpacity?: Length;
+  /**
+   * Opacity of the end color from 0 to 1.
+   * @default 1
+   */
   readonly toOpacity?: Length;
-  /** Degrees, applied as SVG `rotate(a)` on the gradient vector. */
+  /** Rotates the gradient direction by this many degrees. */
   readonly rotate?: number | string;
-  /** Overrides `rotate`; only a `rotate(a)` transform is applied. */
+  /** An SVG transform string. Only `rotate(angle)` is applied, and it takes precedence over `rotate`. */
   readonly transform?: string;
-  /** `<stop>` children override from/to (visx behaviour). */
+  /** `<stop>` elements. When present they replace `from` and `to`. */
   readonly children?: ReactNode;
 }
 
 interface LinearGradientOwnProps extends GradientOwnProps {
+  /**
+   * Start x of the gradient vector, as a fraction or a percentage.
+   * @default 0
+   */
   readonly x1?: Length;
+  /**
+   * Start y of the gradient vector.
+   * @default 0
+   */
   readonly y1?: Length;
+  /**
+   * End x of the gradient vector.
+   * @default 1
+   */
   readonly x2?: Length;
+  /**
+   * End y of the gradient vector.
+   * @default 0
+   */
   readonly y2?: Length;
-  /** Top-to-bottom when no explicit vector is given. Default: true */
+  /**
+   * Run the gradient from top to bottom. Ignored when any of `x1`, `y1`, `x2`, `y2` is set to a non-zero value.
+   * @default true
+   */
   readonly vertical?: boolean;
 }
 
+/**
+ * Props of `LinearGradient`: the gradient options below plus any SVG `linearGradient` attribute. Attributes without a chart equivalent are accepted and ignored.
+ */
 // bklit's visx gradients pass every other SVG attribute through; the carriers accept them and ignore what has no native equivalent.
 export type LinearGradientProps = LinearGradientOwnProps & Omit<SVGProps<SVGLinearGradientElement>, keyof LinearGradientOwnProps | "ref">;
 
 interface RadialGradientOwnProps extends GradientOwnProps {
+  /**
+   * Center x of the outer circle, as a fraction or a percentage.
+   * @default 0.5
+   */
   readonly cx?: Length;
+  /**
+   * Center y of the outer circle.
+   * @default 0.5
+   */
   readonly cy?: Length;
+  /**
+   * Radius of the outer circle.
+   * @default 0.5
+   */
   readonly r?: Length;
+  /** Focal point x. The focal point is the center when omitted. */
   readonly fx?: Length;
+  /** Focal point y. The focal point is the center when omitted. */
   readonly fy?: Length;
 }
 
+/**
+ * Props of `RadialGradient`: the gradient options below plus any SVG `radialGradient` attribute. Attributes without a chart equivalent are accepted and ignored.
+ */
 export type RadialGradientProps = RadialGradientOwnProps & Omit<SVGProps<SVGRadialGradientElement>, keyof RadialGradientOwnProps | "ref">;
 
+/**
+ * Declares a linear gradient that chart elements reference as `fill="url(#id)"`. Place it as a child of the chart. It renders nothing itself.
+ */
 export const LinearGradient = /* @__PURE__ */ defineCarrier<LinearGradientProps>("linearGradient", "LinearGradient");
+/**
+ * Declares a radial gradient that chart elements reference as `fill="url(#id)"`. Place it as a child of the chart. It renders nothing itself.
+ */
 export const RadialGradient = /* @__PURE__ */ defineCarrier<RadialGradientProps>("radialGradient", "RadialGradient");
 
 const PRESET_PREFIX = "gradientPreset:";
@@ -77,14 +150,41 @@ type PresetName = keyof typeof PRESETS;
 // The visx preset components accept every LinearGradient prop; from/to are optional.
 const preset = (name: PresetName): ReturnType<typeof defineCarrier<LinearGradientProps>> => defineCarrier<LinearGradientProps>(`${PRESET_PREFIX}${name}`, name);
 
+/**
+ * Two-stop linear gradient preset from dark blue (#184E86) to green (#57CA85). Reference it as `fill="url(#your-id)"`. Accepts the `LinearGradient` props, and `from` / `to` override the preset colors.
+ */
 export const GradientDarkgreenGreen = /* @__PURE__ */ preset("GradientDarkgreenGreen");
+/**
+ * Two-stop linear gradient preset from light green (#42E695) to teal (#3BB2B8). Reference it as `fill="url(#your-id)"`. Accepts the `LinearGradient` props, and `from` / `to` override the preset colors.
+ */
 export const GradientLightgreenGreen = /* @__PURE__ */ preset("GradientLightgreenGreen");
+/**
+ * Two-stop linear gradient preset from yellow (#FCE38A) to red (#F38181). Reference it as `fill="url(#your-id)"`. Accepts the `LinearGradient` props, and `from` / `to` override the preset colors.
+ */
 export const GradientOrangeRed = /* @__PURE__ */ preset("GradientOrangeRed");
+/**
+ * Two-stop linear gradient preset from pink (#F02FC2) to blue (#6094EA). Reference it as `fill="url(#your-id)"`. Accepts the `LinearGradient` props, and `from` / `to` override the preset colors.
+ */
 export const GradientPinkBlue = /* @__PURE__ */ preset("GradientPinkBlue");
+/**
+ * Two-stop linear gradient preset from pink (#F54EA2) to red (#FF7676). Reference it as `fill="url(#your-id)"`. Accepts the `LinearGradient` props, and `from` / `to` override the preset colors.
+ */
 export const GradientPinkRed = /* @__PURE__ */ preset("GradientPinkRed");
+/**
+ * Two-stop linear gradient preset from purple (#7117EA) to orange (#EA6060). Reference it as `fill="url(#your-id)"`. Accepts the `LinearGradient` props, and `from` / `to` override the preset colors.
+ */
 export const GradientPurpleOrange = /* @__PURE__ */ preset("GradientPurpleOrange");
+/**
+ * Two-stop linear gradient preset from purple (#5B247A) to teal (#1BCEDF). Reference it as `fill="url(#your-id)"`. Accepts the `LinearGradient` props, and `from` / `to` override the preset colors.
+ */
 export const GradientPurpleTeal = /* @__PURE__ */ preset("GradientPurpleTeal");
+/**
+ * Two-stop linear gradient preset from steel (#65799B) to purple (#5E2563). Reference it as `fill="url(#your-id)"`. Accepts the `LinearGradient` props, and `from` / `to` override the preset colors.
+ */
 export const GradientSteelPurple = /* @__PURE__ */ preset("GradientSteelPurple");
+/**
+ * Two-stop linear gradient preset from teal (#17EAD9) to blue (#6078EA). Reference it as `fill="url(#your-id)"`. Accepts the `LinearGradient` props, and `from` / `to` override the preset colors.
+ */
 export const GradientTealBlue = /* @__PURE__ */ preset("GradientTealBlue");
 
 /** "50%" -> 0.5, "0.25" -> 0.25, 1 -> 1. Undefined/NaN -> fallback. */

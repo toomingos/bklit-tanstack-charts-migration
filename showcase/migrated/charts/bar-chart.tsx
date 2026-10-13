@@ -44,33 +44,104 @@ const FILL_HOST_STYLE: CSSProperties = { height: "100%" };
 // bklit bar-chart.tsx:54-55: skeleton bars when `data` is empty.
 const FALLBACK_LOADING_BARS = 12;
 
+/** Direction the bars grow: `"vertical"` (columns) or `"horizontal"` (rows). */
 type BarOrientation = "vertical" | "horizontal";
 
+/** Props of {@link BarChart}. */
 interface BarChartProps {
+  /**
+   * The rows to plot. Each row holds a category label under `xDataKey` and one number per series under that series' `dataKey`.
+   */
   data: Row[];
+  /**
+   * Key of the category label in each row.
+   * @default "name"
+   */
   xDataKey?: string;
+  /**
+   * Duration of the entrance in milliseconds. Bars are staggered across 40% of this duration.
+   * @default 1100
+   */
   animationDuration?: number;
   // Accepted divergence: typed as bklit's but not read here (the entrance is fixed; square snapping follows <BarSquares> props).
+  /**
+   * Accepted for bklit-ui compatibility. It has no effect in bklit-tanstack-charts. The entrance always uses the default reveal easing.
+   */
   animationEasing?: string;
+  /** Accepted for bklit-ui compatibility. It has no effect in bklit-tanstack-charts. */
   enterTransition?: Transition;
+  /** Accepted for bklit-ui compatibility. It has no effect in bklit-tanstack-charts. */
   revealSignature?: string;
+  /**
+   * Space around the plot area in pixels, for axis labels and the tooltip. Missing sides use the default.
+   * @default { top: 40, right: 40, bottom: 40, left: 40 }
+   */
   margin?: Partial<ChartMargin>;
+  /**
+   * CSS aspect ratio of the chart, as `"width / height"`.
+   * @default "2 / 1"
+   */
   aspectRatio?: string;
+  /** Extra CSS class name for the chart container. */
   className?: string;
+  /**
+   * Inline styles for the chart container. Set `aspectRatio: "unset"` to let the chart fill the height of its parent.
+   */
   style?: CSSProperties;
+  /**
+   * Gap between bar groups as a fraction of the band width (0 to 1).
+   * @default 0.2
+   */
   barGap?: number;
+  /**
+   * Accepted for bklit-ui compatibility. It has no effect in bklit-tanstack-charts. Bars always fill their band; use `barGap` to change their width.
+   */
   barWidth?: number;
+  /**
+   * Direction the bars grow. `"horizontal"` puts the categories on the y axis.
+   * @default "vertical"
+   */
   orientation?: BarOrientation;
+  /**
+   * Stack the series on top of each other instead of grouping them side by side.
+   * @default false
+   */
   stacked?: boolean;
+  /**
+   * Gap between stacked segments in px.
+   * @default 0
+   */
   stackGap?: number;
+  /**
+   * Snap the tooltip dots of grouped vertical bars onto the centre of the top square of a `squareGap` column (`fit` redistributes the gap); `groupGap` sets the ring dot's slot gap.
+   */
   squareSnap?: { squareGap: number; groupGap?: number; fit?: boolean };
+  /**
+   * Accepted for bklit-ui compatibility. It has no effect in bklit-tanstack-charts. The bar chart does not report phases.
+   */
   onPhaseChange?: (phase: ChartPhase) => void;
+  /**
+   * The layers to draw: `Bar`, `BarSquares`, `Grid`, `BarXAxis`, `BarYAxis`, `ChartTooltip` and the other chart children. Optional for a `status="loading"` skeleton.
+   */
   children?: ReactNode;
+  /**
+   * Accessible name of the chart.
+   * @default "Bar chart"
+   */
   ariaLabel?: string;
+  /** Longer accessible description of the chart, exposed as `aria-description`. */
   ariaDescription?: string;
+  /**
+   * `"loading"` replaces the bars with a shimmering skeleton and ignores the pointer; switching to `"ready"` grows the real bars.
+   * @default "ready"
+   */
   status?: ChartStatus;
 }
 
+/**
+ * Bar chart over categories, grouped or stacked, vertical or horizontal. Compose it from children: `Bar` (or `BarSquares`), `Grid`, `BarXAxis`, `BarYAxis`, `ChartTooltip`.
+ * Bars grow in with a stagger; hover and keyboard focus pick a category and show the tooltip.
+ */
 const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
   const {
     data,
@@ -84,9 +155,18 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
     orientation = "vertical",
     stacked = false,
     stackGap = 0,
+    squareSnap: squareSnapProp,
     children,
     status = "ready",
   } = props;
+  // Keyed on its values so an inline `squareSnap` object does not rebuild the definition every render.
+  const snapGap = squareSnapProp?.squareGap;
+  const snapGroupGap = squareSnapProp?.groupGap;
+  const snapFit = squareSnapProp?.fit;
+  const squareSnap = useMemo(
+    () => (snapGap === undefined ? undefined : { squareGap: snapGap, groupGap: snapGroupGap, fit: snapFit }),
+    [snapGap, snapGroupGap, snapFit],
+  );
   const loading = status === "loading";
   const legendHovered = useChartLegendHover().hoveredIndex;
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -135,13 +215,14 @@ const BarChart = (props: Readonly<BarChartProps>): ReactElement => {
         horizontal: orientation === "horizontal",
         stacked,
         stackGap,
+        squareSnap,
         seed,
         clock,
         updated,
         plot,
         loading,
       }),
-    [loading, seed, clock, data, xDataKey, table, series, resolvedMargin, barGap, animationDuration, uid, orientation, stacked, stackGap, plot, updated],
+    [loading, seed, clock, data, xDataKey, table, series, resolvedMargin, barGap, animationDuration, uid, orientation, stacked, stackGap, squareSnap, plot, updated],
   );
   const renderer = useMemo(
     // `initial: "always"` replays the entrance on hydrated (server-rendered) SVG too.

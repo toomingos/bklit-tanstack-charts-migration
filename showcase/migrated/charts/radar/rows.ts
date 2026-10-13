@@ -1,17 +1,19 @@
 // Radar data -> flat rows consumed by the native polar marks.
+/** One metric (spoke) of a radar chart. */
 export interface RadarMetric {
-  /** Unique key for the metric */
+  /** Unique key of the metric. Series look up their value in `values` under this key. */
   key: string;
-  /** Display label for the metric */
+  /** Text printed for the metric by `RadarLabels`. */
   label: string;
 }
 
+/** One series (polygon) of a radar chart. */
 export interface RadarData {
-  /** Display label for this data series */
+  /** Name of the series. */
   label: string;
-  /** Color for this data series (defaults to chart-1 through chart-5) */
+  /** Colour of the series, any CSS colour or `var(--...)` reference. Defaults to the `--chart-1` to `--chart-5` palette by series index. */
   color?: string;
-  /** Metric values (key -> value, normalized 0-100) */
+  /** Value of the series for each metric, keyed by `RadarMetric.key`. Values run from 0 to 100 and are clamped to that range; a missing key counts as 0. */
   values: Record<string, number>;
 }
 

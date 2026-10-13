@@ -265,7 +265,7 @@ const separatorRules = ({ cellSize, separatorGradientId, separatorSpan }: Readon
   const xs = layout.atColumns.map((at) => columnStartX(at, cellSize, layout) - layout.spacing / 2);
   return decorative(link(xs, {
     id: "heatmap-separators",
-    stroke: separator.gradient === undefined ? separator.stroke ?? "var(--border)" : `url(#${separatorGradientId})`,
+    stroke: separator.gradient === undefined ? separator.stroke ?? "var(--bkm-border)" : `url(#${separatorGradientId})`,
     strokeDasharray: resolveHeatmapSeparatorStrokeDasharray(separator.strokeStyle ?? "solid", separator.strokeDasharray),
     strokeOpacity: separator.gradient === undefined ? separator.strokeOpacity ?? 1 : undefined,
     strokeWidth: separator.strokeWidth ?? 1,

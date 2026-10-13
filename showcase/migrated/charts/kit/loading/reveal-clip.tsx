@@ -10,20 +10,34 @@ import type { EnterTransition } from "../motion/phase";
 
 type ChartRevealClipMode = "reveal" | "conceal";
 
+/** Props of `ChartRevealClip`. */
 export interface ChartRevealClipProps {
+  /** Id of the clip path. */
   clipPathId: string;
+  /** Height of the clipped area in px. */
   height: number;
+  /** Width the clip grows to, in px. */
   targetWidth: number;
+  /** Timing of the reveal (duration and easing). A spring is replaced by the default tween. */
   enterTransition?: EnterTransition;
-  /** Bumps when motion settings change to replay the reveal. */
+  /** Change this number to replay the reveal. */
   revealEpoch: number;
-  /** Extra inset around the clip rect so edge glyphs are not cut off. */
+  /**
+   * Extra space in px around the clip rectangle so edge glyphs are not cut off.
+   * @default 0
+   */
   padding?: number;
-  /** When false, clip stays at full width (no grow animation). */
+  /**
+   * Animate the reveal. When false the clip stays at full width.
+   * @default true
+   */
   animating?: boolean;
-  /** Reveal grows 0 -> full; conceal shrinks full -> 0 (ready -> loading). */
+  /**
+   * `"reveal"` grows the clip from empty to full, `"conceal"` shrinks it from full to empty.
+   * @default "reveal"
+   */
   mode?: ChartRevealClipMode;
-  /** Called when a conceal animation finishes. */
+  /** Called when a `"conceal"` animation finishes. */
   onComplete?: () => void;
 }
 
@@ -47,6 +61,7 @@ const timingOf = (enter: EnterTransition | undefined): ClipTiming => {
   return { duration: isNumber(enter?.duration) ? enter.duration : DEFAULT_ANIMATION_DURATION_MS / 1000, ease: REVEAL_CSS_EASE };
 };
 
+/** @internal */
 export const ChartRevealClip = ({
   clipPathId,
   height,

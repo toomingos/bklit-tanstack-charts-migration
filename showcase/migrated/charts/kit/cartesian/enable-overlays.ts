@@ -2,7 +2,8 @@
 import { installMarkerSprings } from "../motion/marker-springs";
 import { registerOverlays } from "./features";
 import { buildOverlays, chartMarkerProps } from "./overlays";
+import { ReferenceAreaResources } from "./reference-area-resources";
 
 export const enableOverlays = (): void => {
-  registerOverlays({ build: buildOverlays, markerLists: (table) => chartMarkerProps(table).map((m) => m.items), installSprings: installMarkerSprings });
+  registerOverlays({ build: buildOverlays, Resources: ReferenceAreaResources, markerLists: (table) => chartMarkerProps(table).map((m) => m.items), installSprings: installMarkerSprings });
 };

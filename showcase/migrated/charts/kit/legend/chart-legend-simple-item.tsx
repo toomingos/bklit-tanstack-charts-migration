@@ -25,20 +25,20 @@ const SimpleItem = ({
 }: Readonly<SimpleItemProps>): ReactElement => {
   const markerStyle = useMemo((): CSSProperties => ({ backgroundColor: item.color }), [item.color]);
   return (
-    <div className="flex items-center gap-3" data-slot="legend-item">
+    <div className="bk-legend-row" data-slot="legend-item">
       {showMarker && (
         <div
-          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          className="bk-marker-size bk-legend-marker"
           style={markerStyle}
         />
       )}
 
-      <span className={cn("flex-1 text-legend-foreground", labelClassName)}>
+      <span className={cn("bk-legend-grow bk-legend-fg", labelClassName)}>
         {item.label}
       </span>
 
       {showValue && (
-        <span className={cn("text-legend-muted-foreground", valueClassName)}>
+        <span className={cn("bk-legend-muted-fg", valueClassName)}>
           {formatValue(item.value)}
         </span>
       )}

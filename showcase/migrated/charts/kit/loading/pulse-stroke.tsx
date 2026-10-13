@@ -8,17 +8,38 @@ import { useSanitizedId } from "../use-sanitized-id";
 
 export type { LineLoadingPulseMode } from "../motion/phase";
 
+/** Props of `LineLoadingPulseStroke`. */
 export interface LineLoadingPulseStrokeProps {
+  /** SVG path data of the line to animate. */
   pathD: string;
+  /**
+   * `"loop"` repeats, `"exit"` plays the loading-to-ready half cycle, `"enter"` the ready-to-loading half cycle.
+   * @default "loop"
+   */
   mode?: LineLoadingPulseMode;
-  /** Bumps to restart loop cycles without remounting the stroke. */
+  /**
+   * Change this number to restart the loop without remounting the stroke.
+   * @default 0
+   */
   loopEpoch?: number;
+  /**
+   * Line color.
+   * @default "var(--chart-foreground)"
+   */
   stroke?: string;
-  /** Stroke opacity for the animated segment. Default: 0.5 */
+  /**
+   * Opacity of the animated segment.
+   * @default 0.5
+   */
   strokeOpacity?: number;
+  /**
+   * Line width in px.
+   * @default 2.5
+   */
   strokeWidth?: number;
+  /** Called when an `"exit"` or `"enter"` cycle finishes. */
   onCycleComplete?: () => void;
-  /** Plot width, when rendered outside a chart. Default: the chart's inner width. */
+  /** Plot width in px. Only needed outside a chart; inside one it is the chart's plot width. */
   innerWidth?: number;
 }
 
@@ -35,6 +56,7 @@ const FADE_STOPS = [
   { offset: "100%", opacity: 0 },
 ] as const;
 
+/** @internal */
 export const LineLoadingPulseStroke = ({
   pathD,
   mode = "loop",

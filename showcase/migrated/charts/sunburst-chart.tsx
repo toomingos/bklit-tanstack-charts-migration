@@ -41,31 +41,62 @@ const arcColor = (arc: ArcDatum): string => arc.fill ?? arc.color ?? defaultSunb
 const hoveredIndexOf = (datum: SunburstDatum | undefined, arcById: ReadonlyMap<string, ArcDatum>): number | null =>
   datum === undefined || isHub(datum) ? null : (arcById.get(datum.id)?.arcIndex ?? null);
 
-/** Only the sweep duration in seconds (bklit `Transition.duration`) is read. */
+/** Enter animation override for `SunburstChart`: `duration` is the length of the enter sweep in seconds (default 1.1). */
 export type SunburstEnterTransition = Pick<EnterTransition, "duration">;
 
+/** Props of `SunburstChart`. */
 export interface SunburstChartProps {
+  /** Hierarchical data tree. Parent values are summed from their children. */
   data: SunburstNode;
+  /**
+   * Chart diameter in pixels. The chart shrinks to fit narrower containers.
+   * @default 520
+   */
   size?: number;
-  /** Bump to replay the initialization animation. */
+  /**
+   * Change this number to replay the enter animation.
+   * @default 0
+   */
   playKey?: number;
+  /** Additional class name for the chart wrapper. */
   className?: string;
-  /** Controlled focus node id for drill-down. */
+  /** Controlled drill-down focus: the id of the focused node (names from the root joined with `" / "`). Omit for uncontrolled drill-down. */
   focusId?: string;
-  /** Called when focus changes via segment click or breadcrumb. */
+  /** Called with the new node id when the focus changes through a segment click, the center hub, a keyboard zoom or a breadcrumb. */
   onFocusChange?: (focusId: string) => void;
-  /** Controlled hover - arc index in the arcs array (drives the hint; sector emphasis follows native focus). */
+  /** Controlled hover: the index of the hovered arc in the `arcs` array returned by `buildArcs`, or `null` for none. */
   hoveredIndex?: number | null;
+  /** Called with the arc index (or `null`) when the hovered arc changes. */
   onHoverChange?: (index: number | null) => void;
-  /** Outward growth in px of the focused sector (bklit default 8). */
+  /**
+   * How far in pixels the hovered segment grows outward.
+   * @default 8
+   */
   hoverPop?: number;
-  /** Accepted for bklit compatibility; layout is responsive. */
+  /**
+   * Inset in pixels reserved inside the chart for hover growth, relative to `size`.
+   * @default derived from the tree depth, `size` and `hoverPop`
+   */
   padding?: number;
+  /**
+   * Overrides the enter animation. Only `duration` (in seconds) is used.
+   * @default { duration: 1.1 }
+   */
   enterTransition?: SunburstEnterTransition;
+  /**
+   * Scales the stagger between rings and segments during the enter animation.
+   * @default 1
+   */
   enterStaggerScale?: number;
+  /** `SunburstSegment`, `SunburstCenter`, `SunburstLabels`, `SunburstBreadcrumb` and `SunburstHint` children. Render one `SunburstSegment` per arc index to customize individual segments. */
   children: ReactNode;
 }
 
+/**
+ * A hierarchical sunburst chart: concentric rings of segments sized by value, with an enter sweep, drill-down zoom on click or Enter, hover growth, a center hub to zoom out, and keyboard navigation.
+ * Compose it with `SunburstSegment`, `SunburstCenter`, `SunburstLabels`, `SunburstBreadcrumb` and `SunburstHint` children.
+ * It server-renders and replays its enter animation after hydration.
+ */
 export const SunburstChart = ({
   data,
   size = DEFAULT_SIZE,
@@ -232,7 +263,7 @@ export const SunburstChart = ({
         <div ref={hostRef} className={className} {...hydratingAttrs} data-bk-intro={settled ? undefined : ""} style={hostStyle}>
           {definition === null || settled ? null : <EntranceAlign hostRef={hostRef} origins={SUNBURST_ENTRANCE_ORIGINS} renderStart={introAtRef} resolveOnFrame />}
           {parsed.breadcrumbs}
-          <div ref={stageRef} className="mx-auto w-full" style={stageStyle}>
+          <div ref={stageRef} className="bk-sb-stage" style={stageStyle}>
             {definition === null ? null : (
               <RendererChart
                 key={playKey}

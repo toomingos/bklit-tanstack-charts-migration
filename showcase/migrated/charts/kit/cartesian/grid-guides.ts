@@ -31,7 +31,7 @@ export interface GridGuideProps {
 }
 
 /** bklit `DEFAULT_SHIMMER_STROKE` (grid.tsx:15). */
-const DEFAULT_SHIMMER_STROKE = "color-mix(in oklch, var(--foreground) 68%, transparent)";
+const DEFAULT_SHIMMER_STROKE = "color-mix(in oklch, var(--bkm-foreground) 68%, transparent)";
 /** The grid under the travelling band: dimmed so the band (a host CSS mask, styles.css `data-bkm-loading-shimmer`) reads as the bright part. */
 const SHIMMER_BASE_OPACITY = 0.22;
 

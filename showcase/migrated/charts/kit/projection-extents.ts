@@ -10,6 +10,7 @@ const trackProjectionValue = (bounds: ProjectionValueBounds, value: number): voi
   if (value > bounds.maxValue) {bounds.maxValue = value;}
 }
 
+/** @internal */
 const projectionValueExtents = (paths: ProjectionPoint[][]): { minValue: number; maxValue: number } | null => {
   const bounds: ProjectionValueBounds = { maxValue: Number.NEGATIVE_INFINITY, minValue: Number.POSITIVE_INFINITY };
   for (const path of paths) {
@@ -31,6 +32,7 @@ const trackProjectionTime = (bounds: ProjectionTimeBounds, time: number): void =
   if (time > bounds.maxTime) {bounds.maxTime = time;}
 }
 
+/** @internal */
 const projectionDateExtents = (paths: ProjectionPoint[][]): { minTime: number; maxTime: number } | null => {
   const bounds: ProjectionTimeBounds = { maxTime: Number.NEGATIVE_INFINITY, minTime: Number.POSITIVE_INFINITY };
   for (const path of paths) {

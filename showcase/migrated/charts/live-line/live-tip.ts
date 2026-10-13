@@ -83,7 +83,7 @@ export function liveTip(options: LiveTipOptions): ChartMark<unknown, Date, numbe
               width: (label?.text.length ?? 0) * CHAR_WIDTH + BADGE_PAD,
               height: BADGE_HEIGHT,
               radius: 6,
-              style: { fill: "var(--popover)", fillOpacity: 0.95 },
+              style: { fill: "var(--bkm-popover)", fillOpacity: 0.95 },
             },
             {
               kind: "label",

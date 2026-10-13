@@ -6,21 +6,36 @@ import NumberFlow from "@number-flow/react";
 import { useEffect, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 
+/** Side of a linear gauge's track where the label sits. */
 export type GaugeLabelPlacement = "top" | "bottom" | "left" | "right";
+/** Alignment of a linear gauge's label across the track. */
 export type GaugeLabelAlign = "start" | "center" | "end";
 
+/** Number formatting options for a gauge's centre value, a subset of `Intl.NumberFormat` options. */
 export interface GaugeStatFormat {
+  /** `"standard"` or `"compact"` (1.2K). */
   notation?: "standard" | "compact";
+  /** `"short"` or `"long"` compact form; used with `notation: "compact"`. */
   compactDisplay?: "short" | "long";
+  /** Minimum number of fraction digits. */
   minimumFractionDigits?: number;
+  /** Maximum number of fraction digits. */
   maximumFractionDigits?: number;
+  /** Minimum number of integer digits. */
   minimumIntegerDigits?: number;
+  /** Minimum number of significant digits. */
   minimumSignificantDigits?: number;
+  /** Maximum number of significant digits. */
   maximumSignificantDigits?: number;
+  /** `"decimal"`, `"percent"` or `"currency"`. */
   style?: "decimal" | "percent" | "currency";
+  /** ISO 4217 currency code, for example `"USD"`; used with `style: "currency"`. */
   currency?: string;
+  /** How the currency is shown: symbol, code, name and so on. */
   currencyDisplay?: Intl.NumberFormatOptions["currencyDisplay"];
+  /** Unit identifier, for example `"kilometer"`. */
   unit?: string;
+  /** `"short"`, `"long"` or `"narrow"` unit form. */
   unitDisplay?: "short" | "long" | "narrow";
 }
 

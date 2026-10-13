@@ -46,7 +46,7 @@ export const createDefinition = (input: DefinitionInput): DomChartDefinition<Cho
     geometry.warm(data.features);
     return holder.projection;
   };
-  const stroke = featureConfig?.stroke ?? "var(--background)";
+  const stroke = featureConfig?.stroke ?? "var(--bkm-background)";
   const features = geoShape(data.features, {
     // Documented geo `className` hook (reference/marks/geo.md): the CSS selects the group by class.
     className: "bkm-choro-features",

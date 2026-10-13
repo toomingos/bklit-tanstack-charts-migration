@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { HexagonsImpl } from "./pattern-hexagons";
 import type { PatternHexagonsProps } from "./pattern-hexagons";
 
+/** A pattern tile with a hexagonal grid. Render it as a child of a chart and point a fill at its `id`. */
 // Public hexagon-pattern component; thin wrapper so the impl stays replaceable.
 const PatternHexagons = ({
   background,

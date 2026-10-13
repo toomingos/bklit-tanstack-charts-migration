@@ -4,39 +4,72 @@ import type { CSSProperties } from "react";
 import type { LoadingStyle } from "../motion/phase";
 import type { ChartMargin } from "../theme";
 
-/** The props shared by bklit's `LineChartLoading` and `AreaChartLoading`. */
+/** Props of `LineChartLoading` and `AreaChartLoading`. */
 export interface CartesianLoadingProps {
-  /** Chart margins */
+  /**
+   * Space around the plot area in pixels. Missing sides use the default.
+   * @default { top: 40, right: 40, bottom: 40, left: 40 }
+   */
   readonly margin?: Partial<ChartMargin>;
-  /** Stroke color for the animated loading segment. */
+  /**
+   * Color of the traveling loading segment.
+   * @default "var(--bkm-foreground)"
+   */
   readonly stroke?: string;
-  /** Stroke opacity for the animated loading segment. Default: 0.5 */
+  /**
+   * Opacity of the traveling loading segment.
+   * @default 0.5
+   */
   readonly strokeOpacity?: number;
-  /** Grid line stroke (color and opacity via color-mix or oklch alpha). */
+  /**
+   * Color of the grid lines while loading. Use `color-mix` or an oklch alpha to set the opacity.
+   * @default "color-mix(in oklch, var(--chart-grid) 50%, transparent)"
+   */
   readonly gridStroke?: string;
-  /** Shimmer band stroke (color and opacity via color-mix or oklch alpha). */
+  /**
+   * Color of the shimmer band that travels across the grid. Use `color-mix` or an oklch alpha to set the opacity.
+   * @default "color-mix(in oklch, var(--bkm-foreground) 68%, transparent)"
+   */
   readonly gridShimmerStroke?: string;
-  /** Animate a shimmer band across grid lines. Default: true */
+  /**
+   * Animate a shimmer band across the grid lines. Always off when `loadingStyle` is `"sweep"`.
+   * @default true
+   */
   readonly gridShimmer?: boolean;
-  /** Shimmer band width in pixels. Default: 140 */
+  /** Accepted for bklit-ui compatibility. It has no effect: the shimmer band has a fixed width. */
   readonly gridShimmerLength?: number;
-  /** Shimmer speed multiplier (higher = faster). Default: 1 */
+  /**
+   * Shimmer speed multiplier; higher is faster.
+   * @default 1
+   */
   readonly gridShimmerSpeed?: number;
-  /** Match shimmer loop to the loading line pulse (cycle + inter-loop pause). */
+  /** Accepted for bklit-ui compatibility. It has no effect: the shimmer always loops on the same period as the line pulse. */
   readonly gridShimmerSync?: boolean;
-  /** Loading animation: `"pulse"` (default traveling pulse) or `"sweep"`. Default: `"pulse"`. */
+  /**
+   * Loading animation: `"pulse"` sends a bright segment along the line, `"sweep"` sweeps a soft diagonal shimmer across it.
+   * @default "pulse"
+   */
   readonly loadingStyle?: LoadingStyle;
-  /** Centered shimmer label text. Default: "Loading" */
+  /**
+   * Text shown centered over the placeholder, with a shimmer. An empty string hides it.
+   * @default "Loading"
+   */
   readonly label?: string;
-  /** Aspect ratio as "width / height". Default: "2 / 1" */
+  /**
+   * CSS aspect ratio of the placeholder, as `"width / height"`.
+   * @default "2 / 1"
+   */
   readonly aspectRatio?: string;
-  /** Additional class name for the container */
+  /**
+   * Extra CSS class name for the placeholder container.
+   * @default ""
+   */
   readonly className?: string;
 }
 
-export const DEFAULT_LOADING_STROKE = "var(--foreground)";
+export const DEFAULT_LOADING_STROKE = "var(--bkm-foreground)";
 export const DEFAULT_LOADING_GRID_STROKE = "color-mix(in oklch, var(--chart-grid) 50%, transparent)";
-export const DEFAULT_LOADING_GRID_SHIMMER_STROKE = "color-mix(in oklch, var(--foreground) 68%, transparent)";
+export const DEFAULT_LOADING_GRID_SHIMMER_STROKE = "color-mix(in oklch, var(--bkm-foreground) 68%, transparent)";
 export const DEFAULT_LOADING_STROKE_OPACITY = 0.5;
 
 /** bklit line-loading-timing.ts: 2.2s pulse cycle + 280ms pause; the shimmer loops on the same period at `shimmerSpeed` 1. */

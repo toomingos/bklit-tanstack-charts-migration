@@ -1,18 +1,28 @@
+/** A node of a Sankey diagram. */
 export interface SankeyNodeDatum {
+  /** Display name of the node, shown in labels and tooltips. */
   readonly name: string;
+  /** Optional grouping. Not drawn by the chart; read it from your own callbacks such as `getNodeColor`. */
   readonly category?: "source" | "landing" | "outcome";
   readonly [key: string]: unknown;
 }
 
+/** A link between two nodes, by node index. */
 export interface SankeyLinkDatum {
+  /** Index of the source node in `nodes`. */
   readonly source: number;
+  /** Index of the target node in `nodes`. */
   target: number;
+  /** Size of the flow. Must be a positive finite number to be drawn. */
   readonly value: number;
   readonly [key: string]: unknown;
 }
 
+/** Nodes and links of a Sankey diagram. */
 export interface SankeyData {
+  /** The nodes of the diagram. */
   readonly nodes: SankeyNodeDatum[];
+  /** The links between nodes, by node index. */
   readonly links: SankeyLinkDatum[];
 }
 

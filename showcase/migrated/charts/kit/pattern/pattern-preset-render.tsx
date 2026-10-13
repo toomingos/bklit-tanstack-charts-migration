@@ -160,6 +160,7 @@ const buildPatternTileSetup = (setupOptions: Readonly<PatternTileSetupOptions>):
   };
 };
 
+/** @internal */
 const renderPatternPreset = (preset: PatternPresetId, id: string, options: Readonly<PatternPresetOptions> = {}): ReactNode => {
   if (preset === "none") {
     return undefined;

@@ -32,38 +32,81 @@ import { useResizeBox } from "./kit/size/use-resize-box";
 import type { FocusedRow } from "./kit/cartesian/context-bridge";
 import { shortDateFmt } from "./kit/format";
 import { focusEmptyHiddenCss } from "./kit/cartesian/gate-css";
+import { getOverlayResources } from "./kit/cartesian/features";
 import { useSanitizedId } from "./kit/use-sanitized-id";
 import { useReadyGate } from "./kit/entrance/reveal-arm";
 
 export interface OHLCDataPoint {
   /** String-keyed so a row is assignable to the definition's `Candle` record without a cast. */
   readonly [key: string]: unknown;
+  /** Time of the candle. Must be a `Date` (the x key is `xDataKey`, default `"date"`). */
   date: Date;
+  /** Opening price. */
   open: number;
+  /** Highest price of the period. */
   high: number;
+  /** Lowest price of the period. */
   low: number;
+  /** Closing price. A candle with `close >= open` is positive. */
   close: number;
 }
 
 export interface CandlestickChartProps {
+  /** The candles to plot, one row per period. */
   readonly data: OHLCDataPoint[];
+  /**
+   * Key of the time value in each row. The value must be a `Date` or something `new Date()` accepts.
+   * @default "date"
+   */
   readonly xDataKey?: string;
+  /**
+   * Space around the plot area in pixels. Missing sides use the default.
+   * @default { top: 40, right: 40, bottom: 40, left: 40 }
+   */
   readonly margin?: Partial<ChartMargin>;
+  /**
+   * Duration of the entrance in milliseconds.
+   * @default 1100
+   */
   readonly animationDuration?: number;
+  /**
+   * Customizes the entrance: a spring, or a cubic-bezier tween with a `duration` in seconds. See `EnterTransition`.
+   */
   readonly enterTransition?: EnterTransition;
-  /** Changing it replays the entrance. */
+  /** Changing this string replays the entrance animation. */
   readonly revealSignature?: string;
+  /**
+   * CSS aspect ratio of the chart, as `"width / height"`.
+   * @default "2 / 1"
+   */
   readonly aspectRatio?: string;
+  /** Extra CSS class name for the chart container. */
   readonly className?: string;
+  /**
+   * Inline styles for the chart container. `aspectRatio: "unset"` or an explicit `height` makes the chart fill the container height.
+   */
   readonly style?: CSSProperties;
-  /** Accepted for API parity; native bars size to 80% of the closest candle spacing. */
+  /**
+   * Gap between candle slots as a fraction of the slot width (0-1). Ignored when `candleWidth` is set. A gap below the default cannot widen candles past 80% of their spacing.
+   * @default 0.2
+   */
   readonly candleGap?: number;
-  /** Fixed candle body width cap in px. */
+  /** Fixed candle body width in px. When unset, candles size to the spacing between them. */
   readonly candleWidth?: number;
+  /** Visible x range as `[start, end]`, used for brush zoom. The chart plots only this range of `data`. */
   readonly xDomain?: [Date, Date];
+  /**
+   * Length of the full dataset while `xDomain` zooms into part of it. It keeps candle spacing consistent with the unzoomed chart.
+   */
   readonly xDomainSlotCount?: number;
+  /** The layers to draw: `Candlestick`, `Grid`, `XAxis`, `YAxis`, `ChartTooltip` and the other chart children. */
   readonly children: ReactNode;
+  /**
+   * Accessible name of the chart.
+   * @default "Candlestick chart"
+   */
   readonly ariaLabel?: string;
+  /** Longer accessible description of the chart, exposed as `aria-description`. */
   readonly ariaDescription?: string;
 }
 
@@ -72,6 +115,7 @@ const CLOSE_COLOR = "var(--chart-line-primary)";
 // Container-owned height: the host follows the wrapper's CSS content height (TanStack renderer.ts observesContainerHeight, responsive-charts.md).
 const FILL_HOST_STYLE: CSSProperties = { height: "100%" };
 
+/** A candlestick (OHLC) chart. Pass rows of `OHLCDataPoint` and a `Candlestick` child, plus optional `Grid`, axes and `ChartTooltip`. */
 export const CandlestickChart = ({
   data,
   xDataKey = "date",
@@ -120,6 +164,12 @@ export const CandlestickChart = ({
   // A legend hover re-renders the host with fresh children: keep the previous carrier table so the definition is not rebuilt.
   const { table, custom, ready: childrenReady } = useChildTable(children);
   const resolvedMargin = useMemo(() => ({ ...DEFAULT_MARGIN, ...marginProp }), [marginProp]);
+  const innerWidth = Math.max(0, size.width - resolvedMargin.left - resolvedMargin.right);
+  const slotWidth = innerWidth / Math.max(xDomainSlotCount ?? data.length, 1);
+  // bklit's body is `min(candleWidth ?? slot * (1 - candleGap), slot)` (candlestick-chart.tsx:182, candlestick.tsx:321). Native
+  // bars on a time scale are already 80% of the closest spacing (one slot), which is bklit's default gap, so only a wider gap
+  // needs a cap. A gap below 0.2 cannot widen them: `resolveBarThickness` only shrinks (UPSTREAM-GAPS #24), accepted.
+  const bodyWidth = candleWidth ?? (candleGap > 0.2 && slotWidth > 0 ? slotWidth * (1 - candleGap) : undefined);
   const built = useMemo(
     () =>
       buildCandlestickDefinition({
@@ -132,10 +182,10 @@ export const CandlestickChart = ({
         enterTransition,
         xDomain,
         xDomainSlotCount,
-        candleWidth,
+        candleWidth: bodyWidth,
         entrance: !loaded,
       }),
-    [data, xDataKey, table, resolvedMargin, uid, animationDuration, enterTransition, xDomain, xDomainSlotCount, candleWidth, loaded],
+    [data, xDataKey, table, resolvedMargin, uid, animationDuration, enterTransition, xDomain, xDomainSlotCount, bodyWidth, loaded],
   );
   const renderer = useMemo(
     // `initial: "always"` replays the entrance on hydrated (server-rendered) SVG too.
@@ -147,7 +197,6 @@ export const CandlestickChart = ({
     (): TooltipBodyOptions => bklitTooltipOptions(tooltipProps, data, { order: ["close"], colors: { close: CLOSE_COLOR } }),
     [tooltipProps, data],
   );
-  const innerWidth = Math.max(0, size.width - resolvedMargin.left - resolvedMargin.right);
   const innerHeight = Math.max(0, size.height - resolvedMargin.top - resolvedMargin.bottom);
   const domains = useMemo(
     () => candlestickDomains(data, xDataKey, xDomain, xDomainSlotCount),
@@ -207,6 +256,7 @@ export const CandlestickChart = ({
     [tooltipOptions],
   );
   const emptyFocusCss = focusEmptyHiddenCss(`[data-bkm-kit="${uid}"]`);
+  const OverlayResources = getOverlayResources();
   // Entrance starts on the first draw, without bklit's ParentSize frames (candlestick-chart.tsx:398), at the user's direction (no frame waits); the curve is unchanged.
   return (
     <div
@@ -222,6 +272,7 @@ export const CandlestickChart = ({
       style={{ width: "100%", position: "relative", "--bkm-faded": built.fadedOpacity, ...bklitSurfaceStyle, ...style } as CSSProperties}
     >
       <style>{`${CANDLE_HOVER_CSS}${pillStaticCss}${emptyFocusCss}`}</style>
+      {OverlayResources ? <OverlayResources table={table} uid={uid} margin={resolvedMargin} /> : null}
       {childrenReady ? (
       <RendererChart<Candle, Date, number>
         definition={built.definition}

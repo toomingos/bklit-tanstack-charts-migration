@@ -31,6 +31,7 @@ const CONTEXT_DEFAULT: ChoroplethContextValue = {
 
 const ChoroplethContext = createContext<ChoroplethContextValue>(CONTEXT_DEFAULT);
 
+/** @internal */
 const ChoroplethProvider = ({ children, value }: { readonly children: ReactNode; readonly value: ChoroplethContextValue }): ReactElement => (
   <ChoroplethContext.Provider value={value}>{children}</ChoroplethContext.Provider>
 );
@@ -62,6 +63,7 @@ const tooltipSetter = (store: HoverStore): ChoroplethContextValue["setTooltipDat
 
 const noopSubscribe = (): (() => void) => () => undefined;
 
+/** Returns the map state: features, projection helpers, size, and the hovered feature. Call it inside a child of `ChoroplethChart`; outside one it returns empty defaults. */
 const useChoropleth = (): ChoroplethContextValue => {
   const ctx = useContext(ChoroplethContext);
   const store = ctx.hoverStore;

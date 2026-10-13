@@ -8,18 +8,42 @@ import { cx } from "./pattern-line-utils";
 import type { PatternLinecap } from "./pattern-lines-view";
 import { PathImpl } from "./pattern-path";
 
+/** Props of `PatternHexagons`. */
 // Hexagon-tile pattern (visx port, quirks included: width ignored by design).
 interface PatternHexagonsProps {
+  /** Id of the pattern, referenced as `url(#id)` in a fill. */
   readonly id: string;
+  /** Height of the pattern tile in px. The tile width is derived from `size`. */
   readonly height: number;
+  /**
+   * Relative size of the hexagon cell.
+   * @default 3
+   */
   readonly size?: number;
+  /**
+   * Fill color of the hexagon path.
+   * @default "transparent"
+   */
   readonly fill?: string;
+  /** Class name added to the drawn shapes. */
   readonly className?: string;
+  /** Background color of the tile. No background is drawn when omitted. */
   readonly background?: string;
+  /** Stroke color of the shapes. */
   readonly stroke?: string;
+  /** Stroke width of the shapes. */
   readonly strokeWidth?: number | string;
+  /** SVG dash pattern of the stroke. */
   readonly strokeDasharray?: string | number;
+  /**
+   * Line cap of the stroke: `"square"`, `"butt"`, `"round"` or `"inherit"`.
+   * @default "square"
+   */
   readonly strokeLinecap?: PatternLinecap;
+  /**
+   * SVG `shape-rendering` of the shapes.
+   * @default "auto"
+   */
   readonly shapeRendering?: string | number;
 }
 

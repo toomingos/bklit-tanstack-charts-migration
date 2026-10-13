@@ -3,22 +3,14 @@
 /* Migrated chart presentation — makes TanStack's SVG output visually match
    bklit-ui. Scoped under [data-bkm-chart] so nothing leaks. */
 
-:root {
-  --chart-brush-border: var(--chart-grid);
-  --chart-date-pill-background: oklch(0.21 0.006 285.885);
-  --chart-date-pill-foreground: #fff;
-}
-.dark {
-  --chart-brush-border: var(--chart-grid);
-  --chart-date-pill-background: oklch(0.967 0.001 286.375);
-  --chart-date-pill-foreground: oklch(0.21 0.006 285.885);
-}
+/* Cascade layers: every rule of this stylesheet sits in the `bklit-charts` layer, so any host rule (unlayered CSS, a utility class, an inline style) overrides it and only the chart look is ever the default.
+   The order statement below names the layers Tailwind v4 and shadcn use and puts `bklit-charts` between `components` and `utilities`: it beats the reset (`base`), loses to utilities.
+   It sets the order only when it is the first layer statement the browser reads, so in a Tailwind app import this stylesheet BEFORE the Tailwind one (or repeat the statement before `@import "tailwindcss"`). */
+@layer theme, base, components, bklit-charts, utilities;
 
-/* --- Hover host vars (the focus state the hover CSS reads, UPSTREAM-GAPS #1 / #31), written on the host per focus change; registered non-inheriting and re-inherited
-       only along the paths that read them (tick labels, mark children, pill stacks), so a write does not restyle the whole subtree. --- */
+/* Registered custom properties are global (not scoped by a layer) and live outside it. Every name carries the `bkm-` prefix. */
 @property --bkm-hx { syntax: "*"; inherits: false; }
 @property --bkm-bfx { syntax: "*"; inherits: false; }
-/* Radar dot travel progress (radar/entrance.ts), 1 once settled. */
 @property --bkm-rp { syntax: "<number>"; inherits: true; initial-value: 1; }
 @property --bkm-pfx { syntax: "*"; inherits: false; }
 @property --bkm-hl0 { syntax: "*"; inherits: false; }
@@ -31,6 +23,130 @@
 @property --bkm-psame1 { syntax: "*"; inherits: false; }
 @property --bkm-psame2 { syntax: "*"; inherits: false; }
 @property --bkm-psame3 { syntax: "*"; inherits: false; }
+@property --bkm-tt-fade { syntax: "<number>"; inherits: false; initial-value: 1; }
+@property --bkm-p { syntax: "<number>"; inherits: false; initial-value: 0; }
+@property --bkm-gi { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --bkm-st { syntax: "<integer>"; inherits: true; initial-value: 99; }
+@property --bkm-sk-i { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --bkm-hm-r0 { syntax: "<number>"; inherits: false; initial-value: 0; }
+@property --bkm-hm-r1 { syntax: "<number>"; inherits: false; initial-value: 0; }
+@property --bkm-hm-r2 { syntax: "<number>"; inherits: false; initial-value: 0; }
+@property --bkm-hm-r3 { syntax: "<number>"; inherits: false; initial-value: 0; }
+@property --bkm-hm-rd { syntax: "<number>"; inherits: false; initial-value: 0; }
+
+@layer bklit-charts {
+/* --- Colour tokens ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+   `--chart-*` and `--legend*` are the public theme variables. They are declared at zero specificity (`:where`), so any definition in the host app wins, whichever sheet comes first.
+   Light under `:root`; dark under `.dark` or `[data-theme="dark"]` (the operating-system preference is not read).
+   `--bkm-*` are internal aliases of the shadcn tokens the charts read: the host's token when it defines one, this default otherwise. */
+:where(:root) {
+  --bkm-background: var(--background, oklch(0.969998 0.0000246537 112.908));
+  --bkm-foreground: var(--foreground, oklch(0.147999 0.0039982 228.752));
+  --bkm-border: var(--border, oklch(0.919998 0.0000232344 112.552));
+  --bkm-muted: var(--muted, oklch(0.937998 0.0000237458 112.896));
+  --bkm-muted-foreground: var(--muted-foreground, oklch(0.564 0 78.958));
+  --bkm-popover: var(--popover, oklch(0.999998 0.0000253939 112.713));
+  --bkm-popover-foreground: var(--popover-foreground, oklch(0.147999 0.0039982 228.752));
+  --bkm-ring: var(--ring, oklch(0 0 0));
+  /* Chart palette */
+  --chart-1: oklch(37.4% 0.01 67.558);
+  --chart-2: oklch(55.3% 0.013 58.071);
+  --chart-3: oklch(70.9% 0.01 56.259);
+  --chart-4: oklch(86.9% 0.005 56.366);
+  --chart-5: oklch(97% 0.001 106.424);
+  /* Chart component semantic colours */
+  --chart-background: oklch(0.915 0 0);
+  --chart-foreground: oklch(0.474 0 285);
+  --chart-foreground-muted: oklch(0.862 0 260);
+  --chart-line-primary: var(--chart-1);
+  --chart-line-secondary: var(--chart-2);
+  --chart-crosshair: oklch(0.677 0 72.411);
+  --chart-grid: oklch(0.917 0 0);
+  --chart-brush-border: var(--chart-grid);
+  --chart-tooltip-background: var(--bkm-popover);
+  --chart-tooltip-foreground: var(--bkm-popover-foreground);
+  --chart-tooltip-muted: var(--bkm-muted-foreground);
+  --chart-indicator-color: oklch(0.21 0.006 285);
+  --chart-indicator-secondary-color: oklch(0.913 0 0);
+  --chart-marker-background: oklch(0.833 0 260);
+  --chart-marker-border: oklch(0.85 0.01 260);
+  --chart-marker-foreground: oklch(0.3 0.01 260);
+  --chart-marker-badge-background: oklch(0 0 0);
+  --chart-marker-badge-foreground: oklch(0.84 0 0);
+  --chart-segment-background: oklch(0.756 0 0 / 0.06);
+  --chart-segment-line: oklch(0.5 0 0 / 0.25);
+  --chart-label: oklch(0.45 0.01 260);
+  --chart-date-pill-background: oklch(0.21 0.006 285.885);
+  --chart-date-pill-foreground: #fff;
+  --legend: oklch(1 0 0);
+  --legend-foreground: oklch(0.141 0.005 285.823);
+  --legend-muted: oklch(0.967 0.001 286.375);
+  --legend-muted-foreground: oklch(0.552 0.016 285.938);
+  --legend-track: oklch(0.92 0.004 286.32);
+  /* Sequential scale for heatmaps, choropleths and binned data (01 = lowest) */
+  --chart-scale-01: oklch(98.5% 0.001 106.423);
+  --chart-scale-02: oklch(92.3% 0.003 48.717);
+  --chart-scale-03: oklch(86.9% 0.005 56.366);
+  --chart-scale-04: oklch(70.9% 0.01 56.259);
+  --chart-scale-05: oklch(55.3% 0.013 58.071);
+  --chart-scale-pattern-color: oklch(97% 0.001 106.424);
+  /* Keyboard focus ring (see the focus-visible rule below) */
+  --bkm-focus-ring: color-mix(in oklab, var(--bkm-ring) 55%, transparent);
+}
+:where(.dark, [data-theme="dark"]) {
+  --bkm-background: var(--background, oklch(0.14 0.0047 263.79));
+  --bkm-foreground: var(--foreground, oklch(0.987 0.002 197.1));
+  --bkm-border: var(--border, oklch(0.56 0.0195 267.65 / 0.2));
+  --bkm-muted: var(--muted, oklch(0.3 0.0182 276.35));
+  --bkm-muted-foreground: var(--muted-foreground, oklch(0.62 0.0218 270.07));
+  --bkm-popover: var(--popover, oklch(0.21 0.0058 285.9));
+  --bkm-popover-foreground: var(--popover-foreground, oklch(0.987 0.002 197.1));
+  --bkm-ring: var(--ring, oklch(0.56 0.021 213.5));
+  --chart-1: oklch(92% 0.004 286.32);
+  --chart-2: oklch(70.5% 0.015 286.067);
+  --chart-3: oklch(55.2% 0.016 285.938);
+  --chart-4: oklch(44.2% 0.017 285.786);
+  --chart-5: oklch(37% 0.013 285.805);
+  --chart-background: oklch(0.145 0 0);
+  --chart-foreground: oklch(0.45 0 0);
+  --chart-foreground-muted: oklch(0.65 0.01 260);
+  --chart-line-primary: var(--chart-1);
+  --chart-line-secondary: var(--chart-2);
+  --chart-crosshair: oklch(0.72 0.0158 281.84);
+  --chart-grid: oklch(0.6 0.0124 243.77 / 0.25);
+  --chart-brush-border: var(--chart-grid);
+  --chart-tooltip-background: var(--bkm-popover);
+  --chart-tooltip-foreground: var(--bkm-popover-foreground);
+  --chart-tooltip-muted: var(--bkm-muted-foreground);
+  --chart-indicator-color: oklch(1 0 0);
+  --chart-indicator-secondary-color: oklch(0.145 0 0);
+  --chart-marker-background: oklch(0.25 0.01 260);
+  --chart-marker-border: oklch(0.4 0.01 260);
+  --chart-marker-foreground: oklch(0.9 0 0);
+  --chart-marker-badge-background: oklch(1 0 0);
+  --chart-marker-badge-foreground: oklch(0.15 0 0);
+  --chart-segment-background: oklch(0.41 0.0127 248.14 / 0.25);
+  --chart-segment-line: oklch(1 0 0 / 0.25);
+  --chart-label: oklch(0.75 0.01 260);
+  --chart-date-pill-background: oklch(0.967 0.001 286.375);
+  --chart-date-pill-foreground: oklch(0.21 0.006 285.885);
+  --legend: oklch(0.21 0.006 285.885);
+  --legend-foreground: oklch(0.985 0 0);
+  --legend-muted: oklch(0.274 0.006 286.033);
+  --legend-muted-foreground: oklch(0.705 0.015 286.067);
+  --legend-track: oklch(0.274 0.006 286.033);
+  --chart-scale-01: oklch(21% 0.006 285.885);
+  --chart-scale-02: oklch(37% 0.013 285.805);
+  --chart-scale-03: oklch(55.2% 0.016 285.938);
+  --chart-scale-04: oklch(87.1% 0.006 286.286);
+  --chart-scale-05: oklch(92% 0.004 286.32);
+  --chart-scale-pattern-color: var(--bkm-background);
+  --bkm-focus-ring: var(--bkm-ring);
+}
+
+/* --- Hover host vars (the focus state the hover CSS reads, UPSTREAM-GAPS #1 / #31), written on the host per focus change; registered non-inheriting and re-inherited
+       only along the paths that read them (tick labels, mark children, pill stacks), so a write does not restyle the whole subtree. --- */
+/* Radar dot travel progress (radar/entrance.ts), 1 once settled. */
 :is([data-bkm-chart], [data-bkm-kit]) > .ts-chart-host,
 :is([data-bkm-chart], [data-bkm-kit]) > .ts-chart-host > .ts-chart-surface,
 :is([data-bkm-chart], [data-bkm-kit]) > .ts-chart-host > .ts-chart-surface > svg.ts-chart,
@@ -148,11 +264,9 @@
 /* Accepted divergence: bklit has no tab stop, focus ring or arrow keys; TanStack's keyboard focus stays on every chart for accessibility (user decision). */
 /* --- Chart focus ring: the chart svg (or its layers div) also takes focus on pointerdown, which bklit never does, so only :focus-visible paints one ring (2px, rounded, shadcn ring colour)
        drawn inside the svg box so compact charts hug it and the overflow-hidden card does not clip it. --- */
-:root { --bkm-focus-ring: color-mix(in oklab, var(--ring) 55%, transparent); }
-.dark { --bkm-focus-ring: var(--ring); }
 [aria-roledescription="chart"]:focus { outline: none; }
 [aria-roledescription="chart"]:focus-visible {
-  outline: 2px solid var(--bkm-focus-ring);
+  outline: 2px solid var(--bkm-focus-ring, currentcolor);
   outline-offset: -2px;
   border-radius: 6px;
 }
@@ -171,11 +285,6 @@ body .ts-chart-surface > .ts-chart-tooltip {
 }
 /* bklit TooltipBox outer fade on every show: opacity 0 -> 1 over 0.1s, WAAPI ease-out (tooltip/tooltip-box.tsx:209-216; motion-dom 12.27.0 start-waapi-animation.mjs:5), multiplying the body spring (:218-227).
    The pinned !important opacity beats animations, so the fade runs on a registered number; display:none between shows restarts it. Without @property it is a 50ms step. */
-@property --bkm-tt-fade {
-  syntax: "<number>";
-  inherits: false;
-  initial-value: 1;
-}
 @keyframes bkm-tt-fade {
   from { --bkm-tt-fade: 0; }
   to { --bkm-tt-fade: 1; }
@@ -186,6 +295,8 @@ body .ts-chart-surface > .ts-chart-tooltip > .ts-chart-tooltip__body {
   min-width: 140px;
   overflow: hidden;
   border-radius: var(--radius-lg, 0.5rem);
+  /* The text colour the native tooltip body would otherwise inherit from the host page (its foreground, which only matches a light panel). */
+  color: var(--chart-tooltip-foreground);
   background: var(--chart-tooltip-background);
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   -webkit-backdrop-filter: blur(12px);
@@ -274,13 +385,13 @@ body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip .bkm-tooltip-pane
 /* bklit's heatmap TooltipBox is `animate={false}`: it snaps between cells (the native glide is the inline `translate`
    offset easing to the target left/top), only its enter spring runs. */
 body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip { translate: none !important; }
-/* bklit HeatmapTooltip showDelay: hidden for the host's --hm-show-delay after the box first mounts (a new hover);
+/* bklit HeatmapTooltip showDelay: hidden for the host's --bkm-hm-show-delay after the box first mounts (a new hover);
    moving between cells keeps the mounted box, so it updates immediately like bklit. The body's enter spring waits too. */
 body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip {
-  animation: bkm-hm-show-delay 1ms linear var(--hm-show-delay, 0ms) backwards, bkm-tt-fade 100ms ease-out var(--hm-show-delay, 0ms) backwards;
+  animation: bkm-hm-show-delay 1ms linear var(--bkm-hm-show-delay, 0ms) backwards, bkm-tt-fade 100ms ease-out var(--bkm-hm-show-delay, 0ms) backwards;
 }
-body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip--instant { animation: bkm-hm-show-delay 1ms linear var(--hm-show-delay, 0ms) backwards; }
-body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip > .ts-chart-tooltip__body { animation-delay: var(--hm-show-delay, 0ms); }
+body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip--instant { animation: bkm-hm-show-delay 1ms linear var(--bkm-hm-show-delay, 0ms) backwards; }
+body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip > .ts-chart-tooltip__body { animation-delay: var(--bkm-hm-show-delay, 0ms); }
 @keyframes bkm-hm-show-delay { from { visibility: hidden; } }
 /* `instant` (bklit HeatmapTooltip instant, TooltipBox `entrance={false}`: tooltip-box.tsx:192-206): no outer fade (above), no enter spring, no leave fade. */
 body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip--instant > .ts-chart-tooltip__body {
@@ -326,8 +437,8 @@ body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip {
 }
 
 .ts-bkm-loading-label-text {
-  --color: var(--muted-foreground);
-  --shimmering-color: var(--foreground);
+  --bkm-label-color: var(--bkm-muted-foreground);
+  --bkm-shimmer-color: var(--bkm-foreground);
   display: inline-flex;
   align-items: center;
   user-select: none;
@@ -341,7 +452,7 @@ body .ts-chart-surface > .ts-chart-tooltip.bkm-heatmap-tooltip {
   display: inline-block;
   white-space: pre;
   line-height: 1;
-  color: var(--color);
+  color: var(--bkm-label-color);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -418,7 +529,6 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
    shimmer is a CSS mask band on the grid group (host attribute from the Grid child). Pure CSS, no rAF. --- */
 /* The loop is bklit's one eased progress (line-loading-pulse.tsx:99-111: 0 -> 1 over 2.2s on (.85,0,.15,1)) drawn as a clip: progress up to .5 grows the
    window from the left, above .5 the left edge advances. --bkm-p is registered so the single ease runs across both halves; the pause is the rest of the 2.48s. */
-@property --bkm-p { syntax: "<number>"; inherits: false; initial-value: 0; }
 @keyframes bkm-loading-pulse {
   0% { --bkm-p: 0; animation-timing-function: cubic-bezier(0.85, 0, 0.15, 1); }
   88.7%, 100% { --bkm-p: 1; }
@@ -562,15 +672,14 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
   clip-path: var(--bkm-plot-clip) view-box;
 }
 
-/* ChartMarkers (kit/cartesian/overlays.ts `eventMarkers`, bklit MarkerGroup): --gi on `.bkm-evt` comes from sibling-index(); hover is :hover on the group (its hit rect is the only target); static rules hold the hot values,
+/* ChartMarkers (kit/cartesian/overlays.ts `eventMarkers`, bklit MarkerGroup): --bkm-gi on `.bkm-evt` comes from sibling-index(); hover is :hover on the group (its hit rect is the only target); static rules hold the hot values,
    kit/motion/marker-springs.ts draws the hover springs (body 300/25, badge + core 400/20, items 400/22); the enter spring (300/25) is sampled once as a `<duration> linear()` property. */
-@property --gi { syntax: "<number>"; inherits: true; initial-value: 0; }
-/* Browser support: sibling-index() is Chromium 138+. Without it --gi stays 0 (explicit base value,
+/* Browser support: sibling-index() is Chromium 138+. Without it --bkm-gi stays 0 (explicit base value,
    indexed value under @supports), so every group enters on the first group's delay; hover, fan-out and the rule lift are unchanged. */
 .bkm-evt {
-  --gi: 0;
-  --lag: calc(var(--bkm-enter-ms, 1100ms) + var(--gi) * 100ms);
-  --sp-enter: 506ms linear(0, 0.037, 0.128, 0.248, 0.378, 0.507, 0.626, 0.729, 0.816, 0.885, 0.939, 0.978, 1.006, 1.023, 1.033, 1.037, 1.037, 1.035, 1.031, 1.026, 1.021, 1.016, 1.012, 1.009, 1.006, 1.003, 1.002, 1, 0.999, 0.999, 1);
+  --bkm-gi: 0;
+  --bkm-lag: calc(var(--bkm-enter-ms, 1100ms) + var(--bkm-gi) * 100ms);
+  --bkm-sp-enter: 506ms linear(0, 0.037, 0.128, 0.248, 0.378, 0.507, 0.626, 0.729, 0.816, 0.885, 0.939, 0.978, 1.006, 1.023, 1.033, 1.037, 1.037, 1.035, 1.031, 1.026, 1.021, 1.016, 1.012, 1.009, 1.006, 1.003, 1.002, 1, 0.999, 0.999, 1);
   pointer-events: none;
 }
 .bkm-evt-hit { pointer-events: all; cursor: pointer; }
@@ -585,9 +694,9 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
 .bkm-evt-body text { text-rendering: geometricPrecision; }
 /* Enter (scale .85, blur 2px, opacity 0). bklit's transition delay also holds the fanned/unfanned switch. */
 .bkm-evt-body {
-  animation: bkm-evt-in var(--sp-enter) backwards, bkm-evt-fade var(--sp-enter) backwards;
-  /* bklit: animationDuration + groupIndex * 100ms (--gi); the hover spring (kit/motion/marker-springs.ts) reads it as its delay too */
-  animation-delay: var(--lag);
+  animation: bkm-evt-in var(--bkm-sp-enter) backwards, bkm-evt-fade var(--bkm-sp-enter) backwards;
+  /* bklit: animationDuration + groupIndex * 100ms (--bkm-gi); the hover spring (kit/motion/marker-springs.ts) reads it as its delay too */
+  animation-delay: var(--bkm-lag);
 }
 /* bklit MarkerGroup: the scale spring is JS-driven (motion origin), the opacity and blur springs are WAAPI (frame origin), so they are two animations. */
 @keyframes bkm-evt-in { from { transform: scale(0.85); } }
@@ -600,7 +709,7 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
 /* Fan items fly from the marker centre (the container scales about the local origin, the item sits at its arc offset). */
 .bkm-evt-item { transform: scale(0); opacity: 0; }
 @supports (z-index: sibling-index()) {
-  .bkm-evt { --gi: calc(sibling-index() - 1); }
+  .bkm-evt { --bkm-gi: calc(sibling-index() - 1); }
 }
 :is(.bkm-evt:hover, .bkm-evt-open) .bkm-evt-item { transform: scale(1); opacity: 1; }
 /* Fan disc shadow = tailwind shadow-lg on the disc circle (the radius attribute holds the rest radius, disc r - 3 / - 4; the hot radius is the `:hover` rule below): layer 1 0 10px 15px -3px, layer 2 0 4px 6px -4px, rgb 0 0 0 / .1 (blur radius B = stdDeviation B / 2). Two shrunk, blurred circles
@@ -749,7 +858,7 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
   will-change: scale, opacity;
 }
 [data-bkm-chart] .bkm-live-badge-text {
-  fill: var(--popover-foreground);
+  fill: var(--bkm-popover-foreground);
   font-family: "SF Mono", Menlo, Monaco, monospace;
 }
 [data-bkm-chart] .bkm-live-indicator {
@@ -835,11 +944,6 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
 }
 /* Pooled labels (badge stack, x labels): shown from commit step --bkm-s until --bkm-e. The tip and x-label groups run one stepped animation of --bkm-st per tick (live-css.ts);
    a node without a window is scaled to nothing. At rest --bkm-st is past every window, so the final nodes show. */
-@property --bkm-st {
-  syntax: "<integer>";
-  inherits: true;
-  initial-value: 99;
-}
 [data-bkm-chart="liveline"] :where(.bkm-lbl) {
   --bkm-s: 99999;
   --bkm-e: 99999;
@@ -936,7 +1040,7 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
   font-weight: 500;
 }
 [data-bkm-chart="sankey"] .bkm-sankey-tooltip .ts-chart-tooltip__row > span:nth-child(2) {
-  color: var(--chart-tooltip-muted, var(--muted-foreground));
+  color: var(--chart-tooltip-muted, var(--bkm-muted-foreground));
   font-weight: 400;
   margin-right: 8px;
 }
@@ -949,7 +1053,6 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
 
 /* Entrance fades + label dim on bklit's schedule from static rules: scene rects, text and flow slivers have no native opacity motion. Wrapper vars --bkm-sankey-dur / -ease / -n (node count).
    Node i delay = i/N * 0.24 * dur; names + 0.108 * dur; values + 60ms more; flow i draws from dur * (0.2 + i/L * 0.32). */
-@property --bkm-sk-i { syntax: "<number>"; inherits: true; initial-value: 0; }
 @keyframes bkm-sankey-label-in { from { opacity: 0; } }
 /* bklit grows each node with scaleY 0 -> 1 about its middle (sankey-node.tsx:267-270); rect marks have no native scale-about-centre
    enter (UPSTREAM-GAPS #47), so it is CSS on the first, full-height scene. */
@@ -1161,7 +1264,7 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
   font-variant-numeric: tabular-nums;
   line-height: 1;
   font-size: clamp(0.75rem, 22cqw, 1.875rem);
-  color: var(--color-foreground, var(--foreground));
+  color: var(--bkm-foreground);
 }
 
 /* The arc gauge's value span: bklit's `leading-none` is deleted by tailwind-merge there too (font-size utility after it), so the span keeps
@@ -1180,7 +1283,7 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
      If bklit reorders the class string the value becomes `line-height: 1.25`. */
   line-height: 1.5;
   font-size: clamp(0.625rem, 9cqw, 0.75rem);
-  color: var(--color-chart-label, var(--chart-label));
+  color: var(--chart-label);
 }
 
 /* --- Linear gauge label stat: bklit's GaugeLabelShell (gauge-label-layout.tsx:53-67) appends `text-[length:var(--chart-foreground)]`, an invalid oklch() font-size that tailwind-merge keeps over the clamp()/leading utilities,
@@ -1188,7 +1291,7 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
 [data-bkm-chart] .ts-bkm-gauge-linear-stat-value {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--color-foreground, var(--foreground));
+  color: var(--bkm-foreground);
 }
 
 [data-bkm-chart] .ts-bkm-gauge-linear-stat-label {
@@ -1197,11 +1300,11 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--color-chart-label, var(--chart-label));
+  color: var(--chart-label);
 }
 
 /* ===== merged from funnel/funnel.css ===== */
-/* Funnel rules, all static: a stage is `g.bkm-fs` (rings `g.bkm-fr`, labels `g.bkm-fl`), its index is `--i` (nth-child, entrance stagger only), the hovered stage is host `data-hover`. */
+/* Funnel rules, all static: a stage is `g.bkm-fs` (rings `g.bkm-fr`, labels `g.bkm-fl`), its index is `--bkm-fi` (nth-child, entrance stagger only), the hovered stage is host `data-hover`. */
 /* The per-layer ring numbers (`--bkm-hot<layer>`) and the entrance numbers (`--bkm-e-*`) are host vars (host-vars.ts). */
 [data-bkm-chart="funnel"] { cursor: pointer; }
 @keyframes bkm-funnel-grow { from { scale: 0; } }
@@ -1210,8 +1313,8 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
 /* No native uniform group scale on first paint: UPSTREAM-GAPS #62. */
 /* Entrance (bklit funnel-chart.tsx:319-327 rings, :653-655 / :722-724 labels): a uniform grow about the stage's left (top) centre, then the label layer fades in 0.25 s later. */
 /* Fill is `backwards`, not `both`: a forwards fill holds a composited layer at scale(1) and re-rasters it at the end. */
-.bkm-fr { transform-box: fill-box; transform-origin: var(--bkm-e-origin); animation: bkm-funnel-grow var(--bkm-e-dur) var(--bkm-e-ease) calc(var(--i, 0) * var(--bkm-e-stagger)) backwards; }
-.bkm-fl { animation: bkm-funnel-label-in 350ms ease-out calc(var(--i, 0) * var(--bkm-e-stagger) + 250ms) backwards; }
+.bkm-fr { transform-box: fill-box; transform-origin: var(--bkm-e-origin); animation: bkm-funnel-grow var(--bkm-e-dur) var(--bkm-e-ease) calc(var(--bkm-fi, 0) * var(--bkm-e-stagger)) backwards; }
+.bkm-fl { animation: bkm-funnel-label-in 350ms ease-out calc(var(--bkm-fi, 0) * var(--bkm-e-stagger) + 250ms) backwards; }
 .bkm-pill { filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / .1)) drop-shadow(0 1px 1px rgb(0 0 0 / .1)); }
 
 /* Rings: the origin is shared with the entrance; the hot stage's resting pop (the spring's target, pop-spring.ts draws the travel) is `--bkm-hot<layer>`, a precomputed scale on the host (host-vars.ts), applied by the hot-stage rules below. */
@@ -1221,30 +1324,30 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
 [data-bkm-chart="funnel"][data-hover] .bkm-fr { opacity: .4; transition: opacity 150ms cubic-bezier(0, 0, .58, 1); }
 [data-bkm-chart="funnel"][data-hover] .bkm-fl { opacity: .4; }
 /* Stage index and hot stage (the host carries the hovered index). */
-.bkm-fs:nth-child(1) { --i: 0; }
-.bkm-fs:nth-child(2) { --i: 1; }
-.bkm-fs:nth-child(3) { --i: 2; }
-.bkm-fs:nth-child(4) { --i: 3; }
-.bkm-fs:nth-child(5) { --i: 4; }
-.bkm-fs:nth-child(6) { --i: 5; }
-.bkm-fs:nth-child(7) { --i: 6; }
-.bkm-fs:nth-child(8) { --i: 7; }
-.bkm-fs:nth-child(9) { --i: 8; }
-.bkm-fs:nth-child(10) { --i: 9; }
-.bkm-fs:nth-child(11) { --i: 10; }
-.bkm-fs:nth-child(12) { --i: 11; }
-.bkm-fs:nth-child(13) { --i: 12; }
-.bkm-fs:nth-child(14) { --i: 13; }
-.bkm-fs:nth-child(15) { --i: 14; }
-.bkm-fs:nth-child(16) { --i: 15; }
-.bkm-fs:nth-child(17) { --i: 16; }
-.bkm-fs:nth-child(18) { --i: 17; }
-.bkm-fs:nth-child(19) { --i: 18; }
-.bkm-fs:nth-child(20) { --i: 19; }
-.bkm-fs:nth-child(21) { --i: 20; }
-.bkm-fs:nth-child(22) { --i: 21; }
-.bkm-fs:nth-child(23) { --i: 22; }
-.bkm-fs:nth-child(24) { --i: 23; }
+.bkm-fs:nth-child(1) { --bkm-fi: 0; }
+.bkm-fs:nth-child(2) { --bkm-fi: 1; }
+.bkm-fs:nth-child(3) { --bkm-fi: 2; }
+.bkm-fs:nth-child(4) { --bkm-fi: 3; }
+.bkm-fs:nth-child(5) { --bkm-fi: 4; }
+.bkm-fs:nth-child(6) { --bkm-fi: 5; }
+.bkm-fs:nth-child(7) { --bkm-fi: 6; }
+.bkm-fs:nth-child(8) { --bkm-fi: 7; }
+.bkm-fs:nth-child(9) { --bkm-fi: 8; }
+.bkm-fs:nth-child(10) { --bkm-fi: 9; }
+.bkm-fs:nth-child(11) { --bkm-fi: 10; }
+.bkm-fs:nth-child(12) { --bkm-fi: 11; }
+.bkm-fs:nth-child(13) { --bkm-fi: 12; }
+.bkm-fs:nth-child(14) { --bkm-fi: 13; }
+.bkm-fs:nth-child(15) { --bkm-fi: 14; }
+.bkm-fs:nth-child(16) { --bkm-fi: 15; }
+.bkm-fs:nth-child(17) { --bkm-fi: 16; }
+.bkm-fs:nth-child(18) { --bkm-fi: 17; }
+.bkm-fs:nth-child(19) { --bkm-fi: 18; }
+.bkm-fs:nth-child(20) { --bkm-fi: 19; }
+.bkm-fs:nth-child(21) { --bkm-fi: 20; }
+.bkm-fs:nth-child(22) { --bkm-fi: 21; }
+.bkm-fs:nth-child(23) { --bkm-fi: 22; }
+.bkm-fs:nth-child(24) { --bkm-fi: 23; }
 /* The hot stage (the host carries the hovered index) is undimmed and its rings rest at the pop. */
 [data-bkm-chart="funnel"][data-hover="0"] .bkm-fs:nth-child(1) > .bkm-fr, [data-bkm-chart="funnel"][data-hover="0"] .bkm-fs:nth-child(1) > .bkm-fl { opacity: 1; }
 [data-bkm-chart="funnel"][data-hover="1"] .bkm-fs:nth-child(2) > .bkm-fr, [data-bkm-chart="funnel"][data-hover="1"] .bkm-fs:nth-child(2) > .bkm-fl { opacity: 1; }
@@ -1293,33 +1396,28 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
 /* :not([data-ts-motion-role]) guard: UPSTREAM-GAPS #50. The [data-hm-touched] gate (raised with the first hover) keeps the entrance end from starting this transition: the tween's last
    written frame can sit just under the final opacity on a late frame, and the role attribute's removal would then ease the remainder over 220 ms, which the probe reads as a late settle. */
 [data-bkm-chart="heatmap"][data-hm-touched] rect[data-ts-key^="heatmap-cells-"]:not([data-ts-motion-role]) {
-  transition: opacity var(--hm-hover-ms, 220ms) cubic-bezier(0.4, 0, 0.2, 1), transform var(--hm-hover-ms, 220ms) cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity var(--bkm-hm-hover-ms, 220ms) cubic-bezier(0.4, 0, 0.2, 1), transform var(--bkm-hm-hover-ms, 220ms) cubic-bezier(0.4, 0, 0.2, 1);
 }
-[data-bkm-chart="heatmap"][data-hm-hover="cell"] rect[data-ts-key^="heatmap-cells-"] { opacity: var(--hm-inactive-o); transform: scale(var(--hm-inactive-s)); }
+[data-bkm-chart="heatmap"][data-hm-hover="cell"] rect[data-ts-key^="heatmap-cells-"] { opacity: var(--bkm-hm-inactive-o); transform: scale(var(--bkm-hm-inactive-s)); }
 
 /* Loading shimmer, per cell like bklit heatmap-cells.tsx:313-348 (defaults heatmap-animation.ts:22-25): sibling-index() hashes into per-cell randoms for the cycle (four pulses of 0.43-1.7s) and peaks; ramp:pause 0.775:0.29 (range midpoints), ease [0.45,0,0.55,1]. Rects: gap #36.
    Without sibling-index() the cells rest at the base opacity. */
-@property --hm-r0 { syntax: "<number>"; inherits: false; initial-value: 0; }
-@property --hm-r1 { syntax: "<number>"; inherits: false; initial-value: 0; }
-@property --hm-r2 { syntax: "<number>"; inherits: false; initial-value: 0; }
-@property --hm-r3 { syntax: "<number>"; inherits: false; initial-value: 0; }
-@property --hm-rd { syntax: "<number>"; inherits: false; initial-value: 0; }
 @keyframes bkm-hm-pulse {
-  0% { opacity: calc(var(--bkm-hm-load-max, 0.85) * var(--hm-r0)); }
-  18.2%, 25% { opacity: calc(var(--bkm-hm-load-max, 0.85) * var(--hm-r1)); }
-  43.2%, 50% { opacity: calc(var(--bkm-hm-load-max, 0.85) * var(--hm-r2)); }
-  68.2%, 75% { opacity: calc(var(--bkm-hm-load-max, 0.85) * var(--hm-r3)); }
-  93.2%, 100% { opacity: calc(var(--bkm-hm-load-max, 0.85) * var(--hm-r0)); }
+  0% { opacity: calc(var(--bkm-hm-load-max, 0.85) * var(--bkm-hm-r0)); }
+  18.2%, 25% { opacity: calc(var(--bkm-hm-load-max, 0.85) * var(--bkm-hm-r1)); }
+  43.2%, 50% { opacity: calc(var(--bkm-hm-load-max, 0.85) * var(--bkm-hm-r2)); }
+  68.2%, 75% { opacity: calc(var(--bkm-hm-load-max, 0.85) * var(--bkm-hm-r3)); }
+  93.2%, 100% { opacity: calc(var(--bkm-hm-load-max, 0.85) * var(--bkm-hm-r0)); }
 }
 [data-bkm-chart="heatmap"] g[data-ts-key="heatmap-loading-shimmer"] > rect { opacity: 0.2; }
 @supports (width: calc(sibling-index() * 1px)) {
   [data-bkm-chart="heatmap"] g[data-ts-key="heatmap-loading-shimmer"] > rect {
-    --hm-r0: mod(sin(sibling-index() * 12.9898) * 43758.5453, 1);
-    --hm-r1: mod(sin(sibling-index() * 78.233) * 43758.5453, 1);
-    --hm-r2: mod(sin(sibling-index() * 39.346) * 43758.5453, 1);
-    --hm-r3: mod(sin(sibling-index() * 11.135) * 43758.5453, 1);
-    --hm-rd: mod(sin(sibling-index() * 93.989) * 43758.5453, 1);
-    animation: bkm-hm-pulse calc(4 * (0.43s + 1.27s * var(--hm-rd))) cubic-bezier(0.45, 0, 0.55, 1) infinite;
+    --bkm-hm-r0: mod(sin(sibling-index() * 12.9898) * 43758.5453, 1);
+    --bkm-hm-r1: mod(sin(sibling-index() * 78.233) * 43758.5453, 1);
+    --bkm-hm-r2: mod(sin(sibling-index() * 39.346) * 43758.5453, 1);
+    --bkm-hm-r3: mod(sin(sibling-index() * 11.135) * 43758.5453, 1);
+    --bkm-hm-rd: mod(sin(sibling-index() * 93.989) * 43758.5453, 1);
+    animation: bkm-hm-pulse calc(4 * (0.43s + 1.27s * var(--bkm-hm-rd))) cubic-bezier(0.45, 0, 0.55, 1) infinite;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1331,7 +1429,7 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
 /* bklit's cell svg keeps the default `overflow: hidden`: a popped (activeScale) cell clips at the svg bounds. */
 [data-bkm-chart="heatmap"] svg.ts-chart { overflow: hidden !important; }
 /* bklit's heatmap axis labels are `text-chart-label`; the native tick labels paint currentColor (the page foreground). */
-[data-bkm-chart="heatmap"] :is(text[data-ts-key^="x-tick-label:"], text[data-ts-key^="y-tick-label:"]) { fill: var(--color-chart-label, var(--chart-label)); }
+[data-bkm-chart="heatmap"] :is(text[data-ts-key^="x-tick-label:"], text[data-ts-key^="y-tick-label:"]) { fill: var(--chart-label); }
 [data-bkm-chart="heatmap"] .ts-bkm-heatmap-tooltip-date {
   font-size: 0.75rem;
   line-height: 1rem;
@@ -1371,7 +1469,7 @@ text[data-ts-key^="x-tick-label:"]:not([data-ts-motion-role]) {
 .ts-bkm-heatmap-legend-label {
   font-size: 0.6875rem;
   line-height: 1rem;
-  color: var(--color-chart-label, var(--chart-label));
+  color: var(--chart-label);
 }
 
 .ts-bkm-heatmap-legend-swatches {
@@ -1417,8 +1515,8 @@ g.bk-sb-pops path, g.bk-sb-mark path { transition: opacity 160ms ease-out, trans
 .bk-sunburst-hub, .bk-sunburst-hub path { cursor: pointer; pointer-events: auto; }
 
 /* Labels: pushed by `translate` only (their `transform` is the rotation the zoom tween writes every frame). Unrelated labels drop while one sector is hovered. */
-.bk-sunburst-label { transition: translate 420ms cubic-bezier(.22, 1, .36, 1); translate: var(--sb-t, 0 0); paint-order: stroke; stroke-linejoin: round; pointer-events: none; }
-[data-bk-intro] .bk-sunburst-label { animation: bk-sb-label-in var(--bk-sb-label-dur, 1100ms) cubic-bezier(.85, 0, .15, 1) var(--bk-sb-label-delay, 0ms) backwards; }
+.bk-sunburst-label { transition: translate 420ms cubic-bezier(.22, 1, .36, 1); translate: var(--bkm-sb-t, 0 0); paint-order: stroke; stroke-linejoin: round; pointer-events: none; }
+[data-bk-intro] .bk-sunburst-label { animation: bk-sb-label-in var(--bkm-sb-label-dur, 1100ms) cubic-bezier(.85, 0, .15, 1) var(--bkm-sb-label-delay, 0ms) backwards; }
 @keyframes bk-sb-label-in { from { opacity: 0; } }
 [data-bk-hov] .bk-sunburst-label { visibility: hidden; }
 [data-bk-hov] .bk-sunburst-label[data-bk-r] { visibility: visible; }
@@ -1430,10 +1528,10 @@ g.bk-sb-pops path, g.bk-sb-mark path { transition: opacity 160ms ease-out, trans
 
 /* Entrance grow about each sector's own box on the sweep curve; the layer sets each sector's `animation-delay` inline. */
 @keyframes bk-sb-grow { from, to { transform-box: fill-box; transform-origin: 50% 50%; } from { scale: 0; } to { scale: 1; } }
-[data-bk-intro] g.bk-sb-mark path { animation: bk-sb-grow var(--bk-sb-label-dur, 1100ms) cubic-bezier(.85, 0, .15, 1) backwards; }
+[data-bk-intro] g.bk-sb-mark path { animation: bk-sb-grow var(--bkm-sb-label-dur, 1100ms) cubic-bezier(.85, 0, .15, 1) backwards; }
 
 /* Hover push: sectors and their overlays read the vars the hover pass writes on them. */
-g.bk-sb-mark path, g.bk-sb-pops path { translate: var(--sb-t, 0 0); transform: var(--sb-m, none); }
+g.bk-sb-mark path, g.bk-sb-pops path { translate: var(--bkm-sb-t, 0 0); transform: var(--bkm-sb-m, none); }
 [data-bk-path] g.bk-sb-pops path[data-bk-p] { opacity: 1; transition: translate 420ms cubic-bezier(.22, 1, .36, 1), transform 420ms cubic-bezier(.22, 1, .36, 1); }
 
 /* A zoom drops the hover at once: only the dim eases, and the dropped path (`data-bk-s`) snaps back. */
@@ -1441,5 +1539,72 @@ g.bk-sb-mark path, g.bk-sb-pops path { translate: var(--sb-t, 0 0); transform: v
 [data-bk-snap] g.bk-sb-mark path { transition: opacity 160ms ease-out; }
 [data-bk-snap] g.bk-sb-mark path[data-bk-s] { transition: none; }
 
-/* A keyboard-focused hub (host `data-bk-hub` while a chart svg is `:focus-visible`) takes the chart's focus ring (--bkm-focus-ring, styles.css:219-226). */
-[data-bk-hub]:has(svg:focus-visible) .bk-sunburst-hub path { stroke: var(--bkm-focus-ring); stroke-width: 2; }
+/* A keyboard-focused hub (host `data-bk-hub` while a chart svg is `:focus-visible`) takes the chart's focus ring (--bkm-focus-ring, the `:focus-visible` rule above). */
+[data-bk-hub]:has(svg:focus-visible) .bk-sunburst-hub path { stroke: var(--bkm-focus-ring, currentcolor); stroke-width: 2; }
+
+/* --- Component classes: the Tailwind utilities bklit's legend, stat, brush and layout markup carries, as plain CSS with the values Tailwind 4 resolves them to (spacing unit 0.25rem), so the package needs no Tailwind.
+       They sit in the `bklit-charts` layer: a host utility class or className prop overrides them without merging. --- */
+.bk-legend { display: flex; flex-direction: column; gap: 0.5rem; }
+.bk-legend-inline { flex-direction: row; flex-wrap: wrap; gap: 1rem; }
+.bk-legend-title { margin: 0 0 0.25rem; font-size: inherit; font-weight: inherit; color: var(--legend-foreground); }
+/* A <button> row: the transparent background and border-box sizing are what Tailwind's reset gives it; border, margin and font are inline (legend default row). */
+.bk-legend-item { box-sizing: border-box; cursor: pointer; border-radius: var(--radius, 0.5rem); padding-block: 0.375rem; padding-inline: 0.5rem; background-color: transparent;
+  transition-property: all; transition-timing-function: cubic-bezier(0, 0, 0.2, 1); transition-duration: 150ms; }
+.bk-legend-item-hovered { background-color: var(--legend-muted); }
+.bk-legend-item-flex { display: flex; align-items: center; gap: 0.5rem; }
+.bk-faded { opacity: 0.4; }
+.bk-legend-marker { flex-shrink: 0; border-radius: calc(infinity * 1px); }
+.bk-marker-size { height: 0.625rem; width: 0.625rem; }
+.bk-legend-row { display: flex; align-items: center; gap: 0.75rem; }
+.bk-legend-grow { flex: 1; }
+.bk-legend-fg { color: var(--legend-foreground); }
+.bk-legend-muted-fg { color: var(--legend-muted-foreground); }
+.bk-legend-value { display: flex; align-items: center; gap: 0.5rem; color: var(--legend-muted-foreground); }
+.bk-legend-track { box-sizing: border-box; width: 100%; overflow: hidden; border-radius: calc(infinity * 1px); background-color: var(--legend-track); }
+.bk-legend-indicator { height: 100%; border-radius: calc(infinity * 1px); transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 500ms; }
+.bk-h-1-5 { height: 0.375rem; }
+.bk-legend-progress { display: grid; width: 100%; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 0.75rem; row-gap: 0.25rem; }
+.bk-legend-progress-track { grid-column: 1 / -1; height: 0.375rem; overflow: hidden; border-radius: calc(infinity * 1px); background-color: var(--legend-track); }
+.bk-legend-progress-percent { grid-column-start: 3; color: var(--legend-muted-foreground); font-size: 0.75rem; line-height: calc(1 / 0.75); font-variant-numeric: tabular-nums; }
+.bk-pl-legend { box-sizing: border-box; display: flex; width: 100%; flex-shrink: 0; padding-block: 0.5rem; padding-inline: 0.25rem; }
+.bk-justify-start { justify-content: flex-start; }
+.bk-justify-center { justify-content: center; }
+.bk-justify-end { justify-content: flex-end; }
+
+.bk-stat-icon { box-sizing: border-box; margin-bottom: 0.5rem; display: flex; height: 3rem; width: 3rem; align-items: center; justify-content: center; border-radius: calc(infinity * 1px); background-color: var(--bkm-muted); }
+@supports (color: color-mix(in lab, red, red)) {
+  .bk-stat-icon { background-color: color-mix(in oklab, var(--bkm-muted) 50%, transparent); }
+}
+.bk-stat-value { color: var(--bkm-foreground); font-variant-numeric: tabular-nums; }
+.bk-stat-label { margin-top: 0.125rem; color: var(--chart-label); }
+.bk-center { container-type: inline-size; container-name: chart-center; width: 100%; height: 100%; min-width: 0; }
+.bk-center-value { font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; font-size: clamp(0.75rem, 22cqw, 1.875rem); }
+.bk-center-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.25; font-size: clamp(0.625rem, 9cqw, 0.75rem); }
+
+.bk-brush { box-sizing: border-box; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; min-width: 0; gap: 0.75rem; }
+.bk-brush-fit { justify-content: flex-start; gap: 0.25rem; }
+.bk-brush-main { min-height: 0; min-width: 0; flex: 1; }
+.bk-brush-main-fit { flex: none; }
+.bk-brush-strip { min-height: 0; flex-shrink: 0; }
+
+.bk-sb-hint { margin-top: 0.75rem; min-height: 1.25rem; text-align: center; color: var(--bkm-muted-foreground); font-size: 0.875rem; line-height: calc(1.25 / 0.875); }
+.bk-sb-crumbs { margin-bottom: 1rem; }
+.bk-sb-stage { margin-inline: auto; width: 100%; }
+.bk-radar { position: relative; }
+.bk-radar-fixed { display: flex; align-items: center; justify-content: center; }
+.bk-radar-fluid { aspect-ratio: 1 / 1; width: 100%; }
+.bk-gauge { position: relative; width: 100%; max-width: 100%; }
+.bk-gauge-fixed { display: inline-flex; }
+.bk-gauge-flow { position: relative; width: 100%; min-width: 0; max-width: 100%; }
+.bk-gauge-host { position: relative; }
+.bk-gauge-host-fluid { margin-inline: auto; aspect-ratio: 21 / 16; width: 100%; }
+
+/* Text atoms: the defaults of the label, value and title class props (a prop value replaces them, as in bklit). */
+.bk-text-xs { font-size: 0.75rem; line-height: calc(1 / 0.75); }
+.bk-text-sm { font-size: 0.875rem; line-height: calc(1.25 / 0.875); }
+.bk-text-2xl { font-size: 1.5rem; line-height: calc(2 / 1.5); }
+.bk-font-medium { font-weight: 500; }
+.bk-font-semibold { font-weight: 600; }
+.bk-font-bold { font-weight: 700; }
+.bk-tabular-nums { font-variant-numeric: tabular-nums; }
+}

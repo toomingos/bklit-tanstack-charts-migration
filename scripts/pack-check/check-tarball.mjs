@@ -115,10 +115,23 @@ check("ships a README", files.some((f) => /^readme/i.test(f)) ? [] : ["no README
 
 // TanStack Intent indexes packages with this keyword and skills/**/SKILL.md.
 const skills = files.filter((f) => /^skills\/.+\/SKILL\.md$/.test(f));
-check("TanStack Intent ready (WARN until skills are written)", [
+check("TanStack Intent ready", [
   ...((pkg.keywords ?? []).includes("tanstack-intent") ? [] : ['keywords lacks "tanstack-intent"']),
   ...(skills.length ? [] : ["no skills/**/SKILL.md"]),
-], "WARN");
+  ...skills.flatMap((f) => {
+    const text = readFileSync(path.join(root, f), "utf8");
+    const front = text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "";
+    const dir = f.split("/").slice(-2, -1)[0];
+    const name = front.match(/^name:\s*['"]?([^'"\n]+)['"]?\s*$/m)?.[1];
+    const description = front.match(/^description:\s*>?\s*\n?([\s\S]*?)(?=\n\S|$)/m)?.[1] ?? "";
+    return [
+      ...(name === dir ? [] : [`${f}: frontmatter name ${JSON.stringify(name)} must equal its directory "${dir}"`]),
+      ...(description.trim() && description.length <= 1024 ? [] : [`${f}: description missing or over 1024 characters`]),
+      ...(/^metadata:[\s\S]*\n\s+library_version:/m.test(front) ? [] : [`${f}: metadata.library_version missing`]),
+      ...(text.split("\n").length <= 500 ? [] : [`${f}: over 500 lines`]),
+    ];
+  }),
+]);
 
 let failed = 0;
 let warned = 0;

@@ -1,6 +1,7 @@
 // Pure geometry shared by the bar-family custom marks (squares, track, depth).
 // Ports of bklit's bar-squares-layout and bar-depth geometry helpers.
 
+/** @internal */
 export interface SquareColumnLayout {
   /** Number of squares in the column. */
   count: number;
@@ -13,7 +14,22 @@ export interface SquareColumnLayout {
   gap: number;
 }
 
-export function computeSquareColumn(barLengthPx: number, squareSize: number, gap: number, fit: boolean): SquareColumnLayout {
+export interface SquareColumnInput {
+  /** Raw bar length in pixels (baseline minus value). */
+  barLengthPx: number;
+  /** Square width and height, typically the bar width. */
+  squareSize: number;
+  /** Gap between stacked squares in pixels. */
+  gap: number;
+  /** Redistribute the gap so the column height matches `barLengthPx` exactly. */
+  fit?: boolean;
+}
+
+/**
+ * Quantize a bar length into a stack of square cells.
+ * @internal
+ */
+export function computeSquareColumn({ barLengthPx, squareSize, gap, fit = false }: SquareColumnInput): SquareColumnLayout {
   if (barLengthPx <= 0 || squareSize <= 0) {
     return { count: 0, columnHeight: 0, positions: [], squareSize, gap };
   }
@@ -34,6 +50,15 @@ export function computeSquareColumn(barLengthPx: number, squareSize: number, gap
     positions.push(columnHeight - squareSize - i * step);
   }
   return { count, columnHeight, positions, squareSize, gap };
+}
+
+/**
+ * Y centre of the topmost square in a vertical column.
+ * @internal
+ */
+export function topSquareCenterY({ baselineY, ...input }: SquareColumnInput & { baselineY: number }): number {
+  const { count, squareSize, columnHeight } = computeSquareColumn(input);
+  return count === 0 ? baselineY : baselineY - columnHeight + squareSize / 2;
 }
 
 // --- 3D depth ---------------------------------------------------------

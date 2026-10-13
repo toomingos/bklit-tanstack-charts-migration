@@ -1,6 +1,7 @@
 import type { HeatmapLevelColors, HeatmapLevelStyles } from "./colors";
 import { HEATMAP_DEFAULT_LEVEL_COLORS } from "./colors";
 
+/** @internal */
 export const heatmapCssVars = {
   empty: HEATMAP_DEFAULT_LEVEL_COLORS[0],
   level1: HEATMAP_DEFAULT_LEVEL_COLORS[1],
@@ -9,6 +10,7 @@ export const heatmapCssVars = {
   level4: HEATMAP_DEFAULT_LEVEL_COLORS[4],
 } as const;
 
+/** @internal */
 export function levelColorsFromStyles(levelStyles: HeatmapLevelStyles): HeatmapLevelColors {
   return [
     levelStyles[0].color,

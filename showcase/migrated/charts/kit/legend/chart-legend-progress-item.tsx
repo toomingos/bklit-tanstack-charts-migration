@@ -38,37 +38,37 @@ const ProgressItem = ({
 
   return (
     <Progress.Root
-      className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1"
+      className="bk-legend-progress"
       data-slot="legend-item"
       max={item.maxValue}
       value={item.value}
     >
       {showMarker && (
         <div
-          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          className="bk-marker-size bk-legend-marker"
           style={buildItemColorStyle(item.color)}
         />
       )}
 
-      <Progress.Label className={cn("text-legend-foreground", labelClassName)}>
+      <Progress.Label className={cn("bk-legend-fg", labelClassName)}>
         {item.label}
       </Progress.Label>
 
       {showValue && (
-        <span className={cn("text-legend-muted-foreground", valueClassName)}>
+        <span className={cn("bk-legend-muted-fg", valueClassName)}>
           {formatValue(item.value)}
         </span>
       )}
 
-      <Progress.Track className="col-span-full h-1.5 overflow-hidden rounded-full bg-legend-track">
+      <Progress.Track className="bk-legend-progress-track">
         <Progress.Indicator
-          className="h-full rounded-full transition-all duration-500"
+          className="bk-legend-indicator"
           style={buildItemColorStyle(item.color)}
         />
       </Progress.Track>
 
       {showPercentage && (
-        <span className="col-start-3 text-legend-muted-foreground text-xs tabular-nums">
+        <span className="bk-legend-progress-percent">
           {`${percentage.toFixed(LEGEND_PERCENT_FRACTION_DIGITS)}%`}
         </span>
       )}

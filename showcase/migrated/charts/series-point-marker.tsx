@@ -4,17 +4,29 @@ import { useLayoutEffect, useRef } from "react";
 import type { ReactElement } from "react";
 import type { SeriesPointMarkerStyle } from "./kit/types";
 
+/**
+ * Props of `SeriesPointMarker`. It inherits the marker appearance props of `SeriesPointMarkerStyle`; only `fill`, `stroke`, `strokeWidth`, `ringGap`, `outlineWidth`, `outlineColor`, `radius` and `enterBlur` change how it looks.
+ */
 export interface SeriesPointMarkerProps extends SeriesPointMarkerStyle {
+  /** Key of the series this marker belongs to. Part of the identity that replays the entrance. */
   dataKey: string;
+  /** Index of the data row this marker belongs to. Part of the identity that replays the entrance. */
   index: number;
+  /** Horizontal center in plot pixels. */
   cx: number;
+  /** Vertical center in plot pixels. */
   cy: number;
+  /** Seconds to wait before the fade-in starts. */
   revealDelay: number;
+  /** Changes whenever the chart replays its entrance; a new value restarts the fade-in. */
   revealEpoch: number;
+  /** Duration of the fade-in in seconds. */
   enterDuration: number;
 }
 
-/** bklit SeriesPointMarker (series-point-marker.tsx:125-172): a point marker at (cx, cy) that fades and un-blurs in after `revealDelay`; plain SVG for a custom chart child (Line / Area markers are native). */
+/**
+ * A single point marker drawn at pixel position `(cx, cy)` that fades and un-blurs in after `revealDelay` seconds. Use it in a custom chart child; `Line` and `Area` draw their own markers via `showMarkers`.
+ */
 export const SeriesPointMarker = ({
   dataKey,
   index,

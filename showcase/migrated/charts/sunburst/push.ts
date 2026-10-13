@@ -1,5 +1,5 @@
 // Hover push: bklit's applyHoverGrow moves sectors and labels on the hovered path outward as a CSS transform on its 420ms curve; each sector publishes a `SectorPush` (bisector translate + centre scale).
-// Each element gets `--sb-t` / `--sb-m` (sectors, overlays) or `--sb-t` (labels) on itself; the static rules in sunburst.css read them (bklit growControls: 0.42s, [0.22, 1, 0.36, 1]).
+// Each element gets `--bkm-sb-t` / `--bkm-sb-m` (sectors, overlays) or `--bkm-sb-t` (labels) on itself; the static rules in sunburst.css read them (bklit growControls: 0.42s, [0.22, 1, 0.36, 1]).
 import { hoverGrowForPathSegment, hubScale, ID_SEP, ringOptions } from "./arcs";
 import type { ArcDatum } from "./arcs";
 
@@ -246,8 +246,8 @@ export const setFlag = (host: HTMLElement, kind: ArcKind, name: string, indexes:
 };
 
 const setPair = (host: HTMLElement, kind: ArcKind, values: PushValues | null, index: number): void => {
-  setOn(host, kind, index, "--sb-t", values === null ? null : values.translate);
-  setOn(host, kind, index, "--sb-m", values === null ? null : values.transform);
+  setOn(host, kind, index, "--bkm-sb-t", values === null ? null : values.translate);
+  setOn(host, kind, index, "--bkm-sb-m", values === null ? null : values.transform);
 };
 
 /** Sum of the grow targets of an arc's ancestors. */
@@ -267,7 +267,7 @@ const writeArcPush = (host: HTMLElement, index: number, sector: SectorPush | und
   setPair(host, "p", sector === undefined || own === undefined ? null : sectorPushValues(sector, push, own), index);
   // bklit centres the label on the pushed (and, on the hovered path, grown) sector.
   const shift = push + (own ?? 0) / 2;
-  setOn(host, "l", index, "--sb-t", sector === undefined || shift === 0 ? null : `${round3(Math.sin(sector.labelAngle) * shift)}px ${round3(-Math.cos(sector.labelAngle) * shift)}px`);
+  setOn(host, "l", index, "--bkm-sb-t", sector === undefined || shift === 0 ? null : `${round3(Math.sin(sector.labelAngle) * shift)}px ${round3(-Math.cos(sector.labelAngle) * shift)}px`);
 };
 
 /** Writes (or clears) the push vars for the hovered arc on `host`. Reads only the published sector table; never touches the chart definition. */

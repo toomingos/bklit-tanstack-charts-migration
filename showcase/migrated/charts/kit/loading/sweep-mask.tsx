@@ -1,3 +1,4 @@
+"use client";
 // Standalone bklit loading-sweep.tsx: a CSS-animated shimmer band (styles.css `bkm-sweep-travel`) crosses a seeded
 // skeleton silhouette through an SVG mask; it re-rolls once per pass, when the band is off-screen.
 import { useMemo } from "react";
@@ -16,15 +17,12 @@ export const hashFract = (n: number): number => {
   return x - Math.floor(x);
 };
 
-export const skeletonHeights = (count: number, seed: number): number[] =>
-  Array.from(
-    { length: count },
-    (_unused, i) =>
-      HEIGHT_MIN_PCT +
-      Math.floor(
-        hashFract((i + 1) * 12.9898 + seed) * (HEIGHT_MAX_PCT - HEIGHT_MIN_PCT)
-      )
-  );
+/**
+ * Deterministic heights (percentages of the available height) for a seed.
+ * @internal
+ */
+export const getSkeletonHeights = (count: number, seed = 0, min = HEIGHT_MIN_PCT, max = HEIGHT_MAX_PCT): number[] =>
+  Array.from({ length: count }, (_unused, i) => min + Math.floor(hashFract((i + 1) * 12.9898 + seed) * (max - min)));
 
 /** Bell-curve opacity stops (sin squared) for the band's soft edges. */
 const BAND_STOPS = Array.from({ length: 17 }, (_unused, i) => {

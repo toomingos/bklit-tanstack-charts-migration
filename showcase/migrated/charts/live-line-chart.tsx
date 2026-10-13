@@ -28,31 +28,76 @@ import { LiveYLabels, Y_LABEL_GAP } from "./live-line/live-ylabels";
 import { useSanitizedId } from "./kit/use-sanitized-id";
 
 export interface LiveLinePoint {
+  /** Time of the sample in Unix seconds. */
   readonly time: number;
+  /** Value of the sample. */
   readonly value: number;
 }
 
 export interface LiveLineChartProps {
+  /** The streaming samples, oldest first. Append new points as they arrive. */
   readonly data: LiveLinePoint[];
+  /** The latest value. The chart eases its display toward it. */
   readonly value: number;
+  /**
+   * Key used for the value field.
+   * @default "value"
+   */
   readonly dataKey?: string;
+  /**
+   * Visible time window in seconds.
+   * @default 30
+   */
   readonly window?: number;
+  /**
+   * Number of x axis labels; also sizes the leading offset.
+   * @default 5
+   */
   readonly numXTicks?: number;
+  /**
+   * Leading offset in x tick units. `0` puts "now" at the right edge.
+   * @default 0
+   */
   readonly nowOffsetUnits?: number;
+  /**
+   * Use a tight y range around the data instead of the default padded one.
+   * @default false
+   */
   readonly exaggerate?: boolean;
+  /**
+   * How fast the displayed value and y range ease toward their targets (0 to 1).
+   * @default 0.08
+   */
   readonly lerpSpeed?: number;
+  /**
+   * Space around the plot area in pixels. Missing sides use the default.
+   * @default { top: 24, right: 16, bottom: 32, left: 16 }
+   */
   readonly margin?: Partial<ChartMargin>;
+  /**
+   * Freeze the scrolling.
+   * @default false
+   */
   readonly paused?: boolean;
+  /** The layers to draw: `LiveLine`, `Grid`, `LiveXAxis`, `LiveYAxis`, `ChartTooltip`. */
   readonly children: ReactNode;
+  /** Extra CSS class name for the chart container. */
   readonly className?: string;
+  /** Inline styles for the chart container. Set `height` to size the chart. */
   readonly style?: CSSProperties;
+  /**
+   * Accessible name of the chart.
+   * @default "Live line chart"
+   */
   readonly ariaLabel?: string;
+  /** Longer accessible description of the chart, exposed as `aria-description`. */
   readonly ariaDescription?: string;
 }
 
 const DEFAULT_MARGIN: ChartMargin = { top: 24, right: 16, bottom: 32, left: 16 };
 const LERP_SPEED = 0.08;
 
+/** A real-time line chart that scrolls with the clock. Append samples to `data`, pass the latest `value`, and add a `LiveLine` child. It draws after mount, so the server renders an empty shell. */
 export const LiveLineChart = ({
   data,
   value,

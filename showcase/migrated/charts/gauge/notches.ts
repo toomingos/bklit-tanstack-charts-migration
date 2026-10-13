@@ -66,7 +66,7 @@ const trackColor = (o: FillOptions, ig: readonly [string, string], t: number): s
     if (o.activeGradient !== undefined) { return mixColor(ig[0], ig[1], t); }
     if (o.linear) { return CHART_1; }
   }
-  return o.linear ? "var(--chart-background)" : "var(--border)";
+  return o.linear ? "var(--chart-background)" : "var(--bkm-border)";
 };
 
 const fills = (index: number, o: FillOptions): Pick<GaugeNotchRow, "activeFill" | "trackFill"> => {

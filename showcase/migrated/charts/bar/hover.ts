@@ -60,7 +60,7 @@ function tickRules(scope: string, tick: TickFade, count: number): string[] {
   // bklit bar-y-axis.tsx: the hovered category label goes from 0.7 opacity / label colour to full opacity / foreground; its position is looked up per category.
   for (const [index, pos] of tick.positions.slice(0, Math.min(count, MAX_INDEX)).entries()) {
     if (pos >= 0) {
-      rules.push(`${scope}[data-hover="${index}"] text${keyStarts(tick.prefix)}:nth-child(${pos + 1}){opacity:1!important;fill:var(--foreground)!important}`);
+      rules.push(`${scope}[data-hover="${index}"] text${keyStarts(tick.prefix)}:nth-child(${pos + 1}){opacity:1!important;fill:var(--bkm-foreground)!important}`);
     }
   }
   return rules;

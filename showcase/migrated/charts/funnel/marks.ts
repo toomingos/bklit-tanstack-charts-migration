@@ -9,16 +9,27 @@ import type { FunnelDatum } from "./focus";
 const SSR_WIDTH_RATIO = 0.58;
 const FALLBACK_FONT = "ui-sans-serif, system-ui, sans-serif";
 
+/** One colour stop of a stage gradient. */
 interface FunnelGradientStopInput {
+  /** Position of the stop along the gradient: a percentage string such as `"50%"`, or a fraction from 0 to 1. */
   readonly offset: string | number;
+  /** Colour of the stop. */
   readonly color: string;
 }
 
+/** One stage of a funnel. */
 interface FunnelStageInput {
+  /** Name of the stage, shown with its segment. */
   readonly label: string;
+  /** Size of the stage. The first stage counts as 100% and each segment is sized relative to it. */
   readonly value: number;
+  /** Text to show instead of the formatted `value`, for example `"12.4k"`. */
   readonly displayValue?: string;
+  /** Colour of this stage, overriding the chart-level `color`. */
   readonly color?: string;
+  /**
+   * Colour stops for a linear gradient on this stage, for example `[{ offset: "0%", color: "#8b5cf6" }, { offset: "100%", color: "#3b82f6" }]`. Takes precedence over `color` for the innermost ring; the outer halo rings use the first stop as a solid colour.
+   */
   readonly gradient?: readonly FunnelGradientStopInput[];
 }
 
@@ -290,14 +301,14 @@ const labelNodes = (config: FunnelMarkConfig, geo: FunnelGeometry, frame: Frame,
     const metrics = fonts[kind];
     return Math.round(centre + (metrics.ascent - metrics.descent) / 2) - metrics.xHeight / 2;
   };
-  const FILL: Record<LabelItem["kind"], string> = { name: "var(--muted-foreground)", pct: "var(--background)", value: "var(--foreground)" };
+  const FILL: Record<LabelItem["kind"], string> = { name: "var(--bkm-muted-foreground)", pct: "var(--bkm-background)", value: "var(--bkm-foreground)" };
   const nodes: SceneNode[] = [];
   const pill = placed.find((entry) => entry.item.kind === "pct");
   if (pill) {
     const { item, px, py } = pill;
     nodes.push({
       className: "bkm-pill", height: Math.round(py + item.height / 2) - Math.round(py - item.height / 2), key: `funnel-pill-${index}`, kind: "rect",
-      radius: (PILL_PAD_Y * 2 + SMALL_LINE) / 2, style: { fill: "var(--foreground)" },
+      radius: (PILL_PAD_Y * 2 + SMALL_LINE) / 2, style: { fill: "var(--bkm-foreground)" },
       width: Math.round(px + item.width / 2) - Math.round(px - item.width / 2),
       x: frame.x + Math.round(px - item.width / 2), y: frame.y + Math.round(py - item.height / 2),
     });

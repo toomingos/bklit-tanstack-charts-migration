@@ -8,18 +8,36 @@ import { Pattern } from "./pattern";
 import { cx } from "./pattern-line-utils";
 import type { ClassValue } from "./pattern-line-utils";
 
+/** Props of `PatternCircles`. */
 // Circle-tile pattern (visx port); corner complements mirror bklit's tile.
 interface PatternCirclesProps {
+  /** Id of the pattern, referenced as `url(#id)` in a fill. */
   readonly id: string;
+  /** Width of the pattern tile in px. */
   readonly width: number;
+  /** Height of the pattern tile in px. */
   readonly height: number;
+  /**
+   * Radius of the circle in px.
+   * @default 2
+   */
   readonly radius?: number;
+  /** Fill color of the circle. */
   readonly fill?: string;
+  /** Class name added to the drawn shapes. */
   readonly className?: string;
+  /** Stroke color of the circle. */
   readonly stroke?: string;
+  /** Stroke width of the circle. */
   readonly strokeWidth?: number | string;
+  /** SVG dash pattern of the stroke. */
   readonly strokeDasharray?: number | string;
+  /**
+   * Also draw circles at the four tile corners.
+   * @default false
+   */
   readonly complement?: boolean;
+  /** Background color of the tile. No background is drawn when omitted. */
   readonly background?: string;
 }
 
@@ -53,6 +71,9 @@ const renderComplementCircle = (circleArgs: Readonly<ComplementCircleArgs>): Rea
   />
 );
 
+/**
+ * A pattern tile with one circle (exported as `PatternCircles`). Render it as a child of a chart and point a fill at its `id`, for example `fill="url(#my-dots)"`.
+ */
 const CirclesImpl = ({
   id,
   width,

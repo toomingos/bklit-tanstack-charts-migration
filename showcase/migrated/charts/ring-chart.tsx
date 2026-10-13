@@ -33,7 +33,7 @@ import { useTapFocus } from "./kit/touch-focus";
 const RING_ENTRANCE_ORIGINS = { "bkm-ring-in": "motion" } as const satisfies Readonly<Record<string, EntranceOrigin>>;
 
 const ringIndexOf = (datum: Readonly<RingArcRow>): number => datum.ringIndex;
-const RING_BACKGROUND = "var(--border)";
+const RING_BACKGROUND = "var(--bkm-border)";
 const RING_INSET_PX = 8;
 const MIN_RING_SIZE_PX = 10;
 const HIT_SLACK_PX = 0;
@@ -43,24 +43,71 @@ const CENTER_OVERLAY_STYLE: CSSProperties = {
   alignItems: "center", display: "flex", inset: 0, justifyContent: "center", pointerEvents: "none", position: "absolute",
 };
 
+/** Props for `RingChart`. */
 interface RingChartProps {
+  /** The rings to draw, from the innermost outwards. Each ring fills `value / maxValue` of its track. */
   readonly data: RingData[];
+  /** Chart width and height in pixels. Omit to fill the width of the parent element; the chart stays square. */
   readonly size?: number;
+  /**
+   * Thickness of each ring in pixels.
+   * @default 12
+   */
   strokeWidth?: number;
+  /**
+   * Gap between neighbouring rings in pixels.
+   * @default 6
+   */
   readonly ringGap?: number;
+  /**
+   * Inner radius of the innermost ring in pixels. Also sets the size of the area available to `RingCenter`.
+   * @default 60
+   */
   readonly baseInnerRadius?: number;
+  /** Accepted for bklit-ui compatibility; has no effect. Use `enterTransition` to change the entrance timing. */
   readonly animationDuration?: number;
+  /** Extra class name for the chart container. */
   readonly className?: string;
+  /** Inline styles for the chart container, merged over the default sizing. */
   readonly style?: CSSProperties;
+  /**
+   * Index of the hovered ring, for controlled hover. Pass `null` for no hover; leave it `undefined` to let the chart manage hover itself.
+   */
   hoveredIndex?: number | null;
+  /** Called with the index of the hovered or keyboard-focused ring, or `null` when hover ends. */
   readonly onHoverChange?: (index: number | null) => void;
+  /**
+   * Angle where every ring starts, in radians. The default is 12 o'clock.
+   * @default -Math.PI / 2
+   */
   readonly startAngle?: number;
+  /**
+   * Angle where a full ring ends, in radians. Together with `startAngle` this sets the sweep; the default is a full circle.
+   * @default (3 * Math.PI) / 2
+   */
   readonly endAngle?: number;
+  /**
+   * Transition for the entrance, in the shape used by the `motion` library (`type`, `duration` in seconds, `ease`, and spring values). Defaults to a 1.1 second tween on the shared reveal curve.
+   */
   readonly enterTransition?: RingEnterTransition;
+  /**
+   * Multiplier for the delay between one ring's entrance and the next. `0` starts all rings together.
+   * @default 1
+   */
   readonly enterStaggerScale?: number;
+  /**
+   * Turns off hover effects and `Ring` overrides. Meant for live editors that redraw the geometry while a control is dragged; leave it off otherwise.
+   * @default false
+   */
   readonly geometryScrubbing?: boolean;
+  /** `Ring` elements to configure individual rings and an optional `RingCenter`. */
   readonly children: ReactNode;
+  /**
+   * Accessible name of the chart.
+   * @default "Ring chart"
+   */
   readonly ariaLabel?: string;
+  /** Longer accessible description of the chart. */
   readonly ariaDescription?: string;
 }
 
@@ -115,6 +162,11 @@ const buildRingDefinition = (options: Readonly<BuildRingDefinitionOptions>): Dom
   });
 };
 
+/**
+ * Concentric progress rings, one per data item, each filled to `value / maxValue` on a track. Add `Ring` children to configure single rings and a `RingCenter` to show the total.
+ * Hovering or keyboard-focusing a ring emphasises it, dims the others and shows its label and value in the centre instead of a tooltip.
+ * The rings are drawn on the client after mount; on the server the chart renders an empty, correctly sized shell. If the rings do not fit in `size`, they scale down to fit.
+ */
 const RingChart = ({
   data,
   size: fixedSize,

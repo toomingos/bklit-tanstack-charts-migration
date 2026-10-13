@@ -33,7 +33,10 @@ const DEFAULT_FADED_OPACITY = 0.35;
 const DEFAULT_ACTIVE_OPACITY = 1;
 const DEFAULT_ROW_COUNT = 7;
 
-/** Builds a per-row opacity map for HeatmapCells/HeatmapYAxis from explicit row indices or a predicate. */
+/**
+ * Builds a per-row opacity map for HeatmapCells/HeatmapYAxis from explicit row indices or a predicate.
+ * @internal
+ */
 export const buildHeatmapRowOpacity = (match: readonly number[] | ((row: number) => boolean), fadedOpacity: number = DEFAULT_FADED_OPACITY, activeOpacity: number = DEFAULT_ACTIVE_OPACITY, rowCount: number = DEFAULT_ROW_COUNT): number[] => {
   if (isReadonlyNumberArray(match)) {
     const opacity = Array.from({ length: rowCount }, () => activeOpacity);

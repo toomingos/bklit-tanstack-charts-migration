@@ -14,6 +14,7 @@ const MIN_BEZIER_TENSION = 0.05;
 type ProjectionMode = "auto" | "target" | "manual";
 type ProjectionAutoMethod = "linearRegression" | "lastSegment";
 type ProjectionCurveKind = "linear" | "bezier";
+/** @internal */
 type ProjectionPathDensity = "stepped" | "endpoints";
 
 interface ProjectionPoint {
@@ -21,6 +22,7 @@ interface ProjectionPoint {
   readonly value: number;
 }
 
+/** @internal */
 interface BuildProjectionPathOptions {
   readonly sourceData: ChartDatum[];
   readonly seriesKey: string;
@@ -120,6 +122,7 @@ const collectHistoryPoints = (options: Readonly<CollectHistoryPointsOptions>): H
   return historyPoints;
 }
 
+/** @internal */
 const computeProjectionAnchorTangentSlope = (
   sourceData: ChartDatum[],
   seriesKey: string,
@@ -131,6 +134,7 @@ const computeProjectionAnchorTangentSlope = (
   return slopeFromLastSegment(collectHistoryPoints({ seriesKey, sourceData, startIndex, xDataKey }));
 }
 
+/** @internal */
 const buildHorizontalTangentBezierPath = (
   x0: number,
   y0: number,
@@ -188,6 +192,7 @@ const resolveProjectionAnchor = (options: Readonly<ResolveProjectionAnchorOption
   return { anchorTime: anchor.anchorTime, anchorValue: anchor.anchorValue, intervalMs, startIndex };
 }
 
+/** @internal */
 const buildProjectionPath = (options: Readonly<BuildProjectionPathOptions>): ProjectionPoint[] => {
   const { sourceData, seriesKey, xDataKey = "date", mode, autoMethod = "linearRegression", pathDensity = "endpoints", startIndex: startIndexProp, horizonPoints = 6, endValue, points } = options;
 

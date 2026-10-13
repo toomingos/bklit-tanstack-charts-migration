@@ -7,13 +7,22 @@ import { SANKEY_LINK_POINT_MARK_ID, SANKEY_NODE_POINT_MARK_ID } from "./focus";
 import type { SankeyData, SankeyLinkDatum, SankeyPropLink, SankeyPropNode } from "./types";
 
 // Config carrier: read once by SankeyChart, never rendered.
+/** Props of `SankeyTooltip`. */
 export interface SankeyTooltipProps {
+  /** Custom tooltip content for a node. Receives the node and its index. */
   readonly nodeContent?: (props: { node: SankeyPropNode; index: number }) => ReactNode;
+  /** Custom tooltip content for a link. Receives the link and its index. */
   readonly linkContent?: (props: { link: SankeyPropLink; index: number }) => ReactNode;
+  /**
+   * Formats the values in the default tooltip.
+   * @default integer formatting
+   */
   readonly formatValue?: (value: number) => string;
+  /** Additional class name for the tooltip. */
   readonly className?: string;
 }
 
+/** Configures the tooltip shown on hover or keyboard focus. Renders nothing itself; `SankeyChart` reads its props. */
 export const SankeyTooltip = (_props: Readonly<SankeyTooltipProps>): ReactElement => createElement(Fragment);
 SankeyTooltip.displayName = "SankeyTooltip";
 

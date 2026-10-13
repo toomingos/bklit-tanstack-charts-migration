@@ -19,6 +19,7 @@ const LOADING_DATA_KEY = "value";
 
 type AreaChartLoadingProps = CartesianLoadingProps;
 
+/** Ready-made loading placeholder for a area chart: a skeleton area that pulses over a shimmering grid. Use it while data is fetching instead of building a `status="loading"` chart yourself. */
 const AreaChartLoading = ({
   margin,
   stroke = DEFAULT_LOADING_STROKE,

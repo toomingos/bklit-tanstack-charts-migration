@@ -69,8 +69,8 @@ interface TooltipProps extends TooltipBoxMotionProps {
   dotColor?: string | ((point: Candle, line: { dataKey: string }) => string);
 }
 
-const POSITIVE = "var(--color-emerald-500)";
-const NEGATIVE = "var(--color-red-500)";
+const POSITIVE = "var(--color-emerald-500, oklch(69.6% 0.17 162.48))";
+const NEGATIVE = "var(--color-red-500, oklch(63.7% 0.237 25.331))";
 const DEFAULT_GRADIENT_FILLS = new Set(["url(#candlestick-positive)", "url(#candlestick-negative)"]);
 const WICK_WIDTH = 1.5;
 const outsideSpan = (value: number, start: number, size: number): boolean => value < start || value > start + size;

@@ -7,12 +7,19 @@ import type { CSSProperties, RefObject } from "react";
 import type { ProjectionHolder } from "./focus";
 import { writeVar } from "../kit/host-write";
 
+/** Zoom and pan state of the map, in the shape of a 2D affine matrix. */
 interface TransformMatrix {
+  /** Horizontal scale; the zoom level. */
   readonly scaleX: number;
+  /** Vertical scale; keep it equal to `scaleX`. */
   readonly scaleY: number;
+  /** Horizontal pan in pixels. */
   readonly translateX: number;
+  /** Vertical pan in pixels. */
   readonly translateY: number;
+  /** Horizontal skew; unused, keep at 0. */
   readonly skewX: number;
+  /** Vertical skew; unused, keep at 0. */
   readonly skewY: number;
 }
 
@@ -60,6 +67,7 @@ interface ChoroplethZoomContextValue {
 }
 
 const ChoroplethZoomContext = createContext<ChoroplethZoomContextValue>({ zoom: null });
+/** Returns the zoom controls (`{ zoom }`, with `scale`, `reset`, `translate` and the current `transformMatrix`) for building custom zoom buttons. `zoom` is `null` unless `zoomEnabled` is set on the chart. */
 const useChoroplethZoom = (): ChoroplethZoomContextValue => useContext(ChoroplethZoomContext);
 
 // bklit wheel step: 5% per tick.

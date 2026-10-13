@@ -10,7 +10,10 @@ export interface GenerateChartSkeletonDataOptions {
   baseDate?: Date;
 }
 
-/** Placeholder series used while `status="loading"` and data is empty. */
+/**
+ * Placeholder series used while `status="loading"` and data is empty.
+ * @internal
+ */
 export function generateChartSkeletonData(options: GenerateChartSkeletonDataOptions = {}): Record<string, unknown>[] {
   const dataKey = options.dataKey ?? DEFAULT_SKELETON_DATA_KEY;
   const pointCount = options.pointCount ?? DEFAULT_SKELETON_POINT_COUNT;

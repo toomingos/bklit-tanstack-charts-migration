@@ -6,17 +6,25 @@ import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { intFmt } from "../format";
 import { hasText, isNumber } from "../guards";
 
+/** One row of a tooltip: a colored dot, a label and a value. */
 export interface TooltipRow {
+  /** Color of the dot before the label. */
   readonly color: string;
+  /** Row label, usually the series name. */
   readonly label: string;
+  /** Row value. Numbers are formatted in the en-US number format; strings are shown as given. */
   readonly value: string | number;
 }
 
+/** Props of `TooltipContent`. */
 export interface TooltipContentProps {
+  /** Heading above the rows, for example the formatted date. */
   readonly title?: string;
+  /** The rows to show, one per series. */
   readonly rows: readonly TooltipRow[];
-  /** Additional content below the rows (e.g. markers). */
+  /** Extra content rendered below the rows, for example marker details. */
   readonly children?: ReactNode;
+  /** Class names added to the content wrapper. */
   readonly className?: string;
 }
 
@@ -37,6 +45,9 @@ const CHILDREN_STYLE: CSSProperties = { marginTop: 8 };
 
 const dotStyle = (color: string): CSSProperties => ({ width: 10, height: 10, flexShrink: 0, borderRadius: "50%", background: color });
 
+/**
+ * The standard tooltip body: an optional title, one row per series and optional extra content below. Use it inside `ChartTooltip`'s `content` to keep the default look.
+ */
 export const TooltipContent = /* @__PURE__ */ Object.assign(
   ({ title, rows, children, className }: Readonly<TooltipContentProps>): ReactElement => (
     <div className={className} style={CONTENT_STYLE}>
@@ -58,29 +69,52 @@ export const TooltipContent = /* @__PURE__ */ Object.assign(
   { displayName: "TooltipContent" },
 );
 
+/**
+ * Props of `TooltipBox`. Only `visible`, `className`, `children`, `panelStyle` and `backgroundColor` change anything; the rest exist so bklit-ui code compiles.
+ */
 export interface TooltipBoxProps {
-  /** Positioning props (x, y, containerRef, ...) are accepted for bklit compatibility; the native tooltip positions the panel. */
+  /** Accepted so bklit-ui code compiles. Has no effect; the chart places the tooltip itself. */
   readonly x?: number;
+  /** Accepted so bklit-ui code compiles. Has no effect; the chart places the tooltip itself. */
   readonly y?: number;
+  /**
+   * Render the box. Nothing is rendered when false.
+   * @default true
+   */
   readonly visible?: boolean;
+  /** Accepted so bklit-ui code compiles. Has no effect; the chart places the tooltip itself. */
   readonly containerRef?: unknown;
+  /** Accepted so bklit-ui code compiles. Has no effect; the chart places the tooltip itself. */
   readonly containerWidth?: number;
+  /** Accepted so bklit-ui code compiles. Has no effect; the chart places the tooltip itself. */
   readonly containerHeight?: number;
+  /** Accepted so bklit-ui code compiles. Has no effect; the chart places the tooltip itself. */
   readonly offset?: number;
+  /** Class names added to the box. */
   readonly className?: string;
+  /** Content of the box. */
   readonly children?: ReactNode;
+  /** Accepted so bklit-ui code compiles. Has no effect; the chart places the tooltip itself. */
   readonly left?: unknown;
+  /** Accepted so bklit-ui code compiles. Has no effect; the chart places the tooltip itself. */
   readonly top?: unknown;
+  /** Accepted so bklit-ui code compiles. Has no effect; the chart places the tooltip itself. */
   readonly flipped?: boolean;
+  /** Accepted so bklit-ui code compiles. Has no effect; the chart places the tooltip itself. */
   readonly springConfig?: { readonly stiffness: number; readonly damping: number };
+  /** Accepted so bklit-ui code compiles. Has no effect; the chart places the tooltip itself. */
   readonly animate?: boolean;
+  /** Accepted so bklit-ui code compiles. Has no effect; the chart places the tooltip itself. */
   readonly entrance?: boolean;
+  /** Inline styles merged into the box, after the defaults. */
   readonly panelStyle?: CSSProperties;
-  /** Panel background override (CSS variable or color). The native panel already uses `--chart-tooltip-background`. */
+  /** Background color of the box (a color or a CSS variable). */
   readonly backgroundColor?: string;
 }
 
-/** The tooltip panel. Inside `<ChartTooltip content>` the native tooltip is already the positioned, animated panel (bklit surface tokens), so this only applies per-box overrides. */
+/**
+ * A wrapper for custom tooltip content that applies a minimum width and optional style overrides. The chart positions and animates the tooltip panel itself.
+ */
 export const TooltipBox = /* @__PURE__ */ Object.assign(
   ({ visible = true, className, children, panelStyle, backgroundColor }: Readonly<TooltipBoxProps>): ReactElement | null => {
     const style = useMemo<CSSProperties>(() => {
@@ -102,9 +136,13 @@ export const TooltipBox = /* @__PURE__ */ Object.assign(
   { displayName: "TooltipBox" },
 );
 
+/** Props of `DateTicker`. */
 export interface DateTickerProps {
+  /** Index of the label to show. */
   readonly currentIndex: number;
+  /** The date labels, usually the hovered chart's formatted x values. The first is used when the index is out of range. */
   readonly labels: readonly string[];
+  /** Show the pill. Nothing is rendered when false or when `labels` is empty. */
   readonly visible: boolean;
 }
 
@@ -119,7 +157,7 @@ const DATE_PILL_STYLE: CSSProperties = {
   color: "var(--chart-date-pill-foreground)",
 };
 
-/** The date pill for custom tooltip content (the chart's own crosshair pill is native). */
+/** A pill showing one of the chart's date labels, for use in custom tooltip content. */
 export const DateTicker = /* @__PURE__ */ Object.assign(
   ({ currentIndex, labels, visible }: Readonly<DateTickerProps>): ReactElement | null => {
     if (!visible || labels.length === 0) {
@@ -131,17 +169,27 @@ export const DateTicker = /* @__PURE__ */ Object.assign(
   { displayName: "DateTicker" },
 );
 
-interface MarkerTooltipItem {
+/** One marker shown by `MarkerTooltipContent`. */
+export interface MarkerTooltipItem {
+  /** Marker title. */
   readonly title: string;
+  /** Marker description shown under the title. */
   readonly description?: string;
+  /** Icon shown in the marker disc. */
   readonly icon?: ReactNode;
+  /** Background color of the marker disc. */
   readonly color?: string;
+  /** Custom content that replaces the title and description. */
   readonly content?: ReactNode;
+  /** Called when the marker is clicked. */
   readonly onClick?: () => void;
+  /** URL to open when the marker is clicked. */
   readonly href?: string;
 }
 
+/** Props of `MarkerTooltipContent`. */
 export interface MarkerTooltipContentProps {
+  /** The markers at the hovered date. */
   readonly markers: readonly MarkerTooltipItem[];
 }
 
@@ -169,6 +217,9 @@ const markerDiscStyle = (color: string | undefined): CSSProperties => ({
   border: "1px solid var(--chart-marker-border)",
 });
 
+/**
+ * A list of event markers for the bottom of a tooltip, each with an icon disc, title and description. Shows the first two and "+N more..." for the rest.
+ */
 export const MarkerTooltipContent = /* @__PURE__ */ Object.assign(
   ({ markers }: Readonly<MarkerTooltipContentProps>): ReactElement | null => {
     if (markers.length === 0) {

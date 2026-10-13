@@ -28,6 +28,7 @@ import { INITIAL_WIDTH_PX, useFluidWidth } from "./kit/size/use-fluid-width";
 import { useIsClient } from "./kit/size/use-is-client";
 import { useTapFocus } from "./kit/touch-focus";
 
+/** Default distance in pixels a hovered slice moves out, used when `hoverOffset` is not set. */
 const DEFAULT_HOVER_OFFSET = 10;
 const FULL_SWEEP_END_ANGLE = (3 * Math.PI) / 2;
 const STAGGER_EACH_MS = 80;
@@ -63,24 +64,78 @@ interface PieSliceConfig {
   readonly hoverOffset?: number;
 }
 
+/** Props for `PieChart`. */
 interface PieChartProps {
+  /**
+   * The slices to draw, in order. Each item's `value` sets its share of the total, and its `label` is shown in the centre while the slice is hovered.
+   */
   readonly data: PieData[];
+  /** Chart width and height in pixels. Omit to fill the width of the parent element; the chart stays square. */
   readonly size?: number;
+  /**
+   * Inner radius in pixels. `0` draws a solid pie; a positive value draws a donut and leaves room for `PieCenter`.
+   * @default 0
+   */
   readonly innerRadius?: number;
+  /**
+   * Gap between neighbouring slices, in radians.
+   * @default 0
+   */
   readonly padAngle?: number;
+  /**
+   * Corner radius of each slice, in pixels.
+   * @default 0
+   */
   readonly cornerRadius?: number;
+  /**
+   * Angle where the first slice starts, in radians. `0` is 3 o'clock and the default is 12 o'clock.
+   * @default -Math.PI / 2
+   */
   readonly startAngle?: number;
+  /**
+   * Angle where the last slice ends, in radians. Together with `startAngle` this sets the sweep; the default is a full circle.
+   * @default (3 * Math.PI) / 2
+   */
   readonly endAngle?: number;
+  /** Extra class name for the chart container. */
   readonly className?: string;
+  /** Inline styles for the chart container, merged over the default sizing. */
   readonly style?: CSSProperties;
+  /**
+   * Index of the hovered slice, for controlled hover. Pass `null` for no hover; leave it `undefined` to let the chart manage hover itself.
+   */
   readonly hoveredIndex?: number | null;
+  /** Called with the index of the hovered or keyboard-focused slice, or `null` when hover ends. */
   readonly onHoverChange?: (index: number | null) => void;
+  /**
+   * Distance in pixels a hovered slice moves out (or grows by). The pie also reserves this much padding around its edge so a hovered slice is never clipped. A `PieSlice` can override it for its own slice.
+   * @default 10
+   */
   readonly hoverOffset?: number;
+  /**
+   * `PieSlice` elements to configure individual slices, an optional `PieCenter`, and any pattern or gradient definitions that slices reference through `fill`.
+   */
   readonly children: ReactNode;
+  /**
+   * Transition for the slice entrance sweep, in the shape used by the `motion` library (`type`, `duration` in seconds, `ease`, and spring values). Defaults to a 1.1 second tween on the shared reveal curve.
+   */
   readonly enterTransition?: PieEnterTransition;
+  /**
+   * Multiplier for the delay between one slice's entrance and the next. `0` starts all slices together.
+   * @default 1
+   */
   readonly enterStaggerScale?: number;
+  /**
+   * Turns off hover effects, `PieSlice` overrides and the hover readout in `PieCenter`. Meant for live editors that redraw the geometry while a control is dragged; leave it off otherwise.
+   * @default false
+   */
   readonly geometryScrubbing?: boolean;
+  /**
+   * Accessible name of the chart.
+   * @default "Pie chart"
+   */
   readonly ariaLabel?: string;
+  /** Longer accessible description of the chart. */
   readonly ariaDescription?: string;
 }
 
@@ -144,6 +199,11 @@ const buildPieDefinition = (options: Readonly<BuildDefinitionOptions>): DomChart
   });
 };
 
+/**
+ * Pie or donut chart. Add one `PieSlice` per data item as children to configure slices, and a `PieCenter` (donut only) to show the total.
+ * Hovering or keyboard-focusing a slice pops it out, dims the others and shows that slice's label and value in the centre instead of a tooltip.
+ * The pie is drawn on the client after mount; on the server it renders an empty, correctly sized shell.
+ */
 const PieChart = ({
   data,
   size: fixedSize,

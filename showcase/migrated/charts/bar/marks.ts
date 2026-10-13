@@ -4,7 +4,7 @@ import type { ChartMark, ChartMotionContext, ChartPoint, ResolvedScale, SceneNod
 import { propsFor } from "../kit/read-children";
 import { scaleBand } from "d3-scale";
 import type { OverlayDot } from "../kit/cartesian/hover-overlay";
-import { computeSquareColumn } from "./geometry";
+import { computeSquareColumn, topSquareCenterY } from "./geometry";
 import type { BarColumnTrackProps } from "./carriers";
 import type { ChildTable } from "../kit/read-children";
 import { REVEAL_EASING } from "../kit/motion/easing";
@@ -170,7 +170,7 @@ function columnMark(input: ColumnInput): ChartMark<BarDatum, string, number> {
         const top = sy.map(d.value);
         if (Number.isFinite(centre) && Number.isFinite(top) && d.value > 0) {
           const x = centre - bw / 2 + slot * (size + gapPx);
-          const col = computeSquareColumn(baseline - top, size, input.squareGap, input.squareFit);
+          const col = computeSquareColumn({ barLengthPx: baseline - top, squareSize: size, gap: input.squareGap, fit: input.squareFit });
           const columnTop = baseline - col.columnHeight;
           const pointKey = `${id}:${d.index}`;
           const className = `${columnClass(kind, slot)} ${barIndexClass(d.index)}`;
@@ -232,6 +232,8 @@ export function buildExtraMarks(input: ExtraMarkInput): ExtraMarks {
           squareFit: track.squareFit ?? false,
           fill: track.fill ?? "var(--chart-grid)",
           opacity: track.opacity ?? 0.3,
+          // An own `staggerDelay` (seconds) replaces the derived column spread (bklit bar-squares.tsx:460-462).
+          staggerMs: track.staggerDelay === undefined ? staggerMs : track.staggerDelay * 1000,
         }),
       );
     }
@@ -260,6 +262,8 @@ export function buildExtraMarks(input: ExtraMarkInput): ExtraMarks {
         fill: s.fill,
         opacity: 1,
         stops,
+        // An own `staggerDelay` (seconds) replaces the derived column spread (bklit bar-squares.tsx:334-336).
+        staggerMs: props.staggerDelay === undefined ? staggerMs : props.staggerDelay * 1000,
       }),
     );
   }
@@ -333,6 +337,8 @@ export interface HoverDotsOptions {
   readonly stackGap?: number;
   /** Series drawn as stacked squares: dots sit on the column top, not the raw value. */
   readonly squares?: ReadonlyMap<string, { readonly gap: number; readonly fit: boolean; readonly groupGap: number }>;
+  /** BarChart `squareSnap`: grouped vertical dots sit on the centre of the column's top square (bklit bar-chart.tsx:486-494). */
+  readonly squareSnap?: { readonly squareGap: number; readonly fit?: boolean };
 }
 
 /** The band geometry of a plot: bandwidth and the centre of each category from the left of the plot (the chart's `scaleBand` with the same padding). */
@@ -344,7 +350,7 @@ export function bandOf(categories: readonly string[], barGap: number, innerWidth
 
 /** Vertical-bar dots for the host's HoverOverlay (bklit's per-bar TooltipDot): one per series, placed on the focused category's bar end. */
 export function barOverlayDots(options: HoverDotsOptions): OverlayDot[] {
-  const { datums, series, categories, barGap, groupGap, radius = 5, squares, stacked = false, stackGap = 0, ring } = options;
+  const { datums, series, categories, barGap, groupGap, radius = 5, squares, squareSnap, stacked = false, stackGap = 0, ring } = options;
   const slots = new Map(series.map((s, i) => [s.key, i] as const));
   const byCategory = new Map<string, BarDatum[]>();
   for (const d of datums) {
@@ -392,7 +398,11 @@ export function barOverlayDots(options: HoverDotsOptions): OverlayDot[] {
             seen += 1;
           }
           if (d.series === key) {
-            const y = plot.innerHeight - ((value - sy[0]) / (sy[1] - sy[0] || 1)) * plot.innerHeight + along;
+            const toY = (v: number): number => plot.innerHeight - ((v - sy[0]) / (sy[1] - sy[0] || 1)) * plot.innerHeight;
+            const raw = toY(value) + along;
+            const y = squareSnap && !stacked && value > 0
+              ? topSquareCenterY({ baselineY: toY(0), barLengthPx: toY(0) - raw, squareSize: slot, gap: squareSnap.squareGap, fit: squareSnap.fit })
+              : raw;
             return Number.isFinite(y) ? { dx: dotCross({ d, i, bandwidth, slot, gapPx, seriesCount: series.length, stacked, square: squares?.get(d.series) }), y } : undefined;
           }
         }

@@ -20,44 +20,145 @@ import { prefersReducedMotion } from "./kit/loading/reduced-motion";
 import { toNotchEnter } from "./gauge/transition";
 import type { GaugeEnterTransition, NotchEnter } from "./gauge/transition";
 
+/** Gauge layout: `"arc"` around an arc, `"linear"` along a horizontal track. */
 export type GaugeOrientation = "arc" | "linear";
 export type { GaugeLabelAlign, GaugeLabelPlacement } from "./gauge/label";
 
+/** Props for `Gauge`. */
 export interface GaugeProps {
+  /**
+   * `"arc"` draws the notches around an arc; `"linear"` lays them out along a horizontal track.
+   * @default "arc"
+   */
   orientation?: GaugeOrientation;
+  /** Fill level from 0 to 100: the share of notches drawn in the active colour. */
   value: number;
+  /**
+   * Number of notches.
+   * @default 40
+   */
   totalNotches?: number;
+  /**
+   * Share of the track, in percent, reserved for the gaps between notches.
+   * @default 25
+   */
   spacing?: number;
+  /**
+   * Radius in pixels used to round the corners of each notch. `0` keeps them sharp; large values are limited by the notch size and approach a capsule shape.
+   * @default 0
+   */
   notchCornerRadius?: number;
+  /**
+   * `true` draws notches with parallel sides; `false` tapers them toward the centre (arc) or midline (linear). Defaults to `false` for arc gauges and `true` for linear gauges.
+   */
   uniformWidth?: boolean;
+  /**
+   * Angle where the arc starts, in degrees. Arc gauges only.
+   * @default 135
+   */
   startAngle?: number;
+  /**
+   * Angle where the arc ends, in degrees. Arc gauges only.
+   * @default 405
+   */
   endAngle?: number;
+  /**
+   * Colour the notches along a gradient instead of one solid colour.
+   * @default false
+   */
   useGradient?: boolean;
+  /**
+   * `[from, to]` colours for the active notches, interpolated along the notch index. Used when `useGradient` is on; defaults to `--chart-1` to `--chart-5`.
+   */
   activeGradient?: readonly [string, string];
+  /** `[from, to]` colours for the inactive notches. Used when `useGradient` is on; defaults to `activeGradient`. */
   inactiveGradient?: readonly [string, string];
+  /**
+   * Number shown in the label, which is drawn only when this is set. It is independent of `value`, so it can show a related figure such as revenue.
+   */
   centerValue?: number;
+  /**
+   * Caption shown under (arc) or next to (linear) the `centerValue`.
+   * @default "Total"
+   */
   defaultLabel?: string;
+  /** Text shown before the `centerValue`, for example `"$"`. */
   prefix?: string;
+  /** Text shown after the `centerValue`, for example `"%"`. */
   suffix?: string;
+  /**
+   * Number format for the `centerValue`, in `Intl.NumberFormat` terms (notation, currency, fraction digits and so on).
+   * @default { maximumFractionDigits: 0, notation: "standard" }
+   */
   formatOptions?: GaugeStatFormat;
+  /**
+   * Where the label sits relative to a linear track. Arc gauges always draw the label in the centre.
+   * @default "top"
+   */
   labelPlacement?: GaugeLabelPlacement;
+  /**
+   * Alignment of the label across the linear track: `"start"`, `"center"` or `"end"`.
+   * @default "start"
+   */
   labelAlign?: GaugeLabelAlign;
+  /** Colour of the inactive notches. Defaults to the `--border` colour. */
   inactiveFill?: string;
+  /** Colour of the active notches. Takes precedence over the gradient options. Defaults to `--chart-1`. */
   activeFill?: string;
+  /**
+   * Fill opacity of the inactive notches, from 0 to 1.
+   * @default 0.8
+   */
   inactiveFillOpacity?: number;
+  /**
+   * Fill opacity of the active notches, from 0 to 1.
+   * @default 1
+   */
   activeFillOpacity?: number;
-  /** Accepted for API compatibility; custom SVG defs have no native equivalent. */
+  /**
+   * Accepted for bklit-ui compatibility; ignored. Custom SVG definitions such as patterns cannot be referenced by `activeFill` or `inactiveFill`.
+   */
   children?: ReactNode;
+  /** Extra class name for the root element. */
   className?: string;
+  /**
+   * Fixed width in pixels. Omit to fill the parent. An arc gauge is fixed-size only when both `width` and `height` are set.
+   */
   width?: number;
+  /**
+   * Fixed height in pixels. For a linear gauge this is the track thickness; when omitted the thickness is `linearHeight`.
+   */
   height?: number;
+  /**
+   * Minimum width in pixels when the gauge fills its parent.
+   * @default 300 for arc gauges, 200 for linear gauges
+   */
   minWidth?: number;
+  /**
+   * Length of the notches as a percentage of their full length, clamped to 5 to 100.
+   * @default 100
+   */
   notchLengthPercent?: number;
+  /**
+   * Width of each notch as a percentage of its slot, along the track. Linear gauges only.
+   * @default 80
+   */
   notchWidthPercent?: number;
+  /**
+   * Track thickness in pixels when `height` is not set. Linear gauges only.
+   * @default 24
+   */
   linearHeight?: number;
+  /**
+   * Transition for each notch's entrance, in the shape used by the `motion` library (`type`, `duration` in seconds, `ease`, and spring values).
+   */
   enterTransition?: GaugeEnterTransition;
+  /**
+   * Multiplier for the delay between notch entrances (limited to 0.25 to 2.5).
+   * @default 1
+   */
   enterStaggerScale?: number;
-  /** Studio-only in bklit; accepted and ignored. */
+  /** Accepted for bklit-ui compatibility; ignored. */
   geometryScrubbing?: boolean;
 }
 
@@ -134,8 +235,8 @@ const useGaugeStyles = ({ trackHeight, minWidth, width, height, fixed, enterVars
   return { arcHost, arcRoot, track };
 };
 
-const arcRootClass = (fixed: boolean, className: string | undefined): string => joinClasses("relative w-full max-w-full", fixed ? "inline-flex" : undefined, className);
-const arcHostClass = (fixed: boolean): string => fixed ? "relative" : "relative mx-auto aspect-[21/16] w-full";
+const arcRootClass = (fixed: boolean, className: string | undefined): string => joinClasses("bk-gauge", fixed ? "bk-gauge-fixed" : undefined, className);
+const arcHostClass = (fixed: boolean): string => fixed ? "bk-gauge-host" : "bk-gauge-host bk-gauge-host-fluid";
 
 interface EntranceGateProps {
   readonly active: boolean;
@@ -203,7 +304,7 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
       </div>
     );
     return (
-      <div className={joinClasses("relative w-full min-w-0 max-w-full", className)} data-bkm-chart="" {...hydratingAttrs} data-bkm-gn={enterAttr} style={enterVars}>
+      <div className={joinClasses("bk-gauge-flow", className)} data-bkm-chart="" {...hydratingAttrs} data-bkm-gn={enterAttr} style={enterVars}>
         {enterCss}
         <GaugeLabelLayout align={labelAlign} format={formatOptions} label={defaultLabel} placement={labelPlacement} prefix={prefix} suffix={suffix} value={centerValue}>{track}</GaugeLabelLayout>
       </div>
@@ -224,6 +325,10 @@ const GaugeView = ({ resolved }: { readonly resolved: ResolvedGaugeProps }): Rea
   );
 };
 
+/**
+ * Notch gauge that shows a 0 to 100 `value`, as an arc (default) or a horizontal track (`orientation="linear"`). Set `centerValue` to add a label with an animated number.
+ * Omit `width` and `height` to fill the parent. The gauge is server-rendered and plays its entrance after hydration.
+ */
 const Gauge = (props: GaugeProps): ReactElement => <GaugeView resolved={resolveProps(props)} />;
 
 Gauge.displayName = "Gauge";

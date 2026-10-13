@@ -45,7 +45,7 @@ export const useSunburstIntro = (arcs: readonly ArcDatum[], enterStaggerScale: n
   }, [playKey, introMs]);
   const settled = settledKey === playKey;
   return {
-    hostVars: settled ? {} : { "--bk-sb-label-delay": `${labelDelayMs}ms`, "--bk-sb-label-dur": `${sweepMs}ms` },
+    hostVars: settled ? {} : { "--bkm-sb-label-delay": `${labelDelayMs}ms`, "--bkm-sb-label-dur": `${sweepMs}ms` },
     introAtRef: renderStart,
     introRef,
     settled,

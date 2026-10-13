@@ -3,6 +3,9 @@
 import { arc as d3Arc } from "d3-shape";
 import type { Arc } from "d3-shape";
 
+/**
+ * How a hovered slice reacts: `"translate"` moves it outward, `"grow"` extends its outer radius, `"none"` leaves it in place.
+ */
 type PieHoverEffect = "translate" | "grow" | "none";
 
 interface PieArcRow {

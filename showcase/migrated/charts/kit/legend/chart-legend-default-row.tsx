@@ -10,7 +10,7 @@ import type { ChartLegendProps, LegendItem } from "./chart-legend";
 // A missing or zero maximum means the item has no progress scale to draw.
 const EMPTY_PROGRESS_MAXIMUM = 0;
 
-// Button reset (inline): only the UA chrome the div never had; padding/cursor/background come from classes (an inline background would defeat the hovered bg-legend-muted).
+// Button reset (inline): only the UA chrome the div never had; padding/cursor/background come from classes (an inline background would defeat the hovered bk-legend-item-hovered).
 const LEGEND_BUTTON_RESET: CSSProperties = {
   border: "none",
   color: "inherit",
@@ -103,9 +103,9 @@ const DefaultLegendRow = ({
   return (
     <button
       className={cn(
-        "cursor-pointer rounded-lg px-2 py-1.5 transition-all duration-150 ease-out",
-        isHovered && "bg-legend-muted",
-        isFaded && "opacity-40",
+        "bk-legend-item",
+        isHovered && "bk-legend-item-hovered",
+        isFaded && "bk-faded",
         itemClassName
       )}
       data-hovered={isHovered ? "" : undefined}

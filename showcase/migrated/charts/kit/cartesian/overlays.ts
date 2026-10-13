@@ -14,6 +14,9 @@ import type { Row } from "./series";
 import { erase } from "../erased-types";
 import type { AnyMark } from "../erased-types";
 import type { ChartMarkersProps, MarkerGroupProps } from "../types";
+import { scopePaintUrl } from "../resource-host";
+import { referencePatternId, usesReferencePattern } from "./reference-area-resources";
+import type { ReferencePatternProps } from "./reference-area-resources";
 
 // bklit buildHorizontalTangentBezierPath (tension 0.45): horizontal tangents with control points 0.45·dx in from each end.
 // curveBumpX is the same shape at 0.5·dx, which lengthens the curve and drifts the dash phase.
@@ -69,7 +72,7 @@ interface TerminalProps {
   strokeWidth?: number;
   fill?: string;
 }
-interface ReferenceProps {
+interface ReferenceProps extends ReferencePatternProps {
   x1?: Date | number;
   x2?: Date | number;
   y1?: number;
@@ -319,12 +322,13 @@ export type WipeMark = <M>(mark: M, tag: string) => M;
 
 interface ReferenceAreaContext {
   readonly index: number;
+  readonly uid: string;
   readonly xDomain: readonly [Date, Date];
   readonly yDomain: readonly [number, number];
 }
 
 /** bklit ReferenceArea: fill band, dashed top/bottom edges (both faded at the left/right ends, see styles.css `refarea`), optional bracket markers at the centre, 420ms fade-in. */
-function referenceAreaMarks(r: ReferenceProps, { index: i, xDomain, yDomain }: ReferenceAreaContext): AnyMark[] {
+function referenceAreaMarks(r: ReferenceProps, { index: i, uid, xDomain, yDomain }: ReferenceAreaContext): AnyMark[] {
   const out: AnyMark[] = [];
   const stroke = r.stroke ?? "var(--chart-foreground-muted)";
   const x1 = r.x1 === undefined ? xDomain[0] : toDate(r.x1);
@@ -343,7 +347,8 @@ function referenceAreaMarks(r: ReferenceProps, { index: i, xDomain, yDomain }: R
       x2: () => x2,
       y1: () => bottom,
       y2: () => top,
-      fill: r.fill ?? "color-mix(in oklch, var(--chart-foreground-muted) 12%, transparent)",
+      // A pattern replaces the solid fill (bklit reference-area.tsx:200); its tile is in the chart's defs host (reference-area-resources.tsx).
+      fill: usesReferencePattern(r) ? scopePaintUrl(`url(#${referencePatternId(i)})`, uid) : (r.fill ?? "color-mix(in oklch, var(--chart-foreground-muted) 12%, transparent)"),
       fillOpacity: r.fillOpacity ?? 1,
       inset: 0,
     }),
@@ -409,7 +414,8 @@ function projectionMark(p: ProjectionProps, { index: i, uid, xDomain, innerWidth
       y2: 0,
       stops: [
         { offset: 0, color: p.gradientStart ?? stroke },
-        { offset: 1, color: p.gradientEnd ?? stroke },
+        // bklit projection-line.tsx:107-108: the end defaults to --chart-5, the start to the stroke.
+        { offset: 1, color: p.gradientEnd ?? "var(--chart-5)" },
       ],
     });
     paint = `url(#${id})`;
@@ -424,7 +430,9 @@ function projectionMark(p: ProjectionProps, { index: i, uid, xDomain, innerWidth
     stroke: paint,
     strokeWidth: p.strokeWidth ?? 2,
     strokeOpacity: p.strokeOpacity ?? 1,
-    strokeDasharray: p.strokeDasharray?.replace(",", " "),
+    // bklit projection-line.tsx:112: dashed "6,4" unless the caller overrides it.
+    strokeDasharray: (p.strokeDasharray ?? "6,4").replaceAll(",", " "),
+    lineCap: "round",
   });
   return wrap(lineY(visibleTail(p, xDomain, innerWidth), options), `p${i}`);
 }
@@ -478,7 +486,7 @@ export function buildOverlays(table: ChildTable, rows: readonly Row[], xKey: str
     for (const [i, r] of references.entries()) {
       // bklit paints children in JSX order: a ReferenceArea declared before the series sits beneath them (callers that pass `under`).
       const bandOut = under !== undefined && declaredBefore(table, r, SERIES_ROLES) ? under : out;
-      bandOut.push(...referenceAreaMarks(r, { index: i, xDomain, yDomain }));
+      bandOut.push(...referenceAreaMarks(r, { index: i, uid, xDomain, yDomain }));
     }
     for (const [i, p] of projections.entries()) {
       pushDecorative(out, projectionMark(p, { index: i, uid, xDomain, innerWidth, gradients, wipe }));

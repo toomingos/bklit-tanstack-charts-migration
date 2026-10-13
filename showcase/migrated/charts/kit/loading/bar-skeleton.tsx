@@ -8,12 +8,12 @@ import {
   DEFAULT_SWEEP_DURATION_S,
   SweepMask,
   hashFract,
-  skeletonHeights,
+  getSkeletonHeights,
 } from "./sweep-mask";
 
 const BAR_CORNER_RADIUS = 2;
 const DEFAULT_BAR_COUNT = 12;
-const DEFAULT_FILL = "var(--foreground)";
+const DEFAULT_FILL = "var(--bkm-foreground)";
 const DEFAULT_BAR_FILL_OPACITY = 0.45;
 const DEFAULT_BAR_FRACTION = 0.7;
 
@@ -22,24 +22,45 @@ const skeletonSigns = (count: number, seed: number): number[] =>
     hashFract((i + 1) * 78.233 + seed) < 0.5 ? -1 : 1
   );
 
+/** Props of `BarLoadingSkeleton`. */
 export interface BarLoadingSkeletonProps {
+  /** Plot width in px. */
   innerWidth: number;
+  /** Plot height in px. */
   innerHeight: number;
-  /** Number of skeleton bars. Default: 12 */
+  /**
+   * Number of placeholder bars.
+   * @default 12
+   */
   barCount?: number;
-  /** Bar fill color. Default: `var(--foreground)` */
+  /**
+   * Bar fill color.
+   * @default "var(--bkm-foreground)"
+   */
   fill?: string;
-  /** Bar fill opacity. Default: 0.45 */
+  /**
+   * Bar fill opacity.
+   * @default 0.45
+   */
   fillOpacity?: number;
-  /** Bars rise from the bottom or diverge from the vertical center. Default: `"bottom"` */
+  /**
+   * Whether bars rise from the bottom (`"bottom"`) or diverge from the vertical center (`"center"`).
+   * @default "bottom"
+   */
   baseline?: "bottom" | "center";
-  /** Bar width as a fraction of its band (0-1). Default: 0.7 */
+  /**
+   * Bar width as a fraction of its slot, from 0 to 1.
+   * @default 0.7
+   */
   barFraction?: number;
-  /** One shimmer sweep, in seconds. Default: 2 */
+  /**
+   * Length of one shimmer sweep in seconds.
+   * @default 2
+   */
   durationSeconds?: number;
 }
 
-/** Skeleton bars under the sweep, in the chart's inner coordinate space (origin at the inner top-left). */
+/** @internal */
 export const BarLoadingSkeleton = ({
   innerWidth,
   innerHeight,
@@ -57,7 +78,7 @@ export const BarLoadingSkeleton = ({
     setTick((prev) => prev + 1);
   }, []);
   const heights = useMemo(
-    () => skeletonHeights(barCount, tick),
+    () => getSkeletonHeights(barCount, tick),
     [barCount, tick]
   );
   const signs = useMemo(() => skeletonSigns(barCount, tick), [barCount, tick]);

@@ -8,14 +8,24 @@ import type { ChartMargin } from "./kit/theme";
 const EMPTY_DATA: Record<string, unknown>[] = [];
 
 interface BarChartLoadingProps {
-  /** Chart margins. */
+  /**
+   * Space around the plot area in pixels. Missing sides use the default.
+   * @default { top: 40, right: 40, bottom: 40, left: 40 }
+   */
   readonly margin?: Partial<Readonly<ChartMargin>>;
-  /** Aspect ratio as "width / height". Default: "2 / 1" */
+  /**
+   * CSS aspect ratio of the placeholder, as `"width / height"`.
+   * @default "2 / 1"
+   */
   readonly aspectRatio?: string;
-  /** Additional class name for the container. */
+  /**
+   * Extra CSS class name for the placeholder container.
+   * @default ""
+   */
   readonly className?: string;
 }
 
+/** Ready-made loading placeholder for a bar chart: shorthand for `<BarChart status="loading" />` with no data, drawing the shimmering skeleton bars. */
 const BarChartLoading = ({ margin, aspectRatio = "2 / 1", className = "" }: Readonly<BarChartLoadingProps>): ReactElement => (
   <BarChart aspectRatio={aspectRatio} className={className} data={EMPTY_DATA} margin={margin} status="loading" />
 );

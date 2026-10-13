@@ -6,8 +6,11 @@ import { roleOf } from "./role-of";
 import type { ChoroplethFeatureProps, ChoroplethGraticuleProps, ChoroplethTooltipProps } from "./types";
 
 // Carrier components: configuration is read from the element props by the chart (roleOf), they render nothing.
+/** Configures how features are filled, stroked and dimmed. Renders nothing itself; `ChoroplethChart` reads its props. */
 const ChoroplethFeatureComponent = /* @__PURE__ */ defineCarrier<Readonly<ChoroplethFeatureProps>>("choroplethFeature", "ChoroplethFeature");
+/** Adds graticule (latitude and longitude) lines behind the features. Renders nothing itself; `ChoroplethChart` reads its props. */
 const ChoroplethGraticule = /* @__PURE__ */ defineCarrier<Readonly<ChoroplethGraticuleProps>>("choroplethGraticule", "ChoroplethGraticule");
+/** Enables and configures the tooltip shown on hover or keyboard focus. Without it no tooltip appears. Renders nothing itself; `ChoroplethChart` reads its props. */
 const ChoroplethTooltip = /* @__PURE__ */ defineCarrier<Readonly<ChoroplethTooltipProps>>("choroplethTooltip", "ChoroplethTooltip");
 
 interface ExtractedConfig {

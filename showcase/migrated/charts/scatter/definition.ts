@@ -136,7 +136,7 @@ export function createSizeStore(): SizeStore {
   };
 }
 
-const GRADIENT_TO = "var(--color-emerald-500)";
+const GRADIENT_TO = "var(--color-emerald-500, oklch(69.6% 0.17 162.48))";
 // bklit series-markers `enterDuration` (0.5s per dot).
 const ENTER_MS = 500;
 const DEFAULT_Y_AXIS = "left";

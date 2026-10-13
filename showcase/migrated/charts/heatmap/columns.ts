@@ -1,14 +1,21 @@
 import { HEATMAP_MONTHS_ONE_YEAR, HEATMAP_MONTHS_SIX, getHeatmapCalendarRangeStart, getHeatmapWeekStartAlignedToRange } from "./calendar";
 import type { HeatmapWeekStartDay } from "./day-labels";
 
+/** One day cell of a week column. */
 export interface HeatmapBin {
+  /** Activity level of the cell. Values of `0` or less map to level 0 (empty), `1` to `3` to levels 1 to 3, and `4` or more to level 4. */
   readonly count: number;
+  /** Row index of the cell in its column (`0` to `6` for the days of a Sunday-first week). */
   readonly bin: number;
+  /** Date of the cell. Must be a `Date` object. */
   readonly date: Readonly<Date>;
 }
 
+/** One week (or category) column of the heatmap, holding its day bins. */
 export interface HeatmapColumn {
+  /** Column index (the week number). */
   readonly bin: number;
+  /** The day cells of the column, in Sunday-first order (seven for a week). */
   readonly bins: HeatmapBin[];
 }
 
@@ -22,7 +29,10 @@ export const rotateHeatmapColumnBins = (columns: HeatmapColumn[], weekStartDay: 
   }));
 }
 
-/** Month label anchor for a week column: the 1st, else the 1st of the first bin's month; `undefined` when `column.bins` is empty. */
+/**
+ * Month label anchor for a week column: the 1st, else the 1st of the first bin's month; `undefined` when `column.bins` is empty.
+ * @internal
+ */
 export const getHeatmapColumnMonthAnchor = (column: HeatmapColumn): Date | null => {
   for (const bin of column.bins) {
     if (bin.date.getDate() === 1) {return bin.date;}
@@ -53,6 +63,7 @@ const readHeatmapLastColumnEnd = (columns: readonly HeatmapColumn[]): Date | und
   return getHeatmapColumnEndDate(lastColumn);
 }
 
+/** @internal */
 export const getHeatmapTimeExtent = (columns: HeatmapColumn[]): [Date, Date] | null => {
   if (columns.length === 0) {return null;}
   // Non-empty per the length check above, so destructuring always yields a column.
@@ -107,6 +118,7 @@ const matchHeatmapCalendarRangeStart = (gridStart: Readonly<Date>, today: Readon
 
 // Destructuring types `firstColumn` as always-defined without `noUncheckedIndexedAccess`.
 // Exported callers give no guarantee `columns` is non-empty, so the guard stays.
+/** @internal */
 export const inferHeatmapCalendarRangeStart = (columns: HeatmapColumn[]): Date | null => {
   if (columns.length === 0) {return null;}
   const [firstColumn] = columns;

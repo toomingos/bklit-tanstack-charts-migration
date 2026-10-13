@@ -13,22 +13,41 @@ const PATTERN_PRESET_IDS = [
   "accent",
 ] as const;
 
+/**
+ * Name of a ready-made pattern: `"none"` (solid), `"diagonal"`, `"horizontal"`, `"vertical"` or `"cross"` lines, `"dots"`, `"circles"` or `"accent"`.
+ */
 type PatternPresetId = (typeof PATTERN_PRESET_IDS)[number];
 
+/**
+ * Options that tune a pattern preset. Which ones apply depends on the preset; unset options use the preset's own values.
+ */
 interface PatternPresetOptions {
+  /** Color of the pattern lines or dots. */
   readonly color?: string;
+  /**
+   * Scales the tile size. `2` doubles it.
+   * @default 1
+   */
   readonly scale?: number;
+  /** Stroke width of the lines, or of the ring around circles. */
   readonly strokeWidth?: number;
+  /** Radius of the dots or circles in px. */
   readonly radius?: number;
+  /** Also draw circles at the tile corners so the pattern reads as a staggered grid. */
   readonly complement?: boolean;
+  /** Fill color of dots or circles. */
   readonly fill?: string;
+  /** Fill the dots of the `"dots"` preset. Set to `false` to draw outlined dots. */
   readonly dotFill?: boolean;
+  /** Background color behind the pattern tile. */
   readonly tileBackground?: string;
 }
 
+/** @internal */
 const isCirclePattern = (preset: PatternPresetId): boolean => preset === "circles" || preset === "dots";
 
 
+/** @internal */
 const isCirclesPattern = (preset: PatternPresetId): boolean => isCirclePattern(preset);
 
 
@@ -38,6 +57,7 @@ interface PatternTileSize {
   readonly strokeWidth: number;
 }
 
+/** @internal */
 const patternPresetTileSize = (preset: PatternPresetId, scale = DEFAULT_PATTERN_SCALE): PatternTileSize => {
   let base = { height: 6, strokeWidth: 1, width: 6 };
   if (preset === "dots") {

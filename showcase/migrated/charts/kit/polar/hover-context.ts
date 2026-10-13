@@ -6,7 +6,9 @@ import { createHoverSource, useHoverIndex } from "./polar-hover";
 import type { HoverSource } from "./polar-hover";
 
 interface PolarHoverValue {
+  /** Index of the hovered slice, ring or series, or `null` when nothing is hovered. */
   hoveredIndex: number | null;
+  /** Sets the hovered index; pass `null` to clear hover. */
   readonly setHoveredIndex: (index: number | null) => void;
 }
 

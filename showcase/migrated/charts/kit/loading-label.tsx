@@ -9,11 +9,11 @@ const EXITING_STYLE: CSSProperties = { transition: LABEL_TRANSITION, transform: 
 const CHAR_PULSE_S = 1;
 const CHAR_REPEAT_DELAY_S = 0.05;
 
-/** bklit shimmering-text.tsx:42-56 colour keyframes [--color, --shimmering-color, --color] (easeInOut each leg, then the repeat delay) as CSS for a label of `length` chars. */
+/** bklit shimmering-text.tsx:42-56 colour keyframes [--bkm-label-color, --bkm-shimmer-color, --bkm-label-color] (easeInOut each leg, then the repeat delay) as CSS for a label of `length` chars. */
 const charKeyframes = (length: number): string => {
   const cycle = CHAR_PULSE_S + length * CHAR_REPEAT_DELAY_S;
   const end = (CHAR_PULSE_S / cycle) * 100;
-  return `@keyframes bkm-label-char-${length}{0%{color:var(--color);animation-timing-function:ease-in-out}${end / 2}%{color:var(--shimmering-color);animation-timing-function:ease-in-out}${end}%,100%{color:var(--color)}}`;
+  return `@keyframes bkm-label-char-${length}{0%{color:var(--bkm-label-color);animation-timing-function:ease-in-out}${end / 2}%{color:var(--bkm-shimmer-color);animation-timing-function:ease-in-out}${end}%,100%{color:var(--bkm-label-color)}}`;
 };
 
 const SR_ONLY: CSSProperties = { position: "absolute", width: 1, height: 1, margin: -1, padding: 0, overflow: "hidden", clipPath: "inset(50%)", whiteSpace: "nowrap", border: 0 };

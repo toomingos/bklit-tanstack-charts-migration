@@ -19,6 +19,7 @@ const LOADING_DATA_KEY = "value";
 
 type LineChartLoadingProps = CartesianLoadingProps;
 
+/** Ready-made loading placeholder for a line chart: a skeleton line that pulses over a shimmering grid. Use it while data is fetching instead of building a `status="loading"` chart yourself. */
 const LineChartLoading = ({
   margin,
   stroke = DEFAULT_LOADING_STROKE,

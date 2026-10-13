@@ -9,6 +9,7 @@ import type { ChartPhase, ChartStatus } from "../motion/phase";
 import { DEFAULT_Y_AXIS_ID } from "./series";
 import { CHART_PALETTE } from "../palette";
 
+/** @internal */
 export const chartCssVars = {
   background: "var(--chart-background)",
   foreground: "var(--chart-foreground)",
@@ -34,26 +35,42 @@ export const chartCssVars = {
 /** Default scatter series colors from the chart palette (`--chart-1` ... `--chart-5`). */
 export const defaultScatterColors = CHART_PALETTE;
 
+/** Space between the chart edge and the plot area, in px. */
 export interface Margin {
+  /** Top margin in px. */
   top: number;
+  /** Right margin in px. */
   right: number;
+  /** Bottom margin in px. */
   bottom: number;
+  /** Left margin in px. */
   left: number;
 }
 
+/** A line series as registered with the chart. */
 export interface LineConfig {
+  /** Key of the series in the chart data. */
   dataKey: string;
+  /** Stroke color of the line. */
   stroke: string;
+  /** Stroke width of the line in px. */
   strokeWidth: number;
-  /** Scale group id (Recharts `yAxisId`). Default: `"left"`. */
+  /**
+   * Id of the y-scale group the line uses.
+   * @default "left"
+   */
   yAxisId?: string | number;
 }
 
-/** A `ReferenceArea` band as the axes see it (y-axis label colours inside the band). */
+/** A `ReferenceArea` band as the axes see it. */
 export interface ReferenceAreaConfig {
+  /** Id of the y-scale group the band refers to. */
   yAxisId: string;
+  /** Lower y data bound of the band. */
   y1?: number;
+  /** Upper y data bound of the band. */
   y2?: number;
+  /** Color for y-axis labels inside the band. */
   axisLabelColor?: string;
 }
 
@@ -70,77 +87,103 @@ export interface TooltipData {
   xPositions?: Record<string, number>;
 }
 
-/** Hover state: changes on every focus move. */
+/** Hover state from `useChartHover()`. It changes whenever the focused row changes. */
 export interface ChartHoverContextValue {
+  /** The hovered or focused row, or `null` when nothing is hovered. */
   tooltipData: TooltipData | null;
-  /** Moves the native focus (crosshair, tooltip) to `data.index`; `null` clears it. */
+  /** Moves the hover (crosshair and tooltip) to `data.index`. Pass `null` to clear it. */
   setTooltipData: Dispatch<SetStateAction<TooltipData | null>>;
-  /** Current drag/pinch selection range (Segment* children). */
+  /** Current drag selection, or `null`. Read by `SegmentBackground` and the `SegmentLine*` children. */
   selection?: ChartSelection | null;
-  /** Clear the current selection. */
+  /** Clears the current drag selection. */
   clearSelection?: () => void;
-  /** Index of the hovered bar (BarChart). */
+  /** Index of the hovered bar in a `BarChart`, or `null`. */
   hoveredBarIndex?: number | null;
-  /** Moves the native focus to a bar (vertical bars only); `null` clears it. */
+  /** Moves the hover to a bar in a vertical `BarChart`. Pass `null` to clear it. */
   setHoveredBarIndex?: (index: number | null) => void;
-  /** Index of the hovered candle (CandlestickChart). */
+  /** Index of the hovered candle in a `CandlestickChart`, or `null`. */
   hoveredCandleIndex?: number | null;
-  /** Moves the native focus to a candle; `null` clears it. */
+  /** Moves the hover to a candle. Pass `null` to clear it. */
   setHoveredCandleIndex?: (index: number | null) => void;
 }
 
-/** Everything that does not change on hover. */
+/** Chart state from `useChartStable()` that does not change on hover: data, scales, sizes and series. */
 export interface ChartStableContextValue {
+  /** The chart's data rows. */
   data: Record<string, unknown>[];
-  /** Equals `data`: decimated rows are only drawn (kit/cartesian/decimate.ts), never exposed. */
+  /** The rows that are drawn. Currently the same rows as `data`. */
   renderData: Record<string, unknown>[];
+  /** Maps a date to an x pixel inside the plot area. */
   xScale: ScaleTime<number, number>;
-  /** Primary (left) y-scale, alias for `yScales[DEFAULT_Y_AXIS_ID]`. */
+  /** Scale of the primary (`"left"`) y axis. */
   yScale: ScaleLinear<number, number>;
+  /** Y scale of every axis, keyed by `yAxisId`. */
   yScales: Record<string, ScaleLinear<number, number>>;
+  /** Chart width in px. */
   width: number;
+  /** Chart height in px. */
   height: number;
+  /** Plot area width in px (chart width minus the left and right margins). */
   innerWidth: number;
+  /** Plot area height in px (chart height minus the top and bottom margins). */
   innerHeight: number;
+  /** Space around the plot area in px. */
   margin: Margin;
+  /** Ref to the chart's container element. Use it to portal custom overlays into the chart. */
   containerRef: RefObject<HTMLDivElement | null>;
+  /** The registered line series. */
   lines: LineConfig[];
+  /** Entrance animation duration in ms. */
   animationDuration: number;
-  /** `true` once the entrance has finished and the chart accepts input (host `data-bkm-ready`). */
+  /** `true` once the entrance has finished and the chart accepts input. */
   isLoaded: boolean;
-  /** `"revealing"` until the entrance finishes, then `"ready"`. The loading phases belong to the `*Loading` components. */
+  /** `"revealing"` until the entrance finishes, then `"ready"`. */
   chartPhase: ChartPhase;
+  /** The chart's `status`: `"loading"` or `"ready"`. */
   chartStatus: ChartStatus;
-  /** Resolved y-domain per axis id. */
+  /** Resolved y domain `[min, max]` per `yAxisId`. */
   yDomainTargetByAxis: Record<string, [number, number]>;
-  /** `ReferenceArea` bands, in tree order. */
+  /** The `ReferenceArea` bands, in the order they appear in the chart. */
   referenceAreas: ReferenceAreaConfig[];
+  /** Reads the x date from a data row. */
   xAccessor: (d: Record<string, unknown>) => Date;
+  /** Formatted x labels, one per data row. */
   dateLabels: string[];
+  /** Visible x range when the chart is zoomed, for example by a brush. */
   xDomain?: [Date, Date];
-  /** Full dataset length while brush-zoomed. */
+  /** Number of rows in the full dataset while the chart is zoomed. */
   xDomainSlotCount?: number;
-  /** Slot width per data row (bar / candlestick charts). */
+  /** Width in px of the slot for one data row (bar and candlestick charts). */
   columnWidth?: number;
-  /** Candle body width in px (CandlestickChart). */
+  /** Width in px of a candle body (`CandlestickChart`) or a bar band. */
   bandWidth?: number;
-  /** Band scale for the categorical x axis (BarChart). */
+  /** Band scale for the categories of a `BarChart`. */
   barScale?: ScaleBand<string>;
-  /** Category accessor (BarChart). */
+  /** Reads the category from a data row (`BarChart`). */
   barXAccessor?: (d: Record<string, unknown>) => string;
+  /** Bar direction: `"vertical"` or `"horizontal"` (`BarChart`). */
   orientation?: "vertical" | "horizontal";
+  /** Whether bars are stacked (`BarChart`). */
   stacked?: boolean;
-  /** Stack offsets: data index -> dataKey -> cumulative offset. */
+  /** Cumulative offsets for stacked bars: data index, then `dataKey`. */
   stackOffsets?: Map<number, Map<string, number>>;
-  /** `SeriesBar` dataKeys in tree order (ComposedChart). */
+  /** `dataKey`s of the `SeriesBar` series, in order (`ComposedChart`). */
   composedBarDataKeys?: string[];
+  /** Bar width in px (`ComposedChart`). */
   composedBarSize?: number;
+  /** Maximum bar width in px (`ComposedChart`). */
   composedMaxBarSize?: number;
+  /** Gap between bars of the same row in px (`ComposedChart`). */
   composedBarGap?: number;
+  /** Whether the `SeriesBar` series are stacked (`ComposedChart`). */
   composedStacked?: boolean;
+  /** Gap between stacked bar segments in px (`ComposedChart`). */
   composedStackGap?: number;
 }
 
+/**
+ * Everything from `useChart()`: `ChartStableContextValue` and `ChartHoverContextValue` combined. Prefer the narrower hooks in custom children so they do not re-render on every hover.
+ */
 export type ChartContextValue = ChartStableContextValue & ChartHoverContextValue;
 
 const StableContext = createContext<ChartStableContextValue | null>(null);
@@ -154,6 +197,7 @@ const STABLE_KEYS = [
   "composedStacked", "composedStackGap",
 ] as const satisfies readonly (keyof ChartStableContextValue)[];
 
+/** @internal */
 export function ChartProvider({ children, value }: { readonly children: ReactNode; readonly value: ChartContextValue }): ReactNode {
   const { tooltipData, setTooltipData, selection, clearSelection, hoveredBarIndex, setHoveredBarIndex, hoveredCandleIndex, setHoveredCandleIndex, ...rest } = value;
   // The stable slice is rebuilt from field identities, so a focus move does not bust it.

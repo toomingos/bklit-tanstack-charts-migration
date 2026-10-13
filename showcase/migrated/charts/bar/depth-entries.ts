@@ -8,27 +8,37 @@ import { numberOrZero } from "./model";
 import type { BarDepthProviderProps } from "./carriers";
 
 export interface BarDepthEntry {
+  /** Category label of the bar. */
   label: string;
-  /** Index in the original `data` array. */
+  /** Index of the row in the original `data` array. */
   dataIndex: number;
+  /** The data row this bar was built from. */
   datum: Record<string, unknown>;
-  /** True when `dataIndex === activeIndex`. */
+  /** True when `dataIndex` equals the `activeIndex` passed to the hook. */
   isActive: boolean;
+  /** True when the value is negative, so the bar extends downward from the baseline. */
   isNegative: boolean;
-  /** y of the baseline (`yScale(0)`). */
+  /** Pixel y of the baseline (`yScale(0)`). */
   baselineY: number;
+  /** Left edge of the bar's band in px. */
   bandX: number;
+  /** Width of the bar's band in px. */
   bandWidth: number;
-  /** Visual top of the bar in screen y. */
+  /** Visual top of the bar in px (smaller is higher). */
   topY: number;
+  /** Visual bottom of the bar in px. */
   bottomY: number;
+  /** Rendered height of the bar in px. */
   barHeight: number;
   /** Untrimmed pixel height of the bar. */
   naturalHeight: number;
-  /** Pixels subtracted from the visual top so the lid's back edge lands on `yScale(value)`. */
+  /** Pixels subtracted from the visual top so the lid's back edge lands on the value. */
   topYTrim: number;
+  /** Thickness of the side face in px (`0` for a bar at the center or in a dense chart). */
   depth: number;
+  /** Vertical rise of the lid and side face in px. */
   perspectiveRise: number;
+  /** True when the bar is right of the chart center, which puts its side face on the left. */
   isRightOfCenter: boolean;
 }
 

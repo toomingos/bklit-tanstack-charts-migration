@@ -1,7 +1,7 @@
 import { REVEAL_CSS_EASE } from "../kit/motion/easing";
 import { NOT_MOTION, keyEnds, keyIs, keyStarts } from "../kit/renderer-dom";
 
-// Sankey hover is static scoped CSS: per-index `--d` / `--h` rules edited in place through the CSSOM, never chart state or renderer-owned DOM.
+// Sankey hover is static scoped CSS: per-index `--bkm-sk-dim` / `--bkm-sk-hot` rules edited in place through the CSSOM, never chart state or renderer-owned DOM.
 // Transitions carry NOT_MOTION; a phase epsilon keeps CSS from reversing a transition (bklit restarts over the full duration).
 const VALUE_LABEL_OPACITY = 0.6;
 const DIMMED_VALUE_SCALE = 0.8;
@@ -15,10 +15,10 @@ const VALUE_TEXT = `g${keyIs("sankey:vlabel")} > text`;
 const FLOW_PATH = `g${keyIs("sankey:flow")} > path`;
 
 const staticRules = (): string => {
-  let css = `${HOST} ${NODE_GROUP} > rect${NOT_MOTION}{opacity:calc(1 + var(--d,0) * (var(--bkm-sk-nf) - 1));transition:opacity var(--bkm-sankey-dur,1100ms) var(--bkm-sankey-ease,${REVEAL_CSS_EASE}) calc(var(--bkm-sk-i) / var(--bkm-sankey-n,1) * 0.24 * var(--bkm-sankey-dur,1100ms))}`;
-  css += `${HOST} ${NAME_TEXT}${NOT_MOTION}{fill:color-mix(in srgb,var(--foreground) calc((1 + var(--d,0) * (var(--bkm-sk-nf) - 1)) * 100%),transparent)}`;
-  css += `${HOST} ${VALUE_TEXT}${NOT_MOTION}{fill:color-mix(in srgb,var(--foreground) calc((${VALUE_LABEL_OPACITY} + var(--d,0) * (var(--bkm-sk-nf) * ${DIMMED_VALUE_SCALE} - ${VALUE_LABEL_OPACITY})) * 100%),transparent)}`;
-  css += `${HOST} ${FLOW_PATH}${NOT_MOTION}{stroke-opacity:calc(var(--bkm-sk-lo) + var(--d,0) * (var(--bkm-sk-lf) - var(--bkm-sk-lo)) + var(--h,0) * (var(--bkm-sk-lh) - var(--bkm-sk-lo)));transition:stroke-opacity ${FLOW_TWEEN}}`;
+  let css = `${HOST} ${NODE_GROUP} > rect${NOT_MOTION}{opacity:calc(1 + var(--bkm-sk-dim,0) * (var(--bkm-sk-nf) - 1));transition:opacity var(--bkm-sankey-dur,1100ms) var(--bkm-sankey-ease,${REVEAL_CSS_EASE}) calc(var(--bkm-sk-i) / var(--bkm-sankey-n,1) * 0.24 * var(--bkm-sankey-dur,1100ms))}`;
+  css += `${HOST} ${NAME_TEXT}${NOT_MOTION}{fill:color-mix(in srgb,var(--bkm-foreground) calc((1 + var(--bkm-sk-dim,0) * (var(--bkm-sk-nf) - 1)) * 100%),transparent)}`;
+  css += `${HOST} ${VALUE_TEXT}${NOT_MOTION}{fill:color-mix(in srgb,var(--bkm-foreground) calc((${VALUE_LABEL_OPACITY} + var(--bkm-sk-dim,0) * (var(--bkm-sk-nf) * ${DIMMED_VALUE_SCALE} - ${VALUE_LABEL_OPACITY})) * 100%),transparent)}`;
+  css += `${HOST} ${FLOW_PATH}${NOT_MOTION}{stroke-opacity:calc(var(--bkm-sk-lo) + var(--bkm-sk-dim,0) * (var(--bkm-sk-lf) - var(--bkm-sk-lo)) + var(--bkm-sk-hot,0) * (var(--bkm-sk-lh) - var(--bkm-sk-lo)));transition:stroke-opacity ${FLOW_TWEEN}}`;
   return css;
 };
 
@@ -32,10 +32,10 @@ const sankeyIndexCss = (id: string): string => {
   const host = `${HOST}[data-bkm-sk-id="${id}"]`;
   let css = "";
   for (let i = 0; i < SANKEY_HOVER_CAP_NODES; i += 1) {
-    css += `${host} :is(g${keyIs(`sankey:sankey-node-${i}`)},g${keyIs("sankey:nlabel")} > text${keyEnds(`:number:${i}`)},g${keyIs("sankey:vlabel")} > text${keyEnds(`:number:${i}`)}){--d:0}`;
+    css += `${host} :is(g${keyIs(`sankey:sankey-node-${i}`)},g${keyIs("sankey:nlabel")} > text${keyEnds(`:number:${i}`)},g${keyIs("sankey:vlabel")} > text${keyEnds(`:number:${i}`)}){--bkm-sk-dim:0}`;
   }
   for (let i = 0; i < SANKEY_HOVER_CAP_FLOWS; i += 1) {
-    css += `${host} g${keyIs("sankey:flow")} > path${keyEnds(`:number:${i}`)}{--d:0;--h:0}`;
+    css += `${host} g${keyIs("sankey:flow")} > path${keyEnds(`:number:${i}`)}{--bkm-sk-dim:0;--bkm-sk-hot:0}`;
   }
   return css;
 };
@@ -150,7 +150,7 @@ const createSankeyHoverWriter = (): SankeyHoverWriter => {
       for (let index = 0; index < Math.min(counts.nodes, SANKEY_HOVER_CAP_NODES); index += 1) {
         const slot = slotOf(nodes, index);
         if (advance(slot, hovered && !activeNodes.has(index) ? 1 : 0)) {
-          ruleAt(sheet, index)?.setProperty("--d", fraction(slot.state === 1, slot.phase));
+          ruleAt(sheet, index)?.setProperty("--bkm-sk-dim", fraction(slot.state === 1, slot.phase));
         }
       }
       for (let index = 0; index < Math.min(counts.links, SANKEY_HOVER_CAP_FLOWS); index += 1) {
@@ -158,8 +158,8 @@ const createSankeyHoverWriter = (): SankeyHoverWriter => {
         const state = flowState(hovered, activeFlows.has(index));
         if (advance(slot, state)) {
           const rule = ruleAt(sheet, SANKEY_HOVER_CAP_NODES + index);
-          rule?.setProperty("--d", fraction(state === FLOW_FADED, slot.phase));
-          rule?.setProperty("--h", fraction(state === FLOW_HOT, slot.phase));
+          rule?.setProperty("--bkm-sk-dim", fraction(state === FLOW_FADED, slot.phase));
+          rule?.setProperty("--bkm-sk-hot", fraction(state === FLOW_HOT, slot.phase));
         }
       }
     },

@@ -41,6 +41,7 @@ const DEFAULT_BAR_GAP = 4;
 /** First non-empty colour, like `a || b || c` on optional strings. */
 const firstColor = (...colors: readonly (string | undefined)[]): string | undefined => colors.find((c) => c !== undefined && c !== "");
 
+/** A chart that combines bar, line and area series on one shared x axis and y scale. Add `SeriesBar`, `Line` and `Area` children. */
 export const ComposedChart = ({
   data,
   xDataKey = "date",

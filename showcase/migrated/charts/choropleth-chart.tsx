@@ -33,6 +33,10 @@ const DEFAULT_FADED_OPACITY = 0.4;
 type HostStyle = CSSProperties & { readonly "--bkm-choro-dim": number };
 const HIDDEN_DEFS_STYLE = { height: 0, position: "absolute", width: 0 } as const;
 
+/**
+ * Map of regions filled by data, drawn from GeoJSON features with a Mercator projection. Configure it with
+ * `ChoroplethFeatureComponent`, `ChoroplethGraticule` and `ChoroplethTooltip` children. It server-renders and replays its enter animation after hydration.
+ */
 const ChoroplethChart = ({
   data,
   margin: marginProp,

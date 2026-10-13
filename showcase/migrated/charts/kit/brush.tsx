@@ -15,44 +15,84 @@ import { renderPatternPreset } from "./pattern/pattern-preset-render";
 import type { PatternPresetOptions } from "./pattern/pattern-preset-helpers";
 import { useSanitizedId } from "./use-sanitized-id";
 
+/** A brushed time range. */
 export interface ChartBrushSelection {
+  /** Start of the range. */
   start: Date;
+  /** End of the range. */
   end: Date;
 }
 
+/**
+ * Pattern drawn inside the brushed window: `"none"`, `"diagonal"`, `"horizontal"`, `"vertical"`, `"cross"`, `"dots"`, `"circles"` or `"accent"`.
+ */
 export type ChartBrushPatternPreset = "none" | "diagonal" | "horizontal" | "vertical" | "cross" | "dots" | "circles" | "accent";
 
+/** Pattern drawn inside the brushed window. Inherits the pattern options of `PatternPresetOptions`. */
 export interface ChartBrushSelectionPattern extends PatternPresetOptions {
+  /** Which pattern to draw. `"none"` draws nothing. */
   preset: ChartBrushPatternPreset;
+  /** Color of the pattern lines or dots. */
   color: string;
+  /**
+   * Opacity of the pattern.
+   * @default 1
+   */
   opacity?: number;
 }
 
+/** Look of the dimmed area outside the brushed window. */
 export interface ChartBrushTrackOverlayStyle {
+  /**
+   * Blur applied to the dimmed area outside the window, in px (clamped to 0-5).
+   * @default 1.5
+   */
   blurPx?: number;
+  /**
+   * Fade the dimmed area out toward the outer edges of the strip.
+   * @default true
+   */
   fadeOuterEdges?: boolean;
 }
 
+/** Props of `ChartBrush`. */
 export interface ChartBrushProps extends ChartBrushTrackOverlayStyle {
-  /** Accepted for bklit parity. TanStack 1.1.0 has only `brushX`, so only `"horizontal"` is drawn. */
+  /**
+   * Accepted so bklit-ui code compiles. The brush is always horizontal: the native brush is `brushX` only, and the selection is a time range
+   * (bklit reports only the x extent too, chart-brush.tsx:270-288).
+   */
   readonly brushDirection?: "horizontal" | "vertical" | "both";
-  /** Accepted for bklit parity; bklit's own `ChartBrush` ignores it too (the strip is driven by `initialSelection`). */
+  /** Accepted so bklit-ui code compiles. Has no effect (bklit ignores it as well, chart-brush.tsx:262). Use `initialSelection` to set the window. */
   readonly selection?: ChartBrushSelection | null;
-  /** visx-only option (window-level drag events); the native brush already tracks the pointer outside the strip. */
+  /** Accepted so bklit-ui code compiles. Has no effect. */
   readonly useWindowMoveEvents?: boolean;
+  /**
+   * Called while the window is dragged or resized, with the selected range, or `null` when the selection collapses to nothing (which resets to the full range). Escape cancels a drag and reports the previous range. The range is slightly widened (about 2 px per side) so a full drag covers the end points.
+   */
   readonly onSelectionChange?: (selection: { readonly start: Readonly<Date>; readonly end: Readonly<Date> } | null) => void;
+  /**
+   * Window shown on mount, for example the first half of the range. Changing it later does not move the window; it resets when the chart's data changes.
+   */
   readonly initialSelection?: ChartBrushSelection | null;
+  /** Styles the brushed window. Only `color` is applied by `ChartBrush`; use `ChartBrushSelectionOverlay` to draw a full pattern. */
   readonly selectionPattern?: ChartBrushSelectionPattern;
+  /** Accepted so bklit-ui code compiles. Has no effect. */
   readonly selectedBoxStyle?: SVGProps<SVGRectElement>;
 }
 
 // Importing ChartBrush is what loads d3-brush; the cartesian definition reads the factory from the registry.
 registerBrushX(brushX);
 
+/**
+ * A range selector. Put it inside a second, small chart (the brush strip) next to a main chart; dragging or resizing the window reports the selected time range through `onSelectionChange`. Combine it with `ChartBrushLayout` to zoom the main chart.
+ */
 export const ChartBrush = /* @__PURE__ */ defineCarrier<Readonly<ChartBrushProps>>("brush", "ChartBrush");
 
+/** Props of `ChartBrushTrackOverlay`. */
 export interface ChartBrushTrackOverlayProps extends ChartBrushTrackOverlayStyle {
+  /** Plot width in px. */
   innerWidth: number;
+  /** Plot height in px. */
   innerHeight: number;
   /** Pixel x of the selection start within the plot area. */
   selectionX0: number;
@@ -60,11 +100,17 @@ export interface ChartBrushTrackOverlayProps extends ChartBrushTrackOverlayStyle
   selectionX1: number;
 }
 
+/** Props of `ChartBrushSelectionOverlay`. */
 export interface ChartBrushSelectionOverlayProps {
+  /** Plot width in px. */
   innerWidth: number;
+  /** Plot height in px. */
   innerHeight: number;
+  /** Pixel x of the selection start within the plot area. */
   selectionX0: number;
+  /** Pixel x of the selection end within the plot area. */
   selectionX1: number;
+  /** Pattern to draw inside the window. Nothing is drawn when omitted or `"none"`. */
   pattern?: ChartBrushSelectionPattern;
 }
 
@@ -89,7 +135,9 @@ const useMounted = (): boolean => {
   return mounted;
 };
 
-/** Blurs the track outside `[selectionX0, selectionX1]` (plot pixels). Render it as a chart child. */
+/**
+ * Dims the parts of a chart outside the brushed window, with an optional blur and faded outer edges. `ChartBrush` draws it for you; use it directly to build your own brush.
+ */
 export const ChartBrushTrackOverlay = ({ innerWidth, innerHeight, selectionX0, selectionX1, blurPx = 1.5, fadeOuterEdges = true }: Readonly<ChartBrushTrackOverlayProps>): ReactElement | null => {
   const { containerRef, margin } = useChartStable();
   const mounted = useMounted();
@@ -115,7 +163,7 @@ export const ChartBrushTrackOverlay = ({ innerWidth, innerHeight, selectionX0, s
   );
 };
 
-/** Pattern fill between `[selectionX0, selectionX1]` (plot pixels). Render it as a chart child. */
+/** Fills the brushed window with a pattern. `ChartBrush` draws it for you when `selectionPattern` is set. */
 export const ChartBrushSelectionOverlay = ({ innerWidth, innerHeight, selectionX0, selectionX1, pattern }: Readonly<ChartBrushSelectionOverlayProps>): ReactElement | null => {
   const { containerRef, margin } = useChartStable();
   const mounted = useMounted();
@@ -139,22 +187,45 @@ export const ChartBrushSelectionOverlay = ({ innerWidth, innerHeight, selectionX
   );
 };
 
+/** What `ChartBrushLayout` passes to its `children` and `brushStrip` render functions. */
 export interface ChartBrushLayoutState {
+  /** Visible x range for the main chart. `undefined` shows everything (when `enabled` is false). */
   xDomain: [Date, Date] | undefined;
+  /**
+   * Number of rows in the full data, for bar and candlestick charts that size columns against it. `undefined` when `enabled` is false.
+   */
   xDomainSlotCount: number | undefined;
+  /** The current brushed range. It starts as the full data extent. */
   brushSelection: ChartBrushSelection | null;
+  /** Pass this to the brush's `onSelectionChange`. Clearing the selection (`null`) resets to the full extent. */
   onBrushSelectionChange: (selection: ChartBrushSelection | null) => void;
 }
 
+/** Props of `ChartBrushLayout`. */
 export interface ChartBrushLayoutProps {
+  /** The full dataset. The brushed range starts as its extent and resets when this changes. */
   data: Record<string, unknown>[];
+  /**
+   * Key of the date field in each row.
+   * @default "date"
+   */
   xDataKey?: string;
+  /** Extends the brushable range past the last data point to this date. */
   xExtentMax?: Date;
+  /** Turn the brush on. When false, the main chart shows all data and the strip is not rendered. */
   enabled: boolean;
+  /** Height of the brush strip in px. */
   height: number;
+  /**
+   * Pack the main chart and strip tightly at the top instead of stretching the main chart to fill the height.
+   * @default false
+   */
   fitMainContent?: boolean;
+  /** Class names added to the layout container. */
   className?: string;
+  /** Render function for the main chart. Receives the layout state. */
   children: (layout: ChartBrushLayoutState) => ReactNode;
+  /** Render function for the brush strip, shown below the main chart when `enabled`. Receives the layout state. */
   brushStrip?: (layout: ChartBrushLayoutState) => ReactNode;
 }
 
@@ -229,10 +300,10 @@ const BrushLayoutContent = ({
   const layout = useBrushSelection(data, xDataKey, xExtentMax, enabled);
   const stripStyle = useMemo(() => ({ height }), [height]);
   return (
-    <div className={cn("flex size-full min-h-0 min-w-0 flex-col", fitMainContent ? "justify-start gap-1" : "gap-3", className)}>
-      <div className={fitMainContent ? "min-h-0 min-w-0 shrink-0" : "min-h-0 min-w-0 flex-1"}>{children(layout)}</div>
+    <div className={cn("bk-brush", fitMainContent && "bk-brush-fit", className)}>
+      <div className={fitMainContent ? "bk-brush-main bk-brush-main-fit" : "bk-brush-main"}>{children(layout)}</div>
       {enabled && brushStrip && (
-        <div className="min-h-0 shrink-0" style={stripStyle}>
+        <div className="bk-brush-strip" style={stripStyle}>
           {brushStrip(layout)}
         </div>
       )}
@@ -240,5 +311,8 @@ const BrushLayoutContent = ({
   );
 };
 
+/**
+ * Lays out a main chart above a brush strip and holds the brushed range. Render the main chart in `children` with `layout.xDomain` and `layout.xDomainSlotCount`, and the brush strip in `brushStrip`.
+ */
 export const BrushLayout: NamedExoticComponent<ChartBrushLayoutProps> = memo(BrushLayoutContent);
 BrushLayout.displayName = "BrushLayout";

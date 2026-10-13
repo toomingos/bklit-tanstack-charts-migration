@@ -35,7 +35,7 @@ import type { CartesianFocus } from "./cartesian-hooks";
 import { cartesianHostStyle, cartesianStaticCss, writeSizeVars } from "./host-style";
 import { createPlotStore, usePlotSnapshot } from "./plot-size";
 import type { PlotSnapshot, PlotStore } from "./plot-size";
-import { getBackgroundResources } from "./features";
+import { getBackgroundResources, getOverlayResources } from "./features";
 import { HighlightBandClip } from "./band-clip";
 import { useBrush } from "./use-brush";
 
@@ -256,6 +256,7 @@ export function CartesianChart(props: Readonly<CartesianChartProps>): ReactEleme
     store: plot, series, data, xDataKey, table, containerRef, ready: readyStore, dragInteraction, resolvedMargin, animationDuration, xDomain, xDomainSlotCount, selection, times, clearSelection,
   });
   const BackgroundResources = getBackgroundResources();
+  const OverlayResources = getOverlayResources();
   return (
     <div
       ref={containerRef}
@@ -280,6 +281,7 @@ export function CartesianChart(props: Readonly<CartesianChartProps>): ReactEleme
     >
       {defs}
       {BackgroundResources ? <BackgroundResources table={table} uid={uid} /> : null}
+      {OverlayResources ? <OverlayResources table={table} uid={uid} margin={resolvedMargin} /> : null}
       {hasHighlight(table, series) ? <HighlightBandClip id={`${uid}-hlband`} /> : null}
       <style ref={styleRef} />
       <LegendHostSync hostRef={containerRef} />

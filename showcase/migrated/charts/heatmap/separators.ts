@@ -38,7 +38,10 @@ export const normalizeHeatmapSeparatorConfig = (config: Readonly<HeatmapColumnSe
   return { every: config.every, groupBy: "every", spacing: config.spacing ?? 0 };
 }
 
-/** Column indices (0-based) where a vertical separator is drawn (fixed interval). */
+/**
+ * Column indices (0-based) where a vertical separator is drawn (fixed interval).
+ * @internal
+ */
 export const getHeatmapSeparatorColumnIndices = (columnCount: number, every: number): number[] => {
   if (every <= 0 || columnCount <= every) {return [];}
   const indices: number[] = [];

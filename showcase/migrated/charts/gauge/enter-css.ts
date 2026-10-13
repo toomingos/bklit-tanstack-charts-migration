@@ -12,7 +12,7 @@ const SCALE_LAG_MS = 1000 / 60;
 const PERCENT = 100;
 const PERCENT_DECIMALS = 4;
 const SIBLING = "(sibling-index() - 1)";
-const NTH = `var(--gi,${MAX_NOTCHES})`;
+const NTH = `var(--bkm-gi,${MAX_NOTCHES})`;
 const SUPPORTS_SIBLING = "(width: calc(sibling-index() * 1px))";
 
 const percent = (ratio: number): string => `${(ratio * PERCENT).toFixed(PERCENT_DECIMALS)}%`;
@@ -27,7 +27,7 @@ const keyframes = (name: string, durationMs: number, easing: string): string => 
 const indexRules = (): string => {
   let css = "";
   for (let i = 0; i < MAX_NOTCHES; i += 1) {
-    css += `[data-bkm-gn] g${keyStarts("gauge:")}>:nth-child(${i + 1}){--gi:${i}}`;
+    css += `[data-bkm-gn] g${keyStarts("gauge:")}>:nth-child(${i + 1}){--bkm-gi:${i}}`;
   }
   return css;
 };

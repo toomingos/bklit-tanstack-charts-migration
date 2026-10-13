@@ -28,18 +28,27 @@ const heatmapMonthShortFmt = /* @__PURE__ */ new Intl.DateTimeFormat("en-US", { 
 export const formatHeatmapMonthShort = (date: Readonly<Date>): string => heatmapMonthShortFmt.format(date);
 
 
-/** Tooltip header date, e.g. `January 20th 2026`. */
+/**
+ * Tooltip header date, e.g. `January 20th 2026`.
+ * @internal
+ */
 export const formatHeatmapTooltipDate = (date: Readonly<Date>): string => {
   const month = heatmapTooltipMonthFmt.format(date);
   const day = formatHeatmapOrdinalDay(date.getDate());
   return `${month} ${day} ${date.getFullYear()}`;
 }
 
-/** Tooltip weekday line, e.g. `Monday`. */
+/**
+ * Tooltip weekday line, e.g. `Monday`.
+ * @internal
+ */
 export const formatHeatmapTooltipWeekday = (date: Readonly<Date>): string => heatmapTooltipWeekdayFmt.format(date);
 
 
-/** Tooltip contribution line, e.g. `3 contributions`; `_secondaryDate` is unused (call-site symmetry with other formatters). */
+/**
+ * Tooltip contribution line, e.g. `3 contributions`; `_secondaryDate` is unused (call-site symmetry with other formatters).
+ * @internal
+ */
 export const formatHeatmapContributionLabel = (count: number, _secondaryDate?: Readonly<Date>): string => {
   const word = count === 1 ? "contribution" : "contributions";
   return `${count} ${word}`;

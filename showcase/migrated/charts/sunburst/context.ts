@@ -66,6 +66,7 @@ const SunburstHoverContext = createContext<SunburstHoverStore | null>(null);
 export const SunburstStableProvider = SunburstStableContext.Provider;
 export const SunburstHoverProvider = SunburstHoverContext.Provider;
 
+/** Returns the chart's arcs, focus and `zoomTo`. Call it inside `SunburstChart`; it throws otherwise. */
 export const useSunburstStable = (): SunburstStableContextValue => {
   const ctx = useContext(SunburstStableContext);
   if (ctx === null) {
@@ -74,6 +75,7 @@ export const useSunburstStable = (): SunburstStableContextValue => {
   return ctx;
 };
 
+/** Returns the hovered arc and setters to change it. Call it inside `SunburstChart`; it throws otherwise. */
 export const useSunburstHover = (): SunburstHoverContextValue => {
   const store = useContext(SunburstHoverContext);
   if (store === null) {

@@ -3,12 +3,14 @@ import type { ReactElement } from "react";
 import { userGradients } from "../gradients";
 import type { installMarkerSprings } from "../motion/marker-springs";
 import type { ChildTable } from "../read-children";
+import type { ChartMargin } from "../theme";
 import type { ChartMarker } from "../types";
 import type { AnyMark } from "../erased-types";
 import type { buildOverlays } from "./overlays";
 
 interface OverlayFeature {
   readonly build: typeof buildOverlays;
+  readonly Resources: (props: Readonly<{ table: ChildTable; uid: string; margin: ChartMargin }>) => ReactElement | null;
   readonly markerLists: (table: ChildTable) => readonly (readonly ChartMarker[])[];
   readonly installSprings: typeof installMarkerSprings;
 }
@@ -42,3 +44,5 @@ export const backgroundMarksFor = (table: ChildTable, uid: string): AnyMark[] =>
 export const backgroundCssFor = (scope: string, table: ChildTable): string => backgroundFeature?.css(scope, table) ?? "";
 
 export const getBackgroundResources = (): BackgroundFeature["Resources"] | undefined => backgroundFeature?.Resources;
+
+export const getOverlayResources = (): OverlayFeature["Resources"] | undefined => overlayFeature?.Resources;

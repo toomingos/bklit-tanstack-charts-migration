@@ -8,4 +8,5 @@ import { registerBackground } from "./features";
 
 registerBackground({ marks: backgroundMarks, css: backgroundCss, Resources: BackgroundResources });
 
+/** A background fill behind the plot area, as a solid color, gradient or pattern. It renders nothing itself; place it as a child of the chart. */
 export const Background = /* @__PURE__ */ defineCarrier<Readonly<BackgroundConfig>>("background", "Background");

@@ -12,50 +12,76 @@ import { useReadyGate } from "../kit/entrance/reveal-arm";
 import { useResizeBox } from "../kit/size/use-resize-box";
 import type { Margin, SankeyLinkDatum, SankeyNodeDatum } from "./types";
 
+/** Focused node or link, as exposed by `useSankey()`. */
 export interface SankeyTooltipData {
+  /** Whether a node or a link is focused. */
   type: "node" | "link";
+  /** Index of the focused node (when `type` is "node"). */
   nodeIndex?: number;
+  /** Index of the focused link (when `type` is "link"). */
   linkIndex?: number;
+  /** Horizontal position of the focused item, relative to the chart. */
   x: number;
+  /** Vertical position of the focused item, relative to the chart. */
   y: number;
+  /** The focused node or link, as laid out by d3-sankey. */
   data: SankeyNodeDatum | SankeyLinkDatum;
 }
 
+/** Value returned by `useSankey()`. */
 export interface SankeyContextValue {
+  /** The d3-sankey graph for the current size. */
   graph: SankeyGraph<SankeyNodeDatum, SankeyLinkDatum>;
+  /** Laid-out nodes. */
   nodes: SankeyNode<SankeyNodeDatum, SankeyLinkDatum>[];
+  /** Laid-out links. */
   links: SankeyLink<SankeyNodeDatum, SankeyLinkDatum>[];
+  /** Chart width in pixels. */
   width: number;
+  /** Chart height in pixels. */
   height: number;
+  /** Width inside the margins. */
   innerWidth: number;
+  /** Height inside the margins. */
   innerHeight: number;
+  /** Resolved chart margins. */
   margin: Margin;
+  /** Hovered node index, or `null`. */
   hoveredNodeIndex: number | null;
+  /** Hovered link index, or `null`. */
   hoveredLinkIndex: number | null;
   /** Moves the native focus to a node; `null` clears it. */
   setHoveredNodeIndex: (index: number | null) => void;
   /** Moves the native focus to a flow; `null` clears it. */
   setHoveredLinkIndex: (index: number | null) => void;
+  /** The focused node or link with its anchor position, or `null`. */
   tooltipData: SankeyTooltipData | null;
   /** Focuses the node or flow `value` names (`null` clears); an updater function sees `null`. */
   setTooltipData: Dispatch<SetStateAction<SankeyTooltipData | null>>;
+  /** Ref to the chart container element. */
   containerRef: RefObject<HTMLDivElement | null>;
+  /** `true` once the enter animation has finished. */
   isLoaded: boolean;
+  /** Enter animation duration in milliseconds. */
   animationDuration: number;
+  /** The `enterTransition` prop of the chart, if set. */
   enterTransition?: Transition;
   /** Increments when the entrance replays (a new `revealSignature`). */
   revealEpoch: number;
   /** Not tracked: the native tooltip follows the pointer itself, so this is always null. */
   mousePos: { x: number; y: number } | null;
+  /** Returns the SVG path of a link, for custom link rendering. */
   createPath: (link: SankeyLink<SankeyNodeDatum, SankeyLinkDatum>) => string;
 }
 
 const SankeyContext = createContext<SankeyContextValue | null>(null);
 
+/** @internal */
 export const SankeyProvider = ({ children, value }: { readonly children: ReactNode; readonly value: SankeyContextValue }): ReactElement => (
   <SankeyContext.Provider value={value}>{children}</SankeyContext.Provider>
 );
 
+/** Returns the chart state and layout. Call it inside a child of `SankeyChart`; it throws elsewhere. */
 export function useSankey(): SankeyContextValue {
   const context = useContext(SankeyContext);
   if (!context) {

@@ -33,25 +33,53 @@ import { writeFocusHost } from "./kit/host-write";
 import { focusEmptyHiddenCss } from "./kit/cartesian/gate-css";
 import { useSanitizedId } from "./kit/use-sanitized-id";
 
+/** Lifecycle phase reported by `ScatterChart`'s `onPhaseChange`: `"revealing"` while the points enter, `"ready"` once the chart is interactive. */
 type ScatterChartPhase = "loading" | "revealing" | "ready";
 
+/** Props of {@link ScatterChart}. */
 export interface ScatterChartProps {
+  /** The rows to plot. Each row holds the x value under `xDataKey` and one number per `Scatter` series under that series' `dataKey`. */
   readonly data: readonly Row[];
+  /**
+   * Key of the x value in each row. The value must be a `Date` (or something `new Date()` accepts, such as a timestamp).
+   * @default "date"
+   */
   readonly xDataKey?: string;
+  /**
+   * Duration of the entrance reveal in milliseconds. `0` skips the animation. `enterTransition.duration` overrides it.
+   * @default 1100
+   */
   readonly animationDuration?: number;
+  /**
+   * Space around the plot area in pixels. Missing sides use the default.
+   * @default { top: 40, right: 40, bottom: 40, left: 40 }
+   */
   readonly margin?: Partial<ChartMargin>;
+  /**
+   * CSS aspect ratio of the chart (`"width / height"` or a number), applied to the container width.
+   * @default "2 / 1"
+   */
   readonly aspectRatio?: string;
+  /** Extra CSS class name for the chart container. */
   readonly className?: string;
+  /** Inline styles for the chart container. */
   readonly style?: CSSProperties;
+  /** Called with `"revealing"` when the entrance starts and `"ready"` when the chart becomes interactive. */
   readonly onPhaseChange?: (phase: ScatterChartPhase) => void;
-  /** CSS easing for the per-point enter, e.g. "cubic-bezier(0.85, 0, 0.15, 1)". */
+  /** CSS easing for the per-point entrance, for example `"cubic-bezier(0.85, 0, 0.15, 1)"`. When unset, `enterTransition.ease` or the default reveal easing is used. */
   readonly animationEasing?: string;
-  /** bklit `Transition` subset: `duration` (seconds) sets the reveal span, `ease` the per-point easing. */
+  /** Entrance timing: `duration` (in seconds) sets the length of the reveal and `ease` (a four-number cubic bezier) the easing. */
   readonly enterTransition?: { readonly duration?: number; readonly ease?: unknown };
-  /** Changing it replays the entrance. */
+  /** Changing this string replays the entrance animation. */
   readonly revealSignature?: string;
+  /** The layers to draw: `Grid`, one or more `Scatter`, `XAxis`, `YAxis`, `ChartTooltip` and the other chart children. */
   readonly children: ReactNode;
+  /**
+   * Accessible name of the chart.
+   * @default "Scatter chart"
+   */
   readonly ariaLabel?: string;
+  /** Longer accessible description of the chart, exposed as `aria-description`. */
   readonly ariaDescription?: string;
 }
 
@@ -247,6 +275,7 @@ const ScatterChartInner = ({
   );
 };
 
+/** Time-series scatter chart. Compose it from children: `Grid`, one or more `Scatter` series, `XAxis`, `YAxis` and `ChartTooltip`. Points enter one after another; hover or keyboard focus reports the nearest x position through the tooltip. */
 export const ScatterChart = ({ revealSignature = "", ...props }: Readonly<ScatterChartProps>): ReactElement => (
   // Remounting on `revealSignature` replays the entrance.
   <ScatterChartInner key={revealSignature} {...props} />

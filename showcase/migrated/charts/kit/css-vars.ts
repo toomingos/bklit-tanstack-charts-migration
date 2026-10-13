@@ -1,4 +1,7 @@
-/** Sequential scale CSS variables for heatmaps, choropleths, and binned data (01 = lowest, 05 = highest). */
+/**
+ * Sequential scale CSS variables for heatmaps, choropleths, and binned data (01 = lowest, 05 = highest).
+ * @internal
+ */
 export const CHART_SCALE_VARS = [
   "var(--chart-scale-01)",
   "var(--chart-scale-02)",
@@ -7,8 +10,10 @@ export const CHART_SCALE_VARS = [
   "var(--chart-scale-05)",
 ] as const;
 
+/** @internal */
 export type ChartScaleVars = typeof CHART_SCALE_VARS;
 
+/** @internal */
 export const chartScaleCssVars = {
   scale01: CHART_SCALE_VARS[0],
   scale02: CHART_SCALE_VARS[1],
@@ -21,6 +26,7 @@ export const chartScaleCssVars = {
 const BACKGROUND = "var(--chart-background)";
 const FOREGROUND = "var(--chart-foreground)";
 
+/** @internal */
 export const pieCssVars = {
   background: BACKGROUND,
   foreground: FOREGROUND,
@@ -33,12 +39,13 @@ export const pieCssVars = {
   slice5: "var(--chart-5)",
 };
 
+/** @internal */
 export const ringCssVars = {
   background: BACKGROUND,
   foreground: FOREGROUND,
   foregroundMuted: "var(--chart-foreground-muted)",
   label: "var(--chart-label)",
-  ringBackground: "var(--border)",
+  ringBackground: "var(--bkm-border)",
   ring1: "var(--chart-1)",
   ring2: "var(--chart-2)",
   ring3: "var(--chart-3)",
@@ -46,6 +53,7 @@ export const ringCssVars = {
   ring5: "var(--chart-5)",
 };
 
+/** @internal */
 export const sankeyCssVars = {
   background: BACKGROUND,
   foreground: FOREGROUND,
@@ -54,6 +62,7 @@ export const sankeyCssVars = {
   linkColor: "var(--chart-foreground-muted, hsl(0, 0%, 50%))",
 };
 
+/** @internal */
 export const choroplethCssVars = {
   scale01: chartScaleCssVars.scale01,
   scale02: chartScaleCssVars.scale02,
@@ -62,7 +71,8 @@ export const choroplethCssVars = {
   scale05: chartScaleCssVars.scale05,
   patternColor: chartScaleCssVars.patternColor,
   stroke: "var(--chart-grid)",
-  background: "var(--background)",
+  background: "var(--bkm-background)",
 };
 
+/** The five default choropleth fill colors (`var(--chart-scale-01)` to `var(--chart-scale-05)`). */
 export const defaultChoroplethColors = [...CHART_SCALE_VARS];

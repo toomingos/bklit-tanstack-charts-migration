@@ -70,7 +70,7 @@ interface SankeyEnter {
   readonly transition: ChartMotionTransition;
 }
 
-const SANKEY_LABEL_FILL = "var(--foreground)";
+const SANKEY_LABEL_FILL = "var(--bkm-foreground)";
 const NAME_FONT_SIZE = 13;
 const VALUE_FONT_SIZE = 11;
 const LABEL_OFFSET = 12;

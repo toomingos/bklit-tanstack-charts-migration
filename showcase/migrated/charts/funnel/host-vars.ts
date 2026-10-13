@@ -28,7 +28,7 @@ interface FunnelEntranceInput {
   readonly ease: readonly number[] | undefined;
 }
 
-/** Entrance duration, easing, grow origin and stage stagger (the stage index is `--i` in funnel.css). */
+/** Entrance duration, easing, grow origin and stage stagger (the stage index is `--bkm-fi` in funnel.css). */
 const funnelEntranceVars = (input: Readonly<FunnelEntranceInput>): CSSProperties => Object.fromEntries<string>([
   ["--bkm-e-dur", `${Math.round(input.durationSec * 1000)}ms`],
   ["--bkm-e-ease", toCssEase(input.ease)],

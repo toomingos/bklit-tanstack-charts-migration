@@ -2,34 +2,59 @@ import { Children, isValidElement } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { displayNameOf } from "../kit/read-children";
 
+/** Props of `SunburstSegment`. */
 export interface SunburstSegmentProps {
+  /** Arc index to customize, from the `arcs` array returned by `buildArcs`. */
   index: number;
-  /** Optional color override */
+  /** Color override for this segment. */
   color?: string;
-  /** Optional fill override (plain color) */
+  /** Plain fill color override. Patterns and gradients are not supported. */
   fill?: string;
-  /** Optional fill opacity override */
+  /** Fill opacity override (0 to 1).
+   * @default 1 for the innermost visible ring, then fading with depth down to 0.45 */
   fillOpacity?: number;
 }
 
+/** Props of `SunburstCenter`. */
 export interface SunburstCenterProps {
+  /** Accepted for bklit compatibility; it has no effect. */
   className?: string;
 }
 
+/** Props of `SunburstLabels`. */
 export interface SunburstLabelsProps {
+  /**
+   * Label font size in pixels.
+   * @default 11
+   */
   fontSize?: number;
+  /**
+   * Label text color.
+   * @default "var(--chart-label)"
+   */
   fill?: string;
-  /** Halo color behind label glyphs. */
+  /**
+   * Color of the halo behind the label text.
+   * @default "var(--chart-background)"
+   */
   stroke?: string;
+  /**
+   * Width in pixels of the halo behind the label text. Use `0` to disable it.
+   * @default 2.5
+   */
   strokeWidth?: number;
+  /** Accepted for bklit compatibility; it has no effect. */
   className?: string;
 }
 
 // Carriers: rendered nowhere, read by SunburstChart through displayName.
+/** Customizes the color, fill or opacity of one segment. Renders nothing itself; `SunburstChart` reads its props. */
 export const SunburstSegment = (_props: Readonly<SunburstSegmentProps>): null => null;
 SunburstSegment.displayName = "SunburstSegment";
+/** Enables the center hub: after zooming in, click it (or press Enter on it) to zoom back out. Renders nothing itself; `SunburstChart` reads its presence. */
 export const SunburstCenter = (_props: Readonly<SunburstCenterProps>): null => null;
 SunburstCenter.displayName = "SunburstCenter";
+/** Shows the segment names at the segment centers, fading in once the enter sweep has played. Renders nothing itself; `SunburstChart` reads its props. */
 export const SunburstLabels = (_props: Readonly<SunburstLabelsProps>): null => null;
 SunburstLabels.displayName = "SunburstLabels";
 

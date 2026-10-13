@@ -4,15 +4,24 @@
 import { isFiniteNumber } from "../kit/guards";
 import { TAU } from "../kit/polar/tau";
 
+/** A node of the hierarchy passed to `SunburstChart` as `data`. */
 export interface SunburstNode {
+  /** Display name of the node. Names are joined with `" / "` to form node ids, so siblings should have unique names. */
   name: string;
+  /** Value of a leaf. Parent values are summed from their children; negative or non-finite leaves take no angle. */
   value?: number;
+  /**
+   * Color of the node and its descendants.
+   * @default one of the `--chart-1` to `--chart-5` variables, by top-level branch
+   */
   color?: string;
-  /** Optional fill override (plain color; patterns/gradients are not supported by the native mark). */
+  /** Plain fill color override for the node. Patterns and gradients are not supported. */
   fill?: string;
+  /** Child nodes. A node with children is a branch you can zoom into. */
   children?: SunburstNode[];
 }
 
+/** @internal */
 export interface ArcDatum {
   id: string;
   name: string;
@@ -29,6 +38,7 @@ export interface ArcDatum {
   fill?: string;
 }
 
+/** @internal */
 export interface Focus {
   id: string;
   name: string;
@@ -44,6 +54,7 @@ export const ID_SEP = " / ";
 
 const nodeId = (parentId: string | null, name: string): string => (parentId === null ? name : `${parentId}${ID_SEP}${name}`);
 
+/** @internal */
 export const sumValues = (node: SunburstNode): number => {
   if (node.children !== undefined && node.children.length > 0) {
     return node.children.reduce((sum, child) => sum + sumValues(child), 0);
@@ -129,6 +140,7 @@ export interface SunburstModel {
   readonly rootId: string;
 }
 
+/** @internal */
 export const buildArcs = (data: SunburstNode): SunburstModel => {
   const ctx: BuildContext = { arcIndex: 0, arcs: [], focusById: new Map(), maxDepth: 0 };
   layoutNode({ a0: 0, a1: 1, categoryIndex: 0, depth: 0, id: data.name, node: data, parentId: null, trail: [] }, ctx);
@@ -143,7 +155,10 @@ export const buildArcs = (data: SunburstNode): SunburstModel => {
   return { arcs: ctx.arcs, focusById: ctx.focusById, maxDepth: ctx.maxDepth, rootId: data.name, total: sumValues(data) };
 };
 
-/** Normalized clockwise angle from 12 o'clock (0 to 1). */
+/**
+ * Normalized clockwise angle from 12 o'clock (0 to 1).
+ * @internal
+ */
 export const clockwiseFraction = (angle: number): number => {
   let normalized = angle - TOP;
   if (normalized < 0) {
@@ -170,6 +185,7 @@ export interface RingOptions {
   ringWidth: number;
 }
 
+/** @internal */
 export const ringOptions = (focusDepth: number, maxDepth: number, radius: number): RingOptions => {
   const oneLevel = radius / Math.max(1, maxDepth);
   const centerR = oneLevel * hubScale(focusDepth);

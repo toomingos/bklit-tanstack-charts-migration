@@ -58,6 +58,9 @@
   },
   "files": [
     "dist",
+    "docs",
+    "skills",
+    "!skills/_artifacts",
     "LICENSE",
     "NOTICE",
     "README.md"

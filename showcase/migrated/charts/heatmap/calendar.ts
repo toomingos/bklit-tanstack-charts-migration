@@ -1,11 +1,20 @@
 import { MS_PER_SECOND } from "../kit/theme";
-/** Calendar months shown in default one-year contribution grids. */
+/**
+ * Calendar months shown in default one-year contribution grids.
+ * @internal
+ */
 export const HEATMAP_MONTHS_ONE_YEAR = 12;
 
-/** Half-year contribution grids (gallery card demos). */
+/**
+ * Half-year contribution grids (gallery card demos).
+ * @internal
+ */
 export const HEATMAP_MONTHS_SIX = 6;
 
-/** Nominal week count for one year (~52). Default data uses calendar-month math instead. */
+/**
+ * Nominal week count for one year (~52). Default data uses calendar-month math instead.
+ * @internal
+ */
 export const HEATMAP_WEEKS_ONE_YEAR = 52;
 
 const HOURS_PER_DAY = 24;
@@ -17,6 +26,7 @@ const MS_PER_WEEK = HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MS_P
 /** Default minimum days a lead week must contain on/after `rangeStart` to avoid being skipped. */
 const DEFAULT_MIN_DAYS_IN_FIRST_WEEK = 4;
 
+/** @internal */
 export const getHeatmapCalendarRangeStart = (today: Readonly<Date>, months: number): Date => {
   const monthOffset = months === HEATMAP_MONTHS_SIX ? months : months - 1;
   const start = new Date(today.getFullYear(), today.getMonth() - monthOffset, 1);
@@ -24,9 +34,11 @@ export const getHeatmapCalendarRangeStart = (today: Readonly<Date>, months: numb
   return start;
 }
 
+/** @internal */
 export const getHeatmapYearStartMonth = (today: Readonly<Date>): Date => getHeatmapCalendarRangeStart(today, HEATMAP_MONTHS_ONE_YEAR);
 
 
+/** @internal */
 export const getHeatmapWeekStartSunday = (date: Readonly<Date>): Date => {
   const sunday = new Date(date);
   sunday.setDate(sunday.getDate() - sunday.getDay());
@@ -34,6 +46,7 @@ export const getHeatmapWeekStartSunday = (date: Readonly<Date>): Date => {
   return sunday;
 }
 
+/** @internal */
 export const getHeatmapWeekCount = (startSunday: Readonly<Date>, endDate: Readonly<Date>): number => {
   const endSunday = getHeatmapWeekStartSunday(endDate);
   return Math.floor((endSunday.getTime() - startSunday.getTime()) / MS_PER_WEEK) + 1;
@@ -53,7 +66,10 @@ const countHeatmapWeekDaysOnOrAfter = (weekStart: Readonly<Date>, threshold: Rea
   return count;
 }
 
-/** First Sunday week column with enough days on/after `rangeStart`; skips a lead week mostly before the range. */
+/**
+ * First Sunday week column with enough days on/after `rangeStart`; skips a lead week mostly before the range.
+ * @internal
+ */
 export const getHeatmapWeekStartAlignedToRange = (rangeStart: Readonly<Date>, minDaysInFirstWeek: number = DEFAULT_MIN_DAYS_IN_FIRST_WEEK): Date => {
   const startDate = getHeatmapWeekStartSunday(rangeStart);
   const weekEnd = new Date(startDate);
@@ -71,8 +87,14 @@ export const getHeatmapWeekStartAlignedToRange = (rangeStart: Readonly<Date>, mi
   return startDate;
 }
 
+/**
+ * A calendar window: its first week start, week count and first in-range day.
+ * @internal
+ */
 export interface HeatmapWeekRange {
+  /** Start of the first week of the window. */
   readonly startDate: Date;
+  /** Number of week columns in the window. */
   readonly weekCount: number;
   /** First in-range calendar day; bins before this are empty in default year grids. */
   readonly rangeStart: Date | null;
@@ -88,6 +110,7 @@ const resolveRollingHeatmapWeekRange = (endDate: Readonly<Date>, weeks: number):
   return { rangeStart: null, startDate, weekCount: weeks };
 }
 
+/** @internal */
 export const resolveHeatmapWeekRange = (today: Readonly<Date>, weeks: number = HEATMAP_WEEKS_ONE_YEAR): HeatmapWeekRange => {
   const endDate = new Date(today);
   endDate.setHours(0, 0, 0, 0);

@@ -7,18 +7,31 @@ import NumberFlow from "@number-flow/react";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 
+/** Number formatting options for a centre value, a subset of `Intl.NumberFormat` options. */
 interface CenterStatFormat {
+  /** `"standard"` or `"compact"` (1.2K). */
   readonly notation?: "standard" | "compact";
+  /** `"short"` or `"long"` compact form; used with `notation: "compact"`. */
   readonly compactDisplay?: "short" | "long";
+  /** Minimum number of fraction digits. */
   readonly minimumFractionDigits?: number;
+  /** Maximum number of fraction digits. */
   readonly maximumFractionDigits?: number;
+  /** Minimum number of integer digits. */
   readonly minimumIntegerDigits?: number;
+  /** Minimum number of significant digits. */
   readonly minimumSignificantDigits?: number;
+  /** Maximum number of significant digits. */
   readonly maximumSignificantDigits?: number;
+  /** `"decimal"`, `"percent"` or `"currency"`. */
   readonly style?: "decimal" | "percent" | "currency";
+  /** ISO 4217 currency code, for example `"USD"`; used with `style: "currency"`. */
   readonly currency?: string;
+  /** How the currency is shown: symbol, code, name and so on. */
   readonly currencyDisplay?: Intl.NumberFormatOptions["currencyDisplay"];
+  /** Unit identifier, for example `"kilometer"`. */
   readonly unit?: string;
+  /** `"short"`, `"long"` or `"narrow"` unit form. */
   readonly unitDisplay?: "short" | "long" | "narrow";
 }
 

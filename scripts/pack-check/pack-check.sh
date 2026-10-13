@@ -71,6 +71,18 @@ typecheck() {
 stage "types (moduleResolution bundler)" typecheck tsconfig.bundler.json
 stage "types (moduleResolution node16)" typecheck tsconfig.node16.json
 
+# Every ```tsx example in the shipped README, docs and skills must typecheck against the packed package (strict, skipLibCheck off).
+# Fences are standalone modules; ```tsx skip opts one out.
+docs_examples() {
+  local pkg="$WORK/extract/package"
+  node "$SCRIPT_DIR/docs-examples.mjs" "$WORK/consumer/docs-examples" "$PKG_NAME" "$pkg/README.md" "$pkg/docs" "$pkg/skills" || return 1
+  local out
+  out="$(cd "$WORK/consumer/docs-examples" && ../node_modules/.bin/tsc -p tsconfig.docs.json 2>&1)" && return 0
+  echo "$out" | head -40
+  return 1
+}
+stage "docs examples typecheck (README, docs, skills)" docs_examples
+
 # A minimal TanStack Start app installs the tarball, builds with vite, and serves the SSR page from the built output.
 # The server runs on a free port >= 5242 and is stopped by port only.
 start_fixture() {

@@ -10,7 +10,7 @@ import { usePrefersReducedMotion } from "./reduced-motion";
 import {
   DEFAULT_SWEEP_DURATION_S,
   SweepMask,
-  skeletonHeights,
+  getSkeletonHeights,
 } from "./sweep-mask";
 
 const DEFAULT_POINT_COUNT = 14;
@@ -25,25 +25,54 @@ const TRANSITION_STYLES = {
   enter: { animation: transitionAnimation("enter") },
 } as const;
 
+/** Props of `LineLoadingSweep`. */
 export interface LineLoadingSweepProps {
-  /** Curve factory from the host `<Line>` / `<Area>`, so the silhouette matches the chart's interpolation. */
+  /** d3 curve factory for the silhouette, so it matches the chart's interpolation. */
   curve: CurveFactory;
-  /** Fill the silhouette as an area (for `<Area>`); otherwise stroke only. */
+  /**
+   * Also fill the silhouette as an area.
+   * @default false
+   */
   withArea?: boolean;
-  /** Loading phase: `"loop"` (steady), `"exit"` (loading -> ready) or `"enter"` (ready -> loading). Default: `"loop"`. */
+  /**
+   * `"loop"` repeats, `"exit"` fades out as loading finishes, `"enter"` fades in when the chart returns to loading.
+   * @default "loop"
+   */
   mode?: "loop" | "exit" | "enter";
-  /** Fired when an exit/enter transition finishes, to advance the chart phase. */
+  /** Called when an `"exit"` or `"enter"` transition finishes. */
   onTransitionComplete?: () => void;
+  /**
+   * Line color.
+   * @default "var(--chart-foreground)"
+   */
   stroke?: string;
+  /**
+   * Line opacity.
+   * @default 0.55
+   */
   strokeOpacity?: number;
+  /**
+   * Line width in px.
+   * @default 2
+   */
   strokeWidth?: number;
+  /**
+   * Number of points in the silhouette.
+   * @default 14
+   */
   pointCount?: number;
+  /**
+   * Length of one shimmer sweep in seconds.
+   * @default 2
+   */
   durationSeconds?: number;
-  /** Plot size, when rendered outside a chart. Default: the chart's inner size. */
+  /** Plot width in px. Only needed outside a chart; inside one it is the chart's plot width. */
   innerWidth?: number;
+  /** Plot height in px. Only needed outside a chart; inside one it is the chart's plot height. */
   innerHeight?: number;
 }
 
+/** @internal */
 export const LineLoadingSweep = ({
   curve,
   withArea = false,
@@ -71,7 +100,7 @@ export const LineLoadingSweep = ({
     }
   }, [isLoop]);
   const heights = useMemo(
-    () => skeletonHeights(pointCount, tick),
+    () => getSkeletonHeights(pointCount, tick),
     [pointCount, tick]
   );
   const pathD = useMemo(() => {

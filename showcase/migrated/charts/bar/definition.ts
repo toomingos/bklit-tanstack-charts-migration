@@ -50,6 +50,8 @@ export interface BarInput {
   readonly horizontal: boolean;
   readonly stacked: boolean;
   readonly stackGap: number;
+  /** BarChart `squareSnap` (bklit bar-chart.tsx:89): snaps the tooltip dots onto the top square and sets the ring dot slot gap. */
+  readonly squareSnap?: { readonly squareGap: number; readonly groupGap?: number; readonly fit?: boolean };
   /** First paint of an entrance: custom marks collapsed, no bars; the build after it runs the reveal. */
   readonly seed: boolean;
   /** Entrance clock shared by the custom marks across the seed and full builds. */
@@ -250,7 +252,7 @@ function tooltipOverlay(input: BarInput, datums: readonly BarDatum[], categories
   return {
     crosshair,
     dots: tip?.showDots !== false
-      ? barOverlayDots({ datums, series, categories, barGap: input.barGap, groupGap, stacked, stackGap, squares, ring: ringOf(tip, series.length, [...squares.values()].at(0)?.groupGap) })
+      ? barOverlayDots({ datums, series, categories, barGap: input.barGap, groupGap, stacked, stackGap, squares, squareSnap: input.squareSnap, ring: ringOf(tip, series.length, input.squareSnap?.groupGap ?? [...squares.values()].at(0)?.groupGap) })
       : [],
     indexOf: (index) => index,
     pill: { labels: categories, layout: pillLayout(categories) },
@@ -293,8 +295,11 @@ function barEnter(input: BarInput): (ctx: ChartMotionContext<BarDatum>) => Enter
   const { animationDuration, series } = input;
   const seriesCount = Math.max(1, series.length);
   const stagger = (animationDuration * STAGGER_SPREAD) / Math.max(1, input.data.length);
+  // A Bar's own `staggerDelay` (seconds) replaces the derived spread for its series: index * staggerDelay (bklit bar.tsx:215-217, 131).
+  const ownStagger = new Map(series.flatMap((s) => (s.bar?.staggerDelay === undefined ? [] : [[s.key, s.bar.staggerDelay * 1000] as const])));
   const enter = (ctx: ChartMotionContext<BarDatum>): EnterTiming | undefined => {
-    const plan = { delay: Math.floor(ctx.datumIndex / seriesCount) * stagger, duration: animationDuration, easing: REVEAL_EASING };
+    const index = ctx.datum?.index ?? Math.floor(ctx.datumIndex / seriesCount);
+    const plan = { delay: index * (ownStagger.get(ctx.datum?.series ?? "") ?? stagger), duration: animationDuration, easing: REVEAL_EASING };
     // Loading -> ready arrives as an update from collapsed bars, with the clock reset, so it grows them too (bklit revealEpoch, bar-chart.tsx:372-386).
     // Later data updates snap (clock spent); one forced inside the entrance window resumes the schedule.
     if (input.loading === true) { return false; }

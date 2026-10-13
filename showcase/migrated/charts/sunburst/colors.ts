@@ -1,3 +1,4 @@
+/** @internal */
 export const sunburstCssVars = {
   background: "var(--chart-background)",
   foreground: "var(--chart-foreground)",
@@ -11,6 +12,7 @@ export const sunburstCssVars = {
   slice5: "var(--chart-5)",
 };
 
+/** Default category colors: the `--chart-1` to `--chart-5` variables. */
 export const defaultSunburstColors = [
   sunburstCssVars.slice1,
   sunburstCssVars.slice2,
@@ -22,7 +24,10 @@ export const defaultSunburstColors = [
 const OPACITY_STEP = 0.15;
 const OPACITY_FLOOR = 0.45;
 
-/** Relative depth within the current focus view (1 = innermost visible ring). */
+/**
+ * Relative depth within the current focus view (1 = innermost visible ring).
+ * @internal
+ */
 export const opacityForRelativeDepth = (relativeDepth: number): number => {
   if (relativeDepth <= 1) {
     return 1;

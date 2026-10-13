@@ -140,6 +140,7 @@ interface PatternProps {
   curve?: CurveFactory;
 }
 
+/** @internal */
 export const DEFAULT_Y_AXIS_ID = "left";
 
 // bklit line.tsx / area.tsx: `loading === false` disables, an explicit mode or `loading` enables (mode defaults to "loop"),
@@ -216,8 +217,8 @@ export function resolveSeries(table: ChildTable, chartLoading = false): Resolved
     out.push(base("line", l, curveNatural));
   }
   for (const p of propsFor<ProfitLossProps>(table, "profitLossLine")) {
-    const positive = p.positiveColor ?? "var(--color-emerald-500)";
-    const negative = p.negativeColor ?? "var(--color-red-500)";
+    const positive = p.positiveColor ?? "var(--color-emerald-500, oklch(69.6% 0.17 162.48))";
+    const negative = p.negativeColor ?? "var(--color-red-500, oklch(63.7% 0.237 25.331))";
     out.push({
       ...base("line", { dataKey: p.dataKey, stroke: positive, strokeWidth: p.strokeWidth, curve: p.curve, fadeEdges: false, showHighlight: false }, curveLinear),
       profitLoss: { positive, negative },

@@ -4,14 +4,21 @@ import { useSunburstHover, useSunburstStable } from "./context";
 
 const HINT_STYLE = { minHeight: 20 } as const;
 
+/** State passed to a custom `SunburstHint` content function. */
 export interface SunburstHintContext {
+  /** The default hint text for the current state. */
   hintText: string;
+  /** The hovered arc, or `null`. */
   hoveredArc: ArcDatum | null;
+  /** The currently focused node. */
   focus: Focus;
 }
 
+/** Props of `SunburstHint`. */
 export interface SunburstHintProps {
+  /** Class name of the hint element. */
   className?: string;
+  /** Custom hint content, or a function receiving the hint context. Defaults to the hovered path or zoom instructions. */
   children?: ReactNode | ((context: SunburstHintContext) => ReactNode);
 }
 
@@ -22,6 +29,7 @@ const hintTextFor = (hoveredArc: ArcDatum | null, focus: Focus): string => {
   return focus.depth === 0 ? "Click a segment to zoom in · hover to inspect" : "Click the center to zoom out";
 };
 
+/** Hint text below the chart: the hovered path, or instructions for zooming. Announced politely to screen readers. */
 export const SunburstHint = ({ className, children }: Readonly<SunburstHintProps>): ReactNode => {
   const { focus } = useSunburstStable();
   const { hoveredArc } = useSunburstHover();
@@ -31,7 +39,7 @@ export const SunburstHint = ({ className, children }: Readonly<SunburstHintProps
   return (
     <div
       aria-live="polite"
-      className={className ?? "mt-3 min-h-5 text-center text-muted-foreground text-sm"}
+      className={className ?? "bk-sb-hint"}
       style={HINT_STYLE}
     >
       {content}
