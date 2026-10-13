@@ -19,7 +19,14 @@ interface SpringState {
   readonly v0: number;
   /** Milliseconds the animation waits (holding its first frame) before the spring starts. */
   readonly delay: number;
-  readonly animation: Animation | null;
+  readonly animation: SpringClock | null;
+}
+
+/** What `live` needs of a running spring: a clock and a way to stop it (a WAAPI `Animation` fits, so does a frame-driven one). */
+interface SpringClock {
+  readonly playState: AnimationPlayState;
+  readonly currentTime: CSSNumberish | null;
+  readonly cancel: () => void;
 }
 
 interface SpringJob {
@@ -37,6 +44,9 @@ interface SpringJob {
   readonly affine?: boolean;
   /** motion's `transition.delay`: the element holds its current value for this many ms, then springs. A retarget during the delay restarts it. */
   readonly delay?: number;
+  /** Write the spring to inline style once per animation frame instead of running a WAAPI animation. Main-thread-painted SVG nodes (the pie slice `<g>`) repaint on every WAAPI tick through the animation
+   * pipeline, which costs about 1.4 ms of main thread per hover move; plain style writes cost less. Ignored with a `delay`. */
+  readonly frames?: boolean;
 }
 
 interface SpringDriver {
@@ -45,8 +55,57 @@ interface SpringDriver {
   readonly value: (el: Element) => number | undefined;
 }
 
+/** One rAF loop for every frame-driven spring: each step returns false once its spring has ended. */
+const createFrameLoop = (): ((step: () => boolean) => void) => {
+  const steps = new Set<() => boolean>();
+  let pending = 0;
+  const tick = (): void => {
+    pending = 0;
+    for (const step of [...steps]) { if (!step()) { steps.delete(step); } }
+    if (steps.size > 0) { pending = requestAnimationFrame(tick); }
+  };
+  return (step) => {
+    steps.add(step);
+    if (pending === 0) { pending = requestAnimationFrame(tick); }
+  };
+};
+
+const toKebab = (name: string): string => name.replaceAll(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+
 const createSpringDriver = (): SpringDriver => {
   const states = new WeakMap<Element, SpringState>();
+  const runFrames = createFrameLoop();
+
+  /** A spring played as inline style, one write per animation frame, sampling the precomputed curve (`values`, one per FRAME_MS). Reproduces motion's frame-driven x/y spring on bklit's pie slice (repos/bklit-ui/packages/ui/src/charts/pie-slice.tsx:150-157, stiffness 400 / damping 25). */
+  const playFrames = (el: Element, values: readonly number[], duration: number, target: number, frame: SpringJob["frame"]): SpringClock => {
+    const style = (el as HTMLElement | SVGElement).style;
+    const keys = Object.keys(frame(target)).map(toKebab);
+    const start = performance.now();
+    let playState: AnimationPlayState = "running";
+    const clear = (): void => { for (const key of keys) { style.removeProperty(key); } };
+    const write = (value: number): void => {
+      for (const [key, css] of Object.entries(frame(value))) { style.setProperty(toKebab(key), String(css)); }
+    };
+    const clock: SpringClock = {
+      cancel: () => { if (playState === "running") { playState = "idle"; clear(); } },
+      get currentTime() { return performance.now() - start; },
+      get playState() { return playState; },
+    };
+    const step = (): boolean => {
+      if (playState !== "running") { return false; }
+      const ms = performance.now() - start;
+      if (ms >= duration) { playState = "finished"; clear(); return false; }
+      const at = ms / FRAME_MS;
+      const index = Math.floor(at);
+      const from = values[index] ?? 0;
+      const to = values[index + 1] ?? 0;
+      write(target + from + (to - from) * (at - index));
+      return true;
+    };
+    step();
+    runFrames(step);
+    return clock;
+  };
 
   /** Live value and velocity of an element: from its running animation's clock, or at rest on its last target when none is running. */
   const live = (el: Element, rest: number): LiveSample => {
@@ -64,7 +123,7 @@ const createSpringDriver = (): SpringDriver => {
 
   return {
     value: (el) => (states.has(el) ? live(el, 0).value : undefined),
-    play: ({ el, spring, target, rest, from, frame, affine = false, delay = 0 }) => {
+    play: ({ el, spring, target, rest, from, frame, affine = false, delay = 0, frames = false }) => {
       const start = from === undefined ? live(el, rest) : { value: from, velocity: 0 };
       states.get(el)?.animation?.cancel();
       const x0 = start.value - target;
@@ -81,6 +140,10 @@ const createSpringDriver = (): SpringDriver => {
       for (let ms = 0; ms < MAX_MS; ms += FRAME_MS) {
         if (ms > 0 && native.sample(ms, state).done) { duration = ms; break; }
         values.push(native.sample(ms, state).value);
+      }
+      if (frames && delay === 0) {
+        states.set(el, { animation: playFrames(el, values, duration, target, frame), delay: 0, spring, target, v0: start.velocity, x0 });
+        return;
       }
       const motion = affine && Math.abs(x0) > thresholds.delta
         ? { easing: `linear(${values.map((value) => Math.round((1 - value / x0) * 1e4) / 1e4).join(",")},1)`, frames: [frame(start.value), frame(target)] }
