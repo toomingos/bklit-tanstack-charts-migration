@@ -85,8 +85,9 @@ export const LiveLineChart = ({
   const height = parseHeight(style?.height);
   const innerHeight = Math.max(0, height - margin.top - margin.bottom);
 
-  // Host width for the plot geometry. bklit mounts under `<ParentSize debounceTime={10}>` (live-line-chart.tsx:663); the first width is measured in a layout effect, before first paint,
-  // so the intro starts at the earliest frame; later widths come from the renderer's scene, `onRender({ scene })` (`ChartScene extends ChartSize`, dom-types.ts:243).
+  // Host width for the plot geometry. bklit mounts under `<ParentSize debounceTime={10}>` (live-line-chart.tsx:663); the first width arrives on the same chain (observer, then one frame; kit/size/parent-size-arm.tsx).
+  // The frame builder and plot geometry (`useLivePlot`, `useLiveFrame`) need the width before the first scene, so TanStack's host cannot size this chart (TanStack-native host sizing only brings a first-layout paint).
+  // Later widths come from the renderer's scene, `onRender({ scene })` (`ChartScene extends ChartSize`, dom-types.ts:243).
   const [hostRef, measuredWidth] = useParentSizeWidth<HTMLDivElement>();
   const [sceneWidth, setSceneWidth] = useState(0);
   const width = sceneWidth || Math.round(measuredWidth ?? 0);

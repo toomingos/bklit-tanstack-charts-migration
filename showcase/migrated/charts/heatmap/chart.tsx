@@ -5,7 +5,7 @@ import { erase } from "../kit/erased-types";
 import { clearAttribute, writeAttribute } from "../kit/host-write";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, FocusEvent as ReactFocusEvent, KeyboardEvent as ReactKeyboardEvent, NamedExoticComponent, ReactElement, ReactNode, RefObject } from "react";
-import { useParentSizeMounted, useRevealClock } from "../kit/size/parent-size-arm";
+import { useRevealClock } from "../kit/size/parent-size-arm";
 import { useFluidWidth } from "../kit/size/use-fluid-width";
 import { RendererChart } from "../kit/tooltip/tooltip-leaf";
 import { useKeyboardFocusHold } from "../kit/keyboard-hold";
@@ -582,19 +582,18 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
   const idPrefix = useSanitizedId();
 
   // The entrance replays only if the first painted scene is final: a post-mount width change is a resize (not animated) and would cancel it,
-  // so the container is measured once, synchronously, before the chart mounts at that width.
+  // so the container's width arrives once, on bklit's ParentSize chain, before the chart mounts at that width.
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { interaction, onRender: captureInteraction } = useInteractionHandle();
   useTapFocus(containerRef, () => interaction.current, { mode: "press" });
   const { ready: measured, width: liveWidth } = useFluidWidth(containerRef, { epsilon: WIDTH_EPSILON_PX, initialWidth: INITIAL_WIDTH_PX });
   // The motion renderer animates only keyed marks that ENTER a painted scene (rect marks have no first-paint baseline), so the scene paints without cells and they enter with their per-datum delay,
-  // released on bklit's chain (ParentSize svg after its first ResizeObserver delivery + a frame; reveal effects and motion's clock follow) via kit/size/parent-size-arm.tsx.
-  const sized = useParentSizeMounted(containerRef, measured);
+  // released once the width arrives on bklit's chain (ParentSize svg after its first ResizeObserver delivery + a frame; reveal effects and motion's clock follow), see kit/size/use-fluid-width.ts.
   // bklit's svg first renders on the ParentSize commit (heatmap-chart.tsx:685); a mount effect then moves it to "revealing" (:566-585), where the cells' tween starts.
   const [cellsEntered, setCellsEntered] = useState(false);
   // UPSTREAM-GAPS #12: first paint and group joins get no per-datum enter, so cells join on a second commit (loading -> ready re-seeds the same way).
   // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- the cells must enter on a second commit, after the cell-less seed has painted
-  useEffect(() => { setCellsEntered(sized && status === "ready"); }, [sized, status]);
+  useEffect(() => { setCellsEntered(measured && status === "ready"); }, [measured, status]);
 
   const { cellsProps, hasXAxis, hasYAxis, margin, separatorConfig, separatorStyle, tooltipConfig, yAxis } = useChartConfig({ children, columnSeparators, marginProp });
   const { colorScale, columns, fillScale, hasPattern, resolvedLevelStyles, separatorLayout } = useColumnModel({ colorScaleProp, data, levelColors, levelStyles, separatorConfig, weekStartDay, xDomain });
@@ -612,7 +611,7 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
   const revealEpoch = useMemo(() => hashSignature(revealSignature), [revealSignature]);
 
   // One entrance clock per reveal: survives the definition rebuilds a layout change (font swap) causes mid-entrance.
-  const revealClock = useRevealClock(sized);
+  const revealClock = useRevealClock(measured);
   const backdate = useRef(true);
   const enterClock = useMemo((): HeatmapEnterClock => ({ at: null, origin: () => { const first = backdate.current; backdate.current = false; return first ? revealClock.mountedAt : null; } }), [revealEpoch, revealClock]);
   const { getScene, handleBlur, handleFocusChange, handleKeyDownCapture, handleRender, releaseGridFocus } = useGridFocus({ captureInteraction, columnCount, containerRef, coordinator, interaction, interactive, rowCount });
@@ -663,7 +662,7 @@ const HeatmapChart = (props: Readonly<HeatmapChartProps>): ReactElement => {
 
   const surface = (
     <div className={className} data-bkm-chart="heatmap" data-hm-id={idPrefix} data-slot="chart" ref={containerRef} style={surfaceStyle} onBlur={handleBlur} onKeyDownCapture={handleKeyDownCapture} onPointerMove={releaseGridFocus}>
-      {sized && isRenderable && cellsProps !== undefined ? (
+      {measured && isRenderable && cellsProps !== undefined ? (
         <HeatmapContext.Provider value={contextValue}>
           <div style={innerStyle}>
             <RendererChart
