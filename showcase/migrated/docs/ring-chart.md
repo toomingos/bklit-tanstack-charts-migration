@@ -45,7 +45,7 @@ interface RingData {
 
 ## The centre readout (no tooltip)
 
-Rings do not show a tooltip. `RingCenter` shows the total until a ring is hovered or keyboard-focused, then that ring's `value` and `label`. Customise the text with `defaultLabel`, `prefix`, `suffix` and `formatOptions`, or replace what is shown for a hovered ring with a `children` render function receiving `{ value, label, isHovered, data }`.
+Rings do not show a tooltip. `RingCenter` shows the total until a ring is hovered or keyboard-focused, then that ring's `value` and `label`. Customise the text with `defaultLabel`, `prefix`, `suffix` and `formatOptions`, or replace what is shown for a hovered ring with a `children` render function receiving `{ value, label, isHovered, data }` (from a Next.js Server Component, wrap the chart in a `"use client"` component first: functions cannot cross that boundary).
 
 ```tsx
 import { Ring, RingCenter, RingChart } from "bklit-tanstack-charts";

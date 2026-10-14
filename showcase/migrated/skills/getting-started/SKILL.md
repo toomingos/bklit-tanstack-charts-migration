@@ -22,11 +22,15 @@ sources:
 pnpm add bklit-tanstack-charts @tanstack/charts @tanstack/react-charts
 ```
 
+With npm: `npm install bklit-tanstack-charts @tanstack/charts@~1.1.0 @tanstack/react-charts@~1.1.0` (name the peers; not every
+package manager version installs them).
+
 Peers: React 19, `@tanstack/charts` and `@tanstack/react-charts` at `~1.1.0`. The runtime must support ES2023. The package is ESM only.
 
 ## Import the stylesheet once
 
-At the app root (Next.js `app/layout.tsx`, TanStack Start root route, or the client entry):
+At the app root (Next.js `app/layout.tsx`, React Router `app/root.tsx`, Astro page or layout frontmatter, or the client entry
+`main.tsx` in a plain Vite app):
 
 ```tsx skip
 import "bklit-tanstack-charts/styles.css";
@@ -99,7 +103,8 @@ Ring, Gauge and Radar tracks use `--border`. Works with or without Tailwind and 
 
 ## Server rendering
 
-- Next.js App Router: the entry is `"use client"`; import charts anywhere, they render to HTML on the server. TanStack Start also works. (The TanStack CLI scaffold needs pnpm 10.)
+- Next.js App Router: the entry is `"use client"`; import charts anywhere, they render to HTML on the server. Function props (`PieCenter`/`RingCenter` render functions, `ChartBrushLayout`, formatters) cannot cross from a Server Component: wrap that chart in your own `"use client"` component.
+- TanStack Start and React Router work as is (the TanStack CLI scaffold needs pnpm 10). Astro: mount charts as React islands; `client:load` server-renders them. Plain Vite: CSS imports need `/// <reference types="vite/client" />` for `tsc`.
 - Server-rendered, entrance replays after hydration: Line, Area, Scatter, Bar, Candlestick, Composed, Gauge, Funnel, Sunburst, Sankey, Choropleth.
 - Client-only (empty shell on the server, draws after mount): Pie, Ring, Radar, Heatmap, LiveLine. Do not expect them in the server HTML.
 

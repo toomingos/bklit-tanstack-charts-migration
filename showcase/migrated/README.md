@@ -8,7 +8,7 @@ rendered by `@tanstack/react-charts`.
 - Line, Area, Scatter, Bar, Candlestick, Composed, Live line, Pie, Ring, Radar, Gauge, Funnel, Heatmap, Sunburst, Sankey and Choropleth charts.
 - Composable layers: `Grid`, `XAxis`, `YAxis`, `ChartTooltip`, `Legend`, `ChartBrush`, `ReferenceArea`, `ProjectionLine`, markers, patterns and gradients.
 - Styled with plain CSS variables (`--chart-*`); no Tailwind or shadcn needed.
-- Server rendering works in Next.js (App Router) and TanStack Start.
+- Server rendering works in Next.js (App Router), TanStack Start, React Router and Astro; plain Vite apps work too.
 
 ## Install
 
@@ -17,7 +17,12 @@ pnpm add bklit-tanstack-charts @tanstack/charts @tanstack/react-charts
 ```
 
 `@tanstack/charts` and `@tanstack/react-charts` are peer dependencies pinned to `~1.1.0`: the charts depend on TanStack's DOM output,
-so a different minor version is not supported. npm and yarn work the same way (`npm install ...`).
+so a different minor version is not supported. With npm or yarn, name the peers too; not every package manager version
+installs them for you:
+
+```bash
+npm install bklit-tanstack-charts @tanstack/charts@~1.1.0 @tanstack/react-charts@~1.1.0
+```
 
 Then import the stylesheet **once**, at the root of your app. The JavaScript never imports CSS itself:
 
@@ -91,6 +96,16 @@ series are told apart by shade only. For colour, set `--chart-1` ... `--chart-5`
 Dark mode switches when an ancestor has the `.dark` class or `data-theme="dark"` (what `next-themes`, shadcn and most theme
 toggles set). Set the variables under both selectors if you use `data-theme`.
 
+In a server-rendered app, set the class before the page paints, or a dark-mode visitor sees the light theme until your
+toggle's effect runs. A small inline script in the document `<head>` does it:
+
+```html
+<script>
+  if ((localStorage.theme ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark")
+    document.documentElement.classList.add("dark");
+</script>
+```
+
 | Group | Variables |
 | --- | --- |
 | Surface and text | `--chart-background`, `--chart-foreground`, `--chart-foreground-muted`, `--chart-label` |
@@ -106,7 +121,9 @@ draw your own children.
 
 ## Server rendering
 
-- **Next.js App Router**: the package entry is marked `"use client"`, so charts can be imported from Server Components; they run on the client boundary and are rendered to HTML on the server. Import the stylesheet in your root layout.
+- **Next.js App Router**: the package entry is marked `"use client"`, so charts can be imported from Server Components; they run on the client boundary and are rendered to HTML on the server. Import the stylesheet in your root layout. Works with Cache Components on.
+  Props that take a function (the `children` render function of `PieCenter` or `RingCenter`, `ChartBrushLayout`, formatters)
+  cannot cross from a Server Component. Put a chart that uses one in your own `"use client"` component.
 - **TanStack Start** (and any Vite SSR setup): works as is. Link the stylesheet from the root route's `head`, the way Start links its own CSS. Start's CLI scaffold needs pnpm 10.
 
   ```tsx skip
@@ -119,6 +136,12 @@ draw your own children.
   });
   ```
 
+- **React Router (framework mode)**: import the stylesheet in `app/root.tsx`, either directly or as
+  `styles.css?url` returned from `links()`.
+- **Astro** (`@astrojs/react`): import the stylesheet in the page or layout frontmatter and mount charts as React islands.
+  `client:load` server-renders them; `client:only="react"` skips the server.
+- **Vite without SSR**: import the stylesheet in the client entry (`main.tsx`). For `tsc` to accept the CSS import, keep
+  Vite's `/// <reference types="vite/client" />` (the `vite-env.d.ts` most templates ship).
 - Line, Area, Scatter, Bar, Candlestick, Composed, Gauge, Funnel, Sunburst, Sankey and Choropleth charts **server-render** their SVG and replay their entrance animation after hydration.
 - Pie, Ring, Radar, Heatmap and Live line charts are **client-only**: the server renders an empty shell at the right size and the chart draws after mount.
 

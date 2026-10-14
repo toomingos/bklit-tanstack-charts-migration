@@ -23,7 +23,8 @@
   },
   "sideEffects": false,
   "scripts": {
-    "build": "tsdown && cp charts/styles.css dist/styles.css"
+    "build": "tsdown && cp charts/styles.css dist/styles.css",
+    "prepack": "node -e \"if(!/^pnpm\\//.test(process.env.npm_config_user_agent||'')){console.error('Pack and publish with pnpm: only pnpm applies publishConfig.exports (npm would ship exports pointing at charts/*.ts, which the tarball does not contain).');process.exit(1)}\""
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
